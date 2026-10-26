@@ -748,9 +748,9 @@ and painted. Servo draws straight into the subsurface; nothing is copied.
   option over the field, as a BeOS menu field). Their positions come in
   CSS pixels, scaled by the page and pinch zoom. `alert` / `confirm` /
   `prompt` are BAlerts over the window, HTTP logins an alert with Name and
-  Password, `<input type=file>` a kit `FilePanel`; permission requests
-  (camera, location, notifications) are denied for now, and the colour
-  picker keeps the current colour.
+  Password, `<input type=file>` a kit `FilePanel`; Servo's own permission
+  requests (location, notifications) are denied for now (cameras and
+  microphones are ours: see "Cameras, microphones and calls" below).
 * **Pages are light in every mode.** Stylo takes system colours
   (`CanvasText`) from the preference even for pages that don't choose a
   colour scheme, and Servo paints the canvas with a single clear colour
@@ -889,6 +889,43 @@ dark, and a Canvas background (plus Highlight selection) for those that
 do, judged by `<meta name=color-scheme>` and the root's computed
 `color-scheme`.
 
+### Cameras, microphones and calls in NetPositive
+
+Servo 0.7's WebRTC is a stub, so `apps/browser/src/rtc/` does it. A user
+script (`shim.js`) gives top-level secure pages `navigator.mediaDevices`,
+`MediaStream(Track)`, `RTCPeerConnection`, transceivers, senders,
+receivers, `RTCDataChannel` and `getStats()`. It talks to NetPositive
+through `console.log` with a per-process marker; answers and events come
+back through a window function only the token names (a reply carries
+`id`, an event `ev`).
+
+* **Devices** (`capture.rs`): cameras through Video4Linux (pure Rust;
+  NV12, YUYV and MJPEG made I420), microphones through the sound server.
+  The page asks first: a bar under the toolbar, remembered per site until
+  NetPositive quits. `TABULA_BROWSER_FAKE_CAMERA=1` adds a test-card
+  camera, for tests.
+* **The hub** (`hub.rs`): sources (a device, the far end of a call)
+  publish frames; tracks are a page's handles on a source; streams group
+  tracks. `<video>`/`<audio>` playing a stream (`srcObject`) read it from
+  NetPositive over a socket (`live.rs`) into our media player in the
+  page's process.
+* **Calls** (`peer.rs`, `codec.rs`): webrtc-rs 0.21 in process, on a
+  2-thread tokio runtime. Each connection runs the page's calls in order
+  on a task of its own. Sending: a *slot* per transceiver, our own track
+  fed from a hub track by an encoder thread (H.264 Constrained Baseline
+  via openh264, Opus 48 kHz); `replaceTrack` just moves which hub track a
+  slot reads. Receiving: each transceiver is a hub source; H.264 is
+  depacketized into access units and decoded on a thread of its own,
+  which waits for a key picture and asks for one (PLI) after a gap. An
+  interceptor (`KeyRequests`) passes the far end's PLI/FIR on to us,
+  since webrtc-rs keeps inbound RTCP to its interceptors by default.
+  Kinds and m-line order come from the descriptions (a transceiver
+  doesn't know its kind). `getStats()` is webrtc-rs's report plus our
+  picture counts.
+* **Testing**: two `RTCPeerConnection`s in one page, the fake camera and
+  `tabula-fakesound` (its log shows the far end's sound arriving); see
+  the "a call, end to end" journal entry.
+
 ### Audio and video in NetPositive
 
 Servo plays media through a servo-media backend; built without gstreamer
@@ -901,7 +938,8 @@ bytes into a shared buffer; readers block for bytes not yet there, so
 playback starts early and seeking ahead waits. A driver thread per player
 keeps the clock (the sound's, or its own without a sound server), hands
 Servo each picture as BGRA, and reports state, position and the end.
-Web Audio, streams and WebRTC still go to servo-media's dummy backend.
+Web Audio still goes to servo-media's dummy backend (streams and calls
+are ours, below).
 In multiprocess mode the player runs in the content process, which
 installs the backend too (`guard::content_process`).
 

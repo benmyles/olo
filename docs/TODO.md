@@ -71,7 +71,8 @@ as they land (with the commit), add new ones as they come up.
   Servo misapplies the theme), ~~audio/video in pages~~ (our own servo-media backend on Viewer's
   decoders), ~~a process and systemd unit per site~~ (memory limit, CPU
   weights, stuck-page bar; guard.rs), ~~Servo's unfinished-but-working web
-  features on~~. Still to do: Google Meet and Zoom (WebRTC, camera and microphone),
+  features on~~, ~~cameras, microphones and WebRTC calls~~ (rtc/: H.264 and
+  Opus, data channels, stats; loopback tested). Still to do: trying Google Meet and Zoom themselves,
   permission prompts (Servo 0.7 implements none of the features behind
   them but notifications, which need a Tabula notification centre), ~~a colour picker for `<input type=color>`~~,
   ~~password manager integration~~.

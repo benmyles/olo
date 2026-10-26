@@ -34,6 +34,16 @@ v4l = "0.14"
 zune-jpeg = "0.5"
 zune-core = "0.5"
 getrandom = "0.3"
+# Calls (rtc/peer.rs): WebRTC in Rust, H.264 through OpenH264 (built
+# from source, in process) and Opus.
+webrtc = { version = "0.21", default-features = false, features = ["runtime-tokio", "crypto-aws-lc-rs"] }
+rtc = { version = "=0.21.1", default-features = false, features = ["crypto-aws-lc-rs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync"] }
+async-trait = "0.1"
+bytes = "1"
+openh264 = "0.9"
+rusty-opus = "1"
+opus-decoder = "0.1"
 tabula-system.workspace = true
 servo-media = "=0.7.0"
 # Our patched copy (vendor/), for its process hooks.

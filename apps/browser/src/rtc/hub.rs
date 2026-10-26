@@ -110,10 +110,6 @@ impl Hub {
         }
     }
 
-    pub fn source_alive(&self, id: SourceId) -> bool {
-        self.0.lock().unwrap().sources.get(&id).is_some_and(|s| !s.ended)
-    }
-
     /// Put a page's track `name` on `source`.
     pub fn add_track(&self, key: TrackKey, source: SourceId) -> bool {
         let mut h = self.0.lock().unwrap();
@@ -130,14 +126,6 @@ impl Hub {
     pub fn clone_track(&self, from: &TrackKey, to: TrackKey) -> bool {
         let source = self.0.lock().unwrap().tracks.get(from).map(|t| t.source);
         source.is_some_and(|s| self.add_track(to, s))
-    }
-
-    pub fn track_kind(&self, key: &TrackKey) -> Option<Kind> {
-        self.0.lock().unwrap().tracks.get(key).map(|t| t.kind)
-    }
-
-    pub fn track_source(&self, key: &TrackKey) -> Option<SourceId> {
-        self.0.lock().unwrap().tracks.get(key).map(|t| t.source)
     }
 
     pub fn set_enabled(&self, key: &TrackKey, on: bool) {
@@ -166,12 +154,6 @@ impl Hub {
         self.0.lock().unwrap().streams.retain(|_, s| s.view != view);
     }
 
-    /// Whether the page has a live track of `kind` from a device.
-    pub fn view_uses(&self, view: WebViewId, sources: &[SourceId]) -> bool {
-        let h = self.0.lock().unwrap();
-        h.tracks.iter().any(|(k, t)| k.0 == view && sources.contains(&t.source))
-    }
-
     /// The page's stream `secret` now holds `tracks`.
     pub fn set_stream(&self, view: WebViewId, secret: String, tracks: Vec<String>) {
         let mut h = self.0.lock().unwrap();
@@ -179,13 +161,6 @@ impl Hub {
         if s.view == view {
             s.tracks = tracks;
             s.version += 1;
-        }
-    }
-
-    pub fn remove_stream(&self, view: WebViewId, secret: &str) {
-        let mut h = self.0.lock().unwrap();
-        if h.streams.get(secret).is_some_and(|s| s.view == view) {
-            h.streams.remove(secret);
         }
     }
 

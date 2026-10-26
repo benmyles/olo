@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### NetPositive: a call, end to end
+
+*13:05* — Two RTCPeerConnections in one page, talking through NetPositive's own WebRTC (webrtc-rs, in process). The fake camera's test card goes out as H.264 (openh264) and comes back decoded on the right; the microphone goes as Opus and plays; a data channel carries text and bytes both ways; getStats() counts the pictures.
+
+![NetPositive: a call, end to end](2026-10-26/130517-netpositive-a-call-end-to-end.png)
+
 ### NetPositive: a page of 120 big photos
 
 *12:21* — 120 pictures of 2400×1600, 1.8 GB once decoded. The page's process now holds only their files (60 MB, was every bitmap), and the painter decodes a picture only while it's drawn, within 128 MB shared by every page, so the whole browser stays near 600 MB however long the page.

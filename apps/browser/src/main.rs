@@ -416,7 +416,7 @@ impl NetPositive {
             return self.close_browser(cx, win);
         }
         if let Some(v) = &b.tabs[i].view {
-            rtc::hub::HUB.remove_view(v.id());
+            rtc::forget_view(v.id());
         }
         b.tabs.remove(i);
         if b.active > i || b.active == b.tabs.len() {
@@ -432,7 +432,7 @@ impl NetPositive {
         // The views go before their GL context; then the window and its
         // surface (`embed_lost` finds nothing left to drop).
         if let Some(Win::Browser(mut b)) = self.windows.remove(&win) {
-            b.tabs.iter().filter_map(|t| t.view.as_ref()).for_each(|v| rtc::hub::HUB.remove_view(v.id()));
+            b.tabs.iter().filter_map(|t| t.view.as_ref()).for_each(|v| rtc::forget_view(v.id()));
             b.tabs.clear();
             self.drop_surface(b.surface.take());
         }
@@ -608,7 +608,7 @@ impl NetPositive {
                                 tab.passkey = None;
                                 tab.media.clear();
                                 if let Some(v) = &tab.view {
-                                    rtc::hub::HUB.remove_view(v.id());
+                                    rtc::forget_view(v.id());
                                 }
                                 tab.hung = false;
                                 tab.scroll = None;

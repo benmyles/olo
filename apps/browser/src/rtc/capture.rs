@@ -24,7 +24,6 @@ use super::{
 /// A device as the page may learn of it.
 #[derive(Clone, Debug)]
 pub struct Device {
-    pub kind: Kind,
     /// Ours for it: a camera's path, a microphone's server name.
     pub key: String,
     pub label: String,
@@ -46,7 +45,7 @@ const FORMATS: [&[u8; 4]; 3] = [b"NV12", b"YUYV", b"MJPG"];
 pub fn cameras() -> Vec<Device> {
     let mut out = Vec::new();
     if fake_camera() {
-        out.push(Device { kind: Kind::Video, key: FAKE_CAMERA.into(), label: "Test Camera".into(), sizes: vec![(640, 480), (1280, 720)] });
+        out.push(Device { key: FAKE_CAMERA.into(), label: "Test Camera".into(), sizes: vec![(640, 480), (1280, 720)] });
     }
     let Ok(dir) = std::fs::read_dir("/dev") else { return out };
     let mut paths: Vec<_> = dir
@@ -76,7 +75,7 @@ pub fn cameras() -> Vec<Device> {
         sizes.dedup();
         let card = caps.card.trim().to_string();
         let label = if card.to_lowercase().contains("camera") { card } else { format!("{card} Camera") };
-        out.push(Device { kind: Kind::Video, key: path.to_string_lossy().into_owned(), label, sizes });
+        out.push(Device { key: path.to_string_lossy().into_owned(), label, sizes });
     }
     out
 }
@@ -89,7 +88,7 @@ pub fn microphones() -> Vec<Device> {
     let mut inputs = d.inputs;
     // The default first: pages take the first as the one in use.
     inputs.sort_by_key(|i| !i.is_default);
-    inputs.into_iter().map(|i| Device { kind: Kind::Audio, key: i.name, label: i.description, sizes: Vec::new() }).collect()
+    inputs.into_iter().map(|i| Device { key: i.name, label: i.description, sizes: Vec::new() }).collect()
 }
 
 /// Speakers, for `enumerateDevices()` (sound plays to the default).
@@ -97,7 +96,7 @@ pub fn speakers() -> Vec<Device> {
     let Ok(d) = tabula_system::audio::devices() else { return Vec::new() };
     let mut outputs = d.outputs;
     outputs.sort_by_key(|o| !o.is_default);
-    outputs.into_iter().map(|o| Device { kind: Kind::Audio, key: o.name, label: o.description, sizes: Vec::new() }).collect()
+    outputs.into_iter().map(|o| Device { key: o.name, label: o.description, sizes: Vec::new() }).collect()
 }
 
 /// What the page asked a camera for.

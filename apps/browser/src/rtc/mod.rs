@@ -13,9 +13,11 @@
 //! toolbar, remembered for the site until NetPositive quits.
 
 pub mod capture;
+pub mod codec;
 pub mod frames;
 pub mod hub;
 pub mod live;
+pub mod peer;
 
 use std::collections::HashMap;
 
@@ -39,6 +41,8 @@ pub enum Request {
     Enabled { track: String, on: bool },
     Clone { track: String, r#as: String },
     Stream { secret: String, tracks: Vec<String> },
+    /// About a connection (peer.rs).
+    Pc { pc: String, id: Option<u64>, call: peer::Call },
 }
 
 /// A device as the page described it.
@@ -195,6 +199,7 @@ impl Rtc {
                 }
             }
             Request::Stream { secret, tracks } => HUB.set_stream(id, secret, tracks),
+            Request::Pc { pc, id: call_id, call } => peer::call(s, id, pc, call_id, call),
         }
         None
     }
@@ -224,6 +229,12 @@ impl Drop for Rtc {
     fn drop(&mut self) {
         live::close();
     }
+}
+
+/// A page went away (navigated, closed): end its calls and tracks.
+pub fn forget_view(view: WebViewId) {
+    peer::forget(view);
+    HUB.remove_view(view);
 }
 
 fn state(g: Option<bool>) -> &'static str {
