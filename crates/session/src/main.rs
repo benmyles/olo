@@ -49,6 +49,7 @@ fn runtime_dir() -> PathBuf {
 }
 
 fn main() {
+    exe();
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("reload") => signal_session(libc::SIGHUP),
@@ -97,6 +98,9 @@ struct Resume {
     backend: Vec<String>,
     server: Child,
     shell: Vec<Child>,
+    /// Re-executed in the middle of a reload, which the new self finishes.
+    #[serde(default)]
+    reloading: bool,
 }
 
 struct Session {
@@ -138,6 +142,8 @@ impl Session {
         });
         let ipc_path = runtime_dir().join(format!("tabula-{display}.sock"));
         let _ = std::fs::remove_file(&ipc_path);
+        // Window places carry over a reload, never into a new session.
+        let _ = std::fs::remove_file(layout_path(&display));
         let ipc = UnixListener::bind(&ipc_path).unwrap_or_else(|e| {
             log(format!("could not create the IPC socket: {e}"));
             std::process::exit(1);
@@ -181,7 +187,7 @@ impl Session {
             set_cloexec(fd, true);
         }
         let ipc_path = runtime_dir().join(format!("tabula-{}.sock", r.display));
-        Session {
+        let mut s = Session {
             display: r.display,
             wayland,
             ipc,
@@ -192,7 +198,11 @@ impl Session {
             shell: r.shell,
             binary: own_binary(),
             stopping: false,
+        };
+        if r.reloading {
+            s.reload();
         }
+        s
     }
 
     fn start_server(&mut self) {
@@ -257,15 +267,15 @@ impl Session {
             backend: self.backend.clone(),
             server: self.server.clone(),
             shell: self.shell.clone(),
+            reloading: true,
         };
         let Ok(state) = serde_json::to_string(&resume) else { return };
         for fd in fds {
             set_cloexec(fd, false);
         }
         log("tabula-session was upgraded; re-executing");
-        let exe = std::env::current_exe().unwrap_or_else(|_| "tabula-session".into());
         // The signal mask is inherited across exec, which is what we want.
-        let e = Command::new(exe).env(RESUME_ENV, state).exec();
+        let e = Command::new(exe()).env(RESUME_ENV, state).exec();
         log(format!("re-exec failed ({e}); carrying on"));
         for fd in fds {
             set_cloexec(fd, true);
@@ -326,6 +336,7 @@ impl Session {
             wait_for(p, deadline.saturating_duration_since(Instant::now()));
         }
         let _ = std::fs::remove_file(&self.ipc_path);
+        let _ = std::fs::remove_file(layout_path(&self.display));
         let _ = std::fs::remove_file(runtime_dir().join(&self.display));
         let _ = std::fs::remove_file(runtime_dir().join(format!("tabula-session-{}.pid", self.display)));
         std::process::exit(code);
@@ -355,7 +366,7 @@ fn describe(status: i32) -> String {
 /// Start `argv[0]` (preferring the binary next to ours, so a development
 /// build runs its own components).
 fn spawn(argv: &[String], env: &[(&str, String)]) -> Option<i32> {
-    let sibling = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join(&argv[0])));
+    let sibling = exe().parent().map(|d| d.join(&argv[0]));
     let program: OsString = match sibling {
         Some(p) if p.exists() => p.into_os_string(),
         _ => argv[0].clone().into(),
@@ -406,9 +417,16 @@ fn wait_for(pid: i32, timeout: Duration) -> bool {
     }
 }
 
+/// The path we were started from. Asked once, at start-up: when the binary
+/// is replaced, /proc/self/exe points at the deleted old file.
+fn exe() -> &'static Path {
+    static EXE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    EXE.get_or_init(|| std::env::current_exe().unwrap_or_else(|_| "tabula-session".into()))
+}
+
 fn own_binary() -> Option<(u64, SystemTime)> {
     use std::os::unix::fs::MetadataExt;
-    let m = std::fs::metadata(std::env::current_exe().ok()?).ok()?;
+    let m = std::fs::metadata(exe()).ok()?;
     Some((m.ino(), m.modified().ok()?))
 }
 
@@ -457,6 +475,12 @@ fn set_cloexec(fd: RawFd, on: bool) {
 }
 
 /// Claim the first free `wayland-N` (with its lock file, as libwayland does).
+/// Where app_server leaves window places for its successor (see
+/// app_server's layout.rs).
+fn layout_path(display: &str) -> PathBuf {
+    runtime_dir().join(format!("tabula-layout-{display}.json"))
+}
+
 fn bind_wayland() -> std::io::Result<(String, UnixListener, std::fs::File)> {
     let dir = runtime_dir();
     for n in 1..33 {

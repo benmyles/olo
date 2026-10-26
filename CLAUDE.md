@@ -11,6 +11,10 @@ rules are universal and non-negotiable:
   Colours from the palette, spacing from `metrics`, text via `style`.
 - **Build on the shared kit.** If an app needs a widget or behaviour another
   app could use, add it to `crates/kit` and document it in HACKING.md.
+- **Survive in-place reload.** Apps reconnect when app_server restarts and
+  re-exec after an upgrade; implement `App::save_state` /
+  `cx.restored_state()` so windows come back as they were. Test with
+  `tsession start NAME --session` + rebuild + `tsession reload NAME`.
 - **Icons** follow [docs/ICONS.md](docs/ICONS.md) (sunburst at max quality,
   against the reference set).
 - **Test headless** with `tools/dev/tsession`; never open windows on the

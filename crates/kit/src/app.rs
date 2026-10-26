@@ -49,7 +49,7 @@ pub trait App: 'static {
     /// re-executes the new binary; whatever this returns is handed to it as
     /// [`Cx::restored_state`] so it can reopen its windows as they were.
     /// Apps whose binary didn't change simply reconnect, keeping all state.
-    fn save_state(&mut self) -> Option<String> {
+    fn save_state(&mut self, _cx: &Cx) -> Option<String> {
         None
     }
 }
@@ -137,6 +137,8 @@ pub struct Cx {
     pub(crate) palette: Arc<Palette>,
     pub(crate) proxy: Proxy,
     pub(crate) app_id: String,
+    /// Toplevel content sizes, as of the start of the callback.
+    pub(crate) sizes: std::collections::HashMap<WindowId, (u32, u32)>,
 }
 
 /// Where an upgrading app leaves its saved state for its new self.
@@ -153,6 +155,11 @@ impl Cx {
         let text = std::fs::read_to_string(&path).ok();
         let _ = std::fs::remove_file(&path);
         text
+    }
+
+    /// The logical content size of one of the app's toplevel windows.
+    pub fn window_size(&self, window: WindowId) -> Option<(u32, u32)> {
+        self.sizes.get(&window).copied()
     }
 
     /// Open a window; it appears after the current callback returns.

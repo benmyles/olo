@@ -76,7 +76,7 @@ fn replace_entries(entries: &mut Vec<Entry>, list: &mut ListState, mut v: Vec<En
     list.selected = entries.iter().enumerate().filter(|(_, e)| keep.contains(&e.path)).map(|(i, _)| i).collect();
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SortKey {
     Name,
     Size,
@@ -418,6 +418,26 @@ impl FolderWin {
     }
 }
 
+/// What an upgraded Tracker needs to reopen its windows as they were (see
+/// `App::save_state`). The desktop comes back from `--desktop`.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Saved {
+    hidden: bool,
+    folders: Vec<SavedFolder>,
+    find: usize,
+    #[serde(default)]
+    desktop_selected: Vec<PathBuf>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SavedFolder {
+    path: PathBuf,
+    size: (u32, u32),
+    view: ViewMode,
+    sort: (SortKey, bool),
+    selected: Vec<PathBuf>,
+}
+
 fn folder_options(path: &Path) -> WindowOptions {
     WindowOptions::new(fs::display_name(path), 560, 380).min_size(240, 160)
 }
@@ -511,6 +531,32 @@ impl Tracker {
                 Win::Desktop(d) => d.reload(),
                 _ => {}
             }
+        }
+    }
+
+    fn restore(&mut self, cx: &mut Cx, saved: Saved) {
+        self.hidden = saved.hidden;
+        for w in self.windows.values_mut() {
+            if let Win::Desktop(d) = w {
+                d.select_paths(&saved.desktop_selected);
+            }
+        }
+        for f in saved.folders {
+            if !f.path.is_dir() {
+                continue;
+            }
+            let mut options = folder_options(&f.path);
+            options.size = f.size;
+            let id = cx.open_window(options);
+            let loader = Loader { win: id, proxy: cx.proxy() };
+            let mut w = FolderWin::new(f.path, self.hidden, loader);
+            w.view = f.view;
+            w.sort = f.sort;
+            w.select_paths(&f.selected);
+            self.windows.insert(id, Win::Folder(w));
+        }
+        for _ in 0..saved.find {
+            self.open_find(cx);
         }
     }
 
@@ -923,6 +969,27 @@ impl Tracker {
 
 
 impl App for Tracker {
+    fn save_state(&mut self, cx: &Cx) -> Option<String> {
+        let mut ids: Vec<&WindowId> = self.windows.keys().collect();
+        ids.sort(); // opening order, so they stack as before
+        let mut saved = Saved { hidden: self.hidden, folders: Vec::new(), find: 0, desktop_selected: Vec::new() };
+        for id in ids {
+            match &self.windows[id] {
+                Win::Folder(f) => saved.folders.push(SavedFolder {
+                    path: f.path.clone(),
+                    size: cx.window_size(*id).unwrap_or_else(|| folder_options(&f.path).size),
+                    view: f.view,
+                    sort: f.sort,
+                    selected: f.selected_paths(),
+                }),
+                Win::Find(_) => saved.find += 1,
+                Win::Desktop(d) => saved.desktop_selected = d.selected_paths(),
+                _ => {}
+            }
+        }
+        serde_json::to_string(&saved).ok()
+    }
+
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
         match self.windows.get(&window) {
             Some(Win::Folder(_)) => self.folder_ui(cx, window, ui),
@@ -1193,7 +1260,10 @@ fn main() {
             let id = cx.open_window(desktop::options());
             t.windows.insert(id, Win::Desktop(desktop::Desktop::new()));
         }
-        t.handle_args(cx, &args);
+        match cx.restored_state().and_then(|s| serde_json::from_str::<Saved>(&s).ok()) {
+            Some(saved) => t.restore(cx, saved),
+            None => t.handle_args(cx, &args),
+        }
         t
     });
 }

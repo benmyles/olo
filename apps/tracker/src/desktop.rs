@@ -109,6 +109,10 @@ impl Desktop {
         if i == self.items.len() { Some(&self.trash) } else { self.items.get(i) }
     }
 
+    pub fn select_paths(&mut self, paths: &[PathBuf]) {
+        self.selected = (0..=self.items.len()).filter(|&i| self.item(i).is_some_and(|it| paths.contains(&it.entry.path))).collect();
+    }
+
     /// Select `p` and start editing its name in place.
     pub fn edit_name(&mut self, p: &std::path::Path) {
         if let Some(i) = self.items.iter().position(|it| it.entry.path == p) {

@@ -264,6 +264,7 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                     palette: palette.clone(),
                     proxy: Proxy { sender: sender.clone() },
                     app_id: app_id.to_owned(),
+                    sizes: Default::default(),
                 };
                 let app = (build.take().expect("built once"))(&mut cx);
                 kit.app = Some(Box::new(app));
@@ -305,7 +306,8 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         // reconnect with everything as it was.
         let Some(mut c) = c else { return };
         if binary.changed() {
-            let state = c.app.save_state();
+            c.cx.sizes = c.windows.iter().map(|(id, o)| (*id, o.size)).collect();
+            let state = c.app.save_state(&c.cx);
             binary.exec(state.as_deref());
             warn!("could not start the upgraded binary; carrying on");
         }
@@ -453,6 +455,8 @@ impl Kit {
         let mut app = self.app.take()?;
         let mut cx = self.cx.take()?;
         cx.palette = self.palette.clone();
+        cx.sizes.clear();
+        cx.sizes.extend(self.surfaces.iter().filter(|s| matches!(s.role, Role::Toplevel(_))).map(|s| (s.id, s.size)));
         let r = f(app.as_mut(), &mut cx);
         self.app = Some(app);
         self.cx = Some(cx);

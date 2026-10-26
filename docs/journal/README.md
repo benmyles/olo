@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-25
 
+### In-place reload: after an upgrade
+
+*21:01* — After tabula-session reload with new tabula-session, app_server and Tracker binaries: the session re-executed itself, restarted app_server, and Tracker re-executed with its saved state. Pixel-identical to the screenshot before.
+
+![In-place reload: after an upgrade](2026-10-25/210132-in-place-reload-after-an-upgrade.png)
+
+### In-place reload: before
+
+*21:01* — Tracker (desktop + Home window, Home icon selected) and Deskbar under tabula-session, before rebuilding and running tabula-session reload.
+
+![In-place reload: before](2026-10-25/210132-in-place-reload-before.png)
+
 ### Tracker Status: background file operations
 
 *20:43* — Copy, move, duplicate, Trash and Empty Trash run on worker threads (copy_file_range in chunks). Jobs longer than 0.4 s appear here with bytes, items, current file and time left; Stop cancels and removes the partial copy.

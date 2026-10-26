@@ -40,12 +40,14 @@ like pixel alignment is.
 | Path | What |
 |---|---|
 | `crates/app_server` | The compositor (Smithay, forked from Anvil). Draws the BeOS window decorator (yellow tabs), manages windows/workspaces, serves IPC. |
+| `crates/session` | `tabula-session`: starts and supervises app_server, Deskbar and the desktop; in-place reload and upgrade (see below). |
 | `crates/protocol` | JSON-lines IPC between app_server and our apps (`Client`, `Request`, `Reply`, `Event`, `Settings`). |
 | `crates/theme` | `Palette` (light/dark), BeOS tint helpers, decorator metrics, font lists. |
 | `crates/kit` | The Interface Kit: Wayland client platform, GPU rendering (egui on wgpu/Vulkan), menus, BeOS widgets, icons, `.desktop` entries. **All apps are built on it.** |
 | `apps/<name>` | One crate per application, binary named `tabula-<name>`. Picked up by the workspace glob. |
 | `data/icons` | Icon set, pre-scaled to device sizes (`data/icons/<px>/<name>.png`). |
-| `tools/` | `dev/tsession` (headless UI testing), `genicon.py`/`genicons.sh`/`mkicons.py`/`iconsheet.py` (icons, see [ICONS.md](ICONS.md)). |
+| `data/session` | `tabula.desktop` for the login screen (installed by `tools/install-session.sh`). |
+| `tools/` | `install-session.sh` (release build → `/usr/local`), `dev/tsession` (headless UI testing), `genicon.py`/`genicons.sh`/`mkicons.py`/`iconsheet.py` (icons, see [ICONS.md](ICONS.md)). |
 
 Build: `cargo build -p tabula-<app>` (plus `cargo build --bin tabula-app-server` once, for headless testing; as root set `CARGO_HOME=/home/ben/.cargo` to share the registry) (repo is owned by `ben`; when running as
 root use `sudo -u ben bash -lc 'cd … && cargo build …'` in the main checkout).
@@ -82,9 +84,11 @@ fn main() {
 
 * **`App`**: `ui` (draw a window below its menu bar), `menu_bar`, `command`
   (menu item or ⌘-shortcut), `close_requested`, `message` (from background
-  threads via `cx.proxy().send(msg)`), `theme_changed`, `files_dropped`.
+  threads via `cx.proxy().send(msg)`), `theme_changed`, `files_dropped`,
+  `save_state` (see "In-place reload").
 * **`Cx`**: `open_window`, `close_window`, `set_title`, `resize`, `redraw`,
-  `copy` (clipboard), `quit`, `palette`, `proxy`.
+  `copy` (clipboard), `quit`, `palette`, `proxy`, `window_size`,
+  `restored_state`.
 * Background work goes on threads; post results with `Proxy::send` and
   handle them in `App::message` (then `cx.redraw(window)`).
 * Periodic refresh: `ui.ctx().request_repaint_after(duration)`.
@@ -150,6 +154,39 @@ Menus: `Menu::new("File").item(label, command, Some(Key::N))`,
    Tracker-style spatial behaviour. Modernise freely where it helps
    (smooth scrolling, hi-dpi, search fields, sensible defaults).
 
+## The session and in-place reload
+
+Tabula upgrades without logging out. `tabula-session` (what the login
+screen runs) owns the Wayland socket (`wayland-N`) and the IPC socket and
+hands both to app_server, so clients never see the sockets disappear.
+
+* `tabula-session reload` (SIGHUP): if `tabula-session` itself was
+  upgraded it re-executes the new binary first, keeping its children and
+  sockets. Then it stops app_server (SIGTERM; it saves every window's
+  place to `$XDG_RUNTIME_DIR/tabula-layout-<display>.json`) and starts the
+  one now on disk, which puts returning windows back (same app id and
+  title within 60 s; position, workspace, minimized, focus).
+* Kit apps notice the lost connection and reconnect (for up to 20 s). An
+  app whose binary didn't change keeps everything and recreates its
+  windows exactly. One whose binary changed calls `App::save_state`,
+  re-executes itself (same pid and arguments), and reads the result with
+  `cx.restored_state()` at start-up. **Every app with windows the user
+  arranged must implement both**: save which windows are open (with
+  `cx.window_size`), their documents/folders, view settings and
+  selection, and reopen them in the same order. Tracker's `Saved` is the
+  example.
+* app_server or a shell component that crashes is restarted (up to 5
+  times a minute). `tabula-session quit` ends the session.
+* Never cache anything about the connection you can't rebuild; never
+  replace an installed binary by writing over it (install to a temporary
+  name and rename, as `tools/install-session.sh` does).
+
+Install for the login screen with `sudo tools/install-session.sh`
+(release build into `/usr/local`, plus
+`/usr/local/share/wayland-sessions/tabula.desktop`). After rebuilding,
+`tabula-session reload` (or Preferences → Restart Tabula) upgrades the
+running desktop.
+
 ## Testing: headless sessions
 
 Never open windows on the user's screen. `tools/dev/tsession` runs a
@@ -159,6 +196,8 @@ headless app_server (GPU, offscreen, 2560×1600 device pixels at 2×, i.e.
 ```sh
 T=tools/dev/tsession
 $T start mine --light          # unique session name per developer/agent
+$T start mine --session [--shell]   # under tabula-session (with Deskbar + desktop)
+$T reload mine                 # in-place reload (test upgrades: rebuild, then reload)
 $T run mine tabula-myapp       # binaries from target/debug (log in /tmp/tabula-dev/mine/)
 $T shot mine /tmp/x.png        # full screenshot (device pixels)
 $T zoom mine /tmp/z.png X Y W H 4   # crop in logical px, magnified 4× (nearest)

@@ -82,5 +82,17 @@
   "title": "Tracker Status: background file operations",
   "caption": "Copy, move, duplicate, Trash and Empty Trash run on worker threads (copy_file_range in chunks). Jobs longer than 0.4 s appear here with bytes, items, current file and time left; Stop cancels and removes the partial copy.",
   "image": "2026-10-25/204337-tracker-status-background-file-operations.png"
+ },
+ {
+  "time": "2026-10-25T21:01:32",
+  "title": "In-place reload: before",
+  "caption": "Tracker (desktop + Home window, Home icon selected) and Deskbar under tabula-session, before rebuilding and running tabula-session reload.",
+  "image": "2026-10-25/210132-in-place-reload-before.png"
+ },
+ {
+  "time": "2026-10-25T21:01:32",
+  "title": "In-place reload: after an upgrade",
+  "caption": "After tabula-session reload with new tabula-session, app_server and Tracker binaries: the session re-executed itself, restarted app_server, and Tracker re-executed with its saved state. Pixel-identical to the screenshot before.",
+  "image": "2026-10-25/210132-in-place-reload-after-an-upgrade.png"
  }
 ]

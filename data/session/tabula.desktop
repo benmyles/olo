@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Tabula
+Comment=A BeOS-inspired Wayland desktop
+Exec=tabula-session
+TryExec=tabula-session
+Type=Application
+DesktopNames=Tabula
