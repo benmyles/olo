@@ -336,13 +336,24 @@ impl Kit {
                         }
                     }
                     Request::Resize(id, size) => {
-                        if let Some(s) = self.surface_mut(id) {
+                        let Some(i) = self.surfaces.iter().position(|s| s.id == id) else { continue };
+                        let s = &mut self.surfaces[i];
+                        if let Role::Layer(l) = &s.role {
+                            // Takes effect when the compositor configures us.
+                            let (t, b, lft, r) = match &s.options.kind {
+                                WindowKind::Layer(lo) => lo.anchor,
+                                _ => (false, false, false, false),
+                            };
+                            let w = if lft && r { 0 } else { size.0 };
+                            let h = if t && b { 0 } else { size.1 };
+                            l.set_size(w, h);
+                            l.commit();
+                        } else if s.size != size {
                             s.size = size;
-                            if let Role::Layer(l) = &s.role {
-                                l.set_size(size.0, size.1);
-                                l.commit();
-                            }
                             s.dirty = true;
+                            if s.gpu_surface.is_some() {
+                                self.configure_gpu_surface(i);
+                            }
                         }
                     }
                     Request::Redraw(id) => {
@@ -737,6 +748,8 @@ impl Kit {
             .or_default()
             .native_pixels_per_point = Some(s.scale as f32);
         let ctx = s.ctx.clone();
+        let open_source = if s.popups.is_empty() { None } else { s.context.as_ref().map(|r| r.source) };
+        menu::set_open_source(&ctx, open_source);
         let kind = match &s.role {
             Role::Toplevel(_) => 0,
             Role::Layer(_) => 1,
@@ -1023,6 +1036,7 @@ impl Kit {
             return;
         }
         let gone: Vec<WindowId> = s.popups.split_off(depth);
+        s.dirty = true;
         for id in gone.into_iter().rev() {
             self.drop_surface(id);
         }

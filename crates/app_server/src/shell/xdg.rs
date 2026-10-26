@@ -549,6 +549,30 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let Ok(root) = find_popup_root_surface(&PopupKind::Xdg(popup.clone())) else {
             return;
         };
+        let popup_offset = get_popup_toplevel_coords(&PopupKind::Xdg(popup.clone()));
+
+        // Popups of layer surfaces (Deskbar's menus): keep them on the
+        // layer's output.
+        for output in self.space.outputs() {
+            let map = layer_map_for_output(output);
+            let Some(layer) = map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL) else {
+                continue;
+            };
+            let Some(layer_geo) = map.layer_geometry(layer) else {
+                return;
+            };
+            let Some(out_geo) = self.space.output_geometry(output) else {
+                return;
+            };
+            let mut target = smithay::utils::Rectangle::from_size(out_geo.size);
+            target.loc -= layer_geo.loc;
+            target.loc -= popup_offset;
+            popup.with_pending_state(|state| {
+                state.geometry = state.positioner.get_unconstrained_geometry(target);
+            });
+            return;
+        }
+
         let Some(window) = self.window_for_surface(&root) else {
             return;
         };
@@ -569,11 +593,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
         let window_geo = self.space.element_geometry(&window).unwrap();
 
-        // The target geometry for the positioner should be relative to its parent's geometry, so
-        // we will compute that here.
+        // The target geometry for the positioner should be relative to its
+        // parent's geometry: the client's window geometry, which sits
+        // inside our decoration frame.
         let mut target = outputs_geo;
-        target.loc -= get_popup_toplevel_coords(&PopupKind::Xdg(popup.clone()));
+        target.loc -= popup_offset;
         target.loc -= window_geo.loc;
+        target.loc -= window.content_offset();
 
         popup.with_pending_state(|state| {
             state.geometry = state.positioner.get_unconstrained_geometry(target);

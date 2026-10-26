@@ -200,6 +200,24 @@ pub(crate) fn deliver_chosen(ctx: &egui::Context, source: egui::Id, command: Str
     ctx.data_mut(|d| d.insert_temp(source.with("menu-chosen"), command));
 }
 
+fn open_key() -> egui::Id {
+    egui::Id::unique("tabula-menu-open")
+}
+
+pub(crate) fn set_open_source(ctx: &egui::Context, source: Option<egui::Id>) {
+    ctx.data_mut(|d| match source {
+        Some(s) => {
+            d.insert_temp(open_key(), s);
+        }
+        None => d.remove::<egui::Id>(open_key()),
+    });
+}
+
+/// Whether the popup menu `source` requested is showing right now.
+pub fn is_open(ctx: &egui::Context, source: egui::Id) -> bool {
+    ctx.data(|d| d.get_temp::<egui::Id>(open_key())) == Some(source)
+}
+
 /// The command chosen from the popup `source` requested, if one was.
 pub fn take_chosen(ctx: &egui::Context, source: egui::Id) -> Option<String> {
     ctx.data_mut(|d| d.remove_temp::<String>(source.with("menu-chosen")))
