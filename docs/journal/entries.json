@@ -112,5 +112,23 @@
   "title": "Terminal (dark)",
   "caption": "The same session in Tabula Dark (graphite, soft pastels). The scheme follows the desktop theme, and OSC 10/11 colour queries answer from it, so TUIs like Claude Code choose the matching theme.",
   "image": "2026-10-25/213633-terminal-dark.png"
+ },
+ {
+  "time": "2026-10-25T22:00:49",
+  "title": "Quick Look: images",
+  "caption": "Space on a selected item opens Quick Look; the window fits the screen (app_server now keeps newly sized windows on screen) and follows the selection.",
+  "image": "2026-10-25/220049-quick-look-images.png"
+ },
+ {
+  "time": "2026-10-25T22:00:49",
+  "title": "Quick Look: source code (dark)",
+  "caption": "Text and code coloured by syntax with the shared kit syntax palette (the same hues as Terminal), line numbers, virtualised rows.",
+  "image": "2026-10-25/220049-quick-look-source-code-dark.png"
+ },
+ {
+  "time": "2026-10-25T22:00:50",
+  "title": "Quick Look: every format (dark)",
+  "caption": "Contact sheet: MP3/OGG with tags and playback, Markdown, JPEG, tar.gz, SVG, PDF (hayro), CSV, PNG, Word, zip, Rust. All decoded in process, with no helper tools.",
+  "image": "2026-10-25/220050-quick-look-every-format-dark.png"
  }
 ]

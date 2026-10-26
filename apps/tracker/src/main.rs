@@ -6,6 +6,7 @@ mod desktop;
 mod find;
 mod fs;
 mod ops;
+mod quicklook;
 mod view;
 mod watch;
 
@@ -163,6 +164,8 @@ enum Win {
     Dialog(Dialog),
     /// "Tracker Status": progress of running file operations.
     Status,
+    /// The Quick Look window (its state is `Tracker::quicklook`).
+    Preview,
 }
 
 enum Msg {
@@ -175,6 +178,10 @@ enum Msg {
     JobSlow(u64),
     /// Files changed in folders being shown.
     Changed(Vec<watch::Change>),
+    /// Quick Look loaded (part of) the item of a generation.
+    Preview(u64, quicklook::Update),
+    /// Quick Look of a generation is taking a while: open the window.
+    PreviewSlow(u64),
 }
 
 pub struct Tracker {
@@ -190,6 +197,8 @@ pub struct Tracker {
     status_size: u32,
     /// Live updates for every folder shown (None if inotify is missing).
     watcher: Option<watch::Watcher>,
+    quicklook: Option<quicklook::QuickLook>,
+    preview_generation: u64,
 }
 
 const STATUS_WIDTH: u32 = 420;
@@ -338,6 +347,19 @@ impl FolderWin {
             let v = std::mem::take(&mut p.entries);
             replace_entries(&mut p.entries, &mut p.list, v, sort, &mut Vec::new());
         }
+    }
+
+    /// Move the selection by `d` items (Quick Look's arrow keys); the
+    /// newly selected item.
+    pub fn step_selection(&mut self, d: isize) -> Option<Entry> {
+        let (entries, list) = self.current_mut();
+        let n = entries.len();
+        if n == 0 {
+            return None;
+        }
+        let k = list.selected.iter().next().copied().map_or(0, |k| (k as isize + d).clamp(0, n as isize - 1) as usize);
+        list.select(k);
+        entries.get(k).cloned()
     }
 
     /// The folders shown, for the watcher.
@@ -670,6 +692,7 @@ impl Tracker {
         let selected = f.selected_paths();
         let dir = f.current_dir();
         match cmd {
+            "quick-look" => self.toggle_quick_look(cx, win),
             "open" => {
                 for e in f.selected_entries() {
                     self.open_entry(cx, &e);
@@ -804,6 +827,8 @@ impl Tracker {
             .item("Open Parent", "parent", Some(Key::ArrowUp))
             .enabled(f.path.parent().is_some())
             .item("Get Info", "info", Some(Key::I))
+            .item("Quick Look", "quick-look", Some(Key::Y))
+            .enabled(has_sel)
             .item("Edit Name", "rename", Some(Key::E))
             .enabled(current.selected.len() == 1)
             .item("Duplicate", "duplicate", Some(Key::D))
@@ -864,7 +889,15 @@ impl Tracker {
     fn folder_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
         let Some(Win::Folder(f)) = self.windows.get_mut(&win) else { return };
 
+        // Space is Quick Look, unless it continues a type-ahead name or
+        // goes into a name being edited.
+        let typing = !f.typed.0.is_empty() && f.typed.1.elapsed() < Duration::from_millis(900);
+        if f.editing.is_none() && !typing && take_space(ui) {
+            self.toggle_quick_look(cx, win);
+        }
+        let Some(Win::Folder(f)) = self.windows.get_mut(&win) else { return };
         let actions = view::folder_view(ui, f);
+        self.follow_selection(cx, win);
         if !actions.is_empty() {
             // Actions change state the next frame shows (an edit starting).
             ui.ctx().request_repaint();
@@ -1050,6 +1083,115 @@ impl Tracker {
     }
 }
 
+/// Take a Space key press out of the frame's input (so type-ahead and
+/// the views don't see it). Returns whether there was one.
+fn take_space(ui: &egui::Ui) -> bool {
+    ui.input_mut(|i| {
+        if i.modifiers.any() && !i.modifiers.shift_only() {
+            return false;
+        }
+        let hit = i.consume_key(egui::Modifiers::NONE, Key::Space);
+        if hit {
+            i.events.retain(|e| !matches!(e, egui::Event::Text(t) if t == " "));
+        }
+        hit
+    })
+}
+
+impl Tracker {
+    /// The single selected item of a folder window or the desktop.
+    fn selected_one(&self, win: WindowId) -> Option<Entry> {
+        let sel = match self.windows.get(&win)? {
+            Win::Folder(f) => f.selected_entries(),
+            Win::Desktop(d) => d.selected_entries(),
+            _ => return None,
+        };
+        sel.into_iter().next()
+    }
+
+    /// Space / ⌘Y: show the selection in Quick Look, or close it.
+    fn toggle_quick_look(&mut self, cx: &mut Cx, source: WindowId) {
+        if let Some(q) = &self.quicklook
+            && q.source == source
+        {
+            return self.close_quick_look(cx);
+        }
+        let Some(entry) = self.selected_one(source) else { return };
+        self.show_quick_look(cx, source, entry);
+    }
+
+    fn show_quick_look(&mut self, cx: &mut Cx, source: WindowId, entry: Entry) {
+        self.preview_generation += 1;
+        let generation = self.preview_generation;
+        let proxy = cx.proxy();
+        let send = move |g, u| proxy.send(Msg::Preview(g, u));
+        match &mut self.quicklook {
+            Some(q) => {
+                q.source = source;
+                if let Some(id) = q.win {
+                    cx.set_title(id, entry.name.clone());
+                }
+                q.retarget(entry, generation, send);
+            }
+            None => {
+                self.quicklook = Some(quicklook::QuickLook::new(source, entry, generation, send));
+                // Open the window when the preview is ready, or after a
+                // moment with a spinner if it is slow.
+                let proxy = cx.proxy();
+                std::thread::spawn(move || {
+                    std::thread::sleep(quicklook::SLOW);
+                    proxy.send(Msg::PreviewSlow(generation));
+                });
+            }
+        }
+    }
+
+    fn close_quick_look(&mut self, cx: &mut Cx) {
+        if let Some(mut q) = self.quicklook.take() {
+            q.stop();
+            if let Some(id) = q.win {
+                self.windows.remove(&id);
+                cx.close_window(id);
+            }
+            cx.activate(q.source);
+        }
+    }
+
+    /// While Quick Look shows a window's selection, follow it as it moves.
+    fn follow_selection(&mut self, cx: &mut Cx, win: WindowId) {
+        let Some(q) = &self.quicklook else { return };
+        if q.source != win {
+            return;
+        }
+        match self.selected_one(win) {
+            Some(e) if e.path != q.entry.path => self.show_quick_look(cx, win, e),
+            _ => {}
+        }
+    }
+
+    fn preview_ui(&mut self, cx: &mut Cx, _win: WindowId, ui: &mut egui::Ui) {
+        let Some(q) = &mut self.quicklook else { return };
+        let source = q.source;
+        match q.ui(ui) {
+            Some(quicklook::Action::Close) => self.close_quick_look(cx),
+            Some(quicklook::Action::Open) => {
+                let e = q.entry.clone();
+                self.close_quick_look(cx);
+                self.open_entry(cx, &e);
+            }
+            Some(quicklook::Action::Step(d)) => {
+                if let Some(Win::Folder(f)) = self.windows.get_mut(&source)
+                    && let Some(e) = f.step_selection(d)
+                {
+                    cx.redraw(source);
+                    self.show_quick_look(cx, source, e);
+                }
+            }
+            None => {}
+        }
+    }
+}
+
 impl App for Tracker {
     fn save_state(&mut self, cx: &Cx) -> Option<String> {
         let mut ids: Vec<&WindowId> = self.windows.keys().collect();
@@ -1078,7 +1220,14 @@ impl App for Tracker {
             Some(Win::Folder(_)) => self.folder_ui(cx, window, ui),
             Some(Win::Desktop(_)) => {
                 let Some(Win::Desktop(d)) = self.windows.get_mut(&window) else { return };
+                if !d.is_editing() && take_space(ui) {
+                    self.toggle_quick_look(cx, window);
+                }
+                let Some(Win::Desktop(d)) = self.windows.get_mut(&window) else { return };
                 let actions = d.ui(ui);
+                self.follow_selection(cx, window);
+                let Some(Win::Desktop(d)) = self.windows.get_mut(&window) else { return };
+                let _ = d;
                 if !actions.is_empty() {
                     ui.ctx().request_repaint();
                 }
@@ -1130,6 +1279,7 @@ impl App for Tracker {
             Some(Win::Find(_)) => self.find_ui(cx, window, ui),
             Some(Win::Dialog(_)) => self.dialog_ui(cx, window, ui),
             Some(Win::Status) => self.status_ui(cx, window, ui),
+            Some(Win::Preview) => self.preview_ui(cx, window, ui),
             None => {}
         }
     }
@@ -1150,6 +1300,11 @@ impl App for Tracker {
             return;
         }
         match self.windows.remove(&window) {
+            Some(Win::Preview) => {
+                if let Some(mut q) = self.quicklook.take() {
+                    q.stop();
+                }
+            }
             Some(Win::Find(fw)) => fw.cancel.store(true, Ordering::Relaxed),
             Some(Win::Status) => self.status_win = None,
             _ => {}
@@ -1205,6 +1360,36 @@ impl App for Tracker {
                     }
                 }
                 self.sync_watches();
+            }
+            Msg::Preview(generation, update) => {
+                let screen = cx.screen_size();
+                let Some(q) = self.quicklook.as_mut().filter(|q| q.generation == generation) else { return };
+                let fresh = q.update(update);
+                let size = q.ideal_size(screen);
+                match q.win {
+                    None if fresh => {
+                        let title = q.entry.name.clone();
+                        let id = cx.open_window(WindowOptions::new(title, size.0, size.1).min_size(320, 200));
+                        q.win = Some(id);
+                        self.windows.insert(id, Win::Preview);
+                    }
+                    Some(id) => {
+                        if fresh {
+                            cx.resize(id, size);
+                        }
+                        cx.redraw(id);
+                    }
+                    None => {}
+                }
+            }
+            Msg::PreviewSlow(generation) => {
+                let screen = cx.screen_size();
+                if let Some(q) = self.quicklook.as_mut().filter(|q| q.generation == generation && q.win.is_none()) {
+                    let size = q.ideal_size(screen);
+                    let id = cx.open_window(WindowOptions::new(q.entry.name.clone(), size.0, size.1).min_size(320, 200));
+                    q.win = Some(id);
+                    self.windows.insert(id, Win::Preview);
+                }
             }
             Msg::Listed { win, path, generation, result } => {
                 if let Some(Win::Folder(f)) = self.windows.get_mut(&win) {
@@ -1346,6 +1531,8 @@ fn main() {
             status_win: None,
             status_size: 0,
             watcher,
+            quicklook: None,
+            preview_generation: 0,
         };
         if args.iter().any(|a| a == "--desktop") {
             let id = cx.open_window(desktop::options());

@@ -461,3 +461,50 @@ pub fn text_highlight(galley: &egui::Galley, origin: Pos2, font_size: f32, pad: 
     let r = galley.rect.translate(origin.to_vec2());
     Rect::from_min_max(pos2(r.left() - pad.x, top), pos2(r.right() + pad.x, bottom))
 }
+
+/// Token classes for syntax colouring (Quick Look, StyledEdit).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Syntax {
+    Plain,
+    Comment,
+    String,
+    Keyword,
+    Number,
+    Type,
+    Function,
+    Constant,
+    Tag,
+    Attribute,
+    Heading,
+    Link,
+}
+
+/// The colour of a token class on document backgrounds. The same hues as
+/// Terminal's Tabula schemes, so code looks alike everywhere; each clears
+/// 4.5:1 against `document_background` in its mode.
+pub fn syntax_color(p: &Palette, s: Syntax) -> Color32 {
+    let dark = p.mode == tabula_theme::ThemeMode::Dark;
+    let hex = |h: u32| Color32::from_rgb((h >> 16) as u8, (h >> 8) as u8, h as u8);
+    match (s, dark) {
+        (Syntax::Plain, _) => c(p.document_text),
+        (Syntax::Comment, false) => hex(0x6a6e75),
+        (Syntax::Comment, true) => hex(0x8a909a),
+        (Syntax::String, false) => hex(0x2b7a38),
+        (Syntax::String, true) => hex(0x8fcf7d),
+        (Syntax::Keyword, false) => hex(0x9333ad),
+        (Syntax::Keyword, true) => hex(0xc98ae6),
+        (Syntax::Number | Syntax::Attribute, false) => hex(0x9a5a00),
+        (Syntax::Number | Syntax::Attribute, true) => hex(0xe8c17a),
+        (Syntax::Type, false) => hex(0x0b7380),
+        (Syntax::Type, true) => hex(0x5cc4cf),
+        (Syntax::Function | Syntax::Tag | Syntax::Link | Syntax::Heading, false) => hex(0x2a62c9),
+        (Syntax::Function | Syntax::Tag | Syntax::Link | Syntax::Heading, true) => hex(0x7cb4ff),
+        (Syntax::Constant, false) => hex(0xb92c45),
+        (Syntax::Constant, true) => hex(0xec6a78),
+    }
+}
+
+/// The width of `text` set in `font` (for sizing buttons and tabs).
+pub fn label_width(ctx: &Context, text: &str, font: FontId) -> f32 {
+    ctx.fonts_mut(|f| f.layout_no_wrap(text.to_owned(), font, Color32::WHITE).size().x)
+}

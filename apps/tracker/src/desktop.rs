@@ -175,6 +175,10 @@ impl Desktop {
         }
     }
 
+    pub fn is_editing(&self) -> bool {
+        self.editing.is_some()
+    }
+
     pub fn selected_paths(&self) -> Vec<PathBuf> {
         self.selected_entries().into_iter().map(|e| e.path).collect()
     }

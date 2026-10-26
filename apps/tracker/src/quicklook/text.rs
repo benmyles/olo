@@ -1,0 +1,196 @@
+//! Text and source code: shown at once, then coloured by syntax (Sublime
+//! grammars via syntect) with token classes the preview maps onto the
+//! theme, so code reads the same in light and dark mode.
+
+use std::{
+    io::Read,
+    path::Path,
+    sync::{
+        Arc, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
+};
+
+use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxReference, SyntaxSet};
+pub use tabula_kit::style::Syntax as Tok;
+
+use super::load::{Body, Send, Update};
+
+/// Read at most this much of a text file.
+const MAX_BYTES: usize = 4 << 20;
+const MAX_LINES: usize = 100_000;
+/// Colour at most this many lines (the rest stay plain).
+const MAX_HIGHLIGHT: usize = 20_000;
+
+#[derive(Clone, Default)]
+pub struct Text {
+    pub lines: Vec<String>,
+    /// Per line: byte ranges and their token class (empty until coloured).
+    pub spans: Vec<Vec<(u32, u32, Tok)>>,
+    pub note: String,
+}
+
+fn syntaxes() -> &'static SyntaxSet {
+    static SET: OnceLock<SyntaxSet> = OnceLock::new();
+    SET.get_or_init(SyntaxSet::load_defaults_newlines)
+}
+
+pub fn load(path: &Path, cancel: &Arc<AtomicBool>, send: Send) {
+    let mut data = Vec::new();
+    let read = std::fs::File::open(path).and_then(|f| f.take(MAX_BYTES as u64 + 1).read_to_end(&mut data));
+    if let Err(e) = read {
+        send(Update::Failed(e.to_string()));
+        return;
+    }
+    let mut truncated = data.len() > MAX_BYTES;
+    data.truncate(MAX_BYTES);
+    let s = String::from_utf8_lossy(&data);
+    let mut lines: Vec<String> = s.lines().map(|l| l.replace('\t', "    ")).collect();
+    if lines.len() > MAX_LINES {
+        lines.truncate(MAX_LINES);
+        truncated = true;
+    }
+    let ss = syntaxes();
+    let syntax = find_syntax(ss, path, lines.first().map(String::as_str).unwrap_or(""));
+    let kind = match syntax {
+        Some(s) if s.name != "Plain Text" => format!("{} source", s.name),
+        _ => "Plain text".into(),
+    };
+    let n = lines.len();
+    let note = format!("{kind}, {n} line{}{}", if n == 1 { "" } else { "s" }, if truncated { " (start shown)" } else { "" });
+    let mut text = Text { lines, spans: Vec::new(), note };
+    send(Update::Body(Body::Text(text.clone())));
+
+    let Some(syntax) = syntax.filter(|s| s.name != "Plain Text") else { return };
+    let mut state = ParseState::new(syntax);
+    let mut stack = ScopeStack::new();
+    let mut spans = Vec::with_capacity(text.lines.len().min(MAX_HIGHLIGHT));
+    for line in text.lines.iter().take(MAX_HIGHLIGHT) {
+        if cancel.load(Ordering::Relaxed) {
+            return;
+        }
+        // Grammars expect the newline.
+        let with_nl = format!("{line}\n");
+        let Ok(ops) = state.parse_line(&with_nl, ss) else { break };
+        let mut out = Vec::new();
+        let mut at = 0;
+        for (pos, op) in ops {
+            let pos = pos.min(line.len());
+            if pos > at {
+                push(&mut out, at, pos, classify(&stack));
+            }
+            at = at.max(pos);
+            let _ = stack.apply(&op);
+        }
+        if at < line.len() {
+            push(&mut out, at, line.len(), classify(&stack));
+        }
+        spans.push(out);
+    }
+    text.spans = spans;
+    send(Update::Highlighted(text));
+}
+
+fn push(out: &mut Vec<(u32, u32, Tok)>, a: usize, b: usize, t: Tok) {
+    if let Some(last) = out.last_mut()
+        && last.2 == t
+        && last.1 as usize == a
+    {
+        last.1 = b as u32;
+        return;
+    }
+    out.push((a as u32, b as u32, t));
+}
+
+fn find_syntax<'a>(ss: &'a SyntaxSet, path: &Path, first: &str) -> Option<&'a SyntaxReference> {
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let ext = path.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_default();
+    // Names the bundled grammars don't claim.
+    let alias = match ext.as_str() {
+        "toml" | "ini" | "conf" | "cfg" | "desktop" | "service" => Some("ini"),
+        "ts" | "tsx" | "mjs" | "cjs" | "jsx" => Some("js"),
+        "zsh" | "fish" | "bashrc" => Some("sh"),
+        "kt" | "kts" => Some("java"),
+        "swift" => Some("go"),
+        "jsonc" | "json5" => Some("json"),
+        _ => None,
+    };
+    let by_name = match name.as_str() {
+        "Makefile" | "makefile" | "GNUmakefile" => ss.find_syntax_by_extension("make"),
+        "Dockerfile" | "Containerfile" => ss.find_syntax_by_extension("sh"),
+        "CMakeLists.txt" => ss.find_syntax_by_extension("cmake"),
+        "Cargo.lock" => ss.find_syntax_by_extension("ini"),
+        _ => None,
+    };
+    by_name
+        .or_else(|| ss.find_syntax_by_extension(&ext))
+        .or_else(|| alias.and_then(|a| ss.find_syntax_by_extension(a)))
+        .or_else(|| ss.find_syntax_by_first_line(first))
+}
+
+/// The token class of the innermost scope that has one.
+fn classify(stack: &ScopeStack) -> Tok {
+    static SCOPES: OnceLock<Vec<(Scope, Tok)>> = OnceLock::new();
+    let table = SCOPES.get_or_init(|| {
+        [
+            ("comment", Tok::Comment),
+            ("string", Tok::String),
+            ("constant.numeric", Tok::Number),
+            ("constant.character", Tok::String),
+            ("constant.language", Tok::Constant),
+            ("constant", Tok::Constant),
+            ("keyword.operator", Tok::Plain),
+            ("keyword", Tok::Keyword),
+            ("storage.type", Tok::Keyword),
+            ("storage.modifier", Tok::Keyword),
+            ("storage", Tok::Keyword),
+            ("entity.name.function", Tok::Function),
+            ("support.function", Tok::Function),
+            ("variable.function", Tok::Function),
+            ("entity.name.type", Tok::Type),
+            ("entity.name.class", Tok::Type),
+            ("entity.name.struct", Tok::Type),
+            ("entity.name.enum", Tok::Type),
+            ("entity.name.trait", Tok::Type),
+            ("support.type", Tok::Type),
+            ("support.class", Tok::Type),
+            ("entity.name.tag", Tok::Tag),
+            ("entity.other.attribute-name", Tok::Attribute),
+            ("markup.heading", Tok::Heading),
+            ("entity.name.section", Tok::Heading),
+            ("variable.language", Tok::Constant),
+        ]
+        .into_iter()
+        .filter_map(|(s, t)| Scope::new(s).ok().map(|s| (s, t)))
+        .collect()
+    });
+    for scope in stack.as_slice().iter().rev() {
+        for (s, t) in table {
+            if s.is_prefix_of(*scope) {
+                return *t;
+            }
+        }
+    }
+    Tok::Plain
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn colours_rust() {
+        let dir = std::env::temp_dir().join(format!("ql-text-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("a.rs");
+        std::fs::write(&p, "// hi\nfn main() { let x = \"s\"; 42 }\n").unwrap();
+        let mut got = Vec::new();
+        load(&p, &Arc::new(AtomicBool::new(false)), &mut |u| got.push(u));
+        let Some(Update::Highlighted(t)) = got.pop() else { panic!("not coloured") };
+        let toks = |i: usize| t.spans[i].iter().map(|s| s.2).collect::<Vec<_>>();
+        assert_eq!(toks(0), vec![Tok::Comment]);
+        assert!(toks(1).contains(&Tok::Keyword) && toks(1).contains(&Tok::String) && toks(1).contains(&Tok::Number));
+        assert!(t.note.starts_with("Rust source"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}

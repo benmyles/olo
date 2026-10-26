@@ -195,8 +195,9 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
 
                     if let Some(buffer_offset) = buffer_offset {
                         let current_loc = self.space.element_location(&window).unwrap();
-                        self.space.map_element(window, current_loc + buffer_offset, false);
+                        self.space.map_element(window.clone(), current_loc + buffer_offset, false);
                     }
+                    keep_on_screen(&mut self.space, surface, &window);
                 }
             }
         }
@@ -290,6 +291,55 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 pub struct SurfaceData {
     pub geometry: Option<Rectangle<i32, Logical>>,
     pub resize_state: ResizeState,
+    /// The size the window was last kept on screen at.
+    pub fitted: Option<Size<i32, Logical>>,
+}
+
+/// When a window first takes a size, or the app resizes it, slide it so
+/// all of it (tab included) is on screen where it can be: a window opened
+/// at the cascade position that is taller than the room below it moves up
+/// instead of hanging off the bottom. Windows the user is resizing are
+/// left alone.
+fn keep_on_screen(space: &mut Space<WindowElement>, surface: &WlSurface, window: &WindowElement) {
+    let Some(geo) = space.element_geometry(window) else { return };
+    if geo.size.w <= 0 || geo.size.h <= 0 {
+        return;
+    }
+    let changed = with_states(surface, |states| {
+        let data = states.data_map.get_or_insert(|| RefCell::new(SurfaceData::default()));
+        let mut data = data.borrow_mut();
+        if data.fitted == Some(geo.size) || !matches!(data.resize_state, ResizeState::NotResizing) {
+            return false;
+        }
+        data.fitted = Some(geo.size);
+        true
+    });
+    if !changed {
+        return;
+    }
+    let Some(zone) = space
+        .outputs()
+        .find(|o| space.output_geometry(o).is_some_and(|g| g.overlaps(geo)))
+        .or_else(|| space.outputs().next())
+        .and_then(|o| {
+            let g = space.output_geometry(o)?;
+            let z = layer_map_for_output(o).non_exclusive_zone();
+            Some(Rectangle::new(g.loc + z.loc, z.size))
+        })
+    else {
+        return;
+    };
+    const MARGIN: i32 = 8;
+    let fit = |pos: i32, len: i32, lo: i32, span: i32| {
+        let hi = lo + span;
+        if pos + len + MARGIN > hi { (hi - len - MARGIN).max(lo + MARGIN).min(pos) } else { pos }
+    };
+    let x = fit(geo.loc.x, geo.size.w, zone.loc.x, zone.size.w);
+    let y = fit(geo.loc.y, geo.size.h, zone.loc.y, zone.size.h);
+    if (x, y) != (geo.loc.x, geo.loc.y) {
+        let loc = space.element_location(window).unwrap_or_default();
+        space.map_element(window.clone(), loc + Point::from((x - geo.loc.x, y - geo.loc.y)), false);
+    }
 }
 
 fn ensure_initial_configure(surface: &WlSurface, space: &Space<WindowElement>, popups: &mut PopupManager) {

@@ -66,7 +66,7 @@ impl Kind {
     }
 }
 
-fn kind_for(path: &Path, is_dir: bool, mode: u32) -> Kind {
+pub fn kind_for(path: &Path, is_dir: bool, mode: u32) -> Kind {
     if is_dir {
         return Kind::Folder;
     }
@@ -81,7 +81,7 @@ fn kind_for(path: &Path, is_dir: bool, mode: u32) -> Kind {
             Kind::Text
         }
         "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tif" | "tiff" | "svg" | "heic" | "ico" => Kind::Image,
-        "mp3" | "flac" | "ogg" | "wav" | "m4a" | "aac" | "opus" => Kind::Audio,
+        "mp3" | "flac" | "ogg" | "oga" | "wav" | "m4a" | "aac" | "opus" | "aiff" | "aif" => Kind::Audio,
         "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" => Kind::Video,
         "zip" | "tar" | "gz" | "xz" | "bz2" | "zst" | "7z" | "rar" | "tgz" | "rpm" | "deb" => Kind::Archive,
         "pdf" => Kind::Pdf,
@@ -351,6 +351,16 @@ pub fn make_link(path: &Path) -> std::io::Result<PathBuf> {
 
 fn shell_quote(p: &Path) -> String {
     format!("'{}'", p.display().to_string().replace('\'', "'\\''"))
+}
+
+/// The name of the application `open` would use, when it is one of ours.
+pub fn opener_name(entry: &Entry) -> Option<&'static str> {
+    match entry.kind {
+        Kind::Folder => Some("Tracker"),
+        Kind::Text => Some("StyledEdit"),
+        Kind::Image => Some("ShowImage"),
+        _ => None,
+    }
 }
 
 /// Open a file with the right application: ours where we have one,

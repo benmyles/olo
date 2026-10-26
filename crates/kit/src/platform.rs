@@ -265,6 +265,7 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                     proxy: Proxy { sender: sender.clone() },
                     app_id: app_id.to_owned(),
                     sizes: Default::default(),
+                    screen: None,
                 };
                 let app = (build.take().expect("built once"))(&mut cx);
                 kit.app = Some(Box::new(app));
@@ -457,6 +458,13 @@ impl Kit {
         cx.palette = self.palette.clone();
         cx.sizes.clear();
         cx.sizes.extend(self.surfaces.iter().filter(|s| matches!(s.role, Role::Toplevel(_))).map(|s| (s.id, s.size)));
+        cx.screen = self
+            .output_state
+            .outputs()
+            .next()
+            .and_then(|o| self.output_state.info(&o))
+            .and_then(|i| i.logical_size)
+            .map(|(w, h)| (w.max(1) as u32, h.max(1) as u32));
         let r = f(app.as_mut(), &mut cx);
         self.app = Some(app);
         self.cx = Some(cx);

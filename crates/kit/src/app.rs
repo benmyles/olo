@@ -149,6 +149,8 @@ pub struct Cx {
     pub(crate) app_id: String,
     /// Toplevel content sizes, as of the start of the callback.
     pub(crate) sizes: std::collections::HashMap<WindowId, (u32, u32)>,
+    /// Logical size of the (first) screen, once known.
+    pub(crate) screen: Option<(u32, u32)>,
 }
 
 /// Where an upgrading app leaves its saved state for its new self.
@@ -170,6 +172,12 @@ impl Cx {
     /// The logical content size of one of the app's toplevel windows.
     pub fn window_size(&self, window: WindowId) -> Option<(u32, u32)> {
         self.sizes.get(&window).copied()
+    }
+
+    /// The logical size of the screen (the first output), once known.
+    /// Use it to fit windows that size to their content (previews).
+    pub fn screen_size(&self) -> Option<(u32, u32)> {
+        self.screen
     }
 
     /// Open a window; it appears after the current callback returns.

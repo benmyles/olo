@@ -5,6 +5,24 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-25
 
+### Quick Look: every format (dark)
+
+*22:00* — Contact sheet: MP3/OGG with tags and playback, Markdown, JPEG, tar.gz, SVG, PDF (hayro), CSV, PNG, Word, zip, Rust. All decoded in process, with no helper tools.
+
+![Quick Look: every format (dark)](2026-10-25/220050-quick-look-every-format-dark.png)
+
+### Quick Look: source code (dark)
+
+*22:00* — Text and code coloured by syntax with the shared kit syntax palette (the same hues as Terminal), line numbers, virtualised rows.
+
+![Quick Look: source code (dark)](2026-10-25/220049-quick-look-source-code-dark.png)
+
+### Quick Look: images
+
+*22:00* — Space on a selected item opens Quick Look; the window fits the screen (app_server now keeps newly sized windows on screen) and follows the selection.
+
+![Quick Look: images](2026-10-25/220049-quick-look-images.png)
+
 ### Terminal (dark)
 
 *21:36* — The same session in Tabula Dark (graphite, soft pastels). The scheme follows the desktop theme, and OSC 10/11 colour queries answer from it, so TUIs like Claude Code choose the matching theme.
