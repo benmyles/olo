@@ -125,6 +125,8 @@ struct Surface {
     format: wgpu::TextureFormat,
     renderer: Option<egui_wgpu::Renderer>,
     ctx: egui::Context,
+    /// Which set of document fonts `ctx` has (see `style::add_document_font`).
+    fonts: u64,
     /// Logical size.
     size: (u32, u32),
     /// Device pixels per logical pixel.
@@ -626,7 +628,7 @@ impl Kit {
 
     fn new_ctx(&self) -> egui::Context {
         let ctx = egui::Context::default();
-        ctx.set_fonts(style::font_definitions());
+        ctx.set_fonts(style::all_font_definitions());
         style::apply(&ctx, &self.palette);
         ctx.options_mut(|o| {
             o.zoom_with_keyboard = false;
@@ -663,6 +665,7 @@ impl Kit {
             format: wgpu::TextureFormat::Bgra8Unorm,
             renderer: None,
             ctx: self.new_ctx(),
+            fonts: style::fonts_generation(),
             size,
             scale,
             fractional,
@@ -1028,6 +1031,12 @@ impl Kit {
             .or_default()
             .native_pixels_per_point = Some(s.scale as f32);
         let ctx = s.ctx.clone();
+        // Document fonts added since this window last looked.
+        let fonts = style::fonts_generation();
+        if s.fonts != fonts {
+            s.fonts = fonts;
+            ctx.set_fonts(style::all_font_definitions());
+        }
         let open_source = if s.popups.is_empty() { None } else { s.context.as_ref().map(|r| r.source) };
         menu::set_open_source(&ctx, open_source);
         let kind = match &s.role {

@@ -197,6 +197,51 @@ pub fn font_definitions() -> FontDefinitions {
     .clone()
 }
 
+// ---- document fonts ---------------------------------------------------
+
+/// Fonts an app added at run time, as (font key, data, family).
+static EXTRA_FONTS: std::sync::Mutex<Vec<(String, Arc<FontData>, String)>> = std::sync::Mutex::new(Vec::new());
+static FONTS_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Make a font a document can name (a PDF's, a StyledEdit family) usable
+/// as `FontFamily::Name(family)` in every window of the app: now, in
+/// windows opened later and after a reconnect. Glyphs it lacks come from
+/// the UI fonts. It takes effect from each window's next frame, so check
+/// [`family_ready`] before naming it (egui panics on an unknown family).
+pub fn add_document_font(family: &str, data: Vec<u8>, index: u32) {
+    let mut fd = FontData::from_owned(data);
+    fd.index = index;
+    let mut extra = EXTRA_FONTS.lock().unwrap();
+    if extra.iter().any(|(_, _, f)| f == family) {
+        return;
+    }
+    extra.push((format!("doc:{family}"), Arc::new(fd), family.to_owned()));
+    FONTS_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Bumped by every [`add_document_font`].
+pub fn fonts_generation() -> u64 {
+    FONTS_GENERATION.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// The UI fonts plus the document fonts added so far.
+pub fn all_font_definitions() -> FontDefinitions {
+    let mut defs = font_definitions();
+    let fallbacks = defs.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
+    for (key, data, family) in EXTRA_FONTS.lock().unwrap().iter() {
+        defs.font_data.insert(key.clone(), data.clone());
+        let mut list = vec![key.clone()];
+        list.extend(fallbacks.iter().cloned());
+        defs.families.insert(FontFamily::Name(family.as_str().into()), list);
+    }
+    defs
+}
+
+/// Can this frame lay out text in `family`?
+pub fn family_ready(ctx: &Context, family: &str) -> bool {
+    ctx.fonts(|f| f.definitions().families.contains_key(&FontFamily::Name(family.into())))
+}
+
 /// Apply the palette to a context: visuals, and stash it for widgets.
 pub fn apply(ctx: &Context, palette: &Arc<Palette>) {
     ctx.data_mut(|d| d.insert_temp(egui::Id::NULL, palette.clone()));

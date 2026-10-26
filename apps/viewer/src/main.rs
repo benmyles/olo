@@ -16,7 +16,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tabula_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
-    egui::{self, Align, Key, Rect, Ui, pos2, vec2},
+    egui::{Align, Key, Rect, Ui, pos2, vec2},
     file_panel::{FilePanel, PANEL_SIZE, PanelResult},
     files::{self, Kind},
     instance::{self, Launch},
@@ -37,7 +37,8 @@ enum Msg {
     Preview(WindowId, u64, Update),
     Stat(WindowId, PathBuf, Option<Item>),
     Siblings(WindowId, PathBuf, Vec<PathBuf>),
-    Font(Vec<u8>, u32),
+    /// The forms font is installed (see `style::add_document_font`).
+    FontReady,
 }
 
 enum Content {
@@ -85,8 +86,6 @@ struct Viewer {
     windows: HashMap<WindowId, Win>,
     signatures: Vec<Signature>,
     next_id: u64,
-    font: Option<(Vec<u8>, u32)>,
-    font_installed: bool,
     generation: u64,
 }
 
@@ -501,24 +500,6 @@ impl Viewer {
         }
     }
 
-    fn install_font(&mut self, ctx: &egui::Context) {
-        if self.font_installed {
-            return;
-        }
-        let Some((data, index)) = self.font.take() else { return };
-        let mut fd = egui::FontData::from_owned(data);
-        fd.index = index;
-        ctx.add_font(egui::epaint::text::FontInsert::new(
-            pdfview::PDF_FONT,
-            fd,
-            vec![egui::epaint::text::InsertFontFamily {
-                family: egui::FontFamily::Name(pdfview::PDF_FONT.into()),
-                priority: egui::epaint::text::FontPriority::Highest,
-            }],
-        ));
-        self.font_installed = true;
-    }
-
     fn handle_args(&mut self, cx: &mut Cx, args: &[String], cwd: Option<&Path>) {
         let mut opened = false;
         for a in args.iter().filter(|a| !a.starts_with("--")) {
@@ -604,7 +585,6 @@ fn toolbar(ui: &mut Ui, bar: Rect, v: &mut PdfView, sign_menu: Menu) -> Option<S
 
 impl App for Viewer {
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui) {
-        self.install_font(ui.ctx());
         match self.windows.get_mut(&window) {
             Some(Win::Doc(_)) => self.doc_ui(cx, window, ui),
             Some(Win::Pad { doc, pad }) => {
@@ -716,10 +696,7 @@ impl App for Viewer {
         };
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
-            Msg::Font(data, index) => {
-                self.font = Some((data, index));
-                cx.redraw_all();
-            }
+            Msg::FontReady => cx.redraw_all(),
             Msg::Siblings(win, path, list) => {
                 if let Some(Win::Doc(d)) = self.windows.get_mut(&win)
                     && d.path == path
@@ -824,15 +801,14 @@ fn main() {
         std::thread::spawn(move || {
             // Helvetica's metrics, for form fields and text boxes.
             if let Some((data, index)) = style::find_font(&["Liberation Sans", "Arimo", "Nimbus Sans", "Helvetica"], 400) {
-                proxy.send(Msg::Font(data, index));
+                style::add_document_font(pdfview::PDF_FONT, data, index);
+                proxy.send(Msg::FontReady);
             }
         });
         let mut v = Viewer {
             windows: HashMap::new(),
             signatures: signature::load(),
             next_id: 0,
-            font: None,
-            font_installed: false,
             generation: 0,
         };
         match cx.restored_state().and_then(|s| serde_json::from_str::<Saved>(&s).ok()) {

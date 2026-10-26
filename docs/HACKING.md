@@ -161,8 +161,12 @@ selected one, or the one shown). Open it
 in its own window of `PANEL_SIZE`, call `panel.ui(ui)` each frame and act
 on the `PanelResult` (`Chosen(path)` / `Cancelled`). Toolbars are
 `metrics::TOOLBAR_HEIGHT` tall. `style::find_font(families, weight)`
-loads an installed font as `(bytes, face index)` (for registering extra
-egui families; call it off the UI thread). App settings live in
+loads an installed font as `(bytes, face index)` (call it off the UI
+thread); `style::add_document_font(family, bytes, index)` makes it
+`FontFamily::Name(family)` in every window of the app, including ones
+opened later and after a reconnect, with the UI fonts as fallback. Check
+`style::family_ready(ctx, family)` before naming it in a frame: egui
+panics on unknown families, and new fonts arrive with the next frame. App settings live in
 `tabula_kit::config_dir()` (`$XDG_CONFIG_HOME/tabula/NAME.json`); user
 folders come from `tabula_kit::user_dir("PICTURES")` (user-dirs.dirs,
 None if unset or missing).

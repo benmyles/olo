@@ -489,7 +489,7 @@ impl PdfView {
     pub fn ui(&mut self, ui: &mut Ui, rect: Rect) {
         let p = style::palette(ui.ctx());
         let ppp = ui.ctx().pixels_per_point();
-        let family = if ui.fonts(|f| f.families().contains(&FontFamily::Name(PDF_FONT.into()))) {
+        let family = if style::family_ready(ui.ctx(), PDF_FONT) {
             FontFamily::Name(PDF_FONT.into())
         } else {
             FontFamily::Proportional
