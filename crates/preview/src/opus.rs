@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 
 use opus_decoder::{OpusDecoder, OpusMultistreamDecoder};
 use symphonia::core::{
-    audio::{AsAudioBufferRef, AudioBuffer, AudioBufferRef, Signal, SignalSpec},
+    audio::{AsAudioBufferRef, AudioBuffer, AudioBufferRef, Channels, Signal, SignalSpec},
     codecs::{CODEC_TYPE_OPUS, CodecDescriptor, CodecParameters, CodecRegistry, Decoder, DecoderOptions, FinalizeResult},
     errors::{Error, Result},
     formats::Packet,
@@ -62,9 +62,16 @@ impl Decoder for Opus {
     fn try_new(params: &CodecParameters, _options: &DecoderOptions) -> Result<Self> {
         let extra = params.extra_data.as_deref().ok_or(Error::DecodeError("opus: no identification header"))?;
         let (channels, inner) = from_head(extra)?;
-        let layout = params.channels.ok_or(Error::DecodeError("opus: unknown channels"))?;
+        // Matroska leaves the layout out: take the header's count.
+        let layout = params.channels.unwrap_or(match channels {
+            1 => Channels::FRONT_LEFT,
+            2 => Channels::FRONT_LEFT | Channels::FRONT_RIGHT,
+            n => Channels::from_bits_truncate((1u32 << n.min(31)) - 1),
+        });
+        let mut params = params.clone();
+        params.channels = Some(layout);
         Ok(Opus {
-            params: params.clone(),
+            params,
             inner,
             channels,
             pcm: vec![0.0; MAX_FRAME * channels],

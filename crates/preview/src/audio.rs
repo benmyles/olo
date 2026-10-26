@@ -6,10 +6,9 @@ use std::{
     ffi::CString,
     io::BufReader,
     os::unix::net::UnixStream,
-    path::Path,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
         mpsc,
     },
 };
@@ -25,6 +24,8 @@ use symphonia::core::{
     units::Time,
 };
 
+use crate::input::{self, Input};
+
 #[derive(Default)]
 pub struct State {
     /// Playback position in milliseconds.
@@ -33,6 +34,8 @@ pub struct State {
     pub playing: AtomicBool,
     pub finished: AtomicBool,
     pub error: Mutex<Option<String>>,
+    /// Loudness in thousandths (1000 as recorded), applied to the samples.
+    pub volume: AtomicU32,
 }
 
 enum Ev {
@@ -51,16 +54,21 @@ pub struct Player {
 }
 
 impl Player {
-    /// Start playing `path` at once.
-    pub fn start(path: &Path) -> Player {
+    /// Start playing `input` at once.
+    pub fn start(input: &Input) -> Player {
+        Player::start_with(input, true)
+    }
+
+    /// Start `input`, playing or paused at the beginning.
+    pub fn start_with(input: &Input, playing: bool) -> Player {
         let (tx, rx) = mpsc::channel();
-        let state = Arc::new(State::default());
-        let (path, st, tx2) = (path.to_owned(), state.clone(), tx.clone());
+        let state = Arc::new(State { volume: AtomicU32::new(1000), ..Default::default() });
+        let (input, st, tx2) = (input.clone(), state.clone(), tx.clone());
         std::thread::Builder::new()
             .name("audio".into())
             .spawn(move || {
-                if let Err(e) = run(&path, &st, tx2, rx) {
-                    tracing::warn!("audio {}: {e}", path.display());
+                if let Err(e) = run(&input, playing, &st, tx2, rx) {
+                    tracing::warn!("audio {}: {e}", input.name);
                     *st.error.lock().unwrap() = Some(e);
                 }
                 st.playing.store(false, Ordering::Relaxed);
@@ -88,6 +96,17 @@ impl Player {
         self.state.finished.store(false, Ordering::Relaxed);
         let _ = self.tx.send(Ev::Seek(secs));
     }
+
+    /// From 0 (silent) to 1 (as recorded); takes effect within the
+    /// server's short buffer.
+    pub fn set_volume(&self, volume: f64) {
+        self.state.volume.store((volume.clamp(0.0, 1.0) * 1000.0).round() as u32, Ordering::Relaxed);
+    }
+}
+
+/// The length of `input`'s sound in seconds (0 when unknown).
+pub fn probe(input: &Input) -> Result<f64, String> {
+    Source::open(input).map(|(_, _, d)| d)
 }
 
 impl Drop for Player {
@@ -107,26 +126,29 @@ struct Source {
 }
 
 impl Source {
-    fn open(path: &Path) -> Result<(Source, u32, f64), String> {
-        let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-        let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    fn open(input: &Input) -> Result<(Source, u32, f64), String> {
+        let (reader, size) = input.open()?;
+        let mss = MediaSourceStream::new(Box::new(input::Source { reader, size }), Default::default());
         let mut hint = Hint::new();
-        if let Some(ext) = path.extension() {
-            hint.with_extension(&ext.to_string_lossy());
+        if !input.ext.is_empty() {
+            hint.with_extension(&input.ext);
         }
         let probed = symphonia::default::get_probe()
             .format(&hint, mss, &FormatOptions { enable_gapless: true, ..Default::default() }, &MetadataOptions::default())
             .map_err(|_| "This audio format can't be played.".to_string())?;
         let format = probed.format;
-        let track = format
-            .tracks()
+        // The first track we can decode (a video's picture track may come
+        // first).
+        let tracks: Vec<_> = format.tracks().iter().filter(|t| t.codec_params.codec != CODEC_TYPE_NULL).collect();
+        if tracks.is_empty() {
+            return Err("There is no sound in this file.".into());
+        }
+        let (track, decoder) = tracks
             .iter()
-            .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
-            .ok_or("There is no sound in this file.")?;
-        let params = track.codec_params.clone();
-        let decoder = crate::opus::codecs()
-            .make(&params, &DecoderOptions::default())
-            .map_err(|_| "This audio codec can't be played.".to_string())?;
+            .find_map(|t| crate::opus::codecs().make(&t.codec_params, &DecoderOptions::default()).ok().map(|d| (*t, d)))
+            .ok_or("This audio codec can't be played.")?;
+        // The decoder's parameters: it may fill in what the container left out.
+        let params = decoder.codec_params().clone();
         // Opus always decodes at 48 kHz; its header's rate is the original's.
         let rate = if params.codec == CODEC_TYPE_OPUS { 48_000 } else { params.sample_rate.ok_or("Unknown sample rate.")? };
         let channels = params.channels.map(|c| c.count()).unwrap_or(2).clamp(1, 2);
@@ -174,9 +196,11 @@ impl Source {
             let src_channels = spec.channels.count();
             let mut sb = SampleBuffer::<i16>::new(decoded.capacity() as u64, spec);
             sb.copy_interleaved_ref(decoded);
-            // Down-mix anything wider than stereo by keeping the front pair.
+            // Down-mix anything wider than stereo by keeping the front pair;
+            // a mono stream the container called stereo plays in both.
             for frame in sb.samples().chunks(src_channels.max(1)) {
-                for &s in frame.iter().take(self.channels) {
+                for c in 0..self.channels {
+                    let s = frame[c.min(frame.len() - 1)];
                     self.pending.extend_from_slice(&s.to_le_bytes());
                 }
             }
@@ -217,8 +241,8 @@ fn connect() -> Result<(UnixStream, u16), String> {
     Ok((w, version))
 }
 
-fn run(path: &Path, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc::Receiver<Ev>) -> Result<(), String> {
-    let (mut src, rate, duration) = Source::open(path)?;
+fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc::Receiver<Ev>) -> Result<(), String> {
+    let (mut src, rate, duration) = Source::open(input)?;
     st.duration_ms.store((duration * 1000.0) as u64, Ordering::Relaxed);
     let (mut sock, version) = connect()?;
     let err = |e: protocol::ProtocolError| e.to_string();
@@ -236,6 +260,7 @@ fn run(path: &Path, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc::Receiver<Ev>) ->
             minimum_request_length: u32::MAX,
             fragment_size: u32::MAX,
         },
+        flags: protocol::stream::StreamFlags { start_corked: !playing, ..Default::default() },
         ..Default::default()
     };
     protocol::write_command_message(&mut sock, SEQ_CREATE, &protocol::Command::CreatePlaybackStream(params), version).map_err(err)?;
@@ -288,6 +313,12 @@ fn run(path: &Path, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc::Receiver<Ev>) ->
             return Ok(());
         }
         src.read(len, &mut buf);
+        let volume = st.volume.load(Ordering::Relaxed);
+        if volume < 1000 {
+            for s in buf.as_chunks_mut::<2>().0 {
+                *s = ((i16::from_le_bytes(*s) as i32 * volume as i32 / 1000) as i16).to_le_bytes();
+            }
+        }
         if buf.is_empty() {
             protocol::write_command_message(sock, SEQ_DRAIN, &protocol::Command::DrainPlaybackStream(channel), version).map_err(err)?;
             *draining = true;
@@ -298,7 +329,7 @@ fn run(path: &Path, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc::Receiver<Ev>) ->
         Ok(())
     };
     send_chunk(&mut src, &mut sock, info.requested_bytes as usize, &mut written, &mut draining)?;
-    st.playing.store(true, Ordering::Relaxed);
+    st.playing.store(playing, Ordering::Relaxed);
 
     let cork = |sock: &mut UnixStream, cork: bool| {
         protocol::write_command_message(sock, SEQ_OTHER, &protocol::Command::CorkPlaybackStream(protocol::CorkStreamParams { channel, cork }), version)
@@ -353,3 +384,4 @@ fn run(path: &Path, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc::Receiver<Ev>) ->
     }
     Ok(())
 }
+

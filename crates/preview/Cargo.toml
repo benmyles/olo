@@ -31,3 +31,8 @@ calamine = "0.37"
 csv = "1.4"
 quick-xml = "0.42"
 ttf-parser = "0.25"
+
+# A sound server for tests (see the file).
+[[bin]]
+name = "tabula-fakesound"
+path = "src/bin/fakesound.rs"

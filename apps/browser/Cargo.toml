@@ -24,6 +24,12 @@ tracing.workspace = true
 # the clipboard would go through system libraries, and webgpu would bring
 # a second wgpu). Its resources are ours (resources/, engine.rs).
 servo = { version = "0.7", default-features = false, features = ["bundled_freetype", "js_jit", "webcrypto", "webgl", "brotli-compression-stream"] }
+# Our media backend (media.rs) in place of gstreamer's; the versions
+# match servo's.
+servo-media = "=0.7.0"
+servo-media-dummy = "=0.7.0"
+servo-base = "=0.7.0"
+tabula-preview.workspace = true
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 khronos-egl = { version = "6", features = ["dynamic"] }
 libloading = "0.8"

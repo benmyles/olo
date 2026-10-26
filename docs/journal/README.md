@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### NetPositive: audio and video
+
+*09:58* — Video and audio elements in pages play with Tabula's own decoders (H.264/AV1 in MP4 and WebM, Opus, AAC, MP3 and more) through a native servo-media backend; sound goes to the sound server in process.
+
+![NetPositive: audio and video](2026-10-26/095828-netpositive-audio-and-video.png)
+
 ### NetPositive: light page, dark desktop
 
 *09:12* — A page with no colour scheme in dark mode: Servo would have drawn it with light text and dark controls on white; it now keeps the light scheme.

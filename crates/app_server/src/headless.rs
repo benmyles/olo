@@ -197,9 +197,17 @@ pub fn run_headless(size_arg: Option<&str>) {
         screens.push(Screen { output, target, damage_tracker });
     }
 
+    // Feedback naming the render node: Mesa's EGL finds the GPU through it
+    // (without, GL clients fall back to software rendering).
     let formats = renderer.dmabuf_formats();
     let mut dmabuf_state = DmabufState::new();
-    let dmabuf_global = dmabuf_state.create_global::<AnvilState<HeadlessData>>(&display_handle, formats);
+    let feedback = smithay::backend::drm::DrmNode::from_path(&node)
+        .ok()
+        .and_then(|n| smithay::wayland::dmabuf::DmabufFeedbackBuilder::new(n.dev_id(), formats.clone()).build().ok());
+    let dmabuf_global = match &feedback {
+        Some(f) => dmabuf_state.create_global_with_default_feedback::<AnvilState<HeadlessData>>(&display_handle, f),
+        None => dmabuf_state.create_global::<AnvilState<HeadlessData>>(&display_handle, formats),
+    };
 
     let outputs: Vec<Output> = screens.iter().map(|s| s.output.clone()).collect();
     let data = HeadlessData { renderer, screens, dmabuf_state: (dmabuf_state, dmabuf_global) };

@@ -347,7 +347,15 @@ $T stop mine
 sudo resets HOME, so without `--home` a session and its apps use the real
 home folder: pass `--home` whenever a test saves files (Screenshot,
 Tracker, StyledEdit…). Sessions are always silent (`PULSE_SERVER` points at
-a dead socket), so tests never reach the real speakers or volume.
+a dead socket), so tests never reach the real speakers or volume. To
+test sound, run `tabula-fakesound SOCKET` (tabula-preview): it speaks the
+PulseAudio protocol, plays nothing, and logs each stream once a second
+(bytes consumed in real time, corked or not, loudness); start the app with
+`$T run NAME PULSE_SERVER=unix:SOCKET …`.
+
+The headless server renders on the GPU's render node and announces it
+in dmabuf feedback, so GL clients (NetPositive's Servo) get hardware GL
+as on the desktop rather than Mesa's software fallback.
 
 Clicks are global logical coordinates: on a screen that isn't at (0, 0),
 add its position (`$T ipc NAME '{"type":"outputs"}'`). `start` rewrites
@@ -875,6 +883,26 @@ document in dark mode: `color-scheme: light` for pages that don't support
 dark, and a Canvas background (plus Highlight selection) for those that
 do, judged by `<meta name=color-scheme>` and the root's computed
 `color-scheme`.
+
+### Audio and video in NetPositive
+
+Servo plays media through a servo-media backend; built without gstreamer
+it would play nothing, so `apps/browser/src/media.rs` installs ours before
+Servo starts (the first backend to arrive wins). It plays with Viewer's
+decoders: `tabula_preview::video::Video` (H.264 / AV1 in mp4 / WebM /
+Matroska) and `audio` (symphonia, Opus), which read from an
+`input::Input`, a file or anything `Read + Seek`. Servo pushes the fetched
+bytes into a shared buffer; readers block for bytes not yet there, so
+playback starts early and seeking ahead waits. A driver thread per player
+keeps the clock (the sound's, or its own without a sound server), hands
+Servo each picture as BGRA, and reports state, position and the end.
+Web Audio, streams and WebRTC still go to servo-media's dummy backend.
+
+A page script works around Servo 0.7: it fires `timeupdate` only once
+something has read an element's `textTracks` (so the script reads it as
+elements arrive), and after reaching the end it stays at
+HAVE_CURRENT_DATA and never plays again (so `play()` on an element that
+ended reloads it first).
 
 ### Colours in NetPositive
 

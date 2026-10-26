@@ -199,7 +199,7 @@ pub struct Engine {
     pending: Arc<AtomicBool>,
     pub events: Rc<Events>,
     /// Scripts every page gets (the login capture, passkeys, downloads,
-    /// scrolling, dark mode).
+    /// scrolling, dark mode, media).
     pub content: Rc<UserContentManager>,
     /// Names our scripts' messages and the passkey answer function.
     pub token: String,
@@ -210,6 +210,7 @@ impl Engine {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let opts = Opts { config_dir: data_dir(), ..Default::default() };
         let pending = Arc::new(AtomicBool::new(false));
+        crate::media::install();
         let servo = ServoBuilder::default()
             .opts(opts)
             .event_loop_waker(Box::new(Waker { proxy, pending: pending.clone() }))
@@ -221,6 +222,7 @@ impl Engine {
         content.add_script(Rc::new(UserScript::from(crate::downloads::script(&token))));
         content.add_script(Rc::new(UserScript::from(crate::scroll::script(&token))));
         content.add_script(Rc::new(UserScript::from(crate::scheme::script())));
+        content.add_script(Rc::new(UserScript::from(crate::media::script())));
         let events = Events {
             login_marker: crate::logins::marker(&token),
             passkey_marker: crate::passkeys::marker(&token),

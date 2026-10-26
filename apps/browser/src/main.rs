@@ -12,6 +12,7 @@ mod find;
 mod input;
 mod location;
 mod logins;
+mod media;
 mod passkeys;
 mod scheme;
 mod scroll;

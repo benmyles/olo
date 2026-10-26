@@ -646,5 +646,11 @@
   "title": "NetPositive: light page, dark desktop",
   "caption": "A page with no colour scheme in dark mode: Servo would have drawn it with light text and dark controls on white; it now keeps the light scheme.",
   "image": "2026-10-26/091231-netpositive-light-page-dark-desktop.png"
+ },
+ {
+  "time": "2026-10-26T09:58:28",
+  "title": "NetPositive: audio and video",
+  "caption": "Video and audio elements in pages play with Tabula's own decoders (H.264/AV1 in MP4 and WebM, Opus, AAC, MP3 and more) through a native servo-media backend; sound goes to the sound server in process.",
+  "image": "2026-10-26/095828-netpositive-audio-and-video.png"
  }
 ]

@@ -8,14 +8,18 @@ use std::{
     cmp::Reverse,
     collections::{BinaryHeap, VecDeque},
     io::BufReader,
-    path::Path,
     sync::{Arc, Condvar, Mutex, atomic::Ordering},
     time::{Duration, Instant},
 };
 
 use tabula_kit::images::av1;
 
-use crate::{audio, load::Image, media};
+use crate::{
+    audio,
+    input::{Input, ReadSeek},
+    load::Image,
+    media,
+};
 
 /// Frames decoded ahead (about a fifth of a second at 30 fps).
 const AHEAD: usize = 6;
@@ -60,29 +64,39 @@ pub struct Video {
     clock: Mutex<Clock>,
     audio: Option<audio::Player>,
     duration: f64,
+    /// There are pictures to show; without, only the clock and sound run.
+    picture: bool,
 }
 
 impl Video {
-    /// Start playing `path` (of `duration` seconds) at once.
-    pub fn start(path: &Path, duration: f64) -> Video {
-        let shared = Arc::new((Mutex::new(Shared::default()), Condvar::new()));
-        let (p, s) = (path.to_owned(), shared.clone());
-        std::thread::Builder::new()
+    /// Start playing `input` (of `duration` seconds) at once.
+    pub fn start(input: &Input, duration: f64) -> Video {
+        Video::start_with(input, duration, Options { playing: true, picture: true, sound: true })
+    }
+
+    /// Start `input` as `opts` say: playing or paused (showing its first
+    /// picture), with pictures and sound or only one of them.
+    pub fn start_with(input: &Input, duration: f64, opts: Options) -> Video {
+        let shared = Arc::new((Mutex::new(Shared { eof: !opts.picture, ..Default::default() }), Condvar::new()));
+        let (i, s) = (input.clone(), shared.clone());
+        let playing = opts.playing;
+        opts.picture.then(|| std::thread::Builder::new()
             .name("video".into())
             .spawn(move || {
-                if let Err(e) = decode(&p, &s) {
-                    tracing::warn!("video {}: {e}", p.display());
+                if let Err(e) = decode(&i, &s) {
+                    tracing::warn!("video {}: {e}", i.name);
                     let mut sh = s.0.lock().unwrap();
                     sh.error = Some(e);
                     sh.eof = true;
                 }
             })
-            .ok();
+            .ok());
         Video {
             shared,
-            clock: Mutex::new(Clock { at: 0.0, since: Some(Instant::now()), heard_ms: 0, finished: false, show_next: true }),
-            audio: Some(audio::Player::start(path)),
+            clock: Mutex::new(Clock { at: 0.0, since: playing.then(Instant::now), heard_ms: 0, finished: false, show_next: opts.picture }),
+            audio: opts.sound.then(|| audio::Player::start_with(input, playing)),
             duration,
+            picture: opts.picture,
         }
     }
 
@@ -96,6 +110,21 @@ impl Video {
 
     pub fn playing(&self) -> bool {
         self.clock.lock().unwrap().since.is_some()
+    }
+
+    pub fn has_picture(&self) -> bool {
+        self.picture
+    }
+
+    /// It played to the end.
+    pub fn finished(&self) -> bool {
+        self.clock.lock().unwrap().finished
+    }
+
+    pub fn set_volume(&self, volume: f64) {
+        if let Some(a) = &self.audio {
+            a.set_volume(volume);
+        }
     }
 
     pub fn error(&self) -> Option<String> {
@@ -119,7 +148,7 @@ impl Video {
         self.set_playing(!playing || finished);
     }
 
-    fn set_playing(&self, on: bool) {
+    pub fn set_playing(&self, on: bool) {
         let mut c = self.clock.lock().unwrap();
         c.at = c.now();
         c.since = on.then(Instant::now);
@@ -138,10 +167,13 @@ impl Video {
                 c.since = Some(Instant::now());
             }
             c.finished = false;
-            c.show_next = true;
+            c.show_next = self.picture;
         }
         if let Some(a) = self.sound() {
             a.seek(secs);
+        }
+        if !self.picture {
+            return;
         }
         let (m, cv) = &*self.shared;
         let mut sh = m.lock().unwrap();
@@ -187,14 +219,20 @@ impl Video {
             cv.notify_all();
         }
         let next = sh.queue.front().map(|f| Duration::from_secs_f64((f.pts - now).max(0.004)));
-        if sh.eof && sh.queue.is_empty() && sh.seek.is_none() && c.since.is_some() {
-            // The pictures ran out: stop (the sound ends by itself).
+        let ended = if self.picture {
+            // The pictures ran out (the sound ends by itself).
+            sh.eof && sh.queue.is_empty() && sh.seek.is_none()
+        } else {
+            now >= self.duration || self.sound().is_some_and(|a| a.state.finished.load(Ordering::Relaxed))
+        };
+        if ended && c.since.is_some() {
             c.at = self.duration;
             c.since = None;
             c.finished = true;
         }
         // Playing, or waiting for the picture a seek asked for.
-        let next = if c.since.is_some() || (c.show_next && !sh.eof) { Some(next.unwrap_or(Duration::from_millis(15))) } else { None };
+        let idle = if self.picture { Duration::from_millis(15) } else { Duration::from_millis(100) };
+        let next = if c.since.is_some() || (c.show_next && !sh.eof) { Some(next.unwrap_or(idle)) } else { None };
         (due.map(|f| f.image), next)
     }
 }
@@ -205,6 +243,14 @@ impl Drop for Video {
         m.lock().unwrap().stop = true;
         cv.notify_all();
     }
+}
+
+/// How [`Video::start_with`] starts.
+#[derive(Debug, Clone, Copy)]
+pub struct Options {
+    pub playing: bool,
+    pub picture: bool,
+    pub sound: bool,
 }
 
 fn av1_image(f: &av1::Frame) -> Image {
@@ -225,9 +271,55 @@ trait Demux: Send {
     fn seek(&mut self, secs: f64);
 }
 
-fn open(path: &Path) -> Result<Box<dyn Demux>, String> {
-    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-    if matches!(ext.as_str(), "mkv" | "webm") { Mkv::open(path).map(|d| Box::new(d) as _) } else { Mp4::open(path).map(|d| Box::new(d) as _) }
+fn open(input: &Input) -> Result<Box<dyn Demux>, String> {
+    if input.matroska() { Mkv::open(input).map(|d| Box::new(d) as _) } else { Mp4::open(input).map(|d| Box::new(d) as _) }
+}
+
+/// What a file holds, as far as playing it goes.
+#[derive(Debug, Clone, Default)]
+pub struct Info {
+    pub duration: Option<f64>,
+    pub width: u32,
+    pub height: u32,
+    /// A picture track in a codec we play.
+    pub picture: bool,
+    pub sound: bool,
+}
+
+/// Read `input`'s tracks (mp4 or Matroska).
+pub fn probe(input: &Input) -> Result<Info, String> {
+    let (reader, size) = input.open()?;
+    let mut info = Info::default();
+    if input.matroska() {
+        let mk = matroska_demuxer::MatroskaFile::open(BufReader::new(reader)).map_err(|e| e.to_string())?;
+        let scale = mk.info().timestamp_scale().get() as f64;
+        info.duration = mk.info().duration().map(|d| d * scale / 1e9);
+        for t in mk.tracks() {
+            if let Some(v) = t.video() {
+                if !info.picture && matches!(t.codec_id(), "V_MPEG4/ISO/AVC" | "V_AV1") {
+                    info.picture = true;
+                    (info.width, info.height) = (v.pixel_width().get() as u32, v.pixel_height().get() as u32);
+                }
+            } else if t.codec_id().starts_with("A_") {
+                info.sound = true;
+            }
+        }
+    } else {
+        let r = mp4::Mp4Reader::read_header(BufReader::new(reader), size).map_err(|e| e.to_string())?;
+        let d = r.duration().as_secs_f64();
+        info.duration = (d > 0.0).then_some(d);
+        for t in r.tracks().values() {
+            match t.media_type() {
+                Ok(mp4::MediaType::H264) if !info.picture => {
+                    info.picture = true;
+                    (info.width, info.height) = (t.width() as u32, t.height() as u32);
+                }
+                Ok(mp4::MediaType::AAC) => info.sound = true,
+                _ => {}
+            }
+        }
+    }
+    Ok(info)
 }
 
 /// The codecs played.
@@ -253,9 +345,9 @@ impl Decoder {
     }
 }
 
-fn decode(path: &Path, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String> {
+fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String> {
     let (m, cv) = shared;
-    let mut demux = open(path)?;
+    let mut demux = open(input)?;
     let codec = demux.codec();
     let mut dec = Decoder::new(codec)?;
     // Presentation times of packets sent and not yet out: decoders hand
@@ -344,7 +436,7 @@ fn decode(path: &Path, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String> 
 }
 
 struct Mp4 {
-    reader: mp4::Mp4Reader<BufReader<std::fs::File>>,
+    reader: mp4::Mp4Reader<BufReader<Box<dyn ReadSeek>>>,
     track: u32,
     timescale: f64,
     /// Parameter sets, in start-code form, sent before each key frame.
@@ -357,9 +449,8 @@ struct Mp4 {
 }
 
 impl Mp4 {
-    fn open(path: &Path) -> Result<Mp4, String> {
-        let f = std::fs::File::open(path).map_err(|e| e.to_string())?;
-        let size = f.metadata().map_err(|e| e.to_string())?.len();
+    fn open(input: &Input) -> Result<Mp4, String> {
+        let (f, size) = input.open()?;
         let reader = mp4::Mp4Reader::read_header(BufReader::new(f), size).map_err(|e| e.to_string())?;
         let (track, t) = reader
             .tracks()
@@ -430,7 +521,7 @@ impl Demux for Mp4 {
 }
 
 struct Mkv {
-    file: matroska_demuxer::MatroskaFile<BufReader<std::fs::File>>,
+    file: matroska_demuxer::MatroskaFile<BufReader<Box<dyn ReadSeek>>>,
     track: u64,
     codec: Codec,
     scale: f64,
@@ -442,8 +533,8 @@ struct Mkv {
 }
 
 impl Mkv {
-    fn open(path: &Path) -> Result<Mkv, String> {
-        let f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    fn open(input: &Input) -> Result<Mkv, String> {
+        let (f, _) = input.open()?;
         let file = matroska_demuxer::MatroskaFile::open(BufReader::new(f)).map_err(|e| e.to_string())?;
         let (t, codec) = file
             .tracks()
@@ -559,7 +650,7 @@ mod tests {
                 let path = dir.join(name);
                 let shared = Arc::new((Mutex::new(Shared { seek: Some(target), ..Default::default() }), Condvar::new()));
                 let s = shared.clone();
-                let worker = std::thread::spawn(move || decode(&path, &s));
+                let worker = std::thread::spawn(move || decode(&Input::file(&path), &s));
                 let (m, cv) = &*shared;
                 let mut sh = m.lock().unwrap();
                 while sh.queue.len() < 3 && !sh.eof {
@@ -589,7 +680,7 @@ mod tests {
             let shared = Arc::new((Mutex::new(Shared::default()), Condvar::new()));
             let s = shared.clone();
             let start = Instant::now();
-            let worker = std::thread::spawn(move || decode(&path, &s));
+            let worker = std::thread::spawn(move || decode(&Input::file(&path), &s));
             let (m, cv) = &*shared;
             let mut n = 0;
             loop {

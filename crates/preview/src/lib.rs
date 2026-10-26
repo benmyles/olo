@@ -8,6 +8,7 @@
 pub mod archive;
 pub mod audio;
 pub mod doc;
+pub mod input;
 pub mod load;
 pub mod media;
 pub mod opus;
@@ -184,10 +185,10 @@ impl Preview {
                     && m.playable
                     && !m.video
                 {
-                    self.player = Some(audio::Player::start(&self.item.path));
+                    self.player = Some(audio::Player::start(&input::Input::file(&self.item.path)));
                 }
                 self.video = match &b {
-                    Body::Media(m) if m.playable && m.video => Some(video::Video::start(&self.item.path, m.duration.unwrap_or(0.0))),
+                    Body::Media(m) if m.playable && m.video => Some(video::Video::start(&input::Input::file(&self.item.path), m.duration.unwrap_or(0.0))),
                     _ => None,
                 };
                 self.body = Some(b);
