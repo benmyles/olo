@@ -1,0 +1,28 @@
+[package]
+name = "tabula-onepassword"
+description = "A Rust 1Password SDK: the official Go SDK's API over a native client for the 1Password desktop app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "onepassword"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "std"] }
+data-encoding = "2"
+getrandom = "0.3"
+hmac = "0.13"
+sha1 = "0.11"
+sha2 = "0.11"
+url = "2"
+zeroize = "1"
+
+[[bin]]
+name = "onepassword-fake"
+path = "src/bin/fake.rs"
