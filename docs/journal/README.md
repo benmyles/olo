@@ -5,6 +5,30 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-25
 
+### Quick Look pop-out to Viewer
+
+*22:34* — Popping a Quick Look out of Tracker opens the file in a standalone Viewer window (dark).
+
+![Quick Look pop-out to Viewer](2026-10-25/223446-quick-look-pop-out-to-viewer.png)
+
+### Kit FilePanel: Export Flattened PDF
+
+*22:34* — BFilePanel-style Save panel: path popup, Home, Name/Size/Modified list, Save as field.
+
+![Kit FilePanel: Export Flattened PDF](2026-10-25/223446-kit-filepanel-export-flattened-pdf.png)
+
+### Viewer: PDF form in dark mode
+
+*22:34* — The same form in dark: Draw tool active, ink mark and Text tool date beside the signature.
+
+![Viewer: PDF form in dark mode](2026-10-25/223446-viewer-pdf-form-in-dark-mode.png)
+
+### Viewer: PDF form filling (light)
+
+*22:34* — Text, comb, combo, list box, radio and check fields filled in place, with a placed signature.
+
+![Viewer: PDF form filling (light)](2026-10-25/223446-viewer-pdf-form-filling-light.png)
+
 ### Quick Look: every format (dark)
 
 *22:00* — Contact sheet: MP3/OGG with tags and playback, Markdown, JPEG, tar.gz, SVG, PDF (hayro), CSV, PNG, Word, zip, Rust. All decoded in process, with no helper tools.

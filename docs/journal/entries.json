@@ -130,5 +130,29 @@
   "title": "Quick Look: every format (dark)",
   "caption": "Contact sheet: MP3/OGG with tags and playback, Markdown, JPEG, tar.gz, SVG, PDF (hayro), CSV, PNG, Word, zip, Rust. All decoded in process, with no helper tools.",
   "image": "2026-10-25/220050-quick-look-every-format-dark.png"
+ },
+ {
+  "time": "2026-10-25T22:34:46",
+  "title": "Viewer: PDF form filling (light)",
+  "caption": "Text, comb, combo, list box, radio and check fields filled in place, with a placed signature.",
+  "image": "2026-10-25/223446-viewer-pdf-form-filling-light.png"
+ },
+ {
+  "time": "2026-10-25T22:34:46",
+  "title": "Viewer: PDF form in dark mode",
+  "caption": "The same form in dark: Draw tool active, ink mark and Text tool date beside the signature.",
+  "image": "2026-10-25/223446-viewer-pdf-form-in-dark-mode.png"
+ },
+ {
+  "time": "2026-10-25T22:34:46",
+  "title": "Kit FilePanel: Export Flattened PDF",
+  "caption": "BFilePanel-style Save panel: path popup, Home, Name/Size/Modified list, Save as field.",
+  "image": "2026-10-25/223446-kit-filepanel-export-flattened-pdf.png"
+ },
+ {
+  "time": "2026-10-25T22:34:46",
+  "title": "Quick Look pop-out to Viewer",
+  "caption": "Popping a Quick Look out of Tracker opens the file in a standalone Viewer window (dark).",
+  "image": "2026-10-25/223446-quick-look-pop-out-to-viewer.png"
  }
 ]
