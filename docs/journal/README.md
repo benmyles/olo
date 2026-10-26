@@ -5,6 +5,24 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Backgrounds in dark mode
+
+*02:31* — The chosen wallpaper survives an in-place reload via About Tabula, Restart Tabula.
+
+![Backgrounds in dark mode](2026-10-26/023141-backgrounds-in-dark-mode.png)
+
+### Choose a Wallpaper panel
+
+*02:31* — The kit FilePanel as a child of Backgrounds, limited to picture types, kept on screen when wider than its parent.
+
+![Choose a Wallpaper panel](2026-10-26/023141-choose-a-wallpaper-panel.png)
+
+### Wallpaper drawn by app_server
+
+*02:31* — Backgrounds sets a JPEG XL wallpaper; app_server decodes and scales it to cover the output on a worker thread and draws it under every surface.
+
+![Wallpaper drawn by app_server](2026-10-26/023137-wallpaper-drawn-by-app-server.png)
+
 ### Touch ID: enrolling (dark)
 
 *02:19* — Progress per touch with the sensor guidance; Cancel stops the sensor.

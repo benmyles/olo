@@ -188,6 +188,7 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// Twitcher, while ⌘Tab / ⌘\` is held.
     pub twitch: Option<crate::desktop::Twitch>,
     pub twitcher: crate::twitcher::Overlay,
+    pub wallpaper: crate::wallpaper::Loader,
     pub cursor_status: CursorImageStatus,
     pub seat_name: String,
     pub seat: Seat<AnvilState<BackendData>>,
@@ -857,6 +858,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             lock,
             twitch: None,
             twitcher: Default::default(),
+            wallpaper: Default::default(),
             cursor_status: CursorImageStatus::default_named(),
             seat_name,
             seat,
@@ -903,6 +905,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             smithay::reexports::calloop::timer::TimeoutAction::ToDuration(crate::power::TICK)
         });
         state.relock();
+        state.start_wallpaper();
         if BackendData::IS_SESSION {
             state.watch_login();
         }
@@ -970,6 +973,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
 impl<BackendData: Backend + 'static> AnvilState<BackendData> {
     pub fn pre_repaint(&mut self, output: &Output, frame_target: impl Into<Time<Monotonic>>) {
         let frame_target = frame_target.into();
+        self.update_wallpaper(output);
 
         #[allow(clippy::mutable_key_type)]
         let mut clients: HashMap<ClientId, Client> = HashMap::new();

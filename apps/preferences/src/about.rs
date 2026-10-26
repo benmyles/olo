@@ -10,7 +10,7 @@ use std::{
 use tabula_kit::{
     egui::{Sense, Ui, vec2},
     icons, metrics as m,
-    widgets::{BBox, StringView, form_label, heading},
+    widgets::{BBox, Button, StringView, form_label, heading},
 };
 
 #[derive(Default, Clone)]
@@ -25,6 +25,9 @@ struct Facts {
 
 pub struct State {
     facts: Arc<Mutex<Option<Facts>>>,
+    /// When Restart Tabula was last clicked, or why it failed.
+    restarted: Option<Instant>,
+    error: Option<String>,
 }
 
 impl State {
@@ -32,7 +35,7 @@ impl State {
         let facts = Arc::new(Mutex::new(None));
         let out = facts.clone();
         std::thread::spawn(move || *out.lock().unwrap() = Some(gather()));
-        State { facts }
+        State { facts, restarted: None, error: None }
     }
 }
 
@@ -104,6 +107,23 @@ fn apple_chip(compat: &str) -> Option<String> {
     )
 }
 
+/// The tabula-session supervising us, if we run under one.
+fn session_pid() -> Option<i32> {
+    std::env::var("TABULA_SESSION_PID").ok()?.parse().ok().filter(|&p| p > 1)
+}
+
+/// Restart Tabula in place, as `tabula-session reload` does: the session
+/// re-execs app_server, and every app (this one included) reconnects with
+/// its windows where they were.
+fn restart(pid: i32) -> Result<(), String> {
+    // SAFETY: sending a signal.
+    if unsafe { libc::kill(pid, libc::SIGHUP) } == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error().to_string())
+    }
+}
+
 pub fn uptime_text(d: Duration) -> String {
     let s = d.as_secs();
     let (days, hours, mins, secs) = (s / 86400, s / 3600 % 24, s / 60 % 60, s % 60);
@@ -156,6 +176,26 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         }
         // Uptime counts seconds.
         ui.ctx().request_repaint_after(Duration::from_secs(1));
+    });
+    ui.add_space(m::SPACING);
+    ui.horizontal(|ui| {
+        let pid = session_pid();
+        // A restart takes a moment; don't let clicks pile up meanwhile.
+        let settling = st.restarted.is_some_and(|t| t.elapsed() < Duration::from_secs(5));
+        let note = match (&st.error, pid, settling) {
+            (Some(e), _, _) => format!("Couldn't restart: {e}"),
+            (None, None, _) => "Not running under tabula-session.".to_owned(),
+            (None, Some(_), true) => "Restarting…".to_owned(),
+            (None, Some(_), false) => String::new(),
+        };
+        ui.with_layout(tabula_kit::egui::Layout::right_to_left(tabula_kit::egui::Align::Center), |ui| {
+            let button = ui.add_enabled_ui(pid.is_some() && !settling, |ui| ui.add(Button::new("Restart Tabula")));
+            if let (true, Some(pid)) = (button.inner.clicked(), pid) {
+                st.error = restart(pid).err();
+                st.restarted = Some(Instant::now());
+            }
+            ui.add(StringView::new(&note).dim(true));
+        });
     });
 }
 

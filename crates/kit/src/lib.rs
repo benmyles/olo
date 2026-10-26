@@ -10,6 +10,7 @@ pub use tabula_xdg::{apps, desktop_entry, mime, open};
 pub mod file_panel;
 pub mod files;
 pub mod icons;
+pub mod images;
 mod input;
 pub mod instance;
 pub mod menu;

@@ -164,8 +164,14 @@ impl<B: Backend + 'static> AnvilState<B> {
         let (Some(pg), Some(g)) = (self.space.element_geometry(&parent), self.space.element_geometry(&window)) else {
             return;
         };
-        let x = pg.loc.x + (pg.size.w - g.size.w) / 2;
-        let y = (pg.loc.y + pg.size.h / 4 - g.size.h / 3).max(pg.loc.y);
+        let mut x = pg.loc.x + (pg.size.w - g.size.w) / 2;
+        let mut y = (pg.loc.y + pg.size.h / 4 - g.size.h / 3).max(pg.loc.y);
+        // A child wider than its parent mustn't hang off the screen.
+        let centre = (pg.loc + Point::from((pg.size.w / 2, pg.size.h / 2))).to_f64();
+        if let Some(out) = self.space.output_under(centre).next().and_then(|o| self.space.output_geometry(o)) {
+            x = x.min(out.loc.x + out.size.w - g.size.w).max(out.loc.x);
+            y = y.min(out.loc.y + out.size.h - g.size.h).max(pg.loc.y);
+        }
         let loc = self.space.element_location(&window).unwrap_or_default();
         self.space.map_element(window, loc + Point::from((x - g.loc.x, y - g.loc.y)), true);
     }

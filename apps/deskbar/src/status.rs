@@ -191,30 +191,6 @@ pub fn until_next_tick(seconds: bool) -> Duration {
     Duration::from_secs((60 - tm.tm_sec.clamp(0, 59)) as u64) + Duration::from_millis(50)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tabula_protocol::ClockSettings;
-
-    #[test]
-    fn formats() {
-        // SAFETY: an all-zero tm is a valid value.
-        let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-        (tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_wday, tm.tm_mon, tm.tm_mday) = (13, 5, 9, 1, 9, 26);
-        let mut c = ClockSettings::default();
-        assert_eq!(format_clock(&tm, false, &c), "1:05 PM");
-        assert_eq!(format_clock(&tm, true, &c), "Mon Oct 26");
-        c.twenty_four_hour = true;
-        c.show_seconds = true;
-        assert_eq!(format_clock(&tm, false, &c), "13:05:09");
-        c.show_day = true;
-        tm.tm_hour = 0;
-        assert_eq!(format_clock(&tm, false, &c), "Mon 00:05:09");
-        c.twenty_four_hour = false;
-        assert_eq!(format_clock(&tm, false, &c), "Mon 12:05:09 AM");
-    }
-}
-
 // ---- glyphs -------------------------------------------------------------------
 
 fn ink(p: &Palette) -> Color32 {
@@ -343,5 +319,29 @@ pub fn draw_cup(painter: &Painter, r: Rect, p: &Palette, on: bool) {
                 .collect();
             painter.add(Shape::line(steam, Stroke::new(1.0, color)));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tabula_protocol::ClockSettings;
+
+    #[test]
+    fn formats() {
+        // SAFETY: an all-zero tm is a valid value.
+        let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+        (tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_wday, tm.tm_mon, tm.tm_mday) = (13, 5, 9, 1, 9, 26);
+        let mut c = ClockSettings::default();
+        assert_eq!(format_clock(&tm, false, &c), "1:05 PM");
+        assert_eq!(format_clock(&tm, true, &c), "Mon Oct 26");
+        c.twenty_four_hour = true;
+        c.show_seconds = true;
+        assert_eq!(format_clock(&tm, false, &c), "13:05:09");
+        c.show_day = true;
+        tm.tm_hour = 0;
+        assert_eq!(format_clock(&tm, false, &c), "Mon 00:05:09");
+        c.twenty_four_hour = false;
+        assert_eq!(format_clock(&tm, false, &c), "Mon 12:05:09 AM");
     }
 }

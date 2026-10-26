@@ -35,6 +35,7 @@ pub mod screenshot;
 pub mod text;
 pub mod theme;
 pub mod twitcher;
+pub mod wallpaper;
 
 pub use state::{AnvilState, ClientState};
 

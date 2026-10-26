@@ -39,7 +39,15 @@ pub fn ui(ui: &mut Ui, s: &mut Settings) {
 pub struct BackgroundsState {
     workspace: usize,
     wallpaper: Option<String>,
+    /// The setting the text was last in step with: a different one came
+    /// from elsewhere (Choose…, Defaults, Revert) and replaces the text.
+    seen: Option<Option<String>>,
+    /// Choose… was clicked: main opens a file panel.
+    pub choose: bool,
 }
+
+/// Picture formats app_server can show as a wallpaper.
+pub const WALLPAPER_TYPES: &[&str] = &["png", "jpg", "jpeg", "jxl", "webp", "bmp", "tif", "tiff", "gif"];
 
 pub fn backgrounds_ui(ui: &mut Ui, s: &mut Settings, st: &mut BackgroundsState) {
     let names: Vec<String> = (1..=s.workspace_count).map(|i| format!("Workspace {i}")).collect();
@@ -76,11 +84,16 @@ pub fn backgrounds_ui(ui: &mut Ui, s: &mut Settings, st: &mut BackgroundsState) 
     });
 
     BBox::new("Wallpaper").show(ui, |ui| {
-        let text = st.wallpaper.get_or_insert_with(|| s.wallpaper.clone().unwrap_or_default());
+        if st.seen.as_ref() != Some(&s.wallpaper) {
+            st.wallpaper = Some(s.wallpaper.clone().unwrap_or_default());
+            st.seen = Some(s.wallpaper.clone());
+        }
+        let text = st.wallpaper.get_or_insert_with(String::new);
         let mut clear = false;
         ui.horizontal(|ui| {
-            let field = ui.available_width() - m::BUTTON_MIN_WIDTH - m::SPACING;
+            let field = ui.available_width() - 2.0 * (m::BUTTON_MIN_WIDTH + m::SPACING);
             ui.add(TextControl::new(text).label("Image:").hint("No wallpaper").width(field));
+            st.choose |= ui.add(Button::new("Choose…")).clicked();
             ui.add_enabled_ui(!text.trim().is_empty(), |ui| clear = ui.add(Button::new("Clear")).clicked());
         });
         if clear {
@@ -89,11 +102,8 @@ pub fn backgrounds_ui(ui: &mut Ui, s: &mut Settings, st: &mut BackgroundsState) 
         let trimmed = text.trim();
         let wanted = (!trimmed.is_empty()).then(|| trimmed.to_owned());
         if wanted != s.wallpaper {
-            s.wallpaper = wanted;
+            s.wallpaper = wanted.clone();
+            st.seen = Some(wanted);
         }
     });
-    // Defaults/Revert change the wallpaper underneath us: follow it.
-    if st.wallpaper.as_deref().map(str::trim).filter(|t| !t.is_empty()) != s.wallpaper.as_deref() {
-        st.wallpaper = Some(s.wallpaper.clone().unwrap_or_default());
-    }
 }

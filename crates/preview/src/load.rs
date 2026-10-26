@@ -106,16 +106,9 @@ pub fn color_image(rgba: image::RgbaImage) -> Image {
 }
 
 fn image(path: &Path) -> Result<Update, String> {
-    let reader = image::ImageReader::open(path).map_err(|e| e.to_string())?.with_guessed_format().map_err(|e| e.to_string())?;
-    let format = reader.format();
-    let mut limits = image::Limits::default();
-    limits.max_alloc = Some(1 << 30);
-    let mut reader = reader;
-    reader.limits(limits);
-    let img = reader.decode().map_err(|e| format!("This image can't be read ({e})."))?;
+    let (img, kind) = tabula_kit::images::open(path).map_err(|e| format!("This image can't be read ({e})."))?;
     let (w, h) = (img.width(), img.height());
     let img = if w.max(h) > MAX_IMAGE { img.resize(MAX_IMAGE, MAX_IMAGE, image::imageops::FilterType::Triangle) } else { img };
-    let kind = format.map(|f| format!("{f:?}").to_uppercase()).unwrap_or_else(|| "Image".into());
     Ok(Update::Body(Body::Image { image: color_image(img.to_rgba8()), note: format!("{kind} image, {w} × {h}") }))
 }
 

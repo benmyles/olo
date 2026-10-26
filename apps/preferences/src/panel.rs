@@ -133,7 +133,7 @@ impl Panel {
             Panel::TouchId => (420, 330),
             Panel::Touchpad => (400, 382),
             Panel::Workspaces => (360, 164),
-            Panel::About => (420, 254),
+            Panel::About => (420, 290),
         }
     }
 

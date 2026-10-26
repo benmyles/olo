@@ -99,7 +99,7 @@ pub fn thumbnail(ctx: &Context, path: &Path, logical: f32) -> Option<TextureHand
     drop(map);
     let (ctx2, cache2) = (ctx.clone(), cache.clone());
     let _ = thumb_worker().send(Box::new(move || {
-        let tex = image::open(&key.0).ok().map(|img| {
+        let tex = crate::images::open(&key.0).ok().map(|(img, _)| {
             let img = img.thumbnail(px, px).to_rgba8();
             let size = [img.width() as usize, img.height() as usize];
             let ci = ColorImage::from_rgba_unmultiplied(size, img.as_raw());

@@ -44,8 +44,8 @@ as they land (with the commit), add new ones as they come up.
   password, disconnect, forget, interface details; WPA-Enterprise still to
   do), ~~Bluetooth~~ (search, pair with passkey/PIN agent, connect,
   remove, battery), ~~Date & Time~~ (calendar, clock face, network
-  time, time zone, Deskbar 24-hour/seconds/day), ~~Touch ID~~ (enrol with progress, remove); Restart Tabula; a Choose… file panel for the
-  wallpaper; Display mode switching (app_server ignores `mode` in
+  time, time zone, Deskbar 24-hour/seconds/day), ~~Touch ID~~ (enrol with progress, remove); ~~Restart Tabula~~; ~~a Choose… file panel for the
+  wallpaper~~ (app_server now draws it); Display mode switching (app_server ignores `mode` in
   ConfigureOutput so far) and drag-to-arrange.
 - ~~**StyledEdit**~~: styled text in attributes beside plain text, Font /
   Document menus, Find / Replace windows, own undo, atomic saves, reload

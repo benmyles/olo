@@ -29,6 +29,7 @@ use std::collections::BTreeMap;
 use tabula_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
     egui::{self, Rect, Sense, pos2, vec2},
+    file_panel::{FilePanel, PANEL_SIZE, PanelResult},
     icons,
     instance::{self, Launch},
     metrics as m,
@@ -60,6 +61,8 @@ pub struct Ctx<'a> {
 enum Win {
     Launcher,
     Panel { panel: Panel, opened: Box<Settings>, state: panel::State },
+    /// Backgrounds' Choose… panel, for `owner`.
+    Wallpaper { owner: WindowId, panel: Box<FilePanel> },
 }
 
 struct Prefs {
@@ -99,6 +102,27 @@ impl Prefs {
         let h = 2.0 * m::WINDOW_INSET + rows * LAUNCHER_CELL.y;
         let id = cx.open_window(WindowOptions::new("Preferences", w as u32, h as u32).min_size(w as u32, h as u32));
         self.windows.insert(id, Win::Launcher);
+    }
+
+    /// Open (or bring forward) the wallpaper file panel, starting where the
+    /// current picture is, else in the Pictures folder.
+    fn choose_wallpaper(&mut self, cx: &mut Cx, owner: WindowId) {
+        if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Wallpaper { .. })) {
+            cx.activate(id);
+            return;
+        }
+        let dir = self
+            .settings
+            .as_ref()
+            .and_then(|s| s.wallpaper.as_deref())
+            .and_then(|p| std::path::Path::new(p).parent().map(|d| d.to_owned()))
+            .filter(|d| d.is_dir())
+            .or_else(|| tabula_kit::user_dir("PICTURES"))
+            .unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()));
+        let (w, h) = PANEL_SIZE;
+        let id = cx.open_window(WindowOptions::new("Choose a Wallpaper", w, h).min_size(400, 300).parent(owner));
+        let panel = Box::new(FilePanel::open(dir).types(workspaces::WALLPAPER_TYPES));
+        self.windows.insert(id, Win::Wallpaper { owner, panel });
     }
 
     fn handle_args(&mut self, cx: &mut Cx, args: &[String]) {
@@ -155,6 +179,19 @@ impl App for Prefs {
             self.launcher_ui(cx, ui);
             return;
         }
+        if let Some(Win::Wallpaper { owner, panel }) = self.windows.get_mut(&window) {
+            let owner = *owner;
+            if let Some(result) = panel.ui(ui) {
+                if let (PanelResult::Chosen(path), Some(s)) = (result, self.settings.as_mut()) {
+                    s.wallpaper = Some(path.to_string_lossy().into_owned());
+                    self.server.set_settings(s.clone());
+                }
+                self.windows.remove(&window);
+                cx.close_window(window);
+                cx.redraw(owner);
+            }
+            return;
+        }
         let Some(Win::Panel { panel, opened, state }) = self.windows.get_mut(&window) else {
             return;
         };
@@ -184,7 +221,11 @@ impl App for Prefs {
         if *settings != before {
             self.server.set_settings(settings.clone());
         }
-        let _ = cx;
+        if let panel::State::Backgrounds(b) = state
+            && std::mem::take(&mut b.choose)
+        {
+            self.choose_wallpaper(cx, window);
+        }
     }
 
     fn menu_bar(&mut self, _window: WindowId) -> Option<Vec<Menu>> {
@@ -194,6 +235,17 @@ impl App for Prefs {
     fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
         self.windows.remove(&window);
         cx.close_window(window);
+        // A file panel goes with the window it was choosing for.
+        let orphans: Vec<WindowId> = self
+            .windows
+            .iter()
+            .filter(|(_, w)| matches!(w, Win::Wallpaper { owner, .. } if *owner == window))
+            .map(|(&id, _)| id)
+            .collect();
+        for id in orphans {
+            self.windows.remove(&id);
+            cx.close_window(id);
+        }
         if self.windows.is_empty() {
             cx.quit();
         }
@@ -231,9 +283,10 @@ impl App for Prefs {
         let open: Vec<&str> = self
             .windows
             .values()
-            .map(|w| match w {
-                Win::Launcher => "",
-                Win::Panel { panel, .. } => panel.arg(),
+            .filter_map(|w| match w {
+                Win::Launcher => Some(""),
+                Win::Panel { panel, .. } => Some(panel.arg()),
+                Win::Wallpaper { .. } => None,
             })
             .collect();
         serde_json::to_string(&open).ok()

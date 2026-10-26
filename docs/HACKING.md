@@ -157,7 +157,10 @@ matches `style::text_highlight`), `alert(ui, icon, message, &buttons)` (a
 BAlert; open its window with `WindowOptions::alert(title, message)`; the
 last button is the default, Escape picks the first).
 
-File panels (`tabula_kit::file_panel`): `FilePanel::open(dir)` /
+Pictures (`tabula_kit::images::open(path)`): everything the `image`
+crate reads plus JPEG XL, EXIF-rotated, with a 1 GiB allocation limit;
+returns the image and its format's name. Thumbnails and Quick Look use
+it. File panels (`tabula_kit::file_panel`): `FilePanel::open(dir)` /
 `FilePanel::save(dir, name)` give a BFilePanel (path popup, Home, sortable
 Name/Size/Modified list, "Save as:" field, Replace confirmation);
 `FilePanel::folder(dir)` picks a folder (folders only; Select takes the
@@ -369,6 +372,17 @@ launcher lists them. The panel list Deskbar shows is
   `Settings::clock` (`ClockSettings::format` is shared by Deskbar and the
   panel's preview). **Tests must never press Set, Set Time Zone or the
   network-time box: they change the real machine.**
+* Backgrounds (`workspaces.rs`): a colour per workspace and one wallpaper.
+  Choose… opens a FilePanel (picture types only) as a child window; the
+  text field follows the setting when it changes elsewhere (Choose…,
+  Defaults, Revert). app_server draws the wallpaper (`wallpaper.rs`):
+  each output's picture is decoded (JPEG XL too, via jxl-oxide), scaled
+  to cover and cropped on a worker thread, kept in the output's user
+  data and drawn under every surface; the workspace colour shows until
+  it is ready or if the file can't be read.
+* About (`about.rs`) has Restart Tabula: SIGHUP to `$TABULA_SESSION_PID`,
+  the same in-place reload as `tabula-session reload` (disabled outside
+  a session).
 
 ## Power (crates/app_server/src/power.rs)
 

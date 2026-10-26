@@ -197,6 +197,11 @@ where
         )
         .expect("output without mode?");
         output_render_elements.extend(space_elements.into_iter().map(OutputRenderElements::Space));
+        // The wallpaper goes under everything, over the workspace colour.
+        output_render_elements.extend(
+            crate::wallpaper::element(renderer, output)
+                .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))),
+        );
 
         (output_render_elements, desktop_color)
     }

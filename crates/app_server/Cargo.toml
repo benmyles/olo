@@ -16,7 +16,7 @@ tabula-system.workspace = true
 libc = "0.2"
 signal-hook = "0.3"
 bitflags = "2.2.1"
-image = { version = "0.25.1", default-features = false, features = ["png"] }
+image = { version = "0.25.1", default-features = false, features = ["png", "jpeg", "webp", "bmp", "tiff", "gif"] }
 rand = "0.8"
 tracing = { version = "0.1.37", features = ["max_level_trace", "release_max_level_debug"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
@@ -32,6 +32,7 @@ tabula-theme.workspace = true
 tabula-xdg.workspace = true
 tiny-skia = "0.12"
 cosmic-text = "0.19"
+jxl-oxide = { version = "0.12.6", features = ["image"] }
 
 [dependencies.smithay]
 workspace = true
