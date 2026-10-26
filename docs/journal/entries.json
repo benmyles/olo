@@ -538,5 +538,29 @@
   "title": "NetPositive error page",
   "caption": "Network errors answer in haiku, as NetPositive did, picked at random from six new verses",
   "image": "2026-10-26/063835-netpositive-error-page.png"
+ },
+ {
+  "time": "2026-10-26T07:25:05",
+  "title": "Passwords: Password Generator",
+  "caption": "Random, memorable and PIN recipes with a live strength meter; Use fills the field it was opened from.",
+  "image": "2026-10-26/072505-passwords-password-generator.png"
+ },
+ {
+  "time": "2026-10-26T07:25:24",
+  "title": "Passwords: a 1Password browser",
+  "caption": "Tabula's password manager, on its own Rust 1Password SDK over the desktop app's integration socket (shown against the test fake): vaults and categories, items, and the selected item's fields.",
+  "image": "2026-10-26/072524-passwords-a-1password-browser.png"
+ },
+ {
+  "time": "2026-10-26T07:25:26",
+  "title": "Passwords in dark mode",
+  "caption": "",
+  "image": "2026-10-26/072526-passwords-in-dark-mode.png"
+ },
+ {
+  "time": "2026-10-26T07:25:27",
+  "title": "Passwords: locked",
+  "caption": "Opens locked and locks after idle; Touch ID (fprintd) or the account password (PAM) unlocks it.",
+  "image": "2026-10-26/072527-passwords-locked.png"
  }
 ]

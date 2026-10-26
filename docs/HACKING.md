@@ -100,8 +100,10 @@ fn main() {
   `activate` (bring a window forward and focus it, restoring it if it is
   minimized or on another workspace — via xdg-activation; use it when a
   forwarded launch asks for a window that is already open), `copy` (text
-  to the clipboard), `copy_data` (any MIME types, e.g. `image/png`; the
-  data is written to pasters from a thread), `paste` (reads the clipboard
+  to the clipboard), `copy_secret(text, clear_after)` (marks the offer
+  `x-kde-passwordManagerHint: secret` so clipboard histories skip it, and
+  withdraws it after `clear_after` if it is still ours), `copy_data` (any
+  MIME types, e.g. `image/png`; the data is written to pasters from a thread), `paste` (reads the clipboard
   off-thread and delivers an `egui::Event::Paste`), `quit`, `stay_resident` (keep running with no windows), `palette`,
   `proxy`, `window_size`, `restored_state`. Worker threads may call
   `ctx.request_repaint()` (or `_after`) on a window's context: the kit
@@ -782,3 +784,48 @@ printf 'auth required pam_exec.so expose_authtok quiet /path/check.sh\naccount r
 TABULA_PAM_CONFDIR=$dir TABULA_PAM_SERVICE=exec tools/dev/tsession start lk --light
 tools/dev/tsession ipc lk '{"type":"lock"}'; tools/dev/tsession type lk secret; tools/dev/tsession key lk 28
 ```
+
+## Passwords (apps/passwords, crates/onepassword)
+
+`crates/onepassword` (package `tabula-onepassword`) is a Rust 1Password SDK
+modelled on the Go one: the same `Client` (`Secrets`, `Items`, `Vaults`,
+`Groups`, `ItemShares`, `ItemFiles`, `Environments`), the same types and
+JSON shapes (camelCase, tagged enums), `op://` references, the password
+generator (random, memorable from the EFF word list, PIN) and TOTP. It
+talks to the 1Password desktop app's SDK integration, as the official SDKs
+do, over the abstract unix socket `@1PASSWORD_SDK_INTERGATIONS` (sic): one
+connection per call; frames are a u32 LE length (counting the flag byte),
+a flag byte (2 = more, 1 = last) and up to 499,999 bytes of a JSON request
+`{kind: init_client|invoke|release_client, account_name, payload: base64}`;
+the reply is `{success, payload: base64}` whose payload is the result's raw
+JSON (or `{name, message}` on failure). 1Password asks the user to allow
+each app and unlocks itself; users turn on Settings ▸ Developer ▸ Integrate
+with other apps. Service-account (token) access is not implemented: that
+needs 1Password's closed core.
+
+Tests never touch the real app. `onepassword-fake [--account NAME]
+[--socket NAME] [--data FILE]` serves an in-memory account (two vaults of
+sample items, item versions, OTP codes) over the same protocol;
+`tests/desktop.rs` drives it. Apps take `TABULA_1PASSWORD_SOCKET` to use it.
+
+Passwords is the app: sources (vaults, categories, Archive), a two-line
+item list and the selected item's fields (hover for Copy/Show; one-time
+codes count down), an editor with templates per category, a Password
+Generator window, and File/Edit/Item/View menus (⌘C username, ⇧⌘C password,
+⇧⌘O one-time code). All 1Password calls run on a worker thread
+(`store.rs`); replies carry a generation so a changed account drops stale
+ones. Secrets go to the clipboard with `copy_secret` and leave after
+`clear_seconds`. It opens locked and locks after `lock_minutes` idle
+(`lock.rs`): Touch ID through fprintd, claimed only while the locked
+window has the keyboard, or the account password through PAM. Settings
+live in `passwords.json`.
+
+```sh
+target/debug/onepassword-fake --socket tabula-fake &
+tools/dev/tsession start pw 2400x1600 --light
+tools/dev/tsession run pw TABULA_1PASSWORD_SOCKET=tabula-fake TABULA_NO_FINGERPRINT=1 \
+    TABULA_PAM_CONFDIR=$dir TABULA_PAM_SERVICE=exec target/debug/tabula-passwords
+```
+(`run` doesn't pass `TABULA_PAM_*` on by itself; give them as above, with
+`$dir` set up as for the lock screen.) Account: `Tabula Test`; password:
+whatever `check.sh` accepts.

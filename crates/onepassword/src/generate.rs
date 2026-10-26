@@ -181,7 +181,7 @@ pub fn strength_bits(password: &str) -> f64 {
     if password.chars().any(|c| c.is_ascii_punctuation() || c == ' ') {
         pool += 33;
     }
-    if password.chars().any(|c| !c.is_ascii()) {
+    if !password.is_ascii() {
         pool += 100;
     }
     let chars: Vec<char> = password.chars().collect();

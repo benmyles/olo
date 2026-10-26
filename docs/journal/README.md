@@ -5,6 +5,30 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Passwords: locked
+
+*07:25* — Opens locked and locks after idle; Touch ID (fprintd) or the account password (PAM) unlocks it.
+
+![Passwords: locked](2026-10-26/072527-passwords-locked.png)
+
+### Passwords in dark mode
+
+*07:25*
+
+![Passwords in dark mode](2026-10-26/072526-passwords-in-dark-mode.png)
+
+### Passwords: a 1Password browser
+
+*07:25* — Tabula's password manager, on its own Rust 1Password SDK over the desktop app's integration socket (shown against the test fake): vaults and categories, items, and the selected item's fields.
+
+![Passwords: a 1Password browser](2026-10-26/072524-passwords-a-1password-browser.png)
+
+### Passwords: Password Generator
+
+*07:25* — Random, memorable and PIN recipes with a live strength meter; Use fills the field it was opened from.
+
+![Passwords: Password Generator](2026-10-26/072505-passwords-password-generator.png)
+
 ### NetPositive error page
 
 *06:38* — Network errors answer in haiku, as NetPositive did, picked at random from six new verses

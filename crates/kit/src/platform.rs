@@ -27,6 +27,7 @@ use smithay_client_toolkit::{
         calloop::{
             EventLoop, LoopHandle,
             channel::{self, Channel},
+            timer::{TimeoutAction, Timer},
         },
         calloop_wayland_source::WaylandSource,
         client::{
@@ -795,6 +796,7 @@ impl Kit {
                         }
                     }
                     Request::Copy(text) => self.set_clipboard(text),
+                    Request::CopySecret(text, after) => self.set_secret_clipboard(text, after),
                     Request::CopyData(clip) => self.set_clipboard_data(clip),
                     Request::Paste(id) => {
                         if let Some(wl) = self.surface_mut(id).map(|s| s.wl.clone()) {
@@ -1028,6 +1030,30 @@ impl Kit {
         let text: Arc<[u8]> = text.into_bytes().into();
         let types = ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING", "STRING", "TEXT"];
         self.set_clipboard_data(types.iter().map(|t| (t.to_string(), text.clone())).collect());
+    }
+
+    /// Text plus the hint KDE's and other clipboard managers honour, then
+    /// a timer that withdraws it if it is still ours.
+    fn set_secret_clipboard(&mut self, text: String, after: Duration) {
+        let text: Arc<[u8]> = text.into_bytes().into();
+        let mut clip: Clip = ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING", "STRING", "TEXT"]
+            .iter()
+            .map(|t| (t.to_string(), text.clone()))
+            .collect();
+        clip.push(("x-kde-passwordManagerHint".into(), Arc::from(&b"secret"[..])));
+        self.set_clipboard_data(clip);
+        let Some(source) = self.clipboard.as_ref().map(|(s, _)| s.inner().clone()) else { return };
+        let timer = Timer::from_duration(after);
+        let _ = self.loop_handle.insert_source(timer, move |_, _, kit: &mut Kit| {
+            if kit.clipboard.as_ref().is_some_and(|(s, _)| *s.inner() == source) {
+                if let Some(dev) = &kit.data_device {
+                    dev.unset_selection(kit.last_serial);
+                }
+                kit.clipboard = None;
+                let _ = kit.conn.flush();
+            }
+            TimeoutAction::Drop
+        });
     }
 
     fn set_clipboard_data(&mut self, clip: Clip) {

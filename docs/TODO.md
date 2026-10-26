@@ -70,8 +70,11 @@ as they land (with the commit), add new ones as they come up.
   canvas), audio/video in pages (Servo media without gstreamer),
   permission prompts, a colour picker for `<input type=color>`, password
   manager integration.
-- Password manager: Rust 1Password SDK, passkeys, Touch ID through
-  fprintd natively, browser integration.
+- Password manager: ~~Rust 1Password SDK~~ (desktop-app integration;
+  fake server for tests), ~~Passwords app~~ (browse, copy, edit, create,
+  archive/delete, generator, lock with ~~Touch ID through fprintd~~ or
+  password); still to do: browser integration (autofill and save in
+  NetPositive), passkeys.
 - Viewer: ~~image zoom/pan~~ (full resolution up to the texture limit,
   View menu, pinch/⌘-scroll/double-click, drag and scroll to pan; halved
   levels for smooth fitting); ~~video playback (frames + audio)~~ (H.264 in mp4/Matroska, AV1 in

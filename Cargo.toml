@@ -16,6 +16,7 @@ tabula-theme = { path = "crates/theme" }
 tabula-preview = { path = "crates/preview" }
 tabula-xdg = { path = "crates/xdg" }
 tabula-system = { path = "crates/system" }
+tabula-onepassword = { path = "crates/onepassword" }
 tabula-screensavers = { path = "crates/screensavers" }
 tabula-hvif = { path = "crates/hvif" }
 tabula-emoji = { path = "crates/emoji" }

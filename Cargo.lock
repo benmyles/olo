@@ -10433,6 +10433,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabula-passwords"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "tabula-kit",
+ "tabula-onepassword",
+ "tabula-system",
+ "tabula-theme",
+ "tabula-xdg",
+ "tracing",
+ "url",
+ "zeroize",
+]
+
+[[package]]
 name = "tabula-polkit-agent"
 version = "0.1.0"
 dependencies = [

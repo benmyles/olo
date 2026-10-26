@@ -59,3 +59,11 @@ pdf|a single sheet of white paper with the top right corner folded over, faint g
 presentation|a small wooden easel holding a white presentation board that shows a pie chart in blue, red and yellow
 spreadsheet|a white sheet of paper printed with a green grid of table cells, with a small bar chart of green and blue bars standing in front of its lower right corner
 word-document|a white sheet of paper with grey lines of text and a small blue picture block set into the text, a red bookmark ribbon hanging from its top edge
+passwords|a small chunky steel safe in dark charcoal grey with a round silver combination dial and handle, with a golden key standing in front of it at the lower right
+vault|a small chunky steel safe in dark charcoal grey with a round silver combination dial and a short silver handle, its door closed
+key|a single golden key lying diagonally on the desk, with a round bow and simple chunky teeth
+credit-card|a Be blue plastic payment card standing slightly tilted on its long edge, with a small gold chip and a dark stripe along its back edge
+secure-note|a square yellow sticky note pad with faint grey lines, with a small silver padlock in front of it at the lower right
+id-card|an identity card in light grey plastic standing slightly tilted, with a small blue portrait square and a few grey lines beside it
+bank|a small classical bank building in cream stone with four columns and a triangular pediment, on a stepped base
+database|a stack of three silver database cylinders with Be blue bands around each one

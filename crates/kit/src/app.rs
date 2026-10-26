@@ -187,6 +187,7 @@ pub(crate) enum Request {
     RedrawAll,
     Activate(WindowId),
     Copy(String),
+    CopySecret(String, std::time::Duration),
     CopyData(Clip),
     Paste(WindowId),
     LockSession,
@@ -332,6 +333,12 @@ impl Cx {
     /// Put text on the clipboard.
     pub fn copy(&mut self, text: impl Into<String>) {
         self.requests.push(Request::Copy(text.into()));
+    }
+    /// Put a secret (a password, a one-time code) on the clipboard: it is
+    /// marked for clipboard managers to leave alone, and taken off again
+    /// after `clear_after` unless something else was copied meanwhile.
+    pub fn copy_secret(&mut self, text: impl Into<String>, clear_after: std::time::Duration) {
+        self.requests.push(Request::CopySecret(text.into(), clear_after));
     }
     /// Deliver the clipboard's text to `window` as an `egui::Event::Paste`
     /// (for menu Paste; ⌘V arrives that way by itself).
