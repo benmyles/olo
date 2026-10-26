@@ -9,6 +9,7 @@ mod engine;
 mod input;
 mod location;
 mod logins;
+mod passkeys;
 
 use std::{
     collections::BTreeMap,
@@ -19,6 +20,7 @@ use engine::{Engine, Event, Surface, Wake};
 use euclid::Scale;
 use input::{Pointer, Viewport};
 use logins::{Answer, Offer, OfferKind, Purpose};
+use passkeys::{Ask, AskKind, PageRequest};
 use serde::{Deserialize, Serialize};
 use servo::{
     AuthenticationRequest, ContextMenu, ContextMenuAction, ContextMenuItem, Cursor, EmbedderControl, FilePicker,
@@ -34,7 +36,7 @@ use tabula_kit::{
     menu::{self, MenuAnchor, MenuRequest},
     metrics as m,
     style::{self, c, shade},
-    widgets::{self, Button, TextControl},
+    widgets::{self, Button, MenuField, TextControl},
 };
 use url::Url;
 
@@ -45,8 +47,9 @@ const TAB_HEIGHT: f32 = widgets::TAB_HEIGHT;
 const TAB_MAX: f32 = 220.0;
 /// Toolbar buttons are square.
 const TOOL: f32 = m::CONTROL_HEIGHT + m::TIGHT;
-/// The bar offering to save a login.
+/// The bars offering to save a login or asking about a passkey.
 const OFFER_HEIGHT: f32 = m::CONTROL_HEIGHT + 2.0 * m::SPACING;
+const PASSKEY_CHOICE_WIDTH: f32 = 180.0;
 const HISTORY_MAX: usize = 1000;
 const ZOOMS: [f32; 13] = [0.3, 0.5, 0.67, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
 
@@ -101,6 +104,8 @@ struct Tab {
     zoom: f32,
     /// A login just used here, offered for saving (the bar under the toolbar).
     offer: Option<Offer>,
+    /// The page's passkey request, asked about in a bar.
+    passkey: Option<Ask>,
 }
 
 impl Tab {
@@ -116,6 +121,7 @@ impl Tab {
             cursor: Cursor::Default,
             zoom: 1.0,
             offer: None,
+            passkey: None,
         }
     }
 
@@ -455,6 +461,7 @@ impl NetPositive {
                     };
                     logins::ask(self.proxy.clone(), win, view, url, Purpose::Check(Box::new(offer)), request, false);
                 }
+                Event::Passkey(request) => self.passkey_request(cx, win, i, request),
                 Event::Filled(result) => {
                     let Some(b) = self.browser(win) else { continue };
                     match result.as_str() {
@@ -495,6 +502,10 @@ impl NetPositive {
                         Event::Title(title) => tab.title = title.unwrap_or_default(),
                         Event::Status(status) => tab.status = status,
                         Event::Load(status) => {
+                            if status == LoadStatus::Started {
+                                // The page asking is gone.
+                                tab.passkey = None;
+                            }
                             if status == LoadStatus::Complete {
                                 visited = Some((tab.url.clone(), tab.title.clone()));
                             }
@@ -711,6 +722,18 @@ impl NetPositive {
                 logins::ask(self.proxy.clone(), win, view, url, Purpose::Save, request, true);
                 cx.redraw(win);
             }
+            "passkey-ok" => self.passkey_confirm(cx, win),
+            "passkey-cancel" => {
+                let token = self.engine.token.clone();
+                if let Some(b) = self.browser(win)
+                    && let Some(tab) = b.tabs.get_mut(b.active)
+                    && let Some(ask) = tab.passkey.take()
+                    && let Some(view) = &tab.view
+                {
+                    passkeys::settle(view, &token, ask.id, Err(("NotAllowedError", "The request was cancelled.")));
+                }
+                cx.redraw(win);
+            }
             "dismiss-login" => {
                 if let Some(b) = self.browser(win)
                     && let Some(tab) = b.tabs.get_mut(b.active)
@@ -888,55 +911,44 @@ impl NetPositive {
             top = strip.bottom();
         }
 
-        // Offer to save a login just used.
-        if let Some(offer) = b.tabs.get(b.active).and_then(|t| t.offer.as_ref()) {
-            let bar = Rect::from_min_size(pos2(full.left(), top), vec2(full.width(), OFFER_HEIGHT));
-            painter.rect_filled(bar, 0.0, shade(&p, p.panel_background, 1.06));
-            style::hline(&painter, bar.left(), bar.right(), bar.bottom() - 1.0, shade(&p, p.panel_background, 1.3));
-            icons::paint(
-                &painter,
-                Rect::from_center_size(pos2(bar.left() + m::SPACING + 8.0, bar.center().y), vec2(16.0, 16.0)),
-                "key",
-            );
-            let mut right = bar.right() - m::SPACING;
-            let mut button = |ui: &mut egui::Ui, label: &str, enabled: bool| {
-                let w = style::label_width(ui.ctx(), label, style::plain_font())
-                    .max(m::BUTTON_MIN_WIDTH - 2.0 * m::CONTROL_PAD)
-                    + 2.0 * m::CONTROL_PAD;
-                let r = Rect::from_min_size(
-                    pos2(right - w, bar.center().y - m::CONTROL_HEIGHT / 2.0),
-                    vec2(w, m::CONTROL_HEIGHT),
-                );
-                right -= w + m::SPACING;
-                ui.add_enabled_ui(enabled, |ui| ui.put(r, Button::new(label))).inner.clicked()
-            };
-            let save = match (&offer.kind, offer.busy) {
-                (_, true) => "Saving…",
-                (OfferKind::New, _) => "Save",
-                (OfferKind::Update { .. }, _) => "Update",
-            };
-            if button(ui, save, !offer.busy) {
-                commands.push("save-login".into());
+        // Bars asking about the page's passkey request and a login just used.
+        if let Some(tab) = b.tabs.get_mut(b.active) {
+            if let Some(ask) = &mut tab.passkey {
+                let busy = ask.busy;
+                let (text, error) = match &ask.error {
+                    Some(e) => (e.clone(), true),
+                    None => (ask.message(), false),
+                };
+                let cancel = ("Cancel", true, "passkey-cancel");
+                let (buttons, choice) = match &mut ask.kind {
+                    AskKind::Create { .. } => (vec![(if busy { "Saving…" } else { "Save Passkey" }, !busy, "passkey-ok"), cancel], None),
+                    AskKind::Get { passkeys: None, .. } => (vec![cancel], None),
+                    AskKind::Get { passkeys: Some(list), .. } if list.is_empty() => (vec![("OK", true, "passkey-cancel")], None),
+                    AskKind::Get { passkeys: Some(list), chosen, .. } => {
+                        let labels: Vec<String> = list.iter().map(passkeys::label).collect();
+                        let sign_in = (if busy { "Signing In…" } else { "Sign In" }, !busy, "passkey-ok");
+                        (vec![sign_in, cancel], (labels.len() > 1).then_some((chosen, labels)))
+                    }
+                };
+                let bar = Rect::from_min_size(pos2(full.left(), top), vec2(full.width(), OFFER_HEIGHT));
+                notice(ui, &painter, bar, Notice { text, error, choice, buttons }, &mut commands);
+                top = bar.bottom();
             }
-            if button(ui, "Not Now", true) {
-                commands.push("dismiss-login".into());
+            if let Some(offer) = &tab.offer {
+                let save = match (&offer.kind, offer.busy) {
+                    (_, true) => "Saving…",
+                    (OfferKind::New, _) => "Save",
+                    (OfferKind::Update { .. }, _) => "Update",
+                };
+                let (text, error) = match &offer.error {
+                    Some(e) => (e.clone(), true),
+                    None => (offer.message(), false),
+                };
+                let buttons = vec![(save, !offer.busy, "save-login"), ("Not Now", true, "dismiss-login")];
+                let bar = Rect::from_min_size(pos2(full.left(), top), vec2(full.width(), OFFER_HEIGHT));
+                notice(ui, &painter, bar, Notice { text, error, choice: None, buttons }, &mut commands);
+                top = bar.bottom();
             }
-            let (text, color) = match &offer.error {
-                Some(e) => (e.clone(), c(p.failure)),
-                None => (offer.message(), c(p.panel_text)),
-            };
-            let clip =
-                Rect::from_min_max(pos2(bar.left() + m::SPACING * 2.0 + 16.0, bar.top()), pos2(right, bar.bottom()));
-            style::label(
-                &painter.with_clip_rect(clip),
-                clip.left(),
-                bar.center().y,
-                Align::Min,
-                text,
-                style::plain_font(),
-                color,
-            );
-            top = bar.bottom();
         }
 
         // Status line.
@@ -1239,6 +1251,47 @@ fn show_active(b: &mut Browser) {
 
 /// The tab strip: BeOS tabs side by side, the selected one open into the
 /// page, each with a close box; middle-click closes too.
+/// What a bar under the toolbar says and offers.
+struct Notice<'a> {
+    text: String,
+    /// `text` is an error.
+    error: bool,
+    /// A pop-up of choices left of the buttons.
+    choice: Option<(&'a mut usize, Vec<String>)>,
+    /// (label, enabled, command), from the right: the default first.
+    buttons: Vec<(&'a str, bool, &'a str)>,
+}
+
+/// A bar under the toolbar asking about a login or passkey: the key, the
+/// message, and its controls. Clicks push their commands.
+fn notice(ui: &mut egui::Ui, painter: &egui::Painter, bar: Rect, n: Notice, commands: &mut Vec<String>) {
+    let p = style::palette(ui.ctx());
+    painter.rect_filled(bar, 0.0, shade(&p, p.panel_background, 1.06));
+    style::hline(painter, bar.left(), bar.right(), bar.bottom() - 1.0, shade(&p, p.panel_background, 1.3));
+    icons::paint(painter, Rect::from_center_size(pos2(bar.left() + m::SPACING + 8.0, bar.center().y), vec2(16.0, 16.0)), "key");
+    let mut right = bar.right() - m::SPACING;
+    let mut slot = |w: f32| {
+        let r = Rect::from_min_size(pos2(right - w, bar.center().y - m::CONTROL_HEIGHT / 2.0), vec2(w, m::CONTROL_HEIGHT));
+        right -= w + m::SPACING;
+        r
+    };
+    for (label, enabled, command) in n.buttons {
+        let w = style::label_width(ui.ctx(), label, style::plain_font()).max(m::BUTTON_MIN_WIDTH - 2.0 * m::CONTROL_PAD) + 2.0 * m::CONTROL_PAD;
+        let r = slot(w);
+        if ui.add_enabled_ui(enabled, |ui| ui.put(r, Button::new(label))).inner.clicked() {
+            commands.push(command.into());
+        }
+    }
+    if let Some((chosen, labels)) = n.choice {
+        let options: Vec<&str> = labels.iter().map(String::as_str).collect();
+        let r = slot(PASSKEY_CHOICE_WIDTH);
+        ui.put(r, MenuField::new("passkey-choice", chosen, &options).width(PASSKEY_CHOICE_WIDTH));
+    }
+    let color = if n.error { c(p.failure) } else { c(p.panel_text) };
+    let clip = Rect::from_min_max(pos2(bar.left() + m::SPACING * 2.0 + 16.0, bar.top()), pos2(right, bar.bottom()));
+    style::label(&painter.with_clip_rect(clip), clip.left(), bar.center().y, Align::Min, n.text, style::plain_font(), color);
+}
+
 fn tab_strip(ui: &mut egui::Ui, strip: Rect, b: &Browser) -> Option<String> {
     let p = style::palette(ui.ctx());
     let painter = ui.painter().clone();
@@ -1563,6 +1616,17 @@ fn default_size(cx: &Cx) -> (u32, u32) {
     (1024.min(sw * 9 / 10), 768.min(sh * 8 / 10))
 }
 
+/// What to say when Passwords didn't give what was asked.
+fn trouble(result: &Result<Response, String>) -> String {
+    match result {
+        Ok(Response::Error { message }) => message.clone(),
+        Ok(Response::NotSetUp) => "Passwords isn’t set up yet.".into(),
+        Ok(Response::Locked) => "Passwords is locked.".into(),
+        Err(e) => e.clone(),
+        Ok(_) => "Passwords answered oddly.".into(),
+    }
+}
+
 fn menu_label(b: &Bookmark) -> String {
     truncate(if b.title.is_empty() { &b.url } else { &b.title }, 60)
 }
@@ -1585,10 +1649,98 @@ impl NetPositive {
         logins::ask(self.proxy.clone(), win, view, url.clone(), purpose, request(url), true);
     }
 
+    /// The page in tab `i` asks for a passkey: check the relying party,
+    /// then ask in a bar (a sign-in first finds the page's passkeys).
+    fn passkey_request(&mut self, cx: &mut Cx, win: WindowId, i: usize, request: PageRequest) {
+        let token = self.engine.token.clone();
+        let proxy = self.proxy.clone();
+        let Some(b) = self.browser(win) else { return };
+        let tab = &mut b.tabs[i];
+        let Some(view) = tab.view.clone() else { return };
+        let (id, requested, challenge, kind) = match request {
+            PageRequest::Cancel { id } => {
+                if tab.passkey.as_ref().is_some_and(|a| a.id == id) {
+                    tab.passkey = None;
+                    cx.redraw(win);
+                }
+                return;
+            }
+            PageRequest::Create { id, rp, user, challenge, exclude } => {
+                let kind = AskKind::Create {
+                    rp_name: rp.name,
+                    user_id: user.id,
+                    user_name: user.name,
+                    display_name: user.display_name,
+                    exclude,
+                };
+                (id, rp.id, challenge, kind)
+            }
+            PageRequest::Get { id, rp_id, challenge, allow } => (id, rp_id, challenge, AskKind::Get { allow, passkeys: None, chosen: 0 }),
+        };
+        if tab.passkey.is_some() {
+            return passkeys::settle(&view, &token, id, Err(("NotAllowedError", "Another passkey request is open.")));
+        }
+        let rp_id = match passkeys::rp_id(requested.as_deref(), &tab.url) {
+            Ok(rp_id) => rp_id,
+            Err(e) => {
+                passkeys::settle(&view, &token, id, Err(("SecurityError", &e)));
+                tab.status = Some(e);
+                return cx.redraw(win);
+            }
+        };
+        let url = tab.url.clone();
+        if let AskKind::Get { allow, .. } = &kind {
+            let request = Request::Passkeys { url: url.clone(), rp_id: rp_id.clone(), allow: allow.clone() };
+            logins::ask(proxy, win, view.id(), url.clone(), Purpose::Passkeys(id), request, true);
+        }
+        tab.passkey = Some(Ask { id, url, rp_id, challenge, kind, busy: false, error: None });
+        cx.redraw(win);
+    }
+
+    /// Save Passkey or Sign In: have Passwords make or use the key.
+    fn passkey_confirm(&mut self, cx: &mut Cx, win: WindowId) {
+        let proxy = self.proxy.clone();
+        let Some(b) = self.browser(win) else { return };
+        let Some(tab) = b.tabs.get_mut(b.active) else { return };
+        let (Some(ask), Some(view)) = (&mut tab.passkey, &tab.view) else { return };
+        let (purpose, request) = match &ask.kind {
+            AskKind::Create { rp_name, user_id, user_name, display_name, exclude } => (
+                Purpose::PasskeyCreate(ask.id),
+                Request::PasskeyCreate {
+                    url: ask.url.clone(),
+                    rp_id: ask.rp_id.clone(),
+                    rp_name: rp_name.clone(),
+                    user_id: user_id.clone(),
+                    user_name: user_name.clone(),
+                    display_name: display_name.clone(),
+                    exclude: exclude.clone(),
+                },
+            ),
+            AskKind::Get { passkeys: Some(list), chosen, .. } => {
+                let Some(p) = list.get(*chosen) else { return };
+                let data = passkeys::client_data("webauthn.get", &ask.challenge, &ask.url);
+                let request = Request::PasskeySign {
+                    url: ask.url.clone(),
+                    rp_id: ask.rp_id.clone(),
+                    vault: p.vault.clone(),
+                    id: p.id.clone(),
+                    client_data_hash: passkeys::hash(&data),
+                };
+                (Purpose::PasskeySign(ask.id, data), request)
+            }
+            AskKind::Get { .. } => return,
+        };
+        ask.busy = true;
+        ask.error = None;
+        logins::ask(proxy, win, view.id(), ask.url.clone(), purpose, request, true);
+        cx.redraw(win);
+    }
+
     /// Passwords answered.
     fn answer(&mut self, cx: &mut Cx, answer: Answer) {
         let Answer { win, view, url, purpose, result, waited } = answer;
         let events = self.engine.events.clone();
+        let token = self.engine.token.clone();
         let Some((_, i)) = self.find(view).filter(|(w, _)| *w == win) else { return };
         let Some(b) = self.browser(win) else { return };
         let host = tabula_keychain::host(&url).unwrap_or_else(|| "this site".into());
@@ -1665,6 +1817,67 @@ impl NetPositive {
                     _ => OfferKind::New,
                 };
                 b.tabs[i].offer = Some(*offer);
+            }
+            Purpose::Passkeys(id) => {
+                let Some(ask) = b.tabs[i].passkey.as_mut().filter(|a| a.id == id) else { return };
+                match &result {
+                    Ok(Response::Passkeys { passkeys }) => {
+                        if let AskKind::Get { passkeys: list, .. } = &mut ask.kind {
+                            *list = Some(passkeys.clone());
+                        }
+                    }
+                    other => ask.error = Some(trouble(other)),
+                }
+                if waited {
+                    cx.activate(win);
+                }
+            }
+            Purpose::PasskeyCreate(id) | Purpose::PasskeySign(id, _) => {
+                let tab = &mut b.tabs[i];
+                let Some(ask) = tab.passkey.as_mut().filter(|a| a.id == id) else { return };
+                let Some(view) = tab.view.clone() else { return };
+                let settled = match (&result, &purpose) {
+                    (
+                        Ok(Response::PasskeyCreated { title, credential_id, attestation_object, authenticator_data, public_key }),
+                        _,
+                    ) => {
+                        let value = serde_json::json!({
+                            "id": credential_id,
+                            "clientDataJSON": passkeys::client_data("webauthn.create", &ask.challenge, &ask.url),
+                            "attestationObject": attestation_object,
+                            "authenticatorData": authenticator_data,
+                            "publicKey": public_key,
+                        });
+                        Some((Ok(value), format!("Saved the passkey in “{title}” in Passwords.")))
+                    }
+                    (Ok(Response::Assertion { credential_id, authenticator_data, signature, user_handle }), Purpose::PasskeySign(_, data)) => {
+                        let value = serde_json::json!({
+                            "id": credential_id,
+                            "clientDataJSON": data,
+                            "authenticatorData": authenticator_data,
+                            "signature": signature,
+                            "userHandle": user_handle,
+                        });
+                        Some((Ok(value), "Signed in with a passkey from Passwords.".to_string()))
+                    }
+                    (Ok(Response::PasskeyExists), _) => Some((
+                        Err(("InvalidStateError", "A passkey for this account is already saved.")),
+                        "Passwords already has a passkey for this account.".to_string(),
+                    )),
+                    (other, _) => {
+                        ask.busy = false;
+                        ask.error = Some(trouble(other));
+                        None
+                    }
+                };
+                if let Some((value, status)) = settled {
+                    passkeys::settle(&view, &token, id, value);
+                    tab.passkey = None;
+                    tab.status = Some(status);
+                }
+                if waited {
+                    cx.activate(win);
+                }
             }
             Purpose::Save => {
                 let tab = &mut b.tabs[i];

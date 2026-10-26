@@ -24,6 +24,11 @@ pub enum Purpose {
     Save,
     /// Unlock, then show the menu.
     Unlock,
+    /// The passkeys for the page's passkey request (its number).
+    Passkeys(u64),
+    PasskeyCreate(u64),
+    /// Signing for the request, over this client data.
+    PasskeySign(u64, String),
 }
 
 /// Passwords answered (or couldn't be reached).
@@ -67,7 +72,7 @@ pub fn ask(proxy: Proxy, win: WindowId, view: WebViewId, url: String, purpose: P
                     result = tabula_keychain::call(&request);
                 }
             }
-            if matches!(request, Request::Unlock | Request::Fill { .. } | Request::Save { .. }) {
+            if !matches!(request, Request::Logins { .. } | Request::Check { .. }) {
                 waited = true;
             }
             let result = result.map_err(|e| e.to_string());

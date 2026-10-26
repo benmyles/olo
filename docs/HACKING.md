@@ -860,3 +860,22 @@ Passwords already knows it, a bar offers Save (or Update).
 Testing: serve a form on localhost (the fake's "Tabula Test Site" login is
 for `http://localhost`), and start NetPositive with the same variables as
 Passwords so the copy it starts uses the fake.
+
+**Passkeys** (`apps/browser/src/passkeys.rs`, `apps/passwords/src/passkey.rs`).
+A second user script gives top-level secure pages WebAuthn: its own
+`navigator.credentials` (`create`/`get` with `publicKey`; `store` and
+conditional mediation aren't offered) and `PublicKeyCredential` with the
+response classes, `toJSON` and the `parse…FromJSON` helpers. Requests reach
+NetPositive like captured logins (marker + token); answers go back by
+`evaluate_javascript` calling a function named with the token. NetPositive
+checks the relying party (the page's host, or a registrable domain above
+it, via `servo::is_reg_domain`), asks in a bar (Save Passkey; Sign In with
+a pop-up when there are several), builds the client data and sends its
+hash. Passwords checks the relying party against the page again, makes
+P-256 keys from the system's random source, keeps each in a login item's
+"Passkey" section (credential ID, relying party, user handle and name, the
+key concealed: replacing the same account's passkey, joining the login with
+that username, or a new login), and signs `authenticatorData ‖ hash`.
+Attestation is "none" with a zero AAGUID; flags are UP, UV (Passwords is
+unlocked), BE and BS; the counter stays 0. 1Password syncs the section but
+its own apps don't treat it as a passkey. Only ES256; no iframes.

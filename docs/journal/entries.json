@@ -574,5 +574,29 @@
   "title": "NetPositive: offer to update a login",
   "caption": "After a sign-in with a changed password, NetPositive offers to update the login in Passwords; a new one gets Save.",
   "image": "2026-10-26/075423-netpositive-offer-to-update-a-login.png"
+ },
+ {
+  "time": "2026-10-26T08:12:25",
+  "title": "NetPositive: save a passkey",
+  "caption": "A page's navigator.credentials.create() asks in a bar; Passwords makes and keeps the key.",
+  "image": "2026-10-26/081225-netpositive-save-a-passkey.png"
+ },
+ {
+  "time": "2026-10-26T08:12:51",
+  "title": "NetPositive: sign in with a passkey",
+  "caption": "navigator.credentials.get() finds the site's passkeys in Passwords and asks before Passwords signs.",
+  "image": "2026-10-26/081251-netpositive-sign-in-with-a-passkey.png"
+ },
+ {
+  "time": "2026-10-26T08:13:58",
+  "title": "NetPositive: choosing a passkey",
+  "caption": "With several passkeys for the site, the bar has a pop-up to choose the account.",
+  "image": "2026-10-26/081358-netpositive-choosing-a-passkey.png"
+ },
+ {
+  "time": "2026-10-26T08:14:20",
+  "title": "Passwords: a passkey in a login",
+  "caption": "Passkeys live in a Passkey section of a 1Password login: credential ID, relying party, user, and the concealed P-256 key.",
+  "image": "2026-10-26/081420-passwords-a-passkey-in-a-login.png"
  }
 ]

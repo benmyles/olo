@@ -4,6 +4,7 @@
 mod edit;
 mod generator;
 mod lock;
+mod passkey;
 mod store;
 mod view;
 
@@ -245,12 +246,12 @@ impl Passwords {
         }
     }
 
-    /// Another app asks (NetPositive, for a page's logins).
+    /// Another app asks (NetPositive, for a page's logins or passkeys).
     fn keychain(&mut self, cx: &mut Cx, incoming: Incoming) {
         if self.settings.account.is_none() {
             return incoming.reply(Response::NotSetUp);
         }
-        let waits = matches!(incoming.request, Request::Fill { .. } | Request::Save { .. } | Request::Unlock);
+        let waits = !matches!(incoming.request, Request::Logins { .. } | Request::Check { .. });
         if self.lock.locked {
             if !waits {
                 return incoming.reply(Response::Locked);
@@ -267,16 +268,22 @@ impl Passwords {
             self.waiting.push(incoming);
             return;
         }
-        let url = match &incoming.request {
+        // The items the request may concern, by their websites.
+        let fits: Box<dyn Fn(&onepassword::Website) -> bool> = match &incoming.request {
             Request::Unlock => return incoming.reply(Response::Unlocked),
             Request::Logins { url } | Request::Fill { url, .. } | Request::Check { url, .. } | Request::Save { url, .. } => {
-                url.clone()
+                let url = url.clone();
+                Box::new(move |w| store::fits(w, &url))
+            }
+            Request::Passkeys { rp_id, .. } | Request::PasskeyCreate { rp_id, .. } | Request::PasskeySign { rp_id, .. } => {
+                let rp_id = rp_id.clone();
+                Box::new(move |w| passkey::near(&w.url, &rp_id))
             }
         };
         let candidates: Vec<(String, String)> = self
             .items
             .iter()
-            .filter(|i| i.state == ItemState::Active && i.websites.iter().any(|w| store::fits(w, &url)))
+            .filter(|i| i.state == ItemState::Active && i.websites.iter().any(&fits))
             .map(|i| (i.vault_id.clone(), i.id.clone()))
             .collect();
         let vault = self

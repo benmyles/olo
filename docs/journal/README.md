@@ -5,6 +5,30 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Passwords: a passkey in a login
+
+*08:14* — Passkeys live in a Passkey section of a 1Password login: credential ID, relying party, user, and the concealed P-256 key.
+
+![Passwords: a passkey in a login](2026-10-26/081420-passwords-a-passkey-in-a-login.png)
+
+### NetPositive: choosing a passkey
+
+*08:13* — With several passkeys for the site, the bar has a pop-up to choose the account.
+
+![NetPositive: choosing a passkey](2026-10-26/081358-netpositive-choosing-a-passkey.png)
+
+### NetPositive: sign in with a passkey
+
+*08:12* — navigator.credentials.get() finds the site's passkeys in Passwords and asks before Passwords signs.
+
+![NetPositive: sign in with a passkey](2026-10-26/081251-netpositive-sign-in-with-a-passkey.png)
+
+### NetPositive: save a passkey
+
+*08:12* — A page's navigator.credentials.create() asks in a bar; Passwords makes and keeps the key.
+
+![NetPositive: save a passkey](2026-10-26/081225-netpositive-save-a-passkey.png)
+
 ### NetPositive: offer to update a login
 
 *07:54* — After a sign-in with a changed password, NetPositive offers to update the login in Passwords; a new one gets Save.

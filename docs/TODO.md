@@ -74,7 +74,8 @@ as they land (with the commit), add new ones as they come up.
   fake server for tests), ~~Passwords app~~ (browse, copy, edit, create,
   archive/delete, generator, lock with ~~Touch ID through fprintd~~ or
   password), ~~browser integration~~ (NetPositive fills from the key
-  button and offers to save logins used); still to do: passkeys.
+  button and offers to save logins used), ~~passkeys~~ (WebAuthn in
+  NetPositive, keys made and kept by Passwords in 1Password items).
 - Viewer: ~~image zoom/pan~~ (full resolution up to the texture limit,
   View menu, pinch/⌘-scroll/double-click, drag and scroll to pan; halved
   levels for smooth fitting); ~~video playback (frames + audio)~~ (H.264 in mp4/Matroska, AV1 in

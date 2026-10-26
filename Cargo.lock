@@ -10309,6 +10309,7 @@ dependencies = [
 name = "tabula-browser"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "dpi",
  "euclid",
  "keyboard-types",
@@ -10319,6 +10320,7 @@ dependencies = [
  "serde",
  "serde_json",
  "servo",
+ "sha2 0.11.1",
  "tabula-keychain",
  "tabula-kit",
  "tabula-xdg",
@@ -10451,9 +10453,13 @@ dependencies = [
 name = "tabula-passwords"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
+ "getrandom 0.3.4",
+ "p256",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "tabula-keychain",
  "tabula-kit",
  "tabula-onepassword",
