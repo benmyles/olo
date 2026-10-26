@@ -5,6 +5,30 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Alerts get their icons
+
+*01:31* — The warning, stop, info and idea alert icons were missing from the set (every alert drew none); generated against the reference set.
+
+![Alerts get their icons](2026-10-26/013135-alerts-get-their-icons.png)
+
+### StyledEdit in dark mode after a reload
+
+*01:31* — Unsaved text and styles came back after app_server reloaded and the app re-executed; default text follows the theme, explicit colours stay.
+
+![StyledEdit in dark mode after a reload](2026-10-26/013135-stylededit-in-dark-mode-after-a-reload.png)
+
+### StyledEdit: selection keeps its colours
+
+*01:31* — egui paints selected text in one colour; StyledEdit draws the selected glyphs again over the highlight in their own colours.
+
+![StyledEdit: selection keeps its colours](2026-10-26/013135-stylededit-selection-keeps-its-colours.png)
+
+### StyledEdit: fonts, sizes and colours
+
+*01:31* — StyledEdit with a bold red word and a 24 pt Comfortaa word in the system font's line; styles live in the file's user.tabula.styles attribute, the text stays plain.
+
+![StyledEdit: fonts, sizes and colours](2026-10-26/013135-stylededit-fonts-sizes-and-colours.png)
+
 ### DeskCalc scientific (dark)
 
 *01:02* — Haiku's scientific rows above R5's keys; options in the context menu.

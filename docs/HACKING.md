@@ -173,7 +173,19 @@ None if unset or missing).
 
 Menus: `Menu::new("File").item(label, command, Some(Key::N))`,
 `.item_shift(…)`, `.separator()`, `.submenu(Menu)`, `.checked(bool)`,
-`.enabled(bool)`. Popups are real `xdg_popup`s drawn by the kit.
+`.enabled(bool)`. Popups are real `xdg_popup`s drawn by the kit. Menus
+don't scroll, so split long lists into submenus (StyledEdit's font
+families). ⌘H/⌘K/⌘U/⌘W never reach a focused text field as egui's emacs
+deletions: the kit holds them back from `ui` and hands them to the menus
+(windows with `raw_keys` get them as usual). While a menu is open the
+window hasn't the keyboard and egui collapses a text field's selection;
+keep your own copy if a menu command acts on it (StyledEdit's `blurred`).
+app_server hands the keyboard back to the window as soon as its last
+popup is destroyed.
+
+Alerts: `widgets::alert(ui, icon, message, buttons)` in a window
+`widgets::ALERT_WIDTH` × `widgets::alert_height(message)`; icons are
+BeOS's `warning`, `stop`, `info` and `idea`.
 
 ### Look and feel rules
 
@@ -401,6 +413,38 @@ calculator (lexer, recursive descent, `format` for 15 significant digits)
 and is unit-tested; keep new functions in `FUNCTIONS` and on the keypad
 together. After =, a digit starts afresh and an operator carries on.
 Settings, the last expression and history are in `deskcalc.json`.
+
+## StyledEdit (apps/styled-edit)
+
+Plain text files with styles, as on BeOS: the text is the file; fonts,
+sizes, colours, bold/italic/underline/strikeout (runs of byte lengths,
+JSON) go in the `user.tabula.styles` attribute, alignment and wrapping in
+`user.tabula.alignment` / `user.tabula.wrap`, so other programs see plain
+text. Styles that no longer fit the text (edited elsewhere) are dropped.
+Non-UTF-8 files open as Latin-1 and save as UTF-8 (the status line says
+so); unwritable files are read-only (selectable, not editable). Saving
+writes `.NAME.saving` beside the file, copies its permissions and renames
+it over the original, on a thread.
+
+`doc.rs` is the model and is unit-tested. The `TextEdit` edits a plain
+`String`; its layouter calls `Doc::sync`, which diffs the new text against
+the old (common prefix and suffix on char boundaries) and moves the runs:
+inserted text takes the pending typing style, the style of what it
+replaced, or the style before it, and pasting what was copied here brings
+its styles back. Undo is our own (snapshots, typing and deleting coalesced
+within 2 s); ⌘Z/⌘⇧Z/⌘Y are consumed before the field sees them. Replace
+All splices each match so the styles between them survive. egui paints
+selected text in one colour, so the selected glyphs are drawn again over
+the highlight in their own colours (`selected_glyphs`).
+
+`fonts.rs` owns a font database on a worker thread: it lists families for
+the Font menu (in submenus titled like a dictionary's guide words) and
+loads a face the first time a style names it, registering it as
+`se:Family:R|B|I|BI` with `style::add_document_font`; until then the UI
+font stands in. Find and Replace are Haiku's windows (case, wrap-around,
+backwards, replace all), shared by every document; ⌘G finds again, ⌘H
+finds the selection, ⌘T replaces the same. `save_state` keeps every
+window, with unsaved text and styles, through a reload.
 
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 

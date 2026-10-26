@@ -43,7 +43,9 @@ as they land (with the commit), add new ones as they come up.
   ID; Restart Tabula; a Choose… file panel for the
   wallpaper; Display mode switching (app_server ignores `mode` in
   ConfigureOutput so far) and drag-to-arrange.
-- StyledEdit.
+- ~~**StyledEdit**~~: styled text in attributes beside plain text, Font /
+  Document menus, Find / Replace windows, own undo, atomic saves, reload
+  keeps unsaved work.
 - ~~**DeskCalc**~~: R5's keypad, Haiku's scientific rows or none; typed
   or clicked expressions (own evaluator: functions, π/e, implicit ×,
   degrees/radians), history on ↑/↓, keys flash as you type.

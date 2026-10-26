@@ -4925,6 +4925,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabula-styled-edit"
+version = "0.1.0"
+dependencies = [
+ "fontdb",
+ "libc",
+ "serde",
+ "serde_json",
+ "tabula-kit",
+ "tabula-theme",
+]
+
+[[package]]
 name = "tabula-system"
 version = "0.1.0"
 dependencies = [

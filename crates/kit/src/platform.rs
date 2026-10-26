@@ -1078,8 +1078,13 @@ impl Kit {
             let panel = s.options.panel;
             let palette = self.palette.clone();
             let toplevel = matches!(s.role, Role::Toplevel(_));
+            let raw_keys = s.options.raw_keys;
             let mut close_key = false;
             let out = ctx.run_ui(raw, |ui| {
+                // ⌘ is Ctrl, so ⌘H/⌘K/⌘U/⌘W are command shortcuts here,
+                // never egui's emacs deletions in a focused text field: keep
+                // them from the app's ui and give them back for the menus.
+                let held = if raw_keys { Vec::new() } else { hold_emacs_keys(ui) };
                 if panel {
                     ui.painter().rect_filled(ui.max_rect(), 0.0, style::c(palette.panel_background));
                 }
@@ -1092,6 +1097,7 @@ impl Kit {
                     if let (Some(app), Some(cx)) = (app.as_mut(), cx.as_mut()) {
                         app.ui(cx, id, &mut child);
                     }
+                    ui.input_mut(|inp| inp.events.extend(held.iter().cloned()));
                     // Command-key shortcuts.
                     // ⌘C/⌘X/⌘V arrive as clipboard events; when no text
                     // field takes them they go to the menu's Copy/Cut/Paste.
@@ -1119,6 +1125,7 @@ impl Kit {
                     }
                 } else if let (Some(app), Some(cx)) = (app.as_mut(), cx.as_mut()) {
                     app.ui(cx, id, ui);
+                    ui.input_mut(|inp| inp.events.extend(held));
                     // Windows without a menu bar (Get Info, Find, alerts)
                     // still close with ⌘W, as on BeOS.
                     close_key = toplevel
@@ -2048,3 +2055,15 @@ impl ProvidesRegistryState for Kit {
 }
 
 smithay_client_toolkit::delegate_dispatch2!(Kit);
+
+/// Take ⌘H/⌘K/⌘U/⌘W out of this frame's input (see the caller).
+fn hold_emacs_keys(ui: &egui::Ui) -> Vec<egui::Event> {
+    ui.input_mut(|inp| {
+        let (held, rest): (Vec<_>, Vec<_>) = std::mem::take(&mut inp.events).into_iter().partition(|e| {
+            matches!(e, egui::Event::Key { key: egui::Key::H | egui::Key::K | egui::Key::U | egui::Key::W, modifiers, .. }
+                if modifiers.ctrl && !modifiers.alt)
+        });
+        inp.events = rest;
+        held
+    })
+}

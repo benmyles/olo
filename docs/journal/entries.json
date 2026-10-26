@@ -280,5 +280,29 @@
   "title": "DeskCalc scientific (dark)",
   "caption": "Haiku's scientific rows above R5's keys; options in the context menu.",
   "image": "2026-10-26/010211-deskcalc-scientific-dark.png"
+ },
+ {
+  "time": "2026-10-26T01:31:35",
+  "title": "StyledEdit: fonts, sizes and colours",
+  "caption": "StyledEdit with a bold red word and a 24 pt Comfortaa word in the system font's line; styles live in the file's user.tabula.styles attribute, the text stays plain.",
+  "image": "2026-10-26/013135-stylededit-fonts-sizes-and-colours.png"
+ },
+ {
+  "time": "2026-10-26T01:31:35",
+  "title": "StyledEdit: selection keeps its colours",
+  "caption": "egui paints selected text in one colour; StyledEdit draws the selected glyphs again over the highlight in their own colours.",
+  "image": "2026-10-26/013135-stylededit-selection-keeps-its-colours.png"
+ },
+ {
+  "time": "2026-10-26T01:31:35",
+  "title": "StyledEdit in dark mode after a reload",
+  "caption": "Unsaved text and styles came back after app_server reloaded and the app re-executed; default text follows the theme, explicit colours stay.",
+  "image": "2026-10-26/013135-stylededit-in-dark-mode-after-a-reload.png"
+ },
+ {
+  "time": "2026-10-26T01:31:35",
+  "title": "Alerts get their icons",
+  "caption": "The warning, stop, info and idea alert icons were missing from the set (every alert drew none); generated against the reference set.",
+  "image": "2026-10-26/013135-alerts-get-their-icons.png"
  }
 ]

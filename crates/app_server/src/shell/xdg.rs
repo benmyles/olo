@@ -278,25 +278,25 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         }
     }
 
+    fn popup_destroyed(&mut self, surface: PopupSurface) {
+        // Smithay's popup keyboard grab only hands the keyboard back to the
+        // window on the next key press, so a menu's window would show no
+        // caret (and a text field no selection) until then. Give it back as
+        // soon as the last popup of the grab is gone.
+        let Some(root) = self.popup_root_focus(&PopupKind::Xdg(surface)) else { return };
+        self.handle.insert_idle(move |state| {
+            let Some(keyboard) = state.seat.get_keyboard() else { return };
+            // While a parent menu is still open, its grab ignores this.
+            if keyboard.is_grabbed() {
+                keyboard.set_focus(state, Some(root), smithay::utils::SERIAL_COUNTER.next_serial());
+            }
+        });
+    }
+
     fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
         let seat: Seat<AnvilState<BackendData>> = Seat::from_resource(&seat).unwrap();
         let kind = PopupKind::Xdg(surface);
-        if let Some(root) = find_popup_root_surface(&kind).ok().and_then(|root| {
-            self.space
-                .elements()
-                .find(|w| w.wl_surface().map(|s| *s == root).unwrap_or(false))
-                .cloned()
-                .map(KeyboardFocusTarget::from)
-                .or_else(|| {
-                    self.space
-                        .outputs()
-                        .find_map(|o| {
-                            let map = layer_map_for_output(o);
-                            map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL).cloned()
-                        })
-                        .map(KeyboardFocusTarget::LayerSurface)
-                })
-        }) {
+        if let Some(root) = self.popup_root_focus(&kind) {
             let ret = self.popups.grab_popup(root, kind, &seat, serial);
 
             if let Ok(mut grab) = ret {
@@ -327,6 +327,25 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
 }
 
 impl<BackendData: Backend> AnvilState<BackendData> {
+    /// The window (or layer surface) a popup belongs to, as a keyboard focus.
+    fn popup_root_focus(&self, popup: &PopupKind) -> Option<KeyboardFocusTarget> {
+        let root = find_popup_root_surface(popup).ok()?;
+        self.space
+            .elements()
+            .find(|w| w.wl_surface().map(|s| *s == root).unwrap_or(false))
+            .cloned()
+            .map(KeyboardFocusTarget::from)
+            .or_else(|| {
+                self.space
+                    .outputs()
+                    .find_map(|o| {
+                        let map = layer_map_for_output(o);
+                        map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL).cloned()
+                    })
+                    .map(KeyboardFocusTarget::LayerSurface)
+            })
+    }
+
     pub fn resize_request_xdg(
         &mut self,
         surface: &ToplevelSurface,

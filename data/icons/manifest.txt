@@ -49,3 +49,7 @@ software-update|a circular green arrow wrapped around a small box
 printer|a compact desktop printer with a sheet of paper coming out the top
 tabula|the Tabula desktop logo: a smooth slate-grey stone tablet standing slightly tilted, with a bright yellow BeOS-style window tab along the top-left of its upper edge, and a few small coloured squares (blue, red, green) inlaid on its face
 screensaver|a small charcoal-grey CRT monitor turned slightly to the right in three-quarter view, its dark screen showing bright colourful crossing string-art lines
+warning|a thick triangular warning tile in BeOS tab yellow with a bold black exclamation mark on its face, standing upright on the desk
+stop|a thick octagonal stop-sign plaque in alert red with a white rim and a bold white exclamation mark, standing upright on the desk
+info|a thick round coin in Be blue with a bold white lowercase "i" on its face, standing upright on the desk
+idea|a glowing yellow light bulb with a silver screw base, lying slightly tilted on the desk
