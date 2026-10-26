@@ -143,6 +143,8 @@ pub struct UdevData {
     pointers: Vec<smithay::reexports::input::Device>,
     /// The settings last applied, for devices plugged in later.
     input_settings: Option<tabula_protocol::Settings>,
+    /// Night-light gamma gains, for screens connected later.
+    white_point: [f64; 3],
 }
 
 impl UdevData {
@@ -215,6 +217,15 @@ impl Backend for UdevData {
         }
     }
 
+    fn set_white_point(&mut self, gains: [f64; 3]) {
+        self.white_point = gains;
+        for backend in self.backends.values() {
+            for crtc in backend.surfaces.keys() {
+                set_gamma(backend, *crtc, gains);
+            }
+        }
+    }
+
     fn apply_input_settings(&mut self, settings: &tabula_protocol::Settings) {
         for device in self.pointers.iter_mut() {
             configure_pointer(device, settings);
@@ -245,6 +256,23 @@ impl Backend for UdevData {
         output.change_current_state(Some(mode), None, None, None);
         info!(output = output.name(), ?mode, "mode changed");
         Ok(())
+    }
+}
+
+/// Load a CRTC's gamma ramps scaled by `gains` (night light).
+fn set_gamma(backend: &BackendData, crtc: crtc::Handle, gains: [f64; 3]) {
+    use smithay::reexports::drm::control::Device as _;
+    let fd = backend.drm_output_manager.device().device_fd();
+    let len = match fd.get_crtc(crtc) {
+        Ok(info) => info.gamma_length() as usize,
+        Err(e) => return warn!(?e, "no CRTC for night light"),
+    };
+    if len < 2 {
+        return;
+    }
+    let [r, g, b] = crate::night::ramps(len, gains);
+    if let Err(e) = fd.set_gamma(crtc, &r, &g, &b) {
+        warn!(?e, "this display can't take a gamma ramp; night light is off");
     }
 }
 
@@ -340,6 +368,7 @@ pub fn run_udev() {
         keyboards: Vec::new(),
         pointers: Vec::new(),
         input_settings: None,
+        white_point: [1.0; 3],
     };
     let mut state = AnvilState::init(display, event_loop.handle(), data, true);
 
@@ -436,6 +465,9 @@ pub fn run_udev() {
                     data.handle
                         .insert_idle(move |data| data.render(node, None, data.clock.now()));
                 }
+                // Whoever had the screens may have changed their ramps.
+                let gains = data.backend_data.white_point;
+                data.backend_data.set_white_point(gains);
             }
         })
         .unwrap();
@@ -1164,9 +1196,12 @@ impl AnvilState<UdevData> {
 
             device.surfaces.insert(crtc, surface);
 
-            // kick-off rendering
+            // kick-off rendering, then warm it if night light is on
             self.handle.insert_idle(move |state| {
                 state.render_surface(node, crtc, state.clock.now());
+                if let Some(backend) = state.backend_data.backends.get(&node) {
+                    set_gamma(backend, crtc, state.backend_data.white_point);
+                }
             });
         }
     }

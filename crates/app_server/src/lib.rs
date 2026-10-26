@@ -30,6 +30,7 @@ pub mod ipc;
 pub mod keymap;
 pub mod layout;
 pub mod lock;
+pub mod night;
 pub mod power;
 pub mod saver;
 pub mod screenshot;

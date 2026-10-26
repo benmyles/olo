@@ -85,6 +85,11 @@ impl Backend for HeadlessData {
     fn early_import(&mut self, _surface: &wl_surface::WlSurface) {}
     fn update_led_state(&mut self, _led_state: LedState) {}
 
+    /// No scan-out to warm; logged so tests can follow a fade.
+    fn set_white_point(&mut self, gains: [f64; 3]) {
+        tracing::info!(r = gains[0], g = gains[1], b = gains[2], "white point");
+    }
+
     fn set_mode(&mut self, output: &Output, mode: Mode) -> Result<(), String> {
         if !output.modes().contains(&mode) {
             return Err("the screen doesn't offer that mode".into());

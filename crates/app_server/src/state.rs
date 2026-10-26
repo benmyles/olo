@@ -213,6 +213,10 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub layout: Vec<crate::layout::Placement>,
     /// Night-light colour temperature in effect, if any.
     pub night_light: Option<u32>,
+    /// The screens' gamma gains now (none until first set), and the fade
+    /// toward new ones (see `night`).
+    pub white_point: Option<[f64; 3]>,
+    pub night_fade: Option<crate::night::Fade>,
 }
 
 #[derive(Debug)]
@@ -883,6 +887,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             last_window_infos: Vec::new(),
             layout: crate::layout::load(),
             night_light: None,
+            white_point: None,
+            night_fade: None,
         };
         if let Some(name) = state.socket_name.clone() {
             match crate::ipc::init(&state.handle, &name) {
@@ -1333,6 +1339,9 @@ pub trait Backend {
     fn update_led_state(&mut self, led_state: LedState);
     /// Switch `output` to `mode` (one of `output.modes()`), updating the
     /// output's current mode on success.
+    /// Scale the screens' gamma ramps by these red, green, blue gains
+    /// (night light; `[1.0; 3]` is neutral).
+    fn set_white_point(&mut self, _gains: [f64; 3]) {}
     fn set_mode(&mut self, _output: &Output, _mode: smithay::output::Mode) -> Result<(), String> {
         Err("This display's resolution can't be changed.".into())
     }

@@ -625,7 +625,11 @@ impl<B: Backend + 'static> AnvilState<B> {
         if (theme::set_mode(theme) || force) && B::IS_SESSION {
             set_toolkit_color_scheme(theme);
         }
-        self.night_light = night.then_some(self.settings.appearance.night_light.temperature);
+        let kelvin = night.then_some(self.settings.appearance.night_light.temperature);
+        if kelvin != self.night_light || self.white_point.is_none() {
+            self.night_light = kelvin;
+            self.set_night_light(kelvin);
+        }
         if changed || force {
             self.ipc.broadcast(Event::SettingsChanged { settings: self.settings.clone() });
         }

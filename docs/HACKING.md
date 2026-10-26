@@ -471,6 +471,18 @@ hands the backend a buffer whose pixels land one-to-one on the screen.
 Clients that set a cursor surface still get theirs. To see every cursor:
 `TABULA_CURSOR_SHEET=/tmp/c.png cargo test -p tabula-hvif sheet`.
 
+## Night light (app_server night.rs)
+
+Preferences ▸ Appearance's night light (off, on, or scheduled, at a
+colour temperature) is resolved against the clock in
+`desktop.rs::update_appearance`; `night.rs` fades the screens' white point
+there over 1.5 s. The udev backend loads each CRTC's gamma ramps scaled
+by the gains (`Backend::set_white_point`), so it costs no rendering and
+screenshots stay neutral; new screens and a returning VT session get the
+current gains. At start-up the gains are set at once, so a reload keeps
+the warmth without a flash. Headless logs each step ("white point") for
+tests.
+
 ## Screenshots (app_server screenshot.rs, apps/screenshot)
 
 `Request::Screenshot { path, output, window, border, pointer }` (only

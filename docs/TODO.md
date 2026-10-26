@@ -82,7 +82,7 @@ as they land (with the commit), add new ones as they come up.
   settings by EDID rather than connector.
 
 - ~~Cursor shapes~~ (Haiku's cursors via tabula-hvif, cursor-shape-v1);
-  night mode; ~~libinput settings~~ (touchpad tap, tap-drag, dwt, click
+  ~~night light~~ (CRTC gamma ramps, faded); ~~libinput settings~~ (touchpad tap, tap-drag, dwt, click
   method, natural scroll, speed; udev only); ~~centred alerts~~
   (`WindowOptions::alert`, set_parent, placed over the parent).
 
