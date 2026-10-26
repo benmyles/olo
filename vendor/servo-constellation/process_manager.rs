@@ -75,12 +75,26 @@ impl ProcessManager {
         let (mut process, _, event_loop) = self.processes.swap_remove(index);
         debug!("Removing process pid={}", process.pid());
         // Unregister this process system memory profiler
+        // Tabula: the process may have handed itself off to another
+        // (registering its reporter under that one's pid).
+        let pid = PID_ALIAS.get().map_or(process.pid(), |alias| alias(process.pid()));
         self.mem_profiler_chan
             .send(ProfilerMsg::UnregisterReporter(format!(
                 "system-content-{}",
-                process.pid()
+                pid
             )));
         process.wait();
         event_loop
     }
+}
+
+/// Tabula: the pid a spawned content process went on to run as, when
+/// the embedder restarts content processes elsewhere (see
+/// [`set_pid_alias`]).
+static PID_ALIAS: std::sync::OnceLock<fn(u32) -> u32> = std::sync::OnceLock::new();
+
+/// Tabula: tell the constellation which pid a spawned content process
+/// became.
+pub fn set_pid_alias(alias: fn(u32) -> u32) {
+    let _ = PID_ALIAS.set(alias);
 }

@@ -10358,6 +10358,7 @@ dependencies = [
  "serde_json",
  "servo",
  "servo-base",
+ "servo-constellation",
  "servo-media",
  "servo-media-dummy",
  "sha2 0.11.1",

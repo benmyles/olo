@@ -61,6 +61,23 @@ pub fn init() {
         // SAFETY: called at the top of `main`, before any other thread.
         unsafe { std::env::set_var(KEY, crate::logins::token()) };
     }
+    servo_constellation::set_pid_alias(handed_off_pid);
+}
+
+/// Where a content process that handed itself off (`hand_off`) notes the
+/// pid it went on to run as, named by its own: NetPositive's process
+/// manager knows it by the first, Servo's memory profiler by the second.
+fn pids_dir(parent: u32) -> std::path::PathBuf {
+    let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    dir.join(format!("tabula-browser-{parent}.pids"))
+}
+
+/// The pid content process `pid` became (itself if it didn't hand off).
+fn handed_off_pid(pid: u32) -> u32 {
+    let note = pids_dir(std::process::id()).join(pid.to_string());
+    let real = std::fs::read_to_string(&note).ok().and_then(|s| s.trim().parse().ok());
+    let _ = std::fs::remove_file(note);
+    real.unwrap_or(pid)
 }
 
 fn key() -> &'static str {
@@ -133,8 +150,11 @@ pub fn content_process(token: String) {
 /// Run this content process again as a transient systemd service, with
 /// our stdout and stderr, and wait until it's started.
 fn hand_off(token: &str) -> Result<(), String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let exe = exe.to_str().ok_or("unprintable path")?.to_string();
+    // This very binary through /proc, even once an upgrade has replaced
+    // the file; its usual name for argv[0].
+    let name = std::env::current_exe().ok().and_then(|p| p.to_str().map(|s| s.trim_end_matches(" (deleted)").to_string()));
+    let exe = format!("/proc/{}/exe", std::process::id());
+    let argv0 = name.unwrap_or_else(|| exe.clone());
     let bus = Connection::session().map_err(|e| e.to_string())?;
     let name = format!("tabula-browser-{}-{}.service", std::os::unix::process::parent_id(), std::process::id());
     let mut env: Vec<String> =
@@ -147,7 +167,7 @@ fn hand_off(token: &str) -> Result<(), String> {
     let properties: Vec<(&str, Value)> = vec![
         ("Description", Value::from("NetPositive page")),
         ("Type", Value::from("exec")),
-        ("ExecStart", Value::from(vec![(exe.clone(), vec![exe, "--content-process".to_string(), token.to_string()], false)])),
+        ("ExecStart", Value::from(vec![(exe, vec![argv0, "--content-process".to_string(), token.to_string()], false)])),
         ("Environment", Value::from(env)),
         ("WorkingDirectory", Value::from(cwd)),
         ("StandardOutputFileDescriptor", Value::from(Fd::from(stdout.as_fd()))),
@@ -170,7 +190,14 @@ fn hand_off(token: &str) -> Result<(), String> {
     loop {
         let state = unit_path(&bus, &name).and_then(|p| get::<String>(&bus, &p, UNIT, "ActiveState"));
         match state.as_deref() {
-            Some("active") => return Ok(()),
+            Some("active") => {
+                if let Some(pid) = unit_path(&bus, &name).and_then(|p| get::<u32>(&bus, &p, SERVICE, "MainPID")).filter(|p| *p > 0) {
+                    let dir = pids_dir(std::os::unix::process::parent_id());
+                    let _ = std::fs::create_dir_all(&dir);
+                    let _ = std::fs::write(dir.join(std::process::id().to_string()), pid.to_string());
+                }
+                return Ok(());
+            }
             Some("failed") => {
                 let _ = bus.call_method(Some(SYSTEMD), SYSTEMD_PATH, Some(MANAGER), "ResetFailedUnit", &(name.as_str(),));
                 return Err("its unit failed to start".into());
@@ -248,6 +275,12 @@ pub enum Report {
 
 pub struct Watch {
     tx: Sender<Cmd>,
+}
+
+impl Drop for Watch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(pids_dir(std::process::id()));
+    }
 }
 
 impl Watch {

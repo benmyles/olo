@@ -162,7 +162,14 @@ pub fn spawn_multiprocess(
     let (server, token) = IpcOneShotServer::<IpcSender<UnprivilegedContent>>::new()
         .expect("Failed to create IPC one-shot server.");
 
-    let path_to_self = env::current_exe().expect("Failed to get current executor.");
+    // Tabula: this very binary, even once an upgrade has replaced the file
+    // (current_exe then names a deleted path, and a newer build wouldn't
+    // speak our IPC anyway).
+    let path_to_self = if cfg!(target_os = "linux") {
+        std::path::PathBuf::from("/proc/self/exe")
+    } else {
+        env::current_exe().expect("Failed to get current executor.")
+    };
     let mut child_process = process::Command::new(path_to_self);
     setup_common(&mut child_process, token);
 

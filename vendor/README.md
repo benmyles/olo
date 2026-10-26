@@ -21,3 +21,10 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   each process runs (`process_manager.rs`, `event_loop.rs`) and, when a
   process's lifeline breaks while pages still use it, treats it as that
   event loop panicking (`Request::RemoveProcess` in `constellation.rs`).
+
+- **Page processes after an upgrade.** Servo starts each content process
+  from `current_exe()`, which names a deleted file once a rebuild or
+  upgrade has replaced the binary, so every new page process failed (and
+  the constellation panicked). On Linux the patch starts them from
+  `/proc/self/exe`: this very binary, which also guarantees the two
+  sides speak the same IPC.

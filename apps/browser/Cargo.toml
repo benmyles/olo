@@ -36,6 +36,8 @@ zune-core = "0.5"
 getrandom = "0.3"
 tabula-system.workspace = true
 servo-media = "=0.7.0"
+# Our patched copy (vendor/), for its process hooks.
+servo-constellation = "=0.7.0"
 servo-media-dummy = "=0.7.0"
 servo-base = "=0.7.0"
 tabula-preview.workspace = true

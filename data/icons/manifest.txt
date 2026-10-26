@@ -67,3 +67,5 @@ secure-note|a square yellow sticky note pad with faint grey lines, with a small 
 id-card|an identity card in light grey plastic standing slightly tilted, with a small blue portrait square and a few grey lines beside it
 bank|a small classical bank building in cream stone with four columns and a triangular pediment, on a stepped base
 database|a stack of three silver database cylinders with Be blue bands around each one
+camera|a rounded webcam with a large glass lens in a charcoal body, sitting on a small silver stand, a tiny green light beside the lens
+microphone|a silver studio microphone with a rounded mesh head on a short charcoal stand

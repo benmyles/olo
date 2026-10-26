@@ -32,4 +32,5 @@ pub use crate::event_loop::EventLoop;
 pub use crate::event_loop::NewScriptEventLoopProcessInfo;
 pub use crate::logging::{FromEmbedderLogger, FromScriptLogger};
 #[cfg(feature = "multiprocess")]
+pub use crate::process_manager::set_pid_alias;
 pub use crate::sandboxing::{UnprivilegedContent, content_process_sandbox_profile};
