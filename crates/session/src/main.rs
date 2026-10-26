@@ -590,6 +590,17 @@ fn set_session_env(display: &str, ipc: &Path) {
         // SAFETY: single-threaded start-up.
         unsafe { std::env::set_var(k, v) };
     }
+    // The login screen's PATH needn't include where we're installed
+    // (~/.local/bin): put our directory first, for everything we start.
+    if let Some(dir) = exe().parent() {
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        let mut dirs: Vec<PathBuf> = std::env::split_paths(&path).filter(|d| d != dir).collect();
+        dirs.insert(0, dir.to_owned());
+        if let Ok(path) = std::env::join_paths(dirs) {
+            // SAFETY: single-threaded start-up.
+            unsafe { std::env::set_var("PATH", path) };
+        }
+    }
 }
 
 /// Tell systemd and D-Bus activation about the session, so portals and

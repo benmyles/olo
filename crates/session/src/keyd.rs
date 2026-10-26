@@ -93,6 +93,44 @@ pub fn restore() {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{Read, Write};
+
+    /// A stand-in keyd: answers like keyd.c's IPC_BIND handler (success,
+    /// or failure for "nope = nope") and records what it was sent.
+    #[test]
+    fn talks_to_keyd() {
+        let path = std::env::temp_dir().join(format!("tabula-keyd-test-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let server = std::thread::spawn(move || {
+            let mut got = Vec::new();
+            for _ in 0..super::KEYS.len() + 1 {
+                let (mut c, _) = listener.accept().unwrap();
+                let mut m = vec![0u8; super::MESSAGE];
+                c.read_exact(&mut m).unwrap();
+                let kind = u32::from_ne_bytes(m[0..4].try_into().unwrap());
+                let n = usize::from_ne_bytes(m[super::SIZE_AT..super::SIZE_AT + 8].try_into().unwrap());
+                let text = String::from_utf8(m[8..8 + n].to_vec()).unwrap();
+                let mut reply = vec![0u8; super::MESSAGE];
+                reply[0..4].copy_from_slice(&(if text.starts_with("nope") { 1u32 } else { 0 }).to_ne_bytes());
+                c.write_all(&reply).unwrap();
+                got.push((kind, text));
+            }
+            got
+        });
+        // SAFETY: only this test reads the variable.
+        unsafe { std::env::set_var("TABULA_KEYD_SOCKET", &path) };
+        super::pass_through();
+        super::restore();
+        let got = server.join().unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!(got.iter().all(|(k, _)| *k == super::BIND));
+        assert_eq!(got[0].1, "leftmeta = leftmeta");
+        assert_eq!(got[2].1, "capslock = capslock");
+        assert_eq!(got.last().unwrap().1, "reset");
+        assert_eq!(got.len(), super::KEYS.len() + 1);
+    }
+
     #[test]
     fn lays_out_like_keyd() {
         // On 64-bit Linux: u32 type, u32 timeout, char[4096], size_t.

@@ -192,10 +192,19 @@ pub fn find_program(name: &str) -> Option<PathBuf> {
 }
 
 /// Run a shell command line detached from us (own session, no stdio).
+/// Our own programs are found beside us first, as `find_program` finds
+/// them: the login screen gives a session a bare PATH that needn't
+/// include where Tabula is installed (~/.local/bin).
 pub fn spawn_detached(cmd: &str) -> std::io::Result<()> {
     use std::os::unix::process::CommandExt;
     let mut c = std::process::Command::new("/bin/sh");
     c.arg("-c").arg(cmd);
+    if let Some(dir) = std::env::current_exe().ok().and_then(|e| Some(e.parent()?.to_owned())) {
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        if let Ok(path) = std::env::join_paths(std::iter::once(dir).chain(std::env::split_paths(&path))) {
+            c.env("PATH", path);
+        }
+    }
     c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     // SAFETY: setsid is async-signal-safe.
     unsafe {
@@ -254,6 +263,23 @@ fn parse_user_dir(text: &str, name: &str, home: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod user_dir_tests {
     use super::*;
+
+    #[test]
+    fn launches_find_our_programs_first() {
+        let out = std::env::temp_dir().join(format!("tabula-spawn-test-{}", std::process::id()));
+        spawn_detached(&format!("printf %s \"$PATH\" > {}", out.display())).unwrap();
+        let mut path = String::new();
+        for _ in 0..100 {
+            path = std::fs::read_to_string(&out).unwrap_or_default();
+            if !path.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let _ = std::fs::remove_file(&out);
+        let ours = std::env::current_exe().unwrap().parent().unwrap().to_owned();
+        assert_eq!(std::env::split_paths(&path).next(), Some(ours));
+    }
 
     #[test]
     fn parses_user_dirs() {
