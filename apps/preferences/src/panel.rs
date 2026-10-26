@@ -124,7 +124,7 @@ impl Panel {
             Panel::Backgrounds => (440, 308),
             Panel::Bluetooth => (440, 340),
             Panel::DateTime => (460, 370),
-            Panel::Display => (480, 360),
+            Panel::Display => (480, 430),
             Panel::Keyboard => (440, 370),
             Panel::Network => (460, 360),
             Panel::Power => (460, 362),

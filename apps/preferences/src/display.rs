@@ -10,7 +10,7 @@ use tabula_kit::{
     egui::{Align2, Color32, Rect, Sense, Ui, Vec2, vec2},
     metrics as m,
     style::{self, c},
-    widgets::{BBox, Button, MenuField, Slider, StringView},
+    widgets::{BBox, Button, CheckBox, MenuField, Slider, StringView},
 };
 use tabula_protocol::{Mode, OutputConfig, OutputInfo, PowerStatus, Settings};
 
@@ -84,11 +84,15 @@ fn scale_text(scale: f64) -> String {
     if (scale - 2.0).abs() < 1e-6 { "200% (Retina)".into() } else { format!("{pct}%") }
 }
 
-/// Logical size (what apps lay out in) of an output at its mode and scale.
+/// Logical size (what apps lay out in) of an output at its mode, scale
+/// and rotation.
 fn logical(o: &OutputInfo) -> (f64, f64) {
     let (w, h) = o.current_mode.as_ref().map_or((1920, 1080), |m| (m.width, m.height));
+    let (w, h) = if o.rotation % 180 == 90 { (h, w) } else { (w, h) };
     (w as f64 / o.scale.max(0.1), h as f64 / o.scale.max(0.1))
 }
+
+const ROTATION_NAMES: [&str; 4] = ["Standard", "90°", "180°", "270°"];
 
 /// The name shown for `o`, with its connector when another screen would
 /// have the same name.
@@ -98,17 +102,10 @@ fn shown_name(o: &OutputInfo, all: &[OutputInfo]) -> String {
 }
 
 fn display_name(o: &OutputInfo) -> String {
-    let model = o.model.trim();
-    if o.name.starts_with("eDP") || o.name.starts_with("LVDS") {
-        "Built-in Display".into()
-    } else if !model.is_empty() && model != "Unknown" {
-        model.to_owned()
-    } else {
-        o.name.clone()
-    }
+    o.display_name()
 }
 
-pub fn ui(ui: &mut Ui, s: &Settings, outputs: &[OutputInfo], power: Option<&PowerStatus>, server: &Server, st: &mut State) {
+pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&PowerStatus>, server: &Server, st: &mut State) {
     let p = style::palette(ui.ctx());
     if outputs.is_empty() {
         ui.add(StringView::new("No displays reported by app_server.").dim(true));
@@ -171,8 +168,8 @@ pub fn ui(ui: &mut Ui, s: &Settings, outputs: &[OutputInfo], power: Option<&Powe
         let border = if chosen { c(p.keyboard_navigation) } else { c(p.frame_focused[0]) };
         let stroke_w = if chosen { 2.0 } else { 1.0 };
         ui.painter().rect_stroke(r, 0.0, (stroke_w, border), tabula_kit::egui::StrokeKind::Inside);
-        // A menu bar strip on the primary screen (the first, where Deskbar goes).
-        if o.name == outputs[0].name {
+        // A menu bar strip on the main display, where Deskbar goes.
+        if o.main {
             let bar = Rect::from_min_size(r.min + vec2(stroke_w, stroke_w), vec2(r.width() - 2.0 * stroke_w, 4.0));
             ui.painter().rect_filled(bar, 0.0, Color32::from_white_alpha(200));
         }
@@ -250,11 +247,38 @@ pub fn ui(ui: &mut Ui, s: &Settings, outputs: &[OutputInfo], power: Option<&Powe
         if si != before {
             server.configure_output(&o.name, OutputConfig { scale: Some(SCALES[si]), ..Default::default() });
         }
-        let (lw, lh) = (chosen.width as f64 / SCALES[si], chosen.height as f64 / SCALES[si]);
+        let mut ri = tabula_protocol::ROTATIONS.iter().position(|&r| r == o.rotation).unwrap_or(0);
+        let before = ri;
+        ui.add(MenuField::new(("rotation", &o.name), &mut ri, &ROTATION_NAMES).label("Rotation:").divider(label_w));
+        if ri != before {
+            let rotation = Some(tabula_protocol::ROTATIONS[ri]);
+            server.configure_output(&o.name, OutputConfig { rotation, ..Default::default() });
+        }
+        let (cw, ch) = if o.rotation % 180 == 90 { (chosen.height, chosen.width) } else { (chosen.width, chosen.height) };
+        let (lw, lh) = (cw as f64 / SCALES[si], ch as f64 / SCALES[si]);
         ui.horizontal(|ui| {
             ui.add_space(label_w + m::LABEL_GAP);
             ui.add(StringView::new(&format!("Looks like {lw:.0} × {lh:.0}")).dim(true));
         });
+        if outputs.len() > 1 {
+            ui.horizontal(|ui| {
+                ui.add_space(label_w + m::LABEL_GAP);
+                if o.main {
+                    ui.add(StringView::new("Main display: Deskbar and the desktop are here.").dim(true));
+                } else {
+                    let mut main = false;
+                    ui.add(CheckBox::new(&mut main, "Make this the main display"));
+                    if main {
+                        s.display.main = Some(o.name.clone());
+                    }
+                }
+                ui.with_layout(tabula_kit::egui::Layout::right_to_left(tabula_kit::egui::Align::Center), |ui| {
+                    if ui.add(Button::new("Identify")).clicked() {
+                        server.identify_outputs();
+                    }
+                });
+            });
+        }
 
         // The panel's backlight belongs to the built-in display (or the
         // only one there is).

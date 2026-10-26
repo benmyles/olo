@@ -77,8 +77,9 @@ as they land (with the commit), add new ones as they come up.
   Done: per-output mode/refresh/scale, drag-to-arrange with snapping,
   revert countdown, saved per connector and restored at start-up,
   neighbours follow a resized screen, multi-screen headless tests.
-  Still to do: rotation, mirroring, choosing the main display, Identify,
-  keying saved settings by EDID rather than connector.
+  Rotation, the main display (Deskbar and desktop follow it, also on
+  unplug) and Identify done too. Still to do: mirroring; keying saved
+  settings by EDID rather than connector.
 
 - Cursor shapes; night mode; libinput settings; ~~centred alerts~~
   (`WindowOptions::alert`, set_parent, placed over the parent).

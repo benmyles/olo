@@ -25,6 +25,7 @@ pub mod headless;
 pub mod winit;
 
 pub mod desktop;
+pub mod identify;
 pub mod ipc;
 pub mod keymap;
 pub mod layout;

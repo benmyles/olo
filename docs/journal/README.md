@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Rotated main display
+
+*02:48* — HEADLESS-2 rotated 90 degrees and made the main display; Deskbar and the desktop icons moved to it and re-laid out in portrait.
+
+![Rotated main display](2026-10-26/024851-rotated-main-display.png)
+
+### Display: Identify
+
+*02:48* — Each screen shows its name, connector and mode in a raised panel for 4 s.
+
+![Display: Identify](2026-10-26/024851-display-identify.png)
+
 ### Display: arranged screens, dark
 
 *02:40* — Two headless screens stacked by dragging in the map; the lower one follows when the upper changes size.

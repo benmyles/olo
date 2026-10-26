@@ -255,12 +255,19 @@ impl<BackendData: Backend> WlrLayerShellHandler for AnvilState<BackendData> {
         _layer: Layer,
         namespace: String,
     ) {
-        let output = wl_output
-            .as_ref()
-            .and_then(Output::from_resource)
-            .unwrap_or_else(|| self.space.outputs().next().unwrap().clone());
+        let asked = wl_output.as_ref().and_then(Output::from_resource);
+        let auto = asked.is_none();
+        let Some(output) = asked.or_else(|| self.main_output()) else {
+            surface.send_close();
+            return;
+        };
+        let layer = LayerSurface::new(surface, namespace);
+        if auto {
+            // Follows the main display when it changes.
+            layer.user_data().insert_if_missing(|| AutoOutput);
+        }
         let mut map = layer_map_for_output(&output);
-        map.map_layer(&LayerSurface::new(surface, namespace)).unwrap();
+        map.map_layer(&layer).unwrap();
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
@@ -518,6 +525,11 @@ pub fn arrange(outputs: &[(String, Size<i32, Logical>)], saved: impl Fn(&str) ->
     let min_y = rects.iter().map(|r| r.loc.y).min().unwrap_or(0);
     rects.iter().map(|r| r.loc - Point::from((min_x, min_y))).collect()
 }
+
+/// Marks a layer surface placed on the main display because it didn't
+/// name an output.
+#[derive(Debug)]
+pub struct AutoOutput;
 
 pub fn fixup_positions(
     space: &mut Space<WindowElement>,

@@ -19,6 +19,7 @@ enum Out {
     Caffeinated(bool),
     Brightness(f32),
     StartScreenSaver,
+    Identify,
 }
 
 pub struct Server {
@@ -66,6 +67,10 @@ impl Server {
         let _ = self.tx.send(Out::Brightness(level));
     }
 
+    pub fn identify_outputs(&self) {
+        let _ = self.tx.send(Out::Identify);
+    }
+
     /// After any settings already queued, so it runs what is chosen.
     pub fn start_screen_saver(&self) {
         let _ = self.tx.send(Out::StartScreenSaver);
@@ -79,6 +84,7 @@ fn send(client: &mut Option<Client>, out: Out) {
         Out::Caffeinated(on) => Request::SetCaffeinated { on },
         Out::Brightness(level) => Request::SetBrightness { level },
         Out::StartScreenSaver => Request::StartScreenSaver,
+        Out::Identify => Request::IdentifyOutputs,
     };
     for _ in 0..2 {
         if client.is_none() {

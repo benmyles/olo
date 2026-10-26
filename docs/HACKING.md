@@ -396,7 +396,17 @@ launcher lists them. The panel list Deskbar shows is
   right and bottom edges with it. Resolution and refresh rate go through
   `Backend::set_mode` (DRM `use_mode`; headless recreates its target),
   are saved per output and restored at start-up; a new one reverts after
-  `KEEP_SECS` unless Keep is clicked.
+  `KEEP_SECS` unless Keep is clicked. Rotation is the picture turned
+  clockwise (`desktop::rotation_transform`). The main display
+  (`DisplaySettings::main`, else the first) gets layer surfaces that name
+  no output (Deskbar, the desktop): they carry `shell::AutoOutput` and
+  move when the main display changes or their output is unplugged.
+  Identify (`IdentifyOutputs`) shows each display's name for 4 s
+  (app_server `identify.rs`).
+* Memory buffers drawn by app_server (twitcher, wallpaper, identify) must
+  pass the full buffer as `src` to `MemoryRenderBufferRenderElement::
+  from_buffer`; without it the buffer counts as logical pixels and is
+  drawn at twice its size on a 2× screen.
 * About (`about.rs`) has Restart Tabula: SIGHUP to `$TABULA_SESSION_PID`,
   the same in-place reload as `tabula-session reload` (disabled outside
   a session).

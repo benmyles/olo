@@ -195,7 +195,7 @@ where
         (0.0, 0.0),
         &buffer,
         None,
-        None,
+        Some(Rectangle::from_size((w as f64, h as f64).into())),
         Some(logical.into()),
         Kind::Unspecified,
     )

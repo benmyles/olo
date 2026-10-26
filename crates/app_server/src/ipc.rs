@@ -280,6 +280,18 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.set_brightness(level);
                 Reply::Ok
             }
+            Request::IdentifyOutputs => {
+                for info in self.output_infos() {
+                    if let Some(o) = self.space.outputs().find(|o| o.name() == info.name) {
+                        let detail = match &info.current_mode {
+                            Some(m) => format!("{} · {} × {}", info.name, m.width, m.height),
+                            None => info.name.clone(),
+                        };
+                        crate::identify::show(o, &info.display_name(), &detail);
+                    }
+                }
+                Reply::Ok
+            }
             Request::ConfigureOutput { name, config } => match self.configure_output(&name, config) {
                 Ok(()) => Reply::Ok,
                 Err(message) => Reply::Error { message },

@@ -184,6 +184,11 @@ where
             .into_iter()
             .map(OutputRenderElements::from)
             .collect::<Vec<_>>();
+        // Preferences ▸ Display ▸ Identify, over the windows.
+        output_render_elements.extend(
+            crate::identify::element(renderer, output)
+                .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))),
+        );
 
         if show_window_preview && space.elements_for_output(output).count() > 0 {
             output_render_elements.extend(space_preview_elements(renderer, space, output));

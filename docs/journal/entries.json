@@ -418,5 +418,17 @@
   "title": "Display: arranged screens, dark",
   "caption": "Two headless screens stacked by dragging in the map; the lower one follows when the upper changes size.",
   "image": "2026-10-26/024050-display-arranged-screens-dark.png"
+ },
+ {
+  "time": "2026-10-26T02:48:51",
+  "title": "Display: Identify",
+  "caption": "Each screen shows its name, connector and mode in a raised panel for 4 s.",
+  "image": "2026-10-26/024851-display-identify.png"
+ },
+ {
+  "time": "2026-10-26T02:48:51",
+  "title": "Rotated main display",
+  "caption": "HEADLESS-2 rotated 90 degrees and made the main display; Deskbar and the desktop icons moved to it and re-laid out in portrait.",
+  "image": "2026-10-26/024851-rotated-main-display.png"
  }
 ]

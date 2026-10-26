@@ -68,6 +68,8 @@ pub enum Request {
     SetCaffeinated { on: bool },
     /// Built-in display brightness, 0.0–1.0 (perceptual).
     SetBrightness { level: f32 },
+    /// Show each display's name on it for a few seconds.
+    IdentifyOutputs,
     /// Inject input as if from a device (for automated UI tests).
     Synthetic { events: Vec<SyntheticEvent> },
     Quit,
@@ -159,6 +161,27 @@ pub struct OutputInfo {
     pub current_mode: Option<Mode>,
     pub scale: f64,
     pub position: (i32, i32),
+    /// Clockwise rotation in degrees: 0, 90, 180 or 270.
+    #[serde(default)]
+    pub rotation: u16,
+    /// The main display: Deskbar and the desktop live here.
+    #[serde(default)]
+    pub main: bool,
+}
+
+impl OutputInfo {
+    /// What people call this display: "Built-in Display", the monitor's
+    /// model, or its connector.
+    pub fn display_name(&self) -> String {
+        let model = self.model.trim();
+        if self.name.starts_with("eDP") || self.name.starts_with("LVDS") {
+            "Built-in Display".into()
+        } else if !model.is_empty() && model != "Unknown" {
+            model.to_owned()
+        } else {
+            self.name.clone()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -166,7 +189,13 @@ pub struct OutputConfig {
     pub mode: Option<Mode>,
     pub scale: Option<f64>,
     pub position: Option<(i32, i32)>,
+    /// Clockwise degrees: 0, 90, 180 or 270.
+    #[serde(default)]
+    pub rotation: Option<u16>,
 }
+
+/// The rotations a display can have, clockwise degrees.
+pub const ROTATIONS: [u16; 4] = [0, 90, 180, 270];
 
 /// Everything Preferences can change live in app_server. Persisted by
 /// app_server in `$XDG_CONFIG_HOME/tabula/app_server.json`.
@@ -291,13 +320,16 @@ impl Default for PowerSettings {
 pub struct DisplaySettings {
     /// Scale for outputs without their own entry in `outputs`.
     pub scale: f64,
+    /// The main display's connector (Deskbar and the desktop live there);
+    /// None, or one that isn't connected, means the first.
+    pub main: Option<String>,
     /// Per-output overrides, keyed by connector name (e.g. "eDP-1").
     pub outputs: std::collections::BTreeMap<String, OutputConfig>,
 }
 
 impl Default for DisplaySettings {
     fn default() -> Self {
-        DisplaySettings { scale: 2.0, outputs: Default::default() }
+        DisplaySettings { scale: 2.0, main: None, outputs: Default::default() }
     }
 }
 
@@ -308,6 +340,10 @@ impl DisplaySettings {
             .and_then(|c| c.scale)
             .unwrap_or(self.scale)
             .clamp(0.5, 4.0)
+    }
+
+    pub fn rotation_for(&self, output: &str) -> u16 {
+        self.outputs.get(output).and_then(|c| c.rotation).filter(|r| ROTATIONS.contains(r)).unwrap_or(0)
     }
 }
 

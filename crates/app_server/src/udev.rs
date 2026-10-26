@@ -1026,7 +1026,8 @@ impl AnvilState<UdevData> {
             output.set_preferred(WlMode::from(connector.modes()[preferred]));
             output.change_current_state(Some(wl_mode), None, None, Some(position));
             let scale = self.settings.display.scale_for(&output.name());
-            output.change_current_state(None, None, Some(smithay::output::Scale::Fractional(scale)), None);
+            let transform = crate::desktop::rotation_transform(self.settings.display.rotation_for(&output.name()));
+            output.change_current_state(None, Some(transform), Some(smithay::output::Scale::Fractional(scale)), None);
             self.space.map_output(&output, position);
 
             output.user_data().insert_if_missing(|| UdevOutputId {
@@ -1125,6 +1126,7 @@ impl AnvilState<UdevData> {
     }
 
     fn connector_disconnected(&mut self, node: DrmNode, connector: connector::Info, crtc: crtc::Handle) {
+        let mut gone = None;
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
             device
         } else {
@@ -1141,6 +1143,7 @@ impl AnvilState<UdevData> {
                 leasing_state.withdraw_connector(connector.handle());
             }
         } else if let Some(surface) = device.surfaces.remove(&crtc) {
+            gone = Some(surface.output.clone());
             self.space.unmap_output(&surface.output);
             self.space.refresh();
         }
@@ -1156,6 +1159,10 @@ impl AnvilState<UdevData> {
             // Instead we just use black to "simulate" a modeset :)
             &DrmOutputRenderElements::default(),
         );
+        // Deskbar and the desktop move to what is now the main display.
+        if let Some(gone) = gone {
+            self.move_auto_layers(&[gone]);
+        }
     }
 
     fn device_changed(&mut self, node: DrmNode) {
@@ -1200,6 +1207,7 @@ impl AnvilState<UdevData> {
 
         // fixup window coordinates
         crate::shell::fixup_positions(&mut self.space, &self.settings.display, self.pointer.current_location());
+        self.follow_main_output();
     }
 
     fn device_removed(&mut self, node: DrmNode) {
@@ -1237,6 +1245,7 @@ impl AnvilState<UdevData> {
         }
 
         crate::shell::fixup_positions(&mut self.space, &self.settings.display, self.pointer.current_location());
+        self.follow_main_output();
     }
 
     fn frame_finish(&mut self, dev_id: DrmNode, crtc: crtc::Handle, metadata: &mut Option<DrmEventMetadata>) {

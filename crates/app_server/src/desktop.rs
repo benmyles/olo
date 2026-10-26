@@ -8,6 +8,7 @@ use std::{
 };
 
 use smithay::{
+    desktop::layer_map_for_output,
     backend::renderer::Color32F,
     desktop::{WindowSurface, space::SpaceElement},
     output::{Output, Scale},
@@ -395,6 +396,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     // ---- outputs -------------------------------------------------------
 
     pub fn output_infos(&self) -> Vec<OutputInfo> {
+        let main = self.main_output();
         self.space
             .outputs()
             .map(|o| {
@@ -414,15 +416,76 @@ impl<B: Backend + 'static> AnvilState<B> {
                     current_mode: o.current_mode().map(to_mode),
                     scale: o.current_scale().fractional_scale(),
                     position: (loc.x, loc.y),
+                    rotation: self.settings.display.rotation_for(&o.name()),
+                    main: main.as_ref() == Some(o),
                 }
             })
             .collect()
     }
 
-    /// Apply the configured scale to a newly created output.
+    /// Apply the configured scale and rotation to an output.
     pub fn apply_output_settings(&self, output: &Output) {
         let scale = self.settings.display.scale_for(&output.name());
-        output.change_current_state(None, None, Some(Scale::Fractional(scale)), None);
+        let transform = rotation_transform(self.settings.display.rotation_for(&output.name()));
+        output.change_current_state(None, Some(transform), Some(Scale::Fractional(scale)), None);
+    }
+
+    /// The main display: the chosen one while it is connected, else the first.
+    pub fn main_output(&self) -> Option<Output> {
+        let main = self.settings.display.main.as_deref();
+        self.space
+            .outputs()
+            .find(|o| Some(o.name().as_str()) == main)
+            .or_else(|| self.space.outputs().next())
+            .cloned()
+    }
+
+    /// Layer surfaces that didn't ask for an output (Deskbar, the desktop)
+    /// live on the main display: move them there when it changes.
+    pub fn follow_main_output(&mut self) {
+        let Some(main) = self.main_output() else { return };
+        let others: Vec<Output> = self.space.outputs().filter(|o| **o != main).cloned().collect();
+        self.move_auto_layers(&others);
+    }
+
+    /// Move the auto-placed layer surfaces on `from` to the main display;
+    /// ones that named an output close when it is gone from the space.
+    pub fn move_auto_layers(&mut self, from: &[Output]) {
+        let Some(main) = self.main_output() else { return };
+        for output in from.iter().filter(|o| **o != main) {
+            if self.space.output_geometry(output).is_none() {
+                for l in layer_map_for_output(output).layers() {
+                    if l.user_data().get::<crate::shell::AutoOutput>().is_none() {
+                        l.layer_surface().send_close();
+                    }
+                }
+            }
+            let moving: Vec<smithay::desktop::LayerSurface> = layer_map_for_output(output)
+                .layers()
+                .filter(|l| l.user_data().get::<crate::shell::AutoOutput>().is_some())
+                .cloned()
+                .collect();
+            if moving.is_empty() {
+                continue;
+            }
+            {
+                let mut map = layer_map_for_output(output);
+                for l in &moving {
+                    map.unmap_layer(l);
+                }
+                map.arrange();
+            }
+            let mut map = layer_map_for_output(&main);
+            for l in moving {
+                if let Err(e) = map.map_layer(&l) {
+                    warn!("can't move a layer surface to the main display: {e}");
+                }
+            }
+            map.arrange();
+            for l in map.layers() {
+                l.layer_surface().send_pending_configure();
+            }
+        }
     }
 
     /// `name` changed size from `old` to `new`: screens placed against its
@@ -490,6 +553,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         if let Some(pos) = config.position {
             entry.position = Some(pos);
         }
+        if let Some(r) = config.rotation.filter(|r| tabula_protocol::ROTATIONS.contains(r)) {
+            entry.rotation = Some(r);
+        }
         self.apply_output_settings(&output);
         self.space.map_output(&output, before.map(|g| g.loc).unwrap_or_default());
         if let (Some(old), Some(new)) = (before, self.space.output_geometry(&output)) {
@@ -507,6 +573,7 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     pub fn set_settings(&mut self, mut settings: Settings) {
         let scale_changed = settings.display != self.settings.display;
+        let main_changed = settings.display.main != self.settings.display.main;
         // Fields app_server owns are recomputed, not taken from the client.
         settings.appearance.effective_theme = self.settings.appearance.effective_theme;
         settings.appearance.night_light_active = self.settings.appearance.night_light_active;
@@ -521,6 +588,9 @@ impl<B: Backend + 'static> AnvilState<B> {
             let pointer = self.pointer.current_location();
             fixup_positions(&mut self.space, &self.settings.display, pointer);
             self.lock_outputs_changed();
+            if main_changed {
+                self.follow_main_output();
+            }
             self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
         }
         self.apply_input_settings();
@@ -601,4 +671,16 @@ fn set_toolkit_color_scheme(theme: ThemeMode) {
             warn!("could not set the toolkit colour scheme: {e}");
         }
     });
+}
+
+/// Preferences' rotation (the picture turned clockwise, as macOS labels
+/// it) as a wl_output transform (which turns counter-clockwise).
+pub fn rotation_transform(degrees: u16) -> smithay::utils::Transform {
+    use smithay::utils::Transform;
+    match degrees {
+        90 => Transform::_270,
+        180 => Transform::_180,
+        270 => Transform::_90,
+        _ => Transform::Normal,
+    }
 }
