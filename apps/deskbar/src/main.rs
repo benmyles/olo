@@ -131,12 +131,14 @@ impl Deskbar {
 
     fn tabula_menu(&self) -> Menu {
         let mut apps = Menu::new("Applications");
-        for (bin, name, _) in OUR_APPS {
+        // Only the ones that are installed (the suite is still growing).
+        for (bin, name, _) in OUR_APPS.iter().filter(|(bin, _, _)| tabula_kit::find_program(bin).is_some()) {
             apps = apps.item(*name, format!("run:{bin}"), None);
         }
+        let have_prefs = tabula_kit::find_program("tabula-preferences").is_some();
         let mut prefs = Menu::new("Preferences");
         for (arg, name, _) in PREFS {
-            prefs = prefs.item(*name, format!("pref:{arg}"), None);
+            prefs = prefs.item(*name, format!("pref:{arg}"), None).enabled(have_prefs);
         }
         // Everything else installed, by freedesktop category.
         let groups: &[(&str, &[&str])] = &[

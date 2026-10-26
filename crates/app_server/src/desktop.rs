@@ -327,8 +327,11 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn spawn_program(&self, program: &str, args: &[&str]) {
         // Our programs are installed beside app_server; prefer those (so a
         // dev build starts dev apps), then PATH.
-        let beside = std::env::current_exe().ok().and_then(|e| Some(e.parent()?.join(program))).filter(|p| p.is_file());
-        let mut cmd = std::process::Command::new(beside.as_deref().unwrap_or(program.as_ref()));
+        let Some(path) = tabula_xdg::find_program(program) else {
+            warn!(program, "not installed");
+            return;
+        };
+        let mut cmd = std::process::Command::new(path);
         cmd.args(args);
         if let Some(socket) = &self.socket_name {
             cmd.env("WAYLAND_DISPLAY", socket);

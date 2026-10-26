@@ -25,4 +25,4 @@ pub use menu::{Action, Menu, MenuItem};
 pub use platform::run;
 pub use tabula_theme as theme;
 
-pub use tabula_xdg::spawn_detached;
+pub use tabula_xdg::{find_program, spawn_detached};

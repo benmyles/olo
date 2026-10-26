@@ -22,6 +22,8 @@ as they land (with the commit), add new ones as they come up.
 - Deskbar volume: PulseAudio/PipeWire protocol instead of `wpctl`.
 - Kit opener (mimeapps.list + desktop entries) instead of `xdg-open`
   (kit platform, Terminal links, Tracker `fs::open`).
+- Deskbar Restart / Shut Down: logind over D-Bus (zbus) instead of
+  `systemctl reboot/poweroff`, with the BeOS confirmation alert.
 - app_server: settings without `gsettings`; session environment via
   zbus instead of `dbus-update-activation-environment`.
 
@@ -53,8 +55,6 @@ as they land (with the commit), add new ones as they come up.
   follow the main display; cursor crosses edges at matching scale.
 
 - Cursor shapes; night mode; libinput settings; centred alerts.
-- Deskbar's Applications menu lists apps that don't exist yet (WebPositive,
-  StyledEdit, …): hide uninstalled ones until they land.
 
 ## Lock, screensaver, caffeinated
 

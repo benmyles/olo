@@ -178,6 +178,17 @@ pub fn icon_for_app(app_id: &str) -> Option<String> {
     desktop_entry::find(app_id)?.icon
 }
 
+/// Where program `name` is installed: beside the running executable (so a
+/// dev build finds its sibling dev builds), then on PATH.
+pub fn find_program(name: &str) -> Option<PathBuf> {
+    let beside = std::env::current_exe().ok().and_then(|e| Some(e.parent()?.join(name)));
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    beside
+        .into_iter()
+        .chain(std::env::split_paths(&path).map(|d| d.join(name)))
+        .find(|p| p.is_file())
+}
+
 /// Run a shell command line detached from us (own session, no stdio).
 pub fn spawn_detached(cmd: &str) -> std::io::Result<()> {
     use std::os::unix::process::CommandExt;
