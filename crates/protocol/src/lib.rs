@@ -118,6 +118,84 @@ pub struct Settings {
     pub mouse_speed: f64,
     /// Font size (points) used for window tab titles.
     pub tab_font_size: f32,
+    pub appearance: Appearance,
+}
+
+/// Light/dark theme and night mode. app_server resolves `Auto` against the
+/// schedule and broadcasts the effective theme in [`Settings::effective_theme`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Appearance {
+    pub theme: ThemePreference,
+    pub night_light: NightLight,
+    /// Filled in by app_server: the theme currently in effect.
+    pub effective_theme: tabula_theme::ThemeMode,
+    /// Filled in by app_server: whether night mode is warming the screen now.
+    pub night_light_active: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemePreference {
+    #[default]
+    Light,
+    Dark,
+    /// Dark between the night-light schedule's start and end times.
+    Auto,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NightLightMode {
+    #[default]
+    Off,
+    On,
+    Scheduled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct NightLight {
+    pub mode: NightLightMode,
+    /// Local time "HH:MM".
+    pub start: String,
+    pub end: String,
+    /// Kelvin; 6500 is neutral.
+    pub temperature: u32,
+}
+
+impl Default for Appearance {
+    fn default() -> Self {
+        Appearance {
+            theme: ThemePreference::Light,
+            night_light: NightLight::default(),
+            effective_theme: tabula_theme::ThemeMode::Light,
+            night_light_active: false,
+        }
+    }
+}
+
+impl Default for NightLight {
+    fn default() -> Self {
+        NightLight { mode: NightLightMode::Off, start: "20:00".into(), end: "07:00".into(), temperature: 3600 }
+    }
+}
+
+impl NightLight {
+    /// Is `minutes` (since local midnight) inside the start..end window,
+    /// which may wrap past midnight?
+    pub fn in_window(&self, minutes: u32) -> bool {
+        let (Some(start), Some(end)) = (parse_hhmm(&self.start), parse_hhmm(&self.end)) else {
+            return false;
+        };
+        if start <= end { minutes >= start && minutes < end } else { minutes >= start || minutes < end }
+    }
+}
+
+pub fn parse_hhmm(s: &str) -> Option<u32> {
+    let (h, m) = s.trim().split_once(':')?;
+    let (h, m): (u32, u32) = (h.parse().ok()?, m.parse().ok()?);
+    (h < 24 && m < 60).then_some(h * 60 + m)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -154,6 +232,7 @@ impl Default for Settings {
             keyboard: KeyboardSettings::default(),
             mouse_speed: 0.0,
             tab_font_size: 9.0,
+            appearance: Appearance::default(),
         }
     }
 }
@@ -277,6 +356,15 @@ mod tests {
         assert_eq!(s, r#"{"type":"activate","id":7}"#);
         let back: Request = serde_json::from_str(&s).unwrap();
         assert_eq!(back, Request::Activate { id: 7 });
+    }
+
+    #[test]
+    fn night_window_wraps_midnight() {
+        let n = NightLight::default(); // 20:00 - 07:00
+        assert!(n.in_window(22 * 60));
+        assert!(n.in_window(3 * 60));
+        assert!(!n.in_window(12 * 60));
+        assert!(!n.in_window(7 * 60));
     }
 
     #[test]

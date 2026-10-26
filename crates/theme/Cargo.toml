@@ -1,0 +1,9 @@
+[package]
+name = "tabula-theme"
+description = "Tabula's BeOS palette (light and dark) and metrics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
