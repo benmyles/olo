@@ -75,6 +75,9 @@ struct Deskbar {
     workspace: (u32, u32),
     status: status::Status,
     caffeinated: bool,
+    /// A timed caffeinated stretch's end (seconds since the epoch).
+    caffeinated_until: Option<u64>,
+    caffeinated_lid: bool,
     show_date: bool,
     clock: tabula_protocol::ClockSettings,
     entries: HashMap<String, Option<DesktopEntry>>,
@@ -196,6 +199,7 @@ impl Deskbar {
             .item("About Tabula", "about", None)
             .item("Find…", "find", None)
             .separator()
+            .submenu(self.caffeine_menu())
             .item("Lock Screen", "lock", None)
             .item("Log Out", "logout", None)
             .item("Restart", "restart", None)
@@ -223,6 +227,45 @@ impl Deskbar {
             .item("Close All", "close-all", None)
     }
 
+    /// Caffeinated mode: indefinitely or for a while, with the lid too.
+    fn caffeine_menu(&self) -> Menu {
+        let on = self.caffeinated;
+        let mut m = Menu::new("Stay Awake").item("Until Turned Off", "caff:on", None).checked(on && self.caffeinated_until.is_none());
+        for (label, minutes) in [("For 1 Hour", 60), ("For 2 Hours", 120), ("For 4 Hours", 240), ("For 8 Hours", 480)] {
+            m = m.item(label, format!("caff:{minutes}"), None);
+        }
+        let label = match self.caffeinated_until {
+            Some(t) if on => format!("Allow Sleep (awake until {})", status::time_of_day(t, &self.clock)),
+            _ => "Allow Sleep".into(),
+        };
+        m.separator()
+            .item("Even With the Lid Closed", "caff:lid", None)
+            .checked(self.caffeinated_lid)
+            .separator()
+            .item(label, "caff:off", None)
+            .enabled(on)
+    }
+
+    /// A caffeinated-menu command (after `caff:`).
+    fn caffeine_command(&mut self, arg: &str) {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        // What's left of a timed stretch, to keep it when only the lid changes.
+        let left = self.caffeinated_until.filter(|_| self.caffeinated).map(|t| t.saturating_sub(now).div_ceil(60).max(1) as u32);
+        let (on, minutes, lid) = match arg {
+            "on" => (true, None, self.caffeinated_lid),
+            "off" => (false, None, false),
+            "lid" => (true, left, !self.caffeinated_lid),
+            m => match m.parse::<u32>() {
+                Ok(m) => (true, Some(m), self.caffeinated_lid),
+                Err(_) => return,
+            },
+        };
+        self.caffeinated = on;
+        self.caffeinated_lid = lid;
+        self.caffeinated_until = minutes.map(|m| now + m as u64 * 60);
+        request(Request::SetCaffeinated { on, minutes, lid });
+    }
+
     fn run_command(&mut self, cx: &mut Cx, cmd: &str) {
         let spawn = |s: &str| {
             if let Err(e) = tabula_kit::spawn_detached(s) {
@@ -232,6 +275,7 @@ impl Deskbar {
         match cmd.split_once(':') {
             Some(("run", bin)) => spawn(bin),
             Some(("pref", panel)) => spawn(&format!("tabula-preferences {panel}")),
+            Some(("caff", arg)) => self.caffeine_command(arg),
             Some(("desktop", id)) => {
                 if let Some(e) = desktop_entry::all().into_iter().find(|e| e.id == id) {
                     let _ = e.launch();
@@ -438,11 +482,27 @@ impl App for Deskbar {
         }
 
         // Caffeinated: a cup, steaming while the machine is kept awake.
+        // Right-click for a set time or to stay awake with the lid closed.
         let on = self.caffeinated;
-        let tip = if on { "Caffeinated: staying awake. Click to allow sleep." } else { "Click to stay awake (caffeinated)" };
-        if tray_item(ui, "caffeine", &|p, r| status::draw_cup(p, r, &pal, on), tip.into()).clicked() {
+        let tip = match (on, self.caffeinated_until) {
+            (true, Some(t)) => format!("Caffeinated until {}. Click to allow sleep.", status::time_of_day(t, &self.clock)),
+            (true, None) => "Caffeinated: staying awake. Click to allow sleep.".into(),
+            _ => "Click to stay awake (caffeinated); right-click for more".into(),
+        };
+        let cup = tray_item(ui, "caffeine", &|p, r| status::draw_cup(p, r, &pal, on), tip);
+        let cup_id = egui::Id::unique("caffeine-menu");
+        if cup.clicked() {
             self.caffeinated = !on;
-            request(Request::SetCaffeinated { on: !on });
+            request(Request::SetCaffeinated { on: !on, minutes: None, lid: false });
+        }
+        if cup.secondary_clicked() && !menu::is_open(ui.ctx(), cup_id) {
+            menu::request_popup(
+                ui.ctx(),
+                MenuRequest { menu: self.caffeine_menu(), source: cup_id, anchor: MenuAnchor::Below(cup.rect), selected: None },
+            );
+        }
+        if let Some(cmd) = menu::take_chosen(ui.ctx(), cup_id) {
+            self.run_command(cx, &cmd);
         }
 
         // ---- teams
@@ -525,7 +585,11 @@ impl App for Deskbar {
                 Msg::Windows(w) => self.set_windows(w),
                 Msg::Workspace(cur, count) => self.workspace = (cur, count),
                 Msg::Status(s) => self.status = s,
-                Msg::Power(p) => self.caffeinated = p.caffeinated,
+                Msg::Power(p) => {
+                    self.caffeinated = p.caffeinated;
+                    self.caffeinated_until = p.caffeinated_until;
+                    self.caffeinated_lid = p.caffeinated_lid;
+                }
                 Msg::Clock(clock) => self.clock = clock,
             }
             cx.redraw(self.win);
@@ -600,6 +664,8 @@ fn main() {
             workspace: (0, 1),
             status: status::Status::default(),
             caffeinated: false,
+            caffeinated_until: None,
+            caffeinated_lid: false,
             show_date: false,
             clock: Default::default(),
             entries: HashMap::new(),

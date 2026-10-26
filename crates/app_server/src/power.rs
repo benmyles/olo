@@ -9,10 +9,13 @@
 
 use std::{
     sync::mpsc::{Receiver, Sender, channel},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use smithay::reexports::wayland_server::{Resource, protocol::wl_surface::WlSurface};
+use smithay::reexports::{
+    calloop,
+    wayland_server::{Resource, protocol::wl_surface::WlSurface},
+};
 use tabula_protocol::{Event, PowerStatus};
 use tracing::{info, warn};
 
@@ -33,7 +36,9 @@ pub mod keys {
 }
 
 enum Job {
-    Caffeinate(bool),
+    /// Hold an inhibitor (also against the lid switch with `lid`), or
+    /// none.
+    Caffeinate { on: bool, lid: bool },
     Brightness(u32),
     Suspend,
     Volume(f32),
@@ -43,6 +48,9 @@ enum Job {
 pub struct Power {
     last_activity: Instant,
     caffeinated: bool,
+    /// When a timed caffeinated stretch ends.
+    caffeinated_until: Option<SystemTime>,
+    caffeinated_lid: bool,
     display_asleep: bool,
     /// Sleep was asked for in this idle stretch (don't ask again).
     slept: bool,
@@ -51,6 +59,11 @@ pub struct Power {
     backlight: Option<tabula_system::backlight::Backlight>,
     /// Perceived brightness, 0–1 (simulated when there is no backlight to drive).
     brightness: Option<f32>,
+    /// Simulated volume and mute (not the session), for the indicator.
+    volume: Option<(f32, bool)>,
+    /// The volume after a key, from the worker (session only); taken by
+    /// state set-up.
+    pub volume_feedback: Option<calloop::channel::Channel<(f32, bool)>>,
     jobs: Option<Sender<Job>>,
 }
 
@@ -62,23 +75,28 @@ impl std::fmt::Debug for Power {
 
 impl Power {
     pub fn new(is_session: bool) -> Power {
-        let (backlight, brightness, jobs) = if is_session {
+        let (backlight, brightness, jobs, volume, volume_feedback) = if is_session {
             let backlight = tabula_system::backlight::internal();
             let brightness = backlight.as_ref().and_then(|b| b.level());
             let (tx, rx) = channel();
-            std::thread::Builder::new().name("power".into()).spawn(move || worker(rx)).expect("thread");
-            (backlight, brightness, Some(tx))
+            let (feedback, feedback_rx) = calloop::channel::channel();
+            std::thread::Builder::new().name("power".into()).spawn(move || worker(rx, feedback)).expect("thread");
+            (backlight, brightness, Some(tx), None, Some(feedback_rx))
         } else {
-            (None, Some(0.75), None)
+            (None, Some(0.75), None, Some((0.5, false)), None)
         };
         Power {
             last_activity: Instant::now(),
             caffeinated: false,
+            caffeinated_until: None,
+            caffeinated_lid: false,
             display_asleep: false,
             slept: false,
             inhibitors: Vec::new(),
             backlight,
             brightness,
+            volume,
+            volume_feedback,
             jobs,
         }
     }
@@ -107,6 +125,8 @@ impl Power {
             app_inhibitors: self.inhibitors.len() as u32,
             brightness: self.brightness,
             screen_saver: false,
+            caffeinated_until: self.caffeinated_until.and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()),
+            caffeinated_lid: self.caffeinated_lid,
         }
     }
 
@@ -115,7 +135,7 @@ impl Power {
     }
 }
 
-fn worker(rx: Receiver<Job>) {
+fn worker(rx: Receiver<Job>, feedback: calloop::channel::Sender<(f32, bool)>) {
     let mut inhibitor = None;
     while let Ok(mut job) = rx.recv() {
         // Only the newest brightness matters (a held key repeats).
@@ -123,23 +143,26 @@ fn worker(rx: Receiver<Job>) {
             match rx.try_recv() {
                 Ok(next @ Job::Brightness(_)) => job = next,
                 Ok(next) => {
-                    run(job, &mut inhibitor);
+                    run(job, &mut inhibitor, &feedback);
                     job = next;
                 }
                 Err(_) => break,
             }
         }
-        run(job, &mut inhibitor);
+        run(job, &mut inhibitor, &feedback);
     }
 }
 
-fn run(job: Job, inhibitor: &mut Option<tabula_system::power::Inhibitor>) {
+fn run(job: Job, inhibitor: &mut Option<tabula_system::power::Inhibitor>, feedback: &calloop::channel::Sender<(f32, bool)>) {
     use tabula_system::{audio, backlight, power};
+    let volume_key = matches!(job, Job::Volume(_) | Job::ToggleMute);
     let r: Result<(), String> = match job {
-        Job::Caffeinate(true) => power::inhibit("sleep:idle", "Tabula", "Caffeinated", true)
-            .map(|i| *inhibitor = Some(i))
-            .map_err(|e| e.to_string()),
-        Job::Caffeinate(false) => {
+        Job::Caffeinate { on: true, lid } => {
+            *inhibitor = None;
+            let what = if lid { "sleep:idle:handle-lid-switch" } else { "sleep:idle" };
+            power::inhibit(what, "Tabula", "Caffeinated", true).map(|i| *inhibitor = Some(i)).map_err(|e| e.to_string())
+        }
+        Job::Caffeinate { on: false, .. } => {
             *inhibitor = None;
             Ok(())
         }
@@ -158,6 +181,9 @@ fn run(job: Job, inhibitor: &mut Option<tabula_system::power::Inhibitor>) {
     };
     if let Err(e) = r {
         warn!("power: {e}");
+    }
+    if volume_key && let Ok(v) = audio::volume() {
+        let _ = feedback.send((v.level, v.muted));
     }
 }
 
@@ -198,6 +224,10 @@ impl<B: Backend> AnvilState<B> {
         let before = self.power.inhibitors.len();
         self.power.inhibitors.retain(|s| s.is_alive());
         let pruned = self.power.inhibitors.len() != before;
+        if self.power.caffeinated_until.is_some_and(|t| SystemTime::now() >= t) {
+            info!("caffeinated time is up");
+            self.set_caffeinated(false, None, false);
+        }
         let settings = self.settings.power.clone();
         let p = &mut self.power;
         if p.caffeinated || !p.inhibitors.is_empty() {
@@ -246,13 +276,22 @@ impl<B: Backend> AnvilState<B> {
         }
     }
 
-    pub fn set_caffeinated(&mut self, on: bool) {
-        if self.power.caffeinated == on {
+    /// Caffeinated mode on (until turned off, or for `minutes`; through
+    /// lid closes with `lid`) or off.
+    pub fn set_caffeinated(&mut self, on: bool, minutes: Option<u32>, lid: bool) {
+        let until = minutes.filter(|_| on).map(|m| SystemTime::now() + Duration::from_secs(m as u64 * 60));
+        let lid = on && lid;
+        let p = &mut self.power;
+        if p.caffeinated == on && p.caffeinated_lid == lid && until.is_none() && p.caffeinated_until.is_none() {
             return;
         }
-        self.power.caffeinated = on;
-        self.power.send(Job::Caffeinate(on));
-        info!(on, "caffeinated");
+        if p.caffeinated != on || p.caffeinated_lid != lid {
+            p.send(Job::Caffeinate { on, lid });
+        }
+        p.caffeinated = on;
+        p.caffeinated_lid = lid;
+        p.caffeinated_until = until;
+        info!(on, ?minutes, lid, "caffeinated");
         self.power_activity();
         self.power_changed();
     }
@@ -297,15 +336,29 @@ impl<B: Backend> AnvilState<B> {
         if let Some(level) = self.power.brightness {
             // Snap to the step grid so up then down returns exactly.
             let steps = ((level + delta) / STEP).round();
-            self.set_brightness((steps * STEP).clamp(0.0, 1.0));
+            let level = (steps * STEP).clamp(0.0, 1.0);
+            self.set_brightness(level);
+            self.show_indicator(crate::osd::Indicator::Brightness(level));
         }
     }
 
     fn volume_key(&mut self, job: Job) {
         if self.power.jobs.is_some() {
             self.power.send(job);
-        } else {
-            info!("volume key (not the session: the sound server is left alone)");
+        } else if let Some((level, muted)) = self.power.volume {
+            // Not the session: the sound server is left alone; pretend.
+            let v = match job {
+                Job::Volume(d) => (((level + d) / STEP).round() * STEP).clamp(0.0, 1.0),
+                _ => level,
+            };
+            // A volume key unmutes, as the sound server does.
+            let muted = match job {
+                Job::ToggleMute => !muted,
+                _ => false,
+            };
+            self.power.volume = Some((v, muted));
+            info!(level = v, muted, "volume key (simulated)");
+            self.show_indicator(crate::osd::Indicator::Volume { level: v, muted });
         }
     }
 }

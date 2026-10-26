@@ -911,6 +911,13 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             state.power_tick();
             smithay::reexports::calloop::timer::TimeoutAction::ToDuration(crate::power::TICK)
         });
+        if let Some(feedback) = state.power.volume_feedback.take() {
+            let _ = state.handle.insert_source(feedback, |event, _, state| {
+                if let smithay::reexports::calloop::channel::Event::Msg((level, muted)) = event {
+                    state.show_indicator(crate::osd::Indicator::Volume { level, muted });
+                }
+            });
+        }
         state.relock();
         state.start_wallpaper();
         if BackendData::IS_SESSION {

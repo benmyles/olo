@@ -442,5 +442,17 @@
   "title": "Cursors in a session",
   "caption": "Headless 2x session: StyledEdit asks for the text cursor over cursor-shape-v1, the desktop shows the hand, the window frame shows the resize arrow.",
   "image": "2026-10-26/030140-cursors-in-a-session.png"
+ },
+ {
+  "time": "2026-10-26T03:15:04",
+  "title": "Level indicator",
+  "caption": "app_server panel for the brightness and volume keys and Ctrl+Cmd+A caffeinated, light and dark, 2x.",
+  "image": "2026-10-26/031504-level-indicator.png"
+ },
+ {
+  "time": "2026-10-26T03:15:04",
+  "title": "Deskbar Stay Awake menu",
+  "caption": "Right-click the cup (also in the Tabula menu): until turned off, 1 to 8 hours, even with the lid closed, Allow Sleep with the end time. The menu now flips to stay on screen.",
+  "image": "2026-10-26/031504-deskbar-stay-awake-menu.png"
  }
 ]

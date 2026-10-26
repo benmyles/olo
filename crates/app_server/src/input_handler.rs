@@ -185,6 +185,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
             }
             A::Lock => self.lock_screen(),
+            A::Caffeinate => {
+                let on = !self.power.caffeinated();
+                self.set_caffeinated(on, None, false);
+                let detail = if on { "Until you turn it off" } else { "Sleeps when idle" };
+                self.show_indicator(crate::osd::Indicator::Caffeinated { on, detail: detail.into() });
+            }
             A::Screenshot(shot) => {
                 use crate::keymap::Shot;
                 if !self.lock.locked() {

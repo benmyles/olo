@@ -272,8 +272,8 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.lock_screen();
                 Reply::Ok
             }
-            Request::SetCaffeinated { on } => {
-                self.set_caffeinated(on);
+            Request::SetCaffeinated { on, minutes, lid } => {
+                self.set_caffeinated(on, minutes, lid);
                 Reply::Ok
             }
             Request::SetBrightness { level } => {

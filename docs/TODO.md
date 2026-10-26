@@ -14,9 +14,9 @@ as they land (with the commit), add new ones as they come up.
 - ~~Power management and caffeinated mode~~: app_server turns the display
   off and sleeps when idle (Preferences ▸ Power), honours zwp_idle_inhibit,
   handles the brightness and volume keys; caffeinated mode from the Deskbar
-  cup or Preferences holds a logind inhibitor. Display ▸ Brightness. Still
-  to do: an on-screen level indicator for the brightness / volume keys,
-  keyboard backlight, real DPMS off instead of backlight 0.
+  cup or Preferences holds a logind inhibitor. Display ▸ Brightness. ~~On-screen
+  level indicator~~. Still to do: keyboard backlight, real DPMS off
+  instead of backlight 0.
 - ~~Preferences ▸ Sound~~: output/input device, level, mute, live from the
   sound server (`tabula_system::audio::{devices, watch_devices, set_*}`).
 
@@ -97,12 +97,9 @@ as they land (with the commit), add new ones as they come up.
   tabula-screensaver on every output, Preferences ▸ Screen Saver (Fade and
   Modules tabs, live preview, Test, hot corners), lock-after drawing over the
   lock screen; Flip and Lens see the desktop on every backend.
-- **Caffeinated mode**: one click (Deskbar replicant/tray toggle, plus a
-  Deskbar menu item and a shortcut) keeps everything awake: no display
-  sleep, system suspend, screensaver or idle lock (logind inhibitor
-  locks over D-Bus, natively), optionally for a set time (1 h, until
-  battery low, …). Visible state in Deskbar while on; lid-close still
-  sleeps unless explicitly chosen.
+- ~~**Caffeinated mode**~~: Deskbar cup (click; right-click or Tabula ▸
+  Stay Awake for 1–8 hours or with the lid closed), Ctrl+⌘A, timed end,
+  shown in the cup's tip and menu.
 
 ## Other
 

@@ -586,7 +586,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         pointer.set_grab(self, grab, serial, Focus::Clear);
     }
 
-    fn unconstrain_popup(&self, popup: &PopupSurface) {
+    pub(crate) fn unconstrain_popup(&self, popup: &PopupSurface) {
         let Ok(root) = find_popup_root_surface(&PopupKind::Xdg(popup.clone())) else {
             return;
         };

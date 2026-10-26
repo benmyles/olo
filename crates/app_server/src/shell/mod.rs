@@ -270,6 +270,12 @@ impl<BackendData: Backend> WlrLayerShellHandler for AnvilState<BackendData> {
         map.map_layer(&layer).unwrap();
     }
 
+    /// A layer surface's popup (Deskbar's menus) only learns its parent
+    /// now, after xdg-shell's `new_popup`: keep it on screen here.
+    fn new_popup(&mut self, _parent: WlrLayerSurface, popup: smithay::wayland::shell::xdg::PopupSurface) {
+        self.unconstrain_popup(&popup);
+    }
+
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
         if let Some((mut map, layer)) = self.space.outputs().find_map(|o| {
             let map = layer_map_for_output(o);

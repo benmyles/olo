@@ -2,7 +2,7 @@
 //! (so ⌘C copies everywhere, GTK and Firefox included), while app_server
 //! keeps a few ⌘ chords for itself: ⌘Tab / ⌘\` (Twitcher), ⌘Space and a
 //! tap of ⌘ alone (Find), ⌘ arrows and ⌘⌫ (line and document navigation),
-//! Ctrl+⌘Q (lock) and ⌘⇧3 / ⌘⇧4 / ⌘⇧5 (screen, area and the Screenshot
+//! Ctrl+⌘Q (lock), Ctrl+⌘A (caffeinated) and ⌘⇧3 / ⌘⇧4 / ⌘⇧5 (screen, area and the Screenshot
 //! app, as on a Mac; Print Screen and Alt+Print Screen for the screen and
 //! the active window). Caps Lock is another Ctrl. Terminals keep physical
 //! Ctrl for the tty, so ⌘ reaches them as Ctrl+Shift.
@@ -24,6 +24,7 @@ pub mod code {
     pub const BACKSPACE: u32 = 14;
     pub const TAB: u32 = 15;
     pub const Q: u32 = 16;
+    pub const A: u32 = 30;
     pub const U: u32 = 22;
     pub const O: u32 = 24;
     pub const LEFTCTRL: u32 = 29;
@@ -67,6 +68,8 @@ pub enum Action {
     Find,
     /// Ctrl+⌘Q.
     Lock,
+    /// Ctrl+⌘A: caffeinated mode on or off.
+    Caffeinate,
     /// ⌘⇧3 / Print Screen, ⌘⇧4, Alt+Print Screen: saved straight away,
     /// no window.
     Screenshot(Shot),
@@ -266,6 +269,10 @@ impl Keymap {
                 }
                 Q if ctrl => {
                     out.push(Out::Action(Action::Lock));
+                    true
+                }
+                A if ctrl => {
+                    out.push(Out::Action(Action::Caffeinate));
                     true
                 }
                 TAB if !ctrl => {
@@ -507,6 +514,8 @@ mod tests {
         r.down(LEFTMETA);
         assert_eq!(r.down(Q), [Out::Action(Action::Lock)]);
         assert_eq!(r.up(Q), []);
+        assert_eq!(r.down(A), [Out::Action(Action::Caffeinate)]);
+        assert_eq!(r.up(A), []);
         r.up(LEFTMETA);
         // Physical Ctrl and Caps Lock share the left Ctrl.
         assert_eq!(r.down(LEFTCTRL), []);

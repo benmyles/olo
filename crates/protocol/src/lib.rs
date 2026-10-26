@@ -64,8 +64,15 @@ pub enum Request {
     /// Idle state, caffeinated mode and the built-in display's brightness.
     PowerStatus,
     /// Keep the machine awake (no display sleep, system sleep, screen
-    /// saver or lock) until turned off. Not persisted.
-    SetCaffeinated { on: bool },
+    /// saver or lock) until turned off, or for `minutes`. With `lid`,
+    /// closing the lid doesn't sleep either. Not persisted.
+    SetCaffeinated {
+        on: bool,
+        #[serde(default)]
+        minutes: Option<u32>,
+        #[serde(default)]
+        lid: bool,
+    },
     /// Built-in display brightness, 0.0–1.0 (perceptual).
     SetBrightness { level: f32 },
     /// Show each display's name on it for a few seconds.
@@ -130,6 +137,10 @@ pub struct PowerStatus {
     /// The screen saver is running.
     #[serde(default)]
     pub screen_saver: bool,
+    /// Caffeinated for a set time: when it ends (seconds since the epoch).
+    pub caffeinated_until: Option<u64>,
+    /// Caffeinated with the lid closed too.
+    pub caffeinated_lid: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

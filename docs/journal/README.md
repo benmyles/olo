@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Deskbar Stay Awake menu
+
+*03:15* — Right-click the cup (also in the Tabula menu): until turned off, 1 to 8 hours, even with the lid closed, Allow Sleep with the end time. The menu now flips to stay on screen.
+
+![Deskbar Stay Awake menu](2026-10-26/031504-deskbar-stay-awake-menu.png)
+
+### Level indicator
+
+*03:15* — app_server panel for the brightness and volume keys and Ctrl+Cmd+A caffeinated, light and dark, 2x.
+
+![Level indicator](2026-10-26/031504-level-indicator.png)
+
 ### Cursors in a session
 
 *03:01* — Headless 2x session: StyledEdit asks for the text cursor over cursor-shape-v1, the desktop shows the hand, the window frame shows the resize arrow.

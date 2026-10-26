@@ -167,6 +167,21 @@ fn local_now() -> libc::tm {
     }
 }
 
+/// `unix` seconds as a time of day, in the Deskbar clock's style (without
+/// seconds).
+pub fn time_of_day(unix: u64, clock: &tabula_protocol::ClockSettings) -> String {
+    // SAFETY: localtime_r writes into the zeroed struct we own.
+    let tm = unsafe {
+        tzset();
+        let t = unix as libc::time_t;
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&t, &mut tm);
+        tm
+    };
+    let clock = tabula_protocol::ClockSettings { show_seconds: false, show_day: false, ..clock.clone() };
+    format_clock(&tm, false, &clock)
+}
+
 pub fn clock_text(date: bool, clock: &tabula_protocol::ClockSettings) -> String {
     format_clock(&local_now(), date, clock)
 }

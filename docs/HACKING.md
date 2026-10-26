@@ -471,6 +471,20 @@ hands the backend a buffer whose pixels land one-to-one on the screen.
 Clients that set a cursor surface still get theirs. To see every cursor:
 `TABULA_CURSOR_SHEET=/tmp/c.png cargo test -p tabula-hvif sheet`.
 
+## Caffeinated mode and the level indicator (power.rs, osd.rs)
+
+Caffeinated mode holds a logind block inhibitor ("sleep:idle", plus
+"handle-lid-switch" when asked to survive the lid) and keeps idleness at
+bay; `Request::SetCaffeinated { on, minutes, lid }` sets it, the power
+tick ends a timed stretch, and `PowerStatus` carries `caffeinated_until`
+and `caffeinated_lid`. Deskbar toggles it from the cup (right-click, or
+Tabula ▸ Stay Awake, for durations and the lid); Ctrl+⌘A toggles it from
+the keyboard. The brightness and volume keys and Ctrl+⌘A show `osd.rs`'s
+panel low on the screen under the pointer for 1.6 s (in a real session
+the worker reports the volume it set; headless simulates a volume).
+`TABULA_OSD_SHEET=/tmp/o.png cargo test -p app_server osd_sheet` draws
+every state.
+
 ## Night light (app_server night.rs)
 
 Preferences ▸ Appearance's night light (off, on, or scheduled, at a

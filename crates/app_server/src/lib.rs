@@ -31,6 +31,7 @@ pub mod keymap;
 pub mod layout;
 pub mod lock;
 pub mod night;
+pub mod osd;
 pub mod power;
 pub mod saver;
 pub mod screenshot;

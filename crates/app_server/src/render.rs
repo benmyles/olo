@@ -141,6 +141,18 @@ where
 }
 
 #[profiling::function]
+/// Put the level indicator just under the pointer, which comes first.
+fn add_indicator<R, E>(elements: &mut Vec<OutputRenderElements<R, E>>, indicator: Option<OutputRenderElements<R, E>>)
+where
+    R: Renderer + ImportAll + ImportMem,
+    E: RenderElement<R>,
+{
+    if let Some(i) = indicator {
+        let at = elements.iter().position(|e| !matches!(e, OutputRenderElements::Custom(CustomRenderElements::Pointer(_)))).unwrap_or(elements.len());
+        elements.insert(at, i);
+    }
+}
+
 pub fn output_elements<R>(
     output: &Output,
     space: &Space<WindowElement>,
@@ -154,11 +166,17 @@ where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Send + 'static,
 {
+    // The brightness / volume indicator, over everything but the pointer.
+    let screen = space.output_geometry(output).map(|g| g.size).unwrap_or_default();
+    let indicator = crate::osd::element(renderer, output, screen)
+        .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)));
     // Locked: nothing but what the caller passed (the pointer and the lock
     // screen) over an opaque background.
     if locked {
         let [r, g, b, a] = crate::lock::BACKGROUND;
-        return (custom_elements.into_iter().map(OutputRenderElements::from).collect(), Color32F::new(r, g, b, a));
+        let mut elements: Vec<_> = custom_elements.into_iter().map(OutputRenderElements::from).collect();
+        add_indicator(&mut elements, indicator);
+        return (elements, Color32F::new(r, g, b, a));
     }
     if let Some(window) = output
         .user_data()
@@ -178,6 +196,8 @@ where
                     .map(|e| OutputRenderElements::Window(Wrap::from(e))),
             )
             .collect::<Vec<_>>();
+        let mut elements = elements;
+        add_indicator(&mut elements, indicator);
         (elements, CLEAR_COLOR_FULLSCREEN)
     } else {
         let mut output_render_elements = custom_elements
@@ -189,6 +209,7 @@ where
             crate::identify::element(renderer, output)
                 .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))),
         );
+        add_indicator(&mut output_render_elements, indicator);
 
         if show_window_preview && space.elements_for_output(output).count() > 0 {
             output_render_elements.extend(space_preview_elements(renderer, space, output));

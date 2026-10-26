@@ -81,7 +81,7 @@ fn send(client: &mut Option<Client>, out: Out) {
     let req = match out {
         Out::Settings(settings) => Request::SetSettings { settings: *settings },
         Out::Output(name, config) => Request::ConfigureOutput { name, config },
-        Out::Caffeinated(on) => Request::SetCaffeinated { on },
+        Out::Caffeinated(on) => Request::SetCaffeinated { on, minutes: None, lid: false },
         Out::Brightness(level) => Request::SetBrightness { level },
         Out::StartScreenSaver => Request::StartScreenSaver,
         Out::Identify => Request::IdentifyOutputs,
