@@ -72,7 +72,8 @@ as they land (with the commit), add new ones as they come up.
   changes. Windows move off a removed display; workspaces and Deskbar
   follow the main display; cursor crosses edges at matching scale.
 
-- Cursor shapes; night mode; libinput settings; centred alerts.
+- Cursor shapes; night mode; libinput settings; ~~centred alerts~~
+  (`WindowOptions::alert`, set_parent, placed over the parent).
 
 ## Lock, screensaver, caffeinated
 

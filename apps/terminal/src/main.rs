@@ -519,8 +519,7 @@ impl App for Terminal {
             Some(Win::Term(t)) => {
                 if let Some(program) = t.session.foreground().filter(|_| t.session.busy()) {
                     let message = format!("“{program}” is still running in this window. Close it anyway?");
-                    let h = widgets::alert_height(&message);
-                    let id = cx.open_window(WindowOptions::new("Terminal", widgets::ALERT_WIDTH, h).min_size(widgets::ALERT_WIDTH, h));
+                    let id = cx.open_window(WindowOptions::alert("Terminal", &message));
                     self.windows.insert(id, Win::ConfirmClose { target: window, program });
                 } else {
                     self.close(cx, window);

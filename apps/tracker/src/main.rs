@@ -613,8 +613,7 @@ impl Tracker {
     }
 
     fn dialog(&mut self, cx: &mut Cx, title: &str, kind: DialogKind, message: String) {
-        let h = widgets::alert_height(&message);
-        let id = cx.open_window(WindowOptions::new(title, widgets::ALERT_WIDTH, h).min_size(widgets::ALERT_WIDTH, h));
+        let id = cx.open_window(WindowOptions::alert(title, &message));
         self.windows.insert(id, Win::Dialog(Dialog { kind, message }));
     }
 

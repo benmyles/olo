@@ -180,8 +180,7 @@ impl Screenshot {
     }
 
     fn show_error(&mut self, cx: &mut Cx, message: String) {
-        let h = widgets::alert_height(&message);
-        let id = cx.open_window(WindowOptions::new("Screenshot", widgets::ALERT_WIDTH, h).min_size(widgets::ALERT_WIDTH, h));
+        let id = cx.open_window(WindowOptions::alert("Screenshot", &message));
         self.windows.insert(id, Win::Error(message));
     }
 

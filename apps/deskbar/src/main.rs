@@ -254,8 +254,7 @@ impl Deskbar {
             cx.close_window(win);
         }
         let message = action.question();
-        let h = widgets::alert_height(message);
-        let win = cx.open_window(WindowOptions::new(action.label(), widgets::ALERT_WIDTH, h).min_size(widgets::ALERT_WIDTH, h));
+        let win = cx.open_window(WindowOptions::alert(action.label(), message));
         self.confirm = Some((win, action));
     }
 

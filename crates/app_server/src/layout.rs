@@ -109,17 +109,18 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     /// On a window's first commit (when its app id and title are known):
-    /// put it back where it was, if we remember it.
-    pub fn restore_placement(&mut self, surface: &WlSurface) {
+    /// put it back where it was before the restart, if we remember it. True when this is its first showing and nothing was
+    /// remembered for it, so it is still to be placed.
+    pub fn restore_placement(&mut self, surface: &WlSurface) -> bool {
         let Some(window) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface)).cloned() else {
-            return;
+            return false;
         };
         let meta = window.meta();
         if meta.placed.replace(true) {
-            return;
+            return false;
         }
         if self.layout.is_empty() {
-            return;
+            return true;
         }
         let (app_id, title) = (window.app_id(), window.title());
         let fresh = |e: &Placement| now().saturating_sub(e.at) < KEEP.as_secs();
@@ -129,7 +130,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             .position(|e| fresh(e) && e.app_id == app_id && e.title == title)
             // Titles can change (a terminal's follows its directory).
             .or_else(|| self.layout.iter().position(|e| fresh(e) && e.app_id == app_id));
-        let Some(i) = i else { return };
+        let Some(i) = i else { return true };
         let p = self.layout.remove(i);
         self.space.map_element(window.clone(), Point::from((p.x, p.y)), p.focused);
         meta.restored_focus.set(p.focused);
@@ -147,5 +148,25 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.focus_window(&f);
             }
         }
+        false
+    }
+
+    /// Open a window that names a parent (an alert, a dialog) over it, as
+    /// Haiku's BAlert does: centred across, a quarter of the way down.
+    pub fn place_over_parent(&mut self, surface: &WlSurface) {
+        let Some(window) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface)).cloned() else {
+            return;
+        };
+        let Some(parent) = window.0.toplevel().and_then(|t| t.parent()) else { return };
+        let Some(parent) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(&parent)).cloned() else {
+            return;
+        };
+        let (Some(pg), Some(g)) = (self.space.element_geometry(&parent), self.space.element_geometry(&window)) else {
+            return;
+        };
+        let x = pg.loc.x + (pg.size.w - g.size.w) / 2;
+        let y = (pg.loc.y + pg.size.h / 4 - g.size.h / 3).max(pg.loc.y);
+        let loc = self.space.element_location(&window).unwrap_or_default();
+        self.space.map_element(window, loc + Point::from((x - g.loc.x, y - g.loc.y)), true);
     }
 }

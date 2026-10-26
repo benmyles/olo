@@ -52,8 +52,8 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         self.focus_window(&window);
 
         compositor::add_post_commit_hook(surface.wl_surface(), |state: &mut Self, _, surface| {
-            if surface_initial_mapped(surface) {
-                state.restore_placement(surface);
+            if surface_initial_mapped(surface) && state.restore_placement(surface) {
+                state.place_over_parent(surface);
             }
             handle_toplevel_commit(&mut state.space, surface);
         });

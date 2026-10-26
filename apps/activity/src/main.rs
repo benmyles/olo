@@ -139,8 +139,7 @@ impl Activity {
     }
 
     fn alert(&mut self, cx: &mut Cx, win: Win, message: &str) {
-        let h = widgets::alert_height(message);
-        let id = cx.open_window(WindowOptions::new("Activity Monitor", widgets::ALERT_WIDTH, h).min_size(widgets::ALERT_WIDTH, h));
+        let id = cx.open_window(WindowOptions::alert("Activity Monitor", message));
         self.windows.insert(id, win);
     }
 

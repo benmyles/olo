@@ -698,6 +698,14 @@ impl Kit {
                 window.set_app_id(self.cx.as_ref().map(|c| c.app_id.clone()).unwrap_or_default());
                 window.set_min_size(options.min_size);
                 window.set_max_size(options.max_size);
+                let parent = match options.parent {
+                    Some(p) => self.surfaces.iter().find(|s| s.id == p),
+                    None if options.alert => self.surfaces.iter().find(|s| self.keyboard_focus.as_ref() == Some(&s.wl)),
+                    None => None,
+                };
+                if let Some(Role::Toplevel(p)) = parent.map(|s| &s.role) {
+                    window.set_parent(Some(p));
+                }
                 window.commit();
                 Role::Toplevel(window)
             }

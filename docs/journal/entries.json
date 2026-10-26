@@ -328,5 +328,11 @@
   "title": "Activity Monitor: dark mode",
   "caption": "Graphs and legend in dark mode.",
   "image": "2026-10-26/014117-activity-monitor-dark-mode.png"
+ },
+ {
+  "time": "2026-10-26T01:44:03",
+  "title": "Alerts open over their window",
+  "caption": "Alerts are children of the focused window; app_server centres them across it a quarter of the way down, as BAlert did.",
+  "image": "2026-10-26/014403-alerts-open-over-their-window.png"
  }
 ]

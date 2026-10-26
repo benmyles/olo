@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Alerts open over their window
+
+*01:44* — Alerts are children of the focused window; app_server centres them across it a quarter of the way down, as BAlert did.
+
+![Alerts open over their window](2026-10-26/014403-alerts-open-over-their-window.png)
+
 ### Activity Monitor: dark mode
 
 *01:41* — Graphs and legend in dark mode.

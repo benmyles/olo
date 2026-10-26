@@ -69,6 +69,12 @@ pub struct WindowOptions {
     /// (Ctrl+C is not Copy), Ctrl+Shift+C/X/V are Copy/Cut/Paste, and text
     /// is delivered with Alt held too.
     pub raw_keys: bool,
+    /// The window this one belongs to (an alert's document): app_server
+    /// opens it centred over the parent instead of at the cascade slot.
+    pub parent: Option<WindowId>,
+    /// An alert: without a `parent`, it belongs to whichever of the app's
+    /// windows has the keyboard when it opens.
+    pub alert: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -121,6 +127,8 @@ impl Default for WindowOptions {
             kind: WindowKind::Normal,
             panel: true,
             raw_keys: false,
+            parent: None,
+            alert: false,
         }
     }
 }
@@ -139,6 +147,17 @@ impl WindowOptions {
     }
     pub fn raw_keys(mut self) -> Self {
         self.raw_keys = true;
+        self
+    }
+    /// A BAlert window sized for `message` (see `widgets::alert`), opened
+    /// over the app's focused window.
+    pub fn alert(title: impl Into<String>, message: &str) -> Self {
+        let (w, h) = (crate::widgets::ALERT_WIDTH, crate::widgets::alert_height(message));
+        WindowOptions { alert: true, ..WindowOptions::new(title, w, h).min_size(w, h) }
+    }
+    /// Open over `parent`, as its alert or sheet.
+    pub fn parent(mut self, parent: WindowId) -> Self {
+        self.parent = Some(parent);
         self
     }
 }

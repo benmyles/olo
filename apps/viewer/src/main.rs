@@ -185,8 +185,7 @@ impl Viewer {
     }
 
     fn show_error(&mut self, cx: &mut Cx, message: String) {
-        let h = widgets::alert_height(&message);
-        let id = cx.open_window(WindowOptions::new("Viewer", widgets::ALERT_WIDTH, h).min_size(widgets::ALERT_WIDTH, h));
+        let id = cx.open_window(WindowOptions::alert("Viewer", &message));
         self.windows.insert(id, Win::Error { message });
     }
 
@@ -232,8 +231,7 @@ impl Viewer {
             return;
         }
         let message = format!("Save changes to “{}” before {}?", file_name(&d.path), if after == After::Close { "closing" } else { "moving on" });
-        let h = widgets::alert_height(&message);
-        let id = cx.open_window(WindowOptions::new("Viewer", widgets::ALERT_WIDTH, h).min_size(widgets::ALERT_WIDTH, h));
+        let id = cx.open_window(WindowOptions::alert("Viewer", &message));
         self.windows.insert(id, Win::Unsaved { doc: win, after, message });
     }
 

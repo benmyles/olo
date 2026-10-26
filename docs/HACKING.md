@@ -150,7 +150,7 @@ multi-select, context clicks), `TabView`, `color_well`, `heading`,
 `popup_menu_at` / `popup_result`, `InlineEdit` (Tracker-style rename in
 place: returns `Editing` / `Commit` / `Cancel`; pads by `INLINE_PAD`, which
 matches `style::text_highlight`), `alert(ui, icon, message, &buttons)` (a
-BAlert; size the window with `alert_height(message)` × `ALERT_WIDTH`; the
+BAlert; open its window with `WindowOptions::alert(title, message)`; the
 last button is the default, Escape picks the first).
 
 File panels (`tabula_kit::file_panel`): `FilePanel::open(dir)` /
@@ -183,9 +183,13 @@ keep your own copy if a menu command acts on it (StyledEdit's `blurred`).
 app_server hands the keyboard back to the window as soon as its last
 popup is destroyed.
 
-Alerts: `widgets::alert(ui, icon, message, buttons)` in a window
-`widgets::ALERT_WIDTH` × `widgets::alert_height(message)`; icons are
-BeOS's `warning`, `stop`, `info` and `idea`.
+Alerts: `widgets::alert(ui, icon, message, buttons)` in a window opened
+with `WindowOptions::alert(title, message)` (sized for the message);
+icons are BeOS's `warning`, `stop`, `info` and `idea`. The kit makes the
+alert a child (`xdg_toplevel.set_parent`) of the app's focused window, or
+of `WindowOptions::parent(id)` when given, and app_server opens any
+window with a parent over it as BAlert does: centred across, a quarter
+of the way down.
 
 ### Look and feel rules
 
