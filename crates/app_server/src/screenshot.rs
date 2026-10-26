@@ -155,9 +155,11 @@ where
     Ok((img, rect))
 }
 
-/// Draw the pointer in (at a position in pixels, at a scale), encode and
-/// write on a thread; answer when done.
-fn save(ipc: &mut IpcState, shot: Shot, captured: Result<(image::RgbaImage, Option<(Point<f64, smithay::utils::Physical>, f64)>), String>) {
+/// A captured image, and where to draw the pointer (in pixels, at a scale).
+type Captured = (image::RgbaImage, Option<(Point<f64, smithay::utils::Physical>, f64)>);
+
+/// Draw the pointer in, encode and write on a thread; answer when done.
+fn save(ipc: &mut IpcState, shot: Shot, captured: Result<Captured, String>) {
     let (mut img, cursor) = match captured {
         Ok(c) => c,
         Err(message) => {
@@ -222,8 +224,8 @@ fn draw_cursor(img: &mut image::RgbaImage, at: Point<f64, smithay::utils::Physic
                 continue;
             }
             let dst = img.get_pixel_mut(dx as u32, dy as u32);
-            for k in 0..3 {
-                dst.0[k] = (src[k] as u32 + dst.0[k] as u32 * (255 - a) / 255).min(255) as u8;
+            for (d, &s) in dst.0.iter_mut().zip(src).take(3) {
+                *d = (s as u32 + *d as u32 * (255 - a) / 255).min(255) as u8;
             }
             dst.0[3] = (a + dst.0[3] as u32 * (255 - a) / 255).min(255) as u8;
         }

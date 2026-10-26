@@ -372,7 +372,7 @@ impl Module for StringTheme {
                 }
                 s.hue = (s.hue + STEP * 0.02) % 1.0;
                 // An echo every few steps.
-                if self.tick % 5 == 0 {
+                if self.tick.is_multiple_of(5) {
                     s.trail.push_back(s.points.iter().map(|(p, _)| *p).collect());
                     if s.trail.len() > ECHOES {
                         s.trail.pop_front();
