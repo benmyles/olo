@@ -54,3 +54,8 @@ stop|a thick octagonal stop-sign plaque in alert red with a white rim and a bold
 info|a thick round coin in Be blue with a bold white lowercase "i" on its face, standing upright on the desk
 idea|a glowing yellow light bulb with a silver screw base, lying slightly tilted on the desk
 authentication|a closed golden padlock with a small silver key beside it
+font|a printer's metal type block standing upright, cream-coloured, with a large bold black serif capital letter A raised on its top face
+pdf|a single sheet of white paper with the top right corner folded over, faint grey lines of text and a bold red band across its lower third
+presentation|a small wooden easel holding a white presentation board that shows a pie chart in blue, red and yellow
+spreadsheet|a white sheet of paper printed with a green grid of table cells, with a small bar chart of green and blue bars standing in front of its lower right corner
+word-document|a white sheet of paper with grey lines of text and a small blue picture block set into the text, a red bookmark ribbon hanging from its top edge

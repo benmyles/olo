@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Icons for document kinds
+
+*03:50* — Spreadsheet, presentation, word processing, PDF and font files get their own icons
+
+![Icons for document kinds](2026-10-26/035008-icons-for-document-kinds.png)
+
 ### Colour emoji in Terminal
 
 *03:42* — COLRv1 emoji painted natively: sequences, skin tones, flags, keycaps, on any background

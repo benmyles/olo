@@ -490,5 +490,11 @@
   "title": "Colour emoji in Terminal",
   "caption": "COLRv1 emoji painted natively: sequences, skin tones, flags, keycaps, on any background",
   "image": "2026-10-26/034208-colour-emoji-in-terminal.png"
+ },
+ {
+  "time": "2026-10-26T03:50:08",
+  "title": "Icons for document kinds",
+  "caption": "Spreadsheet, presentation, word processing, PDF and font files get their own icons",
+  "image": "2026-10-26/035008-icons-for-document-kinds.png"
  }
 ]

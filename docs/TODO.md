@@ -111,6 +111,7 @@ as they land (with the commit), add new ones as they come up.
 - ~~Deskbar 24-hour clock option~~ (Preferences ▸ Date & Time ▸ Clock).
 - ~~**polkit authentication agent**~~: apps/polkit-agent (real sessions
   only; fprintd then password through polkit-agent-helper-1).
-- Icons: audio/system, spreadsheet, font and other new file kinds.
+- ~~Icons for new file kinds~~: spreadsheet, presentation, word-document,
+  pdf, font (audio, video, archive already had theirs).
 - ~~Kit: asynchronous `read_clipboard`~~ (`paste` reads on a helper
   thread and delivers the Paste event through a loop channel).

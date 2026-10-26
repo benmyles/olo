@@ -32,10 +32,14 @@ impl Kind {
             Kind::Audio => "audio",
             Kind::Video => "video",
             Kind::Archive => "archive",
-            Kind::Pdf => "document",
+            Kind::Pdf => "pdf",
             Kind::Application => "application",
             Kind::Executable => "executable",
-            Kind::Document | Kind::WordDocument | Kind::Spreadsheet | Kind::Presentation | Kind::Font => "document",
+            Kind::Document => "document",
+            Kind::WordDocument => "word-document",
+            Kind::Spreadsheet => "spreadsheet",
+            Kind::Presentation => "presentation",
+            Kind::Font => "font",
         }
     }
 
