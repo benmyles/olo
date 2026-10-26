@@ -10,7 +10,7 @@ use tabula_kit::{
 };
 
 use crate::{
-    Conn, EditAction, Passwords, Source, edit,
+    Accounts, Conn, EditAction, Passwords, Source, edit,
     lock::Finger,
 };
 
@@ -97,12 +97,12 @@ pub fn main(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui) {
     }
     match app.conn.clone() {
         Conn::Connecting if app.items.is_empty() => {
-            let account = app.settings.account.clone().unwrap_or_default();
+            let account = app.account_label();
             panel(ui, full, "passwords", "Connecting to 1Password…", &format!(
                 "Waiting for 1Password to let Passwords in to {account}. If it asks, choose Allow (and unlock it if it is locked)."
             ), |ui| {
                 if ui.add(Button::new("Change Account…")).clicked() {
-                    app.conn = Conn::Setup;
+                    app.change_account();
                 }
             });
         }
@@ -113,7 +113,7 @@ pub fn main(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui) {
                         app.connect(cx);
                     }
                     if ui.add(Button::new("Change Account…")).clicked() {
-                        app.conn = Conn::Setup;
+                        app.change_account();
                     }
                 });
             });
@@ -145,15 +145,44 @@ fn panel(ui: &mut Ui, full: Rect, icon_name: &str, heading: &str, message: &str,
 }
 
 fn setup(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
+    if matches!(app.accounts, Accounts::Unknown) {
+        app.find_accounts(cx);
+    }
     let mut connect = false;
     let cancel_to = app.settings.account.is_some();
-    panel(
-        ui,
-        full,
-        "passwords",
-        "Passwords uses your 1Password account",
-        "1Password keeps your items and unlocks them; Passwords shows them here. In 1Password, turn on Settings ▸ Developer ▸ Integrate with other apps, then name the account to use.",
-        |ui| {
+    let listed: Vec<onepassword::accounts::Account> = match &app.accounts {
+        Accounts::Found(list) => list.clone(),
+        _ => Vec::new(),
+    };
+    let message = if listed.is_empty() {
+        "1Password keeps your items and unlocks them; Passwords shows them here. In 1Password, turn on Settings ▸ Developer ▸ Integrate with other apps, then name the account to use."
+    } else {
+        "1Password keeps your items and unlocks them; Passwords shows them here. In 1Password, turn on Settings ▸ Developer ▸ Integrate with other apps, then choose the account to use."
+    };
+    panel(ui, full, "passwords", "Passwords uses your 1Password account", message, |ui| {
+        let p = style::palette(ui.ctx());
+        for a in &listed {
+            let chosen = !app.other_account && app.account_field == a.uuid;
+            let r = ui.add(widgets::RadioButton::new(chosen, &a.name));
+            if r.clicked() {
+                app.other_account = false;
+                app.account_field = a.uuid.clone();
+            }
+            if r.double_clicked() {
+                connect = true;
+            }
+            let detail = [a.email.as_str(), a.address.as_str()].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join(" · ");
+            if !detail.is_empty() {
+                let g = ui.painter().layout(detail, style::small_font(), style::disabled_text(&p), ui.available_width() - 21.0);
+                let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), g.size().y), Sense::hover());
+                ui.painter().galley(pos2(rect.left() + 21.0, rect.top() - m::SPACING * 0.75), g, style::disabled_text(&p));
+            }
+        }
+        if !listed.is_empty() && ui.add(widgets::RadioButton::new(app.other_account, "Another account")).clicked() && !app.other_account {
+            app.other_account = true;
+            app.account_field.clear();
+        }
+        if listed.is_empty() || app.other_account {
             let field = ui.add(TextControl::new(&mut app.account_field).label("Account:").divider(70.0).hint("as in 1Password's sidebar, or its UUID"));
             if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 connect = true;
@@ -161,21 +190,23 @@ fn setup(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
             if !field.has_focus() && app.account_field.is_empty() {
                 field.request_focus();
             }
-            buttons(ui, |ui| {
-                let ok = ui.add_enabled(!app.account_field.trim().is_empty(), Button::new("Connect").default(true));
-                if ok.clicked() {
-                    connect = true;
+        } else if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            connect = true;
+        }
+        buttons(ui, |ui| {
+            let ok = ui.add_enabled(!app.account_field.trim().is_empty(), Button::new("Connect").default(true));
+            if ok.clicked() {
+                connect = true;
+            }
+            if cancel_to && ui.add(Button::new("Cancel")).clicked() {
+                app.account_field = app.settings.account.clone().unwrap_or_default();
+                app.conn = if app.vaults.is_empty() { Conn::Connecting } else { Conn::Ready };
+                if app.vaults.is_empty() {
+                    app.connect(cx);
                 }
-                if cancel_to && ui.add(Button::new("Cancel")).clicked() {
-                    app.account_field = app.settings.account.clone().unwrap_or_default();
-                    app.conn = if app.vaults.is_empty() { Conn::Connecting } else { Conn::Ready };
-                    if app.vaults.is_empty() {
-                        app.connect(cx);
-                    }
-                }
-            });
-        },
-    );
+            }
+        });
+    });
     if connect && !app.account_field.trim().is_empty() {
         let account = app.account_field.trim().to_string();
         if app.settings.account.as_deref() != Some(&account) {
@@ -185,6 +216,7 @@ fn setup(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
             app.selected = None;
             app.source = Source::All;
         }
+        app.settings.account_label = listed.iter().find(|a| a.uuid == account).map(|a| a.name.clone());
         app.settings.account = Some(account);
         app.save_settings();
         app.connect(cx);

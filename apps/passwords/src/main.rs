@@ -33,9 +33,11 @@ const APP_ID: &str = "tabula.passwords";
 
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
-struct Settings {
-    /// The account's name in 1Password's sidebar, or its UUID.
+pub struct Settings {
+    /// The account's UUID (or its name in 1Password's sidebar).
     account: Option<String>,
+    /// How to name it to the user.
+    account_label: Option<String>,
     /// Lock after this long without use (0: only when asked).
     lock_minutes: u32,
     /// Take copied secrets off the clipboard after this long.
@@ -46,7 +48,7 @@ struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { account: None, lock_minutes: 10, clear_seconds: 90, generator: Default::default(), size: None }
+        Settings { account: None, account_label: None, lock_minutes: 10, clear_seconds: 90, generator: Default::default(), size: None }
     }
 }
 
@@ -95,6 +97,13 @@ struct Saved {
     search: String,
 }
 
+/// The accounts in the 1Password app, for the setup panel.
+pub enum Accounts {
+    Unknown,
+    Finding,
+    Found(Vec<onepassword::accounts::Account>),
+}
+
 /// Ticks for the auto-lock and one-time-password countdowns.
 struct Tick;
 
@@ -103,6 +112,9 @@ pub struct Passwords {
     store: Store,
     conn: Conn,
     account_field: String,
+    accounts: Accounts,
+    /// Naming an account by hand rather than choosing a listed one.
+    other_account: bool,
     vaults: Vec<VaultOverview>,
     items: Vec<ItemOverview>,
     loading: bool,
@@ -221,6 +233,25 @@ impl Passwords {
         self.loading = true;
         self.store.connect(&account);
         self.redraw(cx);
+    }
+
+    /// Back to choosing the account (listing the app's afresh).
+    pub fn change_account(&mut self) {
+        self.account_field = self.settings.account.clone().unwrap_or_default();
+        self.accounts = Accounts::Unknown;
+        self.conn = Conn::Setup;
+    }
+
+    /// Read the 1Password app's accounts off the UI thread.
+    pub fn find_accounts(&mut self, cx: &mut Cx) {
+        self.accounts = Accounts::Finding;
+        let proxy = cx.proxy();
+        std::thread::spawn(move || proxy.send(Accounts::Found(onepassword::accounts::local())));
+    }
+
+    /// The account as the user knows it.
+    pub fn account_label(&self) -> String {
+        self.settings.account_label.clone().or_else(|| self.settings.account.clone()).unwrap_or_default()
     }
 
     fn redraw(&self, cx: &mut Cx) {
@@ -772,10 +803,7 @@ impl App for Passwords {
                 }
             }
             "lock" => self.do_lock(cx),
-            "account" => {
-                self.account_field = self.settings.account.clone().unwrap_or_default();
-                self.conn = Conn::Setup;
-            }
+            "account" => self.change_account(),
             "generator" => self.open_generator(cx, None),
             "find" => self.focus_search = true,
             "edit" => self.edit_selected(cx),
@@ -851,6 +879,27 @@ impl App for Passwords {
             }
             Err(m) => m,
         };
+        let msg = match msg.downcast::<Accounts>() {
+            Ok(found) => {
+                if let Accounts::Found(list) = &*found {
+                    // Choose the one in use, else the first; by hand if none fits.
+                    let field = self.account_field.trim();
+                    if let Some(a) = list.iter().find(|a| a.uuid == field || a.name == field) {
+                        self.account_field = a.uuid.clone();
+                        self.other_account = false;
+                    } else if field.is_empty() {
+                        self.account_field = list.first().map(|a| a.uuid.clone()).unwrap_or_default();
+                        self.other_account = list.is_empty();
+                    } else {
+                        self.other_account = true;
+                    }
+                }
+                self.accounts = *found;
+                self.redraw(cx);
+                return;
+            }
+            Err(m) => m,
+        };
         let msg = match msg.downcast::<Tick>() {
             Ok(_) => return self.tick(cx),
             Err(m) => m,
@@ -899,6 +948,8 @@ fn main() {
         let locked = settings.account.is_some();
         let mut app = Passwords {
             account_field: settings.account.clone().unwrap_or_default(),
+            accounts: Accounts::Unknown,
+            other_account: false,
             store: Store::new(proxy.clone()),
             lock: Lock::new(proxy.clone(), locked),
             settings,

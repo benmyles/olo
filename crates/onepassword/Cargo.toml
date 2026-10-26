@@ -22,6 +22,7 @@ sha1 = "0.11"
 sha2 = "0.11"
 url = "2"
 zeroize = "1"
+rusqlite = { version = "0.38", features = ["bundled"] }
 
 [[bin]]
 name = "onepassword-fake"

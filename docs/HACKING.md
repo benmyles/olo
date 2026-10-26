@@ -344,6 +344,15 @@ reload. Test it with
 TABULA_UPGRADE_FROM=<tree> tsession start NAME --session --shell` and
 `touch` a program in the tree.
 
+**The login keyring** (`crates/session/src/keyring.rs`): PAM starts
+gnome-keyring-daemon with the login keyring unlocked, and the daemon
+quits after two minutes unless the desktop finishes starting it. GNOME
+does that with `gnome-keyring-daemon --start`; a real session sends the
+same INITIALIZE over `$XDG_RUNTIME_DIR/keyring/control` (big-endian
+length-prefixed fields: op 0, components `secrets`, the environment) and
+takes on the environment it returns. Otherwise the first program to want
+a secret starts a fresh daemon that asks for the password again.
+
 **keyd** (`crates/session/src/keyd.rs`): keyd remaps keyboards for every
 session, so a real session asks it over `/run/keyd.socket` to bind the
 modifier keys and Caps Lock to themselves. That way app_server's
@@ -861,8 +870,16 @@ each app and unlocks itself; users turn on Settings ▸ Developer ▸ Integrate
 with other apps. Service-account (token) access is not implemented: that
 needs 1Password's closed core.
 
+`onepassword::accounts::local()` lists the accounts signed in to the
+app (name, email, sign-in address, UUID) from the summaries in its
+`1password.sqlite` (`~/.config/1Password`, or the Flatpak's;
+`TABULA_1PASSWORD_DATA` overrides), read-only and nothing else from it.
+Passwords' setup offers them as a choice and keeps the UUID, which the
+SDK integration takes as the account's name.
+
 Tests never touch the real app. `onepassword-fake [--account NAME]
-[--socket NAME] [--data FILE]` serves an in-memory account (two vaults of
+[--socket NAME] [--data FILE] [--accounts DIR]` (DIR gets a
+`1password.sqlite` listing it) serves an in-memory account (two vaults of
 sample items, item versions, OTP codes) over the same protocol;
 `tests/desktop.rs` drives it. Apps take `TABULA_1PASSWORD_SOCKET` to use it.
 

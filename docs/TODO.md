@@ -21,6 +21,12 @@ as they land (with the commit), add new ones as they come up.
 - ~~Preferences ▸ Sound~~: output/input device, level, mute, live from the
   sound server (`tabula_system::audio::{devices, watch_devices, set_*}`).
 
+- ~~Upgrades keep apps open~~ (only a new app_server reloads; Tabula
+  programs re-execute in place), ~~interactive resize keeps up~~,
+  ~~focus not stolen by xdg_activation without input~~ (15c2b27).
+- ~~Login keyring in a real session~~ (the session finishes starting the
+  daemon PAM unlocked), ~~Passwords lists 1Password's accounts~~.
+
 ## Native rule (no wrapping system tools)
 
 - ~~nmcli, wpctl, systemctl, gsettings, dbus-update-activation-environment~~
@@ -108,6 +114,15 @@ as they land (with the commit), add new ones as they come up.
   unplug) and Identify done too. ~~Settings keyed by EDID~~ (make,
   model, serial; connector entries migrate), ~~mirroring~~ (fit and centred,
   "Use as" in Preferences).
+
+- **Windows while rearranging displays** (Ben, real 3-display session):
+  dragging screens around in Preferences ▸ Display moves windows to odd
+  places at each step. Keep each window on the screen it was on, at the
+  same position relative to that screen, as screens move; only windows
+  on a removed or shrunk screen should move, and on to the nearest one.
+  Do after everything else.
+- **Slack loads too much memory in NetPositive** (Ben): find whether the
+  limit is too low, the accounting wrong, or something wasteful.
 
 - ~~Cursor shapes~~ (Haiku's cursors via tabula-hvif, cursor-shape-v1);
   ~~night light~~ (CRTC gamma ramps, faded); ~~libinput settings~~ (touchpad tap, tap-drag, dwt, click

@@ -25,6 +25,7 @@
 //! app_server (keyd.rs).
 
 mod keyd;
+mod keyring;
 mod upgrade;
 
 use std::{
@@ -206,6 +207,7 @@ impl Session {
         }
         s.real = real;
         if real {
+            keyring::start();
             export_environment();
             keyd::pass_through();
         }

@@ -688,5 +688,11 @@
   "title": "NetPositive: the WebRTC samples' peer connection",
   "caption": "The official webrtc.github.io 'Peer connection' sample, unmodified: the test camera (left) goes through two RTCPeerConnections and comes back decoded (right), connected in 281 ms.",
   "image": "2026-10-26/132617-netpositive-the-webrtc-samples-peer-connection.png"
+ },
+ {
+  "time": "2026-10-26T14:06:31",
+  "title": "Passwords: choose your 1Password account",
+  "caption": "Setting up Passwords now lists the accounts signed in to the 1Password app (read from its local account summaries), with email and sign-in address, instead of asking for a name or UUID. Another account still takes one by hand.",
+  "image": "2026-10-26/140631-passwords-choose-your-1password-account.png"
  }
 ]

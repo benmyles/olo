@@ -20,6 +20,7 @@
 //! # Ok::<(), onepassword::Error>(())
 //! ```
 
+pub mod accounts;
 pub mod desktop;
 pub mod fake;
 pub mod generate;

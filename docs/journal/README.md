@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Passwords: choose your 1Password account
+
+*14:06* — Setting up Passwords now lists the accounts signed in to the 1Password app (read from its local account summaries), with email and sign-in address, instead of asking for a name or UUID. Another account still takes one by hand.
+
+![Passwords: choose your 1Password account](2026-10-26/140631-passwords-choose-your-1password-account.png)
+
 ### NetPositive: the WebRTC samples' peer connection
 
 *13:26* — The official webrtc.github.io 'Peer connection' sample, unmodified: the test camera (left) goes through two RTCPeerConnections and comes back decoded (right), connected in 281 ms.

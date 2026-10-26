@@ -41,10 +41,30 @@ pub struct FakeVault {
     pub files: BTreeMap<String, String>,
 }
 
+/// The stand-in account's UUID (26 characters, like 1Password's).
+pub const UUID: &str = "TABULATESTACCOUNT000000001";
+
+fn fake_uuid() -> String {
+    UUID.into()
+}
+
+/// The stand-in as `accounts::local` lists it.
+pub fn local_account(account: &FakeAccount) -> crate::accounts::Account {
+    crate::accounts::Account {
+        uuid: account.uuid.clone(),
+        name: account.account.clone(),
+        email: "test@example.com".into(),
+        address: "tabula-test.1password.com".into(),
+    }
+}
+
 /// Everything the stand-in holds.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct FakeAccount {
     pub account: String,
+    /// Its UUID, which the app also answers to.
+    #[serde(default = "fake_uuid")]
+    pub uuid: String,
     pub vaults: Vec<FakeVault>,
 }
 
@@ -149,7 +169,7 @@ impl State {
 
     fn answer(&self, request: Request) -> Result<Value, Value> {
         let mut account = self.account.lock().unwrap_or_else(|e| e.into_inner());
-        if request.account_name != account.account {
+        if request.account_name != account.account && request.account_name != account.uuid {
             return Err(error("Internal", format!("no account named '{}' is signed in", request.account_name)));
         }
         match request.kind.as_str() {
@@ -483,5 +503,5 @@ pub fn sample(account: &str) -> FakeAccount {
     for p in [login("Streaming", "https://tv.example.org", "family@example.com", "Popcorn-Saturday-31"), server] {
         create(&mut vaults[1], p);
     }
-    FakeAccount { account: account.into(), vaults }
+    FakeAccount { account: account.into(), uuid: UUID.into(), vaults }
 }
