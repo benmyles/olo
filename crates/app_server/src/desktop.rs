@@ -541,15 +541,15 @@ fn set_toolkit_color_scheme(theme: ThemeMode) {
         ThemeMode::Light => "Adwaita",
         ThemeMode::Dark => "Adwaita-dark",
     };
+    // Through the dconf service, which GSettings (and so GTK and the
+    // portals) read; off the compositor thread.
     std::thread::spawn(move || {
-        let run = |args: &[&str]| {
-            let _ = std::process::Command::new("gsettings")
-                .args(args)
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status();
-        };
-        run(&["set", "org.gnome.desktop.interface", "color-scheme", scheme]);
-        run(&["set", "org.gnome.desktop.interface", "gtk-theme", gtk_theme]);
+        let keys = [
+            ("/org/gnome/desktop/interface/color-scheme", scheme),
+            ("/org/gnome/desktop/interface/gtk-theme", gtk_theme),
+        ];
+        if let Err(e) = tabula_system::dconf::set_strings(&keys) {
+            warn!("could not set the toolkit colour scheme: {e}");
+        }
     });
 }

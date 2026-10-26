@@ -13,6 +13,7 @@ use tabula_kit::{
     menu::{self, MenuAnchor, MenuRequest},
     style::{self, c, hline, shade, vline},
     theme::Palette,
+    widgets,
 };
 use tabula_protocol::{Client, Event, Reply, Request, WindowInfo};
 
@@ -43,6 +44,28 @@ const PREFS: &[(&str, &str, &str)] = &[
 
 use tabula_kit::apps::{OUR_APPS, our_app};
 
+#[derive(Debug, Clone, Copy)]
+enum Power {
+    Restart,
+    ShutDown,
+}
+
+impl Power {
+    fn label(self) -> &'static str {
+        match self {
+            Power::Restart => "Restart",
+            Power::ShutDown => "Shut Down",
+        }
+    }
+
+    fn question(self) -> &'static str {
+        match self {
+            Power::Restart => "Do you really want to restart the system?",
+            Power::ShutDown => "Do you really want to shut down the system?",
+        }
+    }
+}
+
 enum Msg {
     Windows(Vec<WindowInfo>),
     Workspace(u32, u32),
@@ -68,6 +91,8 @@ struct Deskbar {
     entries: HashMap<String, Option<DesktopEntry>>,
     height: f32,
     scroll_acc: f32,
+    /// The Restart / Shut Down confirmation, while it is open.
+    confirm: Option<(WindowId, Power)>,
 }
 
 fn team_key(w: &WindowInfo) -> String {
@@ -223,12 +248,42 @@ impl Deskbar {
                 "about" => spawn("tabula-preferences about"),
                 "find" => spawn("tabula-tracker --find"),
                 "logout" => request(Request::Quit),
-                "restart" => spawn("systemctl reboot"),
-                "shutdown" => spawn("systemctl poweroff"),
+                "restart" => self.confirm_power(cx, Power::Restart),
+                "shutdown" => self.confirm_power(cx, Power::ShutDown),
                 _ => {}
             },
         }
         cx.redraw(self.win);
+    }
+
+    /// Ask before restarting or shutting down, as BeOS did.
+    fn confirm_power(&mut self, cx: &mut Cx, action: Power) {
+        if let Some((win, _)) = self.confirm.take() {
+            cx.close_window(win);
+        }
+        let message = action.question();
+        let h = widgets::alert_height(message);
+        let win = cx.open_window(WindowOptions::new(action.label(), widgets::ALERT_WIDTH, h).min_size(widgets::ALERT_WIDTH, h));
+        self.confirm = Some((win, action));
+    }
+
+    fn confirm_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
+        let Some((_, action)) = self.confirm else { return };
+        let Some(choice) = widgets::alert(ui, "system", action.question(), &["Cancel", action.label()]) else { return };
+        self.confirm = None;
+        cx.close_window(win);
+        if choice == 1 {
+            // logind may take a moment (and polkit may ask): not on the UI thread.
+            std::thread::spawn(move || {
+                let r = match action {
+                    Power::Restart => tabula_system::power::reboot(),
+                    Power::ShutDown => tabula_system::power::power_off(),
+                };
+                if let Err(e) = r {
+                    tracing::warn!("{}: {e}", action.label());
+                }
+            });
+        }
     }
 
     fn team_command(&mut self, team_key: &str, cmd: &str) {
@@ -261,7 +316,20 @@ fn section_bevel(p: &egui::Painter, r: Rect, pal: &Palette) {
 }
 
 impl App for Deskbar {
-    fn ui(&mut self, cx: &mut Cx, _w: WindowId, ui: &mut egui::Ui) {
+    fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
+        if self.confirm.is_some_and(|(w, _)| w == window) {
+            self.confirm = None;
+        }
+        if window != self.win {
+            cx.close_window(window);
+        }
+    }
+
+    fn ui(&mut self, cx: &mut Cx, w: WindowId, ui: &mut egui::Ui) {
+        if self.confirm.is_some_and(|(win, _)| win == w) {
+            self.confirm_ui(cx, w, ui);
+            return;
+        }
         let pal = style::palette(ui.ctx());
         let full = ui.max_rect();
         let painter = ui.painter().clone();
@@ -523,6 +591,7 @@ fn main() {
             entries: HashMap::new(),
             height: TILE_H + TRAY_H,
             scroll_acc: 0.0,
+            confirm: None,
         }
     });
 }

@@ -167,7 +167,12 @@ impl Session {
             stopping: false,
         };
         s.start_server();
-        export_environment();
+        // Only a real session owns the user's environment: a headless or
+        // nested one (tests, development) must not point the user's portals
+        // and services at itself.
+        if s.backend.iter().any(|b| b == "--tty-udev") {
+            export_environment();
+        }
         if !no_shell {
             for argv in SHELL {
                 let argv: Vec<String> = argv.iter().map(|a| a.to_string()).collect();
@@ -521,10 +526,15 @@ fn set_session_env(display: &str, ipc: &Path) {
 /// Tell systemd and D-Bus activation about the session, so portals and
 /// services started on demand find our display.
 fn export_environment() {
-    let vars = ["WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "TABULA_SOCKET"];
-    match Command::new("dbus-update-activation-environment").arg("--systemd").args(vars).spawn() {
-        // Collected by `reap` with the other children.
-        Ok(child) => std::mem::forget(child),
-        Err(e) => log(format!("could not export the environment: {e}")),
-    }
+    let vars: Vec<(&str, String)> = ["WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "TABULA_SOCKET"]
+        .into_iter()
+        .filter_map(|k| Some((k, std::env::var(k).ok()?)))
+        .collect();
+    // D-Bus calls can stall if a bus is slow to answer; don't hold up start-up.
+    std::thread::spawn(move || {
+        let pairs: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        if let Err(e) = tabula_system::env::update_activation_environment(&pairs) {
+            log(format!("could not export the environment: {e}"));
+        }
+    });
 }

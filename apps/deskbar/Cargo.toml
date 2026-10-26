@@ -12,5 +12,6 @@ path = "src/main.rs"
 [dependencies]
 tabula-kit.workspace = true
 tabula-protocol.workspace = true
+tabula-system.workspace = true
 tracing.workspace = true
 libc = "0.2"

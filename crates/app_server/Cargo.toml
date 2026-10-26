@@ -12,6 +12,7 @@ name = "tabula-app-server"
 path = "src/main.rs"
 
 [dependencies]
+tabula-system.workspace = true
 libc = "0.2"
 signal-hook = "0.3"
 bitflags = "2.2.1"

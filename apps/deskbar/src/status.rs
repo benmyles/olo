@@ -1,7 +1,16 @@
 //! The tray's view of the machine: clock, battery, Wi-Fi and volume, polled
 //! on a background thread, and the small vector glyphs that show them.
 
-use std::{path::Path, process::Command, time::Duration};
+use std::{
+    path::Path,
+    sync::{
+        Arc, Mutex, OnceLock,
+        mpsc::{Sender, channel},
+    },
+    time::Duration,
+};
+
+use tabula_system::audio;
 
 use tabula_kit::{
     egui::{self, Color32, Painter, Rect, Shape, Stroke, pos2, vec2},
@@ -52,77 +61,104 @@ fn battery() -> Option<Battery> {
 }
 
 fn wifi() -> Option<Wifi> {
-    // Only show Wi-Fi on machines that have it.
-    let has = std::fs::read_dir("/sys/class/net").ok()?.flatten().any(|e| e.path().join("wireless").exists());
-    if !has {
-        return None;
-    }
-    let out = Command::new("nmcli").args(["-t", "-f", "ACTIVE,SSID,SIGNAL", "dev", "wifi"]).output().ok()?;
-    let text = String::from_utf8_lossy(&out.stdout);
-    for line in text.lines() {
-        // ACTIVE:SSID:SIGNAL with ':' in SSIDs escaped as '\:'.
-        let fields: Vec<String> = split_escaped(line);
-        if fields.len() >= 3 && fields[0] == "yes" {
-            return Some(Wifi { ssid: Some(fields[1].clone()), signal: fields[2].parse().unwrap_or(0) });
+    match tabula_system::network::wifi() {
+        Ok(w) => w.map(|w| Wifi { ssid: w.ssid, signal: w.strength }),
+        Err(e) => {
+            tracing::debug!("NetworkManager: {e}");
+            None
         }
     }
-    Some(Wifi { ssid: None, signal: 0 })
 }
 
-fn split_escaped(line: &str) -> Vec<String> {
-    let mut out = vec![String::new()];
-    let mut esc = false;
-    for ch in line.chars() {
-        if esc {
-            out.last_mut().unwrap().push(ch);
-            esc = false;
-        } else if ch == '\\' {
-            esc = true;
-        } else if ch == ':' {
-            out.push(String::new());
-        } else {
-            out.last_mut().unwrap().push(ch);
-        }
+enum AudioRequest {
+    ToggleMute,
+    Set(f32),
+}
+
+/// Volume changes go to a worker thread (the sound server can be slow to
+/// answer), newest slider position winning.
+fn audio_worker() -> &'static Mutex<Sender<AudioRequest>> {
+    static TX: OnceLock<Mutex<Sender<AudioRequest>>> = OnceLock::new();
+    TX.get_or_init(|| {
+        let (tx, rx) = channel::<AudioRequest>();
+        std::thread::Builder::new()
+            .name("deskbar-audio".into())
+            .spawn(move || {
+                while let Ok(mut req) = rx.recv() {
+                    // Skip slider positions already overtaken by newer ones.
+                    while let Ok(next) = rx.try_recv() {
+                        if let (AudioRequest::Set(_), AudioRequest::Set(_)) = (&req, &next) {
+                            req = next;
+                        } else {
+                            run_audio(req);
+                            req = next;
+                        }
+                    }
+                    run_audio(req);
+                }
+            })
+            .expect("thread");
+        Mutex::new(tx)
+    })
+}
+
+fn run_audio(req: AudioRequest) {
+    let r = match req {
+        AudioRequest::ToggleMute => audio::toggle_mute(),
+        AudioRequest::Set(level) => audio::set_volume(level),
+    };
+    if let Err(e) = r {
+        tracing::warn!("sound server: {e}");
     }
-    out
-}
-
-fn volume() -> Option<Volume> {
-    let out = Command::new("wpctl").args(["get-volume", "@DEFAULT_AUDIO_SINK@"]).output().ok()?;
-    let text = String::from_utf8_lossy(&out.stdout);
-    let level = text.split_whitespace().nth(1)?.parse().ok()?;
-    Some(Volume { level, muted: text.contains("MUTED") })
 }
 
 pub fn toggle_mute() {
-    let _ = Command::new("wpctl").args(["set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]).status();
+    let _ = audio_worker().lock().unwrap().send(AudioRequest::ToggleMute);
 }
 
 pub fn set_volume(level: f32) {
-    let _ = Command::new("wpctl").args(["set-volume", "@DEFAULT_AUDIO_SINK@", &format!("{level:.2}")]).status();
+    let _ = audio_worker().lock().unwrap().send(AudioRequest::Set(level));
 }
 
-/// Poll every few seconds; `send` is called whenever something changed.
+type Shared<F> = Mutex<(Status, Option<Status>, F)>;
+
+/// Apply `update` to the current status and send it if it changed.
+fn publish<F: Fn(Status)>(shared: &Shared<F>, update: impl FnOnce(&mut Status)) {
+    let mut g = shared.lock().unwrap();
+    let (current, last, send) = &mut *g;
+    update(current);
+    if last.as_ref() != Some(current) {
+        send(current.clone());
+        *last = Some(current.clone());
+    }
+}
+
+/// Watch the machine; `send` is called whenever something changed. Battery
+/// and Wi-Fi are polled every few seconds; volume changes arrive as events
+/// from the sound server.
 pub fn spawn(send: impl Fn(Status) + Send + 'static) {
+    let shared = Arc::new(Mutex::new((Status::default(), None::<Status>, send)));
+    let polled = shared.clone();
     std::thread::Builder::new()
         .name("deskbar-status".into())
         .spawn(move || {
-            let mut last = None;
-            let mut tick = 0u32;
-            let mut wifi_cache = None;
             loop {
-                // nmcli is comparatively slow; ask it less often.
-                if tick.is_multiple_of(3) {
-                    wifi_cache = wifi();
-                }
-                let s = Status { battery: battery(), wifi: wifi_cache.clone(), volume: volume() };
-                if last.as_ref() != Some(&s) {
-                    send(s.clone());
-                    last = Some(s);
-                }
-                tick = tick.wrapping_add(1);
+                let (battery, wifi) = (battery(), wifi());
+                publish(&polled, |s| {
+                    s.battery = battery;
+                    s.wifi = wifi.clone();
+                });
                 std::thread::sleep(Duration::from_secs(4));
             }
+        })
+        .expect("thread");
+    std::thread::Builder::new()
+        .name("deskbar-volume".into())
+        .spawn(move || {
+            audio::watch(|v| {
+                let volume = v.map(|v| Volume { level: v.level, muted: v.muted });
+                publish(&shared, |s| s.volume = volume);
+            })
         })
         .expect("thread");
 }

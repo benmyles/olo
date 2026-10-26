@@ -11,6 +11,10 @@ as they land (with the commit), add new ones as they come up.
 
 ## Native rule (no wrapping system tools)
 
+- ~~nmcli, wpctl, systemctl, gsettings, dbus-update-activation-environment~~
+  → `tabula-system` (NetworkManager, PulseAudio protocol with a change
+  feed, logind, dconf, activation environment).
+
 - ~~Keyboard mapping in app_server, replacing keyd~~: ⌘ as command,
   Caps Lock as Ctrl, ⌘Tab / ⌘` switching, ⌘ arrows / ⌘⌫, tap ⌘ /
   ⌘Space for Find, terminals keep physical Ctrl (`keymap.rs`). Still to
@@ -18,14 +22,8 @@ as they land (with the commit), add new ones as they come up.
   `KeyboardSettings` fields. keyd can then be disabled system-wide; while
   it runs it grabs the keyboards and app_server sees its output (handled:
   its ⌘ tap chord and Super+Tab are understood).
-- Deskbar network: NetworkManager over D-Bus (zbus) instead of `nmcli`.
-- Deskbar volume: PulseAudio/PipeWire protocol instead of `wpctl`.
 - Kit opener (mimeapps.list + desktop entries) instead of `xdg-open`
   (kit platform, Terminal links, Tracker `fs::open`).
-- Deskbar Restart / Shut Down: logind over D-Bus (zbus) instead of
-  `systemctl reboot/poweroff`, with the BeOS confirmation alert.
-- app_server: settings without `gsettings`; session environment via
-  zbus instead of `dbus-update-activation-environment`.
 
 ## Apps
 

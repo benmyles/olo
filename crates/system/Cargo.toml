@@ -1,0 +1,13 @@
+[package]
+name = "tabula-system"
+description = "Talking to the system natively: logind, NetworkManager, D-Bus activation, dconf and the sound server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
+zvariant = { version = "5", features = ["gvariant"] }
+pulseaudio = "0.3.2"
+tracing.workspace = true
+serde.workspace = true
