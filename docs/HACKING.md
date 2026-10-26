@@ -93,11 +93,22 @@ fn main() {
   threads via `cx.proxy().send(msg)`), `theme_changed`, `files_dropped`,
   `save_state` (see "In-place reload").
 * **`Cx`**: `open_window`, `close_window`, `set_title`, `resize`, `redraw`,
-  `copy` (clipboard), `quit`, `palette`, `proxy`, `window_size`,
+  `copy` (clipboard), `paste` (reads the clipboard off-thread and delivers
+  an `egui::Event::Paste`), `quit`, `palette`, `proxy`, `window_size`,
   `restored_state`.
+* **Single instance** (`tabula_kit::instance`): call `instance::forward(app_id,
+  &args)` first in `main` (returns true if a running copy took the
+  arguments; exit then), and `instance::listen(app_id, cx.proxy())` in the
+  init closure; forwarded launches arrive in `App::message` as an
+  `instance::Launch { args, cwd }`.
+* **Raw keys** (`WindowOptions::raw_keys()`): for windows that consume the
+  keyboard themselves (Terminal). ⌘-letter combinations reach the app as
+  key events instead of menu shortcuts or clipboard events (⌘⇧C/X/V still
+  become Copy/Cut/Paste), and Alt+text is delivered as text.
 * Background work goes on threads; post results with `Proxy::send` and
   handle them in `App::message` (then `cx.redraw(window)`).
-* Periodic refresh: `ui.ctx().request_repaint_after(duration)`.
+* Periodic refresh (clocks, graphs): `ui.ctx().request_repaint_after(duration)`.
+  Never use it to look for changes on disk; watch them (rule 7 above).
 * Layer-shell surfaces (Deskbar, desktop): `WindowKind::Layer(LayerOptions{…})`.
 
 ### Widgets (`tabula_kit::widgets`)
