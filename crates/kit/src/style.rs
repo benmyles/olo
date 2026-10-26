@@ -2,7 +2,12 @@
 //! every Tabula widget is built from. All geometry is in logical pixels; a
 //! "line" is one logical pixel (two device pixels at 2x).
 
-use std::sync::{Arc, OnceLock};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, OnceLock},
+};
 
 use egui::{
     Color32, Context, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Painter, Pos2, Rect,
@@ -86,20 +91,51 @@ fn load_face(db: &fontdb::Database, families: &[&str], weight: u16) -> Option<(V
 }
 
 fn load_styled(db: &fontdb::Database, families: &[&str], weight: u16, style: fontdb::Style) -> Option<(Vec<u8>, u32)> {
-    for name in families {
-        let query = fontdb::Query {
+    let id = query(db, families, weight, style)?;
+    db.with_face_data(id, |data, index| (data.to_vec(), index))
+}
+
+fn query(db: &fontdb::Database, families: &[&str], weight: u16, style: fontdb::Style) -> Option<fontdb::ID> {
+    families.iter().find_map(|name| {
+        db.query(&fontdb::Query {
             families: &[fontdb::Family::Name(name)],
             weight: fontdb::Weight(weight),
             stretch: fontdb::Stretch::Normal,
             style,
-        };
-        if let Some(id) = db.query(&query)
-            && let Some((data, index)) = db.with_face_data(id, |data, index| (data.to_vec(), index))
-        {
-            return Some((data, index));
-        }
+        })
+    })
+}
+
+/// A face for the UI fonts: its file mapped rather than read, so the
+/// bytes live in the page cache, shared by every app, and only the parts
+/// actually used are resident (the CJK font alone is over 30 MB).
+fn system_face(db: &fontdb::Database, families: &[&str], weight: u16, style: fontdb::Style) -> Option<(Cow<'static, [u8]>, u32)> {
+    let id = query(db, families, weight, style)?;
+    let face = db.face(id)?;
+    let path = match &face.source {
+        fontdb::Source::File(p) | fontdb::Source::SharedFile(p, _) => Some(p.clone()),
+        fontdb::Source::Binary(_) => None,
+    };
+    if let Some(data) = path.as_deref().and_then(mapped) {
+        return Some((Cow::Borrowed(data), face.index));
     }
-    None
+    db.with_face_data(id, |data, index| (Cow::Owned(data.to_vec()), index))
+}
+
+/// `path` mapped for the life of the process (once per file).
+pub(crate) fn mapped(path: &Path) -> Option<&'static [u8]> {
+    static MAPS: OnceLock<Mutex<HashMap<PathBuf, &'static [u8]>>> = OnceLock::new();
+    let mut maps = MAPS.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(data) = maps.get(path) {
+        return Some(data);
+    }
+    let file = std::fs::File::open(path).ok()?;
+    // SAFETY: installed font files are replaced by rename when packages
+    // update, never rewritten in place, so the mapping stays valid.
+    let map = unsafe { memmap2::Mmap::map(&file) }.ok()?;
+    let data: &'static [u8] = &Box::leak(Box::new(map))[..];
+    maps.insert(path.to_owned(), data);
+    Some(data)
 }
 
 /// System fonts, loaded once per process and shared by every window.
@@ -109,29 +145,32 @@ pub fn font_definitions() -> FontDefinitions {
         let mut db = fontdb::Database::new();
         db.load_system_fonts();
         let mut defs = FontDefinitions::default();
-        let mut add = |key: &str, face: Option<(Vec<u8>, u32)>| -> bool {
+        let mut add = |key: &str, face: Option<(Cow<'static, [u8]>, u32)>| -> bool {
             let Some((data, index)) = face else {
                 return false;
             };
-            let mut fd = FontData::from_owned(data);
+            let mut fd = match data {
+                Cow::Borrowed(d) => FontData::from_static(d),
+                Cow::Owned(d) => FontData::from_owned(d),
+            };
             fd.index = index;
             fd.tweak.hinting = Some(true);
             defs.font_data.insert(key.to_owned(), Arc::new(fd));
             true
         };
-        let ui = add("ui", load_face(&db, tabula_theme::fonts::UI, 400));
-        let ui_bold = add("ui-bold", load_face(&db, tabula_theme::fonts::UI, 700));
-        let ui_italic = add("ui-italic", load_styled(&db, tabula_theme::fonts::UI, 400, fontdb::Style::Italic));
-        let mono = add("mono", load_face(&db, tabula_theme::fonts::MONO, 400));
-        let mono_bold = add("mono-bold", load_face(&db, tabula_theme::fonts::MONO, 700));
-        let mono_italic = add("mono-italic", load_styled(&db, tabula_theme::fonts::MONO, 400, fontdb::Style::Italic));
+        let ui = add("ui", system_face(&db, tabula_theme::fonts::UI, 400, fontdb::Style::Normal));
+        let ui_bold = add("ui-bold", system_face(&db, tabula_theme::fonts::UI, 700, fontdb::Style::Normal));
+        let ui_italic = add("ui-italic", system_face(&db, tabula_theme::fonts::UI, 400, fontdb::Style::Italic));
+        let mono = add("mono", system_face(&db, tabula_theme::fonts::MONO, 400, fontdb::Style::Normal));
+        let mono_bold = add("mono-bold", system_face(&db, tabula_theme::fonts::MONO, 700, fontdb::Style::Normal));
+        let mono_italic = add("mono-italic", system_face(&db, tabula_theme::fonts::MONO, 400, fontdb::Style::Italic));
         // Wide Unicode coverage (arrows, ⌘, box drawing, ...).
-        let fallback = add("fallback", load_face(&db, &["DejaVu Sans", "Noto Sans"], 400));
-        let symbols = add("symbols", load_face(&db, &["Noto Sans Symbols 2", "Noto Sans Symbols"], 400));
+        let fallback = add("fallback", system_face(&db, &["DejaVu Sans", "Noto Sans"], 400, fontdb::Style::Normal));
+        let symbols = add("symbols", system_face(&db, &["Noto Sans Symbols 2", "Noto Sans Symbols"], 400, fontdb::Style::Normal));
         // Chinese, Japanese and Korean, then emoji (monochrome: egui can't
-        // draw colour glyphs).
-        let cjk = add("cjk", load_face(&db, &["Noto Sans Mono CJK JP", "Noto Sans CJK JP"], 400));
-        let emoji = add("emoji", load_face(&db, &["Noto Emoji"], 400));
+        // draw colour glyphs; see `emoji` for those).
+        let cjk = add("cjk", system_face(&db, &["Noto Sans Mono CJK JP", "Noto Sans CJK JP"], 400, fontdb::Style::Normal));
+        let emoji = add("emoji", system_face(&db, &["Noto Emoji"], 400, fontdb::Style::Normal));
         crate::emoji::locate(&db);
 
         let prop = defs.families.entry(FontFamily::Proportional).or_default();

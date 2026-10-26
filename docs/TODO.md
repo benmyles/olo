@@ -39,7 +39,8 @@ as they land (with the commit), add new ones as they come up.
 ## Apps
 
 - Terminal: ~~find in scrollback~~ (Edit ▸ Find…, Find Again, Find
-  Selection; regex over screen and history); release-build memory check;
+  Selection; regex over screen and history); ~~release-build memory
+  check~~ (fonts mapped, wgpu MemoryUsage: every app ~100 MB smaller);
   ~~colour emoji~~ (tabula-emoji, COLRv1 via skrifa + tiny-skia).
 - ~~Activity Monitor~~: apps/activity (graphs of every /proc, /sys and
   hwmon source; processes with Quit / Force Quit).

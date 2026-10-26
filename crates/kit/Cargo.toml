@@ -24,6 +24,7 @@ wayland-protocols = { version = "0.32", features = ["client", "staging", "unstab
 raw-window-handle = "0.6"
 pollster = "0.4"
 fontdb = "0.23"
+memmap2 = "0.9"
 png = "0.18"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff", "ico", "rayon"] }
 resvg = { version = "0.45", default-features = false }

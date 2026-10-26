@@ -36,7 +36,11 @@ pub struct Image {
 impl ColorFont {
     /// The font in `data` (face `index`), if it has colour glyphs.
     pub fn new(data: Vec<u8>, index: u32) -> Option<ColorFont> {
-        let data: &'static [u8] = Box::leak(data.into_boxed_slice());
+        ColorFont::from_static(Box::leak(data.into_boxed_slice()), index)
+    }
+
+    /// The same for data that lives for the process (a mapped file).
+    pub fn from_static(data: &'static [u8], index: u32) -> Option<ColorFont> {
         let font = FontRef::from_index(data, index).ok()?;
         if !has_colr(&font) {
             return None;

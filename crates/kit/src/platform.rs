@@ -924,6 +924,9 @@ impl Kit {
             debug!(adapter = ?adapter.get_info(), "wgpu adapter");
             let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
                 label: Some("tabula-kit"),
+                // Small allocation blocks: a window needs a few textures,
+                // not the large pools games want.
+                memory_hints: wgpu::MemoryHints::MemoryUsage,
                 ..Default::default()
             }))
             .ok()?;

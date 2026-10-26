@@ -34,7 +34,7 @@ pub(crate) fn locate(db: &fontdb::Database) {
 }
 
 fn load(path: PathBuf, index: u32) -> Option<ColorFont> {
-    let font = ColorFont::new(std::fs::read(&path).ok()?, index);
+    let font = ColorFont::from_static(crate::style::mapped(&path)?, index);
     if font.is_none() {
         tracing::warn!(?path, "not a colour font");
     }

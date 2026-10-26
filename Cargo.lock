@@ -5099,6 +5099,7 @@ dependencies = [
  "image",
  "jxl-oxide",
  "libc",
+ "memmap2",
  "png 0.18.1",
  "pollster",
  "raw-window-handle",

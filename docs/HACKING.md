@@ -329,6 +329,16 @@ alignment and text placement pixel by pixel, in **both** light and dark.
 Compare against BeOS R5 / Haiku screenshots from memory. Fix anything that
 looks even slightly off before calling something done.
 
+Memory: measure release builds (`cargo build --release -p APP`, then
+`grep -E 'VmRSS|RssAnon|RssShmem' /proc/PID/status`; RssShmem is GPU
+buffers on Asahi). Baselines (October 2026, 2× headless): DeskCalc 54 MB
+RSS (15 MB heap, 13 MB GPU); Terminal 79 MB idle, +29 MB for a full
+10,000-line scrollback at 120 columns (alacritty's cells), +28 MB per
+extra window (swapchain). Two kit rules keep it there: UI fonts are
+mapped, not copied (`style::system_face`; the CJK face is 31 MB), and
+the wgpu device asks for `MemoryHints::MemoryUsage` (the default pools
+cost ~60 MB of GPU memory per app).
+
 ## Screenshot journal
 
 `docs/journal/` is Tabula's visual history (images in Git LFS). Whenever
