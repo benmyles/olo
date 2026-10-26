@@ -50,7 +50,7 @@ like pixel alignment is.
 | `crates/protocol` | JSON-lines IPC between app_server and our apps (`Client`, `Request`, `Reply`, `Event`, `Settings`). |
 | `crates/theme` | `Palette` (light/dark), BeOS tint helpers, decorator metrics, font lists. |
 | `crates/kit` | The Interface Kit: Wayland client platform, GPU rendering (egui on wgpu/Vulkan), menus, BeOS widgets, icons, `.desktop` entries. **All apps are built on it.** |
-| `crates/xdg` | `tabula-xdg`: freedesktop plumbing shared by app_server and the kit (re-exported there): data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`), our own apps (`apps::our_app`), `spawn_detached`. No egui. |
+| `crates/xdg` | `tabula-xdg`: freedesktop plumbing shared by app_server and the kit (re-exported there): data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`), `find_program`, `spawn_detached`. No egui. |
 | `crates/system` | `tabula-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network::wifi`), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `crates/preview` | `tabula-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Used by Tracker's Quick Look and the Viewer. |
 | `apps/<name>` | One crate per application, binary named `tabula-<name>`. Picked up by the workspace glob. |
@@ -183,7 +183,7 @@ Menus: `Menu::new("File").item(label, command, Some(Key::N))`,
 6. BeOS idioms to keep: yellow tab decorator (app_server's job), menu bar in
    every document window, ⌘ shortcuts (Ctrl on the wire: app_server's
    `keymap` turns the Mac ⌘ key into Ctrl for clients, Caps Lock too, and
-   keeps ⌘Tab / ⌘` (Twitcher), ⌘Space / tap ⌘ (Find), ⌘ arrows and ⌘⌫ for
+   keeps ⌘Tab / ⌘\` (Twitcher), ⌘Space / tap ⌘ (Find), ⌘ arrows and ⌘⌫ for
    itself; terminals listed in `KeyboardSettings::terminal_apps` get ⌘ as
    Ctrl+Shift so physical Ctrl reaches the tty), keyboard focus shown as a navigation-blue underline/frame,
    Tracker-style spatial behaviour. Modernise freely where it helps

@@ -6,7 +6,7 @@
 //! the desktop's light/dark theme.
 
 mod app;
-pub use tabula_xdg::{apps, desktop_entry};
+pub use tabula_xdg::{apps, desktop_entry, mime, open};
 pub mod file_panel;
 pub mod files;
 pub mod icons;

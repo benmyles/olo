@@ -20,9 +20,11 @@ pub struct DesktopEntry {
     pub terminal: bool,
     pub no_display: bool,
     pub startup_wm_class: Option<String>,
+    /// MIME types it opens (`MimeType=`).
+    pub mime_types: Vec<String>,
 }
 
-fn app_dirs() -> Vec<PathBuf> {
+pub(crate) fn app_dirs() -> Vec<PathBuf> {
     let mut v = Vec::new();
     if let Some(home) = std::env::var_os("HOME") {
         v.push(Path::new(&home).join(".local/share/applications"));
@@ -33,7 +35,7 @@ fn app_dirs() -> Vec<PathBuf> {
     v
 }
 
-fn parse(path: &Path) -> Option<DesktopEntry> {
+pub(crate) fn parse(path: &Path) -> Option<DesktopEntry> {
     let text = std::fs::read_to_string(path).ok()?;
     let lang = std::env::var("LANG").ok().and_then(|l| l.split(['.', '_']).next().map(str::to_owned));
     let mut e = DesktopEntry { id: path.file_stem()?.to_string_lossy().into_owned(), path: path.to_owned(), ..Default::default() };
@@ -64,6 +66,7 @@ fn parse(path: &Path) -> Option<DesktopEntry> {
             "NoDisplay" => e.no_display = v == "true",
             "Hidden" => hidden = v == "true",
             "StartupWMClass" => e.startup_wm_class = Some(v),
+            "MimeType" => e.mime_types = v.split(';').filter(|s| !s.is_empty()).map(str::to_owned).collect(),
             _ => {
                 if let Some(l) = &lang
                     && k == format!("Name[{l}]")

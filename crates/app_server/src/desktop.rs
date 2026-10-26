@@ -260,7 +260,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         v
     }
 
-    /// ⌘Tab (`apps`) or ⌘`: bring the next app, or the focused app's next
+    /// ⌘Tab (`apps`) or ⌘\`: bring the next app, or the focused app's next
     /// window, to the front. The order is fixed while ⌘ is held, so
     /// repeated presses walk it.
     pub fn twitch_step(&mut self, apps: bool, back: bool) {

@@ -1,6 +1,6 @@
 //! The Mac keyboard, natively. ⌘ is the command key: apps see it as Ctrl
 //! (so ⌘C copies everywhere, GTK and Firefox included), while app_server
-//! keeps a few ⌘ chords for itself: ⌘Tab / ⌘` (Twitcher), ⌘Space and a
+//! keeps a few ⌘ chords for itself: ⌘Tab / ⌘\` (Twitcher), ⌘Space and a
 //! tap of ⌘ alone (Find), ⌘ arrows and ⌘⌫ (line and document navigation)
 //! and Ctrl+⌘Q (lock). Caps Lock is another Ctrl. Terminals keep physical
 //! Ctrl for the tty, so ⌘ reaches them as Ctrl+Shift.
@@ -53,7 +53,7 @@ const CMD_CTRL: u32 = RIGHTCTRL;
 pub enum Action {
     /// ⌘Tab (`back` with Shift): the next app in Twitcher.
     NextApp { back: bool },
-    /// ⌘`: the next window of the focused app.
+    /// ⌘\`: the next window of the focused app.
     NextWindow { back: bool },
     /// ⌘ released after switching: commit Twitcher's choice.
     SwitchDone,

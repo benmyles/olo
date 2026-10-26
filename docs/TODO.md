@@ -16,14 +16,14 @@ as they land (with the commit), add new ones as they come up.
   feed, logind, dconf, activation environment).
 
 - ~~Keyboard mapping in app_server, replacing keyd~~: ⌘ as command,
-  Caps Lock as Ctrl, ⌘Tab / ⌘` switching, ⌘ arrows / ⌘⌫, tap ⌘ /
+  Caps Lock as Ctrl, ⌘Tab / ⌘\` switching, ⌘ arrows / ⌘⌫, tap ⌘ /
   ⌘Space for Find, terminals keep physical Ctrl (`keymap.rs`). Still to
   do: a lock screen for Ctrl+⌘Q, and Preferences ▸ Keyboard toggles for the
   `KeyboardSettings` fields. keyd can then be disabled system-wide; while
   it runs it grabs the keyboards and app_server sees its output (handled:
   its ⌘ tap chord and Super+Tab are understood).
-- Kit opener (mimeapps.list + desktop entries) instead of `xdg-open`
-  (kit platform, Terminal links, Tracker `fs::open`).
+- ~~Kit opener instead of `xdg-open`~~: `tabula_xdg::open` (shared-mime-info
+  globs + sniffing, our apps first, mimeapps.list, Exec field codes).
 
 ## Apps
 

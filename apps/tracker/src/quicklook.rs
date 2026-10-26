@@ -36,6 +36,8 @@ pub struct QuickLook {
     pub source: WindowId,
     pub entry: Entry,
     preview: Preview,
+    /// "Open with …": who opens the entry (looked up once per item).
+    opener: Option<String>,
 }
 
 fn item(e: &Entry) -> Item {
@@ -55,7 +57,8 @@ impl QuickLook {
     /// generation) to the UI thread.
     pub fn new(source: WindowId, entry: Entry, generation: u64, send: impl Fn(u64, Update) + Send + 'static) -> QuickLook {
         let preview = Preview::new(item(&entry), generation, send);
-        QuickLook { win: None, source, entry, preview }
+        let opener = fs::opener_name(&entry);
+        QuickLook { win: None, source, entry, preview, opener }
     }
 
     pub fn generation(&self) -> u64 {
@@ -64,6 +67,7 @@ impl QuickLook {
 
     pub fn retarget(&mut self, entry: Entry, generation: u64, send: impl Fn(u64, Update) + Send + 'static) {
         self.preview.retarget(item(&entry), generation, send);
+        self.opener = fs::opener_name(&entry);
         self.entry = entry;
     }
 
@@ -111,14 +115,14 @@ impl QuickLook {
         let inner = r.shrink2(vec2(m::SPACING, m::TIGHT));
         let icon = Rect::from_center_size(pos2(inner.left() + 8.0, inner.center().y + 1.0), vec2(16.0, 16.0));
         icons::paint(painter, icon, view::icon_of(&self.entry));
-        let label = match fs::opener_name(&self.entry) {
+        let label = match &self.opener {
             Some(app) => format!("Open with {app}"),
             None => "Open".into(),
         };
         let bw = (style::label_width(ui.ctx(), &label, style::plain_font()) + 28.0).max(80.0);
         // Pop out is a square button showing a window with an arrow.
         let pw = m::CONTROL_HEIGHT + 4.0;
-        let pop = !self.entry.is_dir && fs::opener_name(&self.entry) != Some("Viewer");
+        let pop = !self.entry.is_dir && self.opener.as_deref() != Some("Viewer");
         let text_right = inner.right() - bw - m::SPACING - if pop { pw + m::TIGHT } else { 0.0 };
         let mut job =
             egui::text::LayoutJob::simple_singleline(self.preview.note(), style::plain_font(), style::disabled_text(&p));

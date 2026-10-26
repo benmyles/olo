@@ -173,7 +173,7 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub suppressed_keys: Vec<Keysym>,
     /// ⌘ and friends (see `keymap`).
     pub keymap: crate::keymap::Keymap,
-    /// Twitcher, while ⌘Tab / ⌘` is held.
+    /// Twitcher, while ⌘Tab / ⌘\` is held.
     pub twitch: Option<crate::desktop::Twitch>,
     pub twitcher: crate::twitcher::Overlay,
     pub cursor_status: CursorImageStatus,

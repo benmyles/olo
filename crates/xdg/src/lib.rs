@@ -9,6 +9,8 @@ use std::{
 
 pub mod apps;
 pub mod desktop_entry;
+pub mod mime;
+pub mod open;
 
 /// Device-pixel sizes shipped in data/icons.
 const OWN_SIZES: &[u32] = &[16, 24, 32, 48, 64, 96, 128, 256];

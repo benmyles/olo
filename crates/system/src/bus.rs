@@ -34,7 +34,7 @@ where
     R: for<'d> serde::Deserialize<'d> + zvariant::Type,
 {
     let reply = conn.call_method(Some(dest), path, Some(iface), method, body)?;
-    Ok(reply.body().deserialize()?)
+    reply.body().deserialize()
 }
 
 /// Read property `name` of `iface` on `path`.

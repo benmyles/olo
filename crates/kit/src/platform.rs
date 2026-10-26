@@ -1056,7 +1056,13 @@ impl Kit {
             match cmd {
                 egui::OutputCommand::CopyText(t) => self.set_clipboard(t.clone()),
                 egui::OutputCommand::OpenUrl(u) => {
-                    let _ = std::process::Command::new("xdg-open").arg(&u.url).spawn();
+                    // Looking up the handler reads files: not on the UI thread.
+                    let url = u.url.clone();
+                    std::thread::spawn(move || {
+                        if let Err(e) = tabula_xdg::open::open(&tabula_xdg::open::Target::parse(&url)) {
+                            tracing::warn!("open {url}: {e}");
+                        }
+                    });
                 }
                 _ => {}
             }

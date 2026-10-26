@@ -131,29 +131,17 @@ pub fn find(line: &str, col: usize, cwd: &Path, exists: impl Fn(&Path) -> bool) 
 /// Open a link: web addresses in the browser, folders in Tracker, files
 /// with their preferred application.
 pub fn open(target: &Target) {
-    let spawn = |program: &str, arg: &std::ffi::OsStr| {
-        use std::os::unix::process::CommandExt;
-        let mut c = std::process::Command::new(program);
-        c.arg(arg)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-        // SAFETY: setsid is async-signal-safe.
-        unsafe {
-            c.pre_exec(|| {
-                libc::setsid();
-                Ok(())
-            });
-        }
-        if let Ok(mut child) = c.spawn() {
-            std::thread::spawn(move || child.wait());
-        }
+    use tabula_kit::open as opener;
+    let t = match target {
+        Target::Url(u) => opener::Target::parse(u),
+        Target::Path(p, _) => opener::Target::Path(p.clone()),
     };
-    match target {
-        Target::Url(u) => spawn("xdg-open", u.as_ref()),
-        Target::Path(p, _) if p.is_dir() => spawn("tabula-tracker", p.as_os_str()),
-        Target::Path(p, _) => spawn("xdg-open", p.as_os_str()),
-    }
+    // Finding the handler reads files: not on the UI thread.
+    std::thread::spawn(move || {
+        if let Err(e) = opener::open(&t) {
+            tracing::warn!("open link: {e}");
+        }
+    });
 }
 
 #[cfg(test)]

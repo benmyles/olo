@@ -1,4 +1,4 @@
-//! Twitcher: the strip of app icons shown while ⌘Tab / ⌘` is held, as on
+//! Twitcher: the strip of app icons shown while ⌘Tab / ⌘\` is held, as on
 //! BeOS. `desktop::twitch_step` decides what is chosen; this draws it.
 //!
 //! App names and icons come from .desktop entries and icon themes, which
@@ -112,11 +112,11 @@ fn info(app_id: &str) -> Option<AppInfo> {
     cache().lock().unwrap().get(app_id).cloned().flatten()
 }
 
-/// One cell: an app (⌘Tab) or a window (⌘`).
+/// One cell: an app (⌘Tab) or a window (⌘\`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
     pub app_id: String,
-    /// The window title for ⌘`; the app's name is used for ⌘Tab.
+    /// The window title for ⌘\`; the app's name is used for ⌘Tab.
     pub title: Option<String>,
 }
 

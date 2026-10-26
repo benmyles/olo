@@ -8,6 +8,8 @@ use std::{
     time::SystemTime,
 };
 
+use tabula_kit::{mime, open as opener};
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
     pub path: PathBuf,
@@ -233,56 +235,34 @@ pub fn make_link(path: &Path) -> std::io::Result<PathBuf> {
     Ok(to)
 }
 
-fn shell_quote(p: &Path) -> String {
-    format!("'{}'", p.display().to_string().replace('\'', "'\\''"))
-}
-
 /// The name of the application `open` would use, when it is one of ours.
-pub fn opener_name(entry: &Entry) -> Option<&'static str> {
+pub fn opener_name(entry: &Entry) -> Option<String> {
     match entry.kind {
-        Kind::Folder => Some("Tracker"),
-        Kind::Text => Some("StyledEdit"),
-        k if previewable(k) => Some("Viewer"),
-        _ => None,
+        Kind::Folder => Some("Tracker".into()),
+        Kind::Executable | Kind::Application => None,
+        _ => opener::handler_cached(&mime::for_path(&entry.path)).map(|h| h.name()),
     }
-}
-
-/// Kinds the Viewer shows well enough to be their default opener.
-fn previewable(k: Kind) -> bool {
-    matches!(
-        k,
-        Kind::Image
-            | Kind::Pdf
-            | Kind::Audio
-            | Kind::Video
-            | Kind::Archive
-            | Kind::WordDocument
-            | Kind::Spreadsheet
-            | Kind::Presentation
-            | Kind::Font
-    )
 }
 
 /// Show any file in its own Viewer window.
 pub fn open_in_viewer(path: &Path) {
-    if let Err(e) = tabula_kit::spawn_detached(&format!("tabula-viewer {}", shell_quote(path))) {
+    let viewer = tabula_kit::find_program("tabula-viewer").map_or_else(|| "tabula-viewer".into(), PathBuf::into_os_string);
+    if let Err(e) = opener::spawn(&[viewer, path.as_os_str().to_owned()]) {
         tracing::warn!("viewer {}: {e}", path.display());
     }
 }
 
 /// Open a file with the right application: ours where we have one,
-/// otherwise the freedesktop default.
+/// otherwise the user's default (see `tabula_xdg::open`). Programs run.
 pub fn open(entry: &Entry) {
-    let q = shell_quote(&entry.path);
-    let cmd = match entry.kind {
-        Kind::Text => format!("tabula-styled-edit {q}"),
-        k if previewable(k) => format!("tabula-viewer {q}"),
-        Kind::Executable | Kind::Application => q,
-        _ => format!("xdg-open {q}"),
-    };
-    if let Err(e) = tabula_kit::spawn_detached(&cmd) {
-        tracing::warn!("open {}: {e}", entry.path.display());
-    }
+    let (path, program) = (entry.path.clone(), matches!(entry.kind, Kind::Executable | Kind::Application));
+    // Finding the handler reads files: not on the UI thread.
+    std::thread::spawn(move || {
+        let r = if program { opener::spawn(&[path.clone().into_os_string()]) } else { opener::open(&opener::Target::Path(path.clone())) };
+        if let Err(e) = r {
+            tracing::warn!("open {}: {e}", path.display());
+        }
+    });
 }
 
 /// Recursive size of a folder and the number of items (files and folders)
