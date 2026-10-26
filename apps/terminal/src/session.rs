@@ -1,28 +1,28 @@
 //! One shell in one window: the emulator state (alacritty_terminal's
-//! `Term`), the PTY threads, and what the window needs to know.
+//! `Term`), fed from tabula-termd (which runs the shell), and what the
+//! window needs to know.
 
 use std::{
-    os::fd::{AsRawFd, RawFd},
     path::PathBuf,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicU32, Ordering},
+        atomic::{AtomicBool, Ordering},
         mpsc,
     },
 };
 
 use alacritty_terminal::{
     event::{Event, EventListener, WindowSize},
-    grid::{Dimensions, Scroll},
+    grid::Scroll,
     sync::FairMutex,
     term::{Config, Term},
 };
 use tabula_kit::{Proxy, WindowId};
 
-use crate::{io, pty::Pty};
-
-/// Lines of scrollback kept per window.
-pub const SCROLLBACK: usize = 10_000;
+use crate::{
+    client::{Chunk, Link, Writer},
+    io, wire,
+};
 
 /// What the emulator reports to the app (via the kit's message channel).
 pub enum TermEvent {
@@ -40,7 +40,7 @@ pub struct Message(pub WindowId, pub TermEvent);
 pub struct Listener {
     win: WindowId,
     proxy: Proxy,
-    writer: mpsc::Sender<Vec<u8>>,
+    writer: Writer,
     shared: Arc<io::Shared>,
 }
 
@@ -56,7 +56,7 @@ impl EventListener for Listener {
                 // Primary device attributes: say we do Sixel graphics (4)
                 // as well as being a VT220-class terminal.
                 let text = if text == "\x1b[?6c" { "\x1b[?62;4;22c".to_owned() } else { text };
-                let _ = self.writer.send(text.into_bytes());
+                self.writer.send(text.into_bytes());
                 return;
             }
             // "What colour is X?": light/dark detection asks for the
@@ -71,7 +71,7 @@ impl EventListener for Listener {
                     257 => Color::Named(NamedColor::Background),
                     _ => Color::Named(NamedColor::Cursor),
                 };
-                let _ = self.writer.send(format(scheme.resolve(color, &none)).into_bytes());
+                self.writer.send(format(scheme.resolve(color, &none)).into_bytes());
                 return;
             }
             Event::TextAreaSizeRequest(format) => {
@@ -83,7 +83,7 @@ impl EventListener for Listener {
                     cell_width: (cell >> 16) as u16,
                     cell_height: (cell & 0xffff) as u16,
                 };
-                let _ = self.writer.send(format(ws).into_bytes());
+                self.writer.send(format(ws).into_bytes());
                 return;
             }
             _ => return,
@@ -92,58 +92,46 @@ impl EventListener for Listener {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Size {
-    pub cols: usize,
-    pub rows: usize,
-}
+pub use crate::io::Size;
 
-impl Dimensions for Size {
-    fn total_lines(&self) -> usize {
-        self.rows
-    }
-    fn screen_lines(&self) -> usize {
-        self.rows
-    }
-    fn columns(&self) -> usize {
-        self.cols
-    }
+/// How a window gets its shell.
+pub enum Start {
+    Spawn { command: Option<Vec<String>>, cwd: Option<PathBuf> },
+    /// One tabula-termd already has.
+    Attach(u64),
+    /// One this process ran itself, before tabula-termd: hand it over.
+    Adopt { pty: std::os::fd::OwnedFd, pid: i32, title: Option<String>, replay: String },
 }
 
 pub struct Session {
+    pub id: u64,
     pub term: Arc<FairMutex<Term<Listener>>>,
-    writer: mpsc::Sender<Vec<u8>>,
+    link: Link,
     pending: Arc<AtomicBool>,
     pub shared: Arc<io::Shared>,
     pub size: Size,
-    pub pid: libc::pid_t,
-    master: std::os::fd::OwnedFd,
+    cell: (u16, u16),
     /// Title set by the program (OSC 0/2), if any.
     pub title: Option<String>,
     pub exited: Option<Option<i32>>,
 }
 
+fn grid(size: Size, cell: (u16, u16)) -> wire::Grid {
+    wire::Grid { cols: size.cols as u16, rows: size.rows as u16, cell_w: cell.0, cell_h: cell.1 }
+}
+
 impl Session {
-    /// Start a session on a new or inherited PTY.
-    pub fn start(
-        win: WindowId,
-        proxy: Proxy,
-        size: Size,
-        cell: (u16, u16),
-        scheme: crate::colors::Scheme,
-        pty: std::io::Result<Pty>,
-    ) -> std::io::Result<Session> {
-        let Pty { master, pid } = pty?;
-        let fd = master.as_raw_fd();
-        let shared = Arc::new(io::Shared {
-            images: Default::default(),
-            cell: AtomicU32::new(((cell.0 as u32) << 16) | cell.1 as u32),
-            grid: AtomicU32::new(((size.cols as u32) << 16) | size.rows as u32),
-            scheme: std::sync::Mutex::new(scheme),
-        });
-        let writer = io::spawn_writer(fd);
+    /// Start a shell (or attach to one) for window `win`. Whether it
+    /// worked arrives later: output, or `Exited`.
+    pub fn start(win: WindowId, proxy: Proxy, link: &Link, size: Size, cell: (u16, u16), scheme: crate::colors::Scheme, start: Start) -> Session {
+        let id = match &start {
+            Start::Spawn { .. } | Start::Adopt { .. } => link.new_id(),
+            Start::Attach(id) => *id,
+        };
+        let shared = Arc::new(io::Shared::new(cell, size, scheme));
+        let writer = link.writer(id);
         let listener = Listener { win, proxy: proxy.clone(), writer: writer.clone(), shared: shared.clone() };
-        let config = Config { scrolling_history: SCROLLBACK, kitty_keyboard: true, ..Config::default() };
+        let config = Config { scrolling_history: wire::SCROLLBACK, kitty_keyboard: true, ..Config::default() };
         let term = Arc::new(FairMutex::new(Term::new(config, &size, listener)));
         let pending = Arc::new(AtomicBool::new(false));
         let wake = {
@@ -155,13 +143,22 @@ impl Session {
             }
         };
         let exited = move |code| proxy.send(Message(win, TermEvent::Exited(code)));
-        io::spawn_reader(fd, pid, term.clone(), shared.clone(), wake, writer.clone(), exited);
-        crate::pty::resize(fd, window_size(size, cell));
-        Ok(Session { term, writer, pending, shared, size, pid, master, title: None, exited: None })
-    }
-
-    pub fn fd(&self) -> RawFd {
-        self.master.as_raw_fd()
+        let (tx, rx) = mpsc::channel();
+        spawn_feeder(rx, term.clone(), shared.clone(), wake, writer, exited);
+        match start {
+            Start::Spawn { command, cwd } => link.spawn(id, tx, wire::Spawn { command, cwd, grid: grid(size, cell) }),
+            Start::Attach(id) => link.attach(id, tx, grid(size, cell)),
+            Start::Adopt { pty, pid, title, replay } => {
+                link.adopt(id, tx, wire::Adopt { pid, grid: grid(size, cell), title, replay }, pty);
+                // It's still our child: collect it when it exits.
+                std::thread::spawn(move || {
+                    let mut status = 0;
+                    // SAFETY: waiting for our own child.
+                    unsafe { libc::waitpid(pid, &mut status, 0) };
+                });
+            }
+        }
+        Session { id, term, link: link.clone(), pending, shared, size, cell, title: None, exited: None }
     }
 
     /// Call when handling a Wakeup, before drawing.
@@ -170,11 +167,10 @@ impl Session {
     }
 
     pub fn write(&self, bytes: impl Into<Vec<u8>>) {
-        let bytes = bytes.into();
-        if bytes.is_empty() || self.exited.is_some() {
+        if self.exited.is_some() {
             return;
         }
-        let _ = self.writer.send(bytes);
+        self.link.input(self.id, bytes.into());
     }
 
     /// Typing goes to the live screen: drop the selection and stop
@@ -186,25 +182,44 @@ impl Session {
     }
 
     pub fn resize(&mut self, size: Size, cell: (u16, u16)) {
-        self.shared.cell.store(((cell.0 as u32) << 16) | cell.1 as u32, Ordering::Relaxed);
-        if size == self.size {
+        if size == self.size && cell == self.cell {
             return;
         }
+        self.shared.set_sizes(size, cell);
+        if size != self.size {
+            self.term.lock().resize(size);
+        }
         self.size = size;
-        self.shared.grid.store(((size.cols as u32) << 16) | size.rows as u32, Ordering::Relaxed);
-        self.term.lock().resize(size);
-        crate::pty::resize(self.fd(), window_size(size, cell));
+        self.cell = cell;
+        self.link.resize(self.id, grid(size, cell));
     }
 
+    /// Forget the scrollback, here and in tabula-termd.
+    pub fn clear_history(&self) {
+        let mut term = self.term.lock();
+        term.grid_mut().clear_history();
+        term.selection = None;
+        drop(term);
+        self.link.clear(self.id);
+    }
+
+    /// The window is closing: hang up the shell, as closing a terminal
+    /// window does.
+    pub fn hang_up(&self) {
+        if self.exited.is_none() {
+            self.link.close(self.id);
+        }
+    }
+
+    /// The shell's working directory.
     pub fn cwd(&self) -> Option<PathBuf> {
-        std::fs::read_link(format!("/proc/{}/cwd", self.pid)).ok()
+        std::fs::read_link(format!("/proc/{}/cwd", self.shared.shell()?)).ok()
     }
 
     /// The foreground program's name, when it isn't the shell.
     pub fn foreground(&self) -> Option<String> {
-        // SAFETY: tcgetpgrp on our open PTY master.
-        let pgrp = unsafe { libc::tcgetpgrp(self.fd()) };
-        if pgrp <= 0 || pgrp == self.pid {
+        let pgrp = self.shared.foreground()?;
+        if Some(pgrp) == self.shared.shell() {
             return None;
         }
         std::fs::read_to_string(format!("/proc/{pgrp}/comm")).ok().map(|s| s.trim().to_owned())
@@ -218,106 +233,66 @@ impl Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        if self.exited.is_none() {
-            // Hang up the shell, as closing a terminal window does.
-            // SAFETY: signalling our own child's process group.
-            unsafe { libc::kill(-self.pid, libc::SIGHUP) };
-            unsafe { libc::kill(self.pid, libc::SIGHUP) };
-        }
+        // The shell stays with tabula-termd unless `hang_up` said otherwise.
+        self.link.forget(self.id);
     }
 }
 
-pub fn window_size(size: Size, cell: (u16, u16)) -> WindowSize {
-    WindowSize {
-        num_lines: size.rows as u16,
-        num_cols: size.cols as u16,
-        cell_width: cell.0,
-        cell_height: cell.1,
-    }
-}
-
-/// The scrollback and screen as text with SGR attributes, to replay into a
-/// fresh emulator after an upgrade. Ends with the cursor where it was.
-pub fn serialize<T>(term: &Term<T>) -> String {
-    use alacritty_terminal::{
-        index::{Column, Line, Point},
-        term::cell::Flags,
-        vte::ansi::Color,
-    };
-    let grid = term.grid();
-    let cursor = grid.cursor.point;
-    let mut out = String::new();
-    let mut last: Option<(Color, Color, Flags)> = None;
-    let attrs = |fg: Color, bg: Color, flags: Flags| -> String {
-        let mut p: Vec<String> = vec!["0".into()];
-        for (f, code) in [
-            (Flags::BOLD, "1"),
-            (Flags::DIM, "2"),
-            (Flags::ITALIC, "3"),
-            (Flags::UNDERLINE, "4"),
-            (Flags::INVERSE, "7"),
-            (Flags::HIDDEN, "8"),
-            (Flags::STRIKEOUT, "9"),
-        ] {
-            if flags.contains(f) {
-                p.push(code.into());
-            }
-        }
-        let color = |c: Color, base: u16| -> Option<String> {
-            Some(match c {
-                Color::Named(n) => {
-                    let i = n as u16;
-                    match i {
-                        0..8 => format!("{}", base + i),
-                        8..16 => format!("{}", base + 60 + i - 8),
-                        _ => return None,
+/// Feed what tabula-termd sends for one shell into its emulator, until
+/// the shell has gone.
+fn spawn_feeder(
+    rx: mpsc::Receiver<Chunk>,
+    term: Arc<FairMutex<Term<Listener>>>,
+    shared: Arc<io::Shared>,
+    wake: impl Fn() + Send + 'static,
+    reply: Writer,
+    exited: impl FnOnce(Option<i32>) + Send + 'static,
+) {
+    std::thread::Builder::new()
+        .name("shell output".into())
+        .spawn(move || {
+            let mut feeder = io::Feeder::default();
+            let code = loop {
+                let chunk = match feeder.deadline() {
+                    Some(d) => match rx.recv_timeout(d.saturating_duration_since(std::time::Instant::now())) {
+                        Ok(c) => c,
+                        Err(mpsc::RecvTimeoutError::Timeout) => {
+                            feeder.flush(&mut *term.lock());
+                            wake();
+                            continue;
+                        }
+                        Err(mpsc::RecvTimeoutError::Disconnected) => break None,
+                    },
+                    None => match rx.recv() {
+                        Ok(c) => c,
+                        Err(_) => break None,
+                    },
+                };
+                match chunk {
+                    Chunk::Attached { pid, pty, replay } => {
+                        shared.pid.store(pid, Ordering::Relaxed);
+                        *shared.pty.lock().unwrap() = pty;
+                        *shared.images.lock().unwrap() = Default::default();
+                        feeder = io::Feeder::default();
+                        // Rebuilding the screen asks nothing of the program.
+                        feeder.feed(&mut *term.lock(), &shared, &replay, &mut Vec::new());
+                        wake();
                     }
+                    Chunk::Output(bytes) => {
+                        let mut out = Vec::new();
+                        let draw = feeder.feed(&mut *term.lock(), &shared, &bytes, &mut out);
+                        if !out.is_empty() {
+                            reply.send(out);
+                        }
+                        if draw {
+                            wake();
+                        }
+                    }
+                    Chunk::Exited(code) => break code,
+                    Chunk::Detached => break None,
                 }
-                Color::Indexed(i) => format!("{};5;{i}", base + 8),
-                Color::Spec(c) => format!("{};2;{};{};{}", base + 8, c.r, c.g, c.b),
-            })
-        };
-        p.extend(color(fg, 30));
-        p.extend(color(bg, 40));
-        format!("\x1b[{}m", p.join(";"))
-    };
-    let top = -(grid.history_size() as i32);
-    let cols = grid.columns();
-    for line in top..=cursor.line.0 {
-        let row = &grid[Line(line)];
-        // Trailing blanks aren't worth replaying (except up to the cursor).
-        let mut end = (0..cols).rev().find(|&c| {
-            let cell = &row[Column(c)];
-            cell.c != ' ' || cell.bg != Color::Named(alacritty_terminal::vte::ansi::NamedColor::Background)
-        });
-        if line == cursor.line.0 {
-            end = end.max(cursor.column.0.checked_sub(1));
-        }
-        if let Some(end) = end {
-            for c in 0..=end {
-                let cell = &row[Column(c)];
-                if cell.flags.contains(Flags::WIDE_CHAR_SPACER) {
-                    continue;
-                }
-                let key = (cell.fg, cell.bg, cell.flags & !(Flags::WRAPLINE | Flags::WIDE_CHAR | Flags::LEADING_WIDE_CHAR_SPACER));
-                if last != Some(key) {
-                    out.push_str(&attrs(key.0, key.1, key.2));
-                    last = Some(key);
-                }
-                out.push(if cell.c == '\0' { ' ' } else { cell.c });
-                if let Some(z) = cell.zerowidth() {
-                    out.extend(z);
-                }
-            }
-        }
-        let wrapped = row[Column(cols - 1)].flags.contains(Flags::WRAPLINE);
-        if line < cursor.line.0 && !wrapped {
-            out.push_str("\r\n");
-        }
-    }
-    out.push_str("\x1b[0m");
-    // Put the cursor back where it was on its line.
-    out.push_str(&format!("\r\x1b[{}G", cursor.column.0 + 1));
-    let _ = Point::new(Line(0), Column(0));
-    out
+            };
+            exited(code);
+        })
+        .expect("shell output thread");
 }

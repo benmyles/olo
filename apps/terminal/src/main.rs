@@ -2,17 +2,21 @@
 //! windows), on alacritty's terminal emulator. GPU-drawn through the kit,
 //! with Tabula's own light and dark colour schemes.
 //!
-//! Shells survive an in-place upgrade: before re-executing, Terminal
-//! passes each PTY and shell to its new self, along with the scrollback.
+//! The shells run in tabula-termd (termd.rs), so they outlive Terminal:
+//! quit it, or have it crash or upgrade, and the next Terminal opens a
+//! window on each shell as it was, scrollback and all.
 
+mod client;
 mod colors;
+mod daemon;
 mod find;
 mod graphics;
 mod io;
 mod links;
-mod pty;
 mod session;
 mod view;
+#[allow(dead_code)]
+mod wire;
 
 use std::{collections::HashMap, path::PathBuf};
 
@@ -27,7 +31,7 @@ use tabula_kit::{
 };
 
 use colors::Scheme;
-use session::{Message, Session, Size, TermEvent};
+use session::{Message, Session, Size, Start, TermEvent};
 use view::{GlyphCache, Metrics, Mouse};
 
 const APP_ID: &str = "tabula.terminal";
@@ -103,14 +107,22 @@ enum Win {
     ConfirmClose { target: WindowId, program: String },
     /// The Find window for a terminal window.
     Find { target: WindowId },
+    /// Terminal ▸ Terminal Daemon…
+    Daemon(Box<daemon::DaemonWin>),
+    /// "Start tabula-termd over?" for the Terminal Daemon window.
+    ConfirmStartOver { target: WindowId },
 }
 
 struct Terminal {
+    link: client::Link,
     windows: HashMap<WindowId, Win>,
     settings: Settings,
     metrics: Option<Metrics>,
     dark: bool,
     search: find::Search,
+    /// tabula-termd was started over: when its shells' windows have all
+    /// closed, open a new one rather than quitting.
+    respawn: bool,
 }
 
 /// Estimated content size for `cols`×`rows` before fonts are loaded
@@ -125,7 +137,8 @@ fn estimate(settings: &Settings, cols: usize, rows: usize) -> (u32, u32) {
     )
 }
 
-/// What an upgraded Terminal gets from its previous self.
+/// What an upgraded Terminal gets from its previous self: which shell
+/// was in each window (tabula-termd has the rest).
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Saved {
     windows: Vec<SavedWindow>,
@@ -133,14 +146,25 @@ struct Saved {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct SavedWindow {
+    shell: u64,
+    size: (u32, u32),
+}
+
+/// What a Terminal from before tabula-termd handed on: the shells
+/// themselves, which go to tabula-termd now.
+#[derive(serde::Deserialize)]
+struct Legacy {
+    windows: Vec<LegacyWindow>,
+}
+
+#[derive(serde::Deserialize)]
+struct LegacyWindow {
     fd: i32,
     pid: i32,
     size: (u32, u32),
     cols: usize,
     rows: usize,
     title: Option<String>,
-    /// The screen and scrollback as text with SGR colour codes, replayed
-    /// into the new emulator.
     contents: String,
 }
 
@@ -156,31 +180,40 @@ impl Terminal {
     fn open(&mut self, cx: &mut Cx, cwd: Option<PathBuf>, command: Option<Vec<String>>) {
         let (cols, rows) = (self.settings.cols, self.settings.rows);
         let options = self.window_options(cols, rows);
-        let id = cx.open_window(options);
-        let size = Size { cols, rows };
-        let cell = self.metrics.map(|m| m.device_cell()).unwrap_or((15, 36));
-        let ws = session::window_size(size, cell);
-        let pty = pty::Pty::spawn(command.as_deref(), cwd.as_deref(), ws);
-        match Session::start(id, cx.proxy(), size, cell, self.scheme(), pty) {
-            Ok(session) => {
-                self.windows.insert(
-                    id,
-                    Win::Term(Box::new(TermWin {
-                        session,
-                        mouse: Mouse::default(),
-                        glyphs: GlyphCache::default(),
-                        snap_to: Some((cols, rows)),
-                        shown_title: "Terminal".into(),
-                        bell: None,
-                        focused: true,
-                    })),
-                );
-            }
-            Err(e) => {
-                cx.close_window(id);
-                tracing::error!(?e, "could not start a shell");
-            }
+        self.add(cx, options, Size { cols, rows }, Some((cols, rows)), Start::Spawn { command, cwd });
+    }
+
+    /// A window on a shell tabula-termd already has (sized as it was, if
+    /// we know).
+    fn reopen(&mut self, cx: &mut Cx, shell: &wire::ShellInfo, size: Option<(u32, u32)>) {
+        let (cols, rows) = (shell.grid.cols.max(1) as usize, shell.grid.rows.max(1) as usize);
+        let mut options = self.window_options(cols, rows);
+        if let Some(size) = size {
+            options.size = size;
         }
+        if let Some(t) = &shell.title {
+            options.title = t.clone();
+        }
+        let snap = size.is_none().then_some((cols, rows));
+        self.add(cx, options, Size { cols, rows }, snap, Start::Attach(shell.id));
+    }
+
+    fn add(&mut self, cx: &mut Cx, options: WindowOptions, size: Size, snap_to: Option<(usize, usize)>, start: Start) {
+        let id = cx.open_window(options);
+        let cell = self.metrics.map(|m| m.device_cell()).unwrap_or((15, 36));
+        let session = Session::start(id, cx.proxy(), &self.link, size, cell, self.scheme(), start);
+        self.windows.insert(
+            id,
+            Win::Term(Box::new(TermWin {
+                session,
+                mouse: Mouse::default(),
+                glyphs: GlyphCache::default(),
+                snap_to,
+                shown_title: String::new(),
+                bell: None,
+                focused: true,
+            })),
+        );
     }
 
     fn window_options(&self, cols: usize, rows: usize) -> WindowOptions {
@@ -212,43 +245,40 @@ impl Terminal {
         self.open(cx, cwd, command.filter(|c: &Vec<String>| !c.is_empty()));
     }
 
-    fn restore(&mut self, cx: &mut Cx, saved: Saved) {
-        for w in saved.windows {
+    /// Open windows on the shells left in tabula-termd: those this
+    /// Terminal had before it upgraded (`saved`), and any no other Terminal
+    /// is showing. True if there were any.
+    fn reattach(&mut self, cx: &mut Cx, shells: Vec<wire::ShellInfo>, saved: Option<&Saved>) -> bool {
+        let ours = std::process::id() as i32;
+        // SAFETY: signal 0 only checks the process exists.
+        let free = |s: &wire::ShellInfo| s.client.is_none_or(|p| p == ours || unsafe { libc::kill(p, 0) } != 0);
+        let mut any = false;
+        for shell in shells.iter().filter(|s| free(s)) {
+            let size = saved.and_then(|s| s.windows.iter().find(|w| w.shell == shell.id)).map(|w| w.size);
+            self.reopen(cx, shell, size);
+            any = true;
+        }
+        any
+    }
+
+    /// Hand the shells a Terminal from before tabula-termd left us over
+    /// to it, each in its window as before.
+    fn adopt(&mut self, cx: &mut Cx, legacy: Legacy) -> bool {
+        let mut any = false;
+        for w in legacy.windows {
+            // SAFETY: our previous self passed this descriptor to us alone.
+            if unsafe { libc::fcntl(w.fd, libc::F_GETFD) } < 0 {
+                continue;
+            }
+            // SAFETY: as above; it's ours now.
+            let pty = unsafe { std::os::fd::FromRawFd::from_raw_fd(w.fd) };
             let mut options = self.window_options(w.cols, w.rows);
             options.size = w.size;
-            let id = cx.open_window(options);
-            let size = Size { cols: w.cols, rows: w.rows };
-            let cell = (15, 36);
-            match Session::start(id, cx.proxy(), size, cell, self.scheme(), pty::Pty::adopt(w.fd, w.pid)) {
-                Ok(mut session) => {
-                    {
-                        let mut term = session.term.lock();
-                        let mut parser: alacritty_terminal::vte::ansi::Processor = alacritty_terminal::vte::ansi::Processor::new();
-                        parser.advance(&mut *term, w.contents.as_bytes());
-                    }
-                    session.title = w.title;
-                    // Make full-screen programs redraw for the new emulator.
-                    // SAFETY: signalling our own shell's process group.
-                    unsafe { libc::kill(-w.pid, libc::SIGWINCH) };
-                    self.windows.insert(
-                        id,
-                        Win::Term(Box::new(TermWin {
-                            session,
-                            mouse: Mouse::default(),
-                            glyphs: GlyphCache::default(),
-                            snap_to: None,
-                            shown_title: String::new(),
-                            bell: None,
-                            focused: false,
-                        })),
-                    );
-                }
-                Err(e) => {
-                    cx.close_window(id);
-                    tracing::error!(?e, "could not adopt a shell");
-                }
-            }
+            let size = Size { cols: w.cols.max(1), rows: w.rows.max(1) };
+            self.add(cx, options, size, None, Start::Adopt { pty, pid: w.pid, title: w.title, replay: w.contents });
+            any = true;
         }
+        any
     }
 
     fn set_text_size(&mut self, cx: &mut Cx, size: f32) {
@@ -312,12 +342,9 @@ impl Terminal {
             }
         }
         let session_cwd = {
-            let pid = t.session.pid;
-            let fd = t.session.fd();
+            let shared = t.session.shared.clone();
             move || {
-                // SAFETY: tcgetpgrp on the session's open PTY master.
-                let pgrp = unsafe { libc::tcgetpgrp(fd) };
-                let pid = if pgrp > 0 { pgrp } else { pid };
+                let pid = shared.foreground().or(shared.shell())?;
                 std::fs::read_link(format!("/proc/{pid}/cwd")).ok()
             }
         };
@@ -376,7 +403,9 @@ impl Terminal {
     }
 
     fn close(&mut self, cx: &mut Cx, win: WindowId) {
-        self.windows.remove(&win);
+        if let Some(Win::Term(t)) = self.windows.remove(&win) {
+            t.session.hang_up();
+        }
         cx.close_window(win);
         let finds: Vec<WindowId> =
             self.windows.iter().filter(|(_, w)| matches!(w, Win::Find { target } if *target == win)).map(|(&id, _)| id).collect();
@@ -385,10 +414,17 @@ impl Terminal {
             cx.close_window(id);
         }
         if !self.windows.values().any(|w| matches!(w, Win::Term(_))) {
+            if std::mem::take(&mut self.respawn) {
+                self.open(cx, None, None);
+                return;
+            }
+            self.link.bye();
             cx.quit();
         }
     }
 }
+
+const START_OVER: &str = "Starting tabula-termd over ends every shell in it, and whatever is running in them. Start over?";
 
 const FIND_W: f32 = 340.0;
 const FIND_H: f32 = 2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + m::SPACING + 4.0 * m::MARK_ROW + 3.0 * m::TIGHT + m::SPACING + m::CONTROL_HEIGHT;
@@ -463,6 +499,36 @@ impl App for Terminal {
                 }
             }
             Some(&Win::Find { target }) => self.find_ui(cx, window, ui, target),
+            Some(Win::Daemon(_)) => {
+                let Some(Win::Daemon(d)) = self.windows.get_mut(&window) else { return };
+                match d.ui(cx, ui) {
+                    Some(daemon::Action::ConfirmStartOver) => {
+                        let id = cx.open_window(WindowOptions::alert("Terminal", START_OVER));
+                        self.windows.insert(id, Win::ConfirmStartOver { target: window });
+                    }
+                    Some(daemon::Action::Show(shell)) => {
+                        let shown = self.windows.iter().find(|(_, w)| matches!(w, Win::Term(t) if t.session.id == shell.id)).map(|(&id, _)| id);
+                        match shown {
+                            Some(id) => cx.activate(id),
+                            None => self.reopen(cx, &shell, None),
+                        }
+                    }
+                    None => {}
+                }
+            }
+            Some(&Win::ConfirmStartOver { target }) => {
+                let Some(choice) = widgets::alert(ui, "terminal", START_OVER, &["Cancel", "Start Over"]) else {
+                    return;
+                };
+                self.windows.remove(&window);
+                cx.close_window(window);
+                if choice == 1
+                    && let Some(Win::Daemon(d)) = self.windows.get_mut(&target)
+                {
+                    self.respawn = true;
+                    d.start_over(cx.proxy());
+                }
+            }
             None => {}
         }
     }
@@ -494,6 +560,8 @@ impl App for Terminal {
             Menu::new("Terminal")
                 .item_shift("New Terminal", "new", Key::N)
                 .separator()
+                .item("Terminal Daemon…", "daemon", None)
+                .separator()
                 .item_shift("Close", "close", Key::W)
                 .item_shift("Quit", "quit", Key::Q),
             Menu::new("Edit")
@@ -523,6 +591,8 @@ impl App for Terminal {
             }
             "close" => self.close_requested(cx, window),
             "quit" => {
+                // The shells stay in tabula-termd for next time.
+                self.link.bye();
                 for id in self.windows.keys().copied().collect::<Vec<_>>() {
                     cx.close_window(id);
                 }
@@ -551,6 +621,14 @@ impl App for Terminal {
                 cx.redraw(window);
             }
             "find" => self.open_find(cx, window),
+            "daemon" => {
+                if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Daemon(_))) {
+                    cx.activate(id);
+                } else {
+                    let (id, d) = daemon::open(cx);
+                    self.windows.insert(id, Win::Daemon(Box::new(d)));
+                }
+            }
             "find-again" => self.find_in(cx, window),
             "find-selection" => {
                 let text = t.session.term.lock().selection_to_string();
@@ -561,10 +639,7 @@ impl App for Terminal {
                 }
             }
             "clear" => {
-                let mut term = t.session.term.lock();
-                term.grid_mut().clear_history();
-                term.selection = None;
-                drop(term);
+                t.session.clear_history();
                 cx.redraw(window);
             }
             "bigger" | "smaller" | "default-size" => {
@@ -612,7 +687,7 @@ impl App for Terminal {
                     self.close(cx, window);
                 }
             }
-            Some(Win::ConfirmClose { .. } | Win::Find { .. }) => {
+            Some(Win::ConfirmClose { .. } | Win::Find { .. } | Win::Daemon(_) | Win::ConfirmStartOver { .. }) => {
                 self.windows.remove(&window);
                 cx.close_window(window);
             }
@@ -623,6 +698,19 @@ impl App for Terminal {
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
         let message = match message.downcast::<Launch>() {
             Ok(launch) => return self.handle_launch(cx, *launch),
+            Err(m) => m,
+        };
+        let message = match message.downcast::<daemon::Report>() {
+            Ok(report) => {
+                for w in self.windows.values_mut() {
+                    if let Win::Daemon(d) = w {
+                        d.report(*report);
+                        break;
+                    }
+                }
+                cx.redraw_all();
+                return;
+            }
             Err(m) => m,
         };
         let Ok(msg) = message.downcast::<Message>() else { return };
@@ -655,26 +743,16 @@ impl App for Terminal {
     fn save_state(&mut self, cx: &Cx) -> Option<String> {
         let mut ids: Vec<WindowId> = self.windows.keys().copied().collect();
         ids.sort();
-        let mut saved = Saved { windows: Vec::new() };
-        for id in ids {
-            let Some(Win::Term(t)) = self.windows.get(&id) else { continue };
-            if t.session.exited.is_some() {
-                continue;
-            }
-            // Keep the PTY open across exec for our next self.
-            pty::set_cloexec(t.session.fd(), false);
-            let term = t.session.term.lock();
-            saved.windows.push(SavedWindow {
-                fd: t.session.fd(),
-                pid: t.session.pid,
-                size: cx.window_size(id).unwrap_or((640, 400)),
-                cols: t.session.size.cols,
-                rows: t.session.size.rows,
-                title: t.session.title.clone(),
-                contents: session::serialize(&term),
-            });
-        }
-        serde_json::to_string(&saved).ok()
+        let windows = ids
+            .into_iter()
+            .filter_map(|id| match self.windows.get(&id) {
+                Some(Win::Term(t)) if t.session.exited.is_none() => {
+                    Some(SavedWindow { shell: t.session.id, size: cx.window_size(id).unwrap_or((640, 400)) })
+                }
+                _ => None,
+            })
+            .collect();
+        serde_json::to_string(&Saved { windows }).ok()
     }
 }
 
@@ -683,18 +761,32 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    tabula_kit::run(APP_ID, |cx| {
+    let (link, shells) = match client::connect() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("tabula-terminal: can't reach tabula-termd: {e}");
+            std::process::exit(1);
+        }
+    };
+    tabula_kit::run(APP_ID, move |cx| {
         instance::listen(APP_ID, cx.proxy());
         let mut t = Terminal {
+            link,
             windows: HashMap::new(),
             settings: Settings::load(),
             metrics: None,
             dark: cx.palette().mode == tabula_kit::theme::ThemeMode::Dark,
             search: find::Search::default(),
+            respawn: false,
         };
-        match cx.restored_state().and_then(|s| serde_json::from_str::<Saved>(&s).ok()) {
-            Some(saved) if !saved.windows.is_empty() => t.restore(cx, saved),
-            _ => t.handle_launch(cx, Launch { args, cwd: std::env::current_dir().ok() }),
+        let state = cx.restored_state();
+        let saved = state.as_deref().and_then(|s| serde_json::from_str::<Saved>(s).ok());
+        let legacy = state.as_deref().filter(|_| saved.is_none()).and_then(|s| serde_json::from_str::<Legacy>(s).ok());
+        let adopted = legacy.is_some_and(|l| t.adopt(cx, l));
+        let reattached = t.reattach(cx, shells, saved.as_ref()) || adopted;
+        // Asked for a new window (or there's nothing to show): open one.
+        if !reattached || (state.is_none() && !args.is_empty()) {
+            t.handle_launch(cx, Launch { args, cwd: std::env::current_dir().ok() });
         }
         t
     });

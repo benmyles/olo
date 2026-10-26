@@ -1,4 +1,5 @@
-//! The PTY reader and writer threads.
+//! Turning a program's output into the emulator's state, in Terminal and
+//! in tabula-termd alike.
 //!
 //! Output is fed to the emulator (alacritty_terminal through vte), except
 //! for image sequences, which vte doesn't know: the scanner lifts kitty
@@ -11,16 +12,17 @@
 //! whole update is in.
 
 use std::{
-    fs::File,
-    io::{Read, Write},
-    os::fd::{AsRawFd, FromRawFd, RawFd},
-    sync::{Arc, mpsc},
+    os::fd::{AsRawFd, OwnedFd},
+    sync::{
+        Mutex,
+        atomic::{AtomicI32, AtomicU32, Ordering},
+    },
     time::Instant,
 };
 
 use alacritty_terminal::{
     event::EventListener,
-    sync::FairMutex,
+    grid::Dimensions,
     term::Term,
     vte::ansi::{NamedColor, Processor},
 };
@@ -223,128 +225,124 @@ fn memchr(needle: u8, hay: &[u8]) -> Option<usize> {
     hay.iter().position(|&b| b == needle)
 }
 
-/// Shared with the reader thread: where images go and the cell size.
+/// A grid size, for the emulator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Size {
+    pub cols: usize,
+    pub rows: usize,
+}
+
+impl Dimensions for Size {
+    fn total_lines(&self) -> usize {
+        self.rows
+    }
+    fn screen_lines(&self) -> usize {
+        self.rows
+    }
+    fn columns(&self) -> usize {
+        self.cols
+    }
+}
+
+/// Shared with the thread feeding the emulator: where images go, sizes,
+/// the colour scheme, and the shell.
 pub struct Shared {
     pub images: graphics::Shared,
     /// Cell size in device pixels, packed (w << 16 | h).
-    pub cell: std::sync::atomic::AtomicU32,
+    pub cell: AtomicU32,
     /// Grid size, packed (cols << 16 | rows).
-    pub grid: std::sync::atomic::AtomicU32,
+    pub grid: AtomicU32,
     /// The colour scheme in use, for programs that ask (OSC 4/10/11).
-    pub scheme: std::sync::Mutex<crate::colors::Scheme>,
+    pub scheme: Mutex<crate::colors::Scheme>,
+    /// The shell's pid (0 until known).
+    pub pid: AtomicI32,
+    /// The PTY it runs in, to see what's in the foreground.
+    pub pty: Mutex<Option<OwnedFd>>,
 }
 
-/// Run the reader: parse output into `term` until the PTY closes, then
-/// report the exit status. `wake` asks the window to redraw; `reply`
-/// sends bytes back to the program.
-pub fn spawn_reader<T: EventListener + Send + 'static>(
-    fd: RawFd,
-    pid: libc::pid_t,
-    term: Arc<FairMutex<Term<T>>>,
-    shared: Arc<Shared>,
-    wake: impl Fn() + Send + 'static,
-    reply: mpsc::Sender<Vec<u8>>,
-    exited: impl FnOnce(Option<i32>) + Send + 'static,
-) {
-    // SAFETY: a duplicate of the session's PTY fd, owned by this thread.
-    let mut file = unsafe { File::from_raw_fd(libc::dup(fd)) };
-    std::thread::Builder::new()
-        .name("pty reader".into())
-        .spawn(move || {
-            let mut parser: Processor = Processor::new();
-            let mut scanner = Scanner::default();
-            let mut buf = vec![0u8; 256 * 1024];
-            loop {
-                // Wait for output, or for a synchronized update to time out.
-                let deadline = parser.sync_timeout().sync_timeout();
-                let timeout_ms = deadline.map(|d| d.saturating_duration_since(Instant::now()).as_millis() as i32).unwrap_or(-1);
-                let mut pfd = libc::pollfd { fd: file.as_raw_fd(), events: libc::POLLIN, revents: 0 };
-                // SAFETY: polling one valid fd.
-                let r = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
-                if r == 0 {
-                    parser.stop_sync(&mut *term.lock());
-                    wake();
-                    continue;
-                }
-                if r < 0 {
-                    if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
-                        continue;
-                    }
-                    break;
-                }
-                let n = match file.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => n,
-                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-                    // EIO: the program and everything it started are gone.
-                    Err(_) => break,
-                };
-                let mut pieces = Vec::new();
-                scanner.feed(&buf[..n], &mut pieces);
-                let mut out = Vec::new();
-                {
-                    let mut t = term.lock();
-                    for piece in pieces {
-                        match piece {
-                            Piece::Text(text) => parser.advance(&mut *t, text),
-                            Piece::Held(text) => parser.advance(&mut *t, &text),
-                            image => {
-                                // Apply any synchronized output first so the
-                                // image lands after it.
-                                if parser.sync_bytes_count() > 0 {
-                                    parser.stop_sync(&mut *t);
-                                }
-                                let packed = shared.cell.load(std::sync::atomic::Ordering::Relaxed);
-                                let cell = (packed >> 16, packed & 0xffff);
-                                let bg = t.colors()[NamedColor::Background].map(|c| [c.r, c.g, c.b]).unwrap_or([0, 0, 0]);
-                                let mut ctx = graphics::Context { store: &shared.images, cell, reply: &mut out };
-                                match image {
-                                    Piece::Kitty(body) => graphics::kitty(&mut *t, &mut ctx, &body),
-                                    Piece::Sixel { params, data } => graphics::sixel(&mut *t, &mut ctx, &params, &data, bg),
-                                    Piece::Iterm(body) => graphics::iterm(&mut *t, &mut ctx, &body),
-                                    Piece::Text(_) | Piece::Held(_) => {}
-                                }
-                            }
-                        }
-                    }
-                }
-                if !out.is_empty() {
-                    let _ = reply.send(out);
-                }
-                if parser.sync_bytes_count() < n {
-                    wake();
-                }
-            }
-            // Collect the exit status (the program closed the PTY; it has
-            // exited or is about to).
-            let mut status = 0;
-            // SAFETY: waiting for our own child.
-            let r = unsafe { libc::waitpid(pid, &mut status, 0) };
-            let code = (r == pid).then(|| {
-                if libc::WIFEXITED(status) { libc::WEXITSTATUS(status) } else { 128 + libc::WTERMSIG(status) }
-            });
-            exited(code);
-        })
-        .expect("reader thread");
+impl Shared {
+    pub fn new(cell: (u16, u16), size: Size, scheme: crate::colors::Scheme) -> Shared {
+        Shared {
+            images: Default::default(),
+            cell: AtomicU32::new(((cell.0 as u32) << 16) | cell.1 as u32),
+            grid: AtomicU32::new(((size.cols as u32) << 16) | size.rows as u32),
+            scheme: Mutex::new(scheme),
+            pid: AtomicI32::new(0),
+            pty: Mutex::new(None),
+        }
+    }
+
+    pub fn set_sizes(&self, size: Size, cell: (u16, u16)) {
+        self.cell.store(((cell.0 as u32) << 16) | cell.1 as u32, Ordering::Relaxed);
+        self.grid.store(((size.cols as u32) << 16) | size.rows as u32, Ordering::Relaxed);
+    }
+
+    pub fn shell(&self) -> Option<libc::pid_t> {
+        Some(self.pid.load(Ordering::Relaxed)).filter(|&p| p > 0)
+    }
+
+    /// The process group in the foreground (the shell's, when it's idle).
+    pub fn foreground(&self) -> Option<libc::pid_t> {
+        let pty = self.pty.lock().unwrap();
+        // SAFETY: tcgetpgrp on the PTY we hold.
+        let pgrp = unsafe { libc::tcgetpgrp(pty.as_ref()?.as_raw_fd()) };
+        (pgrp > 0).then_some(pgrp)
+    }
 }
 
-/// The writer: input and replies go out in order without ever blocking
-/// the UI, even when the program isn't reading.
-pub fn spawn_writer(fd: RawFd) -> mpsc::Sender<Vec<u8>> {
-    let (tx, rx) = mpsc::channel::<Vec<u8>>();
-    // SAFETY: a duplicate of the PTY fd for this thread.
-    let mut file = unsafe { File::from_raw_fd(libc::dup(fd)) };
-    std::thread::Builder::new()
-        .name("pty writer".into())
-        .spawn(move || {
-            for bytes in rx {
-                if file.write_all(&bytes).is_err() {
-                    break;
+/// Feeds output to an emulator.
+pub struct Feeder {
+    parser: Processor,
+    scanner: Scanner,
+}
+
+impl Default for Feeder {
+    fn default() -> Self {
+        Feeder { parser: Processor::new(), scanner: Scanner::default() }
+    }
+}
+
+impl Feeder {
+    /// When a synchronized update has to be shown by, if one is pending.
+    pub fn deadline(&self) -> Option<Instant> {
+        self.parser.sync_timeout().sync_timeout()
+    }
+
+    /// The update took too long: show what there is.
+    pub fn flush<T: EventListener>(&mut self, term: &mut Term<T>) {
+        self.parser.stop_sync(term);
+    }
+
+    /// Parse `bytes` into `term`; anything to tell the program (image
+    /// replies) goes in `reply`. True when there's something new to draw.
+    pub fn feed<T: EventListener>(&mut self, term: &mut Term<T>, shared: &Shared, bytes: &[u8], reply: &mut Vec<u8>) -> bool {
+        let mut pieces = Vec::new();
+        self.scanner.feed(bytes, &mut pieces);
+        for piece in pieces {
+            match piece {
+                Piece::Text(text) => self.parser.advance(term, text),
+                Piece::Held(text) => self.parser.advance(term, &text),
+                image => {
+                    // Apply any synchronized output first so the image
+                    // lands after it.
+                    if self.parser.sync_bytes_count() > 0 {
+                        self.parser.stop_sync(term);
+                    }
+                    let packed = shared.cell.load(Ordering::Relaxed);
+                    let cell = (packed >> 16, packed & 0xffff);
+                    let bg = term.colors()[NamedColor::Background].map(|c| [c.r, c.g, c.b]).unwrap_or([0, 0, 0]);
+                    let mut ctx = graphics::Context { store: &shared.images, cell, reply };
+                    match image {
+                        Piece::Kitty(body) => graphics::kitty(term, &mut ctx, &body),
+                        Piece::Sixel { params, data } => graphics::sixel(term, &mut ctx, &params, &data, bg),
+                        Piece::Iterm(body) => graphics::iterm(term, &mut ctx, &body),
+                        Piece::Text(_) | Piece::Held(_) => {}
+                    }
                 }
             }
-        })
-        .expect("writer thread");
-    tx
+        }
+        self.parser.sync_bytes_count() < bytes.len()
+    }
 }
 
 #[cfg(test)]

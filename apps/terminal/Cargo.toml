@@ -8,6 +8,11 @@ license.workspace = true
 name = "tabula-terminal"
 path = "src/main.rs"
 
+# Runs the shells, so they outlive Terminal (src/termd.rs).
+[[bin]]
+name = "tabula-termd"
+path = "src/termd.rs"
+
 [dependencies]
 tabula-kit.workspace = true
 tabula-protocol.workspace = true

@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Shells that outlive Terminal
+
+*16:29* — Terminal's shells now run in tabula-termd, one per display, which keeps each screen too. Quit Terminal, or have it crash or upgrade, and the next one reopens a window on every shell as it was, scrollback, vim and all. Terminal ▸ Terminal Daemon… shows it and its shells, and can restart it in place (shells kept) or start it over.
+
+![Shells that outlive Terminal](2026-10-26/162936-shells-that-outlive-terminal.png)
+
 ### Keyring prompts are Tabula's
 
 *15:51* — gnome-keyring asks for the login keyring's password through a system prompter; the authentication agent now is that prompter (gcr's protocol and encrypted secret exchange, in Rust), so unlocking it for gh or a browser is a Tabula alert, not GTK's gcr-prompter. A wrong password comes back with the keyring's warning.

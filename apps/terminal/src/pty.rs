@@ -1,7 +1,7 @@
-//! The pseudo-terminal a shell runs in. Unlike alacritty's own `tty::Pty`,
-//! ours can also adopt a PTY and shell this process inherited: when
-//! Terminal upgrades itself in place (`tabula-session reload`) the shells
-//! keep running and the new version picks them up.
+//! The pseudo-terminal a shell runs in (tabula-termd's). Unlike
+//! alacritty's own `tty::Pty`, ours can also adopt a PTY and shell this
+//! process inherited: when tabula-termd upgrades itself in place the
+//! shells keep running and the new version picks them up.
 
 use std::{
     ffi::CString,
@@ -31,11 +31,11 @@ pub fn set_cloexec(fd: RawFd, on: bool) {
 }
 
 /// The user's login shell.
-fn shell() -> String {
-    if let Ok(s) = std::env::var("SHELL")
+fn shell(env: &[(String, String)]) -> String {
+    if let Some((_, s)) = env.iter().find(|(k, _)| k == "SHELL")
         && !s.is_empty()
     {
-        return s;
+        return s.clone();
     }
     // SAFETY: getpwuid returns a pointer into static storage or null.
     unsafe {
@@ -54,8 +54,8 @@ pub struct Pty {
 }
 
 impl Pty {
-    /// Start the user's shell (or `command`) in a new PTY.
-    pub fn spawn(command: Option<&[String]>, cwd: Option<&Path>, size: WindowSize) -> io::Result<Pty> {
+    /// Start the user's shell (or `command`) in a new PTY, with `env`.
+    pub fn spawn(command: Option<&[String]>, cwd: Option<&Path>, size: WindowSize, env: &[(String, String)]) -> io::Result<Pty> {
         let mut master: RawFd = -1;
         let mut slave: RawFd = -1;
         let ws = winsize(size);
@@ -77,7 +77,7 @@ impl Pty {
             }
         }
 
-        let shell = shell();
+        let shell = shell(env);
         let (program, args): (String, Vec<String>) = match command {
             Some([p, rest @ ..]) => (p.clone(), rest.to_vec()),
             _ => (shell.clone(), Vec::new()),
@@ -97,7 +97,9 @@ impl Pty {
         let mut c_argv: Vec<*const libc::c_char> = c_args.iter().map(|a| a.as_ptr()).collect();
         c_argv.push(std::ptr::null());
 
-        let mut env: Vec<(String, String)> = std::env::vars()
+        let mut env: Vec<(String, String)> = env
+            .iter()
+            .cloned()
             .filter(|(k, _)| !matches!(k.as_str(), "XDG_ACTIVATION_TOKEN" | "DESKTOP_STARTUP_ID" | "TABULA_RESTORE"))
             .collect();
         for (k, v) in [("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", "Tabula-Terminal")] {

@@ -64,12 +64,12 @@ as they land (with the commit), add new ones as they come up.
   login, keyring files read natively; the prompt is done), ssh agent, portal
   backend (`org.freedesktop.impl.portal.*` with Tabula's FilePanel and
   screenshot), settings portal instead of dconf, our own wallpapers.
-- **Terminal sessions that outlive Terminal** (Ben, next): the shells
-  and their screens live in a per-user terminal daemon, so quitting,
-  crashing or upgrading Terminal reattaches every tab as it was
-  (scrollback included). Terminal must also pick up upgrades from the
-  Deskbar upgrade alert like the other apps (re-execute in place and
-  reattach), with nothing lost.
+- ~~**Terminal sessions that outlive Terminal**~~ (Ben): done. Shells
+  live in tabula-termd (one per display); quitting, crashing or upgrading
+  Terminal reattaches every window with its scrollback, and tabula-termd
+  upgrades in place too. Terminal ▸ Terminal Daemon… shows it and can
+  restart it (keeping the shells) or start it over. Not yet: images
+  aren't replayed on reattach.
 - Terminal: ~~find in scrollback~~ (Edit ▸ Find…, Find Again, Find
   Selection; regex over screen and history); ~~release-build memory
   check~~ (fonts mapped, wgpu MemoryUsage: every app ~100 MB smaller);

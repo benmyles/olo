@@ -729,6 +729,62 @@ process. Quit sends SIGTERM; Force Quit asks first, then SIGKILL; EPERM
 is an alert. **In tests, only ever quit a process you started, selected
 by its exact ID.**
 
+## Terminal (apps/terminal)
+
+The shells don't run in Terminal: they run in **tabula-termd**
+(`src/termd.rs`, a second binary of the same package), one per display,
+which the first Terminal starts (it daemonizes and holds
+`$XDG_RUNTIME_DIR/tabula-termd-<display>.lock`, with its pid in it). It
+owns every PTY and keeps its own emulator per shell (the same `io::Feeder`
+and image placement as Terminal, without the pixels), so it always knows
+the screen. Terminal talks to it over
+`$XDG_RUNTIME_DIR/tabula-termd-<display>.sock` (`src/wire.rs`: framed JSON
+and raw bytes; one connection per Terminal, `src/client.rs`): it spawns
+or attaches a shell, sends input and resizes, and gets the output. On
+attach, tabula-termd sends a replay (`src/replay.rs`) that rebuilds the
+screen and scrollback in a fresh emulator: both screens when a program
+is on the alternate one, the modes it set (cursor keys, mouse reporting,
+bracketed paste, kitty keyboard flags…), cursor shape and title; images
+come back blank. The PTY comes along (SCM_RIGHTS) so Terminal can see the
+foreground program and its working directory. tabula-termd answers the
+program's questions (device attributes) only while no Terminal is
+attached.
+
+So: **Quit** (and closing the last window) says goodbye and leaves the
+shells running; the next Terminal opens a window on each one not shown
+elsewhere (a launch with arguments opens a new one as well). Closing a
+window hangs up its shell. If Terminal **crashes**, tabula-termd starts
+it again after 2 s (up to 3 times a minute, only while the session and
+its Wayland socket are there). An **upgrade** re-executes both in place:
+Terminal keeps which shell was in which window (`save_state`), and
+tabula-termd hands its PTYs and replays to its new self through an
+inherited file (`TABULA_TERMD_RESTORE`); Terminal reconnects on its own.
+(A Terminal from before tabula-termd hands its shells' PTYs to its new
+self, the old way; the new one passes them on to tabula-termd, ADOPT.)
+When the desktop session ends (its pid file, watched with a pidfd) or on
+SIGTERM, tabula-termd hangs up every shell and exits; it also exits when
+it has no shells and no Terminal for 3 s, or when its runtime directory
+has gone. If its socket is deleted from under it, it listens again (so a
+Terminal can always find its shells); it only removes the socket while
+the file there is still its own. Each screen is kept twice (in
+tabula-termd and in Terminal), so a full scrollback costs about twice
+what it used to.
+
+**Terminal ▸ Terminal Daemon…** (`src/daemon.rs`) shows tabula-termd's
+process and uptime and its shells (whether each is shown here, in
+another Terminal, or nowhere; double-click one to show it), refreshed
+every 2 s off the UI thread. **Restart** re-executes it in place (shells
+kept); **Start Over…** (after an alert) ends it, by its pid, with SIGTERM
+then SIGKILL, starts a fresh one, and opens a new window once the old
+shells' windows have closed. One that isn't answering can only start
+over.
+
+Testing: tabula-termd lives in the session's runtime directory, so a
+headless session gets its own. Kill only the Terminal or tabula-termd
+you started, found by `XDG_RUNTIME_DIR` in `/proc/PID/environ`.
+`cargo test -p tabula-terminal` covers the wire format (with descriptor
+passing) and replays (scrollback, `clear`, the alternate screen, modes).
+
 ## The polkit agent (apps/polkit-agent, tabula_system::polkit)
 
 Asks for a password when a program needs an administrator (timedated,

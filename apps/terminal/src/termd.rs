@@ -1,0 +1,919 @@
+//! tabula-termd: Terminal's shells, kept apart from Terminal.
+//!
+//! One runs per display, started by the first Terminal that needs it. It
+//! owns every shell's PTY and keeps its own copy of each screen (the same
+//! emulator and image handling as Terminal's), so when Terminal quits,
+//! crashes or upgrades, the shells carry on, and the next Terminal attaches
+//! to them: it gets the screen and scrollback replayed (replay.rs), then the
+//! live output. A Terminal that vanishes without saying goodbye is started
+//! again. When the desktop session ends, so do the shells; when the last
+//! shell has gone and no Terminal is attached, so does tabula-termd. An
+//! upgrade (SIGURG from tabula-session) re-executes it in place, handing
+//! the PTYs and screens to its new self.
+
+#[allow(dead_code)]
+mod colors;
+#[allow(dead_code)]
+mod graphics;
+#[allow(dead_code)]
+mod io;
+mod pty;
+mod replay;
+#[allow(dead_code)]
+mod wire;
+
+use std::{
+    collections::{HashMap, VecDeque},
+    fs::File,
+    io::{Read, Write},
+    os::{
+        fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
+        unix::{
+            net::{UnixListener, UnixStream},
+            process::CommandExt,
+        },
+    },
+    path::PathBuf,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    },
+    time::{Duration, Instant},
+};
+
+use alacritty_terminal::{
+    event::{Event, EventListener, WindowSize},
+    sync::FairMutex,
+    term::{Config, Term, TermMode},
+    vte::ansi::Processor,
+};
+use serde::{Deserialize, Serialize};
+
+use io::Size;
+use wire::{Frame, Grid};
+
+/// Where an upgraded tabula-termd finds what its previous self handed on.
+const RESTORE_ENV: &str = "TABULA_TERMD_RESTORE";
+/// Output queued for a Terminal before we stop reading a shell's.
+const BACKLOG: usize = 8 << 20;
+/// How long a Terminal that vanished has to come back on its own (an
+/// upgrade re-executes it) before we start it again.
+const RELAUNCH_AFTER: Duration = Duration::from_secs(2);
+/// Starts allowed per minute, in case it can't stay up.
+const RELAUNCHES: usize = 3;
+/// How long to stay with nothing to do.
+const LINGER: Duration = Duration::from_secs(3);
+
+fn log(message: impl std::fmt::Display) {
+    eprintln!("tabula-termd: {message}");
+}
+
+/// Frames for one Terminal, and how many bytes of them are still queued.
+#[derive(Clone)]
+struct Outbox {
+    conn: u64,
+    tx: mpsc::Sender<Frame>,
+    backlog: Arc<AtomicUsize>,
+}
+
+impl Outbox {
+    fn send(&self, f: Frame) {
+        let n = f.data.len();
+        self.backlog.fetch_add(n, Ordering::AcqRel);
+        if self.tx.send(f).is_err() {
+            self.backlog.fetch_sub(n, Ordering::AcqRel);
+        }
+    }
+}
+
+/// Which Terminal sees a shell's output.
+type Attached = Arc<Mutex<Option<Outbox>>>;
+
+/// What a shell's emulator reports.
+#[derive(Clone)]
+struct Listener {
+    title: Arc<Mutex<Option<String>>>,
+    attached: Attached,
+    writer: mpsc::Sender<Vec<u8>>,
+}
+
+impl EventListener for Listener {
+    fn send_event(&self, event: Event) {
+        match event {
+            Event::Title(t) => *self.title.lock().unwrap() = Some(t),
+            Event::ResetTitle => *self.title.lock().unwrap() = None,
+            // The attached Terminal answers the program's questions; we do
+            // while none is.
+            Event::PtyWrite(text) if self.attached.lock().unwrap().is_none() => {
+                let text = if text == "\x1b[?6c" { "\x1b[?62;4;22c".to_owned() } else { text };
+                let _ = self.writer.send(text.into_bytes());
+            }
+            _ => {}
+        }
+    }
+}
+
+struct Shell {
+    /// Order of creation, to list them in.
+    seq: u64,
+    term: Arc<FairMutex<Term<Listener>>>,
+    shared: Arc<io::Shared>,
+    master: OwnedFd,
+    pid: libc::pid_t,
+    grid: Grid,
+    writer: mpsc::Sender<Vec<u8>>,
+    attached: Attached,
+    title: Arc<Mutex<Option<String>>>,
+}
+
+impl Shell {
+    fn resize(&mut self, grid: Grid) {
+        let size = Size { cols: grid.cols.max(1) as usize, rows: grid.rows.max(1) as usize };
+        self.shared.set_sizes(size, (grid.cell_w, grid.cell_h));
+        if grid != self.grid {
+            self.grid = grid;
+            self.term.lock().resize(size);
+            pty::resize(self.master.as_raw_fd(), window_size(grid));
+        }
+    }
+
+    /// Hang up, as closing a terminal window does.
+    fn hang_up(&self) {
+        // SAFETY: signalling our own child and its process group.
+        unsafe {
+            libc::kill(-self.pid, libc::SIGHUP);
+            libc::kill(self.pid, libc::SIGHUP);
+        }
+    }
+}
+
+fn window_size(g: Grid) -> WindowSize {
+    WindowSize { num_lines: g.rows, num_cols: g.cols, cell_width: g.cell_w, cell_height: g.cell_h }
+}
+
+struct Client {
+    outbox: Outbox,
+    pid: i32,
+    /// Said goodbye: it quit on purpose.
+    bye: bool,
+}
+
+enum Ev {
+    /// A shell's program has gone.
+    Exited(u64),
+    /// A Terminal disconnected (saying goodbye first, or not).
+    Gone { bye: bool },
+    Upgrade,
+    /// Asked to re-execute (whether or not there's a new version).
+    Restart,
+    /// The session ended, or we were told to stop.
+    End,
+}
+
+struct State {
+    shells: HashMap<u64, Shell>,
+    clients: HashMap<u64, Client>,
+    seq: u64,
+    /// The latest Terminal's environment: shells get it, and it's how to
+    /// start Terminal again.
+    env: Vec<(String, String)>,
+    events: mpsc::Sender<Ev>,
+    /// When we started (seconds since the epoch).
+    started: u64,
+}
+
+type St = Arc<Mutex<State>>;
+
+/// What an upgraded tabula-termd gets from its previous self.
+#[derive(Serialize, Deserialize)]
+struct Carried {
+    listener: RawFd,
+    lock: RawFd,
+    env: Vec<(String, String)>,
+    shells: Vec<CarriedShell>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct CarriedShell {
+    id: u64,
+    fd: RawFd,
+    pid: i32,
+    grid: Grid,
+    title: Option<String>,
+    replay: Vec<u8>,
+}
+
+fn new_shell(st: &mut State, id: u64, pty: pty::Pty, grid: Grid, replay: Option<&[u8]>, title: Option<String>) {
+    let pty::Pty { master, pid } = pty;
+    let attached: Attached = Arc::new(Mutex::new(None));
+    let title = Arc::new(Mutex::new(title));
+    let writer = spawn_writer(&master);
+    let listener = Listener { title: title.clone(), attached: attached.clone(), writer: writer.clone() };
+    let size = Size { cols: grid.cols.max(1) as usize, rows: grid.rows.max(1) as usize };
+    let config = Config { scrolling_history: wire::SCROLLBACK, kitty_keyboard: true, ..Config::default() };
+    let mut term = Term::new(config, &size, listener);
+    if let Some(replay) = replay {
+        let mut parser: Processor = Processor::new();
+        parser.advance(&mut term, replay);
+    }
+    let term = Arc::new(FairMutex::new(term));
+    let shared = Arc::new(io::Shared::new((grid.cell_w, grid.cell_h), size, colors::Scheme::light()));
+    shared.pid.store(pid, Ordering::Relaxed);
+    pty::resize(master.as_raw_fd(), window_size(grid));
+    match master.try_clone() {
+        Ok(fd) => spawn_reader(id, File::from(fd), pid, term.clone(), shared.clone(), attached.clone(), writer.clone(), st.events.clone()),
+        Err(e) => log(format!("shell {id}: {e}")),
+    }
+    st.seq += 1;
+    st.shells.insert(id, Shell { seq: st.seq, term, shared, master, pid, grid, writer, attached, title });
+}
+
+/// Read a shell's output into its emulator, and on to the Terminal
+/// attached, until the program has gone.
+#[allow(clippy::too_many_arguments)]
+fn spawn_reader(
+    id: u64,
+    mut file: File,
+    pid: libc::pid_t,
+    term: Arc<FairMutex<Term<Listener>>>,
+    shared: Arc<io::Shared>,
+    attached: Attached,
+    writer: mpsc::Sender<Vec<u8>>,
+    events: mpsc::Sender<Ev>,
+) {
+    std::thread::Builder::new()
+        .name("pty reader".into())
+        .spawn(move || {
+            let mut feeder = io::Feeder::default();
+            let mut buf = vec![0u8; 256 * 1024];
+            loop {
+                let timeout_ms = feeder.deadline().map(|d| d.saturating_duration_since(Instant::now()).as_millis() as i32).unwrap_or(-1);
+                let mut pfd = libc::pollfd { fd: file.as_raw_fd(), events: libc::POLLIN, revents: 0 };
+                // SAFETY: polling one valid fd.
+                let r = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
+                if r == 0 {
+                    feeder.flush(&mut *term.lock());
+                    continue;
+                }
+                if r < 0 {
+                    if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                        continue;
+                    }
+                    break;
+                }
+                let n = match file.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => n,
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                    // EIO: the program and everything it started are gone.
+                    Err(_) => break,
+                };
+                let mut replies = Vec::new();
+                let backlog = {
+                    let mut t = term.lock();
+                    feeder.feed(&mut *t, &shared, &buf[..n], &mut replies);
+                    // Where images go is all we need of them (Terminal
+                    // keeps the pixels).
+                    for image in shared.images.lock().unwrap().images.values_mut() {
+                        if !image.rgba.is_empty() {
+                            image.rgba = Default::default();
+                        }
+                    }
+                    // Still locked, so a Terminal attaching now gets this
+                    // either in its replay or here, not both.
+                    let out = attached.lock().unwrap();
+                    match out.as_ref() {
+                        Some(o) => {
+                            o.send(Frame::new(wire::OUTPUT, id, buf[..n].to_vec()));
+                            Some(o.backlog.clone())
+                        }
+                        None => {
+                            if !replies.is_empty() {
+                                let _ = writer.send(replies);
+                            }
+                            None
+                        }
+                    }
+                };
+                // Don't run ahead of a Terminal that's behind.
+                if let Some(b) = backlog {
+                    while b.load(Ordering::Acquire) > BACKLOG {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                }
+            }
+            let mut status = 0;
+            // SAFETY: waiting for our own child.
+            let r = unsafe { libc::waitpid(pid, &mut status, 0) };
+            let code = (r == pid).then(|| if libc::WIFEXITED(status) { libc::WEXITSTATUS(status) } else { 128 + libc::WTERMSIG(status) });
+            if let Some(o) = attached.lock().unwrap().as_ref() {
+                o.send(Frame::json(wire::EXITED, id, &code));
+            }
+            let _ = events.send(Ev::Exited(id));
+        })
+        .expect("reader thread");
+}
+
+/// Input for a shell goes out in order without holding anyone up, even
+/// when the program isn't reading.
+fn spawn_writer(master: &OwnedFd) -> mpsc::Sender<Vec<u8>> {
+    let (tx, rx) = mpsc::channel::<Vec<u8>>();
+    let Ok(fd) = master.try_clone() else { return tx };
+    let mut file = File::from(fd);
+    std::thread::Builder::new()
+        .name("pty writer".into())
+        .spawn(move || {
+            for bytes in rx {
+                if file.write_all(&bytes).is_err() {
+                    break;
+                }
+            }
+        })
+        .expect("writer thread");
+    tx
+}
+
+/// Give `conn` the shell `id`: its screen so far, then its output.
+fn attach(st: &mut State, conn: u64, id: u64, grid: Grid) {
+    let Some(client) = st.clients.get(&conn) else { return };
+    let outbox = client.outbox.clone();
+    let Some(shell) = st.shells.get_mut(&id) else {
+        outbox.send(Frame::json(wire::EXITED, id, &None::<i32>));
+        return;
+    };
+    shell.resize(grid);
+    let mut term = shell.term.lock();
+    let title = shell.title.lock().unwrap().clone();
+    let replay = replay::snapshot(&mut term, title.as_deref());
+    let alt = term.mode().contains(TermMode::ALT_SCREEN);
+    let mut data = shell.pid.to_le_bytes().to_vec();
+    data.extend_from_slice(&replay);
+    let mut frame = Frame::new(wire::ATTACHED, id, data);
+    frame.fd = shell.master.try_clone().ok();
+    let mut out = shell.attached.lock().unwrap();
+    if let Some(old) = out.take()
+        && old.conn != conn
+    {
+        old.send(Frame::new(wire::DETACHED, id, Vec::new()));
+    }
+    outbox.send(frame);
+    *out = Some(outbox);
+    drop(out);
+    drop(term);
+    // A full-screen program draws itself again for the new window.
+    if alt {
+        // SAFETY: tcgetpgrp on our PTY; SIGWINCH to what runs in it.
+        unsafe {
+            let pgrp = libc::tcgetpgrp(shell.master.as_raw_fd());
+            if pgrp > 0 {
+                libc::kill(-pgrp, libc::SIGWINCH);
+            }
+        }
+    }
+}
+
+/// The shells, oldest first.
+fn shells(s: &State) -> Vec<wire::ShellInfo> {
+    let pids: HashMap<u64, i32> = s.clients.iter().map(|(c, cl)| (*c, cl.pid)).collect();
+    let mut shells: Vec<(u64, wire::ShellInfo)> = s
+        .shells
+        .iter()
+        .map(|(&id, sh)| {
+            let client = sh.attached.lock().unwrap().as_ref().and_then(|o| pids.get(&o.conn).copied());
+            let title = sh.title.lock().unwrap().clone();
+            (sh.seq, wire::ShellInfo { id, pid: sh.pid, client, grid: sh.grid, title })
+        })
+        .collect();
+    shells.sort_by_key(|(seq, _)| *seq);
+    shells.into_iter().map(|(_, i)| i).collect()
+}
+
+fn handle(st: &St, conn: u64, f: Frame) {
+    let mut s = st.lock().unwrap();
+    match f.kind {
+        wire::HELLO => {
+            let Some(hello) = f.parse::<wire::Hello>() else { return };
+            // The same Terminal again (it re-executed itself to upgrade):
+            // its old connection is done with.
+            let old: Vec<u64> = s.clients.iter().filter(|(c, cl)| **c != conn && cl.pid == hello.pid).map(|(c, _)| *c).collect();
+            for shell in s.shells.values() {
+                let mut a = shell.attached.lock().unwrap();
+                if a.as_ref().is_some_and(|o| old.contains(&o.conn)) {
+                    *a = None;
+                }
+            }
+            if let Some(c) = s.clients.get_mut(&conn) {
+                c.pid = hello.pid;
+            }
+            s.env = hello.env;
+        }
+        wire::LIST => {
+            if let Some(c) = s.clients.get(&conn) {
+                c.outbox.send(Frame::json(wire::SHELLS, 0, &shells(&s)));
+            }
+        }
+        wire::STATUS => {
+            let status = wire::Status {
+                pid: std::process::id() as i32,
+                started: s.started,
+                // Terminals (not those just asking, like this).
+                clients: s.clients.values().filter(|c| c.pid != 0).count(),
+                shells: shells(&s),
+            };
+            if let Some(c) = s.clients.get(&conn) {
+                c.outbox.send(Frame::json(wire::REPORT, 0, &status));
+            }
+        }
+        wire::RESTART => {
+            log("asked to restart");
+            let _ = s.events.send(Ev::Restart);
+        }
+        wire::SPAWN => {
+            let Some(spawn) = f.parse::<wire::Spawn>() else { return };
+            if s.shells.contains_key(&f.id) {
+                if let Some(c) = s.clients.get(&conn) {
+                    c.outbox.send(Frame::json(wire::EXITED, f.id, &None::<i32>));
+                }
+                return;
+            }
+            let home = s.env.iter().find(|(k, _)| k == "HOME").map(|(_, v)| PathBuf::from(v));
+            let cwd = spawn.cwd.filter(|d| d.is_dir()).or(home);
+            match pty::Pty::spawn(spawn.command.as_deref(), cwd.as_deref(), window_size(spawn.grid), &s.env) {
+                Ok(p) => {
+                    new_shell(&mut s, f.id, p, spawn.grid, None, None);
+                    attach(&mut s, conn, f.id, spawn.grid);
+                }
+                Err(e) => {
+                    log(format!("could not start a shell: {e}"));
+                    if let Some(c) = s.clients.get(&conn) {
+                        c.outbox.send(Frame::json(wire::EXITED, f.id, &Some(127)));
+                    }
+                }
+            }
+        }
+        wire::ADOPT => {
+            let (Some(adopt), Some(fd)) = (f.parse::<wire::Adopt>(), f.fd) else { return };
+            if s.shells.contains_key(&f.id) {
+                return;
+            }
+            pty::set_cloexec(fd.as_raw_fd(), true);
+            log(format!("took over shell {} from Terminal", adopt.pid));
+            new_shell(&mut s, f.id, pty::Pty { master: fd, pid: adopt.pid }, adopt.grid, Some(adopt.replay.as_bytes()), adopt.title);
+            attach(&mut s, conn, f.id, adopt.grid);
+        }
+        wire::ATTACH => {
+            if let Some(grid) = f.parse::<Grid>() {
+                attach(&mut s, conn, f.id, grid);
+            }
+        }
+        wire::INPUT => {
+            if let Some(sh) = s.shells.get(&f.id) {
+                let _ = sh.writer.send(f.data);
+            }
+        }
+        wire::RESIZE => {
+            if let Some(grid) = f.parse::<Grid>()
+                && let Some(sh) = s.shells.get_mut(&f.id)
+                && sh.attached.lock().unwrap().as_ref().is_some_and(|o| o.conn == conn)
+            {
+                sh.resize(grid);
+            }
+        }
+        wire::CLEAR => {
+            if let Some(sh) = s.shells.get(&f.id) {
+                sh.term.lock().grid_mut().clear_history();
+            }
+        }
+        wire::CLOSE => {
+            // Gone from the list at once, even if something keeps the PTY
+            // open after the hang-up.
+            if let Some(sh) = s.shells.remove(&f.id) {
+                sh.hang_up();
+            }
+        }
+        wire::BYE => {
+            if let Some(c) = s.clients.get_mut(&conn) {
+                c.bye = true;
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Talk to one Terminal until it goes.
+fn serve(st: St, stream: UnixStream, conn: u64) {
+    let (tx, rx) = mpsc::channel::<Frame>();
+    let backlog = Arc::new(AtomicUsize::new(0));
+    let Ok(out) = stream.try_clone() else { return };
+    {
+        let backlog = backlog.clone();
+        std::thread::Builder::new()
+            .name("client writer".into())
+            .spawn(move || {
+                for f in rx {
+                    let n = f.data.len();
+                    if wire::write(&out, &f).is_err() {
+                        break;
+                    }
+                    backlog.fetch_sub(n, Ordering::AcqRel);
+                }
+                // Nobody's reading: stop holding shells back for it.
+                backlog.store(0, Ordering::Release);
+                let _ = out.shutdown(std::net::Shutdown::Both);
+            })
+            .expect("client writer");
+    }
+    st.lock().unwrap().clients.insert(conn, Client { outbox: Outbox { conn, tx, backlog }, pid: 0, bye: false });
+    let mut reader = wire::Reader::new(stream);
+    while let Ok(Some(f)) = reader.next() {
+        handle(&st, conn, f);
+    }
+    let mut s = st.lock().unwrap();
+    let bye = s.clients.remove(&conn).is_some_and(|c| c.bye);
+    for shell in s.shells.values() {
+        let mut a = shell.attached.lock().unwrap();
+        if a.as_ref().is_some_and(|o| o.conn == conn) {
+            *a = None;
+        }
+    }
+    let _ = s.events.send(Ev::Gone { bye });
+}
+
+// ---- starting, upgrading, ending ---------------------------------------------
+
+/// Where SIGURG and SIGTERM land.
+static SIGNALS: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+
+extern "C" fn on_signal(sig: libc::c_int) {
+    let fd = SIGNALS.load(Ordering::Relaxed);
+    if fd >= 0 {
+        // SAFETY: write(2) is async-signal-safe.
+        unsafe { libc::write(fd, [sig as u8].as_ptr().cast(), 1) };
+    }
+}
+
+/// Turn signals and the end of the desktop session into events.
+fn watch(events: mpsc::Sender<Ev>) {
+    let mut fds = [0; 2];
+    // SAFETY: a pipe, and handlers that only write to it.
+    unsafe {
+        if libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) != 0 {
+            return;
+        }
+        SIGNALS.store(fds[1], Ordering::Relaxed);
+        let mut action: libc::sigaction = std::mem::zeroed();
+        action.sa_sigaction = on_signal as *const () as usize;
+        action.sa_flags = libc::SA_RESTART;
+        libc::sigemptyset(&mut action.sa_mask);
+        for sig in [libc::SIGURG, libc::SIGTERM, libc::SIGINT] {
+            libc::sigaction(sig, &action, std::ptr::null_mut());
+        }
+        libc::signal(libc::SIGHUP, libc::SIG_IGN);
+    }
+    // SAFETY: the read end is ours alone.
+    let signals = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+    // The session's pid file may not be there yet: look again until it is.
+    let find_session = || {
+        std::fs::read_to_string(wire::session_pid_path())
+            .ok()
+            .and_then(|p| p.trim().parse::<libc::pid_t>().ok())
+            // SAFETY: pidfd_open makes a new descriptor we own.
+            .and_then(|pid| {
+                let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+                (fd >= 0).then(|| unsafe { OwnedFd::from_raw_fd(fd as RawFd) })
+            })
+    };
+    let mut session = find_session();
+    std::thread::Builder::new()
+        .name("signals".into())
+        .spawn(move || {
+            loop {
+                let mut pfds = vec![libc::pollfd { fd: signals.as_raw_fd(), events: libc::POLLIN, revents: 0 }];
+                if let Some(s) = &session {
+                    pfds.push(libc::pollfd { fd: s.as_raw_fd(), events: libc::POLLIN, revents: 0 });
+                }
+                let timeout = if session.is_some() { -1 } else { 2000 };
+                // SAFETY: polling our own descriptors.
+                let n = unsafe { libc::poll(pfds.as_mut_ptr(), pfds.len() as _, timeout) };
+                if n <= 0 {
+                    if session.is_none() {
+                        session = find_session();
+                    }
+                    continue;
+                }
+                if pfds.get(1).is_some_and(|p| p.revents != 0) {
+                    log("the session has ended");
+                    let _ = events.send(Ev::End);
+                    return;
+                }
+                let mut sig = [0u8; 1];
+                // SAFETY: reading the pipe we made.
+                if unsafe { libc::read(signals.as_raw_fd(), sig.as_mut_ptr().cast(), 1) } == 1 {
+                    let _ = events.send(if sig[0] as i32 == libc::SIGURG { Ev::Upgrade } else { Ev::End });
+                }
+            }
+        })
+        .expect("signal thread");
+}
+
+fn set_cloexec(fd: RawFd, on: bool) {
+    pty::set_cloexec(fd, on);
+}
+
+/// Our own executable, to notice when an upgrade replaces it.
+struct Binary {
+    path: PathBuf,
+    id: Option<(u64, u64, std::time::SystemTime)>,
+}
+
+impl Binary {
+    fn current() -> Binary {
+        let path = std::env::current_exe().unwrap_or_default();
+        let id = Self::identity(&path);
+        Binary { path, id }
+    }
+
+    fn identity(path: &std::path::Path) -> Option<(u64, u64, std::time::SystemTime)> {
+        use std::os::unix::fs::MetadataExt;
+        let m = std::fs::metadata(path).ok()?;
+        Some((m.dev(), m.ino(), m.modified().ok()?))
+    }
+
+    fn changed(&self) -> bool {
+        let now = Self::identity(&self.path);
+        now.is_some() && now != self.id
+    }
+}
+
+/// Become the new version, handing it the shells.
+fn upgrade(st: &St, binary: &Binary, listener: &UnixListener, lock: &File) {
+    let s = st.lock().unwrap();
+    let mut carried = Carried { listener: listener.as_raw_fd(), lock: lock.as_raw_fd(), env: s.env.clone(), shells: Vec::new() };
+    for (&id, sh) in &s.shells {
+        let mut term = sh.term.lock();
+        let title = sh.title.lock().unwrap().clone();
+        let replay = replay::snapshot(&mut term, title.as_deref());
+        carried.shells.push(CarriedShell { id, fd: sh.master.as_raw_fd(), pid: sh.pid, grid: sh.grid, title, replay });
+    }
+    let fds: Vec<RawFd> = carried.shells.iter().map(|c| c.fd).chain([carried.listener, carried.lock]).collect();
+    let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let file = dir.join(format!("tabula-termd-{}.json", std::process::id()));
+    if let Err(e) = std::fs::write(&file, serde_json::to_vec(&carried).unwrap_or_default()) {
+        log(format!("could not upgrade: {e}"));
+        return;
+    }
+    for &fd in &fds {
+        set_cloexec(fd, false);
+    }
+    log(format!("upgraded: re-executing with {} shells", carried.shells.len()));
+    let e = std::process::Command::new(&binary.path).env(RESTORE_ENV, &file).exec();
+    log(format!("could not re-execute: {e}"));
+    for &fd in &fds {
+        set_cloexec(fd, true);
+    }
+    let _ = std::fs::remove_file(file);
+}
+
+/// Start Terminal again, to show the shells it left behind.
+fn relaunch(env: &[(String, String)]) {
+    let exe = std::env::current_exe().ok().and_then(|p| Some(p.parent()?.join("tabula-terminal"))).filter(|p| p.exists());
+    let mut cmd = std::process::Command::new(exe.unwrap_or_else(|| "tabula-terminal".into()));
+    cmd.env_clear().envs(env.iter().cloned()).stdin(std::process::Stdio::null());
+    match cmd.spawn() {
+        Ok(mut child) => {
+            log("Terminal went away; starting it again");
+            std::thread::spawn(move || child.wait());
+        }
+        Err(e) => log(format!("could not start Terminal: {e}")),
+    }
+}
+
+/// Is the session we belong to still there to show windows in?
+fn session_alive() -> bool {
+    let alive = match std::fs::read_to_string(wire::session_pid_path()).ok().and_then(|p| p.trim().parse::<i32>().ok()) {
+        // SAFETY: signal 0 only checks the process exists.
+        Some(pid) => unsafe { libc::kill(pid, 0) == 0 },
+        None => true,
+    };
+    alive && wire::wayland_socket().exists()
+}
+
+/// Take Terminals' connections on `listener`.
+fn accept(st: St, listener: &UnixListener) {
+    static CONN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let listener = listener.try_clone().expect("listener");
+    std::thread::Builder::new()
+        .name("accept".into())
+        .spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(stream) = stream else { continue };
+                let (st, c) = (st.clone(), CONN.fetch_add(1, Ordering::Relaxed) + 1);
+                std::thread::Builder::new().name("client".into()).spawn(move || serve(st, stream, c)).expect("client thread");
+            }
+        })
+        .expect("accept thread");
+}
+
+fn run(st: St, events: mpsc::Receiver<Ev>, mut listener: UnixListener, lock: File) -> ! {
+    let binary = Binary::current();
+    accept(st.clone(), &listener);
+    // The socket there should be the one we listen on.
+    let ino = |p: &std::path::Path| std::fs::metadata(p).ok().map(|m| std::os::unix::fs::MetadataExt::ino(&m));
+    let path = wire::socket_path();
+    let mut ours = ino(&path);
+    let mut relaunch_at: Option<Instant> = None;
+    let mut relaunched: VecDeque<Instant> = VecDeque::new();
+    let mut idle_since: Option<Instant> = None;
+    loop {
+        match events.recv_timeout(Duration::from_millis(500)) {
+            Ok(Ev::Exited(id)) => {
+                st.lock().unwrap().shells.remove(&id);
+            }
+            Ok(Ev::Gone { bye }) => {
+                if !bye {
+                    relaunch_at = Some(Instant::now() + RELAUNCH_AFTER);
+                }
+            }
+            Ok(Ev::Upgrade) => {
+                if binary.changed() {
+                    upgrade(&st, &binary, &listener, &lock);
+                }
+            }
+            Ok(Ev::Restart) => upgrade(&st, &binary, &listener, &lock),
+            Ok(Ev::End) => {
+                let s = st.lock().unwrap();
+                for sh in s.shells.values() {
+                    sh.hang_up();
+                }
+                if ino(&path) == ours {
+                    let _ = std::fs::remove_file(&path);
+                }
+                std::process::exit(0);
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => unreachable!("we hold a sender"),
+        }
+        if ours.is_none() || ino(&path) != ours {
+            if ours.is_some() && path.exists() {
+                log("another tabula-termd has our socket; ending");
+                let _ = st.lock().unwrap().events.send(Ev::End);
+            } else if !path.parent().is_some_and(|d| d.exists()) {
+                log("the session's runtime directory has gone; ending");
+                let _ = st.lock().unwrap().events.send(Ev::End);
+            } else {
+                // Deleted from under us: listen again, so Terminal can
+                // find its shells.
+                match UnixListener::bind(&path) {
+                    Ok(l) => {
+                        log("our socket had gone; listening again");
+                        accept(st.clone(), &l);
+                        listener = l;
+                        ours = ino(&path);
+                    }
+                    Err(e) => log(format!("can't listen again: {e}")),
+                }
+            }
+        }
+        let s = st.lock().unwrap();
+        let now = Instant::now();
+        if !s.clients.is_empty() {
+            relaunch_at = None;
+            idle_since = None;
+            continue;
+        }
+        if s.shells.is_empty() {
+            let since = *idle_since.get_or_insert(now);
+            if now.duration_since(since) >= LINGER {
+                if ino(&path) == ours {
+                    let _ = std::fs::remove_file(&path);
+                }
+                std::process::exit(0);
+            }
+            continue;
+        }
+        idle_since = None;
+        if relaunch_at.is_some_and(|t| now >= t) {
+            relaunch_at = None;
+            relaunched.retain(|t| now.duration_since(*t) < Duration::from_secs(60));
+            if relaunched.len() < RELAUNCHES && session_alive() {
+                relaunched.push_back(now);
+                relaunch(&s.env);
+            }
+        }
+    }
+}
+
+/// Wait (a little) for the lock that says we're the one running.
+fn take_lock(file: &File) -> bool {
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        // SAFETY: flock on our own descriptor.
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// Who we are, for Terminal to stop us if we stop answering.
+fn say_pid(lock: &mut File) {
+    use std::io::Seek;
+    let _ = lock.set_len(0);
+    let _ = lock.rewind();
+    let _ = write!(lock, "{}", std::process::id());
+}
+
+/// Become a daemon: the parent waits for the child to say it's listening
+/// (or that another one is), then exits.
+fn daemonize() -> OwnedFd {
+    let mut fds = [0; 2];
+    // SAFETY: fork before any threads; the parent only reads and exits.
+    unsafe {
+        if libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) != 0 {
+            panic!("pipe: {}", std::io::Error::last_os_error());
+        }
+        match libc::fork() {
+            -1 => panic!("fork: {}", std::io::Error::last_os_error()),
+            0 => {
+                libc::close(fds[0]);
+                libc::setsid();
+                OwnedFd::from_raw_fd(fds[1])
+            }
+            _ => {
+                libc::close(fds[1]);
+                let mut b = [0u8; 1];
+                let n = libc::read(fds[0], b.as_mut_ptr().cast(), 1);
+                libc::_exit(if n == 1 { 0 } else { 1 });
+            }
+        }
+    }
+}
+
+fn main() {
+    let carried: Option<Carried> = std::env::var_os(RESTORE_ENV).and_then(|path| {
+        let text = std::fs::read(&path).ok();
+        let _ = std::fs::remove_file(&path);
+        // SAFETY: nothing else reads the environment yet.
+        unsafe { std::env::remove_var(RESTORE_ENV) };
+        serde_json::from_slice(&text?).ok()
+    });
+    let (events_tx, events) = mpsc::channel();
+    let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let st: St =
+        Arc::new(Mutex::new(State { shells: HashMap::new(), clients: HashMap::new(), seq: 0, env: Vec::new(), events: events_tx.clone(), started }));
+    // Shells start where Terminal says; we sit in the home directory.
+    if let Some(home) = std::env::var_os("HOME") {
+        let _ = std::env::set_current_dir(home);
+    }
+    let (listener, lock) = match carried {
+        Some(c) => {
+            set_cloexec(c.listener, true);
+            set_cloexec(c.lock, true);
+            // SAFETY: our previous self passed these to us alone.
+            let (listener, mut lock) = unsafe { (UnixListener::from_raw_fd(c.listener), File::from_raw_fd(c.lock)) };
+            say_pid(&mut lock);
+            let mut s = st.lock().unwrap();
+            s.env = c.env;
+            for sh in c.shells {
+                match pty::Pty::adopt(sh.fd, sh.pid) {
+                    Ok(p) => new_shell(&mut s, sh.id, p, sh.grid, Some(&sh.replay), sh.title),
+                    Err(e) => log(format!("lost shell {}: {e}", sh.id)),
+                }
+            }
+            log(format!("upgraded, with {} shells", s.shells.len()));
+            (listener, lock)
+        }
+        None => {
+            let ready = daemonize();
+            let mut lock = File::options().create(true).truncate(false).write(true).open(wire::lock_path()).expect("lock file");
+            if !take_lock(&lock) {
+                // Another one is running.
+                let _ = File::from(ready).write_all(b"1");
+                return;
+            }
+            say_pid(&mut lock);
+            let path = wire::socket_path();
+            let _ = std::fs::remove_file(&path);
+            let listener = match UnixListener::bind(&path) {
+                Ok(l) => l,
+                Err(e) => {
+                    log(format!("could not listen on {}: {e}", path.display()));
+                    std::process::exit(1);
+                }
+            };
+            let _ = File::from(ready).write_all(b"1");
+            (listener, lock)
+        }
+    };
+    // Keep stdin from holding anything open.
+    if let Ok(null) = File::open("/dev/null") {
+        // SAFETY: replacing our stdin with /dev/null.
+        unsafe { libc::dup2(null.as_raw_fd(), 0) };
+    }
+    watch(events_tx);
+    run(st, events, listener, lock);
+}
