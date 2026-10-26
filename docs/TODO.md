@@ -40,7 +40,7 @@ as they land (with the commit), add new ones as they come up.
 - Terminal: find in scrollback; release-build memory check; colour emoji.
 - Activity Monitor.
 - Preferences, remaining panels: Network, Bluetooth, Date & Time (24-hour clock for Deskbar), Touch
-  ID, Screen Saver; Restart Tabula; a Choose… file panel for the
+  ID; Restart Tabula; a Choose… file panel for the
   wallpaper; Display mode switching (app_server ignores `mode` in
   ConfigureOutput so far) and drag-to-arrange.
 - StyledEdit, DeskCalc, Screenshot.
@@ -70,16 +70,14 @@ as they land (with the commit), add new ones as they come up.
 - ~~**Screen lock**~~: ext-session-lock in app_server, `tabula-lock`
   (PAM + Touch ID), Ctrl+⌘Q / Deskbar / idle display-off / sleep / logind
   Lock; never fails open; survives reload (see HACKING "The lock screen").
-  Still to do: lock on screensaver exit after its delay; lid close goes
-  through logind's suspend, so it is covered when the lid sleeps.
-- **Screensaver**: idle detection in app_server (ext-idle-notify, and
-  idle-inhibit honoured for video players), a screensaver host that runs
-  modules full screen on every display, and Preferences ▸ Screen Saver
-  (module list with live preview, start-after, lock-after, hot corners
-  for "now" / "never"). Reproduce the stock BeOS R5 modules faithfully
-  (verify the exact set and their look against R5 itself or period
-  screenshots before building them; Blackness, Message, Spots and
-  Lissart are believed to be among them).
+  Lid close goes through logind's suspend, so it is covered when the lid
+  sleeps.
+- ~~**Screensaver**~~: the eleven R5 modules (tabula-screensavers),
+  tabula-screensaver on every output, Preferences ▸ Screen Saver (Fade and
+  Modules tabs, live preview, Test, hot corners), lock-after drawing over the
+  lock screen. Still to do: Flip and Lens get the desktop only where
+  app_server can capture it (headless/winit); udev capture is needed (also
+  for the Screenshot app).
 - **Caffeinated mode**: one click (Deskbar replicant/tray toggle, plus a
   Deskbar menu item and a shortcut) keeps everything awake: no display
   sleep, system suspend, screensaver or idle lock (logind inhibitor

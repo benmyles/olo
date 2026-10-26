@@ -5,6 +5,30 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Screen saver over the lock screen
+
+*00:31* — Locks underneath after the delay; the first input ends the saver and shows the lock.
+
+![Screen saver over the lock screen](2026-10-26/003101-screen-saver-over-the-lock-screen.png)
+
+### Preferences: Screen Saver, Modules
+
+*00:31* — Live preview in the monitor, module list, settings and Test (dark).
+
+![Preferences: Screen Saver, Modules](2026-10-26/003101-preferences-screen-saver-modules.png)
+
+### Preferences: Screen Saver, Fade
+
+*00:31* — R5's Fade tab: run after, turn off screen, password lock, Fade now / Don't fade corners.
+
+![Preferences: Screen Saver, Fade](2026-10-26/003100-preferences-screen-saver-fade.png)
+
+### Screen saver modules
+
+*00:31* — BeOS R5's modules redrawn: BuyNow, Flip, Icons, Lens, Lissart, Message, Spiral, Spots, StringTheme, SuperString (plus Blackness).
+
+![Screen saver modules](2026-10-26/003100-screen-saver-modules.png)
+
 ### Power: lock when the display turns off
 
 *00:07* — New option, on by default.

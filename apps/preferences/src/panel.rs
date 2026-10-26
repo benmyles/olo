@@ -8,7 +8,7 @@ use tabula_kit::{
 };
 use tabula_protocol::Settings;
 
-use crate::{Ctx, about, appearance, display, keyboard, power, sound, touchpad, workspaces};
+use crate::{Ctx, about, appearance, display, keyboard, power, screensaver, sound, touchpad, workspaces};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -17,6 +17,7 @@ pub enum Panel {
     Display,
     Keyboard,
     Power,
+    ScreenSaver,
     Sound,
     Touchpad,
     Workspaces,
@@ -30,6 +31,7 @@ impl Panel {
         Panel::Display,
         Panel::Keyboard,
         Panel::Power,
+        Panel::ScreenSaver,
         Panel::Sound,
         Panel::Touchpad,
         Panel::Workspaces,
@@ -40,6 +42,7 @@ impl Panel {
         Panel::ALL.iter().copied().find(|p| p.arg() == s).or(match s {
             "mouse" | "trackpad" => Some(Panel::Touchpad),
             "screen" | "displays" => Some(Panel::Display),
+            "screen-saver" | "screensavers" => Some(Panel::ScreenSaver),
             "background" => Some(Panel::Backgrounds),
             _ => None,
         })
@@ -52,6 +55,7 @@ impl Panel {
             Panel::Display => "display",
             Panel::Keyboard => "keyboard",
             Panel::Power => "power",
+            Panel::ScreenSaver => "screensaver",
             Panel::Sound => "sound",
             Panel::Touchpad => "touchpad",
             Panel::Workspaces => "workspaces",
@@ -66,6 +70,7 @@ impl Panel {
             Panel::Display => "Display",
             Panel::Keyboard => "Keyboard",
             Panel::Power => "Power",
+            Panel::ScreenSaver => "Screen Saver",
             Panel::Sound => "Sound",
             Panel::Touchpad => "Touchpad",
             Panel::Workspaces => "Workspaces",
@@ -80,6 +85,7 @@ impl Panel {
             Panel::Display => "display",
             Panel::Keyboard => "keyboard",
             Panel::Power => "power",
+            Panel::ScreenSaver => "screensaver",
             Panel::Sound => "sound",
             Panel::Touchpad => "touchpad",
             Panel::Workspaces => "workspaces",
@@ -95,6 +101,7 @@ impl Panel {
             Panel::Display => (480, 360),
             Panel::Keyboard => (440, 370),
             Panel::Power => (460, 362),
+            Panel::ScreenSaver => (500, 400),
             Panel::Sound => (440, 270),
             Panel::Touchpad => (400, 382),
             Panel::Workspaces => (360, 164),
@@ -131,6 +138,7 @@ impl Panel {
             }
             Panel::Workspaces => settings.workspace_count = from.workspace_count,
             Panel::Power => settings.power = from.power.clone(),
+            Panel::ScreenSaver => settings.screen_saver = from.screen_saver.clone(),
             Panel::Display | Panel::About | Panel::Sound => {}
         }
     }
@@ -144,6 +152,7 @@ pub enum State {
     Display(display::State),
     Sound(sound::State),
     Power(power::State),
+    ScreenSaver(screensaver::State),
     About(about::State),
 }
 
@@ -155,6 +164,7 @@ impl State {
             Panel::Display => State::Display(Default::default()),
             Panel::Sound => State::Sound(Default::default()),
             Panel::Power => State::Power(Default::default()),
+            Panel::ScreenSaver => State::ScreenSaver(Default::default()),
             Panel::About => State::About(about::State::new()),
             _ => State::None,
         }
@@ -177,6 +187,7 @@ pub fn ui(panel: Panel, state: &mut State, ui: &mut egui::Ui, ctx: Ctx<'_>) {
             (Panel::Display, State::Display(s)) => display::ui(ui, settings, outputs, power, server, s),
             (Panel::Keyboard, State::Keyboard(s)) => keyboard::ui(ui, settings, s),
             (Panel::Power, State::Power(s)) => power::ui(ui, settings, power, server, s),
+            (Panel::ScreenSaver, State::ScreenSaver(s)) => screensaver::ui(ui, settings, server, s),
             (Panel::Sound, State::Sound(s)) => sound::ui(ui, s),
             (Panel::Touchpad, _) => touchpad::ui(ui, settings),
             (Panel::Workspaces, _) => workspaces::ui(ui, settings),

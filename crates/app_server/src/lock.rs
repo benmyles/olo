@@ -70,6 +70,9 @@ pub struct Lock {
     last_spawn: Option<Instant>,
     /// Keyboard focus to give back on unlock.
     focus_before: Option<KeyboardFocusTarget>,
+    /// The screen saver's client, drawn over the lock screen while it runs
+    /// (it was started before the lock and ends at the first input).
+    pub over: Option<ClientId>,
     /// Holding off a suspend until the lock screen is up (see `watch_login`).
     sleep_guard: Option<(tabula_system::power::Inhibitor, Instant)>,
 }
@@ -81,7 +84,7 @@ impl Lock {
         let state = SessionLockManagerState::new::<AnvilState<B>, _>(dh, move |client: &Client| {
             filter.lock().unwrap().as_ref() == Some(&client.id())
         });
-        Lock { state, allowed, locked: false, surfaces: Vec::new(), locker: None, last_spawn: None, focus_before: None, sleep_guard: None }
+        Lock { state, allowed, locked: false, surfaces: Vec::new(), locker: None, last_spawn: None, focus_before: None, over: None, sleep_guard: None }
     }
 
     pub fn locked(&self) -> bool {
@@ -104,9 +107,31 @@ where
     R: Renderer + ImportAll + smithay::backend::renderer::ImportMem,
     R::TextureId: Clone + 'static,
 {
-    let Some(surface) = lock.surface_for(output) else { return Vec::new() };
     let scale = output.current_scale().fractional_scale();
-    render_elements_from_surface_tree(renderer, surface, (0, 0), scale, 1.0, Kind::Unspecified)
+    let mut out = Vec::new();
+    // The screen saver first (topmost), then the lock screen under it.
+    if let Some(saver) = &lock.over {
+        let map = smithay::desktop::layer_map_for_output(output);
+        for layer in map.layers() {
+            if smithay::reexports::wayland_server::Resource::client(layer.wl_surface()).is_some_and(|c| c.id() == *saver)
+                && let Some(geo) = map.layer_geometry(layer)
+            {
+                let at = geo.loc.to_physical_precise_round(scale);
+                out.extend(render_elements_from_surface_tree(
+                    renderer,
+                    layer.wl_surface(),
+                    at,
+                    scale,
+                    1.0,
+                    Kind::Unspecified,
+                ));
+            }
+        }
+    }
+    if let Some(surface) = lock.surface_for(output) {
+        out.extend(render_elements_from_surface_tree(renderer, surface, (0, 0), scale, 1.0, Kind::Unspecified));
+    }
+    out
 }
 
 impl<B: Backend + 'static> AnvilState<B> {
@@ -217,8 +242,17 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     fn spawn_locker(&mut self) -> std::io::Result<(ClientId, Arc<AtomicBool>)> {
-        let program = tabula_xdg::find_program("tabula-lock")
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "tabula-lock is not installed"))?;
+        let (id, gone) = self.spawn_private("tabula-lock", &[])?;
+        info!(client = ?id, "lock screen started");
+        Ok((id, gone))
+    }
+
+    /// Start one of our own programs on a connection of its own
+    /// (WAYLAND_SOCKET), so we know which client it is. Returns the client
+    /// and a flag set when it disconnects.
+    pub fn spawn_private(&mut self, name: &str, args: &[String]) -> std::io::Result<(ClientId, Arc<AtomicBool>)> {
+        let program = tabula_xdg::find_program(name)
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, format!("{name} is not installed")))?;
         let (ours, theirs) = std::os::unix::net::UnixStream::pair()?;
         let gone = Arc::new(AtomicBool::new(false));
         let client_state = ClientState { gone: Some(gone.clone()), ..ClientState::default() };
@@ -228,7 +262,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             .map_err(|e| std::io::Error::other(e.to_string()))?;
         let fd = theirs.as_raw_fd();
         let mut cmd = std::process::Command::new(program);
-        cmd.env("WAYLAND_SOCKET", fd.to_string()).env_remove("WAYLAND_DISPLAY");
+        cmd.args(args).env("WAYLAND_SOCKET", fd.to_string()).env_remove("WAYLAND_DISPLAY");
         // SAFETY: only async-signal-safe fcntl calls between fork and exec,
         // to let the child inherit its end of the socket.
         unsafe {
@@ -246,7 +280,6 @@ impl<B: Backend + 'static> AnvilState<B> {
         std::thread::spawn(move || {
             let _ = child.wait();
         });
-        info!(client = ?client.id(), "lock screen started");
         Ok((client.id(), gone))
     }
 

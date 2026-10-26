@@ -188,10 +188,12 @@ pub fn run_headless(size_arg: Option<&str>) {
                 locked,
                 &path,
             );
-            conn.send(&match res {
-                Ok(()) => tabula_protocol::Reply::Ok,
-                Err(message) => tabula_protocol::Reply::Error { message },
-            });
+            if let Some(conn) = conn {
+                conn.send(&match res {
+                    Ok(()) => tabula_protocol::Reply::Ok,
+                    Err(message) => tabula_protocol::Reply::Error { message },
+                });
+            }
         }
         let _ = state.display_handle.flush_clients();
     }

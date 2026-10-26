@@ -52,6 +52,7 @@ pub fn options() -> WindowOptions {
             margin: (0, 0, 0, 0),
             keyboard: true,
             namespace: "desktop".into(),
+            output: None,
         }),
         panel: false,
         ..Default::default()

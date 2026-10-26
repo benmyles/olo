@@ -232,5 +232,29 @@
   "title": "Power: lock when the display turns off",
   "caption": "New option, on by default.",
   "image": "2026-10-26/000701-power-lock-when-the-display-turns-off.png"
+ },
+ {
+  "time": "2026-10-26T00:31:00",
+  "title": "Screen saver modules",
+  "caption": "BeOS R5's modules redrawn: BuyNow, Flip, Icons, Lens, Lissart, Message, Spiral, Spots, StringTheme, SuperString (plus Blackness).",
+  "image": "2026-10-26/003100-screen-saver-modules.png"
+ },
+ {
+  "time": "2026-10-26T00:31:00",
+  "title": "Preferences: Screen Saver, Fade",
+  "caption": "R5's Fade tab: run after, turn off screen, password lock, Fade now / Don't fade corners.",
+  "image": "2026-10-26/003100-preferences-screen-saver-fade.png"
+ },
+ {
+  "time": "2026-10-26T00:31:01",
+  "title": "Preferences: Screen Saver, Modules",
+  "caption": "Live preview in the monitor, module list, settings and Test (dark).",
+  "image": "2026-10-26/003101-preferences-screen-saver-modules.png"
+ },
+ {
+  "time": "2026-10-26T00:31:01",
+  "title": "Screen saver over the lock screen",
+  "caption": "Locks underneath after the delay; the first input ends the saver and shows the lock.",
+  "image": "2026-10-26/003101-screen-saver-over-the-lock-screen.png"
  }
 ]

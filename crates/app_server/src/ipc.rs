@@ -49,7 +49,9 @@ pub struct IpcState {
     pub path: PathBuf,
     subscribers: Vec<Rc<Conn>>,
     /// Screenshot requests the backend fulfils after its next render.
-    pub pending_screenshots: Vec<(PathBuf, Rc<Conn>)>,
+    /// Pictures to take with the next frame, and who to answer (none for
+    /// app_server's own, e.g. the screen saver's desktop).
+    pub pending_screenshots: Vec<(PathBuf, Option<Rc<Conn>>)>,
 }
 
 impl std::fmt::Debug for IpcState {
@@ -229,7 +231,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 None => not_found(),
             },
             Request::Outputs => Reply::Outputs { outputs: self.output_infos() },
-            Request::PowerStatus => Reply::Power { status: self.power.status() },
+            Request::PowerStatus => Reply::Power { status: self.power_status() },
             Request::Lock => {
                 self.lock_screen();
                 Reply::Ok
@@ -257,8 +259,12 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 Reply::Ok
             }
+            Request::StartScreenSaver => {
+                self.start_screen_saver(true);
+                Reply::Ok
+            }
             Request::Screenshot { path } => {
-                self.ipc.pending_screenshots.push((PathBuf::from(path), conn.clone()));
+                self.ipc.pending_screenshots.push((PathBuf::from(path), Some(conn.clone())));
                 return None;
             }
             Request::Quit => {

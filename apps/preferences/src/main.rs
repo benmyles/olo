@@ -14,6 +14,7 @@ mod display;
 mod keyboard;
 mod panel;
 mod power;
+mod screensaver;
 mod server;
 mod sound;
 mod touchpad;

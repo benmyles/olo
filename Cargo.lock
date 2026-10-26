@@ -4829,6 +4829,7 @@ dependencies = [
  "serde_json",
  "tabula-kit",
  "tabula-protocol",
+ "tabula-screensavers",
  "tabula-system",
  "tracing",
 ]
@@ -4871,6 +4872,24 @@ dependencies = [
  "serde_json",
  "tabula-theme",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "tabula-screensaver"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tabula-kit",
+ "tabula-screensavers",
+ "tabula-xdg",
+ "tracing",
+]
+
+[[package]]
+name = "tabula-screensavers"
+version = "0.1.0"
+dependencies = [
+ "tabula-kit",
 ]
 
 [[package]]

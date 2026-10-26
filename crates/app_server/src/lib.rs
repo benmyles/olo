@@ -30,6 +30,7 @@ pub mod keymap;
 pub mod layout;
 pub mod lock;
 pub mod power;
+pub mod saver;
 pub mod text;
 pub mod theme;
 pub mod twitcher;

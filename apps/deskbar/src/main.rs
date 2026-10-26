@@ -579,6 +579,7 @@ fn main() {
                 margin: (0, 0, 0, 0),
                 keyboard: false,
                 namespace: "deskbar".into(),
+                output: None,
             }),
             panel: true,
             ..Default::default()

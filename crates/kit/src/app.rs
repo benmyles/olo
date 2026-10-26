@@ -88,6 +88,9 @@ pub struct LayerOptions {
     pub margin: (i32, i32, i32, i32),
     pub keyboard: bool,
     pub namespace: String,
+    /// The output to sit on, by name (see [`Cx::outputs`]); None lets the
+    /// compositor choose.
+    pub output: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,6 +169,7 @@ pub struct Cx {
     pub(crate) sizes: std::collections::HashMap<WindowId, (u32, u32)>,
     /// Logical size of the (first) screen, once known.
     pub(crate) screen: Option<(u32, u32)>,
+    pub(crate) outputs: Vec<String>,
 }
 
 /// Where an upgrading app leaves its saved state for its new self.
@@ -193,6 +197,11 @@ impl Cx {
     /// Use it to fit windows that size to their content (previews).
     pub fn screen_size(&self) -> Option<(u32, u32)> {
         self.screen
+    }
+
+    /// The names of the connected outputs ("eDP-1", …), as far as known.
+    pub fn outputs(&self) -> &[String] {
+        &self.outputs
     }
 
     /// Open a window; it appears after the current callback returns.

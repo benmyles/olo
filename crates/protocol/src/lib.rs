@@ -42,6 +42,8 @@ pub enum Request {
     Screenshot { path: String },
     /// Lock the screen now.
     Lock,
+    /// Start the screen saver now (Preferences' Test).
+    StartScreenSaver,
     /// Idle state, caffeinated mode and the built-in display's brightness.
     PowerStatus,
     /// Keep the machine awake (no display sleep, system sleep, screen
@@ -106,6 +108,9 @@ pub struct PowerStatus {
     pub app_inhibitors: u32,
     /// The built-in display's backlight, 0.0–1.0, if there is one.
     pub brightness: Option<f32>,
+    /// The screen saver is running.
+    #[serde(default)]
+    pub screen_saver: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -165,6 +170,53 @@ pub struct Settings {
     pub appearance: Appearance,
     pub display: DisplaySettings,
     pub power: PowerSettings,
+    pub screen_saver: ScreenSaverSettings,
+}
+
+/// A corner of the screen (BeOS's "Fade now" / "Don't fade" monitors).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Corner {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+/// The screen saver (Preferences ▸ Screen Saver, after R5's Fade and
+/// Modules tabs). Turning the screen off is `PowerSettings`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct ScreenSaverSettings {
+    pub enabled: bool,
+    /// A module from tabula-screensavers ("SuperString", …).
+    pub module: String,
+    /// Minutes of idleness before it starts.
+    pub run_minutes: u32,
+    /// Lock the screen once idle this long (while the saver runs).
+    pub lock: bool,
+    pub lock_minutes: u32,
+    /// Pointer in this corner: start now.
+    pub fade_now: Option<Corner>,
+    /// Pointer in this corner: never start.
+    pub never_fade: Option<Corner>,
+    /// Each module's own settings.
+    pub options: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
+}
+
+impl Default for ScreenSaverSettings {
+    fn default() -> Self {
+        ScreenSaverSettings {
+            enabled: true,
+            module: "SuperString".into(),
+            run_minutes: 5,
+            lock: false,
+            lock_minutes: 5,
+            fade_now: None,
+            never_fade: None,
+            options: Default::default(),
+        }
+    }
 }
 
 /// When an idle machine turns off its displays and goes to sleep.
@@ -339,6 +391,7 @@ impl Default for Settings {
             appearance: Appearance::default(),
             display: DisplaySettings::default(),
             power: PowerSettings::default(),
+            screen_saver: ScreenSaverSettings::default(),
         }
     }
 }

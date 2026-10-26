@@ -282,6 +282,7 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                     app_id: app_id.to_owned(),
                     sizes: Default::default(),
                     screen: kit.screen_size(),
+                    outputs: kit.output_names(),
                 };
                 let app = (build.take().expect("built once"))(&mut cx);
                 kit.app = Some(Box::new(app));
@@ -471,6 +472,10 @@ impl Kit {
         Some(Carried { app, cx, windows })
     }
 
+    fn output_names(&self) -> Vec<String> {
+        self.output_state.outputs().filter_map(|o| self.output_state.info(&o)?.name).collect()
+    }
+
     /// The first output's size in logical pixels.
     fn screen_size(&self) -> Option<(u32, u32)> {
         self.output_state
@@ -497,6 +502,7 @@ impl Kit {
         cx.sizes.clear();
         cx.sizes.extend(self.surfaces.iter().filter(|s| matches!(s.role, Role::Toplevel(_))).map(|s| (s.id, s.size)));
         cx.screen = self.screen_size();
+        cx.outputs = self.output_names();
         let r = f(app.as_mut(), &mut cx);
         self.app = Some(app);
         self.cx = Some(cx);
@@ -693,7 +699,13 @@ impl Kit {
                     Layer::Top => smithay_client_toolkit::shell::wlr_layer::Layer::Top,
                     Layer::Overlay => smithay_client_toolkit::shell::wlr_layer::Layer::Overlay,
                 };
-                let surface = shell.create_layer_surface(&self.qh, wl.clone(), layer, Some(lo.namespace.clone()), None);
+                let output = lo.output.as_ref().and_then(|name| {
+                    self.output_state
+                        .outputs()
+                        .find(|o| self.output_state.info(o).and_then(|i| i.name).as_ref() == Some(name))
+                });
+                let surface =
+                    shell.create_layer_surface(&self.qh, wl.clone(), layer, Some(lo.namespace.clone()), output.as_ref());
                 let mut anchor = Anchor::empty();
                 let (t, b, l, r) = lo.anchor;
                 if t {
@@ -1122,7 +1134,7 @@ impl Kit {
             if self.pointer_focus.as_ref() == Some(&s.wl)
                 && let Some(p) = &self.pointer
             {
-                let _ = p.set_cursor(&self.conn, input::cursor_icon(s.cursor));
+                show_cursor(p, &self.conn, s.cursor);
             }
         }
         if let Some(vo) = output.viewport_output.get(&ViewportId::ROOT) {
@@ -1533,6 +1545,11 @@ impl Dispatch2<WpViewport, Kit> for KitData {
     fn event(&self, _: &mut Kit, _: &WpViewport, _: <WpViewport as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<Kit>) {}
 }
 
+/// Set the pointer's shape; `CursorIcon::None` hides it (screen savers).
+fn show_cursor(p: &ThemedPointer, conn: &Connection, icon: egui::CursorIcon) {
+    let _ = if icon == egui::CursorIcon::None { p.hide_cursor() } else { p.set_cursor(conn, input::cursor_icon(icon)) };
+}
+
 impl OutputHandler for Kit {
     fn output_state(&mut self) -> &mut OutputState {
         &mut self.output_state
@@ -1826,9 +1843,8 @@ impl PointerHandler for Kit {
                     self.last_serial = *serial;
                     if let Some(i) = self.index_of_wl(&wl) {
                         self.surfaces[i].pointer = Some(pos);
-                        let icon = input::cursor_icon(self.surfaces[i].cursor);
                         if let Some(p) = &self.pointer {
-                            let _ = p.set_cursor(&self.conn, icon);
+                            show_cursor(p, &self.conn, self.surfaces[i].cursor);
                         }
                     }
                     self.push_event(&wl, egui::Event::PointerMoved(pos));

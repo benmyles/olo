@@ -116,7 +116,15 @@ fn main() {
   handle them in `App::message` (then `cx.redraw(window)`).
 * Periodic refresh (clocks, graphs): `ui.ctx().request_repaint_after(duration)`.
   Never use it to look for changes on disk; watch them (rule 7 above).
-* Layer-shell surfaces (Deskbar, desktop): `WindowKind::Layer(LayerOptions{…})`.
+* Layer-shell surfaces (Deskbar, desktop): `WindowKind::Layer(LayerOptions{…})`;
+  `LayerOptions::output` puts one on a named output (`cx.outputs()` lists
+  them; the screen saver opens one per output).
+* `ui.ctx().set_cursor_icon(CursorIcon::None)` hides the pointer over a
+  window (screen savers).
+* Session lock (the lock screen only): `cx.lock_session()`, then
+  `SessionLock::Locked(windows)` in `App::message` (one window per output,
+  the first is primary; kept up to date as outputs come and go) and
+  `cx.unlock_session()`. See "The lock screen".
 
 ### Widgets (`tabula_kit::widgets`)
 
@@ -307,6 +315,33 @@ Hardware is touched only when app_server is the session
 logind `SetBrightness` (no root needed), the inhibitor, suspend, the sound
 server. Headless sessions simulate a backlight at 0.75 and only log
 "would sleep", so tests can drive all of it safely.
+
+## The screen saver (crates/screensavers, apps/screensaver, app_server saver.rs)
+
+The modules are R5's own list, in its order (Blackness, BuyNow, Flip,
+Icons, Lens, Lissart, Message, Spiral, Spots, StringTheme, SuperString;
+from period screenshots of R5's ScreenSaver preferences). Each is a
+`tabula_screensavers::Module` that draws a whole frame into a rect with an
+egui painter, so the same code runs full screen and in the preview monitor
+of Preferences ▸ Screen Saver. Size things with `Frame::k()`, step motion
+with the fixed 60 Hz `Clock`, and add settings as `Opt`s (stored as strings
+in `settings.screen_saver.options[module]`; Preferences builds their
+controls). Modules with `uses_desktop` (Flip, Lens) get a picture of the
+desktop that app_server takes as the saver starts (headless and winit for
+now; udev captures are still to do, so on hardware they use the plain
+desktop colour).
+
+app_server starts `tabula-screensaver` after `screen_saver.run_minutes`
+idle, from `Request::StartScreenSaver` (Test) or when the pointer enters
+the "Fade now" corner, on a private connection (`spawn_private`, like the
+lock screen); the "Don't fade" corner and caffeinated mode hold it off. Any
+input disconnects it (after 1.5 s grace for a deliberate start). With
+`screen_saver.lock` it locks underneath after `lock_minutes`, and keeps
+drawing over the lock screen (`Lock::over`) until the first input. The
+displays turning off ends it.
+
+Test headless: `tsession ipc NAME '{"type":"start_screen_saver"}'`, or set
+`screen_saver.module` with get/set_settings first.
 
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 

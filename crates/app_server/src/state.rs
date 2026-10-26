@@ -182,6 +182,7 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub keymap: crate::keymap::Keymap,
     /// Idle, caffeinated mode, brightness (see `power`).
     pub power: crate::power::Power,
+    pub saver: crate::saver::Saver,
     /// The lock screen (see `lock`).
     pub lock: crate::lock::Lock,
     /// Twitcher, while ⌘Tab / ⌘\` is held.
@@ -852,6 +853,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             suppressed_keys: Vec::new(),
             keymap: Default::default(),
             power: crate::power::Power::new(BackendData::IS_SESSION),
+            saver: Default::default(),
             lock,
             twitch: None,
             twitcher: Default::default(),

@@ -106,7 +106,12 @@ impl Power {
             display_asleep: self.display_asleep,
             app_inhibitors: self.inhibitors.len() as u32,
             brightness: self.brightness,
+            screen_saver: false,
         }
+    }
+
+    pub fn display_asleep(&self) -> bool {
+        self.display_asleep
     }
 }
 
@@ -157,8 +162,12 @@ fn run(job: Job, inhibitor: &mut Option<tabula_system::power::Inhibitor>) {
 }
 
 impl<B: Backend> AnvilState<B> {
-    fn power_changed(&mut self) {
-        let status = self.power.status();
+    pub fn power_status(&self) -> tabula_protocol::PowerStatus {
+        tabula_protocol::PowerStatus { screen_saver: self.saver.running(), ..self.power.status() }
+    }
+
+    pub fn power_changed(&mut self) {
+        let status = self.power_status();
         self.ipc.broadcast(Event::PowerChanged { status });
     }
 
@@ -175,11 +184,17 @@ impl<B: Backend> AnvilState<B> {
             info!("displays awake");
             self.power_changed();
         }
+        self.saver_activity();
     }
 
     /// Every [`TICK`]: turn displays off or sleep if idle long enough.
     pub fn power_tick(&mut self) {
         self.ensure_locker();
+        self.saver_tick();
+        let saver = self.settings.screen_saver.clone();
+        if saver.never_fade.is_some() && self.pointer_corner() == saver.never_fade {
+            self.power.last_activity = Instant::now();
+        }
         let before = self.power.inhibitors.len();
         self.power.inhibitors.retain(|s| s.is_alive());
         let pruned = self.power.inhibitors.len() != before;
@@ -201,6 +216,7 @@ impl<B: Backend> AnvilState<B> {
             changed = true;
             lock = settings.lock_on_display_off;
         }
+        let display_asleep = p.display_asleep;
         if settings.sleep_minutes > 0
             && idle >= minutes(settings.sleep_minutes)
             && !p.slept
@@ -213,6 +229,14 @@ impl<B: Backend> AnvilState<B> {
             } else {
                 info!(?idle, "would sleep now (not the session)");
             }
+        }
+        if display_asleep {
+            self.stop_screen_saver();
+        } else if saver.enabled && saver.run_minutes > 0 && idle >= minutes(saver.run_minutes) {
+            self.start_screen_saver(false);
+        }
+        if self.saver.running() && saver.lock && idle >= minutes(saver.lock_minutes.max(saver.run_minutes)) {
+            lock = true;
         }
         if lock {
             self.lock_screen();

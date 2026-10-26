@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 tabula-kit.workspace = true
 tabula-protocol.workspace = true
+tabula-screensavers.workspace = true
 tabula-system.workspace = true
 serde.workspace = true
 serde_json.workspace = true
