@@ -39,7 +39,22 @@ pub enum Request {
     SetSettings { settings: Settings },
     /// Save a PNG of everything on screen (all outputs, composited).
     Screenshot { path: String },
+    /// Inject input as if from a device (for automated UI tests).
+    Synthetic { events: Vec<SyntheticEvent> },
     Quit,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SyntheticEvent {
+    /// Move the pointer to global logical coordinates.
+    Move { x: f64, y: f64 },
+    /// evdev button code (0x110 left, 0x111 right).
+    Button { button: u32, pressed: bool },
+    /// evdev key code (e.g. 30 = A, 29 = left Ctrl).
+    Key { key: u32, pressed: bool },
+    /// Scroll by logical pixels.
+    Scroll { dx: f64, dy: f64 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

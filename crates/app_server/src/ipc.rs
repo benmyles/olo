@@ -230,6 +230,12 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.set_settings(settings);
                 Reply::Ok
             }
+            Request::Synthetic { events } => {
+                for e in events {
+                    self.synthetic_input(e);
+                }
+                Reply::Ok
+            }
             Request::Screenshot { path } => {
                 self.ipc.pending_screenshots.push((PathBuf::from(path), conn.clone()));
                 return None;

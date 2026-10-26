@@ -1,0 +1,22 @@
+[package]
+name = "tabula-kit"
+description = "Tabula's Interface Kit: windows, menus and BeOS widgets on Wayland, drawn with egui on wgpu"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tabula-theme.workspace = true
+tabula-protocol.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+egui = { version = "0.37", default-features = false, features = ["default_fonts"] }
+egui-wgpu = { version = "0.37", default-features = false }
+wgpu = { version = "30", default-features = false, features = ["vulkan", "gles", "wgsl"] }
+smithay-client-toolkit = { version = "0.21", default-features = false, features = ["calloop", "xkbcommon"] }
+wayland-client = "0.31"
+wayland-backend = { version = "0.3", features = ["client_system"] }
+wayland-protocols = { version = "0.32", features = ["client", "staging", "unstable"] }
+raw-window-handle = "0.6"
+pollster = "0.4"
+fontdb = "0.23"

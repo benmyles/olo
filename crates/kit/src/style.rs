@@ -1,0 +1,280 @@
+//! Fonts, egui visuals and the small set of pixel-exact drawing primitives
+//! every Tabula widget is built from. All geometry is in logical pixels; a
+//! "line" is one logical pixel (two device pixels at 2x).
+
+use std::sync::{Arc, OnceLock};
+
+use egui::{
+    Align2, Color32, Context, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Painter, Pos2, Rect,
+    Shadow, Stroke, Visuals, pos2, vec2,
+};
+use tabula_theme::{Palette, Rgba, mix};
+
+/// be_plain_font, in logical pixels.
+pub const PLAIN_SIZE: f32 = 12.0;
+pub const SMALL_SIZE: f32 = 10.5;
+pub const MONO_SIZE: f32 = 12.0;
+/// Room the ⌘ glyph takes in a shortcut label.
+pub const KEYCAP_WIDTH: f32 = 14.0;
+
+pub fn c(rgba: Rgba) -> Color32 {
+    Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3])
+}
+
+pub fn darken(rgba: Rgba, tint: f32) -> Color32 {
+    c(tabula_theme::tint(rgba, tint))
+}
+
+pub fn lighten(rgba: Rgba, tint: f32) -> Color32 {
+    c(tabula_theme::tint(rgba, tint))
+}
+
+pub fn disabled_text(p: &Palette) -> Color32 {
+    c(mix(p.panel_text, p.panel_background, 0.55))
+}
+
+/// The palette in effect for this context.
+pub fn palette(ctx: &Context) -> Arc<Palette> {
+    ctx.data(|d| d.get_temp::<Arc<Palette>>(egui::Id::NULL))
+        .unwrap_or_else(|| Arc::new(Palette::light()))
+}
+
+pub fn bold() -> FontFamily {
+    FontFamily::Name("bold".into())
+}
+
+pub fn plain_font() -> FontId {
+    FontId::proportional(PLAIN_SIZE)
+}
+
+pub fn bold_font() -> FontId {
+    FontId::new(PLAIN_SIZE, bold())
+}
+
+pub fn mono_font(size: f32) -> FontId {
+    FontId::monospace(size)
+}
+
+// ---- fonts ------------------------------------------------------------
+
+fn load_face(db: &fontdb::Database, families: &[&str], weight: u16) -> Option<(Vec<u8>, u32)> {
+    for name in families {
+        let query = fontdb::Query {
+            families: &[fontdb::Family::Name(name)],
+            weight: fontdb::Weight(weight),
+            stretch: fontdb::Stretch::Normal,
+            style: fontdb::Style::Normal,
+        };
+        if let Some(id) = db.query(&query)
+            && let Some((data, index)) = db.with_face_data(id, |data, index| (data.to_vec(), index))
+        {
+            return Some((data, index));
+        }
+    }
+    None
+}
+
+/// System fonts, loaded once per process and shared by every window.
+pub fn font_definitions() -> FontDefinitions {
+    static DEFS: OnceLock<FontDefinitions> = OnceLock::new();
+    DEFS.get_or_init(|| {
+        let mut db = fontdb::Database::new();
+        db.load_system_fonts();
+        let mut defs = FontDefinitions::default();
+        let mut add = |key: &str, face: Option<(Vec<u8>, u32)>| -> bool {
+            let Some((data, index)) = face else {
+                return false;
+            };
+            let mut fd = FontData::from_owned(data);
+            fd.index = index;
+            fd.tweak.hinting = Some(true);
+            defs.font_data.insert(key.to_owned(), Arc::new(fd));
+            true
+        };
+        let ui = add("ui", load_face(&db, tabula_theme::fonts::UI, 400));
+        let ui_bold = add("ui-bold", load_face(&db, tabula_theme::fonts::UI, 700));
+        let mono = add("mono", load_face(&db, tabula_theme::fonts::MONO, 400));
+        let mono_bold = add("mono-bold", load_face(&db, tabula_theme::fonts::MONO, 700));
+        // Wide Unicode coverage (arrows, ⌘, box drawing, ...).
+        let fallback = add("fallback", load_face(&db, &["DejaVu Sans", "Noto Sans"], 400));
+        let symbols = add("symbols", load_face(&db, &["Noto Sans Symbols 2", "Noto Sans Symbols"], 400));
+
+        let prop = defs.families.entry(FontFamily::Proportional).or_default();
+        let mut front = Vec::new();
+        if ui {
+            front.push("ui".to_owned());
+        }
+        if fallback {
+            front.push("fallback".to_owned());
+        }
+        if symbols {
+            front.push("symbols".to_owned());
+        }
+        prop.splice(0..0, front.clone());
+
+        let monos = defs.families.entry(FontFamily::Monospace).or_default();
+        let mut mfront = Vec::new();
+        if mono {
+            mfront.push("mono".to_owned());
+        }
+        if fallback {
+            mfront.push("fallback".to_owned());
+        }
+        monos.splice(0..0, mfront);
+
+        let base = defs.families[&FontFamily::Proportional].clone();
+        let mut b = Vec::new();
+        if ui_bold {
+            b.push("ui-bold".to_owned());
+        }
+        b.extend(base.iter().cloned());
+        defs.families.insert(bold(), b);
+
+        let mbase = defs.families[&FontFamily::Monospace].clone();
+        let mut mb = Vec::new();
+        if mono_bold {
+            mb.push("mono-bold".to_owned());
+        }
+        mb.extend(mbase.iter().cloned());
+        defs.families.insert(FontFamily::Name("mono-bold".into()), mb);
+        defs
+    })
+    .clone()
+}
+
+/// Apply the palette to a context: visuals, and stash it for widgets.
+pub fn apply(ctx: &Context, palette: &Arc<Palette>) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::NULL, palette.clone()));
+    let p = palette;
+    let dark = p.mode == tabula_theme::ThemeMode::Dark;
+    let mut v = if dark { Visuals::dark() } else { Visuals::light() };
+    let square = CornerRadius::ZERO;
+    v.override_text_color = Some(c(p.panel_text));
+    v.panel_fill = c(p.panel_background);
+    v.window_fill = c(p.panel_background);
+    v.window_corner_radius = square;
+    v.menu_corner_radius = square;
+    v.window_shadow = Shadow::NONE;
+    v.popup_shadow = Shadow::NONE;
+    v.window_stroke = Stroke::new(1.0, darken(p.panel_background, 1.55));
+    v.extreme_bg_color = c(p.document_background);
+    v.text_edit_bg_color = Some(c(p.document_background));
+    v.faint_bg_color = darken(p.list_background, 1.04);
+    v.code_bg_color = darken(p.document_background, 1.05);
+    v.hyperlink_color = c(p.navigation_base);
+    v.selection.bg_fill = c(p.control_highlight).gamma_multiply(if dark { 0.75 } else { 0.55 });
+    v.selection.stroke = Stroke::new(1.0, c(p.document_text));
+    v.text_cursor.stroke = Stroke::new(1.0, c(p.navigation_base));
+    v.button_frame = true;
+    v.striped = false;
+    v.indent_has_left_vline = false;
+    v.interact_cursor = None;
+    v.image_loading_spinners = false;
+    for (w, bg) in [
+        (&mut v.widgets.noninteractive, p.panel_background),
+        (&mut v.widgets.inactive, p.control_background),
+        (&mut v.widgets.hovered, p.control_background),
+        (&mut v.widgets.active, p.control_background),
+        (&mut v.widgets.open, p.control_background),
+    ] {
+        w.corner_radius = square;
+        w.bg_fill = c(bg);
+        w.weak_bg_fill = c(bg);
+        w.bg_stroke = Stroke::new(1.0, darken(p.panel_background, 1.4));
+        w.fg_stroke = Stroke::new(1.0, c(p.control_text));
+        w.expansion = 0.0;
+    }
+    v.widgets.noninteractive.fg_stroke = Stroke::new(1.0, c(p.panel_text));
+    v.widgets.hovered.bg_stroke = Stroke::new(1.0, c(p.navigation_base));
+    ctx.set_visuals(v);
+    ctx.all_styles_mut(|s| {
+        s.spacing.item_spacing = vec2(6.0, 6.0);
+        s.spacing.button_padding = vec2(10.0, 3.0);
+        s.spacing.interact_size = vec2(24.0, 22.0);
+        s.spacing.window_margin = egui::Margin::same(10);
+        s.spacing.scroll = egui::style::ScrollStyle::solid();
+        s.spacing.scroll.bar_width = 14.0;
+        s.text_styles.insert(egui::TextStyle::Body, plain_font());
+        s.text_styles.insert(egui::TextStyle::Button, plain_font());
+        s.text_styles.insert(egui::TextStyle::Small, FontId::proportional(SMALL_SIZE));
+        s.text_styles.insert(egui::TextStyle::Monospace, mono_font(MONO_SIZE));
+        s.text_styles.insert(egui::TextStyle::Heading, FontId::new(15.0, bold()));
+        s.animation_time = 0.12;
+    });
+}
+
+// ---- primitives ---------------------------------------------------------
+
+/// One-pixel horizontal line from x0 to x1 (exclusive) whose top is at y.
+pub fn hline(p: &Painter, x0: f32, x1: f32, y: f32, color: Color32) {
+    if x1 > x0 {
+        p.rect_filled(Rect::from_min_max(pos2(x0, y), pos2(x1, y + 1.0)), 0.0, color);
+    }
+}
+
+/// One-pixel vertical line whose left edge is at x.
+pub fn vline(p: &Painter, x: f32, y0: f32, y1: f32, color: Color32) {
+    if y1 > y0 {
+        p.rect_filled(Rect::from_min_max(pos2(x, y0), pos2(x + 1.0, y1)), 0.0, color);
+    }
+}
+
+/// One-pixel outline just inside `r`.
+pub fn frame_rect(p: &Painter, r: Rect, color: Color32) {
+    hline(p, r.left(), r.right(), r.top(), color);
+    hline(p, r.left(), r.right(), r.bottom() - 1.0, color);
+    vline(p, r.left(), r.top() + 1.0, r.bottom() - 1.0, color);
+    vline(p, r.right() - 1.0, r.top() + 1.0, r.bottom() - 1.0, color);
+}
+
+/// Two-tone bevel just inside `r`: `tl` on top/left, `br` on bottom/right.
+pub fn bevel(p: &Painter, r: Rect, tl: Color32, br: Color32) {
+    hline(p, r.left(), r.right() - 1.0, r.top(), tl);
+    vline(p, r.left(), r.top() + 1.0, r.bottom() - 1.0, tl);
+    hline(p, r.left(), r.right(), r.bottom() - 1.0, br);
+    vline(p, r.right() - 1.0, r.top(), r.bottom() - 1.0, br);
+}
+
+/// The BeOS "sunken" well used by text fields, lists and scroll views:
+/// a dark/light outer bevel and a darker inner line on top/left.
+pub fn sunken(p: &Painter, r: Rect, palette: &Palette, focused: bool) {
+    let bg = palette.panel_background;
+    bevel(p, r, darken(bg, 1.147), c(palette.shine));
+    let inner = r.shrink(1.0);
+    if focused {
+        frame_rect(p, inner, c(palette.keyboard_navigation));
+    } else {
+        bevel(p, inner, darken(bg, 1.55), darken(bg, 1.06));
+    }
+}
+
+/// A raised panel edge (light top/left, dark bottom/right).
+pub fn raised(p: &Painter, r: Rect, palette: &Palette) {
+    bevel(p, r, c(palette.shine), darken(palette.panel_background, 1.3));
+}
+
+/// Pixel-snapped round to the device grid.
+pub fn snap(ctx: &Context, r: Rect) -> Rect {
+    let ppp = ctx.pixels_per_point();
+    let s = |v: f32| (v * ppp).round() / ppp;
+    Rect::from_min_max(pos2(s(r.min.x), s(r.min.y)), pos2(s(r.max.x), s(r.max.y)))
+}
+
+pub fn check_mark(p: &Painter, r: Rect, color: Color32) {
+    let stroke = Stroke::new(1.8, color);
+    p.line_segment([pos2(r.left(), r.center().y), pos2(r.left() + r.width() * 0.38, r.bottom())], stroke);
+    p.line_segment([pos2(r.left() + r.width() * 0.38, r.bottom()), pos2(r.right(), r.top())], stroke);
+}
+
+/// Right-aligned shortcut label with the ⌘ glyph.
+pub fn shortcut(p: &Painter, right_center: Pos2, label: &str, color: Color32) {
+    let font = FontId::proportional(PLAIN_SIZE);
+    let r = p.text(right_center, Align2::RIGHT_CENTER, label, font.clone(), color);
+    p.text(
+        pos2(r.left() - 2.0, right_center.y),
+        Align2::RIGHT_CENTER,
+        "⌘",
+        FontId::proportional(PLAIN_SIZE - 1.0),
+        color,
+    );
+}

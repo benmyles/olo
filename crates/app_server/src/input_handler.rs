@@ -791,6 +791,48 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         pointer.frame(self);
     }
 
+    /// Input injected over IPC by UI tests.
+    pub fn synthetic_input(&mut self, event: tabula_protocol::SyntheticEvent) {
+        use tabula_protocol::SyntheticEvent as S;
+        let serial = SCOUNTER.next_serial();
+        let time = InputTime::now();
+        let pointer = self.pointer.clone();
+        match event {
+            S::Move { x, y } => {
+                let pos: Point<f64, Logical> = (x, y).into();
+                let under = self.surface_under(pos);
+                pointer.motion(self, under, &MotionEvent { location: pos, serial, time });
+                pointer.frame(self);
+            }
+            S::Button { button, pressed } => {
+                if pressed {
+                    self.update_keyboard_focus(pointer.current_location(), serial);
+                }
+                let state = if pressed { smithay::backend::input::ButtonState::Pressed } else { smithay::backend::input::ButtonState::Released };
+                pointer.button(self, &ButtonEvent { button, state, serial, time });
+                pointer.frame(self);
+            }
+            S::Key { key, pressed } => {
+                let keyboard = self.seat.get_keyboard().unwrap();
+                let state = if pressed { KeyState::Pressed } else { KeyState::Released };
+                keyboard.input::<(), _>(self, (key + 8).into(), state, serial, time, |_, _, _| {
+                    FilterResult::Forward
+                });
+            }
+            S::Scroll { dx, dy } => {
+                let mut frame = AxisFrame::new(time).source(AxisSource::Finger);
+                if dx != 0.0 {
+                    frame = frame.value(Axis::Horizontal, dx);
+                }
+                if dy != 0.0 {
+                    frame = frame.value(Axis::Vertical, dy);
+                }
+                pointer.axis(self, frame);
+                pointer.frame(self);
+            }
+        }
+    }
+
     pub fn release_all_keys(&mut self) {
         let keyboard = self.seat.get_keyboard().unwrap();
         for keycode in keyboard.pressed_keys() {
