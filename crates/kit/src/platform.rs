@@ -169,6 +169,8 @@ impl Surface {
 /// User data for our own protocol objects.
 /// Where egui's repaint callbacks send (window, delay).
 static REPAINT: std::sync::OnceLock<Mutex<channel::Sender<(WindowId, Duration)>>> = std::sync::OnceLock::new();
+/// Clipboard text read on a helper thread, for the surface that pasted.
+static PASTED: std::sync::OnceLock<Mutex<channel::Sender<(WlSurface, String)>>> = std::sync::OnceLock::new();
 
 pub struct KitData;
 pub struct ScaleData(WlSurface);
@@ -260,6 +262,16 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
             }
         })
         .expect("repaint channel");
+
+    let (pasted_tx, pasted_rx) = channel::channel::<(WlSurface, String)>();
+    let _ = PASTED.set(Mutex::new(pasted_tx));
+    loop_handle
+        .insert_source(pasted_rx, |event, _, kit: &mut Kit| {
+            if let channel::Event::Msg((wl, text)) = event {
+                kit.push_event(&wl, egui::Event::Paste(text));
+            }
+        })
+        .expect("paste channel");
 
     // Live theme from app_server.
     let palette = Arc::new(crate::theme_watch::initial_palette());
@@ -626,9 +638,8 @@ impl Kit {
                     Request::Copy(text) => self.set_clipboard(text),
                     Request::CopyData(clip) => self.set_clipboard_data(clip),
                     Request::Paste(id) => {
-                        let text = self.read_clipboard().unwrap_or_default();
                         if let Some(wl) = self.surface_mut(id).map(|s| s.wl.clone()) {
-                            self.push_event(&wl, egui::Event::Paste(text));
+                            self.paste(&wl);
                         }
                     }
                     Request::Quit => self.finish(),
@@ -865,34 +876,42 @@ impl Kit {
         self.clipboard = Some((source, clip));
     }
 
-    fn read_clipboard(&self) -> Option<String> {
+    /// Deliver the clipboard's text to `wl` as a Paste event (empty if
+    /// there is none). Another client's text arrives through a pipe: it is
+    /// read on a helper thread and delivered when complete, however large
+    /// or slow, without holding up the UI.
+    fn paste(&mut self, wl: &WlSurface) {
         if let Some((_, clip)) = &self.clipboard {
             // Ours: text if it has any (an image pastes as nothing).
-            return Some(
-                clip.iter()
-                    .find(|(t, _)| t.starts_with("text/plain"))
-                    .map(|(_, d)| String::from_utf8_lossy(d).into_owned())
-                    .unwrap_or_default(),
-            );
-        }
-        let offer = self.data_device.as_ref()?.data().selection_offer()?;
-        let mime = offer.with_mime_types(|types| {
-            ["text/plain;charset=utf-8", "UTF8_STRING", "text/plain"]
+            let text = clip
                 .iter()
-                .find(|m| types.iter().any(|t| t == *m))
-                .map(|m| m.to_string())
-        })?;
-        let mut pipe = offer.receive(mime).ok()?;
+                .find(|(t, _)| t.starts_with("text/plain"))
+                .map(|(_, d)| String::from_utf8_lossy(d).into_owned())
+                .unwrap_or_default();
+            return self.push_event(wl, egui::Event::Paste(text));
+        }
+        let pipe = self.data_device.as_ref().and_then(|d| d.data().selection_offer()).and_then(|offer| {
+            let mime = offer.with_mime_types(|types| {
+                ["text/plain;charset=utf-8", "UTF8_STRING", "text/plain"]
+                    .iter()
+                    .find(|m| types.iter().any(|t| t == *m))
+                    .map(|m| m.to_string())
+            })?;
+            offer.receive(mime).ok()
+        });
+        let Some(mut pipe) = pipe else {
+            return self.push_event(wl, egui::Event::Paste(String::new()));
+        };
         let _ = self.conn.flush();
-        // Read on a helper thread so a stuck source can't freeze the UI.
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
+        let wl = wl.clone();
+        let _ = std::thread::Builder::new().name("paste".into()).spawn(move || {
             let mut out = Vec::new();
             let _ = pipe.read_to_end(&mut out);
-            let _ = tx.send(out);
+            let text = String::from_utf8(out).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
+            if let Some(tx) = PASTED.get() {
+                let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send((wl, text));
+            }
         });
-        let out = rx.recv_timeout(Duration::from_millis(500)).ok()?;
-        String::from_utf8(out).ok()
     }
 
     // ---- rendering ----------------------------------------------------
@@ -1538,8 +1557,7 @@ impl Kit {
                 Some(egui::Key::V) if !m.shift => {
                     // Always deliver, even with no text on the clipboard, so
                     // menu Paste (e.g. Tracker's file clipboard) still runs.
-                    let text = self.read_clipboard().unwrap_or_default();
-                    return self.push_event(&wl, egui::Event::Paste(text));
+                    return self.paste(&wl);
                 }
                 _ => {}
             }
