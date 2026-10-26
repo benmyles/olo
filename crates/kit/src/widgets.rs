@@ -1091,6 +1091,28 @@ impl ScrollView {
     }
 }
 
+/// A lone BeOS scroll bar, for content the kit doesn't scroll itself (a
+/// web page). `offset` runs from 0 to `content - view`, in the content's
+/// own units; with nothing to scroll the bar is drawn disabled.
+pub struct ScrollBar {
+    id: Id,
+    vertical: bool,
+}
+
+impl ScrollBar {
+    pub fn vertical(id: impl std::hash::Hash + std::fmt::Debug) -> Self {
+        ScrollBar { id: Id::unique(id), vertical: true }
+    }
+    pub fn horizontal(id: impl std::hash::Hash + std::fmt::Debug) -> Self {
+        ScrollBar { id: Id::unique(id), vertical: false }
+    }
+    /// Draw it in `rect` ([`SCROLL_BAR`] across); true if the user moved it.
+    pub fn show(self, ui: &mut Ui, rect: Rect, offset: &mut f32, content: f32, view: f32) -> bool {
+        let p = style::palette(ui.ctx());
+        scroll_bar(ui, self.id, rect, self.vertical, offset, content, view, &p)
+    }
+}
+
 /// Draw and drive one scroll bar. Returns whether `offset` changed.
 #[allow(clippy::too_many_arguments)]
 fn scroll_bar(ui: &mut Ui, id: Id, bar: Rect, vertical: bool, offset: &mut f32, content: f32, view: f32, p: &Palette) -> bool {

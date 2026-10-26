@@ -12,10 +12,12 @@ mod input;
 mod location;
 mod logins;
 mod passkeys;
+mod scroll;
 
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 
 use engine::{Engine, Event, Surface, Wake};
@@ -39,7 +41,7 @@ use tabula_kit::{
     menu::{self, MenuAnchor, MenuRequest},
     metrics as m,
     style::{self, c, shade},
-    widgets::{self, Button, CheckBox, MenuField, ScrollView, StatusBar, TextControl},
+    widgets::{self, Button, CheckBox, MenuField, ScrollBar, ScrollView, StatusBar, TextControl},
 };
 use url::Url;
 
@@ -59,6 +61,8 @@ const BLOB_MAX: usize = 1 << 30;
 const FIND_W: f32 = 340.0;
 const FIND_H: f32 =
     2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + m::SPACING + 4.0 * m::MARK_ROW + 3.0 * m::TIGHT + m::SPACING + m::CONTROL_HEIGHT;
+/// How long the scroll bars trust themselves over the page's reports.
+const SCROLL_SETTLE: Duration = Duration::from_millis(300);
 const HISTORY_MAX: usize = 1000;
 const ZOOMS: [f32; 13] = [0.3, 0.5, 0.67, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
 
@@ -115,6 +119,11 @@ struct Tab {
     offer: Option<Offer>,
     /// The page's passkey request, asked about in a bar.
     passkey: Option<Ask>,
+    /// Where the page is scrolled, as it last said.
+    scroll: Option<scroll::Metrics>,
+    /// Where our scroll bars just put it, shown over the page's reports
+    /// (which lag a frame or two) until it settles.
+    scrolled: Option<(Instant, scroll::Metrics)>,
 }
 
 impl Tab {
@@ -131,6 +140,16 @@ impl Tab {
             zoom: 1.0,
             offer: None,
             passkey: None,
+            scroll: None,
+            scrolled: None,
+        }
+    }
+
+    /// Where to show the page scrolled.
+    fn scroll(&self) -> Option<scroll::Metrics> {
+        match self.scrolled {
+            Some((at, m)) if at.elapsed() < SCROLL_SETTLE => Some(m),
+            _ => self.scroll,
         }
     }
 
@@ -534,6 +553,8 @@ impl NetPositive {
                             if status == LoadStatus::Started {
                                 // The page asking is gone.
                                 tab.passkey = None;
+                                tab.scroll = None;
+                                tab.scrolled = None;
                             }
                             if status == LoadStatus::Complete {
                                 visited = Some((tab.url.clone(), tab.title.clone()));
@@ -541,6 +562,12 @@ impl NetPositive {
                             tab.load = Some(status);
                         }
                         Event::Cursor(cursor) => tab.cursor = cursor,
+                        Event::Scroll(metrics) => {
+                            if tab.scroll == Some(metrics) {
+                                continue;
+                            }
+                            tab.scroll = Some(metrics);
+                        }
                         Event::History { can_back, can_forward } => {
                             tab.can_back = can_back;
                             tab.can_forward = can_forward;
@@ -1027,9 +1054,30 @@ impl NetPositive {
             style::label(&painter.with_clip_rect(clip), clip.left(), status.center().y + 0.5, Align::Min, text, style::plain_font(), c(p.panel_text));
         }
 
-        // The page.
-        let content = Rect::from_min_max(pos2(full.left(), top), pos2(full.right(), status.top() - 1.0));
-        let content = style::snap(ui.ctx(), content);
+        // The page, with BeOS scroll bars (Servo draws none): always the
+        // vertical one, the horizontal one when the page is too wide.
+        let shown = b.tab().and_then(Tab::scroll);
+        let wide = shown.is_some_and(|m| m.wide());
+        let area = style::snap(ui.ctx(), Rect::from_min_max(pos2(full.left(), top), pos2(full.right(), status.top() - 1.0)));
+        let content = Rect::from_min_max(area.min, area.max - vec2(widgets::SCROLL_BAR, if wide { widgets::SCROLL_BAR } else { 0.0 }));
+        let mut moved = shown.unwrap_or_default();
+        let (mut changed, m0) = (false, moved);
+        let vbar = Rect::from_min_max(pos2(content.right(), area.top()), pos2(area.right(), content.bottom()));
+        changed |= ScrollBar::vertical(("page-v", b.embed)).show(ui, vbar, &mut moved.y, m0.height, m0.view_height);
+        if wide {
+            let hbar = Rect::from_min_max(pos2(area.left(), content.bottom()), pos2(content.right(), area.bottom()));
+            changed |= ScrollBar::horizontal(("page-h", b.embed)).show(ui, hbar, &mut moved.x, m0.width, m0.view_width);
+            painter.rect_filled(Rect::from_min_max(content.max, area.max), 0.0, c(p.panel_background));
+        }
+        if changed && let Some(t) = b.tabs.get_mut(b.active) {
+            t.scrolled = Some((Instant::now(), moved));
+            if let Some(view) = &t.view {
+                view.evaluate_javascript(scroll::scroll_to(moved.x, moved.y), |_| {});
+            }
+        }
+        if b.tab().is_some_and(|t| t.scrolled.is_some_and(|(at, _)| at.elapsed() < SCROLL_SETTLE)) {
+            ui.ctx().request_repaint_after(SCROLL_SETTLE);
+        }
         painter.rect_filled(content, 0.0, c(p.document_background));
         let size = dpi::PhysicalSize::new(
             (content.width() * scale).round().max(1.0) as u32,

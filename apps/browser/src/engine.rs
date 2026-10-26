@@ -75,6 +75,8 @@ pub enum Event {
     Found(bool),
     /// The page wants a passkey (passkeys.rs's script).
     Passkey(crate::passkeys::PageRequest),
+    /// The top document scrolled or changed size (scroll.rs's script).
+    Scroll(crate::scroll::Metrics),
 }
 
 #[derive(Default)]
@@ -84,6 +86,7 @@ pub struct Events {
     login_marker: String,
     passkey_marker: String,
     download_marker: String,
+    scroll_marker: String,
     /// Text for the next paste a page asks for (we read the clipboard
     /// before telling Servo to paste).
     pub paste: RefCell<Option<String>>,
@@ -160,6 +163,10 @@ impl WebViewDelegate for Events {
             && !used.p.is_empty()
         {
             self.push(&w, Event::LoginUsed { username: used.u, password: used.p });
+        } else if let Some(json) = message.strip_prefix(&self.scroll_marker) {
+            if let Ok(metrics) = serde_json::from_str(json) {
+                self.push(&w, Event::Scroll(metrics));
+            }
         } else if let Some(json) = message.strip_prefix(&self.download_marker) {
             match serde_json::from_str(json) {
                 Ok(download) => self.push(&w, Event::Download(download)),
@@ -191,7 +198,7 @@ pub struct Engine {
     pub servo: Servo,
     pending: Arc<AtomicBool>,
     pub events: Rc<Events>,
-    /// Scripts every page gets (the login capture, passkeys, downloads).
+    /// Scripts every page gets (the login capture, passkeys, downloads, scrolling).
     pub content: Rc<UserContentManager>,
     /// Names our scripts' messages and the passkey answer function.
     pub token: String,
@@ -211,10 +218,12 @@ impl Engine {
         content.add_script(Rc::new(UserScript::from(crate::logins::capture_script(&token))));
         content.add_script(Rc::new(UserScript::from(crate::passkeys::script(&token))));
         content.add_script(Rc::new(UserScript::from(crate::downloads::script(&token))));
+        content.add_script(Rc::new(UserScript::from(crate::scroll::script(&token))));
         let events = Events {
             login_marker: crate::logins::marker(&token),
             passkey_marker: crate::passkeys::marker(&token),
             download_marker: crate::downloads::marker(&token),
+            scroll_marker: crate::scroll::marker(&token),
             ..Default::default()
         };
         Engine { servo, pending, events: Rc::new(events), content, token }

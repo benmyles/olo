@@ -169,7 +169,9 @@ fn main() {
 `ScrollView` (`show`, `show_rows` for virtualised content, `show_in(ui,
 rect, |ui, viewport|)` for content you lay out yourself, `reveal`,
 `ScrollView::scroll_to(ctx, id, offset)`, `.auto_hide(true)` to drop the
-bar when content fits; `SCROLL_BAR` is its width),
+bar when content fits; `SCROLL_BAR` is its width), `ScrollBar`
+(`::vertical(id).show(ui, rect, &mut offset, content, view)`, a lone bar
+for content the kit doesn't scroll, such as a web page),
 `ColumnListView` + `Column` + `ListState` (sortable, resizable,
 multi-select, context clicks; `.reveal(row)` scrolls a row selected in code
 into view), `TabView`, `color_well`, `heading`,
@@ -839,6 +841,18 @@ scripts, styles and anything without boxes), searches from the current
 selection, selects the match and scrolls it to the middle. The selection
 is the cursor, so Find Again (⌘G) continues and a click moves the start.
 Not found puts a note in the status line.
+
+### Scroll bars in NetPositive
+
+Servo 0.7 draws no scroll bars and doesn't tell the embedder where a page
+is scrolled, so `apps/browser/src/scroll.rs` adds a script to the top
+frame that reports `[scrollX, scrollY, width, height, innerWidth,
+innerHeight]` whenever one changes (on scroll, resize and a
+ResizeObserver, at most once a frame). NetPositive draws a kit
+`ScrollBar` beside the page (always the vertical one, the horizontal one
+when the page is wider than the window); moving one runs `scrollTo`, and
+for a moment the bar trusts its own position over the page's reports,
+which lag a frame or two.
 
 ### Downloads in NetPositive
 

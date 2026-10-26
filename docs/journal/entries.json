@@ -610,5 +610,11 @@
   "title": "NetPositive: Downloads",
   "caption": "Downloads go straight to ~/Downloads on a worker thread: links the page can't show, download links (also blob: and data: ones made by script), and Download Linked File / Download Image in the context menu. The Downloads window shows live progress and rate, with Stop, Retry, Open and Show.",
   "image": "2026-10-26/084400-netpositive-downloads.png"
+ },
+ {
+  "time": "2026-10-26T08:52:26",
+  "title": "NetPositive: scroll bars",
+  "caption": "Servo draws no scroll bars, so a script reports where the page is scrolled and NetPositive draws BeOS ones beside it (a new kit ScrollBar): the vertical bar always, the horizontal one when the page is wider than the window. Dragging, paging and the arrows scroll the page.",
+  "image": "2026-10-26/085226-netpositive-scroll-bars.png"
  }
 ]

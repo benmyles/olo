@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### NetPositive: scroll bars
+
+*08:52* — Servo draws no scroll bars, so a script reports where the page is scrolled and NetPositive draws BeOS ones beside it (a new kit ScrollBar): the vertical bar always, the horizontal one when the page is wider than the window. Dragging, paging and the arrows scroll the page.
+
+![NetPositive: scroll bars](2026-10-26/085226-netpositive-scroll-bars.png)
+
 ### NetPositive: Downloads
 
 *08:44* — Downloads go straight to ~/Downloads on a worker thread: links the page can't show, download links (also blob: and data: ones made by script), and Download Linked File / Download Image in the context menu. The Downloads window shows live progress and rate, with Stop, Retry, Open and Show.
