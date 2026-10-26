@@ -278,7 +278,9 @@ pub fn menu_bar(ui: &mut Ui, menus: &[Menu], state: &mut BarState) -> Rect {
         let item = Rect::from_min_size(pos2(x, rect.top() + 1.0), vec2(w, BAR_HEIGHT - 2.0));
         let resp = ui.interact(item, egui::Id::unique(("menubar", i)), Sense::click());
         let open_here = state.open.is_some_and(|(o, _)| o == i);
-        if resp.is_pointer_button_down_on() || resp.clicked() {
+        // Menus open on press, as on BeOS. (Not on click: the release of
+        // that press may arrive after the menu was dismissed.)
+        if resp.is_pointer_button_down_on() && ui.input(|i| i.pointer.any_pressed()) {
             if !open_here {
                 state.open = Some((i, item));
             }

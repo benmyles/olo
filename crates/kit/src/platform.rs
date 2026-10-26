@@ -135,6 +135,11 @@ struct Surface {
     pointer: Option<Pos2>,
     /// Buttons pressed on this surface and not yet released here.
     buttons: Vec<egui::PointerButton>,
+    /// A press that closed this window's menus; it and its release are
+    /// not passed on (clicking outside a menu only dismisses it, as on BeOS).
+    swallow: bool,
+    /// The menu bar, in window coordinates, from the last draw.
+    bar_rect: Option<Rect>,
     cursor: egui::CursorIcon,
     // Menus (toplevels only).
     menus: Option<Vec<Menu>>,
@@ -428,6 +433,8 @@ impl Kit {
             events: Vec::new(),
             pointer: None,
             buttons: Vec::new(),
+            swallow: false,
+            bar_rect: None,
             cursor: egui::CursorIcon::Default,
             menus: None,
             bar: BarState::default(),
@@ -786,6 +793,7 @@ impl Kit {
             let mut cx = self.cx.take();
             let s = &mut self.surfaces[i];
             let mut bar = s.bar.clone();
+            let mut drawn_bar = None;
             let menus = app.as_mut().and_then(|a| a.menu_bar(id));
             let panel = s.options.panel;
             let palette = self.palette.clone();
@@ -795,6 +803,7 @@ impl Kit {
                 }
                 if let Some(menus) = &menus {
                     let bar_rect = menu::menu_bar(ui, menus, &mut bar);
+                    drawn_bar = Some(bar_rect);
                     let mut rect = ui.max_rect();
                     rect.min.y = bar_rect.max.y;
                     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
@@ -802,6 +811,9 @@ impl Kit {
                         app.ui(cx, id, &mut child);
                     }
                     // Command-key shortcuts.
+                    // ⌘C/⌘X/⌘V arrive as clipboard events; when no text
+                    // field takes them they go to the menu's Copy/Cut/Paste.
+                    let text_focus = ui.ctx().egui_wants_keyboard_input();
                     let pressed: Vec<(egui::Key, bool)> = ui.input(|inp| {
                         inp.events
                             .iter()
@@ -811,6 +823,9 @@ impl Kit {
                                 {
                                     Some((*key, modifiers.shift))
                                 }
+                                egui::Event::Copy if !text_focus => Some((egui::Key::C, false)),
+                                egui::Event::Cut if !text_focus => Some((egui::Key::X, false)),
+                                egui::Event::Paste(_) if !text_focus => Some((egui::Key::V, false)),
                                 _ => None,
                             })
                             .collect()
@@ -827,6 +842,7 @@ impl Kit {
             self.app = app;
             self.cx = cx;
             let s = &mut self.surfaces[i];
+            s.bar_rect = drawn_bar;
             if bar != s.bar {
                 menu_events.push(MenuEvent::BarChanged(id, s.bar.open.map(|o| o.0), bar.open));
                 s.bar = bar;
@@ -1045,6 +1061,22 @@ impl Kit {
     }
 
     fn open_menu_popup(&mut self, owner: WindowId, path: Vec<usize>, anchor: Rect, parent_popup: Option<WindowId>) {
+        // The popup's grab takes the pointer, so the owner may never see
+        // the release of the press that opened the menu; release it now or
+        // egui would think the button is still down (and, say, keep a menu
+        // bar title held open).
+        if let Some(i) = self.surfaces.iter().position(|s| s.id == owner) {
+            let at = self.surfaces[i].pointer.unwrap_or_default();
+            let held = std::mem::take(&mut self.surfaces[i].buttons);
+            for button in held {
+                self.surfaces[i].events.push(egui::Event::PointerButton {
+                    pos: at,
+                    button,
+                    pressed: false,
+                    modifiers: self.modifiers,
+                });
+            }
+        }
         let Some(owner_s) = self.surfaces.iter().find(|s| s.id == owner) else { return };
         let Some(menu) = menu_of(owner_s, &path) else {
             return;
@@ -1149,10 +1181,10 @@ impl Kit {
                 Some(egui::Key::C) if !m.shift => return self.push_event(&wl, egui::Event::Copy),
                 Some(egui::Key::X) if !m.shift => return self.push_event(&wl, egui::Event::Cut),
                 Some(egui::Key::V) if !m.shift => {
-                    if let Some(text) = self.read_clipboard() {
-                        self.push_event(&wl, egui::Event::Paste(text));
-                    }
-                    return;
+                    // Always deliver, even with no text on the clipboard, so
+                    // menu Paste (e.g. Tracker's file clipboard) still runs.
+                    let text = self.read_clipboard().unwrap_or_default();
+                    return self.push_event(&wl, egui::Event::Paste(text));
                 }
                 _ => {}
             }
@@ -1497,6 +1529,22 @@ impl PointerHandler for Kit {
                     let pressed = matches!(event.kind, PointerEventKind::Press { .. });
                     if pressed {
                         self.last_serial = *serial;
+                    }
+                    if let Some(i) = self.index_of_wl(&wl) {
+                        let s = &mut self.surfaces[i];
+                        if pressed
+                            && !matches!(s.role, Role::Popup { .. })
+                            && !s.popups.is_empty()
+                            && !s.bar_rect.is_some_and(|r| r.contains(pos))
+                        {
+                            s.swallow = true;
+                            let owner = s.id;
+                            self.handle_menu_events(vec![MenuEvent::CloseAll(owner)]);
+                            continue;
+                        }
+                        if !pressed && std::mem::take(&mut self.surfaces[i].swallow) {
+                            continue;
+                        }
                     }
                     if let Some(button) = input::pointer_button(*button) {
                         if let Some(i) = self.index_of_wl(&wl) {

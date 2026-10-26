@@ -41,6 +41,15 @@ pub fn bold() -> FontFamily {
     FontFamily::Name("bold".into())
 }
 
+/// Italic plain text (Tracker shows symbolic links this way, as BeOS did).
+pub fn italic() -> FontFamily {
+    FontFamily::Name("italic".into())
+}
+
+pub fn italic_font() -> FontId {
+    FontId::new(PLAIN_SIZE, italic())
+}
+
 pub fn plain_font() -> FontId {
     FontId::proportional(PLAIN_SIZE)
 }
@@ -56,12 +65,16 @@ pub fn mono_font(size: f32) -> FontId {
 // ---- fonts ------------------------------------------------------------
 
 fn load_face(db: &fontdb::Database, families: &[&str], weight: u16) -> Option<(Vec<u8>, u32)> {
+    load_styled(db, families, weight, fontdb::Style::Normal)
+}
+
+fn load_styled(db: &fontdb::Database, families: &[&str], weight: u16, style: fontdb::Style) -> Option<(Vec<u8>, u32)> {
     for name in families {
         let query = fontdb::Query {
             families: &[fontdb::Family::Name(name)],
             weight: fontdb::Weight(weight),
             stretch: fontdb::Stretch::Normal,
-            style: fontdb::Style::Normal,
+            style,
         };
         if let Some(id) = db.query(&query)
             && let Some((data, index)) = db.with_face_data(id, |data, index| (data.to_vec(), index))
@@ -91,6 +104,7 @@ pub fn font_definitions() -> FontDefinitions {
         };
         let ui = add("ui", load_face(&db, tabula_theme::fonts::UI, 400));
         let ui_bold = add("ui-bold", load_face(&db, tabula_theme::fonts::UI, 700));
+        let ui_italic = add("ui-italic", load_styled(&db, tabula_theme::fonts::UI, 400, fontdb::Style::Italic));
         let mono = add("mono", load_face(&db, tabula_theme::fonts::MONO, 400));
         let mono_bold = add("mono-bold", load_face(&db, tabula_theme::fonts::MONO, 700));
         // Wide Unicode coverage (arrows, ⌘, box drawing, ...).
@@ -127,6 +141,13 @@ pub fn font_definitions() -> FontDefinitions {
         }
         b.extend(base.iter().cloned());
         defs.families.insert(bold(), b);
+
+        let mut it = Vec::new();
+        if ui_italic {
+            it.push("ui-italic".to_owned());
+        }
+        it.extend(base.iter().cloned());
+        defs.families.insert(italic(), it);
 
         let mbase = defs.families[&FontFamily::Monospace].clone();
         let mut mb = Vec::new();
@@ -361,4 +382,26 @@ pub fn label(
     let r = Rect::from_min_size(pos, galley.size());
     p.galley(pos, galley, color);
     r
+}
+
+/// A rubber-band selection rectangle (Tracker, desktop, any icon view):
+/// a one-pixel navigation-blue frame over a faint tint of the same colour.
+pub fn selection_band(p: &Painter, r: Rect, palette: &Palette) {
+    let r = snap(p.ctx(), r);
+    let [red, green, blue, _] = palette.keyboard_navigation;
+    p.rect_filled(r, 0.0, Color32::from_rgba_unmultiplied(red, green, blue, 40));
+    frame_rect(p, r, c(palette.keyboard_navigation));
+}
+
+/// Background rect for highlighted text (a selected icon label): `pad`
+/// beyond the text's sides, and vertically balanced on what the eye sees —
+/// from the cap height of the first row to the baseline of the last —
+/// rather than on the line box, which would leave the text sitting high.
+pub fn text_highlight(galley: &egui::Galley, origin: Pos2, font_size: f32, pad: egui::Vec2) -> Rect {
+    let first = baseline_offset(galley);
+    let last_row_top = galley.rows.last().map_or(0.0, |r| r.pos.y);
+    let top = origin.y + first - font_size * CAP_HEIGHT - pad.y;
+    let bottom = origin.y + last_row_top + first + pad.y;
+    let r = galley.rect.translate(origin.to_vec2());
+    Rect::from_min_max(pos2(r.left() - pad.x, top), pos2(r.right() + pad.x, bottom))
 }

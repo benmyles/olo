@@ -2,7 +2,8 @@
 """Headless Tabula sessions for development and automated UI checks.
 
   tsession start NAME [WxH] [--light|--dark]   start a headless app_server
-  tsession run NAME CMD [ARGS...]              start a client in it (log: DIR/<cmd>.log)
+  tsession run NAME [VAR=VAL...] CMD [ARGS...] start a client in it (log: DIR/<cmd>.log);
+                                               VAR=VAL set after sudo (e.g. HOME=/tmp/fixture)
   tsession shot NAME OUT.png [X Y W H]         screenshot (optional crop, logical px)
   tsession zoom NAME OUT.png X Y W H [N]       crop (logical px) and magnify N× (default 4)
   tsession click NAME X Y [right]              synthetic click (logical px)
@@ -106,6 +107,9 @@ def stop(name):
 
 def run(name, cmd):
     e = load_env(name)
+    assigns = []
+    while cmd and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", cmd[0]):
+        assigns.append(cmd.pop(0))
     env = dict(os.environ, **{k: v for k, v in e.items() if k != "pid"}, RUST_LOG=os.environ.get("RUST_LOG", "warn"))
     exe = cmd[0]
     if "/" not in exe:
@@ -116,7 +120,8 @@ def run(name, cmd):
     env["PATH"] = os.path.join(TARGET, "debug") + ":" + env.get("PATH", "")
     base = os.path.basename(exe)
     log = open(os.path.join(sdir(name), base + ".log"), "w")
-    p = subprocess.Popen(as_owner([exe] + cmd[1:]), env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    argv = (["env"] + assigns if assigns else []) + [exe] + cmd[1:]
+    p = subprocess.Popen(as_owner(argv), env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     open(os.path.join(sdir(name), f"{base}.{p.pid}.pid"), "w").write(str(p.pid))
     print(f"started {base} pid {p.pid}")
 

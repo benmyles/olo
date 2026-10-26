@@ -40,7 +40,7 @@ use smithay::{
 use tracing::{error, info, warn};
 
 use crate::render::render_output;
-use crate::state::{AnvilState, Backend, take_presentation_feedback};
+use crate::state::{AnvilState, Backend, take_presentation_feedback, update_primary_scanout_output};
 
 pub const OUTPUT_NAME: &str = "HEADLESS-1";
 
@@ -218,6 +218,9 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, output: &Output) {
     match result {
         Ok(r) => {
             let states = r.states;
+            // Without this every surface counts as off-screen and Smithay
+            // throttles its frame callbacks to one a second.
+            update_primary_scanout_output(&state.space, output, &state.dnd_icon, &state.cursor_status, &states);
             if r.damage.is_some() {
                 let mut feedback = take_presentation_feedback(output, &state.space, &states);
                 feedback.presented(
