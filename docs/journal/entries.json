@@ -40,5 +40,11 @@
   "title": "Tracker mini icon view",
   "caption": "",
   "image": "2026-10-25/195831-tracker-mini-icon-view.png"
+ },
+ {
+  "time": "2026-10-25T20:14:11",
+  "title": "Tracker: editing a name in place",
+  "caption": "BeOS-style inline rename replaces the Rename dialog: the field sits on the label's own baseline and lines up with the selection highlight; the name without its extension starts selected.",
+  "image": "2026-10-25/201411-tracker-editing-a-name-in-place.png"
  }
 ]

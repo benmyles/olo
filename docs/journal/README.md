@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-25
 
+### Tracker: editing a name in place
+
+*20:14* — BeOS-style inline rename replaces the Rename dialog: the field sits on the label's own baseline and lines up with the selection highlight; the name without its extension starts selected.
+
+![Tracker: editing a name in place](2026-10-25/201411-tracker-editing-a-name-in-place.png)
+
 ### Tracker mini icon view
 
 *19:58*

@@ -1,0 +1,22 @@
+#!/bin/bash
+# Build a throwaway home directory for testing Tracker and friends:
+#   tools/dev/fixture-home [DIR]   (default /tmp/tabula-dev/fixture-home)
+# then: tsession run NAME HOME=DIR tabula-tracker --desktop DIR
+set -e
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+F=${1:-/tmp/tabula-dev/fixture-home}
+rm -rf "$F"
+mkdir -p "$F"/{Desktop/Projects,Documents/Reports,Pictures,Music,Downloads,src/tabula}
+cd "$F"
+echo hello > notes.txt
+printf '# readme\n' > README.md
+cp "$ROOT/data/icons/256/folder.png" Pictures/holiday.png
+cp "$ROOT/data/icons/256/home.png" Pictures/house.png
+head -c 300000 /dev/urandom > Downloads/archive.tar.gz
+printf '#!/bin/sh\necho hi\n' > run.sh && chmod +x run.sh
+echo x > "Documents/Quarterly report with a very long name.txt"
+echo y > Desktop/todo.txt
+ln -s Documents docs-link
+owner=$(stat -c %U "$ROOT")
+[ "$(id -u)" = 0 ] && chown -R "$owner:" "$F" "$(dirname "$F")" 2>/dev/null || true
+echo "$F"

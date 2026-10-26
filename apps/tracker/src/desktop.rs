@@ -37,6 +37,8 @@ pub struct Desktop {
     trash: Item,
     selected: BTreeSet<usize>,
     band: Option<Pos2>,
+    /// A ~/Desktop item whose name is being edited in place.
+    editing: Option<(PathBuf, String)>,
     stamp: Option<SystemTime>,
     checked: Instant,
 }
@@ -69,6 +71,7 @@ impl Desktop {
             trash: trash_item(),
             selected: BTreeSet::new(),
             band: None,
+            editing: None,
             stamp: None,
             checked: Instant::now(),
         };
@@ -104,6 +107,15 @@ impl Desktop {
     /// Items by index; the Trash comes last.
     fn item(&self, i: usize) -> Option<&Item> {
         if i == self.items.len() { Some(&self.trash) } else { self.items.get(i) }
+    }
+
+    /// Select `p` and start editing its name in place.
+    pub fn edit_name(&mut self, p: &std::path::Path) {
+        if let Some(i) = self.items.iter().position(|it| it.entry.path == p) {
+            self.selected = BTreeSet::from([i]);
+            let name = p.file_name().unwrap_or_default().to_string_lossy().into_owned();
+            self.editing = Some((p.to_owned(), name));
+        }
     }
 
     pub fn selected_paths(&self) -> Vec<PathBuf> {
@@ -228,8 +240,14 @@ impl Desktop {
             }
         }
 
-        // Keyboard (when the desktop has focus): Enter opens, ⌘T trashes.
+        // Keyboard (when the desktop has focus and no name is being
+        // edited): Enter opens, ⌘T trashes, ⌘E / F2 edits a name.
+        let typing = self.editing.is_some() || ui.ctx().egui_wants_keyboard_input();
+        let mut edit = false;
         ui.input(|i| {
+            if typing {
+                return;
+            }
             for e in &i.events {
                 if let egui::Event::Key { key, pressed: true, modifiers, .. } = e {
                     match (key, modifiers.ctrl) {
@@ -240,11 +258,17 @@ impl Desktop {
                             actions.push(Action::Command("trash".into()))
                         }
                         (Key::I, true) => actions.push(Action::Command("info".into())),
+                        (Key::E, true) | (Key::F2, false) => edit = true,
                         _ => {}
                     }
                 }
             }
         });
+
+        if edit && let [p] = self.movable().as_slice() {
+            let p = p.clone();
+            self.edit_name(&p);
+        }
 
         let band = match (self.band, response.dragged(), response.interact_pointer_pos()) {
             (Some(start), true, Some(now)) => {
@@ -258,9 +282,19 @@ impl Desktop {
             }
         };
 
+        let editing = self.editing.as_ref().and_then(|(p, _)| self.items.iter().position(|it| &it.entry.path == p));
         for (i, l) in layouts.iter().enumerate() {
             let it = self.item(i).unwrap();
-            view::paint_item(ui, l, it.icon, self.selected.contains(&i), true, &p);
+            view::paint_item(ui, l, it.icon, self.selected.contains(&i), true, editing != Some(i), &p);
+        }
+        match editing {
+            Some(i) => {
+                let link = self.items[i].entry.is_link;
+                if let Some(a) = view::edit_label(ui, &layouts[i], &mut self.editing, link) {
+                    actions.push(a);
+                }
+            }
+            None => self.editing = None,
         }
         if let Some(r) = band {
             style::selection_band(ui.painter(), r, &p);

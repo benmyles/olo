@@ -1,14 +1,17 @@
 //! Folder window contents: icon, mini-icon and list views, plus the Get
 //! Info panel. Shared with the desktop for drawing icons and labels.
 
-use std::time::{Duration, Instant};
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 use tabula_kit::{
     Menu,
     egui::{self, Align, Color32, FontId, Key, Pos2, Rect, Sense, Ui, pos2, vec2},
     icons, metrics as m,
     style::{self, c},
-    widgets::{self, Cell, Column, ColumnListView, ScrollView, SCROLL_BAR},
+    widgets::{self, Cell, Column, ColumnListView, InlineEdit, InlineResult, ScrollView, SCROLL_BAR},
 };
 use tabula_kit::theme::Palette;
 
@@ -17,7 +20,13 @@ use crate::{FolderWin, SortKey, ViewMode, fs, fs::Entry};
 pub enum Action {
     Open(Entry),
     Command(String),
+    /// An in-place name edit was committed.
+    Rename(PathBuf, String),
 }
+
+/// How long after a click on a selected item's name editing starts (a
+/// double-click within it opens the item instead), as on BeOS.
+const EDIT_DELAY: Duration = Duration::from_millis(600);
 
 /// Icon view: 48 px icons in 96 × 84 cells (icon, gap, two label lines).
 pub const ICON: f32 = 48.0;
@@ -26,7 +35,7 @@ pub const ICON_CELL: egui::Vec2 = egui::vec2(96.0, 84.0);
 pub const MINI: f32 = 16.0;
 pub const MINI_CELL: egui::Vec2 = egui::vec2(184.0, m::LIST_ROW);
 /// Padding between a selected label's text and its highlight.
-const LABEL_PAD: egui::Vec2 = egui::vec2(4.0, 3.0);
+const LABEL_PAD: egui::Vec2 = widgets::INLINE_PAD;
 /// The selected icon is darkened, as on BeOS.
 const SELECTED_TINT: Color32 = Color32::from_gray(185);
 
@@ -92,10 +101,39 @@ pub fn layout_item(ui: &Ui, cell: Rect, label: &str, look: Look, selected: bool,
     }
 }
 
+impl ItemLayout {
+    /// Where the label's galley is drawn, and how it is anchored.
+    pub fn label_anchor(&self) -> (Pos2, Align) {
+        let centred = self.galley.rect.left() < 0.0;
+        (self.origin, if centred { Align::Center } else { Align::Min })
+    }
+}
+
+/// Edit an item's name in place of its label; returns a rename action
+/// when committed and clears `editing` once finished.
+pub fn edit_label(ui: &mut Ui, l: &ItemLayout, editing: &mut Option<(PathBuf, String)>, link: bool) -> Option<Action> {
+    let (path, text) = editing.as_mut()?;
+    let (origin, align) = l.label_anchor();
+    let font = if link { style::italic_font() } else { style::plain_font() };
+    match InlineEdit::new(("rename", path.clone()), text, origin, align).font(font).show(ui) {
+        InlineResult::Editing => None,
+        InlineResult::Cancel => {
+            *editing = None;
+            None
+        }
+        InlineResult::Commit => editing.take().map(|(p, t)| Action::Rename(p, t)),
+    }
+}
+
 /// Draw an item. On the desktop labels are drawn in the desktop text
-/// colour with a shadow instead of on a document background.
-pub fn paint_item(ui: &Ui, l: &ItemLayout, icon: &str, selected: bool, desktop: bool, p: &Palette) {
+/// colour with a shadow instead of on a document background. With
+/// `label` false only the icon is drawn (its name is being edited).
+pub fn paint_item(ui: &Ui, l: &ItemLayout, icon: &str, selected: bool, desktop: bool, label: bool, p: &Palette) {
     let painter = ui.painter();
+    if !label {
+        icons::paint(painter, l.icon, icon);
+        return;
+    }
     if selected {
         icons::paint_tinted(painter, l.icon, icon, SELECTED_TINT);
         // BeOS inverts a selected icon's label; in dark mode that makes it
@@ -130,18 +168,29 @@ pub fn icon_of(e: &Entry) -> &'static str {
     e.kind.icon()
 }
 
+/// The rect a list name cell's text occupies (after its icon).
+fn name_text_rect(cell: Rect) -> Rect {
+    let mut rest = cell;
+    rest.min.x = cell.left() + m::CELL_INSET + MINI + m::MARK_GAP - m::CELL_INSET;
+    rest
+}
+
 /// A list cell with a 16 px icon before the name.
 pub fn name_cell(cell: &Cell, e: &Entry) {
+    name_cell_with(cell, e, true)
+}
+
+fn name_cell_with(cell: &Cell, e: &Entry, text: bool) {
     let icon = Rect::from_min_size(pos2(cell.rect.left() + m::CELL_INSET, cell.rect.center().y - MINI / 2.0), vec2(MINI, MINI));
     if cell.selected {
         icons::paint_tinted(cell.painter, icon, icon_of(e), SELECTED_TINT);
     } else {
         icons::paint(cell.painter, icon, icon_of(e));
     }
-    let mut rest = cell.rect;
-    rest.min.x = icon.right() + m::MARK_GAP - m::CELL_INSET;
-    let font = if e.is_link { style::italic_font() } else { style::plain_font() };
-    Cell { rect: rest, ..*cell }.text_with(&e.name, font, cell.text_color);
+    if text {
+        let font = if e.is_link { style::italic_font() } else { style::plain_font() };
+        Cell { rect: name_text_rect(cell.rect), ..*cell }.text_with(&e.name, font, cell.text_color);
+    }
 }
 
 fn item_menu(f: &FolderWin) -> Menu {
@@ -247,15 +296,34 @@ fn list_view(ui: &mut Ui, f: &mut FolderWin, actions: &mut Vec<Action>) {
     };
     f.list.sort = Some((key_col(f.sort.0), f.sort.1));
     let entries = &f.entries;
+    let editing_row = f.editing.as_ref().and_then(|(p, _)| entries.iter().position(|e| &e.path == p));
+    let mut edit_cell = None;
     let r = ColumnListView::new(("list", &f.path), &cols, entries.len(), &mut f.list).show(ui, |cell| {
         let e = &entries[cell.row];
         match cell.column {
+            0 if Some(cell.row) == editing_row => {
+                name_cell_with(cell, e, false);
+                edit_cell = Some(cell.rect);
+            }
             0 => name_cell(cell, e),
             1 => cell.text(&if e.is_dir { "—".into() } else { fs::format_size(e.size) }),
             2 => cell.text(&fs::format_time(e.modified)),
             _ => cell.text(e.kind.name()),
         }
     });
+    if let (Some(rect), Some(row)) = (edit_cell, editing_row) {
+        let e = &f.entries[row];
+        let font = if e.is_link { style::italic_font() } else { style::plain_font() };
+        let g = ui.painter().layout_no_wrap(e.name.clone(), font, Color32::BLACK);
+        let text = name_text_rect(rect);
+        let origin = style::text_origin(ui.ctx(), &g, text.left() + m::CELL_INSET, text.center().y, style::PLAIN_SIZE);
+        let l = ItemLayout { icon: Rect::NOTHING, origin, galley: g };
+        if let Some(a) = edit_label(ui, &l, &mut f.editing, e.is_link) {
+            actions.push(a);
+        }
+    } else if editing_row.is_none() {
+        f.editing = None;
+    }
     if r.sort_changed
         && let Some((col, asc)) = f.list.sort
     {
@@ -374,6 +442,17 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
         // background draws a selection band.
         if response.drag_started() || response.clicked() || response.secondary_clicked() {
             let pos = response.interact_pointer_pos().unwrap_or_default();
+            // A plain click on the name of the only selected item edits it
+            // (after a moment, so a double-click can still open it).
+            if response.clicked() && !(mods.ctrl || mods.shift) {
+                let on_label = layouts.iter().find(|(_, l)| l.highlight().contains(pos)).map(|(i, _)| *i);
+                f.pending_edit = match on_label {
+                    Some(i) if f.list.selected.len() == 1 && f.list.selected.contains(&i) => {
+                        Some((f.entries[i].path.clone(), Instant::now()))
+                    }
+                    _ => None,
+                };
+            }
             match hit(pos) {
                 Some(i) if mods.ctrl || mods.shift => {
                     if response.clicked() || response.drag_started() {
@@ -403,7 +482,19 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
         if response.double_clicked()
             && let Some(i) = response.interact_pointer_pos().and_then(hit)
         {
+            f.pending_edit = None;
             actions.push(Action::Open(f.entries[i].clone()));
+        }
+        if let Some((path, at)) = f.pending_edit.clone() {
+            if at.elapsed() >= EDIT_DELAY {
+                if f.list.selected.len() == 1 && f.selected_paths().first() == Some(&path) {
+                    f.edit_name(&path);
+                } else {
+                    f.pending_edit = None;
+                }
+            } else {
+                ui.ctx().request_repaint_after(EDIT_DELAY - at.elapsed());
+            }
         }
         if response.secondary_clicked()
             && let Some(pos) = response.interact_pointer_pos()
@@ -426,9 +517,27 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
             }
         };
 
+        let editing = f.editing.as_ref().and_then(|(p, _)| f.entries.iter().position(|e| &e.path == p));
+        if f.editing.is_some() && editing.is_none() {
+            f.editing = None; // the item went away
+        }
         for (i, l) in &layouts {
             let e = &f.entries[*i];
-            paint_item(ui, l, icon_of(e), f.list.selected.contains(i), false, &p);
+            paint_item(ui, l, icon_of(e), f.list.selected.contains(i), false, editing != Some(*i), &p);
+        }
+        if let Some(i) = editing {
+            match layouts.iter().find(|(j, _)| *j == i) {
+                Some((_, l)) => {
+                    if let Some(a) = edit_label(ui, l, &mut f.editing, f.entries[i].is_link) {
+                        actions.push(a);
+                    }
+                }
+                None => {
+                    // Scroll the item into view; editing resumes there.
+                    let top = inset + (i / cols) as f32 * cell.y;
+                    ScrollView::reveal(ui.ctx(), ("icons", &f.path), top - inset, top + cell.y + inset);
+                }
+            }
         }
         if let Some(r) = band {
             style::selection_band(ui.painter(), r, &p);

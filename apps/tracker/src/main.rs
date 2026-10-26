@@ -17,7 +17,7 @@ use tabula_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
     egui::{self, Key},
     metrics as m,
-    widgets::{self, Button, Column, ColumnListView, ListState, TextControl, button_row},
+    widgets::{self, Button, Column, ColumnListView, ListState, TextControl},
 };
 use tabula_protocol::{Client, Reply, Request};
 
@@ -52,6 +52,11 @@ pub struct FolderWin {
     pub band: Option<egui::Pos2>,
     /// Type-ahead buffer and when it was last typed into.
     pub typed: (String, Instant),
+    /// The item whose name is being edited in place, and the new name.
+    pub editing: Option<(PathBuf, String)>,
+    /// A click on an already-selected item's name starts editing it after
+    /// a moment, unless a double-click (open) follows.
+    pub pending_edit: Option<(PathBuf, Instant)>,
 }
 
 struct InfoWin {
@@ -69,7 +74,6 @@ struct FindWin {
 }
 
 enum DialogKind {
-    Rename(PathBuf),
     EmptyTrash,
     Error,
 }
@@ -77,7 +81,6 @@ enum DialogKind {
 struct Dialog {
     kind: DialogKind,
     message: String,
-    text: String,
 }
 
 enum Win {
@@ -130,6 +133,8 @@ impl FolderWin {
             error: None,
             band: None,
             typed: (String::new(), Instant::now()),
+            editing: None,
+            pending_edit: None,
         };
         w.reload(hidden);
         w
@@ -155,6 +160,14 @@ impl FolderWin {
 
     pub fn selected_paths(&self) -> Vec<PathBuf> {
         self.list.selected.iter().filter_map(|&i| self.entries.get(i)).map(|e| e.path.clone()).collect()
+    }
+
+    /// Start editing the name of `p` in place.
+    pub fn edit_name(&mut self, p: &Path) {
+        self.select_path(p);
+        let name = p.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        self.editing = Some((p.to_owned(), name));
+        self.pending_edit = None;
     }
 
     fn select_path(&mut self, p: &Path) {
@@ -230,14 +243,14 @@ impl Tracker {
         );
     }
 
-    fn dialog(&mut self, cx: &mut Cx, title: &str, kind: DialogKind, message: String, text: String) {
-        let h = if matches!(kind, DialogKind::Rename(_)) { 150 } else { 130 };
-        let id = cx.open_window(WindowOptions::new(title, 380, h).min_size(380, h));
-        self.windows.insert(id, Win::Dialog(Dialog { kind, message, text }));
+    fn dialog(&mut self, cx: &mut Cx, title: &str, kind: DialogKind, message: String) {
+        let h = widgets::alert_height(&message);
+        let id = cx.open_window(WindowOptions::new(title, widgets::ALERT_WIDTH, h).min_size(widgets::ALERT_WIDTH, h));
+        self.windows.insert(id, Win::Dialog(Dialog { kind, message }));
     }
 
     fn error(&mut self, cx: &mut Cx, message: String) {
-        self.dialog(cx, "Tracker", DialogKind::Error, message, String::new());
+        self.dialog(cx, "Tracker", DialogKind::Error, message);
     }
 
     fn reload_all(&mut self) {
@@ -300,9 +313,7 @@ impl Tracker {
             "new-folder" => match fs::new_folder(&dir) {
                 Ok(p) => {
                     f.reload(hidden);
-                    f.select_path(&p);
-                    let name = p.file_name().unwrap().to_string_lossy().into_owned();
-                    self.dialog(cx, "Name Folder", DialogKind::Rename(p), "Name the new folder:".into(), name);
+                    f.edit_name(&p);
                 }
                 Err(e) => self.error(cx, format!("Couldn't create a folder: {e}")),
             },
@@ -318,9 +329,8 @@ impl Tracker {
                 }
             }
             "rename" => {
-                if let Some(p) = selected.first() {
-                    let name = p.file_name().unwrap_or_default().to_string_lossy().into_owned();
-                    self.dialog(cx, "Rename", DialogKind::Rename(p.clone()), "New name:".into(), name);
+                if let [p] = selected.as_slice() {
+                    f.edit_name(p);
                 }
             }
             "duplicate" => {
@@ -351,7 +361,6 @@ impl Tracker {
                 "Empty Trash",
                 DialogKind::EmptyTrash,
                 "Are you sure you want to permanently remove all items from the Trash?".into(),
-                String::new(),
             ),
             "cut" | "copy" => {
                 if !selected.is_empty() {
@@ -495,10 +504,39 @@ impl Tracker {
         ui.ctx().request_repaint_after(Duration::from_secs(1));
 
         let actions = view::folder_view(ui, f);
+        if !actions.is_empty() {
+            // Actions change state the next frame shows (an edit starting).
+            ui.ctx().request_repaint();
+        }
         for a in actions {
             match a {
                 view::Action::Open(e) => self.open_entry(cx, &e),
                 view::Action::Command(c) => self.folder_command(cx, win, &c),
+                view::Action::Rename(p, name) => {
+                    if let Some(new) = self.rename(cx, &p, &name)
+                        && let Some(Win::Folder(f)) = self.windows.get_mut(&win)
+                    {
+                        f.select_path(&new);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Rename `p` to `name`; reports failures and returns the new path.
+    fn rename(&mut self, cx: &mut Cx, p: &Path, name: &str) -> Option<PathBuf> {
+        let current = p.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        let name = name.trim();
+        if name.is_empty() || name == current {
+            return None;
+        }
+        let r = fs::rename(p, name);
+        self.reload_all();
+        match r {
+            Ok(new) => Some(new),
+            Err(e) => {
+                self.error(cx, format!("Couldn't rename “{current}”: {e}"));
+                None
             }
         }
     }
@@ -576,77 +614,21 @@ impl Tracker {
     }
 
     fn dialog_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
-        let Some(Win::Dialog(d)) = self.windows.get_mut(&win) else { return };
-        let mut ok = false;
-        let mut cancel = false;
-        widgets::window_content(ui, |ui| {
-            ui.horizontal_top(|ui| {
-                let icon = match d.kind {
-                    DialogKind::EmptyTrash => "trash-full",
-                    DialogKind::Error => "about",
-                    DialogKind::Rename(_) => "folder",
-                };
-                let (r, _) = ui.allocate_exact_size(egui::vec2(32.0, 32.0), egui::Sense::hover());
-                tabula_kit::icons::paint(ui.painter(), r, icon);
-                ui.add_space(m::SPACING);
-                ui.vertical(|ui| {
-                    ui.add(egui::Label::new(&d.message).wrap());
-                    if let DialogKind::Rename(_) = d.kind {
-                        ui.add_space(m::TIGHT);
-                        let r = ui.add(TextControl::new(&mut d.text));
-                        if !r.has_focus() && ui.memory(|mem| mem.focused().is_none()) {
-                            r.request_focus();
-                        }
-                        if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-                            ok = true;
-                        }
-                    }
-                });
-            });
-            let bottom = ui.max_rect().bottom();
-            let row = egui::Rect::from_min_max(egui::pos2(ui.max_rect().left(), bottom - m::CONTROL_HEIGHT), ui.max_rect().max);
-            ui.scope_builder(egui::UiBuilder::new().max_rect(row), |ui| {
-                button_row(ui, |ui| {
-                    let (label, has_cancel) = match d.kind {
-                        DialogKind::Rename(_) => ("Rename", true),
-                        DialogKind::EmptyTrash => ("Empty Trash", true),
-                        DialogKind::Error => ("OK", false),
-                    };
-                    if ui.add(Button::new(label).default(true)).clicked() {
-                        ok = true;
-                    }
-                    if has_cancel && ui.add(Button::new("Cancel")).clicked() {
-                        cancel = true;
-                    }
-                });
-            });
-            if ui.input(|i| i.key_pressed(Key::Escape)) {
-                cancel = true;
-            }
-        });
-        if ok {
-            let Some(Win::Dialog(d)) = self.windows.remove(&win) else { return };
-            cx.close_window(win);
-            match d.kind {
-                DialogKind::Rename(p) => {
-                    let current = p.file_name().unwrap_or_default().to_string_lossy().into_owned();
-                    if d.text != current {
-                        if let Err(e) = fs::rename(&p, d.text.trim()) {
-                            self.error(cx, format!("Couldn't rename “{current}”: {e}"));
-                        }
-                    }
-                }
-                DialogKind::EmptyTrash => {
-                    if let Err(e) = fs::empty_trash() {
-                        self.error(cx, format!("Couldn't empty the Trash: {e}"));
-                    }
-                }
-                DialogKind::Error => {}
+        let Some(Win::Dialog(d)) = self.windows.get(&win) else { return };
+        let (icon, buttons): (&str, &[&str]) = match d.kind {
+            DialogKind::EmptyTrash => ("trash-full", &["Cancel", "Empty Trash"]),
+            DialogKind::Error => ("about", &["OK"]),
+        };
+        let Some(choice) = widgets::alert(ui, icon, &d.message, buttons) else { return };
+        let Some(Win::Dialog(d)) = self.windows.remove(&win) else { return };
+        cx.close_window(win);
+        if choice + 1 == buttons.len()
+            && let DialogKind::EmptyTrash = d.kind
+        {
+            if let Err(e) = fs::empty_trash() {
+                self.error(cx, format!("Couldn't empty the Trash: {e}"));
             }
             self.reload_all();
-        } else if cancel {
-            self.windows.remove(&win);
-            cx.close_window(win);
         }
     }
 }
@@ -685,16 +667,24 @@ impl App for Tracker {
             Some(Win::Desktop(_)) => {
                 let Some(Win::Desktop(d)) = self.windows.get_mut(&window) else { return };
                 let actions = d.ui(ui);
+                if !actions.is_empty() {
+                    ui.ctx().request_repaint();
+                }
                 for a in actions {
                     match a {
                         view::Action::Open(e) => self.open_entry(cx, &e),
+                        view::Action::Rename(p, name) => {
+                            self.rename(cx, &p, &name);
+                        }
                         view::Action::Command(c) => match c.as_str() {
                             "new-folder" => {
                                 let dir = fs::home().join("Desktop");
                                 let _ = std::fs::create_dir_all(&dir);
-                                if let Ok(p) = fs::new_folder(&dir) {
-                                    let name = p.file_name().unwrap().to_string_lossy().into_owned();
-                                    self.dialog(cx, "Name Folder", DialogKind::Rename(p), "Name the new folder:".into(), name);
+                                if let Ok(p) = fs::new_folder(&dir)
+                                    && let Some(Win::Desktop(d)) = self.windows.get_mut(&window)
+                                {
+                                    d.reload();
+                                    d.edit_name(&p);
                                 }
                             }
                             "empty-trash" => self.folder_command_global(cx, "empty-trash"),
@@ -782,7 +772,6 @@ impl Tracker {
                 "Empty Trash",
                 DialogKind::EmptyTrash,
                 "Are you sure you want to permanently remove all items from the Trash?".into(),
-                String::new(),
             );
         }
     }

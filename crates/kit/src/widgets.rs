@@ -1570,3 +1570,185 @@ pub fn form_label(ui: &mut Ui, text: &str, width: f32) {
     let pos = text_pos(ui, rect.right() - g.size().x - m::LABEL_GAP, rect.center().y, &g);
     ui.painter().galley(pos, g, c(p.panel_text));
 }
+
+// ---- inline label editing ------------------------------------------------
+
+/// How an [`InlineEdit`] ended this frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InlineResult {
+    Editing,
+    /// Enter, or focus moved elsewhere (BeOS commits on click-away).
+    Commit,
+    /// Escape.
+    Cancel,
+}
+
+/// Edit a label where it stands (Tracker's Edit Name): the label is
+/// replaced by a field sitting on the label's own baseline, so the text
+/// doesn't move when editing starts. `origin` is where the label's galley
+/// was drawn and `align` how it was anchored (`Center` for icon labels,
+/// whose rows are laid out around x = 0). It starts focused with the name
+/// up to its extension selected.
+pub struct InlineEdit<'a> {
+    id: Id,
+    text: &'a mut String,
+    origin: Pos2,
+    align: Align,
+    font: FontId,
+}
+
+/// Padding between an edited label's text and its field's frame (matches
+/// the selected-label highlight, so selection and editing line up).
+pub const INLINE_PAD: Vec2 = vec2(4.0, 4.0);
+
+impl<'a> InlineEdit<'a> {
+    pub fn new(id: impl std::hash::Hash + std::fmt::Debug, text: &'a mut String, origin: Pos2, align: Align) -> Self {
+        InlineEdit { id: Id::unique(id), text, origin, align, font: plain_font() }
+    }
+    pub fn font(mut self, font: FontId) -> Self {
+        self.font = font;
+        self
+    }
+
+    pub fn show(self, ui: &mut Ui) -> InlineResult {
+        let p = style::palette(ui.ctx());
+        let ctx = ui.ctx().clone();
+        let started = self.id.with("started");
+        let first = !ctx.data(|d| d.get_temp::<bool>(started).unwrap_or(false));
+
+        // The field hugs the text (plus room for the caret) and grows as
+        // you type, staying anchored the way the label was.
+        let measure = if self.text.is_empty() { "M".to_owned() } else { self.text.clone() };
+        let g = ui.painter().layout_no_wrap(measure, self.font.clone(), Color32::BLACK);
+        let w = g.size().x;
+        let left = match self.align {
+            Align::Center => self.origin.x - w / 2.0,
+            Align::Max => self.origin.x - w,
+            Align::Min => self.origin.x,
+        };
+        let text_origin = pos2(left, self.origin.y);
+        let field = style::snap(&ctx, style::text_highlight(&g, text_origin - vec2(g.rect.left(), 0.0), self.font.size, INLINE_PAD));
+        let painter = ui.painter();
+        painter.rect_filled(field, 0.0, c(p.document_background));
+        style::frame_rect(painter, field, c(p.keyboard_navigation));
+
+        let row_h = ui.fonts_mut(|f| f.row_height(&self.font));
+        // Room for the caret after the last character, inside the padding.
+        let line = Rect::from_min_size(text_origin, vec2(w + INLINE_PAD.x, row_h));
+        let edit = egui::TextEdit::singleline(self.text)
+            .id(self.id)
+            .frame(egui::Frame::NONE)
+            .margin(egui::Margin::ZERO)
+            .font(self.font.clone())
+            .text_color(c(p.document_text))
+            .desired_width(line.width());
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(line));
+        child.set_clip_rect(field.shrink(1.0).intersect(ui.clip_rect()));
+        let r = child.add(edit);
+
+        if first {
+            ctx.data_mut(|d| d.insert_temp(started, true));
+            r.request_focus();
+            // Select the name, not its extension (".txt" rarely changes).
+            let stem = match self.text.rfind('.') {
+                Some(i) if i > 0 => self.text[..i].chars().count(),
+                _ => self.text.chars().count(),
+            };
+            if let Some(mut state) = egui::TextEdit::load_state(&ctx, self.id) {
+                state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(0),
+                    egui::text::CCursor::new(stem),
+                )));
+                state.store(&ctx, self.id);
+            }
+            ctx.request_repaint();
+            return InlineResult::Editing;
+        }
+        let escape = ui.input(|i| i.key_pressed(Key::Escape));
+        // A press outside the field commits, as does losing focus to
+        // another widget. Until the window has keyboard focus (say, just
+        // after a popup menu closed) keep asking for it rather than ending.
+        let pressed_outside =
+            ui.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !field.contains(p)));
+        let done = if escape {
+            InlineResult::Cancel
+        } else if r.lost_focus() || pressed_outside {
+            InlineResult::Commit
+        } else {
+            if !r.has_focus() {
+                if ctx.memory(|m| m.focused().is_some_and(|f| f != self.id)) {
+                    // Something else took focus.
+                    ctx.data_mut(|d| d.remove::<bool>(started));
+                    return InlineResult::Commit;
+                }
+                r.request_focus();
+                ctx.request_repaint();
+            }
+            InlineResult::Editing
+        };
+        if done != InlineResult::Editing {
+            ctx.data_mut(|d| d.remove::<bool>(started));
+        }
+        done
+    }
+}
+
+// ---- alerts --------------------------------------------------------------
+
+/// Width of a BAlert window, and of its tinted stripe down the left.
+pub const ALERT_WIDTH: u32 = 380;
+const ALERT_STRIPE: f32 = 30.0;
+const ALERT_ICON: f32 = 32.0;
+/// Text column: from the stripe's edge, past the icon that overlaps it.
+const ALERT_TEXT_X: f32 = ALERT_STRIPE + ALERT_ICON / 2.0 + m::WINDOW_INSET;
+
+/// The window height an alert with `message` needs (for `open_window`).
+/// Estimated from the message length, since no context exists yet.
+pub fn alert_height(message: &str) -> u32 {
+    let per_line = ((ALERT_WIDTH as f32 - ALERT_TEXT_X - m::WINDOW_INSET) / 6.2) as usize;
+    let lines = message.split('\n').map(|l| l.chars().count().div_ceil(per_line).max(1)).sum::<usize>();
+    let text = lines as f32 * (style::PLAIN_SIZE + 4.0);
+    (m::WINDOW_INSET + text.max(ALERT_ICON) + m::WINDOW_INSET + m::CONTROL_HEIGHT + m::WINDOW_INSET).ceil() as u32
+}
+
+/// BAlert: a darker stripe down the left with the icon straddling it, the
+/// message beside it, and buttons along the bottom right (the last one is
+/// the default). Returns the index of the button chosen; Escape chooses
+/// the first when there is more than one, as Cancel usually comes first.
+pub fn alert(ui: &mut Ui, icon: &str, message: &str, buttons: &[&str]) -> Option<usize> {
+    let p = style::palette(ui.ctx());
+    let full = ui.available_rect_before_wrap();
+    let painter = ui.painter();
+    let stripe = Rect::from_min_max(full.min, pos2(full.left() + ALERT_STRIPE, full.bottom()));
+    painter.rect_filled(stripe, 0.0, shade(&p, p.panel_background, 1.1));
+    let icon_rect = Rect::from_min_size(pos2(stripe.right() - ALERT_ICON / 2.0, full.top() + m::WINDOW_INSET), vec2(ALERT_ICON, ALERT_ICON));
+    crate::icons::paint(painter, icon_rect, icon);
+
+    let text_left = full.left() + ALERT_TEXT_X;
+    let mut job = egui::text::LayoutJob::single_section(message.to_owned(), egui::TextFormat::simple(plain_font(), c(p.panel_text)));
+    job.wrap.max_width = full.right() - m::WINDOW_INSET - text_left;
+    let g = ui.painter().layout_job(job);
+    // First line's capitals level with the icon's upper third.
+    let pos = style::text_origin(ui.ctx(), &g, text_left, icon_rect.top() + style::PLAIN_SIZE / 2.0 + 2.0, style::PLAIN_SIZE);
+    ui.painter().galley(pos, g, c(p.panel_text));
+
+    let row = Rect::from_min_max(
+        pos2(text_left, full.bottom() - m::WINDOW_INSET - m::CONTROL_HEIGHT),
+        pos2(full.right() - m::WINDOW_INSET, full.bottom() - m::WINDOW_INSET),
+    );
+    let mut chosen = None;
+    ui.scope_builder(egui::UiBuilder::new().max_rect(row), |ui| {
+        button_row(ui, |ui| {
+            for (i, label) in buttons.iter().enumerate().rev() {
+                if ui.add(Button::new(label).default(i + 1 == buttons.len())).clicked() {
+                    chosen = Some(i);
+                }
+            }
+        });
+    });
+    if buttons.len() > 1 && ui.input(|i| i.key_pressed(Key::Escape)) {
+        chosen = Some(0);
+    }
+    chosen
+}
+
