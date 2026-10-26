@@ -388,6 +388,16 @@ exclusive overlay showing its picture dimmed, and saves the rectangle you
 drag (its size in pixels follows the corner); Escape or a click cancels.
 ⌘⇧5 opens the app.
 
+## DeskCalc (apps/deskcalc)
+
+An expression line over a keypad that scales with the window: R5's 5×4
+keys, Haiku's scientific rows above them, or none; the context menu
+switches keypads, angle units and copies/pastes. `expr.rs` is the whole
+calculator (lexer, recursive descent, `format` for 15 significant digits)
+and is unit-tested; keep new functions in `FUNCTIONS` and on the keypad
+together. After =, a digit starts afresh and an operator carries on.
+Settings, the last expression and history are in `deskcalc.json`.
+
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 
 `lock_screen()` (Ctrl+⌘Q, Deskbar ▸ Lock Screen, `Request::Lock`, the

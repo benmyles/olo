@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### DeskCalc scientific (dark)
+
+*01:02* — Haiku's scientific rows above R5's keys; options in the context menu.
+
+![DeskCalc scientific (dark)](2026-10-26/010211-deskcalc-scientific-dark.png)
+
+### DeskCalc (light)
+
+*01:02* — R5's keypad under an expression line; 2*(3+4) worked out.
+
+![DeskCalc (light)](2026-10-26/010211-deskcalc-light.png)
+
 ### Screenshot: active window (dark)
 
 *00:53* — Active-window capture with the tab's shape kept; JPEG into a folder chosen with the new folder panel.

@@ -1,0 +1,15 @@
+[package]
+name = "tabula-deskcalc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "tabula-deskcalc"
+path = "src/main.rs"
+
+[dependencies]
+tabula-kit.workspace = true
+tabula-theme.workspace = true
+serde.workspace = true
+serde_json.workspace = true

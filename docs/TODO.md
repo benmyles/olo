@@ -43,7 +43,10 @@ as they land (with the commit), add new ones as they come up.
   ID; Restart Tabula; a Choose… file panel for the
   wallpaper; Display mode switching (app_server ignores `mode` in
   ConfigureOutput so far) and drag-to-arrange.
-- StyledEdit, DeskCalc.
+- StyledEdit.
+- ~~**DeskCalc**~~: R5's keypad, Haiku's scientific rows or none; typed
+  or clicked expressions (own evaluator: functions, π/e, implicit ×,
+  degrees/radians), history on ↑/↓, keys flash as you type.
 - ~~**Screenshot**~~: Haiku's app (screen or active window, border,
   pointer, delay, five formats, folder choice, clipboard), ⌘⇧3/⌘⇧4/⌘⇧5
   (area) and Print Screen; every backend captures.

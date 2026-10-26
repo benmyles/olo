@@ -4785,6 +4785,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabula-deskcalc"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tabula-kit",
+ "tabula-theme",
+]
+
+[[package]]
 name = "tabula-kit"
 version = "0.1.0"
 dependencies = [
