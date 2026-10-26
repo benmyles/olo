@@ -6,6 +6,7 @@
 //! Input over the page is forwarded from egui (input.rs).
 
 mod engine;
+mod find;
 mod input;
 mod location;
 mod logins;
@@ -36,7 +37,7 @@ use tabula_kit::{
     menu::{self, MenuAnchor, MenuRequest},
     metrics as m,
     style::{self, c, shade},
-    widgets::{self, Button, MenuField, TextControl},
+    widgets::{self, Button, CheckBox, MenuField, TextControl},
 };
 use url::Url;
 
@@ -50,6 +51,9 @@ const TOOL: f32 = m::CONTROL_HEIGHT + m::TIGHT;
 /// The bars offering to save a login or asking about a passkey.
 const OFFER_HEIGHT: f32 = m::CONTROL_HEIGHT + 2.0 * m::SPACING;
 const PASSKEY_CHOICE_WIDTH: f32 = 180.0;
+const FIND_W: f32 = 340.0;
+const FIND_H: f32 =
+    2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + m::SPACING + 4.0 * m::MARK_ROW + 3.0 * m::TIGHT + m::SPACING + m::CONTROL_HEIGHT;
 const HISTORY_MAX: usize = 1000;
 const ZOOMS: [f32; 13] = [0.3, 0.5, 0.67, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
 
@@ -187,6 +191,8 @@ enum Sheet {
 enum Win {
     Browser(Box<Browser>),
     Sheet(Box<Sheet>),
+    /// The Find window for a browser window.
+    Find { target: WindowId },
 }
 
 struct NetPositive {
@@ -197,6 +203,7 @@ struct NetPositive {
     front: Option<WindowId>,
     pasted: bool,
     proxy: Proxy,
+    search: find::Search,
 }
 
 impl NetPositive {
@@ -360,7 +367,11 @@ impl NetPositive {
         let sheets: Vec<WindowId> = self
             .windows
             .iter()
-            .filter(|(_, w)| matches!(w, Win::Sheet(s) if sheet_owner(s) == Some(win)))
+            .filter(|(_, w)| match w {
+                Win::Sheet(s) => sheet_owner(s) == Some(win),
+                Win::Find { target } => *target == win,
+                Win::Browser(_) => false,
+            })
             .map(|(&id, _)| id)
             .collect();
         for s in sheets {
@@ -462,6 +473,13 @@ impl NetPositive {
                     logins::ask(self.proxy.clone(), win, view, url, Purpose::Check(Box::new(offer)), request, false);
                 }
                 Event::Passkey(request) => self.passkey_request(cx, win, i, request),
+                Event::Found(found) => {
+                    let missing = format!("“{}” isn’t on this page.", self.search.text);
+                    if !found && let Some(b) = self.browser(win) {
+                        b.tabs[i].status = Some(missing);
+                    }
+                    cx.redraw(win);
+                }
                 Event::Filled(result) => {
                     let Some(b) = self.browser(win) else { continue };
                     match result.as_str() {
@@ -697,6 +715,14 @@ impl NetPositive {
                         self.settings.bookmarks.push(Bookmark { title, url });
                     }
                     self.save_settings();
+                }
+            }
+            "find" => self.open_find(cx, win),
+            "find-again" => {
+                if self.search.text.is_empty() {
+                    self.open_find(cx, win);
+                } else {
+                    self.find_in(win);
                 }
             }
             "clear-history" => {
@@ -1119,6 +1145,61 @@ impl NetPositive {
         }
     }
 
+    fn open_find(&mut self, cx: &mut Cx, target: WindowId) {
+        if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Find { target: t } if *t == target)) {
+            return cx.activate(id);
+        }
+        let (w, h) = (FIND_W as u32, FIND_H as u32);
+        let id = cx.open_window(WindowOptions::new("Find", w, h).min_size(w, h).max_size(900, h).parent(target));
+        self.windows.insert(id, Win::Find { target });
+    }
+
+    /// Search the active tab's page from its selection.
+    fn find_in(&mut self, win: WindowId) {
+        let events = self.engine.events.clone();
+        let script = find::script(&self.search);
+        let Some(view) = self.browser(win).and_then(|b| b.tab()).and_then(|t| t.view.clone()) else { return };
+        let id = view.id();
+        view.evaluate_javascript(script, move |r| {
+            let found = matches!(r, Ok(servo::JSValue::String(s)) if s == "found");
+            events.push_id(id, Event::Found(found));
+        });
+    }
+
+    fn find_ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui, target: WindowId) {
+        let full = ui.max_rect().shrink(m::WINDOW_INSET);
+        let s = &mut self.search;
+        ui.scope_builder(egui::UiBuilder::new().max_rect(full).layout(egui::Layout::top_down(Align::Min)), |ui| {
+            ui.spacing_mut().item_spacing.y = m::TIGHT;
+            let field = ui.add(TextControl::new(&mut s.text).label("Find:").divider(40.0).autofocus(true));
+            if field.gained_focus() {
+                // The last search, ready to be typed over.
+                select_all(ui.ctx(), field.id, &s.text);
+            }
+            ui.add_space(m::SPACING - m::TIGHT);
+            ui.add(CheckBox::new(&mut s.case, "Case-sensitive"));
+            ui.add(CheckBox::new(&mut s.words, "Whole words only"));
+            ui.add(CheckBox::new(&mut s.wrap, "Wrap-around search"));
+            ui.add(CheckBox::new(&mut s.backwards, "Search backwards"));
+        });
+        let bw = m::BUTTON_MIN_WIDTH;
+        let y = full.bottom() - m::CONTROL_HEIGHT;
+        let go_r = Rect::from_min_size(pos2(full.right() - bw, y), vec2(bw, m::CONTROL_HEIGHT));
+        let cancel_r = go_r.translate(vec2(-(bw + m::SPACING + 2.0), 0.0));
+        let cancel = ui.put(cancel_r, Button::new("Cancel")).clicked() || ui.input(|i| i.key_pressed(Key::Escape));
+        let ready = !s.text.is_empty();
+        let go = ui.add_enabled_ui(ready, |ui| ui.put(go_r, Button::new("Find").default(true))).inner.clicked()
+            || ready && ui.input(|i| i.key_pressed(Key::Enter));
+        if go || cancel {
+            self.windows.remove(&window);
+            cx.close_window(window);
+        }
+        if go {
+            cx.activate(target);
+            self.find_in(target);
+        }
+    }
+
     fn sheet_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
         let Some(Win::Sheet(sheet)) = self.windows.get_mut(&win) else { return };
         let done = match &mut **sheet {
@@ -1452,6 +1533,7 @@ impl App for NetPositive {
                 self.browser_ui(cx, window, ui);
             }
             Some(Win::Sheet(_)) => self.sheet_ui(cx, window, ui),
+            Some(&Win::Find { target }) => self.find_ui(cx, window, ui, target),
             None => {}
         }
     }
@@ -1477,7 +1559,10 @@ impl App for NetPositive {
             .item("Cut", "cut", Some(Key::X))
             .item("Copy", "copy", Some(Key::C))
             .item("Paste", "paste", Some(Key::V))
-            .item("Select All", "select-all", Some(Key::A));
+            .item("Select All", "select-all", Some(Key::A))
+            .separator()
+            .item("Find…", "find", Some(Key::F))
+            .item("Find Again", "find-again", Some(Key::G));
         let view = Menu::new("View")
             .item(if loading { "Stop" } else { "Reload" }, if loading { "stop" } else { "reload" }, Some(Key::R))
             .separator()
@@ -1525,7 +1610,7 @@ impl App for NetPositive {
     fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
         match self.windows.get(&window) {
             Some(Win::Browser(_)) => self.close_browser(cx, window),
-            Some(Win::Sheet(_)) => {
+            Some(Win::Sheet(_) | Win::Find { .. }) => {
                 // Closing a sheet cancels it (dropping the request does).
                 self.windows.remove(&window);
                 cx.close_window(window);
@@ -1937,6 +2022,7 @@ fn main() {
             settings,
             front: None,
             pasted: false,
+            search: find::Search::default(),
             proxy: cx.proxy(),
         };
         let restored: Option<Saved> = cx.restored_state().and_then(|s| serde_json::from_str(&s).ok());

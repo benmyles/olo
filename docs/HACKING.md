@@ -830,6 +830,16 @@ tools/dev/tsession run pw TABULA_1PASSWORD_SOCKET=tabula-fake TABULA_NO_FINGERPR
 `$dir` set up as for the lock screen.) Account: `Tabula Test`; password:
 whatever `check.sh` accepts.
 
+### Find in NetPositive
+
+Servo 0.7 has no find API, so `apps/browser/src/find.rs` builds a script
+from the Find window's settings (case, whole words, wrap, backwards) and
+evaluates it in the top frame: it walks the shown text nodes (skipping
+scripts, styles and anything without boxes), searches from the current
+selection, selects the match and scrolls it to the middle. The selection
+is the cursor, so Find Again (⌘G) continues and a click moves the start.
+Not found puts a note in the status line.
+
 ### Logins in NetPositive (crates/keychain)
 
 While Passwords runs it serves other Tabula apps on

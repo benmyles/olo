@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### NetPositive: Find
+
+*08:19* — Edit ▸ Find… (⌘F) and Find Again (⌘G): a BeOS Find window; the match is selected and scrolled to the middle.
+
+![NetPositive: Find](2026-10-26/081902-netpositive-find.png)
+
 ### Passwords: a passkey in a login
 
 *08:14* — Passkeys live in a Passkey section of a 1Password login: credential ID, relying party, user, and the concealed P-256 key.

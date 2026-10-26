@@ -69,6 +69,8 @@ pub enum Event {
     LoginUsed { username: String, password: String },
     /// A fill script finished: "filled", "none" or "moved".
     Filled(String),
+    /// A find in the page finished (whether it found the text).
+    Found(bool),
     /// The page wants a passkey (passkeys.rs's script).
     Passkey(crate::passkeys::PageRequest),
 }

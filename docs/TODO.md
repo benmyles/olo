@@ -64,11 +64,12 @@ as they land (with the commit), add new ones as they come up.
   drawn into a kit embedded subsurface: tabs, location field with search,
   back/forward/reload/stop/home, zoom, bookmarks and history menus, page
   context menus, `<select>`, dialogs, logins, file uploads, haiku error
-  pages, in-place reload. Still to do: find in page (Servo 0.7 has no
-  API), downloads, a scroll indicator (Servo draws no scroll bars),
+  pages, in-place reload, ~~find in page~~ (a script, since Servo 0.7
+  has no API). Still to do: downloads, a scroll indicator (Servo draws no scroll bars),
   favicons in tabs, dark pages (needs Servo to paint a dark page's
   canvas), audio/video in pages (Servo media without gstreamer),
-  permission prompts, a colour picker for `<input type=color>`,
+  permission prompts (Servo 0.7 implements none of the features behind
+  them but notifications, which need a Tabula notification centre), a colour picker for `<input type=color>`,
   ~~password manager integration~~.
 - Password manager: ~~Rust 1Password SDK~~ (desktop-app integration;
   fake server for tests), ~~Passwords app~~ (browse, copy, edit, create,

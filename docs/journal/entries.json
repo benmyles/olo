@@ -598,5 +598,11 @@
   "title": "Passwords: a passkey in a login",
   "caption": "Passkeys live in a Passkey section of a 1Password login: credential ID, relying party, user, and the concealed P-256 key.",
   "image": "2026-10-26/081420-passwords-a-passkey-in-a-login.png"
+ },
+ {
+  "time": "2026-10-26T08:19:02",
+  "title": "NetPositive: Find",
+  "caption": "Edit \u25b8 Find\u2026 (\u2318F) and Find Again (\u2318G): a BeOS Find window; the match is selected and scrolled to the middle.",
+  "image": "2026-10-26/081902-netpositive-find.png"
  }
 ]
