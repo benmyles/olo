@@ -13,7 +13,7 @@ use tabula_system::audio;
 
 use tabula_kit::{
     egui::{self, Color32, Painter, Rect, Shape, Stroke, pos2, vec2},
-    style::{c, shade},
+    style::c,
     theme::Palette,
 };
 
@@ -184,6 +184,12 @@ fn ink(p: &Palette) -> Color32 {
     c(p.panel_text)
 }
 
+/// Ink for an off or empty part: halfway to the background, so it reads in
+/// light and dark alike (a darker shade vanishes on a dark tray).
+fn dim(p: &Palette) -> Color32 {
+    ink(p).lerp_to_gamma(c(p.panel_background), 0.6)
+}
+
 pub fn draw_battery(painter: &Painter, r: Rect, p: &Palette, percent: u32, charging: bool) {
     let body = Rect::from_min_size(pos2(r.left() + 0.5, r.top() + 4.5), vec2(13.0, 8.0));
     painter.rect_stroke(body, 1.5, Stroke::new(1.0, ink(p)), egui::StrokeKind::Middle);
@@ -223,11 +229,10 @@ pub fn draw_wifi(painter: &Painter, r: Rect, p: &Palette, signal: Option<u32>) {
         Some(s) if s >= 34 => 2,
         Some(_) => 1,
     };
-    let dim = shade(p, p.panel_background, 1.35);
-    painter.circle_filled(origin, 1.4, if signal.is_some() { ink(p) } else { dim });
+    painter.circle_filled(origin, 1.4, if signal.is_some() { ink(p) } else { dim(p) });
     for i in 1..=3 {
         let radius = 3.5 * i as f32;
-        let color = if i <= bars { ink(p) } else { dim };
+        let color = if i <= bars { ink(p) } else { dim(p) };
         let pts: Vec<_> = (0..=12)
             .map(|k| {
                 let a = std::f32::consts::PI * (1.25 + 0.5 * k as f32 / 12.0);
@@ -259,7 +264,7 @@ pub fn draw_volume(painter: &Painter, r: Rect, p: &Palette, level: f32, muted: b
     let waves = if level <= 0.01 { 0 } else if level < 0.34 { 1 } else if level < 0.67 { 2 } else { 3 };
     for i in 1..=3 {
         let radius = 2.5 + 2.6 * i as f32;
-        let color = if i <= waves { ink(p) } else { shade(p, p.panel_background, 1.35) };
+        let color = if i <= waves { ink(p) } else { dim(p) };
         let center = pos2(x + 6.0, cy);
         let pts: Vec<_> = (0..=10)
             .map(|k| {
@@ -273,7 +278,7 @@ pub fn draw_volume(painter: &Painter, r: Rect, p: &Palette, level: f32, muted: b
 
 /// A coffee cup; full and steaming when `on` (caffeinated).
 pub fn draw_cup(painter: &Painter, r: Rect, p: &Palette, on: bool) {
-    let color = if on { ink(p) } else { shade(p, p.panel_background, 1.6) };
+    let color = if on { ink(p) } else { dim(p) };
     let s = Stroke::new(1.2, color);
     let cup = Rect::from_min_size(pos2(r.left() + 1.5, r.top() + 6.5), vec2(9.0, 8.0));
     if on {

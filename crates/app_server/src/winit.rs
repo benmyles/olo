@@ -273,6 +273,8 @@ pub fn run_winit() {
             let space = &mut state.space;
             let damage_tracker = &mut state.backend_data.damage_tracker;
             let show_window_preview = state.show_window_preview;
+            let locked = state.lock.locked();
+            let lock = &state.lock;
 
             let dnd_icon = state.dnd_icon.as_ref();
 
@@ -350,6 +352,9 @@ pub fn run_winit() {
                 #[cfg(feature = "debug")]
                 elements.push(CustomRenderElements::Fps(fps_element.clone()));
 
+                if locked {
+                    elements.extend(crate::lock::elements(lock, renderer, &output));
+                }
                 render_output(
                     &output,
                     space,
@@ -360,6 +365,7 @@ pub fn run_winit() {
                     age,
                     show_window_preview,
                     desktop_color,
+                    locked,
                 )
                 .map_err(|err| match err {
                     OutputDamageTrackerError::Rendering(err) => err.into(),
@@ -465,6 +471,7 @@ pub fn run_winit() {
                     &state.space,
                     Vec::new(),
                     color,
+                    state.lock.locked(),
                     &path,
                 );
                 conn.send(&match res {

@@ -94,7 +94,7 @@ impl Panel {
             Panel::Backgrounds => (440, 308),
             Panel::Display => (480, 360),
             Panel::Keyboard => (440, 370),
-            Panel::Power => (460, 330),
+            Panel::Power => (460, 362),
             Panel::Sound => (440, 270),
             Panel::Touchpad => (400, 382),
             Panel::Workspaces => (360, 164),

@@ -35,7 +35,7 @@ TARGET = os.environ.get("CARGO_TARGET_DIR", os.path.join(ROOT, "target"))
 
 def as_owner(cmd, **kw):
     if os.getuid() == 0 and OWNER.pw_uid != 0:
-        cmd = ["sudo", "-u", OWNER.pw_name, "--preserve-env=WAYLAND_DISPLAY,TABULA_SOCKET,XDG_RUNTIME_DIR,XDG_CONFIG_HOME,RUST_LOG,TABULA_THEME,TABULA_DATA,TABULA_SESSION,TABULA_SESSION_PID,HOME,PATH,PULSE_SERVER"] + cmd
+        cmd = ["sudo", "-u", OWNER.pw_name, "--preserve-env=WAYLAND_DISPLAY,TABULA_SOCKET,XDG_RUNTIME_DIR,XDG_CONFIG_HOME,RUST_LOG,TABULA_THEME,TABULA_DATA,TABULA_SESSION,TABULA_SESSION_PID,HOME,PATH,PULSE_SERVER,TABULA_PAM_CONFDIR,TABULA_PAM_SERVICE"] + cmd
     return cmd
 
 def sdir(name):
@@ -72,7 +72,7 @@ def start(name, args):
     subprocess.run(["chown", "-R", f"{OWNER.pw_uid}:{OWNER.pw_gid}", d]) if os.getuid() == 0 else None
     env = dict(os.environ, XDG_RUNTIME_DIR=RUNTIME, XDG_CONFIG_HOME=os.path.join(d, "config"), RUST_LOG=os.environ.get("RUST_LOG", "info"))
     open(os.path.join(d, "no-sound"), "a").close()
-    env["PULSE_SERVER"] = "unix:" + os.path.join(d, "no-sound")
+    env["PULSE_SERVER,TABULA_PAM_CONFDIR,TABULA_PAM_SERVICE"] = "unix:" + os.path.join(d, "no-sound")
     env.pop("WAYLAND_DISPLAY", None)
     env.pop("TABULA_SOCKET", None)
     log = open(os.path.join(d, "app_server.log"), "w")
@@ -135,7 +135,7 @@ def run(name, cmd):
     # (connecting fails) rather than the user's real speakers.
     mute = os.path.join(BASE, name, "no-sound")
     open(mute, "a").close()
-    env["PULSE_SERVER"] = "unix:" + mute
+    env["PULSE_SERVER,TABULA_PAM_CONFDIR,TABULA_PAM_SERVICE"] = "unix:" + mute
     exe = cmd[0]
     if "/" not in exe:
         for cand in (os.path.join(TARGET, "debug", exe), os.path.join(TARGET, "debug", "examples", exe)):

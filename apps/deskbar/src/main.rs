@@ -194,6 +194,7 @@ impl Deskbar {
             .item("About Tabula", "about", None)
             .item("Find…", "find", None)
             .separator()
+            .item("Lock Screen", "lock", None)
             .item("Log Out", "logout", None)
             .item("Restart", "restart", None)
             .item("Shut Down", "shutdown", None)
@@ -237,6 +238,7 @@ impl Deskbar {
             _ => match cmd {
                 "about" => spawn("tabula-preferences about"),
                 "find" => spawn("tabula-tracker --find"),
+                "lock" => request(Request::Lock),
                 "logout" => request(Request::Quit),
                 "restart" => self.confirm_power(cx, Power::Restart),
                 "shutdown" => self.confirm_power(cx, Power::ShutDown),

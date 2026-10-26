@@ -179,6 +179,7 @@ impl<B: Backend> AnvilState<B> {
 
     /// Every [`TICK`]: turn displays off or sleep if idle long enough.
     pub fn power_tick(&mut self) {
+        self.ensure_locker();
         let before = self.power.inhibitors.len();
         self.power.inhibitors.retain(|s| s.is_alive());
         let pruned = self.power.inhibitors.len() != before;
@@ -189,12 +190,16 @@ impl<B: Backend> AnvilState<B> {
         }
         let idle = p.last_activity.elapsed();
         let mut changed = pruned;
+        let mut lock = false;
         let minutes = |m: u32| Duration::from_secs(m as u64 * 60);
-        if settings.display_off_minutes > 0 && idle >= minutes(settings.display_off_minutes) && !p.display_asleep {
+        // On the lock screen nobody is working: displays go off after a minute.
+        let display_off = if self.lock.locked() { 1 } else { settings.display_off_minutes };
+        if display_off > 0 && idle >= minutes(display_off) && !p.display_asleep {
             p.display_asleep = true;
             p.send(Job::Brightness(0));
             info!(?idle, "displays asleep");
             changed = true;
+            lock = settings.lock_on_display_off;
         }
         if settings.sleep_minutes > 0
             && idle >= minutes(settings.sleep_minutes)
@@ -208,6 +213,9 @@ impl<B: Backend> AnvilState<B> {
             } else {
                 info!(?idle, "would sleep now (not the session)");
             }
+        }
+        if lock {
+            self.lock_screen();
         }
         if changed {
             self.power_changed();

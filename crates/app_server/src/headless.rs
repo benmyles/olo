@@ -178,12 +178,14 @@ pub fn run_headless(size_arg: Option<&str>) {
         for (path, conn) in std::mem::take(&mut state.ipc.pending_screenshots) {
             let color = state.desktop_color();
             let overlays = twitcher_overlay(&mut state, &output);
+            let locked = state.lock.locked();
             let res = crate::render::screenshot::<_, GlesTexture>(
                 &mut state.backend_data.renderer,
                 &output,
                 &state.space,
                 overlays,
                 color,
+                locked,
                 &path,
             );
             conn.send(&match res {
@@ -196,11 +198,15 @@ pub fn run_headless(size_arg: Option<&str>) {
     state.save_layout();
 }
 
-/// Twitcher, if it is up, as an element for `output`.
+/// Twitcher, if it is up, as an element for `output` (or, while locked,
+/// the lock screen).
 fn twitcher_overlay(
     state: &mut AnvilState<HeadlessData>,
     output: &Output,
 ) -> Vec<crate::render::CustomRenderElements<GlesRenderer>> {
+    if state.lock.locked() {
+        return crate::lock::elements(&state.lock, &mut state.backend_data.renderer, output);
+    }
     let Some((entries, selected)) = state.twitcher_entries() else { return Vec::new() };
     let output_size = state.space.output_geometry(output).map(|g| g.size).unwrap_or_default();
     let scale = output.current_scale().fractional_scale();
@@ -218,6 +224,7 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, output: &Output) {
     state.pre_repaint(output, frame_target);
     let desktop_color = state.desktop_color();
     let overlay = twitcher_overlay(state, output);
+    let locked = state.lock.locked();
     let data = &mut state.backend_data;
     let result = {
         let Ok(mut fb) = data.renderer.bind(&mut data.target) else {
@@ -235,6 +242,7 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, output: &Output) {
             1,
             false,
             desktop_color,
+            locked,
         )
     };
     match result {

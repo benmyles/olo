@@ -230,6 +230,10 @@ impl<B: Backend + 'static> AnvilState<B> {
             },
             Request::Outputs => Reply::Outputs { outputs: self.output_infos() },
             Request::PowerStatus => Reply::Power { status: self.power.status() },
+            Request::Lock => {
+                self.lock_screen();
+                Reply::Ok
+            }
             Request::SetCaffeinated { on } => {
                 self.set_caffeinated(on);
                 Reply::Ok

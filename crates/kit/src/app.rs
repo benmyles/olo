@@ -140,7 +140,19 @@ pub(crate) enum Request {
     Activate(WindowId),
     Copy(String),
     Paste(WindowId),
+    LockSession,
+    UnlockSession,
     Quit,
+}
+
+/// Delivered to [`App::message`] after [`Cx::lock_session`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionLock {
+    /// The session is locked; these windows cover the outputs (one each).
+    /// Sent again with the new set when outputs come and go.
+    Locked(Vec<WindowId>),
+    /// The compositor refused or ended the lock.
+    Finished,
 }
 
 /// The app's handle to the kit during a callback.
@@ -208,6 +220,16 @@ impl Cx {
     }
     /// Bring the window to the front and give it the keyboard (restoring
     /// it if minimized or on another workspace).
+    /// Lock the session (ext-session-lock): when the compositor agrees, the
+    /// app is sent [`SessionLock::Locked`] with a window on every output,
+    /// drawn through `App::ui` like any other. Only the lock screen does this.
+    pub fn lock_session(&mut self) {
+        self.requests.push(Request::LockSession);
+    }
+    /// End the session lock (after the user proved who they are).
+    pub fn unlock_session(&mut self) {
+        self.requests.push(Request::UnlockSession);
+    }
     pub fn activate(&mut self, window: WindowId) {
         self.requests.push(Request::Activate(window));
     }

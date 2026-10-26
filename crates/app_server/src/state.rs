@@ -122,12 +122,18 @@ use smithay::{
 pub struct ClientState {
     pub compositor_state: CompositorClientState,
     pub security_context: Option<SecurityContext>,
+    /// Set when the client goes away (the lock screen's, so a crash is noticed).
+    pub gone: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 impl ClientData for ClientState {
     /// Notification that a client was initialized
     fn initialized(&self, _client_id: ClientId) {}
     /// Notification that a client is disconnected
-    fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
+    fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {
+        if let Some(gone) = &self.gone {
+            gone.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -176,6 +182,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub keymap: crate::keymap::Keymap,
     /// Idle, caffeinated mode, brightness (see `power`).
     pub power: crate::power::Power,
+    /// The lock screen (see `lock`).
+    pub lock: crate::lock::Lock,
     /// Twitcher, while ⌘Tab / ⌘\` is held.
     pub twitch: Option<crate::desktop::Twitch>,
     pub twitcher: crate::twitcher::Overlay,
@@ -802,6 +810,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
 
         let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
         IdleInhibitManagerState::new::<Self>(&dh);
+        let lock = crate::lock::Lock::new::<BackendData>(&dh);
 
         #[cfg(feature = "xwayland")]
         let xwayland_shell_state = xwayland_shell::XWaylandShellState::new::<Self>(&dh.clone());
@@ -843,6 +852,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             suppressed_keys: Vec::new(),
             keymap: Default::default(),
             power: crate::power::Power::new(BackendData::IS_SESSION),
+            lock,
             twitch: None,
             twitcher: Default::default(),
             cursor_status: CursorImageStatus::default_named(),
@@ -890,6 +900,10 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             state.power_tick();
             smithay::reexports::calloop::timer::TimeoutAction::ToDuration(crate::power::TICK)
         });
+        state.relock();
+        if BackendData::IS_SESSION {
+            state.watch_login();
+        }
         crate::text::warm_up();
         state
     }
@@ -1122,6 +1136,9 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                     )
                 });
             }
+        }
+        if let Some(surface) = self.lock.surface_for(output) {
+            smithay::desktop::utils::send_frames_surface_tree(surface, output, time, throttle, |_, _| Some(output.clone()));
         }
         // Drop the lock to the layer map before calling blocker_cleared, which might end up
         // calling the commit handler which in turn again could access the layer map.

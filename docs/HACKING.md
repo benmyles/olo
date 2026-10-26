@@ -307,3 +307,32 @@ Hardware is touched only when app_server is the session
 logind `SetBrightness` (no root needed), the inhibitor, suspend, the sound
 server. Headless sessions simulate a backlight at 0.75 and only log
 "would sleep", so tests can drive all of it safely.
+
+## The lock screen (crates/app_server/src/lock.rs, apps/lock)
+
+`lock_screen()` (Ctrl+⌘Q, Deskbar ▸ Lock Screen, `Request::Lock`, the
+display turning off for idleness when `power.lock_on_display_off`, logind
+`PrepareForSleep` and `Lock`) covers every output in black at once, takes
+keyboard focus away and starts `tabula-lock` on a socket pair of its own
+(WAYLAND_SOCKET): ext-session-lock is offered to that one client only. The
+locker is restarted if it dies (at most every 2 s); the screen stays
+black meanwhile, so the lock never fails open. While locked, input reaches
+lock surfaces only, keybindings are off, and the displays sleep after a
+minute. A marker, `$XDG_RUNTIME_DIR/tabula-locked-$WAYLAND_DISPLAY`, makes
+an app_server that reloaded or crashed come back locked. Before sleep,
+app_server holds a logind delay inhibitor until every output shows the lock
+surface (or 3 s).
+
+`tabula-lock` uses the kit's `cx.lock_session()` (`SessionLock::Locked`
+gives one window per output, the first is primary; `cx.unlock_session()`
+ends it) and checks the password with `tabula_system::auth` (PAM via
+libpam, on a thread) while listening for Touch ID with
+`tabula_system::fingerprint`. Debug builds take `TABULA_PAM_CONFDIR` +
+`TABULA_PAM_SERVICE` (passed through by tsession), so tests use a private
+pam_exec service and never a real password:
+
+```sh
+printf 'auth required pam_exec.so expose_authtok quiet /path/check.sh\naccount required pam_permit.so\n' > $dir/exec
+TABULA_PAM_CONFDIR=$dir TABULA_PAM_SERVICE=exec tools/dev/tsession start lk --light
+tools/dev/tsession ipc lk '{"type":"lock"}'; tools/dev/tsession type lk secret; tools/dev/tsession key lk 28
+```

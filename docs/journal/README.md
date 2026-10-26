@@ -3,6 +3,32 @@
 Tabula's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-10-26
+
+### Power: lock when the display turns off
+
+*00:07* — New option, on by default.
+
+![Power: lock when the display turns off](2026-10-26/000701-power-lock-when-the-display-turns-off.png)
+
+### Deskbar: Lock Screen
+
+*00:07* — Lock Screen in the Tabula menu; the off cup in the tray is now visible in dark mode.
+
+![Deskbar: Lock Screen](2026-10-26/000701-deskbar-lock-screen.png)
+
+### Lock screen: wrong password
+
+*00:07* — A wrong password shakes the panel and says so (light); PAM runs on a thread.
+
+![Lock screen: wrong password](2026-10-26/000701-lock-screen-wrong-password.png)
+
+### Lock screen
+
+*00:07* — tabula-lock over ext-session-lock: clock, date, and a BeOS panel asking for the password or Touch ID (dark).
+
+![Lock screen](2026-10-26/000701-lock-screen.png)
+
 ## 2026-10-25
 
 ### Deskbar caffeinated cup

@@ -161,7 +161,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                         a => action = a,
                     }
                 }
-                crate::keymap::Out::Action(a) => self.keymap_action(a),
+                // Switching apps, Find and the like stay off while locked.
+                crate::keymap::Out::Action(a) if !self.lock.locked() => self.keymap_action(a),
+                crate::keymap::Out::Action(_) => {}
             }
         }
         action
@@ -182,7 +184,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     None => self.spawn_program("tabula-tracker", &["--find"]),
                 }
             }
-            A::Lock => warn!("Ctrl+⌘Q: there is no lock screen yet"),
+            A::Lock => self.lock_screen(),
         }
     }
 
@@ -191,6 +193,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let serial = SCOUNTER.next_serial();
         let mut suppressed_keys = self.suppressed_keys.clone();
         let keyboard = self.seat.get_keyboard().unwrap();
+
+        // Locked: keys go to the lock screen and nowhere else.
+        if self.lock.locked() {
+            self.lock_guard_focus();
+            keyboard.input::<(), _>(self, keycode, state, serial, time, |_, _, _| FilterResult::Forward);
+            return KeyAction::None;
+        }
 
         for layer in self.layer_shell_state.layer_surfaces().rev() {
             let exclusive = layer.with_cached_state(|data| {
@@ -393,6 +402,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn update_keyboard_focus(&mut self, location: Point<f64, Logical>, serial: Serial) {
+        if self.lock.locked() {
+            self.lock_guard_focus();
+            return;
+        }
         let keyboard = self.seat.get_keyboard().unwrap();
         let touch = self.seat.get_touch();
         let input_method = self.seat.input_method();
@@ -476,6 +489,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         &self,
         pos: Point<f64, Logical>,
     ) -> Option<(PointerFocusTarget, Point<f64, Logical>)> {
+        if self.lock.locked() {
+            return self.lock_surface_under(pos).map(|(s, loc)| (PointerFocusTarget::from(s), loc));
+        }
         let output = self.space.outputs().find(|o| {
             let geometry = self.space.output_geometry(o).unwrap();
             geometry.contains(pos.to_i32_round())

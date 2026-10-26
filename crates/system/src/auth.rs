@@ -132,6 +132,12 @@ pub fn service() -> &'static str {
 /// Check `password` for `user`. Ok means PAM authenticated the user and
 /// their account is usable.
 pub fn check_password(user: &str, password: &str) -> Result<(), AuthError> {
+    // Debug builds only: a private PAM service for automated lock-screen
+    // tests (TABULA_PAM_CONFDIR holding TABULA_PAM_SERVICE).
+    #[cfg(debug_assertions)]
+    if let (Some(dir), Ok(svc)) = (std::env::var_os("TABULA_PAM_CONFDIR"), std::env::var("TABULA_PAM_SERVICE")) {
+        return check(&svc, Some(Path::new(&dir)), user, password);
+    }
     check(service(), None, user, password)
 }
 

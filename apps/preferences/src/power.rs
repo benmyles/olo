@@ -139,6 +139,10 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, power: Option<&PowerStatus>, server: &S
         minutes_menu(ui, "display-off", "Turn the display off after:", DISPLAY_OFF, &mut p.display_off_minutes);
         minutes_menu(ui, "sleep", "Put the computer to sleep after:", SLEEP, &mut p.sleep_minutes);
         ui.add_enabled(p.sleep_minutes > 0, CheckBox::new(&mut p.sleep_on_battery_only, "Only on battery power"));
+        ui.add_enabled(
+            p.display_off_minutes > 0,
+            CheckBox::new(&mut p.lock_on_display_off, "Lock the screen when the display turns off"),
+        );
     });
 
     BBox::new("Caffeinated").show(ui, |ui| {

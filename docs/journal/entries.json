@@ -208,5 +208,29 @@
   "title": "Deskbar caffeinated cup",
   "caption": "The tray cup: empty when sleep is allowed, full and steaming while caffeinated.",
   "image": "2026-10-25/234329-deskbar-caffeinated-cup.png"
+ },
+ {
+  "time": "2026-10-26T00:07:01",
+  "title": "Lock screen",
+  "caption": "tabula-lock over ext-session-lock: clock, date, and a BeOS panel asking for the password or Touch ID (dark).",
+  "image": "2026-10-26/000701-lock-screen.png"
+ },
+ {
+  "time": "2026-10-26T00:07:01",
+  "title": "Lock screen: wrong password",
+  "caption": "A wrong password shakes the panel and says so (light); PAM runs on a thread.",
+  "image": "2026-10-26/000701-lock-screen-wrong-password.png"
+ },
+ {
+  "time": "2026-10-26T00:07:01",
+  "title": "Deskbar: Lock Screen",
+  "caption": "Lock Screen in the Tabula menu; the off cup in the tray is now visible in dark mode.",
+  "image": "2026-10-26/000701-deskbar-lock-screen.png"
+ },
+ {
+  "time": "2026-10-26T00:07:01",
+  "title": "Power: lock when the display turns off",
+  "caption": "New option, on by default.",
+  "image": "2026-10-26/000701-power-lock-when-the-display-turns-off.png"
  }
 ]

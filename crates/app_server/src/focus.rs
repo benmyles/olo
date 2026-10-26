@@ -43,6 +43,8 @@ pub enum KeyboardFocusTarget {
     Window(Window),
     LayerSurface(LayerSurface),
     Popup(PopupKind),
+    /// A bare surface: the lock screen's.
+    Surface(WlSurface),
 }
 
 impl IsAlive for KeyboardFocusTarget {
@@ -52,6 +54,7 @@ impl IsAlive for KeyboardFocusTarget {
             KeyboardFocusTarget::Window(w) => w.alive(),
             KeyboardFocusTarget::LayerSurface(l) => l.alive(),
             KeyboardFocusTarget::Popup(p) => p.alive(),
+            KeyboardFocusTarget::Surface(s) => s.is_alive(),
         }
     }
 }
@@ -94,6 +97,7 @@ impl KeyboardFocusTarget {
             },
             Self::LayerSurface(l) => l.wl_surface(),
             Self::Popup(p) => p.wl_surface(),
+            Self::Surface(s) => s,
         }
     }
 }
@@ -486,6 +490,7 @@ impl WaylandFocus for KeyboardFocusTarget {
             KeyboardFocusTarget::Window(w) => w.wl_surface(),
             KeyboardFocusTarget::LayerSurface(l) => Some(Cow::Borrowed(l.wl_surface())),
             KeyboardFocusTarget::Popup(p) => Some(Cow::Borrowed(p.wl_surface())),
+            KeyboardFocusTarget::Surface(s) => Some(Cow::Borrowed(s)),
         }
     }
 }
@@ -707,6 +712,7 @@ impl From<KeyboardFocusTarget> for PointerFocusTarget {
             },
             KeyboardFocusTarget::LayerSurface(surface) => PointerFocusTarget::from(surface.wl_surface()),
             KeyboardFocusTarget::Popup(popup) => PointerFocusTarget::from(popup.wl_surface()),
+            KeyboardFocusTarget::Surface(s) => PointerFocusTarget::from(&s),
         }
     }
 }

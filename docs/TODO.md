@@ -28,8 +28,8 @@ as they land (with the commit), add new ones as they come up.
 
 - ~~Keyboard mapping in app_server, replacing keyd~~: ⌘ as command,
   Caps Lock as Ctrl, ⌘Tab / ⌘\` switching, ⌘ arrows / ⌘⌫, tap ⌘ /
-  ⌘Space for Find, terminals keep physical Ctrl (`keymap.rs`). Still to
-  do: a lock screen for Ctrl+⌘Q. keyd can then be disabled system-wide; while
+  ⌘Space for Find, terminals keep physical Ctrl (`keymap.rs`), Ctrl+⌘Q
+  locks. keyd can now be disabled system-wide; while
   it runs it grabs the keyboards and app_server sees its output (handled:
   its ⌘ tap chord and Super+Tab are understood).
 - ~~Kit opener instead of `xdg-open`~~: `tabula_xdg::open` (shared-mime-info
@@ -67,11 +67,11 @@ as they land (with the commit), add new ones as they come up.
 
 ## Lock, screensaver, caffeinated
 
-- **Screen lock** (ext-session-lock in app_server, a native lock client):
-  password via PAM and Touch ID via fprintd over D-Bus, in Tabula's look;
-  Ctrl+⌘Q, lock on lid close / sleep / idle timeout, and on screensaver
-  exit after a configurable delay. Survives app_server reload and can
-  never fail open (if the locker dies, the screen stays locked).
+- ~~**Screen lock**~~: ext-session-lock in app_server, `tabula-lock`
+  (PAM + Touch ID), Ctrl+⌘Q / Deskbar / idle display-off / sleep / logind
+  Lock; never fails open; survives reload (see HACKING "The lock screen").
+  Still to do: lock on screensaver exit after its delay; lid close goes
+  through logind's suspend, so it is covered when the lid sleeps.
 - **Screensaver**: idle detection in app_server (ext-idle-notify, and
   idle-inhibit honoured for video players), a screensaver host that runs
   modules full screen on every display, and Preferences ▸ Screen Saver

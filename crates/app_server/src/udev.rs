@@ -1457,10 +1457,19 @@ impl AnvilState<UdevData> {
         }
         .unwrap();
 
-        let overlay = twitcher.and_then(|(entries, selected)| {
-            let scale = output.current_scale().fractional_scale();
-            self.twitcher.element(&mut renderer, &entries, selected, output_size, scale)
-        });
+        let locked = self.lock.locked();
+        let overlays: Vec<CustomRenderElements<_>> = if locked {
+            crate::lock::elements(&self.lock, &mut renderer, &output)
+        } else {
+            twitcher
+                .and_then(|(entries, selected)| {
+                    let scale = output.current_scale().fractional_scale();
+                    self.twitcher.element(&mut renderer, &entries, selected, output_size, scale)
+                })
+                .map(CustomRenderElements::Overlay)
+                .into_iter()
+                .collect()
+        };
 
         let pointer_images = &mut self.backend_data.pointer_images;
         let pointer_image = pointer_images
@@ -1497,7 +1506,8 @@ impl AnvilState<UdevData> {
             &mut self.cursor_status,
             self.show_window_preview,
             desktop_color,
-            overlay,
+            overlays,
+            locked,
         );
         let reschedule = match result {
             Ok((has_rendered, states)) => {
@@ -1580,7 +1590,8 @@ fn render_surface<'a>(
     cursor_status: &mut CursorImageStatus,
     show_window_preview: bool,
     desktop_color: smithay::backend::renderer::Color32F,
-    overlay: Option<smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement<UdevRenderer<'a>>>,
+    overlays: Vec<CustomRenderElements<UdevRenderer<'a>>>,
+    locked: bool,
 ) -> Result<(bool, RenderElementStates), SwapBuffersError> {
     let output_geometry = space.output_geometry(output).unwrap();
     let scale = Scale::from(output.current_scale().fractional_scale());
@@ -1650,8 +1661,8 @@ fn render_surface<'a>(
         }
     }
 
-    // Twitcher sits under the pointer, over everything else.
-    custom_elements.extend(overlay.map(CustomRenderElements::Overlay));
+    // Twitcher (or the lock screen) sits under the pointer, over everything else.
+    custom_elements.extend(overlays);
 
     #[cfg(feature = "debug")]
     if let Some(element) = surface.fps_element.as_mut() {
@@ -1661,7 +1672,7 @@ fn render_surface<'a>(
     }
 
     let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, show_window_preview, desktop_color);
+        output_elements(output, space, custom_elements, renderer, show_window_preview, desktop_color, locked);
 
     let frame_mode = if surface.disable_direct_scanout {
         FrameFlags::empty()

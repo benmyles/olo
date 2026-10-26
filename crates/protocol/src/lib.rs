@@ -40,6 +40,8 @@ pub enum Request {
     SetSettings { settings: Settings },
     /// Save a PNG of everything on screen (all outputs, composited).
     Screenshot { path: String },
+    /// Lock the screen now.
+    Lock,
     /// Idle state, caffeinated mode and the built-in display's brightness.
     PowerStatus,
     /// Keep the machine awake (no display sleep, system sleep, screen
@@ -175,11 +177,14 @@ pub struct PowerSettings {
     pub sleep_minutes: u32,
     /// Only sleep for idleness on battery, not when plugged in.
     pub sleep_on_battery_only: bool,
+    /// Lock the screen when the displays turn off for idleness. (Sleep
+    /// always locks.)
+    pub lock_on_display_off: bool,
 }
 
 impl Default for PowerSettings {
     fn default() -> Self {
-        PowerSettings { display_off_minutes: 10, sleep_minutes: 30, sleep_on_battery_only: false }
+        PowerSettings { display_off_minutes: 10, sleep_minutes: 30, sleep_on_battery_only: false, lock_on_display_off: true }
     }
 }
 

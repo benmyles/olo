@@ -451,6 +451,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let pointer = self.pointer.current_location();
         fixup_positions(&mut self.space, pointer);
         save_settings(&self.settings);
+        self.lock_outputs_changed();
         self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
         Ok(())
     }
@@ -472,6 +473,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
             let pointer = self.pointer.current_location();
             fixup_positions(&mut self.space, pointer);
+            self.lock_outputs_changed();
             self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
         }
         self.apply_input_settings();

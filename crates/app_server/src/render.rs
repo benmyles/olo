@@ -148,11 +148,18 @@ pub fn output_elements<R>(
     renderer: &mut R,
     show_window_preview: bool,
     desktop_color: Color32F,
+    locked: bool,
 ) -> (Vec<OutputRenderElements<R, WindowRenderElement<R>>>, Color32F)
 where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Send + 'static,
 {
+    // Locked: nothing but what the caller passed (the pointer and the lock
+    // screen) over an opaque background.
+    if locked {
+        let [r, g, b, a] = crate::lock::BACKGROUND;
+        return (custom_elements.into_iter().map(OutputRenderElements::from).collect(), Color32F::new(r, g, b, a));
+    }
     if let Some(window) = output
         .user_data()
         .get::<FullscreenSurface>()
@@ -206,13 +213,14 @@ pub fn render_output<'a, 'd, R>(
     age: usize,
     show_window_preview: bool,
     desktop_color: Color32F,
+    locked: bool,
 ) -> Result<RenderOutputResult<'d>, OutputDamageTrackerError<R::Error>>
 where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Send + 'static,
 {
     let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, show_window_preview, desktop_color);
+        output_elements(output, space, custom_elements, renderer, show_window_preview, desktop_color, locked);
     damage_tracker.render_output(renderer, framebuffer, age, &elements, clear_color)
 }
 
@@ -223,6 +231,7 @@ pub fn screenshot<R, T>(
     space: &Space<WindowElement>,
     overlays: Vec<CustomRenderElements<R>>,
     clear_color: Color32F,
+    locked: bool,
     path: &std::path::Path,
 ) -> Result<(), String>
 where
@@ -240,7 +249,7 @@ where
     let mapping = {
         let mut fb = renderer.bind(&mut target).map_err(err)?;
         let (elements, clear_color) =
-            output_elements::<R>(output, space, overlays, renderer, false, clear_color);
+            output_elements::<R>(output, space, overlays, renderer, false, clear_color, locked);
         let mut damage_tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
         damage_tracker
             .render_output(renderer, &mut fb, 0, &elements, clear_color)

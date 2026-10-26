@@ -102,6 +102,10 @@ struct Gpu {
 enum Role {
     Toplevel(Window),
     Layer(LayerSurface),
+    /// Covers one output while the session is locked (held: dropping it
+    /// destroys the lock surface).
+    /// The output it covers (dropped with it if the output goes).
+    Lock(#[allow(dead_code)] smithay_client_toolkit::session_lock::SessionLockSurface, wl_output::WlOutput),
     Popup {
         popup: Popup,
         /// The window whose menu bar (or context menu) this belongs to.
@@ -179,6 +183,8 @@ pub struct Kit {
     shm: Shm,
     data_device_manager: Option<DataDeviceManagerState>,
     activation: Option<smithay_client_toolkit::activation::ActivationState>,
+    session_lock_state: smithay_client_toolkit::session_lock::SessionLockState,
+    session_lock: Option<smithay_client_toolkit::session_lock::SessionLock>,
     fractional_manager: Option<WpFractionalScaleManagerV1>,
     viewporter: Option<WpViewporter>,
 
@@ -214,7 +220,9 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
         )
         .try_init();
-    let in_session = std::env::var_os("TABULA_SESSION").is_some();
+    // A client handed its connection (WAYLAND_SOCKET, as app_server starts
+    // the lock screen) has nothing to reconnect to: it ends with app_server.
+    let in_session = std::env::var_os("TABULA_SESSION").is_some() && std::env::var_os("WAYLAND_SOCKET").is_none();
     let binary = Binary::current();
 
     let mut event_loop: EventLoop<'static, Kit> = EventLoop::try_new().expect("event loop");
@@ -411,6 +419,8 @@ impl Kit {
             data_device_manager: DataDeviceManagerState::bind(globals, &qh).ok(),
             activation: smithay_client_toolkit::activation::ActivationState::bind(globals, &qh)
                 .ok(),
+            session_lock_state: smithay_client_toolkit::session_lock::SessionLockState::new(globals, &qh),
+            session_lock: None,
             fractional_manager,
             viewporter,
             conn,
@@ -540,6 +550,24 @@ impl Kit {
                         }
                     }
                     Request::RedrawAll => self.surfaces.iter_mut().for_each(|s| s.dirty = true),
+                    Request::LockSession => match self.session_lock_state.lock(&self.qh) {
+                        Ok(lock) => self.session_lock = Some(lock),
+                        Err(e) => {
+                            warn!("cannot lock the session: {e}");
+                            self.with_app(|app, cx| app.message(cx, Box::new(crate::SessionLock::Finished)));
+                        }
+                    },
+                    Request::UnlockSession => {
+                        if let Some(lock) = self.session_lock.take() {
+                            lock.unlock();
+                            let ids: Vec<WindowId> =
+                                self.surfaces.iter().filter(|s| matches!(s.role, Role::Lock(..))).map(|s| s.id).collect();
+                            for id in ids {
+                                self.drop_surface(id);
+                            }
+                            let _ = self.conn.flush();
+                        }
+                    }
                     Request::Activate(id) => {
                         // Ask for a token for the surface, then use it
                         // (`new_token`): app_server raises and focuses it.
@@ -710,7 +738,7 @@ impl Kit {
         let any_window = self
             .surfaces
             .iter()
-            .any(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_)));
+            .any(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_) | Role::Lock(..)));
         if !any_window {
             self.exit = true;
         }
@@ -958,7 +986,7 @@ impl Kit {
         menu::set_open_source(&ctx, open_source);
         let kind = match &s.role {
             Role::Toplevel(_) => 0,
-            Role::Layer(_) => 1,
+            Role::Layer(_) | Role::Lock(..) => 1,
             Role::Popup { .. } => 2,
         };
 
@@ -1359,6 +1387,11 @@ impl Kit {
                 }
                 p
             }
+            Role::Lock(..) => {
+                // Nothing may sit over the lock screen.
+                warn!("no popups on lock surfaces");
+                return;
+            }
         };
         let Ok(popup) = popup else {
             warn!("could not create popup");
@@ -1504,9 +1537,22 @@ impl OutputHandler for Kit {
     fn output_state(&mut self) -> &mut OutputState {
         &mut self.output_state
     }
-    fn new_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {}
+    fn new_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {
+        if self.session_lock.is_some() {
+            self.cover_outputs();
+        }
+    }
     fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {}
-    fn output_destroyed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {}
+    fn output_destroyed(&mut self, _: &Connection, _: &QueueHandle<Self>, output: wl_output::WlOutput) {
+        let gone: Vec<WindowId> =
+            self.surfaces.iter().filter(|s| matches!(&s.role, Role::Lock(_, o) if *o == output)).map(|s| s.id).collect();
+        if !gone.is_empty() {
+            for id in gone {
+                self.drop_surface(id);
+            }
+            self.cover_outputs();
+        }
+    }
 }
 
 impl WindowHandler for Kit {
@@ -1545,6 +1591,72 @@ impl WindowHandler for Kit {
             self.configure_gpu_surface(i);
         }
         // Draw right away; the first frame maps the window.
+        self.surfaces[i].frame_pending = false;
+        let id = self.surfaces[i].id;
+        self.draw(id);
+    }
+}
+
+impl Kit {
+    /// A lock surface on every output (the session just locked, or outputs
+    /// changed while locked); tells the app the current set.
+    fn cover_outputs(&mut self) {
+        let Some(lock) = self.session_lock.clone() else { return };
+        let covered: Vec<wl_output::WlOutput> = self
+            .surfaces
+            .iter()
+            .filter_map(|s| match &s.role {
+                Role::Lock(_, o) => Some(o.clone()),
+                _ => None,
+            })
+            .collect();
+        let outputs: Vec<wl_output::WlOutput> = self.output_state.outputs().collect();
+        for output in outputs.iter().filter(|o| !covered.contains(o)) {
+            let wl = self.compositor.create_surface(&self.qh);
+            let surface = lock.create_lock_surface(wl.clone(), output, &self.qh);
+            let id = {
+                let cx = self.cx.as_mut().unwrap();
+                let id = WindowId(cx.next_id);
+                cx.next_id += 1;
+                id
+            };
+            let options = WindowOptions { title: String::new(), ..Default::default() };
+            let s = self.make_surface(id, Role::Lock(surface, output.clone()), wl, options, (1, 1));
+            self.surfaces.push(s);
+        }
+        let ids: Vec<WindowId> = self.surfaces.iter().filter(|s| matches!(s.role, Role::Lock(..))).map(|s| s.id).collect();
+        self.with_app(|app, cx| app.message(cx, Box::new(crate::SessionLock::Locked(ids))));
+    }
+}
+
+impl smithay_client_toolkit::session_lock::SessionLockHandler for Kit {
+    fn locked(&mut self, _: &Connection, _: &QueueHandle<Self>, _: smithay_client_toolkit::session_lock::SessionLock) {
+        self.cover_outputs();
+    }
+
+    fn finished(&mut self, _: &Connection, _: &QueueHandle<Self>, _: smithay_client_toolkit::session_lock::SessionLock) {
+        self.session_lock = None;
+        self.with_app(|app, cx| app.message(cx, Box::new(crate::SessionLock::Finished)));
+    }
+
+    fn configure(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        surface: smithay_client_toolkit::session_lock::SessionLockSurface,
+        configure: smithay_client_toolkit::session_lock::SessionLockSurfaceConfigure,
+        _: u32,
+    ) {
+        let Some(i) = self.surfaces.iter().position(|s| &s.wl == surface.wl_surface()) else { return };
+        let s = &mut self.surfaces[i];
+        let size = configure.new_size;
+        let changed = size != s.size || !s.configured;
+        s.size = size;
+        s.configured = true;
+        s.dirty = true;
+        if changed {
+            self.configure_gpu_surface(i);
+        }
         self.surfaces[i].frame_pending = false;
         let id = self.surfaces[i].id;
         self.draw(id);
