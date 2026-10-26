@@ -652,5 +652,17 @@
   "title": "NetPositive: audio and video",
   "caption": "Video and audio elements in pages play with Tabula's own decoders (H.264/AV1 in MP4 and WebM, Opus, AAC, MP3 and more) through a native servo-media backend; sound goes to the sound server in process.",
   "image": "2026-10-26/095828-netpositive-audio-and-video.png"
+ },
+ {
+  "time": "2026-10-26T10:58:45",
+  "title": "NetPositive: a page over its memory",
+  "caption": "A page that runs away with memory meets its unit's MemoryMax (512 MiB here, for the test) and is OOM-killed alone; the bar says why, over the crash page.",
+  "image": "2026-10-26/105845-netpositive-a-page-over-its-memory.png"
+ },
+ {
+  "time": "2026-10-26T11:00:23",
+  "title": "NetPositive: a stuck page",
+  "caption": "Pages run in content processes, each a systemd unit with its own memory limit and CPU weight. A tab whose page stops answering for ten seconds gets this bar; Stop Page kills just that process and the tab shows the crash page.",
+  "image": "2026-10-26/110023-netpositive-a-stuck-page.png"
  }
 ]

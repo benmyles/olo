@@ -213,28 +213,30 @@ pub struct Engine {
 /// notifications and geolocation (no prompts yet), the async clipboard,
 /// service workers (incomplete) and WebRTC (no backend yet).
 fn preferences() -> servo::Preferences {
-    let mut p = servo::Preferences::default();
-    p.dom_intersection_observer_enabled = true;
-    p.dom_indexeddb_enabled = true;
-    p.dom_webgl2_enabled = true;
-    p.dom_offscreen_canvas_enabled = true;
-    p.dom_permissions_enabled = true;
-    p.dom_fontface_enabled = true;
-    p.dom_adoptedstylesheet_enabled = true;
-    p.dom_exec_command_enabled = true;
-    p.dom_composition_event_enabled = true;
-    p.dom_visual_viewport_enabled = true;
-    p.dom_storage_manager_api_enabled = true;
-    p.layout_columns_enabled = true;
-    p.layout_container_queries_enabled = true;
-    p.layout_variable_fonts_enabled = true;
-    p
+    servo::Preferences {
+        dom_intersection_observer_enabled: true,
+        dom_indexeddb_enabled: true,
+        dom_webgl2_enabled: true,
+        dom_offscreen_canvas_enabled: true,
+        dom_permissions_enabled: true,
+        dom_fontface_enabled: true,
+        dom_adoptedstylesheet_enabled: true,
+        dom_exec_command_enabled: true,
+        dom_composition_event_enabled: true,
+        dom_visual_viewport_enabled: true,
+        dom_storage_manager_api_enabled: true,
+        layout_columns_enabled: true,
+        layout_container_queries_enabled: true,
+        layout_variable_fonts_enabled: true,
+        ..Default::default()
+    }
 }
 
 impl Engine {
     pub fn new(proxy: Proxy) -> Engine {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
-        let opts = Opts { config_dir: data_dir(), ..Default::default() };
+        // Servo's default is to exit when any page's script panics.
+        let opts = Opts { config_dir: data_dir(), multiprocess: multiprocess(), hard_fail: false, ..Default::default() };
         let pending = Arc::new(AtomicBool::new(false));
         crate::media::install();
         let servo = ServoBuilder::default()
@@ -266,6 +268,13 @@ impl Engine {
         self.servo.spin_event_loop();
         self.events.take()
     }
+}
+
+/// Whether pages run in processes of their own, so one page's runaway
+/// script or memory can't take the others (or NetPositive) down with it.
+/// `TABULA_BROWSER_SINGLE_PROCESS=1` keeps everything in one, for debugging.
+fn multiprocess() -> bool {
+    std::env::var_os("TABULA_BROWSER_SINGLE_PROCESS").is_none_or(|v| v.is_empty() || v == "0")
 }
 
 /// Cookies, local storage and the cache.

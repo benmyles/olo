@@ -12,3 +12,12 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   before flushing". The patch (`single_threaded()` in
   `src/text/font_face.rs`) asks for single-threaded contexts, as a glyph
   is far too small for threads anyway.
+
+- **servo-constellation 0.7.0** (MPL-2.0): in multiprocess mode it never
+  notices a content process dying (crashing, or stopped by NetPositive for
+  hanging or using too much memory): its pages stay attached to the dead
+  event loop, so they never show the crash page and reloading them goes
+  nowhere. The patch has the process manager remember which event loop
+  each process runs (`process_manager.rs`, `event_loop.rs`) and, when a
+  process's lifeline breaks while pages still use it, treats it as that
+  event loop panicking (`Request::RemoveProcess` in `constellation.rs`).

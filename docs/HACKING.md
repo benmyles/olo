@@ -702,8 +702,13 @@ helper for unit tests.
 ## NetPositive (apps/browser)
 
 The web browser: Servo 0.7, built in (`engine.rs`), with no system
-libraries (no gstreamer, so pages have no audio or video yet; no arboard,
-the kit has the clipboard; no webgpu, which would bring a second wgpu).
+libraries (no gstreamer: media is ours, see below; no arboard, the kit
+has the clipboard; no webgpu, which would bring a second wgpu). Scripts
+run on SpiderMonkey with all its JITs (baseline, Ion, wasm), and pages in
+content processes of their own (see "Keeping pages apart"). `engine.rs`
+also turns on the web features Servo has finished but keeps behind
+preferences (WebGL 2, IntersectionObserver, IndexedDB, OffscreenCanvas,
+FontFace, container queries…), which sites like Zoom need to load.
 One `Servo` per process; each window `embed`s a subsurface and makes a
 `WindowRenderingContext` (surfman, EGL) on it in `App::embedded`; each tab
 is a `WebView` on its window's context, and only the active one is shown
@@ -897,12 +902,52 @@ playback starts early and seeking ahead waits. A driver thread per player
 keeps the clock (the sound's, or its own without a sound server), hands
 Servo each picture as BGRA, and reports state, position and the end.
 Web Audio, streams and WebRTC still go to servo-media's dummy backend.
+In multiprocess mode the player runs in the content process, which
+installs the backend too (`guard::content_process`).
 
 A page script works around Servo 0.7: it fires `timeupdate` only once
 something has read an element's `textTracks` (so the script reads it as
 elements arrive), and after reaching the end it stays at
 HAVE_CURRENT_DATA and never plays again (so `play()` on an element that
 ended reloads it first).
+
+### Keeping pages apart in NetPositive
+
+Servo runs in multiprocess mode: each site's pages (an event loop) get a
+content process, which is this binary again with `--content-process
+TOKEN` (`main` checks first). `guard.rs` then keeps each one boxed in:
+
+* **A systemd unit per process.** The process Servo starts asks the
+  user's systemd (session bus) to run the same command as a transient
+  service, `tabula-browser-<ui pid>-<pid>.service`, waits for it to be
+  active and exits; the service's process connects to Servo in its place.
+  The unit has `MemoryMax` (`guard::page_memory`: a quarter of RAM,
+  1.5–4 GiB; no swap, so a runaway page is OOM-killed instead of
+  grinding), `TasksMax` and a `CPUWeight` NetPositive changes later
+  (`SetUnitProperties`): 100 for the tab you're looking at, 20 hidden,
+  1 stuck. The user manager owns its cgroups, so this needs no
+  privileges, and weights go both ways (nice can only go down without
+  `RLIMIT_NICE`). Without systemd the page stays where Servo started it,
+  niced to 5 with an `RLIMIT_DATA`, and the watch kills it over its RSS
+  limit. `TABULA_BROWSER_PAGE_MEMORY` (MiB) sets the limit for tests;
+  `TABULA_BROWSER_SINGLE_PROCESS=1` runs everything in one process.
+* **Which tab is which process.** Every two seconds each tab is asked, by
+  `evaluate_javascript`, for its process id: `canPlayType` of
+  `video/x-tabula-pid; key=…; bit=N` is answered by our media backend in
+  the content process, bit by bit (`guard::pid_bit`; the key is a random
+  one in the environment, so pages can't ask). A tab that hasn't
+  answered in ten seconds is stuck: a bar offers Wait or Stop Page, which
+  kills the process.
+* **Ends.** The `page-guard` thread lists our units each second, learns
+  their main pids, and when one fails reads `Result` (`oom-kill` says
+  "used too much memory" in the tab's bar), then resets it. A NetPositive
+  that crashed leaves failed units, collected on the next start.
+* Servo 0.7 never noticed a content process dying (its pages stayed on
+  the dead event loop and reloads went nowhere), and by default exited
+  the browser when any page panicked: `hard_fail` is off, and
+  `vendor/servo-constellation` treats a process whose lifeline breaks as
+  its event loop panicking, so its tabs get the crash page and reload in
+  a new process.
 
 ### Colours in NetPositive
 

@@ -161,7 +161,11 @@ impl Backend for Media {
     }
 
     fn can_play_type(&self, media_type: &str) -> SupportsMediaType {
-        can_play(media_type)
+        match crate::guard::pid_bit(media_type) {
+            Some(true) => SupportsMediaType::Maybe,
+            Some(false) => SupportsMediaType::No,
+            None => can_play(media_type),
+        }
     }
 
     fn get_device_monitor(&self) -> Box<dyn MediaDeviceMonitor> {

@@ -9,6 +9,7 @@ mod downloads;
 mod engine;
 mod favicon;
 mod find;
+mod guard;
 mod input;
 mod location;
 mod logins;
@@ -136,6 +137,10 @@ struct Tab {
     /// Whether the page loading now has given an icon (if not, the last
     /// page's goes when it's done).
     favicon_seen: bool,
+    /// The page has stopped answering (guard.rs), and why it was stopped
+    /// if it was.
+    hung: bool,
+    stopped: Option<String>,
 }
 
 impl Tab {
@@ -157,6 +162,8 @@ impl Tab {
             favicon: None,
             new_favicon: None,
             favicon_seen: false,
+            hung: false,
+            stopped: None,
         }
     }
 
@@ -252,6 +259,10 @@ struct NetPositive {
     blobs: BTreeMap<(WebViewId, u64), (String, Vec<u8>)>,
     /// The desktop is dark (or night): pages are told so.
     dark: bool,
+    /// Which process each tab's page is in and whether it answers, and
+    /// the thread keeping them in check (guard.rs).
+    pings: guard::Pings,
+    watch: guard::Watch,
 }
 
 impl NetPositive {
@@ -354,6 +365,7 @@ impl NetPositive {
             tab.view = None;
         }
         tab.url = url.to_string();
+        tab.stopped = None;
         match &tab.view {
             Some(v) => v.load(url),
             None => self.realize(win),
@@ -573,6 +585,7 @@ impl NetPositive {
                             if status == LoadStatus::Started {
                                 // The page asking is gone.
                                 tab.passkey = None;
+                                tab.hung = false;
                                 tab.scroll = None;
                                 tab.scrolled = None;
                                 tab.favicon_seen = false;
@@ -836,6 +849,33 @@ impl NetPositive {
                 }
                 cx.redraw(win);
             }
+            "stop-page" => {
+                let Some(b) = self.browser(win) else { return };
+                let Some(tab) = b.tabs.get_mut(b.active) else { return };
+                let Some(view) = tab.view.clone() else { return };
+                tab.hung = false;
+                if let Some(pid) = self.pings.pid(view.id()) {
+                    self.watch.kill(pid);
+                }
+                cx.redraw(win);
+            }
+            "wait-page" => {
+                let Some(b) = self.browser(win) else { return };
+                let Some(tab) = b.tabs.get_mut(b.active) else { return };
+                tab.hung = false;
+                if let Some(id) = tab.view.as_ref().map(|v| v.id()) {
+                    self.pings.wait(id);
+                }
+                cx.redraw(win);
+            }
+            "dismiss-stopped" => {
+                if let Some(b) = self.browser(win)
+                    && let Some(tab) = b.tabs.get_mut(b.active)
+                {
+                    tab.stopped = None;
+                }
+                cx.redraw(win);
+            }
             "dismiss-login" => {
                 if let Some(b) = self.browser(win)
                     && let Some(tab) = b.tabs.get_mut(b.active)
@@ -875,12 +915,17 @@ impl NetPositive {
         let Some(view) = &tab.view else { return };
         match command {
             "back" => {
+                tab.stopped = None;
                 view.go_back(1);
             }
             "forward" => {
+                tab.stopped = None;
                 view.go_forward(1);
             }
-            "reload" => view.reload(),
+            "reload" => {
+                tab.stopped = None;
+                view.reload();
+            }
             "stop" => {
                 // Servo has no stop: going nowhere ends the load.
                 if tab.loading()
@@ -1022,8 +1067,21 @@ impl NetPositive {
             top = strip.bottom();
         }
 
-        // Bars asking about the page's passkey request and a login just used.
+        // Bars about a stuck or stopped page, the page's passkey request
+        // and a login just used.
         if let Some(tab) = b.tabs.get_mut(b.active) {
+            if tab.hung {
+                let text = format!("“{}” isn’t responding.", truncate(&tab.label(), 60));
+                let buttons = vec![("Wait", true, "wait-page"), ("Stop Page", true, "stop-page")];
+                let bar = Rect::from_min_size(pos2(full.left(), top), vec2(full.width(), OFFER_HEIGHT));
+                notice(ui, &painter, bar, Notice { icon: "warning", text, error: false, choice: None, buttons }, &mut commands);
+                top = bar.bottom();
+            } else if let Some(text) = &tab.stopped {
+                let buttons = vec![("OK", true, "dismiss-stopped")];
+                let bar = Rect::from_min_size(pos2(full.left(), top), vec2(full.width(), OFFER_HEIGHT));
+                notice(ui, &painter, bar, Notice { icon: "stop", text: text.clone(), error: false, choice: None, buttons }, &mut commands);
+                top = bar.bottom();
+            }
             if let Some(ask) = &mut tab.passkey {
                 let busy = ask.busy;
                 let (text, error) = match &ask.error {
@@ -1042,7 +1100,7 @@ impl NetPositive {
                     }
                 };
                 let bar = Rect::from_min_size(pos2(full.left(), top), vec2(full.width(), OFFER_HEIGHT));
-                notice(ui, &painter, bar, Notice { text, error, choice, buttons }, &mut commands);
+                notice(ui, &painter, bar, Notice { icon: "key", text, error, choice, buttons }, &mut commands);
                 top = bar.bottom();
             }
             if let Some(offer) = &tab.offer {
@@ -1057,7 +1115,7 @@ impl NetPositive {
                 };
                 let buttons = vec![(save, !offer.busy, "save-login"), ("Not Now", true, "dismiss-login")];
                 let bar = Rect::from_min_size(pos2(full.left(), top), vec2(full.width(), OFFER_HEIGHT));
-                notice(ui, &painter, bar, Notice { text, error, choice: None, buttons }, &mut commands);
+                notice(ui, &painter, bar, Notice { icon: "key", text, error, choice: None, buttons }, &mut commands);
                 top = bar.bottom();
             }
         }
@@ -1685,6 +1743,7 @@ fn show_active(b: &mut Browser) {
 /// page, each with a close box; middle-click closes too.
 /// What a bar under the toolbar says and offers.
 struct Notice<'a> {
+    icon: &'a str,
     text: String,
     /// `text` is an error.
     error: bool,
@@ -1694,13 +1753,14 @@ struct Notice<'a> {
     buttons: Vec<(&'a str, bool, &'a str)>,
 }
 
-/// A bar under the toolbar asking about a login or passkey: the key, the
-/// message, and its controls. Clicks push their commands.
+/// A bar under the toolbar asking about a login, a passkey or a stuck
+/// page: an icon, the message, and its controls. Clicks push their
+/// commands.
 fn notice(ui: &mut egui::Ui, painter: &egui::Painter, bar: Rect, n: Notice, commands: &mut Vec<String>) {
     let p = style::palette(ui.ctx());
     painter.rect_filled(bar, 0.0, shade(&p, p.panel_background, 1.06));
     style::hline(painter, bar.left(), bar.right(), bar.bottom() - 1.0, shade(&p, p.panel_background, 1.3));
-    icons::paint(painter, Rect::from_center_size(pos2(bar.left() + m::SPACING + 8.0, bar.center().y), vec2(16.0, 16.0)), "key");
+    icons::paint(painter, Rect::from_center_size(pos2(bar.left() + m::SPACING + 8.0, bar.center().y), vec2(16.0, 16.0)), n.icon);
     let mut right = bar.right() - m::SPACING;
     let mut slot = |w: f32| {
         let r = Rect::from_min_size(pos2(right - w, bar.center().y - m::CONTROL_HEIGHT / 2.0), vec2(w, m::CONTROL_HEIGHT));
@@ -1999,6 +2059,10 @@ impl App for NetPositive {
         if message.is::<Wake>() {
             return self.pump(cx);
         }
+        let message = match message.downcast::<guard::Report>() {
+            Ok(report) => return self.guard(cx, *report),
+            Err(m) => m,
+        };
         let message = match message.downcast::<Answer>() {
             Ok(answer) => return self.answer(cx, *answer),
             Err(m) => m,
@@ -2377,6 +2441,65 @@ impl NetPositive {
     }
 
     /// URLs (or paths) from the command line or a forwarded launch.
+    /// Every second, from the guard thread: ask each tab's page whether
+    /// it's alive and where, set its process's priority, and show which
+    /// are stuck; and tell the tabs whose page was stopped.
+    fn guard(&mut self, cx: &mut Cx, report: guard::Report) {
+        match report {
+            guard::Report::Tick => {
+                let mut priorities: BTreeMap<u32, guard::Priority> = BTreeMap::new();
+                for (&win, w) in self.windows.iter_mut() {
+                    let Win::Browser(b) = w else { continue };
+                    let mut changed = false;
+                    for (i, tab) in b.tabs.iter_mut().enumerate() {
+                        let Some(view) = &tab.view else { continue };
+                        self.pings.ask(view);
+                        let hung = self.pings.hung(view.id());
+                        if hung != tab.hung {
+                            tab.hung = hung;
+                            changed |= i == b.active;
+                        }
+                        let p = if hung {
+                            guard::Priority::Hung
+                        } else if i == b.active {
+                            guard::Priority::Visible
+                        } else {
+                            guard::Priority::Hidden
+                        };
+                        if let Some(pid) = self.pings.pid(view.id()) {
+                            // A process with several tabs goes as its likeliest.
+                            let e = priorities.entry(pid).or_insert(p);
+                            *e = (*e).max(p);
+                        }
+                    }
+                    if changed {
+                        cx.redraw(win);
+                    }
+                }
+                for (pid, p) in priorities {
+                    self.watch.set_priority(pid, p);
+                }
+            }
+            guard::Report::Stopped { pid, memory } => {
+                let views = self.pings.views_in(pid);
+                tracing::debug!("page process {pid} stopped (memory: {memory}), showing {} tabs", views.len());
+                for id in views {
+                    self.pings.forget(id);
+                    let Some((win, i)) = self.find(id) else { continue };
+                    let Some(b) = self.browser(win) else { continue };
+                    let tab = &mut b.tabs[i];
+                    tab.hung = false;
+                    tab.stopped = Some(if memory {
+                        "This page was stopped because it used too much memory.".into()
+                    } else {
+                        "This page was stopped.".into()
+                    });
+                    cx.redraw(win);
+                }
+            }
+        }
+    }
+
     fn launch(&mut self, cx: &mut Cx, args: &[String], cwd: Option<&Path>) {
         let urls: Vec<Url> = args.iter().filter(|a| !a.starts_with("--")).filter_map(|a| location::parse(a, cwd)).collect();
         match self.front.filter(|w| self.windows.contains_key(w)) {
@@ -2396,7 +2519,16 @@ impl NetPositive {
 }
 
 fn main() {
+    guard::init();
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // Servo runs each site's pages in a process of their own: this program
+    // again, started with the constellation's token (engine.rs).
+    if let [flag, token] = &args[..]
+        && flag == "--content-process"
+    {
+        guard::content_process(token.clone());
+        return;
+    }
     if instance::forward(APP_ID, &args) {
         return;
     }
@@ -2416,6 +2548,8 @@ fn main() {
             blobs: BTreeMap::new(),
             dark: cx.palette().mode == tabula_kit::theme::ThemeMode::Dark,
             proxy: cx.proxy(),
+            pings: guard::Pings::default(),
+            watch: guard::watch(cx.proxy()),
         };
         let restored: Option<Saved> = cx.restored_state().and_then(|s| serde_json::from_str(&s).ok());
         match restored {

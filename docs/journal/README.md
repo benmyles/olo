@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### NetPositive: a stuck page
+
+*11:00* — Pages run in content processes, each a systemd unit with its own memory limit and CPU weight. A tab whose page stops answering for ten seconds gets this bar; Stop Page kills just that process and the tab shows the crash page.
+
+![NetPositive: a stuck page](2026-10-26/110023-netpositive-a-stuck-page.png)
+
+### NetPositive: a page over its memory
+
+*10:58* — A page that runs away with memory meets its unit's MemoryMax (512 MiB here, for the test) and is OOM-killed alone; the bar says why, over the crash page.
+
+![NetPositive: a page over its memory](2026-10-26/105845-netpositive-a-page-over-its-memory.png)
+
 ### NetPositive: audio and video
 
 *09:58* — Video and audio elements in pages play with Tabula's own decoders (H.264/AV1 in MP4 and WebM, Opus, AAC, MP3 and more) through a native servo-media backend; sound goes to the sound server in process.

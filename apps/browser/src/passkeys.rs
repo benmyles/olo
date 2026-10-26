@@ -160,7 +160,8 @@ pub fn script(token: &str) -> String {
     let q = |s: String| serde_json::to_string(&s).unwrap_or_default();
     format!(
         r#"(function() {{
-  if (window.top !== window || !window.isSecureContext) return;
+  // Servo can run user scripts twice in one global; once is enough.
+  if (window.top !== window || !window.isSecureContext || Object.prototype.hasOwnProperty.call(window, {answer})) return;
   var log = console.log.bind(console), K = {marker}, pending = {{}}, next = 1;
   var hidden = new WeakMap();
   function b64(v) {{
