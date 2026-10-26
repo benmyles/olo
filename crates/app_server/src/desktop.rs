@@ -58,6 +58,15 @@ impl WindowElement {
     }
 }
 
+/// Twitcher's state while ⌘ is held: the candidates as they stood when
+/// switching began (front first), and which one is chosen.
+#[derive(Debug)]
+pub struct Twitch {
+    pub apps: bool,
+    pub ids: Vec<u64>,
+    pub index: usize,
+}
+
 /// Windows not currently in the space: minimized, or on another workspace.
 /// Kept in stacking order (bottom first).
 #[derive(Debug, Default)]
@@ -225,6 +234,98 @@ impl<B: Backend + 'static> AnvilState<B> {
                     keyboard.set_focus(self, None, serial);
                 }
             }
+        }
+    }
+
+    /// The window with keyboard focus.
+    pub fn focused_window(&self) -> Option<WindowElement> {
+        let focus = self.seat.get_keyboard()?.current_focus()?;
+        let surface = focus.wl_surface()?.into_owned();
+        self.space.elements().find(|w| w.wl_surface().is_some_and(|s| *s == surface)).cloned()
+    }
+
+    /// Windows on this workspace, front first, minimized ones last.
+    fn workspace_windows(&self) -> Vec<WindowElement> {
+        let mut v: Vec<WindowElement> = self.space.elements().rev().cloned().collect();
+        v.extend(
+            self.parked
+                .0
+                .borrow()
+                .iter()
+                .rev()
+                .filter(|w| w.meta().minimized.get() && w.meta().workspace.get().is_none_or(|ws| ws == self.workspace))
+                .cloned(),
+        );
+        v
+    }
+
+    /// ⌘Tab (`apps`) or ⌘`: bring the next app, or the focused app's next
+    /// window, to the front. The order is fixed while ⌘ is held, so
+    /// repeated presses walk it.
+    pub fn twitch_step(&mut self, apps: bool, back: bool) {
+        if self.twitch.as_ref().is_none_or(|t| t.apps != apps) {
+            let windows = self.workspace_windows();
+            let ids = if apps {
+                let mut seen = Vec::new();
+                let mut ids = Vec::new();
+                for w in &windows {
+                    let app = w.app_id();
+                    if !seen.contains(&app) {
+                        seen.push(app);
+                        ids.push(w.id());
+                    }
+                }
+                ids
+            } else {
+                let app = self.focused_window().map(|w| w.app_id());
+                windows.iter().filter(|w| Some(w.app_id()) == app).map(|w| w.id()).collect()
+            };
+            // Start on the focused window's entry, so the first press moves
+            // to the one behind it.
+            let focused = self.focused_window().map(|w| (w.id(), w.app_id()));
+            let index = ids
+                .iter()
+                .position(|id| {
+                    focused.as_ref().is_some_and(|(fid, fapp)| {
+                        *id == *fid || (apps && self.window_by_id(*id).is_some_and(|w| w.app_id() == *fapp))
+                    })
+                })
+                .unwrap_or(0);
+            self.twitch = Some(Twitch { apps, ids, index });
+        }
+        let Some(t) = self.twitch.as_mut() else { return };
+        if t.ids.len() < 2 {
+            return;
+        }
+        let n = t.ids.len();
+        t.index = if back { (t.index + n - 1) % n } else { (t.index + 1) % n };
+        let id = t.ids[t.index];
+        if let Some(w) = self.window_by_id(id) {
+            self.restore(&w);
+        }
+    }
+
+    /// ⌘ released: the chosen window stays in front.
+    pub fn twitch_done(&mut self) {
+        self.twitch = None;
+    }
+
+    /// Start one of our programs in the session, without waiting for it.
+    pub fn spawn_program(&self, program: &str, args: &[&str]) {
+        // Our programs are installed beside app_server; prefer those (so a
+        // dev build starts dev apps), then PATH.
+        let beside = std::env::current_exe().ok().and_then(|e| Some(e.parent()?.join(program))).filter(|p| p.is_file());
+        let mut cmd = std::process::Command::new(beside.as_deref().unwrap_or(program.as_ref()));
+        cmd.args(args);
+        if let Some(socket) = &self.socket_name {
+            cmd.env("WAYLAND_DISPLAY", socket);
+        }
+        match cmd.spawn() {
+            // Reap it when it exits.
+            Ok(mut child) => {
+                std::thread::spawn(move || child.wait());
+            }
+            Err(e) => warn!(program, %e, "could not start"),
         }
     }
 

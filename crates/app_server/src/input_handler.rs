@@ -134,11 +134,58 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn keyboard_key_to_action<B: InputBackend>(&mut self, evt: B::KeyboardKeyEvent) -> KeyAction {
-        let keycode = evt.key_code();
-        let state = evt.state();
+        let key = evt.key_code().raw().saturating_sub(8);
+        let pressed = evt.state() == KeyState::Pressed;
+        self.physical_key(key, pressed, Event::time(&evt))
+    }
+
+    /// A key from a device (or a test): map it (⌘, Caps Lock, …), act on
+    /// app_server's own chords and send the rest to the focused client.
+    fn physical_key(&mut self, key: u32, pressed: bool, time: InputTime) -> KeyAction {
+        let opts = crate::keymap::Options::from(&self.settings.keyboard);
+        let terminal = self.focused_window().is_some_and(|w| {
+            let id = w.app_id();
+            self.settings.keyboard.terminal_apps.contains(&id)
+        });
+        let outs = self.keymap.feed(key, pressed, std::time::Instant::now(), opts, terminal);
+        let mut action = KeyAction::None;
+        for out in outs {
+            match out {
+                crate::keymap::Out::Key(k, p) => {
+                    let state = if p { KeyState::Pressed } else { KeyState::Released };
+                    match self.client_key((k + 8).into(), state, time) {
+                        KeyAction::None => {}
+                        a => action = a,
+                    }
+                }
+                crate::keymap::Out::Action(a) => self.keymap_action(a),
+            }
+        }
+        action
+    }
+
+    fn keymap_action(&mut self, action: crate::keymap::Action) {
+        use crate::keymap::Action as A;
+        debug!(?action, "keymap action");
+        match action {
+            A::NextApp { back } => self.twitch_step(true, back),
+            A::NextWindow { back } => self.twitch_step(false, back),
+            A::SwitchDone => self.twitch_done(),
+            A::Find => {
+                // Bring back an open Find window rather than stacking more.
+                let open = self.all_windows().into_iter().find(|w| w.app_id() == "tabula.tracker" && w.title() == "Find");
+                match open {
+                    Some(w) => self.restore(&w),
+                    None => self.spawn_program("tabula-tracker", &["--find"]),
+                }
+            }
+            A::Lock => warn!("Ctrl+⌘Q: there is no lock screen yet"),
+        }
+    }
+
+    fn client_key(&mut self, keycode: smithay::input::keyboard::Keycode, state: KeyState, time: InputTime) -> KeyAction {
         debug!(?keycode, ?state, "key");
         let serial = SCOUNTER.next_serial();
-        let time = Event::time(&evt);
         let mut suppressed_keys = self.suppressed_keys.clone();
         let keyboard = self.seat.get_keyboard().unwrap();
 
@@ -805,11 +852,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 pointer.frame(self);
             }
             S::Key { key, pressed } => {
-                let keyboard = self.seat.get_keyboard().unwrap();
-                let state = if pressed { KeyState::Pressed } else { KeyState::Released };
-                keyboard.input::<(), _>(self, (key + 8).into(), state, serial, time, |_, _, _| {
-                    FilterResult::Forward
-                });
+                let _ = serial;
+                let action = self.physical_key(key, pressed, time);
+                if let KeyAction::Quit = action {
+                    self.process_common_key_action(action);
+                }
             }
             S::Scroll { dx, dy } => {
                 let mut frame = AxisFrame::new(time).source(AxisSource::Finger);
@@ -1409,33 +1456,12 @@ enum KeyAction {
 }
 
 fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Option<KeyAction> {
-    if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace || modifiers.logo && keysym == Keysym::q
-    {
-        // ctrl+alt+backspace = quit
-        // logo + q = quit
+    // The ⌘ chords live in `keymap`; Super never reaches here as a command
+    // key, so these are only the emergency exits.
+    if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace {
         Some(KeyAction::Quit)
     } else if (xkb::KEY_XF86Switch_VT_1..=xkb::KEY_XF86Switch_VT_12).contains(&keysym.raw()) {
-        // VTSwitch
-        Some(KeyAction::VtSwitch(
-            (keysym.raw() - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
-        ))
-    } else if modifiers.logo && keysym == Keysym::Return {
-        // run terminal
-        Some(KeyAction::Run("weston-terminal".into()))
-    } else if modifiers.logo && (xkb::KEY_1..=xkb::KEY_9).contains(&keysym.raw()) {
-        Some(KeyAction::Screen((keysym.raw() - xkb::KEY_1) as usize))
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::M {
-        Some(KeyAction::ScaleDown)
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::P {
-        Some(KeyAction::ScaleUp)
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::W {
-        Some(KeyAction::TogglePreview)
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::R {
-        Some(KeyAction::RotateOutput)
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::T {
-        Some(KeyAction::ToggleTint)
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::D {
-        Some(KeyAction::ToggleDecorations)
+        Some(KeyAction::VtSwitch((keysym.raw() - xkb::KEY_XF86Switch_VT_1 + 1) as i32))
     } else {
         None
     }

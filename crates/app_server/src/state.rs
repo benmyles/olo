@@ -171,6 +171,10 @@ pub struct AnvilState<BackendData: Backend + 'static> {
 
     // input-related fields
     pub suppressed_keys: Vec<Keysym>,
+    /// ⌘ and friends (see `keymap`).
+    pub keymap: crate::keymap::Keymap,
+    /// Twitcher, while ⌘Tab / ⌘` is held.
+    pub twitch: Option<crate::desktop::Twitch>,
     pub cursor_status: CursorImageStatus,
     pub seat_name: String,
     pub seat: Seat<AnvilState<BackendData>>,
@@ -818,6 +822,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             image_copy_capture_state,
             dnd_icon: None,
             suppressed_keys: Vec::new(),
+            keymap: Default::default(),
+            twitch: None,
             cursor_status: CursorImageStatus::default_named(),
             seat_name,
             seat,

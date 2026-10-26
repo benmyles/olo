@@ -179,8 +179,11 @@ Menus: `Menu::new("File").item(label, command, Some(Key::N))`,
    (sunburst at max quality, against the reference set, candidates
    reviewed on a contact sheet).
 6. BeOS idioms to keep: yellow tab decorator (app_server's job), menu bar in
-   every document window, ⌘ shortcuts (Ctrl on the wire; keyd maps the Mac
-   ⌘ key), keyboard focus shown as a navigation-blue underline/frame,
+   every document window, ⌘ shortcuts (Ctrl on the wire: app_server's
+   `keymap` turns the Mac ⌘ key into Ctrl for clients, Caps Lock too, and
+   keeps ⌘Tab / ⌘` (Twitcher), ⌘Space / tap ⌘ (Find), ⌘ arrows and ⌘⌫ for
+   itself; terminals listed in `KeyboardSettings::terminal_apps` get ⌘ as
+   Ctrl+Shift so physical Ctrl reaches the tty), keyboard focus shown as a navigation-blue underline/frame,
    Tracker-style spatial behaviour. Modernise freely where it helps
    (smooth scrolling, hi-dpi, search fields, sensible defaults).
 

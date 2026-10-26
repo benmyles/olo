@@ -261,6 +261,16 @@ pub struct KeyboardSettings {
     pub options: String,
     pub repeat_delay_ms: i32,
     pub repeat_rate_hz: i32,
+    /// ⌘ (the Super/Meta key) is the command key: apps see Ctrl, so ⌘C
+    /// copies, and app_server takes ⌘Tab, ⌘`, ⌘Space and ⌘ arrows.
+    pub command_key: bool,
+    /// Caps Lock is another Ctrl.
+    pub caps_lock_control: bool,
+    /// Tapping ⌘ on its own opens Find.
+    pub tap_command_find: bool,
+    /// Apps that keep physical Ctrl for themselves (terminals): ⌘ reaches
+    /// them as Ctrl+Shift, so Ctrl+C still interrupts. Matched on app_id.
+    pub terminal_apps: Vec<String>,
 }
 
 impl Default for Settings {
@@ -302,6 +312,22 @@ impl Default for KeyboardSettings {
             options: String::new(),
             repeat_delay_ms: 300,
             repeat_rate_hz: 35,
+            command_key: true,
+            caps_lock_control: true,
+            tap_command_find: true,
+            terminal_apps: [
+                "tabula.terminal",
+                "org.gnome.Ptyxis",
+                "org.gnome.Console",
+                "org.gnome.Terminal",
+                "com.mitchellh.ghostty",
+                "foot",
+                "kitty",
+                "Alacritty",
+                "org.wezfurlong.wezterm",
+            ]
+            .map(String::from)
+            .to_vec(),
         }
     }
 }

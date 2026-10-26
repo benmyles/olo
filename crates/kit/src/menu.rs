@@ -28,8 +28,8 @@ pub struct Action {
     pub checked: bool,
 }
 
-/// A command-key shortcut. The command key is Ctrl (which keyd produces
-/// for the Mac's ⌘), optionally with Shift.
+/// A command-key shortcut. The command key is Ctrl (which app_server's
+/// keymap produces for the Mac's ⌘), optionally with Shift.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Shortcut {
     pub key: Key,
