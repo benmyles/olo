@@ -120,6 +120,11 @@ pub fn entry(path: &Path) -> Option<Entry> {
 }
 
 pub fn list(dir: &Path, hidden: bool) -> std::io::Result<Vec<Entry>> {
+    list_counting(dir, hidden, &std::sync::atomic::AtomicU64::new(0))
+}
+
+/// [`list`], counting items into `count` as it goes (for progress).
+pub fn list_counting(dir: &Path, hidden: bool, count: &std::sync::atomic::AtomicU64) -> std::io::Result<Vec<Entry>> {
     let mut v = Vec::new();
     for e in fs::read_dir(dir)?.flatten() {
         let name = e.file_name();
@@ -128,6 +133,7 @@ pub fn list(dir: &Path, hidden: bool) -> std::io::Result<Vec<Entry>> {
         }
         if let Some(en) = entry(&e.path()) {
             v.push(en);
+            count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
     }
     Ok(v)
@@ -208,7 +214,7 @@ pub fn format_time(t: Option<SystemTime>) -> String {
 
 // ---- operations ---------------------------------------------------------
 
-fn trash_dir() -> PathBuf {
+pub fn trash_dir() -> PathBuf {
     std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| home().join(".local/share"))
@@ -223,7 +229,7 @@ pub fn trash_is_empty() -> bool {
     fs::read_dir(trash_files()).map(|mut d| d.next().is_none()).unwrap_or(true)
 }
 
-fn unique(dir: &Path, name: &str) -> PathBuf {
+pub fn unique(dir: &Path, name: &str) -> PathBuf {
     let p = dir.join(name);
     if !p.exists() && fs::symlink_metadata(&p).is_err() {
         return p;
@@ -242,9 +248,10 @@ fn unique(dir: &Path, name: &str) -> PathBuf {
     unreachable!()
 }
 
-/// Move to the freedesktop trash (with a .trashinfo so other desktops can
-/// restore it).
-pub fn move_to_trash(path: &Path) -> std::io::Result<()> {
+/// Reserve a place in the freedesktop Trash for `path`: a unique name in
+/// Trash/files and its .trashinfo (written now, so other desktops can
+/// restore it). Returns both; remove the info if the move then fails.
+pub fn trash_slot(path: &Path) -> std::io::Result<(PathBuf, PathBuf)> {
     let files = trash_files();
     let info = trash_dir().join("info");
     fs::create_dir_all(&files)?;
@@ -256,9 +263,14 @@ pub fn move_to_trash(path: &Path) -> std::io::Result<()> {
     let info_file = info.join(format!("{tname}.trashinfo"));
     let abs = std::path::absolute(path)?;
     fs::write(&info_file, format!("[Trash Info]\nPath={}\nDeletionDate={now}\n", percent_encode(&abs)))?;
-    move_path(path, &target).inspect_err(|_| {
-        let _ = fs::remove_file(&info_file);
-    })
+    Ok((target, info_file))
+}
+
+/// Where a copy of `from` dropped into `dir` goes: its own name, or
+/// "name copy" when copying into the folder it is already in.
+pub fn copy_target(from: &Path, dir: &Path) -> PathBuf {
+    let name = from.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    if from.parent() == Some(dir) { unique(dir, &copy_name(&name)) } else { unique(dir, &name) }
 }
 
 /// URL-style escaping for .trashinfo paths, as the trash spec requires.
@@ -275,22 +287,6 @@ fn percent_encode(p: &Path) -> String {
     out
 }
 
-pub fn empty_trash() -> std::io::Result<()> {
-    for sub in ["files", "info"] {
-        let d = trash_dir().join(sub);
-        if let Ok(rd) = fs::read_dir(&d) {
-            for e in rd.flatten() {
-                let p = e.path();
-                if fs::symlink_metadata(&p).map(|m| m.is_dir()).unwrap_or(false) {
-                    fs::remove_dir_all(&p)?;
-                } else {
-                    fs::remove_file(&p)?;
-                }
-            }
-        }
-    }
-    Ok(())
-}
 
 fn format_iso_now() -> String {
     // SAFETY: as in format_time.
@@ -311,51 +307,9 @@ fn format_iso_now() -> String {
     )
 }
 
-pub fn move_path(from: &Path, to: &Path) -> std::io::Result<()> {
-    match fs::rename(from, to) {
-        Ok(()) => Ok(()),
-        // Across file systems: copy, then remove.
-        Err(e) if e.raw_os_error() == Some(libc::EXDEV) => {
-            copy_path(from, to)?;
-            if fs::symlink_metadata(from)?.is_dir() { fs::remove_dir_all(from) } else { fs::remove_file(from) }
-        }
-        Err(e) => Err(e),
-    }
-}
 
-pub fn copy_path(from: &Path, to: &Path) -> std::io::Result<()> {
-    let meta = fs::symlink_metadata(from)?;
-    if meta.file_type().is_symlink() {
-        std::os::unix::fs::symlink(fs::read_link(from)?, to)
-    } else if meta.is_dir() {
-        fs::create_dir_all(to)?;
-        for e in fs::read_dir(from)?.flatten() {
-            copy_path(&e.path(), &to.join(e.file_name()))?;
-        }
-        fs::set_permissions(to, meta.permissions())
-    } else {
-        fs::copy(from, to).map(|_| ())
-    }
-}
 
-/// Copy `from` into `dir`, renaming on collision ("name copy").
-pub fn copy_into(from: &Path, dir: &Path) -> std::io::Result<PathBuf> {
-    let name = from.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let target = if from.parent() == Some(dir) {
-        unique(dir, &copy_name(&name))
-    } else {
-        unique(dir, &name)
-    };
-    copy_path(from, &target)?;
-    Ok(target)
-}
 
-pub fn move_into(from: &Path, dir: &Path) -> std::io::Result<PathBuf> {
-    let name = from.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let target = unique(dir, &name);
-    move_path(from, &target)?;
-    Ok(target)
-}
 
 /// "notes copy.txt" for "notes.txt"; copying a copy gives "notes copy.txt"
 /// again (made unique as "notes copy 2.txt"), never "notes copy copy.txt".

@@ -248,7 +248,13 @@ fn count_bar(ui: &Ui, rect: Rect, f: &FolderWin, p: &Palette) {
     style::hline(painter, rect.left(), rect.right(), rect.top() + 1.0, c(p.shine));
     let (entries, list) = f.current();
     let n = entries.len();
+    let loading = f.loading && f.entries.is_empty() && f.error.is_none();
+    if loading {
+        // Listing runs in the background; keep polling its counter.
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+    }
     let count = match (n, list.selected.len()) {
+        _ if loading => format!("Loading… {} items", f.listed.load(std::sync::atomic::Ordering::Relaxed)),
         (1, 0) => "1 item".to_owned(),
         (n, 0) => format!("{n} items"),
         (n, s) => format!("{s} of {n} selected"),

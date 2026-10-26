@@ -5,6 +5,7 @@ mod columns;
 mod desktop;
 mod find;
 mod fs;
+mod ops;
 mod view;
 
 use std::{
@@ -14,7 +15,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{Duration, Instant, SystemTime},
 };
@@ -45,25 +46,34 @@ pub struct Pane {
     pub entries: Vec<Entry>,
     pub list: ListState,
     pub stamp: Option<SystemTime>,
+    /// The listing request whose result we are waiting for (see `Loader`).
+    pub generation: u64,
+    pub loading: bool,
 }
 
 impl Pane {
-    fn new(path: PathBuf, hidden: bool, sort: (SortKey, bool)) -> Self {
-        let mut p = Pane { path, entries: Vec::new(), list: ListState::default(), stamp: None };
-        p.reload(hidden, sort);
-        p
+    fn new(path: PathBuf) -> Self {
+        Pane { path, entries: Vec::new(), list: ListState::default(), stamp: None, generation: 0, loading: true }
     }
+}
 
-    /// Relist; false if the folder is gone.
-    fn reload(&mut self, hidden: bool, sort: (SortKey, bool)) -> bool {
-        let selected: Vec<PathBuf> = self.list.selected.iter().filter_map(|&i| self.entries.get(i)).map(|e| e.path.clone()).collect();
-        let Ok(mut v) = fs::list(&self.path, hidden) else { return false };
-        sort_entries(&mut v, sort.0, sort.1);
-        self.entries = v;
-        self.stamp = std::fs::metadata(&self.path).and_then(|m| m.modified()).ok();
-        self.list.selected = self.entries.iter().enumerate().filter(|(_, e)| selected.contains(&e.path)).map(|(i, _)| i).collect();
-        true
-    }
+/// Folders are listed on worker threads (listing stats every item and can
+/// take a while on big or slow folders); results come back as
+/// `Msg::Listed` to the window that asked.
+#[derive(Clone)]
+pub struct Loader {
+    win: WindowId,
+    proxy: tabula_kit::Proxy,
+}
+
+/// Put `v` in place of `entries`, keeping the selection (by path) and
+/// selecting `extra` too.
+fn replace_entries(entries: &mut Vec<Entry>, list: &mut ListState, mut v: Vec<Entry>, sort: (SortKey, bool), extra: &mut Vec<PathBuf>) {
+    let mut keep: Vec<PathBuf> = list.selected.iter().filter_map(|&i| entries.get(i)).map(|e| e.path.clone()).collect();
+    keep.append(extra);
+    sort_entries(&mut v, sort.0, sort.1);
+    *entries = v;
+    list.selected = entries.iter().enumerate().filter(|(_, e)| keep.contains(&e.path)).map(|(i, _)| i).collect();
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,6 +109,15 @@ pub struct FolderWin {
     pub col_scroll: f32,
     /// Whether hidden files are listed (Tracker-wide; kept for new columns).
     pub hidden: bool,
+    loader: Loader,
+    /// Listing requests: the last one made, the one the root waits for,
+    /// and how many items the root's listing has found so far.
+    generation: u64,
+    root_generation: u64,
+    pub loading: bool,
+    pub listed: Arc<AtomicU64>,
+    /// Paths to select once a listing in progress brings them in.
+    pending_select: Vec<PathBuf>,
 }
 
 struct InfoWin {
@@ -142,6 +161,8 @@ enum Win {
     Info(InfoWin),
     Find(FindWin),
     Dialog(Dialog),
+    /// "Tracker Status": progress of running file operations.
+    Status,
 }
 
 enum Msg {
@@ -149,6 +170,10 @@ enum Msg {
     Remote(Vec<String>),
     DirSize(WindowId, u64, u64),
     Found(WindowId, u64, Vec<find::Hit>, bool),
+    JobDone(u64, ops::Outcome),
+    Listed { win: WindowId, path: PathBuf, generation: u64, result: Result<Vec<Entry>, String> },
+    /// A job has been running a while: time to show the status window.
+    JobSlow(u64),
 }
 
 pub struct Tracker {
@@ -156,7 +181,17 @@ pub struct Tracker {
     /// Paths cut or copied with ⌘X / ⌘C, and whether it was a cut.
     clipboard: Option<(Vec<PathBuf>, bool)>,
     hidden: bool,
+    /// Running file operations, each with the window that started it.
+    jobs: Vec<(ops::Job, Option<WindowId>)>,
+    next_job: u64,
+    status_win: Option<WindowId>,
+    /// Content height the status window was last sized to.
+    status_size: u32,
 }
+
+const STATUS_WIDTH: u32 = 420;
+/// Jobs that finish sooner than this never show the status window.
+const STATUS_DELAY: Duration = Duration::from_millis(400);
 
 fn sort_entries(entries: &mut [Entry], key: SortKey, asc: bool) {
     entries.sort_by(|a, b| {
@@ -174,7 +209,7 @@ fn sort_entries(entries: &mut [Entry], key: SortKey, asc: bool) {
 }
 
 impl FolderWin {
-    fn new(path: PathBuf, hidden: bool) -> Self {
+    fn new(path: PathBuf, hidden: bool, loader: Loader) -> Self {
         let mut w = FolderWin {
             path,
             entries: Vec::new(),
@@ -192,34 +227,117 @@ impl FolderWin {
             active: 0,
             col_scroll: 0.0,
             hidden,
+            loader,
+            generation: 0,
+            root_generation: 0,
+            loading: true,
+            listed: Arc::default(),
+            pending_select: Vec::new(),
         };
         w.reload(hidden);
         w
     }
 
+    /// Relist the folder (and any columns) in the background.
     pub fn reload(&mut self, hidden: bool) {
         self.hidden = hidden;
-        let selected: Vec<PathBuf> =
-            self.list.selected.iter().filter_map(|&i| self.entries.get(i)).map(|e| e.path.clone()).collect();
+        self.request(None);
+        for k in 0..self.panes.len() {
+            self.request(Some(k));
+        }
+    }
+
+    /// List the root (`None`) or column `k` on a worker thread.
+    fn request(&mut self, pane: Option<usize>) {
+        self.generation += 1;
+        let generation = self.generation;
+        let path = match pane {
+            None => {
+                self.root_generation = generation;
+                self.loading = true;
+                self.listed = Arc::default();
+                // Taken before listing, so changes made meanwhile show up
+                // on the next check.
+                self.stamp = std::fs::metadata(&self.path).and_then(|m| m.modified()).ok();
+                self.path.clone()
+            }
+            Some(k) => {
+                let p = &mut self.panes[k];
+                p.generation = generation;
+                p.loading = true;
+                p.stamp = std::fs::metadata(&p.path).and_then(|m| m.modified()).ok();
+                p.path.clone()
+            }
+        };
+        let (hidden, counter, Loader { win, proxy }) = (self.hidden, self.listed.clone(), self.loader.clone());
+        let counter = if pane.is_none() { counter } else { Arc::default() };
+        std::thread::spawn(move || {
+            let result = fs::list_counting(&path, hidden, &counter).map_err(|e| e.to_string());
+            proxy.send(Msg::Listed { win, path, generation, result });
+        });
+    }
+
+    /// A listing came back; ignore it if a newer one was asked for since.
+    fn listed(&mut self, path: &Path, generation: u64, result: Result<Vec<Entry>, String>) {
         let sort = self.sort;
-        if let Some(gone) = self.panes.iter_mut().position(|p| !p.reload(hidden, sort)) {
-            self.panes.truncate(gone);
-            self.active = self.active.min(self.panes.len());
-        }
-        match fs::list(&self.path, hidden) {
-            Ok(mut v) => {
-                sort_entries(&mut v, self.sort.0, self.sort.1);
-                self.entries = v;
-                self.error = None;
+        if path == self.path && generation == self.root_generation {
+            self.loading = false;
+            match result {
+                Ok(v) => {
+                    replace_entries(&mut self.entries, &mut self.list, v, sort, &mut Vec::new());
+                    self.error = None;
+                }
+                Err(e) => {
+                    self.entries.clear();
+                    self.list.selected.clear();
+                    self.error = Some(e);
+                }
             }
-            Err(e) => {
-                self.entries.clear();
-                self.error = Some(e.to_string());
+        } else if let Some(k) = self.panes.iter().position(|p| p.path == path && p.generation == generation) {
+            match result {
+                Ok(v) => {
+                    let p = &mut self.panes[k];
+                    p.loading = false;
+                    replace_entries(&mut p.entries, &mut p.list, v, sort, &mut Vec::new());
+                }
+                // The folder is gone: so are it and the columns after it.
+                Err(_) => {
+                    self.panes.truncate(k);
+                    self.active = self.active.min(self.panes.len());
+                }
             }
+        } else {
+            return;
         }
-        self.stamp = std::fs::metadata(&self.path).and_then(|m| m.modified()).ok();
-        self.list.selected =
-            self.entries.iter().enumerate().filter(|(_, e)| selected.contains(&e.path)).map(|(i, _)| i).collect();
+        if !self.pending_select.is_empty() {
+            let pending = std::mem::take(&mut self.pending_select);
+            self.select_paths(&pending);
+        }
+    }
+
+    /// Re-sort what is shown (no relisting needed).
+    pub fn resort(&mut self) {
+        let sort = self.sort;
+        let v = std::mem::take(&mut self.entries);
+        replace_entries(&mut self.entries, &mut self.list, v, sort, &mut Vec::new());
+        for p in &mut self.panes {
+            let v = std::mem::take(&mut p.entries);
+            replace_entries(&mut p.entries, &mut p.list, v, sort, &mut Vec::new());
+        }
+    }
+
+    /// Show a new item right away (before the next listing lands), so it
+    /// can be selected or renamed at once.
+    pub fn add_entry(&mut self, path: &Path) {
+        let Some(e) = fs::entry(path) else { return };
+        let sort = self.sort;
+        let (entries, list) = self.current_mut();
+        if entries.iter().any(|x| x.path == e.path) {
+            return;
+        }
+        let mut v = entries.clone();
+        v.push(e);
+        replace_entries(entries, list, v, sort, &mut Vec::new());
     }
 
     /// The folder commands act on: the window's, or in column view the
@@ -263,8 +381,10 @@ impl FolderWin {
 
     /// Column view: show `dir` as the column after column `k`.
     pub fn open_column(&mut self, k: usize, dir: PathBuf, hidden: bool) {
+        self.hidden = hidden;
         self.panes.truncate(k);
-        self.panes.push(Pane::new(dir, hidden, self.sort));
+        self.panes.push(Pane::new(dir));
+        self.request(Some(k));
     }
 
     /// Start editing the name of `p` in place.
@@ -282,13 +402,19 @@ impl FolderWin {
         }
     }
 
+    /// Select exactly `paths`; any not listed yet are selected when the
+    /// listing in progress brings them in.
     fn select_paths(&mut self, paths: &[PathBuf]) {
         let (entries, list) = self.current_mut();
         let rows: Vec<usize> = (0..entries.len()).filter(|&i| paths.contains(&entries[i].path)).collect();
+        let missing: Vec<PathBuf> = paths.iter().filter(|p| !entries.iter().any(|e| &&e.path == p)).cloned().collect();
         if let Some(&first) = rows.first() {
             list.select(first);
             list.selected.extend(rows);
+        } else {
+            list.selected.clear();
         }
+        self.pending_select = missing;
     }
 }
 
@@ -317,7 +443,8 @@ impl Tracker {
             return;
         }
         let id = cx.open_window(folder_options(&path));
-        self.windows.insert(id, Win::Folder(FolderWin::new(path, self.hidden)));
+        let loader = Loader { win: id, proxy: cx.proxy() };
+        self.windows.insert(id, Win::Folder(FolderWin::new(path, self.hidden, loader)));
     }
 
     fn open_entry(&mut self, cx: &mut Cx, e: &Entry) {
@@ -415,7 +542,6 @@ impl Tracker {
     // ---- folder commands --------------------------------------------------
 
     fn folder_command(&mut self, cx: &mut Cx, win: WindowId, cmd: &str) {
-        let hidden = self.hidden;
         let Some(Win::Folder(f)) = self.windows.get_mut(&win) else { return };
         let selected = f.selected_paths();
         let dir = f.current_dir();
@@ -433,7 +559,7 @@ impl Tracker {
             }
             "new-folder" => match fs::new_folder(&dir) {
                 Ok(p) => {
-                    f.reload(hidden);
+                    f.add_entry(&p);
                     f.edit_name(&p);
                 }
                 Err(e) => self.error(cx, format!("Couldn't create a folder: {e}")),
@@ -455,12 +581,9 @@ impl Tracker {
                 }
             }
             "duplicate" => {
-                for p in &selected {
-                    if let Err(e) = fs::copy_into(p, &dir) {
-                        self.error(cx, format!("Couldn't duplicate {}: {e}", p.display()));
-                    }
+                if !selected.is_empty() {
+                    self.start_job(cx, ops::Kind::Duplicate, selected, None, Some(win));
                 }
-                self.reload_all();
             }
             "link" => {
                 for p in &selected {
@@ -469,13 +592,9 @@ impl Tracker {
                 self.reload_all();
             }
             "trash" => {
-                for p in &selected {
-                    if let Err(e) = fs::move_to_trash(p) {
-                        self.error(cx, format!("Couldn't move {} to the Trash: {e}", p.display()));
-                        break;
-                    }
+                if !selected.is_empty() {
+                    self.start_job(cx, ops::Kind::Trash, selected, None, Some(win));
                 }
-                self.reload_all();
             }
             "empty-trash" => self.dialog(
                 cx,
@@ -492,24 +611,11 @@ impl Tracker {
             }
             "paste" => {
                 if let Some((paths, cut)) = self.clipboard.clone() {
-                    let mut pasted = Vec::new();
-                    for p in &paths {
-                        match if cut { fs::move_into(p, &dir) } else { fs::copy_into(p, &dir) } {
-                            Ok(new) => pasted.push(new),
-                            Err(e) => {
-                                self.error(cx, format!("Couldn't {} {}: {e}", if cut { "move" } else { "copy" }, p.display()));
-                                break;
-                            }
-                        }
-                    }
                     if cut {
                         self.clipboard = None;
                     }
-                    self.reload_all();
-                    // The new items come up selected, as after a drop.
-                    if let Some(Win::Folder(f)) = self.windows.get_mut(&win) {
-                        f.select_paths(&pasted);
-                    }
+                    let kind = if cut { ops::Kind::Move } else { ops::Kind::Copy };
+                    self.start_job(cx, kind, paths, Some(dir), Some(win));
                 }
             }
             "select-all" => {
@@ -539,7 +645,7 @@ impl Tracker {
                     _ => SortKey::Name,
                 };
                 f.sort = (key, if f.sort.0 == key { !f.sort.1 } else { true });
-                f.reload(hidden);
+                f.resort();
             }
             "go-home" => self.open_folder(cx, &fs::home()),
             "go-desktop" => self.open_folder(cx, &fs::home().join("Desktop")),
@@ -660,7 +766,7 @@ impl Tracker {
                     if let Some(new) = self.rename(cx, &p, &name)
                         && let Some(Win::Folder(f)) = self.windows.get_mut(&win)
                     {
-                        f.select_path(&new);
+                        f.select_paths(&[new]);
                     }
                 }
             }
@@ -810,10 +916,7 @@ impl Tracker {
         if choice + 1 == buttons.len()
             && let DialogKind::EmptyTrash = d.kind
         {
-            if let Err(e) = fs::empty_trash() {
-                self.error(cx, format!("Couldn't empty the Trash: {e}"));
-            }
-            self.reload_all();
+            self.start_job(cx, ops::Kind::EmptyTrash, Vec::new(), None, None);
         }
     }
 }
@@ -851,12 +954,13 @@ impl App for Tracker {
                                 let _ = tabula_kit::spawn_detached("tabula-preferences backgrounds");
                             }
                             "trash" => {
-                                if let Some(Win::Desktop(d)) = self.windows.get(&window) {
-                                    for p in d.selected_paths() {
-                                        let _ = fs::move_to_trash(&p);
-                                    }
+                                let paths = match self.windows.get(&window) {
+                                    Some(Win::Desktop(d)) => d.selected_paths(),
+                                    _ => Vec::new(),
+                                };
+                                if !paths.is_empty() {
+                                    self.start_job(cx, ops::Kind::Trash, paths, None, Some(window));
                                 }
-                                self.reload_all();
                             }
                             "info" => {
                                 let sel: Vec<Entry> = match self.windows.get(&window) {
@@ -875,6 +979,7 @@ impl App for Tracker {
             Some(Win::Info(_)) => self.info_ui(window, ui),
             Some(Win::Find(_)) => self.find_ui(cx, window, ui),
             Some(Win::Dialog(_)) => self.dialog_ui(cx, window, ui),
+            Some(Win::Status) => self.status_ui(cx, window, ui),
             None => {}
         }
     }
@@ -894,8 +999,10 @@ impl App for Tracker {
         if matches!(self.windows.get(&window), Some(Win::Desktop(_))) {
             return;
         }
-        if let Some(Win::Find(fw)) = self.windows.remove(&window) {
-            fw.cancel.store(true, Ordering::Relaxed);
+        match self.windows.remove(&window) {
+            Some(Win::Find(fw)) => fw.cancel.store(true, Ordering::Relaxed),
+            Some(Win::Status) => self.status_win = None,
+            _ => {}
         }
         cx.close_window(window);
     }
@@ -907,6 +1014,23 @@ impl App for Tracker {
             Msg::DirSize(win, b, f) => {
                 if let Some(Win::Info(i)) = self.windows.get_mut(&win) {
                     i.size = Some((b, f));
+                    cx.redraw(win);
+                }
+            }
+            Msg::JobSlow(id) => {
+                if self.jobs.iter().any(|(j, _)| j.id == id) && self.status_win.is_none() {
+                    let id = cx.open_window(
+                        WindowOptions::new("Tracker Status", STATUS_WIDTH, 82).min_size(300, 60),
+                    );
+                    self.windows.insert(id, Win::Status);
+                    self.status_win = Some(id);
+                    self.status_size = 0;
+                }
+            }
+            Msg::JobDone(id, outcome) => self.job_done(cx, id, outcome),
+            Msg::Listed { win, path, generation, result } => {
+                if let Some(Win::Folder(f)) = self.windows.get_mut(&win) {
+                    f.listed(&path, generation, result);
                     cx.redraw(win);
                 }
             }
@@ -927,6 +1051,93 @@ impl App for Tracker {
 }
 
 impl Tracker {
+    /// Run a file operation in the background. Short ones finish without a
+    /// trace; longer ones show in the Tracker Status window.
+    fn start_job(&mut self, cx: &mut Cx, kind: ops::Kind, sources: Vec<PathBuf>, dest: Option<PathBuf>, origin: Option<WindowId>) {
+        let id = self.next_job;
+        self.next_job += 1;
+        let proxy = cx.proxy();
+        let job = ops::start(id, kind, sources, dest, move |outcome| proxy.send(Msg::JobDone(id, outcome)));
+        let proxy = cx.proxy();
+        std::thread::spawn(move || {
+            std::thread::sleep(STATUS_DELAY);
+            proxy.send(Msg::JobSlow(id));
+        });
+        self.jobs.push((job, origin));
+        if let Some(w) = self.status_win {
+            cx.redraw(w);
+        }
+    }
+
+    fn job_done(&mut self, cx: &mut Cx, id: u64, outcome: ops::Outcome) {
+        let Some(i) = self.jobs.iter().position(|(j, _)| j.id == id) else { return };
+        let (job, origin) = self.jobs.remove(i);
+        self.reload_all();
+        // New items come up selected, as after a drop.
+        if let Some(w) = origin
+            && let Some(Win::Folder(f)) = self.windows.get_mut(&w)
+            && !outcome.created.is_empty()
+        {
+            f.select_paths(&outcome.created);
+            cx.redraw(w);
+        }
+        if let Some(e) = outcome.error {
+            let what = job.title.chars().next().map(|c| c.to_lowercase().chain(job.title.chars().skip(1)).collect::<String>());
+            self.error(cx, format!("An error occurred while {}: {e}", what.unwrap_or_default()));
+        }
+        if self.jobs.is_empty() {
+            if let Some(w) = self.status_win.take() {
+                self.windows.remove(&w);
+                cx.close_window(w);
+            }
+        } else if let Some(w) = self.status_win {
+            cx.redraw(w);
+        }
+    }
+
+    fn status_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
+        let mut stop = None;
+        let top = ui.max_rect().top();
+        let content = widgets::window_content(ui, |ui| {
+            for (k, (job, _)) in self.jobs.iter().enumerate() {
+                if k > 0 {
+                    widgets::separator(ui);
+                }
+                let amount = ops::amount(job);
+                let detail = ops::detail(job);
+                ui.horizontal_top(|ui| {
+                        let w = ui.available_width() - 64.0 - m::SPACING;
+                        ui.vertical(|ui| {
+                            ui.set_width(w);
+                            ui.add(widgets::StatusBar::new(job.progress.fraction()).label(&job.title).trailing(&amount));
+                            ui.add(widgets::StringView::new(&detail).dim(true));
+                        });
+                        ui.add_space(m::SPACING);
+                        ui.vertical(|ui| {
+                            ui.add_space(m::LABEL_ROW + m::TIGHT - (m::CONTROL_HEIGHT - 14.0) / 2.0);
+                            if ui.add(Button::new("Stop").min_width(64.0)).clicked() {
+                                stop = Some(job.id);
+                            }
+                        });
+                });
+            }
+            ui.min_rect().bottom()
+        });
+        // Fit the window to its rows.
+        let h = (content - top + m::WINDOW_INSET).ceil() as u32;
+        if self.status_size != h {
+            self.status_size = h;
+            cx.resize(win, (STATUS_WIDTH, h));
+        }
+        if let Some(id) = stop
+            && let Some((job, _)) = self.jobs.iter().find(|(j, _)| j.id == id)
+        {
+            job.cancel.store(true, Ordering::Relaxed);
+        }
+        // Progress lives in the workers' counters; poll while they run.
+        ui.ctx().request_repaint_after(Duration::from_millis(100));
+    }
+
     fn folder_command_global(&mut self, cx: &mut Cx, cmd: &str) {
         if cmd == "empty-trash" {
             self.dialog(
@@ -977,7 +1188,7 @@ fn main() {
     }
     tabula_kit::run("tabula.tracker", |cx| {
         listen(cx.proxy());
-        let mut t = Tracker { windows: HashMap::new(), clipboard: None, hidden: false };
+        let mut t = Tracker { windows: HashMap::new(), clipboard: None, hidden: false, jobs: Vec::new(), next_job: 1, status_win: None, status_size: 0 };
         if args.iter().any(|a| a == "--desktop") {
             let id = cx.open_window(desktop::options());
             t.windows.insert(id, Win::Desktop(desktop::Desktop::new()));

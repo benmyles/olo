@@ -76,5 +76,11 @@
   "title": "Tracker: Find searches contents with ripgrep",
   "caption": "Find is built on ripgrep's crates (ignore + grep-searcher): parallel walk, smart case, .gitignore-aware, binary files skipped. Contents matches show the line number and text; live progress, Stop/Escape cancel.",
   "image": "2026-10-25/203834-tracker-find-searches-contents-with-ripgrep.png"
+ },
+ {
+  "time": "2026-10-25T20:43:37",
+  "title": "Tracker Status: background file operations",
+  "caption": "Copy, move, duplicate, Trash and Empty Trash run on worker threads (copy_file_range in chunks). Jobs longer than 0.4 s appear here with bytes, items, current file and time left; Stop cancels and removes the partial copy.",
+  "image": "2026-10-25/204337-tracker-status-background-file-operations.png"
  }
 ]
