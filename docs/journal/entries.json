@@ -100,5 +100,17 @@
   "title": "Tracker: live updates",
   "caption": "Folder windows, columns and the desktop now follow the disk as it changes via inotify, with no polling. Shot 120 ms after a shell wrote download.iso, renamed notes.md, deleted photo-02.jpg and made Archive. Selection and sort are kept; a deleted folder says so.",
   "image": "2026-10-25/213524-tracker-live-updates.png"
+ },
+ {
+  "time": "2026-10-25T21:36:33",
+  "title": "Terminal (light)",
+  "caption": "Tabula Light scheme: 16 ANSI colours tuned for contrast on paper white, SGR attributes and truecolor, CJK/Greek/symbol fallback fonts, box drawing drawn as geometry (rounded and heavy), block elements, a kitty-protocol inline image, and a compiler-style path link.",
+  "image": "2026-10-25/213633-terminal-light.png"
+ },
+ {
+  "time": "2026-10-25T21:36:33",
+  "title": "Terminal (dark)",
+  "caption": "The same session in Tabula Dark (graphite, soft pastels). The scheme follows the desktop theme, and OSC 10/11 colour queries answer from it, so TUIs like Claude Code choose the matching theme.",
+  "image": "2026-10-25/213633-terminal-dark.png"
  }
 ]
