@@ -98,9 +98,13 @@ fn main() {
 * **`Cx`**: `open_window`, `close_window`, `set_title`, `resize`, `redraw`,
   `activate` (bring a window forward and focus it, restoring it if it is
   minimized or on another workspace — via xdg-activation; use it when a
-  forwarded launch asks for a window that is already open), `copy` (clipboard), `paste` (reads the clipboard off-thread and delivers
-  an `egui::Event::Paste`), `quit`, `palette`, `proxy`, `window_size`,
-  `restored_state`.
+  forwarded launch asks for a window that is already open), `copy` (text
+  to the clipboard), `copy_data` (any MIME types, e.g. `image/png`; the
+  data is written to pasters from a thread), `paste` (reads the clipboard
+  off-thread and delivers an `egui::Event::Paste`), `quit`, `palette`,
+  `proxy`, `window_size`, `restored_state`. There is no clipboard manager,
+  so an app that quits (or closes its last window) while it holds the
+  clipboard stays running, windowless, until something else is copied.
 * **Single instance** (`tabula_kit::instance`): call `instance::forward(app_id,
   &args)` first in `main` (returns true if a running copy took the
   arguments; exit then), and `instance::listen(app_id, cx.proxy())` in the
@@ -148,12 +152,17 @@ last button is the default, Escape picks the first).
 
 File panels (`tabula_kit::file_panel`): `FilePanel::open(dir)` /
 `FilePanel::save(dir, name)` give a BFilePanel (path popup, Home, sortable
-Name/Size/Modified list, "Save as:" field, Replace confirmation). Open it
+Name/Size/Modified list, "Save as:" field, Replace confirmation);
+`FilePanel::folder(dir)` picks a folder (folders only; Select takes the
+selected one, or the one shown). Open it
 in its own window of `PANEL_SIZE`, call `panel.ui(ui)` each frame and act
 on the `PanelResult` (`Chosen(path)` / `Cancelled`). Toolbars are
 `metrics::TOOLBAR_HEIGHT` tall. `style::find_font(families, weight)`
 loads an installed font as `(bytes, face index)` (for registering extra
-egui families; call it off the UI thread).
+egui families; call it off the UI thread). App settings live in
+`tabula_kit::config_dir()` (`$XDG_CONFIG_HOME/tabula/NAME.json`); user
+folders come from `tabula_kit::user_dir("PICTURES")` (user-dirs.dirs,
+None if unset or missing).
 
 Menus: `Menu::new("File").item(label, command, Some(Key::N))`,
 `.item_shift(…)`, `.separator()`, `.submenu(Menu)`, `.checked(bool)`,
@@ -244,6 +253,7 @@ headless app_server (GPU, offscreen, 2560×1600 device pixels at 2×, i.e.
 T=tools/dev/tsession
 $T start mine --light          # unique session name per developer/agent
 $T start mine --session [--shell]   # under tabula-session (with Deskbar + desktop)
+$T start mine --session --home /tmp/tabula-dev/mine-home   # sandbox HOME
 $T reload mine                 # in-place reload (test upgrades: rebuild, then reload)
 $T run mine tabula-myapp       # binaries from target/debug (log in /tmp/tabula-dev/mine/)
 $T shot mine /tmp/x.png        # full screenshot (device pixels)
@@ -254,6 +264,11 @@ $T type mine "hello"           # $T key mine 29 30  → Ctrl+A (evdev codes)
 $T theme mine dark
 $T stop mine
 ```
+
+sudo resets HOME, so without `--home` a session and its apps use the real
+home folder: pass `--home` whenever a test saves files (Screenshot,
+Tracker, StyledEdit…). Sessions are always silent (`PULSE_SERVER` points at
+a dead socket), so tests never reach the real speakers or volume.
 
 Look at your screenshots. Then zoom in to 4× and check edges, insets,
 alignment and text placement pixel by pixel, in **both** light and dark.
@@ -329,12 +344,6 @@ in `settings.screen_saver.options[module]`; Preferences builds their
 controls). Modules with `uses_desktop` (Flip, Lens) get a picture of the
 desktop that app_server takes as the saver starts.
 
-Screenshots (`Request::Screenshot`, the saver's picture) are taken by every
-backend with the next frame: `render::capture` renders the output offscreen
-and reads it back, and `IpcState::save_screenshot` encodes the PNG on a
-thread (writing `NAME.part`, then renaming, so readers never see half a
-file) and replies once it is on disk.
-
 app_server starts `tabula-screensaver` after `screen_saver.run_minutes`
 idle, from `Request::StartScreenSaver` (Test) or when the pointer enters
 the "Fade now" corner, on a private connection (`spawn_private`, like the
@@ -346,6 +355,32 @@ displays turning off ends it.
 
 Test headless: `tsession ipc NAME '{"type":"start_screen_saver"}'`, or set
 `screen_saver.module` with get/set_settings first.
+
+## Screenshots (app_server screenshot.rs, apps/screenshot)
+
+`Request::Screenshot { path, output, window, border, pointer }` (only
+`path` is required) saves a PNG of one output (the one the pointer is on
+by default) or of one window, and replies once the file is complete. It
+becomes a `screenshot::Shot` for one output, which every backend takes
+with that output's next frame (`screenshot::take`): the screen via
+`render::capture`, or the window alone over transparency via
+`render::offscreen` (its tab and border with `border`, keeping the tab's
+shape, or only the client's area). A thread then draws the pointer in
+(the default xcursor, from `cursor.rs`), unpremultiplies, encodes and
+writes `NAME.part` and renames it, so readers never see half a file.
+Window shots are refused while the screen is locked.
+
+The Screenshot app (`tabula-screenshot`) follows Haiku's: it takes a
+picture as it starts, then shows it with Capture active window / Include
+window border / Include mouse pointer / Delay, and Name / Save as (PNG,
+JPEG, BMP, TIFF, WebP) / Save in (Home, Desktop, Pictures, Choose
+folder…). New screenshot minimizes its own window first (so it isn't in
+the picture and the active window is the one behind it) and brings it
+back; Save writes `screenshotN` and quits; Copy to clipboard offers
+`image/png`. Settings are in `screenshot.json`. `--silent [--window]` saves
+straight into the folder with no window: app_server runs it for ⌘⇧3 and
+Print Screen (the screen) and ⌘⇧4 and Alt+Print Screen (the active
+window); ⌘⇧5 opens the app.
 
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 

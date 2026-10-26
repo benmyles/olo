@@ -18,6 +18,10 @@ pub const SOCKET_ENV: &str = "TABULA_SOCKET";
 /// Opaque, stable for the lifetime of a window.
 pub type WindowId = u64;
 
+fn yes() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[allow(clippy::large_enum_variant)] // one message at a time over a socket
@@ -38,8 +42,21 @@ pub enum Request {
     ConfigureOutput { name: String, config: OutputConfig },
     GetSettings,
     SetSettings { settings: Settings },
-    /// Save a PNG of everything on screen (all outputs, composited).
-    Screenshot { path: String },
+    /// Save a PNG of one screen (`output`, or the one the pointer is on)
+    /// or of one window, answering once the file is complete.
+    Screenshot {
+        path: String,
+        #[serde(default)]
+        output: Option<String>,
+        #[serde(default)]
+        window: Option<WindowId>,
+        /// With `window`: include its tab and border.
+        #[serde(default = "yes")]
+        border: bool,
+        /// Draw the pointer in.
+        #[serde(default)]
+        pointer: bool,
+    },
     /// Lock the screen now.
     Lock,
     /// Start the screen saver now (Preferences' Test).

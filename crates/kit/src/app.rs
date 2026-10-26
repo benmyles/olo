@@ -133,6 +133,9 @@ impl WindowOptions {
     }
 }
 
+/// Clipboard contents: (MIME type, bytes), in order of preference.
+pub type Clip = Vec<(String, std::sync::Arc<[u8]>)>;
+
 pub(crate) enum Request {
     Open(WindowId, WindowOptions),
     Close(WindowId),
@@ -142,6 +145,7 @@ pub(crate) enum Request {
     RedrawAll,
     Activate(WindowId),
     Copy(String),
+    CopyData(Clip),
     Paste(WindowId),
     LockSession,
     UnlockSession,
@@ -248,6 +252,12 @@ impl Cx {
     }
     /// Deliver the clipboard's text to `window` as an `egui::Event::Paste`
     /// (for menu Paste; ⌘V arrives that way by itself).
+    /// Put data on the clipboard in one or more forms, by MIME type
+    /// (e.g. `[("image/png", png)]`); pasters pick the type they want.
+    pub fn copy_data(&mut self, clip: Clip) {
+        self.requests.push(Request::CopyData(clip));
+    }
+
     pub fn paste(&mut self, window: WindowId) {
         self.requests.push(Request::Paste(window));
     }

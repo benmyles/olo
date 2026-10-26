@@ -19,10 +19,10 @@ pub mod style;
 mod theme_watch;
 pub mod widgets;
 
-pub use app::{App, Command, Cx, Layer, LayerOptions, Proxy, SessionLock, WindowId, WindowKind, WindowOptions};
+pub use app::{App, Clip, Command, Cx, Layer, LayerOptions, Proxy, SessionLock, WindowId, WindowKind, WindowOptions};
 pub use egui;
 pub use menu::{Action, Menu, MenuItem};
 pub use platform::run;
 pub use tabula_theme as theme;
 
-pub use tabula_xdg::{find_program, spawn_detached};
+pub use tabula_xdg::{config_dir, find_program, spawn_detached, user_dir};

@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Screenshot: active window (dark)
+
+*00:53* — Active-window capture with the tab's shape kept; JPEG into a folder chosen with the new folder panel.
+
+![Screenshot: active window (dark)](2026-10-26/005304-screenshot-active-window-dark.png)
+
+### Screenshot (light)
+
+*00:53* — Haiku-style Screenshot app: preview, capture options, name/format/folder; restored after an in-place reload.
+
+![Screenshot (light)](2026-10-26/005304-screenshot-light.png)
+
 ### Screen saver over the lock screen
 
 *00:31* — Locks underneath after the delay; the first input ends the saver and shows the lock.

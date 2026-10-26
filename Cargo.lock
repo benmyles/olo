@@ -4893,6 +4893,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabula-screenshot"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "serde",
+ "serde_json",
+ "tabula-kit",
+ "tabula-protocol",
+ "tracing",
+]
+
+[[package]]
 name = "tabula-session"
 version = "0.1.0"
 dependencies = [

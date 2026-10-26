@@ -208,3 +208,50 @@ pub fn spawn_detached(cmd: &str) -> std::io::Result<()> {
     std::thread::spawn(move || child.wait());
     Ok(())
 }
+
+/// Tabula's settings directory (`$XDG_CONFIG_HOME/tabula`); apps keep their
+/// preferences in `NAME.json` there.
+pub fn config_dir() -> PathBuf {
+    let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| home().join(".config"))
+        .join("tabula")
+}
+
+/// A user folder from `user-dirs.dirs` (`"PICTURES"`, `"DESKTOP"`, ...), if
+/// it is set and exists; otherwise None (callers fall back to home).
+pub fn user_dir(name: &str) -> Option<PathBuf> {
+    let home = PathBuf::from(std::env::var_os("HOME")?);
+    let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".config"));
+    let text = std::fs::read_to_string(config.join("user-dirs.dirs")).ok()?;
+    parse_user_dir(&text, name, &home).filter(|d| d.is_dir())
+}
+
+fn parse_user_dir(text: &str, name: &str, home: &Path) -> Option<PathBuf> {
+    let key = format!("XDG_{name}_DIR=");
+    let value = text.lines().map(str::trim).find_map(|l| l.strip_prefix(key.as_str()))?;
+    let value = value.trim().trim_matches('"');
+    let dir = match value.strip_prefix("$HOME") {
+        Some(rest) => home.join(rest.trim_start_matches('/')),
+        None => PathBuf::from(value),
+    };
+    // "$HOME/" alone means the folder is disabled.
+    (dir != home && dir.is_absolute()).then_some(dir)
+}
+
+#[cfg(test)]
+mod user_dir_tests {
+    use super::*;
+
+    #[test]
+    fn parses_user_dirs() {
+        let text = "# comment\nXDG_DESKTOP_DIR=\"$HOME/Desktop\"\nXDG_PICTURES_DIR=\"$HOME/Pictures\"\nXDG_MUSIC_DIR=\"$HOME/\"\nXDG_VIDEOS_DIR=\"/srv/videos\"\n";
+        let home = Path::new("/home/x");
+        assert_eq!(parse_user_dir(text, "PICTURES", home), Some(PathBuf::from("/home/x/Pictures")));
+        assert_eq!(parse_user_dir(text, "MUSIC", home), None);
+        assert_eq!(parse_user_dir(text, "VIDEOS", home), Some(PathBuf::from("/srv/videos")));
+        assert_eq!(parse_user_dir(text, "TEMPLATES", home), None);
+    }
+}

@@ -67,7 +67,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         {
             // Taken with the next frame, before the saver has drawn.
             let _ = std::fs::remove_file(&path);
-            self.ipc.pending_screenshots.push((path.clone(), None));
+            let _ = self.request_screenshot(crate::screenshot::Shot::screen(path.clone()));
             args.extend(["--desktop".to_owned(), path.display().to_string()]);
         }
         match self.spawn_private("tabula-screensaver", &args) {

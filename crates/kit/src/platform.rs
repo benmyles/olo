@@ -70,7 +70,7 @@ use wayland_protocols::{
 };
 
 use crate::{
-    app::{App, Cx, Layer, Proxy, Request, WindowId, WindowKind, WindowOptions},
+    app::{App, Clip, Cx, Layer, Proxy, Request, WindowId, WindowKind, WindowOptions},
     input, menu,
     menu::{BarState, Menu, MenuAnchor, MenuRequest, PopupResult, PopupState},
     style,
@@ -202,8 +202,11 @@ pub struct Kit {
     keyboard_focus: Option<WlSurface>,
     modifiers: egui::Modifiers,
     last_serial: u32,
-    clipboard: Option<(CopyPasteSource, String)>,
+    /// What we put on the clipboard: the source and its data by type.
+    clipboard: Option<(CopyPasteSource, Clip)>,
     exit: bool,
+    /// Windows all closed, but still serving the clipboard (see `finish`).
+    linger: bool,
 }
 
 /// Run an app until it quits or closes its last window.
@@ -442,6 +445,7 @@ impl Kit {
             last_serial: 0,
             clipboard: None,
             exit: false,
+            linger: false,
         }
     }
 
@@ -519,7 +523,12 @@ impl Kit {
             let requests = std::mem::take(&mut cx.requests);
             for r in requests {
                 match r {
-                    Request::Open(id, options) => self.open(id, options),
+                    Request::Open(id, options) => {
+                        // A window again (say, a forwarded launch): no
+                        // longer only minding the clipboard.
+                        self.linger = false;
+                        self.open(id, options)
+                    }
                     Request::Close(id) => self.close(id),
                     Request::SetTitle(id, title) => {
                         if let Some(s) = self.surface_mut(id) {
@@ -594,13 +603,14 @@ impl Kit {
                         }
                     }
                     Request::Copy(text) => self.set_clipboard(text),
+                    Request::CopyData(clip) => self.set_clipboard_data(clip),
                     Request::Paste(id) => {
                         let text = self.read_clipboard().unwrap_or_default();
                         if let Some(wl) = self.surface_mut(id).map(|s| s.wl.clone()) {
                             self.push_event(&wl, egui::Event::Paste(text));
                         }
                     }
-                    Request::Quit => self.exit = true,
+                    Request::Quit => self.finish(),
                 }
             }
         }
@@ -752,8 +762,23 @@ impl Kit {
             .iter()
             .any(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_) | Role::Lock(..)));
         if !any_window {
-            self.exit = true;
+            self.finish();
         }
+    }
+
+    /// Done: exit, unless we hold the clipboard. With no clipboard manager
+    /// what we copied lives in us, so stay (windowless) until something
+    /// else is copied.
+    fn finish(&mut self) {
+        if self.clipboard.is_none() {
+            self.exit = true;
+            return;
+        }
+        let ids: Vec<WindowId> = self.surfaces.iter().map(|s| s.id).collect();
+        for id in ids.into_iter().rev() {
+            self.drop_surface(id);
+        }
+        self.linger = true;
     }
 
     fn drop_surface(&mut self, id: WindowId) {
@@ -788,20 +813,29 @@ impl Kit {
     // ---- clipboard ----------------------------------------------------
 
     fn set_clipboard(&mut self, text: String) {
+        let text: Arc<[u8]> = text.into_bytes().into();
+        let types = ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING", "STRING", "TEXT"];
+        self.set_clipboard_data(types.iter().map(|t| (t.to_string(), text.clone())).collect());
+    }
+
+    fn set_clipboard_data(&mut self, clip: Clip) {
         let (Some(mgr), Some(dev)) = (&self.data_device_manager, &self.data_device) else {
             return;
         };
-        let source = mgr.create_copy_paste_source(
-            &self.qh,
-            ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING", "STRING", "TEXT"],
-        );
+        let source = mgr.create_copy_paste_source(&self.qh, clip.iter().map(|(t, _)| t.as_str()));
         source.set_selection(dev, self.last_serial);
-        self.clipboard = Some((source, text));
+        self.clipboard = Some((source, clip));
     }
 
     fn read_clipboard(&self) -> Option<String> {
-        if let Some((_, text)) = &self.clipboard {
-            return Some(text.clone());
+        if let Some((_, clip)) = &self.clipboard {
+            // Ours: text if it has any (an image pastes as nothing).
+            return Some(
+                clip.iter()
+                    .find(|(t, _)| t.starts_with("text/plain"))
+                    .map(|(_, d)| String::from_utf8_lossy(d).into_owned())
+                    .unwrap_or_default(),
+            );
         }
         let offer = self.data_device.as_ref()?.data().selection_offer()?;
         let mime = offer.with_mime_types(|types| {
@@ -1959,16 +1993,22 @@ impl DataOfferHandler for Kit {
 
 impl DataSourceHandler for Kit {
     fn accept_mime(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataSource, _: Option<String>) {}
-    fn send_request(&mut self, _: &Connection, _: &QueueHandle<Self>, source: &WlDataSource, _mime: String, mut fd: WritePipe) {
-        if let Some((s, text)) = &self.clipboard
+    fn send_request(&mut self, _: &Connection, _: &QueueHandle<Self>, source: &WlDataSource, mime: String, mut fd: WritePipe) {
+        if let Some((s, clip)) = &self.clipboard
             && s.inner() == source
+            && let Some((_, data)) = clip.iter().find(|(t, _)| *t == mime).or(clip.first())
         {
-            let _ = fd.write_all(text.as_bytes());
+            // On a thread: the reader may be slow, or be us.
+            let data = data.clone();
+            std::thread::spawn(move || fd.write_all(&data));
         }
     }
     fn cancelled(&mut self, _: &Connection, _: &QueueHandle<Self>, source: &WlDataSource) {
         if self.clipboard.as_ref().is_some_and(|(s, _)| s.inner() == source) {
             self.clipboard = None;
+            if self.linger {
+                self.exit = true;
+            }
         }
     }
     fn dnd_dropped(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataSource) {}

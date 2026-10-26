@@ -185,6 +185,18 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
             }
             A::Lock => self.lock_screen(),
+            A::Screenshot { window } => {
+                if !self.lock.locked() {
+                    self.spawn_program("tabula-screenshot", if window { &["--silent", "--window"] } else { &["--silent"] });
+                }
+            }
+            A::ScreenshotApp => {
+                let open = self.all_windows().into_iter().find(|w| w.app_id() == "tabula.screenshot");
+                match open {
+                    Some(w) => self.restore(&w),
+                    None => self.spawn_program("tabula-screenshot", &[]),
+                }
+            }
         }
     }
 

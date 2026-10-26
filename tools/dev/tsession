@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Headless Tabula sessions for development and automated UI checks.
 
-  tsession start NAME [WxH] [--light|--dark] [--session [--shell]]
+  tsession start NAME [WxH] [--light|--dark] [--session [--shell]] [--home DIR]
                                                start a headless app_server (--session:
                                                under tabula-session, so `reload` works;
-                                               --shell also starts Deskbar and the desktop)
+                                               --shell also starts Deskbar and the desktop;
+                                               --home: HOME for the session and its apps,
+                                               so tests that save files stay out of yours)
   tsession reload NAME                         restart app_server in place (session only)
   tsession run NAME [VAR=VAL...] CMD [ARGS...] start a client in it (log: DIR/<cmd>.log);
                                                VAR=VAL set after sudo (e.g. HOME=/tmp/fixture)
@@ -72,15 +74,22 @@ def start(name, args):
     subprocess.run(["chown", "-R", f"{OWNER.pw_uid}:{OWNER.pw_gid}", d]) if os.getuid() == 0 else None
     env = dict(os.environ, XDG_RUNTIME_DIR=RUNTIME, XDG_CONFIG_HOME=os.path.join(d, "config"), RUST_LOG=os.environ.get("RUST_LOG", "info"))
     open(os.path.join(d, "no-sound"), "a").close()
-    env["PULSE_SERVER,TABULA_PAM_CONFDIR,TABULA_PAM_SERVICE"] = "unix:" + os.path.join(d, "no-sound")
+    env["PULSE_SERVER"] = "unix:" + os.path.join(d, "no-sound")
     env.pop("WAYLAND_DISPLAY", None)
     env.pop("TABULA_SOCKET", None)
     log = open(os.path.join(d, "app_server.log"), "w")
     session = "--session" in args
+    # sudo resets HOME, so a sandbox home goes in through env(1).
+    home = next((args[i + 1] for i, a in enumerate(args[:-1]) if a == "--home"), None)
+    if home:
+        os.makedirs(home, exist_ok=True)
+        subprocess.run(["chown", f"{OWNER.pw_uid}:{OWNER.pw_gid}", home]) if os.getuid() == 0 else None
     if session:
         exe = [os.path.join(TARGET, "debug", "tabula-session"), "--headless", size] + ([] if "--shell" in args else ["--no-shell"])
     else:
         exe = [os.path.join(TARGET, "debug", "tabula-app-server"), "--headless", size]
+    if home:
+        exe = ["env", f"HOME={os.path.abspath(home)}"] + exe
     p = subprocess.Popen(as_owner(exe), env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     for _ in range(100):
         time.sleep(0.1)
@@ -96,6 +105,8 @@ def start(name, args):
         if m and i and ready:
             e = {"WAYLAND_DISPLAY": m.group(1), "TABULA_SOCKET": i.group(1), "XDG_RUNTIME_DIR": RUNTIME,
                  "XDG_CONFIG_HOME": os.path.join(d, "config"), "pid": p.pid}
+            if home:
+                e["HOME"] = os.path.abspath(home)
             if session:
                 e["TABULA_SESSION"] = "1"
                 pidfile = os.path.join(RUNTIME, f"tabula-session-{m.group(1)}.pid")
@@ -130,12 +141,14 @@ def run(name, cmd):
     assigns = []
     while cmd and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", cmd[0]):
         assigns.append(cmd.pop(0))
+    if "HOME" in e and not any(a.startswith("HOME=") for a in assigns):
+        assigns.append(f"HOME={e['HOME']}")
     env = dict(os.environ, **{k: v for k, v in e.items() if k != "pid"}, RUST_LOG=os.environ.get("RUST_LOG", "warn"))
     # Headless sessions are silent: point the sound server at a plain file
     # (connecting fails) rather than the user's real speakers.
     mute = os.path.join(BASE, name, "no-sound")
     open(mute, "a").close()
-    env["PULSE_SERVER,TABULA_PAM_CONFDIR,TABULA_PAM_SERVICE"] = "unix:" + mute
+    env["PULSE_SERVER"] = "unix:" + mute
     exe = cmd[0]
     if "/" not in exe:
         for cand in (os.path.join(TARGET, "debug", exe), os.path.join(TARGET, "debug", "examples", exe)):

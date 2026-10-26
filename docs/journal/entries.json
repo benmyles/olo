@@ -256,5 +256,17 @@
   "title": "Screen saver over the lock screen",
   "caption": "Locks underneath after the delay; the first input ends the saver and shows the lock.",
   "image": "2026-10-26/003101-screen-saver-over-the-lock-screen.png"
+ },
+ {
+  "time": "2026-10-26T00:53:04",
+  "title": "Screenshot (light)",
+  "caption": "Haiku-style Screenshot app: preview, capture options, name/format/folder; restored after an in-place reload.",
+  "image": "2026-10-26/005304-screenshot-light.png"
+ },
+ {
+  "time": "2026-10-26T00:53:04",
+  "title": "Screenshot: active window (dark)",
+  "caption": "Active-window capture with the tab's shape kept; JPEG into a folder chosen with the new folder panel.",
+  "image": "2026-10-26/005304-screenshot-active-window-dark.png"
  }
 ]

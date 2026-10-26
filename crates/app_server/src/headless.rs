@@ -175,19 +175,22 @@ pub fn run_headless(size_arg: Option<&str>) {
         state.space.refresh();
         state.popups.cleanup();
         state.tick();
-        for (path, conn) in std::mem::take(&mut state.ipc.pending_screenshots) {
+        for shot in state.ipc.shots_for(&output) {
             let color = state.desktop_color();
             let overlays = twitcher_overlay(&mut state, &output);
             let locked = state.lock.locked();
-            let res = crate::render::capture::<_, GlesTexture>(
+            let pointer = state.pointer.current_location();
+            crate::screenshot::take::<_, GlesTexture>(
+                &mut state.ipc,
+                shot,
                 &mut state.backend_data.renderer,
                 &output,
                 &state.space,
                 overlays,
                 color,
                 locked,
+                pointer,
             );
-            state.ipc.save_screenshot(path, conn, res);
         }
         let _ = state.display_handle.flush_clients();
     }

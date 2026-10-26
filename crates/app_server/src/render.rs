@@ -224,8 +224,7 @@ where
     damage_tracker.render_output(renderer, framebuffer, age, &elements, clear_color)
 }
 
-/// Render `output` offscreen and read it back (the GPU part of a
-/// screenshot; encoding is left to a thread, see `IpcState::save_screenshot`).
+/// Render `output` offscreen and read it back (see screenshot.rs).
 pub fn capture<R, T>(
     renderer: &mut R,
     output: &Output,
@@ -241,18 +240,36 @@ where
 {
     let mode = output.current_mode().ok_or("output has no mode")?;
     let size: Size<i32, Physical> = output.current_transform().transform_size(mode.size);
-    let buffer_size: Size<i32, Buffer> = (size.w, size.h).into();
     let scale = output.current_scale().fractional_scale();
-    let err = |e: R::Error| e.to_string();
+    let (elements, clear_color) = output_elements::<R>(output, space, overlays, renderer, false, clear_color, locked);
+    offscreen(renderer, size, scale, &elements, clear_color)
+}
 
+/// Draw `elements` into a new `size` buffer and read it back, top row first
+/// (premultiplied RGBA).
+pub fn offscreen<R, T, E>(
+    renderer: &mut R,
+    size: Size<i32, Physical>,
+    scale: f64,
+    elements: &[E],
+    clear_color: Color32F,
+) -> Result<image::RgbaImage, String>
+where
+    R: Renderer + Offscreen<T> + ExportMem,
+    R::Error: std::fmt::Display,
+    E: RenderElement<R>,
+{
+    if size.w <= 0 || size.h <= 0 {
+        return Err("nothing to capture".into());
+    }
+    let buffer_size: Size<i32, Buffer> = (size.w, size.h).into();
+    let err = |e: R::Error| e.to_string();
     let mut target = renderer.create_buffer(Fourcc::Abgr8888, buffer_size).map_err(err)?;
     let mapping = {
         let mut fb = renderer.bind(&mut target).map_err(err)?;
-        let (elements, clear_color) =
-            output_elements::<R>(output, space, overlays, renderer, false, clear_color, locked);
         let mut damage_tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
         damage_tracker
-            .render_output(renderer, &mut fb, 0, &elements, clear_color)
+            .render_output(renderer, &mut fb, 0, elements, clear_color)
             .map_err(|e| format!("{e:?}"))?;
         renderer
             .copy_framebuffer(&fb, Rectangle::from_size(buffer_size), Fourcc::Abgr8888)

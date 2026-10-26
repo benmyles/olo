@@ -58,10 +58,7 @@ impl Default for Settings {
 }
 
 fn settings_path() -> PathBuf {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"));
-    base.join("tabula").join("terminal.json")
+    tabula_kit::config_dir().join("terminal.json")
 }
 
 impl Settings {

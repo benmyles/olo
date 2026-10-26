@@ -43,7 +43,10 @@ as they land (with the commit), add new ones as they come up.
   ID; Restart Tabula; a Choose… file panel for the
   wallpaper; Display mode switching (app_server ignores `mode` in
   ConfigureOutput so far) and drag-to-arrange.
-- StyledEdit, DeskCalc, Screenshot.
+- StyledEdit, DeskCalc.
+- ~~**Screenshot**~~: Haiku's app (screen or active window, border,
+  pointer, delay, five formats, folder choice, clipboard), ⌘⇧3/⌘⇧4/⌘⇧5
+  and Print Screen; every backend captures. Region capture is still to do.
 - Web browser (native).
 - Password manager: Rust 1Password SDK, passkeys, Touch ID through
   fprintd natively, browser integration.

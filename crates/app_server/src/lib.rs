@@ -31,6 +31,7 @@ pub mod layout;
 pub mod lock;
 pub mod power;
 pub mod saver;
+pub mod screenshot;
 pub mod text;
 pub mod theme;
 pub mod twitcher;

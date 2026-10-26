@@ -1,4 +1,4 @@
-//! BFilePanel: the Open and Save panels every app shares. Show one in its
+//! BFilePanel: the Open, Save and folder panels every app shares. Show one in its
 //! own window (`PANEL_SIZE`) and call [`FilePanel::ui`] from that window's
 //! `App::ui`; it returns the choice once. Folders are listed on a worker
 //! thread, so a slow disk never stalls the window.
@@ -27,6 +27,8 @@ pub const PANEL_SIZE: (u32, u32) = (560, 420);
 pub enum Mode {
     Open,
     Save,
+    /// Choose a folder: the selected one, or the one shown.
+    Folder,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -76,6 +78,11 @@ impl FilePanel {
         Self::new(Mode::Save, dir.into(), name.into())
     }
 
+    /// A panel that picks a folder, starting in `dir`.
+    pub fn folder(dir: impl Into<PathBuf>) -> Self {
+        Self::new(Mode::Folder, dir.into(), String::new())
+    }
+
     fn new(mode: Mode, dir: PathBuf, name: String) -> Self {
         let dir = if dir.is_dir() { dir } else { home() };
         FilePanel {
@@ -109,8 +116,8 @@ impl FilePanel {
 
     fn matches(&self, it: &Item) -> bool {
         it.is_dir
-            || self.types.is_empty()
-            || Path::new(&it.name).extension().is_some_and(|e| self.types.contains(&e.to_string_lossy().to_lowercase()))
+            || (self.mode != Mode::Folder && self.types.is_empty())
+            || self.mode != Mode::Folder && Path::new(&it.name).extension().is_some_and(|e| self.types.contains(&e.to_string_lossy().to_lowercase()))
     }
 
     fn go(&mut self, ctx: &egui::Context, dir: PathBuf) {
@@ -237,7 +244,7 @@ impl FilePanel {
                 self.go(ui.ctx(), d);
             } else if self.mode == Mode::Open {
                 result = Some(PanelResult::Chosen(self.dir.join(&it.name)));
-            } else {
+            } else if self.mode == Mode::Save {
                 self.name = it.name.clone();
                 result = self.try_save();
             }
@@ -272,10 +279,15 @@ impl FilePanel {
         if ui.put(cancel_r, Button::new("Cancel")).clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
             result = Some(PanelResult::Cancelled);
         }
-        let label = if self.mode == Mode::Save { "Save" } else { "Open" };
+        let label = match self.mode {
+            Mode::Save => "Save",
+            Mode::Open => "Open",
+            Mode::Folder => "Select",
+        };
         let enabled = match self.mode {
             Mode::Save => !self.name.trim().is_empty(),
             Mode::Open => self.list.single().is_some(),
+            Mode::Folder => true,
         };
         let ok = ui.add_enabled_ui(enabled, |ui| ui.put(ok_r, Button::new(label).default(true))).inner;
         if ok.clicked() {
@@ -284,6 +296,10 @@ impl FilePanel {
                     if result.is_none() {
                         result = self.try_save();
                     }
+                }
+                Mode::Folder => {
+                    let picked = self.list.single().and_then(|i| self.items.get(i)).map(|it| self.dir.join(&it.name));
+                    result = Some(PanelResult::Chosen(picked.unwrap_or_else(|| self.dir.clone())));
                 }
                 Mode::Open => {
                     if let Some(it) = self.list.single().and_then(|i| self.items.get(i)).cloned() {

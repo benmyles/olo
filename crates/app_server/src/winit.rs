@@ -463,18 +463,21 @@ pub fn run_winit() {
             state.space.refresh();
             state.popups.cleanup();
             state.tick();
-            for (path, conn) in std::mem::take(&mut state.ipc.pending_screenshots) {
+            for shot in state.ipc.shots_for(&output) {
                 let color = state.desktop_color();
                 let locked = state.lock.locked();
-                let res = crate::render::capture::<_, smithay::backend::renderer::gles::GlesTexture>(
+                let pointer = state.pointer.current_location();
+                crate::screenshot::take::<_, smithay::backend::renderer::gles::GlesTexture>(
+                    &mut state.ipc,
+                    shot,
                     state.backend_data.backend.renderer(),
                     &output,
                     &state.space,
                     Vec::new(),
                     color,
                     locked,
+                    pointer,
                 );
-                state.ipc.save_screenshot(path, conn, res);
             }
             display_handle.flush_clients().unwrap();
         }

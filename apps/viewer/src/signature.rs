@@ -23,10 +23,7 @@ pub struct Signature {
 }
 
 fn store_path() -> PathBuf {
-    let config = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"));
-    config.join("tabula").join("signatures.json")
+    tabula_kit::config_dir().join("signatures.json")
 }
 
 pub fn load() -> Vec<Signature> {
