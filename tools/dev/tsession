@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Headless Tabula sessions for development and automated UI checks.
 
-  tsession start NAME [WxH] [--light|--dark] [--session [--shell]] [--home DIR]
+  tsession start NAME [WxH[,WxH…]] [--light|--dark] [--session [--shell]] [--home DIR]
                                                start a headless app_server (--session:
                                                under tabula-session, so `reload` works;
                                                --shell also starts Deskbar and the desktop;
@@ -10,7 +10,8 @@
   tsession reload NAME                         restart app_server in place (session only)
   tsession run NAME [VAR=VAL...] CMD [ARGS...] start a client in it (log: DIR/<cmd>.log);
                                                VAR=VAL set after sudo (e.g. HOME=/tmp/fixture)
-  tsession shot NAME OUT.png [X Y W H]         screenshot (optional crop, logical px)
+  tsession shot NAME OUT.png [X Y W H] [--output HEADLESS-2]
+                                               screenshot (optional crop, logical px)
   tsession zoom NAME OUT.png X Y W H [N]       crop (logical px) and magnify N× (default 4)
   tsession click NAME X Y [right]              synthetic click (logical px)
   tsession move NAME X Y | down NAME X Y | up NAME
@@ -62,7 +63,7 @@ def synth(name, events):
     return ipc(name, {"type": "synthetic", "events": events})
 
 def start(name, args):
-    size = next((a for a in args if re.fullmatch(r"\d+x\d+", a)), "2560x1600")
+    size = next((a for a in args if re.fullmatch(r"\d+x\d+(,\d+x\d+)*", a)), "2560x1600")
     theme = "dark" if "--dark" in args else "light"
     d = sdir(name)
     if os.path.exists(os.path.join(d, "env.json")):
@@ -163,10 +164,13 @@ def run(name, cmd):
     open(os.path.join(sdir(name), f"{base}.{p.pid}.pid"), "w").write(str(p.pid))
     print(f"started {base} pid {p.pid}")
 
-def shot(name, out, crop=None, zoom=1):
+def shot(name, out, crop=None, zoom=1, output=None):
     out = os.path.abspath(out)
     tmp = os.path.join(sdir(name), "shot.png")
-    r = ipc(name, {"type": "screenshot", "path": tmp})
+    req = {"type": "screenshot", "path": tmp}
+    if output:
+        req["output"] = output
+    r = ipc(name, req)
     if not r or r.get("type") != "ok":
         sys.exit(f"screenshot failed: {r}")
     from PIL import Image
@@ -223,7 +227,9 @@ def main():
             if k != "pid":
                 print(f"export {k}={v}")
     elif cmd == "shot":
-        shot(name, a[0], a[1:5] if len(a) >= 5 else None)
+        output = a[a.index("--output") + 1] if "--output" in a else None
+        a = [v for i, v in enumerate(a) if v != "--output" and (i == 0 or a[i - 1] != "--output")]
+        shot(name, a[0], a[1:5] if len(a) >= 5 else None, output=output)
     elif cmd == "zoom":
         shot(name, a[0], a[1:5], int(a[5]) if len(a) > 5 else 4)
     elif cmd == "move":

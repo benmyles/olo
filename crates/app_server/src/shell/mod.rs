@@ -492,17 +492,48 @@ fn place_new_window(
     space.map_element(window.clone(), (x, y), activate);
 }
 
-pub fn fixup_positions(space: &mut Space<WindowElement>, pointer_location: Point<f64, Logical>) {
+/// Where outputs go, in logical coordinates: each at its saved position
+/// (Preferences ▸ Display) unless that would overlap one already placed;
+/// the rest in a row to the right. The whole layout is then shifted to
+/// start at (0, 0), which keeps it stable however it was dragged.
+pub fn arrange(outputs: &[(String, Size<i32, Logical>)], saved: impl Fn(&str) -> Option<(i32, i32)>) -> Vec<Point<i32, Logical>> {
+    let mut placed: Vec<Option<Rectangle<i32, Logical>>> = vec![None; outputs.len()];
+    for (i, (name, size)) in outputs.iter().enumerate() {
+        let Some(pos) = saved(name) else { continue };
+        let r = Rectangle::new(pos.into(), *size);
+        if !placed.iter().flatten().any(|p| p.overlaps(r)) {
+            placed[i] = Some(r);
+        }
+    }
+    for (i, (_, size)) in outputs.iter().enumerate() {
+        if placed[i].is_none() {
+            let rects: Vec<_> = placed.iter().flatten().copied().collect();
+            let x = rects.iter().map(|r| r.loc.x + r.size.w).max().unwrap_or(0);
+            let y = rects.iter().map(|r| r.loc.y).min().unwrap_or(0);
+            placed[i] = Some(Rectangle::new((x, y).into(), *size));
+        }
+    }
+    let rects: Vec<_> = placed.into_iter().flatten().collect();
+    let min_x = rects.iter().map(|r| r.loc.x).min().unwrap_or(0);
+    let min_y = rects.iter().map(|r| r.loc.y).min().unwrap_or(0);
+    rects.iter().map(|r| r.loc - Point::from((min_x, min_y))).collect()
+}
+
+pub fn fixup_positions(
+    space: &mut Space<WindowElement>,
+    display: &tabula_protocol::DisplaySettings,
+    pointer_location: Point<f64, Logical>,
+) {
     // fixup outputs
-    let mut offset = Point::<i32, Logical>::from((0, 0));
-    for output in space.outputs().cloned().collect::<Vec<_>>().into_iter() {
-        let size = space
-            .output_geometry(&output)
-            .map(|geo| geo.size)
-            .unwrap_or_else(|| Size::from((0, 0)));
-        space.map_output(&output, offset);
-        layer_map_for_output(&output).arrange();
-        offset.x += size.w;
+    let outputs: Vec<Output> = space.outputs().cloned().collect();
+    let sizes: Vec<(String, Size<i32, Logical>)> = outputs
+        .iter()
+        .map(|o| (o.name(), space.output_geometry(o).map(|geo| geo.size).unwrap_or_else(|| Size::from((0, 0)))))
+        .collect();
+    let positions = arrange(&sizes, |name| display.outputs.get(name).and_then(|c| c.position));
+    for (output, at) in outputs.iter().zip(positions) {
+        space.map_output(output, at);
+        layer_map_for_output(output).arrange();
     }
 
     // fixup windows
@@ -529,5 +560,32 @@ pub fn fixup_positions(space: &mut Space<WindowElement>, pointer_location: Point
     }
     for window in orphaned_windows.into_iter() {
         place_new_window(space, pointer_location, &window, false);
+    }
+}
+
+#[cfg(test)]
+mod arrange_tests {
+    use super::*;
+
+    fn out(name: &str, w: i32, h: i32) -> (String, Size<i32, Logical>) {
+        (name.into(), (w, h).into())
+    }
+
+    #[test]
+    fn saved_positions_and_rows() {
+        let outs = [out("A", 1728, 1117), out("B", 1920, 1080)];
+        // Nothing saved: a row.
+        let p = arrange(&outs, |_| None);
+        assert_eq!(p, vec![(0, 0).into(), (1728, 0).into()]);
+        // B above A, centred: shifted so the layout starts at (0, 0).
+        let p = arrange(&outs, |n| match n {
+            "A" => Some((0, 0)),
+            "B" => Some((-96, -1080)),
+            _ => None,
+        });
+        assert_eq!(p, vec![(96, 1080).into(), (0, 0).into()]);
+        // Overlapping saved positions: the second falls back to the row.
+        let p = arrange(&outs, |_| Some((0, 0)));
+        assert_eq!(p, vec![(0, 0).into(), (1728, 0).into()]);
     }
 }

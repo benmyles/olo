@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Display: arranged screens, dark
+
+*02:40* — Two headless screens stacked by dragging in the map; the lower one follows when the upper changes size.
+
+![Display: arranged screens, dark](2026-10-26/024050-display-arranged-screens-dark.png)
+
+### Display: resolution with revert countdown
+
+*02:40* — HEADLESS-1 switched to 1920 by 1200; its right-hand neighbour moved with the edge; Keep or Revert, else it reverts after 15 s.
+
+![Display: resolution with revert countdown](2026-10-26/024050-display-resolution-with-revert-countdown.png)
+
 ### Backgrounds in dark mode
 
 *02:31* — The chosen wallpaper survives an in-place reload via About Tabula, Restart Tabula.

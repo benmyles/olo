@@ -213,6 +213,31 @@ impl Backend for UdevData {
             keyboard.led_update(led_state.into());
         }
     }
+
+    fn set_mode(&mut self, output: &Output, mode: WlMode) -> Result<(), String> {
+        let id = output.user_data().get::<UdevOutputId>().ok_or("not a DRM output")?;
+        let primary = self.primary_gpu;
+        let device = self.backends.get_mut(&id.device_id).ok_or("its GPU is gone")?;
+        let render_node = device.render_node.unwrap_or(primary);
+        let surface = device.surfaces.get_mut(&id.crtc).ok_or("its CRTC is gone")?;
+        let drm_mode = *surface
+            .drm_modes
+            .iter()
+            .find(|m| WlMode::from(**m) == mode)
+            .ok_or("the display doesn't offer that mode")?;
+        let mut renderer = self.gpus.single_renderer(&render_node).map_err(|e| e.to_string())?;
+        surface
+            .drm_output
+            .use_mode::<_, OutputRenderElements<UdevRenderer<'_>, WindowRenderElement<UdevRenderer<'_>>>>(
+                drm_mode,
+                &mut renderer,
+                &DrmOutputRenderElements::default(),
+            )
+            .map_err(|e| e.to_string())?;
+        output.change_current_state(Some(mode), None, None, None);
+        info!(output = output.name(), ?mode, "mode changed");
+        Ok(())
+    }
 }
 
 pub fn run_udev() {
@@ -634,6 +659,8 @@ struct SurfaceData {
     device_id: DrmNode,
     render_node: Option<DrmNode>,
     output: Output,
+    /// The connector's modes, for `Backend::set_mode`.
+    drm_modes: Vec<smithay::reexports::drm::control::Mode>,
     global: Option<GlobalId>,
     drm_output: DrmOutput<
         GbmAllocator<DrmDeviceFd>,
@@ -955,11 +982,21 @@ impl AnvilState<UdevData> {
                 );
             }
         } else {
-            let mode_id = connector
+            let preferred = connector
                 .modes()
                 .iter()
                 .position(|mode| mode.mode_type().contains(ModeTypeFlags::PREFERRED))
                 .unwrap_or(0);
+            // The mode chosen in Preferences ▸ Display, while the display offers it.
+            let saved = self.settings.display.outputs.get(&output_name).and_then(|c| c.mode.clone());
+            let mode_id = saved
+                .and_then(|m| {
+                    connector.modes().iter().position(|d| {
+                        let w = WlMode::from(*d);
+                        (w.size.w, w.size.h, w.refresh) == (m.width, m.height, m.refresh)
+                    })
+                })
+                .unwrap_or(preferred);
 
             let drm_mode = connector.modes()[mode_id];
             let wl_mode = WlMode::from(drm_mode);
@@ -983,7 +1020,10 @@ impl AnvilState<UdevData> {
                 .fold(0, |acc, o| acc + self.space.output_geometry(o).unwrap().size.w);
             let position = (x, 0).into();
 
-            output.set_preferred(wl_mode);
+            for m in connector.modes() {
+                output.add_mode(WlMode::from(*m));
+            }
+            output.set_preferred(WlMode::from(connector.modes()[preferred]));
             output.change_current_state(Some(wl_mode), None, None, Some(position));
             let scale = self.settings.display.scale_for(&output.name());
             output.change_current_state(None, None, Some(smithay::output::Scale::Fractional(scale)), None);
@@ -1062,6 +1102,7 @@ impl AnvilState<UdevData> {
                 device_id: node,
                 render_node: device.render_node,
                 output,
+                drm_modes: connector.modes().to_vec(),
                 global: Some(global),
                 drm_output,
                 disable_direct_scanout,
@@ -1158,7 +1199,7 @@ impl AnvilState<UdevData> {
         }
 
         // fixup window coordinates
-        crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
+        crate::shell::fixup_positions(&mut self.space, &self.settings.display, self.pointer.current_location());
     }
 
     fn device_removed(&mut self, node: DrmNode) {
@@ -1195,7 +1236,7 @@ impl AnvilState<UdevData> {
             debug!("Dropping device");
         }
 
-        crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
+        crate::shell::fixup_positions(&mut self.space, &self.settings.display, self.pointer.current_location());
     }
 
     fn frame_finish(&mut self, dev_id: DrmNode, crtc: crtc::Handle, metadata: &mut Option<DrmEventMetadata>) {

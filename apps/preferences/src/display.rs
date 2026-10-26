@@ -1,12 +1,16 @@
 //! Display: an arrangement map of the connected screens (click one to pick
-//! it), and the chosen screen's resolution, refresh rate and scale. Changes
-//! apply at once through app_server's ConfigureOutput.
+//! it, drag one to move it; it snaps edge to edge with the others), and the
+//! chosen screen's resolution, refresh rate and scale. Changes apply at
+//! once through app_server's ConfigureOutput; a new resolution reverts by
+//! itself unless kept within `KEEP_SECS`, in case the screen went dark.
+
+use std::time::{Duration, Instant};
 
 use tabula_kit::{
-    egui::{Align2, Color32, Rect, Sense, Ui, vec2},
+    egui::{Align2, Color32, Rect, Sense, Ui, Vec2, vec2},
     metrics as m,
     style::{self, c},
-    widgets::{BBox, MenuField, Slider, StringView},
+    widgets::{BBox, Button, MenuField, Slider, StringView},
 };
 use tabula_protocol::{Mode, OutputConfig, OutputInfo, PowerStatus, Settings};
 
@@ -17,6 +21,51 @@ pub struct State {
     selected: Option<String>,
     /// The level being dragged (app_server's echo lags a little).
     brightness: Option<(f32, std::time::Instant)>,
+    /// The screen being dragged in the map, and how far (points).
+    drag: Option<(String, Vec2)>,
+    /// A resolution change waiting to be kept: the screen, its previous
+    /// mode, and when it changed.
+    confirm: Option<(String, Mode, Instant)>,
+}
+
+/// How long a new resolution has to be kept before it reverts.
+pub const KEEP_SECS: u64 = 15;
+
+/// A logical rectangle (x, y, w, h).
+type LRect = (f64, f64, f64, f64);
+
+fn overlaps(a: LRect, b: LRect) -> bool {
+    a.0 < b.0 + b.2 && b.0 < a.0 + a.2 && a.1 < b.1 + b.3 && b.1 < a.1 + a.3
+}
+
+/// Where a screen of size (w, h) dropped at (x, y) goes: against the
+/// nearest edge of another screen, sharing at least a strip of that edge,
+/// lined up with its edges or centre when close, and never overlapping.
+pub fn snap((x, y, w, h): LRect, others: &[LRect]) -> Option<(i32, i32)> {
+    const SHARE: f64 = 64.0;
+    let align = 0.06 * w.max(h);
+    let near = |v: f64, targets: [f64; 3]| {
+        targets
+            .into_iter()
+            .filter(|t| (v - t).abs() < align)
+            .min_by(|a, b| (v - a).abs().total_cmp(&(v - b).abs()))
+            .unwrap_or(v)
+    };
+    let mut best: Option<((f64, f64), f64)> = None;
+    for &(ox, oy, ow, oh) in others {
+        let yy = near(y.clamp(oy - h + SHARE, oy + oh - SHARE), [oy, oy + oh - h, oy + (oh - h) / 2.0]);
+        let xx = near(x.clamp(ox - w + SHARE, ox + ow - SHARE), [ox, ox + ow - w, ox + (ow - w) / 2.0]);
+        for cand in [(ox + ow, yy), (ox - w, yy), (xx, oy + oh), (xx, oy - h)] {
+            if others.iter().any(|&o| overlaps((cand.0, cand.1, w, h), o)) {
+                continue;
+            }
+            let d = (cand.0 - x).hypot(cand.1 - y);
+            if best.is_none_or(|(_, bd)| d < bd) {
+                best = Some((cand, d));
+            }
+        }
+    }
+    best.map(|((x, y), _)| (x.round() as i32, y.round() as i32))
 }
 
 pub const SCALES: &[f64] = &[1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
@@ -39,6 +88,13 @@ fn scale_text(scale: f64) -> String {
 fn logical(o: &OutputInfo) -> (f64, f64) {
     let (w, h) = o.current_mode.as_ref().map_or((1920, 1080), |m| (m.width, m.height));
     (w as f64 / o.scale.max(0.1), h as f64 / o.scale.max(0.1))
+}
+
+/// The name shown for `o`, with its connector when another screen would
+/// have the same name.
+fn shown_name(o: &OutputInfo, all: &[OutputInfo]) -> String {
+    let name = display_name(o);
+    if all.iter().filter(|x| display_name(x) == name).count() > 1 { format!("{name} ({})", o.name) } else { name }
 }
 
 fn display_name(o: &OutputInfo) -> String {
@@ -78,36 +134,60 @@ pub fn ui(ui: &mut Ui, s: &Settings, outputs: &[OutputInfo], power: Option<&Powe
     let inner = map.shrink(16.0);
     let k = (inner.width() as f64 / (x1 - x0)).min(inner.height() as f64 / (y1 - y0)) as f32;
     let off = inner.center() - vec2((x1 - x0) as f32 * k, (y1 - y0) as f32 * k) / 2.0;
-    for o in outputs {
+    let rect_of = |o: &OutputInfo| {
         let (w, h) = logical(o);
-        let r = Rect::from_min_size(
+        Rect::from_min_size(
             off + vec2((o.position.0 as f64 - x0) as f32 * k, (o.position.1 as f64 - y0) as f32 * k),
             vec2(w as f32 * k, h as f32 * k),
         )
-        .shrink(1.0);
+        .shrink(1.0)
+    };
+    let mut dropped = None;
+    // The dragged screen is drawn last, over the others.
+    let mut order: Vec<&OutputInfo> = outputs.iter().collect();
+    order.sort_by_key(|o| st.drag.as_ref().is_some_and(|(n, _)| *n == o.name));
+    for o in order {
+        let mut r = rect_of(o);
         let chosen = st.selected.as_deref() == Some(&o.name);
-        let resp = ui.interact(r, ui.make_persistent_id(("display", &o.name)), Sense::click());
-        if resp.clicked() {
+        let sense = if outputs.len() > 1 { Sense::click_and_drag() } else { Sense::click() };
+        let resp = ui.interact(r, ui.make_persistent_id(("display", &o.name)), sense);
+        if resp.clicked() || resp.drag_started() {
             st.selected = Some(o.name.clone());
+        }
+        if resp.dragged() {
+            let d = st.drag.get_or_insert_with(|| (o.name.clone(), Vec2::ZERO));
+            d.1 += resp.drag_delta();
+        }
+        if let Some((n, d)) = &st.drag
+            && *n == o.name
+        {
+            r = r.translate(*d).intersect(map.shrink(2.0));
+            if resp.drag_stopped() {
+                dropped = Some((o.name.clone(), *d));
+            }
         }
         let [rr, gg, bb] = s.workspace_color(0);
         ui.painter().rect_filled(r, 0.0, Color32::from_rgb(rr, gg, bb));
         let border = if chosen { c(p.keyboard_navigation) } else { c(p.frame_focused[0]) };
         let stroke_w = if chosen { 2.0 } else { 1.0 };
         ui.painter().rect_stroke(r, 0.0, (stroke_w, border), tabula_kit::egui::StrokeKind::Inside);
-        // A menu bar strip on the primary (leftmost-topmost) screen, as macOS does.
-        if o.position == (x0 as i32, y0 as i32) {
+        // A menu bar strip on the primary screen (the first, where Deskbar goes).
+        if o.name == outputs[0].name {
             let bar = Rect::from_min_size(r.min + vec2(stroke_w, stroke_w), vec2(r.width() - 2.0 * stroke_w, 4.0));
             ui.painter().rect_filled(bar, 0.0, Color32::from_white_alpha(200));
         }
         ui.painter().text(r.center(), Align2::CENTER_CENTER, display_name(o), style::plain_font(), Color32::WHITE);
+    }
+    if let Some((name, d)) = dropped {
+        st.drag = None;
+        rearrange(outputs, &name, d, k, server);
     }
 
     let Some(o) = outputs.iter().find(|o| st.selected.as_deref() == Some(&o.name)) else {
         return;
     };
     let label_w = 90.0;
-    BBox::new(&display_name(o)).show(ui, |ui| {
+    BBox::new(&shown_name(o, outputs)).show(ui, |ui| {
         // Resolutions, largest first; the refresh rate is a separate choice.
         let mut sizes: Vec<(i32, i32)> = o.modes.iter().map(|m| (m.width, m.height)).collect();
         sizes.sort_by(|a, b| (b.0 * b.1).cmp(&(a.0 * a.1)).then(b.0.cmp(&a.0)));
@@ -153,6 +233,12 @@ pub fn ui(ui: &mut Ui, s: &Settings, outputs: &[OutputInfo], power: Option<&Powe
             chosen.refresh = r;
         }
         if chosen != current {
+            // Revert to what worked before, even after several changes.
+            if st.confirm.as_ref().is_none_or(|(n, _, _)| *n != o.name) {
+                st.confirm = Some((o.name.clone(), current.clone(), Instant::now()));
+            } else if let Some(c) = st.confirm.as_mut() {
+                c.2 = Instant::now();
+            }
             server.configure_output(&o.name, OutputConfig { mode: Some(chosen.clone()), ..Default::default() });
         }
 
@@ -188,4 +274,83 @@ pub fn ui(ui: &mut Ui, s: &Settings, outputs: &[OutputInfo], power: Option<&Powe
             }
         }
     });
+    keep_band(ui, outputs, server, st);
+}
+
+/// Move `name` by `delta` points in the map (`k` points per logical
+/// pixel), snapped against the others. Every screen's position is sent so
+/// the arrangement doesn't depend on which ones had been placed before.
+fn rearrange(outputs: &[OutputInfo], name: &str, delta: Vec2, k: f32, server: &Server) {
+    let Some(o) = outputs.iter().find(|o| o.name == name) else { return };
+    let (w, h) = logical(o);
+    let x = o.position.0 as f64 + (delta.x / k) as f64;
+    let y = o.position.1 as f64 + (delta.y / k) as f64;
+    let others: Vec<LRect> = outputs
+        .iter()
+        .filter(|x| x.name != name)
+        .map(|x| {
+            let (w, h) = logical(x);
+            (x.position.0 as f64, x.position.1 as f64, w, h)
+        })
+        .collect();
+    let Some(at) = snap((x, y, w, h), &others) else { return };
+    if at == o.position {
+        return;
+    }
+    for x in outputs.iter().filter(|x| x.name != name) {
+        server.configure_output(&x.name, OutputConfig { position: Some(x.position), ..Default::default() });
+    }
+    server.configure_output(name, OutputConfig { position: Some(at), ..Default::default() });
+}
+
+/// "Keep this resolution?" with a countdown; reverts by itself.
+fn keep_band(ui: &mut Ui, outputs: &[OutputInfo], server: &Server, st: &mut State) {
+    let Some((name, previous, at)) = st.confirm.clone() else { return };
+    let Some(o) = outputs.iter().find(|o| o.name == name) else {
+        st.confirm = None;
+        return;
+    };
+    let left = KEEP_SECS.saturating_sub(at.elapsed().as_secs());
+    let revert = |st: &mut State| {
+        server.configure_output(&name, OutputConfig { mode: Some(previous.clone()), ..Default::default() });
+        st.confirm = None;
+    };
+    if left == 0 {
+        revert(st);
+        return;
+    }
+    ui.add_space(m::SPACING);
+    ui.horizontal(|ui| {
+        let _ = o;
+        ui.add(StringView::new(&format!("Keep this resolution? Reverting in {left} s.")));
+        ui.with_layout(tabula_kit::egui::Layout::right_to_left(tabula_kit::egui::Align::Center), |ui| {
+            if ui.add(Button::new("Keep").default(true)).clicked() {
+                st.confirm = None;
+            }
+            if ui.add(Button::new("Revert")).clicked() {
+                revert(st);
+            }
+        });
+    });
+    ui.ctx().request_repaint_after(Duration::from_millis(250));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snaps_edge_to_edge() {
+        let laptop = (0.0, 0.0, 1728.0, 1117.0);
+        // Dropped a little above and right of the laptop's right edge: snaps against it.
+        assert_eq!(snap((1750.0, -30.0, 1920.0, 1080.0), &[laptop]), Some((1728, 0)));
+        // Dropped above, roughly centred: centred exactly on top.
+        assert_eq!(snap((-80.0, -1050.0, 1920.0, 1080.0), &[laptop]), Some((-96, -1080)));
+        // Dropped on top of it: moved to the nearest free edge.
+        let (x, y) = snap((100.0, 900.0, 1920.0, 1080.0), &[laptop]).unwrap();
+        assert!(!overlaps((x as f64, y as f64, 1920.0, 1080.0), laptop));
+        assert_eq!(y, 1117);
+        // Far away: still touching, sharing at least a strip of edge.
+        assert_eq!(snap((1728.0, 5000.0, 1920.0, 1080.0), &[laptop]), Some((1728 - 64, 1117)));
+    }
 }

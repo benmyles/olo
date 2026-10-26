@@ -45,8 +45,8 @@ as they land (with the commit), add new ones as they come up.
   do), ~~Bluetooth~~ (search, pair with passkey/PIN agent, connect,
   remove, battery), ~~Date & Time~~ (calendar, clock face, network
   time, time zone, Deskbar 24-hour/seconds/day), ~~Touch ID~~ (enrol with progress, remove); ~~Restart Tabula~~; ~~a Choose… file panel for the
-  wallpaper~~ (app_server now draws it); Display mode switching (app_server ignores `mode` in
-  ConfigureOutput so far) and drag-to-arrange.
+  wallpaper~~ (app_server now draws it); ~~Display mode switching and drag-to-arrange~~ (with keep/revert
+  countdown; modes and positions restored at start-up).
 - ~~**StyledEdit**~~: styled text in attributes beside plain text, Font /
   Document menus, Find / Replace windows, own undo, atomic saves, reload
   keeps unsaved work.
@@ -74,6 +74,11 @@ as they land (with the commit), add new ones as they come up.
   restored on reconnect; a revert-in-15-seconds confirmation after mode
   changes. Windows move off a removed display; workspaces and Deskbar
   follow the main display; cursor crosses edges at matching scale.
+  Done: per-output mode/refresh/scale, drag-to-arrange with snapping,
+  revert countdown, saved per connector and restored at start-up,
+  neighbours follow a resized screen, multi-screen headless tests.
+  Still to do: rotation, mirroring, choosing the main display, Identify,
+  keying saved settings by EDID rather than connector.
 
 - Cursor shapes; night mode; libinput settings; ~~centred alerts~~
   (`WindowOptions::alert`, set_parent, placed over the parent).

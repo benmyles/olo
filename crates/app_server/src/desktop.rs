@@ -12,7 +12,7 @@ use smithay::{
     desktop::{WindowSurface, space::SpaceElement},
     output::{Output, Scale},
     reexports::wayland_server::Resource,
-    utils::{IsAlive, Logical, Point},
+    utils::{IsAlive, Logical, Point, Rectangle},
     wayland::seat::WaylandFocus,
 };
 use tabula_protocol::{Event, NightLightMode, OutputConfig, OutputInfo, Settings, ThemePreference, WindowInfo};
@@ -425,6 +425,42 @@ impl<B: Backend + 'static> AnvilState<B> {
         output.change_current_state(None, None, Some(Scale::Fractional(scale)), None);
     }
 
+    /// `name` changed size from `old` to `new`: screens placed against its
+    /// right or bottom edge move with that edge, so the arrangement keeps
+    /// touching (a gap would trap the pointer).
+    fn keep_neighbours(&mut self, name: &str, old: Rectangle<i32, Logical>, new: Rectangle<i32, Logical>) {
+        let (dw, dh) = (new.size.w - old.size.w, new.size.h - old.size.h);
+        if (dw, dh) == (0, 0) {
+            return;
+        }
+        let moves: Vec<(String, (i32, i32))> = self
+            .space
+            .outputs()
+            .filter(|o| o.name() != name)
+            .filter_map(|o| {
+                let g = self.space.output_geometry(o)?;
+                let shift = (
+                    if g.loc.x == old.loc.x + old.size.w { dw } else { 0 },
+                    if g.loc.y == old.loc.y + old.size.h { dh } else { 0 },
+                );
+                (shift != (0, 0)).then(|| (o.name(), (g.loc.x + shift.0, g.loc.y + shift.1)))
+            })
+            .collect();
+        for (other, at) in moves {
+            // Pin everything that is placed, so the row fallback can't reshuffle.
+            self.settings.display.outputs.entry(other).or_default().position = Some(at);
+        }
+        let placed: Vec<(String, (i32, i32))> = self
+            .space
+            .outputs()
+            .filter_map(|o| Some((o.name(), self.space.output_geometry(o)?.loc.into())))
+            .collect();
+        for (n, at) in placed {
+            let entry = self.settings.display.outputs.entry(n).or_default();
+            entry.position.get_or_insert(at);
+        }
+    }
+
     pub fn configure_output(&mut self, name: &str, config: OutputConfig) -> Result<(), String> {
         let output = self
             .space
@@ -432,12 +468,22 @@ impl<B: Backend + 'static> AnvilState<B> {
             .find(|o| o.name() == name)
             .cloned()
             .ok_or_else(|| format!("no output named {name}"))?;
-        if config.mode.is_some() {
-            // Mode switching goes through the DRM backend; scale and position
-            // are handled here for every backend.
-            warn!("mode changes are not supported yet");
+        let before = self.space.output_geometry(&output);
+        if let Some(mode) = &config.mode {
+            // Resolution goes through the backend (DRM, or headless for tests).
+            let want = smithay::output::Mode { size: (mode.width, mode.height).into(), refresh: mode.refresh };
+            if output.current_mode() != Some(want) {
+                if !output.modes().contains(&want) {
+                    return Err(format!("{name} doesn't offer {}×{}", mode.width, mode.height));
+                }
+                self.backend_data.set_mode(&output, want)?;
+                self.backend_data.reset_buffers(&output);
+            }
         }
         let entry = self.settings.display.outputs.entry(name.to_owned()).or_default();
+        if let Some(mode) = config.mode {
+            entry.mode = Some(mode);
+        }
         if let Some(scale) = config.scale {
             entry.scale = Some(scale.clamp(0.5, 4.0));
         }
@@ -445,11 +491,12 @@ impl<B: Backend + 'static> AnvilState<B> {
             entry.position = Some(pos);
         }
         self.apply_output_settings(&output);
-        if let Some((x, y)) = config.position {
-            self.space.map_output(&output, (x, y));
+        self.space.map_output(&output, before.map(|g| g.loc).unwrap_or_default());
+        if let (Some(old), Some(new)) = (before, self.space.output_geometry(&output)) {
+            self.keep_neighbours(name, old, new);
         }
         let pointer = self.pointer.current_location();
-        fixup_positions(&mut self.space, pointer);
+        fixup_positions(&mut self.space, &self.settings.display, pointer);
         save_settings(&self.settings);
         self.lock_outputs_changed();
         self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
@@ -472,7 +519,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.apply_output_settings(&o);
             }
             let pointer = self.pointer.current_location();
-            fixup_positions(&mut self.space, pointer);
+            fixup_positions(&mut self.space, &self.settings.display, pointer);
             self.lock_outputs_changed();
             self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
         }

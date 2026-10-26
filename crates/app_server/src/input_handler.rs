@@ -752,7 +752,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     let new_scale = current_scale + 0.25;
                     output.change_current_state(None, None, Some(Scale::Fractional(new_scale)), None);
 
-                    crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
+                    crate::shell::fixup_positions(&mut self.space, &self.settings.display, self.pointer.current_location());
                     self.backend_data.reset_buffers(&output);
                 }
 
@@ -768,7 +768,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     let new_scale = f64::max(1.0, current_scale - 0.25);
                     output.change_current_state(None, None, Some(Scale::Fractional(new_scale)), None);
 
-                    crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
+                    crate::shell::fixup_positions(&mut self.space, &self.settings.display, self.pointer.current_location());
                     self.backend_data.reset_buffers(&output);
                 }
 
@@ -793,7 +793,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     };
                     tracing::info!(?current_transform, ?new_transform, output = ?output.name(), "changing output transform");
                     output.change_current_state(None, Some(new_transform), None, None);
-                    crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
+                    crate::shell::fixup_positions(&mut self.space, &self.settings.display, self.pointer.current_location());
                     self.backend_data.reset_buffers(&output);
                 }
 
@@ -989,7 +989,7 @@ impl AnvilState<UdevData> {
                         pointer_output_location.y *= rescale;
                         let pointer_location = output_location + pointer_output_location;
 
-                        crate::shell::fixup_positions(&mut self.space, pointer_location);
+                        crate::shell::fixup_positions(&mut self.space, &self.settings.display, pointer_location);
                         let pointer = self.pointer.clone();
                         let under = self.surface_under(pointer_location);
                         pointer.motion(
@@ -1028,7 +1028,7 @@ impl AnvilState<UdevData> {
                         pointer_output_location.y *= rescale;
                         let pointer_location = output_location + pointer_output_location;
 
-                        crate::shell::fixup_positions(&mut self.space, pointer_location);
+                        crate::shell::fixup_positions(&mut self.space, &self.settings.display, pointer_location);
                         let pointer = self.pointer.clone();
                         let under = self.surface_under(pointer_location);
                         pointer.motion(
@@ -1065,7 +1065,7 @@ impl AnvilState<UdevData> {
                             Transform::Flipped270 => Transform::Normal,
                         };
                         output.change_current_state(None, Some(new_transform), None, None);
-                        crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
+                        crate::shell::fixup_positions(&mut self.space, &self.settings.display, self.pointer.current_location());
                         self.backend_data.reset_buffers(&output);
                     }
                 }

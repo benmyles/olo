@@ -406,5 +406,17 @@
   "title": "Backgrounds in dark mode",
   "caption": "The chosen wallpaper survives an in-place reload via About Tabula, Restart Tabula.",
   "image": "2026-10-26/023141-backgrounds-in-dark-mode.png"
+ },
+ {
+  "time": "2026-10-26T02:40:50",
+  "title": "Display: resolution with revert countdown",
+  "caption": "HEADLESS-1 switched to 1920 by 1200; its right-hand neighbour moved with the edge; Keep or Revert, else it reverts after 15 s.",
+  "image": "2026-10-26/024050-display-resolution-with-revert-countdown.png"
+ },
+ {
+  "time": "2026-10-26T02:40:50",
+  "title": "Display: arranged screens, dark",
+  "caption": "Two headless screens stacked by dragging in the map; the lower one follows when the upper changes size.",
+  "image": "2026-10-26/024050-display-arranged-screens-dark.png"
  }
 ]

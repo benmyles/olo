@@ -1330,6 +1330,11 @@ pub trait Backend {
     fn reset_buffers(&mut self, output: &Output);
     fn early_import(&mut self, surface: &WlSurface);
     fn update_led_state(&mut self, led_state: LedState);
+    /// Switch `output` to `mode` (one of `output.modes()`), updating the
+    /// output's current mode on success.
+    fn set_mode(&mut self, _output: &Output, _mode: smithay::output::Mode) -> Result<(), String> {
+        Err("This display's resolution can't be changed.".into())
+    }
 }
 
 /// The Wayland listening socket handed down by tabula-session

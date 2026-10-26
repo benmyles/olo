@@ -288,7 +288,9 @@ $T start mine --session [--shell]   # under tabula-session (with Deskbar + deskt
 $T start mine --session --home /tmp/tabula-dev/mine-home   # sandbox HOME
 $T reload mine                 # in-place reload (test upgrades: rebuild, then reload)
 $T run mine tabula-myapp       # binaries from target/debug (log in /tmp/tabula-dev/mine/)
-$T shot mine /tmp/x.png        # full screenshot (device pixels)
+$T start two 2560x1600,1920x1080   # two screens, HEADLESS-1 and -2 (each offers a few modes)
+$T shot mine /tmp/x.png        # full screenshot (device pixels) of the pointer's screen
+$T shot two /tmp/y.png --output HEADLESS-2
 $T zoom mine /tmp/z.png X Y W H 4   # crop in logical px, magnified 4× (nearest)
 $T click mine X Y [right]      # logical coordinates (screenshot px / 2)
 $T drag mine X1 Y1 X2 Y2
@@ -301,6 +303,11 @@ sudo resets HOME, so without `--home` a session and its apps use the real
 home folder: pass `--home` whenever a test saves files (Screenshot,
 Tracker, StyledEdit…). Sessions are always silent (`PULSE_SERVER` points at
 a dead socket), so tests never reach the real speakers or volume.
+
+Clicks are global logical coordinates: on a screen that isn't at (0, 0),
+add its position (`$T ipc NAME '{"type":"outputs"}'`). `start` rewrites
+the session's app_server.json, so test persistence with `--session` and
+`reload`.
 
 Look at your screenshots. Then zoom in to 4× and check edges, insets,
 alignment and text placement pixel by pixel, in **both** light and dark.
@@ -380,6 +387,16 @@ launcher lists them. The panel list Deskbar shows is
   to cover and cropped on a worker thread, kept in the output's user
   data and drawn under every surface; the workspace colour shows until
   it is ready or if the file can't be read.
+* Display (`display.rs`): a map of the screens; drag one and `snap` puts
+  it edge to edge with the nearest other (sharing at least 64 px, lined
+  up with edges or centres when close), and every screen's position is
+  sent. app_server's `shell::arrange` places outputs at their saved
+  positions (overlaps fall back to a row) and normalises the layout to
+  start at (0, 0); a screen that changes size takes the screens on its
+  right and bottom edges with it. Resolution and refresh rate go through
+  `Backend::set_mode` (DRM `use_mode`; headless recreates its target),
+  are saved per output and restored at start-up; a new one reverts after
+  `KEEP_SECS` unless Keep is clicked.
 * About (`about.rs`) has Restart Tabula: SIGHUP to `$TABULA_SESSION_PID`,
   the same in-place reload as `tabula-session reload` (disabled outside
   a session).

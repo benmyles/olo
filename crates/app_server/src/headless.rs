@@ -4,8 +4,11 @@
 //! Used for automated UI testing without touching the user's screen:
 //!
 //! ```text
-//! tabula-app-server --headless [WIDTHxHEIGHT]    (physical pixels)
+//! tabula-app-server --headless [WIDTHxHEIGHT[,WIDTHxHEIGHT…]]   (physical pixels)
 //! ```
+//!
+//! Each size is a screen (HEADLESS-1, HEADLESS-2, …), offering that size
+//! and a few smaller modes so Preferences ▸ Display can be tested.
 
 use std::{
     fs::OpenOptions,
@@ -44,12 +47,19 @@ use tracing::{error, info, warn};
 use crate::render::render_output;
 use crate::state::{AnvilState, Backend, take_presentation_feedback, update_primary_scanout_output};
 
+/// The first headless screen's name.
 pub const OUTPUT_NAME: &str = "HEADLESS-1";
+
+/// One offscreen screen.
+struct Screen {
+    output: Output,
+    target: GlesTexture,
+    damage_tracker: OutputDamageTracker,
+}
 
 pub struct HeadlessData {
     renderer: GlesRenderer,
-    target: GlesTexture,
-    damage_tracker: OutputDamageTracker,
+    screens: Vec<Screen>,
     dmabuf_state: (DmabufState, DmabufGlobal),
 }
 
@@ -74,6 +84,19 @@ impl Backend for HeadlessData {
     fn reset_buffers(&mut self, _output: &Output) {}
     fn early_import(&mut self, _surface: &wl_surface::WlSurface) {}
     fn update_led_state(&mut self, _led_state: LedState) {}
+
+    fn set_mode(&mut self, output: &Output, mode: Mode) -> Result<(), String> {
+        if !output.modes().contains(&mode) {
+            return Err("the screen doesn't offer that mode".into());
+        }
+        let screen = self.screens.iter_mut().find(|s| s.output == *output).ok_or("no such screen")?;
+        let size: Size<i32, Buffer> = (mode.size.w, mode.size.h).into();
+        screen.target = self.renderer.create_buffer(Fourcc::Abgr8888, size).map_err(|e| e.to_string())?;
+        output.change_current_state(Some(mode), None, None, None);
+        screen.damage_tracker = OutputDamageTracker::from_output(output);
+        info!(output = output.name(), ?mode, "mode changed");
+        Ok(())
+    }
 }
 
 fn render_node() -> Option<std::path::PathBuf> {
@@ -90,11 +113,32 @@ fn render_node() -> Option<std::path::PathBuf> {
     nodes.into_iter().next()
 }
 
+/// "2560x1600,1920x1080" → one size per screen; nothing usable → one 2560×1600.
+fn parse_sizes(arg: Option<&str>) -> Vec<(i32, i32)> {
+    let sizes: Vec<(i32, i32)> = arg
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|s| s.split_once('x'))
+        .filter_map(|(w, h)| Some((w.trim().parse().ok()?, h.trim().parse().ok()?)))
+        .filter(|&(w, h): &(i32, i32)| w > 0 && h > 0)
+        .collect();
+    if sizes.is_empty() { vec![(2560, 1600)] } else { sizes }
+}
+
+/// The modes a screen of `size` offers: its own at 60 and 120 Hz, then
+/// common smaller sizes at 60 Hz.
+fn modes_for((w, h): (i32, i32)) -> Vec<Mode> {
+    let mut modes = vec![Mode { size: (w, h).into(), refresh: 60_000 }, Mode { size: (w, h).into(), refresh: 120_000 }];
+    for (mw, mh) in [(1920, 1200), (1920, 1080), (1680, 1050), (1280, 800), (1280, 720)] {
+        if mw < w && mh <= h {
+            modes.push(Mode { size: (mw, mh).into(), refresh: 60_000 });
+        }
+    }
+    modes
+}
+
 pub fn run_headless(size_arg: Option<&str>) {
-    let (w, h) = size_arg
-        .and_then(|s| s.split_once('x'))
-        .and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))
-        .unwrap_or((2560, 1600));
+    let sizes = parse_sizes(size_arg);
 
     let mut event_loop = EventLoop::<AnvilState<HeadlessData>>::try_new().unwrap();
     let display = Display::new().unwrap();
@@ -119,49 +163,66 @@ pub fn run_headless(size_arg: Option<&str>) {
     let mut renderer = unsafe { GlesRenderer::new(context) }.expect("GLES renderer");
     info!(?node, "headless renderer ready");
 
-    let mode = Mode { size: (w, h).into(), refresh: 60_000 };
-    let output = Output::new(
-        OUTPUT_NAME.to_string(),
-        PhysicalProperties {
-            size: (0, 0).into(),
-            subpixel: Subpixel::Unknown,
-            make: "Tabula".into(),
-            model: "Headless".into(),
-            serial_number: "0".into(),
-        },
-    );
-    let _global = output.create_global::<AnvilState<HeadlessData>>(&display_handle);
-    output.change_current_state(Some(mode), Some(Transform::Normal), None, Some((0, 0).into()));
-    output.set_preferred(mode);
+    let mut screens = Vec::new();
+    for (i, &size) in sizes.iter().enumerate() {
+        let modes = modes_for(size);
+        let output = Output::new(
+            format!("HEADLESS-{}", i + 1),
+            PhysicalProperties {
+                size: (0, 0).into(),
+                subpixel: Subpixel::Unknown,
+                make: "Tabula".into(),
+                model: "Headless".into(),
+                serial_number: i.to_string(),
+            },
+        );
+        let _global = output.create_global::<AnvilState<HeadlessData>>(&display_handle);
+        for &m in &modes {
+            output.add_mode(m);
+        }
+        output.change_current_state(Some(modes[0]), Some(Transform::Normal), None, Some((0, 0).into()));
+        output.set_preferred(modes[0]);
+        let buffer_size: Size<i32, Buffer> = size.into();
+        let target: GlesTexture = renderer.create_buffer(Fourcc::Abgr8888, buffer_size).expect("offscreen buffer");
+        let damage_tracker = OutputDamageTracker::from_output(&output);
+        screens.push(Screen { output, target, damage_tracker });
+    }
 
     let formats = renderer.dmabuf_formats();
     let mut dmabuf_state = DmabufState::new();
     let dmabuf_global = dmabuf_state.create_global::<AnvilState<HeadlessData>>(&display_handle, formats);
 
-    let buffer_size: Size<i32, Buffer> = (w, h).into();
-    let target: GlesTexture = renderer.create_buffer(Fourcc::Abgr8888, buffer_size).expect("offscreen buffer");
-
-    let data = HeadlessData {
-        renderer,
-        target,
-        damage_tracker: OutputDamageTracker::from_output(&output),
-        dmabuf_state: (dmabuf_state, dmabuf_global),
-    };
+    let outputs: Vec<Output> = screens.iter().map(|s| s.output.clone()).collect();
+    let data = HeadlessData { renderer, screens, dmabuf_state: (dmabuf_state, dmabuf_global) };
     let mut state = AnvilState::init(display, event_loop.handle(), data, true);
     let shm_formats = state.backend_data.renderer.shm_formats();
     state.shm_state.update_formats(shm_formats);
-    state.apply_output_settings(&output);
-    state.space.map_output(&output, (0, 0));
+    for output in &outputs {
+        // A resolution chosen in Preferences, as DRM outputs do.
+        let saved = state.settings.display.outputs.get(&output.name()).and_then(|c| c.mode.clone());
+        if let Some(m) = saved {
+            let mode = Mode { size: (m.width, m.height).into(), refresh: m.refresh };
+            if output.current_mode() != Some(mode)
+                && let Err(e) = state.backend_data.set_mode(output, mode)
+            {
+                warn!(output = output.name(), "can't restore the saved mode: {e}");
+            }
+        }
+        state.apply_output_settings(output);
+        state.space.map_output(output, (0, 0));
+    }
+    crate::shell::fixup_positions(&mut state.space, &state.settings.display, state.pointer.current_location());
 
     #[cfg(feature = "xwayland")]
     state.start_xwayland();
 
     let frame = Duration::from_micros(16_667);
-    let out = output.clone();
     event_loop
         .handle()
         .insert_source(Timer::from_duration(frame), move |_, _, state| {
-            render_frame(state, &out);
+            for i in 0..state.backend_data.screens.len() {
+                render_frame(state, i);
+            }
             TimeoutAction::ToDuration(frame)
         })
         .expect("frame timer");
@@ -175,22 +236,24 @@ pub fn run_headless(size_arg: Option<&str>) {
         state.space.refresh();
         state.popups.cleanup();
         state.tick();
-        for shot in state.ipc.shots_for(&output) {
-            let color = state.desktop_color();
-            let overlays = twitcher_overlay(&mut state, &output);
-            let locked = state.lock.locked();
-            let pointer = state.pointer.current_location();
-            crate::screenshot::take::<_, GlesTexture>(
-                &mut state.ipc,
-                shot,
-                &mut state.backend_data.renderer,
-                &output,
-                &state.space,
-                overlays,
-                color,
-                locked,
-                pointer,
-            );
+        for output in &outputs {
+            for shot in state.ipc.shots_for(output) {
+                let color = state.desktop_color();
+                let overlays = twitcher_overlay(&mut state, output);
+                let locked = state.lock.locked();
+                let pointer = state.pointer.current_location();
+                crate::screenshot::take::<_, GlesTexture>(
+                    &mut state.ipc,
+                    shot,
+                    &mut state.backend_data.renderer,
+                    output,
+                    &state.space,
+                    overlays,
+                    color,
+                    locked,
+                    pointer,
+                );
+            }
         }
         let _ = state.display_handle.flush_clients();
     }
@@ -217,7 +280,9 @@ fn twitcher_overlay(
         .collect()
 }
 
-fn render_frame(state: &mut AnvilState<HeadlessData>, output: &Output) {
+fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
+    let output = state.backend_data.screens[index].output.clone();
+    let output = &output;
     let now = state.clock.now();
     let frame_target = now + Duration::from_micros(16_667);
     state.pre_repaint(output, frame_target);
@@ -225,8 +290,9 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, output: &Output) {
     let overlay = twitcher_overlay(state, output);
     let locked = state.lock.locked();
     let data = &mut state.backend_data;
+    let screen = &mut data.screens[index];
     let result = {
-        let Ok(mut fb) = data.renderer.bind(&mut data.target) else {
+        let Ok(mut fb) = data.renderer.bind(&mut screen.target) else {
             warn!("cannot bind offscreen target");
             return;
         };
@@ -236,7 +302,7 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, output: &Output) {
             overlay,
             &mut data.renderer,
             &mut fb,
-            &mut data.damage_tracker,
+            &mut screen.damage_tracker,
             // The single offscreen buffer always holds the last frame.
             1,
             false,
