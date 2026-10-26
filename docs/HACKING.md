@@ -864,6 +864,18 @@ average going down, whole pixels going up, aspect kept) and the tab strip
 draws it at 16 points. A page that loads without one gets the generic
 `document` icon instead of the last page's.
 
+### Dark pages in NetPositive
+
+NetPositive tells Servo the desktop's theme (`notify_theme_change`, also
+when it changes), so `prefers-color-scheme: dark` works. Servo 0.7 takes
+system colours from that preference even for pages that chose no colour
+scheme, and doesn't paint a dark page's canvas, so
+`apps/browser/src/scheme.rs` adds a zero-specificity style to every
+document in dark mode: `color-scheme: light` for pages that don't support
+dark, and a Canvas background (plus Highlight selection) for those that
+do, judged by `<meta name=color-scheme>` and the root's computed
+`color-scheme`.
+
 ### Colours in NetPositive
 
 `<input type=color>` arrives as an `EmbedderControl::ColorPicker`;

@@ -198,7 +198,8 @@ pub struct Engine {
     pub servo: Servo,
     pending: Arc<AtomicBool>,
     pub events: Rc<Events>,
-    /// Scripts every page gets (the login capture, passkeys, downloads, scrolling).
+    /// Scripts every page gets (the login capture, passkeys, downloads,
+    /// scrolling, dark mode).
     pub content: Rc<UserContentManager>,
     /// Names our scripts' messages and the passkey answer function.
     pub token: String,
@@ -219,6 +220,7 @@ impl Engine {
         content.add_script(Rc::new(UserScript::from(crate::passkeys::script(&token))));
         content.add_script(Rc::new(UserScript::from(crate::downloads::script(&token))));
         content.add_script(Rc::new(UserScript::from(crate::scroll::script(&token))));
+        content.add_script(Rc::new(UserScript::from(crate::scheme::script())));
         let events = Events {
             login_marker: crate::logins::marker(&token),
             passkey_marker: crate::passkeys::marker(&token),

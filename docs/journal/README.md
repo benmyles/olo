@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### NetPositive: light page, dark desktop
+
+*09:12* — A page with no colour scheme in dark mode: Servo would have drawn it with light text and dark controls on white; it now keeps the light scheme.
+
+![NetPositive: light page, dark desktop](2026-10-26/091231-netpositive-light-page-dark-desktop.png)
+
+### NetPositive: dark pages
+
+*09:12* — In dark and night modes pages that support dark (color-scheme, prefers-color-scheme) go dark, canvas included; pages that don't stay black on white with light form controls and links.
+
+![NetPositive: dark pages](2026-10-26/091225-netpositive-dark-pages.png)
+
 ### NetPositive: colour picker
 
 *09:04* — <input type=color> opens a Choose a Colour sheet with the kit ColorControl; OK sets the page's colour and fires its input and change events (Servo 0.7 fires none).

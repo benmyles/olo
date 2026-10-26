@@ -13,6 +13,7 @@ mod input;
 mod location;
 mod logins;
 mod passkeys;
+mod scheme;
 mod scroll;
 
 use std::{
@@ -248,9 +249,15 @@ struct NetPositive {
     next_download: u64,
     /// `blob:` downloads arriving from pages in pieces.
     blobs: BTreeMap<(WebViewId, u64), (String, Vec<u8>)>,
+    /// The desktop is dark (or night): pages are told so.
+    dark: bool,
 }
 
 impl NetPositive {
+    fn theme(&self) -> Theme {
+        if self.dark { Theme::Dark } else { Theme::Light }
+    }
+
     fn open_browser(&mut self, cx: &mut Cx, urls: Vec<String>, active: usize, size: (u32, u32)) -> WindowId {
         let win = cx.open_window(WindowOptions::new(NAME, size.0, size.1).min_size(400, 240));
         let embed = cx.embed(win);
@@ -316,12 +323,9 @@ impl NetPositive {
 
     fn prepare(&self, view: &WebView, b: &Browser) {
         view.resize(b.size);
-        // Pages are shown light in every mode for now: Servo takes system
-        // colours (CanvasText…) from the preference even for pages that
-        // don't choose a colour scheme, and never paints the canvas in a
-        // dark page's Canvas colour, so dark would mean light text on
-        // white. The window around the page follows the theme.
-        view.notify_theme_change(Theme::Light);
+        // Pages that support dark go dark with the desktop (scheme.rs
+        // keeps the rest black on white).
+        view.notify_theme_change(self.theme());
         view.hide();
     }
 
@@ -1883,6 +1887,18 @@ fn cursor_icon(cursor: Cursor) -> CursorIcon {
 }
 
 impl App for NetPositive {
+    fn theme_changed(&mut self, _cx: &mut Cx, palette: &tabula_kit::theme::Palette) {
+        self.dark = palette.mode == tabula_kit::theme::ThemeMode::Dark;
+        let theme = self.theme();
+        for w in self.windows.values() {
+            if let Win::Browser(b) = w {
+                for view in b.tabs.iter().filter_map(|t| t.view.as_ref()) {
+                    view.notify_theme_change(theme);
+                }
+            }
+        }
+    }
+
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
         match self.windows.get(&window) {
             Some(Win::Browser(_)) => {
@@ -2397,6 +2413,7 @@ fn main() {
             downloads: Vec::new(),
             next_download: 0,
             blobs: BTreeMap::new(),
+            dark: cx.palette().mode == tabula_kit::theme::ThemeMode::Dark,
             proxy: cx.proxy(),
         };
         let restored: Option<Saved> = cx.restored_state().and_then(|s| serde_json::from_str(&s).ok());
