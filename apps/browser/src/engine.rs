@@ -151,8 +151,9 @@ impl WebViewDelegate for Events {
     fn request_authentication(&self, w: WebView, request: AuthenticationRequest) {
         self.push(&w, Event::Authenticate(request));
     }
-    fn show_console_message(&self, w: WebView, _level: ConsoleLogLevel, message: String) {
-        // Only our scripts' reports; pages' own logging goes nowhere.
+    fn show_console_message(&self, w: WebView, level: ConsoleLogLevel, message: String) {
+        // Our scripts' reports; pages' own logging only when tracing
+        // `page_console` (it can hold anything the page knows).
         #[derive(serde::Deserialize)]
         struct Used {
             u: String,
@@ -177,6 +178,8 @@ impl WebViewDelegate for Events {
                 Ok(request) => self.push(&w, Event::Passkey(request)),
                 Err(e) => tracing::warn!("passkey request: {e}"),
             }
+        } else {
+            tracing::trace!(target: "page_console", "{level:?} {}: {message}", w.url().map(|u| u.to_string()).unwrap_or_default());
         }
     }
 }
@@ -205,6 +208,29 @@ pub struct Engine {
     pub token: String,
 }
 
+/// Servo's preferences: its defaults, plus web features it has but keeps
+/// off by default that today's sites (Google's, Zoom's) expect. Left off:
+/// notifications and geolocation (no prompts yet), the async clipboard,
+/// service workers (incomplete) and WebRTC (no backend yet).
+fn preferences() -> servo::Preferences {
+    let mut p = servo::Preferences::default();
+    p.dom_intersection_observer_enabled = true;
+    p.dom_indexeddb_enabled = true;
+    p.dom_webgl2_enabled = true;
+    p.dom_offscreen_canvas_enabled = true;
+    p.dom_permissions_enabled = true;
+    p.dom_fontface_enabled = true;
+    p.dom_adoptedstylesheet_enabled = true;
+    p.dom_exec_command_enabled = true;
+    p.dom_composition_event_enabled = true;
+    p.dom_visual_viewport_enabled = true;
+    p.dom_storage_manager_api_enabled = true;
+    p.layout_columns_enabled = true;
+    p.layout_container_queries_enabled = true;
+    p.layout_variable_fonts_enabled = true;
+    p
+}
+
 impl Engine {
     pub fn new(proxy: Proxy) -> Engine {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
@@ -213,6 +239,7 @@ impl Engine {
         crate::media::install();
         let servo = ServoBuilder::default()
             .opts(opts)
+            .preferences(preferences())
             .event_loop_waker(Box::new(Waker { proxy, pending: pending.clone() }))
             .build();
         let token = crate::logins::token();
