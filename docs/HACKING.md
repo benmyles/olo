@@ -34,6 +34,12 @@ like pixel alignment is.
    `request_repaint_after` only while work is running.
 6. **app_server never waits on a client.** Clients that stall must not stall
    the desktop.
+7. **Stay current without polling.** What is on screen reflects the system
+   as it changes: watch files with inotify (Tracker's `watch.rs`: one thread,
+   changed items stat'ed off the UI thread, bursts gathered for ~30 ms,
+   a full relist on queue overflow) and the mount table with `POLLPRI` on
+   `/proc/self/mountinfo`. No timers that re-read the disk to look for
+   changes.
 
 ## Layout
 

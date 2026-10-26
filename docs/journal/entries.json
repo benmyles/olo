@@ -94,5 +94,11 @@
   "title": "In-place reload: after an upgrade",
   "caption": "After tabula-session reload with new tabula-session, app_server and Tracker binaries: the session re-executed itself, restarted app_server, and Tracker re-executed with its saved state. Pixel-identical to the screenshot before.",
   "image": "2026-10-25/210132-in-place-reload-after-an-upgrade.png"
+ },
+ {
+  "time": "2026-10-25T21:35:24",
+  "title": "Tracker: live updates",
+  "caption": "Folder windows, columns and the desktop now follow the disk as it changes via inotify, with no polling. Shot 120 ms after a shell wrote download.iso, renamed notes.md, deleted photo-02.jpg and made Archive. Selection and sort are kept; a deleted folder says so.",
+  "image": "2026-10-25/213524-tracker-live-updates.png"
  }
 ]

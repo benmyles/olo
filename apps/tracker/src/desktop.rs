@@ -6,7 +6,6 @@
 use std::{
     collections::BTreeSet,
     path::PathBuf,
-    time::{Duration, Instant, SystemTime},
 };
 
 use tabula_kit::{
@@ -18,6 +17,7 @@ use tabula_kit::{
 use crate::{
     fs::{self, Entry},
     view::{self, Action, ICON_CELL, Look},
+    watch,
 };
 
 /// Room left for the Deskbar in the top-right corner (its width).
@@ -39,8 +39,6 @@ pub struct Desktop {
     band: Option<Pos2>,
     /// A ~/Desktop item whose name is being edited in place.
     editing: Option<(PathBuf, String)>,
-    stamp: Option<SystemTime>,
-    checked: Instant,
 }
 
 pub fn options() -> WindowOptions {
@@ -60,20 +58,25 @@ pub fn options() -> WindowOptions {
     }
 }
 
+/// The folders the desktop shows: ~/Desktop, and the Trash (for its icon).
+pub fn watched() -> [PathBuf; 2] {
+    [desktop_dir(), fs::trash_files()]
+}
+
 fn desktop_dir() -> PathBuf {
     fs::home().join("Desktop")
 }
 
 impl Desktop {
     pub fn new() -> Self {
+        // Made up front so it can be watched from the start.
+        let _ = std::fs::create_dir_all(desktop_dir());
         let mut d = Desktop {
             items: Vec::new(),
             trash: trash_item(),
             selected: BTreeSet::new(),
             band: None,
             editing: None,
-            stamp: None,
-            checked: Instant::now(),
         };
         d.reload();
         d
@@ -98,10 +101,60 @@ impl Desktop {
         }
         self.items = items;
         self.trash = trash_item();
-        self.stamp = std::fs::metadata(desktop_dir()).and_then(|m| m.modified()).ok();
         self.selected = (0..=self.items.len())
             .filter(|&i| self.item(i).is_some_and(|it| selected.contains(&it.entry.path)))
             .collect();
+    }
+
+    /// Splice in changes seen on disk: ~/Desktop items that came or went,
+    /// the Trash filling or emptying, volumes (un)mounted. Returns whether
+    /// anything shown changed.
+    pub fn apply(&mut self, changes: &[watch::Change]) -> bool {
+        let (desk, trash) = (desktop_dir(), fs::trash_files());
+        let mut changed = false;
+        let selected: Vec<PathBuf> = self.selected_paths();
+        for c in changes {
+            match c {
+                watch::Change::Mounts => {
+                    self.reload();
+                    return true;
+                }
+                watch::Change::Rescan(d) if *d == desk => {
+                    self.reload();
+                    return true;
+                }
+                watch::Change::Rescan(d) | watch::Change::Item { dir: d, .. } if *d == trash => {
+                    let t = trash_item();
+                    if t.icon != self.trash.icon {
+                        self.trash = t;
+                        changed = true;
+                    }
+                }
+                watch::Change::Item { dir, path, entry } if *dir == desk => {
+                    let at = self.items.iter().position(|it| it.entry.path == *path);
+                    match (at, entry) {
+                        (Some(i), Some(e)) => {
+                            self.items[i].icon = view::icon_of(e);
+                            self.items[i].entry = e.clone();
+                        }
+                        (None, Some(e)) if !e.name.starts_with('.') => {
+                            let icon = view::icon_of(e);
+                            self.items.push(Item { label: e.name.clone(), entry: e.clone(), icon });
+                        }
+                        (Some(i), None) => {
+                            self.items.remove(i);
+                        }
+                        _ => continue,
+                    }
+                    changed = true;
+                }
+                _ => {}
+            }
+        }
+        if changed {
+            self.select_paths(&selected);
+        }
+        changed
     }
 
     /// Items by index; the Trash comes last.
@@ -154,15 +207,6 @@ impl Desktop {
     pub fn ui(&mut self, ui: &mut Ui) -> Vec<Action> {
         let mut actions = Vec::new();
         let p = style::palette(ui.ctx());
-        if self.checked.elapsed() >= Duration::from_secs(2) {
-            self.checked = Instant::now();
-            let stamp = std::fs::metadata(desktop_dir()).and_then(|m| m.modified()).ok();
-            let trash_empty = fs::trash_is_empty();
-            if stamp != self.stamp || (self.trash.icon == "trash-empty") != trash_empty || self.items.len() != self.count_now() {
-                self.reload();
-            }
-        }
-        ui.ctx().request_repaint_after(Duration::from_secs(2));
 
         let screen = ui.max_rect();
         let response = ui.allocate_rect(screen, Sense::click_and_drag());
@@ -304,11 +348,6 @@ impl Desktop {
             style::selection_band(ui.painter(), r, &p);
         }
         actions
-    }
-
-    fn count_now(&self) -> usize {
-        let desktop = std::fs::read_dir(desktop_dir()).map(|rd| rd.flatten().filter(|e| !e.file_name().to_string_lossy().starts_with('.')).count()).unwrap_or(0);
-        fs::volumes().len() + 1 + desktop
     }
 }
 

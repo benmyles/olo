@@ -7,15 +7,16 @@ mod find;
 mod fs;
 mod ops;
 mod view;
+mod watch;
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, Instant},
 };
 
 use tabula_kit::{
@@ -43,7 +44,8 @@ pub struct Pane {
     pub path: PathBuf,
     pub entries: Vec<Entry>,
     pub list: ListState,
-    pub stamp: Option<SystemTime>,
+    /// Changed on disk while being listed: list again when it lands.
+    dirty: bool,
     /// The listing request whose result we are waiting for (see `Loader`).
     pub generation: u64,
     pub loading: bool,
@@ -51,7 +53,7 @@ pub struct Pane {
 
 impl Pane {
     fn new(path: PathBuf) -> Self {
-        Pane { path, entries: Vec::new(), list: ListState::default(), stamp: None, generation: 0, loading: true }
+        Pane { path, entries: Vec::new(), list: ListState::default(), dirty: false, generation: 0, loading: true }
     }
 }
 
@@ -88,8 +90,8 @@ pub struct FolderWin {
     pub view: ViewMode,
     pub list: ListState,
     pub sort: (SortKey, bool),
-    pub stamp: Option<SystemTime>,
-    pub checked: Instant,
+    /// Changed on disk while being listed: list again when it lands.
+    dirty: bool,
     pub error: Option<String>,
     /// Rubber-band selection start, in content coordinates.
     pub band: Option<egui::Pos2>,
@@ -171,6 +173,8 @@ enum Msg {
     Listed { win: WindowId, path: PathBuf, generation: u64, result: Result<Vec<Entry>, String> },
     /// A job has been running a while: time to show the status window.
     JobSlow(u64),
+    /// Files changed in folders being shown.
+    Changed(Vec<watch::Change>),
 }
 
 pub struct Tracker {
@@ -184,6 +188,8 @@ pub struct Tracker {
     status_win: Option<WindowId>,
     /// Content height the status window was last sized to.
     status_size: u32,
+    /// Live updates for every folder shown (None if inotify is missing).
+    watcher: Option<watch::Watcher>,
 }
 
 const STATUS_WIDTH: u32 = 420;
@@ -213,8 +219,7 @@ impl FolderWin {
             view: ViewMode::Icons,
             list: ListState { multiple: true, ..Default::default() },
             sort: (SortKey::Name, true),
-            stamp: None,
-            checked: Instant::now(),
+            dirty: false,
             error: None,
             band: None,
             typed: (String::new(), Instant::now()),
@@ -253,23 +258,25 @@ impl FolderWin {
                 self.root_generation = generation;
                 self.loading = true;
                 self.listed = Arc::default();
-                // Taken before listing, so changes made meanwhile show up
-                // on the next check.
-                self.stamp = std::fs::metadata(&self.path).and_then(|m| m.modified()).ok();
+                self.dirty = false;
                 self.path.clone()
             }
             Some(k) => {
                 let p = &mut self.panes[k];
                 p.generation = generation;
                 p.loading = true;
-                p.stamp = std::fs::metadata(&p.path).and_then(|m| m.modified()).ok();
+                p.dirty = false;
                 p.path.clone()
             }
         };
         let (hidden, counter, Loader { win, proxy }) = (self.hidden, self.listed.clone(), self.loader.clone());
         let counter = if pane.is_none() { counter } else { Arc::default() };
         std::thread::spawn(move || {
-            let result = fs::list_counting(&path, hidden, &counter).map_err(|e| e.to_string());
+            let result = fs::list_counting(&path, hidden, &counter).map_err(|e| match e.kind() {
+                std::io::ErrorKind::NotFound => "This folder was moved or deleted.".to_owned(),
+                std::io::ErrorKind::PermissionDenied => "You don't have permission to see inside this folder.".to_owned(),
+                _ => e.to_string(),
+            });
             proxy.send(Msg::Listed { win, path, generation, result });
         });
     }
@@ -279,6 +286,12 @@ impl FolderWin {
         let sort = self.sort;
         if path == self.path && generation == self.root_generation {
             self.loading = false;
+            if self.dirty {
+                // Something changed after the listing began: what it found
+                // may already be stale, so look again (keeping what is
+                // shown meanwhile).
+                self.request(None);
+            }
             match result {
                 Ok(v) => {
                     replace_entries(&mut self.entries, &mut self.list, v, sort, &mut Vec::new());
@@ -295,7 +308,11 @@ impl FolderWin {
                 Ok(v) => {
                     let p = &mut self.panes[k];
                     p.loading = false;
+                    let again = p.dirty;
                     replace_entries(&mut p.entries, &mut p.list, v, sort, &mut Vec::new());
+                    if again {
+                        self.request(Some(k));
+                    }
                 }
                 // The folder is gone: so are it and the columns after it.
                 Err(_) => {
@@ -320,6 +337,70 @@ impl FolderWin {
         for p in &mut self.panes {
             let v = std::mem::take(&mut p.entries);
             replace_entries(&mut p.entries, &mut p.list, v, sort, &mut Vec::new());
+        }
+    }
+
+    /// The folders shown, for the watcher.
+    pub fn watched(&self) -> impl Iterator<Item = &Path> {
+        std::iter::once(self.path.as_path()).chain(self.panes.iter().map(|p| p.path.as_path()))
+    }
+
+    /// Splice changes seen on disk into the root and columns: items that
+    /// appeared, changed or went away, keeping the selection and sort.
+    pub fn apply(&mut self, changes: &[watch::Change]) {
+        let (sort, hidden) = (self.sort, self.hidden);
+        let mut rescan = Vec::new();
+        for pane in std::iter::once(None).chain((0..self.panes.len()).map(Some)) {
+            let dir = match pane {
+                None => self.path.clone(),
+                Some(k) => self.panes[k].path.clone(),
+            };
+            let mine: Vec<&watch::Change> = changes
+                .iter()
+                .filter(|c| matches!(c, watch::Change::Item { dir: d, .. } | watch::Change::Rescan(d) if *d == dir))
+                .collect();
+            if mine.is_empty() {
+                continue;
+            }
+            let (entries, list, loading, dirty) = match pane {
+                None => (&mut self.entries, &mut self.list, self.loading, &mut self.dirty),
+                Some(k) => {
+                    let p = &mut self.panes[k];
+                    (&mut p.entries, &mut p.list, p.loading, &mut p.dirty)
+                }
+            };
+            if loading {
+                *dirty = true;
+            }
+            if mine.iter().any(|c| matches!(c, watch::Change::Rescan(_))) {
+                rescan.push(pane);
+                continue;
+            }
+            let mut v = entries.clone();
+            for c in mine {
+                let watch::Change::Item { path, entry, .. } = c else { continue };
+                v.retain(|e| e.path != *path);
+                if let Some(e) = entry
+                    && (hidden || !e.name.starts_with('.'))
+                {
+                    v.push(e.clone());
+                }
+            }
+            replace_entries(entries, list, v, sort, &mut Vec::new());
+        }
+        // Deepest first, so dropping a gone column doesn't shift the rest.
+        for pane in rescan.into_iter().rev() {
+            match pane {
+                Some(k) if !self.panes[k].path.is_dir() => {
+                    self.panes.truncate(k);
+                    self.active = self.active.min(self.panes.len());
+                }
+                _ => self.request(pane),
+            }
+        }
+        if !self.pending_select.is_empty() {
+            let pending = std::mem::take(&mut self.pending_select);
+            self.select_paths(&pending);
         }
     }
 
@@ -781,20 +862,7 @@ impl Tracker {
     // ---- folder window UI ---------------------------------------------------
 
     fn folder_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
-        let hidden = self.hidden;
         let Some(Win::Folder(f)) = self.windows.get_mut(&win) else { return };
-
-        // Keep up with changes on disk.
-        if f.checked.elapsed() >= Duration::from_secs(1) {
-            f.checked = Instant::now();
-            let stamp = std::fs::metadata(&f.path).and_then(|m| m.modified()).ok();
-            let panes_changed =
-                f.panes.iter().any(|p| std::fs::metadata(&p.path).and_then(|m| m.modified()).ok() != p.stamp);
-            if stamp != f.stamp || panes_changed {
-                f.reload(hidden);
-            }
-        }
-        ui.ctx().request_repaint_after(Duration::from_secs(1));
 
         let actions = view::folder_view(ui, f);
         if !actions.is_empty() {
@@ -965,6 +1033,23 @@ impl Tracker {
 }
 
 
+impl Tracker {
+    /// Watch exactly the folders on screen: every folder window's folder
+    /// and columns, and the desktop's.
+    fn sync_watches(&mut self) {
+        let Some(w) = &mut self.watcher else { return };
+        let mut want = BTreeSet::new();
+        for win in self.windows.values() {
+            match win {
+                Win::Folder(f) => want.extend(f.watched().map(Path::to_owned)),
+                Win::Desktop(_) => want.extend(desktop::watched()),
+                _ => {}
+            }
+        }
+        w.set(want);
+    }
+}
+
 impl App for Tracker {
     fn save_state(&mut self, cx: &Cx) -> Option<String> {
         let mut ids: Vec<&WindowId> = self.windows.keys().collect();
@@ -988,6 +1073,7 @@ impl App for Tracker {
     }
 
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
+        self.sync_watches();
         match self.windows.get(&window) {
             Some(Win::Folder(_)) => self.folder_ui(cx, window, ui),
             Some(Win::Desktop(_)) => {
@@ -1069,6 +1155,7 @@ impl App for Tracker {
             _ => {}
         }
         cx.close_window(window);
+        self.sync_watches();
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
@@ -1095,6 +1182,30 @@ impl App for Tracker {
                 }
             }
             Msg::JobDone(id, outcome) => self.job_done(cx, id, outcome),
+            Msg::Changed(changes) => {
+                for (&id, w) in self.windows.iter_mut() {
+                    let touched = |dirs: &mut dyn Iterator<Item = &Path>| {
+                        let dirs: Vec<&Path> = dirs.collect();
+                        changes.iter().any(|c| match c {
+                            watch::Change::Item { dir, .. } | watch::Change::Rescan(dir) => dirs.contains(&dir.as_path()),
+                            watch::Change::Mounts => false,
+                        })
+                    };
+                    match w {
+                        Win::Folder(f) if touched(&mut f.watched()) => {
+                            f.apply(&changes);
+                            cx.redraw(id);
+                        }
+                        Win::Desktop(d) => {
+                            if d.apply(&changes) {
+                                cx.redraw(id);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                self.sync_watches();
+            }
             Msg::Listed { win, path, generation, result } => {
                 if let Some(Win::Folder(f)) = self.windows.get_mut(&win) {
                     f.listed(&path, generation, result);
@@ -1224,7 +1335,18 @@ fn main() {
     }
     tabula_kit::run("tabula.tracker", |cx| {
         tabula_kit::instance::listen("tabula.tracker", cx.proxy());
-        let mut t = Tracker { windows: HashMap::new(), clipboard: None, hidden: false, jobs: Vec::new(), next_job: 1, status_win: None, status_size: 0 };
+        let proxy = cx.proxy();
+        let watcher = watch::Watcher::new(move |changes| proxy.send(Msg::Changed(changes)));
+        let mut t = Tracker {
+            windows: HashMap::new(),
+            clipboard: None,
+            hidden: false,
+            jobs: Vec::new(),
+            next_job: 1,
+            status_win: None,
+            status_size: 0,
+            watcher,
+        };
         if args.iter().any(|a| a == "--desktop") {
             let id = cx.open_window(desktop::options());
             t.windows.insert(id, Win::Desktop(desktop::Desktop::new()));
