@@ -2731,6 +2731,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabula-tracker"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "tabula-kit",
+ "tabula-protocol",
+ "tracing",
+]
+
+[[package]]
 name = "target-lexicon"
 version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,18 @@
+[package]
+name = "tabula-tracker"
+description = "Tracker: Tabula's file manager and desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "tabula-tracker"
+path = "src/main.rs"
+
+[dependencies]
+tabula-kit.workspace = true
+tabula-protocol.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+libc = "0.2"
