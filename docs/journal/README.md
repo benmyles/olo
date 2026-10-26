@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Preferences: Bluetooth
+
+*02:12* — Power, search (30 s), named and paired devices with type, status and battery; pairing questions appear in the panel.
+
+![Preferences: Bluetooth](2026-10-26/021218-preferences-bluetooth.png)
+
 ### Preferences: Network
 
 *02:06* — Wi-Fi networks in range with security and signal; the one in use ticked, with Disconnect and Forget.

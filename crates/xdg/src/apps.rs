@@ -18,6 +18,7 @@ pub const OUR_APPS: &[(&str, &str, &str)] = &[
 pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
     ("appearance", "Appearance", "appearance"),
     ("backgrounds", "Backgrounds", "backgrounds"),
+    ("bluetooth", "Bluetooth", "bluetooth"),
     ("datetime", "Date & Time", "datetime"),
     ("display", "Display", "display"),
     ("keyboard", "Keyboard", "keyboard"),

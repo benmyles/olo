@@ -42,7 +42,8 @@ as they land (with the commit), add new ones as they come up.
   hwmon source; processes with Quit / Force Quit).
 - Preferences, remaining panels: ~~Network~~ (Wi-Fi list, join with
   password, disconnect, forget, interface details; WPA-Enterprise still to
-  do), Bluetooth, ~~Date & Time~~ (calendar, clock face, network
+  do), ~~Bluetooth~~ (search, pair with passkey/PIN agent, connect,
+  remove, battery), ~~Date & Time~~ (calendar, clock face, network
   time, time zone, Deskbar 24-hour/seconds/day), Touch ID; Restart Tabula; a Choose… file panel for the
   wallpaper; Display mode switching (app_server ignores `mode` in
   ConfigureOutput so far) and drag-to-arrange.

@@ -370,5 +370,11 @@
   "title": "Preferences: Network",
   "caption": "Wi-Fi networks in range with security and signal; the one in use ticked, with Disconnect and Forget.",
   "image": "2026-10-26/020623-preferences-network.png"
+ },
+ {
+  "time": "2026-10-26T02:12:18",
+  "title": "Preferences: Bluetooth",
+  "caption": "Power, search (30 s), named and paired devices with type, status and battery; pairing questions appear in the panel.",
+  "image": "2026-10-26/021218-preferences-bluetooth.png"
  }
 ]

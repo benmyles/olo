@@ -345,6 +345,13 @@ launcher lists them. The panel list Deskbar shows is
   and joins (saved connection, or a new WPA-PSK one), disconnects and
   forgets. **Tests only look: never toggle Wi-Fi, Join, Disconnect or
   Forget on the real machine.**
+* Bluetooth (`bluetooth.rs`) reads BlueZ (`tabula_system::bluetooth`,
+  ObjectManager) every second, searches for 30 s when it opens or on
+  Search, lists named or paired devices, and pairs, connects, disconnects
+  and removes on a thread per action. Its pairing agent is registered for
+  this process only (never `RequestDefaultAgent`) and shows passkeys and
+  PIN requests in the panel. **Tests only look and search: never Pair,
+  Connect, Remove or toggle Bluetooth on the real machine.**
 * Date & Time (`datetime.rs`) talks to systemd-timedated through
   `tabula_system::time` on its own worker thread (status every 2 s; set
   time, zone and network time with polkit's interactive auth, so a

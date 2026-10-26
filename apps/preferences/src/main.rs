@@ -10,6 +10,7 @@
 
 mod about;
 mod appearance;
+mod bluetooth;
 mod datetime;
 mod display;
 mod keyboard;
