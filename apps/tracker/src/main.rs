@@ -545,12 +545,11 @@ fn folder_options(path: &Path) -> WindowOptions {
 /// Bring an existing Tracker window for `title` forward via app_server.
 fn activate_existing(title: &str) -> bool {
     let Ok(mut c) = Client::connect() else { return false };
-    if let Ok(Reply::Windows { windows }) = c.request(&Request::ListWindows) {
-        if let Some(w) = windows.iter().find(|w| w.app_id == "tabula.tracker" && w.title == title) {
+    if let Ok(Reply::Windows { windows }) = c.request(&Request::ListWindows)
+        && let Some(w) = windows.iter().find(|w| w.app_id == "tabula.tracker" && w.title == title) {
             let _ = c.request(&Request::Activate { id: w.id });
             return true;
         }
-    }
     false
 }
 
@@ -713,11 +712,10 @@ impl Tracker {
             },
             "info" => {
                 let entries = f.selected_entries();
-                if entries.is_empty() {
-                    if let Some(e) = fs::entry(&dir) {
+                if entries.is_empty()
+                    && let Some(e) = fs::entry(&dir) {
                         self.open_info(cx, e);
                     }
-                }
                 for e in entries {
                     self.open_info(cx, e);
                 }
@@ -1179,6 +1177,11 @@ impl Tracker {
                 self.close_quick_look(cx);
                 self.open_entry(cx, &e);
             }
+            Some(quicklook::Action::PopOut) => {
+                let e = q.entry.clone();
+                self.close_quick_look(cx);
+                fs::open_in_viewer(&e.path);
+            }
             Some(quicklook::Action::Step(d)) => {
                 if let Some(Win::Folder(f)) = self.windows.get_mut(&source)
                     && let Some(e) = f.step_selection(d)
@@ -1363,7 +1366,7 @@ impl App for Tracker {
             }
             Msg::Preview(generation, update) => {
                 let screen = cx.screen_size();
-                let Some(q) = self.quicklook.as_mut().filter(|q| q.generation == generation) else { return };
+                let Some(q) = self.quicklook.as_mut().filter(|q| q.generation() == generation) else { return };
                 let fresh = q.update(update);
                 let size = q.ideal_size(screen);
                 match q.win {
@@ -1384,7 +1387,7 @@ impl App for Tracker {
             }
             Msg::PreviewSlow(generation) => {
                 let screen = cx.screen_size();
-                if let Some(q) = self.quicklook.as_mut().filter(|q| q.generation == generation && q.win.is_none()) {
+                if let Some(q) = self.quicklook.as_mut().filter(|q| q.generation() == generation && q.win.is_none()) {
                     let size = q.ideal_size(screen);
                     let id = cx.open_window(WindowOptions::new(q.entry.name.clone(), size.0, size.1).min_size(320, 200));
                     q.win = Some(id);

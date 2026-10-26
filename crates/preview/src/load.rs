@@ -13,7 +13,9 @@ use std::{
 use tabula_kit::egui::ColorImage;
 
 use super::{archive, doc, media, pdf, text};
-use crate::fs::{self, Entry, Kind};
+use tabula_kit::files::{self as fs, Kind};
+
+use crate::Item;
 
 /// Largest image side kept for display, in pixels. Bigger images are
 /// scaled down as they are decoded (a 48-megapixel photo would otherwise
@@ -55,7 +57,7 @@ pub type Send<'a> = &'a mut dyn FnMut(Update);
 
 /// Load `entry`, posting what is found to `send` (several times for
 /// documents that stream in). Stops early once `cancel` is set.
-pub fn load(entry: &Entry, cancel: &Arc<AtomicBool>, send: Send) {
+pub fn load(entry: &Item, cancel: &Arc<AtomicBool>, send: Send) {
     let ext = entry.path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     let name = entry.name.to_lowercase();
     let result = if entry.is_dir {
@@ -156,6 +158,6 @@ fn font(path: &Path) -> Result<Update, String> {
 }
 
 /// Facts about an item for its footer when nothing else says more.
-pub fn summary(e: &Entry) -> String {
+pub fn summary(e: &Item) -> String {
     if e.is_dir { e.kind.name().into() } else { format!("{}, {}", e.kind.name(), fs::format_size(e.size)) }
 }

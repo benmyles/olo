@@ -4534,6 +4534,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabula-preview"
+version = "0.1.0"
+dependencies = [
+ "bzip2",
+ "calamine",
+ "csv",
+ "flate2",
+ "hayro",
+ "image",
+ "liblzma",
+ "lofty",
+ "matroska-demuxer",
+ "mp4",
+ "openh264",
+ "pulldown-cmark",
+ "pulseaudio",
+ "quick-xml 0.42.0",
+ "resvg",
+ "sevenz-rust2",
+ "symphonia",
+ "syntect",
+ "tabula-kit",
+ "tar",
+ "tracing",
+ "ttf-parser",
+ "zip",
+ "zstd",
+]
+
+[[package]]
 name = "tabula-protocol"
 version = "0.1.0"
 dependencies = [
@@ -4580,38 +4610,17 @@ dependencies = [
 name = "tabula-tracker"
 version = "0.1.0"
 dependencies = [
- "bzip2",
- "calamine",
- "csv",
- "flate2",
  "grep-matcher",
  "grep-regex",
  "grep-searcher",
- "hayro",
  "ignore",
- "image",
  "libc",
- "liblzma",
- "lofty",
- "matroska-demuxer",
- "mp4",
- "openh264",
- "pulldown-cmark",
- "pulseaudio",
- "quick-xml 0.42.0",
- "resvg",
  "serde",
  "serde_json",
- "sevenz-rust2",
- "symphonia",
- "syntect",
  "tabula-kit",
+ "tabula-preview",
  "tabula-protocol",
- "tar",
  "tracing",
- "ttf-parser",
- "zip",
- "zstd",
 ]
 
 [[package]]

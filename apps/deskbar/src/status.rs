@@ -112,7 +112,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
             let mut wifi_cache = None;
             loop {
                 // nmcli is comparatively slow; ask it less often.
-                if tick % 3 == 0 {
+                if tick.is_multiple_of(3) {
                     wifi_cache = wifi();
                 }
                 let s = Status { battery: battery(), wifi: wifi_cache.clone(), volume: volume() };
@@ -182,14 +182,12 @@ pub fn draw_battery(painter: &Painter, r: Rect, p: &Palette, percent: u32, charg
     if charging {
         let cx = body.center().x;
         let cy = body.center().y;
-        let bolt = vec![
-            pos2(cx + 1.0, cy - 5.0),
+        let bolt = [pos2(cx + 1.0, cy - 5.0),
             pos2(cx - 2.5, cy + 0.5),
             pos2(cx - 0.2, cy + 0.5),
             pos2(cx - 1.0, cy + 5.0),
             pos2(cx + 2.5, cy - 0.5),
-            pos2(cx + 0.2, cy - 0.5),
-        ];
+            pos2(cx + 0.2, cy - 0.5)];
         painter.add(Shape::convex_polygon(bolt[..3].to_vec(), Color32::from_rgb(255, 214, 0), Stroke::NONE));
         painter.add(Shape::line(bolt.iter().copied().chain([bolt[0]]).collect(), Stroke::new(0.8, ink(p))));
     }

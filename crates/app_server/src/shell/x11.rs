@@ -221,13 +221,11 @@ impl<BackendData: Backend> XwmHandler for AnvilState<BackendData> {
     fn allow_selection_access(&mut self, xwm: XwmId, _selection: SelectionTarget) -> bool {
         if let Some(keyboard) = self.seat.get_keyboard() {
             // check that an X11 window is focused
-            if let Some(KeyboardFocusTarget::Window(w)) = keyboard.current_focus() {
-                if let Some(surface) = w.x11_surface() {
-                    if surface.xwm_id().unwrap() == xwm {
+            if let Some(KeyboardFocusTarget::Window(w)) = keyboard.current_focus()
+                && let Some(surface) = w.x11_surface()
+                    && surface.xwm_id().unwrap() == xwm {
                         return true;
                     }
-                }
-            }
         }
         false
     }
@@ -334,7 +332,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 .unwrap()
                 .borrow_mut()
                 .resize_state = ResizeState::Resizing(ResizeData {
-                edges: edges.into(),
+                edges,
                 initial_window_location,
                 initial_window_size,
             });
@@ -343,7 +341,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let grab = PointerResizeSurfaceGrab {
             start_data,
             window: element.clone(),
-            edges: edges.into(),
+            edges,
             initial_window_location,
             initial_window_size,
             last_window_size: initial_window_size,
@@ -354,8 +352,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     pub fn move_request_x11(&mut self, window: &X11Surface) {
-        if let Some(touch) = self.seat.get_touch() {
-            if let Some(start_data) = touch.grab_start_data() {
+        if let Some(touch) = self.seat.get_touch()
+            && let Some(start_data) = touch.grab_start_data() {
                 let element = self
                     .space
                     .elements()
@@ -390,7 +388,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     return;
                 }
             }
-        }
 
         // luckily anvil only supports one seat anyway...
         let Some(start_data) = self.pointer.grab_start_data() else {

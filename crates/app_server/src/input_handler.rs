@@ -366,8 +366,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     .user_data()
                     .get::<FullscreenSurface>()
                     .and_then(|f| f.get())
-                {
-                    if let Some((_, _)) =
+                    && let Some((_, _)) =
                         window.surface_under(location - output_geo.loc.to_f64(), WindowSurfaceType::ALL)
                     {
                         #[cfg(feature = "xwayland")]
@@ -377,15 +376,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                         keyboard.set_focus(self, Some(window.into()), serial);
                         return;
                     }
-                }
 
                 let layers = layer_map_for_output(output);
                 if let Some(layer) = layers
                     .layer_under(WlrLayer::Overlay, location - output_geo.loc.to_f64())
                     .or_else(|| layers.layer_under(WlrLayer::Top, location - output_geo.loc.to_f64()))
-                {
-                    if layer.can_receive_keyboard_focus() {
-                        if let Some((_, _)) = layer.surface_under(
+                    && layer.can_receive_keyboard_focus()
+                        && let Some((_, _)) = layer.surface_under(
                             location
                                 - output_geo.loc.to_f64()
                                 - layers.layer_geometry(layer).unwrap().loc.to_f64(),
@@ -394,8 +391,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                             keyboard.set_focus(self, Some(layer.clone().into()), serial);
                             return;
                         }
-                    }
-                }
             }
 
             if let Some((window, _)) = self.space.element_under(location).map(|(w, p)| (w.clone(), p)) {
@@ -414,9 +409,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 if let Some(layer) = layers
                     .layer_under(WlrLayer::Bottom, location - output_geo.loc.to_f64())
                     .or_else(|| layers.layer_under(WlrLayer::Background, location - output_geo.loc.to_f64()))
-                {
-                    if layer.can_receive_keyboard_focus() {
-                        if let Some((_, _)) = layer.surface_under(
+                    && layer.can_receive_keyboard_focus()
+                        && let Some((_, _)) = layer.surface_under(
                             location
                                 - output_geo.loc.to_f64()
                                 - layers.layer_geometry(layer).unwrap().loc.to_f64(),
@@ -424,8 +418,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                         ) {
                             keyboard.set_focus(self, Some(layer.clone().into()), serial);
                         }
-                    }
-                }
             };
         }
     }
@@ -1092,9 +1084,9 @@ impl AnvilState<UdevData> {
         let mut delta = self.clamp_coords(pointer_location + evt.delta()) - pointer_location;
 
         // Clamp the individual x and y components of delta to respect confinement regions
-        if pointer_confined {
-            if let Some((_, surface_loc)) = &under {
-                if let Some(region) = &confine_region {
+        if pointer_confined
+            && let Some((_, surface_loc)) = &under
+                && let Some(region) = &confine_region {
                     // Clamp delta.x
                     if !region.contains(
                         (pointer_location + Point::new(delta.x, 0f64) - *surface_loc).to_i32_round(),
@@ -1109,22 +1101,18 @@ impl AnvilState<UdevData> {
                         delta.y = 0f64;
                     }
                 }
-            }
-        }
 
         pointer_location += delta;
 
         let new_under = self.surface_under(pointer_location);
 
         // If confined, don't move pointer if it would go outside surface
-        if pointer_confined {
-            if let Some((surface, _)) = &under {
-                if new_under.as_ref().and_then(|(under, _)| under.wl_surface()) != surface.wl_surface() {
+        if pointer_confined
+            && let Some((surface, _)) = &under
+                && new_under.as_ref().and_then(|(under, _)| under.wl_surface()) != surface.wl_surface() {
                     pointer.frame(self);
                     return;
                 }
-            }
-        }
 
         pointer.motion(
             self,

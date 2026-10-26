@@ -119,14 +119,14 @@ fn decode_png(path: &Path) -> Option<ColorImage> {
     let (w, h) = (info.width as usize, info.height as usize);
     let px: Vec<Color32> = match (info.color_type, info.bit_depth) {
         (png::ColorType::Rgba, png::BitDepth::Eight) => buf[..w * h * 4]
-            .chunks_exact(4)
+            .as_chunks::<4>().0.iter()
             .map(|p| Color32::from_rgba_unmultiplied(p[0], p[1], p[2], p[3]))
             .collect(),
         (png::ColorType::Rgb, png::BitDepth::Eight) => {
-            buf[..w * h * 3].chunks_exact(3).map(|p| Color32::from_rgb(p[0], p[1], p[2])).collect()
+            buf[..w * h * 3].as_chunks::<3>().0.iter().map(|p| Color32::from_rgb(p[0], p[1], p[2])).collect()
         }
         (png::ColorType::GrayscaleAlpha, png::BitDepth::Eight) => buf[..w * h * 2]
-            .chunks_exact(2)
+            .as_chunks::<2>().0.iter()
             .map(|p| Color32::from_rgba_unmultiplied(p[0], p[0], p[0], p[1]))
             .collect(),
         (png::ColorType::Grayscale, png::BitDepth::Eight) => buf[..w * h].iter().map(|&g| Color32::from_gray(g)).collect(),

@@ -36,7 +36,7 @@ enum Event {
     Context { col: usize, row: Option<usize>, pos: Pos2 },
 }
 
-fn column<'a>(f: &'a FolderWin, k: usize) -> (&'a std::path::Path, &'a [Entry], &'a widgets::ListState) {
+fn column(f: &FolderWin, k: usize) -> (&std::path::Path, &[Entry], &widgets::ListState) {
     if k == 0 { (&f.path, &f.entries, &f.list) } else { let p = &f.panes[k - 1]; (&p.path, &p.entries, &p.list) }
 }
 

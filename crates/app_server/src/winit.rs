@@ -370,11 +370,10 @@ pub fn run_winit() {
             match render_res {
                 Ok(render_output_result) => {
                     let has_rendered = render_output_result.damage.is_some();
-                    if let Some(damage) = render_output_result.damage {
-                        if let Err(err) = backend.submit(Some(damage)) {
+                    if let Some(damage) = render_output_result.damage
+                        && let Err(err) = backend.submit(Some(damage)) {
                             warn!("Failed to submit buffer: {}", err);
                         }
-                    }
 
                     #[cfg(feature = "debug")]
                     if let Some(renderdoc) = renderdoc.as_mut() {

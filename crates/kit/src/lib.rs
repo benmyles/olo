@@ -7,6 +7,7 @@
 
 mod app;
 pub mod desktop_entry;
+pub mod files;
 pub mod icons;
 mod input;
 pub mod instance;

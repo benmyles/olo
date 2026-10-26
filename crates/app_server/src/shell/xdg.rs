@@ -122,11 +122,10 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
     fn ack_configure(&mut self, surface: WlSurface, configure: Configure) {
         if let Configure::Toplevel(configure) = configure {
             if let Some(serial) = with_states(&surface, |states| {
-                if let Some(data) = states.data_map.get::<RefCell<SurfaceData>>() {
-                    if let ResizeState::WaitingForFinalAck(_, serial) = data.borrow().resize_state {
+                if let Some(data) = states.data_map.get::<RefCell<SurfaceData>>()
+                    && let ResizeState::WaitingForFinalAck(_, serial) = data.borrow().resize_state {
                         return Some(serial);
                     }
-                }
 
                 None
             }) {
@@ -336,8 +335,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         edges: ResizeEdge,
     ) {
 
-        if let Some(touch) = seat.get_touch() {
-            if touch.has_grab(serial) {
+        if let Some(touch) = seat.get_touch()
+            && touch.has_grab(serial) {
                 let start_data = touch.grab_start_data().unwrap();
                 tracing::info!(?start_data);
 
@@ -371,7 +370,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                         .unwrap()
                         .borrow_mut()
                         .resize_state = ResizeState::Resizing(ResizeData {
-                        edges: edges.into(),
+                        edges,
                         initial_window_location,
                         initial_window_size,
                     });
@@ -380,7 +379,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let grab = TouchResizeSurfaceGrab {
                     start_data,
                     window,
-                    edges: edges.into(),
+                    edges,
                     initial_window_location,
                     initial_window_size,
                     last_window_size: initial_window_size,
@@ -389,7 +388,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 touch.set_grab(self, grab, serial);
                 return;
             }
-        }
 
         let pointer = seat.get_pointer().unwrap();
 
@@ -425,7 +423,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 .unwrap()
                 .borrow_mut()
                 .resize_state = ResizeState::Resizing(ResizeData {
-                edges: edges.into(),
+                edges,
                 initial_window_location,
                 initial_window_size,
             });
@@ -434,7 +432,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let grab = PointerResizeSurfaceGrab {
             start_data,
             window,
-            edges: edges.into(),
+            edges,
             initial_window_location,
             initial_window_size,
             last_window_size: initial_window_size,
@@ -444,8 +442,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     pub fn move_request_xdg(&mut self, surface: &ToplevelSurface, seat: &Seat<Self>, serial: Serial) {
-        if let Some(touch) = seat.get_touch() {
-            if touch.has_grab(serial) {
+        if let Some(touch) = seat.get_touch()
+            && touch.has_grab(serial) {
                 let start_data = touch.grab_start_data().unwrap();
 
                 // If the client disconnects after requesting a move
@@ -503,7 +501,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 touch.set_grab(self, grab, serial);
                 return;
             }
-        }
 
         let pointer = seat.get_pointer().unwrap();
 

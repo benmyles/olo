@@ -21,26 +21,4 @@ ignore = "0.4"
 grep-searcher = "0.1"
 grep-regex = "0.1"
 grep-matcher = "0.1"
-# Quick Look: every format is read natively, in process.
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff", "ico", "tga", "qoi", "hdr", "exr", "pnm", "dds", "ff", "rayon"] }
-resvg = { version = "0.45", default-features = false, features = ["text", "system-fonts", "raster-images"] }
-hayro = "0.8"
-symphonia = { version = "0.5", features = ["all"] }
-lofty = "0.25"
-pulseaudio = "0.3"
-openh264 = "0.9"
-mp4 = "0.14"
-matroska-demuxer = "0.8"
-zip = { version = "9", default-features = false, features = ["deflate", "deflate64", "bzip2", "zstd", "lzma"] }
-tar = "0.4"
-flate2 = "1"
-liblzma = { version = "0.4", features = ["static"] }
-bzip2 = "0.6"
-zstd = "0.14"
-sevenz-rust2 = "0.24"
-syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
-pulldown-cmark = { version = "0.13", default-features = false }
-calamine = "0.37"
-csv = "1.4"
-quick-xml = "0.42"
-ttf-parser = "0.25"
+tabula-preview.workspace = true

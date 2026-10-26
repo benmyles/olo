@@ -11,7 +11,7 @@ use std::{
 };
 
 use super::load::{Body, Update};
-use crate::fs;
+use tabula_kit::files as fs;
 
 /// List at most this many items (the count still covers everything).
 const MAX_ITEMS: usize = 5000;

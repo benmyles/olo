@@ -1,60 +1,76 @@
-//! Quick Look: Space on a selected item previews it at once, in a window
-//! that follows the selection (arrow keys step through the folder, Space
-//! or Escape closes). Images, PDFs, text and code (coloured by syntax),
-//! Markdown and office documents, spreadsheets, archives and folders,
-//! audio (played here) and video posters, fonts; anything else gets a
-//! card. Everything is decoded in process on a worker thread.
+//! Previews of every common file format, decoded natively and in process
+//! on worker threads: images, SVG, PDF, text and code (coloured by
+//! syntax), Markdown and office documents, spreadsheets and CSV, archives
+//! and folders, audio (with playback) and video posters, fonts; anything
+//! else gets a card. Tracker's Quick Look and the Viewer app are built on
+//! [`Preview`].
 
-mod archive;
-mod audio;
-mod doc;
-mod load;
-mod media;
-mod pdf;
-mod text;
+pub mod archive;
+pub mod audio;
+pub mod doc;
+pub mod load;
+pub mod media;
+pub mod pdf;
+pub mod text;
 
 use std::{
     collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 pub use load::{Body, Update};
 use tabula_kit::{
-    WindowId,
     egui::{self, Align, Color32, FontFamily, FontId, Key, Rect, Sense, TextureHandle, TextureOptions, Ui, pos2, vec2},
+    files::{self, Kind},
     icons, metrics as m,
     style::{self, Syntax, c},
-    widgets::{Button, Column, ColumnListView, ListState, ScrollView},
+    widgets::{Column, ColumnListView, ListState, ScrollView},
 };
 
-use crate::{
-    fs::{self, Entry},
-    view,
-};
-
-/// The bar along the bottom: what the item is, and Open.
-const FOOTER: f32 = m::CONTROL_HEIGHT + 2.0 * m::TIGHT + 2.0;
 /// Show "loading" only if loading takes longer than this.
 pub const SLOW: Duration = Duration::from_millis(120);
 const TEXT_ROW: f32 = 16.0;
 const GUTTER_PAD: f32 = 10.0;
 
-pub enum Action {
-    Close,
-    Open,
-    /// Preview the previous (-1) or next (+1) item in the folder.
-    Step(isize),
+/// The file being previewed.
+#[derive(Debug, Clone)]
+pub struct Item {
+    pub path: PathBuf,
+    pub name: String,
+    pub is_dir: bool,
+    pub size: u64,
+    pub modified: Option<SystemTime>,
+    pub kind: Kind,
+    /// The icon to show for it (callers may know a better one, e.g. Home).
+    pub icon: String,
 }
 
-pub struct QuickLook {
-    pub win: Option<WindowId>,
-    /// The folder window (or desktop) whose selection is shown.
-    pub source: WindowId,
-    pub entry: Entry,
+impl Item {
+    /// Look `path` up on disk (one stat; call off the UI thread for paths
+    /// on slow file systems).
+    pub fn stat(path: &Path) -> Option<Item> {
+        use std::os::unix::fs::PermissionsExt;
+        let meta = std::fs::metadata(path).ok()?;
+        let kind = files::kind_for(path, meta.is_dir(), meta.permissions().mode());
+        Some(Item {
+            path: path.to_owned(),
+            name: path.file_name().map_or_else(|| "/".into(), |n| n.to_string_lossy().into_owned()),
+            is_dir: meta.is_dir(),
+            size: if meta.is_dir() { 0 } else { meta.len() },
+            modified: meta.modified().ok(),
+            kind,
+            icon: kind.icon().into(),
+        })
+    }
+}
+
+pub struct Preview {
+    pub item: Item,
     pub generation: u64,
     body: Option<Body>,
     failed: Option<String>,
@@ -70,14 +86,12 @@ pub struct QuickLook {
     started: Instant,
 }
 
-impl QuickLook {
+impl Preview {
     /// Start loading `entry`; `send` delivers updates (tagged with the
     /// generation) to the UI thread.
-    pub fn new(source: WindowId, entry: Entry, generation: u64, send: impl Fn(u64, Update) + Send + 'static) -> QuickLook {
-        let mut q = QuickLook {
-            win: None,
-            source,
-            entry: entry.clone(),
+    pub fn new(item: Item, generation: u64, send: impl Fn(u64, Update) + Send + 'static) -> Preview {
+        let mut q = Preview {
+            item,
             generation,
             body: None,
             failed: None,
@@ -95,18 +109,18 @@ impl QuickLook {
     }
 
     fn spawn(&mut self, send: impl Fn(u64, Update) + Send + 'static) {
-        let (entry, cancel, generation) = (self.entry.clone(), self.cancel.clone(), self.generation);
+        let (item, cancel, generation) = (self.item.clone(), self.cancel.clone(), self.generation);
         std::thread::Builder::new()
             .name("quicklook".into())
-            .spawn(move || load::load(&entry, &cancel, &mut |u| send(generation, u)))
+            .spawn(move || load::load(&item, &cancel, &mut |u| send(generation, u)))
             .ok();
     }
 
     /// Show another item in the same window.
-    pub fn retarget(&mut self, entry: Entry, generation: u64, send: impl Fn(u64, Update) + Send + 'static) {
+    pub fn retarget(&mut self, item: Item, generation: u64, send: impl Fn(u64, Update) + Send + 'static) {
         self.cancel.store(true, Ordering::Relaxed);
         self.cancel = Arc::new(AtomicBool::new(false));
-        self.entry = entry;
+        self.item = item;
         self.generation = generation;
         self.failed = None;
         self.textures.clear();
@@ -131,7 +145,7 @@ impl QuickLook {
                     && m.playable
                     && !m.video
                 {
-                    self.player = Some(audio::Player::start(&self.entry.path));
+                    self.player = Some(audio::Player::start(&self.item.path));
                 }
                 self.body = Some(b);
                 self.failed = None;
@@ -166,9 +180,10 @@ impl QuickLook {
     }
 
     /// The window size that suits what is shown, within the screen.
-    pub fn ideal_size(&self, screen: Option<(u32, u32)>) -> (u32, u32) {
+    /// `chrome` is the height the caller adds around the preview (bars).
+    pub fn ideal_size(&self, screen: Option<(u32, u32)>, chrome: f32) -> (u32, u32) {
         let (sw, sh) = screen.map_or((1440.0, 900.0), |(w, h)| (w as f32, h as f32));
-        let (max_w, max_h) = (sw * 0.8, sh * 0.82 - FOOTER);
+        let (max_w, max_h) = (sw * 0.8, sh * 0.82 - chrome);
         let fit = |w: f32, h: f32| {
             let k = (max_w / w).min(max_h / h).min(1.0);
             ((w * k).round().max(320.0), (h * k).round().max(200.0))
@@ -207,27 +222,12 @@ impl QuickLook {
                 Body::Card { .. } => (420.0, 220.0),
             },
         };
-        (w.round() as u32, (h + FOOTER).round() as u32)
+        (w.round() as u32, (h + chrome).round() as u32)
     }
 
-    pub fn ui(&mut self, ui: &mut Ui) -> Option<Action> {
-        let mut action = None;
-        ui.input(|i| {
-            if i.key_pressed(Key::Space) || i.key_pressed(Key::Escape) {
-                action = Some(Action::Close);
-            } else if i.key_pressed(Key::Enter) {
-                action = Some(Action::Open);
-            } else if i.key_pressed(Key::ArrowLeft) || i.key_pressed(Key::ArrowUp) {
-                action = Some(Action::Step(-1));
-            } else if i.key_pressed(Key::ArrowRight) || i.key_pressed(Key::ArrowDown) {
-                action = Some(Action::Step(1));
-            }
-        });
+    /// Draw the preview filling `content`.
+    pub fn ui(&mut self, ui: &mut Ui, content: Rect) {
         let p = style::palette(ui.ctx());
-        let full = ui.max_rect();
-        let content = Rect::from_min_max(full.min, pos2(full.right(), full.bottom() - FOOTER));
-        let footer = Rect::from_min_max(pos2(full.left(), content.bottom()), full.max);
-
         let mut cui = ui.new_child(egui::UiBuilder::new().max_rect(content));
         cui.set_clip_rect(content);
         match (&self.failed, self.body.is_some()) {
@@ -246,38 +246,25 @@ impl QuickLook {
             }
             (None, true) => self.body_ui(&mut cui, content),
         }
-        if self.footer(ui, footer) {
-            action = Some(Action::Open);
-        }
-        action
     }
 
-    fn footer(&mut self, ui: &mut Ui, r: Rect) -> bool {
-        let p = style::palette(ui.ctx());
-        let painter = ui.painter();
-        painter.rect_filled(r, 0.0, c(p.panel_background));
-        style::hline(painter, r.left(), r.right(), r.top(), style::shade(&p, p.panel_background, 1.2));
-        style::hline(painter, r.left(), r.right(), r.top() + 1.0, c(p.shine));
-        let inner = r.shrink2(vec2(m::SPACING, m::TIGHT));
-        let icon = Rect::from_center_size(pos2(inner.left() + 8.0, inner.center().y + 1.0), vec2(16.0, 16.0));
-        icons::paint(painter, icon, view::icon_of(&self.entry));
-        let note = match (&self.body, &self.failed) {
+    /// One line on what is shown ("PDF document, 10 pages").
+    pub fn note(&self) -> String {
+        match (&self.body, &self.failed) {
             (Some(b), None) => note_of(b),
-            _ => load::summary(&self.entry),
-        };
-        let label = match fs::opener_name(&self.entry) {
-            Some(app) => format!("Open with {app}"),
-            None => "Open".into(),
-        };
-        let bw = (style::label_width(ui.ctx(), &label, style::plain_font()) + 28.0).max(80.0);
-        let text_right = inner.right() - bw - m::SPACING;
-        let mut job = egui::text::LayoutJob::simple_singleline(note, style::plain_font(), style::disabled_text(&p));
-        job.wrap = egui::text::TextWrapping::truncate_at_width((text_right - icon.right() - m::TIGHT * 2.0).max(0.0));
-        let g = painter.layout_job(job);
-        let pos = style::text_origin(ui.ctx(), &g, icon.right() + m::TIGHT * 2.0, inner.center().y, style::PLAIN_SIZE);
-        painter.galley(pos, g, style::disabled_text(&p));
-        let br = Rect::from_min_max(pos2(inner.right() - bw, inner.top()), inner.max);
-        ui.put(br, Button::new(&label).min_width(bw)).clicked()
+            _ => load::summary(&self.item),
+        }
+    }
+
+    /// Toggle audio playback (Space or P in a viewer).
+    pub fn toggle_playback(&self) -> bool {
+        match &self.player {
+            Some(p) => {
+                p.toggle();
+                true
+            }
+            None => false,
+        }
     }
 
     /// The icon, name and facts; with `error`, why there is no preview.
@@ -288,14 +275,14 @@ impl QuickLook {
         let size = 96.0;
         let top = r.center().y - (size + 3.0 * m::LABEL_ROW) / 2.0;
         let icon = Rect::from_center_size(pos2(r.center().x, top + size / 2.0), vec2(size, size));
-        icons::paint(painter, icon, view::icon_of(&self.entry));
+        icons::paint(painter, icon, &self.item.icon);
         let mut y = icon.bottom() + m::SPACING + m::LABEL_ROW / 2.0;
-        style::label(painter, r.center().x, y, Align::Center, &self.entry.name, style::bold_font(), c(p.panel_text));
+        style::label(painter, r.center().x, y, Align::Center, &self.item.name, style::bold_font(), c(p.panel_text));
         y += m::LABEL_ROW;
-        let facts = if self.entry.is_dir {
-            fs::format_time(self.entry.modified)
+        let facts = if self.item.is_dir {
+            files::format_time(self.item.modified)
         } else {
-            format!("{} — {}", fs::format_size(self.entry.size), fs::format_time(self.entry.modified))
+            format!("{} — {}", files::format_size(self.item.size), files::format_time(self.item.modified))
         };
         style::label(painter, r.center().x, y, Align::Center, &facts, style::plain_font(), style::disabled_text(&p));
         if let Some(e) = error {
@@ -397,13 +384,13 @@ impl QuickLook {
                     match cell.column {
                         0 => {
                             let ir = Rect::from_center_size(pos2(cell.rect.left() + 12.0, cell.rect.center().y), vec2(16.0, 16.0));
-                            let kind = fs::kind_for(std::path::Path::new(&it.name), it.is_dir, 0o644);
+                            let kind = files::kind_for(Path::new(&it.name), it.is_dir, 0o644);
                             icons::paint(cell.painter, ir, kind.icon());
                             let tr = Rect::from_min_max(pos2(cell.rect.left() + 22.0, cell.rect.top()), cell.rect.max);
                             let sub = tabula_kit::widgets::Cell { rect: tr, ..*cell };
                             sub.text(&it.name);
                         }
-                        _ => cell.text(&if it.is_dir { "—".into() } else { fs::format_size(it.size) }),
+                        _ => cell.text(&if it.is_dir { "—".into() } else { files::format_size(it.size) }),
                     }
                 });
             }
@@ -827,6 +814,18 @@ fn font_view(ui: &mut Ui, r: Rect, family: FontFamily) {
     });
 }
 
+
+trait SectionsText {
+    fn sections_text(&self) -> Vec<(String, egui::TextFormat)>;
+}
+
+impl SectionsText for egui::text::LayoutJob {
+    /// Each section's text and format (to splice one job into another).
+    fn sections_text(&self) -> Vec<(String, egui::TextFormat)> {
+        self.sections.iter().map(|s| (self.text[s.byte_range.start.0..s.byte_range.end.0].to_owned(), s.format.clone())).collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -839,16 +838,5 @@ mod tests {
         assert_eq!(column_name(27), "AB");
         assert_eq!(column_name(701), "ZZ");
         assert_eq!(column_name(702), "AAA");
-    }
-}
-
-trait SectionsText {
-    fn sections_text(&self) -> Vec<(String, egui::TextFormat)>;
-}
-
-impl SectionsText for egui::text::LayoutJob {
-    /// Each section's text and format (to splice one job into another).
-    fn sections_text(&self) -> Vec<(String, egui::TextFormat)> {
-        self.sections.iter().map(|s| (self.text[s.byte_range.start.0..s.byte_range.end.0].to_owned(), s.format.clone())).collect()
     }
 }

@@ -301,7 +301,7 @@ pub fn show(
         }
     }
 
-    draw_images(ui, &painter, s, &image_cells, &mut mouse.textures, |line, col| at(line, col), cell);
+    draw_images(ui, &painter, s, &image_cells, &mut mouse.textures, at, cell);
 
     let font_for = |st: Style| {
         let family = if st.bold {

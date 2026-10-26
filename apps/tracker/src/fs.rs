@@ -20,86 +20,7 @@ pub struct Entry {
     pub kind: Kind,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Kind {
-    Folder,
-    Text,
-    Image,
-    Audio,
-    Video,
-    Archive,
-    Pdf,
-    Application,
-    Executable,
-    Document,
-}
-
-impl Kind {
-    pub fn icon(self) -> &'static str {
-        match self {
-            Kind::Folder => "folder",
-            Kind::Text => "text",
-            Kind::Image => "image",
-            Kind::Audio => "audio",
-            Kind::Video => "video",
-            Kind::Archive => "archive",
-            Kind::Pdf => "document",
-            Kind::Application => "application",
-            Kind::Executable => "executable",
-            Kind::Document => "document",
-        }
-    }
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Kind::Folder => "Folder",
-            Kind::Text => "Text",
-            Kind::Image => "Image",
-            Kind::Audio => "Audio",
-            Kind::Video => "Video",
-            Kind::Archive => "Archive",
-            Kind::Pdf => "PDF Document",
-            Kind::Application => "Application",
-            Kind::Executable => "Executable",
-            Kind::Document => "Document",
-        }
-    }
-}
-
-pub fn kind_for(path: &Path, is_dir: bool, mode: u32) -> Kind {
-    if is_dir {
-        return Kind::Folder;
-    }
-    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-    // Executable scripts run when opened, so show them as executables.
-    if mode & 0o111 != 0 && matches!(ext.as_str(), "sh" | "py" | "pl" | "rb" | "lua" | "") {
-        return Kind::Executable;
-    }
-    match ext.as_str() {
-        "txt" | "md" | "rs" | "toml" | "json" | "yaml" | "yml" | "c" | "h" | "cpp" | "hpp" | "py" | "sh" | "js"
-        | "ts" | "html" | "css" | "xml" | "conf" | "ini" | "log" | "csv" | "go" | "java" | "lua" | "rb" | "desktop" => {
-            Kind::Text
-        }
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tif" | "tiff" | "svg" | "heic" | "ico" => Kind::Image,
-        "mp3" | "flac" | "ogg" | "oga" | "wav" | "m4a" | "aac" | "opus" | "aiff" | "aif" => Kind::Audio,
-        "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" => Kind::Video,
-        "zip" | "tar" | "gz" | "xz" | "bz2" | "zst" | "7z" | "rar" | "tgz" | "rpm" | "deb" => Kind::Archive,
-        "pdf" => Kind::Pdf,
-        "appimage" => Kind::Application,
-        _ if mode & 0o111 != 0 => Kind::Executable,
-        "" => sniff_text(path).then_some(Kind::Text).unwrap_or(Kind::Document),
-        _ => Kind::Document,
-    }
-}
-
-/// Extension-less files that look like text (README, Makefile, …).
-fn sniff_text(path: &Path) -> bool {
-    use std::io::Read;
-    let mut buf = [0u8; 512];
-    let Ok(mut f) = fs::File::open(path) else { return false };
-    let n = f.read(&mut buf).unwrap_or(0);
-    n > 0 && std::str::from_utf8(&buf[..n]).is_ok() && !buf[..n].contains(&0)
-}
+pub use tabula_kit::files::{Kind, format_size, format_time, kind_for};
 
 pub fn entry(path: &Path) -> Option<Entry> {
     let lmeta = fs::symlink_metadata(path).ok()?;
@@ -173,43 +94,6 @@ pub fn volume_label() -> String {
         .map(|s| s.trim().to_owned())
         .filter(|s| !s.is_empty() && s != "localhost")
         .unwrap_or_else(|| "System".into())
-}
-
-pub fn format_size(n: u64) -> String {
-    const UNITS: [&str; 5] = ["bytes", "KB", "MB", "GB", "TB"];
-    if n < 1024 {
-        return format!("{n} bytes");
-    }
-    let mut v = n as f64;
-    let mut u = 0;
-    while v >= 1024.0 && u < UNITS.len() - 1 {
-        v /= 1024.0;
-        u += 1;
-    }
-    if v >= 100.0 { format!("{v:.0} {}", UNITS[u]) } else { format!("{v:.1} {}", UNITS[u]) }
-}
-
-pub fn format_time(t: Option<SystemTime>) -> String {
-    let Some(t) = t else { return String::new() };
-    let secs = t.duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
-    // SAFETY: localtime_r fills the zeroed tm we own.
-    let tm = unsafe {
-        let mut tm: libc::tm = std::mem::zeroed();
-        let t = secs as libc::time_t;
-        libc::localtime_r(&t, &mut tm);
-        tm
-    };
-    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    let h = tm.tm_hour % 12;
-    format!(
-        "{} {}, {}, {}:{:02} {}",
-        MONTHS[tm.tm_mon as usize % 12],
-        tm.tm_mday,
-        tm.tm_year + 1900,
-        if h == 0 { 12 } else { h },
-        tm.tm_min,
-        if tm.tm_hour < 12 { "AM" } else { "PM" }
-    )
 }
 
 // ---- operations ---------------------------------------------------------
@@ -358,8 +242,31 @@ pub fn opener_name(entry: &Entry) -> Option<&'static str> {
     match entry.kind {
         Kind::Folder => Some("Tracker"),
         Kind::Text => Some("StyledEdit"),
-        Kind::Image => Some("ShowImage"),
+        k if previewable(k) => Some("Viewer"),
         _ => None,
+    }
+}
+
+/// Kinds the Viewer shows well enough to be their default opener.
+fn previewable(k: Kind) -> bool {
+    matches!(
+        k,
+        Kind::Image
+            | Kind::Pdf
+            | Kind::Audio
+            | Kind::Video
+            | Kind::Archive
+            | Kind::WordDocument
+            | Kind::Spreadsheet
+            | Kind::Presentation
+            | Kind::Font
+    )
+}
+
+/// Show any file in its own Viewer window.
+pub fn open_in_viewer(path: &Path) {
+    if let Err(e) = tabula_kit::spawn_detached(&format!("tabula-viewer {}", shell_quote(path))) {
+        tracing::warn!("viewer {}: {e}", path.display());
     }
 }
 
@@ -369,7 +276,7 @@ pub fn open(entry: &Entry) {
     let q = shell_quote(&entry.path);
     let cmd = match entry.kind {
         Kind::Text => format!("tabula-styled-edit {q}"),
-        Kind::Image => format!("tabula-show-image {q}"),
+        k if previewable(k) => format!("tabula-viewer {q}"),
         Kind::Executable | Kind::Application => q,
         _ => format!("xdg-open {q}"),
     };

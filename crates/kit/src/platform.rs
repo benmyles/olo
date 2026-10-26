@@ -1208,12 +1208,11 @@ impl Kit {
                     PopupResult::Back => {
                         let depth = path.len() - 1;
                         self.close_popups_of(owner, depth);
-                        if depth == 0 {
-                            if let Some(s) = self.surface_mut(owner) {
+                        if depth == 0
+                            && let Some(s) = self.surface_mut(owner) {
                                 s.bar.open = None;
                                 s.dirty = true;
                             }
-                        }
                     }
                     PopupResult::None => {}
                 },
