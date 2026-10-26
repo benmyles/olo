@@ -20,6 +20,7 @@ pub type WindowId = u64;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)] // one message at a time over a socket
 pub enum Request {
     Ping,
     /// Start receiving [`Event`]s on this connection.
@@ -72,6 +73,7 @@ pub enum Reply {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)]
 pub enum Event {
     WindowsChanged { windows: Vec<WindowInfo> },
     WorkspaceChanged { current: u32, count: u32 },

@@ -1,0 +1,11 @@
+[package]
+name = "tabula-xdg"
+description = "Freedesktop plumbing shared by app_server and the kit: data directories, .desktop entries, icon lookup and loading"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+png = "0.18"
+resvg = { version = "0.45", default-features = false }
+libc = "0.2"

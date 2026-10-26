@@ -214,8 +214,7 @@ fn draw_column(
         // Selection: solid in the active column, a quieter tint along the
         // path in the others (as in Finder).
         let sel_bg = if active { c(p.list_selected_background) } else { c(mix(p.list_background, p.list_selected_background, 0.5)) };
-        for i in first..last {
-            let e = &entries[i];
+        for (i, e) in entries.iter().enumerate().take(last).skip(first) {
             let r = Rect::from_min_size(pos2(content.left(), top + i as f32 * m::LIST_ROW), vec2(content.width(), m::LIST_ROW));
             let selected = list.selected.contains(&i);
             let text_color = if selected { c(p.list_selected_item_text) } else { c(p.list_item_text) };

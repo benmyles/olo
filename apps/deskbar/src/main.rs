@@ -25,18 +25,6 @@ const ICON: f32 = 16.0;
 /// Inset of the tray's recessed well from the Deskbar's edges.
 const TRAY_INSET: f32 = 4.0;
 
-/// Tabula's own applications: binary, name, icon.
-const OUR_APPS: &[(&str, &str, &str)] = &[
-    ("tabula-tracker", "Tracker", "tracker"),
-    ("tabula-terminal", "Terminal", "terminal"),
-    ("tabula-web", "WebPositive", "browser"),
-    ("tabula-styled-edit", "StyledEdit", "styled-edit"),
-    ("tabula-deskcalc", "DeskCalc", "calculator"),
-    ("tabula-show-image", "ShowImage", "show-image"),
-    ("tabula-activity", "Activity Monitor", "activity"),
-    ("tabula-screenshot", "Screenshot", "screenshot"),
-];
-
 /// Preference panels: command argument, name, icon.
 const PREFS: &[(&str, &str, &str)] = &[
     ("appearance", "Appearance", "appearance"),
@@ -53,19 +41,7 @@ const PREFS: &[(&str, &str, &str)] = &[
     ("workspaces", "Workspaces", "workspaces"),
 ];
 
-/// App ids of our own apps map straight to names and icons.
-fn our_app(app_id: &str) -> Option<(&'static str, &'static str)> {
-    let short = app_id.strip_prefix("tabula.").unwrap_or(app_id);
-    OUR_APPS
-        .iter()
-        .find(|(bin, _, _)| bin.strip_prefix("tabula-") == Some(short))
-        .map(|(_, name, icon)| (*name, *icon))
-        .or(match short {
-            "preferences" => Some(("Preferences", "preferences")),
-            "kit-demo" => Some(("Kit Demo", "application")),
-            _ => None,
-        })
-}
+use tabula_kit::apps::{OUR_APPS, our_app};
 
 enum Msg {
     Windows(Vec<WindowInfo>),
@@ -451,7 +427,7 @@ impl App for Deskbar {
             let mut job = egui::text::LayoutJob::simple_singleline(team.name.clone(), font, text_color);
             job.wrap = egui::text::TextWrapping::truncate_at_width(max_w);
             let g = painter.layout_job(job);
-            let size = if focused { style::PLAIN_SIZE } else { style::PLAIN_SIZE };
+            let size = style::PLAIN_SIZE;
             let pos = style::text_origin(ui.ctx(), &g, icon_r.right() + 8.0, row.center().y, size);
             painter.galley(pos, g, text_color);
             y += ROW_H;

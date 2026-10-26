@@ -463,6 +463,7 @@ pub fn run_winit() {
                     state.backend_data.backend.renderer(),
                     &output,
                     &state.space,
+                    Vec::new(),
                     color,
                     &path,
                 );

@@ -149,6 +149,7 @@ struct Style {
 
 /// Draw the session into `ui` and handle input. `focused` is whether the
 /// window has the keyboard.
+#[allow(clippy::too_many_arguments)]
 pub fn show(
     ui: &mut Ui,
     s: &mut Session,

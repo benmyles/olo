@@ -14,8 +14,7 @@ as they land (with the commit), add new ones as they come up.
 - ~~Keyboard mapping in app_server, replacing keyd~~: ⌘ as command,
   Caps Lock as Ctrl, ⌘Tab / ⌘` switching, ⌘ arrows / ⌘⌫, tap ⌘ /
   ⌘Space for Find, terminals keep physical Ctrl (`keymap.rs`). Still to
-  do: the Twitcher overlay (switching works, nothing is drawn yet), a
-  lock screen for Ctrl+⌘Q, and Preferences ▸ Keyboard toggles for the
+  do: a lock screen for Ctrl+⌘Q, and Preferences ▸ Keyboard toggles for the
   `KeyboardSettings` fields. keyd can then be disabled system-wide; while
   it runs it grabs the keyboards and app_server sees its output (handled:
   its ⌘ tap chord and Super+Tab are understood).
@@ -53,8 +52,9 @@ as they land (with the commit), add new ones as they come up.
   changes. Windows move off a removed display; workspaces and Deskbar
   follow the main display; cursor crosses edges at matching scale.
 
-- Cursor shapes; night mode; libinput settings; keybindings and
-  Twitcher; centred alerts.
+- Cursor shapes; night mode; libinput settings; centred alerts.
+- Deskbar's Applications menu lists apps that don't exist yet (WebPositive,
+  StyledEdit, …): hide uninstalled ones until they land.
 
 ## Lock, screensaver, caffeinated
 

@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-25
 
+### Twitcher (dark)
+
+*22:51* — The same in dark mode.
+
+![Twitcher (dark)](2026-10-25/225144-twitcher-dark.png)
+
+### Twitcher (light)
+
+*22:51* — ⌘Tab held: app_server draws the BeOS Twitcher strip with each running app's icon and the chosen app's name.
+
+![Twitcher (light)](2026-10-25/225144-twitcher-light.png)
+
 ### Quick Look pop-out to Viewer
 
 *22:34* — Popping a Quick Look out of Tracker opens the file in a standalone Viewer window (dark).

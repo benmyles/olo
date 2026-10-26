@@ -53,6 +53,7 @@ mod wm;
 mod x11;
 mod xdg;
 
+pub(crate) use self::deco::fill;
 pub use self::element::*;
 pub use self::grabs::*;
 

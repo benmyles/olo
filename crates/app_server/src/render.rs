@@ -33,6 +33,7 @@ smithay::backend::renderer::element::render_elements! {
         R: ImportAll + ImportMem;
     Pointer=PointerRenderElement<R>,
     Surface=WaylandSurfaceRenderElement<R>,
+    Overlay=smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement<R>,
     #[cfg(feature = "debug")]
     // Note: We would like to borrow this element instead, but that would introduce
     // a feature-dependent lifetime, which introduces a lot more feature bounds
@@ -46,6 +47,7 @@ impl<R: Renderer> std::fmt::Debug for CustomRenderElements<R> {
         match self {
             Self::Pointer(arg0) => f.debug_tuple("Pointer").field(arg0).finish(),
             Self::Surface(arg0) => f.debug_tuple("Surface").field(arg0).finish(),
+            Self::Overlay(arg0) => f.debug_tuple("Overlay").field(arg0).finish(),
             #[cfg(feature = "debug")]
             Self::Fps(arg0) => f.debug_tuple("Fps").field(arg0).finish(),
             Self::_GenericCatcher(arg0) => f.debug_tuple("_GenericCatcher").field(arg0).finish(),
@@ -219,6 +221,7 @@ pub fn screenshot<R, T>(
     renderer: &mut R,
     output: &Output,
     space: &Space<WindowElement>,
+    overlays: Vec<CustomRenderElements<R>>,
     clear_color: Color32F,
     path: &std::path::Path,
 ) -> Result<(), String>
@@ -237,7 +240,7 @@ where
     let mapping = {
         let mut fb = renderer.bind(&mut target).map_err(err)?;
         let (elements, clear_color) =
-            output_elements::<R>(output, space, Vec::new(), renderer, false, clear_color);
+            output_elements::<R>(output, space, overlays, renderer, false, clear_color);
         let mut damage_tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
         damage_tracker
             .render_output(renderer, &mut fb, 0, &elements, clear_color)

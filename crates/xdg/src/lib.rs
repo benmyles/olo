@@ -1,0 +1,197 @@
+//! Freedesktop plumbing shared by app_server and the kit (which re-exports
+//! it): Tabula's data directories, `.desktop` entries, and icon lookup
+//! (Tabula's own pre-scaled set first, then icon themes) and decoding.
+
+use std::{
+    path::{Path, PathBuf},
+    sync::OnceLock,
+};
+
+pub mod apps;
+pub mod desktop_entry;
+
+/// Device-pixel sizes shipped in data/icons.
+const OWN_SIZES: &[u32] = &[16, 24, 32, 48, 64, 96, 128, 256];
+
+/// Directories holding Tabula's data (icons/, backgrounds/, ...).
+pub fn data_dirs() -> &'static [PathBuf] {
+    static DIRS: OnceLock<Vec<PathBuf>> = OnceLock::new();
+    DIRS.get_or_init(|| {
+        let mut v = Vec::new();
+        if let Some(d) = std::env::var_os("TABULA_DATA") {
+            v.push(PathBuf::from(d));
+        }
+        // Development: target/<profile>/<bin> → <repo>/data.
+        if let Ok(exe) = std::env::current_exe() {
+            for up in exe.ancestors().skip(1).take(4) {
+                let d = up.join("data");
+                if d.join("icons").is_dir() {
+                    v.push(d);
+                    break;
+                }
+            }
+        }
+        if let Some(home) = std::env::var_os("HOME") {
+            v.push(Path::new(&home).join(".local/share/tabula"));
+        }
+        v.push("/usr/local/share/tabula".into());
+        v.push("/usr/share/tabula".into());
+        v.retain(|d| d.is_dir());
+        v
+    })
+}
+
+fn xdg_data_dirs() -> Vec<PathBuf> {
+    let mut v = Vec::new();
+    if let Some(home) = std::env::var_os("HOME") {
+        v.push(Path::new(&home).join(".local/share"));
+    }
+    let sys = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
+    v.extend(sys.split(':').filter(|s| !s.is_empty()).map(PathBuf::from));
+    v.push("/var/lib/flatpak/exports/share".into());
+    v
+}
+
+/// Find the best source file for `name` at `px` device pixels.
+pub fn find_icon(name: &str, px: u32) -> Option<PathBuf> {
+    if name.starts_with('/') {
+        let p = PathBuf::from(name);
+        return p.is_file().then_some(p);
+    }
+    // Ours: the smallest pre-scaled size at least as large as needed.
+    for dir in data_dirs() {
+        let sizes = OWN_SIZES.iter().filter(|&&s| s >= px).chain(OWN_SIZES.iter().rev().filter(|&&s| s < px));
+        for s in sizes {
+            let p = dir.join("icons").join(s.to_string()).join(format!("{name}.png"));
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+    }
+    // Freedesktop themes.
+    for base in xdg_data_dirs() {
+        for theme in ["hicolor", "Adwaita", "breeze"] {
+            let root = base.join("icons").join(theme);
+            if !root.is_dir() {
+                continue;
+            }
+            let mut best: Option<(u32, PathBuf)> = None;
+            for sub in ["apps", "mimetypes", "places", "devices", "categories", "actions", "status"] {
+                let svg = root.join("scalable").join(sub).join(format!("{name}.svg"));
+                if svg.is_file() {
+                    return Some(svg);
+                }
+                for s in [16u32, 22, 24, 32, 48, 64, 96, 128, 256, 512] {
+                    let p = root.join(format!("{s}x{s}")).join(sub).join(format!("{name}.png"));
+                    if p.is_file() {
+                        let better = match &best {
+                            None => true,
+                            Some((b, _)) => (s >= px && (*b < px || s < *b)) || (*b < px && s > *b),
+                        };
+                        if better {
+                            best = Some((s, p));
+                        }
+                    }
+                }
+            }
+            if let Some((_, p)) = best {
+                return Some(p);
+            }
+        }
+        for ext in ["svg", "png"] {
+            let p = base.join("pixmaps").join(format!("{name}.{ext}"));
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
+/// A decoded icon: RGBA8, `premultiplied` or straight alpha as decoded.
+#[derive(Debug, Clone)]
+pub struct Image {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+    pub premultiplied: bool,
+}
+
+impl Image {
+    /// Convert to premultiplied alpha (what compositors and tiny-skia want).
+    pub fn into_premultiplied(mut self) -> Image {
+        if !self.premultiplied {
+            for p in self.rgba.as_chunks_mut::<4>().0 {
+                let a = p[3] as u32;
+                for c in &mut p[..3] {
+                    *c = ((*c as u32 * a + 127) / 255) as u8;
+                }
+            }
+            self.premultiplied = true;
+        }
+        self
+    }
+}
+
+/// Icon `name` (ours, a theme name, or an absolute path) decoded for `px`
+/// device pixels: the best pre-scaled PNG, or an SVG rendered at `px`.
+pub fn load_icon(name: &str, px: u32) -> Option<Image> {
+    let path = find_icon(name, px)?;
+    if path.extension().is_some_and(|e| e == "svg") { render_svg(&path, px) } else { decode_png(&path) }
+}
+
+pub fn decode_png(path: &Path) -> Option<Image> {
+    let decoder = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(path).ok()?));
+    let mut reader = decoder.read_info().ok()?;
+    let mut buf = vec![0; reader.output_buffer_size()?];
+    let info = reader.next_frame(&mut buf).ok()?;
+    let (w, h) = (info.width as usize, info.height as usize);
+    let rgba: Vec<u8> = match (info.color_type, info.bit_depth) {
+        (png::ColorType::Rgba, png::BitDepth::Eight) => buf[..w * h * 4].to_vec(),
+        (png::ColorType::Rgb, png::BitDepth::Eight) => {
+            buf[..w * h * 3].as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect()
+        }
+        (png::ColorType::GrayscaleAlpha, png::BitDepth::Eight) => {
+            buf[..w * h * 2].as_chunks::<2>().0.iter().flat_map(|p| [p[0], p[0], p[0], p[1]]).collect()
+        }
+        (png::ColorType::Grayscale, png::BitDepth::Eight) => buf[..w * h].iter().flat_map(|&g| [g, g, g, 255]).collect(),
+        _ => return None,
+    };
+    Some(Image { width: w as u32, height: h as u32, rgba, premultiplied: false })
+}
+
+fn render_svg(path: &Path, px: u32) -> Option<Image> {
+    let data = std::fs::read(path).ok()?;
+    let tree = resvg::usvg::Tree::from_data(&data, &resvg::usvg::Options::default()).ok()?;
+    let size = tree.size();
+    let scale = px as f32 / size.width().max(size.height());
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(px, px)?;
+    let dx = (px as f32 - size.width() * scale) / 2.0;
+    let dy = (px as f32 - size.height() * scale) / 2.0;
+    resvg::render(&tree, resvg::tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale, dx, dy), &mut pixmap.as_mut());
+    Some(Image { width: px, height: px, rgba: pixmap.take(), premultiplied: true })
+}
+
+/// The icon name a desktop app declares (`Icon=` in its .desktop file),
+/// looked up by app id / desktop file name.
+pub fn icon_for_app(app_id: &str) -> Option<String> {
+    desktop_entry::find(app_id)?.icon
+}
+
+/// Run a shell command line detached from us (own session, no stdio).
+pub fn spawn_detached(cmd: &str) -> std::io::Result<()> {
+    use std::os::unix::process::CommandExt;
+    let mut c = std::process::Command::new("/bin/sh");
+    c.arg("-c").arg(cmd);
+    c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    // SAFETY: setsid is async-signal-safe.
+    unsafe {
+        c.pre_exec(|| {
+            libc::setsid();
+            Ok(())
+        });
+    }
+    let mut child = c.spawn()?;
+    std::thread::spawn(move || child.wait());
+    Ok(())
+}

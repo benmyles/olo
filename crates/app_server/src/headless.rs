@@ -177,10 +177,12 @@ pub fn run_headless(size_arg: Option<&str>) {
         state.tick();
         for (path, conn) in std::mem::take(&mut state.ipc.pending_screenshots) {
             let color = state.desktop_color();
+            let overlays = twitcher_overlay(&mut state, &output);
             let res = crate::render::screenshot::<_, GlesTexture>(
                 &mut state.backend_data.renderer,
                 &output,
                 &state.space,
+                overlays,
                 color,
                 &path,
             );
@@ -194,11 +196,28 @@ pub fn run_headless(size_arg: Option<&str>) {
     state.save_layout();
 }
 
+/// Twitcher, if it is up, as an element for `output`.
+fn twitcher_overlay(
+    state: &mut AnvilState<HeadlessData>,
+    output: &Output,
+) -> Vec<crate::render::CustomRenderElements<GlesRenderer>> {
+    let Some((entries, selected)) = state.twitcher_entries() else { return Vec::new() };
+    let output_size = state.space.output_geometry(output).map(|g| g.size).unwrap_or_default();
+    let scale = output.current_scale().fractional_scale();
+    state
+        .twitcher
+        .element(&mut state.backend_data.renderer, &entries, selected, output_size, scale)
+        .map(crate::render::CustomRenderElements::Overlay)
+        .into_iter()
+        .collect()
+}
+
 fn render_frame(state: &mut AnvilState<HeadlessData>, output: &Output) {
     let now = state.clock.now();
     let frame_target = now + Duration::from_micros(16_667);
     state.pre_repaint(output, frame_target);
     let desktop_color = state.desktop_color();
+    let overlay = twitcher_overlay(state, output);
     let data = &mut state.backend_data;
     let result = {
         let Ok(mut fb) = data.renderer.bind(&mut data.target) else {
@@ -208,7 +227,7 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, output: &Output) {
         render_output(
             output,
             &state.space,
-            Vec::new(),
+            overlay,
             &mut data.renderer,
             &mut fb,
             &mut data.damage_tracker,

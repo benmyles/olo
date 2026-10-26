@@ -177,6 +177,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.parked.0.borrow_mut().retain(|w| w.alive());
         let infos = self.window_infos();
         if infos != self.last_window_infos {
+            crate::twitcher::prewarm(infos.iter().map(|i| i.app_id.as_str()));
             self.last_window_infos = infos.clone();
             self.ipc.broadcast(Event::WindowsChanged { windows: infos });
         }
@@ -303,6 +304,18 @@ impl<B: Backend + 'static> AnvilState<B> {
         if let Some(w) = self.window_by_id(id) {
             self.restore(&w);
         }
+    }
+
+    /// What Twitcher shows: its cells and the chosen one.
+    pub fn twitcher_entries(&self) -> Option<(Vec<crate::twitcher::Entry>, usize)> {
+        let t = self.twitch.as_ref()?;
+        let entries: Vec<_> = t
+            .ids
+            .iter()
+            .filter_map(|id| self.window_by_id(*id))
+            .map(|w| crate::twitcher::Entry { app_id: w.app_id(), title: (!t.apps).then(|| w.title()) })
+            .collect();
+        (entries.len() == t.ids.len()).then_some((entries, t.index))
     }
 
     /// ⌘ released: the chosen window stays in front.

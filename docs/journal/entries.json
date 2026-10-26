@@ -154,5 +154,17 @@
   "title": "Quick Look pop-out to Viewer",
   "caption": "Popping a Quick Look out of Tracker opens the file in a standalone Viewer window (dark).",
   "image": "2026-10-25/223446-quick-look-pop-out-to-viewer.png"
+ },
+ {
+  "time": "2026-10-25T22:51:44",
+  "title": "Twitcher (light)",
+  "caption": "\u2318Tab held: app_server draws the BeOS Twitcher strip with each running app's icon and the chosen app's name.",
+  "image": "2026-10-25/225144-twitcher-light.png"
+ },
+ {
+  "time": "2026-10-25T22:51:44",
+  "title": "Twitcher (dark)",
+  "caption": "The same in dark mode.",
+  "image": "2026-10-25/225144-twitcher-dark.png"
  }
 ]

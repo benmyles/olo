@@ -334,7 +334,7 @@ fn sk(c: Rgba) -> Color {
     Color::from_rgba8(c[0], c[1], c[2], c[3])
 }
 
-fn fill(pixmap: &mut Pixmap, x: i32, y: i32, w: i32, h: i32, c: Rgba) {
+pub(crate) fn fill(pixmap: &mut Pixmap, x: i32, y: i32, w: i32, h: i32, c: Rgba) {
     if let Some(r) = Rect::from_xywh(x as f32, y as f32, w as f32, h as f32) {
         let mut paint = Paint::default();
         paint.set_color(sk(c));
@@ -344,6 +344,7 @@ fn fill(pixmap: &mut Pixmap, x: i32, y: i32, w: i32, h: i32, c: Rgba) {
 }
 
 /// A BeOS "blended" box: diagonal gradient with a dark outline.
+#[allow(clippy::too_many_arguments)]
 fn blended_box(pixmap: &mut Pixmap, x: i32, y: i32, size: i32, u: i32, from: Rgba, to: Rgba, outline: Rgba) {
     fill(pixmap, x, y, size, size, outline);
     let (ix, iy, is) = (x + u, y + u, size - 2 * u);

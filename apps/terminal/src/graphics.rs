@@ -562,7 +562,7 @@ pub fn decode_sixel(data: &[u8], transparent: bool, background: [u8; 3]) -> Opti
             b'!' => {
                 i += 1;
                 let a = num(data, &mut i);
-                let n = a[0].max(1).min(10_000);
+                let n = a[0].clamp(1, 10_000);
                 if i < data.len() && (0x3f..=0x7e).contains(&data[i]) {
                     let bits = data[i] - 0x3f;
                     canvas.grow(x + n, y + 6);

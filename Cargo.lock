@@ -176,6 +176,7 @@ dependencies = [
  "smithay-drm-extras",
  "tabula-protocol",
  "tabula-theme",
+ "tabula-xdg",
  "thiserror 1.0.69",
  "tiny-skia 0.12.0",
  "tracing",
@@ -4582,6 +4583,7 @@ dependencies = [
  "smithay-client-toolkit",
  "tabula-protocol",
  "tabula-theme",
+ "tabula-xdg",
  "tracing",
  "tracing-subscriber",
  "wayland-backend",
@@ -4692,6 +4694,15 @@ dependencies = [
  "tabula-kit",
  "tabula-preview",
  "tracing",
+]
+
+[[package]]
+name = "tabula-xdg"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "png 0.18.1",
+ "resvg",
 ]
 
 [[package]]

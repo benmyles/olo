@@ -175,6 +175,7 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub keymap: crate::keymap::Keymap,
     /// Twitcher, while ⌘Tab / ⌘` is held.
     pub twitch: Option<crate::desktop::Twitch>,
+    pub twitcher: crate::twitcher::Overlay,
     pub cursor_status: CursorImageStatus,
     pub seat_name: String,
     pub seat: Seat<AnvilState<BackendData>>,
@@ -824,6 +825,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             suppressed_keys: Vec::new(),
             keymap: Default::default(),
             twitch: None,
+            twitcher: Default::default(),
             cursor_status: CursorImageStatus::default_named(),
             seat_name,
             seat,

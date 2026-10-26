@@ -30,6 +30,7 @@ pub mod keymap;
 pub mod layout;
 pub mod text;
 pub mod theme;
+pub mod twitcher;
 
 pub use state::{AnvilState, ClientState};
 
