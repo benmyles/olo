@@ -28,9 +28,9 @@ use tabula_protocol::{ClockSettings, Settings};
 use tabula_system::time::{self as systime, TimeStatus};
 
 enum Request {
-    SetTime(i64),
-    SetZone(String),
-    SetNtp(bool),
+    Time(i64),
+    Zone(String),
+    Ntp(bool),
 }
 
 #[derive(Default)]
@@ -82,9 +82,9 @@ fn link() -> &'static Link {
                     sh.lock().unwrap().busy = true;
                     wake();
                     let (r, what) = match &req {
-                        Request::SetTime(us) => (systime::set_time(*us), "date and time"),
-                        Request::SetZone(z) => (systime::set_timezone(z), "time zone"),
-                        Request::SetNtp(on) => (systime::set_ntp(*on), "network time setting"),
+                        Request::Time(us) => (systime::set_time(*us), "date and time"),
+                        Request::Zone(z) => (systime::set_timezone(z), "time zone"),
+                        Request::Ntp(on) => (systime::set_ntp(*on), "network time setting"),
                     };
                     let mut s = sh.lock().unwrap();
                     s.busy = false;
@@ -214,7 +214,7 @@ fn date_time(ui: &mut Ui, clock: &ClockSettings, st: &mut State, status: Option<
         ui.add(CheckBox::new(&mut on, "Set date and time automatically"));
     });
     if on != ntp {
-        let _ = link().tx.send(Request::SetNtp(on));
+        let _ = link().tx.send(Request::Ntp(on));
     }
     let note = match status {
         Some(s) if s.ntp && s.ntp_synchronized => "Kept in step with network time servers.",
@@ -232,7 +232,7 @@ fn date_time(ui: &mut Ui, clock: &ClockSettings, st: &mut State, status: Option<
             if set.clicked()
                 && let Some(when) = &when
             {
-                let _ = link().tx.send(Request::SetTime(when.timestamp().as_microsecond()));
+                let _ = link().tx.send(Request::Time(when.timestamp().as_microsecond()));
                 st.edit = None;
                 st.month = None;
             }
@@ -445,7 +445,7 @@ fn time_zone(ui: &mut Ui, clock: &ClockSettings, st: &mut State, current: &str, 
         if ui.add_enabled_ui(can, |ui| ui.add(Button::new("Set Time Zone"))).inner.clicked()
             && let Some(z) = chosen
         {
-            let _ = link().tx.send(Request::SetZone(z));
+            let _ = link().tx.send(Request::Zone(z));
         }
         ui.add(StringView::new(&format!("Now: {}", zone_label(current))));
     });
