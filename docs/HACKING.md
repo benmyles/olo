@@ -54,6 +54,7 @@ like pixel alignment is.
 | `crates/system` | `tabula-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `crates/preview` | `tabula-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Used by Tracker's Quick Look (`Preview::new`, images capped at 3200 px) and the Viewer (`Preview::new_zoomable`: full resolution up to the GPU texture limit, zoom and pan, `zoom` / `set_image_scale`). Images carry halved copies (`load::halvings`) because egui-wgpu makes no mipmaps. Video (`video.rs`, H.264 in mp4 or Matroska and AV1 in Matroska/WebM, with `media.playable` set): a worker demuxes and decodes (OpenH264, or rav1d through `tabula_images::av1::Decoder`) up to six frames ahead, giving each picture the earliest outstanding presentation time (OpenH264 returns display order); `Video::tick` shows frames against a clock that follows the sound's reported position when an `audio::Player` is playing it and runs alone otherwise (no sound server in tests, silent files). Seeks go to the key frame before the target (Matroska: scans back for one, further each time) and drop pictures before it; a paused seek still shows its frame. `TABULA_SAMPLES=dir cargo test --release -p tabula-preview video -- --ignored` checks seeking on test.mp4/mkv (one key frame) and gop.mp4/mkv (one a second), made with ffmpeg's testsrc2, plus av1.webm (svt-av1, Opus sound); `keeps_up` needs av1-1080.mkv (1080p AV1) to decode at well over 30 frames a second (72 on the M2 Max; the YUV to RGB fast path is fixed-point with tables, checked against the float path by `yuv_fast_path`). Audio decodes with symphonia plus `opus.rs` (opus-decoder, OpusHead parsing and pre-skip trim) for Ogg Opus. |
 | `apps/<name>` | One crate per application, binary named `tabula-<name>`. Picked up by the workspace glob. |
+| `vendor/` | Patched copies of dependencies (`[patch.crates-io]`), each explained in `vendor/README.md`; drop them when upstream has the fix. |
 | `data/icons` | Icon set, pre-scaled to device sizes (`data/icons/<px>/<name>.png`). |
 | `data/session` | `tabula.desktop` for the login screen (installed by `tools/install-session.sh`). |
 | `tools/` | `install-session.sh` (release build → `/usr/local`), `dev/tsession` (headless UI testing), `genicon.py`/`genicons.sh`/`mkicons.py`/`iconsheet.py` (icons, see [ICONS.md](ICONS.md)). |
@@ -138,6 +139,19 @@ fn main() {
   is visible) until `false` or the window closes; app_server counts these
   in `PowerStatus::app_inhibitors`. The Viewer and Quick Look hold one
   while `Preview::playing_video()`.
+* Embedded surfaces (another renderer inside a window: NetPositive's web
+  engine): `cx.embed(window)` makes a `wl_subsurface` of the window
+  (desynchronised, empty input region, with a viewport) and returns an
+  `EmbedId`; `App::embedded(cx, &Embedded)` then hands over its raw
+  display and surface handles and the scale, for a GL or Vulkan context of
+  the renderer's own. It is called again after a reconnect (new handles)
+  and when the window's scale changes (same surface; just resize). Place
+  it each frame with `cx.place_embed(id, rect)` (logical, as egui's; it
+  sits above the window's own drawing, which shows through until the
+  renderer's first frame). Input over it reaches the window as usual, for
+  the app to forward. `App::embed_lost(cx, id)` comes before the surface
+  goes (window closing, connection lost): drop everything that uses the
+  handles there. `cx.remove_embed(id)` removes one early.
 * Session lock (the lock screen only): `cx.lock_session()`, then
   `SessionLock::Locked(windows)` in `App::message` (one window per output,
   the first is primary; kept up to date as outputs come and go) and
@@ -670,6 +684,74 @@ it serves only its own process and asks polkitd about ACTION with
 its log. **Cancel; never type the user's password, and only check
 actions, never perform them.** `TABULA_POLKIT_HELPER` points at a fake
 helper for unit tests.
+
+## NetPositive (apps/browser)
+
+The web browser: Servo 0.7, built in (`engine.rs`), with no system
+libraries (no gstreamer, so pages have no audio or video yet; no arboard,
+the kit has the clipboard; no webgpu, which would bring a second wgpu).
+One `Servo` per process; each window `embed`s a subsurface and makes a
+`WindowRenderingContext` (surfman, EGL) on it in `App::embedded`; each tab
+is a `WebView` on its window's context, and only the active one is shown
+and painted. Servo draws straight into the subsurface; nothing is copied.
+
+* **Event loop.** Servo's waker posts `engine::Wake` through the kit
+  proxy (one in flight at a time); `App::message` runs
+  `servo.spin_event_loop()`. The delegate (`engine::Events`, also the
+  clipboard delegate) is called from inside that, while the app is
+  borrowed, so it only queues `(WebViewId, Event)`; `pump` acts on them
+  afterwards, and paints the active view of each window that got a new
+  frame (`paint` + `present`).
+* **Never blocking.** surfman leaves EGL's swap interval at 1, and Mesa
+  then waits for a frame callback on every swap: a hidden window would
+  hang the UI. `Surface::new` sets it to 0; Servo's refresh driver paces
+  frames. When the last surface goes (`embed_lost` on a reconnect),
+  `Surface::terminate` calls `eglTerminate`, so a new connection at the
+  same `wl_display` address can't get Mesa's cached display for the dead
+  one. Views are dropped before their context (the last view's `Painter`
+  deinitialises WebRender with the context current); after a reconnect
+  each tab reloads its URL on the new surface (history and form state are
+  lost; `save_state` keeps windows, tabs and the active one across a
+  binary upgrade).
+* **Input** (`input.rs`): the content rect is an egui widget
+  (`Sense::click_and_drag`, focus lock for Tab/arrows/Escape); window
+  events over it become Servo `InputEvent`s in device pixels: pointer
+  (a press in the page keeps the pointer until release), wheel (egui's
+  delta negated: DOM deltas scroll the view), keys (named keys as key
+  events, text as key down/up per character), IME, and Copy/Cut/Paste
+  (`Event::Paste` stores the text the clipboard delegate answers the
+  page's paste with). The view's focus is the page being the window's
+  keyboard target (`page_focus`), set *before* a click is forwarded and
+  kept while popups have the keyboard: a focus change after the click
+  would blur the element and close a `<select>`'s list.
+* **Page controls** (`EmbedderControl`): context menus and `<select>`
+  lists are kit popups (`MenuAnchor::At`, and `Over` with the chosen
+  option over the field, as a BeOS menu field). Their positions come in
+  CSS pixels, scaled by the page and pinch zoom. `alert` / `confirm` /
+  `prompt` are BAlerts over the window, HTTP logins an alert with Name and
+  Password, `<input type=file>` a kit `FilePanel`; permission requests
+  (camera, location, notifications) are denied for now, and the colour
+  picker keeps the current colour.
+* **Pages are light in every mode.** Stylo takes system colours
+  (`CanvasText`) from the preference even for pages that don't choose a
+  colour scheme, and Servo paints the canvas with a single clear colour
+  (a pref), never the page's `Canvas`: telling pages "dark" would give
+  light text on white. The window around the page follows the theme.
+* **Resources** (`resources/`): Servo's defaults (MPL-2.0, see NOTICE)
+  with our own error, certificate and crash pages, which answer in haiku
+  as NetPositive did (new verses). `engine.rs` registers the reader.
+* The location field takes addresses, paths and searches
+  (`location::parse`, unit-tested; searches go to DuckDuckGo's HTML
+  page). A new tab is blank with the field focused; its first load makes
+  a fresh view, so the blank page isn't in its history. Links opened from
+  the context menu go to a background tab; `window.open` and
+  `target=_blank` to a new foreground tab. Settings (home page,
+  bookmarks, the last 1000 pages for the Go menu) are in `browser.json`;
+  cookies, local storage and the HTTP cache in
+  `$XDG_DATA_HOME/tabula/browser` (Servo's `config_dir`).
+* Building it turns on vello_cpu's `multithreading` feature for every app
+  built alongside (Servo's canvas wants it), which broke egui's glyph
+  rasterizer: hence `vendor/epaint` (see `vendor/README.md`).
 
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 

@@ -5,7 +5,7 @@
 pub const OUR_APPS: &[(&str, &str, &str)] = &[
     ("tabula-tracker", "Tracker", "tracker"),
     ("tabula-terminal", "Terminal", "terminal"),
-    ("tabula-web", "WebPositive", "browser"),
+    ("tabula-browser", "NetPositive", "browser"),
     ("tabula-styled-edit", "StyledEdit", "styled-edit"),
     ("tabula-deskcalc", "DeskCalc", "calculator"),
     ("tabula-viewer", "Viewer", "show-image"),

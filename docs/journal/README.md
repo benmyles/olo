@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### NetPositive error page
+
+*06:38* — Network errors answer in haiku, as NetPositive did, picked at random from six new verses
+
+![NetPositive error page](2026-10-26/063835-netpositive-error-page.png)
+
+### NetPositive in dark mode
+
+*06:38* — The new Servo based browser: tabs, toolbar and location field follow the theme while pages stay light
+
+![NetPositive in dark mode](2026-10-26/063835-netpositive-in-dark-mode.png)
+
 ### Network: joining enterprise Wi-Fi
 
 *05:50* — A sheet for 802.1X networks: PEAP or TTLS with username and password, or TLS with certificate and key, the CA and a domain; shown with made-up networks. Tab now moves between text fields in every kit form

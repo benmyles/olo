@@ -526,5 +526,17 @@
   "title": "Network: joining enterprise Wi-Fi",
   "caption": "A sheet for 802.1X networks: PEAP or TTLS with username and password, or TLS with certificate and key, the CA and a domain; shown with made-up networks. Tab now moves between text fields in every kit form",
   "image": "2026-10-26/055031-network-joining-enterprise-wi-fi.png"
+ },
+ {
+  "time": "2026-10-26T06:38:35",
+  "title": "NetPositive in dark mode",
+  "caption": "The new Servo based browser: tabs, toolbar and location field follow the theme while pages stay light",
+  "image": "2026-10-26/063835-netpositive-in-dark-mode.png"
+ },
+ {
+  "time": "2026-10-26T06:38:35",
+  "title": "NetPositive error page",
+  "caption": "Network errors answer in haiku, as NetPositive did, picked at random from six new verses",
+  "image": "2026-10-26/063835-netpositive-error-page.png"
  }
 ]

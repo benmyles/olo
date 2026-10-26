@@ -1,0 +1,27 @@
+[package]
+name = "tabula-browser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "tabula-browser"
+path = "src/main.rs"
+
+[dependencies]
+tabula-kit.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+# The engine: Servo, built in (no gstreamer, arboard or webgpu: media and
+# the clipboard would go through system libraries, and webgpu would bring
+# a second wgpu). Its resources are ours (resources/, engine.rs).
+servo = { version = "0.7", default-features = false, features = ["bundled_freetype", "js_jit", "webcrypto", "webgl", "brotli-compression-stream"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+khronos-egl = { version = "6", features = ["dynamic"] }
+libloading = "0.8"
+raw-window-handle = "0.6"
+url = "2.5"
+dpi = "0.1"
+euclid = "0.22"
+keyboard-types = "0.8"

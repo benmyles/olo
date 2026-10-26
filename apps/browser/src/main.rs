@@ -1,0 +1,1467 @@
+//! NetPositive: the web browser, on Servo (engine.rs) in process. Each
+//! window has a toolbar (Back, Forward, Reload/Stop, Home and the
+//! location field), a tab strip once there is more than one tab, the
+//! page, drawn by Servo's GL straight into an embedded subsurface, and a
+//! status line. Input over the page is forwarded from egui (input.rs).
+
+mod engine;
+mod input;
+mod location;
+
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
+
+use engine::{Engine, Event, Surface, Wake};
+use euclid::Scale;
+use input::{Pointer, Viewport};
+use serde::{Deserialize, Serialize};
+use servo::{
+    AuthenticationRequest, ContextMenu, ContextMenuAction, ContextMenuItem, Cursor, EmbedderControl, FilePicker,
+    LoadStatus, SelectElement, SelectElementOptionOrOptgroup, SimpleDialog, Theme, WebView, WebViewBuilder, WebViewId,
+};
+use tabula_kit::{
+    App, Cx, EmbedId, Embedded, Menu, MenuItem, WindowId, WindowOptions,
+    egui::{self, Align, CursorIcon, Id, Key, Rect, Sense, Shape, Stroke, pos2, vec2},
+    file_panel::{FilePanel, PANEL_SIZE, PanelResult},
+    instance::{self, Launch},
+    menu::{self, MenuAnchor, MenuRequest},
+    metrics as m,
+    style::{self, c, shade},
+    widgets::{self, Button, TextControl},
+};
+use url::Url;
+
+const APP_ID: &str = "tabula.browser";
+const NAME: &str = "NetPositive";
+const STATUS_HEIGHT: f32 = m::LIST_ROW;
+const TAB_HEIGHT: f32 = widgets::TAB_HEIGHT;
+const TAB_MAX: f32 = 220.0;
+/// Toolbar buttons are square.
+const TOOL: f32 = m::CONTROL_HEIGHT + m::TIGHT;
+const HISTORY_MAX: usize = 1000;
+const ZOOMS: [f32; 13] = [0.3, 0.5, 0.67, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
+
+#[derive(Serialize, Deserialize, Clone)]
+struct Bookmark {
+    title: String,
+    url: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(default)]
+struct Settings {
+    home: String,
+    bookmarks: Vec<Bookmark>,
+    /// Pages visited, most recent last.
+    history: Vec<Bookmark>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings { home: "about:blank".into(), bookmarks: Vec::new(), history: Vec::new() }
+    }
+}
+
+fn settings_path() -> PathBuf {
+    tabula_kit::config_dir().join("browser.json")
+}
+
+/// Windows and their tabs, for in-place reload.
+#[derive(Serialize, Deserialize, Default)]
+struct Saved {
+    windows: Vec<SavedWindow>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct SavedWindow {
+    tabs: Vec<String>,
+    active: usize,
+    size: (u32, u32),
+}
+
+struct Tab {
+    view: Option<WebView>,
+    /// Where it is (or should go, before it has a view).
+    url: String,
+    title: String,
+    status: Option<String>,
+    load: Option<LoadStatus>,
+    can_back: bool,
+    can_forward: bool,
+    cursor: Cursor,
+    zoom: f32,
+}
+
+impl Tab {
+    fn new(url: impl Into<String>) -> Tab {
+        Tab {
+            view: None,
+            url: url.into(),
+            title: String::new(),
+            status: None,
+            load: None,
+            can_back: false,
+            can_forward: false,
+            cursor: Cursor::Default,
+            zoom: 1.0,
+        }
+    }
+
+    fn label(&self) -> String {
+        if !self.title.is_empty() {
+            self.title.clone()
+        } else if self.url == "about:blank" {
+            "Untitled".into()
+        } else {
+            self.url.clone()
+        }
+    }
+
+    fn loading(&self) -> bool {
+        matches!(self.load, Some(LoadStatus::Started | LoadStatus::HeadParsed))
+    }
+}
+
+/// A browser window.
+struct Browser {
+    embed: EmbedId,
+    surface: Option<Surface>,
+    scale: f32,
+    tabs: Vec<Tab>,
+    active: usize,
+    /// The location field's text, and whether you're typing in it (then
+    /// page navigation leaves it alone).
+    location: String,
+    editing: bool,
+    focus_location: bool,
+    /// Where the page is and how big, in device pixels.
+    viewport: Option<Viewport>,
+    size: dpi::PhysicalSize<u32>,
+    pointer: Pointer,
+    /// The page is the window's keyboard target (Servo's focus).
+    page_focus: bool,
+    title: String,
+    menu: Option<ContextMenu>,
+    select: Option<SelectElement>,
+    /// A popup to open on the next frame (we need the egui context).
+    popup: Option<(MenuAnchor, Menu, Option<usize>)>,
+}
+
+impl Browser {
+    fn tab(&self) -> Option<&Tab> {
+        self.tabs.get(self.active)
+    }
+    fn view(&self) -> Option<&WebView> {
+        self.tab()?.view.as_ref()
+    }
+}
+
+/// Windows that belong to a browser window.
+enum Sheet {
+    Dialog { owner: WindowId, dialog: SimpleDialog, text: String },
+    Login { owner: WindowId, request: AuthenticationRequest, user: String, password: String, site: String },
+    Files { picker: FilePicker, panel: FilePanel },
+}
+
+enum Win {
+    Browser(Box<Browser>),
+    Sheet(Box<Sheet>),
+}
+
+struct NetPositive {
+    engine: Engine,
+    windows: BTreeMap<WindowId, Win>,
+    settings: Settings,
+    /// The browser window last used, for launches and new tabs from outside.
+    front: Option<WindowId>,
+    pasted: bool,
+}
+
+impl NetPositive {
+    fn open_browser(&mut self, cx: &mut Cx, urls: Vec<String>, active: usize, size: (u32, u32)) -> WindowId {
+        let win = cx.open_window(WindowOptions::new(NAME, size.0, size.1).min_size(400, 240));
+        let embed = cx.embed(win);
+        let blank = urls.is_empty() || urls.iter().all(|u| u == "about:blank");
+        let tabs: Vec<Tab> = if urls.is_empty() { vec![Tab::new(self.settings.home.clone())] } else { urls.into_iter().map(Tab::new).collect() };
+        let active = active.min(tabs.len() - 1);
+        let location = location::display(&tabs[active].url);
+        self.windows.insert(
+            win,
+            Win::Browser(Box::new(Browser {
+                embed,
+                surface: None,
+                scale: 2.0,
+                tabs,
+                active,
+                location,
+                editing: false,
+                focus_location: blank,
+                viewport: None,
+                size: dpi::PhysicalSize::new(size.0 * 2, size.1 * 2),
+                pointer: Pointer::default(),
+                page_focus: false,
+                title: NAME.into(),
+                menu: None,
+                select: None,
+                popup: None,
+            })),
+        );
+        self.front = Some(win);
+        win
+    }
+
+    fn browser(&mut self, win: WindowId) -> Option<&mut Browser> {
+        match self.windows.get_mut(&win) {
+            Some(Win::Browser(b)) => Some(b),
+            _ => None,
+        }
+    }
+
+    fn find(&self, id: WebViewId) -> Option<(WindowId, usize)> {
+        self.windows.iter().find_map(|(&win, w)| match w {
+            Win::Browser(b) => b.tabs.iter().position(|t| t.view.as_ref().is_some_and(|v| v.id() == id)).map(|i| (win, i)),
+            _ => None,
+        })
+    }
+
+    fn new_view(&self, b: &Browser, url: Option<Url>) -> Option<WebView> {
+        let surface = b.surface.as_ref()?;
+        let mut builder = WebViewBuilder::new(&self.engine.servo, surface.context.clone())
+            .delegate(self.engine.events.clone())
+            .clipboard_delegate(self.engine.events.clone())
+            .hidpi_scale_factor(Scale::new(b.scale));
+        if let Some(url) = url {
+            builder = builder.url(url);
+        }
+        let view = builder.build();
+        self.prepare(&view, b);
+        Some(view)
+    }
+
+    fn prepare(&self, view: &WebView, b: &Browser) {
+        view.resize(b.size);
+        // Pages are shown light in every mode for now: Servo takes system
+        // colours (CanvasText…) from the preference even for pages that
+        // don't choose a colour scheme, and never paints the canvas in a
+        // dark page's Canvas colour, so dark would mean light text on
+        // white. The window around the page follows the theme.
+        view.notify_theme_change(Theme::Light);
+        view.hide();
+    }
+
+    /// Give every tab without a view one (a new surface, or a restore).
+    fn realize(&mut self, win: WindowId) {
+        let Some(Win::Browser(b)) = self.windows.get(&win) else { return };
+        let wanted: Vec<(usize, Option<Url>)> =
+            b.tabs.iter().enumerate().filter(|(_, t)| t.view.is_none()).map(|(i, t)| (i, Url::parse(&t.url).ok())).collect();
+        let views: Vec<(usize, Option<WebView>)> = wanted.into_iter().map(|(i, url)| (i, self.new_view(b, url))).collect();
+        let Some(Win::Browser(b)) = self.windows.get_mut(&win) else { return };
+        for (i, v) in views {
+            b.tabs[i].view = v;
+        }
+        show_active(b);
+    }
+
+    fn load(&mut self, cx: &mut Cx, win: WindowId, url: Url) {
+        let Some(b) = self.browser(win) else { return };
+        b.editing = false;
+        b.location = location::display(url.as_str());
+        let Some(tab) = b.tabs.get_mut(b.active) else { return };
+        // A tab that never left its blank page starts afresh, so the
+        // blank page isn't in its history.
+        if tab.url == "about:blank" && !tab.can_back {
+            tab.view = None;
+        }
+        tab.url = url.to_string();
+        match &tab.view {
+            Some(v) => v.load(url),
+            None => self.realize(win),
+        }
+        cx.redraw(win);
+    }
+
+    fn new_tab(&mut self, cx: &mut Cx, win: WindowId, url: Option<String>, select: bool) {
+        let url = url.unwrap_or_else(|| self.settings.home.clone());
+        let Some(Win::Browser(b)) = self.windows.get(&win) else { return };
+        let view = self.new_view(b, Url::parse(&url).ok());
+        let Some(b) = self.browser(win) else { return };
+        let mut tab = Tab::new(url.clone());
+        tab.view = view;
+        b.tabs.insert(b.active + 1, tab);
+        if select {
+            b.active += 1;
+            b.location = location::display(&url);
+            b.editing = false;
+            b.focus_location = url == "about:blank";
+        }
+        show_active(b);
+        cx.redraw(win);
+    }
+
+    fn select_tab(&mut self, cx: &mut Cx, win: WindowId, i: usize) {
+        let Some(b) = self.browser(win) else { return };
+        if i >= b.tabs.len() || i == b.active {
+            return;
+        }
+        b.active = i;
+        b.location = location::display(&b.tabs[i].url);
+        b.editing = false;
+        show_active(b);
+        cx.redraw(win);
+    }
+
+    fn close_tab(&mut self, cx: &mut Cx, win: WindowId, i: usize) {
+        let Some(b) = self.browser(win) else { return };
+        if b.tabs.len() <= 1 {
+            return self.close_browser(cx, win);
+        }
+        b.tabs.remove(i);
+        if b.active > i || b.active == b.tabs.len() {
+            b.active = b.active.saturating_sub(1);
+        }
+        b.location = location::display(&b.tabs[b.active].url);
+        b.editing = false;
+        show_active(b);
+        cx.redraw(win);
+    }
+
+    fn close_browser(&mut self, cx: &mut Cx, win: WindowId) {
+        // The views go before their GL context; then the window and its
+        // surface (`embed_lost` finds nothing left to drop).
+        if let Some(Win::Browser(mut b)) = self.windows.remove(&win) {
+            b.tabs.clear();
+            self.drop_surface(b.surface.take());
+        }
+        let sheets: Vec<WindowId> = self
+            .windows
+            .iter()
+            .filter(|(_, w)| matches!(w, Win::Sheet(s) if sheet_owner(s) == Some(win)))
+            .map(|(&id, _)| id)
+            .collect();
+        for s in sheets {
+            self.windows.remove(&s);
+            cx.close_window(s);
+        }
+        cx.close_window(win);
+        if self.front == Some(win) {
+            self.front = self.windows.iter().find(|(_, w)| matches!(w, Win::Browser(_))).map(|(&id, _)| id);
+        }
+        if !self.windows.values().any(|w| matches!(w, Win::Browser(_))) {
+            self.save_settings();
+            cx.quit();
+        }
+    }
+
+    fn drop_surface(&mut self, surface: Option<Surface>) {
+        let Some(surface) = surface else { return };
+        let others = self.windows.values().any(|w| matches!(w, Win::Browser(b) if b.surface.is_some()));
+        if others { drop(surface) } else { surface.terminate() }
+    }
+
+    fn save_settings(&self) {
+        if let Ok(json) = serde_json::to_string_pretty(&self.settings) {
+            let path = settings_path();
+            let tmp = path.with_extension("json.tmp");
+            if std::fs::write(&tmp, json).is_ok() {
+                let _ = std::fs::rename(&tmp, &path);
+            }
+        }
+    }
+
+    fn remember(&mut self, url: &str, title: &str) {
+        if url == "about:blank" || url.starts_with("data:") {
+            return;
+        }
+        let h = &mut self.settings.history;
+        h.retain(|e| e.url != url);
+        h.push(Bookmark { title: title.to_string(), url: url.to_string() });
+        if h.len() > HISTORY_MAX {
+            h.drain(..h.len() - HISTORY_MAX);
+        }
+    }
+
+    /// Run Servo and act on what the views said.
+    fn pump(&mut self, cx: &mut Cx) {
+        let events = self.engine.pump();
+        let mut painted = Vec::new();
+        for (id, event) in events {
+            let Some((win, i)) = self.find(id) else {
+                if let Event::NewWebView(_) = event {
+                    // Its opener has gone; the request drops (denied).
+                }
+                continue;
+            };
+            let is_active = matches!(self.windows.get(&win), Some(Win::Browser(b)) if b.active == i);
+            match event {
+                Event::Frame => {
+                    if is_active && !painted.contains(&win) {
+                        painted.push(win);
+                    }
+                    continue;
+                }
+                Event::NewWebView(request) => {
+                    let Some(Win::Browser(b)) = self.windows.get(&win) else { continue };
+                    let Some(surface) = &b.surface else { continue };
+                    let view = request
+                        .builder(surface.context.clone())
+                        .delegate(self.engine.events.clone())
+                        .clipboard_delegate(self.engine.events.clone())
+                        .hidpi_scale_factor(Scale::new(b.scale))
+                        .build();
+                    self.prepare(&view, b);
+                    let Some(b) = self.browser(win) else { continue };
+                    let mut tab = Tab::new("about:blank");
+                    tab.view = Some(view);
+                    b.tabs.insert(i + 1, tab);
+                    b.active = i + 1;
+                    b.location.clear();
+                    b.editing = false;
+                    show_active(b);
+                }
+                Event::Control(control) => self.control(cx, win, i, control),
+                Event::Copy(text) => cx.copy(text),
+                Event::Permission(request) => {
+                    // No prompts for cameras, locations or notifications yet.
+                    tracing::info!("denied {:?}", request.feature());
+                    request.deny();
+                }
+                Event::Authenticate(request) => {
+                    let site = request.url().host_str().unwrap_or("this site").to_string();
+                    let message = format!("{site} asks you to log in.");
+                    let mut o = WindowOptions::alert("Log In", &message).parent(win);
+                    o.size.1 += 2 * (m::CONTROL_HEIGHT as u32 + m::TIGHT as u32);
+                    o.min_size = Some(o.size);
+                    let id = cx.open_window(o);
+                    self.windows.insert(
+                        id,
+                        Win::Sheet(Box::new(Sheet::Login { owner: win, request, user: String::new(), password: String::new(), site })),
+                    );
+                }
+                event => {
+                    let mut visited = None;
+                    let Some(b) = self.browser(win) else { continue };
+                    let tab = &mut b.tabs[i];
+                    match event {
+                        Event::Url(url) => {
+                            tab.url = url.to_string();
+                            if is_active && !b.editing {
+                                b.location = location::display(url.as_str());
+                            }
+                        }
+                        Event::Title(title) => tab.title = title.unwrap_or_default(),
+                        Event::Status(status) => tab.status = status,
+                        Event::Load(status) => {
+                            if status == LoadStatus::Complete {
+                                visited = Some((tab.url.clone(), tab.title.clone()));
+                            }
+                            tab.load = Some(status);
+                        }
+                        Event::Cursor(cursor) => tab.cursor = cursor,
+                        Event::History { can_back, can_forward } => {
+                            tab.can_back = can_back;
+                            tab.can_forward = can_forward;
+                        }
+                        Event::Closed => {
+                            // window.close() from the page.
+                            self.close_tab(cx, win, i);
+                            continue;
+                        }
+                        Event::Crashed(reason) => tracing::warn!("tab crashed: {reason}"),
+                        Event::HideControl(id) => {
+                            if b.menu.as_ref().is_some_and(|m| m.id() == id) {
+                                b.menu = None;
+                            }
+                            if b.select.as_ref().is_some_and(|s| s.id() == id) {
+                                b.select = None;
+                            }
+                        }
+                        _ => {}
+                    }
+                    if let Some((url, title)) = visited {
+                        self.remember(&url, &title);
+                    }
+                }
+            }
+            cx.redraw(win);
+        }
+        for win in painted {
+            if let Some(Win::Browser(b)) = self.windows.get(&win)
+                && let (Some(view), Some(surface)) = (b.view(), &b.surface)
+            {
+                view.paint();
+                use servo::RenderingContext;
+                surface.context.present();
+            }
+        }
+    }
+
+    /// Menus, pickers and dialogs a page asks for.
+    fn control(&mut self, cx: &mut Cx, win: WindowId, _tab: usize, control: EmbedderControl) {
+        let Some(b) = self.browser(win) else { return };
+        let Some(view) = b.viewport else { return };
+        // Controls are placed in CSS pixels: logical ones times the zoom.
+        let zoom = b.tab().and_then(|t| t.view.as_ref()).map(|v| v.page_zoom() * v.pinch_zoom()).unwrap_or(1.0);
+        let page_rect = |r: servo::DeviceIntRect| {
+            Rect::from_min_max(
+                view.rect.min + vec2(r.min.x as f32, r.min.y as f32) * zoom,
+                view.rect.min + vec2(r.max.x as f32, r.max.y as f32) * zoom,
+            )
+        };
+        match control {
+            EmbedderControl::ContextMenu(menu) => {
+                let pos = page_rect(menu.position()).min;
+                let mut items = Menu::new("");
+                let mut sep = false;
+                for (n, item) in menu.items().iter().enumerate() {
+                    match item {
+                        ContextMenuItem::Item { label, enabled, action } => {
+                            if sep && !items.items.is_empty() {
+                                items = items.separator();
+                            }
+                            sep = false;
+                            // Servo's words for its own shell; ours for tabs.
+                            let label = match action {
+                                ContextMenuAction::OpenLinkInNewWebView => "Open Link in New Tab",
+                                ContextMenuAction::OpenImageInNewView => "Open Image in New Tab",
+                                ContextMenuAction::CopyImageLink => "Copy Image Address",
+                                _ => label.as_str(),
+                            };
+                            items = items.item(label, &format!("{n}"), None).enabled(*enabled);
+                        }
+                        ContextMenuItem::Separator => sep = true,
+                    }
+                }
+                b.popup = Some((MenuAnchor::At(pos), items, None));
+                b.menu = Some(menu);
+            }
+            EmbedderControl::SelectElement(select) => {
+                let rect = page_rect(select.position());
+                let mut items = Menu::new("");
+                let selected = select.selected_options();
+                let add = |items: Menu, o: &servo::SelectElementOption| {
+                    items.item(&o.label, &format!("{}", o.id), None).enabled(!o.is_disabled).checked(selected.contains(&o.id))
+                };
+                for entry in select.options() {
+                    match entry {
+                        SelectElementOptionOrOptgroup::Option(o) => items = add(items, o),
+                        SelectElementOptionOrOptgroup::Optgroup { label, options } => {
+                            if !items.items.is_empty() {
+                                items = items.separator();
+                            }
+                            items = items.item(label, "", None).enabled(false);
+                            for o in options {
+                                items = add(items, o);
+                            }
+                        }
+                    }
+                }
+                // The chosen option lies over the field, as in a BeOS menu field.
+                let current = selected.first().and_then(|id| items.items.iter().position(|i| matches!(i, MenuItem::Action(a) if a.command == id.to_string())));
+                b.popup = Some((MenuAnchor::Over(rect, current.unwrap_or(0)), items, current));
+                b.select = Some(select);
+            }
+            EmbedderControl::SimpleDialog(dialog) => {
+                let host = b.tab().and_then(|t| Url::parse(&t.url).ok()).and_then(|u| u.host_str().map(str::to_string));
+                let title = host.unwrap_or_else(|| NAME.into());
+                let (text, prompt) = match &dialog {
+                    SimpleDialog::Prompt(p) => (p.current_value().to_string(), true),
+                    _ => (String::new(), false),
+                };
+                let mut o = WindowOptions::alert(title, dialog.message()).parent(win);
+                if prompt {
+                    o.size.1 += m::CONTROL_HEIGHT as u32 + m::SPACING as u32;
+                    o.min_size = Some(o.size);
+                }
+                let id = cx.open_window(o);
+                self.windows.insert(id, Win::Sheet(Box::new(Sheet::Dialog { owner: win, dialog, text })));
+            }
+            EmbedderControl::FilePicker(picker) => {
+                let dir = picker
+                    .current_paths()
+                    .first()
+                    .and_then(|p| p.parent().map(Path::to_path_buf))
+                    .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
+                    .unwrap_or_else(|| "/".into());
+                let types: Vec<String> = picker.filter_patterns().iter().map(|f| f.0.clone()).collect();
+                let types: Vec<&str> = types.iter().map(String::as_str).collect();
+                let mut panel = FilePanel::open(dir);
+                if !types.is_empty() {
+                    panel = panel.types(&types);
+                }
+                let id = cx.open_window(WindowOptions::new("Choose a File", PANEL_SIZE.0, PANEL_SIZE.1).min_size(400, 300).parent(win));
+                self.windows.insert(id, Win::Sheet(Box::new(Sheet::Files { picker, panel })));
+            }
+            EmbedderControl::ColorPicker(picker) => {
+                // No colour panel yet: keep the page's colour.
+                picker.submit();
+            }
+            EmbedderControl::InputMethod(_) => {}
+        }
+    }
+
+    fn command_for(&mut self, cx: &mut Cx, win: WindowId, command: &str) {
+        let home = self.settings.home.clone();
+        match command {
+            "new-window" => {
+                let size = cx.window_size(win).unwrap_or_else(|| default_size(cx));
+                self.open_browser(cx, Vec::new(), 0, size);
+            }
+            "new-tab" => self.new_tab(cx, win, None, true),
+            "close-tab" => {
+                if let Some(i) = self.browser(win).map(|b| b.active) {
+                    self.close_tab(cx, win, i);
+                }
+            }
+            "close-window" => self.close_browser(cx, win),
+            "quit" => {
+                self.save_settings();
+                cx.quit();
+            }
+            "open-location" => {
+                if let Some(b) = self.browser(win) {
+                    b.focus_location = true;
+                }
+                cx.redraw(win);
+            }
+            "home" => {
+                if let Ok(url) = Url::parse(&home) {
+                    self.load(cx, win, url);
+                }
+            }
+            "set-home" => {
+                if let Some(url) = self.browser(win).and_then(|b| b.tab().map(|t| t.url.clone())) {
+                    self.settings.home = url;
+                    self.save_settings();
+                }
+            }
+            "add-bookmark" => {
+                if let Some((url, title)) = self.browser(win).and_then(|b| b.tab().map(|t| (t.url.clone(), t.label()))) {
+                    if self.settings.bookmarks.iter().any(|m| m.url == url) {
+                        self.settings.bookmarks.retain(|m| m.url != url);
+                    } else {
+                        self.settings.bookmarks.push(Bookmark { title, url });
+                    }
+                    self.save_settings();
+                }
+            }
+            "clear-history" => {
+                self.settings.history.clear();
+                self.save_settings();
+            }
+            _ => {
+                if let Some(url) = command.strip_prefix("go:") {
+                    if let Ok(url) = Url::parse(url) {
+                        self.load(cx, win, url);
+                    }
+                    return;
+                }
+                if let Some(n) = command.strip_prefix("tab:").and_then(|n| n.parse::<usize>().ok()) {
+                    return self.select_tab(cx, win, n);
+                }
+                self.view_command(cx, win, command);
+            }
+        }
+    }
+
+    /// Commands for the page itself.
+    fn view_command(&mut self, cx: &mut Cx, win: WindowId, command: &str) {
+        let pasted = std::mem::take(&mut self.pasted);
+        let Some(b) = self.browser(win) else { return };
+        let Some(tab) = b.tabs.get_mut(b.active) else { return };
+        let Some(view) = &tab.view else { return };
+        match command {
+            "back" => {
+                view.go_back(1);
+            }
+            "forward" => {
+                view.go_forward(1);
+            }
+            "reload" => view.reload(),
+            "stop" => {
+                // Servo has no stop: going nowhere ends the load.
+                if tab.loading()
+                    && let Some(url) = view.url()
+                {
+                    view.load(url);
+                }
+            }
+            "zoom-in" | "zoom-out" | "zoom-reset" => {
+                let z = view.page_zoom();
+                let next = match command {
+                    "zoom-in" => ZOOMS.iter().copied().find(|&s| s > z + 0.01).unwrap_or(z),
+                    "zoom-out" => ZOOMS.iter().rev().copied().find(|&s| s < z - 0.01).unwrap_or(z),
+                    _ => 1.0,
+                };
+                view.set_page_zoom(next);
+                tab.zoom = next;
+            }
+            "copy" => {
+                view.notify_input_event(servo::InputEvent::EditingAction(servo::ClipboardAction::Copy));
+            }
+            "cut" => {
+                view.notify_input_event(servo::InputEvent::EditingAction(servo::ClipboardAction::Cut));
+            }
+            "paste" if !pasted => cx.paste(win),
+            "select-all" | "undo" | "redo" => {
+                let (key, code, shift) = match command {
+                    "select-all" => ("a", servo::Code::KeyA, false),
+                    "undo" => ("z", servo::Code::KeyZ, false),
+                    _ => ("z", servo::Code::KeyZ, true),
+                };
+                let mut modifiers = servo::Modifiers::CONTROL;
+                if shift {
+                    modifiers |= servo::Modifiers::SHIFT;
+                }
+                for state in [servo::KeyState::Down, servo::KeyState::Up] {
+                    view.notify_input_event(servo::InputEvent::Keyboard(servo::KeyboardEvent::new(
+                        keyboard_types::KeyboardEvent {
+                            state,
+                            key: servo::Key::Character(key.into()),
+                            code,
+                            location: servo::Location::Standard,
+                            modifiers,
+                            repeat: false,
+                            is_composing: false,
+                        },
+                    )));
+                }
+            }
+            _ => {}
+        }
+        cx.redraw(win);
+    }
+
+    fn browser_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
+        let p = style::palette(ui.ctx());
+        let scale = ui.ctx().pixels_per_point();
+        let full = ui.max_rect();
+        let mut commands: Vec<String> = Vec::new();
+        let mut navigate: Option<Url> = None;
+        let content_id = Id::unique("page");
+        let Some(Win::Browser(b)) = self.windows.get_mut(&win) else { return };
+
+        // Toolbar.
+        let bar = Rect::from_min_size(full.min, vec2(full.width(), m::TOOLBAR_HEIGHT));
+        let painter = ui.painter().clone();
+        painter.rect_filled(full, 0.0, c(p.panel_background));
+        style::hline(&painter, bar.left(), bar.right(), bar.bottom() - 1.0, shade(&p, p.panel_background, 1.3));
+        let (can_back, can_forward, loading) =
+            b.tab().map(|t| (t.can_back, t.can_forward, t.loading())).unwrap_or_default();
+        let mut x = bar.left() + m::SPACING;
+        let y = bar.top() + m::TIGHT;
+        for (glyph, enabled, command) in [
+            (Glyph::Back, can_back, "back"),
+            (Glyph::Forward, can_forward, "forward"),
+            (if loading { Glyph::Stop } else { Glyph::Reload }, true, if loading { "stop" } else { "reload" }),
+            (Glyph::Home, true, "home"),
+        ] {
+            let r = Rect::from_min_size(pos2(x, y), vec2(TOOL, m::CONTROL_HEIGHT));
+            x += TOOL + m::TIGHT;
+            let clicked = ui.add_enabled_ui(enabled, |ui| ui.put(r, Button::new("").min_width(TOOL))).inner.clicked();
+            let color = if enabled { c(p.control_text) } else { style::disabled_text(&p) };
+            paint_glyph(&painter, r, glyph, color);
+            if clicked {
+                commands.push(command.into());
+            }
+        }
+        x += m::SPACING - m::TIGHT;
+        let field = Rect::from_min_max(pos2(x, y), pos2(bar.right() - m::SPACING, y + m::CONTROL_HEIGHT));
+        let response = ui.put(field, TextControl::new(&mut b.location).hint("Search or enter address"));
+        if std::mem::take(&mut b.focus_location) {
+            response.request_focus();
+            select_all(ui.ctx(), response.id, &b.location);
+        }
+        if response.has_focus() {
+            b.editing = true;
+        }
+        if response.lost_focus() {
+            if ui.input(|i| i.key_pressed(Key::Enter)) {
+                let cwd = std::env::current_dir().ok();
+                navigate = location::parse(&b.location, cwd.as_deref());
+                if navigate.is_some() {
+                    // The page takes the keyboard, as in every browser.
+                    ui.memory_mut(|m| m.request_focus(content_id));
+                }
+            } else if b.editing && ui.input(|i| i.key_pressed(Key::Escape)) || !b.editing {
+                b.location = b.tab().map(|t| location::display(&t.url)).unwrap_or_default();
+            }
+            b.editing = false;
+        }
+
+        // Tabs.
+        let mut top = bar.bottom();
+        if b.tabs.len() > 1 {
+            let strip = Rect::from_min_size(pos2(full.left(), top), vec2(full.width(), TAB_HEIGHT));
+            if let Some(cmd) = tab_strip(ui, strip, b) {
+                commands.push(cmd);
+            }
+            top = strip.bottom();
+        }
+
+        // Status line.
+        let status = Rect::from_min_max(pos2(full.left(), full.bottom() - STATUS_HEIGHT), full.max);
+        style::hline(&painter, status.left(), status.right(), status.top(), c(p.shine));
+        style::hline(&painter, status.left(), status.right(), status.top() - 1.0, shade(&p, p.panel_background, 1.3));
+        if let Some(t) = b.tab() {
+            let text = match (&t.status, &t.load) {
+                (Some(s), _) if !s.is_empty() => s.clone(),
+                (_, Some(LoadStatus::Started)) => "Contacting…".into(),
+                (_, Some(LoadStatus::HeadParsed)) => "Loading…".into(),
+                _ if (t.zoom - 1.0).abs() > 0.01 => format!("Zoom {:.0}%", t.zoom * 100.0),
+                _ => String::new(),
+            };
+            let right = if t.loading() {
+                let w = 100.0;
+                let r = Rect::from_min_size(pos2(status.right() - m::SPACING - w, status.center().y - 4.0), vec2(w, 8.0));
+                let r = style::snap(ui.ctx(), r);
+                style::sunken(&painter, r, &p, false);
+                let f = if t.load == Some(LoadStatus::Started) { 0.15 } else { 0.6 };
+                let fill = Rect::from_min_size(r.min + vec2(1.0, 1.0), vec2((r.width() - 2.0) * f, r.height() - 2.0));
+                painter.rect_filled(style::snap(ui.ctx(), fill), 0.0, c(p.status_bar));
+                r.left() - m::SPACING
+            } else {
+                status.right() - m::SPACING
+            };
+            let clip = Rect::from_min_max(pos2(status.left() + m::SPACING, status.top()), pos2(right, status.bottom()));
+            style::label(&painter.with_clip_rect(clip), clip.left(), status.center().y + 0.5, Align::Min, text, style::plain_font(), c(p.panel_text));
+        }
+
+        // The page.
+        let content = Rect::from_min_max(pos2(full.left(), top), pos2(full.right(), status.top() - 1.0));
+        let content = style::snap(ui.ctx(), content);
+        painter.rect_filled(content, 0.0, c(p.document_background));
+        let size = dpi::PhysicalSize::new(
+            (content.width() * scale).round().max(1.0) as u32,
+            (content.height() * scale).round().max(1.0) as u32,
+        );
+        let viewport = Viewport { rect: content, scale };
+        if b.viewport.map(|v| (v.rect, v.scale)) != Some((content, scale)) {
+            cx.place_embed(b.embed, content);
+            b.viewport = Some(viewport);
+        }
+        if b.size != size || (b.scale - scale).abs() > f32::EPSILON {
+            b.size = size;
+            b.scale = scale;
+            if let Some(s) = &b.surface {
+                s.resize(size);
+            }
+            for t in &b.tabs {
+                if let Some(v) = &t.view {
+                    v.resize(size);
+                    if (v.hidpi_scale_factor().get() - scale).abs() > f32::EPSILON {
+                        v.set_hidpi_scale_factor(Scale::new(scale));
+                    }
+                }
+            }
+        }
+        let page = ui.interact(content, content_id, Sense::click_and_drag());
+        if page.hovered()
+            && let Some(t) = b.tab()
+        {
+            ui.ctx().set_cursor_icon(cursor_icon(t.cursor));
+        }
+        let keyboard = page.has_focus();
+        if keyboard {
+            ui.memory_mut(|m| {
+                m.set_focus_lock_filter(
+                    content_id,
+                    egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: true },
+                )
+            });
+        }
+        let events = ui.input(|i| i.events.clone());
+        let fwd = input::forward(&events, viewport, keyboard, &mut b.pointer);
+        if fwd.clicked {
+            page.request_focus();
+            b.menu = None;
+            b.select = None;
+        }
+        if let Some(text) = fwd.paste {
+            *self.engine.events.paste.borrow_mut() = Some(text);
+            self.pasted = true;
+        }
+        // The page keeps its focus while popups (its own menus and
+        // <select>s, the menu bar) have the keyboard; only another control
+        // in the window takes it.
+        // Before the click itself goes in: a focus change after it would
+        // blur what was clicked (and close a <select>'s list).
+        if keyboard || fwd.clicked {
+            b.page_focus = true;
+        } else if ui.ctx().memory(|m| m.focused()).is_some_and(|id| id != content_id) {
+            b.page_focus = false;
+        }
+        let focused = b.page_focus;
+        if let Some(view) = b.view() {
+            for e in fwd.events {
+                view.notify_input_event(e);
+            }
+            if view.focused() != focused {
+                view.set_focused(focused);
+            }
+        }
+
+        // Page menus and <select> lists.
+        if let Some((anchor, menu, selected)) = b.popup.take() {
+            menu::request_popup(ui.ctx(), MenuRequest { menu, source: Id::unique("page-menu"), anchor, selected });
+        }
+        if let Some(chosen) = widgets::popup_result(ui.ctx(), Id::unique("page-menu")) {
+            if let Some(menu) = b.menu.take()
+                && let Ok(n) = chosen.parse::<usize>()
+                && let Some(ContextMenuItem::Item { action, .. }) = menu.items().get(n).cloned()
+            {
+                match action {
+                    ContextMenuAction::OpenLinkInNewWebView | ContextMenuAction::OpenImageInNewView => {
+                        let info = menu.element_info();
+                        let url = if action == ContextMenuAction::OpenLinkInNewWebView { &info.link_url } else { &info.image_url };
+                        if let Some(url) = url {
+                            commands.push(format!("open-tab:{url}"));
+                        }
+                        menu.dismiss();
+                    }
+                    action => menu.select(action),
+                }
+            } else if let Some(mut select) = b.select.take()
+                && let Ok(n) = chosen.parse::<usize>()
+            {
+                select.select(vec![n]);
+                select.submit();
+            }
+        }
+
+        // The window's title follows the page.
+        let title = match b.tab().map(Tab::label) {
+            Some(t) if t != "Untitled" => format!("{t} — {NAME}"),
+            _ => NAME.into(),
+        };
+        if title != b.title {
+            b.title = title.clone();
+            cx.set_title(win, title);
+        }
+
+        if let Some(url) = navigate {
+            self.load(cx, win, url);
+        }
+        for cmd in commands {
+            if let Some(url) = cmd.strip_prefix("open-tab:") {
+                self.new_tab(cx, win, Some(url.to_string()), false);
+            } else if let Some(n) = cmd.strip_prefix("close:").and_then(|n| n.parse().ok()) {
+                self.close_tab(cx, win, n);
+            } else {
+                self.command_for(cx, win, &cmd);
+            }
+        }
+    }
+
+    fn sheet_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
+        let Some(Win::Sheet(sheet)) = self.windows.get_mut(&win) else { return };
+        let done = match &mut **sheet {
+            Sheet::Dialog { dialog, text, .. } => {
+                let buttons: &[&str] = match dialog {
+                    SimpleDialog::Alert(_) => &["OK"],
+                    _ => &["Cancel", "OK"],
+                };
+                let message = dialog.message().to_string();
+                if let SimpleDialog::Prompt(_) = dialog {
+                    let column = widgets::alert_frame(ui, "info");
+                    let p = style::palette(ui.ctx());
+                    let mut job = egui::text::LayoutJob::single_section(message, egui::TextFormat::simple(style::plain_font(), c(p.panel_text)));
+                    job.wrap.max_width = column.width();
+                    let g = ui.painter().layout_job(job);
+                    let text_bottom = column.top() + g.size().y;
+                    ui.painter().galley(column.min, g, c(p.panel_text));
+                    let r = Rect::from_min_size(pos2(column.left(), text_bottom + m::SPACING), vec2(column.width(), m::CONTROL_HEIGHT));
+                    ui.put(r, TextControl::new(text).autofocus(true));
+                    choice_row(ui, column, buttons)
+                } else {
+                    widgets::alert(ui, "info", &message, buttons)
+                }
+                .map(|n| n + 1 == buttons.len())
+            }
+            Sheet::Login { user, password, site, .. } => {
+                let column = widgets::alert_frame(ui, "authentication");
+                let p = style::palette(ui.ctx());
+                style::label(ui.painter(), column.left(), column.top() + 8.0, Align::Min, format!("{site} asks you to log in."), style::plain_font(), c(p.panel_text));
+                let mut y = column.top() + 16.0 + m::SPACING;
+                let divider = 70.0;
+                let r = Rect::from_min_size(pos2(column.left(), y), vec2(column.width(), m::CONTROL_HEIGHT));
+                ui.put(r, TextControl::new(user).label("Name:").divider(divider).autofocus(true));
+                y += m::CONTROL_HEIGHT + m::TIGHT;
+                let r = Rect::from_min_size(pos2(column.left(), y), vec2(column.width(), m::CONTROL_HEIGHT));
+                ui.put(r, TextControl::new(password).label("Password:").divider(divider).password(true));
+                choice_row(ui, column, &["Cancel", "Log In"]).map(|n| n == 1)
+            }
+            Sheet::Files { panel, .. } => match panel.ui(ui) {
+                Some(PanelResult::Chosen(path)) => {
+                    if let Sheet::Files { picker, .. } = &mut **sheet {
+                        picker.select(&[path]);
+                    }
+                    Some(true)
+                }
+                Some(PanelResult::Cancelled) => Some(false),
+                None => None,
+            },
+        };
+        let Some(ok) = done else { return };
+        let Some(Win::Sheet(sheet)) = self.windows.remove(&win) else { return };
+        cx.close_window(win);
+        match *sheet {
+            Sheet::Dialog { dialog, text, .. } => match dialog {
+                SimpleDialog::Prompt(mut p) if ok => {
+                    p.set_current_value(&text);
+                    p.confirm();
+                }
+                d if ok => d.confirm(),
+                d => d.dismiss(),
+            },
+            Sheet::Login { request, user, password, .. } => {
+                if ok {
+                    request.authenticate(user, password);
+                }
+            }
+            Sheet::Files { picker, .. } => {
+                if ok { picker.submit() } else { picker.dismiss() }
+            }
+        }
+    }
+}
+
+fn sheet_owner(s: &Sheet) -> Option<WindowId> {
+    match s {
+        Sheet::Dialog { owner, .. } | Sheet::Login { owner, .. } => Some(*owner),
+        Sheet::Files { .. } => None,
+    }
+}
+
+/// Cancel / OK along the bottom of an alert with fields.
+fn choice_row(ui: &mut egui::Ui, column: Rect, buttons: &[&str]) -> Option<usize> {
+    let row = Rect::from_min_max(pos2(column.left(), column.bottom() - m::CONTROL_HEIGHT), column.max);
+    let mut chosen = None;
+    ui.scope_builder(egui::UiBuilder::new().max_rect(row), |ui| {
+        widgets::button_row(ui, |ui| {
+            for (i, label) in buttons.iter().enumerate().rev() {
+                if ui.add(Button::new(label).default(i + 1 == buttons.len())).clicked() {
+                    chosen = Some(i);
+                }
+            }
+        });
+    });
+    ui.input(|i| {
+        if i.key_pressed(Key::Enter) {
+            chosen = Some(buttons.len() - 1);
+        } else if i.key_pressed(Key::Escape) {
+            chosen = Some(0);
+        }
+    });
+    chosen
+}
+
+fn select_all(ctx: &egui::Context, id: Id, text: &str) {
+    if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
+        let all = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(text.chars().count()));
+        state.cursor.set_char_range(Some(all));
+        state.store(ctx, id);
+    }
+}
+
+/// Only the active tab's view draws.
+fn show_active(b: &mut Browser) {
+    for (i, t) in b.tabs.iter().enumerate() {
+        if let Some(v) = &t.view {
+            if i == b.active {
+                v.show();
+                v.paint();
+            } else {
+                v.hide();
+            }
+        }
+    }
+    if let (Some(v), Some(s)) = (b.view(), &b.surface) {
+        use servo::RenderingContext;
+        v.paint();
+        s.context.present();
+    }
+}
+
+/// The tab strip: BeOS tabs side by side, the selected one open into the
+/// page, each with a close box; middle-click closes too.
+fn tab_strip(ui: &mut egui::Ui, strip: Rect, b: &Browser) -> Option<String> {
+    let p = style::palette(ui.ctx());
+    let painter = ui.painter().clone();
+    let bg = p.panel_background;
+    painter.rect_filled(strip, 0.0, shade(&p, bg, 1.07));
+    style::hline(&painter, strip.left(), strip.right(), strip.bottom() - 1.0, shade(&p, bg, 1.3));
+    let n = b.tabs.len() as f32;
+    let new_w = TOOL;
+    let width = ((strip.width() - 2.0 * m::TIGHT - new_w) / n).min(TAB_MAX).floor();
+    let mut command = None;
+    for (i, tab) in b.tabs.iter().enumerate() {
+        let r = Rect::from_min_size(pos2(strip.left() + m::TIGHT + i as f32 * width, strip.top() + 2.0), vec2(width, TAB_HEIGHT - 2.0));
+        let selected = i == b.active;
+        let resp = ui.interact(r, Id::unique(("tab", i)), Sense::click());
+        if selected {
+            painter.rect_filled(r, 0.0, c(bg));
+            style::hline(&painter, r.left(), r.right(), r.top(), c(p.shine));
+            style::vline(&painter, r.left(), r.top(), r.bottom(), c(p.shine));
+            style::vline(&painter, r.right() - 1.0, r.top(), r.bottom(), shade(&p, bg, 1.4));
+        } else {
+            style::vline(&painter, r.right() - 1.0, r.top() + 3.0, r.bottom() - 3.0, shade(&p, bg, 1.3));
+        }
+        let close = Rect::from_center_size(pos2(r.right() - m::SPACING - 4.0, r.center().y), vec2(12.0, 12.0));
+        let close_resp = ui.interact(close, Id::unique(("tab-close", i)), Sense::click());
+        if selected || resp.hovered() || close_resp.hovered() {
+            let color = if close_resp.hovered() { c(p.panel_text) } else { shade(&p, bg, 1.6) };
+            let k = close.shrink(3.0);
+            painter.line_segment([k.left_top(), k.right_bottom()], Stroke::new(1.5, color));
+            painter.line_segment([k.right_top(), k.left_bottom()], Stroke::new(1.5, color));
+        }
+        let font = if selected { style::bold_font() } else { style::plain_font() };
+        let clip = Rect::from_min_max(pos2(r.left() + m::SPACING, r.top()), pos2(close.left() - m::TIGHT, r.bottom()));
+        let label = tab.label();
+        let text_color = if selected { c(p.panel_text) } else { shade(&p, p.panel_text, 0.8) };
+        style::label(&painter.with_clip_rect(clip), clip.left(), r.center().y, Align::Min, label, font, text_color);
+        if close_resp.clicked() || resp.middle_clicked() {
+            command = Some(format!("close:{i}"));
+        } else if resp.clicked() {
+            command = Some(format!("tab:{i}"));
+        }
+    }
+    let plus = Rect::from_min_size(pos2(strip.left() + m::TIGHT + n * width + m::TIGHT, strip.top() + 2.0), vec2(new_w, TAB_HEIGHT - 4.0));
+    let resp = ui.interact(plus, Id::unique("tab-new"), Sense::click());
+    let color = if resp.hovered() { c(p.panel_text) } else { shade(&p, bg, 1.6) };
+    let k = Rect::from_center_size(plus.center(), vec2(9.0, 9.0));
+    style::hline(&painter, k.left(), k.right(), k.center().y.floor(), color);
+    style::vline(&painter, k.center().x.floor(), k.top(), k.bottom(), color);
+    if resp.clicked() {
+        command = Some("new-tab".into());
+    }
+    command
+}
+
+#[derive(Clone, Copy)]
+enum Glyph {
+    Back,
+    Forward,
+    Reload,
+    Stop,
+    Home,
+}
+
+/// Toolbar glyphs, drawn to the pixel grid.
+fn paint_glyph(painter: &egui::Painter, r: Rect, glyph: Glyph, color: egui::Color32) {
+    let c0 = r.center();
+    let stroke = Stroke::new(1.5, color);
+    match glyph {
+        Glyph::Back | Glyph::Forward => {
+            let d = if matches!(glyph, Glyph::Back) { -1.0 } else { 1.0 };
+            let tip = pos2(c0.x + d * 6.0, c0.y);
+            let pts = vec![tip, pos2(c0.x - d * 1.0, c0.y - 6.5), pos2(c0.x - d * 1.0, c0.y + 6.5)];
+            painter.add(Shape::convex_polygon(pts, color, Stroke::NONE));
+            let shaft = Rect::from_min_max(pos2(c0.x.min(c0.x - d * 6.0), c0.y - 2.0), pos2(c0.x.max(c0.x - d * 6.0), c0.y + 2.0));
+            painter.rect_filled(shaft, 0.0, color);
+        }
+        Glyph::Reload => {
+            let radius = 5.5;
+            let pts: Vec<egui::Pos2> = (0..=24)
+                .map(|i| {
+                    let a = -0.35 + i as f32 / 24.0 * 5.0;
+                    pos2(c0.x + radius * a.cos(), c0.y + radius * a.sin())
+                })
+                .collect();
+            let end = *pts.last().unwrap_or(&c0);
+            painter.add(Shape::line(pts, stroke));
+            // The arrowhead at the end of the arc, pointing along it.
+            let a: f32 = -0.35 + 5.0;
+            let (tx, ty) = (-a.sin(), a.cos());
+            let (nx, ny) = (a.cos(), a.sin());
+            let head = vec![
+                pos2(end.x + tx * 4.0, end.y + ty * 4.0),
+                pos2(end.x + nx * 3.5, end.y + ny * 3.5),
+                pos2(end.x - nx * 3.5, end.y - ny * 3.5),
+            ];
+            painter.add(Shape::convex_polygon(head, color, Stroke::NONE));
+        }
+        Glyph::Stop => {
+            let k = Rect::from_center_size(c0, vec2(10.0, 10.0));
+            painter.line_segment([k.left_top(), k.right_bottom()], Stroke::new(2.0, color));
+            painter.line_segment([k.right_top(), k.left_bottom()], Stroke::new(2.0, color));
+        }
+        Glyph::Home => {
+            let roof = vec![pos2(c0.x, c0.y - 7.0), pos2(c0.x + 7.5, c0.y), pos2(c0.x - 7.5, c0.y)];
+            painter.add(Shape::convex_polygon(roof, color, Stroke::NONE));
+            let body = Rect::from_min_max(pos2(c0.x - 5.0, c0.y - 0.5), pos2(c0.x + 5.0, c0.y + 6.0));
+            painter.rect_filled(body, 0.0, color);
+            let door = Rect::from_min_max(pos2(c0.x - 1.5, c0.y + 2.0), pos2(c0.x + 1.5, c0.y + 6.0));
+            painter.rect_filled(door, 0.0, c(style::palette(painter.ctx()).control_background));
+        }
+    }
+}
+
+fn cursor_icon(cursor: Cursor) -> CursorIcon {
+    match cursor {
+        Cursor::None => CursorIcon::None,
+        Cursor::Pointer => CursorIcon::PointingHand,
+        Cursor::ContextMenu => CursorIcon::ContextMenu,
+        Cursor::Help => CursorIcon::Help,
+        Cursor::Progress => CursorIcon::Progress,
+        Cursor::Wait => CursorIcon::Wait,
+        Cursor::Cell => CursorIcon::Cell,
+        Cursor::Crosshair => CursorIcon::Crosshair,
+        Cursor::Text => CursorIcon::Text,
+        Cursor::VerticalText => CursorIcon::VerticalText,
+        Cursor::Alias => CursorIcon::Alias,
+        Cursor::Copy => CursorIcon::Copy,
+        Cursor::Move => CursorIcon::Move,
+        Cursor::NoDrop => CursorIcon::NoDrop,
+        Cursor::NotAllowed => CursorIcon::NotAllowed,
+        Cursor::Grab => CursorIcon::Grab,
+        Cursor::Grabbing => CursorIcon::Grabbing,
+        Cursor::EResize => CursorIcon::ResizeEast,
+        Cursor::NResize => CursorIcon::ResizeNorth,
+        Cursor::NeResize => CursorIcon::ResizeNorthEast,
+        Cursor::NwResize => CursorIcon::ResizeNorthWest,
+        Cursor::SResize => CursorIcon::ResizeSouth,
+        Cursor::SeResize => CursorIcon::ResizeSouthEast,
+        Cursor::SwResize => CursorIcon::ResizeSouthWest,
+        Cursor::WResize => CursorIcon::ResizeWest,
+        Cursor::EwResize => CursorIcon::ResizeHorizontal,
+        Cursor::NsResize => CursorIcon::ResizeVertical,
+        Cursor::NeswResize => CursorIcon::ResizeNeSw,
+        Cursor::NwseResize => CursorIcon::ResizeNwSe,
+        Cursor::ColResize => CursorIcon::ResizeColumn,
+        Cursor::RowResize => CursorIcon::ResizeRow,
+        Cursor::AllScroll => CursorIcon::AllScroll,
+        Cursor::ZoomIn => CursorIcon::ZoomIn,
+        Cursor::ZoomOut => CursorIcon::ZoomOut,
+        _ => CursorIcon::Default,
+    }
+}
+
+impl App for NetPositive {
+    fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
+        match self.windows.get(&window) {
+            Some(Win::Browser(_)) => {
+                self.front = Some(window);
+                self.browser_ui(cx, window, ui);
+            }
+            Some(Win::Sheet(_)) => self.sheet_ui(cx, window, ui),
+            None => {}
+        }
+    }
+
+    fn menu_bar(&mut self, window: WindowId) -> Option<Vec<Menu>> {
+        let Some(Win::Browser(b)) = self.windows.get(&window) else { return None };
+        let tab = b.tab();
+        let (can_back, can_forward, loading) = tab.map(|t| (t.can_back, t.can_forward, t.loading())).unwrap_or_default();
+        let url = tab.map(|t| t.url.clone()).unwrap_or_default();
+        let file = Menu::new("File")
+            .item("New Window", "new-window", Some(Key::N))
+            .item("New Tab", "new-tab", Some(Key::T))
+            .item("Open Location…", "open-location", Some(Key::L))
+            .separator()
+            .item("Close Tab", "close-tab", Some(Key::W))
+            .item_shift("Close Window", "close-window", Key::W)
+            .separator()
+            .item("Quit", "quit", Some(Key::Q));
+        let edit = Menu::new("Edit")
+            .item("Undo", "undo", Some(Key::Z))
+            .item_shift("Redo", "redo", Key::Z)
+            .separator()
+            .item("Cut", "cut", Some(Key::X))
+            .item("Copy", "copy", Some(Key::C))
+            .item("Paste", "paste", Some(Key::V))
+            .item("Select All", "select-all", Some(Key::A));
+        let view = Menu::new("View")
+            .item(if loading { "Stop" } else { "Reload" }, if loading { "stop" } else { "reload" }, Some(Key::R))
+            .separator()
+            .item("Zoom In", "zoom-in", Some(Key::Equals))
+            .item("Zoom Out", "zoom-out", Some(Key::Minus))
+            .item("Actual Size", "zoom-reset", Some(Key::Num0));
+        let mut go = Menu::new("Go")
+            .item("Back", "back", Some(Key::OpenBracket))
+            .enabled(can_back)
+            .item("Forward", "forward", Some(Key::CloseBracket))
+            .enabled(can_forward)
+            .item_shift("Home", "home", Key::H)
+            .item("Set Home Page", "set-home", None)
+            .separator();
+        let recent: Vec<&Bookmark> = self.settings.history.iter().rev().take(15).collect();
+        for h in &recent {
+            go = go.item(&menu_label(h), &format!("go:{}", h.url), None);
+        }
+        if !recent.is_empty() {
+            go = go.separator().item("Clear History", "clear-history", None);
+        }
+        let marked = self.settings.bookmarks.iter().any(|m| m.url == url);
+        let mut bookmarks = Menu::new("Bookmarks").item(if marked { "Remove Bookmark" } else { "Add Bookmark" }, "add-bookmark", Some(Key::D));
+        if !self.settings.bookmarks.is_empty() {
+            bookmarks = bookmarks.separator();
+            for m in &self.settings.bookmarks {
+                bookmarks = bookmarks.item(&menu_label(m), &format!("go:{}", m.url), None);
+            }
+        }
+        let mut tabs = Menu::new("Window");
+        for (i, t) in b.tabs.iter().enumerate() {
+            let label = truncate(&t.label(), 48);
+            let key = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9].get(i).copied();
+            tabs = tabs.item(&label, &format!("tab:{i}"), key).checked(i == b.active);
+        }
+        Some(vec![file, edit, view, go, bookmarks, tabs])
+    }
+
+    fn command(&mut self, cx: &mut Cx, window: WindowId, command: &str) {
+        if matches!(self.windows.get(&window), Some(Win::Browser(_))) {
+            self.command_for(cx, window, command);
+        }
+    }
+
+    fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
+        match self.windows.get(&window) {
+            Some(Win::Browser(_)) => self.close_browser(cx, window),
+            Some(Win::Sheet(_)) => {
+                // Closing a sheet cancels it (dropping the request does).
+                self.windows.remove(&window);
+                cx.close_window(window);
+            }
+            None => cx.close_window(window),
+        }
+    }
+
+    fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
+        if message.is::<Wake>() {
+            return self.pump(cx);
+        }
+        if let Ok(launch) = message.downcast::<Launch>() {
+            self.launch(cx, &launch.args, launch.cwd.as_deref());
+        }
+    }
+
+    fn embedded(&mut self, cx: &mut Cx, embed: &Embedded) {
+        let Some(Win::Browser(b)) = self.windows.get_mut(&embed.window) else { return };
+        if b.embed != embed.id {
+            return;
+        }
+        let scale = embed.scale as f32;
+        if let Some(_surface) = &b.surface {
+            // A new scale: views follow in the next frame's layout.
+            b.scale = scale;
+            cx.redraw(embed.window);
+            return;
+        }
+        if b.size.width == 0 || b.size.height == 0 {
+            let (w, h) = cx.window_size(embed.window).unwrap_or((960, 720));
+            b.size = dpi::PhysicalSize::new((w as f32 * scale) as u32, (h as f32 * scale) as u32);
+        }
+        match Surface::new(embed, b.size) {
+            Ok(s) => {
+                b.surface = Some(s);
+                b.scale = scale;
+                self.realize(embed.window);
+            }
+            Err(e) => tracing::error!("can't draw web pages: {e}"),
+        }
+        cx.redraw(embed.window);
+    }
+
+    fn embed_lost(&mut self, _cx: &mut Cx, id: EmbedId) {
+        let Some(win) = self.windows.iter().find_map(|(&w, x)| matches!(x, Win::Browser(b) if b.embed == id).then_some(w)) else { return };
+        let Some(Win::Browser(b)) = self.windows.get_mut(&win) else { return };
+        // Keep where each tab was; views come back on the new surface.
+        for t in &mut b.tabs {
+            if let Some(v) = t.view.take()
+                && let Some(url) = v.url()
+            {
+                t.url = url.to_string();
+            }
+            t.load = None;
+        }
+        b.menu = None;
+        b.select = None;
+        let surface = b.surface.take();
+        b.viewport = None;
+        self.drop_surface(surface);
+    }
+
+    fn save_state(&mut self, cx: &Cx) -> Option<String> {
+        let windows = self
+            .windows
+            .iter()
+            .filter_map(|(&id, w)| match w {
+                Win::Browser(b) => Some(SavedWindow {
+                    tabs: b.tabs.iter().map(|t| t.view.as_ref().and_then(|v| v.url()).map(|u| u.to_string()).unwrap_or_else(|| t.url.clone())).collect(),
+                    active: b.active,
+                    size: cx.window_size(id).unwrap_or_else(|| default_size(cx)),
+                }),
+                _ => None,
+            })
+            .collect();
+        serde_json::to_string(&Saved { windows }).ok()
+    }
+}
+
+/// 1024×768 where it fits, else most of the screen.
+fn default_size(cx: &Cx) -> (u32, u32) {
+    let (sw, sh) = cx.screen_size().unwrap_or((1280, 800));
+    (1024.min(sw * 9 / 10), 768.min(sh * 8 / 10))
+}
+
+fn menu_label(b: &Bookmark) -> String {
+    truncate(if b.title.is_empty() { &b.url } else { &b.title }, 60)
+}
+
+fn truncate(s: &str, n: usize) -> String {
+    if s.chars().count() <= n { s.to_string() } else { format!("{}…", s.chars().take(n - 1).collect::<String>()) }
+}
+
+impl NetPositive {
+    /// URLs (or paths) from the command line or a forwarded launch.
+    fn launch(&mut self, cx: &mut Cx, args: &[String], cwd: Option<&Path>) {
+        let urls: Vec<Url> = args.iter().filter(|a| !a.starts_with("--")).filter_map(|a| location::parse(a, cwd)).collect();
+        match self.front.filter(|w| self.windows.contains_key(w)) {
+            Some(win) if !urls.is_empty() => {
+                for url in urls {
+                    self.new_tab(cx, win, Some(url.to_string()), true);
+                }
+                cx.activate(win);
+            }
+            Some(win) => cx.activate(win),
+            None => {
+                let size = default_size(cx);
+                self.open_browser(cx, urls.into_iter().map(|u| u.to_string()).collect(), 0, size);
+            }
+        }
+    }
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if instance::forward(APP_ID, &args) {
+        return;
+    }
+    tabula_kit::run(APP_ID, move |cx| {
+        instance::listen(APP_ID, cx.proxy());
+        let settings: Settings =
+            std::fs::read_to_string(settings_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let mut app = NetPositive {
+            engine: Engine::new(cx.proxy()),
+            windows: BTreeMap::new(),
+            settings,
+            front: None,
+            pasted: false,
+        };
+        let restored: Option<Saved> = cx.restored_state().and_then(|s| serde_json::from_str(&s).ok());
+        match restored {
+            Some(saved) if !saved.windows.is_empty() => {
+                for w in saved.windows {
+                    app.open_browser(cx, w.tabs, w.active, w.size);
+                }
+            }
+            _ => {
+                let cwd = std::env::current_dir().ok();
+                app.launch(cx, &args, cwd.as_deref());
+            }
+        }
+        app
+    })
+}

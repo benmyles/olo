@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "apps/*"]
+exclude = ["vendor"]
 
 [workspace.package]
 version = "0.1.0"
@@ -34,6 +35,10 @@ default-features = false
 [workspace.dependencies.smithay-drm-extras]
 git = "https://github.com/Smithay/smithay"
 rev = "24647fc8d00131eb7f388efed26e35ea316b0018"
+
+# See vendor/README.md.
+[patch.crates-io]
+epaint = { path = "vendor/epaint" }
 
 [profile.release]
 debug = "line-tables-only"

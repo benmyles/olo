@@ -60,7 +60,16 @@ as they land (with the commit), add new ones as they come up.
 - ~~**Screenshot**~~: Haiku's app (screen or active window, border,
   pointer, delay, five formats, folder choice, clipboard), ⌘⇧3/⌘⇧4/⌘⇧5
   (area) and Print Screen; every backend captures.
-- Web browser (native).
+- ~~Web browser~~: **NetPositive** (apps/browser) on Servo, in process,
+  drawn into a kit embedded subsurface: tabs, location field with search,
+  back/forward/reload/stop/home, zoom, bookmarks and history menus, page
+  context menus, `<select>`, dialogs, logins, file uploads, haiku error
+  pages, in-place reload. Still to do: find in page (Servo 0.7 has no
+  API), downloads, a scroll indicator (Servo draws no scroll bars),
+  favicons in tabs, dark pages (needs Servo to paint a dark page's
+  canvas), audio/video in pages (Servo media without gstreamer),
+  permission prompts, a colour picker for `<input type=color>`, password
+  manager integration.
 - Password manager: Rust 1Password SDK, passkeys, Touch ID through
   fprintd natively, browser integration.
 - Viewer: ~~image zoom/pan~~ (full resolution up to the texture limit,

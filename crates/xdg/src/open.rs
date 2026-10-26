@@ -84,6 +84,7 @@ fn ours(mime: &str) -> Option<&'static str> {
     let (major, _) = mime.split_once('/').unwrap_or((mime, ""));
     let candidates: &[&'static str] = match (major, mime) {
         (_, "inode/directory") => &["tabula-tracker"],
+        (_, "text/html" | "application/xhtml+xml") => &["tabula-browser", "tabula-styled-edit"],
         ("text", _) | (_, "application/x-shellscript" | "application/json" | "application/xml" | "application/toml") => {
             &["tabula-styled-edit", "tabula-viewer"]
         }
@@ -102,7 +103,7 @@ fn ours(mime: &str) -> Option<&'static str> {
             | "application/vnd.oasis.opendocument.spreadsheet"
             | "application/vnd.oasis.opendocument.presentation",
         ) => &["tabula-viewer"],
-        (_, "x-scheme-handler/http" | "x-scheme-handler/https") => &["tabula-web"],
+        (_, "x-scheme-handler/http" | "x-scheme-handler/https") => &["tabula-browser"],
         _ => &[],
     };
     candidates.iter().copied().find(|bin| find_program(bin).is_some())
