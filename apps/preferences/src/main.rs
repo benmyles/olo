@@ -13,6 +13,7 @@ mod appearance;
 mod display;
 mod keyboard;
 mod panel;
+mod power;
 mod server;
 mod sound;
 mod touchpad;
@@ -28,7 +29,7 @@ use tabula_kit::{
     metrics as m,
     style::{self, c},
 };
-use tabula_protocol::{OutputInfo, Settings};
+use tabula_protocol::{OutputInfo, PowerStatus, Settings};
 
 use panel::Panel;
 
@@ -37,12 +38,15 @@ const APP_ID: &str = "tabula.preferences";
 pub enum Msg {
     Settings(Box<Settings>),
     Outputs(Vec<OutputInfo>),
+    Power(PowerStatus),
 }
 
 /// What a panel works with: the live settings and a way to change them.
 pub struct Ctx<'a> {
     pub settings: &'a mut Settings,
     pub outputs: &'a [OutputInfo],
+    /// app_server's power state (caffeinated, brightness), once known.
+    pub power: Option<&'a PowerStatus>,
     /// The settings when the window opened, for Revert.
     pub opened: &'a Settings,
     pub server: &'a server::Server,
@@ -57,6 +61,7 @@ struct Prefs {
     windows: BTreeMap<WindowId, Win>,
     settings: Option<Settings>,
     outputs: Vec<OutputInfo>,
+    power: Option<PowerStatus>,
     server: server::Server,
 }
 
@@ -164,12 +169,12 @@ impl App for Prefs {
                 return;
             }
             let mut scratch = Settings::default();
-            let ctx = Ctx { settings: &mut scratch, outputs: &self.outputs, opened, server: &self.server };
+            let ctx = Ctx { settings: &mut scratch, outputs: &self.outputs, power: self.power.as_ref(), opened, server: &self.server };
             panel::ui(*panel, state, ui, ctx);
             return;
         };
         let before = settings.clone();
-        let ctx = Ctx { settings, outputs: &self.outputs, opened, server: &self.server };
+        let ctx = Ctx { settings, outputs: &self.outputs, power: self.power.as_ref(), opened, server: &self.server };
         panel::ui(*panel, state, ui, ctx);
         if *settings != before {
             self.server.set_settings(settings.clone());
@@ -210,6 +215,7 @@ impl App for Prefs {
                 self.settings = Some(*s);
             }
             Msg::Outputs(o) => self.outputs = o,
+            Msg::Power(p) => self.power = Some(p),
         }
         for &id in self.windows.keys() {
             cx.redraw(id);
@@ -237,7 +243,7 @@ fn main() {
     tabula_kit::run(APP_ID, |cx| {
         instance::listen(APP_ID, cx.proxy());
         let server = server::Server::start(cx.proxy());
-        let mut prefs = Prefs { windows: BTreeMap::new(), settings: None, outputs: Vec::new(), server };
+        let mut prefs = Prefs { windows: BTreeMap::new(), settings: None, outputs: Vec::new(), power: None, server };
         match cx.restored_state().and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok()) {
             Some(open) if !open.is_empty() => {
                 for name in open {

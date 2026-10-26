@@ -1,10 +1,13 @@
-//! Talking to the system natively, in process: logind (power, inhibitors),
+//! Talking to the system natively, in process: logind (power, inhibitors,
+//! backlight), the battery,
 //! NetworkManager (Wi-Fi), the D-Bus activation environment, dconf (the
 //! settings GTK apps read) and the sound server (PulseAudio protocol, which
 //! PipeWire speaks too). Everything here blocks, so call it from a worker
 //! thread, never the UI thread.
 
 pub mod audio;
+pub mod backlight;
+pub mod battery;
 pub mod dconf;
 pub mod env;
 pub mod network;

@@ -5,6 +5,24 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-25
 
+### Deskbar caffeinated cup
+
+*23:43* — The tray cup: empty when sleep is allowed, full and steaming while caffeinated.
+
+![Deskbar caffeinated cup](2026-10-25/234329-deskbar-caffeinated-cup.png)
+
+### Display ▸ Brightness
+
+*23:43* — The built-in display's brightness slider (simulated backlight in a headless session).
+
+![Display ▸ Brightness](2026-10-25/234328-display-brightness.png)
+
+### Preferences ▸ Power
+
+*23:43* — Battery health and state, idle display-off and sleep times, caffeinated mode (light and dark).
+
+![Preferences ▸ Power](2026-10-25/234328-preferences-power.png)
+
 ### Preferences ▸ Sound
 
 *23:30* — Output and input device, level and mute, read live from the sound server (light and dark).

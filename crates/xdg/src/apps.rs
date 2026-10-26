@@ -20,6 +20,7 @@ pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
     ("backgrounds", "Backgrounds", "backgrounds"),
     ("display", "Display", "display"),
     ("keyboard", "Keyboard", "keyboard"),
+    ("power", "Power", "power"),
     ("sound", "Sound", "sound"),
     ("touchpad", "Touchpad", "touchpad"),
     ("workspaces", "Workspaces", "workspaces"),

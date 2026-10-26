@@ -6,15 +6,17 @@ use tabula_kit::{
     egui::{Align2, Color32, Rect, Sense, Ui, vec2},
     metrics as m,
     style::{self, c},
-    widgets::{BBox, MenuField, StringView},
+    widgets::{BBox, MenuField, Slider, StringView},
 };
-use tabula_protocol::{Mode, OutputConfig, OutputInfo, Settings};
+use tabula_protocol::{Mode, OutputConfig, OutputInfo, PowerStatus, Settings};
 
 use crate::server::Server;
 
 #[derive(Default)]
 pub struct State {
     selected: Option<String>,
+    /// The level being dragged (app_server's echo lags a little).
+    brightness: Option<(f32, std::time::Instant)>,
 }
 
 pub const SCALES: &[f64] = &[1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
@@ -50,7 +52,7 @@ fn display_name(o: &OutputInfo) -> String {
     }
 }
 
-pub fn ui(ui: &mut Ui, s: &Settings, outputs: &[OutputInfo], server: &Server, st: &mut State) {
+pub fn ui(ui: &mut Ui, s: &Settings, outputs: &[OutputInfo], power: Option<&PowerStatus>, server: &Server, st: &mut State) {
     let p = style::palette(ui.ctx());
     if outputs.is_empty() {
         ui.add(StringView::new("No displays reported by app_server.").dim(true));
@@ -167,5 +169,23 @@ pub fn ui(ui: &mut Ui, s: &Settings, outputs: &[OutputInfo], server: &Server, st
             ui.add_space(label_w + m::LABEL_GAP);
             ui.add(StringView::new(&format!("Looks like {lw:.0} × {lh:.0}")).dim(true));
         });
+
+        // The panel's backlight belongs to the built-in display (or the
+        // only one there is).
+        if let Some(level) = power.and_then(|p| p.brightness)
+            && (display_name(o) == "Built-in Display" || outputs.len() == 1)
+        {
+            if st.brightness.is_some_and(|(_, at)| at.elapsed() > std::time::Duration::from_millis(600)) {
+                st.brightness = None;
+            }
+            let mut v = st.brightness.map_or(level, |(l, _)| l);
+            let before = v;
+            let text = format!("{:.0}%", v * 100.0);
+            ui.add(Slider::new(&mut v, 0.0..=1.0).step(1.0 / 64.0).label("Brightness").value_text(text));
+            if v != before {
+                st.brightness = Some((v, std::time::Instant::now()));
+                server.set_brightness(v);
+            }
+        }
     });
 }

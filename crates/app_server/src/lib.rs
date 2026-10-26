@@ -28,6 +28,7 @@ pub mod desktop;
 pub mod ipc;
 pub mod keymap;
 pub mod layout;
+pub mod power;
 pub mod text;
 pub mod theme;
 pub mod twitcher;

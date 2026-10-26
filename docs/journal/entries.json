@@ -190,5 +190,23 @@
   "title": "Preferences \u25b8 Sound",
   "caption": "Output and input device, level and mute, read live from the sound server (light and dark).",
   "image": "2026-10-25/233013-preferences-sound.png"
+ },
+ {
+  "time": "2026-10-25T23:43:28",
+  "title": "Preferences \u25b8 Power",
+  "caption": "Battery health and state, idle display-off and sleep times, caffeinated mode (light and dark).",
+  "image": "2026-10-25/234328-preferences-power.png"
+ },
+ {
+  "time": "2026-10-25T23:43:28",
+  "title": "Display \u25b8 Brightness",
+  "caption": "The built-in display's brightness slider (simulated backlight in a headless session).",
+  "image": "2026-10-25/234328-display-brightness.png"
+ },
+ {
+  "time": "2026-10-25T23:43:29",
+  "title": "Deskbar caffeinated cup",
+  "caption": "The tray cup: empty when sleep is allowed, full and steaming while caffeinated.",
+  "image": "2026-10-25/234329-deskbar-caffeinated-cup.png"
  }
 ]

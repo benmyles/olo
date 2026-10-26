@@ -55,6 +55,7 @@ enum Msg {
     Windows(Vec<WindowInfo>),
     Workspace(u32, u32),
     Status(status::Status),
+    Power(tabula_protocol::PowerStatus),
 }
 
 /// A team: the windows of one application.
@@ -72,6 +73,7 @@ struct Deskbar {
     order: Vec<String>,
     workspace: (u32, u32),
     status: status::Status,
+    caffeinated: bool,
     show_date: bool,
     entries: HashMap<String, Option<DesktopEntry>>,
     height: f32,
@@ -90,10 +92,13 @@ fn team_key(w: &WindowInfo) -> String {
     }
 }
 
+/// Send `req` to app_server off the UI thread.
 fn request(req: Request) {
-    if let Ok(mut c) = Client::connect() {
-        let _ = c.request(&req);
-    }
+    std::thread::spawn(move || {
+        if let Ok(mut c) = Client::connect() {
+            let _ = c.request(&req);
+        }
+    });
 }
 
 impl Deskbar {
@@ -429,6 +434,14 @@ impl App for Deskbar {
             }
         }
 
+        // Caffeinated: a cup, steaming while the machine is kept awake.
+        let on = self.caffeinated;
+        let tip = if on { "Caffeinated: staying awake. Click to allow sleep." } else { "Click to stay awake (caffeinated)" };
+        if tray_item(ui, "caffeine", &|p, r| status::draw_cup(p, r, &pal, on), tip.into()).clicked() {
+            self.caffeinated = !on;
+            request(Request::SetCaffeinated { on: !on });
+        }
+
         // ---- teams
         let mut y = tray.bottom();
         let pointer = ui.input(|i| i.pointer.hover_pos());
@@ -509,6 +522,7 @@ impl App for Deskbar {
                 Msg::Windows(w) => self.set_windows(w),
                 Msg::Workspace(cur, count) => self.workspace = (cur, count),
                 Msg::Status(s) => self.status = s,
+                Msg::Power(p) => self.caffeinated = p.caffeinated,
             }
             cx.redraw(self.win);
         }
@@ -531,11 +545,15 @@ fn watch_server(proxy: tabula_kit::Proxy) {
                     if let Ok(Reply::Workspaces { current, count }) = c.request(&Request::Workspaces) {
                         proxy.send(Msg::Workspace(current, count));
                     }
+                    if let Ok(Reply::Power { status }) = c.request(&Request::PowerStatus) {
+                        proxy.send(Msg::Power(status));
+                    }
                     if let Ok(events) = c.into_events() {
                         for e in events.flatten() {
                             match e {
                                 Event::WindowsChanged { windows } => proxy.send(Msg::Windows(windows)),
                                 Event::WorkspaceChanged { current, count } => proxy.send(Msg::Workspace(current, count)),
+                                Event::PowerChanged { status } => proxy.send(Msg::Power(status)),
                                 _ => {}
                             }
                         }
@@ -572,6 +590,7 @@ fn main() {
             order: Vec::new(),
             workspace: (0, 1),
             status: status::Status::default(),
+            caffeinated: false,
             show_date: false,
             entries: HashMap::new(),
             height: TILE_H + TRAY_H,

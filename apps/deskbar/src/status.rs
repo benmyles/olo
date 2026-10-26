@@ -2,7 +2,6 @@
 //! on a background thread, and the small vector glyphs that show them.
 
 use std::{
-    path::Path,
     sync::{
         Arc, Mutex, OnceLock,
         mpsc::{Sender, channel},
@@ -43,21 +42,8 @@ pub struct Status {
     pub volume: Option<Volume>,
 }
 
-fn read(path: &Path) -> Option<String> {
-    std::fs::read_to_string(path).ok().map(|s| s.trim().to_owned())
-}
-
 fn battery() -> Option<Battery> {
-    for e in std::fs::read_dir("/sys/class/power_supply").ok()?.flatten() {
-        let p = e.path();
-        if read(&p.join("type")).as_deref() != Some("Battery") {
-            continue;
-        }
-        let percent = read(&p.join("capacity"))?.parse().ok()?;
-        let status = read(&p.join("status")).unwrap_or_default();
-        return Some(Battery { percent, charging: status == "Charging" || status == "Full" });
-    }
-    None
+    tabula_system::battery::battery().map(|b| Battery { percent: b.percent, charging: b.charging() })
 }
 
 fn wifi() -> Option<Wifi> {
@@ -282,5 +268,38 @@ pub fn draw_volume(painter: &Painter, r: Rect, p: &Palette, level: f32, muted: b
             })
             .collect();
         painter.add(Shape::line(pts, Stroke::new(1.3, color)));
+    }
+}
+
+/// A coffee cup; full and steaming when `on` (caffeinated).
+pub fn draw_cup(painter: &Painter, r: Rect, p: &Palette, on: bool) {
+    let color = if on { ink(p) } else { shade(p, p.panel_background, 1.6) };
+    let s = Stroke::new(1.2, color);
+    let cup = Rect::from_min_size(pos2(r.left() + 1.5, r.top() + 6.5), vec2(9.0, 8.0));
+    if on {
+        let coffee = Rect::from_min_max(pos2(cup.left(), cup.top() + 1.5), cup.max);
+        painter.rect_filled(coffee, egui::CornerRadius { nw: 0, ne: 0, sw: 3, se: 3 }, Color32::from_rgb(130, 82, 45));
+    }
+    painter.rect_stroke(cup, egui::CornerRadius { nw: 0, ne: 0, sw: 3, se: 3 }, s, egui::StrokeKind::Middle);
+    // The handle.
+    let c0 = pos2(cup.right() + 0.5, cup.top() + 3.5);
+    let handle: Vec<_> = (0..=8)
+        .map(|k| {
+            let a = -std::f32::consts::FRAC_PI_2 + std::f32::consts::PI * k as f32 / 8.0;
+            c0 + vec2(a.cos() * 2.8, a.sin() * 2.3)
+        })
+        .collect();
+    painter.add(Shape::line(handle, s));
+    if on {
+        for dx in [3.5, 6.5] {
+            let x = cup.left() + dx;
+            let steam: Vec<_> = (0..=6)
+                .map(|k| {
+                    let t = k as f32 / 6.0;
+                    pos2(x + (t * std::f32::consts::TAU).sin() * 0.9, cup.top() - 1.5 - t * 4.5)
+                })
+                .collect();
+            painter.add(Shape::line(steam, Stroke::new(1.0, color)));
+        }
     }
 }

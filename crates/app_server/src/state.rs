@@ -60,6 +60,7 @@ use smithay::{
             BufferConstraints, Frame, ImageCopyCaptureHandler, ImageCopyCaptureState, Session, SessionRef,
         },
         input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface},
+        idle_inhibit::{IdleInhibitHandler, IdleInhibitManagerState},
         keyboard_shortcuts_inhibit::{
             KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState, KeyboardShortcutsInhibitor,
         },
@@ -173,6 +174,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub suppressed_keys: Vec<Keysym>,
     /// ⌘ and friends (see `keymap`).
     pub keymap: crate::keymap::Keymap,
+    /// Idle, caffeinated mode, brightness (see `power`).
+    pub power: crate::power::Power,
     /// Twitcher, while ⌘Tab / ⌘\` is held.
     pub twitch: Option<crate::desktop::Twitch>,
     pub twitcher: crate::twitcher::Overlay,
@@ -368,6 +371,16 @@ impl<BackendData: Backend> InputMethodHandler for AnvilState<BackendData> {
             .elements()
             .find_map(|window| (window.wl_surface().as_deref() == Some(parent)).then(|| window.geometry()))
             .unwrap_or_default()
+    }
+}
+
+impl<BackendData: Backend> IdleInhibitHandler for AnvilState<BackendData> {
+    fn inhibit(&mut self, surface: WlSurface) {
+        self.idle_inhibit(surface, true);
+    }
+
+    fn uninhibit(&mut self, surface: WlSurface) {
+        self.idle_inhibit(surface, false);
     }
 }
 
@@ -788,6 +801,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             .expect("Failed to initialize the keyboard");
 
         let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
+        IdleInhibitManagerState::new::<Self>(&dh);
 
         #[cfg(feature = "xwayland")]
         let xwayland_shell_state = xwayland_shell::XWaylandShellState::new::<Self>(&dh.clone());
@@ -828,6 +842,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             dnd_icon: None,
             suppressed_keys: Vec::new(),
             keymap: Default::default(),
+            power: crate::power::Power::new(BackendData::IS_SESSION),
             twitch: None,
             twitcher: Default::default(),
             cursor_status: CursorImageStatus::default_named(),
@@ -871,6 +886,10 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 smithay::reexports::calloop::timer::TimeoutAction::ToDuration(std::time::Duration::from_secs(30))
             },
         );
+        let _ = state.handle.insert_source(smithay::reexports::calloop::timer::Timer::from_duration(crate::power::TICK), |_, _, state| {
+            state.power_tick();
+            smithay::reexports::calloop::timer::TimeoutAction::ToDuration(crate::power::TICK)
+        });
         crate::text::warm_up();
         state
     }

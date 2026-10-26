@@ -11,6 +11,12 @@ as they land (with the commit), add new ones as they come up.
 - ~~Preferences app~~: launcher, Appearance, Backgrounds, Display, Keyboard
   (incl. the ⌘ / Caps Lock / tap-⌘ toggles), Touchpad, Workspaces, About;
   `Cx::activate` over xdg-activation.
+- ~~Power management and caffeinated mode~~: app_server turns the display
+  off and sleeps when idle (Preferences ▸ Power), honours zwp_idle_inhibit,
+  handles the brightness and volume keys; caffeinated mode from the Deskbar
+  cup or Preferences holds a logind inhibitor. Display ▸ Brightness. Still
+  to do: an on-screen level indicator for the brightness / volume keys,
+  keyboard backlight, real DPMS off instead of backlight 0.
 - ~~Preferences ▸ Sound~~: output/input device, level, mute, live from the
   sound server (`tabula_system::audio::{devices, watch_devices, set_*}`).
 
@@ -33,8 +39,7 @@ as they land (with the commit), add new ones as they come up.
 
 - Terminal: find in scrollback; release-build memory check; colour emoji.
 - Activity Monitor.
-- Preferences, remaining panels: Network, Bluetooth, Power
-  (with caffeinated mode), Date & Time (24-hour clock for Deskbar), Touch
+- Preferences, remaining panels: Network, Bluetooth, Date & Time (24-hour clock for Deskbar), Touch
   ID, Screen Saver; Restart Tabula; a Choose… file panel for the
   wallpaper; Display mode switching (app_server ignores `mode` in
   ConfigureOutput so far) and drag-to-arrange.

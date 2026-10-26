@@ -290,3 +290,20 @@ launcher lists them. The panel list Deskbar shows is
   only when it would change something: implement `Panel::reset`.
 * New panel: add it to `Panel` (arg, title, icon, size, reset), write the
   module, add it to `PREFERENCE_PANELS`, journal it light and dark.
+
+## Power (crates/app_server/src/power.rs)
+
+app_server owns idleness: any input (or a synthetic event) is activity; a
+5 s tick turns the displays off (`settings.power.display_off_minutes`) and
+then asks logind to suspend (`sleep_minutes`). Caffeinated mode
+(`Request::SetCaffeinated`, the Deskbar cup) and apps holding a
+zwp_idle_inhibit inhibitor count as activity. `Request::PowerStatus` and
+`Event::PowerChanged` report it all, with the built-in display's brightness
+(`Request::SetBrightness`, perceptual 0–1). Brightness and volume keys are
+taken by app_server.
+
+Hardware is touched only when app_server is the session
+(`Backend::IS_SESSION`), from a worker thread: the backlight through
+logind `SetBrightness` (no root needed), the inhibitor, suspend, the sound
+server. Headless sessions simulate a backlight at 0.75 and only log
+"would sleep", so tests can drive all of it safely.

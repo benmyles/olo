@@ -142,6 +142,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// A key from a device (or a test): map it (⌘, Caps Lock, …), act on
     /// app_server's own chords and send the rest to the focused client.
     fn physical_key(&mut self, key: u32, pressed: bool, time: InputTime) -> KeyAction {
+        if self.media_key(key, pressed) {
+            return KeyAction::None;
+        }
         let opts = crate::keymap::Options::from(&self.settings.keyboard);
         let terminal = self.focused_window().is_some_and(|w| {
             let id = w.app_id();
@@ -700,6 +703,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 #[cfg(feature = "winit")]
 impl<BackendData: Backend> AnvilState<BackendData> {
     pub fn process_input_event_windowed<B: InputBackend>(&mut self, event: InputEvent<B>, output_name: &str) {
+        self.power_activity();
         match event {
             InputEvent::Keyboard { event } => match self.keyboard_key_to_action::<B>(event) {
                 KeyAction::ScaleUp => {
@@ -833,6 +837,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// Input injected over IPC by UI tests.
     pub fn synthetic_input(&mut self, event: tabula_protocol::SyntheticEvent) {
         use tabula_protocol::SyntheticEvent as S;
+        self.power_activity();
         let serial = SCOUNTER.next_serial();
         let time = InputTime::now();
         let pointer = self.pointer.clone();
@@ -890,6 +895,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 #[cfg(feature = "udev")]
 impl AnvilState<UdevData> {
     pub fn process_input_event<B: InputBackend>(&mut self, dh: &DisplayHandle, event: InputEvent<B>) {
+        if !matches!(event, InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. }) {
+            self.power_activity();
+        }
         match event {
             InputEvent::Keyboard { event, .. } => match self.keyboard_key_to_action::<B>(event) {
                 #[cfg(feature = "udev")]

@@ -16,6 +16,8 @@ use crate::Msg;
 enum Out {
     Settings(Box<Settings>),
     Output(String, OutputConfig),
+    Caffeinated(bool),
+    Brightness(f32),
 }
 
 pub struct Server {
@@ -33,7 +35,7 @@ impl Server {
                 while let Ok(mut out) = rx.recv() {
                     // Collapse queued settings into the newest.
                     while let Ok(next) = rx.try_recv() {
-                        if let (Out::Settings(_), Out::Settings(_)) = (&out, &next) {
+                        if matches!((&out, &next), (Out::Settings(_), Out::Settings(_)) | (Out::Brightness(_), Out::Brightness(_))) {
                             out = next;
                         } else {
                             send(&mut client, out);
@@ -54,12 +56,22 @@ impl Server {
     pub fn configure_output(&self, name: &str, config: OutputConfig) {
         let _ = self.tx.send(Out::Output(name.to_owned(), config));
     }
+
+    pub fn set_caffeinated(&self, on: bool) {
+        let _ = self.tx.send(Out::Caffeinated(on));
+    }
+
+    pub fn set_brightness(&self, level: f32) {
+        let _ = self.tx.send(Out::Brightness(level));
+    }
 }
 
 fn send(client: &mut Option<Client>, out: Out) {
     let req = match out {
         Out::Settings(settings) => Request::SetSettings { settings: *settings },
         Out::Output(name, config) => Request::ConfigureOutput { name, config },
+        Out::Caffeinated(on) => Request::SetCaffeinated { on },
+        Out::Brightness(level) => Request::SetBrightness { level },
     };
     for _ in 0..2 {
         if client.is_none() {
@@ -90,11 +102,15 @@ fn watch(proxy: Proxy) {
                     if let Ok(Reply::Outputs { outputs }) = c.request(&Request::Outputs) {
                         proxy.send(Msg::Outputs(outputs));
                     }
+                    if let Ok(Reply::Power { status }) = c.request(&Request::PowerStatus) {
+                        proxy.send(Msg::Power(status));
+                    }
                     if let Ok(events) = c.into_events() {
                         for e in events.flatten() {
                             match e {
                                 Event::SettingsChanged { settings } => proxy.send(Msg::Settings(Box::new(settings))),
                                 Event::OutputsChanged { outputs } => proxy.send(Msg::Outputs(outputs)),
+                                Event::PowerChanged { status } => proxy.send(Msg::Power(status)),
                                 _ => {}
                             }
                         }

@@ -229,6 +229,15 @@ impl<B: Backend + 'static> AnvilState<B> {
                 None => not_found(),
             },
             Request::Outputs => Reply::Outputs { outputs: self.output_infos() },
+            Request::PowerStatus => Reply::Power { status: self.power.status() },
+            Request::SetCaffeinated { on } => {
+                self.set_caffeinated(on);
+                Reply::Ok
+            }
+            Request::SetBrightness { level } => {
+                self.set_brightness(level);
+                Reply::Ok
+            }
             Request::ConfigureOutput { name, config } => match self.configure_output(&name, config) {
                 Ok(()) => Reply::Ok,
                 Err(message) => Reply::Error { message },

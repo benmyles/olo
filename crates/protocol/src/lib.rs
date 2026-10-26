@@ -40,6 +40,13 @@ pub enum Request {
     SetSettings { settings: Settings },
     /// Save a PNG of everything on screen (all outputs, composited).
     Screenshot { path: String },
+    /// Idle state, caffeinated mode and the built-in display's brightness.
+    PowerStatus,
+    /// Keep the machine awake (no display sleep, system sleep, screen
+    /// saver or lock) until turned off. Not persisted.
+    SetCaffeinated { on: bool },
+    /// Built-in display brightness, 0.0–1.0 (perceptual).
+    SetBrightness { level: f32 },
     /// Inject input as if from a device (for automated UI tests).
     Synthetic { events: Vec<SyntheticEvent> },
     Quit,
@@ -68,6 +75,7 @@ pub enum Reply {
     Workspaces { current: u32, count: u32 },
     Outputs { outputs: Vec<OutputInfo> },
     Settings { settings: Settings },
+    Power { status: PowerStatus },
     Event { event: Event },
 }
 
@@ -79,6 +87,23 @@ pub enum Event {
     WorkspaceChanged { current: u32, count: u32 },
     SettingsChanged { settings: Settings },
     OutputsChanged { outputs: Vec<OutputInfo> },
+    /// Caffeinated, display asleep, brightness or app inhibitors changed.
+    PowerChanged { status: PowerStatus },
+}
+
+/// What app_server's power management is doing now.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct PowerStatus {
+    pub caffeinated: bool,
+    /// Seconds since the last input (or since something kept us awake).
+    pub idle_seconds: u64,
+    /// The displays are off for idleness.
+    pub display_asleep: bool,
+    /// Apps asking to stay awake (video players, presentations).
+    pub app_inhibitors: u32,
+    /// The built-in display's backlight, 0.0–1.0, if there is one.
+    pub brightness: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -137,6 +162,25 @@ pub struct Settings {
     pub tab_font_size: f32,
     pub appearance: Appearance,
     pub display: DisplaySettings,
+    pub power: PowerSettings,
+}
+
+/// When an idle machine turns off its displays and goes to sleep.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct PowerSettings {
+    /// Minutes of idleness before the displays turn off; 0 is never.
+    pub display_off_minutes: u32,
+    /// Minutes of idleness before the machine sleeps; 0 is never.
+    pub sleep_minutes: u32,
+    /// Only sleep for idleness on battery, not when plugged in.
+    pub sleep_on_battery_only: bool,
+}
+
+impl Default for PowerSettings {
+    fn default() -> Self {
+        PowerSettings { display_off_minutes: 10, sleep_minutes: 30, sleep_on_battery_only: false }
+    }
 }
 
 /// Screen scaling. Tabula is HiDPI-first: everything is laid out in logical
@@ -289,6 +333,7 @@ impl Default for Settings {
             tab_font_size: 12.0,
             appearance: Appearance::default(),
             display: DisplaySettings::default(),
+            power: PowerSettings::default(),
         }
     }
 }
