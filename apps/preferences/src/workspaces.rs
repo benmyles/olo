@@ -4,7 +4,7 @@
 use tabula_kit::{
     egui::{Color32, Sense, Ui, vec2},
     metrics as m, style,
-    widgets::{BBox, Button, MenuField, Slider, TextControl, color_well},
+    widgets::{BBox, Button, ColorControl, MenuField, Slider, TextControl, color_well},
 };
 use tabula_protocol::Settings;
 
@@ -63,23 +63,10 @@ pub fn backgrounds_ui(ui: &mut Ui, s: &mut Settings, st: &mut BackgroundsState) 
     BBox::new("Desktop Colour").show(ui, |ui| {
         ui.horizontal(|ui| {
             let [r, g, b] = s.workspace_colors[st.workspace];
-            color_well(ui, Color32::from_rgb(r, g, b), vec2(72.0, 72.0));
-            ui.vertical(|ui| {
-                let rgb = &mut s.workspace_colors[st.workspace];
-                for (i, (label, fill)) in [
-                    ("Red", Color32::from_rgb(200, 40, 40)),
-                    ("Green", Color32::from_rgb(40, 160, 40)),
-                    ("Blue", Color32::from_rgb(40, 70, 200)),
-                ]
-                .into_iter()
-                .enumerate()
-                {
-                    let mut v = rgb[i] as f32;
-                    let text = format!("{v:.0}");
-                    ui.add(Slider::new(&mut v, 0.0..=255.0).step(1.0).label(label).value_text(text).fill(fill));
-                    rgb[i] = v as u8;
-                }
-            });
+            let h = 3.0 * m::CONTROL_HEIGHT + 2.0 * m::TIGHT;
+            color_well(ui, Color32::from_rgb(r, g, b), vec2(h, h));
+            let ramps = (ui.available_width() - m::SPACING - 96.0).clamp(160.0, 260.0);
+            ui.add(ColorControl::new(("desktop-colour", st.workspace), &mut s.workspace_colors[st.workspace]).ramp_width(ramps));
         });
     });
 

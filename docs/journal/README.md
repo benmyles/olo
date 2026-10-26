@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### NetPositive: colour picker
+
+*09:04* — <input type=color> opens a Choose a Colour sheet with the kit ColorControl; OK sets the page's colour and fires its input and change events (Servo 0.7 fires none).
+
+![NetPositive: colour picker](2026-10-26/090431-netpositive-colour-picker.png)
+
+### Preferences: Backgrounds' BColorControl
+
+*09:04* — The desktop colour is now set with the kit's new ColorControl, BeOS's BColorControl: grey, red, green and blue ramps from black with draggable markers, and number fields.
+
+![Preferences: Backgrounds' BColorControl](2026-10-26/090421-preferences-backgrounds-bcolorcontrol.png)
+
 ### NetPositive: tab icons
 
 *08:56* — Tabs show the page's favicon (scaled on the CPU to a crisp 16-point icon), or a plain document for pages without one.

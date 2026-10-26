@@ -171,7 +171,9 @@ rect, |ui, viewport|)` for content you lay out yourself, `reveal`,
 `ScrollView::scroll_to(ctx, id, offset)`, `.auto_hide(true)` to drop the
 bar when content fits; `SCROLL_BAR` is its width), `ScrollBar`
 (`::vertical(id).show(ui, rect, &mut offset, content, view)`, a lone bar
-for content the kit doesn't scroll, such as a web page),
+for content the kit doesn't scroll, such as a web page), `ColorControl`
+(BColorControl: grey/red/green/blue ramps and number fields for an
+`&mut [u8; 3]`),
 `ColumnListView` + `Column` + `ListState` (sortable, resizable,
 multi-select, context clicks; `.reveal(row)` scrolls a row selected in code
 into view), `TabView`, `color_well`, `heading`,
@@ -861,6 +863,15 @@ Servo decodes a page's favicon and says when it changes;
 average going down, whole pixels going up, aspect kept) and the tab strip
 draws it at 16 points. A page that loads without one gets the generic
 `document` icon instead of the last page's.
+
+### Colours in NetPositive
+
+`<input type=color>` arrives as an `EmbedderControl::ColorPicker`;
+NetPositive opens a "Choose a Colour" sheet with a kit `ColorControl`.
+OK selects and submits the colour; Servo 0.7 then sets the value but
+fires no events, so a script waits for the value to land and dispatches
+`input` and `change` on the focused colour input. Cancel submits the
+colour the page had.
 
 ### Downloads in NetPositive
 

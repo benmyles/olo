@@ -29,8 +29,8 @@ use logins::{Answer, Offer, OfferKind, Purpose};
 use passkeys::{Ask, AskKind, PageRequest};
 use serde::{Deserialize, Serialize};
 use servo::{
-    AuthenticationRequest, ContextMenu, ContextMenuAction, ContextMenuItem, Cursor, EmbedderControl, FilePicker,
-    LoadStatus, SelectElement, SelectElementOptionOrOptgroup, SimpleDialog, Theme, WebView, WebViewBuilder, WebViewId,
+    AuthenticationRequest, ContextMenu, ContextMenuAction, ContextMenuItem, Cursor, ColorPicker, EmbedderControl, FilePicker,
+    LoadStatus, RgbColor, SelectElement, SelectElementOptionOrOptgroup, SimpleDialog, Theme, WebView, WebViewBuilder, WebViewId,
 };
 use tabula_keychain::{Request, Response};
 use tabula_kit::{
@@ -64,6 +64,9 @@ const FIND_H: f32 =
     2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + m::SPACING + 4.0 * m::MARK_ROW + 3.0 * m::TIGHT + m::SPACING + m::CONTROL_HEIGHT;
 /// How long the scroll bars trust themselves over the page's reports.
 const SCROLL_SETTLE: Duration = Duration::from_millis(300);
+/// The colour sheet's ColorControl, and how wide it is with its fields.
+const COLOR_RAMPS_H: f32 = 3.0 * m::CONTROL_HEIGHT + 2.0 * m::TIGHT;
+const COLOR_W: f32 = 260.0 + m::SPACING + 96.0;
 const HISTORY_MAX: usize = 1000;
 const ZOOMS: [f32; 13] = [0.3, 0.5, 0.67, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
 
@@ -220,6 +223,8 @@ enum Sheet {
     Dialog { owner: WindowId, dialog: SimpleDialog, text: String },
     Login { owner: WindowId, request: AuthenticationRequest, user: String, password: String, site: String },
     Files { picker: FilePicker, panel: FilePanel },
+    /// `<input type=color>`.
+    Color { owner: WindowId, picker: ColorPicker, rgb: [u8; 3] },
 }
 
 enum Win {
@@ -727,8 +732,11 @@ impl NetPositive {
                 self.windows.insert(id, Win::Sheet(Box::new(Sheet::Files { picker, panel })));
             }
             EmbedderControl::ColorPicker(picker) => {
-                // No colour panel yet: keep the page's colour.
-                picker.submit();
+                let rgb = picker.current_color().map(|c| [c.red, c.green, c.blue]).unwrap_or_default();
+                let w = (2.0 * m::WINDOW_INSET + COLOR_W).round() as u32;
+                let h = (2.0 * m::WINDOW_INSET + COLOR_RAMPS_H + m::SPACING + m::CONTROL_HEIGHT).round() as u32;
+                let id = cx.open_window(WindowOptions::new("Choose a Colour", w, h).min_size(w, h).max_size(w, h).parent(win));
+                self.windows.insert(id, Win::Sheet(Box::new(Sheet::Color { owner: win, picker, rgb })));
             }
             EmbedderControl::InputMethod(_) => {}
         }
@@ -1541,6 +1549,18 @@ impl NetPositive {
                 ui.put(r, TextControl::new(password).label("Password:").divider(divider).password(true));
                 choice_row(ui, column, &["Cancel", "Log In"]).map(|n| n == 1)
             }
+            Sheet::Color { rgb, .. } => {
+                let p = style::palette(ui.ctx());
+                let full = ui.max_rect();
+                ui.painter().rect_filled(full, 0.0, c(p.panel_background));
+                let inner = full.shrink(m::WINDOW_INSET);
+                let ramps = Rect::from_min_size(inner.min, vec2(inner.width(), COLOR_RAMPS_H));
+                ui.put(ramps, widgets::ColorControl::new("page-color", rgb));
+                let row = Rect::from_min_max(pos2(inner.left(), inner.bottom() - m::CONTROL_HEIGHT), inner.max);
+                let well = Rect::from_min_size(row.min, vec2(2.0 * m::CONTROL_HEIGHT, m::CONTROL_HEIGHT));
+                ui.put(well, |ui: &mut egui::Ui| widgets::color_well(ui, egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]), well.size()));
+                choice_row(ui, row, &["Cancel", "OK"]).map(|n| n == 1)
+            }
             Sheet::Files { panel, .. } => match panel.ui(ui) {
                 Some(PanelResult::Chosen(path)) => {
                     if let Sheet::Files { picker, .. } = &mut **sheet {
@@ -1572,13 +1592,36 @@ impl NetPositive {
             Sheet::Files { picker, .. } => {
                 if ok { picker.submit() } else { picker.dismiss() }
             }
+            Sheet::Color { owner, mut picker, rgb: [red, green, blue] } => {
+                if ok {
+                    picker.select(Some(RgbColor { red, green, blue }));
+                }
+                picker.submit();
+                // Servo 0.7 sets the value but fires no events, so pages
+                // never hear of it: fire them once the value has landed.
+                if ok && let Some(view) = self.browser(owner).and_then(|b| b.view()) {
+                    let script = format!(
+                        r#"(function(want, tries) {{
+  var e = document.activeElement;
+  if (!e || e.type !== 'color') return;
+  (function wait() {{
+    if (e.value === want) {{
+      e.dispatchEvent(new Event('input', {{bubbles: true}}));
+      e.dispatchEvent(new Event('change', {{bubbles: true}}));
+    }} else if (tries-- > 0) setTimeout(wait, 20);
+  }})();
+}})('#{red:02x}{green:02x}{blue:02x}', 50)"#
+                    );
+                    view.evaluate_javascript(script, |_| {});
+                }
+            }
         }
     }
 }
 
 fn sheet_owner(s: &Sheet) -> Option<WindowId> {
     match s {
-        Sheet::Dialog { owner, .. } | Sheet::Login { owner, .. } => Some(*owner),
+        Sheet::Dialog { owner, .. } | Sheet::Login { owner, .. } | Sheet::Color { owner, .. } => Some(*owner),
         Sheet::Files { .. } => None,
     }
 }

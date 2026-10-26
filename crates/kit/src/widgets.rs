@@ -1665,6 +1665,103 @@ pub fn button_row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     .inner
 }
 
+/// BColorControl: grey, red, green and blue ramps from black, each with a
+/// marker you click or drag (grey sets all three), and Red/Green/Blue
+/// number fields beside them. Changes `rgb` and marks the response changed.
+pub struct ColorControl<'a> {
+    id: Id,
+    rgb: &'a mut [u8; 3],
+    width: f32,
+}
+
+impl<'a> ColorControl<'a> {
+    pub fn new(id: impl std::hash::Hash + std::fmt::Debug, rgb: &'a mut [u8; 3]) -> Self {
+        ColorControl { id: Id::unique(id), rgb, width: 256.0 + 4.0 }
+    }
+    /// Width of the ramps (the fields come after).
+    pub fn ramp_width(mut self, w: f32) -> Self {
+        self.width = w;
+        self
+    }
+}
+
+/// Width of a ColorControl's number fields with their labels.
+const COLOR_FIELD_W: f32 = 96.0;
+
+impl Widget for ColorControl<'_> {
+    fn ui(self, ui: &mut Ui) -> Response {
+        let p = style::palette(ui.ctx());
+        let height = 3.0 * m::CONTROL_HEIGHT + 2.0 * m::TIGHT;
+        let size = vec2(self.width + m::SPACING + COLOR_FIELD_W, height);
+        let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+        let ramps = Rect::from_min_size(rect.min, vec2(self.width, height));
+        let mut response = ui.interact(ramps, self.id, Sense::click_and_drag());
+        let inner = ramps.shrink(2.0);
+        let row = (inner.height() / 4.0).floor();
+        let lanes: [Rect; 4] = std::array::from_fn(|i| {
+            let top = inner.top() + i as f32 * row;
+            let bottom = if i == 3 { inner.bottom() } else { top + row };
+            Rect::from_min_max(pos2(inner.left(), top), pos2(inner.right(), bottom))
+        });
+        let value_at = |x: f32| (((x - inner.left()) / (inner.width() - 1.0)).clamp(0.0, 1.0) * 255.0).round() as u8;
+        let mut rgb = *self.rgb;
+        // The lane pressed in keeps the drag, wherever it wanders.
+        if (response.is_pointer_button_down_on() || response.clicked())
+            && let (Some(pos), Some(origin)) = (response.interact_pointer_pos(), ui.input(|i| i.pointer.press_origin()))
+        {
+            let v = value_at(pos.x);
+            match lanes.iter().position(|r| origin.y < r.bottom()).unwrap_or(3) {
+                0 => rgb = [v; 3],
+                l => rgb[l - 1] = v,
+            }
+        }
+
+        // The number fields; their text follows the colour unless being typed in.
+        let field_x = ramps.right() + m::SPACING;
+        for (i, label) in ["Red:", "Green:", "Blue:"].into_iter().enumerate() {
+            let text_id = self.id.with(("text", i));
+            let mut text = ui.ctx().data(|d| d.get_temp::<String>(text_id)).unwrap_or_default();
+            let r = Rect::from_min_size(pos2(field_x, rect.top() + i as f32 * (m::CONTROL_HEIGHT + m::TIGHT)), vec2(COLOR_FIELD_W, m::CONTROL_HEIGHT));
+            let field = ui.place(r, TextControl::new(&mut text).label(label).divider(COLOR_FIELD_W - 40.0).width(COLOR_FIELD_W));
+            if field.has_focus() {
+                if field.changed()
+                    && let Ok(v) = text.trim().parse::<u32>()
+                {
+                    rgb[i] = v.min(255) as u8;
+                }
+            } else {
+                text = rgb[i].to_string();
+            }
+            ui.ctx().data_mut(|d| d.insert_temp(text_id, text));
+        }
+
+        if rgb != *self.rgb {
+            *self.rgb = rgb;
+            response.mark_changed();
+        }
+        let painter = ui.painter();
+        let ends = [Color32::WHITE, Color32::from_rgb(255, 0, 0), Color32::from_rgb(0, 255, 0), Color32::from_rgb(0, 0, 255)];
+        for (i, lane) in lanes.iter().enumerate() {
+            let fill = if ui.is_enabled() { ends[i] } else { ends[i].gamma_multiply(0.4) };
+            hgradient(painter, *lane, Color32::BLACK, fill);
+            // The marker: where the value is (grey only when it is one).
+            let v = match i {
+                0 if rgb[0] == rgb[1] && rgb[1] == rgb[2] => Some(rgb[0]),
+                0 => None,
+                l => Some(rgb[l - 1]),
+            };
+            if let Some(v) = v {
+                let x = (lane.left() + v as f32 / 255.0 * (lane.width() - 1.0)).floor();
+                let mark = Rect::from_min_max(pos2(x - 1.0, lane.top()), pos2(x + 2.0, lane.bottom()));
+                painter.rect_filled(mark, 0.0, Color32::WHITE);
+                vline(painter, x, lane.top(), lane.bottom(), Color32::BLACK);
+            }
+        }
+        style::sunken(painter, ramps, &p, response.has_focus());
+        response
+    }
+}
+
 /// A colour swatch well (BColorControl's sample); clicking returns true.
 pub fn color_well(ui: &mut Ui, color: Color32, size: Vec2) -> Response {
     let p = style::palette(ui.ctx());

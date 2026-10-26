@@ -622,5 +622,17 @@
   "title": "NetPositive: tab icons",
   "caption": "Tabs show the page's favicon (scaled on the CPU to a crisp 16-point icon), or a plain document for pages without one.",
   "image": "2026-10-26/085614-netpositive-tab-icons.png"
+ },
+ {
+  "time": "2026-10-26T09:04:21",
+  "title": "Preferences: Backgrounds' BColorControl",
+  "caption": "The desktop colour is now set with the kit's new ColorControl, BeOS's BColorControl: grey, red, green and blue ramps from black with draggable markers, and number fields.",
+  "image": "2026-10-26/090421-preferences-backgrounds-bcolorcontrol.png"
+ },
+ {
+  "time": "2026-10-26T09:04:31",
+  "title": "NetPositive: colour picker",
+  "caption": "<input type=color> opens a Choose a Colour sheet with the kit ColorControl; OK sets the page's colour and fires its input and change events (Servo 0.7 fires none).",
+  "image": "2026-10-26/090431-netpositive-colour-picker.png"
  }
 ]
