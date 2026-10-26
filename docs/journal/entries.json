@@ -46,5 +46,17 @@
   "title": "Tracker: editing a name in place",
   "caption": "BeOS-style inline rename replaces the Rename dialog: the field sits on the label's own baseline and lines up with the selection highlight; the name without its extension starts selected.",
   "image": "2026-10-25/201411-tracker-editing-a-name-in-place.png"
+ },
+ {
+  "time": "2026-10-25T20:20:47",
+  "title": "Tracker: column view",
+  "caption": "macOS-style column view (\u23184): one column per folder level, auto-hiding scroll bars, and a preview pane with an async thumbnail and file facts.",
+  "image": "2026-10-25/202047-tracker-column-view.png"
+ },
+ {
+  "time": "2026-10-25T20:20:49",
+  "title": "Tracker: column view, dark",
+  "caption": "",
+  "image": "2026-10-25/202049-tracker-column-view-dark.png"
  }
 ]

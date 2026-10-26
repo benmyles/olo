@@ -10,8 +10,31 @@ mkdir -p "$F"/{Desktop/Projects,Documents/Reports,Pictures,Music,Downloads,src/t
 cd "$F"
 echo hello > notes.txt
 printf '# readme\n' > README.md
-cp "$ROOT/data/icons/256/folder.png" Pictures/holiday.png
-cp "$ROOT/data/icons/256/home.png" Pictures/house.png
+# Two synthetic photos (a sunset over the sea, a house on a hill).
+python3 - <<'PY'
+from PIL import Image, ImageDraw
+def sky(w, h, top, bottom):
+    im = Image.new("RGB", (w, h))
+    d = ImageDraw.Draw(im)
+    for y in range(h):
+        t = y / h
+        d.line([(0, y), (w, y)], fill=tuple(int(a + (b - a) * t) for a, b in zip(top, bottom)))
+    return im, d
+im, d = sky(1200, 800, (40, 60, 140), (250, 160, 90))
+d.ellipse((520, 380, 680, 540), fill=(255, 220, 140))
+d.rectangle((0, 500, 1200, 800), fill=(30, 70, 120))
+for y in range(510, 800, 18):
+    d.line([(560 - (y - 500), y), (640 + (y - 500), y)], fill=(250, 190, 120), width=3)
+im.save("Pictures/holiday.png")
+im, d = sky(900, 1200, (120, 180, 235), (210, 235, 250))
+d.ellipse((-300, 800, 1200, 1700), fill=(90, 150, 70))
+d.rectangle((300, 620, 600, 880), fill=(235, 225, 200))
+d.polygon([(260, 630), (450, 470), (640, 630)], fill=(170, 60, 50))
+d.rectangle((420, 760, 480, 880), fill=(90, 60, 40))
+d.rectangle((330, 680, 390, 730), fill=(150, 200, 230))
+d.rectangle((510, 680, 570, 730), fill=(150, 200, 230))
+im.save("Pictures/house.jpg", quality=90)
+PY
 head -c 300000 /dev/urandom > Downloads/archive.tar.gz
 printf '#!/bin/sh\necho hi\n' > run.sh && chmod +x run.sh
 echo x > "Documents/Quarterly report with a very long name.txt"

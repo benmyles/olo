@@ -199,3 +199,77 @@ pub fn icon_for_app(app_id: &str) -> Option<String> {
     let file = crate::desktop_entry::find(app_id)?;
     file.icon
 }
+
+// ---- thumbnails ----------------------------------------------------------
+
+enum Thumb {
+    Loading,
+    Ready(Option<TextureHandle>),
+}
+
+type ThumbKey = (std::path::PathBuf, u32, Option<std::time::SystemTime>);
+type ThumbCache = Arc<std::sync::Mutex<HashMap<ThumbKey, Thumb>>>;
+
+/// A thumbnail of the image at `path` no larger than `logical` points on
+/// a side (aspect kept), decoded and scaled on a background thread. None
+/// while it loads (a repaint follows) or if it isn't a readable image.
+pub fn thumbnail(ctx: &Context, path: &Path, logical: f32) -> Option<TextureHandle> {
+    let px = (logical * ctx.pixels_per_point()).round().max(1.0) as u32;
+    let mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    let key: ThumbKey = (path.to_owned(), px, mtime);
+    let cache_id = egui::Id::unique("tabula-thumb-cache");
+    let cache = ctx.data_mut(|d| d.get_temp_mut_or_default::<ThumbCache>(cache_id).clone());
+    let mut map = cache.lock().unwrap();
+    match map.get(&key) {
+        Some(Thumb::Ready(t)) => return t.clone(),
+        Some(Thumb::Loading) => return None,
+        None => {}
+    }
+    map.insert(key.clone(), Thumb::Loading);
+    drop(map);
+    let (ctx2, cache2) = (ctx.clone(), cache.clone());
+    let _ = thumb_worker().send(Box::new(move || {
+        let tex = image::open(&key.0).ok().map(|img| {
+            let img = img.thumbnail(px, px).to_rgba8();
+            let size = [img.width() as usize, img.height() as usize];
+            let ci = ColorImage::from_rgba_unmultiplied(size, img.as_raw());
+            ctx2.load_texture(format!("thumb:{}@{px}", key.0.display()), ci, TextureOptions::LINEAR)
+        });
+        cache2.lock().unwrap().insert(key, Thumb::Ready(tex));
+        ctx2.request_repaint();
+    }));
+    None
+}
+
+/// One background thread decodes thumbnails, in request order.
+fn thumb_worker() -> std::sync::mpsc::Sender<Box<dyn FnOnce() + Send>> {
+    static TX: std::sync::OnceLock<std::sync::Mutex<std::sync::mpsc::Sender<Box<dyn FnOnce() + Send>>>> =
+        std::sync::OnceLock::new();
+    TX.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<Box<dyn FnOnce() + Send>>();
+        std::thread::Builder::new()
+            .name("thumbnails".into())
+            .spawn(move || {
+                for job in rx {
+                    job();
+                }
+            })
+            .expect("thumbnail thread");
+        std::sync::Mutex::new(tx)
+    })
+    .lock()
+    .unwrap()
+    .clone()
+}
+
+/// Where to draw `tex` inside `bounds`: centred, aspect kept, scaled down
+/// to fit but never up past one texel per device pixel (no blur), and
+/// snapped to device pixels.
+pub fn fit(ctx: &Context, tex: &TextureHandle, bounds: Rect) -> Rect {
+    let ppp = ctx.pixels_per_point();
+    let native = tex.size_vec2() / ppp;
+    let k = (bounds.width() / native.x).min(bounds.height() / native.y).min(1.0);
+    let r = Rect::from_center_size(bounds.center(), native * k);
+    let snap = |v: f32| (v * ppp).round() / ppp;
+    Rect::from_min_max(pos2(snap(r.min.x), snap(r.min.y)), pos2(snap(r.max.x), snap(r.max.y)))
+}

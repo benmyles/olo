@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-25
 
+### Tracker: column view, dark
+
+*20:20*
+
+![Tracker: column view, dark](2026-10-25/202049-tracker-column-view-dark.png)
+
+### Tracker: column view
+
+*20:20* — macOS-style column view (⌘4): one column per folder level, auto-hiding scroll bars, and a preview pane with an async thumbnail and file facts.
+
+![Tracker: column view](2026-10-25/202047-tracker-column-view.png)
+
 ### Tracker: editing a name in place
 
 *20:14* — BeOS-style inline rename replaces the Rename dialog: the field sits on the label's own baseline and lines up with the selection highlight; the name without its extension starts selected.

@@ -67,11 +67,16 @@ fn main() {
 `TextControl` (`.label("Name:").divider(x)`), `TextView`, `Slider`
 (`.label().value_text().limits()`), `MenuField` (pop-up choice), `BBox`
 (etched group box with label), `separator`, `StatusBar` (progress),
-`ScrollView` (`show`, `show_rows` for virtualised content, `reveal`),
+`ScrollView` (`show`, `show_rows` for virtualised content, `reveal`,
+`.auto_hide(true)` to drop the bar when content fits),
 `ColumnListView` + `Column` + `ListState` (sortable, resizable,
 multi-select, context clicks), `TabView`, `color_well`, `heading`,
 `form_label`, `window_content`, `button_row`, `context_menu`,
-`popup_menu_at` / `popup_result`.
+`popup_menu_at` / `popup_result`, `InlineEdit` (Tracker-style rename in
+place: returns `Editing` / `Commit` / `Cancel`; pads by `INLINE_PAD`, which
+matches `style::text_highlight`), `alert(ui, icon, message, &buttons)` (a
+BAlert; size the window with `alert_height(message)` × `ALERT_WIDTH`; the
+last button is the default, Escape picks the first).
 
 Menus: `Menu::new("File").item(label, command, Some(Key::N))`,
 `.item_shift(…)`, `.separator()`, `.submenu(Menu)`, `.checked(bool)`,
@@ -93,14 +98,20 @@ Menus: `Menu::new("File").item(label, command, Some(Key::N))`,
 3. **Text**: draw single lines with `style::label(painter, x, center_y,
    align, text, font, color)`; it centres capitals optically and snaps to
    device pixels. Fonts: `style::plain_font()`, `style::bold_font()`,
-   `style::mono_font(size)`.
+   `style::italic_font()`, `style::mono_font(size)`. Highlight selected
+   text with `style::text_highlight(galley, origin, size, pad)` (cap height
+   to baseline, so every label's highlight is the same height); drag-select
+   bands with `style::selection_band`.
 4. **Lines are one logical pixel** (`style::hline`, `vline`, `frame_rect`,
    `bevel`, `sunken`, `raised`). Snap rects to the pixel grid
    (`style::snap`). No blurry half-pixel lines.
 5. **Icons**: `tabula_kit::icons::paint(painter, rect, "name")` with names
    from `data/icons/manifest.txt` (or freedesktop names / absolute paths).
    Sizes 16 (lists, Deskbar), 32 (Tracker list), 48–64 (Tracker icon view),
-   128 (About boxes). Need a new one? Follow **[ICONS.md](ICONS.md)**: the
+   128 (About boxes). Image previews: `icons::thumbnail(ctx, path, size)`
+   decodes off-thread and returns `None` until ready (it repaints when
+   done); place it with `icons::fit(ctx, &tex, bounds)` so it is never
+   upscaled or blurred. Need a new one? Follow **[ICONS.md](ICONS.md)**: the
    style guide, subject template and required generation workflow
    (sunburst at max quality, against the reference set, candidates
    reviewed on a contact sheet).

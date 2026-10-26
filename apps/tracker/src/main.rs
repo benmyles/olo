@@ -1,6 +1,7 @@
 //! Tracker: the desktop (icons for volumes, Home, Trash and ~/Desktop) and
 //! spatial folder windows, one per folder, as on BeOS.
 
+mod columns;
 mod desktop;
 mod fs;
 mod view;
@@ -29,6 +30,35 @@ pub enum ViewMode {
     Icons,
     MiniIcons,
     List,
+    /// macOS-style columns: each selected folder opens in the next column.
+    Columns,
+}
+
+/// A column to the right of the root in column view.
+pub struct Pane {
+    pub path: PathBuf,
+    pub entries: Vec<Entry>,
+    pub list: ListState,
+    pub stamp: Option<SystemTime>,
+}
+
+impl Pane {
+    fn new(path: PathBuf, hidden: bool, sort: (SortKey, bool)) -> Self {
+        let mut p = Pane { path, entries: Vec::new(), list: ListState::default(), stamp: None };
+        p.reload(hidden, sort);
+        p
+    }
+
+    /// Relist; false if the folder is gone.
+    fn reload(&mut self, hidden: bool, sort: (SortKey, bool)) -> bool {
+        let selected: Vec<PathBuf> = self.list.selected.iter().filter_map(|&i| self.entries.get(i)).map(|e| e.path.clone()).collect();
+        let Ok(mut v) = fs::list(&self.path, hidden) else { return false };
+        sort_entries(&mut v, sort.0, sort.1);
+        self.entries = v;
+        self.stamp = std::fs::metadata(&self.path).and_then(|m| m.modified()).ok();
+        self.list.selected = self.entries.iter().enumerate().filter(|(_, e)| selected.contains(&e.path)).map(|(i, _)| i).collect();
+        true
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +87,13 @@ pub struct FolderWin {
     /// A click on an already-selected item's name starts editing it after
     /// a moment, unless a double-click (open) follows.
     pub pending_edit: Option<(PathBuf, Instant)>,
+    /// Column view: the columns after the root, which column has the
+    /// keyboard (0 is the root), and how far the columns are scrolled.
+    pub panes: Vec<Pane>,
+    pub active: usize,
+    pub col_scroll: f32,
+    /// Whether hidden files are listed (Tracker-wide; kept for new columns).
+    pub hidden: bool,
 }
 
 struct InfoWin {
@@ -135,13 +172,24 @@ impl FolderWin {
             typed: (String::new(), Instant::now()),
             editing: None,
             pending_edit: None,
+            panes: Vec::new(),
+            active: 0,
+            col_scroll: 0.0,
+            hidden,
         };
         w.reload(hidden);
         w
     }
 
     pub fn reload(&mut self, hidden: bool) {
-        let selected: Vec<PathBuf> = self.selected_paths();
+        self.hidden = hidden;
+        let selected: Vec<PathBuf> =
+            self.list.selected.iter().filter_map(|&i| self.entries.get(i)).map(|e| e.path.clone()).collect();
+        let sort = self.sort;
+        if let Some(gone) = self.panes.iter_mut().position(|p| !p.reload(hidden, sort)) {
+            self.panes.truncate(gone);
+            self.active = self.active.min(self.panes.len());
+        }
         match fs::list(&self.path, hidden) {
             Ok(mut v) => {
                 sort_entries(&mut v, self.sort.0, self.sort.1);
@@ -158,8 +206,49 @@ impl FolderWin {
             self.entries.iter().enumerate().filter(|(_, e)| selected.contains(&e.path)).map(|(i, _)| i).collect();
     }
 
+    /// The folder commands act on: the window's, or in column view the
+    /// active column's.
+    pub fn current_dir(&self) -> PathBuf {
+        match self.active_pane() {
+            Some(p) => p.path.clone(),
+            None => self.path.clone(),
+        }
+    }
+
+    fn active_pane(&self) -> Option<&Pane> {
+        if self.view == ViewMode::Columns && self.active > 0 { self.panes.get(self.active - 1) } else { None }
+    }
+
+    /// The entries and selection commands act on (see `current_dir`).
+    pub fn current(&self) -> (&[Entry], &ListState) {
+        match self.active_pane() {
+            Some(p) => (&p.entries, &p.list),
+            None => (&self.entries, &self.list),
+        }
+    }
+
+    pub fn current_mut(&mut self) -> (&mut Vec<Entry>, &mut ListState) {
+        if self.view == ViewMode::Columns && self.active > 0 && self.active <= self.panes.len() {
+            let p = &mut self.panes[self.active - 1];
+            (&mut p.entries, &mut p.list)
+        } else {
+            (&mut self.entries, &mut self.list)
+        }
+    }
+
+    pub fn selected_entries(&self) -> Vec<Entry> {
+        let (entries, list) = self.current();
+        list.selected.iter().filter_map(|&i| entries.get(i)).cloned().collect()
+    }
+
     pub fn selected_paths(&self) -> Vec<PathBuf> {
-        self.list.selected.iter().filter_map(|&i| self.entries.get(i)).map(|e| e.path.clone()).collect()
+        self.selected_entries().into_iter().map(|e| e.path).collect()
+    }
+
+    /// Column view: show `dir` as the column after column `k`.
+    pub fn open_column(&mut self, k: usize, dir: PathBuf, hidden: bool) {
+        self.panes.truncate(k);
+        self.panes.push(Pane::new(dir, hidden, self.sort));
     }
 
     /// Start editing the name of `p` in place.
@@ -171,8 +260,9 @@ impl FolderWin {
     }
 
     fn select_path(&mut self, p: &Path) {
-        if let Some(i) = self.entries.iter().position(|e| e.path == p) {
-            self.list.select(i);
+        let (entries, list) = self.current_mut();
+        if let Some(i) = entries.iter().position(|e| e.path == p) {
+            list.select(i);
         }
     }
 }
@@ -295,12 +385,10 @@ impl Tracker {
         let hidden = self.hidden;
         let Some(Win::Folder(f)) = self.windows.get_mut(&win) else { return };
         let selected = f.selected_paths();
-        let dir = f.path.clone();
+        let dir = f.current_dir();
         match cmd {
             "open" => {
-                let entries: Vec<Entry> =
-                    f.list.selected.iter().filter_map(|&i| f.entries.get(i).cloned()).collect();
-                for e in entries {
+                for e in f.selected_entries() {
                     self.open_entry(cx, &e);
                 }
             }
@@ -318,7 +406,7 @@ impl Tracker {
                 Err(e) => self.error(cx, format!("Couldn't create a folder: {e}")),
             },
             "info" => {
-                let entries: Vec<Entry> = f.list.selected.iter().filter_map(|&i| f.entries.get(i).cloned()).collect();
+                let entries = f.selected_entries();
                 if entries.is_empty() {
                     if let Some(e) = fs::entry(&dir) {
                         self.open_info(cx, e);
@@ -384,11 +472,21 @@ impl Tracker {
                     self.reload_all();
                 }
             }
-            "select-all" => f.list.selected = (0..f.entries.len()).collect(),
-            "invert" => f.list.selected = (0..f.entries.len()).filter(|i| !f.list.selected.contains(i)).collect(),
+            "select-all" => {
+                let (entries, list) = f.current_mut();
+                list.selected = (0..entries.len()).collect();
+            }
+            "invert" => {
+                let (entries, list) = f.current_mut();
+                list.selected = (0..entries.len()).filter(|i| !list.selected.contains(i)).collect();
+            }
             "view-icons" => f.view = ViewMode::Icons,
             "view-mini" => f.view = ViewMode::MiniIcons,
             "view-list" => f.view = ViewMode::List,
+            "view-columns" => {
+                f.view = ViewMode::Columns;
+                f.active = 0;
+            }
             "hidden" => {
                 self.hidden = !self.hidden;
                 self.reload_all();
@@ -423,8 +521,9 @@ impl Tracker {
     }
 
     fn folder_menus(&self, f: &FolderWin) -> Vec<Menu> {
-        let has_sel = !f.list.selected.is_empty();
-        let in_trash = f.path.starts_with(fs::trash_files());
+        let current = f.current().1;
+        let has_sel = !current.selected.is_empty();
+        let in_trash = f.current_dir().starts_with(fs::trash_files());
         let mut file = Menu::new("File")
             .item("Find…", "find", Some(Key::F))
             .item("New Folder", "new-folder", Some(Key::N))
@@ -435,7 +534,7 @@ impl Tracker {
             .enabled(f.path.parent().is_some())
             .item("Get Info", "info", Some(Key::I))
             .item("Edit Name", "rename", Some(Key::E))
-            .enabled(f.list.selected.len() == 1)
+            .enabled(current.selected.len() == 1)
             .item("Duplicate", "duplicate", Some(Key::D))
             .enabled(has_sel)
             .item("Create Link", "link", None)
@@ -465,6 +564,8 @@ impl Tracker {
             .checked(f.view == ViewMode::MiniIcons)
             .item("List View", "view-list", Some(Key::Num3))
             .checked(f.view == ViewMode::List)
+            .item("Column View", "view-columns", Some(Key::Num4))
+            .checked(f.view == ViewMode::Columns)
             .separator()
             .submenu(
                 Menu::new("Sort By")
@@ -497,7 +598,9 @@ impl Tracker {
         if f.checked.elapsed() >= Duration::from_secs(1) {
             f.checked = Instant::now();
             let stamp = std::fs::metadata(&f.path).and_then(|m| m.modified()).ok();
-            if stamp != f.stamp {
+            let panes_changed =
+                f.panes.iter().any(|p| std::fs::metadata(&p.path).and_then(|m| m.modified()).ok() != p.stamp);
+            if stamp != f.stamp || panes_changed {
                 f.reload(hidden);
             }
         }

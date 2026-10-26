@@ -54,6 +54,10 @@ pub struct ItemLayout {
 }
 
 impl ItemLayout {
+    /// A label with no icon (list rows), for in-place editing.
+    pub fn text_only(origin: Pos2, galley: std::sync::Arc<egui::Galley>) -> Self {
+        ItemLayout { icon: Rect::NOTHING, origin, galley }
+    }
     pub fn hit(&self) -> Rect {
         self.icon.union(self.highlight())
     }
@@ -193,9 +197,9 @@ fn name_cell_with(cell: &Cell, e: &Entry, text: bool) {
     }
 }
 
-fn item_menu(f: &FolderWin) -> Menu {
-    let one = f.list.selected.len() == 1;
-    let in_trash = f.path.starts_with(fs::trash_files());
+pub fn item_menu(f: &FolderWin) -> Menu {
+    let one = f.current().1.selected.len() == 1;
+    let in_trash = f.current_dir().starts_with(fs::trash_files());
     let mut menu = Menu::new("")
         .item("Open", "open", Some(Key::O))
         .item("Get Info", "info", Some(Key::I))
@@ -213,7 +217,7 @@ fn item_menu(f: &FolderWin) -> Menu {
     menu
 }
 
-fn background_menu(f: &FolderWin, can_paste: bool) -> Menu {
+pub fn background_menu(f: &FolderWin, can_paste: bool) -> Menu {
     Menu::new("")
         .item("New Folder", "new-folder", Some(Key::N))
         .item("Paste", "paste", Some(Key::V))
@@ -225,6 +229,8 @@ fn background_menu(f: &FolderWin, can_paste: bool) -> Menu {
         .checked(f.view == ViewMode::MiniIcons)
         .item("List View", "view-list", Some(Key::Num3))
         .checked(f.view == ViewMode::List)
+        .item("Column View", "view-columns", Some(Key::Num4))
+        .checked(f.view == ViewMode::Columns)
         .separator()
         .item("Get Info", "info", Some(Key::I))
         .item("Open Parent", "parent", Some(Key::ArrowUp))
@@ -238,8 +244,9 @@ fn count_bar(ui: &Ui, rect: Rect, f: &FolderWin, p: &Palette) {
     painter.rect_filled(rect, 0.0, c(p.panel_background));
     style::hline(painter, rect.left(), rect.right(), rect.top(), style::shade(p, p.panel_background, 1.3));
     style::hline(painter, rect.left(), rect.right(), rect.top() + 1.0, c(p.shine));
-    let n = f.entries.len();
-    let count = match (n, f.list.selected.len()) {
+    let (entries, list) = f.current();
+    let n = entries.len();
+    let count = match (n, list.selected.len()) {
         (1, 0) => "1 item".to_owned(),
         (n, 0) => format!("{n} items"),
         (n, s) => format!("{s} of {n} selected"),
@@ -247,7 +254,7 @@ fn count_bar(ui: &Ui, rect: Rect, f: &FolderWin, p: &Palette) {
     let small = FontId::proportional(style::SMALL_SIZE);
     let cy = rect.center().y + 1.0; // below the 2 px etched edge
     style::label(painter, rect.left() + m::SPACING, cy, Align::Min, &count, small.clone(), c(p.panel_text));
-    if let Some((free, _)) = fs::fs_space(&f.path) {
+    if let Some((free, _)) = fs::fs_space(&f.current_dir()) {
         let text = format!("{} free", fs::format_size(free));
         style::label(painter, rect.right() - m::SPACING, cy, Align::Max, &text, small, style::disabled_text(p));
     }
@@ -274,6 +281,7 @@ pub fn folder_view(ui: &mut Ui, f: &mut FolderWin) -> Vec<Action> {
         ViewMode::List => list_view(&mut body_ui, f, &mut actions),
         ViewMode::Icons => icon_view(&mut body_ui, id, f, Look::Icons, &mut actions),
         ViewMode::MiniIcons => icon_view(&mut body_ui, id, f, Look::Mini, &mut actions),
+        ViewMode::Columns => crate::columns::columns_view(&mut body_ui, id, f, &mut actions),
     }
     if let Some(cmd) = widgets::popup_result(ui.ctx(), id) {
         actions.push(Action::Command(cmd));

@@ -846,6 +846,7 @@ pub struct ScrollView {
     focused: bool,
     background: Option<tabula_theme::Rgba>,
     stick_to_bottom: bool,
+    auto_hide: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -866,6 +867,7 @@ impl ScrollView {
             focused: false,
             background: None,
             stick_to_bottom: false,
+            auto_hide: false,
         }
     }
     pub fn horizontal(mut self, on: bool) -> Self {
@@ -887,6 +889,12 @@ impl ScrollView {
     }
     pub fn background(mut self, rgba: tabula_theme::Rgba) -> Self {
         self.background = Some(rgba);
+        self
+    }
+    /// Show the vertical scroll bar only when the content overflows
+    /// (multi-column browsers, where bars on every column would be heavy).
+    pub fn auto_hide(mut self, on: bool) -> Self {
+        self.auto_hide = on;
         self
     }
     pub fn stick_to_bottom(mut self, on: bool) -> Self {
@@ -945,7 +953,13 @@ impl ScrollView {
         let b = if self.border { 2.0 } else { 0.0 };
         let inner = rect.shrink(b);
         let mut content = inner;
-        if self.vertical {
+        let size_id = self.id.with("content-size");
+        let mut vertical_bar = self.vertical;
+        if self.auto_hide {
+            let last = ui.ctx().data(|d| d.get_temp::<f32>(size_id)).unwrap_or(0.0);
+            vertical_bar &= last > inner.height() - if self.horizontal { SCROLL_BAR } else { 0.0 };
+        }
+        if vertical_bar {
             content.max.x -= SCROLL_BAR;
         }
         if self.horizontal {
@@ -971,6 +985,12 @@ impl ScrollView {
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(content).layout(egui::Layout::top_down(Align::Min)));
         child.set_clip_rect(content.intersect(ui.clip_rect()));
         let (state, full, _area_id) = body(area, &mut child);
+        if self.auto_hide {
+            ui.ctx().data_mut(|d| d.insert_temp(size_id, full.y));
+            if (full.y > content.height()) != vertical_bar {
+                ui.ctx().request_repaint();
+            }
+        }
         let mut offset = state.clamped_offset();
         ui.advance_cursor_after_rect(rect);
 
@@ -985,7 +1005,7 @@ impl ScrollView {
                 changed = true;
             }
         }
-        if self.vertical {
+        if vertical_bar {
             let bar = Rect::from_min_max(pos2(content.right(), inner.top()), pos2(inner.right(), content.bottom()));
             changed |= scroll_bar(ui, self.id.with("v"), bar, true, &mut offset.y, full.y, content.height(), &p);
         }
@@ -993,7 +1013,7 @@ impl ScrollView {
             let bar = Rect::from_min_max(pos2(inner.left(), content.bottom()), pos2(content.right(), inner.bottom()));
             changed |= scroll_bar(ui, self.id.with("h"), bar, false, &mut offset.x, full.x, content.width(), &p);
         }
-        if self.vertical && self.horizontal {
+        if vertical_bar && self.horizontal {
             let corner = Rect::from_min_max(content.max, inner.max);
             ui.painter().rect_filled(corner, 0.0, c(p.panel_background));
         }
