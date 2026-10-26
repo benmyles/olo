@@ -138,6 +138,9 @@ struct Session {
     upgrades: Option<upgrade::Watcher>,
     /// When keyd was last asked to leave our keys alone.
     keyd_at: Instant,
+    /// Our socket and lock files as made (device, inode): removed at the
+    /// end only while still ours, and made again if they vanish.
+    files: Vec<(PathBuf, Option<(u64, u64)>)>,
 }
 
 const RESUME_ENV: &str = "TABULA_SESSION_RESUME";
@@ -190,7 +193,9 @@ impl Session {
             real: false,
             upgrades: None,
             keyd_at: Instant::now(),
+            files: Vec::new(),
         };
+        s.own_files();
         s.start_server();
         // Only a real session owns the user's environment: a headless or
         // nested one (tests, development) must not point the user's portals
@@ -247,7 +252,9 @@ impl Session {
             real,
             upgrades: None,
             keyd_at: Instant::now(),
+            files: Vec::new(),
         };
+        s.own_files();
         s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
         if r.reloading {
             s.reload();
@@ -316,9 +323,63 @@ impl Session {
         }
     }
 
+    fn wayland_path(&self) -> PathBuf {
+        runtime_dir().join(&self.display)
+    }
+
+    fn own_files(&mut self) {
+        let lock = runtime_dir().join(format!("{}.lock", self.display));
+        self.files = [self.wayland_path(), lock, self.ipc_path.clone()].into_iter().map(|p| {
+            let id = identity(&p);
+            (p, id)
+        }).collect();
+    }
+
+    /// Make our socket files again if they've gone (something removed
+    /// them: the runtime directory emptied, or a careless program), so new
+    /// programs can reach us; app_server gets the new sockets when it next
+    /// starts.
+    fn mend_sockets(&mut self) {
+        let wayland = self.wayland_path();
+        let lock_path = runtime_dir().join(format!("{}.lock", self.display));
+        let mut mended = false;
+        if !lock_path.exists()
+            && let Ok(lock) = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path)
+        {
+            // SAFETY: flock on an fd we own.
+            if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+                self.lock = lock;
+                mended = true;
+            }
+        }
+        if !wayland.exists() {
+            match UnixListener::bind(&wayland) {
+                Ok(l) => {
+                    self.wayland = l;
+                    mended = true;
+                }
+                Err(e) => log(format!("could not make {} again: {e}", wayland.display())),
+            }
+        }
+        if !self.ipc_path.exists() {
+            match UnixListener::bind(&self.ipc_path) {
+                Ok(l) => {
+                    self.ipc = l;
+                    mended = true;
+                }
+                Err(e) => log(format!("could not make {} again: {e}", self.ipc_path.display())),
+            }
+        }
+        if mended {
+            log("our sockets had been removed; made them again");
+            self.own_files();
+        }
+    }
+
     /// Restart app_server in place (clients reconnect on their own).
     fn reload(&mut self) {
         log("reloading");
+        self.mend_sockets();
         if own_binary().is_some() && own_binary() != self.binary {
             self.exec_self(true);
         }
@@ -422,10 +483,16 @@ impl Session {
         if self.real {
             keyd::restore();
         }
-        let _ = std::fs::remove_file(&self.ipc_path);
+        for (path, id) in &self.files {
+            if id.is_some() && identity(path) == *id {
+                let _ = std::fs::remove_file(path);
+            }
+        }
         let _ = std::fs::remove_file(layout_path(&self.display));
-        let _ = std::fs::remove_file(runtime_dir().join(&self.display));
-        let _ = std::fs::remove_file(runtime_dir().join(format!("tabula-session-{}.pid", self.display)));
+        let pid_file = runtime_dir().join(format!("tabula-session-{}.pid", self.display));
+        if std::fs::read_to_string(&pid_file).is_ok_and(|p| p.trim() == std::process::id().to_string()) {
+            let _ = std::fs::remove_file(pid_file);
+        }
         std::process::exit(code);
     }
 }
@@ -562,6 +629,12 @@ fn set_cloexec(fd: RawFd, on: bool) {
 }
 
 /// Claim the first free `wayland-N` (with its lock file, as libwayland does).
+/// A file by identity (device, inode).
+fn identity(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::symlink_metadata(path).ok().map(|m| (m.dev(), m.ino()))
+}
+
 /// Where app_server leaves window places for its successor (see
 /// app_server's layout.rs).
 fn layout_path(display: &str) -> PathBuf {

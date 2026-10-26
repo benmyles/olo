@@ -91,7 +91,6 @@ use smithay::{
         },
         shm::{ShmHandler, ShmState},
         single_pixel_buffer::SinglePixelBufferState,
-        socket::ListeningSocketSource,
         tablet_manager::TabletManagerState,
         text_input::{TextInputActivation, TextInputManagerState},
         viewporter::ViewporterState,
@@ -760,16 +759,33 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             info!(name, "Listening on wayland socket from tabula-session");
             Some(name)
         } else if listen_on_socket {
-            let source = ListeningSocketSource::new_auto().unwrap();
-            let socket_name = source.socket_name().to_string_lossy().into_owned();
+            // Our own socket (not smithay's ListeningSocketSource, which
+            // removes its files by name on exit, even once they're
+            // another session's).
+            let crate::sockfile::Wayland { name: socket_name, listener, _lock, _files } =
+                crate::sockfile::bind_wayland().expect("Failed to create a wayland socket");
+            listener.set_nonblocking(true).expect("nonblocking socket");
+            let files = (_lock, _files);
             handle
-                .insert_source(source, |client_stream, _, data| {
-                    if let Err(err) = data
-                        .display_handle
-                        .insert_client(client_stream, Arc::new(ClientState::default()))
-                    {
-                        warn!("Error adding wayland client: {}", err);
-                    };
+                .insert_source(Generic::new(listener, Interest::READ, Mode::Level), move |_, listener, data| {
+                    let _ = &files;
+                    loop {
+                        match listener.accept() {
+                            Ok((stream, _)) => {
+                                if let Err(err) =
+                                    data.display_handle.insert_client(stream, Arc::new(ClientState::default()))
+                                {
+                                    warn!("Error adding wayland client: {}", err);
+                                }
+                            }
+                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                            Err(e) => {
+                                warn!(?e, "accept failed");
+                                break;
+                            }
+                        }
+                    }
+                    Ok(PostAction::Continue)
                 })
                 .expect("Failed to init wayland socket source");
             info!(name = socket_name, "Listening on wayland socket");

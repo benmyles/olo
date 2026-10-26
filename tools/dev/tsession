@@ -44,11 +44,24 @@ def as_owner(cmd, **kw):
 def sdir(name):
     return os.path.join(BASE, name)
 
-def load_env(name):
+def ident(path):
     try:
-        return json.load(open(os.path.join(sdir(name), "env.json")))
+        st = os.stat(path)
+        return [st.st_dev, st.st_ino]
+    except OSError:
+        return None
+
+def load_env(name, check=True):
+    try:
+        e = json.load(open(os.path.join(sdir(name), "env.json")))
     except FileNotFoundError:
         sys.exit(f"no session {name!r}; run: tsession start {name}")
+    # The runtime directory is emptied at logout, and a later session (the
+    # user's own!) may get the same wayland-N: never talk to that.
+    if check and "sockets" in e and [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["TABULA_SOCKET"])] != e["sockets"]:
+        sys.exit(f"session {name!r} is gone (its sockets are missing or now another session's); "
+                 f"start it again (tsession stop {name} only forgets it)")
+    return e
 
 def ipc(name, req):
     env = load_env(name)
@@ -119,6 +132,7 @@ def start(name, args):
                 e["TABULA_SESSION"] = "1"
                 pidfile = os.path.join(RUNTIME, f"tabula-session-{m.group(1)}.pid")
                 e["TABULA_SESSION_PID"] = open(pidfile).read().strip()
+            e["sockets"] = [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["TABULA_SOCKET"])]
             json.dump(e, open(os.path.join(d, "env.json"), "w"))
             print(f"{name}: {e['WAYLAND_DISPLAY']} ({size}, {theme})")
             return
@@ -130,6 +144,8 @@ def stop(name):
     d = sdir(name)
     try:
         e = json.load(open(os.path.join(d, "env.json")))
+        if "sockets" in e and [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["TABULA_SOCKET"])] != e["sockets"]:
+            print(f"{name}: its sockets are gone or another session's; forgetting it without touching them")
         os.killpg(e["pid"], signal.SIGTERM)
     except (FileNotFoundError, ProcessLookupError, PermissionError, KeyError):
         pass

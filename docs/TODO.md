@@ -44,6 +44,12 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Terminal sessions that outlive Terminal** (Ben, next): the shells
+  and their screens live in a per-user terminal daemon, so quitting,
+  crashing or upgrading Terminal reattaches every tab as it was
+  (scrollback included). Terminal must also pick up upgrades from the
+  Deskbar upgrade alert like the other apps (re-execute in place and
+  reattach), with nothing lost.
 - Terminal: ~~find in scrollback~~ (Edit ▸ Find…, Find Again, Find
   Selection; regex over screen and history); ~~release-build memory
   check~~ (fonts mapped, wgpu MemoryUsage: every app ~100 MB smaller);

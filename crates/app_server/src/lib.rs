@@ -35,6 +35,7 @@ pub mod osd;
 pub mod power;
 pub mod saver;
 pub mod screenshot;
+pub mod sockfile;
 pub mod text;
 pub mod theme;
 pub mod twitcher;

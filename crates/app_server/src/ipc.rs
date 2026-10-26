@@ -47,6 +47,8 @@ impl Conn {
 #[derive(Default)]
 pub struct IpcState {
     pub path: PathBuf,
+    /// The socket file, when we made it (not tabula-session).
+    _file: Option<crate::sockfile::Owned>,
     subscribers: Vec<Rc<Conn>>,
     /// Pictures to take with the next frame (see screenshot.rs).
     pub pending_screenshots: Vec<crate::screenshot::Shot>,
@@ -72,14 +74,6 @@ impl IpcState {
     }
 }
 
-impl Drop for IpcState {
-    fn drop(&mut self) {
-        if !self.path.as_os_str().is_empty() {
-            let _ = std::fs::remove_file(&self.path);
-        }
-    }
-}
-
 /// Open the socket and register it with the event loop. Sets
 /// `$TABULA_SOCKET` for every process app_server starts afterwards.
 pub fn init<B: Backend + 'static>(
@@ -95,7 +89,8 @@ pub fn init<B: Backend + 'static>(
         Some(l) => (l, false),
         None => {
             let _ = std::fs::remove_file(&path);
-            (UnixListener::bind(&path)?, true)
+            let l = UnixListener::bind(&path)?;
+            (l, true)
         }
     };
     listener.set_nonblocking(true)?;
@@ -123,6 +118,7 @@ pub fn init<B: Backend + 'static>(
         .map_err(|e| std::io::Error::other(e.to_string()))?;
 
     // An inherited socket's file belongs to tabula-session: don't remove it.
+    let file = owned.then(|| crate::sockfile::Owned::new(&path));
     let path = if owned { path } else { PathBuf::new() };
     let (saved, done) = smithay::reexports::calloop::channel::channel::<(u64, Result<(), String>)>();
     handle
@@ -139,6 +135,7 @@ pub fn init<B: Backend + 'static>(
         .map_err(|e| std::io::Error::other(e.to_string()))?;
     Ok(IpcState {
         path,
+        _file: file,
         subscribers: Vec::new(),
         pending_screenshots: Vec::new(),
         saving: Default::default(),
