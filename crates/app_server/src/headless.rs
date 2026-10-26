@@ -85,6 +85,10 @@ impl Backend for HeadlessData {
     fn early_import(&mut self, _surface: &wl_surface::WlSurface) {}
     fn update_led_state(&mut self, _led_state: LedState) {}
 
+    fn set_displays_on(&mut self, on: bool) {
+        tracing::info!(on, "displays (simulated)");
+    }
+
     /// No scan-out to warm; logged so tests can follow a fade.
     fn set_white_point(&mut self, gains: [f64; 3]) {
         tracing::info!(r = gains[0], g = gains[1], b = gains[2], "white point");

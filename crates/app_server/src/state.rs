@@ -1346,6 +1346,8 @@ pub trait Backend {
     fn update_led_state(&mut self, led_state: LedState);
     /// Switch `output` to `mode` (one of `output.modes()`), updating the
     /// output's current mode on success.
+    /// Turn the screens off (DPMS) for idleness, or back on.
+    fn set_displays_on(&mut self, _on: bool) {}
     /// Scale the screens' gamma ramps by these red, green, blue gains
     /// (night light; `[1.0; 3]` is neutral).
     fn set_white_point(&mut self, _gains: [f64; 3]) {}

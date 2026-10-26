@@ -471,6 +471,11 @@ hands the backend a buffer whose pixels land one-to-one on the screen.
 Clients that set a cursor surface still get theirs. To see every cursor:
 `TABULA_CURSOR_SHEET=/tmp/c.png cargo test -p tabula-hvif sheet`.
 
+When the displays sleep for idleness, `Backend::set_displays_on(false)`
+clears every CRTC on DRM (DPMS off) and rendering stops, since any frame
+would turn them back on; input, waking from sleep or a returning session
+calls it with `true` and renders again.
+
 ## Caffeinated mode and the level indicator (power.rs, osd.rs)
 
 Caffeinated mode holds a logind block inhibitor ("sleep:idle", plus

@@ -16,8 +16,8 @@ as they land (with the commit), add new ones as they come up.
   handles the brightness and volume keys; caffeinated mode from the Deskbar
   cup or Preferences holds a logind inhibitor. Display ▸ Brightness. ~~On-screen
   level indicator~~. ~~Keyboard backlight~~
-  (keys, Preferences ▸ Keyboard, off with the display). Still to do: real DPMS off
-  instead of backlight 0.
+  (keys, Preferences ▸ Keyboard, off with the display). ~~Real DPMS off~~ (CRTCs
+  cleared, rendering paused until input).
 - ~~Preferences ▸ Sound~~: output/input device, level, mute, live from the
   sound server (`tabula_system::audio::{devices, watch_devices, set_*}`).
 

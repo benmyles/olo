@@ -145,6 +145,10 @@ pub struct UdevData {
     input_settings: Option<tabula_protocol::Settings>,
     /// Night-light gamma gains, for screens connected later.
     white_point: [f64; 3],
+    /// The screens are off for idleness: nothing is rendered (a frame
+    /// would turn them back on).
+    displays_off: bool,
+    loop_handle: smithay::reexports::calloop::LoopHandle<'static, AnvilState<UdevData>>,
 }
 
 impl UdevData {
@@ -215,6 +219,29 @@ impl Backend for UdevData {
         for keyboard in self.keyboards.iter_mut() {
             keyboard.led_update(led_state.into());
         }
+    }
+
+    fn set_displays_on(&mut self, on: bool) {
+        if self.displays_off != on {
+            return;
+        }
+        self.displays_off = !on;
+        if on {
+            // The next frame on each turns it back on.
+            for &node in self.backends.keys() {
+                self.loop_handle.insert_idle(move |state| state.render(node, None, state.clock.now()));
+            }
+            info!("displays on");
+            return;
+        }
+        for backend in self.backends.values_mut() {
+            for surface in backend.surfaces.values_mut() {
+                if let Err(e) = surface.drm_output.with_compositor(|c| c.clear()) {
+                    warn!(?e, "couldn't turn a display off");
+                }
+            }
+        }
+        info!("displays off");
     }
 
     fn set_white_point(&mut self, gains: [f64; 3]) {
@@ -369,6 +396,8 @@ pub fn run_udev() {
         pointers: Vec::new(),
         input_settings: None,
         white_point: [1.0; 3],
+        displays_off: false,
+        loop_handle: event_loop.handle(),
     };
     let mut state = AnvilState::init(display, event_loop.handle(), data, true);
 
@@ -1537,6 +1566,9 @@ impl AnvilState<UdevData> {
 
     fn render_surface(&mut self, node: DrmNode, crtc: crtc::Handle, frame_target: Time<Monotonic>) {
         profiling::scope!("render_surface", &format!("{crtc:?}"));
+        if self.backend_data.displays_off {
+            return;
+        }
 
         let output = if let Some(output) = self.space.outputs().find(|o| {
             o.user_data().get::<UdevOutputId>()

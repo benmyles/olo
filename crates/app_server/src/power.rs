@@ -241,6 +241,7 @@ impl<B: Backend> AnvilState<B> {
                 p.apply_keyboard(level);
             }
             info!("displays awake");
+            self.backend_data.set_displays_on(true);
             self.power_changed();
         }
         self.saver_activity();
@@ -269,6 +270,7 @@ impl<B: Backend> AnvilState<B> {
         let idle = p.last_activity.elapsed();
         let mut changed = pruned;
         let mut lock = false;
+        let mut went_dark = false;
         let minutes = |m: u32| Duration::from_secs(m as u64 * 60);
         // On the lock screen nobody is working: displays go off after a minute.
         let display_off = if self.lock.locked() { 1 } else { settings.display_off_minutes };
@@ -280,6 +282,7 @@ impl<B: Backend> AnvilState<B> {
             }
             info!(?idle, "displays asleep");
             changed = true;
+            went_dark = true;
             lock = settings.lock_on_display_off;
         }
         let display_asleep = p.display_asleep;
@@ -306,6 +309,9 @@ impl<B: Backend> AnvilState<B> {
         }
         if lock {
             self.lock_screen();
+        }
+        if went_dark {
+            self.backend_data.set_displays_on(false);
         }
         if changed {
             self.power_changed();
