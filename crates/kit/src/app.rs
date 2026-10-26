@@ -120,6 +120,10 @@ impl WindowOptions {
         self.min_size = Some((w, h));
         self
     }
+    pub fn max_size(mut self, w: u32, h: u32) -> Self {
+        self.max_size = Some((w, h));
+        self
+    }
     pub fn raw_keys(mut self) -> Self {
         self.raw_keys = true;
         self
@@ -133,7 +137,6 @@ pub(crate) enum Request {
     Resize(WindowId, (u32, u32)),
     Redraw(WindowId),
     RedrawAll,
-    #[allow(dead_code)] // needs xdg-activation; kept for the API
     Activate(WindowId),
     Copy(String),
     Paste(WindowId),
@@ -203,6 +206,8 @@ impl Cx {
     pub fn redraw_all(&mut self) {
         self.requests.push(Request::RedrawAll);
     }
+    /// Bring the window to the front and give it the keyboard (restoring
+    /// it if minimized or on another workspace).
     pub fn activate(&mut self, window: WindowId) {
         self.requests.push(Request::Activate(window));
     }

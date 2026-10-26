@@ -96,7 +96,9 @@ fn main() {
   threads via `cx.proxy().send(msg)`), `theme_changed`, `files_dropped`,
   `save_state` (see "In-place reload").
 * **`Cx`**: `open_window`, `close_window`, `set_title`, `resize`, `redraw`,
-  `copy` (clipboard), `paste` (reads the clipboard off-thread and delivers
+  `activate` (bring a window forward and focus it, restoring it if it is
+  minimized or on another workspace — via xdg-activation; use it when a
+  forwarded launch asks for a window that is already open), `copy` (clipboard), `paste` (reads the clipboard off-thread and delivers
   an `egui::Event::Paste`), `quit`, `palette`, `proxy`, `window_size`,
   `restored_state`.
 * **Single instance** (`tabula_kit::instance`): call `instance::forward(app_id,
@@ -104,6 +106,8 @@ fn main() {
   arguments; exit then), and `instance::listen(app_id, cx.proxy())` in the
   init closure; forwarded launches arrive in `App::message` as an
   `instance::Launch { args, cwd }`.
+* **Fixed-size windows**: `WindowOptions::new(..).min_size(w, h).max_size(w, h)`
+  (preference panels, alerts).
 * **Raw keys** (`WindowOptions::raw_keys()`): for windows that consume the
   keyboard themselves (Terminal). ⌘-letter combinations reach the app as
   key events instead of menu shortcuts or clipboard events (⌘⇧C/X/V still
@@ -266,3 +270,23 @@ For fixes, journal a before and an after.
 
 Small, focused commits with a descriptive message ending in the
 `Co-Authored-By` trailer the session uses.
+
+## Preferences (apps/preferences)
+
+One process, one small fixed-size window per panel, as BeOS had a
+preference app per area. `tabula-preferences <panel>` opens or brings
+forward a panel (Deskbar's Preferences menu does this); with no argument a
+launcher lists them. The panel list Deskbar shows is
+`tabula_xdg::apps::PREFERENCE_PANELS`; a unit test keeps it in step with
+`panel::Panel`.
+
+* Settings that live in app_server come over IPC (`server.rs`): a watcher
+  thread follows `SettingsChanged` / `OutputsChanged`, a writer thread sends
+  `SetSettings` (collapsed to the newest) and `ConfigureOutput`. The UI edits
+  a local copy and diffs it each frame; nothing blocks.
+* Each panel module has `ui(ui, &mut Settings, ..)`; per-window state goes
+  in `panel::State`. Panels that change settings get Defaults and Revert
+  (to the values when the window opened) along the bottom, each enabled
+  only when it would change something: implement `Panel::reset`.
+* New panel: add it to `Panel` (arg, title, icon, size, reset), write the
+  module, add it to `PREFERENCE_PANELS`, journal it light and dark.

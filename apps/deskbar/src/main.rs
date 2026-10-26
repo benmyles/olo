@@ -26,23 +26,8 @@ const ICON: f32 = 16.0;
 /// Inset of the tray's recessed well from the Deskbar's edges.
 const TRAY_INSET: f32 = 4.0;
 
-/// Preference panels: command argument, name, icon.
-const PREFS: &[(&str, &str, &str)] = &[
-    ("appearance", "Appearance", "appearance"),
-    ("backgrounds", "Backgrounds", "backgrounds"),
-    ("bluetooth", "Bluetooth", "bluetooth"),
-    ("datetime", "Date & Time", "datetime"),
-    ("display", "Display", "display"),
-    ("keyboard", "Keyboard", "keyboard"),
-    ("network", "Network", "network-prefs"),
-    ("power", "Power", "power"),
-    ("sound", "Sound", "sound"),
-    ("touchid", "Touch ID", "fingerprint"),
-    ("touchpad", "Touchpad", "touchpad"),
-    ("workspaces", "Workspaces", "workspaces"),
-];
 
-use tabula_kit::apps::{OUR_APPS, our_app};
+use tabula_kit::apps::{OUR_APPS, PREFERENCE_PANELS, our_app};
 
 #[derive(Debug, Clone, Copy)]
 enum Power {
@@ -162,7 +147,7 @@ impl Deskbar {
         }
         let have_prefs = tabula_kit::find_program("tabula-preferences").is_some();
         let mut prefs = Menu::new("Preferences");
-        for (arg, name, _) in PREFS {
+        for (arg, name, _) in PREFERENCE_PANELS {
             prefs = prefs.item(*name, format!("pref:{arg}"), None).enabled(have_prefs);
         }
         // Everything else installed, by freedesktop category.

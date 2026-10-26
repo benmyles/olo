@@ -178,6 +178,7 @@ pub struct Kit {
     layer_shell: Option<LayerShell>,
     shm: Shm,
     data_device_manager: Option<DataDeviceManagerState>,
+    activation: Option<smithay_client_toolkit::activation::ActivationState>,
     fractional_manager: Option<WpFractionalScaleManagerV1>,
     viewporter: Option<WpViewporter>,
 
@@ -408,6 +409,8 @@ impl Kit {
             layer_shell: LayerShell::bind(globals, &qh).ok(),
             shm: Shm::bind(globals, &qh).expect("wl_shm"),
             data_device_manager: DataDeviceManagerState::bind(globals, &qh).ok(),
+            activation: smithay_client_toolkit::activation::ActivationState::bind(globals, &qh)
+                .ok(),
             fractional_manager,
             viewporter,
             conn,
@@ -537,7 +540,25 @@ impl Kit {
                         }
                     }
                     Request::RedrawAll => self.surfaces.iter_mut().for_each(|s| s.dirty = true),
-                    Request::Activate(_) => {}
+                    Request::Activate(id) => {
+                        // Ask for a token for the surface, then use it
+                        // (`new_token`): app_server raises and focuses it.
+                        if let (Some(act), Some(s)) =
+                            (&self.activation, self.surfaces.iter().find(|s| s.id == id))
+                        {
+                            let seat_and_serial =
+                                self.seat.clone().map(|seat| (seat, self.last_serial));
+                            act.request_token(
+                                &self.qh,
+                                smithay_client_toolkit::activation::RequestData {
+                                    app_id: None,
+                                    seat_and_serial,
+                                    surface: Some(s.wl.clone()),
+                                    udata: (),
+                                },
+                            );
+                        }
+                    }
                     Request::Copy(text) => self.set_clipboard(text),
                     Request::Paste(id) => {
                         let text = self.read_clipboard().unwrap_or_default();
@@ -1825,6 +1846,19 @@ impl DataSourceHandler for Kit {
     fn dnd_dropped(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataSource) {}
     fn dnd_finished(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataSource) {}
     fn action(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataSource, _: DndAction) {}
+}
+
+impl smithay_client_toolkit::activation::ActivationHandler for Kit {
+    type RequestUdata = ();
+    fn new_token(
+        &mut self,
+        token: String,
+        data: &smithay_client_toolkit::activation::RequestData<()>,
+    ) {
+        if let (Some(act), Some(surface)) = (&self.activation, &data.surface) {
+            act.activate::<Kit>(surface, token);
+        }
+    }
 }
 
 delegate_registry!(Kit);

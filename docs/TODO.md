@@ -8,6 +8,9 @@ as they land (with the commit), add new ones as they come up.
 - ~~Viewer: pop-out from Quick Look, PDF forms, text, ink, signatures,
   Save / Save As / Export Flattened~~ (903ba8b, f01bff9).
 - ~~Kit FilePanel~~ (903ba8b).
+- ~~Preferences app~~: launcher, Appearance, Backgrounds, Display, Keyboard
+  (incl. the ⌘ / Caps Lock / tap-⌘ toggles), Touchpad, Workspaces, About;
+  `Cx::activate` over xdg-activation.
 
 ## Native rule (no wrapping system tools)
 
@@ -18,8 +21,7 @@ as they land (with the commit), add new ones as they come up.
 - ~~Keyboard mapping in app_server, replacing keyd~~: ⌘ as command,
   Caps Lock as Ctrl, ⌘Tab / ⌘\` switching, ⌘ arrows / ⌘⌫, tap ⌘ /
   ⌘Space for Find, terminals keep physical Ctrl (`keymap.rs`). Still to
-  do: a lock screen for Ctrl+⌘Q, and Preferences ▸ Keyboard toggles for the
-  `KeyboardSettings` fields. keyd can then be disabled system-wide; while
+  do: a lock screen for Ctrl+⌘Q. keyd can then be disabled system-wide; while
   it runs it grabs the keyboards and app_server sees its output (handled:
   its ⌘ tap chord and Super+Tab are understood).
 - ~~Kit opener instead of `xdg-open`~~: `tabula_xdg::open` (shared-mime-info
@@ -29,9 +31,11 @@ as they land (with the commit), add new ones as they come up.
 
 - Terminal: find in scrollback; release-build memory check; colour emoji.
 - Activity Monitor.
-- Preferences: all M2 hardware panels (display, 2× default scale,
-  keyboard, trackpad, sound, network, Bluetooth, power, Touch ID),
-  Restart Tabula.
+- Preferences, remaining panels: Sound, Network, Bluetooth, Power
+  (with caffeinated mode), Date & Time (24-hour clock for Deskbar), Touch
+  ID, Screen Saver; Restart Tabula; a Choose… file panel for the
+  wallpaper; Display mode switching (app_server ignores `mode` in
+  ConfigureOutput so far) and drag-to-arrange.
 - StyledEdit, DeskCalc, Screenshot.
 - Web browser (native).
 - Password manager: Rust 1Password SDK, passkeys, Touch ID through

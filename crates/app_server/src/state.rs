@@ -457,17 +457,12 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
         &mut self.xdg_activation_state
     }
 
-    fn token_created(&mut self, _token: XdgActivationToken, data: XdgActivationTokenData) -> bool {
-        if let Some((serial, seat)) = data.serial {
-            let keyboard = self.seat.get_keyboard().unwrap();
-            Seat::from_resource(&seat) == Some(self.seat.clone())
-                && keyboard
-                    .last_enter()
-                    .map(|last_enter| serial.is_no_older_than(&last_enter))
-                    .unwrap_or(false)
-        } else {
-            false
-        }
+    fn token_created(&mut self, _token: XdgActivationToken, _data: XdgActivationTokenData) -> bool {
+        // Apps ask to come forward when relaunched from Deskbar or Tracker
+        // (the request is forwarded to the running instance, which has no
+        // fresh input serial of its own), so every token is honoured; the
+        // ten-second expiry below keeps stale ones from stealing focus.
+        true
     }
 
     fn request_activation(
@@ -483,8 +478,17 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
                 .elements()
                 .find(|window| window.wl_surface().map(|s| *s == surface).unwrap_or(false))
                 .cloned();
+            // Parked windows (minimized, other workspace) too.
+            let w = w.or_else(|| {
+                self.parked
+                    .0
+                    .borrow()
+                    .iter()
+                    .find(|window| window.wl_surface().is_some_and(|s| *s == surface))
+                    .cloned()
+            });
             if let Some(window) = w {
-                self.space.raise_element(&window, true);
+                self.restore(&window);
             }
         }
     }

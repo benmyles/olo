@@ -4812,6 +4812,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabula-preferences"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "tabula-kit",
+ "tabula-protocol",
+ "tabula-system",
+ "tracing",
+]
+
+[[package]]
 name = "tabula-preview"
 version = "0.1.0"
 dependencies = [

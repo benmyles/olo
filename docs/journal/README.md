@@ -5,6 +5,24 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-25
 
+### Preferences launcher
+
+*23:20* — tabula-preferences with no argument: a grid of every panel.
+
+![Preferences launcher](2026-10-25/232029-preferences-launcher.png)
+
+### Preferences panels (dark)
+
+*23:20* — Appearance, Keyboard, Touchpad, Backgrounds, Display and About in dark mode: one fixed-size window per panel with Defaults/Revert.
+
+![Preferences panels (dark)](2026-10-25/232029-preferences-panels-dark.png)
+
+### Preferences panels (light)
+
+*23:20* — Appearance, Keyboard, Touchpad, Backgrounds, Display and About in light mode: one fixed-size window per panel with Defaults/Revert.
+
+![Preferences panels (light)](2026-10-25/232028-preferences-panels-light.png)
+
 ### Twitcher (dark)
 
 *22:51* — The same in dark mode.

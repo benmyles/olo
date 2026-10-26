@@ -13,6 +13,17 @@ pub const OUR_APPS: &[(&str, &str, &str)] = &[
     ("tabula-screenshot", "Screenshot", "screenshot"),
 ];
 
+/// The panels `tabula-preferences <arg>` opens: argument, name, icon.
+/// Deskbar's Preferences menu lists exactly these.
+pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
+    ("appearance", "Appearance", "appearance"),
+    ("backgrounds", "Backgrounds", "backgrounds"),
+    ("display", "Display", "display"),
+    ("keyboard", "Keyboard", "keyboard"),
+    ("touchpad", "Touchpad", "touchpad"),
+    ("workspaces", "Workspaces", "workspaces"),
+];
+
 /// App ids of our own apps map straight to names and icons.
 pub fn our_app(app_id: &str) -> Option<(&'static str, &'static str)> {
     let short = app_id.strip_prefix("tabula.").unwrap_or(app_id);
