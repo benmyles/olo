@@ -186,10 +186,10 @@ pub fn apply(ctx: &Context, palette: &Arc<Palette>) {
     v.widgets.hovered.bg_stroke = Stroke::new(1.0, c(p.navigation_base));
     ctx.set_visuals(v);
     ctx.all_styles_mut(|s| {
-        s.spacing.item_spacing = vec2(6.0, 6.0);
-        s.spacing.button_padding = vec2(10.0, 3.0);
-        s.spacing.interact_size = vec2(24.0, 22.0);
-        s.spacing.window_margin = egui::Margin::same(10);
+        s.spacing.item_spacing = vec2(crate::metrics::SPACING, crate::metrics::SPACING);
+        s.spacing.button_padding = vec2(crate::metrics::CONTROL_PAD, 4.0);
+        s.spacing.interact_size = vec2(24.0, crate::metrics::CONTROL_HEIGHT);
+        s.spacing.window_margin = egui::Margin::same(crate::metrics::WINDOW_INSET as i8);
         s.spacing.scroll = egui::style::ScrollStyle::solid();
         s.spacing.scroll.bar_width = 14.0;
         s.text_styles.insert(egui::TextStyle::Body, plain_font());
@@ -277,7 +277,7 @@ pub fn shortcut(p: &Painter, right_center: Pos2, label: &str, color: Color32) {
     job.append("⌘", 0.0, TextFormat { font_id: font.clone(), color, extra_letter_spacing: -1.0, ..Default::default() });
     job.append(label, 0.0, TextFormat { font_id: font, color, ..Default::default() });
     let galley = p.layout_job(job);
-    let pos = pos2(right_center.x - galley.size().x, right_center.y - galley.size().y / 2.0);
+    let pos = text_origin(p.ctx(), &galley, right_center.x - galley.size().x, right_center.y, PLAIN_SIZE);
     p.galley(pos, galley, color);
 }
 
@@ -312,4 +312,53 @@ pub fn vgradient(p: &Painter, r: Rect, top: Color32, bottom: Color32) {
     mesh.add_triangle(0, 1, 2);
     mesh.add_triangle(1, 3, 2);
     p.add(mesh);
+}
+
+// ---- text placement -------------------------------------------------------
+
+/// Cap height as a fraction of the font size (Helvetica / Nimbus Sans).
+const CAP_HEIGHT: f32 = 0.718;
+
+/// Distance from a galley's top to its first baseline.
+pub fn baseline_offset(galley: &egui::Galley) -> f32 {
+    galley
+        .rows
+        .first()
+        .and_then(|r| r.row.glyphs.first().map(|g| r.pos.y + g.pos.y))
+        .unwrap_or(galley.size().y * 0.8)
+}
+
+/// Where to put `galley` so its capitals are optically centred on
+/// `center_y` (a box centre would sit text high: descender space counts),
+/// snapped to device pixels.
+pub fn text_origin(ctx: &Context, galley: &egui::Galley, x: f32, center_y: f32, font_size: f32) -> Pos2 {
+    let ppp = ctx.pixels_per_point();
+    let baseline = center_y + font_size * CAP_HEIGHT / 2.0;
+    let y = baseline - baseline_offset(galley);
+    pos2((x * ppp).round() / ppp, (y * ppp).round() / ppp)
+}
+
+/// Draw one line of text with its capitals centred on `center_y`. `align`
+/// says which edge of the text `x` is (left, centre or right). Returns the
+/// text's rect.
+pub fn label(
+    p: &Painter,
+    x: f32,
+    center_y: f32,
+    align: egui::Align,
+    text: impl Into<String>,
+    font: FontId,
+    color: Color32,
+) -> Rect {
+    let size = font.size;
+    let galley = p.layout_no_wrap(text.into(), font, color);
+    let x = match align {
+        egui::Align::Min => x,
+        egui::Align::Center => x - galley.size().x / 2.0,
+        egui::Align::Max => x - galley.size().x,
+    };
+    let pos = text_origin(p.ctx(), &galley, x, center_y, size);
+    let r = Rect::from_min_size(pos, galley.size());
+    p.galley(pos, galley, color);
+    r
 }

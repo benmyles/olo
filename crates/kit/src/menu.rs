@@ -2,7 +2,7 @@
 //! menu bar the kit draws at the top of a window, and the popup menus
 //! (real `xdg_popup` surfaces, so they can extend past the window).
 
-use egui::{Align2, Color32, FontId, Key, Pos2, Rect, Sense, Stroke, Ui, Vec2, pos2, vec2};
+use egui::{Color32, FontId, Key, Pos2, Rect, Sense, Stroke, Ui, Vec2, pos2, vec2};
 
 use crate::style::{self, c};
 
@@ -293,13 +293,7 @@ pub fn menu_bar(ui: &mut Ui, menus: &[Menu], state: &mut BarState) -> Rect {
         } else {
             c(p.menu_item_text)
         };
-        painter.text(
-            pos2(item.left() + BAR_PAD, item.center().y),
-            Align2::LEFT_CENTER,
-            &menu.title,
-            font(),
-            text_color,
-        );
+        style::label(&painter, item.left() + BAR_PAD, item.center().y, egui::Align::Min, &menu.title, font(), text_color);
         x += w;
     }
     ui.advance_cursor_after_rect(rect);
@@ -452,7 +446,7 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
                 if a.checked {
                     style::check_mark(&painter, Rect::from_center_size(pos2(row.left() + 10.0, row.center().y), vec2(9.0, 9.0)), text_color);
                 }
-                painter.text(pos2(row.left() + ITEM_LEFT, row.center().y), Align2::LEFT_CENTER, &a.label, font(), text_color);
+                style::label(&painter, row.left() + ITEM_LEFT, row.center().y, egui::Align::Min, &a.label, font(), text_color);
                 if let Some(s) = a.shortcut {
                     style::shortcut(&painter, pos2(row.right() - ITEM_RIGHT, row.center().y), &s.label(), text_color);
                 }
@@ -467,7 +461,7 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
                     painter.rect_filled(*row, 0.0, c(p.menu_selected_background));
                 }
                 let text_color = if hl { c(p.menu_selected_item_text) } else { c(p.menu_item_text) };
-                painter.text(pos2(row.left() + ITEM_LEFT, row.center().y), Align2::LEFT_CENTER, &m.title, font(), text_color);
+                style::label(&painter, row.left() + ITEM_LEFT, row.center().y, egui::Align::Min, &m.title, font(), text_color);
                 // Right-pointing triangle.
                 let cx = row.right() - ITEM_RIGHT;
                 let cy = row.center().y;

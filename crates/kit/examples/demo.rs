@@ -37,7 +37,7 @@ const ROWS: &[(&str, &str, &str)] = &[
 
 impl App for Demo {
     fn ui(&mut self, cx: &mut Cx, _w: WindowId, ui: &mut egui::Ui) {
-        egui::Frame::new().inner_margin(10.0).show(ui, |ui| {
+        tabula_kit::widgets::window_content(ui, |ui| {
             TabView::new(&mut self.tab, &["Controls", "Lists", "Text"]).show(ui, |ui, tab| match tab {
                 0 => {
                     ui.add(TextControl::new(&mut self.name).label("Name:").divider(60.0));

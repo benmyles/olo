@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use tabula_kit::{
     App, Cx, Layer, LayerOptions, Menu, WindowId, WindowKind, WindowOptions,
     desktop_entry::{self, DesktopEntry},
-    egui::{self, Align2, Color32, Rect, Sense, pos2, vec2},
+    egui::{self, Color32, Rect, Sense, pos2, vec2},
     icons,
     menu::{self, MenuAnchor, MenuRequest},
     style::{self, c, hline, shade, vline},
@@ -22,6 +22,8 @@ const TILE_H: f32 = 30.0;
 const TRAY_H: f32 = 22.0;
 const ROW_H: f32 = 24.0;
 const ICON: f32 = 16.0;
+/// Inset of the tray's recessed well from the Deskbar's edges.
+const TRAY_INSET: f32 = 4.0;
 
 /// Tabula's own applications: binary, name, icon.
 const OUR_APPS: &[(&str, &str, &str)] = &[
@@ -314,28 +316,19 @@ impl App for Deskbar {
         if !icons::paint(&painter, logo, "tabula") {
             icons::paint(&painter, logo, "application");
         }
-        painter.text(
-            pos2(logo.right() + 8.0, tile.center().y),
-            Align2::LEFT_CENTER,
-            "Tabula",
-            egui::FontId::new(14.0, style::bold()),
-            c(pal.panel_text),
-        );
+        style::label(&painter, logo.right() + 8.0, tile.center().y, egui::Align::Min, "Tabula", egui::FontId::new(14.0, style::bold()), c(pal.panel_text));
 
         // ---- tray
         let tray = Rect::from_min_size(pos2(full.left(), tile.bottom()), vec2(full.width(), TRAY_H));
         painter.rect_filled(tray, 0.0, shade(&pal, pal.panel_background, 1.03));
-        style::bevel(&painter, tray.shrink2(vec2(3.0, 2.0)), shade(&pal, pal.panel_background, 1.25), c(pal.shine));
+        style::bevel(&painter, tray.shrink2(vec2(TRAY_INSET, 2.0)), shade(&pal, pal.panel_background, 1.25), c(pal.shine));
         let clock = status::clock_text(self.show_date);
         let font = style::plain_font();
-        let clock_g = painter.layout_no_wrap(clock, font.clone(), c(pal.panel_text));
-        let clock_pos = pos2(tray.right() - 9.0 - clock_g.size().x, tray.center().y - clock_g.size().y / 2.0).round();
-        let clock_rect = Rect::from_min_size(clock_pos, clock_g.size()).expand(3.0);
-        painter.galley(clock_pos, clock_g, c(pal.panel_text));
+        let clock_rect = style::label(&painter, tray.right() - TRAY_INSET - 5.0, tray.center().y, egui::Align::Max, clock, font, c(pal.panel_text)).expand(3.0);
         if ui.interact(clock_rect, egui::Id::unique("clock"), Sense::click()).clicked() {
             self.show_date = !self.show_date;
         }
-        let mut x = tray.left() + 8.0;
+        let mut x = tray.left() + TRAY_INSET + 5.0;
         let cy = tray.center().y;
         let mut tray_item = |ui: &mut egui::Ui, id: &str, draw: &dyn Fn(&egui::Painter, Rect), tip: String| {
             let r = Rect::from_center_size(pos2(x + 8.0, cy), vec2(16.0, 16.0));
@@ -458,7 +451,8 @@ impl App for Deskbar {
             let mut job = egui::text::LayoutJob::simple_singleline(team.name.clone(), font, text_color);
             job.wrap = egui::text::TextWrapping::truncate_at_width(max_w);
             let g = painter.layout_job(job);
-            let pos = pos2(icon_r.right() + 8.0, row.center().y - g.size().y / 2.0).round();
+            let size = if focused { style::PLAIN_SIZE } else { style::PLAIN_SIZE };
+            let pos = style::text_origin(ui.ctx(), &g, icon_r.right() + 8.0, row.center().y, size);
             painter.galley(pos, g, text_color);
             y += ROW_H;
         }

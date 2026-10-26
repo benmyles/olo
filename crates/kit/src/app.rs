@@ -115,6 +115,7 @@ pub(crate) enum Request {
     Resize(WindowId, (u32, u32)),
     Redraw(WindowId),
     RedrawAll,
+    #[allow(dead_code)] // needs xdg-activation; kept for the API
     Activate(WindowId),
     Copy(String),
     Quit,

@@ -19,12 +19,11 @@ use crate::{
     style::{self, bold_font, c, frame_rect, hline, plain_font, shade, vline},
 };
 
-/// Height of push buttons, menu fields and text controls.
-pub const CONTROL_HEIGHT: f32 = 24.0;
+pub use crate::metrics::CONTROL_HEIGHT;
+use crate::metrics::{self as m};
 /// Width of a scroll bar (B_V_SCROLL_BAR_WIDTH).
 pub const SCROLL_BAR: f32 = 14.0;
-/// Gap between a mark (check box, radio) and its label.
-const MARK_GAP: f32 = 6.0;
+const MARK_GAP: f32 = m::MARK_GAP;
 
 fn text_color(ui: &Ui, p: &Palette) -> Color32 {
     if ui.is_enabled() { c(p.control_text) } else { style::disabled_text(p) }
@@ -34,11 +33,11 @@ fn layout(ui: &Ui, text: &str, font: FontId, color: Color32) -> std::sync::Arc<G
     ui.painter().layout_no_wrap(text.to_owned(), font, color)
 }
 
-/// Galley top-left that centres it vertically on `y`, snapped to pixels.
+/// Galley top-left that centres its capitals on `center_y`, snapped to
+/// device pixels.
 fn text_pos(ui: &Ui, x: f32, center_y: f32, galley: &Galley) -> Pos2 {
-    let ppp = ui.ctx().pixels_per_point();
-    let y = center_y - galley.size().y / 2.0;
-    pos2((x * ppp).round() / ppp, (y * ppp).round() / ppp)
+    let size = galley.job.sections.first().map_or(style::PLAIN_SIZE, |s| s.format.font_id.size);
+    style::text_origin(ui.ctx(), galley, x, center_y, size)
 }
 
 /// BeOS marks keyboard focus by underlining the label in the navigation
@@ -59,7 +58,7 @@ pub struct Button<'a> {
 
 impl<'a> Button<'a> {
     pub fn new(label: &'a str) -> Self {
-        Button { label, default: false, min_width: 75.0 }
+        Button { label, default: false, min_width: m::BUTTON_MIN_WIDTH }
     }
     pub fn default(mut self, default: bool) -> Self {
         self.default = default;
@@ -79,7 +78,7 @@ impl Widget for Button<'_> {
         // The default ring is drawn outside the button's own rect, so a
         // row of buttons stays aligned.
         let ring = if self.default { 3.0 } else { 0.0 };
-        let w = (galley.size().x + 24.0).max(self.min_width).round();
+        let w = (galley.size().x + 2.0 * m::CONTROL_PAD).max(self.min_width).round();
         let (r, mut response) = ui.allocate_exact_size(vec2(w, CONTROL_HEIGHT), Sense::click());
         let outer = r.expand(ring);
         if self.default && ui.is_enabled() && ui.input(|i| i.key_pressed(Key::Enter)) && !ui.ctx().egui_wants_keyboard_input()
@@ -162,7 +161,7 @@ impl Widget for CheckBox<'_> {
         let p = style::palette(ui.ctx());
         let color = text_color(ui, &p);
         let galley = layout(ui, self.label, plain_font(), color);
-        let size = vec2(12.0 + MARK_GAP + galley.size().x + 2.0, 18.0);
+        let size = vec2(12.0 + MARK_GAP + galley.size().x.ceil(), m::MARK_ROW);
         let (rect, mut response) = ui.allocate_exact_size(size, Sense::click());
         if response.clicked() {
             *self.value = !*self.value;
@@ -210,7 +209,7 @@ impl Widget for RadioButton<'_> {
         let p = style::palette(ui.ctx());
         let color = text_color(ui, &p);
         let galley = layout(ui, self.label, plain_font(), color);
-        let size = vec2(13.0 + MARK_GAP + galley.size().x + 2.0, 18.0);
+        let size = vec2(13.0 + MARK_GAP + galley.size().x.ceil(), m::MARK_ROW);
         let (rect, response) = ui.allocate_exact_size(size, Sense::click());
         response.widget_info(|| WidgetInfo::selected(Role::RadioButton, ui.is_enabled(), self.selected, self.label));
         if !ui.is_rect_visible(rect) {
@@ -295,13 +294,12 @@ impl Widget for TextControl<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
         let p = style::palette(ui.ctx());
         let width = self.width.unwrap_or_else(|| ui.available_width());
-        let height = 22.0;
-        let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(vec2(width, CONTROL_HEIGHT), Sense::hover());
         let mut well = rect;
         if let Some(label) = self.label {
             let color = text_color(ui, &p);
             let galley = layout(ui, label, plain_font(), color);
-            let divider = self.divider.unwrap_or(galley.size().x + 6.0);
+            let divider = self.divider.unwrap_or(galley.size().x.ceil() + m::LABEL_GAP);
             let pos = text_pos(ui, rect.left(), rect.center().y, &galley);
             ui.painter().galley(pos, galley, color);
             well.min.x = rect.left() + divider;
@@ -316,9 +314,9 @@ impl Widget for TextControl<'_> {
         // Place the editor on exactly the line a label would use, so text
         // in the well shares the label's baseline.
         let row_h = ui.fonts_mut(|f| f.row_height(&font));
-        let ppp = ui.ctx().pixels_per_point();
-        let top = ((well.center().y - row_h / 2.0) * ppp).round() / ppp;
-        let line = Rect::from_min_max(pos2(well.left() + 5.0, top), pos2(well.right() - 4.0, top + row_h));
+        let probe = ui.painter().layout_no_wrap("X".into(), font.clone(), Color32::BLACK);
+        let top = style::text_origin(ui.ctx(), &probe, 0.0, well.center().y, font.size).y;
+        let line = Rect::from_min_max(pos2(well.left() + m::TEXT_INSET, top), pos2(well.right() - m::TEXT_INSET, top + row_h));
         let mut edit = egui::TextEdit::singleline(self.text)
             .id(id)
             .frame(egui::Frame::NONE)
@@ -450,8 +448,8 @@ impl Widget for Slider<'_> {
         let p = style::palette(ui.ctx());
         let color = text_color(ui, &p);
         let width = self.width.unwrap_or_else(|| ui.available_width());
-        let top = if self.label.is_some() || self.value_text.is_some() { 16.0 } else { 0.0 };
-        let bottom = if self.limits.is_some() { 14.0 } else { 0.0 };
+        let top = if self.label.is_some() || self.value_text.is_some() { m::LABEL_ROW + m::TIGHT } else { 0.0 };
+        let bottom = if self.limits.is_some() { m::LABEL_ROW } else { 0.0 };
         let height = top + THUMB_H + 2.0 + bottom;
         let (rect, mut response) = ui.allocate_exact_size(vec2(width, height), Sense::click_and_drag());
         let (lo, hi) = (*self.range.start(), *self.range.end());
@@ -499,7 +497,7 @@ impl Widget for Slider<'_> {
         let painter = ui.painter();
         if let Some(label) = self.label {
             let g = layout(ui, label, plain_font(), color);
-            let pos = text_pos(ui, rect.left(), rect.top() + 7.0, &g);
+            let pos = text_pos(ui, rect.left(), rect.top() + m::LABEL_ROW / 2.0, &g);
             let text_rect = Rect::from_min_size(pos, g.size());
             painter.galley(pos, g, color);
             if response.has_focus() {
@@ -508,7 +506,7 @@ impl Widget for Slider<'_> {
         }
         if let Some(text) = &self.value_text {
             let g = layout(ui, text, plain_font(), color);
-            let pos = text_pos(ui, rect.right() - g.size().x, rect.top() + 7.0, &g);
+            let pos = text_pos(ui, rect.right() - g.size().x, rect.top() + m::LABEL_ROW / 2.0, &g);
             painter.galley(pos, g, color);
         }
         // The bar.
@@ -544,7 +542,7 @@ impl Widget for Slider<'_> {
         vline(painter, gx, thumb.top() + 4.0, thumb.bottom() - 4.0, c(p.shine));
         if let Some((min, max)) = self.limits {
             let small = FontId::proportional(style::SMALL_SIZE);
-            let y = rect.bottom() - 6.0;
+            let y = rect.bottom() - m::LABEL_ROW / 2.0 + 1.0;
             let g = layout(ui, min, small.clone(), color);
             painter.galley(text_pos(ui, rect.left(), y, &g), g, color);
             let g = layout(ui, max, small, color);
@@ -605,11 +603,11 @@ impl Widget for MenuField<'_> {
             .map(|o| layout(ui, o, plain_font(), color).size().x)
             .fold(0.0, f32::max);
         let label_w = match self.label {
-            Some(l) => self.divider.unwrap_or(layout(ui, l, plain_font(), color).size().x + 6.0),
+            Some(l) => self.divider.unwrap_or(layout(ui, l, plain_font(), color).size().x.ceil() + m::LABEL_GAP),
             None => 0.0,
         };
-        let width = self.width.unwrap_or(label_w + widest + 34.0);
-        let (rect, mut response) = ui.allocate_exact_size(vec2(width, CONTROL_HEIGHT - 2.0), Sense::click());
+        let width = self.width.unwrap_or((label_w + m::TEXT_INSET + widest + 12.0 + 18.0).ceil());
+        let (rect, mut response) = ui.allocate_exact_size(vec2(width, CONTROL_HEIGHT), Sense::click());
         let field = Rect::from_min_max(pos2(rect.left() + label_w, rect.top()), rect.max);
         let response_field = ui.interact(field, self.id, Sense::click());
         if let Some(cmd) = menu::take_chosen(ui.ctx(), self.id)
@@ -652,7 +650,7 @@ impl Widget for MenuField<'_> {
         style::bevel(painter, field.shrink(1.0), c(p.shine), shade(&p, base, 1.2));
         let text = self.options.get(*self.selected).copied().unwrap_or("");
         let g = layout(ui, text, plain_font(), color);
-        let pos = text_pos(ui, field.left() + 8.0, field.center().y, &g);
+        let pos = text_pos(ui, field.left() + m::TEXT_INSET, field.center().y, &g);
         let text_rect = Rect::from_min_size(pos, g.size());
         painter.galley(pos, g, color);
         let ax = field.right() - 11.0;
@@ -722,15 +720,20 @@ impl<'a> BBox<'a> {
     pub fn show<R>(self, ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
         let p = style::palette(ui.ctx());
         let galley = self.label.map(|l| layout(ui, l, bold_font(), c(p.panel_text)));
-        let top = if galley.is_some() { 8.0 } else { 0.0 };
-        let pad = 10.0;
+        // The frame's top line runs through the middle of the label.
+        let label_h = galley.as_ref().map_or(0.0, |g| g.size().y.round());
+        let top = (label_h / 2.0).floor();
+        let pad = m::BOX_INSET;
         let outer = ui.available_rect_before_wrap();
+        let content_top = if galley.is_some() { outer.top() + label_h + m::TIGHT } else { outer.top() + pad };
         let content = Rect::from_min_max(
-            pos2(outer.left() + pad, outer.top() + top + pad + 4.0),
+            pos2(outer.left() + pad, content_top),
             pos2(outer.right() - pad, outer.bottom() - pad),
         );
         let horizontal = ui.layout().is_horizontal();
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(content).layout(egui::Layout::top_down(Align::Min)));
+        // Items in a box are a group: stack them tighter.
+        child.spacing_mut().item_spacing.y = m::TIGHT;
         let r = add(&mut child);
         let used = child.min_rect();
         let right = if horizontal {
@@ -744,7 +747,7 @@ impl<'a> BBox<'a> {
         let dark = shade(&p, p.panel_background, 1.22);
         let light = c(p.shine);
         // Etched rectangle: dark line, then light line inset by one.
-        let gap = galley.as_ref().map(|g| (frame.left() + 8.0, frame.left() + 8.0 + g.size().x + 8.0));
+        let gap = galley.as_ref().map(|g| (frame.left() + pad - 4.0, frame.left() + pad + g.size().x.ceil() + 4.0));
         let etched_h = |y: f32, col: Color32| match gap {
             Some((a, b)) => {
                 hline(painter, frame.left(), a, y, col);
@@ -761,7 +764,7 @@ impl<'a> BBox<'a> {
         vline(painter, frame.right() - 2.0, frame.top(), frame.bottom() - 1.0, dark);
         vline(painter, frame.right() - 1.0, frame.top(), frame.bottom(), light);
         if let (Some(g), Some((a, _))) = (galley, gap) {
-            let pos = text_pos(ui, a + 4.0, frame.top() + 1.0, &g);
+            let pos = text_pos(ui, a + 4.0, outer.top() + label_h / 2.0, &g);
             painter.galley(pos, g, c(p.panel_text));
         }
         ui.advance_cursor_after_rect(frame);
@@ -804,17 +807,17 @@ impl Widget for StatusBar<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
         let p = style::palette(ui.ctx());
         let color = c(p.panel_text);
-        let top = if self.label.is_some() || self.trailing.is_some() { 17.0 } else { 0.0 };
+        let top = if self.label.is_some() || self.trailing.is_some() { m::LABEL_ROW + m::TIGHT } else { 0.0 };
         let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), top + self.height), Sense::hover());
         let painter = ui.painter();
         if let Some(label) = self.label {
             let g = layout(ui, label, plain_font(), color);
-            painter.galley(text_pos(ui, rect.left(), rect.top() + 7.0, &g), g, color);
+            painter.galley(text_pos(ui, rect.left(), rect.top() + m::LABEL_ROW / 2.0, &g), g, color);
         }
         if let Some(t) = self.trailing {
             let g = layout(ui, t, plain_font(), color);
             let x = rect.right() - g.size().x;
-            painter.galley(text_pos(ui, x, rect.top() + 7.0, &g), g, color);
+            painter.galley(text_pos(ui, x, rect.top() + m::LABEL_ROW / 2.0, &g), g, color);
         }
         let bar = Rect::from_min_max(pos2(rect.left(), rect.top() + top), rect.max);
         painter.rect_filled(bar.shrink(1.0), 0.0, c(p.document_background));
@@ -1220,7 +1223,7 @@ impl Cell<'_> {
         self.text_with(text, plain_font(), self.text_color);
     }
     pub fn text_with(&self, text: &str, font: FontId, color: Color32) {
-        let r = self.rect.shrink2(vec2(6.0, 0.0));
+        let r = self.rect.shrink2(vec2(m::CELL_INSET, 0.0));
         let mut job = egui::text::LayoutJob::simple_singleline(text.to_owned(), font, color);
         job.wrap = egui::text::TextWrapping::truncate_at_width(r.width().max(0.0));
         let g = self.painter.layout_job(job);
@@ -1229,8 +1232,8 @@ impl Cell<'_> {
             Align::Center => r.center().x - g.size().x / 2.0,
             Align::Min => r.left(),
         };
-        let ppp = self.painter.ctx().pixels_per_point();
-        let pos = pos2((x * ppp).round() / ppp, ((r.center().y - g.size().y / 2.0) * ppp).round() / ppp);
+        let size = g.job.sections.first().map_or(style::PLAIN_SIZE, |s| s.format.font_id.size);
+        let pos = style::text_origin(self.painter.ctx(), &g, x, r.center().y, size);
         self.painter.galley(pos, g, color);
     }
 }
@@ -1249,7 +1252,7 @@ pub const HEADER_HEIGHT: f32 = 18.0;
 
 impl<'a> ColumnListView<'a> {
     pub fn new(id: impl std::hash::Hash + std::fmt::Debug, columns: &'a [Column], rows: usize, state: &'a mut ListState) -> Self {
-        ColumnListView { id: Id::unique(id), columns, rows, state, row_height: 20.0 }
+        ColumnListView { id: Id::unique(id), columns, rows, state, row_height: m::LIST_ROW }
     }
     pub fn row_height(mut self, h: f32) -> Self {
         self.row_height = h;
@@ -1503,14 +1506,7 @@ impl<'a> TabView<'a> {
                 // Open into the panel.
                 hline(&painter, pts[0].x + 1.0, pts[3].x - 1.0, panel.top(), c(bg));
             }
-            let color = c(p.panel_text);
-            let g = painter.layout_no_wrap(label.to_owned(), font, color);
-            let ppp = painter.ctx().pixels_per_point();
-            let pos = pos2(
-                ((r.center().x - g.size().x / 2.0) * ppp).round() / ppp,
-                (((top + bottom) / 2.0 - g.size().y / 2.0 + 0.5) * ppp).round() / ppp,
-            );
-            painter.galley(pos, g, color);
+            style::label(&painter, r.center().x, (top + bottom) / 2.0, Align::Center, label, font, c(p.panel_text));
         };
         for (i, (r, font, label)) in rects.iter().enumerate().rev() {
             if i != *self.selected {
@@ -1521,7 +1517,7 @@ impl<'a> TabView<'a> {
             draw_tab(*r, true, label, font.clone());
         }
 
-        let content = panel.shrink2(vec2(12.0, 12.0));
+        let content = panel.shrink(m::WINDOW_INSET);
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(content).layout(egui::Layout::top_down(Align::Min)));
         let r = add(&mut child, *self.selected);
         ui.advance_cursor_after_rect(outer);
@@ -1530,6 +1526,26 @@ impl<'a> TabView<'a> {
 }
 
 // ---- small helpers ------------------------------------------------------
+
+/// The standard window content area: inset from the window edges by
+/// [`m::WINDOW_INSET`], stacking top to bottom.
+pub fn window_content<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let rect = ui.available_rect_before_wrap().shrink(m::WINDOW_INSET);
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(egui::Layout::top_down(Align::Min)));
+    let r = add(&mut child);
+    ui.advance_cursor_after_rect(ui.available_rect_before_wrap());
+    r
+}
+
+/// A row of buttons aligned to the right edge, as at the bottom of
+/// dialogs and preference panels. Add buttons in reading order.
+pub fn button_row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+        ui.spacing_mut().item_spacing.x = m::SPACING + 2.0;
+        add(ui)
+    })
+    .inner
+}
 
 /// A colour swatch well (BColorControl's sample); clicking returns true.
 pub fn color_well(ui: &mut Ui, color: Color32, size: Vec2) -> Response {
@@ -1549,8 +1565,8 @@ pub fn heading(ui: &mut Ui, text: &str) -> Response {
 /// Align a label to the left of a fixed-width column (form rows).
 pub fn form_label(ui: &mut Ui, text: &str, width: f32) {
     let p = style::palette(ui.ctx());
-    let (rect, _) = ui.allocate_exact_size(vec2(width, 22.0), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(width, CONTROL_HEIGHT), Sense::hover());
     let g = layout(ui, text, plain_font(), c(p.panel_text));
-    let pos = text_pos(ui, rect.right() - g.size().x - 6.0, rect.center().y, &g);
+    let pos = text_pos(ui, rect.right() - g.size().x - m::LABEL_GAP, rect.center().y, &g);
     ui.painter().galley(pos, g, c(p.panel_text));
 }

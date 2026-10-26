@@ -10,6 +10,7 @@ pub mod desktop_entry;
 pub mod icons;
 mod input;
 pub mod menu;
+pub mod metrics;
 mod platform;
 pub mod style;
 mod theme_watch;
