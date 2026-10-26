@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### NetPositive: the WebRTC samples' peer connection
+
+*13:26* — The official webrtc.github.io 'Peer connection' sample, unmodified: the test camera (left) goes through two RTCPeerConnections and comes back decoded (right), connected in 281 ms.
+
+![NetPositive: the WebRTC samples' peer connection](2026-10-26/132617-netpositive-the-webrtc-samples-peer-connection.png)
+
 ### Deskbar: a new build is ready
 
 *13:17* — tabula-session watches the tree Tabula was built in. Once a build finishes with newer programs, a green arrow appears in Deskbar's tray; clicking it asks before installing them and reloading the session in place (windows stay open).

@@ -682,5 +682,11 @@
   "title": "Deskbar: a new build is ready",
   "caption": "tabula-session watches the tree Tabula was built in. Once a build finishes with newer programs, a green arrow appears in Deskbar's tray; clicking it asks before installing them and reloading the session in place (windows stay open).",
   "image": "2026-10-26/131731-deskbar-a-new-build-is-ready.png"
+ },
+ {
+  "time": "2026-10-26T13:26:17",
+  "title": "NetPositive: the WebRTC samples' peer connection",
+  "caption": "The official webrtc.github.io 'Peer connection' sample, unmodified: the test camera (left) goes through two RTCPeerConnections and comes back decoded (right), connected in 281 ms.",
+  "image": "2026-10-26/132617-netpositive-the-webrtc-samples-peer-connection.png"
  }
 ]
