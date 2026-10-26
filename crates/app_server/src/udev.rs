@@ -1095,7 +1095,8 @@ impl AnvilState<UdevData> {
                 .position(|mode| mode.mode_type().contains(ModeTypeFlags::PREFERRED))
                 .unwrap_or(0);
             // The mode chosen in Preferences ▸ Display, while the display offers it.
-            let saved = self.settings.display.outputs.get(&output_name).and_then(|c| c.mode.clone());
+            let key = tabula_protocol::display_key(&output_name, &make, &model, &serial_number);
+            let saved = self.settings.display.config(&key, &output_name).and_then(|c| c.mode.clone());
             let mode_id = saved
                 .and_then(|m| {
                     connector.modes().iter().position(|d| {
@@ -1132,8 +1133,9 @@ impl AnvilState<UdevData> {
             }
             output.set_preferred(WlMode::from(connector.modes()[preferred]));
             output.change_current_state(Some(wl_mode), None, None, Some(position));
-            let scale = self.settings.display.scale_for(&output.name());
-            let transform = crate::desktop::rotation_transform(self.settings.display.rotation_for(&output.name()));
+            let key = crate::desktop::display_key(&output);
+            let scale = self.settings.display.scale_for(&key, &output.name());
+            let transform = crate::desktop::rotation_transform(self.settings.display.rotation_for(&key, &output.name()));
             output.change_current_state(None, Some(transform), Some(smithay::output::Scale::Fractional(scale)), None);
             self.space.map_output(&output, position);
 

@@ -548,7 +548,8 @@ pub fn fixup_positions(
         .iter()
         .map(|o| (o.name(), space.output_geometry(o).map(|geo| geo.size).unwrap_or_else(|| Size::from((0, 0)))))
         .collect();
-    let positions = arrange(&sizes, |name| display.outputs.get(name).and_then(|c| c.position));
+    let keys: std::collections::HashMap<String, String> = outputs.iter().map(|o| (o.name(), crate::desktop::display_key(o))).collect();
+    let positions = arrange(&sizes, |name| display.config(keys.get(name).map_or(name, |k| k.as_str()), name).and_then(|c| c.position));
     for (output, at) in outputs.iter().zip(positions) {
         space.map_output(output, at);
         layer_map_for_output(output).arrange();

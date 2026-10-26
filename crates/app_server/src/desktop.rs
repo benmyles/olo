@@ -106,6 +106,12 @@ fn save_settings(settings: &Settings) {
     }
 }
 
+/// Where `output`'s settings are kept: its monitor, else its connector.
+pub fn display_key(output: &Output) -> String {
+    let p = output.physical_properties();
+    tabula_protocol::display_key(&output.name(), &p.make, &p.model, &p.serial_number)
+}
+
 /// Minutes since local midnight.
 fn local_minutes() -> u32 {
     // SAFETY: plain libc time calls with valid pointers.
@@ -409,6 +415,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 let loc = self.space.output_geometry(o).map(|g| g.loc).unwrap_or_default();
                 OutputInfo {
                     name: o.name(),
+                    key: display_key(o),
                     make: props.make,
                     model: props.model,
                     physical_size_mm: (props.size.w, props.size.h),
@@ -416,7 +423,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     current_mode: o.current_mode().map(to_mode),
                     scale: o.current_scale().fractional_scale(),
                     position: (loc.x, loc.y),
-                    rotation: self.settings.display.rotation_for(&o.name()),
+                    rotation: self.settings.display.rotation_for(&display_key(o), &o.name()),
                     main: main.as_ref() == Some(o),
                 }
             })
@@ -425,17 +432,18 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// Apply the configured scale and rotation to an output.
     pub fn apply_output_settings(&self, output: &Output) {
-        let scale = self.settings.display.scale_for(&output.name());
-        let transform = rotation_transform(self.settings.display.rotation_for(&output.name()));
+        let (key, name) = (display_key(output), output.name());
+        let scale = self.settings.display.scale_for(&key, &name);
+        let transform = rotation_transform(self.settings.display.rotation_for(&key, &name));
         output.change_current_state(None, Some(transform), Some(Scale::Fractional(scale)), None);
     }
 
     /// The main display: the chosen one while it is connected, else the first.
     pub fn main_output(&self) -> Option<Output> {
-        let main = self.settings.display.main.as_deref();
+        let display = &self.settings.display;
         self.space
             .outputs()
-            .find(|o| Some(o.name().as_str()) == main)
+            .find(|o| display.is_main(&display_key(o), &o.name()))
             .or_else(|| self.space.outputs().next())
             .cloned()
     }
@@ -496,7 +504,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         if (dw, dh) == (0, 0) {
             return;
         }
-        let moves: Vec<(String, (i32, i32))> = self
+        let moves: Vec<(Output, (i32, i32))> = self
             .space
             .outputs()
             .filter(|o| o.name() != name)
@@ -506,20 +514,20 @@ impl<B: Backend + 'static> AnvilState<B> {
                     if g.loc.x == old.loc.x + old.size.w { dw } else { 0 },
                     if g.loc.y == old.loc.y + old.size.h { dh } else { 0 },
                 );
-                (shift != (0, 0)).then(|| (o.name(), (g.loc.x + shift.0, g.loc.y + shift.1)))
+                (shift != (0, 0)).then(|| (o.clone(), (g.loc.x + shift.0, g.loc.y + shift.1)))
             })
             .collect();
         for (other, at) in moves {
             // Pin everything that is placed, so the row fallback can't reshuffle.
-            self.settings.display.outputs.entry(other).or_default().position = Some(at);
+            self.settings.display.config_mut(&display_key(&other), &other.name()).position = Some(at);
         }
-        let placed: Vec<(String, (i32, i32))> = self
+        let placed: Vec<(Output, (i32, i32))> = self
             .space
             .outputs()
-            .filter_map(|o| Some((o.name(), self.space.output_geometry(o)?.loc.into())))
+            .filter_map(|o| Some((o.clone(), self.space.output_geometry(o)?.loc.into())))
             .collect();
-        for (n, at) in placed {
-            let entry = self.settings.display.outputs.entry(n).or_default();
+        for (o, at) in placed {
+            let entry = self.settings.display.config_mut(&display_key(&o), &o.name());
             entry.position.get_or_insert(at);
         }
     }
@@ -543,7 +551,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.backend_data.reset_buffers(&output);
             }
         }
-        let entry = self.settings.display.outputs.entry(name.to_owned()).or_default();
+        let entry = self.settings.display.config_mut(&display_key(&output), name);
         if let Some(mode) = config.mode {
             entry.mode = Some(mode);
         }

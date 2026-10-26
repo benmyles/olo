@@ -208,7 +208,7 @@ pub fn run_headless(size_arg: Option<&str>) {
     state.shm_state.update_formats(shm_formats);
     for output in &outputs {
         // A resolution chosen in Preferences, as DRM outputs do.
-        let saved = state.settings.display.outputs.get(&output.name()).and_then(|c| c.mode.clone());
+        let saved = state.settings.display.config(&crate::desktop::display_key(output), &output.name()).and_then(|c| c.mode.clone());
         if let Some(m) = saved {
             let mode = Mode { size: (m.width, m.height).into(), refresh: m.refresh };
             if output.current_mode() != Some(mode)

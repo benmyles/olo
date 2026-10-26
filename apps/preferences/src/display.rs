@@ -269,7 +269,7 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
                     let mut main = false;
                     ui.add(CheckBox::new(&mut main, "Make this the main display"));
                     if main {
-                        s.display.main = Some(o.name.clone());
+                        s.display.main = Some(if o.key.is_empty() { o.name.clone() } else { o.key.clone() });
                     }
                 }
                 ui.with_layout(tabula_kit::egui::Layout::right_to_left(tabula_kit::egui::Align::Center), |ui| {

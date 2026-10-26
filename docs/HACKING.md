@@ -405,7 +405,11 @@ launcher lists them. The panel list Deskbar shows is
   no output (Deskbar, the desktop): they carry `shell::AutoOutput` and
   move when the main display changes or their output is unplugged.
   Identify (`IdentifyOutputs`) shows each display's name for 4 s
-  (app_server `identify.rs`).
+  (app_server `identify.rs`). Settings are kept per monitor under
+  `tabula_protocol::display_key` ("make model serial" from the EDID,
+  else the connector; `OutputInfo::key`), so they follow a monitor to
+  another port; always go through `DisplaySettings::config` /
+  `config_mut`, which also read and migrate older connector entries.
 * Memory buffers drawn by app_server (twitcher, wallpaper, identify) must
   pass the full buffer as `src` to `MemoryRenderBufferRenderElement::
   from_buffer`; without it the buffer counts as logical pixels and is

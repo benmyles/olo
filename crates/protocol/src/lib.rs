@@ -168,7 +168,11 @@ pub struct Mode {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OutputInfo {
+    /// The connector ("eDP-1", "DP-2").
     pub name: String,
+    /// Where its settings are kept (see [`display_key`]).
+    #[serde(default)]
+    pub key: String,
     pub make: String,
     pub model: String,
     pub physical_size_mm: (i32, i32),
@@ -335,11 +339,26 @@ impl Default for PowerSettings {
 pub struct DisplaySettings {
     /// Scale for outputs without their own entry in `outputs`.
     pub scale: f64,
-    /// The main display's connector (Deskbar and the desktop live there);
-    /// None, or one that isn't connected, means the first.
+    /// The main display's key (Deskbar and the desktop live there); None,
+    /// or one that isn't connected, means the first.
     pub main: Option<String>,
-    /// Per-output overrides, keyed by connector name (e.g. "eDP-1").
+    /// Per-display overrides, keyed by [`display_key`]: the monitor itself
+    /// when its EDID names it, else the connector ("eDP-1"). Entries saved
+    /// under a connector by older versions still apply, and move to the
+    /// monitor's key when next changed.
     pub outputs: std::collections::BTreeMap<String, OutputConfig>,
+}
+
+/// Where a display's settings are kept: "make model serial" from its EDID
+/// when all three are known, so they follow the monitor between ports;
+/// else its connector.
+pub fn display_key(connector: &str, make: &str, model: &str, serial: &str) -> String {
+    let known = |s: &str| !s.trim().is_empty() && s != "Unknown";
+    if known(make) && known(model) && known(serial) {
+        format!("{} {} {}", make.trim(), model.trim(), serial.trim())
+    } else {
+        connector.to_owned()
+    }
 }
 
 impl Default for DisplaySettings {
@@ -349,16 +368,33 @@ impl Default for DisplaySettings {
 }
 
 impl DisplaySettings {
-    pub fn scale_for(&self, output: &str) -> f64 {
-        self.outputs
-            .get(output)
-            .and_then(|c| c.scale)
-            .unwrap_or(self.scale)
-            .clamp(0.5, 4.0)
+    /// A display's saved settings, by its key or (as older versions saved
+    /// them) its connector.
+    pub fn config(&self, key: &str, connector: &str) -> Option<&OutputConfig> {
+        self.outputs.get(key).or_else(|| self.outputs.get(connector))
     }
 
-    pub fn rotation_for(&self, output: &str) -> u16 {
-        self.outputs.get(output).and_then(|c| c.rotation).filter(|r| ROTATIONS.contains(r)).unwrap_or(0)
+    /// A display's settings to change, moved from its connector to its key.
+    pub fn config_mut(&mut self, key: &str, connector: &str) -> &mut OutputConfig {
+        if key != connector
+            && !self.outputs.contains_key(key)
+            && let Some(old) = self.outputs.remove(connector)
+        {
+            self.outputs.insert(key.to_owned(), old);
+        }
+        self.outputs.entry(key.to_owned()).or_default()
+    }
+
+    pub fn scale_for(&self, key: &str, connector: &str) -> f64 {
+        self.config(key, connector).and_then(|c| c.scale).unwrap_or(self.scale).clamp(0.5, 4.0)
+    }
+
+    pub fn rotation_for(&self, key: &str, connector: &str) -> u16 {
+        self.config(key, connector).and_then(|c| c.rotation).filter(|r| ROTATIONS.contains(r)).unwrap_or(0)
+    }
+
+    pub fn is_main(&self, key: &str, connector: &str) -> bool {
+        self.main.as_deref().is_some_and(|m| m == key || m == connector)
     }
 }
 
@@ -630,6 +666,19 @@ mod tests {
     }
 
     #[test]
+    fn display_keys_follow_the_monitor() {
+        assert_eq!(display_key("DP-1", "Dell", "U2720Q", "ABC123"), "Dell U2720Q ABC123");
+        assert_eq!(display_key("DP-1", "Dell", "U2720Q", "Unknown"), "DP-1");
+        let mut d = DisplaySettings::default();
+        d.outputs.insert("DP-1".into(), OutputConfig { scale: Some(1.5), ..Default::default() });
+        assert_eq!(d.scale_for("Dell U2720Q ABC123", "DP-1"), 1.5);
+        d.config_mut("Dell U2720Q ABC123", "DP-1").rotation = Some(90);
+        assert!(!d.outputs.contains_key("DP-1"));
+        assert_eq!(d.rotation_for("Dell U2720Q ABC123", "DP-2"), 90);
+        assert_eq!(d.scale_for("Dell U2720Q ABC123", "DP-2"), 1.5);
+    }
+
+    #[test]
     fn night_window_wraps_midnight() {
         let n = NightLight::default(); // 20:00 - 07:00
         assert!(n.in_window(22 * 60));
@@ -643,6 +692,6 @@ mod tests {
         let s: Settings = serde_json::from_str(r#"{"workspace_count": 8}"#).unwrap();
         assert_eq!(s.workspace_count, 8);
         assert!(s.touchpad.tap_to_click);
-        assert_eq!(s.display.scale_for("eDP-1"), 2.0);
+        assert_eq!(s.display.scale_for("eDP-1", "eDP-1"), 2.0);
     }
 }

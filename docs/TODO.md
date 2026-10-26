@@ -79,8 +79,8 @@ as they land (with the commit), add new ones as they come up.
   revert countdown, saved per connector and restored at start-up,
   neighbours follow a resized screen, multi-screen headless tests.
   Rotation, the main display (Deskbar and desktop follow it, also on
-  unplug) and Identify done too. Still to do: mirroring; keying saved
-  settings by EDID rather than connector.
+  unplug) and Identify done too. ~~Settings keyed by EDID~~ (make,
+  model, serial; connector entries migrate). Still to do: mirroring.
 
 - ~~Cursor shapes~~ (Haiku's cursors via tabula-hvif, cursor-shape-v1);
   ~~night light~~ (CRTC gamma ramps, faded); ~~libinput settings~~ (touchpad tap, tap-drag, dwt, click
