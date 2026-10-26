@@ -33,6 +33,9 @@ pub mod keys {
     pub const VOLUME_UP: u32 = 115;
     pub const BRIGHTNESS_DOWN: u32 = 224;
     pub const BRIGHTNESS_UP: u32 = 225;
+    pub const KBD_TOGGLE: u32 = 228;
+    pub const KBD_DOWN: u32 = 229;
+    pub const KBD_UP: u32 = 230;
 }
 
 enum Job {
@@ -40,6 +43,7 @@ enum Job {
     /// none.
     Caffeinate { on: bool, lid: bool },
     Brightness(u32),
+    KeyboardBacklight(u32),
     Suspend,
     Volume(f32),
     ToggleMute,
@@ -59,6 +63,11 @@ pub struct Power {
     backlight: Option<tabula_system::backlight::Backlight>,
     /// Perceived brightness, 0–1 (simulated when there is no backlight to drive).
     brightness: Option<f32>,
+    /// The keyboard's backlight, and its level (simulated likewise).
+    keyboard: Option<tabula_system::backlight::Backlight>,
+    keyboard_level: Option<f32>,
+    /// The level before a toggle turned it off.
+    keyboard_was: f32,
     /// Simulated volume and mute (not the session), for the indicator.
     volume: Option<(f32, bool)>,
     /// The volume after a key, from the worker (session only); taken by
@@ -75,6 +84,13 @@ impl std::fmt::Debug for Power {
 
 impl Power {
     pub fn new(is_session: bool) -> Power {
+        let (keyboard, keyboard_level) = if is_session {
+            let k = tabula_system::backlight::keyboard();
+            let level = k.as_ref().and_then(|k| k.level());
+            (k, level)
+        } else {
+            (None, Some(0.5))
+        };
         let (backlight, brightness, jobs, volume, volume_feedback) = if is_session {
             let backlight = tabula_system::backlight::internal();
             let brightness = backlight.as_ref().and_then(|b| b.level());
@@ -95,6 +111,9 @@ impl Power {
             inhibitors: Vec::new(),
             backlight,
             brightness,
+            keyboard,
+            keyboard_level,
+            keyboard_was: 0.5,
             volume,
             volume_feedback,
             jobs,
@@ -113,6 +132,12 @@ impl Power {
         }
     }
 
+    fn apply_keyboard(&self, level: f32) {
+        if let Some(k) = &self.keyboard {
+            self.send(Job::KeyboardBacklight(tabula_system::backlight::to_raw(level, k.max)));
+        }
+    }
+
     pub fn caffeinated(&self) -> bool {
         self.caffeinated
     }
@@ -127,6 +152,7 @@ impl Power {
             screen_saver: false,
             caffeinated_until: self.caffeinated_until.and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()),
             caffeinated_lid: self.caffeinated_lid,
+            keyboard_backlight: self.keyboard_level,
         }
     }
 
@@ -170,6 +196,10 @@ fn run(job: Job, inhibitor: &mut Option<tabula_system::power::Inhibitor>, feedba
             Some(b) => b.set_raw(raw).map_err(|e| e.to_string()),
             None => Ok(()),
         },
+        Job::KeyboardBacklight(raw) => match backlight::keyboard() {
+            Some(b) => b.set_raw(raw).map_err(|e| e.to_string()),
+            None => Ok(()),
+        },
         Job::Suspend => power::suspend().map_err(|e| e.to_string()),
         Job::Volume(delta) => audio::volume()
             .and_then(|v| {
@@ -207,6 +237,9 @@ impl<B: Backend> AnvilState<B> {
             if let Some(level) = p.brightness {
                 p.apply_brightness(level);
             }
+            if let Some(level) = p.keyboard_level {
+                p.apply_keyboard(level);
+            }
             info!("displays awake");
             self.power_changed();
         }
@@ -242,6 +275,9 @@ impl<B: Backend> AnvilState<B> {
         if display_off > 0 && idle >= minutes(display_off) && !p.display_asleep {
             p.display_asleep = true;
             p.send(Job::Brightness(0));
+            if p.keyboard.is_some() {
+                p.send(Job::KeyboardBacklight(0));
+            }
             info!(?idle, "displays asleep");
             changed = true;
             lock = settings.lock_on_display_off;
@@ -324,6 +360,19 @@ impl<B: Backend> AnvilState<B> {
             keys::VOLUME_UP => |s| s.volume_key(Job::Volume(STEP)),
             keys::VOLUME_DOWN => |s| s.volume_key(Job::Volume(-STEP)),
             keys::MUTE => |s| s.volume_key(Job::ToggleMute),
+            keys::KBD_UP => |s| s.step_keyboard(STEP),
+            keys::KBD_DOWN => |s| s.step_keyboard(-STEP),
+            keys::KBD_TOGGLE => |s| {
+                let Some(level) = s.power.keyboard_level else { return };
+                let next = if level > 0.0 {
+                    s.power.keyboard_was = level;
+                    0.0
+                } else {
+                    s.power.keyboard_was.max(STEP)
+                };
+                s.set_keyboard_backlight(next);
+                s.show_indicator(crate::osd::Indicator::KeyboardBacklight(next));
+            },
             _ => return false,
         };
         if pressed {
@@ -340,6 +389,24 @@ impl<B: Backend> AnvilState<B> {
             self.set_brightness(level);
             self.show_indicator(crate::osd::Indicator::Brightness(level));
         }
+    }
+
+    fn step_keyboard(&mut self, delta: f32) {
+        if let Some(level) = self.power.keyboard_level {
+            let level = (((level + delta) / STEP).round() * STEP).clamp(0.0, 1.0);
+            self.set_keyboard_backlight(level);
+            self.show_indicator(crate::osd::Indicator::KeyboardBacklight(level));
+        }
+    }
+
+    pub fn set_keyboard_backlight(&mut self, level: f32) {
+        let Some(_) = self.power.keyboard_level else { return };
+        let level = level.clamp(0.0, 1.0);
+        self.power.keyboard_level = Some(level);
+        if !self.power.display_asleep {
+            self.power.apply_keyboard(level);
+        }
+        self.power_changed();
     }
 
     fn volume_key(&mut self, job: Job) {

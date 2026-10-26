@@ -479,7 +479,10 @@ bay; `Request::SetCaffeinated { on, minutes, lid }` sets it, the power
 tick ends a timed stretch, and `PowerStatus` carries `caffeinated_until`
 and `caffeinated_lid`. Deskbar toggles it from the cup (right-click, or
 Tabula ▸ Stay Awake, for durations and the lid); Ctrl+⌘A toggles it from
-the keyboard. The brightness and volume keys and Ctrl+⌘A show `osd.rs`'s
+the keyboard. The keyboard backlight (`tabula_system::backlight::keyboard`, an LED
+class device set through logind) follows its keys and Preferences ▸
+Keyboard, and goes off with the displays. The brightness, keyboard and
+volume keys and Ctrl+⌘A show `osd.rs`'s
 panel low on the screen under the pointer for 1.6 s (in a real session
 the worker reports the volume it set; headless simulates a volume).
 `TABULA_OSD_SHEET=/tmp/o.png cargo test -p app_server osd_sheet` draws

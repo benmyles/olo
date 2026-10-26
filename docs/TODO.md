@@ -15,7 +15,8 @@ as they land (with the commit), add new ones as they come up.
   off and sleeps when idle (Preferences ▸ Power), honours zwp_idle_inhibit,
   handles the brightness and volume keys; caffeinated mode from the Deskbar
   cup or Preferences holds a logind inhibitor. Display ▸ Brightness. ~~On-screen
-  level indicator~~. Still to do: keyboard backlight, real DPMS off
+  level indicator~~. ~~Keyboard backlight~~
+  (keys, Preferences ▸ Keyboard, off with the display). Still to do: real DPMS off
   instead of backlight 0.
 - ~~Preferences ▸ Sound~~: output/input device, level, mute, live from the
   sound server (`tabula_system::audio::{devices, watch_devices, set_*}`).

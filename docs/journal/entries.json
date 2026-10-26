@@ -454,5 +454,11 @@
   "title": "Deskbar Stay Awake menu",
   "caption": "Right-click the cup (also in the Tabula menu): until turned off, 1 to 8 hours, even with the lid closed, Allow Sleep with the end time. The menu now flips to stay on screen.",
   "image": "2026-10-26/031504-deskbar-stay-awake-menu.png"
+ },
+ {
+  "time": "2026-10-26T03:18:18",
+  "title": "Keyboard backlight",
+  "caption": "Keyboard illumination keys raise the backlight with the level indicator; Preferences Keyboard has a Backlight slider that follows it. Turns off with the display.",
+  "image": "2026-10-26/031818-keyboard-backlight.png"
  }
 ]

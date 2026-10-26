@@ -1,6 +1,6 @@
-//! The built-in display's backlight. Read from sysfs; written through
-//! logind's `Session.SetBrightness`, which lets the session's own user
-//! change it without root.
+//! The built-in display's backlight and the keyboard's. Read from sysfs;
+//! written through logind's `Session.SetBrightness`, which lets the
+//! session's own user change them without root.
 
 use std::path::{Path, PathBuf};
 
@@ -11,6 +11,8 @@ pub struct Backlight {
     /// The sysfs device name ("apple-panel-bl", "intel_backlight").
     pub name: String,
     pub max: u32,
+    /// "backlight" or "leds", as logind wants it.
+    subsystem: &'static str,
     dir: PathBuf,
 }
 
@@ -32,11 +34,30 @@ pub fn internal() -> Option<Backlight> {
                 Some("platform") => 1,
                 _ => 2,
             };
-            Some((rank, Backlight { name: e.file_name().to_string_lossy().into_owned(), max, dir }))
+            Some((rank, Backlight { name: e.file_name().to_string_lossy().into_owned(), max, subsystem: "backlight", dir }))
         })
         .collect();
     all.sort_by_key(|(rank, b)| (*rank, b.name.clone()));
     all.into_iter().next().map(|(_, b)| b)
+}
+
+/// The keyboard's backlight (an LED class device named `*kbd_backlight`).
+pub fn keyboard() -> Option<Backlight> {
+    let mut all: Vec<Backlight> = std::fs::read_dir("/sys/class/leds")
+        .ok()?
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if !name.ends_with("kbd_backlight") {
+                return None;
+            }
+            let dir = e.path();
+            let max: u32 = read(&dir.join("max_brightness"))?.parse().ok().filter(|&m| m > 0)?;
+            Some(Backlight { name, max, subsystem: "leds", dir })
+        })
+        .collect();
+    all.sort_by(|a, b| a.name.cmp(&b.name));
+    all.into_iter().next()
 }
 
 /// Perceived brightness (0–1) to a raw value: the eye's response is far
@@ -72,7 +93,7 @@ impl Backlight {
                 session,
                 "org.freedesktop.login1.Session",
                 "SetBrightness",
-                &("backlight", self.name.as_str(), raw.min(self.max)),
+                &(self.subsystem, self.name.as_str(), raw.min(self.max)),
             )
         };
         // Our own session if we are in one, else the user's graphical one.
@@ -116,6 +137,13 @@ mod tests {
         let raw = b.raw().unwrap();
         b.set_raw(raw).expect("logind SetBrightness");
         assert_eq!(b.raw(), Some(raw));
+    }
+
+    #[test]
+    #[ignore]
+    fn live_read_keyboard() {
+        let b = keyboard().expect("a keyboard backlight");
+        eprintln!("{} raw {:?} of {} = {:?}", b.name, b.raw(), b.max, b.level());
     }
 
     #[test]

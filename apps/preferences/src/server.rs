@@ -18,6 +18,7 @@ enum Out {
     Output(String, OutputConfig),
     Caffeinated(bool),
     Brightness(f32),
+    KeyboardBacklight(f32),
     StartScreenSaver,
     Identify,
 }
@@ -37,7 +38,9 @@ impl Server {
                 while let Ok(mut out) = rx.recv() {
                     // Collapse queued settings into the newest.
                     while let Ok(next) = rx.try_recv() {
-                        if matches!((&out, &next), (Out::Settings(_), Out::Settings(_)) | (Out::Brightness(_), Out::Brightness(_))) {
+                        if matches!((&out, &next), (Out::Settings(_), Out::Settings(_))
+                                | (Out::Brightness(_), Out::Brightness(_))
+                                | (Out::KeyboardBacklight(_), Out::KeyboardBacklight(_))) {
                             out = next;
                         } else {
                             send(&mut client, out);
@@ -67,6 +70,10 @@ impl Server {
         let _ = self.tx.send(Out::Brightness(level));
     }
 
+    pub fn set_keyboard_backlight(&self, level: f32) {
+        let _ = self.tx.send(Out::KeyboardBacklight(level));
+    }
+
     pub fn identify_outputs(&self) {
         let _ = self.tx.send(Out::Identify);
     }
@@ -83,6 +90,7 @@ fn send(client: &mut Option<Client>, out: Out) {
         Out::Output(name, config) => Request::ConfigureOutput { name, config },
         Out::Caffeinated(on) => Request::SetCaffeinated { on, minutes: None, lid: false },
         Out::Brightness(level) => Request::SetBrightness { level },
+        Out::KeyboardBacklight(level) => Request::SetKeyboardBacklight { level },
         Out::StartScreenSaver => Request::StartScreenSaver,
         Out::Identify => Request::IdentifyOutputs,
     };

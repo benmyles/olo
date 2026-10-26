@@ -3,13 +3,17 @@
 
 use tabula_kit::{
     egui::Ui,
-    widgets::{BBox, CheckBox, MenuField, Slider, TextControl},
+    widgets::{BBox, CheckBox, MenuField, Slider, StringView, TextControl},
 };
-use tabula_protocol::Settings;
+use tabula_protocol::{PowerStatus, Settings};
+
+use crate::server::Server;
 
 #[derive(Default)]
 pub struct State {
     test: String,
+    /// The level being dragged to, until app_server's report catches up.
+    backlight: Option<(f32, std::time::Instant)>,
 }
 
 /// Common layouts: xkb name and what to call it.
@@ -36,7 +40,7 @@ const LAYOUTS: &[(&str, &str)] = &[
     ("jp", "Japanese"),
 ];
 
-pub fn ui(ui: &mut Ui, s: &mut Settings, st: &mut State) {
+pub fn ui(ui: &mut Ui, s: &mut Settings, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
     let k = &mut s.keyboard;
     let mut names: Vec<&str> = LAYOUTS.iter().map(|(_, n)| *n).collect();
     let mut index = LAYOUTS.iter().position(|(id, _)| *id == k.layout);
@@ -78,5 +82,24 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, st: &mut State) {
         ui.add(CheckBox::new(&mut k.command_key, "Use Command as the shortcut key (Command-C copies)"));
         ui.add(CheckBox::new(&mut k.caps_lock_control, "Caps Lock is another Control key"));
         ui.add_enabled(k.command_key, CheckBox::new(&mut k.tap_command_find, "Tap Command on its own to open Find"));
+    });
+
+    BBox::new("Backlight").show(ui, |ui| match power.and_then(|p| p.keyboard_backlight) {
+        Some(level) => {
+            if st.backlight.is_some_and(|(_, at)| at.elapsed() > std::time::Duration::from_millis(600)) {
+                st.backlight = None;
+            }
+            let mut v = st.backlight.map_or(level, |(l, _)| l);
+            let before = v;
+            let text = if v == 0.0 { "Off".to_owned() } else { format!("{:.0}%", v * 100.0) };
+            ui.add(Slider::new(&mut v, 0.0..=1.0).step(1.0 / 64.0).label("Brightness").value_text(text).limits("Off", "Bright"));
+            if v != before {
+                st.backlight = Some((v, std::time::Instant::now()));
+                server.set_keyboard_backlight(v);
+            }
+        }
+        None => {
+            ui.add(StringView::new("This keyboard has no backlight.").dim(true));
+        }
     });
 }

@@ -75,6 +75,8 @@ pub enum Request {
     },
     /// Built-in display brightness, 0.0–1.0 (perceptual).
     SetBrightness { level: f32 },
+    /// Keyboard backlight, 0.0–1.0 (perceptual).
+    SetKeyboardBacklight { level: f32 },
     /// Show each display's name on it for a few seconds.
     IdentifyOutputs,
     /// Inject input as if from a device (for automated UI tests).
@@ -141,6 +143,8 @@ pub struct PowerStatus {
     pub caffeinated_until: Option<u64>,
     /// Caffeinated with the lid closed too.
     pub caffeinated_lid: bool,
+    /// The keyboard's backlight, 0.0–1.0, if it has one.
+    pub keyboard_backlight: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

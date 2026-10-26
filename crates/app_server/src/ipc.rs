@@ -280,6 +280,10 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.set_brightness(level);
                 Reply::Ok
             }
+            Request::SetKeyboardBacklight { level } => {
+                self.set_keyboard_backlight(level);
+                Reply::Ok
+            }
             Request::IdentifyOutputs => {
                 for info in self.output_infos() {
                     if let Some(o) = self.space.outputs().find(|o| o.name() == info.name) {

@@ -34,6 +34,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq)]
 pub enum Indicator {
     Brightness(f32),
+    KeyboardBacklight(f32),
     Volume { level: f32, muted: bool },
     /// On or off, with a line saying for how long.
     Caffeinated { on: bool, detail: String },
@@ -66,6 +67,7 @@ impl Indicator {
     fn title(&self) -> &'static str {
         match self {
             Indicator::Brightness(_) => "Brightness",
+            Indicator::KeyboardBacklight(_) => "Keyboard Backlight",
             Indicator::Volume { muted: true, .. } => "Volume (muted)",
             Indicator::Volume { .. } => "Volume",
             Indicator::Caffeinated { on: true, .. } => "Caffeinated",
@@ -75,7 +77,7 @@ impl Indicator {
 
     fn level(&self) -> Option<f32> {
         match self {
-            Indicator::Brightness(l) => Some(*l),
+            Indicator::Brightness(l) | Indicator::KeyboardBacklight(l) => Some(*l),
             Indicator::Volume { level, muted } => Some(if *muted { 0.0 } else { *level }),
             Indicator::Caffeinated { .. } => None,
         }
@@ -163,6 +165,33 @@ fn draw_icon(pm: &mut Pixmap, ind: &Indicator, (x, y, size): (f32, f32, f32), rg
             }
             if let Some(rays) = pb.finish() {
                 pm.stroke_path(&rays, &paint, &stroke(2.5), id, None);
+            }
+        }
+        Indicator::KeyboardBacklight(level) => {
+            // Three rows of keys, glowing from above while lit.
+            for (row, keys) in [(18.0, 5), (23.0, 5), (28.0, 3)] {
+                let w = if keys == 3 { 7.0 } else { 4.0 };
+                for i in 0..keys {
+                    let kx = if keys == 3 { 4.0 + i as f32 * 8.5 } else { 3.0 + i as f32 * 5.4 };
+                    let (a, b) = at(kx, row - 3.5);
+                    if let Some(r) = tiny_skia::Rect::from_xywh(a, b, w * k, 3.5 * k) {
+                        pm.fill_rect(r, &paint, id, None);
+                    }
+                }
+            }
+            if *level > 0.0 {
+                let mut pb = PathBuilder::new();
+                let rays = 1 + (*level * 2.99) as i32;
+                for i in 0..[1, 3, 5][(rays - 1) as usize] {
+                    let i = i as f32 - ([1, 3, 5][(rays - 1) as usize] as f32 - 1.0) / 2.0;
+                    let (a, b) = at(16.0 + i * 5.0, 10.0);
+                    let (c, d) = at(16.0 + i * 6.5, 3.0);
+                    pb.move_to(a, b);
+                    pb.line_to(c, d);
+                }
+                if let Some(r) = pb.finish() {
+                    pm.stroke_path(&r, &paint, &stroke(2.0), id, None);
+                }
             }
         }
         Indicator::Volume { level, muted } => {
@@ -310,6 +339,7 @@ mod tests {
         let Some(out) = std::env::var_os("TABULA_OSD_SHEET") else { return };
         let inds = [
             Indicator::Brightness(0.75),
+            Indicator::KeyboardBacklight(0.5),
             Indicator::Volume { level: 0.4, muted: false },
             Indicator::Volume { level: 0.4, muted: true },
             Indicator::Caffeinated { on: true, detail: "For 1 hour, until 15:30".into() },
