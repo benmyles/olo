@@ -104,7 +104,6 @@ use smithay::{
 };
 
 #[cfg(feature = "xwayland")]
-use crate::cursor::Cursor;
 use crate::{
     focus::{KeyboardFocusTarget, PointerFocusTarget},
     shell::WindowElement,
@@ -790,6 +789,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             PointerGesturesState::new::<Self>(&dh);
         }
         TabletManagerState::new::<Self>(&dh);
+        // Clients name their cursors; we draw Haiku's.
+        smithay::wayland::cursor_shape::CursorShapeManagerState::new::<Self>(&dh);
         SecurityContextState::new::<Self, _>(&dh, |client| {
             client
                 .get_data::<ClientState>()
@@ -949,12 +950,12 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                         X11Wm::start_wm(data.handle.clone(), &display_handle, x11_socket, client.clone())
                             .expect("Failed to attach X11 Window Manager");
 
-                    let cursor = Cursor::load();
-                    let image = cursor.get_image(1, Duration::ZERO);
+                    let image = crate::cursor::image(crate::cursor::Shape::SystemDefault, 1.0);
+                    let (hx, hy) = crate::cursor::Shape::SystemDefault.hotspot();
                     wm.set_cursor(
-                        &image.pixels_rgba,
-                        Size::from((image.width as u16, image.height as u16)),
-                        Point::from((image.xhot as u16, image.yhot as u16)),
+                        &image.rgba,
+                        Size::from((image.size as u16, image.size as u16)),
+                        Point::from((hx as u16, hy as u16)),
                     )
                     .expect("Failed to set xwayland default cursor");
                     data.xwm = Some(wm);

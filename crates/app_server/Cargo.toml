@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 tabula-system.workspace = true
+tabula-hvif.workspace = true
 libc = "0.2"
 signal-hook = "0.3"
 bitflags = "2.2.1"
@@ -21,7 +22,6 @@ rand = "0.8"
 tracing = { version = "0.1.37", features = ["max_level_trace", "release_max_level_debug"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 thiserror = "1"
-xcursor = { version = "0.3.3", optional = true }
 xkbcommon = "0.8.0"
 smithay-drm-extras = { workspace = true, optional = true }
 profiling = "1.0"
@@ -59,10 +59,9 @@ udev = [
   "smithay/renderer_gl",
   "smithay/renderer_pixman",
   "smithay/renderer_multi",
-  "xcursor",
 ]
 winit = ["smithay/backend_winit", "smithay/backend_drm"]
-xwayland = ["smithay/xwayland", "x11rb", "smithay/x11rb_event_source", "xcursor"]
+xwayland = ["smithay/xwayland", "x11rb", "smithay/x11rb_event_source"]
 libei = ["smithay/backend_libei", "udev"]
 renderer_sync = []
 debug = []

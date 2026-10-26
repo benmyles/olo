@@ -476,7 +476,7 @@ pub fn run_winit() {
                     Vec::new(),
                     color,
                     locked,
-                    pointer,
+                    (pointer, crate::cursor::pictured(&state.cursor_status)),
                 );
             }
             display_handle.flush_clients().unwrap();

@@ -10,8 +10,6 @@
 use std::{
     path::PathBuf,
     rc::Rc,
-    sync::OnceLock,
-    time::Duration,
 };
 
 use smithay::{
@@ -102,7 +100,7 @@ pub fn take<R, T>(
     overlays: Vec<CustomRenderElements<R>>,
     clear_color: Color32F,
     locked: bool,
-    pointer: Point<f64, Logical>,
+    (pointer, shape): (Point<f64, Logical>, Option<crate::cursor::Shape>),
 ) where
     R: Renderer + ImportAll + ImportMem + Offscreen<T> + ExportMem,
     R::TextureId: Clone + Send + 'static,
@@ -118,7 +116,7 @@ pub fn take<R, T>(
     let captured = captured.map(|(img, rect)| {
         // Where the pointer is in the picture, in pixels (if it's in it).
         let at = ((pointer - rect.loc.to_f64()).to_physical(scale), scale);
-        let cursor = (shot.pointer && !locked && rect.to_f64().contains(pointer)).then_some(at);
+        let cursor = shape.filter(|_| shot.pointer && !locked && rect.to_f64().contains(pointer)).map(|shape| (at.0, at.1, shape));
         (img, cursor)
     });
     save(ipc, shot, captured);
@@ -156,7 +154,7 @@ where
 }
 
 /// A captured image, and where to draw the pointer (in pixels, at a scale).
-type Captured = (image::RgbaImage, Option<(Point<f64, smithay::utils::Physical>, f64)>);
+type Captured = (image::RgbaImage, Option<(Point<f64, smithay::utils::Physical>, f64, crate::cursor::Shape)>);
 
 /// Draw the pointer in, encode and write on a thread; answer when done.
 fn save(ipc: &mut IpcState, shot: Shot, captured: Result<Captured, String>) {
@@ -175,8 +173,8 @@ fn save(ipc: &mut IpcState, shot: Shot, captured: Result<Captured, String>) {
     std::thread::Builder::new()
         .name("screenshot".into())
         .spawn(move || {
-            if let Some((at, scale)) = cursor {
-                draw_cursor(&mut img, at, scale);
+            if let Some((at, scale, shape)) = cursor {
+                draw_cursor(&mut img, at, scale, shape);
             }
             unpremultiply(&mut img);
             let mut part = path.clone().into_os_string();
@@ -205,20 +203,19 @@ fn unpremultiply(img: &mut image::RgbaImage) {
     }
 }
 
-/// The default pointer over `img` (xcursor pixels are premultiplied).
-fn draw_cursor(img: &mut image::RgbaImage, at: Point<f64, smithay::utils::Physical>, scale: f64) {
-    static CURSOR: OnceLock<crate::cursor::Cursor> = OnceLock::new();
-    let cursor = CURSOR.get_or_init(crate::cursor::Cursor::load);
-    let c = cursor.get_image(scale.ceil().max(1.0) as u32, Duration::ZERO);
-    let (x0, y0) = (at.x.round() as i64 - c.xhot as i64, at.y.round() as i64 - c.yhot as i64);
-    for y in 0..c.height as i64 {
-        for x in 0..c.width as i64 {
+/// The pointer (premultiplied, as `img` is) over `img`.
+fn draw_cursor(img: &mut image::RgbaImage, at: Point<f64, smithay::utils::Physical>, scale: f64, shape: crate::cursor::Shape) {
+    let c = crate::cursor::image(shape, scale);
+    let (hx, hy) = shape.hotspot();
+    let (x0, y0) = (at.x.round() as i64 - (hx as f64 * scale).round() as i64, at.y.round() as i64 - (hy as f64 * scale).round() as i64);
+    for y in 0..c.size as i64 {
+        for x in 0..c.size as i64 {
             let (dx, dy) = (x0 + x, y0 + y);
             if dx < 0 || dy < 0 || dx >= img.width() as i64 || dy >= img.height() as i64 {
                 continue;
             }
-            let i = ((y * c.width as i64 + x) * 4) as usize;
-            let src = &c.pixels_rgba[i..i + 4];
+            let i = ((y * c.size as i64 + x) * 4) as usize;
+            let src = &c.rgba[i..i + 4];
             let a = src[3] as u32;
             if a == 0 {
                 continue;

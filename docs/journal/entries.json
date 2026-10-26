@@ -430,5 +430,17 @@
   "title": "Rotated main display",
   "caption": "HEADLESS-2 rotated 90 degrees and made the main display; Deskbar and the desktop icons moved to it and re-laid out in portrait.",
   "image": "2026-10-26/024851-rotated-main-display.png"
+ },
+ {
+  "time": "2026-10-26T03:01:40",
+  "title": "Haiku system cursors",
+  "caption": "All 28 of Haiku app_server cursors drawn by the new tabula-hvif renderer at 1x, 1.5x and 2x on light and dark grounds, with the soft offset shadow. ResizeWest is mirrored from ResizeEast since the upstream data duplicates it.",
+  "image": "2026-10-26/030140-haiku-system-cursors.png"
+ },
+ {
+  "time": "2026-10-26T03:01:40",
+  "title": "Cursors in a session",
+  "caption": "Headless 2x session: StyledEdit asks for the text cursor over cursor-shape-v1, the desktop shows the hand, the window frame shows the resize arrow.",
+  "image": "2026-10-26/030140-cursors-in-a-session.png"
  }
 ]

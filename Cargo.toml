@@ -16,6 +16,7 @@ tabula-preview = { path = "crates/preview" }
 tabula-xdg = { path = "crates/xdg" }
 tabula-system = { path = "crates/system" }
 tabula-screensavers = { path = "crates/screensavers" }
+tabula-hvif = { path = "crates/hvif" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"

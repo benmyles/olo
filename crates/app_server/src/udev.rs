@@ -5,7 +5,7 @@ use std::{
     io,
     ops::Not,
     path::Path,
-    sync::{Mutex, Once, atomic::Ordering},
+    sync::{Once, atomic::Ordering},
     time::{Duration, Instant},
 };
 
@@ -63,7 +63,7 @@ use smithay::{
     },
     input::{
         keyboard::LedState,
-        pointer::{CursorImageAttributes, CursorImageStatus},
+        pointer::CursorImageStatus,
     },
     output::{Mode as WlMode, Output, PhysicalProperties},
     reexports::{
@@ -83,9 +83,8 @@ use smithay::{
         },
         wayland_server::{Display, DisplayHandle, backend::GlobalId, protocol::wl_surface},
     },
-    utils::{DeviceFd, IsAlive, Logical, Monotonic, Point, Scale, Time, Transform},
+    utils::{DeviceFd, IsAlive, Logical, Monotonic, Point, Scale, Time},
     wayland::{
-        compositor,
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         drm_lease::{
             DrmLease, DrmLeaseBuilder, DrmLeaseHandler, DrmLeaseRequest, DrmLeaseState, LeaseRejected,
@@ -135,13 +134,15 @@ pub struct UdevData {
     primary_gpu: DrmNode,
     gpus: GpuManager<GbmGlesBackend<GlesRenderer, DrmDeviceFd>>,
     backends: HashMap<DrmNode, BackendData>,
-    pointer_images: Vec<(xcursor::parser::Image, MemoryRenderBuffer)>,
     pointer_element: PointerElement,
     #[cfg(feature = "debug")]
     fps_texture: Option<MultiTexture>,
-    pointer_image: crate::cursor::Cursor,
     debug_flags: DebugFlags,
     keyboards: Vec<smithay::reexports::input::Device>,
+    /// Touchpads and mice, configured from Preferences ▸ Touchpad.
+    pointers: Vec<smithay::reexports::input::Device>,
+    /// The settings last applied, for devices plugged in later.
+    input_settings: Option<tabula_protocol::Settings>,
 }
 
 impl UdevData {
@@ -214,6 +215,13 @@ impl Backend for UdevData {
         }
     }
 
+    fn apply_input_settings(&mut self, settings: &tabula_protocol::Settings) {
+        for device in self.pointers.iter_mut() {
+            configure_pointer(device, settings);
+        }
+        self.input_settings = Some(settings.clone());
+    }
+
     fn set_mode(&mut self, output: &Output, mode: WlMode) -> Result<(), String> {
         let id = output.user_data().get::<UdevOutputId>().ok_or("not a DRM output")?;
         let primary = self.primary_gpu;
@@ -238,6 +246,38 @@ impl Backend for UdevData {
         info!(output = output.name(), ?mode, "mode changed");
         Ok(())
     }
+}
+
+/// Preferences ▸ Touchpad into libinput: tapping, natural scrolling,
+/// typing palm rejection, click method and speed for touchpads; speed for
+/// mice. Options a device lacks are skipped.
+fn configure_pointer(device: &mut smithay::reexports::input::Device, settings: &tabula_protocol::Settings) {
+    use smithay::reexports::input::{ClickMethod, ScrollMethod};
+    let t = &settings.touchpad;
+    let touchpad = device.config_tap_finger_count() > 0;
+    if touchpad {
+        let _ = device.config_tap_set_enabled(t.tap_to_click);
+        let _ = device.config_tap_set_drag_enabled(t.tap_and_drag);
+        if device.config_dwt_is_available() {
+            let _ = device.config_dwt_set_enabled(t.disable_while_typing);
+        }
+        let methods = device.config_click_methods();
+        let method = if t.clickfinger { ClickMethod::Clickfinger } else { ClickMethod::ButtonAreas };
+        if methods.contains(&method) {
+            let _ = device.config_click_set_method(method);
+        }
+        if device.config_scroll_methods().contains(&ScrollMethod::TwoFinger) {
+            let _ = device.config_scroll_set_method(ScrollMethod::TwoFinger);
+        }
+    }
+    if device.config_scroll_has_natural_scroll() {
+        let _ = device.config_scroll_set_natural_scroll_enabled(t.natural_scroll);
+    }
+    if device.config_accel_is_available() {
+        let speed = if touchpad { t.speed } else { settings.mouse_speed };
+        let _ = device.config_accel_set_speed(speed.clamp(-1.0, 1.0));
+    }
+    info!(device = %device.name(), touchpad, "applied pointer settings");
 }
 
 pub fn run_udev() {
@@ -293,13 +333,13 @@ pub fn run_udev() {
         primary_gpu,
         gpus,
         backends: HashMap::new(),
-        pointer_image: crate::cursor::Cursor::load(),
-        pointer_images: Vec::new(),
         pointer_element: PointerElement::default(),
         #[cfg(feature = "debug")]
         fps_texture: None,
         debug_flags: DebugFlags::empty(),
         keyboards: Vec::new(),
+        pointers: Vec::new(),
+        input_settings: None,
     };
     let mut state = AnvilState::init(display, event_loop.handle(), data, true);
 
@@ -337,10 +377,16 @@ pub fn run_udev() {
                     }
                     data.backend_data.keyboards.push(device.clone());
                 }
-            } else if let InputEvent::DeviceRemoved { ref device } = event
-                && device.has_capability(DeviceCapability::Keyboard) {
-                    data.backend_data.keyboards.retain(|item| item != device);
+                if device.has_capability(DeviceCapability::Pointer) {
+                    if let Some(settings) = &data.backend_data.input_settings {
+                        configure_pointer(device, settings);
+                    }
+                    data.backend_data.pointers.push(device.clone());
                 }
+            } else if let InputEvent::DeviceRemoved { ref device } = event {
+                data.backend_data.keyboards.retain(|item| item != device);
+                data.backend_data.pointers.retain(|item| item != device);
+            }
 
             data.process_input_event(&dh, event)
         })
@@ -1489,12 +1535,6 @@ impl AnvilState<UdevData> {
 
         let start = Instant::now();
 
-        // TODO get scale from the rendersurface when supporting HiDPI
-        let frame = self
-            .backend_data
-            .pointer_image
-            .get_image(1 /*scale*/, self.clock.now().into());
-
         let primary_gpu = self.backend_data.primary_gpu;
         let render_node = surface.render_node.unwrap_or(primary_gpu);
         let mut renderer = if primary_gpu == render_node {
@@ -1519,7 +1559,7 @@ impl AnvilState<UdevData> {
                 overlays,
                 desktop_color,
                 locked,
-                self.pointer.current_location(),
+                (self.pointer.current_location(), crate::cursor::pictured(&self.cursor_status)),
             );
         }
         let overlays: Vec<CustomRenderElements<_>> = if locked {
@@ -1535,28 +1575,10 @@ impl AnvilState<UdevData> {
                 .collect()
         };
 
-        let pointer_images = &mut self.backend_data.pointer_images;
-        let pointer_image = pointer_images
-            .iter()
-            .find_map(|(image, texture)| {
-                if image == &frame {
-                    Some(texture.clone())
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_else(|| {
-                let buffer = MemoryRenderBuffer::from_slice(
-                    &frame.pixels_rgba,
-                    Fourcc::Argb8888,
-                    (frame.width as i32, frame.height as i32),
-                    1,
-                    Transform::Normal,
-                    None,
-                );
-                pointer_images.push((frame, buffer.clone()));
-                buffer
-            });
+        // The built-in cursor this pointer shows, at this screen's scale.
+        let pointer_scale = output.current_scale().fractional_scale();
+        let shape = crate::cursor::named(&self.cursor_status).unwrap_or(crate::cursor::Shape::SystemDefault);
+        let pointer_image = (crate::cursor::buffer(shape, pointer_scale), crate::cursor::image(shape, pointer_scale).size as i32);
 
         let result = render_surface(
             surface,
@@ -1648,7 +1670,7 @@ fn render_surface<'a>(
     space: &Space<WindowElement>,
     output: &Output,
     pointer_location: Point<f64, Logical>,
-    pointer_image: &MemoryRenderBuffer,
+    pointer_image: &(MemoryRenderBuffer, i32),
     pointer_element: &mut PointerElement,
     dnd_icon: &Option<DndIcon>,
     cursor_status: &mut CursorImageStatus,
@@ -1663,23 +1685,11 @@ fn render_surface<'a>(
     let mut custom_elements: Vec<CustomRenderElements<_>> = Vec::new();
 
     if output_geometry.to_f64().contains(pointer_location) {
-        let cursor_hotspot = if let CursorImageStatus::Surface(surface) = cursor_status {
-            compositor::with_states(surface, |states| {
-                states
-                    .data_map
-                    .get::<Mutex<CursorImageAttributes>>()
-                    .unwrap()
-                    .lock()
-                    .unwrap()
-                    .hotspot
-            })
-        } else {
-            (0, 0).into()
-        };
+        let cursor_hotspot = crate::cursor::hotspot(cursor_status);
         let cursor_pos = pointer_location - output_geometry.loc.to_f64();
 
         // set cursor
-        pointer_element.set_buffer(pointer_image.clone());
+        pointer_element.set_buffer(pointer_image.0.clone(), pointer_image.1);
 
         // draw the cursor as relevant
         {

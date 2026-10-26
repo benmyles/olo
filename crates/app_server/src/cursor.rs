@@ -1,96 +1,122 @@
-use std::{io::Read, time::Duration};
+//! The pointer: Haiku's system cursors (`tabula-hvif`), drawn at each
+//! output's scale and kept once drawn. Named cursors, from our own
+//! decorations or from clients over cursor-shape-v1, map onto them.
 
-use tracing::warn;
-use xcursor::{
-    CursorTheme,
-    parser::{Image, parse_xcursor},
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, OnceLock},
 };
 
-static FALLBACK_CURSOR_DATA: &[u8] = include_bytes!("../resources/cursor.rgba");
+use smithay::{
+    backend::{allocator::Fourcc, renderer::element::memory::MemoryRenderBuffer},
+    input::pointer::{CursorIcon, CursorImageAttributes, CursorImageStatus},
+    utils::{Logical, Point, Transform},
+    wayland::compositor,
+};
+pub use tabula_hvif::cursor::{Cursor, SIZE, Shape};
 
-pub struct Cursor {
-    icons: Vec<Image>,
-    size: u32,
+/// The Haiku cursor for a CSS / cursor-shape-v1 name.
+pub fn shape_for(icon: CursorIcon) -> Shape {
+    match icon {
+        CursorIcon::ContextMenu => Shape::ContextMenu,
+        CursorIcon::Help => Shape::Help,
+        CursorIcon::Pointer => Shape::FollowLink,
+        CursorIcon::Progress | CursorIcon::Wait => Shape::Progress,
+        CursorIcon::Cell | CursorIcon::Crosshair => Shape::CrossHair,
+        CursorIcon::Text => Shape::IBeam,
+        CursorIcon::VerticalText => Shape::IBeamHorizontal,
+        CursorIcon::Alias => Shape::CreateLink,
+        CursorIcon::Copy => Shape::Copy,
+        CursorIcon::Move | CursorIcon::AllScroll => Shape::Move,
+        CursorIcon::NoDrop | CursorIcon::NotAllowed => Shape::NotAllowed,
+        CursorIcon::Grab => Shape::Grab,
+        CursorIcon::Grabbing => Shape::Grabbing,
+        CursorIcon::EResize => Shape::ResizeEast,
+        CursorIcon::NResize => Shape::ResizeNorth,
+        CursorIcon::NeResize => Shape::ResizeNorthEast,
+        CursorIcon::NwResize => Shape::ResizeNorthWest,
+        CursorIcon::SResize => Shape::ResizeSouth,
+        CursorIcon::SeResize => Shape::ResizeSouthEast,
+        CursorIcon::SwResize => Shape::ResizeSouthWest,
+        CursorIcon::WResize => Shape::ResizeWest,
+        CursorIcon::EwResize | CursorIcon::ColResize => Shape::ResizeEastWest,
+        CursorIcon::NsResize | CursorIcon::RowResize => Shape::ResizeNorthSouth,
+        CursorIcon::NeswResize => Shape::ResizeNorthEastSouthWest,
+        CursorIcon::NwseResize => Shape::ResizeNorthWestSouthEast,
+        CursorIcon::ZoomIn => Shape::ZoomIn,
+        CursorIcon::ZoomOut => Shape::ZoomOut,
+        _ => Shape::SystemDefault,
+    }
 }
 
-impl Cursor {
-    pub fn load() -> Cursor {
-        let name = std::env::var("XCURSOR_THEME")
-            .ok()
-            .unwrap_or_else(|| "default".into());
-        let size = std::env::var("XCURSOR_SIZE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(24);
-
-        let theme = CursorTheme::load(&name);
-        let icons = load_icon(&theme)
-            .map_err(|err| warn!("Unable to load xcursor: {}, using fallback cursor", err))
-            .unwrap_or_else(|_| {
-                vec![Image {
-                    size: 32,
-                    width: 64,
-                    height: 64,
-                    xhot: 1,
-                    yhot: 1,
-                    delay: 1,
-                    pixels_rgba: Vec::from(FALLBACK_CURSOR_DATA),
-                    pixels_argb: vec![], //unused
-                }]
-            });
-
-        Cursor { icons, size }
-    }
-
-    pub fn get_image(&self, scale: u32, time: Duration) -> Image {
-        let size = self.size * scale;
-        frame(time.as_millis() as u32, size, &self.icons)
+/// The built-in cursor `status` asks for, if any (none when hidden or
+/// when the client draws its own).
+pub fn named(status: &CursorImageStatus) -> Option<Shape> {
+    match status {
+        CursorImageStatus::Named(icon) => Some(shape_for(*icon)),
+        _ => None,
     }
 }
 
-fn nearest_images(size: u32, images: &[Image]) -> impl Iterator<Item = &Image> {
-    // Follow the nominal size of the cursor to choose the nearest
-    let nearest_image = images
-        .iter()
-        .min_by_key(|image| (size as i32 - image.size as i32).abs())
-        .unwrap();
-
-    images
-        .iter()
-        .filter(move |image| image.width == nearest_image.width && image.height == nearest_image.height)
+/// What to draw for the pointer in a screenshot: the built-in cursor,
+/// standing in for one a client draws itself; nothing when hidden.
+pub fn pictured(status: &CursorImageStatus) -> Option<Shape> {
+    match status {
+        CursorImageStatus::Hidden => None,
+        _ => Some(named(status).unwrap_or(Shape::SystemDefault)),
+    }
 }
 
-fn frame(mut millis: u32, size: u32, images: &[Image]) -> Image {
-    let total = nearest_images(size, images).fold(0, |acc, image| acc + image.delay);
-    if total == 0 {
-        return nearest_images(size, images).next().unwrap().clone();
-    }
-    millis %= total;
-
-    for img in nearest_images(size, images) {
-        if millis < img.delay {
-            return img.clone();
+/// Where the pointer's hot pixel is in its image, for either kind.
+pub fn hotspot(status: &CursorImageStatus) -> Point<i32, Logical> {
+    match status {
+        CursorImageStatus::Surface(surface) => compositor::with_states(surface, |states| {
+            states.data_map.get::<std::sync::Mutex<CursorImageAttributes>>().map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).hotspot).unwrap_or_default()
+        }),
+        CursorImageStatus::Named(icon) => {
+            let (x, y) = shape_for(*icon).hotspot();
+            (x as i32, y as i32).into()
         }
-        millis -= img.delay;
+        CursorImageStatus::Hidden => (0, 0).into(),
     }
-
-    unreachable!()
 }
 
-#[derive(thiserror::Error, Debug)]
-enum Error {
-    #[error("Theme has no default cursor")]
-    NoDefaultCursor,
-    #[error("Error opening xcursor file: {0}")]
-    File(#[from] std::io::Error),
-    #[error("Failed to parse XCursor file")]
-    Parse,
+/// `shape` drawn for a screen of `scale`; drawn once, then shared.
+pub fn image(shape: Shape, scale: f64) -> Arc<Cursor> {
+    type Drawn = HashMap<(Shape, u64), Arc<Cursor>>;
+    static CACHE: OnceLock<Mutex<Drawn>> = OnceLock::new();
+    let mut cache = CACHE.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    cache.entry((shape, scale.to_bits())).or_insert_with(|| Arc::new(tabula_hvif::cursor::render(shape, scale))).clone()
 }
 
-fn load_icon(theme: &CursorTheme) -> Result<Vec<Image>, Error> {
-    let icon_path = theme.load_icon("default").ok_or(Error::NoDefaultCursor)?;
-    let mut cursor_file = std::fs::File::open(icon_path)?;
-    let mut cursor_data = Vec::new();
-    cursor_file.read_to_end(&mut cursor_data)?;
-    parse_xcursor(&cursor_data).ok_or(Error::Parse)
+thread_local! {
+    static BUFFERS: std::cell::RefCell<HashMap<(Shape, u64), MemoryRenderBuffer>> = Default::default();
+}
+
+/// `shape` at `scale` as a buffer for the renderer (premultiplied, its
+/// texture kept once uploaded).
+pub fn buffer(shape: Shape, scale: f64) -> MemoryRenderBuffer {
+    BUFFERS.with_borrow_mut(|b| {
+        b.entry((shape, scale.to_bits()))
+            .or_insert_with(|| {
+                let c = image(shape, scale);
+                MemoryRenderBuffer::from_slice(&c.rgba, Fourcc::Abgr8888, (c.size as i32, c.size as i32), 1, Transform::Normal, None)
+            })
+            .clone()
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_map_to_haiku_cursors() {
+        assert_eq!(shape_for(CursorIcon::Default), Shape::SystemDefault);
+        assert_eq!(shape_for(CursorIcon::Text), Shape::IBeam);
+        assert_eq!(shape_for(CursorIcon::WResize), Shape::ResizeWest);
+        let a = image(Shape::IBeam, 2.0);
+        assert!(Arc::ptr_eq(&a, &image(Shape::IBeam, 2.0)));
+        assert_eq!(a.size, 44);
+    }
 }

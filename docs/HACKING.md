@@ -130,7 +130,9 @@ fn main() {
   `Exclusive` (every key while it is up: pickers such as Screenshot's
   region overlay).
 * `ui.ctx().set_cursor_icon(CursorIcon::None)` hides the pointer over a
-  window (screen savers).
+  window (screen savers). Other `CursorIcon`s go to app_server by name
+  over cursor-shape-v1 (sctk does it), and app_server draws its own
+  cursor for them; apps never ship cursor images.
 * Session lock (the lock screen only): `cx.lock_session()`, then
   `SessionLock::Locked(windows)` in `App::message` (one window per output,
   the first is primary; kept up to date as outputs come and go) and
@@ -291,6 +293,7 @@ $T run mine tabula-myapp       # binaries from target/debug (log in /tmp/tabula-
 $T start two 2560x1600,1920x1080   # two screens, HEADLESS-1 and -2 (each offers a few modes)
 $T shot mine /tmp/x.png        # full screenshot (device pixels) of the pointer's screen
 $T shot two /tmp/y.png --output HEADLESS-2
+$T shot mine /tmp/p.png X Y W H --pointer   # with the pointer drawn in
 $T zoom mine /tmp/z.png X Y W H 4   # crop in logical px, magnified 4× (nearest)
 $T click mine X Y [right]      # logical coordinates (screenshot px / 2)
 $T drag mine X1 Y1 X2 Y2
@@ -453,6 +456,21 @@ displays turning off ends it.
 Test headless: `tsession ipc NAME '{"type":"start_screen_saver"}'`, or set
 `screen_saver.module` with get/set_settings first.
 
+## The pointer (crates/hvif, app_server cursor.rs)
+
+The pointer is Haiku's system cursor set (`crates/hvif/cursors`, from
+Haiku's CursorData.cpp, MIT; see the LICENSE there). `tabula-hvif` reads
+the Haiku Vector Icon Format and draws it as Haiku's IconRenderer does
+(shapes in order, 2.2-gamma blending, level-of-detail, stroke and contour
+transformers); `tabula_hvif::cursor::render(shape, scale)` draws a cursor
+as Haiku's CursorManager does: 22 logical pixels, the icon's top-left
+32 × 32 region, a soft shadow, the hotspot scaled. app_server's
+`cursor.rs` maps CSS cursor names (from its own decorations, or clients'
+cursor-shape-v1 requests) to them, caches each shape per scale and
+hands the backend a buffer whose pixels land one-to-one on the screen.
+Clients that set a cursor surface still get theirs. To see every cursor:
+`TABULA_CURSOR_SHEET=/tmp/c.png cargo test -p tabula-hvif sheet`.
+
 ## Screenshots (app_server screenshot.rs, apps/screenshot)
 
 `Request::Screenshot { path, output, window, border, pointer }` (only
@@ -463,7 +481,7 @@ with that output's next frame (`screenshot::take`): the screen via
 `render::capture`, or the window alone over transparency via
 `render::offscreen` (its tab and border with `border`, keeping the tab's
 shape, or only the client's area). A thread then draws the pointer in
-(the default xcursor, from `cursor.rs`), unpremultiplies, encodes and
+(the cursor it is showing, from `cursor.rs`), unpremultiplies, encodes and
 writes `NAME.part` and renames it, so readers never see half a file.
 Window shots are refused while the screen is locked.
 

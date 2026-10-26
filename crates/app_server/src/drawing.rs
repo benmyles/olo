@@ -27,7 +27,8 @@ pub static CLEAR_COLOR: Color32F = Color32F::new(0.8, 0.8, 0.9, 1.0);
 pub static CLEAR_COLOR_FULLSCREEN: Color32F = Color32F::new(0.0, 0.0, 0.0, 0.0);
 
 pub struct PointerElement {
-    buffer: Option<MemoryRenderBuffer>,
+    /// A built-in cursor and its size in pixels.
+    buffer: Option<(MemoryRenderBuffer, i32)>,
     status: CursorImageStatus,
 }
 
@@ -45,8 +46,10 @@ impl PointerElement {
         self.status = status;
     }
 
-    pub fn set_buffer(&mut self, buffer: MemoryRenderBuffer) {
-        self.buffer = Some(buffer);
+    /// The built-in cursor to draw for a named status: `pixels` square,
+    /// covering [`crate::cursor::SIZE`] logical pixels.
+    pub fn set_buffer(&mut self, buffer: MemoryRenderBuffer, pixels: i32) {
+        self.buffer = Some((buffer, pixels));
     }
 }
 
@@ -83,9 +86,11 @@ where
     {
         match &self.status {
             CursorImageStatus::Hidden => vec![],
-            // Always render `Default` for a named shape.
             CursorImageStatus::Named(_) => {
-                if let Some(buffer) = self.buffer.as_ref() {
+                if let Some((buffer, pixels)) = self.buffer.as_ref() {
+                    // One buffer pixel per screen pixel, at any scale.
+                    let src = smithay::utils::Rectangle::from_size((*pixels as f64, *pixels as f64).into());
+                    let size = crate::cursor::SIZE as i32;
                     vec![
                         PointerRenderElement::<R>::from(
                             MemoryRenderBufferRenderElement::from_buffer(
@@ -93,8 +98,8 @@ where
                                 location.to_f64(),
                                 buffer,
                                 None,
-                                None,
-                                None,
+                                Some(src),
+                                Some((size, size).into()),
                                 Kind::Cursor,
                             )
                             .expect("Lost system pointer buffer"),

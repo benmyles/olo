@@ -10,7 +10,7 @@
   tsession reload NAME                         restart app_server in place (session only)
   tsession run NAME [VAR=VAL...] CMD [ARGS...] start a client in it (log: DIR/<cmd>.log);
                                                VAR=VAL set after sudo (e.g. HOME=/tmp/fixture)
-  tsession shot NAME OUT.png [X Y W H] [--output HEADLESS-2]
+  tsession shot NAME OUT.png [X Y W H] [--output HEADLESS-2] [--pointer]
                                                screenshot (optional crop, logical px)
   tsession zoom NAME OUT.png X Y W H [N]       crop (logical px) and magnify N× (default 4)
   tsession click NAME X Y [right]              synthetic click (logical px)
@@ -164,12 +164,14 @@ def run(name, cmd):
     open(os.path.join(sdir(name), f"{base}.{p.pid}.pid"), "w").write(str(p.pid))
     print(f"started {base} pid {p.pid}")
 
-def shot(name, out, crop=None, zoom=1, output=None):
+def shot(name, out, crop=None, zoom=1, output=None, pointer=False):
     out = os.path.abspath(out)
     tmp = os.path.join(sdir(name), "shot.png")
     req = {"type": "screenshot", "path": tmp}
     if output:
         req["output"] = output
+    if pointer:
+        req["pointer"] = True
     r = ipc(name, req)
     if not r or r.get("type") != "ok":
         sys.exit(f"screenshot failed: {r}")
@@ -228,8 +230,9 @@ def main():
                 print(f"export {k}={v}")
     elif cmd == "shot":
         output = a[a.index("--output") + 1] if "--output" in a else None
-        a = [v for i, v in enumerate(a) if v != "--output" and (i == 0 or a[i - 1] != "--output")]
-        shot(name, a[0], a[1:5] if len(a) >= 5 else None, output=output)
+        pointer = "--pointer" in a
+        a = [v for i, v in enumerate(a) if v not in ("--output", "--pointer") and (i == 0 or a[i - 1] != "--output")]
+        shot(name, a[0], a[1:5] if len(a) >= 5 else None, output=output, pointer=pointer)
     elif cmd == "zoom":
         shot(name, a[0], a[1:5], int(a[5]) if len(a) > 5 else 4)
     elif cmd == "move":

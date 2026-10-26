@@ -1,0 +1,12 @@
+[package]
+name = "tabula-hvif"
+description = "Haiku Vector Icon Format: parse and render HVIF icons, and Haiku's system cursors"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tiny-skia = "0.12"
+
+[dev-dependencies]
+png = "0.18"

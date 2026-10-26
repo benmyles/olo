@@ -81,7 +81,9 @@ as they land (with the commit), add new ones as they come up.
   unplug) and Identify done too. Still to do: mirroring; keying saved
   settings by EDID rather than connector.
 
-- Cursor shapes; night mode; libinput settings; ~~centred alerts~~
+- ~~Cursor shapes~~ (Haiku's cursors via tabula-hvif, cursor-shape-v1);
+  night mode; ~~libinput settings~~ (touchpad tap, tap-drag, dwt, click
+  method, natural scroll, speed; udev only); ~~centred alerts~~
   (`WindowOptions::alert`, set_parent, placed over the parent).
 
 ## Lock, screensaver, caffeinated
