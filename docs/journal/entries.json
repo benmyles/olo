@@ -676,5 +676,11 @@
   "title": "NetPositive: a call, end to end",
   "caption": "Two RTCPeerConnections in one page, talking through NetPositive's own WebRTC (webrtc-rs, in process). The fake camera's test card goes out as H.264 (openh264) and comes back decoded on the right; the microphone goes as Opus and plays; a data channel carries text and bytes both ways; getStats() counts the pictures.",
   "image": "2026-10-26/130517-netpositive-a-call-end-to-end.png"
+ },
+ {
+  "time": "2026-10-26T13:17:31",
+  "title": "Deskbar: a new build is ready",
+  "caption": "tabula-session watches the tree Tabula was built in. Once a build finishes with newer programs, a green arrow appears in Deskbar's tray; clicking it asks before installing them and reloading the session in place (windows stay open).",
+  "image": "2026-10-26/131731-deskbar-a-new-build-is-ready.png"
  }
 ]

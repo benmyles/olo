@@ -11056,6 +11056,7 @@ name = "tabula-deskbar"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "serde_json",
  "tabula-kit",
  "tabula-protocol",
  "tabula-system",

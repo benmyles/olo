@@ -335,6 +335,65 @@ fn configure_pointer(device: &mut smithay::reexports::input::Device, settings: &
     info!(device = %device.name(), touchpad, "applied pointer settings");
 }
 
+/// `--probe-gpus`: what each DRM device offers, as the session would
+/// see it at start-up (diagnostics for new hardware). Opens the devices
+/// unprivileged and leaves connectors alone, so it is safe beside a
+/// running desktop.
+pub fn probe_gpus() {
+    let seat = std::env::var("XDG_SEAT").unwrap_or_else(|_| "seat0".into());
+    println!("seat {seat}; boot GPU: {:?}", primary_gpu(&seat).ok().flatten());
+    println!("chosen primary: {:?}", choose_primary_gpu(&seat));
+    for path in all_gpus(&seat).unwrap_or_default() {
+        println!("{}", path.display());
+        let Ok(node) = DrmNode::from_path(&path) else {
+            println!("  not a DRM node");
+            continue;
+        };
+        println!("  render node: {:?}", node.node_with_type(NodeType::Render).and_then(|n| n.ok()));
+        let file = match std::fs::OpenOptions::new().read(true).write(true).open(&path) {
+            Ok(f) => f,
+            Err(e) => {
+                println!("  can't open: {e}");
+                continue;
+            }
+        };
+        let fd = DrmDeviceFd::new(DeviceFd::from(std::os::fd::OwnedFd::from(file)));
+        match DrmDevice::new(fd.clone(), false) {
+            Ok((drm, _)) => match drm.resource_handles() {
+                Ok(r) => println!("  KMS: {} connectors, {} CRTCs", r.connectors().len(), r.crtcs().len()),
+                Err(e) => println!("  KMS: no resources ({e})"),
+            },
+            Err(e) => println!("  KMS: {e}"),
+        }
+        match GbmDevice::new(fd) {
+            Ok(gbm) => match unsafe { EGLDisplay::new(gbm) } {
+                Ok(display) => match EGLDevice::device_for_display(&display) {
+                    Ok(d) => println!("  EGL: software {}, render node {:?}", d.is_software(), d.try_get_render_node()),
+                    Err(e) => println!("  EGL device: {e}"),
+                },
+                Err(e) => println!("  EGL: {e}"),
+            },
+            Err(e) => println!("  GBM: {e}"),
+        }
+    }
+}
+
+/// The GPU to render with: the boot GPU's render node, or else the first
+/// device that has a render node. (On Apple silicon there is no boot GPU,
+/// and the display controller, apple-drm, is a DRM device that can't
+/// render: asahi's node does that.)
+fn choose_primary_gpu(seat: &str) -> Option<DrmNode> {
+    if let Ok(var) = std::env::var("ANVIL_DRM_DEVICE") {
+        return DrmNode::from_path(var).ok();
+    }
+    let render = |path: &Path| DrmNode::from_path(path).ok()?.node_with_type(NodeType::Render)?.ok();
+    if let Some(node) = primary_gpu(seat).ok().flatten().and_then(|p| render(&p)) {
+        return Some(node);
+    }
+    let all = all_gpus(seat).unwrap_or_default();
+    all.iter().find_map(|p| render(p)).or_else(|| all.iter().find_map(|p| DrmNode::from_path(p).ok()))
+}
+
 pub fn run_udev() {
     let mut event_loop = EventLoop::try_new().unwrap();
     let display = Display::new().unwrap();
@@ -354,19 +413,9 @@ pub fn run_udev() {
     /*
      * Initialize the compositor
      */
-    let primary_gpu = if let Ok(var) = std::env::var("ANVIL_DRM_DEVICE") {
-        DrmNode::from_path(var).expect("Invalid drm device path")
-    } else {
-        primary_gpu(session.seat())
-            .unwrap()
-            .and_then(|x| DrmNode::from_path(x).ok()?.node_with_type(NodeType::Render)?.ok())
-            .unwrap_or_else(|| {
-                all_gpus(session.seat())
-                    .unwrap()
-                    .into_iter()
-                    .find_map(|x| DrmNode::from_path(x).ok())
-                    .expect("No GPU!")
-            })
+    let Some(primary_gpu) = choose_primary_gpu(&session.seat()) else {
+        error!("No GPU!");
+        return;
     };
     info!("Using {} as primary gpu.", primary_gpu);
 
@@ -514,10 +563,13 @@ pub fn run_udev() {
     });
 
     if let Some((device_id, path)) = primary_device {
-        let node = DrmNode::from_dev_id(device_id).expect("failed to get primary node");
-        state
-            .device_added(node, path)
-            .expect("failed to initialize primary node");
+        // A GPU without displays (Apple silicon's asahi) has no modesetting:
+        // nothing to add, and the display devices render on it through
+        // their own EGL (Mesa's kmsro), whose render node is this one.
+        match DrmNode::from_dev_id(device_id).map_err(DeviceAddError::DrmNode).and_then(|node| state.device_added(node, path)) {
+            Ok(()) => {}
+            Err(err) => warn!("Primary GPU {device_id} has no displays of its own: {err}"),
+        }
     }
 
     let primary_device_id = primary_device.map(|(device_id, _)| device_id);
@@ -533,14 +585,14 @@ pub fn run_udev() {
             error!("Skipping device {device_id}: {err}");
         }
     }
-    state.shm_state.update_formats(
-        state
-            .backend_data
-            .gpus
-            .single_renderer(&primary_gpu)
-            .unwrap()
-            .shm_formats(),
-    );
+    let shm_formats = match state.backend_data.gpus.single_renderer(&primary_gpu) {
+        Ok(r) => r.shm_formats(),
+        Err(err) => {
+            error!("Nothing can render on {primary_gpu}: {err}");
+            return;
+        }
+    };
+    state.shm_state.update_formats(shm_formats);
 
     #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
     let mut renderer = state.backend_data.gpus.single_renderer(&primary_gpu).unwrap();

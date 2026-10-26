@@ -5,6 +5,8 @@ static POSSIBLE_BACKENDS: &[&str] = &[
     "--tty-udev : Run as the session compositor on a TTY (via logind/libseat).",
     #[cfg(feature = "udev")]
     "--headless [WxH] : Render offscreen with no display (automated UI tests).",
+    #[cfg(feature = "udev")]
+    "--probe-gpus : List the DRM devices and what each can do (safe beside a running desktop).",
 ];
 
 #[cfg(feature = "profile-with-tracy-mem")]
@@ -38,6 +40,8 @@ fn main() {
             tracing::info!("Starting app_server on a tty using udev");
             app_server::udev::run_udev();
         }
+        #[cfg(feature = "udev")]
+        Some("--probe-gpus") => app_server::udev::probe_gpus(),
         #[cfg(feature = "udev")]
         Some("--headless") => {
             let size = ::std::env::args().nth(2);

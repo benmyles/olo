@@ -13,5 +13,6 @@ path = "src/main.rs"
 tabula-kit.workspace = true
 tabula-protocol.workspace = true
 tabula-system.workspace = true
+serde_json.workspace = true
 tracing.workspace = true
 libc = "0.2"

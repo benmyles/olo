@@ -57,7 +57,7 @@ like pixel alignment is.
 | `vendor/` | Patched copies of dependencies (`[patch.crates-io]`), each explained in `vendor/README.md`; drop them when upstream has the fix. |
 | `data/icons` | Icon set, pre-scaled to device sizes (`data/icons/<px>/<name>.png`). |
 | `data/session` | `tabula.desktop` for the login screen (installed by `tools/install-session.sh`). |
-| `tools/` | `install-session.sh` (release build → `/usr/local`), `dev/tsession` (headless UI testing), `genicon.py`/`genicons.sh`/`mkicons.py`/`iconsheet.py` (icons, see [ICONS.md](ICONS.md)). |
+| `tools/` | `install-session.sh` (release build → `~/.local`, session entry → `/usr/local/share/wayland-sessions`), `dev/tsession` (headless UI testing), `genicon.py`/`genicons.sh`/`mkicons.py`/`iconsheet.py` (icons, see [ICONS.md](ICONS.md)). |
 
 Build: `cargo build -p tabula-<app>` (plus `cargo build --bin tabula-app-server` once, for headless testing; as root set `CARGO_HOME=/home/ben/.cargo` to share the registry) (repo is owned by `ben`; when running as
 root use `sudo -u ben bash -lc 'cd … && cargo build …'` in the main checkout).
@@ -313,11 +313,43 @@ hands both to app_server, so clients never see the sockets disappear.
   replace an installed binary by writing over it (install to a temporary
   name and rename, as `tools/install-session.sh` does).
 
-Install for the login screen with `sudo tools/install-session.sh`
-(release build into `/usr/local`, plus
-`/usr/local/share/wayland-sessions/tabula.desktop`). After rebuilding,
-`tabula-session reload` (or Preferences → Restart Tabula) upgrades the
-running desktop.
+Install for the login screen with `tools/install-session.sh` (as
+yourself; it asks for sudo once). It builds release binaries into
+`~/.local/bin` (so upgrades need no root), icons into
+`~/.local/share/tabula`, and the session entry into
+`/usr/local/share/wayland-sessions/tabula.desktop` (Exec is the installed
+path; no TryExec, as the greeter can't look inside a private home).
+
+**Upgrades from the build tree** (`crates/session/src/upgrade.rs`): the
+installer records the tree's `target/release` in
+`~/.local/share/tabula/build-dir` (`TABULA_UPGRADE_FROM` overrides it).
+Every 3 s the session compares the `tabula-*` programs there with its
+own. It skips this while cargo holds `target/release/.cargo-lock` or a
+program is under 3 s old. It lists newer ones in
+`$XDG_RUNTIME_DIR/tabula-upgrade-<display>.json`; Deskbar polls that file
+and shows a green arrow in its tray. Clicking it asks first. Accepting,
+or `tabula-session upgrade` (SIGUSR2), installs them beside the session:
+a btrfs/XFS clone (`FICLONE`) or a copy, under a temporary name and then
+renamed. The session then reloads as above. Test it with
+`TSESSION_SESSION_EXE=<install>/bin/tabula-session
+TABULA_UPGRADE_FROM=<tree> tsession start NAME --session --shell` and
+`touch` a program in the tree.
+
+**keyd** (`crates/session/src/keyd.rs`): keyd remaps keyboards for every
+session, so a real session asks it over `/run/keyd.socket` to bind the
+modifier keys and Caps Lock to themselves. That way app_server's
+keymap.rs sees the real keys. The session repeats this every minute,
+because `keyd reload` forgets binds, and sends `reset` when it ends.
+
+**New hardware**: `tabula-app-server --probe-gpus` lists the DRM devices,
+their KMS resources and the render node their EGL uses, without
+disturbing a running desktop. On Apple silicon the boot GPU (asahi) has
+no displays. The display controller (apple-drm) renders through it via
+Mesa's kmsro, so a primary GPU without modesetting is skipped rather
+than treated as fatal. Under GDM the session's output goes to the journal
+(`journalctl -b | grep tabula`). If app_server can't start, the session
+gives up after 5 crashes a minute and the login screen comes back;
+Ctrl+Alt+Backspace quits the session.
 
 ## Testing: headless sessions
 
@@ -902,8 +934,9 @@ back through a window function only the token names (a reply carries
 * **Devices** (`capture.rs`): cameras through Video4Linux (pure Rust;
   NV12, YUYV and MJPEG made I420), microphones through the sound server.
   The page asks first: a bar under the toolbar, remembered per site until
-  NetPositive quits. `TABULA_BROWSER_FAKE_CAMERA=1` adds a test-card
-  camera, for tests.
+  NetPositive quits. `TABULA_BROWSER_FAKE_CAMERA=1` makes a test card the
+  only camera (real ones aren't even listed), for tests; with
+  `PULSE_SERVER` at tabula-fakesound the microphone is fake too.
 * **The hub** (`hub.rs`): sources (a device, the far end of a call)
   publish frames; tracks are a page's handles on a source; streams group
   tracks. `<video>`/`<audio>` playing a stream (`srcObject`) read it from

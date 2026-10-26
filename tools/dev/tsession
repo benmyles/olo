@@ -90,11 +90,14 @@ def start(name, args):
         os.makedirs(home, exist_ok=True)
         subprocess.run(["chown", f"{OWNER.pw_uid}:{OWNER.pw_gid}", home]) if os.getuid() == 0 else None
     if session:
-        exe = [os.path.join(TARGET, "debug", "tabula-session"), "--headless", size] + ([] if "--shell" in args else ["--no-shell"])
+        # TSESSION_SESSION_EXE: an installed tabula-session instead (upgrade tests).
+        exe = [os.environ.get("TSESSION_SESSION_EXE", os.path.join(TARGET, "debug", "tabula-session")), "--headless", size] + ([] if "--shell" in args else ["--no-shell"])
     else:
         exe = [os.path.join(TARGET, "debug", "tabula-app-server"), "--headless", size]
     if home:
         exe = ["env", f"HOME={os.path.abspath(home)}"] + exe
+    if os.environ.get("TABULA_UPGRADE_FROM"):
+        exe = ["env", "TABULA_UPGRADE_FROM=" + os.environ["TABULA_UPGRADE_FROM"]] + exe
     p = subprocess.Popen(as_owner(exe), env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     for _ in range(100):
         time.sleep(0.1)

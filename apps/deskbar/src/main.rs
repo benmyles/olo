@@ -85,6 +85,8 @@ struct Deskbar {
     scroll_acc: f32,
     /// The Restart / Shut Down confirmation, while it is open.
     confirm: Option<(WindowId, Power)>,
+    /// The "upgrade and reload?" alert, while it is open, with its message.
+    upgrade_ask: Option<(WindowId, String)>,
 }
 
 fn team_key(w: &WindowInfo) -> String {
@@ -323,6 +325,31 @@ impl Deskbar {
         }
     }
 
+    /// Offer the newer build tabula-session found.
+    fn ask_upgrade(&mut self, cx: &mut Cx) {
+        if let Some((win, _)) = self.upgrade_ask.take() {
+            cx.close_window(win);
+        }
+        let message = upgrade_message(&self.status.upgrade);
+        let win = cx.open_window(WindowOptions::alert("Upgrade Tabula", &message));
+        self.upgrade_ask = Some((win, message));
+    }
+
+    fn upgrade_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
+        let Some((_, message)) = &self.upgrade_ask else { return };
+        let Some(choice) = widgets::alert(ui, "system", message, &["Later", "Upgrade"]) else { return };
+        self.upgrade_ask = None;
+        cx.close_window(win);
+        if choice == 1 {
+            // tabula-session installs the programs and reloads in place.
+            match std::env::var("TABULA_SESSION_PID").ok().and_then(|p| p.parse::<i32>().ok()) {
+                // SAFETY: sending a signal.
+                Some(pid) if unsafe { libc::kill(pid, libc::SIGUSR2) } == 0 => {}
+                _ => tracing::warn!("no session to upgrade"),
+            }
+        }
+    }
+
     fn team_command(&mut self, team_key: &str, cmd: &str) {
         let ids: Vec<u64> = self.windows.iter().filter(|w| team_key == team_key_of(w)).map(|w| w.id).collect();
         if let Some(id) = cmd.strip_prefix("win:").and_then(|s| s.parse().ok()) {
@@ -344,6 +371,30 @@ fn team_key_of(w: &WindowInfo) -> String {
     team_key(w)
 }
 
+/// "NetPositive, Deskbar and 3 others", for the upgrade alert.
+fn upgrade_message(programs: &[String]) -> String {
+    let names: Vec<String> = programs
+        .iter()
+        .map(|bin| match OUR_APPS.iter().find(|(b, _, _)| b == bin) {
+            Some((_, name, _)) => name.to_string(),
+            None => match bin.as_str() {
+                "tabula-deskbar" => "Deskbar".into(),
+                "tabula-app-server" => "the window server".into(),
+                "tabula-session" => "the session".into(),
+                "tabula-preferences" => "Preferences".into(),
+                other => other.to_string(),
+            },
+        })
+        .collect();
+    let list = match names.len() {
+        0 => "nothing".to_string(),
+        1 => names[0].clone(),
+        2..=4 => format!("{} and {}", names[..names.len() - 1].join(", "), names[names.len() - 1]),
+        n => format!("{} and {} others", names[..3].join(", "), n - 3),
+    };
+    format!("A new build of Tabula is ready ({list}). Install it and reload now? Your windows stay open.")
+}
+
 // ---- drawing ----------------------------------------------------------------
 
 fn section_bevel(p: &egui::Painter, r: Rect, pal: &Palette) {
@@ -357,6 +408,9 @@ impl App for Deskbar {
         if self.confirm.is_some_and(|(w, _)| w == window) {
             self.confirm = None;
         }
+        if self.upgrade_ask.as_ref().is_some_and(|(w, _)| *w == window) {
+            self.upgrade_ask = None;
+        }
         if window != self.win {
             cx.close_window(window);
         }
@@ -365,6 +419,10 @@ impl App for Deskbar {
     fn ui(&mut self, cx: &mut Cx, w: WindowId, ui: &mut egui::Ui) {
         if self.confirm.is_some_and(|(win, _)| win == w) {
             self.confirm_ui(cx, w, ui);
+            return;
+        }
+        if self.upgrade_ask.as_ref().is_some_and(|(win, _)| *win == w) {
+            self.upgrade_ui(cx, w, ui);
             return;
         }
         let pal = style::palette(ui.ctx());
@@ -420,6 +478,13 @@ impl App for Deskbar {
             ui.interact(r.expand(2.0), egui::Id::unique(("tray", id)), Sense::click()).on_hover_text(tip)
         };
         let st = self.status.clone();
+        if !st.upgrade.is_empty() {
+            let n = st.upgrade.len();
+            let tip = format!("A new build of Tabula is ready ({n} program{}). Click to upgrade.", if n == 1 { "" } else { "s" });
+            if tray_item(ui, "upgrade", &|p, r| status::draw_upgrade(p, r, &pal), tip).clicked() {
+                self.ask_upgrade(cx);
+            }
+        }
         if let Some(b) = st.battery {
             let resp = tray_item(
                 ui,
@@ -672,6 +737,7 @@ fn main() {
             height: TILE_H + TRAY_H,
             scroll_acc: 0.0,
             confirm: None,
+            upgrade_ask: None,
         }
     });
 }

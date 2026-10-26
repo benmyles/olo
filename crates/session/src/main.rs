@@ -3,6 +3,7 @@
 //! ```text
 //! tabula-session [--tty-udev | --winit | --headless WxH] [--no-shell]
 //! tabula-session reload     restart app_server in place (picks up upgrades)
+//! tabula-session upgrade    install newer programs from the build tree, then reload
 //! tabula-session quit       end the session
 //! ```
 //!
@@ -14,9 +15,17 @@
 //! (see `tabula_kit::run`). Nobody has to log out. If tabula-session itself
 //! was upgraded it re-executes first, keeping its children and sockets.
 //!
+//! An installed session also watches the tree it was built in and offers
+//! newer builds through Deskbar (upgrade.rs).
+//!
 //! It also restarts app_server and the shell (Deskbar, the Tracker desktop,
 //! and in a real session the polkit agent)
 //! if they crash, and exports the session environment to systemd/D-Bus.
+//! A real session has keyd (if it runs) leave the modifier keys to
+//! app_server (keyd.rs).
+
+mod keyd;
+mod upgrade;
 
 use std::{
     collections::VecDeque,
@@ -34,6 +43,7 @@ use serde::{Deserialize, Serialize};
 
 const USAGE: &str = "usage: tabula-session [--tty-udev | --winit | --headless WxH] [--no-shell]
        tabula-session reload     restart app_server in place (picks up upgrades)
+       tabula-session upgrade    install newer programs from the build tree, then reload
        tabula-session quit       end the session";
 
 const SHELL: &[&[&str]] = &[&["tabula-deskbar"], &["tabula-tracker", "--desktop"]];
@@ -58,6 +68,7 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("reload") => signal_session(libc::SIGHUP),
+        Some("upgrade") => signal_session(libc::SIGUSR2),
         Some("quit") => signal_session(libc::SIGTERM),
         Some("-h" | "--help") => println!("{USAGE}"),
         _ => Session::start(args).run(),
@@ -121,6 +132,11 @@ struct Session {
     /// Our own binary when we started, to notice upgrades.
     binary: Option<(u64, SystemTime)>,
     stopping: bool,
+    /// On the machine's own screens (not nested or headless).
+    real: bool,
+    upgrades: Option<upgrade::Watcher>,
+    /// When keyd was last asked to leave our keys alone.
+    keyd_at: Instant,
 }
 
 const RESUME_ENV: &str = "TABULA_SESSION_RESUME";
@@ -170,6 +186,9 @@ impl Session {
             shell: Vec::new(),
             binary: own_binary(),
             stopping: false,
+            real: false,
+            upgrades: None,
+            keyd_at: Instant::now(),
         };
         s.start_server();
         // Only a real session owns the user's environment: a headless or
@@ -185,9 +204,12 @@ impl Session {
                 std::env::remove_var("TABULA_REAL_SESSION");
             }
         }
+        s.real = real;
         if real {
             export_environment();
+            keyd::pass_through();
         }
+        s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
         if !no_shell {
             let extra: &[&[&str]] = if real { REAL_SHELL } else { &[] };
             for argv in SHELL.iter().chain(extra) {
@@ -208,6 +230,7 @@ impl Session {
             set_cloexec(fd, true);
         }
         let ipc_path = runtime_dir().join(format!("tabula-{}.sock", r.display));
+        let real = r.backend.iter().any(|b| b == "--tty-udev");
         let mut s = Session {
             display: r.display,
             wayland,
@@ -219,7 +242,11 @@ impl Session {
             shell: r.shell,
             binary: own_binary(),
             stopping: false,
+            real,
+            upgrades: None,
+            keyd_at: Instant::now(),
         };
+        s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
         if r.reloading {
             s.reload();
         }
@@ -250,10 +277,30 @@ impl Session {
         loop {
             match wait_signal(Duration::from_secs(5)) {
                 Some(libc::SIGHUP | libc::SIGUSR1) => self.reload(),
+                Some(libc::SIGUSR2) => self.upgrade(),
                 Some(libc::SIGTERM | libc::SIGINT) => self.shutdown(0),
                 _ => {}
             }
             self.reap();
+            if let Some(w) = &mut self.upgrades {
+                w.check();
+            }
+            // `keyd reload` forgets what we asked.
+            if self.real && self.keyd_at.elapsed() > Duration::from_secs(60) {
+                self.keyd_at = Instant::now();
+                keyd::pass_through();
+            }
+        }
+    }
+
+    /// Install what's newer in the build tree and reload with it.
+    fn upgrade(&mut self) {
+        let Some(w) = &mut self.upgrades else {
+            log("nothing to upgrade from (not an installed session)");
+            return;
+        };
+        if w.install() > 0 {
+            self.reload();
         }
     }
 
@@ -356,6 +403,12 @@ impl Session {
         for &p in &pids {
             wait_for(p, deadline.saturating_duration_since(Instant::now()));
         }
+        if let Some(w) = &self.upgrades {
+            w.forget();
+        }
+        if self.real {
+            keyd::restore();
+        }
         let _ = std::fs::remove_file(&self.ipc_path);
         let _ = std::fs::remove_file(layout_path(&self.display));
         let _ = std::fs::remove_file(runtime_dir().join(&self.display));
@@ -453,7 +506,7 @@ fn own_binary() -> Option<(u64, SystemTime)> {
 
 // ---- signals ----------------------------------------------------------------
 
-const SIGNALS: [i32; 5] = [libc::SIGCHLD, libc::SIGHUP, libc::SIGUSR1, libc::SIGTERM, libc::SIGINT];
+const SIGNALS: [i32; 6] = [libc::SIGCHLD, libc::SIGHUP, libc::SIGUSR1, libc::SIGUSR2, libc::SIGTERM, libc::SIGINT];
 
 fn signal_set() -> libc::sigset_t {
     // SAFETY: building a sigset.

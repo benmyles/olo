@@ -3,8 +3,8 @@
 //! sound server (tabula-preview's recorder). Each device opened becomes a
 //! hub source that runs until no track uses it.
 //!
-//! `TABULA_BROWSER_FAKE_CAMERA=1` adds a camera that draws a moving test
-//! card, for tests (sound for tests comes from tabula-fakesound).
+//! `TABULA_BROWSER_FAKE_CAMERA=1` makes the only camera one that draws a
+//! moving test card, for tests (sound for tests comes from tabula-fakesound).
 
 use std::{
     sync::{
@@ -44,8 +44,10 @@ const FORMATS: [&[u8; 4]; 3] = [b"NV12", b"YUYV", b"MJPG"];
 /// read; decoders and other memory-to-memory devices aren't cameras).
 pub fn cameras() -> Vec<Device> {
     let mut out = Vec::new();
+    // Tests never touch the real cameras (not even to list them).
     if fake_camera() {
         out.push(Device { key: FAKE_CAMERA.into(), label: "Test Camera".into(), sizes: vec![(640, 480), (1280, 720)] });
+        return out;
     }
     let Ok(dir) = std::fs::read_dir("/dev") else { return out };
     let mut paths: Vec<_> = dir

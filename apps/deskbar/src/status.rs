@@ -40,6 +40,17 @@ pub struct Status {
     pub battery: Option<Battery>,
     pub wifi: Option<Wifi>,
     pub volume: Option<Volume>,
+    /// Programs a newer build would replace (tabula-session's offer).
+    pub upgrade: Vec<String>,
+}
+
+/// What tabula-session offers to upgrade (see its upgrade.rs).
+fn upgrade() -> Vec<String> {
+    let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let display = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
+    let Ok(text) = std::fs::read_to_string(dir.join(format!("tabula-upgrade-{display}.json"))) else { return Vec::new() };
+    let v: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+    v["programs"].as_array().map(|a| a.iter().filter_map(|p| p.as_str().map(str::to_owned)).collect()).unwrap_or_default()
 }
 
 fn battery() -> Option<Battery> {
@@ -129,10 +140,11 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
         .name("deskbar-status".into())
         .spawn(move || {
             loop {
-                let (battery, wifi) = (battery(), wifi());
+                let (battery, wifi, upgrade) = (battery(), wifi(), upgrade());
                 publish(&polled, |s| {
                     s.battery = battery;
                     s.wifi = wifi.clone();
+                    s.upgrade = upgrade.clone();
                 });
                 std::thread::sleep(Duration::from_secs(4));
             }
@@ -305,6 +317,33 @@ pub fn draw_volume(painter: &Painter, r: Rect, p: &Palette, level: f32, muted: b
 }
 
 /// A coffee cup; full and steaming when `on` (caffeinated).
+/// A newer build is ready: a green arrow rising out of a tray.
+pub fn draw_upgrade(painter: &Painter, r: Rect, p: &Palette) {
+    let cx = r.center().x;
+    let green = c(p.success);
+    let outline = Stroke::new(1.0, ink(p));
+    // The arrow: head and shaft (each convex), then one outline round both.
+    let (top, neck, foot) = (r.top() + 1.5, r.top() + 7.5, r.bottom() - 4.5);
+    let head = vec![pos2(cx, top), pos2(cx + 5.5, neck), pos2(cx - 5.5, neck)];
+    let shaft = Rect::from_min_max(pos2(cx - 2.5, neck), pos2(cx + 2.5, foot));
+    painter.add(Shape::convex_polygon(head, green, Stroke::NONE));
+    painter.rect_filled(shaft, 0.0, green);
+    let edge = vec![
+        pos2(cx, top),
+        pos2(cx + 5.5, neck),
+        pos2(cx + 2.5, neck),
+        pos2(cx + 2.5, foot),
+        pos2(cx - 2.5, foot),
+        pos2(cx - 2.5, neck),
+        pos2(cx - 5.5, neck),
+        pos2(cx, top),
+    ];
+    painter.add(Shape::line(edge, outline));
+    // The tray it rises from.
+    let y = r.bottom() - 1.5;
+    painter.add(Shape::line(vec![pos2(r.left() + 1.5, y - 3.0), pos2(r.left() + 1.5, y), pos2(r.right() - 1.5, y), pos2(r.right() - 1.5, y - 3.0)], Stroke::new(1.2, ink(p))));
+}
+
 pub fn draw_cup(painter: &Painter, r: Rect, p: &Palette, on: bool) {
     let color = if on { ink(p) } else { dim(p) };
     let s = Stroke::new(1.2, color);
