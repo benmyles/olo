@@ -189,6 +189,7 @@ pub fn run_headless(size_arg: Option<&str>) {
         }
         let _ = state.display_handle.flush_clients();
     }
+    state.save_layout();
 }
 
 fn render_frame(state: &mut AnvilState<HeadlessData>, output: &Output) {

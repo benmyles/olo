@@ -58,7 +58,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     pub fn deco_motion(&mut self, window: &WindowElement, location: Point<f64, Logical>) {
         let part = self.deco_part(window, location);
-        window.decoration().hover = part;
+        let mut deco = window.decoration();
+        deco.hover = part;
+        deco.pointer = location;
+        drop(deco);
         self.cursor_status = CursorImageStatus::Named(cursor_for(part));
     }
 
@@ -95,7 +98,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             (BTN_LEFT, Part::Close | Part::Zoom) => window.decoration().pressed = hover,
             (BTN_RIGHT, Part::Tab) => self.send_to_back(window),
             (BTN_LEFT, Part::Tab) => {
-                let location = self.pointer.current_location();
+                let location = window.decoration().pointer;
                 let now = Instant::now();
                 let double = {
                     let mut deco = window.decoration();
@@ -159,16 +162,17 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn start_tab_slide(&mut self, window: &WindowElement, serial: Serial) {
-        let Some(start_data) = self.pointer.grab_start_data() else {
-            return;
-        };
-        let grab = TabSlideGrab {
-            start_data,
-            window: window.clone(),
-            initial_offset: window.decoration().tab_offset,
-        };
-        let pointer = self.pointer.clone();
-        pointer.set_grab(self, grab, serial, Focus::Keep);
+        // Deferred like moves: we are inside the pointer's button handler.
+        let window = window.clone();
+        self.handle.insert_idle(move |data| {
+            let Some(start_data) = data.pointer.grab_start_data() else {
+                return;
+            };
+            let initial_offset = window.decoration().tab_offset;
+            let grab = TabSlideGrab { start_data, window, initial_offset };
+            let pointer = data.pointer.clone();
+            pointer.set_grab(data, grab, serial, Focus::Keep);
+        });
     }
 
     pub fn close_window(&mut self, window: &WindowElement) {

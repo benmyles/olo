@@ -30,6 +30,13 @@ pub fn spawn(tx: Sender<Palette>) {
         .name("theme-watch".into())
         .spawn(move || {
             loop {
+                // (Re)connected, perhaps to a restarted app_server: catch up
+                // with the current theme, then follow changes.
+                if let Some(mode) = current_mode()
+                    && tx.send(Palette::for_mode(mode)).is_err()
+                {
+                    return;
+                }
                 if let Ok(client) = Client::connect()
                     && let Ok(events) = client.into_events()
                 {
@@ -41,7 +48,7 @@ pub fn spawn(tx: Sender<Palette>) {
                         }
                     }
                 }
-                std::thread::sleep(Duration::from_secs(2));
+                std::thread::sleep(Duration::from_millis(500));
             }
         })
         .ok();

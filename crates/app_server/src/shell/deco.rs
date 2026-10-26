@@ -54,6 +54,9 @@ pub struct Decoration {
     pub hover: Part,
     /// Part the button went down on; close/zoom act on release over it.
     pub pressed: Part,
+    /// Where the pointer last moved over the decoration. Button handlers
+    /// run inside smithay's pointer lock, so they can't ask the pointer.
+    pub pointer: Point<f64, Logical>,
     pub last_tab_press: Option<(Instant, Point<f64, Logical>)>,
     title_width: Option<(String, i32)>,
     tab: Option<(TabKey, MemoryRenderBuffer)>,
@@ -93,6 +96,7 @@ impl Default for Decoration {
             tab_offset: 0,
             hover: Part::None,
             pressed: Part::None,
+            pointer: Point::default(),
             last_tab_press: None,
             title_width: None,
             tab: None,

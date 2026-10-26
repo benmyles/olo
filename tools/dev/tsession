@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Headless Tabula sessions for development and automated UI checks.
 
-  tsession start NAME [WxH] [--light|--dark]   start a headless app_server
+  tsession start NAME [WxH] [--light|--dark] [--session [--shell]]
+                                               start a headless app_server (--session:
+                                               under tabula-session, so `reload` works;
+                                               --shell also starts Deskbar and the desktop)
+  tsession reload NAME                         restart app_server in place (session only)
   tsession run NAME [VAR=VAL...] CMD [ARGS...] start a client in it (log: DIR/<cmd>.log);
                                                VAR=VAL set after sudo (e.g. HOME=/tmp/fixture)
   tsession shot NAME OUT.png [X Y W H]         screenshot (optional crop, logical px)
@@ -31,7 +35,7 @@ TARGET = os.environ.get("CARGO_TARGET_DIR", os.path.join(ROOT, "target"))
 
 def as_owner(cmd, **kw):
     if os.getuid() == 0 and OWNER.pw_uid != 0:
-        cmd = ["sudo", "-u", OWNER.pw_name, "--preserve-env=WAYLAND_DISPLAY,TABULA_SOCKET,XDG_RUNTIME_DIR,XDG_CONFIG_HOME,RUST_LOG,TABULA_THEME,TABULA_DATA,HOME,PATH"] + cmd
+        cmd = ["sudo", "-u", OWNER.pw_name, "--preserve-env=WAYLAND_DISPLAY,TABULA_SOCKET,XDG_RUNTIME_DIR,XDG_CONFIG_HOME,RUST_LOG,TABULA_THEME,TABULA_DATA,TABULA_SESSION,TABULA_SESSION_PID,HOME,PATH"] + cmd
     return cmd
 
 def sdir(name):
@@ -70,16 +74,30 @@ def start(name, args):
     env.pop("WAYLAND_DISPLAY", None)
     env.pop("TABULA_SOCKET", None)
     log = open(os.path.join(d, "app_server.log"), "w")
-    exe = os.path.join(TARGET, "debug", "tabula-app-server")
-    p = subprocess.Popen(as_owner([exe, "--headless", size]), env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    session = "--session" in args
+    if session:
+        exe = [os.path.join(TARGET, "debug", "tabula-session"), "--headless", size] + ([] if "--shell" in args else ["--no-shell"])
+    else:
+        exe = [os.path.join(TARGET, "debug", "tabula-app-server"), "--headless", size]
+    p = subprocess.Popen(as_owner(exe), env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     for _ in range(100):
         time.sleep(0.1)
         text = re.sub(r"\x1b\[[0-9;]*m", "", open(os.path.join(d, "app_server.log")).read())
-        m = re.search(r'Listening on wayland socket name="([^"]+)"', text)
-        i = re.search(r"IPC listening path=(\S+)", text)
-        if m and i:
+        if session:
+            m = re.search(r"session: WAYLAND_DISPLAY=(\S+)", text)
+            i = re.search(r"session: \S+ TABULA_SOCKET=(\S+)", text)
+            ready = "IPC listening" in text
+        else:
+            m = re.search(r'Listening on wayland socket name="([^"]+)"', text)
+            i = re.search(r"IPC listening path=(\S+)", text)
+            ready = True
+        if m and i and ready:
             e = {"WAYLAND_DISPLAY": m.group(1), "TABULA_SOCKET": i.group(1), "XDG_RUNTIME_DIR": RUNTIME,
                  "XDG_CONFIG_HOME": os.path.join(d, "config"), "pid": p.pid}
+            if session:
+                e["TABULA_SESSION"] = "1"
+                pidfile = os.path.join(RUNTIME, f"tabula-session-{m.group(1)}.pid")
+                e["TABULA_SESSION_PID"] = open(pidfile).read().strip()
             json.dump(e, open(os.path.join(d, "env.json"), "w"))
             print(f"{name}: {e['WAYLAND_DISPLAY']} ({size}, {theme})")
             return
@@ -176,6 +194,8 @@ def main():
         start(name, a)
     elif cmd == "stop":
         stop(name)
+    elif cmd == "reload":
+        os.kill(int(load_env(name)["TABULA_SESSION_PID"]), signal.SIGHUP)
     elif cmd == "run":
         run(name, a)
     elif cmd == "env":

@@ -1,0 +1,15 @@
+[package]
+name = "tabula-session"
+description = "Starts and supervises a Tabula session; restarts it in place for upgrades"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "tabula-session"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"
+serde.workspace = true
+serde_json.workspace = true

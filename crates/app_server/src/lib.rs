@@ -31,3 +31,27 @@ pub mod text;
 pub mod theme;
 
 pub use state::{AnvilState, ClientState};
+
+/// Keep an inherited fd from leaking into the programs we start.
+pub fn set_cloexec(fd: i32) {
+    // SAFETY: plain fcntl on an fd we own.
+    unsafe {
+        let flags = libc::fcntl(fd, libc::F_GETFD);
+        if flags >= 0 {
+            libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+        }
+    }
+}
+
+/// Stop the main loop cleanly on SIGTERM/SIGINT/SIGHUP (tabula-session asks
+/// us to stop this way before starting a new app_server), so the window
+/// layout is saved for it.
+pub fn stop_on_signals(running: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+    for sig in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
+        let running = running.clone();
+        // SAFETY: the handler only stores to an atomic.
+        let _ = unsafe {
+            signal_hook::low_level::register(sig, move || running.store(false, std::sync::atomic::Ordering::SeqCst))
+        };
+    }
+}

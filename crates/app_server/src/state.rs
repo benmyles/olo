@@ -669,7 +669,34 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let clock = Clock::new();
 
         // init wayland clients
-        let socket_name = if listen_on_socket {
+        let socket_name = if listen_on_socket && let Some((name, listener)) = inherited_wayland_socket() {
+            // tabula-session owns the socket, so it outlives us: clients
+            // stay connected-to-be across an in-place restart.
+            listener.set_nonblocking(true).expect("nonblocking socket");
+            handle
+                .insert_source(Generic::new(listener, Interest::READ, Mode::Level), |_, listener, data| {
+                    loop {
+                        match listener.accept() {
+                            Ok((stream, _)) => {
+                                if let Err(err) =
+                                    data.display_handle.insert_client(stream, Arc::new(ClientState::default()))
+                                {
+                                    warn!("Error adding wayland client: {}", err);
+                                }
+                            }
+                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                            Err(e) => {
+                                warn!(?e, "accept failed");
+                                break;
+                            }
+                        }
+                    }
+                    Ok(PostAction::Continue)
+                })
+                .expect("Failed to init inherited wayland socket");
+            info!(name, "Listening on wayland socket from tabula-session");
+            Some(name)
+        } else if listen_on_socket {
             let source = ListeningSocketSource::new_auto().unwrap();
             let socket_name = source.socket_name().to_string_lossy().into_owned();
             handle
@@ -823,6 +850,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 Err(e) => warn!(?e, "IPC disabled"),
             }
         }
+        crate::stop_on_signals(state.running.clone());
         state.apply_input_settings();
         state.update_appearance(true);
         // Re-check the Auto theme / night-light schedule every 30 s.
@@ -1250,4 +1278,18 @@ pub trait Backend {
     fn reset_buffers(&mut self, output: &Output);
     fn early_import(&mut self, surface: &WlSurface);
     fn update_led_state(&mut self, led_state: LedState);
+}
+
+/// The Wayland listening socket handed down by tabula-session
+/// (`TABULA_WAYLAND_FD`, with its name in `WAYLAND_DISPLAY`).
+fn inherited_wayland_socket() -> Option<(String, std::os::unix::net::UnixListener)> {
+    use std::os::fd::FromRawFd;
+    let fd: i32 = std::env::var("TABULA_WAYLAND_FD").ok()?.parse().ok()?;
+    let name = std::env::var("WAYLAND_DISPLAY").ok()?;
+    // SAFETY: tabula-session passes this fd to us alone.
+    let listener = unsafe { std::os::unix::net::UnixListener::from_raw_fd(fd) };
+    crate::set_cloexec(fd);
+    // SAFETY: called during single-threaded start-up.
+    unsafe { std::env::remove_var("TABULA_WAYLAND_FD") };
+    Some((name, listener))
 }

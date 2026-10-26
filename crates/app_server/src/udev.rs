@@ -546,6 +546,7 @@ pub fn run_udev() {
             display_handle.flush_clients().unwrap();
         }
     }
+    state.save_layout();
 }
 
 impl DrmLeaseHandler for AnvilState<UdevData> {

@@ -43,6 +43,15 @@ pub trait App: 'static {
 
     /// Files dropped on a window (Tracker drags etc.).
     fn files_dropped(&mut self, _cx: &mut Cx, _window: WindowId, _paths: Vec<std::path::PathBuf>) {}
+
+    /// State to carry across an in-place upgrade. When Tabula is reloaded
+    /// (`tabula-session reload`) and this app's binary has changed, the kit
+    /// re-executes the new binary; whatever this returns is handed to it as
+    /// [`Cx::restored_state`] so it can reopen its windows as they were.
+    /// Apps whose binary didn't change simply reconnect, keeping all state.
+    fn save_state(&mut self) -> Option<String> {
+        None
+    }
 }
 
 /// How a new window should appear.
@@ -130,7 +139,22 @@ pub struct Cx {
     pub(crate) app_id: String,
 }
 
+/// Where an upgrading app leaves its saved state for its new self.
+pub(crate) const RESTORE_ENV: &str = "TABULA_RESTORE";
+
 impl Cx {
+    /// What the previous version of this app saved with
+    /// [`App::save_state`] before an in-place upgrade (once; `None` on a
+    /// normal start).
+    pub fn restored_state(&mut self) -> Option<String> {
+        let path = std::env::var_os(RESTORE_ENV)?;
+        // SAFETY: start-up, before the app starts threads of its own.
+        unsafe { std::env::remove_var(RESTORE_ENV) };
+        let text = std::fs::read_to_string(&path).ok();
+        let _ = std::fs::remove_file(&path);
+        text
+    }
+
     /// Open a window; it appears after the current callback returns.
     pub fn open_window(&mut self, options: WindowOptions) -> WindowId {
         let id = WindowId(self.next_id);

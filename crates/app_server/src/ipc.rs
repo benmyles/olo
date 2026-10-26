@@ -86,8 +86,14 @@ pub fn init<B: Backend + 'static>(
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
     let path = dir.join(format!("tabula-{wayland_socket}.sock"));
-    let _ = std::fs::remove_file(&path);
-    let listener = UnixListener::bind(&path)?;
+    // tabula-session may own the socket (so it survives our restarts).
+    let (listener, owned) = match inherited_ipc_socket() {
+        Some(l) => (l, false),
+        None => {
+            let _ = std::fs::remove_file(&path);
+            (UnixListener::bind(&path)?, true)
+        }
+    };
     listener.set_nonblocking(true)?;
     // SAFETY: single-threaded; nothing else reads the environment concurrently.
     unsafe { std::env::set_var(tabula_protocol::SOCKET_ENV, &path) };
@@ -112,6 +118,8 @@ pub fn init<B: Backend + 'static>(
         )
         .map_err(|e| std::io::Error::other(e.to_string()))?;
 
+    // An inherited socket's file belongs to tabula-session: don't remove it.
+    let path = if owned { path } else { PathBuf::new() };
     Ok(IpcState { path, subscribers: Vec::new(), pending_screenshots: Vec::new() })
 }
 
@@ -246,4 +254,15 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
         })
     }
+}
+
+fn inherited_ipc_socket() -> Option<UnixListener> {
+    use std::os::fd::FromRawFd;
+    let fd: i32 = std::env::var("TABULA_IPC_FD").ok()?.parse().ok()?;
+    // SAFETY: tabula-session passes this fd to us alone.
+    let listener = unsafe { UnixListener::from_raw_fd(fd) };
+    crate::set_cloexec(fd);
+    // SAFETY: called during single-threaded start-up.
+    unsafe { std::env::remove_var("TABULA_IPC_FD") };
+    Some(listener)
 }

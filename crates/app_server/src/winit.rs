@@ -478,4 +478,5 @@ pub fn run_winit() {
         #[cfg(feature = "debug")]
         state.backend_data.fps.tick();
     }
+    state.save_layout();
 }

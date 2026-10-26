@@ -200,6 +200,12 @@ pub struct Kit {
 }
 
 /// Run an app until it quits or closes its last window.
+///
+/// Inside a Tabula session (`$TABULA_SESSION` set by tabula-session) the
+/// app survives app_server restarting in place: when the connection drops
+/// it reconnects and recreates its windows, keeping all its state, or, if
+/// its own binary was upgraded meanwhile, re-executes the new one with the
+/// state from [`App::save_state`].
 pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
@@ -207,15 +213,11 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
         )
         .try_init();
+    let in_session = std::env::var_os("TABULA_SESSION").is_some();
+    let binary = Binary::current();
 
-    let conn = Connection::connect_to_env().expect("not running under Wayland");
-    let (globals, event_queue) = registry_queue_init::<Kit>(&conn).expect("wayland registry");
-    let qh = event_queue.handle();
     let mut event_loop: EventLoop<'static, Kit> = EventLoop::try_new().expect("event loop");
     let loop_handle = event_loop.handle();
-    WaylandSource::new(conn.clone(), event_queue)
-        .insert(loop_handle.clone())
-        .expect("wayland source");
 
     // Messages from app threads.
     let (sender, channel): (_, Channel<Box<dyn Any + Send>>) = channel::channel();
@@ -239,31 +241,141 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         })
         .expect("theme channel");
 
-    let mut kit = Kit::new(&globals, conn, qh, loop_handle, palette.clone());
-    let mut cx = Cx {
-        requests: Vec::new(),
-        next_id: 1,
-        palette,
-        proxy: Proxy { sender },
-        app_id: app_id.to_owned(),
-    };
-    let app = build(&mut cx);
-    kit.app = Some(Box::new(app));
-    kit.cx = Some(cx);
-    kit.process_requests();
+    let mut build = Some(build);
+    let mut carried: Option<Carried> = None;
+    let mut palette = palette;
+    loop {
+        let Some(conn) = connect(in_session) else {
+            warn!("could not reconnect to app_server; exiting");
+            return;
+        };
+        let (globals, event_queue) = registry_queue_init::<Kit>(&conn).expect("wayland registry");
+        let qh = event_queue.handle();
+        let wayland = WaylandSource::new(conn.clone(), event_queue)
+            .insert(loop_handle.clone())
+            .expect("wayland source");
 
-    while !kit.exit {
-        let timeout = kit.next_timeout();
-        if let Err(e) = event_loop.dispatch(timeout, &mut kit) {
-            warn!(?e, "event loop error");
-            break;
+        let mut kit = Kit::new(&globals, conn, qh, loop_handle.clone(), palette.clone());
+        match carried.take() {
+            None => {
+                let mut cx = Cx {
+                    requests: Vec::new(),
+                    next_id: 1,
+                    palette: palette.clone(),
+                    proxy: Proxy { sender: sender.clone() },
+                    app_id: app_id.to_owned(),
+                };
+                let app = (build.take().expect("built once"))(&mut cx);
+                kit.app = Some(Box::new(app));
+                kit.cx = Some(cx);
+            }
+            Some(c) => {
+                info!(windows = c.windows.len(), "reconnected; restoring windows");
+                kit.app = Some(c.app);
+                kit.cx = Some(c.cx);
+                for (id, options) in c.windows {
+                    kit.open(id, options);
+                }
+            }
         }
-        kit.redraw_due();
-        let _ = kit.conn.flush();
+        kit.process_requests();
+
+        let mut lost = false;
+        while !kit.exit {
+            let timeout = kit.next_timeout();
+            if let Err(e) = event_loop.dispatch(timeout, &mut kit) {
+                warn!(?e, "lost the connection to app_server");
+                lost = true;
+                break;
+            }
+            kit.redraw_due();
+            if kit.conn.flush().is_err() {
+                lost = true;
+                break;
+            }
+        }
+        loop_handle.remove(wayland);
+        palette = kit.palette.clone();
+        let c = kit.into_carried();
+        if !lost || !in_session {
+            return;
+        }
+        // app_server is restarting (tabula-session reload). If our binary
+        // was upgraded meanwhile, become the new version; otherwise just
+        // reconnect with everything as it was.
+        let Some(mut c) = c else { return };
+        if binary.changed() {
+            let state = c.app.save_state();
+            binary.exec(state.as_deref());
+            warn!("could not start the upgraded binary; carrying on");
+        }
+        carried = Some(c);
     }
-    // Surfaces must go before the wayland objects they render to.
-    for s in kit.surfaces.iter_mut() {
-        s.gpu_surface = None;
+}
+
+/// What survives a reconnect: the app itself and its open windows.
+struct Carried {
+    app: Box<dyn App>,
+    cx: Cx,
+    windows: Vec<(WindowId, WindowOptions)>,
+}
+
+/// Connect to app_server; while it restarts, keep trying for a while.
+fn connect(retry: bool) -> Option<Connection> {
+    let deadline = Instant::now() + Duration::from_secs(if retry { 20 } else { 0 });
+    loop {
+        match Connection::connect_to_env() {
+            Ok(c) => return Some(c),
+            Err(e) if Instant::now() >= deadline => {
+                if !retry {
+                    panic!("not running under Wayland: {e}");
+                }
+                return None;
+            }
+            Err(_) => std::thread::sleep(Duration::from_millis(100)),
+        }
+    }
+}
+
+/// Our own executable, to notice when an upgrade replaces it.
+struct Binary {
+    path: std::path::PathBuf,
+    id: Option<(u64, u64, std::time::SystemTime)>,
+}
+
+impl Binary {
+    fn current() -> Binary {
+        let path = std::env::current_exe().unwrap_or_default();
+        let id = Self::identity(&path);
+        Binary { path, id }
+    }
+
+    fn identity(path: &std::path::Path) -> Option<(u64, u64, std::time::SystemTime)> {
+        use std::os::unix::fs::MetadataExt;
+        let m = std::fs::metadata(path).ok()?;
+        Some((m.dev(), m.ino(), m.modified().ok()?))
+    }
+
+    fn changed(&self) -> bool {
+        let now = Self::identity(&self.path);
+        now.is_some() && now != self.id
+    }
+
+    /// Replace this process with the binary now on disk, passing `state`.
+    fn exec(&self, state: Option<&str>) {
+        use std::os::unix::process::CommandExt;
+        let mut cmd = std::process::Command::new(&self.path);
+        cmd.args(std::env::args_os().skip(1));
+        if let Some(state) = state {
+            let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+            let file = dir.join(format!("tabula-restore-{}.json", std::process::id()));
+            if std::fs::write(&file, state).is_ok() {
+                cmd.env(crate::app::RESTORE_ENV, &file);
+            }
+        }
+        info!(path = %self.path.display(), "upgraded: re-executing");
+        let e = cmd.exec();
+        warn!(?e, "exec failed");
     }
 }
 
@@ -307,6 +419,33 @@ impl Kit {
             clipboard: None,
             exit: false,
         }
+    }
+
+    /// Tear down every Wayland/GPU object (surfaces before the device and
+    /// connection they belong to) and keep the app and its windows.
+    fn into_carried(mut self) -> Option<Carried> {
+        let windows = self
+            .surfaces
+            .iter()
+            .filter(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_)))
+            .map(|s| {
+                let mut options = s.options.clone();
+                if matches!(s.role, Role::Toplevel(_)) {
+                    options.size = s.size; // come back the size it was
+                }
+                (s.id, options)
+            })
+            .collect();
+        for s in self.surfaces.iter_mut() {
+            s.gpu_surface = None;
+            s.renderer = None;
+        }
+        self.surfaces.clear();
+        self.gpu = None;
+        let app = self.app.take()?;
+        let mut cx = self.cx.take()?;
+        cx.requests.clear();
+        Some(Carried { app, cx, windows })
     }
 
     /// Call into the app with a Cx, then act on what it asked for.
