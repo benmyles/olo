@@ -13,6 +13,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use tabula_kit::images::av1;
+
 use crate::{audio, load::Image, media};
 
 /// Frames decoded ahead (about a fifth of a second at 30 fps).
@@ -205,13 +207,19 @@ impl Drop for Video {
     }
 }
 
-/// One coded picture in start-code form, with its presentation time.
+fn av1_image(f: &av1::Frame) -> Image {
+    Arc::new(tabula_kit::egui::ColorImage::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba()))
+}
+
+/// One coded picture (H.264 in start-code form, AV1 as stored), with
+/// its presentation time.
 struct Packet {
     pts: f64,
     data: Vec<u8>,
 }
 
 trait Demux: Send {
+    fn codec(&self) -> Codec;
     fn next(&mut self) -> Option<Packet>;
     /// Go to the key frame at or before `secs`.
     fn seek(&mut self, secs: f64);
@@ -222,20 +230,49 @@ fn open(path: &Path) -> Result<Box<dyn Demux>, String> {
     if matches!(ext.as_str(), "mkv" | "webm") { Mkv::open(path).map(|d| Box::new(d) as _) } else { Mp4::open(path).map(|d| Box::new(d) as _) }
 }
 
+/// The codecs played.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Codec {
+    H264,
+    Av1,
+}
+
+enum Decoder {
+    H264(Box<openh264::decoder::Decoder>),
+    Av1(av1::Decoder),
+}
+
+impl Decoder {
+    fn new(codec: Codec) -> Result<Decoder, String> {
+        Ok(match codec {
+            Codec::H264 => Decoder::H264(Box::new(openh264::decoder::Decoder::new().map_err(|e| e.to_string())?)),
+            // Threads to keep up with large pictures; pictures may come
+            // out a few units late.
+            Codec::Av1 => Decoder::Av1(av1::Decoder::new(0, 0)?),
+        })
+    }
+}
+
 fn decode(path: &Path, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String> {
     let (m, cv) = shared;
     let mut demux = open(path)?;
-    let mut dec = openh264::decoder::Decoder::new().map_err(|e| e.to_string())?;
-    // Presentation times of packets sent and not yet out: OpenH264 hands
+    let codec = demux.codec();
+    let mut dec = Decoder::new(codec)?;
+    // Presentation times of packets sent and not yet out: decoders hand
     // pictures back in display order, so each takes the earliest.
     let mut times: BinaryHeap<Reverse<i64>> = BinaryHeap::new();
     let mut from = 0.0;
-    let push = |pts: f64, from: f64, yuv: &openh264::decoder::DecodedYUV<'_>| -> bool {
+    let mut av1_out = Vec::new();
+    // Queue a picture (made only if it will be shown); false once a seek
+    // or stop makes the rest pointless.
+    let push = |times: &mut BinaryHeap<Reverse<i64>>, from: f64, image: &dyn Fn() -> Image| -> bool {
+        let Some(Reverse(t)) = times.pop() else { return true };
+        let pts = t as f64 / 1e6;
         // Pictures before a seek's target only lead up to it.
         if pts + 0.001 < from {
             return true;
         }
-        let image = media::yuv_image(yuv);
+        let image = image();
         let mut sh = m.lock().unwrap();
         if sh.seek.is_some() || sh.stop {
             return false;
@@ -257,31 +294,51 @@ fn decode(path: &Path, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String> 
                 sh.eof = false;
                 drop(sh);
                 demux.seek(t);
-                dec = openh264::decoder::Decoder::new().map_err(|e| e.to_string())?;
+                dec = Decoder::new(codec)?;
                 times.clear();
                 from = t;
             }
         }
-        match demux.next() {
-            Some(p) => {
-                times.push(Reverse((p.pts * 1e6) as i64));
-                if let Ok(Some(yuv)) = dec.decode(&p.data) {
-                    let pts = times.pop().map_or(p.pts, |Reverse(t)| t as f64 / 1e6);
-                    push(pts, from, &yuv);
+        let packet = demux.next();
+        let ended = packet.is_none();
+        if let Some(p) = &packet {
+            times.push(Reverse((p.pts * 1e6) as i64));
+        }
+        match (&mut dec, packet) {
+            (Decoder::H264(d), Some(p)) => {
+                if let Ok(Some(yuv)) = d.decode(&p.data) {
+                    push(&mut times, from, &|| media::yuv_image(&yuv));
                 }
             }
-            None => {
-                if let Ok(rest) = dec.flush_remaining() {
+            (Decoder::H264(d), None) => {
+                if let Ok(rest) = d.flush_remaining() {
                     for yuv in &rest {
-                        let Some(Reverse(t)) = times.pop() else { break };
-                        if !push(t as f64 / 1e6, from, yuv) {
+                        if !push(&mut times, from, &|| media::yuv_image(yuv)) {
                             break;
                         }
                     }
                 }
-                times.clear();
-                m.lock().unwrap().eof = true;
             }
+            (Decoder::Av1(d), p) => {
+                av1_out.clear();
+                match &p {
+                    Some(p) => {
+                        if let Err(e) = d.decode(&p.data, &mut av1_out) {
+                            tracing::debug!("av1: {e}");
+                        }
+                    }
+                    None => d.flush(&mut av1_out),
+                }
+                for f in &av1_out {
+                    if !push(&mut times, from, &|| av1_image(f)) {
+                        break;
+                    }
+                }
+            }
+        }
+        if ended {
+            times.clear();
+            m.lock().unwrap().eof = true;
         }
     }
 }
@@ -338,6 +395,10 @@ impl Mp4 {
 }
 
 impl Demux for Mp4 {
+    fn codec(&self) -> Codec {
+        Codec::H264
+    }
+
     fn next(&mut self) -> Option<Packet> {
         loop {
             let id = self.next;
@@ -371,6 +432,7 @@ impl Demux for Mp4 {
 struct Mkv {
     file: matroska_demuxer::MatroskaFile<BufReader<std::fs::File>>,
     track: u64,
+    codec: Codec,
     scale: f64,
     sets: Vec<u8>,
     nal_len: usize,
@@ -383,19 +445,30 @@ impl Mkv {
     fn open(path: &Path) -> Result<Mkv, String> {
         let f = std::fs::File::open(path).map_err(|e| e.to_string())?;
         let file = matroska_demuxer::MatroskaFile::open(BufReader::new(f)).map_err(|e| e.to_string())?;
-        let t = file
+        let (t, codec) = file
             .tracks()
             .iter()
-            .find(|t| t.video().is_some() && t.codec_id() == "V_MPEG4/ISO/AVC")
+            .filter(|t| t.video().is_some())
+            .find_map(|t| match t.codec_id() {
+                "V_MPEG4/ISO/AVC" => Some((t, Codec::H264)),
+                "V_AV1" => Some((t, Codec::Av1)),
+                _ => None,
+            })
             .ok_or("This video's format can't be played.")?;
-        let (nal_len, ps) = t.codec_private().and_then(media::parse_avcc).ok_or("no avcC")?;
-        let mut sets = Vec::new();
-        for p in ps {
-            sets.extend_from_slice(&[0, 0, 0, 1]);
-            sets.extend_from_slice(&p);
+        // AV1 blocks are OBUs as the decoder takes them, with sequence
+        // headers in key frames.
+        let (mut nal_len, mut sets) = (0, Vec::new());
+        if codec == Codec::H264 {
+            let (len, ps) = t.codec_private().and_then(media::parse_avcc).ok_or("no avcC")?;
+            nal_len = len;
+            for p in ps {
+                sets.extend_from_slice(&[0, 0, 0, 1]);
+                sets.extend_from_slice(&p);
+            }
         }
         Ok(Mkv {
             track: t.track_number().get(),
+            codec,
             scale: file.info().timestamp_scale().get() as f64 / 1e9,
             sets,
             nal_len,
@@ -407,10 +480,18 @@ impl Mkv {
 }
 
 impl Demux for Mkv {
+    fn codec(&self) -> Codec {
+        self.codec
+    }
+
     fn next(&mut self) -> Option<Packet> {
         while self.file.next_frame(&mut self.frame).ok()? {
             if self.frame.track != self.track {
                 continue;
+            }
+            let pts = self.frame.timestamp as f64 * self.scale;
+            if self.codec == Codec::Av1 {
+                return Some(Packet { pts, data: std::mem::take(&mut self.frame.data) });
             }
             let mut data = Vec::with_capacity(self.frame.data.len() + 64);
             if self.fresh || self.frame.is_keyframe == Some(true) {
@@ -418,7 +499,7 @@ impl Demux for Mkv {
                 self.fresh = false;
             }
             media::avcc_to_annexb(&self.frame.data, self.nal_len, &mut data);
-            return Some(Packet { pts: self.frame.timestamp as f64 * self.scale, data });
+            return Some(Packet { pts, data });
         }
         None
     }
@@ -467,12 +548,13 @@ mod tests {
 
     /// `TABULA_SAMPLES=dir cargo test -p tabula-preview video -- --ignored`
     /// with 8-second 30 fps H.264 clips in `dir`: test.mp4 / test.mkv (one
-    /// key frame) and gop.mp4 / gop.mkv (one a second).
+    /// key frame), gop.mp4 / gop.mkv (one a second) and av1.webm (AV1 with
+    /// reordering, a key frame a second).
     #[test]
     #[ignore]
     fn seeks_to_the_frame() {
         let dir = std::path::PathBuf::from(std::env::var("TABULA_SAMPLES").expect("TABULA_SAMPLES"));
-        for name in ["test.mp4", "test.mkv", "gop.mp4", "gop.mkv"] {
+        for name in ["test.mp4", "test.mkv", "gop.mp4", "gop.mkv", "av1.webm"] {
             for target in [0.0, 5.0, 2.5] {
                 let path = dir.join(name);
                 let shared = Arc::new((Mutex::new(Shared { seek: Some(target), ..Default::default() }), Condvar::new()));
@@ -493,6 +575,39 @@ mod tests {
                 assert!((pts[0] - target).abs() < 0.05, "{name} @ {target}: {pts:?}");
                 assert!(pts.windows(2).all(|w| w[1] > w[0]), "{name}: in order {pts:?}");
             }
+        }
+    }
+
+    /// Pictures decoded (and made RGBA) per second from av1-1080.mkv (4 s of
+    /// 1080p AV1): needs to stay well above 30 in release builds.
+    #[test]
+    #[ignore]
+    fn keeps_up() {
+        let dir = std::path::PathBuf::from(std::env::var("TABULA_SAMPLES").expect("TABULA_SAMPLES"));
+        for name in ["av1-1080.mkv", "gop.mp4"] {
+            let path = dir.join(name);
+            let shared = Arc::new((Mutex::new(Shared::default()), Condvar::new()));
+            let s = shared.clone();
+            let start = Instant::now();
+            let worker = std::thread::spawn(move || decode(&path, &s));
+            let (m, cv) = &*shared;
+            let mut n = 0;
+            loop {
+                let mut sh = m.lock().unwrap();
+                n += sh.queue.drain(..).count();
+                cv.notify_all();
+                if sh.eof && sh.queue.is_empty() {
+                    sh.stop = true;
+                    break;
+                }
+                drop(sh);
+                std::thread::yield_now();
+            }
+            cv.notify_all();
+            worker.join().unwrap().unwrap();
+            let fps = n as f64 / start.elapsed().as_secs_f64();
+            eprintln!("{name}: {n} pictures, {fps:.0} a second");
+            assert!(n > 100 && fps > 45.0, "{name}: {n} at {fps:.0}/s");
         }
     }
 }

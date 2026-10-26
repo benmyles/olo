@@ -514,5 +514,11 @@
   "title": "Viewer: video playback",
   "caption": "H.264 in mp4 and Matroska decoded with OpenH264 a few frames ahead and shown against a clock that follows the sound; play, pause, seek and replay, and the screen stays awake while it plays",
   "image": "2026-10-26/053831-viewer-video-playback.png"
+ },
+ {
+  "time": "2026-10-26T05:42:37",
+  "title": "Viewer: AV1 video",
+  "caption": "AV1 in WebM and Matroska plays through rav1d with Opus sound; the poster frame decodes too, and the YUV to RGB conversion moved to fixed point tables (1080p at 72 frames a second)",
+  "image": "2026-10-26/054237-viewer-av1-video.png"
  }
 ]

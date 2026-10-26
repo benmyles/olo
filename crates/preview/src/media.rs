@@ -225,6 +225,10 @@ fn mkv(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
         None => codec.to_string(),
     }));
     m.note = format!("{codec} video, {w} × {h}");
+    if id == "V_AV1" {
+        m.playable = true;
+        return av1_poster(&mut mk, track, m, cancel);
+    }
     if id != "V_MPEG4/ISO/AVC" {
         return Ok(());
     }
@@ -256,6 +260,27 @@ fn mkv(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
             m.picture = Some(yuv_image(&yuv));
             break;
         }
+    }
+    Ok(())
+}
+
+/// The first AV1 picture.
+fn av1_poster<R: std::io::Read + std::io::Seek>(mk: &mut matroska_demuxer::MatroskaFile<R>, track: u64, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), String> {
+    let mut dec = tabula_kit::images::av1::Decoder::new(1, 1)?;
+    let mut frame = matroska_demuxer::Frame::default();
+    let mut out = Vec::new();
+    let mut tries = 0;
+    while out.is_empty() && tries < 120 && mk.next_frame(&mut frame).unwrap_or(false) {
+        if cancel.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+        if frame.track == track {
+            tries += 1;
+            dec.decode(&frame.data, &mut out)?;
+        }
+    }
+    if let Some(f) = out.first() {
+        m.picture = Some(Arc::new(ColorImage::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba())));
     }
     Ok(())
 }
