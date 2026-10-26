@@ -63,6 +63,10 @@ enum Win {
     Panel { panel: Panel, opened: Box<Settings>, state: panel::State },
     /// Backgrounds' Choose… panel, for `owner`.
     Wallpaper { owner: WindowId, panel: Box<FilePanel> },
+    /// Network's sheet for joining an enterprise network, over `owner`.
+    Enterprise { owner: WindowId, form: Box<network::EnterpriseForm> },
+    /// The sheet's file panel for a certificate or key.
+    Cert { owner: WindowId, slot: network::CertSlot, panel: Box<FilePanel> },
 }
 
 struct Prefs {
@@ -125,6 +129,18 @@ impl Prefs {
         self.windows.insert(id, Win::Wallpaper { owner, panel });
     }
 
+    /// The sheet for joining an enterprise network (one per network).
+    fn join_enterprise(&mut self, cx: &mut Cx, owner: WindowId, device: String, net: tabula_system::network::Network) {
+        if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Enterprise { form, .. } if form.ssid() == net.ssid)) {
+            cx.activate(id);
+            return;
+        }
+        let form = Box::new(network::EnterpriseForm::new(device, net));
+        let (w, h) = (network::SHEET_WIDTH, form.height());
+        let id = cx.open_window(WindowOptions::new(format!("Join “{}”", form.ssid()), w, h).min_size(w, 200).parent(owner));
+        self.windows.insert(id, Win::Enterprise { owner, form });
+    }
+
     fn handle_args(&mut self, cx: &mut Cx, args: &[String]) {
         let panels: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
         if panels.is_empty() {
@@ -179,6 +195,36 @@ impl App for Prefs {
             self.launcher_ui(cx, ui);
             return;
         }
+        if let Some(Win::Enterprise { form, .. }) = self.windows.get_mut(&window) {
+            let before = form.height();
+            let result = form.ui(ui);
+            if form.height() != before {
+                cx.resize(window, (network::SHEET_WIDTH, form.height()));
+            }
+            match result {
+                Some(network::SheetResult::Close) => self.close_requested(cx, window),
+                Some(network::SheetResult::Choose(slot)) => {
+                    let (w, h) = PANEL_SIZE;
+                    let id = cx.open_window(WindowOptions::new(slot.title(), w, h).min_size(400, 300).parent(window));
+                    let dir = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+                    self.windows.insert(id, Win::Cert { owner: window, slot, panel: Box::new(FilePanel::open(dir).types(network::CERT_TYPES)) });
+                }
+                None => {}
+            }
+            return;
+        }
+        if let Some(Win::Cert { owner, slot, panel }) = self.windows.get_mut(&window) {
+            let (owner, slot) = (*owner, *slot);
+            if let Some(result) = panel.ui(ui) {
+                if let (PanelResult::Chosen(path), Some(Win::Enterprise { form, .. })) = (result, self.windows.get_mut(&owner)) {
+                    form.chosen(slot, path);
+                }
+                self.windows.remove(&window);
+                cx.close_window(window);
+                cx.redraw(owner);
+            }
+            return;
+        }
         if let Some(Win::Wallpaper { owner, panel }) = self.windows.get_mut(&window) {
             let owner = *owner;
             if let Some(result) = panel.ui(ui) {
@@ -221,10 +267,17 @@ impl App for Prefs {
         if *settings != before {
             self.server.set_settings(settings.clone());
         }
+        let enterprise = match state {
+            panel::State::Network(n) => n.enterprise.take(),
+            _ => None,
+        };
         if let panel::State::Backgrounds(b) = state
             && std::mem::take(&mut b.choose)
         {
             self.choose_wallpaper(cx, window);
+        }
+        if let Some((device, net)) = enterprise {
+            self.join_enterprise(cx, window, device, net);
         }
     }
 
@@ -239,12 +292,12 @@ impl App for Prefs {
         let orphans: Vec<WindowId> = self
             .windows
             .iter()
-            .filter(|(_, w)| matches!(w, Win::Wallpaper { owner, .. } if *owner == window))
+            .filter(|(_, w)| matches!(w, Win::Wallpaper { owner, .. } | Win::Enterprise { owner, .. } | Win::Cert { owner, .. } if *owner == window))
             .map(|(&id, _)| id)
             .collect();
         for id in orphans {
-            self.windows.remove(&id);
-            cx.close_window(id);
+            // Their own sheets and panels go too.
+            self.close_requested(cx, id);
         }
         if self.windows.is_empty() {
             cx.quit();
@@ -286,7 +339,7 @@ impl App for Prefs {
             .filter_map(|w| match w {
                 Win::Launcher => Some(""),
                 Win::Panel { panel, .. } => Some(panel.arg()),
-                Win::Wallpaper { .. } => None,
+                Win::Wallpaper { .. } | Win::Enterprise { .. } | Win::Cert { .. } => None,
             })
             .collect();
         serde_json::to_string(&open).ok()

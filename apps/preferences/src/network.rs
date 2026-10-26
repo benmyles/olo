@@ -17,11 +17,12 @@ use tabula_kit::{
     metrics as m,
     widgets::{self, Button, CheckBox, Column, ColumnListView, ListState, MenuField, StringView, TabView, TextControl},
 };
-use tabula_system::network::{self as nm, Device, Kind, Network, Status};
+use tabula_system::network::{self as nm, Device, Enterprise, Kind, Network, Status};
 
 enum Request {
     Wireless(bool),
     Join(String, Network, Option<String>),
+    JoinEnterprise(String, Network, Box<nm::Enterprise>),
     Disconnect(String),
     Forget(String),
 }
@@ -54,6 +55,9 @@ fn link() -> &'static Link {
             .name("network".into())
             .spawn(move || {
                 let wake = || ctxs.lock().unwrap().iter().for_each(|c| c.request_repaint());
+                if fake_networks() {
+                    return fake_worker(&sh, &wake, &rx);
+                }
                 let mut scanned: Option<Instant> = None;
                 loop {
                     let status = nm::status().map_err(|e| e.to_string());
@@ -91,6 +95,14 @@ fn link() -> &'static Link {
                             }
                             r
                         }
+                        Request::JoinEnterprise(dev, net, mut e) => {
+                            let r = nm::join_enterprise(&dev, &net, &e).map_err(|e| (e, "The network couldn't be joined."));
+                            for secret in [&mut e.password, &mut e.key_password] {
+                                // SAFETY: zero bytes keep the string valid UTF-8.
+                                unsafe { secret.as_bytes_mut().fill(0) };
+                            }
+                            r
+                        }
                         Request::Disconnect(dev) => nm::disconnect(&dev).map_err(|e| (e, "The network couldn't be left.")),
                         Request::Forget(ssid) => nm::forget(&ssid).map_err(|e| (e, "The network couldn't be forgotten.")),
                     };
@@ -109,6 +121,68 @@ fn link() -> &'static Link {
     })
 }
 
+/// `TABULA_FAKE_NETWORKS=1` (debug builds): made-up Wi-Fi networks, so
+/// the panel and the enterprise sheet can be tried headless without
+/// touching NetworkManager or showing the networks around the machine.
+fn fake_networks() -> bool {
+    cfg!(debug_assertions) && std::env::var_os("TABULA_FAKE_NETWORKS").is_some()
+}
+
+fn fake_worker(sh: &Arc<Mutex<Shared>>, wake: &dyn Fn(), rx: &std::sync::mpsc::Receiver<Request>) {
+    let net = |ssid: &str, strength, secure, enterprise| Network { ssid: ssid.into(), strength, secure, enterprise, ap: format!("/ap/{ssid}"), active: false, known: false };
+    let mut status = Status {
+        wireless_enabled: true,
+        wireless_hardware: true,
+        devices: vec![Device {
+            path: "/fake/wlan0".into(),
+            interface: "wlan0".into(),
+            kind: Kind::Wifi,
+            state: 30,
+            reason: 0,
+            hw_address: "02:00:00:00:00:01".into(),
+            connection: None,
+            addresses: Vec::new(),
+            gateway: None,
+            dns: Vec::new(),
+            speed: None,
+        }],
+        networks: vec![net("Tabula Campus", 90, true, true), net("Tabula Home", 70, true, false), net("Tabula Guest", 40, false, false)],
+    };
+    loop {
+        sh.lock().unwrap().status = Some(Ok(status.clone()));
+        wake();
+        let Ok(req) = rx.recv() else { return };
+        let joined = match req {
+            Request::Join(_, n, _) => Some(n.ssid),
+            Request::JoinEnterprise(_, n, e) => {
+                tracing::info!("fake join of {}: {:?}", n.ssid, nm::enterprise_settings(&Enterprise { password: "…".into(), key_password: String::new(), ..*e }).get("802-1x").map(|x| x.keys().collect::<Vec<_>>()));
+                Some(n.ssid)
+            }
+            Request::Disconnect(_) => {
+                status.networks.iter_mut().for_each(|n| n.active = false);
+                None
+            }
+            Request::Forget(ssid) => {
+                status.networks.iter_mut().filter(|n| n.ssid == ssid).for_each(|n| n.known = false);
+                None
+            }
+            Request::Wireless(on) => {
+                status.wireless_enabled = on;
+                None
+            }
+        };
+        if let Some(ssid) = joined {
+            for n in &mut status.networks {
+                n.active = n.ssid == ssid;
+                n.known |= n.active;
+            }
+            let d = &mut status.devices[0];
+            d.state = 100;
+            d.connection = Some(ssid);
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct State {
     tab: usize,
@@ -117,6 +191,9 @@ pub struct State {
     selected: Option<String>,
     password: String,
     device: usize,
+    /// Join was clicked on a new enterprise network: main opens the sheet
+    /// that asks for its credentials (device path, network).
+    pub enterprise: Option<(String, Network)>,
 }
 
 impl State {
@@ -236,6 +313,8 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
         return;
     };
     let needs_password = net.secure && !net.known && !net.active && !net.enterprise;
+    // A new enterprise network asks for more than fits here: a sheet.
+    let needs_sheet = net.enterprise && !net.known && !net.active;
     let mut join = resp.activated.is_some() && !net.active && !needs_password;
     if needs_password {
         let r = ui.add(TextControl::new(&mut st.password).label("Password:").divider(72.0).password(true));
@@ -252,8 +331,9 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
                 }
             } else {
                 // WPA passwords are 8 to 63 characters.
-                let ready = !net.enterprise && (!needs_password || (8..=63).contains(&st.password.len()));
-                if ui.add_enabled_ui(ready, |ui| ui.add(Button::new("Join").default(true))).inner.clicked() {
+                let ready = !needs_password || (8..=63).contains(&st.password.len());
+                let label = if needs_sheet { "Join…" } else { "Join" };
+                if ui.add_enabled_ui(ready, |ui| ui.add(Button::new(label).default(true))).inner.clicked() {
                     join = true;
                 }
             }
@@ -261,15 +341,196 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
                 let _ = link().tx.send(Request::Forget(net.ssid.clone()));
             }
         });
-        if net.enterprise {
-            ui.add(StringView::new("Enterprise networks aren't supported yet.").dim(true));
-        }
     });
-    if join && !busy && !net.active {
+    if join && !busy && needs_sheet {
+        st.enterprise = Some((dev.path.clone(), net));
+    } else if join && !busy && !net.active {
         let pw = needs_password.then(|| std::mem::take(&mut st.password));
         let _ = link().tx.send(Request::Join(dev.path.clone(), net, pw));
         st.clear_password();
     }
+}
+
+// ---- Enterprise sheet ------------------------------------------------------------
+
+/// A file the sheet needs: main opens a panel and hands back the path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CertSlot {
+    Ca,
+    Client,
+    Key,
+}
+
+impl CertSlot {
+    pub fn title(self) -> &'static str {
+        match self {
+            CertSlot::Ca => "Choose a CA Certificate",
+            CertSlot::Client => "Choose Your Certificate",
+            CertSlot::Key => "Choose Your Private Key",
+        }
+    }
+}
+
+/// What the sheet asks of main.
+pub enum SheetResult {
+    Close,
+    Choose(CertSlot),
+}
+
+/// Joining a WPA-Enterprise (802.1X) network: method, credentials and how
+/// to trust the server, as macOS asks.
+pub struct EnterpriseForm {
+    device: String,
+    net: Network,
+    e: nm::Enterprise,
+    eap: usize,
+    inner: usize,
+    /// System certificates, a file, or don't verify.
+    ca: usize,
+    ca_file: Option<std::path::PathBuf>,
+}
+
+pub const SHEET_WIDTH: u32 = 440;
+
+/// Certificates and keys, as PEM, DER or PKCS#12.
+pub const CERT_TYPES: &[&str] = &["pem", "crt", "cer", "der", "key", "p12", "pfx"];
+const SHEET_DIVIDER: f32 = 132.0;
+
+impl EnterpriseForm {
+    pub fn new(device: String, net: Network) -> EnterpriseForm {
+        EnterpriseForm { device, net, e: nm::Enterprise::default(), eap: 0, inner: 0, ca: 0, ca_file: None }
+    }
+
+    /// The window height its rows need (they change with the method).
+    pub fn height(&self) -> u32 {
+        let rows = match (self.e.eap, self.ca) {
+            (nm::Eap::Tls, 1) => 10,
+            (nm::Eap::Tls, _) => 9,
+            (_, 1) => 9,
+            _ => 8,
+        };
+        (rows as f32 * (m::CONTROL_HEIGHT + m::SPACING) + m::SPACING * 2.0 + m::CONTROL_HEIGHT + 2.0 * m::WINDOW_INSET).round() as u32
+    }
+
+    pub fn ssid(&self) -> &str {
+        &self.net.ssid
+    }
+
+    pub fn chosen(&mut self, slot: CertSlot, path: std::path::PathBuf) {
+        match slot {
+            CertSlot::Ca => self.ca_file = Some(path),
+            CertSlot::Client => self.e.client_cert = Some(path),
+            CertSlot::Key => self.e.private_key = Some(path),
+        }
+    }
+
+    fn clear_secrets(&mut self) {
+        for s in [&mut self.e.password, &mut self.e.key_password] {
+            // SAFETY: zero bytes keep the string valid UTF-8.
+            unsafe { s.as_bytes_mut().fill(0) };
+            s.clear();
+        }
+    }
+
+    pub fn ui(&mut self, ui: &mut Ui) -> Option<SheetResult> {
+        let p = tabula_kit::style::palette(ui.ctx());
+        ui.painter().rect_filled(ui.max_rect(), 0.0, tabula_kit::style::c(p.panel_background));
+        let inner_rect = ui.max_rect().shrink(m::WINDOW_INSET);
+        let mut ui = ui.new_child(UiBuilder::new().max_rect(inner_rect));
+        let ui = &mut ui;
+        ui.spacing_mut().item_spacing.y = m::SPACING;
+        let mut result = None;
+        ui.add(StringView::new(&format!("“{}” is an enterprise network.", self.net.ssid)));
+        let eaps: Vec<&str> = nm::Eap::ALL.iter().map(|e| e.name()).collect();
+        ui.add(MenuField::new("ent-eap", &mut self.eap, &eaps).label("Security:").divider(SHEET_DIVIDER).width(ui.available_width()));
+        self.e.eap = nm::Eap::ALL[self.eap.min(2)];
+        let tls = self.e.eap == nm::Eap::Tls;
+        if tls {
+            ui.add(TextControl::new(&mut self.e.identity).label("Identity:").divider(SHEET_DIVIDER));
+            if file_row(ui, "Certificate:", self.e.client_cert.as_deref()) {
+                result = Some(SheetResult::Choose(CertSlot::Client));
+            }
+            if file_row(ui, "Private key:", self.e.private_key.as_deref()) {
+                result = Some(SheetResult::Choose(CertSlot::Key));
+            }
+            ui.add(TextControl::new(&mut self.e.key_password).label("Key password:").divider(SHEET_DIVIDER).password(true));
+        } else {
+            let names: Vec<&str> = self.e.eap.inner().iter().map(|i| inner_name(i)).collect();
+            self.inner = self.inner.min(names.len() - 1);
+            ui.add(MenuField::new("ent-inner", &mut self.inner, &names).label("Authentication:").divider(SHEET_DIVIDER).width(ui.available_width()));
+            self.e.inner = self.e.eap.inner()[self.inner].to_owned();
+            ui.add(TextControl::new(&mut self.e.identity).label("Username:").divider(SHEET_DIVIDER).autofocus(true));
+            ui.add(TextControl::new(&mut self.e.password).label("Password:").divider(SHEET_DIVIDER).password(true));
+        }
+        ui.add(TextControl::new(&mut self.e.anonymous_identity).label("Anonymous identity:").divider(SHEET_DIVIDER).hint("Optional"));
+        let cas = ["System certificates", "A certificate file", "Don't verify"];
+        ui.add(MenuField::new("ent-ca", &mut self.ca, &cas).label("CA certificate:").divider(SHEET_DIVIDER).width(ui.available_width()));
+        if self.ca == 1 && file_row(ui, "", self.ca_file.as_deref()) {
+            result = Some(SheetResult::Choose(CertSlot::Ca));
+        }
+        self.e.ca = match self.ca {
+            0 => nm::CaCert::System,
+            1 => nm::CaCert::File(self.ca_file.clone().unwrap_or_default()),
+            _ => nm::CaCert::None,
+        };
+        ui.add_enabled_ui(self.ca != 2, |ui| ui.add(TextControl::new(&mut self.e.domain).label("Domain:").divider(SHEET_DIVIDER).hint("Optional, e.g. example.edu")));
+        if self.ca == 2 {
+            self.e.domain.clear();
+        }
+        // Buttons at the bottom right, Join the default.
+        let ready = self.e.ready();
+        let enter = ready && ui.input(|i| i.key_pressed(tabula_kit::egui::Key::Enter));
+        let bar = Rect::from_min_max(pos2(inner_rect.left(), inner_rect.bottom() - m::CONTROL_HEIGHT), inner_rect.max);
+        let mut bar_ui = ui.new_child(UiBuilder::new().max_rect(bar).layout(tabula_kit::egui::Layout::right_to_left(tabula_kit::egui::Align::Center)));
+        bar_ui.spacing_mut().item_spacing.x = m::SPACING;
+        let join = bar_ui.add_enabled_ui(ready, |ui| ui.add(Button::new("Join").default(true))).inner.clicked() || enter;
+        let cancel = bar_ui.add(Button::new("Cancel")).clicked() || ui.input(|i| i.key_pressed(tabula_kit::egui::Key::Escape));
+        if join {
+            let e = Box::new(std::mem::take(&mut self.e));
+            let _ = link().tx.send(Request::JoinEnterprise(self.device.clone(), self.net.clone(), e));
+            return Some(SheetResult::Close);
+        }
+        if cancel {
+            self.clear_secrets();
+            return Some(SheetResult::Close);
+        }
+        result
+    }
+}
+
+impl Drop for EnterpriseForm {
+    fn drop(&mut self) {
+        self.clear_secrets();
+    }
+}
+
+fn inner_name(nm_name: &str) -> &'static str {
+    match nm_name {
+        "mschapv2" => "MSCHAPv2",
+        "mschap" => "MSCHAP",
+        "gtc" => "GTC",
+        "md5" => "MD5",
+        "pap" => "PAP",
+        "chap" => "CHAP",
+        _ => "Other",
+    }
+}
+
+/// A label, the chosen file's name (or "None") and Choose…; true when
+/// Choose… is clicked.
+fn file_row(ui: &mut Ui, label: &str, path: Option<&std::path::Path>) -> bool {
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), m::CONTROL_HEIGHT), tabula_kit::egui::Sense::hover());
+    let mut row = ui.new_child(UiBuilder::new().max_rect(rect).layout(tabula_kit::egui::Layout::right_to_left(tabula_kit::egui::Align::Center)));
+    let clicked = row.add(Button::new("Choose…")).clicked();
+    row.add_space(m::SPACING);
+    let rest = Rect::from_min_max(rect.min, pos2(row.cursor().max.x, rect.bottom()));
+    let mut left = ui.new_child(UiBuilder::new().max_rect(rest).layout(tabula_kit::egui::Layout::left_to_right(tabula_kit::egui::Align::Center)));
+    left.spacing_mut().item_spacing.x = 0.0;
+    left.add(StringView::new(label));
+    left.add_space((rect.left() + SHEET_DIVIDER - left.cursor().min.x).max(0.0));
+    let name = path.and_then(|p| p.file_name()).map_or("None".into(), |n| n.to_string_lossy().into_owned());
+    left.add(StringView::new(&name).dim(path.is_none()));
+    clicked
 }
 
 /// The tick beside the network in use.

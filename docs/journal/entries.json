@@ -520,5 +520,11 @@
   "title": "Viewer: AV1 video",
   "caption": "AV1 in WebM and Matroska plays through rav1d with Opus sound; the poster frame decodes too, and the YUV to RGB conversion moved to fixed point tables (1080p at 72 frames a second)",
   "image": "2026-10-26/054237-viewer-av1-video.png"
+ },
+ {
+  "time": "2026-10-26T05:50:31",
+  "title": "Network: joining enterprise Wi-Fi",
+  "caption": "A sheet for 802.1X networks: PEAP or TTLS with username and password, or TLS with certificate and key, the CA and a domain; shown with made-up networks. Tab now moves between text fields in every kit form",
+  "image": "2026-10-26/055031-network-joining-enterprise-wi-fi.png"
  }
 ]

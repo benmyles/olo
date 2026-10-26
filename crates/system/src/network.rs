@@ -279,6 +279,144 @@ pub fn join(device: &str, network: &Network, password: Option<&str>) -> Result<(
     Ok(())
 }
 
+/// The outer EAP method of an 802.1X (WPA-Enterprise) network.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Eap {
+    /// Protected EAP: a username and password inside TLS (most networks,
+    /// eduroam included).
+    #[default]
+    Peap,
+    /// Tunnelled TLS: likewise, with more inner methods.
+    Ttls,
+    /// A client certificate instead of a password.
+    Tls,
+}
+
+impl Eap {
+    pub const ALL: [Eap; 3] = [Eap::Peap, Eap::Ttls, Eap::Tls];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Eap::Peap => "PEAP",
+            Eap::Ttls => "TTLS",
+            Eap::Tls => "TLS",
+        }
+    }
+
+    /// The inner (phase 2) methods it can carry, preferred first; NM's names.
+    pub fn inner(self) -> &'static [&'static str] {
+        match self {
+            Eap::Peap => &["mschapv2", "gtc", "md5"],
+            Eap::Ttls => &["pap", "mschapv2", "mschap", "chap"],
+            Eap::Tls => &[],
+        }
+    }
+}
+
+/// How the server's certificate is checked.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum CaCert {
+    /// Against the system's trusted certificates.
+    #[default]
+    System,
+    File(std::path::PathBuf),
+    /// Not at all (some networks require it; it isn't safe).
+    None,
+}
+
+/// What joining an 802.1X network takes.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Enterprise {
+    pub eap: Eap,
+    /// One of `eap.inner()`.
+    pub inner: String,
+    pub identity: String,
+    pub password: String,
+    /// Sent in the clear before the tunnel is up, instead of `identity`.
+    pub anonymous_identity: String,
+    pub ca: CaCert,
+    /// The server certificate's domain must end with this.
+    pub domain: String,
+    /// TLS: the client certificate, its key and the key's password.
+    pub client_cert: Option<std::path::PathBuf>,
+    pub private_key: Option<std::path::PathBuf>,
+    pub key_password: String,
+}
+
+impl Enterprise {
+    /// Enough is filled in to try.
+    pub fn ready(&self) -> bool {
+        !self.identity.trim().is_empty()
+            && match self.eap {
+                Eap::Tls => self.client_cert.is_some() && self.private_key.is_some(),
+                _ => !self.password.is_empty() && self.eap.inner().contains(&self.inner.as_str()),
+            }
+            && !matches!(&self.ca, CaCert::File(p) if p.as_os_str().is_empty())
+    }
+}
+
+/// NM wants file references as `file://` URIs in NUL-terminated bytes.
+fn file_blob(path: &std::path::Path) -> Value<'static> {
+    let mut b = format!("file://{}", path.display()).into_bytes();
+    b.push(0);
+    Value::from(b)
+}
+
+/// The settings of a new connection to an 802.1X network.
+pub fn enterprise_settings(e: &Enterprise) -> HashMap<&'static str, HashMap<&'static str, Value<'static>>> {
+    let mut x: HashMap<&'static str, Value<'static>> = HashMap::new();
+    let method = match e.eap {
+        Eap::Peap => "peap",
+        Eap::Ttls => "ttls",
+        Eap::Tls => "tls",
+    };
+    x.insert("eap", Value::from(vec![method.to_owned()]));
+    x.insert("identity", Value::from(e.identity.trim().to_owned()));
+    if !e.anonymous_identity.trim().is_empty() {
+        x.insert("anonymous-identity", Value::from(e.anonymous_identity.trim().to_owned()));
+    }
+    match e.eap {
+        Eap::Tls => {
+            if let Some(c) = &e.client_cert {
+                x.insert("client-cert", file_blob(c));
+            }
+            if let Some(k) = &e.private_key {
+                x.insert("private-key", file_blob(k));
+            }
+            if !e.key_password.is_empty() {
+                x.insert("private-key-password", Value::from(e.key_password.clone()));
+            }
+        }
+        _ => {
+            x.insert("phase2-auth", Value::from(e.inner.clone()));
+            x.insert("password", Value::from(e.password.clone()));
+        }
+    }
+    match &e.ca {
+        CaCert::System => {
+            x.insert("system-ca-certs", Value::from(true));
+        }
+        CaCert::File(p) => {
+            x.insert("ca-cert", file_blob(p));
+        }
+        CaCert::None => {}
+    }
+    if !e.domain.trim().is_empty() {
+        x.insert("domain-suffix-match", Value::from(e.domain.trim().to_owned()));
+    }
+    HashMap::from([("802-11-wireless-security", HashMap::from([("key-mgmt", Value::from("wpa-eap"))])), ("802-1x", x)])
+}
+
+/// Join an 802.1X `network` on `device` as a new connection.
+pub fn join_enterprise(device: &str, network: &Network, e: &Enterprise) -> Result<()> {
+    let c = bus::system()?;
+    let dev = zvariant::ObjectPath::try_from(device)?;
+    let ap = zvariant::ObjectPath::try_from(network.ap.as_str())?;
+    let settings = enterprise_settings(e);
+    let _: (OwnedObjectPath, OwnedObjectPath) = bus::call(c, DEST, NM_PATH, NM, "AddAndActivateConnection", &(settings, dev, ap))?;
+    Ok(())
+}
+
 pub fn disconnect(device: &str) -> Result<()> {
     bus::call::<_, ()>(bus::system()?, DEST, device, DEVICE, "Disconnect", &())
 }
@@ -289,4 +427,49 @@ pub fn forget(ssid: &str) -> Result<()> {
         bus::call::<_, ()>(bus::system()?, DEST, path.as_str(), CONNECTION, "Delete", &())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod enterprise_tests {
+    use super::*;
+
+    fn get<'a>(s: &'a HashMap<&str, HashMap<&str, Value<'static>>>, k: &str) -> Option<&'a Value<'static>> {
+        s.get("802-1x").and_then(|x| x.get(k))
+    }
+
+    #[test]
+    fn peap_with_system_certificates() {
+        let e = Enterprise { identity: " ann@uni.example ".into(), password: "pw".into(), inner: "mschapv2".into(), domain: "uni.example".into(), ..Default::default() };
+        assert!(e.ready());
+        let s = enterprise_settings(&e);
+        assert_eq!(s["802-11-wireless-security"]["key-mgmt"], Value::from("wpa-eap"));
+        assert_eq!(get(&s, "eap"), Some(&Value::from(vec!["peap".to_owned()])));
+        assert_eq!(get(&s, "identity"), Some(&Value::from("ann@uni.example")));
+        assert_eq!(get(&s, "phase2-auth"), Some(&Value::from("mschapv2")));
+        assert_eq!(get(&s, "system-ca-certs"), Some(&Value::from(true)));
+        assert_eq!(get(&s, "domain-suffix-match"), Some(&Value::from("uni.example")));
+        assert!(get(&s, "anonymous-identity").is_none() && get(&s, "ca-cert").is_none());
+    }
+
+    #[test]
+    fn tls_with_files() {
+        let mut e = Enterprise { eap: Eap::Tls, identity: "host".into(), ca: CaCert::File("/etc/ca.pem".into()), ..Default::default() };
+        assert!(!e.ready(), "needs a certificate and key");
+        e.client_cert = Some("/home/a/me.pem".into());
+        e.private_key = Some("/home/a/me.key".into());
+        e.key_password = "k".into();
+        assert!(e.ready());
+        let s = enterprise_settings(&e);
+        assert_eq!(get(&s, "ca-cert"), Some(&Value::from(b"file:///etc/ca.pem\0".to_vec())));
+        assert_eq!(get(&s, "client-cert"), Some(&Value::from(b"file:///home/a/me.pem\0".to_vec())));
+        assert_eq!(get(&s, "private-key-password"), Some(&Value::from("k")));
+        assert!(get(&s, "password").is_none() && get(&s, "phase2-auth").is_none() && get(&s, "system-ca-certs").is_none());
+    }
+
+    #[test]
+    fn inner_must_match() {
+        let e = Enterprise { eap: Eap::Ttls, identity: "a".into(), password: "p".into(), inner: "gtc".into(), ..Default::default() };
+        assert!(!e.ready());
+        assert!(Enterprise { inner: "pap".into(), ..e }.ready());
+    }
 }

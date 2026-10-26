@@ -354,8 +354,9 @@ impl Widget for TextControl<'_> {
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(line));
         child.set_clip_rect(well.shrink(2.0).intersect(ui.clip_rect()));
         let r = child.add(edit);
-        // The whole well focuses the editor, not just the text line.
-        let well_resp = ui.interact(well, id.with("well"), Sense::click());
+        // The whole well focuses the editor, not just the text line (not a
+        // Tab stop of its own: Tab goes from field to field).
+        let well_resp = ui.interact(well, id.with("well"), Sense::CLICK);
         if well_resp.clicked() {
             ui.memory_mut(|m| m.request_focus(id));
         }

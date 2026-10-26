@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Network: joining enterprise Wi-Fi
+
+*05:50* — A sheet for 802.1X networks: PEAP or TTLS with username and password, or TLS with certificate and key, the CA and a domain; shown with made-up networks. Tab now moves between text fields in every kit form
+
+![Network: joining enterprise Wi-Fi](2026-10-26/055031-network-joining-enterprise-wi-fi.png)
+
 ### Viewer: AV1 video
 
 *05:42* — AV1 in WebM and Matroska plays through rav1d with Opus sound; the poster frame decodes too, and the YUV to RGB conversion moved to fixed point tables (1080p at 72 frames a second)

@@ -45,8 +45,8 @@ as they land (with the commit), add new ones as they come up.
 - ~~Activity Monitor~~: apps/activity (graphs of every /proc, /sys and
   hwmon source; processes with Quit / Force Quit).
 - Preferences, remaining panels: ~~Network~~ (Wi-Fi list, join with
-  password, disconnect, forget, interface details; WPA-Enterprise still to
-  do), ~~Bluetooth~~ (search, pair with passkey/PIN agent, connect,
+  password, disconnect, forget, interface details; ~~WPA-Enterprise~~: PEAP/TTLS/TLS
+  sheet), ~~Bluetooth~~ (search, pair with passkey/PIN agent, connect,
   remove, battery), ~~Date & Time~~ (calendar, clock face, network
   time, time zone, Deskbar 24-hour/seconds/day), ~~Touch ID~~ (enrol with progress, remove); ~~Restart Tabula~~; ~~a Choose… file panel for the
   wallpaper~~ (app_server now draws it); ~~Display mode switching and drag-to-arrange~~ (with keep/revert
