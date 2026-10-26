@@ -1,0 +1,48 @@
+# Screenshot journal
+
+Tabula's visual evolution, newest first. Added with `tools/journal.py`
+(images are stored with Git LFS; run `git lfs pull` after cloning).
+
+## 2026-10-25
+
+### Tracker mini icon view
+
+*19:58*
+
+![Tracker mini icon view](2026-10-25/195831-tracker-mini-icon-view.png)
+
+### Tracker list view
+
+*19:58* — Sortable ColumnListView with 16 px icons; count and free space in the bar beside the scroll bar.
+
+![Tracker list view](2026-10-25/195830-tracker-list-view.png)
+
+### Tracker desktop, folder window and Get Info (light)
+
+*19:58* — Selected labels inverted as on BeOS, highlight balanced on cap height and baseline; links in italics; executable scripts get the executable icon.
+
+![Tracker desktop, folder window and Get Info (light)](2026-10-25/195830-tracker-desktop-folder-window-and-get-info-light.png)
+
+### Tracker and Get Info in dark mode
+
+*19:58* — Get Info rows on an exact LABEL_ROW + TIGHT grid, window sized to its content.
+
+![Tracker and Get Info in dark mode](2026-10-25/195829-tracker-and-get-info-in-dark-mode.png)
+
+### First Tracker desktop
+
+*19:58* — Volumes and Home beside the Deskbar, Trash in the corner. Labels were off-centre (centred galleys double-offset) and ~/Desktop items were missing.
+
+![First Tracker desktop](2026-10-25/195828-first-tracker-desktop.png)
+
+### Icon set after the style guide
+
+*19:58* — Generated against the reference set (docs/ICONS.md): the outliers are now three-quarter view like the rest.
+
+![Icon set after the style guide](2026-10-25/195828-icon-set-after-the-style-guide.png)
+
+### Icon set before the style guide
+
+*19:58* — Text-only prompts: about, bluetooth, screenshot, display and trash drift to flat or straight-on views.
+
+![Icon set before the style guide](2026-10-25/195828-icon-set-before-the-style-guide.png)

@@ -134,6 +134,20 @@ alignment and text placement pixel by pixel, in **both** light and dark.
 Compare against BeOS R5 / Haiku screenshots from memory. Fix anything that
 looks even slightly off before calling something done.
 
+## Screenshot journal
+
+`docs/journal/` is Tabula's visual history (images in Git LFS). Whenever
+something visible changes — a new app or window, a look-and-feel fix, a
+theme — add an entry and commit it with the change:
+
+```sh
+tools/journal.py add mine "Deskbar: team menu" "What changed and why"   # from a tsession
+tools/journal.py add /tmp/before.png "Menu padding before the fix"        # an existing image
+tools/journal.py add mine "Tracker toolbar" --crop 40 30 600 440         # logical-pixel crop
+```
+
+For fixes, journal a before and an after.
+
 ## Commits
 
 Small, focused commits with a descriptive message ending in the

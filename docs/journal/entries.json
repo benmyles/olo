@@ -1,0 +1,44 @@
+[
+ {
+  "time": "2026-10-25T19:58:28",
+  "title": "Icon set before the style guide",
+  "caption": "Text-only prompts: about, bluetooth, screenshot, display and trash drift to flat or straight-on views.",
+  "image": "2026-10-25/195828-icon-set-before-the-style-guide.png"
+ },
+ {
+  "time": "2026-10-25T19:58:28",
+  "title": "Icon set after the style guide",
+  "caption": "Generated against the reference set (docs/ICONS.md): the outliers are now three-quarter view like the rest.",
+  "image": "2026-10-25/195828-icon-set-after-the-style-guide.png"
+ },
+ {
+  "time": "2026-10-25T19:58:28",
+  "title": "First Tracker desktop",
+  "caption": "Volumes and Home beside the Deskbar, Trash in the corner. Labels were off-centre (centred galleys double-offset) and ~/Desktop items were missing.",
+  "image": "2026-10-25/195828-first-tracker-desktop.png"
+ },
+ {
+  "time": "2026-10-25T19:58:29",
+  "title": "Tracker and Get Info in dark mode",
+  "caption": "Get Info rows on an exact LABEL_ROW + TIGHT grid, window sized to its content.",
+  "image": "2026-10-25/195829-tracker-and-get-info-in-dark-mode.png"
+ },
+ {
+  "time": "2026-10-25T19:58:30",
+  "title": "Tracker desktop, folder window and Get Info (light)",
+  "caption": "Selected labels inverted as on BeOS, highlight balanced on cap height and baseline; links in italics; executable scripts get the executable icon.",
+  "image": "2026-10-25/195830-tracker-desktop-folder-window-and-get-info-light.png"
+ },
+ {
+  "time": "2026-10-25T19:58:30",
+  "title": "Tracker list view",
+  "caption": "Sortable ColumnListView with 16 px icons; count and free space in the bar beside the scroll bar.",
+  "image": "2026-10-25/195830-tracker-list-view.png"
+ },
+ {
+  "time": "2026-10-25T19:58:31",
+  "title": "Tracker mini icon view",
+  "caption": "",
+  "image": "2026-10-25/195831-tracker-mini-icon-view.png"
+ }
+]
