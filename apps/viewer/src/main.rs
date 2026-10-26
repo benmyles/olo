@@ -458,7 +458,7 @@ impl Viewer {
             }
             Content::Other(prev) => {
                 prev.ui(ui, full);
-                if !ui.ctx().egui_wants_keyboard_input() {
+                if !ui.ctx().egui_wants_keyboard_input() && prev.arrows_free() {
                     ui.input(|i| {
                         if i.key_pressed(Key::ArrowLeft) || i.key_pressed(Key::ArrowUp) {
                             command = Some("prev-file".into());

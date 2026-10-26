@@ -248,6 +248,17 @@ impl Preview {
         }
     }
 
+    /// What is shown, once loaded.
+    pub fn body(&self) -> Option<&Body> {
+        self.body.as_ref()
+    }
+
+    /// Whether the arrow keys are free for the caller (nothing shown
+    /// scrolls or has a selection to move).
+    pub fn arrows_free(&self) -> bool {
+        self.failed.is_some() || matches!(self.body, None | Some(Body::Image { .. } | Body::Media(_) | Body::Font { .. } | Body::Card { .. }))
+    }
+
     /// One line on what is shown ("PDF document, 10 pages").
     pub fn note(&self) -> String {
         match (&self.body, &self.failed) {
