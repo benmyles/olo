@@ -18,9 +18,9 @@ use std::{
 };
 
 use servo::{
-    AuthenticationRequest, ClipboardDelegate, CreateNewWebViewRequest, Cursor, EmbedderControl, EmbedderControlId,
-    EventLoopWaker, LoadStatus, Opts, PermissionRequest, RenderingContext, Servo, ServoBuilder, StringRequest, WebView,
-    WebViewDelegate, WebViewId, WindowRenderingContext,
+    AuthenticationRequest, ClipboardDelegate, ConsoleLogLevel, CreateNewWebViewRequest, Cursor, EmbedderControl,
+    EmbedderControlId, EventLoopWaker, LoadStatus, Opts, PermissionRequest, RenderingContext, Servo, ServoBuilder,
+    StringRequest, UserContentManager, UserScript, WebView, WebViewDelegate, WebViewId, WindowRenderingContext,
     resources::{Resource, ResourceReaderMethods},
 };
 use tabula_kit::{Embedded, Proxy};
@@ -65,11 +65,17 @@ pub enum Event {
     Permission(PermissionRequest),
     Authenticate(AuthenticationRequest),
     Copy(String),
+    /// A login was just used on the page (logins.rs's capture script).
+    LoginUsed { username: String, password: String },
+    /// A fill script finished: "filled", "none" or "moved".
+    Filled(String),
 }
 
 #[derive(Default)]
 pub struct Events {
     queue: RefCell<VecDeque<(WebViewId, Event)>>,
+    /// What the capture script's messages start with.
+    login_marker: String,
     /// Text for the next paste a page asks for (we read the clipboard
     /// before telling Servo to paste).
     pub paste: RefCell<Option<String>>,
@@ -77,7 +83,10 @@ pub struct Events {
 
 impl Events {
     fn push(&self, webview: &WebView, event: Event) {
-        self.queue.borrow_mut().push_back((webview.id(), event));
+        self.push_id(webview.id(), event);
+    }
+    pub fn push_id(&self, id: WebViewId, event: Event) {
+        self.queue.borrow_mut().push_back((id, event));
     }
     pub fn take(&self) -> VecDeque<(WebViewId, Event)> {
         std::mem::take(&mut *self.queue.borrow_mut())
@@ -131,6 +140,20 @@ impl WebViewDelegate for Events {
     fn request_authentication(&self, w: WebView, request: AuthenticationRequest) {
         self.push(&w, Event::Authenticate(request));
     }
+    fn show_console_message(&self, w: WebView, _level: ConsoleLogLevel, message: String) {
+        // Only the capture script's reports; pages' own logging goes nowhere.
+        #[derive(serde::Deserialize)]
+        struct Used {
+            u: String,
+            p: String,
+        }
+        if let Some(json) = message.strip_prefix(&self.login_marker)
+            && let Ok(used) = serde_json::from_str::<Used>(json)
+            && !used.p.is_empty()
+        {
+            self.push(&w, Event::LoginUsed { username: used.u, password: used.p });
+        }
+    }
 }
 
 impl ClipboardDelegate for Events {
@@ -150,6 +173,8 @@ pub struct Engine {
     pub servo: Servo,
     pending: Arc<AtomicBool>,
     pub events: Rc<Events>,
+    /// Scripts every page gets (the login capture).
+    pub content: Rc<UserContentManager>,
 }
 
 impl Engine {
@@ -161,7 +186,11 @@ impl Engine {
             .opts(opts)
             .event_loop_waker(Box::new(Waker { proxy, pending: pending.clone() }))
             .build();
-        Engine { servo, pending, events: Rc::new(Events::default()) }
+        let token = crate::logins::token();
+        let content = Rc::new(UserContentManager::new(&servo));
+        content.add_script(Rc::new(UserScript::from(crate::logins::capture_script(&token))));
+        let events = Events { login_marker: crate::logins::marker(&token), ..Default::default() };
+        Engine { servo, pending, events: Rc::new(events), content }
     }
 
     /// Let Servo run what it woke us for; returns what the views said.

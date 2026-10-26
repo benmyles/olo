@@ -10319,9 +10319,12 @@ dependencies = [
  "serde",
  "serde_json",
  "servo",
+ "tabula-keychain",
  "tabula-kit",
+ "tabula-xdg",
  "tracing",
  "url",
+ "zeroize",
 ]
 
 [[package]]
@@ -10372,6 +10375,18 @@ dependencies = [
  "image",
  "jxl-oxide",
  "rav1d",
+]
+
+[[package]]
+name = "tabula-keychain"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "tracing",
+ "url",
+ "zeroize",
 ]
 
 [[package]]
@@ -10439,6 +10454,7 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+ "tabula-keychain",
  "tabula-kit",
  "tabula-onepassword",
  "tabula-system",

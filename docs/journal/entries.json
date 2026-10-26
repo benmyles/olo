@@ -562,5 +562,17 @@
   "title": "Passwords: locked",
   "caption": "Opens locked and locks after idle; Touch ID (fprintd) or the account password (PAM) unlocks it.",
   "image": "2026-10-26/072527-passwords-locked.png"
+ },
+ {
+  "time": "2026-10-26T07:52:34",
+  "title": "NetPositive: logins from Passwords",
+  "caption": "The key button lists the page's logins from Passwords (starting and unlocking it if need be) and fills the chosen one in.",
+  "image": "2026-10-26/075234-netpositive-logins-from-passwords.png"
+ },
+ {
+  "time": "2026-10-26T07:54:23",
+  "title": "NetPositive: offer to update a login",
+  "caption": "After a sign-in with a changed password, NetPositive offers to update the login in Passwords; a new one gets Save.",
+  "image": "2026-10-26/075423-netpositive-offer-to-update-a-login.png"
  }
 ]

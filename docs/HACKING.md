@@ -829,3 +829,34 @@ tools/dev/tsession run pw TABULA_1PASSWORD_SOCKET=tabula-fake TABULA_NO_FINGERPR
 (`run` doesn't pass `TABULA_PAM_*` on by itself; give them as above, with
 `$dir` set up as for the lock screen.) Account: `Tabula Test`; password:
 whatever `check.sh` accepts.
+
+### Logins in NetPositive (crates/keychain)
+
+While Passwords runs it serves other Tabula apps on
+`$XDG_RUNTIME_DIR/tabula-keychain-$WAYLAND_DISPLAY.sock`
+(`TABULA_KEYCHAIN_SOCKET` overrides): one JSON request, one JSON reply per
+connection, and only for our own uid running a `tabula-*` program
+(SO_PEERCRED + `/proc/PID/exe`). `tabula_keychain::call` blocks, so call
+it from a thread. Requests: `Logins {url}` (title and username of each
+login whose website fits the page, honouring 1Password's autofill
+setting; `Locked` if locked), `Fill {url, vault, id}`, `Check {url,
+username, password}` (`Known`, `New` or `Changed`), `Save {…, replace}`,
+and `Unlock`. Fill, Save and Unlock wait while Passwords is locked: it
+comes forward and answers after the unlock. `tabula_keychain::matches`
+is the site rule: the same host or one under it, and never an https login
+into a plain-http page (localhost aside).
+
+NetPositive (`apps/browser/src/logins.rs`): the toolbar's key button asks
+for the page's logins (starting Passwords if needed, then waiting for the
+unlock) and fills the chosen one into the top frame with
+`evaluate_javascript`, after checking the page is still at that origin; a
+one-time code goes on the clipboard with `copy_secret`. A user script
+(Servo's `UserContentManager`) watches the top frame for a form sent with
+a password and reports it through `console.log` with a per-process random
+token held in its closure (`show_console_message` drops everything
+else), so an iframe can't make up logins for the page around it. Unless
+Passwords already knows it, a bar offers Save (or Update).
+
+Testing: serve a form on localhost (the fake's "Tabula Test Site" login is
+for `http://localhost`), and start NetPositive with the same variables as
+Passwords so the copy it starts uses the fake.

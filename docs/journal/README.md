@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### NetPositive: offer to update a login
+
+*07:54* — After a sign-in with a changed password, NetPositive offers to update the login in Passwords; a new one gets Save.
+
+![NetPositive: offer to update a login](2026-10-26/075423-netpositive-offer-to-update-a-login.png)
+
+### NetPositive: logins from Passwords
+
+*07:52* — The key button lists the page's logins from Passwords (starting and unlocking it if need be) and fills the chosen one in.
+
+![NetPositive: logins from Passwords](2026-10-26/075234-netpositive-logins-from-passwords.png)
+
 ### Passwords: locked
 
 *07:25* — Opens locked and locks after idle; Touch ID (fprintd) or the account password (PAM) unlocks it.

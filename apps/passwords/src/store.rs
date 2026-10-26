@@ -5,7 +5,11 @@
 
 use std::{collections::VecDeque, sync::mpsc, thread};
 
-use onepassword::{Client, Error, Item, ItemCreateParams, ItemListFilter, ItemListFilterByState, ItemOverview, VaultOverview};
+use onepassword::{
+    AutofillBehavior, Client, Error, Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, ItemListFilter,
+    ItemListFilterByState, ItemOverview, VaultOverview, Website,
+};
+use tabula_keychain::{Incoming, Request, Response};
 use tabula_kit::Proxy;
 
 pub enum Job {
@@ -17,6 +21,9 @@ pub enum Job {
     Put(Box<Item>),
     Archive { vault: String, item: String },
     Delete { vault: String, item: String },
+    /// Answer another app (NetPositive): `candidates` are the logins
+    /// saved for its page; `vault` is where a new one goes.
+    Keychain { incoming: Box<Incoming>, candidates: Vec<(String, String)>, vault: String },
 }
 
 pub enum Reply {
@@ -159,6 +166,134 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, proxy: Proxy) {
                 Ok(()) => reply(Reply::Deleted { item }),
                 Err(e) => reply(Reply::Error(describe(&e))),
             },
+            Job::Keychain { incoming, candidates, vault } => {
+                let response = keychain(c, &incoming.request, &candidates, &vault, &reply);
+                incoming.reply(response);
+            }
         }
+    }
+}
+
+fn error(e: &Error) -> Response {
+    Response::Error { message: describe(e) }
+}
+
+/// The username and password of a login, by the built-in fields or else
+/// the first text and concealed ones.
+fn login_fields(item: &Item) -> (Option<&ItemField>, Option<&ItemField>) {
+    let user = item.field("username").or_else(|| {
+        item.fields.iter().find(|f| matches!(f.field_type, ItemFieldType::Text | ItemFieldType::Email) && f.section_id.is_none())
+    });
+    let password = item.field("password").or_else(|| item.fields.iter().find(|f| f.field_type == ItemFieldType::Concealed));
+    (user, password)
+}
+
+fn keychain(c: &Client, request: &Request, candidates: &[(String, String)], vault: &str, reply: &impl Fn(Reply)) -> Response {
+    match request {
+        Request::Fill { url, vault, id } => {
+            let item = match c.items().get(vault, id) {
+                Ok(i) => i,
+                Err(e) => return error(&e),
+            };
+            // Only into a page the login is for, whatever the caller says.
+            if !item.websites.iter().any(|w| fits(w, url)) {
+                return Response::Error { message: format!("“{}” isn’t saved for this site.", item.title) };
+            }
+            let (user, password) = login_fields(&item);
+            let otp = item.fields.iter().find(|f| f.field_type == ItemFieldType::Totp).and_then(|f| crate::otp_code(&f.value));
+            Response::Credentials {
+                username: user.map(|f| f.value.clone()).unwrap_or_default(),
+                password: password.map(|f| f.value.clone()).unwrap_or_default(),
+                otp,
+            }
+        }
+        Request::Check { username, password, .. } => {
+            let mut changed = None;
+            for (vault, id) in candidates {
+                let Ok(item) = c.items().get(vault, id) else { continue };
+                let (user, saved) = login_fields(&item);
+                if !user.is_some_and(|u| u.value.eq_ignore_ascii_case(username)) {
+                    continue;
+                }
+                if saved.is_some_and(|p| &p.value == password) {
+                    return Response::Known;
+                }
+                changed.get_or_insert(Response::Changed { vault: vault.clone(), id: id.clone(), title: item.title.clone() });
+            }
+            changed.unwrap_or(Response::New)
+        }
+        Request::Save { url, title, username, password, replace } => {
+            if let Some((vault, id)) = replace {
+                let mut item = match c.items().get(vault, id) {
+                    Ok(i) => i,
+                    Err(e) => return error(&e),
+                };
+                let field = match login_fields(&item).1.map(|f| f.id.clone()) {
+                    Some(fid) => item.field_mut(&fid),
+                    None => {
+                        item.fields.push(ItemField::new("password", "password", ItemFieldType::Concealed, ""));
+                        item.fields.last_mut()
+                    }
+                };
+                if let Some(f) = field {
+                    f.value = password.clone();
+                }
+                return match c.items().put(&item) {
+                    Ok(saved) => {
+                        let title = saved.title.clone();
+                        reply(Reply::Saved { item: Box::new(saved), created: false });
+                        Response::Saved { title, updated: true }
+                    }
+                    Err(e) => error(&e),
+                };
+            }
+            let mut params = ItemCreateParams::new(ItemCategory::Login, vault, title.clone());
+            params.fields = vec![
+                ItemField::new("username", "username", ItemFieldType::Text, username),
+                ItemField::new("password", "password", ItemFieldType::Concealed, password),
+            ];
+            let site = url::Url::parse(url).map(|u| u.origin().ascii_serialization()).unwrap_or_else(|_| url.clone());
+            params.websites = vec![Website {
+                url: site,
+                label: "website".into(),
+                autofill_behavior: AutofillBehavior::AnywhereOnWebsite,
+            }];
+            match c.items().create(&params) {
+                Ok(item) => {
+                    let title = item.title.clone();
+                    reply(Reply::Saved { item: Box::new(item), created: true });
+                    Response::Saved { title, updated: false }
+                }
+                Err(e) => error(&e),
+            }
+        }
+        Request::Logins { .. } => {
+            let mut logins: Vec<tabula_keychain::Login> = candidates
+                .iter()
+                .filter_map(|(vault, id)| c.items().get(vault, id).ok())
+                .map(|item| tabula_keychain::Login {
+                    vault: item.vault_id.clone(),
+                    id: item.id.clone(),
+                    username: login_fields(&item).0.map(|f| f.value.clone()).unwrap_or_default(),
+                    title: item.title.clone(),
+                })
+                .collect();
+            logins.sort_by_key(|l| (l.title.to_lowercase(), l.username.to_lowercase()));
+            Response::Logins { logins }
+        }
+        // Answered by the app itself.
+        Request::Unlock => Response::Unlocked,
+    }
+}
+
+/// Whether a login's website lets it fill the page at `url`.
+pub fn fits(w: &Website, url: &str) -> bool {
+    match w.autofill_behavior {
+        AutofillBehavior::Never => false,
+        AutofillBehavior::ExactDomain => {
+            let parts = |u: &str| url::Url::parse(u).ok().map(|u| (u.host_str().map(str::to_ascii_lowercase), u.port_or_known_default()));
+            tabula_keychain::matches(&w.url, url) && parts(&w.url).is_some() && parts(&w.url) == parts(url)
+        }
+        _ => tabula_keychain::matches(&w.url, url),
     }
 }

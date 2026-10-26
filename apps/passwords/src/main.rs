@@ -14,6 +14,7 @@ use std::{
 
 use onepassword::{Item, ItemCategory, ItemFieldType, ItemOverview, ItemState, VaultOverview, totp::Totp};
 use serde::{Deserialize, Serialize};
+use tabula_keychain::{Incoming, Request, Response};
 use tabula_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
     egui::{self, Key},
@@ -121,6 +122,8 @@ pub struct Passwords {
     last_use: Instant,
     /// Just unlocked: drop the password field's keyboard focus.
     pub unlocked: bool,
+    /// Other apps' requests waiting for an unlock or the item list.
+    pub waiting: Vec<Incoming>,
 }
 
 fn host(url: &str) -> Option<String> {
@@ -242,6 +245,59 @@ impl Passwords {
         }
     }
 
+    /// Another app asks (NetPositive, for a page's logins).
+    fn keychain(&mut self, cx: &mut Cx, incoming: Incoming) {
+        if self.settings.account.is_none() {
+            return incoming.reply(Response::NotSetUp);
+        }
+        let waits = matches!(incoming.request, Request::Fill { .. } | Request::Save { .. } | Request::Unlock);
+        if self.lock.locked {
+            if !waits {
+                return incoming.reply(Response::Locked);
+            }
+            // Come forward to be unlocked; the answer follows.
+            self.open_main(cx);
+            self.waiting.push(incoming);
+            return;
+        }
+        if let Conn::Failed(message) = &self.conn {
+            return incoming.reply(Response::Error { message: message.clone() });
+        }
+        if self.loading || self.conn == Conn::Connecting {
+            self.waiting.push(incoming);
+            return;
+        }
+        let url = match &incoming.request {
+            Request::Unlock => return incoming.reply(Response::Unlocked),
+            Request::Logins { url } | Request::Fill { url, .. } | Request::Check { url, .. } | Request::Save { url, .. } => {
+                url.clone()
+            }
+        };
+        let candidates: Vec<(String, String)> = self
+            .items
+            .iter()
+            .filter(|i| i.state == ItemState::Active && i.websites.iter().any(|w| store::fits(w, &url)))
+            .map(|i| (i.vault_id.clone(), i.id.clone()))
+            .collect();
+        let vault = self
+            .vaults
+            .iter()
+            .find(|v| matches!(v.title.as_str(), "Personal" | "Private" | "Employee"))
+            .or(self.vaults.first())
+            .map(|v| v.id.clone());
+        let Some(vault) = vault else {
+            return incoming.reply(Response::Error { message: "There’s no vault to save in.".into() });
+        };
+        self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates, vault });
+    }
+
+    /// Answer what waited for an unlock or for the items.
+    fn serve_waiting(&mut self, cx: &mut Cx) {
+        for incoming in std::mem::take(&mut self.waiting) {
+            self.keychain(cx, incoming);
+        }
+    }
+
     fn do_lock(&mut self, cx: &mut Cx) {
         if self.editor.as_ref().is_some_and(|e| e.changed()) {
             self.ask_discard(cx, Then::Lock);
@@ -305,9 +361,7 @@ impl Passwords {
 
     fn open_website(&mut self, cx: &mut Cx) {
         let Some(url) = self.selected.as_ref().and_then(|s| self.overview(s)).and_then(|o| o.websites.first()).map(|w| w.url.clone())
-        else {
-            return;
-        };
+        else { return };
         open_url(&url);
         self.flash(format!("Opening {}", host(&url).unwrap_or(url)));
         self.redraw(cx);
@@ -429,6 +483,7 @@ impl Passwords {
             Reply::Failed(message) => {
                 self.conn = Conn::Failed(message);
                 self.loading = false;
+                self.serve_waiting(cx);
             }
             Reply::Vaults(vaults) => {
                 let ids: HashSet<&str> = vaults.iter().map(|v| v.id.as_str()).collect();
@@ -454,6 +509,7 @@ impl Passwords {
                     self.reveal_selection = true;
                     self.fetch_selected();
                 }
+                self.serve_waiting(cx);
             }
             Reply::Item(item) => {
                 self.missing.remove(&item.id);
@@ -781,6 +837,7 @@ impl App for Passwords {
                         self.selected = self.visible().first().map(|i| i.id.clone());
                     }
                     self.fetch_selected();
+                    self.serve_waiting(cx);
                 }
                 self.redraw(cx);
                 return;
@@ -789,6 +846,10 @@ impl App for Passwords {
         };
         let msg = match msg.downcast::<Tick>() {
             Ok(_) => return self.tick(cx),
+            Err(m) => m,
+        };
+        let msg = match msg.downcast::<Incoming>() {
+            Ok(incoming) => return self.keychain(cx, *incoming),
             Err(m) => m,
         };
         if msg.downcast::<Launch>().is_ok() {
@@ -808,6 +869,11 @@ fn main() {
     }
     tabula_kit::run(APP_ID, |cx| {
         instance::listen(APP_ID, cx.proxy());
+        // Logins for NetPositive's pages.
+        let keychain = cx.proxy();
+        if let Err(e) = tabula_keychain::serve(move |incoming| keychain.send(incoming)) {
+            tracing::warn!("keychain: {e}");
+        }
         let settings: Settings =
             std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         let proxy = cx.proxy();
@@ -848,6 +914,7 @@ fn main() {
             status: None,
             last_use: Instant::now(),
             unlocked: false,
+            waiting: Vec::new(),
         };
         if let Some(saved) = saved {
             app.source = saved.source;

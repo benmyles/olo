@@ -1,12 +1,14 @@
 //! NetPositive: the web browser, on Servo (engine.rs) in process. Each
-//! window has a toolbar (Back, Forward, Reload/Stop, Home and the
-//! location field), a tab strip once there is more than one tab, the
-//! page, drawn by Servo's GL straight into an embedded subsurface, and a
-//! status line. Input over the page is forwarded from egui (input.rs).
+//! window has a toolbar (Back, Forward, Reload/Stop, Home, the logins key
+//! and the location field), a tab strip once there is more than one tab,
+//! the bar offering to save a login (logins.rs), the page, drawn by
+//! Servo's GL straight into an embedded subsurface, and a status line.
+//! Input over the page is forwarded from egui (input.rs).
 
 mod engine;
 mod input;
 mod location;
+mod logins;
 
 use std::{
     collections::BTreeMap,
@@ -16,15 +18,18 @@ use std::{
 use engine::{Engine, Event, Surface, Wake};
 use euclid::Scale;
 use input::{Pointer, Viewport};
+use logins::{Answer, Offer, OfferKind, Purpose};
 use serde::{Deserialize, Serialize};
 use servo::{
     AuthenticationRequest, ContextMenu, ContextMenuAction, ContextMenuItem, Cursor, EmbedderControl, FilePicker,
     LoadStatus, SelectElement, SelectElementOptionOrOptgroup, SimpleDialog, Theme, WebView, WebViewBuilder, WebViewId,
 };
+use tabula_keychain::{Request, Response};
 use tabula_kit::{
-    App, Cx, EmbedId, Embedded, Menu, MenuItem, WindowId, WindowOptions,
+    App, Cx, EmbedId, Embedded, Menu, MenuItem, Proxy, WindowId, WindowOptions,
     egui::{self, Align, CursorIcon, Id, Key, Rect, Sense, Shape, Stroke, pos2, vec2},
     file_panel::{FilePanel, PANEL_SIZE, PanelResult},
+    icons,
     instance::{self, Launch},
     menu::{self, MenuAnchor, MenuRequest},
     metrics as m,
@@ -40,6 +45,8 @@ const TAB_HEIGHT: f32 = widgets::TAB_HEIGHT;
 const TAB_MAX: f32 = 220.0;
 /// Toolbar buttons are square.
 const TOOL: f32 = m::CONTROL_HEIGHT + m::TIGHT;
+/// The bar offering to save a login.
+const OFFER_HEIGHT: f32 = m::CONTROL_HEIGHT + 2.0 * m::SPACING;
 const HISTORY_MAX: usize = 1000;
 const ZOOMS: [f32; 13] = [0.3, 0.5, 0.67, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
 
@@ -92,6 +99,8 @@ struct Tab {
     can_forward: bool,
     cursor: Cursor,
     zoom: f32,
+    /// A login just used here, offered for saving (the bar under the toolbar).
+    offer: Option<Offer>,
 }
 
 impl Tab {
@@ -106,6 +115,7 @@ impl Tab {
             can_forward: false,
             cursor: Cursor::Default,
             zoom: 1.0,
+            offer: None,
         }
     }
 
@@ -147,6 +157,9 @@ struct Browser {
     select: Option<SelectElement>,
     /// A popup to open on the next frame (we need the egui context).
     popup: Option<(MenuAnchor, Menu, Option<usize>)>,
+    /// The key button, and the logins menu to open under it.
+    key: Rect,
+    logins_menu: Option<Menu>,
 }
 
 impl Browser {
@@ -177,6 +190,7 @@ struct NetPositive {
     /// The browser window last used, for launches and new tabs from outside.
     front: Option<WindowId>,
     pasted: bool,
+    proxy: Proxy,
 }
 
 impl NetPositive {
@@ -206,6 +220,8 @@ impl NetPositive {
                 menu: None,
                 select: None,
                 popup: None,
+                key: Rect::NOTHING,
+                logins_menu: None,
             })),
         );
         self.front = Some(win);
@@ -231,6 +247,7 @@ impl NetPositive {
         let mut builder = WebViewBuilder::new(&self.engine.servo, surface.context.clone())
             .delegate(self.engine.events.clone())
             .clipboard_delegate(self.engine.events.clone())
+            .user_content_manager(self.engine.content.clone())
             .hidpi_scale_factor(Scale::new(b.scale));
         if let Some(url) = url {
             builder = builder.url(url);
@@ -408,6 +425,7 @@ impl NetPositive {
                         .builder(surface.context.clone())
                         .delegate(self.engine.events.clone())
                         .clipboard_delegate(self.engine.events.clone())
+                        .user_content_manager(self.engine.content.clone())
                         .hidpi_scale_factor(Scale::new(b.scale))
                         .build();
                     self.prepare(&view, b);
@@ -421,6 +439,30 @@ impl NetPositive {
                     show_active(b);
                 }
                 Event::Control(control) => self.control(cx, win, i, control),
+                Event::LoginUsed { username, password } => {
+                    let Some(Win::Browser(b)) = self.windows.get(&win) else { continue };
+                    let url = b.tabs[i].url.clone();
+                    let Some(view) = b.tabs[i].view.as_ref().map(|v| v.id()) else { continue };
+                    if !logins::web(&url) {
+                        continue;
+                    }
+                    let offer =
+                        Offer { url: url.clone(), username, password, kind: OfferKind::New, busy: false, error: None };
+                    let request = Request::Check {
+                        url: url.clone(),
+                        username: offer.username.clone(),
+                        password: offer.password.clone(),
+                    };
+                    logins::ask(self.proxy.clone(), win, view, url, Purpose::Check(Box::new(offer)), request, false);
+                }
+                Event::Filled(result) => {
+                    let Some(b) = self.browser(win) else { continue };
+                    match result.as_str() {
+                        "none" => b.tabs[i].status = Some("There’s no login form on this page.".into()),
+                        "moved" => b.tabs[i].status = Some("The page changed before the login could be filled.".into()),
+                        _ => {}
+                    }
+                }
                 Event::Copy(text) => cx.copy(text),
                 Event::Permission(request) => {
                     // No prompts for cameras, locations or notifications yet.
@@ -528,7 +570,7 @@ impl NetPositive {
                                 ContextMenuAction::CopyImageLink => "Copy Image Address",
                                 _ => label.as_str(),
                             };
-                            items = items.item(label, &format!("{n}"), None).enabled(*enabled);
+                            items = items.item(label, format!("{n}"), None).enabled(*enabled);
                         }
                         ContextMenuItem::Separator => sep = true,
                     }
@@ -541,7 +583,7 @@ impl NetPositive {
                 let mut items = Menu::new("");
                 let selected = select.selected_options();
                 let add = |items: Menu, o: &servo::SelectElementOption| {
-                    items.item(&o.label, &format!("{}", o.id), None).enabled(!o.is_disabled).checked(selected.contains(&o.id))
+                    items.item(&o.label, format!("{}", o.id), None).enabled(!o.is_disabled).checked(selected.contains(&o.id))
                 };
                 for entry in select.options() {
                     match entry {
@@ -650,6 +692,33 @@ impl NetPositive {
                 self.settings.history.clear();
                 self.save_settings();
             }
+            "logins" => self.ask_logins(win, Purpose::Menu, |url| Request::Logins { url }),
+            "unlock-passwords" => self.ask_logins(win, Purpose::Unlock, |_| Request::Unlock),
+            "open-passwords" => {
+                if let Some(program) = tabula_xdg::find_program("tabula-passwords")
+                    && let Err(e) = tabula_xdg::open::spawn(&[program.into_os_string()])
+                {
+                    tracing::warn!("couldn't start Passwords: {e}");
+                }
+            }
+            "save-login" => {
+                let Some(b) = self.browser(win) else { return };
+                let Some(tab) = b.tabs.get_mut(b.active) else { return };
+                let (Some(offer), Some(view)) = (&mut tab.offer, &tab.view) else { return };
+                offer.busy = true;
+                offer.error = None;
+                let (view, url, request) = (view.id(), offer.url.clone(), offer.request());
+                logins::ask(self.proxy.clone(), win, view, url, Purpose::Save, request, true);
+                cx.redraw(win);
+            }
+            "dismiss-login" => {
+                if let Some(b) = self.browser(win)
+                    && let Some(tab) = b.tabs.get_mut(b.active)
+                {
+                    tab.offer = None;
+                }
+                cx.redraw(win);
+            }
             _ => {
                 if let Some(url) = command.strip_prefix("go:") {
                     if let Ok(url) = Url::parse(url) {
@@ -659,6 +728,10 @@ impl NetPositive {
                 }
                 if let Some(n) = command.strip_prefix("tab:").and_then(|n| n.parse::<usize>().ok()) {
                     return self.select_tab(cx, win, n);
+                }
+                if let Some((vault, id)) = command.strip_prefix("fill:").and_then(|r| r.split_once('/')) {
+                    let (vault, id) = (vault.to_string(), id.to_string());
+                    return self.ask_logins(win, Purpose::Fill, |url| Request::Fill { url, vault, id });
                 }
                 self.view_command(cx, win, command);
             }
@@ -766,6 +839,21 @@ impl NetPositive {
                 commands.push(command.into());
             }
         }
+        // The key: the page's logins, from Passwords.
+        let web = b.tab().is_some_and(|t| logins::web(&t.url));
+        let r = Rect::from_min_size(pos2(x, y), vec2(TOOL, m::CONTROL_HEIGHT));
+        x += TOOL + m::TIGHT;
+        b.key = r;
+        let key = ui.add_enabled_ui(web, |ui| ui.put(r, Button::new("").min_width(TOOL))).inner;
+        let icon = Rect::from_center_size(r.center(), vec2(16.0, 16.0));
+        if web {
+            icons::paint(&painter, icon, "key");
+        } else {
+            icons::paint_tinted(&painter, icon, "key", egui::Color32::from_white_alpha(90));
+        }
+        if key.on_hover_text("Fill in a login from Passwords").clicked() {
+            commands.push("logins".into());
+        }
         x += m::SPACING - m::TIGHT;
         let field = Rect::from_min_max(pos2(x, y), pos2(bar.right() - m::SPACING, y + m::CONTROL_HEIGHT));
         let response = ui.put(field, TextControl::new(&mut b.location).hint("Search or enter address"));
@@ -798,6 +886,57 @@ impl NetPositive {
                 commands.push(cmd);
             }
             top = strip.bottom();
+        }
+
+        // Offer to save a login just used.
+        if let Some(offer) = b.tabs.get(b.active).and_then(|t| t.offer.as_ref()) {
+            let bar = Rect::from_min_size(pos2(full.left(), top), vec2(full.width(), OFFER_HEIGHT));
+            painter.rect_filled(bar, 0.0, shade(&p, p.panel_background, 1.06));
+            style::hline(&painter, bar.left(), bar.right(), bar.bottom() - 1.0, shade(&p, p.panel_background, 1.3));
+            icons::paint(
+                &painter,
+                Rect::from_center_size(pos2(bar.left() + m::SPACING + 8.0, bar.center().y), vec2(16.0, 16.0)),
+                "key",
+            );
+            let mut right = bar.right() - m::SPACING;
+            let mut button = |ui: &mut egui::Ui, label: &str, enabled: bool| {
+                let w = style::label_width(ui.ctx(), label, style::plain_font())
+                    .max(m::BUTTON_MIN_WIDTH - 2.0 * m::CONTROL_PAD)
+                    + 2.0 * m::CONTROL_PAD;
+                let r = Rect::from_min_size(
+                    pos2(right - w, bar.center().y - m::CONTROL_HEIGHT / 2.0),
+                    vec2(w, m::CONTROL_HEIGHT),
+                );
+                right -= w + m::SPACING;
+                ui.add_enabled_ui(enabled, |ui| ui.put(r, Button::new(label))).inner.clicked()
+            };
+            let save = match (&offer.kind, offer.busy) {
+                (_, true) => "Saving…",
+                (OfferKind::New, _) => "Save",
+                (OfferKind::Update { .. }, _) => "Update",
+            };
+            if button(ui, save, !offer.busy) {
+                commands.push("save-login".into());
+            }
+            if button(ui, "Not Now", true) {
+                commands.push("dismiss-login".into());
+            }
+            let (text, color) = match &offer.error {
+                Some(e) => (e.clone(), c(p.failure)),
+                None => (offer.message(), c(p.panel_text)),
+            };
+            let clip =
+                Rect::from_min_max(pos2(bar.left() + m::SPACING * 2.0 + 16.0, bar.top()), pos2(right, bar.bottom()));
+            style::label(
+                &painter.with_clip_rect(clip),
+                clip.left(),
+                bar.center().y,
+                Align::Min,
+                text,
+                style::plain_font(),
+                color,
+            );
+            top = bar.bottom();
         }
 
         // Status line.
@@ -900,6 +1039,20 @@ impl NetPositive {
             if view.focused() != focused {
                 view.set_focused(focused);
             }
+        }
+
+        // The key button's logins.
+        if let Some(menu) = b.logins_menu.take() {
+            let request = MenuRequest {
+                menu,
+                source: Id::unique("logins-menu"),
+                anchor: MenuAnchor::Below(b.key),
+                selected: None,
+            };
+            menu::request_popup(ui.ctx(), request);
+        }
+        if let Some(chosen) = widgets::popup_result(ui.ctx(), Id::unique("logins-menu")) {
+            commands.push(chosen);
         }
 
         // Page menus and <select> lists.
@@ -1288,7 +1441,7 @@ impl App for NetPositive {
             .separator();
         let recent: Vec<&Bookmark> = self.settings.history.iter().rev().take(15).collect();
         for h in &recent {
-            go = go.item(&menu_label(h), &format!("go:{}", h.url), None);
+            go = go.item(menu_label(h), format!("go:{}", h.url), None);
         }
         if !recent.is_empty() {
             go = go.separator().item("Clear History", "clear-history", None);
@@ -1298,14 +1451,14 @@ impl App for NetPositive {
         if !self.settings.bookmarks.is_empty() {
             bookmarks = bookmarks.separator();
             for m in &self.settings.bookmarks {
-                bookmarks = bookmarks.item(&menu_label(m), &format!("go:{}", m.url), None);
+                bookmarks = bookmarks.item(menu_label(m), format!("go:{}", m.url), None);
             }
         }
         let mut tabs = Menu::new("Window");
         for (i, t) in b.tabs.iter().enumerate() {
             let label = truncate(&t.label(), 48);
             let key = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9].get(i).copied();
-            tabs = tabs.item(&label, &format!("tab:{i}"), key).checked(i == b.active);
+            tabs = tabs.item(label, format!("tab:{i}"), key).checked(i == b.active);
         }
         Some(vec![file, edit, view, go, bookmarks, tabs])
     }
@@ -1332,6 +1485,10 @@ impl App for NetPositive {
         if message.is::<Wake>() {
             return self.pump(cx);
         }
+        let message = match message.downcast::<Answer>() {
+            Ok(answer) => return self.answer(cx, *answer),
+            Err(m) => m,
+        };
         if let Ok(launch) = message.downcast::<Launch>() {
             self.launch(cx, &launch.args, launch.cwd.as_deref());
         }
@@ -1415,6 +1572,124 @@ fn truncate(s: &str, n: usize) -> String {
 }
 
 impl NetPositive {
+    /// Ask Passwords about the active tab's page (starting Passwords if
+    /// it isn't running).
+    fn ask_logins(&mut self, win: WindowId, purpose: Purpose, request: impl FnOnce(String) -> Request) {
+        let Some(b) = self.browser(win) else { return };
+        let Some(tab) = b.tab() else { return };
+        let Some(view) = tab.view.as_ref().map(|v| v.id()) else { return };
+        let url = tab.url.clone();
+        if !logins::web(&url) {
+            return;
+        }
+        logins::ask(self.proxy.clone(), win, view, url.clone(), purpose, request(url), true);
+    }
+
+    /// Passwords answered.
+    fn answer(&mut self, cx: &mut Cx, answer: Answer) {
+        let Answer { win, view, url, purpose, result, waited } = answer;
+        let events = self.engine.events.clone();
+        let Some((_, i)) = self.find(view).filter(|(w, _)| *w == win) else { return };
+        let Some(b) = self.browser(win) else { return };
+        let host = tabula_keychain::host(&url).unwrap_or_else(|| "this site".into());
+        match purpose {
+            Purpose::Menu | Purpose::Unlock => {
+                if matches!(result, Ok(Response::Unlocked)) {
+                    return self.ask_logins(win, Purpose::Menu, |url| Request::Logins { url });
+                }
+                // Only for the page it was asked about.
+                if b.active != i || b.tabs[i].url != url {
+                    return;
+                }
+                let mut menu = Menu::new("Logins");
+                match &result {
+                    Ok(Response::Logins { logins }) if logins.is_empty() => {
+                        menu = menu.item(format!("No Logins for {host}"), "none", None).enabled(false);
+                    }
+                    Ok(Response::Logins { logins }) => {
+                        for l in logins {
+                            let label = if l.username.is_empty() {
+                                l.title.clone()
+                            } else {
+                                format!("{} — {}", l.title, l.username)
+                            };
+                            menu = menu.item(truncate(&label, 60), format!("fill:{}/{}", l.vault, l.id), None);
+                        }
+                    }
+                    Ok(Response::Locked) => menu = menu.item("Unlock Passwords…", "unlock-passwords", None),
+                    Ok(Response::NotSetUp) => menu = menu.item("Set Up Passwords…", "open-passwords", None),
+                    Ok(Response::Error { message }) => {
+                        menu = menu.item(truncate(message, 60), "none", None).enabled(false)
+                    }
+                    Err(e) => menu = menu.item(truncate(e, 60), "none", None).enabled(false),
+                    Ok(_) => {}
+                }
+                menu = menu.separator().item("Open Passwords", "open-passwords", None);
+                b.logins_menu = Some(menu);
+                if waited {
+                    cx.activate(win);
+                }
+            }
+            Purpose::Fill => match &result {
+                Ok(Response::Credentials { username, password, otp }) => {
+                    let Some(view) = b.tabs[i].view.clone() else { return };
+                    let Ok(origin) = Url::parse(&url).map(|u| u.origin().ascii_serialization()) else { return };
+                    let script = logins::fill_script(&origin, username, password);
+                    let id = view.id();
+                    view.evaluate_javascript(script, move |r| {
+                        let result = match r {
+                            Ok(servo::JSValue::String(s)) => s,
+                            _ => "none".into(),
+                        };
+                        events.push_id(id, Event::Filled(result));
+                    });
+                    if waited {
+                        cx.activate(win);
+                    }
+                    if let Some(otp) = otp {
+                        cx.copy_secret(otp.clone(), std::time::Duration::from_secs(90));
+                        b.tabs[i].status = Some("The one-time code is on the clipboard.".into());
+                    }
+                }
+                Ok(Response::Error { message }) => b.tabs[i].status = Some(message.clone()),
+                Err(e) => b.tabs[i].status = Some(e.clone()),
+                Ok(_) => {}
+            },
+            Purpose::Check(mut offer) => {
+                offer.kind = match &result {
+                    Ok(Response::Known | Response::NotSetUp) => return,
+                    Ok(Response::Changed { vault, id, title }) => {
+                        OfferKind::Update { vault: vault.clone(), id: id.clone(), title: title.clone() }
+                    }
+                    // New, locked, or Passwords isn't running: saving will start or unlock it.
+                    _ => OfferKind::New,
+                };
+                b.tabs[i].offer = Some(*offer);
+            }
+            Purpose::Save => {
+                let tab = &mut b.tabs[i];
+                match &result {
+                    Ok(Response::Saved { title, updated }) => {
+                        tab.offer = None;
+                        let verb = if *updated { "Updated" } else { "Saved" };
+                        tab.status = Some(format!("{verb} “{title}” in Passwords."));
+                    }
+                    other => {
+                        if let Some(offer) = &mut tab.offer {
+                            offer.busy = false;
+                            offer.error = Some(match other {
+                                Ok(Response::Error { message }) => message.clone(),
+                                Err(e) => e.clone(),
+                                _ => "Passwords couldn’t save it.".into(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        cx.redraw(win);
+    }
+
     /// URLs (or paths) from the command line or a forwarded launch.
     fn launch(&mut self, cx: &mut Cx, args: &[String], cwd: Option<&Path>) {
         let urls: Vec<Url> = args.iter().filter(|a| !a.starts_with("--")).filter_map(|a| location::parse(a, cwd)).collect();
@@ -1449,6 +1724,7 @@ fn main() {
             settings,
             front: None,
             pasted: false,
+            proxy: cx.proxy(),
         };
         let restored: Option<Saved> = cx.restored_state().and_then(|s| serde_json::from_str(&s).ok());
         match restored {

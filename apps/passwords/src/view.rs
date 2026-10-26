@@ -197,10 +197,13 @@ fn setup(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
 
 fn locked(app: &mut Passwords, ui: &mut Ui, full: Rect) {
     let p = style::palette(ui.ctx());
-    let message = match &app.lock.finger {
+    let mut message = match &app.lock.finger {
         Finger::Listening(s) => s.clone(),
         _ => format!("Enter the password for “{}” to unlock it.", app.lock.user()),
     };
+    if !app.waiting.is_empty() {
+        message = format!("NetPositive is waiting for a login. {message}");
+    }
     let icon_name = if matches!(app.lock.finger, Finger::Listening(_)) { "fingerprint" } else { "passwords" };
     panel(ui, full, icon_name, "Passwords is locked", &message, |ui| {
         let field = ui.add(TextControl::new(&mut app.lock.password).label("Password:").divider(78.0).password(true));
