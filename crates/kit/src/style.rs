@@ -72,6 +72,15 @@ pub fn mono_italic() -> FontFamily {
 
 // ---- fonts ------------------------------------------------------------
 
+/// The first installed font of `families` (data and face index), for
+/// documents that name fonts of their own. Scans the system fonts: call it
+/// off the UI thread.
+pub fn find_font(families: &[&str], weight: u16) -> Option<(Vec<u8>, u32)> {
+    let mut db = fontdb::Database::new();
+    db.load_system_fonts();
+    load_face(&db, families, weight)
+}
+
 fn load_face(db: &fontdb::Database, families: &[&str], weight: u16) -> Option<(Vec<u8>, u32)> {
     load_styled(db, families, weight, fontdb::Style::Normal)
 }

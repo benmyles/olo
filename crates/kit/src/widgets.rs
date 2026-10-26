@@ -54,11 +54,17 @@ pub struct Button<'a> {
     label: &'a str,
     default: bool,
     min_width: f32,
+    pushed: bool,
 }
 
 impl<'a> Button<'a> {
     pub fn new(label: &'a str) -> Self {
-        Button { label, default: false, min_width: m::BUTTON_MIN_WIDTH }
+        Button { label, default: false, min_width: m::BUTTON_MIN_WIDTH, pushed: false }
+    }
+    /// Draw it held down: the chosen one of a set of tool buttons.
+    pub fn pushed(mut self, on: bool) -> Self {
+        self.pushed = on;
+        self
     }
     pub fn default(mut self, default: bool) -> Self {
         self.default = default;
@@ -97,7 +103,7 @@ impl Widget for Button<'_> {
             painter.rect_filled(outer, 0.0, shade(&p, bg, 1.06));
             style::bevel(painter, outer, shade(&p, bg, 1.3), c(p.shine));
         }
-        let pressed = response.is_pointer_button_down_on() && response.hovered();
+        let pressed = response.is_pointer_button_down_on() && response.hovered() || self.pushed;
         let hovered = response.hovered() && ui.is_enabled();
         let base = p.control_background;
         let (top, bottom) = if pressed {
@@ -990,6 +996,13 @@ impl ScrollView {
     /// coordinates) into view on its next frame.
     pub fn reveal(ctx: &egui::Context, id: impl std::hash::Hash + std::fmt::Debug, top: f32, bottom: f32) {
         ctx.data_mut(|d| d.insert_temp(Id::unique(id).with("reveal"), (top, bottom)));
+        ctx.request_repaint();
+    }
+
+    /// Scroll the view `id` so content point `offset` is at its top-left,
+    /// on its next frame.
+    pub fn scroll_to(ctx: &egui::Context, id: impl std::hash::Hash + std::fmt::Debug, offset: Vec2) {
+        ctx.data_mut(|d| d.insert_temp(Id::unique(id).with("pending"), offset));
         ctx.request_repaint();
     }
 

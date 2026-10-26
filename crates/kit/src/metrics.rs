@@ -31,3 +31,5 @@ pub const TEXT_INSET: f32 = 6.0;
 pub const LIST_ROW: f32 = 20.0;
 /// Cell text inset in list views.
 pub const CELL_INSET: f32 = 6.0;
+/// A toolbar under the menu bar: one row of controls.
+pub const TOOLBAR_HEIGHT: f32 = CONTROL_HEIGHT + 2.0 * TIGHT + 1.0;

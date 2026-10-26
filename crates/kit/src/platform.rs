@@ -249,13 +249,20 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
             warn!("could not reconnect to app_server; exiting");
             return;
         };
-        let (globals, event_queue) = registry_queue_init::<Kit>(&conn).expect("wayland registry");
+        let (globals, mut event_queue) = registry_queue_init::<Kit>(&conn).expect("wayland registry");
         let qh = event_queue.handle();
+        let mut kit = Kit::new(&globals, conn.clone(), qh, loop_handle.clone(), palette.clone());
+        // Learn the outputs (wl_output, then xdg-output) before the app
+        // starts, so its first windows can be sized for the screen.
+        for _ in 0..2 {
+            if event_queue.roundtrip(&mut kit).is_err() {
+                break;
+            }
+        }
         let wayland = WaylandSource::new(conn.clone(), event_queue)
             .insert(loop_handle.clone())
             .expect("wayland source");
 
-        let mut kit = Kit::new(&globals, conn, qh, loop_handle.clone(), palette.clone());
         match carried.take() {
             None => {
                 let mut cx = Cx {
@@ -265,7 +272,7 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                     proxy: Proxy { sender: sender.clone() },
                     app_id: app_id.to_owned(),
                     sizes: Default::default(),
-                    screen: None,
+                    screen: kit.screen_size(),
                 };
                 let app = (build.take().expect("built once"))(&mut cx);
                 kit.app = Some(Box::new(app));
@@ -451,6 +458,24 @@ impl Kit {
         Some(Carried { app, cx, windows })
     }
 
+    /// The first output's size in logical pixels.
+    fn screen_size(&self) -> Option<(u32, u32)> {
+        self.output_state
+            .outputs()
+            .next()
+            .and_then(|o| self.output_state.info(&o))
+            .and_then(|i| {
+                // Without xdg-output's logical size, derive it from the
+                // current mode and the output scale.
+                i.logical_size.or_else(|| {
+                    let mode = i.modes.iter().find(|m| m.current)?;
+                    let k = i.scale_factor.max(1);
+                    Some((mode.dimensions.0 / k, mode.dimensions.1 / k))
+                })
+            })
+            .map(|(w, h)| (w.max(1) as u32, h.max(1) as u32))
+    }
+
     /// Call into the app with a Cx, then act on what it asked for.
     fn with_app<R>(&mut self, f: impl FnOnce(&mut dyn App, &mut Cx) -> R) -> Option<R> {
         let mut app = self.app.take()?;
@@ -458,13 +483,7 @@ impl Kit {
         cx.palette = self.palette.clone();
         cx.sizes.clear();
         cx.sizes.extend(self.surfaces.iter().filter(|s| matches!(s.role, Role::Toplevel(_))).map(|s| (s.id, s.size)));
-        cx.screen = self
-            .output_state
-            .outputs()
-            .next()
-            .and_then(|o| self.output_state.info(&o))
-            .and_then(|i| i.logical_size)
-            .map(|(w, h)| (w.max(1) as u32, h.max(1) as u32));
+        cx.screen = self.screen_size();
         let r = f(app.as_mut(), &mut cx);
         self.app = Some(app);
         self.cx = Some(cx);

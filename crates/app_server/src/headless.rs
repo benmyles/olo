@@ -3,7 +3,9 @@
 //! IPC `Synthetic` request, and screenshots work as on the other backends.
 //! Used for automated UI testing without touching the user's screen:
 //!
-//!     tabula-app-server --headless [WIDTHxHEIGHT]    (physical pixels)
+//! ```text
+//! tabula-app-server --headless [WIDTHxHEIGHT]    (physical pixels)
+//! ```
 
 use std::{
     fs::OpenOptions,
