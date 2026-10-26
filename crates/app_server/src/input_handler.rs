@@ -185,9 +185,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
             }
             A::Lock => self.lock_screen(),
-            A::Screenshot { window } => {
+            A::Screenshot(shot) => {
+                use crate::keymap::Shot;
                 if !self.lock.locked() {
-                    self.spawn_program("tabula-screenshot", if window { &["--silent", "--window"] } else { &["--silent"] });
+                    let args: &[&str] = match shot {
+                        Shot::Screen => &["--silent"],
+                        Shot::Window => &["--silent", "--window"],
+                        Shot::Region => &["--region"],
+                    };
+                    self.spawn_program("tabula-screenshot", args);
                 }
             }
             A::ScreenshotApp => {

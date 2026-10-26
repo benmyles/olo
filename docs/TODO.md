@@ -46,7 +46,7 @@ as they land (with the commit), add new ones as they come up.
 - StyledEdit, DeskCalc.
 - ~~**Screenshot**~~: Haiku's app (screen or active window, border,
   pointer, delay, five formats, folder choice, clipboard), ⌘⇧3/⌘⇧4/⌘⇧5
-  and Print Screen; every backend captures. Region capture is still to do.
+  (area) and Print Screen; every backend captures.
 - Web browser (native).
 - Password manager: Rust 1Password SDK, passkeys, Touch ID through
   fprintd natively, browser integration.

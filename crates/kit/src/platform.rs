@@ -737,10 +737,10 @@ impl Kit {
                 surface.set_exclusive_zone(lo.exclusive_zone);
                 let (mt, mr, mb, ml) = lo.margin;
                 surface.set_margin(mt, mr, mb, ml);
-                surface.set_keyboard_interactivity(if lo.keyboard {
-                    KeyboardInteractivity::OnDemand
-                } else {
-                    KeyboardInteractivity::None
+                surface.set_keyboard_interactivity(match lo.keyboard {
+                    crate::Keyboard::None => KeyboardInteractivity::None,
+                    crate::Keyboard::OnDemand => KeyboardInteractivity::OnDemand,
+                    crate::Keyboard::Exclusive => KeyboardInteractivity::Exclusive,
                 });
                 surface.commit();
                 Role::Layer(surface)

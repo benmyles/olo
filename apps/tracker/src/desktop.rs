@@ -50,7 +50,7 @@ pub fn options() -> WindowOptions {
             anchor: (true, true, true, true),
             exclusive_zone: -1,
             margin: (0, 0, 0, 0),
-            keyboard: true,
+            keyboard: tabula_kit::Keyboard::OnDemand,
             namespace: "desktop".into(),
             output: None,
         }),

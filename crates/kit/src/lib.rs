@@ -19,7 +19,7 @@ pub mod style;
 mod theme_watch;
 pub mod widgets;
 
-pub use app::{App, Clip, Command, Cx, Layer, LayerOptions, Proxy, SessionLock, WindowId, WindowKind, WindowOptions};
+pub use app::{App, Clip, Command, Cx, Keyboard, Layer, LayerOptions, Proxy, SessionLock, WindowId, WindowKind, WindowOptions};
 pub use egui;
 pub use menu::{Action, Menu, MenuItem};
 pub use platform::run;

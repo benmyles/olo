@@ -167,7 +167,7 @@ fn main() {
                     // Over the Deskbar too.
                     exclusive_zone: -1,
                     margin: (0, 0, 0, 0),
-                    keyboard: true,
+                    keyboard: tabula_kit::Keyboard::OnDemand,
                     namespace: "screensaver".into(),
                     output,
                 }),

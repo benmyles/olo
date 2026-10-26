@@ -577,7 +577,7 @@ fn main() {
                 anchor: (true, false, false, true),
                 exclusive_zone: 0,
                 margin: (0, 0, 0, 0),
-                keyboard: false,
+                keyboard: tabula_kit::Keyboard::None,
                 namespace: "deskbar".into(),
                 output: None,
             }),

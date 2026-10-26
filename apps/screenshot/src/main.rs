@@ -4,10 +4,12 @@
 //! active window, with or without its border and the pointer, after a
 //! delay. Our own window steps aside while a picture is taken.
 //!
-//! `--silent [--window]` (⌘⇧3 / ⌘⇧4, Print Screen) saves one straight
-//! into the folder, as `screenshotN`, with no window.
+//! `--silent [--window]` (⌘⇧3, Print Screen, Alt+Print Screen) saves one
+//! straight into the folder, as `screenshotN`, with no window; `--region`
+//! (⌘⇧4) lets you drag out part of the screen first (region.rs).
 
 mod capture;
+mod region;
 
 use std::{
     collections::HashMap,
@@ -474,6 +476,19 @@ fn silent(window: bool) -> std::process::ExitCode {
 
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|a| a == "--region") {
+        return match region::run() {
+            Ok(Some(path)) => {
+                println!("{}", path.display());
+                std::process::ExitCode::SUCCESS
+            }
+            Ok(None) => std::process::ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("tabula-screenshot: {e}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
     if args.iter().any(|a| a == "--silent") {
         return silent(args.iter().any(|a| a == "--window"));
     }

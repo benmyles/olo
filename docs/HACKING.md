@@ -122,7 +122,10 @@ fn main() {
   Never use it to look for changes on disk; watch them (rule 7 above).
 * Layer-shell surfaces (Deskbar, desktop): `WindowKind::Layer(LayerOptions{…})`;
   `LayerOptions::output` puts one on a named output (`cx.outputs()` lists
-  them; the screen saver opens one per output).
+  them; the screen saver opens one per output). `LayerOptions::keyboard`
+  is `Keyboard::None`, `OnDemand` (focus on click: the desktop) or
+  `Exclusive` (every key while it is up: pickers such as Screenshot's
+  region overlay).
 * `ui.ctx().set_cursor_icon(CursorIcon::None)` hides the pointer over a
   window (screen savers).
 * Session lock (the lock screen only): `cx.lock_session()`, then
@@ -379,8 +382,11 @@ the picture and the active window is the one behind it) and brings it
 back; Save writes `screenshotN` and quits; Copy to clipboard offers
 `image/png`. Settings are in `screenshot.json`. `--silent [--window]` saves
 straight into the folder with no window: app_server runs it for ⌘⇧3 and
-Print Screen (the screen) and ⌘⇧4 and Alt+Print Screen (the active
-window); ⌘⇧5 opens the app.
+Print Screen (the screen) and Alt+Print Screen (the active window).
+`--region` (⌘⇧4, region.rs) captures every output, covers each with an
+exclusive overlay showing its picture dimmed, and saves the rectangle you
+drag (its size in pixels follows the corner); Escape or a click cancels.
+⌘⇧5 opens the app.
 
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 

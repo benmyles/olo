@@ -180,6 +180,16 @@ pub fn take(settings: &Settings, hide: bool) -> Result<Shot, String> {
     result
 }
 
+/// One output's picture, as it is (no pointer), for the region picker.
+pub fn take_output(output: Option<String>) -> Result<image::RgbaImage, String> {
+    let mut client = Client::connect().map_err(|e| e.to_string())?;
+    let png = scratch_path().with_extension(format!("{}.png", output.as_deref().unwrap_or("screen")));
+    request(&mut client, &Request::Screenshot { path: png.display().to_string(), output, window: None, border: true, pointer: false })?;
+    let image = image::open(&png).map_err(|e| e.to_string())?.into_rgba8();
+    let _ = std::fs::remove_file(&png);
+    Ok(image)
+}
+
 /// `screenshotN`, the first N not taken in `folder` in any format.
 pub fn next_name(folder: &Path) -> String {
     (1..)

@@ -2,8 +2,9 @@
 //! (so ⌘C copies everywhere, GTK and Firefox included), while app_server
 //! keeps a few ⌘ chords for itself: ⌘Tab / ⌘\` (Twitcher), ⌘Space and a
 //! tap of ⌘ alone (Find), ⌘ arrows and ⌘⌫ (line and document navigation),
-//! Ctrl+⌘Q (lock) and ⌘⇧3 / ⌘⇧4 / ⌘⇧5 (screenshots, as on a Mac; Print
-//! Screen and Alt+Print Screen too). Caps Lock is another Ctrl. Terminals keep physical
+//! Ctrl+⌘Q (lock) and ⌘⇧3 / ⌘⇧4 / ⌘⇧5 (screen, area and the Screenshot
+//! app, as on a Mac; Print Screen and Alt+Print Screen for the screen and
+//! the active window). Caps Lock is another Ctrl. Terminals keep physical
 //! Ctrl for the tty, so ⌘ reaches them as Ctrl+Shift.
 //!
 //! This sits between the input devices and the seat: physical evdev codes
@@ -66,11 +67,21 @@ pub enum Action {
     Find,
     /// Ctrl+⌘Q.
     Lock,
-    /// ⌘⇧3 or Print Screen (the screen), ⌘⇧4 or Alt+Print Screen (the
-    /// active window): saved at once, no window.
-    Screenshot { window: bool },
+    /// ⌘⇧3 / Print Screen, ⌘⇧4, Alt+Print Screen: saved straight away,
+    /// no window.
+    Screenshot(Shot),
     /// ⌘⇧5: the Screenshot app.
     ScreenshotApp,
+}
+
+/// What a screenshot shortcut takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shot {
+    Screen,
+    /// Drag out an area first.
+    Region,
+    /// The active window.
+    Window,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -237,7 +248,7 @@ impl Keymap {
             return;
         }
         if key == SYSRQ {
-            out.push(Out::Action(Action::Screenshot { window: self.alt() }));
+            out.push(Out::Action(Action::Screenshot(if self.alt() { Shot::Window } else { Shot::Screen })));
             self.held.insert(key, h);
             return;
         }
@@ -246,7 +257,7 @@ impl Keymap {
             let (shift, ctrl) = (self.shift(), self.ctrl());
             let handled = match key {
                 KEY3 | KEY4 if shift && !ctrl => {
-                    out.push(Out::Action(Action::Screenshot { window: key == KEY4 }));
+                    out.push(Out::Action(Action::Screenshot(if key == KEY4 { Shot::Region } else { Shot::Screen })));
                     true
                 }
                 KEY5 if shift && !ctrl => {
@@ -508,9 +519,9 @@ mod tests {
         let mut r = Rig::new();
         r.down(LEFTMETA);
         r.down(LEFTSHIFT);
-        assert_eq!(r.down(KEY3), [Out::Action(Action::Screenshot { window: false })]);
+        assert_eq!(r.down(KEY3), [Out::Action(Action::Screenshot(Shot::Screen))]);
         assert_eq!(r.up(KEY3), []);
-        assert_eq!(r.down(KEY4), [Out::Action(Action::Screenshot { window: true })]);
+        assert_eq!(r.down(KEY4), [Out::Action(Action::Screenshot(Shot::Region))]);
         r.up(KEY4);
         assert_eq!(r.down(KEY5), [Out::Action(Action::ScreenshotApp)]);
         r.up(KEY5);
@@ -519,10 +530,10 @@ mod tests {
         assert_eq!(r.down(KEY3), [Key(KEY3, true)]);
         r.up(KEY3);
         r.up(LEFTMETA);
-        assert_eq!(r.down(SYSRQ), [Out::Action(Action::Screenshot { window: false })]);
+        assert_eq!(r.down(SYSRQ), [Out::Action(Action::Screenshot(Shot::Screen))]);
         assert_eq!(r.up(SYSRQ), []);
         r.down(LEFTALT);
-        assert_eq!(r.down(SYSRQ), [Out::Action(Action::Screenshot { window: true })]);
+        assert_eq!(r.down(SYSRQ), [Out::Action(Action::Screenshot(Shot::Window))]);
     }
 
     #[test]

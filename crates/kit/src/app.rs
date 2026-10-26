@@ -86,11 +86,21 @@ pub struct LayerOptions {
     pub anchor: (bool, bool, bool, bool),
     pub exclusive_zone: i32,
     pub margin: (i32, i32, i32, i32),
-    pub keyboard: bool,
+    pub keyboard: Keyboard,
     pub namespace: String,
     /// The output to sit on, by name (see [`Cx::outputs`]); None lets the
     /// compositor choose.
     pub output: Option<String>,
+}
+
+/// Whether a layer surface takes the keyboard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Keyboard {
+    None,
+    /// When clicked, like a window (the desktop).
+    OnDemand,
+    /// All keys while it is up (pickers and other modal overlays).
+    Exclusive,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
