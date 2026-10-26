@@ -15,6 +15,8 @@ tabula-xdg.workspace = true
 zeroize = "1"
 base64 = "0.22"
 sha2 = "0.11"
+data-url = "0.3"
+percent-encoding = "2"
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
@@ -30,3 +32,4 @@ url = "2.5"
 dpi = "0.1"
 euclid = "0.22"
 keyboard-types = "0.8"
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier", "gzip", "brotli"] }

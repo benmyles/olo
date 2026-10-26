@@ -840,6 +840,23 @@ selection, selects the match and scrolls it to the middle. The selection
 is the cursor, so Find Again (⌘G) continues and a click moves the start.
 Not found puts a note in the status line.
 
+### Downloads in NetPositive
+
+Servo 0.7 has no download API, so `apps/browser/src/downloads.rs` finds
+downloads itself and fetches them with ureq on a worker thread (the page's
+cookies, user agent and referrer go along). A user script reports three
+things over the console channel: Servo's "Unknown content type" page (the
+tab goes back and the URL is downloaded), clicks on `a[download]` links
+(also detached anchors clicked from script, and `a.download`, which Servo
+doesn't reflect, is polyfilled), and `blob:` contents, read in the page and
+sent in base64 chunks since only the page can read them. `data:` URLs are
+decoded in process. The context menu adds Download Linked File and
+Download Image. Files go to the XDG download folder as `name.part` and are
+renamed when complete (`name (2).ext` if taken); the name comes from
+Content-Disposition, the `download` attribute or the URL. The Downloads
+window (Window menu) lists them newest first with live progress and rate,
+Stop, Retry (HTTP only), Open and Show (Tracker on the folder).
+
 ### Logins in NetPositive (crates/keychain)
 
 While Passwords runs it serves other Tabula apps on

@@ -604,5 +604,11 @@
   "title": "NetPositive: Find",
   "caption": "Edit \u25b8 Find\u2026 (\u2318F) and Find Again (\u2318G): a BeOS Find window; the match is selected and scrolled to the middle.",
   "image": "2026-10-26/081902-netpositive-find.png"
+ },
+ {
+  "time": "2026-10-26T08:44:00",
+  "title": "NetPositive: Downloads",
+  "caption": "Downloads go straight to ~/Downloads on a worker thread: links the page can't show, download links (also blob: and data: ones made by script), and Download Linked File / Download Image in the context menu. The Downloads window shows live progress and rate, with Stop, Retry, Open and Show.",
+  "image": "2026-10-26/084400-netpositive-downloads.png"
  }
 ]

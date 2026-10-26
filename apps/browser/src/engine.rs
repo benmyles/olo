@@ -69,6 +69,8 @@ pub enum Event {
     LoginUsed { username: String, password: String },
     /// A fill script finished: "filled", "none" or "moved".
     Filled(String),
+    /// The page script saw something to download.
+    Download(crate::downloads::PageDownload),
     /// A find in the page finished (whether it found the text).
     Found(bool),
     /// The page wants a passkey (passkeys.rs's script).
@@ -81,6 +83,7 @@ pub struct Events {
     /// What the capture script's and the passkey script's messages start with.
     login_marker: String,
     passkey_marker: String,
+    download_marker: String,
     /// Text for the next paste a page asks for (we read the clipboard
     /// before telling Servo to paste).
     pub paste: RefCell<Option<String>>,
@@ -157,6 +160,11 @@ impl WebViewDelegate for Events {
             && !used.p.is_empty()
         {
             self.push(&w, Event::LoginUsed { username: used.u, password: used.p });
+        } else if let Some(json) = message.strip_prefix(&self.download_marker) {
+            match serde_json::from_str(json) {
+                Ok(download) => self.push(&w, Event::Download(download)),
+                Err(e) => tracing::warn!("download report: {e}"),
+            }
         } else if let Some(json) = message.strip_prefix(&self.passkey_marker) {
             match serde_json::from_str(json) {
                 Ok(request) => self.push(&w, Event::Passkey(request)),
@@ -183,7 +191,7 @@ pub struct Engine {
     pub servo: Servo,
     pending: Arc<AtomicBool>,
     pub events: Rc<Events>,
-    /// Scripts every page gets (the login capture, passkeys).
+    /// Scripts every page gets (the login capture, passkeys, downloads).
     pub content: Rc<UserContentManager>,
     /// Names our scripts' messages and the passkey answer function.
     pub token: String,
@@ -202,9 +210,11 @@ impl Engine {
         let content = Rc::new(UserContentManager::new(&servo));
         content.add_script(Rc::new(UserScript::from(crate::logins::capture_script(&token))));
         content.add_script(Rc::new(UserScript::from(crate::passkeys::script(&token))));
+        content.add_script(Rc::new(UserScript::from(crate::downloads::script(&token))));
         let events = Events {
             login_marker: crate::logins::marker(&token),
             passkey_marker: crate::passkeys::marker(&token),
+            download_marker: crate::downloads::marker(&token),
             ..Default::default()
         };
         Engine { servo, pending, events: Rc::new(events), content, token }

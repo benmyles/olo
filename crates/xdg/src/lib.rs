@@ -220,6 +220,16 @@ pub fn config_dir() -> PathBuf {
         .join("tabula")
 }
 
+/// A path for display, with the home folder shortened to `~`.
+pub fn display_path(p: &Path) -> String {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else { return p.display().to_string() };
+    match p.strip_prefix(&home) {
+        Ok(rest) if rest.as_os_str().is_empty() => "~".into(),
+        Ok(rest) => format!("~/{}", rest.display()),
+        Err(_) => p.display().to_string(),
+    }
+}
+
 /// A user folder from `user-dirs.dirs` (`"PICTURES"`, `"DESKTOP"`, ...), if
 /// it is set and exists; otherwise None (callers fall back to home).
 pub fn user_dir(name: &str) -> Option<PathBuf> {

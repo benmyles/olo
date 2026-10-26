@@ -65,7 +65,8 @@ as they land (with the commit), add new ones as they come up.
   back/forward/reload/stop/home, zoom, bookmarks and history menus, page
   context menus, `<select>`, dialogs, logins, file uploads, haiku error
   pages, in-place reload, ~~find in page~~ (a script, since Servo 0.7
-  has no API). Still to do: downloads, a scroll indicator (Servo draws no scroll bars),
+  has no API), ~~downloads~~ (our own HTTP, as Servo 0.7 has no download
+  API). Still to do: a scroll indicator (Servo draws no scroll bars),
   favicons in tabs, dark pages (needs Servo to paint a dark page's
   canvas), audio/video in pages (Servo media without gstreamer),
   permission prompts (Servo 0.7 implements none of the features behind

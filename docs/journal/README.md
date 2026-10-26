@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### NetPositive: Downloads
+
+*08:44* — Downloads go straight to ~/Downloads on a worker thread: links the page can't show, download links (also blob: and data: ones made by script), and Download Linked File / Download Image in the context menu. The Downloads window shows live progress and rate, with Stop, Retry, Open and Show.
+
+![NetPositive: Downloads](2026-10-26/084400-netpositive-downloads.png)
+
 ### NetPositive: Find
 
 *08:19* — Edit ▸ Find… (⌘F) and Find Again (⌘G): a BeOS Find window; the match is selected and scrolled to the middle.

@@ -64,10 +64,6 @@ const SOURCE_ROW: f32 = 22.0;
 const STATUS_HEIGHT: f32 = 22.0;
 const FIELD_ROW: f32 = 44.0;
 
-fn small_font() -> FontId {
-    FontId::new(style::PLAIN_SIZE - 1.0, style::plain_font().family)
-}
-
 fn title_font() -> FontId {
     FontId::new(18.0, style::bold())
 }
@@ -287,10 +283,10 @@ fn browser(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
             format!("{n} item{}", if n == 1 { "" } else { "s" })
         }
     };
-    style::label(ui.painter(), status.left() + m::SPACING, status.center().y, Align::Min, text, small_font(), style::c(p.panel_text));
+    style::label(ui.painter(), status.left() + m::SPACING, status.center().y, Align::Min, text, style::small_font(), style::c(p.panel_text));
     if let Conn::Failed(m) = &app.conn {
         let short = m.split('.').next().unwrap_or(m).to_string();
-        style::label(ui.painter(), status.right() - m::SPACING, status.center().y, Align::Max, short, small_font(), style::c(p.failure));
+        style::label(ui.painter(), status.right() - m::SPACING, status.center().y, Align::Max, short, style::small_font(), style::c(p.failure));
     }
 
     // The three panes.
@@ -352,13 +348,13 @@ fn sources_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
             }
             icons::paint(ui.painter(), Rect::from_center_size(pos2(r.left() + m::SPACING + 8.0, r.center().y), vec2(16.0, 16.0)), icon_name);
             let count_text = count.to_string();
-            let count_w = style::label_width(ui.ctx(), &count_text, small_font());
+            let count_w = style::label_width(ui.ctx(), &count_text, style::small_font());
             let mut job = egui::text::LayoutJob::simple_singleline(label.clone(), style::plain_font(), text);
             job.wrap = egui::text::TextWrapping::truncate_at_width(r.width() - 2.0 * m::SPACING - 24.0 - count_w - m::SPACING);
             let g = ui.painter().layout_job(job);
             let pos = style::text_origin(ui.ctx(), &g, r.left() + m::SPACING + 22.0, r.center().y, style::PLAIN_SIZE);
             ui.painter().galley(pos, g, text);
-            style::label(ui.painter(), r.right() - m::SPACING, r.center().y, Align::Max, count_text, small_font(), if selected { text } else { dim(&p) });
+            style::label(ui.painter(), r.right() - m::SPACING, r.center().y, Align::Max, count_text, style::small_font(), if selected { text } else { dim(&p) });
             if response.clicked() {
                 clicked = Some(source.clone());
             }
@@ -441,7 +437,7 @@ fn items_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
             let width = r.right() - x - m::SPACING;
             for (line, font, color, dy) in [
                 (item.title.clone(), style::plain_font(), text, -8.0),
-                (app.subtitle(item), small_font(), if selected { text } else { dim(&p) }, 8.0),
+                (app.subtitle(item), style::small_font(), if selected { text } else { dim(&p) }, 8.0),
             ] {
                 let mut job = egui::text::LayoutJob::simple_singleline(line, font.clone(), color);
                 job.wrap = egui::text::TextWrapping::truncate_at_width(width);
@@ -628,7 +624,7 @@ fn detail_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
         let (r, _) = ui.allocate_exact_size(vec2(width, 34.0), Sense::hover());
         style::hline(ui.painter(), r.left() + m::WINDOW_INSET, r.right() - m::WINDOW_INSET, r.top(), style::shade(&p, p.document_background, 1.15));
         let when = format!("Modified {}   ·   Created {}", date(item.updated_at), date(item.created_at));
-        style::label(ui.painter(), r.left() + m::WINDOW_INSET, r.center().y, Align::Min, when, small_font(), dim(&p));
+        style::label(ui.painter(), r.left() + m::WINDOW_INSET, r.center().y, Align::Min, when, style::small_font(), dim(&p));
     });
 
     if edit {
@@ -744,7 +740,7 @@ fn field_row(ui: &mut Ui, f: &ItemField, revealed: bool) -> Option<FieldAction> 
     }
     let label = if f.title.is_empty() { edit::kind_label(f.field_type).to_lowercase() } else { f.title.clone() };
     let x = r.left() + m::WINDOW_INSET;
-    style::label(ui.painter(), x, r.top() + 13.0, Align::Min, label, small_font(), dim(&p));
+    style::label(ui.painter(), x, r.top() + 13.0, Align::Min, label, style::small_font(), dim(&p));
     let (value, mono) = shown(f, revealed);
     let link = f.field_type == ItemFieldType::Url || (f.field_type == ItemFieldType::Text && f.value.starts_with("http"));
     let color = if link { style::c(p.keyboard_navigation) } else { style::c(p.document_text) };

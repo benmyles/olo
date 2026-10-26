@@ -5,6 +5,7 @@
 //! Servo's GL straight into an embedded subsurface, and a status line.
 //! Input over the page is forwarded from egui (input.rs).
 
+mod downloads;
 mod engine;
 mod find;
 mod input;
@@ -20,6 +21,7 @@ use std::{
 use engine::{Engine, Event, Surface, Wake};
 use euclid::Scale;
 use input::{Pointer, Viewport};
+use downloads::{Download, PageDownload, Source};
 use logins::{Answer, Offer, OfferKind, Purpose};
 use passkeys::{Ask, AskKind, PageRequest};
 use serde::{Deserialize, Serialize};
@@ -37,7 +39,7 @@ use tabula_kit::{
     menu::{self, MenuAnchor, MenuRequest},
     metrics as m,
     style::{self, c, shade},
-    widgets::{self, Button, CheckBox, MenuField, TextControl},
+    widgets::{self, Button, CheckBox, MenuField, ScrollView, StatusBar, TextControl},
 };
 use url::Url;
 
@@ -51,6 +53,9 @@ const TOOL: f32 = m::CONTROL_HEIGHT + m::TIGHT;
 /// The bars offering to save a login or asking about a passkey.
 const OFFER_HEIGHT: f32 = m::CONTROL_HEIGHT + 2.0 * m::SPACING;
 const PASSKEY_CHOICE_WIDTH: f32 = 180.0;
+const DOWNLOAD_ROW: f32 = 60.0;
+/// The most a page may hand over as a `blob:` download.
+const BLOB_MAX: usize = 1 << 30;
 const FIND_W: f32 = 340.0;
 const FIND_H: f32 =
     2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + m::SPACING + 4.0 * m::MARK_ROW + 3.0 * m::TIGHT + m::SPACING + m::CONTROL_HEIGHT;
@@ -193,6 +198,7 @@ enum Win {
     Sheet(Box<Sheet>),
     /// The Find window for a browser window.
     Find { target: WindowId },
+    Downloads,
 }
 
 struct NetPositive {
@@ -204,6 +210,10 @@ struct NetPositive {
     pasted: bool,
     proxy: Proxy,
     search: find::Search,
+    downloads: Vec<Download>,
+    next_download: u64,
+    /// `blob:` downloads arriving from pages in pieces.
+    blobs: BTreeMap<(WebViewId, u64), (String, Vec<u8>)>,
 }
 
 impl NetPositive {
@@ -370,7 +380,7 @@ impl NetPositive {
             .filter(|(_, w)| match w {
                 Win::Sheet(s) => sheet_owner(s) == Some(win),
                 Win::Find { target } => *target == win,
-                Win::Browser(_) => false,
+                Win::Browser(_) | Win::Downloads => false,
             })
             .map(|(&id, _)| id)
             .collect();
@@ -473,6 +483,7 @@ impl NetPositive {
                     logins::ask(self.proxy.clone(), win, view, url, Purpose::Check(Box::new(offer)), request, false);
                 }
                 Event::Passkey(request) => self.passkey_request(cx, win, i, request),
+                Event::Download(download) => self.page_download(cx, win, i, id, download),
                 Event::Found(found) => {
                     let missing = format!("“{}” isn’t on this page.", self.search.text);
                     if !found && let Some(b) = self.browser(win) {
@@ -600,6 +611,12 @@ impl NetPositive {
                                 _ => label.as_str(),
                             };
                             items = items.item(label, format!("{n}"), None).enabled(*enabled);
+                            // Ours, after Servo's Copy for the link or image.
+                            match action {
+                                ContextMenuAction::CopyLink => items = items.item("Download Linked File", "dl-link", None),
+                                ContextMenuAction::CopyImageLink => items = items.item("Download Image", "dl-image", None),
+                                _ => {}
+                            }
                         }
                         ContextMenuItem::Separator => sep = true,
                     }
@@ -718,6 +735,7 @@ impl NetPositive {
                 }
             }
             "find" => self.open_find(cx, win),
+            "downloads" => self.show_downloads(cx),
             "find-again" => {
                 if self.search.text.is_empty() {
                     self.open_find(cx, win);
@@ -777,6 +795,10 @@ impl NetPositive {
                 }
                 if let Some(n) = command.strip_prefix("tab:").and_then(|n| n.parse::<usize>().ok()) {
                     return self.select_tab(cx, win, n);
+                }
+                if let Some(url) = command.strip_prefix("download:") {
+                    let referer = self.browser(win).and_then(|b| b.tab()).map(|t| t.url.clone());
+                    return self.start_download(cx, url.to_string(), None, referer);
                 }
                 if let Some((vault, id)) = command.strip_prefix("fill:").and_then(|r| r.split_once('/')) {
                     let (vault, id) = (vault.to_string(), id.to_string());
@@ -1039,7 +1061,8 @@ impl NetPositive {
         {
             ui.ctx().set_cursor_icon(cursor_icon(t.cursor));
         }
-        let keyboard = page.has_focus();
+        // Not the Enter that went to the location field and handed the page focus.
+        let keyboard = page.has_focus() && navigate.is_none();
         if keyboard {
             ui.memory_mut(|m| {
                 m.set_focus_lock_filter(
@@ -1098,7 +1121,15 @@ impl NetPositive {
             menu::request_popup(ui.ctx(), MenuRequest { menu, source: Id::unique("page-menu"), anchor, selected });
         }
         if let Some(chosen) = widgets::popup_result(ui.ctx(), Id::unique("page-menu")) {
-            if let Some(menu) = b.menu.take()
+            if chosen.starts_with("dl-")
+                && let Some(menu) = b.menu.take()
+            {
+                let info = menu.element_info();
+                if let Some(url) = if chosen == "dl-link" { &info.link_url } else { &info.image_url } {
+                    commands.push(format!("download:{url}"));
+                }
+                menu.dismiss();
+            } else if let Some(menu) = b.menu.take()
                 && let Ok(n) = chosen.parse::<usize>()
                 && let Some(ContextMenuItem::Item { action, .. }) = menu.items().get(n).cloned()
             {
@@ -1141,6 +1172,207 @@ impl NetPositive {
                 self.close_tab(cx, win, n);
             } else {
                 self.command_for(cx, win, &cmd);
+            }
+        }
+    }
+
+    /// The page in tab `i` (view `view`) has something to download.
+    fn page_download(&mut self, cx: &mut Cx, win: WindowId, i: usize, view: WebViewId, download: PageDownload) {
+        let Some(b) = self.browser(win) else { return };
+        let tab = &b.tabs[i];
+        let page = tab.url.clone();
+        match download {
+            PageDownload::Unknown { url } => {
+                if url != page {
+                    return;
+                }
+                // Servo can't show it: fetch it as a file and go back.
+                if tab.can_back
+                    && let Some(view) = &tab.view
+                {
+                    view.go_back(1);
+                }
+                self.start_download(cx, url, None, None);
+            }
+            PageDownload::Link { url, name } => self.start_download(cx, url, Some(name), Some(page)),
+            PageDownload::Data { id, name, seq, last, data } => {
+                use base64::Engine as _;
+                let entry = self.blobs.entry((view, id)).or_insert_with(|| (name, Vec::new()));
+                let fits = entry.1.len() < BLOB_MAX;
+                match base64::engine::general_purpose::STANDARD.decode(data) {
+                    Ok(bytes) if fits && (seq == 0 || !entry.1.is_empty()) => entry.1.extend_from_slice(&bytes),
+                    _ => {
+                        self.blobs.remove(&(view, id));
+                        return;
+                    }
+                }
+                if last && let Some((name, bytes)) = self.blobs.remove(&(view, id)) {
+                    self.start(cx, String::new(), Source::Bytes(bytes), Some(name));
+                }
+            }
+        }
+    }
+
+    /// Download `url` (with Servo's cookies for it) into the Downloads folder.
+    fn start_download(&mut self, cx: &mut Cx, url: String, suggested: Option<String>, referer: Option<String>) {
+        let Ok(parsed) = Url::parse(&url) else { return };
+        if !matches!(parsed.scheme(), "http" | "https" | "data") {
+            if let Some(b) = self.front.and_then(|w| self.browser(w))
+                && let Some(t) = b.tabs.get_mut(b.active)
+            {
+                t.status = Some(format!("NetPositive can’t download {} addresses.", parsed.scheme()));
+            }
+            return;
+        }
+        let cookies = if parsed.scheme() == "data" {
+            String::new()
+        } else {
+            let jar = self.engine.servo.site_data_manager().cookies_for_url(parsed, servo::CookieSource::HTTP);
+            jar.iter().map(|c| format!("{}={}", c.name(), c.value())).collect::<Vec<_>>().join("; ")
+        };
+        let user_agent = servo::prefs::get().user_agent.clone();
+        let source = Source::Http { url: url.clone(), cookies, referer, user_agent };
+        self.start(cx, url, source, suggested);
+    }
+
+    fn start(&mut self, cx: &mut Cx, url: String, source: Source, suggested: Option<String>) {
+        self.next_download += 1;
+        let id = self.next_download;
+        let name = suggested
+            .clone()
+            .filter(|s| !s.is_empty())
+            .or_else(|| downloads::url_name(&url))
+            .map(|n| downloads::clean_name(&n))
+            .unwrap_or_else(|| "download".into());
+        let (download, cancel) = Download::new(id, url, name);
+        self.downloads.push(download);
+        downloads::start(self.proxy.clone(), id, source, suggested, downloads::folder(), cancel);
+        self.show_downloads(cx);
+    }
+
+    fn show_downloads(&mut self, cx: &mut Cx) {
+        if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Downloads)) {
+            cx.redraw(id);
+            return cx.activate(id);
+        }
+        let id = cx.open_window(WindowOptions::new("Downloads", 440, 300).min_size(320, 160));
+        self.windows.insert(id, Win::Downloads);
+    }
+
+    fn downloads_ui(&mut self, cx: &mut Cx, _win: WindowId, ui: &mut egui::Ui) {
+        let p = style::palette(ui.ctx());
+        let full = ui.max_rect();
+        let painter = ui.painter().clone();
+        painter.rect_filled(full, 0.0, c(p.panel_background));
+        let bottom = full.bottom() - m::CONTROL_HEIGHT - 2.0 * m::SPACING;
+        let list = Rect::from_min_max(full.min + vec2(m::SPACING, m::SPACING), pos2(full.right() - m::SPACING, bottom));
+        enum Act {
+            Stop(u64),
+            Open(PathBuf),
+            Show(PathBuf),
+            Retry(u64),
+        }
+        let mut acts = Vec::new();
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(list));
+        ScrollView::new("downloads").background(p.document_background).show_rows(
+            &mut child,
+            DOWNLOAD_ROW,
+            self.downloads.len(),
+            |ui, range| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                for row in range {
+                    // Newest first.
+                    let d = &self.downloads[self.downloads.len() - 1 - row];
+                    let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), DOWNLOAD_ROW), Sense::hover());
+                    let painter = ui.painter();
+                    if row > 0 {
+                        style::hline(painter, r.left(), r.right(), r.top(), shade(&p, p.document_background, 1.147));
+                    }
+                    let kind = tabula_kit::files::kind_for(Path::new(&d.name), false, 0o644);
+                    let icon = Rect::from_min_size(pos2(r.left() + m::SPACING, r.center().y - 16.0), vec2(32.0, 32.0));
+                    icons::paint(painter, icon, kind.icon());
+                    // Buttons, from the right.
+                    let mut right = r.right() - m::SPACING;
+                    let buttons: &[(&str, u8)] = match d.state {
+                        downloads::State::Running => &[("Stop", 0)],
+                        downloads::State::Done => &[("Show", 2), ("Open", 1)],
+                        _ => &[("Retry", 3)],
+                    };
+                    for &(label, what) in buttons {
+                        let w = style::label_width(ui.ctx(), label, style::plain_font()) + 2.0 * m::CONTROL_PAD;
+                        let w = w.max(64.0);
+                        let b = Rect::from_min_size(pos2(right - w, r.center().y - m::CONTROL_HEIGHT / 2.0), vec2(w, m::CONTROL_HEIGHT));
+                        right -= w + m::SPACING;
+                        if ui.place(b, Button::new(label).min_width(w)).clicked() {
+                            acts.push(match (what, &d.path) {
+                                (0, _) => Act::Stop(d.id),
+                                (1, Some(path)) => Act::Open(path.clone()),
+                                (2, Some(path)) => Act::Show(path.clone()),
+                                _ => Act::Retry(d.id),
+                            });
+                        }
+                    }
+                    let x = icon.right() + m::SPACING;
+                    let text = Rect::from_min_max(pos2(x, r.top()), pos2(right, r.bottom()));
+                    let clip = ui.painter().with_clip_rect(text);
+                    let color = c(p.document_text);
+                    style::label(&clip, x, r.top() + 14.0, Align::Min, &d.name, style::plain_font(), color);
+                    let status = d.status();
+                    let failed = matches!(d.state, downloads::State::Failed(_));
+                    let dim = if failed { c(p.failure) } else { style::disabled_text(&p) };
+                    if d.state == downloads::State::Running && d.total.is_some() {
+                        let bar = Rect::from_min_max(pos2(x, r.top() + 26.0), pos2(text.right(), r.top() + 36.0));
+                        ui.place(bar, StatusBar::new(d.fraction()).bar_height(10.0));
+                        style::label(&clip, x, r.top() + 46.0, Align::Min, status, style::small_font(), dim);
+                    } else {
+                        style::label(&clip, x, r.top() + 34.0, Align::Min, status, style::small_font(), dim);
+                    }
+                }
+            },
+        );
+        if self.downloads.is_empty() {
+            let text = style::disabled_text(&p);
+            style::label(&painter, list.center().x, list.center().y, Align::Center, "No downloads", style::plain_font(), text);
+        }
+        // Clear (the finished ones) and where they go.
+        let y = bottom + m::SPACING;
+        let finished = self.downloads.iter().any(|d| d.state != downloads::State::Running);
+        let clear = Rect::from_min_size(pos2(full.right() - m::SPACING - m::BUTTON_MIN_WIDTH, y), vec2(m::BUTTON_MIN_WIDTH, m::CONTROL_HEIGHT));
+        if ui.add_enabled_ui(finished, |ui| ui.put(clear, Button::new("Clear"))).inner.clicked() {
+            self.downloads.retain(|d| d.state == downloads::State::Running);
+        }
+        let folder = downloads::folder();
+        let label = format!("Saved in {}", tabula_xdg::display_path(&folder));
+        style::label(&painter, full.left() + m::SPACING, clear.center().y, Align::Min, label, style::plain_font(), c(p.panel_text));
+        for act in acts {
+            match act {
+                Act::Stop(id) => {
+                    if let Some(d) = self.downloads.iter().find(|d| d.id == id) {
+                        d.stop();
+                    }
+                }
+                Act::Open(path) => {
+                    if let Err(e) = tabula_xdg::open::open(&tabula_xdg::open::Target::Path(path)) {
+                        tracing::warn!("couldn't open the download: {e}");
+                    }
+                }
+                Act::Show(path) => {
+                    let dir = path.parent().map(Path::to_path_buf).unwrap_or(folder.clone());
+                    if let Some(program) = tabula_xdg::find_program("tabula-tracker") {
+                        let _ = tabula_xdg::open::spawn(&[program.into_os_string(), dir.into_os_string()]);
+                    }
+                }
+                Act::Retry(id) => {
+                    if let Some(i) = self.downloads.iter().position(|d| d.id == id) {
+                        let old = self.downloads.remove(i);
+                        if old.url.is_empty() {
+                            // Page contents are gone once handed over.
+                            self.downloads.insert(i, old);
+                        } else {
+                            self.start_download(cx, old.url.clone(), Some(old.name.clone()), None);
+                        }
+                    }
+                }
             }
         }
     }
@@ -1534,6 +1766,7 @@ impl App for NetPositive {
             }
             Some(Win::Sheet(_)) => self.sheet_ui(cx, window, ui),
             Some(&Win::Find { target }) => self.find_ui(cx, window, ui, target),
+            Some(Win::Downloads) => self.downloads_ui(cx, window, ui),
             None => {}
         }
     }
@@ -1598,6 +1831,7 @@ impl App for NetPositive {
             let key = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9].get(i).copied();
             tabs = tabs.item(label, format!("tab:{i}"), key).checked(i == b.active);
         }
+        tabs = tabs.separator().item("Downloads", "downloads", None);
         Some(vec![file, edit, view, go, bookmarks, tabs])
     }
 
@@ -1610,7 +1844,7 @@ impl App for NetPositive {
     fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
         match self.windows.get(&window) {
             Some(Win::Browser(_)) => self.close_browser(cx, window),
-            Some(Win::Sheet(_) | Win::Find { .. }) => {
+            Some(Win::Sheet(_) | Win::Find { .. } | Win::Downloads) => {
                 // Closing a sheet cancels it (dropping the request does).
                 self.windows.remove(&window);
                 cx.close_window(window);
@@ -1625,6 +1859,18 @@ impl App for NetPositive {
         }
         let message = match message.downcast::<Answer>() {
             Ok(answer) => return self.answer(cx, *answer),
+            Err(m) => m,
+        };
+        let message = match message.downcast::<downloads::Update>() {
+            Ok(update) => {
+                if let Some(d) = self.downloads.iter_mut().find(|d| d.id == update.id) {
+                    d.update(*update);
+                }
+                if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Downloads)) {
+                    cx.redraw(id);
+                }
+                return;
+            }
             Err(m) => m,
         };
         if let Ok(launch) = message.downcast::<Launch>() {
@@ -2023,6 +2269,9 @@ fn main() {
             front: None,
             pasted: false,
             search: find::Search::default(),
+            downloads: Vec::new(),
+            next_download: 0,
+            blobs: BTreeMap::new(),
             proxy: cx.proxy(),
         };
         let restored: Option<Saved> = cx.restored_state().and_then(|s| serde_json::from_str(&s).ok());

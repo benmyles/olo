@@ -59,6 +59,11 @@ pub fn plain_font() -> FontId {
     FontId::proportional(PLAIN_SIZE)
 }
 
+/// A point smaller than plain: secondary lines under a name.
+pub fn small_font() -> FontId {
+    FontId::proportional(PLAIN_SIZE - 1.0)
+}
+
 pub fn bold_font() -> FontId {
     FontId::new(PLAIN_SIZE, bold())
 }
