@@ -508,5 +508,11 @@
   "title": "Viewer: AVIF",
   "caption": "AVIF decoded natively with avif-parse and the BSD-licensed rav1d AV1 decoder, with our own YUV to RGB; HEIC through heifer and Ogg Opus playback through opus-decoder land in the same change",
   "image": "2026-10-26/044300-viewer-avif.png"
+ },
+ {
+  "time": "2026-10-26T05:38:31",
+  "title": "Viewer: video playback",
+  "caption": "H.264 in mp4 and Matroska decoded with OpenH264 a few frames ahead and shown against a clock that follows the sound; play, pause, seek and replay, and the screen stays awake while it plays",
+  "image": "2026-10-26/053831-viewer-video-playback.png"
  }
 ]

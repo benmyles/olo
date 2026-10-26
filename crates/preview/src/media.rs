@@ -1,5 +1,6 @@
 //! Audio and video: tags, cover art and facts (lofty), and a poster frame
-//! for H.264 video decoded in process (mp4 / Matroska demuxing, OpenH264).
+//! for H.264 video decoded in process (mp4 / Matroska demuxing, OpenH264);
+//! `video` plays it.
 //! Playback lives in `audio.rs`.
 
 use std::{
@@ -163,6 +164,7 @@ fn mp4(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
     if codec != "H.264" {
         return Ok(());
     }
+    m.playable = true;
     let sps = t.sequence_parameter_set().map_err(|e| e.to_string())?.to_vec();
     let pps = t.picture_parameter_set().map_err(|e| e.to_string())?.to_vec();
     let count = t.sample_count();
@@ -227,6 +229,7 @@ fn mkv(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
         return Ok(());
     }
     let Some((len, sets)) = private.as_deref().and_then(parse_avcc) else { return Ok(()) };
+    m.playable = true;
     let mut dec = openh264::decoder::Decoder::new().map_err(|e| e.to_string())?;
     let mut frame = matroska_demuxer::Frame::default();
     let mut annexb = Vec::new();
@@ -275,7 +278,7 @@ fn codec_name(id: &str) -> &'static str {
 }
 
 /// The NAL length size and parameter sets in an avcC record.
-fn parse_avcc(b: &[u8]) -> Option<(usize, Vec<Vec<u8>>)> {
+pub(crate) fn parse_avcc(b: &[u8]) -> Option<(usize, Vec<Vec<u8>>)> {
     if b.len() < 7 || b[0] != 1 {
         return None;
     }
@@ -295,7 +298,7 @@ fn parse_avcc(b: &[u8]) -> Option<(usize, Vec<Vec<u8>>)> {
 }
 
 /// Length-prefixed NAL units (as stored in mp4/mkv) to start-code form.
-fn avcc_to_annexb(data: &[u8], len: usize, out: &mut Vec<u8>) {
+pub(crate) fn avcc_to_annexb(data: &[u8], len: usize, out: &mut Vec<u8>) {
     let mut at = 0;
     while at + len <= data.len() {
         let n = data[at..at + len].iter().fold(0usize, |a, &b| a << 8 | b as usize);
@@ -307,7 +310,7 @@ fn avcc_to_annexb(data: &[u8], len: usize, out: &mut Vec<u8>) {
     }
 }
 
-fn yuv_image(yuv: &openh264::decoder::DecodedYUV<'_>) -> Image {
+pub(crate) fn yuv_image(yuv: &openh264::decoder::DecodedYUV<'_>) -> Image {
     let (w, h) = yuv.dimensions();
     let mut rgba = vec![0u8; w * h * 4];
     yuv.write_rgba8(&mut rgba);

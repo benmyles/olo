@@ -65,8 +65,9 @@ as they land (with the commit), add new ones as they come up.
   fprintd natively, browser integration.
 - Viewer: ~~image zoom/pan~~ (full resolution up to the texture limit,
   View menu, pinch/⌘-scroll/double-click, drag and scroll to pan; halved
-  levels for smooth fitting); video playback (frames + audio),
-  ~~AVIF/HEIC/Opus~~.
+  levels for smooth fitting); ~~video playback (frames + audio)~~ (H.264 in mp4/Matroska, synced to
+  the sound, seeking, keeps the screen awake; AV1/VP9/HEVC video still
+  show facts only), ~~AVIF/HEIC/Opus~~.
 
 ## app_server
 

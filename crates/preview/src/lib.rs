@@ -13,6 +13,7 @@ pub mod media;
 pub mod opus;
 pub mod pdf;
 pub mod text;
+pub mod video;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -80,6 +81,7 @@ pub struct Preview {
     /// PDF pages asked of the worker and not yet back.
     requested: HashSet<usize>,
     player: Option<audio::Player>,
+    video: Option<video::Video>,
     sheet: usize,
     list: ListState,
     /// The font family registered for a font preview.
@@ -130,6 +132,7 @@ impl Preview {
             textures: HashMap::new(),
             requested: HashSet::new(),
             player: None,
+            video: None,
             sheet: 0,
             list: ListState::default(),
             font: None,
@@ -160,6 +163,7 @@ impl Preview {
         self.textures.clear();
         self.requested.clear();
         self.player = None;
+        self.video = None;
         self.sheet = 0;
         self.list = ListState::default();
         self.started = Instant::now();
@@ -182,6 +186,10 @@ impl Preview {
                 {
                     self.player = Some(audio::Player::start(&self.item.path));
                 }
+                self.video = match &b {
+                    Body::Media(m) if m.playable && m.video => Some(video::Video::start(&self.item.path, m.duration.unwrap_or(0.0))),
+                    _ => None,
+                };
                 self.body = Some(b);
                 self.failed = None;
                 return true;
@@ -212,6 +220,7 @@ impl Preview {
     pub fn stop(&mut self) {
         self.cancel.store(true, Ordering::Relaxed);
         self.player = None;
+        self.video = None;
     }
 
     /// The window size that suits what is shown, within the screen.
@@ -248,8 +257,11 @@ impl Preview {
                 Body::Listing { items, .. } => (560.0, (items.len() as f32 * m::LIST_ROW + 22.0).clamp(200.0, max_h)),
                 Body::Media(md) => match (&md.picture, md.video) {
                     (Some(p), true) => {
-                        let (w, h) = fit(p.size[0] as f32, p.size[1] as f32 + 70.0);
-                        (w.max(480.0), h)
+                        // Only the picture scales; the rows beneath keep their height.
+                        let extra = if md.playable { VIDEO_INFO + TRANSPORT } else { VIDEO_INFO };
+                        let (pw, ph) = (p.size[0] as f32, p.size[1] as f32);
+                        let k = (max_w / pw).min((max_h - extra) / ph).min(1.0);
+                        ((pw * k).round().max(480.0), (ph * k).round() + extra)
                     }
                     _ => (560.0, 220.0),
                 },
@@ -333,8 +345,17 @@ impl Preview {
         }
     }
 
-    /// Toggle audio playback (Space or P in a viewer).
+    /// A video is playing: keep the screen awake.
+    pub fn playing_video(&self) -> bool {
+        self.video.as_ref().is_some_and(|v| v.playing())
+    }
+
+    /// Toggle sound or video playback (Space or P in a viewer).
     pub fn toggle_playback(&self) -> bool {
+        if let Some(v) = &self.video {
+            v.toggle();
+            return true;
+        }
         match &self.player {
             Some(p) => {
                 p.toggle();
@@ -488,7 +509,7 @@ impl Preview {
                     }
                 });
             }
-            Body::Media(md) => media_view(ui, r, md, &mut self.textures, self.player.as_ref()),
+            Body::Media(md) => media_view(ui, r, md, &mut self.textures, self.player.as_ref(), self.video.as_ref()),
             Body::Font { data, .. } => {
                 let family = format!("ql-font-{id}");
                 if self.font.as_deref() != Some(&family) {
@@ -800,29 +821,178 @@ fn column_name(mut k: usize) -> String {
     }
 }
 
-fn media_view(ui: &mut Ui, r: Rect, md: &media::Media, textures: &mut HashMap<usize, TextureHandle>, player: Option<&audio::Player>) {
+/// Below a video: its title and facts, and the transport when it plays.
+const VIDEO_INFO: f32 = 2.0 * m::LABEL_ROW + 2.0 * m::SPACING;
+const TRANSPORT: f32 = 34.0;
+
+/// What the transport row drives: a sound or a video.
+trait Transport {
+    fn toggle(&self);
+    fn seek(&self, secs: f64);
+    fn position(&self) -> f64;
+    fn duration(&self) -> f64;
+    fn playing(&self) -> bool;
+    fn error(&self) -> Option<String>;
+}
+
+impl Transport for audio::Player {
+    fn toggle(&self) {
+        audio::Player::toggle(self)
+    }
+    fn seek(&self, secs: f64) {
+        audio::Player::seek(self, secs)
+    }
+    fn position(&self) -> f64 {
+        self.state.position_ms.load(Ordering::Relaxed) as f64 / 1000.0
+    }
+    fn duration(&self) -> f64 {
+        self.state.duration_ms.load(Ordering::Relaxed) as f64 / 1000.0
+    }
+    fn playing(&self) -> bool {
+        self.state.playing.load(Ordering::Relaxed)
+    }
+    fn error(&self) -> Option<String> {
+        self.state.error.lock().unwrap().clone()
+    }
+}
+
+impl Transport for video::Video {
+    fn toggle(&self) {
+        video::Video::toggle(self)
+    }
+    fn seek(&self, secs: f64) {
+        video::Video::seek(self, secs)
+    }
+    fn position(&self) -> f64 {
+        video::Video::position(self)
+    }
+    fn duration(&self) -> f64 {
+        video::Video::duration(self)
+    }
+    fn playing(&self) -> bool {
+        video::Video::playing(self)
+    }
+    fn error(&self) -> Option<String> {
+        video::Video::error(self)
+    }
+}
+
+/// Play/pause, elapsed time, a seek bar and the time left, centred on
+/// `y` between `x` and `right`.
+fn transport(ui: &mut Ui, x: f32, right: f32, y: f32, t: &dyn Transport, duration: Option<f64>) {
+    let p = style::palette(ui.ctx());
+    if let Some(e) = t.error() {
+        style::label(ui.painter(), x, y, Align::Min, &e, style::plain_font(), style::disabled_text(&p));
+        return;
+    }
+    let br = Rect::from_center_size(pos2(x + 13.0, y), vec2(26.0, 22.0));
+    let playing = t.playing();
+    let resp = ui.interact(br, ui.make_persistent_id("ql-play"), Sense::click());
+    style::raised(ui.painter(), br, &p);
+    if resp.is_pointer_button_down_on() {
+        style::sunken(ui.painter(), br, &p, false);
+    }
+    let gc = c(p.control_text);
+    if playing {
+        for dx in [-3.5, 2.5] {
+            ui.painter().rect_filled(Rect::from_center_size(br.center() + vec2(dx, 0.0), vec2(3.0, 10.0)), 0.0, gc);
+        }
+    } else {
+        let cx = br.center();
+        ui.painter().add(egui::Shape::convex_polygon(
+            vec![cx + vec2(-3.5, -5.5), cx + vec2(5.5, 0.0), cx + vec2(-3.5, 5.5)],
+            gc,
+            egui::Stroke::NONE,
+        ));
+    }
+    if resp.clicked() {
+        t.toggle();
+    }
+    if ui.input(|i| i.key_pressed(Key::P)) {
+        t.toggle();
+    }
+    let pos = t.position();
+    let dur = duration.unwrap_or_else(|| t.duration()).max(0.001);
+    let font = style::mono_font(11.0);
+    let left_t = media::format_duration(pos);
+    let right_t = format!("-{}", media::format_duration((dur - pos).max(0.0)));
+    style::label(ui.painter(), br.right() + 8.0, y, Align::Min, &left_t, font.clone(), style::disabled_text(&p));
+    style::label(ui.painter(), right, y, Align::Max, &right_t, font, style::disabled_text(&p));
+    let bar = Rect::from_min_max(pos2(br.right() + 52.0, y - 3.0), pos2(right - 52.0, y + 3.0));
+    let bar = style::snap(ui.ctx(), bar);
+    style::sunken(ui.painter(), bar.expand(1.0), &p, false);
+    ui.painter().rect_filled(bar, 0.0, c(p.document_background));
+    let frac = (pos / dur).clamp(0.0, 1.0) as f32;
+    ui.painter().rect_filled(Rect::from_min_max(bar.min, pos2(bar.left() + bar.width() * frac, bar.bottom())), 0.0, c(p.keyboard_navigation));
+    let seek = ui.interact(bar.expand2(vec2(0.0, 6.0)), ui.make_persistent_id("ql-seek"), Sense::click_and_drag());
+    if (seek.clicked() || seek.dragged())
+        && let Some(pt) = seek.interact_pointer_pos()
+    {
+        let f = ((pt.x - bar.left()) / bar.width()).clamp(0.0, 1.0) as f64;
+        t.seek(f * dur);
+    }
+    if playing {
+        ui.ctx().request_repaint_after(Duration::from_millis(100));
+    }
+}
+
+fn media_view(
+    ui: &mut Ui,
+    r: Rect,
+    md: &media::Media,
+    textures: &mut HashMap<usize, TextureHandle>,
+    player: Option<&audio::Player>,
+    video: Option<&video::Video>,
+) {
     let p = style::palette(ui.ctx());
     ui.painter().rect_filled(r, 0.0, c(p.panel_background));
     let ink = c(p.panel_text);
     if md.video {
-        // The poster, then the facts beneath it.
-        let info_h = 64.0;
+        // The picture, the transport, then the facts beneath.
+        let info_h = VIDEO_INFO + if video.is_some() { TRANSPORT } else { 0.0 };
         let area = Rect::from_min_max(r.min, pos2(r.right(), r.bottom() - info_h));
-        match &md.picture {
-            Some(img) => {
-                let tex = texture(ui.ctx(), textures, 0, img);
-                let size = vec2(img.size[0] as f32, img.size[1] as f32);
+        if let Some(v) = video {
+            // Texture 1 is the playing frame, 0 the poster until it comes.
+            let (frame, next) = v.tick();
+            if let Some(img) = frame {
+                match textures.get_mut(&1) {
+                    Some(t) if t.size() == img.size => t.set(img, egui::TextureOptions::LINEAR),
+                    _ => {
+                        textures.insert(1, ui.ctx().load_texture("ql-video", img, egui::TextureOptions::LINEAR));
+                    }
+                }
+            }
+            if let Some(d) = next {
+                ui.ctx().request_repaint_after(d);
+            }
+        }
+        let shown = textures.get(&1).cloned().or_else(|| md.picture.as_ref().map(|img| texture(ui.ctx(), textures, 0, img).clone()));
+        match shown {
+            Some(tex) => {
+                let size = tex.size_vec2();
                 let k = (area.width() / size.x).min(area.height() / size.y).min(1.0);
                 let ir = style::snap(ui.ctx(), Rect::from_center_size(area.center(), size * k));
                 ui.painter().rect_filled(area, 0.0, Color32::BLACK);
                 ui.painter().image(tex.id(), ir, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+                // A click on the picture plays or pauses.
+                if let Some(v) = video
+                    && ui.interact(area, ui.make_persistent_id("ql-video"), Sense::click()).clicked()
+                {
+                    v.toggle();
+                }
             }
             None => {
                 let ir = Rect::from_center_size(area.center(), vec2(96.0, 96.0));
                 icons::paint(ui.painter(), ir, "video");
             }
         }
-        let mut y = area.bottom() + m::SPACING + m::LABEL_ROW / 2.0;
+        let mut y = area.bottom();
+        if let Some(v) = video {
+            y += TRANSPORT / 2.0 + 2.0;
+            transport(ui, r.left() + m::WINDOW_INSET, r.right() - m::WINDOW_INSET, y, v, md.duration);
+            y += TRANSPORT / 2.0 - 2.0;
+        }
+        y += m::SPACING + m::LABEL_ROW / 2.0;
         style::label(ui.painter(), r.left() + m::WINDOW_INSET, y, Align::Min, &md.title, style::bold_font(), ink);
         y += m::LABEL_ROW;
         let facts = md.rows.iter().map(|(_, v)| v.as_str()).collect::<Vec<_>>().join("  ·  ");
@@ -872,62 +1042,8 @@ fn media_view(ui: &mut Ui, r: Rect, md: &media::Media, textures: &mut HashMap<us
         y += m::LABEL_ROW;
     }
     let Some(player) = player else { return };
-    let st = &player.state;
-    // Transport: play/pause, elapsed, a seek bar, remaining.
     let ty = y - m::LABEL_ROW / 2.0 + m::SPACING * 2.0 + 11.0;
-    if let Some(e) = st.error.lock().unwrap().as_ref() {
-        line(ui, ty, e, style::plain_font(), style::disabled_text(&p));
-        return;
-    }
-    let br = Rect::from_center_size(pos2(x + 13.0, ty), vec2(26.0, 22.0));
-    let playing = st.playing.load(Ordering::Relaxed);
-    let resp = ui.interact(br, ui.make_persistent_id("ql-play"), Sense::click());
-    style::raised(ui.painter(), br, &p);
-    if resp.is_pointer_button_down_on() {
-        style::sunken(ui.painter(), br, &p, false);
-    }
-    let gc = c(p.control_text);
-    if playing {
-        for dx in [-3.5, 2.5] {
-            ui.painter().rect_filled(Rect::from_center_size(br.center() + vec2(dx, 0.0), vec2(3.0, 10.0)), 0.0, gc);
-        }
-    } else {
-        let cx = br.center();
-        ui.painter().add(egui::Shape::convex_polygon(
-            vec![cx + vec2(-3.5, -5.5), cx + vec2(5.5, 0.0), cx + vec2(-3.5, 5.5)],
-            gc,
-            egui::Stroke::NONE,
-        ));
-    }
-    if resp.clicked() {
-        player.toggle();
-    }
-    if ui.input(|i| i.key_pressed(Key::P)) {
-        player.toggle();
-    }
-    let pos = st.position_ms.load(Ordering::Relaxed) as f64 / 1000.0;
-    let dur = md.duration.unwrap_or(st.duration_ms.load(Ordering::Relaxed) as f64 / 1000.0).max(0.001);
-    let font = style::mono_font(11.0);
-    let left_t = media::format_duration(pos);
-    let right_t = format!("-{}", media::format_duration((dur - pos).max(0.0)));
-    style::label(ui.painter(), br.right() + 8.0, ty, Align::Min, &left_t, font.clone(), style::disabled_text(&p));
-    style::label(ui.painter(), right, ty, Align::Max, &right_t, font, style::disabled_text(&p));
-    let bar = Rect::from_min_max(pos2(br.right() + 52.0, ty - 3.0), pos2(right - 52.0, ty + 3.0));
-    let bar = style::snap(ui.ctx(), bar);
-    style::sunken(ui.painter(), bar.expand(1.0), &p, false);
-    ui.painter().rect_filled(bar, 0.0, c(p.document_background));
-    let frac = (pos / dur).clamp(0.0, 1.0) as f32;
-    ui.painter().rect_filled(Rect::from_min_max(bar.min, pos2(bar.left() + bar.width() * frac, bar.bottom())), 0.0, c(p.keyboard_navigation));
-    let seek = ui.interact(bar.expand2(vec2(0.0, 6.0)), ui.make_persistent_id("ql-seek"), Sense::click_and_drag());
-    if (seek.clicked() || seek.dragged())
-        && let Some(pt) = seek.interact_pointer_pos()
-    {
-        let f = ((pt.x - bar.left()) / bar.width()).clamp(0.0, 1.0) as f64;
-        player.seek(f * dur);
-    }
-    if playing {
-        ui.ctx().request_repaint_after(Duration::from_millis(100));
-    }
+    transport(ui, x, right, ty, player, md.duration);
 }
 
 fn font_view(ui: &mut Ui, r: Rect, family: FontFamily) {

@@ -64,6 +64,7 @@ use wayland_protocols::{
             wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,
             wp_fractional_scale_v1::{self, WpFractionalScaleV1},
         },
+        idle_inhibit::zv1::client::{zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1, zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1},
         viewporter::client::{wp_viewport::WpViewport, wp_viewporter::WpViewporter},
     },
     xdg::shell::client::xdg_positioner,
@@ -133,6 +134,8 @@ struct Surface {
     scale: f64,
     fractional: Option<WpFractionalScaleV1>,
     viewport: Option<WpViewport>,
+    /// Held while the window asks the screen to stay awake.
+    inhibitor: Option<ZwpIdleInhibitorV1>,
     configured: bool,
     dirty: bool,
     frame_pending: bool,
@@ -194,6 +197,7 @@ pub struct Kit {
     session_lock: Option<smithay_client_toolkit::session_lock::SessionLock>,
     fractional_manager: Option<WpFractionalScaleManagerV1>,
     viewporter: Option<WpViewporter>,
+    idle_inhibit: Option<ZwpIdleInhibitManagerV1>,
 
     gpu: Option<Gpu>,
     surfaces: Vec<Surface>,
@@ -445,6 +449,7 @@ impl Kit {
     ) -> Kit {
         let fractional_manager = globals.bind::<WpFractionalScaleManagerV1, _, _>(&qh, 1..=1, KitData).ok();
         let viewporter = globals.bind::<WpViewporter, _, _>(&qh, 1..=1, KitData).ok();
+        let idle_inhibit = globals.bind::<ZwpIdleInhibitManagerV1, _, _>(&qh, 1..=1, KitData).ok();
         Kit {
             registry_state: RegistryState::new(globals),
             seat_state: SeatState::new(globals, &qh),
@@ -460,6 +465,7 @@ impl Kit {
             session_lock: None,
             fractional_manager,
             viewporter,
+            idle_inhibit,
             conn,
             qh,
             loop_handle,
@@ -563,6 +569,18 @@ impl Kit {
                         self.open(id, options)
                     }
                     Request::Close(id) => self.close(id),
+                    Request::KeepAwake(id, on) => {
+                        let qh = self.qh.clone();
+                        let manager = self.idle_inhibit.clone();
+                        if let Some(s) = self.surface_mut(id) {
+                            match (on, s.inhibitor.take(), manager) {
+                                (true, Some(i), _) => s.inhibitor = Some(i),
+                                (true, None, Some(m)) => s.inhibitor = Some(m.create_inhibitor(&s.wl, &qh, KitData)),
+                                (false, Some(i), _) => i.destroy(),
+                                _ => {}
+                            }
+                        }
+                    }
                     Request::SetTitle(id, title) => {
                         if let Some(s) = self.surface_mut(id) {
                             if let Role::Toplevel(w) = &s.role {
@@ -708,6 +726,7 @@ impl Kit {
             scale,
             fractional,
             viewport,
+            inhibitor: None,
             configured: false,
             dirty: true,
             frame_pending: false,
@@ -839,6 +858,9 @@ impl Kit {
             }
             if let Some(v) = s.viewport.take() {
                 v.destroy();
+            }
+            if let Some(i) = s.inhibitor.take() {
+                i.destroy();
             }
             // Dropping the role destroys the xdg/layer objects.
         }
@@ -1646,6 +1668,12 @@ impl Dispatch2<WpFractionalScaleV1, Kit> for ScaleData {
 
 impl Dispatch2<WpFractionalScaleManagerV1, Kit> for KitData {
     fn event(&self, _: &mut Kit, _: &WpFractionalScaleManagerV1, _: <WpFractionalScaleManagerV1 as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<Kit>) {}
+}
+impl Dispatch2<ZwpIdleInhibitManagerV1, Kit> for KitData {
+    fn event(&self, _: &mut Kit, _: &ZwpIdleInhibitManagerV1, _: <ZwpIdleInhibitManagerV1 as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<Kit>) {}
+}
+impl Dispatch2<ZwpIdleInhibitorV1, Kit> for KitData {
+    fn event(&self, _: &mut Kit, _: &ZwpIdleInhibitorV1, _: <ZwpIdleInhibitorV1 as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<Kit>) {}
 }
 impl Dispatch2<WpViewporter, Kit> for KitData {
     fn event(&self, _: &mut Kit, _: &WpViewporter, _: <WpViewporter as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<Kit>) {}

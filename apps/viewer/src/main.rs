@@ -65,6 +65,8 @@ struct DocWin {
     title: String,
     sized: bool,
     after_save: After,
+    /// The screen is kept awake (a video is playing).
+    awake: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -128,7 +130,7 @@ impl Viewer {
         let title = file_name(&path);
         let min_w = if is_pdf(&path) { pdfview::MIN_WIDTH as u32 } else { 360 };
         let id = cx.open_window(WindowOptions::new(title.clone(), 720, 560).min_size(min_w, 240));
-        let doc = DocWin { path: path.clone(), content: Content::Loading, siblings: Vec::new(), title, sized: false, after_save: After::Nothing };
+        let doc = DocWin { path: path.clone(), content: Content::Loading, siblings: Vec::new(), title, sized: false, after_save: After::Nothing, awake: false };
         self.windows.insert(id, Win::Doc(Box::new(doc)));
         self.load(cx, id, path);
     }
@@ -479,6 +481,10 @@ impl Viewer {
             }
             Content::Other(prev) => {
                 prev.ui(ui, full);
+                if prev.playing_video() != d.awake {
+                    d.awake = !d.awake;
+                    cx.keep_awake(win, d.awake);
+                }
                 if !ui.ctx().egui_wants_keyboard_input() && prev.arrows_free() {
                     ui.input(|i| {
                         if i.key_pressed(Key::ArrowLeft) || i.key_pressed(Key::ArrowUp) {
@@ -751,7 +757,7 @@ impl App for Viewer {
                 }
                 if prev.update(update) && !d.sized {
                     d.sized = true;
-                    let size = prev.ideal_size(screen, 0.0);
+                    let size = prev.ideal_size(screen, tabula_kit::menu::BAR_HEIGHT);
                     cx.resize(win, size);
                 }
                 cx.redraw(win);

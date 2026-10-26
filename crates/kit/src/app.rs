@@ -170,6 +170,7 @@ pub(crate) enum Request {
     Close(WindowId),
     SetTitle(WindowId, String),
     Resize(WindowId, (u32, u32)),
+    KeepAwake(WindowId, bool),
     Redraw(WindowId),
     RedrawAll,
     Activate(WindowId),
@@ -254,6 +255,11 @@ impl Cx {
     /// Ask app_server to resize the window's content area.
     pub fn resize(&mut self, window: WindowId, size: (u32, u32)) {
         self.requests.push(Request::Resize(window, size));
+    }
+    /// Keep the screen from dimming, locking or sleeping while the window
+    /// is visible (a playing video), until called with `false` or closed.
+    pub fn keep_awake(&mut self, window: WindowId, on: bool) {
+        self.requests.push(Request::KeepAwake(window, on));
     }
     pub fn redraw(&mut self, window: WindowId) {
         self.requests.push(Request::Redraw(window));

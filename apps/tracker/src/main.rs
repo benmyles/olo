@@ -1166,10 +1166,15 @@ impl Tracker {
         }
     }
 
-    fn preview_ui(&mut self, cx: &mut Cx, _win: WindowId, ui: &mut egui::Ui) {
+    fn preview_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
         let Some(q) = &mut self.quicklook else { return };
         let source = q.source;
-        match q.ui(ui) {
+        let action = q.ui(ui);
+        if q.playing_video() != q.awake {
+            q.awake = !q.awake;
+            cx.keep_awake(win, q.awake);
+        }
+        match action {
             Some(quicklook::Action::Close) => self.close_quick_look(cx),
             Some(quicklook::Action::Open) => {
                 let e = q.entry.clone();

@@ -80,6 +80,10 @@ impl Player {
         }
     }
 
+    pub fn set_playing(&self, on: bool) {
+        let _ = self.tx.send(if on { Ev::Play } else { Ev::Pause });
+    }
+
     pub fn seek(&self, secs: f64) {
         self.state.finished.store(false, Ordering::Relaxed);
         let _ = self.tx.send(Ev::Seek(secs));

@@ -38,6 +38,8 @@ pub struct QuickLook {
     preview: Preview,
     /// "Open with …": who opens the entry (looked up once per item).
     opener: Option<String>,
+    /// The screen is kept awake (a video is playing).
+    pub awake: bool,
 }
 
 fn item(e: &Entry) -> Item {
@@ -58,7 +60,11 @@ impl QuickLook {
     pub fn new(source: WindowId, entry: Entry, generation: u64, send: impl Fn(u64, Update) + Send + 'static) -> QuickLook {
         let preview = Preview::new(item(&entry), generation, send);
         let opener = fs::opener_name(&entry);
-        QuickLook { win: None, source, entry, preview, opener }
+        QuickLook { win: None, source, entry, preview, opener, awake: false }
+    }
+
+    pub fn playing_video(&self) -> bool {
+        self.preview.playing_video()
     }
 
     pub fn generation(&self) -> u64 {
