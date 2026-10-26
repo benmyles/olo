@@ -1,0 +1,61 @@
+[package]
+name = "app_server"
+description = "Tabula's Wayland compositor and window manager (the BeOS app_server)"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+# Derived from Smithay's Anvil reference compositor (MIT, Victor Berger and
+# Victoria Brekenfeld); see crates/app_server/NOTICE.
+
+[[bin]]
+name = "tabula-app-server"
+path = "src/main.rs"
+
+[dependencies]
+bitflags = "2.2.1"
+image = { version = "0.25.1", default-features = false, features = ["png"] }
+rand = "0.8"
+tracing = { version = "0.1.37", features = ["max_level_trace", "release_max_level_debug"] }
+tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
+thiserror = "1"
+xcursor = { version = "0.3.3", optional = true }
+xkbcommon = "0.8.0"
+smithay-drm-extras = { workspace = true, optional = true }
+profiling = "1.0"
+serde.workspace = true
+serde_json.workspace = true
+tabula-protocol.workspace = true
+
+[dependencies.smithay]
+workspace = true
+features = ["desktop", "wayland_frontend"]
+
+[dependencies.x11rb]
+default-features = false
+features = ["composite"]
+optional = true
+version = "0.13.0"
+
+[features]
+default = ["egl", "winit", "udev", "xwayland"]
+egl = ["smithay/use_system_lib", "smithay/backend_egl"]
+udev = [
+  "smithay-drm-extras",
+  "smithay/backend_libinput",
+  "smithay/backend_udev",
+  "smithay/backend_drm",
+  "smithay/backend_gbm",
+  "smithay/backend_vulkan",
+  "smithay/backend_egl",
+  "smithay/backend_session_libseat",
+  "smithay/renderer_gl",
+  "smithay/renderer_pixman",
+  "smithay/renderer_multi",
+  "xcursor",
+]
+winit = ["smithay/backend_winit", "smithay/backend_drm"]
+xwayland = ["smithay/xwayland", "x11rb", "smithay/x11rb_event_source", "xcursor"]
+libei = ["smithay/backend_libei", "udev"]
+renderer_sync = []
+debug = []
+profile-with-tracy-mem = []
