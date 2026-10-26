@@ -106,6 +106,11 @@ fn save_settings(settings: &Settings) {
     }
 }
 
+/// `output` is set to mirror another.
+fn entry_mirrors(display: &tabula_protocol::DisplaySettings, output: &Output) -> bool {
+    display.config(&display_key(output), &output.name()).is_some_and(|c| c.mirror.as_ref().is_some_and(|m| !m.is_empty()))
+}
+
 /// Where `output`'s settings are kept: its monitor, else its connector.
 pub fn display_key(output: &Output) -> String {
     let p = output.physical_properties();
@@ -405,6 +410,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let main = self.main_output();
         self.space
             .outputs()
+            .chain(self.mirrors.iter())
             .map(|o| {
                 let props = o.physical_properties();
                 let to_mode = |m: smithay::output::Mode| tabula_protocol::Mode {
@@ -412,7 +418,9 @@ impl<B: Backend + 'static> AnvilState<B> {
                     height: m.size.h,
                     refresh: m.refresh,
                 };
-                let loc = self.space.output_geometry(o).map(|g| g.loc).unwrap_or_default();
+                let source = crate::render::mirror_source(o);
+                let placed = source.as_ref().unwrap_or(o);
+                let loc = self.space.output_geometry(placed).map(|g| g.loc).unwrap_or_default();
                 OutputInfo {
                     name: o.name(),
                     key: display_key(o),
@@ -425,6 +433,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     position: (loc.x, loc.y),
                     rotation: self.settings.display.rotation_for(&display_key(o), &o.name()),
                     main: main.as_ref() == Some(o),
+                    mirror_of: source.map(|s| s.name()),
                 }
             })
             .collect()
@@ -446,6 +455,48 @@ impl<B: Backend + 'static> AnvilState<B> {
             .find(|o| display.is_main(&display_key(o), &o.name()))
             .or_else(|| self.space.outputs().next())
             .cloned()
+    }
+
+    /// Take screens set to mirror another out of the desktop (they draw
+    /// their source's picture), and put back ones that no longer do or
+    /// whose source is gone. A screen can't mirror a mirror, so one
+    /// always extends.
+    pub fn apply_mirroring(&mut self) {
+        let all: Vec<Output> = self.space.outputs().chain(self.mirrors.iter()).cloned().collect();
+        let display = &self.settings.display;
+        let wanted = |o: &Output| {
+            display.config(&display_key(o), &o.name()).and_then(|c| c.mirror.clone()).filter(|k| !k.is_empty())
+        };
+        let mut sources: Vec<(Output, Option<Output>)> = Vec::new();
+        for o in &all {
+            let source = wanted(o).and_then(|key| all.iter().find(|s| *s != o && display_key(s) == key && wanted(s).is_none()).cloned());
+            sources.push((o.clone(), source));
+        }
+        let mut changed = Vec::new();
+        for (o, source) in &sources {
+            if crate::render::mirror_source(o) == *source {
+                continue;
+            }
+            crate::render::set_mirror_source(o, source.clone());
+            if source.is_some() {
+                self.space.unmap_output(o);
+            } else {
+                self.space.map_output(o, (0, 0));
+            }
+            info!(output = o.name(), mirrors = ?source.as_ref().map(|s| s.name()), "mirroring");
+            changed.push(o.clone());
+        }
+        self.mirrors = sources.into_iter().filter(|(_, s)| s.is_some()).map(|(o, _)| o).collect();
+        if changed.is_empty() {
+            return;
+        }
+        let pointer = self.pointer.current_location();
+        fixup_positions(&mut self.space, &self.settings.display, pointer);
+        let gone: Vec<Output> = changed.into_iter().filter(|o| self.mirrors.contains(o)).collect();
+        self.move_auto_layers(&gone);
+        self.follow_main_output();
+        self.lock_outputs_changed();
+        self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
     }
 
     /// Layer surfaces that didn't ask for an output (Deskbar, the desktop)
@@ -536,6 +587,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let output = self
             .space
             .outputs()
+            .chain(self.mirrors.iter())
             .find(|o| o.name() == name)
             .cloned()
             .ok_or_else(|| format!("no output named {name}"))?;
@@ -564,7 +616,16 @@ impl<B: Backend + 'static> AnvilState<B> {
         if let Some(r) = config.rotation.filter(|r| tabula_protocol::ROTATIONS.contains(r)) {
             entry.rotation = Some(r);
         }
+        if let Some(m) = config.mirror {
+            entry.mirror = (!m.is_empty()).then_some(m);
+        }
         self.apply_output_settings(&output);
+        if self.mirrors.contains(&output) || entry_mirrors(&self.settings.display, &output) {
+            self.apply_mirroring();
+            save_settings(&self.settings);
+            self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
+            return Ok(());
+        }
         self.space.map_output(&output, before.map(|g| g.loc).unwrap_or_default());
         if let (Some(old), Some(new)) = (before, self.space.output_geometry(&output)) {
             self.keep_neighbours(name, old, new);
@@ -599,6 +660,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             if main_changed {
                 self.follow_main_output();
             }
+            self.apply_mirroring();
             self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
         }
         self.apply_input_settings();

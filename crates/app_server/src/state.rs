@@ -217,6 +217,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// toward new ones (see `night`).
     pub white_point: Option<[f64; 3]>,
     pub night_fade: Option<crate::night::Fade>,
+    /// Screens that mirror another (out of the Space; see `desktop`).
+    pub mirrors: Vec<Output>,
 }
 
 #[derive(Debug)]
@@ -889,6 +891,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             night_light: None,
             white_point: None,
             night_fade: None,
+            mirrors: Vec::new(),
         };
         if let Some(name) = state.socket_name.clone() {
             match crate::ipc::init(&state.handle, &name) {

@@ -366,6 +366,7 @@ pub fn run_winit() {
                     show_window_preview,
                     desktop_color,
                     locked,
+                    None,
                 )
                 .map_err(|err| match err {
                     OutputDamageTrackerError::Rendering(err) => err.into(),

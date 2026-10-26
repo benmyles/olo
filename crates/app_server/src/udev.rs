@@ -1257,6 +1257,8 @@ impl AnvilState<UdevData> {
         } else if let Some(surface) = device.surfaces.remove(&crtc) {
             gone = Some(surface.output.clone());
             self.space.unmap_output(&surface.output);
+            self.mirrors.retain(|m| *m != surface.output);
+            crate::render::set_mirror_source(&surface.output, None);
             self.space.refresh();
         }
 
@@ -1319,6 +1321,8 @@ impl AnvilState<UdevData> {
 
         // fixup window coordinates
         crate::shell::fixup_positions(&mut self.space, &self.settings.display, self.pointer.current_location());
+        // Screens set to mirror, or whose source just left.
+        self.apply_mirroring();
         self.follow_main_output();
     }
 
@@ -1572,7 +1576,7 @@ impl AnvilState<UdevData> {
             return;
         }
 
-        let output = if let Some(output) = self.space.outputs().find(|o| {
+        let screen = if let Some(output) = self.space.outputs().chain(self.mirrors.iter()).find(|o| {
             o.user_data().get::<UdevOutputId>()
                 == Some(&UdevOutputId {
                     device_id: node,
@@ -1584,6 +1588,10 @@ impl AnvilState<UdevData> {
             // somehow we got called with an invalid output
             return;
         };
+        // A mirror draws its source's frame, fitted to its own mode.
+        let source = crate::render::mirror_source(&screen);
+        let fit = source.as_ref().map(|s| crate::render::fit_outputs(&screen, s, &self.space));
+        let output = source.unwrap_or(screen);
 
         self.pre_repaint(&output, frame_target);
         let desktop_color = self.desktop_color();
@@ -1663,6 +1671,7 @@ impl AnvilState<UdevData> {
             desktop_color,
             overlays,
             locked,
+            fit,
         );
         let reschedule = match result {
             Ok((has_rendered, states)) => {
@@ -1747,6 +1756,7 @@ fn render_surface<'a>(
     desktop_color: smithay::backend::renderer::Color32F,
     overlays: Vec<CustomRenderElements<UdevRenderer<'a>>>,
     locked: bool,
+    fit: Option<crate::render::Fit>,
 ) -> Result<(bool, RenderElementStates), SwapBuffersError> {
     let output_geometry = space.output_geometry(output).unwrap();
     let scale = Scale::from(output.current_scale().fractional_scale());
@@ -1816,6 +1826,7 @@ fn render_surface<'a>(
 
     let (elements, clear_color) =
         output_elements(output, space, custom_elements, renderer, show_window_preview, desktop_color, locked);
+    let elements = crate::render::frame(elements, fit);
 
     let frame_mode = if surface.disable_direct_scanout {
         FrameFlags::empty()

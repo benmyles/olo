@@ -115,6 +115,11 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
         st.selected = Some(outputs[0].name.clone());
     }
 
+    let all = outputs;
+    // Mirrors show another screen's picture: they aren't in the arrangement.
+    let placed: Vec<OutputInfo> = outputs.iter().filter(|o| o.mirror_of.is_none()).cloned().collect();
+    let outputs = &placed[..];
+
     // Arrangement: every output to scale, in its logical position.
     let map_h = 150.0;
     let (map, _) = ui.allocate_exact_size(vec2(ui.available_width(), map_h), Sense::hover());
@@ -179,7 +184,17 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
         st.drag = None;
         rearrange(outputs, &name, d, k, server);
     }
+    for m in all.iter().filter(|o| o.mirror_of.is_some()) {
+        let source = all.iter().find(|x| Some(&x.name) == m.mirror_of.as_ref()).map(|x| shown_name(x, all)).unwrap_or_default();
+        ui.horizontal(|ui| {
+            ui.add(StringView::new(&format!("{} mirrors {source}.", shown_name(m, all))).dim(true));
+            if st.selected.as_deref() != Some(&m.name) && ui.add(Button::new("Settings")).clicked() {
+                st.selected = Some(m.name.clone());
+            }
+        });
+    }
 
+    let outputs = all;
     let Some(o) = outputs.iter().find(|o| st.selected.as_deref() == Some(&o.name)) else {
         return;
     };
@@ -239,28 +254,56 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
             server.configure_output(&o.name, OutputConfig { mode: Some(chosen.clone()), ..Default::default() });
         }
 
-        let scale_names: Vec<String> = SCALES.iter().map(|&s| scale_text(s)).collect();
-        let scale_names: Vec<&str> = scale_names.iter().map(String::as_str).collect();
+        // A mirror shows its source as it is: no scale or rotation of its own.
         let mut si = SCALES.iter().position(|&s| (s - o.scale).abs() < 0.01).unwrap_or(4);
-        let before = si;
-        ui.add(MenuField::new(("scale", &o.name), &mut si, &scale_names).label("Scale:").divider(label_w));
-        if si != before {
-            server.configure_output(&o.name, OutputConfig { scale: Some(SCALES[si]), ..Default::default() });
+        if o.mirror_of.is_none() {
+            let scale_names: Vec<String> = SCALES.iter().map(|&s| scale_text(s)).collect();
+            let scale_names: Vec<&str> = scale_names.iter().map(String::as_str).collect();
+            let before = si;
+            ui.add(MenuField::new(("scale", &o.name), &mut si, &scale_names).label("Scale:").divider(label_w));
+            if si != before {
+                server.configure_output(&o.name, OutputConfig { scale: Some(SCALES[si]), ..Default::default() });
+            }
+            let mut ri = tabula_protocol::ROTATIONS.iter().position(|&r| r == o.rotation).unwrap_or(0);
+            let before = ri;
+            ui.add(MenuField::new(("rotation", &o.name), &mut ri, &ROTATION_NAMES).label("Rotation:").divider(label_w));
+            if ri != before {
+                let rotation = Some(tabula_protocol::ROTATIONS[ri]);
+                server.configure_output(&o.name, OutputConfig { rotation, ..Default::default() });
+            }
         }
-        let mut ri = tabula_protocol::ROTATIONS.iter().position(|&r| r == o.rotation).unwrap_or(0);
-        let before = ri;
-        ui.add(MenuField::new(("rotation", &o.name), &mut ri, &ROTATION_NAMES).label("Rotation:").divider(label_w));
-        if ri != before {
-            let rotation = Some(tabula_protocol::ROTATIONS[ri]);
-            server.configure_output(&o.name, OutputConfig { rotation, ..Default::default() });
-        }
-        let (cw, ch) = if o.rotation % 180 == 90 { (chosen.height, chosen.width) } else { (chosen.width, chosen.height) };
-        let (lw, lh) = (cw as f64 / SCALES[si], ch as f64 / SCALES[si]);
-        ui.horizontal(|ui| {
-            ui.add_space(label_w + m::LABEL_GAP);
-            ui.add(StringView::new(&format!("Looks like {lw:.0} × {lh:.0}")).dim(true));
-        });
+        // Extend the desktop, or show another display's picture.
         if outputs.len() > 1 {
+            let sources: Vec<&OutputInfo> = outputs.iter().filter(|x| x.name != o.name && x.mirror_of.is_none()).collect();
+            let mut uses: Vec<String> = vec!["Extended desktop".into()];
+            uses.extend(sources.iter().map(|x| format!("Mirror of {}", shown_name(x, outputs))));
+            let uses: Vec<&str> = uses.iter().map(String::as_str).collect();
+            let mut ui_i = o.mirror_of.as_ref().and_then(|m| sources.iter().position(|x| &x.name == m)).map_or(0, |i| i + 1);
+            let before = ui_i;
+            // A display others mirror can't mirror in turn.
+            let mirrored = outputs.iter().any(|x| x.mirror_of.as_ref() == Some(&o.name));
+            ui.add_enabled_ui(!mirrored, |ui| {
+                ui.add(MenuField::new(("use", &o.name), &mut ui_i, &uses).label("Use as:").divider(label_w));
+            });
+            if ui_i != before {
+                let mirror = if ui_i == 0 {
+                    String::new()
+                } else {
+                    let x = sources[ui_i - 1];
+                    if x.key.is_empty() { x.name.clone() } else { x.key.clone() }
+                };
+                server.configure_output(&o.name, OutputConfig { mirror: Some(mirror), ..Default::default() });
+            }
+        }
+        if o.mirror_of.is_none() {
+            let (cw, ch) = if o.rotation % 180 == 90 { (chosen.height, chosen.width) } else { (chosen.width, chosen.height) };
+            let (lw, lh) = (cw as f64 / SCALES[si], ch as f64 / SCALES[si]);
+            ui.horizontal(|ui| {
+                ui.add_space(label_w + m::LABEL_GAP);
+                ui.add(StringView::new(&format!("Looks like {lw:.0} × {lh:.0}")).dim(true));
+            });
+        }
+        if outputs.len() > 1 && o.mirror_of.is_none() {
             ui.horizontal(|ui| {
                 ui.add_space(label_w + m::LABEL_GAP);
                 if o.main {

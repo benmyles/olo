@@ -186,6 +186,9 @@ pub struct OutputInfo {
     /// The main display: Deskbar and the desktop live here.
     #[serde(default)]
     pub main: bool,
+    /// The display this one mirrors (its connector), if it does.
+    #[serde(default)]
+    pub mirror_of: Option<String>,
 }
 
 impl OutputInfo {
@@ -211,6 +214,10 @@ pub struct OutputConfig {
     /// Clockwise degrees: 0, 90, 180 or 270.
     #[serde(default)]
     pub rotation: Option<u16>,
+    /// Show another display's picture (its key) instead of extending the
+    /// desktop. In `ConfigureOutput`, `Some("")` goes back to extending.
+    #[serde(default)]
+    pub mirror: Option<String>,
 }
 
 /// The rotations a display can have, clockwise degrees.

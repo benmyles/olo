@@ -221,6 +221,7 @@ pub fn run_headless(size_arg: Option<&str>) {
         state.space.map_output(output, (0, 0));
     }
     crate::shell::fixup_positions(&mut state.space, &state.settings.display, state.pointer.current_location());
+    state.apply_mirroring();
 
     #[cfg(feature = "xwayland")]
     state.start_xwayland();
@@ -290,8 +291,11 @@ fn twitcher_overlay(
 }
 
 fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
-    let output = state.backend_data.screens[index].output.clone();
-    let output = &output;
+    let screen = state.backend_data.screens[index].output.clone();
+    // A mirror draws its source's frame, fitted.
+    let source = crate::render::mirror_source(&screen);
+    let fit = source.as_ref().map(|s| crate::render::fit_outputs(&screen, s, &state.space));
+    let output = source.as_ref().unwrap_or(&screen);
     let now = state.clock.now();
     let frame_target = now + Duration::from_micros(16_667);
     state.pre_repaint(output, frame_target);
@@ -317,6 +321,7 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
             false,
             desktop_color,
             locked,
+            fit,
         )
     };
     match result {

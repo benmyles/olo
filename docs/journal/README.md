@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Back to extended
+
+*03:30* — Choosing Extended desktop puts the display back beside the other with its full settings
+
+![Back to extended](2026-10-26/033025-back-to-extended.png)
+
+### Display mirroring
+
+*03:30* — A display set to mirror another leaves the arrangement; only resolution, refresh and Use as remain
+
+![Display mirroring](2026-10-26/033024-display-mirroring.png)
+
 ### Keyboard backlight
 
 *03:18* — Keyboard illumination keys raise the backlight with the level indicator; Preferences Keyboard has a Backlight slider that follows it. Turns off with the display.

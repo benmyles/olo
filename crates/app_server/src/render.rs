@@ -8,7 +8,7 @@ use smithay::{
             AsRenderElements, RenderElement, Wrap,
             surface::WaylandSurfaceRenderElement,
             utils::{
-                ConstrainAlign, ConstrainScaleBehavior, CropRenderElement, RelocateRenderElement,
+                ConstrainAlign, ConstrainScaleBehavior, CropRenderElement, Relocate, RelocateRenderElement,
                 RescaleRenderElement,
             },
         },
@@ -74,6 +74,86 @@ impl<R: Renderer + ImportAll + ImportMem, E: RenderElement<R> + std::fmt::Debug>
             Self::Preview(arg0) => f.debug_tuple("Preview").field(arg0).finish(),
             Self::_GenericCatcher(arg0) => f.debug_tuple("_GenericCatcher").field(arg0).finish(),
         }
+    }
+}
+
+// ---- mirroring ------------------------------------------------------------
+
+/// What a mirrored screen shows (kept in its user data). A mirror is not
+/// in the Space: it draws its source's frame, scaled to fit and centred.
+#[derive(Default)]
+struct MirrorOf(std::sync::Mutex<Option<Output>>);
+
+pub fn mirror_source(output: &Output) -> Option<Output> {
+    output.user_data().get::<MirrorOf>()?.0.lock().unwrap().clone()
+}
+
+pub fn set_mirror_source(output: &Output, source: Option<Output>) {
+    output.user_data().insert_if_missing_threadsafe(MirrorOf::default);
+    *output.user_data().get::<MirrorOf>().unwrap().0.lock().unwrap() = source;
+}
+
+/// How a mirror shows its source: scaled by `factor`, then moved by
+/// `offset` (device pixels).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Fit {
+    pub factor: f64,
+    pub offset: Point<i32, Physical>,
+}
+
+/// Fit a `source` picture (device pixels) into a `mirror`'s, keeping its
+/// shape.
+pub fn fit(source: Size<i32, Physical>, mirror: Size<i32, Physical>) -> Fit {
+    let (sw, sh) = (source.w.max(1) as f64, source.h.max(1) as f64);
+    let (mw, mh) = (mirror.w as f64, mirror.h as f64);
+    let factor = (mw / sw).min(mh / sh);
+    let offset = (((mw - sw * factor) / 2.0).round() as i32, ((mh - sh * factor) / 2.0).round() as i32);
+    Fit { factor, offset: offset.into() }
+}
+
+/// [`fit`] for a mirror output and its source.
+pub fn fit_outputs(mirror: &Output, source: &Output, space: &Space<WindowElement>) -> Fit {
+    let size = |o: &Output| o.current_mode().map(|m| o.current_transform().transform_size(m.size)).unwrap_or_default();
+    let from = space
+        .output_geometry(source)
+        .map(|g| g.size.to_f64().to_physical(source.current_scale().fractional_scale()).to_i32_round())
+        .unwrap_or_else(|| size(source));
+    fit(from, size(mirror))
+}
+
+smithay::backend::renderer::element::render_elements! {
+    /// A frame: a screen's own elements, or its source's when it mirrors.
+    pub FrameElements<R, E> where R: ImportAll + ImportMem;
+    Normal=OutputRenderElements<R, E>,
+    Mirror=RelocateRenderElement<RescaleRenderElement<OutputRenderElements<R, E>>>,
+}
+
+impl<R: Renderer + ImportAll + ImportMem, E: RenderElement<R> + std::fmt::Debug> std::fmt::Debug for FrameElements<R, E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Normal(e) => f.debug_tuple("Normal").field(e).finish(),
+            Self::Mirror(e) => f.debug_tuple("Mirror").field(e).finish(),
+            Self::_GenericCatcher(e) => f.debug_tuple("_GenericCatcher").field(e).finish(),
+        }
+    }
+}
+
+/// A screen's elements as a frame, fitted when it mirrors another.
+pub fn frame<R, E>(elements: Vec<OutputRenderElements<R, E>>, fit: Option<Fit>) -> Vec<FrameElements<R, E>>
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: 'static,
+    E: RenderElement<R>,
+{
+    match fit {
+        None => elements.into_iter().map(FrameElements::Normal).collect(),
+        Some(fit) => elements
+            .into_iter()
+            .map(|e| {
+                let scaled = RescaleRenderElement::from_element(e, (0, 0).into(), fit.factor);
+                FrameElements::Mirror(RelocateRenderElement::from_element(scaled, fit.offset, Relocate::Relative))
+            })
+            .collect(),
     }
 }
 
@@ -245,6 +325,7 @@ pub fn render_output<'a, 'd, R>(
     show_window_preview: bool,
     desktop_color: Color32F,
     locked: bool,
+    fit: Option<Fit>,
 ) -> Result<RenderOutputResult<'d>, OutputDamageTrackerError<R::Error>>
 where
     R: Renderer + ImportAll + ImportMem,
@@ -252,6 +333,7 @@ where
 {
     let (elements, clear_color) =
         output_elements(output, space, custom_elements, renderer, show_window_preview, desktop_color, locked);
+    let elements = frame(elements, fit);
     damage_tracker.render_output(renderer, framebuffer, age, &elements, clear_color)
 }
 
@@ -272,7 +354,12 @@ where
     let mode = output.current_mode().ok_or("output has no mode")?;
     let size: Size<i32, Physical> = output.current_transform().transform_size(mode.size);
     let scale = output.current_scale().fractional_scale();
-    let (elements, clear_color) = output_elements::<R>(output, space, overlays, renderer, false, clear_color, locked);
+    // A mirror's picture is its source's, fitted.
+    let source = mirror_source(output);
+    let fit = source.as_ref().map(|s| fit_outputs(output, s, space));
+    let from = source.as_ref().unwrap_or(output);
+    let (elements, clear_color) = output_elements::<R>(from, space, overlays, renderer, false, clear_color, locked);
+    let elements = frame(elements, fit);
     offscreen(renderer, size, scale, &elements, clear_color)
 }
 
@@ -314,4 +401,19 @@ where
         image::imageops::flip_vertical_in_place(&mut img);
     }
     Ok(img)
+}
+
+#[cfg(test)]
+mod mirror_tests {
+    use super::*;
+
+    #[test]
+    fn fits_and_centres() {
+        // 16:10 onto 16:9: full height, bars left and right.
+        let f = fit((2560, 1600).into(), (1920, 1080).into());
+        assert!((f.factor - 0.675).abs() < 1e-9);
+        assert_eq!(f.offset, (96, 0).into());
+        // The same shape: edge to edge.
+        assert_eq!(fit((1280, 800).into(), (2560, 1600).into()), Fit { factor: 2.0, offset: (0, 0).into() });
+    }
 }

@@ -80,7 +80,8 @@ as they land (with the commit), add new ones as they come up.
   neighbours follow a resized screen, multi-screen headless tests.
   Rotation, the main display (Deskbar and desktop follow it, also on
   unplug) and Identify done too. ~~Settings keyed by EDID~~ (make,
-  model, serial; connector entries migrate). Still to do: mirroring.
+  model, serial; connector entries migrate), ~~mirroring~~ (fit and centred,
+  "Use as" in Preferences).
 
 - ~~Cursor shapes~~ (Haiku's cursors via tabula-hvif, cursor-shape-v1);
   ~~night light~~ (CRTC gamma ramps, faded); ~~libinput settings~~ (touchpad tap, tap-drag, dwt, click

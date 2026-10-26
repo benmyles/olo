@@ -460,5 +460,17 @@
   "title": "Keyboard backlight",
   "caption": "Keyboard illumination keys raise the backlight with the level indicator; Preferences Keyboard has a Backlight slider that follows it. Turns off with the display.",
   "image": "2026-10-26/031818-keyboard-backlight.png"
+ },
+ {
+  "time": "2026-10-26T03:30:24",
+  "title": "Display mirroring",
+  "caption": "A display set to mirror another leaves the arrangement; only resolution, refresh and Use as remain",
+  "image": "2026-10-26/033024-display-mirroring.png"
+ },
+ {
+  "time": "2026-10-26T03:30:25",
+  "title": "Back to extended",
+  "caption": "Choosing Extended desktop puts the display back beside the other with its full settings",
+  "image": "2026-10-26/033025-back-to-extended.png"
  }
 ]

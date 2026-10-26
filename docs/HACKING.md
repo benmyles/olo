@@ -410,6 +410,13 @@ launcher lists them. The panel list Deskbar shows is
   else the connector; `OutputInfo::key`), so they follow a monitor to
   another port; always go through `DisplaySettings::config` /
   `config_mut`, which also read and migrate older connector entries.
+  Mirroring: `OutputConfig::mirror` names the source's key (`Some("")`
+  means extend). `desktop::apply_mirroring` takes a mirror out of the
+  Space into `State::mirrors` (so windows, the pointer and layers never
+  land on it; `OutputInfo::mirror_of` reports it) and the backends draw
+  the source's elements on it through `render::FrameElements::Mirror`,
+  scaled to fit and centred (`render::fit`). Preferences hides a mirror
+  from the arrangement and offers only mode, refresh and "Use as".
 * Memory buffers drawn by app_server (twitcher, wallpaper, identify) must
   pass the full buffer as `src` to `MemoryRenderBufferRenderElement::
   from_buffer`; without it the buffer counts as logical pixels and is

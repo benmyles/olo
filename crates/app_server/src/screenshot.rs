@@ -63,7 +63,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 return Err("the window is off screen".into());
             }
         } else if let Some(name) = &shot.output {
-            if !self.space.outputs().any(|o| &o.name() == name) {
+            if !self.space.outputs().chain(self.mirrors.iter()).any(|o| &o.name() == name) {
                 return Err(format!("no output {name}"));
             }
         } else {
