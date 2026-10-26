@@ -2,12 +2,14 @@
 """Screenshot journal: Tabula's visual history, kept in docs/journal/.
 
     journal.py add SOURCE "Title" ["What changed and why"] [--crop X Y W H]
-    journal.py redo                                   rebuild README.md from entries.json
+    journal.py redo                                   rebuild README.md and journal.html from entries.json
 
 SOURCE is a tsession name (screenshot taken now) or an image path. --crop
 is in logical pixels, as for `tsession zoom`. Images are stored at device
 resolution in docs/journal/<date>/<time>-<slug>.png (tracked with Git LFS)
-and listed newest first in docs/journal/README.md.
+and listed newest first in docs/journal/README.md and journal.html (one
+self-contained page with every image embedded, for sharing; see
+journal_html.py).
 
 Add an entry whenever something visible changes: a new app or window, a
 look-and-feel fix (with before/after), a theme. Commit it with the change.
@@ -25,6 +27,13 @@ def load():
         return json.load(open(DB))
     except FileNotFoundError:
         return []
+
+
+def write_pages(entries):
+    write_readme(entries)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import journal_html
+    journal_html.build(os.path.join(DIR, "journal.html"))
 
 
 def write_readme(entries):
@@ -62,7 +71,7 @@ def add(source, title, caption, crop):
     entries = load()
     entries.append({"time": now.isoformat(timespec="seconds"), "title": title, "caption": caption, "image": rel})
     json.dump(entries, open(DB, "w"), indent=1)
-    write_readme(entries)
+    write_pages(entries)
     print(dest)
 
 
@@ -72,7 +81,7 @@ def main():
         print(__doc__)
         return
     if a[0] == "redo":
-        write_readme(load())
+        write_pages(load())
         return
     if a[0] != "add" or len(a) < 3:
         sys.exit(__doc__)

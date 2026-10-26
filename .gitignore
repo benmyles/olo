@@ -2,3 +2,5 @@
 *.png.tmp
 /data/icons/src/
 /.claude/
+docs/journal/.cache/
+__pycache__/
