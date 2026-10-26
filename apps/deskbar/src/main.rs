@@ -330,7 +330,14 @@ impl Deskbar {
         if let Some((win, _)) = self.upgrade_ask.take() {
             cx.close_window(win);
         }
-        let message = upgrade_message(&self.status.upgrade);
+        // A new app_server means a reload, which programs not built on
+        // Tabula's kit don't survive.
+        let closing: Vec<String> = if self.status.upgrade.iter().any(|p| p == "tabula-app-server") {
+            self.teams().into_iter().filter(|t| our_app(&t.windows[0].app_id).is_none()).map(|t| t.name).collect()
+        } else {
+            Vec::new()
+        };
+        let message = upgrade_message(&self.status.upgrade, &closing);
         let win = cx.open_window(WindowOptions::alert("Upgrade Tabula", &message));
         self.upgrade_ask = Some((win, message));
     }
@@ -372,7 +379,7 @@ fn team_key_of(w: &WindowInfo) -> String {
 }
 
 /// "NetPositive, Deskbar and 3 others", for the upgrade alert.
-fn upgrade_message(programs: &[String]) -> String {
+fn upgrade_message(programs: &[String], closing: &[String]) -> String {
     let names: Vec<String> = programs
         .iter()
         .map(|bin| match OUR_APPS.iter().find(|(b, _, _)| b == bin) {
@@ -386,13 +393,24 @@ fn upgrade_message(programs: &[String]) -> String {
             },
         })
         .collect();
-    let list = match names.len() {
+    let list = listing(&names);
+    if closing.is_empty() {
+        return format!("A new build of Tabula is ready ({list}). Install it now? Your windows stay open.");
+    }
+    format!(
+        "A new build of Tabula is ready ({list}). Installing it restarts the window server: Tabula's windows stay open, but {} will close.",
+        listing(closing)
+    )
+}
+
+/// "A", "A and B", "A, B and C", "A, B, C and 2 others".
+fn listing(names: &[String]) -> String {
+    match names.len() {
         0 => "nothing".to_string(),
         1 => names[0].clone(),
         2..=4 => format!("{} and {}", names[..names.len() - 1].join(", "), names[names.len() - 1]),
         n => format!("{} and {} others", names[..3].join(", "), n - 3),
-    };
-    format!("A new build of Tabula is ready ({list}). Install it and reload now? Your windows stay open.")
+    }
 }
 
 // ---- drawing ----------------------------------------------------------------

@@ -25,8 +25,9 @@ use smithay_client_toolkit::{
     output::{OutputHandler, OutputState},
     reexports::{
         calloop::{
-            EventLoop, LoopHandle,
+            EventLoop, Interest, LoopHandle, Mode, PostAction,
             channel::{self, Channel},
+            generic::Generic,
             timer::{TimeoutAction, Timer},
         },
         calloop_wayland_source::WaylandSource,
@@ -233,6 +234,8 @@ pub struct Kit {
     /// What we put on the clipboard: the source and its data by type.
     clipboard: Option<(CopyPasteSource, Clip)>,
     exit: bool,
+    /// tabula-session installed a new version of us: stop and re-execute.
+    upgrading: bool,
     /// Windows all closed, but still serving the clipboard (see `finish`).
     linger: bool,
 }
@@ -306,6 +309,24 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         })
         .expect("theme channel");
 
+    // tabula-session's nudge after installing upgrades (it signals every
+    // Tabula program whose file it replaced): if ours was, become the new
+    // version now, as after a reload, while app_server carries on.
+    if in_session && let Some(fd) = upgrade_signals() {
+        let ours = Binary::current();
+        loop_handle
+            .insert_source(Generic::new(fd, Interest::READ, Mode::Level), move |_, fd, kit: &mut Kit| {
+                let mut buf = [0u8; 64];
+                // SAFETY: reading into our buffer from our pipe.
+                while unsafe { libc::read(std::os::fd::AsRawFd::as_raw_fd(&**fd), buf.as_mut_ptr().cast(), buf.len()) } > 0 {}
+                if ours.changed() {
+                    kit.upgrading = true;
+                }
+                Ok(PostAction::Continue)
+            })
+            .expect("upgrade signal");
+    }
+
     let mut build = Some(build);
     let mut carried: Option<Carried> = None;
     let mut palette = palette;
@@ -360,7 +381,7 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         kit.process_requests();
 
         let mut lost = false;
-        while !kit.exit {
+        while !kit.exit && !kit.upgrading {
             let timeout = kit.next_timeout();
             if let Err(e) = event_loop.dispatch(timeout, &mut kit) {
                 warn!(?e, "lost the connection to app_server");
@@ -376,8 +397,9 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         }
         loop_handle.remove(wayland);
         palette = kit.palette.clone();
+        let upgrading = kit.upgrading;
         let c = kit.into_carried();
-        if !lost || !in_session {
+        if !(lost || upgrading) || !in_session {
             return;
         }
         // app_server is restarting (tabula-session reload). If our binary
@@ -391,6 +413,37 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
             warn!("could not start the upgraded binary; carrying on");
         }
         carried = Some(c);
+    }
+}
+
+/// Where SIGURG lands (its default is to be ignored, so a program without
+/// this handler is unaffected).
+static UPGRADE_PIPE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+
+extern "C" fn on_upgrade_signal(_: libc::c_int) {
+    let fd = UPGRADE_PIPE.load(std::sync::atomic::Ordering::Relaxed);
+    if fd >= 0 {
+        // SAFETY: write(2) is async-signal-safe.
+        unsafe { libc::write(fd, [1u8].as_ptr().cast(), 1) };
+    }
+}
+
+/// A pipe that becomes readable when tabula-session signals an upgrade.
+fn upgrade_signals() -> Option<std::os::fd::OwnedFd> {
+    use std::os::fd::FromRawFd;
+    let mut fds = [0; 2];
+    // SAFETY: a pipe and a process-wide handler that only writes to it.
+    unsafe {
+        if libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC | libc::O_NONBLOCK) != 0 {
+            return None;
+        }
+        UPGRADE_PIPE.store(fds[1], std::sync::atomic::Ordering::Relaxed);
+        let mut action: libc::sigaction = std::mem::zeroed();
+        action.sa_sigaction = on_upgrade_signal as *const () as usize;
+        action.sa_flags = libc::SA_RESTART;
+        libc::sigemptyset(&mut action.sa_mask);
+        libc::sigaction(libc::SIGURG, &action, std::ptr::null_mut());
+        Some(std::os::fd::OwnedFd::from_raw_fd(fds[0]))
     }
 }
 
@@ -512,6 +565,7 @@ impl Kit {
             last_serial: 0,
             clipboard: None,
             exit: false,
+            upgrading: false,
             linger: false,
         }
     }

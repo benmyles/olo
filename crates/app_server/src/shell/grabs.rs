@@ -307,6 +307,32 @@ impl From<X11ResizeEdge> for ResizeEdge {
     }
 }
 
+/// Ask for the size being dragged to, unless the client hasn't yet answered
+/// the last one: a configure per pointer motion would queue up faster than
+/// the client can draw, and the window would lag ever further behind. What
+/// waits goes out on the client's next commit (`resize_caught_up`).
+fn send_when_caught_up(xdg: &smithay::wayland::shell::xdg::ToplevelSurface) {
+    if !awaiting_ack(xdg) {
+        xdg.send_pending_configure();
+    }
+}
+
+fn awaiting_ack(xdg: &smithay::wayland::shell::xdg::ToplevelSurface) -> bool {
+    with_states(xdg.wl_surface(), |states| {
+        states
+            .data_map
+            .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+            .is_some_and(|d| !d.lock().unwrap().pending_configures().is_empty())
+    })
+}
+
+/// The client committed: send the size the drag got to meanwhile.
+pub fn resize_caught_up(xdg: &smithay::wayland::shell::xdg::ToplevelSurface) {
+    if xdg.has_pending_changes() {
+        send_when_caught_up(xdg);
+    }
+}
+
 /// Information about the resize operation.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct ResizeData {
@@ -408,7 +434,7 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerResiz
                     state.states.set(xdg_toplevel::State::Resizing);
                     state.size = Some(self.last_window_size);
                 });
-                xdg.send_pending_configure();
+                send_when_caught_up(xdg);
             }
             #[cfg(feature = "xwayland")]
             WindowSurface::X11(x11) => {
@@ -802,7 +828,7 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchResizeSur
                     state.states.set(xdg_toplevel::State::Resizing);
                     state.size = Some(self.last_window_size);
                 });
-                xdg.send_pending_configure();
+                send_when_caught_up(xdg);
             }
             #[cfg(feature = "xwayland")]
             WindowSurface::X11(x11) => {

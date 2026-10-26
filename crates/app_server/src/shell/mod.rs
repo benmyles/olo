@@ -387,6 +387,15 @@ fn ensure_initial_configure(surface: &WlSurface, space: &Space<WindowElement>, p
             if !initial_configure_sent {
                 toplevel.send_configure();
             }
+            let resizing = with_states(surface, |states| {
+                states
+                    .data_map
+                    .get::<RefCell<SurfaceData>>()
+                    .is_some_and(|d| matches!(d.borrow().resize_state, ResizeState::Resizing(_)))
+            });
+            if resizing {
+                grabs::resize_caught_up(toplevel);
+            }
         }
 
         with_states(surface, |states| {

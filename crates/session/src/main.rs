@@ -293,14 +293,24 @@ impl Session {
         }
     }
 
-    /// Install what's newer in the build tree and reload with it.
+    /// Install what's newer in the build tree and switch to it. Only a new
+    /// app_server needs a reload (which closes apps that can't reconnect);
+    /// otherwise each upgraded Tabula program re-executes in place and
+    /// everything else carries on.
     fn upgrade(&mut self) {
         let Some(w) = &mut self.upgrades else {
             log("nothing to upgrade from (not an installed session)");
             return;
         };
-        if w.install() > 0 {
+        let done = w.install();
+        if done.is_empty() {
+            return;
+        }
+        w.nudge(&[std::process::id() as i32, self.server.pid]);
+        if done.iter().any(|p| p == "tabula-app-server") {
             self.reload();
+        } else if own_binary().is_some() && own_binary() != self.binary {
+            self.exec_self(false);
         }
     }
 
@@ -308,7 +318,7 @@ impl Session {
     fn reload(&mut self) {
         log("reloading");
         if own_binary().is_some() && own_binary() != self.binary {
-            self.exec_self();
+            self.exec_self(true);
         }
         let old = self.server.pid;
         if old > 0 {
@@ -324,8 +334,9 @@ impl Session {
         self.start_server();
     }
 
-    /// Become the upgraded tabula-session, keeping children and sockets.
-    fn exec_self(&mut self) {
+    /// Become the upgraded tabula-session, keeping children and sockets
+    /// (and then reload, if `reloading`).
+    fn exec_self(&mut self, reloading: bool) {
         let fds = [self.wayland.as_raw_fd(), self.ipc.as_raw_fd(), self.lock.as_raw_fd()];
         let resume = Resume {
             display: self.display.clone(),
@@ -335,7 +346,7 @@ impl Session {
             backend: self.backend.clone(),
             server: self.server.clone(),
             shell: self.shell.clone(),
-            reloading: true,
+            reloading,
         };
         let Ok(state) = serde_json::to_string(&resume) else { return };
         for fd in fds {

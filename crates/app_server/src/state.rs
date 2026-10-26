@@ -480,16 +480,27 @@ impl<BackendData: Backend> PointerConstraintsHandler for AnvilState<BackendData>
 
 impl<BackendData: Backend> TextInputActivation for AnvilState<BackendData> {}
 
+impl<BackendData: Backend> AnvilState<BackendData> {
+    /// Whether `surface` belongs to one of Tabula's own programs.
+    fn is_our_program(&self, surface: &WlSurface) -> bool {
+        let Some(pid) = surface.client().and_then(|c| c.get_credentials(&self.display_handle).ok()).map(|c| c.pid) else {
+            return false;
+        };
+        std::fs::read_link(format!("/proc/{pid}/exe"))
+            .ok()
+            .and_then(|p| Some(p.file_name()?.to_str()?.starts_with("tabula-")))
+            .unwrap_or(false)
+    }
+}
+
 impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
     fn activation_state(&mut self) -> &mut XdgActivationState {
         &mut self.xdg_activation_state
     }
 
     fn token_created(&mut self, _token: XdgActivationToken, _data: XdgActivationTokenData) -> bool {
-        // Apps ask to come forward when relaunched from Deskbar or Tracker
-        // (the request is forwarded to the running instance, which has no
-        // fresh input serial of its own), so every token is honoured; the
-        // ten-second expiry below keeps stale ones from stealing focus.
+        // Whether a token may bring a window forward is decided when it's
+        // used (request_activation), where we know who asks.
         true
     }
 
@@ -499,6 +510,23 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
         token_data: XdgActivationTokenData,
         surface: WlSurface,
     ) {
+        // A window comes forward only when the user just did something in
+        // the app that asks (the token carries a recent input serial from
+        // the focused client), or when one of our own programs asks: Tabula
+        // apps relaunched from Deskbar or Tracker forward the request to
+        // the running instance, which has no fresh serial of its own.
+        // Anything else (a terminal's bell, an app presenting itself) would
+        // steal focus and cover what the user is doing, alerts included.
+        let fresh = token_data.serial.as_ref().is_some_and(|(serial, _)| {
+            self.seat.get_keyboard().is_some_and(|k| {
+                    k.last_enter().is_some_and(|enter| serial.is_no_older_than(&enter))
+                    && k.current_focus().and_then(|f| f.wl_surface().map(|s| s.client())).flatten() == surface.client()
+            })
+        });
+        if !fresh && !self.is_our_program(&surface) {
+            tracing::info!("activation request ignored (no recent input; app {:?})", token_data.app_id);
+            return;
+        }
         if token_data.timestamp.elapsed().as_secs() < 10 {
             // Just grant the wish
             let w = self

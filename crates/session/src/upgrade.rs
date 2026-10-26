@@ -84,29 +84,59 @@ impl Watcher {
         }
     }
 
-    /// Install what's newer; how many programs were.
-    pub fn install(&mut self) -> usize {
+    /// Install what's newer; the programs that were.
+    pub fn install(&mut self) -> Vec<String> {
         if building(&self.from) {
             crate::log("a build is still running; not upgrading yet");
-            return 0;
+            return Vec::new();
         }
         let programs = newer(&self.from, &self.to).unwrap_or_default();
-        let mut done = 0;
+        let mut done = Vec::new();
         for name in &programs {
             match install(&self.from.join(name), &self.to, name) {
-                Ok(()) => done += 1,
+                Ok(()) => done.push(name.clone()),
                 Err(e) => crate::log(format!("could not install {name}: {e}")),
             }
         }
-        crate::log(format!("installed {done} of {} upgraded programs", programs.len()));
+        crate::log(format!("installed {} of {} upgraded programs", done.len(), programs.len()));
         self.pending = newer(&self.from, &self.to).unwrap_or_default();
         self.publish();
         done
     }
 
+    /// Tell our programs still running from files just replaced in the
+    /// install directory (the kit re-executes them in place, with their
+    /// windows). Leaves out `skip` (us and app_server).
+    pub fn nudge(&self, skip: &[i32]) {
+        // SAFETY: getuid cannot fail.
+        let uid = unsafe { libc::getuid() };
+        let Ok(dir) = std::fs::read_dir("/proc") else { return };
+        for e in dir.flatten() {
+            let Some(pid) = e.file_name().to_str().and_then(|n| n.parse::<i32>().ok()) else { continue };
+            if skip.contains(&pid) || std::fs::metadata(e.path()).map(|m| std::os::unix::fs::MetadataExt::uid(&m)).ok() != Some(uid) {
+                continue;
+            }
+            if let Ok(exe) = std::fs::read_link(e.path().join("exe"))
+                && replaced(&exe, &self.to)
+            {
+                crate::log(format!("asking {} (pid {pid}) to upgrade", exe.display()));
+                // SAFETY: SIGURG (ignored unless handled) to our own program.
+                unsafe { libc::kill(pid, libc::SIGURG) };
+            }
+        }
+    }
+
     pub fn forget(&self) {
         let _ = std::fs::remove_file(&self.state);
     }
+}
+
+/// Was the program at `exe` (as /proc shows it) one of ours in `dir`
+/// whose file has since been replaced?
+fn replaced(exe: &Path, dir: &Path) -> bool {
+    let Some(name) = exe.file_name().and_then(|n| n.to_str()) else { return false };
+    let Some(name) = name.strip_suffix(" (deleted)") else { return false };
+    name.starts_with("tabula-") && exe.parent().is_some_and(|p| same_dir(p, dir))
 }
 
 fn same_dir(a: &Path, b: &Path) -> bool {
@@ -116,17 +146,21 @@ fn same_dir(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// Is cargo building there? (It holds `.cargo-lock` while it does.)
+/// Is cargo building there? (It holds one of its locks while it does:
+/// `.cargo-lock`, or in newer cargo `.cargo-build-lock` and
+/// `.cargo-artifact-lock`.)
 fn building(from: &Path) -> bool {
-    let Ok(lock) = std::fs::File::open(from.join(".cargo-lock")) else { return false };
-    // SAFETY: flock on a file we own; released at once.
-    unsafe {
-        if libc::flock(lock.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) != 0 {
-            return true;
+    [".cargo-lock", ".cargo-build-lock", ".cargo-artifact-lock"].iter().any(|name| {
+        let Ok(lock) = std::fs::File::open(from.join(name)) else { return false };
+        // SAFETY: flock on a file we own; released at once.
+        unsafe {
+            if libc::flock(lock.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) != 0 {
+                return true;
+            }
+            libc::flock(lock.as_raw_fd(), libc::LOCK_UN);
         }
-        libc::flock(lock.as_raw_fd(), libc::LOCK_UN);
-    }
-    false
+        false
+    })
 }
 
 /// Our programs in `from` that are newer than (or missing from) `to`;
@@ -207,6 +241,10 @@ mod tests {
         // Fresh from the linker: wait.
         program(&from, "tabula-a", 0);
         assert_eq!(newer(&from, &to), None);
+        assert!(replaced(&to.join("tabula-b (deleted)"), &to));
+        assert!(!replaced(&to.join("tabula-b"), &to));
+        assert!(!replaced(&from.join("tabula-b (deleted)"), &to));
+        assert!(!replaced(&to.join("ptyxis (deleted)"), &to));
         std::fs::remove_dir_all(&root).unwrap();
     }
 }

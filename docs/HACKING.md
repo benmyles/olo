@@ -324,13 +324,22 @@ path; no TryExec, as the greeter can't look inside a private home).
 installer records the tree's `target/release` in
 `~/.local/share/tabula/build-dir` (`TABULA_UPGRADE_FROM` overrides it).
 Every 3 s the session compares the `tabula-*` programs there with its
-own. It skips this while cargo holds `target/release/.cargo-lock` or a
-program is under 3 s old. It lists newer ones in
+own. It skips this while cargo holds one of its locks in the tree
+(`.cargo-lock`, or `.cargo-build-lock`/`.cargo-artifact-lock` in newer
+cargo) or a program is under 3 s old. It lists newer ones in
 `$XDG_RUNTIME_DIR/tabula-upgrade-<display>.json`; Deskbar polls that file
 and shows a green arrow in its tray. Clicking it asks first. Accepting,
 or `tabula-session upgrade` (SIGUSR2), installs them beside the session:
 a btrfs/XFS clone (`FICLONE`) or a copy, under a temporary name and then
-renamed. The session then reloads as above. Test it with
+renamed. Only a new `tabula-app-server` needs a reload, and a reload
+closes programs not built on the kit (GTK, Qt, Xwayland), so Deskbar's
+alert names them first. Otherwise app_server keeps running: the session
+sends SIGURG to each of the user's processes whose program file in the
+install directory was just replaced (`/proc/PID/exe` ends in
+" (deleted)"). The kit catches it (a self-pipe in `platform.rs`), saves
+state and re-executes, as after a reload, and app_server puts its windows
+back where they were. A new tabula-session re-executes itself without a
+reload. Test it with
 `TSESSION_SESSION_EXE=<install>/bin/tabula-session
 TABULA_UPGRADE_FROM=<tree> tsession start NAME --session --shell` and
 `touch` a program in the tree.
