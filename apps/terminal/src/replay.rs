@@ -2,16 +2,71 @@
 //! that rebuilds the shell's screen and scrollback in a fresh emulator,
 //! then the state programs set (the alternate screen and what's on it,
 //! cursor keys, keypad, mouse reporting, bracketed paste, the kitty
-//! keyboard flags, the cursor's shape) and the title. Images aren't
-//! replayed; their cells come back blank.
+//! keyboard flags, the cursor's shape) and the title. Images come back
+//! as kitty graphics: each sent once, then put row by row where its cells
+//! are.
+
+use std::collections::HashSet;
 
 use alacritty_terminal::{
     event::EventListener,
     grid::{Dimensions, Grid},
     index::{Column, Line},
     term::{Term, TermMode, cell::{Cell, Flags}},
-    vte::ansi::{Color, CursorShape, NamedColor, Processor},
+    vte::ansi::{Color, CursorShape, NamedColor},
 };
+use base64::Engine;
+
+use crate::graphics::{self, Store};
+
+/// The shell's images, and which of them the replay has sent so far.
+struct Images<'a> {
+    store: &'a Store,
+    sent: HashSet<u32>,
+}
+
+impl Images<'_> {
+    /// The placement row an image cell shows.
+    fn at(&self, cell: &Cell) -> Option<(graphics::Placement, usize)> {
+        let (uid, row) = graphics::parse_uri(cell.hyperlink()?.uri())?;
+        let p = *self.store.placements.get(&uid)?;
+        self.store.images.contains_key(&p.image).then_some((p, row))
+    }
+
+    /// Kitty graphics that put row `row` of placement `p` at the cursor,
+    /// leaving the cursor after it (sending the image first if need be).
+    fn put(&mut self, out: &mut String, p: &graphics::Placement, row: usize) {
+        let image = &self.store.images[&p.image];
+        // The program's own id, so it can still place or delete it.
+        let id = self.store.kitty_id(p.image).unwrap_or(0x8000_0000 | p.image);
+        if self.sent.insert(p.image) {
+            let packed = if image.packed {
+                image.rgba.to_vec()
+            } else {
+                let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+                let _ = std::io::Write::write_all(&mut z, &image.rgba);
+                z.finish().unwrap_or_default()
+            };
+            let data = base64::engine::general_purpose::STANDARD.encode(packed);
+            // In chunks, as programs send them.
+            let chunks: Vec<&[u8]> = data.as_bytes().chunks(4096).collect();
+            for (i, chunk) in chunks.iter().enumerate() {
+                let more = (i + 1 < chunks.len()) as u8;
+                let chunk = std::str::from_utf8(chunk).unwrap_or_default();
+                if i == 0 {
+                    out.push_str(&format!("\x1b_Ga=t,f=32,s={},v={},i={id},o=z,q=2,m={more};{chunk}\x1b\\", image.width, image.height));
+                } else {
+                    out.push_str(&format!("\x1b_Gm={more};{chunk}\x1b\\"));
+                }
+            }
+        }
+        let [x, y, w, h] = p.src;
+        let rows = p.rows.max(1) as u32;
+        let (top, bottom) = (y + row as u32 * h / rows, y + (row as u32 + 1) * h / rows);
+        out.push_str(&format!("\x1b_Ga=p,i={id},x={x},y={top},w={w},h={},c={},r=1,C=1,q=2\x1b\\", (bottom - top).max(1), p.cols));
+        out.push_str(&format!("\x1b[{}C", p.cols));
+    }
+}
 
 fn sgr(fg: Color, bg: Color, flags: Flags) -> String {
     let mut p: Vec<String> = vec!["0".into()];
@@ -48,12 +103,25 @@ fn sgr(fg: Color, bg: Color, flags: Flags) -> String {
 }
 
 /// One row's cells from the first up to `end`, with their attributes.
-fn row(out: &mut String, grid: &Grid<Cell>, line: i32, end: Option<usize>, last: &mut Option<(Color, Color, Flags)>) {
+fn row(out: &mut String, grid: &Grid<Cell>, line: i32, end: Option<usize>, last: &mut Option<(Color, Color, Flags)>, images: &mut Images) {
     let Some(end) = end else { return };
     let row = &grid[Line(line)];
+    // Cells an image put covers.
+    let mut skip = 0;
     for c in 0..=end {
         let cell = &row[Column(c)];
+        if skip > 0 {
+            skip -= 1;
+            continue;
+        }
         if cell.flags.contains(Flags::WIDE_CHAR_SPACER) {
+            continue;
+        }
+        if let Some((p, r)) = images.at(cell)
+            && p.start_col == c
+        {
+            images.put(out, &p, r);
+            skip = p.cols.min(grid.columns() - c) - 1;
             continue;
         }
         let key = (cell.fg, cell.bg, cell.flags & !(Flags::WRAPLINE | Flags::WIDE_CHAR | Flags::LEADING_WIDE_CHAR_SPACER));
@@ -69,7 +137,7 @@ fn row(out: &mut String, grid: &Grid<Cell>, line: i32, end: Option<usize>, last:
 }
 
 /// The last column worth replaying on a line (trailing blanks aren't).
-fn end(grid: &Grid<Cell>, line: i32) -> Option<usize> {
+fn end(grid: &Grid<Cell>, line: i32, images: &Images) -> Option<usize> {
     let row = &grid[Line(line)];
     let cols = grid.columns();
     if row[Column(cols - 1)].flags.contains(Flags::WRAPLINE) {
@@ -78,17 +146,17 @@ fn end(grid: &Grid<Cell>, line: i32) -> Option<usize> {
     }
     (0..cols).rev().find(|&c| {
         let cell = &row[Column(c)];
-        (cell.c != ' ' && cell.c != '\0') || cell.bg != Color::Named(NamedColor::Background)
+        (cell.c != ' ' && cell.c != '\0') || cell.bg != Color::Named(NamedColor::Background) || images.at(cell).is_some()
     })
 }
 
 /// The primary screen and its scrollback, as a stream of lines.
-fn history(out: &mut String, grid: &Grid<Cell>) {
+fn history(out: &mut String, grid: &Grid<Cell>, images: &mut Images) {
     let mut last = None;
     let top = -(grid.history_size() as i32);
     let bottom = grid.screen_lines() as i32 - 1;
     for line in top..=bottom {
-        row(out, grid, line, end(grid, line), &mut last);
+        row(out, grid, line, end(grid, line, images), &mut last, images);
         let wrapped = grid[Line(line)][Column(grid.columns() - 1)].flags.contains(Flags::WRAPLINE);
         if line < bottom && !wrapped {
             out.push_str("\r\n");
@@ -99,11 +167,11 @@ fn history(out: &mut String, grid: &Grid<Cell>) {
 }
 
 /// The alternate screen: each row in place.
-fn screen(out: &mut String, grid: &Grid<Cell>) {
+fn screen(out: &mut String, grid: &Grid<Cell>, images: &mut Images) {
     let mut last = None;
     for line in 0..grid.screen_lines() as i32 {
         out.push_str(&format!("\x1b[{};1H", line + 1));
-        row(out, grid, line, end(grid, line), &mut last);
+        row(out, grid, line, end(grid, line, images), &mut last, images);
     }
     out.push_str("\x1b[0m");
     cursor(out, grid);
@@ -163,22 +231,21 @@ fn modes(out: &mut String, mode: TermMode) {
 
 /// Output that brings a fresh emulator to where `term` is. (It swaps
 /// `term`'s screens to read the one not showing, and puts them back.)
-pub fn snapshot<T: EventListener>(term: &mut Term<T>, title: Option<&str>) -> Vec<u8> {
+pub fn snapshot<T: EventListener>(term: &mut Term<T>, title: Option<&str>, store: &Store) -> Vec<u8> {
+    let mut images = Images { store, sent: HashSet::new() };
     // Start from nothing (a re-attaching Terminal has a screen already).
     let mut out = String::from("\x1bc");
     if term.mode().contains(TermMode::ALT_SCREEN) {
-        let mut alt = String::new();
-        screen(&mut alt, term.grid());
+        let alt = term.grid().clone();
         term.swap_alt();
-        history(&mut out, term.grid());
-        // Going back clears the alternate screen: draw it again.
+        history(&mut out, term.grid(), &mut images);
+        // Going back clears the alternate screen: put it back as it was.
         term.swap_alt();
-        let mut parser: Processor = Processor::new();
-        parser.advance(term, alt.as_bytes());
         out.push_str("\x1b[?1049h");
-        out.push_str(&alt);
+        screen(&mut out, &alt, &mut images);
+        *term.grid_mut() = alt;
     } else {
-        history(&mut out, term.grid());
+        history(&mut out, term.grid(), &mut images);
     }
     modes(&mut out, *term.mode());
     let style = term.cursor_style();
@@ -202,7 +269,11 @@ pub fn snapshot<T: EventListener>(term: &mut Term<T>, title: Option<&str>) -> Ve
 
 #[cfg(test)]
 mod tests {
-    use alacritty_terminal::{event::VoidListener, term::Config};
+    use std::collections::HashSet;
+
+use alacritty_terminal::{event::VoidListener, term::Config};
+
+    use alacritty_terminal::vte::ansi::Processor;
 
     use super::*;
     use crate::io::Size;
@@ -241,12 +312,12 @@ mod tests {
         let mut cleared = term(20, 5);
         feed(&mut cleared, b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix\x1b[H\x1b[2J$ ");
         for t in [&mut a, &mut cleared] {
-            let replay = snapshot(t, Some("hi"));
+            let replay = snapshot(t, Some("hi"), &Store::default());
             let mut b = term(20, 5);
             feed(&mut b, &replay);
             same(t, &b);
         }
-        let replay = String::from_utf8(snapshot(&mut a, None)).unwrap();
+        let replay = String::from_utf8(snapshot(&mut a, None, &Store::default())).unwrap();
         assert!(replay.contains("\x1b[0;31mred"));
     }
 
@@ -256,7 +327,7 @@ mod tests {
         feed(&mut a, b"before\r\n$ vim\r\n");
         feed(&mut a, b"\x1b[?1049h\x1b[?1h\x1b=\x1b[?2004h\x1b[?1000h\x1b[?1006h\x1b[>1u\x1b[?25l\x1b[5 q");
         feed(&mut a, b"\x1b[2;3Hhello\x1b[5;1H~ status\x1b[3;4H");
-        let replay = snapshot(&mut a, Some("vim"));
+        let replay = snapshot(&mut a, Some("vim"), &Store::default());
         // Reading the primary screen left the alternate one as it was.
         let mut again = term(20, 5);
         feed(&mut again, b"before\r\n$ vim\r\n\x1b[?1049h\x1b[?1h\x1b=\x1b[?2004h\x1b[?1000h\x1b[?1006h\x1b[>1u\x1b[?25l\x1b[5 q\x1b[2;3Hhello\x1b[5;1H~ status\x1b[3;4H");
@@ -270,5 +341,39 @@ mod tests {
         feed(&mut b, b"\x1b[?1049l");
         same(&a, &b);
         assert_eq!(text(b.grid())[0], "before");
+    }
+
+    #[test]
+    fn rebuilds_images() {
+        use base64::Engine;
+        let shared = || crate::io::Shared::new((10, 20), Size { cols: 20, rows: 5 }, crate::colors::Scheme::light());
+        let feed_images = |t: &mut Term<VoidListener>, sh: &crate::io::Shared, bytes: &[u8]| {
+            let mut f = crate::io::Feeder::default();
+            f.feed(t, sh, bytes, &mut Vec::new());
+            f.flush(t);
+        };
+        // A 20×40 image (2×2 cells), with the program's id 7.
+        let rgba: Vec<u8> = (0..20 * 40 * 4).map(|i| (i % 251) as u8).collect();
+        let data = base64::engine::general_purpose::STANDARD.encode(&rgba);
+        let (sa, sb) = (shared(), shared());
+        let mut a = term(20, 5);
+        feed_images(&mut a, &sa, format!("top\r\n\x1b_Ga=T,f=32,s=20,v=40,i=7,q=2;{data}\x1b\\after").as_bytes());
+        // tabula-termd keeps them compressed.
+        sa.images.lock().unwrap().pack();
+        let replay = snapshot(&mut a, None, &sa.images.lock().unwrap());
+        let mut b = term(20, 5);
+        feed_images(&mut b, &sb, &replay);
+        same(&a, &b);
+        let store = sb.images.lock().unwrap();
+        let (&ours, image) = store.images.iter().next().unwrap();
+        assert_eq!((store.images.len(), image.width, image.height, store.kitty_id(ours)), (1, 20, 40, Some(7)));
+        assert_eq!(*image.rgba, rgba);
+        // Both rows of it, in the same cells.
+        let images = Images { store: &store, sent: HashSet::new() };
+        for line in [1, 2] {
+            let (p, row) = images.at(&b.grid()[Line(line)][Column(0)]).unwrap();
+            assert_eq!((p.cols, p.src[3], row), (2, 20, 0));
+            assert!(images.at(&b.grid()[Line(line)][Column(2)]).is_none());
+        }
     }
 }

@@ -927,6 +927,12 @@ fn legacy_with_event(key: Key, m: egui::Modifiers, event: u8) -> Option<Vec<u8>>
     }
 }
 
+/// The keys of the menu shortcuts (Ctrl+Shift+key, whether or not the
+/// item is enabled just now; ⇧= arrives as Plus). Keep in step with
+/// `menu_bar` in main.rs.
+pub const SHORTCUTS: [Key; 14] =
+    [Key::N, Key::W, Key::Q, Key::C, Key::V, Key::A, Key::F, Key::G, Key::E, Key::K, Key::Equals, Key::Plus, Key::Minus, Key::Num0];
+
 fn keyboard(ui: &Ui, s: &Session, out: &mut Output) {
     let mode = *s.term.lock().mode();
     let kitty = mode.intersects(TermMode::KITTY_KEYBOARD_PROTOCOL);
@@ -938,8 +944,10 @@ fn keyboard(ui: &Ui, s: &Session, out: &mut Output) {
     for e in events {
         match e {
             egui::Event::Key { key, pressed, repeat, modifiers, .. } => {
-                // Ctrl+Shift is the app's (menu shortcuts, the clipboard).
-                if modifiers.ctrl && modifiers.shift && pressed {
+                // Ctrl+Shift with a menu shortcut's key is the app's (⌘C
+                // arrives as Ctrl+Shift+C); any other goes to the shell
+                // as Ctrl+key, so ⌘R searches history like Ctrl+R.
+                if modifiers.ctrl && modifiers.shift && pressed && SHORTCUTS.contains(&key) {
                     continue;
                 }
                 if pressed && modifiers.shift && !mode.contains(TermMode::ALT_SCREEN) {

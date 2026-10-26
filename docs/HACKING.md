@@ -744,8 +744,10 @@ or attaches a shell, sends input and resizes, and gets the output. On
 attach, tabula-termd sends a replay (`src/replay.rs`) that rebuilds the
 screen and scrollback in a fresh emulator: both screens when a program
 is on the alternate one, the modes it set (cursor keys, mouse reporting,
-bracketed paste, kitty keyboard flags…), cursor shape and title; images
-come back blank. The PTY comes along (SCM_RIGHTS) so Terminal can see the
+bracketed paste, kitty keyboard flags…), cursor shape and title. Images
+(kitty, sixel, iTerm2) come back as kitty graphics: each image sent once
+under the program's id, then put row by row in its cells; tabula-termd
+keeps them zlib-compressed (`Store::pack`). The PTY comes along (SCM_RIGHTS) so Terminal can see the
 foreground program and its working directory. tabula-termd answers the
 program's questions (device attributes) only while no Terminal is
 attached.
@@ -783,7 +785,13 @@ Testing: tabula-termd lives in the session's runtime directory, so a
 headless session gets its own. Kill only the Terminal or tabula-termd
 you started, found by `XDG_RUNTIME_DIR` in `/proc/PID/environ`.
 `cargo test -p tabula-terminal` covers the wire format (with descriptor
-passing) and replays (scrollback, `clear`, the alternate screen, modes).
+passing) and replays (scrollback, `clear`, the alternate screen, modes,
+images).
+
+Keys: physical Ctrl goes to the shell. ⌘ reaches Terminal as Ctrl+Shift
+(see keymap.rs); Ctrl+Shift with a menu shortcut's key
+(`view::SHORTCUTS`, kept in step with the menus) is Terminal's, and any
+other goes to the shell as Ctrl+key, so ⌘R searches history like Ctrl+R.
 
 ## The polkit agent (apps/polkit-agent, tabula_system::polkit)
 

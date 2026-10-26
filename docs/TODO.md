@@ -68,8 +68,8 @@ as they land (with the commit), add new ones as they come up.
   live in tabula-termd (one per display); quitting, crashing or upgrading
   Terminal reattaches every window with its scrollback, and tabula-termd
   upgrades in place too. Terminal ▸ Terminal Daemon… shows it and can
-  restart it (keeping the shells) or start it over. Not yet: images
-  aren't replayed on reattach.
+  restart it (keeping the shells) or start it over. Images come back
+  too.
 - Terminal: ~~find in scrollback~~ (Edit ▸ Find…, Find Again, Find
   Selection; regex over screen and history); ~~release-build memory
   check~~ (fonts mapped, wgpu MemoryUsage: every app ~100 MB smaller);

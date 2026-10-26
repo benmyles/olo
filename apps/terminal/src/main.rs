@@ -556,6 +556,8 @@ impl App for Terminal {
             .checked(self.settings.scheme == SchemeChoice::Light)
             .item("Tabula Dark", "scheme-dark", None)
             .checked(self.settings.scheme == SchemeChoice::Dark);
+        // (Their keys are view::SHORTCUTS: Ctrl+Shift with any other key
+        // goes to the shell.)
         Some(vec![
             Menu::new("Terminal")
                 .item_shift("New Terminal", "new", Key::N)

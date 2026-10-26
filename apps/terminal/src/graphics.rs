@@ -34,6 +34,10 @@ pub struct Image {
     pub rgba: Arc<Vec<u8>>,
     /// Bumped when the image is replaced, so textures get rebuilt.
     pub generation: u64,
+    /// `rgba` is zlib-compressed (tabula-termd keeps images that way:
+    /// only to send on).
+    #[allow(dead_code)] // (Only tabula-termd reads it.)
+    pub packed: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -70,7 +74,7 @@ impl Store {
             self.next_image += 1;
             self.next_image
         });
-        self.images.insert(id, Image { width, height, rgba: Arc::new(rgba), generation: self.generation });
+        self.images.insert(id, Image { width, height, rgba: Arc::new(rgba), generation: self.generation, packed: false });
         self.order.retain(|&i| i != id);
         self.order.push(id);
         // Stay within budget: drop the oldest images (their cells simply
@@ -84,6 +88,26 @@ impl Store {
             self.placements.retain(|_, p| p.image != old);
         }
         id
+    }
+
+    /// The id the program gave image `ours`, if it gave one.
+    #[allow(dead_code)] // (tabula-termd's, like `pack`.)
+    pub fn kitty_id(&self, ours: u32) -> Option<u32> {
+        self.kitty_ids.iter().find(|(_, v)| **v == ours).map(|(k, _)| *k)
+    }
+
+    /// Compress the pixels of images not yet compressed.
+    #[allow(dead_code)]
+    pub fn pack(&mut self) {
+        for image in self.images.values_mut().filter(|i| !i.packed) {
+            let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+            if std::io::Write::write_all(&mut z, &image.rgba).is_ok()
+                && let Ok(data) = z.finish()
+            {
+                image.rgba = Arc::new(data);
+                image.packed = true;
+            }
+        }
     }
 
     fn new_image_id(&mut self) -> u32 {

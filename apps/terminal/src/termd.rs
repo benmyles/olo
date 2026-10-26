@@ -46,7 +46,6 @@ use alacritty_terminal::{
     event::{Event, EventListener, WindowSize},
     sync::FairMutex,
     term::{Config, Term, TermMode},
-    vte::ansi::Processor,
 };
 use serde::{Deserialize, Serialize};
 
@@ -213,12 +212,13 @@ fn new_shell(st: &mut State, id: u64, pty: pty::Pty, grid: Grid, replay: Option<
     let size = Size { cols: grid.cols.max(1) as usize, rows: grid.rows.max(1) as usize };
     let config = Config { scrolling_history: wire::SCROLLBACK, kitty_keyboard: true, ..Config::default() };
     let mut term = Term::new(config, &size, listener);
+    let shared = Arc::new(io::Shared::new((grid.cell_w, grid.cell_h), size, colors::Scheme::light()));
     if let Some(replay) = replay {
-        let mut parser: Processor = Processor::new();
-        parser.advance(&mut term, replay);
+        // Images and all.
+        io::Feeder::default().feed(&mut term, &shared, replay, &mut Vec::new());
+        shared.images.lock().unwrap().pack();
     }
     let term = Arc::new(FairMutex::new(term));
-    let shared = Arc::new(io::Shared::new((grid.cell_w, grid.cell_h), size, colors::Scheme::light()));
     shared.pid.store(pid, Ordering::Relaxed);
     pty::resize(master.as_raw_fd(), window_size(grid));
     match master.try_clone() {
@@ -273,13 +273,6 @@ fn spawn_reader(
                 let backlog = {
                     let mut t = term.lock();
                     feeder.feed(&mut *t, &shared, &buf[..n], &mut replies);
-                    // Where images go is all we need of them (Terminal
-                    // keeps the pixels).
-                    for image in shared.images.lock().unwrap().images.values_mut() {
-                        if !image.rgba.is_empty() {
-                            image.rgba = Default::default();
-                        }
-                    }
                     // Still locked, so a Terminal attaching now gets this
                     // either in its replay or here, not both.
                     let out = attached.lock().unwrap();
@@ -296,6 +289,9 @@ fn spawn_reader(
                         }
                     }
                 };
+                // Images are kept only to send on, so compressed (not
+                // holding the screen up meanwhile).
+                shared.images.lock().unwrap().pack();
                 // Don't run ahead of a Terminal that's behind.
                 if let Some(b) = backlog {
                     while b.load(Ordering::Acquire) > BACKLOG {
@@ -345,7 +341,7 @@ fn attach(st: &mut State, conn: u64, id: u64, grid: Grid) {
     shell.resize(grid);
     let mut term = shell.term.lock();
     let title = shell.title.lock().unwrap().clone();
-    let replay = replay::snapshot(&mut term, title.as_deref());
+    let replay = replay::snapshot(&mut term, title.as_deref(), &shell.shared.images.lock().unwrap());
     let alt = term.mode().contains(TermMode::ALT_SCREEN);
     let mut data = shell.pid.to_le_bytes().to_vec();
     data.extend_from_slice(&replay);
@@ -653,7 +649,7 @@ fn upgrade(st: &St, binary: &Binary, listener: &UnixListener, lock: &File) {
     for (&id, sh) in &s.shells {
         let mut term = sh.term.lock();
         let title = sh.title.lock().unwrap().clone();
-        let replay = replay::snapshot(&mut term, title.as_deref());
+        let replay = replay::snapshot(&mut term, title.as_deref(), &sh.shared.images.lock().unwrap());
         carried.shells.push(CarriedShell { id, fd: sh.master.as_raw_fd(), pid: sh.pid, grid: sh.grid, title, replay });
     }
     let fds: Vec<RawFd> = carried.shells.iter().map(|c| c.fd).chain([carried.listener, carried.lock]).collect();
