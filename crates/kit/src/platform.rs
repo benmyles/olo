@@ -72,11 +72,23 @@ use wayland_protocols::{
 use crate::{
     app::{App, Cx, Layer, Proxy, Request, WindowId, WindowKind, WindowOptions},
     input, menu,
-    menu::{BarState, Menu, PopupResult, PopupState},
+    menu::{BarState, Menu, MenuAnchor, MenuRequest, PopupResult, PopupState},
     style,
 };
 
 // ---- GPU ----------------------------------------------------------------
+
+/// Popup path root meaning "the surface's ad-hoc menu", not a bar menu.
+const CONTEXT: usize = usize::MAX;
+
+fn menu_of(s: &Surface, path: &[usize]) -> Option<Menu> {
+    let root = if path[0] == CONTEXT {
+        s.context.as_ref().map(|r| &r.menu)
+    } else {
+        s.menus.as_ref().and_then(|m| m.get(path[0]))
+    };
+    root.and_then(|m| m.at_path(&path[1..])).cloned()
+}
 
 struct Gpu {
     instance: wgpu::Instance,
@@ -121,12 +133,16 @@ struct Surface {
     repaint_at: Option<Instant>,
     events: Vec<egui::Event>,
     pointer: Option<Pos2>,
+    /// Buttons pressed on this surface and not yet released here.
+    buttons: Vec<egui::PointerButton>,
     cursor: egui::CursorIcon,
     // Menus (toplevels only).
     menus: Option<Vec<Menu>>,
     bar: BarState,
     /// Popup ids opened from this window, outermost first.
     popups: Vec<WindowId>,
+    /// The ad-hoc popup menu (context menu, menu field) last requested.
+    context: Option<MenuRequest>,
     start: Instant,
 }
 
@@ -400,10 +416,12 @@ impl Kit {
             repaint_at: None,
             events: Vec::new(),
             pointer: None,
+            buttons: Vec::new(),
             cursor: egui::CursorIcon::Default,
             menus: None,
             bar: BarState::default(),
             popups: Vec::new(),
+            context: None,
             start: Instant::now(),
         }
     }
@@ -732,14 +750,7 @@ impl Kit {
                 Role::Popup { owner, path, state, .. } => (*owner, path.clone(), state.clone()),
                 _ => unreachable!(),
             };
-            let menu = self
-                .surfaces
-                .iter()
-                .find(|o| o.id == owner)
-                .and_then(|o| o.menus.as_ref())
-                .and_then(|m| m.get(path[0]))
-                .and_then(|m| m.at_path(&path[1..]))
-                .cloned();
+            let menu = self.surfaces.iter().find(|o| o.id == owner).and_then(|o| menu_of(o, &path));
             let Some(menu) = menu else {
                 menu_events.push(MenuEvent::CloseAll(owner));
                 self.handle_menu_events(menu_events);
@@ -806,6 +817,9 @@ impl Kit {
                 s.bar = bar;
             }
             s.menus = menus;
+            if let Some(request) = menu::take_request(&ctx) {
+                menu_events.push(MenuEvent::Context(id, request));
+            }
             out
         };
 
@@ -920,6 +934,23 @@ impl Kit {
                         self.open_menu_popup(win, vec![index], rect, None);
                     }
                 }
+                MenuEvent::Context(win, request) => {
+                    self.close_popups_of(win, 0);
+                    let anchor = match request.anchor {
+                        MenuAnchor::At(p) => Rect::from_min_size(p, vec2(1.0, 1.0)),
+                        MenuAnchor::Below(r) | MenuAnchor::Over(r, _) => r,
+                    };
+                    let selected = request.selected;
+                    if let Some(s) = self.surface_mut(win) {
+                        s.bar.open = None;
+                        s.context = Some(request);
+                    }
+                    self.open_menu_popup(win, vec![CONTEXT], anchor, None);
+                    let popup = self.surface_mut(win).and_then(|s| s.popups.last().copied());
+                    if let Some(Role::Popup { state, .. }) = popup.and_then(|p| self.surface_mut(p)).map(|s| &mut s.role) {
+                        state.selected = selected;
+                    }
+                }
                 MenuEvent::CloseAll(owner) => {
                     self.close_popups_of(owner, 0);
                     if let Some(s) = self.surface_mut(owner) {
@@ -930,11 +961,25 @@ impl Kit {
                 MenuEvent::Popup { popup, owner, path, result } => match result {
                     PopupResult::Chosen(cmd) => {
                         self.close_popups_of(owner, 0);
+                        let mut source = None;
                         if let Some(s) = self.surface_mut(owner) {
                             s.bar.open = None;
                             s.dirty = true;
+                            if path[0] == CONTEXT {
+                                source = s.context.take().map(|r| r.source);
+                            }
                         }
-                        self.with_app(|app, cx| app.command(cx, owner, &cmd));
+                        match source {
+                            // Ad-hoc menus answer the widget that asked.
+                            Some(source) => {
+                                if let Some(s) = self.surface_mut(owner) {
+                                    menu::deliver_chosen(&s.ctx, source, cmd);
+                                }
+                            }
+                            None => {
+                                self.with_app(|app, cx| app.command(cx, owner, &cmd));
+                            }
+                        }
                     }
                     PopupResult::OpenSubmenu(item, row) => {
                         let depth = path.len();
@@ -985,16 +1030,14 @@ impl Kit {
 
     fn open_menu_popup(&mut self, owner: WindowId, path: Vec<usize>, anchor: Rect, parent_popup: Option<WindowId>) {
         let Some(owner_s) = self.surfaces.iter().find(|s| s.id == owner) else { return };
-        let Some(menu) = owner_s
-            .menus
-            .as_ref()
-            .and_then(|m| m.get(path[0]))
-            .and_then(|m| m.at_path(&path[1..]))
-            .cloned()
-        else {
+        let Some(menu) = menu_of(owner_s, &path) else {
             return;
         };
-        let size = menu::popup_size(&owner_s.ctx, &menu);
+        let context_anchor = (path == [CONTEXT]).then(|| owner_s.context.as_ref().map(|r| r.anchor)).flatten();
+        let mut size = menu::popup_size(&owner_s.ctx, &menu);
+        if let Some(MenuAnchor::Below(r) | MenuAnchor::Over(r, _)) = context_anchor {
+            size.x = size.x.max(r.width().round());
+        }
         let size = (size.x.ceil() as u32, size.y.ceil() as u32);
 
         let parent_surface = match parent_popup {
@@ -1005,7 +1048,18 @@ impl Kit {
         let Ok(positioner) = XdgPositioner::new(&self.xdg) else { return };
         positioner.set_size(size.0 as i32, size.1 as i32);
         let a = |v: f32| v.round() as i32;
-        if parent_popup.is_some() {
+        if let Some(MenuAnchor::At(_)) = context_anchor {
+            positioner.set_anchor_rect(a(anchor.left()), a(anchor.top()), 1, 1);
+            positioner.set_anchor(xdg_positioner::Anchor::TopLeft);
+            positioner.set_gravity(xdg_positioner::Gravity::BottomRight);
+        } else if let Some(MenuAnchor::Over(r, n)) = context_anchor {
+            // The current item sits exactly over the field, as on BeOS.
+            let dy = menu::item_offset(&menu, n) - (r.height() - menu::ITEM_HEIGHT) / 2.0;
+            positioner.set_anchor_rect(a(r.left()), a(r.top()), a(r.width()), a(r.height()));
+            positioner.set_anchor(xdg_positioner::Anchor::TopLeft);
+            positioner.set_gravity(xdg_positioner::Gravity::BottomRight);
+            positioner.set_offset(0, -a(dy));
+        } else if parent_popup.is_some() {
             // Submenu: to the right of the item, top-aligned.
             positioner.set_anchor_rect(a(anchor.left()), a(anchor.top()) - 3, a(anchor.width()), a(anchor.height()));
             positioner.set_anchor(xdg_positioner::Anchor::TopRight);
@@ -1110,6 +1164,7 @@ enum MenuEvent {
     Command(WindowId, String),
     BarChanged(WindowId, Option<usize>, Option<(usize, Rect)>),
     CloseAll(WindowId),
+    Context(WindowId, MenuRequest),
     Popup { popup: WindowId, owner: WindowId, path: Vec<usize>, result: PopupResult },
 }
 
@@ -1398,8 +1453,21 @@ impl PointerHandler for Kit {
                     if self.pointer_focus.as_ref() == Some(&wl) {
                         self.pointer_focus = None;
                     }
+                    // A popup grab takes the pointer between press and
+                    // release; don't leave egui thinking a button is held.
+                    let mut held = Vec::new();
                     if let Some(i) = self.index_of_wl(&wl) {
-                        self.surfaces[i].pointer = None;
+                        let last = self.surfaces[i].pointer.take().unwrap_or(pos);
+                        held = std::mem::take(&mut self.surfaces[i].buttons)
+                            .into_iter()
+                            .map(|button| (button, last))
+                            .collect();
+                    }
+                    for (button, at) in held {
+                        self.push_event(
+                            &wl,
+                            egui::Event::PointerButton { pos: at, button, pressed: false, modifiers: self.modifiers },
+                        );
                     }
                     self.push_event(&wl, egui::Event::PointerGone);
                 }
@@ -1415,6 +1483,13 @@ impl PointerHandler for Kit {
                         self.last_serial = *serial;
                     }
                     if let Some(button) = input::pointer_button(*button) {
+                        if let Some(i) = self.index_of_wl(&wl) {
+                            let b = &mut self.surfaces[i].buttons;
+                            b.retain(|x| *x != button);
+                            if pressed {
+                                b.push(button);
+                            }
+                        }
                         self.push_event(
                             &wl,
                             egui::Event::PointerButton { pos, button, pressed, modifiers: self.modifiers },

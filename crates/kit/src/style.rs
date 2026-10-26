@@ -5,7 +5,7 @@
 use std::sync::{Arc, OnceLock};
 
 use egui::{
-    Align2, Color32, Context, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Painter, Pos2, Rect,
+    Color32, Context, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Painter, Pos2, Rect,
     Shadow, Stroke, Visuals, pos2, vec2,
 };
 use tabula_theme::{Palette, Rgba, mix};
@@ -14,8 +14,6 @@ use tabula_theme::{Palette, Rgba, mix};
 pub const PLAIN_SIZE: f32 = 12.0;
 pub const SMALL_SIZE: f32 = 10.5;
 pub const MONO_SIZE: f32 = 12.0;
-/// Room the ⌘ glyph takes in a shortcut label.
-pub const KEYCAP_WIDTH: f32 = 14.0;
 
 pub fn c(rgba: Rgba) -> Color32 {
     Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3])
@@ -260,21 +258,58 @@ pub fn snap(ctx: &Context, r: Rect) -> Rect {
     Rect::from_min_max(pos2(s(r.min.x), s(r.min.y)), pos2(s(r.max.x), s(r.max.y)))
 }
 
+/// A check mark inside `r`, as one joined stroke.
 pub fn check_mark(p: &Painter, r: Rect, color: Color32) {
-    let stroke = Stroke::new(1.8, color);
-    p.line_segment([pos2(r.left(), r.center().y), pos2(r.left() + r.width() * 0.38, r.bottom())], stroke);
-    p.line_segment([pos2(r.left() + r.width() * 0.38, r.bottom()), pos2(r.right(), r.top())], stroke);
+    let pts = vec![
+        pos2(r.left(), r.top() + r.height() * 0.5),
+        pos2(r.left() + r.width() * 0.38, r.bottom()),
+        pos2(r.right(), r.top()),
+    ];
+    p.add(egui::Shape::line(pts, Stroke::new(1.6, color)));
 }
 
-/// Right-aligned shortcut label with the ⌘ glyph.
+/// Right-aligned shortcut label: the ⌘ glyph set tight against the key,
+/// both on one baseline.
 pub fn shortcut(p: &Painter, right_center: Pos2, label: &str, color: Color32) {
+    use egui::text::{LayoutJob, TextFormat};
     let font = FontId::proportional(PLAIN_SIZE);
-    let r = p.text(right_center, Align2::RIGHT_CENTER, label, font.clone(), color);
-    p.text(
-        pos2(r.left() - 2.0, right_center.y),
-        Align2::RIGHT_CENTER,
-        "⌘",
-        FontId::proportional(PLAIN_SIZE - 1.0),
-        color,
-    );
+    let mut job = LayoutJob::default();
+    job.append("⌘", 0.0, TextFormat { font_id: font.clone(), color, extra_letter_spacing: -1.0, ..Default::default() });
+    job.append(label, 0.0, TextFormat { font_id: font, color, ..Default::default() });
+    let galley = p.layout_job(job);
+    let pos = pos2(right_center.x - galley.size().x, right_center.y - galley.size().y / 2.0);
+    p.galley(pos, galley, color);
+}
+
+/// Width of a shortcut label as [`shortcut`] draws it.
+pub fn shortcut_width(ctx: &Context, label: &str) -> f32 {
+    use egui::text::{LayoutJob, TextFormat};
+    let font = FontId::proportional(PLAIN_SIZE);
+    let mut job = LayoutJob::default();
+    job.append("⌘", 0.0, TextFormat { font_id: font.clone(), extra_letter_spacing: -1.0, ..Default::default() });
+    job.append(label, 0.0, TextFormat { font_id: font, ..Default::default() });
+    ctx.fonts_mut(|f| f.layout_job(job).size().x)
+}
+
+/// Contrast-aware tint: bevels need a stronger push on dark panels to
+/// read at all, so darkening is exaggerated in dark mode.
+pub fn shade(palette: &Palette, rgba: Rgba, tint: f32) -> Color32 {
+    let t = if palette.mode == tabula_theme::ThemeMode::Dark && tint > 1.0 {
+        1.0 + (tint - 1.0) * 1.9
+    } else {
+        tint
+    };
+    c(tabula_theme::tint(rgba, t))
+}
+
+/// A vertical gradient fill.
+pub fn vgradient(p: &Painter, r: Rect, top: Color32, bottom: Color32) {
+    let mut mesh = egui::Mesh::default();
+    mesh.colored_vertex(r.left_top(), top);
+    mesh.colored_vertex(r.right_top(), top);
+    mesh.colored_vertex(r.left_bottom(), bottom);
+    mesh.colored_vertex(r.right_bottom(), bottom);
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(1, 3, 2);
+    p.add(mesh);
 }

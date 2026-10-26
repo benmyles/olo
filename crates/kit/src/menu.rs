@@ -156,6 +156,67 @@ pub fn find_shortcut(menus: &[Menu], key: Key, shift: bool) -> Option<String> {
     menus.iter().find_map(|m| m.find_shortcut(key, shift)).map(str::to_owned)
 }
 
+// ---- in-window popups ----
+
+/// Where an ad-hoc popup menu (context menu, menu field) appears.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MenuAnchor {
+    /// At a point, opening down and right (context menus).
+    At(Pos2),
+    /// Below a rect (pull-downs).
+    Below(Rect),
+    /// Over a rect with item `n` lying on top of it (BeOS menu fields).
+    Over(Rect, usize),
+}
+
+/// A request from a widget for the kit to open a popup menu. The command
+/// of the chosen item comes back through [`take_chosen`] on the next frame.
+#[derive(Debug, Clone)]
+pub struct MenuRequest {
+    pub menu: Menu,
+    pub source: egui::Id,
+    pub anchor: MenuAnchor,
+    pub selected: Option<usize>,
+}
+
+fn request_key() -> egui::Id {
+    egui::Id::unique("tabula-menu-request")
+}
+
+/// Ask the kit to open `menu` as a popup once this frame is drawn.
+pub fn request_popup(ctx: &egui::Context, request: MenuRequest) {
+    ctx.data_mut(|d| d.insert_temp(request_key(), request));
+}
+
+pub(crate) fn take_request(ctx: &egui::Context) -> Option<MenuRequest> {
+    ctx.data_mut(|d| {
+        let r = d.get_temp::<MenuRequest>(request_key());
+        d.remove::<MenuRequest>(request_key());
+        r
+    })
+}
+
+pub(crate) fn deliver_chosen(ctx: &egui::Context, source: egui::Id, command: String) {
+    ctx.data_mut(|d| d.insert_temp(source.with("menu-chosen"), command));
+}
+
+/// The command chosen from the popup `source` requested, if one was.
+pub fn take_chosen(ctx: &egui::Context, source: egui::Id) -> Option<String> {
+    ctx.data_mut(|d| d.remove_temp::<String>(source.with("menu-chosen")))
+}
+
+/// Vertical offset of item `n`'s top within a popup for `menu`.
+pub fn item_offset(menu: &Menu, n: usize) -> f32 {
+    POPUP_BORDER
+        + 2.0
+        + menu
+            .items
+            .iter()
+            .take(n)
+            .map(|i| if matches!(i, MenuItem::Separator) { SEPARATOR_HEIGHT } else { ITEM_HEIGHT })
+            .sum::<f32>()
+}
+
 // ---- metrics ------------------------------------------------------------
 
 pub const BAR_HEIGHT: f32 = 21.0;
@@ -197,7 +258,7 @@ pub fn menu_bar(ui: &mut Ui, menus: &[Menu], state: &mut BarState) -> Rect {
         let galley = painter.layout_no_wrap(menu.title.clone(), font(), Color32::BLACK);
         let w = galley.size().x + 2.0 * BAR_PAD;
         let item = Rect::from_min_size(pos2(x, rect.top() + 1.0), vec2(w, BAR_HEIGHT - 2.0));
-        let resp = ui.interact(item, egui::Id::new(("menubar", i)), Sense::click());
+        let resp = ui.interact(item, egui::Id::unique(("menubar", i)), Sense::click());
         let open_here = state.open.is_some_and(|(o, _)| o == i);
         if resp.is_pointer_button_down_on() || resp.clicked() {
             if !open_here {
@@ -236,7 +297,7 @@ pub fn popup_size(ctx: &egui::Context, menu: &Menu) -> Vec2 {
             MenuItem::Action(a) => {
                 label_w = label_w.max(measure(&a.label));
                 if let Some(s) = a.shortcut {
-                    key_w = key_w.max(measure(&s.label()) + style::KEYCAP_WIDTH);
+                    key_w = key_w.max(style::shortcut_width(ctx, &s.label()));
                 }
                 h += ITEM_HEIGHT;
             }
@@ -356,7 +417,7 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
         match item {
             MenuItem::Separator => {
                 let y = row.center().y.floor();
-                style::hline(&painter, row.left() + 1.0, row.right() - 1.0, y - 1.0, style::darken(p.menu_background, 1.25));
+                style::hline(&painter, row.left() + 1.0, row.right() - 1.0, y - 1.0, style::shade(&p, p.menu_background, 1.16));
                 style::hline(&painter, row.left() + 1.0, row.right() - 1.0, y, c(p.shine));
             }
             MenuItem::Action(a) => {
@@ -409,6 +470,5 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
     {
         result = PopupResult::CloseSubmenu;
     }
-    let _ = Pos2::ZERO;
     result
 }
