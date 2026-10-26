@@ -184,5 +184,11 @@
   "title": "Preferences launcher",
   "caption": "tabula-preferences with no argument: a grid of every panel.",
   "image": "2026-10-25/232029-preferences-launcher.png"
+ },
+ {
+  "time": "2026-10-25T23:30:13",
+  "title": "Preferences \u25b8 Sound",
+  "caption": "Output and input device, level and mute, read live from the sound server (light and dark).",
+  "image": "2026-10-25/233013-preferences-sound.png"
  }
 ]

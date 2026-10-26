@@ -11,6 +11,8 @@ as they land (with the commit), add new ones as they come up.
 - ~~Preferences app~~: launcher, Appearance, Backgrounds, Display, Keyboard
   (incl. the ⌘ / Caps Lock / tap-⌘ toggles), Touchpad, Workspaces, About;
   `Cx::activate` over xdg-activation.
+- ~~Preferences ▸ Sound~~: output/input device, level, mute, live from the
+  sound server (`tabula_system::audio::{devices, watch_devices, set_*}`).
 
 ## Native rule (no wrapping system tools)
 
@@ -31,7 +33,7 @@ as they land (with the commit), add new ones as they come up.
 
 - Terminal: find in scrollback; release-build memory check; colour emoji.
 - Activity Monitor.
-- Preferences, remaining panels: Sound, Network, Bluetooth, Power
+- Preferences, remaining panels: Network, Bluetooth, Power
   (with caffeinated mode), Date & Time (24-hour clock for Deskbar), Touch
   ID, Screen Saver; Restart Tabula; a Choose… file panel for the
   wallpaper; Display mode switching (app_server ignores `mode` in

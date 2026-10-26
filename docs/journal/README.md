@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-25
 
+### Preferences ▸ Sound
+
+*23:30* — Output and input device, level and mute, read live from the sound server (light and dark).
+
+![Preferences ▸ Sound](2026-10-25/233013-preferences-sound.png)
+
 ### Preferences launcher
 
 *23:20* — tabula-preferences with no argument: a grid of every panel.

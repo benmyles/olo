@@ -1,4 +1,4 @@
-//! The default output's volume, over the PulseAudio native protocol (which
+//! Sound devices and their volumes, over the PulseAudio native protocol (which
 //! PipeWire serves too), with a change feed instead of polling.
 
 use std::{
@@ -83,13 +83,176 @@ impl Conn {
 
     fn volume(&mut self) -> Result<Volume> {
         let s = self.sink()?;
-        let ch = s.cvolume.channels();
-        let level = if ch.is_empty() {
-            0.0
-        } else {
-            ch.iter().map(|v| v.as_u32() as f32).sum::<f32>() / ch.len() as f32 / PaVolume::NORM.as_u32() as f32
+        Ok(Volume { level: level(&s.cvolume), muted: s.muted })
+    }
+
+    fn devices(&mut self) -> Result<Devices> {
+        let server: protocol::ServerInfo = self.request(&Command::GetServerInfo)?;
+        let default_out = server.default_sink_name.map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let default_in = server.default_source_name.map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let sinks: protocol::SinkInfoList = self.request(&Command::GetSinkInfoList)?;
+        let sources: protocol::SourceInfoList = self.request(&Command::GetSourceInfoList)?;
+        let device = |name: &CString, description: &Option<CString>, cvolume: &ChannelVolume, muted: bool, default: &str| {
+            let name = name.to_string_lossy().into_owned();
+            Device {
+                description: description
+                    .as_ref()
+                    .map(|d| tidy_description(&d.to_string_lossy()))
+                    .filter(|d| !d.is_empty())
+                    .unwrap_or_else(|| name.clone()),
+                is_default: name == default,
+                volume: Volume { level: level(cvolume), muted },
+                channels: cvolume.channels().len().max(1),
+                name,
+            }
         };
-        Ok(Volume { level, muted: s.muted })
+        let outputs = sinks.iter().map(|s| device(&s.name, &s.description, &s.cvolume, s.muted, &default_out)).collect();
+        // A sink's monitor isn't a microphone.
+        let inputs = sources
+            .iter()
+            .filter(|s| s.monitor_of_sink_index.is_none())
+            .map(|s| device(&s.name, &s.description, &s.cvolume, s.muted, &default_in))
+            .collect();
+        Ok(Devices { outputs, inputs })
+    }
+}
+
+/// Drop Apple board codes ("MacBook Pro J416 Speakers" → "MacBook Pro
+/// Speakers"), which mean nothing to people.
+fn tidy_description(s: &str) -> String {
+    let board = |w: &str| {
+        let mut c = w.chars();
+        c.next() == Some('J') && {
+            let rest: String = c.collect();
+            let digits = rest.trim_end_matches(|ch: char| ch.is_ascii_lowercase());
+            (3..=4).contains(&digits.len()) && digits.chars().all(|ch| ch.is_ascii_digit())
+        }
+    };
+    s.split_whitespace().filter(|w| !board(w)).collect::<Vec<_>>().join(" ")
+}
+
+fn level(cvolume: &ChannelVolume) -> f32 {
+    let ch = cvolume.channels();
+    if ch.is_empty() {
+        0.0
+    } else {
+        ch.iter().map(|v| v.as_u32() as f32).sum::<f32>() / ch.len() as f32 / PaVolume::NORM.as_u32() as f32
+    }
+}
+
+fn channel_volume(level: f32, channels: usize) -> ChannelVolume {
+    let raw = (level.clamp(0.0, 1.5) * PaVolume::NORM.as_u32() as f32).round() as u32;
+    let mut volume = ChannelVolume::empty();
+    for _ in 0..channels.max(1) {
+        volume.push(PaVolume::from_u32_clamped(raw));
+    }
+    volume
+}
+
+/// Speakers and headphones, or microphones.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Output,
+    Input,
+}
+
+/// A sound device as the server knows it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Device {
+    /// The server's name for it (what the setters take).
+    pub name: String,
+    /// What to show ("MacBook Pro Speakers").
+    pub description: String,
+    pub volume: Volume,
+    pub channels: usize,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Devices {
+    pub outputs: Vec<Device>,
+    pub inputs: Vec<Device>,
+}
+
+impl Devices {
+    pub fn default_device(&self, kind: Kind) -> Option<&Device> {
+        match kind {
+            Kind::Output => &self.outputs,
+            Kind::Input => &self.inputs,
+        }
+        .iter()
+        .find(|d| d.is_default)
+    }
+}
+
+pub fn devices() -> Result<Devices> {
+    Conn::connect()?.devices()
+}
+
+/// Make `name` where new sound goes (or comes from).
+pub fn set_default(kind: Kind, name: &str) -> Result<()> {
+    let name = CString::new(name).map_err(|e| ProtocolError::Invalid(e.to_string()))?;
+    let mut c = Conn::connect()?;
+    c.ack(&match kind {
+        Kind::Output => Command::SetDefaultSink(name),
+        Kind::Input => Command::SetDefaultSource(name),
+    })
+}
+
+/// Set every channel of device `name` to `level` (0.0–1.0).
+pub fn set_device_volume(kind: Kind, name: &str, level: f32, channels: usize) -> Result<()> {
+    let params = SetDeviceVolumeParams {
+        device_index: None,
+        device_name: Some(CString::new(name).map_err(|e| ProtocolError::Invalid(e.to_string()))?),
+        volume: channel_volume(level, channels),
+    };
+    Conn::connect()?.ack(&match kind {
+        Kind::Output => Command::SetSinkVolume(params),
+        Kind::Input => Command::SetSourceVolume(params),
+    })
+}
+
+pub fn set_device_muted(kind: Kind, name: &str, mute: bool) -> Result<()> {
+    let params = SetDeviceMuteParams {
+        device_index: None,
+        device_name: Some(CString::new(name).map_err(|e| ProtocolError::Invalid(e.to_string()))?),
+        mute,
+    };
+    Conn::connect()?.ack(&match kind {
+        Kind::Output => Command::SetSinkMute(params),
+        Kind::Input => Command::SetSourceMute(params),
+    })
+}
+
+/// Like [`watch`], for the whole device list (Preferences ▸ Sound).
+pub fn watch_devices(mut changed: impl FnMut(Option<Devices>)) -> ! {
+    let mut last: Option<Option<Devices>> = None;
+    let mut report = |d: Option<Devices>| {
+        if last.as_ref() != Some(&d) {
+            last = Some(d.clone());
+            changed(d);
+        }
+    };
+    loop {
+        let r: Result<()> = (|| {
+            let mut query = Conn::connect()?;
+            let mut events = Conn::connect()?;
+            events.sock.get_ref().set_read_timeout(None)?;
+            events.ack(&Command::Subscribe(SubscriptionMask::SINK | SubscriptionMask::SOURCE | SubscriptionMask::SERVER))?;
+            report(Some(query.devices()?));
+            loop {
+                let (_, cmd) = protocol::read_command_message(&mut events.sock, events.version)?;
+                if let Command::SubscribeEvent(_) = cmd {
+                    std::thread::sleep(Duration::from_millis(30));
+                    report(Some(query.devices()?));
+                }
+            }
+        })();
+        if let Err(e) = r {
+            tracing::debug!("sound server: {e}");
+        }
+        report(None);
+        std::thread::sleep(Duration::from_secs(3));
     }
 }
 
@@ -100,12 +263,7 @@ pub fn volume() -> Result<Volume> {
 /// Set every channel of the default output to `level` (0.0–1.0).
 pub fn set_volume(level: f32) -> Result<()> {
     let mut c = Conn::connect()?;
-    let channels = c.sink()?.cvolume.channels().len().max(1);
-    let raw = (level.clamp(0.0, 1.5) * PaVolume::NORM.as_u32() as f32).round() as u32;
-    let mut volume = ChannelVolume::empty();
-    for _ in 0..channels {
-        volume.push(PaVolume::from_u32_clamped(raw));
-    }
+    let volume = channel_volume(level, c.sink()?.cvolume.channels().len());
     c.ack(&Command::SetSinkVolume(SetDeviceVolumeParams {
         device_index: None,
         device_name: Some(CString::new(DEFAULT_SINK).unwrap()),
@@ -159,5 +317,54 @@ fn watch_once(report: &mut impl FnMut(Option<Volume>)) -> Result<()> {
             std::thread::sleep(Duration::from_millis(30));
             report(Some(query.volume()?));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn channel_volumes() {
+        let v = channel_volume(0.5, 2);
+        assert_eq!(v.channels().len(), 2);
+        assert!((level(&v) - 0.5).abs() < 0.001);
+        assert_eq!(channel_volume(9.0, 0).channels().len(), 1);
+        assert_eq!(tidy_description("MacBook Pro J416 Speakers"), "MacBook Pro Speakers");
+        assert_eq!(tidy_description("MacBook Air J413s Microphone"), "MacBook Air Microphone");
+        assert_eq!(tidy_description("JBL Flip 5"), "JBL Flip 5");
+    }
+
+    /// Reads (never changes) the real server: `cargo test -- --ignored`.
+    #[test]
+    #[ignore]
+    fn live_devices() {
+        let d = devices().expect("sound server");
+        for dev in d.outputs.iter().chain(&d.inputs) {
+            eprintln!("{} {:?} {:?}", if dev.is_default { "*" } else { " " }, dev.description, dev.volume);
+        }
+        assert!(d.default_device(Kind::Output).is_some());
+    }
+}
+
+#[cfg(test)]
+mod live_write {
+    use super::*;
+
+    /// Writes the default input's own level and mute state back (a no-op
+    /// that exercises the setters): `cargo test -- --ignored`.
+    #[test]
+    #[ignore]
+    fn rewrite_input_unchanged() {
+        let before = devices().unwrap();
+        let mic = before.default_device(Kind::Input).expect("an input").clone();
+        set_device_volume(Kind::Input, &mic.name, mic.volume.level, mic.channels).unwrap();
+        set_device_muted(Kind::Input, &mic.name, mic.volume.muted).unwrap();
+        set_default(Kind::Input, &mic.name).unwrap();
+        let after = devices().unwrap();
+        let again = after.default_device(Kind::Input).unwrap();
+        assert_eq!(again.name, mic.name);
+        assert_eq!(again.volume.muted, mic.volume.muted);
+        assert!((again.volume.level - mic.volume.level).abs() < 0.001);
     }
 }

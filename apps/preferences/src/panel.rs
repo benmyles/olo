@@ -8,7 +8,7 @@ use tabula_kit::{
 };
 use tabula_protocol::Settings;
 
-use crate::{Ctx, about, appearance, display, keyboard, touchpad, workspaces};
+use crate::{Ctx, about, appearance, display, keyboard, sound, touchpad, workspaces};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -16,6 +16,7 @@ pub enum Panel {
     Backgrounds,
     Display,
     Keyboard,
+    Sound,
     Touchpad,
     Workspaces,
     About,
@@ -27,6 +28,7 @@ impl Panel {
         Panel::Backgrounds,
         Panel::Display,
         Panel::Keyboard,
+        Panel::Sound,
         Panel::Touchpad,
         Panel::Workspaces,
         Panel::About,
@@ -47,6 +49,7 @@ impl Panel {
             Panel::Backgrounds => "backgrounds",
             Panel::Display => "display",
             Panel::Keyboard => "keyboard",
+            Panel::Sound => "sound",
             Panel::Touchpad => "touchpad",
             Panel::Workspaces => "workspaces",
             Panel::About => "about",
@@ -59,6 +62,7 @@ impl Panel {
             Panel::Backgrounds => "Backgrounds",
             Panel::Display => "Display",
             Panel::Keyboard => "Keyboard",
+            Panel::Sound => "Sound",
             Panel::Touchpad => "Touchpad",
             Panel::Workspaces => "Workspaces",
             Panel::About => "About Tabula",
@@ -71,6 +75,7 @@ impl Panel {
             Panel::Backgrounds => "backgrounds",
             Panel::Display => "display",
             Panel::Keyboard => "keyboard",
+            Panel::Sound => "sound",
             Panel::Touchpad => "touchpad",
             Panel::Workspaces => "workspaces",
             Panel::About => "about",
@@ -84,6 +89,7 @@ impl Panel {
             Panel::Backgrounds => (440, 308),
             Panel::Display => (480, 322),
             Panel::Keyboard => (440, 370),
+            Panel::Sound => (440, 270),
             Panel::Touchpad => (400, 382),
             Panel::Workspaces => (360, 164),
             Panel::About => (420, 254),
@@ -91,12 +97,12 @@ impl Panel {
     }
 
     pub fn needs_server(self) -> bool {
-        !matches!(self, Panel::About)
+        !matches!(self, Panel::About | Panel::Sound)
     }
 
     /// Whether the panel has Defaults / Revert.
     fn resettable(self) -> bool {
-        !matches!(self, Panel::About | Panel::Display)
+        !matches!(self, Panel::About | Panel::Display | Panel::Sound)
     }
 
     /// Put this panel's part of `settings` back to `from`.
@@ -118,7 +124,7 @@ impl Panel {
                 settings.focus_follows_mouse = from.focus_follows_mouse;
             }
             Panel::Workspaces => settings.workspace_count = from.workspace_count,
-            Panel::Display | Panel::About => {}
+            Panel::Display | Panel::About | Panel::Sound => {}
         }
     }
 }
@@ -129,6 +135,7 @@ pub enum State {
     Keyboard(keyboard::State),
     Backgrounds(workspaces::BackgroundsState),
     Display(display::State),
+    Sound(sound::State),
     About(about::State),
 }
 
@@ -138,6 +145,7 @@ impl State {
             Panel::Keyboard => State::Keyboard(Default::default()),
             Panel::Backgrounds => State::Backgrounds(Default::default()),
             Panel::Display => State::Display(Default::default()),
+            Panel::Sound => State::Sound(Default::default()),
             Panel::About => State::About(about::State::new()),
             _ => State::None,
         }
@@ -159,6 +167,7 @@ pub fn ui(panel: Panel, state: &mut State, ui: &mut egui::Ui, ctx: Ctx<'_>) {
             (Panel::Backgrounds, State::Backgrounds(s)) => workspaces::backgrounds_ui(ui, settings, s),
             (Panel::Display, State::Display(s)) => display::ui(ui, settings, outputs, server, s),
             (Panel::Keyboard, State::Keyboard(s)) => keyboard::ui(ui, settings, s),
+            (Panel::Sound, State::Sound(s)) => sound::ui(ui, s),
             (Panel::Touchpad, _) => touchpad::ui(ui, settings),
             (Panel::Workspaces, _) => workspaces::ui(ui, settings),
             (Panel::About, State::About(s)) => about::ui(ui, s),
