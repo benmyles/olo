@@ -137,6 +137,15 @@ pub fn home() -> PathBuf {
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| "/".into())
 }
 
+/// A path for display, with the home folder shortened to `~`.
+pub fn display_path(p: &Path) -> String {
+    match p.strip_prefix(home()) {
+        Ok(rest) if rest.as_os_str().is_empty() => "~".into(),
+        Ok(rest) => format!("~/{}", rest.display()),
+        Err(_) => p.display().to_string(),
+    }
+}
+
 /// A display name for a folder: "Home" for $HOME, the volume name for "/".
 pub fn display_name(path: &Path) -> String {
     if path == home() {
@@ -144,6 +153,9 @@ pub fn display_name(path: &Path) -> String {
     }
     if path == Path::new("/") {
         return volume_label();
+    }
+    if path == trash_files() {
+        return "Trash".into();
     }
     path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string())
 }
@@ -220,7 +232,8 @@ fn unique(dir: &Path, name: &str) -> PathBuf {
         Some((s, e)) if !s.is_empty() => (s.to_owned(), format!(".{e}")),
         _ => (name.to_owned(), String::new()),
     };
-    for i in 1.. {
+    // Numbering starts at 2: "New Folder", "New Folder 2", …
+    for i in 2.. {
         let p = dir.join(format!("{stem} {i}{ext}"));
         if fs::symlink_metadata(&p).is_err() {
             return p;
@@ -240,11 +253,26 @@ pub fn move_to_trash(path: &Path) -> std::io::Result<()> {
     let target = unique(&files, &name);
     let tname = target.file_name().unwrap().to_string_lossy().into_owned();
     let now = format_iso_now();
-    fs::write(
-        info.join(format!("{tname}.trashinfo")),
-        format!("[Trash Info]\nPath={}\nDeletionDate={now}\n", path.display()),
-    )?;
-    move_path(path, &target)
+    let info_file = info.join(format!("{tname}.trashinfo"));
+    let abs = std::path::absolute(path)?;
+    fs::write(&info_file, format!("[Trash Info]\nPath={}\nDeletionDate={now}\n", percent_encode(&abs)))?;
+    move_path(path, &target).inspect_err(|_| {
+        let _ = fs::remove_file(&info_file);
+    })
+}
+
+/// URL-style escaping for .trashinfo paths, as the trash spec requires.
+fn percent_encode(p: &Path) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    let mut out = String::new();
+    for &b in p.as_os_str().as_bytes() {
+        if b.is_ascii_alphanumeric() || b"/-_.~".contains(&b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }
 
 pub fn empty_trash() -> std::io::Result<()> {
@@ -329,11 +357,16 @@ pub fn move_into(from: &Path, dir: &Path) -> std::io::Result<PathBuf> {
     Ok(target)
 }
 
+/// "notes copy.txt" for "notes.txt"; copying a copy gives "notes copy.txt"
+/// again (made unique as "notes copy 2.txt"), never "notes copy copy.txt".
 fn copy_name(name: &str) -> String {
-    match name.rsplit_once('.') {
-        Some((s, e)) if !s.is_empty() => format!("{s} copy.{e}"),
-        _ => format!("{name} copy"),
-    }
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((s, e)) if !s.is_empty() => (s, format!(".{e}")),
+        _ => (name, String::new()),
+    };
+    let base = stem.trim_end_matches(|c: char| c.is_ascii_digit());
+    let base = base.strip_suffix(" copy ").or_else(|| stem.strip_suffix(" copy")).unwrap_or(stem);
+    format!("{base} copy{ext}")
 }
 
 pub fn new_folder(dir: &Path) -> std::io::Result<PathBuf> {
@@ -381,7 +414,8 @@ pub fn open(entry: &Entry) {
     }
 }
 
-/// Recursive size of a folder (for Get Info), capped by `limit` entries.
+/// Recursive size of a folder and the number of items (files and folders)
+/// inside it, for Get Info; capped by `limit` entries.
 pub fn dir_size(path: &Path, limit: &mut u32) -> (u64, u64) {
     let (mut bytes, mut files) = (0, 0);
     if let Ok(rd) = fs::read_dir(path) {
@@ -394,7 +428,7 @@ pub fn dir_size(path: &Path, limit: &mut u32) -> (u64, u64) {
                 if m.is_dir() {
                     let (b, f) = dir_size(&e.path(), limit);
                     bytes += b;
-                    files += f;
+                    files += f + 1; // the folder is an item too
                 } else {
                     bytes += m.len();
                     files += 1;
@@ -448,4 +482,25 @@ pub fn permissions_string(mode: u32, is_dir: bool) -> String {
         s.push(if m & 1 != 0 { 'x' } else { '-' });
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn copy_names() {
+        assert_eq!(copy_name("notes.txt"), "notes copy.txt");
+        assert_eq!(copy_name("notes copy.txt"), "notes copy.txt");
+        assert_eq!(copy_name("notes copy 12.txt"), "notes copy.txt");
+        assert_eq!(copy_name("photo 3.png"), "photo 3 copy.png");
+        assert_eq!(copy_name("2024"), "2024 copy");
+        assert_eq!(copy_name(".bashrc"), ".bashrc copy");
+    }
+
+    #[test]
+    fn trashinfo_paths_are_escaped() {
+        assert_eq!(percent_encode(Path::new("/home/a b&c.txt")), "/home/a%20b%26c.txt");
+        assert_eq!(percent_encode(Path::new("/tmp/é")), "/tmp/%C3%A9");
+    }
 }

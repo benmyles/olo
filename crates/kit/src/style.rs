@@ -292,24 +292,53 @@ pub fn check_mark(p: &Painter, r: Rect, color: Color32) {
 /// Right-aligned shortcut label: the ⌘ glyph set tight against the key,
 /// both on one baseline.
 pub fn shortcut(p: &Painter, right_center: Pos2, label: &str, color: Color32) {
-    use egui::text::{LayoutJob, TextFormat};
+    let parts = shortcut_parts(label);
     let font = FontId::proportional(PLAIN_SIZE);
-    let mut job = LayoutJob::default();
-    job.append("⌘", 0.0, TextFormat { font_id: font.clone(), color, extra_letter_spacing: -1.0, ..Default::default() });
-    job.append(label, 0.0, TextFormat { font_id: font, color, ..Default::default() });
-    let galley = p.layout_job(job);
-    let pos = text_origin(p.ctx(), &galley, right_center.x - galley.size().x, right_center.y, PLAIN_SIZE);
-    p.galley(pos, galley, color);
+    let mut x = right_center.x;
+    for (i, part) in parts.iter().enumerate().rev() {
+        let g = p.layout_no_wrap(part.clone(), font.clone(), color);
+        x -= g.size().x;
+        let pos = text_origin(p.ctx(), &g, x, right_center.y, PLAIN_SIZE);
+        p.galley(pos, g, color);
+        if i > 0 {
+            x += SHORTCUT_KERN;
+        }
+    }
+}
+
+/// ⌘ and ⇧ sit this much closer to what follows than their advance width.
+const SHORTCUT_KERN: f32 = 1.0;
+
+/// "⌘" + the label, split so each symbol (⌘ ⇧ ↑ ⌫ …, which come from a
+/// fallback font) is laid out on its own: in one galley with the letters
+/// they would land on a different baseline.
+fn shortcut_parts(label: &str) -> Vec<String> {
+    let mut parts = vec!["⌘".to_owned()];
+    let mut run = String::new();
+    for ch in label.chars() {
+        if ch.is_ascii() {
+            run.push(ch);
+        } else {
+            if !run.is_empty() {
+                parts.push(std::mem::take(&mut run));
+            }
+            parts.push(ch.to_string());
+        }
+    }
+    if !run.is_empty() {
+        parts.push(run);
+    }
+    parts
 }
 
 /// Width of a shortcut label as [`shortcut`] draws it.
 pub fn shortcut_width(ctx: &Context, label: &str) -> f32 {
-    use egui::text::{LayoutJob, TextFormat};
     let font = FontId::proportional(PLAIN_SIZE);
-    let mut job = LayoutJob::default();
-    job.append("⌘", 0.0, TextFormat { font_id: font.clone(), extra_letter_spacing: -1.0, ..Default::default() });
-    job.append(label, 0.0, TextFormat { font_id: font, ..Default::default() });
-    ctx.fonts_mut(|f| f.layout_job(job).size().x)
+    let parts = shortcut_parts(label);
+    ctx.fonts_mut(|f| {
+        parts.iter().map(|t| f.layout_no_wrap(t.clone(), font.clone(), Color32::BLACK).size().x).sum::<f32>()
+            - SHORTCUT_KERN * (parts.len() - 1) as f32
+    })
 }
 
 /// Contrast-aware tint: bevels need a stronger push on dark panels to

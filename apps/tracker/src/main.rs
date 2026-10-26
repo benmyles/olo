@@ -265,6 +265,15 @@ impl FolderWin {
             list.select(i);
         }
     }
+
+    fn select_paths(&mut self, paths: &[PathBuf]) {
+        let (entries, list) = self.current_mut();
+        let rows: Vec<usize> = (0..entries.len()).filter(|&i| paths.contains(&entries[i].path)).collect();
+        if let Some(&first) = rows.first() {
+            list.select(first);
+            list.selected.extend(rows);
+        }
+    }
 }
 
 fn folder_options(path: &Path) -> WindowOptions {
@@ -319,7 +328,7 @@ impl Tracker {
     }
 
     fn open_find(&mut self, cx: &mut Cx) {
-        let id = cx.open_window(WindowOptions::new("Find", 560, 400).min_size(400, 260));
+        let id = cx.open_window(WindowOptions::new("Find", 680, 420).min_size(440, 260));
         self.windows.insert(
             id,
             Win::Find(FindWin {
@@ -459,17 +468,24 @@ impl Tracker {
             }
             "paste" => {
                 if let Some((paths, cut)) = self.clipboard.clone() {
+                    let mut pasted = Vec::new();
                     for p in &paths {
-                        let r = if cut { fs::move_into(p, &dir) } else { fs::copy_into(p, &dir) };
-                        if let Err(e) = r {
-                            self.error(cx, format!("Couldn't {} {}: {e}", if cut { "move" } else { "copy" }, p.display()));
-                            break;
+                        match if cut { fs::move_into(p, &dir) } else { fs::copy_into(p, &dir) } {
+                            Ok(new) => pasted.push(new),
+                            Err(e) => {
+                                self.error(cx, format!("Couldn't {} {}: {e}", if cut { "move" } else { "copy" }, p.display()));
+                                break;
+                            }
                         }
                     }
                     if cut {
                         self.clipboard = None;
                     }
                     self.reload_all();
+                    // The new items come up selected, as after a drop.
+                    if let Some(Win::Folder(f)) = self.windows.get_mut(&win) {
+                        f.select_paths(&pasted);
+                    }
                 }
             }
             "select-all" => {
@@ -527,6 +543,7 @@ impl Tracker {
         let mut file = Menu::new("File")
             .item("Find…", "find", Some(Key::F))
             .item("New Folder", "new-folder", Some(Key::N))
+            .enabled(!in_trash)
             .separator()
             .item("Open", "open", Some(Key::O))
             .enabled(has_sel)
@@ -656,7 +673,7 @@ impl Tracker {
         widgets::window_content(ui, |ui| {
             ui.horizontal(|ui| {
                 let w = ui.available_width() - 80.0 - m::SPACING;
-                let r = ui.add(TextControl::new(&mut fw.query).label("Name contains:").width(w).hint("e.g. report"));
+                let r = ui.add(TextControl::new(&mut fw.query).label("Name contains:").width(w).hint("e.g. report").autofocus(true));
                 if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
                     start = true;
                 }
@@ -673,21 +690,22 @@ impl Tracker {
                 } else {
                     String::new()
                 };
-                ui.label(status);
+                ui.add_space(m::SPACING);
+                ui.add(widgets::StringView::new(&status).dim(true));
             });
             ui.add_space(m::TIGHT);
             let cols = [
-                Column::new("Name", 180.0),
-                Column::new("Location", 200.0),
+                Column::new("Name", 200.0),
+                Column::new("Location", 170.0),
                 Column::new("Size", 70.0).right(),
-                Column::new("Modified", 150.0),
+                Column::new("Modified", 170.0),
             ];
             let results = &fw.results;
             let r = ColumnListView::new(("find-results", win), &cols, results.len(), &mut fw.list).show(ui, |cell| {
                 let e = &results[cell.row];
                 match cell.column {
                     0 => view::name_cell(cell, e),
-                    1 => cell.text(&e.path.parent().map(|p| p.display().to_string()).unwrap_or_default()),
+                    1 => cell.text(&e.path.parent().map(fs::display_path).unwrap_or_default()),
                     2 => cell.text(&if e.is_dir { "—".into() } else { fs::format_size(e.size) }),
                     _ => cell.text(&fs::format_time(e.modified)),
                 }

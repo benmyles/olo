@@ -46,6 +46,11 @@ impl Shortcut {
             Key::Minus => "-".into(),
             Key::Backspace => "⌫".into(),
             Key::Enter => "↵".into(),
+            Key::ArrowUp => "↑".into(),
+            Key::ArrowDown => "↓".into(),
+            Key::ArrowLeft => "←".into(),
+            Key::ArrowRight => "→".into(),
+            Key::Delete => "⌦".into(),
             k => k.name().to_uppercase(),
         };
         if self.shift { format!("⇧{key}") } else { key }

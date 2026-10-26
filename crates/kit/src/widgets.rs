@@ -257,11 +257,19 @@ pub struct TextControl<'a> {
     hint: Option<&'a str>,
     password: bool,
     mono: bool,
+    autofocus: bool,
 }
 
 impl<'a> TextControl<'a> {
     pub fn new(text: &'a mut String) -> Self {
-        TextControl { text, label: None, divider: None, width: None, hint: None, password: false, mono: false }
+        TextControl { text, label: None, divider: None, width: None, hint: None, password: false, mono: false, autofocus: false }
+    }
+    /// Take keyboard focus when the window first shows (the first field of
+    /// a dialog or a Find window). Keeps asking until focus arrives, since
+    /// a window that isn't yet activated can't hold it.
+    pub fn autofocus(mut self, on: bool) -> Self {
+        self.autofocus = on;
+        self
     }
     pub fn label(mut self, label: &'a str) -> Self {
         self.label = Some(label);
@@ -305,6 +313,15 @@ impl Widget for TextControl<'_> {
             well.min.x = rect.left() + divider;
         }
         let id = ui.next_auto_id();
+        if self.autofocus {
+            let done = id.with("autofocused");
+            if ui.memory(|m| m.has_focus(id)) {
+                ui.data_mut(|d| d.insert_temp(done, true));
+            } else if !ui.data(|d| d.get_temp::<bool>(done).unwrap_or(false)) {
+                ui.memory_mut(|m| m.request_focus(id));
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(50));
+            }
+        }
         let focused = ui.memory(|m| m.has_focus(id));
         let painter = ui.painter();
         let fill = if ui.is_enabled() { c(p.document_background) } else { c(p.panel_background) };
@@ -340,6 +357,36 @@ impl Widget for TextControl<'_> {
             ui.ctx().set_cursor_icon(CursorIcon::Text);
         }
         r
+    }
+}
+
+/// A line of static text (BStringView) one control tall, so it sits on the
+/// same baseline as the labels of neighbouring controls in a row.
+pub struct StringView<'a> {
+    text: &'a str,
+    dim: bool,
+}
+
+impl<'a> StringView<'a> {
+    pub fn new(text: &'a str) -> Self {
+        StringView { text, dim: false }
+    }
+    /// Secondary text (status, hints) in the disabled-text colour.
+    pub fn dim(mut self, on: bool) -> Self {
+        self.dim = on;
+        self
+    }
+}
+
+impl Widget for StringView<'_> {
+    fn ui(self, ui: &mut Ui) -> Response {
+        let p = style::palette(ui.ctx());
+        let color = if self.dim { style::disabled_text(&p) } else { text_color(ui, &p) };
+        let galley = layout(ui, self.text, plain_font(), color);
+        let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x.ceil(), CONTROL_HEIGHT), Sense::hover());
+        let pos = text_pos(ui, rect.left(), rect.center().y, &galley);
+        ui.painter().galley(pos, galley, color);
+        resp
     }
 }
 

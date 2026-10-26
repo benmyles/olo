@@ -797,6 +797,8 @@ impl Kit {
             let menus = app.as_mut().and_then(|a| a.menu_bar(id));
             let panel = s.options.panel;
             let palette = self.palette.clone();
+            let toplevel = matches!(s.role, Role::Toplevel(_));
+            let mut close_key = false;
             let out = ctx.run_ui(raw, |ui| {
                 if panel {
                     ui.painter().rect_filled(ui.max_rect(), 0.0, style::c(palette.panel_background));
@@ -837,10 +839,22 @@ impl Kit {
                     }
                 } else if let (Some(app), Some(cx)) = (app.as_mut(), cx.as_mut()) {
                     app.ui(cx, id, ui);
+                    // Windows without a menu bar (Get Info, Find, alerts)
+                    // still close with ⌘W, as on BeOS.
+                    close_key = toplevel
+                        && ui.input(|inp| {
+                            inp.events.iter().any(|e| {
+                                matches!(e, egui::Event::Key { key: egui::Key::W, pressed: true, modifiers, .. }
+                                    if modifiers.ctrl && !modifiers.alt && !modifiers.shift)
+                            })
+                        });
                 }
             });
             self.app = app;
             self.cx = cx;
+            if close_key {
+                menu_events.push(MenuEvent::CloseWindow(id));
+            }
             let s = &mut self.surfaces[i];
             s.bar_rect = drawn_bar;
             if bar != s.bar {
@@ -958,6 +972,9 @@ impl Kit {
             match e {
                 MenuEvent::Command(win, cmd) => {
                     self.with_app(|app, cx| app.command(cx, win, &cmd));
+                }
+                MenuEvent::CloseWindow(win) => {
+                    self.with_app(|app, cx| app.close_requested(cx, win));
                 }
                 MenuEvent::BarChanged(win, _old, new) => {
                     self.close_popups_of(win, 0);
@@ -1212,6 +1229,8 @@ enum MenuEvent {
     Command(WindowId, String),
     BarChanged(WindowId, Option<usize>, Option<(usize, Rect)>),
     CloseAll(WindowId),
+    /// ⌘W in a window without a menu bar.
+    CloseWindow(WindowId),
     Context(WindowId, MenuRequest),
     Popup { popup: WindowId, owner: WindowId, path: Vec<usize>, result: PopupResult },
 }

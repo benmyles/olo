@@ -218,10 +218,12 @@ pub fn item_menu(f: &FolderWin) -> Menu {
 }
 
 pub fn background_menu(f: &FolderWin, can_paste: bool) -> Menu {
+    let in_trash = f.current_dir().starts_with(fs::trash_files());
     Menu::new("")
         .item("New Folder", "new-folder", Some(Key::N))
+        .enabled(!in_trash)
         .item("Paste", "paste", Some(Key::V))
-        .enabled(can_paste)
+        .enabled(can_paste && !in_trash)
         .separator()
         .item("Icon View", "view-icons", Some(Key::Num1))
         .checked(f.view == ViewMode::Icons)
@@ -573,7 +575,8 @@ pub fn info_view(ui: &mut Ui, e: &Entry, size: Option<(u64, u64)>) {
     let p = style::palette(ui.ctx());
     let size_text = if e.is_dir {
         match size {
-            Some((b, n)) => format!("{} ({} items)", fs::format_size(b), n),
+            Some((b, 1)) => format!("{} (1 item)", fs::format_size(b)),
+            Some((b, n)) => format!("{} ({n} items)", fs::format_size(b)),
             None => "Calculating…".into(),
         }
     } else if e.size < 1024 {
@@ -581,7 +584,7 @@ pub fn info_view(ui: &mut Ui, e: &Entry, size: Option<(u64, u64)>) {
     } else {
         format!("{} ({} bytes)", fs::format_size(e.size), e.size)
     };
-    let location = e.path.parent().map(|p| p.display().to_string()).unwrap_or_default();
+    let location = e.path.parent().map(fs::display_path).unwrap_or_default();
     let created = std::fs::metadata(&e.path).ok().and_then(|md| md.created().ok());
     let mut rows = vec![
         ("Size:", size_text),

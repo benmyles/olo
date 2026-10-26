@@ -56,6 +56,29 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         });
     }
 
+    fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        // When the focused window goes, the next one down takes focus (an
+        // alert closing hands the keyboard back to its document).
+        let Some(window) = self
+            .space
+            .elements()
+            .find(|w| w.0.toplevel().is_some_and(|t| t == &surface))
+            .cloned()
+        else {
+            return;
+        };
+        let keyboard = self.seat.get_keyboard().unwrap();
+        let had_focus = match keyboard.current_focus() {
+            Some(KeyboardFocusTarget::Window(w)) => w == window.0,
+            None => true,
+            _ => false,
+        };
+        self.space.unmap_elem(&window);
+        if had_focus {
+            self.focus_topmost();
+        }
+    }
+
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
         // Do not send a configure here, the initial configure
         // of a xdg_surface has to be sent during the commit if

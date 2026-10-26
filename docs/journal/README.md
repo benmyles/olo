@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-25
 
+### Menus: shortcut glyphs on the baseline
+
+*20:29* — ⌘, ⇧ and arrows come from a fallback font; each is now laid out separately so it shares the item's baseline. The Trash is titled Trash.
+
+![Menus: shortcut glyphs on the baseline](2026-10-25/202952-menus-shortcut-glyphs-on-the-baseline.png)
+
+### Tracker: Find
+
+*20:29* — Find takes focus on open, closes with ⌘W, shows home-relative locations and a baseline-aligned status.
+
+![Tracker: Find](2026-10-25/202952-tracker-find.png)
+
 ### Tracker: column view, dark
 
 *20:20*

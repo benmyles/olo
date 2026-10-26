@@ -203,6 +203,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
         let serial = smithay::utils::SERIAL_COUNTER.next_serial();
         let keyboard = self.seat.get_keyboard().unwrap();
+        // A menu's popup grab may still be live (the menu that opened this
+        // window is being torn down); left alone it would hand focus back
+        // to the menu's window on the next key press.
+        if keyboard.is_grabbed() {
+            keyboard.unset_grab(self);
+        }
         keyboard.set_focus(self, Some(KeyboardFocusTarget::from(window.clone())), serial);
     }
 

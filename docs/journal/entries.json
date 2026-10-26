@@ -58,5 +58,17 @@
   "title": "Tracker: column view, dark",
   "caption": "",
   "image": "2026-10-25/202049-tracker-column-view-dark.png"
+ },
+ {
+  "time": "2026-10-25T20:29:52",
+  "title": "Tracker: Find",
+  "caption": "Find takes focus on open, closes with \u2318W, shows home-relative locations and a baseline-aligned status.",
+  "image": "2026-10-25/202952-tracker-find.png"
+ },
+ {
+  "time": "2026-10-25T20:29:52",
+  "title": "Menus: shortcut glyphs on the baseline",
+  "caption": "\u2318, \u21e7 and arrows come from a fallback font; each is now laid out separately so it shares the item's baseline. The Trash is titled Trash.",
+  "image": "2026-10-25/202952-menus-shortcut-glyphs-on-the-baseline.png"
  }
 ]
