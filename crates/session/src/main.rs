@@ -14,7 +14,8 @@
 //! (see `tabula_kit::run`). Nobody has to log out. If tabula-session itself
 //! was upgraded it re-executes first, keeping its children and sockets.
 //!
-//! It also restarts app_server and the shell (Deskbar, the Tracker desktop)
+//! It also restarts app_server and the shell (Deskbar, the Tracker desktop,
+//! and in a real session the polkit agent)
 //! if they crash, and exports the session environment to systemd/D-Bus.
 
 use std::{
@@ -36,6 +37,10 @@ const USAGE: &str = "usage: tabula-session [--tty-udev | --winit | --headless Wx
        tabula-session quit       end the session";
 
 const SHELL: &[&[&str]] = &[&["tabula-deskbar"], &["tabula-tracker", "--desktop"]];
+/// Services only the real (logged-in) session runs: the polkit agent
+/// answers for the login session, which a nested or headless one must
+/// never take over.
+const REAL_SHELL: &[&[&str]] = &[&["tabula-polkit-agent"]];
 /// Give up restarting something that crashes this often.
 const CRASH_LIMIT: usize = 5;
 const CRASH_WINDOW: Duration = Duration::from_secs(60);
@@ -170,11 +175,22 @@ impl Session {
         // Only a real session owns the user's environment: a headless or
         // nested one (tests, development) must not point the user's portals
         // and services at itself.
-        if s.backend.iter().any(|b| b == "--tty-udev") {
+        let real = s.backend.iter().any(|b| b == "--tty-udev");
+        // SAFETY: single-threaded start-up.
+        unsafe {
+            if real {
+                std::env::set_var("TABULA_REAL_SESSION", "1");
+            } else {
+                // Not inherited from a real session we were started in.
+                std::env::remove_var("TABULA_REAL_SESSION");
+            }
+        }
+        if real {
             export_environment();
         }
         if !no_shell {
-            for argv in SHELL {
+            let extra: &[&[&str]] = if real { REAL_SHELL } else { &[] };
+            for argv in SHELL.iter().chain(extra) {
                 let argv: Vec<String> = argv.iter().map(|a| a.to_string()).collect();
                 let pid = spawn(&argv, &[]).unwrap_or(0);
                 s.shell.push(Child { argv, pid, crashes: VecDeque::new() });

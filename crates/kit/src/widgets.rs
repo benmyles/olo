@@ -1810,7 +1810,11 @@ pub fn alert_height(message: &str) -> u32 {
 /// message beside it, and buttons along the bottom right (the last one is
 /// the default). Returns the index of the button chosen; Escape chooses
 /// the first when there is more than one, as Cancel usually comes first.
-pub fn alert(ui: &mut Ui, icon: &str, message: &str, buttons: &[&str]) -> Option<usize> {
+/// The BAlert backdrop: the stripe down the left with `icon` straddling
+/// it. Returns the column for the alert's content, beside the icon and
+/// inside the window's margins (for alerts with more than a message, such
+/// as a password field).
+pub fn alert_frame(ui: &mut Ui, icon: &str) -> Rect {
     let p = style::palette(ui.ctx());
     let full = ui.available_rect_before_wrap();
     let painter = ui.painter();
@@ -1818,13 +1822,20 @@ pub fn alert(ui: &mut Ui, icon: &str, message: &str, buttons: &[&str]) -> Option
     painter.rect_filled(stripe, 0.0, shade(&p, p.panel_background, 1.1));
     let icon_rect = Rect::from_min_size(pos2(stripe.right() - ALERT_ICON / 2.0, full.top() + m::WINDOW_INSET), vec2(ALERT_ICON, ALERT_ICON));
     crate::icons::paint(painter, icon_rect, icon);
+    Rect::from_min_max(pos2(full.left() + ALERT_TEXT_X, full.top() + m::WINDOW_INSET), pos2(full.right() - m::WINDOW_INSET, full.bottom() - m::WINDOW_INSET))
+}
 
-    let text_left = full.left() + ALERT_TEXT_X;
+pub fn alert(ui: &mut Ui, icon: &str, message: &str, buttons: &[&str]) -> Option<usize> {
+    let p = style::palette(ui.ctx());
+    let full = ui.available_rect_before_wrap();
+    let column = alert_frame(ui, icon);
+    let icon_top = column.top();
+    let text_left = column.left();
     let mut job = egui::text::LayoutJob::single_section(message.to_owned(), egui::TextFormat::simple(plain_font(), c(p.panel_text)));
     job.wrap.max_width = full.right() - m::WINDOW_INSET - text_left;
     let g = ui.painter().layout_job(job);
     // First line's capitals level with the icon's upper third.
-    let pos = style::text_origin(ui.ctx(), &g, text_left, icon_rect.top() + style::PLAIN_SIZE / 2.0 + 2.0, style::PLAIN_SIZE);
+    let pos = style::text_origin(ui.ctx(), &g, text_left, icon_top + style::PLAIN_SIZE / 2.0 + 2.0, style::PLAIN_SIZE);
     ui.painter().galley(pos, g, c(p.panel_text));
 
     let row = Rect::from_min_max(

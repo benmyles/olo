@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### polkit agent: password
+
+*02:02* — After the fingerprint times out PAM asks for the password; the field takes focus.
+
+![polkit agent: password](2026-10-26/020241-polkit-agent-password.png)
+
+### polkit agent
+
+*02:02* — Authentication Required: polkit message, Touch ID through PAM first (fprintd), new padlock icon.
+
+![polkit agent](2026-10-26/020241-polkit-agent.png)
+
 ### Date & Time (dark)
 
 *01:54* — Calendar and clock face; disabled while network time is on.

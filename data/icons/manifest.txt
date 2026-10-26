@@ -53,3 +53,4 @@ warning|a thick triangular warning tile in BeOS tab yellow with a bold black exc
 stop|a thick octagonal stop-sign plaque in alert red with a white rim and a bold white exclamation mark, standing upright on the desk
 info|a thick round coin in Be blue with a bold white lowercase "i" on its face, standing upright on the desk
 idea|a glowing yellow light bulb with a silver screw base, lying slightly tilted on the desk
+authentication|a closed golden padlock with a small silver key beside it

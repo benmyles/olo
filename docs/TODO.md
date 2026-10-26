@@ -96,9 +96,7 @@ as they land (with the commit), add new ones as they come up.
 ## Other
 
 - ~~Deskbar 24-hour clock option~~ (Preferences ▸ Date & Time ▸ Clock).
-- **polkit authentication agent**: register with polkitd
-  (`RegisterAuthenticationAgent`), show a BeOS password alert, answer via
-  polkit-agent-helper-1, Touch ID too. Until then, setting the time,
-  zone or network time fails with "an administrator's password is needed".
+- ~~**polkit authentication agent**~~: apps/polkit-agent (real sessions
+  only; fprintd then password through polkit-agent-helper-1).
 - Icons: audio/system, spreadsheet, font and other new file kinds.
 - Kit: asynchronous `read_clipboard`.

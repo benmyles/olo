@@ -352,5 +352,17 @@
   "title": "Date & Time (dark)",
   "caption": "Calendar and clock face; disabled while network time is on.",
   "image": "2026-10-26/015406-date-time-dark.png"
+ },
+ {
+  "time": "2026-10-26T02:02:41",
+  "title": "polkit agent",
+  "caption": "Authentication Required: polkit message, Touch ID through PAM first (fprintd), new padlock icon.",
+  "image": "2026-10-26/020241-polkit-agent.png"
+ },
+ {
+  "time": "2026-10-26T02:02:41",
+  "title": "polkit agent: password",
+  "caption": "After the fingerprint times out PAM asks for the password; the field takes focus.",
+  "image": "2026-10-26/020241-polkit-agent-password.png"
  }
 ]

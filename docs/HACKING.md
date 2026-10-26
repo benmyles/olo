@@ -101,7 +101,7 @@ fn main() {
   forwarded launch asks for a window that is already open), `copy` (text
   to the clipboard), `copy_data` (any MIME types, e.g. `image/png`; the
   data is written to pasters from a thread), `paste` (reads the clipboard
-  off-thread and delivers an `egui::Event::Paste`), `quit`, `palette`,
+  off-thread and delivers an `egui::Event::Paste`), `quit`, `stay_resident` (keep running with no windows), `palette`,
   `proxy`, `window_size`, `restored_state`. There is no clipboard manager,
   so an app that quits (or closes its last window) while it holds the
   clipboard stays running, windowless, until something else is copied.
@@ -184,7 +184,9 @@ keep your own copy if a menu command acts on it (StyledEdit's `blurred`).
 app_server hands the keyboard back to the window as soon as its last
 popup is destroyed.
 
-Alerts: `widgets::alert(ui, icon, message, buttons)` in a window opened
+Alerts: `widgets::alert(ui, icon, message, buttons)` (or
+`widgets::alert_frame(ui, icon)` for an alert with fields, which draws the
+stripe and icon and returns the content column) in a window opened
 with `WindowOptions::alert(title, message)` (sized for the message);
 icons are BeOS's `warning`, `stop`, `info` and `idea`. The kit makes the
 alert a child (`xdg_toplevel.set_parent`) of the app's focused window, or
@@ -479,6 +481,28 @@ process is hidden or exits, so a re-sort never moves it onto another
 process. Quit sends SIGTERM; Force Quit asks first, then SIGKILL; EPERM
 is an alert. **In tests, only ever quit a process you started, selected
 by its exact ID.**
+
+## The polkit agent (apps/polkit-agent, tabula_system::polkit)
+
+Asks for a password when a program needs an administrator (timedated,
+logind, NetworkManager, …). `tabula-session` starts it only in a real
+`--tty-udev` session, with `TABULA_REAL_SESSION=1` (cleared for nested
+and headless sessions); without that it refuses to run, because it
+registers with polkitd for the whole **login session** and must never take
+over the prompts of the session it was started from. It stays resident
+(`Cx::stay_resident`) and opens a BAlert-style window per request
+(`widgets::alert_frame`). Proving identity runs polkit's setuid
+`polkit-agent-helper-1` (the only thing polkitd accepts an answer from):
+the cookie goes on its stdin, and its PAM conversation (`PAM_TEXT_INFO`
+from fprintd for Touch ID, then `PAM_PROMPT_ECHO_OFF` for the password)
+is relayed to the window; a failure starts it again for another try.
+
+Test it with `tsession run NAME tabula-polkit-agent --self-test ACTION`:
+it serves only its own process and asks polkitd about ACTION with
+`CheckAuthorization` (which changes nothing), printing the outcome to
+its log. **Cancel; never type the user's password, and only check
+actions, never perform them.** `TABULA_POLKIT_HELPER` points at a fake
+helper for unit tests.
 
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 

@@ -203,6 +203,7 @@ pub struct Cx {
     /// Logical size of the (first) screen, once known.
     pub(crate) screen: Option<(u32, u32)>,
     pub(crate) outputs: Vec<String>,
+    pub(crate) resident: bool,
 }
 
 /// Where an upgrading app leaves its saved state for its new self.
@@ -289,6 +290,11 @@ impl Cx {
 
     pub fn paste(&mut self, window: WindowId) {
         self.requests.push(Request::Paste(window));
+    }
+    /// Keep running when the last window closes (a background service
+    /// that opens windows on demand); [`Cx::quit`] still ends it.
+    pub fn stay_resident(&mut self) {
+        self.resident = true;
     }
     pub fn quit(&mut self) {
         self.requests.push(Request::Quit);

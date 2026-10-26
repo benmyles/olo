@@ -288,6 +288,7 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                     sizes: Default::default(),
                     screen: kit.screen_size(),
                     outputs: kit.output_names(),
+                    resident: false,
                 };
                 let app = (build.take().expect("built once"))(&mut cx);
                 kit.app = Some(Box::new(app));
@@ -772,7 +773,7 @@ impl Kit {
             .surfaces
             .iter()
             .any(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_) | Role::Lock(..)));
-        if !any_window {
+        if !any_window && !self.cx.as_ref().is_some_and(|c| c.resident) {
             self.finish();
         }
     }
