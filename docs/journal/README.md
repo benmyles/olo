@@ -5,6 +5,30 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Activity Monitor: dark mode
+
+*01:41* — Graphs and legend in dark mode.
+
+![Activity Monitor: dark mode](2026-10-26/014117-activity-monitor-dark-mode.png)
+
+### Activity Monitor: permission alert
+
+*01:41* — Force Quit of another user's process shows a stop alert; nothing is signalled.
+
+![Activity Monitor: permission alert](2026-10-26/014117-activity-monitor-permission-alert.png)
+
+### Activity Monitor: processes
+
+*01:41* — Sortable process list with search by name or ID and an owner filter.
+
+![Activity Monitor: processes](2026-10-26/014117-activity-monitor-processes.png)
+
+### Activity Monitor: graphs
+
+*01:41* — CPU, memory and cache with Total System Power from hwmon; network and disk rates below.
+
+![Activity Monitor: graphs](2026-10-26/014116-activity-monitor-graphs.png)
+
 ### Alerts get their icons
 
 *01:31* — The warning, stop, info and idea alert icons were missing from the set (every alert drew none); generated against the reference set.

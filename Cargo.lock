@@ -4774,6 +4774,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabula-activity"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "tabula-kit",
+ "tabula-theme",
+]
+
+[[package]]
 name = "tabula-deskbar"
 version = "0.1.0"
 dependencies = [

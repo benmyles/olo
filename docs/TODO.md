@@ -38,7 +38,8 @@ as they land (with the commit), add new ones as they come up.
 ## Apps
 
 - Terminal: find in scrollback; release-build memory check; colour emoji.
-- Activity Monitor.
+- ~~Activity Monitor~~: apps/activity (graphs of every /proc, /sys and
+  hwmon source; processes with Quit / Force Quit).
 - Preferences, remaining panels: Network, Bluetooth, Date & Time (24-hour clock for Deskbar), Touch
   ID; Restart Tabula; a Choose… file panel for the
   wallpaper; Display mode switching (app_server ignores `mode` in

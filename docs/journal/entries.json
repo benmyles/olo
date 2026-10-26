@@ -304,5 +304,29 @@
   "title": "Alerts get their icons",
   "caption": "The warning, stop, info and idea alert icons were missing from the set (every alert drew none); generated against the reference set.",
   "image": "2026-10-26/013135-alerts-get-their-icons.png"
+ },
+ {
+  "time": "2026-10-26T01:41:16",
+  "title": "Activity Monitor: graphs",
+  "caption": "CPU, memory and cache with Total System Power from hwmon; network and disk rates below.",
+  "image": "2026-10-26/014116-activity-monitor-graphs.png"
+ },
+ {
+  "time": "2026-10-26T01:41:17",
+  "title": "Activity Monitor: processes",
+  "caption": "Sortable process list with search by name or ID and an owner filter.",
+  "image": "2026-10-26/014117-activity-monitor-processes.png"
+ },
+ {
+  "time": "2026-10-26T01:41:17",
+  "title": "Activity Monitor: permission alert",
+  "caption": "Force Quit of another user's process shows a stop alert; nothing is signalled.",
+  "image": "2026-10-26/014117-activity-monitor-permission-alert.png"
+ },
+ {
+  "time": "2026-10-26T01:41:17",
+  "title": "Activity Monitor: dark mode",
+  "caption": "Graphs and legend in dark mode.",
+  "image": "2026-10-26/014117-activity-monitor-dark-mode.png"
  }
 ]

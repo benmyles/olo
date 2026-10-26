@@ -446,6 +446,27 @@ backwards, replace all), shared by every document; ⌘G finds again, ⌘H
 finds the selection, ⌘T replaces the same. `save_state` keeps every
 window, with unsaved text and styles, through a reload.
 
+## Activity Monitor (apps/activity)
+
+ProcessController and Pulse in one window: Graphs and Processes tabs.
+`sample.rs` reads everything from /proc and /sys on a worker thread
+(`probe` finds the sources once: CPU, memory, cache, swap, network and
+disk rates, faults, context switches, processes and threads, frequency,
+battery, every core, and every hwmon temperature, power and fan with a
+readable name); the interval and whether to read the process table are
+atomics the window sets (`Control`), so the table is only read while its
+tab shows. Rates are per second whatever the interval.
+
+Each graph is a list of source keys (`activity.json`), scaled by the
+source's own maximum or a nice ceiling of what's shown; the context menu
+toggles sources (Processors and Sensors in submenus) and adds or removes
+graphs. The process list sorts by any column and filters by name or
+exact ID and by owner; the selection follows the PID and clears when the
+process is hidden or exits, so a re-sort never moves it onto another
+process. Quit sends SIGTERM; Force Quit asks first, then SIGKILL; EPERM
+is an alert. **In tests, only ever quit a process you started, selected
+by its exact ID.**
+
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 
 `lock_screen()` (Ctrl+⌘Q, Deskbar ▸ Lock Screen, `Request::Lock`, the
