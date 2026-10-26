@@ -25,7 +25,8 @@ use paint_api::rendering_context::RenderingContext;
 use paint_api::viewport_description::ViewportDescription;
 use paint_api::{
     ImageUpdate, PipelineExitSource, SendableFrameTree, SerializableDisplayListPayload,
-    SerializableImageData, WebRenderExternalImageHandlers, WebRenderImageHandlerType, WebViewTrait,
+    SerializableImageData, WebRenderExternalImageHandlers, WebRenderExternalImageIdManager,
+    WebRenderImageHandlerType, WebViewTrait, PaintProxy,
 };
 use profile_traits::time::{ProfilerCategory, ProfilerChan};
 use profile_traits::time_profile;
@@ -130,6 +131,11 @@ pub(crate) struct Painter {
     /// for animated images, which only need to update their offset in the data.
     animation_image_cache: FxHashMap<ImageKey, Arc<Vec<u8>>>,
 
+    /// Patched in for Tabula: ids for the encoded pictures pages send (see
+    /// `encoded_images`), and the way their decoders ask for a redraw.
+    encoded_image_ids: WebRenderExternalImageIdManager,
+    paint_proxy: PaintProxy,
+
     /// A [`WebContentAnimator`] used to manage web content-derived animations. Currently this only
     /// manages blinking caret animations.
     web_content_animator: WebContentAnimator,
@@ -182,6 +188,11 @@ impl Painter {
         );
 
         WindowGLContext::initialize_image_handler(&mut external_image_handlers);
+
+        external_image_handlers.set_handler(
+            Box::new(crate::encoded_images::EncodedImages::new(paint.paint_proxy.clone())),
+            WebRenderImageHandlerType::Image,
+        );
 
         let embedder_to_constellation_sender = paint.embedder_to_constellation_sender.clone();
         let timer_refresh_driver = LazyCell::default();
@@ -291,6 +302,8 @@ impl Painter {
             last_mouse_move_position: None,
             frame_delayer: Default::default(),
             animation_image_cache: FxHashMap::default(),
+            encoded_image_ids: paint.webrender_external_image_id_manager(),
+            paint_proxy: paint.paint_proxy.clone(),
             web_content_animator: WebContentAnimator::new(
                 paint.event_loop_waker.clone_box(),
                 (*timer_refresh_driver).clone(),
@@ -1094,13 +1107,27 @@ impl Painter {
                 ImageData::Raw(data)
             },
             SerializableImageData::External(image) => ImageData::External(image),
+            // Handled by `update_images` before it gets here.
+            data @ SerializableImageData::Encoded(_) => data.into(),
         }
     }
 
     pub(crate) fn update_images(&mut self, updates: SmallVec<[ImageUpdate; 1]>) {
         let mut txn = Transaction::new();
+        let mut decoded = false;
         for update in updates {
             match update {
+                ImageUpdate::AddImage(key, description, SerializableImageData::Encoded(data), _) => {
+                    let external = crate::encoded_images::add(
+                        self.painter_id,
+                        &self.paint_proxy,
+                        &mut self.encoded_image_ids,
+                        key,
+                        description,
+                        data.into_arc_vec(),
+                    );
+                    txn.add_image(key, description, ImageData::External(external), None);
+                },
                 ImageUpdate::AddImage(key, description, data, is_animated_image) => {
                     txn.add_image(
                         key,
@@ -1114,6 +1141,7 @@ impl Painter {
                     );
                 },
                 ImageUpdate::DeleteImage(key) => {
+                    crate::encoded_images::remove(&mut self.encoded_image_ids, key);
                     txn.delete_image(key);
                     self.frame_delayer.delete_image(key);
                     self.animation_image_cache.remove(&key);
@@ -1122,6 +1150,7 @@ impl Painter {
                     if let Some(epoch) = epoch {
                         self.frame_delayer.update_image(key, epoch);
                     }
+                    decoded |= crate::encoded_images::is_ours(&self.encoded_image_ids, &data);
                     txn.update_image(key, desc, data.into(), &DirtyRect::All)
                 },
                 ImageUpdate::UpdateImageForAnimation(image_key, desc) => {
@@ -1152,6 +1181,8 @@ impl Painter {
 
             self.screenshot_taker
                 .prepare_screenshot_requests_for_render(&*self);
+        } else if decoded {
+            self.generate_frame(&mut txn, RenderReasons::ASYNC_IMAGE);
         }
 
         self.send_transaction(txn);

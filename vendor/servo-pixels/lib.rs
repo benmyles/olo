@@ -9,7 +9,8 @@ use std::borrow::Cow;
 use std::fmt;
 use std::num::NonZeroU32;
 use std::ops::Range;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use euclid::default::{Point2D, Rect, Size2D};
@@ -380,6 +381,22 @@ impl RasterImage {
     }
 
     pub fn as_snapshot(&self) -> Snapshot {
+        if self.is_deferred() {
+            return match self.decode_deferred() {
+                Some(image) => image.as_snapshot(),
+                None => {
+                    let size = Size2D::new(self.metadata.width, self.metadata.height);
+                    let len = size.width as usize * size.height as usize * 4;
+                    Snapshot::from_arc_vec(
+                        size.cast(),
+                        SnapshotPixelFormat::RGBA,
+                        SnapshotAlphaMode::Transparent { premultiplied: true },
+                        Arc::new(vec![0; len]),
+                        0..len,
+                    )
+                },
+            };
+        }
         let size = Size2D::new(self.metadata.width, self.metadata.height);
         let format = match self.format {
             PixelFormat::BGRA8 => SnapshotPixelFormat::BGRA,
@@ -496,6 +513,9 @@ impl RasterImage {
     }
 
     pub fn to_shared(&self) -> Arc<SharedRasterImage> {
+        if let Some(image) = self.decode_deferred() {
+            return image.to_shared();
+        }
         Arc::new(SharedRasterImage {
             metadata: self.metadata,
             format: self.format,
@@ -506,6 +526,110 @@ impl RasterImage {
             is_opaque: self.is_opaque,
         })
     }
+}
+
+/// Patched in for Tabula: big still pictures are *deferred*. The content
+/// process reads only their header (size, orientation, alpha) and hands
+/// the encoded file to the painter, which decodes it only while WebRender
+/// draws it; so a page of a hundred photos holds a hundred files, not a
+/// hundred bitmaps. A deferred image has no pixels here (`bytes` is empty,
+/// its frame's `byte_range` too, so readers that slice see nothing rather
+/// than panic); the few that need them (canvas `drawImage`, `ImageBitmap`)
+/// go through [`RasterImage::as_snapshot`], which decodes a copy from the
+/// file remembered under the image's key.
+impl RasterImage {
+    /// Whether this picture's pixels live only in its encoded file.
+    pub fn is_deferred(&self) -> bool {
+        self.bytes.is_empty() &&
+            self.frames.len() == 1 &&
+            self.frames[0].byte_range.is_empty() &&
+            self.metadata.width > 0 &&
+            self.metadata.height > 0
+    }
+
+    /// A deferred picture decoded in full, if its file is still known.
+    fn decode_deferred(&self) -> Option<RasterImage> {
+        if !self.is_deferred() {
+            return None;
+        }
+        let source = DEFERRED_SOURCES.lock().ok()?.get(&self.id?)?.clone();
+        let mut image = load_from_memory(&source, self.cors_status)?;
+        image.id = self.id;
+        Some(image)
+    }
+}
+
+/// Smaller pictures are decoded as before: their pixels cost little, and a
+/// favicon or sprite is read back often.
+pub const DEFERRED_MIN_BYTES: usize = 1 << 20;
+
+/// Each deferred picture's encoded file, by the key WebRender knows it by.
+static DEFERRED_SOURCES: LazyLock<Mutex<HashMap<ImageKey, Arc<Vec<u8>>>>> =
+    LazyLock::new(Default::default);
+
+/// Remember `source` as the file behind the deferred picture `key`.
+pub fn remember_deferred_source(key: ImageKey, source: Arc<Vec<u8>>) {
+    if let Ok(mut sources) = DEFERRED_SOURCES.lock() {
+        sources.insert(key, source);
+    }
+}
+
+/// Forget the file behind `key` (the picture is gone from the page).
+pub fn forget_deferred_source(key: ImageKey) {
+    if let Ok(mut sources) = DEFERRED_SOURCES.lock() {
+        sources.remove(&key);
+    }
+}
+
+/// `buffer` as a deferred picture, when it is a still one of at least
+/// [`DEFERRED_MIN_BYTES`] decoded; reads only its header.
+pub fn load_deferred(buffer: &[u8], cors_status: CorsStatus) -> Option<RasterImage> {
+    use image::ImageDecoder;
+    let format = detect_image_format(buffer).ok()?;
+    let image_decoder = decoding::DefaultImageDecoder::make_decoder(format, buffer).ok()?;
+    if image_decoder.is_animated() {
+        return None;
+    }
+    let mut decoder = image_decoder.decoder();
+    let (mut width, mut height) = decoder.dimensions();
+    if matches!(
+        decoder.orientation(),
+        Ok(image::metadata::Orientation::Rotate90 |
+            image::metadata::Orientation::Rotate270 |
+            image::metadata::Orientation::Rotate90FlipH |
+            image::metadata::Orientation::Rotate270FlipH)
+    ) {
+        std::mem::swap(&mut width, &mut height);
+    }
+    let len = compute_rgba8_byte_length_if_within_limit(width as usize, height as usize)?;
+    if len < DEFERRED_MIN_BYTES {
+        return None;
+    }
+    Some(RasterImage {
+        metadata: ImageMetadata { width, height },
+        format: PixelFormat::RGBA8,
+        id: None,
+        cors_status,
+        bytes: Arc::new(Vec::new()),
+        frames: vec![ImageFrame {
+            delay: None,
+            byte_range: 0..0,
+            width,
+            height,
+        }],
+        is_opaque: !decoder.color_type().has_alpha(),
+        loop_count: None,
+    })
+}
+
+/// A deferred picture's file decoded for WebRender: premultiplied RGBA8,
+/// exactly what [`RasterImage`] would have held.
+pub fn decode_deferred_for_webrender(source: &[u8]) -> Option<(u32, u32, Arc<Vec<u8>>)> {
+    let image = load_from_memory(source, CorsStatus::Safe)?;
+    if image.should_animate() || image.format != PixelFormat::RGBA8 {
+        return None;
+    }
+    Some((image.metadata.width, image.metadata.height, image.bytes))
 }
 
 impl fmt::Debug for RasterImage {

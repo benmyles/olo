@@ -23,6 +23,7 @@ use net_traits::image_cache::{
 use net_traits::request::CorsSettings;
 use net_traits::{FetchMetadata, FetchResponseMsg, FilteredMetadata, NetworkError};
 use paint_api::{CrossProcessPaintApi, ImageUpdate, SerializableImageData};
+use servo_base::generic_channel::GenericSharedMemory;
 use parking_lot::Mutex;
 use pixels::{CorsStatus, ImageFrame, ImageMetadata, PixelFormat, RasterImage, load_from_memory};
 use profile_traits::mem::{Report, ReportKind};
@@ -94,7 +95,7 @@ fn parse_svg_document_in_memory(
 
 fn decode_bytes_sync(
     key: LoadKey,
-    bytes: &[u8],
+    bytes: &Arc<Vec<u8>>,
     cors: CorsStatus,
     content_type: Option<Mime>,
     usvg_options: Arc<usvg::Options>,
@@ -106,6 +107,16 @@ fn decode_bytes_sync(
             content_type.suffix(),
         ) == (mime::IMAGE, mime::SVG, Some(mime::XML))
     });
+
+    // Patched in for Tabula: big still pictures are only measured here, and
+    // go to the painter encoded (see `pixels::load_deferred`).
+    if !is_svg_document && let Some(image) = pixels::load_deferred(bytes, cors) {
+        return DecoderMsg {
+            key,
+            image: Some(DecodedImage::Raster(image)),
+            source: Some(bytes.clone()),
+        };
+    }
 
     let image = if is_svg_document {
         parse_svg_document_in_memory(bytes, usvg_options)
@@ -120,15 +131,34 @@ fn decode_bytes_sync(
         load_from_memory(bytes, cors).map(DecodedImage::Raster)
     };
 
-    DecoderMsg { key, image }
+    DecoderMsg {
+        key,
+        image,
+        source: None,
+    }
 }
 
 fn set_webrender_image_key(
     paint_api: &CrossProcessPaintApi,
     image: &mut RasterImage,
     image_key: WebRenderImageKey,
+    source: Option<Arc<Vec<u8>>>,
 ) {
     if image.id.is_some() {
+        return;
+    }
+
+    if let Some(source) = source.filter(|_| image.is_deferred()) &&
+        let Some(descriptor) = image.webrender_image_descriptor_and_offset_for_frame()
+    {
+        paint_api.add_image(
+            image_key,
+            descriptor,
+            SerializableImageData::Encoded(GenericSharedMemory::from_arc_vec(source.clone())),
+            false,
+        );
+        pixels::remember_deferred_source(image_key, source);
+        image.id = Some(image_key);
         return;
     }
 
@@ -266,6 +296,8 @@ enum DecodedImage {
 struct DecoderMsg {
     key: LoadKey,
     image: Option<DecodedImage>,
+    /// The encoded file, for a deferred picture.
+    source: Option<Arc<Vec<u8>>>,
 }
 
 #[derive(MallocSizeOf)]
@@ -408,7 +440,12 @@ struct RasterizationTask {
 /// Used for storing images that do not have a `WebRenderImageKey` yet.
 #[derive(Debug, MallocSizeOf)]
 enum PendingKey {
-    RasterImage((LoadKey, RasterImage)),
+    RasterImage(
+        (LoadKey, RasterImage),
+        /// A deferred picture's encoded file.
+        #[ignore_malloc_size_of = "Shared with the pending load"]
+        Option<Arc<Vec<u8>>>,
+    ),
     Svg((LoadKey, RasterImage, DeviceIntSize)),
 }
 
@@ -534,13 +571,13 @@ impl ImageCacheStore {
     /// Finishes loading the image by setting the WebRenderImageKey and calling `compete_load` or `complete_load_svg`.
     fn set_key_and_finish_load(&mut self, pending_image: PendingKey, image_key: WebRenderImageKey) {
         match pending_image {
-            PendingKey::RasterImage((pending_id, mut raster_image)) => {
+            PendingKey::RasterImage((pending_id, mut raster_image), source) => {
                 // We can have concurrent sync and async loads for the same image, so if it's
                 // not pending anymore we early return since the async result will be ignored in that case.
                 if self.pending_loads.get_by_key_mut(&pending_id).is_none() {
                     return;
                 }
-                set_webrender_image_key(&self.paint_api, &mut raster_image, image_key);
+                set_webrender_image_key(&self.paint_api, &mut raster_image, image_key, source);
                 self.complete_load(pending_id, LoadResult::LoadedRasterImage(raster_image));
             },
             PendingKey::Svg((pending_id, mut raster_image, requested_size)) => {
@@ -552,7 +589,7 @@ impl ImageCacheStore {
                 {
                     return;
                 }
-                set_webrender_image_key(&self.paint_api, &mut raster_image, image_key);
+                set_webrender_image_key(&self.paint_api, &mut raster_image, image_key, None);
                 self.svg_rasterization_task_store
                     .remove_being_rasterized(pending_id, requested_size);
                 self.complete_load_svg(raster_image, pending_id, requested_size);
@@ -725,6 +762,7 @@ impl ImageCacheStore {
             let ImageResponse::Loaded(Image::Raster(image), _) = loaded_image.image_response &&
             let Some(id) = image.id
         {
+            pixels::forget_deferred_source(id);
             self.paint_api.update_images(
                 self.webview_id.into(),
                 vec![ImageUpdate::DeleteImage(id)].into(),
@@ -786,7 +824,10 @@ impl ImageCacheStore {
         let image = match msg.image {
             None => LoadResult::FailedToLoadOrDecode,
             Some(DecodedImage::Raster(raster_image)) => {
-                self.load_image_with_keycache(PendingKey::RasterImage((msg.key, raster_image)));
+                self.load_image_with_keycache(PendingKey::RasterImage(
+                    (msg.key, raster_image),
+                    msg.source,
+                ));
                 return;
             },
             Some(DecodedImage::Vector(vector_image_data)) => {
@@ -1374,7 +1415,7 @@ impl ImageCache for ImageCacheImpl {
                     .paint_api
                     .generate_image_key_blocking(store.webview_id)
                     .expect("Could not generate image key for broken image icon");
-                set_webrender_image_key(&store.paint_api, &mut image, image_key);
+                set_webrender_image_key(&store.paint_api, &mut image, image_key, None);
                 Some(Arc::new(image))
             })
             .clone()
@@ -1407,6 +1448,11 @@ impl ImageCacheStore {
                     .map(ImageUpdate::DeleteImage),
             )
             .collect();
+        for deletion in &deletions {
+            if let ImageUpdate::DeleteImage(id) = deletion {
+                pixels::forget_deferred_source(*id);
+            }
+        }
         if !deletions.is_empty() {
             self.paint_api
                 .update_images(self.webview_id.into(), deletions);

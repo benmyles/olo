@@ -28,3 +28,25 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   the constellation panicked). On Linux the patch starts them from
   `/proc/self/exe`: this very binary, which also guarantees the two
   sides speak the same IPC.
+
+- **servo-pixels, servo-net, servo-paint-api, servo-paint 0.7.0**
+  (MPL-2.0): pictures no longer all stay decoded. Unpatched, every
+  picture on a page is held as a bitmap twice, in its page's process
+  (the image cache) and in ours (WebRender's copy), for as long as the
+  page lives, so a page of 100 photos costs gigabytes. Now a still picture
+  of 1 MB or more decoded is *deferred*:
+  - `servo-pixels` (`load_deferred`) reads only its header (size,
+    EXIF orientation, alpha); the image has no pixels, and readers that
+    need some (canvas `drawImage`, `ImageBitmap`) decode a copy from the
+    file, remembered under its WebRender key.
+  - `servo-net` (`image_cache.rs`) sends the painter the encoded file
+    (`SerializableImageData::Encoded`, added in `servo-paint-api`) in
+    place of pixels.
+  - `servo-paint` (`encoded_images.rs`) keeps the file and gives it to
+    WebRender as an external buffer image. WebRender asks for its pixels
+    only to upload it for drawing, so only pictures in view get decoded,
+    on two worker threads (it's drawn clear until then), within 128 MB
+    shared by every page; the least recently drawn go first.
+  Animated pictures, SVG and small pictures work as before. NetPositive
+  also fixes glibc's mmap threshold (`main.rs`) so freed bitmaps go back
+  to the system rather than fragmenting the heap.

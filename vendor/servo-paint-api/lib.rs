@@ -561,6 +561,9 @@ pub enum WebRenderImageHandlerType {
     WebGl,
     Media,
     WebGpu,
+    /// Patched in for Tabula: pictures kept encoded and decoded while
+    /// drawn (see [`SerializableImageData::Encoded`]).
+    Image,
 }
 
 /// List of WebRender external images to be shared among all external image
@@ -603,6 +606,8 @@ pub struct WebRenderExternalImageHandlers {
     media_handler: Option<Box<dyn WebRenderExternalImageApi>>,
     /// WebGPU handler.
     webgpu_handler: Option<Box<dyn WebRenderExternalImageApi>>,
+    /// Encoded picture handler.
+    image_handler: Option<Box<dyn WebRenderExternalImageApi>>,
     /// A [`WebRenderExternalImageIdManager`] responsible for creating new [`ExternalImageId`]s.
     /// This is shared with the WebGL, WebGPU, and hardware-accelerated media threads and
     /// all other instances of [`WebRenderExternalImageHandlers`] -- one per WebRender instance.
@@ -615,6 +620,7 @@ impl WebRenderExternalImageHandlers {
             webgl_handler: Default::default(),
             media_handler: Default::default(),
             webgpu_handler: Default::default(),
+            image_handler: Default::default(),
             id_manager,
         }
     }
@@ -632,6 +638,7 @@ impl WebRenderExternalImageHandlers {
             WebRenderImageHandlerType::WebGl => self.webgl_handler = Some(handler),
             WebRenderImageHandlerType::Media => self.media_handler = Some(handler),
             WebRenderImageHandlerType::WebGpu => self.webgpu_handler = Some(handler),
+            WebRenderImageHandlerType::Image => self.image_handler = Some(handler),
         }
     }
 }
@@ -681,6 +688,13 @@ impl ExternalImageHandler for WebRenderExternalImageHandlers {
                     source,
                 }
             },
+            WebRenderImageHandlerType::Image => {
+                let (source, size) = self.image_handler.as_mut().unwrap().lock(key.0);
+                ExternalImage {
+                    uv: TexelRect::new(0.0, 0.0, size.width as f32, size.height as f32),
+                    source,
+                }
+            },
         }
     }
 
@@ -697,6 +711,7 @@ impl ExternalImageHandler for WebRenderExternalImageHandlers {
             WebRenderImageHandlerType::WebGpu => {
                 self.webgpu_handler.as_mut().unwrap().unlock(key.0)
             },
+            WebRenderImageHandlerType::Image => self.image_handler.as_mut().unwrap().unlock(key.0),
         };
     }
 }
@@ -759,6 +774,12 @@ pub enum SerializableImageData {
     /// An image owned by the embedding, and referenced by WebRender. This may
     /// take the form of a texture or a heap-allocated buffer.
     External(ExternalImageData),
+    /// Patched in for Tabula: a still picture's encoded file (PNG, JPEG,
+    /// WebP…) rather than its pixels. The painter keeps the file and
+    /// decodes it only while WebRender draws it, within a budget shared by
+    /// every page, so a page of big pictures doesn't hold them all
+    /// decoded. The descriptor is that of the decoded premultiplied RGBA8.
+    Encoded(GenericSharedMemory),
 }
 
 impl From<SerializableImageData> for ImageData {
@@ -768,6 +789,9 @@ impl From<SerializableImageData> for ImageData {
                 ImageData::Raw(shared_memory.into_arc_vec())
             },
             SerializableImageData::External(image) => ImageData::External(image),
+            // The painter turns these into external images before they get
+            // here; nothing to draw otherwise.
+            SerializableImageData::Encoded(_) => ImageData::Raw(Default::default()),
         }
     }
 }

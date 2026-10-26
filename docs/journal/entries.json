@@ -664,5 +664,11 @@
   "title": "NetPositive: a stuck page",
   "caption": "Pages run in content processes, each a systemd unit with its own memory limit and CPU weight. A tab whose page stops answering for ten seconds gets this bar; Stop Page kills just that process and the tab shows the crash page.",
   "image": "2026-10-26/110023-netpositive-a-stuck-page.png"
+ },
+ {
+  "time": "2026-10-26T12:21:57",
+  "title": "NetPositive: a page of 120 big photos",
+  "caption": "120 pictures of 2400\u00d71600, 1.8 GB once decoded. The page's process now holds only their files (60 MB, was every bitmap), and the painter decodes a picture only while it's drawn, within 128 MB shared by every page, so the whole browser stays near 600 MB however long the page.",
+  "image": "2026-10-26/122157-netpositive-a-page-of-120-big-photos.png"
  }
 ]

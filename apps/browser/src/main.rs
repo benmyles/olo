@@ -2579,6 +2579,14 @@ impl NetPositive {
 }
 
 fn main() {
+    // Pictures are decoded into big buffers that come and go as pages
+    // scroll. glibc raises its mmap threshold past any size it has freed,
+    // so after the first one they'd come from the heap and stay there,
+    // fragmented, long after they're freed; a fixed threshold keeps every
+    // big buffer in a mapping of its own, given back on free.
+    unsafe {
+        libc::mallopt(libc::M_MMAP_THRESHOLD, 1 << 20);
+    }
     guard::init();
     rtc::live::init();
     tabula_preview::audio::set_identity(NAME, "tabula-netpositive");

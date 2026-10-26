@@ -8793,6 +8793,7 @@ dependencies = [
  "servo-malloc-size-of",
  "servo-media-thread",
  "servo-paint-api",
+ "servo-pixels",
  "servo-profile-traits",
  "servo-timers",
  "servo-tracing",

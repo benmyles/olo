@@ -90,6 +90,10 @@ package = "servo-media-thread"
 version = "=0.7.0"
 package = "servo-paint-api"
 
+[dependencies.pixels]
+version = "=0.7.0"
+package = "servo-pixels"
+
 [dependencies.profile_traits]
 version = "=0.7.0"
 package = "servo-profile-traits"
