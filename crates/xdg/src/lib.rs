@@ -229,6 +229,25 @@ pub fn config_dir() -> PathBuf {
         .join("tabula")
 }
 
+/// Tabula's cache directory (`$XDG_CACHE_HOME/tabula`).
+pub fn cache_dir() -> PathBuf {
+    let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+    std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| home().join(".cache"))
+        .join("tabula")
+}
+
+/// A nameless file on disk to gather bytes in rather than memory (not in
+/// /tmp, which is memory too): in `cache_dir()/scratch`, gone once closed.
+pub fn scratch_file() -> std::io::Result<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let dir = cache_dir().join("scratch");
+    std::fs::create_dir_all(&dir)?;
+    std::fs::OpenOptions::new().read(true).write(true).custom_flags(libc::O_TMPFILE).mode(0o600).open(&dir)
+}
+
 /// A path for display, with the home folder shortened to `~`.
 pub fn display_path(p: &Path) -> String {
     let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else { return p.display().to_string() };

@@ -61,8 +61,6 @@ const TOOL: f32 = m::CONTROL_HEIGHT + m::TIGHT;
 const OFFER_HEIGHT: f32 = m::CONTROL_HEIGHT + 2.0 * m::SPACING;
 const PASSKEY_CHOICE_WIDTH: f32 = 180.0;
 const DOWNLOAD_ROW: f32 = 60.0;
-/// The most a page may hand over as a `blob:` download.
-const BLOB_MAX: usize = 1 << 30;
 const FIND_W: f32 = 340.0;
 const FIND_H: f32 =
     2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + m::SPACING + 4.0 * m::MARK_ROW + 3.0 * m::TIGHT + m::SPACING + m::CONTROL_HEIGHT;
@@ -261,7 +259,7 @@ struct NetPositive {
     downloads: Vec<Download>,
     next_download: u64,
     /// `blob:` downloads arriving from pages in pieces.
-    blobs: BTreeMap<(WebViewId, u64), (String, Vec<u8>)>,
+    blobs: BTreeMap<(WebViewId, u64), (String, std::fs::File, u64)>,
     /// The desktop is dark (or night): pages are told so.
     dark: bool,
     /// Which process each tab's page is in and whether it answers, and
@@ -1389,17 +1387,29 @@ impl NetPositive {
             PageDownload::Link { url, name } => self.start_download(cx, url, Some(name), Some(page)),
             PageDownload::Data { id, name, seq, last, data } => {
                 use base64::Engine as _;
-                let entry = self.blobs.entry((view, id)).or_insert_with(|| (name, Vec::new()));
-                let fits = entry.1.len() < BLOB_MAX;
+                use std::io::Write as _;
+                // Gathered on disk, not in memory, however big it is.
+                if seq == 0 {
+                    match tabula_xdg::scratch_file() {
+                        Ok(file) => {
+                            self.blobs.insert((view, id), (name, file, 0));
+                        }
+                        Err(e) => {
+                            tracing::warn!("download: {e}");
+                            return;
+                        }
+                    }
+                }
+                let Some(entry) = self.blobs.get_mut(&(view, id)) else { return };
                 match base64::engine::general_purpose::STANDARD.decode(data) {
-                    Ok(bytes) if fits && (seq == 0 || !entry.1.is_empty()) => entry.1.extend_from_slice(&bytes),
+                    Ok(bytes) if entry.1.write_all(&bytes).is_ok() => entry.2 += bytes.len() as u64,
                     _ => {
                         self.blobs.remove(&(view, id));
                         return;
                     }
                 }
-                if last && let Some((name, bytes)) = self.blobs.remove(&(view, id)) {
-                    self.start(cx, String::new(), Source::Bytes(bytes), Some(name));
+                if last && let Some((name, file, len)) = self.blobs.remove(&(view, id)) {
+                    self.start(cx, String::new(), Source::File(file, len), Some(name));
                 }
             }
         }

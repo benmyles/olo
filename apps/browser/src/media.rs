@@ -47,7 +47,7 @@ use servo_media::{
 use servo_media_dummy::DummyBackend;
 use tabula_preview::{
     input::{Input, ReadSeek},
-    video::{self, Options, Video},
+    video::{self, Options, Picture, Video},
 };
 
 /// Bytes to have before looking at the file, unless it's all there.
@@ -55,6 +55,88 @@ const START_BYTES: usize = 64 * 1024;
 
 /// How often the page hears the position while playing.
 const POSITION_EVERY: Duration = Duration::from_millis(250);
+
+/// Pictures a page's players may be decoding at once, in pixels: about
+/// three 2920×2000 videos or eight 1080p ones, less where a page may use
+/// less than 1.1 GB ([`crate::guard::page_memory`], 64 bytes a pixel).
+/// OpenH264 needs some 20 bytes a pixel and the frames ahead and on show
+/// another 20, and pages (slack.com) autoplay twenty large videos at once,
+/// mostly out of sight: past this, the players that started playing
+/// longest ago hold their picture and let their decoders go until they're
+/// played or sought again.
+fn decode_pixels() -> u64 {
+    (crate::guard::page_memory() / 128).min(18_000_000)
+}
+
+/// A paused player keeps its decoder this long, then lets it go (keeping
+/// its picture) until it plays again.
+const IDLE_RELEASE: Duration = Duration::from_secs(2);
+
+/// A decoder is never asked to let go sooner than this after it started
+/// (so it shows a picture, and twenty players can't take turns forever).
+const TENURE: Duration = Duration::from_secs(1);
+
+/// How often a player waiting for room in the budget asks again (and
+/// one waiting patiently).
+const RETRY: Duration = Duration::from_millis(50);
+const PATIENT_RETRY: Duration = Duration::from_millis(250);
+
+/// The players decoding pictures in this process.
+static DECODING: Mutex<Vec<Decoding>> = Mutex::new(Vec::new());
+
+struct Decoding {
+    id: usize,
+    pixels: u64,
+    /// When it last started playing (the latest are likeliest in view).
+    since: Instant,
+    /// Heard, so never held (only muted or silent videos are).
+    audible: bool,
+    /// Asked to let go, and still counted until its decoder has gone.
+    leaving: bool,
+    tx: mpsc::Sender<Cmd>,
+}
+
+/// May player `id` decode `pixels`-sized pictures? Yes while the page
+/// stays within [`decode_pixels`] (or nothing else is decoding). If not,
+/// and it may `evict`, the players that started longest ago (and at least
+/// [`TENURE`] ago) are asked to let go; either way it's no for now: they
+/// count until they've gone, and the player asks again.
+fn start_decoding(id: usize, pixels: u64, audible: bool, evict: bool, tx: &mpsc::Sender<Cmd>) -> bool {
+    let mut d = DECODING.lock().unwrap();
+    if let Some(x) = d.iter_mut().find(|x| x.id == id) {
+        if x.leaving {
+            return false;
+        }
+        (x.since, x.audible) = (Instant::now(), audible);
+        return true;
+    }
+    let total: u64 = d.iter().map(|x| x.pixels).sum();
+    let budget = decode_pixels();
+    if d.is_empty() || total + pixels <= budget {
+        d.push(Decoding { id, pixels, since: Instant::now(), audible, leaving: false, tx: tx.clone() });
+        return true;
+    }
+    if !evict {
+        return false;
+    }
+    let mut over = (total + pixels).saturating_sub(budget);
+    let mut going: Vec<usize> = (0..d.len()).filter(|&i| !d[i].leaving && !d[i].audible && d[i].since.elapsed() >= TENURE).collect();
+    going.sort_by_key(|&i| d[i].since);
+    for i in going {
+        if over == 0 {
+            break;
+        }
+        tracing::debug!("media {}: holding its picture (page decoding {total} pixels)", d[i].id);
+        d[i].leaving = true;
+        let _ = d[i].tx.send(Cmd::Hold);
+        over = over.saturating_sub(d[i].pixels);
+    }
+    false
+}
+
+fn stop_decoding(id: usize) {
+    DECODING.lock().unwrap().retain(|x| x.id != id);
+}
 
 /// A page script working around two things in Servo 0.7's media
 /// element:
@@ -69,7 +151,37 @@ pub fn script() -> String {
   var P = window.HTMLMediaElement && HTMLMediaElement.prototype;
   if (!P) return;
   var ended = new WeakSet();
-  function touch(e) { try { void e.textTracks; } catch (x) {} }
+  // Muted videos out of sight pause until they're back in view (as other
+  // browsers do), so their decoders go (see decode_pixels in media.rs).
+  var away = new WeakSet(), hidden = new WeakSet(), pause = P.pause, play = P.play;
+  function quiet(v) { return v.muted || v.volume == 0; }
+  function leave(v) {
+    if (hidden.has(v) && !v.paused && quiet(v)) {
+      away.add(v);
+      pause.call(v);
+    }
+  }
+  var seen = window.IntersectionObserver && new IntersectionObserver(function(entries) {
+    entries.forEach(function(e) {
+      var v = e.target;
+      if (!e.isIntersecting) {
+        hidden.add(v);
+        leave(v);
+      } else {
+        hidden.delete(v);
+        if (away.has(v)) {
+          away.delete(v);
+          play.call(v).catch(function() {});
+        }
+      }
+    });
+  });
+  // Autoplay (or a script) starting one already out of sight.
+  document.addEventListener('playing', function(e) { var m = media(e); if (m) leave(m); }, true);
+  function touch(e) {
+    try { void e.textTracks; } catch (x) {}
+    if (seen && e instanceof HTMLVideoElement) seen.observe(e);
+  }
   function media(e) { return e.target instanceof HTMLMediaElement ? e.target : null; }
   // Elements as the parser or script inserts them; loadstart for any
   // loaded while out of the document.
@@ -82,9 +194,13 @@ pub fn script() -> String {
   }).observe(document, {childList: true, subtree: true});
   document.addEventListener('loadstart', function(e) { var m = media(e); if (m) touch(m); }, true);
   document.addEventListener('ended', function(e) { var m = media(e); if (m) ended.add(m); }, true);
-  var play = P.play;
+  P.pause = function() {
+    away.delete(this);
+    return pause.apply(this, arguments);
+  };
   P.play = function() {
     touch(this);
+    away.delete(this);
     if (ended.has(this)) {
       ended.delete(this);
       var m = this, t = this.currentTime;
@@ -218,10 +334,20 @@ fn can_play(media_type: &str) -> SupportsMediaType {
     }
 }
 
+/// How much of a download stays in memory (the start, which probing and
+/// playback read most); the rest goes to disk, so a page full of videos
+/// holds only what it's decoding, not every file it fetched.
+const IN_MEMORY: usize = 1 << 20;
+
 /// The file as Servo has fetched it so far.
 #[derive(Default)]
 struct Bytes {
+    /// The first [`IN_MEMORY`] bytes (all of them, if no file could be made).
     data: Vec<u8>,
+    /// The rest.
+    rest: Option<Arc<std::fs::File>>,
+    /// How much has come.
+    len: u64,
     /// The size the server gave, if any.
     size: Option<u64>,
     /// All of it is here.
@@ -234,6 +360,40 @@ struct Bytes {
 struct Download {
     bytes: Mutex<Bytes>,
     arrived: Condvar,
+}
+
+impl Bytes {
+    fn push(&mut self, data: Vec<u8>) {
+        use std::os::unix::fs::FileExt;
+        let mut data = &data[..];
+        if self.rest.is_none() && self.data.len() < IN_MEMORY {
+            let n = data.len().min(IN_MEMORY - self.data.len());
+            self.data.extend_from_slice(&data[..n]);
+            self.len += n as u64;
+            data = &data[n..];
+            if data.is_empty() {
+                return;
+            }
+            self.rest = tabula_xdg::scratch_file().inspect_err(|e| tracing::debug!("media: keeping a download in memory: {e}")).ok().map(Arc::new);
+        }
+        if let Some(f) = &self.rest {
+            if f.write_all_at(data, self.len - self.data.len() as u64).is_ok() {
+                self.len += data.len() as u64;
+                return;
+            }
+            tracing::debug!("media: could not write a download to disk; keeping it in memory");
+            // Bring back what's on disk and carry on in memory.
+            let mut back = vec![0; (self.len - self.data.len() as u64) as usize];
+            if f.read_exact_at(&mut back, 0).is_err() {
+                self.closed = true;
+                return;
+            }
+            self.data.extend_from_slice(&back);
+            self.rest = None;
+        }
+        self.data.extend_from_slice(data);
+        self.len += data.len() as u64;
+    }
 }
 
 impl Download {
@@ -257,10 +417,19 @@ impl Read for Reader {
             if b.closed {
                 return Err(io::Error::other("stopped"));
             }
-            let have = b.data.len() as u64;
+            let have = b.len;
             if self.pos < have {
-                let n = buf.len().min((have - self.pos) as usize);
-                buf[..n].copy_from_slice(&b.data[self.pos as usize..self.pos as usize + n]);
+                let mut n = buf.len().min((have - self.pos) as usize);
+                let mem = b.data.len() as u64;
+                if self.pos < mem {
+                    n = n.min((mem - self.pos) as usize);
+                    buf[..n].copy_from_slice(&b.data[self.pos as usize..self.pos as usize + n]);
+                } else {
+                    // From disk, without holding up the bytes coming in.
+                    let f = b.rest.clone().ok_or_else(|| io::Error::other("lost"))?;
+                    drop(b);
+                    n = std::os::unix::fs::FileExt::read_at(&*f, &mut buf[..n], self.pos - mem)?;
+                }
                 self.pos += n as u64;
                 return Ok(n);
             }
@@ -314,6 +483,8 @@ enum Cmd {
     Pause,
     Seek(f64),
     Volume(f64),
+    /// Let the decoder go, keeping the picture (see [`decode_pixels`]).
+    Hold,
 }
 
 /// What the page's element sees of the player, kept up to date by the
@@ -339,16 +510,36 @@ impl MediaPlayer {
         let download = Arc::new(Download::default());
         let status = Arc::new(Mutex::new(Status { paused: true, muted: false, volume: 1.0, duration: None }));
         let (tx, rx) = mpsc::channel();
-        let (d, s) = (download.clone(), status.clone());
+        let (d, s, me) = (download.clone(), status.clone(), tx.clone());
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         std::thread::Builder::new()
             .name("media".into())
             .spawn(move || {
-                let mut driver = Driver { id, events, renderer, status: s, rx, playing: false, seeking: None, ended: false, told: None };
+                let mut driver = Driver {
+                    id,
+                    events,
+                    renderer,
+                    status: s,
+                    rx,
+                    me,
+                    playing: false,
+                    seeking: None,
+                    ended: false,
+                    told: None,
+                    volume: 1.0,
+                    pixels: 0,
+                    sound: false,
+                    shown: false,
+                    idle: None,
+                    want: true,
+                    patient: true,
+                    leaving: None,
+                };
                 if let Err(e) = driver.run(&d) {
                     tracing::debug!("media {id}: {e}");
                     let _ = driver.events.send(PlayerEvent::Error(e));
                 }
+                stop_decoding(id);
             })
             .ok();
         MediaPlayer { id, download, status, tx }
@@ -469,13 +660,7 @@ impl Player for MediaPlayer {
     }
 
     fn push_data(&self, data: Vec<u8>) -> Result<(), PlayerError> {
-        let mut b = self.download.bytes.lock().unwrap();
-        if b.data.is_empty() {
-            b.data = data;
-        } else {
-            b.data.extend_from_slice(&data);
-        }
-        drop(b);
+        self.download.bytes.lock().unwrap().push(data);
         self.download.arrived.notify_all();
         Ok(())
     }
@@ -491,7 +676,7 @@ impl Player for MediaPlayer {
         let b = self.download.bytes.lock().unwrap();
         let part = match (b.complete, b.size) {
             (true, _) => 1.0,
-            (false, Some(size)) => (b.data.len() as f64 / size.max(1) as f64).min(1.0),
+            (false, Some(size)) => (b.len as f64 / size.max(1) as f64).min(1.0),
             (false, None) => 0.0,
         };
         vec![0.0..duration * part]
@@ -535,6 +720,8 @@ struct Driver {
     renderer: Option<Arc<Mutex<dyn VideoFrameRenderer>>>,
     status: Arc<Mutex<Status>>,
     rx: mpsc::Receiver<Cmd>,
+    /// Our own channel, for others to ask us to hold.
+    me: mpsc::Sender<Cmd>,
     /// The page wants it playing.
     playing: bool,
     /// A seek waiting for its picture.
@@ -543,6 +730,22 @@ struct Driver {
     ended: bool,
     /// The position last reported, and when.
     told: Option<(f64, Instant)>,
+    volume: f64,
+    /// The picture's size in pixels (0 without one).
+    pixels: u64,
+    sound: bool,
+    /// A picture has been shown since the decoder started.
+    shown: bool,
+    /// Paused (with the decoder still there) since.
+    idle: Option<Instant>,
+    /// It should have a decoder, and is waiting for room for one.
+    want: bool,
+    /// Waiting only for room others leave, not taking it from them: only
+    /// playing or seeking takes it (a first picture, or one held while
+    /// playing, waits).
+    patient: bool,
+    /// The decoder let go, still finishing.
+    leaving: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Driver {
@@ -560,13 +763,13 @@ impl Driver {
                 if b.closed {
                     return Ok(());
                 }
-                let enough = b.size.is_some_and(|s| b.data.len() as u64 >= s.min(START_BYTES as u64));
+                let enough = b.size.is_some_and(|s| b.len >= s.min(START_BYTES as u64));
                 if b.complete || enough {
                     break;
                 }
                 b = download.arrived.wait(b).unwrap();
             }
-            let size = if b.complete { b.data.len() as u64 } else { b.size.unwrap_or(0) };
+            let size = if b.complete { b.len } else { b.size.unwrap_or(0) };
             (b.data[..b.data.len().min(64)].to_vec(), size)
         };
         if size == 0 {
@@ -596,7 +799,10 @@ impl Driver {
         let duration = info.duration;
         tracing::debug!("media {}: {size} bytes of {ext:?}: {info:?}", self.id);
         self.status.lock().unwrap().duration = duration;
-        let player = Video::start_with(&input, duration.unwrap_or(f64::MAX), Options { playing: false, picture, sound: info.sound });
+        self.pixels = if picture { info.width as u64 * info.height as u64 } else { 0 };
+        self.sound = info.sound;
+        let length = duration.unwrap_or(f64::MAX);
+        let make = move |playing: bool| Video::start_with(&input, length, Options { playing, picture, sound: info.sound, bgra: true });
         self.send(PlayerEvent::MetadataUpdated(Metadata {
             duration: duration.map(Duration::from_secs_f64),
             width: info.width,
@@ -610,35 +816,103 @@ impl Driver {
         }));
         // Ready to play (Servo moves the element to HAVE_ENOUGH_DATA).
         self.send(PlayerEvent::StateChanged(PlaybackState::Paused));
-        self.play_loop(&player)
+        self.play_loop(&make)
     }
 
-    fn play_loop(&mut self, player: &Video) -> Result<(), String> {
+    /// The decoder, made afresh (at `at`, playing or not) if it was let
+    /// go and there's room for it; false while it waits for room.
+    fn wake(&mut self, player: &mut Option<Video>, at: f64, make: &dyn Fn(bool) -> Video) -> bool {
+        self.want = true;
+        if self.pixels > 0 && (self.leaving.is_some() || !start_decoding(self.id, self.pixels, self.sound && self.volume > 0.0, !self.patient, &self.me)) {
+            return player.is_some();
+        }
+        if player.is_none() {
+            let v = make(self.playing);
+            if at > 0.0 {
+                v.seek(at);
+            }
+            v.set_volume(self.volume);
+            *player = Some(v);
+            self.shown = false;
+        }
+        true
+    }
+
+    /// Let the decoder go (keeping the picture on show) until the page
+    /// plays or seeks it again, or (if it's playing) there's room again.
+    fn let_go(&mut self, player: &mut Option<Video>, held: &mut f64) {
+        (self.want, self.patient) = (self.playing, true);
+        self.idle = None;
+        if let Some(v) = player.take() {
+            *held = v.position();
+            self.leaving = v.close();
+        }
+        if self.leaving.is_none() {
+            stop_decoding(self.id);
+        }
+    }
+
+    fn play_loop(&mut self, make: &dyn Fn(bool) -> Video) -> Result<(), String> {
         let mut wait = Duration::from_millis(15);
         // A first position even when paused: it fires the `timeupdate`
         // Servo's controls wait for before showing the duration, and
         // Servo fires none in an element's first 250 ms.
         let first = Instant::now() + Duration::from_millis(300);
+        // The decoder, counted against the page's budget from the start (a
+        // page may make twenty at once before playing any).
+        let mut player = None;
+        self.wake(&mut player, 0.0, make);
+        // Where a let-go decoder stopped.
+        let mut held = 0.0;
+        self.idle = Some(Instant::now());
         loop {
             match self.rx.recv_timeout(wait) {
-                Ok(cmd) => self.command(player, cmd),
+                Ok(cmd) => self.command(&mut player, &mut held, make, cmd),
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
             }
             while let Ok(cmd) = self.rx.try_recv() {
-                self.command(player, cmd);
+                self.command(&mut player, &mut held, make, cmd);
             }
-            let (picture, next) = player.tick();
-            if let Some(image) = picture {
-                self.render(&image);
+            // Paused a while with its picture up: let the decoder go.
+            if !self.playing && self.shown && self.seeking.is_none() && self.idle.is_some_and(|t| t.elapsed() >= IDLE_RELEASE) && player.is_some() {
+                self.let_go(&mut player, &mut held);
+            }
+            // A decoder let go has finished: its memory is free (give it
+            // back to the system) and no longer counted.
+            if self.leaving.as_ref().is_some_and(|w| w.is_finished()) {
+                self.leaving = None;
+                stop_decoding(self.id);
+                // SAFETY: malloc_trim only returns free memory to the system.
+                unsafe { libc::malloc_trim(0) };
+            }
+            if player.is_none() && self.want {
+                self.wake(&mut player, held, make);
+            }
+            let Some(p) = player.as_ref() else {
+                // Waiting for room, or for the old decoder to finish;
+                // else holding, with nothing to do until the page asks.
+                wait = match (self.want, self.patient) {
+                    _ if self.leaving.is_some() => RETRY,
+                    (true, false) => RETRY,
+                    (true, true) => PATIENT_RETRY,
+                    (false, _) => Duration::from_secs(3600),
+                };
+                continue;
+            };
+            let (picture, next) = p.tick_picture();
+            if let Some(picture) = picture {
+                self.render(picture);
+                self.shown = true;
                 if let Some(t) = self.seeking.take() {
                     self.send(PlayerEvent::SeekDone(t));
                     self.told = None;
                 }
             }
-            if let Some(e) = player.error() {
+            if let Some(e) = p.error() {
                 return Err(e);
             }
+            let player = p;
             let pos = player.position();
             let due = if self.playing { self.told.is_none_or(|(p, at)| p != pos && at.elapsed() >= POSITION_EVERY) } else { self.told.is_none() && Instant::now() >= first };
             if due {
@@ -650,10 +924,12 @@ impl Driver {
                 self.send(PlayerEvent::PositionChanged(pos));
                 self.send(PlayerEvent::EndOfStream);
             }
-            // Paused with nothing due: sleep until the page asks for something.
+            // Paused with nothing due: sleep until the page asks for
+            // something (or it's time to let the decoder go).
             wait = match next {
                 Some(n) => n.min(POSITION_EVERY),
                 None if self.told.is_none() => first.saturating_duration_since(Instant::now()).max(Duration::from_millis(1)),
+                None if self.idle.is_some() && self.shown => IDLE_RELEASE.saturating_sub(self.idle.map_or(Duration::ZERO, |t| t.elapsed())).max(Duration::from_millis(1)),
                 None => Duration::from_secs(3600),
             };
         }
@@ -765,6 +1041,8 @@ impl Driver {
                 }
                 Ok(Cmd::Seek(t)) => self.send(PlayerEvent::SeekDone(t)),
                 Ok(Cmd::Volume(v)) => *shared.volume.lock().unwrap() = v,
+                // Live streams aren't counted against the decoding budget.
+                Ok(Cmd::Hold) => {}
                 Err(_) => break,
             }
         }
@@ -772,28 +1050,54 @@ impl Driver {
         Ok(())
     }
 
-    fn command(&mut self, player: &Video, cmd: Cmd) {
+    fn command(&mut self, slot: &mut Option<Video>, held: &mut f64, make: &dyn Fn(bool) -> Video, cmd: Cmd) {
         match cmd {
             Cmd::Play => {
+                self.playing = true;
+                self.idle = None;
+                self.patient = false;
+                if !self.wake(slot, *held, make) {
+                    // It starts playing once there's room for it.
+                    self.send(PlayerEvent::StateChanged(PlaybackState::Playing));
+                    return;
+                }
+                let player = slot.as_ref().unwrap();
                 if player.finished() {
                     player.seek(0.0);
                 }
                 self.ended = false;
-                self.playing = true;
                 player.set_playing(true);
                 self.send(PlayerEvent::StateChanged(PlaybackState::Playing));
             }
             Cmd::Pause => {
                 self.playing = false;
-                player.set_playing(false);
+                self.patient = true;
+                // Held, with its picture up: nothing to wait for now.
+                if slot.is_none() && self.shown {
+                    self.want = false;
+                }
+                if let Some(player) = slot.as_ref() {
+                    player.set_playing(false);
+                    self.idle = Some(Instant::now());
+                }
                 self.send(PlayerEvent::StateChanged(PlaybackState::Paused));
             }
             Cmd::Seek(t) => {
                 self.ended = false;
+                self.patient = false;
+                if !self.wake(slot, t, make) {
+                    *held = t;
+                    self.send(PlayerEvent::SeekDone(t));
+                    return;
+                }
+                let player = slot.as_ref().unwrap();
                 player.seek(t);
                 // Looping seeks back from the end: carry on playing.
                 if self.playing && !player.playing() {
                     player.set_playing(true);
+                }
+                if !self.playing {
+                    self.idle = Some(Instant::now());
                 }
                 if self.renderer.is_some() && player.has_picture() {
                     self.seeking = Some(t);
@@ -801,18 +1105,28 @@ impl Driver {
                     self.send(PlayerEvent::SeekDone(t));
                 }
             }
-            Cmd::Volume(v) => player.set_volume(v),
+            Cmd::Volume(v) => {
+                self.volume = v;
+                if let Some(player) = slot.as_ref() {
+                    player.set_volume(v);
+                }
+            }
+            Cmd::Hold => self.let_go(slot, held),
         }
     }
 
-    fn render(&self, image: &tabula_kit::egui::ColorImage) {
+    fn render(&self, picture: Picture) {
         let Some(r) = &self.renderer else { return };
-        let mut bgra = Vec::with_capacity(image.pixels.len() * 4);
-        for p in &image.pixels {
-            bgra.extend_from_slice(&[p.b(), p.g(), p.r(), p.a()]);
-        }
-        let [w, h] = image.size;
-        if let Some(frame) = VideoFrame::new(w as i32, h as i32, Arc::new(Bgra(Arc::new(bgra)))) {
+        // The worker made it BGRA, as Servo takes it: no copy here.
+        let (size, data) = match picture {
+            Picture::Bgra { size, data } => (size, data),
+            rgba => {
+                let image = rgba.into_image();
+                (image.size, Arc::new(image.pixels.iter().flat_map(|p| [p.b(), p.g(), p.r(), p.a()]).collect()))
+            }
+        };
+        let [w, h] = size;
+        if let Some(frame) = VideoFrame::new(w as i32, h as i32, Arc::new(Bgra(data))) {
             r.lock().unwrap().render(frame);
             self.send(PlayerEvent::VideoFrameUpdated);
         }
@@ -848,15 +1162,40 @@ mod tests {
     }
 
     #[test]
+    fn big_downloads_go_to_disk() {
+        let d = Arc::new(Download::default());
+        let all: Vec<u8> = (0..3 * IN_MEMORY + 12345).map(|i| (i * 7 % 251) as u8).collect();
+        for chunk in all.chunks(100_000) {
+            d.bytes.lock().unwrap().push(chunk.to_vec());
+        }
+        {
+            let b = d.bytes.lock().unwrap();
+            assert_eq!(b.len, all.len() as u64);
+            if b.rest.is_some() {
+                assert_eq!(b.data.len(), IN_MEMORY);
+            }
+        }
+        d.bytes.lock().unwrap().complete = true;
+        let mut r = Reader { download: d.clone(), pos: 0, size: all.len() as u64 };
+        let mut back = Vec::new();
+        r.read_to_end(&mut back).unwrap();
+        assert!(back == all);
+        r.seek(SeekFrom::Start(IN_MEMORY as u64 - 3)).unwrap();
+        let mut six = [0; 6];
+        r.read_exact(&mut six).unwrap();
+        assert_eq!(six, all[IN_MEMORY - 3..IN_MEMORY + 3]);
+    }
+
+    #[test]
     fn reader_waits_for_bytes() {
         let d = Arc::new(Download::default());
-        d.bytes.lock().unwrap().data = b"abc".to_vec();
+        d.bytes.lock().unwrap().push(b"abc".to_vec());
         let mut r = Reader { download: d.clone(), pos: 0, size: 6 };
         let feeder = {
             let d = d.clone();
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_millis(50));
-                d.bytes.lock().unwrap().data.extend_from_slice(b"def");
+                d.bytes.lock().unwrap().push(b"def".to_vec());
                 d.arrived.notify_all();
             })
         };

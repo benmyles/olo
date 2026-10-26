@@ -24,6 +24,11 @@ as they land (with the commit), add new ones as they come up.
 - ~~Upgrades keep apps open~~ (only a new app_server reloads; Tabula
   programs re-execute in place), ~~interactive resize keeps up~~,
   ~~focus not stolen by xdg_activation without input~~ (15c2b27).
+- ~~slack.com loads in NetPositive~~ (its 28 autoplaying videos made
+  the page OOM): decoders budgeted per page, media downloads and `blob:`
+  downloads on disk, compact frame queues, muted videos pause out of
+  sight; pages end with NetPositive (they outlived it). Left: each video
+  element keeps one full-size picture in Servo.
 - ~~Login keyring in a real session~~ (the session finishes starting the
   daemon PAM unlocked), ~~Passwords lists 1Password's accounts~~.
 
@@ -44,6 +49,25 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Keyring unlock prompt, native** (Ben, after Slack): when an app asks
+  for a secret from a locked login keyring (gh's git credentials, for
+  one), Tabula asks for the password itself, in a Tabula alert, instead
+  of the D-Bus-activated GTK gcr-prompter (which can die with its display
+  connection and leave the asker hanging with nothing on screen). It
+  must never fail silently: a request always shows or is refused.
+  Consider then a native secret service replacing gnome-keyring-daemon.
+- **No GNOME or GTK underneath** (Ben): Tabula shouldn't depend on
+  any. Today a real session leans on GDM (login), gnome-keyring-daemon
+  (secrets, PAM unlock, ssh agent) and gcr-prompter (its unlock prompt;
+  item above), xdg-desktop-portal-gnome / -gtk (file chooser, screenshot,
+  settings, etc. for other apps: there's no Tabula portals.conf or
+  backend), dconf (where app_server writes color-scheme / gtk-theme so
+  GTK apps follow), and /usr/share/backgrounds/gnome (default
+  wallpapers). Replace each with a native one: a Tabula login screen,
+  secret service (Secret Service API over our own bus name, unlocked at
+  login, keyring files read natively) and prompt, ssh agent, portal
+  backend (`org.freedesktop.impl.portal.*` with Tabula's FilePanel and
+  screenshot), settings portal instead of dconf, our own wallpapers.
 - **Terminal sessions that outlive Terminal** (Ben, next): the shells
   and their screens live in a per-user terminal daemon, so quitting,
   crashing or upgrading Terminal reattaches every tab as it was
@@ -127,8 +151,6 @@ as they land (with the commit), add new ones as they come up.
   same position relative to that screen, as screens move; only windows
   on a removed or shrunk screen should move, and on to the nearest one.
   Do after everything else.
-- **Slack loads too much memory in NetPositive** (Ben): find whether the
-  limit is too low, the accounting wrong, or something wasteful.
 
 - ~~Cursor shapes~~ (Haiku's cursors via tabula-hvif, cursor-shape-v1);
   ~~night light~~ (CRTC gamma ramps, faded); ~~libinput settings~~ (touchpad tap, tap-drag, dwt, click

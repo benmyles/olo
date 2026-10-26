@@ -220,7 +220,9 @@ opened later and after a reconnect, with the UI fonts as fallback. Check
 panics on unknown families, and new fonts arrive with the next frame. App settings live in
 `tabula_kit::config_dir()` (`$XDG_CONFIG_HOME/tabula/NAME.json`); user
 folders come from `tabula_kit::user_dir("PICTURES")` (user-dirs.dirs,
-None if unset or missing).
+None if unset or missing). Bytes too many to keep in memory (a download
+being gathered) go in `tabula_xdg::scratch_file()`: a nameless file under
+`tabula_xdg::cache_dir()`, on disk rather than /tmp, gone once closed.
 
 Menus: `Menu::new("File").item(label, command, Some(Key::N))`,
 `.item_shift(…)`, `.separator()`, `.submenu(Menu)`, `.checked(bool)`,
@@ -1002,6 +1004,38 @@ are ours, below).
 In multiprocess mode the player runs in the content process, which
 installs the backend too (`guard::content_process`).
 
+Memory follows what's playing, not how many videos a page has (slack.com
+starts twenty-eight, many 2920×2000):
+
+* **Downloads** keep their first MiB in memory and the rest in a
+  nameless file on disk (`tabula_xdg::scratch_file`: O_TMPFILE under
+  `~/.cache/tabula/scratch`, not /tmp, which is memory); readers `pread`
+  it without holding up the bytes coming in.
+* **Decoders are budgeted per page** (`decode_pixels`: the page's memory
+  limit / 128 in pixels, at most 18 M). A player asks `start_decoding`
+  before making one; over budget, the decoders that started longest ago
+  (and at least `TENURE`, 1 s, ago; never audible ones) are asked to let
+  go (`Cmd::Hold`) and the player tries again once they've gone (a let-go
+  decoder counts until its thread has finished: `Video::close` hands it
+  back, then `malloc_trim`). Only playing or seeking evicts: a first
+  picture, or a player held while playing, waits patiently for room
+  others leave. A held player keeps its picture on show. A player paused for
+  `IDLE_RELEASE` (2 s) with its picture up lets its decoder go too.
+* **Muted videos out of sight pause** (the page script, with an
+  IntersectionObserver, as other browsers do; also when autoplay starts
+  one already out of sight) and play again when scrolled back, so their
+  decoders go and the visible ones get the room. A page's own `pause()`
+  or `play()` overrides that.
+* **Queued frames are compact**: YUV planes (`Pic::H264` / `Pic::Av1`),
+  converted to BGRA (`Options::bgra`, what Servo takes, no copy) only at
+  the front of the queue, and read-ahead is bounded in bytes
+  (`QUEUE_BYTES`, 24 MiB: two to six frames).
+
+Each video element still holds one full-size picture in Servo (it takes
+the natural size from the frame, so a smaller one would resize the
+element). slack.com settles at about 840 MB (and loads within 512 MB);
+forty 2920×2000 videos at about 500 MB.
+
 A page script works around Servo 0.7: it fires `timeupdate` only once
 something has read an element's `textTracks` (so the script reads it as
 elements arrive), and after reaching the end it stays at
@@ -1026,7 +1060,10 @@ TOKEN` (`main` checks first). `guard.rs` then keeps each one boxed in:
   privileges, and weights go both ways (nice can only go down without
   `RLIMIT_NICE`). Without systemd the page stays where Servo started it,
   niced to 5 with an `RLIMIT_DATA`, and the watch kills it over its RSS
-  limit. `TABULA_BROWSER_PAGE_MEMORY` (MiB) sets the limit for tests;
+  limit. A page in a unit isn't NetPositive's child, so it watches
+  NetPositive's pid (`TABULA_BROWSER_UI_PID`, a pidfd) and exits with it;
+  one left in process has `PR_SET_PDEATHSIG`.
+  `TABULA_BROWSER_PAGE_MEMORY` (MiB) sets the limit for tests;
   `TABULA_BROWSER_SINGLE_PROCESS=1` runs everything in one process.
 * **Which tab is which process.** Every two seconds each tab is asked, by
   `evaluate_javascript`, for its process id: `canPlayType` of

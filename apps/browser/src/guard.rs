@@ -46,6 +46,8 @@ const UNIT: &str = "org.freedesktop.systemd1.Unit";
 const SERVICE: &str = "org.freedesktop.systemd1.Service";
 /// Set in a page's unit, so it doesn't hand itself off again.
 const IN_UNIT: &str = "TABULA_BROWSER_PAGE_UNIT";
+/// NetPositive's process id, for a page in a unit of its own to follow.
+const UI_PID: &str = "TABULA_BROWSER_UI_PID";
 /// The key `pid_bit` wants, made at start and inherited by every page.
 const KEY: &str = "TABULA_BROWSER_KEY";
 /// How often tabs are asked, and how long one may take to answer.
@@ -134,7 +136,9 @@ pub fn page_memory() -> u64 {
 /// (then the unit's process runs the pages, and this one exits), and
 /// otherwise limits itself and runs them.
 pub fn content_process(token: String) {
-    if std::env::var_os(IN_UNIT).is_none() {
+    if let Some(ui) = std::env::var(UI_PID).ok().and_then(|p| p.parse().ok()) {
+        end_with(ui);
+    } else if std::env::var_os(IN_UNIT).is_none() {
         match hand_off(&token) {
             Ok(()) => return,
             Err(e) => {
@@ -160,6 +164,7 @@ fn hand_off(token: &str) -> Result<(), String> {
     let mut env: Vec<String> =
         std::env::vars_os().filter_map(|(k, v)| Some(format!("{}={}", k.to_str()?, v.to_str()?))).filter(|kv| !kv.starts_with('=')).collect();
     env.push(format!("{IN_UNIT}={name}"));
+    env.push(format!("{UI_PID}={}", std::os::unix::process::parent_id()));
     let cwd = std::env::current_dir().ok().and_then(|d| d.to_str().map(String::from)).unwrap_or_else(|| "/".into());
     let max = page_memory();
     let stdout = std::io::stdout();
@@ -213,9 +218,31 @@ fn hand_off(token: &str) -> Result<(), String> {
 
 /// Without systemd: a lower priority than NetPositive's own, and a limit
 /// on memory the kernel enforces on this process.
+/// End when NetPositive (`ui`) does, however it ends: a page in a unit of
+/// its own isn't its child, so nothing else would stop it.
+fn end_with(ui: i32) {
+    // SAFETY: pidfd_open on a process id; the descriptor is ours.
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, ui, 0) } as i32;
+    if fd < 0 {
+        tracing::debug!("page: NetPositive (pid {ui}) is gone");
+        std::process::exit(0);
+    }
+    std::thread::Builder::new()
+        .name("ui-watch".into())
+        .spawn(move || {
+            let mut p = libc::pollfd { fd, events: libc::POLLIN, revents: 0 };
+            // SAFETY: one pollfd we own; readable once the process exits.
+            while unsafe { libc::poll(&mut p, 1, -1) } < 0 {}
+            std::process::exit(0);
+        })
+        .expect("thread");
+}
+
 fn limit_self() {
     // SAFETY: plain syscalls on this process.
     unsafe {
+        // A child of NetPositive here: end with it.
+        libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
         libc::setpriority(libc::PRIO_PROCESS, 0, 5);
         let max = page_memory() as libc::rlim_t;
         libc::setrlimit(libc::RLIMIT_DATA, &libc::rlimit { rlim_cur: max, rlim_max: max });

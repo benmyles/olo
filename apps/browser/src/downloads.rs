@@ -39,7 +39,8 @@ pub enum PageDownload {
 /// Where a download's bytes come from.
 pub enum Source {
     Http { url: String, cookies: String, referer: Option<String>, user_agent: String },
-    Bytes(Vec<u8>),
+    /// What a page handed over, gathered in a file (of this length).
+    File(fs::File, u64),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -168,10 +169,13 @@ pub fn start(proxy: Proxy, id: u64, source: Source, suggested: Option<String>, d
                 Source::Http { url, cookies, referer, user_agent } => {
                     fetch(&url, &cookies, referer.as_deref(), &user_agent, suggested, &dir, &cancel, &send)
                 }
-                Source::Bytes(bytes) => {
+                Source::File(mut file, total) => {
+                    use std::io::Seek as _;
                     let name = clean_name(suggested.as_deref().unwrap_or("download"));
-                    let total = bytes.len() as u64;
-                    save(&mut bytes.as_slice(), &name, Some(total), &dir, &cancel, &send)
+                    match file.rewind() {
+                        Ok(()) => save(&mut file, &name, Some(total), &dir, &cancel, &send),
+                        Err(e) => Err(e.to_string()),
+                    }
                 }
             };
             match result {

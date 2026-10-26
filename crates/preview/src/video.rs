@@ -1,6 +1,9 @@
 //! Playing video in a preview. A worker demuxes H.264 (mp4 or Matroska)
 //! and decodes it with OpenH264 a few frames ahead into a small queue; the
-//! UI shows each frame when the clock reaches it. The clock runs on its
+//! UI shows each frame when the clock reaches it. Queued frames stay as the
+//! decoder made them (YUV, under half the size of RGBA) and only the one
+//! at the front is turned into a picture, by the worker, so a page playing
+//! twenty large videos at once holds megabytes rather than gigabytes. The clock runs on its
 //! own and follows the sound (played by [`audio::Player`]) when there is
 //! any, so a file without sound, or no sound server, still plays.
 
@@ -12,7 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tabula_kit::images::av1;
+use tabula_kit::{egui::Color32, images::av1};
 
 use crate::{
     audio,
@@ -21,20 +24,151 @@ use crate::{
     media,
 };
 
-/// Frames decoded ahead (about a fifth of a second at 30 fps).
+/// Frames decoded ahead (about a fifth of a second at 30 fps)...
 const AHEAD: usize = 6;
+/// ...unless that would hold more than this, when large pictures get
+/// fewer (never under two).
+const QUEUE_BYTES: usize = 24 << 20;
 
 /// How far the clock may drift from the sound before it is pulled back.
 const DRIFT: f64 = 0.12;
 
 struct Frame {
     pts: f64,
-    image: Image,
+    pic: Pic,
+}
+
+/// A picture to show, in the form its viewer asked for.
+#[derive(Clone)]
+pub enum Picture {
+    Rgba(Image),
+    /// Straight BGRA bytes, `size` pixels (what pages take).
+    Bgra { size: [usize; 2], data: Arc<Vec<u8>> },
+}
+
+impl Picture {
+    /// As RGBA (converting a BGRA one).
+    pub fn into_image(self) -> Image {
+        match self {
+            Picture::Rgba(i) => i,
+            Picture::Bgra { size, data } => {
+                let px = data.as_chunks::<4>().0.iter().map(|p| Color32::from_rgba_unmultiplied(p[2], p[1], p[0], p[3])).collect();
+                Arc::new(tabula_kit::egui::ColorImage::new(size, px))
+            }
+        }
+    }
+}
+
+/// A decoded picture: compact as decoded, or ready to show.
+#[derive(Clone)]
+enum Pic {
+    H264(Arc<Planar>),
+    Av1(Arc<av1::Frame>),
+    Ready(Picture),
+}
+
+impl Pic {
+    fn ready(&self) -> Option<&Picture> {
+        match self {
+            Pic::Ready(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    fn bytes(&self) -> usize {
+        match self {
+            Pic::H264(p) => p.y.len() + p.u.len() + p.v.len(),
+            // 16-bit samples, chroma subsampled (at most).
+            Pic::Av1(f) => f.width as usize * f.height as usize * 6,
+            Pic::Ready(Picture::Rgba(i)) => i.pixels.len() * 4,
+            Pic::Ready(Picture::Bgra { data, .. }) => data.len(),
+        }
+    }
+
+    fn picture(&self, bgra: bool) -> Picture {
+        match self {
+            Pic::H264(p) if bgra => Picture::Bgra { size: [p.width, p.height], data: Arc::new(p.bgra()) },
+            Pic::H264(p) => Picture::Rgba(p.image()),
+            Pic::Av1(f) if bgra => {
+                let mut data = f.to_rgba();
+                for px in data.as_chunks_mut::<4>().0 {
+                    px.swap(0, 2);
+                }
+                Picture::Bgra { size: [f.width as usize, f.height as usize], data: Arc::new(data) }
+            }
+            Pic::Av1(f) => Picture::Rgba(av1_image(f)),
+            Pic::Ready(p) => p.clone(),
+        }
+    }
+}
+
+/// An H.264 picture: 8-bit 4:2:0 planes, packed.
+struct Planar {
+    width: usize,
+    height: usize,
+    y: Vec<u8>,
+    u: Vec<u8>,
+    v: Vec<u8>,
+}
+
+impl Planar {
+    fn from(yuv: &openh264::decoder::DecodedYUV<'_>) -> Planar {
+        use openh264::formats::YUVSource;
+        let (w, h) = yuv.dimensions();
+        let (cw, ch) = (w.div_ceil(2), h.div_ceil(2));
+        let (sy, su, sv) = yuv.strides();
+        let pack = |plane: &[u8], stride: usize, w: usize, h: usize| {
+            let mut out = Vec::with_capacity(w * h);
+            for row in 0..h {
+                out.extend_from_slice(&plane[row * stride..][..w]);
+            }
+            out
+        };
+        Planar { width: w, height: h, y: pack(yuv.y(), sy, w, h), u: pack(yuv.u(), su, cw, ch), v: pack(yuv.v(), sv, cw, ch) }
+    }
+
+    /// Each pixel as (r, g, b), converting as OpenH264 does
+    /// (limited-range BT.601), in fixed point.
+    fn convert(&self, mut put: impl FnMut(usize, [u8; 3])) {
+        let (w, h) = (self.width, self.height);
+        let cw = w.div_ceil(2);
+        let c = |n: i32| (n >> 8).clamp(0, 255) as u8;
+        for row in 0..h {
+            let ys = &self.y[row * w..][..w];
+            let (us, vs) = (&self.u[(row / 2) * cw..][..cw], &self.v[(row / 2) * cw..][..cw]);
+            for (x, &y) in ys.iter().enumerate() {
+                let (u, v) = (us[x / 2] as i32 - 128, vs[x / 2] as i32 - 128);
+                let l = 298 * (y as i32 - 16) + 128;
+                put(row * w + x, [c(l + 409 * v), c(l - 100 * u - 208 * v), c(l + 516 * u)]);
+            }
+        }
+    }
+
+    fn image(&self) -> Image {
+        let mut px = vec![Color32::BLACK; self.width * self.height];
+        self.convert(|i, [r, g, b]| px[i] = Color32::from_rgb(r, g, b));
+        Arc::new(tabula_kit::egui::ColorImage::new([self.width, self.height], px))
+    }
+
+    fn bgra(&self) -> Vec<u8> {
+        let mut out = vec![255u8; self.width * self.height * 4];
+        let px = out.as_chunks_mut::<4>().0;
+        self.convert(|i, [r, g, b]| {
+            px[i][0] = b;
+            px[i][1] = g;
+            px[i][2] = r;
+        });
+        out
+    }
 }
 
 #[derive(Default)]
 struct Shared {
     queue: VecDeque<Frame>,
+    /// Frames to keep ahead, from the pictures' size.
+    ahead: usize,
+    /// Make pictures BGRA (for pages) rather than RGBA.
+    bgra: bool,
     seek: Option<f64>,
     stop: bool,
     /// The stream ended and the queue holds its last frames.
@@ -66,21 +200,23 @@ pub struct Video {
     duration: f64,
     /// There are pictures to show; without, only the clock and sound run.
     picture: bool,
+    bgra: bool,
+    worker: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Video {
     /// Start playing `input` (of `duration` seconds) at once.
     pub fn start(input: &Input, duration: f64) -> Video {
-        Video::start_with(input, duration, Options { playing: true, picture: true, sound: true })
+        Video::start_with(input, duration, Options { playing: true, picture: true, sound: true, bgra: false })
     }
 
     /// Start `input` as `opts` say: playing or paused (showing its first
     /// picture), with pictures and sound or only one of them.
     pub fn start_with(input: &Input, duration: f64, opts: Options) -> Video {
-        let shared = Arc::new((Mutex::new(Shared { eof: !opts.picture, ..Default::default() }), Condvar::new()));
+        let shared = Arc::new((Mutex::new(Shared { eof: !opts.picture, bgra: opts.bgra, ..Default::default() }), Condvar::new()));
         let (i, s) = (input.clone(), shared.clone());
         let playing = opts.playing;
-        opts.picture.then(|| std::thread::Builder::new()
+        let worker = opts.picture.then(|| std::thread::Builder::new()
             .name("video".into())
             .spawn(move || {
                 if let Err(e) = decode(&i, &s) {
@@ -90,14 +226,23 @@ impl Video {
                     sh.eof = true;
                 }
             })
-            .ok());
+            .ok()).flatten();
         Video {
             shared,
             clock: Mutex::new(Clock { at: 0.0, since: playing.then(Instant::now), heard_ms: 0, finished: false, show_next: opts.picture }),
             audio: opts.sound.then(|| audio::Player::start_with(input, playing)),
             duration,
             picture: opts.picture,
+            bgra: opts.bgra,
+            worker,
         }
+    }
+
+    /// Stop, without waiting: the decoding thread, which lets its memory
+    /// go as it finishes (after the picture it's on, or once the data it
+    /// waits for comes).
+    pub fn close(mut self) -> Option<std::thread::JoinHandle<()>> {
+        self.worker.take()
     }
 
     pub fn position(&self) -> f64 {
@@ -184,6 +329,13 @@ impl Video {
 
     /// The frame due now, if it changed, and when the next one is due.
     pub fn tick(&self) -> (Option<Image>, Option<Duration>) {
+        let (p, next) = self.tick_picture();
+        (p.map(Picture::into_image), next)
+    }
+
+    /// [`Video::tick`] in the form asked for at the start
+    /// ([`Options::bgra`]).
+    pub fn tick_picture(&self) -> (Option<Picture>, Option<Duration>) {
         let mut c = self.clock.lock().unwrap();
         // Follow the sound: each new position it reports pulls the clock
         // back if they have drifted apart.
@@ -233,7 +385,10 @@ impl Video {
         // Playing, or waiting for the picture a seek asked for.
         let idle = if self.picture { Duration::from_millis(15) } else { Duration::from_millis(100) };
         let next = if c.since.is_some() || (c.show_next && !sh.eof) { Some(next.unwrap_or(idle)) } else { None };
-        (due.map(|f| f.image), next)
+        drop(sh);
+        drop(c);
+        // Ready unless the worker fell behind.
+        (due.map(|f| f.pic.ready().cloned().unwrap_or_else(|| f.pic.picture(self.bgra))), next)
     }
 }
 
@@ -251,6 +406,28 @@ pub struct Options {
     pub playing: bool,
     pub picture: bool,
     pub sound: bool,
+    /// Pictures as BGRA bytes ([`Video::tick_picture`]).
+    pub bgra: bool,
+}
+
+/// Make the picture at the front of the queue ready to show (outside the
+/// lock: the UI may be waiting on it).
+fn ripen(m: &Mutex<Shared>) {
+    let (pts, pic, bgra) = {
+        let sh = m.lock().unwrap();
+        match sh.queue.front() {
+            Some(f) if f.pic.ready().is_none() => (f.pts, f.pic.clone(), sh.bgra),
+            _ => return,
+        }
+    };
+    let image = pic.picture(bgra);
+    let mut sh = m.lock().unwrap();
+    if let Some(f) = sh.queue.front_mut()
+        && f.pts == pts
+        && f.pic.ready().is_none()
+    {
+        f.pic = Pic::Ready(image);
+    }
 }
 
 fn av1_image(f: &av1::Frame) -> Image {
@@ -357,29 +534,42 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
     let mut av1_out = Vec::new();
     // Queue a picture (made only if it will be shown); false once a seek
     // or stop makes the rest pointless.
-    let push = |times: &mut BinaryHeap<Reverse<i64>>, from: f64, image: &dyn Fn() -> Image| -> bool {
+    let push = |times: &mut BinaryHeap<Reverse<i64>>, from: f64, pic: &dyn Fn() -> Pic| -> bool {
         let Some(Reverse(t)) = times.pop() else { return true };
         let pts = t as f64 / 1e6;
         // Pictures before a seek's target only lead up to it.
         if pts + 0.001 < from {
             return true;
         }
-        let image = image();
+        let pic = pic();
         let mut sh = m.lock().unwrap();
         if sh.seek.is_some() || sh.stop {
             return false;
         }
-        sh.queue.push_back(Frame { pts, image });
+        if sh.ahead == 0 {
+            sh.ahead = (QUEUE_BYTES / pic.bytes().max(1)).clamp(2, AHEAD);
+        }
+        sh.queue.push_back(Frame { pts, pic });
         true
     };
     loop {
+        ripen(m);
         {
             let mut sh = m.lock().unwrap();
-            while !sh.stop && sh.seek.is_none() && (sh.queue.len() >= AHEAD || sh.eof) {
+            let mut unripe = false;
+            while !sh.stop && sh.seek.is_none() && (sh.queue.len() >= sh.ahead.max(1) || sh.eof) {
+                // The next picture due is still compact: make it first.
+                if sh.queue.front().is_some_and(|f| f.pic.ready().is_none()) {
+                    unripe = true;
+                    break;
+                }
                 sh = cv.wait(sh).unwrap();
             }
             if sh.stop {
                 return Ok(());
+            }
+            if unripe && sh.seek.is_none() {
+                continue;
             }
             if let Some(t) = sh.seek.take() {
                 sh.queue.clear();
@@ -399,13 +589,13 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
         match (&mut dec, packet) {
             (Decoder::H264(d), Some(p)) => {
                 if let Ok(Some(yuv)) = d.decode(&p.data) {
-                    push(&mut times, from, &|| media::yuv_image(&yuv));
+                    push(&mut times, from, &|| Pic::H264(Arc::new(Planar::from(&yuv))));
                 }
             }
             (Decoder::H264(d), None) => {
                 if let Ok(rest) = d.flush_remaining() {
                     for yuv in &rest {
-                        if !push(&mut times, from, &|| media::yuv_image(yuv)) {
+                        if !push(&mut times, from, &|| Pic::H264(Arc::new(Planar::from(yuv)))) {
                             break;
                         }
                     }
@@ -421,8 +611,9 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                     }
                     None => d.flush(&mut av1_out),
                 }
-                for f in &av1_out {
-                    if !push(&mut times, from, &|| av1_image(f)) {
+                for f in av1_out.drain(..) {
+                    let f = Arc::new(f);
+                    if !push(&mut times, from, &|| Pic::Av1(f.clone())) {
                         break;
                     }
                 }
@@ -667,6 +858,31 @@ mod tests {
                 assert!(pts.windows(2).all(|w| w[1] > w[0]), "{name}: in order {pts:?}");
             }
         }
+    }
+
+    /// Queued pictures stay compact, and convert as OpenH264 would.
+    #[test]
+    fn compact_pictures_match_openh264() {
+        use openh264::formats::{RgbSliceU8, YUVBuffer};
+        let (w, h) = (96usize, 64usize);
+        let rgb: Vec<u8> = (0..w * h).flat_map(|i| [(i % w * 255 / w) as u8, (i / w * 255 / h) as u8, 200]).collect();
+        let mut enc = openh264::encoder::Encoder::new().unwrap();
+        let stream = enc.encode(&YUVBuffer::from_rgb_source(RgbSliceU8::new(&rgb, (w, h)))).unwrap().to_vec();
+        let mut dec = openh264::decoder::Decoder::new().unwrap();
+        let yuv = dec.decode(&stream).unwrap().expect("a picture");
+        let mut theirs = vec![0u8; w * h * 4];
+        yuv.write_rgba8(&mut theirs);
+        let planar = Planar::from(&yuv);
+        assert_eq!(Pic::H264(Arc::new(Planar::from(&yuv))).bytes(), w * h * 3 / 2);
+        let ours = planar.image();
+        assert_eq!(ours.size, [w, h]);
+        let worst = ours.pixels.iter().zip(theirs.chunks_exact(4)).map(|(a, b)| {
+            (0..3).map(|i| (a.to_array()[i] as i32 - b[i] as i32).abs()).max().unwrap()
+        }).max().unwrap();
+        assert!(worst <= 2, "differs from OpenH264's conversion by {worst}");
+        // Big pictures get fewer frames ahead, never under two.
+        assert_eq!((QUEUE_BYTES / (2920 * 2000 * 3 / 2)).clamp(2, AHEAD), 2);
+        assert_eq!((QUEUE_BYTES / (1280 * 720 * 3 / 2)).clamp(2, AHEAD), AHEAD);
     }
 
     /// Pictures decoded (and made RGBA) per second from av1-1080.mkv (4 s of
