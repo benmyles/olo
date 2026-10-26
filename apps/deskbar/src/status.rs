@@ -151,9 +151,15 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
 
 // ---- clock --------------------------------------------------------------------
 
+unsafe extern "C" {
+    fn tzset();
+}
+
 fn local_now() -> libc::tm {
     // SAFETY: localtime_r writes into the zeroed struct we own.
     unsafe {
+        // Pick up a time zone changed since the last tick.
+        tzset();
         let t = libc::time(std::ptr::null_mut());
         let mut tm: libc::tm = std::mem::zeroed();
         libc::localtime_r(&t, &mut tm);
@@ -161,21 +167,52 @@ fn local_now() -> libc::tm {
     }
 }
 
-pub fn clock_text(date: bool) -> String {
-    let tm = local_now();
+pub fn clock_text(date: bool, clock: &tabula_protocol::ClockSettings) -> String {
+    format_clock(&local_now(), date, clock)
+}
+
+fn format_clock(tm: &libc::tm, date: bool, clock: &tabula_protocol::ClockSettings) -> String {
     if date {
         const DAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
         const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        format!("{} {} {}", DAYS[tm.tm_wday as usize % 7], MONTHS[tm.tm_mon as usize % 12], tm.tm_mday)
-    } else {
-        let h = tm.tm_hour % 12;
-        format!("{}:{:02} {}", if h == 0 { 12 } else { h }, tm.tm_min, if tm.tm_hour < 12 { "AM" } else { "PM" })
+        return format!("{} {} {}", DAYS[tm.tm_wday as usize % 7], MONTHS[tm.tm_mon as usize % 12], tm.tm_mday);
     }
+    let n = |v: i32| v.max(0) as u32;
+    clock.format(n(tm.tm_hour), n(tm.tm_min), n(tm.tm_sec), n(tm.tm_wday))
 }
 
-pub fn until_next_minute() -> Duration {
+/// Until the clock next changes: the next second, or the next minute.
+pub fn until_next_tick(seconds: bool) -> Duration {
+    if seconds {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+        return Duration::from_nanos(1_000_000_000 - now.subsec_nanos() as u64) + Duration::from_millis(10);
+    }
     let tm = local_now();
     Duration::from_secs((60 - tm.tm_sec.clamp(0, 59)) as u64) + Duration::from_millis(50)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tabula_protocol::ClockSettings;
+
+    #[test]
+    fn formats() {
+        // SAFETY: an all-zero tm is a valid value.
+        let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+        (tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_wday, tm.tm_mon, tm.tm_mday) = (13, 5, 9, 1, 9, 26);
+        let mut c = ClockSettings::default();
+        assert_eq!(format_clock(&tm, false, &c), "1:05 PM");
+        assert_eq!(format_clock(&tm, true, &c), "Mon Oct 26");
+        c.twenty_four_hour = true;
+        c.show_seconds = true;
+        assert_eq!(format_clock(&tm, false, &c), "13:05:09");
+        c.show_day = true;
+        tm.tm_hour = 0;
+        assert_eq!(format_clock(&tm, false, &c), "Mon 00:05:09");
+        c.twenty_four_hour = false;
+        assert_eq!(format_clock(&tm, false, &c), "Mon 12:05:09 AM");
+    }
 }
 
 // ---- glyphs -------------------------------------------------------------------

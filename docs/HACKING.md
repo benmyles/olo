@@ -145,7 +145,8 @@ rect, |ui, viewport|)` for content you lay out yourself, `reveal`,
 `ScrollView::scroll_to(ctx, id, offset)`, `.auto_hide(true)` to drop the
 bar when content fits; `SCROLL_BAR` is its width),
 `ColumnListView` + `Column` + `ListState` (sortable, resizable,
-multi-select, context clicks), `TabView`, `color_well`, `heading`,
+multi-select, context clicks; `.reveal(row)` scrolls a row selected in code
+into view), `TabView`, `color_well`, `heading`,
 `form_label`, `window_content`, `button_row`, `context_menu`,
 `popup_menu_at` / `popup_result`, `InlineEdit` (Tracker-style rename in
 place: returns `Editing` / `Commit` / `Cancel`; pads by `INLINE_PAD`, which
@@ -336,6 +337,14 @@ launcher lists them. The panel list Deskbar shows is
   only when it would change something: implement `Panel::reset`.
 * New panel: add it to `Panel` (arg, title, icon, size, reset), write the
   module, add it to `PREFERENCE_PANELS`, journal it light and dark.
+* Date & Time (`datetime.rs`) talks to systemd-timedated through
+  `tabula_system::time` on its own worker thread (status every 2 s; set
+  time, zone and network time with polkit's interactive auth, so a
+  password prompt never holds the window). Zone offsets and times come
+  from jiff and the system tz database. Deskbar's clock format is
+  `Settings::clock` (`ClockSettings::format` is shared by Deskbar and the
+  panel's preview). **Tests must never press Set, Set Time Zone or the
+  network-time box: they change the real machine.**
 
 ## Power (crates/app_server/src/power.rs)
 

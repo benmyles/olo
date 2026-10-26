@@ -1,6 +1,6 @@
 //! Talking to the system natively, in process: PAM (passwords), fprintd
 //! (Touch ID), logind (power, inhibitors, backlight), the battery,
-//! NetworkManager (Wi-Fi), the D-Bus activation environment, dconf (the
+//! NetworkManager (Wi-Fi), timedated (clock and time zone), the D-Bus activation environment, dconf (the
 //! settings GTK apps read) and the sound server (PulseAudio protocol, which
 //! PipeWire speaks too). Everything here blocks, so call it from a worker
 //! thread, never the UI thread.
@@ -14,6 +14,7 @@ pub mod env;
 pub mod fingerprint;
 pub mod network;
 pub mod power;
+pub mod time;
 
 mod bus;
 
@@ -29,6 +30,8 @@ mod live {
     fn status() {
         println!("wifi: {:?}", crate::network::wifi());
         println!("volume: {:?}", crate::audio::volume());
+        println!("time: {:?}", crate::time::status());
+        println!("zones: {:?}", crate::time::timezones().map(|z| z.len()));
     }
 
     /// Writes the given dconf string key back (set DCONF_KEY and

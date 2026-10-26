@@ -40,8 +40,8 @@ as they land (with the commit), add new ones as they come up.
 - Terminal: find in scrollback; release-build memory check; colour emoji.
 - ~~Activity Monitor~~: apps/activity (graphs of every /proc, /sys and
   hwmon source; processes with Quit / Force Quit).
-- Preferences, remaining panels: Network, Bluetooth, Date & Time (24-hour clock for Deskbar), Touch
-  ID; Restart Tabula; a Choose… file panel for the
+- Preferences, remaining panels: Network, Bluetooth, ~~Date & Time~~ (calendar, clock face, network
+  time, time zone, Deskbar 24-hour/seconds/day), Touch ID; Restart Tabula; a Choose… file panel for the
   wallpaper; Display mode switching (app_server ignores `mode` in
   ConfigureOutput so far) and drag-to-arrange.
 - ~~**StyledEdit**~~: styled text in attributes beside plain text, Font /
@@ -95,6 +95,10 @@ as they land (with the commit), add new ones as they come up.
 
 ## Other
 
-- Deskbar 24-hour clock option.
+- ~~Deskbar 24-hour clock option~~ (Preferences ▸ Date & Time ▸ Clock).
+- **polkit authentication agent**: register with polkitd
+  (`RegisterAuthenticationAgent`), show a BeOS password alert, answer via
+  polkit-agent-helper-1, Touch ID too. Until then, setting the time,
+  zone or network time fails with "an administrator's password is needed".
 - Icons: audio/system, spreadsheet, font and other new file kinds.
 - Kit: asynchronous `read_clipboard`.

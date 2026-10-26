@@ -5,6 +5,24 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Date & Time (dark)
+
+*01:54* — Calendar and clock face; disabled while network time is on.
+
+![Date & Time (dark)](2026-10-26/015406-date-time-dark.png)
+
+### Date & Time: time zones
+
+*01:54* — Every timedated zone with its offset and local time, searchable; opens on the current zone.
+
+![Date & Time: time zones](2026-10-26/015406-date-time-time-zones.png)
+
+### Date & Time: Deskbar clock
+
+*01:54* — 24-hour clock, seconds and weekday options; Deskbar follows the setting live.
+
+![Date & Time: Deskbar clock](2026-10-26/015406-date-time-deskbar-clock.png)
+
 ### Alerts open over their window
 
 *01:44* — Alerts are children of the focused window; app_server centres them across it a quarter of the way down, as BAlert did.

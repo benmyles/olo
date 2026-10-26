@@ -1329,16 +1329,23 @@ pub struct ColumnListView<'a> {
     rows: usize,
     state: &'a mut ListState,
     row_height: f32,
+    reveal: Option<usize>,
 }
 
 pub const HEADER_HEIGHT: f32 = 18.0;
 
 impl<'a> ColumnListView<'a> {
     pub fn new(id: impl std::hash::Hash + std::fmt::Debug, columns: &'a [Column], rows: usize, state: &'a mut ListState) -> Self {
-        ColumnListView { id: Id::unique(id), columns, rows, state, row_height: m::LIST_ROW }
+        ColumnListView { id: Id::unique(id), columns, rows, state, row_height: m::LIST_ROW, reveal: None }
     }
     pub fn row_height(mut self, h: f32) -> Self {
         self.row_height = h;
+        self
+    }
+    /// Scroll so `row` shows, with a few rows of context around it (to
+    /// bring a selection made in code into view).
+    pub fn reveal(mut self, row: Option<usize>) -> Self {
+        self.reveal = row;
         self
     }
 
@@ -1427,6 +1434,11 @@ impl<'a> ColumnListView<'a> {
         let state = &mut *self.state;
         let columns = self.columns;
         let id = self.id;
+        if let Some(row) = self.reveal {
+            let context = ((body.height() / row_h / 2.0).floor() - 1.0).max(0.0);
+            let (top, bottom) = ((row as f32 - context).max(0.0) * row_h, (row as f32 + 1.0 + context) * row_h);
+            ScrollView::reveal(ui.ctx(), id.with("scroll"), top, bottom);
+        }
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body));
         child.spacing_mut().item_spacing.y = 0.0;
         ScrollView::new(id.with("scroll")).border(false).background(p.list_background).show_rows(

@@ -8,12 +8,13 @@ use tabula_kit::{
 };
 use tabula_protocol::Settings;
 
-use crate::{Ctx, about, appearance, display, keyboard, power, screensaver, sound, touchpad, workspaces};
+use crate::{Ctx, about, appearance, datetime, display, keyboard, power, screensaver, sound, touchpad, workspaces};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
     Appearance,
     Backgrounds,
+    DateTime,
     Display,
     Keyboard,
     Power,
@@ -28,6 +29,7 @@ impl Panel {
     pub const ALL: &[Panel] = &[
         Panel::Appearance,
         Panel::Backgrounds,
+        Panel::DateTime,
         Panel::Display,
         Panel::Keyboard,
         Panel::Power,
@@ -44,6 +46,7 @@ impl Panel {
             "screen" | "displays" => Some(Panel::Display),
             "screen-saver" | "screensavers" => Some(Panel::ScreenSaver),
             "background" => Some(Panel::Backgrounds),
+            "time" | "date" | "clock" | "date-time" => Some(Panel::DateTime),
             _ => None,
         })
     }
@@ -52,6 +55,7 @@ impl Panel {
         match self {
             Panel::Appearance => "appearance",
             Panel::Backgrounds => "backgrounds",
+            Panel::DateTime => "datetime",
             Panel::Display => "display",
             Panel::Keyboard => "keyboard",
             Panel::Power => "power",
@@ -67,6 +71,7 @@ impl Panel {
         match self {
             Panel::Appearance => "Appearance",
             Panel::Backgrounds => "Backgrounds",
+            Panel::DateTime => "Date & Time",
             Panel::Display => "Display",
             Panel::Keyboard => "Keyboard",
             Panel::Power => "Power",
@@ -82,6 +87,7 @@ impl Panel {
         match self {
             Panel::Appearance => "appearance",
             Panel::Backgrounds => "backgrounds",
+            Panel::DateTime => "datetime",
             Panel::Display => "display",
             Panel::Keyboard => "keyboard",
             Panel::Power => "power",
@@ -98,6 +104,7 @@ impl Panel {
         match self {
             Panel::Appearance => (420, 300),
             Panel::Backgrounds => (440, 308),
+            Panel::DateTime => (460, 370),
             Panel::Display => (480, 360),
             Panel::Keyboard => (440, 370),
             Panel::Power => (460, 362),
@@ -137,6 +144,7 @@ impl Panel {
                 settings.focus_follows_mouse = from.focus_follows_mouse;
             }
             Panel::Workspaces => settings.workspace_count = from.workspace_count,
+            Panel::DateTime => settings.clock = from.clock.clone(),
             Panel::Power => settings.power = from.power.clone(),
             Panel::ScreenSaver => settings.screen_saver = from.screen_saver.clone(),
             Panel::Display | Panel::About | Panel::Sound => {}
@@ -151,6 +159,7 @@ pub enum State {
     Backgrounds(workspaces::BackgroundsState),
     Display(display::State),
     Sound(sound::State),
+    DateTime(datetime::State),
     Power(power::State),
     ScreenSaver(screensaver::State),
     About(about::State),
@@ -163,6 +172,7 @@ impl State {
             Panel::Backgrounds => State::Backgrounds(Default::default()),
             Panel::Display => State::Display(Default::default()),
             Panel::Sound => State::Sound(Default::default()),
+            Panel::DateTime => State::DateTime(Default::default()),
             Panel::Power => State::Power(Default::default()),
             Panel::ScreenSaver => State::ScreenSaver(Default::default()),
             Panel::About => State::About(about::State::new()),
@@ -189,6 +199,7 @@ pub fn ui(panel: Panel, state: &mut State, ui: &mut egui::Ui, ctx: Ctx<'_>) {
             (Panel::Power, State::Power(s)) => power::ui(ui, settings, power, server, s),
             (Panel::ScreenSaver, State::ScreenSaver(s)) => screensaver::ui(ui, settings, server, s),
             (Panel::Sound, State::Sound(s)) => sound::ui(ui, s),
+            (Panel::DateTime, State::DateTime(s)) => datetime::ui(ui, settings, s),
             (Panel::Touchpad, _) => touchpad::ui(ui, settings),
             (Panel::Workspaces, _) => workspaces::ui(ui, settings),
             (Panel::About, State::About(s)) => about::ui(ui, s),

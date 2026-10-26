@@ -188,6 +188,33 @@ pub struct Settings {
     pub display: DisplaySettings,
     pub power: PowerSettings,
     pub screen_saver: ScreenSaverSettings,
+    pub clock: ClockSettings,
+}
+
+/// How Deskbar shows the time (Preferences ▸ Date & Time).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct ClockSettings {
+    /// 13:05 rather than 1:05 PM.
+    pub twenty_four_hour: bool,
+    pub show_seconds: bool,
+    /// "Mon 1:05 PM".
+    pub show_day: bool,
+}
+
+impl ClockSettings {
+    /// The time as Deskbar shows it; `weekday` counts from Sunday = 0.
+    pub fn format(&self, hour: u32, minute: u32, second: u32, weekday: u32) -> String {
+        const DAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        let seconds = if self.show_seconds { format!(":{:02}", second.min(59)) } else { String::new() };
+        let time = if self.twenty_four_hour {
+            format!("{hour:02}:{minute:02}{seconds}")
+        } else {
+            let h = hour % 12;
+            format!("{}:{minute:02}{seconds} {}", if h == 0 { 12 } else { h }, if hour < 12 { "AM" } else { "PM" })
+        };
+        if self.show_day { format!("{} {time}", DAYS[weekday as usize % 7]) } else { time }
+    }
 }
 
 /// A corner of the screen (BeOS's "Fade now" / "Don't fade" monitors).
@@ -409,6 +436,7 @@ impl Default for Settings {
             display: DisplaySettings::default(),
             power: PowerSettings::default(),
             screen_saver: ScreenSaverSettings::default(),
+            clock: ClockSettings::default(),
         }
     }
 }

@@ -56,6 +56,7 @@ enum Msg {
     Workspace(u32, u32),
     Status(status::Status),
     Power(tabula_protocol::PowerStatus),
+    Clock(tabula_protocol::ClockSettings),
 }
 
 /// A team: the windows of one application.
@@ -75,6 +76,7 @@ struct Deskbar {
     status: status::Status,
     caffeinated: bool,
     show_date: bool,
+    clock: tabula_protocol::ClockSettings,
     entries: HashMap<String, Option<DesktopEntry>>,
     height: f32,
     scroll_acc: f32,
@@ -359,7 +361,7 @@ impl App for Deskbar {
         let tray = Rect::from_min_size(pos2(full.left(), tile.bottom()), vec2(full.width(), TRAY_H));
         painter.rect_filled(tray, 0.0, shade(&pal, pal.panel_background, 1.03));
         style::bevel(&painter, tray.shrink2(vec2(TRAY_INSET, 2.0)), shade(&pal, pal.panel_background, 1.25), c(pal.shine));
-        let clock = status::clock_text(self.show_date);
+        let clock = status::clock_text(self.show_date, &self.clock);
         let font = style::plain_font();
         let clock_rect = style::label(&painter, tray.right() - TRAY_INSET - 5.0, tray.center().y, egui::Align::Max, clock, font, c(pal.panel_text)).expand(3.0);
         if ui.interact(clock_rect, egui::Id::unique("clock"), Sense::click()).clicked() {
@@ -513,8 +515,8 @@ impl App for Deskbar {
             self.height = want;
             cx.resize(self.win, (WIDTH as u32, want as u32));
         }
-        // Tick the clock on the minute.
-        ui.ctx().request_repaint_after(status::until_next_minute());
+        // Tick the clock on the minute (or second).
+        ui.ctx().request_repaint_after(status::until_next_tick(self.clock.show_seconds && !self.show_date));
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
@@ -524,6 +526,7 @@ impl App for Deskbar {
                 Msg::Workspace(cur, count) => self.workspace = (cur, count),
                 Msg::Status(s) => self.status = s,
                 Msg::Power(p) => self.caffeinated = p.caffeinated,
+                Msg::Clock(clock) => self.clock = clock,
             }
             cx.redraw(self.win);
         }
@@ -549,12 +552,16 @@ fn watch_server(proxy: tabula_kit::Proxy) {
                     if let Ok(Reply::Power { status }) = c.request(&Request::PowerStatus) {
                         proxy.send(Msg::Power(status));
                     }
+                    if let Ok(Reply::Settings { settings }) = c.request(&Request::GetSettings) {
+                        proxy.send(Msg::Clock(settings.clock));
+                    }
                     if let Ok(events) = c.into_events() {
                         for e in events.flatten() {
                             match e {
                                 Event::WindowsChanged { windows } => proxy.send(Msg::Windows(windows)),
                                 Event::WorkspaceChanged { current, count } => proxy.send(Msg::Workspace(current, count)),
                                 Event::PowerChanged { status } => proxy.send(Msg::Power(status)),
+                                Event::SettingsChanged { settings } => proxy.send(Msg::Clock(settings.clock)),
                                 _ => {}
                             }
                         }
@@ -594,6 +601,7 @@ fn main() {
             status: status::Status::default(),
             caffeinated: false,
             show_date: false,
+            clock: Default::default(),
             entries: HashMap::new(),
             height: TILE_H + TRAY_H,
             scroll_acc: 0.0,
