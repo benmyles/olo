@@ -204,6 +204,7 @@ pub fn run_winit() {
     state
         .shm_state
         .update_formats(state.backend_data.backend.renderer().shm_formats());
+    state.apply_output_settings(&output);
     state.space.map_output(&output, (0, 0));
 
     #[cfg(feature = "xwayland")]
@@ -246,6 +247,7 @@ pub fn run_winit() {
                     .unwrap_or_default();
             state.pre_repaint(&output, frame_target);
 
+            let desktop_color = state.desktop_color();
             let backend = &mut state.backend_data.backend;
 
             // draw the cursor as relevant
@@ -357,6 +359,7 @@ pub fn run_winit() {
                     damage_tracker,
                     age,
                     show_window_preview,
+                    desktop_color,
                 )
                 .map_err(|err| match err {
                     OutputDamageTrackerError::Rendering(err) => err.into(),
@@ -454,6 +457,21 @@ pub fn run_winit() {
         } else {
             state.space.refresh();
             state.popups.cleanup();
+            state.tick();
+            for (path, conn) in std::mem::take(&mut state.ipc.pending_screenshots) {
+                let color = state.desktop_color();
+                let res = crate::render::screenshot::<_, smithay::backend::renderer::gles::GlesTexture>(
+                    state.backend_data.backend.renderer(),
+                    &output,
+                    &state.space,
+                    color,
+                    &path,
+                );
+                conn.send(&match res {
+                    Ok(()) => tabula_protocol::Reply::Ok,
+                    Err(message) => tabula_protocol::Reply::Error { message },
+                });
+            }
             display_handle.flush_clients().unwrap();
         }
 

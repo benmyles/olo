@@ -1,7 +1,7 @@
 use std::{cell::RefCell, os::unix::io::OwnedFd};
 
 use smithay::{
-    desktop::{Window, space::SpaceElement},
+    desktop::Window,
     input::pointer::Focus,
     utils::{Logical, Rectangle, SERIAL_COUNTER},
     wayland::{
@@ -29,7 +29,7 @@ use tracing::{error, trace};
 use crate::{AnvilState, focus::KeyboardFocusTarget, state::Backend};
 
 use super::{
-    FullscreenSurface, PointerMoveSurfaceGrab, PointerResizeSurfaceGrab, ResizeData, ResizeState,
+    FullscreenSurface, PointerMoveSurfaceGrab, PointerResizeSurfaceGrab, ResizeData, ResizeEdge, ResizeState,
     SurfaceData, TouchMoveSurfaceGrab, WindowElement, place_new_window,
 };
 
@@ -211,45 +211,7 @@ impl<BackendData: Backend> XwmHandler for AnvilState<BackendData> {
     }
 
     fn resize_request(&mut self, _xwm: XwmId, window: X11Surface, _button: u32, edges: X11ResizeEdge) {
-        // luckily anvil only supports one seat anyway...
-        let start_data = self.pointer.grab_start_data().unwrap();
-
-        let Some(element) = self
-            .space
-            .elements()
-            .find(|e| matches!(e.0.x11_surface(), Some(w) if w == &window))
-        else {
-            return;
-        };
-
-        let geometry = element.geometry();
-        let loc = self.space.element_location(element).unwrap();
-        let (initial_window_location, initial_window_size) = (loc, geometry.size);
-
-        with_states(&element.wl_surface().unwrap(), move |states| {
-            states
-                .data_map
-                .get::<RefCell<SurfaceData>>()
-                .unwrap()
-                .borrow_mut()
-                .resize_state = ResizeState::Resizing(ResizeData {
-                edges: edges.into(),
-                initial_window_location,
-                initial_window_size,
-            });
-        });
-
-        let grab = PointerResizeSurfaceGrab {
-            start_data,
-            window: element.clone(),
-            edges: edges.into(),
-            initial_window_location,
-            initial_window_size,
-            last_window_size: initial_window_size,
-        };
-
-        let pointer = self.pointer.clone();
-        pointer.set_grab(self, grab, SERIAL_COUNTER.next_serial(), Focus::Clear);
+        self.resize_request_x11(&window, edges.into());
     }
 
     fn move_request(&mut self, _xwm: XwmId, window: X11Surface, _button: u32) {
@@ -347,6 +309,48 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         window.user_data().insert_if_missing(OldGeometry::default);
         window.user_data().get::<OldGeometry>().unwrap().save(old_geo);
         self.space.map_element(elem, geometry.loc, false);
+    }
+
+    pub fn resize_request_x11(&mut self, window: &X11Surface, edges: ResizeEdge) {
+        // luckily anvil only supports one seat anyway...
+        let start_data = self.pointer.grab_start_data().unwrap();
+
+        let Some(element) = self
+            .space
+            .elements()
+            .find(|e| matches!(e.0.x11_surface(), Some(w) if w == window))
+        else {
+            return;
+        };
+
+        let geometry = element.0.geometry();
+        let loc = self.space.element_location(element).unwrap();
+        let (initial_window_location, initial_window_size) = (loc, geometry.size);
+
+        with_states(&element.wl_surface().unwrap(), move |states| {
+            states
+                .data_map
+                .get::<RefCell<SurfaceData>>()
+                .unwrap()
+                .borrow_mut()
+                .resize_state = ResizeState::Resizing(ResizeData {
+                edges: edges.into(),
+                initial_window_location,
+                initial_window_size,
+            });
+        });
+
+        let grab = PointerResizeSurfaceGrab {
+            start_data,
+            window: element.clone(),
+            edges: edges.into(),
+            initial_window_location,
+            initial_window_size,
+            last_window_size: initial_window_size,
+        };
+
+        let pointer = self.pointer.clone();
+        pointer.set_grab(self, grab, SERIAL_COUNTER.next_serial(), Focus::Clear);
     }
 
     pub fn move_request_x11(&mut self, window: &X11Surface) {

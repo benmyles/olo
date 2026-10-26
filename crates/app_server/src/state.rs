@@ -187,6 +187,13 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub renderdoc: Option<renderdoc::RenderDoc<renderdoc::V141>>,
 
     pub show_window_preview: bool,
+    pub parked: crate::desktop::Parked,
+    pub workspace: u32,
+    pub settings: tabula_protocol::Settings,
+    pub ipc: crate::ipc::IpcState,
+    pub last_window_infos: Vec<tabula_protocol::WindowInfo>,
+    /// Night-light colour temperature in effect, if any.
+    pub night_light: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -481,19 +488,18 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
 impl<BackendData: Backend> XdgDecorationHandler for AnvilState<BackendData> {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
         use xdg_decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
-        // Set the default to client side
+        // Tabula draws every window's tab and frame itself.
         toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(Mode::ClientSide);
+            state.decoration_mode = Some(Mode::ServerSide);
         });
     }
     fn request_mode(&mut self, toplevel: ToplevelSurface, mode: DecorationMode) {
         use xdg_decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
 
+        // BeOS windows all wear the same tab; the compositor has the last word.
+        let _ = mode;
         toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(match mode {
-                DecorationMode::ServerSide => Mode::ServerSide,
-                _ => Mode::ClientSide,
-            });
+            state.decoration_mode = Some(Mode::ServerSide);
         });
 
         if toplevel.is_initial_configure_sent() {
@@ -503,7 +509,7 @@ impl<BackendData: Backend> XdgDecorationHandler for AnvilState<BackendData> {
     fn unset_mode(&mut self, toplevel: ToplevelSurface) {
         use xdg_decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
         toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(Mode::ClientSide);
+            state.decoration_mode = Some(Mode::ServerSide);
         });
 
         if toplevel.is_initial_configure_sent() {
@@ -632,7 +638,7 @@ impl<BackendData: Backend> ImageCopyCaptureHandler for AnvilState<BackendData> {
                 smithay::reexports::wayland_server::protocol::wl_shm::Format::Argb8888,
                 smithay::reexports::wayland_server::protocol::wl_shm::Format::Xrgb8888,
             ],
-            #[cfg(any(feature = "udev", feature = "winit", feature = "x11"))]
+            #[cfg(any(feature = "udev", feature = "winit"))]
             dma: None,
         })
     }
@@ -753,7 +759,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         #[cfg(feature = "xwayland")]
         XWaylandKeyboardGrabState::new::<Self>(&dh.clone());
 
-        AnvilState {
+        let mut state = AnvilState {
             backend_data,
             display_handle: dh,
             socket_name,
@@ -801,7 +807,31 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             #[cfg(feature = "debug")]
             renderdoc: renderdoc::RenderDoc::new().ok(),
             show_window_preview: false,
+            parked: Default::default(),
+            workspace: 0,
+            settings: crate::desktop::load_settings(),
+            ipc: Default::default(),
+            last_window_infos: Vec::new(),
+            night_light: None,
+        };
+        if let Some(name) = state.socket_name.clone() {
+            match crate::ipc::init(&state.handle, &name) {
+                Ok(ipc) => state.ipc = ipc,
+                Err(e) => warn!(?e, "IPC disabled"),
+            }
         }
+        state.apply_input_settings();
+        state.update_appearance(true);
+        // Re-check the Auto theme / night-light schedule every 30 s.
+        let _ = state.handle.insert_source(
+            smithay::reexports::calloop::timer::Timer::from_duration(std::time::Duration::from_secs(30)),
+            |_, _, state| {
+                state.update_appearance(false);
+                smithay::reexports::calloop::timer::TimeoutAction::ToDuration(std::time::Duration::from_secs(30))
+            },
+        );
+        crate::text::warm_up();
+        state
     }
 
     #[cfg(feature = "xwayland")]
@@ -1208,7 +1238,12 @@ pub fn take_presentation_feedback(
 pub trait Backend {
     const HAS_RELATIVE_MOTION: bool = false;
     const HAS_GESTURES: bool = false;
+    /// Running as the real desktop session (not nested for development).
+    /// Only then do we touch user-global settings like the GTK colour scheme.
+    const IS_SESSION: bool = false;
     fn seat_name(&self) -> String;
+    /// Push touchpad/mouse settings to input devices.
+    fn apply_input_settings(&mut self, _settings: &tabula_protocol::Settings) {}
     fn reset_buffers(&mut self, output: &Output);
     fn early_import(&mut self, surface: &WlSurface);
     fn update_led_state(&mut self, led_state: LedState);

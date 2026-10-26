@@ -188,6 +188,7 @@ impl DmabufHandler for AnvilState<UdevData> {
 impl Backend for UdevData {
     const HAS_RELATIVE_MOTION: bool = true;
     const HAS_GESTURES: bool = true;
+    const IS_SESSION: bool = true;
 
     fn seat_name(&self) -> String {
         self.session.seat()
@@ -541,6 +542,7 @@ pub fn run_udev() {
         } else {
             state.space.refresh();
             state.popups.cleanup();
+            state.tick();
             display_handle.flush_clients().unwrap();
         }
     }
@@ -987,6 +989,8 @@ impl AnvilState<UdevData> {
 
             output.set_preferred(wl_mode);
             output.change_current_state(Some(wl_mode), None, None, Some(position));
+            let scale = self.settings.display.scale_for(&output.name());
+            output.change_current_state(None, None, Some(smithay::output::Scale::Fractional(scale)), None);
             self.space.map_output(&output, position);
 
             output.user_data().insert_if_missing(|| UdevOutputId {
@@ -1422,6 +1426,7 @@ impl AnvilState<UdevData> {
         };
 
         self.pre_repaint(&output, frame_target);
+        let desktop_color = self.desktop_color();
 
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
             device
@@ -1489,6 +1494,7 @@ impl AnvilState<UdevData> {
             &self.dnd_icon,
             &mut self.cursor_status,
             self.show_window_preview,
+            desktop_color,
         );
         let reschedule = match result {
             Ok((has_rendered, states)) => {
@@ -1570,6 +1576,7 @@ fn render_surface<'a>(
     dnd_icon: &Option<DndIcon>,
     cursor_status: &mut CursorImageStatus,
     show_window_preview: bool,
+    desktop_color: smithay::backend::renderer::Color32F,
 ) -> Result<(bool, RenderElementStates), SwapBuffersError> {
     let output_geometry = space.output_geometry(output).unwrap();
     let scale = Scale::from(output.current_scale().fractional_scale());
@@ -1647,7 +1654,7 @@ fn render_surface<'a>(
     }
 
     let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, show_window_preview);
+        output_elements(output, space, custom_elements, renderer, show_window_preview, desktop_color);
 
     let frame_mode = if surface.disable_direct_scanout {
         FrameFlags::empty()

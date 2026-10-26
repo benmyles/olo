@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 use smithay::{
-    desktop::{WindowSurface, space::SpaceElement},
+    desktop::WindowSurface,
     input::{
         pointer::{
             AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent,
@@ -413,7 +413,7 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerResiz
             #[cfg(feature = "xwayland")]
             WindowSurface::X11(x11) => {
                 let location = data.space.element_location(&self.window).unwrap();
-                x11.configure_with_sync(Rectangle::new(location, self.last_window_size), None)
+                x11.configure_with_sync(Rectangle::new(location + self.window.content_offset(), self.last_window_size), None)
                     .unwrap();
             }
         }
@@ -453,7 +453,7 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerResiz
                     });
                     xdg.send_pending_configure();
                     if self.edges.intersects(ResizeEdge::TOP_LEFT) {
-                        let geometry = self.window.geometry();
+                        let geometry = self.window.0.geometry();
                         let mut location = data.space.element_location(&self.window).unwrap();
 
                         if self.edges.intersects(ResizeEdge::LEFT) {
@@ -485,7 +485,7 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerResiz
                 WindowSurface::X11(x11) => {
                     let mut location = data.space.element_location(&self.window).unwrap();
                     if self.edges.intersects(ResizeEdge::TOP_LEFT) {
-                        let geometry = self.window.geometry();
+                        let geometry = self.window.0.geometry();
 
                         if self.edges.intersects(ResizeEdge::LEFT) {
                             location.x = self.initial_window_location.x
@@ -498,7 +498,7 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerResiz
 
                         data.space.map_element(self.window.clone(), location, true);
                     }
-                    x11.configure_with_sync(Rectangle::new(location, self.last_window_size), None)
+                    x11.configure_with_sync(Rectangle::new(location + self.window.content_offset(), self.last_window_size), None)
                         .unwrap();
 
                     let Some(surface) = self.window.wl_surface() else {
@@ -664,7 +664,7 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchResizeSur
                 });
                 xdg.send_pending_configure();
                 if self.edges.intersects(ResizeEdge::TOP_LEFT) {
-                    let geometry = self.window.geometry();
+                    let geometry = self.window.0.geometry();
                     let mut location = data.space.element_location(&self.window).unwrap();
 
                     if self.edges.intersects(ResizeEdge::LEFT) {
@@ -696,7 +696,7 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchResizeSur
             WindowSurface::X11(x11) => {
                 let mut location = data.space.element_location(&self.window).unwrap();
                 if self.edges.intersects(ResizeEdge::TOP_LEFT) {
-                    let geometry = self.window.geometry();
+                    let geometry = self.window.0.geometry();
 
                     if self.edges.intersects(ResizeEdge::LEFT) {
                         location.x =
@@ -709,7 +709,7 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchResizeSur
 
                     data.space.map_element(self.window.clone(), location, true);
                 }
-                x11.configure_with_sync(Rectangle::new(location, self.last_window_size), None)
+                x11.configure_with_sync(Rectangle::new(location + self.window.content_offset(), self.last_window_size), None)
                     .unwrap();
 
                 let Some(surface) = self.window.wl_surface() else {
@@ -807,7 +807,7 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchResizeSur
             #[cfg(feature = "xwayland")]
             WindowSurface::X11(x11) => {
                 let location = data.space.element_location(&self.window).unwrap();
-                x11.configure_with_sync(Rectangle::new(location, self.last_window_size), None)
+                x11.configure_with_sync(Rectangle::new(location + self.window.content_offset(), self.last_window_size), None)
                     .unwrap();
             }
         }

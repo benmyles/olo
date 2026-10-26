@@ -6,13 +6,15 @@ use smithay::{
         renderer::{
             ImportAll, ImportMem, Renderer, Texture,
             element::{
-                AsRenderElements, solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement,
+                AsRenderElements, memory::MemoryRenderBufferRenderElement, solid::SolidColorRenderElement,
+                surface::WaylandSurfaceRenderElement,
             },
         },
     },
     desktop::{
         Window, WindowSurface, WindowSurfaceType, space::SpaceElement, utils::OutputPresentationFeedback,
     },
+    backend::input::ButtonState,
     input::{
         Seat,
         pointer::{
@@ -25,35 +27,123 @@ use smithay::{
     },
     output::Output,
     reexports::{
-        wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
+        wayland_protocols::{
+            wp::presentation_time::server::wp_presentation_feedback, xdg::shell::server::xdg_toplevel,
+        },
         wayland_server::protocol::wl_surface::WlSurface,
     },
     render_elements,
-    utils::{IsAlive, Logical, Physical, Point, Rectangle, Scale, Serial, user_data::UserDataMap},
-    wayland::{compositor::SurfaceData as WlSurfaceData, dmabuf::DmabufFeedback, seat::WaylandFocus},
+    utils::{IsAlive, Logical, Physical, Point, Rectangle, Scale, Serial, Size, user_data::UserDataMap},
+    wayland::{
+        compositor::{SurfaceData as WlSurfaceData, with_states},
+        dmabuf::DmabufFeedback,
+        seat::WaylandFocus,
+        shell::xdg::XdgToplevelSurfaceData,
+    },
 };
 
-use super::ssd::HEADER_BAR_HEIGHT;
+use super::deco;
 use crate::{AnvilState, focus::PointerFocusTarget, state::Backend};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WindowElement(pub Window);
 
 impl WindowElement {
+    /// Server-side decorated right now (negotiated, and not fullscreen).
+    pub fn decorated(&self) -> bool {
+        if !self.decoration().enabled {
+            return false;
+        }
+        match self.0.underlying_surface() {
+            WindowSurface::Wayland(t) => !t.with_committed_state(|s| {
+                s.is_some_and(|s| s.states.contains(xdg_toplevel::State::Fullscreen))
+            }),
+            #[cfg(feature = "xwayland")]
+            WindowSurface::X11(x) => !x.is_fullscreen(),
+        }
+    }
+
+    pub fn title(&self) -> String {
+        match self.0.underlying_surface() {
+            WindowSurface::Wayland(t) => with_states(t.wl_surface(), |states| {
+                states
+                    .data_map
+                    .get::<XdgToplevelSurfaceData>()
+                    .and_then(|d| d.lock().unwrap().title.clone())
+            })
+            .unwrap_or_default(),
+            #[cfg(feature = "xwayland")]
+            WindowSurface::X11(x) => x.title(),
+        }
+    }
+
+    pub fn app_id(&self) -> String {
+        match self.0.underlying_surface() {
+            WindowSurface::Wayland(t) => with_states(t.wl_surface(), |states| {
+                states
+                    .data_map
+                    .get::<XdgToplevelSurfaceData>()
+                    .and_then(|d| d.lock().unwrap().app_id.clone())
+            })
+            .unwrap_or_default(),
+            #[cfg(feature = "xwayland")]
+            WindowSurface::X11(x) => x.class(),
+        }
+    }
+
+    /// The client's own geometry size (without our decoration).
+    pub fn content_size(&self) -> Size<i32, Logical> {
+        SpaceElement::geometry(&self.0).size
+    }
+
+    /// Offset from this element's render origin to the client's render origin.
+    fn client_render_offset(&self) -> Point<i32, Logical> {
+        let geo = SpaceElement::geometry(&self.0);
+        if self.decorated() {
+            deco::content_offset() - geo.loc
+        } else {
+            Point::default()
+        }
+    }
+
+    /// Where the client's geometry starts relative to the element location.
+    pub fn content_offset(&self) -> Point<i32, Logical> {
+        if self.decorated() { deco::content_offset() } else { Point::default() }
+    }
+
+    /// Element size for a given client size.
+    pub fn outer_size(&self, content: Size<i32, Logical>) -> Size<i32, Logical> {
+        if self.decorated() { content + deco::extra_size() } else { content }
+    }
+
+    /// Client size for a given element size.
+    pub fn inner_size(&self, outer: Size<i32, Logical>) -> Size<i32, Logical> {
+        if self.decorated() {
+            let extra = deco::extra_size();
+            ((outer.w - extra.w).max(1), (outer.h - extra.h).max(1)).into()
+        } else {
+            outer
+        }
+    }
+
+    fn on_decoration(&self, location: Point<f64, Logical>) -> bool {
+        if !self.decorated() {
+            return false;
+        }
+        let title = self.title();
+        let content = self.content_size();
+        self.decoration().is_on_decoration(&title, content, location)
+    }
+
     pub fn surface_under(
         &self,
         location: Point<f64, Logical>,
         window_type: WindowSurfaceType,
     ) -> Option<(PointerFocusTarget, Point<i32, Logical>)> {
-        let state = self.decoration_state();
-        if state.is_ssd && location.y < HEADER_BAR_HEIGHT as f64 {
+        if self.on_decoration(location) {
             return Some((PointerFocusTarget::SSD(SSD(self.clone())), Point::default()));
         }
-        let offset = if state.is_ssd {
-            Point::from((0, HEADER_BAR_HEIGHT))
-        } else {
-            Point::default()
-        };
+        let offset = self.client_render_offset();
 
         let surface_under = self.0.surface_under(location - offset.to_f64(), window_type);
         let (under, loc) = match self.0.underlying_surface() {
@@ -147,7 +237,7 @@ impl IsAlive for WindowElement {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SSD(WindowElement);
+pub struct SSD(pub WindowElement);
 
 impl IsAlive for SSD {
     #[inline]
@@ -163,28 +253,14 @@ impl WaylandFocus for SSD {
     }
 }
 
+const BTN_LEFT: u32 = 0x110;
+
 impl<BackendData: Backend> PointerTarget<AnvilState<BackendData>> for SSD {
-    fn enter(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        event: &MotionEvent,
-    ) {
-        let mut state = self.0.decoration_state();
-        if state.is_ssd {
-            state.header_bar.pointer_enter(event.location);
-        }
+    fn enter(&self, _seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &MotionEvent) {
+        data.deco_motion(&self.0, event.location);
     }
-    fn motion(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        event: &MotionEvent,
-    ) {
-        let mut state = self.0.decoration_state();
-        if state.is_ssd {
-            state.header_bar.pointer_enter(event.location);
-        }
+    fn motion(&self, _seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &MotionEvent) {
+        data.deco_motion(&self.0, event.location);
     }
     fn relative_motion(
         &self,
@@ -193,36 +269,20 @@ impl<BackendData: Backend> PointerTarget<AnvilState<BackendData>> for SSD {
         _event: &RelativeMotionEvent,
     ) {
     }
-    fn button(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &ButtonEvent,
-    ) {
-        let mut state = self.0.decoration_state();
-        if state.is_ssd {
-            state.header_bar.clicked(seat, data, &self.0, event.serial);
-        }
+    fn button(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &ButtonEvent) {
+        let pressed = event.state == ButtonState::Pressed;
+        data.deco_button(seat, &self.0, event.button, pressed, event.serial);
     }
-    fn axis(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        _frame: AxisFrame,
-    ) {
-    }
+    fn axis(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _frame: AxisFrame) {}
     fn frame(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>) {}
     fn leave(
         &self,
         _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
+        data: &mut AnvilState<BackendData>,
         _serial: Serial,
         _time: InputTime,
     ) {
-        let mut state = self.0.decoration_state();
-        if state.is_ssd {
-            state.header_bar.pointer_leave();
-        }
+        data.deco_leave(&self.0);
     }
     fn gesture_swipe_begin(
         &self,
@@ -289,51 +349,33 @@ impl<BackendData: Backend> TouchTarget<AnvilState<BackendData>> for SSD {
         data: &mut AnvilState<BackendData>,
         event: &smithay::input::touch::DownEvent,
     ) {
-        let mut state = self.0.decoration_state();
-        if state.is_ssd {
-            state.header_bar.pointer_enter(event.location);
-            state.header_bar.touch_down(seat, data, &self.0, event.serial);
-        }
+        data.deco_motion(&self.0, event.location);
+        data.deco_button(seat, &self.0, BTN_LEFT, true, event.serial);
     }
 
     fn up(
         &self,
         seat: &Seat<AnvilState<BackendData>>,
         data: &mut AnvilState<BackendData>,
-        _event: &smithay::input::touch::UpEvent,
+        event: &smithay::input::touch::UpEvent,
     ) {
-        let mut state = self.0.decoration_state();
-        if state.is_ssd {
-            state.header_bar.touch_up(seat, data, &self.0);
-        }
+        data.deco_button(seat, &self.0, BTN_LEFT, false, event.serial);
     }
 
     fn motion(
         &self,
         _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
+        data: &mut AnvilState<BackendData>,
         event: &smithay::input::touch::MotionEvent,
     ) {
-        let mut state = self.0.decoration_state();
-        if state.is_ssd {
-            state.header_bar.pointer_enter(event.location);
-        }
+        data.deco_motion(&self.0, event.location);
     }
 
-    fn frame(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        _marker: FrameMarker,
-    ) {
+    fn frame(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _marker: FrameMarker) {
     }
 
-    fn cancel(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        _marker: FrameMarker,
-    ) {
+    fn cancel(&self, _seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, _marker: FrameMarker) {
+        data.deco_leave(&self.0);
     }
 
     fn shape(
@@ -357,8 +399,6 @@ impl<BackendData: Backend> TouchTarget<AnvilState<BackendData>> for SSD {
         _seat: &Seat<AnvilState<BackendData>>,
         _data: &mut AnvilState<BackendData>,
     ) -> Option<FrameMarker> {
-        // It would be more correct to store the marker on frame and cancel,
-        // but since we're ignoring those anyway, no need for the added complexity.
         None
     }
 }
@@ -377,13 +417,10 @@ impl<BackendData: Backend> TabletToolTarget<AnvilState<BackendData>> for SSD {
     fn proximity_out(
         &self,
         _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
+        data: &mut AnvilState<BackendData>,
         _tool_descriptor: &smithay::backend::input::TabletToolDescriptor,
     ) {
-        let mut state = self.0.decoration_state();
-        if state.is_ssd {
-            state.header_bar.pointer_leave();
-        }
+        data.deco_leave(&self.0);
     }
 
     fn down(
@@ -393,10 +430,7 @@ impl<BackendData: Backend> TabletToolTarget<AnvilState<BackendData>> for SSD {
         _tool_descriptor: &smithay::backend::input::TabletToolDescriptor,
         event: &smithay::input::tablet::tool::DownEvent,
     ) {
-        let mut state = self.0.decoration_state();
-        if state.is_ssd {
-            state.header_bar.touch_down(seat, data, &self.0, event.serial);
-        }
+        data.deco_button(seat, &self.0, BTN_LEFT, true, event.serial);
     }
 
     fn up(
@@ -404,38 +438,28 @@ impl<BackendData: Backend> TabletToolTarget<AnvilState<BackendData>> for SSD {
         seat: &Seat<AnvilState<BackendData>>,
         data: &mut AnvilState<BackendData>,
         _tool_descriptor: &smithay::backend::input::TabletToolDescriptor,
-        _event: &smithay::input::tablet::tool::UpEvent,
+        event: &smithay::input::tablet::tool::UpEvent,
     ) {
-        let mut state = self.0.decoration_state();
-        if state.is_ssd {
-            state.header_bar.touch_up(seat, data, &self.0);
-        }
+        data.deco_button(seat, &self.0, BTN_LEFT, false, event.serial);
     }
 
     fn motion(
         &self,
         _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
+        data: &mut AnvilState<BackendData>,
         _tool_descriptor: &smithay::backend::input::TabletToolDescriptor,
         event: &smithay::input::tablet::tool::MotionEvent,
     ) {
-        let mut state = self.0.decoration_state();
-        if state.is_ssd {
-            state.header_bar.pointer_enter(event.location);
-        }
+        data.deco_motion(&self.0, event.location);
     }
 
     fn button(
         &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
+        _seat: &Seat<AnvilState<BackendData>>,
+        _data: &mut AnvilState<BackendData>,
         _tool_descriptor: &smithay::backend::input::TabletToolDescriptor,
-        event: &smithay::input::tablet::tool::ButtonEvent,
+        _event: &smithay::input::tablet::tool::ButtonEvent,
     ) {
-        let mut state = self.0.decoration_state();
-        if state.is_ssd {
-            state.header_bar.clicked(seat, data, &self.0, event.serial);
-        }
     }
 
     fn axis(
@@ -459,35 +483,35 @@ impl<BackendData: Backend> TabletToolTarget<AnvilState<BackendData>> for SSD {
 
 impl SpaceElement for WindowElement {
     fn geometry(&self) -> Rectangle<i32, Logical> {
-        let mut geo = SpaceElement::geometry(&self.0);
-        if self.decoration_state().is_ssd {
-            geo.size.h += HEADER_BAR_HEIGHT;
+        let geo = SpaceElement::geometry(&self.0);
+        if self.decorated() {
+            Rectangle::from_size(geo.size + deco::extra_size())
+        } else {
+            geo
         }
-        geo
     }
     fn bbox(&self) -> Rectangle<i32, Logical> {
-        let mut bbox = SpaceElement::bbox(&self.0);
-        if self.decoration_state().is_ssd {
-            bbox.size.h += HEADER_BAR_HEIGHT;
+        let bbox = SpaceElement::bbox(&self.0);
+        if self.decorated() {
+            let geo = SpaceElement::geometry(&self.0);
+            let frame = Rectangle::from_size(geo.size + deco::extra_size());
+            let mut client = bbox;
+            client.loc += self.client_render_offset();
+            frame.merge(client)
+        } else {
+            bbox
         }
-        bbox
     }
     fn is_in_input_region(&self, point: &Point<f64, Logical>) -> bool {
-        if self.decoration_state().is_ssd {
-            point.y < HEADER_BAR_HEIGHT as f64
-                || SpaceElement::is_in_input_region(
-                    &self.0,
-                    &(*point - Point::from((0.0, HEADER_BAR_HEIGHT as f64))),
-                )
-        } else {
-            SpaceElement::is_in_input_region(&self.0, point)
-        }
+        self.on_decoration(*point)
+            || SpaceElement::is_in_input_region(&self.0, &(*point - self.client_render_offset().to_f64()))
     }
     fn z_index(&self) -> u8 {
         SpaceElement::z_index(&self.0)
     }
 
     fn set_activate(&self, activated: bool) {
+        self.decoration().focused = activated;
         SpaceElement::set_activate(&self.0, activated);
     }
     fn output_enter(&self, output: &Output, overlap: Rectangle<i32, Logical>) {
@@ -505,6 +529,7 @@ impl SpaceElement for WindowElement {
 render_elements!(
     pub WindowRenderElement<R> where R: ImportAll + ImportMem;
     Window=WaylandSurfaceRenderElement<R>,
+    Tab=MemoryRenderBufferRenderElement<R>,
     Decoration=SolidColorRenderElement,
 );
 
@@ -512,6 +537,7 @@ impl<R: Renderer> std::fmt::Debug for WindowRenderElement<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Window(arg0) => f.debug_tuple("Window").field(arg0).finish(),
+            Self::Tab(arg0) => f.debug_tuple("Tab").field(arg0).finish(),
             Self::Decoration(arg0) => f.debug_tuple("Decoration").field(arg0).finish(),
             Self::_GenericCatcher(arg0) => f.debug_tuple("_GenericCatcher").field(arg0).finish(),
         }
@@ -521,39 +547,36 @@ impl<R: Renderer> std::fmt::Debug for WindowRenderElement<R> {
 impl<R> AsRenderElements<R> for WindowElement
 where
     R: Renderer + ImportAll + ImportMem,
-    R::TextureId: Clone + Texture + 'static,
+    R::TextureId: Clone + Texture + Send + 'static,
 {
     type RenderElement = WindowRenderElement<R>;
 
     fn render_elements<C: From<Self::RenderElement>>(
         &self,
         renderer: &mut R,
-        mut location: Point<i32, Physical>,
+        location: Point<i32, Physical>,
         scale: Scale<f64>,
         alpha: f32,
     ) -> Vec<C> {
         let window_bbox = SpaceElement::bbox(&self.0);
 
-        if self.decoration_state().is_ssd && !window_bbox.is_empty() {
-            let window_geo = SpaceElement::geometry(&self.0);
+        if self.decorated() && !window_bbox.is_empty() {
+            let title = self.title();
+            let content = self.content_size();
+            let (tabs, frame) =
+                self.decoration()
+                    .render_elements(renderer, &title, content, location, scale, alpha);
+            let client_location = location + self.client_render_offset().to_physical_precise_round(scale);
+            let window_elements: Vec<WindowRenderElement<R>> =
+                AsRenderElements::render_elements(&self.0, renderer, client_location, scale, alpha);
 
-            let mut state = self.decoration_state();
-            let width = window_geo.size.w;
-            state.header_bar.redraw(width as u32);
-            let mut vec = AsRenderElements::<R>::render_elements::<WindowRenderElement<R>>(
-                &state.header_bar,
-                renderer,
-                location,
-                scale,
-                alpha,
-            );
-
-            location.y += (scale.y * HEADER_BAR_HEIGHT as f64) as i32;
-
-            let window_elements =
-                AsRenderElements::render_elements(&self.0, renderer, location, scale, alpha);
-            vec.extend(window_elements);
-            vec.into_iter().map(C::from).collect()
+            // Popups and the window first, so menus overlap the tab.
+            window_elements
+                .into_iter()
+                .chain(tabs.into_iter().map(WindowRenderElement::Tab))
+                .chain(frame.into_iter().map(WindowRenderElement::Decoration))
+                .map(C::from)
+                .collect()
         } else {
             AsRenderElements::render_elements(&self.0, renderer, location, scale, alpha)
                 .into_iter()

@@ -22,6 +22,9 @@ pub mod udev;
 #[cfg(feature = "winit")]
 pub mod winit;
 
+pub mod desktop;
 pub mod ipc;
+pub mod text;
+pub mod theme;
 
 pub use state::{AnvilState, ClientState};

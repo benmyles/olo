@@ -4,7 +4,6 @@ use smithay::{
     desktop::{
         PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, Space, Window,
         WindowSurfaceType, find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
-        space::SpaceElement,
     },
     input::{Seat, pointer::Focus},
     output::Output,
@@ -49,6 +48,8 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         // the surface is not already configured
         let window = WindowElement(Window::new_wayland_window(surface.clone()));
         place_new_window(&mut self.space, self.pointer.current_location(), &window, true);
+        // New windows come up focused, as on BeOS.
+        self.focus_window(&window);
 
         compositor::add_post_commit_hook(surface.wl_surface(), |state: &mut Self, _, surface| {
             handle_toplevel_commit(&mut state.space, surface);
@@ -90,112 +91,7 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         edges: xdg_toplevel::ResizeEdge,
     ) {
         let seat: Seat<AnvilState<BackendData>> = Seat::from_resource(&seat).unwrap();
-
-        if let Some(touch) = seat.get_touch() {
-            if touch.has_grab(serial) {
-                let start_data = touch.grab_start_data().unwrap();
-                tracing::info!(?start_data);
-
-                // If the client disconnects after requesting a move
-                // we can just ignore the request
-                let Some(window) = self.window_for_surface(surface.wl_surface()) else {
-                    tracing::info!("no window");
-                    return;
-                };
-
-                // If the focus was for a different surface, ignore the request.
-                if start_data.focus.is_none()
-                    || !start_data
-                        .focus
-                        .as_ref()
-                        .unwrap()
-                        .0
-                        .same_client_as(&surface.wl_surface().id())
-                {
-                    tracing::info!("different surface");
-                    return;
-                }
-                let geometry = window.geometry();
-                let loc = self.space.element_location(&window).unwrap();
-                let (initial_window_location, initial_window_size) = (loc, geometry.size);
-
-                with_states(surface.wl_surface(), move |states| {
-                    states
-                        .data_map
-                        .get::<RefCell<SurfaceData>>()
-                        .unwrap()
-                        .borrow_mut()
-                        .resize_state = ResizeState::Resizing(ResizeData {
-                        edges: edges.into(),
-                        initial_window_location,
-                        initial_window_size,
-                    });
-                });
-
-                let grab = TouchResizeSurfaceGrab {
-                    start_data,
-                    window,
-                    edges: edges.into(),
-                    initial_window_location,
-                    initial_window_size,
-                    last_window_size: initial_window_size,
-                };
-
-                touch.set_grab(self, grab, serial);
-                return;
-            }
-        }
-
-        let pointer = seat.get_pointer().unwrap();
-
-        // Check that this surface has a click grab.
-        if !pointer.has_grab(serial) {
-            return;
-        }
-
-        let start_data = pointer.grab_start_data().unwrap();
-
-        let window = self.window_for_surface(surface.wl_surface()).unwrap();
-
-        // If the focus was for a different surface, ignore the request.
-        if start_data.focus.is_none()
-            || !start_data
-                .focus
-                .as_ref()
-                .unwrap()
-                .0
-                .same_client_as(&surface.wl_surface().id())
-        {
-            return;
-        }
-
-        let geometry = window.geometry();
-        let loc = self.space.element_location(&window).unwrap();
-        let (initial_window_location, initial_window_size) = (loc, geometry.size);
-
-        with_states(surface.wl_surface(), move |states| {
-            states
-                .data_map
-                .get::<RefCell<SurfaceData>>()
-                .unwrap()
-                .borrow_mut()
-                .resize_state = ResizeState::Resizing(ResizeData {
-                edges: edges.into(),
-                initial_window_location,
-                initial_window_size,
-            });
-        });
-
-        let grab = PointerResizeSurfaceGrab {
-            start_data,
-            window,
-            edges: edges.into(),
-            initial_window_location,
-            initial_window_size,
-            last_window_size: initial_window_size,
-        };
-
-        pointer.set_grab(self, grab, serial, Focus::Clear);
+        self.resize_request_xdg(&surface, &seat, serial, edges.into());
     }
 
     fn ack_configure(&mut self, surface: WlSurface, configure: Configure) {
@@ -335,45 +231,26 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
-        // NOTE: This should use layer-shell when it is implemented to
-        // get the correct maximum size
-        let window = self.window_for_surface(surface.wl_surface()).unwrap();
-        let outputs_for_window = self.space.outputs_for_element(&window);
-        let output = outputs_for_window
-            .first()
-            // The window hasn't been mapped yet, use the primary output instead
-            .or_else(|| self.space.outputs().next())
-            // Assumes that at least one output exists
-            .expect("No outputs found");
-        let geometry = self.space.output_geometry(output).unwrap();
-
-        surface.with_pending_state(|state| {
-            state.states.set(xdg_toplevel::State::Maximized);
-            state.size = Some(geometry.size);
-        });
-        self.space.map_element(window, geometry.loc, true);
-
-        // The protocol demands us to always reply with a configure,
-        // regardless of we fulfilled the request or not
+        if let Some(window) = self.window_for_surface(surface.wl_surface()) {
+            self.zoom_window(&window);
+        }
+        // The protocol demands us to always reply with a configure.
         if surface.is_initial_configure_sent() {
             surface.send_configure();
-        } else {
-            // Will be sent during initial configure
         }
     }
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
-        surface.with_pending_state(|state| {
-            state.states.unset(xdg_toplevel::State::Maximized);
-            state.size = None;
-        });
-
-        // The protocol demands us to always reply with a configure,
-        // regardless of we fulfilled the request or not
+        if let Some(window) = self.window_for_surface(surface.wl_surface()) {
+            self.unzoom_window(&window);
+        } else {
+            surface.with_pending_state(|state| {
+                state.states.unset(xdg_toplevel::State::Maximized);
+                state.size = None;
+            });
+        }
         if surface.is_initial_configure_sent() {
             surface.send_configure();
-        } else {
-            // Will be sent during initial configure
         }
     }
 
@@ -426,6 +303,121 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
 }
 
 impl<BackendData: Backend> AnvilState<BackendData> {
+    pub fn resize_request_xdg(
+        &mut self,
+        surface: &ToplevelSurface,
+        seat: &Seat<Self>,
+        serial: Serial,
+        edges: ResizeEdge,
+    ) {
+
+        if let Some(touch) = seat.get_touch() {
+            if touch.has_grab(serial) {
+                let start_data = touch.grab_start_data().unwrap();
+                tracing::info!(?start_data);
+
+                // If the client disconnects after requesting a move
+                // we can just ignore the request
+                let Some(window) = self.window_for_surface(surface.wl_surface()) else {
+                    tracing::info!("no window");
+                    return;
+                };
+
+                // If the focus was for a different surface, ignore the request.
+                if start_data.focus.is_none()
+                    || !start_data
+                        .focus
+                        .as_ref()
+                        .unwrap()
+                        .0
+                        .same_client_as(&surface.wl_surface().id())
+                {
+                    tracing::info!("different surface");
+                    return;
+                }
+                let geometry = window.0.geometry();
+                let loc = self.space.element_location(&window).unwrap();
+                let (initial_window_location, initial_window_size) = (loc, geometry.size);
+
+                with_states(surface.wl_surface(), move |states| {
+                    states
+                        .data_map
+                        .get::<RefCell<SurfaceData>>()
+                        .unwrap()
+                        .borrow_mut()
+                        .resize_state = ResizeState::Resizing(ResizeData {
+                        edges: edges.into(),
+                        initial_window_location,
+                        initial_window_size,
+                    });
+                });
+
+                let grab = TouchResizeSurfaceGrab {
+                    start_data,
+                    window,
+                    edges: edges.into(),
+                    initial_window_location,
+                    initial_window_size,
+                    last_window_size: initial_window_size,
+                };
+
+                touch.set_grab(self, grab, serial);
+                return;
+            }
+        }
+
+        let pointer = seat.get_pointer().unwrap();
+
+        // Check that this surface has a click grab.
+        if !pointer.has_grab(serial) {
+            return;
+        }
+
+        let start_data = pointer.grab_start_data().unwrap();
+
+        let window = self.window_for_surface(surface.wl_surface()).unwrap();
+
+        // If the focus was for a different surface, ignore the request.
+        if start_data.focus.is_none()
+            || !start_data
+                .focus
+                .as_ref()
+                .unwrap()
+                .0
+                .same_client_as(&surface.wl_surface().id())
+        {
+            return;
+        }
+
+        let geometry = window.0.geometry();
+        let loc = self.space.element_location(&window).unwrap();
+        let (initial_window_location, initial_window_size) = (loc, geometry.size);
+
+        with_states(surface.wl_surface(), move |states| {
+            states
+                .data_map
+                .get::<RefCell<SurfaceData>>()
+                .unwrap()
+                .borrow_mut()
+                .resize_state = ResizeState::Resizing(ResizeData {
+                edges: edges.into(),
+                initial_window_location,
+                initial_window_size,
+            });
+        });
+
+        let grab = PointerResizeSurfaceGrab {
+            start_data,
+            window,
+            edges: edges.into(),
+            initial_window_location,
+            initial_window_size,
+            last_window_size: initial_window_size,
+        };
+
+        pointer.set_grab(self, grab, serial, Focus::Clear);
+    }
+
     pub fn move_request_xdg(&mut self, surface: &ToplevelSurface, seat: &Seat<Self>, serial: Serial) {
         if let Some(touch) = seat.get_touch() {
             if touch.has_grab(serial) {
@@ -597,7 +589,7 @@ fn handle_toplevel_commit(space: &mut Space<WindowElement>, surface: &WlSurface)
         .cloned()?;
 
     let mut window_loc = space.element_location(&window)?;
-    let geometry = window.geometry();
+    let geometry = window.0.geometry();
 
     let new_loc: Point<Option<i32>, Logical> = with_states(window.wl_surface().as_deref()?, |states| {
         let data = states.data_map.get::<RefCell<SurfaceData>>()?.borrow_mut();

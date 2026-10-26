@@ -1,6 +1,8 @@
 use smithay::{
-    backend::renderer::{
-        Color32F, ImportAll, ImportMem, Renderer,
+    backend::{
+        allocator::Fourcc,
+        renderer::{
+        Color32F, ExportMem, ImportAll, ImportMem, Offscreen, Renderer, TextureMapping,
         damage::{Error as OutputDamageTrackerError, OutputDamageTracker, RenderOutputResult},
         element::{
             AsRenderElements, RenderElement, Wrap,
@@ -11,17 +13,18 @@ use smithay::{
             },
         },
     },
+    },
     desktop::space::{
         ConstrainBehavior, ConstrainReference, Space, SpaceRenderElements, constrain_space_element,
     },
     output::Output,
-    utils::{Point, Rectangle, Size},
+    utils::{Buffer, Physical, Point, Rectangle, Size, Transform},
 };
 
 #[cfg(feature = "debug")]
 use crate::drawing::FpsElement;
 use crate::{
-    drawing::{CLEAR_COLOR, CLEAR_COLOR_FULLSCREEN, PointerRenderElement},
+    drawing::{CLEAR_COLOR_FULLSCREEN, PointerRenderElement},
     shell::{FullscreenSurface, WindowElement, WindowRenderElement},
 };
 
@@ -79,7 +82,7 @@ pub fn space_preview_elements<'a, R, C>(
 ) -> impl Iterator<Item = C> + 'a
 where
     R: Renderer + ImportAll + ImportMem,
-    R::TextureId: Clone + 'static,
+    R::TextureId: Clone + Send + 'static,
     C: From<CropRenderElement<RelocateRenderElement<RescaleRenderElement<WindowRenderElement<R>>>>> + 'a,
 {
     let constrain_behavior = ConstrainBehavior {
@@ -142,10 +145,11 @@ pub fn output_elements<R>(
     custom_elements: impl IntoIterator<Item = CustomRenderElements<R>>,
     renderer: &mut R,
     show_window_preview: bool,
+    desktop_color: Color32F,
 ) -> (Vec<OutputRenderElements<R, WindowRenderElement<R>>>, Color32F)
 where
     R: Renderer + ImportAll + ImportMem,
-    R::TextureId: Clone + 'static,
+    R::TextureId: Clone + Send + 'static,
 {
     if let Some(window) = output
         .user_data()
@@ -185,7 +189,7 @@ where
         .expect("output without mode?");
         output_render_elements.extend(space_elements.into_iter().map(OutputRenderElements::Space));
 
-        (output_render_elements, CLEAR_COLOR)
+        (output_render_elements, desktop_color)
     }
 }
 
@@ -199,12 +203,55 @@ pub fn render_output<'a, 'd, R>(
     damage_tracker: &'d mut OutputDamageTracker,
     age: usize,
     show_window_preview: bool,
+    desktop_color: Color32F,
 ) -> Result<RenderOutputResult<'d>, OutputDamageTrackerError<R::Error>>
 where
     R: Renderer + ImportAll + ImportMem,
-    R::TextureId: Clone + 'static,
+    R::TextureId: Clone + Send + 'static,
 {
     let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, show_window_preview);
+        output_elements(output, space, custom_elements, renderer, show_window_preview, desktop_color);
     damage_tracker.render_output(renderer, framebuffer, age, &elements, clear_color)
+}
+
+/// Render `output` offscreen (without the cursor) and save it as a PNG.
+pub fn screenshot<R, T>(
+    renderer: &mut R,
+    output: &Output,
+    space: &Space<WindowElement>,
+    clear_color: Color32F,
+    path: &std::path::Path,
+) -> Result<(), String>
+where
+    R: Renderer + ImportAll + ImportMem + Offscreen<T> + ExportMem,
+    R::TextureId: Clone + Send + 'static,
+    R::Error: std::fmt::Display,
+{
+    let mode = output.current_mode().ok_or("output has no mode")?;
+    let size: Size<i32, Physical> = output.current_transform().transform_size(mode.size);
+    let buffer_size: Size<i32, Buffer> = (size.w, size.h).into();
+    let scale = output.current_scale().fractional_scale();
+    let err = |e: R::Error| e.to_string();
+
+    let mut target = renderer.create_buffer(Fourcc::Abgr8888, buffer_size).map_err(err)?;
+    let mapping = {
+        let mut fb = renderer.bind(&mut target).map_err(err)?;
+        let (elements, clear_color) =
+            output_elements::<R>(output, space, Vec::new(), renderer, false, clear_color);
+        let mut damage_tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
+        damage_tracker
+            .render_output(renderer, &mut fb, 0, &elements, clear_color)
+            .map_err(|e| format!("{e:?}"))?;
+        renderer
+            .copy_framebuffer(&fb, Rectangle::from_size(buffer_size), Fourcc::Abgr8888)
+            .map_err(err)?
+    };
+    let flipped = mapping.flipped();
+    let data = renderer.map_texture(&mapping).map_err(err)?.to_vec();
+    let mut img = image::RgbaImage::from_raw(size.w as u32, size.h as u32, data).ok_or("short read")?;
+    // GL reads back bottom-up unless the mapping already accounts for it.
+    if !flipped {
+        image::imageops::flip_vertical_in_place(&mut img);
+    }
+    img.save(path).map_err(|e| e.to_string())
 }

@@ -116,9 +116,37 @@ pub struct Settings {
     pub touchpad: TouchpadSettings,
     pub keyboard: KeyboardSettings,
     pub mouse_speed: f64,
-    /// Font size (points) used for window tab titles.
+    /// Font size (logical pixels) used for window tab titles.
     pub tab_font_size: f32,
     pub appearance: Appearance,
+    pub display: DisplaySettings,
+}
+
+/// Screen scaling. Tabula is HiDPI-first: everything is laid out in logical
+/// pixels and rendered at the output's scale (2x "Retina" by default).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct DisplaySettings {
+    /// Scale for outputs without their own entry in `outputs`.
+    pub scale: f64,
+    /// Per-output overrides, keyed by connector name (e.g. "eDP-1").
+    pub outputs: std::collections::BTreeMap<String, OutputConfig>,
+}
+
+impl Default for DisplaySettings {
+    fn default() -> Self {
+        DisplaySettings { scale: 2.0, outputs: Default::default() }
+    }
+}
+
+impl DisplaySettings {
+    pub fn scale_for(&self, output: &str) -> f64 {
+        self.outputs
+            .get(output)
+            .and_then(|c| c.scale)
+            .unwrap_or(self.scale)
+            .clamp(0.5, 4.0)
+    }
 }
 
 /// Light/dark theme and night mode. app_server resolves `Auto` against the
@@ -231,8 +259,9 @@ impl Default for Settings {
             touchpad: TouchpadSettings::default(),
             keyboard: KeyboardSettings::default(),
             mouse_speed: 0.0,
-            tab_font_size: 9.0,
+            tab_font_size: 12.0,
             appearance: Appearance::default(),
+            display: DisplaySettings::default(),
         }
     }
 }
@@ -372,5 +401,6 @@ mod tests {
         let s: Settings = serde_json::from_str(r#"{"workspace_count": 8}"#).unwrap();
         assert_eq!(s.workspace_count, 8);
         assert!(s.touchpad.tap_to_click);
+        assert_eq!(s.display.scale_for("eDP-1"), 2.0);
     }
 }

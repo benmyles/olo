@@ -47,7 +47,8 @@ use crate::{
 
 mod element;
 mod grabs;
-pub(crate) mod ssd;
+pub mod deco;
+mod wm;
 #[cfg(feature = "xwayland")]
 mod x11;
 mod xdg;
@@ -399,7 +400,6 @@ fn place_new_window(
 ) {
     // place the window at a random location on same output as pointer
     // or if there is not output in a [0;800]x[0;800] square
-    use rand::distributions::{Distribution, Uniform};
 
     let output = space
         .output_under(pointer_location)
@@ -423,13 +423,22 @@ fn place_new_window(
         });
     }
 
-    let max_x = output_geometry.loc.x + (((output_geometry.size.w as f32) / 3.0) * 2.0) as i32;
-    let max_y = output_geometry.loc.y + (((output_geometry.size.h as f32) / 3.0) * 2.0) as i32;
-    let x_range = Uniform::new(output_geometry.loc.x, max_x);
-    let y_range = Uniform::new(output_geometry.loc.y, max_y);
-    let mut rng = rand::thread_rng();
-    let x = x_range.sample(&mut rng);
-    let y = y_range.sample(&mut rng);
+    // BeOS-style cascade: the first diagonal slot no other window sits on.
+    const STEP: i32 = 24;
+    const ORIGIN: Point<i32, Logical> = Point::new(48, 40);
+    let taken: Vec<Point<i32, Logical>> = space
+        .elements()
+        .filter(|w| *w != window)
+        .filter_map(|w| space.element_location(w))
+        .collect();
+    let slots = ((output_geometry.size.h / 3) / STEP).max(1);
+    let n = (0..slots)
+        .find(|i| {
+            let p = output_geometry.loc + ORIGIN + Point::from((i * STEP, i * STEP));
+            !taken.contains(&p)
+        })
+        .unwrap_or(0);
+    let Point { x, y, .. } = output_geometry.loc + ORIGIN + Point::from((n * STEP, n * STEP));
 
     space.map_element(window.clone(), (x, y), activate);
 }
