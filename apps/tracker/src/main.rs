@@ -3,6 +3,7 @@
 
 mod columns;
 mod desktop;
+mod find;
 mod fs;
 mod view;
 
@@ -11,6 +12,10 @@ use std::{
     io::{BufRead, BufReader, Write},
     os::unix::net::{UnixListener, UnixStream},
     path::{Path, PathBuf},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant, SystemTime},
 };
 
@@ -104,10 +109,21 @@ struct InfoWin {
 struct FindWin {
     query: String,
     root: usize,
-    results: Vec<Entry>,
+    /// Index into `find::Mode::LABELS`.
+    mode: usize,
+    everything: bool,
+    results: Vec<find::Hit>,
+    /// The mode the current results were found with.
+    shown_mode: find::Mode,
     list: ListState,
     running: bool,
     generation: u64,
+    cancel: Arc<AtomicBool>,
+    progress: Arc<find::Progress>,
+    /// The last search was stopped before it finished.
+    stopped: bool,
+    started: Instant,
+    took: Duration,
 }
 
 enum DialogKind {
@@ -132,7 +148,7 @@ enum Msg {
     /// Another `tabula-tracker` invocation forwarded its arguments.
     Remote(Vec<String>),
     DirSize(WindowId, u64, u64),
-    Found(WindowId, u64, Vec<Entry>, bool),
+    Found(WindowId, u64, Vec<find::Hit>, bool),
 }
 
 pub struct Tracker {
@@ -334,10 +350,18 @@ impl Tracker {
             Win::Find(FindWin {
                 query: String::new(),
                 root: 0,
+                mode: 0,
+                everything: false,
                 results: Vec::new(),
+                shown_mode: find::Mode::Names,
                 list: ListState::default(),
                 running: false,
                 generation: 0,
+                cancel: Arc::new(AtomicBool::new(false)),
+                progress: Arc::default(),
+                stopped: false,
+                started: Instant::now(),
+                took: Duration::ZERO,
             }),
         );
     }
@@ -673,7 +697,7 @@ impl Tracker {
         widgets::window_content(ui, |ui| {
             ui.horizontal(|ui| {
                 let w = ui.available_width() - 80.0 - m::SPACING;
-                let r = ui.add(TextControl::new(&mut fw.query).label("Name contains:").width(w).hint("e.g. report").autofocus(true));
+                let r = ui.add(TextControl::new(&mut fw.query).label("Find:").width(w).hint("Name or text").autofocus(true));
                 if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
                     start = true;
                 }
@@ -682,51 +706,91 @@ impl Tracker {
                 }
             });
             ui.horizontal(|ui| {
-                ui.add(widgets::MenuField::new(("find-root", win), &mut fw.root, &["Home", "Entire disk"]).label("Search in:"));
-                let status = if fw.running {
-                    format!("Searching… {} found", fw.results.len())
-                } else if fw.generation > 0 {
-                    format!("{} found", fw.results.len())
-                } else {
-                    String::new()
-                };
+                ui.add(widgets::MenuField::new(("find-mode", win), &mut fw.mode, &find::Mode::LABELS).label("Match:"));
                 ui.add_space(m::SPACING);
-                ui.add(widgets::StringView::new(&status).dim(true));
+                ui.add(widgets::MenuField::new(("find-root", win), &mut fw.root, &["Home", "Entire disk"]).label("In:"));
+                ui.add_space(m::SPACING);
+                ui.add(widgets::CheckBox::new(&mut fw.everything, "Hidden and ignored files"));
             });
             ui.add_space(m::TIGHT);
-            let cols = [
-                Column::new("Name", 200.0),
-                Column::new("Location", 170.0),
-                Column::new("Size", 70.0).right(),
-                Column::new("Modified", 170.0),
-            ];
+            let contents = fw.shown_mode != find::Mode::Names;
+            let mut cols = vec![Column::new("Name", 200.0), Column::new("Location", 170.0)];
+            if contents {
+                cols.push(Column::new("Line", 44.0).right());
+                cols.push(Column::new("Match", 300.0));
+            } else {
+                cols.push(Column::new("Size", 70.0).right());
+                cols.push(Column::new("Modified", 170.0));
+            }
             let results = &fw.results;
-            let r = ColumnListView::new(("find-results", win), &cols, results.len(), &mut fw.list).show(ui, |cell| {
-                let e = &results[cell.row];
-                match cell.column {
-                    0 => view::name_cell(cell, e),
-                    1 => cell.text(&e.path.parent().map(fs::display_path).unwrap_or_default()),
-                    2 => cell.text(&if e.is_dir { "—".into() } else { fs::format_size(e.size) }),
+            // Leave a row under the list for the status line.
+            let list_size = egui::vec2(ui.available_width(), ui.available_height() - m::CONTROL_HEIGHT);
+            let r = ui.allocate_ui(list_size, |ui| ColumnListView::new(("find-results", win), &cols, results.len(), &mut fw.list).show(ui, |cell| {
+                let h = &results[cell.row];
+                let e = &h.entry;
+                match (cell.column, contents) {
+                    (0, _) => view::name_cell(cell, e),
+                    (1, _) => cell.text(&e.path.parent().map(fs::display_path).unwrap_or_default()),
+                    (2, true) => cell.text(&h.line.as_ref().map(|(n, _)| n.to_string()).unwrap_or_default()),
+                    (_, true) => cell.text(h.line.as_ref().map(|(_, t)| t.as_str()).unwrap_or("")),
+                    (2, false) => cell.text(&if e.is_dir { "—".into() } else { fs::format_size(e.size) }),
                     _ => cell.text(&fs::format_time(e.modified)),
                 }
-            });
+            })).inner;
             if let Some(i) = r.activated {
-                open = results.get(i).cloned();
+                open = results.get(i).map(|h| h.entry.clone());
             }
+            let status = if fw.running {
+                // Progress comes from the workers' counters; poll it while
+                // they run.
+                ui.ctx().request_repaint_after(Duration::from_millis(100));
+                let scanned = fw.progress.scanned.load(Ordering::Relaxed);
+                let folder = fw.progress.folder.lock().map(|f| fs::display_path(&f)).unwrap_or_default();
+                format!("{} found · {scanned} items searched · {folder}", fw.results.len())
+            } else if fw.generation > 0 {
+                let found = match fw.results.len() {
+                    1 => "1 item found".to_owned(),
+                    n => format!("{n} items found"),
+                };
+                if fw.stopped {
+                    format!("Stopped · {found}")
+                } else {
+                    format!("{found} in {:.1} s", fw.took.as_secs_f32())
+                }
+            } else {
+                String::new()
+            };
+            ui.add(widgets::StringView::new(&status).dim(true));
         });
+        if fw.running && ui.input(|i| i.key_pressed(Key::Escape)) {
+            start = true; // Escape stops, like the Stop button
+        }
         if start {
+            fw.cancel.store(true, Ordering::Relaxed);
             if fw.running {
                 fw.running = false;
+                fw.stopped = true;
                 fw.generation += 1;
             } else if !fw.query.trim().is_empty() {
+                fw.stopped = false;
+                fw.started = Instant::now();
                 fw.generation += 1;
                 fw.running = true;
                 fw.results.clear();
-                let generation_id = fw.generation;
-                let q = fw.query.trim().to_lowercase();
-                let root = if fw.root == 0 { fs::home() } else { PathBuf::from("/") };
-                let proxy = cx.proxy();
-                std::thread::spawn(move || find(root, q, win, generation_id, proxy));
+                fw.list = ListState::default();
+                fw.cancel = Arc::new(AtomicBool::new(false));
+                fw.progress = Arc::default();
+                fw.shown_mode = find::Mode::from_index(fw.mode);
+                let query = find::Query {
+                    root: if fw.root == 0 { fs::home() } else { PathBuf::from("/") },
+                    text: fw.query.clone(),
+                    mode: fw.shown_mode,
+                    everything: fw.everything,
+                };
+                let (proxy, generation_id) = (cx.proxy(), fw.generation);
+                find::spawn(query, fw.cancel.clone(), fw.progress.clone(), move |hits, done| {
+                    proxy.send(Msg::Found(win, generation_id, hits, done));
+                });
             }
         }
         if let Some(e) = open {
@@ -754,32 +818,6 @@ impl Tracker {
     }
 }
 
-fn find(root: PathBuf, q: String, win: WindowId, generation_id: u64, proxy: tabula_kit::Proxy) {
-    let mut stack = vec![root];
-    let mut batch = Vec::new();
-    let mut last = Instant::now();
-    while let Some(dir) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
-        for e in rd.flatten() {
-            let p = e.path();
-            let name = e.file_name().to_string_lossy().to_lowercase();
-            let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
-            if is_dir && !p.starts_with("/proc") && !p.starts_with("/sys") && !name.starts_with('.') {
-                stack.push(p.clone());
-            }
-            if name.contains(&q)
-                && let Some(en) = fs::entry(&p)
-            {
-                batch.push(en);
-            }
-        }
-        if last.elapsed() > Duration::from_millis(150) && !batch.is_empty() {
-            proxy.send(Msg::Found(win, generation_id, std::mem::take(&mut batch), false));
-            last = Instant::now();
-        }
-    }
-    proxy.send(Msg::Found(win, generation_id, batch, true));
-}
 
 impl App for Tracker {
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
@@ -856,7 +894,9 @@ impl App for Tracker {
         if matches!(self.windows.get(&window), Some(Win::Desktop(_))) {
             return;
         }
-        self.windows.remove(&window);
+        if let Some(Win::Find(fw)) = self.windows.remove(&window) {
+            fw.cancel.store(true, Ordering::Relaxed);
+        }
         cx.close_window(window);
     }
 
@@ -877,6 +917,7 @@ impl App for Tracker {
                     fw.results.extend(entries);
                     if done {
                         fw.running = false;
+                        fw.took = fw.started.elapsed();
                     }
                     cx.redraw(win);
                 }

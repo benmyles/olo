@@ -6,6 +6,35 @@ pixel-perfect and beautiful, in light, dark and night modes, at 2× (and any
 other) scale.** Every deviation from BeOS should be an intentional
 improvement, never an accident.
 
+## The responsiveness rule (applies to everything)
+
+**Nothing may ever block the UI.** BeOS was famous for staying responsive
+under load; Tabula must be at least as good. This is a hard requirement for
+every app, the kit, app_server and the shell, and it is checked in review
+like pixel alignment is.
+
+1. **The UI thread only draws and reacts.** Anything that can take more than
+   a frame (~8 ms), or that *might* (disk, network, subprocesses, D-Bus,
+   large folders, image decoding, hashing, searching, sysfs on a slow
+   device), runs on a worker thread and reports back with `cx.proxy()` /
+   `App::message`. No `std::fs` on folders of unknown size, no blocking IPC
+   round-trips and no `wait()` on the UI thread.
+2. **Show progress and keep it live.** Long work shows what it is doing:
+   counts, the current item, a `StatusBar` for work with a known size, and
+   a "Searching…"/"Copying…" state otherwise. Results stream in as they
+   arrive instead of appearing all at once at the end.
+3. **Everything long can be cancelled** (Stop button, Escape, closing the
+   window), and cancelling takes effect immediately (workers check an
+   `AtomicBool`).
+4. **The interface reacts in the same frame** as the input that caused it:
+   pressed states, selection, menus and text never wait for work to finish.
+   When an action changes state, `ctx.request_repaint()`.
+5. **Batch updates** from workers (every ~100–150 ms) so streaming results
+   never flood the event loop, and poll shared progress counters with
+   `request_repaint_after` only while work is running.
+6. **app_server never waits on a client.** Clients that stall must not stall
+   the desktop.
+
 ## Layout
 
 | Path | What |

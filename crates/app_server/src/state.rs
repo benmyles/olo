@@ -192,6 +192,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub settings: tabula_protocol::Settings,
     pub ipc: crate::ipc::IpcState,
     pub last_window_infos: Vec<tabula_protocol::WindowInfo>,
+    /// Remembered window places (see `layout`).
+    pub layout: Vec<crate::layout::Placement>,
     /// Night-light colour temperature in effect, if any.
     pub night_light: Option<u32>,
 }
@@ -812,6 +814,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             settings: crate::desktop::load_settings(),
             ipc: Default::default(),
             last_window_infos: Vec::new(),
+            layout: crate::layout::load(),
             night_light: None,
         };
         if let Some(name) = state.socket_name.clone() {

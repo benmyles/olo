@@ -361,7 +361,8 @@ impl Widget for TextControl<'_> {
 }
 
 /// A line of static text (BStringView) one control tall, so it sits on the
-/// same baseline as the labels of neighbouring controls in a row.
+/// same baseline as the labels of neighbouring controls in a row. Text
+/// wider than the space left is cut short with "…".
 pub struct StringView<'a> {
     text: &'a str,
     dim: bool,
@@ -382,7 +383,9 @@ impl Widget for StringView<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
         let p = style::palette(ui.ctx());
         let color = if self.dim { style::disabled_text(&p) } else { text_color(ui, &p) };
-        let galley = layout(ui, self.text, plain_font(), color);
+        let mut job = egui::text::LayoutJob::simple_singleline(self.text.to_owned(), plain_font(), color);
+        job.wrap = egui::text::TextWrapping::truncate_at_width(ui.available_width().max(0.0));
+        let galley = ui.painter().layout_job(job);
         let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x.ceil(), CONTROL_HEIGHT), Sense::hover());
         let pos = text_pos(ui, rect.left(), rect.center().y, &galley);
         ui.painter().galley(pos, galley, color);

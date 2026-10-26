@@ -52,6 +52,9 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         self.focus_window(&window);
 
         compositor::add_post_commit_hook(surface.wl_surface(), |state: &mut Self, _, surface| {
+            if surface_initial_mapped(surface) {
+                state.restore_placement(surface);
+            }
             handle_toplevel_commit(&mut state.space, surface);
         });
     }
@@ -59,14 +62,13 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
         // When the focused window goes, the next one down takes focus (an
         // alert closing hands the keyboard back to its document).
-        let Some(window) = self
-            .space
-            .elements()
-            .find(|w| w.0.toplevel().is_some_and(|t| t == &surface))
-            .cloned()
-        else {
+        let Some(window) = self.all_windows().into_iter().find(|w| w.0.toplevel().is_some_and(|t| t == &surface)) else {
             return;
         };
+        self.remember_placement(&window);
+        if self.space.element_location(&window).is_none() {
+            return; // parked: not on screen, nothing to refocus
+        }
         let keyboard = self.seat.get_keyboard().unwrap();
         let had_focus = match keyboard.current_focus() {
             Some(KeyboardFocusTarget::Window(w)) => w == window.0,
@@ -679,4 +681,10 @@ fn handle_toplevel_commit(space: &mut Space<WindowElement>, surface: &WlSurface)
     }
 
     Some(())
+}
+
+/// Whether the surface has a buffer (has been mapped with content), so its
+/// app id and title have been set.
+fn surface_initial_mapped(surface: &WlSurface) -> bool {
+    smithay::backend::renderer::utils::with_renderer_surface_state(surface, |s| s.buffer().is_some()).unwrap_or(false)
 }

@@ -33,6 +33,10 @@ pub struct WindowMeta {
     pub minimized: Cell<bool>,
     /// Where it was when it left the space (minimize / workspace switch).
     pub saved_location: Cell<Point<i32, Logical>>,
+    /// Set on the first commit, once placement memory has been consulted.
+    pub placed: Cell<bool>,
+    /// It was the focused window before an in-place restart.
+    pub restored_focus: Cell<bool>,
 }
 
 impl WindowElement {
@@ -43,6 +47,8 @@ impl WindowElement {
             workspace: Cell::new(None),
             minimized: Cell::new(false),
             saved_location: Cell::new(Point::default()),
+            placed: Cell::new(false),
+            restored_focus: Cell::new(false),
         });
         self.user_data().get::<WindowMeta>().unwrap()
     }
