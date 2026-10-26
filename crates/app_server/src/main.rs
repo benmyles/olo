@@ -3,6 +3,8 @@ static POSSIBLE_BACKENDS: &[&str] = &[
     "--winit : Run nested inside another Wayland session (development).",
     #[cfg(feature = "udev")]
     "--tty-udev : Run as the session compositor on a TTY (via logind/libseat).",
+    #[cfg(feature = "udev")]
+    "--headless [WxH] : Render offscreen with no display (automated UI tests).",
 ];
 
 #[cfg(feature = "profile-with-tracy-mem")]
@@ -35,6 +37,11 @@ fn main() {
         Some("--tty-udev") => {
             tracing::info!("Starting app_server on a tty using udev");
             app_server::udev::run_udev();
+        }
+        #[cfg(feature = "udev")]
+        Some("--headless") => {
+            let size = ::std::env::args().nth(2);
+            app_server::headless::run_headless(size.as_deref());
         }
         Some(other) => {
             tracing::error!("Unknown backend: {}", other);

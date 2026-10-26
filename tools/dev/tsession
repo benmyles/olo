@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+"""Headless Tabula sessions for development and automated UI checks.
+
+  tsession start NAME [WxH] [--light|--dark]   start a headless app_server
+  tsession run NAME CMD [ARGS...]              start a client in it (log: DIR/<cmd>.log)
+  tsession shot NAME OUT.png [X Y W H]         screenshot (optional crop, logical px)
+  tsession zoom NAME OUT.png X Y W H [N]       crop (logical px) and magnify N× (default 4)
+  tsession click NAME X Y [right]              synthetic click (logical px)
+  tsession move NAME X Y | down NAME X Y | up NAME
+  tsession drag NAME X1 Y1 X2 Y2
+  tsession key NAME CODE [CODE...]             evdev codes pressed together (29=Ctrl, 42=Shift)
+  tsession type NAME TEXT                      type ASCII text
+  tsession scroll NAME DX DY
+  tsession theme NAME light|dark
+  tsession ipc NAME JSON                       raw IPC request
+  tsession env NAME                            print env to source
+  tsession stop NAME | list
+
+Sessions live in /tmp/tabula-dev/NAME. Output is 2× scale by default, so
+screenshots are in device pixels and coordinates are logical (pixels / 2).
+Runs as the repo owner when invoked as root.
+"""
+import glob, json, os, pwd, re, signal, socket, subprocess, sys, time
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+BASE = "/tmp/tabula-dev"
+OWNER = pwd.getpwuid(os.stat(ROOT).st_uid)
+RUNTIME = f"/run/user/{OWNER.pw_uid}"
+TARGET = os.environ.get("CARGO_TARGET_DIR", os.path.join(ROOT, "target"))
+
+def as_owner(cmd, **kw):
+    if os.getuid() == 0 and OWNER.pw_uid != 0:
+        cmd = ["sudo", "-u", OWNER.pw_name, "--preserve-env=WAYLAND_DISPLAY,TABULA_SOCKET,XDG_RUNTIME_DIR,XDG_CONFIG_HOME,RUST_LOG,TABULA_THEME,TABULA_DATA,HOME,PATH"] + cmd
+    return cmd
+
+def sdir(name):
+    return os.path.join(BASE, name)
+
+def load_env(name):
+    try:
+        return json.load(open(os.path.join(sdir(name), "env.json")))
+    except FileNotFoundError:
+        sys.exit(f"no session {name!r}; run: tsession start {name}")
+
+def ipc(name, req):
+    env = load_env(name)
+    s = socket.socket(socket.AF_UNIX)
+    s.connect(env["TABULA_SOCKET"])
+    s.sendall((json.dumps(req) + "\n").encode())
+    line = s.makefile().readline()
+    s.close()
+    return json.loads(line) if line else None
+
+def synth(name, events):
+    return ipc(name, {"type": "synthetic", "events": events})
+
+def start(name, args):
+    size = next((a for a in args if re.fullmatch(r"\d+x\d+", a)), "2560x1600")
+    theme = "dark" if "--dark" in args else "light"
+    d = sdir(name)
+    if os.path.exists(os.path.join(d, "env.json")):
+        stop(name)
+    os.makedirs(os.path.join(d, "config", "tabula"), exist_ok=True)
+    os.chmod(BASE, 0o1777)
+    cfg = {"appearance": {"theme": theme}}
+    json.dump(cfg, open(os.path.join(d, "config", "tabula", "app_server.json"), "w"))
+    subprocess.run(["chown", "-R", f"{OWNER.pw_uid}:{OWNER.pw_gid}", d]) if os.getuid() == 0 else None
+    env = dict(os.environ, XDG_RUNTIME_DIR=RUNTIME, XDG_CONFIG_HOME=os.path.join(d, "config"), RUST_LOG=os.environ.get("RUST_LOG", "info"))
+    env.pop("WAYLAND_DISPLAY", None)
+    env.pop("TABULA_SOCKET", None)
+    log = open(os.path.join(d, "app_server.log"), "w")
+    exe = os.path.join(TARGET, "debug", "tabula-app-server")
+    p = subprocess.Popen(as_owner([exe, "--headless", size]), env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    for _ in range(100):
+        time.sleep(0.1)
+        text = re.sub(r"\x1b\[[0-9;]*m", "", open(os.path.join(d, "app_server.log")).read())
+        m = re.search(r'Listening on wayland socket name="([^"]+)"', text)
+        i = re.search(r"IPC listening path=(\S+)", text)
+        if m and i:
+            e = {"WAYLAND_DISPLAY": m.group(1), "TABULA_SOCKET": i.group(1), "XDG_RUNTIME_DIR": RUNTIME,
+                 "XDG_CONFIG_HOME": os.path.join(d, "config"), "pid": p.pid}
+            json.dump(e, open(os.path.join(d, "env.json"), "w"))
+            print(f"{name}: {e['WAYLAND_DISPLAY']} ({size}, {theme})")
+            return
+        if p.poll() is not None:
+            break
+    sys.exit(f"app_server failed to start; see {d}/app_server.log")
+
+def stop(name):
+    d = sdir(name)
+    try:
+        e = json.load(open(os.path.join(d, "env.json")))
+        os.killpg(e["pid"], signal.SIGTERM)
+    except (FileNotFoundError, ProcessLookupError, PermissionError, KeyError):
+        pass
+    for f in glob.glob(os.path.join(d, "*.pid")):
+        try:
+            os.killpg(int(open(f).read()), signal.SIGTERM)
+        except Exception:
+            pass
+        os.remove(f)
+    try:
+        os.remove(os.path.join(d, "env.json"))
+    except FileNotFoundError:
+        pass
+
+def run(name, cmd):
+    e = load_env(name)
+    env = dict(os.environ, **{k: v for k, v in e.items() if k != "pid"}, RUST_LOG=os.environ.get("RUST_LOG", "warn"))
+    exe = cmd[0]
+    if "/" not in exe:
+        for cand in (os.path.join(TARGET, "debug", exe), os.path.join(TARGET, "debug", "examples", exe)):
+            if os.path.exists(cand):
+                exe = cand
+                break
+    env["PATH"] = os.path.join(TARGET, "debug") + ":" + env.get("PATH", "")
+    base = os.path.basename(exe)
+    log = open(os.path.join(sdir(name), base + ".log"), "w")
+    p = subprocess.Popen(as_owner([exe] + cmd[1:]), env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    open(os.path.join(sdir(name), f"{base}.{p.pid}.pid"), "w").write(str(p.pid))
+    print(f"started {base} pid {p.pid}")
+
+def shot(name, out, crop=None, zoom=1):
+    out = os.path.abspath(out)
+    tmp = os.path.join(sdir(name), "shot.png")
+    r = ipc(name, {"type": "screenshot", "path": tmp})
+    if not r or r.get("type") != "ok":
+        sys.exit(f"screenshot failed: {r}")
+    from PIL import Image
+    im = Image.open(tmp)
+    if crop:
+        x, y, w, h = (int(float(v) * 2) for v in crop)
+        im = im.crop((x, y, x + w, y + h))
+    if zoom > 1:
+        im = im.resize((im.width * zoom, im.height * zoom), Image.NEAREST)
+    im.save(out)
+    print(out, im.size)
+
+KEYS = {c: k for k, c in enumerate("1234567890-=", 2)}
+KEYS.update({c: 16 + i for i, c in enumerate("qwertyuiop[]")})
+KEYS.update({c: 30 + i for i, c in enumerate("asdfghjkl;'")})
+KEYS.update({c: 44 + i for i, c in enumerate("zxcvbnm,./")})
+KEYS.update({" ": 57, "\n": 28, "\t": 15, "`": 41, "\\": 43})
+SHIFTED = {'!': '1', '@': '2', '#': '3', '$': '4', '%': '5', '^': '6', '&': '7', '*': '8', '(': '9', ')': '0',
+           '_': '-', '+': '=', '{': '[', '}': ']', ':': ';', '"': "'", '<': ',', '>': '.', '?': '/', '~': '`', '|': '\\'}
+
+def press(name, codes):
+    synth(name, [{"type": "key", "key": c, "pressed": True} for c in codes])
+    time.sleep(0.02)
+    synth(name, [{"type": "key", "key": c, "pressed": False} for c in reversed(codes)])
+    time.sleep(0.02)
+
+def move(name, x, y):
+    # Two motions: the first after a popup grab ends only clears the grab.
+    synth(name, [{"type": "move", "x": x - 1, "y": y}])
+    time.sleep(0.02)
+    synth(name, [{"type": "move", "x": x, "y": y}])
+    time.sleep(0.04)
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print(__doc__)
+        return
+    cmd = sys.argv[1]
+    if cmd == "list":
+        for d in sorted(glob.glob(os.path.join(BASE, "*", "env.json"))):
+            print(os.path.basename(os.path.dirname(d)), json.load(open(d))["WAYLAND_DISPLAY"])
+        return
+    name, a = sys.argv[2], sys.argv[3:]
+    if cmd == "start":
+        start(name, a)
+    elif cmd == "stop":
+        stop(name)
+    elif cmd == "run":
+        run(name, a)
+    elif cmd == "env":
+        for k, v in load_env(name).items():
+            if k != "pid":
+                print(f"export {k}={v}")
+    elif cmd == "shot":
+        shot(name, a[0], a[1:5] if len(a) >= 5 else None)
+    elif cmd == "zoom":
+        shot(name, a[0], a[1:5], int(a[5]) if len(a) > 5 else 4)
+    elif cmd == "move":
+        move(name, float(a[0]), float(a[1]))
+    elif cmd in ("click", "down"):
+        b = 0x111 if len(a) > 2 and a[2] == "right" else 0x110
+        move(name, float(a[0]), float(a[1]))
+        synth(name, [{"type": "button", "button": b, "pressed": True}])
+        if cmd == "click":
+            time.sleep(0.04)
+            synth(name, [{"type": "button", "button": b, "pressed": False}])
+        time.sleep(0.15)
+    elif cmd == "up":
+        synth(name, [{"type": "button", "button": 0x110, "pressed": False}])
+    elif cmd == "drag":
+        x1, y1, x2, y2 = map(float, a[:4])
+        move(name, x1, y1)
+        synth(name, [{"type": "button", "button": 0x110, "pressed": True}])
+        for i in range(1, 11):
+            time.sleep(0.02)
+            synth(name, [{"type": "move", "x": x1 + (x2 - x1) * i / 10, "y": y1 + (y2 - y1) * i / 10}])
+        time.sleep(0.05)
+        synth(name, [{"type": "button", "button": 0x110, "pressed": False}])
+        time.sleep(0.15)
+    elif cmd == "key":
+        press(name, [int(c) for c in a])
+        time.sleep(0.1)
+    elif cmd == "type":
+        for ch in " ".join(a):
+            if ch.isupper():
+                press(name, [42, KEYS[ch.lower()]])
+            elif ch in SHIFTED:
+                press(name, [42, KEYS[SHIFTED[ch]]])
+            elif ch in KEYS:
+                press(name, [KEYS[ch]])
+        time.sleep(0.1)
+    elif cmd == "scroll":
+        synth(name, [{"type": "scroll", "dx": float(a[0]), "dy": float(a[1])}])
+        time.sleep(0.15)
+    elif cmd == "theme":
+        st = ipc(name, {"type": "get_settings"})["settings"]
+        st["appearance"]["theme"] = a[0]
+        print(ipc(name, {"type": "set_settings", "settings": st}))
+        time.sleep(0.4)
+    elif cmd == "ipc":
+        print(json.dumps(ipc(name, json.loads(a[0]))))
+    else:
+        sys.exit(f"unknown command {cmd}")
+
+if __name__ == "__main__":
+    main()
