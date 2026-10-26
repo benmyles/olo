@@ -339,6 +339,12 @@ launcher lists them. The panel list Deskbar shows is
   only when it would change something: implement `Panel::reset`.
 * New panel: add it to `Panel` (arg, title, icon, size, reset), write the
   module, add it to `PREFERENCE_PANELS`, journal it light and dark.
+* Network (`network.rs`) reads NetworkManager through
+  `tabula_system::network` on a worker thread (devices, addresses,
+  networks in range merged by SSID, saved connections; a scan every 30 s)
+  and joins (saved connection, or a new WPA-PSK one), disconnects and
+  forgets. **Tests only look: never toggle Wi-Fi, Join, Disconnect or
+  Forget on the real machine.**
 * Date & Time (`datetime.rs`) talks to systemd-timedated through
   `tabula_system::time` on its own worker thread (status every 2 s; set
   time, zone and network time with polkit's interactive auth, so a

@@ -46,3 +46,9 @@ where
     let v: OwnedValue = call(conn, dest, path, "org.freedesktop.DBus.Properties", "Get", &(iface, name))?;
     T::try_from(v).map_err(Into::into)
 }
+
+/// Set property `name` of `iface` on `path`.
+pub fn set_property<'a>(conn: &Connection, dest: &str, path: &str, iface: &str, name: &str, value: impl Into<zvariant::Value<'a>>) -> Result<()> {
+    let v: zvariant::Value = value.into();
+    call::<_, ()>(conn, dest, path, "org.freedesktop.DBus.Properties", "Set", &(iface, name, v))
+}

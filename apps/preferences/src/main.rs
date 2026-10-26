@@ -13,6 +13,7 @@ mod appearance;
 mod datetime;
 mod display;
 mod keyboard;
+mod network;
 mod panel;
 mod power;
 mod screensaver;

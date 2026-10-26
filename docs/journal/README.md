@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Preferences: Network
+
+*02:06* — Wi-Fi networks in range with security and signal; the one in use ticked, with Disconnect and Forget.
+
+![Preferences: Network](2026-10-26/020623-preferences-network.png)
+
 ### polkit agent: password
 
 *02:02* — After the fingerprint times out PAM asks for the password; the field takes focus.

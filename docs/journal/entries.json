@@ -364,5 +364,11 @@
   "title": "polkit agent: password",
   "caption": "After the fingerprint times out PAM asks for the password; the field takes focus.",
   "image": "2026-10-26/020241-polkit-agent-password.png"
+ },
+ {
+  "time": "2026-10-26T02:06:23",
+  "title": "Preferences: Network",
+  "caption": "Wi-Fi networks in range with security and signal; the one in use ticked, with Disconnect and Forget.",
+  "image": "2026-10-26/020623-preferences-network.png"
  }
 ]

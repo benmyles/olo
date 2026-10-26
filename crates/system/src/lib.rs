@@ -30,6 +30,7 @@ mod live {
     #[ignore]
     fn status() {
         println!("wifi: {:?}", crate::network::wifi());
+        println!("network: {:#?}", crate::network::status());
         println!("volume: {:?}", crate::audio::volume());
         println!("time: {:?}", crate::time::status());
         println!("zones: {:?}", crate::time::timezones().map(|z| z.len()));
