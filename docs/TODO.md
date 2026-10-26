@@ -40,7 +40,7 @@ as they land (with the commit), add new ones as they come up.
 
 - Terminal: ~~find in scrollback~~ (Edit ▸ Find…, Find Again, Find
   Selection; regex over screen and history); release-build memory check;
-  colour emoji.
+  ~~colour emoji~~ (tabula-emoji, COLRv1 via skrifa + tiny-skia).
 - ~~Activity Monitor~~: apps/activity (graphs of every /proc, /sys and
   hwmon source; processes with Quit / Force Quit).
 - Preferences, remaining panels: ~~Network~~ (Wi-Fi list, join with

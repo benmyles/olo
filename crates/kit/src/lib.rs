@@ -6,6 +6,7 @@
 //! the desktop's light/dark theme.
 
 mod app;
+pub mod emoji;
 pub use tabula_xdg::{apps, desktop_entry, mime, open};
 pub mod file_panel;
 pub mod files;

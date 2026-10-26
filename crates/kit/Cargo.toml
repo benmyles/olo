@@ -9,6 +9,7 @@ license.workspace = true
 tabula-theme.workspace = true
 tabula-protocol.workspace = true
 tabula-xdg.workspace = true
+tabula-emoji.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

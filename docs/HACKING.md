@@ -159,6 +159,18 @@ matches `style::text_highlight`), `alert(ui, icon, message, &buttons)` (a
 BAlert; open its window with `WindowOptions::alert(title, message)`; the
 last button is the default, Escape picks the first).
 
+Colour emoji (`tabula_kit::emoji`, on `crates/emoji`): egui's text is
+monochrome, so code that places glyphs itself calls
+`emoji::paint(painter, rect, cluster)`, which draws the cluster in colour
+fitted and centred in `rect` (a cached texture at device resolution) and
+returns false when there is no colour glyph (draw text instead).
+`emoji::wants_color(cluster, wide)` says whether a cluster has emoji
+presentation; `emoji::continues(prev, next)` joins sequences a cell grid
+split (ZWJ, skin tones, flags). `tabula-emoji` shapes with harfrust and
+paints COLRv0/v1 with tiny-skia (Noto Color Emoji is COLRv1); the font is
+read on a worker thread when the system fonts load. Render test images
+with `EMOJI_OUT=/tmp/dir cargo test -p tabula-emoji`.
+
 Pictures (`tabula_kit::images::open(path)`): everything the `image`
 crate reads plus JPEG XL, EXIF-rotated, with a 1 GiB allocation limit;
 returns the image and its format's name. Thumbnails and Quick Look use

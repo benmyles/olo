@@ -132,6 +132,7 @@ pub fn font_definitions() -> FontDefinitions {
         // draw colour glyphs).
         let cjk = add("cjk", load_face(&db, &["Noto Sans Mono CJK JP", "Noto Sans CJK JP"], 400));
         let emoji = add("emoji", load_face(&db, &["Noto Emoji"], 400));
+        crate::emoji::locate(&db);
 
         let prop = defs.families.entry(FontFamily::Proportional).or_default();
         let mut front = Vec::new();

@@ -19,7 +19,7 @@ use alacritty_terminal::{
 use tabula_kit::egui::{
     self, Color32, FontFamily, FontId, Key, Pos2, Rect, Sense, Stroke, Ui, pos2, text::LayoutJob, vec2,
 };
-use tabula_kit::style;
+use tabula_kit::{emoji, style};
 
 use crate::{
     colors::{Scheme, c32, mix},
@@ -213,6 +213,10 @@ pub fn show(
     let mut lines: Vec<(Rect, Color32)> = Vec::new();
     let mut cursor_cell: Option<(char, Style, bool)> = None;
     let mut image_cells: Vec<(i32, usize, u32, usize)> = Vec::new();
+    // Colour emoji: (line, column, cluster, style, cells).
+    let mut emoji: Vec<(i32, usize, String, Style, usize)> = Vec::new();
+    // Cells with something in them, so a narrow emoji can use a free one.
+    let mut used: std::collections::HashSet<(i32, usize)> = std::collections::HashSet::new();
 
     for indexed in content.display_iter {
         let point = indexed.point;
@@ -275,9 +279,28 @@ pub fn show(
         if c == ' ' || c == '\0' {
             continue;
         }
+        used.insert((line, col));
         if is_box(c) {
             boxes.push((line, col, c, style.fg));
         } else if wide || !glyphs.simple(ui, m, c) || cell_.zerowidth().is_some() {
+            let mut cluster = String::from(c);
+            cluster.extend(cell_.zerowidth().into_iter().flatten());
+            let cells = if wide { 2 } else { 1 };
+            // alacritty gives each part of a sequence its own cell: join
+            // skin tones, ZWJ sequences and flags back up.
+            if let Some(prev) = emoji.last_mut()
+                && prev.0 == line
+                && prev.1 + prev.4 == col
+                && emoji::continues(&prev.2, &cluster)
+            {
+                prev.2.push_str(&cluster);
+                prev.4 += cells;
+                continue;
+            }
+            if emoji::wants_color(&cluster, wide) {
+                emoji.push((line, col, cluster, style, cells));
+                continue;
+            }
             let mut text_c = c;
             if let Some(z) = cell_.zerowidth() {
                 // Combining marks: lay the cluster out together.
@@ -315,6 +338,23 @@ pub fn show(
         FontId::new(m.size, family)
     };
     let spacing = cell.x - m.advance;
+    // Colour emoji, else (no colour glyph) the cluster as text.
+    for (line, col, cluster, st, cells) in emoji {
+        // Two cells wide, as an emoji should be: a narrow one borrows a
+        // free cell beside it; a sequence alacritty spread wider is centred
+        // over its cells.
+        let span = if cells == 1 && col + 1 < cols && !used.contains(&(line, col + 1)) { 2 } else { cells };
+        let wide = cells >= 2;
+        let full = Rect::from_min_size(at(line, col), vec2(cell.x * span as f32, cell.y));
+        let r = Rect::from_center_size(full.center(), vec2(cell.x * span.min(2) as f32, cell.y));
+        if !emoji::paint(&painter, r, &cluster) {
+            let mut chars = cluster.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) => singles.push((line, col, c, st, wide)),
+                _ => runs.push((line, col, cluster, st)),
+            }
+        }
+    }
     for (line, col, text, st) in runs {
         let mut job = LayoutJob::default();
         job.append(
@@ -397,7 +437,6 @@ pub fn show(
         let fg = scheme.resolve(Color::Named(NamedColor::Foreground), colors);
         painter.rect_filled(thumb, 2.0, c32(mix(fg, bg_default, 0.35)));
     }
-    let _ = cols;
     out
 }
 

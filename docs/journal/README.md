@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Colour emoji in Terminal
+
+*03:42* — COLRv1 emoji painted natively: sequences, skin tones, flags, keycaps, on any background
+
+![Colour emoji in Terminal](2026-10-26/034208-colour-emoji-in-terminal.png)
+
 ### Terminal found it
 
 *03:33* — The match is selected and scrolled into view; Find Again steps on

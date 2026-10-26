@@ -1,0 +1,14 @@
+[package]
+name = "tabula-emoji"
+description = "Colour emoji: COLRv0/v1 glyphs shaped with harfrust and painted with tiny-skia"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+skrifa = "0.46"
+harfrust = "0.12"
+tiny-skia = "0.12"
+
+[dev-dependencies]
+png = "0.18"
