@@ -50,6 +50,7 @@ like pixel alignment is.
 | `crates/protocol` | JSON-lines IPC between app_server and our apps (`Client`, `Request`, `Reply`, `Event`, `Settings`). |
 | `crates/theme` | `Palette` (light/dark), BeOS tint helpers, decorator metrics, font lists. |
 | `crates/kit` | The Interface Kit: Wayland client platform, GPU rendering (egui on wgpu/Vulkan), menus, BeOS widgets, icons, `.desktop` entries. **All apps are built on it.** |
+| `crates/preview` | `tabula-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Used by Tracker's Quick Look and the Viewer. |
 | `apps/<name>` | One crate per application, binary named `tabula-<name>`. Picked up by the workspace glob. |
 | `data/icons` | Icon set, pre-scaled to device sizes (`data/icons/<px>/<name>.png`). |
 | `data/session` | `tabula.desktop` for the login screen (installed by `tools/install-session.sh`). |
@@ -114,11 +115,14 @@ fn main() {
 ### Widgets (`tabula_kit::widgets`)
 
 `Button` (`.default(true)` for the Enter button), `CheckBox`, `RadioButton`,
+`Button::pushed(true)` for a toolbar toggle that stays down,
 `TextControl` (`.label("Name:").divider(x)`), `TextView`, `Slider`
 (`.label().value_text().limits()`), `MenuField` (pop-up choice), `BBox`
 (etched group box with label), `separator`, `StatusBar` (progress),
-`ScrollView` (`show`, `show_rows` for virtualised content, `reveal`,
-`.auto_hide(true)` to drop the bar when content fits),
+`ScrollView` (`show`, `show_rows` for virtualised content, `show_in(ui,
+rect, |ui, viewport|)` for content you lay out yourself, `reveal`,
+`ScrollView::scroll_to(ctx, id, offset)`, `.auto_hide(true)` to drop the
+bar when content fits; `SCROLL_BAR` is its width),
 `ColumnListView` + `Column` + `ListState` (sortable, resizable,
 multi-select, context clicks), `TabView`, `color_well`, `heading`,
 `form_label`, `window_content`, `button_row`, `context_menu`,
@@ -127,6 +131,15 @@ place: returns `Editing` / `Commit` / `Cancel`; pads by `INLINE_PAD`, which
 matches `style::text_highlight`), `alert(ui, icon, message, &buttons)` (a
 BAlert; size the window with `alert_height(message)` × `ALERT_WIDTH`; the
 last button is the default, Escape picks the first).
+
+File panels (`tabula_kit::file_panel`): `FilePanel::open(dir)` /
+`FilePanel::save(dir, name)` give a BFilePanel (path popup, Home, sortable
+Name/Size/Modified list, "Save as:" field, Replace confirmation). Open it
+in its own window of `PANEL_SIZE`, call `panel.ui(ui)` each frame and act
+on the `PanelResult` (`Chosen(path)` / `Cancelled`). Toolbars are
+`metrics::TOOLBAR_HEIGHT` tall. `style::find_font(families, weight)`
+loads an installed font as `(bytes, face index)` (for registering extra
+egui families; call it off the UI thread).
 
 Menus: `Menu::new("File").item(label, command, Some(Key::N))`,
 `.item_shift(…)`, `.separator()`, `.submenu(Menu)`, `.checked(bool)`,

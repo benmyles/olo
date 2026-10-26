@@ -3,12 +3,11 @@
 What's left before Tabula is complete. Keep it current: strike items
 as they land (with the commit), add new ones as they come up.
 
-## In progress
+## Done recently
 
-- **Viewer** (`apps/viewer`): standalone viewer for everything Quick Look
-  previews (pop-out from Quick Look), PDF form filling, text boxes, ink
-  and signatures, Save (incremental) / Save As / Export Flattened.
-- **Kit FilePanel**: BFilePanel-style Open and Save panels.
+- ~~Viewer: pop-out from Quick Look, PDF forms, text, ink, signatures,
+  Save / Save As / Export Flattened~~ (903ba8b, f01bff9).
+- ~~Kit FilePanel~~ (903ba8b).
 
 ## Native rule (no wrapping system tools)
 
