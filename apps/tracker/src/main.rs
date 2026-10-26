@@ -10,8 +10,6 @@ mod view;
 
 use std::{
     collections::HashMap,
-    io::{BufRead, BufReader, Write},
-    os::unix::net::{UnixListener, UnixStream},
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -167,7 +165,6 @@ enum Win {
 
 enum Msg {
     /// Another `tabula-tracker` invocation forwarded its arguments.
-    Remote(Vec<String>),
     DirSize(WindowId, u64, u64),
     Found(WindowId, u64, Vec<find::Hit>, bool),
     JobDone(u64, ops::Outcome),
@@ -1075,9 +1072,12 @@ impl App for Tracker {
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
+        let message = match message.downcast::<tabula_kit::instance::Launch>() {
+            Ok(launch) => return self.handle_args(cx, &launch.args),
+            Err(m) => m,
+        };
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
-            Msg::Remote(args) => self.handle_args(cx, &args),
             Msg::DirSize(win, b, f) => {
                 if let Some(Win::Info(i)) = self.windows.get_mut(&win) {
                     i.size = Some((b, f));
@@ -1217,44 +1217,13 @@ impl Tracker {
     }
 }
 
-// ---- single instance ------------------------------------------------------
-
-fn socket_path() -> PathBuf {
-    let rt = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    let display = std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-0".into());
-    rt.join(format!("tabula-tracker-{display}.sock"))
-}
-
-/// If Tracker is already running, hand it our arguments and return true.
-fn forward_to_running(args: &[String]) -> bool {
-    let Ok(mut s) = UnixStream::connect(socket_path()) else { return false };
-    let line = serde_json::to_string(args).unwrap_or_default();
-    s.write_all(line.as_bytes()).is_ok() && s.write_all(b"\n").is_ok()
-}
-
-fn listen(proxy: tabula_kit::Proxy) {
-    let path = socket_path();
-    let _ = std::fs::remove_file(&path);
-    let Ok(listener) = UnixListener::bind(&path) else { return };
-    std::thread::spawn(move || {
-        for s in listener.incoming().flatten() {
-            let mut line = String::new();
-            if BufReader::new(s).read_line(&mut line).is_ok()
-                && let Ok(args) = serde_json::from_str::<Vec<String>>(&line)
-            {
-                proxy.send(Msg::Remote(args));
-            }
-        }
-    });
-}
-
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if forward_to_running(&args) {
+    if tabula_kit::instance::forward("tabula.tracker", &args) {
         return;
     }
     tabula_kit::run("tabula.tracker", |cx| {
-        listen(cx.proxy());
+        tabula_kit::instance::listen("tabula.tracker", cx.proxy());
         let mut t = Tracker { windows: HashMap::new(), clipboard: None, hidden: false, jobs: Vec::new(), next_job: 1, status_win: None, status_size: 0 };
         if args.iter().any(|a| a == "--desktop") {
             let id = cx.open_window(desktop::options());

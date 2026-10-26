@@ -9,6 +9,7 @@ mod app;
 pub mod desktop_entry;
 pub mod icons;
 mod input;
+pub mod instance;
 pub mod menu;
 pub mod metrics;
 mod platform;

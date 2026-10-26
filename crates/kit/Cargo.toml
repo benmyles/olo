@@ -8,6 +8,8 @@ license.workspace = true
 [dependencies]
 tabula-theme.workspace = true
 tabula-protocol.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 egui = { version = "0.37", default-features = false, features = ["default_fonts"] }

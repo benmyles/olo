@@ -62,6 +62,14 @@ pub fn mono_font(size: f32) -> FontId {
     FontId::monospace(size)
 }
 
+pub fn mono_bold() -> FontFamily {
+    FontFamily::Name("mono-bold".into())
+}
+
+pub fn mono_italic() -> FontFamily {
+    FontFamily::Name("mono-italic".into())
+}
+
 // ---- fonts ------------------------------------------------------------
 
 fn load_face(db: &fontdb::Database, families: &[&str], weight: u16) -> Option<(Vec<u8>, u32)> {
@@ -107,9 +115,14 @@ pub fn font_definitions() -> FontDefinitions {
         let ui_italic = add("ui-italic", load_styled(&db, tabula_theme::fonts::UI, 400, fontdb::Style::Italic));
         let mono = add("mono", load_face(&db, tabula_theme::fonts::MONO, 400));
         let mono_bold = add("mono-bold", load_face(&db, tabula_theme::fonts::MONO, 700));
+        let mono_italic = add("mono-italic", load_styled(&db, tabula_theme::fonts::MONO, 400, fontdb::Style::Italic));
         // Wide Unicode coverage (arrows, ⌘, box drawing, ...).
         let fallback = add("fallback", load_face(&db, &["DejaVu Sans", "Noto Sans"], 400));
         let symbols = add("symbols", load_face(&db, &["Noto Sans Symbols 2", "Noto Sans Symbols"], 400));
+        // Chinese, Japanese and Korean, then emoji (monochrome: egui can't
+        // draw colour glyphs).
+        let cjk = add("cjk", load_face(&db, &["Noto Sans Mono CJK JP", "Noto Sans CJK JP"], 400));
+        let emoji = add("emoji", load_face(&db, &["Noto Emoji"], 400));
 
         let prop = defs.families.entry(FontFamily::Proportional).or_default();
         let mut front = Vec::new();
@@ -122,6 +135,12 @@ pub fn font_definitions() -> FontDefinitions {
         if symbols {
             front.push("symbols".to_owned());
         }
+        if cjk {
+            front.push("cjk".to_owned());
+        }
+        if emoji {
+            front.push("emoji".to_owned());
+        }
         prop.splice(0..0, front.clone());
 
         let monos = defs.families.entry(FontFamily::Monospace).or_default();
@@ -129,8 +148,10 @@ pub fn font_definitions() -> FontDefinitions {
         if mono {
             mfront.push("mono".to_owned());
         }
-        if fallback {
-            mfront.push("fallback".to_owned());
+        for (have, key) in [(fallback, "fallback"), (symbols, "symbols"), (cjk, "cjk"), (emoji, "emoji")] {
+            if have {
+                mfront.push(key.to_owned());
+            }
         }
         monos.splice(0..0, mfront);
 
@@ -155,7 +176,13 @@ pub fn font_definitions() -> FontDefinitions {
             mb.push("mono-bold".to_owned());
         }
         mb.extend(mbase.iter().cloned());
-        defs.families.insert(FontFamily::Name("mono-bold".into()), mb);
+        defs.families.insert(self::mono_bold(), mb);
+        let mut mi = Vec::new();
+        if mono_italic {
+            mi.push("mono-italic".to_owned());
+        }
+        mi.extend(mbase.iter().cloned());
+        defs.families.insert(self::mono_italic(), mi);
         defs
     })
     .clone()

@@ -247,7 +247,9 @@ pub mod fonts {
     /// Closest freely available face to BeOS's Swiss 721 (a Helvetica).
     pub const UI: &[&str] = &["Nimbus Sans", "Liberation Sans", "DejaVu Sans"];
     pub const UI_BOLD_WEIGHT: u16 = 700;
-    pub const MONO: &[&str] = &["DejaVu Sans Mono", "Noto Sans Mono", "Liberation Mono"];
+    /// A deliberate modernisation: BeOS used a Courier; JetBrains Mono is
+    /// far more legible on HiDPI screens.
+    pub const MONO: &[&str] = &["JetBrains Mono", "DejaVu Sans Mono", "Noto Sans Mono", "Liberation Mono"];
     /// Points; BeOS's be_plain_font was 10pt.
     pub const PLAIN_SIZE: f32 = 12.0;
     pub const TAB_SIZE: f32 = 12.0;

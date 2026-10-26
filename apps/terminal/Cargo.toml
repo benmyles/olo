@@ -1,0 +1,22 @@
+[package]
+name = "tabula-terminal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "tabula-terminal"
+path = "src/main.rs"
+
+[dependencies]
+tabula-kit.workspace = true
+tabula-protocol.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+alacritty_terminal = "0.26"
+libc = "0.2"
+base64 = "0.22"
+flate2 = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+regex = "1"

@@ -512,6 +512,12 @@ impl Kit {
                     Request::RedrawAll => self.surfaces.iter_mut().for_each(|s| s.dirty = true),
                     Request::Activate(_) => {}
                     Request::Copy(text) => self.set_clipboard(text),
+                    Request::Paste(id) => {
+                        let text = self.read_clipboard().unwrap_or_default();
+                        if let Some(wl) = self.surface_mut(id).map(|s| s.wl.clone()) {
+                            self.push_event(&wl, egui::Event::Paste(text));
+                        }
+                    }
                     Request::Quit => self.exit = true,
                 }
             }
@@ -1336,7 +1342,10 @@ impl Kit {
         let Some(wl) = self.keyboard_focus.clone() else { return };
         let key = input::key_from_keysym(event.keysym);
         let m = self.modifiers;
-        if pressed && m.ctrl {
+        let raw = self.index_of_wl(&wl).is_some_and(|i| self.surfaces[i].options.raw_keys);
+        // Terminal-style windows: Ctrl alone is for the program inside;
+        // the clipboard is on Ctrl+Shift.
+        if pressed && m.ctrl && raw == m.shift {
             match key {
                 Some(egui::Key::C) if !m.shift => return self.push_event(&wl, egui::Event::Copy),
                 Some(egui::Key::X) if !m.shift => return self.push_event(&wl, egui::Event::Cut),
@@ -1357,7 +1366,7 @@ impl Kit {
         }
         if pressed
             && !m.ctrl
-            && !m.alt
+            && (!m.alt || raw)
             && let Some(text) = &event.utf8
             && !text.chars().any(|c| c.is_control())
             && !text.is_empty()

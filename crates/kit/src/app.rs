@@ -65,6 +65,10 @@ pub struct WindowOptions {
     pub kind: WindowKind,
     /// Paint the panel background behind `ui` (most windows want this).
     pub panel: bool,
+    /// Terminal-style keyboard: Ctrl+key reaches the app as a key event
+    /// (Ctrl+C is not Copy), Ctrl+Shift+C/X/V are Copy/Cut/Paste, and text
+    /// is delivered with Alt held too.
+    pub raw_keys: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -103,6 +107,7 @@ impl Default for WindowOptions {
             max_size: None,
             kind: WindowKind::Normal,
             panel: true,
+            raw_keys: false,
         }
     }
 }
@@ -113,6 +118,10 @@ impl WindowOptions {
     }
     pub fn min_size(mut self, w: u32, h: u32) -> Self {
         self.min_size = Some((w, h));
+        self
+    }
+    pub fn raw_keys(mut self) -> Self {
+        self.raw_keys = true;
         self
     }
 }
@@ -127,6 +136,7 @@ pub(crate) enum Request {
     #[allow(dead_code)] // needs xdg-activation; kept for the API
     Activate(WindowId),
     Copy(String),
+    Paste(WindowId),
     Quit,
 }
 
@@ -191,6 +201,11 @@ impl Cx {
     /// Put text on the clipboard.
     pub fn copy(&mut self, text: impl Into<String>) {
         self.requests.push(Request::Copy(text.into()));
+    }
+    /// Deliver the clipboard's text to `window` as an `egui::Event::Paste`
+    /// (for menu Paste; ⌘V arrives that way by itself).
+    pub fn paste(&mut self, window: WindowId) {
+        self.requests.push(Request::Paste(window));
     }
     pub fn quit(&mut self) {
         self.requests.push(Request::Quit);
