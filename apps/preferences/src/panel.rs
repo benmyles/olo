@@ -8,7 +8,7 @@ use tabula_kit::{
 };
 use tabula_protocol::Settings;
 
-use crate::{Ctx, about, appearance, bluetooth, datetime, display, keyboard, network, power, screensaver, sound, touchpad, workspaces};
+use crate::{Ctx, about, appearance, bluetooth, datetime, display, keyboard, network, power, screensaver, sound, touchid, touchpad, workspaces};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -22,6 +22,7 @@ pub enum Panel {
     Power,
     ScreenSaver,
     Sound,
+    TouchId,
     Touchpad,
     Workspaces,
     About,
@@ -39,6 +40,7 @@ impl Panel {
         Panel::Power,
         Panel::ScreenSaver,
         Panel::Sound,
+        Panel::TouchId,
         Panel::Touchpad,
         Panel::Workspaces,
         Panel::About,
@@ -50,6 +52,7 @@ impl Panel {
             "screen" | "displays" => Some(Panel::Display),
             "screen-saver" | "screensavers" => Some(Panel::ScreenSaver),
             "background" => Some(Panel::Backgrounds),
+            "fingerprint" | "touch-id" | "fingerprints" => Some(Panel::TouchId),
             "bt" => Some(Panel::Bluetooth),
             "wifi" | "wi-fi" | "networks" => Some(Panel::Network),
             "time" | "date" | "clock" | "date-time" => Some(Panel::DateTime),
@@ -69,6 +72,7 @@ impl Panel {
             Panel::Power => "power",
             Panel::ScreenSaver => "screensaver",
             Panel::Sound => "sound",
+            Panel::TouchId => "touchid",
             Panel::Touchpad => "touchpad",
             Panel::Workspaces => "workspaces",
             Panel::About => "about",
@@ -87,6 +91,7 @@ impl Panel {
             Panel::Power => "Power",
             Panel::ScreenSaver => "Screen Saver",
             Panel::Sound => "Sound",
+            Panel::TouchId => "Touch ID",
             Panel::Touchpad => "Touchpad",
             Panel::Workspaces => "Workspaces",
             Panel::About => "About Tabula",
@@ -105,6 +110,7 @@ impl Panel {
             Panel::Power => "power",
             Panel::ScreenSaver => "screensaver",
             Panel::Sound => "sound",
+            Panel::TouchId => "fingerprint",
             Panel::Touchpad => "touchpad",
             Panel::Workspaces => "workspaces",
             Panel::About => "about",
@@ -124,6 +130,7 @@ impl Panel {
             Panel::Power => (460, 362),
             Panel::ScreenSaver => (500, 400),
             Panel::Sound => (440, 270),
+            Panel::TouchId => (420, 330),
             Panel::Touchpad => (400, 382),
             Panel::Workspaces => (360, 164),
             Panel::About => (420, 254),
@@ -131,12 +138,12 @@ impl Panel {
     }
 
     pub fn needs_server(self) -> bool {
-        !matches!(self, Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth)
+        !matches!(self, Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId)
     }
 
     /// Whether the panel has Defaults / Revert.
     fn resettable(self) -> bool {
-        !matches!(self, Panel::About | Panel::Display | Panel::Sound | Panel::Network | Panel::Bluetooth)
+        !matches!(self, Panel::About | Panel::Display | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId)
     }
 
     /// Put this panel's part of `settings` back to `from`.
@@ -161,7 +168,7 @@ impl Panel {
             Panel::DateTime => settings.clock = from.clock.clone(),
             Panel::Power => settings.power = from.power.clone(),
             Panel::ScreenSaver => settings.screen_saver = from.screen_saver.clone(),
-            Panel::Display | Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth => {}
+            Panel::Display | Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId => {}
         }
     }
 }
@@ -176,6 +183,7 @@ pub enum State {
     DateTime(Box<datetime::State>),
     Network(Box<network::State>),
     Bluetooth(Box<bluetooth::State>),
+    TouchId(Box<touchid::State>),
     Power(power::State),
     ScreenSaver(screensaver::State),
     About(about::State),
@@ -191,6 +199,7 @@ impl State {
             Panel::DateTime => State::DateTime(Box::default()),
             Panel::Network => State::Network(Box::default()),
             Panel::Bluetooth => State::Bluetooth(Box::default()),
+            Panel::TouchId => State::TouchId(Box::default()),
             Panel::Power => State::Power(Default::default()),
             Panel::ScreenSaver => State::ScreenSaver(Default::default()),
             Panel::About => State::About(about::State::new()),
@@ -220,6 +229,7 @@ pub fn ui(panel: Panel, state: &mut State, ui: &mut egui::Ui, ctx: Ctx<'_>) {
             (Panel::DateTime, State::DateTime(s)) => datetime::ui(ui, settings, s),
             (Panel::Network, State::Network(s)) => network::ui(ui, s),
             (Panel::Bluetooth, State::Bluetooth(s)) => bluetooth::ui(ui, s),
+            (Panel::TouchId, State::TouchId(s)) => touchid::ui(ui, s),
             (Panel::Touchpad, _) => touchpad::ui(ui, settings),
             (Panel::Workspaces, _) => workspaces::ui(ui, settings),
             (Panel::About, State::About(s)) => about::ui(ui, s),

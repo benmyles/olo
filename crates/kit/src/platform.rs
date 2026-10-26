@@ -6,7 +6,7 @@ use std::{
     any::Any,
     io::{Read, Write},
     ptr::NonNull,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -167,6 +167,9 @@ impl Surface {
 }
 
 /// User data for our own protocol objects.
+/// Where egui's repaint callbacks send (window, delay).
+static REPAINT: std::sync::OnceLock<Mutex<channel::Sender<(WindowId, Duration)>>> = std::sync::OnceLock::new();
+
 pub struct KitData;
 pub struct ScaleData(WlSurface);
 
@@ -242,6 +245,21 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
             }
         })
         .expect("channel");
+
+    // Repaints asked for from other threads (`ctx.request_repaint()` on a
+    // worker): egui only calls back, so wake the loop and schedule them.
+    let (repaint_tx, repaint_rx) = channel::channel::<(WindowId, Duration)>();
+    let _ = REPAINT.set(Mutex::new(repaint_tx));
+    loop_handle
+        .insert_source(repaint_rx, |event, _, kit: &mut Kit| {
+            if let channel::Event::Msg((id, delay)) = event
+                && let Some(s) = kit.surface_mut(id)
+            {
+                let at = Instant::now() + delay;
+                s.repaint_at = Some(s.repaint_at.map_or(at, |t| t.min(at)));
+            }
+        })
+        .expect("repaint channel");
 
     // Live theme from app_server.
     let palette = Arc::new(crate::theme_watch::initial_palette());
@@ -665,7 +683,15 @@ impl Kit {
             gpu_surface: None,
             format: wgpu::TextureFormat::Bgra8Unorm,
             renderer: None,
-            ctx: self.new_ctx(),
+            ctx: {
+                let ctx = self.new_ctx();
+                ctx.set_request_repaint_callback(move |info| {
+                    if let Some(tx) = REPAINT.get() {
+                        let _ = tx.lock().unwrap().send((id, info.delay));
+                    }
+                });
+                ctx
+            },
             fonts: style::fonts_generation(),
             size,
             scale,

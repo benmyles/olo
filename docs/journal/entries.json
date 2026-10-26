@@ -376,5 +376,17 @@
   "title": "Preferences: Bluetooth",
   "caption": "Power, search (30 s), named and paired devices with type, status and battery; pairing questions appear in the panel.",
   "image": "2026-10-26/021218-preferences-bluetooth.png"
+ },
+ {
+  "time": "2026-10-26T02:19:30",
+  "title": "Preferences: Touch ID",
+  "caption": "Enrolled fingers, add one (likeliest finger first), remove with confirmation (fake sensor).",
+  "image": "2026-10-26/021930-preferences-touch-id.png"
+ },
+ {
+  "time": "2026-10-26T02:19:30",
+  "title": "Touch ID: enrolling (dark)",
+  "caption": "Progress per touch with the sensor guidance; Cancel stops the sensor.",
+  "image": "2026-10-26/021930-touch-id-enrolling-dark.png"
  }
 ]

@@ -20,6 +20,7 @@ mod power;
 mod screensaver;
 mod server;
 mod sound;
+mod touchid;
 mod touchpad;
 mod workspaces;
 

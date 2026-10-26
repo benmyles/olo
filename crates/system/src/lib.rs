@@ -33,6 +33,8 @@ mod live {
         println!("wifi: {:?}", crate::network::wifi());
         println!("network: {:#?}", crate::network::status());
         println!("bluetooth: {:#?}", crate::bluetooth::status());
+        let me = std::env::var("FPRINT_USER").unwrap_or_else(|_| crate::auth::current_user().unwrap_or_default());
+        println!("fingers of {me}: {:?}", crate::fingerprint::fingers(&me));
         println!("volume: {:?}", crate::audio::volume());
         println!("time: {:?}", crate::time::status());
         println!("zones: {:?}", crate::time::timezones().map(|z| z.len()));

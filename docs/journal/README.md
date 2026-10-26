@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Touch ID: enrolling (dark)
+
+*02:19* — Progress per touch with the sensor guidance; Cancel stops the sensor.
+
+![Touch ID: enrolling (dark)](2026-10-26/021930-touch-id-enrolling-dark.png)
+
+### Preferences: Touch ID
+
+*02:19* — Enrolled fingers, add one (likeliest finger first), remove with confirmation (fake sensor).
+
+![Preferences: Touch ID](2026-10-26/021930-preferences-touch-id.png)
+
 ### Preferences: Bluetooth
 
 *02:12* — Power, search (30 s), named and paired devices with type, status and battery; pairing questions appear in the panel.

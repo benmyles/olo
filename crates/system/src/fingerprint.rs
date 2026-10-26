@@ -1,4 +1,4 @@
-//! Fingerprint verification through fprintd (Touch ID on Apple silicon),
+//! Fingerprint verification and enrolment through fprintd (Touch ID on Apple silicon),
 //! over D-Bus. `verify` blocks until a match, a failure or [`Stop`]: run it
 //! on its own thread and listen to the events it reports.
 
@@ -40,6 +40,15 @@ impl Stop {
         }
     }
 
+    /// Mark it stopped without telling fprintd.
+    pub fn stop_flag(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_stopped(&self) -> bool {
+        self.stopped()
+    }
+
     fn stopped(&self) -> bool {
         self.0.load(Ordering::SeqCst)
     }
@@ -59,6 +68,123 @@ pub fn enrolled(user: &str) -> Result<bool> {
         Ok(f) => Ok(!f.is_empty()),
         Err(zbus::Error::MethodError(name, _, _)) if name.as_str() == "net.reactivated.Fprint.Error.NoEnrolledPrints" => Ok(false),
         Err(e) => Err(e),
+    }
+}
+
+/// The fingers `user` has enrolled ("right-index-finger", …).
+pub fn fingers(user: &str) -> Result<Vec<String>> {
+    match device()?.call::<_, _, Vec<String>>("ListEnrolledFingers", &(user,)) {
+        Ok(f) => Ok(f),
+        Err(zbus::Error::MethodError(name, _, _)) if name.as_str() == "net.reactivated.Fprint.Error.NoEnrolledPrints" => Ok(Vec::new()),
+        Err(e) => Err(e),
+    }
+}
+
+/// Whether there's a fingerprint sensor at all.
+pub fn available() -> bool {
+    device().is_ok()
+}
+
+/// fprintd's finger names, in the order a hand is drawn.
+pub const FINGERS: [&str; 10] = [
+    "left-little-finger",
+    "left-ring-finger",
+    "left-middle-finger",
+    "left-index-finger",
+    "left-thumb",
+    "right-thumb",
+    "right-index-finger",
+    "right-middle-finger",
+    "right-ring-finger",
+    "right-little-finger",
+];
+
+/// "right-index-finger" → "Right index finger".
+pub fn finger_name(finger: &str) -> String {
+    let words = finger.replace('-', " ");
+    let mut c = words.chars();
+    c.next().map_or_else(String::new, |f| f.to_uppercase().chain(c).collect())
+}
+
+/// Forget one enrolled finger of `user`.
+pub fn delete(user: &str, finger: &str) -> Result<()> {
+    let dev = device()?;
+    dev.call_method("Claim", &(user,))?;
+    let r = dev.call_method("DeleteEnrolledFinger", &(finger,)).map(|_| ());
+    let _ = dev.call_method("Release", &());
+    r
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EnrollEvent {
+    /// Listening; this many good touches are needed in all.
+    Ready { stages: u32 },
+    /// One more good touch.
+    Stage,
+    /// A bad touch: say this and keep going.
+    Retry(String),
+    Done,
+    Failed(String),
+}
+
+fn describe_enroll(result: &str) -> &'static str {
+    match result {
+        "enroll-retry-scan" => "Try again",
+        "enroll-swipe-too-short" => "Swipe was too short; try again",
+        "enroll-finger-not-centered" => "Centre your finger on the sensor",
+        "enroll-remove-and-retry" => "Lift your finger and try again",
+        "enroll-duplicate" => "That finger is already enrolled",
+        "enroll-data-full" => "The sensor has no room for more fingerprints",
+        "enroll-disconnected" => "The fingerprint sensor was disconnected",
+        _ => "Enrolling didn't work",
+    }
+}
+
+/// Enrol `finger` for `user`: touch after touch until fprintd has enough
+/// (Ok(true)), `stop` is used (Ok(false)) or it fails. Blocks.
+pub fn enroll(user: &str, finger: &str, stop: &Stop, mut on: impl FnMut(EnrollEvent)) -> Result<bool> {
+    let dev = device()?;
+    dev.call_method("Claim", &(user,))?;
+    let result = (|| {
+        let stages = dev.get_property::<i32>("num-enroll-stages").unwrap_or(0).max(1) as u32;
+        let mut signals = dev.receive_signal("EnrollStatus")?;
+        dev.call_method("EnrollStart", &(finger,))?;
+        on(EnrollEvent::Ready { stages });
+        loop {
+            let Some(msg) = signals.next() else { return Ok(false) };
+            if stop.stopped() {
+                return Ok(false);
+            }
+            let (result, done): (String, bool) = msg.body().deserialize()?;
+            match result.as_str() {
+                "enroll-completed" => {
+                    on(EnrollEvent::Done);
+                    return Ok(true);
+                }
+                "enroll-stage-passed" => on(EnrollEvent::Stage),
+                r @ ("enroll-retry-scan" | "enroll-swipe-too-short" | "enroll-finger-not-centered" | "enroll-remove-and-retry") => {
+                    on(EnrollEvent::Retry(describe_enroll(r).into()))
+                }
+                r => {
+                    on(EnrollEvent::Failed(describe_enroll(r).into()));
+                    return Ok(false);
+                }
+            }
+            if done {
+                return Ok(false);
+            }
+        }
+    })();
+    let _ = dev.call_method("EnrollStop", &());
+    let _ = dev.call_method("Release", &());
+    result
+}
+
+/// Stop a running [`enroll`].
+pub fn stop_enroll(stop: &Stop) {
+    stop.0.store(true, Ordering::SeqCst);
+    if let Ok(dev) = device() {
+        let _ = dev.call_method("EnrollStop", &());
     }
 }
 
@@ -149,6 +275,13 @@ mod tests {
         let dev = device().unwrap();
         dev.call_method("Claim", &(crate::auth::current_user().unwrap(),)).unwrap();
         dev.call_method("Release", &()).unwrap();
+    }
+
+    #[test]
+    fn finger_names() {
+        assert_eq!(finger_name("right-index-finger"), "Right index finger");
+        assert_eq!(finger_name("left-thumb"), "Left thumb");
+        assert_eq!(FINGERS.len(), 10);
     }
 
     #[test]

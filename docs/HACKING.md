@@ -102,7 +102,10 @@ fn main() {
   to the clipboard), `copy_data` (any MIME types, e.g. `image/png`; the
   data is written to pasters from a thread), `paste` (reads the clipboard
   off-thread and delivers an `egui::Event::Paste`), `quit`, `stay_resident` (keep running with no windows), `palette`,
-  `proxy`, `window_size`, `restored_state`. There is no clipboard manager,
+  `proxy`, `window_size`, `restored_state`. Worker threads may call
+  `ctx.request_repaint()` (or `_after`) on a window's context: the kit
+  wakes its loop through egui's repaint callback and redraws that window.
+  There is no clipboard manager,
   so an app that quits (or closes its last window) while it holds the
   clipboard stays running, windowless, until something else is copied.
 * **Single instance** (`tabula_kit::instance`): call `instance::forward(app_id,
@@ -352,6 +355,12 @@ launcher lists them. The panel list Deskbar shows is
   this process only (never `RequestDefaultAgent`) and shows passkeys and
   PIN requests in the panel. **Tests only look and search: never Pair,
   Connect, Remove or toggle Bluetooth on the real machine.**
+* Touch ID (`touchid.rs`) lists, enrols (`fingerprint::enroll`, with a
+  StatusBar per touch, cancellable) and removes fingers through fprintd.
+  fprintd only answers a process in an active local session; headless, the
+  panel says so. `TABULA_FAKE_FINGERS=right-index-finger,…` (debug builds)
+  fakes a sensor so the whole panel can be exercised headless. **Never
+  enrol or remove on the real sensor in tests.**
 * Date & Time (`datetime.rs`) talks to systemd-timedated through
   `tabula_system::time` on its own worker thread (status every 2 s; set
   time, zone and network time with polkit's interactive auth, so a
