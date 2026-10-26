@@ -472,5 +472,17 @@
   "title": "Back to extended",
   "caption": "Choosing Extended desktop puts the display back beside the other with its full settings",
   "image": "2026-10-26/033025-back-to-extended.png"
+ },
+ {
+  "time": "2026-10-26T03:33:59",
+  "title": "Terminal Find window",
+  "caption": "Find in the scrollback: case, whole words, wrap-around, backwards",
+  "image": "2026-10-26/033359-terminal-find-window.png"
+ },
+ {
+  "time": "2026-10-26T03:33:59",
+  "title": "Terminal found it",
+  "caption": "The match is selected and scrolled into view; Find Again steps on",
+  "image": "2026-10-26/033359-terminal-found-it.png"
  }
 ]

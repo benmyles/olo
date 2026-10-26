@@ -38,7 +38,9 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
-- Terminal: find in scrollback; release-build memory check; colour emoji.
+- Terminal: ~~find in scrollback~~ (Edit ▸ Find…, Find Again, Find
+  Selection; regex over screen and history); release-build memory check;
+  colour emoji.
 - ~~Activity Monitor~~: apps/activity (graphs of every /proc, /sys and
   hwmon source; processes with Quit / Force Quit).
 - Preferences, remaining panels: ~~Network~~ (Wi-Fi list, join with

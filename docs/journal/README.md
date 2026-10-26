@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Terminal found it
+
+*03:33* — The match is selected and scrolled into view; Find Again steps on
+
+![Terminal found it](2026-10-26/033359-terminal-found-it.png)
+
+### Terminal Find window
+
+*03:33* — Find in the scrollback: case, whole words, wrap-around, backwards
+
+![Terminal Find window](2026-10-26/033359-terminal-find-window.png)
+
 ### Back to extended
 
 *03:30* — Choosing Extended desktop puts the display back beside the other with its full settings

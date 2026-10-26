@@ -6,6 +6,7 @@
 //! passes each PTY and shell to its new self, along with the scrollback.
 
 mod colors;
+mod find;
 mod graphics;
 mod io;
 mod links;
@@ -21,7 +22,8 @@ use tabula_kit::{
     egui::{self, Key},
     instance::{self, Launch},
     menu::{self, MenuAnchor, MenuRequest},
-    widgets,
+    metrics as m,
+    widgets::{self, Button, CheckBox, TextControl},
 };
 
 use colors::Scheme;
@@ -99,6 +101,8 @@ enum Win {
     Term(Box<TermWin>),
     /// "Close this window?" for a window still running something.
     ConfirmClose { target: WindowId, program: String },
+    /// The Find window for a terminal window.
+    Find { target: WindowId },
 }
 
 struct Terminal {
@@ -106,6 +110,7 @@ struct Terminal {
     settings: Settings,
     metrics: Option<Metrics>,
     dark: bool,
+    search: find::Search,
 }
 
 /// Estimated content size for `cols`×`rows` before fonts are loaded
@@ -373,8 +378,71 @@ impl Terminal {
     fn close(&mut self, cx: &mut Cx, win: WindowId) {
         self.windows.remove(&win);
         cx.close_window(win);
+        let finds: Vec<WindowId> =
+            self.windows.iter().filter(|(_, w)| matches!(w, Win::Find { target } if *target == win)).map(|(&id, _)| id).collect();
+        for id in finds {
+            self.windows.remove(&id);
+            cx.close_window(id);
+        }
         if !self.windows.values().any(|w| matches!(w, Win::Term(_))) {
             cx.quit();
+        }
+    }
+}
+
+const FIND_W: f32 = 340.0;
+const FIND_H: f32 = 2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + m::SPACING + 4.0 * m::MARK_ROW + 3.0 * m::TIGHT + m::SPACING + m::CONTROL_HEIGHT;
+
+impl Terminal {
+    fn open_find(&mut self, cx: &mut Cx, target: WindowId) {
+        if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Find { target: t } if *t == target)) {
+            cx.activate(id);
+            return;
+        }
+        let (w, h) = (FIND_W as u32, FIND_H as u32);
+        let id = cx.open_window(WindowOptions::new("Find", w, h).min_size(w, h).max_size(900, h));
+        self.windows.insert(id, Win::Find { target });
+    }
+
+    /// Search `win`'s scrollback; the visual bell says there's no match.
+    fn find_in(&mut self, cx: &mut Cx, win: WindowId) {
+        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
+        let found = find::find(&mut t.session.term.lock(), &self.search);
+        if !found {
+            t.bell = Some(std::time::Instant::now());
+        }
+        cx.redraw(win);
+    }
+
+    fn find_ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui, target: WindowId) {
+        let full = ui.max_rect().shrink(m::WINDOW_INSET);
+        let s = &mut self.search;
+        ui.scope_builder(egui::UiBuilder::new().max_rect(full).layout(egui::Layout::top_down(egui::Align::Min)), |ui| {
+            ui.spacing_mut().item_spacing.y = m::TIGHT;
+            ui.add(TextControl::new(&mut s.text).label("Find:").divider(40.0).autofocus(true));
+            ui.add_space(m::SPACING - m::TIGHT);
+            ui.add(CheckBox::new(&mut s.case, "Case-sensitive"));
+            ui.add(CheckBox::new(&mut s.words, "Whole words only"));
+            ui.add(CheckBox::new(&mut s.wrap, "Wrap-around search"));
+            ui.add(CheckBox::new(&mut s.backwards, "Search backwards"));
+        });
+        let bw = m::BUTTON_MIN_WIDTH;
+        let y = full.bottom() - m::CONTROL_HEIGHT;
+        let go_r = egui::Rect::from_min_size(egui::pos2(full.right() - bw, y), egui::vec2(bw, m::CONTROL_HEIGHT));
+        let cancel_r = go_r.translate(egui::vec2(-(bw + m::SPACING + 2.0), 0.0));
+        let cancel = ui.put(cancel_r, Button::new("Cancel")).clicked() || ui.input(|i| i.key_pressed(Key::Escape));
+        let ready = !s.text.is_empty();
+        let go = ui.add_enabled_ui(ready, |ui| ui.put(go_r, Button::new("Find").default(true))).inner.clicked()
+            || ready && ui.input(|i| i.key_pressed(Key::Enter));
+        if go {
+            self.find_in(cx, target);
+        }
+        if go || cancel {
+            self.windows.remove(&window);
+            cx.close_window(window);
+            if go {
+                cx.activate(target);
+            }
         }
     }
 }
@@ -394,6 +462,7 @@ impl App for Terminal {
                     self.close(cx, target);
                 }
             }
+            Some(&Win::Find { target }) => self.find_ui(cx, window, ui, target),
             None => {}
         }
     }
@@ -433,6 +502,13 @@ impl App for Terminal {
                 .item_shift("Paste", "paste", Key::V)
                 .separator()
                 .item_shift("Select All", "select-all", Key::A)
+                .separator()
+                .item_shift("Find…", "find", Key::F)
+                .item_shift("Find Again", "find-again", Key::G)
+                .enabled(!self.search.text.is_empty())
+                .item_shift("Find Selection", "find-selection", Key::E)
+                .enabled(has_selection)
+                .separator()
                 .item_shift("Clear Scrollback", "clear", Key::K),
             Menu::new("Settings").submenu(window_size).submenu(text).submenu(scheme),
         ])
@@ -454,7 +530,8 @@ impl App for Terminal {
                 cx.quit();
             }
             "copy" => {
-                if let Some(text) = t.session.term.lock().selection_to_string() {
+                let text = t.session.term.lock().selection_to_string();
+                if let Some(text) = text {
                     cx.copy(text);
                 }
             }
@@ -472,6 +549,16 @@ impl App for Terminal {
                 term.selection = Some(sel);
                 drop(term);
                 cx.redraw(window);
+            }
+            "find" => self.open_find(cx, window),
+            "find-again" => self.find_in(cx, window),
+            "find-selection" => {
+                let text = t.session.term.lock().selection_to_string();
+                if let Some(text) = text {
+                    // One line: a match never crosses one.
+                    self.search.text = text.lines().next().unwrap_or_default().to_owned();
+                    self.find_in(cx, window);
+                }
             }
             "clear" => {
                 let mut term = t.session.term.lock();
@@ -525,7 +612,7 @@ impl App for Terminal {
                     self.close(cx, window);
                 }
             }
-            Some(Win::ConfirmClose { .. }) => {
+            Some(Win::ConfirmClose { .. } | Win::Find { .. }) => {
                 self.windows.remove(&window);
                 cx.close_window(window);
             }
@@ -603,6 +690,7 @@ fn main() {
             settings: Settings::load(),
             metrics: None,
             dark: cx.palette().mode == tabula_kit::theme::ThemeMode::Dark,
+            search: find::Search::default(),
         };
         match cx.restored_state().and_then(|s| serde_json::from_str::<Saved>(&s).ok()) {
             Some(saved) if !saved.windows.is_empty() => t.restore(cx, saved),
