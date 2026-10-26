@@ -67,8 +67,7 @@ as they land (with the commit), add new ones as they come up.
   pages, in-place reload, ~~find in page~~ (a script, since Servo 0.7
   has no API), ~~downloads~~ (our own HTTP, as Servo 0.7 has no download
   API), ~~scroll bars~~ (Servo draws none; a script reports
-  the scroll). Still to do:
-  favicons in tabs, dark pages (needs Servo to paint a dark page's
+  the scroll), ~~favicons in tabs~~. Still to do: dark pages (needs Servo to paint a dark page's
   canvas), audio/video in pages (Servo media without gstreamer),
   permission prompts (Servo 0.7 implements none of the features behind
   them but notifications, which need a Tabula notification centre), a colour picker for `<input type=color>`,

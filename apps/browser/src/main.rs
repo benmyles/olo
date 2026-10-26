@@ -7,6 +7,7 @@
 
 mod downloads;
 mod engine;
+mod favicon;
 mod find;
 mod input;
 mod location;
@@ -124,6 +125,12 @@ struct Tab {
     /// Where our scroll bars just put it, shown over the page's reports
     /// (which lag a frame or two) until it settles.
     scrolled: Option<(Instant, scroll::Metrics)>,
+    /// The page's icon, and a new one to upload on the next frame.
+    favicon: Option<egui::TextureHandle>,
+    new_favicon: Option<egui::ColorImage>,
+    /// Whether the page loading now has given an icon (if not, the last
+    /// page's goes when it's done).
+    favicon_seen: bool,
 }
 
 impl Tab {
@@ -142,6 +149,9 @@ impl Tab {
             passkey: None,
             scroll: None,
             scrolled: None,
+            favicon: None,
+            new_favicon: None,
+            favicon_seen: false,
         }
     }
 
@@ -555,13 +565,21 @@ impl NetPositive {
                                 tab.passkey = None;
                                 tab.scroll = None;
                                 tab.scrolled = None;
+                                tab.favicon_seen = false;
                             }
                             if status == LoadStatus::Complete {
+                                if !tab.favicon_seen {
+                                    tab.favicon = None;
+                                }
                                 visited = Some((tab.url.clone(), tab.title.clone()));
                             }
                             tab.load = Some(status);
                         }
                         Event::Cursor(cursor) => tab.cursor = cursor,
+                        Event::Favicon => {
+                            tab.new_favicon = tab.view.as_ref().and_then(|v| v.favicon().and_then(|i| favicon::square(&i)));
+                            tab.favicon_seen = tab.new_favicon.is_some();
+                        }
                         Event::Scroll(metrics) => {
                             if tab.scroll == Some(metrics) {
                                 continue;
@@ -979,6 +997,11 @@ impl NetPositive {
         // Tabs.
         let mut top = bar.bottom();
         if b.tabs.len() > 1 {
+            for (i, t) in b.tabs.iter_mut().enumerate() {
+                if let Some(image) = t.new_favicon.take() {
+                    t.favicon = Some(ui.ctx().load_texture(format!("favicon-{i}-{:?}", b.embed), image, egui::TextureOptions::LINEAR));
+                }
+            }
             let strip = Rect::from_min_size(pos2(full.left(), top), vec2(full.width(), TAB_HEIGHT));
             if let Some(cmd) = tab_strip(ui, strip, b) {
                 commands.push(cmd);
@@ -1683,8 +1706,19 @@ fn tab_strip(ui: &mut egui::Ui, strip: Rect, b: &Browser) -> Option<String> {
             painter.line_segment([k.left_top(), k.right_bottom()], Stroke::new(1.5, color));
             painter.line_segment([k.right_top(), k.left_bottom()], Stroke::new(1.5, color));
         }
+        let icon = Rect::from_min_size(pos2(r.left() + m::SPACING, r.center().y - 8.0), vec2(16.0, 16.0));
+        let icon = style::snap(ui.ctx(), icon);
+        match &tab.favicon {
+            Some(t) => {
+                let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
+                painter.image(t.id(), icon, uv, egui::Color32::WHITE);
+            }
+            None => {
+                icons::paint(&painter, icon, "document");
+            }
+        }
         let font = if selected { style::bold_font() } else { style::plain_font() };
-        let clip = Rect::from_min_max(pos2(r.left() + m::SPACING, r.top()), pos2(close.left() - m::TIGHT, r.bottom()));
+        let clip = Rect::from_min_max(pos2(icon.right() + m::TIGHT + 1.0, r.top()), pos2(close.left() - m::TIGHT, r.bottom()));
         let label = tab.label();
         let text_color = if selected { c(p.panel_text) } else { shade(&p, p.panel_text, 0.8) };
         style::label(&painter.with_clip_rect(clip), clip.left(), r.center().y, Align::Min, label, font, text_color);

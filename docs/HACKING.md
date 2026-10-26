@@ -854,6 +854,14 @@ when the page is wider than the window); moving one runs `scrollTo`, and
 for a moment the bar trusts its own position over the page's reports,
 which lag a frame or two.
 
+### Tab icons in NetPositive
+
+Servo decodes a page's favicon and says when it changes;
+`apps/browser/src/favicon.rs` scales it to a 32 px square (an area
+average going down, whole pixels going up, aspect kept) and the tab strip
+draws it at 16 points. A page that loads without one gets the generic
+`document` icon instead of the last page's.
+
 ### Downloads in NetPositive
 
 Servo 0.7 has no download API, so `apps/browser/src/downloads.rs` finds

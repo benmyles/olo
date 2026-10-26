@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### NetPositive: tab icons
+
+*08:56* — Tabs show the page's favicon (scaled on the CPU to a crisp 16-point icon), or a plain document for pages without one.
+
+![NetPositive: tab icons](2026-10-26/085614-netpositive-tab-icons.png)
+
 ### NetPositive: scroll bars
 
 *08:52* — Servo draws no scroll bars, so a script reports where the page is scrolled and NetPositive draws BeOS ones beside it (a new kit ScrollBar): the vertical bar always, the horizontal one when the page is wider than the window. Dragging, paging and the arrows scroll the page.
