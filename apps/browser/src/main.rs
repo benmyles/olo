@@ -15,11 +15,12 @@ mod location;
 mod logins;
 mod media;
 mod passkeys;
+mod rtc;
 mod scheme;
 mod scroll;
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
@@ -126,6 +127,9 @@ struct Tab {
     offer: Option<Offer>,
     /// The page's passkey request, asked about in a bar.
     passkey: Option<Ask>,
+    /// The page's requests for the camera or microphone, asked about in
+    /// a bar one at a time.
+    media: VecDeque<rtc::MediaAsk>,
     /// Where the page is scrolled, as it last said.
     scroll: Option<scroll::Metrics>,
     /// Where our scroll bars just put it, shown over the page's reports
@@ -157,6 +161,7 @@ impl Tab {
             zoom: 1.0,
             offer: None,
             passkey: None,
+            media: VecDeque::new(),
             scroll: None,
             scrolled: None,
             favicon: None,
@@ -263,6 +268,8 @@ struct NetPositive {
     /// the thread keeping them in check (guard.rs).
     pings: guard::Pings,
     watch: guard::Watch,
+    /// Cameras, microphones and calls in pages.
+    rtc: rtc::Rtc,
 }
 
 impl NetPositive {
@@ -408,6 +415,9 @@ impl NetPositive {
         if b.tabs.len() <= 1 {
             return self.close_browser(cx, win);
         }
+        if let Some(v) = &b.tabs[i].view {
+            rtc::hub::HUB.remove_view(v.id());
+        }
         b.tabs.remove(i);
         if b.active > i || b.active == b.tabs.len() {
             b.active = b.active.saturating_sub(1);
@@ -422,6 +432,7 @@ impl NetPositive {
         // The views go before their GL context; then the window and its
         // surface (`embed_lost` finds nothing left to drop).
         if let Some(Win::Browser(mut b)) = self.windows.remove(&win) {
+            b.tabs.iter().filter_map(|t| t.view.as_ref()).for_each(|v| rtc::hub::HUB.remove_view(v.id()));
             b.tabs.clear();
             self.drop_surface(b.surface.take());
         }
@@ -534,6 +545,16 @@ impl NetPositive {
                     logins::ask(self.proxy.clone(), win, view, url, Purpose::Check(Box::new(offer)), request, false);
                 }
                 Event::Passkey(request) => self.passkey_request(cx, win, i, request),
+                Event::Rtc(request) => {
+                    let Some(b) = self.browser(win) else { continue };
+                    let Some(view) = b.tabs[i].view.clone() else { continue };
+                    if let Some(ask) = self.rtc.request(&view, request)
+                        && let Some(b) = self.browser(win)
+                    {
+                        b.tabs[i].media.push_back(ask);
+                        cx.redraw(win);
+                    }
+                }
                 Event::Download(download) => self.page_download(cx, win, i, id, download),
                 Event::Found(found) => {
                     let missing = format!("“{}” isn’t on this page.", self.search.text);
@@ -583,8 +604,12 @@ impl NetPositive {
                         Event::Status(status) => tab.status = status,
                         Event::Load(status) => {
                             if status == LoadStatus::Started {
-                                // The page asking is gone.
+                                // The page asking is gone, and its devices go.
                                 tab.passkey = None;
+                                tab.media.clear();
+                                if let Some(v) = &tab.view {
+                                    rtc::hub::HUB.remove_view(v.id());
+                                }
                                 tab.hung = false;
                                 tab.scroll = None;
                                 tab.scrolled = None;
@@ -868,6 +893,24 @@ impl NetPositive {
                 }
                 cx.redraw(win);
             }
+            "media-allow" | "media-block" => {
+                if let Some(b) = self.browser(win)
+                    && let Some(tab) = b.tabs.get_mut(b.active)
+                    && let Some(view) = tab.view.clone()
+                    && let Some(ask) = tab.media.pop_front()
+                {
+                    // Asks after it that this answers go too.
+                    let allow = command == "media-allow";
+                    let covered = |a: &rtc::MediaAsk| a.origin == ask.origin && (a.video.is_none() || ask.video.is_some()) && (a.audio.is_none() || ask.audio.is_some());
+                    let (same, rest): (VecDeque<_>, VecDeque<_>) = tab.media.drain(..).partition(covered);
+                    tab.media = rest;
+                    self.rtc.decide(&view, ask, allow);
+                    for a in same {
+                        self.rtc.decide(&view, a, allow);
+                    }
+                }
+                cx.redraw(win);
+            }
             "dismiss-stopped" => {
                 if let Some(b) = self.browser(win)
                     && let Some(tab) = b.tabs.get_mut(b.active)
@@ -1080,6 +1123,13 @@ impl NetPositive {
                 let buttons = vec![("OK", true, "dismiss-stopped")];
                 let bar = Rect::from_min_size(pos2(full.left(), top), vec2(full.width(), OFFER_HEIGHT));
                 notice(ui, &painter, bar, Notice { icon: "stop", text: text.clone(), error: false, choice: None, buttons }, &mut commands);
+                top = bar.bottom();
+            }
+            if let Some(ask) = tab.media.front() {
+                let buttons = vec![("Allow", true, "media-allow"), ("Block", true, "media-block")];
+                let bar = Rect::from_min_size(pos2(full.left(), top), vec2(full.width(), OFFER_HEIGHT));
+                let icon = if ask.video.is_some() { "camera" } else { "microphone" };
+                notice(ui, &painter, bar, Notice { icon, text: ask.message(), error: false, choice: None, buttons }, &mut commands);
                 top = bar.bottom();
             }
             if let Some(ask) = &mut tab.passkey {
@@ -2063,6 +2113,16 @@ impl App for NetPositive {
             Ok(report) => return self.guard(cx, *report),
             Err(m) => m,
         };
+        let message = match message.downcast::<rtc::Reply>() {
+            Ok(reply) => {
+                let view = self.windows.values().filter_map(|w| if let Win::Browser(b) = w { Some(b) } else { None }).flat_map(|b| b.tabs.iter()).filter_map(|t| t.view.as_ref()).find(|v| v.id() == reply.view);
+                if let Some(view) = view {
+                    view.evaluate_javascript(reply.script, |_| {});
+                }
+                return;
+            }
+            Err(m) => m,
+        };
         let message = match message.downcast::<Answer>() {
             Ok(answer) => return self.answer(cx, *answer),
             Err(m) => m,
@@ -2520,6 +2580,8 @@ impl NetPositive {
 
 fn main() {
     guard::init();
+    rtc::live::init();
+    tabula_preview::audio::set_identity(NAME, "tabula-netpositive");
     let args: Vec<String> = std::env::args().skip(1).collect();
     // Servo runs each site's pages in a process of their own: this program
     // again, started with the constellation's token (engine.rs).
@@ -2536,8 +2598,11 @@ fn main() {
         instance::listen(APP_ID, cx.proxy());
         let settings: Settings =
             std::fs::read_to_string(settings_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let engine = Engine::new(cx.proxy());
+        let rtc = rtc::Rtc::new(cx.proxy(), &engine.token);
         let mut app = NetPositive {
-            engine: Engine::new(cx.proxy()),
+            engine,
+            rtc,
             windows: BTreeMap::new(),
             settings,
             front: None,

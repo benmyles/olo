@@ -8,6 +8,7 @@ use std::{
     os::unix::net::UnixStream,
     sync::{
         Arc, Mutex,
+        OnceLock,
         atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
         mpsc,
     },
@@ -222,6 +223,16 @@ const SEQ_TIMING: u32 = 20;
 const SEQ_DRAIN: u32 = 30;
 const SEQ_OTHER: u32 = 40;
 
+/// How this process appears in the sound server's list of what's
+/// playing: a name and an icon name, set once as the app starts.
+static IDENTITY: OnceLock<(String, String)> = OnceLock::new();
+
+/// Name this process to the sound server ("Viewer", "tabula-viewer").
+/// Until it's called, sound plays as "Tabula".
+pub fn set_identity(name: &str, icon: &str) {
+    let _ = IDENTITY.set((name.into(), icon.into()));
+}
+
 fn connect() -> Result<(UnixStream, u16), String> {
     let path = pulseaudio::socket_path_from_env().ok_or("No sound server is running.")?;
     let sock = UnixStream::connect(path).map_err(|_| "The sound server can't be reached.".to_string())?;
@@ -234,8 +245,9 @@ fn connect() -> Result<(UnixStream, u16), String> {
     let (_, reply) = protocol::read_reply_message::<protocol::AuthReply>(&mut r, protocol::MAX_VERSION).map_err(err)?;
     let version = protocol::MAX_VERSION.min(reply.version);
     let mut props = protocol::Props::new();
-    props.set(protocol::Prop::ApplicationName, CString::new("Tracker").unwrap());
-    props.set(protocol::Prop::ApplicationIconName, CString::new("tabula-tracker").unwrap());
+    let (name, icon) = IDENTITY.get().map_or(("Tabula", "tabula"), |(n, i)| (n.as_str(), i.as_str()));
+    props.set(protocol::Prop::ApplicationName, CString::new(name).unwrap_or_default());
+    props.set(protocol::Prop::ApplicationIconName, CString::new(icon).unwrap_or_default());
     protocol::write_command_message(&mut w, 1, &protocol::Command::SetClientName(props), version).map_err(err)?;
     protocol::read_reply_message::<protocol::SetClientNameReply>(&mut r, version).map_err(err)?;
     Ok((w, version))
@@ -385,3 +397,215 @@ fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc:
     Ok(())
 }
 
+
+/// Sound that arrives as it happens (a call's other end): the owner
+/// pushes 16-bit samples as they come, and the server takes them with a
+/// short buffer. When too few have come it plays silence, and when too
+/// many have piled up it drops the oldest, so the delay stays short.
+pub struct LiveSink {
+    shared: Arc<LiveShared>,
+    sock: Option<UnixStream>,
+}
+
+struct LiveShared {
+    queue: Mutex<std::collections::VecDeque<i16>>,
+    volume: AtomicU32,
+    stop: AtomicBool,
+    rate: u32,
+    channels: u8,
+}
+
+/// What the server keeps buffered, and the most we hold before dropping.
+const LIVE_TARGET_MS: u64 = 60;
+const LIVE_MAX_MS: u64 = 200;
+
+impl LiveSink {
+    /// Start a stream of `channels` interleaved channels at `rate`.
+    pub fn start(rate: u32, channels: u8) -> Result<LiveSink, String> {
+        let channels = channels.clamp(1, 2);
+        let (mut sock, version) = connect()?;
+        let err = |e: protocol::ProtocolError| e.to_string();
+        let bytes = |ms: u64| (rate as u64 * channels as u64 * 2 * ms / 1000) as u32;
+        let params = protocol::PlaybackStreamParams {
+            sample_spec: protocol::SampleSpec { format: protocol::SampleFormat::S16Le, channels, sample_rate: rate },
+            channel_map: if channels == 1 { protocol::ChannelMap::mono() } else { protocol::ChannelMap::stereo() },
+            cvolume: Some(protocol::ChannelVolume::norm(channels)),
+            sink_name: Some(protocol::DEFAULT_SINK.to_owned()),
+            buffer_attr: protocol::stream::BufferAttr {
+                max_length: u32::MAX,
+                target_length: bytes(LIVE_TARGET_MS),
+                pre_buffering: bytes(10),
+                minimum_request_length: bytes(10),
+                fragment_size: u32::MAX,
+            },
+            flags: protocol::stream::StreamFlags { adjust_latency: true, ..Default::default() },
+            ..Default::default()
+        };
+        protocol::write_command_message(&mut sock, SEQ_CREATE, &protocol::Command::CreatePlaybackStream(params), version).map_err(err)?;
+        let mut reader = BufReader::new(sock.try_clone().map_err(|e| e.to_string())?);
+        let (_, info) = protocol::read_reply_message::<protocol::CreatePlaybackStreamReply>(&mut reader, version).map_err(err)?;
+        let shared = Arc::new(LiveShared {
+            queue: Mutex::new(std::collections::VecDeque::new()),
+            volume: AtomicU32::new(1000),
+            stop: AtomicBool::new(false),
+            rate,
+            channels,
+        });
+        let (sh, mut w) = (shared.clone(), sock.try_clone().map_err(|e| e.to_string())?);
+        let channel = info.channel;
+        std::thread::Builder::new()
+            .name("live-sound".into())
+            .spawn(move || {
+                let mut out = Vec::new();
+                let mut send = |w: &mut UnixStream, length: usize| {
+                    sh.take(length, &mut out);
+                    protocol::write_memblock(w, channel, &out, 0)
+                };
+                if send(&mut w, info.requested_bytes as usize).is_err() {
+                    return;
+                }
+                while !sh.stop.load(Ordering::Relaxed) {
+                    match protocol::read_command_message(&mut reader, version) {
+                        Ok((_, protocol::Command::Request(protocol::Request { channel: c, length }))) if c == channel => {
+                            if send(&mut w, length as usize).is_err() {
+                                break;
+                            }
+                        }
+                        Ok((_, protocol::Command::Error(e))) => {
+                            tracing::warn!("live sound: {e:?}");
+                            break;
+                        }
+                        Ok(_) => {}
+                        Err(_) => break,
+                    }
+                }
+            })
+            .map_err(|e| e.to_string())?;
+        Ok(LiveSink { shared, sock: Some(sock) })
+    }
+
+    /// Queue interleaved samples to play.
+    pub fn push(&self, samples: &[i16]) {
+        let mut q = self.shared.queue.lock().unwrap();
+        q.extend(samples);
+        let max = (self.shared.rate as u64 * self.shared.channels as u64 * LIVE_MAX_MS / 1000) as usize;
+        if q.len() > max {
+            let keep = (self.shared.rate as u64 * self.shared.channels as u64 * LIVE_TARGET_MS / 1000) as usize;
+            let drop = (q.len() - keep) / self.shared.channels as usize * self.shared.channels as usize;
+            q.drain(..drop);
+        }
+    }
+
+    /// From 0 (silent) to 1 (as sent).
+    pub fn set_volume(&self, volume: f64) {
+        self.shared.volume.store((volume.clamp(0.0, 1.0) * 1000.0).round() as u32, Ordering::Relaxed);
+    }
+}
+
+impl LiveShared {
+    /// `length` bytes of what's queued, padded with silence.
+    fn take(&self, length: usize, out: &mut Vec<u8>) {
+        out.clear();
+        let frame = self.channels as usize * 2;
+        let want = length / frame * frame / 2;
+        let volume = self.volume.load(Ordering::Relaxed) as i32;
+        let mut q = self.queue.lock().unwrap();
+        let n = want.min(q.len());
+        for s in q.drain(..n) {
+            let s = if volume < 1000 { (s as i32 * volume / 1000) as i16 } else { s };
+            out.extend_from_slice(&s.to_le_bytes());
+        }
+        out.resize(want * 2, 0);
+    }
+}
+
+impl Drop for LiveSink {
+    fn drop(&mut self) {
+        self.shared.stop.store(true, Ordering::Relaxed);
+        if let Some(s) = self.sock.take() {
+            let _ = s.shutdown(std::net::Shutdown::Both);
+        }
+    }
+}
+
+/// A microphone being listened to: 16-bit samples go to a callback as
+/// the server sends them, about every 10 ms, until it's dropped.
+pub struct Recorder {
+    sock: UnixStream,
+}
+
+impl Recorder {
+    /// Record from `source` (the server's name for it; the default one
+    /// when None) at `rate` with `channels` interleaved channels.
+    pub fn start(source: Option<&str>, rate: u32, channels: u8, mut heard: impl FnMut(&[i16]) + Send + 'static) -> Result<Recorder, String> {
+        let channels = channels.clamp(1, 2);
+        let (mut sock, version) = connect()?;
+        let err = |e: protocol::ProtocolError| e.to_string();
+        let source_name = match source {
+            Some(s) => CString::new(s).map_err(|e| e.to_string())?,
+            None => protocol::DEFAULT_SOURCE.to_owned(),
+        };
+        let params = protocol::RecordStreamParams {
+            sample_spec: protocol::SampleSpec { format: protocol::SampleFormat::S16Le, channels, sample_rate: rate },
+            channel_map: if channels == 1 { protocol::ChannelMap::mono() } else { protocol::ChannelMap::stereo() },
+            source_name: Some(source_name),
+            buffer_attr: protocol::stream::BufferAttr {
+                max_length: u32::MAX,
+                target_length: u32::MAX,
+                pre_buffering: u32::MAX,
+                minimum_request_length: u32::MAX,
+                fragment_size: rate * channels as u32 * 2 / 100,
+            },
+            flags: protocol::stream::StreamFlags { adjust_latency: true, ..Default::default() },
+            ..Default::default()
+        };
+        protocol::write_command_message(&mut sock, SEQ_CREATE, &protocol::Command::CreateRecordStream(params), version).map_err(err)?;
+        let mut reader = BufReader::new(sock.try_clone().map_err(|e| e.to_string())?);
+        let (_, info) = protocol::read_reply_message::<protocol::CreateRecordStreamReply>(&mut reader, version).map_err(err)?;
+        let channel = info.channel;
+        std::thread::Builder::new()
+            .name("recorder".into())
+            .spawn(move || {
+                use std::io::Read;
+                let mut payload = Vec::new();
+                let mut samples = Vec::new();
+                // A byte left over when a block ends mid-sample.
+                let mut odd: Option<u8> = None;
+                loop {
+                    let Ok(desc) = protocol::read_descriptor(&mut reader) else { break };
+                    payload.resize(desc.length as usize, 0);
+                    if reader.read_exact(&mut payload).is_err() {
+                        break;
+                    }
+                    if desc.channel == channel {
+                        samples.clear();
+                        let mut bytes = &payload[..];
+                        if let Some(b) = odd.take()
+                            && let Some((&first, rest)) = bytes.split_first()
+                        {
+                            samples.push(i16::from_le_bytes([b, first]));
+                            bytes = rest;
+                        }
+                        let (pairs, rest) = bytes.as_chunks::<2>();
+                        samples.extend(pairs.iter().map(|p| i16::from_le_bytes(*p)));
+                        odd = rest.first().copied();
+                        heard(&samples);
+                    } else if desc.channel == u32::MAX
+                        && let Ok((_, protocol::Command::Error(e))) =
+                            protocol::Command::read_tag_prefixed(&mut std::io::Cursor::new(&payload[..]), version)
+                    {
+                        tracing::warn!("recorder: {e:?}");
+                        break;
+                    }
+                }
+            })
+            .map_err(|e| e.to_string())?;
+        Ok(Recorder { sock })
+    }
+}
+
+impl Drop for Recorder {
+    fn drop(&mut self) {
+        let _ = self.sock.shutdown(std::net::Shutdown::Both);
+    }
+}

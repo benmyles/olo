@@ -823,6 +823,7 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
+    tabula_preview::audio::set_identity("Viewer", "tabula-viewer");
     tabula_kit::run(APP_ID, |cx| {
         instance::listen(APP_ID, cx.proxy());
         let proxy = cx.proxy();

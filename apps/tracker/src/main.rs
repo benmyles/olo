@@ -1525,6 +1525,7 @@ fn main() {
     if tabula_kit::instance::forward("tabula.tracker", &args) {
         return;
     }
+    tabula_preview::audio::set_identity("Tracker", "tabula-tracker");
     tabula_kit::run("tabula.tracker", |cx| {
         tabula_kit::instance::listen("tabula.tracker", cx.proxy());
         let proxy = cx.proxy();

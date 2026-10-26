@@ -77,6 +77,8 @@ pub enum Event {
     Passkey(crate::passkeys::PageRequest),
     /// The top document scrolled or changed size (scroll.rs's script).
     Scroll(crate::scroll::Metrics),
+    /// A camera, microphone or call request (rtc's script).
+    Rtc(crate::rtc::Request),
 }
 
 #[derive(Default)]
@@ -87,6 +89,7 @@ pub struct Events {
     passkey_marker: String,
     download_marker: String,
     scroll_marker: String,
+    rtc_marker: String,
     /// Text for the next paste a page asks for (we read the clipboard
     /// before telling Servo to paste).
     pub paste: RefCell<Option<String>>,
@@ -173,6 +176,11 @@ impl WebViewDelegate for Events {
                 Ok(download) => self.push(&w, Event::Download(download)),
                 Err(e) => tracing::warn!("download report: {e}"),
             }
+        } else if let Some(json) = message.strip_prefix(&self.rtc_marker) {
+            match serde_json::from_str(json) {
+                Ok(request) => self.push(&w, Event::Rtc(request)),
+                Err(e) => tracing::warn!("rtc request: {e}: {json}"),
+            }
         } else if let Some(json) = message.strip_prefix(&self.passkey_marker) {
             match serde_json::from_str(json) {
                 Ok(request) => self.push(&w, Event::Passkey(request)),
@@ -252,11 +260,13 @@ impl Engine {
         content.add_script(Rc::new(UserScript::from(crate::scroll::script(&token))));
         content.add_script(Rc::new(UserScript::from(crate::scheme::script())));
         content.add_script(Rc::new(UserScript::from(crate::media::script())));
+        content.add_script(Rc::new(UserScript::from(crate::rtc::script(&token))));
         let events = Events {
             login_marker: crate::logins::marker(&token),
             passkey_marker: crate::passkeys::marker(&token),
             download_marker: crate::downloads::marker(&token),
             scroll_marker: crate::scroll::marker(&token),
+            rtc_marker: crate::rtc::marker(&token),
             ..Default::default()
         };
         Engine { servo, pending, events: Rc::new(events), content, token }

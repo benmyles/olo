@@ -5,6 +5,9 @@
 //! 32767). Samples are consumed in real time, so positions and latency
 //! behave as with a real server.
 //!
+//! Record streams hear a steady 440 Hz tone (RMS about 5700), and the
+//! server has one speaker and one microphone, both called "Fake".
+//!
 //! ```text
 //! tabula-fakesound /tmp/fake.sock &
 //! PULSE_SERVER=unix:/tmp/fake.sock tabula-viewer song.mp3
@@ -35,6 +38,8 @@ struct Stream {
     /// This second's bytes and sum of squares.
     heard: (usize, f64, u64),
     reported: Instant,
+    /// A record stream, and where its tone has got to (in samples).
+    record: Option<u64>,
 }
 
 struct Client {
@@ -136,6 +141,7 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
                     drain: None,
                     heard: (0, 0.0, 0),
                     reported: Instant::now(),
+                    record: None,
                 },
             );
             let reply = protocol::CreatePlaybackStreamReply {
@@ -188,7 +194,76 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
             };
             protocol::write_reply_message(&mut c.writer, seq, &reply, v)
         }
-        Command::DeletePlaybackStream(ch) => {
+        Command::CreateRecordStream(p) => {
+            let channel = {
+                let mut n = next_channel.lock().unwrap();
+                *n += 1;
+                *n
+            };
+            eprintln!("fakesound: record {channel}: {:?} {} Hz × {}", p.sample_spec.format, p.sample_spec.sample_rate, p.sample_spec.channels);
+            c.streams.insert(
+                channel,
+                Stream {
+                    spec: p.sample_spec,
+                    attr: p.buffer_attr,
+                    corked: p.flags.start_corked,
+                    buffer: Vec::new(),
+                    requested: 0,
+                    written: 0,
+                    read: 0,
+                    drain: None,
+                    heard: (0, 0.0, 0),
+                    reported: Instant::now(),
+                    record: Some(0),
+                },
+            );
+            let reply = protocol::CreateRecordStreamReply {
+                channel,
+                stream_index: channel,
+                sample_spec: p.sample_spec,
+                channel_map: p.channel_map,
+                buffer_attr: p.buffer_attr,
+                sink_name: Some(c"fake-mic".into()),
+                ..Default::default()
+            };
+            protocol::write_reply_message(&mut c.writer, seq, &reply, v)
+        }
+        Command::CorkRecordStream(p) => {
+            if let Some(s) = c.streams.get_mut(&p.channel) {
+                s.corked = p.cork;
+            }
+            protocol::write_ack_message(&mut c.writer, seq)
+        }
+        Command::GetServerInfo => {
+            let reply = protocol::ServerInfo {
+                server_name: Some(c"fakesound".into()),
+                default_sink_name: Some(c"fake".into()),
+                default_source_name: Some(c"fake-mic".into()),
+                ..Default::default()
+            };
+            protocol::write_reply_message(&mut c.writer, seq, &reply, v)
+        }
+        Command::GetSinkInfoList => {
+            let sink = protocol::SinkInfo {
+                index: 0,
+                name: c"fake".into(),
+                description: Some(c"Fake Speakers".into()),
+                cvolume: protocol::ChannelVolume::norm(2),
+                ..Default::default()
+            };
+            protocol::write_reply_message(&mut c.writer, seq, &vec![sink], v)
+        }
+        Command::GetSourceInfoList => {
+            let mic = protocol::SourceInfo {
+                index: 0,
+                name: c"fake-mic".into(),
+                description: Some(c"Fake Microphone".into()),
+                cvolume: protocol::ChannelVolume::norm(1),
+                ..Default::default()
+            };
+            protocol::write_reply_message(&mut c.writer, seq, &vec![mic], v)
+        }
+        Command::DeleteRecordStream(ch) | Command::DeletePlaybackStream(ch) => {
             c.streams.remove(&ch);
             protocol::write_ack_message(&mut c.writer, seq)
         }
@@ -206,6 +281,21 @@ fn tick(c: &mut Client) {
     for (&ch, s) in c.streams.iter_mut() {
         let frame = s.spec.format.bytes_per_sample() * s.spec.channels as usize;
         let per_tick = (s.spec.sample_rate as usize * frame) as u128 * TICK.as_millis() / 1000;
+        if let Some(t) = &mut s.record {
+            if !s.corked && s.spec.format == protocol::SampleFormat::S16Le {
+                let frames = per_tick as usize / frame.max(1);
+                let mut block = Vec::with_capacity(frames * frame);
+                for _ in 0..frames {
+                    let x = (*t as f64 * 440.0 * std::f64::consts::TAU / s.spec.sample_rate as f64).sin() * 8000.0;
+                    for _ in 0..s.spec.channels {
+                        block.extend_from_slice(&(x as i16).to_le_bytes());
+                    }
+                    *t += 1;
+                }
+                out.push(Out::Block(ch, block));
+            }
+            continue;
+        }
         if !s.corked {
             let n = (per_tick as usize).min(s.buffer.len()) / frame.max(1) * frame;
             if s.spec.format == protocol::SampleFormat::S16Le {
@@ -240,6 +330,7 @@ fn tick(c: &mut Client) {
     for o in out {
         let _ = match o {
             Out::Ack(seq) => protocol::write_ack_message(&mut c.writer, seq),
+            Out::Block(channel, block) => protocol::write_memblock(&mut c.writer, channel, &block, 0),
             Out::Request(channel, length) => {
                 protocol::write_command_message(&mut c.writer, u32::MAX, &Command::Request(protocol::Request { channel, length }), v)
             }
@@ -250,4 +341,5 @@ fn tick(c: &mut Client) {
 enum Out {
     Ack(u32),
     Request(u32, u32),
+    Block(u32, Vec<u8>),
 }

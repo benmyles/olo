@@ -18,7 +18,7 @@ use std::{
     ops::Range,
     sync::{
         Arc, Condvar, Mutex,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc,
     },
     time::{Duration, Instant},
@@ -515,6 +515,12 @@ impl Player for MediaPlayer {
 }
 
 /// A picture as Servo takes it.
+/// What the live stream's reader follows of the element.
+struct Live {
+    playing: AtomicBool,
+    volume: Mutex<f64>,
+}
+
 struct Bgra(Arc<Vec<u8>>);
 
 impl Buffer for Bgra {
@@ -561,10 +567,14 @@ impl Driver {
                 b = download.arrived.wait(b).unwrap();
             }
             let size = if b.complete { b.data.len() as u64 } else { b.size.unwrap_or(0) };
-            (b.data[..b.data.len().min(16)].to_vec(), size)
+            (b.data[..b.data.len().min(64)].to_vec(), size)
         };
         if size == 0 {
             return Err("The media file is empty.".into());
+        }
+        // A stream from the page (rtc/live.rs).
+        if let Some(secret) = head.strip_prefix(crate::rtc::live::MAGIC.as_bytes()) {
+            return self.live(String::from_utf8_lossy(secret).trim());
         }
         let ext = sniff(&head);
         let d = download.clone();
@@ -647,6 +657,119 @@ impl Driver {
                 None => Duration::from_secs(3600),
             };
         }
+    }
+
+    /// Play a live stream: pictures and sound as they come, no seeking,
+    /// and an endless duration.
+    fn live(&mut self, secret: &str) -> Result<(), String> {
+        let mut reader = crate::rtc::live::Reader::connect(secret).map_err(|e| e.to_string())?;
+        let closer = reader.closer().map_err(|e| e.to_string())?;
+        let shared = Arc::new(Live { playing: AtomicBool::new(false), volume: Mutex::new(1.0) });
+        let (sh, events, renderer, status, id) = (shared.clone(), self.events.clone(), self.renderer.clone(), self.status.clone(), self.id);
+        let started = Instant::now();
+        std::thread::Builder::new()
+            .name("live-media".into())
+            .spawn(move || {
+                let send = |e| {
+                    let _ = events.send(e);
+                };
+                let mut ready = false;
+                let mut size = None;
+                let mut kinds = (false, false);
+                let mut sink: Option<(u32, u8, tabula_preview::audio::LiveSink)> = None;
+                let mut bgra = Vec::new();
+                let mut told = Instant::now();
+                let announce = |size: Option<(u32, u32)>, kinds: (bool, bool)| {
+                    send(PlayerEvent::MetadataUpdated(Metadata {
+                        duration: None,
+                        width: size.map_or(0, |s| s.0),
+                        height: size.map_or(0, |s| s.1),
+                        format: "live".into(),
+                        is_seekable: false,
+                        video_tracks: if kinds.1 { vec!["video".into()] } else { Vec::new() },
+                        audio_tracks: if kinds.0 { vec!["audio".into()] } else { Vec::new() },
+                        is_live: true,
+                        title: None,
+                    }));
+                };
+                loop {
+                    let message = match reader.next() {
+                        Ok(m) => m,
+                        Err(e) => {
+                            tracing::debug!("media {id}: live stream ended: {e}");
+                            break;
+                        }
+                    };
+                    let playing = sh.playing.load(Ordering::Relaxed);
+                    match message {
+                        crate::rtc::live::Message::Kinds { audio, video } => {
+                            kinds = (audio, video);
+                            // Sound alone is ready at once; pictures once one is here.
+                            if !ready && !video {
+                                ready = true;
+                                announce(None, kinds);
+                                send(PlayerEvent::StateChanged(PlaybackState::Paused));
+                            }
+                        }
+                        crate::rtc::live::Message::Picture(p) => {
+                            if size != Some((p.width, p.height)) {
+                                size = Some((p.width, p.height));
+                                announce(size, kinds);
+                            }
+                            if !ready || playing {
+                                if let Some(r) = &renderer {
+                                    p.to_bgra(&mut bgra);
+                                    if let Some(frame) = VideoFrame::new(p.width as i32, p.height as i32, Arc::new(Bgra(Arc::new(std::mem::take(&mut bgra))))) {
+                                        r.lock().unwrap().render(frame);
+                                        send(PlayerEvent::VideoFrameUpdated);
+                                    }
+                                }
+                            }
+                            if !ready {
+                                ready = true;
+                                send(PlayerEvent::StateChanged(PlaybackState::Paused));
+                            }
+                        }
+                        crate::rtc::live::Message::Sound(s) => {
+                            let muted = status.lock().unwrap().muted;
+                            if !playing || muted {
+                                continue;
+                            }
+                            if sink.as_ref().is_none_or(|(r, c, _)| *r != s.rate || *c != s.channels) {
+                                sink = tabula_preview::audio::LiveSink::start(s.rate, s.channels).ok().map(|k| (s.rate, s.channels, k));
+                            }
+                            if let Some((_, _, k)) = &sink {
+                                k.set_volume(*sh.volume.lock().unwrap());
+                                k.push(&s.samples);
+                            }
+                        }
+                    }
+                    if playing && told.elapsed() >= POSITION_EVERY {
+                        told = Instant::now();
+                        send(PlayerEvent::PositionChanged(started.elapsed().as_secs_f64()));
+                    }
+                }
+                send(PlayerEvent::EndOfStream);
+            })
+            .map_err(|e| e.to_string())?;
+        // Commands until the element lets go of us.
+        loop {
+            match self.rx.recv() {
+                Ok(Cmd::Play) => {
+                    shared.playing.store(true, Ordering::Relaxed);
+                    self.send(PlayerEvent::StateChanged(PlaybackState::Playing));
+                }
+                Ok(Cmd::Pause) => {
+                    shared.playing.store(false, Ordering::Relaxed);
+                    self.send(PlayerEvent::StateChanged(PlaybackState::Paused));
+                }
+                Ok(Cmd::Seek(t)) => self.send(PlayerEvent::SeekDone(t)),
+                Ok(Cmd::Volume(v)) => *shared.volume.lock().unwrap() = v,
+                Err(_) => break,
+            }
+        }
+        let _ = closer.shutdown(std::net::Shutdown::Both);
+        Ok(())
     }
 
     fn command(&mut self, player: &Video, cmd: Cmd) {

@@ -29,6 +29,12 @@ servo = { version = "0.7", default-features = false, features = ["bundled_freety
 zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
 zvariant = "5"
 libc = "0.2"
+# Cameras (rtc/capture.rs): Video4Linux and MJPEG, in Rust.
+v4l = "0.14"
+zune-jpeg = "0.5"
+zune-core = "0.5"
+getrandom = "0.3"
+tabula-system.workspace = true
 servo-media = "=0.7.0"
 servo-media-dummy = "=0.7.0"
 servo-base = "=0.7.0"
