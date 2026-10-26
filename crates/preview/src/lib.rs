@@ -84,12 +84,42 @@ pub struct Preview {
     /// The font family registered for a font preview.
     font: Option<String>,
     started: Instant,
+    /// Largest image side decoded (bigger for a zoomable view).
+    max_image: u32,
+    /// Images can be zoomed and panned (Viewer), not just fitted.
+    zoomable: bool,
+    view: ImageView,
 }
+
+/// Zoom and pan of an image: `zoom` is points per image pixel (None fits
+/// the window), `center` the image point at the middle of the view.
+#[derive(Clone, Copy, Default)]
+struct ImageView {
+    zoom: Option<f32>,
+    center: egui::Pos2,
+    /// The scale the image was last shown at, and the fit scale.
+    shown: f32,
+    fit: f32,
+}
+
+pub const MIN_ZOOM: f32 = 0.05;
+pub const MAX_ZOOM: f32 = 16.0;
+const ZOOM_STEPS: [f32; 15] = [0.05, 0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 16.0];
 
 impl Preview {
     /// Start loading `entry`; `send` delivers updates (tagged with the
     /// generation) to the UI thread.
     pub fn new(item: Item, generation: u64, send: impl Fn(u64, Update) + Send + 'static) -> Preview {
+        Preview::make(item, generation, false, send)
+    }
+
+    /// The same, with images at full resolution that can be zoomed
+    /// (pinch, ⌘-scroll, double-click, [`Preview::zoom`]) and panned.
+    pub fn new_zoomable(item: Item, generation: u64, send: impl Fn(u64, Update) + Send + 'static) -> Preview {
+        Preview::make(item, generation, true, send)
+    }
+
+    fn make(item: Item, generation: u64, zoomable: bool, send: impl Fn(u64, Update) + Send + 'static) -> Preview {
         let mut q = Preview {
             item,
             generation,
@@ -103,16 +133,19 @@ impl Preview {
             list: ListState::default(),
             font: None,
             started: Instant::now(),
+            max_image: if zoomable { load::MAX_ZOOMABLE } else { load::MAX_IMAGE },
+            zoomable,
+            view: ImageView::default(),
         };
         q.spawn(send);
         q
     }
 
     fn spawn(&mut self, send: impl Fn(u64, Update) + Send + 'static) {
-        let (item, cancel, generation) = (self.item.clone(), self.cancel.clone(), self.generation);
+        let (item, cancel, generation, max) = (self.item.clone(), self.cancel.clone(), self.generation, self.max_image);
         std::thread::Builder::new()
             .name("quicklook".into())
-            .spawn(move || load::load(&item, &cancel, &mut |u| send(generation, u)))
+            .spawn(move || load::load(&item, max, &cancel, &mut |u| send(generation, u)))
             .ok();
     }
 
@@ -141,6 +174,7 @@ impl Preview {
             Update::Body(b) => {
                 self.textures.clear();
                 self.requested.clear();
+                self.view = ImageView::default();
                 if let Body::Media(m) = &b
                     && m.playable
                     && !m.video
@@ -193,7 +227,7 @@ impl Preview {
             (None, None) => (420.0, 260.0),
             (Some(b), _) => match b {
                 // One image pixel per point, like a 72 dpi image on macOS.
-                Body::Image { image, .. } => fit(image.size[0] as f32, image.size[1] as f32),
+                Body::Image { full, .. } => fit(full[0], full[1]),
                 Body::Pages { page_size, .. } => {
                     let (pw, ph) = (page_size.0.max(1.0), page_size.1.max(1.0));
                     let h = max_h;
@@ -259,6 +293,37 @@ impl Preview {
         self.failed.is_some() || matches!(self.body, None | Some(Body::Image { .. } | Body::Media(_) | Body::Font { .. } | Body::Card { .. }))
     }
 
+    /// Whether an image is shown (so zoom commands apply).
+    pub fn is_image(&self) -> bool {
+        self.failed.is_none() && matches!(self.body, Some(Body::Image { .. }))
+    }
+
+    /// The image's scale as last shown (1.0 = one image pixel per point).
+    pub fn image_scale(&self) -> f32 {
+        self.view.shown
+    }
+
+    /// Whether the image is fitted to the window (no zoom chosen).
+    pub fn image_fitted(&self) -> bool {
+        self.view.zoom.is_none()
+    }
+
+    /// Zoom the image: `Some(true)` in a step, `Some(false)` out a step,
+    /// `None` back to fitting the window. [`Preview::set_image_scale`]
+    /// sets a scale (1.0 for Actual Size).
+    pub fn zoom(&mut self, step: Option<bool>) {
+        let cur = self.view.zoom.unwrap_or(self.view.fit);
+        self.view.zoom = match step {
+            None => None,
+            Some(true) => Some(ZOOM_STEPS.iter().copied().find(|s| *s > cur + 1e-3).unwrap_or(MAX_ZOOM)),
+            Some(false) => Some(ZOOM_STEPS.iter().rev().copied().find(|s| *s < cur - 1e-3).unwrap_or(MIN_ZOOM)),
+        };
+    }
+
+    pub fn set_image_scale(&mut self, k: f32) {
+        self.view.zoom = Some(k.clamp(MIN_ZOOM, MAX_ZOOM));
+    }
+
     /// One line on what is shown ("PDF document, 10 pages").
     pub fn note(&self) -> String {
         match (&self.body, &self.failed) {
@@ -307,13 +372,30 @@ impl Preview {
         let id = self.generation;
         let Some(body) = &mut self.body else { return };
         match body {
-            Body::Image { image, .. } => {
+            Body::Image { image, smaller, full, .. } => {
                 ui.painter().rect_filled(r, 0.0, c(p.panel_background));
-                let tex = texture(ui.ctx(), &mut self.textures, 0, image);
-                let size = vec2(image.size[0] as f32, image.size[1] as f32);
-                let k = ((r.width() - 2.0 * m::SPACING) / size.x).min((r.height() - 2.0 * m::SPACING) / size.y).min(1.0);
-                let ir = style::snap(ui.ctx(), Rect::from_center_size(r.center(), size * k.max(0.01)));
-                checker(ui.painter(), ir, &p);
+                let full = vec2(full[0].max(1.0), full[1].max(1.0));
+                let fit = ((r.width() - 2.0 * m::SPACING) / full.x).min((r.height() - 2.0 * m::SPACING) / full.y).clamp(0.001, 1.0);
+                let v = &mut self.view;
+                v.fit = fit;
+                if self.zoomable {
+                    pan_and_zoom(ui, r, full, v, (id, "image"));
+                }
+                let k = v.zoom.unwrap_or(fit);
+                if v.zoom.is_none() {
+                    v.center = (full / 2.0).to_pos2();
+                }
+                v.shown = k;
+                let ir = Rect::from_min_size(r.center() - v.center.to_vec2() * k, full * k);
+                let ir = if v.zoom.is_none() { style::snap(ui.ctx(), ir) } else { ir };
+                // The smallest level still at least as big as it is shown.
+                let shown_px = ir.width() * ui.ctx().pixels_per_point();
+                let level = smaller.iter().rposition(|l| l.size[0] as f32 >= shown_px);
+                let tex = match level {
+                    Some(j) => texture(ui.ctx(), &mut self.textures, usize::MAX - j, &smaller[j]),
+                    None => texture(ui.ctx(), &mut self.textures, 0, image),
+                };
+                checker(ui.painter(), ir.intersect(r), &p);
                 ui.painter().image(tex.id(), ir, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
             }
             Body::Pages { pages, page_size, want, .. } => {
@@ -442,11 +524,60 @@ fn note_of(b: &Body) -> String {
     }
 }
 
+/// Pinch, ⌘-scroll and double-click zoom about the pointer; drag and
+/// scroll pan an image bigger than the view. Keeps the image covering the
+/// view where it can.
+fn pan_and_zoom(ui: &mut Ui, r: Rect, full: egui::Vec2, v: &mut ImageView, id: impl egui::AsIdSalt) {
+    let resp = ui.interact(r, ui.make_persistent_id(id), Sense::click_and_drag());
+    let k = v.zoom.unwrap_or(v.fit);
+    if v.zoom.is_none() {
+        v.center = (full / 2.0).to_pos2();
+    }
+    let pointer = resp.hover_pos().unwrap_or(r.center());
+    // The image point under `at` stays there as the scale changes.
+    let rescale = |v: &mut ImageView, to: f32, at: egui::Pos2| {
+        let to = to.clamp(MIN_ZOOM.min(v.fit), MAX_ZOOM);
+        let under = v.center + (at - r.center()) / k;
+        v.center = under - (at - r.center()) / to;
+        v.zoom = Some(to);
+    };
+    let zoom_delta = ui.input(|i| i.zoom_delta());
+    if resp.hovered() && (zoom_delta - 1.0).abs() > 1e-3 {
+        rescale(v, k * zoom_delta, pointer);
+    }
+    if resp.double_clicked() {
+        if v.zoom.is_some_and(|z| (z - 1.0).abs() < 1e-3) || v.fit >= 1.0 && v.zoom.is_some() {
+            v.zoom = None;
+        } else {
+            rescale(v, 1.0, pointer);
+        }
+    }
+    let k = v.zoom.unwrap_or(v.fit);
+    let bigger = full.x * k > r.width() + 0.5 || full.y * k > r.height() + 0.5;
+    if bigger {
+        if resp.dragged() {
+            v.center -= resp.drag_delta() / k;
+        }
+        let scroll = if resp.hovered() { ui.input(|i| if i.modifiers.command { egui::Vec2::ZERO } else { i.smooth_scroll_delta }) } else { egui::Vec2::ZERO };
+        v.center -= scroll / k;
+        ui.ctx().set_cursor_icon(if resp.dragged() { egui::CursorIcon::Grabbing } else if resp.hovered() { egui::CursorIcon::Grab } else { egui::CursorIcon::Default });
+    }
+    // Keep the image over the view: centred along an axis where it fits,
+    // edge to edge where it doesn't.
+    if v.zoom.is_some() {
+        for (c, len, view) in [(&mut v.center.x, full.x, r.width()), (&mut v.center.y, full.y, r.height())] {
+            let half = view / 2.0 / k;
+            *c = if len * k <= view { len / 2.0 } else { c.clamp(half, len - half) };
+        }
+    }
+}
+
 fn texture<'a>(ctx: &egui::Context, cache: &'a mut HashMap<usize, TextureHandle>, key: usize, img: &load::Image) -> &'a TextureHandle {
     cache.entry(key).or_insert_with(|| {
         // Small images are magnified with crisp pixels.
         let options = if img.size[0].max(img.size[1]) <= 256 { TextureOptions::NEAREST } else { TextureOptions::LINEAR };
-        ctx.load_texture(format!("quicklook-{key}"), (**img).clone(), options)
+        // Shares the decoded pixels rather than copying them.
+        ctx.load_texture(format!("quicklook-{key}"), img.clone(), options)
     })
 }
 

@@ -1073,9 +1073,12 @@ impl Kit {
         }
 
         // Gather input.
+        let max_texture_side = self.gpu.as_ref().map(|g| g.device.limits().max_texture_dimension_2d as usize);
         let s = &mut self.surfaces[i];
         s.dirty = false;
         let mut raw = egui::RawInput {
+            // egui assumes 2048 unless told.
+            max_texture_side,
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(s.size.0 as f32, s.size.1 as f32))),
             time: Some(s.start.elapsed().as_secs_f64()),
             focused: self.keyboard_focus.as_ref() == Some(&s.wl)

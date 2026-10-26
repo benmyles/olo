@@ -496,5 +496,11 @@
   "title": "Icons for document kinds",
   "caption": "Spreadsheet, presentation, word processing, PDF and font files get their own icons",
   "image": "2026-10-26/035008-icons-for-document-kinds.png"
+ },
+ {
+  "time": "2026-10-26T03:54:34",
+  "title": "Viewer zoom and pan",
+  "caption": "Images load at full resolution in Viewer: Actual Size, pinch and command-scroll zoom about the pointer, drag to pan",
+  "image": "2026-10-26/035434-viewer-zoom-and-pan.png"
  }
 ]

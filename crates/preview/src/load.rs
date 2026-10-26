@@ -10,7 +10,7 @@ use std::{
     },
 };
 
-use tabula_kit::egui::ColorImage;
+use tabula_kit::egui::{self, ColorImage};
 
 use super::{archive, doc, media, pdf, text};
 use tabula_kit::files::{self as fs, Kind};
@@ -21,12 +21,19 @@ use crate::Item;
 /// scaled down as they are decoded (a 48-megapixel photo would otherwise
 /// cost 200 MB of texture for no visible gain).
 pub const MAX_IMAGE: u32 = 3200;
+/// The same for a zoomable view (Viewer): GPUs' usual texture limit, so
+/// most photos are shown pixel for pixel at 100%.
+pub const MAX_ZOOMABLE: u32 = 8192;
 
 pub type Image = Arc<ColorImage>;
 
 /// What a preview shows.
 pub enum Body {
-    Image { image: Image, note: String },
+    /// `full` is the picture's own size in pixels (the image may have
+    /// been scaled down to fit a texture).
+    /// `smaller` holds the image halved, again and again (GPU mipmaps
+    /// aren't available), so a big picture shrinks without shimmer.
+    Image { image: Image, smaller: Vec<Image>, full: [f32; 2], note: String },
     /// A PDF: pages arrive one by one (`Update::Page`).
     /// `want` asks the worker to render a page (it answers with
     /// `Update::Page`).
@@ -57,20 +64,20 @@ pub type Send<'a> = &'a mut dyn FnMut(Update);
 
 /// Load `entry`, posting what is found to `send` (several times for
 /// documents that stream in). Stops early once `cancel` is set.
-pub fn load(entry: &Item, cancel: &Arc<AtomicBool>, send: Send) {
+pub fn load(entry: &Item, max_image: u32, cancel: &Arc<AtomicBool>, send: Send) {
     let ext = entry.path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     let name = entry.name.to_lowercase();
     let result = if entry.is_dir {
         archive::folder(&entry.path, cancel).map(Update::Body)
     } else {
         match (entry.kind, ext.as_str()) {
-            (_, "svg" | "svgz") => svg(&entry.path),
+            (_, "svg" | "svgz") => svg(&entry.path, max_image / 2),
             (_, "pdf") => return pdf::load(&entry.path, cancel, send),
             (_, "md" | "markdown" | "mdown") => doc::markdown(&entry.path),
             (_, "docx" | "odt" | "pptx" | "odp") => doc::office(&entry.path, &ext),
             (_, "xlsx" | "xlsm" | "xlsb" | "xls" | "ods" | "csv" | "tsv") => doc::table(&entry.path, &ext),
             (_, "ttf" | "otf" | "ttc" | "otc") => font(&entry.path),
-            (Kind::Image, _) => image(&entry.path),
+            (Kind::Image, _) => image(&entry.path, max_image),
             (Kind::Audio, _) | (_, "opus" | "aiff" | "aif" | "caf" | "alac" | "wma" | "mka") => media::audio(&entry.path),
             (Kind::Video, _) => media::video(&entry.path, cancel),
             (Kind::Archive, _) | (_, "jar" | "apk" | "epub" | "whl" | "crate") => archive::archive(&entry.path, &name, cancel),
@@ -100,19 +107,44 @@ fn looks_like_text(path: &Path) -> bool {
     }
 }
 
+/// `img` at half size, quarter size, … down to a few hundred pixels: each
+/// pixel the average of four (the colours are premultiplied, so that is
+/// right for transparency too).
+pub fn halvings(img: &ColorImage) -> Vec<Image> {
+    let mut out: Vec<Image> = Vec::new();
+    let mut cur = img;
+    while cur.size[0].max(cur.size[1]) > 512 && cur.size[0] >= 2 && cur.size[1] >= 2 {
+        let (w, h) = (cur.size[0] / 2, cur.size[1] / 2);
+        let mut px = Vec::with_capacity(w * h);
+        for y in 0..h {
+            let (a, b) = (&cur.pixels[2 * y * cur.size[0]..], &cur.pixels[(2 * y + 1) * cur.size[0]..]);
+            for x in 0..w {
+                let q = [a[2 * x], a[2 * x + 1], b[2 * x], b[2 * x + 1]];
+                let avg = |i: usize| ((q.iter().map(|c| c.to_array()[i] as u32).sum::<u32>() + 2) / 4) as u8;
+                px.push(egui::Color32::from_rgba_premultiplied(avg(0), avg(1), avg(2), avg(3)));
+            }
+        }
+        out.push(Arc::new(ColorImage { size: [w, h], source_size: egui::vec2(w as f32, h as f32), pixels: px }));
+        cur = out.last().expect("pushed");
+    }
+    out
+}
+
 pub fn color_image(rgba: image::RgbaImage) -> Image {
     let size = [rgba.width() as usize, rgba.height() as usize];
     Arc::new(ColorImage::from_rgba_unmultiplied(size, rgba.as_raw()))
 }
 
-fn image(path: &Path) -> Result<Update, String> {
+fn image(path: &Path, max: u32) -> Result<Update, String> {
     let (img, kind) = tabula_kit::images::open(path).map_err(|e| format!("This image can't be read ({e})."))?;
     let (w, h) = (img.width(), img.height());
-    let img = if w.max(h) > MAX_IMAGE { img.resize(MAX_IMAGE, MAX_IMAGE, image::imageops::FilterType::Triangle) } else { img };
-    Ok(Update::Body(Body::Image { image: color_image(img.to_rgba8()), note: format!("{kind} image, {w} × {h}") }))
+    let img = if w.max(h) > max { img.resize(max, max, image::imageops::FilterType::Triangle) } else { img };
+    let image = color_image(img.to_rgba8());
+    let smaller = halvings(&image);
+    Ok(Update::Body(Body::Image { image, smaller, full: [w as f32, h as f32], note: format!("{kind} image, {w} × {h}") }))
 }
 
-fn svg(path: &Path) -> Result<Update, String> {
+fn svg(path: &Path, max: u32) -> Result<Update, String> {
     let data = std::fs::read(path).map_err(|e| e.to_string())?;
     let data = if data.starts_with(&[0x1f, 0x8b]) {
         let mut out = Vec::new();
@@ -125,14 +157,17 @@ fn svg(path: &Path) -> Result<Update, String> {
     opt.fontdb_mut().load_system_fonts();
     let tree = resvg::usvg::Tree::from_data(&data, &opt).map_err(|e| format!("This drawing can't be read ({e})."))?;
     let size = tree.size();
-    // Render crisp at up to 1600 px on the long side.
-    let k = (1600.0 / size.width().max(size.height())).min(8.0);
+    // Render crisp at up to `max` px on the long side.
+    let k = (max as f32 / size.width().max(size.height())).min(8.0);
     let (w, h) = ((size.width() * k).ceil() as u32, (size.height() * k).ceil() as u32);
     let mut pixmap = resvg::tiny_skia::Pixmap::new(w.max(1), h.max(1)).ok_or("This drawing is empty.")?;
     resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(k, k), &mut pixmap.as_mut());
     let image = ColorImage::from_rgba_premultiplied([pixmap.width() as usize, pixmap.height() as usize], pixmap.data());
+    let image = Arc::new(image);
     Ok(Update::Body(Body::Image {
-        image: Arc::new(image),
+        smaller: halvings(&image),
+        image,
+        full: [size.width(), size.height()],
         note: format!("SVG drawing, {} × {}", size.width().round(), size.height().round()),
     }))
 }
@@ -153,4 +188,22 @@ fn font(path: &Path) -> Result<Update, String> {
 /// Facts about an item for its footer when nothing else says more.
 pub fn summary(e: &Item) -> String {
     if e.is_dir { e.kind.name().into() } else { format!("{}, {}", e.kind.name(), fs::format_size(e.size)) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn halvings_average_down_to_a_few_hundred() {
+        // A 1-pixel checkerboard of black and white averages to grey.
+        let (w, h) = (2048, 1100);
+        let pixels = (0..w * h).map(|i| if (i % w + i / w) % 2 == 0 { egui::Color32::WHITE } else { egui::Color32::BLACK }).collect();
+        let img = ColorImage { size: [w, h], source_size: egui::vec2(w as f32, h as f32), pixels };
+        let levels = halvings(&img);
+        let sizes: Vec<[usize; 2]> = levels.iter().map(|l| l.size).collect();
+        assert_eq!(sizes, [[1024, 550], [512, 275]]);
+        let c = levels[0].pixels[0].to_array();
+        assert!((126..=129).contains(&c[0]) && c[3] == 255, "{c:?}");
+    }
 }

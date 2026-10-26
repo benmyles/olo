@@ -309,6 +309,19 @@ impl Viewer {
                     .checked(v.fit == Some(Fit::Page)),
             );
         }
+        if let Content::Other(prev) = &d.content
+            && prev.is_image()
+        {
+            menus.push(
+                Menu::new("View")
+                    .item("Zoom In", "zoom-in", Some(Key::Equals))
+                    .item("Zoom Out", "zoom-out", Some(Key::Minus))
+                    .item("Actual Size", "zoom-100", Some(Key::Num0))
+                    .checked(!prev.image_fitted() && (prev.image_scale() - 1.0).abs() < 1e-3)
+                    .item("Zoom to Fit", "zoom-fit", Some(Key::Num9))
+                    .checked(prev.image_fitted()),
+            );
+        }
         let mut go = Menu::new("Go")
             .item("Previous File", "prev-file", Some(Key::OpenBracket))
             .enabled(pos.is_some_and(|i| i > 0))
@@ -406,6 +419,17 @@ impl Viewer {
             if let Err(e) = tabula_kit::spawn_detached(&format!("tabula-tracker {q}")) {
                 tracing::warn!("tracker: {e}");
             }
+            return;
+        }
+        if let Content::Other(prev) = &mut d.content {
+            match command {
+                "zoom-in" => prev.zoom(Some(true)),
+                "zoom-out" => prev.zoom(Some(false)),
+                "zoom-100" => prev.set_image_scale(1.0),
+                "zoom-fit" => prev.zoom(None),
+                _ => return,
+            }
+            cx.redraw(win);
             return;
         }
         let Content::Pdf(v) = &mut d.content else { return };
@@ -711,7 +735,7 @@ impl App for Viewer {
                     Some(item) => {
                         self.generation += 1;
                         let proxy = cx.proxy();
-                        let preview = Preview::new(item, self.generation, move |g, u| proxy.send(Msg::Preview(win, g, u)));
+                        let preview = Preview::new_zoomable(item, self.generation, move |g, u| proxy.send(Msg::Preview(win, g, u)));
                         d.content = Content::Other(Box::new(preview));
                     }
                     None => d.content = Content::Failed(format!("“{}” can't be found.", file_name(&path))),

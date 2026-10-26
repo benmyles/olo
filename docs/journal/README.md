@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Viewer zoom and pan
+
+*03:54* — Images load at full resolution in Viewer: Actual Size, pinch and command-scroll zoom about the pointer, drag to pan
+
+![Viewer zoom and pan](2026-10-26/035434-viewer-zoom-and-pan.png)
+
 ### Icons for document kinds
 
 *03:50* — Spreadsheet, presentation, word processing, PDF and font files get their own icons

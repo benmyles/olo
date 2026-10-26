@@ -63,7 +63,10 @@ as they land (with the commit), add new ones as they come up.
 - Web browser (native).
 - Password manager: Rust 1Password SDK, passkeys, Touch ID through
   fprintd natively, browser integration.
-- Viewer: image zoom/pan, video playback (frames + audio), AVIF/HEIC/Opus.
+- Viewer: ~~image zoom/pan~~ (full resolution up to the texture limit,
+  View menu, pinch/⌘-scroll/double-click, drag and scroll to pan; halved
+  levels for smooth fitting); video playback (frames + audio),
+  AVIF/HEIC/Opus.
 
 ## app_server
 
