@@ -59,6 +59,21 @@ impl EventListener for Listener {
                 let _ = self.writer.send(text.into_bytes());
                 return;
             }
+            // "What colour is X?": light/dark detection asks for the
+            // background (OSC 11).
+            Event::ColorRequest(index, format) => {
+                use alacritty_terminal::{term::color::Colors, vte::ansi::{Color, NamedColor}};
+                let scheme = self.shared.scheme.lock().unwrap().clone();
+                let none = Colors::default();
+                let color = match index {
+                    0..=255 => Color::Indexed(index as u8),
+                    256 => Color::Named(NamedColor::Foreground),
+                    257 => Color::Named(NamedColor::Background),
+                    _ => Color::Named(NamedColor::Cursor),
+                };
+                let _ = self.writer.send(format(scheme.resolve(color, &none)).into_bytes());
+                return;
+            }
             Event::TextAreaSizeRequest(format) => {
                 let cell = self.shared.cell.load(Ordering::Relaxed);
                 let grid = self.shared.grid.load(Ordering::Relaxed);
@@ -110,13 +125,21 @@ pub struct Session {
 
 impl Session {
     /// Start a session on a new or inherited PTY.
-    pub fn start(win: WindowId, proxy: Proxy, size: Size, cell: (u16, u16), pty: std::io::Result<Pty>) -> std::io::Result<Session> {
+    pub fn start(
+        win: WindowId,
+        proxy: Proxy,
+        size: Size,
+        cell: (u16, u16),
+        scheme: crate::colors::Scheme,
+        pty: std::io::Result<Pty>,
+    ) -> std::io::Result<Session> {
         let Pty { master, pid } = pty?;
         let fd = master.as_raw_fd();
         let shared = Arc::new(io::Shared {
             images: Default::default(),
             cell: AtomicU32::new(((cell.0 as u32) << 16) | cell.1 as u32),
             grid: AtomicU32::new(((size.cols as u32) << 16) | size.rows as u32),
+            scheme: std::sync::Mutex::new(scheme),
         });
         let writer = io::spawn_writer(fd);
         let listener = Listener { win, proxy: proxy.clone(), writer: writer.clone(), shared: shared.clone() };

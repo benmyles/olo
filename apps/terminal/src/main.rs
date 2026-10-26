@@ -159,7 +159,7 @@ impl Terminal {
         let cell = self.metrics.map(|m| m.device_cell()).unwrap_or((15, 36));
         let ws = session::window_size(size, cell);
         let pty = pty::Pty::spawn(command.as_deref(), cwd.as_deref(), ws);
-        match Session::start(id, cx.proxy(), size, cell, pty) {
+        match Session::start(id, cx.proxy(), size, cell, self.scheme(), pty) {
             Ok(session) => {
                 self.windows.insert(
                     id,
@@ -217,7 +217,7 @@ impl Terminal {
             let id = cx.open_window(options);
             let size = Size { cols: w.cols, rows: w.rows };
             let cell = (15, 36);
-            match Session::start(id, cx.proxy(), size, cell, pty::Pty::adopt(w.fd, w.pid)) {
+            match Session::start(id, cx.proxy(), size, cell, self.scheme(), pty::Pty::adopt(w.fd, w.pid)) {
                 Ok(mut session) => {
                     {
                         let mut term = session.term.lock();
@@ -296,6 +296,12 @@ impl Terminal {
             }
         }
         t.session.woke();
+        {
+            let mut current = t.session.shared.scheme.lock().unwrap();
+            if *current != scheme {
+                *current = scheme.clone();
+            }
+        }
         if let Some((cols, rows)) = t.snap_to.take() {
             let (w, h) = metrics.content_size(cols, rows);
             let want = (w, h + menu::BAR_HEIGHT as u32);

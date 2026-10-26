@@ -230,6 +230,8 @@ pub struct Shared {
     pub cell: std::sync::atomic::AtomicU32,
     /// Grid size, packed (cols << 16 | rows).
     pub grid: std::sync::atomic::AtomicU32,
+    /// The colour scheme in use, for programs that ask (OSC 4/10/11).
+    pub scheme: std::sync::Mutex<crate::colors::Scheme>,
 }
 
 /// Run the reader: parse output into `term` until the PTY closes, then
