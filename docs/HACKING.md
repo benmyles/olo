@@ -751,6 +751,35 @@ its log. **Cancel; never type the user's password, and only check
 actions, never perform them.** `TABULA_POLKIT_HELPER` points at a fake
 helper for unit tests.
 
+**The keyring's prompts** (`tabula_system::keyring_prompt`, the agent's
+`keyring.rs`): gnome-keyring-daemon asks for the login keyring's password
+(to unlock it for gh, a browser, …) through a "system prompter" on the
+session bus. D-Bus would start GTK's gcr-prompter for that; the agent owns
+`org.gnome.keyring.SystemPrompter` (and `PrivatePrompter`) itself from
+the start of the session, so the question is a Tabula alert (key icon,
+Password, or Password and Confirm for a new keyring, the daemon's check
+box if any). The protocol is gcr's: `BeginPrompting` → our
+`PromptReady("")` with a Diffie-Hellman public key → `PerformPrompt`
+(type, properties, the daemon's key) → `PromptReady("yes"|"no")` with
+the password encrypted (1536-bit IKE group, HKDF-SHA256, AES-128-CBC,
+PKCS#7: `Exchange`), and `StopPrompting` → `PromptDone`. Each property
+value is a variant inside the a{sv}'s variant. Calls are answered from
+zbus's message stream before anything follows from them (gcr's client
+breaks if `PromptReady` overtakes the `PerformPrompt` reply). A wrong
+password comes back as another `PerformPrompt` with a `warning`; the
+window stays "Checking…" in between. One prompt at a time; a caller that
+leaves the bus takes its prompts with it, and if the agent goes, the
+keyring dismisses the request instead of hanging.
+
+Test it on a private bus with a throwaway daemon, never the session's:
+start a bus (`dbus-broker-launch` with a listening socket handed over as
+`LISTEN_FDS`, a permissive config) and `gnome-keyring-daemon --foreground
+--components=secrets` with its own `HOME` and `XDG_RUNTIME_DIR`; then
+`KEYRING_TEST_BUS=unix:path=… cargo test -p tabula-system real_daemon --
+--ignored` (makes a keyring, wrong then right password, cancel), or
+`tabula-polkit-agent --keyring-test unix:path=…` in a headless session and
+a Secret Service client calling `Unlock` and `Prompt`.
+
 ## NetPositive (apps/browser)
 
 The web browser: Servo 0.7, built in (`engine.rs`), with no system

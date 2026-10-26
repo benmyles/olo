@@ -1,5 +1,6 @@
 //! tabula-polkit-agent: asks for a password when a program needs an
-//! administrator's permission (setting the clock, installing software, …).
+//! administrator's permission (setting the clock, installing software, …),
+//! and when the login keyring needs its password (keyring.rs).
 //!
 //! It registers with polkitd as the authentication agent for this login
 //! session and stays in the background; each request opens a BAlert-style
@@ -12,7 +13,14 @@
 //! tabula-polkit-agent                   the session's agent (started by tabula-session)
 //! tabula-polkit-agent --self-test ACTION  serve only this process and ask
 //!                                       polkitd about ACTION (changes nothing)
+//! tabula-polkit-agent --keyring-test BUS  only the keyring's prompts, on the
+//!                                       D-Bus at address BUS (a test's own)
 //! ```
+//!
+//! The keyring's prompts: gnome-keyring-daemon asks for passwords through
+//! `org.gnome.keyring.SystemPrompter` on the session bus, which this agent
+//! owns (`tabula_system::keyring_prompt`), so they come up here rather
+//! than in GTK's gcr-prompter.
 
 use std::collections::HashMap;
 
@@ -24,16 +32,23 @@ use tabula_kit::{
     style::{self, c},
     widgets::{self, Button, MenuField, TextControl},
 };
-use tabula_system::polkit::{Agent, Event, Helper, HelperEvent, Request, Subject};
+use tabula_system::{
+    keyring_prompt::{self, Prompter},
+    polkit::{Agent, Event, Helper, HelperEvent, Request, Subject},
+};
+
+mod keyring;
 
 const APP_ID: &str = "tabula.polkit-agent";
-const WIDTH: u32 = 420;
+pub const WIDTH: u32 = 420;
 const ICON: &str = "authentication";
 
 enum Msg {
     Polkit(Event),
     Helper(WindowId, u64, HelperEvent),
     Registered(Result<(), String>),
+    Keyring(keyring_prompt::Event),
+    Prompter(Result<std::sync::Arc<Prompter>, String>),
 }
 
 struct Auth {
@@ -68,6 +83,9 @@ impl Auth {
 
 struct AgentApp {
     windows: HashMap<WindowId, Auth>,
+    /// The keyring's prompts.
+    asks: HashMap<WindowId, keyring::Ask>,
+    prompter: Option<std::sync::Arc<Prompter>>,
     /// `--self-test`: quit once its one request is done.
     self_test: bool,
 }
@@ -176,10 +194,47 @@ impl AgentApp {
             cx.quit();
         }
     }
+
+    fn keyring_event(&mut self, cx: &mut Cx, e: keyring_prompt::Event) {
+        match e {
+            keyring_prompt::Event::Show { id, kind, props } => {
+                if let Some((&win, ask)) = self.asks.iter_mut().find(|(_, a)| a.id == id) {
+                    ask.again(kind, props);
+                    cx.redraw(win);
+                    cx.activate(win);
+                } else {
+                    let (win, ask) = keyring::open(cx, id, kind, props);
+                    self.asks.insert(win, ask);
+                    cx.activate(win);
+                }
+            }
+            keyring_prompt::Event::Close(id) => {
+                let wins: Vec<WindowId> = self.asks.iter().filter(|(_, a)| a.id == id).map(|(w, _)| *w).collect();
+                for win in wins {
+                    self.asks.remove(&win);
+                    cx.close_window(win);
+                }
+            }
+        }
+    }
+
+    /// The user answered (or closed) a keyring prompt; its window stays
+    /// until the keyring is done with it.
+    fn keyring_answer(&mut self, win: WindowId, action: keyring::Action) {
+        let (Some(ask), Some(p)) = (self.asks.get(&win), &self.prompter) else { return };
+        let keyring::Action::Answer(answer, choice) = action;
+        p.answer(ask.id, answer, choice);
+    }
 }
 
 impl App for AgentApp {
     fn ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
+        if let Some(ask) = self.asks.get_mut(&win) {
+            if let Some(action) = ask.ui(ui) {
+                self.keyring_answer(win, action);
+            }
+            return;
+        }
         let Some(a) = self.windows.get_mut(&win) else { return };
         let p = style::palette(ui.ctx());
         let full = ui.available_rect_before_wrap();
@@ -268,6 +323,10 @@ impl App for AgentApp {
     }
 
     fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
+        if self.asks.contains_key(&window) {
+            self.keyring_answer(window, keyring::Action::Answer(keyring_prompt::Answer::Cancel, false));
+            return;
+        }
         self.close(cx, window);
     }
 
@@ -292,33 +351,57 @@ impl App for AgentApp {
                 cx.quit();
             }
             Msg::Registered(Ok(())) => {}
+            Msg::Keyring(e) => self.keyring_event(cx, e),
+            Msg::Prompter(Ok(p)) => self.prompter = Some(p),
+            Msg::Prompter(Err(e)) => eprintln!("tabula-polkit-agent: couldn't serve the keyring's prompts: {e}"),
         }
     }
 }
 
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let self_test = match args.as_slice() {
-        [flag, action] if flag == "--self-test" => Some(action.clone()),
-        [] => None,
+    let (self_test, keyring_test) = match args.as_slice() {
+        [flag, action] if flag == "--self-test" => (Some(action.clone()), false),
+        [flag, bus] if flag == "--keyring-test" => {
+            // SAFETY: before any thread starts.
+            unsafe { std::env::set_var("DBUS_SESSION_BUS_ADDRESS", bus) };
+            (None, true)
+        }
+        [] => (None, false),
         _ => {
-            eprintln!("usage: tabula-polkit-agent [--self-test ACTION]");
+            eprintln!("usage: tabula-polkit-agent [--self-test ACTION | --keyring-test BUS]");
             return std::process::ExitCode::FAILURE;
         }
     };
     // Only the real session's agent may speak for the login session: a
     // test or nested session must never take over the user's prompts.
-    if self_test.is_none() && std::env::var_os("TABULA_REAL_SESSION").is_none() {
+    if self_test.is_none() && !keyring_test && std::env::var_os("TABULA_REAL_SESSION").is_none() {
         eprintln!("tabula-polkit-agent: not in a real Tabula session (use --self-test ACTION to try it)");
         return std::process::ExitCode::FAILURE;
     }
-    if self_test.is_none() && instance::forward(APP_ID, &args) {
+    if self_test.is_none() && !keyring_test && instance::forward(APP_ID, &args) {
         return std::process::ExitCode::SUCCESS;
     }
     tabula_kit::run(APP_ID, |cx| {
         cx.stay_resident();
-        if self_test.is_none() {
+        if self_test.is_none() && !keyring_test {
             instance::listen(APP_ID, cx.proxy());
+        }
+        if self_test.is_none() {
+            let proxy = cx.proxy();
+            std::thread::Builder::new()
+                .name("keyring-prompt".into())
+                .spawn(move || {
+                    let on = {
+                        let proxy = proxy.clone();
+                        move |e| proxy.send(Msg::Keyring(e))
+                    };
+                    proxy.send(Msg::Prompter(Prompter::serve(on).map(std::sync::Arc::new).map_err(|e| e.to_string())));
+                })
+                .expect("thread");
+        }
+        if keyring_test {
+            return AgentApp { windows: HashMap::new(), asks: HashMap::new(), prompter: None, self_test: false };
         }
         let proxy = cx.proxy();
         let action = self_test.clone();
@@ -355,7 +438,7 @@ fn main() -> std::process::ExitCode {
                 }
             })
             .expect("thread");
-        AgentApp { windows: HashMap::new(), self_test: self_test.is_some() }
+        AgentApp { windows: HashMap::new(), asks: HashMap::new(), prompter: None, self_test: self_test.is_some() }
     });
     std::process::ExitCode::SUCCESS
 }

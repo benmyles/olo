@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Keyring prompts are Tabula's
+
+*15:51* — gnome-keyring asks for the login keyring's password through a system prompter; the authentication agent now is that prompter (gcr's protocol and encrypted secret exchange, in Rust), so unlocking it for gh or a browser is a Tabula alert, not GTK's gcr-prompter. A wrong password comes back with the keyring's warning.
+
+![Keyring prompts are Tabula's](2026-10-26/155116-keyring-prompts-are-tabula-s.png)
+
 ### Passwords: choose your 1Password account
 
 *14:06* — Setting up Passwords now lists the accounts signed in to the 1Password app (read from its local account summaries), with email and sign-in address, instead of asking for a name or UUID. Another account still takes one by hand.

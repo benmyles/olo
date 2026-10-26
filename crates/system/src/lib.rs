@@ -1,6 +1,6 @@
 //! Talking to the system natively, in process: PAM (passwords), fprintd
 //! (Touch ID), logind (power, inhibitors, backlight), the battery,
-//! NetworkManager (Wi-Fi), BlueZ (Bluetooth), timedated (clock and time zone), polkit (the authentication agent), the D-Bus activation environment, dconf (the
+//! NetworkManager (Wi-Fi), BlueZ (Bluetooth), timedated (clock and time zone), polkit (the authentication agent), the keyring's password prompts, the D-Bus activation environment, dconf (the
 //! settings GTK apps read) and the sound server (PulseAudio protocol, which
 //! PipeWire speaks too). Everything here blocks, so call it from a worker
 //! thread, never the UI thread.
@@ -13,6 +13,7 @@ pub mod bluetooth;
 pub mod dconf;
 pub mod env;
 pub mod fingerprint;
+pub mod keyring_prompt;
 pub mod network;
 pub mod polkit;
 pub mod power;

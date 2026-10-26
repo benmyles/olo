@@ -11316,11 +11316,19 @@ dependencies = [
 name = "tabula-system"
 version = "0.1.0"
 dependencies = [
+ "aes 0.9.3",
  "async-channel",
+ "base64 0.22.1",
+ "cbc",
+ "futures-lite",
+ "getrandom 0.3.4",
+ "hkdf",
  "libc",
  "libloading",
+ "num-bigint",
  "pulseaudio",
  "serde",
+ "sha2 0.11.1",
  "tracing",
  "zbus",
  "zvariant",

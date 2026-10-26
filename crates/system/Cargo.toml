@@ -1,6 +1,6 @@
 [package]
 name = "tabula-system"
-description = "Talking to the system natively: logind, PAM, fprintd, NetworkManager, the battery and backlight, D-Bus activation, dconf and the sound server"
+description = "Talking to the system natively: logind, PAM, fprintd, NetworkManager, the battery and backlight, D-Bus activation, dconf, the keyring's prompts and the sound server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,3 +14,12 @@ serde.workspace = true
 libloading = "0.8"
 libc = "0.2"
 async-channel = "2"
+# The keyring prompt's secret exchange (keyring_prompt.rs).
+num-bigint = "0.4"
+aes = "0.9"
+cbc = "0.2"
+hkdf = "0.13"
+sha2 = "0.11"
+base64 = "0.22"
+getrandom = "0.3"
+futures-lite = "2"

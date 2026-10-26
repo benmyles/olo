@@ -24,6 +24,10 @@ as they land (with the commit), add new ones as they come up.
 - ~~Upgrades keep apps open~~ (only a new app_server reloads; Tabula
   programs re-execute in place), ~~interactive resize keeps up~~,
   ~~focus not stolen by xdg_activation without input~~ (15c2b27).
+- ~~Keyring prompts are Tabula's~~: the polkit agent owns
+  org.gnome.keyring.SystemPrompter (gcr's protocol and secret exchange,
+  natively), so unlocking the login keyring (gh's git credentials hung
+  on a GTK prompter that had lost its display) asks in a Tabula alert.
 - ~~slack.com loads in NetPositive~~ (its 28 autoplaying videos made
   the page OOM): decoders budgeted per page, media downloads and `blob:`
   downloads on disk, compact frame queues, muted videos pause out of
@@ -49,23 +53,15 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
-- **Keyring unlock prompt, native** (Ben, after Slack): when an app asks
-  for a secret from a locked login keyring (gh's git credentials, for
-  one), Tabula asks for the password itself, in a Tabula alert, instead
-  of the D-Bus-activated GTK gcr-prompter (which can die with its display
-  connection and leave the asker hanging with nothing on screen). It
-  must never fail silently: a request always shows or is refused.
-  Consider then a native secret service replacing gnome-keyring-daemon.
 - **No GNOME or GTK underneath** (Ben): Tabula shouldn't depend on
   any. Today a real session leans on GDM (login), gnome-keyring-daemon
-  (secrets, PAM unlock, ssh agent) and gcr-prompter (its unlock prompt;
-  item above), xdg-desktop-portal-gnome / -gtk (file chooser, screenshot,
+  (secrets, PAM unlock, ssh agent), xdg-desktop-portal-gnome / -gtk (file chooser, screenshot,
   settings, etc. for other apps: there's no Tabula portals.conf or
   backend), dconf (where app_server writes color-scheme / gtk-theme so
   GTK apps follow), and /usr/share/backgrounds/gnome (default
   wallpapers). Replace each with a native one: a Tabula login screen,
   secret service (Secret Service API over our own bus name, unlocked at
-  login, keyring files read natively) and prompt, ssh agent, portal
+  login, keyring files read natively; the prompt is done), ssh agent, portal
   backend (`org.freedesktop.impl.portal.*` with Tabula's FilePanel and
   screenshot), settings portal instead of dconf, our own wallpapers.
 - **Terminal sessions that outlive Terminal** (Ben, next): the shells
