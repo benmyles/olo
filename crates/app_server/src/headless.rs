@@ -179,21 +179,15 @@ pub fn run_headless(size_arg: Option<&str>) {
             let color = state.desktop_color();
             let overlays = twitcher_overlay(&mut state, &output);
             let locked = state.lock.locked();
-            let res = crate::render::screenshot::<_, GlesTexture>(
+            let res = crate::render::capture::<_, GlesTexture>(
                 &mut state.backend_data.renderer,
                 &output,
                 &state.space,
                 overlays,
                 color,
                 locked,
-                &path,
             );
-            if let Some(conn) = conn {
-                conn.send(&match res {
-                    Ok(()) => tabula_protocol::Reply::Ok,
-                    Err(message) => tabula_protocol::Reply::Error { message },
-                });
-            }
+            state.ipc.save_screenshot(path, conn, res);
         }
         let _ = state.display_handle.flush_clients();
     }

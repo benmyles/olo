@@ -327,9 +327,13 @@ of Preferences ▸ Screen Saver. Size things with `Frame::k()`, step motion
 with the fixed 60 Hz `Clock`, and add settings as `Opt`s (stored as strings
 in `settings.screen_saver.options[module]`; Preferences builds their
 controls). Modules with `uses_desktop` (Flip, Lens) get a picture of the
-desktop that app_server takes as the saver starts (headless and winit for
-now; udev captures are still to do, so on hardware they use the plain
-desktop colour).
+desktop that app_server takes as the saver starts.
+
+Screenshots (`Request::Screenshot`, the saver's picture) are taken by every
+backend with the next frame: `render::capture` renders the output offscreen
+and reads it back, and `IpcState::save_screenshot` encodes the PNG on a
+thread (writing `NAME.part`, then renaming, so readers never see half a
+file) and replies once it is on disk.
 
 app_server starts `tabula-screensaver` after `screen_saver.run_minutes`
 idle, from `Request::StartScreenSaver` (Test) or when the pointer enters
@@ -353,8 +357,9 @@ keyboard focus away and starts `tabula-lock` on a socket pair of its own
 locker is restarted if it dies (at most every 2 s); the screen stays
 black meanwhile, so the lock never fails open. While locked, input reaches
 lock surfaces only, keybindings are off, and the displays sleep after a
-minute. A marker, `$XDG_RUNTIME_DIR/tabula-locked-$WAYLAND_DISPLAY`, makes
-an app_server that reloaded or crashed come back locked. Before sleep,
+minute. A marker, `$XDG_RUNTIME_DIR/tabula-locked-$WAYLAND_DISPLAY`
+holding tabula-session's pid, makes an app_server that reloaded or crashed
+come back locked (only in the same session: display names get reused). Before sleep,
 app_server holds a logind delay inhibitor until every output shows the lock
 surface (or 3 s).
 

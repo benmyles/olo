@@ -465,21 +465,16 @@ pub fn run_winit() {
             state.tick();
             for (path, conn) in std::mem::take(&mut state.ipc.pending_screenshots) {
                 let color = state.desktop_color();
-                let res = crate::render::screenshot::<_, smithay::backend::renderer::gles::GlesTexture>(
+                let locked = state.lock.locked();
+                let res = crate::render::capture::<_, smithay::backend::renderer::gles::GlesTexture>(
                     state.backend_data.backend.renderer(),
                     &output,
                     &state.space,
                     Vec::new(),
                     color,
-                    state.lock.locked(),
-                    &path,
+                    locked,
                 );
-                if let Some(conn) = conn {
-                    conn.send(&match res {
-                        Ok(()) => tabula_protocol::Reply::Ok,
-                        Err(message) => tabula_protocol::Reply::Error { message },
-                    });
-                }
+                state.ipc.save_screenshot(path, conn, res);
             }
             display_handle.flush_clients().unwrap();
         }

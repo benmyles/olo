@@ -52,6 +52,12 @@ const SLEEP_WAIT: Duration = Duration::from_secs(3);
 /// Present while the screen is locked, so an app_server that crashed or
 /// reloaded in place comes back locked (see `relock`). The runtime dir is
 /// the user's alone and goes away at logout.
+/// Who the marker belongs to: tabula-session outlives in-place reloads, so
+/// its pid names the session (empty outside one: nothing to reload into).
+fn session_id() -> String {
+    std::env::var("TABULA_SESSION_PID").unwrap_or_default()
+}
+
 fn marker() -> Option<std::path::PathBuf> {
     let dir = std::env::var_os("XDG_RUNTIME_DIR")?;
     let display = std::env::var("WAYLAND_DISPLAY").ok()?;
@@ -146,7 +152,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.lock.focus_before = keyboard.current_focus();
             keyboard.set_focus(self, None::<KeyboardFocusTarget>, SERIAL_COUNTER.next_serial());
             if let Some(p) = marker() {
-                let _ = std::fs::write(p, b"");
+                let _ = std::fs::write(p, session_id());
             }
         }
         self.ensure_locker();
@@ -154,7 +160,10 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// Lock again at startup if the previous app_server was locked.
     pub fn relock(&mut self) {
-        if marker().is_some_and(|p| p.exists()) {
+        // Only this session's lock: a marker left by another session that
+        // once had the same display name doesn't count.
+        let session = session_id();
+        if !session.is_empty() && marker().and_then(|p| std::fs::read_to_string(p).ok()).is_some_and(|s| s == session) {
             info!("the screen was locked before the restart");
             self.lock_screen();
         }

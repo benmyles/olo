@@ -1458,6 +1458,20 @@ impl AnvilState<UdevData> {
         .unwrap();
 
         let locked = self.lock.locked();
+        // Screenshots are of whichever output draws next (the one the
+        // pointer is on would be better once there are several).
+        for (path, conn) in std::mem::take(&mut self.ipc.pending_screenshots) {
+            let overlays = if locked { crate::lock::elements(&self.lock, &mut renderer, &output) } else { Vec::new() };
+            let res = crate::render::capture::<_, smithay::backend::renderer::gles::GlesTexture>(
+                &mut renderer,
+                &output,
+                &self.space,
+                overlays,
+                desktop_color,
+                locked,
+            );
+            self.ipc.save_screenshot(path, conn, res);
+        }
         let overlays: Vec<CustomRenderElements<_>> = if locked {
             crate::lock::elements(&self.lock, &mut renderer, &output)
         } else {

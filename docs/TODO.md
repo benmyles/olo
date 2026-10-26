@@ -75,9 +75,7 @@ as they land (with the commit), add new ones as they come up.
 - ~~**Screensaver**~~: the eleven R5 modules (tabula-screensavers),
   tabula-screensaver on every output, Preferences ▸ Screen Saver (Fade and
   Modules tabs, live preview, Test, hot corners), lock-after drawing over the
-  lock screen. Still to do: Flip and Lens get the desktop only where
-  app_server can capture it (headless/winit); udev capture is needed (also
-  for the Screenshot app).
+  lock screen; Flip and Lens see the desktop on every backend.
 - **Caffeinated mode**: one click (Deskbar replicant/tray toggle, plus a
   Deskbar menu item and a shortcut) keeps everything awake: no display
   sleep, system suspend, screensaver or idle lock (logind inhibitor

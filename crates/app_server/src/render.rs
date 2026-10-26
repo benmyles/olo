@@ -224,16 +224,16 @@ where
     damage_tracker.render_output(renderer, framebuffer, age, &elements, clear_color)
 }
 
-/// Render `output` offscreen (without the cursor) and save it as a PNG.
-pub fn screenshot<R, T>(
+/// Render `output` offscreen and read it back (the GPU part of a
+/// screenshot; encoding is left to a thread, see `IpcState::save_screenshot`).
+pub fn capture<R, T>(
     renderer: &mut R,
     output: &Output,
     space: &Space<WindowElement>,
     overlays: Vec<CustomRenderElements<R>>,
     clear_color: Color32F,
     locked: bool,
-    path: &std::path::Path,
-) -> Result<(), String>
+) -> Result<image::RgbaImage, String>
 where
     R: Renderer + ImportAll + ImportMem + Offscreen<T> + ExportMem,
     R::TextureId: Clone + Send + 'static,
@@ -265,5 +265,5 @@ where
     if !flipped {
         image::imageops::flip_vertical_in_place(&mut img);
     }
-    img.save(path).map_err(|e| e.to_string())
+    Ok(img)
 }

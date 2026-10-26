@@ -52,6 +52,10 @@ pub struct IpcState {
     /// Pictures to take with the next frame, and who to answer (none for
     /// app_server's own, e.g. the screen saver's desktop).
     pub pending_screenshots: Vec<(PathBuf, Option<Rc<Conn>>)>,
+    /// Screenshots being written on threads, by number, and who to tell.
+    saving: std::collections::HashMap<u64, Rc<Conn>>,
+    next_save: u64,
+    saved: Option<smithay::reexports::calloop::channel::Sender<(u64, Result<(), String>)>>,
 }
 
 impl std::fmt::Debug for IpcState {
@@ -122,7 +126,66 @@ pub fn init<B: Backend + 'static>(
 
     // An inherited socket's file belongs to tabula-session: don't remove it.
     let path = if owned { path } else { PathBuf::new() };
-    Ok(IpcState { path, subscribers: Vec::new(), pending_screenshots: Vec::new() })
+    let (saved, done) = smithay::reexports::calloop::channel::channel::<(u64, Result<(), String>)>();
+    handle
+        .insert_source(done, |event, _, state| {
+            if let smithay::reexports::calloop::channel::Event::Msg((id, res)) = event
+                && let Some(conn) = state.ipc.saving.remove(&id)
+            {
+                conn.send(&match res {
+                    Ok(()) => Reply::Ok,
+                    Err(message) => Reply::Error { message },
+                });
+            }
+        })
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    Ok(IpcState {
+        path,
+        subscribers: Vec::new(),
+        pending_screenshots: Vec::new(),
+        saving: Default::default(),
+        next_save: 0,
+        saved: Some(saved),
+    })
+}
+
+impl IpcState {
+    /// Write a captured screen to `path` on a thread (PNG encoding takes too
+    /// long for the event loop), answering `conn` once it is on disk. The
+    /// file appears whole (written beside it, then renamed).
+    pub fn save_screenshot(&mut self, path: PathBuf, conn: Option<Rc<Conn>>, captured: Result<image::RgbaImage, String>) {
+        let img = match captured {
+            Ok(img) => img,
+            Err(message) => {
+                warn!(%message, "screenshot failed");
+                if let Some(conn) = conn {
+                    conn.send(&Reply::Error { message });
+                }
+                return;
+            }
+        };
+        let id = self.next_save;
+        self.next_save += 1;
+        if let Some(conn) = conn {
+            self.saving.insert(id, conn);
+        }
+        let saved = self.saved.clone();
+        std::thread::Builder::new()
+            .name("screenshot".into())
+            .spawn(move || {
+                let mut part = path.clone().into_os_string();
+                part.push(".part");
+                let part = PathBuf::from(part);
+                let res = image::DynamicImage::ImageRgba8(img)
+                    .save_with_format(&part, image::ImageFormat::Png)
+                    .and_then(|()| std::fs::rename(&part, &path).map_err(Into::into))
+                    .map_err(|e| e.to_string());
+                if let Some(tx) = saved {
+                    let _ = tx.send((id, res));
+                }
+            })
+            .expect("thread");
+    }
 }
 
 fn accept<B: Backend + 'static>(state: &mut AnvilState<B>, stream: UnixStream) {
