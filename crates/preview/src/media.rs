@@ -96,7 +96,6 @@ pub fn audio(path: &Path) -> Result<Update, String> {
             fmt += &format!(", {:.1} kHz", hz as f64 / 1000.0);
         }
         m.rows.push(("Format".into(), fmt));
-        m.playable = !matches!(f.file_type(), lofty::file::FileType::Opus);
         m.note = format!("{codec} audio");
     }
     Ok(Update::Body(Body::Media(m)))

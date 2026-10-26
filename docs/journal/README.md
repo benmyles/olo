@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Viewer: AVIF
+
+*04:43* — AVIF decoded natively with avif-parse and the BSD-licensed rav1d AV1 decoder, with our own YUV to RGB; HEIC through heifer and Ogg Opus playback through opus-decoder land in the same change
+
+![Viewer: AVIF](2026-10-26/044300-viewer-avif.png)
+
 ### Viewer zoom and pan
 
 *03:54* — Images load at full resolution in Viewer: Actual Size, pinch and command-scroll zoom about the pointer, drag to pan

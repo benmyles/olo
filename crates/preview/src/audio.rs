@@ -17,7 +17,7 @@ use std::{
 use pulseaudio::protocol;
 use symphonia::core::{
     audio::SampleBuffer,
-    codecs::{CODEC_TYPE_NULL, Decoder, DecoderOptions},
+    codecs::{CODEC_TYPE_NULL, CODEC_TYPE_OPUS, Decoder, DecoderOptions},
     formats::{FormatOptions, FormatReader, SeekMode, SeekTo},
     io::MediaSourceStream,
     meta::MetadataOptions,
@@ -120,10 +120,11 @@ impl Source {
             .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
             .ok_or("There is no sound in this file.")?;
         let params = track.codec_params.clone();
-        let decoder = symphonia::default::get_codecs()
+        let decoder = crate::opus::codecs()
             .make(&params, &DecoderOptions::default())
             .map_err(|_| "This audio codec can't be played.".to_string())?;
-        let rate = params.sample_rate.ok_or("Unknown sample rate.")?;
+        // Opus always decodes at 48 kHz; its header's rate is the original's.
+        let rate = if params.codec == CODEC_TYPE_OPUS { 48_000 } else { params.sample_rate.ok_or("Unknown sample rate.")? };
         let channels = params.channels.map(|c| c.count()).unwrap_or(2).clamp(1, 2);
         let duration = match (params.n_frames, params.time_base) {
             (Some(n), Some(tb)) => {

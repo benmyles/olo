@@ -32,7 +32,7 @@ tabula-theme.workspace = true
 tabula-xdg.workspace = true
 tiny-skia = "0.12"
 cosmic-text = "0.19"
-jxl-oxide = { version = "0.12.6", features = ["image"] }
+tabula-images.workspace = true
 
 [dependencies.smithay]
 workspace = true

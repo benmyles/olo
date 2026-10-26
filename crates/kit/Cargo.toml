@@ -10,6 +10,7 @@ tabula-theme.workspace = true
 tabula-protocol.workspace = true
 tabula-xdg.workspace = true
 tabula-emoji.workspace = true
+tabula-images.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
@@ -29,4 +30,3 @@ png = "0.18"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff", "ico", "rayon"] }
 resvg = { version = "0.45", default-features = false }
 libc = "0.2"
-jxl-oxide = { version = "0.12.6", features = ["image"] }

@@ -11,7 +11,8 @@ pub use tabula_xdg::{apps, desktop_entry, mime, open};
 pub mod file_panel;
 pub mod files;
 pub mod icons;
-pub mod images;
+/// Decoding pictures (see the `tabula-images` crate).
+pub use tabula_images as images;
 mod input;
 pub mod instance;
 pub mod menu;

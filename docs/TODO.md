@@ -66,7 +66,7 @@ as they land (with the commit), add new ones as they come up.
 - Viewer: ~~image zoom/pan~~ (full resolution up to the texture limit,
   View menu, pinch/⌘-scroll/double-click, drag and scroll to pan; halved
   levels for smooth fitting); video playback (frames + audio),
-  AVIF/HEIC/Opus.
+  ~~AVIF/HEIC/Opus~~.
 
 ## app_server
 

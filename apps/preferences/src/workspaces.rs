@@ -47,7 +47,7 @@ pub struct BackgroundsState {
 }
 
 /// Picture formats app_server can show as a wallpaper.
-pub const WALLPAPER_TYPES: &[&str] = &["png", "jpg", "jpeg", "jxl", "webp", "bmp", "tif", "tiff", "gif"];
+pub const WALLPAPER_TYPES: &[&str] = &["png", "jpg", "jpeg", "jxl", "avif", "heic", "heif", "webp", "bmp", "tif", "tiff", "gif"];
 
 pub fn backgrounds_ui(ui: &mut Ui, s: &mut Settings, st: &mut BackgroundsState) {
     let names: Vec<String> = (1..=s.workspace_count).map(|i| format!("Workspace {i}")).collect();

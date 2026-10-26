@@ -10,6 +10,7 @@ pub mod audio;
 pub mod doc;
 pub mod load;
 pub mod media;
+pub mod opus;
 pub mod pdf;
 pub mod text;
 

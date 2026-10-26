@@ -12,6 +12,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 resvg = { version = "0.45", default-features = false, features = ["text", "system-fonts", "raster-images"] }
 hayro = "0.8"
 symphonia = { version = "0.5", features = ["all"] }
+opus-decoder = "0.1"
 lofty = "0.25"
 pulseaudio = "0.3"
 openh264 = "0.9"

@@ -10,7 +10,7 @@ use std::{
     sync::Mutex,
 };
 
-use image::{DynamicImage, ImageDecoder, ImageReader, RgbaImage, imageops::FilterType};
+use image::{DynamicImage, RgbaImage, imageops::FilterType};
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -67,31 +67,9 @@ fn physical_size(output: &Output) -> Option<(u32, u32)> {
 
 /// JPEG XL (what Fedora's own backgrounds are) by its signature: a bare
 /// codestream or the ISO container.
-fn is_jxl(head: &[u8]) -> bool {
-    head.starts_with(&[0xff, 0x0a]) || head.starts_with(b"\0\0\0\x0cJXL \r\n\x87\n")
-}
-
 /// Decode `path`, the right way up.
 fn decode(path: &Path) -> Result<DynamicImage, String> {
-    let mut head = [0u8; 12];
-    let n = std::io::Read::read(&mut std::fs::File::open(path).map_err(|e| e.to_string())?, &mut head).unwrap_or(0);
-    if is_jxl(&head[..n]) {
-        let file = std::io::BufReader::new(std::fs::File::open(path).map_err(|e| e.to_string())?);
-        let decoder = jxl_oxide::integration::JxlDecoder::new(file).map_err(|e| e.to_string())?;
-        return DynamicImage::from_decoder(decoder).map_err(|e| e.to_string());
-    }
-    let mut decoder = ImageReader::open(path)
-        .map_err(|e| e.to_string())?
-        .with_guessed_format()
-        .map_err(|e| e.to_string())?
-        .into_decoder()
-        .map_err(|e| e.to_string())?;
-    let orientation = decoder.orientation().ok();
-    let mut img = DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
-    if let Some(o) = orientation {
-        img.apply_orientation(o);
-    }
-    Ok(img)
+    tabula_images::open(path).map(|(img, _)| img)
 }
 
 /// Read `path` the right way up and scale it to cover `size`, cropping the

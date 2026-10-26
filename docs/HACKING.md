@@ -52,7 +52,7 @@ like pixel alignment is.
 | `crates/kit` | The Interface Kit: Wayland client platform, GPU rendering (egui on wgpu/Vulkan), menus, BeOS widgets, icons, `.desktop` entries. **All apps are built on it.** |
 | `crates/xdg` | `tabula-xdg`: freedesktop plumbing shared by app_server and the kit (re-exported there): data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`), `find_program`, `spawn_detached`. No egui. |
 | `crates/system` | `tabula-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network::wifi`), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
-| `crates/preview` | `tabula-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Used by Tracker's Quick Look (`Preview::new`, images capped at 3200 px) and the Viewer (`Preview::new_zoomable`: full resolution up to the GPU texture limit, zoom and pan, `zoom` / `set_image_scale`). Images carry halved copies (`load::halvings`) because egui-wgpu makes no mipmaps. |
+| `crates/preview` | `tabula-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Used by Tracker's Quick Look (`Preview::new`, images capped at 3200 px) and the Viewer (`Preview::new_zoomable`: full resolution up to the GPU texture limit, zoom and pan, `zoom` / `set_image_scale`). Images carry halved copies (`load::halvings`) because egui-wgpu makes no mipmaps. Audio decodes with symphonia plus `opus.rs` (opus-decoder, OpusHead parsing and pre-skip trim) for Ogg Opus. |
 | `apps/<name>` | One crate per application, binary named `tabula-<name>`. Picked up by the workspace glob. |
 | `data/icons` | Icon set, pre-scaled to device sizes (`data/icons/<px>/<name>.png`). |
 | `data/session` | `tabula.desktop` for the login screen (installed by `tools/install-session.sh`). |
@@ -171,9 +171,14 @@ paints COLRv0/v1 with tiny-skia (Noto Color Emoji is COLRv1); the font is
 read on a worker thread when the system fonts load. Render test images
 with `EMOJI_OUT=/tmp/dir cargo test -p tabula-emoji`.
 
-Pictures (`tabula_kit::images::open(path)`): everything the `image`
-crate reads plus JPEG XL, EXIF-rotated, with a 1 GiB allocation limit;
-returns the image and its format's name. Thumbnails and Quick Look use
+Pictures (`tabula_kit::images::open(path)`, re-exporting `crates/images`
+so app_server can use it without the kit): everything the `image` crate
+reads plus JPEG XL (jxl-oxide), AVIF (avif-parse and rav1d built without
+asm, with our own YUV to RGB and alpha) and HEIC (heifer), EXIF-rotated,
+with a 1 GiB allocation limit; returns the image and its format's name.
+Keep its dependencies permissive: zenavif / rav1d-safe were dropped for
+being AGPL. `TABULA_SAMPLES=dir cargo test -p tabula-images -- --ignored`
+decodes example.avif and example.heic from `dir`. Thumbnails and Quick Look use
 it. File panels (`tabula_kit::file_panel`): `FilePanel::open(dir)` /
 `FilePanel::save(dir, name)` give a BFilePanel (path popup, Home, sortable
 Name/Size/Modified list, "Save as:" field, Replace confirmation);
