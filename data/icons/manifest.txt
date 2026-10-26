@@ -12,8 +12,8 @@ video|a strip of film with sprocket holes curling around a small clapperboard
 archive|a cardboard box tied with string, with a zipper running down its front
 application|a generic application: a blue isometric cube with a small gear on its top face
 executable|a gear-shaped cog in polished steel with a small green play triangle in its centre
-trash-empty|an empty dark grey metal waste bin with a ribbed side
-trash-full|a dark grey metal waste bin overflowing with crumpled white paper
+trash-empty|an empty dark grey metal waste bin with a ribbed side, seen in three-quarter view from slightly above so its open round top is visible
+trash-full|a dark grey metal waste bin with a ribbed side, seen in three-quarter view from slightly above, overflowing with crumpled white paper
 disk|an internal hard disk drive in brushed silver aluminium with a green activity light
 usb|a small USB flash drive in blue plastic with a silver connector
 network|three small computers connected by blue cables to a central hub
@@ -21,12 +21,12 @@ desktop|a computer desktop: a small monitor showing a blue screen with a yellow 
 query|a large magnifying glass in front of a stack of paper documents
 preferences|a preferences panel: a grey control box with three coloured sliders and a toggle switch
 appearance|a painter's palette with blobs of yellow, blue and red paint and a brush
-display|a modern flat display panel on a stand showing a blue gradient
+display|a modern flat display panel on a silver stand, turned slightly to the right in three-quarter view, showing a blue gradient
 keyboard|a compact light grey computer keyboard with dark key legends absent (blank keys)
 touchpad|a silver glass laptop trackpad with a fingertip pressing on it
 sound|a speaker cone with curved sound waves emanating to the right
 network-prefs|a wireless router with two antennas and curved blue wifi signal arcs above it
-bluetooth|a rounded blue badge with a white angular rune symbol, glossy
+bluetooth|a rounded glossy blue badge, seen in three-quarter view like a thick coin standing on the desk, with a white angular Bluetooth rune embossed on its face
 power|a battery cell standing upright, green charge level, with a small yellow lightning bolt
 datetime|a round wall clock with a white face and black hands, silver rim, next to a small calendar page
 fingerprint|a fingerprint swirl in glowing blue on a dark glass sensor plate
@@ -37,8 +37,8 @@ process|a set of interlocking coloured gears, red blue and yellow
 styled-edit|a white document page with a fountain pen nib writing a flowing line of blue ink
 calculator|a chunky desk calculator with a small green LCD, grey body and coloured buttons
 show-image|a classic camera lens in front of a framed photograph of mountains
-screenshot|a camera viewfinder bracket frame around a small blue window
-about|a glossy information badge: a blue circle with a white lowercase i
+screenshot|a small isometric blue application window with a yellow title tab, framed by four yellow camera viewfinder corner brackets, all lying at a three-quarter angle on the desk
+about|a glossy blue information badge seen in three-quarter view like a thick coin standing on the desk, with a white lowercase i embossed on its face
 browser|a globe of the world in blue and green with a silver compass needle orbiting it
 mail|a white envelope with a red and blue airmail border
 people|two stylised people silhouettes, one blue one orange, overlapping

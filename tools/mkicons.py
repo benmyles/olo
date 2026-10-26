@@ -13,8 +13,9 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "i
 SIZES = [16, 24, 32, 48, 64, 96, 128, 256]
 MARGIN = 0.03
 
-def process(src, name):
-    im = Image.open(src).convert("RGBA")
+def square(im):
+    """Trim to the visible pixels and centre in a square with MARGIN."""
+    im = im.convert("RGBA")
     alpha = im.getchannel("A").point(lambda a: 255 if a > 8 else 0)
     box = alpha.getbbox()
     if box:
@@ -23,6 +24,10 @@ def process(src, name):
     sq = Image.new("RGBA", (side, side), (0, 0, 0, 0))
     # Optically centred: sit the object slightly low, like a desk icon.
     sq.alpha_composite(im, ((side - im.width) // 2, (side - im.height) // 2 + int(side * 0.005)))
+    return sq
+
+def process(src, name):
+    sq = square(Image.open(src))
     for px in SIZES:
         out = os.path.join(ROOT, str(px))
         os.makedirs(out, exist_ok=True)

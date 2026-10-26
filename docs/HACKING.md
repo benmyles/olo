@@ -16,7 +16,7 @@ improvement, never an accident.
 | `crates/kit` | The Interface Kit: Wayland client platform, GPU rendering (egui on wgpu/Vulkan), menus, BeOS widgets, icons, `.desktop` entries. **All apps are built on it.** |
 | `apps/<name>` | One crate per application, binary named `tabula-<name>`. Picked up by the workspace glob. |
 | `data/icons` | Icon set, pre-scaled to device sizes (`data/icons/<px>/<name>.png`). |
-| `tools/` | `dev/tsession` (headless UI testing), `genicon.py`/`genicons.sh`/`mkicons.py` (icons). |
+| `tools/` | `dev/tsession` (headless UI testing), `genicon.py`/`genicons.sh`/`mkicons.py`/`iconsheet.py` (icons, see [ICONS.md](ICONS.md)). |
 
 Build: `cargo build -p tabula-<app>` (plus `cargo build --bin tabula-app-server` once, for headless testing; as root set `CARGO_HOME=/home/ben/.cargo` to share the registry) (repo is owned by `ben`; when running as
 root use `sudo -u ben bash -lc 'cd … && cargo build …'` in the main checkout).
@@ -100,8 +100,10 @@ Menus: `Menu::new("File").item(label, command, Some(Key::N))`,
 5. **Icons**: `tabula_kit::icons::paint(painter, rect, "name")` with names
    from `data/icons/manifest.txt` (or freedesktop names / absolute paths).
    Sizes 16 (lists, Deskbar), 32 (Tracker list), 48–64 (Tracker icon view),
-   128 (About boxes). Need a new one? Add a line to the manifest and run
-   `tools/genicons.sh NAME && tools/mkicons.py NAME`.
+   128 (About boxes). Need a new one? Follow **[ICONS.md](ICONS.md)**: the
+   style guide, subject template and required generation workflow
+   (sunburst at max quality, against the reference set, candidates
+   reviewed on a contact sheet).
 6. BeOS idioms to keep: yellow tab decorator (app_server's job), menu bar in
    every document window, ⌘ shortcuts (Ctrl on the wire; keyd maps the Mac
    ⌘ key), keyboard focus shown as a navigation-blue underline/frame,

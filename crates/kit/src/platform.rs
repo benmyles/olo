@@ -645,7 +645,9 @@ impl Kit {
             .copied()
             .find(|f| matches!(f, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Rgba8Unorm))
             .unwrap_or(caps.formats[0]);
-        let alpha_mode = if matches!(s.role, Role::Popup { .. })
+        // Popups and surfaces without a panel background (the Tracker
+        // desktop) are translucent.
+        let alpha_mode = if (matches!(s.role, Role::Popup { .. }) || !s.options.panel)
             && caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PreMultiplied)
         {
             wgpu::CompositeAlphaMode::PreMultiplied
