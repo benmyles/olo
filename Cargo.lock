@@ -8651,8 +8651,6 @@ dependencies = [
 [[package]]
 name = "servo-net"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98af1ef87ba1355f3fae135c4b4ff26b52b75bf5eea1802751ecf3ba5ce65f15"
 dependencies = [
  "async-compression",
  "async-recursion",
@@ -8775,8 +8773,6 @@ dependencies = [
 [[package]]
 name = "servo-paint"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37fdc3732c1543c270e8387e1d44d2d7aff1894079463c3d4abcb909f0b344e7"
 dependencies = [
  "bitflags 2.13.2",
  "crossbeam-channel",
@@ -8812,8 +8808,6 @@ dependencies = [
 [[package]]
 name = "servo-paint-api"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe5e606d34334b4baccb14d912172e997a3d7dd1c0d19cb2bbd2bb38e5a6c369"
 dependencies = [
  "bitflags 2.13.2",
  "crossbeam-channel",
@@ -8847,8 +8841,6 @@ dependencies = [
 [[package]]
 name = "servo-pixels"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29677430eed97c6bd5069c6612c5c1f0e6adfb91c0656d4b5da741a26c07c9a4"
 dependencies = [
  "euclid",
  "image",
