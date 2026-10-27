@@ -50,6 +50,15 @@ pub fn new_id() -> String {
     random::<8>().iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// A random (version 4) UUID.
+pub fn new_uuid() -> String {
+    let mut b = random::<16>();
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    let h: String = b.iter().map(|x| format!("{x:02x}")).collect();
+    format!("{}-{}-{}-{}-{}", &h[..8], &h[8..12], &h[12..16], &h[16..20], &h[20..])
+}
+
 /// The key: from the key file or the login keyring; made (and kept) when
 /// there is none and nothing sealed yet.
 fn key(sealed_exists: bool) -> Result<Zeroizing<[u8; 32]>, String> {

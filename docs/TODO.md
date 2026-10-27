@@ -5,6 +5,8 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Token Pool: reset credits~~: shown per account, spent when every
+  account is out, or by hand.
 - ~~A widget tree for Chrome~~ (Ben): the Tabula extension's host
   answers Agent Screens' `tree` for Chrome, with each window's page as
   assistive technology sees it; the tabula-screens skill says so.
@@ -494,9 +496,19 @@ as they land (with the commit), add new ones as they come up.
   `--new-window` to the running copy instead of launching a second one
   (Tracker, Terminal and StyledEdit; `apps::NEW_WINDOW`). Agents run
   `tabula-x --new-window`.
-- Token Pool follow-ups: redeem reset credits (Token Pooler can spend
-  a subscription's quota-reset credit when every account is out); keep
-  key order in Claude Code's settings.json when editing it.
+- **Token Pool: a live heatmap of requests** (Ben): like Token Pooler's
+  menu, a grid of the requests open now (a cell each, coloured by state,
+  marked Claude or Codex; click one for its account, model, client and
+  how long it has run) and each account's recent requests as a strip
+  (completed, rate limited, failed, cancelled; click for the details and
+  token counts). Look at BeOS first (ActivityMonitor's and Pulse's
+  graphs, BStatusBar, the Deskbar replicants) and put what's reusable in
+  the kit (a heatmap/strip widget with hover and click), documented in
+  HACKING.
+- Token Pool follow-ups: spend a reset credit that would otherwise
+  expire unused (needs a consumption-rate estimate, as Token Pooler's
+  scheduling.md describes); keep key order in Claude Code's
+  settings.json when editing it.
 - **Rename Tabula to Olo, use the new brand, ship a wallpaper pack**
   (Ben; the very last thing, after everything else is done):
   - *Rename* everywhere (code, crates, binaries, app ids, environment

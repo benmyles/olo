@@ -8,7 +8,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use reqwest::{Client, RequestBuilder};
 use serde_json::{Value, json};
 
-use crate::model::{Credential, Provider, Window, now};
+use crate::model::{Credential, Provider, ResetCredit, Window, now};
 
 /// The providers' addresses (tests point them at fakes).
 #[derive(Debug, Clone)]
@@ -234,6 +234,77 @@ pub async fn usage(client: &Client, up: &Upstreams, p: Provider, c: &Credential)
     }
     let d: Value = r.json().await.map_err(|e| Failure::Other(format!("Reading the quota: {e}")))?;
     Ok(parse_usage(p, &d))
+}
+
+/// The reset credits in a provider's report (only ones it says the
+/// account may use).
+pub fn parse_credits(p: Provider, d: &Value) -> Vec<ResetCredit> {
+    let list = |v: &Value| v.as_array().cloned().unwrap_or_default();
+    match p {
+        Provider::Codex => list(&d["credits"])
+            .iter()
+            .filter(|r| r["status"] == "available" && r["is_supported_by_plan"] == true)
+            .filter_map(|r| Some(ResetCredit { id: r["id"].as_str()?.to_owned(), expires_at: timestamp(&r["expires_at"]), remaining: 1, usable: true, program: None }))
+            .collect(),
+        Provider::Claude => {
+            let program = &d["cedar_ember"];
+            if program["eligible"] != true {
+                return Vec::new();
+            }
+            list(&program["grants"])
+                .iter()
+                .filter(|r| r["resets_left"].as_u64().unwrap_or(0) > 0 && r["paused"] != true)
+                .filter_map(|r| {
+                    Some(ResetCredit {
+                        id: r["id"].as_str()?.to_owned(),
+                        expires_at: timestamp(&r["ends_at"]),
+                        remaining: r["resets_left"].as_u64()?.min(u32::MAX as u64) as u32,
+                        usable: r["usable_now"] == true,
+                        program: Some("cedar_ember".into()),
+                    })
+                })
+                .collect()
+        }
+    }
+}
+
+/// Read an account's reset credits.
+pub async fn credits(client: &Client, up: &Upstreams, p: Provider, c: &Credential) -> Result<Vec<ResetCredit>, Failure> {
+    let url = match p {
+        Provider::Claude => format!("{}/api/oauth/usage?cedar_ember=1&skip_spend=1", up.claude),
+        Provider::Codex => format!("{}/wham/rate-limit-reset-credits", up.chatgpt),
+    };
+    let r = authorize(client.get(url), p, c).header("anthropic-beta", OAUTH_BETA).timeout(Duration::from_secs(20)).send().await.map_err(|e| Failure::Other(format!("Reading reset credits: {e}")))?;
+    if !r.status().is_success() {
+        return Err(http_failure("Reading reset credits", r).await);
+    }
+    let d: Value = r.json().await.map_err(|e| Failure::Other(format!("Reading reset credits: {e}")))?;
+    Ok(parse_credits(p, &d))
+}
+
+/// Redeem `credit` (`request` identifies this redemption, so asking
+/// again after an unclear outcome redeems it once).
+pub async fn redeem(client: &Client, up: &Upstreams, p: Provider, c: &Credential, org: Option<&str>, credit: &ResetCredit, request: &str) -> Result<(), Failure> {
+    let (url, body) = match p {
+        Provider::Codex => (format!("{}/wham/rate-limit-reset-credits/consume", up.chatgpt), json!({"credit_id": credit.id, "redeem_request_id": request})),
+        Provider::Claude => {
+            let org = org.filter(|o| !o.is_empty() && o.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
+            let org = org.ok_or_else(|| Failure::Other("This account's Claude organization isn't known: sign in again.".into()))?;
+            let program = credit.program.as_deref().unwrap_or("cedar_ember");
+            (format!("{}/api/organizations/{org}/reset_rate_limits", up.claude), json!({"program": program, "grant_id": credit.id, "request_id": request}))
+        }
+    };
+    let r = authorize(client.post(url), p, c).header("anthropic-beta", OAUTH_BETA).timeout(Duration::from_secs(30)).json(&body).send().await.map_err(|e| Failure::Other(format!("Redeeming a reset credit: {e}")))?;
+    if !r.status().is_success() {
+        return Err(http_failure("Redeeming a reset credit", r).await);
+    }
+    if p == Provider::Claude {
+        let d: Value = r.json().await.map_err(|e| Failure::Other(format!("Redeeming a reset credit: {e}")))?;
+        if d["result"] != "reset" && d["result"] != "already_used" {
+            return Err(Failure::Other("Claude didn't confirm the reset.".into()));
+        }
+    }
+    Ok(())
 }
 
 /// What a rejection (429) says: until when, and whether only this

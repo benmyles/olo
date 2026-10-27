@@ -96,6 +96,21 @@ impl Usage {
     }
 }
 
+/// A provider-issued credit that resets an account's quota early (some
+/// subscriptions get a few).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResetCredit {
+    pub id: String,
+    pub expires_at: Option<i64>,
+    /// Redemptions left in it.
+    pub remaining: u32,
+    /// The provider says it can be used now.
+    pub usable: bool,
+    /// Claude's program name for it.
+    #[serde(default)]
+    pub program: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Account {
     /// Random, stable.
@@ -130,6 +145,26 @@ pub struct Account {
     /// Signed in on its own, apart from the client's own sign-in.
     #[serde(default)]
     pub separate: bool,
+    /// Its Claude organization (reset credits are redeemed for it).
+    #[serde(default)]
+    pub org: Option<String>,
+    /// Its reset credits, as last read.
+    #[serde(default)]
+    pub credits: Vec<ResetCredit>,
+    /// A redemption under way: (credit, request id), kept before asking so
+    /// a retry after an unclear outcome can't redeem twice.
+    #[serde(default)]
+    pub redeeming: Option<(String, String)>,
+    /// The last time a credit was redeemed for it automatically, or tried.
+    #[serde(default)]
+    pub redeem_tried: Option<i64>,
+}
+
+impl Account {
+    /// The credit to use next: usable, the soonest to expire.
+    pub fn credit(&self) -> Option<&ResetCredit> {
+        self.credits.iter().filter(|c| c.usable && c.remaining > 0).min_by_key(|c| c.expires_at.unwrap_or(i64::MAX))
+    }
 }
 
 impl Account {
@@ -151,6 +186,10 @@ impl Account {
             last_used: None,
             synced: None,
             separate: false,
+            org: None,
+            credits: Vec::new(),
+            redeeming: None,
+            redeem_tried: None,
         }
     }
 

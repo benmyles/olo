@@ -52,6 +52,8 @@ enum Msg {
     ClientSet(Provider, Result<(), String>),
     /// A sign-in was read (for this account, when signing in again).
     SignedIn(Result<Found, String>, Option<String>),
+    /// Something done in the background: what to say.
+    Done(Result<String, String>),
 }
 
 /// A separate sign-in going on in Terminal.
@@ -76,6 +78,8 @@ struct PoolApp {
     renaming: Option<(String, String)>,
     /// The account whose removal is being confirmed.
     removing: Option<String>,
+    /// The account a reset credit is being spent for (confirming).
+    resetting: Option<String>,
 }
 
 fn client_index(p: Provider) -> usize {
@@ -197,6 +201,9 @@ impl PoolApp {
             let name = pool.account(&id).map(|a| a.name.clone()).unwrap_or_default();
             self.shared.reauth(&id, found.credential);
             if let Some(a) = self.shared.pool.lock().unwrap().account_mut(&id) {
+                if found.org.is_some() {
+                    a.org = found.org;
+                }
                 if found.email.is_some() {
                     a.email = found.email;
                 }
@@ -210,6 +217,7 @@ impl PoolApp {
         let mut a = Account::new(store::new_id(), found.name(), found.provider);
         a.email = found.email.clone();
         a.plan = found.plan.clone();
+        a.org = found.org.clone();
         a.separate = self.waiting.is_some();
         let name = a.name.clone();
         self.note = Some(match self.shared.add(a, found.credential) {
@@ -255,6 +263,7 @@ impl PoolApp {
                 std::thread::spawn(move || proxy.send(Msg::SignedIn(import::this_computer(a.provider), Some(a.id))));
             }
             "remove" => self.removing = Some(a.id),
+            "reset" => self.resetting = Some(a.id),
             _ => {}
         }
     }
@@ -305,6 +314,10 @@ impl PoolApp {
             }
             if let Some(plan) = &a.plan {
                 facts.push(format!("{} plan", plan_name(plan)));
+            }
+            let credits: u32 = a.credits.iter().map(|c| c.remaining).sum();
+            if credits > 0 {
+                facts.push(format!("{credits} reset credit{}", if credits == 1 { "" } else { "s" }));
             }
             if pool.busy(&a.id) {
                 facts.push("answering now".into());
@@ -367,9 +380,27 @@ impl PoolApp {
             }
             return;
         }
+        if self.resetting.as_deref() == Some(a.id.as_str()) {
+            let when = a.credit().and_then(|c| c.expires_at).map(|e| format!(" (it expires {})", clock(e))).unwrap_or_default();
+            ui.add(StringView::new(&format!("Use one of its reset credits now{when}? Its quota starts again, and the credit is gone.")).wrap(true));
+            row(ui, |ui| {
+                if ui.add(Button::new("Use Credit")).clicked() {
+                    let (shared, proxy, id, name) = (self.shared.clone(), self.proxy.clone(), a.id.clone(), a.name.clone());
+                    self.shared.spawn(async move {
+                        let r = shared.redeem(&id).await.map(|()| format!("{name}’s quota was reset."));
+                        proxy.send(Msg::Done(r));
+                    });
+                    self.resetting = None;
+                }
+                if ui.add(Button::new("Cancel")).clicked() {
+                    self.resetting = None;
+                }
+            });
+            return;
+        }
         if self.removing.as_deref() == Some(a.id.as_str()) {
             ui.add(StringView::new("Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.").wrap(true));
-            widgets::button_row(ui, |ui| {
+            row(ui, |ui| {
                 if ui.add(Button::new("Remove")).clicked() {
                     self.note = Some(match self.shared.remove(&a.id) {
                         Ok(()) => (format!("{} left the pool.", a.name), false),
@@ -395,6 +426,7 @@ impl PoolApp {
                     let menu = Menu::new("Account")
                         .item("Rename…", "rename", None)
                         .item("Read Quota Now", "refresh", None)
+                        .action(tabula_kit::Action::new("Use a Reset Credit…", "reset").enabled(a.credit().is_some()))
                         .separator()
                         .item("Sign In Again in Terminal…", "sign-in", None)
                         .item(format!("Use This Computer’s {} Sign-In", a.provider.client()), "sign-in-local", None)
@@ -408,6 +440,16 @@ impl PoolApp {
             });
         });
     }
+}
+
+/// A row of buttons at the right, one control tall (in a card, where
+/// `button_row` alone would centre them in all the height left).
+fn row(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
+    let size = egui::vec2(ui.available_width(), m::CONTROL_HEIGHT);
+    ui.allocate_ui_with_layout(size, egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.spacing_mut().item_spacing.x = m::SPACING + 2.0;
+        add(ui)
+    });
 }
 
 /// One quota window: how much is used, and when it resets.
@@ -547,6 +589,12 @@ impl App for PoolApp {
                 });
                 self.read_clients();
             }
+            Msg::Done(r) => {
+                self.note = Some(match r {
+                    Ok(m) => (m, false),
+                    Err(e) => (e, true),
+                })
+            }
             Msg::SignedIn(r, target) => {
                 match r {
                     Ok(found) => self.adopt(found, target),
@@ -625,6 +673,8 @@ fn status(port: u16, as_json: bool) -> std::process::ExitCode {
         } else {
             "ready".into()
         };
+        let credits: u64 = a["reset_credits"].as_array().into_iter().flatten().filter_map(|c| c["remaining"].as_u64()).sum();
+        let state = if credits > 0 { format!("{state}, {credits} reset credit{}", if credits == 1 { "" } else { "s" }) } else { state };
         println!("{} [{}] {}", a["name"].as_str().unwrap_or(""), a["provider"].as_str().unwrap_or(""), state);
         for w in a["windows"].as_array().into_iter().flatten() {
             let reset = w["resets_at"].as_i64().filter(|&r| r > t).map(|r| format!(", resets {} ({})", clock(r), span(r - t))).unwrap_or_default();
@@ -680,6 +730,7 @@ fn main() -> std::process::ExitCode {
             waiting: None,
             renaming: None,
             removing: None,
+            resetting: None,
         };
         let open = match &restored {
             Some(r) => r["open"] == true,

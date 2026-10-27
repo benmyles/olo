@@ -20,6 +20,8 @@ pub struct Found {
     pub credential: Credential,
     pub email: Option<String>,
     pub plan: Option<String>,
+    /// Claude's organization.
+    pub org: Option<String>,
 }
 
 impl Found {
@@ -70,6 +72,7 @@ pub fn read_claude(dir: &Path) -> Result<Found, String> {
         },
         email: account["emailAddress"].as_str().map(str::to_owned),
         plan: o["subscriptionType"].as_str().map(str::to_owned),
+        org: account["organizationUuid"].as_str().map(str::to_owned),
     })
 }
 
@@ -90,6 +93,7 @@ pub fn read_codex(dir: &Path) -> Result<Found, String> {
         },
         email: claims["email"].as_str().map(str::to_owned),
         plan: auth["chatgpt_plan_type"].as_str().map(str::to_owned),
+        org: None,
     })
 }
 

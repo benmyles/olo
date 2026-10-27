@@ -275,6 +275,13 @@ impl Shared {
         Ok(())
     }
 
+    /// Run `task` on the gateway's runtime (once it is running).
+    pub fn spawn(&self, task: impl std::future::Future<Output = ()> + Send + 'static) {
+        if let Some(rt) = self.runtime.lock().unwrap().clone() {
+            rt.spawn(task);
+        }
+    }
+
     /// Read quota (and refresh sign-ins due) for one account or all, soon.
     pub fn sync_soon(self: &Arc<Self>, id: Option<String>) {
         let Some(rt) = self.runtime.lock().unwrap().clone() else { return };
@@ -319,6 +326,107 @@ impl Shared {
         self.touch();
     }
 
+    /// Write the pool now (for what must be kept before a provider is asked).
+    async fn save_now(&self) {
+        let snapshot = {
+            let p = self.pool.lock().unwrap();
+            if !p.loaded {
+                return;
+            }
+            p.saved.clone()
+        };
+        let store = self.store.lock().unwrap().is_some();
+        if !store {
+            // Not made yet: the saver makes it.
+            self.touch();
+            return;
+        }
+        // A small write, on this worker thread, before the provider is asked.
+        let result = tokio::task::block_in_place(|| self.store.lock().unwrap().as_ref().map(|s| s.save(&snapshot)));
+        if let Some(Err(e)) = result {
+            tracing::warn!("pool: {e}");
+        }
+    }
+
+    /// Spend one of account `id`'s reset credits (the soonest to expire),
+    /// then read its quota again.
+    pub async fn redeem(&self, id: &str) -> Result<(), String> {
+        let lock = self.lock_for(&format!("redeem:{id}"));
+        let _held = lock.lock().await;
+        let (provider, org, credit, request) = {
+            let mut p = self.pool.lock().unwrap();
+            let a = p.account_mut(id).ok_or("No such account.")?;
+            let credit = a.credit().cloned().ok_or("It has no reset credit to use now.")?;
+            // The same redemption again, if one was left unclear.
+            let request = match &a.redeeming {
+                Some((c, r)) if *c == credit.id => r.clone(),
+                _ => crate::store::new_uuid(),
+            };
+            a.redeeming = Some((credit.id.clone(), request.clone()));
+            a.redeem_tried = Some(now());
+            (a.provider, a.org.clone(), credit, request)
+        };
+        self.save_now().await;
+        let cred = self.fresh(id, provider, false, 60).await.map_err(|e| e.to_string())?;
+        let result = upstream::redeem(&self.client, &self.up, provider, &cred, org.as_deref(), &credit, &request).await;
+        {
+            let mut p = self.pool.lock().unwrap();
+            if let Some(a) = p.account_mut(id) {
+                match &result {
+                    Ok(()) => {
+                        a.redeeming = None;
+                        a.cooldown_until = None;
+                        // The shared windows start again; the report says by how much.
+                        for w in a.windows.iter_mut().filter(|w| w.models.is_empty()) {
+                            w.used = 0.0;
+                        }
+                        if let Some(c) = a.credits.iter_mut().find(|c| c.id == credit.id) {
+                            c.remaining = c.remaining.saturating_sub(1);
+                        }
+                        a.credits.retain(|c| c.remaining > 0);
+                    }
+                    // Refused outright: nothing was spent.
+                    Err(Failure::Refused(_)) => a.redeeming = None,
+                    Err(Failure::Other(_)) => {}
+                }
+            }
+        }
+        self.touch();
+        let result = result.map_err(|e| e.to_string());
+        if result.is_ok() {
+            self.sync(Some(id)).await;
+        }
+        result
+    }
+
+    /// When no account can serve: redeem a credit for one whose shared
+    /// quota (not just a model's meter) ran out, if one has a credit it
+    /// may use now. At most once a minute per account.
+    async fn redeem_for(&self, provider: Provider, family: &str) -> Option<String> {
+        let t = now();
+        let id = {
+            let p = self.pool.lock().unwrap();
+            p.saved
+                .accounts
+                .iter()
+                .filter(|a| a.provider == provider && a.enabled && a.signed_out.is_none() && a.credit().is_some())
+                .filter(|a| a.redeem_tried.is_none_or(|r| t - r >= 60))
+                // Its own model meter would still block it after a reset.
+                .filter(|a| !a.model_cooldowns.get(family).is_some_and(|&c| c > t))
+                .filter(|a| !a.windows.iter().any(|w| !w.models.is_empty() && w.applies_to(family) && w.exhausted(t)))
+                .filter(|a| a.cooldown_until.is_some_and(|c| c > t) || a.windows.iter().any(|w| w.models.is_empty() && w.exhausted(t)))
+                .min_by_key(|a| a.credit().and_then(|c| c.expires_at).unwrap_or(i64::MAX))
+                .map(|a| a.id.clone())
+        }?;
+        match self.redeem(&id).await {
+            Ok(()) => Some(id),
+            Err(e) => {
+                tracing::warn!("pool: redeeming a reset credit: {e}");
+                None
+            }
+        }
+    }
+
     /// Refresh sign-ins due within ten minutes and read every enabled
     /// account's quota (or just `only`'s).
     pub async fn sync(&self, only: Option<&str>) {
@@ -335,8 +443,19 @@ impl Shared {
                 },
                 r => r,
             };
+            let credits = match &report {
+                Ok(_) => self.fresh(&id, provider, false, 60).await.ok(),
+                Err(_) => None,
+            };
+            let credits = match credits {
+                Some(c) => upstream::credits(&self.client, &self.up, provider, &c).await.ok(),
+                None => None,
+            };
             let mut p = self.pool.lock().unwrap();
             let Some(a) = p.account_mut(&id) else { continue };
+            if let Some(c) = credits {
+                a.credits = c;
+            }
             match report {
                 Ok((windows, plan)) => {
                     // The report is the truth; a rejection's per-model
@@ -445,6 +564,7 @@ pub fn status_json(p: &Pool) -> Value {
             json!({
                 "id": a.id, "name": a.name, "provider": a.provider, "enabled": a.enabled,
                 "email": a.email, "plan": a.plan, "signed_out": a.signed_out,
+                "reset_credits": a.credits.iter().map(|c| json!({"remaining": c.remaining, "usable": c.usable, "expires_at": c.expires_at})).collect::<Vec<_>>(),
                 "blocked_until": schedule::blocked_until(a, "", t),
                 "windows": a.windows, "today": a.today.1, "total": a.total,
                 "in_flight": p.in_flight.get(&a.id).copied().unwrap_or(0),
@@ -540,7 +660,7 @@ async fn proxy(ctx: Ctx, provider: Provider, rest: String, query: Option<String>
                 Some((id, name)) => {
                     p.sticky.insert((provider, family.clone()), id.clone());
                     *p.in_flight.entry(id.clone()).or_default() += 1;
-                    (id, name)
+                    Ok((id, name))
                 }
                 None => {
                     if !p.loaded {
@@ -549,18 +669,27 @@ async fn proxy(ctx: Ctx, provider: Provider, rest: String, query: Option<String>
                     }
                     let any = p.saved.accounts.iter().any(|a| a.provider == provider && a.enabled && a.signed_out.is_none());
                     let retry = schedule::next_available(&p.saved.accounts, provider, &family, t);
-                    drop(p);
-                    return if any {
-                        let msg = format!("Every {} account in the pool is out of quota for now.", provider.client());
-                        unavailable(provider, StatusCode::TOO_MANY_REQUESTS, &msg, retry)
-                    } else {
-                        let msg = format!("There are no {} accounts in the pool to use (open Token Pool to add one).", provider.client());
-                        unavailable(provider, StatusCode::SERVICE_UNAVAILABLE, &msg, None)
-                    };
+                    Err((any, retry))
                 }
             }
         };
-        let (id, name) = chosen;
+        let (id, name) = match chosen {
+            Ok(c) => c,
+            Err((any, retry)) => {
+                // Every account out: a reset credit keeps things going.
+                if any && let Some(id) = s.redeem_for(provider, &family).await {
+                    tried.retain(|t| *t != id);
+                    continue;
+                }
+                return if any {
+                    let msg = format!("Every {} account in the pool is out of quota for now.", provider.client());
+                    unavailable(provider, StatusCode::TOO_MANY_REQUESTS, &msg, retry)
+                } else {
+                    let msg = format!("There are no {} accounts in the pool to use (open Token Pool to add one).", provider.client());
+                    unavailable(provider, StatusCode::SERVICE_UNAVAILABLE, &msg, None)
+                };
+            }
+        };
         let done = |s: &Shared| {
             let mut p = s.pool.lock().unwrap();
             if let Some(n) = p.in_flight.get_mut(&id) {
@@ -805,3 +934,4 @@ mod tests {
         assert!(!returned("set-cookie") && returned("anthropic-ratelimit-unified-5h-utilization"));
     }
 }
+

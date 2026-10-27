@@ -161,3 +161,71 @@ async fn drains_and_fails_over() {
     shared.sync(Some("c")).await;
     assert_eq!(shared.snapshot().account("c").unwrap().windows[0].used, 10.0);
 }
+
+/// One account, out of quota, with a reset credit: the request redeems it
+/// (once, for the account's organization) and is then served.
+#[tokio::test(flavor = "multi_thread")]
+async fn redeems_a_credit_when_all_are_out() {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    let reset = Arc::new(AtomicBool::new(false));
+    let redeemed = Arc::new(AtomicUsize::new(0));
+    let (r1, r2, n) = (reset.clone(), reset.clone(), redeemed.clone());
+    let fake = Router::new()
+        .route(
+            "/v1/messages",
+            post(move || {
+                let reset = r1.clone();
+                async move {
+                    if reset.load(Ordering::SeqCst) {
+                        Response::builder().header("content-type", "application/json").body(Body::from(r#"{"usage":{"input_tokens":3,"output_tokens":4}}"#)).unwrap()
+                    } else {
+                        Response::builder()
+                            .status(429)
+                            .header("anthropic-ratelimit-unified-status", "rejected")
+                            .header("anthropic-ratelimit-unified-representative-claim", "five_hour")
+                            .header("anthropic-ratelimit-unified-reset", (now() + 3600).to_string())
+                            .body(Body::from("{}"))
+                            .unwrap()
+                    }
+                }
+            }),
+        )
+        .route(
+            "/api/organizations/{org}/reset_rate_limits",
+            post(move |axum::extract::Path(org): axum::extract::Path<String>, body: axum::body::Bytes| {
+                let (reset, n) = (r2.clone(), n.clone());
+                async move {
+                    assert_eq!(org, "org-1");
+                    let v: Value = serde_json::from_slice(&body).unwrap();
+                    assert_eq!((v["grant_id"].as_str(), v["program"].as_str()), (Some("g1"), Some("cedar_ember")));
+                    assert_eq!(v["request_id"].as_str().unwrap().len(), 36);
+                    n.fetch_add(1, Ordering::SeqCst);
+                    reset.store(true, Ordering::SeqCst);
+                    axum::Json(json!({"result": "reset"}))
+                }
+            }),
+        )
+        .route("/api/oauth/usage", get(|| async { axum::Json(json!({"five_hour": {"utilization": 1.0, "resets_at": now() + 18000}})) }));
+    let base = format!("http://{}", serve(fake).await);
+    let up = Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth") };
+    let mut saved = Saved::default();
+    let mut a = account("a", 1, 100);
+    a.org = Some("org-1".into());
+    a.credits.push(tabula_token_pool::model::ResetCredit { id: "g1".into(), expires_at: Some(now() + 86400), remaining: 2, usable: true, program: Some("cedar_ember".into()) });
+    saved.accounts.push(a);
+    saved.credentials.insert("a".into(), cred("ok"));
+    let shared = Shared::new(saved, None, up, || {});
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    let app = gateway::router(shared.clone(), addr.port());
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    let client = reqwest::Client::new();
+    let r = client.post(format!("http://{addr}/claude/v1/messages")).json(&json!({"model": "claude-opus-5-5"})).send().await.unwrap();
+    assert_eq!(r.status(), 200);
+    assert_eq!(redeemed.load(Ordering::SeqCst), 1);
+    let p = shared.snapshot();
+    let a = p.account("a").unwrap();
+    // Read again from the provider afterwards (this fake reports none left).
+    assert!(a.credits.iter().all(|c| c.remaining <= 1));
+    assert_eq!((a.redeeming.is_none(), a.cooldown_until), (true, None));
+}

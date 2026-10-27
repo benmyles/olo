@@ -2050,6 +2050,18 @@ opens it), which listens on `127.0.0.1:17891` (`TABULA_POOL_PORT`).
   model provider to `config.toml` (toml_edit, so comments stay) and
   selects it. What was there before is kept in `pool-clients.json` and
   put back when unchecked.
+- **Reset credits** (some subscriptions get a few, to reset their quota
+  early): read with each sync (Claude's `cedar_ember` grants in the
+  usage report, `?cedar_ember=1`; ChatGPT's
+  `/wham/rate-limit-reset-credits`) and shown on the card. One is spent
+  automatically only when no account can serve and an account's
+  *shared* quota (not just a model's meter) is what stops it, at most
+  once a minute per account; or by hand (Account ▸ Use a Reset Credit…,
+  after a confirmation). The redemption's request id is saved before
+  the provider is asked, so a retry after an unclear outcome can't spend
+  two. Claude's needs the account's organization (`organizationUuid`,
+  read at sign-in). Not done: Token Pooler's "spend a credit that would
+  expire unused" rule, which needs a consumption-rate estimate.
 - **Agents**: `tabula-pool --status [--json]`, or `GET /pool/status`.
 
 Tests: `cargo test -p tabula-token-pool` runs the gateway against a fake
