@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Drag and drop
+
+*23:12* — Files drag between Tracker's views, the desktop, other apps and other Wayland programs, BeOS-style: a see-through picture with the name, folders light up to take them, move within a disk and copy across, a right-button drag asks Move/Copy/Link. Desktop icons stay where you put them. Drop a file on Terminal to type its path (an image into Claude Code).
+
+![Drag and drop](2026-10-26/231257-drag-and-drop.png)
+
 ### Passwords: several 1Password accounts
 
 *22:40* — Passwords now syncs with every 1Password account you tick (File ▸ 1Password Accounts…), in one review. The sidebar lists each account's vaults under its name, a vault is named with its account wherever it could be confused, and removing an account asks first and only removes its items from this computer.

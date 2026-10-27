@@ -613,6 +613,9 @@ fn toolbar(ui: &mut Ui, bar: Rect, v: &mut PdfView, sign_menu: Menu) -> Option<S
 
 impl App for Viewer {
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui) {
+        if matches!(self.windows.get(&window), Some(Win::Doc(_))) {
+            tabula_kit::dnd::open_files(ui, "open");
+        }
         match self.windows.get_mut(&window) {
             Some(Win::Doc(_)) => self.doc_ui(cx, window, ui),
             Some(Win::Pad { doc, pad }) => {
@@ -711,8 +714,8 @@ impl App for Viewer {
         }
     }
 
-    fn files_dropped(&mut self, cx: &mut Cx, _window: WindowId, paths: Vec<PathBuf>) {
-        for p in paths {
+    fn dropped(&mut self, cx: &mut Cx, _window: WindowId, drop: tabula_kit::dnd::Drop) {
+        for p in drop.paths() {
             self.open_file(cx, p);
         }
     }

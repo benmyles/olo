@@ -212,6 +212,21 @@ pub struct Tracker {
     watcher: Option<watch::Watcher>,
     quicklook: Option<quicklook::QuickLook>,
     preview_generation: u64,
+    /// Files dropped with the secondary button, waiting for Move Here /
+    /// Copy Here / Create Link Here from the menu shown where they fell.
+    asked_drop: Option<AskedDrop>,
+}
+
+struct AskedDrop {
+    window: WindowId,
+    paths: Vec<PathBuf>,
+    dest: PathBuf,
+    pos: egui::Pos2,
+    shown: bool,
+}
+
+fn ask_drop_id() -> egui::Id {
+    egui::Id::unique("tracker-drop-ask")
 }
 
 const STATUS_WIDTH: u32 = 420;
@@ -933,6 +948,7 @@ impl Tracker {
         for a in actions {
             match a {
                 view::Action::Open(e) => self.open_entry(cx, &e),
+                view::Action::Drag(d) => cx.start_drag(win, d.data(ui.ctx())),
                 view::Action::Command(c) => self.folder_command(cx, win, &c),
                 view::Action::Rename(p, name) => {
                     if let Some(new) = self.rename(cx, &p, &name)
@@ -953,6 +969,14 @@ impl Tracker {
             return None;
         }
         let r = fs::rename(p, name);
+        if let Ok(new) = &r {
+            // A desktop icon keeps its place under its new name.
+            for w in self.windows.values_mut() {
+                if let Win::Desktop(d) = w {
+                    d.renamed(p, new);
+                }
+            }
+        }
         self.reload_all();
         match r {
             Ok(new) => Some(new),
@@ -1266,6 +1290,7 @@ impl App for Tracker {
 
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
         self.sync_watches();
+        self.asked_drop_ui(cx, window, ui);
         match self.windows.get(&window) {
             Some(Win::Folder(_)) => self.folder_ui(cx, window, ui),
             Some(Win::Desktop(_)) => {
@@ -1284,6 +1309,7 @@ impl App for Tracker {
                 for a in actions {
                     match a {
                         view::Action::Open(e) => self.open_entry(cx, &e),
+                        view::Action::Drag(d) => cx.start_drag(window, d.data(ui.ctx())),
                         view::Action::Rename(p, name) => {
                             self.rename(cx, &p, &name);
                         }
@@ -1333,6 +1359,10 @@ impl App for Tracker {
             Some(Win::Preview) => self.preview_ui(cx, window, ui),
             None => {}
         }
+    }
+
+    fn dropped(&mut self, cx: &mut Cx, window: WindowId, drop: tabula_kit::dnd::Drop) {
+        self.drop_on(cx, window, drop);
     }
 
     fn menu_bar(&mut self, window: WindowId) -> Option<Vec<Menu>> {
@@ -1468,6 +1498,104 @@ impl App for Tracker {
 impl Tracker {
     /// Run a file operation in the background. Short ones finish without a
     /// trace; longer ones show in the Tracker Status window.
+    /// Files or text dropped on a folder, the desktop or the Trash.
+    fn drop_on(&mut self, cx: &mut Cx, window: WindowId, drop: tabula_kit::dnd::Drop) {
+        use tabula_kit::dnd::Action as A;
+        let Some(target) = view::DropTarget::parse(&drop.target) else { return };
+        let paths = drop.paths();
+        let dest = match target {
+            view::DropTarget::Trash => {
+                let trash = fs::trash_files();
+                let paths: Vec<PathBuf> = paths.into_iter().filter(|p| !p.starts_with(&trash)).collect();
+                if !paths.is_empty() {
+                    self.start_job(cx, ops::Kind::Trash, paths, None, Some(window));
+                }
+                return;
+            }
+            view::DropTarget::Place => {
+                if let Some(Win::Desktop(d)) = self.windows.get_mut(&window) {
+                    d.place_dragged(drop.pos);
+                    cx.redraw(window);
+                }
+                return;
+            }
+            view::DropTarget::Folder(dest) => dest,
+        };
+        // Dropped on the desktop: they go where they were let go.
+        if let Some(Win::Desktop(d)) = self.windows.get_mut(&window)
+            && dest == fs::home().join("Desktop")
+            && !matches!(drop.action, A::Ask)
+        {
+            let names: Vec<String> = paths.iter().filter_map(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).collect();
+            d.place_new(&names, drop.pos);
+        }
+        if drop.mime != "text/uri-list" || paths.is_empty() {
+            // Text (or web links): a clipping file, as BeOS made.
+            let text = drop.text();
+            if !text.trim().is_empty() {
+                match fs::clipping(&dest, &text) {
+                    Ok(_) => self.reload_all(),
+                    Err(e) => self.error(cx, format!("Couldn't save the clipping: {e}")),
+                }
+            }
+            return;
+        }
+        // Nothing goes into itself.
+        if let Some(p) = paths.iter().find(|p| p.is_dir() && dest.starts_with(p)) {
+            let name = p.file_name().unwrap_or_default().to_string_lossy().into_owned();
+            self.error(cx, format!("“{name}” can't go inside itself."));
+            return;
+        }
+        match drop.action {
+            A::Ask => {
+                self.asked_drop = Some(AskedDrop { window, paths, dest, pos: drop.pos, shown: false });
+                cx.redraw(window);
+            }
+            A::Move => {
+                // Already there: nothing to move.
+                let paths: Vec<PathBuf> = paths.into_iter().filter(|p| p.parent() != Some(dest.as_path())).collect();
+                if !paths.is_empty() {
+                    self.start_job(cx, ops::Kind::Move, paths, Some(dest), Some(window));
+                }
+            }
+            A::Copy => self.start_job(cx, ops::Kind::Copy, paths, Some(dest), Some(window)),
+        }
+    }
+
+    /// The menu for a secondary-button drop, and what is chosen from it.
+    fn asked_drop_ui(&mut self, cx: &mut Cx, window: WindowId, ui: &egui::Ui) {
+        let Some(a) = self.asked_drop.as_mut().filter(|a| a.window == window) else { return };
+        if !a.shown {
+            a.shown = true;
+            let same = a.paths.iter().all(|p| p.parent() == Some(a.dest.as_path()));
+            let menu = Menu::new("")
+                .item("Move Here", "move", None)
+                .enabled(!same)
+                .item("Copy Here", "copy", None)
+                .item("Create Link Here", "link", None)
+                .separator()
+                .item("Cancel", "cancel", None);
+            widgets::popup_menu_at(ui.ctx(), ask_drop_id(), a.pos, menu);
+            return;
+        }
+        let Some(cmd) = widgets::popup_result(ui.ctx(), ask_drop_id()) else { return };
+        let Some(a) = self.asked_drop.take() else { return };
+        match cmd.as_str() {
+            "move" => self.start_job(cx, ops::Kind::Move, a.paths, Some(a.dest), Some(window)),
+            "copy" => self.start_job(cx, ops::Kind::Copy, a.paths, Some(a.dest), Some(window)),
+            "link" => {
+                for p in &a.paths {
+                    if let Err(e) = fs::link_into(p, &a.dest) {
+                        self.error(cx, format!("Couldn't create a link: {e}"));
+                        break;
+                    }
+                }
+                self.reload_all();
+            }
+            _ => {}
+        }
+    }
+
     fn start_job(&mut self, cx: &mut Cx, kind: ops::Kind, sources: Vec<PathBuf>, dest: Option<PathBuf>, origin: Option<WindowId>) {
         let id = self.next_job;
         self.next_job += 1;
@@ -1590,6 +1718,7 @@ fn main() {
             watcher,
             quicklook: None,
             preview_generation: 0,
+            asked_drop: None,
         };
         if args.iter().any(|a| a == "--desktop") {
             let id = cx.open_window(desktop::options());

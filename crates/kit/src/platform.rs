@@ -18,7 +18,7 @@ use smithay_client_toolkit::{
         DataDeviceManagerState, WritePipe,
         data_device::{DataDevice, DataDeviceHandler},
         data_offer::{DataOfferHandler, DragOffer},
-        data_source::{CopyPasteSource, DataSourceHandler},
+        data_source::{CopyPasteSource, DataSourceHandler, DragSource},
     },
     delegate_registry,
     dispatch2::Dispatch2,
@@ -191,6 +191,60 @@ impl Surface {
 static REPAINT: std::sync::OnceLock<Mutex<channel::Sender<(WindowId, Duration)>>> = std::sync::OnceLock::new();
 /// Clipboard text read on a helper thread, for the surface that pasted.
 static PASTED: std::sync::OnceLock<Mutex<channel::Sender<(WlSurface, String)>>> = std::sync::OnceLock::new();
+/// Dropped data read on a helper thread: the window, the drop, and the
+/// offer to finish once the app has it.
+static DROPPED: std::sync::OnceLock<Mutex<channel::Sender<(WindowId, crate::dnd::Drop, DragOffer)>>> = std::sync::OnceLock::new();
+
+/// Our drag, while it lasts.
+struct OutDrag {
+    source: DragSource,
+    window: WindowId,
+    data: crate::dnd::DragData,
+    action: Option<crate::dnd::Action>,
+    /// The icon's surface and the memory its buffer lives in.
+    icon: Option<(WlSurface, smithay_client_toolkit::shm::slot::SlotPool, smithay_client_toolkit::shm::slot::Buffer)>,
+}
+
+/// A drag over one of our windows.
+struct InDrag {
+    wl: WlSurface,
+    pos: Pos2,
+    types: Vec<String>,
+    actions: crate::dnd::Actions,
+    accepted: Option<crate::dnd::Accepted>,
+    /// What we last told the offer (to only tell it again on a change).
+    told: Option<Option<crate::dnd::Accepted>>,
+}
+
+fn to_dnd(a: crate::dnd::Actions) -> DndAction {
+    let mut out = DndAction::empty();
+    if a.copy {
+        out |= DndAction::Copy;
+    }
+    if a.move_ {
+        out |= DndAction::Move;
+    }
+    if a.ask {
+        out |= DndAction::Ask;
+    }
+    out
+}
+
+fn from_dnd(a: DndAction) -> crate::dnd::Actions {
+    crate::dnd::Actions { copy: a.contains(DndAction::Copy), move_: a.contains(DndAction::Move), ask: a.contains(DndAction::Ask) }
+}
+
+fn action_of(a: DndAction) -> Option<crate::dnd::Action> {
+    if a.contains(DndAction::Move) {
+        Some(crate::dnd::Action::Move)
+    } else if a.contains(DndAction::Copy) {
+        Some(crate::dnd::Action::Copy)
+    } else if a.contains(DndAction::Ask) {
+        Some(crate::dnd::Action::Ask)
+    } else {
+        None
+    }
+}
 
 pub struct KitData;
 pub struct ScaleData(WlSurface);
@@ -239,6 +293,8 @@ pub struct Kit {
     last_serial: u32,
     /// What we put on the clipboard: the source and its data by type.
     clipboard: Option<(CopyPasteSource, Clip)>,
+    drag_out: Option<OutDrag>,
+    drag_in: Option<InDrag>,
     exit: bool,
     /// tabula-session installed a new version of us: stop and re-execute.
     upgrading: bool,
@@ -292,6 +348,24 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
             }
         })
         .expect("repaint channel");
+
+    let (dropped_tx, dropped_rx) = channel::channel::<(WindowId, crate::dnd::Drop, DragOffer)>();
+    let _ = DROPPED.set(Mutex::new(dropped_tx));
+    loop_handle
+        .insert_source(dropped_rx, |event, _, kit: &mut Kit| {
+            if let channel::Event::Msg((window, drop, offer)) = event {
+                // An asked-for action ends as a copy: the app did what was
+                // chosen, and the source mustn't delete anything.
+                if drop.action == crate::dnd::Action::Ask {
+                    offer.set_actions(DndAction::Copy, DndAction::Copy);
+                }
+                kit.with_app(|app, cx| app.dropped(cx, window, drop));
+                offer.finish();
+                offer.destroy();
+                let _ = kit.conn.flush();
+            }
+        })
+        .expect("drop channel");
 
     let (pasted_tx, pasted_rx) = channel::channel::<(WlSurface, String)>();
     let _ = PASTED.set(Mutex::new(pasted_tx));
@@ -582,6 +656,8 @@ impl Kit {
             last_active: None,
             modifiers: egui::Modifiers::NONE,
             last_serial: 0,
+            drag_out: None,
+            drag_in: None,
             clipboard: None,
             exit: false,
             upgrading: false,
@@ -921,6 +997,7 @@ impl Kit {
                     Request::Copy(text) => self.set_clipboard(text),
                     Request::CopySecret(text, after) => self.set_secret_clipboard(text, after),
                     Request::CopyData(clip) => self.set_clipboard_data(clip),
+                    Request::StartDrag(id, data) => self.start_drag(id, data),
                     Request::Paste(id) => {
                         if let Some(wl) = self.surface_mut(id).map(|s| s.wl.clone()) {
                             self.paste(&wl);
@@ -1388,6 +1465,7 @@ impl Kit {
 
         // Gather input.
         let max_texture_side = self.gpu.as_ref().map(|g| g.device.limits().max_texture_dimension_2d as usize);
+        let hover = self.drag_hover(i);
         let s = &mut self.surfaces[i];
         s.dirty = false;
         // A tap's release waits for the next frame (see input::split_taps).
@@ -1411,6 +1489,7 @@ impl Kit {
             .or_default()
             .native_pixels_per_point = Some(s.scale as f32);
         let ctx = s.ctx.clone();
+        crate::dnd::begin_frame(&ctx, hover.clone());
         // Document fonts added since this window last looked.
         let fonts = style::fonts_generation();
         if s.fonts != fonts {
@@ -1541,6 +1620,10 @@ impl Kit {
             out
         };
 
+        if hover.is_some() {
+            let accepted = crate::dnd::end_frame(&ctx);
+            self.tell_offer(accepted);
+        }
         self.present(id, output);
         if menu::take_paste(&ctx)
             && let Some(wl) = self.surface_mut(id).map(|s| s.wl.clone())
@@ -1868,6 +1951,110 @@ impl Kit {
         if let Some(o) = self.surface_mut(owner) {
             o.popups.push(id);
         }
+    }
+
+    // ---- drag and drop ---------------------------------------------------
+
+    /// What is dragged over surface `i`, for its frame.
+    fn drag_hover(&self, i: usize) -> Option<crate::dnd::Hover> {
+        let d = self.drag_in.as_ref().filter(|d| d.wl == self.surfaces[i].wl)?;
+        let ours = self.drag_out.as_ref();
+        Some(crate::dnd::Hover {
+            pos: d.pos,
+            types: d.types.clone(),
+            actions: d.actions,
+            from_here: ours.is_some_and(|o| o.window == self.surfaces[i].id),
+            from_us: ours.is_some(),
+        })
+    }
+
+    /// Tell the drag over us what the window takes (only on a change).
+    fn tell_offer(&mut self, accepted: Option<crate::dnd::Accepted>) {
+        let Some(d) = self.drag_in.as_mut() else { return };
+        let accepted = accepted.filter(|a| d.types.contains(&a.mime) && d.actions.allows(a.action));
+        d.accepted = accepted.clone();
+        if d.told.as_ref() == Some(&accepted) {
+            return;
+        }
+        d.told = Some(accepted.clone());
+        debug!(?accepted, "dnd: tell offer");
+        let Some(offer) = self.data_device.as_ref().and_then(|dev| dev.data().drag_offer()) else { return };
+        match accepted {
+            Some(a) => {
+                let action = to_dnd(crate::dnd::Actions {
+                    copy: a.action == crate::dnd::Action::Copy,
+                    move_: a.action == crate::dnd::Action::Move,
+                    ask: a.action == crate::dnd::Action::Ask,
+                });
+                offer.accept_mime_type(offer.serial, Some(a.mime));
+                offer.set_actions(action, action);
+            }
+            None => {
+                offer.accept_mime_type(offer.serial, None);
+                offer.set_actions(DndAction::empty(), DndAction::empty());
+            }
+        }
+        let _ = self.conn.flush();
+    }
+
+    fn start_drag(&mut self, id: WindowId, data: crate::dnd::DragData) {
+        let Some(origin) = self.surface_mut(id).map(|s| s.wl.clone()) else { return };
+        let Some(mgr) = &self.data_device_manager else { return };
+        if self.drag_out.is_some() || self.data_device.is_none() {
+            debug!(busy = self.drag_out.is_some(), "dnd: can't start a drag");
+            return;
+        }
+        let source = mgr.create_drag_and_drop_source(&self.qh, data.types.iter().map(|(t, _)| t.as_str()), to_dnd(data.actions));
+        let icon = data.icon.as_ref().and_then(|icon| self.drag_icon(icon));
+        let Some(dev) = &self.data_device else { return };
+        debug!(types = ?data.types.iter().map(|(t, _)| t).collect::<Vec<_>>(), serial = self.last_serial, icon = icon.is_some(), "dnd: start drag");
+        source.start_drag(dev, &origin, icon.as_ref().map(|(wl, ..)| wl), self.last_serial);
+        let _ = self.conn.flush();
+        self.drag_out = Some(OutDrag { source, window: id, data, action: None, icon });
+    }
+
+    /// A surface showing `icon`, for a drag.
+    fn drag_icon(
+        &self,
+        icon: &crate::dnd::DragIcon,
+    ) -> Option<(WlSurface, smithay_client_toolkit::shm::slot::SlotPool, smithay_client_toolkit::shm::slot::Buffer)> {
+        use smithay_client_toolkit::reexports::client::protocol::wl_shm::Format;
+        let [w, h] = icon.image.size;
+        if w == 0 || h == 0 {
+            return None;
+        }
+        let mut pool = smithay_client_toolkit::shm::slot::SlotPool::new(w * h * 4, &self.shm).ok()?;
+        let (buffer, canvas) = pool.create_buffer(w as i32, h as i32, w as i32 * 4, Format::Argb8888).ok()?;
+        // Premultiplied BGRA, as wl_shm's ARGB8888 is in memory.
+        for (px, c) in canvas.chunks_exact_mut(4).zip(icon.image.pixels.iter()) {
+            px.copy_from_slice(&[c.b(), c.g(), c.r(), c.a()]);
+        }
+        let wl = self.compositor.create_surface(&self.qh);
+        wl.set_buffer_scale(icon.scale.max(1) as i32);
+        buffer.attach_to(&wl).ok()?;
+        wl.damage_buffer(0, 0, w as i32, h as i32);
+        // The pointer's place on it: the icon is drawn up and left of it.
+        if wl.version() >= 5 {
+            wl.offset(-(icon.hotspot.x.round() as i32), -(icon.hotspot.y.round() as i32));
+        } else {
+            wl.attach(Some(buffer.wl_buffer()), -(icon.hotspot.x.round() as i32), -(icon.hotspot.y.round() as i32));
+        }
+        wl.commit();
+        Some((wl, pool, buffer))
+    }
+
+    /// Our drag is over (`action`: what it was dropped as, or None).
+    fn drag_done(&mut self, source: &WlDataSource, action: Option<crate::dnd::Action>) {
+        if !self.drag_out.as_ref().is_some_and(|d| d.source.inner() == source) {
+            return;
+        }
+        let Some(d) = self.drag_out.take() else { return };
+        if let Some((wl, ..)) = &d.icon {
+            wl.destroy();
+        }
+        source.destroy();
+        let window = d.window;
+        self.with_app(|app, cx| app.drag_ended(cx, window, action));
     }
 
     fn push_event(&mut self, wl: &WlSurface, event: egui::Event) {
@@ -2403,23 +2590,94 @@ impl ShmHandler for Kit {
 }
 
 impl DataDeviceHandler for Kit {
-    fn enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice, _: f64, _: f64, _: &WlSurface) {}
-    fn leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice) {}
-    fn motion(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice, _: f64, _: f64) {}
+    fn enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice, x: f64, y: f64, wl: &WlSurface) {
+        let offer = self.data_device.as_ref().and_then(|d| d.data().drag_offer());
+        let types = offer.as_ref().map(|o| o.with_mime_types(|t| t.to_vec())).unwrap_or_default();
+        let actions = offer.as_ref().map_or_else(Default::default, |o| from_dnd(o.source_actions));
+        debug!(?types, ?actions, x, y, "dnd: enter");
+        // Refuse until a frame says otherwise.
+        if let Some(o) = &offer {
+            o.accept_mime_type(o.serial, None);
+            o.set_actions(DndAction::empty(), DndAction::empty());
+        }
+        self.drag_in = Some(InDrag { wl: wl.clone(), pos: pos2(x as f32, y as f32), types, actions, accepted: None, told: Some(None) });
+        if let Some(i) = self.index_of_wl(wl) {
+            self.surfaces[i].dirty = true;
+        }
+    }
+
+    fn leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice) {
+        // A drop ends with a leave too; the dropped offer lives on until
+        // it is read.
+        if let Some(d) = self.drag_in.take()
+            && let Some(i) = self.index_of_wl(&d.wl)
+        {
+            self.surfaces[i].dirty = true;
+        }
+    }
+
+    fn motion(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice, x: f64, y: f64) {
+        let Some(d) = self.drag_in.as_mut() else { return };
+        d.pos = pos2(x as f32, y as f32);
+        let wl = d.wl.clone();
+        if let Some(i) = self.index_of_wl(&wl) {
+            self.surfaces[i].dirty = true;
+        }
+    }
+
     fn selection(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice) {}
-    fn drop_performed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice) {}
+
+    fn drop_performed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice) {
+        let Some(offer) = self.data_device.as_ref().and_then(|d| d.data().drag_offer()) else { return };
+        debug!(accepted = ?self.drag_in.as_ref().map(|d| &d.accepted), "dnd: drop");
+        let Some(d) = self.drag_in.take() else { return offer.destroy() };
+        let window = self.index_of_wl(&d.wl).map(|i| self.surfaces[i].id);
+        let (Some(window), Some(a)) = (window, d.accepted.clone()) else { return offer.destroy() };
+        let ours = self.drag_out.as_ref();
+        let from_here = ours.is_some_and(|o| o.window == window);
+        let from_us = ours.is_some();
+        let action = action_of(offer.selected_action).unwrap_or(a.action);
+        let Ok(mut pipe) = offer.receive(a.mime.clone()) else { return offer.destroy() };
+        let _ = self.conn.flush();
+        let drop = crate::dnd::Drop {
+            target: a.target,
+            mime: a.mime,
+            data: Vec::new(),
+            action,
+            pos: d.pos,
+            from_here,
+            from_us,
+            types: d.types,
+        };
+        // Read off the UI thread: the source may be slow, or be us.
+        let _ = std::thread::Builder::new().name("drop".into()).spawn(move || {
+            let mut drop = drop;
+            let _ = pipe.read_to_end(&mut drop.data);
+            if let Some(tx) = DROPPED.get() {
+                let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send((window, drop, offer));
+            }
+        });
+    }
 }
 
 impl DataOfferHandler for Kit {
-    fn source_actions(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &mut DragOffer, _: DndAction) {}
+    fn source_actions(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &mut DragOffer, actions: DndAction) {
+        if let Some(d) = self.drag_in.as_mut() {
+            d.actions = from_dnd(actions);
+        }
+    }
     fn selected_action(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &mut DragOffer, _: DndAction) {}
 }
 
 impl DataSourceHandler for Kit {
     fn accept_mime(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataSource, _: Option<String>) {}
     fn send_request(&mut self, _: &Connection, _: &QueueHandle<Self>, source: &WlDataSource, mime: String, mut fd: WritePipe) {
-        if let Some((s, clip)) = &self.clipboard
-            && s.inner() == source
+        let clip = match (&self.clipboard, &self.drag_out) {
+            (Some((s, clip)), _) if s.inner() == source => Some(clip),
+            (_, Some(d)) if d.source.inner() == source => Some(&d.data.types),
+            _ => None,
+        };
+        if let Some(clip) = clip
             && let Some((_, data)) = clip.iter().find(|(t, _)| *t == mime).or(clip.first())
         {
             // On a thread: the reader may be slow, or be us.
@@ -2428,6 +2686,7 @@ impl DataSourceHandler for Kit {
         }
     }
     fn cancelled(&mut self, _: &Connection, _: &QueueHandle<Self>, source: &WlDataSource) {
+        self.drag_done(source, None);
         if self.clipboard.as_ref().is_some_and(|(s, _)| s.inner() == source) {
             self.clipboard = None;
             if self.linger {
@@ -2436,8 +2695,17 @@ impl DataSourceHandler for Kit {
         }
     }
     fn dnd_dropped(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataSource) {}
-    fn dnd_finished(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataSource) {}
-    fn action(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataSource, _: DndAction) {}
+    fn dnd_finished(&mut self, _: &Connection, _: &QueueHandle<Self>, source: &WlDataSource) {
+        let action = self.drag_out.as_ref().and_then(|d| d.action).or(Some(crate::dnd::Action::Copy));
+        self.drag_done(source, action);
+    }
+    fn action(&mut self, _: &Connection, _: &QueueHandle<Self>, source: &WlDataSource, action: DndAction) {
+        if let Some(d) = self.drag_out.as_mut()
+            && d.source.inner() == source
+        {
+            d.action = action_of(action);
+        }
+    }
 }
 
 impl smithay_client_toolkit::activation::ActivationHandler for Kit {

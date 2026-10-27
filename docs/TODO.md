@@ -103,6 +103,21 @@ as they land (with the commit), add new ones as they come up.
   images, Passwords fields, Deskbar launches…
   Study how BeOS did it first (the Be Book: BMessage drags with negotiated
   types, drop targets, Tracker clippings) and borrow what still fits.
+  **Done:** the kit layer (`tabula_kit::dnd`: negotiated types and
+  actions, drag pictures with names, drop outlines); Tracker drags from
+  every view and the desktop and takes drops on folders, windows, the
+  Trash and the desktop (move/copy by file system, ⌥ copies, a
+  secondary-button drag asks Move/Copy/Link, text becomes a clipping);
+  desktop icons placed freely and kept (Clean Up puts them back on the
+  grid); Terminal types dropped paths (shell-quoted) or text; Viewer
+  and StyledEdit open dropped files. **Left:** dragging text out of and
+  into text fields and StyledEdit (move within, copy between), Viewer
+  images out (the file and image/png), Passwords fields (a username or
+  password onto another app's field), Deskbar (drop files on an app to
+  open them with it; drag an app out to make a link), dragging from
+  Tracker's Get Info and Quick Look, spring-loaded folders (hover on a
+  folder while dragging to open it), scrolling a view when a drag nears
+  its edge.
 - ~~**Tracker: restore from the Trash**~~ (File ▸ Restore and the item
   menu, `ops::Kind::Restore`; a clash gets a number instead of asking) (Ben): a Restore command (File
   menu and the context menu in the Trash) that puts the selected files
@@ -120,17 +135,45 @@ as they land (with the commit), add new ones as they come up.
   wall of red text.
 - **Quick Look / Viewer: basic image editing** (Ben): crop, resize,
   rotate and flip images, then Save / Save As (as the PDF tools do).
-- **NetPositive: app.fastmail.com never finishes loading** (Ben): it
-  stays stuck loading. Find what it waits for (a script, worker, storage
-  or network feature Servo lacks or we don't provide) and fix it.
-- **Google Chrome works great in Tabula** (Ben): many sites really need
-  Chrome. When stock Google Chrome is downloaded and run, Tabula
+- **NetPositive is tabled** (Ben, 2026-10-26): no more work on it for
+  now; Chrome is the web browser to make great instead (below). Left
+  open there: app.fastmail.com never finishes loading; a field's context
+  menu should offer the login's verification code (TOTP) beside the
+  username and password (wanted in Chrome now, via Passwords).
+- **Multiplayer screen control for agents** (Ben): an agent starts a
+  Tabula screen-control session and gets its own workspace and its own
+  cursor and keyboard focus, so its input never disturbs the person, who
+  can watch that workspace live (and step in). Complete control: pointer
+  moves, clicks, drags and drops, scrolling, typing and shortcuts; visual
+  updates (frames on change, sequences over time) and structured metadata
+  about what is on screen (windows, widgets, text, roles, bounds, from
+  the kit's own widget tree rather than OCR). An agent-friendly
+  protocol/API (app_server IPC, documented, stable) plus agent skills
+  injected automatically into Claude Code and Codex when they run under
+  Tabula. Agent-first from the ground up: everything designed to work
+  seamlessly for agents and people alike.
+- **Google Chrome works great in Tabula** (Ben; the browser work now,
+  in place of NetPositive): many sites really need Chrome. When stock Google Chrome is downloaded and run, Tabula
   recognises it: Tabula window chrome (server-side decorations, or
   whatever it takes: flags, policies, runtime patches), light/dark
   following the desktop, and Tabula Passwords filling and saving logins
   in it seamlessly (e.g. a native-messaging host plus an extension
-  installed by policy, speaking the keychain protocol). Ugly hacks are
-  fine as long as it is reliable.
+  installed by policy, speaking the keychain protocol), including the
+  verification code (TOTP) from a field's context menu beside the
+  username and password. Drag and drop, the clipboard, notifications,
+  file pickers, downloads into Tracker, default browser, Deskbar entry:
+  all of it as well as Tabula can make it. Ugly hacks are fine as long
+  as it is reliable.
+  **Installed on first use** (Ben): Google Chrome is always listed in
+  Deskbar's apps; the first launch downloads it (Google ships arm64
+  Linux packages now: dl.google.com/linux/chrome/rpm/stable/aarch64,
+  checked against the repo's sha256), unpacks it in process (rpm cpio
+  payload, natively) into `~/.local/share/tabula/chrome/<version>` with
+  a `current` link, with live progress, and keeps it updated from the
+  same repo. Chromium if Google's isn't there for the machine. Ben's
+  machine has 156.0.8078.47 there now (installed by hand the same way,
+  with `~/.local/share/applications/google-chrome.desktop`); it runs on
+  Wayland under Tabula.
 - ~~**Passwords: sync with several 1Password accounts**~~ (ticked in File ▸ 1Password Accounts…, one review, the sidebar grouped by account) (Ben): setup now
   makes you pick one account; Passwords should sync with every account
   the 1Password app has signed in (each account's vaults shown under it,
@@ -138,6 +181,31 @@ as they land (with the commit), add new ones as they come up.
   state and errors), with accounts added or removed later in its
   settings. The store and sync (`vault.rs`, `sync.rs`) key remote state
   by account as well as vault.
+- **x86 machines, starting with Ben's ThinkPad P1 Gen 9** (Ben; it
+  arrives within days): stock Fedora, `git clone` the repo, run a setup
+  app, and everything works and is supported in Tabula/Olo, not just on
+  the arm64 M2 MacBook Pro (Aurora). The setup app checks and installs
+  what is needed (packages, Rust toolchain, the session entry, PAM,
+  udev rules, keyd-style key mapping where wanted) with live progress,
+  and is safe to run again. The machine: Intel Core Ultra 7 356H; 64 GB
+  LPDDR5X; 2 TB PCIe Gen5 SSD (Opal); 16" 3200×2000 tandem OLED, touch,
+  HDR 600 (1500 nits peak), 100% DCI-P3, VRR 40–120 Hz, factory colour
+  calibration; NVIDIA RTX PRO 2000 Blackwell 8 GB (hybrid with Intel
+  graphics); 5 MP RGB+IR camera (face sign-in) with dual microphones;
+  Intel Wi-Fi 7 BE211 and Bluetooth 5.4; fingerprint reader; haptic
+  touchpad; backlit US keyboard. All of it should work: hybrid graphics
+  (app_server on the Intel GPU, the NVIDIA one for apps that want it,
+  external displays on either), HDR and wide colour and the panel's
+  calibration, VRR, touch screen, the haptic touchpad's gestures and
+  click settings, IR face sign-in alongside the fingerprint for unlock
+  and Passwords, brightness, keyboard backlight, power profiles and
+  battery, suspend, and an x86_64 Chrome. Build and test x86_64 in CI or
+  a VM before it arrives.
+- **Scrolling feels the same everywhere** (Ben): in Chrome scrolling is
+  far too fast (maybe GTK apps too). A wheel notch or touchpad swipe
+  should move Chrome and GTK apps as far as it moves a Tabula app, with
+  the same smooth scrolling (app_server's axis values, value120 and
+  discrete steps, and what each toolkit multiplies them by).
 - **GNOME/GTK 4 apps look at home** (Ben): a GTK 4 / libadwaita app
   opened in Tabula follows light/dark mode properly (and switches live),
   and gets Tabula's window chrome (yellow tab, BeOS borders) rather than

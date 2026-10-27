@@ -15,7 +15,7 @@
   tsession zoom NAME OUT.png X Y W H [N]       crop (logical px) and magnify N× (default 4)
   tsession click NAME X Y [right]              synthetic click (logical px)
   tsession tap NAME X Y                        press and release at once, as a touchpad tap
-  tsession move NAME X Y | down NAME X Y | up NAME
+  tsession move NAME X Y | down NAME X Y [right] | up NAME [right]
   tsession drag NAME X1 Y1 X2 Y2
   tsession key NAME CODE [CODE...]             evdev codes pressed together (29=Ctrl, 42=Shift)
   tsession type NAME TEXT                      type ASCII text
@@ -280,7 +280,8 @@ def main():
         synth(name, [{"type": "button", "button": 0x110, "pressed": True}, {"type": "button", "button": 0x110, "pressed": False}])
         time.sleep(0.15)
     elif cmd == "up":
-        synth(name, [{"type": "button", "button": 0x110, "pressed": False}])
+        b = 0x111 if a and a[0] == "right" else 0x110
+        synth(name, [{"type": "button", "button": b, "pressed": False}])
     elif cmd == "drag":
         x1, y1, x2, y2 = map(float, a[:4])
         move(name, x1, y1)

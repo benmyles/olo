@@ -257,9 +257,20 @@ pub fn run_headless(size_arg: Option<&str>) {
         for output in &outputs {
             for shot in state.ipc.shots_for(output) {
                 let color = state.desktop_color();
-                let overlays = twitcher_overlay(&mut state, output);
+                let mut overlays = twitcher_overlay(&mut state, output);
                 let locked = state.lock.locked();
                 let pointer = state.pointer.current_location();
+                // What is being dragged, under the pointer (on top).
+                if let Some(icon) = state.dnd_icon.as_ref().filter(|i| smithay::utils::IsAlive::alive(&i.surface) && !locked) {
+                    use smithay::backend::renderer::element::AsRenderElements;
+                    let origin = state.space.output_geometry(output).map(|g| g.loc).unwrap_or_default();
+                    let scale = output.current_scale().fractional_scale();
+                    let at = (pointer - origin.to_f64() + icon.offset.to_f64()).to_physical(scale).to_i32_round();
+                    let tree = smithay::desktop::space::SurfaceTree::from_surface(&icon.surface);
+                    let dragged: Vec<crate::render::CustomRenderElements<GlesRenderer>> =
+                        AsRenderElements::<GlesRenderer>::render_elements(&tree, &mut state.backend_data.renderer, at, scale.into(), 1.0);
+                    overlays.splice(0..0, dragged);
+                }
                 crate::screenshot::take::<_, GlesTexture>(
                     &mut state.ipc,
                     shot,

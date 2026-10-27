@@ -9,6 +9,10 @@ rules are universal and non-negotiable:
   [vendor/bebook](vendor/bebook/README.md); Tracker; the kits) and keep
   whatever still makes sense in 2026 for what we're building; where there
   is a better modern way, use that instead.
+- **Agent-first, as much as people-first.** Everything should work
+  seamlessly for agents as well as for people: what a person can see and
+  do, an agent can read (structured, not just pixels) and drive through a
+  documented API, without getting in the person's way.
 - **Never block the UI.** Anything that can take more than a frame runs on a
   worker thread, shows live progress, streams results and can be cancelled.
   See "The responsiveness rule" in HACKING.md.

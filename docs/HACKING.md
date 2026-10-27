@@ -112,8 +112,9 @@ fn main() {
 
 * **`App`**: `ui` (draw a window below its menu bar), `menu_bar`, `command`
   (menu item or ⌘-shortcut), `close_requested`, `message` (from background
-  threads via `cx.proxy().send(msg)`), `theme_changed`, `files_dropped`,
-  `save_state` (see "In-place reload").
+  threads via `cx.proxy().send(msg)`), `theme_changed`, `dropped` and
+  `drag_ended` (see "Drag and drop"), `save_state` (see "In-place
+  reload").
 * **`Cx`**: `open_window`, `close_window`, `set_title`, `resize`, `redraw`,
   `activate` (bring a window forward and focus it, restoring it if it is
   minimized or on another workspace — via xdg-activation; use it when a
@@ -212,6 +213,60 @@ fn main() {
   the first is primary; kept up to date as outputs come and go) and
   `cx.unlock_session()`. See "The lock screen".
 
+### Drag and drop (`tabula_kit::dnd`)
+
+Over Wayland's data device, so it works within a window, between
+Tabula's apps and with any other Wayland program. As in BeOS (the Be
+Book's `DragAndDrop.md`), a drag carries the same data in several types
+and offers actions; where it is dropped picks the type and the action.
+
+* **Dragging out:** on an egui `drag_started` (the button still down, so
+  that frame), `cx.start_drag(window, DragData)`. `DragData::files(&paths,
+  Actions)` carries `text/uri-list` (file:// URIs: file managers,
+  browsers, editors) and the paths as plain text (terminals);
+  `DragData::text(s)`; `.with(mime, bytes)` adds a type only Tabula knows,
+  first; `.icon(DragIcon)`. `icons::drag_icon(ctx, icon, size, count,
+  hotspot, DragLabel::Below(name) | Right(name) | None)` makes Tracker's
+  picture: the icon (stacked for several) and the name highlighted,
+  see-through, the name drawn from the glyphs egui already rasterised.
+  Hit-test a drag where the button went down
+  (`ui.input(|i| i.pointer.press_origin())`): by `drag_started` the
+  pointer has moved on. `App::drag_ended(window, action)` follows (None:
+  nothing took it).
+* **Taking drops:** each frame something is dragged over a window,
+  `dnd::hover(ctx)` gives a `Hover` (position, types, the source's
+  actions, `from_here` / `from_us`). A part that would take it calls
+  `dnd::accept(ctx, target, mime, Action)` that frame (no call refuses)
+  and shows it: an item highlights itself, a view or window calls
+  `dnd::outline(ui, rect)` (2 px, keyboard-navigation colour).
+  `dnd::open_files(ui, target)` does all of that for a window that opens
+  any file dropped on it (Viewer, StyledEdit). On release the kit reads
+  the data off the UI thread and calls `App::dropped(window, Drop)`
+  (`target`, `mime`, `data`, `action`, `pos`; `paths()`, `text()`).
+* `Action::Ask` (a secondary-button drag, as on BeOS): the place it lands
+  shows a menu (Tracker: Move Here / Copy Here / Create Link Here).
+* `RUST_LOG=tabula_kit=debug` traces drags (start, enter, the offer told,
+  drop). Headless screenshots show the drag picture; `tsession down X Y
+  [right]`, several `move`s, then `up [right]` drives one.
+
+Tracker (`view.rs`: `Drag`, `DropTarget`, `take_drop`, `item_drop`):
+files drag from every view and the desktop and drop onto folders (in a
+view or on the desktop), into a folder window (anywhere in it; in the
+column view, a column or past the last one), onto the Trash (moves them
+there) or into another app. Within one file system they move, across
+file systems they copy, ⌥ copies anyway; Tracker knows which before the
+drop from `application/x-tabula-device-N` in its own drags, and only its
+own drags are moved (another program might delete what it was told was
+moved). Text dropped on a folder becomes a clipping file named after
+its first words. The desktop keeps icons where they are dropped
+(`~/.config/tabula/desktop.json`, `icons`: name or path → offset of the
+cell from the screen's top-right, in logical px; things dropped onto it
+from elsewhere land where they fell; a rename carries the place over);
+the rest fill the grid around them, and Clean Up in its menu puts every
+icon back on the grid. Terminal types dropped files as their
+shell-quoted paths (and text as if pasted), bracketed when the program
+asked for it: drag an image into Claude Code there.
+
 ### Widgets (`tabula_kit::widgets`)
 
 `Button` (`.default(true)` for the Enter button), `CheckBox`, `RadioButton`,
@@ -229,7 +284,8 @@ for content the kit doesn't scroll, such as a web page), `ColorControl`
 `&mut [u8; 3]`),
 `ColumnListView` + `Column` + `ListState` (sortable, resizable,
 multi-select, context clicks; `.reveal(row)` scrolls a row selected in code
-into view), `TabView`, `color_well`, `heading`,
+into view; `.draggable()` reports `ListResponse::drag_started` and the
+rows on screen, `visible` / `row_at(pos)`, for drop targets), `TabView`, `color_well`, `heading`,
 `form_label`, `window_content`, `button_row`, `context_menu`,
 `popup_menu_at` / `popup_result`, `InlineEdit` (Tracker-style rename in
 place: returns `Editing` / `Commit` / `Cancel`; pads by `INLINE_PAD`, which

@@ -4,14 +4,14 @@
 //! corner).
 
 use std::{
-    collections::BTreeSet,
-    path::PathBuf,
+    collections::{BTreeMap, BTreeSet},
+    path::{Path, PathBuf},
 };
 
 use tabula_kit::{
     Layer, LayerOptions, Menu, WindowKind, WindowOptions,
     egui::{self, Key, Pos2, Rect, Sense, Ui, pos2},
-    metrics as m, style, widgets,
+    dnd, metrics as m, style, widgets,
 };
 
 use crate::{
@@ -39,6 +39,56 @@ pub struct Desktop {
     band: Option<Pos2>,
     /// A ~/Desktop item whose name is being edited in place.
     editing: Option<(PathBuf, String)>,
+    /// Where icons were put by hand (the rest fill the grid around them).
+    places: Places,
+    /// The screen, as last laid out.
+    screen: Rect,
+    /// A drag of icons started here: where the button went down, and
+    /// where they were then (to put them where they are dropped).
+    dragging: Option<(Pos2, Vec<(String, Pos2)>)>,
+}
+
+/// Icons placed by hand, by [`place_key`], as the top-left of each one's
+/// cell from the screen's top-right corner (where the grid starts, so
+/// they keep their place beside the Deskbar when the screen size
+/// changes). Kept in `~/.config/tabula/desktop.json`, which agents can
+/// read too.
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct Places {
+    #[serde(default)]
+    icons: BTreeMap<String, [f32; 2]>,
+}
+
+fn places_path() -> PathBuf {
+    tabula_kit::config_dir().join("desktop.json")
+}
+
+impl Places {
+    fn load() -> Places {
+        std::fs::read(places_path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    }
+
+    fn save(&self) {
+        let _ = std::fs::create_dir_all(tabula_kit::config_dir());
+        if let Ok(json) = serde_json::to_vec_pretty(self) {
+            let tmp = places_path().with_extension("json.tmp");
+            if std::fs::write(&tmp, json).is_ok() {
+                let _ = std::fs::rename(tmp, places_path());
+            }
+        }
+    }
+}
+
+/// What a desktop icon's place is kept under: a ~/Desktop item's name,
+/// else its path (Home, volumes), or "Trash".
+fn place_key(path: &Path) -> String {
+    if path == fs::trash_files() {
+        return "Trash".into();
+    }
+    match path.strip_prefix(desktop_dir()) {
+        Ok(name) if !name.as_os_str().is_empty() => name.to_string_lossy().into_owned(),
+        _ => path.to_string_lossy().into_owned(),
+    }
 }
 
 pub fn options() -> WindowOptions {
@@ -78,6 +128,9 @@ impl Desktop {
             selected: BTreeSet::new(),
             band: None,
             editing: None,
+            places: Places::load(),
+            screen: Rect::NOTHING,
+            dragging: None,
         };
         d.reload();
         d
@@ -195,18 +248,82 @@ impl Desktop {
         self.selected_paths().into_iter().filter(|p| p.parent() == Some(dir.as_path())).collect()
     }
 
-    /// Cell of item `i`: columns fill downward from the top right, beside
-    /// the Deskbar, and wrap leftward; the Trash sits in the corner.
-    fn cell(&self, screen: Rect, i: usize) -> Rect {
-        if i == self.items.len() {
+    /// Where each item's cell is (the Trash last). Icons placed by hand
+    /// stay where they were put (kept on screen); the others fill the
+    /// grid around them as on BeOS: columns downward from the top right,
+    /// beside the Deskbar, wrapping leftward, with the Trash in the
+    /// bottom-right corner unless it was moved.
+    fn cells(&self, screen: Rect) -> Vec<Rect> {
+        let n = self.items.len() + 1;
+        let placed = |i: usize| {
+            let p = self.places.icons.get(&place_key(&self.item(i)?.entry.path))?;
+            let min = pos2(screen.right() - p[0], screen.top() + p[1]);
+            let max = (screen.max - ICON_CELL).max(screen.min);
+            Some(Rect::from_min_size(min.clamp(screen.min, max), ICON_CELL))
+        };
+        let mut cells: Vec<Option<Rect>> = (0..n).map(placed).collect();
+        if cells[n - 1].is_none() {
             let min = pos2(screen.right() - EDGE - ICON_CELL.x, screen.bottom() - EDGE - ICON_CELL.y);
-            return Rect::from_min_size(min, ICON_CELL);
+            cells[n - 1] = Some(Rect::from_min_size(min, ICON_CELL));
         }
         let usable = screen.height() - 2.0 * EDGE - ICON_CELL.y; // keep the Trash's row free
         let per_col = ((usable / ICON_CELL.y).floor() as usize).max(1);
-        let (col, row) = (i / per_col, i % per_col);
-        let right = screen.right() - DESKBAR_WIDTH - EDGE - col as f32 * ICON_CELL.x;
-        Rect::from_min_size(pos2(right - ICON_CELL.x, screen.top() + EDGE + row as f32 * ICON_CELL.y), ICON_CELL)
+        let slot = |k: usize| {
+            let (col, row) = (k / per_col, k % per_col);
+            let right = screen.right() - DESKBAR_WIDTH - EDGE - col as f32 * ICON_CELL.x;
+            Rect::from_min_size(pos2(right - ICON_CELL.x, screen.top() + EDGE + row as f32 * ICON_CELL.y), ICON_CELL)
+        };
+        let mut k = 0;
+        for i in 0..n - 1 {
+            if cells[i].is_some() {
+                continue;
+            }
+            // The next grid slot no placed icon covers (a few thousand
+            // slots at most: past the left edge it gives up and overlaps).
+            while k < 4096 && cells.iter().flatten().any(|c| c.shrink(4.0).intersects(slot(k))) {
+                k += 1;
+            }
+            cells[i] = Some(slot(k));
+            k += 1;
+        }
+        cells.into_iter().map(|c| c.unwrap_or(Rect::NOTHING)).collect()
+    }
+
+    /// Put the icons that were dragged from here where they were dropped
+    /// (`at`, the pointer).
+    pub fn place_dragged(&mut self, at: Pos2) {
+        let Some((from, icons)) = self.dragging.take() else { return };
+        let screen = self.screen;
+        for (key, was) in icons {
+            let to = was + (at - from);
+            self.places.icons.insert(key, [screen.right() - to.x, to.y - screen.top()]);
+        }
+        self.places.save();
+    }
+
+    /// Put the things just dropped here from elsewhere (now in ~/Desktop,
+    /// as `names`) where they were dropped, side by side.
+    pub fn place_new(&mut self, names: &[String], at: Pos2) {
+        let screen = self.screen;
+        for (k, name) in names.iter().enumerate() {
+            let min = at - ICON_CELL / 2.0 + egui::vec2(k as f32 * ICON_CELL.x, 0.0);
+            self.places.icons.insert(name.clone(), [screen.right() - min.x, min.y - screen.top()]);
+        }
+        self.places.save();
+    }
+
+    /// `from` is now `to`: its place goes with it.
+    pub fn renamed(&mut self, from: &Path, to: &Path) {
+        if let Some(at) = self.places.icons.remove(&place_key(from)) {
+            self.places.icons.insert(place_key(to), at);
+            self.places.save();
+        }
+    }
+
+    /// BeOS's Clean Up: every icon back on the grid.
+    pub fn clean_up(&mut self) {
+        self.places.icons.clear();
+        self.places.save();
     }
 
     pub fn ui(&mut self, ui: &mut Ui) -> Vec<Action> {
@@ -214,12 +331,14 @@ impl Desktop {
         let p = style::palette(ui.ctx());
 
         let screen = ui.max_rect();
+        self.screen = screen;
         let response = ui.allocate_rect(screen, Sense::click_and_drag());
         let n = self.items.len() + 1;
+        let cells = self.cells(screen);
         let layouts: Vec<view::ItemLayout> = (0..n)
             .map(|i| {
                 let it = self.item(i).unwrap();
-                view::layout_item(ui, self.cell(screen, i), &it.label, Look::Icons, self.selected.contains(&i), it.entry.is_link)
+                view::layout_item(ui, cells[i], &it.label, Look::Icons, self.selected.contains(&i), it.entry.is_link)
             })
             .collect();
         let hit = |pos: Pos2| layouts.iter().position(|l| l.hit().contains(pos));
@@ -227,7 +346,9 @@ impl Desktop {
         let id = response.id;
 
         if response.drag_started() || response.clicked() || response.secondary_clicked() {
-            let pos = response.interact_pointer_pos().unwrap_or_default();
+            // A drag: where the button went down, not where it got to.
+            let pos = if response.drag_started() { ui.input(|i| i.pointer.press_origin()) } else { None };
+            let pos = pos.or(response.interact_pointer_pos()).unwrap_or_default();
             match hit(pos) {
                 Some(i) if mods.ctrl || mods.shift => {
                     if !response.secondary_clicked() && !self.selected.remove(&i) {
@@ -237,6 +358,25 @@ impl Desktop {
                 Some(i) => {
                     if !self.selected.contains(&i) {
                         self.selected = BTreeSet::from([i]);
+                    }
+                    if response.drag_started() {
+                        // Every icon can be moved about the desktop.
+                        let icons = self.selected.iter().filter_map(|&j| Some((place_key(&self.item(j)?.entry.path), cells[j].min))).collect();
+                        self.dragging = Some((pos, icons));
+                    }
+                    // Everything but the Trash can go elsewhere.
+                    let paths: Vec<PathBuf> = self.selected.iter().filter(|&&j| j < self.items.len()).map(|&j| self.items[j].entry.path.clone()).collect();
+                    if response.drag_started() && (i < self.items.len() && !paths.is_empty() || i == self.items.len()) {
+                        let l = &layouts[i];
+                        actions.push(Action::Drag(view::Drag {
+                            paths,
+                            icon: self.item(i).map_or("trash-empty", |it| it.icon),
+                            size: l.icon.width(),
+                            hotspot: (pos - l.icon.min).clamp(egui::Vec2::ZERO, l.icon.size()),
+                            ask: response.dragged_by(egui::PointerButton::Secondary),
+                            name: self.item(i).map(|it| it.label.clone()).unwrap_or_default(),
+                            below: true,
+                        }));
                     }
                 }
                 None => {
@@ -272,12 +412,16 @@ impl Desktop {
                     .item("New Folder", "new-folder", None)
                     .item("Open in Terminal", "terminal", None)
                     .separator()
+                    .item("Clean Up", "clean-up", None)
+                    .enabled(!self.places.icons.is_empty())
+                    .separator()
                     .item("Change Background…", "backgrounds", None),
             };
             widgets::popup_menu_at(ui.ctx(), id, pos, menu);
         }
         if let Some(cmd) = widgets::popup_result(ui.ctx(), id) {
             match cmd.as_str() {
+                "clean-up" => self.clean_up(),
                 "open" => actions.extend(self.selected_entries().into_iter().map(Action::Open)),
                 "trash" => {
                     // Only items that live in ~/Desktop can go to the Trash.
@@ -336,10 +480,24 @@ impl Desktop {
             }
         };
 
+        // Something dragged over it: onto a folder or the Trash, or onto
+        // the desktop (into ~/Desktop).
+        let drop_on = dnd::hover(ui.ctx()).and_then(|h| {
+            let over = hit(h.pos).map(|i| (i, &self.item(i).unwrap().entry, self.selected.contains(&i)));
+            let here = desktop_dir();
+            let (took, on) = view::item_drop(ui.ctx(), &h, over, Some(&here));
+            // Icons dragged from here and let go anywhere but on a folder
+            // or the Trash: put them there.
+            if !took && h.from_here && self.dragging.is_some() && h.actions.move_ && h.has_files() {
+                dnd::accept(ui.ctx(), view::DropTarget::Place.name(), "text/uri-list", dnd::Action::Move);
+            }
+            on.filter(|_| took)
+        });
+
         let editing = self.editing.as_ref().and_then(|(p, _)| self.items.iter().position(|it| &it.entry.path == p));
         for (i, l) in layouts.iter().enumerate() {
             let it = self.item(i).unwrap();
-            view::paint_item(ui, l, it.icon, self.selected.contains(&i), true, editing != Some(i), &p);
+            view::paint_item(ui, l, it.icon, self.selected.contains(&i) || drop_on == Some(i), true, editing != Some(i), &p);
         }
         match editing {
             Some(i) => {

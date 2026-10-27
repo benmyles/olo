@@ -275,6 +275,28 @@ pub fn make_link(path: &Path) -> std::io::Result<PathBuf> {
     Ok(to)
 }
 
+/// A link to `path` in `dir` ("name link" if `dir` is where it is).
+pub fn link_into(path: &Path, dir: &Path) -> std::io::Result<PathBuf> {
+    let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let to = if path.parent() == Some(dir) { unique(dir, &format!("{name} link")) } else { unique(dir, &name) };
+    std::os::unix::fs::symlink(path, &to)?;
+    Ok(to)
+}
+
+/// Text dropped on a folder, saved there as a clipping file named after
+/// its first words (BeOS's Tracker made the same).
+pub fn clipping(dir: &Path, text: &str) -> std::io::Result<PathBuf> {
+    let first: String = text.split_whitespace().take(6).collect::<Vec<_>>().join(" ");
+    let mut name: String = first.chars().filter(|c| *c != '/' && !c.is_control()).take(40).collect();
+    name = name.trim_matches(['.', ' ']).to_owned();
+    if name.is_empty() {
+        name = "Clipping".into();
+    }
+    let to = unique(dir, &format!("{name} clipping.txt"));
+    fs::write(&to, text)?;
+    Ok(to)
+}
+
 /// The name of the application `open` would use, when it is one of ours.
 pub fn opener_name(entry: &Entry) -> Option<String> {
     match entry.kind {

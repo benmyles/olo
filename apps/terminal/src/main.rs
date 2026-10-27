@@ -316,6 +316,15 @@ impl Terminal {
             }
         };
         let scheme = self.scheme();
+        // Files dropped on it are typed as their paths (quoted for the
+        // shell, as macOS's Terminal does), text as if pasted.
+        if let Some(h) = tabula_kit::dnd::hover(ui.ctx()) {
+            let mime = if h.has_files() { Some("text/uri-list") } else { h.text_type() };
+            if let Some(mime) = mime.filter(|_| h.actions.copy) {
+                tabula_kit::dnd::accept(ui.ctx(), "term", mime, tabula_kit::dnd::Action::Copy);
+                tabula_kit::dnd::outline(ui, ui.max_rect());
+            }
+        }
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
         let focused = ui.input(|i| i.focused);
         if focused != t.focused {
@@ -531,6 +540,19 @@ impl App for Terminal {
             }
             None => {}
         }
+    }
+
+    fn dropped(&mut self, cx: &mut Cx, window: WindowId, drop: tabula_kit::dnd::Drop) {
+        let Some(Win::Term(t)) = self.windows.get(&window) else { return };
+        let paths = drop.paths();
+        let text = if drop.mime == "text/uri-list" && !paths.is_empty() {
+            paths.iter().map(|p| shell_quote(&p.to_string_lossy())).collect::<Vec<_>>().join(" ") + " "
+        } else {
+            drop.text()
+        };
+        let mode = *t.session.term.lock().mode();
+        view::paste(&t.session, &text, mode);
+        cx.activate(window);
     }
 
     fn menu_bar(&mut self, window: WindowId) -> Option<Vec<Menu>> {
@@ -792,4 +814,23 @@ fn main() {
         }
         t
     });
+}
+
+/// `s` as one shell word: as it is when that is safe, else single-quoted.
+fn shell_quote(s: &str) -> String {
+    if !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"/-._+,:@%=".contains(&b)) {
+        s.to_owned()
+    } else {
+        format!("'{}'", s.replace('\'', "'\\''"))
+    }
+}
+
+#[cfg(test)]
+mod drop_tests {
+    #[test]
+    fn shell_quote() {
+        assert_eq!(super::shell_quote("/tmp/a.png"), "/tmp/a.png");
+        assert_eq!(super::shell_quote("/tmp/My Photo.png"), "'/tmp/My Photo.png'");
+        assert_eq!(super::shell_quote("/tmp/it's"), "'/tmp/it'\\''s'");
+    }
 }

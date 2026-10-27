@@ -2,13 +2,14 @@
 //! Info panel. Shared with the desktop for drawing icons and labels.
 
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
 use tabula_kit::{
     Menu,
     egui::{self, Align, Color32, FontId, Key, Pos2, Rect, Sense, Ui, pos2, vec2},
+    dnd::{self, Hover},
     icons, metrics as m,
     style::{self, c},
     widgets::{self, Cell, Column, ColumnListView, InlineEdit, InlineResult, ScrollView, SCROLL_BAR},
@@ -22,7 +23,180 @@ pub enum Action {
     Command(String),
     /// An in-place name edit was committed.
     Rename(PathBuf, String),
+    /// Items started being dragged: start the drag with this (only while
+    /// the button is still down, so in this frame).
+    Drag(Drag),
 }
+
+/// Items to drag, and how.
+pub struct Drag {
+    pub paths: Vec<PathBuf>,
+    /// The icon of the one the pointer is on.
+    pub icon: &'static str,
+    /// Its size, logical, and where on it the pointer is.
+    pub size: f32,
+    pub hotspot: egui::Vec2,
+    /// With the secondary button: the place it is dropped on asks what to
+    /// do (Move Here, Copy Here, Create Link Here), as on BeOS.
+    pub ask: bool,
+    /// The name, under the icon (an icon view) or beside it (a list).
+    pub name: String,
+    pub below: bool,
+}
+
+impl Drag {
+    /// What it carries: the files, plus Tabula-only types saying which
+    /// file system they are on (so a folder they are dragged over knows
+    /// before the drop whether it would move or copy them) and whether
+    /// the drop should ask.
+    pub fn data(&self, ctx: &egui::Context) -> dnd::DragData {
+        use std::os::unix::fs::MetadataExt;
+        let mut data = dnd::DragData::files(&self.paths, dnd::Actions::ALL);
+        if let Some(dev) = self.paths.first().and_then(|p| std::fs::symlink_metadata(p).ok()).map(|m| m.dev()) {
+            data = data.with(&device_type(dev), Vec::new());
+        }
+        if self.ask {
+            data = data.with(ASK_TYPE, Vec::new());
+        }
+        let n = self.paths.len();
+        let name = if n > 1 { format!("{n} items") } else { self.name.clone() };
+        let label = if self.below { icons::DragLabel::Below(&name) } else { icons::DragLabel::Right(&name) };
+        match icons::drag_icon(ctx, self.icon, self.size, n, self.hotspot, label) {
+            Some(icon) => data.icon(icon),
+            None => data,
+        }
+    }
+}
+
+/// Marks a drag started with the secondary button.
+pub const ASK_TYPE: &str = "application/x-tabula-ask";
+
+fn device_type(dev: u64) -> String {
+    format!("application/x-tabula-device-{dev}")
+}
+
+/// Where a drop goes; [`DropTarget::name`] is what [`dnd::accept`] is
+/// given, and comes back in the drop.
+#[derive(Clone, Debug, PartialEq)]
+pub enum DropTarget {
+    /// Into a folder (files) or as a clipping file in it (text).
+    Folder(PathBuf),
+    Trash,
+    /// Icons dragged about the desktop: put them where they are dropped.
+    Place,
+}
+
+impl DropTarget {
+    pub fn name(&self) -> String {
+        match self {
+            DropTarget::Folder(p) => format!("folder:{}", p.display()),
+            DropTarget::Trash => "trash".into(),
+            DropTarget::Place => "place".into(),
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<DropTarget> {
+        match name {
+            "trash" => Some(DropTarget::Trash),
+            "place" => Some(DropTarget::Place),
+            _ => name.strip_prefix("folder:").map(|p| DropTarget::Folder(PathBuf::from(p))),
+        }
+    }
+}
+
+/// Take what is dragged over folder `dir` if it would go there, choosing
+/// as BeOS's Tracker did: move within a file system, copy across them,
+/// ⌥ to copy anyway, the secondary button to ask; the Trash takes files
+/// only, and moves them. Text becomes a clipping file. Returns whether it
+/// took it (to highlight `dir`).
+pub fn take_drop(ctx: &egui::Context, h: &Hover, dir: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let trash = dir == fs::trash_files();
+    let target = if trash { DropTarget::Trash } else { DropTarget::Folder(dir.to_owned()) };
+    if h.has_files() {
+        let action = if h.has(ASK_TYPE) && h.actions.ask && !trash {
+            dnd::Action::Ask
+        } else if trash {
+            if !h.actions.move_ {
+                return false;
+            }
+            dnd::Action::Move
+        } else {
+            let same_fs = std::fs::metadata(dir).is_ok_and(|m| h.has(&device_type(m.dev())));
+            let copy = ctx.input(|i| i.modifiers.alt) || !same_fs || !h.actions.move_;
+            // Only our own drags move: another program might delete what
+            // it gave us once told it moved.
+            if copy || !h.from_us {
+                if !h.actions.copy {
+                    return false;
+                }
+                dnd::Action::Copy
+            } else {
+                dnd::Action::Move
+            }
+        };
+        dnd::accept(ctx, target.name(), "text/uri-list", action);
+        true
+    } else if let Some(t) = h.text_type()
+        && !trash
+        && h.actions.copy
+    {
+        dnd::accept(ctx, target.name(), t, dnd::Action::Copy);
+        true
+    } else {
+        false
+    }
+}
+
+/// The folder an item dragged things go into, if it is one (and isn't
+/// itself being dragged).
+fn drop_folder(e: &Entry, dragged: bool) -> Option<&Path> {
+    (e.is_dir && !dragged).then_some(e.path.as_path())
+}
+
+/// Over an item view: the item it would be dropped on (highlighted as
+/// selected), or None for the folder itself; false if it wouldn't take it.
+pub fn item_drop(ctx: &egui::Context, h: &Hover, over: Option<(usize, &Entry, bool)>, here: Option<&Path>) -> (bool, Option<usize>) {
+    if let Some((i, e, selected)) = over
+        && let Some(dir) = drop_folder(e, h.from_here && selected)
+    {
+        return (take_drop(ctx, h, dir), Some(i));
+    }
+    match here {
+        // Dropping in the window it came from would do nothing.
+        Some(dir) if !h.from_here => (take_drop(ctx, h, dir), None),
+        _ => (false, None),
+    }
+}
+
+/// Dragging from and dropping on a [`ColumnListView`] of `entries` (a
+/// list view, or a pane of the column view, in folder `here`).
+pub fn list_drag(ui: &Ui, r: &widgets::ListResponse, entries: &[Entry], list: &widgets::ListState, here: Option<&Path>, actions: &mut Vec<Action>) {
+    if let Some((row, ask)) = r.drag_started
+        && let Some(e) = entries.get(row)
+        && let Some(pos) = ui.input(|i| i.pointer.press_origin())
+        && let Some((_, rect)) = r.visible.iter().find(|(i, _)| *i == row)
+    {
+        let size = MINI;
+        let paths = list.selected.iter().filter_map(|&i| entries.get(i)).map(|e| e.path.clone()).collect();
+        // Held as the row's icon would be, wherever along the row.
+        let icon = rect.center().y - MINI / 2.0;
+        let hotspot = vec2((pos.x - rect.left() - m::CELL_INSET).clamp(0.0, size), (pos.y - icon).clamp(0.0, size));
+        actions.push(Action::Drag(Drag { paths, icon: icon_of(e), size, hotspot, ask, name: e.name.clone(), below: false }));
+    }
+    let Some(h) = dnd::hover(ui.ctx()) else { return };
+    let over = r.row_at(h.pos).and_then(|i| Some((i, entries.get(i)?, list.selected.contains(&i))));
+    let (took, on) = item_drop(ui.ctx(), &h, over, here);
+    let p = style::palette(ui.ctx());
+    match on.and_then(|i| r.visible.iter().find(|(j, _)| *j == i)) {
+        Some((_, rect)) if took => {
+            ui.painter().rect_stroke(rect.shrink(0.5), 0.0, egui::Stroke::new(1.0, c(p.keyboard_navigation)), egui::StrokeKind::Inside);
+        }
+        _ if took => dnd::outline(ui, ui.max_rect()),
+        _ => {}
+    }
+}
+
 
 /// How long after a click on a selected item's name editing starts (a
 /// double-click within it opens the item instead), as on BeOS.
@@ -323,7 +497,7 @@ fn list_view(ui: &mut Ui, f: &mut FolderWin, actions: &mut Vec<Action>) {
     let entries = &f.entries;
     let editing_row = f.editing.as_ref().and_then(|(p, _)| entries.iter().position(|e| &e.path == p));
     let mut edit_cell = None;
-    let r = ColumnListView::new(("list", &f.path), &cols, entries.len(), &mut f.list).show(ui, |cell| {
+    let r = ColumnListView::new(("list", &f.path), &cols, entries.len(), &mut f.list).draggable().show(ui, |cell| {
         let e = &entries[cell.row];
         match cell.column {
             0 if Some(cell.row) == editing_row => {
@@ -370,6 +544,7 @@ fn list_view(ui: &mut Ui, f: &mut FolderWin, actions: &mut Vec<Action>) {
     {
         actions.push(Action::Open(e.clone()));
     }
+    list_drag(ui, &r, &f.entries, &f.list, Some(&f.current_dir()), actions);
     if let Some((_, pos)) = r.context {
         let id = egui::Id::unique(("folder", &f.path));
         widgets::popup_menu_at(ui.ctx(), id, pos, item_menu(f));
@@ -466,7 +641,9 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
         // Pointer: click selects, double-click opens, drag on the
         // background draws a selection band.
         if response.drag_started() || response.clicked() || response.secondary_clicked() {
-            let pos = response.interact_pointer_pos().unwrap_or_default();
+            // A drag: where the button went down, not where it got to.
+            let pos = if response.drag_started() { ui.input(|i| i.pointer.press_origin()) } else { None };
+            let pos = pos.or(response.interact_pointer_pos()).unwrap_or_default();
             // A plain click on the name of the only selected item edits it
             // (after a moment, so a double-click can still open it).
             if response.clicked() && !(mods.ctrl || mods.shift) {
@@ -492,6 +669,20 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
                         f.list.select(i);
                     }
                     f.list.anchor = Some(i);
+                    if response.drag_started()
+                        && let Some((_, l)) = layouts.iter().find(|(j, _)| *j == i)
+                    {
+                        f.pending_edit = None;
+                        actions.push(Action::Drag(Drag {
+                            paths: f.selected_paths(),
+                            icon: icon_of(&f.entries[i]),
+                            size: l.icon.width(),
+                            hotspot: (pos - l.icon.min).clamp(egui::Vec2::ZERO, l.icon.size()),
+                            ask: response.dragged_by(egui::PointerButton::Secondary),
+                            name: f.entries[i].name.clone(),
+                            below: look == Look::Icons,
+                        }));
+                    }
                 }
                 None => {
                     if !(mods.ctrl || mods.shift) {
@@ -542,13 +733,25 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
             }
         };
 
+        // Something dragged over it: onto a folder in it, or into it.
+        let (took, drop_on) = match dnd::hover(ui.ctx()) {
+            Some(h) => {
+                let over = hit(h.pos).filter(|_| clip.contains(h.pos)).map(|i| (i, &f.entries[i], f.list.selected.contains(&i)));
+                item_drop(ui.ctx(), &h, over, Some(&f.current_dir()))
+            }
+            None => (false, None),
+        };
+
         let editing = f.editing.as_ref().and_then(|(p, _)| f.entries.iter().position(|e| &e.path == p));
         if f.editing.is_some() && editing.is_none() {
             f.editing = None; // the item went away
         }
         for (i, l) in &layouts {
             let e = &f.entries[*i];
-            paint_item(ui, l, icon_of(e), f.list.selected.contains(i), false, editing != Some(*i), &p);
+            paint_item(ui, l, icon_of(e), f.list.selected.contains(i) || drop_on == Some(*i), false, editing != Some(*i), &p);
+        }
+        if took && drop_on.is_none() {
+            dnd::outline(ui, clip);
         }
         if let Some(i) = editing {
             match layouts.iter().find(|(j, _)| *j == i) {

@@ -861,6 +861,9 @@ const REPLACE_H: f32 = FIND_H + m::CONTROL_HEIGHT + m::TIGHT + m::MARK_ROW + m::
 
 impl App for StyledEdit {
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui) {
+        if matches!(self.windows.get(&window), Some(Win::Doc(_))) {
+            tabula_kit::dnd::open_files(ui, "open");
+        }
         match self.windows.get_mut(&window) {
             Some(Win::Doc(_)) => {
                 if let Some(command) = self.doc_ui(window, ui) {
@@ -956,8 +959,8 @@ impl App for StyledEdit {
         }
     }
 
-    fn files_dropped(&mut self, cx: &mut Cx, _window: WindowId, paths: Vec<PathBuf>) {
-        for p in paths {
+    fn dropped(&mut self, cx: &mut Cx, _window: WindowId, drop: tabula_kit::dnd::Drop) {
+        for p in drop.paths() {
             self.open_file(cx, p);
         }
     }

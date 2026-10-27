@@ -7,6 +7,7 @@
 
 mod app;
 pub mod commands;
+pub mod dnd;
 pub mod emoji;
 pub use tabula_xdg::{apps, desktop_entry, mime, open};
 pub mod file_panel;

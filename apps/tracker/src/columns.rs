@@ -34,6 +34,8 @@ enum Event {
     Click { col: usize, row: Option<usize>, toggle: bool },
     Double { col: usize, row: usize },
     Context { col: usize, row: Option<usize>, pos: Pos2 },
+    /// A drag started on a row; where on its icon the pointer is.
+    Drag { col: usize, row: usize, hotspot: egui::Vec2, ask: bool },
 }
 
 fn column(f: &FolderWin, k: usize) -> (&std::path::Path, &[Entry], &widgets::ListState) {
@@ -123,6 +125,14 @@ pub fn columns_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, actions: &mut 
         col_ui.set_clip_rect(rect.intersect(clip));
         draw_column(&mut col_ui, f, k, rect, &p, &mut events, &mut edit_row);
     }
+    // Past the last column (the preview, or nothing): into its folder.
+    let end = body.left() + n as f32 * COLUMN_WIDTH - f.col_scroll;
+    if let Some(h) = view_hover(ui, clip).filter(|h| h.pos.x >= end) {
+        let last = column(f, n - 1).0.to_owned();
+        if view::item_drop(ui.ctx(), &h, None, Some(&last)).0 {
+            tabula_kit::dnd::outline(ui, Rect::from_min_max(pos2(end.max(clip.left()), clip.top()), clip.max));
+        }
+    }
     if let Some(e) = &preview {
         let x = body.left() + n as f32 * COLUMN_WIDTH - f.col_scroll;
         let rect = Rect::from_min_max(pos2(x, body.top()), pos2(x + PREVIEW_WIDTH, body.bottom()));
@@ -170,6 +180,17 @@ pub fn columns_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, actions: &mut 
                     actions.push(Action::Open(e.clone()));
                 }
             }
+            Event::Drag { col, row, hotspot, ask } => {
+                if !column(f, col).2.selected.contains(&row) {
+                    choose(f, col, row);
+                }
+                f.active = col;
+                let (_, entries, list) = column(f, col);
+                let paths = list.selected.iter().filter_map(|&i| entries.get(i)).map(|e| e.path.clone()).collect();
+                if let Some(e) = entries.get(row) {
+                    actions.push(Action::Drag(view::Drag { paths, icon: view::icon_of(e), size: view::MINI, hotspot, ask, name: e.name.clone(), below: false }));
+                }
+            }
             Event::Context { col, row, pos } => {
                 match row {
                     Some(row) if !column(f, col).2.selected.contains(&row) => choose(f, col, row),
@@ -211,7 +232,7 @@ fn draw_column(
             pos2(ui.min_rect().left(), ui.min_rect().top()),
             vec2(ui.available_width(), (rows as f32 * m::LIST_ROW + 2.0 * m::TIGHT).max(ui.available_height())),
         );
-        let resp = ui.allocate_rect(content, Sense::click());
+        let resp = ui.allocate_rect(content, Sense::click_and_drag());
         let clip = ui.clip_rect();
         let row_at = |pos: Pos2| {
             let r = ((pos.y - top) / m::LIST_ROW).floor();
@@ -223,6 +244,14 @@ fn draw_column(
         // Selection: solid in the active column, a quieter tint along the
         // path in the others (as in Finder).
         let sel_bg = if active { c(p.list_selected_background) } else { c(mix(p.list_background, p.list_selected_background, 0.5)) };
+        // Something dragged over this column: onto a folder in it, or into it.
+        let (took, drop_on) = match view_hover(ui, clip) {
+            Some(h) => {
+                let over = row_at(h.pos).map(|i| (i, &entries[i], list.selected.contains(&i)));
+                view::item_drop(ui.ctx(), &h, over, Some(path))
+            }
+            None => (false, None),
+        };
         for (i, e) in entries.iter().enumerate().take(last).skip(first) {
             let r = Rect::from_min_size(pos2(content.left(), top + i as f32 * m::LIST_ROW), vec2(content.width(), m::LIST_ROW));
             let selected = list.selected.contains(&i);
@@ -244,6 +273,9 @@ fn draw_column(
                 let pos = style::text_origin(ui.ctx(), &g, x, r.center().y, style::PLAIN_SIZE);
                 painter.galley(pos, g, text_color);
             }
+            if took && drop_on == Some(i) {
+                painter.rect_stroke(r.shrink(0.5), 0.0, egui::Stroke::new(1.0, c(p.keyboard_navigation)), egui::StrokeKind::Inside);
+            }
             if e.is_dir {
                 let tip = pos2(r.right() - m::CELL_INSET, r.center().y);
                 let tri = vec![
@@ -255,9 +287,20 @@ fn draw_column(
                 painter.add(egui::Shape::convex_polygon(tri, color, egui::Stroke::NONE));
             }
         }
+        if took && drop_on.is_none() {
+            tabula_kit::dnd::outline(ui, clip);
+        }
         let mods = ui.input(|i| i.modifiers);
         if let Some(pos) = resp.interact_pointer_pos() {
-            if resp.double_clicked() {
+            if resp.drag_started() {
+                // Where the button went down, not where the drag got to.
+                let pos = ui.input(|i| i.pointer.press_origin()).unwrap_or(pos);
+                if let Some(row) = row_at(pos) {
+                    let icon = pos2(content.left() + m::CELL_INSET, top + row as f32 * m::LIST_ROW + (m::LIST_ROW - view::MINI) / 2.0);
+                    let hotspot = (pos - icon).clamp(egui::Vec2::ZERO, vec2(view::MINI, view::MINI));
+                    events.push(Event::Drag { col: k, row, hotspot, ask: resp.dragged_by(egui::PointerButton::Secondary) });
+                }
+            } else if resp.double_clicked() {
                 if let Some(row) = row_at(pos) {
                     events.push(Event::Double { col: k, row });
                 }
@@ -268,6 +311,11 @@ fn draw_column(
             }
         }
     });
+}
+
+/// What is dragged over `clip`, if anything.
+fn view_hover(ui: &Ui, clip: Rect) -> Option<tabula_kit::dnd::Hover> {
+    tabula_kit::dnd::hover(ui.ctx()).filter(|h| clip.contains(h.pos))
 }
 
 /// The preview after the last column: the image itself or a large icon,

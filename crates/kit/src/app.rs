@@ -50,8 +50,15 @@ pub trait App: 'static {
     /// Light/dark changed; the kit already restyled every window.
     fn theme_changed(&mut self, _cx: &mut Cx, _palette: &Palette) {}
 
-    /// Files dropped on a window (Tracker drags etc.).
-    fn files_dropped(&mut self, _cx: &mut Cx, _window: WindowId, _paths: Vec<std::path::PathBuf>) {}
+    /// Something was dropped on a part of `window` that took it with
+    /// [`crate::dnd::accept`] (see [`crate::dnd`]).
+    fn dropped(&mut self, _cx: &mut Cx, _window: WindowId, _drop: crate::dnd::Drop) {}
+
+    /// A drag started with [`Cx::start_drag`] in `window` is over: dropped
+    /// with `action`, or None if nothing took it. After a move, remove
+    /// what was dragged unless it was dropped in this same app (which did
+    /// the move itself).
+    fn drag_ended(&mut self, _cx: &mut Cx, _window: WindowId, _action: Option<crate::dnd::Action>) {}
 
     /// State to carry across an in-place upgrade. When Tabula is reloaded
     /// (`tabula-session reload`) and this app's binary has changed, the kit
@@ -190,6 +197,7 @@ pub(crate) enum Request {
     Copy(String),
     CopySecret(String, std::time::Duration),
     CopyData(Clip),
+    StartDrag(WindowId, crate::dnd::DragData),
     Paste(WindowId),
     LockSession,
     UnlockSession,
@@ -352,6 +360,12 @@ impl Cx {
         self.requests.push(Request::Activate(window));
     }
     /// Put text on the clipboard.
+    /// Start dragging `data` out of `window` (see [`crate::dnd`]): call it
+    /// when an egui drag starts, while the pointer button is still down.
+    pub fn start_drag(&mut self, window: WindowId, data: crate::dnd::DragData) {
+        self.requests.push(Request::StartDrag(window, data));
+    }
+
     pub fn copy(&mut self, text: impl Into<String>) {
         self.requests.push(Request::Copy(text.into()));
     }

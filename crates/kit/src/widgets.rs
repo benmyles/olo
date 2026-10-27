@@ -1390,6 +1390,20 @@ pub struct ListResponse {
     pub context: Option<(usize, Pos2)>,
     pub selection_changed: bool,
     pub sort_changed: bool,
+    /// With [`ColumnListView::draggable`]: a drag started on this row
+    /// (now selected, if it wasn't), and whether with the secondary
+    /// button. Start the real drag with [`crate::Cx::start_drag`].
+    pub drag_started: Option<(usize, bool)>,
+    /// The rows on screen and where, clipped to the list (to find the
+    /// row a drop is over).
+    pub visible: Vec<(usize, Rect)>,
+}
+
+impl ListResponse {
+    /// The row on screen at `pos`.
+    pub fn row_at(&self, pos: Pos2) -> Option<usize> {
+        self.visible.iter().find(|(_, r)| r.contains(pos)).map(|(row, _)| *row)
+    }
 }
 
 /// What a cell callback is given.
@@ -1433,13 +1447,14 @@ pub struct ColumnListView<'a> {
     state: &'a mut ListState,
     row_height: f32,
     reveal: Option<usize>,
+    draggable: bool,
 }
 
 pub const HEADER_HEIGHT: f32 = 18.0;
 
 impl<'a> ColumnListView<'a> {
     pub fn new(id: impl std::hash::Hash + std::fmt::Debug, columns: &'a [Column], rows: usize, state: &'a mut ListState) -> Self {
-        ColumnListView { id: Id::unique(id), columns, rows, state, row_height: m::LIST_ROW, reveal: None }
+        ColumnListView { id: Id::unique(id), columns, rows, state, row_height: m::LIST_ROW, reveal: None, draggable: false }
     }
     pub fn row_height(mut self, h: f32) -> Self {
         self.row_height = h;
@@ -1449,6 +1464,11 @@ impl<'a> ColumnListView<'a> {
     /// bring a selection made in code into view).
     pub fn reveal(mut self, row: Option<usize>) -> Self {
         self.reveal = row;
+        self
+    }
+    /// Rows can be dragged (see [`ListResponse::drag_started`]).
+    pub fn draggable(mut self) -> Self {
+        self.draggable = true;
         self
     }
 
@@ -1537,6 +1557,12 @@ impl<'a> ColumnListView<'a> {
         let state = &mut *self.state;
         let columns = self.columns;
         let id = self.id;
+        let draggable = self.draggable;
+        let visible = &mut out.visible;
+        let drag_started = &mut out.drag_started;
+        let mut selection_changed = false;
+        let mut activated = None;
+        let mut context = None;
         if let Some(row) = self.reveal {
             let context = ((body.height() / row_h / 2.0).floor() - 1.0).max(0.0);
             let (top, bottom) = ((row as f32 - context).max(0.0) * row_h, (row as f32 + 1.0 + context) * row_h);
@@ -1553,8 +1579,18 @@ impl<'a> ColumnListView<'a> {
                 let left = ui.max_rect().left();
                 let right = ui.max_rect().right();
                 for row in range {
-                    let (r, resp) = ui.allocate_exact_size(vec2(right - left, row_h), Sense::click());
+                    let sense = if draggable { Sense::click_and_drag() } else { Sense::click() };
+                    let (r, resp) = ui.allocate_exact_size(vec2(right - left, row_h), sense);
                     let r = Rect::from_min_max(pos2(left, r.top()), pos2(right, r.bottom()));
+                    visible.push((row, r.intersect(ui.clip_rect())));
+                    if draggable && resp.drag_started() {
+                        ui.memory_mut(|m| m.request_focus(focus_id));
+                        if !state.selected.contains(&row) {
+                            state.select(row);
+                            selection_changed = true;
+                        }
+                        *drag_started = Some((row, resp.dragged_by(egui::PointerButton::Secondary)));
+                    }
                     if resp.clicked() || resp.secondary_clicked() || resp.double_clicked() {
                         ui.memory_mut(|m| m.request_focus(focus_id));
                         let mods = ui.input(|i| i.modifiers);
@@ -1571,13 +1607,13 @@ impl<'a> ColumnListView<'a> {
                         } else {
                             state.select(row);
                         }
-                        out.selection_changed = true;
+                        selection_changed = true;
                     }
                     if resp.double_clicked() {
-                        out.activated = Some(row);
+                        activated = Some(row);
                     }
                     if resp.secondary_clicked() {
-                        out.context = resp.interact_pointer_pos().map(|p| (row, p));
+                        context = resp.interact_pointer_pos().map(|p| (row, p));
                     }
                     let selected = state.selected.contains(&row);
                     let painter = ui.painter();
@@ -1601,6 +1637,9 @@ impl<'a> ColumnListView<'a> {
                 }
             },
         );
+        out.selection_changed |= selection_changed;
+        out.activated = out.activated.or(activated);
+        out.context = out.context.or(context);
         style::sunken(ui.painter(), outer, &p, focused);
         ui.advance_cursor_after_rect(outer);
 

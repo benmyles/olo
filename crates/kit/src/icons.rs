@@ -32,6 +32,106 @@ fn to_color_image(img: tabula_xdg::Image) -> ColorImage {
     ColorImage::new([img.width as usize, img.height as usize], px)
 }
 
+/// The name shown with a drag picture, and where.
+#[derive(Clone, Copy)]
+pub enum DragLabel<'a> {
+    None,
+    /// Under the icon, as in an icon view.
+    Below(&'a str),
+    /// Beside it, as in a list.
+    Right(&'a str),
+}
+
+/// A picture to drag `count` things by, as Tracker's were: icon `name` at
+/// `logical` points with the item's name highlighted beside or below it,
+/// see-through (so what is under it shows), the icon stacked twice over
+/// for several. The pointer holds it at `hotspot` (logical, from the
+/// icon's top left).
+pub fn drag_icon(ctx: &Context, name: &str, logical: f32, count: usize, hotspot: egui::Vec2, label: DragLabel) -> Option<crate::dnd::DragIcon> {
+    let ppp = ctx.pixels_per_point();
+    let scale = ppp.ceil().max(1.0) as u32;
+    let sc = scale as usize;
+    let px = (logical * scale as f32).round().max(1.0) as u32;
+    let icon = to_color_image(tabula_xdg::load_icon(name, px)?);
+    let [w, h] = icon.size;
+    // Several: two more copies behind, each a little up and to the right.
+    let (step, copies) = if count > 1 { (2 * sc, 3) } else { (0, 1) };
+    let (iw, ih) = (w + step * (copies - 1), h + step * (copies - 1));
+
+    // The name, from the glyphs egui already rasterised for this scale.
+    let text = match label {
+        DragLabel::Below(t) | DragLabel::Right(t) => Some(t),
+        DragLabel::None => None,
+    };
+    let galley = text.map(|t| ctx.fonts_mut(|f| f.layout_no_wrap(t.to_owned(), crate::style::plain_font(), Color32::WHITE)));
+    let (pad_x, pad_y, gap) = (4 * sc, sc, 2 * sc);
+    let (lw, lh) = galley.as_ref().map_or((0, 0), |g| ((g.size().x * ppp).ceil() as usize + 2 * pad_x, (g.size().y * ppp).ceil() as usize + 2 * pad_y));
+    let (cw, ch, icon_at, label_at) = match label {
+        DragLabel::Below(_) => {
+            let cw = iw.max(lw);
+            (cw, ih + gap + lh, ((cw - iw) / 2, 0), ((cw - lw) / 2, ih + gap))
+        }
+        DragLabel::Right(_) => {
+            let ch = ih.max(lh);
+            (iw + gap + lw, ch, (0, (ch - ih) / 2), (iw + gap, (ch - lh) / 2))
+        }
+        DragLabel::None => (iw, ih, (0, 0), (0, 0)),
+    };
+    let mut out = ColorImage::new([cw, ch], vec![Color32::TRANSPARENT; cw * ch]);
+    // Source over destination, both premultiplied.
+    let over = |out: &mut ColorImage, x: usize, y: usize, src: Color32| {
+        let dst = &mut out.pixels[y * cw + x];
+        let a = 255 - src.a() as u32;
+        let mix = |s: u8, d: u8| (s as u32 + d as u32 * a / 255).min(255) as u8;
+        *dst = Color32::from_rgba_premultiplied(mix(src.r(), dst.r()), mix(src.g(), dst.g()), mix(src.b(), dst.b()), mix(src.a(), dst.a()));
+    };
+    for k in (0..copies).rev() {
+        let (ox, oy) = (icon_at.0 + step * k, icon_at.1 + step * (copies - 1 - k));
+        let fade = if k == 0 { 0.75 } else { 0.45 };
+        for y in 0..h {
+            for x in 0..w {
+                over(&mut out, x + ox, y + oy, icon.pixels[y * w + x].gamma_multiply(fade));
+            }
+        }
+    }
+    if let Some(g) = galley {
+        let p = crate::style::palette(ctx);
+        let bg = crate::style::c(p.list_selected_background).gamma_multiply(0.7);
+        let fg = crate::style::c(p.list_selected_item_text).gamma_multiply(0.9);
+        for y in label_at.1..label_at.1 + lh {
+            for x in label_at.0..label_at.0 + lw {
+                over(&mut out, x, y, bg);
+            }
+        }
+        let atlas = ctx.fonts(|f| f.image());
+        let [aw, _] = atlas.size;
+        let (tx, ty) = (label_at.0 + pad_x, label_at.1 + pad_y);
+        for placed in &g.rows {
+            for glyph in &placed.row.glyphs {
+                let uv = glyph.uv_rect;
+                if uv.is_nothing() {
+                    continue;
+                }
+                let at = (placed.pos + glyph.pos.to_vec2() + uv.offset) * ppp;
+                for v in uv.min[1]..uv.max[1] {
+                    for u in uv.min[0]..uv.max[0] {
+                        let x = tx as f32 + at.x.round() + (u - uv.min[0]) as f32;
+                        let y = ty as f32 + at.y.round() + (v - uv.min[1]) as f32;
+                        if x < 0.0 || y < 0.0 || x as usize >= cw || y as usize >= ch {
+                            continue;
+                        }
+                        let cov = atlas.pixels[v as usize * aw + u as usize];
+                        let src = if glyph.is_color { cov } else { fg.gamma_multiply(cov.a() as f32 / 255.0) };
+                        over(&mut out, x as usize, y as usize, src);
+                    }
+                }
+            }
+        }
+    }
+    let shift = egui::vec2(icon_at.0 as f32, (icon_at.1 + step * (copies - 1)) as f32) / scale as f32;
+    Some(crate::dnd::DragIcon { image: out, scale, hotspot: hotspot + shift })
+}
+
 type Cache = HashMap<(String, u32), Option<TextureHandle>>;
 
 /// The icon `name` (ours, a theme icon name, or an absolute path) as a
