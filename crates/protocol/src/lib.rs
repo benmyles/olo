@@ -173,6 +173,9 @@ pub struct PowerStatus {
     pub caffeinated_lid: bool,
     /// The keyboard's backlight, 0.0–1.0, if it has one.
     pub keyboard_backlight: Option<f32>,
+    /// The screen is locked.
+    #[serde(default)]
+    pub locked: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -283,6 +286,35 @@ pub struct Settings {
     pub shortcuts: ShortcutSettings,
     pub tiling: TilingSettings,
     pub tracker: TrackerSettings,
+    pub security: SecuritySettings,
+}
+
+/// Preferences ▸ Security.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct SecuritySettings {
+    pub passwords: PasswordsSecurity,
+}
+
+/// How Passwords keeps its secrets.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct PasswordsSecurity {
+    /// Keep in step with 1Password on its own (on unlocking, every few
+    /// minutes and soon after a change); off: only with File ▸ Sync Now.
+    pub auto_sync: bool,
+    /// Lock after this many minutes without use (0: only when asked).
+    pub lock_minutes: u32,
+    /// Lock when the screen locks.
+    pub lock_with_screen: bool,
+    /// Take copied secrets off the clipboard after this many seconds.
+    pub clear_seconds: u32,
+}
+
+impl Default for PasswordsSecurity {
+    fn default() -> Self {
+        PasswordsSecurity { auto_sync: true, lock_minutes: 10, lock_with_screen: true, clear_seconds: 90 }
+    }
 }
 
 /// Tracker's settings (Preferences ▸ Tracker).
@@ -599,6 +631,7 @@ impl Default for Settings {
             shortcuts: ShortcutSettings::default(),
             tiling: TilingSettings::default(),
             tracker: TrackerSettings::default(),
+            security: SecuritySettings::default(),
         }
     }
 }

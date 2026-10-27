@@ -11226,6 +11226,7 @@ dependencies = [
  "tabula-keychain",
  "tabula-kit",
  "tabula-onepassword",
+ "tabula-protocol",
  "tabula-system",
  "tabula-theme",
  "tabula-xdg",

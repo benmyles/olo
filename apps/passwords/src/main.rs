@@ -19,6 +19,7 @@ use std::{
 use onepassword::{Item, ItemCategory, ItemFieldType, ItemOverview, ItemState, VaultOverview, totp::Totp};
 use serde::{Deserialize, Serialize};
 use tabula_keychain::{Incoming, Request, Response};
+use tabula_protocol::PasswordsSecurity;
 use tabula_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
     egui::{self, Key},
@@ -56,17 +57,19 @@ pub struct Settings {
     account: Option<String>,
     #[serde(skip_serializing)]
     account_label: Option<String>,
-    /// Lock after this long without use (0: only when asked).
-    lock_minutes: u32,
-    /// Take copied secrets off the clipboard after this long.
-    clear_seconds: u32,
+    /// From before these moved to Preferences ▸ Security (read once, to
+    /// carry them over).
+    #[serde(skip_serializing)]
+    lock_minutes: Option<u32>,
+    #[serde(skip_serializing)]
+    clear_seconds: Option<u32>,
     generator: generator::Recipe,
     size: Option<(u32, u32)>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { accounts: Vec::new(), local_only: false, account: None, account_label: None, lock_minutes: 10, clear_seconds: 90, generator: Default::default(), size: None }
+        Settings { accounts: Vec::new(), local_only: false, account: None, account_label: None, lock_minutes: None, clear_seconds: None, generator: Default::default(), size: None }
     }
 }
 
@@ -146,12 +149,17 @@ pub struct Review {
 /// Ticks for the auto-lock, syncing and one-time-password countdowns.
 struct Tick;
 
+/// The screen locked.
+struct ScreenLocked;
+
 /// How often to sync while unlocked, and how soon after a change here.
 const SYNC_EVERY: Duration = Duration::from_secs(5 * 60);
 const SYNC_AFTER_CHANGE: Duration = Duration::from_secs(3);
 
 pub struct Passwords {
     settings: Settings,
+    /// Preferences ▸ Security's choices for Passwords (followed live).
+    security: PasswordsSecurity,
     store: Store,
     conn: Conn,
     /// The setup's choices: listed accounts ticked, and one named by hand.
@@ -591,7 +599,7 @@ impl Passwords {
     }
 
     fn copy_secret(&mut self, cx: &mut Cx, what: &str, text: String) {
-        let seconds = self.settings.clear_seconds;
+        let seconds = self.security.clear_seconds;
         cx.copy_secret(text, Duration::from_secs(seconds as u64));
         self.flash(format!("Copied {what}. It leaves the clipboard in {seconds} seconds."));
         self.redraw(cx);
@@ -780,7 +788,7 @@ impl Passwords {
         match reply {
             Reply::Connected => {
                 self.conn = Conn::Ready;
-                if self.sync_asked.is_none_or(|t| t.elapsed() > SYNC_EVERY) {
+                if self.security.auto_sync && self.sync_asked.is_none_or(|t| t.elapsed() > SYNC_EVERY) {
                     self.sync_due = Some(Instant::now());
                 }
             }
@@ -939,21 +947,23 @@ impl Passwords {
 
     /// Something changed here: send it to 1Password soon.
     fn changed_here(&mut self) {
-        if !self.settings.accounts.is_empty() {
+        if !self.settings.accounts.is_empty() && self.security.auto_sync {
             self.sync_due = Some(Instant::now() + SYNC_AFTER_CHANGE);
         }
     }
 
     fn tick(&mut self, cx: &mut Cx) {
-        let due = self.sync_due.is_some_and(|t| Instant::now() >= t) || self.sync_asked.is_some_and(|t| t.elapsed() >= SYNC_EVERY);
+        // (Syncing only when asked: File ▸ Sync Now.)
+        let due = self.security.auto_sync
+            && (self.sync_due.is_some_and(|t| Instant::now() >= t) || self.sync_asked.is_some_and(|t| t.elapsed() >= SYNC_EVERY));
         // Not while the person is looking at what the last one found.
         if due && self.review.as_ref().is_none_or(|r| r.window.is_none()) {
             self.sync_now();
         }
         let idle = self.last_use.elapsed();
         if !self.lock.locked
-            && self.settings.lock_minutes > 0
-            && idle >= Duration::from_secs(self.settings.lock_minutes as u64 * 60)
+            && self.security.lock_minutes > 0
+            && idle >= Duration::from_secs(self.security.lock_minutes as u64 * 60)
             && self.editor.as_ref().is_none_or(|e| !e.changed())
         {
             self.do_lock(cx);
@@ -1155,7 +1165,7 @@ impl App for Passwords {
         view = view.separator().item("Archive", "source:archive", None).checked(self.source == Source::Archive);
         let mut lock_after = Menu::new("Lock After");
         for (minutes, label) in [(1, "1 Minute"), (5, "5 Minutes"), (10, "10 Minutes"), (30, "30 Minutes"), (60, "1 Hour"), (0, "Never")] {
-            lock_after = lock_after.item(label, format!("lockafter:{minutes}"), None).checked(self.settings.lock_minutes == minutes);
+            lock_after = lock_after.item(label, format!("lockafter:{minutes}"), None).checked(self.security.lock_minutes == minutes);
         }
         view = view.separator().submenu(lock_after);
         Some(vec![file, edit, item, view])
@@ -1196,8 +1206,10 @@ impl App for Passwords {
             "source:archive" => self.set_source(cx, Source::Archive),
             c if c.starts_with("source:vault:") => self.set_source(cx, Source::Vault(c[13..].to_string())),
             c if c.starts_with("lockafter:") => {
-                self.settings.lock_minutes = c[10..].parse().unwrap_or(10);
-                self.save_settings();
+                // The same choice as Preferences ▸ Security's.
+                let minutes = c[10..].parse().unwrap_or(10);
+                self.security.lock_minutes = minutes;
+                tabula_kit::settings::update(move |s| s.security.passwords.lock_minutes = minutes);
             }
             _ => {}
         }
@@ -1283,6 +1295,27 @@ impl App for Passwords {
             Ok(_) => return self.tick(cx),
             Err(m) => m,
         };
+        let msg = match msg.downcast::<PasswordsSecurity>() {
+            Ok(security) => {
+                if !security.auto_sync {
+                    self.sync_due = None;
+                }
+                self.security = *security;
+                self.redraw(cx);
+                return;
+            }
+            Err(m) => m,
+        };
+        let msg = match msg.downcast::<ScreenLocked>() {
+            Ok(_) => {
+                // Not with changes still unsaved: they'd be lost.
+                if self.security.lock_with_screen && !self.lock.locked && self.editor.as_ref().is_none_or(|e| !e.changed()) {
+                    self.do_lock(cx);
+                }
+                return;
+            }
+            Err(m) => m,
+        };
         let msg = match msg.downcast::<Incoming>() {
             Ok(incoming) => return self.keychain(cx, *incoming),
             Err(m) => m,
@@ -1318,7 +1351,31 @@ fn main() {
             let label = settings.account_label.take().unwrap_or_else(|| id.clone());
             settings.accounts.push(Linked { id, label });
         }
+        // Preferences ▸ Security, carrying over what was chosen here
+        // before it moved there.
+        let mut security = tabula_kit::settings::current().map(|s| s.security.passwords).unwrap_or_default();
+        let (old_lock, old_clear) = (settings.lock_minutes.take(), settings.clear_seconds.take());
+        if (old_lock.is_some() || old_clear.is_some()) && security == PasswordsSecurity::default() {
+            security.lock_minutes = old_lock.unwrap_or(security.lock_minutes);
+            security.clear_seconds = old_clear.unwrap_or(security.clear_seconds);
+            let carried = security.clone();
+            tabula_kit::settings::update(move |s| s.security.passwords = carried);
+        }
         let proxy = cx.proxy();
+        {
+            let proxy_lock = proxy.clone();
+            let proxy = proxy.clone();
+            tabula_kit::settings::watch(move |s| proxy.send(s.security.passwords));
+            let was = std::sync::atomic::AtomicBool::new(false);
+            tabula_kit::settings::watch_power(move |status| {
+                // Only as it locks, not every time something else changes.
+                if status.locked && !was.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    proxy_lock.send(ScreenLocked);
+                } else if !status.locked {
+                    was.store(false, std::sync::atomic::Ordering::Relaxed);
+                }
+            });
+        }
         {
             let proxy = proxy.clone();
             std::thread::Builder::new()
@@ -1341,6 +1398,7 @@ fn main() {
             lock: Lock::new(proxy.clone(), locked),
             conn: if locked { Conn::Connecting } else { Conn::Setup },
             settings,
+            security,
             vaults: Vec::new(),
             vault_accounts: HashMap::new(),
             items: Vec::new(),

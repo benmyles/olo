@@ -196,6 +196,7 @@ impl Power {
             caffeinated_until: self.caffeinated_until.and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()),
             caffeinated_lid: self.caffeinated_lid,
             keyboard_backlight: self.keyboard_level,
+            locked: false,
         }
     }
 
@@ -319,7 +320,7 @@ fn run(job: Job, w: &mut Worker) {
 
 impl<B: Backend> AnvilState<B> {
     pub fn power_status(&self) -> tabula_protocol::PowerStatus {
-        tabula_protocol::PowerStatus { screen_saver: self.saver.running(), ..self.power.status() }
+        tabula_protocol::PowerStatus { screen_saver: self.saver.running(), locked: self.lock.locked(), ..self.power.status() }
     }
 
     pub fn power_changed(&mut self) {

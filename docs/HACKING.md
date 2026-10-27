@@ -144,6 +144,9 @@ fn main() {
   `SettingsChanged` and after app_server restarts; send what you need
   through `cx.proxy()`. Tracker follows `tracker.default_view` (the view
   new folder windows open in, column view by default) this way.
+  `update(edit)` changes them from an app (read, `edit`, `SetSettings`, on
+  a thread), and `watch_power(f)` follows `PowerStatus` the same way
+  (the screen locking, the displays sleeping).
 * **Menus for the command palette** (`tabula_kit::commands`, automatic):
   every kit app answers on `$XDG_RUNTIME_DIR/tabula-menus-<pid>.sock`
   with the menu bar of its last active window, flattened
@@ -1311,9 +1314,15 @@ codes count down), an editor with templates per category, a Password
 Generator window, and File/Edit/Item/View menus (⌘C username, ⇧⌘C password,
 ⇧⌘O one-time code). Secrets go to the clipboard with `copy_secret` and
 leave after `clear_seconds`. It opens locked and locks after
-`lock_minutes` idle (`lock.rs`): Touch ID through fprintd, claimed only
+`lock_minutes` idle, and when the screen locks if `lock_with_screen`
+(`lock.rs`): Touch ID through fprintd, claimed only
 while the locked window has the keyboard, or the account password through
-PAM. Settings live in `passwords.json`.
+PAM. Those, and `auto_sync`, are Preferences ▸ Security's
+(`Settings::security.passwords`, followed live through
+`tabula_kit::settings::watch`; the screen locking comes from
+`settings::watch_power`, `PowerStatus::locked`; View ▸ Lock After writes
+the same setting with `settings::update`). Its own settings (accounts,
+the generator, the window size) live in `passwords.json`.
 
 **Its own store** (`vault.rs`). Every vault and item lives on this
 computer, so the app, NetPositive and the palette never wait on
@@ -1359,7 +1368,7 @@ person's approval. It runs in two steps, each on its own thread:
   comes up in the next review. A plan nobody would notice (nothing but
   what was looked at) applies without asking.
 
-Plans are made at the unlock, every 5 minutes, 3 s after a change here
+With `auto_sync` (the default), plans are made at the unlock, every 5 minutes, 3 s after a change here
 (the status line then says "3 sync changes to review"; a click opens
 them), and on File ▸ Sync Now or the setup panel's Sync (the review opens
 at once). Automatic plans wait while Review Sync is open. Cancel leaves

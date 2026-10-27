@@ -69,3 +69,4 @@ bank|a small classical bank building in cream stone with four columns and a tria
 database|a stack of three silver database cylinders with Be blue bands around each one
 camera|a rounded webcam with a large glass lens in a charcoal body, sitting on a small silver stand, a tiny green light beside the lens
 microphone|a silver studio microphone with a rounded mesh head on a short charcoal stand
+security|a chunky closed padlock with a bright BeOS-yellow brass body and a thick silver shackle, a small dark keyhole on its front face, seen in three-quarter view from slightly above

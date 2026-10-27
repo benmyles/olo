@@ -880,5 +880,11 @@
   "title": "Band selection in lists",
   "caption": "Dragging from a row's other columns, or from below the rows, draws a selection band in Tracker's list view and in every kit list (\u21e7 or \u2318 adds; it scrolls on near the edges). The column view does the same from below a column's items.",
   "image": "2026-10-26/234628-band-selection-in-lists.png"
+ },
+ {
+  "time": "2026-10-26T23:55:16",
+  "title": "Security preferences",
+  "caption": "Preferences \u25b8 Security holds how Passwords keeps its secrets: sync with 1Password automatically or only when asked, lock after idle, lock when the screen locks, and how soon copied secrets leave the clipboard. Passwords follows them live.",
+  "image": "2026-10-26/235516-security-preferences.png"
  }
 ]

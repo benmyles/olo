@@ -9,6 +9,7 @@ name = "tabula-passwords"
 path = "src/main.rs"
 
 [dependencies]
+tabula-protocol.workspace = true
 tabula-kit.workspace = true
 tabula-theme.workspace = true
 tabula-system.workspace = true

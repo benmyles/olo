@@ -31,7 +31,9 @@ const DISCLOSURE_ROOM: f32 = m::CELL_INSET + 4.0 + m::MARK_GAP;
 
 /// What happened in a column this frame (applied once drawing is done).
 enum Event {
-    Click { col: usize, row: Option<usize>, toggle: bool },
+    /// `toggle`: ⌘ (add or take away one); `range`: ⇧ (from the last one
+    /// clicked to this).
+    Click { col: usize, row: Option<usize>, toggle: bool, range: bool },
     Double { col: usize, row: usize },
     Context { col: usize, row: Option<usize>, pos: Pos2 },
     /// A drag started on a row; where on its icon the pointer is.
@@ -164,11 +166,19 @@ pub fn columns_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, actions: &mut 
 
     for ev in events {
         match ev {
-            Event::Click { col, row: Some(row), toggle: true } => {
+            Event::Click { col, row: Some(row), range: true, toggle: false } => {
+                let (_, list) = column_mut(f, col);
+                let a = list.anchor.unwrap_or(row);
+                list.selected = (a.min(row)..=a.max(row)).collect();
+                f.active = col;
+                f.panes.truncate(col);
+            }
+            Event::Click { col, row: Some(row), toggle: true, .. } => {
                 let (_, list) = column_mut(f, col);
                 if !list.selected.remove(&row) {
                     list.selected.insert(row);
                 }
+                list.anchor = Some(row);
                 f.active = col;
                 f.panes.truncate(col);
             }
@@ -355,7 +365,7 @@ fn draw_column(
                     events.push(Event::Double { col: k, row });
                 }
             } else if resp.clicked() {
-                events.push(Event::Click { col: k, row: row_at(pos), toggle: mods.ctrl });
+                events.push(Event::Click { col: k, row: row_at(pos), toggle: mods.ctrl, range: mods.shift });
             } else if resp.secondary_clicked() {
                 events.push(Event::Context { col: k, row: row_at(pos), pos });
             }

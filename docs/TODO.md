@@ -201,7 +201,7 @@ as they land (with the commit), add new ones as they come up.
   and Passwords, brightness, keyboard backlight, power profiles and
   battery, suspend, and an x86_64 Chrome. Build and test x86_64 in CI or
   a VM before it arrives.
-- **Passwords settings in a new Security preferences panel** (Ben):
+- ~~**Passwords settings in a new Security preferences panel**~~ (Preferences ▸ Security: sync automatically or only when asked, lock after idle, lock with the screen, clipboard clearing; Passwords follows them live; carried over from passwords.json; the panel and settings round trip tested headless, Passwords' side not yet run against them) (Ben):
   choose automatic sync with 1Password or sync only on demand, and how
   long Passwords waits before locking itself (or never). Preferences
   gets a Security panel for them (and a home for other security

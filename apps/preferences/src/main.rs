@@ -18,6 +18,7 @@ mod network;
 mod panel;
 mod power;
 mod screensaver;
+mod security;
 mod server;
 mod shortcuts;
 mod sound;

@@ -93,7 +93,7 @@ pub fn summary(b: &Battery) -> String {
     if detail.is_empty() { format!("{}%", b.percent) } else { format!("{}% — {detail}", b.percent) }
 }
 
-fn minutes_menu(ui: &mut Ui, id: &str, label: &str, choices: &[u32], value: &mut u32) {
+pub fn minutes_menu(ui: &mut Ui, id: &str, label: &str, choices: &[u32], value: &mut u32) {
     let names: Vec<String> = choices.iter().map(|&m| minutes_text(m)).collect();
     let mut names: Vec<&str> = names.iter().map(String::as_str).collect();
     let custom = minutes_text(*value);

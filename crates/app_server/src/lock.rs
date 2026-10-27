@@ -154,6 +154,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             if let Some(p) = marker() {
                 let _ = std::fs::write(p, session_id());
             }
+            self.power_changed();
         }
         self.ensure_locker();
     }
@@ -348,6 +349,7 @@ impl<B: Backend + 'static> SessionLockHandler for AnvilState<B> {
             let keyboard = self.seat.get_keyboard().unwrap();
             self.lock.focus_before = keyboard.current_focus();
             keyboard.set_focus(self, None::<KeyboardFocusTarget>, SERIAL_COUNTER.next_serial());
+            self.power_changed();
         }
         confirmation.lock();
     }
@@ -363,6 +365,7 @@ impl<B: Backend + 'static> SessionLockHandler for AnvilState<B> {
         if let Some(p) = marker() {
             let _ = std::fs::remove_file(p);
         }
+        self.power_changed();
     }
 
     fn new_surface(&mut self, surface: LockSurface, output: WlOutput) {

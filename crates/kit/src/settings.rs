@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use tabula_protocol::{Client, Event, Reply, Request, Settings};
+use tabula_protocol::{Client, Event, PowerStatus, Reply, Request, Settings};
 
 /// The settings now, asked once (a local round trip; fine at startup).
 pub fn current() -> Option<Settings> {
@@ -38,4 +38,53 @@ pub fn watch(f: impl Fn(Settings) + Send + 'static) {
             std::thread::sleep(Duration::from_millis(500));
         })
         .ok();
+}
+
+/// Call `f` on a thread with app_server's power status: now, after every
+/// change (the screen locking, the displays sleeping, …), and again after
+/// app_server restarts.
+pub fn watch_power(f: impl Fn(PowerStatus) + Send + 'static) {
+    if tabula_protocol::socket_path().is_none() {
+        return;
+    }
+    std::thread::Builder::new()
+        .name("power-watch".into())
+        .spawn(move || loop {
+            if let Ok(mut c) = Client::connect()
+                && let Ok(Reply::Power { status }) = c.request(&Request::PowerStatus)
+            {
+                f(status);
+            }
+            if let Ok(client) = Client::connect()
+                && let Ok(events) = client.into_events()
+            {
+                for event in events {
+                    if let Ok(Event::PowerChanged { status }) = event {
+                        f(status);
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        })
+        .ok();
+}
+
+/// Change the settings: `edit` is given the current ones and app_server
+/// gets the result (and tells every app that follows them). On a thread,
+/// so it never holds up the UI; false outside Tabula.
+pub fn update(edit: impl FnOnce(&mut Settings) + Send + 'static) -> bool {
+    if tabula_protocol::socket_path().is_none() {
+        return false;
+    }
+    std::thread::Builder::new()
+        .name("settings-update".into())
+        .spawn(move || {
+            if let Some(mut s) = current() {
+                edit(&mut s);
+                if let Ok(mut c) = Client::connect() {
+                    let _ = c.request(&Request::SetSettings { settings: s });
+                }
+            }
+        })
+        .is_ok()
 }

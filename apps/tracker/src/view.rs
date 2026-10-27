@@ -667,6 +667,12 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
                 };
             }
             match hit(pos) {
+                // ⇧: everything from the last item clicked to this one (in
+                // the folder's order), as everywhere else.
+                Some(i) if mods.shift && !mods.ctrl && response.clicked() => {
+                    let a = f.list.anchor.filter(|&a| a < f.entries.len()).unwrap_or(i);
+                    f.list.selected = (a.min(i)..=a.max(i)).collect();
+                }
                 Some(i) if mods.ctrl || mods.shift => {
                     if response.clicked() || response.drag_started() {
                         if !f.list.selected.remove(&i) {
