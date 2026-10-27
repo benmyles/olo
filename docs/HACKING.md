@@ -559,7 +559,9 @@ hands both to app_server, so clients never see the sockets disappear.
   opening a window again.
 * Kit apps notice the lost connection and reconnect (for up to 20 s). An
   app whose binary didn't change keeps everything and recreates its
-  windows exactly. One whose binary changed calls `App::save_state`,
+  windows exactly (at their current sizes: a panel's last `cx.resize`
+  too, since apps like Deskbar only resize when their height changes).
+  One whose binary changed calls `App::save_state`,
   re-executes itself (same pid and arguments), and reads the result with
   `cx.restored_state()` at start-up. **Every app with windows the user
   arranged must implement both**: save which windows are open (with
@@ -880,6 +882,19 @@ or go (`follow_main_output` → `rehome_windows`), windows left on none go to
 the main display, cascaded and shrunk to fit, the rest are re-tiled,
 re-zoomed or fitted where they are, and the pointer is brought back; a
 minimized window is fitted when it comes back.
+
+Fan Out (`fan_out`, ⌃⌘/) stacks the display's windows top-left with their
+tabs side by side: in the order of their tabs' x (front-most first on a
+tie), each starts at the last one's tab end, is narrowed so it doesn't
+reach under the Deskbar but not below a quarter of the display (nor its
+app's minimum), and past that is pinned as far right as it fits with its
+tab slid along it (`tab_offset`), so the tabs overlap only then. Every
+arranging command (Tile All, Tile App, Cascade, Fan Out) first calls
+`remember_arrangement`, which keeps each window's frame, tab offset, tile
+and part (`Placed`, in `AnvilState::arranged`); Undo Window Arrangement
+(`undo_arrangement`, ⌃⌘Z) puts them back and remembers what it replaced,
+so undoing again redoes. Agents run both with
+`{"type":"run_shortcut","id":"fan-out"}` / `"undo-arrangement"`.
 
 ## Power (crates/app_server/src/power.rs)
 

@@ -1,6 +1,7 @@
 //! Arranging windows from the keyboard (tabula_protocol::shortcuts): tiling
 //! one into part of its display, centering it, moving it to another
-//! display, tiling or cascading them all, showing the desktop; and putting
+//! display, tiling, cascading or fanning them all out (and undoing that),
+//! showing the desktop; and putting
 //! windows back on a display when theirs goes away (unplugged, or set to
 //! mirror). Tiled windows keep space around them
 //! (`Settings::tiling`: gap and margin) and remember how they were, so
@@ -38,6 +39,19 @@ struct Tiled(Cell<Option<Tile>>);
 /// A part of the tile area, as fractions (x, y, width, height), as
 /// `Tile::fraction` gives.
 pub type Part = (f32, f32, f32, f32);
+
+/// Where a window was before an arrangement moved it, all Undo Window
+/// Arrangement needs to put it back.
+#[derive(Clone, Debug)]
+pub struct Placed {
+    window: WindowElement,
+    frame: Rectangle<i32, Logical>,
+    tile: Option<Tile>,
+    part: Option<Part>,
+    /// Its own frame, if it was tiled or zoomed (for Restore).
+    pre: Option<Rectangle<i32, Logical>>,
+    tab_offset: i32,
+}
 
 /// The part a tiled window has after its edges were dragged, in place of
 /// its tile's own.
@@ -552,12 +566,109 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         all.into_iter().filter(|w| self.window_output(w).as_ref() == Some(output)).collect()
     }
 
+    fn placed(&self, windows: &[WindowElement]) -> Vec<Placed> {
+        windows
+            .iter()
+            .filter_map(|w| {
+                Some(Placed {
+                    window: w.clone(),
+                    frame: self.space.element_geometry(w)?,
+                    tile: Self::tiled(w),
+                    part: Self::custom_part(w),
+                    pre: w.user_data().get::<PreZoom>().and_then(|p| *p.0.borrow()),
+                    tab_offset: w.decoration().tab_offset,
+                })
+            })
+            .collect()
+    }
+
+    /// Keep how `windows` are now, for Undo Window Arrangement.
+    fn remember_arrangement(&mut self, windows: &[WindowElement]) {
+        self.arranged = self.placed(windows);
+    }
+
+    /// Every window the last arrangement moved back where and how big it
+    /// was (those still open); again, as the arrangement had them.
+    pub fn undo_arrangement(&mut self) {
+        let before = std::mem::take(&mut self.arranged);
+        let windows: Vec<WindowElement> = before.iter().map(|p| p.window.clone()).filter(|w| self.space.element_location(w).is_some()).collect();
+        let now = self.placed(&windows);
+        for p in &before {
+            if !windows.contains(&p.window) {
+                continue;
+            }
+            self.set_frame(&p.window, p.frame, false);
+            Self::set_tiled(&p.window, p.tile);
+            Self::set_part(&p.window, p.tile.and(p.part));
+            p.window.user_data().insert_if_missing(PreZoom::default);
+            p.window.user_data().get::<PreZoom>().unwrap().0.replace(p.pre);
+            p.window.decoration().tab_offset = p.tab_offset;
+        }
+        info!(windows = windows.len(), "undid an arrangement");
+        self.arranged = now;
+    }
+
+    /// Every window on the active display at the top left of it, stacked
+    /// with their tabs side by side along the top (as BeOS people slid
+    /// them by hand), in the order their tabs are now from the left. Each
+    /// starts where the tab before it ends and is narrowed so it stops
+    /// beside Deskbar, but never below a quarter of the display (so four
+    /// always fit, narrower ones more); past that the rest go as far
+    /// right as they fit, their tabs slid along them to keep stepping
+    /// right, and overlap only when there's no room left for them.
+    pub fn fan_out(&mut self) {
+        let Some(output) = self.active_output() else { return };
+        let (Some(area), Some(screen)) = (self.tile_area(&output), self.space.output_geometry(&output)) else { return };
+        let windows = self.windows_on(&output);
+        if windows.is_empty() {
+            return;
+        }
+        self.remember_arrangement(&windows);
+        let tab_x = |s: &Self, w: &WindowElement| {
+            let at = s.space.element_location(w).unwrap_or_default();
+            let (title, size) = (w.title(), w.geometry().size);
+            at.x + w.decoration().tab_layout(&title, size).x
+        };
+        let mut order: Vec<(i32, usize, WindowElement)> = windows.iter().enumerate().map(|(z, w)| (tab_x(self, w), windows.len() - z, w.clone())).collect();
+        order.sort_by_key(|(x, z, _)| (*x, *z));
+        let narrowest = screen.size.w / 4;
+        let right = area.loc.x + area.size.w;
+        let mut x = area.loc.x;
+        for (_, _, w) in &order {
+            let own = self.own_frame(w).unwrap_or_default().size;
+            // Its tab as wide as its title wants (as on a wide window).
+            let tab = {
+                let title = w.title();
+                let mut d = w.decoration();
+                d.tab_offset = 0;
+                d.tab_layout(&title, Size::from((area.size.w, 1))).width
+            };
+            // No narrower than it can be (or it would grow past Deskbar).
+            let min = self.min_frame(w);
+            let width = own.w.min((right - x).max(narrowest)).min(area.size.w).max(min.w).max(1);
+            let at = x.min(right - width).max(area.loc.x);
+            let height = own.h.min(area.size.h).max(min.h).max(1);
+            // Pushed left of where its tab should go: its tab slides along
+            // to there, as far as the window is wide.
+            let offset = (x - at).clamp(0, (width - tab).max(0));
+            Self::set_tiled(w, None);
+            if let Some(p) = w.user_data().get::<PreZoom>() {
+                p.0.borrow_mut().take();
+            }
+            self.set_frame(w, Rectangle::new(Point::from((at, area.loc.y)), Size::from((width, height))), false);
+            w.decoration().tab_offset = offset;
+            x = at + offset + tab;
+        }
+        info!(windows = order.len(), "fanned out");
+    }
+
     /// Every window on the active display in a grid, in reading order of
     /// where they are now.
     pub fn tile_all(&mut self) {
         let Some(output) = self.active_output() else { return };
         let Some(area) = self.tile_area(&output) else { return };
         let mut windows = self.windows_on(&output);
+        self.remember_arrangement(&windows);
         windows.sort_by_key(|w| {
             let g = self.space.element_geometry(w).unwrap_or_default();
             (g.loc.y + g.size.h / 2, g.loc.x + g.size.w / 2)
@@ -591,6 +702,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if windows.is_empty() {
             return false;
         }
+        self.remember_arrangement(&windows);
         windows.sort_by_key(|w| {
             let g = self.space.element_geometry(w).unwrap_or_default();
             (g.loc.y + g.size.h / 2, g.loc.x + g.size.w / 2)
@@ -615,6 +727,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let Some(output) = self.active_output() else { return };
         let Some(area) = self.tile_area(&output) else { return };
         let windows = self.windows_on(&output);
+        self.remember_arrangement(&windows);
         let n = windows.len() as i32;
         for (i, w) in windows.iter().enumerate() {
             let step = if n > 1 { CASCADE.min((area.size.h / 3) / (n - 1)).max(4) } else { 0 };

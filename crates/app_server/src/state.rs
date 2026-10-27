@@ -225,6 +225,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub mirrors: Vec<Output>,
     /// The windows Show Desktop hid (shown again by its next press).
     pub desktop_shown: Vec<WindowElement>,
+    /// How the windows were before the last arrangement (Tile All,
+    /// Cascade, Fan Out, an app's Show All), for Undo Window Arrangement.
+    pub arranged: Vec<crate::shell::tiling::Placed>,
     /// Counts shortcut recordings (a timer only ends its own).
     pub recording_shortcut: u64,
 }
@@ -993,6 +996,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             night_fade: None,
             mirrors: Vec::new(),
             desktop_shown: Vec::new(),
+            arranged: Vec::new(),
             recording_shortcut: 0,
         };
         if let Some(name) = state.socket_name.clone() {

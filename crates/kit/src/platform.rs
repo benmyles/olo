@@ -920,6 +920,8 @@ impl Kit {
                             let h = if t && b { 0 } else { size.1 };
                             l.set_size(w, h);
                             l.commit();
+                            // So it comes back this size after a reconnect.
+                            s.options.size = size;
                         } else if s.fullscreen {
                             // The size to come back to.
                             s.windowed = Some(size);
@@ -1370,13 +1372,19 @@ impl Kit {
         let s = &mut self.surfaces[i];
         let gs = s.gpu_surface.as_ref().unwrap();
         let caps = gs.get_capabilities(&gpu.adapter);
+        // None while the compositor is away (it restarts in place): the
+        // reconnect configures it again.
+        let Some(&first) = caps.formats.first() else {
+            warn!("GPU surface has no formats (compositor gone?)");
+            return;
+        };
         // egui blends in gamma space: use a non-sRGB target.
         let format = caps
             .formats
             .iter()
             .copied()
             .find(|f| matches!(f, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Rgba8Unorm))
-            .unwrap_or(caps.formats[0]);
+            .unwrap_or(first);
         // Popups and surfaces without a panel background (the Tracker
         // desktop) are translucent.
         let alpha_mode = if (matches!(s.role, Role::Popup { .. }) || !s.options.panel)

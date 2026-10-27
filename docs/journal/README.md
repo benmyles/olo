@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Fan Out
+
+*14:49* — ⌃⌘/ stacks a display's windows with their tabs side by side, narrowing them to stay clear of the Deskbar; ⌃⌘Z undoes it.
+
+![Fan Out](2026-10-27/144918-fan-out.png)
+
 ### Terminal: Show All Tabs
 
 *14:33* — Show All Tabs (⌘⇧D) puts every tab of a window on screen at once, each a live pane with its title over it; click one to type into it, marked in the group's colour. The tab strip is taller now, with the group's band kept clear of the icons.

@@ -1156,5 +1156,11 @@
   "title": "Terminal: Show All Tabs",
   "caption": "Show All Tabs (\u2318\u21e7D) puts every tab of a window on screen at once, each a live pane with its title over it; click one to type into it, marked in the group's colour. The tab strip is taller now, with the group's band kept clear of the icons.",
   "image": "2026-10-27/143308-terminal-show-all-tabs.png"
+ },
+ {
+  "time": "2026-10-27T14:49:18",
+  "title": "Fan Out",
+  "caption": "\u2303\u2318/ stacks a display's windows with their tabs side by side, narrowing them to stay clear of the Deskbar; \u2303\u2318Z undoes it.",
+  "image": "2026-10-27/144918-fan-out.png"
  }
 ]

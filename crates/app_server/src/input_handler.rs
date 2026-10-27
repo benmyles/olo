@@ -214,6 +214,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
             S::TileAll => self.tile_all(),
             S::CascadeAll => self.cascade_all(),
+            S::FanOut => self.fan_out(),
+            S::UndoArrangement => self.undo_arrangement(),
             S::ShowDesktop => self.show_desktop(),
             S::NextWorkspace => self.switch_workspace((self.workspace + 1).min(workspaces - 1)),
             S::PreviousWorkspace => self.switch_workspace(self.workspace.saturating_sub(1)),

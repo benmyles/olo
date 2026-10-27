@@ -5,6 +5,11 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Fan Out and Undo Window Arrangement~~ (Ben): ⌃⌘/ stacks a display's
+  windows with their tabs side by side, narrowing them to stay clear of
+  the Deskbar (never below a quarter of the screen); ⌃⌘Z undoes the last
+  arrangement (and again redoes). Also: Deskbar keeps its app list after
+  an in-place reload (a layer surface came back at its first size).
 - ~~Terminal: Show All Tabs, and tab groups that look right~~ (Ben):
   Show All Tabs (⌘⇧D) tiles the window's tabs as live panes, typing into
   the one clicked (it used to tile the group windows instead); the tab
@@ -505,19 +510,9 @@ as they land (with the commit), add new ones as they come up.
   `--new-window` to the running copy instead of launching a second one
   (Tracker, Terminal and StyledEdit; `apps::NEW_WINDOW`). Agents run
   `tabula-x --new-window`.
-- **Fan Out: windows stacked with their tabs staggered** (Ben): a
-  desktop shortcut and Deskbar/palette command that stacks every window
-  on a screen so their yellow title tabs sit side by side along the top,
-  each window's tab to the right of the last (as BeOS people did by
-  hand, sliding tabs). Windows keep their place top-left and are
-  narrowed when needed so none reaches under the Deskbar, but never
-  below a quarter of the screen's width (so four always fit; narrower
-  ones fit more); beyond that the rest go as far right as they can
-  without passing the Deskbar and their tabs overlap. With it, **Undo
-  Window Arrangement**: puts every window back where and how big it
-  was before the last arrangement (Fan Out, tiling, Show All). Name,
-  keys and both commands in HACKING's shortcuts section; agents can call
-  them too.
+- **DriveSetup: usage and free space** (Ben): each mounted volume's
+  used and free space (statvfs, natively, on a worker), as a bar in the
+  list and in the details, live as it changes.
 - Token Pool follow-ups: spend a reset credit that would otherwise
   expire unused (needs a consumption-rate estimate, as Token Pooler's
   scheduling.md describes); keep key order in Claude Code's

@@ -189,6 +189,12 @@ pub enum Shortcut {
     TileAll,
     /// Every window on the active display, stacked diagonally.
     CascadeAll,
+    /// Every window on the active display stacked at the top left with
+    /// their tabs side by side.
+    FanOut,
+    /// Put the windows back as they were before the last arrangement
+    /// (again: as the arrangement had them).
+    UndoArrangement,
     /// Hide every window on this workspace, or bring them back.
     ShowDesktop,
     NextWorkspace,
@@ -294,6 +300,8 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::PreviousDisplay, "previous-display", WINDOWS, "To the previous display", &["Ctrl+Alt+Cmd+Left"]),
     s(Shortcut::TileAll, "tile-all", ARRANGE, "Tile all windows on the display", &["Ctrl+Cmd+Return"]),
     s(Shortcut::CascadeAll, "cascade-all", ARRANGE, "Cascade all windows on the display", &["Ctrl+Cmd+Backslash"]),
+    s(Shortcut::FanOut, "fan-out", ARRANGE, "Fan out all windows, tabs side by side", &["Ctrl+Cmd+Slash"]),
+    s(Shortcut::UndoArrangement, "undo-arrangement", ARRANGE, "Undo window arrangement", &["Ctrl+Cmd+Z"]),
     s(Shortcut::ShowDesktop, "show-desktop", ARRANGE, "Show the desktop", &["Ctrl+Cmd+H"]),
     s(Shortcut::NextWorkspace, "next-workspace", WORKSPACES, "Next workspace", &["Ctrl+Cmd+Right"]),
     s(Shortcut::PreviousWorkspace, "previous-workspace", WORKSPACES, "Previous workspace", &["Ctrl+Cmd+Left"]),
