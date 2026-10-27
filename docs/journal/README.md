@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Tracker: column view scrolls sideways
+
+*20:50* — Columns wider than the window scroll sideways with the touchpad, Shift+wheel or a scroll bar along the bottom, and stay where they were put; the view only follows the keyboard when the selection moves to another column.
+
+![Tracker: column view scrolls sideways](2026-10-26/205009-tracker-column-view-scrolls-sideways.png)
+
 ### Quick Look: F for fullscreen
 
 *20:45* — In Quick Look, F fills the screen with the preview and F again puts it back in its window at the size it had (Cx::set_fullscreen, new in the kit).

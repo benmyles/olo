@@ -53,9 +53,9 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
-- **Tracker column view scrolls sideways** (Ben): when the columns are
-  wider than the window, scroll horizontally (touchpad, Shift+wheel, a
-  scroll bar) to see the earlier columns.
+- ~~**Tracker column view scrolls sideways**~~ (Ben): touchpad,
+  Shift+wheel or the new scroll bar; it no longer snaps back to the
+  active column, which it only follows when the selection moves.
 - ~~**Command palette on ⌘Space**~~ (Ben): apps, the front app's menu
   commands, files, Passwords items, Preferences panels, appearance,
   windows and every desktop shortcut with its keys; a calculator; the web.

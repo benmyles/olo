@@ -72,7 +72,10 @@ fn previewed(f: &FolderWin) -> Option<Entry> {
 
 pub fn columns_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, actions: &mut Vec<Action>) {
     let p = style::palette(ui.ctx());
-    let body = ui.available_rect_before_wrap();
+    let whole = ui.available_rect_before_wrap();
+    // A scroll bar along the bottom for columns wider than the window.
+    let body = Rect::from_min_max(whole.min, pos2(whole.right(), whole.bottom() - widgets::SCROLL_BAR));
+    let bar = Rect::from_min_max(pos2(whole.left(), body.bottom()), whole.max);
     ui.painter().rect_filled(body, 0.0, c(p.document_background));
     let n = 1 + f.panes.len();
     f.active = f.active.min(n - 1);
@@ -82,23 +85,29 @@ pub fn columns_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, actions: &mut 
     keyboard(ui, f, actions);
     let n = 1 + f.panes.len();
 
-    // Horizontal scrolling: the wheel/trackpad scrolls sideways; otherwise
-    // keep the active column and whatever it opened in view.
+    // Horizontal scrolling: the touchpad, Shift+wheel and the bar scroll
+    // sideways. When the active column or what it opened changes, it is
+    // brought into view; otherwise the scroll stays where it was put.
     let max_off = (total - body.width()).max(0.0);
-    if ui.rect_contains_pointer(body) {
+    if ui.rect_contains_pointer(whole) {
         let d = ui.input(|i| i.smooth_scroll_delta);
         if d.x != 0.0 {
             f.col_scroll -= d.x;
         }
     }
-    let focus_right = ((f.active + 2).min(n) as f32 * COLUMN_WIDTH).max(if f.active + 1 >= n { total } else { 0.0 });
-    let focus_left = f.active as f32 * COLUMN_WIDTH;
-    if focus_right - f.col_scroll > body.width() {
-        f.col_scroll = focus_right - body.width();
+    let focus = (f.active, n, preview.is_some());
+    if f.col_focus != Some(focus) {
+        f.col_focus = Some(focus);
+        let focus_right = ((f.active + 2).min(n) as f32 * COLUMN_WIDTH).max(if f.active + 1 >= n { total } else { 0.0 });
+        let focus_left = f.active as f32 * COLUMN_WIDTH;
+        if focus_right - f.col_scroll > body.width() {
+            f.col_scroll = focus_right - body.width();
+        }
+        if focus_left < f.col_scroll {
+            f.col_scroll = focus_left;
+        }
     }
-    if focus_left < f.col_scroll {
-        f.col_scroll = focus_left;
-    }
+    widgets::ScrollBar::horizontal(id.with("columns")).show(ui, bar, &mut f.col_scroll, total, body.width());
     f.col_scroll = f.col_scroll.clamp(0.0, max_off).round();
 
     let mut events = Vec::new();

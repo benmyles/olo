@@ -108,6 +108,9 @@ pub struct FolderWin {
     pub panes: Vec<Pane>,
     pub active: usize,
     pub col_scroll: f32,
+    /// What the scroll last brought into view (active column, columns,
+    /// preview): scrolling follows the keyboard only when that changes.
+    pub col_focus: Option<(usize, usize, bool)>,
     /// Whether hidden files are listed (Tracker-wide; kept for new columns).
     pub hidden: bool,
     loader: Loader,
@@ -237,6 +240,7 @@ impl FolderWin {
             panes: Vec::new(),
             active: 0,
             col_scroll: 0.0,
+            col_focus: None,
             hidden,
             loader,
             generation: 0,
