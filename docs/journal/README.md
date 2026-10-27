@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Keyboard shortcuts in Preferences
+
+*18:19* — Keyboard ▸ Shortcuts lists the desktop's shortcuts, with the space around tiled windows. Click one and type new keys (here Left half became ⌃⌥L); keys taken from another shortcut are said, and Default Keys puts them all back.
+
+![Keyboard shortcuts in Preferences](2026-10-26/181958-keyboard-shortcuts-in-preferences.png)
+
+### Tile windows from the keyboard
+
+*18:19* — ⇧⌘← and ⇧⌘→ tile the window into half the display, ⇧⌘↑/↓ the top or bottom; ⌃⌘↵ tiles every window on the display (here, three); quarters, thirds, centering and moving to the next display too. Space between them and at the edges is set in Preferences.
+
+![Tile windows from the keyboard](2026-10-26/181957-tile-windows-from-the-keyboard.png)
+
 ### Brightness for every display
 
 *17:49* — Preferences ▸ Display now has a brightness slider for each display whose brightness can be set, external monitors too (the Studio Display over USB). Every display starts at full brightness unless you've set a level for it.

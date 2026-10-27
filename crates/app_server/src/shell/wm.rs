@@ -34,9 +34,9 @@ const BTN_RIGHT: u32 = 0x111;
 /// Space left between a zoomed window and Deskbar.
 const DESKBAR_GAP: i32 = 4;
 
-/// The element rectangle a window had before it was zoomed.
+/// The element rectangle a window had before it was zoomed or tiled.
 #[derive(Default)]
-struct PreZoom(RefCell<Option<Rectangle<i32, Logical>>>);
+pub(super) struct PreZoom(pub(super) RefCell<Option<Rectangle<i32, Logical>>>);
 
 fn cursor_for(part: Part) -> CursorIcon {
     match part {
@@ -229,14 +229,30 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// Usable area for windows on the output the window is (mostly) on.
     pub fn zoom_area(&self, window: &WindowElement) -> Option<Rectangle<i32, Logical>> {
-        let output = self
-            .space
-            .outputs_for_element(window)
-            .into_iter()
-            .next()
-            .or_else(|| self.space.outputs().next().cloned())?;
-        let geo = self.space.output_geometry(&output)?;
-        let map = layer_map_for_output(&output);
+        self.usable_area(&self.window_output(window)?)
+    }
+
+    /// The display a window is on: the one under the middle of its frame,
+    /// else the one it overlaps most, else the main one.
+    pub fn window_output(&self, window: &WindowElement) -> Option<smithay::output::Output> {
+        let frame = self.space.element_geometry(window);
+        if let Some(f) = frame {
+            let middle = (f.loc + f.size.downscale(2).to_point()).to_f64();
+            if let Some(o) = self.space.output_under(middle).next() {
+                return Some(o.clone());
+            }
+        }
+        let overlap = |o: &smithay::output::Output| {
+            let (Some(f), Some(g)) = (frame, self.space.output_geometry(o)) else { return 0 };
+            f.intersection(g).map_or(0, |r| r.size.w as i64 * r.size.h as i64)
+        };
+        self.space.outputs().filter(|o| overlap(o) > 0).max_by_key(|o| overlap(o)).cloned().or_else(|| self.main_output())
+    }
+
+    /// Where windows go on a display: all of it but Deskbar and panels.
+    pub fn usable_area(&self, output: &smithay::output::Output) -> Option<Rectangle<i32, Logical>> {
+        let geo = self.space.output_geometry(output)?;
+        let map = layer_map_for_output(output);
         let zone = map.non_exclusive_zone();
         let mut area = Rectangle::new(geo.loc + zone.loc, zone.size);
         // Stop beside Deskbar, as BeOS does (it sits in a corner and

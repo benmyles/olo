@@ -125,7 +125,7 @@ impl Panel {
             Panel::Bluetooth => (440, 340),
             Panel::DateTime => (460, 370),
             Panel::Display => (480, 490),
-            Panel::Keyboard => (440, 470),
+            Panel::Keyboard => (480, 560),
             Panel::Network => (460, 360),
             Panel::Power => (460, 362),
             Panel::ScreenSaver => (500, 400),
@@ -158,7 +158,11 @@ impl Panel {
                 settings.workspace_colors = from.workspace_colors.clone();
                 settings.wallpaper = from.wallpaper.clone();
             }
-            Panel::Keyboard => settings.keyboard = from.keyboard.clone(),
+            Panel::Keyboard => {
+                settings.keyboard = from.keyboard.clone();
+                settings.shortcuts = from.shortcuts.clone();
+                settings.tiling = from.tiling.clone();
+            }
             Panel::Touchpad => {
                 settings.touchpad = from.touchpad.clone();
                 settings.mouse_speed = from.mouse_speed;

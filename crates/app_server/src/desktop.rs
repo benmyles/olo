@@ -215,6 +215,8 @@ impl<B: Backend + 'static> AnvilState<B> {
         window.meta().workspace.set(Some(self.workspace));
         let loc = window.meta().saved_location.get();
         self.space.map_element(window.clone(), loc, false);
+        // Its display may have gone while it was away.
+        self.rehome_window(window);
     }
 
     pub fn minimize(&mut self, window: &WindowElement) {
@@ -518,10 +520,13 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// Layer surfaces that didn't ask for an output (Deskbar, the desktop)
     /// live on the main display: move them there when it changes.
+    /// After displays came, went or changed: Deskbar and the like to the
+    /// main display, and windows onto displays that are there, fitted.
     pub fn follow_main_output(&mut self) {
         let Some(main) = self.main_output() else { return };
         let others: Vec<Output> = self.space.outputs().filter(|o| **o != main).cloned().collect();
         self.move_auto_layers(&others);
+        self.rehome_windows();
     }
 
     /// Move the auto-placed layer surfaces on `from` to the main display;
@@ -674,6 +679,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         settings.appearance.effective_theme = self.settings.appearance.effective_theme;
         settings.appearance.night_light_active = self.settings.appearance.night_light_active;
         self.settings = settings;
+        self.keymap.set_bindings(tabula_protocol::shortcuts::bindings(&self.settings.shortcuts));
         if self.workspace >= self.settings.workspace_count.max(1) {
             self.switch_workspace(self.settings.workspace_count.max(1) - 1);
         }

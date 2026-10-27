@@ -13,6 +13,9 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+pub mod shortcuts;
+pub use shortcuts::{Chord, Shortcut, ShortcutSettings, Tile, TilingSettings};
+
 pub const SOCKET_ENV: &str = "TABULA_SOCKET";
 
 /// Opaque, stable for the lifetime of a window.
@@ -81,6 +84,10 @@ pub enum Request {
     SetKeyboardBacklight { level: f32 },
     /// Show each display's name on it for a few seconds.
     IdentifyOutputs,
+    /// Take the next key pressed (with its modifiers) as a shortcut rather
+    /// than acting on it; it comes back as [`Event::ShortcutRecorded`].
+    /// `on: false` stops waiting.
+    RecordShortcut { on: bool },
     /// Inject input as if from a device (for automated UI tests).
     Synthetic { events: Vec<SyntheticEvent> },
     Quit,
@@ -123,6 +130,10 @@ pub enum Event {
     OutputsChanged { outputs: Vec<OutputInfo> },
     /// Caffeinated, display asleep, brightness or app inhibitors changed.
     PowerChanged { status: PowerStatus },
+    /// The key pressed after [`Request::RecordShortcut`], as a [`Chord`]
+    /// ("Shift+Cmd+Left"); "" for Backspace or Delete alone (no keys);
+    /// None if it was cancelled (Escape alone, or nothing for a while).
+    ShortcutRecorded { keys: Option<String> },
 }
 
 /// What app_server's power management is doing now.
@@ -253,6 +264,9 @@ pub struct Settings {
     pub power: PowerSettings,
     pub screen_saver: ScreenSaverSettings,
     pub clock: ClockSettings,
+    /// app_server's keyboard shortcuts changed from their defaults.
+    pub shortcuts: ShortcutSettings,
+    pub tiling: TilingSettings,
 }
 
 /// How Deskbar shows the time (Preferences ▸ Date & Time).
@@ -547,6 +561,8 @@ impl Default for Settings {
             power: PowerSettings::default(),
             screen_saver: ScreenSaverSettings::default(),
             clock: ClockSettings::default(),
+            shortcuts: ShortcutSettings::default(),
+            tiling: TilingSettings::default(),
         }
     }
 }

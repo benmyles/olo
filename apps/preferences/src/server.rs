@@ -21,15 +21,21 @@ enum Out {
     KeyboardBacklight(f32),
     StartScreenSaver,
     Identify,
+    RecordShortcut(bool),
 }
 
 pub struct Server {
     tx: Sender<Out>,
+    /// The keys app_server recorded for a shortcut (see `record_shortcut`).
+    recorded: Recorded,
 }
+
+type Recorded = std::sync::Arc<std::sync::Mutex<Option<Option<String>>>>;
 
 impl Server {
     pub fn start(proxy: Proxy) -> Server {
-        watch(proxy);
+        let recorded = Recorded::default();
+        watch(proxy, recorded.clone());
         let (tx, rx) = channel::<Out>();
         std::thread::Builder::new()
             .name("prefs-writer".into())
@@ -49,7 +55,7 @@ impl Server {
                 }
             })
             .expect("thread");
-        Server { tx }
+        Server { tx, recorded }
     }
 
     pub fn set_settings(&self, settings: Settings) {
@@ -62,6 +68,18 @@ impl Server {
 
     pub fn set_caffeinated(&self, on: bool) {
         let _ = self.tx.send(Out::Caffeinated(on));
+    }
+
+    /// Have app_server take the next keys typed as a shortcut; they come
+    /// back through `take_recorded`.
+    pub fn record_shortcut(&self, on: bool) {
+        let _ = self.tx.send(Out::RecordShortcut(on));
+    }
+
+    /// The keys recorded since asked ("" for none), or None if it was
+    /// cancelled; nothing yet: None.
+    pub fn take_recorded(&self) -> Option<Option<String>> {
+        self.recorded.lock().ok()?.take()
     }
 
     /// A display's brightness, by connector.
@@ -101,6 +119,7 @@ fn send(client: &mut Option<Client>, out: Out) {
         Out::KeyboardBacklight(level) => Request::SetKeyboardBacklight { level },
         Out::StartScreenSaver => Request::StartScreenSaver,
         Out::Identify => Request::IdentifyOutputs,
+        Out::RecordShortcut(on) => Request::RecordShortcut { on },
     };
     for _ in 0..2 {
         if client.is_none() {
@@ -119,7 +138,7 @@ fn send(client: &mut Option<Client>, out: Out) {
     }
 }
 
-fn watch(proxy: Proxy) {
+fn watch(proxy: Proxy, recorded: Recorded) {
     std::thread::Builder::new()
         .name("prefs-watch".into())
         .spawn(move || {
@@ -140,6 +159,12 @@ fn watch(proxy: Proxy) {
                                 Event::SettingsChanged { settings } => proxy.send(Msg::Settings(Box::new(settings))),
                                 Event::OutputsChanged { outputs } => proxy.send(Msg::Outputs(outputs)),
                                 Event::PowerChanged { status } => proxy.send(Msg::Power(status)),
+                                Event::ShortcutRecorded { keys } => {
+                                    if let Ok(mut r) = recorded.lock() {
+                                        *r = Some(keys);
+                                    }
+                                    proxy.send(Msg::Redraw);
+                                }
                                 _ => {}
                             }
                         }

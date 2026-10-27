@@ -164,6 +164,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 // Switching apps, Find and the like stay off while locked.
                 crate::keymap::Out::Action(a) if !self.lock.locked() => self.keymap_action(a),
                 crate::keymap::Out::Action(_) => {}
+                crate::keymap::Out::Recorded(chord) => {
+                    let keys = chord.map(|c| c.map(|c| c.to_string()).unwrap_or_default());
+                    self.ipc.broadcast(tabula_protocol::Event::ShortcutRecorded { keys });
+                }
             }
         }
         action
@@ -176,7 +180,18 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             A::NextApp { back } => self.twitch_step(true, back),
             A::NextWindow { back } => self.twitch_step(false, back),
             A::SwitchDone => self.twitch_done(),
-            A::Find => {
+            A::Find => self.shortcut(tabula_protocol::Shortcut::Find),
+            A::Shortcut(s) => self.shortcut(s),
+        }
+    }
+
+    /// One of the shortcuts in the settings.
+    fn shortcut(&mut self, shortcut: tabula_protocol::Shortcut) {
+        use tabula_protocol::Shortcut as S;
+        let focused = self.focused_window();
+        let workspaces = self.settings.workspace_count.max(1);
+        match shortcut {
+            S::Find => {
                 // Bring back an open Find window rather than stacking more.
                 let open = self.all_windows().into_iter().find(|w| w.app_id() == "tabula.tracker" && w.title() == "Find");
                 match open {
@@ -184,29 +199,54 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     None => self.spawn_program("tabula-tracker", &["--find"]),
                 }
             }
-            A::Lock => self.lock_screen(),
-            A::Caffeinate => {
+            S::Lock => self.lock_screen(),
+            S::Caffeinate => {
                 let on = !self.power.caffeinated();
                 self.set_caffeinated(on, None, false);
                 let detail = if on { "Until you turn it off" } else { "Sleeps when idle" };
                 self.show_indicator(crate::osd::Indicator::Caffeinated { on, detail: detail.into() });
             }
-            A::Screenshot(shot) => {
-                use crate::keymap::Shot;
-                if !self.lock.locked() {
-                    let args: &[&str] = match shot {
-                        Shot::Screen => &["--silent"],
-                        Shot::Window => &["--silent", "--window"],
-                        Shot::Region => &["--region"],
-                    };
-                    self.spawn_program("tabula-screenshot", args);
-                }
-            }
-            A::ScreenshotApp => {
+            S::ScreenshotScreen => self.spawn_program("tabula-screenshot", &["--silent"]),
+            S::ScreenshotWindow => self.spawn_program("tabula-screenshot", &["--silent", "--window"]),
+            S::ScreenshotRegion => self.spawn_program("tabula-screenshot", &["--region"]),
+            S::ScreenshotApp => {
                 let open = self.all_windows().into_iter().find(|w| w.app_id() == "tabula.screenshot");
                 match open {
                     Some(w) => self.restore(&w),
                     None => self.spawn_program("tabula-screenshot", &[]),
+                }
+            }
+            S::TileAll => self.tile_all(),
+            S::CascadeAll => self.cascade_all(),
+            S::ShowDesktop => self.show_desktop(),
+            S::NextWorkspace => self.switch_workspace((self.workspace + 1).min(workspaces - 1)),
+            S::PreviousWorkspace => self.switch_workspace(self.workspace.saturating_sub(1)),
+            S::Workspace(i) => self.switch_workspace(u32::from(i)),
+            S::WindowToNextWorkspace | S::WindowToPreviousWorkspace => {
+                let Some(w) = focused else { return };
+                let to = if shortcut == S::WindowToNextWorkspace { (self.workspace + 1).min(workspaces - 1) } else { self.workspace.saturating_sub(1) };
+                if to != self.workspace {
+                    self.move_to_workspace(&w, to);
+                    self.restore(&w);
+                }
+            }
+            S::Tile(_) | S::Zoom | S::Restore | S::Center | S::NextDisplay | S::PreviousDisplay => {
+                let Some(w) = focused else { return };
+                match shortcut {
+                    S::Tile(tile) => self.tile_window(&w, tile),
+                    S::Zoom => {
+                        // Zoom puts back what tiling remembered, too.
+                        if self.is_zoomed(&w) {
+                            self.restore_frame(&w);
+                        } else {
+                            self.zoom_window(&w);
+                        }
+                    }
+                    S::Restore => self.restore_frame(&w),
+                    S::Center => self.center_window(&w),
+                    S::NextDisplay => self.window_to_next_output(&w, false),
+                    S::PreviousDisplay => self.window_to_next_output(&w, true),
+                    _ => {}
                 }
             }
         }
@@ -875,6 +915,33 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     /// Input injected over IPC by UI tests.
+    /// Take the next key as a shortcut (Preferences is recording one), for
+    /// up to 30 s.
+    pub fn record_shortcut(&mut self, on: bool) {
+        self.keymap.record(on);
+        self.recording_shortcut += 1;
+        if !on {
+            return;
+        }
+        let ticket = self.recording_shortcut;
+        let timer = smithay::reexports::calloop::timer::Timer::from_duration(std::time::Duration::from_secs(30));
+        let _ = self.handle.insert_source(timer, move |_, _, state| {
+            if state.recording_shortcut == ticket && state.keymap.recording() {
+                state.keymap.record(false);
+                state.ipc.broadcast(tabula_protocol::Event::ShortcutRecorded { keys: None });
+            }
+            smithay::reexports::calloop::timer::TimeoutAction::Drop
+        });
+    }
+
+    /// Move the pointer to `pos` (its display went away).
+    pub fn warp_pointer(&mut self, pos: Point<f64, Logical>) {
+        let under = self.surface_under(pos);
+        let pointer = self.pointer.clone();
+        pointer.motion(self, under, &MotionEvent { location: pos, serial: SCOUNTER.next_serial(), time: InputTime::now() });
+        pointer.frame(self);
+    }
+
     pub fn synthetic_input(&mut self, event: tabula_protocol::SyntheticEvent) {
         use tabula_protocol::SyntheticEvent as S;
         self.power_activity();

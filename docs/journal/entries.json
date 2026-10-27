@@ -730,5 +730,17 @@
   "title": "Brightness for every display",
   "caption": "Preferences \u25b8 Display now has a brightness slider for each display whose brightness can be set, external monitors too (the Studio Display over USB). Every display starts at full brightness unless you've set a level for it.",
   "image": "2026-10-26/174957-brightness-for-every-display.png"
+ },
+ {
+  "time": "2026-10-26T18:19:57",
+  "title": "Tile windows from the keyboard",
+  "caption": "\u21e7\u2318\u2190 and \u21e7\u2318\u2192 tile the window into half the display, \u21e7\u2318\u2191/\u2193 the top or bottom; \u2303\u2318\u21b5 tiles every window on the display (here, three); quarters, thirds, centering and moving to the next display too. Space between them and at the edges is set in Preferences.",
+  "image": "2026-10-26/181957-tile-windows-from-the-keyboard.png"
+ },
+ {
+  "time": "2026-10-26T18:19:58",
+  "title": "Keyboard shortcuts in Preferences",
+  "caption": "Keyboard \u25b8 Shortcuts lists the desktop's shortcuts, with the space around tiled windows. Click one and type new keys (here Left half became \u2303\u2325L); keys taken from another shortcut are said, and Default Keys puts them all back.",
+  "image": "2026-10-26/181958-keyboard-shortcuts-in-preferences.png"
  }
 ]

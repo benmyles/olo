@@ -297,6 +297,10 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Ok(()) => Reply::Ok,
                 Err(message) => Reply::Error { message },
             },
+            Request::RecordShortcut { on } => {
+                self.record_shortcut(on);
+                Reply::Ok
+            }
             Request::SetOutputBrightness { name, level } => match self.set_output_brightness(&name, level) {
                 Ok(()) => Reply::Ok,
                 Err(message) => Reply::Error { message },

@@ -19,6 +19,7 @@ mod panel;
 mod power;
 mod screensaver;
 mod server;
+mod shortcuts;
 mod sound;
 mod touchid;
 mod touchpad;
@@ -45,6 +46,8 @@ pub enum Msg {
     Settings(Box<Settings>),
     Outputs(Vec<OutputInfo>),
     Power(PowerStatus),
+    /// Something a panel shows changed (it reads it from the server).
+    Redraw,
 }
 
 /// What a panel works with: the live settings and a way to change them.
@@ -326,6 +329,7 @@ impl App for Prefs {
             }
             Msg::Outputs(o) => self.outputs = o,
             Msg::Power(p) => self.power = Some(p),
+            Msg::Redraw => {}
         }
         for &id in self.windows.keys() {
             cx.redraw(id);

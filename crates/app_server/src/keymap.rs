@@ -1,10 +1,10 @@
 //! The Mac keyboard, natively. ⌘ is the command key: apps see it as Ctrl
 //! (so ⌘C copies everywhere, GTK and Firefox included), while app_server
-//! keeps a few ⌘ chords for itself: ⌘Tab / ⌘\` (Twitcher), ⌘Space (Find;
-//! a tap of ⌘ alone too, if chosen in Preferences), ⌘ arrows and ⌘⌫ (line
-//! and document navigation), Ctrl+⌘Q (lock), Ctrl+⌘A (caffeinated) and ⌘⇧3 / ⌘⇧4 / ⌘⇧5 (screen, area and the Screenshot
-//! app, as on a Mac; Print Screen and Alt+Print Screen for the screen and
-//! the active window). Caps Lock is another Ctrl. Terminals keep physical
+//! keeps some ⌘ keys for itself: ⌘Tab / ⌘\` (Twitcher), ⌘ arrows and ⌘⌫
+//! (line and document navigation), a tap of ⌘ alone (Find, if chosen in
+//! Preferences), and first of all the shortcuts in `Settings::shortcuts`
+//! (tabula_protocol::shortcuts: tiling, workspaces, Find, lock,
+//! screenshots, …). Caps Lock is another Ctrl. Terminals keep physical
 //! Ctrl for the tty, so ⌘ reaches them as Ctrl+Shift.
 //!
 //! This sits between the input devices and the seat: physical evdev codes
@@ -16,8 +16,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+use tabula_protocol::{Chord, Shortcut};
+
 /// evdev key codes used here.
 pub mod code {
+    pub const ESC: u32 = 1;
     pub const KEY3: u32 = 4;
     pub const KEY4: u32 = 5;
     pub const KEY5: u32 = 6;
@@ -43,6 +46,7 @@ pub mod code {
     pub const RIGHT: u32 = 106;
     pub const END: u32 = 107;
     pub const DOWN: u32 = 108;
+    pub const DELETE: u32 = 111;
     pub const LEFTMETA: u32 = 125;
     pub const RIGHTMETA: u32 = 126;
 }
@@ -64,27 +68,10 @@ pub enum Action {
     NextWindow { back: bool },
     /// ⌘ released after switching: commit Twitcher's choice.
     SwitchDone,
-    /// ⌘Space, or a tap of ⌘ (if chosen).
+    /// A tap of ⌘ (if chosen), or keyd's spelling of one.
     Find,
-    /// Ctrl+⌘Q.
-    Lock,
-    /// Ctrl+⌘A: caffeinated mode on or off.
-    Caffeinate,
-    /// ⌘⇧3 / Print Screen, ⌘⇧4, Alt+Print Screen: saved straight away,
-    /// no window.
-    Screenshot(Shot),
-    /// ⌘⇧5: the Screenshot app.
-    ScreenshotApp,
-}
-
-/// What a screenshot shortcut takes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Shot {
-    Screen,
-    /// Drag out an area first.
-    Region,
-    /// The active window.
-    Window,
+    /// One of the shortcuts in the settings.
+    Shortcut(Shortcut),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +79,9 @@ pub enum Out {
     /// An evdev code clients should see pressed (`true`) or released.
     Key(u32, bool),
     Action(Action),
+    /// The key pressed while recording a shortcut (None: cancelled with
+    /// Escape; `Some(None)`: no keys, Backspace or Delete).
+    Recorded(Option<Option<Chord>>),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -136,6 +126,10 @@ pub struct Keymap {
     cmd_used: bool,
     cmd_since: Option<Instant>,
     switching: bool,
+    /// The shortcuts (from the settings).
+    bindings: Vec<(Chord, Shortcut)>,
+    /// The next key is a shortcut being recorded.
+    recording: bool,
 }
 
 impl Keymap {
@@ -157,13 +151,32 @@ impl Keymap {
         let mut out: Vec<Out> = self.down.keys().map(|&k| Out::Key(k, false)).collect();
         out.sort_by_key(|o| match o {
             Out::Key(k, _) => *k,
-            Out::Action(_) => 0,
+            Out::Action(_) | Out::Recorded(_) => 0,
         });
         if self.switching {
             out.push(Out::Action(Action::SwitchDone));
         }
-        *self = Keymap::default();
+        let (bindings, recording) = (std::mem::take(&mut self.bindings), self.recording);
+        *self = Keymap { bindings, recording, ..Keymap::default() };
         out
+    }
+
+    pub fn set_bindings(&mut self, bindings: Vec<(Chord, Shortcut)>) {
+        self.bindings = bindings;
+    }
+
+    /// Take the next key as a shortcut being recorded (or stop).
+    pub fn record(&mut self, on: bool) {
+        self.recording = on;
+    }
+
+    pub fn recording(&self) -> bool {
+        self.recording
+    }
+
+    /// The key with the modifiers held now.
+    fn chord(&self, key: u32) -> Chord {
+        Chord { ctrl: self.ctrl(), alt: self.alt(), shift: self.shift(), cmd: self.cmd_keys > 0, key }
     }
 
     fn emit_press(&mut self, key: u32, out: &mut Vec<Out>) {
@@ -250,31 +263,31 @@ impl Keymap {
             self.held.insert(key, h);
             return;
         }
-        if key == SYSRQ {
-            out.push(Out::Action(Action::Screenshot(if self.alt() { Shot::Window } else { Shot::Screen })));
+        if self.recording && !tabula_protocol::shortcuts::MODIFIER_KEYS.contains(&key) {
+            // Swallowed, press and release.
+            self.recording = false;
+            let chord = self.chord(key);
+            let plain = Chord::new(key) == chord;
+            out.push(Out::Recorded(match key {
+                ESC if plain => None,
+                BACKSPACE | DELETE if plain => Some(None),
+                _ => Some(Some(chord)),
+            }));
             self.held.insert(key, h);
             return;
         }
         if self.cmd_keys > 0 {
             self.cmd_used = true;
+        }
+        let chord = self.chord(key);
+        if let Some(&(_, shortcut)) = self.bindings.iter().find(|(c, _)| *c == chord) {
+            out.push(Out::Action(Action::Shortcut(shortcut)));
+            self.held.insert(key, h);
+            return;
+        }
+        if self.cmd_keys > 0 {
             let (shift, ctrl) = (self.shift(), self.ctrl());
             let handled = match key {
-                KEY3 | KEY4 if shift && !ctrl => {
-                    out.push(Out::Action(Action::Screenshot(if key == KEY4 { Shot::Region } else { Shot::Screen })));
-                    true
-                }
-                KEY5 if shift && !ctrl => {
-                    out.push(Out::Action(Action::ScreenshotApp));
-                    true
-                }
-                Q if ctrl => {
-                    out.push(Out::Action(Action::Lock));
-                    true
-                }
-                A if ctrl => {
-                    out.push(Out::Action(Action::Caffeinate));
-                    true
-                }
                 TAB if !ctrl => {
                     self.switching = true;
                     out.push(Out::Action(Action::NextApp { back: shift }));
@@ -283,10 +296,6 @@ impl Keymap {
                 GRAVE if !ctrl => {
                     self.switching = true;
                     out.push(Out::Action(Action::NextWindow { back: shift }));
-                    true
-                }
-                SPACE if !ctrl => {
-                    out.push(Out::Action(Action::Find));
                     true
                 }
                 // keyd's spelling of a ⌘ tap (Ctrl+Alt+Super+O), in case it
@@ -397,7 +406,9 @@ mod tests {
 
     impl Rig {
         fn new() -> Self {
-            Rig { k: Keymap::default(), t: Instant::now(), terminal: false }
+            let mut k = Keymap::default();
+            k.set_bindings(tabula_protocol::shortcuts::bindings(&Default::default()));
+            Rig { k, t: Instant::now(), terminal: false }
         }
         fn down(&mut self, key: u32) -> Vec<Out> {
             self.t += Duration::from_millis(10);
@@ -512,9 +523,9 @@ mod tests {
         let mut r = Rig::new();
         r.down(CAPSLOCK);
         r.down(LEFTMETA);
-        assert_eq!(r.down(Q), [Out::Action(Action::Lock)]);
+        assert_eq!(r.down(Q), [Out::Action(Action::Shortcut(Shortcut::Lock))]);
         assert_eq!(r.up(Q), []);
-        assert_eq!(r.down(A), [Out::Action(Action::Caffeinate)]);
+        assert_eq!(r.down(A), [Out::Action(Action::Shortcut(Shortcut::Caffeinate))]);
         assert_eq!(r.up(A), []);
         r.up(LEFTMETA);
         // Physical Ctrl and Caps Lock share the left Ctrl.
@@ -528,21 +539,67 @@ mod tests {
         let mut r = Rig::new();
         r.down(LEFTMETA);
         r.down(LEFTSHIFT);
-        assert_eq!(r.down(KEY3), [Out::Action(Action::Screenshot(Shot::Screen))]);
+        assert_eq!(r.down(KEY3), [Out::Action(Action::Shortcut(Shortcut::ScreenshotScreen))]);
         assert_eq!(r.up(KEY3), []);
-        assert_eq!(r.down(KEY4), [Out::Action(Action::Screenshot(Shot::Region))]);
+        assert_eq!(r.down(KEY4), [Out::Action(Action::Shortcut(Shortcut::ScreenshotRegion))]);
         r.up(KEY4);
-        assert_eq!(r.down(KEY5), [Out::Action(Action::ScreenshotApp)]);
+        assert_eq!(r.down(KEY5), [Out::Action(Action::Shortcut(Shortcut::ScreenshotApp))]);
         r.up(KEY5);
         r.up(LEFTSHIFT);
         // ⌘3 without Shift is the app's.
         assert_eq!(r.down(KEY3), [Key(KEY3, true)]);
         r.up(KEY3);
         r.up(LEFTMETA);
-        assert_eq!(r.down(SYSRQ), [Out::Action(Action::Screenshot(Shot::Screen))]);
+        assert_eq!(r.down(SYSRQ), [Out::Action(Action::Shortcut(Shortcut::ScreenshotScreen))]);
         assert_eq!(r.up(SYSRQ), []);
         r.down(LEFTALT);
-        assert_eq!(r.down(SYSRQ), [Out::Action(Action::Screenshot(Shot::Window))]);
+        assert_eq!(r.down(SYSRQ), [Out::Action(Action::Shortcut(Shortcut::ScreenshotWindow))]);
+    }
+
+    #[test]
+    fn tiling_and_find() {
+        use tabula_protocol::Tile;
+        let mut r = Rig::new();
+        r.down(LEFTMETA);
+        r.down(LEFTSHIFT);
+        assert_eq!(r.down(LEFT), [Out::Action(Action::Shortcut(Shortcut::Tile(Tile::Left)))]);
+        assert_eq!(r.up(LEFT), []);
+        assert_eq!(r.down(RIGHT), [Out::Action(Action::Shortcut(Shortcut::Tile(Tile::Right)))]);
+        r.up(RIGHT);
+        r.up(LEFTSHIFT);
+        assert_eq!(r.down(SPACE), [Out::Action(Action::Shortcut(Shortcut::Find))]);
+        r.up(SPACE);
+        // ⌘← is still Home.
+        assert_eq!(r.down(LEFT), [Key(RIGHTCTRL, false), Key(HOME, true)]);
+        r.up(LEFT);
+        // A tap of ⌘ alone is nothing unless chosen.
+        r.up(LEFTMETA);
+        r.down(LEFTMETA);
+        let off = Options { tap_command_find: false, ..OPTS };
+        r.t += Duration::from_millis(10);
+        assert_eq!(r.k.feed(LEFTMETA, false, r.t, off, false), [Key(RIGHTCTRL, false)]);
+    }
+
+    #[test]
+    fn records_a_shortcut() {
+        let mut r = Rig::new();
+        r.k.record(true);
+        r.down(LEFTCTRL);
+        r.down(LEFTMETA);
+        // Not acted on (Ctrl+⌘Q locks), just recorded.
+        let lock_keys = r.down(Q);
+        assert_eq!(lock_keys, [Out::Recorded(Some(Some("Ctrl+Cmd+Q".parse().unwrap())))]);
+        assert_eq!(r.up(Q), []);
+        r.up(LEFTMETA);
+        r.up(LEFTCTRL);
+        r.k.record(true);
+        assert_eq!(r.down(ESC), [Out::Recorded(None)]);
+        r.up(ESC);
+        r.k.record(true);
+        assert_eq!(r.down(BACKSPACE), [Out::Recorded(Some(None))]);
+        r.up(BACKSPACE);
+        // Recording ends with the one key.
+        assert_eq!(r.down(C), [Key(C, true)]);
     }
 
     #[test]

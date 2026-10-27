@@ -418,7 +418,13 @@ pub fn check_mark(p: &Painter, r: Rect, color: Color32) {
 /// Right-aligned shortcut label: the ⌘ glyph set tight against the key,
 /// both on one baseline.
 pub fn shortcut(p: &Painter, right_center: Pos2, label: &str, color: Color32) {
-    let parts = shortcut_parts(label);
+    key_combo(p, right_center, &format!("⌘{label}"), color);
+}
+
+/// Right-aligned keys with any modifiers, as on a Mac ("⌃⌥⇧⌘←"), each
+/// symbol on the text's baseline.
+pub fn key_combo(p: &Painter, right_center: Pos2, keys: &str, color: Color32) {
+    let parts = combo_parts(keys);
     let font = FontId::proportional(PLAIN_SIZE);
     let mut x = right_center.x;
     for (i, part) in parts.iter().enumerate().rev() {
@@ -435,11 +441,11 @@ pub fn shortcut(p: &Painter, right_center: Pos2, label: &str, color: Color32) {
 /// ⌘ and ⇧ sit this much closer to what follows than their advance width.
 const SHORTCUT_KERN: f32 = 1.0;
 
-/// "⌘" + the label, split so each symbol (⌘ ⇧ ↑ ⌫ …, which come from a
-/// fallback font) is laid out on its own: in one galley with the letters
-/// they would land on a different baseline.
-fn shortcut_parts(label: &str) -> Vec<String> {
-    let mut parts = vec!["⌘".to_owned()];
+/// The keys split so each symbol (⌘ ⇧ ↑ ⌫ …, which come from a fallback
+/// font) is laid out on its own: in one galley with the letters they
+/// would land on a different baseline.
+fn combo_parts(label: &str) -> Vec<String> {
+    let mut parts = Vec::new();
     let mut run = String::new();
     for ch in label.chars() {
         if ch.is_ascii() {
@@ -459,8 +465,13 @@ fn shortcut_parts(label: &str) -> Vec<String> {
 
 /// Width of a shortcut label as [`shortcut`] draws it.
 pub fn shortcut_width(ctx: &Context, label: &str) -> f32 {
+    key_combo_width(ctx, &format!("⌘{label}"))
+}
+
+/// Width of keys as [`key_combo`] draws them.
+pub fn key_combo_width(ctx: &Context, keys: &str) -> f32 {
     let font = FontId::proportional(PLAIN_SIZE);
-    let parts = shortcut_parts(label);
+    let parts = combo_parts(keys);
     ctx.fonts_mut(|f| {
         parts.iter().map(|t| f.layout_no_wrap(t.clone(), font.clone(), Color32::BLACK).size().x).sum::<f32>()
             - SHORTCUT_KERN * (parts.len() - 1) as f32

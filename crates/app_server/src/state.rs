@@ -218,6 +218,10 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub night_fade: Option<crate::night::Fade>,
     /// Screens that mirror another (out of the Space; see `desktop`).
     pub mirrors: Vec<Output>,
+    /// The windows Show Desktop hid (shown again by its next press).
+    pub desktop_shown: Vec<WindowElement>,
+    /// Counts shortcut recordings (a timer only ends its own).
+    pub recording_shortcut: u64,
 }
 
 #[derive(Debug)]
@@ -936,6 +940,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             white_point: None,
             night_fade: None,
             mirrors: Vec::new(),
+            desktop_shown: Vec::new(),
+            recording_shortcut: 0,
         };
         if let Some(name) = state.socket_name.clone() {
             match crate::ipc::init(&state.handle, &name) {
@@ -965,6 +971,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 }
             });
         }
+        state.keymap.set_bindings(tabula_protocol::shortcuts::bindings(&state.settings.shortcuts));
         if let Some(found) = state.power.displays_found.take() {
             let _ = state.handle.insert_source(found, |event, _, state| {
                 if let smithay::reexports::calloop::channel::Event::Msg(found) = event {

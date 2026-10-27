@@ -48,6 +48,7 @@ use crate::{
 mod element;
 mod grabs;
 pub mod deco;
+mod tiling;
 mod wm;
 #[cfg(feature = "xwayland")]
 mod x11;
@@ -586,8 +587,15 @@ pub fn fixup_positions(
             orphaned_windows.push(window.clone());
         }
     }
+    // Windows left on no display go to the main one (state.rehome_windows
+    // then fits them there).
+    let main = space
+        .outputs()
+        .find(|o| display.is_main(&crate::desktop::display_key(o), &o.name()))
+        .and_then(|o| space.output_geometry(o))
+        .map(|g| (g.loc + g.size.downscale(2).to_point()).to_f64());
     for window in orphaned_windows.into_iter() {
-        place_new_window(space, pointer_location, &window, false);
+        place_new_window(space, main.unwrap_or(pointer_location), &window, false);
     }
 }
 

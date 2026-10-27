@@ -287,7 +287,10 @@ of the way down.
    `style::italic_font()`, `style::mono_font(size)`. Highlight selected
    text with `style::text_highlight(galley, origin, size, pad)` (cap height
    to baseline, so every label's highlight is the same height); drag-select
-   bands with `style::selection_band`.
+   bands with `style::selection_band`. Keys as on a Mac menu ("⇧⌘←", each
+   symbol on the text's baseline, though they come from a fallback font):
+   `style::key_combo(painter, right_center, keys, color)` (and
+   `style::shortcut` for a ⌘ menu shortcut).
 4. **Lines are one logical pixel** (`style::hline`, `vline`, `frame_rect`,
    `bevel`, `sunken`, `raised`). Snap rects to the pixel grid
    (`style::snap`). No blurry half-pixel lines.
@@ -304,9 +307,10 @@ of the way down.
 6. BeOS idioms to keep: yellow tab decorator (app_server's job), menu bar in
    every document window, ⌘ shortcuts (Ctrl on the wire: app_server's
    `keymap` turns the Mac ⌘ key into Ctrl for clients, Caps Lock too, and
-   keeps ⌘Tab / ⌘\` (Twitcher), ⌘Space (Find; tapping ⌘ alone is an option), ⌘ arrows and ⌘⌫ for
-   itself; terminals listed in `KeyboardSettings::terminal_apps` get ⌘ as
-   Ctrl+Shift so physical Ctrl reaches the tty), keyboard focus shown as a navigation-blue underline/frame,
+   keeps ⌘Tab / ⌘\` (Twitcher), ⌘ arrows and ⌘⌫ and the desktop shortcuts
+   (see "Desktop shortcuts and tiling") for itself; terminals listed in
+   `KeyboardSettings::terminal_apps` get ⌘ as Ctrl+Shift so physical Ctrl
+   reaches the tty), keyboard focus shown as a navigation-blue underline/frame,
    Tracker-style spatial behaviour. Modernise freely where it helps
    (smooth scrolling, hi-dpi, search fields, sensible defaults).
 
@@ -572,6 +576,36 @@ launcher lists them. The panel list Deskbar shows is
 * About (`about.rs`) has Restart Tabula: SIGHUP to `$TABULA_SESSION_PID`,
   the same in-place reload as `tabula-session reload` (disabled outside
   a session).
+
+## Desktop shortcuts and tiling (tabula_protocol::shortcuts, app_server keymap.rs, shell/tiling.rs)
+
+app_server's own shortcuts are one table, `tabula_protocol::shortcuts::SHORTCUTS`:
+each a `Shortcut` (tile the focused window into a half, quarter or third,
+zoom, back to its own size, center, to the next display, tile or cascade
+all windows on the display, show the desktop, workspaces, Find, lock,
+caffeinated, screenshots), a group, a title and default keys written
+"Shift+Cmd+Left" (`Chord`; Cmd is ⌘). `Settings::shortcuts` keeps only
+changes (an empty list turns one off), so new shortcuts get their defaults.
+`shortcuts::assign` gives one shortcut a chord and takes it from any other;
+the `defaults_never_clash` test keeps the table clean. The keymap looks
+shortcuts up before its own ⌘ translations; Twitcher's ⌘Tab / ⌘\` stay
+fixed. To add one: a `Shortcut` variant, a row in `SHORTCUTS`, its case in
+input_handler's `shortcut`.
+
+Preferences ▸ Keyboard ▸ Shortcuts lists them; clicking one sends
+`Request::RecordShortcut`, and app_server takes the next key with its
+physical modifiers (only it can tell ⌘ from Ctrl) and answers with
+`Event::ShortcutRecorded` (Esc cancels, ⌫ clears; it gives up after 30 s).
+
+Tiling (`shell/tiling.rs`) works on the display's usable area (zoom's: no
+Deskbar or panels) less `Settings::tiling.margin`, with `tiling.gap`
+between windows. A tiled or zoomed window remembers its own frame
+(`PreZoom`), which Restore and unzooming put back, and which part it was
+tiled into, so it is re-tiled when its display changes. When displays come
+or go (`follow_main_output` → `rehome_windows`), windows left on none go to
+the main display, cascaded and shrunk to fit, the rest are re-tiled,
+re-zoomed or fitted where they are, and the pointer is brought back; a
+minimized window is fitted when it comes back.
 
 ## Power (crates/app_server/src/power.rs)
 

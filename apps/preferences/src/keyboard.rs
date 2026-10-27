@@ -1,9 +1,11 @@
-//! Keyboard: layout, key repeat, and the Mac keys (⌘ as the command key,
-//! Caps Lock as Ctrl, tap ⌘ for Find).
+//! Keyboard: layout, key repeat, the Mac keys (⌘ as the command key,
+//! Caps Lock as Ctrl, tap ⌘ for Find), the backlight; and the Shortcuts
+//! tab (shortcuts.rs).
 
 use tabula_kit::{
     egui::Ui,
-    widgets::{BBox, CheckBox, MenuField, Slider, StringView, TextControl},
+    metrics as m,
+    widgets::{BBox, CheckBox, MenuField, Slider, StringView, TabView, TextControl},
 };
 use tabula_protocol::{PowerStatus, Settings};
 
@@ -14,6 +16,8 @@ pub struct State {
     test: String,
     /// The level being dragged to, until app_server's report catches up.
     backlight: Option<(f32, std::time::Instant)>,
+    tab: usize,
+    shortcuts: crate::shortcuts::State,
 }
 
 /// Common layouts: xkb name and what to call it.
@@ -41,6 +45,23 @@ const LAYOUTS: &[(&str, &str)] = &[
 ];
 
 pub fn ui(ui: &mut Ui, s: &mut Settings, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
+    let mut tab = st.tab;
+    TabView::new(&mut tab, &["Keyboard", "Shortcuts"]).show(ui, |ui, tab| {
+        let inner = ui.available_rect_before_wrap().shrink(m::SPACING);
+        ui.scope_builder(tabula_kit::egui::UiBuilder::new().max_rect(inner).layout(tabula_kit::egui::Layout::top_down(tabula_kit::egui::Align::Min)), |ui| {
+            ui.spacing_mut().item_spacing.y = m::SPACING;
+            match tab {
+                0 => keyboard(ui, s, power, server, st),
+                _ => crate::shortcuts::ui(ui, s, server, &mut st.shortcuts),
+            }
+        });
+    });
+    if tab != st.tab {
+        st.tab = tab;
+    }
+}
+
+fn keyboard(ui: &mut Ui, s: &mut Settings, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
     let k = &mut s.keyboard;
     let mut names: Vec<&str> = LAYOUTS.iter().map(|(_, n)| *n).collect();
     let mut index = LAYOUTS.iter().position(|(id, _)| *id == k.layout);
