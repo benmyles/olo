@@ -23,6 +23,7 @@ mod shortcuts;
 mod sound;
 mod touchid;
 mod touchpad;
+mod tracker;
 mod workspaces;
 
 use std::collections::BTreeMap;

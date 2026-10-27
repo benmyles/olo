@@ -275,6 +275,26 @@ pub struct Settings {
     /// app_server's keyboard shortcuts changed from their defaults.
     pub shortcuts: ShortcutSettings,
     pub tiling: TilingSettings,
+    pub tracker: TrackerSettings,
+}
+
+/// Tracker's settings (Preferences ▸ Tracker).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct TrackerSettings {
+    /// How a folder window shows its folder when it opens.
+    pub default_view: FolderView,
+}
+
+/// How a Tracker window shows its folder.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FolderView {
+    Icons,
+    MiniIcons,
+    List,
+    /// macOS-style columns: each selected folder opens in the next column.
+    #[default]
+    Columns,
 }
 
 /// How Deskbar shows the time (Preferences ▸ Date & Time).
@@ -571,6 +591,7 @@ impl Default for Settings {
             clock: ClockSettings::default(),
             shortcuts: ShortcutSettings::default(),
             tiling: TilingSettings::default(),
+            tracker: TrackerSettings::default(),
         }
     }
 }

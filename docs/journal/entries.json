@@ -790,5 +790,11 @@
   "title": "NetPositive learns login fields",
   "caption": "The field menu now lists the page's logins at once (fetched when the page loads). Filling an odd field from it \u2014 here 'who are you' as the username \u2014 is remembered for that page, so the key button fills the same field next time. Hidden decoy fields, as on Google's sign-in, are skipped.",
   "image": "2026-10-26/211645-netpositive-learns-login-fields.png"
+ },
+ {
+  "time": "2026-10-26T21:22:59",
+  "title": "Preferences \u25b8 Tracker",
+  "caption": "New Tracker windows open in column view by default; Preferences has a Tracker panel to choose the view new windows open in, and Tracker follows a change at once.",
+  "image": "2026-10-26/212259-preferences-tracker.png"
  }
 ]

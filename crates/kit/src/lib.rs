@@ -19,6 +19,7 @@ pub mod instance;
 pub mod menu;
 pub mod metrics;
 mod platform;
+pub mod settings;
 pub mod style;
 mod theme_watch;
 pub mod widgets;

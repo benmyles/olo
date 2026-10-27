@@ -8,7 +8,7 @@ use tabula_kit::{
 };
 use tabula_protocol::Settings;
 
-use crate::{Ctx, about, appearance, bluetooth, datetime, display, keyboard, network, power, screensaver, sound, touchid, touchpad, workspaces};
+use crate::{Ctx, about, appearance, bluetooth, datetime, display, keyboard, network, power, screensaver, sound, touchid, touchpad, tracker, workspaces};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -24,6 +24,7 @@ pub enum Panel {
     Sound,
     TouchId,
     Touchpad,
+    Tracker,
     Workspaces,
     About,
 }
@@ -42,6 +43,7 @@ impl Panel {
         Panel::Sound,
         Panel::TouchId,
         Panel::Touchpad,
+        Panel::Tracker,
         Panel::Workspaces,
         Panel::About,
     ];
@@ -74,6 +76,7 @@ impl Panel {
             Panel::Sound => "sound",
             Panel::TouchId => "touchid",
             Panel::Touchpad => "touchpad",
+            Panel::Tracker => "tracker",
             Panel::Workspaces => "workspaces",
             Panel::About => "about",
         }
@@ -93,6 +96,7 @@ impl Panel {
             Panel::Sound => "Sound",
             Panel::TouchId => "Touch ID",
             Panel::Touchpad => "Touchpad",
+            Panel::Tracker => "Tracker",
             Panel::Workspaces => "Workspaces",
             Panel::About => "About Tabula",
         }
@@ -112,6 +116,7 @@ impl Panel {
             Panel::Sound => "sound",
             Panel::TouchId => "fingerprint",
             Panel::Touchpad => "touchpad",
+            Panel::Tracker => "tracker",
             Panel::Workspaces => "workspaces",
             Panel::About => "about",
         }
@@ -132,6 +137,7 @@ impl Panel {
             Panel::Sound => (440, 270),
             Panel::TouchId => (420, 330),
             Panel::Touchpad => (400, 382),
+            Panel::Tracker => (300, 180),
             Panel::Workspaces => (360, 164),
             Panel::About => (420, 290),
         }
@@ -168,6 +174,7 @@ impl Panel {
                 settings.mouse_speed = from.mouse_speed;
                 settings.focus_follows_mouse = from.focus_follows_mouse;
             }
+            Panel::Tracker => settings.tracker = from.tracker.clone(),
             Panel::Workspaces => settings.workspace_count = from.workspace_count,
             Panel::DateTime => settings.clock = from.clock.clone(),
             Panel::Power => settings.power = from.power.clone(),
@@ -235,6 +242,7 @@ pub fn ui(panel: Panel, state: &mut State, ui: &mut egui::Ui, ctx: Ctx<'_>) {
             (Panel::Bluetooth, State::Bluetooth(s)) => bluetooth::ui(ui, s),
             (Panel::TouchId, State::TouchId(s)) => touchid::ui(ui, s),
             (Panel::Touchpad, _) => touchpad::ui(ui, settings),
+            (Panel::Tracker, _) => tracker::ui(ui, settings),
             (Panel::Workspaces, _) => workspaces::ui(ui, settings),
             (Panel::About, State::About(s)) => about::ui(ui, s),
             _ => {}

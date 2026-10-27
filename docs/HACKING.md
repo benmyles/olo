@@ -137,6 +137,12 @@ fn main() {
   arguments; exit then), and `instance::listen(app_id, cx.proxy())` in the
   init closure; forwarded launches arrive in `App::message` as an
   `instance::Launch { args, cwd }`.
+* **Following a setting** (`tabula_kit::settings`): `current()` reads
+  app_server's `Settings` once (a quick local round trip; fine at
+  startup), `watch(f)` calls `f` on a thread now, after every
+  `SettingsChanged` and after app_server restarts; send what you need
+  through `cx.proxy()`. Tracker follows `tracker.default_view` (the view
+  new folder windows open in, column view by default) this way.
 * **Menus for the command palette** (`tabula_kit::commands`, automatic):
   every kit app answers on `$XDG_RUNTIME_DIR/tabula-menus-<pid>.sock`
   with the menu bar of its last active window, flattened
@@ -531,6 +537,8 @@ launcher lists them. The panel list Deskbar shows is
   only when it would change something: implement `Panel::reset`.
 * New panel: add it to `Panel` (arg, title, icon, size, reset), write the
   module, add it to `PREFERENCE_PANELS`, journal it light and dark.
+* Tracker (`tracker.rs`) sets `Settings::tracker` (the view new folder
+  windows open in); its icon is Tracker's own, as in Haiku.
 * Network (`network.rs`) reads NetworkManager through
   `tabula_system::network` on a worker thread (devices, addresses,
   networks in range merged by SSID, saved connections; a scan every 30 s)

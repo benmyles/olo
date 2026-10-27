@@ -30,15 +30,8 @@ use tabula_protocol::{Client, Reply, Request};
 
 pub use fs::Entry;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
-pub enum ViewMode {
-    #[default]
-    Icons,
-    MiniIcons,
-    List,
-    /// macOS-style columns: each selected folder opens in the next column.
-    Columns,
-}
+/// How a window shows its folder; new windows follow Preferences ▸ Tracker.
+pub use tabula_protocol::FolderView as ViewMode;
 
 /// A column to the right of the root in column view.
 pub struct Pane {
@@ -185,6 +178,8 @@ enum Msg {
     Preview(u64, quicklook::Update),
     /// Quick Look of a generation is taking a while: open the window.
     PreviewSlow(u64),
+    /// Preferences ▸ Tracker changed (or was first read).
+    Settings(tabula_protocol::TrackerSettings),
 }
 
 pub struct Tracker {
@@ -192,6 +187,8 @@ pub struct Tracker {
     /// Paths cut or copied with ⌘X / ⌘C, and whether it was a cut.
     clipboard: Option<(Vec<PathBuf>, bool)>,
     hidden: bool,
+    /// How new folder windows show their folder (Preferences ▸ Tracker).
+    default_view: ViewMode,
     /// Running file operations, each with the window that started it.
     jobs: Vec<(ops::Job, Option<WindowId>)>,
     next_job: u64,
@@ -224,11 +221,11 @@ fn sort_entries(entries: &mut [Entry], key: SortKey, asc: bool) {
 }
 
 impl FolderWin {
-    fn new(path: PathBuf, hidden: bool, loader: Loader) -> Self {
+    fn new(path: PathBuf, view: ViewMode, hidden: bool, loader: Loader) -> Self {
         let mut w = FolderWin {
             path,
             entries: Vec::new(),
-            view: ViewMode::Icons,
+            view,
             list: ListState { multiple: true, ..Default::default() },
             sort: (SortKey::Name, true),
             dirty: false,
@@ -567,7 +564,7 @@ impl Tracker {
         }
         let id = cx.open_window(folder_options(&path));
         let loader = Loader { win: id, proxy: cx.proxy() };
-        self.windows.insert(id, Win::Folder(FolderWin::new(path, self.hidden, loader)));
+        self.windows.insert(id, Win::Folder(FolderWin::new(path, self.default_view, self.hidden, loader)));
     }
 
     fn open_entry(&mut self, cx: &mut Cx, e: &Entry) {
@@ -651,8 +648,7 @@ impl Tracker {
             options.size = f.size;
             let id = cx.open_window(options);
             let loader = Loader { win: id, proxy: cx.proxy() };
-            let mut w = FolderWin::new(f.path, self.hidden, loader);
-            w.view = f.view;
+            let mut w = FolderWin::new(f.path, f.view, self.hidden, loader);
             w.sort = f.sort;
             w.select_paths(&f.selected);
             self.windows.insert(id, Win::Folder(w));
@@ -1332,6 +1328,7 @@ impl App for Tracker {
         };
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
+            Msg::Settings(s) => self.default_view = s.default_view,
             Msg::DirSize(win, b, f) => {
                 if let Some(Win::Info(i)) = self.windows.get_mut(&win) {
                     i.size = Some((b, f));
@@ -1535,10 +1532,14 @@ fn main() {
         tabula_kit::instance::listen("tabula.tracker", cx.proxy());
         let proxy = cx.proxy();
         let watcher = watch::Watcher::new(move |changes| proxy.send(Msg::Changed(changes)));
+        let proxy = cx.proxy();
+        tabula_kit::settings::watch(move |s| proxy.send(Msg::Settings(s.tracker)));
         let mut t = Tracker {
             windows: HashMap::new(),
             clipboard: None,
             hidden: false,
+            // Folders opened at startup can't wait for the watcher's first read.
+            default_view: tabula_kit::settings::current().map(|s| s.tracker.default_view).unwrap_or_default(),
             jobs: Vec::new(),
             next_job: 1,
             status_win: None,
