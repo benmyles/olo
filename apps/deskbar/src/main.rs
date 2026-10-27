@@ -357,6 +357,22 @@ impl Deskbar {
         }
     }
 
+    /// Show an application's windows on this workspace (minimized ones
+    /// too), the one it last had focused in front; with none here, go to
+    /// its newest.
+    fn bring_forward(&self, team_key: &str) {
+        let team: Vec<&WindowInfo> = self.windows.iter().filter(|w| team_key == team_key_of(w)).collect();
+        let mut here: Vec<&WindowInfo> = team.iter().copied().filter(|w| w.workspace == self.workspace.0).collect();
+        if here.is_empty() {
+            here.extend(team.last());
+        }
+        // Ids grow with age: the newest ends in front, unless one has focus.
+        here.sort_by_key(|w| (w.focused, w.id));
+        for w in here {
+            request(Request::Activate { id: w.id });
+        }
+    }
+
     fn team_command(&mut self, team_key: &str, cmd: &str) {
         let ids: Vec<u64> = self.windows.iter().filter(|w| team_key == team_key_of(w)).map(|w| w.id).collect();
         if let Some(id) = cmd.strip_prefix("win:").and_then(|s| s.parse().ok()) {
@@ -596,7 +612,12 @@ impl App for Deskbar {
             let id = egui::Id::unique(("team", &team.key));
             let resp = ui.interact(row, id, Sense::click());
             let open = menu::is_open(ui.ctx(), id);
-            if (resp.clicked() || resp.secondary_clicked()) && !open {
+            // A click brings the application forward; the right button
+            // (or holding the left) opens its menu of windows.
+            if resp.clicked() && !open {
+                self.bring_forward(&team.key);
+            }
+            if (resp.secondary_clicked() || resp.long_touched()) && !open {
                 menu::request_popup(
                     ui.ctx(),
                     MenuRequest {
