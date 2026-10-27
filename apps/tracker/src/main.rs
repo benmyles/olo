@@ -712,6 +712,8 @@ impl Tracker {
                     opened = true;
                 }
                 "--desktop" => {}
+                // Another window: home, as when launched bare.
+                "--new-window" => {}
                 p => {
                     let path = PathBuf::from(p);
                     if path.is_dir() {
@@ -755,6 +757,11 @@ impl Tracker {
                 Err(e) => self.error(cx, format!("Couldn't create a folder: {e}")),
             },
             "terminal" => fs::open_in_terminal(&dir),
+            "new-window" => {
+                if let Some(app) = f.selected_entries().first().and_then(fs::running_app) {
+                    fs::new_window(app);
+                }
+            }
             "terminal-selected" => {
                 for e in f.selected_entries().iter().filter(|e| e.is_dir) {
                     fs::open_in_terminal(&e.path);

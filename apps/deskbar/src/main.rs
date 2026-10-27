@@ -273,6 +273,11 @@ impl Deskbar {
             };
             m = m.item(label, format!("win:{}", w.id), None).checked(w.focused);
         }
+        // An app of ours with several windows opens another, as BeOS's
+        // Deskbar offered.
+        if team.windows.first().is_some_and(|w| new_window_app(&w.app_id)) {
+            m = m.separator().item("New Window", "new-window", None);
+        }
         m.separator()
             .item("Hide All", "hide-all", None)
             .item("Show All", "show-all", None)
@@ -459,6 +464,12 @@ impl Deskbar {
             request(Request::Activate { id });
             return;
         }
+        if cmd == "new-window" {
+            if let Some(app) = self.windows.iter().find(|w| team_key == team_key_of(w)).map(|w| w.app_id.clone()) {
+                std::thread::spawn(move || tabula_kit::instance::forward(&app, &["--new-window".to_owned()]));
+            }
+            return;
+        }
         for id in ids {
             match cmd {
                 "hide-all" => request(Request::Minimize { id }),
@@ -468,6 +479,11 @@ impl Deskbar {
             }
         }
     }
+}
+
+/// Whether `app_id` is one of ours that opens a new window when asked.
+fn new_window_app(app_id: &str) -> bool {
+    app_id.strip_prefix("tabula.").is_some_and(|rest| tabula_kit::apps::NEW_WINDOW.contains(&format!("tabula-{rest}").as_str()))
 }
 
 fn team_key_of(w: &WindowInfo) -> String {

@@ -53,6 +53,24 @@ fn app_icon(path: &Path, is_link: bool) -> Option<&'static str> {
     tabula_kit::apps::OUR_APPS.iter().find(|(bin, _, _)| *bin == name).map(|(_, _, icon)| *icon)
 }
 
+/// The app id of the running application program `e` is (or links to),
+/// when it can open another window: New Window asks it for one.
+pub fn running_app(e: &Entry) -> Option<String> {
+    e.app_icon?;
+    let target = if e.is_link { fs::read_link(&e.path).ok()? } else { e.path.clone() };
+    let bin = target.file_name()?.to_str()?;
+    if !tabula_kit::apps::NEW_WINDOW.contains(&bin) {
+        return None;
+    }
+    let id = tabula_kit::apps::app_id_of(bin)?;
+    tabula_kit::instance::running(&id).then_some(id)
+}
+
+/// Ask the running app `app_id` for another window, off the UI thread.
+pub fn new_window(app_id: String) {
+    std::thread::spawn(move || tabula_kit::instance::forward(&app_id, &["--new-window".to_owned()]));
+}
+
 pub fn list(dir: &Path, hidden: bool) -> std::io::Result<Vec<Entry>> {
     list_counting(dir, hidden, &std::sync::atomic::AtomicU64::new(0))
 }

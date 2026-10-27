@@ -817,7 +817,10 @@ impl StyledEdit {
             self.open_file(cx, p);
             opened = true;
         }
-        if !opened {
+        // Tracker's New Window: always a new document.
+        if !opened && args.iter().any(|a| a == "--new-window") {
+            self.new_doc(cx);
+        } else if !opened {
             match self.windows.iter().find(|(_, w)| matches!(w, Win::Doc(_))) {
                 Some((&id, _)) => cx.activate(id),
                 None => {

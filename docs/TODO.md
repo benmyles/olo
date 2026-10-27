@@ -476,12 +476,13 @@ as they land (with the commit), add new ones as they come up.
   a selected note has Dismiss, which takes the whole conversation when
   it gathers several; the default action always reads Open; By App's
   per-app Clear became Dismiss too; HACKING, history.rs).
-- **New Window from a running app's context menu** (Ben): right-clicking
-  a Tabula app that is running, where Tracker shows it (its icon in the
-  Applications folder, on the desktop, …), offers "New Window", which asks
-  the running app for another window (as BeOS's Deskbar did from an app's
-  menu) instead of launching a second copy. Agents get the same through
-  the app's documented API.
+- ~~**New Window from a running app's context menu**~~ (Ben; done:
+  HACKING, "Single instance"): Tracker offers New Window on a running
+  Tabula app's program or link (folders and desktop), and Deskbar in
+  the app's menu; both forward
+  `--new-window` to the running copy instead of launching a second one
+  (Tracker, Terminal and StyledEdit; `apps::NEW_WINDOW`). Agents run
+  `tabula-x --new-window`.
 - **Token pooling for Claude Code and Codex, natively** (Ben; after
   everything else is done): a Tabula version of ~/src/token-pooler's Local
   mode, without its team/cloud gateway: the local accounts' subscription

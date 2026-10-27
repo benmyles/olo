@@ -402,12 +402,17 @@ impl Desktop {
                     .item("Open", "open", None)
                     .item("Empty Trash", "empty-trash", None)
                     .enabled(!fs::trash_is_empty()),
-                Some(_) => Menu::new("")
-                    .item("Open", "open", None)
-                    .item("Get Info", "info", None)
+                Some(i) => {
+                    let mut m = Menu::new("").item("Open", "open", None);
+                    // A running app of ours can open another window.
+                    if self.selected.len() <= 1 && self.item(i).and_then(|it| fs::running_app(&it.entry)).is_some() {
+                        m = m.item("New Window", "new-window", None);
+                    }
+                    m.item("Get Info", "info", None)
                     .separator()
                     .item("Move to Trash", "trash", None)
-                    .enabled(!self.movable().is_empty()),
+                    .enabled(!self.movable().is_empty())
+                }
                 None => Menu::new("")
                     .item("New Folder", "new-folder", None)
                     .item("Open in Terminal", "terminal", None)
@@ -423,6 +428,11 @@ impl Desktop {
             match cmd.as_str() {
                 "clean-up" => self.clean_up(),
                 "open" => actions.extend(self.selected_entries().into_iter().map(Action::Open)),
+                "new-window" => {
+                    if let Some(app) = self.selected_entries().first().and_then(fs::running_app) {
+                        fs::new_window(app);
+                    }
+                }
                 "trash" => {
                     // Only items that live in ~/Desktop can go to the Trash.
                     let keep: BTreeSet<usize> = self

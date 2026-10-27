@@ -148,6 +148,13 @@ fn main() {
   arguments; exit then), and `instance::listen(app_id, cx.proxy())` in the
   init closure; forwarded launches arrive in `App::message` as an
   `instance::Launch { args, cwd }`.
+  `instance::running(app_id)` says whether a copy is listening. An app
+  with several windows should open a new one for `--new-window` (always,
+  rather than bringing one forward) and be listed in
+  `apps::NEW_WINDOW`: Tracker then offers **New Window** on its program
+  (or a link to it) while it runs, and Deskbar in its menu, forwarding `--new-window` to the
+  running copy (`apps::app_id_of` maps `tabula-x` to `tabula.x`). Agents
+  do the same with `tabula-x --new-window`.
 * **Following a setting** (`tabula_kit::settings`): `current()` reads
   app_server's `Settings` once (a quick local round trip; fine at
   startup), `watch(f)` calls `f` on a thread now, after every

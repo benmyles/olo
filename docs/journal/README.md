@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### New Window for a running app
+
+*13:24* — Right-clicking a running Tabula app in Tracker (or opening its menu in Deskbar) offers New Window: the running copy opens another window, as BeOS's Deskbar did, instead of a second copy starting. Terminal, StyledEdit and Tracker answer it.
+
+![New Window for a running app](2026-10-27/132434-new-window-for-a-running-app.png)
+
 ### A window menu on the tab
 
 *13:18* — Right-clicking a window's yellow tab opens its menu: Hide, Zoom, Back to Its Own Size, Center, every tiling choice, Move to Workspace, Send to Back (what the right-click used to do) and Close, the same commands as the shortcuts and the palette.

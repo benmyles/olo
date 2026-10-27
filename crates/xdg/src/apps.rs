@@ -17,6 +17,16 @@ pub const OUR_APPS: &[(&str, &str, &str)] = &[
     ("tabula-screenshot", "Screenshot", "screenshot"),
 ];
 
+/// Our applications that open another window when asked while running
+/// (`--new-window`, handed to the running copy): Tracker's New Window.
+pub const NEW_WINDOW: &[&str] = &["tabula-tracker", "tabula-terminal", "tabula-styled-edit"];
+
+/// The app id our program `bin` runs as ("tabula-styled-edit" is
+/// "tabula.styled-edit"), for `instance`.
+pub fn app_id_of(bin: &str) -> Option<String> {
+    bin.strip_prefix("tabula-").map(|rest| format!("tabula.{rest}"))
+}
+
 /// The panels `tabula-preferences <arg>` opens: argument, name, icon.
 /// Deskbar's Preferences menu lists exactly these.
 pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[

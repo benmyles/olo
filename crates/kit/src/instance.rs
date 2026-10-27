@@ -32,6 +32,11 @@ pub fn forward(app_id: &str, args: &[String]) -> bool {
     s.write_all(line.as_bytes()).is_ok() && s.write_all(b"\n").is_ok()
 }
 
+/// Whether `app_id` is running in this session (its copy is listening).
+pub fn running(app_id: &str) -> bool {
+    UnixStream::connect(socket_path(app_id)).is_ok()
+}
+
 /// Accept forwarded launches; each arrives in `App::message` as a
 /// [`Launch`].
 pub fn listen(app_id: &str, proxy: Proxy) {
