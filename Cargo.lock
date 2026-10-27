@@ -4993,6 +4993,7 @@ checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "h2",
@@ -6165,6 +6166,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabula-ai"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "reqwest",
+ "serde_json",
+ "tabula-protocol",
+ "tabula-xdg",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "tabula-chrome"
 version = "0.1.0"
 dependencies = [
@@ -6424,6 +6437,7 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
+ "tabula-ai",
  "tabula-kit",
  "tabula-protocol",
  "tabula-screensavers",
@@ -6528,6 +6542,17 @@ dependencies = [
  "serde",
  "serde_json",
  "tabula-system",
+]
+
+[[package]]
+name = "tabula-smart-tile"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "serde_json",
+ "tabula-ai",
+ "tabula-kit",
+ "tabula-protocol",
 ]
 
 [[package]]

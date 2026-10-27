@@ -1174,5 +1174,17 @@
   "title": "The wallpaper pack",
   "caption": "Backgrounds offers the new wallpapers with previews; each follows light and dark mode live and comes in a 16:9 or ultrawide version for each screen.",
   "image": "2026-10-27/151308-the-wallpaper-pack.png"
+ },
+ {
+  "time": "2026-10-27T15:32:23",
+  "title": "Smart Tiling",
+  "caption": "Smart Tile (\u2303\u21e7\u2318\u21a9) shows a model the screen and what each window holds, then tiles them; the note says how and offers Undo. (Here a fake model answered.)",
+  "image": "2026-10-27/153223-smart-tiling.png"
+ },
+ {
+  "time": "2026-10-27T15:32:23",
+  "title": "Preferences \u25b8 AI",
+  "caption": "AI features go through the Token Pool, or an Anthropic key; Smart Tiling picks its model and how hard it thinks.",
+  "image": "2026-10-27/153223-preferences-ai.png"
  }
 ]

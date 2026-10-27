@@ -187,6 +187,9 @@ pub enum Shortcut {
     PreviousDisplay,
     /// Every window on the active display, in a grid.
     TileAll,
+    /// Every window on the active display, arranged by a model for what
+    /// each shows (Smart Tiling, Preferences ▸ AI).
+    SmartTile,
     /// Every window on the active display, stacked diagonally.
     CascadeAll,
     /// Every window on the active display stacked at the top left with
@@ -304,6 +307,7 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::NextDisplay, "next-display", WINDOWS, "To the next display", &["Ctrl+Alt+Cmd+Right"]),
     s(Shortcut::PreviousDisplay, "previous-display", WINDOWS, "To the previous display", &["Ctrl+Alt+Cmd+Left"]),
     s(Shortcut::TileAll, "tile-all", ARRANGE, "Tile all windows on the display", &["Ctrl+Cmd+Return"]),
+    s(Shortcut::SmartTile, "smart-tile", ARRANGE, "Smart tile all windows on the display", &["Ctrl+Shift+Cmd+Return"]),
     s(Shortcut::CascadeAll, "cascade-all", ARRANGE, "Cascade all windows on the display", &["Ctrl+Cmd+Backslash"]),
     s(Shortcut::FanOut, "fan-out", ARRANGE, "Fan out all windows, tabs side by side", &["Ctrl+Cmd+Slash"]),
     s(Shortcut::UndoArrangement, "undo-arrangement", ARRANGE, "Undo window arrangement", &["Ctrl+Cmd+Z"]),

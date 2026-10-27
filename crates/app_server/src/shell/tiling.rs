@@ -689,6 +689,44 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         info!(windows = windows.len(), "tiled all");
     }
 
+    /// The active display, the area tiling uses on it, and its windows,
+    /// front first: what an arranger (Smart Tiling) works with.
+    pub fn arrangement(&self) -> Option<(Output, Rectangle<i32, Logical>, Vec<WindowElement>)> {
+        let output = self.active_output()?;
+        let area = self.tile_area(&output)?;
+        let mut windows = self.windows_on(&output);
+        windows.reverse();
+        Some((output, area, windows))
+    }
+
+    /// Windows of the active display put in parts of its tiling area (an
+    /// arranger's answer), as Tile All puts them in cells: undoable, and
+    /// tiled so their edges move together. How many it placed.
+    pub fn arrange(&mut self, placements: &[tabula_protocol::Placement]) -> usize {
+        let Some((_, area, windows)) = self.arrangement() else { return 0 };
+        let placed: Vec<(WindowElement, (f32, f32, f32, f32))> = placements
+            .iter()
+            .filter_map(|p| {
+                let w = windows.iter().find(|w| w.meta().id == p.id)?;
+                let clamp = |v: f32| if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 };
+                let (x, y) = (clamp(p.x), clamp(p.y));
+                let (w2, h) = (clamp(p.w).min(1.0 - x).max(0.05), clamp(p.h).min(1.0 - y).max(0.05));
+                Some((w.clone(), (x, y, w2, h)))
+            })
+            .collect();
+        if placed.is_empty() {
+            return 0;
+        }
+        self.remember_arrangement(&windows);
+        for (w, f) in &placed {
+            let cell = part(area, *f, self.tile_gap());
+            self.set_frame(w, cell, true);
+            self.set_cell(w, area, cell);
+        }
+        info!(windows = placed.len(), "arranged");
+        placed.len()
+    }
+
     /// The resizable windows of app `app_id` on this workspace (not its
     /// alerts or other fixed-size panels) in a grid on the active display,
     /// in front, in reading order of where they are now: an app showing

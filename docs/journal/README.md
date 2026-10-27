@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Preferences ▸ AI
+
+*15:32* — AI features go through the Token Pool, or an Anthropic key; Smart Tiling picks its model and how hard it thinks.
+
+![Preferences ▸ AI](2026-10-27/153223-preferences-ai.png)
+
+### Smart Tiling
+
+*15:32* — Smart Tile (⌃⇧⌘↩) shows a model the screen and what each window holds, then tiles them; the note says how and offers Undo. (Here a fake model answered.)
+
+![Smart Tiling](2026-10-27/153223-smart-tiling.png)
+
 ### The wallpaper pack
 
 *15:13* — Backgrounds offers the new wallpapers with previews; each follows light and dark mode live and comes in a 16:9 or ultrawide version for each screen.

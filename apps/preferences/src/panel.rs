@@ -8,10 +8,11 @@ use tabula_kit::{
 };
 use tabula_protocol::Settings;
 
-use crate::{Ctx, about, appearance, backup, bluetooth, datetime, display, keyboard, network, notifications, power, screensaver, security, sound, touchid, touchpad, tracker, workspaces};
+use crate::{Ctx, about, ai, appearance, backup, bluetooth, datetime, display, keyboard, network, notifications, power, screensaver, security, sound, touchid, touchpad, tracker, workspaces};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
+    Ai,
     Appearance,
     Backgrounds,
     Backup,
@@ -34,6 +35,7 @@ pub enum Panel {
 
 impl Panel {
     pub const ALL: &[Panel] = &[
+        Panel::Ai,
         Panel::Appearance,
         Panel::Backgrounds,
         Panel::Backup,
@@ -67,12 +69,14 @@ impl Panel {
             "notification" | "dnd" | "do-not-disturb" => Some(Panel::Notifications),
             "time" | "date" | "clock" | "date-time" => Some(Panel::DateTime),
             "passwords" | "privacy" => Some(Panel::Security),
+            "smart-tiling" | "models" => Some(Panel::Ai),
             _ => None,
         })
     }
 
     pub fn arg(self) -> &'static str {
         match self {
+            Panel::Ai => "ai",
             Panel::Appearance => "appearance",
             Panel::Backgrounds => "backgrounds",
             Panel::Backup => "backup",
@@ -96,6 +100,7 @@ impl Panel {
 
     pub fn title(self) -> &'static str {
         match self {
+            Panel::Ai => "AI",
             Panel::Appearance => "Appearance",
             Panel::Backgrounds => "Backgrounds",
             Panel::Backup => "Backup",
@@ -119,6 +124,7 @@ impl Panel {
 
     pub fn icon(self) -> &'static str {
         match self {
+            Panel::Ai => "ai",
             Panel::Appearance => "appearance",
             Panel::Backgrounds => "backgrounds",
             Panel::Backup => "backup",
@@ -143,6 +149,7 @@ impl Panel {
     /// Content size (logical).
     pub fn size(self) -> (u32, u32) {
         match self {
+            Panel::Ai => (440, 330),
             Panel::Appearance => (420, 300),
             Panel::Backgrounds => (520, 448),
             Panel::Backup => (420, 400),
@@ -201,6 +208,7 @@ impl Panel {
             Panel::Power => settings.power = from.power.clone(),
             Panel::ScreenSaver => settings.screen_saver = from.screen_saver.clone(),
             Panel::Security => settings.security = from.security.clone(),
+            Panel::Ai => settings.ai = from.ai.clone(),
             Panel::Display | Panel::Backup | Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications => {}
         }
     }
@@ -222,6 +230,7 @@ pub enum State {
     Power(power::State),
     ScreenSaver(screensaver::State),
     About(about::State),
+    Ai(Box<ai::State>),
 }
 
 impl State {
@@ -240,6 +249,7 @@ impl State {
             Panel::Power => State::Power(Default::default()),
             Panel::ScreenSaver => State::ScreenSaver(Default::default()),
             Panel::About => State::About(about::State::new()),
+            Panel::Ai => State::Ai(Box::default()),
             _ => State::None,
         }
     }
@@ -264,6 +274,7 @@ pub fn ui(panel: Panel, state: &mut State, ui: &mut egui::Ui, ctx: Ctx<'_>) {
             (Panel::ScreenSaver, State::ScreenSaver(s)) => screensaver::ui(ui, settings, server, s),
             (Panel::Sound, State::Sound(s)) => sound::ui(ui, s),
             (Panel::Security, _) => security::ui(ui, settings),
+            (Panel::Ai, State::Ai(s)) => ai::ui(ui, settings, s),
             (Panel::DateTime, State::DateTime(s)) => datetime::ui(ui, settings, s),
             (Panel::Network, State::Network(s)) => network::ui(ui, s),
             (Panel::Notifications, State::Notifications(s)) => notifications::ui(ui, &settings.clock, s),

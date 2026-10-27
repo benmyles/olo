@@ -128,9 +128,17 @@ impl Notifier {
     /// `app` is the name shown, `desktop_entry` the app's id
     /// (`tabula-tracker`), for its icon and for bringing it forward.
     pub fn new(proxy: Proxy, app: &str, desktop_entry: &str) -> Notifier {
+        Notifier::with_events(app, desktop_entry, move |e| proxy.send(e))
+    }
+
+    /// For a program without windows (a helper the window server
+    /// starts): what the user does comes to `events`, on a thread of the
+    /// notifier's.
+    pub fn with_events(app: &str, desktop_entry: &str, events: impl Fn(NoteEvent) + Send + Sync + 'static) -> Notifier {
         let (to, from) = mpsc::channel();
         let (app, entry) = (app.to_owned(), desktop_entry.to_owned());
-        let _ = std::thread::Builder::new().name("notify".into()).spawn(move || run(from, proxy, app, entry));
+        let events: Events = Arc::new(events);
+        let _ = std::thread::Builder::new().name("notify".into()).spawn(move || run(from, events, app, entry));
         Notifier { to, next: Arc::new(AtomicU64::new(1)) }
     }
 
@@ -185,7 +193,9 @@ fn args(note: &Note, entry: &str) -> (String, Vec<String>, HashMap<&'static str,
     (escape(&note.body), actions, hints, if note.sticky || note.kind == NoteKind::Error { 0 } else { -1 })
 }
 
-fn run(from: mpsc::Receiver<Ask>, proxy: Proxy, app: String, entry: String) {
+type Events = Arc<dyn Fn(NoteEvent) + Send + Sync>;
+
+fn run(from: mpsc::Receiver<Ask>, proxy: Events, app: String, entry: String) {
     let ids = Arc::new(Mutex::new(Ids::default()));
     let mut conn: Option<zbus::blocking::Connection> = None;
     let icon = crate::apps::OUR_APPS.iter().find(|(bin, _, _)| *bin == entry).map(|(_, _, icon)| icon.to_string()).unwrap_or_default();
@@ -221,7 +231,7 @@ fn run(from: mpsc::Receiver<Ask>, proxy: Proxy, app: String, entry: String) {
 }
 
 /// The session bus, listening for what happens to ours.
-fn connect(ids: &Arc<Mutex<Ids>>, proxy: &Proxy) -> Option<zbus::blocking::Connection> {
+fn connect(ids: &Arc<Mutex<Ids>>, proxy: &Events) -> Option<zbus::blocking::Connection> {
     let conn = zbus::blocking::Connection::session().map_err(|e| tracing::info!("no session bus for notifications: {e}")).ok()?;
     let rule = zbus::MatchRule::builder().msg_type(zbus::message::Type::Signal).interface(NAME).ok()?.path(PATH).ok()?.build();
     let signals = zbus::blocking::MessageIterator::for_match_rule(rule, &conn, Some(64)).ok()?;
@@ -243,7 +253,7 @@ fn connect(ids: &Arc<Mutex<Ids>>, proxy: &Proxy) -> Option<zbus::blocking::Conne
                         && let Some(&id) = ids.ours.get(&server)
                     {
                         let token = ids.tokens.remove(&server);
-                        proxy.send(NoteEvent::Action { id, key, token });
+                        proxy(NoteEvent::Action { id, key, token });
                     }
                 }
                 Some("NotificationClosed") => {
@@ -253,7 +263,7 @@ fn connect(ids: &Arc<Mutex<Ids>>, proxy: &Proxy) -> Option<zbus::blocking::Conne
                         // Showing it again makes a new one.
                         ids.server.remove(&id);
                         ids.tokens.remove(&server);
-                        proxy.send(NoteEvent::Closed { id });
+                        proxy(NoteEvent::Closed { id });
                     }
                 }
                 _ => {}

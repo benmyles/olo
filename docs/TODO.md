@@ -5,6 +5,12 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~AI preferences, and Smart Tiling~~ (Ben): Preferences ▸ AI uses the
+  Token Pool by default (or a saved Anthropic key); Smart Tiling (on,
+  Claude Opus 5.5 at medium; also Sonnet, Haiku, Fable and Astra 6)
+  shows the model a screenshot, each window's app, title and widget
+  outline, and applies its tiling (⌃⇧⌘↩, undoable, with progress and
+  Cancel). tsession sessions now get their own D-Bus.
 - ~~Resizing after Tile All moves the others~~ (Ben): Tile All and Tile
   App now tile each window into its cell (`Tile::Cell`), so dragging an
   edge resizes the neighbours on that line.
@@ -523,17 +529,15 @@ as they land (with the commit), add new ones as they come up.
   `--new-window` to the running copy instead of launching a second one
   (Tracker, Terminal and StyledEdit; `apps::NEW_WINDOW`). Agents run
   `tabula-x --new-window`.
-- **AI preferences, and Smart Tiling** (Ben): a new AI preferences
-  panel/app. A setting, on by default, to use the Token Pool for
-  Tabula's AI features; then each AI feature can be turned on and
-  configured there. The first: **Smart Tiling**, on by default, with a
-  model chooser (default Opus 5.5 at medium effort). A new shortcut and
-  command smart-tiles every window on the screen: it takes a screenshot
-  and gives it to the model with the windows' widget trees and metadata,
-  and asks for the best tiling for what each app is and what's in it
-  (important things get more space; things you just want to see at the
-  side get smaller or different places), then applies it (undoable
-  with Undo Window Arrangement).
+- **Terminal: Rename Group and Ungroup do nothing** (Ben, bug): from
+  the right-click menu on a group.
+- **Icons in the Deskbar menu** (Ben): an Appearance preference, on by
+  default, to show icons beside every item in the Deskbar menu (each
+  application, each preference panel, and the other commands), with any
+  missing icons generated with sunburst against the reference set.
+- **Longest tab title** (Ben): an Appearance preference for how many
+  characters of a window's title its tab shows before cutting it short
+  with an ellipsis; 100 by default.
 - **Rename Tabula to Olo, use the new brand, ship a wallpaper pack**
   (Ben; the very last thing, after everything else is done):
   - *Rename* everywhere (code, crates, binaries, app ids, environment

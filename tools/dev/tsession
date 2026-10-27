@@ -38,10 +38,32 @@ BASE = "/tmp/tabula-dev"
 OWNER = pwd.getpwuid(os.stat(ROOT).st_uid)
 RUNTIME = f"/run/user/{OWNER.pw_uid}"
 TARGET = os.environ.get("CARGO_TARGET_DIR", os.path.join(ROOT, "target"))
+# A D-Bus daemon for each session's own session bus (busd, `cargo install
+# busd`): without one, programs fall back to $XDG_RUNTIME_DIR/bus, the
+# user's real session bus (their notifications, keyring, portals).
+BUSD = os.environ.get("TSESSION_BUSD") or next(
+    (b for b in (os.path.join(OWNER.pw_dir, ".cache/tabula-dev/busd-lenient/busd-0.5.0/target/release/busd"), os.path.join(OWNER.pw_dir, ".cargo/bin/busd")) if os.path.exists(b)),
+    None)
+
+def private_bus(d):
+    """Start the session's own session bus; its address."""
+    if not BUSD:
+        sys.exit("tsession: no busd for the session's own D-Bus (set TSESSION_BUSD); not starting on the real session bus")
+    path = os.path.join(d, "bus")
+    if os.path.exists(path):
+        os.remove(path)
+    log = open(os.path.join(d, "busd.log"), "w")
+    p = subprocess.Popen(as_owner([BUSD, "--address", f"unix:path={path}"]), stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    open(os.path.join(d, f"busd.{p.pid}.pid"), "w").write(str(p.pid))
+    for _ in range(50):
+        if os.path.exists(path):
+            return f"unix:path={path}"
+        time.sleep(0.1)
+    sys.exit(f"tsession: busd didn't start; see {d}/busd.log")
 
 def as_owner(cmd, **kw):
     if os.getuid() == 0 and OWNER.pw_uid != 0:
-        cmd = ["sudo", "-u", OWNER.pw_name, "--preserve-env=WAYLAND_DISPLAY,TABULA_SOCKET,XDG_RUNTIME_DIR,XDG_CONFIG_HOME,RUST_LOG,TABULA_THEME,TABULA_DATA,TABULA_SESSION,TABULA_SESSION_PID,HOME,PATH,PULSE_SERVER,TABULA_PAM_CONFDIR,TABULA_PAM_SERVICE,TABULA_PASSWORDS_KEYFILE,TABULA_WLPROXY_DEBUG,TABULA_UDISKS_BUS"] + cmd
+        cmd = ["sudo", "-u", OWNER.pw_name, "--preserve-env=WAYLAND_DISPLAY,TABULA_SOCKET,XDG_RUNTIME_DIR,XDG_CONFIG_HOME,RUST_LOG,TABULA_THEME,TABULA_DATA,TABULA_SESSION,TABULA_SESSION_PID,HOME,PATH,PULSE_SERVER,TABULA_PAM_CONFDIR,TABULA_PAM_SERVICE,TABULA_PASSWORDS_KEYFILE,TABULA_WLPROXY_DEBUG,TABULA_UDISKS_BUS,DBUS_SESSION_BUS_ADDRESS"] + cmd
     return cmd
 
 def sdir(name):
@@ -103,6 +125,7 @@ def start(name, args):
     # Passwords keeps its vault key in the session, never in the real
     # login keyring (which the session bus would reach).
     env["TABULA_PASSWORDS_KEYFILE"] = os.path.join(d, "passwords.key")
+    env["DBUS_SESSION_BUS_ADDRESS"] = private_bus(d)
     env.pop("WAYLAND_DISPLAY", None)
     env.pop("TABULA_SOCKET", None)
     log = open(os.path.join(d, "app_server.log"), "w")
@@ -135,7 +158,7 @@ def start(name, args):
             ready = True
         if m and i and ready:
             e = {"WAYLAND_DISPLAY": m.group(1), "TABULA_SOCKET": i.group(1), "XDG_RUNTIME_DIR": RUNTIME,
-                 "XDG_CONFIG_HOME": os.path.join(d, "config"), "pid": p.pid}
+                 "XDG_CONFIG_HOME": os.path.join(d, "config"), "DBUS_SESSION_BUS_ADDRESS": env["DBUS_SESSION_BUS_ADDRESS"], "pid": p.pid}
             if home:
                 e["HOME"] = os.path.abspath(home)
             if session:

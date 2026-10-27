@@ -70,6 +70,7 @@ like pixel alignment is.
 | `crates/xdg` | `tabula-xdg`: freedesktop plumbing shared by app_server and the kit (re-exported there): data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; Tabula's apps first, except that links and web pages go to the browser chosen in mimeapps.list, else `tabula-chrome`), `find_program`, `spawn_detached`. No egui. |
 | `crates/system` | `tabula-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `crates/pool` | `tabula-token-pool`: token pooling for Claude Code and Codex (see "Token Pool"): the accounts, their sealed store, the drain order and the loopback gateway. |
+| `crates/ai` | `tabula-ai`: how AI features reach their models (see "AI features"): `ask(&settings.ai, &feature, &Ask)` → the answer's JSON. Blocking; call off the UI thread. |
 | `crates/preview` | `tabula-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Used by Tracker's Quick Look (`Preview::new`, images capped at 3200 px) and the Viewer (`Preview::new_zoomable`: full resolution up to the GPU texture limit, zoom and pan, `zoom` / `set_image_scale`). Images carry halved copies (`load::halvings`) because egui-wgpu makes no mipmaps. Video (`video.rs`, H.264 in mp4 or Matroska and AV1 in Matroska/WebM, with `media.playable` set): a worker demuxes and decodes (OpenH264, or rav1d through `tabula_images::av1::Decoder`) up to six frames ahead, giving each picture the earliest outstanding presentation time (OpenH264 returns display order; it must be made with `Flush::NoFlush`, as the crate's default flush after every packet breaks B-frame reordering and every B-frame then fails), mp4 times shifted by the track's edit list; `Video::tick` shows frames against a clock that follows the sound's reported position when an `audio::Player` is playing it and runs alone otherwise (no sound server in tests, silent files). Seeks go to the key frame before the target (Matroska: scans back for one, further each time) and drop pictures before it; a paused seek still shows its frame. `TABULA_SAMPLES=dir cargo test --release -p tabula-preview video -- --ignored` checks seeking on test.mp4/mkv (one key frame) and gop.mp4/mkv (one a second), made with ffmpeg's testsrc2, plus av1.webm (svt-av1, Opus sound) and bframes.mp4 (any x264-made H.264 High clip with B-frames; `b_frames` checks every picture comes out, in order); `keeps_up` needs av1-1080.mkv (1080p AV1) to decode at well over 30 frames a second (72 on the M2 Max; the YUV to RGB fast path is fixed-point with tables, checked against the float path by `yuv_fast_path`). Audio decodes with symphonia plus `opus.rs` (opus-decoder, OpusHead parsing and pre-skip trim) for Ogg Opus. Picture editing (`edit.rs`): an `Editor` keeps a list of `Op`s (rotate, flip, crop, resize) with undo/redo and a saved mark, and a worker that loads the full picture once, applies new steps to its last result, sends `EditEvent::Shown` (downscaled for the screen, with halvings) for `Preview::show_edited`, and writes PNG, JPEG (quality 92), WebP, BMP, TIFF or GIF atomically (`write`, through a hidden `.name.saving` file); `edit::editable` says which files it can write back. `CropTool` is the crop overlay (drag a frame, move it or its edges; `Preview::image_rect` gives where the picture is drawn, `set_still` stops pan and zoom while it is up). The Viewer's Image menu and File ▸ Save / Save As / Revert use it; Quick Look's footer has Rotate Left / Right (⌘L / ⌘R), which save at once. |
 | `apps/<name>` | One crate per application, binary named `tabula-<name>`. Picked up by the workspace glob. |
 | `vendor/` | Patched copies of dependencies (`[patch.crates-io]`), each explained in `vendor/README.md`; drop them when upstream has the fix. |
@@ -670,6 +671,15 @@ $T theme mine dark
 $T stop mine
 ```
 
+Every session gets its own D-Bus session bus (busd, at
+`/tmp/tabula-dev/NAME/bus`, in `DBUS_SESSION_BUS_ADDRESS` for `run`): the
+runtime directory is the real one, so without it programs fall back to
+`$XDG_RUNTIME_DIR/bus`, the user's real session bus, and a test's
+notifications pop up on their screen. tsession won't start without busd
+(`TSESSION_BUSD`, or the build under `~/.cache/tabula-dev`). To see a
+test's notifications, run its own centre:
+`$T run NAME tabula-notifications --bus unix:path=/tmp/tabula-dev/NAME/bus`.
+
 sudo resets HOME, so without `--home` a session and its apps use the real
 home folder: pass `--home` whenever a test saves files (Screenshot,
 Tracker, StyledEdit…). Sessions are always silent (`PULSE_SERVER` points at
@@ -909,6 +919,60 @@ and part (`Placed`, in `AnvilState::arranged`); Undo Window Arrangement
 (`undo_arrangement`, ⌃⌘Z) puts them back and remembers what it replaced,
 so undoing again redoes. Agents run both with
 `{"type":"run_shortcut","id":"fan-out"}` / `"undo-arrangement"`.
+
+Other programs arrange windows through two requests: `Arrangement`
+answers the active display's connector, its tiling area (global logical
+pixels) and its windows on this workspace, front first, with frames;
+`Arrange { windows: [Placement { id, x, y, w, h }] }` puts the listed
+ones in those fractions of the area (`arrange`), as Tile All does its
+cells: undoable, and tiled as `Tile::Cell` so their edges move together.
+Smart Tiling (see "AI features") is the first user.
+
+## AI features (crates/ai, apps/smart-tile, Preferences ▸ AI)
+
+Preferences ▸ AI (`tabula-preferences ai`) holds `Settings::ai`
+(`AiSettings`): `use_pool` (on by default) sends every AI feature
+through the Token Pool's gateway (`http://127.0.0.1:{TABULA_POOL_PORT
+or 17891}/claude`, or `/codex` for OpenAI's), off sends Claude calls
+straight to Anthropic with the key saved from that panel
+(`tabula_ai::key_path()`, `$XDG_CONFIG_HOME/tabula/anthropic-key`, mode
+0600; or `ANTHROPIC_API_KEY`). Each feature is an `AiFeature { enabled,
+model, effort }`, the model one of `AI_MODELS` and the effort one of
+`AI_EFFORTS`; the panel's `feature()` draws its switch and choosers, so
+the next feature is a struct field and a BBox.
+
+`tabula_ai::ask` sends one question and returns the answer's JSON. For
+Claude it is the Messages API (`anthropic-version: 2026-10-21`): the
+system prompt, one user turn of content blocks (`png_block`,
+`text_block`), `output_config: {effort, format: {type: "json_schema",
+schema}}` (structured output), thinking left to the model (adaptive;
+Opus 5.5 can't turn it off), and `fallbacks: "default"` with the
+`server-side-fallback-2026-07-01` beta on every model but Haiku, so a
+declined request is retried on another. `stop_reason` "refusal" and
+"max_tokens" are errors. OpenAI's (`gpt-*`, Astra 6) go only through
+the pool's Codex accounts, to the Responses API as Codex sends it
+(`instructions`, `input_text`/`input_image`, `reasoning.effort` with max
+as xhigh, `text.format` json_schema strict, streamed, not stored);
+`openai_answer` reads the stream's text deltas or the completed
+response. `TABULA_AI_BASE_URL` sends every call to a fake server instead:
+**tests never call a real model**.
+
+Smart Tiling (`tabula-smart-tile`, Smart Tile ⌃⇧⌘↩, default Claude
+Opus 5.5 at medium) is a process app_server starts, so nothing waits on
+the model. It asks for the `Arrangement`, takes a PNG of that display
+(before its notification is in it; at most 1568 px on the long side),
+gathers what each kit app's windows show from their widget trees
+(`commands::tree`, one thread per app, cut to 60 lines), and asks for a
+rectangle per window in percent of the tiling area plus a one-sentence
+summary. A progress notification ticks the seconds and has Cancel; the
+answer is checked (known ids, once each, positive sizes; `arrange`
+clamps to the area) and applied with `Arrange`; the last note says what
+it did and offers Undo for a minute. One window just fills the area;
+with the feature off it says so and offers Preferences. Test it with a
+fake model:
+`$T run NAME TABULA_AI_BASE_URL=http://127.0.0.1:PORT tabula-smart-tile`
+(the fake answers `POST /v1/messages` with `{"stop_reason": "end_turn",
+"content": [{"type": "text", "text": "{\"windows\": […], \"summary\": …}"}]}`).
 
 ## Power (crates/app_server/src/power.rs)
 
@@ -1374,7 +1438,9 @@ for a job's bar: transient and silent), `close(id)`. Kinds are
 on the notifier's own thread; what the user does comes back to
 `App::message` as `NoteEvent::Action { id, key, token }` (bring a window
 forward with `cx.activate_with(win, token)`) or `NoteEvent::Closed`.
-Tracker's "Finished copying…" (jobs
+A program without windows (a helper app_server starts) uses
+`Notifier::with_events(app, entry, |e: NoteEvent| …)` instead; the
+callback runs on the notifier's thread. Tracker's "Finished copying…" (jobs
 of 10 s or more; `TABULA_TRACKER_NOTIFY_AFTER_MS` in debug builds) uses it.
 
 `tabula-notifications` serves `org.freedesktop.Notifications` (spec 1.2)

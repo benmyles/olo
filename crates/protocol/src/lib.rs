@@ -109,6 +109,13 @@ pub enum Request {
     /// Tile the resizable windows of app `app_id` on this workspace in a
     /// grid on the active display, in front of the rest.
     TileApp { app_id: String },
+    /// The active display's tiling area and the windows on it (front
+    /// first, with frames), for an arranger such as Smart Tiling.
+    Arrangement,
+    /// Put windows of the active display in parts of its tiling area,
+    /// tiled there (dragging an edge resizes the neighbours) and undoable
+    /// with Undo Window Arrangement. Windows not listed stay as they are.
+    Arrange { windows: Vec<Placement> },
     /// Inject input as if from a device (for automated UI tests).
     Synthetic { events: Vec<SyntheticEvent> },
     Quit,
@@ -144,6 +151,10 @@ pub enum Reply {
     Workspaces { current: u32, count: u32 },
     Outputs { outputs: Vec<OutputInfo> },
     Settings { settings: Settings },
+    /// [`Request::Arrangement`]'s answer: the display's connector, the
+    /// area tiling uses (global logical pixels: the display less Deskbar
+    /// and the margins), and its windows on this workspace, front first.
+    Arrangement { output: String, area: Frame, windows: Vec<WindowInfo> },
     Power { status: PowerStatus },
     Event { event: Event },
 }
@@ -227,6 +238,17 @@ pub struct Frame {
     pub y: i32,
     pub width: i32,
     pub height: i32,
+}
+
+/// Where [`Request::Arrange`] puts a window: fractions (0–1) of the
+/// tiling area, from its top left.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct Placement {
+    pub id: WindowId,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
 }
 
 /// How [`Request::Screenshot`] writes its picture.
@@ -355,7 +377,55 @@ pub struct Settings {
     pub tiling: TilingSettings,
     pub tracker: TrackerSettings,
     pub security: SecuritySettings,
+    pub ai: AiSettings,
 }
+
+/// Preferences ▸ AI: how Tabula reaches models, and its AI features.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct AiSettings {
+    /// Through the Token Pool (its accounts, spent in its order); off:
+    /// straight to Anthropic with the API key saved in Preferences ▸ AI.
+    pub use_pool: bool,
+    /// Smart Tiling: the model arranges the windows on the screen.
+    pub smart_tiling: AiFeature,
+}
+
+impl Default for AiSettings {
+    fn default() -> Self {
+        AiSettings { use_pool: true, smart_tiling: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "medium".into() } }
+    }
+}
+
+/// One AI feature: whether it is on, and the model and effort it uses.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct AiFeature {
+    pub enabled: bool,
+    /// A model id ([`AI_MODELS`]).
+    pub model: String,
+    /// How hard it thinks ([`AI_EFFORTS`]).
+    pub effort: String,
+}
+
+impl Default for AiFeature {
+    fn default() -> Self {
+        AiSettings::default().smart_tiling
+    }
+}
+
+/// The models AI features can use: id, name.
+pub const AI_MODELS: &[(&str, &str)] = &[
+    ("claude-opus-5-5", "Claude Opus 5.5"),
+    ("claude-sonnet-5-5", "Claude Sonnet 5.5"),
+    ("claude-haiku-5-5", "Claude Haiku 5.5"),
+    ("claude-fable-5-1", "Claude Fable 5.1"),
+    // OpenAI's, through the Token Pool's Codex accounts only.
+    ("gpt-6-astra", "Astra 6"),
+];
+
+/// Effort levels, least first: id, name.
+pub const AI_EFFORTS: &[(&str, &str)] = &[("low", "Low"), ("medium", "Medium"), ("high", "High"), ("xhigh", "Extra High"), ("max", "Max")];
 
 /// Preferences ▸ Security.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -717,6 +787,7 @@ impl Default for Settings {
             tiling: TilingSettings::default(),
             tracker: TrackerSettings::default(),
             security: SecuritySettings::default(),
+            ai: AiSettings::default(),
         }
     }
 }

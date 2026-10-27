@@ -217,6 +217,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
             }
             S::TileAll => self.tile_all(),
+            // Slow (a model looks at the screen): its own process, which
+            // shows progress and sends Arrange when it has an answer.
+            S::SmartTile => self.spawn_program("tabula-smart-tile", &[]),
             S::CascadeAll => self.cascade_all(),
             S::FanOut => self.fan_out(),
             S::UndoArrangement => self.undo_arrangement(),

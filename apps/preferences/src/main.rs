@@ -9,6 +9,7 @@
 //! newest first, so dragging a slider never blocks the UI.
 
 mod about;
+mod ai;
 mod appearance;
 mod backup;
 mod bluetooth;

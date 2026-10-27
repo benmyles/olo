@@ -31,6 +31,7 @@ pub fn app_id_of(bin: &str) -> Option<String> {
 /// The panels `tabula-preferences <arg>` opens: argument, name, icon.
 /// Deskbar's Preferences menu lists exactly these.
 pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
+    ("ai", "AI", "ai"),
     ("appearance", "Appearance", "appearance"),
     ("backgrounds", "Backgrounds", "backgrounds"),
     ("backup", "Backup", "backup"),

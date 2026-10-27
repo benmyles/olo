@@ -255,6 +255,19 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 None => not_found(),
             },
+            Request::Arrangement => match self.arrangement() {
+                Some((output, area, windows)) => {
+                    let infos = self.window_infos_with_frames();
+                    let windows = windows.iter().filter_map(|w| infos.iter().find(|i| i.id == w.meta().id).cloned()).collect();
+                    let area = tabula_protocol::Frame { x: area.loc.x, y: area.loc.y, width: area.size.w, height: area.size.h };
+                    Reply::Arrangement { output: output.name(), area, windows }
+                }
+                None => Reply::Error { message: "no display to arrange".into() },
+            },
+            Request::Arrange { windows } => match self.arrange(&windows) {
+                0 => Reply::Error { message: "none of those windows are on the active display".into() },
+                _ => Reply::Ok,
+            },
             Request::TileApp { app_id } => {
                 if self.tile_app(&app_id) {
                     Reply::Ok

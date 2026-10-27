@@ -13,6 +13,7 @@ tabula-kit.workspace = true
 tabula-protocol.workspace = true
 tabula-screensavers.workspace = true
 tabula-system.workspace = true
+tabula-ai.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
