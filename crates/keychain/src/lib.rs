@@ -361,6 +361,25 @@ pub fn matches(website: &str, page: &str) -> bool {
     !(website_https && page_url.scheme() == "http" && !local)
 }
 
+/// How near a login saved for `website` is to the page at `page`, to list
+/// the nearest first: 0 for the page's own host, then its parent domains
+/// from the nearest (the number of labels dropped), then the site's other
+/// hosts (more labels in common first). None if it doesn't belong there.
+pub fn closeness(website: &str, page: &str) -> Option<u32> {
+    if !matches(website, page) {
+        return None;
+    }
+    let (site, here) = (host(website)?, host(page)?);
+    if site == here {
+        return Some(0);
+    }
+    if here.ends_with(&format!(".{site}")) {
+        return Some((here.split('.').count() - site.split('.').count()) as u32);
+    }
+    let shared = site.rsplit('.').zip(here.rsplit('.')).take_while(|(a, b)| a == b).count();
+    Some(100u32.saturating_sub(shared as u32))
+}
+
 /// Whether a page at `url` may use passkeys for `rp_id`, short of the
 /// public-suffix check (the browser makes that one): a secure page whose
 /// host is `rp_id` or under it.
@@ -380,6 +399,24 @@ pub fn rp_id_fits(rp_id: &str, url: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nearest_logins_first() {
+        let page = "https://accounts.google.com/signin";
+        fn order<'a>(sites: &[&'a str], page: &str) -> Vec<&'a str> {
+            let mut v = sites.to_vec();
+            v.sort_by_key(|s| closeness(s, page));
+            v
+        }
+        assert_eq!(
+            order(&["https://mail.google.com", "https://google.com", "https://accounts.google.com", "https://www.google.com/x"], page),
+            ["https://accounts.google.com", "https://google.com", "https://www.google.com/x", "https://mail.google.com"]
+        );
+        assert_eq!(closeness("https://login.accounts.google.com", page), Some(97));
+        assert_eq!(closeness("https://example.com", page), None);
+        // Two levels up comes after one.
+        assert!(closeness("https://b.c.example.com", "https://a.b.c.example.com") < closeness("https://example.com", "https://a.b.c.example.com"));
+    }
 
     #[test]
     fn matching() {

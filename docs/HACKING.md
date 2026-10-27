@@ -1532,7 +1532,9 @@ crate's public suffix list, so mail.google.com's login fills
 accounts.google.com but alice.github.io's never fills bob.github.io), the
 same host where there's none (localhost, addresses), and never an https
 login into a plain-http page (localhost aside). Every login that fits is
-listed; an item that can't be read is logged, not hidden silently.
+listed, nearest first (`tabula_keychain::closeness`: the page's own host,
+then its parent domains from the nearest, then the site's other hosts),
+then by title; an item that can't be read is logged, not hidden silently.
 
 NetPositive (`apps/browser/src/logins.rs`): the toolbar's key button asks
 for the page's logins (starting Passwords if needed, then waiting for the

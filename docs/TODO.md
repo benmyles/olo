@@ -98,7 +98,8 @@ as they land (with the commit), add new ones as they come up.
   menu and the context menu in the Trash) that puts the selected files
   back where each came from (the trash's `.trashinfo` original path),
   recreating missing folders and asking on a name clash.
-- **NetPositive: logins for parent domains too** (Ben): on
+- ~~**NetPositive: logins for parent domains too**~~ (done: the whole site
+  matched already; now nearest first, `tabula_keychain::closeness`) (Ben): on
   accounts.google.com, offer logins saved for any parent domain
   (*.google.com, google.com) as well as the exact host, sorted most
   specific first.

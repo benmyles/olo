@@ -451,7 +451,7 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
                 Err(e) => error(&e),
             }
         }
-        Request::Logins { .. } => {
+        Request::Logins { url } => {
             let mut logins: Vec<tabula_keychain::Login> = candidates
                 .iter()
                 .filter_map(|(vault, id)| {
@@ -464,7 +464,17 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
                     title: item.title.clone(),
                 })
                 .collect();
-            logins.sort_by_key(|l| (l.title.to_lowercase(), l.username.to_lowercase()));
+            // Nearest first (this host, then its parent domains, then the
+            // site's other hosts), then by title.
+            let near: std::collections::HashMap<String, u32> = candidates
+                .iter()
+                .filter_map(|(vault, id)| c.get(vault, id).ok())
+                .map(|item| {
+                    let best = item.websites.iter().filter(|w| fits(w, url)).filter_map(|w| tabula_keychain::closeness(&w.url, url)).min();
+                    (item.id.clone(), best.unwrap_or(u32::MAX))
+                })
+                .collect();
+            logins.sort_by_cached_key(|l| (near.get(&l.id).copied().unwrap_or(u32::MAX), l.title.to_lowercase(), l.username.to_lowercase()));
             Response::Logins { logins }
         }
         Request::Passkeys { url, rp_id, allow } => {
@@ -585,5 +595,37 @@ pub fn fits(w: &Website, url: &str) -> bool {
             tabula_keychain::matches(&w.url, url) && parts(&w.url).is_some() && parts(&w.url) == parts(url)
         }
         _ => tabula_keychain::matches(&w.url, url),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use onepassword::{AutofillBehavior, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, Website};
+    use tabula_keychain::{Request, Response};
+
+    use crate::vault::Vault;
+
+    /// A page's logins come nearest first: its own host, its parent
+    /// domains, then the site's other hosts.
+    #[test]
+    fn logins_nearest_first() {
+        let dir = std::env::temp_dir().join(format!("tabula-store-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut v = Vault::open_at(dir.join("passwords.vault"), Some(&dir.join("key"))).unwrap();
+        let vault = v.data.vaults[0].id.clone();
+        let mut ids = Vec::new();
+        for (title, site) in [("A mail", "https://mail.google.com"), ("B root", "https://google.com"), ("C accounts", "https://accounts.google.com")] {
+            let mut p = ItemCreateParams::new(ItemCategory::Login, vault.clone(), title);
+            p.fields = vec![ItemField::new("username", "username", ItemFieldType::Text, "me")];
+            p.websites = vec![Website { url: site.into(), label: "website".into(), autofill_behavior: AutofillBehavior::AnywhereOnWebsite }];
+            ids.push((vault.clone(), v.create(&p).unwrap().id));
+        }
+        let request = Request::Logins { url: "https://accounts.google.com/signin".into() };
+        let response = super::keychain(&mut v, &request, &ids, &vault, &|_| {});
+        let Response::Logins { logins } = &response else { panic!("not logins") };
+        let titles: Vec<&str> = logins.iter().map(|l| l.title.as_str()).collect();
+        assert_eq!(titles, ["C accounts", "B root", "A mail"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

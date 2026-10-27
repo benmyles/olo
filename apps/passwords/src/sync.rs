@@ -546,7 +546,7 @@ mod tests {
 
     #[test]
     fn an_unreachable_1password_changes_nothing() {
-        let mut w = world("down");
+        let w = world("down");
         let snap = w.vault.snapshot(ACCOUNT);
         assert!(super::plan(&snap, "tabula-passwords-sync-nobody-here").is_err());
         assert!(w.vault.data.entries.is_empty());
