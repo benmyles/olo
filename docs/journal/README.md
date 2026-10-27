@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Notifications: Open and Dismiss
+
+*13:09* — A selected notification's default action now always reads Open (apps often call it Activate), and Dismiss sits beside it: on a conversation it dismisses every notification in it, on a single one just that one. Its buttons no longer overlap.
+
+![Notifications: Open and Dismiss](2026-10-27/130921-notifications-open-and-dismiss.png)
+
 ### Terminal knows its coding agents
 
 *13:03* — Claude Code or Codex in a tab is recognized natively: the tab wears its state (a turning arc while it works, an orange ! when it asks, a green dot when its turn is done) and, when you're looking elsewhere, a notification says it needs you; Show brings that tab forward.

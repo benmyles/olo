@@ -471,11 +471,11 @@ fn group(ui: &mut egui::Ui, p: &tabula_kit::theme::Palette, w: f32, app: &str, c
     let mut did = None;
     if resp.hovered() || ui.rect_contains_pointer(r) {
         let font = style::small_font();
-        let g = ui.painter().layout_no_wrap("Clear".into(), font.clone(), dim);
+        let g = ui.painter().layout_no_wrap("Dismiss".into(), font.clone(), dim);
         let cr = Rect::from_min_max(pos2(r.right() - 8.0 - g.size().x - 6.0, r.top() + 3.0), pos2(r.right() - 4.0, r.bottom() - 4.0));
         let clear = ui.interact(cr, ui.make_persistent_id(("clear-group", app)), Sense::click());
-        clear.widget_info(|| WidgetInfo::labeled(egui::Role::Button, true, format!("Clear {name}")));
-        style::label(ui.painter(), cr.right() - 4.0, r.center().y, Align::Max, "Clear", font, if clear.hovered() { text } else { dim });
+        clear.widget_info(|| WidgetInfo::labeled(egui::Role::Button, true, format!("Dismiss {name}")));
+        style::label(ui.painter(), cr.right() - 4.0, r.center().y, Align::Max, "Dismiss", font, if clear.hovered() { text } else { dim });
         if clear.clicked() {
             did = Some(Did::Forget(members.iter().copied().filter(|&i| !entries[i].shown).collect()));
         }
@@ -534,7 +534,8 @@ fn note_row(ui: &mut egui::Ui, p: &tabula_kit::theme::Palette, w: f32, a: &RowAr
     let actions: Vec<(String, String)> = if !a.selected {
         Vec::new()
     } else if e.live {
-        e.actions.iter().map(|(k, l)| (k.clone(), if k == "default" && l.trim().is_empty() { "Open".to_owned() } else { l.clone() })).collect()
+        // The default action is Open, whatever the app called it ("Activate").
+        e.actions.iter().map(|(k, l)| (k.clone(), if k == "default" { "Open".to_owned() } else { l.clone() })).collect()
     } else {
         vec![("default".into(), format!("Show {}", app_name(e)))]
     };
@@ -543,7 +544,7 @@ fn note_row(ui: &mut egui::Ui, p: &tabula_kit::theme::Palette, w: f32, a: &RowAr
     if !older.is_empty() {
         h += m::TIGHT + older.len() as f32 * older_h;
     }
-    if !actions.is_empty() {
+    if a.selected {
         h += m::TIGHT + m::CONTROL_HEIGHT + 2.0;
     }
     let h = (h + ROW_PAD).max(ROW_PAD * 2.0 + SMALL_ICON + 4.0).ceil();
@@ -610,17 +611,20 @@ fn note_row(ui: &mut egui::Ui, p: &tabula_kit::theme::Palette, w: f32, a: &RowAr
             y += older_h;
         }
     }
-    if !actions.is_empty() {
+    if a.selected {
         y += m::TIGHT;
         let mut bx = x;
-        for (key, label) in &actions {
+        // Dismiss last: the notification, or the whole conversation it
+        // gathers.
+        let dismiss = (String::new(), "Dismiss".to_owned());
+        for (key, label) in actions.iter().chain([&dismiss]) {
             let bw = (painter.layout_no_wrap(label.clone(), style::plain_font(), dim).size().x + 2.0 * m::CONTROL_PAD).max(m::BUTTON_MIN_WIDTH * 0.75).ceil();
             if bx + bw > r.right() - 4.0 && bx > x {
                 break;
             }
             let br = Rect::from_min_size(pos2(bx, y), vec2(bw, m::CONTROL_HEIGHT));
-            if ui.put(br, Button::new(label)).clicked() {
-                *did = Some(Did::Action(a.i, key.clone()));
+            if ui.put(br, Button::new(label).min_width(bw)).clicked() {
+                *did = Some(if key.is_empty() { Did::Forget(std::iter::once(a.i).chain(a.older.iter().copied()).collect()) } else { Did::Action(a.i, key.clone()) });
             }
             bx += bw + m::TIGHT;
         }

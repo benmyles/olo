@@ -1370,13 +1370,14 @@ notifications.
 - history.rs: the History window (`--history`, or Deskbar's bell), newest
   first in one of four views (View menu, ⌘1–⌘4, `view` in
   `notifications.json`): *List* under day headings, *By App* under
-  folding app headings (with Clear per app), *Cards* in a grid whose
+  folding app headings (with Dismiss per app), *Cards* in a grid whose
   rows are as tall as their tallest card, *Conversations* with the same
   app and title stacked into one with a count. A row is two lines: a
   16 px icon, the title in bold with the app and time on its line, one
   line of body; a click selects (the row opens to its whole body, the
-  rest of its conversation and its actions as buttons, or Show APP once
-  it closed), a double click or Return runs the default action while
+  rest of its conversation and its actions as buttons, the default one
+  always Open, or Show APP once it closed, then Dismiss, which forgets it
+  and the rest of its conversation), a double click or Return runs the default action while
   the note is open, else brings the app forward. × or Delete forgets
   one; Clear All forgets all but those on screen. Opening the window
   marks all read, but what was unread keeps a blue dot until the window

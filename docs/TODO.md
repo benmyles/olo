@@ -472,10 +472,10 @@ as they land (with the commit), add new ones as they come up.
   The default banner style becomes as wide as the Deskbar and sits in
   line with it (that column is usually free space, so banners don't
   cover anything else), and banners get more compact and better looking.
-- **Notifications: Dismiss, and Activate becomes Open** (Ben): the
-  Notifications app gets a "Dismiss" button. With a group selected it
-  dismisses every notification in that group; with one notification
-  selected, just that one. The "Activate" button is renamed "Open".
+- ~~**Notifications: Dismiss, and Activate becomes Open**~~ (Ben; done:
+  a selected note has Dismiss, which takes the whole conversation when
+  it gathers several; the default action always reads Open; By App's
+  per-app Clear became Dismiss too; HACKING, history.rs).
 - **New Window from a running app's context menu** (Ben): right-clicking
   a Tabula app that is running, where Tracker shows it (its icon in the
   Applications folder, on the desktop, …), offers "New Window", which asks

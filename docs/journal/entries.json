@@ -1108,5 +1108,11 @@
   "title": "Terminal knows its coding agents",
   "caption": "Claude Code or Codex in a tab is recognized natively: the tab wears its state (a turning arc while it works, an orange ! when it asks, a green dot when its turn is done) and, when you're looking elsewhere, a notification says it needs you; Show brings that tab forward.",
   "image": "2026-10-27/130347-terminal-knows-its-coding-agents.png"
+ },
+ {
+  "time": "2026-10-27T13:09:21",
+  "title": "Notifications: Open and Dismiss",
+  "caption": "A selected notification's default action now always reads Open (apps often call it Activate), and Dismiss sits beside it: on a conversation it dismisses every notification in it, on a single one just that one. Its buttons no longer overlap.",
+  "image": "2026-10-27/130921-notifications-open-and-dismiss.png"
  }
 ]
