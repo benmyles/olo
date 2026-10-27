@@ -51,6 +51,10 @@ impl Drag {
     /// the drop should ask.
     pub fn data(&self, ctx: &egui::Context) -> dnd::DragData {
         use std::os::unix::fs::MetadataExt;
+        // Which folder it comes from, so dropping back there is refused
+        // but other folders in the same window (columns) take it.
+        let from = self.paths.first().and_then(|p| p.parent()).map(Path::to_path_buf);
+        ctx.data_mut(|d| d.insert_temp(drag_from_id(), from));
         let mut data = dnd::DragData::files(&self.paths, dnd::Actions::ALL);
         if let Some(dev) = self.paths.first().and_then(|p| std::fs::symlink_metadata(p).ok()).map(|m| m.dev()) {
             data = data.with(&device_type(dev), Vec::new());
@@ -156,6 +160,10 @@ fn drop_folder(e: &Entry, dragged: bool) -> Option<&Path> {
 
 /// Over an item view: the item it would be dropped on (highlighted as
 /// selected), or None for the folder itself; false if it wouldn't take it.
+fn drag_from_id() -> egui::Id {
+    egui::Id::unique("tracker-drag-from")
+}
+
 pub fn item_drop(ctx: &egui::Context, h: &Hover, over: Option<(usize, &Entry, bool)>, here: Option<&Path>) -> (bool, Option<usize>) {
     if let Some((i, e, selected)) = over
         && let Some(dir) = drop_folder(e, h.from_here && selected)
@@ -163,8 +171,11 @@ pub fn item_drop(ctx: &egui::Context, h: &Hover, over: Option<(usize, &Entry, bo
         return (take_drop(ctx, h, dir), Some(i));
     }
     match here {
-        // Dropping in the window it came from would do nothing.
-        Some(dir) if !h.from_here => (take_drop(ctx, h, dir), None),
+        // Dropping in the folder it came from would do nothing (another
+        // column of the same window is another folder).
+        Some(dir) if !(h.from_here && ctx.data(|d| d.get_temp::<Option<PathBuf>>(drag_from_id())).flatten().as_deref() == Some(dir)) => {
+            (take_drop(ctx, h, dir), None)
+        }
         _ => (false, None),
     }
 }
