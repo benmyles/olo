@@ -72,9 +72,10 @@ as they land (with the commit), add new ones as they come up.
   opens the same menu as the right click (each window, Show All).
 - ~~**Find: Space shows the selected result in Quick Look**~~ (Ben), as in
   a Tracker window; the arrow keys step through the results.
-- **Tracker: File ▸ Open in Terminal** (Ben; later): opens the current
-  folder in Terminal, in a new tab once Terminal has tabs (a new window
-  until then); also in the context menu.
+- ~~**Tracker: File ▸ Open in Terminal**~~ (Ben): the folder shown (the
+  active column's), or a right-clicked folder, in a new Terminal window;
+  also in the window's and the desktop's context menus. When Terminal
+  gets tabs, open a tab instead.
 - **Terminal tabs, tab groups and coding agents** (Ben; after everything
   else is done): tabs, tab groups that can be saved and reopened, and
   native recognition of coding agents (Claude Code, Codex) running in a

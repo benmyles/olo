@@ -206,7 +206,12 @@ pub fn item_menu(f: &FolderWin) -> Menu {
         .item("Edit Name", "rename", Some(Key::E))
         .enabled(one)
         .item("Duplicate", "duplicate", Some(Key::D))
-        .item("Create Link", "link", None)
+        .item("Create Link", "link", None);
+    // A folder opens in Terminal itself.
+    if f.selected_entries().iter().all(|e| e.is_dir) {
+        menu = menu.item("Open in Terminal", "terminal-selected", None);
+    }
+    menu = menu
         .separator()
         .item("Cut", "cut", Some(Key::X))
         .item("Copy", "copy", Some(Key::C))
@@ -235,6 +240,7 @@ pub fn background_menu(f: &FolderWin, can_paste: bool) -> Menu {
         .checked(f.view == ViewMode::Columns)
         .separator()
         .item("Get Info", "info", Some(Key::I))
+        .item("Open in Terminal", "terminal", None)
         .item("Open Parent", "parent", Some(Key::ArrowUp))
         .enabled(f.path.parent().is_some())
 }

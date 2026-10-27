@@ -270,6 +270,7 @@ impl Desktop {
                     .enabled(!self.movable().is_empty()),
                 None => Menu::new("")
                     .item("New Folder", "new-folder", None)
+                    .item("Open in Terminal", "terminal", None)
                     .separator()
                     .item("Change Background…", "backgrounds", None),
             };

@@ -722,6 +722,12 @@ impl Tracker {
                 }
                 Err(e) => self.error(cx, format!("Couldn't create a folder: {e}")),
             },
+            "terminal" => fs::open_in_terminal(&dir),
+            "terminal-selected" => {
+                for e in f.selected_entries().iter().filter(|e| e.is_dir) {
+                    fs::open_in_terminal(&e.path);
+                }
+            }
             "info" => {
                 let entries = f.selected_entries();
                 if entries.is_empty()
@@ -837,6 +843,7 @@ impl Tracker {
             .item("Open Parent", "parent", Some(Key::ArrowUp))
             .enabled(f.path.parent().is_some())
             .item("Get Info", "info", Some(Key::I))
+            .item("Open in Terminal", "terminal", None)
             .item("Quick Look", "quick-look", Some(Key::Y))
             .enabled(has_sel)
             .item("Edit Name", "rename", Some(Key::E))
@@ -1281,6 +1288,7 @@ impl App for Tracker {
                                 }
                             }
                             "empty-trash" => self.folder_command_global(cx, "empty-trash"),
+                            "terminal" => fs::open_in_terminal(&fs::home().join("Desktop")),
                             "backgrounds" => {
                                 let _ = tabula_kit::spawn_detached("tabula-preferences backgrounds");
                             }

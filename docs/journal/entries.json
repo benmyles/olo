@@ -808,5 +808,11 @@
   "title": "Find: Space for Quick Look",
   "caption": "In Tracker's Find window, Space shows the selected result in Quick Look and the arrow keys step through the results, as in a folder window. A space typed into the Find field still goes into the query.",
   "image": "2026-10-26/212739-find-space-for-quick-look.png"
+ },
+ {
+  "time": "2026-10-26T21:30:04",
+  "title": "Tracker: Open in Terminal",
+  "caption": "File \u25b8 Open in Terminal, and the context menus, open a new Terminal window in the folder shown, or in the right-clicked folder (here alpha).",
+  "image": "2026-10-26/213004-tracker-open-in-terminal.png"
  }
 ]

@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Tracker: Open in Terminal
+
+*21:30* — File ▸ Open in Terminal, and the context menus, open a new Terminal window in the folder shown, or in the right-clicked folder (here alpha).
+
+![Tracker: Open in Terminal](2026-10-26/213004-tracker-open-in-terminal.png)
+
 ### Find: Space for Quick Look
 
 *21:27* — In Tracker's Find window, Space shows the selected result in Quick Look and the arrow keys step through the results, as in a folder window. A space typed into the Find field still goes into the query.
