@@ -236,7 +236,8 @@ and offers actions; where it is dropped picks the type and the action.
   are in (`Hover::from_folder(dir)`), so Tracker refuses dropping them back
   where they are, from any app. Viewer and Quick Look drag their file out
   from the picture when it fits (`Preview::take_drag_out`: a drag that
-  doesn't pan), Quick Look also from its footer's icon.
+  doesn't pan), Quick Look also from its footer's icon, Get Info from its
+  icon.
   Tracker's folders are spring-loaded: a drag resting on one for
   `view::SPRING` (1 s) opens it (`item_drop` times it; `take_spring`).
   Deskbar takes files dropped on a running application's row and opens

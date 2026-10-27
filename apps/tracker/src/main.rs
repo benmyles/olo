@@ -1004,9 +1004,11 @@ impl Tracker {
         }
     }
 
-    fn info_ui(&mut self, win: WindowId, ui: &mut egui::Ui) {
+    fn info_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
         let Some(Win::Info(info)) = self.windows.get(&win) else { return };
-        view::info_view(ui, &info.entry, info.size);
+        if let Some(d) = view::info_view(ui, &info.entry, info.size) {
+            cx.start_drag(win, d.data(ui.ctx()));
+        }
     }
 
     fn find_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
@@ -1353,7 +1355,7 @@ impl Tracker {
                     }
                 }
             }
-            Some(Win::Info(_)) => self.info_ui(window, ui),
+            Some(Win::Info(_)) => self.info_ui(cx, window, ui),
             Some(Win::Find(_)) => self.find_ui(cx, window, ui),
             Some(Win::Dialog(_)) => self.dialog_ui(cx, window, ui),
             Some(Win::Status) => self.status_ui(cx, window, ui),

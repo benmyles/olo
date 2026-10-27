@@ -120,7 +120,7 @@ as they land (with the commit), add new ones as they come up.
   images out (the file and image/png)~~ (done, with Quick Look's), Passwords fields (a username or
   password onto another app's field), Deskbar (~~drop files on an app to
   open them with it~~ done; drag an app out to make a link), dragging from
-  Tracker's Get Info, ~~spring-loaded folders (hover on a
+  ~~Tracker's Get Info~~ (done), ~~spring-loaded folders (hover on a
   folder while dragging to open it), scrolling a view when a drag nears
   its edge~~ (done).
 - ~~**Tracker: restore from the Trash**~~ (File ▸ Restore and the item

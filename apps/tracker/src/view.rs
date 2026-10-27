@@ -854,7 +854,8 @@ const INFO_ICON: f32 = 64.0;
 /// Width of the right-aligned key column in Get Info.
 const INFO_KEY_WIDTH: f32 = 84.0;
 
-pub fn info_view(ui: &mut Ui, e: &Entry, size: Option<(u64, u64)>) {
+/// Get Info's contents; a drag of the item out by its icon, when one starts.
+pub fn info_view(ui: &mut Ui, e: &Entry, size: Option<(u64, u64)>) -> Option<Drag> {
     let p = style::palette(ui.ctx());
     let size_text = if e.is_dir {
         match size {
@@ -887,6 +888,12 @@ pub fn info_view(ui: &mut Ui, e: &Entry, size: Option<(u64, u64)>) {
     // Header: the icon, with the name and kind centred beside it.
     let icon = Rect::from_min_size(area.min, vec2(INFO_ICON, INFO_ICON));
     icons::paint(painter, icon, icon_of(e));
+    // The icon is the item: it drags out, as from a folder window.
+    let grab = ui.interact(icon, ui.make_persistent_id("info-icon"), Sense::drag());
+    let drag = grab.drag_started().then(|| {
+        let at = ui.input(|i| i.pointer.press_origin()).map_or(vec2(INFO_ICON / 2.0, INFO_ICON / 2.0), |o| o - icon.min);
+        Drag { paths: vec![e.path.clone()], icon: icon_of(e), size: INFO_ICON, hotspot: at, ask: grab.dragged_by(egui::PointerButton::Secondary), name: e.name.clone(), below: true }
+    });
     let tx = icon.right() + m::SPACING;
     let cy = icon.center().y;
     style::label(painter, tx, cy - (m::LABEL_ROW + m::TIGHT) / 2.0, Align::Min, &e.name, style::bold_font(), c(p.panel_text));
@@ -909,4 +916,5 @@ pub fn info_view(ui: &mut Ui, e: &Entry, size: Option<(u64, u64)>) {
         painter.galley(pos, g, c(p.panel_text));
         y += m::LABEL_ROW + m::TIGHT;
     }
+    drag
 }
