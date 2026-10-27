@@ -1,24 +1,29 @@
-//! The 1Password client, on a worker thread: every SDK call blocks (the
-//! app may first ask the person to allow us), so the UI only sends jobs
-//! and gets replies through the kit proxy. A reconnect starts a new
-//! generation; replies from an older one are dropped.
+//! The worker that owns the local store (`vault.rs`): the UI sends jobs
+//! and gets replies through the kit proxy, so opening the store (the
+//! keyring may ask) and saving it never hold up a frame. Syncing with
+//! 1Password runs on a thread of its own (`sync.rs`) from a snapshot,
+//! and its findings come back here to be applied. A reconnect starts a
+//! new generation; replies from an older one are dropped.
 
 use std::{collections::VecDeque, sync::mpsc, thread};
 
-use onepassword::{
-    AutofillBehavior, Client, Error, Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, ItemListFilter,
-    ItemListFilterByState, ItemOverview, VaultOverview, Website,
-};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as B64};
+use chrono::{DateTime, Utc};
+use onepassword::{AutofillBehavior, Error, Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, ItemOverview, VaultOverview, Website};
 use tabula_keychain::{Incoming, Request, Response};
 use tabula_kit::Proxy;
 
-use crate::passkey;
+use crate::{
+    passkey,
+    sync::{self, Report},
+    vault::Vault,
+};
 
 pub enum Job {
-    Connect { account: String },
-    /// Vaults, then each vault's items (active and archived).
-    Refresh,
+    /// Open the store (made the first time) and list it.
+    Open,
+    /// Let go of the store's secrets (locking); after a running sync.
+    Close,
     Get { vault: String, item: String },
     Create(Box<ItemCreateParams>),
     Put(Box<Item>),
@@ -27,6 +32,18 @@ pub enum Job {
     /// Answer another app (NetPositive): `candidates` are the logins
     /// saved for its page; `vault` is where a new one goes.
     Keychain { incoming: Box<Incoming>, candidates: Vec<(String, String)>, vault: String },
+    /// Sync with this 1Password account (unless one is running).
+    Sync { account: String },
+    /// A sync finished (sent by its thread).
+    SyncDone(Result<Report, String>),
+}
+
+/// How syncing with 1Password is going.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SyncState {
+    Running,
+    Done { at: DateTime<Utc>, received: usize, sent: usize, errors: Vec<String>, pending: usize },
+    Failed { message: String, pending: usize },
 }
 
 pub enum Reply {
@@ -41,7 +58,10 @@ pub enum Reply {
     Saved { item: Box<Item>, created: bool },
     Archived { item: String },
     Deleted { item: String },
-    /// An operation failed (the connection is still good).
+    /// An item has a new id (1Password gave it one).
+    Renamed { old: String, new: String },
+    Sync(SyncState),
+    /// An operation failed (the store is still good).
     Error(String),
     /// A fetch failed: the item may be gone.
     Missing { item: String, error: String },
@@ -57,8 +77,8 @@ pub struct Store {
     pub generation: u64,
 }
 
-/// The app's socket, or a stand-in's (`onepassword-fake`) for tests.
-fn socket() -> String {
+/// The 1Password app's socket, or a stand-in's (`onepassword-fake`) for tests.
+pub fn socket() -> String {
     std::env::var("TABULA_1PASSWORD_SOCKET").unwrap_or_else(|_| onepassword::desktop::SOCKET.into())
 }
 
@@ -74,9 +94,10 @@ pub fn describe(e: &Error) -> String {
 impl Store {
     pub fn new(proxy: Proxy) -> Store {
         let (tx, rx) = mpsc::channel::<(u64, Job)>();
+        let back = tx.clone();
         thread::Builder::new()
-            .name("onepassword".into())
-            .spawn(move || worker(rx, proxy))
+            .name("passwords-store".into())
+            .spawn(move || worker(rx, back, proxy))
             .expect("thread");
         Store { tx, generation: 0 }
     }
@@ -85,16 +106,27 @@ impl Store {
         let _ = self.tx.send((self.generation, job));
     }
 
-    /// Drops the client and everything in flight; then connects.
-    pub fn connect(&mut self, account: &str) {
+    /// Drops everything in flight; then opens the store.
+    pub fn connect(&mut self) {
         self.generation += 1;
-        self.send(Job::Connect { account: account.into() });
+        self.send(Job::Open);
     }
 }
 
-fn worker(rx: mpsc::Receiver<(u64, Job)>, proxy: Proxy) {
-    let mut client: Option<Client> = None;
+fn refresh(v: &Vault, reply: &impl Fn(Reply)) {
+    let vaults = v.vaults();
+    reply(Reply::Vaults(vaults.clone()));
+    for vault in vaults {
+        reply(Reply::Items { items: v.items(&vault.id), vault: vault.id });
+    }
+    reply(Reply::Loaded);
+}
+
+fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy: Proxy) {
+    let mut vault: Option<Vault> = None;
     let mut generation = 0;
+    let mut syncing = false;
+    let mut close_after_sync = false;
     let mut queue: VecDeque<(u64, Job)> = VecDeque::new();
     loop {
         if queue.is_empty() {
@@ -105,7 +137,8 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, proxy: Proxy) {
         }
         queue.extend(rx.try_iter());
         let Some((gen_of_job, job)) = queue.pop_front() else { continue };
-        if gen_of_job < generation {
+        // A finished sync always lands: what it sent must be recorded.
+        if gen_of_job < generation && !matches!(job, Job::SyncDone(_)) {
             continue;
         }
         // Only the latest selection's item is worth fetching.
@@ -113,64 +146,109 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, proxy: Proxy) {
             continue;
         }
         let reply = |reply: Reply| proxy.send(FromStore { generation: gen_of_job, reply });
-        if let Job::Connect { account } = job {
-            generation = gen_of_job;
-            client = None;
-            match Client::builder()
-                .desktop_app_integration(&account)
-                .integration_info("Tabula Passwords", env!("CARGO_PKG_VERSION"))
-                .desktop_socket(socket())
-                .build()
-            {
-                Ok(c) => {
-                    client = Some(c);
-                    reply(Reply::Connected);
-                    queue.push_front((generation, Job::Refresh));
-                }
-                Err(e) => reply(Reply::Failed(describe(&e))),
-            }
-            continue;
-        }
-        let Some(c) = &client else { continue };
         match job {
-            Job::Connect { .. } => unreachable!(),
-            Job::Refresh => match c.vaults().list(None) {
-                Ok(vaults) => {
-                    reply(Reply::Vaults(vaults.clone()));
-                    let all = [ItemListFilter::ByState(ItemListFilterByState { active: true, archived: true })];
-                    for vault in vaults {
-                        match c.items().list(&vault.id, &all) {
-                            Ok(items) => reply(Reply::Items { vault: vault.id, items }),
-                            Err(e) => reply(Reply::Error(format!("Couldn’t list {}: {}", vault.title, describe(&e)))),
+            Job::Open => {
+                generation = generation.max(gen_of_job);
+                close_after_sync = false;
+                if vault.is_none() {
+                    match Vault::open() {
+                        Ok(v) => vault = Some(v),
+                        Err(e) => {
+                            reply(Reply::Failed(e.to_string()));
+                            continue;
                         }
                     }
-                    reply(Reply::Loaded);
                 }
-                Err(e @ (Error::DesktopAppUnavailable | Error::ConnectionDropped)) => reply(Reply::Failed(describe(&e))),
-                Err(e) => reply(Reply::Error(describe(&e))),
-            },
-            Job::Get { vault, item } => match c.items().get(&vault, &item) {
+                reply(Reply::Connected);
+                refresh(vault.as_ref().expect("open"), &reply);
+                continue;
+            }
+            Job::Close => {
+                if syncing {
+                    close_after_sync = true;
+                } else {
+                    vault = None;
+                }
+                continue;
+            }
+            Job::SyncDone(result) => {
+                syncing = false;
+                let Some(v) = vault.as_mut() else { continue };
+                match result {
+                    Ok(report) => {
+                        let errors = report.errors;
+                        match v.apply(report.changes) {
+                            Ok(renamed) => {
+                                for (old, new) in renamed {
+                                    reply(Reply::Renamed { old, new });
+                                }
+                                refresh(v, &reply);
+                                reply(Reply::Sync(SyncState::Done {
+                                    at: Utc::now(),
+                                    received: report.received,
+                                    sent: report.sent,
+                                    errors,
+                                    pending: v.pending(),
+                                }));
+                            }
+                            Err(e) => reply(Reply::Sync(SyncState::Failed { message: e.to_string(), pending: v.pending() })),
+                        }
+                    }
+                    Err(message) => reply(Reply::Sync(SyncState::Failed { message, pending: v.pending() })),
+                }
+                if close_after_sync {
+                    close_after_sync = false;
+                    vault = None;
+                }
+                continue;
+            }
+            _ => {}
+        }
+        let Some(v) = vault.as_mut() else { continue };
+        match job {
+            Job::Open | Job::Close | Job::SyncDone(_) => unreachable!(),
+            Job::Sync { account } => {
+                if syncing {
+                    continue;
+                }
+                syncing = true;
+                reply(Reply::Sync(SyncState::Running));
+                let snap = v.snapshot(&account);
+                let back = back.clone();
+                thread::Builder::new()
+                    .name("onepassword-sync".into())
+                    .spawn(move || {
+                        let _ = back.send((gen_of_job, Job::SyncDone(sync::run(&snap, &socket()))));
+                    })
+                    .expect("thread");
+            }
+            Job::Get { vault, item } => match v.get(&vault, &item) {
                 Ok(i) => reply(Reply::Item(Box::new(i))),
                 Err(e) => reply(Reply::Missing { item, error: describe(&e) }),
             },
-            Job::Create(params) => match c.items().create(&params) {
+            Job::Create(params) => match v.create(&params) {
                 Ok(i) => reply(Reply::Saved { item: Box::new(i), created: true }),
                 Err(e) => reply(Reply::Error(format!("Couldn’t save “{}”: {}", params.title, describe(&e)))),
             },
-            Job::Put(item) => match c.items().put(&item) {
-                Ok(i) => reply(Reply::Saved { item: Box::new(i), created: false }),
+            Job::Put(item) => match v.put(&item) {
+                Ok(i) => {
+                    if i.id != item.id {
+                        reply(Reply::Renamed { old: item.id.clone(), new: i.id.clone() });
+                    }
+                    reply(Reply::Saved { item: Box::new(i), created: false })
+                }
                 Err(e) => reply(Reply::Error(format!("Couldn’t save “{}”: {}", item.title, describe(&e)))),
             },
-            Job::Archive { vault, item } => match c.items().archive(&vault, &item) {
+            Job::Archive { vault, item } => match v.archive(&vault, &item) {
                 Ok(()) => reply(Reply::Archived { item }),
                 Err(e) => reply(Reply::Error(describe(&e))),
             },
-            Job::Delete { vault, item } => match c.items().delete(&vault, &item) {
+            Job::Delete { vault, item } => match v.delete(&vault, &item) {
                 Ok(()) => reply(Reply::Deleted { item }),
                 Err(e) => reply(Reply::Error(describe(&e))),
             },
             Job::Keychain { incoming, candidates, vault } => {
-                let response = keychain(c, &incoming.request, &candidates, &vault, &reply);
+                let response = keychain(v, &incoming.request, &candidates, &vault, &reply);
                 incoming.reply(response);
             }
         }
@@ -193,10 +271,10 @@ fn login_fields(item: &Item) -> (Option<&ItemField>, Option<&ItemField>) {
     (user, password)
 }
 
-fn keychain(c: &Client, request: &Request, candidates: &[(String, String)], vault: &str, reply: &impl Fn(Reply)) -> Response {
+fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], vault: &str, reply: &impl Fn(Reply)) -> Response {
     match request {
         Request::Fill { url, vault, id } => {
-            let item = match c.items().get(vault, id) {
+            let item = match c.get(vault, id) {
                 Ok(i) => i,
                 Err(e) => return error(&e),
             };
@@ -215,7 +293,7 @@ fn keychain(c: &Client, request: &Request, candidates: &[(String, String)], vaul
         Request::Check { username, password, .. } => {
             let mut changed = None;
             for (vault, id) in candidates {
-                let Ok(item) = c.items().get(vault, id) else { continue };
+                let Ok(item) = c.get(vault, id) else { continue };
                 let (user, saved) = login_fields(&item);
                 if !user.is_some_and(|u| u.value.eq_ignore_ascii_case(username)) {
                     continue;
@@ -229,7 +307,7 @@ fn keychain(c: &Client, request: &Request, candidates: &[(String, String)], vaul
         }
         Request::Save { url, title, username, password, replace } => {
             if let Some((vault, id)) = replace {
-                let mut item = match c.items().get(vault, id) {
+                let mut item = match c.get(vault, id) {
                     Ok(i) => i,
                     Err(e) => return error(&e),
                 };
@@ -243,7 +321,7 @@ fn keychain(c: &Client, request: &Request, candidates: &[(String, String)], vaul
                 if let Some(f) = field {
                     f.value = password.clone();
                 }
-                return match c.items().put(&item) {
+                return match c.put(&item) {
                     Ok(saved) => {
                         let title = saved.title.clone();
                         reply(Reply::Saved { item: Box::new(saved), created: false });
@@ -263,7 +341,7 @@ fn keychain(c: &Client, request: &Request, candidates: &[(String, String)], vaul
                 label: "website".into(),
                 autofill_behavior: AutofillBehavior::AnywhereOnWebsite,
             }];
-            match c.items().create(&params) {
+            match c.create(&params) {
                 Ok(item) => {
                     let title = item.title.clone();
                     reply(Reply::Saved { item: Box::new(item), created: true });
@@ -276,7 +354,7 @@ fn keychain(c: &Client, request: &Request, candidates: &[(String, String)], vaul
             let mut logins: Vec<tabula_keychain::Login> = candidates
                 .iter()
                 .filter_map(|(vault, id)| {
-                    c.items().get(vault, id).map_err(|e| tracing::warn!("login {id} for a page: couldn't read it: {e}")).ok()
+                    c.get(vault, id).map_err(|e| tracing::warn!("login {id} for a page: couldn't read it: {e}")).ok()
                 })
                 .map(|item| tabula_keychain::Login {
                     vault: item.vault_id.clone(),
@@ -294,7 +372,7 @@ fn keychain(c: &Client, request: &Request, candidates: &[(String, String)], vaul
             }
             let mut passkeys: Vec<tabula_keychain::Passkey> = candidates
                 .iter()
-                .filter_map(|(vault, id)| c.items().get(vault, id).ok())
+                .filter_map(|(vault, id)| c.get(vault, id).ok())
                 .filter_map(|item| {
                     let s = passkey::stored(&item)?;
                     let fits = s.rp_id.eq_ignore_ascii_case(rp_id) && (allow.is_empty() || allow.contains(&s.credential_id));
@@ -314,7 +392,7 @@ fn keychain(c: &Client, request: &Request, candidates: &[(String, String)], vaul
             if !tabula_keychain::rp_id_fits(rp_id, url) {
                 return Response::Error { message: format!("This page can’t make passkeys for {rp_id}.") };
             }
-            let items: Vec<Item> = candidates.iter().filter_map(|(vault, id)| c.items().get(vault, id).ok()).collect();
+            let items: Vec<Item> = candidates.iter().filter_map(|(vault, id)| c.get(vault, id).ok()).collect();
             let theirs = |i: &&Item| passkey::stored(i).is_some_and(|s| s.rp_id.eq_ignore_ascii_case(rp_id));
             if items.iter().filter(theirs).any(|i| passkey::stored(i).is_some_and(|s| exclude.contains(&s.credential_id))) {
                 return Response::PasskeyExists;
@@ -331,7 +409,7 @@ fn keychain(c: &Client, request: &Request, candidates: &[(String, String)], vaul
                 Some(item) => {
                     let mut item = item.clone();
                     new.store(&mut item, rp_id, user_id, user_name);
-                    c.items().put(&item).map(|i| (i, false))
+                    c.put(&item).map(|i| (i, false))
                 }
                 None => {
                     let title = if rp_name.trim().is_empty() { rp_id.clone() } else { rp_name.trim().to_string() };
@@ -346,7 +424,7 @@ fn keychain(c: &Client, request: &Request, candidates: &[(String, String)], vaul
                         .unwrap_or_else(|| format!("https://{rp_id}"));
                     params.websites =
                         vec![Website { url: site, label: "website".into(), autofill_behavior: AutofillBehavior::AnywhereOnWebsite }];
-                    c.items().create(&params).map(|i| (i, true))
+                    c.create(&params).map(|i| (i, true))
                 }
             };
             match saved {
@@ -372,7 +450,7 @@ fn keychain(c: &Client, request: &Request, candidates: &[(String, String)], vaul
             let Ok(hash) = B64.decode(client_data_hash) else {
                 return Response::Error { message: "The page’s request was malformed.".into() };
             };
-            let item = match c.items().get(vault, id) {
+            let item = match c.get(vault, id) {
                 Ok(i) => i,
                 Err(e) => return error(&e),
             };

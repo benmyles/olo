@@ -11,6 +11,7 @@ use tabula_kit::{
 
 use crate::{
     Accounts, Conn, EditAction, Passwords, Source, edit,
+    store::SyncState,
     lock::Finger,
 };
 
@@ -97,26 +98,22 @@ pub fn main(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui) {
     }
     match app.conn.clone() {
         Conn::Connecting if app.items.is_empty() => {
-            let account = app.account_label();
-            panel(ui, full, "passwords", "Connecting to 1Password…", &format!(
-                "Waiting for 1Password to let Passwords in to {account}. If it asks, choose Allow (and unlock it if it is locked)."
-            ), |ui| {
-                if ui.add(Button::new("Change Account…")).clicked() {
-                    app.change_account();
-                }
-            });
+            panel(ui, full, "passwords", "Opening your passwords…", "The key is in your login keyring.", |_| {});
         }
         Conn::Failed(message) if app.items.is_empty() => {
-            panel(ui, full, "warning", "Can’t reach 1Password", &message, |ui| {
+            panel(ui, full, "warning", "Can’t open your passwords", &message, |ui| {
                 buttons(ui, |ui| {
                     if ui.add(Button::new("Try Again").default(true)).clicked() {
                         app.connect(cx);
                     }
-                    if ui.add(Button::new("Change Account…")).clicked() {
-                        app.change_account();
-                    }
                 });
             });
+        }
+        Conn::Ready if app.items.is_empty() && app.sync == Some(SyncState::Running) => {
+            let account = app.account_label();
+            panel(ui, full, "passwords", "Bringing in your items…", &format!(
+                "Copying the items in {account} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked)."
+            ), |_| {});
         }
         _ => browser(app, cx, ui, full),
     }
@@ -149,17 +146,17 @@ fn setup(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
         app.find_accounts(cx);
     }
     let mut connect = false;
-    let cancel_to = app.settings.account.is_some();
+    let cancel_to = app.set_up();
     let listed: Vec<onepassword::accounts::Account> = match &app.accounts {
         Accounts::Found(list) => list.clone(),
         _ => Vec::new(),
     };
-    let message = if listed.is_empty() {
-        "1Password keeps your items and unlocks them; Passwords shows them here. In 1Password, turn on Settings ▸ Developer ▸ Integrate with other apps, then name the account to use."
-    } else {
-        "1Password keeps your items and unlocks them; Passwords shows them here. In 1Password, turn on Settings ▸ Developer ▸ Integrate with other apps, then choose the account to use."
-    };
-    panel(ui, full, "passwords", "Passwords uses your 1Password account", message, |ui| {
+    let mut keep_local = false;
+    let message = format!(
+        "Passwords keeps your items on this computer, encrypted, and can keep them in step with a 1Password account both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then {} the account.",
+        if listed.is_empty() { "name" } else { "choose" }
+    );
+    panel(ui, full, "passwords", "Sync with 1Password?", &message, |ui| {
         let p = style::palette(ui.ctx());
         for a in &listed {
             let chosen = !app.other_account && app.account_field == a.uuid;
@@ -194,9 +191,12 @@ fn setup(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
             connect = true;
         }
         buttons(ui, |ui| {
-            let ok = ui.add_enabled(!app.account_field.trim().is_empty(), Button::new("Connect").default(true));
+            let ok = ui.add_enabled(!app.account_field.trim().is_empty(), Button::new("Sync").default(true));
             if ok.clicked() {
                 connect = true;
+            }
+            if ui.add(Button::new("Keep Only on This Computer")).clicked() {
+                keep_local = true;
             }
             if cancel_to && ui.add(Button::new("Cancel")).clicked() {
                 app.account_field = app.settings.account.clone().unwrap_or_default();
@@ -207,6 +207,10 @@ fn setup(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
             }
         });
     });
+    if keep_local {
+        app.keep_local(cx);
+        return;
+    }
     if connect && !app.account_field.trim().is_empty() {
         let account = app.account_field.trim().to_string();
         if app.settings.account.as_deref() != Some(&account) {
@@ -218,8 +222,21 @@ fn setup(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
         }
         app.settings.account_label = listed.iter().find(|a| a.uuid == account).map(|a| a.name.clone());
         app.settings.account = Some(account);
+        app.settings.local_only = false;
+        app.sync = None;
         app.save_settings();
         app.connect(cx);
+    }
+}
+
+/// "just now", "5 minutes ago", "at 14:05".
+fn sync_ago(at: chrono::DateTime<chrono::Utc>) -> String {
+    let secs = (chrono::Utc::now() - at).num_seconds().max(0);
+    match secs {
+        0..60 => "just now".into(),
+        60..120 => "a minute ago".into(),
+        120..3600 => format!("{} minutes ago", secs / 60),
+        _ => format!("at {}", at.with_timezone(&chrono::Local).format("%H:%M")),
     }
 }
 
@@ -309,16 +326,41 @@ fn browser(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
     style::hline(ui.painter(), full.left(), full.right(), status.top(), style::shade(&p, p.panel_background, 1.3));
     let text = match &app.status {
         Some((s, _)) => s.clone(),
-        None if app.loading => "Loading items from 1Password…".into(),
+        None if app.loading => "Opening…".into(),
         None => {
             let n = app.visible().len();
             format!("{n} item{}", if n == 1 { "" } else { "s" })
         }
     };
     style::label(ui.painter(), status.left() + m::SPACING, status.center().y, Align::Min, text, style::small_font(), style::c(p.panel_text));
-    if let Conn::Failed(m) = &app.conn {
-        let short = m.split('.').next().unwrap_or(m).to_string();
-        style::label(ui.painter(), status.right() - m::SPACING, status.center().y, Align::Max, short, style::small_font(), style::c(p.failure));
+    let right = match (&app.conn, &app.sync) {
+        (Conn::Failed(m), _) => Some((m.split('.').next().unwrap_or(m).to_string(), true, None)),
+        (_, Some(SyncState::Running)) => Some(("Syncing with 1Password…".to_string(), false, None)),
+        (_, Some(SyncState::Done { at, errors, pending, .. })) => {
+            let ago = sync_ago(*at);
+            match (errors.first(), pending) {
+                (Some(first), _) => Some((format!("Synced {ago}, with problems"), true, Some(errors.join("\n\n")).filter(|_| !first.is_empty()))),
+                (None, 0) => Some((format!("Synced {ago}"), false, None)),
+                (None, n) => Some((format!("Synced {ago} · {n} to send"), false, None)),
+            }
+        }
+        (_, Some(SyncState::Failed { message, pending })) => {
+            // The first clause; a click shows the rest.
+            let first = message.split(['.', ',']).next().unwrap_or(message);
+            let to_send = if *pending > 0 { format!(" · {pending} to send") } else { String::new() };
+            Some((format!("Not synced: {first}{to_send}"), true, Some(message.clone())))
+        }
+        _ => None,
+    };
+    if let Some((text, bad, detail)) = right {
+        let color = if bad { style::c(p.failure) } else { style::disabled_text(&p) };
+        let r = style::label(ui.painter(), status.right() - m::SPACING, status.center().y, Align::Max, text, style::small_font(), color);
+        // Click a problem to read all of it.
+        if let Some(detail) = detail
+            && ui.interact(r, Id::unique("passwords-sync-status"), Sense::click()).clicked()
+        {
+            app.show_problem(cx, detail);
+        }
     }
 
     // The three panes.

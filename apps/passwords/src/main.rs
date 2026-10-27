@@ -1,11 +1,14 @@
-//! Passwords: the 1Password items of the account in the 1Password app,
-//! natively, through `tabula-onepassword`. Locked with Touch ID.
+//! Passwords: logins and other secrets kept on this computer, encrypted
+//! (`vault.rs`), and synced both ways with a 1Password account if asked
+//! (`sync.rs`, through `tabula-onepassword`). Locked with Touch ID.
 
 mod edit;
 mod generator;
 mod lock;
 mod passkey;
 mod store;
+mod sync;
+mod vault;
 mod view;
 
 use std::{
@@ -26,7 +29,7 @@ use crate::{
     edit::{EditAction, Editor},
     generator::Generator,
     lock::{Lock, LockMsg},
-    store::{FromStore, Job, Reply, Store},
+    store::{FromStore, Job, Reply, Store, SyncState},
 };
 
 const APP_ID: &str = "tabula.passwords";
@@ -34,8 +37,11 @@ const APP_ID: &str = "tabula.passwords";
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
-    /// The account's UUID (or its name in 1Password's sidebar).
+    /// The 1Password account to sync with: its UUID (or its name in
+    /// 1Password's sidebar). None: no syncing.
     account: Option<String>,
+    /// Chosen to keep items only on this computer.
+    local_only: bool,
     /// How to name it to the user.
     account_label: Option<String>,
     /// Lock after this long without use (0: only when asked).
@@ -48,7 +54,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { account: None, account_label: None, lock_minutes: 10, clear_seconds: 90, generator: Default::default(), size: None }
+        Settings { account: None, local_only: false, account_label: None, lock_minutes: 10, clear_seconds: 90, generator: Default::default(), size: None }
     }
 }
 
@@ -104,8 +110,12 @@ pub enum Accounts {
     Found(Vec<onepassword::accounts::Account>),
 }
 
-/// Ticks for the auto-lock and one-time-password countdowns.
+/// Ticks for the auto-lock, syncing and one-time-password countdowns.
 struct Tick;
+
+/// How often to sync while unlocked, and how soon after a change here.
+const SYNC_EVERY: Duration = Duration::from_secs(5 * 60);
+const SYNC_AFTER_CHANGE: Duration = Duration::from_secs(3);
 
 pub struct Passwords {
     settings: Settings,
@@ -137,6 +147,11 @@ pub struct Passwords {
     pub unlocked: bool,
     /// Other apps' requests waiting for an unlock or the item list.
     pub waiting: Vec<Incoming>,
+    /// Syncing with 1Password: how the last one went.
+    pub sync: Option<SyncState>,
+    /// When the last sync was asked for, and when the next is due early.
+    sync_asked: Option<Instant>,
+    sync_due: Option<Instant>,
 }
 
 fn host(url: &str) -> Option<String> {
@@ -224,15 +239,42 @@ impl Passwords {
         }
     }
 
-    fn connect(&mut self, cx: &mut Cx) {
-        let Some(account) = self.settings.account.clone() else {
+    /// Whether the person has chosen how to keep their items.
+    pub fn set_up(&self) -> bool {
+        self.settings.account.is_some() || self.settings.local_only
+    }
+
+    /// Open the store (the setup comes first if it hasn't been done).
+    pub fn connect(&mut self, cx: &mut Cx) {
+        if !self.set_up() {
             self.conn = Conn::Setup;
             return;
-        };
+        }
         self.conn = Conn::Connecting;
         self.loading = true;
-        self.store.connect(&account);
+        self.store.connect();
         self.redraw(cx);
+    }
+
+    /// Sync with 1Password now, if there's an account and the store is open.
+    pub fn sync_now(&mut self) {
+        let Some(account) = self.settings.account.clone() else { return };
+        if self.lock.locked || self.conn != Conn::Ready || self.sync == Some(SyncState::Running) {
+            return;
+        }
+        self.sync_asked = Some(Instant::now());
+        self.sync_due = None;
+        self.store.send(Job::Sync { account });
+    }
+
+    /// Keep items only here from now on (no syncing).
+    pub fn keep_local(&mut self, cx: &mut Cx) {
+        self.settings.account = None;
+        self.settings.account_label = None;
+        self.settings.local_only = true;
+        self.sync = None;
+        self.save_settings();
+        self.connect(cx);
     }
 
     /// Back to choosing the account (listing the app's afresh).
@@ -279,7 +321,7 @@ impl Passwords {
 
     /// Another app asks (NetPositive, for a page's logins or passkeys).
     fn keychain(&mut self, cx: &mut Cx, incoming: Incoming) {
-        if self.settings.account.is_none() {
+        if !self.set_up() {
             return incoming.reply(Response::NotSetUp);
         }
         let waits = !matches!(incoming.request, Request::Logins { .. } | Request::Check { .. } | Request::Search { .. });
@@ -384,6 +426,8 @@ impl Passwords {
         if let Some((w, _)) = self.generator.take() {
             cx.close_window(w);
         }
+        // The store lets go of its secrets (after a running sync).
+        self.store.send(Job::Close);
         self.lock.lock();
         self.redraw(cx);
     }
@@ -503,6 +547,11 @@ impl Passwords {
         self.alerts.insert(w, Alert::Message(message));
     }
 
+    /// The whole of a sync problem, from the status line.
+    pub fn show_problem(&mut self, cx: &mut Cx, message: String) {
+        self.show_error(cx, message);
+    }
+
     fn confirm_delete(&mut self, cx: &mut Cx) {
         let Some(o) = self.selected.as_ref().and_then(|s| self.overview(s)).cloned() else { return };
         let message = format!("Delete “{}” for good? This can’t be undone.", o.title);
@@ -555,6 +604,32 @@ impl Passwords {
         match reply {
             Reply::Connected => {
                 self.conn = Conn::Ready;
+                if self.sync_asked.is_none_or(|t| t.elapsed() > SYNC_EVERY) {
+                    self.sync_due = Some(Instant::now());
+                }
+            }
+            Reply::Renamed { old, new } => {
+                if self.selected.as_deref() == Some(old.as_str()) {
+                    self.selected = Some(new.clone());
+                }
+                if let Some(mut d) = self.details.remove(&old) {
+                    d.id = new.clone();
+                    self.details.insert(new.clone(), d);
+                }
+                for i in self.items.iter_mut().filter(|i| i.id == old) {
+                    i.id = new.clone();
+                }
+                if let Some(base) = self.editor.as_mut().and_then(|e| e.base.as_mut()).filter(|b| b.id == old) {
+                    base.id = new;
+                }
+            }
+            Reply::Sync(state) => {
+                if let SyncState::Done { errors, .. } = &state {
+                    for e in errors {
+                        tracing::warn!("sync: {e}");
+                    }
+                }
+                self.sync = Some(state);
             }
             Reply::Failed(message) => {
                 self.conn = Conn::Failed(message);
@@ -620,6 +695,7 @@ impl Passwords {
                     self.search.clear();
                 }
                 self.flash(format!("Saved “{title}”."));
+                self.changed_here();
             }
             Reply::Archived { item } => {
                 let row = self.visible().iter().position(|i| i.id == item);
@@ -629,6 +705,7 @@ impl Passwords {
                     self.flash(format!("Moved “{title}” to the Archive."));
                 }
                 self.after_removal(&item, row);
+                self.changed_here();
             }
             Reply::Deleted { item } => {
                 let row = self.visible().iter().position(|i| i.id == item);
@@ -638,6 +715,7 @@ impl Passwords {
                 self.items.retain(|i| i.id != item);
                 self.details.remove(&item);
                 self.after_removal(&item, row);
+                self.changed_here();
             }
             Reply::Error(message) => {
                 if self.status.as_ref().is_some_and(|(s, _)| s == "Saving…") {
@@ -663,7 +741,18 @@ impl Passwords {
         self.fetch_selected();
     }
 
+    /// Something changed here: send it to 1Password soon.
+    fn changed_here(&mut self) {
+        if self.settings.account.is_some() {
+            self.sync_due = Some(Instant::now() + SYNC_AFTER_CHANGE);
+        }
+    }
+
     fn tick(&mut self, cx: &mut Cx) {
+        let due = self.sync_due.is_some_and(|t| Instant::now() >= t) || self.sync_asked.is_some_and(|t| t.elapsed() >= SYNC_EVERY);
+        if due {
+            self.sync_now();
+        }
         let idle = self.last_use.elapsed();
         if !self.lock.locked
             && self.settings.lock_minutes > 0
@@ -791,7 +880,9 @@ impl App for Passwords {
             .separator()
             .item("Lock", "lock", Some(Key::L))
             .enabled(!self.lock.locked)
-            .item("Change Account…", "account", None)
+            .item("Sync Now", "sync", None)
+            .enabled(ready && self.settings.account.is_some() && self.sync != Some(SyncState::Running))
+            .item("Sync with 1Password…", "account", None)
             .enabled(!self.lock.locked)
             .separator()
             .item("Close", "close", Some(Key::W))
@@ -843,6 +934,7 @@ impl App for Passwords {
             }
             "lock" => self.do_lock(cx),
             "account" => self.change_account(),
+            "sync" => self.sync_now(),
             "generator" => self.open_generator(cx, None),
             "find" => self.focus_search = true,
             "edit" => self.edit_selected(cx),
@@ -908,6 +1000,8 @@ impl App for Passwords {
                 if self.lock.message(*m) {
                     self.last_use = Instant::now();
                     self.unlocked = true;
+                    // The store opens (again) now its secrets are wanted.
+                    self.connect(cx);
                     if self.selected.is_none() {
                         self.selected = self.visible().first().map(|i| i.id.clone());
                     }
@@ -984,16 +1078,16 @@ fn main() {
                 .expect("thread");
         }
         let saved: Option<Saved> = cx.restored_state().and_then(|s| serde_json::from_str(&s).ok());
-        // Locked from the start once there's an account to protect.
-        let locked = settings.account.is_some();
+        // Locked from the start once there are items to protect.
+        let locked = settings.account.is_some() || settings.local_only;
         let mut app = Passwords {
             account_field: settings.account.clone().unwrap_or_default(),
             accounts: Accounts::Unknown,
             other_account: false,
             store: Store::new(proxy.clone()),
             lock: Lock::new(proxy.clone(), locked),
+            conn: if locked { Conn::Connecting } else { Conn::Setup },
             settings,
-            conn: Conn::Setup,
             vaults: Vec::new(),
             items: Vec::new(),
             loading: false,
@@ -1013,6 +1107,9 @@ fn main() {
             last_use: Instant::now(),
             unlocked: false,
             waiting: Vec::new(),
+            sync: None,
+            sync_asked: None,
+            sync_due: None,
         };
         if let Some(saved) = saved {
             app.source = saved.source;
@@ -1020,7 +1117,10 @@ fn main() {
             app.search = saved.search;
         }
         app.open_main(cx);
-        app.connect(cx);
+        // Locked, the store opens at the unlock.
+        if !locked {
+            app.connect(cx);
+        }
         app
     });
 }

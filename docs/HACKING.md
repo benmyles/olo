@@ -1222,13 +1222,56 @@ Passwords is the app: sources (vaults, categories, Archive), a two-line
 item list and the selected item's fields (hover for Copy/Show; one-time
 codes count down), an editor with templates per category, a Password
 Generator window, and File/Edit/Item/View menus (⌘C username, ⇧⌘C password,
-⇧⌘O one-time code). All 1Password calls run on a worker thread
-(`store.rs`); replies carry a generation so a changed account drops stale
-ones. Secrets go to the clipboard with `copy_secret` and leave after
-`clear_seconds`. It opens locked and locks after `lock_minutes` idle
-(`lock.rs`): Touch ID through fprintd, claimed only while the locked
-window has the keyboard, or the account password through PAM. Settings
-live in `passwords.json`.
+⇧⌘O one-time code). Secrets go to the clipboard with `copy_secret` and
+leave after `clear_seconds`. It opens locked and locks after
+`lock_minutes` idle (`lock.rs`): Touch ID through fprintd, claimed only
+while the locked window has the keyboard, or the account password through
+PAM. Settings live in `passwords.json`.
+
+**Its own store** (`vault.rs`). Every vault and item lives on this
+computer, so the app, NetPositive and the palette never wait on
+1Password: `passwords.vault` in the config directory, "TABV", a format
+byte, a 24-byte nonce and the JSON sealed with XChaCha20-Poly1305 (header
+as associated data), written whole and atomically (0600) after each
+change. The key is 32 random bytes in the login keyring
+(`tabula_system::secrets`, a Secret Service client; PAM unlocks the
+keyring at login, so Touch ID still opens Passwords). A store whose key is
+missing is never overwritten with a new one. `TABULA_PASSWORDS_KEYFILE`
+keeps the key in a file instead; tsession sets it for every session, so
+test apps never touch the real keyring. The worker (`store.rs`) owns the
+store: it opens it at the unlock, lets it go at the lock (after a running
+sync), and answers the UI and NetPositive from it. Items keep 1Password's
+types; each entry also records what 1Password last had (version, update
+time, archive state), whether it changed here, and a revision; deletions
+of synced items leave tombstones. Without an account (Keep Only on This
+Computer) items live in a local "Personal" vault.
+
+**Syncing with 1Password** (`sync.rs`, optional: the setup panel or File ▸
+Sync with 1Password…): on its own thread from a snapshot, at the unlock,
+every 5 minutes, 3 s after a change here, and on File ▸ Sync Now. Down:
+vaults whose `content_version` moved are listed (both states); new or
+changed items (update time or state) are fetched fifty at a time with
+`get_all`; items gone there go here unless changed here (then they're
+sent again as new). Up: new items are created (1Password's id replaces
+ours; the UI follows `Reply::Renamed`), changed ones put against the
+version last seen, archives archived, tombstones deleted. Changed on both
+sides: 1Password's copy stays as the item and ours is kept beside it as
+"… (conflict)", which goes up next time. A push that lands after another
+edit here keeps the edit pending (revisions). The first sync with an
+account brings in everything; local-only items move to its Personal (or
+first) vault; another account drops what came from the old one. The
+status line says how it went ("Synced 2 minutes ago", "Not synced: … · 3
+to send"; click a problem for all of it). Files attached in 1Password
+aren't copied (their metadata is), so they aren't shown.
+
+`cargo test -p tabula-passwords` covers the store (sealing, wrong keys,
+conflicts, races, accounts) and syncing against the in-process fake
+(both ways, conflicts, nothing to do, 1Password down). The Secret Service
+client has an ignored test for a private keyring:
+`tools/dev/private-keyring start` (busd plus its own gnome-keyring; needs
+`cargo install busd --root /tmp/tabula-dev/busd`), then
+`DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/tabula-dev/keyring/bus cargo test
+-p tabula-system secrets -- --ignored`; it refuses any other bus.
 
 ```sh
 target/debug/onepassword-fake --socket tabula-fake &
@@ -1237,8 +1280,9 @@ tools/dev/tsession run pw TABULA_1PASSWORD_SOCKET=tabula-fake TABULA_NO_FINGERPR
     TABULA_PAM_CONFDIR=$dir TABULA_PAM_SERVICE=exec target/debug/tabula-passwords
 ```
 (`run` doesn't pass `TABULA_PAM_*` on by itself; give them as above, with
-`$dir` set up as for the lock screen.) Account: `Tabula Test`; password:
-whatever `check.sh` accepts.
+`$dir` set up as for the lock screen.) Account: `Tabula Test` (choose
+Sync in the setup); password: whatever `check.sh` accepts. Pass
+`--data FILE` to the fake to see what reached "1Password".
 
 ### Find in NetPositive
 

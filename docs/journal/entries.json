@@ -814,5 +814,23 @@
   "title": "Tracker: Open in Terminal",
   "caption": "File \u25b8 Open in Terminal, and the context menus, open a new Terminal window in the folder shown, or in the right-clicked folder (here alpha).",
   "image": "2026-10-26/213004-tracker-open-in-terminal.png"
+ },
+ {
+  "time": "2026-10-26T21:46:23",
+  "title": "Passwords: setup offers sync or local",
+  "caption": "Passwords now keeps its own encrypted store. The first time, it asks whether to sync with a 1Password account (both ways) or keep items only on this computer.",
+  "image": "2026-10-26/214623-passwords-setup-offers-sync-or-local.png"
+ },
+ {
+  "time": "2026-10-26T21:46:23",
+  "title": "Passwords: its own store, synced with 1Password",
+  "caption": "Items are read from the local encrypted store at once; 1Password is only for syncing, in the background. The status line shows the last sync.",
+  "image": "2026-10-26/214623-passwords-its-own-store-synced-with-1password.png"
+ },
+ {
+  "time": "2026-10-26T21:46:24",
+  "title": "Passwords: changes wait while 1Password is away",
+  "caption": "With 1Password not running, changes are kept and the status line counts what's still to send; they go up on the next sync.",
+  "image": "2026-10-26/214624-passwords-changes-wait-while-1password-is-away.png"
  }
 ]

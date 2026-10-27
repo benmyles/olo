@@ -53,13 +53,14 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
-- **Passwords keeps its own store, synced with 1Password both ways**
+- ~~**Passwords keeps its own store, synced with 1Password both ways**~~
   (Ben): going to 1Password for every look-up is slow and unreliable.
   Passwords should hold every item itself (encrypted at rest, unlocked
   with the account password or Touch ID) and answer the app, NetPositive
   and the palette from it at once; 1Password is only for syncing, both
   ways (changes either side merge by item version, conflicts kept),
-  in the background and when asked.
+  in the background and when asked. Done: `vault.rs`, `sync.rs`; try it
+  on the real account (Ben).
 - ~~**NetPositive fills Google's sign-in**~~ (Ben): two-step sign-ins
   fill the username alone, hidden decoy fields are skipped, the field
   menu has the logins at once (fetched when the page loads), and a field
@@ -76,6 +77,16 @@ as they land (with the commit), add new ones as they come up.
   active column's), or a right-clicked folder, in a new Terminal window;
   also in the window's and the desktop's context menus. When Terminal
   gets tabs, open a tab instead.
+- **Video plays the wrong parts at the wrong speed** (Ben):
+  ~/Downloads/a-work-video.mp4 plays in the Viewer with good
+  sound, but the picture jumps around and runs at the wrong speed.
+  Probably frame timing (B-frames / presentation order, edit lists, or a
+  variable frame rate) in `tabula_preview::video`.
+- **Confirm before quitting apps with state that would be lost** (Ben):
+  NetPositive (open tabs, form input, downloads in progress), Terminal
+  (running shells), and any other app holding work that quitting throws
+  away ask first (an alert: Quit / Cancel), so an accidental ⌘Q or close
+  doesn't lose it. Apps that save or restore everything don't need to.
 - **Terminal tabs, tab groups and coding agents** (Ben; after everything
   else is done): tabs, tab groups that can be saved and reopened, and
   native recognition of coding agents (Claude Code, Codex) running in a
@@ -90,6 +101,38 @@ as they land (with the commit), add new ones as they come up.
   coding clients are pointed at, accounts drained in a reset-aware order,
   usage recorded (never prompts or completions), and a Deskbar replicant
   or app showing the pool live in place of its macOS menu bar.
+- **Rename Tabula to Olo, use the new brand, ship a wallpaper pack**
+  (Ben; the very last thing, after everything else is done):
+  - *Rename* everywhere (code, crates, binaries, app ids, environment
+    variables, paths, the session entry, install tooling, UI text, docs);
+    nothing still calls itself Tabula except history (the journal) and
+    compatibility shims kept on purpose. Public places (README, About,
+    session entry, website copy) say "Olo Desktop" (Olo Inc. holds "OLO"
+    software trademarks); plain `olo` in code. Domain olodesktop.com.
+    Existing installs carry on with nothing lost (settings, the browser
+    profile, passwords and keychain access, saved window state), and a
+    running session upgrades or reloads into the renamed build as it was:
+    work out the migrations and test from a session started on the old
+    build. Leave the repo directory and GitHub repo name (Ben renames them).
+  - *Brand* from ~/olo-logos/ (overview: kit/brand-sheet.png): wordmark
+    icons4/bounce-wordmark-2.png, mark icons5/yellow-sides-1.png, desktop
+    icon kit/candidates/desktop-icon-2.png (through the docs/ICONS.md
+    pipeline), and the finished kit/ (light/dark and single-colour
+    wordmarks, flat and single-colour marks, app badges, favicons,
+    lockups, social and GitHub images; each with its prompt .json). Use
+    them for the app and desktop icon, Deskbar, About, README and
+    wherever the old identity shows.
+  - *Wallpapers* from ~/olo-logos/wallpapers/{4k (3840×2160), ultrawide
+    (3840×1648)} (not v1/ or dropped/): dusk-gradient (default; light and
+    -dark), boing (light and -dark), be-blue, aqua, clouds,
+    workbench-pattern (one image each). Preferences picks from the pack
+    with previews (thumbnails loaded in the background) and still takes
+    a file of your own; light/dark versions follow the system mode live
+    (Auto's schedule too); each screen gets the 4K or ultrawide version by
+    its shape; a wallpaper already chosen is kept. The PNGs (about 93 MB)
+    go in Git LFS. Never
+    decode 4K on the UI thread; pixel-perfect light/dark/night at 2×;
+    survive reload; shared widgets in the kit; tsession; journal.
 - ~~**Tracker column view scrolls sideways**~~ (Ben): touchpad,
   Shift+wheel or the new scroll bar; it no longer snaps back to the
   active column, which it only follows when the selection moves.

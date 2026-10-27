@@ -19,6 +19,7 @@ pub mod keyring_prompt;
 pub mod network;
 pub mod polkit;
 pub mod power;
+pub mod secrets;
 pub mod time;
 
 mod bus;

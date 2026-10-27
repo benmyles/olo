@@ -1,0 +1,39 @@
+#!/bin/bash
+# A private session bus (busd) with its own gnome-keyring (login keyring
+# unlocked with "test"), for tests of the Secret Service client and of
+# Passwords' vault key. Never touches the real session or keyring.
+#
+#   tools/dev/private-keyring start   # prints the variables to export
+#   tools/dev/private-keyring stop
+set -e
+DIR=/tmp/tabula-dev/keyring
+case "$1" in
+start)
+    "$0" stop >/dev/null 2>&1 || true
+    mkdir -p "$DIR/home/.local/share" "$DIR/run"
+    chmod 700 "$DIR/run"
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=$DIR/bus" HOME="$DIR/home" \
+        XDG_DATA_HOME="$DIR/home/.local/share" XDG_RUNTIME_DIR="$DIR/run"
+    unset GNOME_KEYRING_CONTROL
+    # busd: a D-Bus broker that runs on its own (dbus-broker needs a
+    # systemd user manager). Install once:
+    #   cargo install busd --root /tmp/tabula-dev/busd
+    BUSD=${BUSD:-/tmp/tabula-dev/busd/bin/busd}
+    [ -x "$BUSD" ] || { echo "no busd: cargo install busd --root /tmp/tabula-dev/busd" >&2; exit 1; }
+    setsid "$BUSD" --address "unix:path=$DIR/bus" >"$DIR/bus.log" 2>&1 < /dev/null &
+    echo $! > "$DIR/bus.pid"
+    for _ in $(seq 50); do [ -S "$DIR/bus" ] && break; sleep 0.1; done
+    printf test | gnome-keyring-daemon --unlock --components=secrets --daemonize > "$DIR/keyring.env"
+    echo "export DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"
+    ;;
+stop)
+    # Only daemons started for this directory (by their environment);
+    # never the real keyring.
+    for pid in $(pgrep -u "$(id -u)" -x gnome-keyring-d); do
+        tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -qx "XDG_RUNTIME_DIR=$DIR/run" && kill "$pid"
+    done
+    [ -f "$DIR/bus.pid" ] && kill "$(cat "$DIR/bus.pid")" 2>/dev/null || true
+    rm -rf "$DIR"
+    ;;
+*) echo "usage: $0 start|stop" >&2; exit 2 ;;
+esac

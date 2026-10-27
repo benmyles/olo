@@ -40,7 +40,7 @@ TARGET = os.environ.get("CARGO_TARGET_DIR", os.path.join(ROOT, "target"))
 
 def as_owner(cmd, **kw):
     if os.getuid() == 0 and OWNER.pw_uid != 0:
-        cmd = ["sudo", "-u", OWNER.pw_name, "--preserve-env=WAYLAND_DISPLAY,TABULA_SOCKET,XDG_RUNTIME_DIR,XDG_CONFIG_HOME,RUST_LOG,TABULA_THEME,TABULA_DATA,TABULA_SESSION,TABULA_SESSION_PID,HOME,PATH,PULSE_SERVER,TABULA_PAM_CONFDIR,TABULA_PAM_SERVICE"] + cmd
+        cmd = ["sudo", "-u", OWNER.pw_name, "--preserve-env=WAYLAND_DISPLAY,TABULA_SOCKET,XDG_RUNTIME_DIR,XDG_CONFIG_HOME,RUST_LOG,TABULA_THEME,TABULA_DATA,TABULA_SESSION,TABULA_SESSION_PID,HOME,PATH,PULSE_SERVER,TABULA_PAM_CONFDIR,TABULA_PAM_SERVICE,TABULA_PASSWORDS_KEYFILE"] + cmd
     return cmd
 
 def sdir(name):
@@ -95,6 +95,9 @@ def start(name, args):
     env = dict(os.environ, XDG_RUNTIME_DIR=RUNTIME, XDG_CONFIG_HOME=os.path.join(d, "config"), RUST_LOG=os.environ.get("RUST_LOG", "info"))
     open(os.path.join(d, "no-sound"), "a").close()
     env["PULSE_SERVER"] = "unix:" + os.path.join(d, "no-sound")
+    # Passwords keeps its vault key in the session, never in the real
+    # login keyring (which the session bus would reach).
+    env["TABULA_PASSWORDS_KEYFILE"] = os.path.join(d, "passwords.key")
     env.pop("WAYLAND_DISPLAY", None)
     env.pop("TABULA_SOCKET", None)
     log = open(os.path.join(d, "app_server.log"), "w")
@@ -169,6 +172,8 @@ def run(name, cmd):
         assigns.append(cmd.pop(0))
     if "HOME" in e and not any(a.startswith("HOME=") for a in assigns):
         assigns.append(f"HOME={e['HOME']}")
+    if not any(a.startswith("TABULA_PASSWORDS_KEYFILE=") for a in assigns):
+        assigns.append(f"TABULA_PASSWORDS_KEYFILE={os.path.join(BASE, name, 'passwords.key')}")
     env = dict(os.environ, **{k: v for k, v in e.items() if k not in ("pid", "sockets")}, RUST_LOG=os.environ.get("RUST_LOG", "warn"))
     # Headless sessions are silent: point the sound server at a plain file
     # (connecting fails) rather than the user's real speakers.

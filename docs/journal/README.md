@@ -5,6 +5,24 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Passwords: changes wait while 1Password is away
+
+*21:46* — With 1Password not running, changes are kept and the status line counts what's still to send; they go up on the next sync.
+
+![Passwords: changes wait while 1Password is away](2026-10-26/214624-passwords-changes-wait-while-1password-is-away.png)
+
+### Passwords: its own store, synced with 1Password
+
+*21:46* — Items are read from the local encrypted store at once; 1Password is only for syncing, in the background. The status line shows the last sync.
+
+![Passwords: its own store, synced with 1Password](2026-10-26/214623-passwords-its-own-store-synced-with-1password.png)
+
+### Passwords: setup offers sync or local
+
+*21:46* — Passwords now keeps its own encrypted store. The first time, it asks whether to sync with a 1Password account (both ways) or keep items only on this computer.
+
+![Passwords: setup offers sync or local](2026-10-26/214623-passwords-setup-offers-sync-or-local.png)
+
 ### Tracker: Open in Terminal
 
 *21:30* — File ▸ Open in Terminal, and the context menus, open a new Terminal window in the folder shown, or in the right-clicked folder (here alpha).
