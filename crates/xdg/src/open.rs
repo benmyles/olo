@@ -69,10 +69,8 @@ pub enum Handler {
 impl Handler {
     pub fn name(&self) -> String {
         match self {
-            Handler::Ours(bin) => crate::apps::OUR_APPS
-                .iter()
-                .find(|(b, _, _)| b == bin)
-                .map(|(_, n, _)| n.to_string())
+            Handler::Ours(bin) => crate::apps::our_app(bin.trim_start_matches("tabula-"))
+                .map(|(n, _)| n.to_string())
                 .unwrap_or_else(|| bin.trim_start_matches("tabula-").to_owned()),
             Handler::Entry(e) => e.name.clone(),
         }
@@ -104,6 +102,7 @@ fn ours(mime: &str) -> Option<&'static str> {
             | "application/vnd.oasis.opendocument.presentation",
         ) => &["tabula-viewer"],
         (_, "x-scheme-handler/http" | "x-scheme-handler/https") => &["tabula-chrome"],
+        (_, crate::mime::SETTINGS_BACKUP) => &["tabula-preferences"],
         _ => &[],
     };
     candidates.iter().copied().find(|bin| find_program(bin).is_some())

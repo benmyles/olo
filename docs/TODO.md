@@ -318,7 +318,7 @@ as they land (with the commit), add new ones as they come up.
   its own client-side decorations: e.g. asking for server-side decorations
   via xdg-decoration / GTK's settings, and whatever libadwaita needs
   (portal `org.freedesktop.appearance color-scheme`, dconf) to agree.
-- **Settings & state backup: export/import in one file** (Ben): a native
+- ~~**Settings & state backup: export/import in one file**~~ (Preferences ▸ Backup and `tabula-preferences --export/--inspect/--import`; tested headless) (Ben): a native
   Tabula utility that exports every Tabula setting and piece of saved
   state, across all Tabula apps (Preferences settings, Tracker views,
   Deskbar, NetPositive bookmarks/history/learnt fields, Passwords' vault

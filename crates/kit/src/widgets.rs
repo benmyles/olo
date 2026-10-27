@@ -376,15 +376,29 @@ impl Widget for TextControl<'_> {
 pub struct StringView<'a> {
     text: &'a str,
     dim: bool,
+    wrap: bool,
+    color: Option<Color32>,
 }
 
 impl<'a> StringView<'a> {
     pub fn new(text: &'a str) -> Self {
-        StringView { text, dim: false }
+        StringView { text, dim: false, wrap: false, color: None }
     }
     /// Secondary text (status, hints) in the disabled-text colour.
     pub fn dim(mut self, on: bool) -> Self {
         self.dim = on;
+        self
+    }
+    /// Wrap onto as many lines as it takes (a paragraph), rather than
+    /// cutting it short with an ellipsis.
+    pub fn wrap(mut self, on: bool) -> Self {
+        self.wrap = on;
+        self
+    }
+    /// Text in a colour of its own (from the palette: an error in
+    /// `failure`).
+    pub fn color(mut self, color: Color32) -> Self {
+        self.color = Some(color);
         self
     }
 }
@@ -392,10 +406,19 @@ impl<'a> StringView<'a> {
 impl Widget for StringView<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
         let p = style::palette(ui.ctx());
-        let color = if self.dim { style::disabled_text(&p) } else { text_color(ui, &p) };
+        let color = self.color.unwrap_or_else(|| if self.dim { style::disabled_text(&p) } else { text_color(ui, &p) });
+        let width = ui.available_width().max(0.0);
         let mut job = egui::text::LayoutJob::simple_singleline(self.text.to_owned(), plain_font(), color);
-        job.wrap = egui::text::TextWrapping::truncate_at_width(ui.available_width().max(0.0));
+        job.wrap = if self.wrap { egui::text::TextWrapping::wrap_at_width(width) } else { egui::text::TextWrapping::truncate_at_width(width) };
         let galley = ui.painter().layout_job(job);
+        if self.wrap && galley.rows.len() > 1 {
+            // A paragraph: lines at the font's own spacing, the first
+            // where a single line's would be.
+            let pad = (CONTROL_HEIGHT - galley.rows[0].height()).max(0.0) / 2.0;
+            let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x.ceil(), galley.size().y + 2.0 * pad), Sense::hover());
+            ui.painter().galley(pos2(rect.left(), rect.top() + pad), galley, color);
+            return resp;
+        }
         let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x.ceil(), CONTROL_HEIGHT), Sense::hover());
         let pos = text_pos(ui, rect.left(), rect.center().y, &galley);
         ui.painter().galley(pos, galley, color);

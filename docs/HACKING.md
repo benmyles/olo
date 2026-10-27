@@ -276,7 +276,7 @@ asked for it: drag an image into Claude Code there.
 
 ### Widgets (`tabula_kit::widgets`)
 
-`Button` (`.default(true)` for the Enter button), `CheckBox`, `RadioButton`,
+`StringView` (a label; `.dim(true)` for hints, `.wrap(true)` for a paragraph, `.color(c)`), `Button` (`.default(true)` for the Enter button), `CheckBox`, `RadioButton`,
 `Button::pushed(true)` for a toolbar toggle that stays down,
 `TextControl` (`.label("Name:").divider(x)`), `TextView` (`.highlight(&f)`
 colours it: `f(text, font, colour)` returns a `LayoutJob` in sections, a `widgets::Highlighter`,
@@ -651,6 +651,21 @@ launcher lists them. The panel list Deskbar shows is
   watcher thread reloads it, and the apps from the history, when either
   changes; edits save on a thread (echoes of older files are ignored for
   a moment after an edit). Times follow the clock's 12/24-hour choice.
+* Backup (`backup.rs`) exports every Tabula setting and piece of saved
+  state (`config_dir()` and `state_dir()`, as `config/…` and `state/…`)
+  into one `.tabula-backup` file: a zstd tar with `manifest.json` first
+  (format, version, when, each file and its size). Import reads the
+  manifest and shows it by app (`Manifest::groups`) with Import / Cancel;
+  importing first saves what is there to `state_dir()/backups` (the last
+  five; left out of backups), then replaces each file atomically, keeping
+  its mode; names outside the two roots are refused, and files the backup
+  lacks are left alone. app_server keeps its settings in memory, so the
+  backup's `app_server.json` is sent to it as `SetSettings`. Both run on
+  a worker thread with a StatusBar and Cancel (import can only be
+  cancelled while it saves what is there). `tabula-preferences --export
+  FILE`, `--inspect FILE` and `--import FILE` do the same without a
+  window; opening a `.tabula-backup` (`mime::SETTINGS_BACKUP`, kit
+  `Kind::SettingsBackup`) shows it in the panel, ready to import.
 * Date & Time (`datetime.rs`) talks to systemd-timedated through
   `tabula_system::time` on its own worker thread (status every 2 s; set
   time, zone and network time with polkit's interactive auth, so a

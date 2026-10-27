@@ -970,5 +970,23 @@
   "title": "Quick Look rotates pictures",
   "caption": "Quick Look's footer has Rotate Left and Right (\u2318L and \u2318R), which turn the picture and save it at once, as on the Mac. Anything more opens in Viewer.",
   "image": "2026-10-27/021250-quick-look-rotates-pictures.png"
+ },
+ {
+  "time": "2026-10-27T02:23:02",
+  "title": "Preferences: Backup",
+  "caption": "Export saves every Tabula setting and piece of saved state in one .tabula-backup file. Import shows what a backup holds, app by app, and asks before replacing anything; the settings as they were are saved first.",
+  "image": "2026-10-27/022302-preferences-backup.png"
+ },
+ {
+  "time": "2026-10-27T02:23:03",
+  "title": "Backup, dark",
+  "caption": "The Backup panel in the dark theme.",
+  "image": "2026-10-27/022303-backup-dark.png"
+ },
+ {
+  "time": "2026-10-27T02:23:03",
+  "title": "Backups have their own icon",
+  "caption": "Tracker shows .tabula-backup files with the new backup icon; opening one shows it in Preferences \u25b8 Backup, ready to import.",
+  "image": "2026-10-27/022303-backups-have-their-own-icon.png"
  }
 ]

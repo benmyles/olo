@@ -18,3 +18,5 @@ serde_json.workspace = true
 tracing.workspace = true
 libc = "0.2"
 jiff = "0.2"
+tar = "0.4"
+zstd = "0.14"

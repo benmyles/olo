@@ -21,6 +21,8 @@ pub enum Kind {
     Spreadsheet,
     Presentation,
     Font,
+    /// A backup of Tabula's settings (Preferences ▸ Backup).
+    SettingsBackup,
 }
 
 impl Kind {
@@ -40,6 +42,7 @@ impl Kind {
             Kind::Spreadsheet => "spreadsheet",
             Kind::Presentation => "presentation",
             Kind::Font => "font",
+            Kind::SettingsBackup => "backup",
         }
     }
 
@@ -59,6 +62,7 @@ impl Kind {
             Kind::Spreadsheet => "Spreadsheet",
             Kind::Presentation => "Presentation",
             Kind::Font => "Font",
+            Kind::SettingsBackup => "Tabula Settings Backup",
         }
     }
 }
@@ -88,6 +92,7 @@ pub fn kind_for(path: &Path, is_dir: bool, mode: u32) -> Kind {
         "ttf" | "otf" | "ttc" | "otc" | "woff" | "woff2" => Kind::Font,
         "tsv" => Kind::Text,
         "appimage" => Kind::Application,
+        "tabula-backup" => Kind::SettingsBackup,
         _ if mode & 0o111 != 0 => Kind::Executable,
         "" => if sniff_text(path) { Kind::Text } else { Kind::Document },
         _ => Kind::Document,

@@ -5,6 +5,24 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Backups have their own icon
+
+*02:23* — Tracker shows .tabula-backup files with the new backup icon; opening one shows it in Preferences ▸ Backup, ready to import.
+
+![Backups have their own icon](2026-10-27/022303-backups-have-their-own-icon.png)
+
+### Backup, dark
+
+*02:23* — The Backup panel in the dark theme.
+
+![Backup, dark](2026-10-27/022303-backup-dark.png)
+
+### Preferences: Backup
+
+*02:23* — Export saves every Tabula setting and piece of saved state in one .tabula-backup file. Import shows what a backup holds, app by app, and asks before replacing anything; the settings as they were are saved first.
+
+![Preferences: Backup](2026-10-27/022302-preferences-backup.png)
+
 ### Quick Look rotates pictures
 
 *02:12* — Quick Look's footer has Rotate Left and Right (⌘L and ⌘R), which turn the picture and save it at once, as on the Mac. Anything more opens in Viewer.

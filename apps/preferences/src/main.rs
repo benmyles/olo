@@ -10,6 +10,7 @@
 
 mod about;
 mod appearance;
+mod backup;
 mod bluetooth;
 mod datetime;
 mod display;
@@ -73,6 +74,8 @@ enum Win {
     Enterprise { owner: WindowId, form: Box<network::EnterpriseForm> },
     /// The sheet's file panel for a certificate or key.
     Cert { owner: WindowId, slot: network::CertSlot, panel: Box<FilePanel> },
+    /// Backup's file panel, to export to or import from.
+    Backup { owner: WindowId, ask: backup::Ask, panel: Box<FilePanel> },
 }
 
 struct Prefs {
@@ -147,13 +150,39 @@ impl Prefs {
         self.windows.insert(id, Win::Enterprise { owner, form });
     }
 
+    /// Backup's file panel: where to export to, or what to import.
+    fn backup_panel(&mut self, cx: &mut Cx, owner: WindowId, ask: backup::Ask) {
+        if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Backup { .. })) {
+            cx.activate(id);
+            return;
+        }
+        let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+        let (title, panel) = match ask {
+            backup::Ask::Export => ("Export Settings", FilePanel::save(home, backup::suggested_name()).types(&[backup::EXTENSION])),
+            backup::Ask::Import => ("Import Settings", FilePanel::open(home).types(&[backup::EXTENSION])),
+        };
+        let (w, h) = PANEL_SIZE;
+        let id = cx.open_window(WindowOptions::new(title, w, h).min_size(400, 300).parent(owner));
+        self.windows.insert(id, Win::Backup { owner, ask, panel: Box::new(panel) });
+    }
+
     fn handle_args(&mut self, cx: &mut Cx, args: &[String]) {
-        let panels: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
-        if panels.is_empty() {
+        let (files, panels): (Vec<&String>, Vec<&String>) =
+            args.iter().filter(|a| !a.starts_with('-')).partition(|a| a.ends_with(&format!(".{}", backup::EXTENSION)));
+        if panels.is_empty() && files.is_empty() {
             self.open_launcher(cx);
         }
         for p in panels {
             self.open(cx, p);
+        }
+        // A backup opened from Tracker: what it holds, ready to import.
+        if let Some(file) = files.last() {
+            self.open(cx, "backup");
+            if let Some(Win::Panel { state: panel::State::Backup(b), .. }) =
+                self.windows.values_mut().find(|w| matches!(w, Win::Panel { panel: Panel::Backup, .. }))
+            {
+                b.inspect(std::path::PathBuf::from(file.as_str()));
+            }
         }
     }
 
@@ -192,6 +221,44 @@ impl Prefs {
     }
 }
 
+/// `--export FILE`, `--inspect FILE` or `--import FILE`: a backup without
+/// a window, for agents and scripts; the exit code, or None for other flags.
+fn backup_cli(flag: &str, file: &std::path::Path) -> Option<i32> {
+    use std::sync::atomic::AtomicBool;
+    let no = AtomicBool::new(false);
+    let show = |m: &backup::Manifest| {
+        println!("made {}, {} files, {}", m.created, m.files.len(), backup::size_text(m.bytes()));
+        for (app, files, bytes) in m.groups() {
+            println!("  {app}: {files} {}, {}", if files == 1 { "file" } else { "files" }, backup::size_text(bytes));
+        }
+    };
+    let r = match flag {
+        "--export" => backup::export(&backup::roots(), file, &|_, _| {}, &no).map(|m| show(&m)),
+        "--inspect" => backup::inspect(file).map(|m| show(&m)),
+        "--import" => backup::import(&backup::roots(), file, &|_, _| {}, &no).map(|i| {
+            show(&i.manifest);
+            println!("imported {} files", i.files);
+            if let Some(p) = &i.before {
+                println!("the settings as they were: {}", p.display());
+            }
+            // app_server keeps its own copy: hand it the backup's.
+            if let Some(settings) = i.settings
+                && let Ok(mut c) = tabula_protocol::Client::connect()
+            {
+                let _ = c.request(&tabula_protocol::Request::SetSettings { settings });
+            }
+        }),
+        _ => return None,
+    };
+    Some(match r {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("tabula-preferences: {e}");
+            1
+        }
+    })
+}
+
 const LAUNCHER_COLUMNS: usize = 5;
 const LAUNCHER_CELL: egui::Vec2 = egui::Vec2::new(104.0, 64.0);
 
@@ -227,6 +294,22 @@ impl App for Prefs {
                 }
                 self.windows.remove(&window);
                 cx.close_window(window);
+                cx.redraw(owner);
+            }
+            return;
+        }
+        if let Some(Win::Backup { owner, ask, panel }) = self.windows.get_mut(&window) {
+            let (owner, ask) = (*owner, *ask);
+            if let Some(result) = panel.ui(ui) {
+                if let (PanelResult::Chosen(path), Some(Win::Panel { state: panel::State::Backup(b), .. })) = (result, self.windows.get_mut(&owner)) {
+                    match ask {
+                        backup::Ask::Export => b.export_to(path),
+                        backup::Ask::Import => b.inspect(path),
+                    }
+                }
+                self.windows.remove(&window);
+                cx.close_window(window);
+                cx.activate(owner);
                 cx.redraw(owner);
             }
             return;
@@ -277,6 +360,10 @@ impl App for Prefs {
             panel::State::Network(n) => n.enterprise.take(),
             _ => None,
         };
+        let ask = match state {
+            panel::State::Backup(b) => b.ask.take(),
+            _ => None,
+        };
         if let panel::State::Backgrounds(b) = state
             && std::mem::take(&mut b.choose)
         {
@@ -284,6 +371,9 @@ impl App for Prefs {
         }
         if let Some((device, net)) = enterprise {
             self.join_enterprise(cx, window, device, net);
+        }
+        if let Some(ask) = ask {
+            self.backup_panel(cx, window, ask);
         }
     }
 
@@ -298,7 +388,7 @@ impl App for Prefs {
         let orphans: Vec<WindowId> = self
             .windows
             .iter()
-            .filter(|(_, w)| matches!(w, Win::Wallpaper { owner, .. } | Win::Enterprise { owner, .. } | Win::Cert { owner, .. } if *owner == window))
+            .filter(|(_, w)| matches!(w, Win::Wallpaper { owner, .. } | Win::Enterprise { owner, .. } | Win::Cert { owner, .. } | Win::Backup { owner, .. } if *owner == window))
             .map(|(&id, _)| id)
             .collect();
         for id in orphans {
@@ -346,7 +436,7 @@ impl App for Prefs {
             .filter_map(|w| match w {
                 Win::Launcher => Some(""),
                 Win::Panel { panel, .. } => Some(panel.arg()),
-                Win::Wallpaper { .. } | Win::Enterprise { .. } | Win::Cert { .. } => None,
+                Win::Wallpaper { .. } | Win::Enterprise { .. } | Win::Cert { .. } | Win::Backup { .. } => None,
             })
             .collect();
         serde_json::to_string(&open).ok()
@@ -355,6 +445,11 @@ impl App for Prefs {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if let [flag, file] = &args[..]
+        && let Some(code) = backup_cli(flag, std::path::Path::new(file))
+    {
+        std::process::exit(code);
+    }
     if instance::forward(APP_ID, &args) {
         return;
     }

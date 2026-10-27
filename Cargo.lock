@@ -11299,7 +11299,9 @@ dependencies = [
  "tabula-protocol",
  "tabula-screensavers",
  "tabula-system",
+ "tar",
  "tracing",
+ "zstd",
 ]
 
 [[package]]
