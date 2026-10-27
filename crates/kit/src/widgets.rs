@@ -1046,6 +1046,130 @@ impl Widget for StatusBar<'_> {
     }
 }
 
+// ---- CellGrid -----------------------------------------------------------
+
+/// One cell of a [`CellGrid`].
+#[derive(Debug, Clone, Default)]
+pub struct GridCell {
+    /// Lit in this colour (from the palette); None: an empty well.
+    pub color: Option<Color32>,
+    /// A small mark drawn in it when there's room ("✦").
+    pub mark: Option<String>,
+    /// What it is, for the tooltip and agents.
+    pub name: String,
+    pub selected: bool,
+}
+
+/// What a [`CellGrid`] did this frame.
+pub struct GridResponse {
+    pub response: Response,
+    /// The cell clicked, by index.
+    pub clicked: Option<usize>,
+}
+
+/// A grid of small lit cells in sunken wells, as Pulse's LED meters on
+/// BeOS: a heatmap of things going on (requests, jobs). Its height is
+/// fixed (`rows` cells of `cell_size`); with more cells than fit, they
+/// shrink and more rows and columns fit in the same space. Each cell is
+/// clickable (and named for agents), with its name as a tooltip.
+pub struct CellGrid<'a> {
+    id: Id,
+    cells: &'a [GridCell],
+    rows: usize,
+    cell: f32,
+    gap: f32,
+    slots: usize,
+    fill: bool,
+}
+
+impl<'a> CellGrid<'a> {
+    pub fn new(id: impl std::hash::Hash + std::fmt::Debug, cells: &'a [GridCell]) -> Self {
+        CellGrid { id: Id::unique(id), cells, rows: 1, cell: 12.0, gap: 2.0, slots: 0, fill: false }
+    }
+    /// Rows at full size (the height it takes).
+    pub fn rows(mut self, rows: usize) -> Self {
+        self.rows = rows.max(1);
+        self
+    }
+    pub fn cell_size(mut self, size: f32) -> Self {
+        self.cell = size;
+        self
+    }
+    /// Show at least this many wells, lit or not (a strip of the last 25).
+    pub fn slots(mut self, n: usize) -> Self {
+        self.slots = n;
+        self
+    }
+    /// Wells across the whole area, however few cells are lit (a meter
+    /// of what's going on now).
+    pub fn fill(mut self) -> Self {
+        self.fill = true;
+        self
+    }
+
+    /// The cell size and columns that fit `n` cells in `width` × the
+    /// grid's height.
+    fn fit(&self, n: usize, width: f32) -> (f32, usize, usize) {
+        let height = self.rows as f32 * self.cell + (self.rows as f32 - 1.0) * self.gap;
+        let mut size = self.cell;
+        loop {
+            let cols = (((width + self.gap) / (size + self.gap)).floor() as usize).max(1);
+            let rows = (((height + self.gap) / (size + self.gap)).floor() as usize).max(1);
+            if cols * rows >= n || size <= 4.0 {
+                return (size, cols, rows);
+            }
+            size -= 1.0;
+        }
+    }
+
+    pub fn show(self, ui: &mut Ui) -> GridResponse {
+        let p = style::palette(ui.ctx());
+        let n = self.cells.len().max(self.slots);
+        let width = ui.available_width();
+        let height = self.rows as f32 * self.cell + (self.rows as f32 - 1.0) * self.gap;
+        let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+        let (size, cols, rows) = self.fit(n, width);
+        let mut clicked = None;
+        let wells = if self.fill { cols * rows } else { n.min(cols * rows) };
+        // Filling: spread the columns to both edges.
+        let step_x = if self.fill && cols > 1 { (width - size) / (cols - 1) as f32 } else { size + self.gap };
+        for i in 0..wells {
+            let (row, col) = (i / cols, i % cols);
+            let cell = style::snap(
+                ui.ctx(),
+                Rect::from_min_size(pos2(rect.left() + col as f32 * step_x, rect.top() + row as f32 * (size + self.gap)), vec2(size, size)),
+            );
+            let painter = ui.painter();
+            // The well: sunken, as an unlit LED.
+            painter.rect_filled(cell, 0.0, shade(&p, p.panel_background, 1.12));
+            style::bevel(painter, cell, shade(&p, p.panel_background, 1.4), c(p.shine));
+            let Some(item) = self.cells.get(i) else { continue };
+            let resp = ui.interact(cell, self.id.with(i), Sense::click());
+            let name = item.name.clone();
+            resp.widget_info(|| WidgetInfo::selected(Role::Button, true, item.selected, &name));
+            let inner = cell.shrink(1.0);
+            if let Some(color) = item.color {
+                let lit = if resp.hovered() { color.gamma_multiply(1.15) } else { color };
+                style::vgradient(painter, inner, lit, lit.gamma_multiply(0.8).to_opaque());
+                hline(painter, inner.left(), inner.right(), inner.top(), Color32::from_white_alpha(80));
+            }
+            if let Some(mark) = item.mark.as_deref().filter(|_| size >= 11.0) {
+                let font = FontId::proportional((size * 0.7).round());
+                let ink = if item.color.is_some() { Color32::WHITE } else { c(p.panel_text) };
+                painter.text(inner.center(), egui::Align2::CENTER_CENTER, mark, font, ink);
+            }
+            if item.selected {
+                style::frame_rect(painter, cell.expand(1.0), c(p.keyboard_navigation));
+            }
+            let resp = if item.name.is_empty() { resp } else { resp.on_hover_text(&item.name) };
+            if resp.clicked() {
+                clicked = Some(i);
+            }
+        }
+        GridResponse { response, clicked }
+    }
+}
+
 // ---- ScrollView ---------------------------------------------------------
 
 /// BScrollView: a sunken frame around scrolling content with BeOS scroll

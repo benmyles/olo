@@ -5,6 +5,10 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Token Pool: a live heatmap of requests~~ (Ben): the requests open
+  now as lit cells, each account's latest 25 as a strip coloured by how
+  they ended, click for the details; the kit's new `CellGrid` (Pulse's
+  LEDs). HACKING, "Token Pool" ▸ Activity, and Widgets.
 - ~~Token Pool: reset credits~~: shown per account, spent when every
   account is out, or by hand.
 - ~~A widget tree for Chrome~~ (Ben): the Tabula extension's host
@@ -496,15 +500,15 @@ as they land (with the commit), add new ones as they come up.
   `--new-window` to the running copy instead of launching a second one
   (Tracker, Terminal and StyledEdit; `apps::NEW_WINDOW`). Agents run
   `tabula-x --new-window`.
-- **Token Pool: a live heatmap of requests** (Ben): like Token Pooler's
-  menu, a grid of the requests open now (a cell each, coloured by state,
-  marked Claude or Codex; click one for its account, model, client and
-  how long it has run) and each account's recent requests as a strip
-  (completed, rate limited, failed, cancelled; click for the details and
-  token counts). Look at BeOS first (ActivityMonitor's and Pulse's
-  graphs, BStatusBar, the Deskbar replicants) and put what's reusable in
-  the kit (a heatmap/strip widget with hover and click), documented in
-  HACKING.
+- **Terminal: Show All Groups shows one group's tabs tiled** (Ben):
+  it isn't meant to tile the group windows across the screen, but to
+  show every tab of the group in one window at once, auto-tiled (each
+  tab a live pane, typing goes to the one clicked), and back to tabs
+  when turned off.
+- **Terminal: tab groups look off** (Ben): the tabs are too short, and
+  the group's coloured line overlaps things. Compare with BeOS tabs
+  (BTabView) and fix the strip's heights and the line's place, in light,
+  dark and night at 2×.
 - Token Pool follow-ups: spend a reset credit that would otherwise
   expire unused (needs a consumption-rate estimate, as Token Pooler's
   scheduling.md describes); keep key order in Claude Code's

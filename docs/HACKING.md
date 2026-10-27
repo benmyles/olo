@@ -335,6 +335,13 @@ colours it: `f(text, font, colour)` returns a `LayoutJob` in sections, a `widget
 as Log Viewer's syntax highlighting does), `Slider`
 (`.label().value_text().limits()`), `MenuField` (pop-up choice), `BBox`
 (etched group box with label), `separator`, `StatusBar` (progress),
+`CellGrid` (Pulse's LED meters: a heatmap of small lit cells in sunken
+wells, `GridCell{color, mark, name, selected}` each; `.rows(n)
+.cell_size(px)` fixes its height, and with more cells than fit they
+shrink so more rows and columns fit the same space; `.slots(n)` shows
+at least n wells, `.fill()` wells across the whole width; each cell is
+clickable, named for agents, its name a tooltip, the selected one
+ringed; `show(ui).clicked` is the cell clicked, by index),
 `ScrollView` (`show`, `show_rows` for virtualised content, `show_in(ui,
 rect, |ui, viewport|)` for content you lay out yourself, `reveal`,
 `ScrollView::scroll_to(ctx, id, offset)`, `.auto_hide(true)` to drop the
@@ -2062,7 +2069,22 @@ opens it), which listens on `127.0.0.1:17891` (`TABULA_POOL_PORT`).
   two. Claude's needs the account's organization (`organizationUuid`,
   read at sign-in). Not done: Token Pooler's "spend a credit that would
   expire unused" rule, which needs a consumption-rate estimate.
-- **Agents**: `tabula-pool --status [--json]`, or `GET /pool/status`.
+- **Activity** (a heatmap, after Token Pooler's menu, drawn as Pulse's
+  LEDs with the kit's `CellGrid`): the requests open now are lit cells
+  under the header (`Pool::open`, blue, marked C or X for Claude or
+  Codex), and each card has a strip of the account's latest 25
+  (`Account::recent`, saved): green completed, yellow rate limited (the
+  next account took it), red failed (refused, a server error, a broken
+  answer), grey cancelled (the client went away before the end). Each
+  *try* is one cell: a request that moved on is yellow on the first
+  account and green on the next. A finished answer is told from a
+  dropped one by a marker chained on the end of its stream (`respond`).
+  Clicking a cell shows its account, model, client (from the user
+  agent), time, duration, status and tokens on the line under the grid,
+  which is always there, so nothing moves.
+- **Agents**: `tabula-pool --status [--json]`, or `GET /pool/status`
+  (`open`, each account's `recent`, and `served`, each try with its
+  `outcome`).
 
 Tests: `cargo test -p tabula-token-pool` runs the gateway against a fake
 provider. For the window, start a session with a fixture `--home`

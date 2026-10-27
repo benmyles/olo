@@ -28,7 +28,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::{
-    model::{Account, Credential, Provider, Usage, model_family, now, today},
+    model::{Account, Credential, Outcome, Provider, Request, Usage, model_family, now, today},
     schedule,
     store::{Saved, Store},
     upstream::{self, Failure, Upstreams},
@@ -44,12 +44,40 @@ pub fn port() -> u16 {
 /// A request served (for the window's activity list): never its content.
 #[derive(Debug, Clone, Serialize)]
 pub struct Served {
-    pub at: i64,
     pub account: String,
+    pub account_id: String,
+    pub provider: Provider,
+    #[serde(flatten)]
+    pub request: Request,
+}
+
+/// A request going through the pool now.
+#[derive(Debug, Clone, Serialize)]
+pub struct Open {
+    pub id: u64,
+    pub account: String,
+    pub account_id: String,
     pub provider: Provider,
     pub model: String,
-    pub status: u16,
-    pub usage: Usage,
+    pub client: String,
+    /// When it was sent on (milliseconds since the epoch).
+    pub started: i64,
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+}
+
+/// The program a request came from, by its user agent.
+fn client_of(headers: &HeaderMap) -> String {
+    let ua = headers.get("user-agent").and_then(|v| v.to_str().ok()).unwrap_or("");
+    let first = ua.split(['/', ' ']).next().unwrap_or("");
+    match first {
+        "claude-cli" | "claude-code" => "Claude Code".into(),
+        f if f.starts_with("codex") => "Codex".into(),
+        "" => "Unknown".into(),
+        f => f.chars().take(40).collect(),
+    }
 }
 
 /// Everything the gateway and the window share.
@@ -62,6 +90,9 @@ pub struct Pool {
     pub in_flight: HashMap<String, u32>,
     /// The latest requests, newest last.
     pub served: VecDeque<Served>,
+    /// Requests going through now, oldest first.
+    pub open: Vec<Open>,
+    next_open: u64,
     /// Why the gateway isn't listening (or the accounts can't be
     /// opened), if so.
     pub error: Option<String>,
@@ -214,7 +245,7 @@ impl Shared {
 
     pub fn snapshot(&self) -> Pool {
         let p = self.pool.lock().unwrap();
-        Pool { saved: p.saved.clone(), sticky: HashMap::new(), in_flight: p.in_flight.clone(), served: p.served.clone(), error: p.error.clone(), loaded: p.loaded }
+        Pool { saved: p.saved.clone(), sticky: HashMap::new(), in_flight: p.in_flight.clone(), served: p.served.clone(), open: p.open.clone(), next_open: 0, error: p.error.clone(), loaded: p.loaded }
     }
 
     /// Add an account with its sign-in (and read its quota at once).
@@ -568,11 +599,11 @@ pub fn status_json(p: &Pool) -> Value {
                 "blocked_until": schedule::blocked_until(a, "", t),
                 "windows": a.windows, "today": a.today.1, "total": a.total,
                 "in_flight": p.in_flight.get(&a.id).copied().unwrap_or(0),
-                "last_used": a.last_used, "synced": a.synced,
+                "last_used": a.last_used, "synced": a.synced, "recent": a.recent,
             })
         })
         .collect();
-    json!({"accounts": accounts, "error": p.error, "loaded": p.loaded, "served": p.served})
+    json!({"accounts": accounts, "error": p.error, "loaded": p.loaded, "served": p.served, "open": p.open})
 }
 
 async fn claude(State(ctx): State<Ctx>, Path(rest): Path<String>, RawQuery(q): RawQuery, method: Method, headers: HeaderMap, body: Bytes) -> Response {
@@ -647,6 +678,7 @@ async fn proxy(ctx: Ctx, provider: Provider, rest: String, query: Option<String>
             None => base,
         }
     };
+    let client = client_of(&headers);
     let mut tried: Vec<String> = Vec::new();
     loop {
         // Choose, and count it as busy at once.
@@ -660,7 +692,11 @@ async fn proxy(ctx: Ctx, provider: Provider, rest: String, query: Option<String>
                 Some((id, name)) => {
                     p.sticky.insert((provider, family.clone()), id.clone());
                     *p.in_flight.entry(id.clone()).or_default() += 1;
-                    Ok((id, name))
+                    p.next_open += 1;
+                    let open = p.next_open;
+                    let o = Open { id: open, account: name.clone(), account_id: id.clone(), provider, model: model.clone(), client: client.clone(), started: now_ms() };
+                    p.open.push(o);
+                    Ok((id, name, open))
                 }
                 None => {
                     if !p.loaded {
@@ -673,8 +709,11 @@ async fn proxy(ctx: Ctx, provider: Provider, rest: String, query: Option<String>
                 }
             }
         };
-        let (id, name) = match chosen {
-            Ok(c) => c,
+        let (id, name, open) = match chosen {
+            Ok(c) => {
+                s.touch();
+                c
+            }
             Err((any, retry)) => {
                 // Every account out: a reset credit keeps things going.
                 if any && let Some(id) = s.redeem_for(provider, &family).await {
@@ -690,16 +729,26 @@ async fn proxy(ctx: Ctx, provider: Provider, rest: String, query: Option<String>
                 };
             }
         };
-        let done = |s: &Shared| {
-            let mut p = s.pool.lock().unwrap();
-            if let Some(n) = p.in_flight.get_mut(&id) {
-                *n = n.saturating_sub(1);
-            }
+        // Records how this try ends, whichever way, when dropped.
+        let mut finish = Finish {
+            id: id.clone(),
+            name,
+            open,
+            provider,
+            model: model.clone(),
+            client: client.clone(),
+            started: std::time::Instant::now(),
+            status: 0,
+            outcome: Some(Outcome::Failed),
+            ended: false,
+            broken: false,
+            scan: Scan::new(),
+            shared: Some(s.clone()),
         };
         let mut cred = match s.fresh(&id, provider, false, 60).await {
             Ok(c) => c,
             Err(_) => {
-                done(&s);
+                drop(finish);
                 tried.push(id.clone());
                 continue;
             }
@@ -727,18 +776,19 @@ async fn proxy(ctx: Ctx, provider: Provider, rest: String, query: Option<String>
                 Ok(r) => break Some(r),
                 Err(e) => {
                     // Not replayed: it may have reached the provider.
-                    done(&s);
-                    s.touch();
+                    drop(finish);
                     return unavailable(provider, StatusCode::BAD_GATEWAY, &format!("The pool couldn’t reach {}: {e}", provider.client()), None);
                 }
             }
         };
         let Some(r) = response else {
-            done(&s);
+            finish.status = StatusCode::UNAUTHORIZED.as_u16();
+            drop(finish);
             tried.push(id.clone());
             continue;
         };
         let status = r.status();
+        finish.status = status.as_u16();
         let t = now();
         let (windows, rejection) = upstream::header_windows(r.headers(), provider, &family, status.as_u16(), t);
         {
@@ -759,23 +809,37 @@ async fn proxy(ctx: Ctx, provider: Provider, rest: String, query: Option<String>
         }
         if status == StatusCode::UNAUTHORIZED || rejection.is_some() {
             // Nothing passed on yet: the next account may serve it.
-            done(&s);
-            s.touch();
+            if rejection.is_some() {
+                finish.outcome = Some(Outcome::RateLimited);
+            }
+            drop(finish);
             tried.push(id.clone());
             continue;
         }
-        return respond(s, r, Finish { id: id.clone(), name, provider, model: model.clone(), status: status.as_u16(), scan: Scan::new(), shared: None });
+        // Passed on: how it ends is up to the answer.
+        finish.outcome = None;
+        return respond(r, finish);
     }
 }
 
-/// Counts what a finished answer reports, when it's dropped (done, or
-/// the client went away), and frees its account.
+/// One try at a request on one account: when dropped (the answer done,
+/// the client gone, or the try given up) it frees the account, counts
+/// what the answer reported and keeps how it ended.
 struct Finish {
     id: String,
     name: String,
+    open: u64,
     provider: Provider,
     model: String,
+    client: String,
+    started: std::time::Instant,
     status: u16,
+    /// How it ended, when known before the answer (None: passed on).
+    outcome: Option<Outcome>,
+    /// The answer reached its end.
+    ended: bool,
+    /// The answer broke off upstream.
+    broken: bool,
     scan: Scan,
     shared: Option<Arc<Shared>>,
 }
@@ -783,18 +847,39 @@ struct Finish {
 impl Drop for Finish {
     fn drop(&mut self) {
         let Some(s) = self.shared.take() else { return };
+        let passed = self.outcome.is_none();
+        let outcome = self.outcome.unwrap_or(match self.status {
+            _ if self.broken => Outcome::Failed,
+            _ if !self.ended => Outcome::Cancelled,
+            429 => Outcome::RateLimited,
+            400.. => Outcome::Failed,
+            _ => Outcome::Completed,
+        });
         let mut usage = self.scan.finish();
         usage.requests = 1;
         let t = now();
+        let request = Request {
+            at: t,
+            model: self.model.clone(),
+            client: self.client.clone(),
+            outcome,
+            status: self.status,
+            ms: self.started.elapsed().as_millis() as u64,
+            usage: if passed { usage.clone() } else { Usage::default() },
+        };
         {
             let mut p = s.pool.lock().unwrap();
             if let Some(n) = p.in_flight.get_mut(&self.id) {
                 *n = n.saturating_sub(1);
             }
+            p.open.retain(|o| o.id != self.open);
             if let Some(a) = p.account_mut(&self.id) {
-                a.record(&usage, &today(), t);
+                if passed {
+                    a.record(&usage, &today(), t);
+                }
+                a.finished(request.clone());
             }
-            p.served.push_back(Served { at: t, account: self.name.clone(), provider: self.provider, model: self.model.clone(), status: self.status, usage });
+            p.served.push_back(Served { account: self.name.clone(), account_id: self.id.clone(), provider: self.provider, request });
             while p.served.len() > 50 {
                 p.served.pop_front();
             }
@@ -803,7 +888,7 @@ impl Drop for Finish {
     }
 }
 
-fn respond(s: Arc<Shared>, r: reqwest::Response, mut finish: Finish) -> Response {
+fn respond(r: reqwest::Response, finish: Finish) -> Response {
     let status = r.status();
     let mut out = HeaderMap::new();
     for (k, v) in r.headers().iter().filter(|(k, _)| returned(k.as_str())) {
@@ -812,15 +897,24 @@ fn respond(s: Arc<Shared>, r: reqwest::Response, mut finish: Finish) -> Response
     if let Ok(v) = HeaderValue::from_str(&finish.name) {
         out.insert(HeaderName::from_static("x-tabula-pool-account"), v);
     }
-    finish.scan.sse = r.headers().get("content-type").and_then(|v| v.to_str().ok()).is_some_and(|c| c.starts_with("text/event-stream"));
-    finish.shared = Some(s);
     let finish = Arc::new(Mutex::new(finish));
-    let stream = r.bytes_stream().map(move |chunk| {
-        if let Ok(b) = &chunk {
-            finish.lock().unwrap().scan.feed(b);
-        }
-        chunk
-    });
+    finish.lock().unwrap().scan.sse = r.headers().get("content-type").and_then(|v| v.to_str().ok()).is_some_and(|c| c.starts_with("text/event-stream"));
+    let end = finish.clone();
+    let stream = r
+        .bytes_stream()
+        .map(move |chunk| {
+            let mut f = finish.lock().unwrap();
+            match &chunk {
+                Ok(b) => f.scan.feed(b),
+                Err(_) => f.broken = true,
+            }
+            chunk
+        })
+        // Reached only when the answer has all been read.
+        .chain(futures_util::stream::poll_fn(move |_| {
+            end.lock().unwrap().ended = true;
+            std::task::Poll::Ready(None)
+        }));
     let mut resp = Response::new(Body::from_stream(stream));
     *resp.status_mut() = status;
     *resp.headers_mut() = out;

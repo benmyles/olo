@@ -28,13 +28,13 @@ use tabula_kit::{
     instance::{self, Launch},
     metrics as m,
     style::{self, c},
-    widgets::{self, BBox, Button, CheckBox, ScrollView, StatusBar, StringView, TextControl},
+    widgets::{self, BBox, Button, CellGrid, CheckBox, GridCell, ScrollView, StatusBar, StringView, TextControl},
 };
 use tabula_token_pool::{
     clients,
     gateway::{self, Pool, Shared},
     import::{self, Found},
-    model::{Account, Provider, Window, now},
+    model::{Account, Outcome, Provider, RECENT, Request, Window, now},
     schedule, store,
 };
 
@@ -80,6 +80,17 @@ struct PoolApp {
     removing: Option<String>,
     /// The account a reset credit is being spent for (confirming).
     resetting: Option<String>,
+    /// The request whose details are shown.
+    picked: Option<Pick>,
+}
+
+/// A request picked in the heatmap.
+#[derive(Clone, PartialEq)]
+enum Pick {
+    /// Going on now (its id).
+    Open(u64),
+    /// One of an account's finished requests.
+    Done(String, Request),
 }
 
 fn client_index(p: Provider) -> usize {
@@ -111,6 +122,10 @@ fn tokens(n: u64) -> String {
         1000..1_000_000 => format!("{}k", n / 1000),
         _ => format!("{:.1}M", n as f64 / 1e6),
     }
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
 fn plan_name(plan: &str) -> String {
@@ -283,6 +298,7 @@ impl PoolApp {
                 ui.add(StringView::new(&line));
             }
         }
+        self.now_grid(ui, pool);
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = m::SPACING * 2.0;
             for prov in PROVIDERS {
@@ -295,6 +311,66 @@ impl PoolApp {
                 }
             }
         });
+    }
+
+    /// The requests going through now: a cell each, lit while it runs.
+    fn now_grid(&mut self, ui: &mut egui::Ui, pool: &Pool) {
+        let p = style::palette(ui.ctx());
+        let t = now_ms();
+        let cells: Vec<GridCell> = pool
+            .open
+            .iter()
+            .map(|o| GridCell {
+                color: Some(c(p.status_bar)),
+                mark: Some(mark(o.provider).into()),
+                name: format!("{} on {}, {}", o.model, o.account, duration((t - o.started).max(0) as u64)),
+                selected: self.picked == Some(Pick::Open(o.id)),
+            })
+            .collect();
+        let r = CellGrid::new("pool-now", &cells).rows(2).cell_size(14.0).fill().show(ui);
+        if let Some(i) = r.clicked {
+            let pick = Pick::Open(pool.open[i].id);
+            self.picked = if self.picked.as_ref() == Some(&pick) { None } else { Some(pick) };
+        }
+        // One line, always there (so nothing jumps): the picked request.
+        let details = match &self.picked {
+            Some(Pick::Open(id)) => match pool.open.iter().find(|o| o.id == *id) {
+                Some(o) => Some(format!("Running · {} on {} · {} · {} so far", o.model, o.account, o.client, duration((t - o.started).max(0) as u64))),
+                // It finished: its account's strip has it now.
+                None => {
+                    self.picked = None;
+                    None
+                }
+            },
+            Some(Pick::Done(id, r)) => Some(done_details(&pool.account(id).map(|a| a.name.clone()).unwrap_or_default(), r)),
+            None => None,
+        };
+        let text = details.unwrap_or_else(|| match pool.open.len() {
+            0 => "No requests now · click a cell for its details".into(),
+            _ => "Click a cell for its details".into(),
+        });
+        ui.add(StringView::new(&text).dim(true));
+    }
+
+    /// An account's latest requests, oldest first, coloured by how they
+    /// ended.
+    fn strip(&mut self, ui: &mut egui::Ui, a: &Account) {
+        let p = style::palette(ui.ctx());
+        let cells: Vec<GridCell> = a
+            .recent
+            .iter()
+            .map(|r| GridCell {
+                color: Some(outcome_color(&p, r.outcome)),
+                mark: None,
+                name: format!("{}: {} at {}", r.outcome.label(), r.model, clock(r.at)),
+                selected: self.picked == Some(Pick::Done(a.id.clone(), r.clone())),
+            })
+            .collect();
+        let r = CellGrid::new(("pool-recent", &a.id), &cells).cell_size(12.0).slots(RECENT).show(ui);
+        if let Some(i) = r.clicked {
+            let pick = Pick::Done(a.id.clone(), a.recent[i].clone());
+            self.picked = if self.picked.as_ref() == Some(&pick) { None } else { Some(pick) };
+        }
     }
 
     fn card(&mut self, ui: &mut egui::Ui, pool: &Pool, a: &Account) {
@@ -347,6 +423,7 @@ impl PoolApp {
                 tokens(today.output_tokens)
             );
             ui.add(StringView::new(&used));
+            self.strip(ui, a);
             self.card_controls(ui, a);
         });
         ui.add_space(m::SPACING);
@@ -442,6 +519,45 @@ impl PoolApp {
     }
 }
 
+/// How a provider's requests are marked in the heatmap.
+fn mark(p: Provider) -> &'static str {
+    match p {
+        Provider::Claude => "C",
+        Provider::Codex => "X",
+    }
+}
+
+/// A finished request's colour: BeOS's green, yellow and red, grey for
+/// one the client gave up on.
+fn outcome_color(p: &tabula_kit::theme::Palette, o: Outcome) -> egui::Color32 {
+    match o {
+        Outcome::Completed => c(p.success),
+        Outcome::RateLimited => c(p.tab_focused),
+        Outcome::Failed => c(p.failure),
+        Outcome::Cancelled => style::disabled_text(p),
+    }
+}
+
+/// "850ms", "3.2s", "2m 5s".
+fn duration(ms: u64) -> String {
+    match ms {
+        0..1000 => format!("{ms}ms"),
+        1000..60_000 => format!("{:.1}s", ms as f64 / 1000.0),
+        _ => format!("{}m {}s", ms / 60_000, ms % 60_000 / 1000),
+    }
+}
+
+fn done_details(account: &str, r: &Request) -> String {
+    let mut s = format!("{} · {} on {} · {} · {} · {}", r.outcome.label(), r.model, account, r.client, clock(r.at), duration(r.ms));
+    if r.status != 0 && r.outcome != Outcome::Completed {
+        s.push_str(&format!(" · HTTP {}", r.status));
+    }
+    if r.outcome == Outcome::Completed || r.usage.input_tokens + r.usage.output_tokens > 0 {
+        s.push_str(&format!(" · {} in, {} out", tokens(r.usage.input_tokens), tokens(r.usage.output_tokens)));
+    }
+    s
+}
+
 /// A row of buttons at the right, one control tall (in a card, where
 /// `button_row` alone would centre them in all the height left).
 fn row(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
@@ -472,8 +588,8 @@ fn window_bar(ui: &mut egui::Ui, w: &Window, t: i64) {
 impl App for PoolApp {
     fn ui(&mut self, _cx: &mut Cx, _window: WindowId, ui: &mut egui::Ui) {
         let pool = self.shared.snapshot();
-        // Times count down.
-        ui.ctx().request_repaint_after(Duration::from_secs(20));
+        // Times count down (running requests' by the second).
+        ui.ctx().request_repaint_after(Duration::from_secs(if pool.open.is_empty() { 20 } else { 1 }));
         let p = style::palette(ui.ctx());
         widgets::window_content(ui, |ui| {
             self.header(ui, &pool);
@@ -515,8 +631,8 @@ impl App for PoolApp {
                 }
                 (None, Some(n)) => Some(n.clone()),
                 (None, None) => pool.served.back().map(|s| {
-                    let u = &s.usage;
-                    (format!("Last: {} via {} at {} · {} in, {} out", s.model, s.account, clock(s.at), tokens(u.input_tokens), tokens(u.output_tokens)), false)
+                    let (r, u) = (&s.request, &s.request.usage);
+                    (format!("Last: {} via {} at {} · {} in, {} out", r.model, s.account, clock(r.at), tokens(u.input_tokens), tokens(u.output_tokens)), false)
                 }),
             };
             ui.horizontal(|ui| {
@@ -731,6 +847,7 @@ fn main() -> std::process::ExitCode {
             renaming: None,
             removing: None,
             resetting: None,
+            picked: None,
         };
         let open = match &restored {
             Some(r) => r["open"] == true,

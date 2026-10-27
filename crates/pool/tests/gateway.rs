@@ -141,6 +141,11 @@ async fn drains_and_fails_over() {
     assert_eq!(p.saved.credentials["b"].refresh.as_deref(), Some("r2"));
     assert!(p.account("a").unwrap().cooldown_until.is_some());
     assert_eq!(p.in_flight.values().sum::<u32>(), 0);
+    // Each try is in its account's strip, with how it ended.
+    use tabula_token_pool::model::Outcome;
+    assert_eq!(p.account("a").unwrap().recent.iter().map(|r| r.outcome).collect::<Vec<_>>(), [Outcome::RateLimited]);
+    assert_eq!(b.recent.iter().map(|r| (r.outcome, r.usage.output_tokens)).collect::<Vec<_>>(), [(Outcome::Completed, 3)]);
+    assert!(p.open.is_empty());
     assert!(!serde_json::to_string(&gateway::status_json(&p)).unwrap().contains("fresh"));
 
     // A web page can't use it.

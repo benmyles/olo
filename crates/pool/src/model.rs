@@ -1,7 +1,7 @@
 //! What the pool knows: its accounts, each one's credential (kept apart,
 //! sealed), quota windows and usage.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -96,6 +96,51 @@ impl Usage {
     }
 }
 
+/// How a request through the pool ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Outcome {
+    Completed,
+    /// Its account was out of quota (the next one took it).
+    RateLimited,
+    /// Refused, a server error or a broken answer.
+    Failed,
+    /// The client went away before the answer ended.
+    Cancelled,
+}
+
+impl Outcome {
+    pub fn label(self) -> &'static str {
+        match self {
+            Outcome::Completed => "Completed",
+            Outcome::RateLimited => "Rate limited",
+            Outcome::Failed => "Failed",
+            Outcome::Cancelled => "Cancelled",
+        }
+    }
+}
+
+/// A request an account served or turned away: never its content.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Request {
+    /// When it ended (seconds since the epoch).
+    pub at: i64,
+    pub model: String,
+    /// The program that sent it ("Claude Code", "Codex", …).
+    #[serde(default)]
+    pub client: String,
+    pub outcome: Outcome,
+    /// The provider's HTTP status (0: none came).
+    pub status: u16,
+    /// How long it ran, in milliseconds.
+    pub ms: u64,
+    #[serde(default)]
+    pub usage: Usage,
+}
+
+/// How many of an account's latest requests it keeps.
+pub const RECENT: usize = 25;
+
 /// A provider-issued credit that resets an account's quota early (some
 /// subscriptions get a few).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -158,6 +203,9 @@ pub struct Account {
     /// The last time a credit was redeemed for it automatically, or tried.
     #[serde(default)]
     pub redeem_tried: Option<i64>,
+    /// Its latest requests, newest last (at most [`RECENT`]).
+    #[serde(default)]
+    pub recent: VecDeque<Request>,
 }
 
 impl Account {
@@ -190,6 +238,7 @@ impl Account {
             credits: Vec::new(),
             redeeming: None,
             redeem_tried: None,
+            recent: VecDeque::new(),
         }
     }
 
@@ -201,6 +250,14 @@ impl Account {
         }
         self.today.1.add(usage);
         self.last_used = Some(at);
+    }
+
+    /// Keep a finished request in its strip.
+    pub fn finished(&mut self, r: Request) {
+        self.recent.push_back(r);
+        while self.recent.len() > RECENT {
+            self.recent.pop_front();
+        }
     }
 
     /// Fold in windows newly reported (by name), keeping a known reset

@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Token Pool: a heatmap of requests
+
+*14:24* — The requests going through the pool now light up as cells under the header, like Pulse's LEDs, and each account keeps a strip of its latest 25: green completed, yellow rate limited, red failed, grey cancelled. Click any cell for its model, client, time and tokens. The grid is the kit's new CellGrid.
+
+![Token Pool: a heatmap of requests](2026-10-27/142435-token-pool-a-heatmap-of-requests.png)
+
 ### Num Lock on at start
 
 *14:00* — Num Lock now starts on, and Preferences ▸ Keyboard can turn that off; the Num Lock key still toggles it, and changing other keyboard settings keeps its state.
