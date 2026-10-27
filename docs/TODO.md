@@ -232,6 +232,15 @@ as they land (with the commit), add new ones as they come up.
   from the Deskbar tray sometimes opened behind every other window
   (after Tile All). A newly opened dialog or alert must be raised and
   focused.
+- **Log viewer app** (Ben): a Tabula app that shows every Tabula
+  event in one place (app_server, tabula-session, Deskbar, Tracker and
+  every app's log) so issues can be spotted and tracked down: live tail,
+  filter by program, level and text, a time range, warnings and errors
+  highlighted, and the lines around an error. Read the user's journal
+  natively (the journal file format, in process, not `journalctl`) plus
+  the apps' own log files; never block the UI (stream it, on a worker
+  thread). Agent-first: the same query is available over IPC, so an agent
+  can ask "what went wrong in the last ten minutes" without screenshots.
 - **Night light does nothing on the MacBook** (Ben): turning it on in
   Preferences changes nothing on screen. app_server gets the request and
   fades (log: `night light kelvin=Some(…)`), but no gamma warning is
