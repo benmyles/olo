@@ -1233,7 +1233,11 @@ impl NetPositive {
         if b.size != size || (b.scale - scale).abs() > f32::EPSILON {
             b.size = size;
             b.scale = scale;
-            if let Some(s) = &b.surface {
+            // Servo resizes the shared surface itself and only then tells
+            // the pages; resizing it here first made it see no change, and
+            // pages kept their old size in a bigger window.
+            let views = b.tabs.iter().any(|t| t.view.is_some());
+            if !views && let Some(s) = &b.surface {
                 s.resize(size);
             }
             for t in &b.tabs {

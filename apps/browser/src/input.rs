@@ -88,11 +88,13 @@ pub fn forward(events: &[egui::Event], view: Viewport, keyboard: bool, pointer: 
                 out.events.push(InputEvent::MouseButton(MouseButtonEvent::new(action, button, view.point(*pos))));
             }
             egui::Event::MouseWheel { unit, delta, .. } if pointer.inside => {
-                // egui's delta moves the content; the DOM's scrolls the view.
+                // Servo takes the delta as egui (and winit) give it, moving
+                // the content, and scrolls by its negative (servo-paint's
+                // webview_renderer.rs); negating it here scrolled backwards.
                 let (d, mode) = match unit {
-                    egui::MouseWheelUnit::Point => (-*delta * view.scale, WheelMode::DeltaPixel),
-                    egui::MouseWheelUnit::Line => (-*delta, WheelMode::DeltaLine),
-                    egui::MouseWheelUnit::Page => (-*delta, WheelMode::DeltaPage),
+                    egui::MouseWheelUnit::Point => (*delta * view.scale, WheelMode::DeltaPixel),
+                    egui::MouseWheelUnit::Line => (*delta, WheelMode::DeltaLine),
+                    egui::MouseWheelUnit::Page => (*delta, WheelMode::DeltaPage),
                 };
                 let at = view.point(last_pointer(events).unwrap_or(view.rect.center()));
                 out.events.push(InputEvent::Wheel(WheelEvent::new(
