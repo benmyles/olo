@@ -5,6 +5,9 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Token Pool follow-ups~~: a reset credit about to expire is spent at
+  its best moment rather than lost (projected from each window's rate),
+  and Claude Code's settings.json keeps its key order when edited.
 - ~~Screenshot Window from the palette~~ (Ben): takes the window the
   palette was opened over (`--window ID`), not whatever is active then.
 - ~~Token Pool heatmap marks~~ (Ben): a cell's "C"/"X" is centred on its
@@ -517,10 +520,6 @@ as they land (with the commit), add new ones as they come up.
   `--new-window` to the running copy instead of launching a second one
   (Tracker, Terminal and StyledEdit; `apps::NEW_WINDOW`). Agents run
   `tabula-x --new-window`.
-- Token Pool follow-ups: spend a reset credit that would otherwise
-  expire unused (needs a consumption-rate estimate, as Token Pooler's
-  scheduling.md describes); keep key order in Claude Code's
-  settings.json when editing it.
 - **Rename Tabula to Olo, use the new brand, ship a wallpaper pack**
   (Ben; the very last thing, after everything else is done):
   - *Rename* everywhere (code, crates, binaries, app ids, environment

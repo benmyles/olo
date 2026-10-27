@@ -77,7 +77,47 @@ impl Window {
     pub fn exhausted(&self, now: i64) -> bool {
         self.used >= 100.0 && self.resets_at.is_none_or(|r| r > now)
     }
+
+    /// How long it runs, in seconds, known from its name.
+    pub fn length(&self) -> Option<i64> {
+        let n = self.name.as_str();
+        if n.contains("five_hour") || n.contains("primary") {
+            Some(5 * 3600)
+        } else if n.contains("seven_day") || n.contains("secondary") {
+            Some(7 * 86400)
+        } else {
+            None
+        }
+    }
+
+    /// Percent used per second since it started (None this early on,
+    /// or when its length isn't known).
+    pub fn rate(&self, now: i64) -> Option<f64> {
+        let elapsed = now - (self.resets_at? - self.length()?);
+        (elapsed >= 600).then(|| self.used / elapsed as f64)
+    }
+
+    /// How much a reset at `at` would give back (percent): what it is
+    /// expected to have used by then, at today's rate, starting afresh
+    /// after its own reset.
+    pub fn used_at(&self, now: i64, at: i64) -> f64 {
+        let rate = self.rate(now).unwrap_or(0.0);
+        let used = match self.resets_at {
+            Some(r) if at >= r => rate * (at - r) as f64,
+            _ => self.used + rate * (at - now).max(0) as f64,
+        };
+        used.min(100.0)
+    }
 }
+
+/// Look this far ahead for a credit about to expire unused.
+pub const EXPIRY_LOOKAHEAD: i64 = 48 * 3600;
+/// Redeem a credit no later than this before it expires.
+pub const EXPIRY_MARGIN: i64 = 30 * 60;
+/// Nor later than this before a window resets by itself.
+pub const RESET_MARGIN: i64 = 10 * 60;
+/// A reset must give back at least this much (percent) to be worth it.
+pub const WORTH_REDEEMING: f64 = 5.0;
 
 /// Tokens and requests, counted from the providers' usage reports (never
 /// what was asked or answered).
@@ -213,6 +253,31 @@ impl Account {
     pub fn credit(&self) -> Option<&ResetCredit> {
         self.credits.iter().filter(|c| c.usable && c.remaining > 0).min_by_key(|c| c.expires_at.unwrap_or(i64::MAX))
     }
+
+    /// Whether to redeem its next credit now so that it isn't lost: it
+    /// expires within [`EXPIRY_LOOKAHEAD`], and no later moment before
+    /// then (just before its quota resets by itself, or the last chance)
+    /// would give back more of its shared quota. A reset is worth most
+    /// when the most is used, so a credit waits for that, but never past
+    /// its expiry.
+    pub fn spend_before_expiry(&self, now: i64) -> bool {
+        let Some(expires) = self.credit().and_then(|c| c.expires_at) else { return false };
+        if expires <= now || expires - now > EXPIRY_LOOKAHEAD {
+            return false;
+        }
+        let shared: Vec<&Window> = self.windows.iter().filter(|w| w.models.is_empty()).collect();
+        let worth = |at: i64| shared.iter().map(|w| w.used_at(now, at)).fold(0.0, f64::max);
+        let last = expires - EXPIRY_MARGIN;
+        let later = shared
+            .iter()
+            .filter_map(|w| w.resets_at.map(|r| r - RESET_MARGIN))
+            .chain(std::iter::once(last))
+            .filter(|&m| m > now && m < expires);
+        let best_later = later.map(worth).fold(0.0, f64::max);
+        let here = worth(now);
+        // Ties wait: later is as good, and keeps the choice open.
+        here >= WORTH_REDEEMING && (here > best_later || now >= last)
+    }
 }
 
 impl Account {
@@ -306,6 +371,39 @@ pub fn model_family(model: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const H: i64 = 3600;
+
+    /// An account with a credit expiring at `expires` and a weekly window
+    /// `used` percent used, resetting at `resets` (so its start, and its
+    /// rate, follow from its week).
+    fn holding(expires: i64, used: f64, resets: i64) -> Account {
+        let mut a = Account::new("a".into(), "a".into(), Provider::Claude);
+        a.credits = vec![ResetCredit { id: "c".into(), expires_at: Some(expires), remaining: 1, usable: true, program: None }];
+        a.windows = vec![Window { name: "seven_day".into(), label: "Weekly".into(), used, resets_at: Some(resets), models: Vec::new() }];
+        a
+    }
+
+    #[test]
+    fn credits_are_spent_before_they_expire() {
+        let t = 1_000_000;
+        // Weekly: 4 days in, 60% used, resets in 3 days; the credit goes in
+        // 20 hours. It waits for its last chance, when the most is used.
+        let a = holding(t + 20 * H, 60.0, t + 3 * 24 * H);
+        assert!(!a.spend_before_expiry(t));
+        assert!(a.spend_before_expiry(t + 20 * H - EXPIRY_MARGIN));
+        // The quota resets by itself in 5 hours, before the credit goes:
+        // spend it just before that, when 90% is used, not after.
+        let b = holding(t + 20 * H, 90.0, t + 5 * H);
+        assert!(!b.spend_before_expiry(t));
+        assert!(b.spend_before_expiry(t + 5 * H - RESET_MARGIN));
+        // Hardly used: not worth it even at the end.
+        let c = holding(t + 20 * H, 2.0, t + 24 * H);
+        assert!(!c.spend_before_expiry(t + 20 * H - EXPIRY_MARGIN));
+        // Plenty of time left.
+        let d = holding(t + 4 * 24 * H, 90.0, t + 3 * 24 * H);
+        assert!(!d.spend_before_expiry(t));
+    }
 
     #[test]
     fn families() {

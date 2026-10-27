@@ -458,6 +458,29 @@ impl Shared {
         }
     }
 
+    /// Redeem credits that would otherwise expire unused, each at its best
+    /// moment (`Account::spend_before_expiry`). At most once a minute per
+    /// account.
+    async fn spend_expiring(&self) {
+        let t = now();
+        let due: Vec<String> = {
+            let p = self.pool.lock().unwrap();
+            p.saved
+                .accounts
+                .iter()
+                .filter(|a| a.enabled && a.signed_out.is_none() && a.redeem_tried.is_none_or(|r| t - r >= 60))
+                .filter(|a| a.spend_before_expiry(t))
+                .map(|a| a.id.clone())
+                .collect()
+        };
+        for id in due {
+            match self.redeem(&id).await {
+                Ok(()) => tracing::info!("pool: redeemed a reset credit before it expired"),
+                Err(e) => tracing::warn!("pool: redeeming an expiring reset credit: {e}"),
+            }
+        }
+    }
+
     /// Refresh sign-ins due within ten minutes and read every enabled
     /// account's quota (or just `only`'s).
     pub async fn sync(&self, only: Option<&str>) {
@@ -538,6 +561,7 @@ pub fn start(shared: Arc<Shared>, port: u16) -> Result<(), String> {
                     tokio::time::sleep(Duration::from_secs(2)).await;
                     loop {
                         s.sync(None).await;
+                        s.spend_expiring().await;
                         tokio::time::sleep(Duration::from_secs(60)).await;
                     }
                 });

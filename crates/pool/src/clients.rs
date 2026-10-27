@@ -138,12 +138,14 @@ fn set_claude(manifest: &mut Manifest, on: bool, port: u16) -> Result<(), String
                     env.insert(k.to_owned(), Value::String(old));
                 }
                 None => {
-                    env.remove(k);
+                    // Keeping the order of the rest (settings.json is the
+                    // person's, with keys where they put them).
+                    env.shift_remove(k);
                 }
             }
         }
         if env.is_empty() {
-            v.as_object_mut().unwrap().remove("env");
+            v.as_object_mut().unwrap().shift_remove("env");
         }
     }
     let mut bytes = serde_json::to_vec_pretty(&v).map_err(|e| e.to_string())?;
@@ -217,7 +219,7 @@ mod tests {
         let (claude, codex, config) = (dir.path().join("claude"), dir.path().join("codex"), dir.path().join("config"));
         std::fs::create_dir_all(&claude).unwrap();
         std::fs::create_dir_all(&codex).unwrap();
-        let settings = "{\n  \"model\": \"opus\",\n  \"env\": {\n    \"ANTHROPIC_BASE_URL\": \"http://example.invalid\",\n    \"OTHER\": \"1\"\n  }\n}\n";
+        let settings = "{\n  \"model\": \"opus\",\n  \"theme\": \"dark\",\n  \"env\": {\n    \"ANTHROPIC_BASE_URL\": \"http://example.invalid\",\n    \"OTHER\": \"1\"\n  }\n}\n";
         std::fs::write(claude.join("settings.json"), settings).unwrap();
         let toml = "# mine\nmodel = \"gpt-5\"\nmodel_provider = \"openai\"\n\n[model_providers.other]\nname = \"x\"\n";
         std::fs::write(codex.join("config.toml"), toml).unwrap();
@@ -243,8 +245,8 @@ mod tests {
             set(p, false, 4000).unwrap();
             assert!(!enabled(p, 4000));
         }
-        let v: Value = serde_json::from_slice(&std::fs::read(claude.join("settings.json")).unwrap()).unwrap();
-        assert_eq!(v["env"], json!({"ANTHROPIC_BASE_URL": "http://example.invalid", "OTHER": "1"}));
+        // Exactly as it was, key order and all.
+        assert_eq!(std::fs::read_to_string(claude.join("settings.json")).unwrap(), settings);
         let t = std::fs::read_to_string(codex.join("config.toml")).unwrap();
         assert!(t.contains("model_provider = \"openai\"") && t.contains("[model_providers.other]") && !t.contains("tabula_pool"), "{t}");
     }

@@ -2092,14 +2092,20 @@ opens it), which listens on `127.0.0.1:17891` (`TABULA_POOL_PORT`).
   early): read with each sync (Claude's `cedar_ember` grants in the
   usage report, `?cedar_ember=1`; ChatGPT's
   `/wham/rate-limit-reset-credits`) and shown on the card. One is spent
-  automatically only when no account can serve and an account's
+  automatically when no account can serve and an account's
   *shared* quota (not just a model's meter) is what stops it, at most
   once a minute per account; or by hand (Account ▸ Use a Reset Credit…,
   after a confirmation). The redemption's request id is saved before
   the provider is asked, so a retry after an unclear outcome can't spend
   two. Claude's needs the account's organization (`organizationUuid`,
-  read at sign-in). Not done: Token Pooler's "spend a credit that would
-  expire unused" rule, which needs a consumption-rate estimate.
+  read at sign-in). A credit due to expire within 48 hours is also
+  spent before it's lost, at its best moment
+  (`Account::spend_before_expiry`, checked after each sync): a reset
+  gives back what the shared quota has used, so it waits while a later
+  moment (just before the quota resets by itself, or 30 minutes before
+  the credit expires) would give back more, projecting use from each
+  window's rate (`Window::rate`: percent used over time since it began;
+  its length known from its name); never for under 5%.
 - **Activity** (a heatmap, after Token Pooler's menu, drawn as Pulse's
   LEDs with the kit's `CellGrid`): the requests open now are lit cells
   under the header (`Pool::open`, blue, marked C or X for Claude or
