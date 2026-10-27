@@ -232,6 +232,10 @@ pub enum Tile {
     RightThird,
     LeftTwoThirds,
     RightTwoThirds,
+    /// A cell an arranging command (Tile All, Tile App, Smart Tiling)
+    /// chose: where it is is the window's part (`TilePart`), so its edges
+    /// drag its neighbours like any tile's. Alone, the whole area.
+    Cell,
 }
 
 impl Tile {
@@ -252,6 +256,7 @@ impl Tile {
             Tile::RightThird => (2.0 * T, 0.0, T, 1.0),
             Tile::LeftTwoThirds => (0.0, 0.0, 2.0 * T, 1.0),
             Tile::RightTwoThirds => (T, 0.0, 2.0 * T, 1.0),
+            Tile::Cell => (0.0, 0.0, 1.0, 1.0),
         }
     }
 }

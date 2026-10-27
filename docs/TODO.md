@@ -5,6 +5,9 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Resizing after Tile All moves the others~~ (Ben): Tile All and Tile
+  App now tile each window into its cell (`Tile::Cell`), so dragging an
+  edge resizes the neighbours on that line.
 - ~~Token Pool follow-ups~~: a reset credit about to expire is spent at
   its best moment rather than lost (projected from each window's rate),
   and Claude Code's settings.json keeps its key order when edited.

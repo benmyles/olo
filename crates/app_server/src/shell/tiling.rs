@@ -337,6 +337,14 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         Self::set_tiled(window, Some(tile));
     }
 
+    /// `window` was arranged into `cell` of `area`: tiled there, so
+    /// dragging an edge resizes its neighbours, and re-tiled into the
+    /// same part when its display changes.
+    fn set_cell(&mut self, window: &WindowElement, area: Rectangle<i32, Logical>, cell: Rectangle<i32, Logical>) {
+        Self::set_tiled(window, Some(Tile::Cell));
+        Self::set_part(window, Some(fraction_of(area, cell, self.tile_gap())));
+    }
+
     /// Put a tiled window back in its part of its display: its tile's, or
     /// the one its edges were dragged to.
     pub fn retile(&mut self, window: &WindowElement, tile: Tile) {
@@ -675,8 +683,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         });
         let cells = grid(area, windows.len(), self.tile_gap());
         for (w, cell) in windows.iter().zip(cells) {
-            Self::set_tiled(w, None);
             self.set_frame(w, cell, true);
+            self.set_cell(w, area, cell);
         }
         info!(windows = windows.len(), "tiled all");
     }
@@ -709,8 +717,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         });
         let cells = grid(area, windows.len(), self.tile_gap());
         for (w, cell) in windows.iter().zip(cells) {
-            Self::set_tiled(w, None);
             self.set_frame(w, cell, true);
+            self.set_cell(w, area, cell);
             self.space.raise_element(w, false);
         }
         if let Some(front) = windows.last() {

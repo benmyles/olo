@@ -886,7 +886,8 @@ other tiled windows on the display with a side on that edge's line
 one would get smaller than its app's minimum or `MIN_TILE`; at the end
 each keeps its new part (`TilePart`, fractions that `part` turns back
 into the same frame: `fraction_of`), which `retile` uses from then on (a
-tiling command starts afresh). A tiled window with no tiled neighbours
+tiling command starts afresh; Tile All and Tile App tile each window as a
+`Tile::Cell`, its grid cell as its part, so they link the same way). A tiled window with no tiled neighbours
 on that line is being sized away from its tile, and forgets it. Windows
 not tiled by a command are never pushed. Tiles and parts are kept across
 a restart in the layout (`Placement::tile`, `part`). Moving screens in
