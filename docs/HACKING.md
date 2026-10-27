@@ -1546,7 +1546,9 @@ item list and the selected item's fields (hover for Copy/Show; one-time
 codes count down), an editor with templates per category, a Password
 Generator window, and File/Edit/Item/View menus (⌘C username, ⇧⌘C password,
 ⇧⌘O one-time code). Secrets go to the clipboard with `copy_secret` and
-leave after `clear_seconds`. It opens locked and locks after
+leave after `clear_seconds`. A field (or website) drags out as text onto
+another app's field (`drag_field`: a one-time password's current code;
+the picture shows the field's name, never the value). It opens locked and locks after
 `lock_minutes` idle, and when the screen locks if `lock_with_screen`
 (`lock.rs`): Touch ID through fprintd, claimed only
 while the locked window has the keyboard, or the account password through

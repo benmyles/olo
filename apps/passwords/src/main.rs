@@ -599,6 +599,34 @@ impl Passwords {
         self.redraw(cx);
     }
 
+    /// Drag a field's value out, onto another app's field: the value
+    /// (a one-time password's current code), drawn as the field's name,
+    /// never the secret. `field` is `url:…` for a website.
+    fn drag_field(&mut self, cx: &mut Cx, ctx: &egui::Context, item: &str, field: &str) {
+        let Some(win) = self.main else { return };
+        let (value, label) = match field.strip_prefix("url:") {
+            Some(url) => (url.to_owned(), "website".to_owned()),
+            None => {
+                let Some(f) = self.details.get(item).and_then(|i| i.field(field)).cloned() else { return };
+                let label = if f.title.is_empty() { edit::kind_label(f.field_type).to_lowercase() } else { f.title.clone() };
+                let value = match f.field_type {
+                    ItemFieldType::Totp => match otp_code(&f.value).or_else(|| f.otp().and_then(|o| o.code.clone())) {
+                        Some(code) => code,
+                        None => return,
+                    },
+                    _ => f.value.clone(),
+                };
+                (value, label)
+            }
+        };
+        let data = tabula_kit::dnd::DragData::text(&value);
+        let icon = tabula_kit::icons::drag_icon(ctx, "passwords", 32.0, 1, egui::vec2(-6.0, -10.0), tabula_kit::icons::DragLabel::Right(&label));
+        cx.start_drag(win, match icon {
+            Some(i) => data.icon(i),
+            None => data,
+        });
+    }
+
     fn copy_field(&mut self, cx: &mut Cx, item: &str, field: &str) {
         let Some(f) = self.details.get(item).and_then(|i| i.field(field)).cloned() else { return };
         let label = if f.title.is_empty() { edit::kind_label(f.field_type).to_lowercase() } else { f.title.clone() };

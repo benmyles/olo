@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Drag a field out of Passwords
+
+*03:07* — Drag a username, password, one-time code or website from an item onto another app's field; the drag shows the field's name, never the secret.
+
+![Drag a field out of Passwords](2026-10-27/030729-drag-a-field-out-of-passwords.png)
+
 ### Drag text in and out of text fields
 
 *03:03* — Press on selected text and drag it: within a StyledEdit document it moves (styles and all), into another field or app it's copied, onto a folder it becomes a clipping. A caret shows where it will land.

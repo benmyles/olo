@@ -99,7 +99,7 @@ as they land (with the commit), add new ones as they come up.
   word in plain bash but not in Claude Code. Check what Terminal sends for
   them (bash binds ESC b / ESC f; others expect CSI 1;3D / 1;3C) and
   whether Claude Code's input understands it; send what xterm does.
-- **Drag and drop everywhere, across apps** (Ben): everything that shows
+- ~~**Drag and drop everywhere, across apps**~~ (done; NetPositive's part waits with NetPositive, tabled for Chrome) (Ben): everything that shows
   files or data can be dragged and dropped, within and between apps and
   to and from other Wayland clients (wl_data_device, text/uri-list and
   the data's own types): Tracker items to any app (e.g. an image into
@@ -118,8 +118,8 @@ as they land (with the commit), add new ones as they come up.
   and StyledEdit open dropped files. **Left:** ~~dragging text out of and
   into text fields and StyledEdit (move within, copy between)~~ (done:
   kit `text_drag`, tested headless), ~~Viewer
-  images out (the file and image/png)~~ (done, with Quick Look's), Passwords fields (a username or
-  password onto another app's field), Deskbar (~~drop files on an app to
+  images out (the file and image/png)~~ (done, with Quick Look's), ~~Passwords fields (a username or
+  password onto another app's field)~~ (done), Deskbar (~~drop files on an app to
   open them with it~~ done; ~~drag an app out to make a link~~ done), dragging from
   ~~Tracker's Get Info~~ (done), ~~spring-loaded folders (hover on a
   folder while dragging to open it), scrolling a view when a drag nears

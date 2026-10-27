@@ -1030,5 +1030,11 @@
   "title": "Drag text in and out of text fields",
   "caption": "Press on selected text and drag it: within a StyledEdit document it moves (styles and all), into another field or app it's copied, onto a folder it becomes a clipping. A caret shows where it will land.",
   "image": "2026-10-27/030344-drag-text-in-and-out-of-text-fields.png"
+ },
+ {
+  "time": "2026-10-27T03:07:29",
+  "title": "Drag a field out of Passwords",
+  "caption": "Drag a username, password, one-time code or website from an item onto another app's field; the drag shows the field's name, never the secret.",
+  "image": "2026-10-27/030729-drag-a-field-out-of-passwords.png"
  }
 ]

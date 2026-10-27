@@ -701,6 +701,7 @@ fn detail_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
     let vault = app.vault_title(&item.vault_id).to_string();
     let archived = overview.state == ItemState::Archived;
     let mut copy: Option<String> = None;
+    let mut drag: Option<String> = None;
     let mut toggle: Option<String> = None;
     let mut open: Option<String> = None;
     let mut edit = false;
@@ -737,6 +738,7 @@ fn detail_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
             for f in fields {
                 match field_row(ui, f, app.revealed.contains(&f.id)) {
                     Some(FieldAction::Copy) => copy = Some(f.id.clone()),
+                    Some(FieldAction::Drag) => drag = Some(f.id.clone()),
                     Some(FieldAction::Toggle) => toggle = Some(f.id.clone()),
                     Some(FieldAction::Open(url)) => open = Some(url),
                     None => {}
@@ -753,6 +755,7 @@ fn detail_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
                         copy = Some(format!("url:{}", w.url));
                     }
                     Some(FieldAction::Open(url)) => open = Some(url),
+                    Some(FieldAction::Drag) => drag = Some(format!("url:{}", w.url)),
                     _ => {}
                 }
             }
@@ -785,6 +788,9 @@ fn detail_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
     }
     if let Some(url) = open {
         crate::open_url(&url);
+    }
+    if let Some(field) = drag {
+        app.drag_field(cx, ui.ctx(), &id, &field);
     }
     match copy {
         Some(url) if url.starts_with("url:") => {
@@ -830,6 +836,8 @@ fn section_heading(ui: &mut Ui, title: &str) {
 
 enum FieldAction {
     Copy,
+    /// Dragged out (onto another app's field).
+    Drag,
     Toggle,
     Open(String),
 }
@@ -881,7 +889,7 @@ fn field_row(ui: &mut Ui, f: &ItemField, revealed: bool) -> Option<FieldAction> 
         return None;
     }
     let mut action = None;
-    let (r, response) = ui.allocate_exact_size(vec2(ui.available_width(), FIELD_ROW), Sense::click());
+    let (r, response) = ui.allocate_exact_size(vec2(ui.available_width(), FIELD_ROW), Sense::click_and_drag());
     let hovered = ui.rect_contains_pointer(r);
     if hovered {
         ui.painter().rect_filled(r.shrink2(vec2(m::TIGHT, 1.0)), 2.0, style::shade(&p, p.document_background, 1.04));
@@ -928,6 +936,9 @@ fn field_row(ui: &mut Ui, f: &ItemField, revealed: bool) -> Option<FieldAction> 
         {
             action = Some(FieldAction::Toggle);
         }
+    }
+    if action.is_none() && response.drag_started() {
+        action = Some(FieldAction::Drag);
     }
     if action.is_none() && response.clicked() {
         let over_value = response.interact_pointer_pos().is_some_and(|p| value_rect.contains(p));
