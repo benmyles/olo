@@ -326,6 +326,15 @@ icon back on the grid. Terminal types dropped files as their
 shell-quoted paths (and text as if pasted), bracketed when the program
 asked for it: drag an image into Claude Code there.
 
+### Ad-hoc popup menus (`menu::request_popup`)
+
+A context menu is `menu::request_popup(ctx, MenuRequest { menu, source,
+anchor, selected })`. The choice goes back to the widget named by
+`source` (`menu::take_chosen(ctx, source)`, as `MenuField` does); if no
+widget takes it in the next frame it goes to `App::command`, as a menu
+bar item's would, so an app's own context menus just use its command
+names.
+
 ### Widgets (`tabula_kit::widgets`)
 
 `StringView` (a label; `.dim(true)` for hints, `.wrap(true)` for a paragraph, `.color(c)`), `Button` (`.default(true)` for the Enter button), `CheckBox`, `RadioButton`,

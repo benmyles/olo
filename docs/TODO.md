@@ -5,6 +5,9 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Terminal: Rename Group and Ungroup did nothing~~ (Ben): no context
+  menu of Terminal's worked (group, tab, text); the kit now sends a
+  popup's choice that no widget takes to `App::command`.
 - ~~AI preferences, and Smart Tiling~~ (Ben): Preferences ▸ AI uses the
   Token Pool by default (or a saved Anthropic key); Smart Tiling (on,
   Claude Opus 5.5 at medium; also Sonnet, Haiku, Fable and Astra 6)
@@ -529,8 +532,9 @@ as they land (with the commit), add new ones as they come up.
   `--new-window` to the running copy instead of launching a second one
   (Tracker, Terminal and StyledEdit; `apps::NEW_WINDOW`). Agents run
   `tabula-x --new-window`.
-- **Terminal: Rename Group and Ungroup do nothing** (Ben, bug): from
-  the right-click menu on a group.
+- **Roll up windows** (Ben): roll a window up to just its tab and back
+  down: a shortcut, an item in the tab's context menu, a command in the
+  palette (⌘Space), and double-clicking the tab (again rolls it down).
 - **Icons in the Deskbar menu** (Ben): an Appearance preference, on by
   default, to show icons beside every item in the Deskbar menu (each
   application, each preference panel, and the other commands), with any

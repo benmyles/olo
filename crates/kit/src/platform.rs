@@ -168,6 +168,9 @@ struct Surface {
     popups: Vec<WindowId>,
     /// The ad-hoc popup menu (context menu, menu field) last requested.
     context: Option<MenuRequest>,
+    /// What was chosen from it, until a frame has passed: if no widget
+    /// took it (`menu::take_chosen`), it goes to `App::command`.
+    chosen: Option<(egui::Id, String)>,
     start: Instant,
 }
 
@@ -1091,6 +1094,7 @@ impl Kit {
             bar: BarState::default(),
             popups: Vec::new(),
             context: None,
+            chosen: None,
             start: Instant::now(),
         }
     }
@@ -1633,6 +1637,12 @@ impl Kit {
             if let Some(request) = menu::take_request(&ctx) {
                 menu_events.push(MenuEvent::Context(id, request));
             }
+            // A context menu's choice no widget asked for is a command.
+            if let Some((source, cmd)) = s.chosen.take()
+                && menu::take_chosen(&ctx, source).is_some()
+            {
+                menu_events.push(MenuEvent::Command(id, cmd));
+            }
             out
         };
 
@@ -1815,7 +1825,8 @@ impl Kit {
                             // Ad-hoc menus answer the widget that asked.
                             Some(source) => {
                                 if let Some(s) = self.surface_mut(owner) {
-                                    menu::deliver_chosen(&s.ctx, source, cmd);
+                                    menu::deliver_chosen(&s.ctx, source, cmd.clone());
+                                    s.chosen = Some((source, cmd));
                                 }
                             }
                             None => {
