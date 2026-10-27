@@ -571,24 +571,6 @@ as they land (with the commit), add new ones as they come up.
 - ~~**⌘A in a text field**~~ (Ben) selects the field's text, not the
   page or folder.
 
-- **No GNOME or GTK underneath** (Ben): Tabula shouldn't depend on
-  any. Today a real session leans on GDM (login), gnome-keyring-daemon
-  (secrets, PAM unlock, ssh agent), xdg-desktop-portal-gnome / -gtk (file chooser, screenshot,
-  settings, etc. for other apps: `tabula-portals.conf` picks GTK's
-  backend), dconf (where app_server writes color-scheme / gtk-theme so
-  GTK apps follow). ~~Wallpapers~~: none needed (the desktop is BeOS's
-  own colours per workspace; Choose… starts in Pictures). Replace each
-  with a native one: a Tabula login screen, secret service (Secret
-  Service API over our own bus name, unlocked at login, keyring files
-  read natively; the prompt is done), ssh agent, portal backend
-  (`org.freedesktop.impl.portal.*` with Tabula's FilePanel and
-  screenshot), settings portal. Needs Ben's go-ahead and order: these
-  replace what his real session runs on. On Aurora, xdg-desktop-portal
-  1.22 reads backends from /usr/share/xdg-desktop-portal/portals and
-  `$XDG_DATA_HOME/xdg-desktop-portal/portals` (so a Tabula backend can be
-  installed per user), and GTK 4 reads its settings from the portal when
-  it is activatable, so a Tabula Settings portal could replace dconf for
-  it (GTK 3 still reads GSettings).
 - ~~**Terminal sessions that outlive Terminal**~~ (Ben): done. Shells
   live in tabula-termd (one per display); quitting, crashing or upgrading
   Terminal reattaches every window with its scrollback, and tabula-termd
