@@ -217,6 +217,19 @@ mod tests {
         assert_eq!(parse(&hex("0600ff0953a101850115002501750895190600ff09538102c0")), None);
     }
 
+    /// Sets every USB-controlled monitor to full brightness and reads it
+    /// back (on real hardware: `cargo test -p tabula-system live_full --
+    /// --ignored`).
+    #[test]
+    #[ignore]
+    fn live_full() {
+        for m in all() {
+            m.set_level(1.0).unwrap();
+            assert_eq!(m.raw().unwrap(), m.field.max, "{}", m.path.display());
+            eprintln!("{}: full ({})", m.path.display(), m.field.max);
+        }
+    }
+
     #[test]
     #[ignore]
     fn live_read() {
