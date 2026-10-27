@@ -17,3 +17,4 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 libc = "0.2"
+png = "0.18"

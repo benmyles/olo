@@ -3,15 +3,16 @@
 //! agents' tool; without one it opens the window that shows the screens.
 //! See `screens.rs` for what a screen is and HACKING.md, "Agent Screens".
 
+mod find;
 mod screens;
 mod viewer;
 
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use serde::Serialize;
 use serde_json::json;
 use tabula_kit::{commands, instance};
-use tabula_protocol::{Frame, ImageFormat, SyntheticEvent, WindowInfo};
+use tabula_protocol::{Frame, ImageFormat, Reply, Request, SyntheticEvent, WindowInfo};
 
 const APP_ID: &str = "tabula.screen";
 
@@ -26,24 +27,49 @@ usage: tabula-screen                         open Agent Screens (watch, take con
        tabula-screen env NAME                its environment, for a shell (eval \"$(…)\")
        tabula-screen run NAME PROGRAM [ARGS…]
                                              start a program on it; prints its pid
-       tabula-screen look NAME OUT.png [--window ID] [--no-pointer]
-                                             a picture of the screen (or one window)
-       tabula-screen windows NAME            its windows (id, app, title, focused, frame, content), as JSON
-       tabula-screen tree NAME [--window ID] [--json]
+       tabula-screen look NAME [OUT.png] [--window ID] [--crop X,Y,W,H] [--no-pointer]
+                                             a picture of the screen (or one window, or part);
+                                             without OUT, a new file by the logs; prints its path
+       tabula-screen windows NAME            its windows (id, app, title, focused, frame, content,
+                                             popups: open menus' frames), as JSON
+       tabula-screen tree NAME [--window ID] [--json] [--role R] [--contains TEXT]
+                          [--visible-only] [--depth N] [--max-len N] [--cells]
                                              what Tabula apps' windows show: buttons, fields,
-                                             text, lists, with where they are on the screen
+                                             text, lists (row N/M), open menus, with where they
+                                             are on the screen
        tabula-screen menus NAME [--window ID]
                                              the menus of a window's app (default: the focused one)
        tabula-screen invoke NAME COMMAND [--window ID]
                                              choose a menu command (as `menus` lists it)
+       tabula-screen focus|close|minimize|zoom NAME [--window ID]
+       tabula-screen resize NAME WxH [--window ID]    its content's size
+       tabula-screen place NAME X Y [WxH] [--window ID]
+                                             its frame's top left (and content's size)
        tabula-screen click NAME X Y [--right|--middle] [--double]
+       tabula-screen click NAME FIND… [--right|--middle] [--double]
+                                             the middle of what FIND matches (below)
+       tabula-screen set NAME FIND… TEXT     click into a field, replace its text
+       tabula-screen select NAME FIND… ITEM  open a dropdown, choose ITEM from its menu
+       tabula-screen wait NAME [FIND…] [--gone] [--idle] [--timeout MS]
+                                             until it shows (or goes, or the windows stop changing)
+       tabula-screen scroll-to NAME FIND… [--at X,Y]
+                                             scroll the list (under X,Y) until it shows
        tabula-screen move NAME X Y
        tabula-screen down NAME X Y [--right] | up NAME [--right]
-       tabula-screen drag NAME X1 Y1 X2 Y2
-       tabula-screen scroll NAME DX DY       by pixels, as on a touchpad (positive: down/right)
+       tabula-screen drag NAME X1 Y1 X2 Y2 [--steps N] [--duration MS]
+                                             press, move there in N steps (20) over MS (300), let go
+       tabula-screen scroll NAME DX DY [--no-end]
+                                             by pixels, as on a touchpad (positive: down/right);
+                                             the fingers lift after, unless --no-end
        tabula-screen wheel NAME NOTCHES [H-NOTCHES]
+                                             mouse-wheel notches (positive: down/right), one at a time
        tabula-screen key NAME CHORD…         e.g. Cmd+S, Ctrl+Shift+T, Enter, Esc, Tab, Down
        tabula-screen type NAME TEXT          type text (what a US keyboard types)
+
+FIND is --name NAME (exact, else part of it; a value counts too), --role ROLE,
+--match ROLE:TEXT, --text TEXT (in the name or value), --index N (from 0, when
+several match) and --window ID. Actions print JSON: what they matched, and
+after: the focused window and element.
 
 Coordinates are the screen's logical pixels, from its top left; Cmd is ⌘
 (apps see it as Ctrl). Programs run on a screen with WAYLAND_DISPLAY and
@@ -122,10 +148,24 @@ fn cli(args: &[String]) -> Option<Result<(), String>> {
             Ok(())
         }),
         "look" => screen().and_then(|s| {
-            let out = rest.get(1).filter(|a| !a.starts_with("--")).ok_or("look needs a file to write")?;
-            let window = option(rest, "--window").map(|w| w.parse::<u64>().map_err(|_| "--window is a window's id")).transpose()?;
-            let out = std::path::absolute(PathBuf::from(out)).map_err(|e| e.to_string())?;
-            s.picture(&out, window, !has(rest, "--no-pointer"), ImageFormat::Png)?;
+            // Where to: as given, or a new file beside the screen's logs.
+            let out = match positionals(rest).get(1) {
+                Some(out) => std::path::absolute(PathBuf::from(out)).map_err(|e| e.to_string())?,
+                None => {
+                    let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+                    screens::dir().join(format!("{}-look-{ms}.png", s.name))
+                }
+            };
+            let window = window_arg(rest)?;
+            let pointer = !has(rest, "--no-pointer");
+            match option(rest, "--crop") {
+                None => s.picture(&out, window, pointer, ImageFormat::Png)?,
+                Some(crop) => {
+                    let n: Vec<f64> = crop.split(',').map(|v| v.trim().parse::<f64>()).collect::<Result<_, _>>().map_err(|_| "--crop is X,Y,W,H")?;
+                    let [x, y, w, h] = n[..] else { return Err("--crop is X,Y,W,H".into()) };
+                    crop_picture(&s, &out, window, pointer, (x, y, w, h))?;
+                }
+            }
             println!("{}", out.display());
             Ok(())
         }),
@@ -135,11 +175,21 @@ fn cli(args: &[String]) -> Option<Result<(), String>> {
         }),
         "tree" => screen().and_then(|s| {
             let only = window_arg(rest)?;
-            let trees = trees(&s, only)?;
+            let mut trees = trees(&s, only)?;
+            let filter = Filter::from_args(rest)?;
             if has(rest, "--json") {
+                for t in &mut trees {
+                    let c = t.content;
+                    let mut depth: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
+                    t.nodes.retain(|n| {
+                        let d = n.parent.and_then(|p| depth.get(&p)).map_or(0, |d| d + 1);
+                        depth.insert(n.id, d);
+                        filter.keeps(n, d, c)
+                    });
+                }
                 println!("{}", serde_json::to_string_pretty(&trees).unwrap_or_default());
             } else {
-                print!("{}", outline(&trees));
+                print!("{}", outline(&trees, &filter));
             }
             Ok(())
         }),
@@ -155,8 +205,17 @@ fn cli(args: &[String]) -> Option<Result<(), String>> {
             if commands::invoke(pid_of(&w)?, command) { Ok(()) } else { Err(format!("{} has no command {command:?} that can be chosen now", w.app_id)) }
         }),
         "click" => (|| {
-            let (x, y) = (number(rest.get(1), "x")?, number(rest.get(2), "y")?);
-            input(screens::click(x, y, button(rest), if has(rest, "--double") { 2 } else { 1 }))
+            let s = screen()?;
+            let (x, y, matched) = match find::Query::from_args(rest)? {
+                Some(q) => {
+                    let f = find::find(&s, &q)?;
+                    (f.center.0 as f64, f.center.1 as f64, Some(f))
+                }
+                None => (number(rest.get(1), "x")?, number(rest.get(2), "y")?, None),
+            };
+            s.input(screens::click(x, y, button(rest), if has(rest, "--double") { 2 } else { 1 }))?;
+            print_json(&json!({ "clicked": [x, y], "matched": matched, "after": find::after(&s) }));
+            Ok(())
         })(),
         "move" => (|| input(vec![SyntheticEvent::Move { x: number(rest.get(1), "x")?, y: number(rest.get(2), "y")? }]))(),
         "down" => (|| {
@@ -166,17 +225,18 @@ fn cli(args: &[String]) -> Option<Result<(), String>> {
         "up" => input(vec![SyntheticEvent::Button { button: button(rest), pressed: false }]),
         "drag" => (|| {
             let n = |i: usize, w: &str| number(rest.get(i), w);
-            input(screens::drag((n(1, "x1")?, n(2, "y1")?), (n(3, "x2")?, n(4, "y2")?)))
+            let steps = option(rest, "--steps").map(|s| s.parse::<u32>().map_err(|_| "--steps is a number")).transpose()?.unwrap_or(20);
+            let ms = option(rest, "--duration").map(|s| s.parse::<u64>().map_err(|_| "--duration is milliseconds")).transpose()?.unwrap_or(300);
+            screen()?.input_paced(screens::drag((n(1, "x1")?, n(2, "y1")?), (n(3, "x2")?, n(4, "y2")?), steps, Duration::from_millis(ms)))
         })(),
         "scroll" => (|| {
             let (dx, dy) = (number(rest.get(1), "dx")?, number(rest.get(2), "dy")?);
-            // The fingers lift after, so nothing glides on.
-            input(vec![SyntheticEvent::Scroll { dx, dy }, SyntheticEvent::Scroll { dx: 0.0, dy: 0.0 }])
+            screen()?.input_paced(screens::scroll(dx, dy, !has(rest, "--no-end")))
         })(),
         "wheel" => (|| {
             let dy = number(rest.get(1), "notches")? as i32;
-            let dx = rest.get(2).map(|_| number(rest.get(2), "horizontal notches")).transpose()?.unwrap_or(0.0) as i32;
-            input(vec![SyntheticEvent::Wheel { dx, dy }])
+            let dx = rest.get(2).filter(|a| !a.starts_with("--")).map(|_| number(rest.get(2), "horizontal notches")).transpose()?.unwrap_or(0.0) as i32;
+            screen()?.input_paced(screens::wheel(dx, dy))
         })(),
         "key" => (|| {
             let chords = rest.get(1..).filter(|c| !c.is_empty()).ok_or("key needs a chord, such as Cmd+S")?;
@@ -184,11 +244,251 @@ fn cli(args: &[String]) -> Option<Result<(), String>> {
             for c in chords {
                 events.extend(screens::chord(&screens::parse_chord(c)?));
             }
-            input(events)
+            let s = screen()?;
+            s.input(events)?;
+            print_json(&json!({ "after": find::after(&s) }));
+            Ok(())
         })(),
-        "type" => (|| input(screens::type_text(&rest.get(1..).filter(|t| !t.is_empty()).ok_or("type needs text")?.join(" "))?))(),
+        "type" => (|| {
+            let s = screen()?;
+            s.input(screens::type_text(&rest.get(1..).filter(|t| !t.is_empty()).ok_or("type needs text")?.join(" "))?)?;
+            let after = find::after(&s);
+            warn_if_not_text(&after);
+            print_json(&json!({ "after": after }));
+            Ok(())
+        })(),
+        "set" => (|| {
+            let s = screen()?;
+            let q = find::Query::from_args(rest)?.ok_or("set needs the field: --name, --role or --match")?;
+            let text = positionals(rest).get(1).cloned().ok_or("set needs the text to put in the field")?;
+            let f = find::find(&s, &q)?;
+            // Into the field (once more if the first click went astray:
+            // the keys below would edit whatever has the focus).
+            let into = |s: &screens::Screen| find::after(s).focused.is_some_and(|now| now.window == f.window && now.x == f.x && now.y == f.y);
+            let mut focused = false;
+            for _ in 0..2 {
+                s.input(screens::click(f.center.0 as f64, f.center.1 as f64, screens::LEFT, 1))?;
+                focused = into(&s);
+                if focused {
+                    break;
+                }
+            }
+            if !focused && find::takes_text(&f.role) {
+                return Err(format!("clicked the {} {:?} twice but it didn't take the focus; nothing typed", f.role, f.name.as_deref().unwrap_or("")));
+            }
+            let mut events = screens::chord(&screens::parse_chord("Ctrl+A")?);
+            events.extend(screens::chord(&screens::parse_chord("Delete")?));
+            events.extend(screens::type_text(&text)?);
+            s.input(events)?;
+            let after = find::after(&s);
+            warn_if_not_text(&after);
+            print_json(&json!({ "field": f, "after": after }));
+            Ok(())
+        })(),
+        "select" => (|| {
+            let s = screen()?;
+            let q = find::Query::from_args(rest)?.ok_or("select needs the dropdown: --name, --role or --match")?;
+            let item = positionals(rest).get(1).cloned().ok_or("select needs the item to choose")?;
+            let field = find::find(&s, &q)?;
+            s.input(screens::click(field.center.0 as f64, field.center.1 as f64, screens::LEFT, 1))?;
+            // Its menu opens in a frame or two; then choose the item.
+            let want = find::Query { name: Some(item.clone()), role: Some("MenuItem".into()), window: Some(field.window), ..Default::default() };
+            let chosen = match find::wait_for(&s, &want, false, Duration::from_secs(3)) {
+                Ok(Some(f)) => f,
+                _ => {
+                    s.input(screens::chord(&screens::parse_chord("Esc")?))?;
+                    return Err(format!("its menu has no item {item:?} (or didn't open)"));
+                }
+            };
+            s.input(screens::click(chosen.center.0 as f64, chosen.center.1 as f64, screens::LEFT, 1))?;
+            print_json(&json!({ "field": field, "chose": chosen, "after": find::after(&s) }));
+            Ok(())
+        })(),
+        "wait" => (|| {
+            let s = screen()?;
+            let ms = option(rest, "--timeout").map(|t| t.parse::<u64>().map_err(|_| "--timeout is milliseconds")).transpose()?.unwrap_or(10_000);
+            let timeout = Duration::from_millis(ms);
+            if has(rest, "--idle") {
+                find::wait_idle(&s, window_arg(rest)?, timeout)?;
+            }
+            if let Some(q) = find::Query::from_args(rest)? {
+                let found = find::wait_for(&s, &q, has(rest, "--gone"), timeout)?;
+                print_json(&json!({ "found": found }));
+            } else if !has(rest, "--idle") {
+                return Err("wait for what? --idle, --name, --role, --match or --text (with --gone, until it goes)".into());
+            }
+            Ok(())
+        })(),
+        "scroll-to" => (|| {
+            let s = screen()?;
+            let q = find::Query::from_args(rest)?.ok_or("scroll-to needs what to find: --name, --role, --match or --text")?;
+            let at = option(rest, "--at")
+                .map(|a| {
+                    let (x, y) = a.split_once(',').ok_or("--at is X,Y")?;
+                    Ok::<_, String>((x.trim().parse::<f64>().map_err(|_| "--at is X,Y")?, y.trim().parse::<f64>().map_err(|_| "--at is X,Y")?))
+                })
+                .transpose()?;
+            let f = scroll_to(&s, &q, at)?;
+            print_json(&json!({ "found": f }));
+            Ok(())
+        })(),
+        "focus" | "close" | "minimize" | "zoom" | "maximize" => (|| {
+            let s = screen()?;
+            let w = app_window(&s, window_arg(rest)?)?;
+            let id = w.id;
+            let request = match command {
+                "focus" => Request::Activate { id },
+                "close" => Request::Close { id },
+                "minimize" => Request::Minimize { id },
+                _ => Request::ToggleZoom { id },
+            };
+            ok(s.request(&request)?)?;
+            print_json(&json!({ "window": id, "after": find::after(&s) }));
+            Ok(())
+        })(),
+        "resize" | "place" => (|| {
+            let s = screen()?;
+            let w = app_window(&s, window_arg(rest)?)?;
+            let (Some(frame), Some(content)) = (w.frame, w.content) else { return Err(format!("window {} isn't showing", w.id)) };
+            let args = positionals(rest);
+            let size = |a: Option<&String>| -> Result<(i32, i32), String> {
+                let (w, h) = a.and_then(|a| a.split_once('x')).ok_or("the size is WIDTHxHEIGHT (of what the app draws)")?;
+                Ok((w.parse().map_err(|_| "the size is WIDTHxHEIGHT")?, h.parse().map_err(|_| "the size is WIDTHxHEIGHT")?))
+            };
+            // Sizes are the content's (what the app draws); the frame adds the tab and border.
+            let (extra_w, extra_h) = (frame.width - content.width, frame.height - content.height);
+            let mut to = frame;
+            if command == "resize" {
+                let (cw, ch) = size(args.get(1))?;
+                (to.width, to.height) = (cw + extra_w, ch + extra_h);
+            } else {
+                (to.x, to.y) = (number(args.get(1), "x")? as i32, number(args.get(2), "y")? as i32);
+                if args.get(3).is_some() {
+                    let (cw, ch) = size(args.get(3))?;
+                    (to.width, to.height) = (cw + extra_w, ch + extra_h);
+                }
+            }
+            ok(s.request(&Request::Place { id: w.id, frame: to })?)?;
+            std::thread::sleep(Duration::from_millis(150));
+            let now = s.windows()?.into_iter().find(|x| x.id == w.id);
+            print_json(&json!({ "window": now }));
+            Ok(())
+        })(),
         other => Err(format!("unknown command {other:?}\n{USAGE}")),
     })
+}
+
+/// The arguments that aren't flags (nor flags' values).
+fn positionals(args: &[String]) -> Vec<String> {
+    const VALUED: [&str; 15] = ["--at", "--name", "--role", "--match", "--text", "--index", "--window", "--timeout", "--steps", "--duration", "--crop", "--name-contains", "--contains", "--depth", "--max-len"];
+    let mut out = Vec::new();
+    let mut skip = false;
+    for a in args {
+        if skip {
+            skip = false;
+        } else if VALUED.contains(&a.as_str()) {
+            skip = true;
+        } else if !a.starts_with("--") || a.parse::<f64>().is_ok() {
+            out.push(a.clone());
+        }
+    }
+    out
+}
+
+fn print_json(v: &serde_json::Value) {
+    println!("{}", serde_json::to_string_pretty(v).unwrap_or_default());
+}
+
+fn ok(reply: Reply) -> Result<(), String> {
+    match reply {
+        Reply::Error { message } => Err(message),
+        _ => Ok(()),
+    }
+}
+
+/// Typing that went somewhere that doesn't take text says so.
+fn warn_if_not_text(after: &find::After) {
+    match &after.focused {
+        Some(f) if !find::takes_text(&f.role) => eprintln!("tabula-screen: the keys went to a {} ({}), not a text field", f.role, f.name.as_deref().unwrap_or("unnamed")),
+        None if after.window.is_none() => eprintln!("tabula-screen: no window has the focus; the keys went nowhere"),
+        _ => {}
+    }
+}
+
+/// A picture of part of the screen: X,Y,W,H in the screen's logical pixels.
+fn crop_picture(s: &screens::Screen, out: &std::path::Path, window: Option<u64>, pointer: bool, (x, y, w, h): (f64, f64, f64, f64)) -> Result<(), String> {
+    let raw = screens::dir().join(format!("crop-{}.rgba", std::process::id()));
+    s.picture(&raw, window, pointer, ImageFormat::Rgba)?;
+    let bytes = std::fs::read(&raw).map_err(|e| e.to_string());
+    let _ = std::fs::remove_file(&raw);
+    let bytes = bytes?;
+    let word = |i: usize| bytes.get(i..i + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize);
+    let (Some(pw), Some(ph)) = (word(0), word(4)) else { return Err("the picture was cut short".into()) };
+    let pixels = &bytes[8..];
+    // A window's picture starts at the window; the screen's, at its corner.
+    let origin = match window {
+        Some(id) => s.windows()?.into_iter().find(|w| w.id == id).and_then(|w| w.frame).map_or((0.0, 0.0), |f| (f.x as f64, f.y as f64)),
+        None => (0.0, 0.0),
+    };
+    let scale = if window.is_some() { s.scale } else { pw as f64 / s.width.max(1) as f64 };
+    let px = |v: f64| (v * scale).round().max(0.0) as usize;
+    let (x0, y0) = (px(x - origin.0).min(pw), px(y - origin.1).min(ph));
+    let (x1, y1) = ((x0 + px(w)).min(pw), (y0 + px(h)).min(ph));
+    if x1 <= x0 || y1 <= y0 {
+        return Err("--crop is outside the picture".into());
+    }
+    let mut data = Vec::with_capacity((x1 - x0) * (y1 - y0) * 4);
+    for row in y0..y1 {
+        data.extend_from_slice(pixels.get((row * pw + x0) * 4..(row * pw + x1) * 4).ok_or("the picture was cut short")?);
+    }
+    let file = std::fs::File::create(out).map_err(|e| format!("{}: {e}", out.display()))?;
+    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), (x1 - x0) as u32, (y1 - y0) as u32);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    encoder.write_header().and_then(|mut w| w.write_image_data(&data)).map_err(|e| e.to_string())
+}
+
+/// Scroll the list under `at` (or the middle of the window) until `q`
+/// shows whole: to the top first, then down a few notches at a time.
+fn scroll_to(s: &screens::Screen, q: &find::Query, at: Option<(f64, f64)>) -> Result<find::Found, String> {
+    let shown = |s: &screens::Screen| -> Result<(Option<find::Found>, String), String> {
+        let trees = trees(s, q.window)?;
+        Ok((find::matches(&trees, q).into_iter().nth(q.index), outline(&trees, &Filter::default())))
+    };
+    let whole = |f: &find::Found| f.role != "Row" || f.height >= 12.0;
+    if let (Some(f), _) = shown(s)?
+        && whole(&f)
+    {
+        return Ok(f);
+    }
+    let (x, y) = match at {
+        Some(p) => p,
+        None => {
+            let w = app_window(s, q.window)?;
+            let c = w.content.ok_or("the window isn't showing")?;
+            ((c.x + c.width / 2) as f64, (c.y + c.height / 2) as f64)
+        }
+    };
+    s.input(vec![SyntheticEvent::Move { x, y }])?;
+    // Up to the top, then down, until it shows or the list stops moving.
+    for (notches, rounds) in [(-10, 100), (3, 1000)] {
+        let mut last = String::new();
+        for _ in 0..rounds {
+            s.input_paced(screens::wheel(0, notches))?;
+            std::thread::sleep(Duration::from_millis(80));
+            let (found, now) = shown(s)?;
+            if let Some(f) = found
+                && whole(&f)
+            {
+                return Ok(f);
+            }
+            if now == last {
+                break;
+            }
+            last = now;
+        }
+    }
+    Err(format!("scrolled the whole list; nothing matches {}", q.describe()))
 }
 
 fn window_arg(args: &[String]) -> Result<Option<u64>, String> {
@@ -199,12 +499,23 @@ fn pid_of(w: &WindowInfo) -> Result<u32, String> {
     w.pid.map(|p| p as u32).ok_or_else(|| format!("window {} has no process", w.id))
 }
 
-/// Window `id`, or the focused one.
+/// Window `id`; or the focused one, or the only one showing.
 fn app_window(s: &screens::Screen, id: Option<u64>) -> Result<WindowInfo, String> {
     let windows = s.windows()?;
+    let listed = |windows: &[WindowInfo]| windows.iter().map(|w| format!("\n  {} {:?} ({}){}", w.id, w.title, w.app_id, if w.minimized { " minimized" } else { "" })).collect::<String>();
     match id {
-        Some(id) => windows.into_iter().find(|w| w.id == id).ok_or_else(|| format!("no window {id}")),
-        None => windows.into_iter().find(|w| w.focused).ok_or_else(|| "no window has the focus; give --window".to_owned()),
+        Some(id) => windows.iter().find(|w| w.id == id).cloned().ok_or_else(|| format!("no window {id}; the windows are:{}", listed(&windows))),
+        None => {
+            if let Some(w) = windows.iter().find(|w| w.focused) {
+                return Ok(w.clone());
+            }
+            let showing: Vec<&WindowInfo> = windows.iter().filter(|w| !w.minimized && w.frame.is_some()).collect();
+            match showing.as_slice() {
+                [only] => Ok((*only).clone()),
+                [] => Err("no windows are showing".to_owned()),
+                _ => Err(format!("no window has the focus; give --window ID:{}", listed(&windows))),
+            }
+        }
     }
 }
 
@@ -255,17 +566,94 @@ fn trees(s: &screens::Screen, only: Option<u64>) -> Result<Vec<ScreenTree>, Stri
     Ok(out)
 }
 
+/// What `tree` shows of the trees.
+#[derive(Debug, Default)]
+struct Filter {
+    role: Option<String>,
+    /// In the name or value (any case).
+    contains: Option<String>,
+    /// Only what can be seen: some area, inside its window's content.
+    visible_only: bool,
+    depth: Option<usize>,
+    /// Names and values cut to this many characters.
+    max_len: Option<usize>,
+    /// A table's cells (a row is named by them already).
+    cells: bool,
+}
+
+impl Filter {
+    fn from_args(args: &[String]) -> Result<Filter, String> {
+        let n = |flag: &str| option(args, flag).map(|v| v.parse::<usize>().map_err(|_| format!("{flag} is a number"))).transpose();
+        Ok(Filter {
+            role: option(args, "--role").cloned(),
+            contains: option(args, "--name-contains").or(option(args, "--contains")).cloned(),
+            visible_only: has(args, "--visible-only"),
+            depth: n("--depth")?,
+            max_len: n("--max-len")?,
+            cells: has(args, "--cells"),
+        })
+    }
+
+    fn narrows(&self) -> bool {
+        self.role.is_some() || self.contains.is_some()
+    }
+
+    /// Keep `n` (at `depth`, in a window whose content is `c`)?
+    fn keeps(&self, n: &commands::UiNode, depth: usize, c: Frame) -> bool {
+        if self.depth.is_some_and(|d| depth > d) {
+            return false;
+        }
+        if self.visible_only {
+            let inside = n.x < (c.x + c.width) as f32 && n.y < (c.y + c.height) as f32 && n.x + n.width > c.x as f32 && n.y + n.height > c.y as f32;
+            if n.width < 1.0 || n.height < 1.0 || !inside {
+                return false;
+            }
+        }
+        if self.role.as_ref().is_some_and(|r| !n.role.eq_ignore_ascii_case(r)) {
+            return false;
+        }
+        if let Some(t) = &self.contains {
+            let t = t.to_lowercase();
+            if ![&n.name, &n.value].iter().any(|s| s.as_ref().is_some_and(|s| s.to_lowercase().contains(&t))) {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn cut(&self, s: &str) -> String {
+        match self.max_len {
+            Some(max) if s.chars().count() > max => format!("{}…", s.chars().take(max).collect::<String>()),
+            _ => s.to_owned(),
+        }
+    }
+}
+
 /// The trees as an indented outline, one node a line.
-fn outline(trees: &[ScreenTree]) -> String {
+fn outline(trees: &[ScreenTree], filter: &Filter) -> String {
     use std::fmt::Write;
     let mut o = String::new();
     for t in trees {
         let c = t.content;
         let _ = writeln!(o, "window {} {:?} ({}){} content {},{} {}x{}", t.window, t.title, t.app_id, if t.focused { " focused" } else { "" }, c.x, c.y, c.width, c.height);
         let mut depth: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
+        let mut last: Option<&commands::UiNode> = None;
+        // A table's rows are reported each once, by name and place; their
+        // cells (and the unnamed area behind them) only with --cells.
+        let mut in_row: Option<(f32, f32)> = None;
         for n in &t.nodes {
             let d = n.parent.and_then(|p| depth.get(&p)).map_or(0, |d| d + 1);
             depth.insert(n.id, d);
+            let repeat = last.is_some_and(|l| l.role == n.role && l.name == n.name && l.value == n.value && l.x == n.x && l.y == n.y && l.width == n.width);
+            last = Some(n);
+            if n.role == "Row" {
+                in_row = Some((n.y, n.y + n.height));
+            } else if !matches!(n.role.as_str(), "Cell" | "Unknown") {
+                in_row = None;
+            }
+            if repeat || !filter.cells && in_row.is_some() && n.role != "Row" {
+                continue;
+            }
             // Containers without a name say nothing an agent needs, and a
             // text run repeats its field's value.
             // Nor does a row scrolled out of sight.
@@ -275,15 +663,22 @@ fn outline(trees: &[ScreenTree]) -> String {
             if n.role == "TextRun" || n.name.is_none() && n.value.is_none() && matches!(n.role.as_str(), "GenericContainer" | "Window" | "Pane" | "Group" | "ScrollView") {
                 continue;
             }
-            let _ = write!(o, "{:indent$}{}", "", n.role, indent = 2 + 2 * d.min(8));
+            if !filter.keeps(n, d, c) {
+                continue;
+            }
+            let indent = if filter.narrows() { 2 } else { 2 + 2 * d.min(8) };
+            let _ = write!(o, "{:indent$}{}", "", n.role);
             if let Some(name) = &n.name {
-                let _ = write!(o, " {name:?}");
+                let _ = write!(o, " {:?}", filter.cut(name));
             }
             if let Some(value) = &n.value {
-                let _ = write!(o, " value={value:?}");
+                let _ = write!(o, " value={:?}", filter.cut(value));
             }
             let _ = write!(o, " at {:.0},{:.0} {:.0}x{:.0}", n.x, n.y, n.width, n.height);
-            for (on, word) in [(!n.enabled, "disabled"), (n.clickable && !matches!(n.role.as_str(), "Clickable" | "Button" | "Link" | "MenuItem"), "clickable"), (n.focused, "focused"), (n.checked == Some(true), "checked"), (n.selected == Some(true), "selected")] {
+            if let (Some(row), Some(rows)) = (n.row, n.rows) {
+                let _ = write!(o, " row {}/{rows}", row + 1);
+            }
+            for (on, word) in [(!n.enabled, "disabled"), (n.clickable && !matches!(n.role.as_str(), "Clickable" | "Button" | "Link" | "MenuItem" | "Row"), "clickable"), (n.focused, "focused"), (n.checked == Some(true), "checked"), (n.selected == Some(true), "selected")] {
                 if on {
                     let _ = write!(o, " {word}");
                 }

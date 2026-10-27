@@ -116,6 +116,10 @@ enum Role {
         /// Menu index in the owner's bar, then submenu indices.
         path: Vec<usize>,
         state: PopupState,
+        /// The popup it opened from (a submenu's), if not the owner.
+        parent: Option<WindowId>,
+        /// Where it is on its parent, as the compositor placed it.
+        at: (i32, i32),
     },
 }
 
@@ -920,7 +924,13 @@ impl Kit {
         if !all && !late {
             return;
         }
-        let trees: Vec<_> = toplevels().filter_map(|s| s.tree.clone()).collect();
+        let trees: Vec<_> = toplevels()
+            .filter_map(|s| {
+                let mut tree = s.tree.clone()?;
+                tree.nodes.extend(self.popup_nodes(s.id));
+                Some(tree)
+            })
+            .collect();
         for (reply, _) in self.trees.drain(..) {
             let _ = reply.send(trees.clone());
         }
@@ -928,6 +938,34 @@ impl Kit {
             s.ctx.disable_accesskit();
             s.tree = None;
         }
+    }
+
+    /// The popup menus open from window `owner`, as tree nodes placed on
+    /// it (a popup's own nodes have no AccessKit tree: the kit paints
+    /// them; `menu::popup_nodes` describes them).
+    fn popup_nodes(&self, owner: WindowId) -> Vec<crate::commands::UiNode> {
+        let Some(o) = self.surfaces.iter().find(|s| s.id == owner) else { return Vec::new() };
+        let mut out = Vec::new();
+        for (n, &id) in o.popups.iter().enumerate() {
+            let Some(p) = self.surfaces.iter().find(|s| s.id == id) else { continue };
+            let Role::Popup { path, state, .. } = &p.role else { continue };
+            let Some(menu) = menu_of(o, path) else { continue };
+            // On the owner: its own place plus each parent popup's.
+            let (mut x, mut y, mut at) = (0, 0, Some(id));
+            while let Some(Role::Popup { at: (px, py), parent, .. }) = at.and_then(|a| self.surfaces.iter().find(|s| s.id == a)).map(|s| &s.role) {
+                (x, y) = (x + px, y + py);
+                at = *parent;
+            }
+            // Ids clear of AccessKit's (which are egui's hashes, spread
+            // over all of u64): high bits for the popup, low for its items.
+            let first = (0xF00D_u64 << 48) | ((n as u64) << 32);
+            out.extend(crate::menu::popup_nodes(&menu, state, p.size, first).into_iter().map(|mut node| {
+                node.x += x as f32;
+                node.y += y as f32;
+                node
+            }));
+        }
+        out
     }
 
     /// Bring what `cx` tells the app about its windows up to date.
@@ -2068,7 +2106,7 @@ impl Kit {
             id
         };
         let options = WindowOptions { panel: false, ..Default::default() };
-        let role = Role::Popup { popup, owner, path, state: PopupState::default() };
+        let role = Role::Popup { popup, owner, path, state: PopupState::default(), parent: parent_popup, at: (0, 0) };
         let s = self.make_surface(id, role, wl, options, size);
         self.surfaces.push(s);
         if let Some(o) = self.surface_mut(owner) {
@@ -2491,6 +2529,9 @@ impl PopupHandler for Kit {
             return;
         };
         let s = &mut self.surfaces[i];
+        if let Role::Popup { at, .. } = &mut s.role {
+            *at = config.position;
+        }
         let size = (config.width.max(1) as u32, config.height.max(1) as u32);
         let changed = size != s.size || !s.configured;
         s.size = size;
@@ -2683,8 +2724,15 @@ impl PointerHandler for Kit {
                 PointerEventKind::Axis { horizontal, vertical, source, .. } => {
                     use smithay_client_toolkit::reexports::client::protocol::wl_pointer::AxisSource;
                     let wheel = matches!(source, Some(AxisSource::Wheel) | Some(AxisSource::WheelTilt));
-                    let (dx, dy) = if wheel && (horizontal.discrete != 0 || vertical.discrete != 0) {
-                        (-horizontal.discrete as f32 * 48.0, -vertical.discrete as f32 * 48.0)
+                    // Notches: wl_pointer 8 and later say value120 (a
+                    // 120th of a notch, for high-resolution wheels) and no
+                    // longer send discrete steps.
+                    let notches = |a: &smithay_client_toolkit::seat::pointer::AxisScroll| {
+                        if a.value120 != 0 { a.value120 as f32 / 120.0 } else { a.discrete as f32 }
+                    };
+                    let (nx, ny) = (notches(horizontal), notches(vertical));
+                    let (dx, dy) = if wheel && (nx != 0.0 || ny != 0.0) {
+                        (-nx * 48.0, -ny * 48.0)
                     } else {
                         (-horizontal.absolute as f32, -vertical.absolute as f32)
                     };

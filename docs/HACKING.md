@@ -948,7 +948,10 @@ of its own). NetPositive eases a mouse wheel's notch out over a few frames
 
 **Scrolling** goes the same distance in every program (`scroll.rs`, at
 the one place app_server hands a scroll to a client): Tabula's apps
-scroll a finger scroll's values as logical pixels and a wheel notch 48.
+scroll a finger scroll's values as logical pixels and a wheel notch 48
+(the kit counts notches from `value120`, which wl_pointer 8 sends in
+place of `discrete`; read only `discrete`, a notch came out as its 15°
+angle, 15 px).
 Chromium (Chrome, Chromium, Electron apps: found by `icudtl.dat` and a V8
 snapshot beside the program) scrolls finger values 12× as far and a notch
 120 px, so gets them ×1/12 and ×0.4 (value and value120); GTK 4 (a
@@ -1553,6 +1556,34 @@ them: `Cmd+S`, `Enter`, `Esc`; parsed by `tabula_protocol::Chord` with
 aliases) and `type` (US keyboard), all as `Request::Synthetic`, in the
 screen's logical pixels. `stop` ends the session, and with it the
 programs on it. `tabula-screen --help` lists it all.
+
+Input that plays out over time is paced, a batch per IPC request with
+waits between (`Screen::input_paced`): `drag` presses, moves in steps
+and lets go over ~300 ms (a knob or a window's corner needs to see the
+movement); `scroll` moves in ≤20 px steps every 8 ms and rests 80 ms
+before the fingers lift, so app_server doesn't glide on (a lift arriving
+at speed is a flick) and the lift ends the gesture (a list pulled past
+its end springs back); `wheel` sends one notch at a time. `find.rs`
+finds elements by what they are (`--name`, exact before partial, values
+counting; `--role`; `--match ROLE:TEXT`; `--text`; `--index`;
+`--window`) for `click`, `set` (click in, checking it took the focus,
+then ⌘A, Delete and the text), `select` (open the dropdown, wait for the
+`MenuItem`, click it), `wait` (until it shows or `--gone`; `--idle`: two
+outlines a quarter-second apart the same) and `scroll-to` (wheel to the
+top, then down, until it shows whole); actions print JSON with `after`,
+the focused window and element. Popups are in the trees: the kit paints
+its menus (no AccessKit), so `Kit::popup_nodes` adds each open popup's
+`menu::popup_nodes` (a `Menu`, a `MenuItem` per item in view, laid out by
+the same `PopupLayout` that draws them) to its owner window's tree,
+placed by the popups' configured positions. `WindowInfo::popups` gives
+every window's open popups' frames, GTK's too (smithay's
+`PopupManager::popups_for_surface`, from the client's geometry). Table
+rows carry AccessKit `row_index`/`row_count` (`UiNode::row`/`rows`,
+printed `row 13/61`); egui's "toggled" on a row, tab or column header is
+reported as `selected`. `focus`/`close`/`minimize`/`zoom` are the window
+requests; `resize` and `place` are `Request::Place` (a frame, as
+`set_frame` gives tiles). `look` writes beside the logs when given no
+file, and `--crop` cuts an RGBA picture down in process (png crate).
 
 The person's side is the window (`tabula-screen`, or `tabula-screen
 watch NAME`): the screens in a list and the chosen one live beside it,

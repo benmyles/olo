@@ -87,6 +87,18 @@ impl Screen {
         self.request(&Request::Synthetic { events }).map(drop)
     }
 
+    /// Send each batch of events in turn, waiting after each as long as
+    /// it says: as a hand would, so what reacts to movement over time (a
+    /// drag, a touchpad's lift) sees it as from a person.
+    pub fn input_paced(&self, steps: Vec<(Vec<SyntheticEvent>, Duration)>) -> Result<(), String> {
+        let mut client = self.client()?;
+        for (events, wait) in steps {
+            client.request(&Request::Synthetic { events }).map_err(|e| e.to_string())?;
+            std::thread::sleep(wait);
+        }
+        Ok(())
+    }
+
     /// A picture of the whole screen (or one window) at `path`, once it
     /// is written.
     pub fn picture(&self, path: &Path, window: Option<u64>, pointer: bool, format: ImageFormat) -> Result<(), String> {
@@ -342,15 +354,51 @@ pub fn click(x: f64, y: f64, button: u32, count: u32) -> Vec<SyntheticEvent> {
     events
 }
 
-pub fn drag(from: (f64, f64), to: (f64, f64)) -> Vec<SyntheticEvent> {
-    let mut events = vec![SyntheticEvent::Move { x: from.0, y: from.1 }, SyntheticEvent::Button { button: LEFT, pressed: true }];
-    // Through the way, so what is dragged over sees it pass.
-    for i in 1..=10 {
-        let t = i as f64 / 10.0;
-        events.push(SyntheticEvent::Move { x: from.0 + (to.0 - from.0) * t, y: from.1 + (to.1 - from.1) * t });
+/// A drag from `from` to `to` in `steps` moves over `duration`, pausing
+/// a little after the press and before the release, as a hand does (a
+/// scroll bar's knob or a window's corner needs to see the press, then
+/// movement over time).
+pub fn drag(from: (f64, f64), to: (f64, f64), steps: u32, duration: Duration) -> Vec<(Vec<SyntheticEvent>, Duration)> {
+    const SETTLE: Duration = Duration::from_millis(50);
+    let steps = steps.max(1);
+    let each = duration / steps;
+    let mut out = vec![(vec![SyntheticEvent::Move { x: from.0, y: from.1 }, SyntheticEvent::Button { button: LEFT, pressed: true }], SETTLE)];
+    for i in 1..=steps {
+        let t = i as f64 / steps as f64;
+        out.push((vec![SyntheticEvent::Move { x: from.0 + (to.0 - from.0) * t, y: from.1 + (to.1 - from.1) * t }], if i == steps { SETTLE } else { each }));
     }
-    events.push(SyntheticEvent::Button { button: LEFT, pressed: false });
-    events
+    out.push((vec![SyntheticEvent::Button { button: LEFT, pressed: false }], Duration::ZERO));
+    out
+}
+
+/// A touchpad scroll by (dx, dy) pixels: moves of at most 20 pixels every
+/// 8 ms (as fingers report), then, unless `lift` is false, the fingers
+/// resting a moment and lifting. Resting first means nothing glides on
+/// (app_server glides a lift that comes while the fingers move fast), and
+/// the lift ends the gesture, so a list pulled past its end springs back.
+pub fn scroll(dx: f64, dy: f64, lift: bool) -> Vec<(Vec<SyntheticEvent>, Duration)> {
+    const STEP: Duration = Duration::from_millis(8);
+    let n = (dx.abs().max(dy.abs()) / 20.0).ceil().max(1.0) as u32;
+    let mut out: Vec<_> = (0..n).map(|_| (vec![SyntheticEvent::Scroll { dx: dx / n as f64, dy: dy / n as f64 }], STEP)).collect();
+    if lift {
+        if let Some(last) = out.last_mut() {
+            last.1 = Duration::from_millis(80);
+        }
+        out.push((vec![SyntheticEvent::Scroll { dx: 0.0, dy: 0.0 }], Duration::ZERO));
+    }
+    out
+}
+
+/// Mouse-wheel notches, one at a time (a toolkit may take only so much of
+/// one event), a little apart.
+pub fn wheel(dx: i32, dy: i32) -> Vec<(Vec<SyntheticEvent>, Duration)> {
+    let n = dx.abs().max(dy.abs());
+    (0..n)
+        .map(|i| {
+            let step = |d: i32| if i < d.abs() { d.signum() } else { 0 };
+            (vec![SyntheticEvent::Wheel { dx: step(dx), dy: step(dy) }], Duration::from_millis(10))
+        })
+        .collect()
 }
 
 /// evdev codes of the modifiers.
@@ -477,6 +525,25 @@ mod tests {
         let events = chord(&parse_chord("Cmd+W").unwrap());
         assert_eq!(events.first(), Some(&SyntheticEvent::Key { key: CMD, pressed: true }));
         assert_eq!(events.last(), Some(&SyntheticEvent::Key { key: CMD, pressed: false }));
+    }
+
+    #[test]
+    fn paced_input() {
+        // A scroll in finger-sized steps, resting before the lift.
+        let s = scroll(0.0, -300.0, true);
+        assert_eq!(s.len(), 16);
+        assert!(s[..15].iter().all(|(e, _)| e == &vec![SyntheticEvent::Scroll { dx: 0.0, dy: -20.0 }]));
+        assert_eq!(s[14].1, Duration::from_millis(80));
+        assert_eq!(s[15].0, vec![SyntheticEvent::Scroll { dx: 0.0, dy: 0.0 }]);
+        assert_eq!(scroll(0.0, 30.0, false).len(), 2);
+        // A notch at a time, both ways at once.
+        let w = wheel(1, -3);
+        assert_eq!(w.iter().map(|(e, _)| e[0].clone()).collect::<Vec<_>>(), vec![SyntheticEvent::Wheel { dx: 1, dy: -1 }, SyntheticEvent::Wheel { dx: 0, dy: -1 }, SyntheticEvent::Wheel { dx: 0, dy: -1 }]);
+        // Press, the moves, ending where asked, then let go.
+        let d = drag((0.0, 0.0), (100.0, 50.0), 4, Duration::from_millis(200));
+        assert_eq!(d.len(), 6);
+        assert_eq!(d[4].0, vec![SyntheticEvent::Move { x: 100.0, y: 50.0 }]);
+        assert_eq!(d[5].0, vec![SyntheticEvent::Button { button: LEFT, pressed: false }]);
     }
 
     #[test]

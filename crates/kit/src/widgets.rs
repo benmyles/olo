@@ -1772,7 +1772,11 @@ impl<'a> ColumnListView<'a> {
                     let shown = r.intersect(ui.clip_rect());
                     let shown = if shown.is_positive() { shown } else { Rect::from_min_size(r.min, Vec2::ZERO) };
                     ui.ctx().accesskit_node_builder(resp.id, |n| {
-                        n.set_bounds(egui::accesskit::Rect { x0: shown.min.x as f64, y0: shown.min.y as f64, x1: shown.max.x as f64, y1: shown.max.y as f64 })
+                        n.set_bounds(egui::accesskit::Rect { x0: shown.min.x as f64, y0: shown.min.y as f64, x1: shown.max.x as f64, y1: shown.max.y as f64 });
+                        // Which row of how many, so an agent knows how far
+                        // it has to scroll.
+                        n.set_row_index(row);
+                        n.set_row_count(rows);
                     });
                     let painter = ui.painter();
                     if selected {

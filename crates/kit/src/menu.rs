@@ -389,6 +389,89 @@ pub enum PopupResult {
 }
 
 /// Draw a popup menu filling `ui` and handle pointer/keyboard.
+/// Where a popup menu's items are, in a popup at `rect`.
+struct PopupLayout {
+    inner: Rect,
+    /// Between the scroll arrows, if it scrolls.
+    area: Rect,
+    heights: Vec<f32>,
+    scrolls: bool,
+    max_scroll: f32,
+}
+
+impl PopupLayout {
+    fn new(menu: &Menu, rect: Rect) -> PopupLayout {
+        let inner = rect.shrink(POPUP_BORDER);
+        let heights: Vec<f32> = menu.items.iter().map(|item| if matches!(item, MenuItem::Separator) { SEPARATOR_HEIGHT } else { ITEM_HEIGHT }).collect();
+        let content = heights.iter().sum::<f32>() + 4.0;
+        let scrolls = content > inner.height() + 0.5;
+        let area = if scrolls { Rect::from_min_max(pos2(inner.left(), inner.top() + SCROLLER_HEIGHT), pos2(inner.right(), inner.bottom() - SCROLLER_HEIGHT)) } else { inner };
+        PopupLayout { inner, area, max_scroll: (content - area.height()).max(0.0), heights, scrolls }
+    }
+
+    /// Each item's row, scrolled by `scroll`.
+    fn rows(&self, scroll: f32) -> Vec<Rect> {
+        let mut y = self.area.top() + 2.0 - scroll;
+        self.heights
+            .iter()
+            .map(|h| {
+                let r = Rect::from_min_size(pos2(self.inner.left(), y), vec2(self.inner.width(), *h));
+                y += h;
+                r
+            })
+            .collect()
+    }
+}
+
+/// What a popup menu of `size` shows, for agents (`commands::tree`): a
+/// `Menu` node, then a `MenuItem` for each item in view (separators left
+/// out), named by its label, with its shortcut as the value. Ids start at
+/// `first_id`.
+pub(crate) fn popup_nodes(menu: &Menu, state: &PopupState, size: (u32, u32), first_id: u64) -> Vec<crate::commands::UiNode> {
+    use crate::commands::UiNode;
+    let rect = Rect::from_min_size(Pos2::ZERO, vec2(size.0 as f32, size.1 as f32));
+    let layout = PopupLayout::new(menu, rect);
+    let node = |id: u64, parent: Option<u64>, role: &str, name: Option<String>, r: Rect| UiNode {
+        id,
+        parent,
+        role: role.into(),
+        name,
+        value: None,
+        x: r.left(),
+        y: r.top(),
+        width: r.width(),
+        height: r.height(),
+        enabled: true,
+        clickable: false,
+        focused: false,
+        checked: None,
+        selected: None,
+        row: None,
+        rows: None,
+    };
+    let mut nodes = vec![node(first_id, None, "Menu", (!menu.title.is_empty()).then(|| menu.title.clone()), rect)];
+    for (i, (item, row)) in menu.items.iter().zip(layout.rows(state.scroll.clamp(0.0, layout.max_scroll))).enumerate() {
+        // Only what shows between the arrows can be clicked.
+        let Some(row) = Some(row.intersect(layout.area)).filter(|r| r.height() >= ITEM_HEIGHT / 2.0) else { continue };
+        let open = state.open_sub.is_some_and(|(s, _)| s == i);
+        let mut n = node(first_id + 1 + i as u64, Some(first_id), "MenuItem", None, row);
+        n.clickable = true;
+        n.selected = Some(state.selected == Some(i) || open);
+        match item {
+            MenuItem::Separator => continue,
+            MenuItem::Action(a) => {
+                n.name = Some(a.label.clone());
+                n.value = a.shortcut.map(|s| s.label());
+                n.enabled = a.enabled;
+                n.checked = a.checked.then_some(true);
+            }
+            MenuItem::Submenu(m) => n.name = Some(format!("{} ▸", m.title)),
+        }
+        nodes.push(n);
+    }
+    nodes
+}
+
 pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult {
     let p = style::palette(ui.ctx());
     let rect = ui.max_rect();
@@ -405,11 +488,9 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
     // A menu taller than the popup (the compositor shrank it to fit the
     // screen) scrolls, as on BeOS: arrows at the ends scroll while the
     // pointer rests on them, and the wheel and keyboard scroll too.
-    let heights: Vec<f32> = menu.items.iter().map(|item| if matches!(item, MenuItem::Separator) { SEPARATOR_HEIGHT } else { ITEM_HEIGHT }).collect();
-    let content = heights.iter().sum::<f32>() + 4.0;
-    let scrolls = content > inner.height() + 0.5;
-    let area = if scrolls { Rect::from_min_max(pos2(inner.left(), inner.top() + SCROLLER_HEIGHT), pos2(inner.right(), inner.bottom() - SCROLLER_HEIGHT)) } else { inner };
-    let max_scroll = (content - area.height()).max(0.0);
+    let geometry = PopupLayout::new(menu, rect);
+    let (area, max_scroll, scrolls) = (geometry.area, geometry.max_scroll, geometry.scrolls);
+    let layout = |scroll: f32| geometry.rows(scroll);
     let up = Rect::from_min_max(inner.min, pos2(inner.right(), area.top()));
     let down = Rect::from_min_max(pos2(inner.left(), area.bottom()), inner.max);
     let pointer = ui.input(|i| i.pointer.latest_pos());
@@ -438,17 +519,6 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
             }
         }
     }
-    let layout = |scroll: f32| -> Vec<Rect> {
-        let mut y = area.top() + 2.0 - scroll;
-        heights
-            .iter()
-            .map(|h| {
-                let r = Rect::from_min_size(pos2(inner.left(), y), vec2(inner.width(), *h));
-                y += h;
-                r
-            })
-            .collect()
-    };
     state.scroll = state.scroll.clamp(0.0, max_scroll);
     let mut rows = layout(state.scroll);
 
@@ -605,6 +675,19 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn popup_nodes_name_items_where_they_are() {
+        let menu = Menu::new("Level").item("Everything", "all", None).separator().item("Errors Only", "errors", None).checked(true).enabled(false);
+        let state = PopupState { selected: Some(0), ..Default::default() };
+        let nodes = popup_nodes(&menu, &state, (170, 55), 100);
+        let names: Vec<_> = nodes.iter().map(|n| (n.role.as_str(), n.name.as_deref())).collect();
+        assert_eq!(names, [("Menu", Some("Level")), ("MenuItem", Some("Everything")), ("MenuItem", Some("Errors Only"))]);
+        let (first, last) = (&nodes[1], &nodes[2]);
+        assert_eq!((first.x, first.y, first.height, first.selected), (POPUP_BORDER, POPUP_BORDER + 2.0, ITEM_HEIGHT, Some(true)));
+        assert_eq!(last.y, first.y + ITEM_HEIGHT + SEPARATOR_HEIGHT);
+        assert!(last.checked == Some(true) && !last.enabled && last.parent == Some(100));
+    }
 
     /// One frame of the bar with these events; the title "File" sits at
     /// the bar's left.

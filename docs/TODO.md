@@ -164,8 +164,21 @@ as they land (with the commit), add new ones as they come up.
   injected automatically into Claude Code and Codex when they run under
   Tabula. Agent-first from the ground up: everything designed to work
   seamlessly for agents and people alike.
-- **Agent Screens: bugs and improvements from an agent using it** (Ben,
-  2026-10-27; feedback from an agent working with `tabula-screen`).
+- ~~**Agent Screens: bugs and improvements from an agent using it**~~
+  Done 2026-10-27, all 16: popups in `tree` (Menu/MenuItem) and
+  `windows` (`popups`); `scroll`, `drag` and `wheel` paced over time (a
+  scroll no longer flings 20,000 px; drags move knobs and corners; the
+  kit's wheel read only `discrete`, so every mouse notch was 15 px, now
+  48 from `value120`); `menus`/`invoke` use the only window when none has
+  the focus, and errors list the windows; rows were already clipped
+  (a62e672) and now say `row N/M` and `selected`; `wait`, find by
+  name/role/match/text for `click`, `set`, `select`, `scroll-to`; tree
+  filters and one line per row; `focus`/`close`/`minimize`/`zoom`/
+  `resize`/`place`; JSON from actions with the focused element after;
+  `look` with no file, `--crop`; `type`/`set` warn when keys go to
+  something that isn't a text field; skill doc updated. (Bug 5, focus
+  lost after clicking a row, didn't happen here; the fallback covers it.)
+  (Ben, 2026-10-27; feedback from an agent working with `tabula-screen`).
   Bugs:
   1. *Popups are invisible:* a dropdown's menu (Log Viewer's level filter)
      shows on screen but is in neither `tree` nor `windows`. Popups belong
@@ -231,6 +244,25 @@ as they land (with the commit), add new ones as they come up.
   3. Make the tray icons' size and spacing consistent and pixel-perfect
      (same size, same gaps, aligned to the pixel grid at 1× and 2×,
      wrapping to more rows evenly), so it looks neat rather than messy.
+- **Notifications history: denser, better looking, several views** (Ben,
+  2026-10-27): each entry now wastes a lot of room (a 32 px icon beside a
+  stack of app name, title, the sender's site on its own line, a blank
+  line, then the body), so only three fit in a 380 px window. Make each
+  take far less space and look much better: the app and time on one
+  line with the title, the body right under it (one or two lines,
+  ellipsized, the whole of it on selection or hover), the site folded
+  into the app line, no blank line, a smaller icon, tighter rows, a
+  clear unread mark. Then offer view styles (View menu, remembered):
+  1. *List:* one compact row each, newest first.
+  2. *By app:* grouped under each app (icon, name, count), groups
+     collapsible, newest group first; Clear per group.
+  3. *Cards:* a grid of small cards, as on a phone's lock screen.
+  4. *Conversations:* entries from the same thread (same app and title,
+     such as one chat channel) stacked into one, newest on top, with a
+     count, expanding in place.
+  Also worth trying: a timeline with day headers (Today, Yesterday),
+  search/filter, and keyboard navigation (arrows, Delete, Enter to open).
+  Keep it agent-readable (rows in the tree, named by their text).
 - **Google Chrome works great in Tabula** (Ben; the browser work now,
   in place of NetPositive): many sites really need Chrome. When stock Google Chrome is downloaded and run, Tabula
   recognises it: Tabula window chrome (server-side decorations, or

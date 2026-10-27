@@ -74,6 +74,11 @@ pub struct UiNode {
     pub checked: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected: Option<bool>,
+    /// A table row's index (from 0), and how many rows the table has.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rows: Option<usize>,
 }
 
 /// What one window shows.
@@ -113,6 +118,7 @@ impl WindowTree {
             let r = if Some(id) == root { egui::accesskit::Rect { x1: size.0 as f64, y1: size.1 as f64, ..r } } else { r };
             let text = |s: Option<&str>| s.map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned);
             let clickable = n.supports_action(egui::accesskit::Action::Click);
+            let picks = matches!(n.role(), egui::accesskit::Role::Row | egui::accesskit::Role::Tab | egui::accesskit::Role::ColumnHeader | egui::accesskit::Role::ListItem);
             let role = match n.role() {
                 egui::accesskit::Role::Unknown if clickable => "Clickable".to_owned(),
                 role => format!("{role:?}"),
@@ -130,8 +136,12 @@ impl WindowTree {
                 enabled: !n.is_disabled(),
                 clickable,
                 focused: update.focus.0 == id && Some(id) != root,
-                checked: n.toggled().map(|t| t == egui::accesskit::Toggled::True),
-                selected: n.is_selected(),
+                // egui says a row's, tab's or column header's selection
+                // as "toggled": for those it is selected, not checked.
+                checked: n.toggled().filter(|_| !picks).map(|t| t == egui::accesskit::Toggled::True),
+                selected: n.is_selected().or_else(|| n.toggled().filter(|_| picks).map(|t| t == egui::accesskit::Toggled::True)),
+                row: n.row_index(),
+                rows: n.row_count(),
             });
             stack.extend(n.children().iter().rev().map(|c| c.0));
         }

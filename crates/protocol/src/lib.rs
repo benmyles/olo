@@ -40,6 +40,9 @@ pub enum Request {
     Minimize { id: WindowId },
     Close { id: WindowId },
     ToggleZoom { id: WindowId },
+    /// Put a window's frame (tab and border included, as
+    /// [`WindowInfo::frame`]) here, at this size; no longer zoomed.
+    Place { id: WindowId, frame: Frame },
     Workspaces,
     SwitchWorkspace { index: u32 },
     MoveToWorkspace { id: WindowId, index: u32 },
@@ -201,6 +204,10 @@ pub struct WindowInfo {
     /// Where what the app draws is (inside the tab and border), likewise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content: Option<Frame>,
+    /// Its open popups (menus, dropdowns, tooltips), submenus after the
+    /// menus they open from, likewise.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub popups: Vec<Frame>,
 }
 
 /// A rectangle in global logical pixels.

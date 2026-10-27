@@ -248,6 +248,15 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 None => not_found(),
             },
+            Request::Place { id, frame } => match self.window_by_id(id) {
+                Some(w) if self.space.element_location(&w).is_some() => {
+                    let size = (frame.width.max(1), frame.height.max(1));
+                    self.set_frame(&w, smithay::utils::Rectangle::new((frame.x, frame.y).into(), size.into()), false);
+                    Reply::Ok
+                }
+                Some(_) => Reply::Error { message: format!("window {id} isn't showing") },
+                None => not_found(),
+            },
             Request::Workspaces => Reply::Workspaces {
                 current: self.workspace,
                 count: self.settings.workspace_count,

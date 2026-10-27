@@ -182,6 +182,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     focused: focused.is_some() && w.wl_surface().map(|s| s.into_owned()) == focused,
                     frame: None,
                     content: None,
+                    popups: Vec::new(),
                 }
             })
             .collect();
@@ -206,6 +207,18 @@ impl<B: Backend + 'static> AnvilState<B> {
             } else {
                 frame(smithay::utils::Rectangle::new(at, geo.size))
             });
+            // Popups are placed from the client's geometry.
+            if let Some(surface) = w.wl_surface() {
+                let origin = at + w.content_offset();
+                info.popups = smithay::desktop::PopupManager::popups_for_surface(&surface)
+                    .map(|(popup, offset)| {
+                        // A popup that set no geometry is its surfaces' size.
+                        let size = Some(popup.geometry().size).filter(|s| s.w > 0 && s.h > 0);
+                        let size = size.unwrap_or_else(|| smithay::desktop::utils::bbox_from_surface_tree(popup.wl_surface(), (0, 0)).size);
+                        frame(smithay::utils::Rectangle::new(origin + offset, size))
+                    })
+                    .collect();
+            }
         }
         infos
     }
