@@ -77,3 +77,15 @@ drive-setup|a chunky grey hard drive seen in three-quarter view from slightly ab
 agent-screens|a chunky silver computer monitor seen in three-quarter view from slightly above, its screen showing a small blue desktop with a yellow window tab, and in front at the lower right a second smaller arrow pointer in green beside a white arrow pointer, as if two people share the screen
 token-pool|a chunky clear blue glass jar with a silver screw lid, filled with thick round gold coins, two more gold coins stacked in front at the lower right
 ai|a chunky silver microchip with gold pins along its sides, a glowing Be blue four-pointed sparkle star standing on top of it, slightly tilted
+stay-awake|a steaming white porcelain coffee cup on a small saucer, a curl of steam rising from it
+lock-screen|a chunky computer monitor whose screen shows a large closed golden padlock, light grey case
+log-out|an open wooden door with a bright green arrow pointing out through the doorway
+restart|a glossy round power button in Be blue with a white circular arrow looping around its face
+shut-down|a glossy round red power button with the white power symbol on its face
+development|a hammer and a wrench crossed over a small sheet of paper showing angle-bracket code symbols
+games|a chunky light grey game controller with a direction pad and coloured round buttons
+accessories|a red pocket multi-tool knife with a few of its tools folded out
+internet|a glossy blue globe with green continents and a thin silver orbit ring around it
+multimedia|a black film clapperboard leaning against a glossy black eighth-note musical note
+office|a stack of white papers with a blue binder clip and a yellow pencil lying beside it
+other-applications|an open cardboard box with a few small application cubes in different colours peeking out

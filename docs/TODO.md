@@ -5,6 +5,10 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Icons in the Deskbar menu~~ (Ben): every item in the Tabula menu
+  has its icon (applications, panels, .desktop entries, commands,
+  categories; twelve new sunburst icons); Appearance ▸ Show icons in the
+  Deskbar menu, on by default. Kit menus take `.icon(name)`.
 - ~~Roll up windows~~ (Ben): ⌃⌘M, Roll Up in the tab's menu, the palette,
   or double-click the tab: only the tab stays; again rolls it down.
 - ~~Longest tab title~~ (Ben): Preferences ▸ Appearance ▸ Longest window
@@ -536,10 +540,6 @@ as they land (with the commit), add new ones as they come up.
   `--new-window` to the running copy instead of launching a second one
   (Tracker, Terminal and StyledEdit; `apps::NEW_WINDOW`). Agents run
   `tabula-x --new-window`.
-- **Icons in the Deskbar menu** (Ben): an Appearance preference, on by
-  default, to show icons beside every item in the Deskbar menu (each
-  application, each preference panel, and the other commands), with any
-  missing icons generated with sunburst against the reference set.
 - **Rename Tabula to Olo, use the new brand, ship a wallpaper pack**
   (Ben; the very last thing, after everything else is done):
   - *Rename* everywhere (code, crates, binaries, app ids, environment

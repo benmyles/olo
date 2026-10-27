@@ -10,6 +10,9 @@ use crate::style::{self, c};
 pub struct Menu {
     pub title: String,
     pub items: Vec<MenuItem>,
+    /// Drawn beside the title where this is a submenu (an icon name, as
+    /// for [`crate::icons::paint`]).
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -26,6 +29,10 @@ pub struct Action {
     pub shortcut: Option<Shortcut>,
     pub enabled: bool,
     pub checked: bool,
+    /// Drawn at the left of the item (an icon name, as for
+    /// [`crate::icons::paint`]). A popup with any icons gives them all a
+    /// column, between the check marks and the labels.
+    pub icon: Option<String>,
 }
 
 /// A command-key shortcut. The command key is Ctrl (which app_server's
@@ -61,7 +68,7 @@ impl Shortcut {
 
 impl Menu {
     pub fn new(title: impl Into<String>) -> Self {
-        Menu { title: title.into(), items: Vec::new() }
+        Menu { title: title.into(), items: Vec::new(), icon: None }
     }
     /// Add an item: `label`, command id, optional shortcut key.
     pub fn item(mut self, label: impl Into<String>, command: impl Into<String>, key: Option<Key>) -> Self {
@@ -71,6 +78,7 @@ impl Menu {
             shortcut: key.map(|key| Shortcut { key, shift: false }),
             enabled: true,
             checked: false,
+            icon: None,
         }));
         self
     }
@@ -81,6 +89,7 @@ impl Menu {
             shortcut: Some(Shortcut { key, shift: true }),
             enabled: true,
             checked: false,
+            icon: None,
         }));
         self
     }
@@ -109,6 +118,23 @@ impl Menu {
             a.enabled = on;
         }
         self
+    }
+    /// Give the last item (an action or a submenu) an icon.
+    pub fn icon(mut self, name: impl Into<String>) -> Self {
+        match self.items.last_mut() {
+            Some(MenuItem::Action(a)) => a.icon = Some(name.into()),
+            Some(MenuItem::Submenu(m)) => m.icon = Some(name.into()),
+            _ => {}
+        }
+        self
+    }
+    /// Whether any item has an icon, so the popup has an icon column.
+    pub fn has_icons(&self) -> bool {
+        self.items.iter().any(|item| match item {
+            MenuItem::Action(a) => a.icon.is_some(),
+            MenuItem::Submenu(m) => m.icon.is_some(),
+            MenuItem::Separator => false,
+        })
     }
 
     /// Find the command bound to a shortcut, searching submenus too.
@@ -139,7 +165,7 @@ impl Menu {
 
 impl Action {
     pub fn new(label: impl Into<String>, command: impl Into<String>) -> Self {
-        Action { label: label.into(), command: command.into(), shortcut: None, enabled: true, checked: false }
+        Action { label: label.into(), command: command.into(), shortcut: None, enabled: true, checked: false, icon: None }
     }
     pub fn key(mut self, key: Key) -> Self {
         self.shortcut = Some(Shortcut { key, shift: false });
@@ -155,6 +181,10 @@ impl Action {
     }
     pub fn checked(mut self, on: bool) -> Self {
         self.checked = on;
+        self
+    }
+    pub fn icon(mut self, name: impl Into<String>) -> Self {
+        self.icon = Some(name.into());
         self
     }
 }
@@ -265,6 +295,9 @@ const SEPARATOR_HEIGHT: f32 = 9.0;
 const ITEM_LEFT: f32 = 20.0;
 const ITEM_RIGHT: f32 = 14.0;
 const SHORTCUT_GAP: f32 = 28.0;
+/// Item icons, and the room between one and its label.
+const ICON_SIZE: f32 = 16.0;
+const ICON_GAP: f32 = 5.0;
 pub const POPUP_BORDER: f32 = 1.0;
 /// The bands with scroll arrows at the ends of a menu too tall for the
 /// screen.
@@ -343,6 +376,28 @@ pub fn menu_bar(ui: &mut Ui, menus: &[Menu], state: &mut BarState) -> Rect {
     rect
 }
 
+/// Where a popup's item icons go (their left edge, if the menu has any)
+/// and where the labels start, from the item's left. Check marks keep
+/// their column in front of the icons when the menu has both.
+fn columns(menu: &Menu) -> (Option<f32>, f32) {
+    if !menu.has_icons() {
+        return (None, ITEM_LEFT);
+    }
+    let checks = menu.items.iter().any(|item| matches!(item, MenuItem::Action(a) if a.checked));
+    let icon = if checks { ITEM_LEFT } else { 6.0 };
+    (Some(icon), icon + ICON_SIZE + ICON_GAP)
+}
+
+/// Draw `name` in an item's icon column (the generic application's if
+/// there's no such icon).
+fn item_icon(painter: &egui::Painter, row: Rect, left: f32, name: &str, enabled: bool) {
+    let rect = Rect::from_min_size(pos2(row.left() + left, row.center().y - ICON_SIZE / 2.0), vec2(ICON_SIZE, ICON_SIZE));
+    let tint = if enabled { Color32::WHITE } else { Color32::from_white_alpha(110) };
+    if !crate::icons::paint_tinted(painter, rect, name, tint) {
+        crate::icons::paint_tinted(painter, rect, "application", tint);
+    }
+}
+
 /// Logical size of a popup for `menu`.
 pub fn popup_size(ctx: &egui::Context, menu: &Menu) -> Vec2 {
     let (mut label_w, mut key_w, mut h) = (0.0f32, 0.0f32, 0.0f32);
@@ -365,7 +420,7 @@ pub fn popup_size(ctx: &egui::Context, menu: &Menu) -> Vec2 {
         }
     }
     let gap = if key_w > 0.0 { SHORTCUT_GAP } else { 0.0 };
-    let w = (ITEM_LEFT + label_w + gap + key_w + ITEM_RIGHT).max(120.0).ceil();
+    let w = (columns(menu).1 + label_w + gap + key_w + ITEM_RIGHT).max(120.0).ceil();
     vec2(w + 2.0 * POPUP_BORDER, (h + 2.0 * POPUP_BORDER + 4.0).ceil())
 }
 
@@ -613,6 +668,7 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
     }
     let painter = painter.with_clip_rect(area);
 
+    let (icon_left, label_left) = columns(menu);
     for (i, (item, row)) in menu.items.iter().zip(&rows).enumerate() {
         let selected = state.selected == Some(i) && selectable(i);
         match item {
@@ -635,7 +691,10 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
                 if a.checked {
                     style::check_mark(&painter, Rect::from_center_size(pos2(row.left() + 10.0, row.center().y), vec2(9.0, 9.0)), text_color);
                 }
-                style::label(&painter, row.left() + ITEM_LEFT, row.center().y, egui::Align::Min, &a.label, font(), text_color);
+                if let (Some(left), Some(name)) = (icon_left, &a.icon) {
+                    item_icon(&painter, *row, left, name, a.enabled);
+                }
+                style::label(&painter, row.left() + label_left, row.center().y, egui::Align::Min, &a.label, font(), text_color);
                 if let Some(s) = a.shortcut {
                     style::shortcut(&painter, pos2(row.right() - ITEM_RIGHT, row.center().y), &s.label(), text_color);
                 }
@@ -650,7 +709,10 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
                     painter.rect_filled(*row, 0.0, c(p.menu_selected_background));
                 }
                 let text_color = if hl { c(p.menu_selected_item_text) } else { c(p.menu_item_text) };
-                style::label(&painter, row.left() + ITEM_LEFT, row.center().y, egui::Align::Min, &m.title, font(), text_color);
+                if let (Some(left), Some(name)) = (icon_left, &m.icon) {
+                    item_icon(&painter, *row, left, name, true);
+                }
+                style::label(&painter, row.left() + label_left, row.center().y, egui::Align::Min, &m.title, font(), text_color);
                 // Right-pointing triangle.
                 let cx = row.right() - ITEM_RIGHT;
                 let cy = row.center().y;
@@ -689,6 +751,17 @@ mod tests {
         assert_eq!((first.x, first.y, first.height, first.selected), (POPUP_BORDER, POPUP_BORDER + 2.0, ITEM_HEIGHT, Some(true)));
         assert_eq!(last.y, first.y + ITEM_HEIGHT + SEPARATOR_HEIGHT);
         assert!(last.checked == Some(true) && !last.enabled && last.parent == Some(100));
+    }
+
+    #[test]
+    fn icons_get_a_column_after_the_check_marks() {
+        let plain = Menu::new("Go").item("Home", "home", None);
+        assert_eq!(columns(&plain), (None, ITEM_LEFT));
+        let icons = Menu::new("Go").item("Home", "home", None).icon("home").submenu(Menu::new("Places")).icon("folder");
+        assert!(icons.has_icons());
+        assert_eq!(columns(&icons), (Some(6.0), 6.0 + ICON_SIZE + ICON_GAP));
+        let both = icons.item("Hidden Files", "hidden", None).checked(true);
+        assert_eq!(columns(&both), (Some(ITEM_LEFT), ITEM_LEFT + ICON_SIZE + ICON_GAP));
     }
 
     /// One frame of the bar with these events; the title "File" sits at

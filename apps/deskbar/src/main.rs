@@ -10,7 +10,7 @@ use tabula_kit::{
     desktop_entry::{self, DesktopEntry},
     egui::{self, Color32, Rect, Sense, pos2, vec2},
     icons,
-    menu::{self, MenuAnchor, MenuRequest},
+    menu::{self, MenuAnchor, MenuItem, MenuRequest},
     style::{self, c, hline, shade, vline},
     theme::Palette,
     widgets,
@@ -67,7 +67,8 @@ enum Msg {
     Workspace(u32, u32),
     Status(status::Status),
     Power(tabula_protocol::PowerStatus),
-    Clock(tabula_protocol::ClockSettings),
+    /// The clock's settings, and whether the Tabula menu shows icons.
+    Settings(tabula_protocol::ClockSettings, bool),
 }
 
 /// A team: the windows of one application.
@@ -90,6 +91,8 @@ struct Deskbar {
     caffeinated_until: Option<u64>,
     caffeinated_lid: bool,
     clock: tabula_protocol::ClockSettings,
+    /// Appearance ▸ Show icons in the Deskbar menu.
+    menu_icons: bool,
     entries: HashMap<String, Option<DesktopEntry>>,
     height: f32,
     scroll_acc: f32,
@@ -202,64 +205,80 @@ impl Deskbar {
     }
 
     fn tabula_menu(&self) -> Menu {
+        let menu = self.tabula_menu_with_icons();
+        if self.menu_icons { menu } else { without_icons(menu) }
+    }
+
+    fn tabula_menu_with_icons(&self) -> Menu {
         let mut apps = Menu::new("Applications");
         // Only the ones that are installed (the suite is still growing).
-        for (bin, name, _) in OUR_APPS.iter().filter(|(bin, _, _)| tabula_kit::find_program(bin).is_some()) {
-            apps = apps.item(*name, format!("run:{bin}"), None);
+        for (bin, name, icon) in OUR_APPS.iter().filter(|(bin, _, _)| tabula_kit::find_program(bin).is_some()) {
+            apps = apps.item(*name, format!("run:{bin}"), None).icon(*icon);
         }
         let have_prefs = tabula_kit::find_program("tabula-preferences").is_some();
         let mut prefs = Menu::new("Preferences");
-        for (arg, name, _) in PREFERENCE_PANELS {
-            prefs = prefs.item(*name, format!("pref:{arg}"), None).enabled(have_prefs);
+        for (arg, name, icon) in PREFERENCE_PANELS {
+            prefs = prefs.item(*name, format!("pref:{arg}"), None).enabled(have_prefs).icon(*icon);
         }
         // Everything else installed, by freedesktop category.
-        let groups: &[(&str, &[&str])] = &[
-            ("Accessories", &["Utility", "Accessories"]),
-            ("Development", &["Development"]),
-            ("Graphics", &["Graphics"]),
-            ("Internet", &["Network", "WebBrowser", "Email"]),
-            ("Multimedia", &["AudioVideo", "Audio", "Video"]),
-            ("Office", &["Office"]),
-            ("Games", &["Game"]),
-            ("System", &["System", "Settings"]),
+        let groups: &[(&str, &str, &[&str])] = &[
+            ("Accessories", "accessories", &["Utility", "Accessories"]),
+            ("Development", "development", &["Development"]),
+            ("Graphics", "image", &["Graphics"]),
+            ("Internet", "internet", &["Network", "WebBrowser", "Email"]),
+            ("Multimedia", "multimedia", &["AudioVideo", "Audio", "Video"]),
+            ("Office", "office", &["Office"]),
+            ("Games", "games", &["Game"]),
+            ("System", "system", &["System", "Settings"]),
         ];
+        let entry_icon = |e: &DesktopEntry| e.icon.clone().filter(|i| !i.is_empty()).unwrap_or_else(|| "application".into());
         let mut other = Menu::new("Other Applications");
         let all: Vec<DesktopEntry> = desktop_entry::all().into_iter().filter(|e| !e.no_display).collect();
         let mut used = vec![false; all.len()];
-        for (title, cats) in groups {
+        for (title, icon, cats) in groups {
             let mut m = Menu::new(*title);
             for (i, e) in all.iter().enumerate() {
                 if !used[i] && e.categories.iter().any(|c| cats.contains(&c.as_str())) {
-                    m = m.item(&e.name, format!("desktop:{}", e.id), None);
+                    m = m.item(&e.name, format!("desktop:{}", e.id), None).icon(entry_icon(e));
                     used[i] = true;
                 }
             }
             if !m.items.is_empty() {
-                other = other.submenu(m);
+                other = other.submenu(m).icon(*icon);
             }
         }
         let rest: Vec<_> = all.iter().enumerate().filter(|(i, _)| !used[*i]).map(|(_, e)| e).collect();
         if !rest.is_empty() {
             let mut m = Menu::new("Other");
             for e in rest {
-                m = m.item(&e.name, format!("desktop:{}", e.id), None);
+                m = m.item(&e.name, format!("desktop:{}", e.id), None).icon(entry_icon(e));
             }
-            other = other.submenu(m);
+            other = other.submenu(m).icon("folder");
         }
 
         Menu::new("Tabula")
             .item("About Tabula", "about", None)
+            .icon("tabula")
             .item("Find…", "find", None)
+            .icon("query")
             .separator()
             .submenu(self.caffeine_menu())
+            .icon("stay-awake")
             .item("Lock Screen", "lock", None)
+            .icon("lock-screen")
             .item("Log Out", "logout", None)
+            .icon("log-out")
             .item("Restart", "restart", None)
+            .icon("restart")
             .item("Shut Down", "shutdown", None)
+            .icon("shut-down")
             .separator()
             .submenu(apps)
+            .icon("application")
             .submenu(other)
+            .icon("other-applications")
             .submenu(prefs)
+            .icon("preferences")
     }
 
     fn team_menu(&self, team: &Team) -> Menu {
@@ -491,6 +510,25 @@ fn team_key_of(w: &WindowInfo) -> String {
 }
 
 /// The bell's menu.
+/// `menu` and its submenus with no icons (Appearance ▸ Show icons in the
+/// Deskbar menu, off).
+fn without_icons(mut menu: Menu) -> Menu {
+    menu.icon = None;
+    menu.items = menu
+        .items
+        .into_iter()
+        .map(|item| match item {
+            MenuItem::Action(mut a) => {
+                a.icon = None;
+                MenuItem::Action(a)
+            }
+            MenuItem::Submenu(m) => MenuItem::Submenu(without_icons(m)),
+            sep => sep,
+        })
+        .collect();
+    menu
+}
+
 fn notifications_menu(quiet: bool) -> Menu {
     Menu::new("Notifications")
         .item("Show History", "notif:history", None)
@@ -884,7 +922,10 @@ impl App for Deskbar {
                     self.caffeinated_until = p.caffeinated_until;
                     self.caffeinated_lid = p.caffeinated_lid;
                 }
-                Msg::Clock(clock) => self.clock = clock,
+                Msg::Settings(clock, icons) => {
+                    self.clock = clock;
+                    self.menu_icons = icons;
+                }
             }
             cx.redraw(self.win);
         }
@@ -911,7 +952,7 @@ fn watch_server(proxy: tabula_kit::Proxy) {
                         proxy.send(Msg::Power(status));
                     }
                     if let Ok(Reply::Settings { settings }) = c.request(&Request::GetSettings) {
-                        proxy.send(Msg::Clock(settings.clock));
+                        proxy.send(Msg::Settings(settings.clock, settings.appearance.menu_icons));
                     }
                     if let Ok(events) = c.into_events() {
                         for e in events.flatten() {
@@ -919,7 +960,9 @@ fn watch_server(proxy: tabula_kit::Proxy) {
                                 Event::WindowsChanged { windows } => proxy.send(Msg::Windows(windows)),
                                 Event::WorkspaceChanged { current, count } => proxy.send(Msg::Workspace(current, count)),
                                 Event::PowerChanged { status } => proxy.send(Msg::Power(status)),
-                                Event::SettingsChanged { settings } => proxy.send(Msg::Clock(settings.clock)),
+                                Event::SettingsChanged { settings } => {
+                                    proxy.send(Msg::Settings(settings.clock, settings.appearance.menu_icons))
+                                }
                                 _ => {}
                             }
                         }
@@ -961,6 +1004,7 @@ fn main() {
             caffeinated_until: None,
             caffeinated_lid: false,
             clock: Default::default(),
+            menu_icons: true,
             entries: HashMap::new(),
             height: TILE_H + tray_height(1),
             scroll_acc: 0.0,

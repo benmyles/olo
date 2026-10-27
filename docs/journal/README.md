@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Deskbar menu icons in dark mode
+
+*15:54* — The Applications submenu in dark mode. The kit's popup menus take an icon on any item (Menu::icon), with a column that sits after the check marks when a menu has both.
+
+![Deskbar menu icons in dark mode](2026-10-27/155420-deskbar-menu-icons-in-dark-mode.png)
+
+### Icons in the Deskbar menu
+
+*15:54* — Every item in Deskbar's Tabula menu now has its icon: the commands, our applications, the preference panels and each category of other applications. New sunburst icons for Stay Awake, Lock Screen, Log Out, Restart, Shut Down and the categories. Appearance ▸ Show icons in the Deskbar menu turns them off; it's on by default.
+
+![Icons in the Deskbar menu](2026-10-27/155418-icons-in-the-deskbar-menu.png)
+
 ### Roll up
 
 *15:45* — Double-click a tab (or ⌃⌘M, or Roll Up in its menu) and only the tab stays; again brings the window back.

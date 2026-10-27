@@ -1,10 +1,11 @@
 //! Appearance: light, dark or automatic theme; night mode (warmer colours
-//! in the evening); the window tab font size.
+//! in the evening); the window tab font size and longest title; icons in
+//! Deskbar's menu.
 
 use tabula_kit::{
     egui::Ui,
     metrics as m,
-    widgets::{BBox, RadioButton, Slider, TextControl},
+    widgets::{BBox, CheckBox, RadioButton, Slider, TextControl},
 };
 use tabula_protocol::{NightLightMode, Settings, ThemePreference};
 
@@ -64,4 +65,5 @@ pub fn ui(ui: &mut Ui, s: &mut Settings) {
     let text = format!("{chars:.0} characters");
     ui.add(Slider::new(&mut chars, 20.0..=200.0).step(10.0).label("Longest window title").value_text(text));
     s.tab_title_chars = chars as u32;
+    ui.add(CheckBox::new(&mut s.appearance.menu_icons, "Show icons in the Deskbar menu"));
 }

@@ -668,6 +668,9 @@ pub struct Appearance {
     pub effective_theme: tabula_theme::ThemeMode,
     /// Filled in by app_server: whether night mode is warming the screen now.
     pub night_light_active: bool,
+    /// Deskbar's menu shows each item's icon: applications, preferences,
+    /// commands.
+    pub menu_icons: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -707,6 +710,7 @@ impl Default for Appearance {
             night_light: NightLight::default(),
             effective_theme: tabula_theme::ThemeMode::Light,
             night_light_active: false,
+            menu_icons: true,
         }
     }
 }

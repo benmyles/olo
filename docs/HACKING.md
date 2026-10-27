@@ -439,7 +439,10 @@ being gathered) go in `tabula_xdg::scratch_file()`: a nameless file under
 
 Menus: `Menu::new("File").item(label, command, Some(Key::N))`,
 `.item_shift(…)`, `.separator()`, `.submenu(Menu)`, `.checked(bool)`,
-`.enabled(bool)`. Popups are real `xdg_popup`s drawn by the kit. One
+`.enabled(bool)`, `.icon(name)` (the last item's icon, any name
+`icons::paint` takes; the generic application's if it can't be found).
+A popup with any icons gives them a 16 px column, after the check marks
+when it has both. Popups are real `xdg_popup`s drawn by the kit. One
 taller than the screen is shortened by the compositor (the positioner
 allows `ResizeY`) and scrolls, as on BeOS: arrows at its ends scroll
 while the pointer rests on them, and the wheel and arrow keys scroll
@@ -875,6 +878,12 @@ Appearance ▸ Longest window title is `Settings::tab_title_chars` (100):
 app_server's decorations cut a title to it with an ellipsis
 (`deco::cut`, set by `deco::set_title_chars` on load and on every
 settings change) before measuring and drawing the tab.
+
+Appearance ▸ Show icons in the Deskbar menu is
+`Appearance::menu_icons` (on): Deskbar builds its Tabula menu with an
+icon on every item (`OUR_APPS` and `PREFERENCE_PANELS` icons, each
+.desktop entry's, a sunburst icon per command and category) and strips
+them all when it's off.
 
 ## Desktop shortcuts and tiling (tabula_protocol::shortcuts, app_server keymap.rs, shell/tiling.rs)
 

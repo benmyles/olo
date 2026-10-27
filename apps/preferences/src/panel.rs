@@ -150,7 +150,7 @@ impl Panel {
     pub fn size(self) -> (u32, u32) {
         match self {
             Panel::Ai => (440, 330),
-            Panel::Appearance => (420, 360),
+            Panel::Appearance => (420, 385),
             Panel::Backgrounds => (520, 448),
             Panel::Backup => (420, 400),
             Panel::Bluetooth => (440, 340),
@@ -188,6 +188,7 @@ impl Panel {
                 settings.appearance.night_light = from.appearance.night_light.clone();
                 settings.tab_font_size = from.tab_font_size;
                 settings.tab_title_chars = from.tab_title_chars;
+                settings.appearance.menu_icons = from.appearance.menu_icons;
             }
             Panel::Backgrounds => {
                 settings.workspace_colors = from.workspace_colors.clone();

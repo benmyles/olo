@@ -1204,5 +1204,17 @@
   "title": "Roll up",
   "caption": "Double-click a tab (or \u2303\u2318M, or Roll Up in its menu) and only the tab stays; again brings the window back.",
   "image": "2026-10-27/154533-roll-up.png"
+ },
+ {
+  "time": "2026-10-27T15:54:18",
+  "title": "Icons in the Deskbar menu",
+  "caption": "Every item in Deskbar's Tabula menu now has its icon: the commands, our applications, the preference panels and each category of other applications. New sunburst icons for Stay Awake, Lock Screen, Log Out, Restart, Shut Down and the categories. Appearance \u25b8 Show icons in the Deskbar menu turns them off; it's on by default.",
+  "image": "2026-10-27/155418-icons-in-the-deskbar-menu.png"
+ },
+ {
+  "time": "2026-10-27T15:54:20",
+  "title": "Deskbar menu icons in dark mode",
+  "caption": "The Applications submenu in dark mode. The kit's popup menus take an icon on any item (Menu::icon), with a column that sits after the check marks when a menu has both.",
+  "image": "2026-10-27/155420-deskbar-menu-icons-in-dark-mode.png"
  }
 ]
