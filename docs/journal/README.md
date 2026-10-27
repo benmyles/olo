@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Passwords in Chrome
+
+*04:14* — A field's context menu in Chrome now has Passwords: each login for the page, with its username, password, one-time code or the whole login. A Tabula extension, installed and kept up to date by tabula-chrome itself, talks to Passwords through tabula-chrome as its native messaging host; the toolbar button lists the page's logins, and a login sent with a form is offered for saving or updating.
+
+![Passwords in Chrome](2026-10-27/041413-passwords-in-chrome.png)
+
 ### DriveSetup
 
 *03:46* — A new app for disks, after BeOS's DriveSetup: a map of the chosen disk over every disk, partition and unlocked volume. Mount, unlock, format (optionally encrypted), create, resize, rename and delete partitions, new partition tables, write a disk image, eject, check health and benchmark, all through UDisks on worker threads with live progress and Stop. The disk holding the running system is never offered for anything destructive. Shown against udisks-fake, never real disks.

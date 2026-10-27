@@ -1481,6 +1481,38 @@ replaced is kept, as Chrome reads its files as it runs; older ones go;
 `.updating` keeps it to one at a time). Test it with a fixture HOME (`tsession run NAME HOME=… XDG_DATA_HOME=…
 target/debug/tabula-chrome`), never Ben's profile.
 
+**Passwords in Chrome** (`extension/`, `src/extension.rs`, `src/host.rs`).
+Each start (before exec) packs `apps/chrome/extension` (built into the
+binary, plus a `palette.css` from Tabula's palette, light and dark) into
+a CRX3 signed with a P-256 key of this user's own
+(`~/.local/share/tabula/chrome/extension-key.der`, 0600; the extension id
+comes from it), and writes `<chrome>/extensions/<id>.json` naming it:
+Chrome on Linux installs such an extension at start without asking, and
+takes a higher `version` as an update, so **raise `version` in
+`manifest.json` whenever the extension changes**. The worker reloads on
+`onUpdateAvailable` (Chrome would otherwise wait for it to go idle,
+which the open native port prevents) and puts `content.js` into the tabs
+already open on install or update. Beside the profile goes
+`NativeMessagingHosts/org.tabula.passwords.json`, naming `tabula-chrome`
+itself: started as `tabula-chrome chrome-extension://ID/`, it is the
+native messaging host (length-prefixed JSON on stdin/stdout), passing
+only `logins`, `fill`, `check`, `save`, `unlock` and `show` on to
+Passwords over the keychain socket (`{id, request, start}`; `start`
+starts Passwords and waits out its unlock) and `{open: true}`. The
+extension: a field's context menu has Passwords ▸ each login ▸ Username,
+Password, One-Time Code (when it has one), Fill Login, and Open
+Passwords (Unlock Passwords… while locked); the menu is rebuilt for the
+frame a field gets the focus in, and a fill goes only to that frame and
+only while it is still at the origin the login was asked for. The
+toolbar button lists the page's logins (Enter or a click fills one). A
+password sent with a form (submit, a button, Enter) is checked, and a
+new or changed one offered in a notification (Save/Update, Not Now; the
+pending login is kept in `storage.session` only). Passwords names the
+waiting app from the keychain caller's program (`Incoming::from`). Test
+with a throwaway `--user-data-dir` (DevTools needs a non-default one:
+`--remote-debugging-port`), the fake 1Password and a localhost page; the
+fake's "Tabula Test Site" login (`http://localhost`, jane) has a TOTP.
+
 ## Log Viewer (apps/logs)
 
 `tabula-logs` shows every Tabula program's log in one place: what they

@@ -275,8 +275,15 @@ fn locked(app: &mut Passwords, ui: &mut Ui, full: Rect) {
         Finger::Listening(s) => s.clone(),
         _ => format!("Enter the password for “{}” to unlock it.", app.lock.user()),
     };
-    if !app.waiting.is_empty() {
-        message = format!("NetPositive is waiting for a login. {message}");
+    // Who is waiting: the app by name, or apps, if more than one.
+    if let Some(first) = app.waiting.first() {
+        let who = if app.waiting.iter().all(|w| w.from == first.from) {
+            let name = tabula_xdg::apps::our_app(first.from.trim_start_matches("tabula-")).map_or("An app", |(name, _)| name);
+            format!("{name} is waiting for a login.")
+        } else {
+            "Apps are waiting for logins.".to_owned()
+        };
+        message = format!("{who} {message}");
     }
     let icon_name = if matches!(app.lock.finger, Finger::Listening(_)) { "fingerprint" } else { "passwords" };
     panel(ui, full, icon_name, "Passwords is locked", &message, |ui| {

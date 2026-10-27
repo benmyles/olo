@@ -11076,14 +11076,20 @@ name = "tabula-chrome"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "getrandom 0.3.4",
  "liblzma",
+ "p256",
  "quick-xml 0.42.0",
  "rustls",
  "serde_json",
  "sha2 0.11.1",
+ "tabula-keychain",
  "tabula-kit",
+ "tabula-theme",
  "tracing",
  "ureq",
+ "zeroize",
+ "zip",
  "zstd",
 ]
 

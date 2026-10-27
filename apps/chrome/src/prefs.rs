@@ -63,6 +63,10 @@ fn with_defaults(mut prefs: Value) -> Value {
         at.as_object_mut().expect("object").entry(path[path.len() - 1]).or_insert(value);
     };
     set(&mut prefs, &["browser", "custom_chrome_frame"], json!(false));
+    // Logins are Passwords' (the Tabula Passwords extension), so Chrome
+    // doesn't offer to keep them too.
+    set(&mut prefs, &["credentials_enable_service"], json!(false));
+    set(&mut prefs, &["profile", "password_manager_enabled"], json!(false));
     // A theme from the Chrome Web Store keeps its colours.
     if prefs.pointer("/extensions/theme/id").and_then(Value::as_str).is_none_or(str::is_empty) {
         set(&mut prefs, &["extensions", "theme", "system_theme"], json!(1));
@@ -96,7 +100,7 @@ fn apply_to(profile: &Path) -> std::io::Result<()> {
     let tmp = profile.join("Preferences.tabula-tmp");
     std::fs::write(&tmp, serde_json::to_vec(&with_defaults(prefs)).map_err(std::io::Error::other)?)?;
     std::fs::rename(&tmp, &file)?;
-    std::fs::write(profile.join(MARK), "Tabula set this profile's title bar and theme once; Chrome's settings change them.\n")
+    std::fs::write(profile.join(MARK), "Tabula set this profile's title bar, theme and password saving once; Chrome's settings change them.\n")
 }
 
 #[cfg(test)]

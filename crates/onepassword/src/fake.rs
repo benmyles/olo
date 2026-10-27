@@ -514,10 +514,18 @@ pub fn sample(account: &str) -> FakeAccount {
         ItemField::new("email", "email", ItemFieldType::Email, "jane@example.com"),
         ItemField::new("phone", "phone", ItemFieldType::Phone, "+1 555 0100"),
     ];
+    // The local test site's login has a one-time code too (for filling
+    // codes in NetPositive and Chrome).
+    let mut local = login("Tabula Test Site", "http://localhost", "jane", "hunter2-but-longer");
+    local.sections = vec![crate::ItemSection { id: "otp".into(), title: "Security".into() }];
+    local.fields.push(
+        ItemField::new("onetimepassword", "one-time password", ItemFieldType::Totp, "otpauth://totp/Tabula:jane?secret=KRSXG5CTMVRXEZLUKN2XAZLB&issuer=Tabula")
+            .in_section("otp"),
+    );
     let personal = [
         github,
         login("Example Mail", "https://mail.example.com", "jane@example.com", "Correct-Horse-7-Battery"),
-        login("Tabula Test Site", "http://localhost", "jane", "hunter2-but-longer"),
+        local,
         card,
         note,
         identity,

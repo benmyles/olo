@@ -4,6 +4,8 @@
 //! (which can be cancelled) and starts Chrome once it's in. New profiles
 //! get Tabula's title bar and the system's colours (prefs.rs).
 
+mod extension;
+mod host;
 mod install;
 mod prefs;
 
@@ -171,6 +173,10 @@ fn start_chrome(chrome: &Path, args: &[String]) {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // Chrome starting us as the Passwords extension's host.
+    if args.first().is_some_and(|a| a.starts_with("chrome-extension://")) {
+        return host::run();
+    }
     if let Some(chrome) = install::installed() {
         // Its icons and entry (an install from before, or another place
         // this program now lives in).
@@ -198,6 +204,12 @@ fn main() {
         }
         if let Some(dir) = prefs::user_data_dir(&args) {
             prefs::apply(&dir);
+            // Passwords in Chrome: the extension and its host.
+            if let (Ok(exe), Some(install)) = (std::env::current_exe(), chrome.parent().and_then(|d| d.canonicalize().ok()))
+                && let Err(e) = extension::set_up(&install::root(), &install, &dir, &exe)
+            {
+                eprintln!("tabula-chrome: couldn't set up Passwords in Chrome: {e}");
+            }
         }
         let e = chrome_command(&chrome, &args).exec();
         eprintln!("tabula-chrome: couldn't start {}: {e}", chrome.display());

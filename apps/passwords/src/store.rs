@@ -496,6 +496,7 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
                     id: item.id.clone(),
                     username: login_fields(&item).0.map(|f| f.value.clone()).unwrap_or_default(),
                     title: item.title.clone(),
+                    otp: item.fields.iter().any(|f| f.field_type == ItemFieldType::Totp && !f.value.is_empty()),
                 })
                 .collect();
             // Nearest first (this host, then its parent domains, then the

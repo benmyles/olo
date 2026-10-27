@@ -147,7 +147,7 @@ as they land (with the commit), add new ones as they come up.
   now; Chrome is the web browser to make great instead (below). Left
   open there: app.fastmail.com never finishes loading; a field's context
   menu should offer the login's verification code (TOTP) beside the
-  username and password (wanted in Chrome now, via Passwords).
+  username and password (~~done in Chrome~~, via Passwords).
 - **Multiplayer screen control for agents** (Ben): an agent starts a
   Tabula screen-control session and gets its own workspace and its own
   cursor and keyboard focus, so its input never disturbs the person, who
@@ -176,6 +176,13 @@ as they land (with the commit), add new ones as they come up.
   so it follows light/dark; each profile starts with Tabula's title bar
   and frame instead of Chrome's own buttons and with the GTK theme's
   colours; HACKING, "Other toolkits' programs").
+  ~~**Passwords in Chrome**~~ (done: the Tabula Passwords extension,
+  packed and signed per user, listed in Chrome's `extensions` folder,
+  with `tabula-chrome` as its native messaging host; a field's context
+  menu offers each login's username, password, one-time code or the
+  whole login, the toolbar button lists the page's logins, and a login
+  sent with a form is offered for saving or updating; HACKING, "Google
+  Chrome").
   ~~**Installed on first use**~~ (done: `apps/chrome`, `tabula-chrome`;
   tested headless end to end, the real 139 MB download into a fixture
   home, then Chrome running on Wayland in Tabula; kept up to date: once

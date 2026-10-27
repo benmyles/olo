@@ -91,6 +91,9 @@ pub struct Login {
     pub id: String,
     pub title: String,
     pub username: String,
+    /// It has a one-time code (TOTP) to offer.
+    #[serde(default)]
+    pub otp: bool,
 }
 
 /// An item `Search` found.
@@ -244,6 +247,8 @@ pub fn call(request: &Request) -> Result<Response, CallError> {
 /// A request waiting for its answer; answer it once, from any thread.
 pub struct Incoming {
     pub request: Request,
+    /// The asking program's file name (always `tabula-…`).
+    pub from: String,
     stream: UnixStream,
 }
 
@@ -276,12 +281,15 @@ pub fn serve(deliver: impl Fn(Incoming) + Send + Sync + 'static) -> std::io::Res
         for stream in listener.incoming().flatten() {
             let deliver = deliver.clone();
             std::thread::spawn(move || {
-                if let Err(e) = trusted(&stream) {
-                    tracing::warn!("keychain: refused a caller: {e}");
-                    let message = "Passwords answers only Tabula’s own apps.".into();
-                    Incoming { request: Request::Unlock, stream }.reply(Response::Error { message });
-                    return;
-                }
+                let from = match trusted(&stream) {
+                    Ok(from) => from,
+                    Err(e) => {
+                        tracing::warn!("keychain: refused a caller: {e}");
+                        let message = "Passwords answers only Tabula’s own apps.".into();
+                        Incoming { request: Request::Unlock, from: String::new(), stream }.reply(Response::Error { message });
+                        return;
+                    }
+                };
                 let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
                 let mut line = String::new();
                 let Ok(reader) = stream.try_clone() else { return };
@@ -291,9 +299,9 @@ pub fn serve(deliver: impl Fn(Incoming) + Send + Sync + 'static) -> std::io::Res
                 let parsed = serde_json::from_str::<Request>(&line);
                 line.zeroize();
                 match parsed {
-                    Ok(request) => deliver(Incoming { request, stream }),
+                    Ok(request) => deliver(Incoming { request, from, stream }),
                     Err(e) => {
-                        Incoming { request: Request::Unlock, stream }.reply(Response::Error { message: e.to_string() })
+                        Incoming { request: Request::Unlock, from, stream }.reply(Response::Error { message: e.to_string() })
                     }
                 }
             });
@@ -302,8 +310,8 @@ pub fn serve(deliver: impl Fn(Incoming) + Send + Sync + 'static) -> std::io::Res
     Ok(())
 }
 
-/// Our own user, running one of our programs.
-fn trusted(stream: &UnixStream) -> Result<(), String> {
+/// Our own user, running one of our programs: its file name.
+fn trusted(stream: &UnixStream) -> Result<String, String> {
     use std::os::fd::AsRawFd;
     let mut cred = libc::ucred { pid: 0, uid: 0, gid: 0 };
     let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
@@ -319,11 +327,12 @@ fn trusted(stream: &UnixStream) -> Result<(), String> {
         return Err(format!("uid {}", cred.uid));
     }
     let exe = std::fs::read_link(format!("/proc/{}/exe", cred.pid)).map_err(|e| e.to_string())?;
-    let name = exe.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    // A program still running after an upgrade replaced its file.
+    let name = exe.file_name().and_then(|n| n.to_str()).unwrap_or("").trim_end_matches(" (deleted)");
     if !name.starts_with("tabula-") {
         return Err(format!("{} isn’t a Tabula program", exe.display()));
     }
-    Ok(())
+    Ok(name.to_owned())
 }
 
 /// The host a login's website names, without `www.`.
@@ -478,7 +487,7 @@ mod tests {
         serve(|incoming| {
             let response = match &incoming.request {
                 Request::Logins { url } => Response::Logins {
-                    logins: vec![Login { vault: "v".into(), id: "i".into(), title: url.clone(), username: "u".into() }],
+                    logins: vec![Login { vault: "v".into(), id: "i".into(), title: url.clone(), username: "u".into(), otp: false }],
                 },
                 _ => Response::Locked,
             };

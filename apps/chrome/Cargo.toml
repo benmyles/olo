@@ -19,3 +19,9 @@ zstd = "0.14"
 quick-xml = "0.42"
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }
+tabula-theme.workspace = true
+tabula-keychain.workspace = true
+p256 = { version = "0.14", features = ["pkcs8"] }
+getrandom = "0.3"
+zip = { version = "9", default-features = false }
+zeroize = "1"
