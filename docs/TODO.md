@@ -5,6 +5,8 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Long menus scroll~~: kit popups shrink to the screen and scroll
+  (arrows at the ends, wheel, keys).
 - ~~Hide Window everywhere~~: ⌘M (Preferences ▸ Keyboard) and the
   palette's "Hide window", for any app's window.
 - ~~Log Viewer~~ (70aea93).
@@ -274,10 +276,6 @@ as they land (with the commit), add new ones as they come up.
   grouping and stacking, a click that brings the right window forward
   (by desktop entry / activation token), notifications kept across a
   restart, and agent-readable (list, act on, dismiss) over IPC.
-- **Long menus scroll** (found building Log Viewer): a popup menu taller
-  than the screen runs off it. As in BeOS, it should fit the screen with
-  scroll arrows at its ends (and the wheel), in the kit's menus and
-  app_server's popup placement alike.
 - ~~**Log viewer app**~~ (done: `apps/logs`, Log Viewer; the journal read
   natively, live; Find, program, level and time filters; syntax
   highlighting; Show in Context; `tabula-logs --print … [--json]` for

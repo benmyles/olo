@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Long menus scroll
+
+*01:07* — A menu taller than the screen fits it now, with BeOS scroll arrows at its ends: rest the pointer on one to scroll, or use the wheel or the arrow keys.
+
+![Long menus scroll](2026-10-27/010732-long-menus-scroll.png)
+
 ### Hide window, anywhere
 
 *00:54* — ⌘M hides the window in front, Tabula's or any other app's, and Hide window is a ⌘Space command (it finds "minimize" too). Change the keys in Preferences ▸ Keyboard.

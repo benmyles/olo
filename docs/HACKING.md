@@ -358,8 +358,11 @@ being gathered) go in `tabula_xdg::scratch_file()`: a nameless file under
 
 Menus: `Menu::new("File").item(label, command, Some(Key::N))`,
 `.item_shift(…)`, `.separator()`, `.submenu(Menu)`, `.checked(bool)`,
-`.enabled(bool)`. Popups are real `xdg_popup`s drawn by the kit. Menus
-don't scroll, so split long lists into submenus (StyledEdit's font
+`.enabled(bool)`. Popups are real `xdg_popup`s drawn by the kit. One
+taller than the screen is shortened by the compositor (the positioner
+allows `ResizeY`) and scrolls, as on BeOS: arrows at its ends scroll
+while the pointer rests on them, and the wheel and arrow keys scroll
+too; still, split very long lists into submenus (StyledEdit's font
 families). ⌘H/⌘K/⌘U/⌘W never reach a focused text field as egui's emacs
 deletions: the kit holds them back from `ui` and hands them to the menus
 (windows with `raw_keys` get them as usual). While a menu is open the

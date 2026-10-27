@@ -1924,7 +1924,9 @@ impl Kit {
             xdg_positioner::ConstraintAdjustment::FlipX
                 | xdg_positioner::ConstraintAdjustment::FlipY
                 | xdg_positioner::ConstraintAdjustment::SlideX
-                | xdg_positioner::ConstraintAdjustment::SlideY,
+                | xdg_positioner::ConstraintAdjustment::SlideY
+                // Taller than the screen: shorter, and it scrolls.
+                | xdg_positioner::ConstraintAdjustment::ResizeY,
         );
 
         let wl = self.compositor.create_surface(&self.qh);

@@ -910,5 +910,11 @@
   "title": "Hide window, anywhere",
   "caption": "\u2318M hides the window in front, Tabula's or any other app's, and Hide window is a \u2318Space command (it finds \"minimize\" too). Change the keys in Preferences \u25b8 Keyboard.",
   "image": "2026-10-27/005406-hide-window-anywhere.png"
+ },
+ {
+  "time": "2026-10-27T01:07:32",
+  "title": "Long menus scroll",
+  "caption": "A menu taller than the screen fits it now, with BeOS scroll arrows at its ends: rest the pointer on one to scroll, or use the wheel or the arrow keys.",
+  "image": "2026-10-27/010732-long-menus-scroll.png"
  }
 ]

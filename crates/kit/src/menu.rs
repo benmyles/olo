@@ -264,6 +264,12 @@ const ITEM_LEFT: f32 = 20.0;
 const ITEM_RIGHT: f32 = 14.0;
 const SHORTCUT_GAP: f32 = 28.0;
 pub const POPUP_BORDER: f32 = 1.0;
+/// The bands with scroll arrows at the ends of a menu too tall for the
+/// screen.
+const SCROLLER_HEIGHT: f32 = 14.0;
+/// How fast a menu scrolls with the pointer resting on an arrow (logical
+/// pixels a second).
+const SCROLL_SPEED: f32 = 12.0 * ITEM_HEIGHT;
 
 fn font() -> FontId {
     FontId::proportional(style::PLAIN_SIZE)
@@ -367,6 +373,8 @@ pub struct PopupState {
     pub selected: Option<usize>,
     /// Submenu currently open from this popup: item index and its rect.
     pub open_sub: Option<(usize, Rect)>,
+    /// How far a menu taller than its popup (the screen) is scrolled.
+    pub scroll: f32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -394,19 +402,59 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
     style::hline(&painter, inner.left(), inner.right(), inner.top(), c(p.shine));
     style::vline(&painter, inner.left(), inner.top(), inner.bottom(), c(p.shine));
 
-    // Layout.
-    let mut y = inner.top() + 2.0;
-    let mut rows = Vec::with_capacity(menu.items.len());
-    for item in &menu.items {
-        let h = if matches!(item, MenuItem::Separator) { SEPARATOR_HEIGHT } else { ITEM_HEIGHT };
-        rows.push(Rect::from_min_size(pos2(inner.left(), y), vec2(inner.width(), h)));
-        y += h;
-    }
-
-    // Pointer.
+    // A menu taller than the popup (the compositor shrank it to fit the
+    // screen) scrolls, as on BeOS: arrows at the ends scroll while the
+    // pointer rests on them, and the wheel and keyboard scroll too.
+    let heights: Vec<f32> = menu.items.iter().map(|item| if matches!(item, MenuItem::Separator) { SEPARATOR_HEIGHT } else { ITEM_HEIGHT }).collect();
+    let content = heights.iter().sum::<f32>() + 4.0;
+    let scrolls = content > inner.height() + 0.5;
+    let area = if scrolls { Rect::from_min_max(pos2(inner.left(), inner.top() + SCROLLER_HEIGHT), pos2(inner.right(), inner.bottom() - SCROLLER_HEIGHT)) } else { inner };
+    let max_scroll = (content - area.height()).max(0.0);
+    let up = Rect::from_min_max(inner.min, pos2(inner.right(), area.top()));
+    let down = Rect::from_min_max(pos2(inner.left(), area.bottom()), inner.max);
     let pointer = ui.input(|i| i.pointer.latest_pos());
+    if scrolls {
+        let (wheel, dt) = ui.input(|i| {
+            let wheel: f32 = i
+                .events
+                .iter()
+                .map(|e| match e {
+                    egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta, .. } => delta.y,
+                    egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Line, delta, .. } => delta.y * ITEM_HEIGHT,
+                    egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Page, delta, .. } => delta.y * area.height(),
+                    _ => 0.0,
+                })
+                .sum();
+            (wheel, i.stable_dt.min(0.1))
+        });
+        state.scroll -= wheel;
+        if let Some(pos) = pointer {
+            if up.contains(pos) && state.scroll > 0.0 {
+                state.scroll -= SCROLL_SPEED * dt;
+                ui.ctx().request_repaint();
+            } else if down.contains(pos) && state.scroll < max_scroll {
+                state.scroll += SCROLL_SPEED * dt;
+                ui.ctx().request_repaint();
+            }
+        }
+    }
+    let layout = |scroll: f32| -> Vec<Rect> {
+        let mut y = area.top() + 2.0 - scroll;
+        heights
+            .iter()
+            .map(|h| {
+                let r = Rect::from_min_size(pos2(inner.left(), y), vec2(inner.width(), *h));
+                y += h;
+                r
+            })
+            .collect()
+    };
+    state.scroll = state.scroll.clamp(0.0, max_scroll);
+    let mut rows = layout(state.scroll);
+
+    // Pointer (on the items in view only).
     let released = ui.input(|i| i.pointer.any_released());
-    let hovered = pointer.and_then(|pos| rows.iter().position(|r| r.contains(pos)));
+    let hovered = pointer.filter(|pos| area.contains(*pos)).and_then(|pos| rows.iter().position(|r| r.contains(pos)));
     if let Some(i) = hovered
         && ui.input(|i| i.pointer.delta() != Vec2::ZERO || i.pointer.any_pressed())
     {
@@ -430,6 +478,9 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
         }
         None
     };
+    // Submenus opened from the keyboard: their row once scrolled to.
+    let mut open_by_key = None;
+    let before = state.selected;
     ui.input(|input| {
         for event in &input.events {
             if let egui::Event::Key { key, pressed: true, .. } = event {
@@ -440,7 +491,7 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
                         if let Some(i) = state.selected
                             && matches!(menu.items[i], MenuItem::Submenu(_))
                         {
-                            result = PopupResult::OpenSubmenu(i, rows[i]);
+                            open_by_key = Some(i);
                         }
                     }
                     Key::ArrowLeft | Key::Escape => result = PopupResult::Back,
@@ -448,7 +499,7 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
                         if let Some(i) = state.selected {
                             match &menu.items[i] {
                                 MenuItem::Action(a) if a.enabled => result = PopupResult::Chosen(a.command.clone()),
-                                MenuItem::Submenu(_) => result = PopupResult::OpenSubmenu(i, rows[i]),
+                                MenuItem::Submenu(_) => open_by_key = Some(i),
                                 _ => {}
                             }
                         }
@@ -458,6 +509,37 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
             }
         }
     });
+    // Keep the item chosen from the keyboard in view.
+    if scrolls
+        && state.selected != before
+        && let Some(i) = state.selected
+    {
+        let r = rows[i];
+        if r.top() < area.top() {
+            state.scroll -= area.top() - r.top() + if i == 0 { 2.0 } else { 0.0 };
+        } else if r.bottom() > area.bottom() {
+            state.scroll += r.bottom() - area.bottom() + if i + 1 == rows.len() { 2.0 } else { 0.0 };
+        }
+        state.scroll = state.scroll.clamp(0.0, max_scroll);
+        rows = layout(state.scroll);
+    }
+    if let Some(i) = open_by_key
+        && result == PopupResult::None
+    {
+        result = PopupResult::OpenSubmenu(i, rows[i]);
+    }
+
+    // The arrows, and the items drawn between them.
+    if scrolls {
+        for (band, more, pointing_up) in [(up, state.scroll > 0.0, true), (down, state.scroll < max_scroll, false)] {
+            let color = if more { c(p.menu_item_text) } else { style::disabled_text(&p) };
+            let (cx, cy) = (band.center().x, band.center().y);
+            let tip = if pointing_up { cy - 3.0 } else { cy + 3.0 };
+            let base = if pointing_up { cy + 2.0 } else { cy - 2.0 };
+            painter.add(egui::Shape::convex_polygon(vec![pos2(cx - 5.0, base), pos2(cx, tip), pos2(cx + 5.0, base)], color, Stroke::NONE));
+        }
+    }
+    let painter = painter.with_clip_rect(area);
 
     for (i, (item, row)) in menu.items.iter().zip(&rows).enumerate() {
         let selected = state.selected == Some(i) && selectable(i);
@@ -541,6 +623,51 @@ mod tests {
 
     fn press(at: Pos2, pressed: bool) -> egui::Event {
         egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() }
+    }
+
+    /// One frame of a 30-item popup squeezed into 200 points.
+    fn popup_frame(ctx: &egui::Context, events: Vec<egui::Event>, state: &mut PopupState) -> PopupResult {
+        let mut menu = Menu::new("Long");
+        for i in 0..30 {
+            menu = menu.item(format!("Item {i}"), format!("item-{i}"), None);
+        }
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(160.0, 200.0))), events, ..Default::default() };
+        let mut result = PopupResult::None;
+        let mut out = ctx.run_ui(raw, |ui| result = popup_ui(ui, &menu, state));
+        out.textures_delta.clear();
+        result
+    }
+
+    fn key(key: Key) -> egui::Event {
+        egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Default::default() }
+    }
+
+    #[test]
+    fn long_menus_scroll() {
+        let ctx = egui::Context::default();
+        let mut state = PopupState::default();
+        popup_frame(&ctx, vec![], &mut state);
+        assert_eq!(state.scroll, 0.0);
+        // The keyboard keeps the selection in view: the last item is
+        // fully above the bottom arrow.
+        popup_frame(&ctx, vec![key(Key::ArrowUp)], &mut state);
+        assert_eq!(state.selected, Some(29));
+        let bottom = 200.0 - POPUP_BORDER - SCROLLER_HEIGHT;
+        let last_bottom = POPUP_BORDER + SCROLLER_HEIGHT + 2.0 - state.scroll + 30.0 * ITEM_HEIGHT;
+        assert!(state.scroll > 0.0 && last_bottom <= bottom + 0.01, "scroll {}", state.scroll);
+        // Choosing it from there.
+        assert_eq!(popup_frame(&ctx, vec![key(Key::Enter)], &mut state), PopupResult::Chosen("item-29".into()));
+        // The wheel scrolls back to the top, and no further.
+        let wheel = egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Line, source: egui::MouseWheelSource::Wheel, delta: vec2(0.0, 100.0), modifiers: Default::default(), phase: egui::TouchPhase::Move };
+        popup_frame(&ctx, vec![egui::Event::PointerMoved(pos2(80.0, 100.0)), wheel], &mut state);
+        assert_eq!(state.scroll, 0.0);
+        // Resting on the bottom arrow scrolls down.
+        for _ in 0..5 {
+            popup_frame(&ctx, vec![egui::Event::PointerMoved(pos2(80.0, 195.0))], &mut state);
+        }
+        assert!(state.scroll > 0.0);
+        // A click on an arrow chooses nothing.
+        assert_eq!(popup_frame(&ctx, vec![press(pos2(80.0, 195.0), true), press(pos2(80.0, 195.0), false)], &mut state), PopupResult::None);
     }
 
     #[test]
