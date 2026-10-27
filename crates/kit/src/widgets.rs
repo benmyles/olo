@@ -1558,7 +1558,7 @@ impl Cell<'_> {
         };
         let size = g.job.sections.first().map_or(style::PLAIN_SIZE, |s| s.format.font_id.size);
         let pos = style::text_origin(self.painter.ctx(), &g, x, r.center().y, size);
-        style::describe_text(self.painter.ctx(), egui::accesskit::Role::Cell, g.text(), Rect::from_min_size(pos, g.size()).intersect(r), Some(self.selected));
+        style::describe_text(self.painter.ctx(), egui::accesskit::Role::Cell, g.text(), Rect::from_min_size(pos, g.size()).intersect(r).intersect(self.painter.clip_rect()), Some(self.selected));
         self.painter.galley(pos, g, self.text_color);
     }
 }
@@ -1765,8 +1765,15 @@ impl<'a> ColumnListView<'a> {
                         context = resp.interact_pointer_pos().map(|p| (row, p));
                     }
                     let selected = state.selected.contains(&row);
-                    // For agents: a row, named by its cells' text.
+                    // For agents: a row, named by its cells' text, where it
+                    // shows (a row scrolled half under the header is only
+                    // its visible half).
                     resp.widget_info(|| WidgetInfo { selected: Some(selected), ..WidgetInfo::new(Role::Row) });
+                    let shown = r.intersect(ui.clip_rect());
+                    let shown = if shown.is_positive() { shown } else { Rect::from_min_size(r.min, Vec2::ZERO) };
+                    ui.ctx().accesskit_node_builder(resp.id, |n| {
+                        n.set_bounds(egui::accesskit::Rect { x0: shown.min.x as f64, y0: shown.min.y as f64, x1: shown.max.x as f64, y1: shown.max.y as f64 })
+                    });
                     let painter = ui.painter();
                     if selected {
                         let sel = if focused {

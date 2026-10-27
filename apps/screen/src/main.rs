@@ -268,6 +268,10 @@ fn outline(trees: &[ScreenTree]) -> String {
             depth.insert(n.id, d);
             // Containers without a name say nothing an agent needs, and a
             // text run repeats its field's value.
+            // Nor does a row scrolled out of sight.
+            if n.role == "Row" && (n.width == 0.0 || n.height == 0.0) {
+                continue;
+            }
             if n.role == "TextRun" || n.name.is_none() && n.value.is_none() && matches!(n.role.as_str(), "GenericContainer" | "Window" | "Pane" | "Group" | "ScrollView") {
                 continue;
             }

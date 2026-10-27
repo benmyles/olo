@@ -1398,17 +1398,15 @@ pub fn update_primary_scanout_output(
             );
         });
     });
+    // A layer surface belongs to one display, and only that display's pass
+    // sees it: the default comparison would keep the display it was on
+    // before moving (Deskbar and the desktop follow the main display), and
+    // its frame callbacks would then come only from the once-a-second
+    // fallback, leaving it all but deaf to clicks.
     let map = smithay::desktop::layer_map_for_output(output);
     for layer_surface in map.layers() {
         layer_surface.with_surfaces(|surface, states| {
-            update_surface_primary_scanout_output(
-                surface,
-                output,
-                states,
-                None,
-                render_element_states,
-                default_primary_scanout_output_compare,
-            );
+            update_surface_primary_scanout_output(surface, output, states, None, render_element_states, |_, _, next, _| next);
         });
     }
 

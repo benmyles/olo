@@ -554,7 +554,8 @@ pub fn label(
 /// Text drawn with the painter, for the AccessKit tree agents read
 /// (`commands::tree`); nothing unless one is being made.
 pub fn describe_text(ctx: &Context, role: egui::accesskit::Role, text: &str, r: Rect, selected: Option<bool>) {
-    if text.trim().is_empty() {
+    // Empty, or scrolled out of sight: nothing to read.
+    if text.trim().is_empty() || !r.is_positive() {
         return;
     }
     let id = egui::Id::unique(("tabula-text", text, r.min.x as i32, r.min.y as i32));
