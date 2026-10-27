@@ -17,7 +17,7 @@ enum Out {
     Settings(Box<Settings>),
     Output(String, OutputConfig),
     Caffeinated(bool),
-    Brightness(f32),
+    Brightness(String, f32),
     KeyboardBacklight(f32),
     StartScreenSaver,
     Identify,
@@ -38,9 +38,7 @@ impl Server {
                 while let Ok(mut out) = rx.recv() {
                     // Collapse queued settings into the newest.
                     while let Ok(next) = rx.try_recv() {
-                        if matches!((&out, &next), (Out::Settings(_), Out::Settings(_))
-                                | (Out::Brightness(_), Out::Brightness(_))
-                                | (Out::KeyboardBacklight(_), Out::KeyboardBacklight(_))) {
+                        if supersedes(&next, &out) {
                             out = next;
                         } else {
                             send(&mut client, out);
@@ -66,8 +64,9 @@ impl Server {
         let _ = self.tx.send(Out::Caffeinated(on));
     }
 
-    pub fn set_brightness(&self, level: f32) {
-        let _ = self.tx.send(Out::Brightness(level));
+    /// A display's brightness, by connector.
+    pub fn set_output_brightness(&self, name: &str, level: f32) {
+        let _ = self.tx.send(Out::Brightness(name.to_owned(), level));
     }
 
     pub fn set_keyboard_backlight(&self, level: f32) {
@@ -84,12 +83,21 @@ impl Server {
     }
 }
 
+/// Whether `next` makes `out` pointless to send.
+fn supersedes(next: &Out, out: &Out) -> bool {
+    match (out, next) {
+        (Out::Settings(_), Out::Settings(_)) | (Out::KeyboardBacklight(_), Out::KeyboardBacklight(_)) => true,
+        (Out::Brightness(a, _), Out::Brightness(b, _)) => a == b,
+        _ => false,
+    }
+}
+
 fn send(client: &mut Option<Client>, out: Out) {
     let req = match out {
         Out::Settings(settings) => Request::SetSettings { settings: *settings },
         Out::Output(name, config) => Request::ConfigureOutput { name, config },
         Out::Caffeinated(on) => Request::SetCaffeinated { on, minutes: None, lid: false },
-        Out::Brightness(level) => Request::SetBrightness { level },
+        Out::Brightness(name, level) => Request::SetOutputBrightness { name, level },
         Out::KeyboardBacklight(level) => Request::SetKeyboardBacklight { level },
         Out::StartScreenSaver => Request::StartScreenSaver,
         Out::Identify => Request::IdentifyOutputs,

@@ -52,4 +52,8 @@ ENTRY=$(mktemp)
 sed -e "s|^Exec=.*|Exec=$BIN/tabula-session|" -e '/^TryExec=/d' data/session/tabula.desktop > "$ENTRY"
 as_root install -D -m 644 "$ENTRY" "$SESSIONS/tabula.desktop"
 rm -f "$ENTRY"
+# Brightness of USB-controlled monitors (Studio Display and the like).
+as_root install -D -m 644 data/udev/70-tabula-displays.rules /etc/udev/rules.d/70-tabula-displays.rules
+as_root udevadm control --reload 2>/dev/null || true
+as_root udevadm trigger --subsystem-match=hidraw --action=change 2>/dev/null || true
 echo "Installed to $PREFIX; Tabula is on the login screen's session menu."

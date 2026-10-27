@@ -91,7 +91,7 @@ pub fn load_settings() -> Settings {
     }
 }
 
-fn save_settings(settings: &Settings) {
+pub(crate) fn save_settings(settings: &Settings) {
     let path = config_path();
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
@@ -248,6 +248,22 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
             }
         }
+    }
+
+    /// Which display a new window of `client` goes on (the one under this
+    /// point): its focused window's, if it has the focus (a window opened
+    /// from the keyboard, e.g. Quick Look, belongs with the one it came
+    /// from, not with a pointer that may be on another display), else the
+    /// pointer's.
+    pub fn new_window_near(&self, client: Option<smithay::reexports::wayland_server::backend::ClientId>) -> Point<f64, Logical> {
+        let pointer = self.pointer.current_location();
+        let Some(client) = client else { return pointer };
+        let Some(w) = self.focused_window() else { return pointer };
+        if w.wl_surface().and_then(|s| s.client()).map(|c| c.id()) != Some(client) {
+            return pointer;
+        }
+        let Some(geo) = self.space.element_geometry(&w) else { return pointer };
+        (geo.loc + geo.size.downscale(2).to_point()).to_f64()
     }
 
     /// The window with keyboard focus.
@@ -434,6 +450,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     rotation: self.settings.display.rotation_for(&display_key(o), &o.name()),
                     main: main.as_ref() == Some(o),
                     mirror_of: source.map(|s| s.name()),
+                    brightness: if crate::power::is_internal(&o.name()) { self.power.brightness } else { self.power.display_brightness(&o.name()) },
                 }
             })
             .collect()
@@ -641,6 +658,16 @@ impl<B: Backend + 'static> AnvilState<B> {
     // ---- settings ------------------------------------------------------
 
     pub fn set_settings(&mut self, mut settings: Settings) {
+        // Brightness is kept as it's set (SetOutputBrightness, the keys),
+        // not from a client's possibly older copy.
+        for c in settings.display.outputs.values_mut() {
+            c.brightness = None;
+        }
+        for (key, c) in &self.settings.display.outputs {
+            if c.brightness.is_some() {
+                settings.display.outputs.entry(key.clone()).or_default().brightness = c.brightness;
+            }
+        }
         let scale_changed = settings.display != self.settings.display;
         let main_changed = settings.display.main != self.settings.display.main;
         // Fields app_server owns are recomputed, not taken from the client.

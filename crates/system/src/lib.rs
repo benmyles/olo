@@ -13,6 +13,7 @@ pub mod bluetooth;
 pub mod dconf;
 pub mod env;
 pub mod fingerprint;
+pub mod hid_monitor;
 pub mod keyring_prompt;
 pub mod network;
 pub mod polkit;

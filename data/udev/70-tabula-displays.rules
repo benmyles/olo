@@ -1,0 +1,9 @@
+# Tabula: let the person at the seat set the brightness of monitors that
+# take it over USB (the USB Monitor Control class, through hidraw):
+# Apple Studio Display, Pro Display XDR and LG UltraFine 4K / 5K.
+# Installed by tools/install-session.sh.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="1114", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="9243", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="043e", ATTRS{idProduct}=="9a39", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="043e", ATTRS{idProduct}=="9a40", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="043e", ATTRS{idProduct}=="9a70", TAG+="uaccess"

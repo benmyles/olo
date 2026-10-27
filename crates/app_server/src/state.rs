@@ -965,6 +965,13 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 }
             });
         }
+        if let Some(found) = state.power.displays_found.take() {
+            let _ = state.handle.insert_source(found, |event, _, state| {
+                if let smithay::reexports::calloop::channel::Event::Msg(found) = event {
+                    state.displays_found(found);
+                }
+            });
+        }
         state.relock();
         state.start_wallpaper();
         if BackendData::IS_SESSION {

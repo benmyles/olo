@@ -1,6 +1,8 @@
 //! Power: turning the displays off and sleeping when idle, caffeinated
-//! mode, apps that ask to stay awake (zwp_idle_inhibit), the built-in
-//! display's brightness and the brightness / volume keys.
+//! mode, apps that ask to stay awake (zwp_idle_inhibit), the displays'
+//! brightness (the built-in one's backlight; monitors that take it over
+//! USB, tabula_system::hid_monitor) and the brightness / volume keys.
+//! Each display starts at the brightness kept for it, or full.
 //!
 //! Hardware is only touched when app_server is the real session
 //! (`Backend::IS_SESSION`); elsewhere (headless tests, nested) the backlight
@@ -25,6 +27,9 @@ use crate::state::{AnvilState, Backend};
 pub const TICK: Duration = Duration::from_secs(5);
 /// One press of a brightness or volume key.
 const STEP: f32 = 1.0 / 16.0;
+/// After the displays change, how long to keep looking for their USB
+/// brightness controls (USB can show up after the picture).
+const LOOK_FOR: Duration = Duration::from_secs(30);
 
 /// evdev codes of the keys handled here.
 pub mod keys {
@@ -47,6 +52,22 @@ enum Job {
     Suspend,
     Volume(f32),
     ToggleMute,
+    /// Look for USB brightness controls for these connectors.
+    FindDisplays(Vec<String>),
+    /// A USB-controlled display's brightness (by connector).
+    DisplayBrightness(String, f32),
+}
+
+/// A display other than the built-in one whose brightness we set.
+#[derive(Debug, Clone, PartialEq)]
+struct External {
+    output: String,
+    level: f32,
+}
+
+/// Whether a connector is the built-in panel.
+pub fn is_internal(connector: &str) -> bool {
+    ["eDP", "LVDS", "DSI"].iter().any(|p| connector.starts_with(p))
 }
 
 pub struct Power {
@@ -62,7 +83,7 @@ pub struct Power {
     /// The real backlight (session only).
     backlight: Option<tabula_system::backlight::Backlight>,
     /// Perceived brightness, 0–1 (simulated when there is no backlight to drive).
-    brightness: Option<f32>,
+    pub brightness: Option<f32>,
     /// The keyboard's backlight, and its level (simulated likewise).
     keyboard: Option<tabula_system::backlight::Backlight>,
     keyboard_level: Option<f32>,
@@ -74,6 +95,16 @@ pub struct Power {
     /// state set-up.
     pub volume_feedback: Option<calloop::channel::Channel<(f32, bool)>>,
     jobs: Option<Sender<Job>>,
+    /// Displays found with a USB brightness control, and their levels
+    /// (from the worker; taken by state set-up).
+    pub displays_found: Option<calloop::channel::Channel<Vec<(String, f32)>>>,
+    externals: Vec<External>,
+    /// The connectors when we last looked, and since when they are so.
+    looked: (Vec<String>, Instant),
+    /// The built-in display has been set to its kept brightness.
+    internal_set: bool,
+    /// A brightness changed and is yet to be saved.
+    unsaved: bool,
 }
 
 impl std::fmt::Debug for Power {
@@ -91,15 +122,16 @@ impl Power {
         } else {
             (None, Some(0.5))
         };
-        let (backlight, brightness, jobs, volume, volume_feedback) = if is_session {
+        let (backlight, brightness, jobs, volume, volume_feedback, displays_found) = if is_session {
             let backlight = tabula_system::backlight::internal();
             let brightness = backlight.as_ref().and_then(|b| b.level());
             let (tx, rx) = channel();
             let (feedback, feedback_rx) = calloop::channel::channel();
-            std::thread::Builder::new().name("power".into()).spawn(move || worker(rx, feedback)).expect("thread");
-            (backlight, brightness, Some(tx), None, Some(feedback_rx))
+            let (found, found_rx) = calloop::channel::channel();
+            std::thread::Builder::new().name("power".into()).spawn(move || worker(rx, feedback, found)).expect("thread");
+            (backlight, brightness, Some(tx), None, Some(feedback_rx), Some(found_rx))
         } else {
-            (None, Some(0.75), None, Some((0.5, false)), None)
+            (None, Some(1.0), None, Some((0.5, false)), None, None)
         };
         Power {
             last_activity: Instant::now(),
@@ -117,7 +149,18 @@ impl Power {
             volume,
             volume_feedback,
             jobs,
+            displays_found,
+            externals: Vec::new(),
+            looked: (Vec::new(), Instant::now()),
+            internal_set: !is_session,
+            unsaved: false,
         }
+    }
+
+    /// The brightness of a display other than the built-in one, if we can
+    /// set it.
+    pub fn display_brightness(&self, connector: &str) -> Option<f32> {
+        self.externals.iter().find(|e| e.output == connector).map(|e| e.level)
     }
 
     fn send(&self, job: Job) {
@@ -161,26 +204,84 @@ impl Power {
     }
 }
 
-fn worker(rx: Receiver<Job>, feedback: calloop::channel::Sender<(f32, bool)>) {
-    let mut inhibitor = None;
+/// What the worker keeps between jobs.
+struct Worker {
+    inhibitor: Option<tabula_system::power::Inhibitor>,
+    feedback: calloop::channel::Sender<(f32, bool)>,
+    found: calloop::channel::Sender<Vec<(String, f32)>>,
+    /// USB-controlled displays, by connector.
+    displays: std::collections::HashMap<String, tabula_system::hid_monitor::HidMonitor>,
+    /// Displays we could not read (said once).
+    warned: std::collections::HashSet<std::path::PathBuf>,
+}
+
+fn worker(rx: Receiver<Job>, feedback: calloop::channel::Sender<(f32, bool)>, found: calloop::channel::Sender<Vec<(String, f32)>>) {
+    let mut w = Worker { inhibitor: None, feedback, found, displays: Default::default(), warned: Default::default() };
     while let Ok(mut job) = rx.recv() {
         // Only the newest brightness matters (a held key repeats).
-        while let Job::Brightness(_) = job {
+        loop {
+            let same = |a: &Job, b: &Job| match (a, b) {
+                (Job::Brightness(_), Job::Brightness(_)) => true,
+                (Job::DisplayBrightness(x, _), Job::DisplayBrightness(y, _)) => x == y,
+                _ => false,
+            };
+            if !matches!(job, Job::Brightness(_) | Job::DisplayBrightness(..)) {
+                break;
+            }
             match rx.try_recv() {
-                Ok(next @ Job::Brightness(_)) => job = next,
+                Ok(next) if same(&job, &next) => job = next,
                 Ok(next) => {
-                    run(job, &mut inhibitor, &feedback);
+                    run(job, &mut w);
                     job = next;
                 }
                 Err(_) => break,
             }
         }
-        run(job, &mut inhibitor, &feedback);
+        run(job, &mut w);
     }
 }
 
-fn run(job: Job, inhibitor: &mut Option<tabula_system::power::Inhibitor>, feedback: &calloop::channel::Sender<(f32, bool)>) {
+/// The maker (EDID PNP id) of the monitor on `connector`.
+fn edid_maker(connector: &str) -> Option<String> {
+    let dir = std::fs::read_dir("/sys/class/drm").ok()?;
+    let entry = dir.flatten().find(|e| e.file_name().to_string_lossy().split_once('-').is_some_and(|(card, c)| card.starts_with("card") && c == connector))?;
+    let edid = std::fs::read(entry.path().join("edid")).ok()?;
+    let id = u16::from_be_bytes([*edid.get(8)?, *edid.get(9)?]);
+    Some([10, 5, 0].iter().map(|s| (((id >> s) & 31) as u8 + b'@') as char).collect())
+}
+
+/// Match the USB brightness controls to connectors by maker.
+fn find_displays(
+    displays: &mut std::collections::HashMap<String, tabula_system::hid_monitor::HidMonitor>,
+    warned: &mut std::collections::HashSet<std::path::PathBuf>,
+    send: &calloop::channel::Sender<Vec<(String, f32)>>,
+    connectors: Vec<String>,
+) {
+    let mut monitors = tabula_system::hid_monitor::all();
+    displays.clear();
+    let mut found = Vec::new();
+    for c in connectors {
+        let Some(maker) = edid_maker(&c) else { continue };
+        let Some(i) = monitors.iter().position(|m| m.edid_vendor() == Some(maker.as_str())) else { continue };
+        let m = monitors.remove(i);
+        match m.level() {
+            Ok(level) => {
+                found.push((c.clone(), level));
+                displays.insert(c, m);
+            }
+            Err(e) => {
+                if warned.insert(m.path.clone()) {
+                    warn!(path = %m.path.display(), "can't read the display's brightness: {e} (is data/udev/70-tabula-displays.rules installed?)");
+                }
+            }
+        }
+    }
+    let _ = send.send(found);
+}
+
+fn run(job: Job, w: &mut Worker) {
     use tabula_system::{audio, backlight, power};
+    let Worker { inhibitor, feedback, found, displays, warned } = w;
     let volume_key = matches!(job, Job::Volume(_) | Job::ToggleMute);
     let r: Result<(), String> = match job {
         Job::Caffeinate { on: true, lid } => {
@@ -208,6 +309,14 @@ fn run(job: Job, inhibitor: &mut Option<tabula_system::power::Inhibitor>, feedba
             })
             .map_err(|e| e.to_string()),
         Job::ToggleMute => audio::toggle_mute().map_err(|e| e.to_string()),
+        Job::FindDisplays(connectors) => {
+            find_displays(displays, warned, found, connectors);
+            Ok(())
+        }
+        Job::DisplayBrightness(c, level) => match displays.get(&c) {
+            Some(m) => m.set_level(level).map_err(|e| format!("{c}: {e}")),
+            None => Ok(()),
+        },
     };
     if let Err(e) = r {
         warn!("power: {e}");
@@ -250,6 +359,7 @@ impl<B: Backend> AnvilState<B> {
     /// Every [`TICK`]: turn displays off or sleep if idle long enough.
     pub fn power_tick(&mut self) {
         self.ensure_locker();
+        self.power_displays_tick();
         self.saver_tick();
         let saver = self.settings.screen_saver.clone();
         if saver.never_fade.is_some() && self.pointer_corner() == saver.never_fade {
@@ -338,6 +448,7 @@ impl<B: Backend> AnvilState<B> {
         self.power_changed();
     }
 
+    /// The built-in display's brightness (kept for it).
     pub fn set_brightness(&mut self, level: f32) {
         let Some(_) = self.power.brightness else { return };
         let level = level.clamp(0.0, 1.0);
@@ -345,7 +456,95 @@ impl<B: Backend> AnvilState<B> {
         if !self.power.display_asleep {
             self.power.apply_brightness(level);
         }
+        let internal = self.space.outputs().find(|o| is_internal(&o.name())).cloned();
+        if let Some(o) = internal {
+            self.keep_brightness(&o, level);
+        }
         self.power_changed();
+    }
+
+    /// Any display's brightness, by connector (kept for it).
+    pub fn set_output_brightness(&mut self, connector: &str, level: f32) -> Result<(), String> {
+        let level = level.clamp(0.0, 1.0);
+        if is_internal(connector) {
+            self.set_brightness(level);
+            return Ok(());
+        }
+        let Some(e) = self.power.externals.iter_mut().find(|e| e.output == connector) else {
+            return Err(format!("{connector}'s brightness can't be set from here"));
+        };
+        e.level = level;
+        self.power.send(Job::DisplayBrightness(connector.to_owned(), level));
+        let output = self.space.outputs().chain(self.mirrors.iter()).find(|o| o.name() == connector).cloned();
+        if let Some(o) = output {
+            self.keep_brightness(&o, level);
+        }
+        self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
+        Ok(())
+    }
+
+    fn keep_brightness(&mut self, o: &smithay::output::Output, level: f32) {
+        let key = crate::desktop::display_key(o);
+        self.settings.display.config_mut(&key, &o.name()).brightness = Some(level);
+        // Saved on the next tick (keys repeat).
+        self.power.unsaved = true;
+    }
+
+    /// Every tick: notice displays coming and going, look for their
+    /// brightness controls, and give each its kept brightness.
+    fn power_displays_tick(&mut self) {
+        let mut names: Vec<String> = self.space.outputs().chain(self.mirrors.iter()).map(|o| o.name()).collect();
+        names.sort();
+        if names != self.power.looked.0 {
+            self.power.externals.retain(|e| names.contains(&e.output));
+            self.power.looked = (names.clone(), Instant::now());
+        }
+        let internal = self.space.outputs().find(|o| is_internal(&o.name())).cloned();
+        if !self.power.internal_set
+            && let Some(o) = internal
+        {
+            self.power.internal_set = true;
+            let level = self.settings.display.brightness_for(&crate::desktop::display_key(&o), &o.name());
+            if self.power.brightness.is_some() {
+                info!(level, "built-in display brightness");
+                self.power.brightness = Some(level);
+                self.power.apply_brightness(level);
+                self.power_changed();
+            }
+        }
+        if self.power.looked.1.elapsed() <= LOOK_FOR + TICK {
+            let external: Vec<String> = names.into_iter().filter(|n| !is_internal(n)).collect();
+            if self.power.jobs.is_some() {
+                self.power.send(Job::FindDisplays(external));
+            } else {
+                // Not the session: every display pretends to have one.
+                self.displays_found(external.into_iter().map(|n| (n, 1.0)).collect());
+            }
+        }
+        if std::mem::take(&mut self.power.unsaved) {
+            crate::desktop::save_settings(&self.settings);
+        }
+    }
+
+    /// The worker found these USB brightness controls (connector, level).
+    pub fn displays_found(&mut self, found: Vec<(String, f32)>) {
+        let mut changed = false;
+        for (name, current) in found {
+            if self.power.externals.iter().any(|e| e.output == name) {
+                continue;
+            }
+            let Some(o) = self.space.outputs().chain(self.mirrors.iter()).find(|o| o.name() == name).cloned() else { continue };
+            let level = self.settings.display.brightness_for(&crate::desktop::display_key(&o), &name);
+            info!(display = name, current, level, "display brightness");
+            if (level - current).abs() > 0.005 {
+                self.power.send(Job::DisplayBrightness(name.clone(), level));
+            }
+            self.power.externals.push(External { output: name, level });
+            changed = true;
+        }
+        if changed {
+            self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
+        }
     }
 
     pub fn idle_inhibit(&mut self, surface: WlSurface, on: bool) {
@@ -387,11 +586,21 @@ impl<B: Backend> AnvilState<B> {
         true
     }
 
+    /// The brightness keys: the display under the pointer if we can set
+    /// its brightness, else the built-in one.
     fn step_brightness(&mut self, delta: f32) {
-        if let Some(level) = self.power.brightness {
-            // Snap to the step grid so up then down returns exactly.
-            let steps = ((level + delta) / STEP).round();
-            let level = (steps * STEP).clamp(0.0, 1.0);
+        // Snap to the step grid so up then down returns exactly.
+        let step = |level: f32| (((level + delta) / STEP).round() * STEP).clamp(0.0, 1.0);
+        let pointer = self.pointer.current_location();
+        let under = self.space.output_under(pointer).next().map(|o| o.name());
+        if let Some(name) = under
+            && let Some(level) = self.power.display_brightness(&name)
+        {
+            let level = step(level);
+            let _ = self.set_output_brightness(&name, level);
+            self.show_indicator(crate::osd::Indicator::Brightness(level));
+        } else if let Some(level) = self.power.brightness {
+            let level = step(level);
             self.set_brightness(level);
             self.show_indicator(crate::osd::Indicator::Brightness(level));
         }
@@ -444,7 +653,14 @@ mod tests {
     fn headless_simulates_a_backlight() {
         let p = Power::new(false);
         assert!(p.jobs.is_none() && p.backlight.is_none());
-        assert_eq!(p.status().brightness, Some(0.75));
+        // Full, like every display with no level kept.
+        assert_eq!(p.status().brightness, Some(1.0));
         assert!(!p.status().caffeinated);
+    }
+
+    #[test]
+    fn built_in_panels() {
+        assert!(is_internal("eDP-1") && is_internal("LVDS-1") && is_internal("DSI-1"));
+        assert!(!is_internal("DP-1") && !is_internal("HDMI-A-1") && !is_internal("HEADLESS-1"));
     }
 }

@@ -75,6 +75,8 @@ pub enum Request {
     },
     /// Built-in display brightness, 0.0–1.0 (perceptual).
     SetBrightness { level: f32 },
+    /// A display's brightness (`name` its connector), kept for it.
+    SetOutputBrightness { name: String, level: f32 },
     /// Keyboard backlight, 0.0–1.0 (perceptual).
     SetKeyboardBacklight { level: f32 },
     /// Show each display's name on it for a few seconds.
@@ -189,6 +191,9 @@ pub struct OutputInfo {
     /// The display this one mirrors (its connector), if it does.
     #[serde(default)]
     pub mirror_of: Option<String>,
+    /// Its brightness, 0–1, when it can be set from here.
+    #[serde(default)]
+    pub brightness: Option<f32>,
 }
 
 impl OutputInfo {
@@ -218,6 +223,10 @@ pub struct OutputConfig {
     /// desktop. In `ConfigureOutput`, `Some("")` goes back to extending.
     #[serde(default)]
     pub mirror: Option<String>,
+    /// Brightness, 0–1, for a display whose brightness can be set (the
+    /// built-in one, a USB-controlled monitor). None: full brightness.
+    #[serde(default)]
+    pub brightness: Option<f32>,
 }
 
 /// The rotations a display can have, clockwise degrees.
@@ -396,6 +405,11 @@ impl DisplaySettings {
         self.config(key, connector).and_then(|c| c.scale).unwrap_or(self.scale).clamp(0.5, 4.0)
     }
 
+    /// The brightness kept for a display (full when none was).
+    pub fn brightness_for(&self, key: &str, connector: &str) -> f32 {
+        self.config(key, connector).and_then(|c| c.brightness).unwrap_or(1.0).clamp(0.0, 1.0)
+    }
+
     pub fn rotation_for(&self, key: &str, connector: &str) -> u16 {
         self.config(key, connector).and_then(|c| c.rotation).filter(|r| ROTATIONS.contains(r)).unwrap_or(0)
     }
@@ -507,8 +521,10 @@ pub struct KeyboardSettings {
     pub command_key: bool,
     /// Caps Lock is another Ctrl.
     pub caps_lock_control: bool,
-    /// Tapping ⌘ on its own opens Find.
-    pub tap_command_find: bool,
+    /// Tapping ⌘ on its own opens Find (off: only ⌘Space does). Renamed
+    /// from `tap_command_find` when it stopped being on by default, so the
+    /// old default saved in settings files doesn't keep it on.
+    pub find_on_command_tap: bool,
     /// Apps that keep physical Ctrl for themselves (terminals): ⌘ reaches
     /// them as Ctrl+Shift, so Ctrl+C still interrupts. Matched on app_id.
     pub terminal_apps: Vec<String>,
@@ -558,7 +574,7 @@ impl Default for KeyboardSettings {
             repeat_rate_hz: 35,
             command_key: true,
             caps_lock_control: true,
-            tap_command_find: true,
+            find_on_command_tap: false,
             terminal_apps: [
                 "tabula.terminal",
                 "org.gnome.Ptyxis",

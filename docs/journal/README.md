@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Brightness for every display
+
+*17:49* — Preferences ▸ Display now has a brightness slider for each display whose brightness can be set, external monitors too (the Studio Display over USB). Every display starts at full brightness unless you've set a level for it.
+
+![Brightness for every display](2026-10-26/174957-brightness-for-every-display.png)
+
 ### Right-click in text fields
 
 *17:29* — Every text field now has Cut, Copy, Paste and Select All on right-click (keeping the selection), and double/triple-click select a word or the whole line, here in NetPositive's location field.

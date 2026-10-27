@@ -297,6 +297,10 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Ok(()) => Reply::Ok,
                 Err(message) => Reply::Error { message },
             },
+            Request::SetOutputBrightness { name, level } => match self.set_output_brightness(&name, level) {
+                Ok(()) => Reply::Ok,
+                Err(message) => Reply::Error { message },
+            },
             Request::GetSettings => Reply::Settings { settings: self.settings.clone() },
             Request::SetSettings { settings } => {
                 self.set_settings(settings);

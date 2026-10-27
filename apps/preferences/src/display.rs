@@ -19,8 +19,9 @@ use crate::server::Server;
 #[derive(Default)]
 pub struct State {
     selected: Option<String>,
-    /// The level being dragged (app_server's echo lags a little).
-    brightness: Option<(f32, std::time::Instant)>,
+    /// The screen whose brightness is being dragged, and the level
+    /// (app_server's echo lags a little).
+    brightness: Option<(String, f32, std::time::Instant)>,
     /// The screen being dragged in the map, and how far (points).
     drag: Option<(String, Vec2)>,
     /// A resolution change waiting to be kept: the screen, its previous
@@ -323,21 +324,20 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
             });
         }
 
-        // The panel's backlight belongs to the built-in display (or the
-        // only one there is).
-        if let Some(level) = power.and_then(|p| p.brightness)
-            && (display_name(o) == "Built-in Display" || outputs.len() == 1)
-        {
-            if st.brightness.is_some_and(|(_, at)| at.elapsed() > std::time::Duration::from_millis(600)) {
+        // Each display whose brightness app_server can set (the built-in
+        // one's backlight, monitors controlled over USB).
+        let builtin = || power.and_then(|p| p.brightness).filter(|_| display_name(o) == "Built-in Display" || outputs.len() == 1);
+        if let Some(level) = o.brightness.or_else(builtin) {
+            if st.brightness.as_ref().is_some_and(|(_, _, at)| at.elapsed() > std::time::Duration::from_millis(600)) {
                 st.brightness = None;
             }
-            let mut v = st.brightness.map_or(level, |(l, _)| l);
+            let mut v = st.brightness.as_ref().filter(|(n, ..)| *n == o.name).map_or(level, |(_, l, _)| *l);
             let before = v;
             let text = format!("{:.0}%", v * 100.0);
             ui.add(Slider::new(&mut v, 0.0..=1.0).step(1.0 / 64.0).label("Brightness").value_text(text));
             if v != before {
-                st.brightness = Some((v, std::time::Instant::now()));
-                server.set_brightness(v);
+                st.brightness = Some((o.name.clone(), v, std::time::Instant::now()));
+                server.set_output_brightness(&o.name, v);
             }
         }
     });

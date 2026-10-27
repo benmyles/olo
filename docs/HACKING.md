@@ -304,7 +304,7 @@ of the way down.
 6. BeOS idioms to keep: yellow tab decorator (app_server's job), menu bar in
    every document window, ⌘ shortcuts (Ctrl on the wire: app_server's
    `keymap` turns the Mac ⌘ key into Ctrl for clients, Caps Lock too, and
-   keeps ⌘Tab / ⌘\` (Twitcher), ⌘Space / tap ⌘ (Find), ⌘ arrows and ⌘⌫ for
+   keeps ⌘Tab / ⌘\` (Twitcher), ⌘Space (Find; tapping ⌘ alone is an option), ⌘ arrows and ⌘⌫ for
    itself; terminals listed in `KeyboardSettings::terminal_apps` get ⌘ as
    Ctrl+Shift so physical Ctrl reaches the tty), keyboard focus shown as a navigation-blue underline/frame,
    Tracker-style spatial behaviour. Modernise freely where it helps
@@ -582,12 +582,26 @@ then asks logind to suspend (`sleep_minutes`). Caffeinated mode
 zwp_idle_inhibit inhibitor count as activity. `Request::PowerStatus` and
 `Event::PowerChanged` report it all, with the built-in display's brightness
 (`Request::SetBrightness`, perceptual 0–1). Brightness and volume keys are
-taken by app_server.
+taken by app_server; the brightness keys act on the display under the
+pointer when its brightness can be set, else the built-in one.
+
+Each display's brightness is `OutputInfo::brightness` (None: can't be set)
+and `Request::SetOutputBrightness { name, level }`. Besides the built-in
+backlight, monitors that take it over USB (Apple Studio Display and Pro
+Display XDR, LG UltraFine: the USB Monitor Control class) are driven
+through hidraw (`tabula_system::hid_monitor`), matched to their connector
+by the EDID maker; `data/udev/70-tabula-displays.rules` (installed by
+`tools/install-session.sh`) gives the session's user the device. DDC/CI
+isn't reachable on Apple Silicon. app_server keeps each display's level in
+`OutputConfig::brightness` and sets it when the display appears; with none
+kept, every display starts at full brightness. Brightness belongs to
+app_server: `SetSettings` keeps its own copy of these levels.
 
 Hardware is touched only when app_server is the session
 (`Backend::IS_SESSION`), from a worker thread: the backlight through
-logind `SetBrightness` (no root needed), the inhibitor, suspend, the sound
-server. Headless sessions simulate a backlight at 0.75 and only log
+logind `SetBrightness` (no root needed), USB monitors, the inhibitor,
+suspend, the sound server. Headless sessions simulate a backlight and a
+USB brightness control on every display (all starting full) and only log
 "would sleep", so tests can drive all of it safely.
 
 ## The screen saver (crates/screensavers, apps/screensaver, app_server saver.rs)

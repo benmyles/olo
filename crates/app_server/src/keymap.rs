@@ -1,8 +1,8 @@
 //! The Mac keyboard, natively. ⌘ is the command key: apps see it as Ctrl
 //! (so ⌘C copies everywhere, GTK and Firefox included), while app_server
-//! keeps a few ⌘ chords for itself: ⌘Tab / ⌘\` (Twitcher), ⌘Space and a
-//! tap of ⌘ alone (Find), ⌘ arrows and ⌘⌫ (line and document navigation),
-//! Ctrl+⌘Q (lock), Ctrl+⌘A (caffeinated) and ⌘⇧3 / ⌘⇧4 / ⌘⇧5 (screen, area and the Screenshot
+//! keeps a few ⌘ chords for itself: ⌘Tab / ⌘\` (Twitcher), ⌘Space (Find;
+//! a tap of ⌘ alone too, if chosen in Preferences), ⌘ arrows and ⌘⌫ (line
+//! and document navigation), Ctrl+⌘Q (lock), Ctrl+⌘A (caffeinated) and ⌘⇧3 / ⌘⇧4 / ⌘⇧5 (screen, area and the Screenshot
 //! app, as on a Mac; Print Screen and Alt+Print Screen for the screen and
 //! the active window). Caps Lock is another Ctrl. Terminals keep physical
 //! Ctrl for the tty, so ⌘ reaches them as Ctrl+Shift.
@@ -64,7 +64,7 @@ pub enum Action {
     NextWindow { back: bool },
     /// ⌘ released after switching: commit Twitcher's choice.
     SwitchDone,
-    /// Tap ⌘, or ⌘Space.
+    /// ⌘Space, or a tap of ⌘ (if chosen).
     Find,
     /// Ctrl+⌘Q.
     Lock,
@@ -106,7 +106,7 @@ impl From<&tabula_protocol::KeyboardSettings> for Options {
         Options {
             command_key: k.command_key,
             caps_lock_control: k.caps_lock_control,
-            tap_command_find: k.tap_command_find,
+            tap_command_find: k.find_on_command_tap,
         }
     }
 }
