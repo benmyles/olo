@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### NetPositive learns login fields
+
+*21:16* — The field menu now lists the page's logins at once (fetched when the page loads). Filling an odd field from it — here 'who are you' as the username — is remembered for that page, so the key button fills the same field next time. Hidden decoy fields, as on Google's sign-in, are skipped.
+
+![NetPositive learns login fields](2026-10-26/211645-netpositive-learns-login-fields.png)
+
 ### Tracker: column view scrolls sideways
 
 *20:50* — Columns wider than the window scroll sideways with the touchpad, Shift+wheel or a scroll bar along the bottom, and stay where they were put; the view only follows the keyboard when the selection moves to another column.

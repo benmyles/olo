@@ -22,7 +22,7 @@ mod scheme;
 mod scroll;
 
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
@@ -287,6 +287,11 @@ struct NetPositive {
     notifier: notify::Notifier,
     /// Fields' context menus asked for so far.
     field_menus: u64,
+    /// Each site's logins as Passwords last listed them (by host), so a
+    /// field's context menu shows them without waiting.
+    known_logins: HashMap<String, (Instant, Vec<tabula_keychain::Login>)>,
+    /// Pages' username and password fields, learnt from filling by hand.
+    learnt: logins::Learnt,
 }
 
 impl NetPositive {
@@ -647,6 +652,7 @@ impl NetPositive {
                 }
                 event => {
                     let mut visited = None;
+                    let mut prefetch = None;
                     let Some(b) = self.browser(win) else { continue };
                     let tab = &mut b.tabs[i];
                     match event {
@@ -676,6 +682,9 @@ impl NetPositive {
                                     tab.favicon = None;
                                 }
                                 visited = Some((tab.url.clone(), tab.title.clone()));
+                                if logins::web(&tab.url) {
+                                    prefetch = tab.view.as_ref().map(|v| (v.id(), tab.url.clone()));
+                                }
                             }
                             tab.load = Some(status);
                         }
@@ -712,6 +721,9 @@ impl NetPositive {
                     }
                     if let Some((url, title)) = visited {
                         self.remember(&url, &title);
+                    }
+                    if let Some((view, url)) = prefetch {
+                        logins::ask(self.proxy.clone(), win, view, url.clone(), Purpose::Prefetch, Request::Logins { url }, false);
                     }
                 }
             }
@@ -750,9 +762,17 @@ impl NetPositive {
                     // answers (or opening without them if it's slow).
                     self.field_menus += 1;
                     let id = self.field_menus;
+                    let host = tabula_keychain::host(&url).unwrap_or_default();
+                    let known = self.known_logins.get(&host).filter(|(at, _)| at.elapsed() < logins::KNOWN_FOR).map(|(_, l)| l.clone());
                     let Some(b) = self.browser(win) else { return };
                     b.menu = Some(menu);
                     b.field_menu = Some((id, pos));
+                    if let Some(known) = known {
+                        // Known already: open now, and ask for next time.
+                        self.open_field_menu(cx, win, Some(&Ok(Response::Logins { logins: known })), &host);
+                        logins::ask(self.proxy.clone(), win, view_id, url.clone(), Purpose::Prefetch, Request::Logins { url }, false);
+                        return;
+                    }
                     logins::ask(self.proxy.clone(), win, view_id, url.clone(), Purpose::Field(id), Request::Logins { url }, false);
                     let proxy = self.proxy.clone();
                     std::thread::spawn(move || {
@@ -2311,13 +2331,24 @@ impl App for NetPositive {
             }
             Err(m) => m,
         };
+        let message = match message.downcast::<logins::Filled>() {
+            Ok(f) => {
+                if self.learnt.learn(&f.url, f.value, &f.selector) {
+                    self.learnt.save();
+                }
+                return;
+            }
+            Err(m) => m,
+        };
         let message = match message.downcast::<logins::FieldMenuTimeout>() {
             Ok(t) => {
                 if let Some(b) = self.browser(t.win)
                     && b.field_menu.is_some_and(|(id, _)| id == t.id)
                 {
                     let host = b.tab().and_then(|t| tabula_keychain::host(&t.url)).unwrap_or_default();
-                    self.open_field_menu(cx, t.win, None, &host);
+                    // Slow to answer: what it last said, if anything.
+                    let known = self.known_logins.get(&host).map(|(_, l)| Ok(Response::Logins { logins: l.clone() }));
+                    self.open_field_menu(cx, t.win, known.as_ref(), &host);
                 }
                 return;
             }
@@ -2560,9 +2591,15 @@ impl NetPositive {
         let events = self.engine.events.clone();
         let token = self.engine.token.clone();
         let Some((_, i)) = self.find(view).filter(|(w, _)| *w == win) else { return };
-        let Some(b) = self.browser(win) else { return };
         let host = tabula_keychain::host(&url).unwrap_or_else(|| "this site".into());
+        if let Ok(Response::Logins { logins }) = &result {
+            self.known_logins.insert(host.clone(), (Instant::now(), logins.clone()));
+        }
+        let learnt = self.learnt.fields(&url);
+        let proxy = self.proxy.clone();
+        let Some(b) = self.browser(win) else { return };
         match purpose {
+            Purpose::Prefetch => {}
             Purpose::Field(id) => {
                 if b.field_menu.is_some_and(|(n, _)| n == id) {
                     self.open_field_menu(cx, win, Some(&result), &host);
@@ -2574,7 +2611,15 @@ impl NetPositive {
                     && let Ok(origin) = Url::parse(&url).map(|u| u.origin().ascii_serialization())
                 {
                     let v = if value == logins::Value::Username { username } else { password };
-                    view.evaluate_javascript(logins::field_script(&origin, v), |_| {});
+                    // Learn which field it went into, for filling the next time.
+                    let page = url.clone();
+                    view.evaluate_javascript(logins::field_script(&origin, v), move |r| {
+                        if let Ok(servo::JSValue::String(s)) = r
+                            && let Some(selector) = s.strip_prefix("filled\n")
+                        {
+                            proxy.send(logins::Filled { url: page, value, selector: selector.to_owned() });
+                        }
+                    });
                     if waited {
                         cx.activate(win);
                     }
@@ -2624,7 +2669,7 @@ impl NetPositive {
                 Ok(Response::Credentials { username, password, otp }) => {
                     let Some(view) = b.tabs[i].view.clone() else { return };
                     let Ok(origin) = Url::parse(&url).map(|u| u.origin().ascii_serialization()) else { return };
-                    let script = logins::fill_script(&origin, username, password);
+                    let script = logins::fill_script(&origin, username, password, &learnt);
                     let id = view.id();
                     view.evaluate_javascript(script, move |r| {
                         let result = match r {
@@ -2872,6 +2917,8 @@ fn main() {
             watch: guard::watch(cx.proxy()),
             notifier: notify::Notifier::new(cx.proxy()),
             field_menus: 0,
+            known_logins: HashMap::new(),
+            learnt: logins::Learnt::load(),
         };
         let restored: Option<Saved> = cx.restored_state().and_then(|s| serde_json::from_str(&s).ok());
         match restored {

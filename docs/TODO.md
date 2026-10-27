@@ -60,12 +60,16 @@ as they land (with the commit), add new ones as they come up.
   and the palette from it at once; 1Password is only for syncing, both
   ways (changes either side merge by item version, conflicts kept),
   in the background and when asked.
-- **NetPositive fills Google's sign-in** (Ben): on accounts.google.com the
-  key button lists the matching logins but choosing one says there is no
-  login form; and the username field's context menu ▸ Passwords shows only
-  "Open Passwords", not the logins. Google's two-step sign-in (email
-  first, then the password on its own page, fields built by script and in
-  shadow DOM) needs finding fields one at a time.
+- ~~**NetPositive fills Google's sign-in**~~ (Ben): two-step sign-ins
+  fill the username alone, hidden decoy fields are skipped, the field
+  menu has the logins at once (fetched when the page loads), and a field
+  filled from the context menu is learnt for that page. Still to try on
+  the real accounts.google.com (Ben).
+- **Tracker opens in column view by default** (Ben), with the default
+  view set in Preferences ▸ Tracker.
+- **Tracker: File ▸ Open in Terminal** (Ben; later): opens the current
+  folder in Terminal, in a new tab once Terminal has tabs (a new window
+  until then); also in the context menu.
 - **Terminal tabs, tab groups and coding agents** (Ben; after everything
   else is done): tabs, tab groups that can be saved and reopened, and
   native recognition of coding agents (Claude Code, Codex) running in a

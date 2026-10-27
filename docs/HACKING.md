@@ -1458,8 +1458,23 @@ one-time code goes on the clipboard with `copy_secret`. The page's
 context menu in a text or password field ends with a Passwords submenu:
 each of the page's logins with its Username and Password, which fill just
 that field (`logins::field_script`, the focused element, origin checked).
-The menu waits up to `FIELD_MENU_WAIT` (400 ms) for the logins, then opens
-without them (Open Passwords). A user script
+The page's logins are fetched when it finishes loading (`Purpose::Prefetch`)
+and kept per host for `KNOWN_FOR` (10 min), so the menu opens with them at
+once; otherwise it waits up to `FIELD_MENU_WAIT` (400 ms), then opens
+without them (Open Passwords).
+
+Finding the fields (`logins::fill_script`): only fields a person could
+use count (laid out at least 4 px, on screen, visible, not aria-hidden,
+disabled or read-only), so decoys like Google's hidden password field are
+skipped. With no password field on the page (two-step sign-ins), the
+username goes into the focused text field, else one marked
+`autocomplete=username`, else one whose name, id, aria-label or
+autocomplete looks like a user, mail, login or phone field, else an email
+field, else the only text field. **Learnt fields**: filling a field from
+the context menu records its selector (id, name, or an nth-of-type path)
+for that page (origin and path, no query) in
+`netpositive-fields.json` in the config dir (`logins::Learnt`), and the
+key button tries the learnt fields first next time. A user script
 (Servo's `UserContentManager`) watches the top frame for a form sent with
 a password and reports it through `console.log` with a per-process random
 token held in its closure (`show_console_message` drops everything
