@@ -38,6 +38,11 @@ const DESKBAR_GAP: i32 = 4;
 #[derive(Default)]
 pub(super) struct PreZoom(pub(super) RefCell<Option<Rectangle<i32, Logical>>>);
 
+/// The element rectangle a tiled (or arranged) window was zoomed from, to
+/// go back to when it is unzoomed (its own frame stays in [`PreZoom`]).
+#[derive(Default)]
+pub(super) struct ZoomedFrom(pub(super) RefCell<Option<Rectangle<i32, Logical>>>);
+
 fn cursor_for(part: Part) -> CursorIcon {
     match part {
         Part::Frame(e) if e == ResizeEdge::TOP_LEFT => CursorIcon::NwResize,
@@ -276,12 +281,18 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let Some(area) = self.zoom_area(window) else {
             return;
         };
-        if let Some(location) = self.space.element_location(window) {
+        if let Some(location) = self.space.element_location(window)
+            && !self.is_zoomed(window)
+        {
+            let here = Rectangle::new(location, window.geometry().size);
             window.user_data().insert_if_missing(PreZoom::default);
+            window.user_data().insert_if_missing(ZoomedFrom::default);
             let pre = window.user_data().get::<PreZoom>().unwrap();
-            pre.0
-                .borrow_mut()
-                .get_or_insert(Rectangle::new(location, window.geometry().size));
+            // Tiled or arranged (its own frame already kept): come back
+            // here, not to its own frame.
+            let arranged = pre.0.borrow().is_some();
+            *window.user_data().get::<ZoomedFrom>().unwrap().0.borrow_mut() = arranged.then_some(here);
+            pre.0.borrow_mut().get_or_insert(here);
         }
         let content = window.inner_size(area.size);
         match window.0.underlying_surface() {
@@ -304,6 +315,17 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     pub fn unzoom_window(&mut self, window: &WindowElement) {
+        // Zoomed from a tile, or a place Tile All gave it: back there (its
+        // own frame stays remembered, for Restore).
+        let from = window.user_data().get::<ZoomedFrom>().and_then(|z| z.0.borrow_mut().take());
+        if let Some(tile) = Self::tiled(window) {
+            self.tile_window(window, tile);
+            return;
+        }
+        if let Some(frame) = from {
+            self.set_frame(window, frame, false);
+            return;
+        }
         let pre = window
             .user_data()
             .get::<PreZoom>()

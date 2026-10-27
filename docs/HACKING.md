@@ -701,8 +701,11 @@ physical modifiers (only it can tell ⌘ from Ctrl) and answers with
 Tiling (`shell/tiling.rs`) works on the display's usable area (zoom's: no
 Deskbar or panels) less `Settings::tiling.margin`, with `tiling.gap`
 between windows. A tiled or zoomed window remembers its own frame
-(`PreZoom`), which Restore and unzooming put back, and which part it was
-tiled into, so it is re-tiled when its display changes. Moving screens in
+(`PreZoom`), which Restore puts back, and which part it was tiled into,
+so it is re-tiled when its display changes. Unzooming goes back to where
+it was zoomed from: its tile, a place Tile All gave it (`ZoomedFrom`), or
+else its own frame. Moving or resizing it by hand forgets the tile
+(`forget_tile`). Moving screens in
 the arrangement takes their windows along (`fixup_positions`). When displays come
 or go (`follow_main_output` → `rehome_windows`), windows left on none go to
 the main display, cascaded and shrunk to fit, the rest are re-tiled,

@@ -17,7 +17,10 @@ use smithay::{
 use tabula_protocol::Tile;
 use tracing::info;
 
-use super::{WindowElement, wm::PreZoom};
+use super::{
+    WindowElement,
+    wm::{PreZoom, ZoomedFrom},
+};
 use crate::state::{AnvilState, Backend};
 
 /// The part of the display a window was tiled into (re-tiled when its
@@ -133,7 +136,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         self.space.relocate_element(window, frame.loc);
     }
 
-    fn tiled(window: &WindowElement) -> Option<Tile> {
+    pub(super) fn tiled(window: &WindowElement) -> Option<Tile> {
         window.user_data().get::<Tiled>().and_then(|t| t.0.get())
     }
 
@@ -151,8 +154,17 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// Back to how it was before it was tiled or zoomed.
     pub fn restore_frame(&mut self, window: &WindowElement) {
-        Self::set_tiled(window, None);
+        self.forget_tile(window);
         self.unzoom_window(window);
+    }
+
+    /// It was moved or resized by hand (or Restored): no longer in a tile,
+    /// so unzooming it or moving it to another display won't put it back.
+    pub fn forget_tile(&mut self, window: &WindowElement) {
+        Self::set_tiled(window, None);
+        if let Some(z) = window.user_data().get::<ZoomedFrom>() {
+            z.0.borrow_mut().take();
+        }
     }
 
     /// A window's own size (not tiled or zoomed), as it is now.
@@ -246,16 +258,17 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// Fit a window to the display it is on now: re-tile or re-zoom it
     /// there, else shrink it to fit and bring its tab into view.
     pub fn refit(&mut self, window: &WindowElement) {
-        if let Some(tile) = Self::tiled(window) {
-            self.tile_window(window, tile);
-            return;
-        }
+        // (Zoomed first: a tiled window can be zoomed, and stays so.)
         if self.is_zoomed(window) {
             if let Some(area) = self.zoom_area(window)
                 && self.space.element_geometry(window) != Some(area)
             {
                 self.zoom_window(window);
             }
+            return;
+        }
+        if let Some(tile) = Self::tiled(window) {
+            self.tile_window(window, tile);
             return;
         }
         let (Some(area), Some(frame)) = (self.zoom_area(window), self.space.element_geometry(window)) else { return };

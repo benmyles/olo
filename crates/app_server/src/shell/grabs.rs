@@ -43,6 +43,9 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveS
 
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
+        if new_location.to_i32_round() != self.initial_window_location {
+            data.forget_tile(&self.window);
+        }
 
         data.space
             .map_element(self.window.clone(), new_location.to_i32_round(), true);
@@ -216,6 +219,9 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchMoveSurfa
 
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
+        if new_location.to_i32_round() != self.initial_window_location {
+            data.forget_tile(&self.window);
+        }
         data.space
             .map_element(self.window.clone(), new_location.to_i32_round(), true);
     }
@@ -383,6 +389,7 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerResiz
             handle.unset_grab(self, data, event.serial, event.time, true);
             return;
         }
+        data.forget_tile(&self.window);
 
         let (mut dx, mut dy) = (event.location - self.start_data.location).into();
 

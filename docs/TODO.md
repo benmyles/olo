@@ -212,7 +212,7 @@ as they land (with the commit), add new ones as they come up.
   the listening socket and client connections to the new app_server,
   or a small proxy that holds client connections across the restart
   and replays their state; Xwayland likewise).
-- **Unzoom goes back to where it was** (Ben): zooming a window that was
+- ~~**Unzoom goes back to where it was**~~ (a tiled window unzooms back into its tile, one placed by Tile All back into its cell; dragging or resizing it by hand forgets the tile; Restore still goes back to its own frame; tested headless with the shortcut and the zoom box) (Ben): zooming a window that was
   tiled (e.g. to the right half) and then unzooming must put it back in
   that tile, not some older frame (PreZoom should be the frame just
   before the zoom, tiles included, and the tile state restored).

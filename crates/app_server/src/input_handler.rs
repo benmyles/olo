@@ -242,9 +242,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 match shortcut {
                     S::Tile(tile) => self.tile_window(&w, tile),
                     S::Zoom => {
-                        // Zoom puts back what tiling remembered, too.
+                        // Unzooming puts it back in its tile, if it was
+                        // tiled (Restore goes back to its own frame).
                         if self.is_zoomed(&w) {
-                            self.restore_frame(&w);
+                            self.unzoom_window(&w);
                         } else {
                             self.zoom_window(&w);
                         }
