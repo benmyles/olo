@@ -34,6 +34,17 @@ like pixel alignment is.
    `request_repaint_after` only while work is running.
 6. **app_server never waits on a client.** Clients that stall must not stall
    the desktop.
+8. **app_server never deadlocks.** A hang there freezes the whole desktop.
+   Smithay's per-surface lock isn't re-entrant: inside a closure given to
+   `with_pending_state`, `with_states`, `with_committed_state` or
+   `with_cached_state`, call nothing that takes it again
+   (`WindowElement::decorated`/`inner_size`/`outer_size`/`content_offset`/
+   `title`/`app_id`/`geometry`, sending a configure, mapping the element).
+   Work such values out before the call. `tests/surface_locks.rs` checks
+   the source for this; `tools/dev/wm-sweep` exercises every window
+   operation on several screens and fails on the first hang. Use
+   `std::sync::Mutex` only with nothing else locked and never across a
+   call back into app_server.
 7. **Stay current without polling.** What is on screen reflects the system
    as it changes: watch files with inotify (Tracker's `watch.rs`: one thread,
    changed items stat'ed off the UI thread, bursts gathered for ~30 ms,
@@ -311,6 +322,11 @@ hands both to app_server, so clients never see the sockets disappear.
   example.
 * app_server or a shell component that crashes is restarted (up to 5
   times a minute). `tabula-session quit` ends the session.
+* tabula-session's watchdog (`crates/session/src/watchdog.rs`) pings
+  app_server over IPC every 2 s. After 10 s without an answer it sends
+  SIGABRT (so `coredumpctl debug` has the stack that hung), then SIGKILL
+  10 s later, and restarts it like a crash: apps reconnect and a locked
+  screen comes back locked.
 * Never cache anything about the connection you can't rebuild; never
   replace an installed binary by writing over it (install to a temporary
   name and rename, as `tools/install-session.sh` does).
