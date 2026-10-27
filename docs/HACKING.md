@@ -72,6 +72,13 @@ like pixel alignment is.
 
 Build: `cargo build -p tabula-<app>` (plus `cargo build --bin tabula-app-server` once, for headless testing; as root set `CARGO_HOME=/home/ben/.cargo` to share the registry) (repo is owned by `ben`; when running as
 root use `sudo -u ben bash -lc 'cd … && cargo build …'` in the main checkout).
+Builds go through [kache](https://github.com/kunobi-ninja/kache), a
+compiler cache (`cargo install kache --locked`, then
+`kache init --no-shell --no-service`, which sets `build.rustc-wrapper` in
+`~/.cargo/config.toml`): a crate compiled once with the same inputs is
+restored instead of rebuilt, in any target directory or worktree. It is
+ben's setup, so build as ben (as above); `kache doctor` checks it,
+`kache stats --last-build` shows the hits, `KACHE_DISABLED=1` bypasses it.
 
 ## Writing an app
 
