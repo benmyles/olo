@@ -136,8 +136,28 @@ impl TabLayout {
     }
 }
 
+/// The most characters of a title a tab shows (Preferences ▸ Appearance).
+static TITLE_CHARS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(100);
+
+pub fn set_title_chars(n: u32) {
+    TITLE_CHARS.store(n.max(1) as usize, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// `title` cut to the most a tab shows, with an ellipsis if it was cut.
+fn cut(title: &str) -> std::borrow::Cow<'_, str> {
+    let max = TITLE_CHARS.load(std::sync::atomic::Ordering::Relaxed);
+    match title.char_indices().nth(max) {
+        Some(_) => {
+            let end = title.char_indices().nth(max.saturating_sub(1)).map_or(title.len(), |(i, _)| i);
+            format!("{}…", title[..end].trim_end()).into()
+        }
+        None => title.into(),
+    }
+}
+
 impl Decoration {
     fn title_width(&mut self, title: &str) -> i32 {
+        let title = &*cut(title);
         match &self.title_width {
             Some((t, w)) if t == title => *w,
             _ => {
@@ -248,7 +268,7 @@ impl Decoration {
         // Tab: rendered to a pixmap at the exact physical size it covers.
         let phys = (px(tab.x + tab.width) - px(tab.x), px(TAB_HEIGHT));
         let key = TabKey {
-            title: title.to_owned(),
+            title: cut(title).into_owned(),
             focused: self.focused,
             hover: self.hover,
             pressed: self.pressed,
@@ -456,5 +476,19 @@ impl WindowElement {
 
     pub fn has_ssd(&self) -> bool {
         self.decoration().enabled
+    }
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::*;
+
+    #[test]
+    fn long_titles_are_cut() {
+        set_title_chars(5);
+        assert_eq!(cut("abcde"), "abcde");
+        assert_eq!(cut("abcdef"), "abcd…");
+        assert_eq!(cut("ab  défg"), "ab…");
+        set_title_chars(100);
     }
 }

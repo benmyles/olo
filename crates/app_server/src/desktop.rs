@@ -724,6 +724,8 @@ impl<B: Backend + 'static> AnvilState<B> {
         // Fields app_server owns are recomputed, not taken from the client.
         settings.appearance.effective_theme = self.settings.appearance.effective_theme;
         settings.appearance.night_light_active = self.settings.appearance.night_light_active;
+        // Tabs are laid out and drawn again (their cache keys on the cut title).
+        crate::shell::deco::set_title_chars(settings.tab_title_chars);
         self.settings = settings;
         self.keymap.set_bindings(tabula_protocol::shortcuts::bindings(&self.settings.shortcuts));
         if self.workspace >= self.settings.workspace_count.max(1) {

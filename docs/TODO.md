@@ -5,6 +5,8 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Longest tab title~~ (Ben): Preferences ▸ Appearance ▸ Longest window
+  title (20–200 characters, 100 by default); longer titles end in "…".
 - ~~Terminal: Rename Group and Ungroup did nothing~~ (Ben): no context
   menu of Terminal's worked (group, tab, text); the kit now sends a
   popup's choice that no widget takes to `App::command`.
@@ -539,9 +541,6 @@ as they land (with the commit), add new ones as they come up.
   default, to show icons beside every item in the Deskbar menu (each
   application, each preference panel, and the other commands), with any
   missing icons generated with sunburst against the reference set.
-- **Longest tab title** (Ben): an Appearance preference for how many
-  characters of a window's title its tab shows before cutting it short
-  with an ellipsis; 100 by default.
 - **Rename Tabula to Olo, use the new brand, ship a wallpaper pack**
   (Ben; the very last thing, after everything else is done):
   - *Rename* everywhere (code, crates, binaries, app ids, environment

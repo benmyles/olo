@@ -60,4 +60,8 @@ pub fn ui(ui: &mut Ui, s: &mut Settings) {
     let text = format!("{size:.0} pt");
     ui.add(Slider::new(&mut size, 10.0..=16.0).step(1.0).label("Window title size").value_text(text));
     s.tab_font_size = size;
+    let mut chars = s.tab_title_chars as f32;
+    let text = format!("{chars:.0} characters");
+    ui.add(Slider::new(&mut chars, 20.0..=200.0).step(10.0).label("Longest window title").value_text(text));
+    s.tab_title_chars = chars as u32;
 }

@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Appearance: Longest window title
+
+*15:40* — The new slider in Preferences ▸ Appearance.
+
+![Appearance: Longest window title](2026-10-27/154028-appearance-longest-window-title.png)
+
+### Longest window title
+
+*15:40* — A tab shows at most this many characters of its title, then an ellipsis (here 20; 100 by default).
+
+![Longest window title](2026-10-27/154028-longest-window-title.png)
+
 ### Preferences ▸ AI
 
 *15:32* — AI features go through the Token Pool, or an Anthropic key; Smart Tiling picks its model and how hard it thinks.

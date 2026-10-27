@@ -367,6 +367,9 @@ pub struct Settings {
     pub mouse_speed: f64,
     /// Font size (logical pixels) used for window tab titles.
     pub tab_font_size: f32,
+    /// A tab shows at most this many characters of its window's title,
+    /// then an ellipsis.
+    pub tab_title_chars: u32,
     pub appearance: Appearance,
     pub display: DisplaySettings,
     pub power: PowerSettings,
@@ -778,6 +781,7 @@ impl Default for Settings {
             keyboard: KeyboardSettings::default(),
             mouse_speed: 0.0,
             tab_font_size: 12.0,
+            tab_title_chars: 100,
             appearance: Appearance::default(),
             display: DisplaySettings::default(),
             power: PowerSettings::default(),

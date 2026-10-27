@@ -871,6 +871,11 @@ launcher lists them. The panel list Deskbar shows is
   the same in-place reload as `tabula-session reload` (disabled outside
   a session).
 
+Appearance ▸ Longest window title is `Settings::tab_title_chars` (100):
+app_server's decorations cut a title to it with an ellipsis
+(`deco::cut`, set by `deco::set_title_chars` on load and on every
+settings change) before measuring and drawing the tab.
+
 ## Desktop shortcuts and tiling (tabula_protocol::shortcuts, app_server keymap.rs, shell/tiling.rs)
 
 app_server's own shortcuts are one table, `tabula_protocol::shortcuts::SHORTCUTS`:

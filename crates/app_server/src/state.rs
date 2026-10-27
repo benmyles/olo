@@ -986,6 +986,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 let settings = crate::desktop::load_settings();
                 // `op` is there (or not) as Preferences ▸ Security says.
                 tabula_xdg::link_op_here(settings.security.passwords.op_cli);
+                crate::shell::deco::set_title_chars(settings.tab_title_chars);
                 settings
             },
             ipc: Default::default(),

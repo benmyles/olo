@@ -1186,5 +1186,17 @@
   "title": "Preferences \u25b8 AI",
   "caption": "AI features go through the Token Pool, or an Anthropic key; Smart Tiling picks its model and how hard it thinks.",
   "image": "2026-10-27/153223-preferences-ai.png"
+ },
+ {
+  "time": "2026-10-27T15:40:28",
+  "title": "Longest window title",
+  "caption": "A tab shows at most this many characters of its title, then an ellipsis (here 20; 100 by default).",
+  "image": "2026-10-27/154028-longest-window-title.png"
+ },
+ {
+  "time": "2026-10-27T15:40:28",
+  "title": "Appearance: Longest window title",
+  "caption": "The new slider in Preferences \u25b8 Appearance.",
+  "image": "2026-10-27/154028-appearance-longest-window-title.png"
  }
 ]
