@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Hide window, anywhere
+
+*00:54* — ⌘M hides the window in front, Tabula's or any other app's, and Hide window is a ⌘Space command (it finds "minimize" too). Change the keys in Preferences ▸ Keyboard.
+
+![Hide window, anywhere](2026-10-27/005406-hide-window-anywhere.png)
+
 ### Log Viewer
 
 *00:46* — A native reader for your journal: Tabula's own programs (or everything), by level and time, with Find, live tail, Show in Context and syntax highlighting on every line. Also a --print command line for agents.

@@ -199,7 +199,7 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
         let mut item = Item::new(Kind::Shortcut, info.title, Action::Shortcut(info.id.into()))
             .subtitle(info.group)
             .icon(shortcut_icon(info.group))
-            .keywords(format!("{} {}", info.id.replace('-', " "), info.group));
+            .keywords(format!("{} {}{}", info.id.replace('-', " "), info.group, if info.action == tabula_protocol::Shortcut::Hide { " minimize minimise" } else { "" }));
         item.keys = keys.first().map(|c| c.symbols());
         // Window shortcuts need a window to act on.
         item.enabled = front.is_some() || info.group != shortcuts::WINDOWS;

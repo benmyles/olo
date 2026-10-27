@@ -237,7 +237,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.restore(&w);
                 }
             }
-            S::Tile(_) | S::Zoom | S::Restore | S::Center | S::NextDisplay | S::PreviousDisplay => {
+            S::Tile(_) | S::Zoom | S::Restore | S::Center | S::Hide | S::NextDisplay | S::PreviousDisplay => {
                 let Some(w) = focused else { return };
                 match shortcut {
                     S::Tile(tile) => self.tile_window(&w, tile),
@@ -252,6 +252,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     }
                     S::Restore => self.restore_frame(&w),
                     S::Center => self.center_window(&w),
+                    S::Hide => self.minimize_window(&w),
                     S::NextDisplay => self.window_to_next_output(&w, false),
                     S::PreviousDisplay => self.window_to_next_output(&w, true),
                     _ => {}

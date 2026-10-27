@@ -904,5 +904,11 @@
   "title": "Log Viewer",
   "caption": "A native reader for your journal: Tabula's own programs (or everything), by level and time, with Find, live tail, Show in Context and syntax highlighting on every line. Also a --print command line for agents.",
   "image": "2026-10-27/004659-log-viewer.png"
+ },
+ {
+  "time": "2026-10-27T00:54:06",
+  "title": "Hide window, anywhere",
+  "caption": "\u2318M hides the window in front, Tabula's or any other app's, and Hide window is a \u2318Space command (it finds \"minimize\" too). Change the keys in Preferences \u25b8 Keyboard.",
+  "image": "2026-10-27/005406-hide-window-anywhere.png"
  }
 ]

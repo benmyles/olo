@@ -5,6 +5,9 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Hide Window everywhere~~: ⌘M (Preferences ▸ Keyboard) and the
+  palette's "Hide window", for any app's window.
+- ~~Log Viewer~~ (70aea93).
 - ~~Viewer: pop-out from Quick Look, PDF forms, text, ink, signatures,
   Save / Save As / Export Flattened~~ (903ba8b, f01bff9).
 - ~~Kit FilePanel~~ (903ba8b).
@@ -253,12 +256,6 @@ as they land (with the commit), add new ones as they come up.
   rather than running parted or mkfs; every destructive step behind a
   clear alert naming the disk; polkit for privileges; agent-readable over
   IPC. Never test it on the real disks: loop devices in a test session.
-- **Hide Window everywhere** (Ben): hiding (BeOS's minimize: the window
-  goes, Deskbar shows it greyed) is a desktop shortcut that works on any
-  window, Tabula's or not (app_server, like Zoom and Close: a default
-  binding in `shortcuts.rs`, listed and changeable in Preferences ▸
-  Keyboard), and a command in the ⌘Space palette ("Hide Window", acting
-  on the window that was active before the palette opened).
 - **Notifications, robust and everywhere** (Ben): today
   `tabula-notifications` serves `org.freedesktop.Notifications` as cards
   in a corner; make it complete, after Haiku's notification_server and

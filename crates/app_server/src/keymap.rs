@@ -569,6 +569,9 @@ mod tests {
         r.up(LEFTSHIFT);
         assert_eq!(r.down(SPACE), [Out::Action(Action::Shortcut(Shortcut::Palette))]);
         r.up(SPACE);
+        // ⌘M hides the window in front, whatever the app.
+        assert_eq!(r.down(50), [Out::Action(Action::Shortcut(Shortcut::Hide))]);
+        assert_eq!(r.up(50), []);
         // ⌘← is still Home.
         assert_eq!(r.down(LEFT), [Key(RIGHTCTRL, false), Key(HOME, true)]);
         r.up(LEFT);
