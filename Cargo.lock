@@ -11066,6 +11066,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabula-chrome"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "liblzma",
+ "quick-xml 0.42.0",
+ "rustls",
+ "sha2 0.11.1",
+ "tabula-kit",
+ "tracing",
+ "ureq",
+ "zstd",
+]
+
+[[package]]
 name = "tabula-deskbar"
 version = "0.1.0"
 dependencies = [

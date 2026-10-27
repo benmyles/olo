@@ -886,5 +886,11 @@
   "title": "Security preferences",
   "caption": "Preferences \u25b8 Security holds how Passwords keeps its secrets: sync with 1Password automatically or only when asked, lock after idle, lock when the screen locks, and how soon copied secrets leave the clipboard. Passwords follows them live.",
   "image": "2026-10-26/235516-security-preferences.png"
+ },
+ {
+  "time": "2026-10-27T00:04:53",
+  "title": "Google Chrome, installed on first use",
+  "caption": "Google Chrome is one of Tabula's applications. The first time it is opened, Tabula offers to download it from Google's own repository, checks it against the repository's checksum, unpacks it natively into the home folder and starts it, drawing with Wayland in a Tabula window.",
+  "image": "2026-10-27/000453-google-chrome-installed-on-first-use.png"
  }
 ]

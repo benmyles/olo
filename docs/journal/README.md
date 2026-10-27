@@ -3,6 +3,14 @@
 Tabula's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-10-27
+
+### Google Chrome, installed on first use
+
+*00:04* — Google Chrome is one of Tabula's applications. The first time it is opened, Tabula offers to download it from Google's own repository, checks it against the repository's checksum, unpacks it natively into the home folder and starts it, drawing with Wayland in a Tabula window.
+
+![Google Chrome, installed on first use](2026-10-27/000453-google-chrome-installed-on-first-use.png)
+
 ## 2026-10-26
 
 ### Security preferences

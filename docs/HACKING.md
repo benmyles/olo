@@ -1247,6 +1247,26 @@ and painted. Servo draws straight into the subsurface; nothing is copied.
   built alongside (Servo's canvas wants it), which broke egui's glyph
   rasterizer: hence `vendor/epaint` (see `vendor/README.md`).
 
+## Google Chrome (apps/chrome)
+
+`tabula-chrome` is Google Chrome in Tabula's applications (`OUR_APPS`).
+With Chrome installed it execs Chrome's own launcher
+(`~/.local/share/tabula/chrome/current/google-chrome`) with its arguments,
+adding `--ozone-platform=wayland` under Wayland (Chrome otherwise goes by
+`XDG_SESSION_TYPE` and falls back to X11). Without it, it offers to
+download it (`install.rs`, on a worker thread, cancellable): Google's rpm
+repository for this CPU (`repomd.xml` → the primary index → the newest
+`google-chrome-stable`), the package downloaded with live progress and
+its sha256 checked against the index, then unpacked natively (the rpm
+lead and headers, the payload's compressor from tag 1125, a "newc" cpio
+stream; only `./opt/google/chrome/`, no setuid bits, no `..`) into
+`<version>/`, with `current` switched over by a rename and older versions
+removed. It installs Chrome's icons into the hicolor theme and a
+`google-chrome.desktop` that starts it through `tabula-chrome` (NoDisplay,
+as Tabula lists it itself; rewritten when it isn't ours). Nothing needs
+root. Test it with a fixture HOME (`tsession run NAME HOME=… XDG_DATA_HOME=…
+target/debug/tabula-chrome`), never Ben's profile.
+
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 
 `lock_screen()` (Ctrl+⌘Q, Deskbar ▸ Lock Screen, `Request::Lock`, the

@@ -1,0 +1,20 @@
+[package]
+name = "tabula-chrome"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "tabula-chrome"
+path = "src/main.rs"
+
+[dependencies]
+tabula-kit.workspace = true
+tracing.workspace = true
+sha2 = "0.11"
+flate2 = "1"
+liblzma = { version = "0.4", features = ["static"] }
+zstd = "0.14"
+quick-xml = "0.42"
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }
