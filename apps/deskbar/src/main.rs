@@ -20,11 +20,22 @@ use tabula_protocol::{Client, Event, Reply, Request, WindowInfo};
 /// Logical width of the vertical Deskbar.
 const WIDTH: f32 = 172.0;
 const TILE_H: f32 = 30.0;
-const TRAY_H: f32 = 22.0;
 const ROW_H: f32 = 24.0;
 const ICON: f32 = 16.0;
-/// Inset of the tray's recessed well from the Deskbar's edges.
+/// The tray: the date and time on a row of their own, then a recessed
+/// well of status icons, each a 16 px glyph on a 22 px grid (so 6 px
+/// between neighbours, and 3 px from the well's edges), centred in rows
+/// of as many as fit.
+const CLOCK_H: f32 = 20.0;
+/// Inset of the tray's text and well from the Deskbar's edges.
 const TRAY_INSET: f32 = 4.0;
+const TRAY_PITCH: f32 = 22.0;
+/// Below the well, before the applications.
+const TRAY_FOOT: f32 = 3.0;
+/// The tray's height with `rows` rows of icons.
+fn tray_height(rows: usize) -> f32 {
+    CLOCK_H + rows as f32 * TRAY_PITCH + TRAY_FOOT
+}
 
 
 use tabula_kit::apps::{OUR_APPS, PREFERENCE_PANELS, our_app};
@@ -78,7 +89,6 @@ struct Deskbar {
     /// A timed caffeinated stretch's end (seconds since the epoch).
     caffeinated_until: Option<u64>,
     caffeinated_lid: bool,
-    show_date: bool,
     clock: tabula_protocol::ClockSettings,
     entries: HashMap<String, Option<DesktopEntry>>,
     height: f32,
@@ -589,30 +599,58 @@ impl App for Deskbar {
         }
         style::label(&painter, logo.right() + 8.0, tile.center().y, egui::Align::Min, "Tabula", egui::FontId::new(14.0, style::bold()), c(pal.panel_text));
 
-        // ---- tray
-        let tray = Rect::from_min_size(pos2(full.left(), tile.bottom()), vec2(full.width(), TRAY_H));
-        painter.rect_filled(tray, 0.0, shade(&pal, pal.panel_background, 1.03));
-        style::bevel(&painter, tray.shrink2(vec2(TRAY_INSET, 2.0)), shade(&pal, pal.panel_background, 1.25), c(pal.shine));
-        let clock = status::clock_text(self.show_date, &self.clock);
-        let font = style::plain_font();
-        let clock_rect = style::label(&painter, tray.right() - TRAY_INSET - 5.0, tray.center().y, egui::Align::Max, clock, font, c(pal.panel_text)).expand(3.0);
-        if ui.interact(clock_rect, egui::Id::unique("clock"), Sense::click()).clicked() {
-            self.show_date = !self.show_date;
-        }
-        let mut x = tray.left() + TRAY_INSET + 5.0;
-        let cy = tray.center().y;
-        let mut tray_item = |ui: &mut egui::Ui, id: &str, draw: &dyn Fn(&egui::Painter, Rect), tip: String| {
-            let r = Rect::from_center_size(pos2(x + 8.0, cy), vec2(16.0, 16.0));
-            draw(&painter, r);
-            x += 21.0;
-            ui.interact(r.expand(2.0), egui::Id::unique(("tray", id)), Sense::click()).on_hover_text(tip)
-        };
+        // ---- tray: the date and time, then the status icons
         let st = self.status.clone();
+        let items = [!st.upgrade.is_empty(), st.agent_screens > 0, st.battery.is_some(), st.wifi.is_some(), st.volume.is_some(), st.notifications.is_some(), true]
+            .iter()
+            .filter(|on| **on)
+            .count();
+        let well_w = full.width() - 2.0 * TRAY_INSET;
+        let per_row = ((well_w / TRAY_PITCH).floor() as usize).max(1);
+        let rows = items.div_ceil(per_row);
+        let tray = Rect::from_min_size(pos2(full.left(), tile.bottom()), vec2(full.width(), tray_height(rows)));
+        painter.rect_filled(tray, 0.0, shade(&pal, pal.panel_background, 1.03));
+        let clock_row = Rect::from_min_size(tray.min, vec2(tray.width(), CLOCK_H));
+        let (date, time) = status::clock_text(&self.clock);
+        let font = style::plain_font();
+        let text_left = clock_row.left() + TRAY_INSET + 5.0;
+        let text_right = clock_row.right() - TRAY_INSET - 5.0;
+        style::label(&painter, text_left, clock_row.center().y, egui::Align::Min, date, font.clone(), c(pal.panel_text));
+        style::label(&painter, text_right, clock_row.center().y, egui::Align::Max, time, font, c(pal.panel_text));
+        if ui.interact(clock_row, egui::Id::unique("clock"), Sense::click()).on_hover_text("Date & Time preferences").clicked() {
+            self.run_command(cx, "pref:datetime");
+        }
+        let well = Rect::from_min_size(pos2(tray.left() + TRAY_INSET, clock_row.bottom()), vec2(well_w, rows as f32 * TRAY_PITCH));
+        style::bevel(&painter, well, shade(&pal, pal.panel_background, 1.25), c(pal.shine));
+        // Each icon's place: rows filled in turn, each row centred, all on
+        // whole pixels.
+        let slots: Vec<Rect> = (0..items)
+            .map(|i| {
+                let (row, col) = (i / per_row, i % per_row);
+                let in_row = (items - row * per_row).min(per_row);
+                let left = well.left() + ((well.width() - in_row as f32 * TRAY_PITCH) / 2.0).floor();
+                Rect::from_min_size(pos2(left + col as f32 * TRAY_PITCH + 3.0, well.top() + row as f32 * TRAY_PITCH + 3.0), vec2(ICON, ICON))
+            })
+            .collect();
+        let mut slot = slots.iter();
+        let mut tray_item = |ui: &mut egui::Ui, id: &str, draw: &dyn Fn(&egui::Painter, Rect), tip: String| {
+            let r = *slot.next().expect("a slot for each tray item");
+            draw(&painter, r);
+            ui.interact(r.expand(3.0), egui::Id::unique(("tray", id)), Sense::click()).on_hover_text(tip)
+        };
         if !st.upgrade.is_empty() {
             let n = st.upgrade.len();
             let tip = format!("A new build of Tabula is ready ({n} program{}). Click to upgrade.", if n == 1 { "" } else { "s" });
             if tray_item(ui, "upgrade", &|p, r| status::draw_upgrade(p, r, &pal), tip).clicked() {
                 self.ask_upgrade(cx);
+            }
+        }
+        // Agents at work on screens of their own: click to watch them.
+        if st.agent_screens > 0 {
+            let n = st.agent_screens;
+            let tip = if n == 1 { "An agent screen is running. Click to watch it.".to_string() } else { format!("{n} agent screens are running. Click to watch them.") };
+            if tray_item(ui, "agent-screens", &|p, r| status::draw_screens(p, r, &pal, n), tip).clicked() {
+                self.run_command(cx, "run:tabula-screen watch");
             }
         }
         if let Some(b) = st.battery {
@@ -815,7 +853,7 @@ impl App for Deskbar {
             cx.resize(self.win, (WIDTH as u32, want as u32));
         }
         // Tick the clock on the minute (or second).
-        ui.ctx().request_repaint_after(status::until_next_tick(self.clock.show_seconds && !self.show_date));
+        ui.ctx().request_repaint_after(status::until_next_tick(self.clock.show_seconds));
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
@@ -880,7 +918,7 @@ fn main() {
     tabula_kit::run("tabula.deskbar", |cx| {
         let win = cx.open_window(WindowOptions {
             title: "Deskbar".into(),
-            size: (WIDTH as u32, (TILE_H + TRAY_H) as u32),
+            size: (WIDTH as u32, (TILE_H + tray_height(1)) as u32),
             kind: WindowKind::Layer(LayerOptions {
                 layer: Layer::Top,
                 anchor: (true, false, false, true),
@@ -905,10 +943,9 @@ fn main() {
             caffeinated: false,
             caffeinated_until: None,
             caffeinated_lid: false,
-            show_date: false,
             clock: Default::default(),
             entries: HashMap::new(),
-            height: TILE_H + TRAY_H,
+            height: TILE_H + tray_height(1),
             scroll_acc: 0.0,
             confirm: None,
             upgrade_ask: None,

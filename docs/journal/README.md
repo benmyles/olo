@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Deskbar: the date and time on their own row, an Agent Screens item
+
+*10:21* — The tray's clock moves to a row of its own (date on the left, time on the right; click for Date & Time), so the well below holds only status icons, each 16 px on a 22 px grid, centred and wrapping to more rows when they don't fit. While agent screens run, a monitor with a pointer shows (with a count when there are several); clicking it opens Agent Screens.
+
+![Deskbar: the date and time on their own row, an Agent Screens item](2026-10-27/102121-deskbar-the-date-and-time-on-their-own-row-an-ag.png)
+
 ### Other programs survive an app_server restart
 
 *10:02* — GNOME Text Editor kept its window through tabula-wlproxy: the first line typed before app_server restarted, the second after, with no reconnect in the app.

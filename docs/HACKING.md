@@ -1564,7 +1564,11 @@ wheel and keys over the picture go to that screen through another worker
 each key event says), with a ring in the keyboard-navigation colour
 round the picture, until Stop Controlling. New Screen starts one; Stop
 Screen… ends one after asking. A viewer running on an agent screen
-leaves that screen out of its list. Test it in a sandbox: a private
+leaves that screen out of its list. While any screen runs (other than
+the one a Deskbar is on), Deskbar's tray shows a monitor with a pointer,
+and their count when there are several (`status::agent_screens` reads
+the same listing every second, judging entries as `Screen::alive` does);
+clicking it runs `tabula-screen watch`. Test it in a sandbox: a private
 `XDG_RUNTIME_DIR`, a fixture HOME and XDG dirs (the screen runs the real
 programs), and a second screen to run the viewer on.
 

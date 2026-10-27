@@ -218,6 +218,19 @@ as they land (with the commit), add new ones as they come up.
   16. *Skill doc:* prefer `wheel` for lists (until 2 is fixed); dropdowns
       open relative to the current item; Find-style fields can be slow
       to update; `windows` doesn't list popups (until 1 is fixed).
+- ~~**Deskbar: an Agent Screens item, and a tidier tray**~~ Done
+  2026-10-27: the date and time have their own row (click: Date & Time);
+  the well holds only icons, 16 px on a 22 px grid, centred, wrapping
+  evenly; a monitor-and-pointer item (with a count) opens Agent Screens.
+  (Ben, 2026-10-27):
+  1. While any agent screen is running, the Deskbar shows an icon for it
+     (in the tray), perhaps with a count; clicking it opens the Agent
+     Screens app.
+  2. The tray no longer fits all its icons. Move the date and time to a
+     row of their own above the tray, so the tray holds only icons.
+  3. Make the tray icons' size and spacing consistent and pixel-perfect
+     (same size, same gaps, aligned to the pixel grid at 1× and 2×,
+     wrapping to more rows evenly), so it looks neat rather than messy.
 - **Google Chrome works great in Tabula** (Ben; the browser work now,
   in place of NetPositive): many sites really need Chrome. When stock Google Chrome is downloaded and run, Tabula
   recognises it: Tabula window chrome (server-side decorations, or

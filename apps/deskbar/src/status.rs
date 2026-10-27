@@ -1,5 +1,6 @@
-//! The tray's view of the machine: clock, battery, Wi-Fi and volume, polled
-//! on a background thread, and the small vector glyphs that show them.
+//! The tray's view of the machine: clock, battery, Wi-Fi, volume and
+//! agent screens, polled on background threads, and the small vector
+//! glyphs that show them.
 
 use std::{
     sync::{
@@ -46,6 +47,8 @@ pub struct Status {
     /// Unread notifications and Do Not Disturb (None: no notification
     /// service).
     pub notifications: Option<NotificationState>,
+    /// Agent screens running (other than the one this Deskbar is on).
+    pub agent_screens: usize,
 }
 
 /// What tabula-session offers to upgrade (see its upgrade.rs).
@@ -55,6 +58,29 @@ fn upgrade() -> Vec<String> {
     let Ok(text) = std::fs::read_to_string(dir.join(format!("tabula-upgrade-{display}.json"))) else { return Vec::new() };
     let v: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
     v["programs"].as_array().map(|a| a.iter().filter_map(|p| p.as_str().map(str::to_owned)).collect()).unwrap_or_default()
+}
+
+/// The agent screens running: those `tabula-screen` lists in
+/// `$XDG_RUNTIME_DIR/tabula-screens` whose session is still alive (as its
+/// `Screen::alive` judges), leaving out the screen this Deskbar is on.
+fn agent_screens() -> usize {
+    let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let own = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
+    let Ok(read) = std::fs::read_dir(dir.join("tabula-screens")) else { return 0 };
+    read.flatten()
+        .filter(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            name.ends_with(".json") && !name.ends_with("-settings.json")
+        })
+        .filter_map(|e| std::fs::read(e.path()).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok()))
+        .filter(|v| v["wayland_display"].as_str() != Some(own.as_str()))
+        .filter(|v| {
+            let cmdline = v["pid"].as_i64().and_then(|pid| std::fs::read(format!("/proc/{pid}/cmdline")).ok()).unwrap_or_default();
+            let args: Vec<&[u8]> = cmdline.split(|b| *b == 0).collect();
+            let session = args.first().is_some_and(|a| a.ends_with(b"tabula-session"));
+            session && args.iter().any(|a| *a == b"--headless") && v["tabula_socket"].as_str().is_some_and(|s| std::path::Path::new(s).exists())
+        })
+        .count()
 }
 
 fn battery() -> Option<Battery> {
@@ -166,6 +192,18 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
             }
         })
         .expect("thread");
+    // Agent screens come and go at an agent's pace: look every second.
+    let screens = shared.clone();
+    std::thread::Builder::new()
+        .name("deskbar-screens".into())
+        .spawn(move || {
+            loop {
+                let n = agent_screens();
+                publish(&screens, |s| s.agent_screens = n);
+                std::thread::sleep(Duration::from_secs(1));
+            }
+        })
+        .expect("thread");
     std::thread::Builder::new()
         .name("deskbar-volume".into())
         .spawn(move || {
@@ -210,8 +248,12 @@ pub fn time_of_day(unix: u64, clock: &tabula_protocol::ClockSettings) -> String 
     format_clock(&tm, false, &clock)
 }
 
-pub fn clock_text(date: bool, clock: &tabula_protocol::ClockSettings) -> String {
-    format_clock(&local_now(), date, clock)
+/// The clock row's date ("Mon Oct 26") and time (in the clock's style;
+/// the date already names the day).
+pub fn clock_text(clock: &tabula_protocol::ClockSettings) -> (String, String) {
+    let tm = local_now();
+    let clock = tabula_protocol::ClockSettings { show_day: false, ..clock.clone() };
+    (format_clock(&tm, true, &clock), format_clock(&tm, false, &clock))
 }
 
 fn format_clock(tm: &libc::tm, date: bool, clock: &tabula_protocol::ClockSettings) -> String {
@@ -393,14 +435,39 @@ pub fn draw_bell(painter: &Painter, r: Rect, p: &Palette, unread: u32, quiet: bo
         painter.line_segment([pos2(cx - 6.0, top - 0.5), pos2(cx + 6.0, lip + 3.0)], s);
     }
     if unread > 0 {
-        let text = if unread > 99 { "99+".to_string() } else { unread.to_string() };
-        let font = egui::FontId::new(8.5, tabula_kit::style::bold());
-        let galley = painter.layout_no_wrap(text, font, Color32::WHITE);
-        let w = (galley.size().x + 4.0).max(10.0);
-        let badge = Rect::from_min_size(pos2(r.right() + 3.0 - w, r.top() - 1.5), vec2(w, 10.0));
-        painter.rect_filled(badge.expand(1.0), 6.0, c(p.panel_background));
-        painter.rect_filled(badge, 5.0, c(p.failure));
-        painter.galley(badge.center() - galley.size() / 2.0, galley, Color32::WHITE);
+        badge(painter, r, p, unread as usize, c(p.failure));
+    }
+}
+
+/// A count in a pill on a glyph's top-right corner.
+fn badge(painter: &Painter, r: Rect, p: &Palette, n: usize, fill: Color32) {
+    let text = if n > 99 { "99+".to_string() } else { n.to_string() };
+    let font = egui::FontId::new(8.5, tabula_kit::style::bold());
+    let galley = painter.layout_no_wrap(text, font, Color32::WHITE);
+    let w = (galley.size().x + 4.0).max(10.0);
+    let badge = Rect::from_min_size(pos2(r.right() + 3.0 - w, r.top() - 1.5), vec2(w, 10.0));
+    painter.rect_filled(badge.expand(1.0), 6.0, c(p.panel_background));
+    painter.rect_filled(badge, 5.0, fill);
+    painter.galley(badge.center() - galley.size() / 2.0, galley, Color32::WHITE);
+}
+
+/// Agent screens are running: a monitor with a pointer on it, and their
+/// count when there is more than one.
+pub fn draw_screens(painter: &Painter, r: Rect, p: &Palette, count: usize) {
+    let s = Stroke::new(1.2, ink(p));
+    let screen = Rect::from_min_size(pos2(r.left() + 1.5, r.top() + 2.5), vec2(13.0, 9.0));
+    painter.rect_filled(screen, 1.5, c(p.keyboard_navigation).gamma_multiply(0.35));
+    painter.rect_stroke(screen, 1.5, s, egui::StrokeKind::Middle);
+    // The stand.
+    let cx = screen.center().x;
+    painter.line_segment([pos2(cx, screen.bottom() + 0.5), pos2(cx, r.bottom() - 2.0)], s);
+    painter.line_segment([pos2(cx - 3.5, r.bottom() - 1.5), pos2(cx + 3.5, r.bottom() - 1.5)], s);
+    // The agent's pointer, in the middle of the screen.
+    let (x, y) = (cx - 2.5, screen.top() + 1.5);
+    painter.add(Shape::convex_polygon(vec![pos2(x, y), pos2(x, y + 5.5), pos2(x + 4.2, y + 4.2)], ink(p), Stroke::NONE));
+    painter.line_segment([pos2(x + 1.8, y + 4.0), pos2(x + 3.4, y + 6.6)], Stroke::new(1.3, ink(p)));
+    if count > 1 {
+        badge(painter, r, p, count, c(p.keyboard_navigation));
     }
 }
 
