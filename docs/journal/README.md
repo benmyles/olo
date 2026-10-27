@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Tiled windows move together when one is resized
+
+*10:58* — Activity Monitor tiled to the left half, StyledEdit top right, Preferences bottom right; dragging Preferences' left edge leftwards moved the whole split: Activity Monitor narrower, both right-hand windows wider, the gap kept. Only windows tiled by a tiling command take part; one moved or sized by hand on its own is never pushed. Neighbours stop at their apps' minimum sizes, and the parts they end up with are kept (also across a reload).
+
+![Tiled windows move together when one is resized](2026-10-27/105805-tiled-windows-move-together-when-one-is-resized.png)
+
 ### Deskbar: the date and time on their own row, an Agent Screens item
 
 *10:21* — The tray's clock moves to a row of its own (date on the left, time on the right; click for Date & Time), so the well below holds only status icons, each 16 px on a 22 px grid, centred and wrapping to more rows when they don't fit. While agent screens run, a monitor with a pointer shows (with a count when there are several); clicking it opens Agent Screens.

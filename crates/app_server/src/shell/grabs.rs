@@ -389,7 +389,8 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerResiz
             handle.unset_grab(self, data, event.serial, event.time, true);
             return;
         }
-        data.forget_tile(&self.window);
+        let e = self.edges;
+        data.tile_drag_begin(&self.window, &super::tiling::sides_of(e.intersects(ResizeEdge::LEFT), e.intersects(ResizeEdge::RIGHT), e.intersects(ResizeEdge::TOP), e.intersects(ResizeEdge::BOTTOM)));
 
         let (mut dx, mut dy) = (event.location - self.start_data.location).into();
 
@@ -430,8 +431,13 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerResiz
         let max_width = if max_size.w == 0 { i32::MAX } else { max_size.w };
         let max_height = if max_size.h == 0 { i32::MAX } else { max_size.h };
 
+        // Tiled neighbours keep a minimum size, and follow.
+        let init = self.initial_window_size;
+        let (dw, dh) = data.tile_drag_limit((new_window_width - init.w, new_window_height - init.h));
+        (new_window_width, new_window_height) = (init.w + dw, init.h + dh);
         new_window_width = new_window_width.max(min_width).min(max_width);
         new_window_height = new_window_height.max(min_height).min(max_height);
+        data.tile_drag_apply((new_window_width - init.w, new_window_height - init.h));
 
         self.last_window_size = (new_window_width, new_window_height).into();
 
@@ -472,6 +478,7 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerResiz
         if handle.current_pressed().is_empty() {
             // No more buttons are pressed, release the grab.
             handle.unset_grab(self, data, event.serial, event.time, true);
+            data.tile_drag_end();
 
             // If toplevel is dead, we can't resize it, so we return early.
             if !self.window.alive() {
@@ -683,6 +690,7 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchResizeSur
             return;
         }
         handle.unset_grab(self, data);
+        data.tile_drag_end();
 
         // If toplevel is dead, we can't resize it, so we return early.
         if !self.window.alive() {
@@ -784,6 +792,8 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchResizeSur
             handle.unset_grab(self, data);
             return;
         }
+        let e = self.edges;
+        data.tile_drag_begin(&self.window, &super::tiling::sides_of(e.intersects(ResizeEdge::LEFT), e.intersects(ResizeEdge::RIGHT), e.intersects(ResizeEdge::TOP), e.intersects(ResizeEdge::BOTTOM)));
 
         let (mut dx, mut dy) = (event.location - self.start_data.location).into();
 
@@ -824,8 +834,13 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchResizeSur
         let max_width = if max_size.w == 0 { i32::MAX } else { max_size.w };
         let max_height = if max_size.h == 0 { i32::MAX } else { max_size.h };
 
+        // Tiled neighbours keep a minimum size, and follow.
+        let init = self.initial_window_size;
+        let (dw, dh) = data.tile_drag_limit((new_window_width - init.w, new_window_height - init.h));
+        (new_window_width, new_window_height) = (init.w + dw, init.h + dh);
         new_window_width = new_window_width.max(min_width).min(max_width);
         new_window_height = new_window_height.max(min_height).min(max_height);
+        data.tile_drag_apply((new_window_width - init.w, new_window_height - init.h));
 
         self.last_window_size = (new_window_width, new_window_height).into();
 

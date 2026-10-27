@@ -211,7 +211,7 @@ pub enum Shortcut {
 }
 
 /// A part of a display a window can be tiled into.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Tile {
     Left,
     Right,

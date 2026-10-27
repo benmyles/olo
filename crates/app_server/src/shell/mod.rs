@@ -48,7 +48,7 @@ use crate::{
 mod element;
 mod grabs;
 pub mod deco;
-mod tiling;
+pub mod tiling;
 mod wm;
 #[cfg(feature = "xwayland")]
 mod x11;

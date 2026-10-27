@@ -5,6 +5,13 @@
 //! mirror). Tiled windows keep space around them
 //! (`Settings::tiling`: gap and margin) and remember how they were, so
 //! Restore (or unzooming) puts them back.
+//!
+//! Tiled windows that meet move together: dragging the edge of one moves
+//! the edges of the other tiled windows on that line (beside it across the
+//! gap, or in line with it), as the split between them. They stay tiled,
+//! in the parts they now have. Windows not tiled by a command are never
+//! pushed, and a tiled window sized by hand with no tiled neighbours is
+//! no longer tiled.
 
 use std::cell::Cell;
 
@@ -27,6 +34,152 @@ use crate::state::{AnvilState, Backend};
 /// display changes).
 #[derive(Default)]
 struct Tiled(Cell<Option<Tile>>);
+
+/// A part of the tile area, as fractions (x, y, width, height), as
+/// `Tile::fraction` gives.
+pub type Part = (f32, f32, f32, f32);
+
+/// The part a tiled window has after its edges were dragged, in place of
+/// its tile's own.
+#[derive(Default)]
+struct TilePart(Cell<Option<Part>>);
+
+/// The narrowest (and shortest) a tiled neighbour is pushed to.
+const MIN_TILE: i32 = 160;
+
+/// A side of a window's frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+/// A tiled window whose `side` follows the edge being dragged.
+#[derive(Debug, Clone)]
+struct Link {
+    window: WindowElement,
+    /// Its frame when the drag began.
+    start: Rectangle<i32, Logical>,
+    side: Side,
+    /// The dragged window's side it follows.
+    follows: Side,
+    /// The smallest frame it takes (its app's minimum, or `MIN_TILE`).
+    min: Size<i32, Logical>,
+}
+
+/// A tiled window's edges being dragged, and the neighbours that follow.
+#[derive(Debug)]
+pub struct TileDrag {
+    window: WindowElement,
+    /// Its frame when the drag began, and the sides being dragged.
+    start: Rectangle<i32, Logical>,
+    sides: Vec<Side>,
+    links: Vec<Link>,
+    /// The size change last applied to the neighbours.
+    applied: (i32, i32),
+}
+
+/// How far `side` of the dragged window moves when its size grows by
+/// (dw, dh).
+fn moved(side: Side, (dw, dh): (i32, i32)) -> i32 {
+    match side {
+        Side::Left => -dw,
+        Side::Right => dw,
+        Side::Top => -dh,
+        Side::Bottom => dh,
+    }
+}
+
+/// `r` with `side` moved by `m`.
+fn with_side(r: Rectangle<i32, Logical>, side: Side, m: i32) -> Rectangle<i32, Logical> {
+    let (mut l, mut t, mut rr, mut b) = (r.loc.x, r.loc.y, r.loc.x + r.size.w, r.loc.y + r.size.h);
+    match side {
+        Side::Left => l += m,
+        Side::Right => rr += m,
+        Side::Top => t += m,
+        Side::Bottom => b += m,
+    }
+    Rectangle::new((l, t).into(), ((rr - l).max(1), (b - t).max(1)).into())
+}
+
+/// The fractions of `area` that `part` would turn into `r` (its inverse).
+pub fn fraction_of(area: Rectangle<i32, Logical>, r: Rectangle<i32, Logical>, gap: i32) -> Part {
+    let half = gap / 2;
+    let (aw, ah) = (area.size.w.max(1), area.size.h.max(1));
+    let (mut l, mut rr) = (r.loc.x - area.loc.x, r.loc.x + r.size.w - area.loc.x);
+    let (mut t, mut b) = (r.loc.y - area.loc.y, r.loc.y + r.size.h - area.loc.y);
+    if l > 0 {
+        l -= gap - half;
+    }
+    if rr < aw {
+        rr += half;
+    }
+    if t > 0 {
+        t -= gap - half;
+    }
+    if b < ah {
+        b += half;
+    }
+    let f = |v: i32, len: i32| v.clamp(0, len) as f32 / len as f32;
+    (f(l, aw), f(t, ah), f(rr, aw) - f(l, aw), f(b, ah) - f(t, ah))
+}
+
+/// The sides a resize drags.
+pub fn sides_of(left: bool, right: bool, top: bool, bottom: bool) -> Vec<Side> {
+    [(left, Side::Left), (right, Side::Right), (top, Side::Top), (bottom, Side::Bottom)].into_iter().filter(|(on, _)| *on).map(|(_, s)| s).collect()
+}
+
+/// The other tiled windows' sides on the line of `dragged`'s `side`: those
+/// meeting it across the gap, and those in line with it. `others` are
+/// their frames.
+fn links_for(dragged: Rectangle<i32, Logical>, sides: &[Side], others: &[(WindowElement, Rectangle<i32, Logical>)], gap: i32) -> Vec<Link> {
+    const NEAR: i32 = 2;
+    let mut out = Vec::new();
+    let right = |r: &Rectangle<i32, Logical>| r.loc.x + r.size.w;
+    let bottom = |r: &Rectangle<i32, Logical>| r.loc.y + r.size.h;
+    for &follows in sides {
+        for (w, r) in others {
+            let side = match follows {
+                Side::Left if (right(r) + gap - dragged.loc.x).abs() <= NEAR => Some(Side::Right),
+                Side::Left if (r.loc.x - dragged.loc.x).abs() <= NEAR => Some(Side::Left),
+                Side::Right if (r.loc.x - gap - right(&dragged)).abs() <= NEAR => Some(Side::Left),
+                Side::Right if (right(r) - right(&dragged)).abs() <= NEAR => Some(Side::Right),
+                Side::Top if (bottom(r) + gap - dragged.loc.y).abs() <= NEAR => Some(Side::Bottom),
+                Side::Top if (r.loc.y - dragged.loc.y).abs() <= NEAR => Some(Side::Top),
+                Side::Bottom if (r.loc.y - gap - bottom(&dragged)).abs() <= NEAR => Some(Side::Top),
+                Side::Bottom if (bottom(r) - bottom(&dragged)).abs() <= NEAR => Some(Side::Bottom),
+                _ => None,
+            };
+            if let Some(side) = side {
+                out.push(Link { window: w.clone(), start: *r, side, follows, min: Size::from((MIN_TILE, MIN_TILE)) });
+            }
+        }
+    }
+    out
+}
+
+/// The size change (dw, dh) cut down so no linked neighbour gets smaller
+/// than `MIN_TILE`.
+fn limit(links: &[Link], (mut dw, mut dh): (i32, i32)) -> (i32, i32) {
+    for l in links {
+        let (len, min) = if matches!(l.side, Side::Left | Side::Right) { (l.start.size.w, l.min.w) } else { (l.start.size.h, l.min.h) };
+        // How far its side may move: out freely, in down to the minimum.
+        let (lo, hi) = match l.side {
+            Side::Left | Side::Top => (i32::MIN / 2, (len - min).max(0)),
+            Side::Right | Side::Bottom => ((min - len).min(0), i32::MAX / 2),
+        };
+        let m = moved(l.follows, (dw, dh)).clamp(lo, hi);
+        match l.follows {
+            Side::Left => dw = -m,
+            Side::Right => dw = m,
+            Side::Top => dh = -m,
+            Side::Bottom => dh = m,
+        }
+    }
+    (dw, dh)
+}
 
 /// The diagonal step between cascaded windows, as when they open.
 const CASCADE: i32 = 24;
@@ -143,13 +296,124 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     fn set_tiled(window: &WindowElement, tile: Option<Tile>) {
         window.user_data().insert_if_missing(Tiled::default);
         window.user_data().get::<Tiled>().unwrap().0.set(tile);
+        Self::set_part(window, None);
     }
 
-    /// Tile a window into part of its display.
+    fn set_part(window: &WindowElement, part: Option<Part>) {
+        window.user_data().insert_if_missing(TilePart::default);
+        window.user_data().get::<TilePart>().unwrap().0.set(part);
+    }
+
+    fn custom_part(window: &WindowElement) -> Option<Part> {
+        window.user_data().get::<TilePart>().and_then(|p| p.0.get())
+    }
+
+    /// How a window is tiled (its tile, and the part its edges were
+    /// dragged to), to keep across a restart.
+    pub fn tile_state(window: &WindowElement) -> (Option<Tile>, Option<Part>) {
+        (Self::tiled(window), Self::tiled(window).and(Self::custom_part(window)))
+    }
+
+    /// A window back from a restart, tiled as it was.
+    pub fn set_tile_state(window: &WindowElement, tile: Option<Tile>, part: Option<Part>) {
+        Self::set_tiled(window, tile);
+        Self::set_part(window, tile.and(part));
+    }
+
+    /// Tile a window into part of its display (a tiling command: its
+    /// tile's own part).
     pub fn tile_window(&mut self, window: &WindowElement, tile: Tile) {
         let Some(area) = self.window_output(window).and_then(|o| self.tile_area(&o)) else { return };
         self.set_frame(window, part(area, tile.fraction(), self.tile_gap()), true);
         Self::set_tiled(window, Some(tile));
+    }
+
+    /// Put a tiled window back in its part of its display: its tile's, or
+    /// the one its edges were dragged to.
+    pub fn retile(&mut self, window: &WindowElement, tile: Tile) {
+        let Some(custom) = Self::custom_part(window) else { return self.tile_window(window, tile) };
+        let Some(area) = self.window_output(window).and_then(|o| self.tile_area(&o)) else { return };
+        self.set_frame(window, part(area, custom, self.tile_gap()), true);
+    }
+
+    /// An edge drag of `window` (`sides`) is starting or going on: the
+    /// first time, find its tiled neighbours. A tiled window with none is
+    /// being sized away from its tile by hand: no longer tiled.
+    pub fn tile_drag_begin(&mut self, window: &WindowElement, sides: &[Side]) {
+        if self.tile_drag.as_ref().is_some_and(|d| d.window == *window) {
+            return;
+        }
+        let mut links = Vec::new();
+        let start = self.space.element_geometry(window).unwrap_or_default();
+        if Self::tiled(window).is_some()
+            && !self.is_zoomed(window)
+            && let (Some(output), Some(frame)) = (self.window_output(window), self.space.element_geometry(window))
+        {
+            let others: Vec<_> = self
+                .windows_on(&output)
+                .into_iter()
+                .filter(|w| w != window && Self::tiled(w).is_some() && !self.is_zoomed(w))
+                .filter_map(|w| Some((w.clone(), self.space.element_geometry(&w)?)))
+                .collect();
+            links = links_for(frame, sides, &others, self.tile_gap());
+            for l in &mut links {
+                l.min = self.min_frame(&l.window);
+            }
+        }
+        if links.is_empty() {
+            self.forget_tile(window);
+        }
+        self.tile_drag = Some(TileDrag { window: window.clone(), start, sides: sides.to_vec(), links, applied: (0, 0) });
+    }
+
+    /// The smallest frame a window takes: its app's minimum content size
+    /// (if it gives one) with the tab and border, and never under
+    /// `MIN_TILE`.
+    fn min_frame(&self, window: &WindowElement) -> Size<i32, Logical> {
+        use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
+        let content = window.wl_surface().map(|s| with_states(&s, |st| st.cached_state.get::<SurfaceCachedState>().current().min_size)).unwrap_or_default();
+        let frame = self.space.element_geometry(window).map(|g| g.size).unwrap_or_default();
+        let extra = frame - window.content_size();
+        Size::from(((content.w + extra.w).max(MIN_TILE), (content.h + extra.h).max(MIN_TILE)))
+    }
+
+    /// The size change the drag may make (neighbours keep a minimum).
+    pub fn tile_drag_limit(&self, d: (i32, i32)) -> (i32, i32) {
+        self.tile_drag.as_ref().map_or(d, |t| limit(&t.links, d))
+    }
+
+    /// The dragged window's size changed by `d` from where it began: move
+    /// its neighbours' sides with it.
+    pub fn tile_drag_apply(&mut self, d: (i32, i32)) {
+        let Some(t) = self.tile_drag.as_mut() else { return };
+        if t.applied == d || t.links.is_empty() {
+            return;
+        }
+        t.applied = d;
+        let moves: Vec<_> = t.links.iter().map(|l| (l.window.clone(), with_side(l.start, l.side, moved(l.follows, d)))).collect();
+        for (w, r) in moves {
+            if self.space.element_geometry(&w) != Some(r) {
+                self.set_frame(&w, r, false);
+            }
+        }
+    }
+
+    /// The drag ended: the dragged window and its neighbours keep the
+    /// parts they now have.
+    pub fn tile_drag_end(&mut self) {
+        let Some(t) = self.tile_drag.take() else { return };
+        if t.links.is_empty() {
+            return;
+        }
+        let gap = self.tile_gap();
+        let Some(area) = self.window_output(&t.window).and_then(|o| self.tile_area(&o)) else { return };
+        let mut frames: Vec<(WindowElement, Rectangle<i32, Logical>)> = t.links.iter().filter_map(|l| Some((l.window.clone(), self.space.element_geometry(&l.window)?))).collect();
+        // Its own frame as the drag left it (it may not have drawn it yet).
+        let own = t.sides.iter().fold(t.start, |r, &side| with_side(r, side, moved(side, t.applied)));
+        frames.push((t.window.clone(), own));
+        for (w, r) in frames {
+            Self::set_part(&w, Some(fraction_of(area, r, gap)));
+        }
     }
 
     /// Back to how it was before it was tiled or zoomed.
@@ -162,6 +426,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// so unzooming it or moving it to another display won't put it back.
     pub fn forget_tile(&mut self, window: &WindowElement) {
         Self::set_tiled(window, None);
+        if self.tile_drag.as_ref().is_some_and(|d| d.window == *window) {
+            self.tile_drag = None;
+        }
         if let Some(z) = window.user_data().get::<ZoomedFrom>() {
             z.0.borrow_mut().take();
         }
@@ -268,7 +535,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return;
         }
         if let Some(tile) = Self::tiled(window) {
-            self.tile_window(window, tile);
+            self.retile(window, tile);
             return;
         }
         let (Some(area), Some(frame)) = (self.zoom_area(window), self.space.element_geometry(window)) else { return };
@@ -416,6 +683,23 @@ mod tests {
         assert_eq!(part(area, Tile::BottomRight.fraction(), 10), r(505, 305, 495, 295));
         assert_eq!(part(area, Tile::CenterThird.fraction(), 0), r(333, 0, 334, 600));
         assert_eq!(inset(area, 8), r(8, 8, 984, 584));
+    }
+
+    #[test]
+    fn dragged_parts_come_back_as_they_were() {
+        // A part's frame turned back into fractions makes the same frame.
+        let area = r(8, 8, 1088, 784);
+        for tile in [Tile::Left, Tile::TopRight, Tile::BottomRight, Tile::CenterThird] {
+            let frame = part(area, tile.fraction(), 8);
+            assert_eq!(part(area, fraction_of(area, frame, 8), 8), frame, "{tile:?}");
+        }
+        // The left half dragged 130 px narrower stays that size.
+        let narrower = with_side(part(area, Tile::Left.fraction(), 8), Side::Right, moved(Side::Left, (130, 0)));
+        assert_eq!(narrower.size.w, 540 - 130);
+        assert_eq!(part(area, fraction_of(area, narrower, 8), 8), narrower);
+        // Growing by 130 to the left moves that side left; the right stays.
+        let grown = with_side(r(556, 404, 540, 388), Side::Left, moved(Side::Left, (130, 0)));
+        assert_eq!(grown, r(426, 404, 670, 388));
     }
 
     #[test]

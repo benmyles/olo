@@ -319,7 +319,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // own frame stays remembered, for Restore).
         let from = window.user_data().get::<ZoomedFrom>().and_then(|z| z.0.borrow_mut().take());
         if let Some(tile) = Self::tiled(window) {
-            self.tile_window(window, tile);
+            self.retile(window, tile);
             return;
         }
         if let Some(frame) = from {

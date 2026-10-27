@@ -201,6 +201,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub lock: crate::lock::Lock,
     /// Twitcher, while ⌘Tab / ⌘\` is held.
     pub twitch: Option<crate::desktop::Twitch>,
+    /// A tiled window's edges being dragged (see `shell::tiling`).
+    pub tile_drag: Option<crate::shell::tiling::TileDrag>,
     pub twitcher: crate::twitcher::Overlay,
     pub wallpaper: crate::wallpaper::Loader,
     pub cursor_status: CursorImageStatus,
@@ -1009,6 +1011,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             saver: Default::default(),
             lock,
             twitch: None,
+            tile_drag: None,
             twitcher: Default::default(),
             wallpaper: Default::default(),
             cursor_status: CursorImageStatus::default_named(),

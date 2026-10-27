@@ -263,6 +263,19 @@ as they land (with the commit), add new ones as they come up.
   Also worth trying: a timeline with day headers (Today, Yesterday),
   search/filter, and keyboard navigation (arrows, Delete, Enter to open).
   Keep it agent-readable (rows in the tree, named by their text).
+- ~~**Resizing a tiled window resizes its tiled neighbours**~~ Done
+  2026-10-27: dragging an edge moves the whole split (neighbours across
+  the gap and in line), live, stopping at apps' minimum sizes; the parts
+  are kept, also across a reload; only command-tiled windows take part.
+  (Ben, 2026-10-27): e.g. one window tiled to the left half, one to the top
+  right, one to the bottom right; dragging the bottom-right one's left
+  edge to make it wider makes the left one narrower, and dragging the
+  split between the right two moves both. Only windows that were tiled
+  by a tiling command or shortcut take part (remember that per window,
+  and forget it once the window is moved or sized away from its tile by
+  hand); windows placed automatically or by hand are never pushed. It
+  should work as you'd expect: shared edges move together, nothing
+  overlaps or leaves a gap, neighbours keep a sensible minimum size.
 - **Google Chrome works great in Tabula** (Ben; the browser work now,
   in place of NetPositive): many sites really need Chrome. When stock Google Chrome is downloaded and run, Tabula
   recognises it: Tabula window chrome (server-side decorations, or

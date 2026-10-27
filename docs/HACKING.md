@@ -839,8 +839,18 @@ between windows. A tiled or zoomed window remembers its own frame
 (`PreZoom`), which Restore puts back, and which part it was tiled into,
 so it is re-tiled when its display changes. Unzooming goes back to where
 it was zoomed from: its tile, a place Tile All gave it (`ZoomedFrom`), or
-else its own frame. Moving or resizing it by hand forgets the tile
-(`forget_tile`). Moving screens in
+else its own frame. Moving it by hand forgets the tile (`forget_tile`).
+Resizing it by an edge moves its tiled neighbours with it (`TileDrag`,
+driven by the resize grabs): at the drag's start, `links_for` finds the
+other tiled windows on the display with a side on that edge's line
+(across the gap, or in line), which follow it live; the drag stops where
+one would get smaller than its app's minimum or `MIN_TILE`; at the end
+each keeps its new part (`TilePart`, fractions that `part` turns back
+into the same frame: `fraction_of`), which `retile` uses from then on (a
+tiling command starts afresh). A tiled window with no tiled neighbours
+on that line is being sized away from its tile, and forgets it. Windows
+not tiled by a command are never pushed. Tiles and parts are kept across
+a restart in the layout (`Placement::tile`, `part`). Moving screens in
 the arrangement takes their windows along (`fixup_positions`). When displays come
 or go (`follow_main_output` → `rehome_windows`), windows left on none go to
 the main display, cascaded and shrunk to fit, the rest are re-tiled,

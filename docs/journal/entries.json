@@ -1072,5 +1072,11 @@
   "title": "Deskbar: the date and time on their own row, an Agent Screens item",
   "caption": "The tray's clock moves to a row of its own (date on the left, time on the right; click for Date & Time), so the well below holds only status icons, each 16 px on a 22 px grid, centred and wrapping to more rows when they don't fit. While agent screens run, a monitor with a pointer shows (with a count when there are several); clicking it opens Agent Screens.",
   "image": "2026-10-27/102121-deskbar-the-date-and-time-on-their-own-row-an-ag.png"
+ },
+ {
+  "time": "2026-10-27T10:58:05",
+  "title": "Tiled windows move together when one is resized",
+  "caption": "Activity Monitor tiled to the left half, StyledEdit top right, Preferences bottom right; dragging Preferences' left edge leftwards moved the whole split: Activity Monitor narrower, both right-hand windows wider, the gap kept. Only windows tiled by a tiling command take part; one moved or sized by hand on its own is never pushed. Neighbours stop at their apps' minimum sizes, and the parts they end up with are kept (also across a reload).",
+  "image": "2026-10-27/105805-tiled-windows-move-together-when-one-is-resized.png"
  }
 ]

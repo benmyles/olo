@@ -51,6 +51,11 @@ pub struct Placement {
     #[serde(default)]
     pub height: i32,
     pub workspace: u32,
+    /// Tiled by a tiling command (and the part its edges were dragged to).
+    #[serde(default)]
+    pub tile: Option<tabula_protocol::Tile>,
+    #[serde(default)]
+    pub part: Option<(f32, f32, f32, f32)>,
     pub minimized: bool,
     pub focused: bool,
     /// Seconds since the epoch when it was recorded.
@@ -93,7 +98,10 @@ impl<B: Backend + 'static> AnvilState<B> {
             return None;
         }
         let size = w.content_size();
+        let (tile, part) = Self::tile_state(w);
         Some(Placement {
+            tile,
+            part,
             app_id,
             title: w.title(),
             x: loc.x,
@@ -205,6 +213,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let claimed = meta.returning.borrow_mut().take();
         let Some(p) = claimed.or_else(|| self.take_placement(&window)) else { return true };
         self.space.map_element(window.clone(), Point::from((p.x, p.y)), p.focused);
+        Self::set_tile_state(&window, p.tile, p.part);
         meta.restored_focus.set(p.focused.then(std::time::Instant::now));
         if p.workspace != self.workspace {
             self.move_to_workspace(&window, p.workspace);
