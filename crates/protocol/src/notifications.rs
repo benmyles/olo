@@ -23,11 +23,28 @@ pub struct NotificationSettings {
     pub seconds: u32,
     /// By app name, as apps give it.
     pub apps: BTreeMap<String, AppNotifications>,
+    /// How the History window shows them.
+    pub view: HistoryView,
+}
+
+/// The History window's views (its View menu).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HistoryView {
+    /// Newest first under day headings.
+    #[default]
+    List,
+    /// Under their apps, each group folding away.
+    Apps,
+    /// A grid of cards.
+    Cards,
+    /// The same app and title stacked into one, with a count.
+    Conversations,
 }
 
 impl Default for NotificationSettings {
     fn default() -> Self {
-        NotificationSettings { dnd: false, dnd_until: None, schedule: None, seconds: 6, apps: BTreeMap::new() }
+        NotificationSettings { dnd: false, dnd_until: None, schedule: None, seconds: 6, apps: BTreeMap::new(), view: HistoryView::List }
     }
 }
 

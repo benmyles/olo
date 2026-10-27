@@ -244,8 +244,13 @@ as they land (with the commit), add new ones as they come up.
   3. Make the tray icons' size and spacing consistent and pixel-perfect
      (same size, same gaps, aligned to the pixel grid at 1× and 2×,
      wrapping to more rows evenly), so it looks neat rather than messy.
-- **Notifications history: denser, better looking, several views** (Ben,
-  2026-10-27): each entry now wastes a lot of room (a 32 px icon beside a
+- ~~**Notifications history: denser, better looking, several views**~~
+  Done 2026-10-27: two-line rows (16 px icon, bold title with app and
+  time, one line of body; the selected one opens to its whole body and
+  actions), a dot for what is new, day headings, search, the keyboard
+  (arrows, Return, Delete, Escape, ⌘F), and List / By App / Cards /
+  Conversations from the View menu (⌘1–⌘4), remembered.
+  (Ben, 2026-10-27): each entry now wastes a lot of room (a 32 px icon beside a
   stack of app name, title, the sender's site on its own line, a blank
   line, then the body), so only three fit in a 380 px window. Make each
   take far less space and look much better: the app and time on one

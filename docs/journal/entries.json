@@ -1078,5 +1078,11 @@
   "title": "Tiled windows move together when one is resized",
   "caption": "Activity Monitor tiled to the left half, StyledEdit top right, Preferences bottom right; dragging Preferences' left edge leftwards moved the whole split: Activity Monitor narrower, both right-hand windows wider, the gap kept. Only windows tiled by a tiling command take part; one moved or sized by hand on its own is never pushed. Neighbours stop at their apps' minimum sizes, and the parts they end up with are kept (also across a reload).",
   "image": "2026-10-27/105805-tiled-windows-move-together-when-one-is-resized.png"
+ },
+ {
+  "time": "2026-10-27T11:13:44",
+  "title": "Notifications history: denser, with views",
+  "caption": "Two-line rows (icon, bold title with app and time, a line of body), a dot for what is new, day headings and search; List, By App and Cards shown, Conversations stacks a thread. The selected note opens to its whole body and actions.",
+  "image": "2026-10-27/111344-notifications-history-denser-with-views.png"
  }
 ]

@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Notifications history: denser, with views
+
+*11:13* — Two-line rows (icon, bold title with app and time, a line of body), a dot for what is new, day headings and search; List, By App and Cards shown, Conversations stacks a thread. The selected note opens to its whole body and actions.
+
+![Notifications history: denser, with views](2026-10-27/111344-notifications-history-denser-with-views.png)
+
 ### Tiled windows move together when one is resized
 
 *10:58* — Activity Monitor tiled to the left half, StyledEdit top right, Preferences bottom right; dragging Preferences' left edge leftwards moved the whole split: Activity Monitor narrower, both right-hand windows wider, the gap kept. Only windows tiled by a tiling command take part; one moved or sized by hand on its own is never pushed. Neighbours stop at their apps' minimum sizes, and the parts they end up with are kept (also across a reload).

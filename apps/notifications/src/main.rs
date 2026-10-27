@@ -24,6 +24,7 @@
 
 mod cli;
 mod gtk;
+mod history;
 mod markup;
 mod server;
 mod sound;
@@ -42,9 +43,9 @@ use tabula_kit::{
     egui::{self, Align, Color32, ColorImage, Rect, Sense, TextureHandle, TextureOptions, pos2, vec2},
     icons, metrics as m,
     style::{self, c},
-    widgets::{Button, CheckBox, ScrollView, StatusBar, TextControl},
+    widgets::{Button, StatusBar, TextControl},
 };
-use tabula_protocol::{NotificationSettings, NotificationState};
+use tabula_protocol::{HistoryView, NotificationSettings, NotificationState};
 
 const APP_ID: &str = "tabula.notifications";
 /// A card's width (logical).
@@ -102,8 +103,9 @@ struct Notifications {
     /// When `notifications.json` was last read.
     settings_read: Option<SystemTime>,
     history: History,
-    /// The History window.
+    /// The History window, and what it shows.
     history_win: Option<WindowId>,
+    view: history::HistoryState,
     /// `List`'s answer, shared with the bus thread.
     snapshot: Arc<Mutex<String>>,
     /// What Deskbar was last told.
@@ -388,7 +390,9 @@ impl Notifications {
         match self.history_win {
             Some(w) => cx.activate(w),
             None => {
-                self.history_win = Some(cx.open_window(WindowOptions::new("Notifications", 380, 520).min_size(300, 240)));
+                self.history_win = Some(cx.open_window(WindowOptions::new("Notifications", 400, 560).min_size(360, 240)));
+                // What came since it was last open keeps a dot a while.
+                self.view.fresh = self.history.entries.iter().filter(|e| e.unread).map(|e| e.id).collect();
             }
         }
         if self.history.mark_read() {
@@ -401,14 +405,18 @@ impl Notifications {
         self.refresh_settings();
         self.settings.dnd = on;
         self.settings.dnd_until = (on && minutes > 0).then(|| now_secs() + minutes as u64 * 60);
-        if let Err(e) = self.settings.save() {
-            tracing::warn!("notifications: can't save settings: {e}");
-        }
-        self.settings_read = std::fs::metadata(NotificationSettings::path()).and_then(|m| m.modified()).ok();
+        self.save_settings();
         if let Some(until) = self.settings.dnd_until {
             self.tick_after(Duration::from_secs(until.saturating_sub(now_secs())));
         }
         self.publish(false);
+    }
+
+    fn save_settings(&mut self) {
+        if let Err(e) = self.settings.save() {
+            tracing::warn!("notifications: can't save settings: {e}");
+        }
+        self.settings_read = std::fs::metadata(NotificationSettings::path()).and_then(|m| m.modified()).ok();
     }
 
     fn control(&mut self, cx: &mut Cx, c: Control) {
@@ -583,137 +591,6 @@ fn when(secs: u64) -> String {
         format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
     } else {
         format!("{} {}, {:02}:{:02}", MONTHS[tm.tm_mon.clamp(0, 11) as usize], tm.tm_mday, tm.tm_hour, tm.tm_min)
-    }
-}
-
-/// What a click in the history did.
-enum HistoryDid {
-    Open(usize),
-    Forget(usize),
-    Clear,
-    Quiet(bool),
-}
-
-impl Notifications {
-    /// The History window: newest first, Do Not Disturb and Clear All
-    /// above.
-    fn history_ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
-        let p = style::palette(ui.ctx());
-        let full = ui.max_rect();
-        let mut did = None;
-        // The bar: Do Not Disturb, and Clear All.
-        let bar_h = m::CONTROL_HEIGHT + 2.0 * m::SPACING;
-        let mut quiet = self.settings.dnd;
-        let check = Rect::from_min_size(full.min + vec2(m::SPACING, m::SPACING), vec2(150.0, m::CONTROL_HEIGHT));
-        let mut bar = ui.new_child(egui::UiBuilder::new().max_rect(check).layout(egui::Layout::left_to_right(egui::Align::Center)));
-        if bar.add(CheckBox::new(&mut quiet, "Do Not Disturb")).changed() {
-            did = Some(HistoryDid::Quiet(quiet));
-        }
-        let clear_w = m::BUTTON_MIN_WIDTH + 10.0;
-        let clear = Rect::from_min_size(pos2(full.right() - m::SPACING - clear_w, full.top() + m::SPACING), vec2(clear_w, m::CONTROL_HEIGHT));
-        let can_clear = self.history.entries.iter().any(|e| !e.shown);
-        if ui.add_enabled_ui(can_clear, |ui| ui.put(clear, Button::new("Clear All")).clicked()).inner {
-            did = Some(HistoryDid::Clear);
-        }
-        if self.quiet() && !self.settings.dnd {
-            let x = check.right() + m::SPACING;
-            style::label(ui.painter(), x, check.center().y, Align::Min, "Quiet by schedule", style::small_font(), style::disabled_text(&p));
-        }
-        let list = Rect::from_min_max(pos2(full.left(), full.top() + bar_h), full.max);
-        let text_x = PAD + ICON + PAD;
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(list));
-        let entries = &self.history.entries;
-        if entries.is_empty() {
-            child.painter().rect_filled(list, 0.0, c(p.document_background));
-            style::sunken(child.painter(), list, &p, false);
-            style::label(child.painter(), list.center().x, list.center().y, Align::Center, "No notifications", style::plain_font(), style::disabled_text(&p));
-        } else {
-            ScrollView::new("history").background(p.document_background).show(&mut child, |ui| {
-                ui.spacing_mut().item_spacing.y = 0.0;
-                let w = ui.available_width();
-                let text_w = w - text_x - PAD - 14.0;
-                for (i, e) in entries.iter().enumerate().rev() {
-                    let title = galley(ui, &e.summary, c(p.document_text), text_w, 2, style::bold_font());
-                    let mut job = egui::text::LayoutJob::default();
-                    for s in &e.body {
-                        let font = if s.bold { style::bold_font() } else if s.italic { style::italic_font() } else { style::plain_font() };
-                        job.append(&s.text, 0.0, egui::TextFormat::simple(font, c(p.document_text)));
-                    }
-                    job.wrap = egui::text::TextWrapping { max_width: text_w, max_rows: 3, break_anywhere: false, overflow_character: Some('…') };
-                    let body = ui.fonts_mut(|f| f.layout_job(job));
-                    let mut h = PAD + style::SMALL_SIZE + m::TIGHT + title.size().y;
-                    if !e.text.is_empty() {
-                        h += m::TIGHT + body.size().y;
-                    }
-                    let h = h.max(ICON + PAD) + PAD;
-                    let (r, resp) = ui.allocate_exact_size(vec2(w, h.ceil()), Sense::click());
-                    let painter = ui.painter();
-                    if resp.hovered() {
-                        painter.rect_filled(r, 0.0, style::darken(p.document_background, 1.06));
-                    }
-                    let edge = match e.kind {
-                        store::KindName::Important => Some(c(p.keyboard_navigation)),
-                        store::KindName::Error => Some(c(p.failure)),
-                        _ => None,
-                    };
-                    if let Some(color) = edge {
-                        painter.rect_filled(Rect::from_min_size(r.min + vec2(0.0, 2.0), vec2(3.0, r.height() - 4.0)), 0.0, color);
-                    }
-                    let icon_r = Rect::from_min_size(r.min + vec2(PAD, PAD), vec2(ICON, ICON));
-                    let names = named_icons(e.icon.as_deref(), e.desktop_entry.as_deref(), &e.app, e.kind == store::KindName::Error);
-                    let _ = names.iter().any(|n| icons::paint(painter, icon_r, n));
-                    let x = r.left() + text_x;
-                    let top = r.top() + PAD + style::SMALL_SIZE / 2.0;
-                    let dim = style::disabled_text(&p);
-                    style::label(painter, x, top, Align::Min, if e.app.is_empty() { "Notification" } else { &e.app }, style::small_font(), dim);
-                    style::label(painter, r.right() - PAD - 14.0, top, Align::Max, when(e.time), style::small_font(), dim);
-                    let mut ty = r.top() + PAD + style::SMALL_SIZE + m::TIGHT;
-                    painter.galley(pos2(x, ty), title.clone(), c(p.document_text));
-                    ty += title.size().y + m::TIGHT;
-                    if !e.text.is_empty() {
-                        painter.galley(pos2(x, ty), body, c(p.document_text));
-                    }
-                    // Forget it: a × while the pointer is over it.
-                    let close = Rect::from_center_size(pos2(r.right() - PAD, top), vec2(12.0, 12.0));
-                    let mut forget = false;
-                    if resp.hovered() || ui.rect_contains_pointer(close.expand(3.0)) {
-                        let cr = ui.interact(close.expand(3.0), ui.make_persistent_id(("forget", i, e.id)), Sense::click());
-                        close_box(ui.painter(), close, if cr.hovered() { c(p.document_text) } else { dim });
-                        forget = cr.clicked();
-                    }
-                    style::hline(ui.painter(), r.left(), r.right(), r.bottom() - 1.0, style::darken(p.document_background, 1.12));
-                    if forget {
-                        did = Some(HistoryDid::Forget(i));
-                    } else if resp.clicked() {
-                        did = Some(HistoryDid::Open(i));
-                    }
-                }
-            });
-        }
-        match did {
-            Some(HistoryDid::Quiet(on)) => self.set_quiet(on, 0),
-            Some(HistoryDid::Clear) => self.clear_history(cx),
-            Some(HistoryDid::Forget(i)) => {
-                let e = self.history.entries[i].clone();
-                self.history.remove(i);
-                if e.live {
-                    self.take(cx, e.id);
-                    self.bus(|b| b.closed(e.id, Reason::Dismissed));
-                }
-                self.publish(true);
-            }
-            Some(HistoryDid::Open(i)) => {
-                let e = self.history.entries[i].clone();
-                // Still open at the app: what a click on it does there.
-                // Otherwise the app comes forward.
-                if e.live && e.actions.iter().any(|(k, _)| k == "default") {
-                    self.invoke(cx, Some(window), e.id, "default".into());
-                } else {
-                    raise_app(e.desktop_entry.as_deref(), &e.app);
-                }
-            }
-            None => {}
-        }
     }
 }
 
@@ -1004,15 +881,23 @@ impl App for Notifications {
     fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
         if Some(window) == self.history_win {
             self.history_win = None;
+            self.view.fresh.clear();
+            self.view.selected = None;
             cx.close_window(window);
         }
     }
 
     fn menu_bar(&mut self, window: WindowId) -> Option<Vec<tabula_kit::Menu>> {
         (Some(window) == self.history_win).then(|| {
+            let view = self.settings.view;
+            let mut views = tabula_kit::Menu::new("View");
+            for (v, label, command, key) in VIEWS {
+                views = views.item(label, command, Some(key)).checked(view == v);
+            }
             vec![
                 tabula_kit::Menu::new("File").item("Close", "close", Some(egui::Key::W)),
-                tabula_kit::Menu::new("Edit").item("Clear All", "clear", None),
+                tabula_kit::Menu::new("Edit").item("Find", "find", Some(egui::Key::F)).separator().item("Clear All", "clear", None),
+                views,
             ]
         })
     }
@@ -1021,10 +906,31 @@ impl App for Notifications {
         match command {
             "close" => self.close_requested(cx, window),
             "clear" => self.clear_history(cx),
-            _ => {}
+            "find" => self.view.focus_search = true,
+            _ => {
+                if let Some((v, ..)) = VIEWS.iter().find(|(_, _, c, _)| *c == command) {
+                    self.set_view(*v);
+                }
+            }
         }
+        cx.redraw(window);
+    }
+
+    fn save_state(&mut self, _cx: &Cx) -> Option<String> {
+        // The History window comes back, with its search and folds.
+        self.history_win.map(|_| {
+            serde_json::json!({ "history": true, "search": self.view.search, "folded": self.view.folded, "selected": self.view.selected }).to_string()
+        })
     }
 }
+
+/// The History window's views: View menu label, command and key.
+const VIEWS: [(HistoryView, &str, &str, egui::Key); 4] = [
+    (HistoryView::List, "List", "view-list", egui::Key::Num1),
+    (HistoryView::Apps, "By App", "view-apps", egui::Key::Num2),
+    (HistoryView::Cards, "Cards", "view-cards", egui::Key::Num3),
+    (HistoryView::Conversations, "Conversations", "view-conversations", egui::Key::Num4),
+];
 
 /// A small ×.
 fn close_box(painter: &egui::Painter, r: Rect, color: Color32) {
@@ -1115,11 +1021,21 @@ fn main() -> std::process::ExitCode {
             settings_read: None,
             history,
             history_win: None,
+            view: history::HistoryState::default(),
             snapshot,
             told: None,
         };
         app.refresh_settings();
         app.publish(false);
+        // After an upgrade: the History window as it was.
+        if let Some(state) = cx.restored_state().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+            && state["history"] == true
+        {
+            app.view.search = state["search"].as_str().unwrap_or_default().to_owned();
+            app.view.folded = serde_json::from_value(state["folded"].clone()).unwrap_or_default();
+            app.view.selected = state["selected"].as_u64().map(|id| id as u32);
+            app.open_history(cx);
+        }
         app
     });
     std::process::ExitCode::SUCCESS

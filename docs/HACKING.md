@@ -457,7 +457,9 @@ of the way down.
    `style::shortcut` for a ⌘ menu shortcut).
 4. **Lines are one logical pixel** (`style::hline`, `vline`, `frame_rect`,
    `bevel`, `sunken`, `raised`). Snap rects to the pixel grid
-   (`style::snap`). No blurry half-pixel lines.
+   (`style::snap`). No blurry half-pixel lines. An outline's fold mark
+   is `style::latch(painter, rect, open, color)` (BOutlineListView's
+   triangle: right when folded, down when open).
 5. **Icons**: `tabula_kit::icons::paint(painter, rect, "name")` with names
    from `data/icons/manifest.txt` (or freedesktop names / absolute paths).
    Sizes 16 (lists, Deskbar), 32 (Tracker list), 48–64 (Tracker icon view),
@@ -1319,10 +1321,25 @@ notifications.
   Every note not `transient` goes in, unread unless the History window
   is open; an expired card stays "open" there (its actions still work)
   until the app closes it. After a restart nothing is open, and ids carry
-  on after the history's. The History window (`--history`, or Deskbar's
-  bell) lists them newest first: a click runs the default action while
-  the note is open, else brings the app forward; × forgets one; Clear
-  All forgets all but those on screen; opening it marks all read.
+  on after the history's.
+- history.rs: the History window (`--history`, or Deskbar's bell), newest
+  first in one of four views (View menu, ⌘1–⌘4, `view` in
+  `notifications.json`): *List* under day headings, *By App* under
+  folding app headings (with Clear per app), *Cards* in a grid whose
+  rows are as tall as their tallest card, *Conversations* with the same
+  app and title stacked into one with a count. A row is two lines: a
+  16 px icon, the title in bold with the app and time on its line, one
+  line of body; a click selects (the row opens to its whole body, the
+  rest of its conversation and its actions as buttons, or Show APP once
+  it closed), a double click or Return runs the default action while
+  the note is open, else brings the app forward. × or Delete forgets
+  one; Clear All forgets all but those on screen. Opening the window
+  marks all read, but what was unread keeps a blue dot until the window
+  closes or it is selected. The search field (⌘F) takes every word
+  against app, title and body; Escape clears it. For agents each note
+  is a `ListItem` named by its title (with `row`/`rows`), its text as
+  labels. The window, search and folds come back after an upgrade
+  (`save_state`).
 - Settings: `tabula_protocol::NotificationSettings` in
   `notifications.json` (config dir): Do Not Disturb (`dnd`, `dnd_until`,
   a daily `schedule` in local minutes), banner `seconds`, and per-app

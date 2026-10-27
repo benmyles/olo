@@ -415,6 +415,18 @@ pub fn check_mark(p: &Painter, r: Rect, color: Color32) {
     p.add(egui::Shape::line(pts, Stroke::new(1.6, color)));
 }
 
+/// BOutlineListView's latch: a small solid triangle centred in `r`,
+/// pointing right while its group is folded and down while open.
+pub fn latch(p: &Painter, r: Rect, open: bool, color: Color32) {
+    let m = snap(p.ctx(), Rect::from_center_size(r.center(), vec2(8.0, 8.0))).center();
+    let pts = if open {
+        vec![pos2(m.x - 4.0, m.y - 2.0), pos2(m.x + 4.0, m.y - 2.0), pos2(m.x, m.y + 2.5)]
+    } else {
+        vec![pos2(m.x - 2.0, m.y - 4.0), pos2(m.x + 2.5, m.y), pos2(m.x - 2.0, m.y + 4.0)]
+    };
+    p.add(egui::Shape::convex_polygon(pts, color, Stroke::NONE));
+}
+
 /// Right-aligned shortcut label: the ⌘ glyph set tight against the key,
 /// both on one baseline.
 pub fn shortcut(p: &Painter, right_center: Pos2, label: &str, color: Color32) {
