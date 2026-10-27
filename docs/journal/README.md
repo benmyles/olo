@@ -5,6 +5,24 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Quick Look rotates pictures
+
+*02:12* — Quick Look's footer has Rotate Left and Right (⌘L and ⌘R), which turn the picture and save it at once, as on the Mac. Anything more opens in Viewer.
+
+![Quick Look rotates pictures](2026-10-27/021250-quick-look-rotates-pictures.png)
+
+### Viewer: Adjust Size
+
+*02:12* — Image ▸ Adjust Size… resizes the picture, keeping its proportions unless asked not to. Rotate, flip, crop and resize can all be undone, and File ▸ Save writes the picture back in its own format (Save As for another).
+
+![Viewer: Adjust Size](2026-10-27/021250-viewer-adjust-size.png)
+
+### Viewer: crop a picture
+
+*02:12* — Image ▸ Crop… puts a frame over the picture: drag one out, move it or pull its edges; the size shows below and the rest dims. Crop (or Return) keeps it, and the title says the picture is edited until it's saved.
+
+![Viewer: crop a picture](2026-10-27/021250-viewer-crop-a-picture.png)
+
 ### Tracker says when a long copy is done
 
 *01:58* — Through the kit's new notify API: a copy or move that ran 10 s or more posts “Finished copying …”; clicking it shows the folder.

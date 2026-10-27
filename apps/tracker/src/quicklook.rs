@@ -1,7 +1,9 @@
 //! Quick Look: Space on a selected item previews it at once, in a window
 //! that follows the selection (arrow keys step through the folder, Space
 //! or Escape closes). The previews themselves come from `tabula-preview`;
-//! this adds the footer (what it is, pop out to Viewer, Open) and the keys.
+//! this adds the footer (what it is, rotate, pop out to Viewer, Open) and
+//! the keys. Rotating a picture (⌘L / ⌘R, or the footer's buttons) saves it
+//! at once, as Quick Look does on the Mac; anything more is Viewer's job.
 
 use tabula_kit::{
     WindowId,
@@ -10,8 +12,11 @@ use tabula_kit::{
     style::{self, c},
     widgets::Button,
 };
-pub use tabula_preview::{SLOW, Update};
-use tabula_preview::{Item, Preview};
+pub use tabula_preview::{SLOW, Update, edit::EditEvent};
+use tabula_preview::{
+    Body, Item, Preview,
+    edit::{self, Editor, Op},
+};
 
 use crate::{
     fs::{self, Entry},
@@ -30,6 +35,8 @@ pub enum Action {
     Step(isize),
     /// Fill the screen with it, or come back to the window (F).
     Fullscreen,
+    /// Turn the picture a quarter left (false) or right (true) and save it.
+    Rotate(bool),
 }
 
 pub struct QuickLook {
@@ -42,6 +49,14 @@ pub struct QuickLook {
     opener: Option<String>,
     /// The screen is kept awake (a video is playing).
     pub awake: bool,
+    /// Rotating the picture (made at the first turn).
+    editor: Option<Editor>,
+    /// The entry is a picture that can be written back.
+    editable: bool,
+    /// The last rotation couldn't be saved.
+    pub failed: Option<String>,
+    /// What the picture is ("JPEG image"), kept for the note as it turns.
+    what: String,
 }
 
 fn item(e: &Entry) -> Item {
@@ -62,7 +77,8 @@ impl QuickLook {
     pub fn new(source: WindowId, entry: Entry, generation: u64, send: impl Fn(u64, Update) + Send + 'static) -> QuickLook {
         let preview = Preview::new(item(&entry), generation, send);
         let opener = fs::opener_name(&entry);
-        QuickLook { win: None, source, entry, preview, opener, awake: false }
+        let editable = !entry.is_dir && edit::editable(&entry.path);
+        QuickLook { win: None, source, entry, preview, opener, awake: false, editor: None, editable, failed: None, what: String::new() }
     }
 
     pub fn playing_video(&self) -> bool {
@@ -76,7 +92,49 @@ impl QuickLook {
     pub fn retarget(&mut self, entry: Entry, generation: u64, send: impl Fn(u64, Update) + Send + 'static) {
         self.preview.retarget(item(&entry), generation, send);
         self.opener = fs::opener_name(&entry);
+        // A rotation still being written finishes on its own thread.
+        self.editor = None;
+        self.failed = None;
+        self.editable = !entry.is_dir && edit::editable(&entry.path);
         self.entry = entry;
+    }
+
+    /// Turn the picture a quarter and save it in place; the result comes
+    /// back to [`QuickLook::edited`] through `send`.
+    pub fn rotate(&mut self, right: bool, send: impl Fn(EditEvent) + Send + 'static) {
+        if !self.editable {
+            return;
+        }
+        if self.editor.is_none() {
+            let Some(Body::Image { full, .. }) = self.preview.body() else { return };
+            self.what = self.preview.note().split(", ").next().unwrap_or_default().to_owned();
+            self.editor = Some(Editor::new(self.entry.path.clone(), (full[0] as u32, full[1] as u32), send));
+        }
+        let e = self.editor.as_mut().expect("made");
+        e.push(if right { Op::RotateRight } else { Op::RotateLeft });
+        e.save(self.entry.path.clone());
+        self.failed = None;
+    }
+
+    /// The editor reports `event` (for the entry at `path`); true when it
+    /// was this one's.
+    pub fn edited(&mut self, path: &std::path::Path, event: EditEvent) -> bool {
+        let Some(e) = self.editor.as_mut().filter(|e| e.path == path) else { return false };
+        e.handle(&event);
+        match event {
+            EditEvent::Shown { image, smaller, full, .. } => {
+                let note = format!("{}, {} × {}", self.what, full[0] as u32, full[1] as u32);
+                self.preview.show_edited(image, smaller, full, note);
+            }
+            EditEvent::Saved(_) => {}
+            EditEvent::Failed(why) => self.failed = Some(why),
+        }
+        true
+    }
+
+    /// A rotation is being worked out or written.
+    pub fn busy(&self) -> bool {
+        self.editor.as_ref().is_some_and(|e| e.busy || e.saving)
     }
 
     /// Apply an update; true when a new body arrived (the window may want
@@ -91,7 +149,10 @@ impl QuickLook {
 
     /// The window size that suits what is shown, within the screen.
     pub fn ideal_size(&self, screen: Option<(u32, u32)>) -> (u32, u32) {
-        self.preview.ideal_size(screen, FOOTER)
+        let (w, h) = self.preview.ideal_size(screen, FOOTER);
+        // Room for the note beside the rotate buttons.
+        let min = if self.editable && self.preview.is_image() { 460 } else { 0 };
+        (w.max(min.min(screen.map_or(u32::MAX, |s| s.0))), h)
     }
 
     pub fn ui(&mut self, ui: &mut Ui) -> Option<Action> {
@@ -107,6 +168,8 @@ impl QuickLook {
                 action = Some(Action::Step(1));
             } else if i.key_pressed(Key::F) && i.modifiers.is_none() {
                 action = Some(Action::Fullscreen);
+            } else if i.modifiers.command && (i.key_pressed(Key::L) || i.key_pressed(Key::R)) {
+                action = Some(Action::Rotate(i.key_pressed(Key::R)));
             }
         });
         let full = ui.max_rect();
@@ -133,21 +196,41 @@ impl QuickLook {
         // Pop out is a square button showing a window with an arrow.
         let pw = m::CONTROL_HEIGHT + 4.0;
         let pop = !self.entry.is_dir && self.opener.as_deref() != Some("Viewer");
-        let text_right = inner.right() - bw - m::SPACING - if pop { pw + m::TIGHT } else { 0.0 };
-        let mut job =
-            egui::text::LayoutJob::simple_singleline(self.preview.note(), style::plain_font(), style::disabled_text(&p));
+        // Rotate left and right, for pictures that can be saved.
+        let rotate = self.editable && self.preview.is_image();
+        let rotate_w = if rotate { 2.0 * (pw + m::TIGHT) + m::SPACING } else { 0.0 };
+        let text_right = inner.right() - bw - m::SPACING - if pop { pw + m::TIGHT } else { 0.0 } - rotate_w;
+        let note = match &self.failed {
+            Some(why) => why.clone(),
+            None if self.busy() => "Rotating…".into(),
+            None => self.preview.note(),
+        };
+        let mut job = egui::text::LayoutJob::simple_singleline(note, style::plain_font(), style::disabled_text(&p));
         job.wrap = egui::text::TextWrapping::truncate_at_width((text_right - icon.right() - m::TIGHT * 2.0).max(0.0));
         let g = painter.layout_job(job);
         let pos = style::text_origin(ui.ctx(), &g, icon.right() + m::TIGHT * 2.0, inner.center().y, style::PLAIN_SIZE);
         painter.galley(pos, g, style::disabled_text(&p));
         let br = Rect::from_min_max(pos2(inner.right() - bw, inner.top()), inner.max);
         let mut action = None;
+        let mut left = br.left();
         if pop {
-            let pr = Rect::from_min_size(pos2(br.left() - m::TIGHT - pw, inner.top()), vec2(pw, inner.height()));
+            let pr = Rect::from_min_size(pos2(left - m::TIGHT - pw, inner.top()), vec2(pw, inner.height()));
             let resp = ui.put(pr, Button::new("").min_width(pw)).on_hover_text("Open in Viewer");
             pop_out_glyph(ui.painter(), pr, &p);
             if resp.clicked() {
                 action = Some(Action::PopOut);
+            }
+            left = pr.left();
+        }
+        if rotate {
+            let right_r = Rect::from_min_size(pos2(left - m::SPACING - pw, inner.top()), vec2(pw, inner.height()));
+            let left_r = right_r.translate(vec2(-pw - m::TIGHT, 0.0));
+            for (r, right, tip) in [(left_r, false, "Rotate Left (⌘L)"), (right_r, true, "Rotate Right (⌘R)")] {
+                let resp = ui.put(r, Button::new("").min_width(pw)).on_hover_text(tip);
+                rotate_glyph(ui.painter(), r, right, &p);
+                if resp.clicked() {
+                    action = Some(Action::Rotate(right));
+                }
             }
         }
         if ui.put(br, Button::new(&label).min_width(bw)).clicked() {
@@ -155,6 +238,29 @@ impl QuickLook {
         }
         action
     }
+}
+
+/// A three-quarter circle with an arrowhead, turning left or right.
+fn rotate_glyph(painter: &egui::Painter, r: Rect, right: bool, p: &tabula_kit::theme::Palette) {
+    let ink = c(p.control_text);
+    let s = egui::Stroke::new(1.0, ink);
+    let o = r.center() + vec2(0.0, 0.5);
+    let flip = if right { 1.0 } else { -1.0 };
+    // From the top, round the far side and back up to the near one.
+    let points: Vec<egui::Pos2> = (0..=24)
+        .map(|k| {
+            let a = -std::f32::consts::FRAC_PI_2 - flip * (k as f32 / 24.0) * 1.5 * std::f32::consts::PI;
+            pos2(o.x + 5.0 * a.cos(), o.y + 5.0 * a.sin())
+        })
+        .collect();
+    painter.add(egui::Shape::line(points, s));
+    // The arrowhead at the top, pointing the way it turns.
+    let tip = pos2(o.x + flip * 2.5, o.y - 5.0);
+    painter.add(egui::Shape::convex_polygon(
+        vec![pos2(tip.x - flip * 3.0, tip.y - 3.0), tip, pos2(tip.x - flip * 3.0, tip.y + 3.0)],
+        ink,
+        egui::Stroke::NONE,
+    ));
 }
 
 /// A small window frame with an arrow leaving its top-right corner.

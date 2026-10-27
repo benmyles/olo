@@ -191,6 +191,8 @@ enum Msg {
     Preview(u64, quicklook::Update),
     /// Quick Look of a generation is taking a while: open the window.
     PreviewSlow(u64),
+    /// Quick Look rotated (or saved) the picture at a path.
+    Edited(PathBuf, quicklook::EditEvent),
     /// Preferences ▸ Tracker changed (or was first read).
     Settings(tabula_protocol::TrackerSettings),
 }
@@ -1265,6 +1267,11 @@ impl Tracker {
                 fs::open_in_viewer(&e.path);
             }
             Some(quicklook::Action::Fullscreen) => cx.set_fullscreen(win, !cx.is_fullscreen(win)),
+            Some(quicklook::Action::Rotate(right)) => {
+                let (proxy, path) = (cx.proxy(), q.entry.path.clone());
+                q.rotate(right, move |ev| proxy.send(Msg::Edited(path.clone(), ev)));
+                cx.redraw(win);
+            }
             Some(quicklook::Action::Step(d)) => {
                 let next = match self.windows.get_mut(&source) {
                     Some(Win::Folder(f)) => f.step_selection(d),
@@ -1497,6 +1504,19 @@ impl App for Tracker {
                         cx.redraw(id);
                     }
                     None => {}
+                }
+            }
+            Msg::Edited(path, event) => {
+                let screen = cx.screen_size();
+                let Some(q) = self.quicklook.as_mut() else { return };
+                let shown = matches!(event, quicklook::EditEvent::Shown { .. });
+                if q.edited(&path, event)
+                    && let Some(id) = q.win
+                {
+                    if shown && !cx.is_fullscreen(id) {
+                        cx.resize(id, q.ideal_size(screen));
+                    }
+                    cx.redraw(id);
                 }
             }
             Msg::PreviewSlow(generation) => {

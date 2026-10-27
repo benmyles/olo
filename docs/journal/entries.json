@@ -952,5 +952,23 @@
   "title": "Tracker says when a long copy is done",
   "caption": "Through the kit's new notify API: a copy or move that ran 10 s or more posts \u201cFinished copying \u2026\u201d; clicking it shows the folder.",
   "image": "2026-10-27/015834-tracker-says-when-a-long-copy-is-done.png"
+ },
+ {
+  "time": "2026-10-27T02:12:50",
+  "title": "Viewer: crop a picture",
+  "caption": "Image \u25b8 Crop\u2026 puts a frame over the picture: drag one out, move it or pull its edges; the size shows below and the rest dims. Crop (or Return) keeps it, and the title says the picture is edited until it's saved.",
+  "image": "2026-10-27/021250-viewer-crop-a-picture.png"
+ },
+ {
+  "time": "2026-10-27T02:12:50",
+  "title": "Viewer: Adjust Size",
+  "caption": "Image \u25b8 Adjust Size\u2026 resizes the picture, keeping its proportions unless asked not to. Rotate, flip, crop and resize can all be undone, and File \u25b8 Save writes the picture back in its own format (Save As for another).",
+  "image": "2026-10-27/021250-viewer-adjust-size.png"
+ },
+ {
+  "time": "2026-10-27T02:12:50",
+  "title": "Quick Look rotates pictures",
+  "caption": "Quick Look's footer has Rotate Left and Right (\u2318L and \u2318R), which turn the picture and save it at once, as on the Mac. Anything more opens in Viewer.",
+  "image": "2026-10-27/021250-quick-look-rotates-pictures.png"
  }
 ]

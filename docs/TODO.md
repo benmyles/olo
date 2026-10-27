@@ -138,8 +138,10 @@ as they land (with the commit), add new ones as they come up.
   vault the account can read is synced, and errors or items that can't
   sync are listed clearly (by vault and item, with the reason), not as a
   wall of red text.
-- **Quick Look / Viewer: basic image editing** (Ben): crop, resize,
-  rotate and flip images, then Save / Save As (as the PDF tools do).
+- ~~**Quick Look / Viewer: basic image editing**~~ (Ben): crop, resize,
+  rotate and flip images, then Save / Save As (as the PDF tools do). Done:
+  the Viewer's Image menu (rotate, flip, crop overlay, Adjust Size) with
+  undo, Save / Save As / Revert; Quick Look rotates and saves in place.
 - **NetPositive is tabled** (Ben, 2026-10-26): no more work on it for
   now; Chrome is the web browser to make great instead (below). Left
   open there: app.fastmail.com never finishes loading; a field's context

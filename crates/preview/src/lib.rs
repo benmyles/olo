@@ -8,6 +8,7 @@
 pub mod archive;
 pub mod audio;
 pub mod doc;
+pub mod edit;
 pub mod input;
 pub mod load;
 pub mod media;
@@ -93,6 +94,8 @@ pub struct Preview {
     /// Images can be zoomed and panned (Viewer), not just fitted.
     zoomable: bool,
     view: ImageView,
+    /// Pan and zoom are paused (a tool over the picture takes the drags).
+    still: bool,
 }
 
 /// Zoom and pan of an image: `zoom` is points per image pixel (None fits
@@ -104,6 +107,8 @@ struct ImageView {
     /// The scale the image was last shown at, and the fit scale.
     shown: f32,
     fit: f32,
+    /// Where it was last drawn, and in what.
+    rect: Option<(Rect, Rect)>,
 }
 
 pub const MIN_ZOOM: f32 = 0.05;
@@ -141,6 +146,7 @@ impl Preview {
             max_image: if zoomable { load::MAX_ZOOMABLE } else { load::MAX_IMAGE },
             zoomable,
             view: ImageView::default(),
+            still: false,
         };
         q.spawn(send);
         q
@@ -317,6 +323,29 @@ impl Preview {
         self.view.shown
     }
 
+    /// Show an edited picture in place of the one loaded (see [`edit`]).
+    pub fn show_edited(&mut self, image: load::Image, smaller: Vec<load::Image>, full: [f32; 2], note: String) {
+        self.textures.clear();
+        // Same size (a flip): stay where we were; otherwise fit it again.
+        let same = matches!(&self.body, Some(Body::Image { full: f, .. }) if *f == full);
+        if !same {
+            self.view = ImageView::default();
+        }
+        self.body = Some(Body::Image { image, smaller, full, note });
+        self.failed = None;
+    }
+
+    /// Where the picture was last drawn, and the area it was drawn in.
+    pub fn image_rect(&self) -> Option<(Rect, Rect)> {
+        self.view.rect.filter(|_| self.is_image())
+    }
+
+    /// Pause pan and zoom by dragging (a tool over the picture wants the
+    /// drags).
+    pub fn set_still(&mut self, on: bool) {
+        self.still = on;
+    }
+
     /// Whether the image is fitted to the window (no zoom chosen).
     pub fn image_fitted(&self) -> bool {
         self.view.zoom.is_none()
@@ -401,7 +430,7 @@ impl Preview {
                 let fit = ((r.width() - 2.0 * m::SPACING) / full.x).min((r.height() - 2.0 * m::SPACING) / full.y).clamp(0.001, 1.0);
                 let v = &mut self.view;
                 v.fit = fit;
-                if self.zoomable {
+                if self.zoomable && !self.still {
                     pan_and_zoom(ui, r, full, v, (id, "image"));
                 }
                 let k = v.zoom.unwrap_or(fit);
@@ -418,6 +447,7 @@ impl Preview {
                     Some(j) => texture(ui.ctx(), &mut self.textures, usize::MAX - j, &smaller[j]),
                     None => texture(ui.ctx(), &mut self.textures, 0, image),
                 };
+                v.rect = Some((ir, r));
                 checker(ui.painter(), ir.intersect(r), &p);
                 ui.painter().image(tex.id(), ir, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
             }
