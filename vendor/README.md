@@ -84,3 +84,7 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
     render after the switch changes (so the scene is rebuilt without the
     page doing anything) and darkens its own clear colour, which is what
     a page without a background shows.
+
+## Not crates
+
+- **bebook/**: the Be Book as Markdown, for reference (see its README).

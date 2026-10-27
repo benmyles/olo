@@ -1,0 +1,224 @@
+<!-- Classes And Methods - The Midi Kit - BSynth -->
+
+## BSynth
+
+| Derived From:| –  
+---|---  
+Mix-in Classes:| –  
+Declared In:| `midi/Synth.h`  
+Library:| `libmidi.so`  
+Allocation:| –  
+[Class Overview](BSynth_Overview.md "BSynth")
+
+  * [Constructor and Destructor](BSynth.md#BSynth_ConstructorDestructor)
+  * [Member Functions](BSynth.md#BSynth_MemberFunctions)
+
+  
+  
+* * *
+
+### Constructor and Destructor
+
+#### BSynth()
+
+`BSynth();` `BSynth(synth_mode mode);`
+
+Creates and initiailzes a new `BSynth` object and sets `be_synth` to point to it. The `BSynth` that `be_synth` currently points to (if any) is deleted. You can only construct one `BSynth` object per application. Every application that wants to use the synthesizer must have its own `BSynth`—you can't "share" another application's `be_synth` object. The constructors for the other synthesis classes ([`BMidiSynth`](BMidiSynth.md "BMidiSynth"), [`BMidiSynthFile`](BMidiSynthFile.md "BMidiSynthFile"), and [`BSamples`](BSamples.md "BSamples")) create a `BSynth` for you if one doesn't already exist.
+
+The default constructor sets the following synthesis parameters, shown here with the functions that you can use to reset the values—and that you should refer to for further explanation:
+
+Parameter| Value| Function  
+---|---|---  
+Output sampling rate| 22 kHz| [`SetSamplingRate()`](BSynth.md#BSynth_SetSamplingRate "SetSamplingRate\(\), SamplingRate\(\), SetInterpolation\(\), Interpolation\(\), interpolation_mode")  
+Sample interpolation| `B_LINEAR_INTERPOLATION`| [`SetInterpolation()`](BSynth.md#BSynth_SetInterpolation)  
+Max synth voices| 28| [`SetVoiceLimits()`](BSynth.md#BSynth_SetVoiceLimits "SetVoiceLimits\(\), MaxSynthVoices\(\), MaxSampleVoices\(\), LimiterThreshhold\(\)")  
+Max sample voices| 4| [`SetVoiceLimits()`](BSynth.md#BSynth_SetVoiceLimits "SetVoiceLimits\(\), MaxSynthVoices\(\), MaxSampleVoices\(\), LimiterThreshhold\(\)")  
+Limiter threshhold| 7| [`SetVoiceLimits()`](BSynth.md#BSynth_SetVoiceLimits "SetVoiceLimits\(\), MaxSynthVoices\(\), MaxSampleVoices\(\), LimiterThreshhold\(\)")  
+Reverb enabled| `true`| [`EnableReverb()`](BSynth.md#BSynth_EnableReverb "EnableReverb\(\), IsReverbEnabled\(\), SetReverb\(\), Reverb\(\), reverb_mode")  
+Reverb| `B_REVERB_BALLROOM`| [`SetReverb()`](BSynth.md#BSynth_SetReverb)  
+Synth mode| `B_SYNTH_NONE`| [`LoadSynthData()`](BSynth.md#BSynth_LoadSynthData "LoadSynthData\(\), Unload\(\), SynthMode\(\), IsLoaded\(\)")  
+  
+You must call [`LoadSynthData()`](BSynth.md#BSynth_LoadSynthData "LoadSynthData\(\), Unload\(\), SynthMode\(\), IsLoaded\(\)") after calling the default constructor to set the synth mode.
+
+The synth_mode constructor sets the synthesis parameters (as above) and then sets the synth mode to the argument, one of `B_BIG_SYNTH`, `B_LITTLE_SYNTH`, or `B_SAMPLES_ONLY`. See [`LoadSynthData()`](BSynth.md#BSynth_LoadSynthData "LoadSynthData\(\), Unload\(\), SynthMode\(\), IsLoaded\(\)") for synth_mode definitions.
+
+#### ~BSynth()
+
+`virtual ~BSynth();`
+
+The destructor stops the synthesizer if it's currently playing anything, frees all synthesis-related storage that the `BSynth` object allocated, and sets `be_synth` to point to `NULL`.
+
+* * *
+
+### Member Functions
+
+#### CountClients()
+
+`int32 CountClients() const;`
+
+Returns the number of synthesis objects ([`BMidiSynth`](BMidiSynth.md "BMidiSynth") and [`BMidiSynthFile`](BMidiSynthFile.md "BMidiSynthFile")) that are actively feeding data to the synthesizer. Note that this count does not include [`BSamples`](BSamples.md "BSamples") objects.
+
+####  EnableReverb(), IsReverbEnabled(), SetReverb(), Reverb(), reverb_mode
+
+`status_t EnableReverb(bool reverb_enabled);``bool IsReverbEnabled() const;``status_t SetReverb(reverb_mode reverb);``reverb_mode Reverb() const;`
+    
+    
+    typedef enum {
+        B_REVERB_NONE, B_REVERB_CLOSET,
+        B_REVERB_GARAGE, B_REVERB_BALLROOM,
+        B_REVERB_CAVERN, B_REVERB_DUNGEON
+    } reverb_mode
+
+`EnableReverb()` turns on and off `be_synth`'s reverberator. `IsReverbEnabled()` returns the current reverberator-enabled state. Reverb is enabled by default.
+
+`SetReverb()` sets the reverberator's strength. The constants, shown above, are listed in order of increasing "wetness." `Reverb()` returns the current setting. Setting the reverb mode doesn't enable the reverberator.
+
+To turn off the reverberator, do this:
+    
+    
+    EnableReverb(false); /* Good */
+
+…rather than:
+    
+    
+    SetReverb(B_REVERB_NONE); /* Bad */
+
+`EnableReverb()` returns…
+
+Return Code| Description  
+---|---  
+`B_OK`| The reverberator was successfully enabled/disabled.  
+Thread and port error codes.`B_NO_MEMORY`| Not enough memory to setup the reverberator.  
+  
+#### GetAudio()
+
+`int32 GetAudio(int16 left,  
+int16 right,  
+int32 sampleCount) const;`
+
+Returns, in `left` and `right`, the last `sampleCount`'th sample frames (split into left and right channels) generated by the synthesizer. Storage for the samples must be allocated by the caller. The function may return fewer samples than requested. The function returns the number of samples that were written into (each of) `left` and `right`.
+
+This function is designed to feed waveform displays (and the like); it isn't intended to be used as a "sound spigot" that you can pipe to a file (for example).
+
+####  LoadSynthData(), Unload(), SynthMode(), IsLoaded()
+
+`status_t LoadSynthData(synth_mode mode);` `status_t LoadSynthData(entry_ref* instrument_file);`
+
+`void Unload();``synth_mode SynthMode() const;``bool IsLoaded() const;`
+
+`LoadSynthData()` tells `be_synth` which synth file to use (and unloads the one currently in use, if any). The first version lets you specify the synth file through a synth_mode constant:
+
+Constant| Description  
+---|---  
+`B_BIG_SYNTH`| Use the big synth file.  
+`B_LITTLE_SYNTH`| Use the little synth file.  
+`B_SAMPLES_ONLY`| Don't use a synth file, but prepare the object so it can play sampled sounds. You only use this mode if you're only going to use the [`BSamples`](BSamples.md "BSamples") object (in other words, if you're not using [`BMidiSynth`](BMidiSynth.md "BMidiSynth") or [`BMidiSynthFile`](BMidiSynthFile.md "BMidiSynthFile")).  
+  
+If the synthesizer is initialized with a synth file, it will automatically know how to play [`BSamples`](BSamples.md "BSamples") data.
+
+Warning
+
+![Warning](./images/admonitions/Stop_32.png)
+
+Currently, `B_SAMPLES_ONLY` doesn't work. You must use one of the other two constants (`B_BIG_SYNTH` or `B_LITTLE_SYNTH`).
+
+The second version lets you set the synth file as an entry_ref, thus providing the opportunity to specify a custom synth file. Unfortunately, the synth file format isn't currently public, so you can't create your own synth files (yet).
+
+`LoadSynthData()` doesn't actually read the instrument definitions from the synth file—in other words, it doesn't really "load" anything. The instruments are loaded as needed during a performance (as specified by a `BMidiSynth[File]` object). To force instruments to be read, use [`BMidiSynth`](BMidiSynth.md "BMidiSynth")'s [`EnableInput()`](BMidiSynth.md#BMidiSynth_EnableInput "EnableInput\(\), IsInputEnabled\(\)") or [`LoadInstrument()`](BMidiSynth.md#BMidiSynth_LoadInstrument "LoadInstrument\(\), RemapInstrument\(\), UnloadInstrument\(\), FlushInstrumentCache\(\)") function.
+
+`Unload()` stops the synthesizer (if it's currently playing), forgets the instrument file that was used to initialize the synthesizer, and steps out of the audio output mechanism. After you call `Unload()`, the `be_synth` object is good for nothing until `LoadSynthData()` is called (whether directly or through a constructor).
+
+`SynthMode()` returns `be_synth`'s current synth mode, one of the three modes listed above or `B_NO_SYNTH` if the mode hasn't been set.
+
+`IsLoaded()` returns `true` if `be_synth` has been initialized and is ready to go. Otherwise, it returns `false`.
+
+`LoadSynthData()` returns…
+
+Return Code| Description  
+---|---  
+`B_OK`| `be_synth` was successfully initialized.  
+`B_BAD_VALUE`| Invalid argument.  
+`B_NO_MEMORY`| Not enough memory to initialize the synthesizer.  
+POSIX errors| The synth file wasn't found or couldn't be opened.  
+  
+####  Pause(), Resume()
+
+`void Pause();``void Resume();`
+
+`Pause()` tells the synthesizer to stop producing sound. It doesn't suspend non-synthesis [`BMidi`](BMidi.md "BMidi") objects—in other words, `Pause()` doesn't suspend [`BMidiPort`](BMidiPort.md "BMidiPort") or [`BMidiStore`](BMidiStore.md "BMidiStore") objects.
+
+`Resume()` tells the synthesizer to resume producing sound. [`BMidiSynthFile`](BMidiSynthFile.md "BMidiSynthFile") objects continue reading from where they were paused; [`BSamples`](BSamples.md "BSamples") objects start playing from the beginning of their sample data (they don't continue from where they were paused).
+
+####  SetControllerHook(), synth_controller_hook
+
+`void SetControllerHook(int16 controller,  
+synth_controller_hook controlHook);`
+    
+    
+    typedef void (*synth_controller_hook)(int16 channel, int16 controller,
+    int16 value)
+
+Registers a hook function (`controlHook`) that's invoked whenver a MIDI control message is applied to controller. The hook function is invoked just after the control message is processed by the synthesizer. The function is passed the channel, controller number, and controller value as taken from the control message.
+
+####  SetSamplingRate(), SamplingRate(), SetInterpolation(), Interpolation(), interpolation_mode
+
+`status_t SetSamplingRate(int32 rate);``int32 SamplingRate() const;``status_t SetInterpolation(interpolation_mode interp);``interpolation_mode Interpolation() const;`
+    
+    
+    typedef enum {
+        B_DROP_SAMPLE,
+        B_2_POINT_INTERPOLATION,
+        B_LINEAR_INTERPOLATION
+    } interpolation_mode
+
+`SetSamplingRate()` sets the frequency at which `be_synth` produces data, in frames (of audio data) per second. Acceptable rates are 44100, 22050, and 11025; rate is rounded to the nearest acceptable value. The default is 22050.
+
+`SamplingRate()` returns the sampling rate as previously set by `SetSamplingRate()`.
+
+`be_synth`'s sampling rate is independent of the DAC stream's sampling rate. For example, while the default be_synth rate is 22050, the default DAC stream rate is 44100. If the two rates don't match, `be_synth`'s `BSubscriber` object "interpolates" th `be_synth` data before dumping it into the DAC stream. There are three interpolation schemes, which you set through `SetInterpolation()`:
+
+Constant| Description  
+---|---  
+`B_DROP_SAMPLE`| Samples are repeated or dropped. It sounds cheap because it is cheap.  
+`B_2_POINT_INTERPOLATION`| Linear interpolation between adjacent samples. Much better quality, and more expensive, than drop-sample.  
+`B_LINEAR_INTERPOLATION`| "Wide" linear interpolation. The best quality, but the most expensive.  
+  
+`Interpolation()` returns the current interpolation mode setting. The default is `B_LINEAR_INTERPOLATION`.
+
+`SetSamplingRate()` and `SetInterpolation()` return…
+
+Return Code| Description  
+---|---  
+`B_OK`| The function was successful.  
+`B_BAD_VALUE`| Invalid argument.  
+  
+####  SetSynthVolume(), SetSampleVolume(), SynthVolume(), SampleVolume()
+
+`void SetSynthVolume(double scale);``void SetSampleVolume(double scale);``double SynthVolume() const;``double SampleVolume() const;`
+
+These functions get and set the master volume scalars for MIDI synthesis and [`BSamples`](BSamples.md "BSamples") playback. The scalar is linear: A `scale` of 1.0 (the default) has no affect; a `scale` of 2.0 multiplies the output by 2.0, and so on. The `scale` value must be at least 0.0 (no gain).
+
+####  SetVoiceLimits(), MaxSynthVoices(), MaxSampleVoices(), LimiterThreshhold()
+
+`status_t SetVoiceLimits(int16 maxSynthVoices,  
+int16 maxSampleVoices,  
+int16 limiterThreshhold);``int16 MaxSynthVoices() const;``int16 MaxSampleVoices() const;``int16 LimiterThreshhold() const;`
+
+The synthesizer can generate as many as 32 "voices" simultaneously, where a voice is a MIDI note or a stream of [`BSamples`](BSamples.md "BSamples"). The first two arguments tell the synthesizer to set aside some number of voice slots for MIDI synthesis and for samples, respectively; combined, the two arguments mustn't exceed 32. If you ask for too many voices during a performance, the synthesizer will (try to) kill old voices first. By default, the voices are allocated 28 for MIDI synthesis and 4 for samples.
+
+You use the `limiterThreshhold` to estimate the typical voice density (number of simultaneous voices) for a performance. It must be at least 1; the default is 7. The synthesizer uses the value as an amplitude scalar:
+
+  * When the voice density during a performance is less than (or equal to) the threshhold (_`n`_), the dynamic range is "divided" into _`n`_ parts, where each voice gets one part.
+
+  * When the voice density (_`m`_) exceeds the threshhold, the dynamic range is divided into _`m`_ parts.
+
+If you set the value too high (if there are typically fewer simultaneous voices than you estimated) the signal-to-noise ratio will suffer—you'll be dividing the dynamic range into too many (small) parts. If you set it too low and the voice density changes a lot, the balance between voices may become hard to predict and control. A change to the `limiterTreshhold` doesn't affect notes/samples that are currently being produced.
+
+The other three functions return the values that you passed to `SetVoiceLimits()`. Note that these functions don't actually consult the synthsizer—if you pass illegal values to `SetVoiceLimits()`, the querying functions will return those values without complaint.
+
+`SetVoiceLimits()` returns…
+
+Return Code| Description  
+---|---  
+`B_OK`| The limits were successfully set.  
+`B_BAD_VALUE`| Bad argument value; the previous settings are left unchanged.
