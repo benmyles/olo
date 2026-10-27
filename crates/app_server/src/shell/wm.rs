@@ -31,6 +31,9 @@ use crate::{
 const BTN_LEFT: u32 = 0x110;
 const BTN_RIGHT: u32 = 0x111;
 
+/// Space left between a zoomed window and Deskbar.
+const DESKBAR_GAP: i32 = 4;
+
 /// The element rectangle a window had before it was zoomed.
 #[derive(Default)]
 struct PreZoom(RefCell<Option<Rectangle<i32, Logical>>>);
@@ -233,8 +236,23 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             .next()
             .or_else(|| self.space.outputs().next().cloned())?;
         let geo = self.space.output_geometry(&output)?;
-        let zone = layer_map_for_output(&output).non_exclusive_zone();
-        Some(Rectangle::new(geo.loc + zone.loc, zone.size))
+        let map = layer_map_for_output(&output);
+        let zone = map.non_exclusive_zone();
+        let mut area = Rectangle::new(geo.loc + zone.loc, zone.size);
+        // Stop beside Deskbar, as BeOS does (it sits in a corner and
+        // reserves no edge, so the zone above doesn't leave it out).
+        let bar = map.layers().find(|l| l.namespace() == "deskbar").and_then(|l| map.layer_geometry(l));
+        if let Some(bar) = bar.map(|b| Rectangle::new(geo.loc + b.loc, b.size)) {
+            if bar.loc.x + bar.size.w / 2 >= area.loc.x + area.size.w / 2 {
+                let right = bar.loc.x - DESKBAR_GAP;
+                area.size.w = area.size.w.min(right - area.loc.x);
+            } else {
+                let left = bar.loc.x + bar.size.w + DESKBAR_GAP;
+                area.size.w -= (left - area.loc.x).max(0);
+                area.loc.x = area.loc.x.max(left);
+            }
+        }
+        Some(area)
     }
 
     /// Zoom (maximize) a window into the usable area, frame included.

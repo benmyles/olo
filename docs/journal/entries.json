@@ -712,5 +712,11 @@
   "title": "Images survive Terminal crashes",
   "caption": "Terminal was killed after showing a kitty image; tabula-termd relaunched it and replayed the screen, image included. \u2318R also reaches the shell now (reverse history search).",
   "image": "2026-10-26/164833-images-survive-terminal-crashes.png"
+ },
+ {
+  "time": "2026-10-26T17:18:16",
+  "title": "Zoom leaves Deskbar alone",
+  "caption": "A zoomed window now stops 4 px short of Deskbar, as on BeOS, instead of running under it.",
+  "image": "2026-10-26/171816-zoom-leaves-deskbar-alone.png"
  }
 ]

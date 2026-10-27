@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Zoom leaves Deskbar alone
+
+*17:18* — A zoomed window now stops 4 px short of Deskbar, as on BeOS, instead of running under it.
+
+![Zoom leaves Deskbar alone](2026-10-26/171816-zoom-leaves-deskbar-alone.png)
+
 ### Images survive Terminal crashes
 
 *16:48* — Terminal was killed after showing a kitty image; tabula-termd relaunched it and replayed the screen, image included. ⌘R also reaches the shell now (reverse history search).
