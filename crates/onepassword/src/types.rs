@@ -16,9 +16,20 @@ pub(crate) mod base64_bytes {
     pub fn serialize<S: Serializer>(bytes: &[u8], s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&STANDARD.encode(bytes))
     }
+    /// Base64 text, or (as newer 1Password apps send it) an array of
+    /// bytes; null is empty.
     pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
-        let text = Option::<String>::deserialize(d)?.unwrap_or_default();
-        STANDARD.decode(text.as_bytes()).map_err(D::Error::custom)
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Form {
+            Text(String),
+            Bytes(Vec<u8>),
+        }
+        match Option::<Form>::deserialize(d)? {
+            Some(Form::Text(text)) => STANDARD.decode(text.as_bytes()).map_err(D::Error::custom),
+            Some(Form::Bytes(bytes)) => Ok(bytes),
+            None => Ok(Vec::new()),
+        }
     }
 }
 

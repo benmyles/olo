@@ -7,7 +7,8 @@
 //! JSON split into chunks of at most `CHUNK` bytes, every chunk framed as a
 //! little-endian `u32` length (counting the flag byte), a flag byte (`MORE`
 //! or `LAST`) and the bytes. Requests are `{kind, account_name, payload}`
-//! and responses `{success, payload}`, payloads base64 (Go's `[]byte`). The
+//! and responses `{success, payload}`, payloads base64 (Go's `[]byte`;
+//! newer apps answer with an array of bytes, which we read too). The
 //! app authorises the caller itself (it asks the person, then remembers).
 
 use std::{
@@ -144,6 +145,15 @@ mod tests {
             }
             assert_eq!(read_message(&mut wire.as_slice()).unwrap(), message);
         }
+    }
+
+    #[test]
+    fn payloads_as_text_or_bytes() {
+        for wire in [r#"{"success":true,"payload":"aGk="}"#, r#"{"success":true,"payload":[104,105]}"#] {
+            assert_eq!(serde_json::from_str::<Response>(wire).unwrap().payload, b"hi");
+        }
+        assert!(serde_json::from_str::<Response>(r#"{"success":false,"payload":null}"#).unwrap().payload.is_empty());
+        assert!(serde_json::from_str::<Response>(r#"{"success":false}"#).unwrap().payload.is_empty());
     }
 
     #[test]
