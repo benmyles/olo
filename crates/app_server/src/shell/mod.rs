@@ -1,7 +1,5 @@
 use std::cell::RefCell;
 
-#[cfg(feature = "xwayland")]
-use smithay::xwayland::XWaylandClientData;
 
 #[cfg(feature = "udev")]
 use smithay::wayland::drm_syncobj::DrmSyncobjCachedState;
@@ -50,8 +48,6 @@ mod grabs;
 pub mod deco;
 pub mod tiling;
 mod wm;
-#[cfg(feature = "xwayland")]
-mod x11;
 mod xdg;
 
 pub(crate) use self::deco::fill;
@@ -107,10 +103,6 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
         &mut self.compositor_state
     }
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
-        #[cfg(feature = "xwayland")]
-        if let Some(state) = client.get_data::<XWaylandClientData>() {
-            return &state.compositor_state;
-        }
         if let Some(state) = client.get_data::<ClientState>() {
             return &state.compositor_state;
         }
@@ -311,8 +303,8 @@ pub struct SurfaceData {
 /// When a window first takes a size, or the app resizes it, slide it so
 /// all of it (tab included) is on screen where it can be: a window opened
 /// at the cascade position that is taller than the room below it moves up
-/// instead of hanging off the bottom. Windows the user is resizing are
-/// left alone.
+/// instead of hanging off the bottom. Windows the user is resizing, and
+/// ones put back where they were, are left alone.
 fn keep_on_screen(space: &mut Space<WindowElement>, surface: &WlSurface, window: &WindowElement) {
     let Some(geo) = space.element_geometry(window) else { return };
     if geo.size.w <= 0 || geo.size.h <= 0 {
@@ -342,6 +334,9 @@ fn keep_on_screen(space: &mut Space<WindowElement>, surface: &WlSurface, window:
     else {
         return;
     };
+    if window.meta().put_back.replace(false) && zone.contains(geo.loc) {
+        return;
+    }
     const MARGIN: i32 = 8;
     let fit = |pos: i32, len: i32, lo: i32, span: i32| {
         let hi = lo + span;
@@ -374,7 +369,6 @@ fn ensure_initial_configure(surface: &WlSurface, space: &Space<WindowElement>, p
         .cloned()
     {
         // send the initial configure if relevant
-        #[cfg_attr(not(feature = "xwayland"), allow(irrefutable_let_patterns))]
         if let Some(toplevel) = window.0.toplevel() {
             let initial_configure_sent = with_states(surface, |states| {
                 states

@@ -58,8 +58,6 @@ impl WindowElement {
             WindowSurface::Wayland(t) => !t.with_committed_state(|s| {
                 s.is_some_and(|s| s.states.contains(xdg_toplevel::State::Fullscreen))
             }),
-            #[cfg(feature = "xwayland")]
-            WindowSurface::X11(x) => !x.is_fullscreen(),
         }
     }
 
@@ -72,8 +70,6 @@ impl WindowElement {
                     .and_then(|d| d.lock().unwrap().title.clone())
             })
             .unwrap_or_default(),
-            #[cfg(feature = "xwayland")]
-            WindowSurface::X11(x) => x.title(),
         }
     }
 
@@ -86,8 +82,6 @@ impl WindowElement {
                     .and_then(|d| d.lock().unwrap().app_id.clone())
             })
             .unwrap_or_default(),
-            #[cfg(feature = "xwayland")]
-            WindowSurface::X11(x) => x.class(),
         }
     }
 
@@ -150,10 +144,6 @@ impl WindowElement {
             WindowSurface::Wayland(_) => {
                 surface_under.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc))
             }
-            #[cfg(feature = "xwayland")]
-            WindowSurface::X11(s) => {
-                surface_under.map(|(_, loc)| (PointerFocusTarget::X11Surface(s.clone()), loc))
-            }
         }?;
         Some((under, loc + offset))
     }
@@ -207,11 +197,6 @@ impl WindowElement {
         )
     }
 
-    #[cfg(feature = "xwayland")]
-    #[inline]
-    pub fn is_x11(&self) -> bool {
-        self.0.is_x11()
-    }
 
     #[inline]
     pub fn is_wayland(&self) -> bool {

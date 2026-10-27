@@ -1,9 +1,5 @@
 use std::{borrow::Cow, sync::Arc};
 
-#[cfg(feature = "xwayland")]
-use smithay::xwayland::X11Surface;
-#[cfg(feature = "xwayland")]
-use smithay::xwayland::xwm::XwmOfferData;
 pub use smithay::{
     backend::input::{InputTime, KeyState},
     desktop::{LayerSurface, PopupKind},
@@ -63,8 +59,6 @@ impl IsAlive for KeyboardFocusTarget {
 #[allow(clippy::large_enum_variant)]
 pub enum PointerFocusTarget {
     WlSurface(WlSurface),
-    #[cfg(feature = "xwayland")]
-    X11Surface(X11Surface),
     SSD(SSD),
 }
 
@@ -73,8 +67,6 @@ impl IsAlive for PointerFocusTarget {
     fn alive(&self) -> bool {
         match self {
             PointerFocusTarget::WlSurface(w) => w.alive(),
-            #[cfg(feature = "xwayland")]
-            PointerFocusTarget::X11Surface(w) => w.alive(),
             PointerFocusTarget::SSD(x) => x.alive(),
         }
     }
@@ -92,8 +84,6 @@ impl KeyboardFocusTarget {
         match self {
             Self::Window(w) => match w.underlying_surface() {
                 WindowSurface::Wayland(w) => w.wl_surface(),
-                #[cfg(feature = "xwayland")]
-                WindowSurface::X11(s) => s,
             },
             Self::LayerSurface(l) => l.wl_surface(),
             Self::Popup(p) => p.wl_surface(),
@@ -106,8 +96,6 @@ impl PointerFocusTarget {
     fn inner_pointer_target<BackendData: Backend>(&self) -> &dyn PointerTarget<AnvilState<BackendData>> {
         match self {
             Self::WlSurface(w) => w,
-            #[cfg(feature = "xwayland")]
-            Self::X11Surface(w) => w,
             Self::SSD(w) => w,
         }
     }
@@ -115,8 +103,6 @@ impl PointerFocusTarget {
     fn inner_touch_target<BackendData: Backend>(&self) -> &dyn TouchTarget<AnvilState<BackendData>> {
         match self {
             Self::WlSurface(w) => w,
-            #[cfg(feature = "xwayland")]
-            Self::X11Surface(w) => w,
             Self::SSD(w) => w,
         }
     }
@@ -126,8 +112,6 @@ impl PointerFocusTarget {
     ) -> &dyn TabletToolTarget<AnvilState<BackendData>> {
         match self {
             Self::WlSurface(w) => w,
-            #[cfg(feature = "xwayland")]
-            Self::X11Surface(w) => w,
             Self::SSD(w) => w,
         }
     }
@@ -472,8 +456,6 @@ impl WaylandFocus for PointerFocusTarget {
     fn wl_surface(&self) -> Option<Cow<'_, WlSurface>> {
         match self {
             PointerFocusTarget::WlSurface(w) => w.wl_surface(),
-            #[cfg(feature = "xwayland")]
-            PointerFocusTarget::X11Surface(w) => w.wl_surface().map(Cow::Owned),
             PointerFocusTarget::SSD(_) => None,
         }
     }
@@ -481,8 +463,6 @@ impl WaylandFocus for PointerFocusTarget {
     fn same_client_as(&self, object_id: &ObjectId) -> bool {
         match self {
             PointerFocusTarget::WlSurface(w) => w.same_client_as(object_id),
-            #[cfg(feature = "xwayland")]
-            PointerFocusTarget::X11Surface(w) => w.same_client_as(object_id),
             PointerFocusTarget::SSD(w) => w
                 .wl_surface()
                 .map(|surface| surface.same_client_as(object_id))
@@ -505,32 +485,24 @@ impl WaylandFocus for KeyboardFocusTarget {
 
 pub enum AnvilOfferData<S: Source> {
     Wayland(WlOfferData<S>),
-    #[cfg(feature = "xwayland")]
-    X11(XwmOfferData<S>),
 }
 
 impl<S: Source> OfferData for AnvilOfferData<S> {
     fn disable(&self) {
         match self {
             AnvilOfferData::Wayland(data) => data.disable(),
-            #[cfg(feature = "xwayland")]
-            AnvilOfferData::X11(data) => data.disable(),
         }
     }
 
     fn drop(&self) {
         match self {
             AnvilOfferData::Wayland(data) => data.drop(),
-            #[cfg(feature = "xwayland")]
-            AnvilOfferData::X11(data) => data.drop(),
         }
     }
 
     fn validated(&self) -> bool {
         match self {
             AnvilOfferData::Wayland(data) => data.validated(),
-            #[cfg(feature = "xwayland")]
-            AnvilOfferData::X11(data) => data.validated(),
         }
     }
 }
@@ -556,10 +528,6 @@ impl<BackendData: Backend> DndFocus<AnvilState<BackendData>> for PointerFocusTar
                 DndFocus::enter(surface, data, dh, source, seat, location, serial)
                     .map(AnvilOfferData::Wayland)
             }
-            #[cfg(feature = "xwayland")]
-            PointerFocusTarget::X11Surface(surface) => {
-                DndFocus::enter(surface, data, dh, source, seat, location, serial).map(AnvilOfferData::X11)
-            }
             _ => None,
         }
     }
@@ -572,25 +540,9 @@ impl<BackendData: Backend> DndFocus<AnvilState<BackendData>> for PointerFocusTar
         location: Point<f64, Logical>,
         time: InputTime,
     ) {
-        match self {
-            PointerFocusTarget::WlSurface(surface) => {
-                let offer = match offer {
-                    Some(AnvilOfferData::Wayland(offer)) => Some(offer),
-                    None => None,
-                    _ => return,
-                };
-                DndFocus::motion(surface, data, offer, seat, location, time)
-            }
-            #[cfg(feature = "xwayland")]
-            PointerFocusTarget::X11Surface(surface) => {
-                let offer = match offer {
-                    Some(AnvilOfferData::X11(offer)) => Some(offer),
-                    None => None,
-                    _ => return,
-                };
-                DndFocus::motion(surface, data, offer, seat, location, time)
-            }
-            _ => {}
+        if let PointerFocusTarget::WlSurface(surface) = self {
+            let offer = offer.map(|AnvilOfferData::Wayland(offer)| offer);
+            DndFocus::motion(surface, data, offer, seat, location, time)
         }
     }
 
@@ -600,25 +552,9 @@ impl<BackendData: Backend> DndFocus<AnvilState<BackendData>> for PointerFocusTar
         offer: Option<&mut AnvilOfferData<S>>,
         seat: &Seat<AnvilState<BackendData>>,
     ) {
-        match self {
-            PointerFocusTarget::WlSurface(surface) => {
-                let offer = match offer {
-                    Some(AnvilOfferData::Wayland(offer)) => Some(offer),
-                    None => None,
-                    _ => return,
-                };
-                DndFocus::leave(surface, data, offer, seat)
-            }
-            #[cfg(feature = "xwayland")]
-            PointerFocusTarget::X11Surface(surface) => {
-                let offer = match offer {
-                    Some(AnvilOfferData::X11(offer)) => Some(offer),
-                    None => None,
-                    _ => return,
-                };
-                DndFocus::leave(surface, data, offer, seat)
-            }
-            _ => {}
+        if let PointerFocusTarget::WlSurface(surface) = self {
+            let offer = offer.map(|AnvilOfferData::Wayland(offer)| offer);
+            DndFocus::leave(surface, data, offer, seat)
         }
     }
 
@@ -628,25 +564,9 @@ impl<BackendData: Backend> DndFocus<AnvilState<BackendData>> for PointerFocusTar
         offer: Option<&mut AnvilOfferData<S>>,
         seat: &Seat<AnvilState<BackendData>>,
     ) {
-        match self {
-            PointerFocusTarget::WlSurface(surface) => {
-                let offer = match offer {
-                    Some(AnvilOfferData::Wayland(offer)) => Some(offer),
-                    None => None,
-                    _ => return,
-                };
-                DndFocus::drop(surface, data, offer, seat)
-            }
-            #[cfg(feature = "xwayland")]
-            PointerFocusTarget::X11Surface(surface) => {
-                let offer = match offer {
-                    Some(AnvilOfferData::X11(offer)) => Some(offer),
-                    None => None,
-                    _ => return,
-                };
-                DndFocus::drop(surface, data, offer, seat)
-            }
-            _ => {}
+        if let PointerFocusTarget::WlSurface(surface) = self {
+            let offer = offer.map(|AnvilOfferData::Wayland(offer)| offer);
+            DndFocus::drop(surface, data, offer, seat)
         }
     }
 }
@@ -672,21 +592,7 @@ impl From<PopupKind> for PointerFocusTarget {
     }
 }
 
-#[cfg(feature = "xwayland")]
-impl From<X11Surface> for PointerFocusTarget {
-    #[inline]
-    fn from(value: X11Surface) -> Self {
-        PointerFocusTarget::X11Surface(value)
-    }
-}
 
-#[cfg(feature = "xwayland")]
-impl From<&X11Surface> for PointerFocusTarget {
-    #[inline]
-    fn from(value: &X11Surface) -> Self {
-        PointerFocusTarget::from(value.clone())
-    }
-}
 
 impl From<WindowElement> for KeyboardFocusTarget {
     #[inline]
@@ -715,8 +621,6 @@ impl From<KeyboardFocusTarget> for PointerFocusTarget {
         match value {
             KeyboardFocusTarget::Window(w) => match w.underlying_surface() {
                 WindowSurface::Wayland(w) => PointerFocusTarget::from(w.wl_surface()),
-                #[cfg(feature = "xwayland")]
-                WindowSurface::X11(s) => PointerFocusTarget::from(s),
             },
             KeyboardFocusTarget::LayerSurface(surface) => PointerFocusTarget::from(surface.wl_surface()),
             KeyboardFocusTarget::Popup(popup) => PointerFocusTarget::from(popup.wl_surface()),

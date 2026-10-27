@@ -788,12 +788,6 @@ pub fn run_udev() {
         })
         .unwrap();
 
-    /*
-     * Start XWayland if supported
-     */
-    #[cfg(feature = "xwayland")]
-    state.start_xwayland();
-
     #[cfg(feature = "libei")]
     crate::libei::listen_eis(&event_loop.handle());
 

@@ -78,18 +78,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 info!(cmd, "Starting program");
 
                 if let Err(e) = Command::new(&cmd)
-                    .envs(
-                        self.socket_name
-                            .clone()
-                            .map(|v| ("WAYLAND_DISPLAY", v))
-                            .into_iter()
-                            .chain(
-                                #[cfg(feature = "xwayland")]
-                                self.xdisplay.map(|v| ("DISPLAY", format!(":{v}"))),
-                                #[cfg(not(feature = "xwayland"))]
-                                None,
-                            ),
-                    )
+                    .envs(self.socket_name.clone().map(|v| ("WAYLAND_DISPLAY", v)))
                     .spawn()
                 {
                     error!(cmd, err = %e, "Failed to start program");
@@ -510,10 +499,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     && let Some((_, _)) =
                         window.surface_under(location - output_geo.loc.to_f64(), WindowSurfaceType::ALL)
                     {
-                        #[cfg(feature = "xwayland")]
-                        if let Some(surface) = window.0.x11_surface() {
-                            self.xwm.as_mut().unwrap().raise_window(surface).unwrap();
-                        }
                         keyboard.set_focus(self, Some(window.into()), serial);
                         return;
                     }
@@ -536,10 +521,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
             if let Some((window, _)) = self.space.element_under(location).map(|(w, p)| (w.clone(), p)) {
                 self.space.raise_element(&window, true);
-                #[cfg(feature = "xwayland")]
-                if let Some(surface) = window.0.x11_surface() {
-                    self.xwm.as_mut().unwrap().raise_window(surface).unwrap();
-                }
                 keyboard.set_focus(self, Some(window.into()), serial);
                 return;
             }

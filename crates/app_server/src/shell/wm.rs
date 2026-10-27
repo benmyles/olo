@@ -143,11 +143,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 self.handle
                     .insert_idle(move |data| data.move_request_xdg(&toplevel, &seat, serial));
             }
-            #[cfg(feature = "xwayland")]
-            WindowSurface::X11(w) => {
-                let w = w.clone();
-                self.handle.insert_idle(move |data| data.move_request_x11(&w));
-            }
         }
     }
 
@@ -159,12 +154,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 self.handle.insert_idle(move |data| {
                     data.resize_request_xdg(&toplevel, &seat, serial, edges)
                 });
-            }
-            #[cfg(feature = "xwayland")]
-            WindowSurface::X11(w) => {
-                let w = w.clone();
-                self.handle
-                    .insert_idle(move |data| data.resize_request_x11(&w, edges));
             }
         }
     }
@@ -186,10 +175,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     pub fn close_window(&mut self, window: &WindowElement) {
         match window.0.underlying_surface() {
             WindowSurface::Wayland(w) => w.send_close(),
-            #[cfg(feature = "xwayland")]
-            WindowSurface::X11(w) => {
-                let _ = w.close();
-            }
         }
     }
 
@@ -207,12 +192,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     pub fn focus_window(&mut self, window: &WindowElement) {
         self.space.raise_element(window, true);
-        #[cfg(feature = "xwayland")]
-        if let Some(surface) = window.0.x11_surface()
-            && let Some(xwm) = self.xwm.as_mut()
-        {
-            let _ = xwm.raise_window(surface);
-        }
         let serial = smithay::utils::SERIAL_COUNTER.next_serial();
         let keyboard = self.seat.get_keyboard().unwrap();
         // A menu's popup grab may still be live (the menu that opened this
@@ -305,11 +284,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     t.send_pending_configure();
                 }
             }
-            #[cfg(feature = "xwayland")]
-            WindowSurface::X11(x) => {
-                let _ = x.set_maximized(true);
-                let _ = x.configure(Rectangle::new(area.loc + window.content_offset(), content));
-            }
         }
         self.space.map_element(window.clone(), area.loc, true);
     }
@@ -343,13 +317,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     t.send_pending_configure();
                 }
             }
-            #[cfg(feature = "xwayland")]
-            WindowSurface::X11(x) => {
-                let _ = x.set_maximized(false);
-                if let (Some(r), Some(size)) = (pre, size) {
-                    let _ = x.configure(Rectangle::new(r.loc + window.content_offset(), size));
-                }
-            }
         }
         if let Some(r) = pre {
             self.space.map_element(window.clone(), r.loc, true);
@@ -359,8 +326,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     pub fn is_zoomed(&self, window: &WindowElement) -> bool {
         match window.0.underlying_surface() {
             WindowSurface::Wayland(t) => t.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Maximized)),
-            #[cfg(feature = "xwayland")]
-            WindowSurface::X11(x) => x.is_maximized(),
         }
     }
 

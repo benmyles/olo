@@ -58,6 +58,13 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Terminal tabs, tab groups and coding agents** (Ben; next up,
+  prioritized 2026-10-27): tabs, tab groups that can be saved and reopened, and
+  native recognition of coding agents (Claude Code, Codex) running in a
+  tab, so tabs and groups show each agent's state (working, waiting for an
+  answer, blocked) and notify when one needs attention. A tile-all mode
+  shows every group at once, tiled, each group colour-coded. Design it
+  properly (BeOS look, how tabs, groups and colours read).
 - ~~**Passwords keeps its own store, synced with 1Password both ways**~~
   (Ben): going to 1Password for every look-up is slow and unreliable.
   Passwords should hold every item itself (encrypted at rest, unlocked
@@ -366,12 +373,12 @@ as they land (with the commit), add new ones as they come up.
   long Passwords waits before locking itself (or never). Preferences
   gets a Security panel for them (and a home for other security
   settings later); Passwords follows changes live.
-- ~~**Other programs survive a Tabula upgrade**~~ (Wayland programs done: `tabula-wlproxy` holds their connections and replays their state on the new app_server; tested headless with GNOME Text Editor, kitty and Chrome through several reloads, a menu open during one, a tabula-session re-exec and a proxy crash; HACKING, "The session and in-place reload". Left: X11 programs, through an Xwayland kept outside app_server, and the first upgrade to this version still closes them, as before) (Ben): when app_server
-  restarts for an upgrade, Chrome and other non-Tabula Wayland/X11 apps
+- ~~**Other programs survive a Tabula upgrade**~~ (done: `tabula-wlproxy` holds their connections and replays their state on the new app_server; tested headless with GNOME Text Editor, kitty and Chrome through several reloads, a menu open during one, a tabula-session re-exec and a proxy crash; HACKING, "The session and in-place reload". Deskbar's upgrade alert names only programs that won't survive (`WindowInfo::kept`), and windows put back after a restart stay where they were even when they hang off the screen. X11 is out: Tabula is Wayland only, Xwayland support removed) (Ben): when app_server
+  restarts for an upgrade, Chrome and other non-Tabula Wayland apps
   keep running with their windows, as Tabula's own apps do (e.g. hand
   the listening socket and client connections to the new app_server,
   or a small proxy that holds client connections across the restart
-  and replays their state; Xwayland likewise).
+  and replays their state).
 - ~~**Unzoom goes back to where it was**~~ (a tiled window unzooms back into its tile, one placed by Tile All back into its cell; dragging or resizing it by hand forgets the tile; Restore still goes back to its own frame; tested headless with the shortcut and the zoom box) (Ben): zooming a window that was
   tiled (e.g. to the right half) and then unzooming must put it back in
   that tile, not some older frame (PreZoom should be the frame just
@@ -474,13 +481,12 @@ as they land (with the commit), add new ones as they come up.
   imports one back (with a summary of what it holds and a confirm before
   replacing anything). In Rust, in process (e.g. tar + zstd crates);
   secrets stay encrypted as they are on disk.
-- **Terminal tabs, tab groups and coding agents** (Ben; after everything
-  else is done): tabs, tab groups that can be saved and reopened, and
-  native recognition of coding agents (Claude Code, Codex) running in a
-  tab, so tabs and groups show each agent's state (working, waiting for an
-  answer, blocked) and notify when one needs attention. A tile-all mode
-  shows every group at once, tiled, each group colour-coded. Design it
-  properly (BeOS look, how tabs, groups and colours read).
+- **New Window from a running app's context menu** (Ben): right-clicking
+  a Tabula app that is running, where Tracker shows it (its icon in the
+  Applications folder, on the desktop, …), offers "New Window", which asks
+  the running app for another window (as BeOS's Deskbar did from an app's
+  menu) instead of launching a second copy. Agents get the same through
+  the app's documented API.
 - **Token pooling for Claude Code and Codex, natively** (Ben; after
   everything else is done): a Tabula version of ~/src/token-pooler's Local
   mode, without its team/cloud gateway: the local accounts' subscription

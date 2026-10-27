@@ -231,8 +231,6 @@ pub fn run_headless(size_arg: Option<&str>) {
     crate::shell::fixup_positions(&mut state.space, &state.settings.display, state.pointer.current_location());
     state.apply_mirroring();
 
-    #[cfg(feature = "xwayland")]
-    state.start_xwayland();
 
     let frame = Duration::from_micros(16_667);
     event_loop

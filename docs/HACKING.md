@@ -6,6 +6,12 @@ pixel-perfect and beautiful, in light, dark and night modes, at 2× (and any
 other) scale.** Every deviation from BeOS should be an intentional
 improvement, never an accident.
 
+**Wayland only, no X11.** app_server is a Wayland compositor and nothing
+else: there is no Xwayland, no X11 window manager and no `DISPLAY`, and
+X11-only programs aren't supported. Don't add X11 code, features or
+dependencies; programs that can do either (Chrome, GTK, Qt) are started
+as Wayland clients (e.g. Chrome's `--ozone-platform=wayland`).
+
 ## The responsiveness rule (applies to everything)
 
 **Nothing may ever block the UI.** BeOS was famous for staying responsive
@@ -509,8 +515,7 @@ hands both to app_server, so clients never see the sockets disappear.
   program can use it. Set `TABULA_WLPROXY_DEBUG=1` for the session
   (`tsession` passes it on) to log every replayed request. Set
   `TABULA_NO_WAYLAND_PROXY=1` to have app_server take `wayland-N` itself.
-  If the proxy keeps crashing, the session does that on its own. X11
-  programs (Xwayland is app_server's child) still close on a restart.
+  If the proxy keeps crashing, the session does that on its own.
 * **Tabula's own apps** connect straight to app_server on
   `$XDG_RUNTIME_DIR/tabula-wayland-N-direct` (the kit's `connect_once`).
   They reconnect and re-execute by themselves, as below.
@@ -579,9 +584,9 @@ cargo) or a program is under 3 s old. It lists newer ones in
 and shows a green arrow in its tray. Clicking it asks first. Accepting,
 or `tabula-session upgrade` (SIGUSR2), installs them beside the session:
 a btrfs/XFS clone (`FICLONE`) or a copy, under a temporary name and then
-renamed. Only a new `tabula-app-server` needs a reload, and a reload
-closes programs not built on the kit (GTK, Qt, Xwayland), so Deskbar's
-alert names them first. Otherwise app_server keeps running: the session
+renamed. Only a new `tabula-app-server` needs a reload. Other programs
+keep their windows through it (above) unless they came without the proxy
+(`WindowInfo::kept` is false), and Deskbar's alert names those first. Otherwise app_server keeps running: the session
 sends SIGURG to each of the user's processes whose program file in the
 install directory was just replaced (`/proc/PID/exe` ends in
 " (deleted)"). The kit catches it (a self-pipe in `platform.rs`), saves

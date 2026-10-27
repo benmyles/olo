@@ -213,6 +213,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let claimed = meta.returning.borrow_mut().take();
         let Some(p) = claimed.or_else(|| self.take_placement(&window)) else { return true };
         self.space.map_element(window.clone(), Point::from((p.x, p.y)), p.focused);
+        meta.put_back.set(true);
         Self::set_tile_state(&window, p.tile, p.part);
         meta.restored_focus.set(p.focused.then(std::time::Instant::now));
         if p.workspace != self.workspace {

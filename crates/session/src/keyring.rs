@@ -23,7 +23,7 @@ const COMPONENTS: &str = "secrets";
 
 /// The variables the daemon needs to reach the session (its D-Bus name,
 /// and prompts on our display).
-const PASS: &[&str] = &["DBUS_SESSION_BUS_ADDRESS", "WAYLAND_DISPLAY", "DISPLAY", "XDG_RUNTIME_DIR", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "LANG"];
+const PASS: &[&str] = &["DBUS_SESSION_BUS_ADDRESS", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "LANG"];
 
 fn control() -> Option<PathBuf> {
     let dir = std::env::var_os("GNOME_KEYRING_CONTROL").map(PathBuf::from).or_else(|| Some(crate::runtime_dir().join("keyring")))?;

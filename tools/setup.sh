@@ -33,7 +33,7 @@ NEEDS=(
     "cmd:make make" "cmd:perl perl" "cmd:python3 python3" "cmd:m4 m4" "cmd:git git"
     "pc:wayland-server" "pc:xkbcommon" "pc:libinput" "pc:libudev" "pc:gbm" "pc:egl" "pc:libdrm" "pc:libseat"
     "pc:pixman-1" "pc:libdisplay-info" "pc:freetype2" "pc:harfbuzz" "pc:fontconfig" "pc:zlib" "pc:liblzma" "pc:bzip2"
-    "cmd:Xwayland xorg-x11-server-Xwayland" "file:/usr/libexec/fprintd fprintd" "cmd:pipewire pipewire"
+    "file:/usr/libexec/fprintd fprintd" "cmd:pipewire pipewire"
     "cmd:wireplumber wireplumber" "file:/usr/libexec/xdg-desktop-portal xdg-desktop-portal"
     "file:/usr/libexec/xdg-desktop-portal-gtk xdg-desktop-portal-gtk" "cmd:gnome-keyring-daemon gnome-keyring"
     "cmd:pkexec polkit" "cmd:NetworkManager NetworkManager" "file:/usr/libexec/bluetooth/bluetoothd bluez"

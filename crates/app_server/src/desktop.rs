@@ -10,7 +10,7 @@ use std::{
 use smithay::{
     desktop::layer_map_for_output,
     backend::renderer::Color32F,
-    desktop::{WindowSurface, space::SpaceElement},
+    desktop::space::SpaceElement,
     output::{Output, Scale},
     reexports::wayland_server::Resource,
     utils::{IsAlive, Logical, Point, Rectangle},
@@ -45,6 +45,9 @@ pub struct WindowMeta {
     /// commit (so its first configure has the old size) and taken when it
     /// first shows.
     pub returning: std::cell::RefCell<Option<crate::layout::Placement>>,
+    /// Put back where it was: left there at its first size, though it
+    /// hangs off the screen, as long as its tab is on it.
+    pub put_back: Cell<bool>,
 }
 
 impl WindowElement {
@@ -59,6 +62,7 @@ impl WindowElement {
             restored_focus: Cell::new(None),
             owner: std::cell::RefCell::new(None),
             returning: std::cell::RefCell::new(None),
+            put_back: Cell::new(false),
         });
         self.user_data().get::<WindowMeta>().unwrap()
     }
@@ -164,18 +168,11 @@ impl<B: Backend + 'static> AnvilState<B> {
         let mut infos: Vec<WindowInfo> = self
             .all_windows()
             .into_iter()
-            .filter(|w| {
-                // Skip override-redirect X11 popups and the like.
-                match w.0.underlying_surface() {
-                    WindowSurface::Wayland(_) => true,
-                    #[cfg(feature = "xwayland")]
-                    WindowSurface::X11(x) => !x.is_override_redirect(),
-                }
-            })
             .map(|w| {
-                let pid = w.wl_surface().and_then(|s| {
-                    self.display_handle.get_client(s.id()).ok().and_then(|c| crate::state::client_pid(&c, &self.display_handle))
-                });
+                let client = w.wl_surface().and_then(|s| self.display_handle.get_client(s.id()).ok());
+                let pid = client.as_ref().and_then(|c| crate::state::client_pid(c, &self.display_handle));
+                let kept = tabula_xdg::apps::our_app(&w.app_id()).is_some()
+                    || client.and_then(|c| c.get_data::<crate::state::ClientState>().map(|s| s.proxied)).unwrap_or(false);
                 let meta = w.meta();
                 WindowInfo {
                     id: meta.id,
@@ -185,6 +182,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     workspace: meta.workspace.get().unwrap_or(self.workspace),
                     minimized: meta.minimized.get(),
                     focused: focused.is_some() && w.wl_surface().map(|s| s.into_owned()) == focused,
+                    kept,
                     frame: None,
                     content: None,
                     popups: Vec::new(),

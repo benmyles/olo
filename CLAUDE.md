@@ -18,6 +18,10 @@ rules are universal and non-negotiable:
   See "The responsiveness rule" in HACKING.md.
 - **Pixel-perfect in light, dark and night modes at 2× and other scales.**
   Colours from the palette, spacing from `metrics`, text via `style`.
+- **Wayland only, no X11.** Tabula runs Wayland programs and nothing
+  else: no Xwayland, no X11 window management, no `DISPLAY`, no code or
+  dependencies for X11-only programs. Programs that can speak either
+  (Chrome, GTK, Qt) are run as Wayland clients.
 - **Everything native.** Never wrap pre-existing system tools or apps
   (no shelling out to ffmpeg, pdftoppm, xdg-open, unzip, `op`, …). Read
   formats, talk protocols and do the work in Rust, in process (any

@@ -207,8 +207,6 @@ pub fn run_winit() {
     state.apply_output_settings(&output);
     state.space.map_output(&output, (0, 0));
 
-    #[cfg(feature = "xwayland")]
-    state.start_xwayland();
 
     info!("Initialization completed, starting the main loop.");
 

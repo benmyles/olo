@@ -1,5 +1,7 @@
-#[cfg(feature = "xwayland")]
-use std::os::unix::io::OwnedFd;
+use crate::{
+    focus::{KeyboardFocusTarget, PointerFocusTarget},
+    shell::WindowElement,
+};
 use std::{
     collections::HashMap,
     sync::{Arc, atomic::AtomicBool},
@@ -102,19 +104,6 @@ use smithay::{
     },
 };
 
-#[cfg(feature = "xwayland")]
-use crate::{
-    focus::{KeyboardFocusTarget, PointerFocusTarget},
-    shell::WindowElement,
-};
-#[cfg(feature = "xwayland")]
-use smithay::{
-    utils::Size,
-    wayland::selection::{SelectionSource, SelectionTarget},
-    wayland::xwayland_keyboard_grab::{XWaylandKeyboardGrabHandler, XWaylandKeyboardGrabState},
-    wayland::xwayland_shell,
-    xwayland::{X11Wm, XWayland, XWaylandEvent},
-};
 
 #[derive(Debug, Default)]
 pub struct ClientState {
@@ -124,6 +113,8 @@ pub struct ClientState {
     pub gone: Option<Arc<std::sync::atomic::AtomicBool>>,
     /// The program a tabula-wlproxy connection speaks for.
     pub pid: Option<i32>,
+    /// Through tabula-wlproxy, which keeps it through our restart.
+    pub proxied: bool,
 }
 
 /// The process behind a client: the program itself, also when it comes
@@ -179,8 +170,6 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub presentation_state: PresentationState,
     pub fractional_scale_manager_state: FractionalScaleManagerState,
     pub xdg_foreign_state: XdgForeignState,
-    #[cfg(feature = "xwayland")]
-    pub xwayland_shell_state: xwayland_shell::XWaylandShellState,
     pub single_pixel_buffer_state: SinglePixelBufferState,
     pub fifo_manager_state: FifoManagerState,
     pub commit_timing_manager_state: CommitTimingManagerState,
@@ -212,10 +201,6 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub pointer: PointerHandle<AnvilState<BackendData>>,
     pub cursor_position_hint: Option<(WlSurface, Point<f64, Logical>)>,
 
-    #[cfg(feature = "xwayland")]
-    pub xwm: Option<X11Wm>,
-    #[cfg(feature = "xwayland")]
-    pub xdisplay: Option<u32>,
 
     #[cfg(feature = "debug")]
     pub renderdoc: Option<renderdoc::RenderDoc<renderdoc::V141>>,
@@ -314,28 +299,7 @@ impl<BackendData: Backend> OutputHandler for AnvilState<BackendData> {}
 impl<BackendData: Backend> SelectionHandler for AnvilState<BackendData> {
     type SelectionUserData = ();
 
-    #[cfg(feature = "xwayland")]
-    fn new_selection(&mut self, ty: SelectionTarget, source: Option<SelectionSource>, _seat: Seat<Self>) {
-        if let Some(xwm) = self.xwm.as_mut()
-            && let Err(err) = xwm.new_selection(ty, source.map(|source| source.mime_types())) {
-                warn!(?err, ?ty, "Failed to set Xwayland selection");
-            }
-    }
 
-    #[cfg(feature = "xwayland")]
-    fn send_selection(
-        &mut self,
-        ty: SelectionTarget,
-        mime_type: String,
-        fd: OwnedFd,
-        _seat: Seat<Self>,
-        _user_data: &(),
-    ) {
-        if let Some(xwm) = self.xwm.as_mut()
-            && let Err(err) = xwm.send_selection(ty, mime_type, fd) {
-                warn!(?err, "Failed to send primary (X11 -> Wayland)");
-            }
-    }
 }
 
 impl<BackendData: Backend> PrimarySelectionHandler for AnvilState<BackendData> {
@@ -745,16 +709,6 @@ impl<BackendData: Backend + 'static> SecurityContextHandler for AnvilState<Backe
     }
 }
 
-#[cfg(feature = "xwayland")]
-impl<BackendData: Backend + 'static> XWaylandKeyboardGrabHandler for AnvilState<BackendData> {
-    fn keyboard_focus_for_xsurface(&self, surface: &WlSurface) -> Option<KeyboardFocusTarget> {
-        let elem = self
-            .space
-            .elements()
-            .find(|elem| elem.wl_surface().as_deref() == Some(surface))?;
-        Some(KeyboardFocusTarget::Window(elem.0.clone()))
-    }
-}
 
 impl<BackendData: Backend> XdgForeignHandler for AnvilState<BackendData> {
     fn xdg_foreign_state(&mut self) -> &mut XdgForeignState {
@@ -966,11 +920,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         IdleInhibitManagerState::new::<Self>(&dh);
         let lock = crate::lock::Lock::new::<BackendData>(&dh);
 
-        #[cfg(feature = "xwayland")]
-        let xwayland_shell_state = xwayland_shell::XWaylandShellState::new::<Self>(&dh.clone());
 
-        #[cfg(feature = "xwayland")]
-        XWaylandKeyboardGrabState::new::<Self>(&dh.clone());
 
         let mut state = AnvilState {
             backend_data,
@@ -1021,12 +971,6 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             cursor_position_hint: None,
             clock,
 
-            #[cfg(feature = "xwayland")]
-            xwayland_shell_state,
-            #[cfg(feature = "xwayland")]
-            xwm: None,
-            #[cfg(feature = "xwayland")]
-            xdisplay: None,
             #[cfg(feature = "debug")]
             renderdoc: renderdoc::RenderDoc::new().ok(),
             show_window_preview: false,
@@ -1088,61 +1032,6 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         state
     }
 
-    #[cfg(feature = "xwayland")]
-    pub fn start_xwayland(&mut self) {
-        use std::process::Stdio;
-
-        use smithay::wayland::compositor::CompositorHandler;
-
-        let (xwayland, client) = XWayland::spawn(
-            &self.display_handle,
-            None,
-            std::iter::empty::<(String, String)>(),
-            std::iter::empty::<String>(),
-            true,
-            Stdio::null(),
-            Stdio::null(),
-            |_| (),
-        )
-        .expect("failed to start XWayland");
-
-        let display_handle = self.display_handle.clone();
-        let ret = self
-            .handle
-            .insert_source(xwayland, move |event, _, data| match event {
-                XWaylandEvent::Ready {
-                    x11_socket,
-                    display_number,
-                } => {
-                    let xwayland_scale = std::env::var("ANVIL_XWAYLAND_SCALE")
-                        .ok()
-                        .and_then(|s| s.parse::<f64>().ok())
-                        .unwrap_or(1.);
-                    data.client_compositor_state(&client)
-                        .set_client_scale(xwayland_scale);
-                    let mut wm =
-                        X11Wm::start_wm(data.handle.clone(), &display_handle, x11_socket, client.clone())
-                            .expect("Failed to attach X11 Window Manager");
-
-                    let image = crate::cursor::image(crate::cursor::Shape::SystemDefault, 1.0);
-                    let (hx, hy) = crate::cursor::Shape::SystemDefault.hotspot();
-                    wm.set_cursor(
-                        &image.rgba,
-                        Size::from((image.size as u16, image.size as u16)),
-                        Point::from((hx as u16, hy as u16)),
-                    )
-                    .expect("Failed to set xwayland default cursor");
-                    data.xwm = Some(wm);
-                    data.xdisplay = Some(display_number);
-                }
-                XWaylandEvent::Error => {
-                    warn!("XWayland crashed on startup");
-                }
-            });
-        if let Err(e) = ret {
-            tracing::error!("Failed to insert the XWaylandSource into the event loop: {}", e);
-        }
-    }
 }
 
 impl<BackendData: Backend + 'static> AnvilState<BackendData> {
@@ -1568,7 +1457,7 @@ fn proxied_wayland_socket<BackendData: Backend + 'static>(handle: &LoopHandle<'s
                     return Ok(PostAction::Remove);
                 }
                 if let Ok(s) = (**stream).try_clone() {
-                    let state = ClientState { pid: (pid > 0).then_some(pid), ..Default::default() };
+                    let state = ClientState { pid: (pid > 0).then_some(pid), proxied: true, ..Default::default() };
                     if let Err(err) = data.display_handle.insert_client(s, Arc::new(state)) {
                         warn!("Error adding wayland client: {}", err);
                     }

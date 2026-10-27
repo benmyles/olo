@@ -15,8 +15,6 @@ use smithay::{
     utils::{IsAlive, Logical, Point, Serial, Size},
     wayland::{compositor::with_states, shell::xdg::SurfaceCachedState},
 };
-#[cfg(feature = "xwayland")]
-use smithay::{utils::Rectangle, xwayland::xwm::ResizeEdge as X11ResizeEdge};
 
 use super::{SurfaceData, WindowElement};
 use crate::{
@@ -296,22 +294,6 @@ impl From<ResizeEdge> for xdg_toplevel::ResizeEdge {
     }
 }
 
-#[cfg(feature = "xwayland")]
-impl From<X11ResizeEdge> for ResizeEdge {
-    #[inline]
-    fn from(edge: X11ResizeEdge) -> Self {
-        match edge {
-            X11ResizeEdge::Bottom => ResizeEdge::BOTTOM,
-            X11ResizeEdge::BottomLeft => ResizeEdge::BOTTOM_LEFT,
-            X11ResizeEdge::BottomRight => ResizeEdge::BOTTOM_RIGHT,
-            X11ResizeEdge::Left => ResizeEdge::LEFT,
-            X11ResizeEdge::Right => ResizeEdge::RIGHT,
-            X11ResizeEdge::Top => ResizeEdge::TOP,
-            X11ResizeEdge::TopLeft => ResizeEdge::TOP_LEFT,
-            X11ResizeEdge::TopRight => ResizeEdge::TOP_RIGHT,
-        }
-    }
-}
 
 /// Ask for the size being dragged to, unless the client hasn't yet answered
 /// the last one: a configure per pointer motion would queue up faster than
@@ -449,12 +431,6 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerResiz
                 });
                 send_when_caught_up(xdg);
             }
-            #[cfg(feature = "xwayland")]
-            WindowSurface::X11(x11) => {
-                let location = data.space.element_location(&self.window).unwrap();
-                x11.configure_with_sync(Rectangle::new(location + self.window.content_offset(), self.last_window_size), None)
-                    .unwrap();
-            }
         }
     }
 
@@ -516,43 +492,6 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerResiz
                             .borrow_mut();
                         if let ResizeState::Resizing(resize_data) = data.resize_state {
                             data.resize_state = ResizeState::WaitingForFinalAck(resize_data, event.serial);
-                        } else {
-                            panic!("invalid resize state: {:?}", data.resize_state);
-                        }
-                    });
-                }
-                #[cfg(feature = "xwayland")]
-                WindowSurface::X11(x11) => {
-                    let mut location = data.space.element_location(&self.window).unwrap();
-                    if self.edges.intersects(ResizeEdge::TOP_LEFT) {
-                        let geometry = self.window.0.geometry();
-
-                        if self.edges.intersects(ResizeEdge::LEFT) {
-                            location.x = self.initial_window_location.x
-                                + (self.initial_window_size.w - geometry.size.w);
-                        }
-                        if self.edges.intersects(ResizeEdge::TOP) {
-                            location.y = self.initial_window_location.y
-                                + (self.initial_window_size.h - geometry.size.h);
-                        }
-
-                        data.space.map_element(self.window.clone(), location, true);
-                    }
-                    x11.configure_with_sync(Rectangle::new(location + self.window.content_offset(), self.last_window_size), None)
-                        .unwrap();
-
-                    let Some(surface) = self.window.wl_surface() else {
-                        // X11 Window got unmapped, abort
-                        return;
-                    };
-                    with_states(&surface, |states| {
-                        let mut data = states
-                            .data_map
-                            .get::<RefCell<SurfaceData>>()
-                            .unwrap()
-                            .borrow_mut();
-                        if let ResizeState::Resizing(resize_data) = data.resize_state {
-                            data.resize_state = ResizeState::WaitingForCommit(resize_data);
                         } else {
                             panic!("invalid resize state: {:?}", data.resize_state);
                         }
@@ -733,43 +672,6 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchResizeSur
                     }
                 });
             }
-            #[cfg(feature = "xwayland")]
-            WindowSurface::X11(x11) => {
-                let mut location = data.space.element_location(&self.window).unwrap();
-                if self.edges.intersects(ResizeEdge::TOP_LEFT) {
-                    let geometry = self.window.0.geometry();
-
-                    if self.edges.intersects(ResizeEdge::LEFT) {
-                        location.x =
-                            self.initial_window_location.x + (self.initial_window_size.w - geometry.size.w);
-                    }
-                    if self.edges.intersects(ResizeEdge::TOP) {
-                        location.y =
-                            self.initial_window_location.y + (self.initial_window_size.h - geometry.size.h);
-                    }
-
-                    data.space.map_element(self.window.clone(), location, true);
-                }
-                x11.configure_with_sync(Rectangle::new(location + self.window.content_offset(), self.last_window_size), None)
-                    .unwrap();
-
-                let Some(surface) = self.window.wl_surface() else {
-                    // X11 Window got unmapped, abort
-                    return;
-                };
-                with_states(&surface, |states| {
-                    let mut data = states
-                        .data_map
-                        .get::<RefCell<SurfaceData>>()
-                        .unwrap()
-                        .borrow_mut();
-                    if let ResizeState::Resizing(resize_data) = data.resize_state {
-                        data.resize_state = ResizeState::WaitingForCommit(resize_data);
-                    } else {
-                        panic!("invalid resize state: {:?}", data.resize_state);
-                    }
-                });
-            }
         }
     }
 
@@ -851,12 +753,6 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchResizeSur
                     state.size = Some(self.last_window_size);
                 });
                 send_when_caught_up(xdg);
-            }
-            #[cfg(feature = "xwayland")]
-            WindowSurface::X11(x11) => {
-                let location = data.space.element_location(&self.window).unwrap();
-                x11.configure_with_sync(Rectangle::new(location + self.window.content_offset(), self.last_window_size), None)
-                    .unwrap();
             }
         }
     }

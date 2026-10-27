@@ -195,6 +195,11 @@ pub struct WindowInfo {
     pub workspace: u32,
     pub minimized: bool,
     pub focused: bool,
+    /// Its program keeps it through a window server restart (an upgrade):
+    /// Tabula's own apps, and Wayland programs that came through
+    /// tabula-wlproxy.
+    #[serde(default)]
+    pub kept: bool,
     /// Where it is on screen, tab and border included (global logical
     /// pixels), while it is on screen. Only in [`Reply::Windows`] (the
     /// list [`Event::WindowsChanged`] carries leaves it out, or a window

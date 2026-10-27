@@ -409,10 +409,11 @@ impl Deskbar {
         if let Some((win, _)) = self.upgrade_ask.take() {
             cx.close_window(win);
         }
-        // A new app_server means a reload, which programs not built on
-        // Tabula's kit don't survive.
+        // A new app_server means a reload, which programs it can't keep
+        // (ones that came before tabula-wlproxy, or without it) don't
+        // survive.
         let closing: Vec<String> = if self.status.upgrade.iter().any(|p| p == "tabula-app-server") {
-            self.teams().into_iter().filter(|t| our_app(&t.windows[0].app_id).is_none()).map(|t| t.name).collect()
+            self.teams().into_iter().filter(|t| t.windows.iter().any(|w| !w.kept && our_app(&w.app_id).is_none())).map(|t| t.name).collect()
         } else {
             Vec::new()
         };

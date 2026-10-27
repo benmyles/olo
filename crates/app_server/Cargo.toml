@@ -38,14 +38,8 @@ tabula-images.workspace = true
 workspace = true
 features = ["desktop", "wayland_frontend"]
 
-[dependencies.x11rb]
-default-features = false
-features = ["composite"]
-optional = true
-version = "0.13.0"
-
 [features]
-default = ["egl", "winit", "udev", "xwayland"]
+default = ["egl", "winit", "udev"]
 egl = ["smithay/use_system_lib", "smithay/backend_egl"]
 udev = [
   "smithay-drm-extras",
@@ -61,7 +55,6 @@ udev = [
   "smithay/renderer_multi",
 ]
 winit = ["smithay/backend_winit", "smithay/backend_drm"]
-xwayland = ["smithay/xwayland", "x11rb", "smithay/x11rb_event_source"]
 libei = ["smithay/backend_libei", "udev"]
 renderer_sync = []
 debug = []

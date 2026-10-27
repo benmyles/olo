@@ -280,11 +280,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     t.send_pending_configure();
                 }
             }
-            #[cfg(feature = "xwayland")]
-            WindowSurface::X11(x) => {
-                let _ = x.set_maximized(false);
-                let _ = x.configure(Rectangle::new(frame.loc + window.content_offset(), content));
-            }
         }
         self.space.relocate_element(window, frame.loc);
     }
