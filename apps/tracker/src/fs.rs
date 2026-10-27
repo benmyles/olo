@@ -152,6 +152,46 @@ pub fn trash_slot(path: &Path) -> std::io::Result<(PathBuf, PathBuf)> {
     Ok((target, info_file))
 }
 
+/// Where an item in the Trash came from, by its .trashinfo (beside
+/// Trash/files, in Trash/info), and that info file.
+pub fn trash_origin(item: &Path) -> std::io::Result<(PathBuf, PathBuf)> {
+    use std::os::unix::ffi::OsStringExt;
+    let name = item.file_name().ok_or_else(|| std::io::Error::other("not in the Trash"))?;
+    let trash = item.parent().and_then(Path::parent).ok_or_else(|| std::io::Error::other("not in the Trash"))?;
+    let mut info_name = name.to_os_string();
+    info_name.push(".trashinfo");
+    let info = trash.join("info").join(info_name);
+    let text = fs::read_to_string(&info)
+        .map_err(|_| std::io::Error::other(format!("there’s no record of where “{}” came from", name.to_string_lossy())))?;
+    let path = text
+        .lines()
+        .find_map(|l| l.strip_prefix("Path="))
+        .ok_or_else(|| std::io::Error::other(format!("the record of where “{}” came from is damaged", name.to_string_lossy())))?;
+    let path = PathBuf::from(std::ffi::OsString::from_vec(percent_decode(path)));
+    // Relative paths are relative to the Trash's top directory (the
+    // file system's, for a $topdir/.Trash-uid); ours is the home one.
+    let path = if path.is_absolute() { path } else { trash.parent().and_then(Path::parent).unwrap_or(Path::new("/")).join(path) };
+    Ok((path, info))
+}
+
+fn percent_decode(s: &str) -> Vec<u8> {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%'
+            && let Some(v) = s.get(i + 1..i + 3).and_then(|h| u8::from_str_radix(h, 16).ok())
+        {
+            out.push(v);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
 /// Where a copy of `from` dropped into `dir` goes: its own name, or
 /// "name copy" when copying into the folder it is already in.
 pub fn copy_target(from: &Path, dir: &Path) -> PathBuf {
@@ -361,5 +401,7 @@ mod tests {
     fn trashinfo_paths_are_escaped() {
         assert_eq!(percent_encode(Path::new("/home/a b&c.txt")), "/home/a%20b%26c.txt");
         assert_eq!(percent_encode(Path::new("/tmp/é")), "/tmp/%C3%A9");
+        assert_eq!(percent_decode("/home/a%20b%26c.txt"), b"/home/a b&c.txt");
+        assert_eq!(percent_decode("/tmp/%C3%A9%"), "/tmp/é%".as_bytes());
     }
 }

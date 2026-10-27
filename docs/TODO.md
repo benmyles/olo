@@ -94,7 +94,15 @@ as they land (with the commit), add new ones as they come up.
   word in plain bash but not in Claude Code. Check what Terminal sends for
   them (bash binds ESC b / ESC f; others expect CSI 1;3D / 1;3C) and
   whether Claude Code's input understands it; send what xterm does.
-- **Tracker: restore from the Trash** (Ben): a Restore command (File
+- **Drag and drop everywhere, across apps** (Ben): everything that shows
+  files or data can be dragged and dropped, within and between apps and
+  to and from other Wayland clients (wl_data_device, text/uri-list and
+  the data's own types): Tracker items to any app (e.g. an image into
+  Terminal, so Claude Code gets its path), Tracker accepting drops from
+  everything, NetPositive images/links/text, StyledEdit text, Viewer
+  images, Passwords fields, Deskbar launches…
+- ~~**Tracker: restore from the Trash**~~ (File ▸ Restore and the item
+  menu, `ops::Kind::Restore`; a clash gets a number instead of asking) (Ben): a Restore command (File
   menu and the context menu in the Trash) that puts the selected files
   back where each came from (the trash's `.trashinfo` original path),
   recreating missing folders and asking on a name clash.

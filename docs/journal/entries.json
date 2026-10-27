@@ -850,5 +850,11 @@
   "title": "Passwords asks before syncing anything",
   "caption": "Syncing with 1Password now works out every change first, both ways (adding, changing, archiving, deleting, with the parts that differ), and makes none until you approve them in Review Sync. Automatic syncs only say how many changes are waiting.",
   "image": "2026-10-26/220845-passwords-asks-before-syncing-anything.png"
+ },
+ {
+  "time": "2026-10-26T22:16:33",
+  "title": "Restore from the Trash",
+  "caption": "Items in the Trash can go back where they came from: Restore in the File menu or an item's menu puts them back in their folders (made again if gone), and never over something new in their place.",
+  "image": "2026-10-26/221633-restore-from-the-trash.png"
  }
 ]

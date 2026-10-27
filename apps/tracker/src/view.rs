@@ -218,6 +218,9 @@ pub fn item_menu(f: &FolderWin) -> Menu {
         .separator();
     if !in_trash {
         menu = menu.item("Move to Trash", "trash", Some(Key::T));
+    } else if f.current_dir() == fs::trash_files() {
+        // Items at the top of the Trash go back where they came from.
+        menu = menu.item("Restore", "restore", None);
     }
     menu
 }

@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Restore from the Trash
+
+*22:16* — Items in the Trash can go back where they came from: Restore in the File menu or an item's menu puts them back in their folders (made again if gone), and never over something new in their place.
+
+![Restore from the Trash](2026-10-26/221633-restore-from-the-trash.png)
+
 ### Passwords asks before syncing anything
 
 *22:08* — Syncing with 1Password now works out every change first, both ways (adding, changing, archiving, deleting, with the parts that differ), and makes none until you approve them in Review Sync. Automatic syncs only say how many changes are waiting.

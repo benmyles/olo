@@ -1,4 +1,5 @@
-//! File operations — copy, move, duplicate, move to Trash, empty Trash —
+//! File operations — copy, move, duplicate, move to Trash, restore from
+//! the Trash, empty Trash —
 //! on worker threads, with live progress and cancellation, so Tracker never
 //! blocks however big the job (see "The responsiveness rule").
 //!
@@ -27,6 +28,8 @@ pub enum Kind {
     Move,
     Duplicate,
     Trash,
+    /// Put items in the Trash back where they came from.
+    Restore,
     EmptyTrash,
 }
 
@@ -94,6 +97,7 @@ fn title(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
         Kind::Move => format!("Moving {what}{to}"),
         Kind::Duplicate => format!("Duplicating {what}"),
         Kind::Trash => format!("Moving {what} to the Trash"),
+        Kind::Restore => format!("Restoring {what}"),
         Kind::EmptyTrash => "Emptying the Trash".into(),
     }
 }
@@ -198,6 +202,24 @@ impl Worker<'_> {
                         let _ = sfs::remove_file(&info);
                         context(e, s)
                     })?;
+                    self.p.done_items.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+            Kind::Restore => {
+                self.p.total_items.store(sources.len() as u64, Ordering::Relaxed);
+                self.p.counting.store(false, Ordering::Relaxed);
+                for s in sources {
+                    self.check()?;
+                    self.p.set_current(s);
+                    let (origin, info) = fs::trash_origin(s)?;
+                    let dir = origin.parent().ok_or_else(|| io::Error::other("no folder to restore into"))?;
+                    // Its folder may have gone too; something new in its
+                    // place keeps its name and this one gets a number.
+                    sfs::create_dir_all(dir).map_err(|e| context(e, dir))?;
+                    let target = fs::unique(dir, &origin.file_name().unwrap_or_default().to_string_lossy());
+                    self.move_one(s, &target).map_err(|e| context(e, s))?;
+                    let _ = sfs::remove_file(&info);
+                    created.push(target);
                     self.p.done_items.fetch_add(1, Ordering::Relaxed);
                 }
             }
@@ -456,6 +478,40 @@ mod tests {
         let o = run(Kind::Move, vec![dir.join("a/x copy.txt")], Some(dir.join("b")));
         assert_eq!(o.created, [dir.join("b/x copy.txt")]);
         assert!(!dir.join("a/x copy.txt").exists());
+        let _ = sfs::remove_dir_all(&dir);
+    }
+
+    /// Items go back where their .trashinfo says, into folders made again
+    /// if need be, never over something that has taken their place.
+    #[test]
+    fn restore_from_the_trash() {
+        let dir = std::env::temp_dir().join(format!("tabula-ops-r-{}", std::process::id()));
+        let _ = sfs::remove_dir_all(&dir);
+        let (files, info) = (dir.join("Trash/files"), dir.join("Trash/info"));
+        sfs::create_dir_all(&files).unwrap();
+        sfs::create_dir_all(&info).unwrap();
+        sfs::create_dir_all(dir.join("docs")).unwrap();
+        let trashed = |name: &str, from: &str| {
+            sfs::write(files.join(name), name).unwrap();
+            let path = dir.join(from).display().to_string().replace(' ', "%20");
+            sfs::write(info.join(format!("{name}.trashinfo")), format!("[Trash Info]\nPath={path}\nDeletionDate=2026-10-26T22:00:00\n")).unwrap();
+            files.join(name)
+        };
+        let a = trashed("a b.txt", "docs/a b.txt");
+        let gone = trashed("deep.txt", "gone/away/deep.txt");
+        let clash = trashed("taken.txt", "docs/taken.txt");
+        sfs::write(dir.join("docs/taken.txt"), "new").unwrap();
+        let o = run(Kind::Restore, vec![a, gone, clash], None);
+        assert!(o.error.is_none(), "{o:?}");
+        assert_eq!(o.created, [dir.join("docs/a b.txt"), dir.join("gone/away/deep.txt"), dir.join("docs/taken 2.txt")]);
+        assert_eq!(sfs::read_to_string(dir.join("docs/taken.txt")).unwrap(), "new");
+        assert_eq!(sfs::read_to_string(dir.join("docs/taken 2.txt")).unwrap(), "taken.txt");
+        assert_eq!(sfs::read_dir(&files).unwrap().count() + sfs::read_dir(&info).unwrap().count(), 0, "nothing left in the Trash");
+        // No record: an error, and it stays put.
+        sfs::write(files.join("orphan"), "").unwrap();
+        let o = run(Kind::Restore, vec![files.join("orphan")], None);
+        assert!(o.error.is_some_and(|e| e.contains("no record")));
+        assert!(files.join("orphan").exists());
         let _ = sfs::remove_dir_all(&dir);
     }
 

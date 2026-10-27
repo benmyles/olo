@@ -759,6 +759,13 @@ impl Tracker {
                     self.start_job(cx, ops::Kind::Trash, selected, None, Some(win));
                 }
             }
+            "restore" => {
+                let top = fs::trash_files();
+                let items: Vec<PathBuf> = selected.into_iter().filter(|p| p.parent() == Some(top.as_path())).collect();
+                if !items.is_empty() {
+                    self.start_job(cx, ops::Kind::Restore, items, None, Some(win));
+                }
+            }
             "empty-trash" => self.dialog(
                 cx,
                 "Empty Trash",
@@ -856,7 +863,11 @@ impl Tracker {
             .item("Move to Trash", "trash", Some(Key::T))
             .enabled(has_sel && !in_trash);
         if in_trash {
-            file = file.item("Empty Trash", "empty-trash", None).enabled(!fs::trash_is_empty());
+            file = file
+                .item("Restore", "restore", None)
+                .enabled(has_sel && f.current_dir() == fs::trash_files())
+                .item("Empty Trash", "empty-trash", None)
+                .enabled(!fs::trash_is_empty());
         }
         let file = file.separator().item("Close", "close", Some(Key::W)).item("Quit", "quit", Some(Key::Q));
         let edit = Menu::new("Edit")
