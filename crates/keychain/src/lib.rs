@@ -7,6 +7,10 @@
 //! unlocked; a fill or save while locked brings it forward and waits for
 //! the unlock (so those calls can take minutes).
 //!
+//! `op` (`tabula-op`, apps/op) asks with [`Request::Cli`]: Passwords
+//! answers in the shapes 1Password's own `op` prints as JSON, after the
+//! person allows that terminal session.
+//!
 //! Passkeys work the same way: NetPositive asks for a page's passkeys,
 //! and Passwords makes and keeps the keys and signs with them, so private
 //! keys never leave it. Byte strings are unpadded base64url, as in
@@ -57,6 +61,26 @@ pub enum Request {
     Search { query: String },
     /// Bring Passwords forward showing item `id` (once unlocked).
     Show { vault: String, id: String },
+    /// From `op`: answered once unlocked and the asking terminal session
+    /// is allowed.
+    Cli { query: CliQuery },
+}
+
+/// What `op` asks. Items and vaults are named by ID or by name (any case).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CliQuery {
+    /// The accounts, as `op account list --format json` prints them. No
+    /// permission needed.
+    Accounts,
+    /// Ask the person now (`op signin`), if this session isn't allowed.
+    Signin,
+    Vaults,
+    Items { vault: Option<String> },
+    /// One item with its fields' values.
+    Item { vault: Option<String>, item: String },
+    /// `op://` references' values, in order.
+    Resolve { references: Vec<String> },
 }
 
 impl Request {
@@ -72,7 +96,8 @@ impl Request {
             | Request::Show { .. }
             | Request::Passkeys { .. }
             | Request::PasskeyCreate { .. }
-            | Request::PasskeySign { .. } => Duration::from_secs(300),
+            | Request::PasskeySign { .. }
+            | Request::Cli { .. } => Duration::from_secs(300),
         }
     }
 }
@@ -172,6 +197,10 @@ pub enum Response {
     Error {
         message: String,
     },
+    /// For `Cli`: JSON as 1Password's `op` prints it.
+    Cli {
+        json: serde_json::Value,
+    },
 }
 
 impl Drop for Response {
@@ -249,6 +278,8 @@ pub struct Incoming {
     pub request: Request,
     /// The asking program's file name (always `tabula-…`).
     pub from: String,
+    /// Its process.
+    pub pid: i32,
     stream: UnixStream,
 }
 
@@ -281,12 +312,12 @@ pub fn serve(deliver: impl Fn(Incoming) + Send + Sync + 'static) -> std::io::Res
         for stream in listener.incoming().flatten() {
             let deliver = deliver.clone();
             std::thread::spawn(move || {
-                let from = match trusted(&stream) {
+                let (from, pid) = match trusted(&stream) {
                     Ok(from) => from,
                     Err(e) => {
                         tracing::warn!("keychain: refused a caller: {e}");
                         let message = "Passwords answers only Tabula’s own apps.".into();
-                        Incoming { request: Request::Unlock, from: String::new(), stream }.reply(Response::Error { message });
+                        Incoming { request: Request::Unlock, from: String::new(), pid: 0, stream }.reply(Response::Error { message });
                         return;
                     }
                 };
@@ -299,9 +330,9 @@ pub fn serve(deliver: impl Fn(Incoming) + Send + Sync + 'static) -> std::io::Res
                 let parsed = serde_json::from_str::<Request>(&line);
                 line.zeroize();
                 match parsed {
-                    Ok(request) => deliver(Incoming { request, from, stream }),
+                    Ok(request) => deliver(Incoming { request, from, pid, stream }),
                     Err(e) => {
-                        Incoming { request: Request::Unlock, from, stream }.reply(Response::Error { message: e.to_string() })
+                        Incoming { request: Request::Unlock, from, pid, stream }.reply(Response::Error { message: e.to_string() })
                     }
                 }
             });
@@ -310,8 +341,8 @@ pub fn serve(deliver: impl Fn(Incoming) + Send + Sync + 'static) -> std::io::Res
     Ok(())
 }
 
-/// Our own user, running one of our programs: its file name.
-fn trusted(stream: &UnixStream) -> Result<String, String> {
+/// Our own user, running one of our programs: its file name and pid.
+fn trusted(stream: &UnixStream) -> Result<(String, i32), String> {
     use std::os::fd::AsRawFd;
     let mut cred = libc::ucred { pid: 0, uid: 0, gid: 0 };
     let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
@@ -332,7 +363,7 @@ fn trusted(stream: &UnixStream) -> Result<String, String> {
     if !name.starts_with("tabula-") {
         return Err(format!("{} isn’t a Tabula program", exe.display()));
     }
-    Ok(name.to_owned())
+    Ok((name.to_owned(), cred.pid))
 }
 
 /// The host a login's website names, without `www.`.

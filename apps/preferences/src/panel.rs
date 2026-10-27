@@ -154,7 +154,7 @@ impl Panel {
             Panel::Notifications => (440, 420),
             Panel::Power => (460, 362),
             Panel::ScreenSaver => (500, 400),
-            Panel::Security => (420, 300),
+            Panel::Security => (420, 354),
             Panel::Sound => (440, 270),
             Panel::TouchId => (420, 330),
             Panel::Touchpad => (400, 382),

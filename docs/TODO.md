@@ -5,6 +5,10 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~1Password's `op` from Passwords~~ (Ben): `tabula-op`, linked as `op`,
+  answers `op inject`/`read`/`run`/`item get`/`whoami`/`account list`/`signin`
+  from Passwords, asking once per terminal session; Preferences ▸
+  Security turns it off. HACKING, "op: 1Password's command line".
 - ~~Long menus scroll~~: kit popups shrink to the screen and scroll
   (arrows at the ends, wheel, keys).
 - ~~Hide Window everywhere~~: ⌘M (Preferences ▸ Keyboard) and the
@@ -481,6 +485,15 @@ as they land (with the commit), add new ones as they come up.
   imports one back (with a summary of what it holds and a confirm before
   replacing anything). In Rust, in process (e.g. tar + zstd crates);
   secrets stay encrypted as they are on disk.
+- **Notification banners: never, Deskbar-wide, compact** (Ben):
+  Preferences ▸ Notifications' "Show banners for:" gets a "Never" choice.
+  The default banner style becomes as wide as the Deskbar and sits in
+  line with it (that column is usually free space, so banners don't
+  cover anything else), and banners get more compact and better looking.
+- **Notifications: Dismiss, and Activate becomes Open** (Ben): the
+  Notifications app gets a "Dismiss" button. With a group selected it
+  dismisses every notification in that group; with one notification
+  selected, just that one. The "Activate" button is renamed "Open".
 - **New Window from a running app's context menu** (Ben): right-clicking
   a Tabula app that is running, where Tracker shows it (its icon in the
   Applications folder, on the desktop, …), offers "New Window", which asks

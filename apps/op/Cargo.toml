@@ -1,0 +1,17 @@
+[package]
+name = "tabula-op"
+description = "op: 1Password's command-line tool, answered by Tabula's Passwords"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "tabula-op"
+path = "src/main.rs"
+
+[dependencies]
+tabula-keychain.workspace = true
+tabula-xdg.workspace = true
+serde_json.workspace = true
+libc = "0.2"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

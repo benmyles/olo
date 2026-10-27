@@ -2,6 +2,7 @@
 //! (`vault.rs`), and synced both ways with a 1Password account if asked
 //! (`sync.rs`, through `tabula-onepassword`). Locked with Touch ID.
 
+mod cli;
 mod edit;
 mod generator;
 mod lock;
@@ -96,6 +97,8 @@ enum Alert {
     ConfirmDelete { vault: String, item: String, title: String },
     DiscardChanges { then: Box<Then> },
     Message(String),
+    /// `op` in a terminal session asks to use the passwords.
+    AllowCli { session: cli::Session, asker: cli::Asker },
 }
 
 /// What to do once changes are discarded.
@@ -127,6 +130,37 @@ fn remove_message(removed: &[Linked]) -> String {
     let names = removed.iter().map(|l| format!("“{}”", l.label)).collect::<Vec<_>>().join(" and ");
     let its = if removed.len() == 1 { "Its" } else { "Their" };
     format!("Stop syncing with {names}? {its} items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.")
+}
+
+/// The question for letting `op` use the passwords.
+fn allow_message(a: &cli::Asker) -> String {
+    let mut m = format!("Allow “{}” to use your passwords?", a.command);
+    match (&a.parent, &a.cwd) {
+        (Some(p), Some(d)) => m.push_str(&format!(" It was run by {p} in {d}.")),
+        (Some(p), None) => m.push_str(&format!(" It was run by {p}.")),
+        _ => {}
+    }
+    m.push_str(" Other commands from the same terminal can then use them too, until Passwords locks or for 10 minutes after the last.");
+    m
+}
+
+/// The accounts, as `op account list --format json` prints them: those
+/// Passwords syncs with (with what the 1Password app says of them), or
+/// this computer's own when it syncs with none.
+fn cli_accounts(linked: &[Linked]) -> serde_json::Value {
+    if linked.is_empty() {
+        return serde_json::json!([{ "url": "local", "email": "", "user_uuid": "", "account_uuid": "local" }]);
+    }
+    let known = onepassword::accounts::local();
+    serde_json::Value::Array(
+        linked
+            .iter()
+            .map(|l| match known.iter().find(|a| a.uuid == l.id || a.name.eq_ignore_ascii_case(&l.id)) {
+                Some(a) => serde_json::json!({ "url": a.address, "email": a.email, "user_uuid": "", "account_uuid": a.uuid }),
+                None => serde_json::json!({ "url": l.label, "email": "", "user_uuid": "", "account_uuid": l.id }),
+            })
+            .collect(),
+    )
 }
 
 const RESET: &str = "Erase everything Passwords keeps on this computer and start again? Its items, changes not yet sent to 1Password, and the choice of account all go. Nothing in 1Password is changed. This can’t be undone.";
@@ -186,6 +220,10 @@ pub struct Passwords {
     pub unlocked: bool,
     /// Other apps' requests waiting for an unlock or the item list.
     pub waiting: Vec<Incoming>,
+    /// `op`'s, waiting for the person to allow their sessions.
+    cli_waiting: Vec<(cli::Session, Incoming)>,
+    /// The terminal sessions allowed to use `op`.
+    grants: cli::Grants,
     /// Syncing with 1Password: how the last one went.
     pub sync: Option<SyncState>,
     /// When the last sync was asked for, and when the next is due early.
@@ -479,6 +517,18 @@ impl Passwords {
 
     /// Another app asks (NetPositive, for a page's logins or passkeys).
     fn keychain(&mut self, cx: &mut Cx, incoming: Incoming) {
+        if let Request::Cli { query } = &incoming.request {
+            if !self.security.op_cli {
+                let message = "Tabula’s op is turned off (Preferences ▸ Security).".into();
+                return incoming.reply(Response::Error { message });
+            }
+            // Which accounts there are needs no permission (or unlocking).
+            if matches!(query, tabula_keychain::CliQuery::Accounts) {
+                let linked = self.settings.accounts.clone();
+                std::thread::spawn(move || incoming.reply(Response::Cli { json: cli_accounts(&linked) }));
+                return;
+            }
+        }
         if !self.set_up() {
             return incoming.reply(Response::NotSetUp);
         }
@@ -502,6 +552,28 @@ impl Passwords {
         // The items the request may concern, by their websites.
         let fits: Box<dyn Fn(&onepassword::Website) -> bool> = match &incoming.request {
             Request::Unlock => return incoming.reply(Response::Unlocked),
+            Request::Cli { query } => {
+                let Some(session) = cli::session_of(incoming.pid) else {
+                    return incoming.reply(Response::Error { message: "op went away".into() });
+                };
+                if !self.grants.check(session) {
+                    // Ask once per session, however many are waiting.
+                    let asking = self.alerts.values().any(|a| matches!(a, Alert::AllowCli { session: s, .. } if *s == session));
+                    if !asking {
+                        let asker = cli::asker(incoming.pid);
+                        let w = cx.open_window(WindowOptions::alert("Passwords", &allow_message(&asker)));
+                        cx.activate(w);
+                        self.alerts.insert(w, Alert::AllowCli { session, asker });
+                    }
+                    self.cli_waiting.push((session, incoming));
+                    return;
+                }
+                if matches!(query, tabula_keychain::CliQuery::Signin) {
+                    return incoming.reply(Response::Cli { json: serde_json::json!({}) });
+                }
+                self.store.send(Job::Cli { incoming: Box::new(incoming) });
+                return;
+            }
             Request::Search { query } => {
                 let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
                 let mut items: Vec<tabula_keychain::Found> = self
@@ -565,6 +637,22 @@ impl Passwords {
         self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates, vault });
     }
 
+    /// The person allowed (or denied) a terminal session's `op`.
+    fn answer_cli(&mut self, cx: &mut Cx, session: cli::Session, allow: bool) {
+        if allow {
+            self.grants.allow(session);
+        }
+        let (theirs, rest) = std::mem::take(&mut self.cli_waiting).into_iter().partition::<Vec<_>, _>(|(s, _)| *s == session);
+        self.cli_waiting = rest;
+        for (_, incoming) in theirs {
+            if allow {
+                self.keychain(cx, incoming);
+            } else {
+                incoming.reply(Response::Error { message: "Passwords: not allowed".into() });
+            }
+        }
+    }
+
     /// Answer what waited for an unlock or for the items.
     fn serve_waiting(&mut self, cx: &mut Cx) {
         for incoming in std::mem::take(&mut self.waiting) {
@@ -586,8 +674,10 @@ impl Passwords {
         }
         // A waiting plan holds secrets too; it is worked out again later.
         self.end_review(cx);
-        // The store lets go of its secrets (after a running sync).
+        // The store lets go of its secrets (after a running sync), and
+        // `op` must be allowed again.
         self.store.send(Job::Close);
+        self.grants.clear();
         self.lock.lock();
         self.redraw(cx);
     }
@@ -1112,6 +1202,7 @@ impl App for Passwords {
                 }
                 Alert::DiscardChanges { .. } => ("warning", "Discard the changes to this item?".into(), &["Keep Editing", "Discard"]),
                 Alert::Message(m) => ("stop", m.clone(), &["OK"]),
+                Alert::AllowCli { asker, .. } => ("warning", allow_message(asker), &["Deny", "Allow"]),
             };
             if let Some(choice) = tabula_kit::widgets::alert(ui, icon, &message, buttons) {
                 cx.close_window(window);
@@ -1122,6 +1213,7 @@ impl App for Passwords {
                     Some(Alert::DiscardChanges { then }) if choice == 1 => self.after_discard(cx, *then),
                     Some(Alert::ConfirmReset) if choice == 1 => self.store.send(Job::Reset),
                     Some(Alert::ConfirmRemove { removed, keep }) if choice == 1 => self.link_accounts(cx, removed, keep),
+                    Some(Alert::AllowCli { session, .. }) => self.answer_cli(cx, session, choice == 1),
                     _ => {}
                 }
                 self.redraw(cx);
@@ -1441,6 +1533,8 @@ fn main() {
             last_use: Instant::now(),
             unlocked: false,
             waiting: Vec::new(),
+            cli_waiting: Vec::new(),
+            grants: cli::Grants::default(),
             sync: None,
             sync_asked: None,
             sync_due: None,

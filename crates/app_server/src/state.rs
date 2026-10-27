@@ -976,7 +976,12 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             show_window_preview: false,
             parked: Default::default(),
             workspace: 0,
-            settings: crate::desktop::load_settings(),
+            settings: {
+                let settings = crate::desktop::load_settings();
+                // `op` is there (or not) as Preferences ▸ Security says.
+                tabula_xdg::link_op_here(settings.security.passwords.op_cli);
+                settings
+            },
             ipc: Default::default(),
             last_window_infos: Vec::new(),
             layout: crate::layout::load(),

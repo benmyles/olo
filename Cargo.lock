@@ -11257,6 +11257,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabula-op"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "libc",
+ "serde_json",
+ "tabula-keychain",
+ "tabula-xdg",
+]
+
+[[package]]
 name = "tabula-palette"
 version = "0.1.0"
 dependencies = [

@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Preferences: op on or off
+
+*12:15* — Preferences ▸ Security has a Command line box to turn op off; it's on by default.
+
+![Preferences: op on or off](2026-10-27/121525-preferences-op-on-or-off.png)
+
+### op asks Passwords
+
+*12:15* — Tabula's op answers scripts that use 1Password's op command (op inject, read, run, item get, whoami). The first time a terminal asks, Passwords names the command, who ran it and where, and Allow covers that terminal until Passwords locks.
+
+![op asks Passwords](2026-10-27/121525-op-asks-passwords.png)
+
 ### Notifications history: denser, with views
 
 *11:13* — Two-line rows (icon, bold title with app and time, a line of body), a dot for what is new, day headings and search; List, By App and Cards shown, Conversations stacks a thread. The selected note opens to its whole body and actions.

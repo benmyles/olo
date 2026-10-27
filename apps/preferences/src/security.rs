@@ -1,5 +1,5 @@
 //! Security: how Passwords keeps its secrets (syncing with 1Password,
-//! locking, the clipboard). Passwords follows these live.
+//! locking, `op` on the command line, the clipboard). Passwords follows these live.
 
 use tabula_kit::{
     egui::Ui,
@@ -22,6 +22,9 @@ pub fn ui(ui: &mut Ui, s: &mut Settings) {
     BBox::new("Passwords: Locking").show(ui, |ui| {
         minutes_menu(ui, "pw-lock", "Lock after idle for:", &[1, 5, 10, 30, 60, 0], &mut p.lock_minutes);
         ui.add(CheckBox::new(&mut p.lock_with_screen, "Lock when the screen locks"));
+    });
+    BBox::new("Passwords: Command line").show(ui, |ui| {
+        ui.add(CheckBox::new(&mut p.op_cli, "Answer 1Password’s op command"));
     });
     BBox::new("Passwords: Clipboard").show(ui, |ui| {
         let choices = [30, 60, 90, 180, 300];

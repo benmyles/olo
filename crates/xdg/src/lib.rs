@@ -291,6 +291,56 @@ fn parse_user_dir(text: &str, name: &str, home: &Path) -> Option<PathBuf> {
     (dir != home && dir.is_absolute()).then_some(dir)
 }
 
+/// Put `op` beside `tabula-op` in `dir` (a link to it: Tabula's stand-in
+/// for 1Password's command-line tool), or take it away. An `op` there
+/// that isn't ours (1Password's own, say) is left alone.
+pub fn link_op(dir: &std::path::Path, on: bool) -> std::io::Result<()> {
+    let link = dir.join("op");
+    let ours = std::fs::read_link(&link).ok().is_some_and(|t| t.file_name().is_some_and(|n| n == "tabula-op"));
+    let there = std::fs::symlink_metadata(&link).is_ok();
+    if there && !ours {
+        return Ok(());
+    }
+    if on && !there && dir.join("tabula-op").is_file() {
+        std::os::unix::fs::symlink("tabula-op", &link)?;
+    } else if !on && ours {
+        std::fs::remove_file(&link)?;
+    }
+    Ok(())
+}
+
+/// [`link_op`] in the directory our own programs run from (not a build
+/// directory, `target/debug`), on a thread.
+pub fn link_op_here(on: bool) {
+    let Some(dir) = std::env::current_exe().ok().and_then(|e| Some(e.parent()?.to_owned())) else { return };
+    if dir.parent().and_then(|p| p.file_name()).is_some_and(|n| n == "target") {
+        return;
+    }
+    std::thread::spawn(move || {
+        let _ = link_op(&dir, on);
+    });
+}
+
+#[cfg(test)]
+mod op_link_tests {
+    #[test]
+    fn links_only_ours() {
+        let dir = std::env::temp_dir().join(format!("op-link-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("tabula-op"), "").unwrap();
+        super::link_op(&dir, true).unwrap();
+        assert_eq!(std::fs::read_link(dir.join("op")).unwrap(), std::path::Path::new("tabula-op"));
+        super::link_op(&dir, false).unwrap();
+        assert!(std::fs::symlink_metadata(dir.join("op")).is_err());
+        // Someone else's op stays, on or off.
+        std::fs::write(dir.join("op"), "theirs").unwrap();
+        super::link_op(&dir, true).unwrap();
+        super::link_op(&dir, false).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("op")).unwrap(), "theirs");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
 #[cfg(test)]
 mod user_dir_tests {
     use super::*;

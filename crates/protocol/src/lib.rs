@@ -370,11 +370,14 @@ pub struct PasswordsSecurity {
     pub lock_with_screen: bool,
     /// Take copied secrets off the clipboard after this many seconds.
     pub clear_seconds: u32,
+    /// Tabula's `op` (1Password's command-line tool, answered by
+    /// Passwords) is installed and answers.
+    pub op_cli: bool,
 }
 
 impl Default for PasswordsSecurity {
     fn default() -> Self {
-        PasswordsSecurity { auto_sync: true, lock_minutes: 10, lock_with_screen: true, clear_seconds: 90 }
+        PasswordsSecurity { auto_sync: true, lock_minutes: 10, lock_with_screen: true, clear_seconds: 90, op_cli: true }
     }
 }
 

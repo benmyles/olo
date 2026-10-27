@@ -44,6 +44,9 @@ for b in target/release/tabula-*; do
     as_user chmod 755 "$PREFIX/bin/.$name.new"
     as_user mv -f "$PREFIX/bin/.$name.new" "$PREFIX/bin/$name"
 done
+# `op` answers 1Password's command from Passwords (Preferences ▸
+# Security turns it off, which removes the link). Never over another op.
+[ -e "$PREFIX/bin/op" ] || [ -L "$PREFIX/bin/op" ] || as_user ln -s tabula-op "$PREFIX/bin/op"
 as_user cp -r data/icons "$PREFIX/share/tabula/"
 echo "$TREE/target/release" | as_user tee "$PREFIX/share/tabula/build-dir" > /dev/null
 

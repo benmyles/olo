@@ -718,6 +718,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         let scale_changed = settings.display != self.settings.display;
         let main_changed = settings.display.main != self.settings.display.main;
+        if settings.security.passwords.op_cli != self.settings.security.passwords.op_cli {
+            tabula_xdg::link_op_here(settings.security.passwords.op_cli);
+        }
         // Fields app_server owns are recomputed, not taken from the client.
         settings.appearance.effective_theme = self.settings.appearance.effective_theme;
         settings.appearance.night_light_active = self.settings.appearance.night_light_active;

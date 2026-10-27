@@ -38,6 +38,8 @@ pub enum Job {
     /// Answer another app (NetPositive): `candidates` are the logins
     /// saved for its page; `vault` is where a new one goes.
     Keychain { incoming: Box<Incoming>, candidates: Vec<(String, String)>, vault: String },
+    /// Answer `op` (an allowed session's question).
+    Cli { incoming: Box<Incoming> },
     /// Work out what syncing with these 1Password accounts (id, name;
     /// the first takes items made here) would change, as one review
     /// (unless a sync is running).
@@ -375,6 +377,13 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                 let response = keychain(v, &incoming.request, &candidates, &vault, &reply);
                 incoming.reply(response);
             }
+            Job::Cli { incoming } => {
+                let response = match &incoming.request {
+                    Request::Cli { query } => crate::cli::answer(&v.data, query),
+                    _ => Response::Error { message: "unexpected".into() },
+                };
+                incoming.reply(response);
+            }
         }
     }
 }
@@ -617,7 +626,7 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
         // Answered by the app itself.
         Request::Unlock => Response::Unlocked,
         // Answered on the UI thread.
-        Request::Search { .. } | Request::Show { .. } => Response::Error { message: "unexpected".into() },
+        Request::Search { .. } | Request::Show { .. } | Request::Cli { .. } => Response::Error { message: "unexpected".into() },
     }
 }
 

@@ -1944,6 +1944,41 @@ tools/dev/tsession run pw TABULA_1PASSWORD_SOCKET=tabula-fake TABULA_NO_FINGERPR
 Sync in the setup); password: whatever `check.sh` accepts. Pass
 `--data FILE` to the fake to see what reached "1Password".
 
+### op: 1Password's command line (apps/op)
+
+`tabula-op` stands in for 1Password's `op` so scripts that use it (`op
+inject`, `op read`, `op run`, `op item get`, `op whoami`, `op account
+list`, `op signin`) work from Passwords. It is installed with an `op`
+link to it beside the other binaries (`~/.local/bin`, ahead of
+`/usr/bin` on the PATH); `tabula_xdg::link_op` makes the link only where
+there is no `op` already and removes only its own. app_server keeps the
+link in step with Preferences ▸ Security ▸ "Answer 1Password's op
+command" (`PasswordsSecurity::op_cli`, on by default) at startup and on
+each change, skipping `target/` builds; Passwords refuses `op` while it
+is off.
+
+`op` asks over the keychain socket (`Request::Cli { query: CliQuery }` →
+`Response::Cli { json }`, in 1Password's JSON shapes), starting Passwords
+if it isn't running; the shapes, field types and `op://vault/item/[section/]field[?attribute=…]`
+references are `apps/passwords/src/cli.rs`. Account questions (`op
+account list`, `whoami`) are answered from the linked accounts without
+unlocking. Anything else waits for an unlock, then for the person's say:
+an alert names the command, the program that ran it and its folder, and
+Allow covers that terminal session (the caller's session id and
+terminal, from `/proc/PID/stat`) until Passwords locks or for 10 minutes
+after its last use (12 hours at most); Deny answers "not allowed".
+`op run` passes the values in the environment and masks them in the
+command's output (`<concealed by 1Password>`, `text::Masker`) unless
+`--no-masking`; `inject` writes files 0600. Commands that change items,
+vaults or accounts say Tabula's op doesn't do them, and errors look like
+op's (`[ERROR] date time message`, exit 1).
+
+`cargo test -p tabula-op -p tabula-passwords` covers templates, env
+files, masking, arguments, references and item JSON. To try it, run
+Passwords as above and `op` from `target/debug/tabula-op` through an `op`
+link in a scratch folder with the session's `WAYLAND_DISPLAY` and
+`XDG_RUNTIME_DIR`.
+
 ### Find in NetPositive
 
 Servo 0.7 has no find API, so `apps/browser/src/find.rs` builds a script
