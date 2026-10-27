@@ -124,7 +124,11 @@ fn main() {
   withdraws it after `clear_after` if it is still ours), `copy_data` (any
   MIME types, e.g. `image/png`; the data is written to pasters from a thread), `paste` (reads the clipboard
   off-thread and delivers an `egui::Event::Paste`), `quit`, `stay_resident` (keep running with no windows), `palette`,
-  `proxy`, `window_size`, `restored_state`. Worker threads may call
+  `proxy`, `window_size`, `restored_state`, `activation_token(window,
+  tag)` (an xdg-activation token from the latest input in the window,
+  delivered as an `ActivationToken { tag, token }` message, to hand to
+  another program so its window may come forward), `set_keyboard(window,
+  Keyboard)` (a layer window taking the keyboard or not). Worker threads may call
   `ctx.request_repaint()` (or `_after`) on a window's context: the kit
   wakes its loop through egui's repaint callback and redraws that window.
   There is no clipboard manager,
@@ -1084,30 +1088,53 @@ too); a nested or headless one never does, since it would take the user's
 notifications.
 
 - server.rs: the zbus interface on its own thread. `Notify` becomes a
-  `Note` (markup stripped to text with `plain`, `image-data` decoded to RGBA,
-  `urgency`/`resident`/`desktop-entry` hints read, the timeout resolved:
-  -1 is 6 s, 0 and critical are until dismissed) and goes to the UI as
-  `In::Show`; `CloseNotification` as `In::Close`. The UI answers with
-  `Bus::closed` (reason 1 expired, 2 dismissed, 3 closed by the app) and
-  `Bus::action`. If another service owns the name it waits and retries
-  every 30 s rather than taking it. (zbus's `Builder::name` treats "taken"
-  as success; `serve` checks the RequestName reply itself.)
-- main.rs: one layer surface (Top layer, anchored bottom right, no
-  keyboard) opened for the first card and closed with the last, resized to
-  the stack. Up to four cards show, oldest at the top; the rest wait. A
-  card shows the picture sent, else the named icon, ours for common theme
+  `Note`: the body's markup kept as spans (markup.rs: `<b>`, `<i>`, `<u>`,
+  `<a href>`, `<img alt>`, `<br>`, entities; unknown tags shown as text),
+  `image-data` decoded to RGBA, and the hints read: `urgency`,
+  `resident`, `transient`, `category`, `desktop-entry`, `value`
+  (progress), `sound-file` / `sound-name` / `suppress-sound`,
+  `x-canonical-private-synchronous` (and `synchronous`,
+  `x-dunst-stack-tag`: the same tag from the same app replaces the last
+  one), KDE's `inline-reply` action and `x-kde-reply-placeholder-text`,
+  and our own `x-tabula-type`. Each note has a `Kind` after Haiku's
+  BNotification: information, important (`im.*` and `call` categories),
+  error (critical: stays) and progress. The timeout: -1 is 6 s, 0,
+  errors and notes waiting for a reply stay until dismissed. The UI
+  answers with `Bus::closed` (reason 1 expired, 2 dismissed, 3 closed by
+  the app), `Bus::action` after `Bus::activation_token`, and
+  `Bus::replied` (`NotificationReplied`). If another service owns the
+  name it waits and retries every 30 s rather than taking it. (zbus's
+  `Builder::name` treats "taken" as success; `serve` checks the
+  RequestName reply itself.)
+- main.rs: one layer surface (Top layer, anchored bottom right) opened
+  for the first card and closed with the last, resized to the stack. Up
+  to four cards show, grouped by app under a title row with the app's
+  icon and name (and a close box for all of a group's), oldest first; the
+  rest wait. Important notes wear a blue edge, errors a red one; progress
+  shows a `StatusBar`; links in the body open with `open::open`. A card
+  shows the picture sent, else the named icon, ours for common theme
   names (`icon_names`), the app's desktop-entry icon, then info/warning.
-  A click on the card is its `default` action (or dismisses it); action
-  buttons along the bottom; the close box dismisses. While the pointer is
-  over a card it does not expire.
+  A click on a card runs its `default` action: the card asks the kit
+  for an activation token from that click (`Cx::activation_token`) and
+  sends `ActivationToken`, `ActionInvoked`, then `NotificationClosed`, so
+  the app may bring its window forward (app_server lets a token one of
+  our programs asked for, with an input serial, raise another app's
+  window). With no default action the click brings the app's window
+  forward itself, over IPC, by desktop entry or name. Action buttons
+  along the bottom; a reply field and Send when it can be answered (the
+  layer takes the keyboard on demand only while one shows,
+  `Cx::set_keyboard`); the close box dismisses. While the pointer is over
+  a card it does not expire.
 
 Test it on a private bus: `busd -a unix:path=/tmp/tabula-dev/NAME/bus.sock`
 (`cargo install busd`; Aurora's dbus-broker-launch needs systemd), then
 `tsession run NAME tabula-notifications --bus unix:path=…` and send with
 `gdbus call -a unix:path=… -d org.freedesktop.Notifications -o
 /org/freedesktop/Notifications -m org.freedesktop.Notifications.Notify --
-APP 0 ICON SUMMARY BODY '["default","Open"]' '{}' -1`; `gdbus monitor -a …`
-shows the signals. Unit tests: `cargo test -p tabula-notifications`.
+APP 0 ICON SUMMARY BODY '["default","Open"]' '{}' -1`; `dbus-monitor
+--address … "type='signal',interface='org.freedesktop.Notifications'"`
+shows the signals (busd refuses `gdbus monitor`'s match rule and drops
+some of what it should show). Unit tests: `cargo test -p tabula-notifications`.
 
 ## The command palette (apps/palette)
 

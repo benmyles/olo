@@ -258,24 +258,21 @@ as they land (with the commit), add new ones as they come up.
   rather than running parted or mkfs; every destructive step behind a
   clear alert naming the disk; polkit for privileges; agent-readable over
   IPC. Never test it on the real disks: loop devices in a test session.
-- **Notifications, robust and everywhere** (Ben): today
-  `tabula-notifications` serves `org.freedesktop.Notifications` as cards
-  in a corner; make it complete, after Haiku's notification_server and
-  `BNotification` (information, important, error and *progress* types; a
-  group per app; per-app settings in Preferences) and better where we
-  can. Every way apps notify works: freedesktop Notifications (all of
-  spec 1.2: markup with links and bold, replaces-id, sounds and
-  `suppress-sound`, `transient`, inline reply), GLib's `org.gtk.Notifications`
-  (GApplication apps use it when the name is on the bus, as under GNOME),
-  and the portal's `org.freedesktop.impl.portal.Notification` (Flatpak
-  apps, Chrome). Tabula's own apps get a kit API (`cx.notify`, with
-  actions coming back as messages, and progress notes for long jobs:
-  copies, downloads, installs). Then: a notification history
-  (Deskbar opens it; unread count), Do Not Disturb (with a schedule, and
-  while sharing the screen), per-app allow/banner/sound/history choices,
-  grouping and stacking, a click that brings the right window forward
-  (by desktop entry / activation token), notifications kept across a
-  restart, and agent-readable (list, act on, dismiss) over IPC.
+- **Notifications, robust and everywhere** (Ben): after Haiku's
+  notification_server and `BNotification`, better where we can. ~~Done~~:
+  grouped by app, the four kinds (information, important, error,
+  progress), body markup with links, `value` progress, replace-by-tag,
+  inline reply (`NotificationReplied`), `transient`, `category`, sound
+  hints read, `ActivationToken` before an action, a click bringing the
+  app's window forward. Left: playing the sounds (natively, through the
+  sound server); GLib's `org.gtk.Notifications` (GApplication apps use
+  it when the name is on the bus, as under GNOME) and the portal's
+  `org.freedesktop.impl.portal.Notification` (Flatpak apps); a kit API
+  for Tabula's own apps (`cx.notify`, actions back as messages, progress
+  notes for copies, downloads, installs); a history (Deskbar opens it;
+  unread count) kept across a restart; Do Not Disturb (with a schedule,
+  and while sharing the screen); per-app allow/banner/sound/history
+  choices in Preferences; agent-readable (list, act on, dismiss).
 - ~~**Log viewer app**~~ (done: `apps/logs`, Log Viewer; the journal read
   natively, live; Find, program, level and time filters; syntax
   highlighting; Show in Context; `tabula-logs --print … [--json]` for

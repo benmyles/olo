@@ -194,6 +194,8 @@ pub(crate) enum Request {
     Redraw(WindowId),
     RedrawAll,
     Activate(WindowId),
+    Token(WindowId, u64),
+    SetKeyboard(WindowId, Keyboard),
     Copy(String),
     CopySecret(String, std::time::Duration),
     CopyData(Clip),
@@ -227,6 +229,15 @@ pub enum SessionLock {
     Locked(Vec<WindowId>),
     /// The compositor refused or ended the lock.
     Finished,
+}
+
+/// Delivered to [`App::message`] after [`Cx::activation_token`]: an
+/// xdg-activation token for another program to bring its window forward
+/// with (`XDG_ACTIVATION_TOKEN`, a notification's `ActivationToken`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActivationToken {
+    pub tag: u64,
+    pub token: String,
 }
 
 /// The app's handle to the kit during a callback.
@@ -358,6 +369,17 @@ impl Cx {
     }
     pub fn activate(&mut self, window: WindowId) {
         self.requests.push(Request::Activate(window));
+    }
+    /// Ask for an activation token from the latest input in `window` (a
+    /// click), to hand to another program so its window may come forward;
+    /// it arrives as an [`ActivationToken`] message with `tag`.
+    pub fn activation_token(&mut self, window: WindowId, tag: u64) {
+        self.requests.push(Request::Token(window, tag));
+    }
+    /// Change whether a layer window takes the keyboard (one showing a
+    /// text field only while it does).
+    pub fn set_keyboard(&mut self, window: WindowId, keyboard: Keyboard) {
+        self.requests.push(Request::SetKeyboard(window, keyboard));
     }
     /// Put text on the clipboard.
     /// Start dragging `data` out of `window` (see [`crate::dnd`]): call it

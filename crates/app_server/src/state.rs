@@ -528,7 +528,10 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
                     && k.current_focus().and_then(|f| f.wl_surface().map(|s| s.client())).flatten() == surface.client()
             })
         });
-        if !fresh && !self.is_our_program(&surface) {
+        // One of our programs handing its user's click on to another app
+        // (a notification clicked brings the app that sent it forward).
+        let handed = token_data.serial.is_some() && token_data.surface.as_ref().is_some_and(|s| self.is_our_program(s));
+        if !fresh && !handed && !self.is_our_program(&surface) {
             tracing::info!("activation request ignored (no recent input; app {:?})", token_data.app_id);
             return;
         }

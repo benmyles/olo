@@ -994,9 +994,14 @@ impl Kit {
                             let _ = self.conn.flush();
                         }
                     }
-                    Request::Activate(id) => {
+                    Request::Activate(id) | Request::Token(id, _) => {
                         // Ask for a token for the surface, then use it
                         // (`new_token`): app_server raises and focuses it.
+                        // A tagged one goes to the app instead, to hand on.
+                        let tag = match r {
+                            Request::Token(_, tag) => Some(tag),
+                            _ => None,
+                        };
                         if let (Some(act), Some(s)) =
                             (&self.activation, self.surfaces.iter().find(|s| s.id == id))
                         {
@@ -1008,9 +1013,21 @@ impl Kit {
                                     app_id: None,
                                     seat_and_serial,
                                     surface: Some(s.wl.clone()),
-                                    udata: (),
+                                    udata: tag,
                                 },
                             );
+                        }
+                    }
+                    Request::SetKeyboard(id, keyboard) => {
+                        if let Some(s) = self.surfaces.iter().find(|s| s.id == id)
+                            && let Role::Layer(l) = &s.role
+                        {
+                            l.set_keyboard_interactivity(match keyboard {
+                                crate::Keyboard::None => KeyboardInteractivity::None,
+                                crate::Keyboard::OnDemand => KeyboardInteractivity::OnDemand,
+                                crate::Keyboard::Exclusive => KeyboardInteractivity::Exclusive,
+                            });
+                            l.commit();
                         }
                     }
                     Request::Copy(text) => self.set_clipboard(text),
@@ -2730,13 +2747,15 @@ impl DataSourceHandler for Kit {
 }
 
 impl smithay_client_toolkit::activation::ActivationHandler for Kit {
-    type RequestUdata = ();
+    type RequestUdata = Option<u64>;
     fn new_token(
         &mut self,
         token: String,
-        data: &smithay_client_toolkit::activation::RequestData<()>,
+        data: &smithay_client_toolkit::activation::RequestData<Option<u64>>,
     ) {
-        if let (Some(act), Some(surface)) = (&self.activation, &data.surface) {
+        if let Some(tag) = data.udata {
+            self.with_app(|app, cx| app.message(cx, Box::new(crate::ActivationToken { tag, token })));
+        } else if let (Some(act), Some(surface)) = (&self.activation, &data.surface) {
             act.activate::<Kit>(surface, token);
         }
     }

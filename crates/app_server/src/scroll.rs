@@ -71,7 +71,7 @@ mod tests {
     #[test]
     fn chromium_matches_tabula() {
         let finger = AxisFrame::new(InputTime::now()).source(AxisSource::Finger).value(Axis::Vertical, 24.0);
-        assert_eq!(adjust(finger.clone(), Toolkit::Chromium).axis.1, 2.0);
+        assert_eq!(adjust(finger, Toolkit::Chromium).axis.1, 2.0);
         assert_eq!(adjust(finger, Toolkit::AsGiven).axis.1, 24.0);
         let wheel = AxisFrame::new(InputTime::now()).source(AxisSource::Wheel).value(Axis::Vertical, 15.0).v120(Axis::Vertical, 120);
         assert_eq!(adjust(wheel, Toolkit::Chromium).v120, Some((0, 48)));

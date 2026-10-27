@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Notifications, grouped
+
+*01:18* — Notifications now gather under their app as on Haiku, keep bold, italics and links, show progress, take a reply in place, and wear a blue edge when important or a red one for errors. A click hands the app an activation token so its window comes forward.
+
+![Notifications, grouped](2026-10-27/011850-notifications-grouped.png)
+
 ### Long menus scroll
 
 *01:07* — A menu taller than the screen fits it now, with BeOS scroll arrows at its ends: rest the pointer on one to scroll, or use the wheel or the arrow keys.
