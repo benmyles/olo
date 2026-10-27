@@ -150,6 +150,9 @@ struct Surface {
     viewport: Option<WpViewport>,
     /// Held while the window asks the screen to stay awake.
     inhibitor: Option<ZwpIdleInhibitorV1>,
+    /// Filling the screen, and the size to go back to.
+    fullscreen: bool,
+    windowed: Option<(u32, u32)>,
     configured: bool,
     dirty: bool,
     frame_pending: bool,
@@ -229,6 +232,9 @@ pub struct Kit {
     data_device: Option<DataDevice>,
     pointer_focus: Option<WlSurface>,
     keyboard_focus: Option<WlSurface>,
+    /// The window that last had the keyboard (the one the command palette
+    /// acts on).
+    last_active: Option<WindowId>,
     modifiers: egui::Modifiers,
     last_serial: u32,
     /// What we put on the clipboard: the source and its data by type.
@@ -327,6 +333,17 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
             .expect("upgrade signal");
     }
 
+    // The command palette's questions about our menus.
+    let (menus_tx, menus_rx) = channel::channel::<crate::commands::Query>();
+    let _menus = crate::commands::listen(menus_tx);
+    loop_handle
+        .insert_source(menus_rx, |event, _, kit: &mut Kit| {
+            if let channel::Event::Msg(q) = event {
+                kit.answer(q);
+            }
+        })
+        .expect("menus channel");
+
     let mut build = Some(build);
     let mut carried: Option<Carried> = None;
     let mut palette = palette;
@@ -358,6 +375,7 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                     proxy: Proxy { sender: sender.clone() },
                     app_id: app_id.to_owned(),
                     sizes: Default::default(),
+                    fullscreen: Default::default(),
                     screen: kit.screen_size(),
                     outputs: kit.output_names(),
                     resident: false,
@@ -561,6 +579,7 @@ impl Kit {
             data_device: None,
             pointer_focus: None,
             keyboard_focus: None,
+            last_active: None,
             modifiers: egui::Modifiers::NONE,
             last_serial: 0,
             clipboard: None,
@@ -724,14 +743,50 @@ impl Kit {
     }
 
     /// Call into the app with a Cx, then act on what it asked for.
-    fn with_app<R>(&mut self, f: impl FnOnce(&mut dyn App, &mut Cx) -> R) -> Option<R> {
-        let mut app = self.app.take()?;
-        let mut cx = self.cx.take()?;
+    /// The toplevel the command palette means: the last active one, if
+    /// still open, else any.
+    fn active_toplevel(&self) -> Option<WindowId> {
+        let toplevels = || self.surfaces.iter().filter(|s| matches!(s.role, Role::Toplevel(_)));
+        self.last_active.filter(|id| toplevels().any(|s| s.id == *id)).or_else(|| toplevels().next().map(|s| s.id))
+    }
+
+    fn answer(&mut self, q: crate::commands::Query) {
+        use crate::commands::Query;
+        let win = self.active_toplevel();
+        match q {
+            Query::Menus(reply) => {
+                let app_id = self.cx.as_ref().map(|c| c.app_id.clone()).unwrap_or_default();
+                let bar = win.and_then(|w| self.app.as_mut().and_then(|a| a.menu_bar(w))).unwrap_or_default();
+                let _ = reply.send(crate::commands::flatten(&app_id, &bar));
+            }
+            Query::Invoke(cmd, reply) => {
+                // Only what the menus offer, enabled.
+                let offered = win.and_then(|w| self.app.as_mut().and_then(|a| a.menu_bar(w))).is_some_and(|bar| {
+                    crate::commands::flatten("", &bar).entries.iter().any(|e| e.command == cmd && e.enabled)
+                });
+                let _ = reply.send(offered);
+                if let (true, Some(w)) = (offered, win) {
+                    self.with_app(|app, cx| app.command(cx, w, &cmd));
+                }
+            }
+        }
+    }
+
+    /// Bring what `cx` tells the app about its windows up to date.
+    fn refresh_cx(&self, cx: &mut Cx) {
         cx.palette = self.palette.clone();
         cx.sizes.clear();
         cx.sizes.extend(self.surfaces.iter().filter(|s| matches!(s.role, Role::Toplevel(_))).map(|s| (s.id, s.size)));
+        cx.fullscreen.clear();
+        cx.fullscreen.extend(self.surfaces.iter().filter(|s| s.fullscreen).map(|s| s.id));
         cx.screen = self.screen_size();
         cx.outputs = self.output_names();
+    }
+
+    fn with_app<R>(&mut self, f: impl FnOnce(&mut dyn App, &mut Cx) -> R) -> Option<R> {
+        let mut app = self.app.take()?;
+        let mut cx = self.cx.take()?;
+        self.refresh_cx(&mut cx);
         let r = f(app.as_mut(), &mut cx);
         self.app = Some(app);
         self.cx = Some(cx);
@@ -785,6 +840,17 @@ impl Kit {
                             s.options.title = title;
                         }
                     }
+                    Request::Fullscreen(id, on) => {
+                        if let Some(s) = self.surface_mut(id)
+                            && let Role::Toplevel(w) = &s.role
+                        {
+                            if on {
+                                w.set_fullscreen(None);
+                            } else {
+                                w.unset_fullscreen();
+                            }
+                        }
+                    }
                     Request::Resize(id, size) => {
                         let Some(i) = self.surfaces.iter().position(|s| s.id == id) else { continue };
                         let s = &mut self.surfaces[i];
@@ -798,6 +864,9 @@ impl Kit {
                             let h = if t && b { 0 } else { size.1 };
                             l.set_size(w, h);
                             l.commit();
+                        } else if s.fullscreen {
+                            // The size to come back to.
+                            s.windowed = Some(size);
                         } else if s.size != size {
                             s.size = size;
                             s.dirty = true;
@@ -924,6 +993,8 @@ impl Kit {
             fractional,
             viewport,
             inhibitor: None,
+            fullscreen: false,
+            windowed: None,
             configured: false,
             dirty: true,
             frame_pending: false,
@@ -1374,6 +1445,9 @@ impl Kit {
         } else {
             let mut app = self.app.take();
             let mut cx = self.cx.take();
+            if let Some(cx) = cx.as_mut() {
+                self.refresh_cx(cx);
+            }
             let s = &mut self.surfaces[i];
             let mut bar = s.bar.clone();
             let mut drawn_bar = None;
@@ -1409,6 +1483,9 @@ impl Kit {
                         inp.events
                             .iter()
                             .filter_map(|e| match e {
+                                // ⌘A in a text field selects all of it,
+                                // not whatever the menu's Select All means.
+                                egui::Event::Key { key: egui::Key::A, .. } if text_focus => None,
                                 egui::Event::Key { key, pressed: true, modifiers, .. }
                                     if modifiers.ctrl && !modifiers.alt =>
                                 {
@@ -1447,10 +1524,10 @@ impl Kit {
             }
             let s = &mut self.surfaces[i];
             s.bar_rect = drawn_bar;
-            if bar != s.bar {
+            if bar.open != s.bar.open {
                 menu_events.push(MenuEvent::BarChanged(id, s.bar.open.map(|o| o.0), bar.open));
-                s.bar = bar;
             }
+            s.bar = bar;
             s.menus = menus;
             if let Some(request) = menu::take_request(&ctx) {
                 menu_events.push(MenuEvent::Context(id, request));
@@ -1957,6 +2034,15 @@ impl WindowHandler for Kit {
         };
         let s = &mut self.surfaces[i];
         let mut size = s.size;
+        let fullscreen = configure.is_fullscreen();
+        if fullscreen && !s.fullscreen {
+            s.windowed = Some(s.size);
+        }
+        if !fullscreen && let Some(windowed) = s.windowed.take() {
+            // Back from fullscreen at the size it had.
+            size = windowed;
+        }
+        s.fullscreen = fullscreen;
         if let (Some(w), Some(h)) = configure.new_size {
             size = (w.get(), h.get());
         }
@@ -2162,6 +2248,9 @@ impl SeatHandler for Kit {
 impl KeyboardHandler for Kit {
     fn enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlKeyboard, surface: &WlSurface, serial: u32, _: &[u32], _: &[Keysym]) {
         self.keyboard_focus = Some(surface.clone());
+        if let Some(s) = self.surfaces.iter().find(|s| s.wl == *surface && matches!(s.role, Role::Toplevel(_))) {
+            self.last_active = Some(s.id);
+        }
         self.last_serial = serial;
         self.push_event(&surface.clone(), egui::Event::WindowFocused(true));
     }

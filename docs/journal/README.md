@@ -5,6 +5,24 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Quick Look: F for fullscreen
+
+*20:45* — In Quick Look, F fills the screen with the preview and F again puts it back in its window at the size it had (Cx::set_fullscreen, new in the kit).
+
+![Quick Look: F for fullscreen](2026-10-26/204533-quick-look-f-for-fullscreen.png)
+
+### NetPositive: dark pages, the Chrome way
+
+*20:45* — Dark pages redone as Chrome's Auto Dark Mode for Web Contents: WebRender recolours what each thing is (light backgrounds and borders go dark, dark text light, by CIELAB lightness with hue kept), so photos, gradients and coloured buttons keep their true colours and only icons that Chrome's classifier would flip are inverted. Left: light desktop; right: dark.
+
+![NetPositive: dark pages, the Chrome way](2026-10-26/204524-netpositive-dark-pages-the-chrome-way.png)
+
+### Command palette (⌘Space)
+
+*20:44* — ⌘Space opens a Raycast-style palette over everything: apps, the front app's menu commands, files, Passwords items, Preferences, windows, a calculator and every desktop shortcut with its keys, so typing "half" doubles as a reminder of ⇧⌘←.
+
+![Command palette (⌘Space)](2026-10-26/204452-command-palette-space.png)
+
 ### NetPositive: dark pages
 
 *19:47* — View ▸ Dark Pages (Automatic, the default, follows the desktop; Always; Never). Each frame is redrawn on the GPU through a shader that turns lightness around and keeps hues, so every page goes dark, blank ones included; pictures, video and canvases are pre-inverted with the CSS filter the shader undoes, and pages that are dark already are left alone. Left: Never; right: Always.

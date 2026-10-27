@@ -297,6 +297,14 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Ok(()) => Reply::Ok,
                 Err(message) => Reply::Error { message },
             },
+            Request::RunShortcut { id, window } => match tabula_protocol::shortcuts::by_id(&id) {
+                Some(info) => {
+                    let target = window.and_then(|w| self.window_by_id(w));
+                    self.run_shortcut(info.action, target);
+                    Reply::Ok
+                }
+                None => Reply::Error { message: format!("no shortcut {id:?}") },
+            },
             Request::RecordShortcut { on } => {
                 self.record_shortcut(on);
                 Reply::Ok

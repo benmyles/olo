@@ -282,7 +282,7 @@ impl Passwords {
         if self.settings.account.is_none() {
             return incoming.reply(Response::NotSetUp);
         }
-        let waits = !matches!(incoming.request, Request::Logins { .. } | Request::Check { .. });
+        let waits = !matches!(incoming.request, Request::Logins { .. } | Request::Check { .. } | Request::Search { .. });
         if self.lock.locked {
             if !waits {
                 return incoming.reply(Response::Locked);
@@ -302,6 +302,42 @@ impl Passwords {
         // The items the request may concern, by their websites.
         let fits: Box<dyn Fn(&onepassword::Website) -> bool> = match &incoming.request {
             Request::Unlock => return incoming.reply(Response::Unlocked),
+            Request::Search { query } => {
+                let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+                let mut items: Vec<tabula_keychain::Found> = self
+                    .items
+                    .iter()
+                    .filter(|i| i.state == ItemState::Active)
+                    .filter(|i| {
+                        !words.is_empty()
+                            && words.iter().all(|w| {
+                                i.title.to_lowercase().contains(w)
+                                    || i.websites.iter().any(|s| s.url.to_lowercase().contains(w))
+                                    || i.tags.iter().any(|t| t.to_lowercase().contains(w))
+                            })
+                    })
+                    .map(|i| tabula_keychain::Found {
+                        vault: i.vault_id.clone(),
+                        id: i.id.clone(),
+                        title: i.title.clone(),
+                        subtitle: self.subtitle(i),
+                    })
+                    .collect();
+                items.sort_by_cached_key(|f| (f.title.to_lowercase(), f.id.clone()));
+                items.truncate(50);
+                return incoming.reply(Response::Items { items });
+            }
+            Request::Show { id, .. } => {
+                let id = id.clone();
+                if self.overview(&id).is_some() {
+                    self.set_source(cx, Source::All);
+                    self.search.clear();
+                    self.select(cx, Some(id));
+                }
+                self.open_main(cx);
+                self.redraw(cx);
+                return incoming.reply(Response::Shown);
+            }
             Request::Logins { url } | Request::Fill { url, .. } | Request::Check { url, .. } | Request::Save { url, .. } => {
                 let url = url.clone();
                 Box::new(move |w| store::fits(w, &url))

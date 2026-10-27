@@ -46,6 +46,7 @@ servo-net = { path = "vendor/servo-net" }
 servo-paint = { path = "vendor/servo-paint" }
 servo-paint-api = { path = "vendor/servo-paint-api" }
 servo-pixels = { path = "vendor/servo-pixels" }
+webrender = { path = "vendor/webrender" }
 
 [profile.release]
 debug = "line-tables-only"

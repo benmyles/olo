@@ -52,18 +52,24 @@ pub enum Request {
     /// Sign in with the passkey in item `id`; `client_data_hash` is the
     /// SHA-256 of the page's client data.
     PasskeySign { url: String, rp_id: String, vault: String, id: String, client_data_hash: String },
+    /// Items whose title, website or tags hold every word of `query`
+    /// (the command palette). Only while unlocked; doesn't wait.
+    Search { query: String },
+    /// Bring Passwords forward showing item `id` (once unlocked).
+    Show { vault: String, id: String },
 }
 
 impl Request {
     /// How long a reply can take.
     pub fn timeout(&self) -> Duration {
         match self {
-            Request::Logins { .. } => Duration::from_secs(15),
+            Request::Logins { .. } | Request::Search { .. } => Duration::from_secs(15),
             Request::Check { .. } => Duration::from_secs(60),
             // These wait for you to unlock Passwords.
             Request::Fill { .. }
             | Request::Save { .. }
             | Request::Unlock
+            | Request::Show { .. }
             | Request::Passkeys { .. }
             | Request::PasskeyCreate { .. }
             | Request::PasskeySign { .. } => Duration::from_secs(300),
@@ -85,6 +91,16 @@ pub struct Login {
     pub id: String,
     pub title: String,
     pub username: String,
+}
+
+/// An item `Search` found.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Found {
+    pub vault: String,
+    pub id: String,
+    pub title: String,
+    /// Its website's host, or its kind ("Secure Note").
+    pub subtitle: String,
 }
 
 /// A passkey kept in Passwords (one per login item).
@@ -128,6 +144,12 @@ pub enum Response {
     Passkeys {
         passkeys: Vec<Passkey>,
     },
+    /// For `Search`.
+    Items {
+        items: Vec<Found>,
+    },
+    /// For `Show`.
+    Shown,
     /// A new passkey: `public_key` is its SubjectPublicKeyInfo (DER).
     PasskeyCreated {
         title: String,

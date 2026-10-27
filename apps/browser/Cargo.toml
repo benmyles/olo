@@ -26,7 +26,7 @@ tracing.workspace = true
 servo = { version = "0.7", default-features = false, features = ["bundled_freetype", "js_jit", "webcrypto", "webgl", "brotli-compression-stream", "multiprocess"] }
 # Our media backend (media.rs) in place of gstreamer's; the versions
 # match servo's.
-glow = "0.17"
+webrender = "0.70"
 zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
 zvariant = "5"
 libc = "0.2"

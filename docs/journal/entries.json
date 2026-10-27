@@ -760,5 +760,23 @@
   "title": "NetPositive: dark pages",
   "caption": "View \u25b8 Dark Pages (Automatic, the default, follows the desktop; Always; Never). Each frame is redrawn on the GPU through a shader that turns lightness around and keeps hues, so every page goes dark, blank ones included; pictures, video and canvases are pre-inverted with the CSS filter the shader undoes, and pages that are dark already are left alone. Left: Never; right: Always.",
   "image": "2026-10-26/194719-netpositive-dark-pages.png"
+ },
+ {
+  "time": "2026-10-26T20:44:52",
+  "title": "Command palette (\u2318Space)",
+  "caption": "\u2318Space opens a Raycast-style palette over everything: apps, the front app's menu commands, files, Passwords items, Preferences, windows, a calculator and every desktop shortcut with its keys, so typing \"half\" doubles as a reminder of \u21e7\u2318\u2190.",
+  "image": "2026-10-26/204452-command-palette-space.png"
+ },
+ {
+  "time": "2026-10-26T20:45:24",
+  "title": "NetPositive: dark pages, the Chrome way",
+  "caption": "Dark pages redone as Chrome's Auto Dark Mode for Web Contents: WebRender recolours what each thing is (light backgrounds and borders go dark, dark text light, by CIELAB lightness with hue kept), so photos, gradients and coloured buttons keep their true colours and only icons that Chrome's classifier would flip are inverted. Left: light desktop; right: dark.",
+  "image": "2026-10-26/204524-netpositive-dark-pages-the-chrome-way.png"
+ },
+ {
+  "time": "2026-10-26T20:45:33",
+  "title": "Quick Look: F for fullscreen",
+  "caption": "In Quick Look, F fills the screen with the preview and F again puts it back in its window at the size it had (Cx::set_fullscreen, new in the kit).",
+  "image": "2026-10-26/204533-quick-look-f-for-fullscreen.png"
  }
 ]

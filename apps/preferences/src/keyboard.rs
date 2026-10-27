@@ -102,7 +102,7 @@ fn keyboard(ui: &mut Ui, s: &mut Settings, power: Option<&PowerStatus>, server: 
     BBox::new("Mac Keys").show(ui, |ui| {
         ui.add(CheckBox::new(&mut k.command_key, "Use Command as the shortcut key (Command-C copies)"));
         ui.add(CheckBox::new(&mut k.caps_lock_control, "Caps Lock is another Control key"));
-        ui.add_enabled(k.command_key, CheckBox::new(&mut k.find_on_command_tap, "Tap Command on its own to open Find"));
+        ui.add_enabled(k.command_key, CheckBox::new(&mut k.find_on_command_tap, "Tap Command on its own for the command palette"));
     });
 
     BBox::new("Backlight").show(ui, |ui| match power.and_then(|p| p.keyboard_backlight) {

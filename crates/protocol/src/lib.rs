@@ -88,6 +88,14 @@ pub enum Request {
     /// than acting on it; it comes back as [`Event::ShortcutRecorded`].
     /// `on: false` stops waiting.
     RecordShortcut { on: bool },
+    /// Do one of the shortcuts (its id in [`shortcuts::SHORTCUTS`]), to
+    /// `window` rather than the focused one if given (the command palette
+    /// holds the keyboard while it is open).
+    RunShortcut {
+        id: String,
+        #[serde(default)]
+        window: Option<WindowId>,
+    },
     /// Inject input as if from a device (for automated UI tests).
     Synthetic { events: Vec<SyntheticEvent> },
     Quit,

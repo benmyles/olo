@@ -180,17 +180,24 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             A::NextApp { back } => self.twitch_step(true, back),
             A::NextWindow { back } => self.twitch_step(false, back),
             A::SwitchDone => self.twitch_done(),
-            A::Find => self.shortcut(tabula_protocol::Shortcut::Find),
+            A::Palette => self.shortcut(tabula_protocol::Shortcut::Palette),
             A::Shortcut(s) => self.shortcut(s),
         }
     }
 
     /// One of the shortcuts in the settings.
     fn shortcut(&mut self, shortcut: tabula_protocol::Shortcut) {
+        self.run_shortcut(shortcut, None);
+    }
+
+    /// A shortcut, done to `target` (or the focused window).
+    pub fn run_shortcut(&mut self, shortcut: tabula_protocol::Shortcut, target: Option<crate::shell::WindowElement>) {
         use tabula_protocol::Shortcut as S;
-        let focused = self.focused_window();
+        let focused = target.or_else(|| self.focused_window());
         let workspaces = self.settings.workspace_count.max(1);
         match shortcut {
+            // Resident: a second start hands --toggle to the running one.
+            S::Palette => self.spawn_program("tabula-palette", &["--toggle"]),
             S::Find => {
                 // Bring back an open Find window rather than stacking more.
                 let open = self.all_windows().into_iter().find(|w| w.app_id() == "tabula.tracker" && w.title() == "Find");

@@ -137,6 +137,15 @@ fn main() {
   arguments; exit then), and `instance::listen(app_id, cx.proxy())` in the
   init closure; forwarded launches arrive in `App::message` as an
   `instance::Launch { args, cwd }`.
+* **Menus for the command palette** (`tabula_kit::commands`, automatic):
+  every kit app answers on `$XDG_RUNTIME_DIR/tabula-menus-<pid>.sock`
+  with the menu bar of its last active window, flattened
+  (`commands::menus(pid)`: path, label, command, keys as shown, enabled,
+  checked), and chooses an enabled one as if from the menu
+  (`commands::invoke(pid, command)`). Both block for at most a second;
+  call them off the UI thread.
+* **⌘A in text fields** selects all of the field: the kit doesn't send it
+  to the menu's Select All while a text field has the keyboard.
 * **Fixed-size windows**: `WindowOptions::new(..).min_size(w, h).max_size(w, h)`
   (preference panels, alerts).
 * **Raw keys** (`WindowOptions::raw_keys()`): for windows that consume the
@@ -162,6 +171,15 @@ fn main() {
   is visible) until `false` or the window closes; app_server counts these
   in `PowerStatus::app_inhibitors`. The Viewer and Quick Look hold one
   while `Preview::playing_video()`.
+* Fullscreen: `cx.set_fullscreen(window, on)` fills the screen with a
+  toplevel (xdg_toplevel fullscreen: no tab or border, nothing else drawn
+  on that screen) or puts it back at its own size; `cx.is_fullscreen`
+  says which. A `resize` while fullscreen becomes the size it comes back
+  to. Quick Look toggles it with F.
+* The menu bar opens a menu on press, as on BeOS, reading the press from
+  the frame's events (a touchpad tap brings press and release in one
+  frame); pressing the open menu's title again closes it, but a menu that
+  slid open as the pointer crossed the bar stays open for that press.
 * Embedded surfaces (another renderer inside a window: NetPositive's web
   engine): `cx.embed(window)` makes a `wl_subsurface` of the window
   (desynchronised, empty input region, with a viewport) and returns an
@@ -431,6 +449,7 @@ $T shot two /tmp/y.png --output HEADLESS-2
 $T shot mine /tmp/p.png X Y W H --pointer   # with the pointer drawn in
 $T zoom mine /tmp/z.png X Y W H 4   # crop in logical px, magnified 4× (nearest)
 $T click mine X Y [right]      # logical coordinates (screenshot px / 2)
+$T tap mine X Y                # press and release in one go, as a touchpad tap
 $T drag mine X1 Y1 X2 Y2
 $T type mine "hello"           # $T key mine 29 30  → Ctrl+A (evdev codes)
 $T theme mine dark
@@ -965,6 +984,40 @@ Test it on a private bus: `busd -a unix:path=/tmp/tabula-dev/NAME/bus.sock`
 APP 0 ICON SUMMARY BODY '["default","Open"]' '{}' -1`; `gdbus monitor -a …`
 shows the signals. Unit tests: `cargo test -p tabula-notifications`.
 
+## The command palette (apps/palette)
+
+⌘Space (`Shortcut::Palette`; Find moved to ⌥⌘Space) or a tap of ⌘ (if
+chosen in Preferences ▸ Keyboard) has app_server start
+`tabula-palette --toggle`; the running copy (it stays resident, found
+through `instance`) takes the toggle, so it opens at once from the second
+time on. It opens a full-screen transparent overlay layer that takes the
+keyboard, with the BeOS panel a fifth of the way down: a click outside
+the panel, Escape or ⌘Space again
+put it away.
+
+* **Before opening**, a worker asks app_server for the windows and the
+  settings, so the window in front is known before the overlay takes the
+  keyboard (app_server's focus is then the overlay). Shortcuts are done
+  to that window through `Request::RunShortcut { id, window }`.
+* **Sources** (`sources.rs`): applications (ours, then desktop entries),
+  preference panels, light/dark appearance, app_server's shortcuts with
+  their current keys (`keys_for`, shown as on a Mac, so "tile" lists every
+  tiling shortcut and its keys), open windows, the front app's menu
+  commands with their keys (`tabula_kit::commands`, asked of the process
+  that owns the front window; disabled items are shown dimmed), Passwords'
+  items (`tabula_keychain::Request::Search` while unlocked; choosing one
+  is `Request::Show`), files under home by name (indexed by an `ignore`
+  walk on start and every five minutes, at most 400,000; matched on their
+  own thread for the newest query only), sums (`calc.rs`; Return copies)
+  and, last, a web search in NetPositive.
+* **Ranking** (`rank.rs`): every word typed must match the title (start,
+  word start, anywhere) or the item's keywords, or as initials ("nw");
+  then by kind (apps before files) and by how often and how lately each
+  thing was chosen (`~/.config/tabula/palette.json`). Nothing typed lists
+  what was chosen lately.
+* **Keys**: ↑/↓ and Page Up/Down move, Return chooses, the pointer
+  hovers and clicks. Actions run on a worker thread.
+
 ## NetPositive (apps/browser)
 
 The web browser: Servo 0.7, built in (`engine.rs`), with no system
@@ -1025,22 +1078,23 @@ and painted. Servo draws straight into the subsurface; nothing is copied.
   light` and dark ones a Canvas background.
 * **Dark pages** (`dark.rs`; View ▸ Dark Pages: Automatic, the default,
   follows the desktop; Always; Never; `dark_pages` in `browser.json`).
-  `Surface::present` runs `Darkener` after Servo paints: the frame is
-  blitted to a texture and drawn back through a fragment shader computing
-  `x + 1 − 2·luminance(x)` (CSS's weights), which turns perceived
-  lightness around and keeps hue, then maps it into 0.105–0.925 (no pure
-  black or white). That transform is exactly CSS `invert(1)
-  hue-rotate(180deg)` and is its own inverse, so the page script gives
-  `img, video, canvas, embed, object` and childless elements with a
-  `url()` background (marked `data-tabula-pic`) that filter: they come out
-  as they were, a little dimmer (measured mean error 0.03; only the most
-  saturated colours, which the CSS filter clips, darken). The pass saves
-  and restores every bit of GL state it touches (WebRender caches its
-  bindings). The script also samples the background behind a 5×5 grid
-  of points (and the body's text colour) and reports a page that is dark
-  by itself; that tab isn't darkened (`Tab::page_dark`, reset on
-  navigation). The script is re-registered when the setting changes, and
-  open pages are told through a token-named function.
+  Done as Chrome's "Auto Dark Mode for Web Contents" does it: by what
+  each thing a page draws is, in our WebRender (`vendor/webrender`,
+  `src/dark.rs`; see vendor/README.md), never to the finished frame.
+  The scene builder turns CIELAB lightness around (L to 110 − L, hue and
+  chroma kept) for light backgrounds (rectangles, gradient stops; brighter
+  than 128 on Chrome's 0–255 scale), light or near-black borders, and
+  dark text and lines (below 150); colours already right for a dark page
+  stay, so a page that is dark by itself is left nearly alone with no
+  detection. Pictures, video and canvases are untouched, except small
+  ones (160 device pixels or less each way) that Chrome's image
+  classifier calls icons (few colours, not light-on-transparent, not
+  colourful): those are uploaded with their lightness turned around, so
+  a black SVG glyph shows white. The clear colours go dark too (blank
+  tabs, pages without a background). `dark::set` flips a process-wide
+  switch; Servo's painter sends WebRender a transaction at its next render,
+  the scene builder rebuilds every document whose scene predates the
+  change, and icons are re-uploaded the other way round.
 * **Resources** (`resources/`): Servo's defaults (MPL-2.0, see NOTICE)
   with our own error, certificate and crash pages, which answer in haiku
   as NetPositive did (new verses). `engine.rs` registers the reader.

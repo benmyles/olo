@@ -50,3 +50,27 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   Animated pictures, SVG and small pictures work as before. NetPositive
   also fixes glibc's mmap threshold (`main.rs`) so freed bitmaps go back
   to the system rather than fragmenting the heap.
+
+- **webrender 0.70.0 and servo-paint 0.7.0** (MPL-2.0): dark pages
+  (NetPositive's View ▸ Dark Pages), done as Chrome's "Auto Dark Mode for
+  Web Contents" does it: by what each thing a page draws is, not to the
+  finished frame, so pictures keep their true colours.
+  - `webrender` (`src/dark.rs`, new) holds the switch (`dark::set`) and
+    the recolouring: CIELAB lightness turned around (L to 110 − L, hue
+    and chroma kept) for light backgrounds (rectangles, gradient stops)
+    and light borders, and for dark text and lines; colours already right
+    for a dark page stay. `scene_building.rs` applies it to rectangles,
+    text, lines, normal borders and gradients (images, video and box
+    shadows untouched); `scene_builder_thread.rs` rebuilds a document's
+    scene when the switch has changed since it was built; the clear
+    colours (`renderer/mod.rs`, `renderer/composite.rs`, the tile cache's
+    background in `scene_building.rs`) go dark too. Small images that
+    Chrome's image classifier would call icons (`dark::is_icon`: few
+    colours, mostly dark or flat, at most 160 px) are recoloured the same
+    way as they go up to the texture cache (`resource_cache.rs`, again
+    when the switch changes); photos never are. `lib.rs` also allows
+    `deprecated`, whose warnings a crates.io build would have capped.
+  - `servo-paint` (`painter.rs`) sends WebRender a transaction at its next
+    render after the switch changes (so the scene is rebuilt without the
+    page doing anything) and darkens its own clear colour, which is what
+    a page without a background shows.

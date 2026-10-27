@@ -197,6 +197,8 @@ pub enum Shortcut {
     /// with it).
     WindowToNextWorkspace,
     WindowToPreviousWorkspace,
+    /// The command palette (apps/palette).
+    Palette,
     Find,
     Lock,
     Caffeinate,
@@ -303,7 +305,8 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::Workspace(6), "workspace-7", WORKSPACES, "Workspace 7", &["Ctrl+Cmd+7"]),
     s(Shortcut::Workspace(7), "workspace-8", WORKSPACES, "Workspace 8", &["Ctrl+Cmd+8"]),
     s(Shortcut::Workspace(8), "workspace-9", WORKSPACES, "Workspace 9", &["Ctrl+Cmd+9"]),
-    s(Shortcut::Find, "find", DESKTOP, "Find", &["Cmd+Space"]),
+    s(Shortcut::Palette, "palette", DESKTOP, "Command palette", &["Cmd+Space"]),
+    s(Shortcut::Find, "find", DESKTOP, "Find", &["Alt+Cmd+Space"]),
     s(Shortcut::Lock, "lock", DESKTOP, "Lock the screen", &["Ctrl+Cmd+Q"]),
     s(Shortcut::Caffeinate, "caffeinate", DESKTOP, "Stay awake, or not", &["Ctrl+Cmd+A"]),
     s(Shortcut::ScreenshotScreen, "screenshot-screen", SCREENSHOTS, "Screenshot of the screen", &["Shift+Cmd+3", "Print"]),
@@ -311,6 +314,11 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::ScreenshotWindow, "screenshot-window", SCREENSHOTS, "Screenshot of the window", &["Alt+Print"]),
     s(Shortcut::ScreenshotApp, "screenshot-app", SCREENSHOTS, "Screenshot app", &["Shift+Cmd+5"]),
 ];
+
+/// The shortcut with this id.
+pub fn by_id(id: &str) -> Option<&'static ShortcutInfo> {
+    SHORTCUTS.iter().find(|i| i.id == id)
+}
 
 /// The groups, in order.
 pub const GROUPS: &[&str] = &[WINDOWS, ARRANGE, WORKSPACES, DESKTOP, SCREENSHOTS];

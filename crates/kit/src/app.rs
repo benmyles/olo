@@ -179,6 +179,7 @@ pub(crate) enum Request {
     Close(WindowId),
     SetTitle(WindowId, String),
     Resize(WindowId, (u32, u32)),
+    Fullscreen(WindowId, bool),
     KeepAwake(WindowId, bool),
     Embed(WindowId, EmbedId),
     PlaceEmbed(EmbedId, egui::Rect),
@@ -229,6 +230,8 @@ pub struct Cx {
     pub(crate) app_id: String,
     /// Toplevel content sizes, as of the start of the callback.
     pub(crate) sizes: std::collections::HashMap<WindowId, (u32, u32)>,
+    /// Toplevels filling their screen ([`Cx::set_fullscreen`]).
+    pub(crate) fullscreen: std::collections::HashSet<WindowId>,
     /// Logical size of the (first) screen, once known.
     pub(crate) screen: Option<(u32, u32)>,
     pub(crate) outputs: Vec<String>,
@@ -291,6 +294,16 @@ impl Cx {
     /// Ask app_server to resize the window's content area.
     pub fn resize(&mut self, window: WindowId, size: (u32, u32)) {
         self.requests.push(Request::Resize(window, size));
+    }
+    /// Fill the screen with the window (no tab or border), or put it back
+    /// at its own size and place.
+    pub fn set_fullscreen(&mut self, window: WindowId, on: bool) {
+        self.requests.push(Request::Fullscreen(window, on));
+    }
+    /// Whether the window fills its screen, as of the start of the
+    /// callback (the compositor may take it out of fullscreen itself).
+    pub fn is_fullscreen(&self, window: WindowId) -> bool {
+        self.fullscreen.contains(&window)
     }
     /// A surface of the window's own for another renderer to draw into
     /// (a web engine's GL), above the window's contents where

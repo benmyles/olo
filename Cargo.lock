@@ -11029,7 +11029,6 @@ dependencies = [
  "dpi",
  "euclid",
  "getrandom 0.3.4",
- "glow",
  "keyboard-types",
  "khronos-egl",
  "libc",
@@ -11059,6 +11058,7 @@ dependencies = [
  "ureq",
  "url",
  "v4l",
+ "webrender",
  "webrtc",
  "zbus",
  "zeroize",
@@ -11198,6 +11198,19 @@ dependencies = [
  "tracing",
  "url",
  "zeroize",
+]
+
+[[package]]
+name = "tabula-palette"
+version = "0.1.0"
+dependencies = [
+ "ignore",
+ "serde",
+ "serde_json",
+ "tabula-keychain",
+ "tabula-kit",
+ "tabula-protocol",
+ "tracing",
 ]
 
 [[package]]
@@ -12816,8 +12829,6 @@ dependencies = [
 [[package]]
 name = "webrender"
 version = "0.70.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ede9dbc3cfb3e2c073a68e20f8fd54d9f6be8587be1c7c948e1ac51112421ef6"
 dependencies = [
  "allocator-api2",
  "bincode",

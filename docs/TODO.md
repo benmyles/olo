@@ -53,16 +53,20 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
-- **Command palette on ⌘Space** (Ben, next): a Raycast-style popover
-  that finds anything — apps, the front app's menu commands, files,
-  Passwords items, Preferences panels and settings, desktop actions
-  (tiling, window and workspace shortcuts) — as you type, and does it.
-  ⌘Space shows it; Escape or a click outside hides it; ⌘Space again
-  brings it back. Matching shortcuts and actions show their key combos
-  (type "tile": every tiling shortcut with its keys), so it doubles as a
-  way to learn them. Find (Tracker's query window) stays for searching
-  files in Tracker.
-- ~~**NetPositive dark pages**~~ (Ben): View ▸ Dark Pages; GPU pass + pre-inverted pictures; dark sites left alone.
+- **Tracker column view scrolls sideways** (Ben): when the columns are
+  wider than the window, scroll horizontally (touchpad, Shift+wheel, a
+  scroll bar) to see the earlier columns.
+- ~~**Command palette on ⌘Space**~~ (Ben): apps, the front app's menu
+  commands, files, Passwords items, Preferences panels, appearance,
+  windows and every desktop shortcut with its keys; a calculator; the web.
+- ~~**Menus open on a touchpad tap**~~ (Ben): a tap's press and release
+  came in one frame and the press was missed; a second press on the
+  title closes the menu.
+- ~~**Quick Look: F for fullscreen**~~ (Ben), F again for the window
+  (`Cx::set_fullscreen`).
+- ~~**⌘A in a text field**~~ (Ben) selects the field's text, not the
+  page or folder.
+- ~~**NetPositive dark pages**~~ (Ben): View ▸ Dark Pages; per-item recolouring in WebRender as Chrome's Auto Dark Mode does it; pictures true, icons classified.
 
 - **No GNOME or GTK underneath** (Ben): Tabula shouldn't depend on
   any. Today a real session leans on GDM (login), gnome-keyring-daemon

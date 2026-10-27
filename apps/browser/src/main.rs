@@ -139,7 +139,6 @@ struct Tab {
     notify_ask: Option<(String, PermissionRequest)>,
     /// The page is dark by itself (dark.rs's script said so): it isn't
     /// darkened.
-    page_dark: bool,
     /// Where the page is scrolled, as it last said.
     scroll: Option<scroll::Metrics>,
     /// Where our scroll bars just put it, shown over the page's reports
@@ -173,7 +172,6 @@ impl Tab {
             passkey: None,
             media: VecDeque::new(),
             notify_ask: None,
-            page_dark: false,
             scroll: None,
             scrolled: None,
             favicon: None,
@@ -236,16 +234,9 @@ struct Browser {
     /// A field's context menu waiting for the page's logins: its number
     /// and where it opens (the page's menu is in `menu`).
     field_menu: Option<(u64, egui::Pos2)>,
-    /// Pages are darkened (View ▸ Dark Pages, with the desktop's theme).
-    dark: bool,
 }
 
 impl Browser {
-    /// Whether the page shown now is darkened.
-    fn darkens(&self) -> bool {
-        self.dark && !self.tab().is_some_and(|t| t.page_dark)
-    }
-
     fn tab(&self) -> Option<&Tab> {
         self.tabs.get(self.active)
     }
@@ -332,7 +323,6 @@ impl NetPositive {
                 key: Rect::NOTHING,
                 logins_menu: None,
                 field_menu: None,
-                dark: self.settings.dark_pages.on(self.dark),
             })),
         );
         self.front = Some(win);
@@ -342,16 +332,10 @@ impl NetPositive {
     /// Dark Pages or the desktop's theme changed: tell the engine (new
     /// pages), the pages (their pictures) and the windows, and redraw.
     fn apply_dark(&mut self) {
-        let on = self.settings.dark_pages.on(self.dark);
-        self.engine.set_dark(on);
-        let call = format!("window[{}] && window[{}]({on})", serde_json::to_string(&dark::switch(&self.engine.token)).unwrap_or_default(), serde_json::to_string(&dark::switch(&self.engine.token)).unwrap_or_default());
+        dark::set(self.settings.dark_pages.on(self.dark));
+        // Pages repaint recoloured at their next frame: ask for one.
         for w in self.windows.values_mut() {
-            let Win::Browser(b) = w else { continue };
-            for view in b.tabs.iter().filter_map(|t| t.view.as_ref()) {
-                view.evaluate_javascript(call.clone(), |_| {});
-            }
-            if b.dark != on {
-                b.dark = on;
+            if let Win::Browser(b) = w {
                 show_active(b);
             }
         }
@@ -668,8 +652,6 @@ impl NetPositive {
                     match event {
                         Event::Url(url) => {
                             tab.url = url.to_string();
-                            // Until the new page says otherwise.
-                            tab.page_dark = false;
                             if is_active && !b.editing {
                                 b.location = location::display(url.as_str());
                             }
@@ -701,14 +683,6 @@ impl NetPositive {
                         Event::Favicon => {
                             tab.new_favicon = tab.view.as_ref().and_then(|v| v.favicon().and_then(|i| favicon::square(&i)));
                             tab.favicon_seen = tab.new_favicon.is_some();
-                        }
-                        Event::PageDark(dark) => {
-                            if tab.page_dark != dark {
-                                tab.page_dark = dark;
-                                if is_active && !painted.contains(&win) {
-                                    painted.push(win);
-                                }
-                            }
                         }
                         Event::Scroll(metrics) => {
                             if tab.scroll == Some(metrics) {
@@ -748,7 +722,7 @@ impl NetPositive {
                 && let (Some(view), Some(surface)) = (b.view(), &b.surface)
             {
                 view.paint();
-                surface.present(b.darkens());
+                surface.present();
             }
         }
     }
@@ -1984,7 +1958,7 @@ fn show_active(b: &mut Browser) {
     }
     if let (Some(v), Some(s)) = (b.view(), &b.surface) {
         v.paint();
-        s.present(b.darkens());
+        s.present();
     }
 }
 

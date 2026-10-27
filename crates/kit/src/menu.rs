@@ -274,6 +274,9 @@ fn font() -> FontId {
 pub struct BarState {
     /// Index of the open menu and the title's rect (window coordinates).
     pub open: Option<(usize, Rect)>,
+    /// The open menu's title has been pressed since it opened, so the next
+    /// press there puts it away (one that slid open stays for its press).
+    pub pressed: bool,
 }
 
 /// Draw the menu bar across the top of `ui`; returns its rect. Updates
@@ -298,14 +301,25 @@ pub fn menu_bar(ui: &mut Ui, menus: &[Menu], state: &mut BarState) -> Rect {
         let resp = ui.interact(item, egui::Id::unique(("menubar", i)), Sense::click());
         let open_here = state.open.is_some_and(|(o, _)| o == i);
         // Menus open on press, as on BeOS. (Not on click: the release of
-        // that press may arrive after the menu was dismissed.)
-        if resp.is_pointer_button_down_on() && ui.input(|i| i.pointer.any_pressed()) {
-            if !open_here {
+        // that press may arrive after the menu was dismissed.) The press
+        // is read from the events: a touchpad tap brings its release in
+        // the same frame, when the button is no longer down.
+        let pressed = ui.input(|i| {
+            i.events.iter().any(|e| matches!(e, egui::Event::PointerButton { pressed: true, pos, .. } if item.contains(*pos)))
+        });
+        if pressed && resp.hovered() {
+            // Pressing the open menu's title again puts it away.
+            if open_here && state.pressed {
+                state.open = None;
+                state.pressed = false;
+            } else {
                 state.open = Some((i, item));
+                state.pressed = true;
             }
         } else if resp.hovered() && state.open.is_some() && !open_here {
             // Sliding across the bar switches menus, as on BeOS.
             state.open = Some((i, item));
+            state.pressed = false;
         }
         let open_here = state.open.is_some_and(|(o, _)| o == i);
         let text_color = if open_here {

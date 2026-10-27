@@ -1186,6 +1186,7 @@ impl Tracker {
                 self.close_quick_look(cx);
                 fs::open_in_viewer(&e.path);
             }
+            Some(quicklook::Action::Fullscreen) => cx.set_fullscreen(win, !cx.is_fullscreen(win)),
             Some(quicklook::Action::Step(d)) => {
                 if let Some(Win::Folder(f)) = self.windows.get_mut(&source)
                     && let Some(e) = f.step_selection(d)

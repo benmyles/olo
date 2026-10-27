@@ -28,6 +28,8 @@ pub enum Action {
     PopOut,
     /// Preview the previous (-1) or next (+1) item in the folder.
     Step(isize),
+    /// Fill the screen with it, or come back to the window (F).
+    Fullscreen,
 }
 
 pub struct QuickLook {
@@ -103,6 +105,8 @@ impl QuickLook {
                 action = Some(Action::Step(-1));
             } else if i.key_pressed(Key::ArrowRight) || i.key_pressed(Key::ArrowDown) {
                 action = Some(Action::Step(1));
+            } else if i.key_pressed(Key::F) && i.modifiers.is_none() {
+                action = Some(Action::Fullscreen);
             }
         });
         let full = ui.max_rect();

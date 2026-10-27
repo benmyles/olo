@@ -1,7 +1,7 @@
 //! The Mac keyboard, natively. ⌘ is the command key: apps see it as Ctrl
 //! (so ⌘C copies everywhere, GTK and Firefox included), while app_server
 //! keeps some ⌘ keys for itself: ⌘Tab / ⌘\` (Twitcher), ⌘ arrows and ⌘⌫
-//! (line and document navigation), a tap of ⌘ alone (Find, if chosen in
+//! (line and document navigation), a tap of ⌘ alone (the command palette, if chosen in
 //! Preferences), and first of all the shortcuts in `Settings::shortcuts`
 //! (tabula_protocol::shortcuts: tiling, workspaces, Find, lock,
 //! screenshots, …). Caps Lock is another Ctrl. Terminals keep physical
@@ -53,7 +53,7 @@ pub mod code {
 use code::*;
 
 /// A ⌘ press and release with nothing in between, shorter than this, is a
-/// tap (Find).
+/// tap (the command palette).
 pub const TAP: Duration = Duration::from_millis(350);
 
 /// The virtual Ctrl that stands for ⌘. Physical Ctrl and Caps Lock use the
@@ -69,7 +69,7 @@ pub enum Action {
     /// ⌘ released after switching: commit Twitcher's choice.
     SwitchDone,
     /// A tap of ⌘ (if chosen), or keyd's spelling of one.
-    Find,
+    Palette,
     /// One of the shortcuts in the settings.
     Shortcut(Shortcut),
 }
@@ -301,7 +301,7 @@ impl Keymap {
                 // keyd's spelling of a ⌘ tap (Ctrl+Alt+Super+O), in case it
                 // is still running underneath.
                 O if ctrl && self.alt() => {
-                    out.push(Out::Action(Action::Find));
+                    out.push(Out::Action(Action::Palette));
                     true
                 }
                 LEFT | RIGHT if !ctrl => {
@@ -380,7 +380,7 @@ impl Keymap {
                 }
                 let tap = !self.cmd_used && self.cmd_since.is_some_and(|t| now.duration_since(t) < TAP);
                 if tap && opts.tap_command_find {
-                    out.push(Out::Action(Action::Find));
+                    out.push(Out::Action(Action::Palette));
                 }
                 self.cmd_since = None;
             }
@@ -447,7 +447,7 @@ mod tests {
     fn tap_finds_but_a_chord_does_not() {
         let mut r = Rig::new();
         r.down(LEFTMETA);
-        assert_eq!(r.up(LEFTMETA), [Key(RIGHTCTRL, false), Out::Action(Action::Find)]);
+        assert_eq!(r.up(LEFTMETA), [Key(RIGHTCTRL, false), Out::Action(Action::Palette)]);
         r.down(LEFTMETA);
         r.down(C);
         r.up(C);
@@ -567,7 +567,7 @@ mod tests {
         assert_eq!(r.down(RIGHT), [Out::Action(Action::Shortcut(Shortcut::Tile(Tile::Right)))]);
         r.up(RIGHT);
         r.up(LEFTSHIFT);
-        assert_eq!(r.down(SPACE), [Out::Action(Action::Shortcut(Shortcut::Find))]);
+        assert_eq!(r.down(SPACE), [Out::Action(Action::Shortcut(Shortcut::Palette))]);
         r.up(SPACE);
         // ⌘← is still Home.
         assert_eq!(r.down(LEFT), [Key(RIGHTCTRL, false), Key(HOME, true)]);

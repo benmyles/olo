@@ -139,6 +139,9 @@ pub(crate) struct Painter {
     /// A [`WebContentAnimator`] used to manage web content-derived animations. Currently this only
     /// manages blinking caret animations.
     web_content_animator: WebContentAnimator,
+
+    /// The `webrender::dark` generation last asked for (Tabula's patch).
+    dark: u32,
 }
 
 impl Drop for Painter {
@@ -308,6 +311,7 @@ impl Painter {
                 paint.event_loop_waker.clone_box(),
                 (*timer_refresh_driver).clone(),
             ),
+            dark: webrender::dark::generation(),
         };
         painter.assert_gl_framebuffer_complete();
         painter.clear_background();
@@ -420,6 +424,15 @@ impl Painter {
 
     #[servo_tracing::instrument(skip_all)]
     pub(crate) fn render(&mut self, time_profiler_channel: &ProfilerChan) {
+        // Dark pages switched: have the scene builder recolour the scene
+        // (it rebuilds on any transaction once the generation changes).
+        let dark = webrender::dark::generation();
+        if self.dark != dark {
+            self.dark = dark;
+            let mut transaction = Transaction::new();
+            self.generate_frame(&mut transaction, RenderReasons::SCENE);
+            self.send_transaction(transaction);
+        }
         let refresh_driver = self.refresh_driver.clone();
         refresh_driver.notify_will_paint(self);
 
@@ -464,12 +477,12 @@ impl Painter {
         // or where they are positioned. This is so WebView actually clears even before the
         // first WebView is ready.
         let color = servo_config::pref!(shell_background_color_rgba);
-        self.webrender_gl.clear_color(
-            color[0] as f32,
-            color[1] as f32,
-            color[2] as f32,
-            color[3] as f32,
+        // Dark pages: a page without a background is dark too.
+        let color = webrender::dark::color(
+            ColorF::new(color[0] as f32, color[1] as f32, color[2] as f32, color[3] as f32),
+            webrender::dark::Role::Background,
         );
+        self.webrender_gl.clear_color(color.r, color.g, color.b, color.a);
         self.webrender_gl.clear(gleam::gl::COLOR_BUFFER_BIT);
     }
 

@@ -392,6 +392,8 @@ fn keychain(c: &Client, request: &Request, candidates: &[(String, String)], vaul
         }
         // Answered by the app itself.
         Request::Unlock => Response::Unlocked,
+        // Answered on the UI thread.
+        Request::Search { .. } | Request::Show { .. } => Response::Error { message: "unexpected".into() },
     }
 }
 
