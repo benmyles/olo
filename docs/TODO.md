@@ -5,6 +5,11 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Terminal: Show All Tabs, and tab groups that look right~~ (Ben):
+  Show All Tabs (⌘⇧D) tiles the window's tabs as live panes, typing into
+  the one clicked (it used to tile the group windows instead); the tab
+  strip is taller with the group's band clear of the icons; a dialog's
+  first field starts with its text selected.
 - ~~Token Pool: a live heatmap of requests~~ (Ben): the requests open
   now as lit cells, each account's latest 25 as a strip coloured by how
   they ended, click for the details; the kit's new `CellGrid` (Pulse's
@@ -81,7 +86,7 @@ as they land (with the commit), add new ones as they come up.
 - ~~**Terminal tabs, tab groups and coding agents**~~ (Ben; done
   2026-10-27): tabs (the kit's `TabStrip`; HACKING, Terminal "Tabs"),
   tab groups that can be saved and reopened (a window is a named,
-  coloured group; "Groups"), Show All Groups tiling every group at once,
+  coloured group; "Groups"), Show All Tabs tiling a window's tabs,
   and native recognition of Claude Code and Codex in a tab, its state on
   the tab and a notification when one needs attention ("Agents").
 - ~~**Passwords keeps its own store, synced with 1Password both ways**~~
@@ -500,15 +505,19 @@ as they land (with the commit), add new ones as they come up.
   `--new-window` to the running copy instead of launching a second one
   (Tracker, Terminal and StyledEdit; `apps::NEW_WINDOW`). Agents run
   `tabula-x --new-window`.
-- **Terminal: Show All Groups shows one group's tabs tiled** (Ben):
-  it isn't meant to tile the group windows across the screen, but to
-  show every tab of the group in one window at once, auto-tiled (each
-  tab a live pane, typing goes to the one clicked), and back to tabs
-  when turned off.
-- **Terminal: tab groups look off** (Ben): the tabs are too short, and
-  the group's coloured line overlaps things. Compare with BeOS tabs
-  (BTabView) and fix the strip's heights and the line's place, in light,
-  dark and night at 2×.
+- **Fan Out: windows stacked with their tabs staggered** (Ben): a
+  desktop shortcut and Deskbar/palette command that stacks every window
+  on a screen so their yellow title tabs sit side by side along the top,
+  each window's tab to the right of the last (as BeOS people did by
+  hand, sliding tabs). Windows keep their place top-left and are
+  narrowed when needed so none reaches under the Deskbar, but never
+  below a quarter of the screen's width (so four always fit; narrower
+  ones fit more); beyond that the rest go as far right as they can
+  without passing the Deskbar and their tabs overlap. With it, **Undo
+  Window Arrangement**: puts every window back where and how big it
+  was before the last arrangement (Fan Out, tiling, Show All). Name,
+  keys and both commands in HACKING's shortcuts section; agents can call
+  them too.
 - Token Pool follow-ups: spend a reset credit that would otherwise
   expire unused (needs a consumption-rate estimate, as Token Pooler's
   scheduling.md describes); keep key order in Claude Code's

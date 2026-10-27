@@ -230,7 +230,6 @@ fn main() {
   app_server (`Request::TileApp { app_id }`, off the UI thread) to tile
   the app's resizable windows on this workspace in a grid on the active
   display, in front (alerts and other fixed-size panels stay put).
-  Terminal's Show All Groups uses it.
 * Taps: a touchpad tap brings a press and its release together; the kit
   holds such a release over to the next frame (`input::split_taps`), so
   egui sees the button down for a frame and press-and-hold controls
@@ -361,7 +360,7 @@ edges; on a draggable list the name column and selected rows drag the
 items; `.empty_text("No lines match.")` says so in an empty list; a cell
 draws plain text with `text`/`text_with` or sections of their own colours
 with `text_job`), `TabView`, `TabStrip` (a row of document tabs under
-a menu or tool bar, `TAB_HEIGHT` tall: `StripTab { label, icon, color,
+a menu or tool bar, `STRIP_HEIGHT` (30) tall, roomier than a window tab: `StripTab { label, icon, color,
 status }` each, the selected one open into the content, close boxes,
 middle-click to close, a + button, drag along the row to reorder; it
 returns a `StripAction` (`Select`, `Close`, `New`, `Menu(i, pos)` for a
@@ -1224,9 +1223,16 @@ window's title is "name — tab", and the strip shows even with one tab.
 Save Group keeps the group and each tab's folder in
 `terminal-groups.json` (config dir); Open Saved Group brings its window
 forward, or opens one with a shell in each folder; Forget Saved Group
-drops it. Show All Groups tiles every Terminal window (`cx.tile_my_windows`),
-so each group is in view at once, told apart by colour. `save_state` keeps
-each window's group across an upgrade.
+drops it. Show All Tabs (Tabs menu or the group's menu, ⌘⇧D) shows
+every tab of the window at once, each a live pane with its title over
+it (`tile` picks the columns that keep panes nearest a terminal's
+shape, the last row spread across), each pane's shell sized to its pane;
+clicking a pane makes it the one typed into, marked with the group's
+colour (or the focus blue) as the strip marks it, and the strip follows.
+⌘⇧D again goes back to one tab at a time. `save_state` keeps each
+window's group and whether it shows all tabs across an upgrade. A new
+⌘⇧ shortcut must also go in `view::SHORTCUTS`, or the shell gets the
+Ctrl key too (⌘⇧D would send Ctrl+D and end the shell).
 
 **Agents** (`src/agent.rs`). A thread looks at every tab (shown or not)
 every 600 ms: if the shell's foreground process is Claude Code (its

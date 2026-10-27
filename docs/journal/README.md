@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Terminal: Show All Tabs
+
+*14:33* — Show All Tabs (⌘⇧D) puts every tab of a window on screen at once, each a live pane with its title over it; click one to type into it, marked in the group's colour. The tab strip is taller now, with the group's band kept clear of the icons.
+
+![Terminal: Show All Tabs](2026-10-27/143308-terminal-show-all-tabs.png)
+
 ### Token Pool: a heatmap of requests
 
 *14:24* — The requests going through the pool now light up as cells under the header, like Pulse's LEDs, and each account keeps a strip of its latest 25: green completed, yellow rate limited, red failed, grey cancelled. Click any cell for its model, client, time and tokens. The grid is the kit's new CellGrid.

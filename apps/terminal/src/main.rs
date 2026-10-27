@@ -49,7 +49,60 @@ const DEFAULT_SIZE: (usize, usize) = (120, 25);
 pub const TEXT_SIZES: [f32; 9] = [9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 16.0, 18.0, 22.0];
 const DEFAULT_TEXT_SIZE: f32 = 12.0;
 /// The tab strip, shown once a window has more than one tab.
-const STRIP: f32 = widgets::TAB_HEIGHT;
+const STRIP: f32 = widgets::STRIP_HEIGHT;
+/// The title bar over each pane in Show All Tabs.
+const PANE_HEAD: f32 = 20.0;
+
+/// Show All Tabs' panes for `n` tabs in `area`: as many columns as keep
+/// each pane nearest a terminal's usual shape, the last row's spread
+/// across the width; a line apart.
+fn tile(area: egui::Rect, n: usize) -> Vec<egui::Rect> {
+    let shape = |cols: usize| {
+        let rows = n.div_ceil(cols);
+        let aspect = (area.width() / cols as f32) / (area.height() / rows as f32);
+        (aspect / 1.8).ln().abs()
+    };
+    let cols = (1..=n).min_by(|&a, &b| shape(a).total_cmp(&shape(b))).unwrap_or(1);
+    let rows = n.div_ceil(cols);
+    let h = ((area.height() + 1.0) / rows as f32).floor();
+    let mut out = Vec::with_capacity(n);
+    for r in 0..rows {
+        let in_row = if r + 1 == rows { n - cols * (rows - 1) } else { cols };
+        let w = ((area.width() + 1.0) / in_row as f32).floor();
+        for c in 0..in_row {
+            let x0 = area.left() + c as f32 * w;
+            let y0 = area.top() + r as f32 * h;
+            let x1 = if c + 1 == in_row { area.right() } else { x0 + w - 1.0 };
+            let y1 = if r + 1 == rows { area.bottom() } else { y0 + h - 1.0 };
+            out.push(egui::Rect::from_min_max(egui::pos2(x0, y0), egui::pos2(x1, y1)));
+        }
+    }
+    out
+}
+
+/// A pane's title bar in Show All Tabs: its tab's title, and the one
+/// typed into marked with the group's colour (or the focus blue), as
+/// the strip marks it; a line around each pane keeps them apart.
+fn pane_head(ui: &egui::Ui, pane: egui::Rect, title: &str, active: bool, band: Option<egui::Color32>) {
+    let p = style::palette(ui.ctx());
+    let painter = ui.painter();
+    let bg = p.panel_background;
+    let head = egui::Rect::from_min_size(pane.min, egui::vec2(pane.width(), PANE_HEAD));
+    painter.rect_filled(head, 0.0, if active { style::c(bg) } else { style::shade(&p, bg, 1.07) });
+    style::hline(painter, head.left(), head.right(), head.bottom() - 1.0, style::shade(&p, bg, 1.3));
+    // Lines between panes (the window's frame does the outer edges).
+    let edge = style::shade(&p, bg, 1.5);
+    style::vline(painter, pane.right(), pane.top(), pane.bottom() + 1.0, edge);
+    style::hline(painter, pane.left(), pane.right() + 1.0, pane.bottom(), edge);
+    if active {
+        let mark = band.unwrap_or(style::c(p.keyboard_navigation));
+        painter.rect_filled(egui::Rect::from_min_size(head.min, egui::vec2(head.width(), 3.0)), 0.0, mark);
+    }
+    let font = if active { style::bold_font() } else { style::plain_font() };
+    let color = if active { style::c(p.panel_text) } else { style::shade(&p, p.panel_text, 0.8) };
+    let clip = head.shrink2(egui::vec2(m::SPACING, 0.0));
+    style::label(&painter.with_clip_rect(clip), clip.left(), (head.center().y + 1.0).round(), egui::Align::Min, title, font, color);
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
 enum SchemeChoice {
@@ -152,12 +205,14 @@ struct TermWin {
     shown_title: String,
     focused: bool,
     group: Option<Group>,
+    /// Show All Tabs: every tab at once, tiled in the window.
+    tiled: bool,
 }
 
 impl TermWin {
     fn new(tabs: Vec<Tab>, active: usize, snap_to: Option<(usize, usize)>, group: Option<Group>) -> TermWin {
         let active = active.min(tabs.len().saturating_sub(1));
-        TermWin { active, tabs, glyphs: GlyphCache::default(), snap_to, shown_title: String::new(), focused: true, group }
+        TermWin { active, tabs, glyphs: GlyphCache::default(), snap_to, shown_title: String::new(), focused: true, group, tiled: false }
     }
 
     fn tab(&self) -> &Tab {
@@ -299,6 +354,8 @@ struct SavedWindow {
     size: (u32, u32),
     #[serde(default)]
     group: Option<Group>,
+    #[serde(default)]
+    tiled: bool,
 }
 
 /// What a Terminal from before tabula-termd handed on: the shells
@@ -336,7 +393,7 @@ impl Terminal {
 
     /// A window on shells tabula-termd already has (sized as it was, if
     /// we know), one tab each.
-    fn reopen(&mut self, cx: &mut Cx, shells: &[&wire::ShellInfo], size: Option<(u32, u32)>, active: usize, group: Option<Group>) {
+    fn reopen(&mut self, cx: &mut Cx, shells: &[&wire::ShellInfo], size: Option<(u32, u32)>, active: usize, group: Option<Group>) -> WindowId {
         let active = active.min(shells.len() - 1);
         let shown = shells[active];
         let (cols, rows) = (shown.grid.cols.max(1) as usize, shown.grid.rows.max(1) as usize);
@@ -349,7 +406,7 @@ impl Terminal {
         }
         let snap = size.is_none().then_some((cols, rows));
         let starts = shells.iter().map(|s| Start::Attach(s.id)).collect();
-        self.add(cx, options, Size { cols, rows }, snap, starts, active, group);
+        self.add(cx, options, Size { cols, rows }, snap, starts, active, group)
     }
 
     fn start(&self, cx: &Cx, size: Size, start: Start) -> Tab {
@@ -360,10 +417,11 @@ impl Terminal {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn add(&mut self, cx: &mut Cx, options: WindowOptions, size: Size, snap_to: Option<(usize, usize)>, starts: Vec<Start>, active: usize, group: Option<Group>) {
+    fn add(&mut self, cx: &mut Cx, options: WindowOptions, size: Size, snap_to: Option<(usize, usize)>, starts: Vec<Start>, active: usize, group: Option<Group>) -> WindowId {
         let id = cx.open_window(options);
         let tabs = starts.into_iter().map(|s| self.start(cx, size, s)).collect();
         self.windows.insert(id, Win::Term(Box::new(TermWin::new(tabs, active, snap_to, group))));
+        id
     }
 
     /// A new tab in `win`, after the one showing, and show it.
@@ -445,7 +503,10 @@ impl Terminal {
             }
             used.extend(mine.iter().map(|s| s.id));
             let active = mine.iter().position(|s| Some(s.id) == shown).unwrap_or(0);
-            self.reopen(cx, &mine, Some(w.size), active, w.group.clone());
+            let id = self.reopen(cx, &mine, Some(w.size), active, w.group.clone());
+            if let Some(Win::Term(t)) = self.windows.get_mut(&id) {
+                t.tiled = w.tiled;
+            }
         }
         let rest: Vec<&wire::ShellInfo> = free.iter().filter(|s| !used.contains(&s.id)).copied().collect();
         for shell in &rest {
@@ -596,34 +657,72 @@ impl Terminal {
                 *current = scheme.clone();
             }
         }
-        if let Some((cols, rows)) = t.snap_to.take() {
+        if let Some((cols, rows)) = t.snap_to.take().filter(|_| !(t.tiled && t.tabs.len() > 1)) {
             let (w, h) = metrics.content_size(cols, rows);
             let want = (w, h + chrome(t.strip()));
             if cx.window_size(win) != Some(want) {
                 cx.resize(win, want);
             }
         }
-        let TermWin { tabs, active, glyphs, group, .. } = &mut **t;
-        let tab = &mut tabs[*active];
-        let session_cwd = {
+        let TermWin { tabs, active, glyphs, group, tiled, .. } = &mut **t;
+        let session_cwd = |tab: &Tab| {
             let shared = tab.session.shared.clone();
             move || {
                 let pid = shared.foreground().or(shared.shell())?;
                 std::fs::read_link(format!("/proc/{pid}/cwd")).ok()
             }
         };
-        let out = ui
-            .scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
-                view::show(ui, &mut tab.session, &scheme, &metrics, glyphs, &mut tab.mouse, focused, &session_cwd)
-            })
-            .inner;
+        // Show All Tabs: every tab in a pane of its own, the one typed
+        // into marked; else only the one showing.
+        let panes: Vec<(usize, egui::Rect)> = if *tiled && tabs.len() > 1 {
+            tile(area, tabs.len()).into_iter().enumerate().collect()
+        } else {
+            vec![(*active, area)]
+        };
+        let several = panes.len() > 1;
+        let band = group.as_ref().map(|g| groups::color(g.color, self.dark));
+        let mut out: Option<view::Output> = None;
+        let mut picked = None;
+        for &(i, rect) in &panes {
+            let tab = &mut tabs[i];
+            let mut screen = rect;
+            if several {
+                screen.min.y += PANE_HEAD;
+                pane_head(ui, rect, &tab.title, i == *active, band);
+                let pressed = ui.input(|inp| inp.pointer.any_pressed() && inp.pointer.interact_pos().is_some_and(|p| rect.contains(p)));
+                if pressed && i != *active {
+                    picked = Some(i);
+                }
+            }
+            let cwd = session_cwd(tab);
+            let o = ui
+                .scope_builder(egui::UiBuilder::new().max_rect(screen).id_salt(("pane", tab.session.id)), |ui| {
+                    view::show(ui, &mut tab.session, &scheme, &metrics, glyphs, &mut tab.mouse, focused && i == *active, &cwd)
+                })
+                .inner;
+            if several {
+                tab.session.resize(o.size, metrics.device_cell());
+            }
+            match &mut out {
+                Some(first) => first.merge(o),
+                None => out = Some(o),
+            }
+        }
+        let out = out.expect("a pane");
+        if !several {
+            // Every tab has the window's grid, so a program in one that
+            // isn't showing still lays itself out right.
+            for tab in tabs.iter_mut() {
+                tab.session.resize(out.size, metrics.device_cell());
+            }
+        }
+        if let Some(i) = picked {
+            t.select(i);
+            cx.redraw(win);
+        }
+        let TermWin { tabs, active, group, .. } = &mut **t;
         if let Some(target) = &out.open {
             links::open(target);
-        }
-        // Every tab has the window's grid, so a program in one that isn't
-        // showing still lays itself out right.
-        for tab in tabs.iter_mut() {
-            tab.session.resize(out.size, metrics.device_cell());
         }
         let tab = &mut tabs[*active];
         if let Some(text) = out.copy {
@@ -693,7 +792,8 @@ impl Terminal {
                     .item("Save Group", "save-group", None)
                     .item("Ungroup", "ungroup", None)
                     .separator()
-                    .item("Show All Groups", "tile-groups", None);
+                    .item("Show All Tabs", "tile-tabs", None)
+                    .checked(t.tiled);
                 menu::request_popup(
                     ui.ctx(),
                     MenuRequest { menu, source: ui.make_persistent_id("group-menu"), anchor: MenuAnchor::At(pos), selected: None },
@@ -1041,7 +1141,9 @@ impl App for Terminal {
                             cx.activate(id);
                             cx.redraw(id);
                         }
-                        None => self.reopen(cx, &[&shell], None, 0, None),
+                        None => {
+                            self.reopen(cx, &[&shell], None, 0, None);
+                        }
                     },
                     None => {}
                 }
@@ -1133,7 +1235,9 @@ impl App for Terminal {
             .enabled(several)
             .separator()
             .submenu(group)
-            .item("Show All Groups", "tile-groups", None)
+            .item_shift("Show All Tabs", "tile-tabs", Key::D)
+            .enabled(several)
+            .checked(t.tiled && several)
             .separator();
         for (i, tab) in t.tabs.iter().enumerate() {
             let label = match (tab.agent, tab.rang) {
@@ -1238,7 +1342,16 @@ impl App for Terminal {
                     groups::store(&self.saved_groups);
                 }
             }
-            "tile-groups" => cx.tile_my_windows(),
+            "tile-tabs" => {
+                if let Some(Win::Term(t)) = self.windows.get_mut(&window) {
+                    t.tiled = !t.tiled;
+                    if !t.tiled {
+                        // Back to one at a time: each tab takes the window's grid.
+                        t.snap_to = None;
+                    }
+                    cx.redraw(window);
+                }
+            }
             "quit" => {
                 // The shells stay in tabula-termd for next time.
                 self.link.bye();
@@ -1463,6 +1576,7 @@ impl App for Terminal {
                         active,
                         size: cx.window_size(id).unwrap_or((640, 400)),
                         group: t.group.clone(),
+                        tiled: t.tiled,
                     })
                 }
                 _ => None,

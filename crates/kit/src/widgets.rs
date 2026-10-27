@@ -271,8 +271,9 @@ impl<'a> TextControl<'a> {
         TextControl { text, label: None, divider: None, width: None, hint: None, password: false, mono: false, autofocus: false }
     }
     /// Take keyboard focus when the window first shows (the first field of
-    /// a dialog or a Find window). Keeps asking until focus arrives, since
-    /// a window that isn't yet activated can't hold it.
+    /// a dialog or a Find window), with its text selected. Keeps asking
+    /// until focus arrives, since a window that isn't yet activated can't
+    /// hold it.
     pub fn autofocus(mut self, on: bool) -> Self {
         self.autofocus = on;
         self
@@ -322,6 +323,14 @@ impl Widget for TextControl<'_> {
         if self.autofocus {
             let done = id.with("autofocused");
             if ui.memory(|m| m.has_focus(id)) {
+                if !ui.data(|d| d.get_temp::<bool>(done).unwrap_or(false)) {
+                    // As BeOS dialogs: the text starts selected, so typing
+                    // replaces it.
+                    let mut state = egui::text_edit::TextEditState::load(ui.ctx(), id).unwrap_or_default();
+                    let all = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(self.text.chars().count()));
+                    state.cursor.set_char_range(Some(all));
+                    state.store(ui.ctx(), id);
+                }
                 ui.data_mut(|d| d.insert_temp(done, true));
             } else if !ui.data(|d| d.get_temp::<bool>(done).unwrap_or(false)) {
                 ui.memory_mut(|m| m.request_focus(id));
@@ -2148,6 +2157,13 @@ pub enum StripAction {
 /// Widest a [`TabStrip`] tab grows.
 pub const STRIP_TAB_MAX: f32 = 220.0;
 
+/// How tall a [`TabStrip`] is: roomier than a window tab, as a row of
+/// documents is something you aim at all day.
+pub const STRIP_HEIGHT: f32 = 30.0;
+
+/// The group band along a [`TabStrip`] tab's top edge.
+const STRIP_BAND: f32 = 3.0;
+
 /// A row of document tabs under a window's tool or menu bar
 /// (Terminal's shells): the selected one open into the content below,
 /// each with a close box (middle-click closes too), a plus button after
@@ -2180,7 +2196,7 @@ impl<'a> TabStrip<'a> {
         self
     }
 
-    /// `strip` is [`TAB_HEIGHT`] tall and the window's width.
+    /// `full` is [`STRIP_HEIGHT`] tall and the window's width.
     pub fn show(self, ui: &mut Ui, full: Rect) -> Option<StripAction> {
         let p = style::palette(ui.ctx());
         let painter = ui.painter_at(full);
@@ -2191,7 +2207,8 @@ impl<'a> TabStrip<'a> {
         let mut strip = full;
         if let Some((name, color)) = self.group {
             let text_w = style::label_width(ui.ctx(), name, bold_font());
-            let chip = Rect::from_min_size(pos2(full.left() + m::TIGHT + 1.0, full.top() + 3.0), vec2((text_w + 2.0 * m::SPACING).round(), TAB_HEIGHT - 6.0));
+            let chip_h = m::CONTROL_HEIGHT - 2.0;
+            let chip = Rect::from_min_size(pos2(full.left() + m::SPACING, (full.center().y - chip_h / 2.0).round()), vec2((text_w + 2.0 * m::SPACING).round(), chip_h));
             let chip = style::snap(ui.ctx(), chip);
             let resp = ui.interact(chip, self.id.with("group"), Sense::click());
             resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Group {name}")));
@@ -2203,12 +2220,12 @@ impl<'a> TabStrip<'a> {
             if resp.clicked() || resp.secondary_clicked() {
                 action = resp.interact_pointer_pos().map(StripAction::Group);
             }
-            strip.min.x = chip.right() + m::TIGHT;
+            strip.min.x = chip.right() + m::SPACING - m::TIGHT;
         }
         let n = self.tabs.len();
         let new_w = if self.new_tab { m::CONTROL_HEIGHT + m::TIGHT } else { 0.0 };
         let width = ((strip.width() - 2.0 * m::TIGHT - new_w) / n.max(1) as f32).min(self.max_width).floor().max(1.0);
-        let slot = |i: usize| Rect::from_min_size(pos2(strip.left() + m::TIGHT + i as f32 * width, strip.top() + 2.0), vec2(width, TAB_HEIGHT - 2.0));
+        let slot = |i: usize| Rect::from_min_size(pos2(strip.left() + m::TIGHT + i as f32 * width, strip.top() + 4.0), vec2(width, STRIP_HEIGHT - 4.0));
         let drag_id = self.id.with("dragging");
         for (i, tab) in self.tabs.iter().enumerate() {
             let r = slot(i);
@@ -2227,11 +2244,15 @@ impl<'a> TabStrip<'a> {
             } else {
                 vline(&painter, r.right() - 1.0, r.top() + 3.0, r.bottom() - 3.0, shade(&p, bg, 1.3));
             }
+            // The group's band: inside the tab's edges, above what's in it.
+            let mut top = r.top();
             if let Some(color) = tab.color {
-                let band = Rect::from_min_size(pos2(r.left() + 1.0, r.top() + if selected { 1.0 } else { 0.0 }), vec2(r.width() - 2.0, 3.0));
+                let band = Rect::from_min_max(pos2(r.left() + 1.0, r.top() + 1.0), pos2(r.right() - 2.0, r.top() + 1.0 + STRIP_BAND));
                 painter.rect_filled(band, 0.0, color);
+                top = band.bottom();
             }
-            let close = Rect::from_center_size(pos2(r.right() - m::SPACING - 4.0, r.center().y), vec2(12.0, 12.0));
+            let cy = ((top + r.bottom()) / 2.0).round();
+            let close = Rect::from_center_size(pos2(r.right() - m::SPACING - 4.0, cy), vec2(12.0, 12.0));
             let close_resp = ui.interact(close, self.id.with(("close", i)), Sense::click());
             close_resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Close {}", tab.label)));
             if selected || resp.hovered() || close_resp.hovered() {
@@ -2242,14 +2263,14 @@ impl<'a> TabStrip<'a> {
             }
             let mut left = r.left() + m::SPACING;
             if let Some(paint) = tab.icon {
-                let icon = style::snap(ui.ctx(), Rect::from_min_size(pos2(left, r.center().y - 8.0), vec2(16.0, 16.0)));
+                let icon = style::snap(ui.ctx(), Rect::from_min_size(pos2(left, cy - 8.0), vec2(16.0, 16.0)));
                 paint(&painter, icon);
                 left = icon.right() + m::TIGHT + 1.0;
             }
             let font = if selected { bold_font() } else { plain_font() };
             let clip = Rect::from_min_max(pos2(left, r.top()), pos2(close.left() - m::TIGHT, r.bottom()));
             let text_color = if selected { c(p.panel_text) } else { shade(&p, p.panel_text, 0.8) };
-            style::label(&painter.with_clip_rect(clip), clip.left(), r.center().y, Align::Min, tab.label, font, text_color);
+            style::label(&painter.with_clip_rect(clip), clip.left(), cy, Align::Min, tab.label, font, text_color);
             if close_resp.clicked() || resp.middle_clicked() {
                 action = Some(StripAction::Close(i));
             } else if resp.secondary_clicked() {
@@ -2279,7 +2300,7 @@ impl<'a> TabStrip<'a> {
             }
         }
         if self.new_tab {
-            let plus = Rect::from_min_size(pos2(strip.left() + m::TIGHT + n as f32 * width + m::TIGHT, strip.top() + 2.0), vec2(new_w, TAB_HEIGHT - 4.0));
+            let plus = Rect::from_min_size(pos2(strip.left() + m::TIGHT + n as f32 * width + m::TIGHT, strip.top() + 4.0), vec2(new_w, STRIP_HEIGHT - 6.0));
             let resp = ui.interact(plus, self.id.with("new"), Sense::click());
             resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, "New Tab"));
             let color = if resp.hovered() { c(p.panel_text) } else { shade(&p, bg, 1.6) };

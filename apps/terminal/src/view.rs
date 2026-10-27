@@ -136,6 +136,16 @@ pub struct Output {
     pub open: Option<links::Target>,
 }
 
+impl Output {
+    /// Take in another pane's: what it asked for, if this one didn't.
+    pub fn merge(&mut self, o: Output) {
+        self.copy = self.copy.take().or(o.copy);
+        self.paste |= o.paste;
+        self.context_menu = self.context_menu.or(o.context_menu);
+        self.open = self.open.take().or(o.open);
+    }
+}
+
 fn is_box(c: char) -> bool {
     ('\u{2500}'..='\u{259f}').contains(&c) || ('\u{e0b0}'..='\u{e0b3}').contains(&c)
 }
@@ -950,6 +960,7 @@ pub const SHORTCUTS: &[Key] = &[
     Key::G,
     Key::E,
     Key::K,
+    Key::D,
     Key::Equals,
     Key::Plus,
     Key::Minus,
