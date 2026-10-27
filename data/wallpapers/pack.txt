@@ -1,0 +1,10 @@
+# The wallpaper pack: name|label. Each has 4k/NAME.png (16:9) and
+# ultrawide/NAME.png (21:9); NAME-dark.png beside it, when there is one,
+# is shown in dark mode. thumbs/ holds the previews. The first is the
+# default for a new install.
+dusk-gradient|Dusk
+boing|Boing
+be-blue|Be Blue
+aqua|Aqua
+clouds|Clouds
+workbench-pattern|Workbench

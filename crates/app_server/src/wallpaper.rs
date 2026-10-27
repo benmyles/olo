@@ -3,7 +3,9 @@
 //! the workspace colour shows until the picture is ready or if it can't be
 //! read). Decoding and scaling a camera-sized JPEG takes a while, so it is
 //! done on a worker thread per output size; the finished buffer is kept on
-//! the output, where `render::output_elements` finds it.
+//! the output, where `render::output_elements` finds it. A picture from
+//! the pack (`tabula_xdg::wallpapers`) comes in the version for each
+//! screen's shape and the current mode.
 
 use std::{
     path::{Path, PathBuf},
@@ -130,14 +132,13 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Make sure `output` has (or is getting) the current wallpaper at its
     /// current size. Cheap when nothing changed; called before each frame.
     pub fn update_wallpaper(&mut self, output: &Output) {
-        let want = self
-            .settings
-            .wallpaper
-            .as_deref()
-            .map(str::trim)
-            .filter(|p| !p.is_empty())
-            .zip(physical_size(output))
-            .map(|(p, size)| Key { path: PathBuf::from(p), size });
+        // A pack picture: the version for the screen's shape and the mode
+        // (so it changes with dark mode, Auto's schedule too).
+        let dark = self.settings.appearance.effective_theme == tabula_theme::ThemeMode::Dark;
+        let want = self.settings.wallpaper.as_deref().zip(physical_size(output)).and_then(|(setting, size)| {
+            let path = tabula_xdg::wallpapers::resolve(setting, size, dark)?;
+            Some(Key { path, size })
+        });
         let mut slot = slot(output).lock().unwrap();
         if slot.wanted == want {
             return;

@@ -335,7 +335,9 @@ pub struct Settings {
     pub workspace_count: u32,
     /// Per-workspace desktop colour, BeOS-style (Backgrounds/Workspaces prefs).
     pub workspace_colors: Vec<[u8; 3]>,
-    /// Optional wallpaper image drawn by Tracker's desktop window.
+    /// The wallpaper: `pack:NAME` (the wallpaper pack, which follows dark
+    /// mode and each screen's shape) or a picture file; None for just the
+    /// workspace colour.
     pub wallpaper: Option<String>,
     pub focus_follows_mouse: bool,
     pub touchpad: TouchpadSettings,
@@ -699,7 +701,8 @@ impl Default for Settings {
             workspace_count: 4,
             // BeOS R5's default desktop blue, then a few Haiku-ish alternates.
             workspace_colors: vec![[51, 102, 152], [0, 128, 128], [102, 51, 153], [96, 96, 96]],
-            wallpaper: None,
+            // A new install starts with the pack's first picture.
+            wallpaper: Some("pack:dusk-gradient".into()),
             focus_follows_mouse: false,
             touchpad: TouchpadSettings::default(),
             keyboard: KeyboardSettings::default(),

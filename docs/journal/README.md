@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### The wallpaper pack
+
+*15:13* — Backgrounds offers the new wallpapers with previews; each follows light and dark mode live and comes in a 16:9 or ultrawide version for each screen.
+
+![The wallpaper pack](2026-10-27/151308-the-wallpaper-pack.png)
+
 ### DriveSetup: free space
 
 *14:54* — A Free column shows how full each mounted volume is, and the status line says how much is left; it stays current while the window is open.

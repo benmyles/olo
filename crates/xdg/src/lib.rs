@@ -11,6 +11,7 @@ pub mod apps;
 pub mod desktop_entry;
 pub mod mime;
 pub mod open;
+pub mod wallpapers;
 
 /// Device-pixel sizes shipped in data/icons.
 const OWN_SIZES: &[u32] = &[16, 24, 32, 48, 64, 96, 128, 256];
@@ -34,7 +35,12 @@ pub fn data_dirs() -> &'static [PathBuf] {
             }
         }
         if let Some(home) = std::env::var_os("HOME") {
-            v.push(Path::new(&home).join(".local/share/tabula"));
+            let installed = Path::new(&home).join(".local/share/tabula");
+            // The tree it was built from (recorded by the installer): new
+            // data shows up there before an upgrade copies it over.
+            let tree = std::fs::read_to_string(installed.join("build-dir")).ok().and_then(|t| Path::new(t.trim()).ancestors().nth(2).map(|r| r.join("data")));
+            v.push(installed);
+            v.extend(tree);
         }
         v.push("/usr/local/share/tabula".into());
         v.push("/usr/share/tabula".into());

@@ -335,7 +335,9 @@ as Log Viewer's syntax highlighting does), `Slider`
 (`.label().value_text().limits()`), `MenuField` (pop-up choice), `BBox`
 (etched group box with label), `separator`, `StatusBar` (progress; `level_bar(painter, rect, fraction,
 fill)` paints just its bar, for list cells),
-`CellGrid` (Pulse's LED meters: a heatmap of small lit cells in sunken
+`ThumbnailPicker` (a wrapping grid of `Thumbnail{texture, color, label}`
+to choose one from, ringed when chosen, arrow keys move; Backgrounds'
+wallpapers), `CellGrid` (Pulse's LED meters: a heatmap of small lit cells in sunken
 wells, `GridCell{color, mark, name, selected}` each; `.rows(n)
 .cell_size(px)` fixes its height, and with more cells than fit they
 shrink so more rows and columns fit the same space; `.slots(n)` shows
@@ -797,10 +799,20 @@ launcher lists them. The panel list Deskbar shows is
   `Settings::clock` (`ClockSettings::format` is shared by Deskbar and the
   panel's preview). **Tests must never press Set, Set Time Zone or the
   network-time box: they change the real machine.**
-* Backgrounds (`workspaces.rs`): a colour per workspace and one wallpaper.
-  Choose… opens a FilePanel (picture types only) as a child window; the
-  text field follows the setting when it changes elsewhere (Choose…,
-  Defaults, Revert). app_server draws the wallpaper (`wallpaper.rs`):
+* Backgrounds (`workspaces.rs`): a colour per workspace and one wallpaper,
+  picked in a `ThumbnailPicker`: None (the workspace colour), the
+  wallpaper pack, or Your Own. The pack (`data/wallpapers`, Git LFS;
+  `tabula_xdg::wallpapers`) lists its pictures in `pack.txt` (the first
+  is a new install's default), each in `4k/` (16:9) and `ultrawide/`
+  (21:9), some with a `-dark` version, and previews in `thumbs/`. The
+  setting holds `pack:NAME`, and `wallpapers::resolve` gives the file
+  for a screen's shape (2:1 or wider takes the ultrawide one) and the
+  effective theme, so it follows dark mode (Auto's schedule too) live.
+  It is installed into `~/.local/share/tabula/wallpapers` by
+  install-session.sh and by upgrades (cloned on btrfs), and found in
+  the recorded build tree's `data/` too (`data_dirs`). Choose… opens a
+  FilePanel (picture types only) as a child window for your own file;
+  its text field follows the setting when it changes elsewhere. app_server draws the wallpaper (`wallpaper.rs`):
   each output's picture is decoded (JPEG XL too, via jxl-oxide), scaled
   to cover and cropped on a worker thread, kept in the output's user
   data and drawn under every surface; the workspace colour shows until

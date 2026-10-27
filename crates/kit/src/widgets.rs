@@ -1063,6 +1063,108 @@ pub fn level_bar(painter: &Painter, bar: Rect, fraction: f32, fill: Option<Color
     style::bevel(painter, bar, shade(&p, p.panel_background, 1.45), c(p.shine));
 }
 
+// ---- ThumbnailPicker ----------------------------------------------------
+
+/// One choice in a [`ThumbnailPicker`].
+pub struct Thumbnail {
+    /// Its picture (None: still loading, or none).
+    pub texture: Option<egui::TextureHandle>,
+    /// What fills the frame without a picture (a plain colour choice).
+    pub color: Option<Color32>,
+    pub label: String,
+}
+
+/// A wrapping grid of pictures to pick one from, labelled underneath (a
+/// wallpaper, say): each in a sunken frame, the chosen one ringed in the
+/// navigation colour. Arrow keys move the choice while it has focus.
+pub struct ThumbnailPicker<'a> {
+    id: Id,
+    items: &'a [Thumbnail],
+    selected: Option<usize>,
+    size: Vec2,
+}
+
+impl<'a> ThumbnailPicker<'a> {
+    pub fn new(id: impl std::hash::Hash + std::fmt::Debug, items: &'a [Thumbnail], selected: Option<usize>) -> Self {
+        ThumbnailPicker { id: Id::unique(("thumbnail-picker", id)), items, selected, size: vec2(128.0, 72.0) }
+    }
+    /// The pictures' size (logical pixels; default 128×72, 16:9).
+    pub fn picture_size(mut self, size: Vec2) -> Self {
+        self.size = size;
+        self
+    }
+
+    /// Draw it; the index chosen this frame, if any.
+    pub fn show(self, ui: &mut Ui) -> Option<usize> {
+        let p = style::palette(ui.ctx());
+        let gap = m::SPACING;
+        let cell = vec2(self.size.x + 4.0, self.size.y + 4.0 + m::TIGHT + m::LABEL_ROW);
+        let cols = (((ui.available_width() + gap) / (cell.x + gap)).floor() as usize).max(1);
+        let rows = self.items.len().div_ceil(cols);
+        let height = rows as f32 * cell.y + rows.saturating_sub(1) as f32 * gap;
+        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
+        let mut chosen = None;
+        let mut focused = false;
+        for (i, item) in self.items.iter().enumerate() {
+            let at = rect.min + vec2((i % cols) as f32 * (cell.x + gap), (i / cols) as f32 * (cell.y + gap));
+            let r = Rect::from_min_size(at, cell);
+            let resp = ui.interact(r, self.id.with(i), Sense::click());
+            let on = self.selected == Some(i);
+            resp.widget_info(|| WidgetInfo::selected(Role::RadioButton, true, on, &item.label));
+            focused |= resp.has_focus();
+            if resp.clicked() {
+                resp.request_focus();
+                chosen = Some(i);
+            }
+            let painter = ui.painter();
+            let frame = style::snap(ui.ctx(), Rect::from_min_size(at, self.size + vec2(4.0, 4.0)));
+            let well = frame.shrink(2.0);
+            painter.rect_filled(well, 0.0, c(p.document_background));
+            match &item.texture {
+                Some(t) => {
+                    painter.image(t.id(), well, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+                }
+                None => {
+                    if let Some(fill) = item.color {
+                        painter.rect_filled(well, 0.0, fill);
+                    }
+                }
+            }
+            style::bevel(painter, frame.shrink(1.0), shade(&p, p.panel_background, 1.45), c(p.shine));
+            if on {
+                frame_rect(painter, frame, c(p.keyboard_navigation));
+                frame_rect(painter, frame.expand(1.0), c(p.keyboard_navigation));
+            }
+            let label_y = frame.bottom() + m::TIGHT + m::LABEL_ROW / 2.0;
+            let font = if on { bold_font() } else { plain_font() };
+            let clip = painter.with_clip_rect(Rect::from_min_max(pos2(r.left(), frame.bottom()), r.max));
+            style::label(&clip, r.center().x, label_y, egui::Align::Center, item.label.clone(), font, c(p.panel_text));
+        }
+        // Arrows move the choice (as radio buttons do).
+        if focused && let Some(sel) = self.selected {
+            let step = ui.input(|i| {
+                if i.key_pressed(Key::ArrowRight) {
+                    1
+                } else if i.key_pressed(Key::ArrowLeft) {
+                    -1
+                } else if i.key_pressed(Key::ArrowDown) {
+                    cols as isize
+                } else if i.key_pressed(Key::ArrowUp) {
+                    -(cols as isize)
+                } else {
+                    0
+                }
+            });
+            let next = sel as isize + step;
+            if step != 0 && (0..self.items.len() as isize).contains(&next) {
+                chosen = Some(next as usize);
+                ui.memory_mut(|m| m.request_focus(self.id.with(next as usize)));
+            }
+        }
+        chosen
+    }
+}
+
 // ---- CellGrid -----------------------------------------------------------
 
 /// One cell of a [`CellGrid`].

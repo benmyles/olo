@@ -520,6 +520,17 @@ as they land (with the commit), add new ones as they come up.
   `--new-window` to the running copy instead of launching a second one
   (Tracker, Terminal and StyledEdit; `apps::NEW_WINDOW`). Agents run
   `tabula-x --new-window`.
+- **AI preferences, and Smart Tiling** (Ben): a new AI preferences
+  panel/app. A setting, on by default, to use the Token Pool for
+  Tabula's AI features; then each AI feature can be turned on and
+  configured there. The first: **Smart Tiling**, on by default, with a
+  model chooser (default Opus 5.5 at medium effort). A new shortcut and
+  command smart-tiles every window on the screen: it takes a screenshot
+  and gives it to the model with the windows' widget trees and metadata,
+  and asks for the best tiling for what each app is and what's in it
+  (important things get more space; things you just want to see at the
+  side get smaller or different places), then applies it (undoable
+  with Undo Window Arrangement).
 - **Rename Tabula to Olo, use the new brand, ship a wallpaper pack**
   (Ben; the very last thing, after everything else is done):
   - *Rename* everywhere (code, crates, binaries, app ids, environment
@@ -541,7 +552,9 @@ as they land (with the commit), add new ones as they come up.
     lockups, social and GitHub images; each with its prompt .json). Use
     them for the app and desktop icon, Deskbar, About, README and
     wherever the old identity shows.
-  - *Wallpapers* from ~/olo-logos/wallpapers/{4k (3840×2160), ultrawide
+  - ~~*Wallpapers*~~ (done: the pack in data/wallpapers, Backgrounds'
+    picker, light/dark and shape following live; HACKING, Backgrounds)
+    from ~/olo-logos/wallpapers/{4k (3840×2160), ultrawide
     (3840×1648)} (not v1/ or dropped/): dusk-gradient (default; light and
     -dark), boing (light and -dark), be-blue, aqua, clouds,
     workbench-pattern (one image each). Preferences picks from the pack

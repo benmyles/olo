@@ -106,6 +106,11 @@ impl Watcher {
                 Ok(n) => crate::log(format!("installed {n} new or changed icons")),
                 Err(e) => crate::log(format!("could not install icons: {e}")),
             }
+            match sync_wallpapers(&self.from, &prefix.join("share/tabula/wallpapers")) {
+                Ok(0) => {}
+                Ok(n) => crate::log(format!("installed {n} new or changed wallpapers")),
+                Err(e) => crate::log(format!("could not install wallpapers: {e}")),
+            }
         }
         self.pending = newer(&self.from, &self.to).unwrap_or_default();
         self.publish();
@@ -229,6 +234,34 @@ fn sync_icons(from: &Path, to: &Path) -> std::io::Result<usize> {
                 let tmp = dir.join(format!(".{}.new", f.file_name().to_string_lossy()));
                 std::fs::copy(&a, &tmp)?;
                 std::fs::rename(&tmp, &b)?;
+                n += 1;
+            }
+        }
+    }
+    Ok(n)
+}
+
+/// Copy the build tree's wallpaper pack (`data/wallpapers`: the manifest,
+/// both shapes and the previews) into `to` where new or newer, by clone
+/// where the file system can (the pack is ~90 MB); how many files.
+fn sync_wallpapers(from: &Path, to: &Path) -> std::io::Result<usize> {
+    let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/wallpapers")).find(|d| d.join("pack.txt").is_file()) else {
+        return Ok(0);
+    };
+    let newer = |a: &Path, b: &Path| {
+        let m = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+        m(b).is_none_or(|b| m(a).is_some_and(|a| a > b))
+    };
+    let mut n = 0;
+    for sub in ["", "4k", "ultrawide", "thumbs"] {
+        let (from_dir, to_dir) = (src.join(sub), to.join(sub));
+        let Ok(entries) = std::fs::read_dir(&from_dir) else { continue };
+        std::fs::create_dir_all(&to_dir)?;
+        for e in entries.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if e.path().is_file() && (name.ends_with(".png") || name == "pack.txt") && newer(&e.path(), &to_dir.join(&name)) {
+                install(&e.path(), &to_dir, &name)?;
+                std::fs::set_permissions(to_dir.join(&name), std::fs::Permissions::from_mode(0o644))?;
                 n += 1;
             }
         }

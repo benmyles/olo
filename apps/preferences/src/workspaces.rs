@@ -4,7 +4,9 @@
 use tabula_kit::{
     egui::{Color32, Sense, Ui, vec2},
     metrics as m, style,
-    widgets::{BBox, Button, ColorControl, MenuField, Slider, TextControl, color_well},
+    icons,
+    wallpapers::{self, Wallpaper},
+    widgets::{BBox, Button, ColorControl, MenuField, Slider, TextControl, Thumbnail, ThumbnailPicker, color_well},
 };
 use tabula_protocol::Settings;
 
@@ -44,7 +46,12 @@ pub struct BackgroundsState {
     seen: Option<Option<String>>,
     /// Choose… was clicked: main opens a file panel.
     pub choose: bool,
+    /// The wallpaper pack, read once.
+    pack: Option<Vec<Wallpaper>>,
 }
+
+/// The wallpaper previews' size (16:9).
+const PREVIEW: tabula_kit::egui::Vec2 = vec2(96.0, 54.0);
 
 /// Picture formats app_server can show as a wallpaper.
 pub const WALLPAPER_TYPES: &[&str] = &["png", "jpg", "jpeg", "jxl", "avif", "heic", "heif", "webp", "bmp", "tif", "tiff", "gif"];
@@ -71,26 +78,53 @@ pub fn backgrounds_ui(ui: &mut Ui, s: &mut Settings, st: &mut BackgroundsState) 
     });
 
     BBox::new("Wallpaper").show(ui, |ui| {
-        if st.seen.as_ref() != Some(&s.wallpaper) {
-            st.wallpaper = Some(s.wallpaper.clone().unwrap_or_default());
-            st.seen = Some(s.wallpaper.clone());
+        let pack = st.pack.get_or_insert_with(wallpapers::pack).clone();
+        let dark = s.appearance.effective_theme == tabula_kit::theme::ThemeMode::Dark;
+        let own = s.wallpaper.as_deref().filter(|w| !w.starts_with(wallpapers::PACK)).map(str::to_owned);
+        // None, the pack (previews in the current mode), and your own.
+        // None: just this workspace's colour.
+        let [r, g, b] = s.workspace_colors[st.workspace];
+        let mut items = vec![Thumbnail { texture: None, color: Some(Color32::from_rgb(r, g, b)), label: "None".into() }];
+        for w in &pack {
+            let texture = wallpapers::thumbnail(&w.name, dark).and_then(|p| icons::thumbnail(ui.ctx(), &p, PREVIEW.x));
+            items.push(Thumbnail { texture, color: None, label: w.label.clone() });
+        }
+        let own_texture = own.as_deref().and_then(|p| icons::thumbnail(ui.ctx(), std::path::Path::new(p), PREVIEW.x));
+        items.push(Thumbnail { texture: own_texture, color: None, label: "Your Own".into() });
+        let selected = match s.wallpaper.as_deref() {
+            None => Some(0),
+            Some(w) => match pack.iter().position(|p| p.setting() == w) {
+                Some(i) => Some(i + 1),
+                None => Some(items.len() - 1),
+            },
+        };
+        match ThumbnailPicker::new("wallpaper", &items, selected).picture_size(PREVIEW).show(ui) {
+            Some(0) => s.wallpaper = None,
+            Some(i) if i <= pack.len() => s.wallpaper = Some(pack[i - 1].setting()),
+            // Your Own: the picture already chosen, else pick one.
+            Some(_) => match &own {
+                Some(p) => s.wallpaper = Some(p.clone()),
+                None => st.choose = true,
+            },
+            None => {}
+        }
+        ui.add_space(m::SPACING);
+        // Your own picture, by name.
+        if st.seen.as_ref() != Some(&own) {
+            st.wallpaper = Some(own.clone().unwrap_or_default());
+            st.seen = Some(own.clone());
         }
         let text = st.wallpaper.get_or_insert_with(String::new);
-        let mut clear = false;
         ui.horizontal(|ui| {
-            let field = ui.available_width() - 2.0 * (m::BUTTON_MIN_WIDTH + m::SPACING);
-            ui.add(TextControl::new(text).label("Image:").hint("No wallpaper").width(field));
+            let field = ui.available_width() - m::BUTTON_MIN_WIDTH - m::SPACING;
+            ui.add(TextControl::new(text).label("Your own:").hint("A picture of your own").width(field));
             st.choose |= ui.add(Button::new("Choose…")).clicked();
-            ui.add_enabled_ui(!text.trim().is_empty(), |ui| clear = ui.add(Button::new("Clear")).clicked());
         });
-        if clear {
-            text.clear();
-        }
         let trimmed = text.trim();
-        let wanted = (!trimmed.is_empty()).then(|| trimmed.to_owned());
-        if wanted != s.wallpaper {
-            s.wallpaper = wanted.clone();
-            st.seen = Some(wanted);
+        let typed = (!trimmed.is_empty()).then(|| trimmed.to_owned());
+        if typed != own && typed.is_some() {
+            s.wallpaper = typed.clone();
+            st.seen = Some(typed);
         }
     });
 }

@@ -144,7 +144,7 @@ impl Panel {
     pub fn size(self) -> (u32, u32) {
         match self {
             Panel::Appearance => (420, 300),
-            Panel::Backgrounds => (440, 308),
+            Panel::Backgrounds => (520, 448),
             Panel::Backup => (420, 400),
             Panel::Bluetooth => (440, 340),
             Panel::DateTime => (460, 370),

@@ -48,6 +48,8 @@ done
 # Security turns it off, which removes the link). Never over another op.
 [ -e "$PREFIX/bin/op" ] || [ -L "$PREFIX/bin/op" ] || as_user ln -s tabula-op "$PREFIX/bin/op"
 as_user cp -r data/icons "$PREFIX/share/tabula/"
+# The wallpaper pack (a reflink copy where the file system can).
+as_user cp -r --reflink=auto data/wallpapers "$PREFIX/share/tabula/"
 echo "$TREE/target/release" | as_user tee "$PREFIX/share/tabula/build-dir" > /dev/null
 
 # The login screen runs the session from where it was installed (no
