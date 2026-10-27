@@ -1102,5 +1102,11 @@
   "title": "Terminal tabs",
   "caption": "Terminal windows hold tabs: \u2318T opens one in the same folder, \u2318[ and \u2318] or Ctrl+Tab move between them, and tabs drag to reorder. A bell in a hidden tab marks it with a dot; Move Tab to New Window splits one off. The window grows by the strip so the grid stays the same, and tabs come back after an upgrade.",
   "image": "2026-10-27/123802-terminal-tabs.png"
+ },
+ {
+  "time": "2026-10-27T13:03:47",
+  "title": "Terminal knows its coding agents",
+  "caption": "Claude Code or Codex in a tab is recognized natively: the tab wears its state (a turning arc while it works, an orange ! when it asks, a green dot when its turn is done) and, when you're looking elsewhere, a notification says it needs you; Show brings that tab forward.",
+  "image": "2026-10-27/130347-terminal-knows-its-coding-agents.png"
  }
 ]

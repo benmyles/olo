@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Terminal knows its coding agents
+
+*13:03* — Claude Code or Codex in a tab is recognized natively: the tab wears its state (a turning arc while it works, an orange ! when it asks, a green dot when its turn is done) and, when you're looking elsewhere, a notification says it needs you; Show brings that tab forward.
+
+![Terminal knows its coding agents](2026-10-27/130347-terminal-knows-its-coding-agents.png)
+
 ### Terminal tabs
 
 *12:38* — Terminal windows hold tabs: ⌘T opens one in the same folder, ⌘[ and ⌘] or Ctrl+Tab move between them, and tabs drag to reorder. A bell in a hidden tab marks it with a dot; Move Tab to New Window splits one off. The window grows by the strip so the grid stays the same, and tabs come back after an upgrade.

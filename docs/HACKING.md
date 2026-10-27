@@ -1208,6 +1208,22 @@ drops it. Show All Groups tiles every Terminal window (`cx.tile_my_windows`),
 so each group is in view at once, told apart by colour. `save_state` keeps
 each window's group across an upgrade.
 
+**Agents** (`src/agent.rs`). A thread looks at every tab (shown or not)
+every 600 ms: if the shell's foreground process is Claude Code (its
+native build under `…/claude/versions/`, or the npm package under node)
+or Codex, it reads the bottom 30 lines of that tab's screen as a person
+would. A question ("Do you want to…", "❯ 1. Yes", "esc to cancel") means
+*needs your answer*; "esc to interrupt" means *working*; anything else is
+*waiting for you*. A reading has to hold for three looks before it
+counts as idle or gone, so the gap between steps isn't the turn ending.
+The tab's icon wears the state (a turning arc, an orange "!", a green dot
+once a finished turn hasn't been seen), the tab's accessible name and
+the Tabs menu say it ("Claude Code: needs your answer"), and when an
+agent the person isn't looking at starts asking, or finishes, Terminal
+posts a notification (important for a question) whose Show brings that
+tab and window forward. The badge and the notification go once the tab
+is seen.
+
 **Terminal ▸ Terminal Daemon…** (`src/daemon.rs`) shows tabula-termd's
 process and uptime and its shells (whether each is shown here, in
 another Terminal, or nowhere; double-click one to show it, bringing its tab forward), refreshed

@@ -2,12 +2,14 @@
 //! windows), on alacritty's terminal emulator. GPU-drawn through the kit,
 //! with Tabula's own light and dark colour schemes. A window can hold
 //! several shells as tabs, and be a named, coloured group of them that
-//! can be saved and opened again (groups.rs).
+//! can be saved and opened again (groups.rs). Tabs running a coding agent
+//! show what it's doing, and say when it needs you (agent.rs).
 //!
 //! The shells run in tabula-termd (termd.rs), so they outlive Terminal:
 //! quit it, or have it crash or upgrade, and the next Terminal opens a
 //! window on each shell as it was, scrollback and all.
 
+mod agent;
 mod client;
 mod colors;
 mod daemon;
@@ -34,8 +36,10 @@ use tabula_kit::{
     widgets::{self, Button, CheckBox, StripAction, StripTab, TabStrip, TextControl},
 };
 
+use agent::{Agent, State};
 use colors::Scheme;
 use groups::Group;
+use tabula_kit::notify::{Note, NoteEvent, NoteId, NoteKind, Notifier};
 use session::{Message, Session, Size, Start, TermEvent};
 use view::{GlyphCache, Metrics, Mouse};
 
@@ -105,11 +109,23 @@ struct Tab {
     bell: Option<Instant>,
     /// The bell rang while another tab was showing.
     rang: bool,
+    /// The coding agent running in it, and what it's doing.
+    agent: Option<(Agent, State)>,
+    /// Its agent stopped (done, or asking) while no one was looking.
+    attention: bool,
 }
 
 impl Tab {
     fn new(session: Session) -> Tab {
-        Tab { session, mouse: Mouse::default(), title: "Terminal".into(), bell: None, rang: false }
+        Tab { session, mouse: Mouse::default(), title: "Terminal".into(), bell: None, rang: false, agent: None, attention: false }
+    }
+
+    /// What it's doing, for its tab's name to screen readers and agents.
+    fn status(&self) -> Option<String> {
+        match self.agent {
+            Some((agent, state)) => Some(format!("{}: {}", agent.name(), state.describe())),
+            None => self.rang.then(|| "bell rang".into()),
+        }
     }
 
     fn current_title(&self) -> String {
@@ -184,6 +200,7 @@ impl TermWin {
         }
         self.active = i;
         self.tabs[i].rang = false;
+        self.tabs[i].attention = false;
         if self.focused {
             self.tabs[i].report_focus(true);
         }
@@ -240,6 +257,10 @@ struct Terminal {
     front: Option<WindowId>,
     /// Groups saved to open again (groups.rs).
     saved_groups: Vec<groups::Saved>,
+    agents: agent::Watcher,
+    notifier: Notifier,
+    /// The notification each shell's agent last put up.
+    notes: HashMap<u64, NoteId>,
 }
 
 /// Room above the grid: the menu bar, and the tab strip if shown.
@@ -333,7 +354,9 @@ impl Terminal {
 
     fn start(&self, cx: &Cx, size: Size, start: Start) -> Tab {
         let cell = self.metrics.map(|m| m.device_cell()).unwrap_or((15, 36));
-        Tab::new(Session::start(cx.proxy(), &self.link, size, cell, self.scheme(), start))
+        let session = Session::start(cx.proxy(), &self.link, size, cell, self.scheme(), start);
+        self.agents.watch(session.id, &session.term, &session.shared);
+        Tab::new(session)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -512,6 +535,9 @@ impl Terminal {
             t.focused = focused;
             t.tab().report_focus(focused);
         }
+        if focused {
+            t.tab_mut().attention = false;
+        }
         // Ctrl+Tab and Ctrl+Page Up/Down go through the tabs, as in other
         // terminals; the shell never sees them (nor their releases).
         let step = ui.input_mut(|i| {
@@ -543,13 +569,19 @@ impl Terminal {
         if t.strip() {
             let strip = egui::Rect::from_min_size(full.min, egui::vec2(full.width(), STRIP));
             area.min.y = strip.max.y;
-            let icons: Vec<_> = t.tabs.iter().map(|tab| tab_icon(tab.rang)).collect();
+            let icons: Vec<_> = t.tabs.iter().map(|tab| tab_icon(tab.rang, tab.agent, tab.attention)).collect();
+            let statuses: Vec<Option<String>> = t.tabs.iter().map(Tab::status).collect();
+            if t.tabs.iter().any(|x| matches!(x.agent, Some((_, State::Working)))) {
+                // The spinner turns.
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+            }
             let color = t.group.as_ref().map(|g| groups::color(g.color, self.dark));
             let items: Vec<StripTab> = t
                 .tabs
                 .iter()
                 .zip(&icons)
-                .map(|(tab, icon)| StripTab { label: &tab.title, icon: Some(icon), color, status: tab.rang.then_some("bell rang") })
+                .zip(&statuses)
+                .map(|((tab, icon), status)| StripTab { label: &tab.title, icon: Some(icon), color, status: status.as_deref() })
                 .collect();
             let mut bar = TabStrip::new(("terminal-tabs", win), &items, t.active);
             if let (Some(g), Some(color)) = (&t.group, color) {
@@ -754,15 +786,44 @@ impl Terminal {
     }
 }
 
-/// A tab's icon: Terminal's, with a dot when its bell rang unseen.
-fn tab_icon(rang: bool) -> impl Fn(&egui::Painter, egui::Rect) {
+/// A tab's icon: Terminal's, with a badge at its corner: a turning arc
+/// while an agent works, an orange "!" when it needs an answer, a green
+/// dot when it's done and no one has looked, a blue dot for an unseen bell.
+fn tab_icon(rang: bool, agent: Option<(Agent, State)>, attention: bool) -> impl Fn(&egui::Painter, egui::Rect) {
     move |painter, r| {
         icons::paint(painter, r, "terminal");
-        if rang {
-            let p = style::palette(painter.ctx());
-            let dot = egui::pos2(r.right() - 2.0, r.top() + 3.0);
-            painter.circle_filled(dot, 3.5, style::c(p.panel_background));
-            painter.circle_filled(dot, 2.5, style::c(p.keyboard_navigation));
+        let p = style::palette(painter.ctx());
+        let dark = p.mode == tabula_kit::theme::ThemeMode::Dark;
+        let at = egui::pos2(r.right() - 1.5, r.top() + 3.5);
+        let back = style::c(p.panel_background);
+        match agent {
+            Some((_, State::Working)) => {
+                painter.circle_filled(at, 5.0, back);
+                let turn = painter.ctx().input(|i| i.time) as f32 * 5.0;
+                let arc: Vec<egui::Pos2> = (0..=16)
+                    .map(|k| {
+                        let a = turn + k as f32 * (1.5 * std::f32::consts::PI / 16.0);
+                        at + egui::vec2(a.cos(), a.sin()) * 3.0
+                    })
+                    .collect();
+                painter.add(egui::Shape::line(arc, egui::Stroke::new(1.5, style::c(p.keyboard_navigation))));
+            }
+            Some((_, State::Blocked)) => {
+                painter.circle_filled(at, 5.5, back);
+                painter.circle_filled(at, 4.5, groups::color(1, dark));
+                let white = egui::Color32::WHITE;
+                painter.rect_filled(egui::Rect::from_center_size(at - egui::vec2(0.0, 1.0), egui::vec2(1.5, 4.0)), 0.0, white);
+                painter.rect_filled(egui::Rect::from_center_size(at + egui::vec2(0.0, 2.25), egui::vec2(1.5, 1.5)), 0.0, white);
+            }
+            Some((_, State::Idle)) if attention => {
+                painter.circle_filled(at, 4.0, back);
+                painter.circle_filled(at, 3.0, style::c(p.success));
+            }
+            _ if rang => {
+                painter.circle_filled(at, 3.5, back);
+                painter.circle_filled(at, 2.5, style::c(p.keyboard_navigation));
+            }
+            _ => {}
         }
     }
 }
@@ -824,6 +885,49 @@ impl Terminal {
                 cx.activate(target);
             }
         }
+    }
+}
+
+impl Terminal {
+    /// A tab's agent started, stopped or moved on: show it, and say so
+    /// when it now needs the person and they aren't looking at it.
+    fn agent_changed(&mut self, cx: &mut Cx, agent::Report(shell, now): agent::Report) {
+        let Some((win, i)) = self.find_shell(shell) else { return };
+        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
+        let seen = t.focused && i == t.active;
+        let tab = &mut t.tabs[i];
+        let before = tab.agent;
+        tab.agent = now;
+        cx.redraw(win);
+        let wants = match (before, now) {
+            (_, Some((agent, State::Blocked))) => Some((agent, State::Blocked)),
+            (Some((_, State::Working | State::Blocked)), Some((agent, State::Idle))) => Some((agent, State::Idle)),
+            _ => None,
+        };
+        let Some((agent, state)) = wants.filter(|_| !seen) else {
+            // Answered or moving again: the note has had its day.
+            if let Some(id) = self.notes.remove(&shell) {
+                self.notifier.close(id);
+            }
+            return;
+        };
+        tab.attention = true;
+        let place = match &t.group {
+            Some(g) => format!("{} — {}", g.name, tab.title),
+            None => tab.title.clone(),
+        };
+        let folder = tab.session.cwd().and_then(|d| d.file_name().map(|n| n.to_string_lossy().into_owned()));
+        let body = match folder {
+            Some(f) => format!("In “{place}”, in {f}."),
+            None => format!("In “{place}”."),
+        };
+        let (summary, kind) = match state {
+            State::Blocked => (format!("{} needs your answer", agent.name()), NoteKind::Important),
+            _ => (format!("{} is waiting for you", agent.name()), NoteKind::Information),
+        };
+        let note = Note::new(summary).body(body).kind(kind).action("default", "Show");
+        let id = self.notifier.show(self.notes.get(&shell).copied(), note);
+        self.notes.insert(shell, id);
     }
 }
 
@@ -1032,7 +1136,11 @@ impl App for Terminal {
             .item("Show All Groups", "tile-groups", None)
             .separator();
         for (i, tab) in t.tabs.iter().enumerate() {
-            let label = if tab.rang { format!("{} 🔔", tab.title) } else { tab.title.clone() };
+            let label = match (tab.agent, tab.rang) {
+                (Some((agent, state)), _) => format!("{} — {} {}", tab.title, agent.name(), state.describe()),
+                (None, true) => format!("{} (bell)", tab.title),
+                (None, false) => tab.title.clone(),
+            };
             tabs = match NUMBERS.get(i) {
                 Some(&key) => tabs.item_shift(label, format!("tab:{i}"), key),
                 None => tabs.item(label, format!("tab:{i}"), None),
@@ -1280,6 +1388,26 @@ impl App for Terminal {
             }
             Err(m) => m,
         };
+        let message = match message.downcast::<agent::Report>() {
+            Ok(report) => return self.agent_changed(cx, *report),
+            Err(m) => m,
+        };
+        let message = match message.downcast::<NoteEvent>() {
+            Ok(event) => {
+                if let NoteEvent::Action { id, token, .. } = *event
+                    && let Some((&shell, _)) = self.notes.iter().find(|(_, n)| **n == id)
+                    && let Some((win, i)) = self.find_shell(shell)
+                {
+                    if let Some(Win::Term(t)) = self.windows.get_mut(&win) {
+                        t.select(i);
+                    }
+                    cx.activate_with(win, token);
+                    cx.redraw(win);
+                }
+                return;
+            }
+            Err(m) => m,
+        };
         let Ok(msg) = message.downcast::<Message>() else { return };
         let Message(shell, event) = *msg;
         let Some((win, i)) = self.find_shell(shell) else { return };
@@ -1368,6 +1496,9 @@ fn main() {
             respawn: false,
             front: None,
             saved_groups: groups::load(),
+            agents: agent::Watcher::start(cx.proxy()),
+            notifier: Notifier::new(cx.proxy(), "Terminal", "tabula-terminal"),
+            notes: HashMap::new(),
         };
         let state = cx.restored_state();
         let saved = state.as_deref().and_then(|s| serde_json::from_str::<Saved>(s).ok());
