@@ -58,12 +58,18 @@ as they land (with the commit), add new ones as they come up.
   (secrets, PAM unlock, ssh agent), xdg-desktop-portal-gnome / -gtk (file chooser, screenshot,
   settings, etc. for other apps: there's no Tabula portals.conf or
   backend), dconf (where app_server writes color-scheme / gtk-theme so
-  GTK apps follow), and /usr/share/backgrounds/gnome (default
-  wallpapers). Replace each with a native one: a Tabula login screen,
-  secret service (Secret Service API over our own bus name, unlocked at
-  login, keyring files read natively; the prompt is done), ssh agent, portal
-  backend (`org.freedesktop.impl.portal.*` with Tabula's FilePanel and
-  screenshot), settings portal instead of dconf, our own wallpapers.
+  GTK apps follow). ~~Wallpapers~~: none needed (the desktop is BeOS's
+  own colours per workspace; Choose… starts in Pictures). Replace each
+  with a native one: a Tabula login screen, secret service (Secret
+  Service API over our own bus name, unlocked at login, keyring files
+  read natively; the prompt is done), ssh agent, portal backend
+  (`org.freedesktop.impl.portal.*` with Tabula's FilePanel and
+  screenshot), settings portal. Needs Ben's go-ahead and order: these
+  replace what his real session runs on. On Aurora, xdg-desktop-portal
+  1.22 reads backends only from /usr/share/xdg-desktop-portal/portals
+  (read-only) or `XDG_DESKTOP_PORTAL_DIR` (replacing it whole), and GTK
+  apps outside a sandbox read the colour scheme from dconf, not the
+  portal, so dconf stays until GTK apps are gone.
 - ~~**Terminal sessions that outlive Terminal**~~ (Ben): done. Shells
   live in tabula-termd (one per display); quitting, crashing or upgrading
   Terminal reattaches every window with its scrollback, and tabula-termd
