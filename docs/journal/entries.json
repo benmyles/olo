@@ -1054,5 +1054,11 @@
   "title": "Agent Screens",
   "caption": "Agents get screens of their own: each is a whole Tabula desktop with its own windows, pointer and keyboard focus, so an agent never moves your pointer or takes your focus. tabula-screen starts one and drives it (run, look, windows, click, type, key); the Agent Screens window shows it live, and Take Control lets you step in.",
   "image": "2026-10-27/043342-agent-screens.png"
+ },
+ {
+  "time": "2026-10-27T08:59:40",
+  "title": "Chrome's notifications in Tabula",
+  "caption": "Google Chrome's notifications now come to Tabula's notifications app: a site's notification shows with Chrome's name and icon and the site as a link, a click goes back to the page, and Chrome's Settings button opens its notification settings.",
+  "image": "2026-10-27/085940-chrome-s-notifications-in-tabula.png"
  }
 ]

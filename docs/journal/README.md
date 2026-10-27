@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Chrome's notifications in Tabula
+
+*08:59* — Google Chrome's notifications now come to Tabula's notifications app: a site's notification shows with Chrome's name and icon and the site as a link, a click goes back to the page, and Chrome's Settings button opens its notification settings.
+
+![Chrome's notifications in Tabula](2026-10-27/085940-chrome-s-notifications-in-tabula.png)
+
 ### Agent Screens
 
 *04:33* — Agents get screens of their own: each is a whole Tabula desktop with its own windows, pointer and keyboard focus, so an agent never moves your pointer or takes your focus. tabula-screen starts one and drives it (run, look, windows, click, type, key); the Agent Screens window shows it live, and Take Control lets you step in.

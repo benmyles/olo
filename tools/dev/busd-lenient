@@ -1,0 +1,36 @@
+#!/bin/bash
+# Builds busd (the private session bus the tests use) with zbus's match
+# rule parser made lenient: it ignores spaces around keys and values and
+# the deprecated eavesdrop key. Released busd refuses the match rules
+# Chrome (and gdbus monitor) send, so Chrome falls back to its own
+# notification popups on a test bus; the real session's dbus-broker takes
+# them. Only for tests: builds in ~/.cache/tabula-dev/busd-lenient (not
+# /tmp, a tmpfs a build can fill) and prints the binary's path. Run as the
+# user who owns ~/.cargo.
+#
+#   BUSD=$(tools/dev/busd-lenient)
+#   $BUSD --address unix:path=/tmp/tabula-dev/NAME/bus.sock &
+set -e
+DIR=$HOME/.cache/tabula-dev/busd-lenient
+BIN=$DIR/busd-0.5.0/target/release/busd
+if [ -x "$BIN" ]; then echo "$BIN"; exit 0; fi
+mkdir -p "$DIR"
+cd "$DIR"
+[ -d busd-0.5.0 ] || curl -sSfL https://static.crates.io/crates/busd/busd-0.5.0.crate | tar xz
+[ -d zbus-5.13.1 ] || curl -sSfL https://static.crates.io/crates/zbus/zbus-5.13.1.crate | tar xz
+python3 - <<'PY'
+p = "zbus-5.13.1/src/match_rule/mod.rs"
+s = open(p).read()
+old = "            let (key, value) = component.split_once('=').ok_or(Error::InvalidMatchRule)?;\n"
+if "key.trim()" not in s:
+    assert old in s, "zbus's match rule parser changed"
+    s = s.replace(old, old + "            let (key, value) = (key.trim(), value.trim());\n"
+                  "            if key == \"eavesdrop\" {\n                continue;\n            }\n")
+    open(p, "w").write(s)
+p = "busd-0.5.0/Cargo.toml"
+s = open(p).read()
+if "[patch.crates-io]" not in s:
+    open(p, "a").write('\n[patch.crates-io]\nzbus = { path = "../zbus-5.13.1" }\n')
+PY
+(cd busd-0.5.0 && CARGO_PROFILE_RELEASE_DEBUG=false cargo build --release --quiet >&2)
+echo "$BIN"

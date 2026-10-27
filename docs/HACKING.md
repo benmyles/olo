@@ -1296,8 +1296,18 @@ Test it on a private bus: `busd -a unix:path=/tmp/tabula-dev/NAME/bus.sock`
 /org/freedesktop/Notifications -m org.freedesktop.Notifications.Notify --
 APP 0 ICON SUMMARY BODY '["default","Open"]' '{}' -1`; `dbus-monitor
 --address … "type='signal',interface='org.freedesktop.Notifications'"`
-shows the signals (busd refuses `gdbus monitor`'s match rule and drops
-some of what it should show). Run it with `XDG_STATE_HOME` (and the
+shows the signals (released busd refuses `gdbus monitor`'s match rule,
+and Chrome's, which put spaces after the commas: Chrome then falls back
+to popups of its own. `tools/dev/busd-lenient` builds a busd whose
+parser takes them and prints its path; use it for anything that
+subscribes, Chrome included. The real session's dbus-broker takes them
+as they are).
+
+Chrome's notifications come here as they are: a site's
+`new Notification(…)` and an extension's `chrome.notifications` arrive
+over `org.freedesktop.Notifications` (Chrome's name, its icon, the site
+as a link in the body, critical while `requireInteraction`); a click is
+the page's `onclick`, and Chrome's Settings button its action. Run it with `XDG_STATE_HOME` (and the
 session's `XDG_CONFIG_HOME`) under the test directory so the history and
 settings stay out of yours, and `PULSE_SERVER` at a `tabula-fakesound`
 socket to hear what it plays. A Deskbar or Preferences in the test

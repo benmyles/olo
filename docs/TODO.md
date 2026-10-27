@@ -187,6 +187,12 @@ as they land (with the commit), add new ones as they come up.
   whole login, the toolbar button lists the page's logins, and a login
   sent with a form is offered for saving or updating; HACKING, "Google
   Chrome").
+  ~~**Notifications**~~ (done: Chrome sends sites' and extensions'
+  notifications to Tabula's notifications app over
+  `org.freedesktop.Notifications`; tested headless: shown with Chrome's
+  name and icon, a click reaching the page's `onclick`, Chrome's Settings
+  button opening its notification settings. Test buses need
+  `tools/dev/busd-lenient`; HACKING, "Notifications").
   ~~**Installed on first use**~~ (done: `apps/chrome`, `tabula-chrome`;
   tested headless end to end, the real 139 MB download into a fixture
   home, then Chrome running on Wayland in Tabula; kept up to date: once
