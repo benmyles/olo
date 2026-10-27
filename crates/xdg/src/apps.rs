@@ -26,6 +26,7 @@ pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
     ("display", "Display", "display"),
     ("keyboard", "Keyboard", "keyboard"),
     ("network", "Network", "network-prefs"),
+    ("notifications", "Notifications", "notifications"),
     ("power", "Power", "power"),
     ("screensaver", "Screen Saver", "screensaver"),
     ("security", "Security", "security"),
@@ -45,6 +46,7 @@ pub fn our_app(app_id: &str) -> Option<(&'static str, &'static str)> {
         .map(|(_, name, icon)| (*name, *icon))
         .or(match short {
             "preferences" => Some(("Preferences", "preferences")),
+            "notifications" => Some(("Notifications", "notifications")),
             "kit-demo" => Some(("Kit Demo", "application")),
             _ => None,
         })

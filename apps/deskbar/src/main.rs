@@ -268,6 +268,33 @@ impl Deskbar {
         request(Request::SetCaffeinated { on, minutes, lid });
     }
 
+    /// A Do Not Disturb command (after `notif:`): `on`, `off`, `tomorrow`
+    /// or minutes. Written to the notification settings, which the service
+    /// follows.
+    fn do_not_disturb(&mut self, arg: &str) {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let (on, until) = match arg {
+            "on" => (true, None),
+            "off" => (false, None),
+            "tomorrow" => (true, Some(now + status::seconds_until(8 * 60) as u64)),
+            m => match m.parse::<u64>() {
+                Ok(m) => (true, Some(now + m * 60)),
+                Err(_) => return,
+            },
+        };
+        if let Some(n) = &mut self.status.notifications {
+            n.quiet = on;
+        }
+        std::thread::spawn(move || {
+            let mut s = tabula_protocol::NotificationSettings::load();
+            s.dnd = on;
+            s.dnd_until = until;
+            if let Err(e) = s.save() {
+                tracing::warn!("notification settings: {e}");
+            }
+        });
+    }
+
     fn run_command(&mut self, cx: &mut Cx, cmd: &str) {
         let spawn = |s: &str| {
             if let Err(e) = tabula_kit::spawn_detached(s) {
@@ -278,6 +305,8 @@ impl Deskbar {
             Some(("run", bin)) => spawn(bin),
             Some(("pref", panel)) => spawn(&format!("tabula-preferences {panel}")),
             Some(("caff", arg)) => self.caffeine_command(arg),
+            Some(("notif", "history")) => spawn("tabula-notifications --history"),
+            Some(("notif", arg)) => self.do_not_disturb(arg),
             Some(("desktop", id)) => {
                 if let Some(e) = desktop_entry::all().into_iter().find(|e| e.id == id) {
                     let _ = e.launch();
@@ -392,6 +421,19 @@ impl Deskbar {
 
 fn team_key_of(w: &WindowInfo) -> String {
     team_key(w)
+}
+
+/// The bell's menu.
+fn notifications_menu(quiet: bool) -> Menu {
+    Menu::new("Notifications")
+        .item("Show History", "notif:history", None)
+        .separator()
+        .item("Do Not Disturb", if quiet { "notif:off" } else { "notif:on" }, None)
+        .checked(quiet)
+        .item("Quiet for 1 Hour", "notif:60", None)
+        .item("Quiet Until Morning", "notif:tomorrow", None)
+        .separator()
+        .item("Notification Settings…", "pref:notifications", None)
 }
 
 /// "NetPositive, Deskbar and 3 others", for the upgrade alert.
@@ -577,6 +619,32 @@ impl App for Deskbar {
                     status::set_volume(level);
                     self.status.volume = Some(status::Volume { level, ..v });
                 }
+            }
+        }
+
+        // Notifications: a bell with the unread count. Click for the
+        // history; right-click for Do Not Disturb.
+        if let Some(n) = st.notifications.clone() {
+            let tip = match (n.quiet, n.unread) {
+                (true, 0) => "Do Not Disturb is on".to_string(),
+                (true, u) => format!("Do Not Disturb is on — {u} unread"),
+                (false, 0) => "No new notifications".to_string(),
+                (false, 1) => "1 new notification".to_string(),
+                (false, u) => format!("{u} new notifications"),
+            };
+            let bell = tray_item(ui, "notifications", &|p, r| status::draw_bell(p, r, &pal, n.unread, n.quiet), tip);
+            let bell_id = egui::Id::unique("notifications-menu");
+            if bell.clicked() {
+                self.run_command(cx, "notif:history");
+            }
+            if bell.secondary_clicked() && !menu::is_open(ui.ctx(), bell_id) {
+                menu::request_popup(
+                    ui.ctx(),
+                    MenuRequest { menu: notifications_menu(n.quiet), source: bell_id, anchor: MenuAnchor::Below(bell.rect), selected: None },
+                );
+            }
+            if let Some(cmd) = menu::take_chosen(ui.ctx(), bell_id) {
+                self.run_command(cx, &cmd);
             }
         }
 

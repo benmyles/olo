@@ -8,7 +8,7 @@ use tabula_kit::{
 };
 use tabula_protocol::Settings;
 
-use crate::{Ctx, about, appearance, bluetooth, datetime, display, keyboard, network, power, screensaver, security, sound, touchid, touchpad, tracker, workspaces};
+use crate::{Ctx, about, appearance, bluetooth, datetime, display, keyboard, network, notifications, power, screensaver, security, sound, touchid, touchpad, tracker, workspaces};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -19,6 +19,7 @@ pub enum Panel {
     Display,
     Keyboard,
     Network,
+    Notifications,
     Power,
     ScreenSaver,
     Security,
@@ -39,6 +40,7 @@ impl Panel {
         Panel::Display,
         Panel::Keyboard,
         Panel::Network,
+        Panel::Notifications,
         Panel::Power,
         Panel::ScreenSaver,
         Panel::Security,
@@ -59,6 +61,7 @@ impl Panel {
             "fingerprint" | "touch-id" | "fingerprints" => Some(Panel::TouchId),
             "bt" => Some(Panel::Bluetooth),
             "wifi" | "wi-fi" | "networks" => Some(Panel::Network),
+            "notification" | "dnd" | "do-not-disturb" => Some(Panel::Notifications),
             "time" | "date" | "clock" | "date-time" => Some(Panel::DateTime),
             "passwords" | "privacy" => Some(Panel::Security),
             _ => None,
@@ -74,6 +77,7 @@ impl Panel {
             Panel::Display => "display",
             Panel::Keyboard => "keyboard",
             Panel::Network => "network",
+            Panel::Notifications => "notifications",
             Panel::Power => "power",
             Panel::ScreenSaver => "screensaver",
             Panel::Security => "security",
@@ -95,6 +99,7 @@ impl Panel {
             Panel::Display => "Display",
             Panel::Keyboard => "Keyboard",
             Panel::Network => "Network",
+            Panel::Notifications => "Notifications",
             Panel::Power => "Power",
             Panel::ScreenSaver => "Screen Saver",
             Panel::Security => "Security",
@@ -116,6 +121,7 @@ impl Panel {
             Panel::Display => "display",
             Panel::Keyboard => "keyboard",
             Panel::Network => "network-prefs",
+            Panel::Notifications => "notifications",
             Panel::Power => "power",
             Panel::ScreenSaver => "screensaver",
             Panel::Security => "security",
@@ -138,6 +144,7 @@ impl Panel {
             Panel::Display => (480, 490),
             Panel::Keyboard => (480, 560),
             Panel::Network => (460, 360),
+            Panel::Notifications => (440, 420),
             Panel::Power => (460, 362),
             Panel::ScreenSaver => (500, 400),
             Panel::Security => (420, 300),
@@ -151,12 +158,12 @@ impl Panel {
     }
 
     pub fn needs_server(self) -> bool {
-        !matches!(self, Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId)
+        !matches!(self, Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications)
     }
 
     /// Whether the panel has Defaults / Revert.
     fn resettable(self) -> bool {
-        !matches!(self, Panel::About | Panel::Display | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId)
+        !matches!(self, Panel::About | Panel::Display | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications)
     }
 
     /// Put this panel's part of `settings` back to `from`.
@@ -187,7 +194,7 @@ impl Panel {
             Panel::Power => settings.power = from.power.clone(),
             Panel::ScreenSaver => settings.screen_saver = from.screen_saver.clone(),
             Panel::Security => settings.security = from.security.clone(),
-            Panel::Display | Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId => {}
+            Panel::Display | Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications => {}
         }
     }
 }
@@ -201,6 +208,7 @@ pub enum State {
     Sound(sound::State),
     DateTime(Box<datetime::State>),
     Network(Box<network::State>),
+    Notifications(Box<notifications::State>),
     Bluetooth(Box<bluetooth::State>),
     TouchId(Box<touchid::State>),
     Power(power::State),
@@ -217,6 +225,7 @@ impl State {
             Panel::Sound => State::Sound(Default::default()),
             Panel::DateTime => State::DateTime(Box::default()),
             Panel::Network => State::Network(Box::default()),
+            Panel::Notifications => State::Notifications(Box::default()),
             Panel::Bluetooth => State::Bluetooth(Box::default()),
             Panel::TouchId => State::TouchId(Box::default()),
             Panel::Power => State::Power(Default::default()),
@@ -248,6 +257,7 @@ pub fn ui(panel: Panel, state: &mut State, ui: &mut egui::Ui, ctx: Ctx<'_>) {
             (Panel::Security, _) => security::ui(ui, settings),
             (Panel::DateTime, State::DateTime(s)) => datetime::ui(ui, settings, s),
             (Panel::Network, State::Network(s)) => network::ui(ui, s),
+            (Panel::Notifications, State::Notifications(s)) => notifications::ui(ui, &settings.clock, s),
             (Panel::Bluetooth, State::Bluetooth(s)) => bluetooth::ui(ui, s),
             (Panel::TouchId, State::TouchId(s)) => touchid::ui(ui, s),
             (Panel::Touchpad, _) => touchpad::ui(ui, settings),

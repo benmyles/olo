@@ -8,28 +8,42 @@
 //! stay. A click on a card is its default action (the app gets an
 //! activation token first, so its window comes forward) or brings the
 //! app's window forward; the close box dismisses it; it goes by itself
-//! after a while, not while the pointer is over it.
+//! after a while, not while the pointer is over it, into the history.
 //!
-//! Only the real session runs it (a test or nested session must not take
-//! the user's notifications); `--bus ADDRESS` serves a private bus.
+//! The history (Deskbar's bell, or `--history`) keeps what came, across a
+//! restart; what is still open at its app can be acted on from there. Do
+//! Not Disturb (by hand, for a while, or on a schedule) keeps everything
+//! but errors off the screen and quiet. Per-app choices and Do Not
+//! Disturb live in `notifications.json` (Preferences ▸ Notifications).
+//! `org.tabula.Notifications1` and the command line (`--list`, `--invoke`,
+//! `--dismiss`, `--clear`, `--dnd`) give agents the same.
+//!
+//! Only the real session runs the service (a test or nested session must
+//! not take the user's notifications); `--bus ADDRESS` serves a private
+//! bus.
 
+mod cli;
 mod markup;
 mod server;
+mod sound;
+mod store;
 
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use server::{Bus, In, Kind, Note, Reason};
+use server::{Bus, Control, In, Kind, Note, Reason};
+use store::{Entry, History};
 use tabula_kit::{
     App, Cx, Layer, LayerOptions, WindowId, WindowKind, WindowOptions,
     egui::{self, Align, Color32, ColorImage, Rect, Sense, TextureHandle, TextureOptions, pos2, vec2},
     icons, metrics as m,
     style::{self, c},
-    widgets::{Button, StatusBar, TextControl},
+    widgets::{Button, CheckBox, ScrollView, StatusBar, TextControl},
 };
+use tabula_protocol::{NotificationSettings, NotificationState};
 
 const APP_ID: &str = "tabula.notifications";
 /// A card's width (logical).
@@ -49,7 +63,7 @@ const TOKEN_WAIT: Duration = Duration::from_millis(500);
 
 enum Msg {
     In(In),
-    /// Something may have expired.
+    /// Something may have expired (or Do Not Disturb begun or ended).
     Tick,
 }
 
@@ -83,6 +97,31 @@ struct Notifications {
     pending: HashMap<u64, Pending>,
     next_tag: u64,
     proxy: tabula_kit::Proxy,
+    settings: NotificationSettings,
+    /// When `notifications.json` was last read.
+    settings_read: Option<SystemTime>,
+    history: History,
+    /// The History window.
+    history_win: Option<WindowId>,
+    /// `List`'s answer, shared with the bus thread.
+    snapshot: Arc<Mutex<String>>,
+    /// What Deskbar was last told.
+    told: Option<NotificationState>,
+}
+
+/// The local time of day, in minutes.
+fn local_minute() -> u16 {
+    // SAFETY: localtime_r writes into the zeroed struct we own.
+    unsafe {
+        let t = libc::time(std::ptr::null_mut());
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&t, &mut tm);
+        (tm.tm_hour * 60 + tm.tm_min) as u16
+    }
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
 impl Notifications {
@@ -92,7 +131,82 @@ impl Notifications {
         }
     }
 
-    fn show(&mut self, cx: &mut Cx, note: Note) {
+    /// Read `notifications.json` again if it changed.
+    fn refresh_settings(&mut self) {
+        let modified = std::fs::metadata(NotificationSettings::path()).and_then(|m| m.modified()).ok();
+        if modified != self.settings_read || modified.is_none() && self.settings_read.is_none() {
+            self.settings = NotificationSettings::load();
+            self.settings_read = modified;
+        }
+    }
+
+    fn quiet(&self) -> bool {
+        self.settings.quiet(now_secs(), local_minute())
+    }
+
+    /// Tell `List`, Deskbar and the disk what changed.
+    fn publish(&mut self, history_changed: bool) {
+        if history_changed {
+            self.history.save();
+        }
+        let quiet = self.quiet();
+        let state = NotificationState { unread: self.history.unread(), quiet };
+        if self.told.as_ref() != Some(&state) {
+            let path = NotificationState::path();
+            let tmp = path.with_extension("json.new");
+            if std::fs::write(&tmp, serde_json::to_string(&state).unwrap_or_default()).is_ok() {
+                let _ = std::fs::rename(&tmp, &path);
+            }
+            self.told = Some(state.clone());
+        }
+        let list = serde_json::json!({
+            "quiet": quiet,
+            "unread": state.unread,
+            "notifications": self.history.entries,
+        });
+        *self.snapshot.lock().unwrap() = list.to_string();
+    }
+
+    fn show(&mut self, cx: &mut Cx, mut note: Note) {
+        self.refresh_settings();
+        let app = self.settings.app(&note.app_name);
+        let quiet = self.quiet();
+        if note.timeout == Some(server::DEFAULT_TIMEOUT) {
+            note.timeout = Some(Duration::from_secs(self.settings.seconds.clamp(2, 60) as u64));
+        }
+        // Do Not Disturb keeps all but errors off the screen and quiet.
+        let banner = app.banners && (!quiet || note.kind == Kind::Error);
+        if app.sounds
+            && !quiet
+            && !note.replaces
+            && let Some(path) = note.sound.as_ref().and_then(|s| sound::for_note(s, note.kind))
+        {
+            sound::play(&path);
+        }
+        let kept = app.history && !note.transient;
+        if kept {
+            let mut e = Entry::from_note(&note, true);
+            e.shown = banner;
+            // The history window open: seen as it comes.
+            e.unread = self.history_win.is_none();
+            self.history.put(e);
+        }
+        if banner {
+            self.add_card(cx, note);
+        } else if self.cards.iter().any(|c| c.note.id == note.id) {
+            // A replacement for one on screen that may no longer show.
+            self.take(cx, note.id);
+        } else if !kept {
+            // Neither shown nor kept: gone as far as the app is concerned.
+            self.bus(|b| b.closed(note.id, Reason::Dismissed));
+        }
+        self.publish(kept);
+        if let Some(w) = self.history_win {
+            cx.redraw(w);
+        }
+    }
+
+    fn add_card(&mut self, cx: &mut Cx, note: Note) {
         let until = note.timeout.map(|t| Instant::now() + t);
         if let Some(t) = note.timeout {
             self.tick_after(t);
@@ -136,11 +250,30 @@ impl Notifications {
         });
     }
 
-    /// Take a card away and say why.
+    /// A notification goes. Its card times out into the history (still
+    /// open at its app, so its actions work from there); otherwise the app
+    /// hears why it closed.
     fn remove(&mut self, cx: &mut Cx, id: u32, reason: Reason) {
-        if self.take(cx, id) {
+        let on_screen = self.take(cx, id);
+        let kept = self.history.get_mut(id).is_some();
+        if reason == Reason::Expired && kept {
+            if let Some(e) = self.history.get_mut(id) {
+                e.shown = false;
+            }
+            self.publish(true);
+            return;
+        }
+        if let Some(e) = self.history.get_mut(id) {
+            e.live = false;
+            e.shown = false;
+            if reason == Reason::Dismissed {
+                e.unread = false;
+            }
+        }
+        if on_screen || kept {
             self.bus(|b| b.closed(id, reason));
         }
+        self.publish(kept);
     }
 
     /// Take a card away (saying nothing); whether it was there.
@@ -148,6 +281,10 @@ impl Notifications {
         let before = self.cards.len();
         self.cards.retain(|c| c.note.id != id);
         let was = self.cards.len() != before;
+        // The history shows which are on screen.
+        if let Some(w) = self.history_win.filter(|_| was) {
+            cx.redraw(w);
+        }
         // The ones waiting have their time from when they appear.
         let now = Instant::now();
         let mut later = Vec::new();
@@ -192,14 +329,15 @@ impl Notifications {
         }
     }
 
-    /// Run action `key` of notification `id`: the app gets an activation
-    /// token first (from this click), so it may bring its window forward.
-    /// The card goes at once; the app hears it closed after the action.
-    fn invoke(&mut self, cx: &mut Cx, id: u32, key: String) {
+    /// Run action `key` of notification `id` (from `window`, which asks
+    /// for the activation token): the app gets the token first, so it may
+    /// bring its window forward. The card goes at once; the app hears it
+    /// closed after the action.
+    fn invoke(&mut self, cx: &mut Cx, window: Option<WindowId>, id: u32, key: String) {
         let resident = self.cards.iter().any(|c| c.note.id == id && c.note.resident);
         let pending = Pending { id, key, close: !resident, since: Instant::now() };
         // The token first: taking the last card closes the window.
-        match self.win {
+        match window {
             Some(win) => {
                 let tag = self.next_tag;
                 self.next_tag += 1;
@@ -209,9 +347,17 @@ impl Notifications {
             }
             None => self.send(pending, None),
         }
+        if let Some(e) = self.history.get_mut(id) {
+            e.unread = false;
+            if !resident {
+                e.live = false;
+                e.shown = false;
+            }
+        }
         if !resident {
             self.take(cx, id);
         }
+        self.publish(true);
     }
 
     /// Token (when there is one), action, then closed, in the spec's order.
@@ -236,18 +382,76 @@ impl Notifications {
             }
         }
     }
+
+    fn open_history(&mut self, cx: &mut Cx) {
+        match self.history_win {
+            Some(w) => cx.activate(w),
+            None => {
+                self.history_win = Some(cx.open_window(WindowOptions::new("Notifications", 380, 520).min_size(300, 240)));
+            }
+        }
+        if self.history.mark_read() {
+            self.publish(true);
+        }
+    }
+
+    /// Do Not Disturb on for `minutes` (0: until turned off), or off.
+    fn set_quiet(&mut self, on: bool, minutes: u32) {
+        self.refresh_settings();
+        self.settings.dnd = on;
+        self.settings.dnd_until = (on && minutes > 0).then(|| now_secs() + minutes as u64 * 60);
+        if let Err(e) = self.settings.save() {
+            tracing::warn!("notifications: can't save settings: {e}");
+        }
+        self.settings_read = std::fs::metadata(NotificationSettings::path()).and_then(|m| m.modified()).ok();
+        if let Some(until) = self.settings.dnd_until {
+            self.tick_after(Duration::from_secs(until.saturating_sub(now_secs())));
+        }
+        self.publish(false);
+    }
+
+    fn control(&mut self, cx: &mut Cx, c: Control) {
+        match c {
+            Control::Invoke(id, key) => {
+                if self.history.get_mut(id).is_some() || self.cards.iter().any(|c| c.note.id == id) {
+                    // From a program, not a click: no token to hand on.
+                    self.invoke(cx, None, id, key);
+                }
+            }
+            Control::Dismiss(id) => self.remove(cx, id, Reason::Dismissed),
+            Control::ClearHistory => self.clear_history(cx),
+            Control::ShowHistory => self.open_history(cx),
+            Control::DoNotDisturb(on, minutes) => self.set_quiet(on, minutes),
+        }
+        if let Some(w) = self.history_win {
+            cx.redraw(w);
+        }
+    }
+
+    /// Forget the history; what is still open at its app closes.
+    fn clear_history(&mut self, cx: &mut Cx) {
+        let live: Vec<u32> = self.history.entries.iter().filter(|e| e.live && !e.shown).map(|e| e.id).collect();
+        for id in live {
+            self.bus(|b| b.closed(id, Reason::Dismissed));
+        }
+        self.history.entries.retain(|e| e.shown);
+        self.publish(true);
+        if let Some(w) = self.history_win {
+            cx.redraw(w);
+        }
+    }
 }
 
-/// Bring forward a window of the app that sent `note` (a click on one
-/// with no default action), off the UI thread.
-fn raise_app(note: &Note) {
-    let mut ids: Vec<String> = note.desktop_entry.iter().map(|e| e.trim_end_matches(".desktop").to_lowercase()).collect();
-    if !note.app_name.is_empty() {
-        ids.push(note.app_name.to_lowercase());
-        ids.push(note.app_name.to_lowercase().replace(' ', "-"));
+/// Bring forward a window of the app with this desktop entry or name (a
+/// click on a note with no default action), off the UI thread.
+fn raise_app(desktop_entry: Option<&str>, app_name: &str) {
+    let mut ids: Vec<String> = desktop_entry.iter().map(|e| e.trim_end_matches(".desktop").to_lowercase()).collect();
+    if !app_name.is_empty() {
+        ids.push(app_name.to_lowercase());
+        ids.push(app_name.to_lowercase().replace(' ', "-"));
         // Ours by name ("StyledEdit" is tabula.styled-edit).
         for (bin, name, _) in tabula_xdg::apps::OUR_APPS {
-            if name.eq_ignore_ascii_case(&note.app_name) {
+            if name.eq_ignore_ascii_case(app_name) {
                 ids.push(bin.replacen("tabula-", "tabula.", 1));
             }
         }
@@ -269,8 +473,14 @@ fn raise_app(note: &Note) {
 /// Icons to try for a card, best first: the one it names, ours for the
 /// common theme names, the sending app's, then info (or warning).
 fn icon_names(note: &Note) -> Vec<String> {
-    let mut names: Vec<String> = note.icon.iter().cloned().collect();
-    if let Some(icon) = &note.icon {
+    named_icons(note.icon.as_deref(), note.desktop_entry.as_deref(), &note.app_name, note.kind == Kind::Error)
+}
+
+/// The same for what a note names: its icon, its app's desktop entry and
+/// name, and whether it is an error.
+fn named_icons(icon: Option<&str>, desktop_entry: Option<&str>, app: &str, error: bool) -> Vec<String> {
+    let mut names: Vec<String> = icon.iter().map(|i| i.to_string()).collect();
+    if let Some(icon) = icon {
         let ours = [
             ("mail", "mail"),
             ("utilities-terminal", "terminal"),
@@ -290,18 +500,18 @@ fn icon_names(note: &Note) -> Vec<String> {
         ];
         names.extend(ours.iter().filter(|(theme, _)| icon.starts_with(theme)).map(|(_, o)| o.to_string()));
     }
-    names.extend(app_icons(note));
-    names.push(if note.kind == Kind::Error { "warning" } else { "info" }.into());
+    names.extend(app_icons(desktop_entry, app));
+    names.push(if error { "warning" } else { "info" }.into());
     names
 }
 
 /// The sending app's own icon names.
-fn app_icons(note: &Note) -> Vec<String> {
+fn app_icons(desktop_entry: Option<&str>, app: &str) -> Vec<String> {
     let mut names = Vec::new();
-    if let Some(e) = &note.desktop_entry {
+    if let Some(e) = desktop_entry {
         names.extend(tabula_xdg::icon_for_app(e.trim_end_matches(".desktop")));
     }
-    let app = note.app_name.to_lowercase().replace(' ', "-");
+    let app = app.to_lowercase().replace(' ', "-");
     if !app.is_empty() {
         names.extend(tabula_xdg::icon_for_app(&app));
         names.extend(tabula_xdg::apps::our_app(&app).map(|(_, icon)| icon.to_owned()));
@@ -355,6 +565,157 @@ fn link_at(body: &[markup::Span], g: &egui::Galley, origin: egui::Pos2, pos: egu
     None
 }
 
+/// A time in the history: "14:05" today, else "Oct 26, 14:05".
+fn when(secs: u64) -> String {
+    let local = |t: i64| {
+        // SAFETY: localtime_r writes into the zeroed struct we own.
+        unsafe {
+            let mut tm: libc::tm = std::mem::zeroed();
+            libc::localtime_r(&(t as libc::time_t), &mut tm);
+            tm
+        }
+    };
+    let tm = local(secs as i64);
+    let today = local(now_secs() as i64);
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    if (tm.tm_year, tm.tm_yday) == (today.tm_year, today.tm_yday) {
+        format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
+    } else {
+        format!("{} {}, {:02}:{:02}", MONTHS[tm.tm_mon.clamp(0, 11) as usize], tm.tm_mday, tm.tm_hour, tm.tm_min)
+    }
+}
+
+/// What a click in the history did.
+enum HistoryDid {
+    Open(usize),
+    Forget(usize),
+    Clear,
+    Quiet(bool),
+}
+
+impl Notifications {
+    /// The History window: newest first, Do Not Disturb and Clear All
+    /// above.
+    fn history_ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
+        let p = style::palette(ui.ctx());
+        let full = ui.max_rect();
+        let mut did = None;
+        // The bar: Do Not Disturb, and Clear All.
+        let bar_h = m::CONTROL_HEIGHT + 2.0 * m::SPACING;
+        let mut quiet = self.settings.dnd;
+        let check = Rect::from_min_size(full.min + vec2(m::SPACING, m::SPACING), vec2(150.0, m::CONTROL_HEIGHT));
+        let mut bar = ui.new_child(egui::UiBuilder::new().max_rect(check).layout(egui::Layout::left_to_right(egui::Align::Center)));
+        if bar.add(CheckBox::new(&mut quiet, "Do Not Disturb")).changed() {
+            did = Some(HistoryDid::Quiet(quiet));
+        }
+        let clear_w = m::BUTTON_MIN_WIDTH + 10.0;
+        let clear = Rect::from_min_size(pos2(full.right() - m::SPACING - clear_w, full.top() + m::SPACING), vec2(clear_w, m::CONTROL_HEIGHT));
+        let can_clear = self.history.entries.iter().any(|e| !e.shown);
+        if ui.add_enabled_ui(can_clear, |ui| ui.put(clear, Button::new("Clear All")).clicked()).inner {
+            did = Some(HistoryDid::Clear);
+        }
+        if self.quiet() && !self.settings.dnd {
+            let x = check.right() + m::SPACING;
+            style::label(ui.painter(), x, check.center().y, Align::Min, "Quiet by schedule", style::small_font(), style::disabled_text(&p));
+        }
+        let list = Rect::from_min_max(pos2(full.left(), full.top() + bar_h), full.max);
+        let text_x = PAD + ICON + PAD;
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(list));
+        let entries = &self.history.entries;
+        if entries.is_empty() {
+            child.painter().rect_filled(list, 0.0, c(p.document_background));
+            style::sunken(child.painter(), list, &p, false);
+            style::label(child.painter(), list.center().x, list.center().y, Align::Center, "No notifications", style::plain_font(), style::disabled_text(&p));
+        } else {
+            ScrollView::new("history").background(p.document_background).show(&mut child, |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                let w = ui.available_width();
+                let text_w = w - text_x - PAD - 14.0;
+                for (i, e) in entries.iter().enumerate().rev() {
+                    let title = galley(ui, &e.summary, c(p.document_text), text_w, 2, style::bold_font());
+                    let mut job = egui::text::LayoutJob::default();
+                    for s in &e.body {
+                        let font = if s.bold { style::bold_font() } else if s.italic { style::italic_font() } else { style::plain_font() };
+                        job.append(&s.text, 0.0, egui::TextFormat::simple(font, c(p.document_text)));
+                    }
+                    job.wrap = egui::text::TextWrapping { max_width: text_w, max_rows: 3, break_anywhere: false, overflow_character: Some('…') };
+                    let body = ui.fonts_mut(|f| f.layout_job(job));
+                    let mut h = PAD + style::SMALL_SIZE + m::TIGHT + title.size().y;
+                    if !e.text.is_empty() {
+                        h += m::TIGHT + body.size().y;
+                    }
+                    let h = h.max(ICON + PAD) + PAD;
+                    let (r, resp) = ui.allocate_exact_size(vec2(w, h.ceil()), Sense::click());
+                    let painter = ui.painter();
+                    if resp.hovered() {
+                        painter.rect_filled(r, 0.0, style::darken(p.document_background, 1.06));
+                    }
+                    let edge = match e.kind {
+                        store::KindName::Important => Some(c(p.keyboard_navigation)),
+                        store::KindName::Error => Some(c(p.failure)),
+                        _ => None,
+                    };
+                    if let Some(color) = edge {
+                        painter.rect_filled(Rect::from_min_size(r.min + vec2(0.0, 2.0), vec2(3.0, r.height() - 4.0)), 0.0, color);
+                    }
+                    let icon_r = Rect::from_min_size(r.min + vec2(PAD, PAD), vec2(ICON, ICON));
+                    let names = named_icons(e.icon.as_deref(), e.desktop_entry.as_deref(), &e.app, e.kind == store::KindName::Error);
+                    let _ = names.iter().any(|n| icons::paint(painter, icon_r, n));
+                    let x = r.left() + text_x;
+                    let top = r.top() + PAD + style::SMALL_SIZE / 2.0;
+                    let dim = style::disabled_text(&p);
+                    style::label(painter, x, top, Align::Min, if e.app.is_empty() { "Notification" } else { &e.app }, style::small_font(), dim);
+                    style::label(painter, r.right() - PAD - 14.0, top, Align::Max, when(e.time), style::small_font(), dim);
+                    let mut ty = r.top() + PAD + style::SMALL_SIZE + m::TIGHT;
+                    painter.galley(pos2(x, ty), title.clone(), c(p.document_text));
+                    ty += title.size().y + m::TIGHT;
+                    if !e.text.is_empty() {
+                        painter.galley(pos2(x, ty), body, c(p.document_text));
+                    }
+                    // Forget it: a × while the pointer is over it.
+                    let close = Rect::from_center_size(pos2(r.right() - PAD, top), vec2(12.0, 12.0));
+                    let mut forget = false;
+                    if resp.hovered() || ui.rect_contains_pointer(close.expand(3.0)) {
+                        let cr = ui.interact(close.expand(3.0), ui.make_persistent_id(("forget", i, e.id)), Sense::click());
+                        close_box(ui.painter(), close, if cr.hovered() { c(p.document_text) } else { dim });
+                        forget = cr.clicked();
+                    }
+                    style::hline(ui.painter(), r.left(), r.right(), r.bottom() - 1.0, style::darken(p.document_background, 1.12));
+                    if forget {
+                        did = Some(HistoryDid::Forget(i));
+                    } else if resp.clicked() {
+                        did = Some(HistoryDid::Open(i));
+                    }
+                }
+            });
+        }
+        match did {
+            Some(HistoryDid::Quiet(on)) => self.set_quiet(on, 0),
+            Some(HistoryDid::Clear) => self.clear_history(cx),
+            Some(HistoryDid::Forget(i)) => {
+                let e = self.history.entries[i].clone();
+                self.history.remove(i);
+                if e.live {
+                    self.take(cx, e.id);
+                    self.bus(|b| b.closed(e.id, Reason::Dismissed));
+                }
+                self.publish(true);
+            }
+            Some(HistoryDid::Open(i)) => {
+                let e = self.history.entries[i].clone();
+                // Still open at the app: what a click on it does there.
+                // Otherwise the app comes forward.
+                if e.live && e.actions.iter().any(|(k, _)| k == "default") {
+                    self.invoke(cx, Some(window), e.id, "default".into());
+                } else {
+                    raise_app(e.desktop_entry.as_deref(), &e.app);
+                }
+            }
+            None => {}
+        }
+    }
+}
+
 /// What happened to a card this frame.
 enum Did {
     Dismiss,
@@ -366,7 +727,10 @@ enum Did {
 }
 
 impl App for Notifications {
-    fn ui(&mut self, cx: &mut Cx, _window: WindowId, ui: &mut egui::Ui) {
+    fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
+        if Some(window) == self.history_win {
+            return self.history_ui(cx, window, ui);
+        }
         let p = style::palette(ui.ctx());
         let text_x = PAD + ICON + PAD;
         let text_w = WIDTH - text_x - PAD;
@@ -448,7 +812,7 @@ impl App for Notifications {
             let head = Rect::from_min_size(frame.min, vec2(WIDTH, HEADER));
             let first = &self.cards[laid[0].i].note;
             let small = Rect::from_min_size(pos2(head.left() + PAD, head.center().y - 8.0), vec2(16.0, 16.0));
-            let mut names = app_icons(first);
+            let mut names = app_icons(first.desktop_entry.as_deref(), &first.app_name);
             names.extend(icon_names(first).into_iter().filter(|n| n != "info" && n != "warning"));
             names.push("application".into());
             let _ = names.iter().any(|n| icons::paint(&painter, small, n));
@@ -570,10 +934,10 @@ impl App for Notifications {
         for (id, d) in did {
             match d {
                 Did::Dismiss => self.remove(cx, id, Reason::Dismissed),
-                Did::Action(key) => self.invoke(cx, id, key),
+                Did::Action(key) => self.invoke(cx, self.win, id, key),
                 Did::Raise => {
                     if let Some(card) = self.cards.iter().find(|c| c.note.id == id) {
-                        raise_app(&card.note);
+                        raise_app(card.note.desktop_entry.as_deref(), &card.note.app_name);
                     }
                     self.remove(cx, id, Reason::Dismissed);
                 }
@@ -614,9 +978,18 @@ impl App for Notifications {
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
             Msg::In(In::Show(note)) => self.show(cx, *note),
-            Msg::In(In::Close(id)) => self.remove(cx, id, Reason::Closed),
+            Msg::In(In::Close(id)) => {
+                self.remove(cx, id, Reason::Closed);
+                if let Some(w) = self.history_win {
+                    cx.redraw(w);
+                }
+            }
+            Msg::In(In::Control(c)) => self.control(cx, c),
             Msg::Tick => {
                 self.flush_pending();
+                // Do Not Disturb may have begun or ended.
+                self.refresh_settings();
+                self.publish(false);
                 // Let the frame decide (it knows whether the pointer is
                 // over a card).
                 self.redraw(cx);
@@ -627,7 +1000,29 @@ impl App for Notifications {
         }
     }
 
-    fn close_requested(&mut self, _cx: &mut Cx, _window: WindowId) {}
+    fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
+        if Some(window) == self.history_win {
+            self.history_win = None;
+            cx.close_window(window);
+        }
+    }
+
+    fn menu_bar(&mut self, window: WindowId) -> Option<Vec<tabula_kit::Menu>> {
+        (Some(window) == self.history_win).then(|| {
+            vec![
+                tabula_kit::Menu::new("File").item("Close", "close", Some(egui::Key::W)),
+                tabula_kit::Menu::new("Edit").item("Clear All", "clear", None),
+            ]
+        })
+    }
+
+    fn command(&mut self, cx: &mut Cx, window: WindowId, command: &str) {
+        match command {
+            "close" => self.close_requested(cx, window),
+            "clear" => self.clear_history(cx),
+            _ => {}
+        }
+    }
 }
 
 /// A small ×.
@@ -638,33 +1033,42 @@ fn close_box(painter: &egui::Painter, r: Rect, color: Color32) {
 }
 
 fn main() -> std::process::ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let address = match args.as_slice() {
-        [flag, bus] if flag == "--bus" => Some(bus.clone()),
-        [] => None,
-        _ => {
-            eprintln!("usage: tabula-notifications [--bus ADDRESS]");
-            return std::process::ExitCode::FAILURE;
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let address = match args.iter().position(|a| a == "--bus") {
+        Some(i) if i + 1 < args.len() => {
+            let a = args.remove(i + 1);
+            args.remove(i);
+            Some(a)
         }
+        Some(_) => return cli::usage(),
+        None => None,
     };
+    // Anything else is a command for the running service.
+    if !args.is_empty() {
+        return cli::run(address.as_deref(), &args);
+    }
     if address.is_none() && std::env::var_os("TABULA_REAL_SESSION").is_none() {
         eprintln!("tabula-notifications: not in a real Tabula session (use --bus ADDRESS to try it)");
         return std::process::ExitCode::FAILURE;
     }
+    tabula_preview::audio::set_identity("Notifications", "tabula-notifications");
     tabula_kit::run(APP_ID, move |cx| {
         cx.stay_resident();
         let proxy = cx.proxy();
         let bus = Arc::new(Mutex::new(None));
+        let snapshot = Arc::new(Mutex::new(String::new()));
         // Another notification service may have the name (a desktop
         // started before ours): wait for it to go rather than take it.
-        let (slot, to_ui) = (bus.clone(), proxy.clone());
+        let history = History::load(Some(History::path()));
+        let first = history.entries.iter().map(|e| e.id).max().unwrap_or(0).wrapping_add(1);
+        let (slot, to_ui, shared) = (bus.clone(), proxy.clone(), snapshot.clone());
         std::thread::Builder::new()
             .name("notifications-bus".into())
             .spawn(move || {
                 let mut said = false;
                 loop {
                     let to_ui = to_ui.clone();
-                    match Bus::serve(address.as_deref(), move |m| to_ui.send(Msg::In(m))) {
+                    match Bus::serve(address.as_deref(), first, shared.clone(), move |m| to_ui.send(Msg::In(m))) {
                         Ok(b) => {
                             *slot.lock().unwrap() = Some(b);
                             return;
@@ -679,7 +1083,43 @@ fn main() -> std::process::ExitCode {
                 }
             })
             .expect("spawn");
-        Notifications { bus, win: None, cards: Vec::new(), height: 0, keyboard: false, pending: HashMap::new(), next_tag: 0, proxy }
+        // A scheduled Do Not Disturb begins and ends on the minute; the
+        // settings file changes when Preferences or Deskbar write it.
+        let ticker = proxy.clone();
+        std::thread::Builder::new()
+            .name("notifications-clock".into())
+            .spawn(move || {
+                let modified = || std::fs::metadata(NotificationSettings::path()).and_then(|m| m.modified()).ok();
+                let (mut seen, mut minute) = (modified(), now_secs() / 60);
+                loop {
+                    std::thread::sleep(Duration::from_secs(1));
+                    let (m, now) = (modified(), now_secs() / 60);
+                    if m != seen || now != minute {
+                        (seen, minute) = (m, now);
+                        ticker.send(Msg::Tick);
+                    }
+                }
+            })
+            .expect("spawn");
+        let mut app = Notifications {
+            bus,
+            win: None,
+            cards: Vec::new(),
+            height: 0,
+            keyboard: false,
+            pending: HashMap::new(),
+            next_tag: 0,
+            proxy,
+            settings: NotificationSettings::default(),
+            settings_read: None,
+            history,
+            history_win: None,
+            snapshot,
+            told: None,
+        };
+        app.refresh_settings();
+        app.publish(false);
+        app
     });
     std::process::ExitCode::SUCCESS
 }

@@ -264,15 +264,19 @@ as they land (with the commit), add new ones as they come up.
   progress), body markup with links, `value` progress, replace-by-tag,
   inline reply (`NotificationReplied`), `transient`, `category`, sound
   hints read, `ActivationToken` before an action, a click bringing the
-  app's window forward. Left: playing the sounds (natively, through the
-  sound server); GLib's `org.gtk.Notifications` (GApplication apps use
-  it when the name is on the bus, as under GNOME) and the portal's
+  app's window forward; sounds played natively (the freedesktop theme
+  for important notes and errors); a history kept across a restart
+  (History window, Deskbar's bell with the unread count); Do Not Disturb
+  by hand, for a while or on a daily schedule; per-app banner, sound and
+  history choices (Preferences ▸ Notifications); agent-readable
+  (`org.tabula.Notifications1`, `tabula-notifications --list --json`,
+  `--invoke`, `--dismiss`, `--clear`, `--dnd`). Left: GLib's
+  `org.gtk.Notifications` (GApplication apps use it when the name is on
+  the bus, as under GNOME) and the portal's
   `org.freedesktop.impl.portal.Notification` (Flatpak apps); a kit API
   for Tabula's own apps (`cx.notify`, actions back as messages, progress
-  notes for copies, downloads, installs); a history (Deskbar opens it;
-  unread count) kept across a restart; Do Not Disturb (with a schedule,
-  and while sharing the screen); per-app allow/banner/sound/history
-  choices in Preferences; agent-readable (list, act on, dismiss).
+  notes for copies, downloads, installs); Do Not Disturb while sharing
+  the screen.
 - ~~**Log viewer app**~~ (done: `apps/logs`, Log Viewer; the journal read
   natively, live; Find, program, level and time filters; syntax
   highlighting; Show in Context; `tabula-logs --print … [--json]` for

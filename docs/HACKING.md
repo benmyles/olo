@@ -646,6 +646,11 @@ launcher lists them. The panel list Deskbar shows is
   panel says so. `TABULA_FAKE_FINGERS=right-index-finger,…` (debug builds)
   fakes a sensor so the whole panel can be exercised headless. **Never
   enrol or remove on the real sensor in tests.**
+* Notifications (`notifications.rs`) edits `NotificationSettings`, its
+  own file rather than app_server's `Settings` (so no Defaults/Revert): a
+  watcher thread reloads it, and the apps from the history, when either
+  changes; edits save on a thread (echoes of older files are ignored for
+  a moment after an edit). Times follow the clock's 12/24-hour choice.
 * Date & Time (`datetime.rs`) talks to systemd-timedated through
   `tabula_system::time` on its own worker thread (status every 2 s; set
   time, zone and network time with polkit's interactive auth, so a
@@ -1124,7 +1129,34 @@ notifications.
   along the bottom; a reply field and Send when it can be answered (the
   layer takes the keyboard on demand only while one shows,
   `Cx::set_keyboard`); the close box dismisses. While the pointer is over
-  a card it does not expire.
+  a card it does not expire. Sounds (sound.rs): the note's `sound-file`
+  or `sound-name` (looked up in the freedesktop sound theme), else
+  `message-new-instant` for important notes and `dialog-warning` for
+  errors, played on a thread through tabula-preview's `audio::Player`.
+- store.rs: the history, `$XDG_STATE_HOME/tabula/notifications/
+  history.json` (the newest 200; saved atomically off the UI thread).
+  Every note not `transient` goes in, unread unless the History window
+  is open; an expired card stays "open" there (its actions still work)
+  until the app closes it. After a restart nothing is open, and ids carry
+  on after the history's. The History window (`--history`, or Deskbar's
+  bell) lists them newest first: a click runs the default action while
+  the note is open, else brings the app forward; × forgets one; Clear
+  All forgets all but those on screen; opening it marks all read.
+- Settings: `tabula_protocol::NotificationSettings` in
+  `notifications.json` (config dir): Do Not Disturb (`dnd`, `dnd_until`,
+  a daily `schedule` in local minutes), banner `seconds`, and per-app
+  `banners` / `sounds` / `history` by app name. The service re-reads the
+  file within a second of a change (Preferences ▸ Notifications and
+  Deskbar write it). While quiet nothing pops up or sounds but errors.
+  It publishes `NotificationState` (`unread`, `quiet`) to
+  `$XDG_RUNTIME_DIR/tabula-notifications-$WAYLAND_DISPLAY.json`, which
+  Deskbar's bell reads twice a second (the badge; struck through while
+  quiet; right-click for Do Not Disturb).
+- For agents: `org.tabula.Notifications1` at `/org/tabula/Notifications`
+  (`List` → JSON, `Invoke`, `Dismiss`, `ClearHistory`, `ShowHistory`,
+  `SetDoNotDisturb`), and the same from the command line (cli.rs):
+  `tabula-notifications [--bus A] --list [--json] | --history |
+  --invoke ID [ACTION] | --dismiss ID | --clear | --dnd on|off|MINUTES`.
 
 Test it on a private bus: `busd -a unix:path=/tmp/tabula-dev/NAME/bus.sock`
 (`cargo install busd`; Aurora's dbus-broker-launch needs systemd), then
@@ -1134,7 +1166,13 @@ Test it on a private bus: `busd -a unix:path=/tmp/tabula-dev/NAME/bus.sock`
 APP 0 ICON SUMMARY BODY '["default","Open"]' '{}' -1`; `dbus-monitor
 --address … "type='signal',interface='org.freedesktop.Notifications'"`
 shows the signals (busd refuses `gdbus monitor`'s match rule and drops
-some of what it should show). Unit tests: `cargo test -p tabula-notifications`.
+some of what it should show). Run it with `XDG_STATE_HOME` (and the
+session's `XDG_CONFIG_HOME`) under the test directory so the history and
+settings stay out of yours, and `PULSE_SERVER` at a `tabula-fakesound`
+socket to hear what it plays. A Deskbar or Preferences in the test
+session needs `DBUS_SESSION_BUS_ADDRESS` set to the private bus too, or
+its bell's click reaches your own notification service. Unit tests:
+`cargo test -p tabula-notifications`.
 
 ## The command palette (apps/palette)
 

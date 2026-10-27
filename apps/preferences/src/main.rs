@@ -15,6 +15,7 @@ mod datetime;
 mod display;
 mod keyboard;
 mod network;
+mod notifications;
 mod panel;
 mod power;
 mod screensaver;

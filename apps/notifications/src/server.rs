@@ -15,6 +15,10 @@ use crate::markup::{self, Span};
 
 pub const NAME: &str = "org.freedesktop.Notifications";
 pub const PATH: &str = "/org/freedesktop/Notifications";
+/// Ours, beside the standard one: the history and Do Not Disturb, for the
+/// command line, Deskbar and agents.
+pub const CONTROL: &str = "org.tabula.Notifications1";
+pub const CONTROL_PATH: &str = "/org/tabula/Notifications";
 
 /// How long a notification stays when its sender leaves it to us.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(6);
@@ -88,6 +92,19 @@ pub struct Note {
 pub enum In {
     Show(Box<Note>),
     Close(u32),
+    Control(Control),
+}
+
+/// Asked over `org.tabula.Notifications1` (the CLI, Deskbar, agents).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Control {
+    /// Run action `key` ("default": what a click does).
+    Invoke(u32, String),
+    Dismiss(u32),
+    ClearHistory,
+    ShowHistory,
+    /// Do Not Disturb on (for so many minutes; 0: until turned off) or off.
+    DoNotDisturb(bool, u32),
 }
 
 /// Why a notification went (the spec's reasons).
@@ -165,6 +182,46 @@ impl Service {
 
     fn get_server_information(&self) -> (&'static str, &'static str, &'static str, &'static str) {
         ("Tabula", "Tabula", env!("CARGO_PKG_VERSION"), "1.2")
+    }
+}
+
+/// `org.tabula.Notifications1`: what is on screen and in the history, and
+/// acting on it.
+struct Controls {
+    /// `List`'s answer, kept current by the UI.
+    snapshot: std::sync::Arc<std::sync::Mutex<String>>,
+    to_ui: std::sync::Arc<dyn Fn(In) + Send + Sync>,
+}
+
+#[zbus::interface(name = "org.tabula.Notifications1")]
+impl Controls {
+    /// JSON: `{"quiet": bool, "unread": n, "notifications": [...]}`, oldest
+    /// first; each with its id, app, summary, text, actions, kind, time,
+    /// and whether it is `unread`, still `live` at its app (actions can run)
+    /// and `shown` on screen.
+    fn list(&self) -> String {
+        self.snapshot.lock().unwrap().clone()
+    }
+
+    fn invoke(&self, id: u32, action: String) {
+        (self.to_ui)(In::Control(Control::Invoke(id, action)));
+    }
+
+    fn dismiss(&self, id: u32) {
+        (self.to_ui)(In::Control(Control::Dismiss(id)));
+    }
+
+    fn clear_history(&self) {
+        (self.to_ui)(In::Control(Control::ClearHistory));
+    }
+
+    fn show_history(&self) {
+        (self.to_ui)(In::Control(Control::ShowHistory));
+    }
+
+    /// On for `minutes` (0: until turned off), or off.
+    fn set_do_not_disturb(&self, on: bool, minutes: u32) {
+        (self.to_ui)(In::Control(Control::DoNotDisturb(on, minutes)));
     }
 }
 
@@ -277,13 +334,23 @@ pub struct Bus {
 impl Bus {
     /// Serve notifications on the session bus (or `address`, for tests).
     /// Fails if another notification service has the name.
-    pub fn serve(address: Option<&str>, to_ui: impl Fn(In) + Send + Sync + 'static) -> zbus::Result<Bus> {
+    /// Ids start at `first` (after the history's, so they stay unique
+    /// across a restart).
+    pub fn serve(
+        address: Option<&str>,
+        first: u32,
+        snapshot: std::sync::Arc<std::sync::Mutex<String>>,
+        to_ui: impl Fn(In) + Send + Sync + 'static,
+    ) -> zbus::Result<Bus> {
         let builder = match address {
             Some(a) => zbus::blocking::connection::Builder::address(a)?,
             None => zbus::blocking::connection::Builder::session()?,
         };
-        let service = Service { next: AtomicU32::new(1), tags: Default::default(), to_ui: Box::new(to_ui) };
-        let conn = builder.serve_at(PATH, service)?.build()?;
+        let to_ui: std::sync::Arc<dyn Fn(In) + Send + Sync> = std::sync::Arc::new(to_ui);
+        let ui = to_ui.clone();
+        let service = Service { next: AtomicU32::new(first.max(1)), tags: Default::default(), to_ui: Box::new(move |m| ui(m)) };
+        let controls = Controls { snapshot, to_ui };
+        let conn = builder.serve_at(PATH, service)?.serve_at(CONTROL_PATH, controls)?.build()?;
         // (The builder's `name` counts "someone else has it" as success.)
         match conn.request_name_with_flags(NAME, zbus::fdo::RequestNameFlags::DoNotQueue.into())? {
             zbus::fdo::RequestNameReply::PrimaryOwner | zbus::fdo::RequestNameReply::AlreadyOwner => Ok(Bus { conn }),
@@ -308,6 +375,15 @@ impl Bus {
     pub fn replied(&self, id: u32, text: &str) {
         let _ = self.conn.emit_signal(None::<()>, PATH, NAME, "NotificationReplied", &(id, text));
     }
+}
+
+/// The command line's side: a call to the running service.
+pub fn call(address: Option<&str>, method: &str, body: &(impl serde::Serialize + zbus::zvariant::DynamicType)) -> zbus::Result<zbus::Message> {
+    let conn = match address {
+        Some(a) => zbus::blocking::connection::Builder::address(a)?.build()?,
+        None => zbus::blocking::Connection::session()?,
+    };
+    conn.call_method(Some(NAME), CONTROL_PATH, Some(CONTROL), method, body)
 }
 
 #[cfg(test)]

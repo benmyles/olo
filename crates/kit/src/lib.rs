@@ -31,4 +31,4 @@ pub use menu::{Action, Menu, MenuItem};
 pub use platform::run;
 pub use tabula_theme as theme;
 
-pub use tabula_xdg::{config_dir, find_program, spawn_detached, user_dir};
+pub use tabula_xdg::{config_dir, find_program, spawn_detached, state_dir, user_dir};

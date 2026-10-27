@@ -43,7 +43,8 @@ pub fn data_dirs() -> &'static [PathBuf] {
     })
 }
 
-fn xdg_data_dirs() -> Vec<PathBuf> {
+/// The freedesktop data directories, most important first ($HOME first).
+pub fn xdg_data_dirs() -> Vec<PathBuf> {
     let mut v = Vec::new();
     if let Some(home) = std::env::var_os("HOME") {
         v.push(Path::new(&home).join(".local/share"));
@@ -236,6 +237,17 @@ pub fn cache_dir() -> PathBuf {
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .unwrap_or_else(|| home().join(".cache"))
+        .join("tabula")
+}
+
+/// Tabula's state directory (`$XDG_STATE_HOME/tabula`): what programs
+/// keep between runs that is neither a setting nor a cache (histories).
+pub fn state_dir() -> PathBuf {
+    let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+    std::env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| home().join(".local/state"))
         .join("tabula")
 }
 

@@ -5,6 +5,24 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Preferences ▸ Notifications
+
+*01:41* — Do Not Disturb by hand or every day at set times, how long banners stay, and per-app banners, sounds and history (apps appear once they have notified). Dark theme.
+
+![Preferences ▸ Notifications](2026-10-27/014143-preferences-notifications.png)
+
+### Deskbar's notification bell
+
+*01:41* — The bell counts unread notifications; click for the history, right-click for Do Not Disturb (now, for an hour, until morning) and the settings. Struck through while quiet.
+
+![Deskbar's notification bell](2026-10-27/014143-deskbar-s-notification-bell.png)
+
+### Notification history
+
+*01:41* — The History window (Deskbar's bell, or tabula-notifications --history): every notification newest first, kept across a restart. Click to act on it (or bring the app forward), × to forget one; Do Not Disturb and Clear All along the top.
+
+![Notification history](2026-10-27/014143-notification-history.png)
+
 ### Notifications, grouped
 
 *01:18* — Notifications now gather under their app as on Haiku, keep bold, italics and links, show progress, take a reply in place, and wear a blue edge when important or a red one for errors. A click hands the app an activation token so its window comes forward.

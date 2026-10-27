@@ -253,10 +253,22 @@ fn connect() -> Result<(UnixStream, u16), String> {
     Ok((w, version))
 }
 
+/// Shuts a socket down when dropped.
+struct Closer(UnixStream);
+
+impl Drop for Closer {
+    fn drop(&mut self) {
+        let _ = self.0.shutdown(std::net::Shutdown::Both);
+    }
+}
+
 fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc::Receiver<Ev>) -> Result<(), String> {
     let (mut src, rate, duration) = Source::open(input)?;
     st.duration_ms.store((duration * 1000.0) as u64, Ordering::Relaxed);
     let (mut sock, version) = connect()?;
+    // However this ends, the connection closes: its reader thread holds a
+    // clone of the socket and would otherwise keep it (and itself) alive.
+    let _closer = Closer(sock.try_clone().map_err(|e| e.to_string())?);
     let err = |e: protocol::ProtocolError| e.to_string();
     let bps = rate as u64 * src.channels as u64 * 2;
     let params = protocol::PlaybackStreamParams {
@@ -571,8 +583,7 @@ impl Recorder {
                 let mut samples = Vec::new();
                 // A byte left over when a block ends mid-sample.
                 let mut odd: Option<u8> = None;
-                loop {
-                    let Ok(desc) = protocol::read_descriptor(&mut reader) else { break };
+                while let Ok(desc) = protocol::read_descriptor(&mut reader) {
                     payload.resize(desc.length as usize, 0);
                     if reader.read_exact(&mut payload).is_err() {
                         break;

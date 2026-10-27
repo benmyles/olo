@@ -13,7 +13,9 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+pub mod notifications;
 pub mod shortcuts;
+pub use notifications::{AppNotifications, NotificationSettings, NotificationState};
 pub use shortcuts::{Chord, Shortcut, ShortcutSettings, Tile, TilingSettings};
 
 pub const SOCKET_ENV: &str = "TABULA_SOCKET";

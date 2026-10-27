@@ -11208,7 +11208,11 @@ dependencies = [
 name = "tabula-notifications"
 version = "0.1.0"
 dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
  "tabula-kit",
+ "tabula-preview",
  "tabula-protocol",
  "tabula-xdg",
  "tracing",
@@ -11334,6 +11338,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tabula-theme",
+ "tabula-xdg",
  "thiserror 2.0.21",
 ]
 

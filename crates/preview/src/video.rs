@@ -934,7 +934,7 @@ mod tests {
         assert_eq!(Pic::H264(Arc::new(Planar::from(&yuv))).bytes(), w * h * 3 / 2);
         let ours = planar.image();
         assert_eq!(ours.size, [w, h]);
-        let worst = ours.pixels.iter().zip(theirs.chunks_exact(4)).map(|(a, b)| {
+        let worst = ours.pixels.iter().zip(theirs.as_chunks::<4>().0.iter()).map(|(a, b)| {
             (0..3).map(|i| (a.to_array()[i] as i32 - b[i] as i32).abs()).max().unwrap()
         }).max().unwrap();
         assert!(worst <= 2, "differs from OpenH264's conversion by {worst}");

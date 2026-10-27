@@ -4,7 +4,8 @@
 //! server that doesn't know a tag.
 
 /// A run of text and how it looks.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Span {
     pub text: String,
     pub bold: bool,

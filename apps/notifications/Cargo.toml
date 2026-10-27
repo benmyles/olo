@@ -12,5 +12,9 @@ path = "src/main.rs"
 tabula-kit.workspace = true
 tabula-xdg.workspace = true
 tabula-protocol.workspace = true
+tabula-preview.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+libc = "0.2"
 tracing.workspace = true
 zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }

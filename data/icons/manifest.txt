@@ -71,3 +71,4 @@ camera|a rounded webcam with a large glass lens in a charcoal body, sitting on a
 microphone|a silver studio microphone with a rounded mesh head on a short charcoal stand
 security|a chunky closed padlock with a bright BeOS-yellow brass body and a thick silver shackle, a small dark keyhole on its front face, seen in three-quarter view from slightly above
 logs|a thick paper logbook lying open, cream ruled pages with rows of short grey lines and one line marked with a red bookmark ribbon, a magnifying glass resting on its right page
+notifications|a small brass desk bell (a hotel service bell) with a domed golden top and a round push button, on a dark grey round base

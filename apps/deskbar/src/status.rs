@@ -9,6 +9,7 @@ use std::{
     time::Duration,
 };
 
+use tabula_protocol::NotificationState;
 use tabula_system::audio;
 
 use tabula_kit::{
@@ -42,6 +43,9 @@ pub struct Status {
     pub volume: Option<Volume>,
     /// Programs a newer build would replace (tabula-session's offer).
     pub upgrade: Vec<String>,
+    /// Unread notifications and Do Not Disturb (None: no notification
+    /// service).
+    pub notifications: Option<NotificationState>,
 }
 
 /// What tabula-session offers to upgrade (see its upgrade.rs).
@@ -150,6 +154,18 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
             }
         })
         .expect("thread");
+    // The bell's count follows each notification as it comes.
+    let notes = shared.clone();
+    std::thread::Builder::new()
+        .name("deskbar-notifications".into())
+        .spawn(move || {
+            loop {
+                let state = NotificationState::load();
+                publish(&notes, |s| s.notifications = state);
+                std::thread::sleep(Duration::from_millis(500));
+            }
+        })
+        .expect("thread");
     std::thread::Builder::new()
         .name("deskbar-volume".into())
         .spawn(move || {
@@ -209,6 +225,15 @@ fn format_clock(tm: &libc::tm, date: bool, clock: &tabula_protocol::ClockSetting
 }
 
 /// Until the clock next changes: the next second, or the next minute.
+/// Seconds from now until `minute` (after midnight, local time) comes
+/// next.
+pub fn seconds_until(minute: u32) -> u32 {
+    let tm = local_now();
+    let now = tm.tm_hour as u32 * 3600 + tm.tm_min as u32 * 60 + tm.tm_sec as u32;
+    let at = minute * 60;
+    if at > now { at - now } else { at + 86_400 - now }
+}
+
 pub fn until_next_tick(seconds: bool) -> Duration {
     if seconds {
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
@@ -316,7 +341,6 @@ pub fn draw_volume(painter: &Painter, r: Rect, p: &Palette, level: f32, muted: b
     }
 }
 
-/// A coffee cup; full and steaming when `on` (caffeinated).
 /// A newer build is ready: a green arrow rising out of a tray.
 pub fn draw_upgrade(painter: &Painter, r: Rect, p: &Palette) {
     let cx = r.center().x;
@@ -344,6 +368,43 @@ pub fn draw_upgrade(painter: &Painter, r: Rect, p: &Palette) {
     painter.add(Shape::line(vec![pos2(r.left() + 1.5, y - 3.0), pos2(r.left() + 1.5, y), pos2(r.right() - 1.5, y), pos2(r.right() - 1.5, y - 3.0)], Stroke::new(1.2, ink(p))));
 }
 
+/// A bell, with a count of unread notifications; struck through and dim
+/// while Do Not Disturb is on.
+pub fn draw_bell(painter: &Painter, r: Rect, p: &Palette, unread: u32, quiet: bool) {
+    let color = if quiet { dim(p) } else { ink(p) };
+    let cx = r.center().x - 0.5;
+    // The body: a dome widening to a lip.
+    let top = r.top() + 2.5;
+    let lip = r.bottom() - 4.0;
+    let mut outline = Vec::new();
+    for k in 0..=12 {
+        let t = k as f32 / 12.0;
+        let a = std::f32::consts::PI * (1.0 + t);
+        outline.push(pos2(cx + a.cos() * 3.6, top + 3.6 + a.sin() * 3.6));
+    }
+    outline.extend([pos2(cx + 4.4, lip - 1.5), pos2(cx - 4.4, lip - 1.5)]);
+    painter.add(Shape::convex_polygon(outline, color, Stroke::NONE));
+    painter.rect_filled(Rect::from_min_max(pos2(cx - 6.0, lip - 2.0), pos2(cx + 6.0, lip)), 1.0, color);
+    // The clapper.
+    painter.circle_filled(pos2(cx, lip + 1.6), 1.6, color);
+    if quiet {
+        let s = Stroke::new(1.4, ink(p));
+        painter.line_segment([pos2(cx - 6.0, top - 0.5), pos2(cx + 6.0, lip + 3.0)], Stroke::new(3.0, c(p.panel_background)));
+        painter.line_segment([pos2(cx - 6.0, top - 0.5), pos2(cx + 6.0, lip + 3.0)], s);
+    }
+    if unread > 0 {
+        let text = if unread > 99 { "99+".to_string() } else { unread.to_string() };
+        let font = egui::FontId::new(8.5, tabula_kit::style::bold());
+        let galley = painter.layout_no_wrap(text, font, Color32::WHITE);
+        let w = (galley.size().x + 4.0).max(10.0);
+        let badge = Rect::from_min_size(pos2(r.right() + 3.0 - w, r.top() - 1.5), vec2(w, 10.0));
+        painter.rect_filled(badge.expand(1.0), 6.0, c(p.panel_background));
+        painter.rect_filled(badge, 5.0, c(p.failure));
+        painter.galley(badge.center() - galley.size() / 2.0, galley, Color32::WHITE);
+    }
+}
+
+/// A coffee cup; full and steaming when `on` (caffeinated).
 pub fn draw_cup(painter: &Painter, r: Rect, p: &Palette, on: bool) {
     let color = if on { ink(p) } else { dim(p) };
     let s = Stroke::new(1.2, color);
