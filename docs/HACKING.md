@@ -838,8 +838,12 @@ colour temperature) is resolved against the clock in
 there over 1.5 s. The udev backend loads each CRTC's gamma ramps scaled
 by the gains (`Backend::set_white_point`), so it costs no rendering and
 screenshots stay neutral; new screens and a returning VT session get the
-current gains. At start-up the gains are set at once, so a reload keeps
-the warmth without a flash. Headless logs each step ("white point") for
+current gains. Displays with no gamma ramp but a colour matrix (Apple's
+display controller on the MacBook) get a diagonal `CTM` instead, in a
+non-blocking atomic commit of its own; one refused because a flip is in
+flight is retried at that screen's next vblank, and app_server puts the
+identity back when it exits (the matrix outlives it). At start-up the
+gains are set at once, so a reload keeps the warmth without a flash. Headless logs each step ("white point") for
 tests.
 
 ## Screenshots (app_server screenshot.rs, apps/screenshot)

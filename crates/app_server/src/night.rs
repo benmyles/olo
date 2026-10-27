@@ -1,5 +1,6 @@
-//! Night light: warm the screens by scaling the CRTC gamma ramps toward
-//! the white point of a lower colour temperature. It costs nothing to
+//! Night light: warm the screens by scaling the CRTC gamma ramps (or,
+//! where there are none, the colour matrix) toward the white point of a
+//! lower colour temperature. It costs nothing to
 //! draw and leaves screenshots untouched (they read the rendered frame,
 //! not the scan-out). Changes fade over [`FADE`].
 
@@ -97,6 +98,17 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 }
 
+/// A DRM colour matrix (`struct drm_color_ctm`: nine S31.32 sign-magnitude
+/// numbers, row by row) scaling each channel by its gain.
+pub fn ctm(gains: [f64; 3]) -> [u64; 9] {
+    let fixed = |g: f64| (g.clamp(0.0, 1.0) * (1u64 << 32) as f64).round() as u64;
+    let mut m = [0; 9];
+    for (i, g) in gains.into_iter().enumerate() {
+        m[i * 4] = fixed(g);
+    }
+    m
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -110,6 +122,12 @@ mod tests {
         assert!(w[1] < 0.9 && w[1] > 0.6, "{w:?}");
         assert!(w[2] < w[1] && w[2] > 0.3, "{w:?}");
         assert_eq!(white_point(20000), n);
+    }
+
+    #[test]
+    fn ctm_is_a_diagonal_of_gains() {
+        let m = ctm([1.0, 0.5, 0.25]);
+        assert_eq!(m, [1 << 32, 0, 0, 0, 1 << 31, 0, 0, 0, 1 << 30]);
     }
 
     #[test]

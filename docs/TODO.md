@@ -241,7 +241,7 @@ as they land (with the commit), add new ones as they come up.
   the apps' own log files; never block the UI (stream it, on a worker
   thread). Agent-first: the same query is available over IPC, so an agent
   can ask "what went wrong in the last ten minutes" without screenshots.
-- **Night light does nothing on the MacBook** (Ben): turning it on in
+- ~~**Night light does nothing on the MacBook**~~ (confirmed: apple-drm has no gamma ramp, `gamma_length` 0, but every CRTC has `CTM`; app_server now sets a diagonal colour matrix there, in a non-blocking atomic commit retried at vblank; needs Ben's eyes on the real screen) (Ben): turning it on in
   Preferences changes nothing on screen. app_server gets the request and
   fades (log: `night light kelvin=Some(…)`), but no gamma warning is
   logged, so the Apple display driver most likely offers no legacy gamma

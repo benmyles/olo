@@ -73,7 +73,7 @@ use smithay::{
         },
         drm::{
             Device as _,
-            control::{Device, ModeTypeFlags, connector, crtc},
+            control::{AtomicCommitFlags, Device, ModeTypeFlags, connector, crtc},
         },
         input::{DeviceCapability, Libinput},
         rustix::fs::OFlags,
@@ -288,19 +288,97 @@ impl Backend for UdevData {
 
 /// Load a CRTC's gamma ramps scaled by `gains` (night light).
 fn set_gamma(backend: &BackendData, crtc: crtc::Handle, gains: [f64; 3]) {
-    use smithay::reexports::drm::control::Device as _;
     let fd = backend.drm_output_manager.device().device_fd();
     let len = match fd.get_crtc(crtc) {
         Ok(info) => info.gamma_length() as usize,
         Err(e) => return warn!(?e, "no CRTC for night light"),
     };
     if len < 2 {
-        return;
+        return set_ctm(backend, crtc, gains, AtomicCommitFlags::NONBLOCK);
     }
     let [r, g, b] = crate::night::ramps(len, gains);
     if let Err(e) = fd.set_gamma(crtc, &r, &g, &b) {
         warn!(?e, "this display can't take a gamma ramp; night light is off");
     }
+}
+
+/// Night light on displays with no gamma ramp but a colour matrix (Apple's
+/// display controller): a diagonal CTM scales the channels. It goes in an
+/// atomic commit of its own, which mustn't block the compositor: when a
+/// page flip is still in flight it is refused, and tried again at that
+/// screen's next vblank (`retry_ctm`).
+fn set_ctm(backend: &BackendData, crtc: crtc::Handle, gains: [f64; 3], flags: AtomicCommitFlags) {
+    use smithay::reexports::drm::control::{atomic::AtomicModeReq, property};
+    let device = backend.drm_output_manager.device();
+    if !device.is_atomic() {
+        return;
+    }
+    let fd = device.device_fd();
+    let mut ctm = backend.ctm.borrow_mut();
+    let state = ctm.entry(crtc).or_default();
+    let prop = *state.prop.get_or_insert_with(|| {
+        let props = fd.get_properties(crtc).ok()?;
+        props.iter().map(|(p, _)| *p).find(|p| fd.get_property(*p).is_ok_and(|i| i.name().to_bytes() == b"CTM"))
+    });
+    let Some(prop) = prop else {
+        state.pending = None;
+        return;
+    };
+    let identity = gains.iter().all(|g| (g - 1.0).abs() < 1e-4);
+    if identity && state.blob == 0 {
+        state.pending = None;
+        return;
+    }
+    let blob = if identity {
+        0
+    } else {
+        match fd.create_property_blob(&crate::night::ctm(gains)) {
+            Ok(property::Value::Blob(b)) => b,
+            Ok(_) => return,
+            Err(e) => return warn!(?e, "couldn't make a colour matrix for night light"),
+        }
+    };
+    let mut req = AtomicModeReq::new();
+    req.add_property(crtc, prop, property::Value::Blob(blob));
+    match fd.atomic_commit(flags, req) {
+        Ok(()) => {
+            let old = std::mem::replace(&mut state.blob, blob);
+            if old != 0 {
+                let _ = fd.destroy_property_blob(old);
+            }
+            state.pending = None;
+        }
+        Err(e) => {
+            if blob != 0 {
+                let _ = fd.destroy_property_blob(blob);
+            }
+            if e.kind() == std::io::ErrorKind::ResourceBusy {
+                state.pending = Some(gains);
+            } else {
+                state.pending = None;
+                warn!(?e, "this display can't take a colour matrix; night light is off");
+            }
+        }
+    }
+}
+
+/// A colour matrix refused while a flip was in flight, again (at vblank).
+fn retry_ctm(backend: &BackendData, crtc: crtc::Handle) {
+    let pending = backend.ctm.borrow().get(&crtc).and_then(|c| c.pending);
+    if let Some(gains) = pending {
+        set_ctm(backend, crtc, gains, AtomicCommitFlags::NONBLOCK);
+    }
+}
+
+/// Night light's colour matrix on one screen.
+#[derive(Default)]
+struct Ctm {
+    /// The CRTC's CTM property (`Some(None)`: it has none).
+    prop: Option<Option<smithay::reexports::drm::control::property::Handle>>,
+    /// The blob in use (0: none, the identity).
+    blob: u64,
+    /// Gains still to be set.
+    pending: Option<[f64; 3]>,
 }
 
 /// Preferences ▸ Touchpad into libinput: tapping, natural scrolling,
@@ -735,6 +813,13 @@ pub fn run_udev() {
         }
     }
     state.save_layout();
+    // A colour matrix outlives us: leave the screens as they were.
+    for backend in state.backend_data.backends.values() {
+        let crtcs: Vec<crtc::Handle> = backend.ctm.borrow().keys().copied().collect();
+        for crtc in crtcs {
+            set_ctm(backend, crtc, [1.0; 3], AtomicCommitFlags::empty());
+        }
+    }
 }
 
 impl DrmLeaseHandler for AnvilState<UdevData> {
@@ -869,6 +954,8 @@ struct BackendData {
     drm_scanner: DrmScanner,
     render_node: Option<DrmNode>,
     registration_token: RegistrationToken,
+    /// Night light by colour matrix, per screen.
+    ctm: std::cell::RefCell<HashMap<crtc::Handle, Ctm>>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -987,6 +1074,9 @@ impl AnvilState<UdevData> {
                 move |event, metadata, data: &mut AnvilState<_>| match event {
                     DrmEvent::VBlank(crtc) => {
                         profiling::scope!("vblank", &format!("{crtc:?}"));
+                        if let Some(backend) = data.backend_data.backends.get(&node) {
+                            retry_ctm(backend, crtc);
+                        }
                         data.frame_finish(node, crtc, metadata);
                     }
                     DrmEvent::Error(error) => {
@@ -1082,6 +1172,7 @@ impl AnvilState<UdevData> {
                     })
                     .ok(),
                 active_leases: Vec::new(),
+                ctm: Default::default(),
             },
         );
 
