@@ -1,4 +1,4 @@
-//! tabula-palette: the command palette. ⌘Space (or a tap of ⌘, if chosen
+//! olo-palette: the command palette. ⌘Space (or a tap of ⌘, if chosen
 //! in Preferences ▸ Keyboard) brings it up over everything; typing finds
 //! applications, the front app's menu commands, open windows, the
 //! desktop's shortcuts (with their keys, so it doubles as a reminder),
@@ -7,7 +7,7 @@
 //! again puts it away.
 //!
 //! It stays running between uses so it opens at once: app_server starts
-//! `tabula-palette --toggle`, which hands the toggle to the running copy.
+//! `olo-palette --toggle`, which hands the toggle to the running copy.
 //! It shows a window's menu (a right-click on its tab) the same way, from
 //! `--window-menu` (window_menu.rs).
 
@@ -20,7 +20,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 use sources::{Action, Found, Item, Kind, Workers};
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Keyboard, Layer, LayerOptions, WindowId, WindowKind, WindowOptions,
     egui::{self, Color32, Key, Rect, Sense, pos2, vec2},
     icons,
@@ -28,9 +28,9 @@ use tabula_kit::{
     metrics as m,
     style::{self, c},
 };
-use tabula_protocol::WindowInfo;
+use olo_protocol::WindowInfo;
 
-const APP_ID: &str = "tabula.palette";
+const APP_ID: &str = "olo.palette";
 /// The panel's width, and how far down the screen it sits.
 const WIDTH: f32 = 600.0;
 const TOP: f32 = 0.2;
@@ -49,10 +49,19 @@ struct Recents {
 
 impl Recents {
     fn path() -> PathBuf {
-        tabula_kit::config_dir().join("tabula").join("palette.json")
+        olo_kit::config_dir().join("palette.json")
     }
     fn load() -> Recents {
-        std::fs::read_to_string(Self::path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+        let read = |p: PathBuf| std::fs::read_to_string(p).ok().and_then(|s| serde_json::from_str::<Recents>(&s).ok());
+        // Before the rename (Tabula) it was kept a folder deeper, and named
+        // our programs by their old names.
+        read(Self::path())
+            .or_else(|| {
+                let mut old = read(olo_kit::config_dir().join(olo_kit::legacy::OLD).join("palette.json"))?;
+                old.chosen = old.chosen.into_iter().map(|(k, v)| (k.replace("tabula-", "olo-").replace("tabula.", "olo."), v)).collect();
+                Some(old)
+            })
+            .unwrap_or_default()
     }
     fn save(&self) {
         let path = Self::path();
@@ -257,7 +266,7 @@ impl Palette {
 }
 
 impl App for Palette {
-    fn ui(&mut self, cx: &mut Cx, window: tabula_kit::WindowId, ui: &mut egui::Ui) {
+    fn ui(&mut self, cx: &mut Cx, window: olo_kit::WindowId, ui: &mut egui::Ui) {
         if let Some(shown) = self.window_menu.as_mut().filter(|s| s.win == window) {
             if window_menu::ui(shown, ui) {
                 cx.close_window(window);
@@ -472,13 +481,15 @@ impl App for Palette {
 }
 
 fn main() {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if instance::forward(APP_ID, &args) {
         return;
     }
     let toggle = args.iter().any(|a| a == "--toggle");
     let ask = window_menu::Ask::parse(&args);
-    tabula_kit::run(APP_ID, move |cx| {
+    olo_kit::run(APP_ID, move |cx| {
         cx.stay_resident();
         instance::listen(APP_ID, cx.proxy());
         let proxy = cx.proxy();

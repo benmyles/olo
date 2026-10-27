@@ -621,7 +621,7 @@ pub struct AutoOutput;
 
 pub fn fixup_positions(
     space: &mut Space<WindowElement>,
-    display: &tabula_protocol::DisplaySettings,
+    display: &olo_protocol::DisplaySettings,
     pointer_location: Point<f64, Logical>,
 ) {
     // fixup outputs

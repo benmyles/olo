@@ -1,4 +1,4 @@
-//! Arranging windows from the keyboard (tabula_protocol::shortcuts): tiling
+//! Arranging windows from the keyboard (olo_protocol::shortcuts): tiling
 //! one into part of its display, centering it, moving it to another
 //! display, tiling, cascading or fanning them all out (and undoing that),
 //! showing the desktop; and putting
@@ -22,7 +22,7 @@ use smithay::{
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
     utils::{Logical, Point, Rectangle, Size},
 };
-use tabula_protocol::Tile;
+use olo_protocol::Tile;
 use tracing::info;
 
 use super::{
@@ -702,7 +702,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// Windows of the active display put in parts of its tiling area (an
     /// arranger's answer), as Tile All puts them in cells: undoable, and
     /// tiled so their edges move together. How many it placed.
-    pub fn arrange(&mut self, placements: &[tabula_protocol::Placement]) -> usize {
+    pub fn arrange(&mut self, placements: &[olo_protocol::Placement]) -> usize {
         let Some((_, area, windows)) = self.arrangement() else { return 0 };
         let placed: Vec<(WindowElement, (f32, f32, f32, f32))> = placements
             .iter()

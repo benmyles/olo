@@ -2,7 +2,7 @@
 //! mode, apps that ask to stay awake (zwp_idle_inhibit), the displays'
 //! brightness (the built-in one's backlight; an external one's own kernel
 //! backlight, as Apple silicon gives a Studio Display, or its USB control,
-//! tabula_system::hid_monitor) and the brightness / volume keys.
+//! olo_system::hid_monitor) and the brightness / volume keys.
 //! Each display starts at the brightness kept for it, or full.
 //!
 //! Hardware is only touched when app_server is the real session
@@ -19,7 +19,7 @@ use smithay::reexports::{
     calloop,
     wayland_server::{Resource, protocol::wl_surface::WlSurface},
 };
-use tabula_protocol::{Event, PowerStatus};
+use olo_protocol::{Event, PowerStatus};
 use tracing::{info, warn};
 
 use crate::state::{AnvilState, Backend};
@@ -82,11 +82,11 @@ pub struct Power {
     slept: bool,
     inhibitors: Vec<WlSurface>,
     /// The real backlight (session only).
-    backlight: Option<tabula_system::backlight::Backlight>,
+    backlight: Option<olo_system::backlight::Backlight>,
     /// Perceived brightness, 0–1 (simulated when there is no backlight to drive).
     pub brightness: Option<f32>,
     /// The keyboard's backlight, and its level (simulated likewise).
-    keyboard: Option<tabula_system::backlight::Backlight>,
+    keyboard: Option<olo_system::backlight::Backlight>,
     keyboard_level: Option<f32>,
     /// The level before a toggle turned it off.
     keyboard_was: f32,
@@ -117,14 +117,14 @@ impl std::fmt::Debug for Power {
 impl Power {
     pub fn new(is_session: bool) -> Power {
         let (keyboard, keyboard_level) = if is_session {
-            let k = tabula_system::backlight::keyboard();
+            let k = olo_system::backlight::keyboard();
             let level = k.as_ref().and_then(|k| k.level());
             (k, level)
         } else {
             (None, Some(0.5))
         };
         let (backlight, brightness, jobs, volume, volume_feedback, displays_found) = if is_session {
-            let backlight = tabula_system::backlight::internal();
+            let backlight = olo_system::backlight::internal();
             let brightness = backlight.as_ref().and_then(|b| b.level());
             let (tx, rx) = channel();
             let (feedback, feedback_rx) = calloop::channel::channel();
@@ -172,13 +172,13 @@ impl Power {
 
     fn apply_brightness(&self, level: f32) {
         if let Some(b) = &self.backlight {
-            self.send(Job::Brightness(tabula_system::backlight::to_raw(level, b.max)));
+            self.send(Job::Brightness(olo_system::backlight::to_raw(level, b.max)));
         }
     }
 
     fn apply_keyboard(&self, level: f32) {
         if let Some(k) = &self.keyboard {
-            self.send(Job::KeyboardBacklight(tabula_system::backlight::to_raw(level, k.max)));
+            self.send(Job::KeyboardBacklight(olo_system::backlight::to_raw(level, k.max)));
         }
     }
 
@@ -208,7 +208,7 @@ impl Power {
 
 /// What the worker keeps between jobs.
 struct Worker {
-    inhibitor: Option<tabula_system::power::Inhibitor>,
+    inhibitor: Option<olo_system::power::Inhibitor>,
     feedback: calloop::channel::Sender<(f32, bool)>,
     found: calloop::channel::Sender<Vec<(String, f32)>>,
     /// External displays whose brightness we set, by connector.
@@ -249,9 +249,9 @@ enum Control {
     /// controller does for a Studio Display; the monitor's own USB control
     /// then takes the value but doesn't change the picture). Written
     /// through logind, as the built-in one's.
-    Backlight(tabula_system::backlight::Backlight),
+    Backlight(olo_system::backlight::Backlight),
     /// The monitor's USB brightness control.
-    Hid(tabula_system::hid_monitor::HidMonitor),
+    Hid(olo_system::hid_monitor::HidMonitor),
 }
 
 impl Control {
@@ -271,18 +271,18 @@ fn find_displays(
     send: &calloop::channel::Sender<Vec<(String, f32)>>,
     connectors: Vec<String>,
 ) {
-    let mut monitors = tabula_system::hid_monitor::all();
+    let mut monitors = olo_system::hid_monitor::all();
     displays.clear();
     let mut found = Vec::new();
     for c in connectors {
-        if let Some(b) = tabula_system::backlight::for_connector(&c)
+        if let Some(b) = olo_system::backlight::for_connector(&c)
             && let Some(level) = b.level()
         {
             found.push((c.clone(), level));
             displays.insert(c, Control::Backlight(b));
             continue;
         }
-        let Some(maker) = tabula_system::edid::for_connector(&c).map(|e| e.maker) else { continue };
+        let Some(maker) = olo_system::edid::for_connector(&c).map(|e| e.maker) else { continue };
         let Some(i) = monitors.iter().position(|m| m.edid_vendor() == Some(maker.as_str())) else { continue };
         let m = monitors.remove(i);
         match m.level() {
@@ -292,7 +292,7 @@ fn find_displays(
             }
             Err(e) => {
                 if warned.insert(m.path.clone()) {
-                    warn!(path = %m.path.display(), "can't read the display's brightness: {e} (is data/udev/70-tabula-displays.rules installed?)");
+                    warn!(path = %m.path.display(), "can't read the display's brightness: {e} (is data/udev/70-olo-displays.rules installed?)");
                 }
             }
         }
@@ -301,14 +301,14 @@ fn find_displays(
 }
 
 fn run(job: Job, w: &mut Worker) {
-    use tabula_system::{audio, backlight, power};
+    use olo_system::{audio, backlight, power};
     let Worker { inhibitor, feedback, found, displays, warned } = w;
     let volume_key = matches!(job, Job::Volume(_) | Job::ToggleMute);
     let r: Result<(), String> = match job {
         Job::Caffeinate { on: true, lid } => {
             *inhibitor = None;
             let what = if lid { "sleep:idle:handle-lid-switch" } else { "sleep:idle" };
-            power::inhibit(what, "Tabula", "Caffeinated", true).map(|i| *inhibitor = Some(i)).map_err(|e| e.to_string())
+            power::inhibit(what, "Olo", "Caffeinated", true).map(|i| *inhibitor = Some(i)).map_err(|e| e.to_string())
         }
         Job::Caffeinate { on: false, .. } => {
             *inhibitor = None;
@@ -348,8 +348,8 @@ fn run(job: Job, w: &mut Worker) {
 }
 
 impl<B: Backend> AnvilState<B> {
-    pub fn power_status(&self) -> tabula_protocol::PowerStatus {
-        tabula_protocol::PowerStatus { screen_saver: self.saver.running(), locked: self.lock.locked(), ..self.power.status() }
+    pub fn power_status(&self) -> olo_protocol::PowerStatus {
+        olo_protocol::PowerStatus { screen_saver: self.saver.running(), locked: self.lock.locked(), ..self.power.status() }
     }
 
     pub fn power_changed(&mut self) {
@@ -420,7 +420,7 @@ impl<B: Backend> AnvilState<B> {
         if settings.sleep_minutes > 0
             && idle >= minutes(settings.sleep_minutes)
             && !p.slept
-            && (!settings.sleep_on_battery_only || !tabula_system::battery::on_ac())
+            && (!settings.sleep_on_battery_only || !olo_system::battery::on_ac())
         {
             p.slept = true;
             if p.jobs.is_some() {

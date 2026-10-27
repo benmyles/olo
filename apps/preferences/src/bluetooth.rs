@@ -1,5 +1,5 @@
 //! Bluetooth: turn it on or off, look for devices, pair, connect and
-//! forget them. Talks to BlueZ natively (`tabula_system::bluetooth`): one
+//! forget them. Talks to BlueZ natively (`olo_system::bluetooth`): one
 //! thread reads its state every second and a thread per action does the
 //! slow parts (pairing can wait on the user typing a passkey), so the
 //! window never waits. A pairing agent registered for this process puts
@@ -14,12 +14,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tabula_kit::{
+use olo_kit::{
     egui::{Context, Key, Rect, Ui, UiBuilder, vec2},
     metrics as m,
     widgets::{BBox, Button, CheckBox, Column, ColumnListView, ListState, StringView, TextControl},
 };
-use tabula_system::bluetooth::{self as bt, Agent, AgentEvent, Ask, Question, Status};
+use olo_system::bluetooth::{self as bt, Agent, AgentEvent, Ask, Question, Status};
 
 /// How long a search for devices runs.
 const SEARCH: Duration = Duration::from_secs(30);
@@ -117,7 +117,7 @@ fn link() -> &'static Link {
 }
 
 /// Do something slow to a device on its own thread.
-fn act(device: String, doing: &'static str, failed: &'static str, f: impl FnOnce(&str) -> tabula_system::Result<()> + Send + 'static) {
+fn act(device: String, doing: &'static str, failed: &'static str, f: impl FnOnce(&str) -> olo_system::Result<()> + Send + 'static) {
     let link = link();
     link.shared.lock().unwrap().doing.insert(device.clone(), doing);
     let (sh, ctxs) = (link.shared.clone(), link.contexts.clone());

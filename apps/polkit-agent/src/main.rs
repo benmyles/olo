@@ -1,30 +1,30 @@
-//! tabula-polkit-agent: asks for a password when a program needs an
+//! olo-polkit-agent: asks for a password when a program needs an
 //! administrator's permission (setting the clock, installing software, …),
 //! and when the login keyring needs its password (keyring.rs).
 //!
 //! It registers with polkitd as the authentication agent for this login
 //! session and stays in the background; each request opens a BAlert-style
 //! window with polkit's message and a password field. The PAM conversation
-//! runs in polkit's own helper (`tabula_system::polkit::Helper`), so with
+//! runs in polkit's own helper (`olo_system::polkit::Helper`), so with
 //! Touch ID set up in PAM the window first says to touch the sensor, then
 //! asks for the password if that doesn't work.
 //!
 //! ```text
-//! tabula-polkit-agent                   the session's agent (started by tabula-session)
-//! tabula-polkit-agent --self-test ACTION  serve only this process and ask
+//! olo-polkit-agent                   the session's agent (started by olo-session)
+//! olo-polkit-agent --self-test ACTION  serve only this process and ask
 //!                                       polkitd about ACTION (changes nothing)
-//! tabula-polkit-agent --keyring-test BUS  only the keyring's prompts, on the
+//! olo-polkit-agent --keyring-test BUS  only the keyring's prompts, on the
 //!                                       D-Bus at address BUS (a test's own)
 //! ```
 //!
 //! The keyring's prompts: gnome-keyring-daemon asks for passwords through
 //! `org.gnome.keyring.SystemPrompter` on the session bus, which this agent
-//! owns (`tabula_system::keyring_prompt`), so they come up here rather
+//! owns (`olo_system::keyring_prompt`), so they come up here rather
 //! than in GTK's gcr-prompter.
 
 use std::collections::HashMap;
 
-use tabula_kit::{
+use olo_kit::{
     App, Cx, WindowId, WindowOptions,
     egui::{self, Key, Rect, pos2, vec2},
     instance::{self, Launch},
@@ -32,14 +32,14 @@ use tabula_kit::{
     style::{self, c},
     widgets::{self, Button, MenuField, TextControl},
 };
-use tabula_system::{
+use olo_system::{
     keyring_prompt::{self, Prompter},
     polkit::{Agent, Event, Helper, HelperEvent, Request, Subject},
 };
 
 mod keyring;
 
-const APP_ID: &str = "tabula.polkit-agent";
+const APP_ID: &str = "olo.polkit-agent";
 pub const WIDTH: u32 = 420;
 const ICON: &str = "authentication";
 
@@ -347,18 +347,20 @@ impl App for AgentApp {
             }
             Msg::Helper(id, run, e) => self.helper_event(cx, id, run, e),
             Msg::Registered(Err(e)) => {
-                eprintln!("tabula-polkit-agent: couldn't register with polkit: {e}");
+                eprintln!("olo-polkit-agent: couldn't register with polkit: {e}");
                 cx.quit();
             }
             Msg::Registered(Ok(())) => {}
             Msg::Keyring(e) => self.keyring_event(cx, e),
             Msg::Prompter(Ok(p)) => self.prompter = Some(p),
-            Msg::Prompter(Err(e)) => eprintln!("tabula-polkit-agent: couldn't serve the keyring's prompts: {e}"),
+            Msg::Prompter(Err(e)) => eprintln!("olo-polkit-agent: couldn't serve the keyring's prompts: {e}"),
         }
     }
 }
 
 fn main() -> std::process::ExitCode {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (self_test, keyring_test) = match args.as_slice() {
         [flag, action] if flag == "--self-test" => (Some(action.clone()), false),
@@ -369,20 +371,20 @@ fn main() -> std::process::ExitCode {
         }
         [] => (None, false),
         _ => {
-            eprintln!("usage: tabula-polkit-agent [--self-test ACTION | --keyring-test BUS]");
+            eprintln!("usage: olo-polkit-agent [--self-test ACTION | --keyring-test BUS]");
             return std::process::ExitCode::FAILURE;
         }
     };
     // Only the real session's agent may speak for the login session: a
     // test or nested session must never take over the user's prompts.
-    if self_test.is_none() && !keyring_test && std::env::var_os("TABULA_REAL_SESSION").is_none() {
-        eprintln!("tabula-polkit-agent: not in a real Tabula session (use --self-test ACTION to try it)");
+    if self_test.is_none() && !keyring_test && std::env::var_os("OLO_REAL_SESSION").is_none() {
+        eprintln!("olo-polkit-agent: not in a real Olo session (use --self-test ACTION to try it)");
         return std::process::ExitCode::FAILURE;
     }
     if self_test.is_none() && !keyring_test && instance::forward(APP_ID, &args) {
         return std::process::ExitCode::SUCCESS;
     }
-    tabula_kit::run(APP_ID, |cx| {
+    olo_kit::run(APP_ID, |cx| {
         cx.stay_resident();
         if self_test.is_none() && !keyring_test {
             instance::listen(APP_ID, cx.proxy());
@@ -410,7 +412,7 @@ fn main() -> std::process::ExitCode {
             .spawn(move || {
                 let subject = match &action {
                     Some(_) => Subject::process(std::process::id()).ok_or_else(|| "no /proc entry".to_owned()),
-                    None => tabula_system::polkit::own_session().map(Subject::Session).map_err(|e| e.to_string()),
+                    None => olo_system::polkit::own_session().map(Subject::Session).map_err(|e| e.to_string()),
                 };
                 let on = {
                     let proxy = proxy.clone();
@@ -425,7 +427,7 @@ fn main() -> std::process::ExitCode {
                 };
                 proxy.send(Msg::Registered(Ok(())));
                 if let Some(action) = action {
-                    match tabula_system::polkit::check_interactive(&action) {
+                    match olo_system::polkit::check_interactive(&action) {
                         Ok(ok) => println!("self-test: {action}: {}", if ok { "authorized" } else { "not authorized" }),
                         Err(e) => println!("self-test: {action}: {e}"),
                     }

@@ -7,12 +7,12 @@ use std::{
     time::Duration,
 };
 
-use tabula_kit::{
+use olo_kit::{
     egui::Ui,
     widgets::{BBox, CheckBox, MenuField, StringView},
 };
-use tabula_protocol::{PowerStatus, Settings};
-use tabula_system::battery::{self, Battery, State as Charge};
+use olo_protocol::{PowerStatus, Settings};
+use olo_system::battery::{self, Battery, State as Charge};
 
 use crate::server::Server;
 
@@ -26,7 +26,7 @@ pub struct State {
     battery: Option<Shared>,
 }
 
-fn poll(ctx: &tabula_kit::egui::Context) -> Shared {
+fn poll(ctx: &olo_kit::egui::Context) -> Shared {
     let battery: Shared = Default::default();
     let (out, ctx) = (Arc::downgrade(&battery), ctx.clone());
     std::thread::Builder::new()

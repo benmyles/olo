@@ -1,6 +1,6 @@
-//! tabula-pool (Token Pool): several Claude and ChatGPT subscriptions
+//! olo-pool (Token Pool): several Claude and ChatGPT subscriptions
 //! shared by Claude Code and Codex on this computer. A gateway on
-//! loopback (`tabula_token_pool::gateway`) takes the clients' requests
+//! loopback (`olo_token_pool::gateway`) takes the clients' requests
 //! and sends each with whichever account's quota resets soonest, so less
 //! of it goes unused; a sign-in the provider refuses is refreshed, an
 //! account out of quota waits for its reset while the next serves.
@@ -22,7 +22,7 @@ use std::{
 };
 
 use serde_json::{Value, json};
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Menu, Proxy, WindowId, WindowOptions,
     egui::{self, Key},
     instance::{self, Launch},
@@ -30,7 +30,7 @@ use tabula_kit::{
     style::{self, c},
     widgets::{self, BBox, Button, CellGrid, CheckBox, GridCell, ScrollView, StatusBar, StringView, TextControl},
 };
-use tabula_token_pool::{
+use olo_token_pool::{
     clients,
     gateway::{self, Pool, Shared},
     import::{self, Found},
@@ -38,7 +38,7 @@ use tabula_token_pool::{
     schedule, store,
 };
 
-const APP_ID: &str = "tabula.pool";
+const APP_ID: &str = "olo.pool";
 const PROVIDERS: [Provider; 2] = [Provider::Claude, Provider::Codex];
 /// How long a separate sign-in in Terminal is waited for.
 const SIGN_IN_WAIT: Duration = Duration::from_secs(20 * 60);
@@ -174,10 +174,10 @@ impl PoolApp {
             Ok(d) => d,
             Err(e) => return self.note = Some((e, true)),
         };
-        let mut argv = vec!["tabula-terminal".to_owned(), "-e".to_owned()];
+        let mut argv = vec!["olo-terminal".to_owned(), "-e".to_owned()];
         argv.extend(import::sign_in_command(p, &dir));
         let argv: Vec<std::ffi::OsString> = argv.into_iter().map(Into::into).collect();
-        if let Err(e) = tabula_kit::open::spawn(&argv) {
+        if let Err(e) = olo_kit::open::spawn(&argv) {
             import::discard(&dir);
             return self.note = Some((format!("Couldn’t open Terminal: {e}"), true));
         }
@@ -414,7 +414,7 @@ impl PoolApp {
             if a.windows.is_empty() && a.signed_out.is_none() {
                 ui.add(StringView::new(if a.synced.is_some() { "No quota reported." } else { "Reading its quota…" }).dim(true));
             }
-            let today = if a.today.0 == tabula_token_pool::model::today() { a.today.1.clone() } else { Default::default() };
+            let today = if a.today.0 == olo_token_pool::model::today() { a.today.1.clone() } else { Default::default() };
             let used = format!(
                 "Today: {} request{} · {} in · {} out",
                 today.requests,
@@ -503,7 +503,7 @@ impl PoolApp {
                     let menu = Menu::new("Account")
                         .item("Rename…", "rename", None)
                         .item("Read Quota Now", "refresh", None)
-                        .action(tabula_kit::Action::new("Use a Reset Credit…", "reset").enabled(a.credit().is_some()))
+                        .action(olo_kit::Action::new("Use a Reset Credit…", "reset").enabled(a.credit().is_some()))
                         .separator()
                         .item("Sign In Again in Terminal…", "sign-in", None)
                         .item(format!("Use This Computer’s {} Sign-In", a.provider.client()), "sign-in-local", None)
@@ -529,7 +529,7 @@ fn mark(p: Provider) -> &'static str {
 
 /// A finished request's colour: BeOS's green, yellow and red, grey for
 /// one the client gave up on.
-fn outcome_color(p: &tabula_kit::theme::Palette, o: Outcome) -> egui::Color32 {
+fn outcome_color(p: &olo_kit::theme::Palette, o: Outcome) -> egui::Color32 {
     match o {
         Outcome::Completed => c(p.success),
         Outcome::RateLimited => c(p.tab_focused),
@@ -742,7 +742,7 @@ impl PoolApp {
 
 // ---- the command line -------------------------------------------------
 
-const USAGE: &str = "usage: tabula-pool [--service | --status [--json]]
+const USAGE: &str = "usage: olo-pool [--service | --status [--json]]
   (none)            open Token Pool (starting the gateway if it isn't running)
   --service         run the gateway in the background (the session does)
   --status [--json] the pool's accounts, quota and state (no sign-ins)";
@@ -763,7 +763,7 @@ fn status(port: u16, as_json: bool) -> std::process::ExitCode {
     let v = match fetch_status(port) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("tabula-pool: {e}");
+            eprintln!("olo-pool: {e}");
             return std::process::ExitCode::FAILURE;
         }
     };
@@ -809,6 +809,8 @@ fn status(port: u16, as_json: bool) -> std::process::ExitCode {
 }
 
 fn main() -> std::process::ExitCode {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let port = gateway::port();
     let has = |a: &str| args.iter().any(|x| x == a);
@@ -822,14 +824,14 @@ fn main() -> std::process::ExitCode {
     let service = has("--service");
     // One gateway per computer: a test or nested session runs its own
     // only on a port of its own.
-    if service && std::env::var_os("TABULA_REAL_SESSION").is_none() && std::env::var_os("TABULA_POOL_PORT").is_none() {
-        eprintln!("tabula-pool: --service is for the real session (set TABULA_POOL_PORT to try it)");
+    if service && std::env::var_os("OLO_REAL_SESSION").is_none() && std::env::var_os("OLO_POOL_PORT").is_none() {
+        eprintln!("olo-pool: --service is for the real session (set OLO_POOL_PORT to try it)");
         return std::process::ExitCode::FAILURE;
     }
     if instance::forward(APP_ID, &args) {
         return std::process::ExitCode::SUCCESS;
     }
-    tabula_kit::run(APP_ID, move |cx| {
+    olo_kit::run(APP_ID, move |cx| {
         cx.stay_resident();
         let proxy = cx.proxy();
         instance::listen(APP_ID, proxy.clone());

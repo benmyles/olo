@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use tabula_kit::egui::Color32;
+use olo_kit::egui::Color32;
 
 /// The colours a group can have: (name, light mode, dark mode).
 pub const COLORS: [(&str, [u8; 3], [u8; 3]); 8] = [
@@ -46,7 +46,7 @@ pub struct SavedTab {
 }
 
 fn path() -> PathBuf {
-    tabula_kit::config_dir().join("terminal-groups.json")
+    olo_kit::config_dir().join("terminal-groups.json")
 }
 
 pub fn load() -> Vec<Saved> {

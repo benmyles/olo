@@ -18,7 +18,7 @@ use smithay::{
     output::Output,
     utils::{Logical, Point, Rectangle},
 };
-use tabula_protocol::{ImageFormat, Reply};
+use olo_protocol::{ImageFormat, Reply};
 use tracing::warn;
 
 use crate::{

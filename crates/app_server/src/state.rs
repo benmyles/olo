@@ -111,14 +111,14 @@ pub struct ClientState {
     pub security_context: Option<SecurityContext>,
     /// Set when the client goes away (the lock screen's, so a crash is noticed).
     pub gone: Option<Arc<std::sync::atomic::AtomicBool>>,
-    /// The program a tabula-wlproxy connection speaks for.
+    /// The program an olo-wlproxy connection speaks for.
     pub pid: Option<i32>,
-    /// Through tabula-wlproxy, which keeps it through our restart.
+    /// Through olo-wlproxy, which keeps it through our restart.
     pub proxied: bool,
 }
 
 /// The process behind a client: the program itself, also when it comes
-/// through tabula-wlproxy (whose own pid the socket shows).
+/// through olo-wlproxy (whose own pid the socket shows).
 pub fn client_pid(client: &Client, dh: &DisplayHandle) -> Option<i32> {
     if let Some(pid) = client.get_data::<ClientState>().and_then(|s| s.pid) {
         return Some(pid);
@@ -210,9 +210,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub show_window_preview: bool,
     pub parked: crate::desktop::Parked,
     pub workspace: u32,
-    pub settings: tabula_protocol::Settings,
+    pub settings: olo_protocol::Settings,
     pub ipc: crate::ipc::IpcState,
-    pub last_window_infos: Vec<tabula_protocol::WindowInfo>,
+    pub last_window_infos: Vec<olo_protocol::WindowInfo>,
     /// Remembered window places (see `layout`).
     pub layout: Vec<crate::layout::Placement>,
     /// Night-light colour temperature in effect, if any.
@@ -476,14 +476,14 @@ impl<BackendData: Backend> PointerConstraintsHandler for AnvilState<BackendData>
 impl<BackendData: Backend> TextInputActivation for AnvilState<BackendData> {}
 
 impl<BackendData: Backend> AnvilState<BackendData> {
-    /// Whether `surface` belongs to one of Tabula's own programs.
+    /// Whether `surface` belongs to one of Olo's own programs.
     fn is_our_program(&self, surface: &WlSurface) -> bool {
         let Some(pid) = surface.client().and_then(|c| client_pid(&c, &self.display_handle)) else {
             return false;
         };
         std::fs::read_link(format!("/proc/{pid}/exe"))
             .ok()
-            .and_then(|p| Some(p.file_name()?.to_str()?.starts_with("tabula-")))
+            .and_then(|p| p.file_name()?.to_str().map(|n| n.starts_with("olo-") || n.starts_with("tabula-")))
             .unwrap_or(false)
     }
 }
@@ -507,7 +507,7 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
     ) {
         // A window comes forward only when the user just did something in
         // the app that asks (the token carries a recent input serial from
-        // the focused client), or when one of our own programs asks: Tabula
+        // the focused client), or when one of our own programs asks: Olo
         // apps relaunched from Deskbar or Tracker forward the request to
         // the running instance, which has no fresh serial of its own.
         // Anything else (a terminal's bell, an app presenting itself) would
@@ -551,7 +551,7 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
 impl<BackendData: Backend> XdgDecorationHandler for AnvilState<BackendData> {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
         use xdg_decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
-        // Tabula draws every window's tab and frame itself.
+        // Olo draws every window's tab and frame itself.
         toplevel.with_pending_state(|state| {
             state.decoration_mode = Some(Mode::ServerSide);
         });
@@ -787,7 +787,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
 
         // init wayland clients
         let socket_name = if listen_on_socket && let Some((name, listener)) = inherited_wayland_socket() {
-            // tabula-session owns the socket, so it outlives us: clients
+            // olo-session owns the socket, so it outlives us: clients
             // stay connected-to-be across an in-place restart.
             listener.set_nonblocking(true).expect("nonblocking socket");
             handle
@@ -811,7 +811,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                     Ok(PostAction::Continue)
                 })
                 .expect("Failed to init inherited wayland socket");
-            info!(name, "Listening on wayland socket from tabula-session");
+            info!(name, "Listening on wayland socket from olo-session");
             proxied_wayland_socket(&handle);
             Some(name)
         } else if listen_on_socket {
@@ -985,7 +985,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             settings: {
                 let settings = crate::desktop::load_settings();
                 // `op` is there (or not) as Preferences ▸ Security says.
-                tabula_xdg::link_op_here(settings.security.passwords.op_cli);
+                olo_xdg::link_op_here(settings.security.passwords.op_cli);
                 crate::shell::deco::set_title_chars(settings.tab_title_chars);
                 settings
             },
@@ -1028,7 +1028,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 }
             });
         }
-        state.keymap.set_bindings(tabula_protocol::shortcuts::bindings(&state.settings.shortcuts));
+        state.keymap.set_bindings(olo_protocol::shortcuts::bindings(&state.settings.shortcuts));
         if let Some(found) = state.power.displays_found.take() {
             let _ = state.handle.insert_source(found, |event, _, state| {
                 if let smithay::reexports::calloop::channel::Event::Msg(found) = event {
@@ -1401,7 +1401,7 @@ pub trait Backend {
     const IS_SESSION: bool = false;
     fn seat_name(&self) -> String;
     /// Push touchpad/mouse settings to input devices.
-    fn apply_input_settings(&mut self, _settings: &tabula_protocol::Settings) {}
+    fn apply_input_settings(&mut self, _settings: &olo_protocol::Settings) {}
     fn reset_buffers(&mut self, output: &Output);
     fn early_import(&mut self, surface: &WlSurface);
     fn update_led_state(&mut self, led_state: LedState);
@@ -1417,20 +1417,20 @@ pub trait Backend {
     }
 }
 
-/// The socket tabula-wlproxy connects to for other programs
-/// (`TABULA_WAYLAND_PROXY_FD`). Each connection opens with a 16-byte
+/// The socket olo-wlproxy connects to for other programs
+/// (`OLO_WAYLAND_PROXY_FD`). Each connection opens with a 16-byte
 /// hello, "TBPX", version, the program's pid, uid; we answer "TBPX",
 /// version, our pid, 0 (so the proxy knows a new app_server from the old
 /// one) and the Wayland stream follows.
 fn proxied_wayland_socket<BackendData: Backend + 'static>(handle: &LoopHandle<'static, AnvilState<BackendData>>) {
     use std::io::{Read, Write};
     use std::os::fd::FromRawFd;
-    let Some(fd) = std::env::var("TABULA_WAYLAND_PROXY_FD").ok().and_then(|f| f.parse::<i32>().ok()) else { return };
-    // SAFETY: tabula-session passes this fd to us alone.
+    let Some(fd) = std::env::var("OLO_WAYLAND_PROXY_FD").ok().and_then(|f| f.parse::<i32>().ok()) else { return };
+    // SAFETY: olo-session passes this fd to us alone.
     let listener = unsafe { std::os::unix::net::UnixListener::from_raw_fd(fd) };
     crate::set_cloexec(fd);
     // SAFETY: called during single-threaded start-up.
-    unsafe { std::env::remove_var("TABULA_WAYLAND_PROXY_FD") };
+    unsafe { std::env::remove_var("OLO_WAYLAND_PROXY_FD") };
     listener.set_nonblocking(true).expect("nonblocking socket");
     let accept = handle.insert_source(Generic::new(listener, Interest::READ, Mode::Level), |_, listener, data| {
         loop {
@@ -1484,21 +1484,21 @@ fn proxied_wayland_socket<BackendData: Backend + 'static>(handle: &LoopHandle<'s
         Ok(PostAction::Continue)
     });
     match accept {
-        Ok(_) => info!("Listening for tabula-wlproxy"),
-        Err(e) => warn!(?e, "could not listen for tabula-wlproxy"),
+        Ok(_) => info!("Listening for olo-wlproxy"),
+        Err(e) => warn!(?e, "could not listen for olo-wlproxy"),
     }
 }
 
-/// The Wayland listening socket handed down by tabula-session
-/// (`TABULA_WAYLAND_FD`, with its name in `WAYLAND_DISPLAY`).
+/// The Wayland listening socket handed down by olo-session
+/// (`OLO_WAYLAND_FD`, with its name in `WAYLAND_DISPLAY`).
 fn inherited_wayland_socket() -> Option<(String, std::os::unix::net::UnixListener)> {
     use std::os::fd::FromRawFd;
-    let fd: i32 = std::env::var("TABULA_WAYLAND_FD").ok()?.parse().ok()?;
+    let fd: i32 = std::env::var("OLO_WAYLAND_FD").ok()?.parse().ok()?;
     let name = std::env::var("WAYLAND_DISPLAY").ok()?;
-    // SAFETY: tabula-session passes this fd to us alone.
+    // SAFETY: olo-session passes this fd to us alone.
     let listener = unsafe { std::os::unix::net::UnixListener::from_raw_fd(fd) };
     crate::set_cloexec(fd);
     // SAFETY: called during single-threaded start-up.
-    unsafe { std::env::remove_var("TABULA_WAYLAND_FD") };
+    unsafe { std::env::remove_var("OLO_WAYLAND_FD") };
     Some((name, listener))
 }

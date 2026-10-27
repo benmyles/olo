@@ -1,17 +1,17 @@
 [package]
-name = "tabula-drive-setup"
+name = "olo-drive-setup"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "tabula-drive-setup"
+name = "olo-drive-setup"
 path = "src/main.rs"
 
 [dependencies]
-tabula-kit.workspace = true
-tabula-theme.workspace = true
-tabula-system.workspace = true
+olo-kit.workspace = true
+olo-theme.workspace = true
+olo-system.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

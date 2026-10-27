@@ -2,7 +2,7 @@
 //! colour, and the whole text in a box at the bottom. (R5's took fortune's
 //! output; ours carries its own sayings, or your text.)
 
-use tabula_kit::{
+use olo_kit::{
     egui::{Align2, Color32, FontId, Rect, pos2, vec2},
     style,
 };

@@ -17,8 +17,8 @@ pub const NAME: &str = "org.freedesktop.Notifications";
 pub const PATH: &str = "/org/freedesktop/Notifications";
 /// Ours, beside the standard one: the history and Do Not Disturb, for the
 /// command line, Deskbar and agents.
-pub const CONTROL: &str = "org.tabula.Notifications1";
-pub const CONTROL_PATH: &str = "/org/tabula/Notifications";
+pub const CONTROL: &str = "com.olodesktop.Notifications1";
+pub const CONTROL_PATH: &str = "/com/olodesktop/Notifications";
 
 /// How long a notification stays when its sender leaves it to us.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(6);
@@ -95,7 +95,7 @@ pub enum In {
     Control(Control),
 }
 
-/// Asked over `org.tabula.Notifications1` (the CLI, Deskbar, agents).
+/// Asked over `com.olodesktop.Notifications1` (the CLI, Deskbar, agents).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Control {
     /// Run action `key` ("default": what a click does).
@@ -134,7 +134,7 @@ pub const CAPABILITIES: &[&str] = &[
     "persistence",
     "sound",
     "x-canonical-private-synchronous",
-    "x-tabula-progress",
+    "x-olo-progress",
 ];
 
 #[zbus::interface(name = "org.freedesktop.Notifications")]
@@ -181,11 +181,11 @@ impl Service {
     }
 
     fn get_server_information(&self) -> (&'static str, &'static str, &'static str, &'static str) {
-        ("Tabula", "Tabula", env!("CARGO_PKG_VERSION"), "1.2")
+        ("Olo", "Olo", env!("CARGO_PKG_VERSION"), "1.2")
     }
 }
 
-/// `org.tabula.Notifications1`: what is on screen and in the history, and
+/// `com.olodesktop.Notifications1`: what is on screen and in the history, and
 /// acting on it.
 struct Controls {
     /// `List`'s answer, kept current by the UI.
@@ -193,7 +193,7 @@ struct Controls {
     to_ui: std::sync::Arc<dyn Fn(In) + Send + Sync>,
 }
 
-#[zbus::interface(name = "org.tabula.Notifications1")]
+#[zbus::interface(name = "com.olodesktop.Notifications1")]
 impl Controls {
     /// JSON: `{"quiet": bool, "unread": n, "notifications": [...]}`, oldest
     /// first; each with its id, app, summary, text, actions, kind, time,
@@ -250,7 +250,7 @@ pub fn note(
         .flatten()
         .map(|s| s.strip_prefix("file://").map(str::to_owned).unwrap_or(s))
         .find(|s| !s.is_empty())
-        .or_else(|| desktop_entry.as_deref().and_then(tabula_xdg::icon_for_app));
+        .or_else(|| desktop_entry.as_deref().and_then(olo_xdg::icon_for_app));
     let mut actions: Vec<(String, String)> = actions.chunks(2).filter_map(|p| Some((p.first()?.clone(), p.get(1)?.clone()))).collect();
     // KDE's inline reply: an action named so, answered with text.
     let reply = actions.iter().position(|(k, _)| k == "inline-reply").map(|i| {
@@ -266,7 +266,7 @@ pub fn note(
         .and_then(|v| i32::try_from(v).ok().or_else(|| u32::try_from(v).ok().map(|u| u.min(100) as i32)))
         .map(|v| v.clamp(0, 100) as f32 / 100.0);
     let category = text("category");
-    let kind = match text("x-tabula-type").as_deref() {
+    let kind = match text("x-olo-type").as_deref() {
         Some("important") => Kind::Important,
         Some("error") => Kind::Error,
         Some("progress") => Kind::Progress,

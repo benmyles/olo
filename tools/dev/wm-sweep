@@ -4,13 +4,13 @@ and over, on whatever windows are open, and fail as soon as app_server
 stops answering (a hang freezes the whole desktop: zoom then unzoom once
 deadlocked it).
 
-  wm-sweep SOCKET [ROUNDS]     SOCKET: the session's TABULA_SOCKET
+  wm-sweep SOCKET [ROUNDS]     SOCKET: the session's OLO_SOCKET
 
 Use a headless session with several screens and a few apps open, e.g.
 
   tsession start sweep 5120x2880,1920x1080,3456x2160 --session
-  tsession run sweep tabula-terminal; tsession run sweep tabula-styled-edit
-  tools/dev/wm-sweep /tmp/tabula-dev/sweep/…sock
+  tsession run sweep olo-terminal; tsession run sweep olo-styled-edit
+  tools/dev/wm-sweep /tmp/olo-dev/sweep/…sock
 
 It rearranges the screens too (as in Ben's layout), so windows get moved
 between them while zoomed, minimized and on other workspaces.

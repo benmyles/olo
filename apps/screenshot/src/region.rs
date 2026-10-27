@@ -7,7 +7,7 @@
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Keyboard, Layer, LayerOptions, WindowId, WindowKind, WindowOptions,
     egui::{self, Color32, ColorImage, Pos2, Rect, Stroke, TextureHandle, TextureOptions, pos2, vec2},
     style,
@@ -15,7 +15,7 @@ use tabula_kit::{
 
 use crate::capture::{self, Settings, Shot};
 
-const APP_ID: &str = "tabula.screenshot";
+const APP_ID: &str = "olo.screenshot";
 
 /// egui's largest texture side; pictures are drawn in tiles no bigger.
 const TILE: u32 = 2048;
@@ -177,7 +177,7 @@ impl App for Picker {
                     return;
                 }
                 if self.frozen.is_empty() {
-                    eprintln!("tabula-screenshot: couldn't capture the screen");
+                    eprintln!("olo-screenshot: couldn't capture the screen");
                     cx.quit();
                     return;
                 }
@@ -209,7 +209,7 @@ impl App for Picker {
 /// if cancelled.
 pub fn run() -> Result<Option<PathBuf>, String> {
     let cut: Arc<std::sync::Mutex<Option<Cut>>> = Arc::default();
-    tabula_kit::run(APP_ID, |cx| {
+    olo_kit::run(APP_ID, |cx| {
         let mut outputs: Vec<Option<String>> = cx.outputs().iter().cloned().map(Some).collect();
         if outputs.is_empty() {
             outputs.push(None);
@@ -218,7 +218,7 @@ pub fn run() -> Result<Option<PathBuf>, String> {
         for output in outputs {
             let proxy = cx.proxy();
             std::thread::spawn(move || {
-                let image = capture::take_output(output.clone()).map_err(|e| eprintln!("tabula-screenshot: {e}")).ok();
+                let image = capture::take_output(output.clone()).map_err(|e| eprintln!("olo-screenshot: {e}")).ok();
                 proxy.send(Msg::Frozen(output, image));
             });
         }

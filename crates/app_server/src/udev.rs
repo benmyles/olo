@@ -142,7 +142,7 @@ pub struct UdevData {
     /// Touchpads and mice, configured from Preferences ▸ Touchpad.
     pointers: Vec<smithay::reexports::input::Device>,
     /// The settings last applied, for devices plugged in later.
-    input_settings: Option<tabula_protocol::Settings>,
+    input_settings: Option<olo_protocol::Settings>,
     /// Night-light gamma gains, for screens connected later.
     white_point: [f64; 3],
     /// The screens are off for idleness: nothing is rendered (a frame
@@ -253,7 +253,7 @@ impl Backend for UdevData {
         }
     }
 
-    fn apply_input_settings(&mut self, settings: &tabula_protocol::Settings) {
+    fn apply_input_settings(&mut self, settings: &olo_protocol::Settings) {
         for device in self.pointers.iter_mut() {
             configure_pointer(device, settings);
         }
@@ -385,7 +385,7 @@ struct Ctm {
 /// typing palm rejection, click method and speed for touchpads; speed for
 /// mice; the rest as a Mac trackpad behaves. Options a device lacks are
 /// skipped. (Momentum scrolling is app_server's own: `momentum.rs`.)
-fn configure_pointer(device: &mut smithay::reexports::input::Device, settings: &tabula_protocol::Settings) {
+fn configure_pointer(device: &mut smithay::reexports::input::Device, settings: &olo_protocol::Settings) {
     use smithay::reexports::input::{ClickMethod, DragLockState, ScrollMethod, TapButtonMap};
     let t = &settings.touchpad;
     let touchpad = device.config_tap_finger_count() > 0;
@@ -1218,7 +1218,7 @@ impl AnvilState<UdevData> {
         let display_info = display_info::for_connector(drm_device, connector.handle());
         // The kernel's copy of the EDID when the DRM route gives nothing
         // (Apple Silicon's DCP).
-        let edid = tabula_system::edid::for_connector(&output_name);
+        let edid = olo_system::edid::for_connector(&output_name);
 
         let make = display_info
             .as_ref()
@@ -1255,7 +1255,7 @@ impl AnvilState<UdevData> {
                 .position(|mode| mode.mode_type().contains(ModeTypeFlags::PREFERRED))
                 .unwrap_or(0);
             // The mode chosen in Preferences ▸ Display, while the display offers it.
-            let key = tabula_protocol::display_key(&output_name, &make, &model, &serial_number);
+            let key = olo_protocol::display_key(&output_name, &make, &model, &serial_number);
             let saved = self.settings.display.config(&key, &output_name).and_then(|c| c.mode.clone());
             let mode_id = saved
                 .and_then(|m| {

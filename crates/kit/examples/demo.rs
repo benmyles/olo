@@ -1,4 +1,4 @@
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Menu, WindowId, WindowOptions, egui,
     widgets::{
         BBox, Button, CheckBox, Column, ColumnListView, ListState, MenuField, RadioButton, Slider, StatusBar,
@@ -37,7 +37,7 @@ const ROWS: &[(&str, &str, &str)] = &[
 
 impl App for Demo {
     fn ui(&mut self, cx: &mut Cx, _w: WindowId, ui: &mut egui::Ui) {
-        tabula_kit::widgets::window_content(ui, |ui| {
+        olo_kit::widgets::window_content(ui, |ui| {
             TabView::new(&mut self.tab, &["Controls", "Lists", "Text"]).show(ui, |ui, tab| match tab {
                 0 => {
                     ui.add(TextControl::new(&mut self.name).label("Name:").divider(60.0));
@@ -86,7 +86,7 @@ impl App for Demo {
                     }
                     let menu_id = egui::Id::unique("proc-menu");
                     if let Some((_, pos)) = r.context {
-                        tabula_kit::widgets::popup_menu_at(
+                        olo_kit::widgets::popup_menu_at(
                             ui.ctx(),
                             menu_id,
                             pos,
@@ -97,7 +97,7 @@ impl App for Demo {
                                 .submenu(Menu::new("Priority").item("Low", "low", None).item("Normal", "normal", None).checked(true)),
                         );
                     }
-                    if let Some(cmd) = tabula_kit::widgets::popup_result(ui.ctx(), menu_id) {
+                    if let Some(cmd) = olo_kit::widgets::popup_result(ui.ctx(), menu_id) {
                         eprintln!("context: {cmd}");
                     }
                 }
@@ -144,7 +144,7 @@ impl App for Demo {
 }
 
 fn main() {
-    tabula_kit::run("tabula.kit-demo", |cx| {
+    olo_kit::run("olo.kit-demo", |cx| {
         cx.open_window(WindowOptions::new("Kit Demo", 460, 420));
         Demo {
             name: "Hello, BeOS".into(),

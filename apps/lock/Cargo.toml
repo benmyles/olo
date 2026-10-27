@@ -1,14 +1,14 @@
 [package]
-name = "tabula-lock"
+name = "olo-lock"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "tabula-lock"
+name = "olo-lock"
 path = "src/main.rs"
 
 [dependencies]
-tabula-kit.workspace = true
-tabula-system.workspace = true
+olo-kit.workspace = true
+olo-system.workspace = true
 tracing.workspace = true

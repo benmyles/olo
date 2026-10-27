@@ -16,7 +16,7 @@ const DEST: &str = "org.bluez";
 const ADAPTER: &str = "org.bluez.Adapter1";
 const DEVICE: &str = "org.bluez.Device1";
 const BATTERY: &str = "org.bluez.Battery1";
-const AGENT_PATH: &str = "/org/tabula/bluez/agent";
+const AGENT_PATH: &str = "/com/olodesktop/bluez/agent";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Adapter {

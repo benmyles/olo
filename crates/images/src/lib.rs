@@ -420,12 +420,12 @@ mod tests {
         assert_eq!(heif_brand(b"\x89PNG\r\n\x1a\n\0\0\0\0"), None);
     }
 
-    /// `TABULA_SAMPLES=dir cargo test -p tabula-images samples -- --ignored`
+    /// `OLO_SAMPLES=dir cargo test -p olo-images samples -- --ignored`
     /// with example.avif and example.heic (libheif's examples) in `dir`.
     #[test]
     #[ignore]
     fn samples() {
-        let dir = std::path::PathBuf::from(std::env::var("TABULA_SAMPLES").expect("TABULA_SAMPLES"));
+        let dir = std::path::PathBuf::from(std::env::var("OLO_SAMPLES").expect("OLO_SAMPLES"));
         for (name, format) in [("example.avif", "AVIF"), ("example.heic", "HEIC")] {
             let (img, f) = open(&dir.join(name)).unwrap_or_else(|e| panic!("{name}: {e}"));
             assert_eq!(f, format);

@@ -3,8 +3,8 @@
 // gives, and reports a login sent with a form (to offer saving it).
 
 (() => {
-  if (window.__tabulaPasswords) return;
-  window.__tabulaPasswords = true;
+  if (window.__oloPasswords) return;
+  window.__oloPasswords = true;
 
   const TEXT = "input:not([type]),input[type=text],input[type=email],input[type=tel]";
 

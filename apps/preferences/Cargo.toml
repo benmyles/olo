@@ -1,19 +1,19 @@
 [package]
-name = "tabula-preferences"
+name = "olo-preferences"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "tabula-preferences"
+name = "olo-preferences"
 path = "src/main.rs"
 
 [dependencies]
-tabula-kit.workspace = true
-tabula-protocol.workspace = true
-tabula-screensavers.workspace = true
-tabula-system.workspace = true
-tabula-ai.workspace = true
+olo-kit.workspace = true
+olo-protocol.workspace = true
+olo-screensavers.workspace = true
+olo-system.workspace = true
+olo-ai.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

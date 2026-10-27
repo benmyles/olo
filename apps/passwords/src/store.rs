@@ -15,8 +15,8 @@ use std::{
 
 use chrono::{DateTime, Utc};
 use onepassword::{AutofillBehavior, Error, Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, ItemOverview, VaultOverview, Website};
-use tabula_keychain::{Incoming, Request, Response};
-use tabula_kit::Proxy;
+use olo_keychain::{Incoming, Request, Response};
+use olo_kit::Proxy;
 
 use crate::{
     sync::{self, Plan, Report, Row},
@@ -107,7 +107,7 @@ pub struct Store {
 
 /// The 1Password app's socket, or a stand-in's (`onepassword-fake`) for tests.
 pub fn socket() -> String {
-    std::env::var("TABULA_1PASSWORD_SOCKET").unwrap_or_else(|_| onepassword::desktop::SOCKET.into())
+    std::env::var("OLO_1PASSWORD_SOCKET").unwrap_or_else(|_| onepassword::desktop::SOCKET.into())
 }
 
 /// What to tell the person.
@@ -494,12 +494,12 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
             }
         }
         Request::Logins { url } => {
-            let mut logins: Vec<tabula_keychain::Login> = candidates
+            let mut logins: Vec<olo_keychain::Login> = candidates
                 .iter()
                 .filter_map(|(vault, id)| {
                     c.get(vault, id).map_err(|e| tracing::warn!("login {id} for a page: couldn't read it: {e}")).ok()
                 })
-                .map(|item| tabula_keychain::Login {
+                .map(|item| olo_keychain::Login {
                     vault: item.vault_id.clone(),
                     id: item.id.clone(),
                     username: login_fields(&item).0.map(|f| f.value.clone()).unwrap_or_default(),
@@ -513,7 +513,7 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
                 .iter()
                 .filter_map(|(vault, id)| c.get(vault, id).ok())
                 .map(|item| {
-                    let best = item.websites.iter().filter(|w| fits(w, url)).filter_map(|w| tabula_keychain::closeness(&w.url, url)).min();
+                    let best = item.websites.iter().filter(|w| fits(w, url)).filter_map(|w| olo_keychain::closeness(&w.url, url)).min();
                     (item.id.clone(), best.unwrap_or(u32::MAX))
                 })
                 .collect();
@@ -533,16 +533,16 @@ pub fn fits(w: &Website, url: &str) -> bool {
         AutofillBehavior::Never => false,
         AutofillBehavior::ExactDomain => {
             let parts = |u: &str| url::Url::parse(u).ok().map(|u| (u.host_str().map(str::to_ascii_lowercase), u.port_or_known_default()));
-            tabula_keychain::matches(&w.url, url) && parts(&w.url).is_some() && parts(&w.url) == parts(url)
+            olo_keychain::matches(&w.url, url) && parts(&w.url).is_some() && parts(&w.url) == parts(url)
         }
-        _ => tabula_keychain::matches(&w.url, url),
+        _ => olo_keychain::matches(&w.url, url),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use onepassword::{AutofillBehavior, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, Website};
-    use tabula_keychain::{Request, Response};
+    use olo_keychain::{Request, Response};
 
     use crate::vault::Vault;
 
@@ -550,7 +550,7 @@ mod tests {
     /// domains, then the site's other hosts.
     #[test]
     fn logins_nearest_first() {
-        let dir = std::env::temp_dir().join(format!("tabula-store-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-store-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let mut v = Vault::open_at(dir.join("passwords.vault"), Some(&dir.join("key"))).unwrap();

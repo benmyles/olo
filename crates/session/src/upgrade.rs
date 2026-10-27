@@ -1,10 +1,10 @@
 //! Upgrades from a build tree. An installed session (tools/install-session.sh)
-//! knows the tree it came from (`<prefix>/share/tabula/build-dir`, or
-//! `TABULA_UPGRADE_FROM`) and watches it: once a build has finished and
+//! knows the tree it came from (`<prefix>/share/olo/build-dir`, or
+//! `OLO_UPGRADE_FROM`) and watches it: once a build has finished and
 //! left newer programs there, it lists them in a file Deskbar reads
-//! (`$XDG_RUNTIME_DIR/tabula-upgrade-<display>.json`), which shows a tray
+//! (`$XDG_RUNTIME_DIR/olo-upgrade-<display>.json`), which shows a tray
 //! icon. Choosing to upgrade there signals us (SIGUSR2, or
-//! `tabula-session upgrade`): we install the new programs beside ours and
+//! `olo-session upgrade`): we install the new programs beside ours and
 //! reload in place.
 
 use std::{
@@ -28,7 +28,7 @@ pub struct Available {
 }
 
 pub fn state_path(display: &str) -> PathBuf {
-    crate::runtime_dir().join(format!("tabula-upgrade-{display}.json"))
+    crate::runtime_dir().join(format!("olo-upgrade-{display}.json"))
 }
 
 pub struct Watcher {
@@ -43,8 +43,8 @@ impl Watcher {
     /// Watch for programs newer than ours (in `to`), if we know where
     /// they're built.
     pub fn new(to: &Path, display: &str) -> Option<Watcher> {
-        let from = std::env::var_os("TABULA_UPGRADE_FROM").map(PathBuf::from).or_else(|| {
-            let file = to.parent()?.join("share/tabula/build-dir");
+        let from = std::env::var_os("OLO_UPGRADE_FROM").map(PathBuf::from).or_else(|| {
+            let file = to.parent()?.join("share/olo/build-dir");
             Some(PathBuf::from(std::fs::read_to_string(file).ok()?.trim()))
         })?;
         // A development session runs from the build tree itself.
@@ -101,12 +101,17 @@ impl Watcher {
         crate::log(format!("installed {} of {} upgraded programs", done.len(), programs.len()));
         // New and redrawn icons come with them (a new panel's, say).
         if let Some(prefix) = self.to.parent() {
-            match sync_icons(&self.from, &prefix.join("share/tabula/icons")) {
+            match sync_icons(&self.from, &prefix.join("share/olo/icons")) {
                 Ok(0) => {}
                 Ok(n) => crate::log(format!("installed {n} new or changed icons")),
                 Err(e) => crate::log(format!("could not install icons: {e}")),
             }
-            match sync_wallpapers(&self.from, &prefix.join("share/tabula/wallpapers")) {
+            match sync_brand(&self.from, &prefix.join("share/olo/brand")) {
+                Ok(0) => {}
+                Ok(n) => crate::log(format!("installed {n} new or changed brand pictures")),
+                Err(e) => crate::log(format!("could not install the brand pictures: {e}")),
+            }
+            match sync_wallpapers(&self.from, &prefix.join("share/olo/wallpapers")) {
                 Ok(0) => {}
                 Ok(n) => crate::log(format!("installed {n} new or changed wallpapers")),
                 Err(e) => crate::log(format!("could not install wallpapers: {e}")),
@@ -149,13 +154,42 @@ impl Watcher {
 fn replaced(exe: &Path, dir: &Path) -> bool {
     let Some(name) = exe.file_name().and_then(|n| n.to_str()) else { return false };
     let Some(name) = name.strip_suffix(" (deleted)") else { return false };
-    name.starts_with("tabula-") && exe.parent().is_some_and(|p| same_dir(p, dir))
+    // A program from before the rename is still running as `tabula-…`.
+    (name.starts_with("olo-") || name.starts_with("tabula-")) && exe.parent().is_some_and(|p| same_dir(p, dir))
 }
 
 fn same_dir(a: &Path, b: &Path) -> bool {
     match (a.canonicalize(), b.canonicalize()) {
         (Ok(a), Ok(b)) => a == b,
         _ => a == b,
+    }
+}
+
+/// Where `dir` has an old program (`tabula-X`) and its new one
+/// (`olo-X`), make the old name a link to the new (so whatever runs it by
+/// the old name, a login screen's entry or a program re-executing itself,
+/// gets the new program). The links replace the files in one step; what
+/// was running from them carries on until it re-executes.
+pub fn link_old_names(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for e in entries.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        let Some(old) = olo_xdg::legacy::old_program(&name) else { continue };
+        if name.contains('.') || !e.path().is_file() {
+            continue;
+        }
+        let old_path = dir.join(&old);
+        let Ok(m) = std::fs::symlink_metadata(&old_path) else { continue };
+        if m.file_type().is_symlink() && std::fs::read_link(&old_path).is_ok_and(|t| t == Path::new(&name)) {
+            continue;
+        }
+        let tmp = dir.join(format!(".{old}.link"));
+        let _ = std::fs::remove_file(&tmp);
+        let made = std::os::unix::fs::symlink(&name, &tmp).and_then(|()| std::fs::rename(&tmp, &old_path));
+        match made {
+            Ok(()) => crate::log(format!("{old} is now a link to {name}")),
+            Err(e) => crate::log(format!("could not link {old} to {name}: {e}")),
+        }
     }
 }
 
@@ -183,7 +217,7 @@ fn newer(from: &Path, to: &Path) -> Option<Vec<String>> {
     let mut out = Vec::new();
     for e in std::fs::read_dir(from).ok()?.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
-        if !name.starts_with("tabula-") || name.contains('.') {
+        if !name.starts_with("olo-") || name.contains('.') {
             continue;
         }
         let Ok(m) = e.metadata() else { continue };
@@ -236,6 +270,27 @@ fn sync_icons(from: &Path, to: &Path) -> std::io::Result<usize> {
                 std::fs::rename(&tmp, &b)?;
                 n += 1;
             }
+        }
+    }
+    Ok(n)
+}
+
+/// Copy the build tree's brand pictures (`data/brand`: the wordmark) into
+/// `to` where new or newer; how many.
+fn sync_brand(from: &Path, to: &Path) -> std::io::Result<usize> {
+    let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/brand")).find(|d| d.is_dir()) else {
+        return Ok(0);
+    };
+    let m = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let mut n = 0;
+    std::fs::create_dir_all(to)?;
+    for e in std::fs::read_dir(&src)?.flatten() {
+        let (a, b) = (e.path(), to.join(e.file_name()));
+        if a.extension().is_some_and(|x| x == "png") && m(&b).is_none_or(|b| m(&a).is_some_and(|a| a > b)) {
+            let tmp = to.join(format!(".{}.new", e.file_name().to_string_lossy()));
+            std::fs::copy(&a, &tmp)?;
+            std::fs::rename(&tmp, &b)?;
+            n += 1;
         }
     }
     Ok(n)
@@ -303,7 +358,7 @@ mod tests {
 
     #[test]
     fn icons_come_along() {
-        let base = std::env::temp_dir().join(format!("tabula-icons-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("olo-icons-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let build = base.join("repo/target/release");
         std::fs::create_dir_all(&build).unwrap();
@@ -312,7 +367,7 @@ mod tests {
         std::fs::write(base.join("repo/data/icons/manifest.txt"), "lock|a padlock\n").unwrap();
         std::fs::write(base.join("repo/data/icons/16/lock.png"), "png").unwrap();
         std::fs::write(base.join("repo/data/icons/src/lock.png"), "raw").unwrap();
-        let to = base.join("prefix/share/tabula/icons");
+        let to = base.join("prefix/share/olo/icons");
         assert_eq!(sync_icons(&build, &to).unwrap(), 2);
         assert!(to.join("16/lock.png").is_file() && !to.join("src").exists());
         // Nothing new: nothing copied.
@@ -322,27 +377,49 @@ mod tests {
 
     #[test]
     fn finds_and_installs_newer_programs() {
-        let root = std::env::temp_dir().join(format!("tabula-upgrade-test-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("olo-upgrade-test-{}", std::process::id()));
         let (from, to) = (root.join("build"), root.join("bin"));
         std::fs::create_dir_all(&from).unwrap();
         std::fs::create_dir_all(&to).unwrap();
-        program(&from, "tabula-a", 100);
-        program(&from, "tabula-b", 100);
-        program(&from, "tabula-b.d", 100);
-        std::fs::write(from.join("tabula-c"), "not a program").unwrap();
-        program(&to, "tabula-a", 50);
-        program(&to, "tabula-b", 200);
-        assert_eq!(newer(&from, &to), Some(vec!["tabula-b".to_string()]));
-        install(&from.join("tabula-b"), &to, "tabula-b").unwrap();
-        assert_eq!(std::fs::read_to_string(to.join("tabula-b")).unwrap(), "tabula-b");
+        program(&from, "olo-a", 100);
+        program(&from, "olo-b", 100);
+        program(&from, "olo-b.d", 100);
+        std::fs::write(from.join("olo-c"), "not a program").unwrap();
+        program(&to, "olo-a", 50);
+        program(&to, "olo-b", 200);
+        assert_eq!(newer(&from, &to), Some(vec!["olo-b".to_string()]));
+        install(&from.join("olo-b"), &to, "olo-b").unwrap();
+        assert_eq!(std::fs::read_to_string(to.join("olo-b")).unwrap(), "olo-b");
         assert_eq!(newer(&from, &to), Some(vec![]));
         // Fresh from the linker: wait.
-        program(&from, "tabula-a", 0);
+        program(&from, "olo-a", 0);
         assert_eq!(newer(&from, &to), None);
-        assert!(replaced(&to.join("tabula-b (deleted)"), &to));
-        assert!(!replaced(&to.join("tabula-b"), &to));
-        assert!(!replaced(&from.join("tabula-b (deleted)"), &to));
+        assert!(replaced(&to.join("olo-b (deleted)"), &to));
+        assert!(!replaced(&to.join("olo-b"), &to));
+        assert!(!replaced(&from.join("olo-b (deleted)"), &to));
         assert!(!replaced(&to.join("ptyxis (deleted)"), &to));
+        assert!(replaced(&to.join("tabula-b (deleted)"), &to));
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn old_programs_become_links_to_new_ones() {
+        let dir = std::env::temp_dir().join(format!("olo-links-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        program(&dir, "olo-deskbar", 10);
+        program(&dir, "tabula-deskbar", 100);
+        program(&dir, "olo-tracker", 10);
+        program(&dir, "tabula-gone", 100);
+        link_old_names(&dir);
+        assert_eq!(std::fs::read_link(dir.join("tabula-deskbar")).unwrap(), Path::new("olo-deskbar"));
+        assert_eq!(std::fs::read_to_string(dir.join("tabula-deskbar")).unwrap(), "olo-deskbar");
+        // Only old names that were there; and an old program with no new
+        // one stays.
+        assert!(std::fs::symlink_metadata(dir.join("tabula-tracker")).is_err());
+        assert!(std::fs::symlink_metadata(dir.join("tabula-gone")).unwrap().is_file());
+        link_old_names(&dir);
+        assert_eq!(std::fs::read_link(dir.join("tabula-deskbar")).unwrap(), Path::new("olo-deskbar"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

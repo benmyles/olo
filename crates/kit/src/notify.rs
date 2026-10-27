@@ -1,5 +1,5 @@
-//! Desktop notifications for Tabula's own apps, through the session's
-//! notification service (org.freedesktop.Notifications; Tabula's is
+//! Desktop notifications for Olo's own apps, through the session's
+//! notification service (org.freedesktop.Notifications; Olo's is
 //! apps/notifications). The bus is talked to on a thread of its own, so a
 //! slow or missing service never holds up a frame. A [`Notifier`] hands
 //! out [`NoteId`]s; showing again with the same id updates that
@@ -8,7 +8,7 @@
 //! as a [`NoteEvent`].
 //!
 //! ```ignore
-//! let notes = Notifier::new(cx.proxy(), "Tracker", "tabula-tracker");
+//! let notes = Notifier::new(cx.proxy(), "Tracker", "olo-tracker");
 //! let id = notes.show(None, Note::progress("Copying 3 items", 0.4));
 //! notes.show(Some(id), Note::new("Copied 3 items").action("show", "Show"));
 //! // later, in App::message: NoteEvent::Action { id, key: "show", .. }
@@ -126,7 +126,7 @@ pub struct Notifier {
 
 impl Notifier {
     /// `app` is the name shown, `desktop_entry` the app's id
-    /// (`tabula-tracker`), for its icon and for bringing it forward.
+    /// (`olo-tracker`), for its icon and for bringing it forward.
     pub fn new(proxy: Proxy, app: &str, desktop_entry: &str) -> Notifier {
         Notifier::with_events(app, desktop_entry, move |e| proxy.send(e))
     }
@@ -178,7 +178,7 @@ fn args(note: &Note, entry: &str) -> (String, Vec<String>, HashMap<&'static str,
         NoteKind::Error => ("error", 2),
         NoteKind::Progress => ("progress", 1),
     };
-    hints.insert("x-tabula-type", Value::from(kind));
+    hints.insert("x-olo-type", Value::from(kind));
     hints.insert("urgency", Value::from(urgency));
     if let Some(p) = note.progress {
         hints.insert("value", Value::from((p.clamp(0.0, 1.0) * 100.0).round() as i32));
@@ -280,13 +280,13 @@ mod tests {
     #[test]
     fn notify_arguments() {
         let n = Note::progress("Copying", 0.425);
-        let (_, actions, hints, timeout) = args(&n, "tabula-tracker");
+        let (_, actions, hints, timeout) = args(&n, "olo-tracker");
         assert!(actions.is_empty() && timeout == -1);
         assert_eq!(hints["value"], zbus::zvariant::Value::from(43i32));
-        assert_eq!(hints["x-tabula-type"], zbus::zvariant::Value::from("progress"));
+        assert_eq!(hints["x-olo-type"], zbus::zvariant::Value::from("progress"));
         assert_eq!(hints["transient"], zbus::zvariant::Value::from(true));
         let e = Note::new("Couldn't copy").body("a < b").kind(NoteKind::Error).action("default", "Show");
-        let (body, actions, hints, timeout) = args(&e, "tabula-tracker");
+        let (body, actions, hints, timeout) = args(&e, "olo-tracker");
         assert_eq!(body, "a &lt; b");
         assert_eq!(actions, vec!["default".to_owned(), "Show".to_owned()]);
         assert_eq!((hints["urgency"].clone(), timeout), (zbus::zvariant::Value::from(2u8), 0));

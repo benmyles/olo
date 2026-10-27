@@ -25,7 +25,7 @@ use smithay::{
     },
     utils::{Buffer, Logical, Physical, Point, Rectangle, Scale, Size, Transform},
 };
-use tabula_theme::{Palette, Rgba, deco::*, fonts, mix};
+use olo_theme::{Palette, Rgba, deco::*, fonts, mix};
 use tiny_skia::{
     Color, GradientStop, LinearGradient, Paint, Pixmap, Rect, Shader, SpreadMode,
     Transform as SkTransform,

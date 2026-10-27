@@ -4,13 +4,13 @@
 //! can tell ⌘ from Ctrl) and they replace the old, taken from any other
 //! shortcut that had them.
 
-use tabula_kit::{
+use olo_kit::{
     egui::{Align2, Rect, Sense, Ui, UiBuilder, pos2, vec2},
     metrics as m,
     style::{self, c},
     widgets::{BBox, Button, ScrollView, Slider, StringView},
 };
-use tabula_protocol::{
+use olo_protocol::{
     Chord, Settings,
     shortcuts::{self, FIXED, GROUPS, SHORTCUTS, ShortcutInfo},
 };
@@ -144,7 +144,7 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, server: &Server, st: &mut State) {
         };
         ui.horizontal(|ui| {
             ui.add(StringView::new(&text).dim(st.note.is_none() || st.recording.is_some()));
-            ui.with_layout(tabula_kit::egui::Layout::right_to_left(tabula_kit::egui::Align::Center), |ui| {
+            ui.with_layout(olo_kit::egui::Layout::right_to_left(olo_kit::egui::Align::Center), |ui| {
                 if ui.add_enabled(!s.shortcuts.is_empty(), Button::new("Default Keys")).clicked() {
                     s.shortcuts.clear();
                     st.note = None;

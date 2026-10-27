@@ -1,6 +1,6 @@
-//! The pseudo-terminal a shell runs in (tabula-termd's). Unlike
+//! The pseudo-terminal a shell runs in (olo-termd's). Unlike
 //! alacritty's own `tty::Pty`, ours can also adopt a PTY and shell this
-//! process inherited: when tabula-termd upgrades itself in place the
+//! process inherited: when olo-termd upgrades itself in place the
 //! shells keep running and the new version picks them up.
 
 use std::{
@@ -99,10 +99,10 @@ impl Pty {
 
         let mut env: Vec<(String, String)> = env
             .iter()
-            .filter(|(k, _)| !matches!(k.as_str(), "XDG_ACTIVATION_TOKEN" | "DESKTOP_STARTUP_ID" | "TABULA_RESTORE"))
+            .filter(|(k, _)| !matches!(k.as_str(), "XDG_ACTIVATION_TOKEN" | "DESKTOP_STARTUP_ID" | "OLO_RESTORE"))
             .cloned()
             .collect();
-        for (k, v) in [("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", "Tabula-Terminal")] {
+        for (k, v) in [("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", "Olo-Terminal")] {
             env.retain(|(ek, _)| ek != k);
             env.push((k.into(), v.into()));
         }

@@ -2,13 +2,13 @@
 //! stretch of free space to scale (but never too thin to click), coloured
 //! by what is on it, as in Haiku's DriveSetup.
 
-use tabula_kit::{
+use olo_kit::{
     egui::{self, Align, Color32, Id, Pos2, Rect, Sense, Ui, pos2, vec2},
     files::format_size,
     style::{self, c},
 };
-use tabula_system::disks::{Disk, Segment, Volume};
-use tabula_theme::{Palette, ThemeMode, mix};
+use olo_system::disks::{Disk, Segment, Volume};
+use olo_theme::{Palette, ThemeMode, mix};
 
 use crate::Item;
 

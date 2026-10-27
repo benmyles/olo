@@ -1,16 +1,28 @@
 [package]
-name = "tabula-session"
-description = "Starts and supervises a Tabula session; restarts it in place for upgrades"
+name = "olo-session"
+description = "Starts and supervises an Olo session; restarts it in place for upgrades"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "tabula-session"
+name = "olo-session"
 path = "src/main.rs"
+test = false
+
+# The same program under the name it had before the rename. A session
+# that started on a Tabula build only offers upgrades to `tabula-*`
+# programs; this is the one it takes, and it brings the rest (see
+# `bridge` in main.rs). Not installed: the install leaves a link by this
+# name instead.
+[[bin]]
+name = "tabula-session"
+path = "src/old_name.rs"
+test = false
 
 [dependencies]
-tabula-system.workspace = true
+olo-xdg.workspace = true
+olo-system.workspace = true
 libc = "0.2"
 serde.workspace = true
 serde_json.workspace = true

@@ -1,6 +1,6 @@
 [package]
-name = "tabula-protocol"
-description = "IPC between Tabula's app_server and its desktop apps"
+name = "olo-protocol"
+description = "IPC between Olo's app_server and its desktop apps"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,5 +9,5 @@ license.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tabula-theme.workspace = true
-tabula-xdg.workspace = true
+olo-theme.workspace = true
+olo-xdg.workspace = true

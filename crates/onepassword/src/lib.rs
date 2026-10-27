@@ -14,7 +14,7 @@
 //! ```no_run
 //! let client = onepassword::Client::builder()
 //!     .desktop_app_integration("my.1password.com")
-//!     .integration_info("Tabula Passwords", "1.0")
+//!     .integration_info("Olo Passwords", "1.0")
 //!     .build()?;
 //! let password = client.secrets().resolve("op://Private/GitHub/password")?;
 //! # Ok::<(), onepassword::Error>(())

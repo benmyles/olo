@@ -1,8 +1,8 @@
-//! tabula-chrome: Google Chrome in Tabula's applications. When Chrome is
+//! olo-chrome: Google Chrome in Olo's applications. When Chrome is
 //! installed it starts it, with the arguments it was given; when it isn't,
 //! it offers to download it from Google (install.rs), shows the download
 //! (which can be cancelled) and starts Chrome once it's in. New profiles
-//! get Tabula's title bar and the system's colours (prefs.rs).
+//! get Olo's title bar and the system's colours (prefs.rs).
 
 mod extension;
 mod host;
@@ -19,7 +19,7 @@ use std::{
 };
 
 use install::Progress;
-use tabula_kit::{
+use olo_kit::{
     App, Cx, WindowId, WindowOptions,
     egui::{self, Rect, pos2},
     instance::{self, Launch},
@@ -27,9 +27,9 @@ use tabula_kit::{
     widgets::{self, Button, StatusBar},
 };
 
-const APP_ID: &str = "tabula.chrome";
+const APP_ID: &str = "olo.chrome";
 
-const OFFER: &str = "Google Chrome isn't on this computer yet.\n\nTabula can download it from Google and keep it in your home folder, \
+const OFFER: &str = "Google Chrome isn't on this computer yet.\n\nOlo can download it from Google and keep it in your home folder, \
                      with nothing else to install.";
 
 enum State {
@@ -150,7 +150,7 @@ fn size_text(bytes: u64) -> String {
     if mb >= 10.0 { format!("{mb:.0} MB") } else { format!("{mb:.1} MB") }
 }
 
-/// Chrome, told to draw with Wayland under Tabula (left to itself it
+/// Chrome, told to draw with Wayland under Olo (left to itself it
 /// goes by `XDG_SESSION_TYPE`, which a session needn't set, and falls back
 /// to X11).
 fn chrome_command(chrome: &Path, args: &[String]) -> std::process::Command {
@@ -172,6 +172,8 @@ fn start_chrome(chrome: &Path, args: &[String]) {
 }
 
 fn main() {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     // Chrome starting us as the Passwords extension's host.
     if args.first().is_some_and(|a| a.starts_with("chrome-extension://")) {
@@ -188,7 +190,7 @@ fn main() {
         }
         // Once a day, a newer Chrome is fetched in the background (it is
         // used from the next start on).
-        if args.first().map(String::as_str) == Some("--tabula-update") {
+        if args.first().map(String::as_str) == Some("--olo-update") {
             install::update_quietly();
             return;
         }
@@ -196,7 +198,7 @@ fn main() {
             && let Ok(exe) = std::env::current_exe()
         {
             let _ = std::process::Command::new(exe)
-                .arg("--tabula-update")
+                .arg("--olo-update")
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .process_group(0)
@@ -208,17 +210,17 @@ fn main() {
             if let (Ok(exe), Some(install)) = (std::env::current_exe(), chrome.parent().and_then(|d| d.canonicalize().ok()))
                 && let Err(e) = extension::set_up(&install::root(), &install, &dir, &exe)
             {
-                eprintln!("tabula-chrome: couldn't set up Passwords in Chrome: {e}");
+                eprintln!("olo-chrome: couldn't set up Passwords in Chrome: {e}");
             }
         }
         let e = chrome_command(&chrome, &args).exec();
-        eprintln!("tabula-chrome: couldn't start {}: {e}", chrome.display());
+        eprintln!("olo-chrome: couldn't start {}: {e}", chrome.display());
         std::process::exit(1);
     }
     if instance::forward(APP_ID, &args) {
         return;
     }
-    tabula_kit::run(APP_ID, |cx| {
+    olo_kit::run(APP_ID, |cx| {
         instance::listen(APP_ID, cx.proxy());
         let mut app = Installer { args, window: None, state: State::Offer, cancel: Arc::new(AtomicBool::new(false)) };
         app.open(cx);

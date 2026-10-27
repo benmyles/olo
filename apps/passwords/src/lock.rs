@@ -3,8 +3,8 @@
 //! threads. The sensor is claimed only while the locked window has the
 //! keyboard, so it never holds it from sudo or the lock screen.
 
-use tabula_kit::Proxy;
-use tabula_system::{auth, fingerprint};
+use olo_kit::Proxy;
+use olo_system::{auth, fingerprint};
 use zeroize::Zeroize;
 
 pub enum LockMsg {
@@ -37,7 +37,7 @@ pub struct Lock {
 
 impl Lock {
     pub fn new(proxy: Proxy, locked: bool) -> Lock {
-        let finger = if std::env::var_os("TABULA_NO_FINGERPRINT").is_some() { Finger::Off } else { Finger::Idle };
+        let finger = if std::env::var_os("OLO_NO_FINGERPRINT").is_some() { Finger::Off } else { Finger::Idle };
         Lock {
             locked,
             password: String::new(),

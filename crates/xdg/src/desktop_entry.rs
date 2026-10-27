@@ -147,7 +147,7 @@ impl DesktopEntry {
         let Some(cmd) = self.command() else {
             return Err(std::io::Error::other("no Exec line"));
         };
-        let cmd = if self.terminal { format!("tabula-terminal -e {cmd}") } else { cmd };
+        let cmd = if self.terminal { format!("olo-terminal -e {cmd}") } else { cmd };
         crate::spawn_detached(&cmd)
     }
 }

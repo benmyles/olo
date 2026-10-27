@@ -10,10 +10,10 @@ use std::{
     time::Duration,
 };
 
-use tabula_protocol::NotificationState;
-use tabula_system::audio;
+use olo_protocol::NotificationState;
+use olo_system::audio;
 
-use tabula_kit::{
+use olo_kit::{
     egui::{self, Color32, Painter, Rect, Shape, Stroke, pos2, vec2},
     style::c,
     theme::Palette,
@@ -42,7 +42,7 @@ pub struct Status {
     pub battery: Option<Battery>,
     pub wifi: Option<Wifi>,
     pub volume: Option<Volume>,
-    /// Programs a newer build would replace (tabula-session's offer).
+    /// Programs a newer build would replace (olo-session's offer).
     pub upgrade: Vec<String>,
     /// Unread notifications and Do Not Disturb (None: no notification
     /// service).
@@ -51,22 +51,22 @@ pub struct Status {
     pub agent_screens: usize,
 }
 
-/// What tabula-session offers to upgrade (see its upgrade.rs).
+/// What olo-session offers to upgrade (see its upgrade.rs).
 fn upgrade() -> Vec<String> {
     let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
     let display = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
-    let Ok(text) = std::fs::read_to_string(dir.join(format!("tabula-upgrade-{display}.json"))) else { return Vec::new() };
+    let Ok(text) = std::fs::read_to_string(dir.join(format!("olo-upgrade-{display}.json"))) else { return Vec::new() };
     let v: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
     v["programs"].as_array().map(|a| a.iter().filter_map(|p| p.as_str().map(str::to_owned)).collect()).unwrap_or_default()
 }
 
-/// The agent screens running: those `tabula-screen` lists in
-/// `$XDG_RUNTIME_DIR/tabula-screens` whose session is still alive (as its
+/// The agent screens running: those `olo-screen` lists in
+/// `$XDG_RUNTIME_DIR/olo-screens` whose session is still alive (as its
 /// `Screen::alive` judges), leaving out the screen this Deskbar is on.
 fn agent_screens() -> usize {
     let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
     let own = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
-    let Ok(read) = std::fs::read_dir(dir.join("tabula-screens")) else { return 0 };
+    let Ok(read) = std::fs::read_dir(olo_kit::legacy::runtime_file(&dir, "olo-screens")) else { return 0 };
     read.flatten()
         .filter(|e| {
             let name = e.file_name().to_string_lossy().into_owned();
@@ -77,18 +77,20 @@ fn agent_screens() -> usize {
         .filter(|v| {
             let cmdline = v["pid"].as_i64().and_then(|pid| std::fs::read(format!("/proc/{pid}/cmdline")).ok()).unwrap_or_default();
             let args: Vec<&[u8]> = cmdline.split(|b| *b == 0).collect();
-            let session = args.first().is_some_and(|a| a.ends_with(b"tabula-session"));
-            session && args.iter().any(|a| *a == b"--headless") && v["tabula_socket"].as_str().is_some_and(|s| std::path::Path::new(s).exists())
+            // (`tabula-…` for a screen started before the rename.)
+            let session = args.first().is_some_and(|a| a.ends_with(b"olo-session") || a.ends_with(b"tabula-session"));
+            let socket = v["olo_socket"].as_str().or(v["tabula_socket"].as_str());
+            session && args.iter().any(|a| *a == b"--headless") && socket.is_some_and(|s| std::path::Path::new(s).exists())
         })
         .count()
 }
 
 fn battery() -> Option<Battery> {
-    tabula_system::battery::battery().map(|b| Battery { percent: b.percent, charging: b.charging() })
+    olo_system::battery::battery().map(|b| Battery { percent: b.percent, charging: b.charging() })
 }
 
 fn wifi() -> Option<Wifi> {
-    match tabula_system::network::wifi() {
+    match olo_system::network::wifi() {
         Ok(w) => w.map(|w| Wifi { ssid: w.ssid, signal: w.strength }),
         Err(e) => {
             tracing::debug!("NetworkManager: {e}");
@@ -235,7 +237,7 @@ fn local_now() -> libc::tm {
 
 /// `unix` seconds as a time of day, in the Deskbar clock's style (without
 /// seconds).
-pub fn time_of_day(unix: u64, clock: &tabula_protocol::ClockSettings) -> String {
+pub fn time_of_day(unix: u64, clock: &olo_protocol::ClockSettings) -> String {
     // SAFETY: localtime_r writes into the zeroed struct we own.
     let tm = unsafe {
         tzset();
@@ -244,19 +246,19 @@ pub fn time_of_day(unix: u64, clock: &tabula_protocol::ClockSettings) -> String 
         libc::localtime_r(&t, &mut tm);
         tm
     };
-    let clock = tabula_protocol::ClockSettings { show_seconds: false, show_day: false, ..clock.clone() };
+    let clock = olo_protocol::ClockSettings { show_seconds: false, show_day: false, ..clock.clone() };
     format_clock(&tm, false, &clock)
 }
 
 /// The clock row's date ("Mon Oct 26") and time (in the clock's style;
 /// the date already names the day).
-pub fn clock_text(clock: &tabula_protocol::ClockSettings) -> (String, String) {
+pub fn clock_text(clock: &olo_protocol::ClockSettings) -> (String, String) {
     let tm = local_now();
-    let clock = tabula_protocol::ClockSettings { show_day: false, ..clock.clone() };
+    let clock = olo_protocol::ClockSettings { show_day: false, ..clock.clone() };
     (format_clock(&tm, true, &clock), format_clock(&tm, false, &clock))
 }
 
-fn format_clock(tm: &libc::tm, date: bool, clock: &tabula_protocol::ClockSettings) -> String {
+fn format_clock(tm: &libc::tm, date: bool, clock: &olo_protocol::ClockSettings) -> String {
     if date {
         const DAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
         const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -442,7 +444,7 @@ pub fn draw_bell(painter: &Painter, r: Rect, p: &Palette, unread: u32, quiet: bo
 /// A count in a pill on a glyph's top-right corner.
 fn badge(painter: &Painter, r: Rect, p: &Palette, n: usize, fill: Color32) {
     let text = if n > 99 { "99+".to_string() } else { n.to_string() };
-    let font = egui::FontId::new(8.5, tabula_kit::style::bold());
+    let font = egui::FontId::new(8.5, olo_kit::style::bold());
     let galley = painter.layout_no_wrap(text, font, Color32::WHITE);
     let w = (galley.size().x + 4.0).max(10.0);
     let badge = Rect::from_min_size(pos2(r.right() + 3.0 - w, r.top() - 1.5), vec2(w, 10.0));
@@ -507,7 +509,7 @@ pub fn draw_cup(painter: &Painter, r: Rect, p: &Palette, on: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tabula_protocol::ClockSettings;
+    use olo_protocol::ClockSettings;
 
     #[test]
     fn formats() {

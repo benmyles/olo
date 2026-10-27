@@ -33,8 +33,8 @@ impl Unit {
     pub fn format(self, v: f64) -> String {
         match self {
             Unit::Percent => format!("{v:.1}%"),
-            Unit::Bytes => tabula_kit::files::format_size(v.max(0.0) as u64),
-            Unit::Rate => format!("{}/s", tabula_kit::files::format_size(v.max(0.0) as u64)),
+            Unit::Bytes => olo_kit::files::format_size(v.max(0.0) as u64),
+            Unit::Rate => format!("{}/s", olo_kit::files::format_size(v.max(0.0) as u64)),
             Unit::Count => format!("{v:.0}"),
             Unit::PerSecond => format!("{v:.0}/s"),
             Unit::Watts => format!("{v:.1} W"),

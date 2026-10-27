@@ -10,10 +10,10 @@ use std::{
     },
 };
 
-use tabula_kit::egui::{self, ColorImage};
+use olo_kit::egui::{self, ColorImage};
 
 use super::{archive, doc, media, pdf, text};
-use tabula_kit::files::{self as fs, Kind};
+use olo_kit::files::{self as fs, Kind};
 
 use crate::Item;
 
@@ -136,7 +136,7 @@ pub fn color_image(rgba: image::RgbaImage) -> Image {
 }
 
 fn image(path: &Path, max: u32) -> Result<Update, String> {
-    let (img, kind) = tabula_kit::images::open(path).map_err(|e| format!("This image can't be read ({e})."))?;
+    let (img, kind) = olo_kit::images::open(path).map_err(|e| format!("This image can't be read ({e})."))?;
     let (w, h) = (img.width(), img.height());
     let img = if w.max(h) > max { img.resize(max, max, image::imageops::FilterType::Triangle) } else { img };
     let image = color_image(img.to_rgba8());

@@ -1,6 +1,6 @@
 //! The same scroll goes the same distance in every program.
 //!
-//! Tabula's apps scroll a touchpad's axis values as logical pixels and a
+//! Olo's apps scroll a touchpad's axis values as logical pixels and a
 //! wheel notch 48 of them. Chromium (Chrome, Chromium and Electron apps)
 //! scrolls a touchpad's values twelve times as far and a notch 120
 //! pixels; GTK 4 a touchpad's values two and a half times as far (a notch
@@ -13,7 +13,7 @@ use smithay::{backend::input::AxisSource, input::pointer::AxisFrame};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Toolkit {
-    /// Scrolls the values as given (Tabula's kit, and the default).
+    /// Scrolls the values as given (Olo's kit, and the default).
     AsGiven,
     Chromium,
     Gtk4,
@@ -69,7 +69,7 @@ mod tests {
     use smithay::backend::input::{Axis, InputTime};
 
     #[test]
-    fn chromium_matches_tabula() {
+    fn chromium_matches_olo() {
         let finger = AxisFrame::new(InputTime::now()).source(AxisSource::Finger).value(Axis::Vertical, 24.0);
         assert_eq!(adjust(finger, Toolkit::Chromium).axis.1, 2.0);
         assert_eq!(adjust(finger, Toolkit::AsGiven).axis.1, 24.0);

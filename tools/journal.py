@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Screenshot journal: Tabula's visual history, kept in docs/journal/.
+"""Screenshot journal: Olo's visual history, kept in docs/journal/.
 
     journal.py add SOURCE "Title" ["What changed and why"] [--crop X Y W H]
     journal.py redo                                   rebuild README.md and journal.html from entries.json
@@ -38,7 +38,7 @@ def write_pages(entries):
 
 def write_readme(entries):
     out = ["# Screenshot journal", "",
-           "Tabula's visual evolution, newest first. Added with `tools/journal.py`",
+           "Olo's visual evolution, newest first. Added with `tools/journal.py`",
            "(images are stored with Git LFS; run `git lfs pull` after cloning).", ""]
     day = None
     order = sorted(enumerate(entries), key=lambda ie: (ie[1]["time"], ie[0]), reverse=True)

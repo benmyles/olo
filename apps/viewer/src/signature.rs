@@ -1,11 +1,11 @@
 //! Signatures: drawn once on a pad (trackpad or mouse), kept in
-//! ~/.config/tabula/signatures.json, and placed on any PDF from the Sign
+//! ~/.config/olo/signatures.json, and placed on any PDF from the Sign
 //! menu.
 
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use tabula_kit::{
+use olo_kit::{
     egui::{self, Align, Color32, Pos2, Rect, Sense, Stroke, Ui, pos2, vec2},
     metrics as m,
     style::{self, c},
@@ -23,7 +23,7 @@ pub struct Signature {
 }
 
 fn store_path() -> PathBuf {
-    tabula_kit::config_dir().join("signatures.json")
+    olo_kit::config_dir().join("signatures.json")
 }
 
 pub fn load() -> Vec<Signature> {
@@ -48,7 +48,7 @@ pub fn store(all: &[Signature]) {
 /// A name for the menu: "Signature from 25 Oct 2026, 14:03".
 pub fn label(s: &Signature, n: usize) -> String {
     let t = std::time::UNIX_EPOCH + std::time::Duration::from_secs(s.created);
-    format!("Signature {} — {}", n + 1, tabula_kit::files::format_time(Some(t)))
+    format!("Signature {} — {}", n + 1, olo_kit::files::format_time(Some(t)))
 }
 
 /// Normalise pad strokes (screen points, y down) into a signature.

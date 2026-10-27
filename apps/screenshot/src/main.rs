@@ -19,7 +19,7 @@ use std::{
 
 use capture::{Format, Settings, Shot};
 use serde::{Deserialize, Serialize};
-use tabula_kit::{
+use olo_kit::{
     App, Cx, WindowId, WindowOptions,
     egui::{self, Color32, ColorImage, Rect, TextureHandle, TextureOptions, pos2, vec2},
     file_panel::{FilePanel, PANEL_SIZE, PanelResult},
@@ -29,7 +29,7 @@ use tabula_kit::{
     widgets::{self, Button, CheckBox, MenuField, StringView, TextControl},
 };
 
-const APP_ID: &str = "tabula.screenshot";
+const APP_ID: &str = "olo.screenshot";
 
 const SIZE: (u32, u32) = (580, 276);
 /// The preview's share of the window.
@@ -107,7 +107,7 @@ fn preview_of(image: &image::RgbaImage) -> ColorImage {
 impl Screenshot {
     fn new(settings: Settings) -> Self {
         let mut folders = Vec::new();
-        for f in [Some(capture::home()), tabula_kit::user_dir("DESKTOP"), tabula_kit::user_dir("PICTURES")].into_iter().flatten() {
+        for f in [Some(capture::home()), olo_kit::user_dir("DESKTOP"), olo_kit::user_dir("PICTURES")].into_iter().flatten() {
             if !folders.contains(&f) {
                 folders.push(f);
             }
@@ -450,7 +450,7 @@ impl Drop for Screenshot {
 }
 
 /// ⌘⇧3 and friends: one picture, saved, no window.
-fn silent(window: bool, window_id: Option<tabula_protocol::WindowId>) -> std::process::ExitCode {
+fn silent(window: bool, window_id: Option<olo_protocol::WindowId>) -> std::process::ExitCode {
     let mut settings = Settings::load();
     settings.window = window;
     settings.window_id = window_id;
@@ -468,13 +468,15 @@ fn silent(window: bool, window_id: Option<tabula_protocol::WindowId>) -> std::pr
             std::process::ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("tabula-screenshot: {e}");
+            eprintln!("olo-screenshot: {e}");
             std::process::ExitCode::FAILURE
         }
     }
 }
 
 fn main() -> std::process::ExitCode {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--region") {
         return match region::run() {
@@ -484,7 +486,7 @@ fn main() -> std::process::ExitCode {
             }
             Ok(None) => std::process::ExitCode::SUCCESS,
             Err(e) => {
-                eprintln!("tabula-screenshot: {e}");
+                eprintln!("olo-screenshot: {e}");
                 std::process::ExitCode::FAILURE
             }
         };
@@ -498,7 +500,7 @@ fn main() -> std::process::ExitCode {
     if instance::forward(APP_ID, &args) {
         return std::process::ExitCode::SUCCESS;
     }
-    tabula_kit::run(APP_ID, |cx| {
+    olo_kit::run(APP_ID, |cx| {
         instance::listen(APP_ID, cx.proxy());
         let mut app = Screenshot::new(Settings::load());
         match cx.restored_state().and_then(|s| serde_json::from_str::<Saved>(&s).ok()) {

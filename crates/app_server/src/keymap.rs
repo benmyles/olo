@@ -3,7 +3,7 @@
 //! keeps some ⌘ keys for itself: ⌘Tab / ⌘\` (Twitcher), ⌘ arrows and ⌘⌫
 //! (line and document navigation), a tap of ⌘ alone (the command palette, if chosen in
 //! Preferences), and first of all the shortcuts in `Settings::shortcuts`
-//! (tabula_protocol::shortcuts: tiling, workspaces, Find, lock,
+//! (olo_protocol::shortcuts: tiling, workspaces, Find, lock,
 //! screenshots, …). Caps Lock is another Ctrl. Terminals keep physical
 //! Ctrl for the tty, so ⌘ reaches them as Ctrl+Shift.
 //!
@@ -16,7 +16,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tabula_protocol::{Chord, Shortcut};
+use olo_protocol::{Chord, Shortcut};
 
 /// evdev key codes used here.
 pub mod code {
@@ -91,8 +91,8 @@ pub struct Options {
     pub tap_command_find: bool,
 }
 
-impl From<&tabula_protocol::KeyboardSettings> for Options {
-    fn from(k: &tabula_protocol::KeyboardSettings) -> Self {
+impl From<&olo_protocol::KeyboardSettings> for Options {
+    fn from(k: &olo_protocol::KeyboardSettings) -> Self {
         Options {
             command_key: k.command_key,
             caps_lock_control: k.caps_lock_control,
@@ -263,7 +263,7 @@ impl Keymap {
             self.held.insert(key, h);
             return;
         }
-        if self.recording && !tabula_protocol::shortcuts::MODIFIER_KEYS.contains(&key) {
+        if self.recording && !olo_protocol::shortcuts::MODIFIER_KEYS.contains(&key) {
             // Swallowed, press and release.
             self.recording = false;
             let chord = self.chord(key);
@@ -407,7 +407,7 @@ mod tests {
     impl Rig {
         fn new() -> Self {
             let mut k = Keymap::default();
-            k.set_bindings(tabula_protocol::shortcuts::bindings(&Default::default()));
+            k.set_bindings(olo_protocol::shortcuts::bindings(&Default::default()));
             Rig { k, t: Instant::now(), terminal: false }
         }
         fn down(&mut self, key: u32) -> Vec<Out> {
@@ -558,7 +558,7 @@ mod tests {
 
     #[test]
     fn tiling_and_find() {
-        use tabula_protocol::Tile;
+        use olo_protocol::Tile;
         let mut r = Rig::new();
         r.down(LEFTMETA);
         r.down(LEFTSHIFT);

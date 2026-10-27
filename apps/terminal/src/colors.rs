@@ -1,4 +1,4 @@
-//! Terminal colour schemes. The defaults are Tabula's own: a warm paper
+//! Terminal colour schemes. The defaults are Olo's own: a warm paper
 //! white with ink-dark text in light mode and a soft graphite in dark
 //! mode, with ANSI colours tuned so every one of the 16 reads clearly on
 //! the background (no neon green on black).
@@ -7,7 +7,7 @@ use alacritty_terminal::{
     term::color::Colors,
     vte::ansi::{Color, NamedColor, Rgb},
 };
-use tabula_kit::egui::Color32;
+use olo_kit::egui::Color32;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scheme {
@@ -27,7 +27,7 @@ const fn rgb(hex: u32) -> Rgb {
 impl Scheme {
     pub fn light() -> Scheme {
         Scheme {
-            name: "Tabula Light",
+            name: "Olo Light",
             foreground: rgb(0x26292e),
             background: rgb(0xfbfaf6),
             cursor: rgb(0x2f6fdb),
@@ -43,7 +43,7 @@ impl Scheme {
 
     pub fn dark() -> Scheme {
         Scheme {
-            name: "Tabula Dark",
+            name: "Olo Dark",
             foreground: rgb(0xd9dce1),
             background: rgb(0x1d2025),
             cursor: rgb(0x7cb4ff),

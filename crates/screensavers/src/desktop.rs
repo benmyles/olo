@@ -2,7 +2,7 @@
 //! started. Without a picture of it (the Preferences preview before one is
 //! taken) they use the plain desktop colour.
 
-use tabula_kit::egui::{Color32, Mesh, Pos2, Rect, Shape, Stroke, TextureId, Vec2, epaint::Vertex, pos2, vec2};
+use olo_kit::egui::{Color32, Mesh, Pos2, Rect, Shape, Stroke, TextureId, Vec2, epaint::Vertex, pos2, vec2};
 
 use crate::{Clock, Frame, Info, Module, Opt, Rng, STEP, get_f32};
 
@@ -21,7 +21,7 @@ fn vertex(pos: Pos2, uv: Pos2, textured: bool, tint: Color32) -> Vertex {
     if textured {
         Vertex { pos, uv, color: tint }
     } else {
-        Vertex { pos, uv: tabula_kit::egui::epaint::WHITE_UV, color: DESKTOP.gamma_multiply(tint.r() as f32 / 255.0) }
+        Vertex { pos, uv: olo_kit::egui::epaint::WHITE_UV, color: DESKTOP.gamma_multiply(tint.r() as f32 / 255.0) }
     }
 }
 

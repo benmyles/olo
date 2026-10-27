@@ -220,11 +220,11 @@ mod tests {
         assert_eq!(render(Shape::IBeam, 2.0).hotspot, (14, 18));
     }
 
-    /// `TABULA_CURSOR_SHEET=out.png cargo test -p tabula-hvif sheet` draws
+    /// `OLO_CURSOR_SHEET=out.png cargo test -p olo-hvif sheet` draws
     /// every cursor at 1×, 1.5× and 2× on light and dark grounds.
     #[test]
     fn sheet() {
-        let Some(out) = std::env::var_os("TABULA_CURSOR_SHEET") else { return };
+        let Some(out) = std::env::var_os("OLO_CURSOR_SHEET") else { return };
         let cell = 56u32;
         let (cols, rows) = (Shape::ALL.len() as u32, 6u32);
         let mut sheet = Pixmap::new(cols * cell, rows * cell).unwrap();

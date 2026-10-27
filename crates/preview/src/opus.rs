@@ -138,13 +138,13 @@ mod tests {
         assert!(from_head(b"OpusTags").is_err());
     }
 
-    /// `TABULA_SAMPLES=dir cargo test -p tabula-preview opus_file -- --ignored`
+    /// `OLO_SAMPLES=dir cargo test -p olo-preview opus_file -- --ignored`
     /// with an .opus file named sample.opus in `dir`.
     #[test]
     #[ignore]
     fn opus_file() {
         use symphonia::core::{formats::FormatOptions, io::MediaSourceStream, meta::MetadataOptions, probe::Hint};
-        let dir = std::path::PathBuf::from(std::env::var("TABULA_SAMPLES").expect("TABULA_SAMPLES"));
+        let dir = std::path::PathBuf::from(std::env::var("OLO_SAMPLES").expect("OLO_SAMPLES"));
         let file = std::fs::File::open(dir.join("sample.opus")).unwrap();
         let mss = MediaSourceStream::new(Box::new(file), Default::default());
         let mut hint = Hint::new();

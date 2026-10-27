@@ -1,17 +1,17 @@
 [package]
-name = "tabula-palette"
+name = "olo-palette"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "tabula-palette"
+name = "olo-palette"
 path = "src/main.rs"
 
 [dependencies]
-tabula-kit.workspace = true
-tabula-protocol.workspace = true
-tabula-keychain.workspace = true
+olo-kit.workspace = true
+olo-protocol.workspace = true
+olo-keychain.workspace = true
 ignore = "0.4"
 serde.workspace = true
 serde_json.workspace = true

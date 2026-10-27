@@ -1,13 +1,13 @@
 [package]
-name = "tabula-ai"
-description = "How Tabula's AI features reach Claude: through the Token Pool, or with the API key saved in Preferences"
+name = "olo-ai"
+description = "How Olo's AI features reach Claude: through the Token Pool, or with the API key saved in Preferences"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-tabula-protocol.workspace = true
-tabula-xdg.workspace = true
+olo-protocol.workspace = true
+olo-xdg.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }

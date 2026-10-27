@@ -8,12 +8,12 @@ use std::{
     time::Duration,
 };
 
-use tabula_kit::{
+use olo_kit::{
     Proxy,
     apps::{OUR_APPS, PREFERENCE_PANELS, our_app},
     commands, desktop_entry,
 };
-use tabula_protocol::{Client, Reply, Request, ShortcutSettings, WindowInfo, shortcuts};
+use olo_protocol::{Client, Reply, Request, ShortcutSettings, WindowInfo, shortcuts};
 
 /// What a result is (shown at its right, and how it ranks among equals).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -150,11 +150,11 @@ pub enum Found {
 pub fn fixed() -> Vec<Item> {
     let mut items = Vec::new();
     let mut ours = Vec::new();
-    for (bin, name, icon) in OUR_APPS.iter().filter(|(bin, _, _)| tabula_kit::find_program(bin).is_some()) {
+    for (bin, name, icon) in OUR_APPS.iter().filter(|(bin, _, _)| olo_kit::find_program(bin).is_some()) {
         ours.push(*bin);
-        items.push(Item::new(Kind::Application, *name, Action::Spawn(vec![bin.to_string()])).icon(*icon).keywords(bin.trim_start_matches("tabula-")));
+        items.push(Item::new(Kind::Application, *name, Action::Spawn(vec![bin.to_string()])).icon(*icon).keywords(bin.trim_start_matches("olo-")));
     }
-    items.push(Item::new(Kind::Application, "Preferences", Action::Spawn(vec!["tabula-preferences".into()])).icon("preferences").keywords("settings"));
+    items.push(Item::new(Kind::Application, "Preferences", Action::Spawn(vec!["olo-preferences".into()])).icon("preferences").keywords("settings"));
     for e in desktop_entry::all() {
         let Some(cmd) = e.command() else { continue };
         // Our own apps' entries are listed already.
@@ -162,7 +162,7 @@ pub fn fixed() -> Vec<Item> {
             continue;
         }
         let keywords = format!("{} {}", e.generic_name.clone().unwrap_or_default(), e.id.replace(['.', '-'], " "));
-        let mut item = Item::new(Kind::Application, e.name.clone(), Action::Launch(if e.terminal { format!("tabula-terminal -e {cmd}") } else { cmd }))
+        let mut item = Item::new(Kind::Application, e.name.clone(), Action::Launch(if e.terminal { format!("olo-terminal -e {cmd}") } else { cmd }))
             .keywords(keywords)
             .subtitle(e.comment.clone().unwrap_or_default());
         item.icon = e.icon.clone();
@@ -170,7 +170,7 @@ pub fn fixed() -> Vec<Item> {
     }
     for (arg, name, icon) in PREFERENCE_PANELS {
         items.push(
-            Item::new(Kind::Preference, *name, Action::Spawn(vec!["tabula-preferences".into(), arg.to_string()]))
+            Item::new(Kind::Preference, *name, Action::Spawn(vec!["olo-preferences".into(), arg.to_string()]))
                 .icon(*icon)
                 .subtitle("Preferences")
                 .keywords(format!("settings preferences {arg}")),
@@ -194,12 +194,12 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
         _ => Default::default(),
     };
     let front = windows.iter().find(|w| w.focused).cloned();
-    for info in shortcuts::SHORTCUTS.iter().filter(|i| i.action != tabula_protocol::Shortcut::Palette) {
+    for info in shortcuts::SHORTCUTS.iter().filter(|i| i.action != olo_protocol::Shortcut::Palette) {
         let keys = shortcuts::keys_for(info, &changed);
         let mut item = Item::new(Kind::Shortcut, info.title, Action::Shortcut(info.id.into()))
             .subtitle(info.group)
             .icon(shortcut_icon(info.group))
-            .keywords(format!("{} {}{}", info.id.replace('-', " "), info.group, if info.action == tabula_protocol::Shortcut::Hide { " minimize minimise" } else { "" }));
+            .keywords(format!("{} {}{}", info.id.replace('-', " "), info.group, if info.action == olo_protocol::Shortcut::Hide { " minimize minimise" } else { "" }));
         item.keys = keys.first().map(|c| c.symbols());
         // Window shortcuts need a window to act on.
         item.enabled = front.is_some() || info.group != shortcuts::WINDOWS;
@@ -224,7 +224,7 @@ fn shortcut_icon(group: &str) -> &'static str {
     match group {
         shortcuts::WORKSPACES => "workspaces",
         shortcuts::SCREENSHOTS => "screenshot",
-        shortcuts::DESKTOP => "tabula",
+        shortcuts::DESKTOP => "olo",
         _ => "desktop",
     }
 }
@@ -307,8 +307,8 @@ pub fn find_passwords(query: &str) -> Vec<Item> {
     if query.trim().chars().count() < 2 {
         return Vec::new();
     }
-    match tabula_keychain::call(&tabula_keychain::Request::Search { query: query.to_owned() }) {
-        Ok(tabula_keychain::Response::Items { ref items }) => items
+    match olo_keychain::call(&olo_keychain::Request::Search { query: query.to_owned() }) {
+        Ok(olo_keychain::Response::Items { ref items }) => items
             .iter()
             .map(|f| {
                 Item::new(Kind::Password, f.title.clone(), Action::Password { vault: f.vault.clone(), id: f.id.clone() })
@@ -317,8 +317,8 @@ pub fn find_passwords(query: &str) -> Vec<Item> {
             })
             .collect(),
         // Say why there are none, and offer the way in.
-        Ok(tabula_keychain::Response::Locked) => vec![
-            Item::new(Kind::Password, "Unlock Passwords to search its items", Action::Spawn(vec!["tabula-passwords".into()]))
+        Ok(olo_keychain::Response::Locked) => vec![
+            Item::new(Kind::Password, "Unlock Passwords to search its items", Action::Spawn(vec!["olo-passwords".into()]))
                 .subtitle("Passwords is locked")
                 .icon("passwords")
                 .keywords(query.to_lowercase()),
@@ -354,8 +354,8 @@ pub fn perform(action: Action, front: Option<u64>) {
             }
         };
         let result = match action {
-            Action::Launch(cmd) => tabula_kit::spawn_detached(&cmd).map_err(|e| e.to_string()),
-            Action::Spawn(argv) => match tabula_kit::find_program(&argv[0]) {
+            Action::Launch(cmd) => olo_kit::spawn_detached(&cmd).map_err(|e| e.to_string()),
+            Action::Spawn(argv) => match olo_kit::find_program(&argv[0]) {
                 Some(path) => std::process::Command::new(path).args(&argv[1..]).spawn().map(|mut c| {
                     std::thread::spawn(move || c.wait());
                 }).map_err(|e| e.to_string()),
@@ -377,16 +377,16 @@ pub fn perform(action: Action, front: Option<u64>) {
                 }
                 if commands::invoke(pid, &command) { Ok(()) } else { Err(format!("the app didn’t do “{command}”")) }
             }
-            Action::Open(path) => tabula_kit::open::open(&tabula_kit::open::Target::Path(path)).map_err(|e| e.to_string()),
+            Action::Open(path) => olo_kit::open::open(&olo_kit::open::Target::Path(path)).map_err(|e| e.to_string()),
             Action::Password { vault, id } => {
                 // Passwords may be quit: start it, then ask.
-                if tabula_keychain::call(&tabula_keychain::Request::Show { vault: vault.clone(), id: id.clone() }).is_err()
-                    && let Some(p) = tabula_kit::find_program("tabula-passwords")
+                if olo_keychain::call(&olo_keychain::Request::Show { vault: vault.clone(), id: id.clone() }).is_err()
+                    && let Some(p) = olo_kit::find_program("olo-passwords")
                 {
                     let _ = std::process::Command::new(p).spawn();
                     for _ in 0..40 {
                         std::thread::sleep(Duration::from_millis(250));
-                        if tabula_keychain::call(&tabula_keychain::Request::Show { vault: vault.clone(), id: id.clone() }).is_ok() {
+                        if olo_keychain::call(&olo_keychain::Request::Show { vault: vault.clone(), id: id.clone() }).is_ok() {
                             break;
                         }
                     }
@@ -398,12 +398,12 @@ pub fn perform(action: Action, front: Option<u64>) {
                 if let Ok(mut c) = Client::connect()
                     && let Ok(Reply::Settings { mut settings }) = c.request(&Request::GetSettings)
                 {
-                    settings.appearance.theme = if dark { tabula_protocol::ThemePreference::Dark } else { tabula_protocol::ThemePreference::Light };
+                    settings.appearance.theme = if dark { olo_protocol::ThemePreference::Dark } else { olo_protocol::ThemePreference::Light };
                     let _ = c.request(&Request::SetSettings { settings });
                 }
                 Ok(())
             }
-            Action::Search(text) => tabula_kit::open::open(&tabula_kit::open::Target::Url(search_url(&text))).map_err(|e| e.to_string()),
+            Action::Search(text) => olo_kit::open::open(&olo_kit::open::Target::Url(search_url(&text))).map_err(|e| e.to_string()),
         };
         if let Err(e) = result {
             tracing::warn!("palette: {e}");
@@ -542,7 +542,7 @@ mod tests {
         let items = [
             file("/home/x/terminal.txt"),
             Item::new(Kind::Command, "Terminal Settings…", Action::Copy(String::new())),
-            Item::new(Kind::Application, "Terminal", Action::Spawn(vec!["tabula-terminal".into()])),
+            Item::new(Kind::Application, "Terminal", Action::Spawn(vec!["olo-terminal".into()])),
         ];
         let found = ranked(&crate::rank::words("term"), items.iter(), |_| 0);
         assert_eq!(titles(&found), ["Terminal", "Terminal Settings…", "terminal.txt"]);

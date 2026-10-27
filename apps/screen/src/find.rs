@@ -6,7 +6,7 @@
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tabula_kit::commands::UiNode;
+use olo_kit::commands::UiNode;
 
 use crate::{ScreenTree, option, screens::Screen, trees};
 

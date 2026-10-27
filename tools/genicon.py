@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a Tabula icon with OpenAI's sunburst image model.
+"""Generate an Olo icon with OpenAI's sunburst image model.
 
     genicon.py NAME "subject" [--variants N] [--no-ref] [--out DIR]
 
@@ -89,7 +89,7 @@ def generate(prompt, refs, n):
 
 
 def main():
-    if os.environ.get("TABULA_IMAGE_MODEL") not in (None, MODEL):
+    if os.environ.get("OLO_IMAGE_MODEL") not in (None, MODEL):
         sys.exit(f"icons must be generated with {MODEL} (see docs/ICONS.md)")
     ap = argparse.ArgumentParser()
     ap.add_argument("name")

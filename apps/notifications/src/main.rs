@@ -1,4 +1,4 @@
-//! tabula-notifications: the session's notification service. Apps'
+//! olo-notifications: the session's notification service. Apps'
 //! notifications (org.freedesktop.Notifications: notify-send, browsers,
 //! chat and mail) appear in the main display's lower right corner,
 //! grouped by app under its name as on Haiku: the app's icon or picture,
@@ -15,7 +15,7 @@
 //! Not Disturb (by hand, for a while, or on a schedule) keeps everything
 //! but errors off the screen and quiet. Per-app choices and Do Not
 //! Disturb live in `notifications.json` (Preferences ▸ Notifications).
-//! `org.tabula.Notifications1` and the command line (`--list`, `--invoke`,
+//! `com.olodesktop.Notifications1` and the command line (`--list`, `--invoke`,
 //! `--dismiss`, `--clear`, `--dnd`) give agents the same.
 //!
 //! Only the real session runs the service (a test or nested session must
@@ -38,16 +38,16 @@ use std::{
 
 use server::{Bus, Control, In, Kind, Note, Reason};
 use store::{Entry, History};
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Layer, LayerOptions, WindowId, WindowKind, WindowOptions,
     egui::{self, Align, Color32, ColorImage, Rect, Sense, TextureHandle, TextureOptions, pos2, vec2},
     icons, metrics as m,
     style::{self, c},
     widgets::{Button, StatusBar, TextControl},
 };
-use tabula_protocol::{HistoryView, NotificationSettings, NotificationState};
+use olo_protocol::{HistoryView, NotificationSettings, NotificationState};
 
-const APP_ID: &str = "tabula.notifications";
+const APP_ID: &str = "olo.notifications";
 /// A card's width (logical): the Deskbar's, so banners line up under
 /// it at the screen's right edge, in a column that is usually free.
 const WIDTH: f32 = m::DESKBAR_WIDTH;
@@ -101,7 +101,7 @@ struct Notifications {
     keyboard: bool,
     pending: HashMap<u64, Pending>,
     next_tag: u64,
-    proxy: tabula_kit::Proxy,
+    proxy: olo_kit::Proxy,
     settings: NotificationSettings,
     /// When `notifications.json` was last read.
     settings_read: Option<SystemTime>,
@@ -238,7 +238,7 @@ impl Notifications {
                     anchor: (false, true, false, true),
                     exclusive_zone: 0,
                     margin: (0, 0, GAP as i32, 0),
-                    keyboard: tabula_kit::Keyboard::None,
+                    keyboard: olo_kit::Keyboard::None,
                     namespace: "notifications".into(),
                     output: None,
                 }),
@@ -464,15 +464,15 @@ fn raise_app(desktop_entry: Option<&str>, app_name: &str) {
     if !app_name.is_empty() {
         ids.push(app_name.to_lowercase());
         ids.push(app_name.to_lowercase().replace(' ', "-"));
-        // Ours by name ("StyledEdit" is tabula.styled-edit).
-        for (bin, name, _) in tabula_xdg::apps::OUR_APPS {
+        // Ours by name ("StyledEdit" is olo.styled-edit).
+        for (bin, name, _) in olo_xdg::apps::OUR_APPS {
             if name.eq_ignore_ascii_case(app_name) {
-                ids.push(bin.replacen("tabula-", "tabula.", 1));
+                ids.push(bin.replacen("olo-", "olo.", 1));
             }
         }
     }
     std::thread::spawn(move || {
-        use tabula_protocol::{Client, Reply, Request};
+        use olo_protocol::{Client, Reply, Request};
         let Ok(mut client) = Client::connect() else { return };
         let Ok(Reply::Windows { windows }) = client.request(&Request::ListWindows) else { return };
         let matches = |app_id: &str| {
@@ -524,12 +524,12 @@ fn named_icons(icon: Option<&str>, desktop_entry: Option<&str>, app: &str, error
 fn app_icons(desktop_entry: Option<&str>, app: &str) -> Vec<String> {
     let mut names = Vec::new();
     if let Some(e) = desktop_entry {
-        names.extend(tabula_xdg::icon_for_app(e.trim_end_matches(".desktop")));
+        names.extend(olo_xdg::icon_for_app(e.trim_end_matches(".desktop")));
     }
     let app = app.to_lowercase().replace(' ', "-");
     if !app.is_empty() {
-        names.extend(tabula_xdg::icon_for_app(&app));
-        names.extend(tabula_xdg::apps::our_app(&app).map(|(_, icon)| icon.to_owned()));
+        names.extend(olo_xdg::icon_for_app(&app));
+        names.extend(olo_xdg::apps::our_app(&app).map(|(_, icon)| icon.to_owned()));
     }
     names
 }
@@ -542,7 +542,7 @@ fn galley(ui: &egui::Ui, text: &str, color: Color32, width: f32, rows: usize, fo
 }
 
 /// The body with its markup: bold, italics, underlines and links.
-fn body_galley(ui: &egui::Ui, body: &[markup::Span], p: &tabula_kit::theme::Palette, width: f32) -> Arc<egui::Galley> {
+fn body_galley(ui: &egui::Ui, body: &[markup::Span], p: &olo_kit::theme::Palette, width: f32) -> Arc<egui::Galley> {
     let mut job = egui::text::LayoutJob::default();
     for s in body {
         let font = match (s.bold, s.italic) {
@@ -685,7 +685,7 @@ impl App for Notifications {
             && let Some(w) = self.win
         {
             self.keyboard = wants_keys;
-            cx.set_keyboard(w, if wants_keys { tabula_kit::Keyboard::OnDemand } else { tabula_kit::Keyboard::None });
+            cx.set_keyboard(w, if wants_keys { olo_kit::Keyboard::OnDemand } else { olo_kit::Keyboard::None });
         }
         let mut hovered = None;
         let mut did = Vec::new();
@@ -836,7 +836,7 @@ impl App for Notifications {
                 }
                 Did::Link(url) => {
                     std::thread::spawn(move || {
-                        if let Err(e) = tabula_kit::open::open(&tabula_kit::open::Target::parse(&url)) {
+                        if let Err(e) = olo_kit::open::open(&olo_kit::open::Target::parse(&url)) {
                             tracing::warn!("notifications: can't open {url}: {e}");
                         }
                     });
@@ -855,7 +855,7 @@ impl App for Notifications {
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
-        let message = match message.downcast::<tabula_kit::ActivationToken>() {
+        let message = match message.downcast::<olo_kit::ActivationToken>() {
             Ok(t) => {
                 if let Some(p) = self.pending.remove(&t.tag) {
                     self.send(p, Some(&t.token));
@@ -898,16 +898,16 @@ impl App for Notifications {
         }
     }
 
-    fn menu_bar(&mut self, window: WindowId) -> Option<Vec<tabula_kit::Menu>> {
+    fn menu_bar(&mut self, window: WindowId) -> Option<Vec<olo_kit::Menu>> {
         (Some(window) == self.history_win).then(|| {
             let view = self.settings.view;
-            let mut views = tabula_kit::Menu::new("View");
+            let mut views = olo_kit::Menu::new("View");
             for (v, label, command, key) in VIEWS {
                 views = views.item(label, command, Some(key)).checked(view == v);
             }
             vec![
-                tabula_kit::Menu::new("File").item("Close", "close", Some(egui::Key::W)),
-                tabula_kit::Menu::new("Edit").item("Find", "find", Some(egui::Key::F)).separator().item("Clear All", "clear", None),
+                olo_kit::Menu::new("File").item("Close", "close", Some(egui::Key::W)),
+                olo_kit::Menu::new("Edit").item("Find", "find", Some(egui::Key::F)).separator().item("Clear All", "clear", None),
                 views,
             ]
         })
@@ -951,6 +951,8 @@ fn close_box(painter: &egui::Painter, r: Rect, color: Color32) {
 }
 
 fn main() -> std::process::ExitCode {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let address = match args.iter().position(|a| a == "--bus") {
         Some(i) if i + 1 < args.len() => {
@@ -965,12 +967,12 @@ fn main() -> std::process::ExitCode {
     if !args.is_empty() {
         return cli::run(address.as_deref(), &args);
     }
-    if address.is_none() && std::env::var_os("TABULA_REAL_SESSION").is_none() {
-        eprintln!("tabula-notifications: not in a real Tabula session (use --bus ADDRESS to try it)");
+    if address.is_none() && std::env::var_os("OLO_REAL_SESSION").is_none() {
+        eprintln!("olo-notifications: not in a real Olo session (use --bus ADDRESS to try it)");
         return std::process::ExitCode::FAILURE;
     }
-    tabula_preview::audio::set_identity("Notifications", "tabula-notifications");
-    tabula_kit::run(APP_ID, move |cx| {
+    olo_preview::audio::set_identity("Notifications", "olo-notifications");
+    olo_kit::run(APP_ID, move |cx| {
         cx.stay_resident();
         let proxy = cx.proxy();
         let bus = Arc::new(Mutex::new(None));
@@ -992,7 +994,7 @@ fn main() -> std::process::ExitCode {
                             return;
                         }
                         Err(e) if !said => {
-                            eprintln!("tabula-notifications: can't serve {} yet ({e}); trying every 30 s", server::NAME);
+                            eprintln!("olo-notifications: can't serve {} yet ({e}); trying every 30 s", server::NAME);
                             said = true;
                         }
                         Err(_) => {}

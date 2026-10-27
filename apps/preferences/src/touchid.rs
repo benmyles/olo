@@ -1,6 +1,6 @@
 //! Touch ID: the fingers enrolled with fprintd, adding one (touch after
 //! touch, with a progress bar) and removing one. fprintd calls run on
-//! worker threads (`tabula_system::fingerprint`); enrolling blocks on the
+//! worker threads (`olo_system::fingerprint`); enrolling blocks on the
 //! sensor, so it has its own thread and can be cancelled.
 
 use std::{
@@ -11,12 +11,12 @@ use std::{
     time::Duration,
 };
 
-use tabula_kit::{
+use olo_kit::{
     egui::{Context, Rect, Ui, UiBuilder, vec2},
     metrics as m,
     widgets::{BBox, Button, Column, ColumnListView, ListState, MenuField, StatusBar, StringView},
 };
-use tabula_system::fingerprint::{self as fp, EnrollEvent, FINGERS, Stop};
+use olo_system::fingerprint::{self as fp, EnrollEvent, FINGERS, Stop};
 
 enum Request {
     Enroll(String),
@@ -52,7 +52,7 @@ fn wake(contexts: &Mutex<Vec<Context>>) {
 }
 
 fn user() -> String {
-    tabula_system::auth::current_user().unwrap_or_default()
+    olo_system::auth::current_user().unwrap_or_default()
 }
 
 fn link() -> &'static Link {
@@ -162,14 +162,14 @@ fn enroll(sh: &Arc<Mutex<Shared>>, ctxs: &Arc<Mutex<Vec<Context>>>, me: &str, fi
     }
 }
 
-/// `TABULA_FAKE_FINGERS=right-index-finger,left-thumb` (debug builds):
+/// `OLO_FAKE_FINGERS=right-index-finger,left-thumb` (debug builds):
 /// pretend to be a sensor with these fingers, so the panel can be tried
 /// headless without touching the real sensor or the user's prints.
 fn fake_fingers() -> Option<Vec<String>> {
     if !cfg!(debug_assertions) {
         return None;
     }
-    let v = std::env::var("TABULA_FAKE_FINGERS").ok()?;
+    let v = std::env::var("OLO_FAKE_FINGERS").ok()?;
     Some(v.split(',').filter(|f| !f.is_empty()).map(str::to_owned).collect())
 }
 

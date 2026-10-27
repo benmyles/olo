@@ -1,7 +1,7 @@
-//! `tabula_system::disks` against `udisks-fake`, end to end. Needs a bus
-//! to meet on: run with `TABULA_TEST_BUS=unix:path=…` (a private
+//! `olo_system::disks` against `udisks-fake`, end to end. Needs a bus
+//! to meet on: run with `OLO_TEST_BUS=unix:path=…` (a private
 //! dbus-broker or busd), e.g.
-//! `TABULA_TEST_BUS=unix:path=/tmp/tabula-dev/notes/bus.sock cargo test -p tabula-system --test udisks_fake`.
+//! `OLO_TEST_BUS=unix:path=/tmp/olo-dev/notes/bus.sock cargo test -p olo-system --test udisks_fake`.
 //! Without it the test does nothing.
 
 use std::{
@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tabula_system::disks::{self, Format, Status};
+use olo_system::disks::{self, Format, Status};
 
 struct Fake(Child);
 
@@ -37,9 +37,9 @@ fn wait_for(what: &str, mut ok: impl FnMut(&Status) -> bool) -> Status {
 
 #[test]
 fn against_the_fake() {
-    let Ok(address) = std::env::var("TABULA_TEST_BUS") else { return };
+    let Ok(address) = std::env::var("OLO_TEST_BUS") else { return };
     // SAFETY: set before any other thread reads the environment.
-    unsafe { std::env::set_var("TABULA_UDISKS_BUS", &address) };
+    unsafe { std::env::set_var("OLO_UDISKS_BUS", &address) };
     let _fake = Fake(Command::new(env!("CARGO_BIN_EXE_udisks-fake")).args(["--address", &address]).spawn().expect("udisks-fake"));
     // A call to the name before the fake has it may wait for good.
     let bus = zbus::blocking::connection::Builder::address(address.as_str()).unwrap().build().unwrap();
@@ -53,7 +53,7 @@ fn against_the_fake() {
 
     // What it reads.
     let names: Vec<String> = s.disks.iter().map(|d| d.name()).collect();
-    assert_eq!(names, ["Tabula Test SSD", "SD Card", "Tabula USB Stick", "Tabula Backup Disk"]);
+    assert_eq!(names, ["Olo Test SSD", "SD Card", "Olo USB Stick", "Olo Backup Disk"]);
     let ssd = &s.disks[0];
     assert!(ssd.system && ssd.table.as_deref() == Some("gpt"));
     assert_eq!(ssd.volumes.iter().map(|v| v.device.as_str()).collect::<Vec<_>>(), ["/dev/nvme0n1p1", "/dev/nvme0n1p2", "/dev/nvme0n1p3"]);
@@ -65,7 +65,7 @@ fn against_the_fake() {
     assert_eq!(disks::formats(&s.filesystems)[0].0, "exfat");
 
     // Mount and unmount the stick; the system can't be unmounted.
-    let stick = s.disks.iter().find(|d| d.name() == "Tabula USB Stick").unwrap().volumes[0].path.clone();
+    let stick = s.disks.iter().find(|d| d.name() == "Olo USB Stick").unwrap().volumes[0].path.clone();
     let at = disks::mount(&stick).unwrap();
     assert!(at.ends_with("/STICK"));
     wait_for("the mount", |s| s.volume(&stick).is_some_and(|(_, v)| v.mounted()));
@@ -73,7 +73,7 @@ fn against_the_fake() {
     assert!(disks::unmount(&ssd.volumes[2].path).is_err());
 
     // Unlock the backup disk (a wrong passphrase first), mount what's in it.
-    let luks = s.disks.iter().find(|d| d.name() == "Tabula Backup Disk").unwrap().volumes[0].path.clone();
+    let luks = s.disks.iter().find(|d| d.name() == "Olo Backup Disk").unwrap().volumes[0].path.clone();
     assert!(disks::unlock(&luks, "wrong").is_err());
     let clear = disks::unlock(&luks, "secret").unwrap();
     let s = wait_for("the unlock", |s| s.volume(&luks).is_some_and(|(_, v)| v.cleartext.is_some()));
@@ -118,7 +118,7 @@ fn against_the_fake() {
 
     // Eject the stick: it goes.
     let s = disks::status().unwrap();
-    let stick_disk = s.disks.iter().find(|d| d.name() == "Tabula USB Stick").unwrap().clone();
+    let stick_disk = s.disks.iter().find(|d| d.name() == "Olo USB Stick").unwrap().clone();
     disks::eject(&stick_disk).unwrap();
     wait_for("the eject", |s| s.disks.len() == 3);
 }

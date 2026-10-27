@@ -20,18 +20,18 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
     egui::{self, Key},
     metrics as m,
     widgets::{self, Button, Column, ColumnListView, ListState, TextControl},
 };
-use tabula_protocol::{Client, Reply, Request};
+use olo_protocol::{Client, Reply, Request};
 
 pub use fs::Entry;
 
 /// How a window shows its folder; new windows follow Preferences ▸ Tracker.
-pub use tabula_protocol::FolderView as ViewMode;
+pub use olo_protocol::FolderView as ViewMode;
 
 /// A column to the right of the root in column view.
 pub struct Pane {
@@ -57,7 +57,7 @@ impl Pane {
 #[derive(Clone)]
 pub struct Loader {
     win: WindowId,
-    proxy: tabula_kit::Proxy,
+    proxy: olo_kit::Proxy,
 }
 
 /// Put `v` in place of `entries`, keeping the selection (by path) and
@@ -178,7 +178,7 @@ enum Win {
 }
 
 enum Msg {
-    /// Another `tabula-tracker` invocation forwarded its arguments.
+    /// Another `olo-tracker` invocation forwarded its arguments.
     DirSize(WindowId, u64, u64),
     Found(WindowId, u64, Vec<find::Hit>, bool),
     JobDone(u64, ops::Outcome),
@@ -194,7 +194,7 @@ enum Msg {
     /// Quick Look rotated (or saved) the picture at a path.
     Edited(PathBuf, quicklook::EditEvent),
     /// Preferences ▸ Tracker changed (or was first read).
-    Settings(tabula_protocol::TrackerSettings),
+    Settings(olo_protocol::TrackerSettings),
 }
 
 pub struct Tracker {
@@ -209,8 +209,8 @@ pub struct Tracker {
     next_job: u64,
     status_win: Option<WindowId>,
     /// Long jobs say when they're done; Show opens where the items went.
-    notes: tabula_kit::notify::Notifier,
-    note_dirs: HashMap<tabula_kit::notify::NoteId, PathBuf>,
+    notes: olo_kit::notify::Notifier,
+    note_dirs: HashMap<olo_kit::notify::NoteId, PathBuf>,
     /// Content height the status window was last sized to.
     status_size: u32,
     /// Live updates for every folder shown (None if inotify is missing).
@@ -240,11 +240,11 @@ const STATUS_DELAY: Duration = Duration::from_millis(400);
 /// Jobs that ran this long notify when they finish.
 const NOTIFY_AFTER: Duration = Duration::from_secs(10);
 
-/// [`NOTIFY_AFTER`]; debug builds take `TABULA_TRACKER_NOTIFY_AFTER_MS`
+/// [`NOTIFY_AFTER`]; debug builds take `OLO_TRACKER_NOTIFY_AFTER_MS`
 /// (tests have no ten-second copies).
 fn notify_after() -> Duration {
     #[cfg(debug_assertions)]
-    if let Some(ms) = std::env::var("TABULA_TRACKER_NOTIFY_AFTER_MS").ok().and_then(|v| v.parse().ok()) {
+    if let Some(ms) = std::env::var("OLO_TRACKER_NOTIFY_AFTER_MS").ok().and_then(|v| v.parse().ok()) {
         return Duration::from_millis(ms);
     }
     NOTIFY_AFTER
@@ -592,7 +592,7 @@ fn folder_options(path: &Path) -> WindowOptions {
 fn activate_existing(title: &str) -> bool {
     let Ok(mut c) = Client::connect() else { return false };
     if let Ok(Reply::Windows { windows }) = c.request(&Request::ListWindows)
-        && let Some(w) = windows.iter().find(|w| w.app_id == "tabula.tracker" && w.title == title) {
+        && let Some(w) = windows.iter().find(|w| w.app_id == "olo.tracker" && w.title == title) {
             let _ = c.request(&Request::Activate { id: w.id });
             return true;
         }
@@ -1337,7 +1337,7 @@ impl Tracker {
                             "empty-trash" => self.folder_command_global(cx, "empty-trash"),
                             "terminal" => fs::open_in_terminal(&fs::home().join("Desktop")),
                             "backgrounds" => {
-                                let _ = tabula_kit::spawn_detached("tabula-preferences backgrounds");
+                                let _ = olo_kit::spawn_detached("olo-preferences backgrounds");
                             }
                             "trash" => {
                                 let paths = match self.windows.get(&window) {
@@ -1404,7 +1404,7 @@ impl App for Tracker {
         }
     }
 
-    fn dropped(&mut self, cx: &mut Cx, window: WindowId, drop: tabula_kit::dnd::Drop) {
+    fn dropped(&mut self, cx: &mut Cx, window: WindowId, drop: olo_kit::dnd::Drop) {
         self.drop_on(cx, window, drop);
     }
 
@@ -1438,14 +1438,14 @@ impl App for Tracker {
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
-        let message = match message.downcast::<tabula_kit::instance::Launch>() {
+        let message = match message.downcast::<olo_kit::instance::Launch>() {
             Ok(launch) => return self.handle_args(cx, &launch.args),
             Err(m) => m,
         };
-        let message = match message.downcast::<tabula_kit::notify::NoteEvent>() {
+        let message = match message.downcast::<olo_kit::notify::NoteEvent>() {
             Ok(e) => {
                 match *e {
-                    tabula_kit::notify::NoteEvent::Action { id, token, .. } => {
+                    olo_kit::notify::NoteEvent::Action { id, token, .. } => {
                         if let Some(dir) = self.note_dirs.remove(&id) {
                             let path = dir.canonicalize().unwrap_or(dir);
                             match self.windows.iter().find(|(_, w)| matches!(w, Win::Folder(f) if f.path == path)).map(|(id, _)| *id) {
@@ -1454,7 +1454,7 @@ impl App for Tracker {
                             }
                         }
                     }
-                    tabula_kit::notify::NoteEvent::Closed { id } => {
+                    olo_kit::notify::NoteEvent::Closed { id } => {
                         self.note_dirs.remove(&id);
                     }
                 }
@@ -1575,8 +1575,8 @@ impl Tracker {
     /// Run a file operation in the background. Short ones finish without a
     /// trace; longer ones show in the Tracker Status window.
     /// Files or text dropped on a folder, the desktop or the Trash.
-    fn drop_on(&mut self, cx: &mut Cx, window: WindowId, drop: tabula_kit::dnd::Drop) {
-        use tabula_kit::dnd::Action as A;
+    fn drop_on(&mut self, cx: &mut Cx, window: WindowId, drop: olo_kit::dnd::Drop) {
+        use olo_kit::dnd::Action as A;
         let Some(target) = view::DropTarget::parse(&drop.target) else { return };
         let paths = drop.paths();
         let dest = match target {
@@ -1724,7 +1724,7 @@ impl Tracker {
         // A long job may have been left to run in the background: say it's
         // done.
         if outcome.error.is_none() && !outcome.cancelled && job.started.elapsed() >= notify_after() {
-            let note = tabula_kit::notify::Note::new(&job.finished);
+            let note = olo_kit::notify::Note::new(&job.finished);
             let note = if job.dest.is_some() { note.action("default", "Show") } else { note };
             let n = self.notes.show(None, note);
             if let Some(d) = job.dest.clone() {
@@ -1801,27 +1801,29 @@ impl Tracker {
 }
 
 fn main() {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if tabula_kit::instance::forward("tabula.tracker", &args) {
+    if olo_kit::instance::forward("olo.tracker", &args) {
         return;
     }
-    tabula_preview::audio::set_identity("Tracker", "tabula-tracker");
-    tabula_kit::run("tabula.tracker", |cx| {
-        tabula_kit::instance::listen("tabula.tracker", cx.proxy());
+    olo_preview::audio::set_identity("Tracker", "olo-tracker");
+    olo_kit::run("olo.tracker", |cx| {
+        olo_kit::instance::listen("olo.tracker", cx.proxy());
         let proxy = cx.proxy();
         let watcher = watch::Watcher::new(move |changes| proxy.send(Msg::Changed(changes)));
         let proxy = cx.proxy();
-        tabula_kit::settings::watch(move |s| proxy.send(Msg::Settings(s.tracker)));
+        olo_kit::settings::watch(move |s| proxy.send(Msg::Settings(s.tracker)));
         let mut t = Tracker {
             windows: HashMap::new(),
             clipboard: None,
             hidden: false,
             // Folders opened at startup can't wait for the watcher's first read.
-            default_view: tabula_kit::settings::current().map(|s| s.tracker.default_view).unwrap_or_default(),
+            default_view: olo_kit::settings::current().map(|s| s.tracker.default_view).unwrap_or_default(),
             jobs: Vec::new(),
             next_job: 1,
             status_win: None,
-            notes: tabula_kit::notify::Notifier::new(cx.proxy(), "Tracker", "tabula-tracker"),
+            notes: olo_kit::notify::Notifier::new(cx.proxy(), "Tracker", "olo-tracker"),
             note_dirs: HashMap::new(),
             status_size: 0,
             watcher,

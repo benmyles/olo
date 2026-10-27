@@ -16,7 +16,7 @@ use std::{
 
 use sample::{Group, Proc, Sample, Source};
 use serde::{Deserialize, Serialize};
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
     egui::{self, Align, Color32, Id, Key, Rect, Sense, Shape, Stroke, Ui, pos2, vec2},
     files::format_size,
@@ -25,9 +25,9 @@ use tabula_kit::{
     style::{self, c},
     widgets::{self, Button, Cell, Column, ColumnListView, ListState, MenuField, TabView, TextControl},
 };
-use tabula_theme::mix;
+use olo_theme::mix;
 
-const APP_ID: &str = "tabula.activity";
+const APP_ID: &str = "olo.activity";
 
 /// How many samples each source remembers.
 const HISTORY: usize = 1200;
@@ -63,7 +63,7 @@ impl Default for Settings {
 }
 
 fn settings_path() -> std::path::PathBuf {
-    tabula_kit::config_dir().join("activity.json")
+    olo_kit::config_dir().join("activity.json")
 }
 
 enum Msg {
@@ -572,11 +572,13 @@ impl App for Activity {
 }
 
 fn main() {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if instance::forward(APP_ID, &args) {
         return;
     }
-    tabula_kit::run(APP_ID, |cx| {
+    olo_kit::run(APP_ID, |cx| {
         instance::listen(APP_ID, cx.proxy());
         let settings: Settings =
             std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();

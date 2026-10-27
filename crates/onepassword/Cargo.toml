@@ -1,5 +1,5 @@
 [package]
-name = "tabula-onepassword"
+name = "olo-onepassword"
 description = "A Rust 1Password SDK: the official Go SDK's API over a native client for the 1Password desktop app"
 version.workspace = true
 edition.workspace = true

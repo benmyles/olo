@@ -104,9 +104,9 @@ def build(out_path, last=None):
     first, last = entries and min(e["time"] for e in entries), entries and max(e["time"] for e in entries)
     parts = ["<!doctype html><html lang='en'><head><meta charset='utf-8'>",
              "<meta name='viewport' content='width=device-width, initial-scale=1'>",
-             "<title>Tabula Journal</title>",
+             "<title>Olo Journal</title>",
              f"<style>{STYLE}</style></head><body>",
-             "<header><h1><span>Tabula</span> journal</h1>",
+             "<header><h1><span>Olo</span> journal</h1>",
              "<p>A BeOS-inspired desktop for Linux, written in Rust: every visible change, newest first.</p>",
              f"<p>{len(entries)} screenshots, {day_name(first[:10])} to {day_name(last[:10])}. "
              "Click a picture to see it at full size.</p></header>" if entries else "</header>",

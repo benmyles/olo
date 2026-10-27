@@ -5,14 +5,14 @@
 
 use std::time::Instant;
 
-use tabula_kit::{
+use olo_kit::{
     egui::{Align2, Color32, Rect, Sense, Shape, Stroke, Ui, UiBuilder, pos2, vec2},
     metrics as m,
     style::{self, c},
     widgets::{BBox, Button, CheckBox, MenuField, ScrollView, Slider, StringView, TabView, TextControl},
 };
-use tabula_protocol::{Corner, Settings};
-use tabula_screensavers::{Frame, MODULES, Module, Opt, Options};
+use olo_protocol::{Corner, Settings};
+use olo_screensavers::{Frame, MODULES, Module, Opt, Options};
 
 use crate::server::Server;
 
@@ -87,7 +87,7 @@ fn fade(ui: &mut Ui, s: &mut Settings, st: &mut State) {
         ui.add(CheckBox::new(&mut ss.lock, "Password lock"));
         ui.add_enabled_ui(ss.lock, |ui| minutes_slider(ui, "Lock after", &mut ss.lock_minutes));
     });
-    tabula_kit::widgets::separator(ui);
+    olo_kit::widgets::separator(ui);
     ui.horizontal(|ui| {
         ui.add_enabled_ui(enabled, |ui| {
             corner_monitor(ui, "fade-now", &mut ss.fade_now, "Fade now when\nmouse is here");
@@ -187,7 +187,7 @@ fn modules(ui: &mut Ui, s: &mut Settings, server: &Server, st: &mut State) {
         ScrollView::reveal(ui.ctx(), "modules", current as f32 * m::LIST_ROW, (current + 1) as f32 * m::LIST_ROW);
     }
     if stale {
-        st.preview = Some((info.name.to_owned(), options.clone(), info.make(&options, tabula_screensavers::seed()), Instant::now()));
+        st.preview = Some((info.name.to_owned(), options.clone(), info.make(&options, olo_screensavers::seed()), Instant::now()));
     }
     if let Some((_, _, module, last)) = &mut st.preview {
         let now = Instant::now();
@@ -248,13 +248,13 @@ fn modules(ui: &mut Ui, s: &mut Settings, server: &Server, st: &mut State) {
 fn option_ui(ui: &mut Ui, module: &str, opt: &Opt, opts: &mut Options) {
     match *opt {
         Opt::Check { key, label, default } => {
-            let mut v = tabula_screensavers::get_bool(opts, key, default);
+            let mut v = olo_screensavers::get_bool(opts, key, default);
             if ui.add(CheckBox::new(&mut v, label)).changed() {
                 opts.insert(key.into(), v.to_string());
             }
         }
         Opt::Choice { key, label, choices, default } => {
-            let mut i = tabula_screensavers::get_usize(opts, key, default);
+            let mut i = olo_screensavers::get_usize(opts, key, default);
             let before = i;
             ui.add(MenuField::new((module, key), &mut i, choices).label(label).divider(90.0));
             if i != before {
@@ -262,7 +262,7 @@ fn option_ui(ui: &mut Ui, module: &str, opt: &Opt, opts: &mut Options) {
             }
         }
         Opt::Slider { key, label, min, max, default } => {
-            let mut v = tabula_screensavers::get_f32(opts, key, default);
+            let mut v = olo_screensavers::get_f32(opts, key, default);
             let before = v;
             let whole = max - min >= 4.0;
             let text = if whole { format!("{v:.0}") } else { format!("{v:.2}") };
@@ -273,7 +273,7 @@ fn option_ui(ui: &mut Ui, module: &str, opt: &Opt, opts: &mut Options) {
             }
         }
         Opt::Text { key, label, default } => {
-            let mut v = tabula_screensavers::get_text(opts, key, default).to_owned();
+            let mut v = olo_screensavers::get_text(opts, key, default).to_owned();
             ui.add(StringView::new(label));
             if ui.add(TextControl::new(&mut v)).changed() {
                 opts.insert(key.into(), v);

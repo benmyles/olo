@@ -2,7 +2,7 @@
 //! inline images.
 //!
 //! An image is anchored to the grid by tagging the cells it covers with a
-//! private hyperlink (`tabula-img:<placement>:<row>`). The image then
+//! private hyperlink (`olo-img:<placement>:<row>`). The image then
 //! scrolls, reflows into the scrollback and gets erased exactly like the
 //! text it replaced, with no bookkeeping of line numbers; drawing finds the
 //! tagged cells and paints the matching slice of the image over them.
@@ -22,7 +22,7 @@ use alacritty_terminal::{
 };
 use base64::Engine;
 
-pub const URI_PREFIX: &str = "tabula-img:";
+pub const URI_PREFIX: &str = "olo-img:";
 /// Most image data kept per window; the oldest images go first.
 const BUDGET: usize = 320 * 1024 * 1024;
 /// Largest single image accepted (pixels).
@@ -34,9 +34,9 @@ pub struct Image {
     pub rgba: Arc<Vec<u8>>,
     /// Bumped when the image is replaced, so textures get rebuilt.
     pub generation: u64,
-    /// `rgba` is zlib-compressed (tabula-termd keeps images that way:
+    /// `rgba` is zlib-compressed (olo-termd keeps images that way:
     /// only to send on).
-    #[allow(dead_code)] // (Only tabula-termd reads it.)
+    #[allow(dead_code)] // (Only olo-termd reads it.)
     pub packed: bool,
 }
 
@@ -91,7 +91,7 @@ impl Store {
     }
 
     /// The id the program gave image `ours`, if it gave one.
-    #[allow(dead_code)] // (tabula-termd's, like `pack`.)
+    #[allow(dead_code)] // (olo-termd's, like `pack`.)
     pub fn kitty_id(&self, ours: u32) -> Option<u32> {
         self.kitty_ids.iter().find(|(_, v)| **v == ours).map(|(k, _)| *k)
     }
@@ -160,7 +160,7 @@ fn place<T: EventListener>(term: &mut Term<T>, store: &Shared, mut p: Placement,
     t.extra = None;
     term.grid_mut().cursor.template = t;
     for row in 0..p.rows {
-        term.set_hyperlink(Some(Hyperlink { id: Some(format!("tabula-img-{uid}-{row}")), uri: format!("{URI_PREFIX}{uid}:{row}") }));
+        term.set_hyperlink(Some(Hyperlink { id: Some(format!("olo-img-{uid}-{row}")), uri: format!("{URI_PREFIX}{uid}:{row}") }));
         for _ in 0..p.cols {
             term.input(' ');
         }
@@ -751,7 +751,7 @@ mod tests {
 
     #[test]
     fn uri_round_trip() {
-        assert_eq!(parse_uri("tabula-img:42:3"), Some((42, 3)));
+        assert_eq!(parse_uri("olo-img:42:3"), Some((42, 3)));
         assert_eq!(parse_uri("https://example.com"), None);
     }
 }

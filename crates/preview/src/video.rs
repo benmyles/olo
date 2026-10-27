@@ -15,7 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tabula_kit::{egui::Color32, images::av1};
+use olo_kit::{egui::Color32, images::av1};
 
 use crate::{
     audio,
@@ -53,7 +53,7 @@ impl Picture {
             Picture::Rgba(i) => i,
             Picture::Bgra { size, data } => {
                 let px = data.as_chunks::<4>().0.iter().map(|p| Color32::from_rgba_unmultiplied(p[2], p[1], p[0], p[3])).collect();
-                Arc::new(tabula_kit::egui::ColorImage::new(size, px))
+                Arc::new(olo_kit::egui::ColorImage::new(size, px))
             }
         }
     }
@@ -147,7 +147,7 @@ impl Planar {
     fn image(&self) -> Image {
         let mut px = vec![Color32::BLACK; self.width * self.height];
         self.convert(|i, [r, g, b]| px[i] = Color32::from_rgb(r, g, b));
-        Arc::new(tabula_kit::egui::ColorImage::new([self.width, self.height], px))
+        Arc::new(olo_kit::egui::ColorImage::new([self.width, self.height], px))
     }
 
     fn bgra(&self) -> Vec<u8> {
@@ -431,7 +431,7 @@ fn ripen(m: &Mutex<Shared>) {
 }
 
 fn av1_image(f: &av1::Frame) -> Image {
-    Arc::new(tabula_kit::egui::ColorImage::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba()))
+    Arc::new(olo_kit::egui::ColorImage::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba()))
 }
 
 /// One coded picture (H.264 in start-code form, AV1 as stored), with
@@ -852,14 +852,14 @@ impl Demux for Mkv {
 mod tests {
     use super::*;
 
-    /// `TABULA_SAMPLES=dir cargo test -p tabula-preview video -- --ignored`
+    /// `OLO_SAMPLES=dir cargo test -p olo-preview video -- --ignored`
     /// with 8-second 30 fps H.264 clips in `dir`: test.mp4 / test.mkv (one
     /// key frame), gop.mp4 / gop.mkv (one a second) and av1.webm (AV1 with
     /// reordering, a key frame a second), and bframes.mp4 (see b_frames).
     #[test]
     #[ignore]
     fn seeks_to_the_frame() {
-        let dir = std::path::PathBuf::from(std::env::var("TABULA_SAMPLES").expect("TABULA_SAMPLES"));
+        let dir = std::path::PathBuf::from(std::env::var("OLO_SAMPLES").expect("OLO_SAMPLES"));
         for name in ["test.mp4", "test.mkv", "gop.mp4", "gop.mkv", "av1.webm", "bframes.mp4"] {
             for target in [0.0, 5.0, 2.5] {
                 let path = dir.join(name);
@@ -890,7 +890,7 @@ mod tests {
     #[test]
     #[ignore]
     fn b_frames() {
-        let path = std::path::PathBuf::from(std::env::var("TABULA_SAMPLES").expect("TABULA_SAMPLES")).join("bframes.mp4");
+        let path = std::path::PathBuf::from(std::env::var("OLO_SAMPLES").expect("OLO_SAMPLES")).join("bframes.mp4");
         let mut demux = Mp4::open(&Input::file(&path)).unwrap();
         let mut packets = 0;
         while demux.next().is_some() {
@@ -948,7 +948,7 @@ mod tests {
     #[test]
     #[ignore]
     fn keeps_up() {
-        let dir = std::path::PathBuf::from(std::env::var("TABULA_SAMPLES").expect("TABULA_SAMPLES"));
+        let dir = std::path::PathBuf::from(std::env::var("OLO_SAMPLES").expect("OLO_SAMPLES"));
         for name in ["av1-1080.mkv", "gop.mp4"] {
             let path = dir.join(name);
             let shared = Arc::new((Mutex::new(Shared::default()), Condvar::new()));

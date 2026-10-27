@@ -2,12 +2,12 @@
 //! Caps Lock as Ctrl, tap ⌘ for Find), the backlight; and the Shortcuts
 //! tab (shortcuts.rs).
 
-use tabula_kit::{
+use olo_kit::{
     egui::Ui,
     metrics as m,
     widgets::{BBox, CheckBox, MenuField, Slider, StringView, TabView, TextControl},
 };
-use tabula_protocol::{PowerStatus, Settings};
+use olo_protocol::{PowerStatus, Settings};
 
 use crate::server::Server;
 
@@ -48,7 +48,7 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, power: Option<&PowerStatus>, server: &S
     let mut tab = st.tab;
     TabView::new(&mut tab, &["Keyboard", "Shortcuts"]).show(ui, |ui, tab| {
         let inner = ui.available_rect_before_wrap().shrink(m::SPACING);
-        ui.scope_builder(tabula_kit::egui::UiBuilder::new().max_rect(inner).layout(tabula_kit::egui::Layout::top_down(tabula_kit::egui::Align::Min)), |ui| {
+        ui.scope_builder(olo_kit::egui::UiBuilder::new().max_rect(inner).layout(olo_kit::egui::Layout::top_down(olo_kit::egui::Align::Min)), |ui| {
             ui.spacing_mut().item_spacing.y = m::SPACING;
             match tab {
                 0 => keyboard(ui, s, power, server, st),
@@ -99,7 +99,7 @@ fn keyboard(ui: &mut Ui, s: &mut Settings, power: Option<&PowerStatus>, server: 
         ui.add(TextControl::new(&mut st.test).label("Typing test:").hint("Type here to try the settings"));
     });
 
-    ui.add(CheckBox::new(&mut k.num_lock, "Num Lock on when Tabula starts"));
+    ui.add(CheckBox::new(&mut k.num_lock, "Num Lock on when Olo starts"));
 
     BBox::new("Mac Keys").show(ui, |ui| {
         ui.add(CheckBox::new(&mut k.command_key, "Use Command as the shortcut key (Command-C copies)"));

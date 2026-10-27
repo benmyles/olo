@@ -4,7 +4,7 @@
 //! make, delete, resize and rename partitions, give a disk a new
 //! partition table, write a disk image onto it, eject it, check its health
 //! and measure how fast it reads. Everything talks to UDisks2
-//! (`tabula_system::disks`) on worker threads; UDisks asks polkit before
+//! (`olo_system::disks`) on worker threads; UDisks asks polkit before
 //! privileged steps. Every destructive step is behind an alert naming the
 //! disk, and the disk holding the running system is never offered for one.
 //!
@@ -23,7 +23,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Menu, Proxy, WindowId, WindowOptions,
     egui::{self, Align, Id, Key, Rect, Shape, Stroke, Ui, pos2, vec2},
     file_panel::{FilePanel, PANEL_SIZE, PanelResult},
@@ -33,10 +33,10 @@ use tabula_kit::{
     style::{self, c},
     widgets::{self, Button, Cell, CheckBox, Column, ColumnListView, ListState, MenuField, Slider, StatusBar, TextControl},
 };
-use tabula_system::disks::{self, Disk, Segment, Space, Status, Volume};
-use tabula_theme::mix;
+use olo_system::disks::{self, Disk, Segment, Space, Status, Volume};
+use olo_theme::mix;
 
-const APP_ID: &str = "tabula.drive-setup";
+const APP_ID: &str = "olo.drive-setup";
 const MIB: u64 = 1 << 20;
 const MAP_H: f32 = 52.0;
 const FORM_W: u32 = 440;
@@ -494,7 +494,7 @@ impl DriveSetup {
         let outer = s.outer.cloned();
         let free = s.free;
         let dname = disk.name();
-        let e = |r: tabula_system::Result<()>| r.map(|_| None).map_err(|e| disks::error_text(&e));
+        let e = |r: olo_system::Result<()>| r.map(|_| None).map_err(|e| disks::error_text(&e));
         match command {
             "mount" if can.mount => {
                 let v = volume.unwrap();
@@ -580,8 +580,8 @@ impl DriveSetup {
             }
             "show-in-tracker" if can.tracker => {
                 let dir = volume.unwrap().mount_points[0].clone();
-                if let Some(tracker) = tabula_kit::find_program("tabula-tracker")
-                    && let Err(e) = tabula_kit::open::spawn(&[tracker.into_os_string(), dir.into()])
+                if let Some(tracker) = olo_kit::find_program("olo-tracker")
+                    && let Err(e) = olo_kit::open::spawn(&[tracker.into_os_string(), dir.into()])
                 {
                     tracing::warn!("couldn't open Tracker: {e}");
                 }
@@ -813,7 +813,7 @@ impl DriveSetup {
                     let x = cell.rect.left() + m::CELL_INSET + row.depth as f32 * INDENT;
                     if let Some(icon) = row.icon {
                         let r = Rect::from_center_size(pos2(x + ICON / 2.0, cell.rect.center().y), vec2(ICON, ICON));
-                        tabula_kit::icons::paint(cell.painter, r, icon);
+                        olo_kit::icons::paint(cell.painter, r, icon);
                     }
                     let shifted = Cell { rect: cell.rect.with_min_x(x + ICON), ..*cell };
                     let free = matches!(row.item, Item::Free { .. });
@@ -977,7 +977,7 @@ impl DriveSetup {
 
     /// A form's default button.
     fn submit(&mut self, cx: &mut Cx, win: Win) {
-        let e = |r: tabula_system::Result<()>| r.map(|_| None).map_err(|e| disks::error_text(&e));
+        let e = |r: olo_system::Result<()>| r.map(|_| None).map_err(|e| disks::error_text(&e));
         match win {
             Win::Format { path, release, title, fields, .. } => {
                 let f = fields.format();
@@ -1326,7 +1326,7 @@ fn cli(args: &[String]) -> Option<i32> {
         return None;
     }
     let fail = |e: String| {
-        eprintln!("tabula-drive-setup: {e}");
+        eprintln!("olo-drive-setup: {e}");
         Some(1)
     };
     let status = match disks::status() {
@@ -1353,6 +1353,8 @@ fn cli(args: &[String]) -> Option<i32> {
 }
 
 fn main() {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Some(code) = cli(&args) {
         std::process::exit(code);
@@ -1360,7 +1362,7 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    tabula_kit::run(APP_ID, |cx| {
+    olo_kit::run(APP_ID, |cx| {
         instance::listen(APP_ID, cx.proxy());
         let saved: Saved = cx.restored_state().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         let proxy = cx.proxy();

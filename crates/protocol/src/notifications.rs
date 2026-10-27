@@ -1,5 +1,5 @@
-//! Notification settings (`notifications.json` in Tabula's config
-//! directory): Do Not Disturb and what each app may do. tabula-notifications
+//! Notification settings (`notifications.json` in Olo's config
+//! directory): Do Not Disturb and what each app may do. olo-notifications
 //! reads them (again whenever the file changes); Preferences ▸
 //! Notifications and Deskbar's menu write them.
 
@@ -91,7 +91,7 @@ impl NotificationSettings {
     }
 
     pub fn path() -> std::path::PathBuf {
-        tabula_xdg::config_dir().join("notifications.json")
+        olo_xdg::config_dir().join("notifications.json")
     }
 
     pub fn load() -> NotificationSettings {
@@ -110,7 +110,7 @@ impl NotificationSettings {
     }
 }
 
-/// What tabula-notifications tells Deskbar (a small JSON file in the
+/// What olo-notifications tells Deskbar (a small JSON file in the
 /// runtime directory, rewritten on every change).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -125,7 +125,7 @@ impl NotificationState {
     pub fn path() -> std::path::PathBuf {
         let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
         let display = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
-        dir.join(format!("tabula-notifications-{display}.json"))
+        dir.join(format!("olo-notifications-{display}.json"))
     }
 
     pub fn load() -> Option<NotificationState> {

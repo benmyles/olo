@@ -1,6 +1,6 @@
-# Hacking on Tabula
+# Hacking on Olo
 
-Tabula is a Wayland desktop environment in Rust that captures the look and
+Olo is a Wayland desktop environment in Rust that captures the look and
 feel of BeOS R5, with deliberate modern polish. **North star: everything is
 pixel-perfect and beautiful, in light, dark and night modes, at 2× (and any
 other) scale.** Every deviation from BeOS should be an intentional
@@ -15,7 +15,7 @@ as Wayland clients (e.g. Chrome's `--ozone-platform=wayland`).
 ## The responsiveness rule (applies to everything)
 
 **Nothing may ever block the UI.** BeOS was famous for staying responsive
-under load; Tabula must be at least as good. This is a hard requirement for
+under load; Olo must be at least as good. This is a hard requirement for
 every app, the kit, app_server and the shell, and it is checked in review
 like pixel alignment is.
 
@@ -63,22 +63,22 @@ like pixel alignment is.
 | Path | What |
 |---|---|
 | `crates/app_server` | The compositor (Smithay, forked from Anvil). Draws the BeOS window decorator (yellow tabs), manages windows/workspaces, serves IPC. |
-| `crates/session` | `tabula-session`: starts and supervises app_server, Deskbar and the desktop; in-place reload and upgrade (see below). |
+| `crates/session` | `olo-session`: starts and supervises app_server, Deskbar and the desktop; in-place reload and upgrade (see below). |
 | `crates/protocol` | JSON-lines IPC between app_server and our apps (`Client`, `Request`, `Reply`, `Event`, `Settings`). |
 | `crates/theme` | `Palette` (light/dark), BeOS tint helpers, decorator metrics, font lists. |
 | `crates/kit` | The Interface Kit: Wayland client platform, GPU rendering (egui on wgpu/Vulkan), menus, BeOS widgets, icons, `.desktop` entries. **All apps are built on it.** |
-| `crates/xdg` | `tabula-xdg`: freedesktop plumbing shared by app_server and the kit (re-exported there): data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; Tabula's apps first, except that links and web pages go to the browser chosen in mimeapps.list, else `tabula-chrome`), `find_program`, `spawn_detached`. No egui. |
-| `crates/system` | `tabula-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
-| `crates/pool` | `tabula-token-pool`: token pooling for Claude Code and Codex (see "Token Pool"): the accounts, their sealed store, the drain order and the loopback gateway. |
-| `crates/ai` | `tabula-ai`: how AI features reach their models (see "AI features"): `ask(&settings.ai, &feature, &Ask)` → the answer's JSON. Blocking; call off the UI thread. |
-| `crates/preview` | `tabula-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Used by Tracker's Quick Look (`Preview::new`, images capped at 3200 px) and the Viewer (`Preview::new_zoomable`: full resolution up to the GPU texture limit, zoom and pan, `zoom` / `set_image_scale`). Images carry halved copies (`load::halvings`) because egui-wgpu makes no mipmaps. Video (`video.rs`, H.264 in mp4 or Matroska and AV1 in Matroska/WebM, with `media.playable` set): a worker demuxes and decodes (OpenH264, or rav1d through `tabula_images::av1::Decoder`) up to six frames ahead, giving each picture the earliest outstanding presentation time (OpenH264 returns display order; it must be made with `Flush::NoFlush`, as the crate's default flush after every packet breaks B-frame reordering and every B-frame then fails), mp4 times shifted by the track's edit list; `Video::tick` shows frames against a clock that follows the sound's reported position when an `audio::Player` is playing it and runs alone otherwise (no sound server in tests, silent files). Seeks go to the key frame before the target (Matroska: scans back for one, further each time) and drop pictures before it; a paused seek still shows its frame. `TABULA_SAMPLES=dir cargo test --release -p tabula-preview video -- --ignored` checks seeking on test.mp4/mkv (one key frame) and gop.mp4/mkv (one a second), made with ffmpeg's testsrc2, plus av1.webm (svt-av1, Opus sound) and bframes.mp4 (any x264-made H.264 High clip with B-frames; `b_frames` checks every picture comes out, in order); `keeps_up` needs av1-1080.mkv (1080p AV1) to decode at well over 30 frames a second (72 on the M2 Max; the YUV to RGB fast path is fixed-point with tables, checked against the float path by `yuv_fast_path`). Audio decodes with symphonia plus `opus.rs` (opus-decoder, OpusHead parsing and pre-skip trim) for Ogg Opus. Picture editing (`edit.rs`): an `Editor` keeps a list of `Op`s (rotate, flip, crop, resize) with undo/redo and a saved mark, and a worker that loads the full picture once, applies new steps to its last result, sends `EditEvent::Shown` (downscaled for the screen, with halvings) for `Preview::show_edited`, and writes PNG, JPEG (quality 92), WebP, BMP, TIFF or GIF atomically (`write`, through a hidden `.name.saving` file); `edit::editable` says which files it can write back. `CropTool` is the crop overlay (drag a frame, move it or its edges; `Preview::image_rect` gives where the picture is drawn, `set_still` stops pan and zoom while it is up). The Viewer's Image menu and File ▸ Save / Save As / Revert use it; Quick Look's footer has Rotate Left / Right (⌘L / ⌘R), which save at once. |
-| `apps/<name>` | One crate per application, binary named `tabula-<name>`. Picked up by the workspace glob. |
+| `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit (re-exported there): data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; Olo's apps first, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`), `find_program`, `spawn_detached`. No egui. |
+| `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
+| `crates/pool` | `olo-token-pool`: token pooling for Claude Code and Codex (see "Token Pool"): the accounts, their sealed store, the drain order and the loopback gateway. |
+| `crates/ai` | `olo-ai`: how AI features reach their models (see "AI features"): `ask(&settings.ai, &feature, &Ask)` → the answer's JSON. Blocking; call off the UI thread. |
+| `crates/preview` | `olo-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Used by Tracker's Quick Look (`Preview::new`, images capped at 3200 px) and the Viewer (`Preview::new_zoomable`: full resolution up to the GPU texture limit, zoom and pan, `zoom` / `set_image_scale`). Images carry halved copies (`load::halvings`) because egui-wgpu makes no mipmaps. Video (`video.rs`, H.264 in mp4 or Matroska and AV1 in Matroska/WebM, with `media.playable` set): a worker demuxes and decodes (OpenH264, or rav1d through `olo_images::av1::Decoder`) up to six frames ahead, giving each picture the earliest outstanding presentation time (OpenH264 returns display order; it must be made with `Flush::NoFlush`, as the crate's default flush after every packet breaks B-frame reordering and every B-frame then fails), mp4 times shifted by the track's edit list; `Video::tick` shows frames against a clock that follows the sound's reported position when an `audio::Player` is playing it and runs alone otherwise (no sound server in tests, silent files). Seeks go to the key frame before the target (Matroska: scans back for one, further each time) and drop pictures before it; a paused seek still shows its frame. `OLO_SAMPLES=dir cargo test --release -p olo-preview video -- --ignored` checks seeking on test.mp4/mkv (one key frame) and gop.mp4/mkv (one a second), made with ffmpeg's testsrc2, plus av1.webm (svt-av1, Opus sound) and bframes.mp4 (any x264-made H.264 High clip with B-frames; `b_frames` checks every picture comes out, in order); `keeps_up` needs av1-1080.mkv (1080p AV1) to decode at well over 30 frames a second (72 on the M2 Max; the YUV to RGB fast path is fixed-point with tables, checked against the float path by `yuv_fast_path`). Audio decodes with symphonia plus `opus.rs` (opus-decoder, OpusHead parsing and pre-skip trim) for Ogg Opus. Picture editing (`edit.rs`): an `Editor` keeps a list of `Op`s (rotate, flip, crop, resize) with undo/redo and a saved mark, and a worker that loads the full picture once, applies new steps to its last result, sends `EditEvent::Shown` (downscaled for the screen, with halvings) for `Preview::show_edited`, and writes PNG, JPEG (quality 92), WebP, BMP, TIFF or GIF atomically (`write`, through a hidden `.name.saving` file); `edit::editable` says which files it can write back. `CropTool` is the crop overlay (drag a frame, move it or its edges; `Preview::image_rect` gives where the picture is drawn, `set_still` stops pan and zoom while it is up). The Viewer's Image menu and File ▸ Save / Save As / Revert use it; Quick Look's footer has Rotate Left / Right (⌘L / ⌘R), which save at once. |
+| `apps/<name>` | One crate per application, binary named `olo-<name>`. Picked up by the workspace glob. |
 | `vendor/` | Patched copies of dependencies (`[patch.crates-io]`), each explained in `vendor/README.md`; drop them when upstream has the fix. |
 | `data/icons` | Icon set, pre-scaled to device sizes (`data/icons/<px>/<name>.png`). |
-| `data/session` | `tabula.desktop` for the login screen (installed by `tools/install-session.sh`). |
+| `data/session` | `olo.desktop` for the login screen (installed by `tools/install-session.sh`). |
 | `tools/` | `install-session.sh` (release build → `~/.local`, session entry → `/usr/local/share/wayland-sessions`), `dev/tsession` (headless UI testing), `genicon.py`/`genicons.sh`/`mkicons.py`/`iconsheet.py` (icons, see [ICONS.md](ICONS.md)). |
 
-Build: `cargo build -p tabula-<app>` (plus `cargo build --bin tabula-app-server` once, for headless testing; as root set `CARGO_HOME=/home/ben/.cargo` to share the registry) (repo is owned by `ben`; when running as
+Build: `cargo build -p olo-<app>` (plus `cargo build --bin olo-app-server` once, for headless testing; as root set `CARGO_HOME=/home/ben/.cargo` to share the registry) (repo is owned by `ben`; when running as
 root use `sudo -u ben bash -lc 'cd … && cargo build …'` in the main checkout).
 Builds go through [kache](https://github.com/kunobi-ninja/kache), a
 compiler cache (`cargo install kache --locked`, then
@@ -91,7 +91,7 @@ ben's setup, so build as ben (as above); `kache doctor` checks it,
 ## Writing an app
 
 ```rust
-use tabula_kit::{App, Cx, Menu, WindowId, WindowOptions, egui, widgets::*, metrics as m, style};
+use olo_kit::{App, Cx, Menu, WindowId, WindowOptions, egui, widgets::*, metrics as m, style};
 
 struct MyApp { /* state */ }
 
@@ -111,7 +111,7 @@ impl App for MyApp {
 }
 
 fn main() {
-    tabula_kit::run("tabula.myapp", |cx| {        // app id: tabula.<name>
+    olo_kit::run("olo.myapp", |cx| {        // app id: olo.<name>
         cx.open_window(WindowOptions::new("My App", 480, 320).min_size(320, 200));
         MyApp { /* … */ }
     });
@@ -145,7 +145,7 @@ fn main() {
   Its windows are gone then: a later launch (forwarded to it) must open
   a new one, so check `cx.is_open(id)` before activating a window you
   kept.
-* **Single instance** (`tabula_kit::instance`): call `instance::forward(app_id,
+* **Single instance** (`olo_kit::instance`): call `instance::forward(app_id,
   &args)` first in `main` (returns true if a running copy took the
   arguments; exit then), and `instance::listen(app_id, cx.proxy())` in the
   init closure; forwarded launches arrive in `App::message` as an
@@ -155,9 +155,9 @@ fn main() {
   rather than bringing one forward) and be listed in
   `apps::NEW_WINDOW`: Tracker then offers **New Window** on its program
   (or a link to it) while it runs, and Deskbar in its menu, forwarding `--new-window` to the
-  running copy (`apps::app_id_of` maps `tabula-x` to `tabula.x`). Agents
-  do the same with `tabula-x --new-window`.
-* **Following a setting** (`tabula_kit::settings`): `current()` reads
+  running copy (`apps::app_id_of` maps `olo-x` to `olo.x`). Agents
+  do the same with `olo-x --new-window`.
+* **Following a setting** (`olo_kit::settings`): `current()` reads
   app_server's `Settings` once (a quick local round trip; fine at
   startup), `watch(f)` calls `f` on a thread now, after every
   `SettingsChanged` and after app_server restarts; send what you need
@@ -166,8 +166,8 @@ fn main() {
   `update(edit)` changes them from an app (read, `edit`, `SetSettings`, on
   a thread), and `watch_power(f)` follows `PowerStatus` the same way
   (the screen locking, the displays sleeping).
-* **Menus for the command palette** (`tabula_kit::commands`, automatic):
-  every kit app answers on `$XDG_RUNTIME_DIR/tabula-menus-<pid>.sock`
+* **Menus for the command palette** (`olo_kit::commands`, automatic):
+  every kit app answers on `$XDG_RUNTIME_DIR/olo-menus-<pid>.sock`
   with the menu bar of its last active window, flattened
   (`commands::menus(pid)`: path, label, command, keys as shown, enabled,
   checked), and chooses an enabled one as if from the menu
@@ -181,7 +181,7 @@ fn main() {
   checked, selected); it then turns AccessKit off again, so nothing is
   spent on it otherwise. A program that isn't a kit app can answer for
   another process with `commands::serve_trees(pid, app_id, trees)` (the
-  Tabula extension's host does it for Chrome). egui gives its own widgets roles and names; text
+  Olo extension's host does it for Chrome). egui gives its own widgets roles and names; text
   painted by hand is only pixels, so `style::label` and `Cell` describe
   theirs with `style::describe_text(ctx, role, text, rect, selected)`.
   **Do the same for any text you paint yourself** that an agent should be
@@ -244,10 +244,10 @@ fn main() {
   the first is primary; kept up to date as outputs come and go) and
   `cx.unlock_session()`. See "The lock screen".
 
-### Drag and drop (`tabula_kit::dnd`)
+### Drag and drop (`olo_kit::dnd`)
 
 Over Wayland's data device, so it works within a window, between
-Tabula's apps and with any other Wayland program. As in BeOS (the Be
+Olo's apps and with any other Wayland program. As in BeOS (the Be
 Book's `DragAndDrop.md`), a drag carries the same data in several types
 and offers actions; where it is dropped picks the type and the action.
 
@@ -255,7 +255,7 @@ and offers actions; where it is dropped picks the type and the action.
   that frame), `cx.start_drag(window, DragData)`. `DragData::files(&paths,
   Actions)` carries `text/uri-list` (file:// URIs: file managers,
   browsers, editors) and the paths as plain text (terminals);
-  `DragData::text(s)`; `.with(mime, bytes)` adds a type only Tabula knows,
+  `DragData::text(s)`; `.with(mime, bytes)` adds a type only Olo knows,
   first; `.icon(DragIcon)`; `.from_folder(dir)` names the folder the files
   are in (`Hover::from_folder(dir)`), so Tracker refuses dropping them back
   where they are, from any app; `.as_link()` asks a folder for links
@@ -304,7 +304,7 @@ and offers actions; where it is dropped picks the type and the action.
   not to `App::dropped`.
 * `Action::Ask` (a secondary-button drag, as on BeOS): the place it lands
   shows a menu (Tracker: Move Here / Copy Here / Create Link Here).
-* `RUST_LOG=tabula_kit=debug` traces drags (start, enter, the offer told,
+* `RUST_LOG=olo_kit=debug` traces drags (start, enter, the offer told,
   drop). Headless screenshots show the drag picture; `tsession down X Y
   [right]`, several `move`s, then `up [right]` drives one.
 
@@ -314,11 +314,11 @@ view or on the desktop), into a folder window (anywhere in it; in the
 column view, a column or past the last one), onto the Trash (moves them
 there) or into another app. Within one file system they move, across
 file systems they copy, ⌥ copies anyway; Tracker knows which before the
-drop from `application/x-tabula-device-N` in its own drags, and only its
+drop from `application/x-olo-device-N` in its own drags, and only its
 own drags are moved (another program might delete what it was told was
 moved). Text dropped on a folder becomes a clipping file named after
 its first words. The desktop keeps icons where they are dropped
-(`~/.config/tabula/desktop.json`, `icons`: name or path → offset of the
+(`~/.config/olo/desktop.json`, `icons`: name or path → offset of the
 cell from the screen's top-right, in logical px; things dropped onto it
 from elsewhere land where they fell; a rename carries the place over);
 the rest fill the grid around them, and Clean Up in its menu puts every
@@ -335,7 +335,7 @@ widget takes it in the next frame it goes to `App::command`, as a menu
 bar item's would, so an app's own context menus just use its command
 names.
 
-### Widgets (`tabula_kit::widgets`)
+### Widgets (`olo_kit::widgets`)
 
 `StringView` (a label; `.dim(true)` for hints, `.wrap(true)` for a paragraph, `.color(c)`), `Button` (`.default(true)` for the Enter button), `CheckBox`, `RadioButton`,
 `Button::pushed(true)` for a toolbar toggle that stays down,
@@ -397,27 +397,27 @@ instead). Nothing may sit on top of a `TextEdit` that senses clicks, or
 double and triple clicks never reach it. `menu::request_paste(ctx)` pastes
 the clipboard into the window as ⌘V does.
 
-Colour emoji (`tabula_kit::emoji`, on `crates/emoji`): egui's text is
+Colour emoji (`olo_kit::emoji`, on `crates/emoji`): egui's text is
 monochrome, so code that places glyphs itself calls
 `emoji::paint(painter, rect, cluster)`, which draws the cluster in colour
 fitted and centred in `rect` (a cached texture at device resolution) and
 returns false when there is no colour glyph (draw text instead).
 `emoji::wants_color(cluster, wide)` says whether a cluster has emoji
 presentation; `emoji::continues(prev, next)` joins sequences a cell grid
-split (ZWJ, skin tones, flags). `tabula-emoji` shapes with harfrust and
+split (ZWJ, skin tones, flags). `olo-emoji` shapes with harfrust and
 paints COLRv0/v1 with tiny-skia (Noto Color Emoji is COLRv1); the font is
 read on a worker thread when the system fonts load. Render test images
-with `EMOJI_OUT=/tmp/dir cargo test -p tabula-emoji`.
+with `EMOJI_OUT=/tmp/dir cargo test -p olo-emoji`.
 
-Pictures (`tabula_kit::images::open(path)`, re-exporting `crates/images`
+Pictures (`olo_kit::images::open(path)`, re-exporting `crates/images`
 so app_server can use it without the kit): everything the `image` crate
 reads plus JPEG XL (jxl-oxide), AVIF (avif-parse and rav1d built without
 asm, with our own YUV to RGB and alpha) and HEIC (heifer), EXIF-rotated,
 with a 1 GiB allocation limit; returns the image and its format's name.
 Keep its dependencies permissive: zenavif / rav1d-safe were dropped for
-being AGPL. `TABULA_SAMPLES=dir cargo test -p tabula-images -- --ignored`
+being AGPL. `OLO_SAMPLES=dir cargo test -p olo-images -- --ignored`
 decodes example.avif and example.heic from `dir`. Thumbnails and Quick Look use
-it. File panels (`tabula_kit::file_panel`): `FilePanel::open(dir)` /
+it. File panels (`olo_kit::file_panel`): `FilePanel::open(dir)` /
 `FilePanel::save(dir, name)` give a BFilePanel (path popup, Home, sortable
 Name/Size/Modified list, "Save as:" field, Replace confirmation);
 `FilePanel::folder(dir)` picks a folder (folders only; Select takes the
@@ -431,11 +431,11 @@ thread); `style::add_document_font(family, bytes, index)` makes it
 opened later and after a reconnect, with the UI fonts as fallback. Check
 `style::family_ready(ctx, family)` before naming it in a frame: egui
 panics on unknown families, and new fonts arrive with the next frame. App settings live in
-`tabula_kit::config_dir()` (`$XDG_CONFIG_HOME/tabula/NAME.json`); user
-folders come from `tabula_kit::user_dir("PICTURES")` (user-dirs.dirs,
+`olo_kit::config_dir()` (`$XDG_CONFIG_HOME/olo/NAME.json`); user
+folders come from `olo_kit::user_dir("PICTURES")` (user-dirs.dirs,
 None if unset or missing). Bytes too many to keep in memory (a download
-being gathered) go in `tabula_xdg::scratch_file()`: a nameless file under
-`tabula_xdg::cache_dir()`, on disk rather than /tmp, gone once closed.
+being gathered) go in `olo_xdg::scratch_file()`: a nameless file under
+`olo_xdg::cache_dir()`, on disk rather than /tmp, gone once closed.
 
 Menus: `Menu::new("File").item(label, command, Some(Key::N))`,
 `.item_shift(…)`, `.separator()`, `.submenu(Menu)`, `.checked(bool)`,
@@ -477,7 +477,7 @@ of the way down.
    mode). Never hard-code a grey: it will be wrong in the other theme.
    Semantic accent colours (graph lines, file-type tints) must be checked in
    both themes.
-2. **Spacing only from `tabula_kit::metrics`** (`SPACING` 8, `TIGHT` 4,
+2. **Spacing only from `olo_kit::metrics`** (`SPACING` 8, `TIGHT` 4,
    `WINDOW_INSET` 12, `BOX_INSET` 10, `LABEL_GAP` 8, `CONTROL_HEIGHT` 24,
    `LIST_ROW` 20, …). If you need a new kind of gap, add a named constant
    there rather than a literal in your app.
@@ -496,10 +496,12 @@ of the way down.
    (`style::snap`). No blurry half-pixel lines. An outline's fold mark
    is `style::latch(painter, rect, open, color)` (BOutlineListView's
    triangle: right when folded, down when open).
-5. **Icons**: `tabula_kit::icons::paint(painter, rect, "name")` with names
+5. **Icons**: `olo_kit::icons::paint(painter, rect, "name")` with names
    from `data/icons/manifest.txt` (or freedesktop names / absolute paths).
    Sizes 16 (lists, Deskbar), 32 (Tracker list), 48–64 (Tracker icon view),
-   128 (About boxes). Image previews: `icons::thumbnail(ctx, path, size)`
+   128 (About boxes). Olo's wordmark is `olo_kit::brand::wordmark(painter,
+   rect, dark)` (from `data/brand`, shrunk crisply to the height asked
+   for; `wordmark_width(h)` to lay it out), beside the `olo` icon. Image previews: `icons::thumbnail(ctx, path, size)`
    decodes off-thread and returns `None` until ready (it repaints when
    done); place it with `icons::fit(ctx, &tex, bounds)` so it is never
    upscaled or blurred. Need a new one? Follow **[ICONS.md](ICONS.md)**: the
@@ -521,14 +523,14 @@ of the way down.
 
 ## The session and in-place reload
 
-Tabula upgrades without logging out. `tabula-session` (what the login
+Olo upgrades without logging out. `olo-session` (what the login
 screen runs) owns the Wayland socket (`wayland-N`) and the IPC socket and
 hands both to app_server, so clients never see the sockets disappear.
 
 * **Other programs** (Chrome, GTK and Qt apps, terminals) connect to
-  `wayland-N`, which belongs to `tabula-wlproxy` (`crates/wlproxy`).
+  `wayland-N`, which belongs to `olo-wlproxy` (`crates/wlproxy`).
   It opens a connection to app_server for each of them on
-  `$XDG_RUNTIME_DIR/tabula-wayland-N-proxied`, which begins with a 16-byte
+  `$XDG_RUNTIME_DIR/olo-wayland-N-proxied`, which begins with a 16-byte
   hello naming the program's pid. app_server answers with its own pid,
   and uses the program's pid everywhere it would read the socket's
   (`state::client_pid`). The proxy decodes every message and records
@@ -545,22 +547,22 @@ hands both to app_server, so clients never see the sockets disappear.
   window returns to its place (same pid, new client: `layout.rs`).
 * The proxy shows programs only the globals it can decode
   (`wlproxy/src/interfaces.rs`); add a protocol there before an outside
-  program can use it. Set `TABULA_WLPROXY_DEBUG=1` for the session
+  program can use it. Set `OLO_WLPROXY_DEBUG=1` for the session
   (`tsession` passes it on) to log every replayed request. Set
-  `TABULA_NO_WAYLAND_PROXY=1` to have app_server take `wayland-N` itself.
+  `OLO_NO_WAYLAND_PROXY=1` to have app_server take `wayland-N` itself.
   If the proxy keeps crashing, the session does that on its own.
-* **Tabula's own apps** connect straight to app_server on
-  `$XDG_RUNTIME_DIR/tabula-wayland-N-direct` (the kit's `connect_once`).
+* **Olo's own apps** connect straight to app_server on
+  `$XDG_RUNTIME_DIR/olo-wayland-N-direct` (the kit's `connect_once`).
   They reconnect and re-execute by themselves, as below.
 * Test with `tsession start NAME --session`. Run an outside program in
   it with a fixture `HOME` and a private bus (`tools/dev/busd-lenient`),
   then run `tsession reload NAME` a few times and check it still draws,
   takes input and opens menus.
 
-* `tabula-session reload` (SIGHUP): if `tabula-session` itself was
+* `olo-session reload` (SIGHUP): if `olo-session` itself was
   upgraded it re-executes the new binary first, keeping its children and
   sockets. Then it stops app_server (SIGTERM; it saves every window's
-  place to `$XDG_RUNTIME_DIR/tabula-layout-<display>.json`) and starts the
+  place to `$XDG_RUNTIME_DIR/olo-layout-<display>.json`) and starts the
   one now on disk, which puts returning windows back (same app id and
   title within 60 s; position, size, workspace, minimized, focus).
   `layout.rs` decides what is returning: the same process on a new
@@ -585,8 +587,8 @@ hands both to app_server, so clients never see the sockets disappear.
   selection, and reopen them in the same order. Tracker's `Saved` is the
   example.
 * app_server or a shell component that crashes is restarted (up to 5
-  times a minute). `tabula-session quit` ends the session.
-* tabula-session's watchdog (`crates/session/src/watchdog.rs`) pings
+  times a minute). `olo-session quit` ends the session.
+* olo-session's watchdog (`crates/session/src/watchdog.rs`) pings
   app_server over IPC every 2 s. After 10 s without an answer it sends
   SIGABRT (so `coredumpctl debug` has the stack that hung), then SIGKILL
   10 s later, and restarts it like a crash: apps reconnect and a locked
@@ -604,32 +606,32 @@ installed).
 Install for the login screen with `tools/install-session.sh` (as
 yourself; it asks for sudo once). It builds release binaries into
 `~/.local/bin` (so upgrades need no root), icons into
-`~/.local/share/tabula`, and the session entry into
-`/usr/local/share/wayland-sessions/tabula.desktop` (Exec is the installed
+`~/.local/share/olo`, and the session entry into
+`/usr/local/share/wayland-sessions/olo.desktop` (Exec is the installed
 path; no TryExec, as the greeter can't look inside a private home).
 
 **Upgrades from the build tree** (`crates/session/src/upgrade.rs`): the
 installer records the tree's `target/release` in
-`~/.local/share/tabula/build-dir` (`TABULA_UPGRADE_FROM` overrides it).
-Every 3 s the session compares the `tabula-*` programs there with its
+`~/.local/share/olo/build-dir` (`OLO_UPGRADE_FROM` overrides it).
+Every 3 s the session compares the `olo-*` programs there with its
 own. It skips this while cargo holds one of its locks in the tree
 (`.cargo-lock`, or `.cargo-build-lock`/`.cargo-artifact-lock` in newer
 cargo) or a program is under 3 s old. It lists newer ones in
-`$XDG_RUNTIME_DIR/tabula-upgrade-<display>.json`; Deskbar polls that file
+`$XDG_RUNTIME_DIR/olo-upgrade-<display>.json`; Deskbar polls that file
 and shows a green arrow in its tray. Clicking it asks first. Accepting,
-or `tabula-session upgrade` (SIGUSR2), installs them beside the session:
+or `olo-session upgrade` (SIGUSR2), installs them beside the session:
 a btrfs/XFS clone (`FICLONE`) or a copy, under a temporary name and then
-renamed. Only a new `tabula-app-server` needs a reload. Other programs
+renamed. Only a new `olo-app-server` needs a reload. Other programs
 keep their windows through it (above) unless they came without the proxy
 (`WindowInfo::kept` is false), and Deskbar's alert names those first. Otherwise app_server keeps running: the session
 sends SIGURG to each of the user's processes whose program file in the
 install directory was just replaced (`/proc/PID/exe` ends in
 " (deleted)"). The kit catches it (a self-pipe in `platform.rs`), saves
 state and re-executes, as after a reload, and app_server puts its windows
-back where they were. A new tabula-session re-executes itself without a
+back where they were. A new olo-session re-executes itself without a
 reload. Test it with
-`TSESSION_SESSION_EXE=<install>/bin/tabula-session
-TABULA_UPGRADE_FROM=<tree> tsession start NAME --session --shell` and
+`TSESSION_SESSION_EXE=<install>/bin/olo-session
+OLO_UPGRADE_FROM=<tree> tsession start NAME --session --shell` and
 `touch` a program in the tree.
 
 **The login keyring** (`crates/session/src/keyring.rs`): PAM starts
@@ -647,15 +649,56 @@ modifier keys and Caps Lock to themselves. That way app_server's
 keymap.rs sees the real keys. The session repeats this every minute,
 because `keyd reload` forgets binds, and sends `reset` when it ends.
 
-**New hardware**: `tabula-app-server --probe-gpus` lists the DRM devices,
+**New hardware**: `olo-app-server --probe-gpus` lists the DRM devices,
 their KMS resources and the render node their EGL uses, without
 disturbing a running desktop. On Apple silicon the boot GPU (asahi) has
 no displays. The display controller (apple-drm) renders through it via
 Mesa's kmsro, so a primary GPU without modesetting is skipped rather
 than treated as fatal. Under GDM the session's output goes to the journal
-(`journalctl -b | grep tabula`). If app_server can't start, the session
+(`journalctl -b | grep olo`). If app_server can't start, the session
 gives up after 5 crashes a minute and the login screen comes back;
 Ctrl+Alt+Backspace quits the session.
+
+### Renamed from Tabula
+
+Olo was called Tabula until its rename; installs and running sessions
+from then carry on. `olo_xdg::legacy` (re-exported as `olo_kit::legacy`)
+holds the bridge, and the old name is spelled nowhere else but the
+places below.
+
+* `legacy::adopt()` is the first line of every program's `main` (apps,
+  termd, app_server, the session, wlproxy, op): `TABULA_*` variables
+  become `OLO_*`, and `tabula` under the config, cache, state and data
+  folders moves to `olo`, leaving a `tabula -> olo` link. New programs
+  call it too.
+* `legacy::runtime_file(dir, "olo-…")` finds a running Tabula session's
+  `tabula-…` sockets, locks and files in `$XDG_RUNTIME_DIR` (the IPC,
+  direct, proxied and termd sockets, pid and layout files, agent screens);
+  use it for any runtime path another program may have made.
+* The session crate is a library with two programs: `olo-session`, and
+  `tabula-session` (`src/old_name.rs`), which is what a Tabula session's
+  upgrade watcher offers (it only looks for `tabula-*`). Accepting it
+  installs every `olo-*` program, turns each old `tabula-X` into a link
+  to `olo-X` (`upgrade::link_old_names`) and re-executes as Olo, then
+  reloads and nudges (`Resume.nudge`) so every app and termd re-executes
+  too. app_server maps saved `tabula.X` app ids (`legacy::new_app_id`),
+  so windows come back where they were.
+* Kept on purpose, forever: the keyring entries Passwords and the Token
+  Pool find their keys by (`application` = `tabula-passwords`,
+  `tabula-pool`); Chrome's old native-messaging host
+  (`org.tabula.passwords`, written beside `com.olodesktop.passwords`
+  for an extension not yet updated); `tabula-*` program links; and
+  readers for old data: StyledEdit's `user.tabula.*` attributes,
+  Viewer's `tabula-` annotations, `.tabula-backup` files, the Codex
+  provider `tabula_pool`, `tabula-termd` and `tabula-session`
+  processes, and agent screens' `tabula_socket`.
+* `tools/install-session.sh` moves the folders and links the old names
+  the same way, installs `olo.desktop` and removes `tabula.desktop` and
+  the old udev rule. The login screen offers "Olo Desktop" after that.
+* To test: install a pre-rename build into a fixture HOME, start a
+  session on it (`TSESSION_SESSION_EXE=…/tabula-session`), open windows,
+  then point `OLO_UPGRADE_FROM` (`TABULA_UPGRADE_FROM` for the old
+  session) at this tree and `kill -USR2` the session.
 
 ## Testing: headless sessions
 
@@ -666,10 +709,10 @@ headless app_server (GPU, offscreen, 2560×1600 device pixels at 2×, i.e.
 ```sh
 T=tools/dev/tsession
 $T start mine --light          # unique session name per developer/agent
-$T start mine --session [--shell]   # under tabula-session (with Deskbar + desktop)
-$T start mine --session --home /tmp/tabula-dev/mine-home   # sandbox HOME
+$T start mine --session [--shell]   # under olo-session (with Deskbar + desktop)
+$T start mine --session --home /tmp/olo-dev/mine-home   # sandbox HOME
 $T reload mine                 # in-place reload (test upgrades: rebuild, then reload)
-$T run mine tabula-myapp       # binaries from target/debug (log in /tmp/tabula-dev/mine/)
+$T run mine olo-myapp       # binaries from target/debug (log in /tmp/olo-dev/mine/)
 $T start two 2560x1600,1920x1080   # two screens, HEADLESS-1 and -2 (each offers a few modes)
 $T shot mine /tmp/x.png        # full screenshot (device pixels) of the pointer's screen
 $T shot two /tmp/y.png --output HEADLESS-2
@@ -684,19 +727,19 @@ $T stop mine
 ```
 
 Every session gets its own D-Bus session bus (busd, at
-`/tmp/tabula-dev/NAME/bus`, in `DBUS_SESSION_BUS_ADDRESS` for `run`): the
+`/tmp/olo-dev/NAME/bus`, in `DBUS_SESSION_BUS_ADDRESS` for `run`): the
 runtime directory is the real one, so without it programs fall back to
 `$XDG_RUNTIME_DIR/bus`, the user's real session bus, and a test's
 notifications pop up on their screen. tsession won't start without busd
-(`TSESSION_BUSD`, or the build under `~/.cache/tabula-dev`). To see a
+(`TSESSION_BUSD`, or the build under `~/.cache/olo-dev`). To see a
 test's notifications, run its own centre:
-`$T run NAME tabula-notifications --bus unix:path=/tmp/tabula-dev/NAME/bus`.
+`$T run NAME olo-notifications --bus unix:path=/tmp/olo-dev/NAME/bus`.
 
 sudo resets HOME, so without `--home` a session and its apps use the real
 home folder: pass `--home` whenever a test saves files (Screenshot,
 Tracker, StyledEdit…). Sessions are always silent (`PULSE_SERVER` points at
 a dead socket), so tests never reach the real speakers or volume. To
-test sound, run `tabula-fakesound SOCKET` (tabula-preview): it speaks the
+test sound, run `olo-fakesound SOCKET` (olo-preview): it speaks the
 PulseAudio protocol, plays nothing, and logs each stream once a second
 (bytes consumed in real time, corked or not, loudness); start the app with
 `$T run NAME PULSE_SERVER=unix:SOCKET …`.
@@ -727,7 +770,7 @@ cost ~60 MB of GPU memory per app).
 
 ## Screenshot journal
 
-`docs/journal/` is Tabula's visual history (images in Git LFS). Whenever
+`docs/journal/` is Olo's visual history (images in Git LFS). Whenever
 something visible changes — a new app or window, a look-and-feel fix, a
 theme — add an entry and commit it with the change:
 
@@ -747,10 +790,10 @@ Small, focused commits with a descriptive message ending in the
 ## Preferences (apps/preferences)
 
 One process, one small fixed-size window per panel, as BeOS had a
-preference app per area. `tabula-preferences <panel>` opens or brings
+preference app per area. `olo-preferences <panel>` opens or brings
 forward a panel (Deskbar's Preferences menu does this); with no argument a
 launcher lists them. The panel list Deskbar shows is
-`tabula_xdg::apps::PREFERENCE_PANELS`; a unit test keeps it in step with
+`olo_xdg::apps::PREFERENCE_PANELS`; a unit test keeps it in step with
 `panel::Panel`.
 
 * Settings that live in app_server come over IPC (`server.rs`): a watcher
@@ -766,7 +809,7 @@ launcher lists them. The panel list Deskbar shows is
 * Tracker (`tracker.rs`) sets `Settings::tracker` (the view new folder
   windows open in); its icon is Tracker's own, as in Haiku.
 * Network (`network.rs`) reads NetworkManager through
-  `tabula_system::network` on a worker thread (devices, addresses,
+  `olo_system::network` on a worker thread (devices, addresses,
   networks in range merged by SSID, saved connections; a scan every 30 s)
   and joins (saved connection, or a new WPA-PSK one), disconnects and
   forgets. A new enterprise (802.1X) network's Join… opens a sheet
@@ -777,10 +820,10 @@ launcher lists them. The panel list Deskbar shows is
   to its rows. `nm::enterprise_settings` builds the `802-1x` settings
   (unit-tested); secrets are zeroed after use. **Tests only look: never
   toggle Wi-Fi, Join, Disconnect or Forget on the real machine.**
-  `TABULA_FAKE_NETWORKS=1` (debug builds; pass it with `tsession run NAME
-  env TABULA_FAKE_NETWORKS=1 …`) shows made-up networks instead and
+  `OLO_FAKE_NETWORKS=1` (debug builds; pass it with `tsession run NAME
+  env OLO_FAKE_NETWORKS=1 …`) shows made-up networks instead and
   pretends to join, so the panel and the sheet can be driven headless.
-* Bluetooth (`bluetooth.rs`) reads BlueZ (`tabula_system::bluetooth`,
+* Bluetooth (`bluetooth.rs`) reads BlueZ (`olo_system::bluetooth`,
   ObjectManager) every second, searches for 30 s when it opens or on
   Search, lists named or paired devices, and pairs, connects, disconnects
   and removes on a thread per action. Its pairing agent is registered for
@@ -790,7 +833,7 @@ launcher lists them. The panel list Deskbar shows is
 * Touch ID (`touchid.rs`) lists, enrols (`fingerprint::enroll`, with a
   StatusBar per touch, cancellable) and removes fingers through fprintd.
   fprintd only answers a process in an active local session; headless, the
-  panel says so. `TABULA_FAKE_FINGERS=right-index-finger,…` (debug builds)
+  panel says so. `OLO_FAKE_FINGERS=right-index-finger,…` (debug builds)
   fakes a sensor so the whole panel can be exercised headless. **Never
   enrol or remove on the real sensor in tests.**
 * Notifications (`notifications.rs`) edits `NotificationSettings`, its
@@ -798,9 +841,9 @@ launcher lists them. The panel list Deskbar shows is
   watcher thread reloads it, and the apps from the history, when either
   changes; edits save on a thread (echoes of older files are ignored for
   a moment after an edit). Times follow the clock's 12/24-hour choice.
-* Backup (`backup.rs`) exports every Tabula setting and piece of saved
+* Backup (`backup.rs`) exports every Olo setting and piece of saved
   state (`config_dir()` and `state_dir()`, as `config/…` and `state/…`)
-  into one `.tabula-backup` file: a zstd tar with `manifest.json` first
+  into one `.olo-backup` file: a zstd tar with `manifest.json` first
   (format, version, when, each file and its size). Import reads the
   manifest and shows it by app (`Manifest::groups`) with Import / Cancel;
   importing first saves what is there to `state_dir()/backups` (the last
@@ -809,12 +852,12 @@ launcher lists them. The panel list Deskbar shows is
   lacks are left alone. app_server keeps its settings in memory, so the
   backup's `app_server.json` is sent to it as `SetSettings`. Both run on
   a worker thread with a StatusBar and Cancel (import can only be
-  cancelled while it saves what is there). `tabula-preferences --export
+  cancelled while it saves what is there). `olo-preferences --export
   FILE`, `--inspect FILE` and `--import FILE` do the same without a
-  window; opening a `.tabula-backup` (`mime::SETTINGS_BACKUP`, kit
+  window; opening a `.olo-backup` (`mime::SETTINGS_BACKUP`, kit
   `Kind::SettingsBackup`) shows it in the panel, ready to import.
 * Date & Time (`datetime.rs`) talks to systemd-timedated through
-  `tabula_system::time` on its own worker thread (status every 2 s; set
+  `olo_system::time` on its own worker thread (status every 2 s; set
   time, zone and network time with polkit's interactive auth, so a
   password prompt never holds the window). Zone offsets and times come
   from jiff and the system tz database. Deskbar's clock format is
@@ -824,13 +867,13 @@ launcher lists them. The panel list Deskbar shows is
 * Backgrounds (`workspaces.rs`): a colour per workspace and one wallpaper,
   picked in a `ThumbnailPicker`: None (the workspace colour), the
   wallpaper pack, or Your Own. The pack (`data/wallpapers`, Git LFS;
-  `tabula_xdg::wallpapers`) lists its pictures in `pack.txt` (the first
+  `olo_xdg::wallpapers`) lists its pictures in `pack.txt` (the first
   is a new install's default), each in `4k/` (16:9) and `ultrawide/`
   (21:9), some with a `-dark` version, and previews in `thumbs/`. The
   setting holds `pack:NAME`, and `wallpapers::resolve` gives the file
   for a screen's shape (2:1 or wider takes the ultrawide one) and the
   effective theme, so it follows dark mode (Auto's schedule too) live.
-  It is installed into `~/.local/share/tabula/wallpapers` by
+  It is installed into `~/.local/share/olo/wallpapers` by
   install-session.sh and by upgrades (cloned on btrfs), and found in
   the recorded build tree's `data/` too (`data_dirs`). Choose… opens a
   FilePanel (picture types only) as a child window for your own file;
@@ -855,7 +898,7 @@ launcher lists them. The panel list Deskbar shows is
   move when the main display changes or their output is unplugged.
   Identify (`IdentifyOutputs`) shows each display's name for 4 s
   (app_server `identify.rs`). Settings are kept per monitor under
-  `tabula_protocol::display_key` ("make model serial" from the EDID,
+  `olo_protocol::display_key` ("make model serial" from the EDID,
   else the connector; `OutputInfo::key`), so they follow a monitor to
   another port; always go through `DisplaySettings::config` /
   `config_mut`, which also read and migrate older connector entries.
@@ -870,8 +913,8 @@ launcher lists them. The panel list Deskbar shows is
   pass the full buffer as `src` to `MemoryRenderBufferRenderElement::
   from_buffer`; without it the buffer counts as logical pixels and is
   drawn at twice its size on a 2× screen.
-* About (`about.rs`) has Restart Tabula: SIGHUP to `$TABULA_SESSION_PID`,
-  the same in-place reload as `tabula-session reload` (disabled outside
+* About (`about.rs`) has Restart Olo: SIGHUP to `$OLO_SESSION_PID`,
+  the same in-place reload as `olo-session reload` (disabled outside
   a session).
 
 Appearance ▸ Longest window title is `Settings::tab_title_chars` (100):
@@ -880,14 +923,14 @@ app_server's decorations cut a title to it with an ellipsis
 settings change) before measuring and drawing the tab.
 
 Appearance ▸ Show icons in the Deskbar menu is
-`Appearance::menu_icons` (on): Deskbar builds its Tabula menu with an
+`Appearance::menu_icons` (on): Deskbar builds its Olo menu with an
 icon on every item (`OUR_APPS` and `PREFERENCE_PANELS` icons, each
 .desktop entry's, a sunburst icon per command and category) and strips
 them all when it's off.
 
-## Desktop shortcuts and tiling (tabula_protocol::shortcuts, app_server keymap.rs, shell/tiling.rs)
+## Desktop shortcuts and tiling (olo_protocol::shortcuts, app_server keymap.rs, shell/tiling.rs)
 
-app_server's own shortcuts are one table, `tabula_protocol::shortcuts::SHORTCUTS`:
+app_server's own shortcuts are one table, `olo_protocol::shortcuts::SHORTCUTS`:
 each a `Shortcut` (tile the focused window into a half, quarter or third,
 zoom, back to its own size, center, to the next display, tile or cascade
 all windows on the display, show the desktop, workspaces, Find, lock,
@@ -960,18 +1003,18 @@ Smart Tiling (see "AI features") is the first user.
 
 ## AI features (crates/ai, apps/smart-tile, Preferences ▸ AI)
 
-Preferences ▸ AI (`tabula-preferences ai`) holds `Settings::ai`
+Preferences ▸ AI (`olo-preferences ai`) holds `Settings::ai`
 (`AiSettings`): `use_pool` (on by default) sends every AI feature
-through the Token Pool's gateway (`http://127.0.0.1:{TABULA_POOL_PORT
+through the Token Pool's gateway (`http://127.0.0.1:{OLO_POOL_PORT
 or 17891}/claude`, or `/codex` for OpenAI's), off sends Claude calls
 straight to Anthropic with the key saved from that panel
-(`tabula_ai::key_path()`, `$XDG_CONFIG_HOME/tabula/anthropic-key`, mode
+(`olo_ai::key_path()`, `$XDG_CONFIG_HOME/olo/anthropic-key`, mode
 0600; or `ANTHROPIC_API_KEY`). Each feature is an `AiFeature { enabled,
 model, effort }`, the model one of `AI_MODELS` and the effort one of
 `AI_EFFORTS`; the panel's `feature()` draws its switch and choosers, so
 the next feature is a struct field and a BBox.
 
-`tabula_ai::ask` sends one question and returns the answer's JSON. For
+`olo_ai::ask` sends one question and returns the answer's JSON. For
 Claude it is the Messages API (`anthropic-version: 2026-10-21`): the
 system prompt, one user turn of content blocks (`png_block`,
 `text_block`), `output_config: {effort, format: {type: "json_schema",
@@ -984,10 +1027,10 @@ the pool's Codex accounts, to the Responses API as Codex sends it
 (`instructions`, `input_text`/`input_image`, `reasoning.effort` with max
 as xhigh, `text.format` json_schema strict, streamed, not stored);
 `openai_answer` reads the stream's text deltas or the completed
-response. `TABULA_AI_BASE_URL` sends every call to a fake server instead:
+response. `OLO_AI_BASE_URL` sends every call to a fake server instead:
 **tests never call a real model**.
 
-Smart Tiling (`tabula-smart-tile`, Smart Tile ⌃⇧⌘↩, default Claude
+Smart Tiling (`olo-smart-tile`, Smart Tile ⌃⇧⌘↩, default Claude
 Opus 5.5 at medium) is a process app_server starts, so nothing waits on
 the model. It asks for the `Arrangement`, takes a PNG of that display
 (before its notification is in it; at most 1568 px on the long side),
@@ -1000,7 +1043,7 @@ clamps to the area) and applied with `Arrange`; the last note says what
 it did and offers Undo for a minute. One window just fills the area;
 with the feature off it says so and offers Preferences. Test it with a
 fake model:
-`$T run NAME TABULA_AI_BASE_URL=http://127.0.0.1:PORT tabula-smart-tile`
+`$T run NAME OLO_AI_BASE_URL=http://127.0.0.1:PORT olo-smart-tile`
 (the fake answers `POST /v1/messages` with `{"stop_reason": "end_turn",
 "content": [{"type": "text", "text": "{\"windows\": […], \"summary\": …}"}]}`).
 
@@ -1020,8 +1063,8 @@ Each display's brightness is `OutputInfo::brightness` (None: can't be set)
 and `Request::SetOutputBrightness { name, level }`. Besides the built-in
 backlight, monitors that take it over USB (Apple Studio Display and Pro
 Display XDR, LG UltraFine: the USB Monitor Control class) are driven
-through hidraw (`tabula_system::hid_monitor`), matched to their connector
-by the EDID maker; `data/udev/70-tabula-displays.rules` (installed by
+through hidraw (`olo_system::hid_monitor`), matched to their connector
+by the EDID maker; `data/udev/70-olo-displays.rules` (installed by
 `tools/install-session.sh`) gives the session's user the device. DDC/CI
 isn't reachable on Apple Silicon. app_server keeps each display's level in
 `OutputConfig::brightness` and sets it when the display appears; with none
@@ -1040,7 +1083,7 @@ USB brightness control on every display (all starting full) and only log
 The modules are R5's own list, in its order (Blackness, BuyNow, Flip,
 Icons, Lens, Lissart, Message, Spiral, Spots, StringTheme, SuperString;
 from period screenshots of R5's ScreenSaver preferences). Each is a
-`tabula_screensavers::Module` that draws a whole frame into a rect with an
+`olo_screensavers::Module` that draws a whole frame into a rect with an
 egui painter, so the same code runs full screen and in the preview monitor
 of Preferences ▸ Screen Saver. Size things with `Frame::k()`, step motion
 with the fixed 60 Hz `Clock`, and add settings as `Opt`s (stored as strings
@@ -1048,7 +1091,7 @@ in `settings.screen_saver.options[module]`; Preferences builds their
 controls). Modules with `uses_desktop` (Flip, Lens) get a picture of the
 desktop that app_server takes as the saver starts.
 
-app_server starts `tabula-screensaver` after `screen_saver.run_minutes`
+app_server starts `olo-screensaver` after `screen_saver.run_minutes`
 idle, from `Request::StartScreenSaver` (Test) or when the pointer enters
 the "Fade now" corner, on a private connection (`spawn_private`, like the
 lock screen); the "Don't fade" corner and caffeinated mode hold it off. Any
@@ -1063,17 +1106,17 @@ Test headless: `tsession ipc NAME '{"type":"start_screen_saver"}'`, or set
 ## The pointer (crates/hvif, app_server cursor.rs)
 
 The pointer is Haiku's system cursor set (`crates/hvif/cursors`, from
-Haiku's CursorData.cpp, MIT; see the LICENSE there). `tabula-hvif` reads
+Haiku's CursorData.cpp, MIT; see the LICENSE there). `olo-hvif` reads
 the Haiku Vector Icon Format and draws it as Haiku's IconRenderer does
 (shapes in order, 2.2-gamma blending, level-of-detail, stroke and contour
-transformers); `tabula_hvif::cursor::render(shape, scale)` draws a cursor
+transformers); `olo_hvif::cursor::render(shape, scale)` draws a cursor
 as Haiku's CursorManager does: 22 logical pixels, the icon's top-left
 32 × 32 region, a soft shadow, the hotspot scaled. app_server's
 `cursor.rs` maps CSS cursor names (from its own decorations, or clients'
 cursor-shape-v1 requests) to them, caches each shape per scale and
 hands the backend a buffer whose pixels land one-to-one on the screen.
 Clients that set a cursor surface still get theirs. To see every cursor:
-`TABULA_CURSOR_SHEET=/tmp/c.png cargo test -p tabula-hvif sheet`.
+`OLO_CURSOR_SHEET=/tmp/c.png cargo test -p olo-hvif sheet`.
 
 When the displays sleep for idleness, `Backend::set_displays_on(false)`
 clears every CRTC on DRM (DPMS off) and rendering stops, since any frame
@@ -1087,14 +1130,14 @@ Caffeinated mode holds a logind block inhibitor ("sleep:idle", plus
 bay; `Request::SetCaffeinated { on, minutes, lid }` sets it, the power
 tick ends a timed stretch, and `PowerStatus` carries `caffeinated_until`
 and `caffeinated_lid`. Deskbar toggles it from the cup (right-click, or
-Tabula ▸ Stay Awake, for durations and the lid); Ctrl+⌘A toggles it from
-the keyboard. The keyboard backlight (`tabula_system::backlight::keyboard`, an LED
+Olo ▸ Stay Awake, for durations and the lid); Ctrl+⌘A toggles it from
+the keyboard. The keyboard backlight (`olo_system::backlight::keyboard`, an LED
 class device set through logind) follows its keys and Preferences ▸
 Keyboard, and goes off with the displays. The brightness, keyboard and
 volume keys and Ctrl+⌘A show `osd.rs`'s
 panel low on the screen under the pointer for 1.6 s (in a real session
 the worker reports the volume it set; headless simulates a volume).
-`TABULA_OSD_SHEET=/tmp/o.png cargo test -p app_server osd_sheet` draws
+`OLO_OSD_SHEET=/tmp/o.png cargo test -p app_server osd_sheet` draws
 every state.
 
 ## The touchpad (app_server udev.rs, momentum.rs)
@@ -1113,7 +1156,7 @@ of its own). Kit scroll views have egui's own smoothing. Test with
 `tsession scroll NAME 0 0` is a lift on its own.
 
 **Scrolling** goes the same distance in every program (`scroll.rs`, at
-the one place app_server hands a scroll to a client): Tabula's apps
+the one place app_server hands a scroll to a client): Olo's apps
 scroll a finger scroll's values as logical pixels and a wheel notch 48
 (the kit counts notches from `value120`, which wl_pointer 8 sends in
 place of `discrete`; read only `discrete`, a notch came out as its 15°
@@ -1147,7 +1190,7 @@ tests.
 
 `Request::Screenshot { path, output, window, border, pointer, format }` (only
 `path` is required; `format: "rgba"` writes raw pixels instead, see
-`tabula_protocol::ImageFormat`, for live views) saves a PNG of one output (the one the pointer is on
+`olo_protocol::ImageFormat`, for live views) saves a PNG of one output (the one the pointer is on
 by default) or of one window, and replies once the file is complete. It
 becomes a `screenshot::Shot` for one output, which every backend takes
 with that output's next frame (`screenshot::take`): the screen via
@@ -1158,7 +1201,7 @@ shape, or only the client's area). A thread then draws the pointer in
 writes `NAME.part` and renames it, so readers never see half a file.
 Window shots are refused while the screen is locked.
 
-The Screenshot app (`tabula-screenshot`) follows Haiku's: it takes a
+The Screenshot app (`olo-screenshot`) follows Haiku's: it takes a
 picture as it starts, then shows it with Capture active window / Include
 window border / Include mouse pointer / Delay, and Name / Save as (PNG,
 JPEG, BMP, TIFF, WebP) / Save in (Home, Desktop, Pictures, Choose
@@ -1189,8 +1232,8 @@ Settings, the last expression and history are in `deskcalc.json`.
 
 Plain text files with styles, as on BeOS: the text is the file; fonts,
 sizes, colours, bold/italic/underline/strikeout (runs of byte lengths,
-JSON) go in the `user.tabula.styles` attribute, alignment and wrapping in
-`user.tabula.alignment` / `user.tabula.wrap`, so other programs see plain
+JSON) go in the `user.olo.styles` attribute, alignment and wrapping in
+`user.olo.alignment` / `user.olo.wrap`, so other programs see plain
 text. Styles that no longer fit the text (edited elsewhere) are dropped.
 Non-UTF-8 files open as Latin-1 and save as UTF-8 (the status line says
 so); unwritable files are read-only (selectable, not editable). Saving
@@ -1238,7 +1281,7 @@ process. Quit sends SIGTERM; Force Quit asks first, then SIGKILL; EPERM
 is an alert. **In tests, only ever quit a process you started, selected
 by its exact ID.**
 
-## DriveSetup (apps/drive-setup, tabula_system::disks, udisks-fake)
+## DriveSetup (apps/drive-setup, olo_system::disks, udisks-fake)
 
 BeOS's DriveSetup with Haiku's disk map: the chosen disk drawn to scale
 (`map.rs`: every stretch at least 48 px so small partitions keep their
@@ -1250,7 +1293,7 @@ them) and its free space. The Disk and Partition menus and the context
 menu act on the selection; double-click opens, mounts, unlocks or
 creates, whichever fits.
 
-`tabula_system::disks` is the UDisks2 client (blocking, so call it from
+`olo_system::disks` is the UDisks2 client (blocking, so call it from
 a worker): `status()` reads `GetManagedObjects` into `Disk`s, `Volume`s
 and `Job`s (all `Serialize`); each mounted volume's
 `space` (`Space`: size, used, free, from statvfs at its first mount
@@ -1279,57 +1322,57 @@ alert windows with fields (`alert_frame` + `alert_text` +
 `Status` as JSON; `--mount`, `--unmount` and `--eject DEVICE` do the safe
 steps.
 
-**Never test on real disks.** `TABULA_UDISKS_BUS=ADDRESS` points the
+**Never test on real disks.** `OLO_UDISKS_BUS=ADDRESS` points the
 client at another bus, where `udisks-fake --address ADDRESS` (in
-tabula-system) plays UDisks2 with four made-up disks (an NVMe system
+olo-system) plays UDisks2 with four made-up disks (an NVMe system
 disk, an empty SD card, a USB stick, an encrypted USB disk whose
 passphrase is `secret`), real job progress and cancelling, and pipes
-that drain at 256 MB/s for images. `cargo test -p tabula-system --test
-udisks_fake` runs everything against it when `TABULA_TEST_BUS` names a
+that drain at 256 MB/s for images. `cargo test -p olo-system --test
+udisks_fake` runs everything against it when `OLO_TEST_BUS` names a
 private bus (busd), and skips otherwise. Reading the real UDisks
 read-only (`--list`) is fine.
 
 ## Terminal (apps/terminal)
 
-The shells don't run in Terminal: they run in **tabula-termd**
+The shells don't run in Terminal: they run in **olo-termd**
 (`src/termd.rs`, a second binary of the same package), one per display,
 which the first Terminal starts (it daemonizes and holds
-`$XDG_RUNTIME_DIR/tabula-termd-<display>.lock`, with its pid in it). It
+`$XDG_RUNTIME_DIR/olo-termd-<display>.lock`, with its pid in it). It
 owns every PTY and keeps its own emulator per shell (the same `io::Feeder`
 and image placement as Terminal, without the pixels), so it always knows
 the screen. Terminal talks to it over
-`$XDG_RUNTIME_DIR/tabula-termd-<display>.sock` (`src/wire.rs`: framed JSON
+`$XDG_RUNTIME_DIR/olo-termd-<display>.sock` (`src/wire.rs`: framed JSON
 and raw bytes; one connection per Terminal, `src/client.rs`): it spawns
 or attaches a shell, sends input and resizes, and gets the output. On
-attach, tabula-termd sends a replay (`src/replay.rs`) that rebuilds the
+attach, olo-termd sends a replay (`src/replay.rs`) that rebuilds the
 screen and scrollback in a fresh emulator: both screens when a program
 is on the alternate one, the modes it set (cursor keys, mouse reporting,
 bracketed paste, kitty keyboard flags…), cursor shape and title. Images
 (kitty, sixel, iTerm2) come back as kitty graphics: each image sent once
-under the program's id, then put row by row in its cells; tabula-termd
+under the program's id, then put row by row in its cells; olo-termd
 keeps them zlib-compressed (`Store::pack`). The PTY comes along (SCM_RIGHTS) so Terminal can see the
-foreground program and its working directory. tabula-termd answers the
+foreground program and its working directory. olo-termd answers the
 program's questions (device attributes) only while no Terminal is
 attached.
 
 So: **Quit** (and closing the last window) says goodbye and leaves the
 shells running; the next Terminal opens a window on each one not shown
 elsewhere (a launch with arguments opens a new one as well). Closing a
-window hangs up its shell. If Terminal **crashes**, tabula-termd starts
+window hangs up its shell. If Terminal **crashes**, olo-termd starts
 it again after 2 s (up to 3 times a minute, only while the session and
 its Wayland socket are there). An **upgrade** re-executes both in place:
 Terminal keeps which shells were in which window (`save_state`), and
-tabula-termd hands its PTYs and replays to its new self through an
-inherited file (`TABULA_TERMD_RESTORE`); Terminal reconnects on its own.
-(A Terminal from before tabula-termd hands its shells' PTYs to its new
-self, the old way; the new one passes them on to tabula-termd, ADOPT.)
+olo-termd hands its PTYs and replays to its new self through an
+inherited file (`OLO_TERMD_RESTORE`); Terminal reconnects on its own.
+(A Terminal from before olo-termd hands its shells' PTYs to its new
+self, the old way; the new one passes them on to olo-termd, ADOPT.)
 When the desktop session ends (its pid file, watched with a pidfd) or on
-SIGTERM, tabula-termd hangs up every shell and exits; it also exits when
+SIGTERM, olo-termd hangs up every shell and exits; it also exits when
 it has no shells and no Terminal for 3 s, or when its runtime directory
 has gone. If its socket is deleted from under it, it listens again (so a
 Terminal can always find its shells); it only removes the socket while
 the file there is still its own. Each screen is kept twice (in
-tabula-termd and in Terminal), so a full scrollback costs about twice
+olo-termd and in Terminal), so a full scrollback costs about twice
 what it used to.
 
 **Tabs.** A window holds one or more shells (`TermWin::tabs`, each a
@@ -1343,7 +1386,7 @@ the emulator carry the shell's id, not the window's, so a tab can move:
 (⌘T) starts in the current tab's folder; ⌘W closes the tab, Close Window
 the lot (asking if anything is running). ⌘[ / ⌘], ⌘1…⌘9, Ctrl+Tab /
 Ctrl+Shift+Tab and Ctrl+Page Up / Page Down go through them (the shell
-never sees those). `tabula-terminal --tab [-w DIR]` opens a tab in the
+never sees those). `olo-terminal --tab [-w DIR]` opens a tab in the
 Terminal window last in front (Tracker's Open in Terminal does), a window
 if there is none. `save_state` keeps each window's tabs in order and
 which one shows.
@@ -1382,7 +1425,7 @@ posts a notification (important for a question) whose Show brings that
 tab and window forward. The badge and the notification go once the tab
 is seen.
 
-**Terminal ▸ Terminal Daemon…** (`src/daemon.rs`) shows tabula-termd's
+**Terminal ▸ Terminal Daemon…** (`src/daemon.rs`) shows olo-termd's
 process and uptime and its shells (whether each is shown here, in
 another Terminal, or nowhere; double-click one to show it, bringing its tab forward), refreshed
 every 2 s off the UI thread. **Restart** re-executes it in place (shells
@@ -1391,10 +1434,10 @@ then SIGKILL, starts a fresh one, and opens a new window once the old
 shells' windows have closed. One that isn't answering can only start
 over.
 
-Testing: tabula-termd lives in the session's runtime directory, so a
-headless session gets its own. Kill only the Terminal or tabula-termd
+Testing: olo-termd lives in the session's runtime directory, so a
+headless session gets its own. Kill only the Terminal or olo-termd
 you started, found by `XDG_RUNTIME_DIR` in `/proc/PID/environ`.
-`cargo test -p tabula-terminal` covers the wire format (with descriptor
+`cargo test -p olo-terminal` covers the wire format (with descriptor
 passing) and replays (scrollback, `clear`, the alternate screen, modes,
 images).
 
@@ -1406,11 +1449,11 @@ other goes to the shell as Ctrl+key, so ⌘R searches history like Ctrl+R. ⌥�
 using the kitty keyboard protocol (Claude Code), which gets the
 protocol's `CSI 1;3 D` / `C` and reads ESC b as Escape then b.
 
-## The polkit agent (apps/polkit-agent, tabula_system::polkit)
+## The polkit agent (apps/polkit-agent, olo_system::polkit)
 
 Asks for a password when a program needs an administrator (timedated,
-logind, NetworkManager, …). `tabula-session` starts it only in a real
-`--tty-udev` session, with `TABULA_REAL_SESSION=1` (cleared for nested
+logind, NetworkManager, …). `olo-session` starts it only in a real
+`--tty-udev` session, with `OLO_REAL_SESSION=1` (cleared for nested
 and headless sessions); without that it refuses to run, because it
 registers with polkitd for the whole **login session** and must never take
 over the prompts of the session it was started from. It stays resident
@@ -1421,19 +1464,19 @@ the cookie goes on its stdin, and its PAM conversation (`PAM_TEXT_INFO`
 from fprintd for Touch ID, then `PAM_PROMPT_ECHO_OFF` for the password)
 is relayed to the window; a failure starts it again for another try.
 
-Test it with `tsession run NAME tabula-polkit-agent --self-test ACTION`:
+Test it with `tsession run NAME olo-polkit-agent --self-test ACTION`:
 it serves only its own process and asks polkitd about ACTION with
 `CheckAuthorization` (which changes nothing), printing the outcome to
 its log. **Cancel; never type the user's password, and only check
-actions, never perform them.** `TABULA_POLKIT_HELPER` points at a fake
+actions, never perform them.** `OLO_POLKIT_HELPER` points at a fake
 helper for unit tests.
 
-**The keyring's prompts** (`tabula_system::keyring_prompt`, the agent's
+**The keyring's prompts** (`olo_system::keyring_prompt`, the agent's
 `keyring.rs`): gnome-keyring-daemon asks for the login keyring's password
 (to unlock it for gh, a browser, …) through a "system prompter" on the
 session bus. D-Bus would start GTK's gcr-prompter for that; the agent owns
 `org.gnome.keyring.SystemPrompter` (and `PrivatePrompter`) itself from
-the start of the session, so the question is a Tabula alert (key icon,
+the start of the session, so the question is an Olo alert (key icon,
 Password, or Password and Confirm for a new keyring, the daemon's check
 box if any). The protocol is gcr's: `BeginPrompting` → our
 `PromptReady("")` with a Diffie-Hellman public key → `PerformPrompt`
@@ -1452,15 +1495,15 @@ Test it on a private bus with a throwaway daemon, never the session's:
 start a bus (`dbus-broker-launch` with a listening socket handed over as
 `LISTEN_FDS`, a permissive config) and `gnome-keyring-daemon --foreground
 --components=secrets` with its own `HOME` and `XDG_RUNTIME_DIR`; then
-`KEYRING_TEST_BUS=unix:path=… cargo test -p tabula-system real_daemon --
+`KEYRING_TEST_BUS=unix:path=… cargo test -p olo-system real_daemon --
 --ignored` (makes a keyring, wrong then right password, cancel), or
-`tabula-polkit-agent --keyring-test unix:path=…` in a headless session and
+`olo-polkit-agent --keyring-test unix:path=…` in a headless session and
 a Secret Service client calling `Unlock` and `Prompt`.
 
 ## Notifications (apps/notifications)
 
-Tabula's own apps notify through the kit: `tabula_kit::notify::Notifier::
-new(cx.proxy(), "Tracker", "tabula-tracker")`, then `show(None,
+Olo's own apps notify through the kit: `olo_kit::notify::Notifier::
+new(cx.proxy(), "Tracker", "olo-tracker")`, then `show(None,
 Note::new("Copied").body(…).action("default", "Show"))` → a `NoteId`;
 `show(Some(id), …)` updates it in place (`Note::progress(title, 0.4)`
 for a job's bar: transient and silent), `close(id)`. Kinds are
@@ -1471,12 +1514,12 @@ forward with `cx.activate_with(win, token)`) or `NoteEvent::Closed`.
 A program without windows (a helper app_server starts) uses
 `Notifier::with_events(app, entry, |e: NoteEvent| …)` instead; the
 callback runs on the notifier's thread. Tracker's "Finished copying…" (jobs
-of 10 s or more; `TABULA_TRACKER_NOTIFY_AFTER_MS` in debug builds) uses it.
+of 10 s or more; `OLO_TRACKER_NOTIFY_AFTER_MS` in debug builds) uses it.
 
-`tabula-notifications` serves `org.freedesktop.Notifications` (spec 1.2)
+`olo-notifications` serves `org.freedesktop.Notifications` (spec 1.2)
 on the session bus, so `notify-send`, browsers, chat and mail clients and
 anything else using libnotify reach the user. The real session starts it
-(`REAL_SHELL` in tabula-session; an upgrade starts it in a running session
+(`REAL_SHELL` in olo-session; an upgrade starts it in a running session
 too); a nested or headless one never does, since it would take the user's
 notifications.
 
@@ -1489,7 +1532,7 @@ notifications.
   `x-canonical-private-synchronous` (and `synchronous`,
   `x-dunst-stack-tag`: the same tag from the same app replaces the last
   one), KDE's `inline-reply` action and `x-kde-reply-placeholder-text`,
-  and our own `x-tabula-type`. Each note has a `Kind` after Haiku's
+  and our own `x-olo-type`. Each note has a `Kind` after Haiku's
   BNotification: information, important (`im.*` and `call` categories),
   error (critical: stays) and progress. The timeout: -1 is 6 s, 0,
   errors and notes waiting for a reply stay until dismissed. The UI
@@ -1525,8 +1568,8 @@ notifications.
   a card it does not expire. Sounds (sound.rs): the note's `sound-file`
   or `sound-name` (looked up in the freedesktop sound theme), else
   `message-new-instant` for important notes and `dialog-warning` for
-  errors, played on a thread through tabula-preview's `audio::Player`.
-- store.rs: the history, `$XDG_STATE_HOME/tabula/notifications/
+  errors, played on a thread through olo-preview's `audio::Player`.
+- store.rs: the history, `$XDG_STATE_HOME/olo/notifications/
   history.json` (the newest 200; saved atomically off the UI thread).
   Every note not `transient` goes in, unread unless the History window
   is open; an expired card stays "open" there (its actions still work)
@@ -1551,14 +1594,14 @@ notifications.
   is a `ListItem` named by its title (with `row`/`rows`), its text as
   labels. The window, search and folds come back after an upgrade
   (`save_state`).
-- Settings: `tabula_protocol::NotificationSettings` in
+- Settings: `olo_protocol::NotificationSettings` in
   `notifications.json` (config dir): Do Not Disturb (`dnd`, `dnd_until`,
   a daily `schedule` in local minutes), banner `seconds`, and per-app
   `banners` / `sounds` / `history` by app name. The service re-reads the
   file within a second of a change (Preferences ▸ Notifications and
   Deskbar write it). While quiet nothing pops up or sounds but errors.
   It publishes `NotificationState` (`unread`, `quiet`) to
-  `$XDG_RUNTIME_DIR/tabula-notifications-$WAYLAND_DISPLAY.json`, which
+  `$XDG_RUNTIME_DIR/olo-notifications-$WAYLAND_DISPLAY.json`, which
   Deskbar's bell reads twice a second (the badge; struck through while
   quiet; right-click for Do Not Disturb).
 - gtk.rs: GLib's `org.gtk.Notifications` (`AddNotification`,
@@ -1572,19 +1615,19 @@ notifications.
   `org.freedesktop.Application.ActivateAction` (or `Activate`) on the
   app itself, on a thread, with the click's activation token in the
   platform data; D-Bus starts the app if it has quit. There is no closed
-  signal. Flatpak apps reach us through the portal: `tabula-portals.conf`
+  signal. Flatpak apps reach us through the portal: `olo-portals.conf`
   leaves Notification to xdg-desktop-portal-gtk, which sends a plain
   `Notify` (no app name: we take the `desktop-entry` hint's) and runs the
   app's action itself when we signal `ActionInvoked`.
-- For agents: `org.tabula.Notifications1` at `/org/tabula/Notifications`
+- For agents: `com.olodesktop.Notifications1` at `/com/olodesktop/Notifications`
   (`List` → JSON, `Invoke`, `Dismiss`, `ClearHistory`, `ShowHistory`,
   `SetDoNotDisturb`), and the same from the command line (cli.rs):
-  `tabula-notifications [--bus A] --list [--json] | --history |
+  `olo-notifications [--bus A] --list [--json] | --history |
   --invoke ID [ACTION] | --dismiss ID | --clear | --dnd on|off|MINUTES`.
 
-Test it on a private bus: `busd -a unix:path=/tmp/tabula-dev/NAME/bus.sock`
+Test it on a private bus: `busd -a unix:path=/tmp/olo-dev/NAME/bus.sock`
 (`cargo install busd`; Aurora's dbus-broker-launch needs systemd), then
-`tsession run NAME tabula-notifications --bus unix:path=…` and send with
+`tsession run NAME olo-notifications --bus unix:path=…` and send with
 `gdbus call -a unix:path=… -d org.freedesktop.Notifications -o
 /org/freedesktop/Notifications -m org.freedesktop.Notifications.Notify --
 APP 0 ICON SUMMARY BODY '["default","Open"]' '{}' -1`; `dbus-monitor
@@ -1602,17 +1645,17 @@ over `org.freedesktop.Notifications` (Chrome's name, its icon, the site
 as a link in the body, critical while `requireInteraction`); a click is
 the page's `onclick`, and Chrome's Settings button its action. Run it with `XDG_STATE_HOME` (and the
 session's `XDG_CONFIG_HOME`) under the test directory so the history and
-settings stay out of yours, and `PULSE_SERVER` at a `tabula-fakesound`
+settings stay out of yours, and `PULSE_SERVER` at an `olo-fakesound`
 socket to hear what it plays. A Deskbar or Preferences in the test
 session needs `DBUS_SESSION_BUS_ADDRESS` set to the private bus too, or
 its bell's click reaches your own notification service. Unit tests:
-`cargo test -p tabula-notifications`.
+`cargo test -p olo-notifications`.
 
 ## The command palette (apps/palette)
 
 ⌘Space (`Shortcut::Palette`; Find moved to ⌥⌘Space) or a tap of ⌘ (if
 chosen in Preferences ▸ Keyboard) has app_server start
-`tabula-palette --toggle`; the running copy (it stays resident, found
+`olo-palette --toggle`; the running copy (it stays resident, found
 through `instance`) takes the toggle, so it opens at once from the second
 time on. It opens a full-screen transparent overlay layer that takes the
 keyboard, with the BeOS panel a fifth of the way down: a click outside
@@ -1627,9 +1670,9 @@ put it away.
   preference panels, light/dark appearance, app_server's shortcuts with
   their current keys (`keys_for`, shown as on a Mac, so "tile" lists every
   tiling shortcut and its keys), open windows, the front app's menu
-  commands with their keys (`tabula_kit::commands`, asked of the process
+  commands with their keys (`olo_kit::commands`, asked of the process
   that owns the front window; disabled items are shown dimmed), Passwords'
-  items (`tabula_keychain::Request::Search` while unlocked; choosing one
+  items (`olo_keychain::Request::Search` while unlocked; choosing one
   is `Request::Show`), files under home by name (indexed by an `ignore`
   walk on start and every five minutes, at most 400,000; matched on their
   own thread for the newest query only), sums (`calc.rs`; Return copies)
@@ -1637,13 +1680,13 @@ put it away.
 * **Ranking** (`rank.rs`): every word typed must match the title (start,
   word start, anywhere) or the item's keywords, or as initials ("nw");
   then by kind (apps before files) and by how often and how lately each
-  thing was chosen (`~/.config/tabula/palette.json`). Nothing typed lists
+  thing was chosen (`~/.config/olo/palette.json`). Nothing typed lists
   what was chosen lately.
 * **Keys**: ↑/↓ and Page Up/Down move, Return chooses, the pointer
   hovers and clicks. Actions run on a worker thread.
 * **The window menu** (`window_menu.rs`): a right-click on a window's
   yellow tab has app_server (`wm.rs` `window_menu`) start
-  `tabula-palette --window-menu ID X Y OUTPUT`, the point on that output.
+  `olo-palette --window-menu ID X Y OUTPUT`, the point on that output.
   A worker asks app_server for the window's title and workspace, the
   workspace count and the displays; the palette then opens a clear
   full-screen overlay on that output and pops an ordinary kit menu at
@@ -1655,12 +1698,12 @@ put it away.
   palette always agree; agents read and choose from it as from any
   popup. Choosing, a click outside or Escape puts the overlay away.
 
-## Other toolkits' programs (app_server toolkits.rs, state.rs; tabula_theme::toolkit)
+## Other toolkits' programs (app_server toolkits.rs, state.rs; olo_theme::toolkit)
 
-Programs not built on the kit take Tabula's look as far as their toolkit
+Programs not built on the kit take Olo's look as far as their toolkit
 allows. `toolkits.rs` publishes the palette where GTK 3, GTK 4,
-libadwaita and Chrome read it (GSettings through dconf, the Tabula and
-Tabula-dark GTK themes, GTK 4's user stylesheet, BeOS's close-left,
+libadwaita and Chrome read it (GSettings through dconf, the Olo and
+Olo-dark GTK themes, GTK 4's user stylesheet, BeOS's close-left,
 zoom-right title buttons); see its module comment.
 
 Window chrome: app_server offers server-side decorations two ways.
@@ -1668,7 +1711,7 @@ xdg-decoration (`zxdg_decoration_manager_v1`) is what Chrome, Qt and most
 others ask through. GTK 3 and GTK 4 don't speak it; they speak KDE's
 `org_kde_kwin_server_decoration`, whose default mode app_server
 announces as Server, so a GTK window with no headerbar draws no
-decorations of its own and gets Tabula's tab and frame
+decorations of its own and gets Olo's tab and frame
 (`KdeDecorationHandler` in state.rs, `kde_server_side`, read in
 `shell/xdg.rs` with the xdg-decoration mode). A window that asks for
 Client (a GTK headerbar, so every libadwaita app) keeps its own,
@@ -1678,21 +1721,21 @@ private bus as DBUS_SESSION_BUS_ADDRESS).
 
 ## Agent Screens (apps/screen)
 
-Agents get screens of their own: `tabula-screen start [NAME] [--size WxH]
-[--scale N] [--sound]` starts a headless Tabula session (`tabula-session
+Agents get screens of their own: `olo-screen start [NAME] [--size WxH]
+[--scale N] [--sound]` starts a headless Olo session (`olo-session
 --headless`, in its own process group), a whole desktop with its own
 Deskbar, windows, pointer and keyboard focus, so nothing an agent does
 there moves the person's pointer or takes their focus. It runs the
 person's programs and files (their HOME), but with app_server settings
-of its own (`TABULA_APP_SERVER_SETTINGS`, a copy of the person's at 1×
+of its own (`OLO_APP_SERVER_SETTINGS`, a copy of the person's at 1×
 unless asked, with no lock, screen saver, display sleep or system
 sleep), silent unless `--sound` (`PULSE_SERVER` pointed at nothing), and
 without `DISPLAY` (X programs would show on the person's screen). Screens
-are listed in `$XDG_RUNTIME_DIR/tabula-screens/NAME.json` (the session's
+are listed in `$XDG_RUNTIME_DIR/olo-screens/NAME.json` (the session's
 pid, its sockets, the size); `screens.rs` checks the pid is still that
 session before trusting an entry. The rest is the screen's own app_server
 IPC (`Client::connect_to`): `run` (a program with the screen's
-`WAYLAND_DISPLAY`, `TABULA_SOCKET` and `TABULA_SCREEN`), `look` (a PNG,
+`WAYLAND_DISPLAY`, `OLO_SOCKET` and `OLO_SCREEN`), `look` (a PNG,
 `--window ID` for one), `windows` (`Reply::Windows`, whose `WindowInfo`s
 carry `frame`, their place on screen, and `content`, where the app's
 drawing is inside the tab and border; the `WindowsChanged` event leaves
@@ -1704,10 +1747,10 @@ tree") and moved by
 outline, or `--json`), `menus` and `invoke` (a window's app's menu bar
 and choosing from it, `commands::menus`/`invoke`), `click`, `move`,
 `down`/`up`, `drag`, `scroll`, `wheel`, `key` (chords as people write
-them: `Cmd+S`, `Enter`, `Esc`; parsed by `tabula_protocol::Chord` with
+them: `Cmd+S`, `Enter`, `Esc`; parsed by `olo_protocol::Chord` with
 aliases) and `type` (US keyboard), all as `Request::Synthetic`, in the
 screen's logical pixels. `stop` ends the session, and with it the
-programs on it. `tabula-screen --help` lists it all.
+programs on it. `olo-screen --help` lists it all.
 
 Input that plays out over time is paced, a batch per IPC request with
 waits between (`Screen::input_paced`): `drag` presses, moves in steps
@@ -1737,7 +1780,7 @@ requests; `resize` and `place` are `Request::Place` (a frame, as
 `set_frame` gives tiles). `look` writes beside the logs when given no
 file, and `--crop` cuts an RGBA picture down in process (png crate).
 
-The person's side is the window (`tabula-screen`, or `tabula-screen
+The person's side is the window (`olo-screen`, or `olo-screen
 watch NAME`): the screens in a list and the chosen one live beside it,
 about eight frames a second with the agent's pointer drawn in (a worker
 asks for `format: "rgba"` pictures and reads them back; the window never
@@ -1751,24 +1794,24 @@ leaves that screen out of its list. While any screen runs (other than
 the one a Deskbar is on), Deskbar's tray shows a monitor with a pointer,
 and their count when there are several (`status::agent_screens` reads
 the same listing every second, judging entries as `Screen::alive` does);
-clicking it runs `tabula-screen watch`. Test it in a sandbox: a private
+clicking it runs `olo-screen watch`. Test it in a sandbox: a private
 `XDG_RUNTIME_DIR`, a fixture HOME and XDG dirs (the screen runs the real
 programs), and a second screen to run the viewer on.
 
-Agents learn all this from the **`tabula-screens` skill**
+Agents learn all this from the **`olo-screens` skill**
 (`apps/screen/SKILL.md`): a real session (`--tty-udev`, at start and
 after each upgrade; `crates/session/src/skills.rs`, on a thread) puts it
 in `~/.claude/skills/` (or `$CLAUDE_CONFIG_DIR/skills/`) when Claude Code
 is there and in `~/.agents/skills/` when Codex is, replacing only a copy
-that still has Tabula's marker line. **Change SKILL.md with the CLI**:
+that still has Olo's marker line. **Change SKILL.md with the CLI**:
 it is the agents' manual. Headless sessions never write it, so tests
 don't touch the person's home.
 
 ## Google Chrome (apps/chrome)
 
-`tabula-chrome` is Google Chrome in Tabula's applications (`OUR_APPS`).
+`olo-chrome` is Google Chrome in Olo's applications (`OUR_APPS`).
 With Chrome installed it execs Chrome's own launcher
-(`~/.local/share/tabula/chrome/current/google-chrome`) with its arguments,
+(`~/.local/share/olo/chrome/current/google-chrome`) with its arguments,
 adding `--ozone-platform=wayland` under Wayland (Chrome otherwise goes by
 `XDG_SESSION_TYPE` and falls back to X11). Without it, it offers to
 download it (`install.rs`, on a worker thread, cancellable): Google's rpm
@@ -1779,20 +1822,20 @@ lead and headers, the payload's compressor from tag 1125, a "newc" cpio
 stream; only `./opt/google/chrome/`, no setuid bits, no `..`) into
 `<version>/`, with `current` switched over by a rename and older versions
 removed. It installs Chrome's icons into the hicolor theme and a
-`google-chrome.desktop` that starts it through `tabula-chrome` (NoDisplay,
-as Tabula lists it itself; rewritten when it isn't ours). Nothing needs
-root. Once a day (`.checked`), a start also runs `tabula-chrome
---tabula-update` in the background: a newer version is put in beside the
+`google-chrome.desktop` that starts it through `olo-chrome` (NoDisplay,
+as Olo lists it itself; rewritten when it isn't ours). Nothing needs
+root. Once a day (`.checked`), a start also runs `olo-chrome
+--olo-update` in the background: a newer version is put in beside the
 running one and becomes `current` for the next start (the one it
 replaced is kept, as Chrome reads its files as it runs; older ones go;
 `.updating` keeps it to one at a time). Test it with a fixture HOME (`tsession run NAME HOME=… XDG_DATA_HOME=…
-target/debug/tabula-chrome`), never Ben's profile.
+target/debug/olo-chrome`), never Ben's profile.
 
 **Passwords in Chrome** (`extension/`, `src/extension.rs`, `src/host.rs`).
 Each start (before exec) packs `apps/chrome/extension` (built into the
-binary, plus a `palette.css` from Tabula's palette, light and dark) into
+binary, plus a `palette.css` from Olo's palette, light and dark) into
 a CRX3 signed with a P-256 key of this user's own
-(`~/.local/share/tabula/chrome/extension-key.der`, 0600; the extension id
+(`~/.local/share/olo/chrome/extension-key.der`, 0600; the extension id
 comes from it), and writes `<chrome>/extensions/<id>.json` naming it:
 Chrome on Linux installs such an extension at start without asking, and
 takes a higher `version` as an update, so **raise `version` in
@@ -1800,8 +1843,8 @@ takes a higher `version` as an update, so **raise `version` in
 `onUpdateAvailable` (Chrome would otherwise wait for it to go idle,
 which the open native port prevents) and puts `content.js` into the tabs
 already open on install or update. Beside the profile goes
-`NativeMessagingHosts/org.tabula.passwords.json`, naming `tabula-chrome`
-itself: started as `tabula-chrome chrome-extension://ID/`, it is the
+`NativeMessagingHosts/com.olodesktop.passwords.json`, naming `olo-chrome`
+itself: started as `olo-chrome chrome-extension://ID/`, it is the
 native messaging host (length-prefixed JSON on stdin/stdout), passing
 only `logins`, `fill`, `check`, `save`, `unlock` and `show` on to
 Passwords over the keychain socket (`{id, request, start}`; `start`
@@ -1818,10 +1861,10 @@ pending login is kept in `storage.session` only). Passwords names the
 waiting app from the keychain caller's program (`Incoming::from`). Test
 with a throwaway `--user-data-dir` (DevTools needs a non-default one:
 `--remote-debugging-port`), the fake 1Password and a localhost page; the
-fake's "Tabula Test Site" login (`http://localhost`, jane) has a TOTP.
+fake's "Olo Test Site" login (`http://localhost`, jane) has a TOTP.
 
 **Chrome's widget tree, for agents** (`extension/tree.js`, `host.rs`).
-The extension (named "Tabula": it does more than passwords) connects to
+The extension (named "Olo": it does more than passwords) connects to
 its host when its worker starts and stays connected (reconnecting after
 10 s), so a host runs beside every Chrome. The host answers a kit app's
 `tree` socket for its parent, Chrome's browser process (the Wayland
@@ -1844,13 +1887,13 @@ height`); a `Window` node and a `Document` node (title, URL) hold it.
 Agent Screens matches a tree to its window by the page title the
 window's title starts with. Chrome's own tab strip and toolbar aren't in
 the tree. Test on an agent screen with a private `XDG_RUNTIME_DIR`, a
-copy of Chrome in a fixture `XDG_DATA_HOME` (`tabula-chrome` writes into
+copy of Chrome in a fixture `XDG_DATA_HOME` (`olo-chrome` writes into
 the install's `extensions` folder) with a fresh `.checked`, a throwaway
 profile and a page served from 127.0.0.1.
 
 ## Log Viewer (apps/logs)
 
-`tabula-logs` shows every Tabula program's log in one place: what they
+`olo-logs` shows every Olo program's log in one place: what they
 write to stderr goes to the user's journal (through the session's
 journal stream), and Log Viewer reads that journal natively.
 
@@ -1870,12 +1913,12 @@ journal stream), and Log Viewer reads that journal natively.
   Chrome's lines, which Google's launcher passes through `cat`, as
   chrome), the level and text without terminal colours and without
   `tracing`'s time and level (or Chromium's `[pid:tid:time:LEVEL:file]`),
-  GLib's `-WARNING **` and panics recognised, and Tabula's own stderr
+  GLib's `-WARNING **` and panics recognised, and Olo's own stderr
   lines Info unless they say otherwise (the session's stream files all
   of stderr as warnings). Continuation lines (a pretty debug print, a
   backtrace) join the line before from the same process. `Query`: time
   (last 10 minutes, hour, today, since startup, all), minimum level, one
-  program or Tabula's or all, and text (in the message or the program).
+  program or Olo's or all, and text (in the message or the program).
 - highlight.rs: syntax highlighting as spans: the target `tracing` puts
   first, `key=value` keys, strings, numbers, paths and URLs, type names,
   trouble words; the list and the detail pane colour them from the
@@ -1887,10 +1930,10 @@ journal stream), and Log Viewer reads that journal natively.
   filters. The filters are kept; Find isn't.
 
 For agents, the same query from the command line, reading the journal
-directly: `tabula-logs --print [--since 10m|2h|1d|today|boot|all] [--level
+directly: `olo-logs --print [--since 10m|2h|1d|today|boot|all] [--level
 debug|info|warning|error] [--program NAME | --all-programs] [--find TEXT]
 [--json] [--follow]` (JSON lines: time in UTC, program, pid, level,
-message). Tests: `cargo test -p tabula-logs` (synthetic journal files
+message). Tests: `cargo test -p olo-logs` (synthetic journal files
 in both layouts); `-- --include-ignored` also reads this machine's
 journal and highlights every line in it.
 
@@ -1899,34 +1942,34 @@ journal and highlights every line in it.
 `lock_screen()` (Ctrl+⌘Q, Deskbar ▸ Lock Screen, `Request::Lock`, the
 display turning off for idleness when `power.lock_on_display_off`, logind
 `PrepareForSleep` and `Lock`) covers every output in black at once, takes
-keyboard focus away and starts `tabula-lock` on a socket pair of its own
+keyboard focus away and starts `olo-lock` on a socket pair of its own
 (WAYLAND_SOCKET): ext-session-lock is offered to that one client only. The
 locker is restarted if it dies (at most every 2 s); the screen stays
 black meanwhile, so the lock never fails open. While locked, input reaches
 lock surfaces only, keybindings are off, and the displays sleep after a
-minute. A marker, `$XDG_RUNTIME_DIR/tabula-locked-$WAYLAND_DISPLAY`
-holding tabula-session's pid, makes an app_server that reloaded or crashed
+minute. A marker, `$XDG_RUNTIME_DIR/olo-locked-$WAYLAND_DISPLAY`
+holding olo-session's pid, makes an app_server that reloaded or crashed
 come back locked (only in the same session: display names get reused). Before sleep,
 app_server holds a logind delay inhibitor until every output shows the lock
 surface (or 3 s).
 
-`tabula-lock` uses the kit's `cx.lock_session()` (`SessionLock::Locked`
+`olo-lock` uses the kit's `cx.lock_session()` (`SessionLock::Locked`
 gives one window per output, the first is primary; `cx.unlock_session()`
-ends it) and checks the password with `tabula_system::auth` (PAM via
+ends it) and checks the password with `olo_system::auth` (PAM via
 libpam, on a thread) while listening for Touch ID with
-`tabula_system::fingerprint`. Debug builds take `TABULA_PAM_CONFDIR` +
-`TABULA_PAM_SERVICE` (passed through by tsession), so tests use a private
+`olo_system::fingerprint`. Debug builds take `OLO_PAM_CONFDIR` +
+`OLO_PAM_SERVICE` (passed through by tsession), so tests use a private
 pam_exec service and never a real password:
 
 ```sh
 printf 'auth required pam_exec.so expose_authtok quiet /path/check.sh\naccount required pam_permit.so\n' > $dir/exec
-TABULA_PAM_CONFDIR=$dir TABULA_PAM_SERVICE=exec tools/dev/tsession start lk --light
+OLO_PAM_CONFDIR=$dir OLO_PAM_SERVICE=exec tools/dev/tsession start lk --light
 tools/dev/tsession ipc lk '{"type":"lock"}'; tools/dev/tsession type lk secret; tools/dev/tsession key lk 28
 ```
 
 ## Passwords (apps/passwords, crates/onepassword)
 
-`crates/onepassword` (package `tabula-onepassword`) is a Rust 1Password SDK
+`crates/onepassword` (package `olo-onepassword`) is a Rust 1Password SDK
 modelled on the Go one: the same `Client` (`Secrets`, `Items`, `Vaults`,
 `Groups`, `ItemShares`, `ItemFiles`, `Environments`), the same types and
 JSON shapes (camelCase, tagged enums), `op://` references, the password
@@ -1945,7 +1988,7 @@ needs 1Password's closed core.
 `onepassword::accounts::local()` lists the accounts signed in to the
 app (name, email, sign-in address, UUID) from the summaries in its
 `1password.sqlite` (`~/.config/1Password`, or the Flatpak's;
-`TABULA_1PASSWORD_DATA` overrides), read-only and nothing else from it.
+`OLO_1PASSWORD_DATA` overrides), read-only and nothing else from it.
 Passwords' setup offers them as a choice and keeps the UUID, which the
 SDK integration takes as the account's name.
 
@@ -1953,7 +1996,7 @@ Tests never touch the real app. `onepassword-fake [--account NAME]
 [--socket NAME] [--data FILE] [--accounts DIR]` (DIR gets a
 `1password.sqlite` listing it) serves an in-memory account (two vaults of
 sample items, item versions, OTP codes) over the same protocol;
-`tests/desktop.rs` drives it. Apps take `TABULA_1PASSWORD_SOCKET` to use it.
+`tests/desktop.rs` drives it. Apps take `OLO_1PASSWORD_SOCKET` to use it.
 
 Passwords is the app: sources (vaults, categories, Archive), a two-line
 item list and the selected item's fields (hover for Copy/Show; one-time
@@ -1968,7 +2011,7 @@ the picture shows the field's name, never the value). It opens locked and locks 
 while the locked window has the keyboard, or the account password through
 PAM. Those, and `auto_sync`, are Preferences ▸ Security's
 (`Settings::security.passwords`, followed live through
-`tabula_kit::settings::watch`; the screen locking comes from
+`olo_kit::settings::watch`; the screen locking comes from
 `settings::watch_power`, `PowerStatus::locked`; View ▸ Lock After writes
 the same setting with `settings::update`). Its own settings (accounts,
 the generator, the window size) live in `passwords.json`.
@@ -1979,9 +2022,9 @@ computer, so the app, Chrome's extension and the palette never wait on
 byte, a 24-byte nonce and the JSON sealed with XChaCha20-Poly1305 (header
 as associated data), written whole and atomically (0600) after each
 change. The key is 32 random bytes in the login keyring
-(`tabula_system::secrets`, a Secret Service client; PAM unlocks the
+(`olo_system::secrets`, a Secret Service client; PAM unlocks the
 keyring at login, so Touch ID still opens Passwords). A store whose key is
-missing is never overwritten with a new one. `TABULA_PASSWORDS_KEYFILE`
+missing is never overwritten with a new one. `OLO_PASSWORDS_KEYFILE`
 keeps the key in a file instead; tsession sets it for every session, so
 test apps never touch the real keyring. The worker (`store.rs`) owns the
 store: it opens it at the unlock, lets it go at the lock (after a running
@@ -2060,35 +2103,35 @@ behaves as 1Password does: archived items can't be read, and a vault with
 choice, back to the setup panel. It never touches 1Password: pending
 deletions go with the rest.
 
-`cargo test -p tabula-passwords` covers the store (sealing, wrong keys,
+`cargo test -p olo-passwords` covers the store (sealing, wrong keys,
 conflicts, races, accounts, reset) and syncing against the in-process fake
 (both ways, conflicts, nothing to do, 1Password down, that a plan
 changes nothing and names every change, archived items and an
 unlistable vault, and several accounts in one review). The Secret Service
 client has an ignored test for a private keyring:
 `tools/dev/private-keyring start` (busd plus its own gnome-keyring; needs
-`cargo install busd --root /tmp/tabula-dev/busd`), then
-`DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/tabula-dev/keyring/bus cargo test
--p tabula-system secrets -- --ignored`; it refuses any other bus.
+`cargo install busd --root /tmp/olo-dev/busd`), then
+`DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/olo-dev/keyring/bus cargo test
+-p olo-system secrets -- --ignored`; it refuses any other bus.
 
 ```sh
-target/debug/onepassword-fake --socket tabula-fake &
+target/debug/onepassword-fake --socket olo-fake &
 tools/dev/tsession start pw 2400x1600 --light
-tools/dev/tsession run pw TABULA_1PASSWORD_SOCKET=tabula-fake TABULA_NO_FINGERPRINT=1 \
-    TABULA_PAM_CONFDIR=$dir TABULA_PAM_SERVICE=exec target/debug/tabula-passwords
+tools/dev/tsession run pw OLO_1PASSWORD_SOCKET=olo-fake OLO_NO_FINGERPRINT=1 \
+    OLO_PAM_CONFDIR=$dir OLO_PAM_SERVICE=exec target/debug/olo-passwords
 ```
-(`run` doesn't pass `TABULA_PAM_*` on by itself; give them as above, with
-`$dir` set up as for the lock screen.) Account: `Tabula Test` (choose
+(`run` doesn't pass `OLO_PAM_*` on by itself; give them as above, with
+`$dir` set up as for the lock screen.) Account: `Olo Test` (choose
 Sync in the setup); password: whatever `check.sh` accepts. Pass
 `--data FILE` to the fake to see what reached "1Password".
 
 ### op: 1Password's command line (apps/op)
 
-`tabula-op` stands in for 1Password's `op` so scripts that use it (`op
+`olo-op` stands in for 1Password's `op` so scripts that use it (`op
 inject`, `op read`, `op run`, `op item get`, `op whoami`, `op account
 list`, `op signin`) work from Passwords. It is installed with an `op`
 link to it beside the other binaries (`~/.local/bin`, ahead of
-`/usr/bin` on the PATH); `tabula_xdg::link_op` makes the link only where
+`/usr/bin` on the PATH); `olo_xdg::link_op` makes the link only where
 there is no `op` already and removes only its own. app_server keeps the
 link in step with Preferences ▸ Security ▸ "Answer 1Password's op
 command" (`PasswordsSecurity::op_cli`, on by default) at startup and on
@@ -2108,35 +2151,35 @@ after its last use (12 hours at most); Deny answers "not allowed".
 `op run` passes the values in the environment and masks them in the
 command's output (`<concealed by 1Password>`, `text::Masker`) unless
 `--no-masking`; `inject` writes files 0600. Commands that change items,
-vaults or accounts say Tabula's op doesn't do them, and errors look like
+vaults or accounts say Olo's op doesn't do them, and errors look like
 op's (`[ERROR] date time message`, exit 1).
 
-`cargo test -p tabula-op -p tabula-passwords` covers templates, env
+`cargo test -p olo-op -p olo-passwords` covers templates, env
 files, masking, arguments, references and item JSON. To try it, run
-Passwords as above and `op` from `target/debug/tabula-op` through an `op`
+Passwords as above and `op` from `target/debug/olo-op` through an `op`
 link in a scratch folder with the session's `WAYLAND_DISPLAY` and
 `XDG_RUNTIME_DIR`.
 
 ### The keychain (crates/keychain)
 
-While Passwords runs it serves other Tabula programs (Chrome's extension
+While Passwords runs it serves other Olo programs (Chrome's extension
 host, the palette, `op`) on
-`$XDG_RUNTIME_DIR/tabula-keychain-$WAYLAND_DISPLAY.sock`
-(`TABULA_KEYCHAIN_SOCKET` overrides): one JSON request, one JSON reply per
-connection, and only for our own uid running a `tabula-*` program
-(SO_PEERCRED + `/proc/PID/exe`). `tabula_keychain::call` blocks, so call
+`$XDG_RUNTIME_DIR/olo-keychain-$WAYLAND_DISPLAY.sock`
+(`OLO_KEYCHAIN_SOCKET` overrides): one JSON request, one JSON reply per
+connection, and only for our own uid running an `olo-*` program
+(SO_PEERCRED + `/proc/PID/exe`). `olo_keychain::call` blocks, so call
 it from a thread. Requests: `Logins {url}` (title and username of each
 login whose website fits the page, honouring 1Password's autofill
 setting; `Locked` if locked), `Fill {url, vault, id}`, `Check {url,
 username, password}` (`Known`, `New` or `Changed`), `Save {…, replace}`,
 and `Unlock`. Fill, Save and Unlock wait while Passwords is locked: it
-comes forward and answers after the unlock. `tabula_keychain::matches`
+comes forward and answers after the unlock. `olo_keychain::matches`
 is the site rule, as 1Password's: the same registrable domain (the `psl`
 crate's public suffix list, so mail.google.com's login fills
 accounts.google.com but alice.github.io's never fills bob.github.io), the
 same host where there's none (localhost, addresses), and never an https
 login into a plain-http page (localhost aside). Every login that fits is
-listed, nearest first (`tabula_keychain::closeness`: the page's own host,
+listed, nearest first (`olo_keychain::closeness`: the page's own host,
 then its parent domains from the nearest, then the site's other hosts),
 then by title; an item that can't be read is logged, not hidden silently.
 
@@ -2145,8 +2188,8 @@ then by title; an item that can't be read is logged, not hidden silently.
 Several Claude and ChatGPT subscriptions shared by Claude Code and Codex
 on this computer, the way Token Pooler's Local mode does it on macOS
 (written fresh; no team or cloud gateway). The session's real shell
-runs `tabula-pool --service` (no window; launching `tabula-pool` again
-opens it), which listens on `127.0.0.1:17891` (`TABULA_POOL_PORT`).
+runs `olo-pool --service` (no window; launching `olo-pool` again
+opens it), which listens on `127.0.0.1:17891` (`OLO_POOL_PORT`).
 
 - **Gateway** (`gateway.rs`, axum): `/claude/v1/*` goes to Claude's API,
   `/codex/v1/*` to Codex's Responses API, each with the chosen account's
@@ -2162,7 +2205,7 @@ opens it), which listens on `127.0.0.1:17891` (`TABULA_POOL_PORT`).
   before anything is passed back; a network failure is a 502 and never
   replayed. With none left, a 429 shaped as the provider's with a
   `retry-after` of the soonest reset (the clients are set to retry ten
-  times). `x-tabula-pool-account` names who answered. `/pool/status`
+  times). `x-olo-pool-account` names who answered. `/pool/status`
   is the state without sign-ins.
 - **Order** (`schedule.rs`): earliest-expiry-first. The account whose
   usable quota resets soonest serves, since quota that resets unused is
@@ -2176,7 +2219,7 @@ opens it), which listens on `127.0.0.1:17891` (`TABULA_POOL_PORT`).
   rate-limit headers and, each minute, the providers' usage reports.
 - **Store** (`store.rs`): `pool.vault` in the config directory, sealed
   as Passwords seals its own (XChaCha20-Poly1305, header as AAD); the key
-  is 32 random bytes in the login keyring (`TABULA_POOL_KEYFILE`: a file
+  is 32 random bytes in the login keyring (`OLO_POOL_KEYFILE`: a file
   instead, for tests). It is the pool's own, rather than Passwords'
   1Password-backed store, because the gateway must work, and save the
   refresh tokens providers rotate, while Passwords is locked. The vault
@@ -2193,7 +2236,7 @@ opens it), which listens on `127.0.0.1:17891` (`TABULA_POOL_PORT`).
 - **Clients** (`clients.rs`): "Claude Code uses the pool" sets
   `ANTHROPIC_BASE_URL`, a placeholder `ANTHROPIC_AUTH_TOKEN`, an empty
   `ANTHROPIC_API_KEY` and `CLAUDE_CODE_MAX_RETRIES` in Claude Code's
-  `settings.json` `env`; "Codex uses the pool" adds a `tabula_pool`
+  `settings.json` `env`; "Codex uses the pool" adds an `olo_pool`
   model provider to `config.toml` (toml_edit, so comments stay) and
   selects it. What was there before is kept in `pool-clients.json` and
   put back when unchecked.
@@ -2228,13 +2271,13 @@ opens it), which listens on `127.0.0.1:17891` (`TABULA_POOL_PORT`).
   Clicking a cell shows its account, model, client (from the user
   agent), time, duration, status and tokens on the line under the grid,
   which is always there, so nothing moves.
-- **Agents**: `tabula-pool --status [--json]`, or `GET /pool/status`
+- **Agents**: `olo-pool --status [--json]`, or `GET /pool/status`
   (`open`, each account's `recent`, and `served`, each try with its
   `outcome`).
 
-Tests: `cargo test -p tabula-token-pool` runs the gateway against a fake
+Tests: `cargo test -p olo-token-pool` runs the gateway against a fake
 provider. For the window, start a session with a fixture `--home`
 holding fixture credentials, a fake upstream
-(`TABULA_POOL_UPSTREAM=http://127.0.0.1:PORT`: its `/oauth` takes
-refreshes), `TABULA_POOL_PORT` and `TABULA_POOL_KEYFILE`, and a fake
+(`OLO_POOL_UPSTREAM=http://127.0.0.1:PORT`: its `/oauth` takes
+refreshes), `OLO_POOL_PORT` and `OLO_POOL_KEYFILE`, and a fake
 `claude` or `codex` on `PATH` for separate sign-ins. Never real accounts.

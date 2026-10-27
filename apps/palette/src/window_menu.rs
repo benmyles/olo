@@ -1,17 +1,17 @@
 //! A window's menu: right-clicking its tab has app_server run
-//! `tabula-palette --window-menu ID X Y OUTPUT`, and the running palette
+//! `olo-palette --window-menu ID X Y OUTPUT`, and the running palette
 //! pops a menu there of everything that can be done to the window, the
 //! same commands as the desktop's shortcuts. It is an ordinary kit popup
 //! (over a clear full-screen layer that takes the click outside it), so
 //! agents read and choose from it as from any menu.
 
-use tabula_kit::{
+use olo_kit::{
     Cx, Keyboard, Layer, LayerOptions, Proxy, WindowId, WindowKind, WindowOptions,
     egui::{self, Pos2, pos2},
     menu::{self, Menu},
     widgets,
 };
-use tabula_protocol::{Client, Reply, Request, shortcuts};
+use olo_protocol::{Client, Reply, Request, shortcuts};
 
 /// What `--window-menu` asked for.
 #[derive(Debug, Clone, PartialEq)]

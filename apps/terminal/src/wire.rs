@@ -1,4 +1,4 @@
-//! How Terminal and tabula-termd talk: frames over a Unix socket, each a
+//! How Terminal and olo-termd talk: frames over a Unix socket, each a
 //! header (length, kind, shell id) and a body: JSON for requests and
 //! replies, raw bytes for a shell's input and output. The PTY of a shell
 //! Terminal attaches to comes with the reply (SCM_RIGHTS), so Terminal can
@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 /// Lines of scrollback kept per shell.
 pub const SCROLLBACK: usize = 10_000;
 
-// Terminal → tabula-termd.
+// Terminal → olo-termd.
 /// `Hello`: who's asking, and the environment for its shells.
 pub const HELLO: u8 = 1;
 /// The shells there are: answered with SHELLS.
@@ -38,15 +38,15 @@ pub const CLEAR: u8 = 7;
 pub const CLOSE: u8 = 8;
 /// Terminal is quitting: leave the shells be, and don't start it again.
 pub const BYE: u8 = 9;
-/// How tabula-termd is: answered with REPORT.
+/// How olo-termd is: answered with REPORT.
 pub const STATUS: u8 = 10;
 /// Re-execute in place, keeping the shells.
 pub const RESTART: u8 = 11;
 /// Take over a shell (`Adopt`) with this (new) id, its PTY attached: one
-/// Terminal ran itself before tabula-termd. Answered like SPAWN.
+/// Terminal ran itself before olo-termd. Answered like SPAWN.
 pub const ADOPT: u8 = 12;
 
-// tabula-termd → Terminal.
+// olo-termd → Terminal.
 /// `Vec<ShellInfo>`.
 pub const SHELLS: u8 = 64;
 /// The shell's pid (i32, little-endian), then its screen and scrollback
@@ -113,7 +113,7 @@ pub struct ShellInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Status {
     pub pid: i32,
-    /// When this tabula-termd started (seconds since the epoch).
+    /// When this olo-termd started (seconds since the epoch).
     pub started: u64,
     /// Terminals connected.
     pub clients: usize,
@@ -150,19 +150,19 @@ pub fn display() -> String {
     std::env::var("WAYLAND_DISPLAY").ok().filter(|d| !d.is_empty()).unwrap_or_else(|| "wayland-0".into())
 }
 
-/// Where tabula-termd listens (one per display).
+/// Where olo-termd listens (one per display).
 pub fn socket_path() -> PathBuf {
-    runtime_dir().join(format!("tabula-termd-{}.sock", display()))
+    olo_kit::legacy::runtime_file(&runtime_dir(), &format!("olo-termd-{}.sock", display()))
 }
 
-/// Held by the running tabula-termd.
+/// Held by the running olo-termd.
 pub fn lock_path() -> PathBuf {
-    runtime_dir().join(format!("tabula-termd-{}.lock", display()))
+    olo_kit::legacy::runtime_file(&runtime_dir(), &format!("olo-termd-{}.lock", display()))
 }
 
 /// The desktop session's pid file, if this display has one.
 pub fn session_pid_path() -> PathBuf {
-    runtime_dir().join(format!("tabula-session-{}.pid", display()))
+    olo_kit::legacy::runtime_file(&runtime_dir(), &format!("olo-session-{}.pid", display()))
 }
 
 pub fn wayland_socket() -> PathBuf {

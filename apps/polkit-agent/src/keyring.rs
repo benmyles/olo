@@ -1,16 +1,16 @@
-//! The keyring's prompts (`tabula_system::keyring_prompt`): unlock the
+//! The keyring's prompts (`olo_system::keyring_prompt`): unlock the
 //! login keyring, choose a new keyring's password, or confirm. One window
 //! per prompt; it stays up, "Checking…", until the keyring says it's done
 //! or asks again (a wrong password comes back with a warning).
 
-use tabula_kit::{
+use olo_kit::{
     Cx, WindowId, WindowOptions,
     egui::{self, Key, Rect, pos2, vec2},
     metrics as m,
     style::{self, c},
     widgets::{self, Button, CheckBox, TextControl},
 };
-use tabula_system::keyring_prompt::{Answer, Kind, Props};
+use olo_system::keyring_prompt::{Answer, Kind, Props};
 
 pub const ICON: &str = "key";
 

@@ -1,5 +1,5 @@
 [package]
-name = "tabula-hvif"
+name = "olo-hvif"
 description = "Haiku Vector Icon Format: parse and render HVIF icons, and Haiku's system cursors"
 version.workspace = true
 edition.workspace = true

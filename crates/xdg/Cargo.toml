@@ -1,5 +1,5 @@
 [package]
-name = "tabula-xdg"
+name = "olo-xdg"
 description = "Freedesktop plumbing shared by app_server and the kit: data directories, .desktop entries, icon lookup and loading"
 version.workspace = true
 edition.workspace = true

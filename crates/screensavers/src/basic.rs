@@ -1,6 +1,6 @@
 //! Blackness, BuyNow, Icons and Spots.
 
-use tabula_kit::{
+use olo_kit::{
     egui::{Align2, Color32, FontId, Rect, pos2, vec2},
     icons, style,
 };
@@ -94,7 +94,7 @@ const ICON_NAMES: &[&str] = &[
     "activity",
     "archive",
     "document",
-    "tabula",
+    "olo",
     "trash-full",
     "query",
     "screenshot",

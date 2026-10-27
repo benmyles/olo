@@ -1,16 +1,16 @@
 [package]
-name = "tabula-activity"
+name = "olo-activity"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "tabula-activity"
+name = "olo-activity"
 path = "src/main.rs"
 
 [dependencies]
-tabula-kit.workspace = true
-tabula-theme.workspace = true
+olo-kit.workspace = true
+olo-theme.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 libc = "0.2"

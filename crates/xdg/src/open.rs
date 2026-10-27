@@ -1,5 +1,5 @@
 //! Opening files and URLs with the right application, natively (what
-//! `xdg-open` does, without running it): Tabula's own app when one is
+//! `xdg-open` does, without running it): Olo's own app when one is
 //! installed for the type, else the user's default from mimeapps.list,
 //! else any installed app that lists the type.
 
@@ -69,24 +69,24 @@ pub enum Handler {
 impl Handler {
     pub fn name(&self) -> String {
         match self {
-            Handler::Ours(bin) => crate::apps::our_app(bin.trim_start_matches("tabula-"))
+            Handler::Ours(bin) => crate::apps::our_app(bin.trim_start_matches("olo-"))
                 .map(|(n, _)| n.to_string())
-                .unwrap_or_else(|| bin.trim_start_matches("tabula-").to_owned()),
+                .unwrap_or_else(|| bin.trim_start_matches("olo-").to_owned()),
             Handler::Entry(e) => e.name.clone(),
         }
     }
 }
 
-/// Tabula's own app for a type, if it is installed.
+/// Olo's own app for a type, if it is installed.
 fn ours(mime: &str) -> Option<&'static str> {
     let (major, _) = mime.split_once('/').unwrap_or((mime, ""));
     let candidates: &[&'static str] = match (major, mime) {
-        (_, "inode/directory") => &["tabula-tracker"],
-        (_, "text/html" | "application/xhtml+xml") => &["tabula-chrome", "tabula-styled-edit"],
+        (_, "inode/directory") => &["olo-tracker"],
+        (_, "text/html" | "application/xhtml+xml") => &["olo-chrome", "olo-styled-edit"],
         ("text", _) | (_, "application/x-shellscript" | "application/json" | "application/xml" | "application/toml") => {
-            &["tabula-styled-edit", "tabula-viewer"]
+            &["olo-styled-edit", "olo-viewer"]
         }
-        ("image" | "audio" | "video" | "font", _) => &["tabula-viewer"],
+        ("image" | "audio" | "video" | "font", _) => &["olo-viewer"],
         (
             _,
             "application/pdf"
@@ -100,9 +100,9 @@ fn ours(mime: &str) -> Option<&'static str> {
             | "application/vnd.oasis.opendocument.text"
             | "application/vnd.oasis.opendocument.spreadsheet"
             | "application/vnd.oasis.opendocument.presentation",
-        ) => &["tabula-viewer"],
-        (_, "x-scheme-handler/http" | "x-scheme-handler/https") => &["tabula-chrome"],
-        (_, crate::mime::SETTINGS_BACKUP) => &["tabula-preferences"],
+        ) => &["olo-viewer"],
+        (_, "x-scheme-handler/http" | "x-scheme-handler/https") => &["olo-chrome"],
+        (_, crate::mime::SETTINGS_BACKUP) => &["olo-preferences"],
         _ => &[],
     };
     candidates.iter().copied().find(|bin| find_program(bin).is_some())
@@ -194,8 +194,8 @@ fn parents(mime: &str) -> Vec<String> {
 /// Who opens `mime`.
 pub fn handler(mime: &str) -> Option<Handler> {
     let files: Vec<String> = mimeapps_files().iter().filter_map(|f| std::fs::read_to_string(f).ok()).collect();
-    // The web browser is the person's choice (Tabula's own Chrome
-    // otherwise); everything else opens in Tabula's apps first.
+    // The web browser is the person's choice (Olo's own Chrome
+    // otherwise); everything else opens in Olo's apps first.
     if is_web(mime) {
         for text in &files {
             for file in defaults_in(text, mime) {
@@ -277,7 +277,7 @@ pub fn command_line(entry: &DesktopEntry, target: &Target) -> Option<Vec<OsStrin
         argv.push(as_file);
     }
     if entry.terminal {
-        let mut t: Vec<OsString> = vec!["tabula-terminal".into(), "-e".into()];
+        let mut t: Vec<OsString> = vec!["olo-terminal".into(), "-e".into()];
         t.extend(argv);
         argv = t;
     }
@@ -418,7 +418,7 @@ mod tests {
 
 #[cfg(test)]
 mod live {
-    /// Prints who opens a few types here. `cargo test -p tabula-xdg -- --ignored --nocapture`
+    /// Prints who opens a few types here. `cargo test -p olo-xdg -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn handlers() {

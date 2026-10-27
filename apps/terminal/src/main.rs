@@ -1,11 +1,11 @@
 //! Terminal: a shell in a window, BeOS style (one process, any number of
 //! windows), on alacritty's terminal emulator. GPU-drawn through the kit,
-//! with Tabula's own light and dark colour schemes. A window can hold
+//! with Olo's own light and dark colour schemes. A window can hold
 //! several shells as tabs, and be a named, coloured group of them that
 //! can be saved and opened again (groups.rs). Tabs running a coding agent
 //! show what it's doing, and say when it needs you (agent.rs).
 //!
-//! The shells run in tabula-termd (termd.rs), so they outlive Terminal:
+//! The shells run in olo-termd (termd.rs), so they outlive Terminal:
 //! quit it, or have it crash or upgrade, and the next Terminal opens a
 //! window on each shell as it was, scrollback and all.
 
@@ -26,7 +26,7 @@ mod wire;
 use std::{collections::HashMap, path::PathBuf, time::Instant};
 
 use alacritty_terminal::grid::Dimensions;
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
     egui::{self, Key},
     icons,
@@ -39,11 +39,11 @@ use tabula_kit::{
 use agent::{Agent, State};
 use colors::Scheme;
 use groups::Group;
-use tabula_kit::notify::{Note, NoteEvent, NoteId, NoteKind, Notifier};
+use olo_kit::notify::{Note, NoteEvent, NoteId, NoteKind, Notifier};
 use session::{Message, Session, Size, Start, TermEvent};
 use view::{GlyphCache, Metrics, Mouse};
 
-const APP_ID: &str = "tabula.terminal";
+const APP_ID: &str = "olo.terminal";
 /// BeOS Terminal opened at 80×25; wider is more useful on today's screens.
 const DEFAULT_SIZE: (usize, usize) = (120, 25);
 pub const TEXT_SIZES: [f32; 9] = [9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 16.0, 18.0, 22.0];
@@ -128,7 +128,7 @@ impl Default for Settings {
 }
 
 fn settings_path() -> PathBuf {
-    tabula_kit::config_dir().join("terminal.json")
+    olo_kit::config_dir().join("terminal.json")
 }
 
 impl Settings {
@@ -292,7 +292,7 @@ enum Win {
     Find { target: WindowId },
     /// Terminal ▸ Terminal Daemon…
     Daemon(Box<daemon::DaemonWin>),
-    /// "Start tabula-termd over?" for the Terminal Daemon window.
+    /// "Start olo-termd over?" for the Terminal Daemon window.
     ConfirmStartOver { target: WindowId },
     /// Name (or rename) a window's group and choose its colour.
     NameGroup { target: WindowId, name: String, color: usize },
@@ -305,7 +305,7 @@ struct Terminal {
     metrics: Option<Metrics>,
     dark: bool,
     search: find::Search,
-    /// tabula-termd was started over: when its shells' windows have all
+    /// olo-termd was started over: when its shells' windows have all
     /// closed, open a new one rather than quitting.
     respawn: bool,
     /// The terminal window last in front, for new tabs from outside.
@@ -336,7 +336,7 @@ fn estimate(settings: &Settings, cols: usize, rows: usize, strip: bool) -> (u32,
 }
 
 /// What an upgraded Terminal gets from its previous self: which shells
-/// were in each window (tabula-termd has the rest).
+/// were in each window (olo-termd has the rest).
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Saved {
     windows: Vec<SavedWindow>,
@@ -358,8 +358,8 @@ struct SavedWindow {
     tiled: bool,
 }
 
-/// What a Terminal from before tabula-termd handed on: the shells
-/// themselves, which go to tabula-termd now.
+/// What a Terminal from before olo-termd handed on: the shells
+/// themselves, which go to olo-termd now.
 #[derive(serde::Deserialize)]
 struct Legacy {
     windows: Vec<LegacyWindow>,
@@ -391,7 +391,7 @@ impl Terminal {
         self.add(cx, options, Size { cols, rows }, Some((cols, rows)), vec![Start::Spawn { command, cwd }], 0, None);
     }
 
-    /// A window on shells tabula-termd already has (sized as it was, if
+    /// A window on shells olo-termd already has (sized as it was, if
     /// we know), one tab each.
     fn reopen(&mut self, cx: &mut Cx, shells: &[&wire::ShellInfo], size: Option<(u32, u32)>, active: usize, group: Option<Group>) -> WindowId {
         let active = active.min(shells.len() - 1);
@@ -485,7 +485,7 @@ impl Terminal {
         }
     }
 
-    /// Open windows on the shells left in tabula-termd: those this
+    /// Open windows on the shells left in olo-termd: those this
     /// Terminal had before it upgraded (`saved`, with their tabs as they
     /// were), and any no other Terminal is showing. True if there were any.
     fn reattach(&mut self, cx: &mut Cx, shells: Vec<wire::ShellInfo>, saved: Option<&Saved>) -> bool {
@@ -515,7 +515,7 @@ impl Terminal {
         !used.is_empty() || !rest.is_empty()
     }
 
-    /// Hand the shells a Terminal from before tabula-termd left us over
+    /// Hand the shells a Terminal from before olo-termd left us over
     /// to it, each in its window as before.
     fn adopt(&mut self, cx: &mut Cx, legacy: Legacy) -> bool {
         let mut any = false;
@@ -580,11 +580,11 @@ impl Terminal {
         let scheme = self.scheme();
         // Files dropped on it are typed as their paths (quoted for the
         // shell, as macOS's Terminal does), text as if pasted.
-        if let Some(h) = tabula_kit::dnd::hover(ui.ctx()) {
+        if let Some(h) = olo_kit::dnd::hover(ui.ctx()) {
             let mime = if h.has_files() { Some("text/uri-list") } else { h.text_type() };
             if let Some(mime) = mime.filter(|_| h.actions.copy) {
-                tabula_kit::dnd::accept(ui.ctx(), "term", mime, tabula_kit::dnd::Action::Copy);
-                tabula_kit::dnd::outline(ui, ui.max_rect());
+                olo_kit::dnd::accept(ui.ctx(), "term", mime, olo_kit::dnd::Action::Copy);
+                olo_kit::dnd::outline(ui, ui.max_rect());
             }
         }
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
@@ -893,7 +893,7 @@ fn tab_icon(rang: bool, agent: Option<(Agent, State)>, attention: bool) -> impl 
     move |painter, r| {
         icons::paint(painter, r, "terminal");
         let p = style::palette(painter.ctx());
-        let dark = p.mode == tabula_kit::theme::ThemeMode::Dark;
+        let dark = p.mode == olo_kit::theme::ThemeMode::Dark;
         let at = egui::pos2(r.right() - 1.5, r.top() + 3.5);
         let back = style::c(p.panel_background);
         match agent {
@@ -928,7 +928,7 @@ fn tab_icon(rang: bool, agent: Option<(Agent, State)>, attention: bool) -> impl 
     }
 }
 
-const START_OVER: &str = "Starting tabula-termd over ends every shell in it, and whatever is running in them. Start over?";
+const START_OVER: &str = "Starting olo-termd over ends every shell in it, and whatever is running in them. Start over?";
 
 const FIND_W: f32 = 340.0;
 const FIND_H: f32 = 2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + m::SPACING + 4.0 * m::MARK_ROW + 3.0 * m::TIGHT + m::SPACING + m::CONTROL_HEIGHT;
@@ -1165,7 +1165,7 @@ impl App for Terminal {
         }
     }
 
-    fn dropped(&mut self, cx: &mut Cx, window: WindowId, drop: tabula_kit::dnd::Drop) {
+    fn dropped(&mut self, cx: &mut Cx, window: WindowId, drop: olo_kit::dnd::Drop) {
         let Some(Win::Term(t)) = self.windows.get(&window) else { return };
         let paths = drop.paths();
         let text = if drop.mime == "text/uri-list" && !paths.is_empty() {
@@ -1199,9 +1199,9 @@ impl App for Terminal {
         let scheme = Menu::new("Colors")
             .item("Match Appearance", "scheme-auto", None)
             .checked(self.settings.scheme == SchemeChoice::Auto)
-            .item("Tabula Light", "scheme-light", None)
+            .item("Olo Light", "scheme-light", None)
             .checked(self.settings.scheme == SchemeChoice::Light)
-            .item("Tabula Dark", "scheme-dark", None)
+            .item("Olo Dark", "scheme-dark", None)
             .checked(self.settings.scheme == SchemeChoice::Dark);
         const NUMBERS: [Key; 9] = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9];
         let grouped = t.group.is_some();
@@ -1353,7 +1353,7 @@ impl App for Terminal {
                 }
             }
             "quit" => {
-                // The shells stay in tabula-termd for next time.
+                // The shells stay in olo-termd for next time.
                 self.link.bye();
                 for id in self.windows.keys().copied().collect::<Vec<_>>() {
                     cx.close_window(id);
@@ -1555,8 +1555,8 @@ impl App for Terminal {
         }
     }
 
-    fn theme_changed(&mut self, cx: &mut Cx, palette: &tabula_kit::theme::Palette) {
-        self.dark = palette.mode == tabula_kit::theme::ThemeMode::Dark;
+    fn theme_changed(&mut self, cx: &mut Cx, palette: &olo_kit::theme::Palette) {
+        self.dark = palette.mode == olo_kit::theme::ThemeMode::Dark;
         cx.redraw_all();
     }
 
@@ -1587,6 +1587,8 @@ impl App for Terminal {
 }
 
 fn main() {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if instance::forward(APP_ID, &args) {
         return;
@@ -1594,24 +1596,24 @@ fn main() {
     let (link, shells) = match client::connect() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("tabula-terminal: can't reach tabula-termd: {e}");
+            eprintln!("olo-terminal: can't reach olo-termd: {e}");
             std::process::exit(1);
         }
     };
-    tabula_kit::run(APP_ID, move |cx| {
+    olo_kit::run(APP_ID, move |cx| {
         instance::listen(APP_ID, cx.proxy());
         let mut t = Terminal {
             link,
             windows: HashMap::new(),
             settings: Settings::load(),
             metrics: None,
-            dark: cx.palette().mode == tabula_kit::theme::ThemeMode::Dark,
+            dark: cx.palette().mode == olo_kit::theme::ThemeMode::Dark,
             search: find::Search::default(),
             respawn: false,
             front: None,
             saved_groups: groups::load(),
             agents: agent::Watcher::start(cx.proxy()),
-            notifier: Notifier::new(cx.proxy(), "Terminal", "tabula-terminal"),
+            notifier: Notifier::new(cx.proxy(), "Terminal", "olo-terminal"),
             notes: HashMap::new(),
         };
         let state = cx.restored_state();

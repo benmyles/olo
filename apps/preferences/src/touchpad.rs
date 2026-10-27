@@ -1,10 +1,10 @@
 //! Touchpad and mouse: tapping, scrolling direction, click method, speed.
 
-use tabula_kit::{
+use olo_kit::{
     egui::Ui,
     widgets::{BBox, CheckBox, Slider},
 };
-use tabula_protocol::Settings;
+use olo_protocol::Settings;
 
 pub fn ui(ui: &mut Ui, s: &mut Settings) {
     let t = &mut s.touchpad;

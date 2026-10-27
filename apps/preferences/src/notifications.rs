@@ -1,7 +1,7 @@
 //! Notifications: Do Not Disturb (now, and every day at set times), how
 //! long banners stay, and what each app's notifications may do. The
 //! settings live in their own file (`notifications.json`), which
-//! tabula-notifications and Deskbar's bell follow; a watcher thread keeps
+//! olo-notifications and Deskbar's bell follow; a watcher thread keeps
 //! the panel current when they change it.
 
 use std::{
@@ -9,13 +9,13 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use tabula_kit::{
+use olo_kit::{
     egui::{self, Rect, Sense, Ui, UiBuilder, pos2, vec2},
     metrics as m, style,
     style::c,
     widgets::{BBox, CheckBox, MenuField, ScrollView, StringView},
 };
-use tabula_protocol::{AppNotifications, ClockSettings, NotificationSettings};
+use olo_protocol::{AppNotifications, ClockSettings, NotificationSettings};
 
 /// What the watcher hands over: the settings and the apps known to have
 /// sent notifications.
@@ -37,7 +37,7 @@ impl Default for State {
             .name("notifications-watch".into())
             .spawn(move || {
                 // The settings, and the history (for apps new to it).
-                let history = tabula_kit::state_dir().join("notifications").join("history.json");
+                let history = olo_kit::state_dir().join("notifications").join("history.json");
                 let mtime = |p: &std::path::Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
                 let modified = || (mtime(&NotificationSettings::path()), mtime(&history));
                 let mut seen: Option<(Option<SystemTime>, Option<SystemTime>)> = None;
@@ -59,7 +59,7 @@ impl Default for State {
 
 /// Apps that have sent notifications (from the history), by name.
 fn known_apps() -> Vec<String> {
-    let path = tabula_kit::state_dir().join("notifications").join("history.json");
+    let path = olo_kit::state_dir().join("notifications").join("history.json");
     let v: serde_json::Value = std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
     let mut apps: Vec<String> =
         v.as_array().into_iter().flatten().filter_map(|e| e["app"].as_str()).filter(|a| !a.is_empty()).map(str::to_owned).collect();

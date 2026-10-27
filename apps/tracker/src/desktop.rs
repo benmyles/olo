@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use tabula_kit::{
+use olo_kit::{
     Layer, LayerOptions, Menu, WindowKind, WindowOptions,
     egui::{self, Key, Pos2, Rect, Sense, Ui, pos2},
     dnd, metrics as m, style, widgets,
@@ -51,7 +51,7 @@ pub struct Desktop {
 /// Icons placed by hand, by [`place_key`], as the top-left of each one's
 /// cell from the screen's top-right corner (where the grid starts, so
 /// they keep their place beside the Deskbar when the screen size
-/// changes). Kept in `~/.config/tabula/desktop.json`, which agents can
+/// changes). Kept in `~/.config/olo/desktop.json`, which agents can
 /// read too.
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 struct Places {
@@ -60,7 +60,7 @@ struct Places {
 }
 
 fn places_path() -> PathBuf {
-    tabula_kit::config_dir().join("desktop.json")
+    olo_kit::config_dir().join("desktop.json")
 }
 
 impl Places {
@@ -69,7 +69,7 @@ impl Places {
     }
 
     fn save(&self) {
-        let _ = std::fs::create_dir_all(tabula_kit::config_dir());
+        let _ = std::fs::create_dir_all(olo_kit::config_dir());
         if let Ok(json) = serde_json::to_vec_pretty(self) {
             let tmp = places_path().with_extension("json.tmp");
             if std::fs::write(&tmp, json).is_ok() {
@@ -100,7 +100,7 @@ pub fn options() -> WindowOptions {
             anchor: (true, true, true, true),
             exclusive_zone: -1,
             margin: (0, 0, 0, 0),
-            keyboard: tabula_kit::Keyboard::OnDemand,
+            keyboard: olo_kit::Keyboard::OnDemand,
             namespace: "desktop".into(),
             output: None,
         }),

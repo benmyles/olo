@@ -95,15 +95,15 @@ pub struct TextDrag {
 }
 
 fn laid_id(id: Id) -> Id {
-    id.with("tabula-text-drag-laid")
+    id.with("olo-text-drag-laid")
 }
 
 fn armed_id(id: Id) -> Id {
-    id.with("tabula-text-drag-armed")
+    id.with("olo-text-drag-armed")
 }
 
 fn source_id() -> Id {
-    Id::unique("tabula-text-drag-source")
+    Id::unique("olo-text-drag-source")
 }
 
 fn target(id: Id) -> String {

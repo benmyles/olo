@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn reads_a_fake_battery() {
-        let dir = std::env::temp_dir().join(format!("tabula-battery-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-battery-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         for (k, v) in [
             ("capacity", "57"),

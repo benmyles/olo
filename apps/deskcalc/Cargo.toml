@@ -1,15 +1,15 @@
 [package]
-name = "tabula-deskcalc"
+name = "olo-deskcalc"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "tabula-deskcalc"
+name = "olo-deskcalc"
 path = "src/main.rs"
 
 [dependencies]
-tabula-kit.workspace = true
-tabula-theme.workspace = true
+olo-kit.workspace = true
+olo-theme.workspace = true
 serde.workspace = true
 serde_json.workspace = true

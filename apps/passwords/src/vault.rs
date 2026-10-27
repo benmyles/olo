@@ -8,9 +8,9 @@
 //! The file is `passwords.vault` in the config directory: "TABV", a
 //! format byte, a 24-byte nonce, then the JSON sealed with
 //! XChaCha20-Poly1305 (the header as associated data). The key is 32
-//! random bytes kept in the login keyring (`tabula_system::secrets`),
+//! random bytes kept in the login keyring (`olo_system::secrets`),
 //! which PAM unlocks at login, so Touch ID can open Passwords;
-//! `TABULA_PASSWORDS_KEYFILE` keeps it in a file instead (tests).
+//! `OLO_PASSWORDS_KEYFILE` keeps it in a file instead (tests).
 
 use std::{
     collections::{HashMap, HashSet},
@@ -34,7 +34,7 @@ const KEY_ATTRS: [(&str, &str); 2] = [("application", "tabula-passwords"), ("pur
 pub const LOCAL: &str = "local-";
 
 pub fn path() -> PathBuf {
-    tabula_kit::config_dir().join("passwords.vault")
+    olo_kit::config_dir().join("passwords.vault")
 }
 
 /// What 1Password had of an item when it was last synced.
@@ -179,12 +179,12 @@ fn key(store_exists: bool, keyfile: Option<&Path>) -> Result<Zeroizing<[u8; 32]>
             }
             Err(e) => return Err(fail(format!("Couldn’t read the key: {e}"))),
         },
-        None => match tabula_system::secrets::lookup(&KEY_ATTRS) {
+        None => match olo_system::secrets::lookup(&KEY_ATTRS) {
             Ok(Some(b)) => Zeroizing::new(b),
             Ok(None) if store_exists => return Err(missing()),
             Ok(None) => {
                 let k = Zeroizing::new(random::<32>().to_vec());
-                tabula_system::secrets::store("Tabula Passwords", &KEY_ATTRS, &k)
+                olo_system::secrets::store("Olo Passwords", &KEY_ATTRS, &k)
                     .map_err(|e| fail(format!("Couldn’t keep the key in the login keyring: {e}")))?;
                 k
             }
@@ -256,7 +256,7 @@ fn local_vault() -> VaultOverview {
 impl Vault {
     /// Open the store (making it the first time). Blocks on the keyring.
     pub fn open() -> Result<Vault> {
-        let keyfile = std::env::var_os("TABULA_PASSWORDS_KEYFILE").map(PathBuf::from);
+        let keyfile = std::env::var_os("OLO_PASSWORDS_KEYFILE").map(PathBuf::from);
         Self::open_at(path(), keyfile.as_deref())
     }
 
@@ -596,7 +596,7 @@ mod tests {
 
     /// A fresh store in a directory of its own, its key in a file there.
     fn fresh(name: &str) -> (Vault, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("tabula-vault-test-{}-{name}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-vault-test-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         (Vault::open_at(dir.join("passwords.vault"), Some(&dir.join("key"))).unwrap(), dir)

@@ -6,7 +6,7 @@
 #   tools/dev/private-keyring start   # prints the variables to export
 #   tools/dev/private-keyring stop
 set -e
-DIR=/tmp/tabula-dev/keyring
+DIR=/tmp/olo-dev/keyring
 case "$1" in
 start)
     "$0" stop >/dev/null 2>&1 || true
@@ -17,9 +17,9 @@ start)
     unset GNOME_KEYRING_CONTROL
     # busd: a D-Bus broker that runs on its own (dbus-broker needs a
     # systemd user manager). Install once:
-    #   cargo install busd --root /tmp/tabula-dev/busd
-    BUSD=${BUSD:-/tmp/tabula-dev/busd/bin/busd}
-    [ -x "$BUSD" ] || { echo "no busd: cargo install busd --root /tmp/tabula-dev/busd" >&2; exit 1; }
+    #   cargo install busd --root /tmp/olo-dev/busd
+    BUSD=${BUSD:-/tmp/olo-dev/busd/bin/busd}
+    [ -x "$BUSD" ] || { echo "no busd: cargo install busd --root /tmp/olo-dev/busd" >&2; exit 1; }
     setsid "$BUSD" --address "unix:path=$DIR/bus" >"$DIR/bus.log" 2>&1 < /dev/null &
     echo $! > "$DIR/bus.pid"
     for _ in $(seq 50); do [ -S "$DIR/bus" ] && break; sleep 0.1; done

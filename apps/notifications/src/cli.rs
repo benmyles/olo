@@ -1,13 +1,13 @@
 //! The command line: asks the running service over
-//! `org.tabula.Notifications1` (the session bus, or `--bus ADDRESS`).
+//! `com.olodesktop.Notifications1` (the session bus, or `--bus ADDRESS`).
 //!
 //! ```text
-//! tabula-notifications --list [--json]   what is on screen and in the history
-//! tabula-notifications --history         open the History window
-//! tabula-notifications --invoke ID [ACTION]
-//! tabula-notifications --dismiss ID
-//! tabula-notifications --clear           forget the history
-//! tabula-notifications --dnd on|off|MINUTES
+//! olo-notifications --list [--json]   what is on screen and in the history
+//! olo-notifications --history         open the History window
+//! olo-notifications --invoke ID [ACTION]
+//! olo-notifications --dismiss ID
+//! olo-notifications --clear           forget the history
+//! olo-notifications --dnd on|off|MINUTES
 //! ```
 
 use std::process::ExitCode;
@@ -16,8 +16,8 @@ use crate::{server, store::Entry};
 
 pub fn usage() -> ExitCode {
     eprintln!(
-        "usage: tabula-notifications [--bus ADDRESS]   (serve; only in a real session)\n       \
-         tabula-notifications [--bus ADDRESS] --list [--json] | --history | --invoke ID [ACTION] | --dismiss ID | --clear | --dnd on|off|MINUTES"
+        "usage: olo-notifications [--bus ADDRESS]   (serve; only in a real session)\n       \
+         olo-notifications [--bus ADDRESS] --list [--json] | --history | --invoke ID [ACTION] | --dismiss ID | --clear | --dnd on|off|MINUTES"
     );
     ExitCode::from(2)
 }
@@ -51,7 +51,7 @@ pub fn run(address: Option<&str>, args: &[String]) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("tabula-notifications: {e}");
+            eprintln!("olo-notifications: {e}");
             ExitCode::FAILURE
         }
     }

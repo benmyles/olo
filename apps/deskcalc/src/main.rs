@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use expr::Angle;
 use serde::{Deserialize, Serialize};
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
     egui::{self, Align, FontId, Id, Key, Rect, Sense, emath::GuiRounding, pos2, vec2},
     instance::{self, Launch},
@@ -18,7 +18,7 @@ use tabula_kit::{
     widgets,
 };
 
-const APP_ID: &str = "tabula.deskcalc";
+const APP_ID: &str = "olo.deskcalc";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum Keypad {
@@ -82,7 +82,7 @@ impl Default for Settings {
 }
 
 fn settings_path() -> std::path::PathBuf {
-    tabula_kit::config_dir().join("deskcalc.json")
+    olo_kit::config_dir().join("deskcalc.json")
 }
 
 /// How many earlier expressions ↑ remembers.
@@ -419,9 +419,9 @@ fn key(ui: &egui::Ui, r: Rect, label: &str, font: &FontId, down: bool, hovered: 
     let (top, bottom) = if down {
         (shade(&p, base, 1.2), shade(&p, base, 1.12))
     } else if hovered {
-        (c(tabula_theme::tint(base, 0.7)), shade(&p, base, 1.02))
+        (c(olo_theme::tint(base, 0.7)), shade(&p, base, 1.02))
     } else {
-        (c(tabula_theme::tint(base, 0.85)), shade(&p, base, 1.06))
+        (c(olo_theme::tint(base, 0.85)), shade(&p, base, 1.06))
     };
     style::vgradient(painter, r.shrink(1.0), top, bottom);
     style::frame_rect(painter, r, shade(&p, p.panel_background, 1.6));
@@ -439,11 +439,13 @@ fn key(ui: &egui::Ui, r: Rect, label: &str, font: &FontId, down: bool, hovered: 
 }
 
 fn main() {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if instance::forward(APP_ID, &args) {
         return;
     }
-    tabula_kit::run(APP_ID, |cx| {
+    olo_kit::run(APP_ID, |cx| {
         instance::listen(APP_ID, cx.proxy());
         let settings: Settings =
             std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();

@@ -156,7 +156,7 @@ impl<BackendData: Backend> PointerTarget<AnvilState<BackendData>> for PointerFoc
         data: &mut AnvilState<BackendData>,
         frame: AxisFrame,
     ) {
-        // Scrolled as far as in Tabula's own apps, whatever draws it.
+        // Scrolled as far as in Olo's own apps, whatever draws it.
         let frame = match self {
             Self::WlSurface(w) => match w.client().and_then(|c| crate::state::client_pid(&c, &data.display_handle)) {
                 Some(pid) => crate::scroll::adjust(frame, crate::scroll::toolkit(pid)),

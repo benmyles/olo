@@ -1,5 +1,5 @@
 //! One shell (a tab of a window): the emulator state (alacritty_terminal's
-//! `Term`), fed from tabula-termd (which runs the shell), and what the
+//! `Term`), fed from olo-termd (which runs the shell), and what the
 //! window needs to know.
 
 use std::{
@@ -17,7 +17,7 @@ use alacritty_terminal::{
     sync::FairMutex,
     term::{Config, Term},
 };
-use tabula_kit::Proxy;
+use olo_kit::Proxy;
 
 use crate::{
     client::{Chunk, Link, Writer},
@@ -98,9 +98,9 @@ pub use crate::io::Size;
 /// How a window gets its shell.
 pub enum Start {
     Spawn { command: Option<Vec<String>>, cwd: Option<PathBuf> },
-    /// One tabula-termd already has.
+    /// One olo-termd already has.
     Attach(u64),
-    /// One this process ran itself, before tabula-termd: hand it over.
+    /// One this process ran itself, before olo-termd: hand it over.
     Adopt { pty: std::os::fd::OwnedFd, pid: i32, title: Option<String>, replay: String },
 }
 
@@ -195,7 +195,7 @@ impl Session {
         self.link.resize(self.id, grid(size, cell));
     }
 
-    /// Forget the scrollback, here and in tabula-termd.
+    /// Forget the scrollback, here and in olo-termd.
     pub fn clear_history(&self) {
         let mut term = self.term.lock();
         term.grid_mut().clear_history();
@@ -234,12 +234,12 @@ impl Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        // The shell stays with tabula-termd unless `hang_up` said otherwise.
+        // The shell stays with olo-termd unless `hang_up` said otherwise.
         self.link.forget(self.id);
     }
 }
 
-/// Feed what tabula-termd sends for one shell into its emulator, until
+/// Feed what olo-termd sends for one shell into its emulator, until
 /// the shell has gone.
 fn spawn_feeder(
     rx: mpsc::Receiver<Chunk>,

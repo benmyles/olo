@@ -1,13 +1,13 @@
 [package]
-name = "tabula-token-pool"
+name = "olo-token-pool"
 description = "Token pooling for Claude Code and Codex: the accounts, their quotas, and a loopback gateway that spends them in a reset-aware order"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-tabula-system.workspace = true
-tabula-xdg.workspace = true
+olo-system.workspace = true
+olo-xdg.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
 tracing.workspace = true

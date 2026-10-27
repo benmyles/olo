@@ -1,6 +1,6 @@
-//! Backup: every Tabula setting and piece of saved state, in one file and
+//! Backup: every Olo setting and piece of saved state, in one file and
 //! back. A backup is a zstd-compressed tar of `config/` (the settings
-//! directory, `~/.config/tabula`) and `state/` (`~/.local/state/tabula`),
+//! directory, `~/.config/olo`) and `state/` (`~/.local/state/olo`),
 //! with `manifest.json` first saying what it holds. Secrets stay as they
 //! are on disk (Passwords' vault is encrypted). Importing shows what a
 //! backup holds and asks before replacing anything; the settings as they
@@ -8,7 +8,7 @@
 //! can be undone by importing that. Files the backup doesn't have are left
 //! alone. Export and import run on a worker thread with progress.
 //!
-//! Agents: `tabula-preferences --export FILE`, `--inspect FILE` and
+//! Agents: `olo-preferences --export FILE`, `--inspect FILE` and
 //! `--import FILE` do the same without a window (the summary on stdout).
 
 use std::{
@@ -23,16 +23,19 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tabula_kit::{
+use olo_kit::{
     egui::{self, Ui, vec2},
     metrics as m, style,
     style::c,
     widgets::{BBox, Button, ScrollView, StatusBar, StringView},
 };
-use tabula_protocol::Settings;
+use olo_protocol::Settings;
 
-pub const EXTENSION: &str = "tabula-backup";
-const FORMAT: &str = "tabula-backup";
+pub const EXTENSION: &str = "olo-backup";
+/// Backups made before the rename (Tabula), which still import.
+pub const OLD_EXTENSION: &str = "tabula-backup";
+const FORMAT: &str = "olo-backup";
+const OLD_FORMAT: &str = "tabula-backup";
 const MANIFEST: &str = "manifest.json";
 /// Automatic backups made before an import that are kept.
 const KEEP: usize = 5;
@@ -88,14 +91,14 @@ fn app_of(path: &str) -> String {
     for part in rel.split('/') {
         let stem = part.split('.').next().unwrap_or(part);
         match stem {
-            "tabula" | "" => continue,
+            "olo" | "tabula" | "" => continue,
             "app_server" => return "Desktop (Preferences)".into(),
             "signatures" => return "Viewer".into(),
             "desktop" => return "Tracker".into(),
             "palette" => return "Palette".into(),
             _ => {}
         }
-        if let Some((name, _)) = tabula_kit::apps::our_app(stem) {
+        if let Some((name, _)) = olo_kit::apps::our_app(stem) {
             return name.into();
         }
         let mut name = stem.replace(['-', '_'], " ");
@@ -109,7 +112,7 @@ fn app_of(path: &str) -> String {
 
 /// The directories a backup holds, by their name in it.
 pub fn roots() -> Vec<(&'static str, PathBuf)> {
-    vec![("config", tabula_kit::config_dir()), ("state", tabula_kit::state_dir())]
+    vec![("config", olo_kit::config_dir()), ("state", olo_kit::state_dir())]
 }
 
 /// Where automatic backups go (left out of backups themselves).
@@ -211,12 +214,12 @@ fn append<W: Write>(tar: &mut tar::Builder<W>, name: &str, bytes: &[u8], mode: u
 
 fn open(path: &Path) -> Result<tar::Archive<zstd::Decoder<'static, std::io::BufReader<std::fs::File>>>, String> {
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    let dec = zstd::Decoder::new(file).map_err(|_| "This isn't a Tabula backup.".to_string())?;
+    let dec = zstd::Decoder::new(file).map_err(|_| "This isn't an Olo backup.".to_string())?;
     Ok(tar::Archive::new(dec))
 }
 
 fn not_backup() -> String {
-    "This isn't a Tabula backup.".into()
+    "This isn't an Olo backup.".into()
 }
 
 /// What the backup at `path` holds (its manifest, checked).
@@ -230,11 +233,11 @@ pub fn inspect(path: &Path) -> Result<Manifest, String> {
     let mut json = String::new();
     first.read_to_string(&mut json).map_err(|_| not_backup())?;
     let manifest: Manifest = serde_json::from_str(&json).map_err(|_| not_backup())?;
-    if manifest.format != FORMAT {
+    if manifest.format != FORMAT && manifest.format != OLD_FORMAT {
         return Err(not_backup());
     }
     if manifest.version > 1 {
-        return Err("This backup was made by a newer Tabula.".into());
+        return Err("This backup was made by a newer Olo.".into());
     }
     Ok(manifest)
 }
@@ -326,7 +329,7 @@ fn prune(dir: &Path) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     let mut all: Vec<(std::time::SystemTime, PathBuf)> = entries
         .flatten()
-        .filter(|e| e.file_name().to_string_lossy().ends_with(EXTENSION))
+        .filter(|e| e.file_name().to_string_lossy().ends_with(EXTENSION) || e.file_name().to_string_lossy().ends_with(OLD_EXTENSION))
         .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
         .collect();
     all.sort();
@@ -483,7 +486,7 @@ fn name_of(p: &Path) -> String {
 
 /// The name an export is offered under.
 pub fn suggested_name() -> String {
-    format!("Tabula Settings {}.{EXTENSION}", jiff::Zoned::now().strftime("%Y-%m-%d"))
+    format!("Olo Settings {}.{EXTENSION}", jiff::Zoned::now().strftime("%Y-%m-%d"))
 }
 
 pub fn ui(ui: &mut Ui, settings: &mut Settings, st: &mut State) {
@@ -496,7 +499,7 @@ pub fn ui(ui: &mut Ui, settings: &mut Settings, st: &mut State) {
     }
     let idle = matches!(st.phase, Phase::Idle);
     BBox::new("Export").show(ui, |ui| {
-        ui.add(StringView::new("Saves every Tabula setting and what apps keep between runs (windows, histories, Passwords' encrypted vault…) in one file.").wrap(true).dim(true));
+        ui.add(StringView::new("Saves every Olo setting and what apps keep between runs (windows, histories, Passwords' encrypted vault…) in one file.").wrap(true).dim(true));
         if ui.add_enabled(idle, Button::new("Export…")).clicked() {
             st.ask = Some(Ask::Export);
         }
@@ -516,10 +519,10 @@ pub fn ui(ui: &mut Ui, settings: &mut Settings, st: &mut State) {
                 if *ok
                     && let Some(before) = &st.before
                     && ui.add(Button::new("Show in Tracker")).clicked()
-                    && let Some(tracker) = tabula_kit::find_program("tabula-tracker")
+                    && let Some(tracker) = olo_kit::find_program("olo-tracker")
                 {
                     let dir = before.parent().unwrap_or(before).as_os_str().to_owned();
-                    if let Err(e) = tabula_kit::open::spawn(&[tracker.into_os_string(), dir]) {
+                    if let Err(e) = olo_kit::open::spawn(&[tracker.into_os_string(), dir]) {
                         tracing::warn!("couldn't open Tracker: {e}");
                     }
                 }
@@ -577,7 +580,7 @@ mod tests {
     use super::*;
 
     fn dirs(tag: &str) -> (PathBuf, Vec<(&'static str, PathBuf)>) {
-        let base = std::env::temp_dir().join(format!("tabula-backup-{tag}-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("olo-backup-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         (base.clone(), vec![("config", base.join("config")), ("state", base.join("state"))])
     }
@@ -586,18 +589,18 @@ mod tests {
     fn export_and_import_round_trip() {
         let (base, roots) = dirs("trip");
         let (cfg, state) = (roots[0].1.clone(), roots[1].1.clone());
-        std::fs::create_dir_all(cfg.join("tabula")).unwrap();
+        std::fs::create_dir_all(cfg.join("olo")).unwrap();
         std::fs::create_dir_all(state.join("notifications")).unwrap();
         std::fs::write(cfg.join("terminal.json"), b"{\"font\":12}").unwrap();
-        std::fs::write(cfg.join("tabula/palette.json"), b"[]").unwrap();
+        std::fs::write(cfg.join("olo/palette.json"), b"[]").unwrap();
         write_atomic(&cfg.join("passwords.vault"), b"sealed", 0o600).unwrap();
         std::fs::write(cfg.join(".x.json.saving"), b"half").unwrap();
         std::fs::write(state.join("notifications/history.json"), b"[1,2]").unwrap();
-        let file = base.join("b.tabula-backup");
+        let file = base.join("b.olo-backup");
         let no = AtomicBool::new(false);
         let m = export(&roots, &file, &|_, _| {}, &no).unwrap();
         let names: Vec<&str> = m.files.iter().map(|f| f.path.as_str()).collect();
-        assert_eq!(names, ["config/passwords.vault", "config/tabula/palette.json", "config/terminal.json", "state/notifications/history.json"]);
+        assert_eq!(names, ["config/olo/palette.json", "config/passwords.vault", "config/terminal.json", "state/notifications/history.json"]);
         assert_eq!(inspect(&file).unwrap(), m);
         let groups: Vec<String> = m.groups().into_iter().map(|g| g.0).collect();
         assert_eq!(groups, ["Notifications", "Palette", "Passwords", "Terminal"]);
@@ -624,7 +627,7 @@ mod tests {
     fn refuses_what_isnt_a_backup() {
         let (base, roots) = dirs("bad");
         std::fs::create_dir_all(&base).unwrap();
-        let junk = base.join("junk.tabula-backup");
+        let junk = base.join("junk.olo-backup");
         std::fs::write(&junk, b"not a backup").unwrap();
         assert!(inspect(&junk).is_err());
         // Names that would land outside the roots are not ours.

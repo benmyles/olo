@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use tabula_kit::{
+use olo_kit::{
     egui::{self, Align, Color32, FontId, Key, Pos2, Rect, Sense, Ui, pos2, vec2},
     icons, metrics as m,
     style::{self, c},
@@ -135,7 +135,7 @@ pub fn columns_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, actions: &mut 
     if let Some(h) = view_hover(ui, clip).filter(|h| h.pos.x >= end) {
         let last = column(f, n - 1).0.to_owned();
         if view::item_drop(ui.ctx(), &h, None, Some(&last)).0 {
-            tabula_kit::dnd::outline(ui, Rect::from_min_max(pos2(end.max(clip.left()), clip.top()), clip.max));
+            olo_kit::dnd::outline(ui, Rect::from_min_max(pos2(end.max(clip.left()), clip.top()), clip.max));
         }
     }
     if let Some(e) = &preview {
@@ -310,7 +310,7 @@ fn draw_column(
             }
         }
         if took && drop_on.is_none() {
-            tabula_kit::dnd::outline(ui, clip);
+            olo_kit::dnd::outline(ui, clip);
         }
         let mods = ui.input(|i| i.modifiers);
         // A selection band, from below the items (where it started, in
@@ -374,8 +374,8 @@ fn draw_column(
 }
 
 /// What is dragged over `clip`, if anything.
-fn view_hover(ui: &Ui, clip: Rect) -> Option<tabula_kit::dnd::Hover> {
-    tabula_kit::dnd::hover(ui.ctx()).filter(|h| clip.contains(h.pos))
+fn view_hover(ui: &Ui, clip: Rect) -> Option<olo_kit::dnd::Hover> {
+    olo_kit::dnd::hover(ui.ctx()).filter(|h| clip.contains(h.pos))
 }
 
 /// The preview after the last column: the image itself or a large icon,

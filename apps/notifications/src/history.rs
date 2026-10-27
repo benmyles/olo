@@ -8,7 +8,7 @@
 
 use std::collections::{BTreeSet, HashSet};
 
-use tabula_kit::{
+use olo_kit::{
     Cx, WindowId,
     egui::{self, Align, Color32, Key, Rect, Sense, WidgetInfo, pos2, vec2},
     icons, metrics as m,
@@ -16,7 +16,7 @@ use tabula_kit::{
     theme::mix,
     widgets::{Button, CheckBox, ScrollView, TextControl},
 };
-use tabula_protocol::HistoryView;
+use olo_protocol::HistoryView;
 
 use crate::{Notifications, close_box, galley, named_icons, now_secs, raise_app, server::Reason, store};
 
@@ -429,7 +429,7 @@ impl Notifications {
 }
 
 /// A heading's band: a shade darker than the list.
-fn heading_fill(ui: &egui::Ui, p: &tabula_kit::theme::Palette, r: Rect) {
+fn heading_fill(ui: &egui::Ui, p: &olo_kit::theme::Palette, r: Rect) {
     ui.painter().rect_filled(r, 0.0, style::darken(p.document_background, 1.04));
     style::hline(ui.painter(), r.left(), r.right(), r.bottom() - 1.0, style::darken(p.document_background, 1.1));
 }
@@ -441,12 +441,12 @@ fn paint_icon(painter: &egui::Painter, r: Rect, e: &store::Entry) {
 }
 
 /// The dot for what is new.
-fn unread_dot(painter: &egui::Painter, center: egui::Pos2, p: &tabula_kit::theme::Palette) {
+fn unread_dot(painter: &egui::Painter, center: egui::Pos2, p: &olo_kit::theme::Palette) {
     painter.circle_filled(center, 3.0, c(p.keyboard_navigation));
 }
 
 /// The edge an important note (blue) or an error (red) wears.
-fn kind_edge(e: &store::Entry, p: &tabula_kit::theme::Palette) -> Option<Color32> {
+fn kind_edge(e: &store::Entry, p: &olo_kit::theme::Palette) -> Option<Color32> {
     match e.kind {
         store::KindName::Important => Some(c(p.keyboard_navigation)),
         store::KindName::Error => Some(c(p.failure)),
@@ -457,7 +457,7 @@ fn kind_edge(e: &store::Entry, p: &tabula_kit::theme::Palette) -> Option<Color32
 /// An app's heading in By App: its latch, icon, name and count; a click
 /// folds it; Clear forgets the app's notes.
 #[allow(clippy::too_many_arguments)]
-fn group(ui: &mut egui::Ui, p: &tabula_kit::theme::Palette, w: f32, app: &str, count: usize, members: &[usize], open: bool, entries: &[store::Entry]) -> Option<Did> {
+fn group(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, w: f32, app: &str, count: usize, members: &[usize], open: bool, entries: &[store::Entry]) -> Option<Did> {
     let (r, resp) = ui.allocate_exact_size(vec2(w, HEADING + 2.0), Sense::click());
     let name = if app.is_empty() { "Notification" } else { app };
     resp.widget_info(|| WidgetInfo { selected: Some(open), ..WidgetInfo::labeled(egui::Role::Button, true, format!("{name} ({count})")) });
@@ -501,7 +501,7 @@ struct RowArgs<'a> {
 }
 
 /// One note as a row; its rect.
-fn note_row(ui: &mut egui::Ui, p: &tabula_kit::theme::Palette, w: f32, a: &RowArgs, did: &mut Option<Did>) -> Rect {
+fn note_row(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, w: f32, a: &RowArgs, did: &mut Option<Did>) -> Rect {
     let e = a.e;
     let (fg, bg) = if a.selected { (p.list_selected_item_text, p.list_selected_background) } else { (p.document_text, p.document_background) };
     let dim = c(mix(fg, bg, 0.45));
@@ -660,7 +660,7 @@ struct CardText {
 
 /// Lay out a card `width` wide: its app line, the title, up to three
 /// lines of body.
-fn card_text(ui: &egui::Ui, p: &tabula_kit::theme::Palette, e: &store::Entry, width: f32) -> CardText {
+fn card_text(ui: &egui::Ui, p: &olo_kit::theme::Palette, e: &store::Entry, width: f32) -> CardText {
     let inner = width - 2.0 * m::SPACING;
     let title_text = if e.summary.is_empty() { app_name(e) } else { &e.summary };
     let title = galley(ui, title_text, c(p.document_text), inner, 2, style::bold_font());
@@ -672,7 +672,7 @@ fn card_text(ui: &egui::Ui, p: &tabula_kit::theme::Palette, e: &store::Entry, wi
 
 /// One note as a card in `r`.
 #[allow(clippy::too_many_arguments)]
-fn card(ui: &mut egui::Ui, p: &tabula_kit::theme::Palette, r: Rect, laid: CardText, i: usize, e: &store::Entry, selected: bool, unread: bool, row: usize, rows: usize) -> Option<Did> {
+fn card(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, r: Rect, laid: CardText, i: usize, e: &store::Entry, selected: bool, unread: bool, row: usize, rows: usize) -> Option<Did> {
     let resp = ui.interact(r, ui.make_persistent_id(("card", i, e.id)), Sense::click());
     let title_text = if e.summary.is_empty() { app_name(e) } else { &e.summary };
     resp.widget_info(|| WidgetInfo { selected: Some(selected), ..WidgetInfo::labeled(egui::Role::ListItem, true, title_text) });

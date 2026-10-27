@@ -12,7 +12,7 @@ use std::{
 };
 
 use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxReference, SyntaxSet};
-pub use tabula_kit::style::Syntax as Tok;
+pub use olo_kit::style::Syntax as Tok;
 
 use super::load::{Body, Send, Update};
 

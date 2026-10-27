@@ -1,12 +1,12 @@
-//! Agent screens: each one a headless Tabula session of its own (its own
+//! Agent screens: each one a headless Olo session of its own (its own
 //! app_server, Deskbar and desktop, windows, pointer and keyboard focus),
 //! so what an agent does there never moves the person's pointer or takes
 //! their focus. The person watches (and steps in) through the viewer.
 //!
-//! A screen is `tabula-session --headless WxH`, started in its own process
-//! group with settings of its own (`TABULA_APP_SERVER_SETTINGS`: the
+//! A screen is `olo-session --headless WxH`, started in its own process
+//! group with settings of its own (`OLO_APP_SERVER_SETTINGS`: the
 //! person's, at 1× unless asked, never locking, blanking or sleeping) and
-//! silent unless asked. It is listed in `$XDG_RUNTIME_DIR/tabula-screens/
+//! silent unless asked. It is listed in `$XDG_RUNTIME_DIR/olo-screens/
 //! NAME.json`; everything else talks to its app_server's IPC socket.
 
 use std::{
@@ -16,7 +16,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tabula_protocol::{Chord, Client, ImageFormat, Reply, Request, Settings, SyntheticEvent, WindowInfo};
+use olo_protocol::{Chord, Client, ImageFormat, Reply, Request, Settings, SyntheticEvent, WindowInfo};
 
 /// evdev button codes.
 pub const LEFT: u32 = 0x110;
@@ -28,8 +28,9 @@ pub const MIDDLE: u32 = 0x112;
 pub struct Screen {
     pub name: String,
     pub wayland_display: String,
-    pub tabula_socket: PathBuf,
-    /// tabula-session's pid (the leader of the screen's process group).
+    #[serde(alias = "tabula_socket")]
+    pub olo_socket: PathBuf,
+    /// olo-session's pid (the leader of the screen's process group).
     pub pid: i32,
     /// Logical size.
     pub width: i32,
@@ -46,7 +47,7 @@ fn runtime_dir() -> PathBuf {
 
 /// Where screens are listed (and their logs and settings kept).
 pub fn dir() -> PathBuf {
-    runtime_dir().join("tabula-screens")
+    olo_xdg::legacy::runtime_file(&runtime_dir(), "olo-screens")
 }
 
 fn entry(name: &str) -> PathBuf {
@@ -63,12 +64,13 @@ impl Screen {
     pub fn alive(&self) -> bool {
         let cmdline = std::fs::read(format!("/proc/{}/cmdline", self.pid)).unwrap_or_default();
         let args: Vec<&[u8]> = cmdline.split(|b| *b == 0).collect();
-        let session = args.first().is_some_and(|a| a.ends_with(b"tabula-session"));
-        session && args.iter().any(|a| *a == b"--headless") && self.tabula_socket.exists()
+        // (`tabula-session` for a screen started before the rename.)
+        let session = args.first().is_some_and(|a| a.ends_with(b"olo-session") || a.ends_with(b"tabula-session"));
+        session && args.iter().any(|a| *a == b"--headless") && self.olo_socket.exists()
     }
 
     fn client(&self) -> Result<Client, String> {
-        Client::connect_to(&self.tabula_socket).map_err(|e| format!("screen {} isn't answering: {e}", self.name))
+        Client::connect_to(&self.olo_socket).map_err(|e| format!("screen {} isn't answering: {e}", self.name))
     }
 
     pub fn request(&self, request: &Request) -> Result<Reply, String> {
@@ -112,10 +114,10 @@ impl Screen {
     pub fn env(&self) -> Vec<(String, String)> {
         let mut env = vec![
             ("WAYLAND_DISPLAY".to_owned(), self.wayland_display.clone()),
-            ("TABULA_SOCKET".to_owned(), self.tabula_socket.display().to_string()),
-            ("TABULA_SESSION".to_owned(), "1".to_owned()),
-            ("TABULA_SESSION_PID".to_owned(), self.pid.to_string()),
-            ("TABULA_SCREEN".to_owned(), self.name.clone()),
+            ("OLO_SOCKET".to_owned(), self.olo_socket.display().to_string()),
+            ("OLO_SESSION".to_owned(), "1".to_owned()),
+            ("OLO_SESSION_PID".to_owned(), self.pid.to_string()),
+            ("OLO_SCREEN".to_owned(), self.name.clone()),
         ];
         if !self.sound {
             env.push(("PULSE_SERVER".to_owned(), format!("unix:{}", dir().join("no-sound").display())));
@@ -123,14 +125,14 @@ impl Screen {
         env
     }
 
-    /// Start `argv` on this screen (a bare name is looked for as Tabula
+    /// Start `argv` on this screen (a bare name is looked for as Olo
     /// finds programs); its pid.
     pub fn run(&self, argv: &[String]) -> Result<u32, String> {
         let program = argv.first().ok_or("no program to run")?;
         let path = if program.contains('/') {
             PathBuf::from(program)
         } else {
-            tabula_xdg::find_program(program).ok_or_else(|| format!("{program} isn't installed"))?
+            olo_xdg::find_program(program).ok_or_else(|| format!("{program} isn't installed"))?
         };
         let mut cmd = Command::new(path);
         cmd.args(&argv[1..]).env_remove("DISPLAY").stdin(Stdio::null());
@@ -177,7 +179,7 @@ pub fn list() -> Vec<Screen> {
 }
 
 pub fn get(name: &str) -> Result<Screen, String> {
-    list().into_iter().find(|s| s.name == name).ok_or_else(|| format!("there's no screen {name:?} (tabula-screen list)"))
+    list().into_iter().find(|s| s.name == name).ok_or_else(|| format!("there's no screen {name:?} (olo-screen list)"))
 }
 
 /// The first free "agent", "agent-2", ….
@@ -206,14 +208,14 @@ fn config_path() -> PathBuf {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
         .unwrap_or_else(|| PathBuf::from("/tmp"));
-    base.join("tabula").join("app_server.json")
+    base.join("olo").join("app_server.json")
 }
 
 /// The person's settings, made right for a screen nobody sits at: its
 /// own scale, one display, and nothing that locks, blanks or sleeps.
 pub fn screen_settings(person: Option<Settings>, scale: f64) -> Settings {
     let mut s = person.unwrap_or_default();
-    s.display = tabula_protocol::DisplaySettings { scale, ..Default::default() };
+    s.display = olo_protocol::DisplaySettings { scale, ..Default::default() };
     s.power.display_off_minutes = 0;
     s.power.sleep_minutes = 0;
     s.power.lock_on_display_off = false;
@@ -244,7 +246,7 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
     let settings = serde_json::to_vec_pretty(&screen_settings(person, opts.scale)).map_err(|e| e.to_string())?;
     std::fs::write(&settings_path, settings).map_err(|e| e.to_string())?;
 
-    let session = tabula_xdg::find_program("tabula-session").ok_or("tabula-session isn't installed")?;
+    let session = olo_xdg::find_program("olo-session").ok_or("olo-session isn't installed")?;
     let log_path = dir.join(format!("{name}.log"));
     let log = std::fs::File::create(&log_path).map_err(|e| e.to_string())?;
     // Pixels, as the backend takes them.
@@ -252,13 +254,13 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
     let mut cmd = Command::new(session);
     cmd.arg("--headless")
         .arg(format!("{pw}x{ph}"))
-        .env("TABULA_APP_SERVER_SETTINGS", &settings_path)
-        .env("TABULA_SCREEN", name)
+        .env("OLO_APP_SERVER_SETTINGS", &settings_path)
+        .env("OLO_SCREEN", name)
         .env_remove("WAYLAND_DISPLAY")
-        .env_remove("TABULA_SOCKET")
-        .env_remove("TABULA_SESSION")
-        .env_remove("TABULA_SESSION_PID")
-        .env_remove("TABULA_REAL_SESSION")
+        .env_remove("OLO_SOCKET")
+        .env_remove("OLO_SESSION")
+        .env_remove("OLO_SESSION_PID")
+        .env_remove("OLO_REAL_SESSION")
         .env_remove("DISPLAY")
         .stdin(Stdio::null())
         .stdout(log.try_clone().map_err(|e| e.to_string())?)
@@ -288,7 +290,7 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
     let screen = Screen {
         name: name.to_owned(),
         wayland_display: display,
-        tabula_socket: socket,
+        olo_socket: socket,
         pid,
         width: opts.width,
         height: opts.height,
@@ -312,10 +314,10 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
     Ok(screen)
 }
 
-/// "session: WAYLAND_DISPLAY=wayland-4 TABULA_SOCKET=/run/…" → its parts.
+/// "session: WAYLAND_DISPLAY=wayland-4 OLO_SOCKET=/run/…" → its parts.
 fn sockets(line: &str) -> Option<(String, PathBuf)> {
     let rest = line.strip_prefix("session: WAYLAND_DISPLAY=")?;
-    let (display, socket) = rest.split_once(" TABULA_SOCKET=")?;
+    let (display, socket) = rest.split_once(" OLO_SOCKET=")?;
     Some((display.to_owned(), PathBuf::from(socket.trim())))
 }
 
@@ -550,8 +552,8 @@ mod tests {
     fn names_and_sockets() {
         assert!(valid_name("agent-2") && valid_name("claude_1"));
         assert!(!valid_name("") && !valid_name("a/b") && !valid_name("x y"));
-        assert_eq!(sockets("session: WAYLAND_DISPLAY=wayland-4 TABULA_SOCKET=/run/user/1000/tabula-wayland-4.sock"), Some(("wayland-4".into(), "/run/user/1000/tabula-wayland-4.sock".into())));
-        assert_eq!(sockets("tabula-session: hello"), None);
+        assert_eq!(sockets("session: WAYLAND_DISPLAY=wayland-4 OLO_SOCKET=/run/user/1000/olo-wayland-4.sock"), Some(("wayland-4".into(), "/run/user/1000/olo-wayland-4.sock".into())));
+        assert_eq!(sockets("olo-session: hello"), None);
     }
 
     #[test]

@@ -82,7 +82,7 @@ mod tests {
 
     #[test]
     fn reads_the_pack_and_picks_by_shape_and_mode() {
-        let dir = std::env::temp_dir().join(format!("tabula-wallpapers-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-wallpapers-{}", std::process::id()));
         for d in ["4k", "ultrawide"] {
             std::fs::create_dir_all(dir.join(d)).unwrap();
             for n in ["dusk", "dusk-dark", "blue"] {

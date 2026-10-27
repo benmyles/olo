@@ -1,8 +1,8 @@
-//! The private IPC between `app_server` and Tabula's own apps (Deskbar,
+//! The private IPC between `app_server` and Olo's own apps (Deskbar,
 //! Preferences, ...). Plain Wayland clients never need it.
 //!
 //! Transport: newline-delimited JSON over the Unix socket named by
-//! `$TABULA_SOCKET` (set by app_server for every child it starts). Each line a
+//! `$OLO_SOCKET` (set by app_server for every child it starts). Each line a
 //! client writes is a [`Request`]; app_server answers each with exactly one
 //! [`Reply`] line. After [`Request::Subscribe`] the connection also receives
 //! unsolicited [`Reply::Event`] lines.
@@ -18,7 +18,7 @@ pub mod shortcuts;
 pub use notifications::{AppNotifications, HistoryView, NotificationSettings, NotificationState};
 pub use shortcuts::{Chord, Shortcut, ShortcutSettings, Tile, TilingSettings};
 
-pub const SOCKET_ENV: &str = "TABULA_SOCKET";
+pub const SOCKET_ENV: &str = "OLO_SOCKET";
 
 /// Opaque, stable for the lifetime of a window.
 pub type WindowId = u64;
@@ -215,8 +215,8 @@ pub struct WindowInfo {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rolled: bool,
     /// Its program keeps it through a window server restart (an upgrade):
-    /// Tabula's own apps, and Wayland programs that came through
-    /// tabula-wlproxy.
+    /// Olo's own apps, and Wayland programs that came through
+    /// olo-wlproxy.
     #[serde(default)]
     pub kept: bool,
     /// Where it is on screen, tab and border included (global logical
@@ -353,7 +353,7 @@ impl OutputConfig {
 pub const ROTATIONS: [u16; 4] = [0, 90, 180, 270];
 
 /// Everything Preferences can change live in app_server. Persisted by
-/// app_server in `$XDG_CONFIG_HOME/tabula/app_server.json`.
+/// app_server in `$XDG_CONFIG_HOME/olo/app_server.json`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Settings {
@@ -386,7 +386,7 @@ pub struct Settings {
     pub ai: AiSettings,
 }
 
-/// Preferences ▸ AI: how Tabula reaches models, and its AI features.
+/// Preferences ▸ AI: how Olo reaches models, and its AI features.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct AiSettings {
@@ -453,7 +453,7 @@ pub struct PasswordsSecurity {
     pub lock_with_screen: bool,
     /// Take copied secrets off the clipboard after this many seconds.
     pub clear_seconds: u32,
-    /// Tabula's `op` (1Password's command-line tool, answered by
+    /// Olo's `op` (1Password's command-line tool, answered by
     /// Passwords) is installed and answers.
     pub op_cli: bool,
 }
@@ -525,7 +525,7 @@ pub enum Corner {
 #[serde(default)]
 pub struct ScreenSaverSettings {
     pub enabled: bool,
-    /// A module from tabula-screensavers ("SuperString", …).
+    /// A module from olo-screensavers ("SuperString", …).
     pub module: String,
     /// Minutes of idleness before it starts.
     pub run_minutes: u32,
@@ -576,7 +576,7 @@ impl Default for PowerSettings {
     }
 }
 
-/// Screen scaling. Tabula is HiDPI-first: everything is laid out in logical
+/// Screen scaling. Olo is HiDPI-first: everything is laid out in logical
 /// pixels and rendered at the output's scale (2x "Retina" by default).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -665,7 +665,7 @@ pub struct Appearance {
     pub theme: ThemePreference,
     pub night_light: NightLight,
     /// Filled in by app_server: the theme currently in effect.
-    pub effective_theme: tabula_theme::ThemeMode,
+    pub effective_theme: olo_theme::ThemeMode,
     /// Filled in by app_server: whether night mode is warming the screen now.
     pub night_light_active: bool,
     /// Deskbar's menu shows each item's icon: applications, preferences,
@@ -708,7 +708,7 @@ impl Default for Appearance {
         Appearance {
             theme: ThemePreference::Light,
             night_light: NightLight::default(),
-            effective_theme: tabula_theme::ThemeMode::Light,
+            effective_theme: olo_theme::ThemeMode::Light,
             night_light_active: false,
             menu_icons: true,
         }
@@ -763,7 +763,7 @@ pub struct KeyboardSettings {
     pub command_key: bool,
     /// Caps Lock is another Ctrl.
     pub caps_lock_control: bool,
-    /// Num Lock is on when Tabula starts (and is set so when this
+    /// Num Lock is on when Olo starts (and is set so when this
     /// changes); the Num Lock key still toggles it.
     pub num_lock: bool,
     /// Tapping ⌘ on its own opens Find (off: only ⌘Space does). Renamed
@@ -829,7 +829,7 @@ impl Default for KeyboardSettings {
             num_lock: true,
             find_on_command_tap: false,
             terminal_apps: [
-                "tabula.terminal",
+                "olo.terminal",
                 "org.gnome.Ptyxis",
                 "org.gnome.Console",
                 "org.gnome.Terminal",
@@ -861,7 +861,7 @@ pub fn socket_path() -> Option<PathBuf> {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
-    #[error("{SOCKET_ENV} is not set; not running under Tabula's app_server")]
+    #[error("{SOCKET_ENV} is not set; not running under Olo's app_server")]
     NoSocket,
     #[error(transparent)]
     Io(#[from] std::io::Error),

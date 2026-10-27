@@ -15,7 +15,7 @@ use std::{
 
 use doc::{Align, Doc, Run, Style, byte_of, char_of};
 use serde::{Deserialize, Serialize};
-use tabula_kit::{
+use olo_kit::{
     text_drag::{TextDrag, TextDrop},
     App, Cx, Menu, WindowId, WindowOptions,
     egui::{
@@ -30,7 +30,7 @@ use tabula_kit::{
     widgets::{self, Button, CheckBox, ScrollView, TextControl},
 };
 
-const APP_ID: &str = "tabula.styled-edit";
+const APP_ID: &str = "olo.styled-edit";
 
 /// The Font ▸ Color menu (Black is the document's text colour, so it
 /// reads in dark mode too).
@@ -887,7 +887,7 @@ const REPLACE_H: f32 = FIND_H + m::CONTROL_HEIGHT + m::TIGHT + m::MARK_ROW + m::
 impl App for StyledEdit {
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui) {
         if matches!(self.windows.get(&window), Some(Win::Doc(_))) {
-            tabula_kit::dnd::open_files(ui, "open");
+            olo_kit::dnd::open_files(ui, "open");
         }
         match self.windows.get_mut(&window) {
             Some(Win::Doc(_)) => {
@@ -984,7 +984,7 @@ impl App for StyledEdit {
         }
     }
 
-    fn dropped(&mut self, cx: &mut Cx, _window: WindowId, drop: tabula_kit::dnd::Drop) {
+    fn dropped(&mut self, cx: &mut Cx, _window: WindowId, drop: olo_kit::dnd::Drop) {
         for p in drop.paths() {
             self.open_file(cx, p);
         }
@@ -1101,11 +1101,13 @@ impl StyledEdit {
 }
 
 fn main() {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if instance::forward(APP_ID, &args) {
         return;
     }
-    tabula_kit::run(APP_ID, |cx| {
+    olo_kit::run(APP_ID, |cx| {
         instance::listen(APP_ID, cx.proxy());
         let proxy = cx.proxy();
         let fonts = fonts::Fonts::start(move |e| proxy.send(Msg::Fonts(e)));

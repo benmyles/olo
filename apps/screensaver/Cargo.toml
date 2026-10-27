@@ -1,16 +1,16 @@
 [package]
-name = "tabula-screensaver"
+name = "olo-screensaver"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "tabula-screensaver"
+name = "olo-screensaver"
 path = "src/main.rs"
 
 [dependencies]
-tabula-kit.workspace = true
-tabula-screensavers.workspace = true
-tabula-xdg.workspace = true
+olo-kit.workspace = true
+olo-screensavers.workspace = true
+olo-xdg.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

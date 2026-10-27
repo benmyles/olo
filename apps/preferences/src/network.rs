@@ -1,6 +1,6 @@
 //! Network: Wi-Fi networks in range (join, leave, forget) and each
 //! interface's addresses. Talks to NetworkManager natively
-//! (`tabula_system::network`) on a worker thread that reads its state every
+//! (`olo_system::network`) on a worker thread that reads its state every
 //! two seconds, scans now and then, and makes the changes, so the window
 //! never waits on it.
 
@@ -12,12 +12,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tabula_kit::{
+use olo_kit::{
     egui::{Color32, Context, Rect, Stroke, Ui, UiBuilder, pos2, vec2},
     metrics as m,
     widgets::{self, Button, CheckBox, Column, ColumnListView, ListState, MenuField, StringView, TabView, TextControl},
 };
-use tabula_system::network::{self as nm, Device, Enterprise, Kind, Network, Status};
+use olo_system::network::{self as nm, Device, Enterprise, Kind, Network, Status};
 
 enum Request {
     Wireless(bool),
@@ -121,11 +121,11 @@ fn link() -> &'static Link {
     })
 }
 
-/// `TABULA_FAKE_NETWORKS=1` (debug builds): made-up Wi-Fi networks, so
+/// `OLO_FAKE_NETWORKS=1` (debug builds): made-up Wi-Fi networks, so
 /// the panel and the enterprise sheet can be tried headless without
 /// touching NetworkManager or showing the networks around the machine.
 fn fake_networks() -> bool {
-    cfg!(debug_assertions) && std::env::var_os("TABULA_FAKE_NETWORKS").is_some()
+    cfg!(debug_assertions) && std::env::var_os("OLO_FAKE_NETWORKS").is_some()
 }
 
 fn fake_worker(sh: &Arc<Mutex<Shared>>, wake: &dyn Fn(), rx: &std::sync::mpsc::Receiver<Request>) {
@@ -146,7 +146,7 @@ fn fake_worker(sh: &Arc<Mutex<Shared>>, wake: &dyn Fn(), rx: &std::sync::mpsc::R
             dns: Vec::new(),
             speed: None,
         }],
-        networks: vec![net("Tabula Campus", 90, true, true), net("Tabula Home", 70, true, false), net("Tabula Guest", 40, false, false)],
+        networks: vec![net("Olo Campus", 90, true, true), net("Olo Home", 70, true, false), net("Olo Guest", 40, false, false)],
     };
     loop {
         sh.lock().unwrap().status = Some(Ok(status.clone()));
@@ -318,7 +318,7 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
     let mut join = resp.activated.is_some() && !net.active && !needs_password;
     if needs_password {
         let r = ui.add(TextControl::new(&mut st.password).label("Password:").divider(72.0).password(true));
-        if r.lost_focus() && ui.input(|i| i.key_pressed(tabula_kit::egui::Key::Enter)) && st.password.len() >= 8 {
+        if r.lost_focus() && ui.input(|i| i.key_pressed(olo_kit::egui::Key::Enter)) && st.password.len() >= 8 {
             join = true;
         }
     }
@@ -433,8 +433,8 @@ impl EnterpriseForm {
     }
 
     pub fn ui(&mut self, ui: &mut Ui) -> Option<SheetResult> {
-        let p = tabula_kit::style::palette(ui.ctx());
-        ui.painter().rect_filled(ui.max_rect(), 0.0, tabula_kit::style::c(p.panel_background));
+        let p = olo_kit::style::palette(ui.ctx());
+        ui.painter().rect_filled(ui.max_rect(), 0.0, olo_kit::style::c(p.panel_background));
         let inner_rect = ui.max_rect().shrink(m::WINDOW_INSET);
         let mut ui = ui.new_child(UiBuilder::new().max_rect(inner_rect));
         let ui = &mut ui;
@@ -479,12 +479,12 @@ impl EnterpriseForm {
         }
         // Buttons at the bottom right, Join the default.
         let ready = self.e.ready();
-        let enter = ready && ui.input(|i| i.key_pressed(tabula_kit::egui::Key::Enter));
+        let enter = ready && ui.input(|i| i.key_pressed(olo_kit::egui::Key::Enter));
         let bar = Rect::from_min_max(pos2(inner_rect.left(), inner_rect.bottom() - m::CONTROL_HEIGHT), inner_rect.max);
-        let mut bar_ui = ui.new_child(UiBuilder::new().max_rect(bar).layout(tabula_kit::egui::Layout::right_to_left(tabula_kit::egui::Align::Center)));
+        let mut bar_ui = ui.new_child(UiBuilder::new().max_rect(bar).layout(olo_kit::egui::Layout::right_to_left(olo_kit::egui::Align::Center)));
         bar_ui.spacing_mut().item_spacing.x = m::SPACING;
         let join = bar_ui.add_enabled_ui(ready, |ui| ui.add(Button::new("Join").default(true))).inner.clicked() || enter;
-        let cancel = bar_ui.add(Button::new("Cancel")).clicked() || ui.input(|i| i.key_pressed(tabula_kit::egui::Key::Escape));
+        let cancel = bar_ui.add(Button::new("Cancel")).clicked() || ui.input(|i| i.key_pressed(olo_kit::egui::Key::Escape));
         if join {
             let e = Box::new(std::mem::take(&mut self.e));
             let _ = link().tx.send(Request::JoinEnterprise(self.device.clone(), self.net.clone(), e));
@@ -519,12 +519,12 @@ fn inner_name(nm_name: &str) -> &'static str {
 /// A label, the chosen file's name (or "None") and Choose…; true when
 /// Choose… is clicked.
 fn file_row(ui: &mut Ui, label: &str, path: Option<&std::path::Path>) -> bool {
-    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), m::CONTROL_HEIGHT), tabula_kit::egui::Sense::hover());
-    let mut row = ui.new_child(UiBuilder::new().max_rect(rect).layout(tabula_kit::egui::Layout::right_to_left(tabula_kit::egui::Align::Center)));
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), m::CONTROL_HEIGHT), olo_kit::egui::Sense::hover());
+    let mut row = ui.new_child(UiBuilder::new().max_rect(rect).layout(olo_kit::egui::Layout::right_to_left(olo_kit::egui::Align::Center)));
     let clicked = row.add(Button::new("Choose…")).clicked();
     row.add_space(m::SPACING);
     let rest = Rect::from_min_max(rect.min, pos2(row.cursor().max.x, rect.bottom()));
-    let mut left = ui.new_child(UiBuilder::new().max_rect(rest).layout(tabula_kit::egui::Layout::left_to_right(tabula_kit::egui::Align::Center)));
+    let mut left = ui.new_child(UiBuilder::new().max_rect(rest).layout(olo_kit::egui::Layout::left_to_right(olo_kit::egui::Align::Center)));
     left.spacing_mut().item_spacing.x = 0.0;
     left.add(StringView::new(label));
     left.add_space((rect.left() + SHEET_DIVIDER - left.cursor().min.x).max(0.0));
@@ -534,7 +534,7 @@ fn file_row(ui: &mut Ui, label: &str, path: Option<&std::path::Path>) -> bool {
 }
 
 /// The tick beside the network in use.
-fn check(p: &tabula_kit::egui::Painter, r: Rect, color: Color32) {
+fn check(p: &olo_kit::egui::Painter, r: Rect, color: Color32) {
     let c0 = r.center();
     let pts = [c0 + vec2(-4.5, 0.0), c0 + vec2(-1.5, 3.5), c0 + vec2(4.5, -4.0)];
     p.line_segment([pts[0], pts[1]], Stroke::new(2.0, color));
@@ -542,7 +542,7 @@ fn check(p: &tabula_kit::egui::Painter, r: Rect, color: Color32) {
 }
 
 /// Four rising bars, lit to the signal's strength.
-fn bars(p: &tabula_kit::egui::Painter, r: Rect, strength: u8, color: Color32) {
+fn bars(p: &olo_kit::egui::Painter, r: Rect, strength: u8, color: Color32) {
     let lit = match strength {
         0..=20 => 1,
         21..=45 => 2,

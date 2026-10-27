@@ -333,10 +333,10 @@ mod tests {
         assert_eq!(lit(1.5), 16);
     }
 
-    /// `TABULA_OSD_SHEET=/tmp/osd.png cargo test -p app_server osd_sheet`
+    /// `OLO_OSD_SHEET=/tmp/osd.png cargo test -p app_server osd_sheet`
     #[test]
     fn osd_sheet() {
-        let Some(out) = std::env::var_os("TABULA_OSD_SHEET") else { return };
+        let Some(out) = std::env::var_os("OLO_OSD_SHEET") else { return };
         let inds = [
             Indicator::Brightness(0.75),
             Indicator::KeyboardBacklight(0.5),
@@ -346,7 +346,7 @@ mod tests {
             Indicator::Caffeinated { on: false, detail: "Sleeps when idle".into() },
         ];
         let mut rows = Vec::new();
-        for mode in [tabula_theme::ThemeMode::Light, tabula_theme::ThemeMode::Dark] {
+        for mode in [olo_theme::ThemeMode::Light, olo_theme::ThemeMode::Dark] {
             theme::set_mode(mode);
             rows.push(inds.iter().map(|i| draw(i, 2.0)).collect::<Vec<_>>());
         }

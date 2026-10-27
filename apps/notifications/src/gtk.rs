@@ -129,7 +129,7 @@ impl Service {
 /// An app's name from its id: its desktop entry's, else the id's last part.
 pub fn app_name(app_id: &str) -> String {
     let id = app_id.trim_end_matches(".desktop");
-    tabula_xdg::desktop_entry::find(id).map(|e| e.name).filter(|n| !n.is_empty()).unwrap_or_else(|| id.rsplit('.').next().unwrap_or(id).to_owned())
+    olo_xdg::desktop_entry::find(id).map(|e| e.name).filter(|n| !n.is_empty()).unwrap_or_else(|| id.rsplit('.').next().unwrap_or(id).to_owned())
 }
 
 /// A GNotification (as `g_notification_serialize` gives it) as a note.

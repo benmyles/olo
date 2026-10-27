@@ -3,7 +3,7 @@
 
 use chrono::{DateTime, Local, Utc};
 use onepassword::{ItemCategory, ItemField, ItemFieldType, ItemOverview, ItemState};
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Menu, egui::{self, Align, Color32, FontId, Id, Pos2, Rect, Sense, Ui, UiBuilder, pos2, vec2},
     icons, metrics as m, style,
     widgets::{self, Button, ScrollView, TextControl},
@@ -69,7 +69,7 @@ fn title_font() -> FontId {
     FontId::new(18.0, style::bold())
 }
 
-fn dim(p: &tabula_theme::Palette) -> Color32 {
+fn dim(p: &olo_theme::Palette) -> Color32 {
     style::disabled_text(p)
 }
 
@@ -78,7 +78,7 @@ fn child(ui: &mut Ui, rect: Rect) -> Ui {
 }
 
 /// A sunken list well.
-fn well(ui: &Ui, rect: Rect, background: tabula_theme::Rgba, focused: bool) -> Rect {
+fn well(ui: &Ui, rect: Rect, background: olo_theme::Rgba, focused: bool) -> Rect {
     let p = style::palette(ui.ctx());
     let rect = style::snap(ui.ctx(), rect);
     ui.painter().rect_filled(rect, 0.0, style::c(background));
@@ -278,7 +278,7 @@ fn locked(app: &mut Passwords, ui: &mut Ui, full: Rect) {
     // Who is waiting: the app by name, or apps, if more than one.
     if let Some(first) = app.waiting.first() {
         let who = if app.waiting.iter().all(|w| w.from == first.from) {
-            let name = tabula_xdg::apps::our_app(first.from.trim_start_matches("tabula-")).map_or("An app", |(name, _)| name);
+            let name = olo_xdg::apps::our_app(first.from.trim_start_matches("olo-")).map_or("An app", |(name, _)| name);
             format!("{name} is waiting for a login.")
         } else {
             "Apps are waiting for logins.".to_owned()
@@ -541,8 +541,8 @@ fn items_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
     // Arrow keys move the selection from the list or the search field.
     let typing = ui.memory(|m| m.focused()).is_some_and(|f| f != list_id);
     let search_focused = typing && ui.ctx().memory(|m| m.focused()).is_some() && app.editor.is_none();
-    if (!typing || search_focused) && !visible.is_empty() && !tabula_kit::menu::is_open(ui.ctx(), Id::unique("passwords-item-menu"))
-        && !tabula_kit::menu::is_open(ui.ctx(), Id::unique("passwords-new")) {
+    if (!typing || search_focused) && !visible.is_empty() && !olo_kit::menu::is_open(ui.ctx(), Id::unique("passwords-item-menu"))
+        && !olo_kit::menu::is_open(ui.ctx(), Id::unique("passwords-new")) {
         let (up, down) = ui.input(|i| (i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::ArrowDown)));
         let next = match (up, down, selected_row) {
             (true, _, Some(r)) => Some(r.saturating_sub(1)),
@@ -1157,7 +1157,7 @@ pub fn problems(app: &Passwords, ui: &mut Ui) -> Option<ProblemsAction> {
 
 /// One problem: its icon, the item (or the reason, for the whole
 /// vault) and the reason under it, wrapped.
-fn problem_row(ui: &mut Ui, p: &tabula_theme::Palette, problem: &crate::sync::Problem, width: f32) {
+fn problem_row(ui: &mut Ui, p: &olo_theme::Palette, problem: &crate::sync::Problem, width: f32) {
     let x = m::SPACING * 2.0 + 16.0;
     let text_width = width - x - m::SPACING;
     let title = problem.item.as_ref().map(|item| {

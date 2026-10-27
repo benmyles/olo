@@ -1,18 +1,18 @@
-//! Chrome as a Tabula program: its profiles start out with Tabula's title
-//! bar (Chrome's "Use system title bar and borders": Tabula's yellow tab
+//! Chrome as an Olo program: its profiles start out with Olo's title
+//! bar (Chrome's "Use system title bar and borders": Olo's yellow tab
 //! and frame, no buttons of Chrome's own) and the system's colours
-//! (Chrome's "GTK" theme, which Tabula's GTK themes colour; see
-//! `tabula_theme::toolkit`).
+//! (Chrome's "GTK" theme, which Olo's GTK themes colour; see
+//! `olo_theme::toolkit`).
 //!
 //! Only once a profile, so a choice made afterwards in Chrome's settings
-//! stays: a `.tabula-defaults` file in the profile marks it done. Only
+//! stays: a `.olo-defaults` file in the profile marks it done. Only
 //! while Chrome isn't running (it writes its preferences back on exit).
 
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-const MARK: &str = ".tabula-defaults";
+const MARK: &str = ".olo-defaults";
 
 /// Chrome's user data directory: `--user-data-dir`, else
 /// `$CHROME_CONFIG_HOME` or `$XDG_CONFIG_HOME`/`~/.config`, then
@@ -46,7 +46,7 @@ fn profiles(dir: &Path) -> Vec<PathBuf> {
     names.into_iter().filter(|n| !n.contains('/') && n != "..").map(|n| dir.join(n)).collect()
 }
 
-/// `prefs` with Tabula's defaults where nothing is set.
+/// `prefs` with Olo's defaults where nothing is set.
 fn with_defaults(mut prefs: Value) -> Value {
     if !prefs.is_object() {
         prefs = json!({});
@@ -63,7 +63,7 @@ fn with_defaults(mut prefs: Value) -> Value {
         at.as_object_mut().expect("object").entry(path[path.len() - 1]).or_insert(value);
     };
     set(&mut prefs, &["browser", "custom_chrome_frame"], json!(false));
-    // Logins are Passwords' (the Tabula Passwords extension), so Chrome
+    // Logins are Passwords' (the Olo Passwords extension), so Chrome
     // doesn't offer to keep them too.
     set(&mut prefs, &["credentials_enable_service"], json!(false));
     set(&mut prefs, &["profile", "password_manager_enabled"], json!(false));
@@ -74,7 +74,7 @@ fn with_defaults(mut prefs: Value) -> Value {
     prefs
 }
 
-/// Give `dir`'s profiles Tabula's defaults, each once.
+/// Give `dir`'s profiles Olo's defaults, each once.
 pub fn apply(dir: &Path) {
     if running(dir) {
         return;
@@ -84,7 +84,7 @@ pub fn apply(dir: &Path) {
             continue;
         }
         if let Err(e) = apply_to(&profile) {
-            eprintln!("tabula-chrome: couldn't set up {}: {e}", profile.display());
+            eprintln!("olo-chrome: couldn't set up {}: {e}", profile.display());
         }
     }
 }
@@ -97,10 +97,10 @@ fn apply_to(profile: &Path) -> std::io::Result<()> {
         Err(e) => return Err(e),
     };
     std::fs::create_dir_all(profile)?;
-    let tmp = profile.join("Preferences.tabula-tmp");
+    let tmp = profile.join("Preferences.olo-tmp");
     std::fs::write(&tmp, serde_json::to_vec(&with_defaults(prefs)).map_err(std::io::Error::other)?)?;
     std::fs::rename(&tmp, &file)?;
-    std::fs::write(profile.join(MARK), "Tabula set this profile's title bar, theme and password saving once; Chrome's settings change them.\n")
+    std::fs::write(profile.join(MARK), "Olo set this profile's title bar, theme and password saving once; Chrome's settings change them.\n")
 }
 
 #[cfg(test)]
@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn profiles_are_set_up_once() {
-        let dir = std::env::temp_dir().join(format!("tabula-chrome-prefs-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-chrome-prefs-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         apply(&dir);
         let file = dir.join("Default/Preferences");

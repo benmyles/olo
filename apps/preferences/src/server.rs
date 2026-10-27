@@ -8,8 +8,8 @@ use std::{
     time::Duration,
 };
 
-use tabula_kit::Proxy;
-use tabula_protocol::{Client, Event, OutputConfig, Reply, Request, Settings};
+use olo_kit::Proxy;
+use olo_protocol::{Client, Event, OutputConfig, Reply, Request, Settings};
 
 use crate::Msg;
 

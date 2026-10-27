@@ -17,14 +17,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tabula_kit::egui::{self, Align, Color32, ColorImage, Key, Pos2, Rect, TextureHandle, TextureOptions, Ui, pos2, vec2};
+use olo_kit::egui::{self, Align, Color32, ColorImage, Key, Pos2, Rect, TextureHandle, TextureOptions, Ui, pos2, vec2};
 use serde::{Deserialize, Serialize};
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Menu, Proxy, WindowId, WindowOptions,
     metrics as m, style,
     widgets::{self, Button, Cell, Column, ColumnListView, ListState},
 };
-use tabula_protocol::{ImageFormat, SyntheticEvent};
+use olo_protocol::{ImageFormat, SyntheticEvent};
 
 use crate::screens::{self, Screen};
 
@@ -74,7 +74,7 @@ pub struct Viewer {
 /// The screens to show: all but the one this viewer itself is on, if it
 /// runs on one (it would show itself, endlessly).
 fn listed() -> Vec<Screen> {
-    let own = std::env::var("TABULA_SCREEN").ok();
+    let own = std::env::var("OLO_SCREEN").ok();
     screens::list().into_iter().filter(|s| Some(&s.name) != own.as_ref()).collect()
 }
 
@@ -332,7 +332,7 @@ impl Viewer {
         let c = style::c;
         let full = ui.max_rect().shrink(m::WINDOW_INSET);
         if self.screens.is_empty() {
-            let text = "No agent screens. An agent starts one with “tabula-screen start”, or choose New Screen.";
+            let text = "No agent screens. An agent starts one with “olo-screen start”, or choose New Screen.";
             style::label(ui.painter(), full.center().x, full.center().y - m::CONTROL_HEIGHT, Align::Center, text, style::plain_font(), c(p.panel_text));
             let r = Rect::from_center_size(pos2(full.center().x, full.center().y + m::SPACING), vec2(120.0, m::CONTROL_HEIGHT));
             let label = if self.busy { "Starting…" } else { "New Screen" };
@@ -355,7 +355,7 @@ impl Viewer {
                         let mut job = egui::text::LayoutJob::default();
                         let p = style::palette(cell.painter.ctx());
                         job.append(&names[cell.row], 0.0, egui::TextFormat::simple(style::plain_font(), cell.text_color));
-                        let dim = if cell.selected { cell.text_color } else { c(tabula_theme::mix(p.list_item_text, p.list_background, 0.45)) };
+                        let dim = if cell.selected { cell.text_color } else { c(olo_theme::mix(p.list_item_text, p.list_background, 0.45)) };
                         job.append(&format!("  {}", sizes[cell.row]), 0.0, egui::TextFormat::simple(style::plain_font(), dim));
                         job
                     };
@@ -575,8 +575,8 @@ impl App for Viewer {
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
-        // Another start: `tabula-screen [watch NAME]`.
-        if let Some(launch) = message.downcast_ref::<tabula_kit::instance::Launch>() {
+        // Another start: `olo-screen [watch NAME]`.
+        if let Some(launch) = message.downcast_ref::<olo_kit::instance::Launch>() {
             self.show(cx, launch.args.get(1).cloned());
             return;
         }

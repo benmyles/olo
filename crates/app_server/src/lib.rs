@@ -57,7 +57,7 @@ pub fn set_cloexec(fd: i32) {
     }
 }
 
-/// Stop the main loop cleanly on SIGTERM/SIGINT/SIGHUP (tabula-session asks
+/// Stop the main loop cleanly on SIGTERM/SIGINT/SIGHUP (olo-session asks
 /// us to stop this way before starting a new app_server), so the window
 /// layout is saved for it.
 pub fn stop_on_signals(running: std::sync::Arc<std::sync::atomic::AtomicBool>) {

@@ -131,7 +131,7 @@ pub fn find(line: &str, col: usize, cwd: &Path, exists: impl Fn(&Path) -> bool) 
 /// Open a link: web addresses in the browser, folders in Tracker, files
 /// with their preferred application.
 pub fn open(target: &Target) {
-    use tabula_kit::open as opener;
+    use olo_kit::open as opener;
     let t = match target {
         Target::Url(u) => opener::Target::parse(u),
         Target::Path(p, _) => opener::Target::Path(p.clone()),

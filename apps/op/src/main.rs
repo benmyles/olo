@@ -1,5 +1,5 @@
-//! `op`, 1Password's command-line tool, answered by Tabula's Passwords
-//! (installed as `tabula-op`, with an `op` link beside it while
+//! `op`, 1Password's command-line tool, answered by Olo's Passwords
+//! (installed as `olo-op`, with an `op` link beside it while
 //! Preferences ▸ Security allows it). Scripts written for 1Password's
 //! `op` work unchanged: `op read`, `op inject`, `op run`, `op item get`
 //! and `list`, `op vault list`, `op whoami`, `op account list` and
@@ -19,7 +19,7 @@ use std::{
 };
 
 use serde_json::Value;
-use tabula_keychain::{CallError, CliQuery, Request, Response};
+use olo_keychain::{CallError, CliQuery, Request, Response};
 
 /// What `op --version` says (the 1Password CLI release we behave like).
 const VERSION: &str = "2.32.0";
@@ -35,6 +35,8 @@ impl<T: std::fmt::Display> From<T> for Fail {
 type Result<T> = std::result::Result<T, Fail>;
 
 fn main() -> ExitCode {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_xdg::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     match run(args) {
         Ok(code) => code,
@@ -136,7 +138,7 @@ fn run(argv: Vec<String>) -> Result<ExitCode> {
         ["inject"] => inject(&a),
         ["run"] => op_run(&a),
         _ => Err(Fail(format!(
-            "Tabula’s op doesn’t do “{}” (it reads: read, inject, run, item get/list, vault list/get, whoami, account list, signin). Make changes in Passwords.",
+            "Olo’s op doesn’t do “{}” (it reads: read, inject, run, item get/list, vault list/get, whoami, account list, signin). Make changes in Passwords.",
             words.join(" ")
         ))),
     }
@@ -145,13 +147,13 @@ fn run(argv: Vec<String>) -> Result<ExitCode> {
 /// Ask Passwords, starting it if it isn't running.
 fn ask(query: CliQuery) -> Result<Value> {
     let request = Request::Cli { query };
-    let response = match tabula_keychain::call(&request) {
+    let response = match olo_keychain::call(&request) {
         Err(CallError::NotRunning) => {
             start_passwords()?;
             let mut last = Err(CallError::NotRunning);
             for _ in 0..100 {
                 std::thread::sleep(Duration::from_millis(100));
-                last = tabula_keychain::call(&request);
+                last = olo_keychain::call(&request);
                 if !matches!(last, Err(CallError::NotRunning)) {
                     break;
                 }
@@ -174,7 +176,7 @@ fn ask(query: CliQuery) -> Result<Value> {
 
 fn start_passwords() -> Result<()> {
     use std::os::unix::process::CommandExt;
-    let program = tabula_xdg::find_program("tabula-passwords").ok_or("Passwords isn’t installed")?;
+    let program = olo_xdg::find_program("olo-passwords").ok_or("Passwords isn’t installed")?;
     let mut c = std::process::Command::new(program);
     c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     // SAFETY: setsid in the child, before exec, is async-signal-safe.
@@ -576,7 +578,7 @@ fn op_run(a: &Args) -> Result<ExitCode> {
 }
 
 const HELP: &str = "\
-op: 1Password's command-line tool, answered by Tabula's Passwords.
+op: 1Password's command-line tool, answered by Olo's Passwords.
 
 Usage:  op [command] [flags]
 

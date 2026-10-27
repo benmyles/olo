@@ -1,6 +1,6 @@
 [package]
 name = "app_server"
-description = "Tabula's Wayland compositor and window manager (the BeOS app_server)"
+description = "Olo's Wayland compositor and window manager (the BeOS app_server)"
 version.workspace = true
 edition.workspace = true
 license = "MIT"
@@ -8,12 +8,12 @@ license = "MIT"
 # Victoria Brekenfeld); see crates/app_server/NOTICE.
 
 [[bin]]
-name = "tabula-app-server"
+name = "olo-app-server"
 path = "src/main.rs"
 
 [dependencies]
-tabula-system.workspace = true
-tabula-hvif.workspace = true
+olo-system.workspace = true
+olo-hvif.workspace = true
 libc = "0.2"
 signal-hook = "0.3"
 bitflags = "2.2.1"
@@ -27,12 +27,12 @@ smithay-drm-extras = { workspace = true, optional = true }
 profiling = "1.0"
 serde.workspace = true
 serde_json.workspace = true
-tabula-protocol.workspace = true
-tabula-theme.workspace = true
-tabula-xdg.workspace = true
+olo-protocol.workspace = true
+olo-theme.workspace = true
+olo-xdg.workspace = true
 tiny-skia = "0.12"
 cosmic-text = "0.19"
-tabula-images.workspace = true
+olo-images.workspace = true
 
 [dependencies.smithay]
 workspace = true

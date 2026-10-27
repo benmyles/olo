@@ -1,11 +1,11 @@
-//! Deskbar: the Tabula menu, a status tray and the running applications,
+//! Deskbar: the Olo menu, a status tray and the running applications,
 //! docked in the top-right corner of the screen as on BeOS.
 
 mod status;
 
 use std::collections::HashMap;
 
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Layer, LayerOptions, Menu, WindowId, WindowKind, WindowOptions,
     desktop_entry::{self, DesktopEntry},
     egui::{self, Color32, Rect, Sense, pos2, vec2},
@@ -15,10 +15,10 @@ use tabula_kit::{
     theme::Palette,
     widgets,
 };
-use tabula_protocol::{Client, Event, Reply, Request, WindowInfo};
+use olo_protocol::{Client, Event, Reply, Request, WindowInfo};
 
 /// Logical width of the vertical Deskbar.
-const WIDTH: f32 = tabula_kit::metrics::DESKBAR_WIDTH;
+const WIDTH: f32 = olo_kit::metrics::DESKBAR_WIDTH;
 const TILE_H: f32 = 30.0;
 const ROW_H: f32 = 24.0;
 const ICON: f32 = 16.0;
@@ -38,7 +38,7 @@ fn tray_height(rows: usize) -> f32 {
 }
 
 
-use tabula_kit::apps::{OUR_APPS, PREFERENCE_PANELS, our_app};
+use olo_kit::apps::{OUR_APPS, PREFERENCE_PANELS, our_app};
 
 #[derive(Debug, Clone, Copy)]
 enum Power {
@@ -66,9 +66,9 @@ enum Msg {
     Windows(Vec<WindowInfo>),
     Workspace(u32, u32),
     Status(status::Status),
-    Power(tabula_protocol::PowerStatus),
-    /// The clock's settings, and whether the Tabula menu shows icons.
-    Settings(tabula_protocol::ClockSettings, bool),
+    Power(olo_protocol::PowerStatus),
+    /// The clock's settings, and whether the Olo menu shows icons.
+    Settings(olo_protocol::ClockSettings, bool),
 }
 
 /// A team: the windows of one application.
@@ -90,7 +90,7 @@ struct Deskbar {
     /// A timed caffeinated stretch's end (seconds since the epoch).
     caffeinated_until: Option<u64>,
     caffeinated_lid: bool,
-    clock: tabula_protocol::ClockSettings,
+    clock: olo_protocol::ClockSettings,
     /// Appearance ▸ Show icons in the Deskbar menu.
     menu_icons: bool,
     entries: HashMap<String, Option<DesktopEntry>>,
@@ -127,38 +127,38 @@ impl Deskbar {
     }
 
     /// Who opens files dropped on the team `key`: the app itself.
-    fn handler(&mut self, key: &str) -> Option<tabula_kit::open::Handler> {
+    fn handler(&mut self, key: &str) -> Option<olo_kit::open::Handler> {
         let app_id = self.windows.iter().find(|w| team_key(w) == key)?.app_id.clone();
-        let short = app_id.strip_prefix("tabula.").unwrap_or(&app_id);
-        if let Some((bin, _, _)) = OUR_APPS.iter().find(|(bin, _, _)| bin.strip_prefix("tabula-") == Some(short)) {
-            return Some(tabula_kit::open::Handler::Ours(bin));
+        let short = app_id.strip_prefix("olo.").unwrap_or(&app_id);
+        if let Some((bin, _, _)) = OUR_APPS.iter().find(|(bin, _, _)| bin.strip_prefix("olo-") == Some(short)) {
+            return Some(olo_kit::open::Handler::Ours(bin));
         }
         if short == "preferences" {
-            return Some(tabula_kit::open::Handler::Ours("tabula-preferences"));
+            return Some(olo_kit::open::Handler::Ours("olo-preferences"));
         }
-        self.entry(&app_id).filter(|e| e.exec.is_some()).map(|e| tabula_kit::open::Handler::Entry(Box::new(e)))
+        self.entry(&app_id).filter(|e| e.exec.is_some()).map(|e| olo_kit::open::Handler::Entry(Box::new(e)))
     }
 
     /// The program of the team `key`, to drag out as a link: ours, or an
     /// installed application whose command is a program alone.
     fn program(&mut self, key: &str) -> Option<std::path::PathBuf> {
         match self.handler(key)? {
-            tabula_kit::open::Handler::Ours(bin) => tabula_kit::find_program(bin),
-            tabula_kit::open::Handler::Entry(e) => {
+            olo_kit::open::Handler::Ours(bin) => olo_kit::find_program(bin),
+            olo_kit::open::Handler::Entry(e) => {
                 let command = e.command()?;
                 let mut words = command.split_whitespace();
                 let (program, None) = (words.next()?, words.next()) else { return None };
                 let path = std::path::Path::new(program);
-                if path.is_absolute() { path.is_file().then(|| path.to_owned()) } else { tabula_kit::find_program(program) }
+                if path.is_absolute() { path.is_file().then(|| path.to_owned()) } else { olo_kit::find_program(program) }
             }
         }
     }
 
     /// Dragging the team `team` out: a link to its program, wherever it
     /// is dropped (BeOS's Deskbar made links the same way).
-    fn app_drag(&mut self, ctx: &egui::Context, team: &Team) -> Option<tabula_kit::dnd::DragData> {
+    fn app_drag(&mut self, ctx: &egui::Context, team: &Team) -> Option<olo_kit::dnd::DragData> {
         let program = self.program(&team.key)?;
-        let data = tabula_kit::dnd::DragData::files(&[program], tabula_kit::dnd::Actions::COPY).as_link();
+        let data = olo_kit::dnd::DragData::files(&[program], olo_kit::dnd::Actions::COPY).as_link();
         let icon = team.icon.as_deref().unwrap_or("application");
         Some(match icons::drag_icon(ctx, icon, 32.0, 1, vec2(16.0, 16.0), icons::DragLabel::Below(&team.name)) {
             Some(i) => data.icon(i),
@@ -204,18 +204,18 @@ impl Deskbar {
         self.windows = windows;
     }
 
-    fn tabula_menu(&self) -> Menu {
-        let menu = self.tabula_menu_with_icons();
+    fn olo_menu(&self) -> Menu {
+        let menu = self.olo_menu_with_icons();
         if self.menu_icons { menu } else { without_icons(menu) }
     }
 
-    fn tabula_menu_with_icons(&self) -> Menu {
+    fn olo_menu_with_icons(&self) -> Menu {
         let mut apps = Menu::new("Applications");
         // Only the ones that are installed (the suite is still growing).
-        for (bin, name, icon) in OUR_APPS.iter().filter(|(bin, _, _)| tabula_kit::find_program(bin).is_some()) {
+        for (bin, name, icon) in OUR_APPS.iter().filter(|(bin, _, _)| olo_kit::find_program(bin).is_some()) {
             apps = apps.item(*name, format!("run:{bin}"), None).icon(*icon);
         }
-        let have_prefs = tabula_kit::find_program("tabula-preferences").is_some();
+        let have_prefs = olo_kit::find_program("olo-preferences").is_some();
         let mut prefs = Menu::new("Preferences");
         for (arg, name, icon) in PREFERENCE_PANELS {
             prefs = prefs.item(*name, format!("pref:{arg}"), None).enabled(have_prefs).icon(*icon);
@@ -256,9 +256,9 @@ impl Deskbar {
             other = other.submenu(m).icon("folder");
         }
 
-        Menu::new("Tabula")
-            .item("About Tabula", "about", None)
-            .icon("tabula")
+        Menu::new("Olo")
+            .item("About Olo Desktop", "about", None)
+            .icon("olo")
             .item("Find…", "find", None)
             .icon("query")
             .separator()
@@ -360,7 +360,7 @@ impl Deskbar {
             n.quiet = on;
         }
         std::thread::spawn(move || {
-            let mut s = tabula_protocol::NotificationSettings::load();
+            let mut s = olo_protocol::NotificationSettings::load();
             s.dnd = on;
             s.dnd_until = until;
             if let Err(e) = s.save() {
@@ -371,15 +371,15 @@ impl Deskbar {
 
     fn run_command(&mut self, cx: &mut Cx, cmd: &str) {
         let spawn = |s: &str| {
-            if let Err(e) = tabula_kit::spawn_detached(s) {
+            if let Err(e) = olo_kit::spawn_detached(s) {
                 tracing::warn!("launch {s}: {e}");
             }
         };
         match cmd.split_once(':') {
             Some(("run", bin)) => spawn(bin),
-            Some(("pref", panel)) => spawn(&format!("tabula-preferences {panel}")),
+            Some(("pref", panel)) => spawn(&format!("olo-preferences {panel}")),
             Some(("caff", arg)) => self.caffeine_command(arg),
-            Some(("notif", "history")) => spawn("tabula-notifications --history"),
+            Some(("notif", "history")) => spawn("olo-notifications --history"),
             Some(("notif", arg)) => self.do_not_disturb(arg),
             Some(("desktop", id)) => {
                 if let Some(e) = desktop_entry::all().into_iter().find(|e| e.id == id) {
@@ -387,8 +387,8 @@ impl Deskbar {
                 }
             }
             _ => match cmd {
-                "about" => spawn("tabula-preferences about"),
-                "find" => spawn("tabula-tracker --find"),
+                "about" => spawn("olo-preferences about"),
+                "find" => spawn("olo-tracker --find"),
                 "lock" => request(Request::Lock),
                 "logout" => request(Request::Quit),
                 "restart" => self.confirm_power(cx, Power::Restart),
@@ -418,8 +418,8 @@ impl Deskbar {
             // logind may take a moment (and polkit may ask): not on the UI thread.
             std::thread::spawn(move || {
                 let r = match action {
-                    Power::Restart => tabula_system::power::reboot(),
-                    Power::ShutDown => tabula_system::power::power_off(),
+                    Power::Restart => olo_system::power::reboot(),
+                    Power::ShutDown => olo_system::power::power_off(),
                 };
                 if let Err(e) = r {
                     tracing::warn!("{}: {e}", action.label());
@@ -428,21 +428,21 @@ impl Deskbar {
         }
     }
 
-    /// Offer the newer build tabula-session found.
+    /// Offer the newer build olo-session found.
     fn ask_upgrade(&mut self, cx: &mut Cx) {
         if let Some((win, _)) = self.upgrade_ask.take() {
             cx.close_window(win);
         }
         // A new app_server means a reload, which programs it can't keep
-        // (ones that came before tabula-wlproxy, or without it) don't
+        // (ones that came before olo-wlproxy, or without it) don't
         // survive.
-        let closing: Vec<String> = if self.status.upgrade.iter().any(|p| p == "tabula-app-server") {
+        let closing: Vec<String> = if self.status.upgrade.iter().any(|p| p == "olo-app-server") {
             self.teams().into_iter().filter(|t| t.windows.iter().any(|w| !w.kept && our_app(&w.app_id).is_none())).map(|t| t.name).collect()
         } else {
             Vec::new()
         };
         let message = upgrade_message(&self.status.upgrade, &closing);
-        let win = cx.open_window(WindowOptions::alert("Upgrade Tabula", &message));
+        let win = cx.open_window(WindowOptions::alert("Upgrade Olo", &message));
         self.upgrade_ask = Some((win, message));
     }
 
@@ -452,8 +452,8 @@ impl Deskbar {
         self.upgrade_ask = None;
         cx.close_window(win);
         if choice == 1 {
-            // tabula-session installs the programs and reloads in place.
-            match std::env::var("TABULA_SESSION_PID").ok().and_then(|p| p.parse::<i32>().ok()) {
+            // olo-session installs the programs and reloads in place.
+            match std::env::var("OLO_SESSION_PID").ok().and_then(|p| p.parse::<i32>().ok()) {
                 // SAFETY: sending a signal.
                 Some(pid) if unsafe { libc::kill(pid, libc::SIGUSR2) } == 0 => {}
                 _ => tracing::warn!("no session to upgrade"),
@@ -485,7 +485,7 @@ impl Deskbar {
         }
         if cmd == "new-window" {
             if let Some(app) = self.windows.iter().find(|w| team_key == team_key_of(w)).map(|w| w.app_id.clone()) {
-                std::thread::spawn(move || tabula_kit::instance::forward(&app, &["--new-window".to_owned()]));
+                std::thread::spawn(move || olo_kit::instance::forward(&app, &["--new-window".to_owned()]));
             }
             return;
         }
@@ -502,14 +502,13 @@ impl Deskbar {
 
 /// Whether `app_id` is one of ours that opens a new window when asked.
 fn new_window_app(app_id: &str) -> bool {
-    app_id.strip_prefix("tabula.").is_some_and(|rest| tabula_kit::apps::NEW_WINDOW.contains(&format!("tabula-{rest}").as_str()))
+    app_id.strip_prefix("olo.").is_some_and(|rest| olo_kit::apps::NEW_WINDOW.contains(&format!("olo-{rest}").as_str()))
 }
 
 fn team_key_of(w: &WindowInfo) -> String {
     team_key(w)
 }
 
-/// The bell's menu.
 /// `menu` and its submenus with no icons (Appearance ▸ Show icons in the
 /// Deskbar menu, off).
 fn without_icons(mut menu: Menu) -> Menu {
@@ -529,6 +528,7 @@ fn without_icons(mut menu: Menu) -> Menu {
     menu
 }
 
+/// The bell's menu.
 fn notifications_menu(quiet: bool) -> Menu {
     Menu::new("Notifications")
         .item("Show History", "notif:history", None)
@@ -548,20 +548,20 @@ fn upgrade_message(programs: &[String], closing: &[String]) -> String {
         .map(|bin| match OUR_APPS.iter().find(|(b, _, _)| b == bin) {
             Some((_, name, _)) => name.to_string(),
             None => match bin.as_str() {
-                "tabula-deskbar" => "Deskbar".into(),
-                "tabula-app-server" => "the window server".into(),
-                "tabula-session" => "the session".into(),
-                "tabula-preferences" => "Preferences".into(),
+                "olo-deskbar" => "Deskbar".into(),
+                "olo-app-server" => "the window server".into(),
+                "olo-session" => "the session".into(),
+                "olo-preferences" => "Preferences".into(),
                 other => other.to_string(),
             },
         })
         .collect();
     let list = listing(&names);
     if closing.is_empty() {
-        return format!("A new build of Tabula is ready ({list}). Install it now? Your windows stay open.");
+        return format!("A new build of Olo is ready ({list}). Install it now? Your windows stay open.");
     }
     format!(
-        "A new build of Tabula is ready ({list}). Installing it restarts the window server: Tabula's windows stay open, but {} will close.",
+        "A new build of Olo is ready ({list}). Installing it restarts the window server: Olo's windows stay open, but {} will close.",
         listing(closing)
     )
 }
@@ -585,7 +585,7 @@ fn section_bevel(p: &egui::Painter, r: Rect, pal: &Palette) {
 }
 
 impl App for Deskbar {
-    fn dropped(&mut self, _cx: &mut Cx, _window: WindowId, drop: tabula_kit::dnd::Drop) {
+    fn dropped(&mut self, _cx: &mut Cx, _window: WindowId, drop: olo_kit::dnd::Drop) {
         let Some(key) = drop.target.strip_prefix("team:") else { return };
         let paths = drop.paths();
         if paths.is_empty() {
@@ -593,7 +593,7 @@ impl App for Deskbar {
         }
         let Some(handler) = self.handler(key) else { return };
         std::thread::spawn(move || {
-            if let Err(e) = tabula_kit::open::open_with(&handler, &paths) {
+            if let Err(e) = olo_kit::open::open_with(&handler, &paths) {
                 tracing::warn!("couldn't open the dropped files with {}: {e}", handler.name());
             }
         });
@@ -626,15 +626,15 @@ impl App for Deskbar {
         painter.rect_filled(full, 0.0, c(pal.panel_background));
         let teams = self.teams();
 
-        // ---- the Tabula tile
+        // ---- the Olo tile
         let tile = Rect::from_min_size(full.min, vec2(full.width(), TILE_H));
-        let tile_id = egui::Id::unique("tabula-tile");
+        let tile_id = egui::Id::unique("olo-tile");
         let tile_resp = ui.interact(tile, tile_id, Sense::click());
         let tile_open = menu::is_open(ui.ctx(), tile_id);
         if tile_resp.clicked() && !tile_open {
             menu::request_popup(
                 ui.ctx(),
-                MenuRequest { menu: self.tabula_menu(), source: tile_id, anchor: MenuAnchor::Below(tile), selected: None },
+                MenuRequest { menu: self.olo_menu(), source: tile_id, anchor: MenuAnchor::Below(tile), selected: None },
             );
         }
         if let Some(cmd) = menu::take_chosen(ui.ctx(), tile_id) {
@@ -644,15 +644,20 @@ impl App for Deskbar {
         style::vgradient(
             &painter,
             tile,
-            c(tabula_theme_tint(pal.panel_background, if hot { 0.75 } else { 0.85 })),
+            c(olo_theme_tint(pal.panel_background, if hot { 0.75 } else { 0.85 })),
             shade(&pal, pal.panel_background, 1.04),
         );
         section_bevel(&painter, tile, &pal);
         let logo = Rect::from_center_size(pos2(tile.left() + 22.0, tile.center().y), vec2(22.0, 22.0));
-        if !icons::paint(&painter, logo, "tabula") {
+        if !icons::paint(&painter, logo, "olo") {
             icons::paint(&painter, logo, "application");
         }
-        style::label(&painter, logo.right() + 8.0, tile.center().y, egui::Align::Min, "Tabula", egui::FontId::new(14.0, style::bold()), c(pal.panel_text));
+        // The mark and the wordmark: the brand's lockup.
+        let dark = pal.mode == olo_kit::theme::ThemeMode::Dark;
+        let word = Rect::from_min_size(pos2(logo.right() + 7.0, tile.center().y - 8.0), vec2(tile.right() - logo.right(), 16.0));
+        if olo_kit::brand::wordmark(&painter, word, dark).is_none() {
+            style::label(&painter, logo.right() + 8.0, tile.center().y, egui::Align::Min, "Olo", egui::FontId::new(14.0, style::bold()), c(pal.panel_text));
+        }
 
         // ---- tray: the date and time, then the status icons
         let st = self.status.clone();
@@ -695,7 +700,7 @@ impl App for Deskbar {
         };
         if !st.upgrade.is_empty() {
             let n = st.upgrade.len();
-            let tip = format!("A new build of Tabula is ready ({n} program{}). Click to upgrade.", if n == 1 { "" } else { "s" });
+            let tip = format!("A new build of Olo is ready ({n} program{}). Click to upgrade.", if n == 1 { "" } else { "s" });
             if tray_item(ui, "upgrade", &|p, r| status::draw_upgrade(p, r, &pal), tip).clicked() {
                 self.ask_upgrade(cx);
             }
@@ -705,7 +710,7 @@ impl App for Deskbar {
             let n = st.agent_screens;
             let tip = if n == 1 { "An agent screen is running. Click to watch it.".to_string() } else { format!("{n} agent screens are running. Click to watch them.") };
             if tray_item(ui, "agent-screens", &|p, r| status::draw_screens(p, r, &pal, n), tip).clicked() {
-                self.run_command(cx, "run:tabula-screen watch");
+                self.run_command(cx, "run:olo-screen watch");
             }
         }
         if let Some(b) = st.battery {
@@ -822,13 +827,13 @@ impl App for Deskbar {
         // ---- teams
         let mut y = tray.bottom();
         let pointer = ui.input(|i| i.pointer.hover_pos());
-        let hover = tabula_kit::dnd::hover(ui.ctx()).filter(|h| h.has_files() && h.actions.copy && !h.has(tabula_kit::dnd::LINK_TYPE));
+        let hover = olo_kit::dnd::hover(ui.ctx()).filter(|h| h.has_files() && h.actions.copy && !h.has(olo_kit::dnd::LINK_TYPE));
         for team in &teams {
             let row = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), ROW_H));
             // Files dragged onto an application open with it.
             let drop_here = hover.as_ref().is_some_and(|h| row.contains(h.pos)) && self.handler(&team.key).is_some();
             if drop_here {
-                tabula_kit::dnd::accept(ui.ctx(), format!("team:{}", team.key), "text/uri-list", tabula_kit::dnd::Action::Copy);
+                olo_kit::dnd::accept(ui.ctx(), format!("team:{}", team.key), "text/uri-list", olo_kit::dnd::Action::Copy);
             }
             let id = egui::Id::unique(("team", &team.key));
             let resp = ui.interact(row, id, Sense::click_and_drag());
@@ -869,7 +874,7 @@ impl App for Deskbar {
                 painter.rect_filled(row, 0.0, shade(&pal, pal.panel_background, 1.1));
                 hline(&painter, row.left(), row.right(), row.top(), shade(&pal, pal.panel_background, 1.25));
             } else if hover {
-                painter.rect_filled(row, 0.0, c(tabula_theme_tint(pal.panel_background, 0.8)));
+                painter.rect_filled(row, 0.0, c(olo_theme_tint(pal.panel_background, 0.8)));
             }
             hline(&painter, row.left(), row.right(), row.bottom() - 1.0, shade(&pal, pal.panel_background, 1.14));
             let icon_r = Rect::from_center_size(pos2(row.left() + 6.0 + ICON / 2.0, row.center().y), vec2(ICON, ICON));
@@ -932,11 +937,11 @@ impl App for Deskbar {
     }
 }
 
-fn tabula_theme_tint(rgba: tabula_kit::theme::Rgba, t: f32) -> tabula_kit::theme::Rgba {
-    tabula_kit::theme::tint(rgba, t)
+fn olo_theme_tint(rgba: olo_kit::theme::Rgba, t: f32) -> olo_kit::theme::Rgba {
+    olo_kit::theme::tint(rgba, t)
 }
 
-fn watch_server(proxy: tabula_kit::Proxy) {
+fn watch_server(proxy: olo_kit::Proxy) {
     std::thread::Builder::new()
         .name("deskbar-events".into())
         .spawn(move || {
@@ -975,7 +980,9 @@ fn watch_server(proxy: tabula_kit::Proxy) {
 }
 
 fn main() {
-    tabula_kit::run("tabula.deskbar", |cx| {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
+    olo_kit::run("olo.deskbar", |cx| {
         let win = cx.open_window(WindowOptions {
             title: "Deskbar".into(),
             size: (WIDTH as u32, (TILE_H + tray_height(1)) as u32),
@@ -984,7 +991,7 @@ fn main() {
                 anchor: (true, false, false, true),
                 exclusive_zone: 0,
                 margin: (0, 0, 0, 0),
-                keyboard: tabula_kit::Keyboard::None,
+                keyboard: olo_kit::Keyboard::None,
                 namespace: "deskbar".into(),
                 output: None,
             }),

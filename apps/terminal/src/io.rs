@@ -1,5 +1,5 @@
 //! Turning a program's output into the emulator's state, in Terminal and
-//! in tabula-termd alike.
+//! in olo-termd alike.
 //!
 //! Output is fed to the emulator (alacritty_terminal through vte), except
 //! for image sequences, which vte doesn't know: the scanner lifts kitty

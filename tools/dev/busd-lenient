@@ -4,14 +4,14 @@
 # the deprecated eavesdrop key. Released busd refuses the match rules
 # Chrome (and gdbus monitor) send, so Chrome falls back to its own
 # notification popups on a test bus; the real session's dbus-broker takes
-# them. Only for tests: builds in ~/.cache/tabula-dev/busd-lenient (not
+# them. Only for tests: builds in ~/.cache/olo-dev/busd-lenient (not
 # /tmp, a tmpfs a build can fill) and prints the binary's path. Run as the
 # user who owns ~/.cargo.
 #
 #   BUSD=$(tools/dev/busd-lenient)
-#   $BUSD --address unix:path=/tmp/tabula-dev/NAME/bus.sock &
+#   $BUSD --address unix:path=/tmp/olo-dev/NAME/bus.sock &
 set -e
-DIR=$HOME/.cache/tabula-dev/busd-lenient
+DIR=$HOME/.cache/olo-dev/busd-lenient
 BIN=$DIR/busd-0.5.0/target/release/busd
 if [ -x "$BIN" ]; then echo "$BIN"; exit 0; fi
 mkdir -p "$DIR"

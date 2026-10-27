@@ -1,6 +1,6 @@
 //! Passwords: logins and other secrets kept on this computer, encrypted
 //! (`vault.rs`), and synced both ways with a 1Password account if asked
-//! (`sync.rs`, through `tabula-onepassword`). Locked with Touch ID.
+//! (`sync.rs`, through `olo-onepassword`). Locked with Touch ID.
 
 mod cli;
 mod edit;
@@ -18,9 +18,9 @@ use std::{
 
 use onepassword::{Item, ItemCategory, ItemFieldType, ItemOverview, ItemState, VaultOverview, totp::Totp};
 use serde::{Deserialize, Serialize};
-use tabula_keychain::{Incoming, Request, Response};
-use tabula_protocol::PasswordsSecurity;
-use tabula_kit::{
+use olo_keychain::{Incoming, Request, Response};
+use olo_protocol::PasswordsSecurity;
+use olo_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
     egui::{self, Key},
     instance::{self, Launch},
@@ -33,7 +33,7 @@ use crate::{
     store::{FromStore, Job, Reply, Store, SyncState},
 };
 
-const APP_ID: &str = "tabula.passwords";
+const APP_ID: &str = "olo.passwords";
 
 /// A 1Password account Passwords syncs with.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -68,7 +68,7 @@ pub struct Settings {
 }
 
 fn settings_path() -> std::path::PathBuf {
-    tabula_kit::config_dir().join("passwords.json")
+    olo_kit::config_dir().join("passwords.json")
 }
 
 /// Where the list's items come from.
@@ -519,11 +519,11 @@ impl Passwords {
     fn keychain(&mut self, cx: &mut Cx, incoming: Incoming) {
         if let Request::Cli { query } = &incoming.request {
             if !self.security.op_cli {
-                let message = "Tabula’s op is turned off (Preferences ▸ Security).".into();
+                let message = "Olo’s op is turned off (Preferences ▸ Security).".into();
                 return incoming.reply(Response::Error { message });
             }
             // Which accounts there are needs no permission (or unlocking).
-            if matches!(query, tabula_keychain::CliQuery::Accounts) {
+            if matches!(query, olo_keychain::CliQuery::Accounts) {
                 let linked = self.settings.accounts.clone();
                 std::thread::spawn(move || incoming.reply(Response::Cli { json: cli_accounts(&linked) }));
                 return;
@@ -568,7 +568,7 @@ impl Passwords {
                     self.cli_waiting.push((session, incoming));
                     return;
                 }
-                if matches!(query, tabula_keychain::CliQuery::Signin) {
+                if matches!(query, olo_keychain::CliQuery::Signin) {
                     return incoming.reply(Response::Cli { json: serde_json::json!({}) });
                 }
                 self.store.send(Job::Cli { incoming: Box::new(incoming) });
@@ -576,7 +576,7 @@ impl Passwords {
             }
             Request::Search { query } => {
                 let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
-                let mut items: Vec<tabula_keychain::Found> = self
+                let mut items: Vec<olo_keychain::Found> = self
                     .items
                     .iter()
                     .filter(|i| i.state == ItemState::Active)
@@ -588,7 +588,7 @@ impl Passwords {
                                     || i.tags.iter().any(|t| t.to_lowercase().contains(w))
                             })
                     })
-                    .map(|i| tabula_keychain::Found {
+                    .map(|i| olo_keychain::Found {
                         vault: i.vault_id.clone(),
                         id: i.id.clone(),
                         title: i.title.clone(),
@@ -705,8 +705,8 @@ impl Passwords {
                 (value, label)
             }
         };
-        let data = tabula_kit::dnd::DragData::text(&value);
-        let icon = tabula_kit::icons::drag_icon(ctx, "passwords", 32.0, 1, egui::vec2(-6.0, -10.0), tabula_kit::icons::DragLabel::Right(&label));
+        let data = olo_kit::dnd::DragData::text(&value);
+        let icon = olo_kit::icons::drag_icon(ctx, "passwords", 32.0, 1, egui::vec2(-6.0, -10.0), olo_kit::icons::DragLabel::Right(&label));
         cx.start_drag(win, match icon {
             Some(i) => data.icon(i),
             None => data,
@@ -1091,7 +1091,7 @@ pub fn otp_code(value: &str) -> Option<String> {
 pub fn open_url(url: &str) {
     let url = url.to_string();
     std::thread::spawn(move || {
-        if let Err(e) = tabula_xdg::open::open(&tabula_xdg::open::Target::Url(url)) {
+        if let Err(e) = olo_xdg::open::open(&olo_xdg::open::Target::Url(url)) {
             tracing::warn!("open: {e}");
         }
     });
@@ -1125,7 +1125,7 @@ impl App for Passwords {
         if let Some((w, generator)) = &mut self.generator
             && *w == window
         {
-            let action = tabula_kit::widgets::window_content(ui, |ui| generator.ui(ui));
+            let action = olo_kit::widgets::window_content(ui, |ui| generator.ui(ui));
             self.settings.generator = generator.recipe.clone();
             match action {
                 Some(generator::Action::Copy(pw)) => self.copy_secret(cx, "the password", pw),
@@ -1200,7 +1200,7 @@ impl App for Passwords {
                 Alert::Message(m) => ("stop", m.clone(), &["OK"]),
                 Alert::AllowCli { asker, .. } => ("warning", allow_message(asker), &["Deny", "Allow"]),
             };
-            if let Some(choice) = tabula_kit::widgets::alert(ui, icon, &message, buttons) {
+            if let Some(choice) = olo_kit::widgets::alert(ui, icon, &message, buttons) {
                 cx.close_window(window);
                 match self.alerts.remove(&window) {
                     Some(Alert::ConfirmDelete { vault, item, .. }) if choice == 1 => {
@@ -1319,7 +1319,7 @@ impl App for Passwords {
                 // The same choice as Preferences ▸ Security's.
                 let minutes = c[10..].parse().unwrap_or(10);
                 self.security.lock_minutes = minutes;
-                tabula_kit::settings::update(move |s| s.security.passwords.lock_minutes = minutes);
+                olo_kit::settings::update(move |s| s.security.passwords.lock_minutes = minutes);
             }
             _ => {}
         }
@@ -1441,15 +1441,17 @@ impl App for Passwords {
 }
 
 fn main() {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if instance::forward(APP_ID, &args) {
         return;
     }
-    tabula_kit::run(APP_ID, |cx| {
+    olo_kit::run(APP_ID, |cx| {
         instance::listen(APP_ID, cx.proxy());
         // Logins for Chrome's pages, the palette's search and op.
         let keychain = cx.proxy();
-        if let Err(e) = tabula_keychain::serve(move |incoming| keychain.send(incoming)) {
+        if let Err(e) = olo_keychain::serve(move |incoming| keychain.send(incoming)) {
             tracing::warn!("keychain: {e}");
         }
         let mut settings: Settings =
@@ -1463,21 +1465,21 @@ fn main() {
         }
         // Preferences ▸ Security, carrying over what was chosen here
         // before it moved there.
-        let mut security = tabula_kit::settings::current().map(|s| s.security.passwords).unwrap_or_default();
+        let mut security = olo_kit::settings::current().map(|s| s.security.passwords).unwrap_or_default();
         let (old_lock, old_clear) = (settings.lock_minutes.take(), settings.clear_seconds.take());
         if (old_lock.is_some() || old_clear.is_some()) && security == PasswordsSecurity::default() {
             security.lock_minutes = old_lock.unwrap_or(security.lock_minutes);
             security.clear_seconds = old_clear.unwrap_or(security.clear_seconds);
             let carried = security.clone();
-            tabula_kit::settings::update(move |s| s.security.passwords = carried);
+            olo_kit::settings::update(move |s| s.security.passwords = carried);
         }
         let proxy = cx.proxy();
         {
             let proxy_lock = proxy.clone();
             let proxy = proxy.clone();
-            tabula_kit::settings::watch(move |s| proxy.send(s.security.passwords));
+            olo_kit::settings::watch(move |s| proxy.send(s.security.passwords));
             let was = std::sync::atomic::AtomicBool::new(false);
-            tabula_kit::settings::watch_power(move |status| {
+            olo_kit::settings::watch_power(move |status| {
                 // Only as it locks, not every time something else changes.
                 if status.locked && !was.swap(true, std::sync::atomic::Ordering::Relaxed) {
                     proxy_lock.send(ScreenLocked);

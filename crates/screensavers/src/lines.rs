@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use tabula_kit::egui::{Color32, Pos2, Stroke, pos2, vec2};
+use olo_kit::egui::{Color32, Pos2, Stroke, pos2, vec2};
 
 use crate::{Clock, Frame, Info, Module, Opt, Rng, STEP, get_bool, get_f32, hsv};
 
@@ -86,7 +86,7 @@ impl Figure {
     fn draw(&self, f: &Frame, t: f32, lines: usize, saturation: f32, alpha: f32) {
         // Square, centred: the figure keeps its shape on wide screens.
         let side = f.rect.width().min(f.rect.height());
-        let sq = tabula_kit::egui::Rect::from_center_size(f.rect.center(), vec2(side * 1.2, side));
+        let sq = olo_kit::egui::Rect::from_center_size(f.rect.center(), vec2(side * 1.2, side));
         let at = |p: Unit| pos2(sq.left() + p.0 * sq.width(), sq.top() + p.1 * sq.height());
         let width = f.pixel().max(0.6 * f.k().min(1.0));
         for n in 0..lines {
@@ -387,7 +387,7 @@ impl Module for StringTheme {
             for (i, shape) in s.trail.iter().enumerate() {
                 let pts: Vec<Pos2> = shape.iter().map(|p| place(f, *p)).collect();
                 let color = hsv(s.hue, 0.8, 1.0).gamma_multiply((i as f32 + 1.0) / n);
-                f.painter.add(tabula_kit::egui::Shape::line(closed_curve(&pts, 24), Stroke::new(width, color)));
+                f.painter.add(olo_kit::egui::Shape::line(closed_curve(&pts, 24), Stroke::new(width, color)));
             }
         }
     }

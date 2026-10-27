@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Headless Tabula sessions for development and automated UI checks.
+"""Headless Olo sessions for development and automated UI checks.
 
   tsession start NAME [WxH[,WxH…]] [--light|--dark] [--session [--shell]] [--home DIR]
                                                start a headless app_server (--session:
-                                               under tabula-session, so `reload` works;
+                                               under olo-session, so `reload` works;
                                                --shell also starts Deskbar and the desktop;
                                                --home: HOME for the session and its apps,
                                                so tests that save files stay out of yours)
@@ -27,14 +27,17 @@
   tsession env NAME                            print env to source
   tsession stop NAME | list
 
-Sessions live in /tmp/tabula-dev/NAME. Output is 2× scale by default, so
+Sessions live in /tmp/olo-dev/NAME. Output is 2× scale by default, so
 screenshots are in device pixels and coordinates are logical (pixels / 2).
 Runs as the repo owner when invoked as root.
 """
 import glob, json, os, pwd, re, signal, socket, subprocess, sys, time
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-BASE = "/tmp/tabula-dev"
+BASE = "/tmp/olo-dev"
+# Where sessions lived before the rename (Tabula); ones still running
+# there are found too.
+OLD_BASE = "/tmp/tabula-dev"
 OWNER = pwd.getpwuid(os.stat(ROOT).st_uid)
 RUNTIME = f"/run/user/{OWNER.pw_uid}"
 TARGET = os.environ.get("CARGO_TARGET_DIR", os.path.join(ROOT, "target"))
@@ -42,7 +45,8 @@ TARGET = os.environ.get("CARGO_TARGET_DIR", os.path.join(ROOT, "target"))
 # busd`): without one, programs fall back to $XDG_RUNTIME_DIR/bus, the
 # user's real session bus (their notifications, keyring, portals).
 BUSD = os.environ.get("TSESSION_BUSD") or next(
-    (b for b in (os.path.join(OWNER.pw_dir, ".cache/tabula-dev/busd-lenient/busd-0.5.0/target/release/busd"), os.path.join(OWNER.pw_dir, ".cargo/bin/busd")) if os.path.exists(b)),
+    (b for b in [*(os.path.join(OWNER.pw_dir, f".cache/{d}/busd-lenient/busd-0.5.0/target/release/busd") for d in ("olo-dev", "tabula-dev")),
+                 os.path.join(OWNER.pw_dir, ".cargo/bin/busd")] if os.path.exists(b)),
     None)
 
 def private_bus(d):
@@ -63,11 +67,12 @@ def private_bus(d):
 
 def as_owner(cmd, **kw):
     if os.getuid() == 0 and OWNER.pw_uid != 0:
-        cmd = ["sudo", "-u", OWNER.pw_name, "--preserve-env=WAYLAND_DISPLAY,TABULA_SOCKET,XDG_RUNTIME_DIR,XDG_CONFIG_HOME,RUST_LOG,TABULA_THEME,TABULA_DATA,TABULA_SESSION,TABULA_SESSION_PID,HOME,PATH,PULSE_SERVER,TABULA_PAM_CONFDIR,TABULA_PAM_SERVICE,TABULA_PASSWORDS_KEYFILE,TABULA_WLPROXY_DEBUG,TABULA_UDISKS_BUS,DBUS_SESSION_BUS_ADDRESS"] + cmd
+        cmd = ["sudo", "-u", OWNER.pw_name, "--preserve-env=WAYLAND_DISPLAY,OLO_SOCKET,XDG_RUNTIME_DIR,XDG_CONFIG_HOME,RUST_LOG,OLO_THEME,OLO_DATA,OLO_SESSION,OLO_SESSION_PID,HOME,PATH,PULSE_SERVER,OLO_PAM_CONFDIR,OLO_PAM_SERVICE,OLO_PASSWORDS_KEYFILE,OLO_WLPROXY_DEBUG,OLO_UDISKS_BUS,DBUS_SESSION_BUS_ADDRESS"] + cmd
     return cmd
 
 def sdir(name):
-    return os.path.join(BASE, name)
+    new, old = os.path.join(BASE, name), os.path.join(OLD_BASE, name)
+    return old if not os.path.exists(new) and os.path.exists(old) else new
 
 def ident(path):
     try:
@@ -81,9 +86,11 @@ def load_env(name, check=True):
         e = json.load(open(os.path.join(sdir(name), "env.json")))
     except FileNotFoundError:
         sys.exit(f"no session {name!r}; run: tsession start {name}")
+    # Started before the rename.
+    e = {("OLO_" + k[len("TABULA_"):] if k.startswith("TABULA_") else k): v for k, v in e.items()}
     # The runtime directory is emptied at logout, and a later session (the
     # user's own!) may get the same wayland-N: never talk to that.
-    if check and "sockets" in e and [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["TABULA_SOCKET"])] != e["sockets"]:
+    if check and "sockets" in e and [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["OLO_SOCKET"])] != e["sockets"]:
         sys.exit(f"session {name!r} is gone (its sockets are missing or now another session's); "
                  f"start it again (tsession stop {name} only forgets it)")
     return e
@@ -91,7 +98,7 @@ def load_env(name, check=True):
 def ipc(name, req):
     env = load_env(name)
     s = socket.socket(socket.AF_UNIX)
-    s.connect(env["TABULA_SOCKET"])
+    s.connect(env["OLO_SOCKET"])
     s.sendall((json.dumps(req) + "\n").encode())
     line = s.makefile().readline()
     s.close()
@@ -106,7 +113,7 @@ def start(name, args):
     d = sdir(name)
     if os.path.exists(os.path.join(d, "env.json")):
         stop(name)
-    os.makedirs(os.path.join(d, "config", "tabula"), exist_ok=True)
+    os.makedirs(os.path.join(d, "config", "olo"), exist_ok=True)
     os.chmod(BASE, 0o1777)
     # Nothing locks, blanks or sleeps a test session: its lock screen checks
     # passwords with the real PAM, and keystrokes meant for apps would go there.
@@ -117,17 +124,17 @@ def start(name, args):
     # (a display layout to test, say).
     if os.environ.get("TSESSION_SETTINGS"):
         cfg.update(json.load(open(os.environ["TSESSION_SETTINGS"])))
-    json.dump(cfg, open(os.path.join(d, "config", "tabula", "app_server.json"), "w"))
+    json.dump(cfg, open(os.path.join(d, "config", "olo", "app_server.json"), "w"))
     subprocess.run(["chown", "-R", f"{OWNER.pw_uid}:{OWNER.pw_gid}", d]) if os.getuid() == 0 else None
     env = dict(os.environ, XDG_RUNTIME_DIR=RUNTIME, XDG_CONFIG_HOME=os.path.join(d, "config"), RUST_LOG=os.environ.get("RUST_LOG", "info"))
     open(os.path.join(d, "no-sound"), "a").close()
     env["PULSE_SERVER"] = "unix:" + os.path.join(d, "no-sound")
     # Passwords keeps its vault key in the session, never in the real
     # login keyring (which the session bus would reach).
-    env["TABULA_PASSWORDS_KEYFILE"] = os.path.join(d, "passwords.key")
+    env["OLO_PASSWORDS_KEYFILE"] = os.path.join(d, "passwords.key")
     env["DBUS_SESSION_BUS_ADDRESS"] = private_bus(d)
     env.pop("WAYLAND_DISPLAY", None)
-    env.pop("TABULA_SOCKET", None)
+    env.pop("OLO_SOCKET", None)
     log = open(os.path.join(d, "app_server.log"), "w")
     session = "--session" in args
     # sudo resets HOME, so a sandbox home goes in through env(1).
@@ -136,36 +143,39 @@ def start(name, args):
         os.makedirs(home, exist_ok=True)
         subprocess.run(["chown", f"{OWNER.pw_uid}:{OWNER.pw_gid}", home]) if os.getuid() == 0 else None
     if session:
-        # TSESSION_SESSION_EXE: an installed tabula-session instead (upgrade tests).
-        exe = [os.environ.get("TSESSION_SESSION_EXE", os.path.join(TARGET, "debug", "tabula-session")), "--headless", size] + ([] if "--shell" in args else ["--no-shell"])
+        # TSESSION_SESSION_EXE: an installed olo-session instead (upgrade tests).
+        exe = [os.environ.get("TSESSION_SESSION_EXE", os.path.join(TARGET, "debug", "olo-session")), "--headless", size] + ([] if "--shell" in args else ["--no-shell"])
     else:
-        exe = [os.path.join(TARGET, "debug", "tabula-app-server"), "--headless", size]
+        exe = [os.path.join(TARGET, "debug", "olo-app-server"), "--headless", size]
     if home:
         exe = ["env", f"HOME={os.path.abspath(home)}"] + exe
-    if os.environ.get("TABULA_UPGRADE_FROM"):
-        exe = ["env", "TABULA_UPGRADE_FROM=" + os.environ["TABULA_UPGRADE_FROM"]] + exe
+    if os.environ.get("OLO_UPGRADE_FROM"):
+        exe = ["env", "OLO_UPGRADE_FROM=" + os.environ["OLO_UPGRADE_FROM"]] + exe
     p = subprocess.Popen(as_owner(exe), env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     for _ in range(100):
         time.sleep(0.1)
         text = re.sub(r"\x1b\[[0-9;]*m", "", open(os.path.join(d, "app_server.log")).read())
         if session:
             m = re.search(r"session: WAYLAND_DISPLAY=(\S+)", text)
-            i = re.search(r"session: \S+ TABULA_SOCKET=(\S+)", text)
+            # (TABULA_SOCKET: a session from before the rename.)
+            i = re.search(r"session: \S+ (?:OLO|TABULA)_SOCKET=(\S+)", text)
             ready = "IPC listening" in text
         else:
             m = re.search(r'Listening on wayland socket name="([^"]+)"', text)
             i = re.search(r"IPC listening path=(\S+)", text)
             ready = True
         if m and i and ready:
-            e = {"WAYLAND_DISPLAY": m.group(1), "TABULA_SOCKET": i.group(1), "XDG_RUNTIME_DIR": RUNTIME,
+            e = {"WAYLAND_DISPLAY": m.group(1), "OLO_SOCKET": i.group(1), "XDG_RUNTIME_DIR": RUNTIME,
                  "XDG_CONFIG_HOME": os.path.join(d, "config"), "DBUS_SESSION_BUS_ADDRESS": env["DBUS_SESSION_BUS_ADDRESS"], "pid": p.pid}
             if home:
                 e["HOME"] = os.path.abspath(home)
             if session:
-                e["TABULA_SESSION"] = "1"
-                pidfile = os.path.join(RUNTIME, f"tabula-session-{m.group(1)}.pid")
-                e["TABULA_SESSION_PID"] = open(pidfile).read().strip()
-            e["sockets"] = [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["TABULA_SOCKET"])]
+                e["OLO_SESSION"] = "1"
+                pidfile = os.path.join(RUNTIME, f"olo-session-{m.group(1)}.pid")
+                if not os.path.exists(pidfile):
+                    pidfile = os.path.join(RUNTIME, f"tabula-session-{m.group(1)}.pid")
+                e["OLO_SESSION_PID"] = open(pidfile).read().strip()
+            e["sockets"] = [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["OLO_SOCKET"])]
             json.dump(e, open(os.path.join(d, "env.json"), "w"))
             print(f"{name}: {e['WAYLAND_DISPLAY']} ({size}, {theme})")
             return
@@ -177,7 +187,7 @@ def stop(name):
     d = sdir(name)
     try:
         e = json.load(open(os.path.join(d, "env.json")))
-        if "sockets" in e and [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["TABULA_SOCKET"])] != e["sockets"]:
+        if "sockets" in e and [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["OLO_SOCKET"])] != e["sockets"]:
             print(f"{name}: its sockets are gone or another session's; forgetting it without touching them")
         os.killpg(e["pid"], signal.SIGTERM)
     except (FileNotFoundError, ProcessLookupError, PermissionError, KeyError):
@@ -200,12 +210,12 @@ def run(name, cmd):
         assigns.append(cmd.pop(0))
     if "HOME" in e and not any(a.startswith("HOME=") for a in assigns):
         assigns.append(f"HOME={e['HOME']}")
-    if not any(a.startswith("TABULA_PASSWORDS_KEYFILE=") for a in assigns):
-        assigns.append(f"TABULA_PASSWORDS_KEYFILE={os.path.join(BASE, name, 'passwords.key')}")
+    if not any(a.startswith("OLO_PASSWORDS_KEYFILE=") for a in assigns):
+        assigns.append(f"OLO_PASSWORDS_KEYFILE={os.path.join(sdir(name), 'passwords.key')}")
     env = dict(os.environ, **{k: v for k, v in e.items() if k not in ("pid", "sockets")}, RUST_LOG=os.environ.get("RUST_LOG", "warn"))
     # Headless sessions are silent: point the sound server at a plain file
     # (connecting fails) rather than the user's real speakers.
-    mute = os.path.join(BASE, name, "no-sound")
+    mute = os.path.join(sdir(name), "no-sound")
     open(mute, "a").close()
     env["PULSE_SERVER"] = "unix:" + mute
     exe = cmd[0]
@@ -270,7 +280,7 @@ def main():
         return
     cmd = sys.argv[1]
     if cmd == "list":
-        for d in sorted(glob.glob(os.path.join(BASE, "*", "env.json"))):
+        for d in sorted(glob.glob(os.path.join(BASE, "*", "env.json")) + glob.glob(os.path.join(OLD_BASE, "*", "env.json"))):
             print(os.path.basename(os.path.dirname(d)), json.load(open(d))["WAYLAND_DISPLAY"])
         return
     name, a = sys.argv[2], sys.argv[3:]
@@ -279,7 +289,7 @@ def main():
     elif cmd == "stop":
         stop(name)
     elif cmd == "reload":
-        os.kill(int(load_env(name)["TABULA_SESSION_PID"]), signal.SIGHUP)
+        os.kill(int(load_env(name)["OLO_SESSION_PID"]), signal.SIGHUP)
     elif cmd == "run":
         run(name, a)
     elif cmd == "env":

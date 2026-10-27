@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tabula_kit::{
+use olo_kit::{
     Menu,
     egui::{self, Align, Color32, FontId, Key, Pos2, Rect, Sense, Ui, pos2, vec2},
     dnd::{self, Hover},
@@ -14,7 +14,7 @@ use tabula_kit::{
     style::{self, c},
     widgets::{self, Cell, Column, ColumnListView, InlineEdit, InlineResult, ScrollView, SCROLL_BAR},
 };
-use tabula_kit::theme::Palette;
+use olo_kit::theme::Palette;
 
 use crate::{FolderWin, SortKey, ViewMode, fs, fs::Entry};
 
@@ -45,7 +45,7 @@ pub struct Drag {
 }
 
 impl Drag {
-    /// What it carries: the files, plus Tabula-only types saying which
+    /// What it carries: the files, plus Olo-only types saying which
     /// file system they are on (so a folder they are dragged over knows
     /// before the drop whether it would move or copy them) and whether
     /// the drop should ask.
@@ -76,10 +76,10 @@ impl Drag {
 }
 
 /// Marks a drag started with the secondary button.
-pub const ASK_TYPE: &str = "application/x-tabula-ask";
+pub const ASK_TYPE: &str = "application/x-olo-ask";
 
 fn device_type(dev: u64) -> String {
-    format!("application/x-tabula-device-{dev}")
+    format!("application/x-olo-device-{dev}")
 }
 
 /// Where a drop goes; [`DropTarget::name`] is what [`dnd::accept`] is

@@ -652,7 +652,7 @@ impl Client {
                 Some((i, _)) => (i.name, i.requests.get(msg.op as usize).map_or("?", |d| d.name)),
                 None => o.map_or(("?", "?"), |o| (o.iface.name, o.iface.requests.get(msg.op as usize).map_or("?", |d| d.name))),
             };
-            eprintln!("tabula-wlproxy: replay {iface}@{}.{name} {:?}", msg.id, msg.args);
+            eprintln!("olo-wlproxy: replay {iface}@{}.{name} {:?}", msg.id, msg.args);
         }
         // The program's ids for app_server's objects become app_server's.
         if msg.id >= SERVER_START {
@@ -695,7 +695,7 @@ impl Client {
                 self.down_since = None;
                 self.pump();
             } else {
-                eprintln!("tabula-wlproxy: replaying pid {}'s {} objects on app_server {pid}", self.pid, self.objs.len());
+                eprintln!("olo-wlproxy: replaying pid {}'s {} objects on app_server {pid}", self.pid, self.objs.len());
                 self.replay_start();
             }
         }
@@ -782,7 +782,7 @@ impl Client {
             ("wl_display", "error") => {
                 self.errored = true;
                 let iface = self.objs.get(&msg.uint(0)).map_or("?", |o| o.iface.name);
-                eprintln!("tabula-wlproxy: pid {}: app_server's error on {iface}@{}: {} {}", self.pid, msg.uint(0), msg.uint(1), String::from_utf8_lossy(msg.str(2)));
+                eprintln!("olo-wlproxy: pid {}: app_server's error on {iface}@{}: {} {}", self.pid, msg.uint(0), msg.uint(1), String::from_utf8_lossy(msg.str(2)));
             }
             ("wl_display", "delete_id") => {
                 let id = msg.uint(0);
@@ -1353,7 +1353,7 @@ impl Client {
 
 fn debug() -> bool {
     static DEBUG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *DEBUG.get_or_init(|| std::env::var_os("TABULA_WLPROXY_DEBUG").is_some())
+    *DEBUG.get_or_init(|| std::env::var_os("OLO_WLPROXY_DEBUG").is_some())
 }
 
 /// Setters whose latest call holds until changed: (interface, request)

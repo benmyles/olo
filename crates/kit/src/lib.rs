@@ -1,4 +1,4 @@
-//! Tabula's Interface Kit.
+//! Olo's Interface Kit.
 //!
 //! Apps implement [`App`] and call [`run`]. The kit owns the Wayland
 //! connection, draws each window with egui on the GPU (wgpu/Vulkan), renders
@@ -6,15 +6,16 @@
 //! the desktop's light/dark theme.
 
 mod app;
+pub mod brand;
 pub mod commands;
 pub mod dnd;
 pub mod emoji;
-pub use tabula_xdg::{apps, desktop_entry, mime, open, wallpapers};
+pub use olo_xdg::{apps, desktop_entry, legacy, mime, open, wallpapers};
 pub mod file_panel;
 pub mod files;
 pub mod icons;
-/// Decoding pictures (see the `tabula-images` crate).
-pub use tabula_images as images;
+/// Decoding pictures (see the `olo-images` crate).
+pub use olo_images as images;
 mod input;
 pub mod instance;
 pub mod menu;
@@ -31,6 +32,6 @@ pub use app::{App, Clip, Command, Cx, Keyboard, Layer, LayerOptions, ActivationT
 pub use egui;
 pub use menu::{Action, Menu, MenuItem};
 pub use platform::run;
-pub use tabula_theme as theme;
+pub use olo_theme as theme;
 
-pub use tabula_xdg::{config_dir, find_program, spawn_detached, state_dir, user_dir};
+pub use olo_xdg::{config_dir, find_program, spawn_detached, state_dir, user_dir};

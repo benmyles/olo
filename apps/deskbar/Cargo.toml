@@ -1,18 +1,18 @@
 [package]
-name = "tabula-deskbar"
-description = "Deskbar: the Tabula menu, running applications and status tray"
+name = "olo-deskbar"
+description = "Deskbar: the Olo menu, running applications and status tray"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "tabula-deskbar"
+name = "olo-deskbar"
 path = "src/main.rs"
 
 [dependencies]
-tabula-kit.workspace = true
-tabula-protocol.workspace = true
-tabula-system.workspace = true
+olo-kit.workspace = true
+olo-protocol.workspace = true
+olo-system.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 libc = "0.2"

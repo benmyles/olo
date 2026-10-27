@@ -34,10 +34,10 @@ struct Summary {
     account_type: String,
 }
 
-/// Where the 1Password app keeps its data: `TABULA_1PASSWORD_DATA`, else
+/// Where the 1Password app keeps its data: `OLO_1PASSWORD_DATA`, else
 /// the native app's, else the Flatpak's.
 pub fn data_dirs() -> Vec<PathBuf> {
-    if let Some(dir) = std::env::var_os("TABULA_1PASSWORD_DATA") {
+    if let Some(dir) = std::env::var_os("OLO_1PASSWORD_DATA") {
         return vec![dir.into()];
     }
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn lists_the_apps_accounts() {
-        let dir = std::env::temp_dir().join(format!("tabula-1p-accounts-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-1p-accounts-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let db = dir.join("1password.sqlite");
         let a = |uuid: &str, name: &str| Account { uuid: uuid.into(), name: name.into(), email: "user@example.com".into(), address: "example.1password.com".into() };
@@ -132,7 +132,7 @@ mod tests {
         assert_eq!(got.len(), 2);
         assert!(got.contains(&a("BBBBBBBBBBBBBBBBBBBBBBBBBB", "work")));
         // SAFETY: only this test reads the variable.
-        unsafe { std::env::set_var("TABULA_1PASSWORD_DATA", &dir) };
+        unsafe { std::env::set_var("OLO_1PASSWORD_DATA", &dir) };
         let names: Vec<String> = local().into_iter().map(|a| a.name).collect();
         assert_eq!(names, ["Family", "work"]);
         // An individual account with no team name.

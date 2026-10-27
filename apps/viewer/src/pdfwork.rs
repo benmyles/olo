@@ -15,7 +15,7 @@ use hayro::{
     vello_cpu::color::palette::css::WHITE,
 };
 use lopdf::Document;
-use tabula_kit::egui::ColorImage;
+use olo_kit::egui::ColorImage;
 
 use crate::pdfdoc::{self, Model, PageGeom};
 
@@ -83,7 +83,7 @@ pub fn write_atomic(to: &Path, data: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     let dir = to.parent().unwrap_or(Path::new("."));
     let name = to.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let tmp = dir.join(format!(".{name}.tabula-{}", std::process::id()));
+    let tmp = dir.join(format!(".{name}.olo-{}", std::process::id()));
     let result = (|| {
         let mut f = std::fs::File::create(&tmp)?;
         f.write_all(data)?;

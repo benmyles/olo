@@ -12,7 +12,7 @@ use std::{
 };
 
 use egui::{Color32, Context, Painter, Rect, TextureHandle, TextureOptions, pos2, vec2};
-use tabula_emoji::ColorFont;
+use olo_emoji::ColorFont;
 
 static FONT: OnceLock<Option<ColorFont>> = OnceLock::new();
 

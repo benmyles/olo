@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Olo Desktop
+Comment=A BeOS-inspired Wayland desktop
+Exec=olo-session
+TryExec=olo-session
+Type=Application
+DesktopNames=Olo

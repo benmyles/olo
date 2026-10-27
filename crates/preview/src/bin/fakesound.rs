@@ -1,5 +1,5 @@
 //! A sound server for tests: speaks enough of the PulseAudio protocol for
-//! Tabula's players (tabula-preview's `audio`), plays nothing, and reports
+//! Olo's players (olo-preview's `audio`), plays nothing, and reports
 //! what it hears on stderr, a line a second per stream: bytes consumed,
 //! whether it's corked, and how loud the samples were (RMS of S16LE, 0 to
 //! 32767). Samples are consumed in real time, so positions and latency
@@ -9,8 +9,8 @@
 //! server has one speaker and one microphone, both called "Fake".
 //!
 //! ```text
-//! tabula-fakesound /tmp/fake.sock &
-//! PULSE_SERVER=unix:/tmp/fake.sock tabula-viewer song.mp3
+//! olo-fakesound /tmp/fake.sock &
+//! PULSE_SERVER=unix:/tmp/fake.sock olo-viewer song.mp3
 //! ```
 
 use std::{
@@ -49,7 +49,7 @@ struct Client {
 }
 
 fn main() {
-    let path = std::env::args().nth(1).expect("usage: tabula-fakesound SOCKET");
+    let path = std::env::args().nth(1).expect("usage: olo-fakesound SOCKET");
     let _ = std::fs::remove_file(&path);
     let listener = UnixListener::bind(&path).expect("bind");
     eprintln!("fakesound: listening on {path}");

@@ -8,7 +8,7 @@ use std::{
     sync::mpsc::{Sender, channel},
 };
 
-use tabula_kit::{
+use olo_kit::{
     egui::{Context, FontFamily},
     style,
 };
@@ -54,7 +54,7 @@ impl Fonts {
             families.sort_by_key(|f| f.to_lowercase());
             send(Event::Families(families));
             for (family, bold, italic) in rx {
-                let names: Vec<&str> = if family.is_empty() { tabula_theme::fonts::UI.to_vec() } else { vec![family.as_str()] };
+                let names: Vec<&str> = if family.is_empty() { olo_theme::fonts::UI.to_vec() } else { vec![family.as_str()] };
                 let face = names
                     .iter()
                     .find_map(|n| {

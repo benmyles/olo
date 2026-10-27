@@ -2,9 +2,9 @@
 //! repository is read for the newest `google-chrome-stable` for this CPU,
 //! the package is downloaded (its sha256 checked against the repository's)
 //! and unpacked here in Rust (rpm headers, then the compressed cpio
-//! payload). Chrome goes into `~/.local/share/tabula/chrome/<version>`, with
+//! payload). Chrome goes into `~/.local/share/olo/chrome/<version>`, with
 //! `current` pointing at it, its icons into the hicolor theme and a desktop
-//! entry that starts it through `tabula-chrome`. Nothing needs root, and
+//! entry that starts it through `olo-chrome`. Nothing needs root, and
 //! nothing outside the user's home is touched.
 
 use std::{
@@ -54,7 +54,7 @@ fn data_home() -> PathBuf {
 
 /// Where Chrome is kept: a folder per version and `current`.
 pub fn root() -> PathBuf {
-    data_home().join("tabula/chrome")
+    data_home().join("olo/chrome")
 }
 
 /// Chrome's own launcher script, if Chrome is installed.
@@ -78,7 +78,7 @@ fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         .tls_config(tls)
         .max_redirects(10)
-        .user_agent("Tabula")
+        .user_agent("Olo")
         .timeout_connect(Some(Duration::from_secs(30)))
         .timeout_per_read(Some(Duration::from_secs(60)))
         .build()
@@ -266,13 +266,13 @@ pub fn update_quietly() {
         if current_version().as_deref() == Some(package.version.as_str()) {
             return Ok(None);
         }
-        eprintln!("tabula-chrome: updating Chrome to {}", package.version);
+        eprintln!("olo-chrome: updating Chrome to {}", package.version);
         put_in(package, &AtomicBool::new(false), &|_| {})
     });
     match outcome {
-        Ok(Some(p)) => eprintln!("tabula-chrome: Chrome updated: {}", p.display()),
+        Ok(Some(p)) => eprintln!("olo-chrome: Chrome updated: {}", p.display()),
         Ok(None) => {}
-        Err(e) => eprintln!("tabula-chrome: couldn't update Chrome: {e}"),
+        Err(e) => eprintln!("olo-chrome: couldn't update Chrome: {e}"),
     }
     let _ = fs::remove_file(&lock);
 }
@@ -409,7 +409,7 @@ fn unpack_rpm(mut r: impl Read, dest: &Path, cancel: &AtomicBool) -> Result<bool
         "xz" | "lzma" => Box::new(liblzma::read::XzDecoder::new(r)),
         "zstd" => Box::new(zstd::stream::read::Decoder::new(r).map_err(|e| e.to_string())?),
         "gzip" => Box::new(flate2::read::GzDecoder::new(r)),
-        other => return Err(format!("The package is compressed with {other}, which Tabula can't unpack.")),
+        other => return Err(format!("The package is compressed with {other}, which Olo can't unpack.")),
     };
     unpack_cpio(payload, dest, cancel)
 }
@@ -428,7 +428,7 @@ fn unpack_cpio(mut r: impl Read, dest: &Path, cancel: &AtomicBool) -> Result<boo
         let mut head = [0u8; 110];
         r.read_exact(&mut head).map_err(damaged)?;
         if &head[..6] != b"070701" && &head[..6] != b"070702" {
-            return Err("The package's contents are in a form Tabula can't unpack.".into());
+            return Err("The package's contents are in a form Olo can't unpack.".into());
         }
         let field = |i: usize| u64::from_str_radix(std::str::from_utf8(&head[6 + i * 8..14 + i * 8]).unwrap_or("0"), 16).unwrap_or(0);
         let (ino, mode, nlink, size, namesize) = (field(0), field(1) as u32, field(4), field(6), field(11) as usize);
@@ -533,7 +533,7 @@ Type=Application
 Categories=Network;WebBrowser;
 MimeType=application/pdf;application/rdf+xml;application/rss+xml;application/xhtml+xml;application/xhtml_xml;application/xml;image/gif;image/jpeg;image/png;image/webp;text/html;text/xml;x-scheme-handler/http;x-scheme-handler/https;
 StartupWMClass=google-chrome
-# Tabula lists Google Chrome among its own applications.
+# Olo lists Google Chrome among its own applications.
 NoDisplay=true
 Actions=new-window;new-private-window;
 
@@ -600,7 +600,7 @@ mod tests {
         entry(&mut a, "./usr/bin/google-chrome", 0o100755, b"no");
         entry(&mut a, "./opt/google/chrome/../../etc/evil", 0o100644, b"no");
         entry(&mut a, "TRAILER!!!", 0, b"");
-        let dest = std::env::temp_dir().join(format!("tabula-chrome-test-{}", std::process::id()));
+        let dest = std::env::temp_dir().join(format!("olo-chrome-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dest);
         assert!(unpack_cpio(a.as_slice(), &dest, &AtomicBool::new(false)).unwrap());
         assert_eq!(fs::read(dest.join("google-chrome")).unwrap(), b"#!/bin/sh\n");

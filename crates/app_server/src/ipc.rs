@@ -1,4 +1,4 @@
-//! app_server side of the Tabula IPC (see the tabula-protocol crate):
+//! app_server side of the Olo IPC (see the olo-protocol crate):
 //! newline-delimited JSON over a Unix socket, one reply per request, plus
 //! events for subscribed connections.
 
@@ -14,7 +14,7 @@ use smithay::reexports::calloop::{
     Interest, LoopHandle, Mode, PostAction,
     generic::{Generic, NoIoDrop},
 };
-use tabula_protocol::{Event, Reply, Request};
+use olo_protocol::{Event, Reply, Request};
 use tracing::{debug, info, warn};
 
 use crate::state::{AnvilState, Backend};
@@ -47,7 +47,7 @@ impl Conn {
 #[derive(Default)]
 pub struct IpcState {
     pub path: PathBuf,
-    /// The socket file, when we made it (not tabula-session).
+    /// The socket file, when we made it (not olo-session).
     _file: Option<crate::sockfile::Owned>,
     subscribers: Vec<Rc<Conn>>,
     /// Pictures to take with the next frame (see screenshot.rs).
@@ -75,7 +75,7 @@ impl IpcState {
 }
 
 /// Open the socket and register it with the event loop. Sets
-/// `$TABULA_SOCKET` for every process app_server starts afterwards.
+/// `$OLO_SOCKET` for every process app_server starts afterwards.
 pub fn init<B: Backend + 'static>(
     handle: &LoopHandle<'static, AnvilState<B>>,
     wayland_socket: &str,
@@ -83,10 +83,15 @@ pub fn init<B: Backend + 'static>(
     let dir = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
-    let path = dir.join(format!("tabula-{wayland_socket}.sock"));
-    // tabula-session may own the socket (so it survives our restarts).
+    let mut path = dir.join(format!("olo-{wayland_socket}.sock"));
+    // olo-session may own the socket (so it survives our restarts), under
+    // its old name if the session started on a build from before the
+    // rename (Tabula).
     let (listener, owned) = match inherited_ipc_socket() {
-        Some(l) => (l, false),
+        Some(l) => {
+            path = olo_xdg::legacy::runtime_file(&dir, &format!("olo-{wayland_socket}.sock"));
+            (l, false)
+        }
         None => {
             let _ = std::fs::remove_file(&path);
             let l = UnixListener::bind(&path)?;
@@ -95,7 +100,7 @@ pub fn init<B: Backend + 'static>(
     };
     listener.set_nonblocking(true)?;
     // SAFETY: single-threaded; nothing else reads the environment concurrently.
-    unsafe { std::env::set_var(tabula_protocol::SOCKET_ENV, &path) };
+    unsafe { std::env::set_var(olo_protocol::SOCKET_ENV, &path) };
     info!(path = %path.display(), "IPC listening");
 
     handle
@@ -117,7 +122,7 @@ pub fn init<B: Backend + 'static>(
         )
         .map_err(|e| std::io::Error::other(e.to_string()))?;
 
-    // An inherited socket's file belongs to tabula-session: don't remove it.
+    // An inherited socket's file belongs to olo-session: don't remove it.
     let file = owned.then(|| crate::sockfile::Owned::new(&path));
     let path = if owned { path } else { PathBuf::new() };
     let (saved, done) = smithay::reexports::calloop::channel::channel::<(u64, Result<(), String>)>();
@@ -259,7 +264,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Some((output, area, windows)) => {
                     let infos = self.window_infos_with_frames();
                     let windows = windows.iter().filter_map(|w| infos.iter().find(|i| i.id == w.meta().id).cloned()).collect();
-                    let area = tabula_protocol::Frame { x: area.loc.x, y: area.loc.y, width: area.size.w, height: area.size.h };
+                    let area = olo_protocol::Frame { x: area.loc.x, y: area.loc.y, width: area.size.w, height: area.size.h };
                     Reply::Arrangement { output: output.name(), area, windows }
                 }
                 None => Reply::Error { message: "no display to arrange".into() },
@@ -333,7 +338,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Ok(()) => Reply::Ok,
                 Err(message) => Reply::Error { message },
             },
-            Request::RunShortcut { id, window } => match tabula_protocol::shortcuts::by_id(&id) {
+            Request::RunShortcut { id, window } => match olo_protocol::shortcuts::by_id(&id) {
                 Some(info) => {
                     let target = window.and_then(|w| self.window_by_id(w));
                     self.run_shortcut(info.action, target);
@@ -389,11 +394,11 @@ impl<B: Backend + 'static> AnvilState<B> {
 
 fn inherited_ipc_socket() -> Option<UnixListener> {
     use std::os::fd::FromRawFd;
-    let fd: i32 = std::env::var("TABULA_IPC_FD").ok()?.parse().ok()?;
-    // SAFETY: tabula-session passes this fd to us alone.
+    let fd: i32 = std::env::var("OLO_IPC_FD").ok()?.parse().ok()?;
+    // SAFETY: olo-session passes this fd to us alone.
     let listener = unsafe { UnixListener::from_raw_fd(fd) };
     crate::set_cloexec(fd);
     // SAFETY: called during single-threaded start-up.
-    unsafe { std::env::remove_var("TABULA_IPC_FD") };
+    unsafe { std::env::remove_var("OLO_IPC_FD") };
     Some(listener)
 }

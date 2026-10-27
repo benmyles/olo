@@ -1,12 +1,12 @@
 //! The panels: names, icons, sizes, and the frame they share (content above,
 //! Defaults and Revert along the bottom, as on BeOS).
 
-use tabula_kit::{
+use olo_kit::{
     egui::{self, Rect, pos2, vec2},
     metrics as m,
     widgets::Button,
 };
-use tabula_protocol::Settings;
+use olo_protocol::Settings;
 
 use crate::{Ctx, about, ai, appearance, backup, bluetooth, datetime, display, keyboard, network, notifications, power, screensaver, security, sound, touchid, touchpad, tracker, workspaces};
 
@@ -118,7 +118,7 @@ impl Panel {
             Panel::Touchpad => "Touchpad",
             Panel::Tracker => "Tracker",
             Panel::Workspaces => "Workspaces",
-            Panel::About => "About Tabula",
+            Panel::About => "About Olo Desktop",
         }
     }
 
@@ -329,8 +329,8 @@ mod tests {
     fn deskbar_lists_every_panel() {
         let ours: Vec<(&str, &str, &str)> =
             Panel::ALL.iter().filter(|p| **p != Panel::About).map(|p| (p.arg(), p.title(), p.icon())).collect();
-        assert_eq!(ours, tabula_kit::apps::PREFERENCE_PANELS);
-        for (arg, _, _) in tabula_kit::apps::PREFERENCE_PANELS {
+        assert_eq!(ours, olo_kit::apps::PREFERENCE_PANELS);
+        for (arg, _, _) in olo_kit::apps::PREFERENCE_PANELS {
             assert!(Panel::from_arg(arg).is_some());
         }
     }

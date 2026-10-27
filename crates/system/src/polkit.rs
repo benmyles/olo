@@ -26,7 +26,7 @@ use crate::{Result, bus};
 const AUTHORITY: &str = "org.freedesktop.PolicyKit1";
 const AUTHORITY_PATH: &str = "/org/freedesktop/PolicyKit1/Authority";
 const AUTHORITY_IFACE: &str = "org.freedesktop.PolicyKit1.Authority";
-const AGENT_PATH: &str = "/org/tabula/PolicyKit1/AuthenticationAgent";
+const AGENT_PATH: &str = "/com/olodesktop/PolicyKit1/AuthenticationAgent";
 
 /// Who the agent answers for.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -288,7 +288,7 @@ pub struct Helper {
 }
 
 fn helper_path() -> String {
-    if let Ok(p) = std::env::var("TABULA_POLKIT_HELPER") {
+    if let Ok(p) = std::env::var("OLO_POLKIT_HELPER") {
         return p;
     }
     ["/usr/lib/polkit-1/polkit-agent-helper-1", "/usr/libexec/polkit-agent-helper-1", "/usr/lib/policykit-1/polkit-agent-helper-1"]
@@ -401,7 +401,7 @@ mod tests {
     /// The helper protocol end to end against a fake helper script.
     #[test]
     fn fake_helper() {
-        let dir = std::env::temp_dir().join(format!("tabula-polkit-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-polkit-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let script = dir.join("helper");
         std::fs::write(
@@ -411,7 +411,7 @@ mod tests {
         .unwrap();
         std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
         // SAFETY: tests in this module don't read the variable concurrently.
-        unsafe { std::env::set_var("TABULA_POLKIT_HELPER", &script) };
+        unsafe { std::env::set_var("OLO_POLKIT_HELPER", &script) };
         for (pw, ok) in [("sesame", true), ("wrong", false)] {
             let (tx, rx) = std::sync::mpsc::channel();
             let mut h = Helper::start("nobody", "c00kie", move |e| tx.send(e).unwrap()).unwrap();
@@ -420,7 +420,7 @@ mod tests {
             h.respond(pw).unwrap();
             assert_eq!(rx.recv().unwrap(), HelperEvent::Done(ok));
         }
-        unsafe { std::env::remove_var("TABULA_POLKIT_HELPER") };
+        unsafe { std::env::remove_var("OLO_POLKIT_HELPER") };
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

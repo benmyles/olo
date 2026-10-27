@@ -1,10 +1,10 @@
-//! Terminal ▸ Terminal Daemon…: how tabula-termd (which runs the shells)
+//! Terminal ▸ Terminal Daemon…: how olo-termd (which runs the shells)
 //! is doing, the shells it has, and a way to restart it: in place, keeping
 //! the shells, or, when it has stopped answering, from scratch.
 
 use std::time::{Duration, Instant};
 
-use tabula_kit::{
+use olo_kit::{
     Cx, Proxy, WindowId, WindowOptions,
     egui::{self, Rect, UiBuilder, vec2},
     metrics as m,
@@ -104,7 +104,7 @@ impl DaemonWin {
             ui.spacing_mut().item_spacing.y = m::TIGHT;
             let (headline, detail) = match &self.status {
                 None => ("Checking…".to_owned(), String::new()),
-                Some(Err(e)) => (format!("tabula-termd: {e}"), "New shells can't start until it's running again.".to_owned()),
+                Some(Err(e)) => (format!("olo-termd: {e}"), "New shells can't start until it's running again.".to_owned()),
                 Some(Ok(s)) => {
                     let here = s.shells.iter().filter(|sh| sh.client == Some(ours)).count();
                     let shells = match s.shells.len() {
@@ -112,7 +112,7 @@ impl DaemonWin {
                         n => format!("{n} shells"),
                     };
                     (
-                        format!("tabula-termd is running (process {}, up {}).", s.pid, uptime(s.started)),
+                        format!("olo-termd is running (process {}, up {}).", s.pid, uptime(s.started)),
                         format!("{shells}, {here} shown in this Terminal."),
                     )
                 }

@@ -4,7 +4,7 @@
 //! the VESA VCP Brightness usage. We find it in the device's report
 //! descriptor and read and write it through `/dev/hidrawN` (a udev
 //! `uaccess` rule gives the session's user the device; see
-//! `data/udev/70-tabula-displays.rules`).
+//! `data/udev/70-olo-displays.rules`).
 
 use std::{
     fs::File,
@@ -218,7 +218,7 @@ mod tests {
     }
 
     /// Sets every USB-controlled monitor to full brightness and reads it
-    /// back (on real hardware: `cargo test -p tabula-system live_full --
+    /// back (on real hardware: `cargo test -p olo-system live_full --
     /// --ignored`).
     #[test]
     #[ignore]

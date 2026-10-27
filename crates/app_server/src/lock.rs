@@ -4,7 +4,7 @@
 //! * Locking takes effect here first: from `lock_screen` on, outputs show
 //!   only lock surfaces over an opaque background and no other client gets
 //!   input, whether or not the lock screen has drawn anything yet.
-//! * The lock screen (`tabula-lock`) is started by app_server on a socket
+//! * The lock screen (`olo-lock`) is started by app_server on a socket
 //!   it creates, so app_server knows its client; the lock global is offered
 //!   to that client only, so nothing else can lock or unlock.
 //! * Only that client unlocking ends the lock. If it dies, the screen stays
@@ -52,16 +52,16 @@ const SLEEP_WAIT: Duration = Duration::from_secs(3);
 /// Present while the screen is locked, so an app_server that crashed or
 /// reloaded in place comes back locked (see `relock`). The runtime dir is
 /// the user's alone and goes away at logout.
-/// Who the marker belongs to: tabula-session outlives in-place reloads, so
+/// Who the marker belongs to: olo-session outlives in-place reloads, so
 /// its pid names the session (empty outside one: nothing to reload into).
 fn session_id() -> String {
-    std::env::var("TABULA_SESSION_PID").unwrap_or_default()
+    std::env::var("OLO_SESSION_PID").unwrap_or_default()
 }
 
 fn marker() -> Option<std::path::PathBuf> {
     let dir = std::env::var_os("XDG_RUNTIME_DIR")?;
     let display = std::env::var("WAYLAND_DISPLAY").ok()?;
-    Some(std::path::PathBuf::from(dir).join(format!("tabula-locked-{display}")))
+    Some(olo_xdg::legacy::runtime_file(std::path::Path::new(&dir), &format!("olo-locked-{display}")))
 }
 
 #[derive(Debug)]
@@ -80,7 +80,7 @@ pub struct Lock {
     /// (it was started before the lock and ends at the first input).
     pub over: Option<ClientId>,
     /// Holding off a suspend until the lock screen is up (see `watch_login`).
-    sleep_guard: Option<(tabula_system::power::Inhibitor, Instant)>,
+    sleep_guard: Option<(olo_system::power::Inhibitor, Instant)>,
 }
 
 impl Lock {
@@ -177,9 +177,9 @@ impl<B: Backend + 'static> AnvilState<B> {
             channel::{self, Event as ChannelEvent},
             timer::{TimeoutAction, Timer},
         };
-        use tabula_system::power::LoginEvent;
+        use olo_system::power::LoginEvent;
         let (tx, rx) = channel::channel();
-        if let Err(e) = tabula_system::power::watch_login(move |e| {
+        if let Err(e) = olo_system::power::watch_login(move |e| {
             let _ = tx.send(e);
         }) {
             warn!("not watching logind: {e}");
@@ -252,7 +252,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     fn spawn_locker(&mut self) -> std::io::Result<(ClientId, Arc<AtomicBool>)> {
-        let (id, gone) = self.spawn_private("tabula-lock", &[])?;
+        let (id, gone) = self.spawn_private("olo-lock", &[])?;
         info!(client = ?id, "lock screen started");
         Ok((id, gone))
     }
@@ -261,7 +261,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// (WAYLAND_SOCKET), so we know which client it is. Returns the client
     /// and a flag set when it disconnects.
     pub fn spawn_private(&mut self, name: &str, args: &[String]) -> std::io::Result<(ClientId, Arc<AtomicBool>)> {
-        let program = tabula_xdg::find_program(name)
+        let program = olo_xdg::find_program(name)
             .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, format!("{name} is not installed")))?;
         let (ours, theirs) = std::os::unix::net::UnixStream::pair()?;
         let gone = Arc::new(AtomicBool::new(false));

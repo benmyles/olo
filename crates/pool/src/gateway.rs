@@ -34,11 +34,11 @@ use crate::{
     upstream::{self, Failure, Upstreams},
 };
 
-/// Where the gateway listens unless `TABULA_POOL_PORT` says otherwise.
+/// Where the gateway listens unless `OLO_POOL_PORT` says otherwise.
 pub const PORT: u16 = 17891;
 
 pub fn port() -> u16 {
-    std::env::var("TABULA_POOL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(PORT)
+    std::env::var("OLO_POOL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(PORT)
 }
 
 /// A request served (for the window's activity list): never its content.
@@ -659,7 +659,7 @@ fn forwarded(name: &str) -> bool {
             | "cookie"
             | "accept-encoding"
             | "origin"
-    ) && !name.starts_with("x-tabula-pool-")
+    ) && !name.starts_with("x-olo-pool-")
 }
 
 /// Response headers not passed back.
@@ -919,7 +919,7 @@ fn respond(r: reqwest::Response, finish: Finish) -> Response {
         out.append(k.clone(), v.clone());
     }
     if let Ok(v) = HeaderValue::from_str(&finish.name) {
-        out.insert(HeaderName::from_static("x-tabula-pool-account"), v);
+        out.insert(HeaderName::from_static("x-olo-pool-account"), v);
     }
     let finish = Arc::new(Mutex::new(finish));
     finish.lock().unwrap().scan.sse = r.headers().get("content-type").and_then(|v| v.to_str().ok()).is_some_and(|c| c.starts_with("text/event-stream"));
@@ -1045,7 +1045,7 @@ mod tests {
 
     #[test]
     fn headers_kept_back() {
-        for h in ["authorization", "x-api-key", "cookie", "host", "origin", "x-tabula-pool-x"] {
+        for h in ["authorization", "x-api-key", "cookie", "host", "origin", "x-olo-pool-x"] {
             assert!(!forwarded(h), "{h}");
         }
         assert!(forwarded("anthropic-version") && forwarded("x-stainless-lang") && forwarded("session_id"));

@@ -1,6 +1,6 @@
 //! Notification sounds: a file, or a name from the freedesktop sound
 //! theme (`message-new-instant` → …/sounds/freedesktop/stereo/
-//! message-new-instant.oga), played in process through tabula-preview's
+//! message-new-instant.oga), played in process through olo-preview's
 //! player (symphonia, and the sound server's own protocol).
 
 use std::{
@@ -30,7 +30,7 @@ pub fn themed(name: &str) -> Option<PathBuf> {
     if name.is_empty() || name.contains('/') {
         return None;
     }
-    for dir in tabula_xdg::xdg_data_dirs() {
+    for dir in olo_xdg::xdg_data_dirs() {
         for sub in ["stereo", ""] {
             for ext in ["oga", "ogg", "wav"] {
                 let p = dir.join("sounds/freedesktop").join(sub).join(format!("{name}.{ext}"));
@@ -46,9 +46,9 @@ pub fn themed(name: &str) -> Option<PathBuf> {
 /// Play `path` once, off the UI thread (a short sound; gives up after
 /// ten seconds).
 pub fn play(path: &Path) {
-    let input = tabula_preview::input::Input::file(path);
+    let input = olo_preview::input::Input::file(path);
     std::thread::spawn(move || {
-        let player = tabula_preview::audio::Player::start(&input);
+        let player = olo_preview::audio::Player::start(&input);
         let start = Instant::now();
         while !player.state.finished.load(Ordering::Relaxed) && player.state.error.lock().unwrap().is_none() && start.elapsed() < Duration::from_secs(10) {
             std::thread::sleep(Duration::from_millis(50));

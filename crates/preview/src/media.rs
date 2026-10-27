@@ -14,7 +14,7 @@ use std::{
 
 use lofty::prelude::*;
 use openh264::formats::YUVSource;
-use tabula_kit::egui::ColorImage;
+use olo_kit::egui::ColorImage;
 
 use super::load::{Body, Image, Update, color_image};
 
@@ -266,7 +266,7 @@ fn mkv(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
 
 /// The first AV1 picture.
 fn av1_poster<R: std::io::Read + std::io::Seek>(mk: &mut matroska_demuxer::MatroskaFile<R>, track: u64, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), String> {
-    let mut dec = tabula_kit::images::av1::Decoder::new(1, 1)?;
+    let mut dec = olo_kit::images::av1::Decoder::new(1, 1)?;
     let mut frame = matroska_demuxer::Frame::default();
     let mut out = Vec::new();
     let mut tries = 0;

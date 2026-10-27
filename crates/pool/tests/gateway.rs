@@ -13,7 +13,7 @@ use axum::{
     routing::{get, post},
 };
 use serde_json::{Value, json};
-use tabula_token_pool::{
+use olo_token_pool::{
     gateway::{self, Shared},
     model::{Account, Credential, Provider, now},
     store::Saved,
@@ -86,7 +86,7 @@ fn fake(seen: Seen) -> Router {
 fn account(id: &str, created: i64, resets: i64) -> Account {
     let mut a = Account::new(id.into(), id.into(), Provider::Claude);
     a.created = created;
-    a.windows.push(tabula_token_pool::model::Window { name: "five_hour".into(), label: "5-hour".into(), used: 10.0, resets_at: Some(now() + resets), models: vec![] });
+    a.windows.push(olo_token_pool::model::Window { name: "five_hour".into(), label: "5-hour".into(), used: 10.0, resets_at: Some(now() + resets), models: vec![] });
     a
 }
 
@@ -117,14 +117,14 @@ async fn drains_and_fails_over() {
     let r = client
         .post(format!("http://{addr}/claude/v1/messages"))
         .header("x-api-key", "client-key")
-        .header("authorization", "Bearer tabula-pool")
+        .header("authorization", "Bearer olo-pool")
         .json(&json!({"model": "claude-opus-5-5", "messages": []}))
         .send()
         .await
         .unwrap();
     assert_eq!(r.status(), 200);
     // The refreshed "b" answered, after "a" was out.
-    assert_eq!(r.headers()["x-tabula-pool-account"], "b");
+    assert_eq!(r.headers()["x-olo-pool-account"], "b");
     let body = r.text().await.unwrap();
     assert!(body.contains("hello"));
     let calls = seen.lock().unwrap().clone();
@@ -142,7 +142,7 @@ async fn drains_and_fails_over() {
     assert!(p.account("a").unwrap().cooldown_until.is_some());
     assert_eq!(p.in_flight.values().sum::<u32>(), 0);
     // Each try is in its account's strip, with how it ended.
-    use tabula_token_pool::model::Outcome;
+    use olo_token_pool::model::Outcome;
     assert_eq!(p.account("a").unwrap().recent.iter().map(|r| r.outcome).collect::<Vec<_>>(), [Outcome::RateLimited]);
     assert_eq!(b.recent.iter().map(|r| (r.outcome, r.usage.output_tokens)).collect::<Vec<_>>(), [(Outcome::Completed, 3)]);
     assert!(p.open.is_empty());
@@ -216,7 +216,7 @@ async fn redeems_a_credit_when_all_are_out() {
     let mut saved = Saved::default();
     let mut a = account("a", 1, 100);
     a.org = Some("org-1".into());
-    a.credits.push(tabula_token_pool::model::ResetCredit { id: "g1".into(), expires_at: Some(now() + 86400), remaining: 2, usable: true, program: Some("cedar_ember".into()) });
+    a.credits.push(olo_token_pool::model::ResetCredit { id: "g1".into(), expires_at: Some(now() + 86400), remaining: 2, usable: true, program: Some("cedar_ember".into()) });
     saved.accounts.push(a);
     saved.credentials.insert("a".into(), cred("ok"));
     let shared = Shared::new(saved, None, up, || {});

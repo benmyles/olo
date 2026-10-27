@@ -1,4 +1,4 @@
-//! The Tabula look: BeOS R5 colours and metrics, in light and dark variants.
+//! The Olo look: BeOS R5 colours and metrics, in light and dark variants.
 //!
 //! Both app_server (window tabs and frames) and the Interface Kit (every
 //! widget) draw from [`Palette`], so a theme switch changes everything in

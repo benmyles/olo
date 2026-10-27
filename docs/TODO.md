@@ -1,11 +1,18 @@
 # Work list
 
-What's left before Tabula is complete. Keep it current: strike items
+What's left before Olo is complete. Keep it current: strike items
 as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
-- ~~Icons in the Deskbar menu~~ (Ben): every item in the Tabula menu
+- ~~Tabula is now Olo Desktop~~ (Ben): plain `olo` in code (crates,
+  programs, app ids `olo.X`, `OLO_*`, `~/.config/olo`…, D-Bus
+  `com.olodesktop.*`), "Olo Desktop" in public; the brand (mark, wordmark,
+  desktop icon) in Deskbar, About, the session entry and the README. A
+  running Tabula session upgrades through the green arrow into Olo with
+  every window, shell and setting kept (`olo_xdg::legacy`; HACKING
+  "Renamed from Tabula"). The wallpaper pack (data/wallpapers) too.
+- ~~Icons in the Deskbar menu~~ (Ben): every item in the Olo menu
   has its icon (applications, panels, .desktop entries, commands,
   categories; twelve new sunburst icons); Appearance ▸ Show icons in the
   Deskbar menu, on by default. Kit menus take `.icon(name)`.
@@ -51,22 +58,22 @@ as they land (with the commit), add new ones as they come up.
   LEDs). HACKING, "Token Pool" ▸ Activity, and Widgets.
 - ~~Token Pool: reset credits~~: shown per account, spent when every
   account is out, or by hand.
-- ~~A widget tree for Chrome~~ (Ben): the Tabula extension's host
+- ~~A widget tree for Chrome~~ (Ben): the Olo extension's host
   answers Agent Screens' `tree` for Chrome, with each window's page as
-  assistive technology sees it; the tabula-screens skill says so.
+  assistive technology sees it; the olo-screens skill says so.
   HACKING, "Chrome's widget tree, for agents".
 - ~~Num Lock on by default, and a setting for it~~ (Ben): Preferences ▸
-  Keyboard ▸ "Num Lock on when Tabula starts".
+  Keyboard ▸ "Num Lock on when Olo starts".
 - ~~Token pooling for Claude Code and Codex, natively~~ (Ben): Token
-  Pool (`tabula-pool`, crates/pool): a loopback gateway the clients are
+  Pool (`olo-pool`, crates/pool): a loopback gateway the clients are
   pointed at, subscriptions drained earliest-expiry-first, sign-ins
   sealed with a keyring key, usage counted without content. HACKING,
   "Token Pool".
-- ~~NetPositive removed~~ (Ben): Tabula's web browser is Chrome. Gone
+- ~~NetPositive removed~~ (Ben): Olo's web browser is Chrome. Gone
   with it: apps/browser, the Servo and WebRender patches (and epaint's,
   needed only because of Servo), the kit's embedded surfaces, and
   passkeys in Passwords (only NetPositive asked for them).
-- ~~1Password's `op` from Passwords~~ (Ben): `tabula-op`, linked as `op`,
+- ~~1Password's `op` from Passwords~~ (Ben): `olo-op`, linked as `op`,
   answers `op inject`/`read`/`run`/`item get`/`whoami`/`account list`/`signin`
   from Passwords, asking once per terminal session; Preferences ▸
   Security turns it off. HACKING, "op: 1Password's command line".
@@ -89,22 +96,22 @@ as they land (with the commit), add new ones as they come up.
   (keys, Preferences ▸ Keyboard, off with the display). ~~Real DPMS off~~ (CRTCs
   cleared, rendering paused until input).
 - ~~Preferences ▸ Sound~~: output/input device, level, mute, live from the
-  sound server (`tabula_system::audio::{devices, watch_devices, set_*}`).
+  sound server (`olo_system::audio::{devices, watch_devices, set_*}`).
 
-- ~~Upgrades keep apps open~~ (only a new app_server reloads; Tabula
+- ~~Upgrades keep apps open~~ (only a new app_server reloads; Olo
   programs re-execute in place), ~~interactive resize keeps up~~,
   ~~focus not stolen by xdg_activation without input~~ (15c2b27).
-- ~~Keyring prompts are Tabula's~~: the polkit agent owns
+- ~~Keyring prompts are Olo's~~: the polkit agent owns
   org.gnome.keyring.SystemPrompter (gcr's protocol and secret exchange,
   natively), so unlocking the login keyring (gh's git credentials hung
-  on a GTK prompter that had lost its display) asks in a Tabula alert.
+  on a GTK prompter that had lost its display) asks in an Olo alert.
 - ~~Login keyring in a real session~~ (the session finishes starting the
   daemon PAM unlocked), ~~Passwords lists 1Password's accounts~~.
 
 ## Native rule (no wrapping system tools)
 
 - ~~nmcli, wpctl, systemctl, gsettings, dbus-update-activation-environment~~
-  → `tabula-system` (NetworkManager, PulseAudio protocol with a change
+  → `olo-system` (NetworkManager, PulseAudio protocol with a change
   feed, logind, dconf, activation environment).
 
 - ~~Keyboard mapping in app_server, replacing keyd~~: ⌘ as command,
@@ -113,7 +120,7 @@ as they land (with the commit), add new ones as they come up.
   locks. keyd can now be disabled system-wide; while
   it runs it grabs the keyboards and app_server sees its output (handled:
   its ⌘ tap chord and Super+Tab are understood).
-- ~~Kit opener instead of `xdg-open`~~: `tabula_xdg::open` (shared-mime-info
+- ~~Kit opener instead of `xdg-open`~~: `olo_xdg::open` (shared-mime-info
   globs + sniffing, our apps first, mimeapps.list, Exec field codes).
 
 ## Apps
@@ -150,7 +157,7 @@ as they land (with the commit), add new ones as they come up.
 - ~~**Confirm before quitting apps with state that would be lost**~~
   (Ben): Terminal asks before
   closing a window with a program running, and its Quit leaves the
-  shells in tabula-termd; StyledEdit asks about unsaved documents.
+  shells in olo-termd; StyledEdit asks about unsaved documents.
 - ~~**Passwords: never change anything on sync without approval**~~
   (Ben): plan, Review Sync, apply (sync.rs); plus ~~File ▸ Reset
   Passwords…~~ (local only).
@@ -168,7 +175,7 @@ as they land (with the commit), add new ones as they come up.
   images, Passwords fields, Deskbar launches…
   Study how BeOS did it first (the Be Book: BMessage drags with negotiated
   types, drop targets, Tracker clippings) and borrow what still fits.
-  **Done:** the kit layer (`tabula_kit::dnd`: negotiated types and
+  **Done:** the kit layer (`olo_kit::dnd`: negotiated types and
   actions, drag pictures with names, drop outlines); Tracker drags from
   every view and the desktop and takes drops on folders, windows, the
   Trash and the desktop (move/copy by file system, ⌥ copies, a
@@ -199,11 +206,11 @@ as they land (with the commit), add new ones as they come up.
   the Viewer's Image menu (rotate, flip, crop overlay, Adjust Size) with
   undo, Save / Save As / Revert; Quick Look rotates and saves in place.
 - ~~**Multiplayer screen control for agents**~~ (Ben; done: Agent Screens,
-  `apps/screen`, each screen a headless Tabula session of its own, watched
-  and taken over in the Agent Screens app; `tabula-screen tree` from the
-  kit's widget tree; the `tabula-screens` skill put in Claude Code's and
+  `apps/screen`, each screen a headless Olo session of its own, watched
+  and taken over in the Agent Screens app; `olo-screen tree` from the
+  kit's widget tree; the `olo-screens` skill put in Claude Code's and
   Codex's skill folders by a real session; HACKING, "Agent Screens"): an agent starts a
-  Tabula screen-control session and gets its own workspace and its own
+  Olo screen-control session and gets its own workspace and its own
   cursor and keyboard focus, so its input never disturbs the person, who
   can watch that workspace live (and step in). Complete control: pointer
   moves, clicks, drags and drops, scrolling, typing and shortcuts; visual
@@ -212,7 +219,7 @@ as they land (with the commit), add new ones as they come up.
   the kit's own widget tree rather than OCR). An agent-friendly
   protocol/API (app_server IPC, documented, stable) plus agent skills
   injected automatically into Claude Code and Codex when they run under
-  Tabula. Agent-first from the ground up: everything designed to work
+  Olo. Agent-first from the ground up: everything designed to work
   seamlessly for agents and people alike.
 - ~~**Agent Screens: bugs and improvements from an agent using it**~~
   Done 2026-10-27, all 16: popups in `tree` (Menu/MenuItem) and
@@ -228,7 +235,7 @@ as they land (with the commit), add new ones as they come up.
   `look` with no file, `--crop`; `type`/`set` warn when keys go to
   something that isn't a text field; skill doc updated. (Bug 5, focus
   lost after clicking a row, didn't happen here; the fallback covers it.)
-  (Ben, 2026-10-27; feedback from an agent working with `tabula-screen`).
+  (Ben, 2026-10-27; feedback from an agent working with `olo-screen`).
   Bugs:
   1. *Popups are invisible:* a dropdown's menu (Log Viewer's level filter)
      shows on screen but is in neither `tree` nor `windows`. Popups belong
@@ -254,7 +261,7 @@ as they land (with the commit), add new ones as they come up.
      clipped or offscreen. (a62e672 clipped rows and cells; check against
      this report.)
   Improvements:
-  7. *Waiting for the app:* `tabula-screen wait agent --idle` (until the
+  7. *Waiting for the app:* `olo-screen wait agent --idle` (until the
      window stops redrawing), `wait --text "61 lines"` or `--role Row
      --name …`, or `--wait` on actions. Show in Context took 5–9 s and
      Find ~1 s; sleeps still read stale state.
@@ -331,50 +338,50 @@ as they land (with the commit), add new ones as they come up.
   hand); windows placed automatically or by hand are never pushed. It
   should work as you'd expect: shared edges move together, nothing
   overlaps or leaves a gap, neighbours keep a sensible minimum size.
-- **Google Chrome works great in Tabula** (Ben; Tabula's web browser):
-  many sites really need Chrome. When stock Google Chrome is downloaded and run, Tabula
-  recognises it: Tabula window chrome (server-side decorations, or
+- **Google Chrome works great in Olo** (Ben; Olo's web browser):
+  many sites really need Chrome. When stock Google Chrome is downloaded and run, Olo
+  recognises it: Olo window chrome (server-side decorations, or
   whatever it takes: flags, policies, runtime patches), light/dark
-  following the desktop, and Tabula Passwords filling and saving logins
+  following the desktop, and Olo Passwords filling and saving logins
   in it seamlessly (e.g. a native-messaging host plus an extension
   installed by policy, speaking the keychain protocol), including the
   verification code (TOTP) from a field's context menu beside the
   username and password. Drag and drop, the clipboard, notifications,
   file pickers, downloads into Tracker, default browser, Deskbar entry:
-  all of it as well as Tabula can make it. Ugly hacks are fine as long
+  all of it as well as Olo can make it. Ugly hacks are fine as long
   as it is reliable.
-  ~~**Tabula's look**~~ (done: the portals now start in a real session,
-  so it follows light/dark; each profile starts with Tabula's title bar
+  ~~**Olo's look**~~ (done: the portals now start in a real session,
+  so it follows light/dark; each profile starts with Olo's title bar
   and frame instead of Chrome's own buttons and with the GTK theme's
   colours; HACKING, "Other toolkits' programs").
-  ~~**Passwords in Chrome**~~ (done: the Tabula Passwords extension,
+  ~~**Passwords in Chrome**~~ (done: the Olo Passwords extension,
   packed and signed per user, listed in Chrome's `extensions` folder,
-  with `tabula-chrome` as its native messaging host; a field's context
+  with `olo-chrome` as its native messaging host; a field's context
   menu offers each login's username, password, one-time code or the
   whole login, the toolbar button lists the page's logins, and a login
   sent with a form is offered for saving or updating; HACKING, "Google
   Chrome").
   ~~**Notifications**~~ (done: Chrome sends sites' and extensions'
-  notifications to Tabula's notifications app over
+  notifications to Olo's notifications app over
   `org.freedesktop.Notifications`; tested headless: shown with Chrome's
   name and icon, a click reaching the page's `onclick`, Chrome's Settings
   button opening its notification settings. Test buses need
   `tools/dev/busd-lenient`; HACKING, "Notifications").
-  ~~**Installed on first use**~~ (done: `apps/chrome`, `tabula-chrome`;
+  ~~**Installed on first use**~~ (done: `apps/chrome`, `olo-chrome`;
   tested headless end to end, the real 139 MB download into a fixture
-  home, then Chrome running on Wayland in Tabula; kept up to date: once
+  home, then Chrome running on Wayland in Olo; kept up to date: once
   a day a start fetches a newer version in the background for the next
   start, tested from a stand-in old version. Left: Chromium where Google
   has no build) (Ben): Google Chrome is always listed in
   Deskbar's apps; the first launch downloads it (Google ships arm64
   Linux packages now: dl.google.com/linux/chrome/rpm/stable/aarch64,
   checked against the repo's sha256), unpacks it in process (rpm cpio
-  payload, natively) into `~/.local/share/tabula/chrome/<version>` with
+  payload, natively) into `~/.local/share/olo/chrome/<version>` with
   a `current` link, with live progress, and keeps it updated from the
   same repo. Chromium if Google's isn't there for the machine. Ben's
   machine has 156.0.8078.47 there now (installed by hand the same way,
   with `~/.local/share/applications/google-chrome.desktop`); it runs on
-  Wayland under Tabula.
+  Wayland under Olo.
 - ~~**Passwords: sync with several 1Password accounts**~~ (ticked in File ▸ 1Password Accounts…, one review, the sidebar grouped by account) (Ben): setup now
   makes you pick one account; Passwords should sync with every account
   the 1Password app has signed in (each account's vaults shown under it,
@@ -384,7 +391,7 @@ as they land (with the commit), add new ones as they come up.
   by account as well as vault.
 - **x86 machines, starting with Ben's ThinkPad P1 Gen 9** (Ben; it
   arrives within days): stock Fedora, `git clone` the repo, run a setup
-  app, and everything works and is supported in Tabula/Olo, not just on
+  app, and everything works and is supported in Olo, not just on
   the arm64 M2 MacBook Pro (Aurora). The setup app checks and installs
   what is needed (packages, Rust toolchain, the session entry, PAM,
   udev rules, keyd-style key mapping where wanted) with live progress,
@@ -405,7 +412,7 @@ as they land (with the commit), add new ones as they come up.
   Done so far: `tools/setup.sh` (checks by capability, installs with dnf or
   layers with rpm-ostree, Rust through rustup if it's too old, builds and
   installs; `--check` reports only); `tools/dev/x86-check` (the whole
-  workspace type-checks for x86_64 from this Mac, clean); the GPU Tabula
+  workspace type-checks for x86_64 from this Mac, clean); the GPU Olo
   draws with is the boot GPU (Intel on a hybrid ThinkPad;
   `ANVIL_DRM_DEVICE` overrides); touch screens, keyboard backlights
   (`*kbd_backlight`) and laptop panel brightness are already generic.
@@ -416,9 +423,9 @@ as they land (with the commit), add new ones as they come up.
   long Passwords waits before locking itself (or never). Preferences
   gets a Security panel for them (and a home for other security
   settings later); Passwords follows changes live.
-- ~~**Other programs survive a Tabula upgrade**~~ (done: `tabula-wlproxy` holds their connections and replays their state on the new app_server; tested headless with GNOME Text Editor, kitty and Chrome through several reloads, a menu open during one, a tabula-session re-exec and a proxy crash; HACKING, "The session and in-place reload". Deskbar's upgrade alert names only programs that won't survive (`WindowInfo::kept`), and windows put back after a restart stay where they were even when they hang off the screen. X11 is out: Tabula is Wayland only, Xwayland support removed) (Ben): when app_server
-  restarts for an upgrade, Chrome and other non-Tabula Wayland apps
-  keep running with their windows, as Tabula's own apps do (e.g. hand
+- ~~**Other programs survive an Olo upgrade**~~ (done: `olo-wlproxy` holds their connections and replays their state on the new app_server; tested headless with GNOME Text Editor, kitty and Chrome through several reloads, a menu open during one, an olo-session re-exec and a proxy crash; HACKING, "The session and in-place reload". Deskbar's upgrade alert names only programs that won't survive (`WindowInfo::kept`), and windows put back after a restart stay where they were even when they hang off the screen. X11 is out: Olo is Wayland only, Xwayland support removed) (Ben): when app_server
+  restarts for an upgrade, Chrome and other non-Olo Wayland apps
+  keep running with their windows, as Olo's own apps do (e.g. hand
   the listening socket and client connections to the new app_server,
   or a small proxy that holds client connections across the restart
   and replays their state).
@@ -438,12 +445,12 @@ as they land (with the commit), add new ones as they come up.
   upgrade or reload kept a claim to focus for good, so a window reopened
   in its remembered place, like the Upgrade alert Deskbar closes and
   reopens, came up under it; now the claim lasts only while windows come
-  back) (Ben): the Upgrade Tabula dialog
+  back) (Ben): the Upgrade Olo dialog
   from the Deskbar tray sometimes opened behind every other window
   (after Tile All). A newly opened dialog or alert must be raised and
   focused.
 - ~~**Disk manager**~~ (done: DriveSetup, apps/drive-setup, tested against
-  `udisks-fake` on a private bus rather than loop devices) (Ben): a native Tabula utility for disks and
+  `udisks-fake` on a private bus rather than loop devices) (Ben): a native Olo utility for disks and
   partitions, after BeOS's DriveSetup (and Haiku's): the disks as a tree
   with their partitions drawn to scale, and per partition: mount and
   unmount, initialize (format) with a file system, create/delete/resize
@@ -466,20 +473,20 @@ as they land (with the commit), add new ones as they come up.
   (History window, Deskbar's bell with the unread count); Do Not Disturb
   by hand, for a while or on a daily schedule; per-app banner, sound and
   history choices (Preferences ▸ Notifications); agent-readable
-  (`org.tabula.Notifications1`, `tabula-notifications --list --json`,
+  (`com.olodesktop.Notifications1`, `olo-notifications --list --json`,
   `--invoke`, `--dismiss`, `--clear`, `--dnd`); GLib's
   `org.gtk.Notifications` (GApplication apps, their actions run on the
-  app) and Flatpak apps through the GTK portal; a kit API for Tabula's
-  own apps (`tabula_kit::notify`: Tracker's long
+  app) and Flatpak apps through the GTK portal; a kit API for Olo's
+  own apps (`olo_kit::notify`: Tracker's long
   copies). Left: Do Not Disturb while sharing the screen, once there is
   screen sharing (app_server's image-copy capture fails every frame
   today; see multiplayer screen control).
 - ~~**Log viewer app**~~ (done: `apps/logs`, Log Viewer; the journal read
   natively, live; Find, program, level and time filters; syntax
-  highlighting; Show in Context; `tabula-logs --print … [--json]` for
+  highlighting; Show in Context; `olo-logs --print … [--json]` for
   agents; HACKING, "Log Viewer". Left: the apps' own log files, where
-  there are any beside the journal) (Ben): a Tabula app that shows every Tabula
-  event in one place (app_server, tabula-session, Deskbar, Tracker and
+  there are any beside the journal) (Ben): an Olo app that shows every Olo
+  event in one place (app_server, olo-session, Deskbar, Tracker and
   every app's log) so issues can be spotted and tracked down: live tail,
   filter by program, level and text, a time range, warnings and errors
   highlighted, and the lines around an error. Read the user's journal
@@ -500,25 +507,25 @@ as they land (with the commit), add new ones as they come up.
   too.
 - ~~**Scrolling feels the same everywhere**~~ (app_server `scroll.rs`: Chromium ×1/12 a touchpad, ×0.4 a wheel; GTK 4 ×0.4 a touchpad; measured headless; GTK 3 not yet) (Ben): in Chrome scrolling is
   far too fast (maybe GTK apps too). A wheel notch or touchpad swipe
-  should move Chrome and GTK apps as far as it moves a Tabula app, with
+  should move Chrome and GTK apps as far as it moves an Olo app, with
   the same smooth scrolling (app_server's axis values, value120 and
   discrete steps, and what each toolkit multiplies them by).
 - ~~**GNOME/GTK 4 apps look at home**~~ (done: the portals start
   in a real session (they never did, so GTK 4 had no settings at all),
-  and GTK 3, GTK 4 and libadwaita take Tabula's colours, fonts and
+  and GTK 3, GTK 4 and libadwaita take Olo's colours, fonts and
   close-left/zoom-right buttons in both modes; GTK windows without a
-  headerbar get Tabula's tab and frame through KDE's server-decoration
+  headerbar get Olo's tab and frame through KDE's server-decoration
   protocol, tested headless with GTK 3 and 4; headerbar and libadwaita
-  windows draw their own, by design, in Tabula's colours; HACKING,
+  windows draw their own, by design, in Olo's colours; HACKING,
   "Other toolkits' programs") (Ben): a GTK 4 / libadwaita app
-  opened in Tabula follows light/dark mode properly (and switches live),
-  and gets Tabula's window chrome (yellow tab, BeOS borders) rather than
+  opened in Olo follows light/dark mode properly (and switches live),
+  and gets Olo's window chrome (yellow tab, BeOS borders) rather than
   its own client-side decorations: e.g. asking for server-side decorations
   via xdg-decoration / GTK's settings, and whatever libadwaita needs
   (portal `org.freedesktop.appearance color-scheme`, dconf) to agree.
-- ~~**Settings & state backup: export/import in one file**~~ (Preferences ▸ Backup and `tabula-preferences --export/--inspect/--import`; tested headless) (Ben): a native
-  Tabula utility that exports every Tabula setting and piece of saved
-  state, across all Tabula apps (Preferences settings, Tracker views,
+- ~~**Settings & state backup: export/import in one file**~~ (Preferences ▸ Backup and `olo-preferences --export/--inspect/--import`; tested headless) (Ben): a native
+  Olo utility that exports every Olo setting and piece of saved
+  state, across all Olo apps (Preferences settings, Tracker views,
   Deskbar, Passwords' vault
   file, keymaps, window state, …), into a single compressed file, and
   imports one back (with a summary of what it holds and a confirm before
@@ -535,45 +542,11 @@ as they land (with the commit), add new ones as they come up.
   per-app Clear became Dismiss too; HACKING, history.rs).
 - ~~**New Window from a running app's context menu**~~ (Ben; done:
   HACKING, "Single instance"): Tracker offers New Window on a running
-  Tabula app's program or link (folders and desktop), and Deskbar in
+  Olo app's program or link (folders and desktop), and Deskbar in
   the app's menu; both forward
   `--new-window` to the running copy instead of launching a second one
   (Tracker, Terminal and StyledEdit; `apps::NEW_WINDOW`). Agents run
-  `tabula-x --new-window`.
-- **Rename Tabula to Olo, use the new brand, ship a wallpaper pack**
-  (Ben; the very last thing, after everything else is done):
-  - *Rename* everywhere (code, crates, binaries, app ids, environment
-    variables, paths, the session entry, install tooling, UI text, docs);
-    nothing still calls itself Tabula except history (the journal) and
-    compatibility shims kept on purpose. Public places (README, About,
-    session entry, website copy) say "Olo Desktop" (Olo Inc. holds "OLO"
-    software trademarks); plain `olo` in code. Domain olodesktop.com.
-    Existing installs carry on with nothing lost (settings, the browser
-    profile, passwords and keychain access, saved window state), and a
-    running session upgrades or reloads into the renamed build as it was:
-    work out the migrations and test from a session started on the old
-    build. Leave the repo directory and GitHub repo name (Ben renames them).
-  - *Brand* from ~/olo-logos/ (overview: kit/brand-sheet.png): wordmark
-    icons4/bounce-wordmark-2.png, mark icons5/yellow-sides-1.png, desktop
-    icon kit/candidates/desktop-icon-2.png (through the docs/ICONS.md
-    pipeline), and the finished kit/ (light/dark and single-colour
-    wordmarks, flat and single-colour marks, app badges, favicons,
-    lockups, social and GitHub images; each with its prompt .json). Use
-    them for the app and desktop icon, Deskbar, About, README and
-    wherever the old identity shows.
-  - ~~*Wallpapers*~~ (done: the pack in data/wallpapers, Backgrounds'
-    picker, light/dark and shape following live; HACKING, Backgrounds)
-    from ~/olo-logos/wallpapers/{4k (3840×2160), ultrawide
-    (3840×1648)} (not v1/ or dropped/): dusk-gradient (default; light and
-    -dark), boing (light and -dark), be-blue, aqua, clouds,
-    workbench-pattern (one image each). Preferences picks from the pack
-    with previews (thumbnails loaded in the background) and still takes
-    a file of your own; light/dark versions follow the system mode live
-    (Auto's schedule too); each screen gets the 4K or ultrawide version by
-    its shape; a wallpaper already chosen is kept. The PNGs (about 93 MB)
-    go in Git LFS. Never
-    decode 4K on the UI thread; pixel-perfect light/dark/night at 2×;
-    survive reload; shared widgets in the kit; tsession; journal.
+  `olo-x --new-window`.
 - ~~**Tracker column view scrolls sideways**~~ (Ben): touchpad,
   Shift+wheel or the new scroll bar; it no longer snaps back to the
   active column, which it only follows when the selection moves.
@@ -594,22 +567,22 @@ as they land (with the commit), add new ones as they come up.
   page or folder.
 
 - ~~**Terminal sessions that outlive Terminal**~~ (Ben): done. Shells
-  live in tabula-termd (one per display); quitting, crashing or upgrading
-  Terminal reattaches every window with its scrollback, and tabula-termd
+  live in olo-termd (one per display); quitting, crashing or upgrading
+  Terminal reattaches every window with its scrollback, and olo-termd
   upgrades in place too. Terminal ▸ Terminal Daemon… shows it and can
   restart it (keeping the shells) or start it over. Images come back
   too.
 - Terminal: ~~find in scrollback~~ (Edit ▸ Find…, Find Again, Find
   Selection; regex over screen and history); ~~release-build memory
   check~~ (fonts mapped, wgpu MemoryUsage: every app ~100 MB smaller);
-  ~~colour emoji~~ (tabula-emoji, COLRv1 via skrifa + tiny-skia).
+  ~~colour emoji~~ (olo-emoji, COLRv1 via skrifa + tiny-skia).
 - ~~Activity Monitor~~: apps/activity (graphs of every /proc, /sys and
   hwmon source; processes with Quit / Force Quit).
 - Preferences, remaining panels: ~~Network~~ (Wi-Fi list, join with
   password, disconnect, forget, interface details; ~~WPA-Enterprise~~: PEAP/TTLS/TLS
   sheet), ~~Bluetooth~~ (search, pair with passkey/PIN agent, connect,
   remove, battery), ~~Date & Time~~ (calendar, clock face, network
-  time, time zone, Deskbar 24-hour/seconds/day), ~~Touch ID~~ (enrol with progress, remove); ~~Restart Tabula~~; ~~a Choose… file panel for the
+  time, time zone, Deskbar 24-hour/seconds/day), ~~Touch ID~~ (enrol with progress, remove); ~~Restart Olo~~; ~~a Choose… file panel for the
   wallpaper~~ (app_server now draws it); ~~Display mode switching and drag-to-arrange~~ (with keep/revert
   countdown; modes and positions restored at start-up).
 - ~~**StyledEdit**~~: styled text in attributes beside plain text, Font /
@@ -624,7 +597,7 @@ as they land (with the commit), add new ones as they come up.
 - Password manager: ~~Rust 1Password SDK~~ (desktop-app integration;
   fake server for tests), ~~Passwords app~~ (browse, copy, edit, create,
   archive/delete, generator, lock with ~~Touch ID through fprintd~~ or
-  password), ~~browser integration~~ (the Tabula Passwords extension in
+  password), ~~browser integration~~ (the Olo Passwords extension in
   Chrome).
 - Viewer: ~~image zoom/pan~~ (full resolution up to the texture limit,
   View menu, pinch/⌘-scroll/double-click, drag and scroll to pan; halved
@@ -664,23 +637,23 @@ as they land (with the commit), add new ones as they come up.
   (`fixup_positions`); windows on a removed screen go to the main one,
   cascaded, and ones that no longer fit are fitted (`rehome_windows`).
 
-- ~~Cursor shapes~~ (Haiku's cursors via tabula-hvif, cursor-shape-v1);
+- ~~Cursor shapes~~ (Haiku's cursors via olo-hvif, cursor-shape-v1);
   ~~night light~~ (CRTC gamma ramps, faded); ~~libinput settings~~ (touchpad tap, tap-drag, dwt, click
   method, natural scroll, speed; udev only); ~~centred alerts~~
   (`WindowOptions::alert`, set_parent, placed over the parent).
 
 ## Lock, screensaver, caffeinated
 
-- ~~**Screen lock**~~: ext-session-lock in app_server, `tabula-lock`
+- ~~**Screen lock**~~: ext-session-lock in app_server, `olo-lock`
   (PAM + Touch ID), Ctrl+⌘Q / Deskbar / idle display-off / sleep / logind
   Lock; never fails open; survives reload (see HACKING "The lock screen").
   Lid close goes through logind's suspend, so it is covered when the lid
   sleeps.
-- ~~**Screensaver**~~: the eleven R5 modules (tabula-screensavers),
-  tabula-screensaver on every output, Preferences ▸ Screen Saver (Fade and
+- ~~**Screensaver**~~: the eleven R5 modules (olo-screensavers),
+  olo-screensaver on every output, Preferences ▸ Screen Saver (Fade and
   Modules tabs, live preview, Test, hot corners), lock-after drawing over the
   lock screen; Flip and Lens see the desktop on every backend.
-- ~~**Caffeinated mode**~~: Deskbar cup (click; right-click or Tabula ▸
+- ~~**Caffeinated mode**~~: Deskbar cup (click; right-click or Olo ▸
   Stay Awake for 1–8 hours or with the lid closed), Ctrl+⌘A, timed end,
   shown in the cup's tip and menu.
 

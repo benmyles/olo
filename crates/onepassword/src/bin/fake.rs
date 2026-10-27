@@ -3,10 +3,10 @@
 //! `fake`). It starts with sample data, or FILE's (which it keeps up to
 //! date; `others` in it are more signed-in accounts). `--accounts` writes
 //! DIR/1password.sqlite listing its accounts, as the app's own does (point
-//! `TABULA_1PASSWORD_DATA` at DIR).
+//! `OLO_1PASSWORD_DATA` at DIR).
 
 fn main() {
-    let mut account = "Tabula Test".to_string();
+    let mut account = "Olo Test".to_string();
     let mut socket = onepassword::desktop::SOCKET.to_string();
     let mut data = None;
     let mut accounts = None;

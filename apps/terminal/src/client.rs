@@ -1,9 +1,9 @@
-//! Terminal's side of tabula-termd (termd.rs), which runs the shells.
+//! Terminal's side of olo-termd (termd.rs), which runs the shells.
 //!
 //! One connection per Terminal, shared by its windows: a thread reads what
 //! comes back and hands each shell's part to that shell's own thread
 //! (session.rs), and a thread writes, so the UI never waits on the
-//! socket. If the connection drops (tabula-termd upgrading), it connects
+//! socket. If the connection drops (olo-termd upgrading), it connects
 //! again and re-attaches every shell.
 
 use std::{
@@ -71,21 +71,21 @@ impl Writer {
 
 fn hello() -> Frame {
     let env: Vec<(String, String)> = std::env::vars()
-        .filter(|(k, _)| !matches!(k.as_str(), "XDG_ACTIVATION_TOKEN" | "DESKTOP_STARTUP_ID" | "TABULA_RESTORE"))
+        .filter(|(k, _)| !matches!(k.as_str(), "XDG_ACTIVATION_TOKEN" | "DESKTOP_STARTUP_ID" | "OLO_RESTORE"))
         .collect();
     Frame::json(wire::HELLO, 0, &wire::Hello { pid: std::process::id() as i32, env })
 }
 
-/// Start tabula-termd (it returns once it's listening).
+/// Start olo-termd (it returns once it's listening).
 fn start_daemon() {
-    let exe = std::env::current_exe().ok().and_then(|p| Some(p.parent()?.join("tabula-termd"))).filter(|p| p.exists());
-    let program = exe.unwrap_or_else(|| PathBuf::from("tabula-termd"));
+    let exe = std::env::current_exe().ok().and_then(|p| Some(p.parent()?.join("olo-termd"))).filter(|p| p.exists());
+    let program = exe.unwrap_or_else(|| PathBuf::from("olo-termd"));
     if let Err(e) = std::process::Command::new(&program).stdin(std::process::Stdio::null()).status() {
-        tracing::error!(?e, program = %program.display(), "could not start tabula-termd");
+        tracing::error!(?e, program = %program.display(), "could not start olo-termd");
     }
 }
 
-/// Connect, starting tabula-termd if it isn't running; keep trying for
+/// Connect, starting olo-termd if it isn't running; keep trying for
 /// `patience`.
 fn dial(patience: Duration) -> io::Result<UnixStream> {
     let deadline = Instant::now() + patience;
@@ -161,7 +161,7 @@ impl Link {
         self.send(Frame::json(wire::SPAWN, id, &spawn));
     }
 
-    /// Hand tabula-termd a shell we ran ourselves (before there was one).
+    /// Hand olo-termd a shell we ran ourselves (before there was one).
     pub fn adopt(&self, id: u64, tx: mpsc::Sender<Chunk>, adopt: wire::Adopt, pty: OwnedFd) {
         self.register(id, tx, adopt.grid);
         let mut f = Frame::json(wire::ADOPT, id, &adopt);
@@ -202,7 +202,7 @@ impl Link {
         self.0.shells.lock().unwrap().remove(&id);
     }
 
-    /// Quitting: leave the shells running, and say so, so tabula-termd
+    /// Quitting: leave the shells running, and say so, so olo-termd
     /// doesn't start Terminal again. Waits (briefly) for what's queued to
     /// go out first.
     pub fn bye(&self) {
@@ -254,7 +254,7 @@ impl Link {
             match self.reconnect() {
                 Some(r) => reader = r,
                 None => {
-                    tracing::error!("lost tabula-termd");
+                    tracing::error!("lost olo-termd");
                     self.0.leaving.store(true, Ordering::Release);
                     self.0.reconnected.notify_all();
                     for (_, e) in self.0.shells.lock().unwrap().drain() {
@@ -278,7 +278,7 @@ impl Link {
         let reader = wire::Reader::new(s.try_clone().ok()?);
         *stream = Some(s);
         self.0.reconnected.notify_all();
-        tracing::info!("reconnected to tabula-termd");
+        tracing::info!("reconnected to olo-termd");
         Some(reader)
     }
 
@@ -304,9 +304,9 @@ impl Link {
     }
 }
 
-// ---- looking after tabula-termd (Terminal ▸ Terminal Daemon…) -------------
+// ---- looking after olo-termd (Terminal ▸ Terminal Daemon…) -------------
 
-/// A short connection of our own, to ask or tell tabula-termd something
+/// A short connection of our own, to ask or tell olo-termd something
 /// (not the shared one: this mustn't look like a Terminal attaching).
 fn ask(kind: u8) -> Result<UnixStream, String> {
     let s = UnixStream::connect(wire::socket_path()).map_err(|_| "Not running.".to_owned())?;
@@ -317,7 +317,7 @@ fn ask(kind: u8) -> Result<UnixStream, String> {
     Ok(s)
 }
 
-/// How tabula-termd is. (Blocks for up to a couple of seconds: call it
+/// How olo-termd is. (Blocks for up to a couple of seconds: call it
 /// off the UI thread.)
 pub fn status() -> Result<wire::Status, String> {
     let s = ask(wire::STATUS)?;
@@ -333,28 +333,29 @@ pub fn status() -> Result<wire::Status, String> {
     Ok(status)
 }
 
-/// Have tabula-termd re-execute itself; the shells carry on.
+/// Have olo-termd re-execute itself; the shells carry on.
 pub fn restart() -> Result<(), String> {
     let s = ask(wire::RESTART)?;
     let _ = wire::write(&s, &Frame::new(wire::BYE, 0, Vec::new()));
     Ok(())
 }
 
-/// Start tabula-termd if it isn't running.
+/// Start olo-termd if it isn't running.
 pub fn start() -> Result<(), String> {
     dial(Duration::from_secs(5)).map(drop).map_err(|e| format!("Couldn't start it: {e}."))
 }
 
-/// End tabula-termd, however it is (and with it, the shells). Its pid
+/// End olo-termd, however it is (and with it, the shells). Its pid
 /// is in its lock file (or, from its last status, `known`).
 pub fn stop(known: Option<i32>) -> Result<(), String> {
-    let ours = |pid: &i32| std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| c.trim() == "tabula-termd");
+    // (`tabula-termd` if it started before the rename and hasn't upgraded.)
+    let ours = |pid: &i32| std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| matches!(c.trim(), "olo-termd" | "tabula-termd"));
     let Some(pid) = std::fs::read_to_string(wire::lock_path()).ok().and_then(|p| p.trim().parse::<i32>().ok()).filter(ours).or(known.filter(ours)) else {
         // Nothing to stop.
         return Ok(());
     };
-    let gone = || std::fs::read_to_string(format!("/proc/{pid}/comm")).map_or(true, |c| c.trim() != "tabula-termd");
-    // SAFETY: signalling our own tabula-termd.
+    let gone = || std::fs::read_to_string(format!("/proc/{pid}/comm")).map_or(true, |c| !matches!(c.trim(), "olo-termd" | "tabula-termd"));
+    // SAFETY: signalling our own olo-termd.
     unsafe { libc::kill(pid, libc::SIGTERM) };
     let deadline = Instant::now() + Duration::from_secs(2);
     while !gone() {

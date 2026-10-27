@@ -249,7 +249,7 @@ mod tests {
 
     #[test]
     fn names_contents_and_filters() {
-        let dir = std::env::temp_dir().join(format!("tabula-find-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-find-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("sub")).unwrap();
         std::fs::create_dir_all(dir.join(".hidden")).unwrap();

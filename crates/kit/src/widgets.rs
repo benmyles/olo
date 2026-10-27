@@ -12,7 +12,7 @@ use egui::{
     Align, Color32, CursorIcon, FontId, Galley, Id, Key, Painter, Pos2, Rect, Response, Sense, Shape, Stroke,
     Ui, Vec2, Widget, WidgetInfo, Role, pos2, vec2,
 };
-use tabula_theme::Palette;
+use olo_theme::Palette;
 
 use crate::{
     menu::{self, Menu, MenuAnchor, MenuRequest},
@@ -109,9 +109,9 @@ impl Widget for Button<'_> {
         let (top, bottom) = if pressed {
             (shade(&p, base, 1.2), shade(&p, base, 1.12))
         } else if hovered {
-            (c(tabula_theme::tint(base, 0.7)), shade(&p, base, 1.02))
+            (c(olo_theme::tint(base, 0.7)), shade(&p, base, 1.02))
         } else {
-            (c(tabula_theme::tint(base, 0.85)), shade(&p, base, 1.06))
+            (c(olo_theme::tint(base, 0.85)), shade(&p, base, 1.06))
         };
         let border = if ui.is_enabled() { shade(&p, bg, 1.6) } else { shade(&p, bg, 1.3) };
         style::vgradient(painter, r.shrink(1.0), top, bottom);
@@ -667,7 +667,7 @@ impl Widget for Slider<'_> {
         let (tt, tb) = if pressed {
             (shade(&p, base, 1.15), shade(&p, base, 1.08))
         } else {
-            (c(tabula_theme::tint(base, 0.8)), shade(&p, base, 1.06))
+            (c(olo_theme::tint(base, 0.8)), shade(&p, base, 1.06))
         };
         // A soft drop shadow lifts the thumb off the bar.
         painter.rect_filled(thumb.translate(vec2(1.0, 1.0)), 1.0, Color32::from_black_alpha(40));
@@ -783,7 +783,7 @@ impl Widget for MenuField<'_> {
         }
         // Raised field with a drop-down mark.
         let base = p.menu_background;
-        style::vgradient(painter, field.shrink(1.0), c(tabula_theme::tint(base, 0.82)), shade(&p, base, 1.05));
+        style::vgradient(painter, field.shrink(1.0), c(olo_theme::tint(base, 0.82)), shade(&p, base, 1.05));
         frame_rect(painter, field, shade(&p, p.panel_background, 1.55));
         style::bevel(painter, field.shrink(1.0), c(p.shine), shade(&p, base, 1.2));
         let text = self.options.get(*self.selected).copied().unwrap_or("");
@@ -1303,7 +1303,7 @@ pub struct ScrollView {
     horizontal: bool,
     border: bool,
     focused: bool,
-    background: Option<tabula_theme::Rgba>,
+    background: Option<olo_theme::Rgba>,
     stick_to_bottom: bool,
     auto_hide: bool,
 }
@@ -1357,7 +1357,7 @@ impl ScrollView {
         self.focused = on;
         self
     }
-    pub fn background(mut self, rgba: tabula_theme::Rgba) -> Self {
+    pub fn background(mut self, rgba: olo_theme::Rgba) -> Self {
         self.background = Some(rgba);
         self
     }
@@ -1641,7 +1641,7 @@ fn scroll_bar(ui: &mut Ui, id: Id, bar: Rect, vertical: bool, offset: &mut f32, 
         let (t0, t1) = if pressed {
             (shade(p, base, 1.12), shade(p, base, 1.05))
         } else {
-            (c(tabula_theme::tint(base, 0.85)), shade(p, base, 1.04))
+            (c(olo_theme::tint(base, 0.85)), shade(p, base, 1.04))
         };
         let k = knob;
         if vertical {
@@ -1685,7 +1685,7 @@ fn hgradient(p: &Painter, r: Rect, left: Color32, right: Color32) {
 fn draw_arrow_button(painter: &Painter, r: Rect, dir: Arrow, down: bool, enabled: bool, p: &Palette) {
     let base = p.control_background;
     let bg = p.panel_background;
-    let fill = if down { shade(p, base, 1.15) } else { c(tabula_theme::tint(base, 0.9)) };
+    let fill = if down { shade(p, base, 1.15) } else { c(olo_theme::tint(base, 0.9)) };
     painter.rect_filled(r.shrink(1.0), 0.0, fill);
     frame_rect(painter, r, shade(p, bg, 1.55));
     if down {
@@ -1867,7 +1867,7 @@ impl<'a> ColumnListView<'a> {
         let header = Rect::from_min_size(inner.min, vec2(inner.width(), HEADER_HEIGHT));
         let painter = ui.painter().clone();
         let bg = p.panel_background;
-        style::vgradient(&painter, header, c(tabula_theme::tint(bg, 0.8)), shade(&p, bg, 1.04));
+        style::vgradient(&painter, header, c(olo_theme::tint(bg, 0.8)), shade(&p, bg, 1.04));
         hline(&painter, header.left(), header.right(), header.bottom() - 1.0, shade(&p, bg, 1.45));
         let mut x = header.left();
         let last = self.columns.len().saturating_sub(1);
@@ -2030,7 +2030,7 @@ impl<'a> ColumnListView<'a> {
                         let sel = if focused {
                             c(p.list_selected_background)
                         } else {
-                            c(tabula_theme::mix(p.list_selected_background, p.list_background, 0.35))
+                            c(olo_theme::mix(p.list_selected_background, p.list_background, 0.35))
                         };
                         painter.rect_filled(r, 0.0, sel);
                     }
@@ -2068,7 +2068,7 @@ impl<'a> ColumnListView<'a> {
         if rows == 0
             && let Some(text) = self.empty
         {
-            let dim = c(tabula_theme::mix(p.list_item_text, p.list_background, 0.5));
+            let dim = c(olo_theme::mix(p.list_item_text, p.list_background, 0.5));
             style::label(&child.painter().with_clip_rect(body), body.center().x, body.center().y, Align::Center, text, plain_font(), dim);
         }
         if let Some(from) = band_from {

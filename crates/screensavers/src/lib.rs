@@ -1,16 +1,16 @@
-//! The screen saver modules of BeOS R5, redrawn for Tabula: Blackness,
+//! The screen saver modules of BeOS R5, redrawn for Olo: Blackness,
 //! BuyNow, Flip, Icons, Lens, Lissart, Message, Spiral, Spots, StringTheme
 //! and SuperString (the list in R5's ScreenSaver preferences).
 //!
 //! A module draws a whole frame into a rect with an egui painter, so the
-//! same code runs full screen in `tabula-screensaver` and in the little
+//! same code runs full screen in `olo-screensaver` and in the little
 //! monitor of Preferences ▸ Screen Saver. Sizes scale with the rect
 //! ([`Frame::k`]); motion is simulated in fixed steps, so it looks the same
 //! at any frame rate.
 
 use std::collections::BTreeMap;
 
-use tabula_kit::egui::{Color32, Painter, Rect, TextureId, Vec2, ecolor::HsvaGamma};
+use olo_kit::egui::{Color32, Painter, Rect, TextureId, Vec2, ecolor::HsvaGamma};
 
 mod basic;
 mod desktop;
@@ -226,14 +226,14 @@ mod tests {
     /// renderer) without panicking.
     #[test]
     fn all_draw() {
-        let ctx = tabula_kit::egui::Context::default();
+        let ctx = olo_kit::egui::Context::default();
         for m in MODULES {
             let mut module = m.make(&Options::new(), 7);
             for _ in 0..3 {
                 let mut out = ctx.run_ui(Default::default(), |ui| {
                     let f = Frame {
                         painter: ui.painter(),
-                        rect: Rect::from_min_size(Default::default(), tabula_kit::egui::vec2(640.0, 400.0)),
+                        rect: Rect::from_min_size(Default::default(), olo_kit::egui::vec2(640.0, 400.0)),
                         dt: 0.5,
                         desktop: None,
                     };

@@ -1,6 +1,6 @@
 //! The screen saver: after `screen_saver.run_minutes` idle (or at once, from
 //! Preferences' Test or the "Fade now" corner) app_server starts
-//! `tabula-screensaver` on a connection of its own; it covers every output
+//! `olo-screensaver` on a connection of its own; it covers every output
 //! with an overlay layer surface and draws the chosen module. Any input
 //! ends it (app_server disconnects it). If the screen locks while it runs
 //! (`screen_saver.lock`), it keeps drawing over the lock screen until then.
@@ -17,12 +17,12 @@ use smithay::{
     reexports::wayland_server::backend::{ClientId, DisconnectReason},
     utils::{Logical, Point},
 };
-use tabula_protocol::Corner;
+use olo_protocol::Corner;
 use tracing::{info, warn};
 
 use crate::state::{AnvilState, Backend};
 
-/// Modules that show the desktop (tabula-screensavers' `uses_desktop`):
+/// Modules that show the desktop (olo-screensavers' `uses_desktop`):
 /// app_server grabs a picture of it for them.
 const DESKTOP_MODULES: &[&str] = &["Flip", "Lens"];
 
@@ -49,7 +49,7 @@ impl Saver {
 fn desktop_picture() -> Option<std::path::PathBuf> {
     let dir = std::env::var_os("XDG_RUNTIME_DIR")?;
     let display = std::env::var("WAYLAND_DISPLAY").ok()?;
-    Some(std::path::PathBuf::from(dir).join(format!("tabula-saver-desktop-{display}.png")))
+    Some(std::path::PathBuf::from(dir).join(format!("olo-saver-desktop-{display}.png")))
 }
 
 impl<B: Backend + 'static> AnvilState<B> {
@@ -70,7 +70,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             let _ = self.request_screenshot(crate::screenshot::Shot::screen(path.clone()));
             args.extend(["--desktop".to_owned(), path.display().to_string()]);
         }
-        match self.spawn_private("tabula-screensaver", &args) {
+        match self.spawn_private("olo-screensaver", &args) {
             Ok((id, gone)) => {
                 info!(module = ss.module, "screen saver started");
                 self.lock.over = Some(id.clone());

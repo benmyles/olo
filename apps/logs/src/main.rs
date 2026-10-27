@@ -1,4 +1,4 @@
-//! Log Viewer: every Tabula program's log in one place, from the user's
+//! Log Viewer: every Olo program's log in one place, from the user's
 //! journal (read natively, journal.rs, on a worker thread, reader.rs),
 //! live as it is written. Find text, show one program or all of them,
 //! warnings and errors only, the last ten minutes or since startup; a
@@ -6,7 +6,7 @@
 //! around one.
 //!
 //! For agents the same query prints from the command line:
-//! `tabula-logs --print [--since 10m|2h|today|boot|all] [--level
+//! `olo-logs --print [--since 10m|2h|today|boot|all] [--level
 //! info|warning|error] [--program NAME | --all-programs] [--find TEXT]
 //! [--json] [--follow]`.
 
@@ -20,7 +20,7 @@ use std::{collections::BTreeSet, sync::Arc, time::Instant};
 use model::{Level, Line, Now, Query, Since};
 use reader::Update;
 use serde::{Deserialize, Serialize};
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
     egui::{self, Align, Id, Key, Rect, Ui, pos2, vec2},
     instance::{self, Launch},
@@ -29,7 +29,7 @@ use tabula_kit::{
     widgets::{self, Button, Cell, CheckBox, Column, ColumnListView, ListState, MenuField, TextControl, TextView},
 };
 
-const APP_ID: &str = "tabula.logs";
+const APP_ID: &str = "olo.logs";
 const TITLE: &str = "Log Viewer";
 
 const LEVELS: [(Level, &str); 4] =
@@ -59,7 +59,7 @@ impl Default for Settings {
 }
 
 fn settings_path() -> std::path::PathBuf {
-    tabula_kit::config_dir().join("logs.json")
+    olo_kit::config_dir().join("logs.json")
 }
 
 struct Logs {
@@ -87,9 +87,9 @@ struct Logs {
 }
 
 /// `text` highlighted in the palette's colours (highlight.rs), on `base`.
-fn highlighted(text: &str, font: egui::FontId, base: egui::Color32, p: &tabula_theme::Palette) -> egui::text::LayoutJob {
+fn highlighted(text: &str, font: egui::FontId, base: egui::Color32, p: &olo_theme::Palette) -> egui::text::LayoutJob {
     use highlight::Kind;
-    use tabula_theme::mix;
+    use olo_theme::mix;
     let bg = p.document_background;
     let text_rgba = [base.r(), base.g(), base.b(), 255];
     let color = |k: Kind| match k {
@@ -279,16 +279,16 @@ impl Logs {
         ui.put(find_r, TextControl::new(&mut q.text).label("Find:").hint("Text or program"));
         let mut changed = q.text != before;
 
-        // Which programs: Tabula's, every one, or one of Tabula's seen in
+        // Which programs: Olo's, every one, or one of Olo's seen in
         // this time (any other through Find, or a line's Show Only).
-        let mut names: Vec<String> = self.programs.iter().filter(|p| model::is_tabula(p)).map(|p| p.to_string()).collect();
+        let mut names: Vec<String> = self.programs.iter().filter(|p| model::is_olo(p)).map(|p| p.to_string()).collect();
         if let Some(p) = &q.program
             && !names.contains(p)
         {
             names.push(p.clone());
         }
-        names.sort_by_key(|n| (!model::is_tabula(n), n.to_lowercase()));
-        let mut options: Vec<&str> = vec!["Tabula Programs", "All Programs"];
+        names.sort_by_key(|n| (!model::is_olo(n), n.to_lowercase()));
+        let mut options: Vec<&str> = vec!["Olo Programs", "All Programs"];
         options.extend(names.iter().map(String::as_str));
         let mut which = match &q.program {
             Some(p) => names.iter().position(|n| n == p).map_or(0, |i| i + 2),
@@ -331,8 +331,8 @@ impl Logs {
         ];
         let (warn, err) = (
             c(match p.mode {
-                tabula_theme::ThemeMode::Light => p.tab_focused_shadow,
-                tabula_theme::ThemeMode::Dark => p.tab_focused_light,
+                olo_theme::ThemeMode::Light => p.tab_focused_shadow,
+                olo_theme::ThemeMode::Dark => p.tab_focused_light,
             }),
             c(p.failure),
         );
@@ -582,7 +582,7 @@ fn print(args: &[String]) -> i32 {
             flush(&mut lines, upto, &mut out)
         }
         Update::Failed(why) => {
-            eprintln!("tabula-logs: {why}");
+            eprintln!("olo-logs: {why}");
             status = 1;
             false
         }
@@ -592,7 +592,7 @@ fn print(args: &[String]) -> i32 {
 
 fn usage() -> i32 {
     eprintln!(
-        "usage: tabula-logs --print [--since 10m|2h|1d|today|boot|all] [--level debug|info|warning|error]\n                    [--program NAME | --all-programs] [--find TEXT] [--json] [--follow]"
+        "usage: olo-logs --print [--since 10m|2h|1d|today|boot|all] [--level debug|info|warning|error]\n                    [--program NAME | --all-programs] [--find TEXT] [--json] [--follow]"
     );
     2
 }
@@ -619,6 +619,8 @@ fn iso_time(micros: u64) -> String {
 }
 
 fn main() {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|a| a == "--print") {
         std::process::exit(print(&args));
@@ -626,7 +628,7 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    tabula_kit::run(APP_ID, |cx| {
+    olo_kit::run(APP_ID, |cx| {
         instance::listen(APP_ID, cx.proxy());
         let mut settings: Settings = std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         // A search is for now; the filters stay.

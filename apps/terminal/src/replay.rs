@@ -1,4 +1,4 @@
-//! What tabula-termd sends a Terminal that attaches to a shell: output
+//! What olo-termd sends a Terminal that attaches to a shell: output
 //! that rebuilds the shell's screen and scrollback in a fresh emulator,
 //! then the state programs set (the alternate screen and what's on it,
 //! cursor keys, keypad, mouse reporting, bracketed paste, the kitty
@@ -358,7 +358,7 @@ use alacritty_terminal::{event::VoidListener, term::Config};
         let (sa, sb) = (shared(), shared());
         let mut a = term(20, 5);
         feed_images(&mut a, &sa, format!("top\r\n\x1b_Ga=T,f=32,s=20,v=40,i=7,q=2;{data}\x1b\\after").as_bytes());
-        // tabula-termd keeps them compressed.
+        // olo-termd keeps them compressed.
         sa.images.lock().unwrap().pack();
         let replay = snapshot(&mut a, None, &sa.images.lock().unwrap());
         let mut b = term(20, 5);

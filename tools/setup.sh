@@ -1,11 +1,11 @@
 #!/bin/bash
-# Set up Tabula on a Fedora machine (x86_64 or aarch64; Workstation, or an
+# Set up Olo on a Fedora machine (x86_64 or aarch64; Workstation, or an
 # atomic desktop such as Silverblue or Aurora), from a fresh clone:
 #
 #   git clone https://github.com/benmyles/tabula && cd tabula && tools/setup.sh
 #
 # Run it as yourself; it asks for sudo when it needs root. It checks and
-# installs what Tabula needs (packages, a recent Rust), builds it, puts it
+# installs what Olo needs (packages, a recent Rust), builds it, puts it
 # on the login screen's session menu and installs its udev rules
 # (tools/install-session.sh), then says what's left. Safe to run again:
 # each step only does what isn't done yet. `--check` only reports.
@@ -23,10 +23,10 @@ ok() { echo "  ✓ $*"; }
 todo() { echo "  • $*"; }
 fail() { echo "  ✗ $*" >&2; exit 1; }
 
-# What Tabula needs, each as a check and the package that provides it
+# What Olo needs, each as a check and the package that provides it
 # (dnf takes capabilities such as pkgconfig(gbm), so a remix's own builds
 # of a library count). Building: compilers, bindgen's libclang and the
-# libraries Tabula links. Running: what a session talks to, and the fonts
+# libraries Olo links. Running: what a session talks to, and the fonts
 # its look is made of.
 NEEDS=(
     "cmd:cc gcc" "cmd:c++ gcc-c++" "cmd:clang clang" "lib:libclang.so clang-libs" "cmd:pkg-config pkgconf-pkg-config"
@@ -53,7 +53,7 @@ have_it() {
         font:*) fc-list "${what//_/ }" family 2>/dev/null | grep -q . ;;
     esac
 }
-# The oldest Rust that builds Tabula (let chains, edition 2024).
+# The oldest Rust that builds Olo (let chains, edition 2024).
 RUST_MIN=1.88
 
 say "This machine"
@@ -61,7 +61,7 @@ say "This machine"
 . /etc/os-release
 case " ${ID:-} ${ID_LIKE:-} " in
     *" fedora "*) ok "${PRETTY_NAME:-Fedora} on $(uname -m)" ;;
-    *) fail "Tabula is set up for Fedora; this is ${PRETTY_NAME:-unknown}" ;;
+    *) fail "Olo is set up for Fedora; this is ${PRETTY_NAME:-unknown}" ;;
 esac
 ATOMIC=0
 if [ -e /run/ostree-booted ]; then
@@ -74,7 +74,7 @@ if [ -d /sys/class/drm ]; then
         case "$card" in *-*) continue ;; esac
         driver=$(basename "$(readlink -f "$card/device/driver")")
         boot=""
-        [ "$(cat "$card/device/boot_vga" 2>/dev/null)" = 1 ] && boot=" (boot GPU: Tabula draws with it)"
+        [ "$(cat "$card/device/boot_vga" 2>/dev/null)" = 1 ] && boot=" (boot GPU: Olo draws with it)"
         ok "graphics: $(basename "$card") $driver$boot"
         if [ "$driver" = nvidia ] && [ "$(cat /sys/module/nvidia_drm/parameters/modeset 2>/dev/null)" != Y ]; then
             todo "NVIDIA's driver needs kernel mode setting: add nvidia-drm.modeset=1 to the kernel command line"
@@ -126,19 +126,19 @@ fi
 
 say "Building and installing"
 if [ $CHECK = 1 ]; then
-    if [ -x "$HOME/.local/bin/tabula-session" ]; then ok "installed in ~/.local/bin"; else todo "not built and installed yet"; fi
+    if [ -x "$HOME/.local/bin/olo-session" ]; then ok "installed in ~/.local/bin"; else todo "not built and installed yet"; fi
 else
     tools/install-session.sh
     ok "built, and installed in ~/.local/bin"
 fi
 
 say "Login screen"
-if [ -f /usr/local/share/wayland-sessions/tabula.desktop ]; then
-    ok "Tabula is on the session menu ($(grep -m1 '^Exec=' /usr/local/share/wayland-sessions/tabula.desktop | cut -d= -f2))"
+if [ -f /usr/local/share/wayland-sessions/olo.desktop ]; then
+    ok "Olo is on the session menu ($(grep -m1 '^Exec=' /usr/local/share/wayland-sessions/olo.desktop | cut -d= -f2))"
 else
     todo "not on the session menu yet"
 fi
-if [ -f /etc/udev/rules.d/70-tabula-displays.rules ]; then
+if [ -f /etc/udev/rules.d/70-olo-displays.rules ]; then
     ok "display brightness rules installed"
 else
     todo "display brightness rules not installed"
@@ -154,6 +154,6 @@ echo
 if [ $CHECK = 1 ]; then
     echo "Checked only; run without --check to set up."
 else
-    echo "${bold}Done.${plain} Log out, choose Tabula on the login screen, and sign in."
+    echo "${bold}Done.${plain} Log out, choose Olo on the login screen, and sign in."
     echo "Later builds: Deskbar's green arrow installs them (or tools/install-session.sh)."
 fi

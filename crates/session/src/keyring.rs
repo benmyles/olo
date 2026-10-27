@@ -4,7 +4,7 @@
 //! over its control socket. Unless that happens within two minutes it
 //! quits, and the next program to want a secret gets a fresh daemon that
 //! has to ask for the password again. GNOME finishes the start with
-//! `gnome-keyring-daemon --start`; a real Tabula session speaks the same
+//! `gnome-keyring-daemon --start`; a real Olo session speaks the same
 //! control protocol (daemon/control in gnome-keyring) itself.
 
 use std::{
@@ -135,7 +135,7 @@ mod tests {
     /// A stand-in daemon answering like gkd-control-server.c.
     #[test]
     fn starts_the_daemon_pam_left() {
-        let dir = std::env::temp_dir().join(format!("tabula-keyring-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-keyring-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("control");
         let _ = std::fs::remove_file(&path);

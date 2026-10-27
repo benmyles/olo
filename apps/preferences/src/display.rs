@@ -6,13 +6,13 @@
 
 use std::time::{Duration, Instant};
 
-use tabula_kit::{
+use olo_kit::{
     egui::{Align2, Color32, Rect, Sense, Ui, Vec2, vec2},
     metrics as m,
     style::{self, c},
     widgets::{BBox, Button, CheckBox, MenuField, Slider, StringView},
 };
-use tabula_protocol::{Mode, OutputConfig, OutputInfo, PowerStatus, Settings};
+use olo_protocol::{Mode, OutputConfig, OutputInfo, PowerStatus, Settings};
 
 use crate::server::Server;
 
@@ -173,7 +173,7 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
         ui.painter().rect_filled(r, 0.0, Color32::from_rgb(rr, gg, bb));
         let border = if chosen { c(p.keyboard_navigation) } else { c(p.frame_focused[0]) };
         let stroke_w = if chosen { 2.0 } else { 1.0 };
-        ui.painter().rect_stroke(r, 0.0, (stroke_w, border), tabula_kit::egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(r, 0.0, (stroke_w, border), olo_kit::egui::StrokeKind::Inside);
         // A menu bar strip on the main display, where Deskbar goes.
         if o.main {
             let bar = Rect::from_min_size(r.min + vec2(stroke_w, stroke_w), vec2(r.width() - 2.0 * stroke_w, 4.0));
@@ -265,11 +265,11 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
             if si != before {
                 server.configure_output(&o.name, OutputConfig { scale: Some(SCALES[si]), ..Default::default() });
             }
-            let mut ri = tabula_protocol::ROTATIONS.iter().position(|&r| r == o.rotation).unwrap_or(0);
+            let mut ri = olo_protocol::ROTATIONS.iter().position(|&r| r == o.rotation).unwrap_or(0);
             let before = ri;
             ui.add(MenuField::new(("rotation", &o.name), &mut ri, &ROTATION_NAMES).label("Rotation:").divider(label_w));
             if ri != before {
-                let rotation = Some(tabula_protocol::ROTATIONS[ri]);
+                let rotation = Some(olo_protocol::ROTATIONS[ri]);
                 server.configure_output(&o.name, OutputConfig { rotation, ..Default::default() });
             }
         }
@@ -316,7 +316,7 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
                         s.display.main = Some(if o.key.is_empty() { o.name.clone() } else { o.key.clone() });
                     }
                 }
-                ui.with_layout(tabula_kit::egui::Layout::right_to_left(tabula_kit::egui::Align::Center), |ui| {
+                ui.with_layout(olo_kit::egui::Layout::right_to_left(olo_kit::egui::Align::Center), |ui| {
                     if ui.add(Button::new("Identify")).clicked() {
                         server.identify_outputs();
                     }
@@ -390,7 +390,7 @@ fn keep_band(ui: &mut Ui, outputs: &[OutputInfo], server: &Server, st: &mut Stat
     ui.horizontal(|ui| {
         let _ = o;
         ui.add(StringView::new(&format!("Keep this resolution? Reverting in {left} s.")));
-        ui.with_layout(tabula_kit::egui::Layout::right_to_left(tabula_kit::egui::Align::Center), |ui| {
+        ui.with_layout(olo_kit::egui::Layout::right_to_left(olo_kit::egui::Align::Center), |ui| {
             if ui.add(Button::new("Keep").default(true)).clicked() {
                 st.confirm = None;
             }

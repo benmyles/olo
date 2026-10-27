@@ -16,7 +16,7 @@ use hayro::{
     PixmapSettings, RenderCache, RenderSettings, hayro_interpret::InterpreterSettings, hayro_syntax::Pdf,
     vello_cpu::color::palette::css::WHITE,
 };
-use tabula_kit::egui::ColorImage;
+use olo_kit::egui::ColorImage;
 
 use super::load::{Body, Send, Update};
 

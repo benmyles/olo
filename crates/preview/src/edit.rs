@@ -12,7 +12,7 @@ use std::{
 };
 
 use image::{DynamicImage, ImageFormat, imageops::FilterType};
-use tabula_kit::{
+use olo_kit::{
     egui::{self, Color32, CursorIcon, Pos2, Rect, Sense, Stroke, Ui, pos2, vec2},
     style::{self, c},
 };
@@ -75,7 +75,7 @@ pub fn save_format(path: &Path) -> Option<ImageFormat> {
 /// resolution as pixels; drawings like SVG are not).
 pub fn editable(path: &Path) -> bool {
     let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-    !matches!(ext.as_str(), "svg" | "svgz" | "pdf" | "") && crate::Item::stat(path).is_some_and(|i| i.kind == tabula_kit::files::Kind::Image)
+    !matches!(ext.as_str(), "svg" | "svgz" | "pdf" | "") && crate::Item::stat(path).is_some_and(|i| i.kind == olo_kit::files::Kind::Image)
 }
 
 /// What the worker sends back.
@@ -224,7 +224,7 @@ fn work(path: PathBuf, from: mpsc::Receiver<Job>, send: impl Fn(EditEvent)) {
             }
         }
         if source.is_none() {
-            match tabula_kit::images::open(&path) {
+            match olo_kit::images::open(&path) {
                 Ok((img, _)) => source = Some(img),
                 Err(e) => {
                     send(EditEvent::Failed(format!("This picture can't be edited ({e}).")));
@@ -488,7 +488,7 @@ mod tests {
 
     #[test]
     fn saves_each_format() {
-        let dir = std::env::temp_dir().join(format!("tabula-edit-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-edit-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let img = picture(12, 7);
         for ext in ["png", "jpg", "webp", "bmp", "tiff", "gif"] {
@@ -505,7 +505,7 @@ mod tests {
     #[test]
     fn editor_undo_and_dirty() {
         let (tx, rx) = mpsc::channel();
-        let dir = std::env::temp_dir().join(format!("tabula-editor-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-editor-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("p.png");
         picture(30, 10).save(&path).unwrap();

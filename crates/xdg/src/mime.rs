@@ -75,14 +75,15 @@ fn glob_match(pattern: &[char], name: &[char]) -> bool {
     }
 }
 
-/// A backup of Tabula's settings (Preferences ▸ Backup opens it).
-pub const SETTINGS_BACKUP: &str = "application/x-tabula-backup";
+/// A backup of Olo's settings (Preferences ▸ Backup opens it).
+pub const SETTINGS_BACKUP: &str = "application/x-olo-backup";
 
 /// The type the file name suggests, if any: highest weight wins, then the
 /// longest pattern (so `*.tar.gz` beats `*.gz`).
 pub fn from_name(name: &str) -> Option<String> {
-    // Ours, which no shared-mime-info database knows.
-    if name.to_lowercase().ends_with(".tabula-backup") {
+    // Ours (or Tabula's, from before the rename), which no
+    // shared-mime-info database knows.
+    if name.to_lowercase().ends_with(".olo-backup") || name.to_lowercase().ends_with(".tabula-backup") {
         return Some(SETTINGS_BACKUP.into());
     }
     let lower: Vec<char> = name.to_lowercase().chars().collect();

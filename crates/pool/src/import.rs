@@ -110,7 +110,7 @@ pub fn this_computer(p: Provider) -> Result<Found, String> {
 pub fn separate_dir() -> Result<PathBuf, String> {
     use std::os::unix::fs::DirBuilderExt;
     let base = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(std::env::temp_dir);
-    let dir = base.join(format!("tabula-pool-signin-{}", crate::store::new_id()));
+    let dir = base.join(format!("olo-pool-signin-{}", crate::store::new_id()));
     std::fs::DirBuilder::new().mode(0o700).create(&dir).map_err(|e| format!("Couldn’t make {}: {e}", dir.display()))?;
     Ok(dir)
 }
@@ -135,7 +135,7 @@ pub fn read_separate(p: Provider, dir: &Path) -> Result<Found, String> {
 
 /// Remove a separate sign-in's directory, once read (or given up).
 pub fn discard(dir: &Path) {
-    if dir.file_name().is_some_and(|n| n.to_string_lossy().starts_with("tabula-pool-signin-")) {
+    if dir.file_name().is_some_and(|n| n.to_string_lossy().starts_with("olo-pool-signin-")) {
         let _ = std::fs::remove_dir_all(dir);
     }
 }

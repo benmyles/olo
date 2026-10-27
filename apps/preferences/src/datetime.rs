@@ -1,7 +1,7 @@
 //! Date & Time: R5's Time preferences. A calendar and a clock face to set
 //! the clock by hand, network time, the time zone, and how Deskbar shows
 //! the time. The clock and zone belong to systemd-timedated
-//! (`tabula_system::time`): one worker thread reads them every couple of
+//! (`olo_system::time`): one worker thread reads them every couple of
 //! seconds and makes the changes, which polkit may stop to ask for a
 //! password, so the window never waits on it.
 
@@ -18,14 +18,14 @@ use jiff::{
     civil::{Date, Time},
     tz::TimeZone,
 };
-use tabula_kit::{
+use olo_kit::{
     egui::{Align, Color32, FontId, Context, Rect, Sense, Shape, Stroke, Ui, UiBuilder, pos2, vec2},
     metrics as m,
     style::{self, c},
     widgets::{BBox, Button, CheckBox, Column, ColumnListView, ListState, StringView, TabView, TextControl},
 };
-use tabula_protocol::{ClockSettings, Settings};
-use tabula_system::time::{self as systime, TimeStatus};
+use olo_protocol::{ClockSettings, Settings};
+use olo_system::time::{self as systime, TimeStatus};
 
 enum Request {
     Time(i64),

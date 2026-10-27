@@ -1,5 +1,5 @@
-//! The native messaging host Chrome starts for the Tabula Passwords
-//! extension (`tabula-chrome chrome-extension://ID/`). Messages are a
+//! The native messaging host Chrome starts for the Olo Passwords
+//! extension (`olo-chrome chrome-extension://ID/`). Messages are a
 //! little-endian u32 length and JSON, on stdin and stdout: `{id, request,
 //! start}` (a keychain request; with `start`, Passwords is started first
 //! if it isn't running, and a fresh start's lock is waited out) or `{id,
@@ -24,8 +24,8 @@ use std::{
 };
 
 use serde_json::{Value, json};
-use tabula_keychain::{CallError, Request, Response};
-use tabula_kit::commands::{self, WindowTree};
+use olo_keychain::{CallError, Request, Response};
+use olo_kit::commands::{self, WindowTree};
 use zeroize::Zeroize;
 
 /// The largest message taken from Chrome.
@@ -47,7 +47,7 @@ pub fn run() {
         }
         let n = u32::from_le_bytes(len) as usize;
         if n > MAX_IN {
-            eprintln!("tabula-chrome: a message of {n} bytes from Chrome is too big");
+            eprintln!("olo-chrome: a message of {n} bytes from Chrome is too big");
             return;
         }
         let mut buf = vec![0u8; n];
@@ -93,7 +93,7 @@ fn serve_trees(out: Arc<Mutex<std::io::Stdout>>, waiting: Waiting) {
         got
     });
     if let Err(e) = served {
-        eprintln!("tabula-chrome: can't answer for Chrome's widget trees: {e}");
+        eprintln!("olo-chrome: can't answer for Chrome's widget trees: {e}");
     }
 }
 
@@ -115,8 +115,8 @@ fn allowed(r: &Request) -> bool {
 
 /// Start Passwords (or bring it forward: it is a single instance).
 fn open_passwords() -> Result<(), String> {
-    let program = tabula_kit::find_program("tabula-passwords").ok_or("Passwords isn't installed.")?;
-    tabula_kit::open::spawn(&[program.into_os_string()]).map_err(|e| format!("Passwords couldn't be started: {e}"))
+    let program = olo_kit::find_program("olo-passwords").ok_or("Passwords isn't installed.")?;
+    olo_kit::open::spawn(&[program.into_os_string()]).map_err(|e| format!("Passwords couldn't be started: {e}"))
 }
 
 fn answer(m: &Value) -> Value {
@@ -145,24 +145,24 @@ fn answer(m: &Value) -> Value {
 /// Ask Passwords; with `start`, start it if it isn't running (then wait
 /// for it, and for the unlock it begins with).
 fn ask(request: &Request, start: bool) -> Result<Response, CallError> {
-    let mut result = tabula_keychain::call(request);
+    let mut result = olo_keychain::call(request);
     if !start || !matches!(result, Err(CallError::NotRunning)) {
         return result;
     }
     if let Err(e) = open_passwords() {
-        eprintln!("tabula-chrome: {e}");
+        eprintln!("olo-chrome: {e}");
         return result;
     }
     let until = Instant::now() + Duration::from_secs(10);
     while matches!(result, Err(CallError::NotRunning)) && Instant::now() < until {
         std::thread::sleep(Duration::from_millis(200));
-        result = tabula_keychain::call(request);
+        result = olo_keychain::call(request);
     }
     if matches!(request, Request::Logins { .. } | Request::Check { .. })
         && matches!(result, Ok(Response::Locked))
-        && let Ok(Response::Unlocked) = tabula_keychain::call(&Request::Unlock)
+        && let Ok(Response::Unlocked) = olo_keychain::call(&Request::Unlock)
     {
-        result = tabula_keychain::call(request);
+        result = olo_keychain::call(request);
     }
     result
 }

@@ -1,12 +1,12 @@
-//! AI: how Tabula's AI features reach their models (the Token Pool, or
+//! AI: how Olo's AI features reach their models (the Token Pool, or
 //! an Anthropic API key), and each feature, on or off, with its model and
 //! effort. Smart Tiling is the first.
 
-use tabula_kit::{
+use olo_kit::{
     egui::Ui,
     widgets::{BBox, Button, CheckBox, MenuField, StringView, TextControl},
 };
-use tabula_protocol::{AI_EFFORTS, AI_MODELS, AiFeature, Settings, shortcuts};
+use olo_protocol::{AI_EFFORTS, AI_MODELS, AiFeature, Settings, shortcuts};
 
 /// The API key being typed, and what saving it said.
 #[derive(Default)]
@@ -23,11 +23,11 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, st: &mut State) {
             ui.add(StringView::new("Models are reached with the Token Pool’s accounts, spent in its order.").dim(true).wrap(true));
         } else {
             // A few bytes from our own config folder.
-            let key = st.key.get_or_insert_with(|| tabula_ai::saved_key().unwrap_or_default());
+            let key = st.key.get_or_insert_with(|| olo_ai::saved_key().unwrap_or_default());
             ui.horizontal(|ui| {
-                ui.add(TextControl::new(key).label("Anthropic API key:").password(true).width(ui.available_width() - tabula_kit::metrics::BUTTON_MIN_WIDTH - tabula_kit::metrics::SPACING));
+                ui.add(TextControl::new(key).label("Anthropic API key:").password(true).width(ui.available_width() - olo_kit::metrics::BUTTON_MIN_WIDTH - olo_kit::metrics::SPACING));
                 if ui.add(Button::new("Save")).clicked() {
-                    st.status = Some(match tabula_ai::save_key(key) {
+                    st.status = Some(match olo_ai::save_key(key) {
                         Ok(()) if key.trim().is_empty() => "Forgotten.".into(),
                         Ok(()) => "Saved.".into(),
                         Err(e) => format!("Couldn’t save it: {e}"),

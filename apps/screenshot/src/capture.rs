@@ -8,7 +8,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tabula_protocol::{Client, Reply, Request, WindowInfo};
+use olo_protocol::{Client, Reply, Request, WindowInfo};
 
 /// What to take; Screenshot's settings are these plus where to save.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,7 +23,7 @@ pub struct Settings {
     /// The window to take (`--window ID`), rather than the active one:
     /// from the command palette, which is itself active by then.
     #[serde(skip)]
-    pub window_id: Option<tabula_protocol::WindowId>,
+    pub window_id: Option<olo_protocol::WindowId>,
 }
 
 impl Default for Settings {
@@ -33,7 +33,7 @@ impl Default for Settings {
 }
 
 fn settings_path() -> PathBuf {
-    tabula_kit::config_dir().join("screenshot.json")
+    olo_kit::config_dir().join("screenshot.json")
 }
 
 impl Settings {
@@ -64,7 +64,7 @@ pub fn home() -> PathBuf {
 }
 
 pub fn default_folder() -> PathBuf {
-    tabula_kit::user_dir("PICTURES").unwrap_or_else(home)
+    olo_kit::user_dir("PICTURES").unwrap_or_else(home)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,7 +121,7 @@ pub struct Shot {
 /// next).
 pub fn scratch_path() -> PathBuf {
     let dir = std::env::var_os("XDG_RUNTIME_DIR").map_or_else(std::env::temp_dir, PathBuf::from);
-    dir.join(format!("tabula-screenshot-{}.png", std::process::id()))
+    dir.join(format!("olo-screenshot-{}.png", std::process::id()))
 }
 
 fn request(client: &mut Client, req: &Request) -> Result<Reply, String> {
@@ -257,7 +257,7 @@ mod tests {
         assert_eq!(file_name("shot.PNG", Format::Jpeg), "shot.jpg");
         assert_eq!(file_name("shot.jpeg", Format::Png), "shot.png");
         assert_eq!(file_name("my.notes", Format::Bmp), "my.notes.bmp");
-        let dir = std::env::temp_dir().join(format!("tabula-shot-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-shot-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(next_name(&dir), "screenshot1");
         std::fs::write(dir.join("screenshot1.jpg"), b"").unwrap();
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn saves_every_format() {
-        let dir = std::env::temp_dir().join(format!("tabula-shot-fmt-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-shot-fmt-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let mut img = image::RgbaImage::new(4, 3);
         img.put_pixel(1, 1, image::Rgba([255, 0, 0, 128]));

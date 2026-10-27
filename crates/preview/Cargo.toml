@@ -1,12 +1,12 @@
 [package]
-name = "tabula-preview"
+name = "olo-preview"
 description = "Previews of every common file format, decoded natively (Quick Look, Viewer)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-tabula-kit.workspace = true
+olo-kit.workspace = true
 tracing.workspace = true
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff", "ico", "tga", "qoi", "hdr", "exr", "pnm", "dds", "ff", "rayon"] }
 resvg = { version = "0.45", default-features = false, features = ["text", "system-fonts", "raster-images"] }
@@ -34,5 +34,5 @@ ttf-parser = "0.25"
 
 # A sound server for tests (see the file).
 [[bin]]
-name = "tabula-fakesound"
+name = "olo-fakesound"
 path = "src/bin/fakesound.rs"

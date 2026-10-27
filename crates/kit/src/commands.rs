@@ -195,7 +195,7 @@ const WAIT: Duration = Duration::from_millis(400);
 
 fn socket_path(pid: u32) -> PathBuf {
     let rt = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    rt.join(format!("tabula-menus-{pid}.sock"))
+    rt.join(format!("olo-menus-{pid}.sock"))
 }
 
 /// Flatten a menu bar, skipping separators.
@@ -240,7 +240,7 @@ fn sweep(ours: &std::path::Path) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for e in entries.flatten() {
         let name = e.file_name();
-        let Some(pid) = name.to_str().and_then(|n| n.strip_prefix("tabula-menus-")).and_then(|n| n.strip_suffix(".sock")) else { continue };
+        let Some(pid) = name.to_str().and_then(|n| n.strip_prefix("olo-menus-")).and_then(|n| n.strip_suffix(".sock")) else { continue };
         if pid.parse::<u32>().is_ok() && !std::path::Path::new("/proc").join(pid).exists() {
             let _ = std::fs::remove_file(e.path());
         }
@@ -292,7 +292,7 @@ pub(crate) fn listen(to: smithay_client_toolkit::reexports::calloop::channel::Se
 }
 
 /// Answer `tree` for process `pid`, a program that isn't a kit app (the
-/// Tabula extension's host does it for Chrome): `trees` is called on the
+/// Olo extension's host does it for Chrome): `trees` is called on the
 /// listening thread for each question and may take up to `TREE_WAIT`.
 /// Its menus are empty and nothing can be invoked. Runs until the
 /// process ends; the socket is left for the next sweep.
@@ -370,7 +370,7 @@ mod tests {
             Menu::new("File").item("New", "new", Some(egui::Key::N)).separator().submenu(Menu::new("Recent").item("a.txt", "open:a", None)),
             Menu::new("View").item("Zoom", "zoom", None).checked(true).enabled(false),
         ];
-        let m = flatten("tabula.test", &bar);
+        let m = flatten("olo.test", &bar);
         assert_eq!(m.entries.len(), 3);
         assert_eq!(m.entries[0].keys.as_deref(), Some("⌘N"));
         assert_eq!(m.entries[1].path, ["File", "Recent"]);

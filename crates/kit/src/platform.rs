@@ -58,7 +58,7 @@ use smithay_client_toolkit::{
     },
     shm::{Shm, ShmHandler},
 };
-use tabula_theme::Palette;
+use olo_theme::Palette;
 use tracing::{debug, info, warn};
 use wayland_protocols::{
     wp::{
@@ -292,7 +292,7 @@ pub struct Kit {
     drag_out: Option<OutDrag>,
     drag_in: Option<InDrag>,
     exit: bool,
-    /// tabula-session installed a new version of us: stop and re-execute.
+    /// olo-session installed a new version of us: stop and re-execute.
     upgrading: bool,
     /// Windows all closed, but still serving the clipboard (see `finish`).
     linger: bool,
@@ -316,7 +316,7 @@ fn reap_inherited() {
 
 /// Run an app until it quits or closes its last window.
 ///
-/// Inside a Tabula session (`$TABULA_SESSION` set by tabula-session) the
+/// Inside an Olo session (`$OLO_SESSION` set by olo-session) the
 /// app survives app_server restarting in place: when the connection drops
 /// it reconnects and recreates its windows, keeping all its state, or, if
 /// its own binary was upgraded meanwhile, re-executes the new one with the
@@ -332,7 +332,7 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         .try_init();
     // A client handed its connection (WAYLAND_SOCKET, as app_server starts
     // the lock screen) has nothing to reconnect to: it ends with app_server.
-    let in_session = std::env::var_os("TABULA_SESSION").is_some() && std::env::var_os("WAYLAND_SOCKET").is_none();
+    let in_session = std::env::var_os("OLO_SESSION").is_some() && std::env::var_os("WAYLAND_SOCKET").is_none();
     let binary = Binary::current();
     reap_inherited();
 
@@ -411,8 +411,8 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         })
         .expect("theme channel");
 
-    // tabula-session's nudge after installing upgrades (it signals every
-    // Tabula program whose file it replaced): if ours was, become the new
+    // olo-session's nudge after installing upgrades (it signals every
+    // Olo program whose file it replaced): if ours was, become the new
     // version now, as after a reload, while app_server carries on.
     if in_session && let Some(fd) = upgrade_signals() {
         let ours = Binary::current();
@@ -513,7 +513,7 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         if !(lost || upgrading) || !in_session {
             return;
         }
-        // app_server is restarting (tabula-session reload). If our binary
+        // app_server is restarting (olo-session reload). If our binary
         // was upgraded meanwhile, become the new version; otherwise just
         // reconnect with everything as it was.
         let Some(mut c) = c else { return };
@@ -539,7 +539,7 @@ extern "C" fn on_upgrade_signal(_: libc::c_int) {
     }
 }
 
-/// A pipe that becomes readable when tabula-session signals an upgrade.
+/// A pipe that becomes readable when olo-session signals an upgrade.
 fn upgrade_signals() -> Option<std::os::fd::OwnedFd> {
     use std::os::fd::FromRawFd;
     let mut fds = [0; 2];
@@ -582,14 +582,14 @@ fn connect(retry: bool) -> Option<Connection> {
     }
 }
 
-/// In a Tabula session, straight to app_server: the session's socket is
-/// tabula-wlproxy's, which keeps other programs' windows across an
+/// In an Olo session, straight to app_server: the session's socket is
+/// olo-wlproxy's, which keeps other programs' windows across an
 /// app_server restart; we reconnect by ourselves instead.
 fn connect_once() -> Result<Connection, wayland_client::ConnectError> {
     if std::env::var_os("WAYLAND_SOCKET").is_none()
         && let (Some(dir), Some(display)) = (std::env::var_os("XDG_RUNTIME_DIR"), std::env::var("WAYLAND_DISPLAY").ok())
         && !display.contains('/')
-        && let Ok(stream) = std::os::unix::net::UnixStream::connect(std::path::Path::new(&dir).join(format!("tabula-{display}-direct")))
+        && let Ok(stream) = std::os::unix::net::UnixStream::connect(olo_xdg::legacy::runtime_file(std::path::Path::new(&dir), &format!("olo-{display}-direct")))
     {
         return Connection::from_socket(stream);
     }
@@ -627,7 +627,7 @@ impl Binary {
         cmd.args(std::env::args_os().skip(1));
         if let Some(state) = state {
             let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
-            let file = dir.join(format!("tabula-restore-{}.json", std::process::id()));
+            let file = dir.join(format!("olo-restore-{}.json", std::process::id()));
             if std::fs::write(&file, state).is_ok() {
                 cmd.env(crate::app::RESTORE_ENV, &file);
             }
@@ -1342,7 +1342,7 @@ impl Kit {
             .ok()?;
             debug!(adapter = ?adapter.get_info(), "wgpu adapter");
             let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-                label: Some("tabula-kit"),
+                label: Some("olo-kit"),
                 // Small allocation blocks: a window needs a few textures,
                 // not the large pools games want.
                 memory_hints: wgpu::MemoryHints::MemoryUsage,
@@ -1681,7 +1681,7 @@ impl Kit {
                     // Looking up the handler reads files: not on the UI thread.
                     let url = u.url.clone();
                     std::thread::spawn(move || {
-                        if let Err(e) = tabula_xdg::open::open(&tabula_xdg::open::Target::parse(&url)) {
+                        if let Err(e) = olo_xdg::open::open(&olo_xdg::open::Target::parse(&url)) {
                             tracing::warn!("open {url}: {e}");
                         }
                     });

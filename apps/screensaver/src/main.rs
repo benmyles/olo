@@ -1,7 +1,7 @@
-//! tabula-screensaver: app_server starts it after idleness (see
+//! olo-screensaver: app_server starts it after idleness (see
 //! app_server's saver.rs) on a connection of its own and ends it at the
 //! first input. It covers every output with an overlay and runs the chosen
-//! module from tabula-screensavers on each, with the pointer hidden.
+//! module from olo-screensavers on each, with the pointer hidden.
 //!
 //! `--module NAME --options JSON [--desktop PNG]`: the desktop picture,
 //! for Lens and Flip, is written by app_server as the saver starts; it is
@@ -13,13 +13,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Layer, LayerOptions, WindowId, WindowKind, WindowOptions,
     egui::{self, Color32, ColorImage, TextureHandle, TextureOptions},
 };
-use tabula_screensavers::{Frame, Info, Module, Options};
+use olo_screensavers::{Frame, Info, Module, Options};
 
-const APP_ID: &str = "tabula.screensaver";
+const APP_ID: &str = "olo.screensaver";
 
 /// The desktop picture, once read (None: there is none to wait for).
 enum Desktop {
@@ -81,13 +81,13 @@ fn halve(img: &ColorImage) -> ColorImage {
 }
 
 /// Read the picture once app_server has written all of it.
-fn read_desktop(path: PathBuf, proxy: tabula_kit::Proxy) {
+fn read_desktop(path: PathBuf, proxy: olo_kit::Proxy) {
     std::thread::Builder::new()
         .name("desktop".into())
         .spawn(move || {
             let start = Instant::now();
             while start.elapsed() < DESKTOP_WAIT {
-                if let Some(img) = tabula_xdg::decode_png(&path) {
+                if let Some(img) = olo_xdg::decode_png(&path) {
                     let _ = std::fs::remove_file(&path);
                     let px = img.rgba.as_chunks::<4>().0.iter().map(|p| Color32::from_rgba_unmultiplied(p[0], p[1], p[2], p[3]));
                     let mut image = ColorImage::new([img.width as usize, img.height as usize], px.collect());
@@ -124,7 +124,7 @@ impl App for Saver {
         };
         let (info, options) = (self.info, &self.options);
         let screen = self.screens.entry(window).or_insert_with(|| Screen {
-            module: info.make(options, tabula_screensavers::seed() ^ window_seed(window)),
+            module: info.make(options, olo_screensavers::seed() ^ window_seed(window)),
             last: None,
         });
         let now = Instant::now();
@@ -150,9 +150,11 @@ fn window_seed(w: WindowId) -> u64 {
 }
 
 fn main() {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let (module, options, desktop) = args();
-    let info = tabula_screensavers::find(&module).unwrap_or(&tabula_screensavers::MODULES[0]);
-    tabula_kit::run(APP_ID, |cx| {
+    let info = olo_screensavers::find(&module).unwrap_or(&olo_screensavers::MODULES[0]);
+    olo_kit::run(APP_ID, |cx| {
         let mut outputs: Vec<Option<String>> = cx.outputs().iter().cloned().map(Some).collect();
         if outputs.is_empty() {
             outputs.push(None);
@@ -167,7 +169,7 @@ fn main() {
                     // Over the Deskbar too.
                     exclusive_zone: -1,
                     margin: (0, 0, 0, 0),
-                    keyboard: tabula_kit::Keyboard::OnDemand,
+                    keyboard: olo_kit::Keyboard::OnDemand,
                     namespace: "screensaver".into(),
                     output,
                 }),

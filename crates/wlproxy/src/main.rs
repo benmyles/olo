@@ -1,12 +1,12 @@
-//! tabula-wlproxy: the Wayland socket other programs connect to.
+//! olo-wlproxy: the Wayland socket other programs connect to.
 //!
-//! tabula-session hands it the session's `wayland-N` listening socket and
+//! olo-session hands it the session's `wayland-N` listening socket and
 //! the path of app_server's socket for proxied connections. Each program
 //! that connects gets its own connection to app_server, opened with a
 //! hello naming the program's pid (app_server would otherwise see ours).
 //! When app_server restarts (an upgrade, a crash), the program's state is
 //! replayed on the new one and the program carries on: see `client`.
-//! Tabula's own apps don't come through here; they reconnect by
+//! Olo's own apps don't come through here; they reconnect by
 //! themselves.
 
 mod client;
@@ -28,16 +28,18 @@ const RETRY: Duration = Duration::from_millis(100);
 const MAX_BACKLOG: usize = 64 << 20;
 
 fn log(msg: impl AsRef<str>) {
-    eprintln!("tabula-wlproxy: {}", msg.as_ref());
+    eprintln!("olo-wlproxy: {}", msg.as_ref());
 }
 
 fn main() {
-    let (Some(fd), Some(upstream)) = (std::env::var("TABULA_WAYLAND_FD").ok().and_then(|f| f.parse::<i32>().ok()), std::env::var_os("TABULA_WAYLAND_UPSTREAM"))
+    // A session or install from before the rename (Tabula) carries on.
+    olo_xdg::legacy::adopt();
+    let (Some(fd), Some(upstream)) = (std::env::var("OLO_WAYLAND_FD").ok().and_then(|f| f.parse::<i32>().ok()), std::env::var_os("OLO_WAYLAND_UPSTREAM"))
     else {
-        eprintln!("tabula-wlproxy is started by tabula-session (TABULA_WAYLAND_FD, TABULA_WAYLAND_UPSTREAM)");
+        eprintln!("olo-wlproxy is started by olo-session (OLO_WAYLAND_FD, OLO_WAYLAND_UPSTREAM)");
         std::process::exit(2);
     };
-    // SAFETY: tabula-session passes this listening socket to us alone.
+    // SAFETY: olo-session passes this listening socket to us alone.
     let listener = unsafe { UnixListener::from_raw_fd(fd) };
     // SAFETY: fcntl on our own descriptor.
     unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };

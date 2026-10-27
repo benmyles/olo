@@ -100,12 +100,12 @@ mod tests {
     #[ignore]
     fn round_trip() {
         let bus = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap_or_default();
-        assert!(bus.contains("/tmp/tabula-dev/"), "not a private test bus: {bus}");
-        let attrs = [("application", "tabula-test"), ("purpose", "round-trip")];
-        super::store("Tabula test", &attrs, b"first").unwrap();
+        assert!(bus.contains("/tmp/olo-dev/"), "not a private test bus: {bus}");
+        let attrs = [("application", "olo-test"), ("purpose", "round-trip")];
+        super::store("Olo test", &attrs, b"first").unwrap();
         assert_eq!(super::lookup(&attrs).unwrap().as_deref(), Some(&b"first"[..]));
-        super::store("Tabula test", &attrs, b"second").unwrap();
+        super::store("Olo test", &attrs, b"second").unwrap();
         assert_eq!(super::lookup(&attrs).unwrap().as_deref(), Some(&b"second"[..]));
-        assert_eq!(super::lookup(&[("application", "tabula-test"), ("purpose", "none")]).unwrap(), None);
+        assert_eq!(super::lookup(&[("application", "olo-test"), ("purpose", "none")]).unwrap(), None);
     }
 }

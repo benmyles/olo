@@ -217,7 +217,7 @@ pub struct MenuRequest {
 }
 
 fn request_key() -> egui::Id {
-    egui::Id::unique("tabula-menu-request")
+    egui::Id::unique("olo-menu-request")
 }
 
 /// Ask the kit to open `menu` as a popup once this frame is drawn.
@@ -234,7 +234,7 @@ pub(crate) fn take_request(ctx: &egui::Context) -> Option<MenuRequest> {
 }
 
 fn paste_key() -> egui::Id {
-    egui::Id::unique("tabula-paste-request")
+    egui::Id::unique("olo-paste-request")
 }
 
 /// Ask the kit to paste the clipboard's text into this window once the
@@ -252,7 +252,7 @@ pub(crate) fn deliver_chosen(ctx: &egui::Context, source: egui::Id, command: Str
 }
 
 fn open_key() -> egui::Id {
-    egui::Id::unique("tabula-menu-open")
+    egui::Id::unique("olo-menu-open")
 }
 
 pub(crate) fn set_open_source(ctx: &egui::Context, source: Option<egui::Id>) {

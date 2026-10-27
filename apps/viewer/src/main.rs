@@ -2,7 +2,7 @@
 //! button opens one), and a PDF editor: fill in forms, add text, draw,
 //! sign, then Save (appended to the original as an incremental update),
 //! Save As, or Export a flattened copy. Pictures can be rotated, flipped,
-//! cropped and resized (tabula-preview's `edit`), then saved.
+//! cropped and resized (olo-preview's `edit`), then saved.
 
 mod pdfdoc;
 mod pdfview;
@@ -15,7 +15,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
     egui::{self, Align, Color32, Key, Rect, Ui, pos2, vec2},
     file_panel::{FilePanel, PANEL_SIZE, PanelResult},
@@ -25,7 +25,7 @@ use tabula_kit::{
     style::{self, c},
     widgets::{self, Button, CheckBox, TextControl},
 };
-use tabula_preview::{
+use olo_preview::{
     Item, Preview, Update,
     edit::{self, CropTool, EditEvent, Editor, Op},
 };
@@ -34,7 +34,7 @@ use pdfview::{Fit, PdfView, Tool};
 use pdfwork::Event;
 use signature::{Pad, PadResult, Signature};
 
-const APP_ID: &str = "tabula.viewer";
+const APP_ID: &str = "olo.viewer";
 
 enum Msg {
     Pdf(WindowId, Event),
@@ -479,7 +479,7 @@ impl Viewer {
         let Some(Win::Doc(d)) = self.windows.get_mut(&win) else { return };
         if command == "show-in-tracker" {
             let q = format!("'{}'", d.path.parent().unwrap_or(Path::new("/")).display().to_string().replace('\'', "'\\''"));
-            if let Err(e) = tabula_kit::spawn_detached(&format!("tabula-tracker {q}")) {
+            if let Err(e) = olo_kit::spawn_detached(&format!("olo-tracker {q}")) {
                 tracing::warn!("tracker: {e}");
             }
             return;
@@ -539,7 +539,7 @@ impl Viewer {
             return;
         }
         if d.edit.is_none() {
-            let Some(tabula_preview::Body::Image { full, .. }) = prev.body() else { return };
+            let Some(olo_preview::Body::Image { full, .. }) = prev.body() else { return };
             let proxy = cx.proxy();
             let editor = Editor::new(d.path.clone(), (full[0] as u32, full[1] as u32), move |ev| proxy.send(Msg::Edit(win, ev)));
             d.edit = Some(Box::new(ImageEdit { editor, crop: None }));
@@ -831,7 +831,7 @@ fn toolbar(ui: &mut Ui, bar: Rect, v: &mut PdfView, sign_menu: Menu) -> Option<S
 impl App for Viewer {
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui) {
         if matches!(self.windows.get(&window), Some(Win::Doc(_))) {
-            tabula_kit::dnd::open_files(ui, "open");
+            olo_kit::dnd::open_files(ui, "open");
         }
         match self.windows.get_mut(&window) {
             Some(Win::Doc(_)) => self.doc_ui(cx, window, ui),
@@ -882,7 +882,7 @@ impl App for Viewer {
                         let Some(Win::Doc(d)) = self.windows.get_mut(&doc) else { return };
                         if d.edit.is_none()
                             && let Content::Other(prev) = &d.content
-                            && let Some(tabula_preview::Body::Image { full, .. }) = prev.body()
+                            && let Some(olo_preview::Body::Image { full, .. }) = prev.body()
                         {
                             let editor = Editor::new(d.path.clone(), (full[0] as u32, full[1] as u32), move |ev| proxy.send(Msg::Edit(doc, ev)));
                             d.edit = Some(Box::new(ImageEdit { editor, crop: None }));
@@ -952,7 +952,7 @@ impl App for Viewer {
         }
     }
 
-    fn dropped(&mut self, cx: &mut Cx, _window: WindowId, drop: tabula_kit::dnd::Drop) {
+    fn dropped(&mut self, cx: &mut Cx, _window: WindowId, drop: olo_kit::dnd::Drop) {
         for p in drop.paths() {
             self.open_file(cx, p);
         }
@@ -1031,7 +1031,7 @@ impl App for Viewer {
                 }
                 if prev.update(update) && !d.sized {
                     d.sized = true;
-                    let size = prev.ideal_size(screen, tabula_kit::menu::BAR_HEIGHT);
+                    let size = prev.ideal_size(screen, olo_kit::menu::BAR_HEIGHT);
                     cx.resize(win, size);
                 }
                 cx.redraw(win);
@@ -1095,13 +1095,13 @@ impl App for Viewer {
 /// Dragging the document out (from a picture that fits the window): the
 /// file, and for a common picture format its bytes too, for programs that
 /// take an image rather than a file.
-fn file_drag(ctx: &egui::Context, path: &Path) -> tabula_kit::dnd::DragData {
-    use tabula_kit::dnd::{Actions, DragData};
+fn file_drag(ctx: &egui::Context, path: &Path) -> olo_kit::dnd::DragData {
+    use olo_kit::dnd::{Actions, DragData};
     let mut data = DragData::files(&[path.to_path_buf()], Actions::COPY);
     if let Some(dir) = path.parent() {
         data = data.from_folder(dir);
     }
-    let mime = tabula_kit::mime::for_path(path);
+    let mime = olo_kit::mime::for_path(path);
     let small = std::fs::metadata(path).is_ok_and(|m| m.len() <= 16 << 20);
     if matches!(mime.as_str(), "image/png" | "image/jpeg" | "image/gif" | "image/webp")
         && small
@@ -1112,19 +1112,21 @@ fn file_drag(ctx: &egui::Context, path: &Path) -> tabula_kit::dnd::DragData {
     }
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let icon = Item::stat(path).map_or_else(|| "document".to_owned(), |i| i.icon);
-    match tabula_kit::icons::drag_icon(ctx, &icon, 32.0, 1, vec2(16.0, 16.0), tabula_kit::icons::DragLabel::Below(&name)) {
+    match olo_kit::icons::drag_icon(ctx, &icon, 32.0, 1, vec2(16.0, 16.0), olo_kit::icons::DragLabel::Below(&name)) {
         Some(i) => data.icon(i),
         None => data,
     }
 }
 
 fn main() {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if instance::forward(APP_ID, &args) {
         return;
     }
-    tabula_preview::audio::set_identity("Viewer", "tabula-viewer");
-    tabula_kit::run(APP_ID, |cx| {
+    olo_preview::audio::set_identity("Viewer", "olo-viewer");
+    olo_kit::run(APP_ID, |cx| {
         instance::listen(APP_ID, cx.proxy());
         let proxy = cx.proxy();
         std::thread::spawn(move || {

@@ -28,7 +28,7 @@ use std::{
 };
 
 pub use load::{Body, Update};
-use tabula_kit::{
+use olo_kit::{
     egui::{self, Align, Color32, FontFamily, FontId, Key, Rect, Sense, TextureHandle, TextureOptions, Ui, pos2, vec2},
     files::{self, Kind},
     icons, metrics as m,
@@ -551,7 +551,7 @@ impl Preview {
                             let kind = files::kind_for(Path::new(&it.name), it.is_dir, 0o644);
                             icons::paint(cell.painter, ir, kind.icon());
                             let tr = Rect::from_min_max(pos2(cell.rect.left() + 22.0, cell.rect.top()), cell.rect.max);
-                            let sub = tabula_kit::widgets::Cell { rect: tr, ..*cell };
+                            let sub = olo_kit::widgets::Cell { rect: tr, ..*cell };
                             sub.text(&it.name);
                         }
                         _ => cell.text(&if it.is_dir { "—".into() } else { files::format_size(it.size) }),
@@ -656,7 +656,7 @@ fn texture<'a>(ctx: &egui::Context, cache: &'a mut HashMap<usize, TextureHandle>
 }
 
 /// A light checkerboard behind images, so transparency reads as such.
-fn checker(painter: &egui::Painter, r: Rect, p: &tabula_kit::theme::Palette) {
+fn checker(painter: &egui::Painter, r: Rect, p: &olo_kit::theme::Palette) {
     // Always light, in either mode: dark artwork must stay visible.
     let _ = p;
     let a = Color32::from_gray(255);
@@ -819,7 +819,7 @@ fn rich_view(ui: &mut Ui, r: Rect, blocks: &[doc::Block], id: u64) {
     });
 }
 
-fn spans_job(spans: &[doc::Span], size: f32, heading: bool, p: &tabula_kit::theme::Palette, ink: Color32) -> egui::text::LayoutJob {
+fn spans_job(spans: &[doc::Span], size: f32, heading: bool, p: &olo_kit::theme::Palette, ink: Color32) -> egui::text::LayoutJob {
     let mut job = egui::text::LayoutJob::default();
     for s in spans {
         let family = match (s.bold || heading, s.italic, s.code) {

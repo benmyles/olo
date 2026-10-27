@@ -56,7 +56,7 @@ impl Conn {
         let reply: protocol::AuthReply = c.request(&Command::Auth(auth))?;
         c.version = protocol::MAX_VERSION.min(reply.version);
         let mut props = protocol::Props::new();
-        props.set(protocol::Prop::ApplicationName, CString::new("Tabula").unwrap());
+        props.set(protocol::Prop::ApplicationName, CString::new("Olo").unwrap());
         let _: protocol::SetClientNameReply = c.request(&Command::SetClientName(props))?;
         Ok(c)
     }

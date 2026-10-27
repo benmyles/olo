@@ -14,7 +14,7 @@ use alacritty_terminal::{
     sync::FairMutex,
     term::Term,
 };
-use tabula_kit::Proxy;
+use olo_kit::Proxy;
 
 use crate::{io, session::Listener};
 

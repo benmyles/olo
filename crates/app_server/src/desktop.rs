@@ -16,8 +16,8 @@ use smithay::{
     utils::{IsAlive, Logical, Point, Rectangle},
     wayland::seat::WaylandFocus,
 };
-use tabula_protocol::{Event, NightLightMode, OutputConfig, OutputInfo, Settings, ThemePreference, WindowInfo};
-use tabula_theme::ThemeMode;
+use olo_protocol::{Event, NightLightMode, OutputConfig, OutputInfo, Settings, ThemePreference, WindowInfo};
+use olo_theme::ThemeMode;
 use tracing::{info, warn};
 
 use crate::{
@@ -88,14 +88,14 @@ pub struct Parked(pub RefCell<Vec<WindowElement>>);
 
 pub fn config_path() -> PathBuf {
     // An agent's screen keeps settings of its own (see apps/screen).
-    if let Some(path) = std::env::var_os("TABULA_APP_SERVER_SETTINGS") {
+    if let Some(path) = std::env::var_os("OLO_APP_SERVER_SETTINGS") {
         return PathBuf::from(path);
     }
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
         .unwrap_or_else(|| PathBuf::from("/tmp"));
-    base.join("tabula").join("app_server.json")
+    base.join("olo").join("app_server.json")
 }
 
 pub fn load_settings() -> Settings {
@@ -124,14 +124,14 @@ pub(crate) fn save_settings(settings: &Settings) {
 }
 
 /// `output` is set to mirror another.
-fn entry_mirrors(display: &tabula_protocol::DisplaySettings, output: &Output) -> bool {
+fn entry_mirrors(display: &olo_protocol::DisplaySettings, output: &Output) -> bool {
     display.config(&display_key(output), &output.name()).is_some_and(|c| c.mirror.as_ref().is_some_and(|m| !m.is_empty()))
 }
 
 /// Where `output`'s settings are kept: its monitor, else its connector.
 pub fn display_key(output: &Output) -> String {
     let p = output.physical_properties();
-    tabula_protocol::display_key(&output.name(), &p.make, &p.model, &p.serial_number)
+    olo_protocol::display_key(&output.name(), &p.make, &p.model, &p.serial_number)
 }
 
 /// Minutes since local midnight.
@@ -171,7 +171,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             .map(|w| {
                 let client = w.wl_surface().and_then(|s| self.display_handle.get_client(s.id()).ok());
                 let pid = client.as_ref().and_then(|c| crate::state::client_pid(c, &self.display_handle));
-                let kept = tabula_xdg::apps::our_app(&w.app_id()).is_some()
+                let kept = olo_xdg::apps::our_app(&w.app_id()).is_some()
                     || client.and_then(|c| c.get_data::<crate::state::ClientState>().map(|s| s.proxied)).unwrap_or(false);
                 let meta = w.meta();
                 WindowInfo {
@@ -198,7 +198,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// screen is.
     pub fn window_infos_with_frames(&self) -> Vec<WindowInfo> {
         let mut infos = self.window_infos();
-        let frame = |r: smithay::utils::Rectangle<i32, smithay::utils::Logical>| tabula_protocol::Frame { x: r.loc.x, y: r.loc.y, width: r.size.w, height: r.size.h };
+        let frame = |r: smithay::utils::Rectangle<i32, smithay::utils::Logical>| olo_protocol::Frame { x: r.loc.x, y: r.loc.y, width: r.size.w, height: r.size.h };
         for info in &mut infos {
             let Some(w) = self.space.elements().find(|w| w.id() == info.id) else { continue };
             let Some(at) = self.space.element_location(w) else { continue };
@@ -401,7 +401,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn spawn_program(&self, program: &str, args: &[&str]) {
         // Our programs are installed beside app_server; prefer those (so a
         // dev build starts dev apps), then PATH.
-        let Some(path) = tabula_xdg::find_program(program) else {
+        let Some(path) = olo_xdg::find_program(program) else {
             warn!(program, "not installed");
             return;
         };
@@ -475,7 +475,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             .chain(self.mirrors.iter())
             .map(|o| {
                 let props = o.physical_properties();
-                let to_mode = |m: smithay::output::Mode| tabula_protocol::Mode {
+                let to_mode = |m: smithay::output::Mode| olo_protocol::Mode {
                     width: m.size.w,
                     height: m.size.h,
                     refresh: m.refresh,
@@ -679,7 +679,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         if let Some(pos) = config.position {
             entry.position = Some(pos);
         }
-        if let Some(r) = config.rotation.filter(|r| tabula_protocol::ROTATIONS.contains(r)) {
+        if let Some(r) = config.rotation.filter(|r| olo_protocol::ROTATIONS.contains(r)) {
             entry.rotation = Some(r);
         }
         if let Some(m) = config.mirror {
@@ -720,7 +720,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let scale_changed = settings.display != self.settings.display;
         let main_changed = settings.display.main != self.settings.display.main;
         if settings.security.passwords.op_cli != self.settings.security.passwords.op_cli {
-            tabula_xdg::link_op_here(settings.security.passwords.op_cli);
+            olo_xdg::link_op_here(settings.security.passwords.op_cli);
         }
         // Fields app_server owns are recomputed, not taken from the client.
         settings.appearance.effective_theme = self.settings.appearance.effective_theme;
@@ -728,7 +728,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         // Tabs are laid out and drawn again (their cache keys on the cut title).
         crate::shell::deco::set_title_chars(settings.tab_title_chars);
         self.settings = settings;
-        self.keymap.set_bindings(tabula_protocol::shortcuts::bindings(&self.settings.shortcuts));
+        self.keymap.set_bindings(olo_protocol::shortcuts::bindings(&self.settings.shortcuts));
         if self.workspace >= self.settings.workspace_count.max(1) {
             self.switch_workspace(self.settings.workspace_count.max(1) - 1);
         }

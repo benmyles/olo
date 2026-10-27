@@ -37,9 +37,9 @@ impl Default for Upstreams {
 
 impl Upstreams {
     /// The real providers, or one fake standing in for all of them
-    /// (`TABULA_POOL_UPSTREAM`, for tests): its `/oauth` takes refreshes.
+    /// (`OLO_POOL_UPSTREAM`, for tests): its `/oauth` takes refreshes.
     pub fn from_env() -> Upstreams {
-        match std::env::var("TABULA_POOL_UPSTREAM") {
+        match std::env::var("OLO_POOL_UPSTREAM") {
             Ok(base) if !base.is_empty() => {
                 let base = base.trim_end_matches('/').to_owned();
                 Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth") }

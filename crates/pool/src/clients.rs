@@ -13,8 +13,11 @@ use crate::model::Provider;
 
 /// The placeholder sign-in the clients send: the gateway puts each
 /// account's own in its place.
-pub const PLACEHOLDER: &str = "tabula-pool";
-const PROVIDER_ID: &str = "tabula_pool";
+pub const PLACEHOLDER: &str = "olo-pool";
+const PROVIDER_ID: &str = "olo_pool";
+/// Codex's provider for the pool as it was set before the rename (Tabula):
+/// still the pool's, and replaced by the new one when next turned on.
+const OLD_PROVIDER_ID: &str = "tabula_pool";
 
 fn home() -> PathBuf {
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default()
@@ -31,7 +34,7 @@ pub fn codex_dir() -> PathBuf {
 }
 
 fn manifest_path() -> PathBuf {
-    tabula_xdg::config_dir().join("pool-clients.json")
+    olo_xdg::config_dir().join("pool-clients.json")
 }
 
 /// What turning a client on replaced: each setting's earlier value (None:
@@ -94,7 +97,7 @@ pub fn enabled(provider: Provider, port: u16) -> bool {
         }
         Provider::Codex => {
             let Ok(text) = std::fs::read_to_string(codex_dir().join("config.toml")) else { return false };
-            text.parse::<DocumentMut>().ok().is_some_and(|d| d.get("model_provider").and_then(Item::as_str) == Some(PROVIDER_ID))
+            text.parse::<DocumentMut>().ok().is_some_and(|d| d.get("model_provider").and_then(Item::as_str).is_some_and(|p| p == PROVIDER_ID || p == OLD_PROVIDER_ID))
         }
     }
 }
@@ -156,7 +159,7 @@ fn set_claude(manifest: &mut Manifest, on: bool, port: u16) -> Result<(), String
 /// The keys under Codex's provider table the pool sets.
 fn codex_provider(port: u16) -> Table {
     let mut t = Table::new();
-    t.insert("name", value("Tabula Token Pool"));
+    t.insert("name", value("Olo Token Pool"));
     t.insert("base_url", value(format!("http://127.0.0.1:{port}/codex/v1")));
     t.insert("wire_api", value("responses"));
     t.insert("requires_openai_auth", value(false));
@@ -183,6 +186,7 @@ fn set_codex(manifest: &mut Manifest, on: bool, port: u16) -> Result<(), String>
             doc.insert("model_providers", Item::Table(t));
         }
         let providers = doc["model_providers"].as_table_mut().ok_or_else(|| format!("{}: model_providers isn’t a table.", path.display()))?;
+        providers.remove(OLD_PROVIDER_ID);
         providers.insert(PROVIDER_ID, Item::Table(codex_provider(port)));
         doc.insert("model_provider", value(PROVIDER_ID));
         if manifest.codex.is_none() {
@@ -191,7 +195,7 @@ fn set_codex(manifest: &mut Manifest, on: bool, port: u16) -> Result<(), String>
     } else {
         let before = manifest.codex.take().unwrap_or_default();
         match before.get("model_provider").cloned().flatten() {
-            Some(old) if old != PROVIDER_ID => {
+            Some(old) if old != PROVIDER_ID && old != OLD_PROVIDER_ID => {
                 doc.insert("model_provider", value(old));
             }
             _ => {
@@ -200,6 +204,7 @@ fn set_codex(manifest: &mut Manifest, on: bool, port: u16) -> Result<(), String>
         }
         if let Some(providers) = doc.get_mut("model_providers").and_then(Item::as_table_mut) {
             providers.remove(PROVIDER_ID);
+            providers.remove(OLD_PROVIDER_ID);
             if providers.is_empty() {
                 doc.remove("model_providers");
             }
@@ -240,7 +245,7 @@ mod tests {
         assert_eq!(v["env"]["OTHER"], "1");
         assert_eq!(v["model"], "opus");
         let t = std::fs::read_to_string(codex.join("config.toml")).unwrap();
-        assert!(t.contains("# mine") && t.contains("[model_providers.tabula_pool]") && t.contains("base_url = \"http://127.0.0.1:4000/codex/v1\""), "{t}");
+        assert!(t.contains("# mine") && t.contains("[model_providers.olo_pool]") && t.contains("base_url = \"http://127.0.0.1:4000/codex/v1\""), "{t}");
         for p in [Provider::Claude, Provider::Codex] {
             set(p, false, 4000).unwrap();
             assert!(!enabled(p, 4000));
@@ -248,6 +253,20 @@ mod tests {
         // Exactly as it was, key order and all.
         assert_eq!(std::fs::read_to_string(claude.join("settings.json")).unwrap(), settings);
         let t = std::fs::read_to_string(codex.join("config.toml")).unwrap();
-        assert!(t.contains("model_provider = \"openai\"") && t.contains("[model_providers.other]") && !t.contains("tabula_pool"), "{t}");
+        assert!(t.contains("model_provider = \"openai\"") && t.contains("[model_providers.other]") && !t.contains("olo_pool"), "{t}");
+
+        // Turned on before the rename (Tabula): still on, and off puts
+        // back what was there before then.
+        let old = "model_provider = \"tabula_pool\"\n\n[model_providers.tabula_pool]\nname = \"Tabula Token Pool\"\n";
+        std::fs::write(codex.join("config.toml"), old).unwrap();
+        write_manifest(&Manifest { claude: None, codex: Some([("model_provider".to_owned(), Some("openai".to_owned()))].into()) }).unwrap();
+        assert!(enabled(Provider::Codex, 4000));
+        set(Provider::Codex, true, 4000).unwrap();
+        let t = std::fs::read_to_string(codex.join("config.toml")).unwrap();
+        assert!(t.contains("model_provider = \"olo_pool\"") && !t.contains("tabula_pool"), "{t}");
+        std::fs::write(codex.join("config.toml"), old).unwrap();
+        set(Provider::Codex, false, 4000).unwrap();
+        let t = std::fs::read_to_string(codex.join("config.toml")).unwrap();
+        assert!(t.contains("model_provider = \"openai\"") && !t.contains("_pool"), "{t}");
     }
 }

@@ -1,34 +1,34 @@
-//! Tabula's own applications, which need no .desktop entry to be named
+//! Olo's own applications, which need no .desktop entry to be named
 //! and drawn (Deskbar, Twitcher).
 
-/// Tabula's own applications: binary, name, icon.
+/// Olo's own applications: binary, name, icon.
 pub const OUR_APPS: &[(&str, &str, &str)] = &[
-    ("tabula-tracker", "Tracker", "tracker"),
-    ("tabula-terminal", "Terminal", "terminal"),
-    ("tabula-chrome", "Google Chrome", "google-chrome"),
-    ("tabula-styled-edit", "StyledEdit", "styled-edit"),
-    ("tabula-passwords", "Passwords", "passwords"),
-    ("tabula-deskcalc", "DeskCalc", "calculator"),
-    ("tabula-viewer", "Viewer", "show-image"),
-    ("tabula-activity", "Activity Monitor", "activity"),
-    ("tabula-drive-setup", "DriveSetup", "drive-setup"),
-    ("tabula-screen", "Agent Screens", "agent-screens"),
-    ("tabula-logs", "Log Viewer", "logs"),
-    ("tabula-screenshot", "Screenshot", "screenshot"),
-    ("tabula-pool", "Token Pool", "token-pool"),
+    ("olo-tracker", "Tracker", "tracker"),
+    ("olo-terminal", "Terminal", "terminal"),
+    ("olo-chrome", "Google Chrome", "google-chrome"),
+    ("olo-styled-edit", "StyledEdit", "styled-edit"),
+    ("olo-passwords", "Passwords", "passwords"),
+    ("olo-deskcalc", "DeskCalc", "calculator"),
+    ("olo-viewer", "Viewer", "show-image"),
+    ("olo-activity", "Activity Monitor", "activity"),
+    ("olo-drive-setup", "DriveSetup", "drive-setup"),
+    ("olo-screen", "Agent Screens", "agent-screens"),
+    ("olo-logs", "Log Viewer", "logs"),
+    ("olo-screenshot", "Screenshot", "screenshot"),
+    ("olo-pool", "Token Pool", "token-pool"),
 ];
 
 /// Our applications that open another window when asked while running
 /// (`--new-window`, handed to the running copy): Tracker's New Window.
-pub const NEW_WINDOW: &[&str] = &["tabula-tracker", "tabula-terminal", "tabula-styled-edit"];
+pub const NEW_WINDOW: &[&str] = &["olo-tracker", "olo-terminal", "olo-styled-edit"];
 
-/// The app id our program `bin` runs as ("tabula-styled-edit" is
-/// "tabula.styled-edit"), for `instance`.
+/// The app id our program `bin` runs as ("olo-styled-edit" is
+/// "olo.styled-edit"), for `instance`.
 pub fn app_id_of(bin: &str) -> Option<String> {
-    bin.strip_prefix("tabula-").map(|rest| format!("tabula.{rest}"))
+    bin.strip_prefix("olo-").map(|rest| format!("olo.{rest}"))
 }
 
-/// The panels `tabula-preferences <arg>` opens: argument, name, icon.
+/// The panels `olo-preferences <arg>` opens: argument, name, icon.
 /// Deskbar's Preferences menu lists exactly these.
 pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
     ("ai", "AI", "ai"),
@@ -53,10 +53,10 @@ pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
 
 /// App ids of our own apps map straight to names and icons.
 pub fn our_app(app_id: &str) -> Option<(&'static str, &'static str)> {
-    let short = app_id.strip_prefix("tabula.").unwrap_or(app_id);
+    let short = app_id.strip_prefix("olo.").unwrap_or(app_id);
     OUR_APPS
         .iter()
-        .find(|(bin, _, _)| bin.strip_prefix("tabula-") == Some(short))
+        .find(|(bin, _, _)| bin.strip_prefix("olo-") == Some(short))
         .map(|(_, name, icon)| (*name, *icon))
         .or(match short {
             "preferences" => Some(("Preferences", "preferences")),

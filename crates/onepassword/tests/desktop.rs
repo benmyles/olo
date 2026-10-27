@@ -12,7 +12,7 @@ const ACCOUNT: &str = "Test Account";
 
 fn fake() -> (Fake, Client) {
     static N: AtomicU32 = AtomicU32::new(0);
-    let socket = format!("tabula-onepassword-test-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed));
+    let socket = format!("olo-onepassword-test-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed));
     let fake = Fake::start(&socket, sample(ACCOUNT)).unwrap();
     let client = Client::builder()
         .desktop_app_integration(ACCOUNT)
@@ -117,7 +117,7 @@ fn errors() {
     let (_fake, client) = fake();
     assert!(matches!(client.items().get("nope", "nope"), Err(Error::Core(m)) if m.contains("vault not found")));
     // Nothing listening.
-    let missing = Client::builder().desktop_app_integration(ACCOUNT).desktop_socket("tabula-onepassword-nobody").build();
+    let missing = Client::builder().desktop_app_integration(ACCOUNT).desktop_socket("olo-onepassword-nobody").build();
     assert!(matches!(missing, Err(Error::DesktopAppUnavailable)));
     // A different account.
     let socket = _fake_socket(&client);
@@ -129,7 +129,7 @@ fn errors() {
 fn _fake_socket(_client: &Client) -> String {
     // The fixture's sockets are numbered; start one more for this check.
     static N: AtomicU32 = AtomicU32::new(0);
-    let socket = format!("tabula-onepassword-test-acct-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed));
+    let socket = format!("olo-onepassword-test-acct-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed));
     std::mem::forget(Fake::start(&socket, sample(ACCOUNT)).unwrap());
     socket
 }

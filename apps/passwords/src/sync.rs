@@ -204,7 +204,7 @@ fn params(item: &Item, vault: &str) -> ItemCreateParams {
 fn client(account: &str, socket: &str) -> Result<Client, String> {
     Client::builder()
         .desktop_app_integration(account)
-        .integration_info("Tabula Passwords", env!("CARGO_PKG_VERSION"))
+        .integration_info("Olo Passwords", env!("CARGO_PKG_VERSION"))
         .desktop_socket(socket)
         .build()
         .map_err(|e| describe(&e))
@@ -617,10 +617,10 @@ mod tests {
     }
 
     fn world_with(name: &str, data: onepassword::fake::FakeAccount) -> World {
-        let socket = format!("tabula-passwords-sync-{}-{name}", std::process::id());
+        let socket = format!("olo-passwords-sync-{}-{name}", std::process::id());
         let fake = Fake::start(&socket, data).unwrap();
         let client = Client::builder().desktop_app_integration(ACCOUNT).integration_info("test", "1").desktop_socket(&socket).build().unwrap();
-        let dir = std::env::temp_dir().join(format!("tabula-sync-test-{}-{name}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-sync-test-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let vault = Vault::open_at(dir.join("passwords.vault"), Some(&dir.join("key"))).unwrap();
@@ -730,7 +730,7 @@ mod tests {
     fn an_unreachable_1password_changes_nothing() {
         let w = world("down");
         let snap = w.vault.snapshot(ACCOUNT, true);
-        assert!(super::plan(&[snap], "tabula-passwords-sync-nobody-here").is_err());
+        assert!(super::plan(&[snap], "olo-passwords-sync-nobody-here").is_err());
         assert!(w.vault.data.entries.is_empty());
     }
 
@@ -837,7 +837,7 @@ mod tests {
     fn several_accounts_in_one_review() {
         let mut data = sample(ACCOUNT);
         let mut work = sample("Work");
-        work.uuid = "TABULATESTACCOUNT000000002".into();
+        work.uuid = "OLOTESTACCOUNT000000002".into();
         for v in &mut work.vaults {
             v.vault.id = format!("w{}", &v.vault.id[1..]);
             for i in &mut v.items {

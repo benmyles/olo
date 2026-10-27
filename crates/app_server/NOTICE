@@ -1,6 +1,6 @@
 app_server began as a copy of Anvil, the reference compositor shipped with
 Smithay (https://github.com/Smithay/smithay, commit 24647fc8), and has since
-been reworked into Tabula's BeOS-style window server.
+been reworked into Olo's BeOS-style window server.
 
 Anvil is distributed under the MIT License:
 

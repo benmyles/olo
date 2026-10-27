@@ -16,10 +16,10 @@ use alacritty_terminal::{
     term::{TermMode, cell::Flags},
     vte::ansi::{Color, CursorShape, NamedColor},
 };
-use tabula_kit::egui::{
+use olo_kit::egui::{
     self, Color32, FontFamily, FontId, Key, Pos2, Rect, Sense, Stroke, Ui, pos2, text::LayoutJob, vec2,
 };
-use tabula_kit::{emoji, style};
+use olo_kit::{emoji, style};
 
 use crate::{
     colors::{Scheme, c32, mix},

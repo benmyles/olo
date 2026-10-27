@@ -1,5 +1,5 @@
 //! The notification history: what came, newest last, kept across a
-//! restart in `history.json` under Tabula's state directory (pictures are
+//! restart in `history.json` under Olo's state directory (pictures are
 //! not kept; the icon name is). Transient notes and apps that asked not
 //! to be kept never get here.
 
@@ -93,7 +93,7 @@ pub struct History {
 
 impl History {
     pub fn path() -> PathBuf {
-        tabula_kit::state_dir().join("notifications").join("history.json")
+        olo_kit::state_dir().join("notifications").join("history.json")
     }
 
     /// The history from `path` (None: in memory only, for tests). After a
@@ -172,7 +172,7 @@ mod tests {
 
     #[test]
     fn keeps_replaces_and_persists() {
-        let dir = std::env::temp_dir().join(format!("tabula-history-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-history-{}", std::process::id()));
         let path = dir.join("history.json");
         let mut h = History::load(Some(path.clone()));
         h.put(entry(1, "one"));

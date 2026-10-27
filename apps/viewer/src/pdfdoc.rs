@@ -16,8 +16,9 @@ use lopdf::{Dictionary, Document, IncrementalDocument, Object, ObjectId, Stream,
 pub type PdfRect = [f32; 4];
 
 /// Annotations Viewer wrote carry this prefix in /NM, so they can be
-/// edited again when the file is reopened.
-const OUR_NM: &str = "tabula-";
+/// edited again when the file is reopened (`tabula-` before the rename).
+const OUR_NM: &str = "olo-";
+const OLD_NM: &str = "tabula-";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FieldKind {
@@ -435,9 +436,7 @@ fn walk_field(
 /// One of our annotations, if `d` is one.
 fn read_mark(doc: &Document, d: &Dictionary, page: usize) -> Option<Mark> {
     let nm = get_text(doc, d, b"NM")?;
-    if !nm.starts_with(OUR_NM) {
-        return None;
-    }
+    let nm = nm.strip_prefix(OUR_NM).or_else(|| nm.strip_prefix(OLD_NM))?;
     let rect = get_rect(doc, d, b"Rect")?;
     let color = get_color(doc, d, b"C").unwrap_or([0.0; 3]);
     match get_name(doc, d, b"Subtype")?.as_str() {
@@ -458,7 +457,7 @@ fn read_mark(doc: &Document, d: &Dictionary, page: usize) -> Option<Mark> {
                     v.as_chunks::<2>().0.iter().map(|p| [(p[0] - rect[0]) / w, (p[1] - rect[1]) / h]).collect()
                 })
                 .collect();
-            Some(Mark { id: None, page, rect, color, kind: MarkKind::Ink { strokes, width, signature: nm.starts_with("tabula-sig") } })
+            Some(Mark { id: None, page, rect, color, kind: MarkKind::Ink { strokes, width, signature: nm.starts_with("sig") } })
         }
         _ => None,
     }
@@ -1440,6 +1439,29 @@ mod tests {
     }
 
     #[test]
+    fn marks_saved_before_the_rename_are_ours() {
+        let bytes = sample_form();
+        let doc = load(&bytes);
+        let original = read_model(&doc);
+        let mut m = original.clone();
+        m.marks.push(Mark {
+            id: None,
+            page: 0,
+            rect: [300.0, 100.0, 420.0, 140.0],
+            color: [0.0; 3],
+            kind: MarkKind::Ink { strokes: vec![vec![[0.0, 0.0], [1.0, 1.0]]], width: 1.0, signature: true },
+        });
+        let mut doc2 = load(&save(&bytes, &doc, &original, &m).unwrap());
+        let id = read_model(&doc2).marks[0].id.unwrap();
+        let d = doc2.get_dictionary_mut(id).unwrap();
+        let nm = get_text(&Document::new(), d, b"NM").unwrap().replacen(OUR_NM, OLD_NM, 1);
+        d.set("NM", text_object(&nm));
+        let back = read_model(&doc2);
+        assert_eq!(back.marks.len(), 1);
+        assert!(matches!(&back.marks[0].kind, MarkKind::Ink { signature: true, .. }));
+    }
+
+    #[test]
     fn flattens() {
         let bytes = sample_form();
         let doc = load(&bytes);
@@ -1459,7 +1481,7 @@ mod tests {
 
     /// A Letter-size application form with every kind of field, for
     /// trying Viewer by hand:
-    /// `OUT=form.pdf cargo test -p tabula-viewer write_fixture -- --ignored`
+    /// `OUT=form.pdf cargo test -p olo-viewer write_fixture -- --ignored`
     #[test]
     #[ignore]
     fn write_fixture() {
@@ -1617,7 +1639,7 @@ mod tests {
         image::save_buffer(std::env::var("OUT").unwrap(), pix.data_as_u8_slice(), pix.width() as u32, pix.height() as u32, image::ColorType::Rgba8).unwrap();
     }
 
-    /// `PDF=file cargo test -p tabula-viewer dump_fields -- --ignored --nocapture`
+    /// `PDF=file cargo test -p olo-viewer dump_fields -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn dump_fields() {

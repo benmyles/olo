@@ -155,7 +155,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 crate::keymap::Out::Action(_) => {}
                 crate::keymap::Out::Recorded(chord) => {
                     let keys = chord.map(|c| c.map(|c| c.to_string()).unwrap_or_default());
-                    self.ipc.broadcast(tabula_protocol::Event::ShortcutRecorded { keys });
+                    self.ipc.broadcast(olo_protocol::Event::ShortcutRecorded { keys });
                 }
             }
         }
@@ -169,30 +169,30 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             A::NextApp { back } => self.twitch_step(true, back),
             A::NextWindow { back } => self.twitch_step(false, back),
             A::SwitchDone => self.twitch_done(),
-            A::Palette => self.shortcut(tabula_protocol::Shortcut::Palette),
+            A::Palette => self.shortcut(olo_protocol::Shortcut::Palette),
             A::Shortcut(s) => self.shortcut(s),
         }
     }
 
     /// One of the shortcuts in the settings.
-    fn shortcut(&mut self, shortcut: tabula_protocol::Shortcut) {
+    fn shortcut(&mut self, shortcut: olo_protocol::Shortcut) {
         self.run_shortcut(shortcut, None);
     }
 
     /// A shortcut, done to `target` (or the focused window).
-    pub fn run_shortcut(&mut self, shortcut: tabula_protocol::Shortcut, target: Option<crate::shell::WindowElement>) {
-        use tabula_protocol::Shortcut as S;
+    pub fn run_shortcut(&mut self, shortcut: olo_protocol::Shortcut, target: Option<crate::shell::WindowElement>) {
+        use olo_protocol::Shortcut as S;
         let focused = target.or_else(|| self.focused_window());
         let workspaces = self.settings.workspace_count.max(1);
         match shortcut {
             // Resident: a second start hands --toggle to the running one.
-            S::Palette => self.spawn_program("tabula-palette", &["--toggle"]),
+            S::Palette => self.spawn_program("olo-palette", &["--toggle"]),
             S::Find => {
                 // Bring back an open Find window rather than stacking more.
-                let open = self.all_windows().into_iter().find(|w| w.app_id() == "tabula.tracker" && w.title() == "Find");
+                let open = self.all_windows().into_iter().find(|w| w.app_id() == "olo.tracker" && w.title() == "Find");
                 match open {
                     Some(w) => self.restore(&w),
-                    None => self.spawn_program("tabula-tracker", &["--find"]),
+                    None => self.spawn_program("olo-tracker", &["--find"]),
                 }
             }
             S::Lock => self.lock_screen(),
@@ -202,24 +202,24 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let detail = if on { "Until you turn it off" } else { "Sleeps when idle" };
                 self.show_indicator(crate::osd::Indicator::Caffeinated { on, detail: detail.into() });
             }
-            S::ScreenshotScreen => self.spawn_program("tabula-screenshot", &["--silent"]),
+            S::ScreenshotScreen => self.spawn_program("olo-screenshot", &["--silent"]),
             // The target by id: from the palette, the palette is active.
             S::ScreenshotWindow => match &focused {
-                Some(w) => self.spawn_program("tabula-screenshot", &["--silent", "--window", &w.meta().id.to_string()]),
-                None => self.spawn_program("tabula-screenshot", &["--silent", "--window"]),
+                Some(w) => self.spawn_program("olo-screenshot", &["--silent", "--window", &w.meta().id.to_string()]),
+                None => self.spawn_program("olo-screenshot", &["--silent", "--window"]),
             },
-            S::ScreenshotRegion => self.spawn_program("tabula-screenshot", &["--region"]),
+            S::ScreenshotRegion => self.spawn_program("olo-screenshot", &["--region"]),
             S::ScreenshotApp => {
-                let open = self.all_windows().into_iter().find(|w| w.app_id() == "tabula.screenshot");
+                let open = self.all_windows().into_iter().find(|w| w.app_id() == "olo.screenshot");
                 match open {
                     Some(w) => self.restore(&w),
-                    None => self.spawn_program("tabula-screenshot", &[]),
+                    None => self.spawn_program("olo-screenshot", &[]),
                 }
             }
             S::TileAll => self.tile_all(),
             // Slow (a model looks at the screen): its own process, which
             // shows progress and sends Arrange when it has an answer.
-            S::SmartTile => self.spawn_program("tabula-smart-tile", &[]),
+            S::SmartTile => self.spawn_program("olo-smart-tile", &[]),
             S::CascadeAll => self.cascade_all(),
             S::FanOut => self.fan_out(),
             S::UndoArrangement => self.undo_arrangement(),
@@ -996,7 +996,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let _ = self.handle.insert_source(timer, move |_, _, state| {
             if state.recording_shortcut == ticket && state.keymap.recording() {
                 state.keymap.record(false);
-                state.ipc.broadcast(tabula_protocol::Event::ShortcutRecorded { keys: None });
+                state.ipc.broadcast(olo_protocol::Event::ShortcutRecorded { keys: None });
             }
             smithay::reexports::calloop::timer::TimeoutAction::Drop
         });
@@ -1010,8 +1010,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         pointer.frame(self);
     }
 
-    pub fn synthetic_input(&mut self, event: tabula_protocol::SyntheticEvent) {
-        use tabula_protocol::SyntheticEvent as S;
+    pub fn synthetic_input(&mut self, event: olo_protocol::SyntheticEvent) {
+        use olo_protocol::SyntheticEvent as S;
         self.power_activity();
         let serial = SCOUNTER.next_serial();
         let time = InputTime::now();

@@ -1,4 +1,4 @@
-//! Agent Screens (`tabula-screen`): screens of their own for agents, which
+//! Agent Screens (`olo-screen`): screens of their own for agents, which
 //! the person watches and can take over. With a command (below) it is the
 //! agents' tool; without one it opens the window that shows the screens.
 //! See `screens.rs` for what a screen is and HACKING.md, "Agent Screens".
@@ -11,60 +11,60 @@ use std::{path::PathBuf, time::Duration};
 
 use serde::Serialize;
 use serde_json::json;
-use tabula_kit::{commands, instance};
-use tabula_protocol::{Frame, ImageFormat, Reply, Request, SyntheticEvent, WindowInfo};
+use olo_kit::{commands, instance};
+use olo_protocol::{Frame, ImageFormat, Reply, Request, SyntheticEvent, WindowInfo};
 
-const APP_ID: &str = "tabula.screen";
+const APP_ID: &str = "olo.screen";
 
 const USAGE: &str = "\
-usage: tabula-screen                         open Agent Screens (watch, take control)
-       tabula-screen watch [NAME]            the same, showing NAME
-       tabula-screen start [NAME] [--size WxH] [--scale N] [--sound]
+usage: olo-screen                         open Agent Screens (watch, take control)
+       olo-screen watch [NAME]            the same, showing NAME
+       olo-screen start [NAME] [--size WxH] [--scale N] [--sound]
                                              start a screen (default: agent, 1440x900, 1x, silent);
                                              prints it as JSON
-       tabula-screen list                    the screens, as JSON
-       tabula-screen stop NAME               end a screen and everything on it
-       tabula-screen env NAME                its environment, for a shell (eval \"$(…)\")
-       tabula-screen run NAME PROGRAM [ARGS…]
+       olo-screen list                    the screens, as JSON
+       olo-screen stop NAME               end a screen and everything on it
+       olo-screen env NAME                its environment, for a shell (eval \"$(…)\")
+       olo-screen run NAME PROGRAM [ARGS…]
                                              start a program on it; prints its pid
-       tabula-screen look NAME [OUT.png] [--window ID] [--crop X,Y,W,H] [--no-pointer]
+       olo-screen look NAME [OUT.png] [--window ID] [--crop X,Y,W,H] [--no-pointer]
                                              a picture of the screen (or one window, or part);
                                              without OUT, a new file by the logs; prints its path
-       tabula-screen windows NAME            its windows (id, app, title, focused, frame, content,
+       olo-screen windows NAME            its windows (id, app, title, focused, frame, content,
                                              popups: open menus' frames), as JSON
-       tabula-screen tree NAME [--window ID] [--json] [--role R] [--contains TEXT]
+       olo-screen tree NAME [--window ID] [--json] [--role R] [--contains TEXT]
                           [--visible-only] [--depth N] [--max-len N] [--cells]
-                                             what Tabula apps' windows show: buttons, fields,
+                                             what Olo apps' windows show: buttons, fields,
                                              text, lists (row N/M), open menus, with where they
                                              are on the screen
-       tabula-screen menus NAME [--window ID]
+       olo-screen menus NAME [--window ID]
                                              the menus of a window's app (default: the focused one)
-       tabula-screen invoke NAME COMMAND [--window ID]
+       olo-screen invoke NAME COMMAND [--window ID]
                                              choose a menu command (as `menus` lists it)
-       tabula-screen focus|close|minimize|zoom NAME [--window ID]
-       tabula-screen resize NAME WxH [--window ID]    its content's size
-       tabula-screen place NAME X Y [WxH] [--window ID]
+       olo-screen focus|close|minimize|zoom NAME [--window ID]
+       olo-screen resize NAME WxH [--window ID]    its content's size
+       olo-screen place NAME X Y [WxH] [--window ID]
                                              its frame's top left (and content's size)
-       tabula-screen click NAME X Y [--right|--middle] [--double]
-       tabula-screen click NAME FIND… [--right|--middle] [--double]
+       olo-screen click NAME X Y [--right|--middle] [--double]
+       olo-screen click NAME FIND… [--right|--middle] [--double]
                                              the middle of what FIND matches (below)
-       tabula-screen set NAME FIND… TEXT     click into a field, replace its text
-       tabula-screen select NAME FIND… ITEM  open a dropdown, choose ITEM from its menu
-       tabula-screen wait NAME [FIND…] [--gone] [--idle] [--timeout MS]
+       olo-screen set NAME FIND… TEXT     click into a field, replace its text
+       olo-screen select NAME FIND… ITEM  open a dropdown, choose ITEM from its menu
+       olo-screen wait NAME [FIND…] [--gone] [--idle] [--timeout MS]
                                              until it shows (or goes, or the windows stop changing)
-       tabula-screen scroll-to NAME FIND… [--at X,Y]
+       olo-screen scroll-to NAME FIND… [--at X,Y]
                                              scroll the list (under X,Y) until it shows
-       tabula-screen move NAME X Y
-       tabula-screen down NAME X Y [--right] | up NAME [--right]
-       tabula-screen drag NAME X1 Y1 X2 Y2 [--steps N] [--duration MS]
+       olo-screen move NAME X Y
+       olo-screen down NAME X Y [--right] | up NAME [--right]
+       olo-screen drag NAME X1 Y1 X2 Y2 [--steps N] [--duration MS]
                                              press, move there in N steps (20) over MS (300), let go
-       tabula-screen scroll NAME DX DY [--no-end]
+       olo-screen scroll NAME DX DY [--no-end]
                                              by pixels, as on a touchpad (positive: down/right);
                                              the fingers lift after, unless --no-end
-       tabula-screen wheel NAME NOTCHES [H-NOTCHES]
+       olo-screen wheel NAME NOTCHES [H-NOTCHES]
                                              mouse-wheel notches (positive: down/right), one at a time
-       tabula-screen key NAME CHORD…         e.g. Cmd+S, Ctrl+Shift+T, Enter, Esc, Tab, Down
-       tabula-screen type NAME TEXT          type text (what a US keyboard types)
+       olo-screen key NAME CHORD…         e.g. Cmd+S, Ctrl+Shift+T, Enter, Esc, Tab, Down
+       olo-screen type NAME TEXT          type text (what a US keyboard types)
 
 FIND is --name NAME (exact, else part of it; a value counts too), --role ROLE,
 --match ROLE:TEXT, --text TEXT (in the name or value), --index N (from 0, when
@@ -73,10 +73,10 @@ after: the focused window and element.
 
 Coordinates are the screen's logical pixels, from its top left; Cmd is ⌘
 (apps see it as Ctrl). Programs run on a screen with WAYLAND_DISPLAY and
-TABULA_SOCKET set to it; a screen's own Deskbar and desktop are there too.";
+OLO_SOCKET set to it; a screen's own Deskbar and desktop are there too.";
 
 fn fail(message: impl std::fmt::Display) -> i32 {
-    eprintln!("tabula-screen: {message}");
+    eprintln!("olo-screen: {message}");
     1
 }
 
@@ -409,8 +409,8 @@ fn ok(reply: Reply) -> Result<(), String> {
 /// Typing that went somewhere that doesn't take text says so.
 fn warn_if_not_text(after: &find::After) {
     match &after.focused {
-        Some(f) if !find::takes_text(&f.role) => eprintln!("tabula-screen: the keys went to a {} ({}), not a text field", f.role, f.name.as_deref().unwrap_or("unnamed")),
-        None if after.window.is_none() => eprintln!("tabula-screen: no window has the focus; the keys went nowhere"),
+        Some(f) if !find::takes_text(&f.role) => eprintln!("olo-screen: the keys went to a {} ({}), not a text field", f.role, f.name.as_deref().unwrap_or("unnamed")),
+        None if after.window.is_none() => eprintln!("olo-screen: no window has the focus; the keys went nowhere"),
         _ => {}
     }
 }
@@ -697,6 +697,8 @@ fn shell_quote(s: &str) -> String {
 }
 
 fn main() {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Some(result) = cli(&args) {
         std::process::exit(match result {
@@ -708,7 +710,7 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    tabula_kit::run(APP_ID, move |cx| {
+    olo_kit::run(APP_ID, move |cx| {
         instance::listen(APP_ID, cx.proxy());
         let mut viewer = viewer::Viewer::new(cx);
         viewer.show(cx, show);

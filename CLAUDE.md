@@ -1,4 +1,4 @@
-# Tabula: rules for agents
+# Olo: rules for agents
 
 Read [docs/HACKING.md](docs/HACKING.md) before changing anything. It is the
 source of truth for layout, the kit, look-and-feel rules and testing. These
@@ -18,7 +18,7 @@ rules are universal and non-negotiable:
   See "The responsiveness rule" in HACKING.md.
 - **Pixel-perfect in light, dark and night modes at 2× and other scales.**
   Colours from the palette, spacing from `metrics`, text via `style`.
-- **Wayland only, no X11.** Tabula runs Wayland programs and nothing
+- **Wayland only, no X11.** Olo runs Wayland programs and nothing
   else: no Xwayland, no X11 window management, no `DISPLAY`, no code or
   dependencies for X11-only programs. Programs that can speak either
   (Chrome, GTK, Qt) are run as Wayland clients.

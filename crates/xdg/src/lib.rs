@@ -1,6 +1,6 @@
 //! Freedesktop plumbing shared by app_server and the kit (which re-exports
-//! it): Tabula's data directories, `.desktop` entries, and icon lookup
-//! (Tabula's own pre-scaled set first, then icon themes) and decoding.
+//! it): Olo's data directories, `.desktop` entries, and icon lookup
+//! (Olo's own pre-scaled set first, then icon themes) and decoding.
 
 use std::{
     path::{Path, PathBuf},
@@ -8,6 +8,7 @@ use std::{
 };
 
 pub mod apps;
+pub mod legacy;
 pub mod desktop_entry;
 pub mod mime;
 pub mod open;
@@ -16,12 +17,12 @@ pub mod wallpapers;
 /// Device-pixel sizes shipped in data/icons.
 const OWN_SIZES: &[u32] = &[16, 24, 32, 48, 64, 96, 128, 256];
 
-/// Directories holding Tabula's data (icons/, backgrounds/, ...).
+/// Directories holding Olo's data (icons/, backgrounds/, ...).
 pub fn data_dirs() -> &'static [PathBuf] {
     static DIRS: OnceLock<Vec<PathBuf>> = OnceLock::new();
     DIRS.get_or_init(|| {
         let mut v = Vec::new();
-        if let Some(d) = std::env::var_os("TABULA_DATA") {
+        if let Some(d) = std::env::var_os("OLO_DATA") {
             v.push(PathBuf::from(d));
         }
         // Development: target/<profile>/<bin> → <repo>/data.
@@ -35,15 +36,15 @@ pub fn data_dirs() -> &'static [PathBuf] {
             }
         }
         if let Some(home) = std::env::var_os("HOME") {
-            let installed = Path::new(&home).join(".local/share/tabula");
+            let installed = Path::new(&home).join(".local/share/olo");
             // The tree it was built from (recorded by the installer): new
             // data shows up there before an upgrade copies it over.
             let tree = std::fs::read_to_string(installed.join("build-dir")).ok().and_then(|t| Path::new(t.trim()).ancestors().nth(2).map(|r| r.join("data")));
             v.push(installed);
             v.extend(tree);
         }
-        v.push("/usr/local/share/tabula".into());
-        v.push("/usr/share/tabula".into());
+        v.push("/usr/local/share/olo".into());
+        v.push("/usr/share/olo".into());
         v.retain(|d| d.is_dir());
         v
     })
@@ -201,7 +202,7 @@ pub fn find_program(name: &str) -> Option<PathBuf> {
 /// Run a shell command line detached from us (own session, no stdio).
 /// Our own programs are found beside us first, as `find_program` finds
 /// them: the login screen gives a session a bare PATH that needn't
-/// include where Tabula is installed (~/.local/bin).
+/// include where Olo is installed (~/.local/bin).
 pub fn spawn_detached(cmd: &str) -> std::io::Result<()> {
     use std::os::unix::process::CommandExt;
     let mut c = std::process::Command::new("/bin/sh");
@@ -225,7 +226,7 @@ pub fn spawn_detached(cmd: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Tabula's settings directory (`$XDG_CONFIG_HOME/tabula`); apps keep their
+/// Olo's settings directory (`$XDG_CONFIG_HOME/olo`); apps keep their
 /// preferences in `NAME.json` there.
 pub fn config_dir() -> PathBuf {
     let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
@@ -233,20 +234,20 @@ pub fn config_dir() -> PathBuf {
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .unwrap_or_else(|| home().join(".config"))
-        .join("tabula")
+        .join("olo")
 }
 
-/// Tabula's cache directory (`$XDG_CACHE_HOME/tabula`).
+/// Olo's cache directory (`$XDG_CACHE_HOME/olo`).
 pub fn cache_dir() -> PathBuf {
     let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
     std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .unwrap_or_else(|| home().join(".cache"))
-        .join("tabula")
+        .join("olo")
 }
 
-/// Tabula's state directory (`$XDG_STATE_HOME/tabula`): what programs
+/// Olo's state directory (`$XDG_STATE_HOME/olo`): what programs
 /// keep between runs that is neither a setting nor a cache (histories).
 pub fn state_dir() -> PathBuf {
     let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
@@ -254,7 +255,7 @@ pub fn state_dir() -> PathBuf {
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .unwrap_or_else(|| home().join(".local/state"))
-        .join("tabula")
+        .join("olo")
 }
 
 /// A nameless file on disk to gather bytes in rather than memory (not in
@@ -297,18 +298,24 @@ fn parse_user_dir(text: &str, name: &str, home: &Path) -> Option<PathBuf> {
     (dir != home && dir.is_absolute()).then_some(dir)
 }
 
-/// Put `op` beside `tabula-op` in `dir` (a link to it: Tabula's stand-in
+/// Put `op` beside `olo-op` in `dir` (a link to it: Olo's stand-in
 /// for 1Password's command-line tool), or take it away. An `op` there
 /// that isn't ours (1Password's own, say) is left alone.
 pub fn link_op(dir: &std::path::Path, on: bool) -> std::io::Result<()> {
     let link = dir.join("op");
-    let ours = std::fs::read_link(&link).ok().is_some_and(|t| t.file_name().is_some_and(|n| n == "tabula-op"));
+    let target = std::fs::read_link(&link).ok();
+    // Ours, or ours from before the rename (`tabula-op`, then made new).
+    let old = target.as_ref().is_some_and(|t| t.file_name().is_some_and(|n| n == "tabula-op"));
+    let ours = old || target.as_ref().is_some_and(|t| t.file_name().is_some_and(|n| n == "olo-op"));
     let there = std::fs::symlink_metadata(&link).is_ok();
     if there && !ours {
         return Ok(());
     }
-    if on && !there && dir.join("tabula-op").is_file() {
-        std::os::unix::fs::symlink("tabula-op", &link)?;
+    if on && (!there || old) && dir.join("olo-op").is_file() {
+        let tmp = dir.join(".op.link");
+        let _ = std::fs::remove_file(&tmp);
+        std::os::unix::fs::symlink("olo-op", &tmp)?;
+        std::fs::rename(&tmp, &link)?;
     } else if !on && ours {
         std::fs::remove_file(&link)?;
     }
@@ -333,9 +340,17 @@ mod op_link_tests {
     fn links_only_ours() {
         let dir = std::env::temp_dir().join(format!("op-link-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("tabula-op"), "").unwrap();
+        std::fs::write(dir.join("olo-op"), "").unwrap();
         super::link_op(&dir, true).unwrap();
-        assert_eq!(std::fs::read_link(dir.join("op")).unwrap(), std::path::Path::new("tabula-op"));
+        assert_eq!(std::fs::read_link(dir.join("op")).unwrap(), std::path::Path::new("olo-op"));
+        super::link_op(&dir, false).unwrap();
+        assert!(std::fs::symlink_metadata(dir.join("op")).is_err());
+        // One from before the rename is ours: made new, or taken away.
+        std::os::unix::fs::symlink("tabula-op", dir.join("op")).unwrap();
+        super::link_op(&dir, true).unwrap();
+        assert_eq!(std::fs::read_link(dir.join("op")).unwrap(), std::path::Path::new("olo-op"));
+        let _ = std::fs::remove_file(dir.join("op"));
+        std::os::unix::fs::symlink("tabula-op", dir.join("op")).unwrap();
         super::link_op(&dir, false).unwrap();
         assert!(std::fs::symlink_metadata(dir.join("op")).is_err());
         // Someone else's op stays, on or off.
@@ -353,7 +368,7 @@ mod user_dir_tests {
 
     #[test]
     fn launches_find_our_programs_first() {
-        let out = std::env::temp_dir().join(format!("tabula-spawn-test-{}", std::process::id()));
+        let out = std::env::temp_dir().join(format!("olo-spawn-test-{}", std::process::id()));
         spawn_detached(&format!("printf %s \"$PATH\" > {}", out.display())).unwrap();
         let mut path = String::new();
         for _ in 0..100 {

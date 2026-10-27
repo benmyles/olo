@@ -1,4 +1,4 @@
-//! How Tabula's AI features (Preferences ▸ AI) reach their models:
+//! How Olo's AI features (Preferences ▸ AI) reach their models:
 //! Claude through the Token Pool's gateway on this computer (its
 //! accounts, spent in its order) or straight to Anthropic with the API
 //! key saved here; OpenAI's (Astra 6, `gpt-*`) through the pool's Codex
@@ -6,17 +6,17 @@
 //! Responses API for OpenAI's); call it off the UI thread (a feature's
 //! own process or a worker).
 //!
-//! `TABULA_AI_BASE_URL` sends every call somewhere else instead (a fake
+//! `OLO_AI_BASE_URL` sends every call somewhere else instead (a fake
 //! server, in tests): never a real model there.
 
 use std::{io::Write, path::PathBuf, time::Duration};
 
 use serde_json::{Value, json};
-use tabula_protocol::{AiFeature, AiSettings};
+use olo_protocol::{AiFeature, AiSettings};
 
 /// The API version every call asks for.
 const API_VERSION: &str = "2026-10-21";
-/// The pool's port unless `TABULA_POOL_PORT` says otherwise (as the
+/// The pool's port unless `OLO_POOL_PORT` says otherwise (as the
 /// pool's own `gateway::PORT`; not linked, to keep the pool's server out
 /// of every AI feature).
 const POOL_PORT: u16 = 17891;
@@ -43,7 +43,7 @@ pub enum Error {
 
 /// Where the saved API key is (only its owner can read it).
 pub fn key_path() -> PathBuf {
-    tabula_xdg::config_dir().join("anthropic-key")
+    olo_xdg::config_dir().join("anthropic-key")
 }
 
 /// The saved API key, or `ANTHROPIC_API_KEY`.
@@ -94,11 +94,11 @@ pub fn text_block(text: impl Into<String>) -> Value {
 /// Where calls go, and the key to send (none through the pool: it puts
 /// its account's own in).
 fn endpoint(settings: &AiSettings) -> Result<(String, Option<String>), Error> {
-    if let Ok(base) = std::env::var("TABULA_AI_BASE_URL") {
+    if let Ok(base) = std::env::var("OLO_AI_BASE_URL") {
         return Ok((base.trim_end_matches('/').to_owned(), None));
     }
     if settings.use_pool {
-        let port = std::env::var("TABULA_POOL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(POOL_PORT);
+        let port = std::env::var("OLO_POOL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(POOL_PORT);
         return Ok((format!("http://127.0.0.1:{port}/claude"), None));
     }
     Ok(("https://api.anthropic.com".into(), Some(saved_key().ok_or(Error::NoKey)?)))
@@ -179,10 +179,10 @@ pub fn openai_body(feature: &AiFeature, ask: &Ask) -> Value {
 }
 
 fn ask_openai(settings: &AiSettings, feature: &AiFeature, ask: &Ask) -> Result<Value, Error> {
-    let base = match std::env::var("TABULA_AI_BASE_URL") {
+    let base = match std::env::var("OLO_AI_BASE_URL") {
         Ok(base) => base.trim_end_matches('/').to_owned(),
         Err(_) if settings.use_pool => {
-            let port = std::env::var("TABULA_POOL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(POOL_PORT);
+            let port = std::env::var("OLO_POOL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(POOL_PORT);
             format!("http://127.0.0.1:{port}/codex")
         }
         Err(_) => return Err(Error::NeedsPool(feature.model.clone())),

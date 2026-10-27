@@ -1,25 +1,25 @@
 //! Other toolkits' programs in a real session: what GTK 3, GTK 4,
-//! libadwaita and Chrome read for their look, published from Tabula's
-//! palette (see `tabula_theme::toolkit`).
+//! libadwaita and Chrome read for their look, published from Olo's
+//! palette (see `olo_theme::toolkit`).
 //!
 //! - GSettings `org.gnome.desktop.interface` (through dconf, which GTK and
-//!   the portals read): the colour scheme, the GTK theme (Tabula or
-//!   Tabula-dark), the accent, Tabula's fonts, and BeOS's close-left,
+//!   the portals read): the colour scheme, the GTK theme (Olo or
+//!   Olo-dark), the accent, Olo's fonts, and BeOS's close-left,
 //!   zoom-right title buttons in `org.gnome.desktop.wm.preferences`.
 //! - The GTK 3 themes, in `~/.local/share/themes`.
-//! - GTK 4's user stylesheet `~/.config/gtk-4.0/gtk.css` imports Tabula's
+//! - GTK 4's user stylesheet `~/.config/gtk-4.0/gtk.css` imports Olo's
 //!   colours from the runtime directory, where they are only while a
-//!   Tabula session runs (tabula-session removes them at the end), so a
+//!   Olo session runs (olo-session removes them at the end), so a
 //!   GNOME session keeps its own look.
 
 use std::path::{Path, PathBuf};
 
-use tabula_theme::{Palette, ThemeMode, fonts, toolkit};
+use olo_theme::{Palette, ThemeMode, fonts, toolkit};
 use tracing::warn;
 
 /// The stylesheet GTK 4 imports, while the session runs.
 fn gtk4_runtime_css() -> Option<PathBuf> {
-    Some(PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR")?).join("tabula").join("gtk-4.0.css"))
+    Some(PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR")?).join("olo").join("gtk-4.0.css"))
 }
 
 fn home_dir(var: &str, fallback: &str) -> Option<PathBuf> {
@@ -34,7 +34,7 @@ fn put(path: &Path, text: &str) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let tmp = path.with_extension("tabula-tmp");
+    let tmp = path.with_extension("olo-tmp");
     std::fs::write(&tmp, text)?;
     std::fs::rename(&tmp, path)
 }
@@ -46,7 +46,7 @@ fn with_import(existing: &str, css: &Path) -> Option<String> {
     if existing.lines().any(|l| l.trim() == line) {
         return None;
     }
-    Some(format!("/* Tabula's colours while a Tabula session runs (written by Tabula). */\n{line}\n{existing}"))
+    Some(format!("/* Olo's colours while an Olo session runs (written by Olo). */\n{line}\n{existing}"))
 }
 
 /// The files: the GTK 3 themes, GTK 4's stylesheet and its import.
@@ -80,7 +80,7 @@ pub fn publish(theme: ThemeMode) {
             ThemeMode::Light => ("default", toolkit::GTK_THEME),
             ThemeMode::Dark => ("prefer-dark", toolkit::GTK_THEME_DARK),
         };
-        // GTK sizes fonts in points (at 96 dpi), Tabula in pixels.
+        // GTK sizes fonts in points (at 96 dpi), Olo in pixels.
         let font = |faces: &[&str]| format!("{} {}", faces[0], (fonts::PLAIN_SIZE * 0.75).round());
         let (ui, mono) = (font(fonts::UI), font(fonts::MONO));
         let keys = [
@@ -92,7 +92,7 @@ pub fn publish(theme: ThemeMode) {
             ("/org/gnome/desktop/interface/monospace-font-name", mono.as_str()),
             ("/org/gnome/desktop/wm/preferences/button-layout", "close:maximize"),
         ];
-        if let Err(e) = tabula_system::dconf::set_strings(&keys) {
+        if let Err(e) = olo_system::dconf::set_strings(&keys) {
             warn!("could not set the toolkit settings: {e}");
         }
     });
@@ -104,9 +104,9 @@ mod tests {
 
     #[test]
     fn files_keep_the_users_css() {
-        let dir = std::env::temp_dir().join(format!("tabula-toolkits-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-toolkits-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let (data, config, css) = (dir.join("data"), dir.join("config"), dir.join("run/tabula/gtk-4.0.css"));
+        let (data, config, css) = (dir.join("data"), dir.join("config"), dir.join("run/olo/gtk-4.0.css"));
         std::fs::create_dir_all(config.join("gtk-4.0")).unwrap();
         std::fs::write(config.join("gtk-4.0/gtk.css"), "label { color: red; }\n").unwrap();
         write_files(&data, &config, &css).unwrap();
@@ -114,7 +114,7 @@ mod tests {
         let user = std::fs::read_to_string(config.join("gtk-4.0/gtk.css")).unwrap();
         assert_eq!(user.matches("@import").count(), 1, "{user}");
         assert!(user.lines().nth(1).unwrap().starts_with("@import") && user.ends_with("label { color: red; }\n"));
-        assert!(data.join("themes/Tabula-dark/gtk-3.0/gtk.css").exists() && css.exists());
+        assert!(data.join("themes/Olo-dark/gtk-3.0/gtk.css").exists() && css.exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

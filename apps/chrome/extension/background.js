@@ -1,14 +1,14 @@
-// Tabula Passwords in Chrome: the page's logins in a text field's context
+// Olo Passwords in Chrome: the page's logins in a text field's context
 // menu (its username, password or one-time code, or the whole login), in
 // the toolbar button's list, and an offer to save a login just used.
-// Everything goes to Passwords through tabula-chrome's native messaging
-// host, which speaks Tabula's keychain protocol (crates/keychain).
+// Everything goes to Passwords through olo-chrome's native messaging
+// host, which speaks Olo's keychain protocol (crates/keychain).
 //
 // The page never chooses the site a login is for: it is always the URL
 // Chrome reports for the frame, and a fill goes only to that frame, and
 // only while it is still at that origin.
 
-const HOST = "org.tabula.passwords";
+const HOST = "com.olodesktop.passwords";
 // A page's logins are kept this long (milliseconds), so its menu is ready.
 const KNOWN_FOR = 10 * 60 * 1000;
 // At most this many logins in the menu.
@@ -152,7 +152,7 @@ function buildMenu(url) {
   return building;
 }
 
-// A newer version (Tabula was upgraded): Chrome would wait for this worker
+// A newer version (Olo was upgraded): Chrome would wait for this worker
 // to go idle, which the open port to Passwords keeps it from; take it now.
 chrome.runtime.onUpdateAvailable.addListener(() => chrome.runtime.reload());
 

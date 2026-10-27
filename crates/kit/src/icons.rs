@@ -1,4 +1,4 @@
-//! Icons: Tabula's own set (data/icons/<px>/<name>.png, pre-scaled to
+//! Icons: Olo's own set (data/icons/<px>/<name>.png, pre-scaled to
 //! device sizes) with a freedesktop icon-theme fallback, so Deskbar and
 //! Tracker can show third-party apps and file types too.
 //!
@@ -13,9 +13,9 @@ use std::{
 
 use egui::{Color32, ColorImage, Context, Painter, Rect, TextureHandle, TextureOptions, pos2};
 
-pub use tabula_xdg::{data_dirs, icon_for_app};
+pub use olo_xdg::{data_dirs, icon_for_app};
 
-fn to_color_image(img: tabula_xdg::Image) -> ColorImage {
+fn to_color_image(img: olo_xdg::Image) -> ColorImage {
     let px: Vec<Color32> = img
         .rgba
         .as_chunks::<4>()
@@ -52,7 +52,7 @@ pub fn drag_icon(ctx: &Context, name: &str, logical: f32, count: usize, hotspot:
     let scale = ppp.ceil().max(1.0) as u32;
     let sc = scale as usize;
     let px = (logical * scale as f32).round().max(1.0) as u32;
-    let icon = to_color_image(tabula_xdg::load_icon(name, px)?);
+    let icon = to_color_image(olo_xdg::load_icon(name, px)?);
     let [w, h] = icon.size;
     // Several: two more copies behind, each a little up and to the right.
     let (step, copies) = if count > 1 { (2 * sc, 3) } else { (0, 1) };
@@ -139,11 +139,11 @@ type Cache = HashMap<(String, u32), Option<TextureHandle>>;
 pub fn texture(ctx: &Context, name: &str, logical: f32) -> Option<TextureHandle> {
     let px = (logical * ctx.pixels_per_point()).round().max(1.0) as u32;
     let key = (name.to_owned(), px);
-    let cache_id = egui::Id::unique("tabula-icon-cache");
+    let cache_id = egui::Id::unique("olo-icon-cache");
     if let Some(hit) = ctx.data(|d| d.get_temp::<Arc<std::sync::Mutex<Cache>>>(cache_id)).and_then(|c| c.lock().unwrap().get(&key).cloned()) {
         return hit;
     }
-    let image = tabula_xdg::load_icon(name, px).map(to_color_image);
+    let image = olo_xdg::load_icon(name, px).map(to_color_image);
     let tex = image.map(|img| ctx.load_texture(format!("icon:{name}@{px}"), img, TextureOptions::LINEAR));
     let cache = ctx.data_mut(|d| d.get_temp_mut_or_default::<Arc<std::sync::Mutex<Cache>>>(cache_id).clone());
     cache.lock().unwrap().insert(key, tex.clone());
@@ -187,7 +187,7 @@ pub fn thumbnail(ctx: &Context, path: &Path, logical: f32) -> Option<TextureHand
     let px = (logical * ctx.pixels_per_point()).round().max(1.0) as u32;
     let mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
     let key: ThumbKey = (path.to_owned(), px, mtime);
-    let cache_id = egui::Id::unique("tabula-thumb-cache");
+    let cache_id = egui::Id::unique("olo-thumb-cache");
     let cache = ctx.data_mut(|d| d.get_temp_mut_or_default::<ThumbCache>(cache_id).clone());
     let mut map = cache.lock().unwrap();
     match map.get(&key) {

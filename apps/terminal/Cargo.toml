@@ -1,21 +1,21 @@
 [package]
-name = "tabula-terminal"
+name = "olo-terminal"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "tabula-terminal"
+name = "olo-terminal"
 path = "src/main.rs"
 
 # Runs the shells, so they outlive Terminal (src/termd.rs).
 [[bin]]
-name = "tabula-termd"
+name = "olo-termd"
 path = "src/termd.rs"
 
 [dependencies]
-tabula-kit.workspace = true
-tabula-protocol.workspace = true
+olo-kit.workspace = true
+olo-protocol.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

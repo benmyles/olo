@@ -16,7 +16,7 @@ fn fonts() -> &'static Mutex<Fonts> {
     static FONTS: OnceLock<Mutex<Fonts>> = OnceLock::new();
     FONTS.get_or_init(|| {
         let system = FontSystem::new();
-        let ui_family = tabula_theme::fonts::UI
+        let ui_family = olo_theme::fonts::UI
             .iter()
             .find(|name| {
                 system

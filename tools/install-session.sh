@@ -1,17 +1,17 @@
 #!/bin/sh
-# Install Tabula for the login screen.
+# Install Olo for the login screen.
 #
 #   tools/install-session.sh          (as yourself; asks for sudo once)
 #
 # Builds release binaries and installs them into $PREFIX/bin (default
 # ~/.local/bin, so upgrades never need root), icons into
-# $PREFIX/share/tabula, and records this tree's target/release in
-# $PREFIX/share/tabula/build-dir: a running session watches it and offers
-# newer builds in Deskbar's tray (or run `tabula-session upgrade`). The
+# $PREFIX/share/olo, and records this tree's target/release in
+# $PREFIX/share/olo/build-dir: a running session watches it and offers
+# newer builds in Deskbar's tray (or run `olo-session upgrade`). The
 # login screen's entry goes into /usr/local/share/wayland-sessions (GDM
 # and SDDM look there), which needs root.
 #
-# Re-running it upgrades in place; `tabula-session reload` (or the tray)
+# Re-running it upgrades in place; `olo-session reload` (or the tray)
 # picks the new programs up without logging out.
 set -eu
 cd "$(dirname "$0")/.."
@@ -32,8 +32,17 @@ as_root() {
 }
 
 as_user cargo build --release --workspace
-as_user mkdir -p "$PREFIX/bin" "$PREFIX/share/tabula"
-for b in target/release/tabula-*; do
+# An install from before the rename (Tabula): its folders become Olo's,
+# with links by the old names (as every Olo program does at start, but
+# before this makes the new ones), so nothing is lost.
+for base in "${XDG_CONFIG_HOME:-$USER_HOME/.config}" "${XDG_CACHE_HOME:-$USER_HOME/.cache}" \
+    "${XDG_STATE_HOME:-$USER_HOME/.local/state}" "${XDG_DATA_HOME:-$USER_HOME/.local/share}" "$PREFIX/share"; do
+    if [ -d "$base/tabula" ] && [ ! -L "$base/tabula" ] && [ ! -e "$base/olo" ]; then
+        as_user mv "$base/tabula" "$base/olo" && as_user ln -s olo "$base/tabula"
+    fi
+done
+as_user mkdir -p "$PREFIX/bin" "$PREFIX/share/olo"
+for b in target/release/olo-*; do
     [ -x "$b" ] && [ -f "$b" ] || continue
     name=$(basename "$b")
     case "$name" in *.*) continue ;; esac
@@ -44,23 +53,38 @@ for b in target/release/tabula-*; do
     as_user chmod 755 "$PREFIX/bin/.$name.new"
     as_user mv -f "$PREFIX/bin/.$name.new" "$PREFIX/bin/$name"
 done
+# The programs' old names (Tabula) become links to the new ones: the old
+# login screen entry runs tabula-session, and programs still running
+# re-execute themselves by the names they were started by.
+for old in "$PREFIX"/bin/tabula-*; do
+    [ -e "$old" ] || [ -L "$old" ] || continue
+    new=olo-${old##*/tabula-}
+    [ -f "$PREFIX/bin/$new" ] || continue
+    as_user ln -sfn "$new" "$PREFIX/bin/.${old##*/}.link"
+    as_user mv -f "$PREFIX/bin/.${old##*/}.link" "$old"
+done
 # `op` answers 1Password's command from Passwords (Preferences ▸
-# Security turns it off, which removes the link). Never over another op.
-[ -e "$PREFIX/bin/op" ] || [ -L "$PREFIX/bin/op" ] || as_user ln -s tabula-op "$PREFIX/bin/op"
-as_user cp -r data/icons "$PREFIX/share/tabula/"
+# Security turns it off, which removes the link). Never over another op;
+# ours from before the rename is made new.
+[ "$(readlink "$PREFIX/bin/op" 2>/dev/null)" = tabula-op ] && as_user ln -sfn olo-op "$PREFIX/bin/op"
+[ -e "$PREFIX/bin/op" ] || [ -L "$PREFIX/bin/op" ] || as_user ln -s olo-op "$PREFIX/bin/op"
+as_user cp -r data/icons data/brand "$PREFIX/share/olo/"
 # The wallpaper pack (a reflink copy where the file system can).
-as_user cp -r --reflink=auto data/wallpapers "$PREFIX/share/tabula/"
-echo "$TREE/target/release" | as_user tee "$PREFIX/share/tabula/build-dir" > /dev/null
+as_user cp -r --reflink=auto data/wallpapers "$PREFIX/share/olo/"
+echo "$TREE/target/release" | as_user tee "$PREFIX/share/olo/build-dir" > /dev/null
 
 # The login screen runs the session from where it was installed (no
 # TryExec: the greeter can't look inside a private home).
 BIN=$(cd "$PREFIX/bin" && pwd -P)
 ENTRY=$(mktemp)
-sed -e "s|^Exec=.*|Exec=$BIN/tabula-session|" -e '/^TryExec=/d' data/session/tabula.desktop > "$ENTRY"
-as_root install -D -m 644 "$ENTRY" "$SESSIONS/tabula.desktop"
+sed -e "s|^Exec=.*|Exec=$BIN/olo-session|" -e '/^TryExec=/d' data/session/olo.desktop > "$ENTRY"
+as_root install -D -m 644 "$ENTRY" "$SESSIONS/olo.desktop"
 rm -f "$ENTRY"
+# The entry from before the rename (the new one replaces it).
+as_root rm -f "$SESSIONS/tabula.desktop"
 # Brightness of USB-controlled monitors (Studio Display and the like).
-as_root install -D -m 644 data/udev/70-tabula-displays.rules /etc/udev/rules.d/70-tabula-displays.rules
+as_root install -D -m 644 data/udev/70-olo-displays.rules /etc/udev/rules.d/70-olo-displays.rules
+as_root rm -f /etc/udev/rules.d/70-tabula-displays.rules
 as_root udevadm control --reload 2>/dev/null || true
 as_root udevadm trigger --subsystem-match=hidraw --action=change 2>/dev/null || true
-echo "Installed to $PREFIX; Tabula is on the login screen's session menu."
+echo "Installed to $PREFIX; Olo Desktop is on the login screen's session menu."

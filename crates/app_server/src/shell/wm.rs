@@ -189,7 +189,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let Some(geo) = self.space.output_geometry(&output) else { return };
         let (x, y) = ((at.x - geo.loc.x as f64).round(), (at.y - geo.loc.y as f64).round());
         let (id, x, y) = (window.id().to_string(), x.to_string(), y.to_string());
-        self.spawn_program("tabula-palette", &["--window-menu", &id, &x, &y, &output.name()]);
+        self.spawn_program("olo-palette", &["--window-menu", &id, &x, &y, &output.name()]);
     }
 
     /// Push the window behind all others (from its menu, as BeOS's
@@ -383,7 +383,7 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for TabSlideGrab
         let title = self.window.title();
         let content = self.window.content_size();
         let mut deco = self.window.decoration();
-        let frame_w = content.w + 2 * tabula_theme::deco::BORDER;
+        let frame_w = content.w + 2 * olo_theme::deco::BORDER;
         let tab_w = deco.tab_layout(&title, content).width;
         deco.tab_offset = (self.initial_offset + dx).clamp(0, (frame_w - tab_w).max(0));
     }

@@ -1,5 +1,5 @@
 [package]
-name = "tabula-keychain"
+name = "olo-keychain"
 description = "Asking the running Passwords app for logins: the protocol, a client, and the service side"
 version.workspace = true
 edition.workspace = true

@@ -4,7 +4,7 @@
 //! Used for automated UI testing without touching the user's screen:
 //!
 //! ```text
-//! tabula-app-server --headless [WIDTHxHEIGHT[,WIDTHxHEIGHT…]]   (physical pixels)
+//! olo-app-server --headless [WIDTHxHEIGHT[,WIDTHxHEIGHT…]]   (physical pixels)
 //! ```
 //!
 //! Each size is a screen (HEADLESS-1, HEADLESS-2, …), offering that size
@@ -109,7 +109,7 @@ impl Backend for HeadlessData {
 }
 
 fn render_node() -> Option<std::path::PathBuf> {
-    if let Ok(p) = std::env::var("TABULA_RENDER_NODE") {
+    if let Ok(p) = std::env::var("OLO_RENDER_NODE") {
         return Some(p.into());
     }
     let mut nodes: Vec<_> = std::fs::read_dir("/dev/dri")
@@ -180,7 +180,7 @@ pub fn run_headless(size_arg: Option<&str>) {
             PhysicalProperties {
                 size: (0, 0).into(),
                 subpixel: Subpixel::Unknown,
-                make: "Tabula".into(),
+                make: "Olo".into(),
                 model: "Headless".into(),
                 serial_number: i.to_string(),
             },

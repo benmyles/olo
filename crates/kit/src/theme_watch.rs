@@ -1,11 +1,11 @@
-//! Follow app_server's light/dark setting. Outside Tabula (no
-//! `$TABULA_SOCKET`) apps stay in the light theme.
+//! Follow app_server's light/dark setting. Outside Olo (no
+//! `$OLO_SOCKET`) apps stay in the light theme.
 
 use std::time::Duration;
 
 use smithay_client_toolkit::reexports::calloop::channel::Sender;
-use tabula_protocol::{Client, Event, Reply, Request};
-use tabula_theme::{Palette, ThemeMode};
+use olo_protocol::{Client, Event, Reply, Request};
+use olo_theme::{Palette, ThemeMode};
 
 fn current_mode() -> Option<ThemeMode> {
     let mut client = Client::connect().ok()?;
@@ -16,14 +16,14 @@ fn current_mode() -> Option<ThemeMode> {
 }
 
 pub fn initial_palette() -> Palette {
-    if let Ok(mode) = std::env::var("TABULA_THEME") {
+    if let Ok(mode) = std::env::var("OLO_THEME") {
         return Palette::for_mode(if mode == "dark" { ThemeMode::Dark } else { ThemeMode::Light });
     }
     Palette::for_mode(current_mode().unwrap_or_default())
 }
 
 pub fn spawn(tx: Sender<Palette>) {
-    if tabula_protocol::socket_path().is_none() {
+    if olo_protocol::socket_path().is_none() {
         return;
     }
     std::thread::Builder::new()

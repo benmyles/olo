@@ -78,7 +78,7 @@ mod tests {
 
     #[test]
     fn leaves_a_replaced_file_alone() {
-        let dir = std::env::temp_dir().join(format!("tabula-sockfile-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-sockfile-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("s.sock");
         let first = UnixListener::bind(&path).unwrap();

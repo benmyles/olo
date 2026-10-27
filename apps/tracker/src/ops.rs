@@ -472,7 +472,7 @@ mod tests {
 
     #[test]
     fn copy_move_duplicate() {
-        let dir = std::env::temp_dir().join(format!("tabula-ops-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-ops-{}", std::process::id()));
         let _ = sfs::remove_dir_all(&dir);
         sfs::create_dir_all(dir.join("a/sub")).unwrap();
         sfs::create_dir_all(dir.join("b")).unwrap();
@@ -499,7 +499,7 @@ mod tests {
     /// if need be, never over something that has taken their place.
     #[test]
     fn restore_from_the_trash() {
-        let dir = std::env::temp_dir().join(format!("tabula-ops-r-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-ops-r-{}", std::process::id()));
         let _ = sfs::remove_dir_all(&dir);
         let (files, info) = (dir.join("Trash/files"), dir.join("Trash/info"));
         sfs::create_dir_all(&files).unwrap();
@@ -531,7 +531,7 @@ mod tests {
 
     #[test]
     fn cancel_removes_partial_copy() {
-        let dir = std::env::temp_dir().join(format!("tabula-ops-c-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-ops-c-{}", std::process::id()));
         let _ = sfs::remove_dir_all(&dir);
         sfs::create_dir_all(dir.join("dst")).unwrap();
         sfs::write(dir.join("f.bin"), vec![1u8; 1 << 20]).unwrap();

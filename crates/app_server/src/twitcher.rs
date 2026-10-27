@@ -25,7 +25,7 @@ use smithay::{
     },
     utils::{Buffer, Physical, Point, Rectangle, Size, Transform},
 };
-use tabula_theme::Palette;
+use olo_theme::Palette;
 use tiny_skia::{FilterQuality, Pixmap, PixmapPaint, Transform as SkTransform};
 
 use crate::{shell::fill, text, theme};
@@ -54,17 +54,17 @@ fn cache() -> &'static Cache {
     CACHE.get_or_init(Default::default)
 }
 
-fn to_pixmap(img: tabula_xdg::Image) -> Option<Pixmap> {
+fn to_pixmap(img: olo_xdg::Image) -> Option<Pixmap> {
     let img = img.into_premultiplied();
     let size = tiny_skia::IntSize::from_wh(img.width, img.height)?;
     Pixmap::from_vec(img.rgba, size)
 }
 
 fn resolve(app_id: &str) -> AppInfo {
-    let (name, icon) = match tabula_xdg::apps::our_app(app_id) {
+    let (name, icon) = match olo_xdg::apps::our_app(app_id) {
         Some((name, icon)) => (name.to_owned(), icon.to_owned()),
         None => {
-            let entry = tabula_xdg::desktop_entry::find(app_id);
+            let entry = olo_xdg::desktop_entry::find(app_id);
             let name = entry.as_ref().map(|e| e.name.clone()).unwrap_or_else(|| fallback_name(app_id));
             (name, entry.and_then(|e| e.icon).unwrap_or_else(|| "application".into()))
         }
@@ -72,7 +72,7 @@ fn resolve(app_id: &str) -> AppInfo {
     let icons = ICON_PX
         .iter()
         .filter_map(|&px| {
-            let img = tabula_xdg::load_icon(&icon, px).or_else(|| tabula_xdg::load_icon("application", px))?;
+            let img = olo_xdg::load_icon(&icon, px).or_else(|| olo_xdg::load_icon("application", px))?;
             Some((px, Arc::new(to_pixmap(img)?)))
         })
         .collect();
@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     fn names_and_sizes() {
-        assert_eq!(fallback_name("tabula.tracker"), "Tracker");
+        assert_eq!(fallback_name("olo.tracker"), "Tracker");
         assert_eq!(fallback_name("foot"), "Foot");
         assert_eq!(panel_size(2), (MIN_WIDTH, PAD + CELL + LABEL + PAD));
         assert_eq!(panel_size(10).0, 2 * PAD + 10 * CELL);

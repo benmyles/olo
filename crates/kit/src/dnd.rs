@@ -5,7 +5,7 @@
 //! it wants (the Be Book's "negotiated" drag and drop; see
 //! vendor/bebook/DragAndDrop.md). Here the types are MIME types, the
 //! actions Wayland's copy, move and ask, and it works the same within a
-//! window, between Tabula's apps and with any other Wayland program.
+//! window, between Olo's apps and with any other Wayland program.
 //!
 //! **Dragging out:** when an egui drag starts on something draggable, call
 //! [`crate::Cx::start_drag`] with a [`DragData`] (only while the pointer
@@ -123,7 +123,7 @@ impl DragData {
         self.with(LINK_TYPE, Vec::new())
     }
 
-    /// Adds a type only Tabula's apps know (put first: it is the most
+    /// Adds a type only Olo's apps know (put first: it is the most
     /// faithful).
     pub fn with(mut self, mime: &str, data: impl Into<Arc<[u8]>>) -> DragData {
         self.types.insert(0, (mime.into(), data.into()));
@@ -132,7 +132,7 @@ impl DragData {
 }
 
 /// The type (with no data) that [`DragData::as_link`] adds.
-pub const LINK_TYPE: &str = "application/x-tabula-make-link";
+pub const LINK_TYPE: &str = "application/x-olo-make-link";
 
 /// Something being dragged over a window.
 #[derive(Clone, Debug, PartialEq)]
@@ -180,7 +180,7 @@ fn folder_type(dir: &std::path::Path) -> String {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     dir.hash(&mut h);
-    format!("application/x-tabula-from-folder-{:016x}", h.finish())
+    format!("application/x-olo-from-folder-{:016x}", h.finish())
 }
 
 /// A drop: what [`accept`] asked for, read in full.
@@ -194,7 +194,7 @@ pub struct Drop {
     pub pos: Pos2,
     pub from_here: bool,
     pub from_us: bool,
-    /// All the types it came in (e.g. a Tabula-only type that says how
+    /// All the types it came in (e.g. an Olo-only type that says how
     /// it was dragged).
     pub types: Vec<String>,
 }
@@ -224,11 +224,11 @@ pub(crate) struct Accepted {
 }
 
 fn hover_id() -> Id {
-    Id::unique("tabula-dnd-hover")
+    Id::unique("olo-dnd-hover")
 }
 
 fn accept_id() -> Id {
-    Id::unique("tabula-dnd-accept")
+    Id::unique("olo-dnd-accept")
 }
 
 /// What is being dragged over this window now, if anything.
@@ -267,21 +267,21 @@ pub fn open_files(ui: &egui::Ui, target: &str) -> bool {
 pub fn outline(ui: &egui::Ui, rect: egui::Rect) {
     let p = crate::style::palette(ui.ctx());
     ui.ctx()
-        .layer_painter(egui::LayerId::new(egui::Order::Foreground, Id::unique("tabula-dnd-frame")))
+        .layer_painter(egui::LayerId::new(egui::Order::Foreground, Id::unique("olo-dnd-frame")))
         .with_clip_rect(ui.clip_rect())
         .rect_stroke(rect.shrink(1.0), 0.0, egui::Stroke::new(2.0, crate::style::c(p.keyboard_navigation)), egui::StrokeKind::Inside);
 }
 
 /// Drops on the kit's own widgets (text into a text field) are named with
 /// this; they go to the widget, not to [`crate::App::dropped`].
-pub(crate) const WIDGET: &str = "tabula-widget:";
+pub(crate) const WIDGET: &str = "olo-widget:";
 
 fn start_id() -> Id {
-    Id::unique("tabula-dnd-start")
+    Id::unique("olo-dnd-start")
 }
 
 fn widget_drops_id() -> Id {
-    Id::unique("tabula-dnd-widget-drops")
+    Id::unique("olo-dnd-widget-drops")
 }
 
 /// Start dragging `data` out of this window from a widget, which has no

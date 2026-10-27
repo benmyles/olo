@@ -1,18 +1,18 @@
 [package]
-name = "tabula-screen"
+name = "olo-screen"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "tabula-screen"
+name = "olo-screen"
 path = "src/main.rs"
 
 [dependencies]
-tabula-kit.workspace = true
-tabula-theme.workspace = true
-tabula-protocol.workspace = true
-tabula-xdg.workspace = true
+olo-kit.workspace = true
+olo-theme.workspace = true
+olo-protocol.workspace = true
+olo-xdg.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

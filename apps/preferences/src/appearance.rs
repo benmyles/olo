@@ -2,12 +2,12 @@
 //! in the evening); the window tab font size and longest title; icons in
 //! Deskbar's menu.
 
-use tabula_kit::{
+use olo_kit::{
     egui::Ui,
     metrics as m,
     widgets::{BBox, CheckBox, RadioButton, Slider, TextControl},
 };
-use tabula_protocol::{NightLightMode, Settings, ThemePreference};
+use olo_protocol::{NightLightMode, Settings, ThemePreference};
 
 pub fn ui(ui: &mut Ui, s: &mut Settings) {
     BBox::new("Theme").show(ui, |ui| {

@@ -1,18 +1,18 @@
 [package]
-name = "tabula-notifications"
+name = "olo-notifications"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "tabula-notifications"
+name = "olo-notifications"
 path = "src/main.rs"
 
 [dependencies]
-tabula-kit.workspace = true
-tabula-xdg.workspace = true
-tabula-protocol.workspace = true
-tabula-preview.workspace = true
+olo-kit.workspace = true
+olo-xdg.workspace = true
+olo-protocol.workspace = true
+olo-preview.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 libc = "0.2"

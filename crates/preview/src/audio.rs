@@ -227,8 +227,8 @@ const SEQ_OTHER: u32 = 40;
 /// playing: a name and an icon name, set once as the app starts.
 static IDENTITY: OnceLock<(String, String)> = OnceLock::new();
 
-/// Name this process to the sound server ("Viewer", "tabula-viewer").
-/// Until it's called, sound plays as "Tabula".
+/// Name this process to the sound server ("Viewer", "olo-viewer").
+/// Until it's called, sound plays as "Olo".
 pub fn set_identity(name: &str, icon: &str) {
     let _ = IDENTITY.set((name.into(), icon.into()));
 }
@@ -245,7 +245,7 @@ fn connect() -> Result<(UnixStream, u16), String> {
     let (_, reply) = protocol::read_reply_message::<protocol::AuthReply>(&mut r, protocol::MAX_VERSION).map_err(err)?;
     let version = protocol::MAX_VERSION.min(reply.version);
     let mut props = protocol::Props::new();
-    let (name, icon) = IDENTITY.get().map_or(("Tabula", "tabula"), |(n, i)| (n.as_str(), i.as_str()));
+    let (name, icon) = IDENTITY.get().map_or(("Olo", "olo"), |(n, i)| (n.as_str(), i.as_str()));
     props.set(protocol::Prop::ApplicationName, CString::new(name).unwrap_or_default());
     props.set(protocol::Prop::ApplicationIconName, CString::new(icon).unwrap_or_default());
     protocol::write_command_message(&mut w, 1, &protocol::Command::SetClientName(props), version).map_err(err)?;

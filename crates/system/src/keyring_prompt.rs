@@ -1,9 +1,9 @@
 //! The keyring's prompts, asked by us. gnome-keyring-daemon asks for the
 //! login keyring's password (to unlock it, or to make a new one) through
 //! a "system prompter" on the session bus, `org.gnome.keyring.SystemPrompter`,
-//! which D-Bus would otherwise start as GTK's gcr-prompter. A Tabula
+//! which D-Bus would otherwise start as GTK's gcr-prompter. An Olo
 //! session owns that name itself ([`Prompter::serve`]), so the question
-//! comes up as a Tabula window and nothing else is started.
+//! comes up as an Olo window and nothing else is started.
 //!
 //! The protocol is gcr's (gcr-system-prompter.c, gcr-secret-exchange.c):
 //!
@@ -561,13 +561,13 @@ mod tests {
     }
 
     /// With gcr itself: GCR_PEER is gcr's `begin()`; prints our reply
-    /// carrying "tabula-secret" for gcr to read back.
+    /// carrying "olo-secret" for gcr to read back.
     #[test]
     #[ignore]
     fn with_gcr() {
         let mut ours = Exchange::new();
         assert!(ours.receive(&std::env::var("GCR_PEER").unwrap().replace("\\n", "\n")));
-        println!("REPLY:{}", ours.send(Some(b"tabula-secret")).replace('\n', "\\n"));
+        println!("REPLY:{}", ours.send(Some(b"olo-secret")).replace('\n', "\\n"));
     }
 
     /// HKDF with no salt and no info (egg_hkdf_perform), against RFC 5869's
@@ -583,7 +583,7 @@ mod tests {
 
     /// Against a real gnome-keyring-daemon on a private bus (never the
     /// session's): `KEYRING_TEST_BUS=unix:path=… cargo test -p
-    /// tabula-system real_daemon -- --ignored --nocapture`. Makes a
+    /// olo-system real_daemon -- --ignored --nocapture`. Makes a
     /// keyring (a new password), locks it, unlocks it with a wrong then the
     /// right password, and cancels an unlock.
     #[test]
@@ -637,10 +637,10 @@ mod tests {
                 }
             }
         };
-        let label: HashMap<&str, Value> = [("org.freedesktop.Secret.Collection.Label", Value::from("Tabula test"))].into_iter().collect();
+        let label: HashMap<&str, Value> = [("org.freedesktop.Secret.Collection.Label", Value::from("Olo test"))].into_iter().collect();
         let (collection, prompt): (OwnedObjectPath, OwnedObjectPath) = call(&conn, "CreateCollection", &(label, "")).body().deserialize().unwrap();
         let collection = if prompt.as_str() != "/" {
-            let (dismissed, seen, result) = run(prompt, &mut vec![Answer::Password("tabula-test-pass".into())]);
+            let (dismissed, seen, result) = run(prompt, &mut vec![Answer::Password("olo-test-pass".into())]);
             assert!(!dismissed);
             assert!(seen[0].password_new, "{seen:?}");
             println!("new keyring: {:?}", seen[0]);
@@ -657,7 +657,7 @@ mod tests {
         let _: (Vec<OwnedObjectPath>, OwnedObjectPath) = call(&conn, "Lock", &(vec![collection.clone()],)).body().deserialize().unwrap();
         assert!(locked());
         let (_, prompt): (Vec<OwnedObjectPath>, OwnedObjectPath) = call(&conn, "Unlock", &(vec![collection.clone()],)).body().deserialize().unwrap();
-        let (dismissed, seen, _) = run(prompt, &mut vec![Answer::Password("wrong".into()), Answer::Password("tabula-test-pass".into())]);
+        let (dismissed, seen, _) = run(prompt, &mut vec![Answer::Password("wrong".into()), Answer::Password("olo-test-pass".into())]);
         println!("unlock: {seen:#?}");
         assert!(!dismissed);
         assert_eq!(seen.len(), 2);

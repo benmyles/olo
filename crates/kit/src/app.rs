@@ -3,7 +3,7 @@
 
 use std::{any::Any, sync::Arc};
 
-use tabula_theme::Palette;
+use olo_theme::Palette;
 
 use crate::menu::Menu;
 
@@ -51,8 +51,8 @@ pub trait App: 'static {
     /// the move itself).
     fn drag_ended(&mut self, _cx: &mut Cx, _window: WindowId, _action: Option<crate::dnd::Action>) {}
 
-    /// State to carry across an in-place upgrade. When Tabula is reloaded
-    /// (`tabula-session reload`) and this app's binary has changed, the kit
+    /// State to carry across an in-place upgrade. When Olo is reloaded
+    /// (`olo-session reload`) and this app's binary has changed, the kit
     /// re-executes the new binary; whatever this returns is handed to it as
     /// [`Cx::restored_state`] so it can reopen its windows as they were.
     /// Apps whose binary didn't change simply reconnect, keeping all state.
@@ -237,7 +237,7 @@ pub struct Cx {
 }
 
 /// Where an upgrading app leaves its saved state for its new self.
-pub(crate) const RESTORE_ENV: &str = "TABULA_RESTORE";
+pub(crate) const RESTORE_ENV: &str = "OLO_RESTORE";
 
 impl Cx {
     /// What the previous version of this app saved with
@@ -397,12 +397,12 @@ impl Cx {
     }
     /// Ask app_server to tile this app's resizable windows in a grid on
     /// the active display, in front (a way to see all its documents at
-    /// once). Off the UI thread; does nothing outside Tabula.
+    /// once). Off the UI thread; does nothing outside Olo.
     pub fn tile_my_windows(&self) {
         let app_id = self.app_id.clone();
         std::thread::spawn(move || {
-            if let Ok(mut client) = tabula_protocol::Client::connect() {
-                let _ = client.request(&tabula_protocol::Request::TileApp { app_id });
+            if let Ok(mut client) = olo_protocol::Client::connect() {
+                let _ = client.request(&olo_protocol::Request::TileApp { app_id });
             }
         });
     }

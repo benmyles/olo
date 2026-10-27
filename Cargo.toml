@@ -7,23 +7,23 @@ exclude = ["vendor"]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-repository = "https://example.invalid/tabula"
+repository = "https://example.invalid/olo"
 
 [workspace.dependencies]
-tabula-protocol = { path = "crates/protocol" }
-tabula-kit = { path = "crates/kit" }
-tabula-theme = { path = "crates/theme" }
-tabula-preview = { path = "crates/preview" }
-tabula-xdg = { path = "crates/xdg" }
-tabula-system = { path = "crates/system" }
-tabula-onepassword = { path = "crates/onepassword" }
-tabula-keychain = { path = "crates/keychain" }
-tabula-screensavers = { path = "crates/screensavers" }
-tabula-hvif = { path = "crates/hvif" }
-tabula-emoji = { path = "crates/emoji" }
-tabula-images = { path = "crates/images" }
-tabula-token-pool = { path = "crates/pool" }
-tabula-ai = { path = "crates/ai" }
+olo-protocol = { path = "crates/protocol" }
+olo-kit = { path = "crates/kit" }
+olo-theme = { path = "crates/theme" }
+olo-preview = { path = "crates/preview" }
+olo-xdg = { path = "crates/xdg" }
+olo-system = { path = "crates/system" }
+olo-onepassword = { path = "crates/onepassword" }
+olo-keychain = { path = "crates/keychain" }
+olo-screensavers = { path = "crates/screensavers" }
+olo-hvif = { path = "crates/hvif" }
+olo-emoji = { path = "crates/emoji" }
+olo-images = { path = "crates/images" }
+olo-token-pool = { path = "crates/pool" }
+olo-ai = { path = "crates/ai" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"

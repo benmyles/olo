@@ -13,7 +13,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tabula_kit::egui::{self, Color32, FontFamily, FontId, Stroke, text::LayoutJob};
+use olo_kit::egui::{self, Color32, FontFamily, FontId, Stroke, text::LayoutJob};
 
 /// The sizes the Font menu offers (any size can be stored).
 pub const SIZES: [f32; 10] = [9.0, 10.0, 11.0, 12.0, 14.0, 18.0, 24.0, 36.0, 48.0, 72.0];
@@ -487,9 +487,9 @@ pub fn find_all(hay: &str, needle: &str, case: bool) -> Vec<Range<usize>> {
 
 // ---- files ----------------------------------------------------------------
 
-const ATTR_STYLES: &str = "user.tabula.styles";
-const ATTR_ALIGN: &str = "user.tabula.alignment";
-const ATTR_WRAP: &str = "user.tabula.wrap";
+const ATTR_STYLES: &str = "user.olo.styles";
+const ATTR_ALIGN: &str = "user.olo.alignment";
+const ATTR_WRAP: &str = "user.olo.wrap";
 
 /// What a file holds.
 pub struct Loaded {
@@ -503,7 +503,13 @@ pub struct Loaded {
     pub read_only: bool,
 }
 
+/// Attribute `name`, or what it was called before the rename (Tabula:
+/// `user.tabula.…`) on a file last saved then.
 fn get_attr(path: &Path, name: &str) -> Option<Vec<u8>> {
+    attr(path, name).or_else(|| attr(path, &name.replacen("user.olo.", "user.tabula.", 1)))
+}
+
+fn attr(path: &Path, name: &str) -> Option<Vec<u8>> {
     use std::os::unix::ffi::OsStrExt;
     let p = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
     let n = std::ffi::CString::new(name).ok()?;
@@ -743,6 +749,20 @@ mod tests {
         let l = load(&path).unwrap();
         assert_eq!(l.text, "café");
         assert!(l.latin1);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn styles_saved_before_the_rename_are_read() {
+        let dir = std::env::temp_dir().join(format!("styled-edit-old-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("old.txt");
+        std::fs::write(&path, "centred").unwrap();
+        set_attr(&path, "user.tabula.alignment", b"\"Center\"");
+        // Where the filesystem keeps user attributes.
+        if attr(&path, "user.tabula.alignment").is_some() {
+            assert_eq!(load(&path).unwrap().align, Align::Center);
+        }
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

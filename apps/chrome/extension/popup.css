@@ -1,5 +1,5 @@
-/* Tabula's panel look: plain 12 px type, a sunken list. The colours are
-   Tabula's palette, in palette.css (made when the extension is packed). */
+/* Olo's panel look: plain 12 px type, a sunken list. The colours are
+   Olo's palette, in palette.css (made when the extension is packed). */
 html, body { margin: 0; background: var(--panel); color: var(--text); }
 body { font: 12px "Noto Sans", "DejaVu Sans", sans-serif; width: 300px; padding: 10px; box-sizing: border-box; }
 #title { font-weight: bold; margin-bottom: 6px; }

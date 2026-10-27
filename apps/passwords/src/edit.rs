@@ -5,7 +5,7 @@
 use onepassword::{
     AutofillBehavior, Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, ItemSection, VaultOverview, Website,
 };
-use tabula_kit::{
+use olo_kit::{
     Menu, egui::{self, Id, Ui, vec2},
     metrics as m, style,
     widgets::{self, Button, MenuField, TextControl, TextView, button_row},
@@ -408,7 +408,7 @@ impl Editor {
             });
         });
         let _ = &p;
-        if action.is_none() && ui.input(|i| i.key_pressed(egui::Key::Escape)) && !tabula_kit::menu::is_open(ui.ctx(), add_id) {
+        if action.is_none() && ui.input(|i| i.key_pressed(egui::Key::Escape)) && !olo_kit::menu::is_open(ui.ctx(), add_id) {
             action = Some(EditAction::Cancel);
         }
         action

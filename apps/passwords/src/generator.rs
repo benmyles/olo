@@ -3,7 +3,7 @@
 
 use onepassword::{PasswordRecipe, SeparatorType, WordListType, generate};
 use serde::{Deserialize, Serialize};
-use tabula_kit::{
+use olo_kit::{
     egui::{self, Sense, Ui, vec2},
     metrics as m, style,
     widgets::{Button, CheckBox, MenuField, Slider, StatusBar, button_row},
@@ -75,11 +75,11 @@ pub fn verdict(bits: f64) -> (&'static str, f32) {
     (word, fraction)
 }
 
-pub fn meter_color(p: &tabula_theme::Palette, bits: f64) -> egui::Color32 {
+pub fn meter_color(p: &olo_theme::Palette, bits: f64) -> egui::Color32 {
     if bits < 36.0 {
         style::c(p.failure)
     } else if bits < 60.0 {
-        style::c(tabula_theme::rgb(0xe8, 0xa8, 0x18))
+        style::c(olo_theme::rgb(0xe8, 0xa8, 0x18))
     } else {
         style::c(p.success)
     }

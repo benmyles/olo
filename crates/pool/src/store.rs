@@ -3,7 +3,7 @@
 //! nonce, then the JSON sealed with XChaCha20-Poly1305, the header as
 //! associated data). The key is 32 random bytes in the login keyring,
 //! which PAM unlocks at login, so the gateway can work (and save the
-//! sign-ins its providers rotate) without asking; `TABULA_POOL_KEYFILE`
+//! sign-ins its providers rotate) without asking; `OLO_POOL_KEYFILE`
 //! keeps the key in a file instead (tests).
 
 use std::{
@@ -32,11 +32,11 @@ pub struct Saved {
 }
 
 pub fn path() -> PathBuf {
-    tabula_xdg::config_dir().join("pool.vault")
+    olo_xdg::config_dir().join("pool.vault")
 }
 
 fn keyfile() -> Option<PathBuf> {
-    std::env::var_os("TABULA_POOL_KEYFILE").map(PathBuf::from)
+    std::env::var_os("OLO_POOL_KEYFILE").map(PathBuf::from)
 }
 
 pub fn random<const N: usize>() -> [u8; N] {
@@ -74,12 +74,12 @@ fn key(sealed_exists: bool) -> Result<Zeroizing<[u8; 32]>, String> {
             Err(_) if sealed_exists => return Err(missing()),
             Err(e) => return Err(format!("Couldn’t read the key: {e}")),
         },
-        None => match tabula_system::secrets::lookup(&KEY_ATTRS) {
+        None => match olo_system::secrets::lookup(&KEY_ATTRS) {
             Ok(Some(b)) => Zeroizing::new(b),
             Ok(None) if sealed_exists => return Err(missing()),
             Ok(None) => {
                 let k = Zeroizing::new(random::<32>().to_vec());
-                tabula_system::secrets::store("Tabula Token Pool", &KEY_ATTRS, &k).map_err(|e| format!("Couldn’t keep the key in the login keyring: {e}"))?;
+                olo_system::secrets::store("Olo Token Pool", &KEY_ATTRS, &k).map_err(|e| format!("Couldn’t keep the key in the login keyring: {e}"))?;
                 k
             }
             Err(e) => return Err(format!("Couldn’t reach the login keyring: {e}")),
@@ -170,7 +170,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         // SAFETY: tests in this crate that touch the environment set the
         // same value.
-        unsafe { std::env::set_var("TABULA_POOL_KEYFILE", dir.path().join("key")) };
+        unsafe { std::env::set_var("OLO_POOL_KEYFILE", dir.path().join("key")) };
         let path = dir.path().join("pool.vault");
         let (store, saved) = Store::open_at(path.clone()).unwrap();
         assert!(saved.accounts.is_empty());

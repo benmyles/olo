@@ -1,4 +1,4 @@
-//! tabula-termd: Terminal's shells, kept apart from Terminal.
+//! olo-termd: Terminal's shells, kept apart from Terminal.
 //!
 //! One runs per display, started by the first Terminal that needs it. It
 //! owns every shell's PTY and keeps its own copy of each screen (the same
@@ -7,8 +7,8 @@
 //! to them: it gets the screen and scrollback replayed (replay.rs), then the
 //! live output. A Terminal that vanishes without saying goodbye is started
 //! again. When the desktop session ends, so do the shells; when the last
-//! shell has gone and no Terminal is attached, so does tabula-termd. An
-//! upgrade (SIGURG from tabula-session) re-executes it in place, handing
+//! shell has gone and no Terminal is attached, so does olo-termd. An
+//! upgrade (SIGURG from olo-session) re-executes it in place, handing
 //! the PTYs and screens to its new self.
 
 #[allow(dead_code)]
@@ -52,8 +52,8 @@ use serde::{Deserialize, Serialize};
 use io::Size;
 use wire::{Frame, Grid};
 
-/// Where an upgraded tabula-termd finds what its previous self handed on.
-const RESTORE_ENV: &str = "TABULA_TERMD_RESTORE";
+/// Where an upgraded olo-termd finds what its previous self handed on.
+const RESTORE_ENV: &str = "OLO_TERMD_RESTORE";
 /// Output queued for a Terminal before we stop reading a shell's.
 const BACKLOG: usize = 8 << 20;
 /// How long a Terminal that vanished has to come back on its own (an
@@ -65,7 +65,7 @@ const RELAUNCHES: usize = 3;
 const LINGER: Duration = Duration::from_secs(3);
 
 fn log(message: impl std::fmt::Display) {
-    eprintln!("tabula-termd: {message}");
+    eprintln!("olo-termd: {message}");
 }
 
 /// Frames for one Terminal, and how many bytes of them are still queued.
@@ -184,7 +184,7 @@ struct State {
 
 type St = Arc<Mutex<State>>;
 
-/// What an upgraded tabula-termd gets from its previous self.
+/// What an upgraded olo-termd gets from its previous self.
 #[derive(Serialize, Deserialize)]
 struct Carried {
     listener: RawFd,
@@ -654,7 +654,7 @@ fn upgrade(st: &St, binary: &Binary, listener: &UnixListener, lock: &File) {
     }
     let fds: Vec<RawFd> = carried.shells.iter().map(|c| c.fd).chain([carried.listener, carried.lock]).collect();
     let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    let file = dir.join(format!("tabula-termd-{}.json", std::process::id()));
+    let file = dir.join(format!("olo-termd-{}.json", std::process::id()));
     if let Err(e) = std::fs::write(&file, serde_json::to_vec(&carried).unwrap_or_default()) {
         log(format!("could not upgrade: {e}"));
         return;
@@ -673,8 +673,8 @@ fn upgrade(st: &St, binary: &Binary, listener: &UnixListener, lock: &File) {
 
 /// Start Terminal again, to show the shells it left behind.
 fn relaunch(env: &[(String, String)]) {
-    let exe = std::env::current_exe().ok().and_then(|p| Some(p.parent()?.join("tabula-terminal"))).filter(|p| p.exists());
-    let mut cmd = std::process::Command::new(exe.unwrap_or_else(|| "tabula-terminal".into()));
+    let exe = std::env::current_exe().ok().and_then(|p| Some(p.parent()?.join("olo-terminal"))).filter(|p| p.exists());
+    let mut cmd = std::process::Command::new(exe.unwrap_or_else(|| "olo-terminal".into()));
     cmd.env_clear().envs(env.iter().cloned()).stdin(std::process::Stdio::null());
     match cmd.spawn() {
         Ok(mut child) => {
@@ -752,7 +752,7 @@ fn run(st: St, events: mpsc::Receiver<Ev>, mut listener: UnixListener, lock: Fil
         }
         if ours.is_none() || ino(&path) != ours {
             if ours.is_some() && path.exists() {
-                log("another tabula-termd has our socket; ending");
+                log("another olo-termd has our socket; ending");
                 let _ = st.lock().unwrap().events.send(Ev::End);
             } else if !path.parent().is_some_and(|d| d.exists()) {
                 log("the session's runtime directory has gone; ending");
@@ -850,6 +850,8 @@ fn daemonize() -> OwnedFd {
 }
 
 fn main() {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let carried: Option<Carried> = std::env::var_os(RESTORE_ENV).and_then(|path| {
         let text = std::fs::read(&path).ok();
         let _ = std::fs::remove_file(&path);

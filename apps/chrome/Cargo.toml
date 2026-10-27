@@ -1,15 +1,15 @@
 [package]
-name = "tabula-chrome"
+name = "olo-chrome"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "tabula-chrome"
+name = "olo-chrome"
 path = "src/main.rs"
 
 [dependencies]
-tabula-kit.workspace = true
+olo-kit.workspace = true
 tracing.workspace = true
 serde_json.workspace = true
 sha2 = "0.11"
@@ -19,8 +19,8 @@ zstd = "0.14"
 quick-xml = "0.42"
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }
-tabula-theme.workspace = true
-tabula-keychain.workspace = true
+olo-theme.workspace = true
+olo-keychain.workspace = true
 p256 = { version = "0.14", features = ["pkcs8"] }
 getrandom = "0.3"
 zip = { version = "9", default-features = false }

@@ -1,4 +1,4 @@
-//! The spacing system. Every gap, inset and control height in Tabula comes
+//! The spacing system. Every gap, inset and control height in Olo comes
 //! from here, so all windows share one rhythm: a 2px grid, 8px between
 //! controls, 12px from a window's edge to its content.
 

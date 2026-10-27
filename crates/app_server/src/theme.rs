@@ -6,7 +6,7 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
-use tabula_theme::{Palette, ThemeMode};
+use olo_theme::{Palette, ThemeMode};
 
 static PALETTE: RwLock<Option<Arc<Palette>>> = RwLock::new(None);
 static GENERATION: AtomicU64 = AtomicU64::new(1);
@@ -38,7 +38,7 @@ pub fn generation() -> u64 {
 }
 
 /// sRGB bytes to the premultiplied float colour smithay wants.
-pub fn to_f32(c: tabula_theme::Rgba) -> [f32; 4] {
+pub fn to_f32(c: olo_theme::Rgba) -> [f32; 4] {
     let a = c[3] as f32 / 255.0;
     [
         c[0] as f32 / 255.0 * a,

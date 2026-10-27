@@ -1216,5 +1216,11 @@
   "title": "Deskbar menu icons in dark mode",
   "caption": "The Applications submenu in dark mode. The kit's popup menus take an icon on any item (Menu::icon), with a column that sits after the check marks when a menu has both.",
   "image": "2026-10-27/155420-deskbar-menu-icons-in-dark-mode.png"
+ },
+ {
+  "time": "2026-10-27T16:34:41",
+  "title": "Tabula is now Olo Desktop",
+  "caption": "The new brand in About and Deskbar, light and dark: the mark and the olo wordmark, drawn crisp at 2\u00d7 from data/brand. A running Tabula session upgrades into Olo in place, every window and setting kept.",
+  "image": "2026-10-27/163441-tabula-is-now-olo-desktop.png"
  }
 ]

@@ -3,11 +3,11 @@
 //! org.freedesktop.UDisks2 on the bus at ADDRESS (default: the session
 //! bus, `DBUS_SESSION_BUS_ADDRESS`) and serves four sample disks: a system
 //! SSD, a USB stick, an encrypted backup disk (passphrase "secret") and an
-//! empty SD card. It answers what `tabula_system::disks` asks: the objects,
+//! empty SD card. It answers what `olo_system::disks` asks: the objects,
 //! mounting, formatting (as a job with progress that can be cancelled),
 //! partitioning, labels, unlocking, ejecting, SMART, and the restore and
 //! benchmark file descriptors (onto sparse files in its directory). Point
-//! apps at it with `TABULA_UDISKS_BUS=ADDRESS`.
+//! apps at it with `OLO_UDISKS_BUS=ADDRESS`.
 
 use std::{
     collections::HashMap,
@@ -335,7 +335,7 @@ fn sample(dir: PathBuf) -> Model {
     root.mounted = Some("/".into());
     let ssd = Disk {
         dev: "nvme0n1".into(),
-        vendor: "Tabula".into(),
+        vendor: "Olo".into(),
         model: "Test SSD".into(),
         serial: "TBL0001".into(),
         size: 256 * GIB,
@@ -355,7 +355,7 @@ fn sample(dir: PathBuf) -> Model {
     };
     let stick = Disk {
         dev: "sda".into(),
-        vendor: "Tabula".into(),
+        vendor: "Olo".into(),
         model: "USB Stick".into(),
         serial: "TBL0002".into(),
         size: 32 * GIB,
@@ -374,7 +374,7 @@ fn sample(dir: PathBuf) -> Model {
     luks.inner = Some(Box::new(Content::new("ext4", "Backups")));
     let backup = Disk {
         dev: "sdb".into(),
-        vendor: "Tabula".into(),
+        vendor: "Olo".into(),
         model: "Backup Disk".into(),
         serial: "TBL0003".into(),
         size: 2000 * GIB,
@@ -411,7 +411,7 @@ type Shared = Arc<Mutex<Model>>;
 
 /// Tell clients something changed (any signal from us will do).
 async fn changed(conn: &zbus::Connection) {
-    let _ = conn.emit_signal(None::<()>, ROOT, "org.tabula.UDisksFake", "Changed", &()).await;
+    let _ = conn.emit_signal(None::<()>, ROOT, "com.olodesktop.UDisksFake", "Changed", &()).await;
 }
 
 /// Run a job over `object` for `secs`, with progress, that can be

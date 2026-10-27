@@ -177,6 +177,12 @@ dependencies = [
  "cosmic-text",
  "image",
  "libc",
+ "olo-hvif",
+ "olo-images",
+ "olo-protocol",
+ "olo-system",
+ "olo-theme",
+ "olo-xdg",
  "profiling",
  "rand 0.8.8",
  "serde",
@@ -184,12 +190,6 @@ dependencies = [
  "signal-hook 0.3.18",
  "smithay",
  "smithay-drm-extras",
- "tabula-hvif",
- "tabula-images",
- "tabula-protocol",
- "tabula-system",
- "tabula-theme",
- "tabula-xdg",
  "thiserror 1.0.69",
  "tiny-skia 0.12.0",
  "tracing",
@@ -4001,6 +4001,542 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-activity"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-kit",
+ "olo-theme",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "olo-ai"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "olo-protocol",
+ "olo-xdg",
+ "reqwest",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "olo-chrome"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "getrandom 0.3.4",
+ "liblzma",
+ "olo-keychain",
+ "olo-kit",
+ "olo-theme",
+ "p256",
+ "quick-xml 0.42.0",
+ "rustls",
+ "serde_json",
+ "sha2",
+ "tracing",
+ "ureq",
+ "zeroize",
+ "zip",
+ "zstd",
+]
+
+[[package]]
+name = "olo-deskbar"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-kit",
+ "olo-protocol",
+ "olo-system",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "olo-deskcalc"
+version = "0.1.0"
+dependencies = [
+ "olo-kit",
+ "olo-theme",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "olo-drive-setup"
+version = "0.1.0"
+dependencies = [
+ "olo-kit",
+ "olo-system",
+ "olo-theme",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "olo-emoji"
+version = "0.1.0"
+dependencies = [
+ "harfrust 0.12.0",
+ "png 0.18.1",
+ "skrifa 0.46.2",
+ "tiny-skia 0.12.0",
+]
+
+[[package]]
+name = "olo-hvif"
+version = "0.1.0"
+dependencies = [
+ "png 0.18.1",
+ "tiny-skia 0.12.0",
+]
+
+[[package]]
+name = "olo-images"
+version = "0.1.0"
+dependencies = [
+ "avif-parse",
+ "heifer",
+ "image",
+ "jxl-oxide",
+ "rav1d",
+]
+
+[[package]]
+name = "olo-keychain"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "psl",
+ "serde",
+ "serde_json",
+ "tracing",
+ "url",
+ "zeroize",
+]
+
+[[package]]
+name = "olo-kit"
+version = "0.1.0"
+dependencies = [
+ "egui",
+ "egui-wgpu",
+ "fontdb",
+ "image",
+ "libc",
+ "memmap2",
+ "olo-emoji",
+ "olo-images",
+ "olo-protocol",
+ "olo-theme",
+ "olo-xdg",
+ "png 0.18.1",
+ "pollster",
+ "raw-window-handle",
+ "resvg",
+ "serde",
+ "serde_json",
+ "smithay-client-toolkit",
+ "tracing",
+ "tracing-subscriber",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols",
+ "wgpu",
+ "zbus",
+]
+
+[[package]]
+name = "olo-lock"
+version = "0.1.0"
+dependencies = [
+ "olo-kit",
+ "olo-system",
+ "tracing",
+]
+
+[[package]]
+name = "olo-logs"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "liblzma",
+ "lz4_flex",
+ "olo-kit",
+ "olo-theme",
+ "serde",
+ "serde_json",
+ "zstd",
+]
+
+[[package]]
+name = "olo-notifications"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "libc",
+ "olo-kit",
+ "olo-preview",
+ "olo-protocol",
+ "olo-xdg",
+ "serde",
+ "serde_json",
+ "tracing",
+ "zbus",
+]
+
+[[package]]
+name = "olo-onepassword"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "data-encoding",
+ "getrandom 0.3.4",
+ "hmac",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "thiserror 2.0.21",
+ "tracing",
+ "url",
+ "zeroize",
+]
+
+[[package]]
+name = "olo-op"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "libc",
+ "olo-keychain",
+ "olo-xdg",
+ "serde_json",
+]
+
+[[package]]
+name = "olo-palette"
+version = "0.1.0"
+dependencies = [
+ "ignore",
+ "olo-keychain",
+ "olo-kit",
+ "olo-protocol",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "olo-passwords"
+version = "0.1.0"
+dependencies = [
+ "chacha20poly1305",
+ "chrono",
+ "getrandom 0.3.4",
+ "olo-keychain",
+ "olo-kit",
+ "olo-onepassword",
+ "olo-protocol",
+ "olo-system",
+ "olo-theme",
+ "olo-xdg",
+ "serde",
+ "serde_json",
+ "tracing",
+ "url",
+ "zeroize",
+]
+
+[[package]]
+name = "olo-polkit-agent"
+version = "0.1.0"
+dependencies = [
+ "olo-kit",
+ "olo-system",
+ "tracing",
+]
+
+[[package]]
+name = "olo-pool"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "olo-kit",
+ "olo-token-pool",
+ "serde_json",
+]
+
+[[package]]
+name = "olo-preferences"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "libc",
+ "olo-ai",
+ "olo-kit",
+ "olo-protocol",
+ "olo-screensavers",
+ "olo-system",
+ "serde",
+ "serde_json",
+ "tar",
+ "tracing",
+ "zstd",
+]
+
+[[package]]
+name = "olo-preview"
+version = "0.1.0"
+dependencies = [
+ "bzip2",
+ "calamine",
+ "csv",
+ "flate2",
+ "hayro",
+ "image",
+ "liblzma",
+ "lofty",
+ "matroska-demuxer",
+ "mp4",
+ "olo-kit",
+ "openh264",
+ "opus-decoder",
+ "pulldown-cmark",
+ "pulseaudio",
+ "quick-xml 0.42.0",
+ "resvg",
+ "sevenz-rust2",
+ "symphonia",
+ "syntect",
+ "tar",
+ "tracing",
+ "ttf-parser",
+ "zip",
+ "zstd",
+]
+
+[[package]]
+name = "olo-protocol"
+version = "0.1.0"
+dependencies = [
+ "olo-theme",
+ "olo-xdg",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "olo-screen"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-kit",
+ "olo-protocol",
+ "olo-theme",
+ "olo-xdg",
+ "png 0.18.1",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "olo-screensaver"
+version = "0.1.0"
+dependencies = [
+ "olo-kit",
+ "olo-screensavers",
+ "olo-xdg",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "olo-screensavers"
+version = "0.1.0"
+dependencies = [
+ "olo-kit",
+]
+
+[[package]]
+name = "olo-screenshot"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "olo-kit",
+ "olo-protocol",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "olo-session"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-system",
+ "olo-xdg",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "olo-smart-tile"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "olo-ai",
+ "olo-kit",
+ "olo-protocol",
+ "serde_json",
+]
+
+[[package]]
+name = "olo-styled-edit"
+version = "0.1.0"
+dependencies = [
+ "fontdb",
+ "libc",
+ "olo-kit",
+ "olo-theme",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "olo-system"
+version = "0.1.0"
+dependencies = [
+ "aes",
+ "async-channel",
+ "async-io",
+ "base64 0.22.1",
+ "cbc",
+ "futures-lite",
+ "getrandom 0.3.4",
+ "hkdf",
+ "libc",
+ "libloading",
+ "num-bigint",
+ "pulseaudio",
+ "serde",
+ "sha2",
+ "tracing",
+ "zbus",
+ "zvariant",
+]
+
+[[package]]
+name = "olo-terminal"
+version = "0.1.0"
+dependencies = [
+ "alacritty_terminal",
+ "base64 0.22.1",
+ "flate2",
+ "image",
+ "libc",
+ "olo-kit",
+ "olo-protocol",
+ "regex",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "olo-theme"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "olo-token-pool"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "bytes",
+ "chacha20poly1305",
+ "chrono",
+ "futures-util",
+ "getrandom 0.3.4",
+ "olo-system",
+ "olo-xdg",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml_edit",
+ "tracing",
+ "zeroize",
+]
+
+[[package]]
+name = "olo-tracker"
+version = "0.1.0"
+dependencies = [
+ "grep-matcher",
+ "grep-regex",
+ "grep-searcher",
+ "ignore",
+ "libc",
+ "olo-kit",
+ "olo-preview",
+ "olo-protocol",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "olo-viewer"
+version = "0.1.0"
+dependencies = [
+ "hayro",
+ "image",
+ "lopdf",
+ "olo-kit",
+ "olo-preview",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "olo-wlproxy"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-xdg",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
+]
+
+[[package]]
+name = "olo-xdg"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "png 0.18.1",
+ "resvg",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6152,540 +6688,6 @@ dependencies = [
  "pkg-config",
  "toml",
  "version-compare",
-]
-
-[[package]]
-name = "tabula-activity"
-version = "0.1.0"
-dependencies = [
- "libc",
- "serde",
- "serde_json",
- "tabula-kit",
- "tabula-theme",
-]
-
-[[package]]
-name = "tabula-ai"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "reqwest",
- "serde_json",
- "tabula-protocol",
- "tabula-xdg",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "tabula-chrome"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "getrandom 0.3.4",
- "liblzma",
- "p256",
- "quick-xml 0.42.0",
- "rustls",
- "serde_json",
- "sha2",
- "tabula-keychain",
- "tabula-kit",
- "tabula-theme",
- "tracing",
- "ureq",
- "zeroize",
- "zip",
- "zstd",
-]
-
-[[package]]
-name = "tabula-deskbar"
-version = "0.1.0"
-dependencies = [
- "libc",
- "serde_json",
- "tabula-kit",
- "tabula-protocol",
- "tabula-system",
- "tracing",
-]
-
-[[package]]
-name = "tabula-deskcalc"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "tabula-kit",
- "tabula-theme",
-]
-
-[[package]]
-name = "tabula-drive-setup"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "tabula-kit",
- "tabula-system",
- "tabula-theme",
- "tracing",
-]
-
-[[package]]
-name = "tabula-emoji"
-version = "0.1.0"
-dependencies = [
- "harfrust 0.12.0",
- "png 0.18.1",
- "skrifa 0.46.2",
- "tiny-skia 0.12.0",
-]
-
-[[package]]
-name = "tabula-hvif"
-version = "0.1.0"
-dependencies = [
- "png 0.18.1",
- "tiny-skia 0.12.0",
-]
-
-[[package]]
-name = "tabula-images"
-version = "0.1.0"
-dependencies = [
- "avif-parse",
- "heifer",
- "image",
- "jxl-oxide",
- "rav1d",
-]
-
-[[package]]
-name = "tabula-keychain"
-version = "0.1.0"
-dependencies = [
- "libc",
- "psl",
- "serde",
- "serde_json",
- "tracing",
- "url",
- "zeroize",
-]
-
-[[package]]
-name = "tabula-kit"
-version = "0.1.0"
-dependencies = [
- "egui",
- "egui-wgpu",
- "fontdb",
- "image",
- "libc",
- "memmap2",
- "png 0.18.1",
- "pollster",
- "raw-window-handle",
- "resvg",
- "serde",
- "serde_json",
- "smithay-client-toolkit",
- "tabula-emoji",
- "tabula-images",
- "tabula-protocol",
- "tabula-theme",
- "tabula-xdg",
- "tracing",
- "tracing-subscriber",
- "wayland-backend",
- "wayland-client",
- "wayland-protocols",
- "wgpu",
- "zbus",
-]
-
-[[package]]
-name = "tabula-lock"
-version = "0.1.0"
-dependencies = [
- "tabula-kit",
- "tabula-system",
- "tracing",
-]
-
-[[package]]
-name = "tabula-logs"
-version = "0.1.0"
-dependencies = [
- "libc",
- "liblzma",
- "lz4_flex",
- "serde",
- "serde_json",
- "tabula-kit",
- "tabula-theme",
- "zstd",
-]
-
-[[package]]
-name = "tabula-notifications"
-version = "0.1.0"
-dependencies = [
- "image",
- "libc",
- "serde",
- "serde_json",
- "tabula-kit",
- "tabula-preview",
- "tabula-protocol",
- "tabula-xdg",
- "tracing",
- "zbus",
-]
-
-[[package]]
-name = "tabula-onepassword"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "chrono",
- "data-encoding",
- "getrandom 0.3.4",
- "hmac",
- "rusqlite",
- "serde",
- "serde_json",
- "sha1",
- "sha2",
- "thiserror 2.0.21",
- "tracing",
- "url",
- "zeroize",
-]
-
-[[package]]
-name = "tabula-op"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "libc",
- "serde_json",
- "tabula-keychain",
- "tabula-xdg",
-]
-
-[[package]]
-name = "tabula-palette"
-version = "0.1.0"
-dependencies = [
- "ignore",
- "serde",
- "serde_json",
- "tabula-keychain",
- "tabula-kit",
- "tabula-protocol",
- "tracing",
-]
-
-[[package]]
-name = "tabula-passwords"
-version = "0.1.0"
-dependencies = [
- "chacha20poly1305",
- "chrono",
- "getrandom 0.3.4",
- "serde",
- "serde_json",
- "tabula-keychain",
- "tabula-kit",
- "tabula-onepassword",
- "tabula-protocol",
- "tabula-system",
- "tabula-theme",
- "tabula-xdg",
- "tracing",
- "url",
- "zeroize",
-]
-
-[[package]]
-name = "tabula-polkit-agent"
-version = "0.1.0"
-dependencies = [
- "tabula-kit",
- "tabula-system",
- "tracing",
-]
-
-[[package]]
-name = "tabula-pool"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "serde_json",
- "tabula-kit",
- "tabula-token-pool",
-]
-
-[[package]]
-name = "tabula-preferences"
-version = "0.1.0"
-dependencies = [
- "jiff",
- "libc",
- "serde",
- "serde_json",
- "tabula-ai",
- "tabula-kit",
- "tabula-protocol",
- "tabula-screensavers",
- "tabula-system",
- "tar",
- "tracing",
- "zstd",
-]
-
-[[package]]
-name = "tabula-preview"
-version = "0.1.0"
-dependencies = [
- "bzip2",
- "calamine",
- "csv",
- "flate2",
- "hayro",
- "image",
- "liblzma",
- "lofty",
- "matroska-demuxer",
- "mp4",
- "openh264",
- "opus-decoder",
- "pulldown-cmark",
- "pulseaudio",
- "quick-xml 0.42.0",
- "resvg",
- "sevenz-rust2",
- "symphonia",
- "syntect",
- "tabula-kit",
- "tar",
- "tracing",
- "ttf-parser",
- "zip",
- "zstd",
-]
-
-[[package]]
-name = "tabula-protocol"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "tabula-theme",
- "tabula-xdg",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "tabula-screen"
-version = "0.1.0"
-dependencies = [
- "libc",
- "png 0.18.1",
- "serde",
- "serde_json",
- "tabula-kit",
- "tabula-protocol",
- "tabula-theme",
- "tabula-xdg",
- "tracing",
-]
-
-[[package]]
-name = "tabula-screensaver"
-version = "0.1.0"
-dependencies = [
- "serde_json",
- "tabula-kit",
- "tabula-screensavers",
- "tabula-xdg",
- "tracing",
-]
-
-[[package]]
-name = "tabula-screensavers"
-version = "0.1.0"
-dependencies = [
- "tabula-kit",
-]
-
-[[package]]
-name = "tabula-screenshot"
-version = "0.1.0"
-dependencies = [
- "image",
- "serde",
- "serde_json",
- "tabula-kit",
- "tabula-protocol",
- "tracing",
-]
-
-[[package]]
-name = "tabula-session"
-version = "0.1.0"
-dependencies = [
- "libc",
- "serde",
- "serde_json",
- "tabula-system",
-]
-
-[[package]]
-name = "tabula-smart-tile"
-version = "0.1.0"
-dependencies = [
- "image",
- "serde_json",
- "tabula-ai",
- "tabula-kit",
- "tabula-protocol",
-]
-
-[[package]]
-name = "tabula-styled-edit"
-version = "0.1.0"
-dependencies = [
- "fontdb",
- "libc",
- "serde",
- "serde_json",
- "tabula-kit",
- "tabula-theme",
-]
-
-[[package]]
-name = "tabula-system"
-version = "0.1.0"
-dependencies = [
- "aes",
- "async-channel",
- "async-io",
- "base64 0.22.1",
- "cbc",
- "futures-lite",
- "getrandom 0.3.4",
- "hkdf",
- "libc",
- "libloading",
- "num-bigint",
- "pulseaudio",
- "serde",
- "sha2",
- "tracing",
- "zbus",
- "zvariant",
-]
-
-[[package]]
-name = "tabula-terminal"
-version = "0.1.0"
-dependencies = [
- "alacritty_terminal",
- "base64 0.22.1",
- "flate2",
- "image",
- "libc",
- "regex",
- "serde",
- "serde_json",
- "tabula-kit",
- "tabula-protocol",
- "tracing",
-]
-
-[[package]]
-name = "tabula-theme"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "tabula-token-pool"
-version = "0.1.0"
-dependencies = [
- "axum",
- "base64 0.22.1",
- "bytes",
- "chacha20poly1305",
- "chrono",
- "futures-util",
- "getrandom 0.3.4",
- "reqwest",
- "serde",
- "serde_json",
- "tabula-system",
- "tabula-xdg",
- "tempfile",
- "tokio",
- "toml_edit",
- "tracing",
- "zeroize",
-]
-
-[[package]]
-name = "tabula-tracker"
-version = "0.1.0"
-dependencies = [
- "grep-matcher",
- "grep-regex",
- "grep-searcher",
- "ignore",
- "libc",
- "serde",
- "serde_json",
- "tabula-kit",
- "tabula-preview",
- "tabula-protocol",
- "tracing",
-]
-
-[[package]]
-name = "tabula-viewer"
-version = "0.1.0"
-dependencies = [
- "hayro",
- "image",
- "lopdf",
- "serde",
- "serde_json",
- "tabula-kit",
- "tabula-preview",
- "tracing",
-]
-
-[[package]]
-name = "tabula-wlproxy"
-version = "0.1.0"
-dependencies = [
- "libc",
- "wayland-backend",
- "wayland-client",
- "wayland-protocols",
- "wayland-protocols-wlr",
-]
-
-[[package]]
-name = "tabula-xdg"
-version = "0.1.0"
-dependencies = [
- "libc",
- "png 0.18.1",
- "resvg",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 //! Smart Tiling (Preferences ▸ AI): app_server starts this for the
 //! Smart Tile shortcut. It looks at the active display (a screenshot, each
-//! window's app, title and place, and what Tabula's own apps show, from
+//! window's app, title and place, and what Olo's own apps show, from
 //! their widget trees), asks the model chosen in Preferences for the best
 //! tiling, and has app_server arrange the windows so (undoable with Undo
 //! Window Arrangement). A notification shows how it is going and can
@@ -13,11 +13,11 @@ use std::{
 };
 
 use serde_json::{Value, json};
-use tabula_kit::{
+use olo_kit::{
     commands,
     notify::{Note, NoteEvent, NoteKind, Notifier},
 };
-use tabula_protocol::{AI_MODELS, Client, Frame, Placement, Reply, Request, WindowInfo};
+use olo_protocol::{AI_MODELS, Client, Frame, Placement, Reply, Request, WindowInfo};
 
 /// The screenshot sent is no bigger than this on its long side.
 const SHOT_EDGE: u32 = 1568;
@@ -28,7 +28,7 @@ const OUTLINE_CHARS: usize = 80;
 const UNDO_FOR: Duration = Duration::from_secs(60);
 
 const SYSTEM: &str = "You arrange the windows on a person's screen. You see a screenshot of \
-the screen, and for each window its app, title and current place, and for Tabula's own apps an \
+the screen, and for each window its app, title and current place, and for Olo's own apps an \
 outline of what the window shows. Tile them: choose for every window a rectangle of the tiling \
 area so that together they fill the area without overlapping. Give the most room to what the \
 person is most likely working on (the focused window, documents, editors, terminals in use, \
@@ -39,10 +39,12 @@ where they are now when there is no reason to move them. Rectangles are percenta
 tiling area (0–100) from its top left. Also say in one short sentence how you arranged them.";
 
 fn main() -> ExitCode {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("tabula-smart-tile: {e}");
+            eprintln!("olo-smart-tile: {e}");
             ExitCode::FAILURE
         }
     }
@@ -65,14 +67,14 @@ fn run() -> Result<(), String> {
     let asked = Arc::new(Mutex::new(Asked::default()));
     let notes = {
         let asked = asked.clone();
-        Notifier::with_events("Smart Tiling", "tabula-smart-tile", move |e| {
+        Notifier::with_events("Smart Tiling", "olo-smart-tile", move |e| {
             if let NoteEvent::Action { key, .. } = e {
                 let mut a = asked.lock().unwrap();
                 match key.as_str() {
                     "cancel" => a.cancel = true,
                     "undo" => a.undo = true,
                     "preferences" => {
-                        let _ = tabula_kit::spawn_detached("tabula-preferences ai");
+                        let _ = olo_kit::spawn_detached("olo-preferences ai");
                     }
                     _ => {}
                 }
@@ -113,9 +115,9 @@ fn run() -> Result<(), String> {
 
     // The model, on a thread of its own: we keep the note ticking and
     // listen for Cancel.
-    let ask = tabula_ai::Ask { system: SYSTEM.into(), content, schema: schema(), max_tokens: 16000 };
+    let ask = olo_ai::Ask { system: SYSTEM.into(), content, schema: schema(), max_tokens: 16000 };
     let (ai, feature) = (settings.ai.clone(), feature.clone());
-    let answer = std::thread::spawn(move || tabula_ai::ask(&ai, &feature, &ask));
+    let answer = std::thread::spawn(move || olo_ai::ask(&ai, &feature, &ask));
     while !answer.is_finished() {
         if asked.lock().unwrap().cancel {
             notes.close(id);
@@ -160,7 +162,7 @@ fn linger() {
 /// The display as a PNG no bigger than [`SHOT_EDGE`].
 fn screenshot(client: &mut Client, output: &str) -> Result<Vec<u8>, String> {
     let dir = std::env::var_os("XDG_RUNTIME_DIR").map_or_else(std::env::temp_dir, std::path::PathBuf::from);
-    let path = dir.join(format!("tabula-smart-tile-{}.png", std::process::id()));
+    let path = dir.join(format!("olo-smart-tile-{}.png", std::process::id()));
     let req = Request::Screenshot { path: path.display().to_string(), output: Some(output.into()), window: None, border: true, pointer: false, format: Default::default() };
     request(client, &req)?;
     let image = image::open(&path).map_err(|e| e.to_string());
@@ -174,7 +176,7 @@ fn screenshot(client: &mut Client, output: &str) -> Result<Vec<u8>, String> {
     Ok(png)
 }
 
-/// What each of Tabula's own windows shows, as a short outline (by
+/// What each of Olo's own windows shows, as a short outline (by
 /// window id); apps not on the kit have none.
 fn outlines(windows: &[WindowInfo]) -> Vec<(u64, String)> {
     let mut pids: Vec<u32> = windows.iter().filter_map(|w| w.pid.map(|p| p as u32)).collect();
@@ -243,7 +245,7 @@ fn describe(area: Frame, windows: &[WindowInfo], trees: &[(u64, String)], shot: 
             text += "\n";
         }
     }
-    vec![tabula_ai::png_block(shot), tabula_ai::text_block(text)]
+    vec![olo_ai::png_block(shot), olo_ai::text_block(text)]
 }
 
 /// The answer's shape.
@@ -296,7 +298,7 @@ mod tests {
     fn window(id: u64) -> WindowInfo {
         WindowInfo {
             id,
-            app_id: "tabula.terminal".into(),
+            app_id: "olo.terminal".into(),
             title: "t".into(),
             pid: None,
             workspace: 0,

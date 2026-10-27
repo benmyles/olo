@@ -184,7 +184,7 @@ mod tests {
         eprintln!("{} raw {:?} of {} = {:?}", b.name, b.raw(), b.max, b.level());
     }
 
-    /// Which backlight is whose (read only): `cargo test -p tabula-system
+    /// Which backlight is whose (read only): `cargo test -p olo-system
     /// live_connectors -- --ignored --nocapture`.
     #[test]
     #[ignore]

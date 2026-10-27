@@ -1,13 +1,13 @@
 //! app_server's settings (what Preferences changes) for apps that follow
-//! some of them. Outside Tabula (no `$TABULA_SOCKET`) there are none.
+//! some of them. Outside Olo (no `$OLO_SOCKET`) there are none.
 
 use std::time::Duration;
 
-use tabula_protocol::{Client, Event, PowerStatus, Reply, Request, Settings};
+use olo_protocol::{Client, Event, PowerStatus, Reply, Request, Settings};
 
 /// The settings now, asked once (a local round trip; fine at startup).
 pub fn current() -> Option<Settings> {
-    tabula_protocol::socket_path()?;
+    olo_protocol::socket_path()?;
     match Client::connect().ok()?.request(&Request::GetSettings).ok()? {
         Reply::Settings { settings } => Some(settings),
         _ => None,
@@ -17,7 +17,7 @@ pub fn current() -> Option<Settings> {
 /// Call `f` with the settings on a thread: now, after every change, and
 /// again after app_server restarts.
 pub fn watch(f: impl Fn(Settings) + Send + 'static) {
-    if tabula_protocol::socket_path().is_none() {
+    if olo_protocol::socket_path().is_none() {
         return;
     }
     std::thread::Builder::new()
@@ -44,7 +44,7 @@ pub fn watch(f: impl Fn(Settings) + Send + 'static) {
 /// change (the screen locking, the displays sleeping, …), and again after
 /// app_server restarts.
 pub fn watch_power(f: impl Fn(PowerStatus) + Send + 'static) {
-    if tabula_protocol::socket_path().is_none() {
+    if olo_protocol::socket_path().is_none() {
         return;
     }
     std::thread::Builder::new()
@@ -71,9 +71,9 @@ pub fn watch_power(f: impl Fn(PowerStatus) + Send + 'static) {
 
 /// Change the settings: `edit` is given the current ones and app_server
 /// gets the result (and tells every app that follows them). On a thread,
-/// so it never holds up the UI; false outside Tabula.
+/// so it never holds up the UI; false outside Olo.
 pub fn update(edit: impl FnOnce(&mut Settings) + Send + 'static) -> bool {
-    if tabula_protocol::socket_path().is_none() {
+    if olo_protocol::socket_path().is_none() {
         return false;
     }
     std::thread::Builder::new()

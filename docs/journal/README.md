@@ -1,9 +1,15 @@
 # Screenshot journal
 
-Tabula's visual evolution, newest first. Added with `tools/journal.py`
+Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
 ## 2026-10-27
+
+### Tabula is now Olo Desktop
+
+*16:34* — The new brand in About and Deskbar, light and dark: the mark and the olo wordmark, drawn crisp at 2× from data/brand. A running Tabula session upgrades into Olo in place, every window and setting kept.
+
+![Tabula is now Olo Desktop](2026-10-27/163441-tabula-is-now-olo-desktop.png)
 
 ### Deskbar menu icons in dark mode
 

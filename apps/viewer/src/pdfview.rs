@@ -8,7 +8,7 @@ use std::{
     sync::{Arc, mpsc::Sender},
 };
 
-use tabula_kit::{
+use olo_kit::{
     egui::{
         self, Color32, CursorIcon, FontFamily, FontId, Key, Pos2, Rect, Sense, Stroke, TextureHandle,
         TextureOptions, Ui, Vec2, pos2, vec2,

@@ -1,5 +1,5 @@
 //! Preferences: one small window per panel, as BeOS had a preference app
-//! per area, all in one process. `tabula-preferences <panel>` opens a panel
+//! per area, all in one process. `olo-preferences <panel>` opens a panel
 //! (Deskbar's Preferences menu does this); with no argument a launcher
 //! window lists them all.
 //!
@@ -32,7 +32,7 @@ mod workspaces;
 
 use std::collections::BTreeMap;
 
-use tabula_kit::{
+use olo_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
     egui::{self, Rect, Sense, pos2, vec2},
     file_panel::{FilePanel, PANEL_SIZE, PanelResult},
@@ -41,11 +41,11 @@ use tabula_kit::{
     metrics as m,
     style::{self, c},
 };
-use tabula_protocol::{OutputInfo, PowerStatus, Settings};
+use olo_protocol::{OutputInfo, PowerStatus, Settings};
 
 use panel::Panel;
 
-const APP_ID: &str = "tabula.preferences";
+const APP_ID: &str = "olo.preferences";
 
 pub enum Msg {
     Settings(Box<Settings>),
@@ -131,7 +131,7 @@ impl Prefs {
             .and_then(|s| s.wallpaper.as_deref())
             .and_then(|p| std::path::Path::new(p).parent().map(|d| d.to_owned()))
             .filter(|d| d.is_dir())
-            .or_else(|| tabula_kit::user_dir("PICTURES"))
+            .or_else(|| olo_kit::user_dir("PICTURES"))
             .unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()));
         let (w, h) = PANEL_SIZE;
         let id = cx.open_window(WindowOptions::new("Choose a Wallpaper", w, h).min_size(400, 300).parent(owner));
@@ -140,7 +140,7 @@ impl Prefs {
     }
 
     /// The sheet for joining an enterprise network (one per network).
-    fn join_enterprise(&mut self, cx: &mut Cx, owner: WindowId, device: String, net: tabula_system::network::Network) {
+    fn join_enterprise(&mut self, cx: &mut Cx, owner: WindowId, device: String, net: olo_system::network::Network) {
         if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Enterprise { form, .. } if form.ssid() == net.ssid)) {
             cx.activate(id);
             return;
@@ -160,7 +160,7 @@ impl Prefs {
         let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
         let (title, panel) = match ask {
             backup::Ask::Export => ("Export Settings", FilePanel::save(home, backup::suggested_name()).types(&[backup::EXTENSION])),
-            backup::Ask::Import => ("Import Settings", FilePanel::open(home).types(&[backup::EXTENSION])),
+            backup::Ask::Import => ("Import Settings", FilePanel::open(home).types(&[backup::EXTENSION, backup::OLD_EXTENSION])),
         };
         let (w, h) = PANEL_SIZE;
         let id = cx.open_window(WindowOptions::new(title, w, h).min_size(400, 300).parent(owner));
@@ -169,7 +169,7 @@ impl Prefs {
 
     fn handle_args(&mut self, cx: &mut Cx, args: &[String]) {
         let (files, panels): (Vec<&String>, Vec<&String>) =
-            args.iter().filter(|a| !a.starts_with('-')).partition(|a| a.ends_with(&format!(".{}", backup::EXTENSION)));
+            args.iter().filter(|a| !a.starts_with('-')).partition(|a| [backup::EXTENSION, backup::OLD_EXTENSION].iter().any(|x| a.ends_with(&format!(".{x}"))));
         if panels.is_empty() && files.is_empty() {
             self.open_launcher(cx);
         }
@@ -244,9 +244,9 @@ fn backup_cli(flag: &str, file: &std::path::Path) -> Option<i32> {
             }
             // app_server keeps its own copy: hand it the backup's.
             if let Some(settings) = i.settings
-                && let Ok(mut c) = tabula_protocol::Client::connect()
+                && let Ok(mut c) = olo_protocol::Client::connect()
             {
-                let _ = c.request(&tabula_protocol::Request::SetSettings { settings });
+                let _ = c.request(&olo_protocol::Request::SetSettings { settings });
             }
         }),
         _ => return None,
@@ -254,7 +254,7 @@ fn backup_cli(flag: &str, file: &std::path::Path) -> Option<i32> {
     Some(match r {
         Ok(()) => 0,
         Err(e) => {
-            eprintln!("tabula-preferences: {e}");
+            eprintln!("olo-preferences: {e}");
             1
         }
     })
@@ -445,6 +445,8 @@ impl App for Prefs {
 }
 
 fn main() {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let [flag, file] = &args[..]
         && let Some(code) = backup_cli(flag, std::path::Path::new(file))
@@ -454,7 +456,7 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    tabula_kit::run(APP_ID, |cx| {
+    olo_kit::run(APP_ID, |cx| {
         instance::listen(APP_ID, cx.proxy());
         let server = server::Server::start(cx.proxy());
         let mut prefs = Prefs { windows: BTreeMap::new(), settings: None, outputs: Vec::new(), power: None, server };

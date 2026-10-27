@@ -48,8 +48,8 @@ pub struct Line {
     pub pid: u32,
     pub level: Level,
     pub message: String,
-    /// One of Tabula's own programs.
-    pub tabula: bool,
+    /// One of Olo's own programs.
+    pub olo: bool,
     pub boot: [u8; 16],
 }
 
@@ -169,9 +169,10 @@ fn continues(text: &str) -> bool {
     text.starts_with([' ', '\t']) || t.starts_with([')', '}', ']']) || (t.starts_with('#') && t[1..].starts_with(|c: char| c.is_ascii_digit()))
 }
 
-/// One of Tabula's programs (not a crate's test binary, `tabula_x-hash`).
-pub fn is_tabula(program: &str) -> bool {
-    program.starts_with("tabula-") || program == "app_server"
+/// One of Olo's programs (not a crate's test binary, `olo_x-hash`), or
+/// one of them under its name before the rename (Tabula) in older lines.
+pub fn is_olo(program: &str) -> bool {
+    program.starts_with("olo-") || program.starts_with("tabula-") || program == "app_server"
 }
 
 /// The kernel cuts a process's name (`_COMM`) to 15 bytes.
@@ -209,7 +210,7 @@ fn program_of(e: &Entry, full: &mut Vec<Arc<str>>) -> Arc<str> {
     Arc::from(e.get(Field::Identifier).and_then(base).unwrap_or_else(|| "?".into()))
 }
 
-/// Tabula's programs with names longer than a process name, from the
+/// Olo's programs with names longer than a process name, from the
 /// directory this one runs from.
 fn installed() -> &'static [String] {
     static NAMES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
@@ -220,7 +221,7 @@ fn installed() -> &'static [String] {
             .into_iter()
             .flatten()
             .filter_map(|e| e.ok()?.file_name().into_string().ok())
-            .filter(|n| n.starts_with("tabula-") && n.len() > COMM_MAX && !n.contains('.'))
+            .filter(|n| (n.starts_with("olo-") || n.starts_with("tabula-")) && n.len() > COMM_MAX && !n.contains('.'))
             .collect();
         names.sort();
         names
@@ -270,16 +271,16 @@ impl Builder {
             (level, rest.trim_end().to_owned())
         } else {
             let level = level_in_text(&text).unwrap_or_else(|| match level_of_priority(e.get(Field::Priority)) {
-                // Tabula's programs log warnings through tracing; what they
+                // Olo's programs log warnings through tracing; what they
                 // print to stderr themselves (which the session's journal
                 // stream files as warnings) is news unless it says otherwise.
-                Level::Warning if is_tabula(&program) => if says_trouble(&text) { Level::Warning } else { Level::Info },
+                Level::Warning if is_olo(&program) => if says_trouble(&text) { Level::Warning } else { Level::Info },
                 l => l,
             });
             (level, text.trim_end().to_owned())
         };
-        let tabula = is_tabula(&program);
-        let line = Line { time: e.realtime, program, pid, level, message, tabula, boot: e.boot };
+        let olo = is_olo(&program);
+        let line = Line { time: e.realtime, program, pid, level, message, olo, boot: e.boot };
         let index = self.count;
         self.count += 1;
         if pid != 0 {
@@ -328,7 +329,7 @@ impl Since {
 pub struct Query {
     pub since: Since,
     pub level: Level,
-    /// One program, or every Tabula program (`None` with `all_programs`
+    /// One program, or every Olo program (`None` with `all_programs`
     /// false), or everything.
     pub program: Option<String>,
     pub all_programs: bool,
@@ -403,7 +404,7 @@ impl Query {
         }
         match &self.program {
             Some(p) if *l.program != **p => return false,
-            None if !self.all_programs && !l.tabula => return false,
+            None if !self.all_programs && !l.olo => return false,
             _ => {}
         }
         needle.is_empty() || l.message.to_lowercase().contains(needle) || l.program.to_lowercase().contains(needle)
@@ -446,14 +447,14 @@ mod tests {
     fn tracing_lines_are_cleaned() {
         let raw = "\u{1b}[2m2026-10-27T04:45:52.225681Z\u{1b}[0m \u{1b}[33m WARN\u{1b}[0m \u{1b}[2mapp_server::udev\u{1b}[0m\u{1b}[2m:\u{1b}[0m Error during rendering: TemporaryFailure(";
         let mut b = Builder::default();
-        let Some(Built::New(l)) = b.add(&entry(1, "7", "tabula-app-serv", raw)) else { panic!() };
+        let Some(Built::New(l)) = b.add(&entry(1, "7", "olo-app-serv", raw)) else { panic!() };
         assert_eq!(l.level, Level::Warning);
         assert_eq!(l.message, "app_server::udev: Error during rendering: TemporaryFailure(");
-        assert!(l.tabula);
+        assert!(l.olo);
         // The debug print's inside and its end join it.
-        let Some(Built::Continues { index: 0, text }) = b.add(&entry(2, "7", "tabula-app-serv", "    Access(")) else { panic!() };
+        let Some(Built::Continues { index: 0, text }) = b.add(&entry(2, "7", "olo-app-serv", "    Access(")) else { panic!() };
         assert_eq!(text, "    Access(");
-        assert!(matches!(b.add(&entry(3, "7", "tabula-app-serv", ")")), Some(Built::Continues { index: 0, .. })));
+        assert!(matches!(b.add(&entry(3, "7", "olo-app-serv", ")")), Some(Built::Continues { index: 0, .. })));
         // Another process's line doesn't.
         assert!(matches!(b.add(&entry(4, "8", "chrome", "    indented")), Some(Built::New(_))));
     }
@@ -463,7 +464,7 @@ mod tests {
         let mut b = Builder::default();
         let Some(Built::New(l)) = b.add(&entry(1, "9", "gnome-calculator", "(gnome-calculator:9): Adwaita-WARNING **: deprecated")) else { panic!() };
         assert_eq!(l.level, Level::Warning);
-        assert!(!l.tabula);
+        assert!(!l.olo);
         let mut e = entry(2, "10", "x", "bad");
         e.fields[3].1 = "3".into();
         let Some(Built::New(l)) = b.add(&e) else { panic!() };
@@ -473,11 +474,11 @@ mod tests {
     #[test]
     fn queries() {
         let now = Now { time: 100 * 60_000_000, midnight: 0, boot: Some([1; 16]) };
-        let line = |level, program: &str, tabula, time, boot| Line { time, program: program.into(), pid: 1, level, message: "Hello World".into(), tabula, boot };
+        let line = |level, program: &str, olo, time, boot| Line { time, program: program.into(), pid: 1, level, message: "Hello World".into(), olo, boot };
         let q = Query::default();
-        assert!(q.matches(&line(Level::Info, "tabula-tracker", true, 0, [1; 16]), &now, ""));
+        assert!(q.matches(&line(Level::Info, "olo-tracker", true, 0, [1; 16]), &now, ""));
         assert!(!q.matches(&line(Level::Info, "chrome", false, 0, [1; 16]), &now, ""));
-        assert!(!q.matches(&line(Level::Info, "tabula-tracker", true, 0, [2; 16]), &now, ""));
+        assert!(!q.matches(&line(Level::Info, "olo-tracker", true, 0, [2; 16]), &now, ""));
         let q = Query { since: Since::Minutes(10), level: Level::Warning, all_programs: true, ..Query::default() };
         assert!(!q.matches(&line(Level::Info, "chrome", false, 99 * 60_000_000, [1; 16]), &now, ""));
         assert!(q.matches(&line(Level::Error, "chrome", false, 99 * 60_000_000, [1; 16]), &now, "world"));
@@ -489,13 +490,13 @@ mod tests {
     }
 
     #[test]
-    fn tabula_stderr_is_news() {
+    fn olo_stderr_is_news() {
         let mut b = Builder::default();
-        let mut e = entry(1, "3", "tabula-session", "tabula-session: reloading");
+        let mut e = entry(1, "3", "olo-session", "olo-session: reloading");
         e.fields[3].1 = "4".into();
         let Some(Built::New(l)) = b.add(&e) else { panic!() };
         assert_eq!(l.level, Level::Info);
-        let mut e = entry(2, "3", "tabula-session", "tabula-session: could not export the environment");
+        let mut e = entry(2, "3", "olo-session", "olo-session: could not export the environment");
         e.fields[3].1 = "4".into();
         let Some(Built::New(l)) = b.add(&e) else { panic!() };
         assert_eq!(l.level, Level::Warning);

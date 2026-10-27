@@ -1,4 +1,4 @@
-//! The pointer: Haiku's system cursors (`tabula-hvif`), drawn at each
+//! The pointer: Haiku's system cursors (`olo-hvif`), drawn at each
 //! output's scale and kept once drawn. Named cursors, from our own
 //! decorations or from clients over cursor-shape-v1, map onto them.
 
@@ -13,7 +13,7 @@ use smithay::{
     utils::{Logical, Point, Transform},
     wayland::compositor,
 };
-pub use tabula_hvif::cursor::{Cursor, SIZE, Shape};
+pub use olo_hvif::cursor::{Cursor, SIZE, Shape};
 
 /// The Haiku cursor for a CSS / cursor-shape-v1 name.
 pub fn shape_for(icon: CursorIcon) -> Shape {
@@ -86,7 +86,7 @@ pub fn image(shape: Shape, scale: f64) -> Arc<Cursor> {
     type Drawn = HashMap<(Shape, u64), Arc<Cursor>>;
     static CACHE: OnceLock<Mutex<Drawn>> = OnceLock::new();
     let mut cache = CACHE.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
-    cache.entry((shape, scale.to_bits())).or_insert_with(|| Arc::new(tabula_hvif::cursor::render(shape, scale))).clone()
+    cache.entry((shape, scale.to_bits())).or_insert_with(|| Arc::new(olo_hvif::cursor::render(shape, scale))).clone()
 }
 
 thread_local! {

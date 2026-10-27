@@ -3,7 +3,7 @@
 //! conversation that answers the password prompt. Blocks (PAM sleeps on a
 //! failure, two seconds by default): call it from a worker thread.
 //!
-//! The service is `tabula-lock` if installed, else `password-auth`, a
+//! The service is `olo-lock` if installed, else `password-auth`, a
 //! password-only stack (fingerprints are read separately, over fprintd, so
 //! a password never waits on the sensor), else `login`.
 
@@ -121,7 +121,7 @@ impl Pam {
 }
 
 pub fn service() -> &'static str {
-    for s in ["tabula-lock", "password-auth"] {
+    for s in ["olo-lock", "password-auth"] {
         if Path::new("/etc/pam.d").join(s).exists() || Path::new("/usr/lib/pam.d").join(s).exists() {
             return s;
         }
@@ -133,9 +133,9 @@ pub fn service() -> &'static str {
 /// their account is usable.
 pub fn check_password(user: &str, password: &str) -> Result<(), AuthError> {
     // Debug builds only: a private PAM service for automated lock-screen
-    // tests (TABULA_PAM_CONFDIR holding TABULA_PAM_SERVICE).
+    // tests (OLO_PAM_CONFDIR holding OLO_PAM_SERVICE).
     #[cfg(debug_assertions)]
-    if let (Some(dir), Ok(svc)) = (std::env::var_os("TABULA_PAM_CONFDIR"), std::env::var("TABULA_PAM_SERVICE")) {
+    if let (Some(dir), Ok(svc)) = (std::env::var_os("OLO_PAM_CONFDIR"), std::env::var("OLO_PAM_SERVICE")) {
         return check(&svc, Some(Path::new(&dir)), user, password);
     }
     check(service(), None, user, password)
@@ -236,7 +236,7 @@ mod tests {
     /// the password the module was asked for, one that refuses.
     #[test]
     fn conversation_with_private_services() {
-        let dir = std::env::temp_dir().join(format!("tabula-pam-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-pam-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("allow"), "auth required pam_permit.so\naccount required pam_permit.so\n").unwrap();
         std::fs::write(dir.join("deny"), "auth required pam_deny.so\naccount required pam_permit.so\n").unwrap();

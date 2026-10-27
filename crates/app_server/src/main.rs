@@ -29,6 +29,8 @@ fn bogus_error(m: &tracing::Metadata<'_>) -> bool {
 // Allow in this function because of existing usage
 #[allow(clippy::uninlined_format_args)]
 fn main() {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_xdg::legacy::adopt();
     use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
     tracing_subscriber::fmt().compact().with_env_filter(env_filter).finish().with(tracing_subscriber::filter::filter_fn(|m| !bogus_error(m))).init();
@@ -60,7 +62,7 @@ fn main() {
         None => {
             #[allow(clippy::disallowed_macros)]
             {
-                println!("USAGE: tabula-app-server --backend");
+                println!("USAGE: olo-app-server --backend");
                 println!();
                 println!("Possible backends are:");
                 for b in POSSIBLE_BACKENDS {

@@ -1,5 +1,5 @@
 [package]
-name = "tabula-images"
+name = "olo-images"
 description = "Decode pictures natively: the image crate's formats plus JPEG XL, AVIF and HEIC"
 version.workspace = true
 edition.workspace = true

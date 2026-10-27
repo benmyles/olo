@@ -1,6 +1,6 @@
 # Icons: style guide and generation
 
-Every Tabula icon belongs to one set that looks as if one artist drew it in
+Every Olo icon belongs to one set that looks as if one artist drew it in
 one sitting. That is the bar. An icon that is pretty on its own but sits
 differently from its neighbours is wrong.
 
@@ -129,7 +129,7 @@ python3 tools/iconsheet.py docs/img/icon-reference.png \
 
 ## Using icons in code
 
-`tabula_kit::icons::paint(painter, rect, "name")`. Names come from the
+`olo_kit::icons::paint(painter, rect, "name")`. Names come from the
 manifest; freedesktop icon names and absolute paths also work. The kit
 picks the smallest pre-scaled size that covers the rect in device pixels.
 Use these sizes: 16 for lists, menus and the Deskbar; 32 for Tracker mini

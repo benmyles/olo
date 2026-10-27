@@ -1,4 +1,4 @@
-//! Answers for `op` (Tabula's stand-in for 1Password's command-line tool,
+//! Answers for `op` (Olo's stand-in for 1Password's command-line tool,
 //! apps/op): vaults, items and `op://` references from the store, in the
 //! JSON shapes 1Password's `op` prints, and which terminal sessions the
 //! person has allowed.
@@ -16,7 +16,7 @@ use std::{
 
 use onepassword::{Item, ItemCategory, ItemFieldType, ItemState, VaultOverview, reference, totp::Totp};
 use serde_json::{Value, json};
-use tabula_keychain::{CliQuery, Response};
+use olo_keychain::{CliQuery, Response};
 
 use crate::vault::{Data, Entry};
 

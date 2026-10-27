@@ -1,19 +1,19 @@
 //! Quick Look: Space on a selected item previews it at once, in a window
 //! that follows the selection (arrow keys step through the folder, Space
-//! or Escape closes). The previews themselves come from `tabula-preview`;
+//! or Escape closes). The previews themselves come from `olo-preview`;
 //! this adds the footer (what it is, rotate, pop out to Viewer, Open) and
 //! the keys. Rotating a picture (⌘L / ⌘R, or the footer's buttons) saves it
 //! at once, as Quick Look does on the Mac; anything more is Viewer's job.
 
-use tabula_kit::{
+use olo_kit::{
     WindowId,
     egui::{self, Key, Rect, Ui, pos2, vec2},
     icons, metrics as m,
     style::{self, c},
     widgets::Button,
 };
-pub use tabula_preview::{SLOW, Update, edit::EditEvent};
-use tabula_preview::{
+pub use olo_preview::{SLOW, Update, edit::EditEvent};
+use olo_preview::{
     Body, Item, Preview,
     edit::{self, Editor, Op},
 };
@@ -258,7 +258,7 @@ impl QuickLook {
 }
 
 /// A three-quarter circle with an arrowhead, turning left or right.
-fn rotate_glyph(painter: &egui::Painter, r: Rect, right: bool, p: &tabula_kit::theme::Palette) {
+fn rotate_glyph(painter: &egui::Painter, r: Rect, right: bool, p: &olo_kit::theme::Palette) {
     let ink = c(p.control_text);
     let s = egui::Stroke::new(1.0, ink);
     let o = r.center() + vec2(0.0, 0.5);
@@ -281,7 +281,7 @@ fn rotate_glyph(painter: &egui::Painter, r: Rect, right: bool, p: &tabula_kit::t
 }
 
 /// A small window frame with an arrow leaving its top-right corner.
-fn pop_out_glyph(painter: &egui::Painter, r: Rect, p: &tabula_kit::theme::Palette) {
+fn pop_out_glyph(painter: &egui::Painter, r: Rect, p: &olo_kit::theme::Palette) {
     let ink = c(p.control_text);
     let s = egui::Stroke::new(1.0, ink);
     let o = r.center() + vec2(-6.0, -5.0);

@@ -1,14 +1,14 @@
 //! Workspaces (how many) and Backgrounds (each workspace's desktop colour,
 //! and an optional wallpaper), as in BeOS's Workspaces and Backgrounds.
 
-use tabula_kit::{
+use olo_kit::{
     egui::{Color32, Sense, Ui, vec2},
     metrics as m, style,
     icons,
     wallpapers::{self, Wallpaper},
     widgets::{BBox, Button, ColorControl, MenuField, Slider, TextControl, Thumbnail, ThumbnailPicker, color_well},
 };
-use tabula_protocol::Settings;
+use olo_protocol::Settings;
 
 pub const MAX_WORKSPACES: u32 = 9;
 
@@ -51,7 +51,7 @@ pub struct BackgroundsState {
 }
 
 /// The wallpaper previews' size (16:9).
-const PREVIEW: tabula_kit::egui::Vec2 = vec2(96.0, 54.0);
+const PREVIEW: olo_kit::egui::Vec2 = vec2(96.0, 54.0);
 
 /// Picture formats app_server can show as a wallpaper.
 pub const WALLPAPER_TYPES: &[&str] = &["png", "jpg", "jpeg", "jxl", "avif", "heic", "heif", "webp", "bmp", "tif", "tiff", "gif"];
@@ -79,7 +79,7 @@ pub fn backgrounds_ui(ui: &mut Ui, s: &mut Settings, st: &mut BackgroundsState) 
 
     BBox::new("Wallpaper").show(ui, |ui| {
         let pack = st.pack.get_or_insert_with(wallpapers::pack).clone();
-        let dark = s.appearance.effective_theme == tabula_kit::theme::ThemeMode::Dark;
+        let dark = s.appearance.effective_theme == olo_kit::theme::ThemeMode::Dark;
         let own = s.wallpaper.as_deref().filter(|w| !w.starts_with(wallpapers::PACK)).map(str::to_owned);
         // None, the pack (previews in the current mode), and your own.
         // None: just this workspace's colour.

@@ -1,11 +1,11 @@
 //! Security: how Passwords keeps its secrets (syncing with 1Password,
 //! locking, `op` on the command line, the clipboard). Passwords follows these live.
 
-use tabula_kit::{
+use olo_kit::{
     egui::Ui,
     widgets::{BBox, CheckBox, MenuField, RadioButton},
 };
-use tabula_protocol::Settings;
+use olo_protocol::Settings;
 
 use crate::power::minutes_menu;
 

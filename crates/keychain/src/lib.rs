@@ -1,13 +1,13 @@
-//! Passwords is Tabula's keychain: while it runs it answers other Tabula
+//! Passwords is Olo's keychain: while it runs it answers other Olo
 //! programs (Chrome's extension host, the palette) on a unix socket in
 //! `$XDG_RUNTIME_DIR`, one JSON request and one JSON reply per connection. Only our own user's
-//! `tabula-*` programs are served.
+//! `olo-*` programs are served.
 //!
 //! Passwords decides what may be said: logins for a site only while it is
 //! unlocked; a fill or save while locked brings it forward and waits for
 //! the unlock (so those calls can take minutes).
 //!
-//! `op` (`tabula-op`, apps/op) asks with [`Request::Cli`]: Passwords
+//! `op` (`olo-op`, apps/op) asks with [`Request::Cli`]: Passwords
 //! answers in the shapes 1Password's own `op` prints as JSON, after the
 //! person allows that terminal session.
 
@@ -187,12 +187,12 @@ impl std::error::Error for CallError {}
 
 /// The service's socket for this Wayland display.
 pub fn socket_path() -> PathBuf {
-    if let Some(p) = std::env::var_os("TABULA_KEYCHAIN_SOCKET") {
+    if let Some(p) = std::env::var_os("OLO_KEYCHAIN_SOCKET") {
         return PathBuf::from(p);
     }
     let rt = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
     let display = std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-0".into());
-    rt.join(format!("tabula-keychain-{display}.sock"))
+    rt.join(format!("olo-keychain-{display}.sock"))
 }
 
 /// Ask Passwords; blocks (call it from a worker thread).
@@ -222,7 +222,7 @@ pub fn call(request: &Request) -> Result<Response, CallError> {
 /// A request waiting for its answer; answer it once, from any thread.
 pub struct Incoming {
     pub request: Request,
-    /// The asking program's file name (always `tabula-…`).
+    /// The asking program's file name (always `olo-…`).
     pub from: String,
     /// Its process.
     pub pid: i32,
@@ -262,7 +262,7 @@ pub fn serve(deliver: impl Fn(Incoming) + Send + Sync + 'static) -> std::io::Res
                     Ok(from) => from,
                     Err(e) => {
                         tracing::warn!("keychain: refused a caller: {e}");
-                        let message = "Passwords answers only Tabula’s own apps.".into();
+                        let message = "Passwords answers only Olo’s own apps.".into();
                         Incoming { request: Request::Unlock, from: String::new(), pid: 0, stream }.reply(Response::Error { message });
                         return;
                     }
@@ -306,10 +306,16 @@ fn trusted(stream: &UnixStream) -> Result<(String, i32), String> {
     let exe = std::fs::read_link(format!("/proc/{}/exe", cred.pid)).map_err(|e| e.to_string())?;
     // A program still running after an upgrade replaced its file.
     let name = exe.file_name().and_then(|n| n.to_str()).unwrap_or("").trim_end_matches(" (deleted)");
-    if !name.starts_with("tabula-") {
-        return Err(format!("{} isn’t a Tabula program", exe.display()));
+    // Or still running from before the rename (Tabula), until it
+    // re-executes as the new program: known by its new name.
+    let name = match name.strip_prefix("tabula-") {
+        Some(rest) => format!("olo-{rest}"),
+        None => name.to_owned(),
+    };
+    if !name.starts_with("olo-") {
+        return Err(format!("{} isn’t an Olo program", exe.display()));
     }
-    Ok((name.to_owned(), cred.pid))
+    Ok((name, cred.pid))
 }
 
 /// The host a login's website names, without `www.`.
@@ -433,7 +439,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("keychain-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         // SAFETY: tests in this module don't read the environment concurrently.
-        unsafe { std::env::set_var("TABULA_KEYCHAIN_SOCKET", dir.join("k.sock")) };
+        unsafe { std::env::set_var("OLO_KEYCHAIN_SOCKET", dir.join("k.sock")) };
         serve(|incoming| {
             let response = match &incoming.request {
                 Request::Logins { url } => Response::Logins {
@@ -444,7 +450,7 @@ mod tests {
             incoming.reply(response);
         })
         .unwrap();
-        // The test binary isn't called tabula-*, so it's refused.
+        // The test binary isn't called olo-*, so it's refused.
         let r = call(&Request::Logins { url: "https://a.example/".into() });
         assert!(matches!(r, Ok(Response::Error { .. })), "{r:?}");
         let _ = std::fs::remove_dir_all(&dir);

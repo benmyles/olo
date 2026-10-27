@@ -402,7 +402,7 @@ pub mod tests {
 
     #[test]
     fn reads_both_layouts() {
-        let dir = std::env::temp_dir().join(format!("tabula-journal-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-journal-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         for (compact, zstd) in [(false, false), (true, false), (true, true), (false, true)] {
             let path = dir.join(format!("j-{compact}-{zstd}.journal"));
@@ -411,8 +411,8 @@ pub mod tests {
                 compact,
                 zstd,
                 &[
-                    (10, &[("MESSAGE", "first"), ("_COMM", "tabula-app-serv"), ("PRIORITY", "6"), ("_BOOT_ID", "x")]),
-                    (20, &[("MESSAGE", "second"), ("_COMM", "tabula-app-serv")]),
+                    (10, &[("MESSAGE", "first"), ("_COMM", "olo-app-serv"), ("PRIORITY", "6"), ("_BOOT_ID", "x")]),
+                    (20, &[("MESSAGE", "second"), ("_COMM", "olo-app-serv")]),
                     (30, &[("MESSAGE", "third has = in it"), ("_COMM", "chrome"), ("_PID", "42")]),
                 ],
             );
@@ -484,7 +484,7 @@ pub mod tests {
 
     #[test]
     fn follows_a_growing_file() {
-        let dir = std::env::temp_dir().join(format!("tabula-journal-grow-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-journal-grow-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         for compact in [false, true] {
             let path = dir.join(format!("g-{compact}.journal"));

@@ -1,6 +1,6 @@
 //! keyd, when it runs, remaps keyboards for every session on the machine
 //! (it grabs them and types through a virtual one). app_server maps the
-//! Mac keyboard itself (keymap.rs), so a real Tabula session asks keyd,
+//! Mac keyboard itself (keymap.rs), so a real Olo session asks keyd,
 //! over its socket, to pass the modifier keys through as they are, and
 //! puts keyd's own configuration back when it ends. Without keyd (or
 //! without access to its socket) this does nothing.
@@ -34,7 +34,7 @@ const SIZE_AT: usize = (8 + DATA).next_multiple_of(std::mem::align_of::<usize>()
 const MESSAGE: usize = (SIZE_AT + std::mem::size_of::<usize>()).next_multiple_of(std::mem::align_of::<usize>());
 
 fn socket() -> PathBuf {
-    std::env::var_os("TABULA_KEYD_SOCKET").map(PathBuf::from).unwrap_or_else(|| "/run/keyd.socket".into())
+    std::env::var_os("OLO_KEYD_SOCKET").map(PathBuf::from).unwrap_or_else(|| "/run/keyd.socket".into())
 }
 
 fn message(kind: u32, data: &str) -> Vec<u8> {
@@ -99,7 +99,7 @@ mod tests {
     /// or failure for "nope = nope") and records what it was sent.
     #[test]
     fn talks_to_keyd() {
-        let path = std::env::temp_dir().join(format!("tabula-keyd-test-{}.sock", std::process::id()));
+        let path = std::env::temp_dir().join(format!("olo-keyd-test-{}.sock", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
         let server = std::thread::spawn(move || {
@@ -119,7 +119,7 @@ mod tests {
             got
         });
         // SAFETY: only this test reads the variable.
-        unsafe { std::env::set_var("TABULA_KEYD_SOCKET", &path) };
+        unsafe { std::env::set_var("OLO_KEYD_SOCKET", &path) };
         super::pass_through();
         super::restore();
         let got = server.join().unwrap();

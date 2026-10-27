@@ -4,8 +4,8 @@
 //! colour scheme, file choosers and more through) know there is one: they
 //! refuse to start without it. It can't be started by hand, only pulled in
 //! by a session's own target, as compositors' `<name>-session.target`s do.
-//! Which portal backends serve a Tabula session is set in
-//! `tabula-portals.conf` (xdg-desktop-portal picks the file by
+//! Which portal backends serve an Olo session is set in
+//! `olo-portals.conf` (xdg-desktop-portal picks the file by
 //! `XDG_CURRENT_DESKTOP`).
 //!
 //! Only a real session does this: it changes the user's systemd manager.
@@ -14,12 +14,15 @@ use std::path::{Path, PathBuf};
 
 use crate::log;
 
-const TARGET: &str = "tabula-session.target";
+const TARGET: &str = "olo-session.target";
+/// What the target was called before the rename (Tabula); a session that
+/// started on that build upgrades in place with it running.
+const OLD_TARGET: &str = "tabula-session.target";
 
 const TARGET_UNIT: &str = "\
-# Written by tabula-session: the Tabula desktop is running.
+# Written by olo-session: the Olo desktop is running.
 [Unit]
-Description=Tabula session
+Description=Olo Desktop session
 Documentation=https://github.com/benmyles/tabula
 BindsTo=graphical-session.target
 Before=graphical-session.target
@@ -31,7 +34,7 @@ After=graphical-session-pre.target
 /// app_server writes: colour scheme, accent, fonts); the keyring for
 /// secrets, as on GNOME.
 const PORTALS: &str = "\
-# Written by tabula-session: the desktop portals for Tabula.
+# Written by olo-session: the desktop portals for Olo.
 [preferred]
 default=gtk
 org.freedesktop.impl.portal.Secret=gnome-keyring
@@ -57,7 +60,10 @@ fn put(path: &Path, text: &str) -> std::io::Result<bool> {
 
 /// Set up the files under `config` (`~/.config`); whether the unit is new.
 fn write_files(config: &Path) -> std::io::Result<bool> {
-    put(&config.join("xdg-desktop-portal").join("tabula-portals.conf"), PORTALS)?;
+    // The ones from before the rename (a new session is never Tabula).
+    let _ = std::fs::remove_file(config.join("xdg-desktop-portal").join("tabula-portals.conf"));
+    let _ = std::fs::remove_file(config.join("systemd").join("user").join(OLD_TARGET));
+    put(&config.join("xdg-desktop-portal").join("olo-portals.conf"), PORTALS)?;
     put(&config.join("systemd").join("user").join(TARGET), TARGET_UNIT)
 }
 
@@ -70,22 +76,25 @@ pub fn start() {
         Ok(new) => new,
         Err(e) => return log(format!("could not set up the graphical session: {e}")),
     };
-    if new && let Err(e) = tabula_system::env::reload_units() {
+    if new && let Err(e) = olo_system::env::reload_units() {
         log(format!("could not reload systemd units: {e}"));
     }
-    if let Err(e) = tabula_system::env::start_unit(TARGET, true) {
+    if let Err(e) = olo_system::env::start_unit(TARGET, true) {
         log(format!("could not start {TARGET}: {e}"));
     }
 }
 
 /// End it (the portals and other session services stop with it), and
-/// take away the colours GTK 4 imports while Tabula runs (app_server's
+/// take away the colours GTK 4 imports while Olo runs (app_server's
 /// toolkits.rs).
 pub fn stop() {
-    let _ = std::fs::remove_file(crate::runtime_dir().join("tabula").join("gtk-4.0.css"));
-    if let Err(e) = tabula_system::env::start_unit(TARGET, false) {
+    let _ = std::fs::remove_file(crate::runtime_dir().join("olo").join("gtk-4.0.css"));
+    let _ = std::fs::remove_file(crate::runtime_dir().join(olo_xdg::legacy::OLD).join("gtk-4.0.css"));
+    if let Err(e) = olo_system::env::start_unit(TARGET, false) {
         log(format!("could not stop {TARGET}: {e}"));
     }
+    // Started by this session before it was upgraded from Tabula.
+    let _ = olo_system::env::start_unit(OLD_TARGET, false);
 }
 
 #[cfg(test)]
@@ -94,13 +103,13 @@ mod tests {
 
     #[test]
     fn files_are_written_once() {
-        let dir = std::env::temp_dir().join(format!("tabula-graphical-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-graphical-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         assert!(write_files(&dir).unwrap());
         assert!(!write_files(&dir).unwrap());
-        let unit = std::fs::read_to_string(dir.join("systemd/user/tabula-session.target")).unwrap();
+        let unit = std::fs::read_to_string(dir.join("systemd/user/olo-session.target")).unwrap();
         assert!(unit.contains("BindsTo=graphical-session.target"));
-        let conf = std::fs::read_to_string(dir.join("xdg-desktop-portal/tabula-portals.conf")).unwrap();
+        let conf = std::fs::read_to_string(dir.join("xdg-desktop-portal/olo-portals.conf")).unwrap();
         assert!(conf.starts_with("# Written") && conf.contains("default=gtk"));
         let _ = std::fs::remove_dir_all(&dir);
     }

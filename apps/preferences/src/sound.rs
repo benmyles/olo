@@ -1,5 +1,5 @@
 //! Sound: where sound goes and comes from, and how loud. Talks to the
-//! sound server natively (`tabula_system::audio`): a watcher thread keeps
+//! sound server natively (`olo_system::audio`): a watcher thread keeps
 //! the device list current, a worker thread applies changes, newest wins,
 //! so dragging a slider never waits on the server.
 
@@ -11,11 +11,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tabula_kit::{
+use olo_kit::{
     egui::{Context, Ui},
     widgets::{BBox, CheckBox, MenuField, Slider, StringView},
 };
-use tabula_system::audio::{self, Devices, Kind};
+use olo_system::audio::{self, Devices, Kind};
 
 /// What the watcher last saw: None until it has spoken; Some(None) while
 /// there is no sound server.

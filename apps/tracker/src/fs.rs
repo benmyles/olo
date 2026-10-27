@@ -8,7 +8,7 @@ use std::{
     time::SystemTime,
 };
 
-use tabula_kit::{mime, open as opener};
+use olo_kit::{mime, open as opener};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
@@ -20,12 +20,12 @@ pub struct Entry {
     pub modified: Option<SystemTime>,
     pub mode: u32,
     pub kind: Kind,
-    /// The icon of the Tabula application this program (or a link to it)
+    /// The icon of the Olo application this program (or a link to it)
     /// is.
     pub app_icon: Option<&'static str>,
 }
 
-pub use tabula_kit::files::{Kind, format_size, format_time, kind_for};
+pub use olo_kit::files::{Kind, format_size, format_time, kind_for};
 
 pub fn entry(path: &Path) -> Option<Entry> {
     let lmeta = fs::symlink_metadata(path).ok()?;
@@ -50,7 +50,7 @@ pub fn entry(path: &Path) -> Option<Entry> {
 fn app_icon(path: &Path, is_link: bool) -> Option<&'static str> {
     let target = if is_link { fs::read_link(path).ok()? } else { path.to_owned() };
     let name = target.file_name()?.to_str()?;
-    tabula_kit::apps::OUR_APPS.iter().find(|(bin, _, _)| *bin == name).map(|(_, _, icon)| *icon)
+    olo_kit::apps::OUR_APPS.iter().find(|(bin, _, _)| *bin == name).map(|(_, _, icon)| *icon)
 }
 
 /// The app id of the running application program `e` is (or links to),
@@ -59,16 +59,16 @@ pub fn running_app(e: &Entry) -> Option<String> {
     e.app_icon?;
     let target = if e.is_link { fs::read_link(&e.path).ok()? } else { e.path.clone() };
     let bin = target.file_name()?.to_str()?;
-    if !tabula_kit::apps::NEW_WINDOW.contains(&bin) {
+    if !olo_kit::apps::NEW_WINDOW.contains(&bin) {
         return None;
     }
-    let id = tabula_kit::apps::app_id_of(bin)?;
-    tabula_kit::instance::running(&id).then_some(id)
+    let id = olo_kit::apps::app_id_of(bin)?;
+    olo_kit::instance::running(&id).then_some(id)
 }
 
 /// Ask the running app `app_id` for another window, off the UI thread.
 pub fn new_window(app_id: String) {
-    std::thread::spawn(move || tabula_kit::instance::forward(&app_id, &["--new-window".to_owned()]));
+    std::thread::spawn(move || olo_kit::instance::forward(&app_id, &["--new-window".to_owned()]));
 }
 
 pub fn list(dir: &Path, hidden: bool) -> std::io::Result<Vec<Entry>> {
@@ -313,10 +313,10 @@ pub fn link_into(path: &Path, dir: &Path) -> std::io::Result<PathBuf> {
 }
 
 /// A link to the program `path` in `dir`, named as the application is when
-/// it is one of ours ("Terminal", not "tabula-terminal").
+/// it is one of ours ("Terminal", not "olo-terminal").
 pub fn app_link_into(path: &Path, dir: &Path) -> std::io::Result<PathBuf> {
     let file = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
-    let name = tabula_kit::apps::OUR_APPS.iter().find(|(bin, _, _)| *bin == file).map_or(file.as_str(), |(_, name, _)| *name);
+    let name = olo_kit::apps::OUR_APPS.iter().find(|(bin, _, _)| *bin == file).map_or(file.as_str(), |(_, name, _)| *name);
     let to = unique(dir, name);
     std::os::unix::fs::symlink(path, &to)?;
     Ok(to)
@@ -349,21 +349,21 @@ pub fn opener_name(entry: &Entry) -> Option<String> {
 /// A new Terminal tab in `dir` (in the Terminal window last in front;
 /// a window if there is none).
 pub fn open_in_terminal(dir: &Path) {
-    let terminal = tabula_kit::find_program("tabula-terminal").map_or_else(|| "tabula-terminal".into(), PathBuf::into_os_string);
+    let terminal = olo_kit::find_program("olo-terminal").map_or_else(|| "olo-terminal".into(), PathBuf::into_os_string);
     if let Err(e) = opener::spawn(&[terminal, "--tab".into(), "-w".into(), dir.as_os_str().to_owned()]) {
         tracing::warn!("terminal in {}: {e}", dir.display());
     }
 }
 
 pub fn open_in_viewer(path: &Path) {
-    let viewer = tabula_kit::find_program("tabula-viewer").map_or_else(|| "tabula-viewer".into(), PathBuf::into_os_string);
+    let viewer = olo_kit::find_program("olo-viewer").map_or_else(|| "olo-viewer".into(), PathBuf::into_os_string);
     if let Err(e) = opener::spawn(&[viewer, path.as_os_str().to_owned()]) {
         tracing::warn!("viewer {}: {e}", path.display());
     }
 }
 
 /// Open a file with the right application: ours where we have one,
-/// otherwise the user's default (see `tabula_xdg::open`). Programs run.
+/// otherwise the user's default (see `olo_xdg::open`). Programs run.
 pub fn open(entry: &Entry) {
     let (path, program) = (entry.path.clone(), matches!(entry.kind, Kind::Executable | Kind::Application));
     // Finding the handler reads files: not on the UI thread.

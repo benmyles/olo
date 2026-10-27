@@ -46,7 +46,7 @@ pub struct FakeVault {
 }
 
 /// The stand-in account's UUID (26 characters, like 1Password's).
-pub const UUID: &str = "TABULATESTACCOUNT000000001";
+pub const UUID: &str = "OLOTESTACCOUNT000000001";
 
 fn fake_uuid() -> String {
     UUID.into()
@@ -58,7 +58,7 @@ pub fn local_account(account: &FakeAccount) -> crate::accounts::Account {
         uuid: account.uuid.clone(),
         name: account.account.clone(),
         email: "test@example.com".into(),
-        address: "tabula-test.1password.com".into(),
+        address: "olo-test.1password.com".into(),
     }
 }
 
@@ -516,10 +516,10 @@ pub fn sample(account: &str) -> FakeAccount {
     ];
     // The local test site's login has a one-time code too (for filling
     // codes in Chrome).
-    let mut local = login("Tabula Test Site", "http://localhost", "jane", "hunter2-but-longer");
+    let mut local = login("Olo Test Site", "http://localhost", "jane", "hunter2-but-longer");
     local.sections = vec![crate::ItemSection { id: "otp".into(), title: "Security".into() }];
     local.fields.push(
-        ItemField::new("onetimepassword", "one-time password", ItemFieldType::Totp, "otpauth://totp/Tabula:jane?secret=KRSXG5CTMVRXEZLUKN2XAZLB&issuer=Tabula")
+        ItemField::new("onetimepassword", "one-time password", ItemFieldType::Totp, "otpauth://totp/Olo:jane?secret=KRSXG5CTMVRXEZLUKN2XAZLB&issuer=Olo")
             .in_section("otp"),
     );
     let personal = [

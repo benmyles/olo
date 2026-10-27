@@ -1,17 +1,17 @@
 [package]
-name = "tabula-smart-tile"
+name = "olo-smart-tile"
 description = "Smart Tiling: a model looks at the screen and arranges its windows"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "tabula-smart-tile"
+name = "olo-smart-tile"
 path = "src/main.rs"
 
 [dependencies]
-tabula-ai.workspace = true
-tabula-kit.workspace = true
-tabula-protocol.workspace = true
+olo-ai.workspace = true
+olo-kit.workspace = true
+olo-protocol.workspace = true
 serde_json.workspace = true
 image = { version = "0.25", default-features = false, features = ["png"] }

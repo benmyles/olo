@@ -1,17 +1,17 @@
 [package]
-name = "tabula-kit"
-description = "Tabula's Interface Kit: windows, menus and BeOS widgets on Wayland, drawn with egui on wgpu"
+name = "olo-kit"
+description = "Olo's Interface Kit: windows, menus and BeOS widgets on Wayland, drawn with egui on wgpu"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
 zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
-tabula-theme.workspace = true
-tabula-protocol.workspace = true
-tabula-xdg.workspace = true
-tabula-emoji.workspace = true
-tabula-images.workspace = true
+olo-theme.workspace = true
+olo-protocol.workspace = true
+olo-xdg.workspace = true
+olo-emoji.workspace = true
+olo-images.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

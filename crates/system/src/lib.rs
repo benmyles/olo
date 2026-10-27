@@ -31,7 +31,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[cfg(test)]
 mod live {
     /// Prints what this machine reports (read-only). Run with
-    /// `cargo test -p tabula-system -- --ignored --nocapture`.
+    /// `cargo test -p olo-system -- --ignored --nocapture`.
     #[test]
     #[ignore]
     fn status() {

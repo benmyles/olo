@@ -4,7 +4,7 @@
 //! call it from a worker. UDisks asks polkit before privileged steps, so
 //! those bring up the session's authentication agent.
 //!
-//! `TABULA_UDISKS_BUS` (a D-Bus address) talks to that bus instead of the
+//! `OLO_UDISKS_BUS` (a D-Bus address) talks to that bus instead of the
 //! system bus: tests run `udisks-fake` there and never touch real disks.
 
 use std::{
@@ -39,10 +39,10 @@ const JOB: &str = "org.freedesktop.UDisks2.Job";
 
 const MIB: u64 = 1 << 20;
 
-/// The bus UDisks is on (the system bus, or `TABULA_UDISKS_BUS`).
+/// The bus UDisks is on (the system bus, or `OLO_UDISKS_BUS`).
 pub fn conn() -> Result<&'static Connection> {
     static TEST: OnceLock<Connection> = OnceLock::new();
-    match std::env::var("TABULA_UDISKS_BUS") {
+    match std::env::var("OLO_UDISKS_BUS") {
         Ok(address) if !address.is_empty() => {
             if let Some(c) = TEST.get() {
                 return Ok(c);
@@ -1007,8 +1007,8 @@ mod tests {
     fn names() {
         let d = Drive { vendor: "SanDisk".into(), model: "SanDisk Ultra".into(), ..Default::default() };
         assert_eq!(d.name(), "SanDisk Ultra");
-        let d = Drive { vendor: "Tabula".into(), model: "Test SSD".into(), ..Default::default() };
-        assert_eq!(d.name(), "Tabula Test SSD");
+        let d = Drive { vendor: "Olo".into(), model: "Test SSD".into(), ..Default::default() };
+        assert_eq!(d.name(), "Olo Test SSD");
         assert_eq!(content_name("crypto_LUKS", "crypto"), "Encrypted (LUKS)");
         assert_eq!(content_name("", ""), "Empty");
     }

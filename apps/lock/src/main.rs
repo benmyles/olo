@@ -8,16 +8,16 @@
 
 use std::time::Duration;
 
-use tabula_kit::{
+use olo_kit::{
     App, Cx, SessionLock, WindowId,
     egui::{self, Align2, Color32, FontId, Key, Rect, Sense, pos2, vec2},
     icons, metrics as m,
     style::{self, c},
     widgets::TextControl,
 };
-use tabula_system::{auth, fingerprint};
+use olo_system::{auth, fingerprint};
 
-const APP_ID: &str = "tabula.lock";
+const APP_ID: &str = "olo.lock";
 const PANEL: egui::Vec2 = vec2(340.0, 150.0);
 
 enum Msg {
@@ -43,7 +43,7 @@ struct Lock {
     /// What the fingerprint sensor last said (None: not offered).
     finger: Option<String>,
     finger_stop: fingerprint::Stop,
-    proxy: tabula_kit::Proxy,
+    proxy: olo_kit::Proxy,
     unlocking: bool,
     /// Wrong attempts in a row (the field shakes on each).
     shake: Option<std::time::Instant>,
@@ -270,7 +270,7 @@ impl App for Lock {
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
         let full = ui.max_rect();
         // The desktop colour, dimmed: the screen is clearly locked but
-        // still Tabula's.
+        // still Olo's.
         ui.painter().rect_filled(full, 0.0, Color32::from_rgb(24, 46, 70));
         let _ = ui.interact(full, ui.make_persistent_id("lock-bg"), Sense::click());
         self.draw_clock(ui, full);
@@ -327,7 +327,9 @@ impl App for Lock {
 }
 
 fn main() {
-    tabula_kit::run(APP_ID, |cx| {
+    // A session or install from before the rename (Tabula) carries on.
+    olo_kit::legacy::adopt();
+    olo_kit::run(APP_ID, |cx| {
         let user = auth::current_user().unwrap_or_else(|| "user".into());
         let name = auth::full_name(&user).unwrap_or_else(|| user.clone());
         cx.lock_session();

@@ -69,7 +69,7 @@ pub fn watch_login(on: impl Fn(LoginEvent) + Send + Sync + 'static) -> Result<()
     let on = std::sync::Arc::new(on);
     let manager = zbus::blocking::Proxy::new(conn, DEST, PATH, MANAGER)?;
     let mut sleeps = manager.receive_signal("PrepareForSleep")?;
-    let delay = || inhibit("sleep", "Tabula", "Locking the screen", false).ok();
+    let delay = || inhibit("sleep", "Olo", "Locking the screen", false).ok();
     let mut guard = delay();
     let sleep_on = on.clone();
     std::thread::Builder::new().name("logind-sleep".into()).spawn(move || {

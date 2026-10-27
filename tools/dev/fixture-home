@@ -1,10 +1,10 @@
 #!/bin/bash
 # Build a throwaway home directory for testing Tracker and friends:
-#   tools/dev/fixture-home [DIR]   (default /tmp/tabula-dev/fixture-home)
-# then: tsession run NAME HOME=DIR tabula-tracker --desktop DIR
+#   tools/dev/fixture-home [DIR]   (default /tmp/olo-dev/fixture-home)
+# then: tsession run NAME HOME=DIR olo-tracker --desktop DIR
 set -e
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-F=${1:-/tmp/tabula-dev/fixture-home}
+F=${1:-/tmp/olo-dev/fixture-home}
 rm -rf "$F"
 mkdir -p "$F"/{Desktop/Projects,Documents/Reports,Pictures,Music,Downloads,src/tabula}
 cd "$F"

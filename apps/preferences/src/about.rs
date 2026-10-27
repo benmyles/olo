@@ -1,4 +1,4 @@
-//! About Tabula: the BeOS "About This System" window — version, machine,
+//! About Olo: the BeOS "About This System" window — version, machine,
 //! processor, memory, kernel and uptime. Facts are read from /proc and
 //! /sys on a thread; uptime then ticks on locally.
 
@@ -7,9 +7,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tabula_kit::{
+use olo_kit::{
     egui::{Sense, Ui, vec2},
-    icons, metrics as m,
+    icons, metrics as m, style,
     widgets::{BBox, Button, StringView, form_label, heading},
 };
 
@@ -25,7 +25,7 @@ struct Facts {
 
 pub struct State {
     facts: Arc<Mutex<Option<Facts>>>,
-    /// When Restart Tabula was last clicked, or why it failed.
+    /// When Restart Olo was last clicked, or why it failed.
     restarted: Option<Instant>,
     error: Option<String>,
 }
@@ -107,12 +107,12 @@ fn apple_chip(compat: &str) -> Option<String> {
     )
 }
 
-/// The tabula-session supervising us, if we run under one.
+/// The olo-session supervising us, if we run under one.
 fn session_pid() -> Option<i32> {
-    std::env::var("TABULA_SESSION_PID").ok()?.parse().ok().filter(|&p| p > 1)
+    std::env::var("OLO_SESSION_PID").ok()?.parse().ok().filter(|&p| p > 1)
 }
 
-/// Restart Tabula in place, as `tabula-session reload` does: the session
+/// Restart Olo in place, as `olo-session reload` does: the session
 /// re-execs app_server, and every app (this one included) reconnects with
 /// its windows where they were.
 fn restart(pid: i32) -> Result<(), String> {
@@ -147,12 +147,16 @@ pub fn uptime_text(d: Duration) -> String {
 pub fn ui(ui: &mut Ui, st: &mut State) {
     ui.horizontal(|ui| {
         let (rect, _) = ui.allocate_exact_size(vec2(64.0, 64.0), Sense::hover());
-        icons::paint(ui.painter(), rect, "about");
+        icons::paint(ui.painter(), rect, "olo");
         ui.add_space(m::SPACING);
         ui.vertical(|ui| {
-            ui.add_space(12.0);
-            heading(ui, "Tabula");
-            ui.add(StringView::new(&format!("Version {}", env!("CARGO_PKG_VERSION"))).dim(true));
+            ui.add_space(6.0);
+            let dark = style::palette(ui.ctx()).mode == olo_kit::theme::ThemeMode::Dark;
+            let (word, _) = ui.allocate_exact_size(vec2(olo_kit::brand::wordmark_width(30.0), 30.0), Sense::hover());
+            if olo_kit::brand::wordmark(ui.painter(), word, dark).is_none() {
+                heading(ui, "Olo Desktop");
+            }
+            ui.add(StringView::new(&format!("Olo Desktop, version {}", env!("CARGO_PKG_VERSION"))).dim(true));
         });
     });
     let facts = st.facts.lock().unwrap().clone();
@@ -184,12 +188,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         let settling = st.restarted.is_some_and(|t| t.elapsed() < Duration::from_secs(5));
         let note = match (&st.error, pid, settling) {
             (Some(e), _, _) => format!("Couldn't restart: {e}"),
-            (None, None, _) => "Not running under tabula-session.".to_owned(),
+            (None, None, _) => "Not running under olo-session.".to_owned(),
             (None, Some(_), true) => "Restarting…".to_owned(),
             (None, Some(_), false) => String::new(),
         };
-        ui.with_layout(tabula_kit::egui::Layout::right_to_left(tabula_kit::egui::Align::Center), |ui| {
-            let button = ui.add_enabled_ui(pid.is_some() && !settling, |ui| ui.add(Button::new("Restart Tabula")));
+        ui.with_layout(olo_kit::egui::Layout::right_to_left(olo_kit::egui::Align::Center), |ui| {
+            let button = ui.add_enabled_ui(pid.is_some() && !settling, |ui| ui.add(Button::new("Restart Olo")));
             if let (true, Some(pid)) = (button.inner.clicked(), pid) {
                 st.error = restart(pid).err();
                 st.restarted = Some(Instant::now());

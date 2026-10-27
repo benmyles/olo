@@ -1,11 +1,11 @@
-//! Tabula Passwords in Chrome. The extension (`apps/chrome/extension`) is
+//! Olo Passwords in Chrome. The extension (`apps/chrome/extension`) is
 //! packed here into a CRX3 signed with a key of this user's own, and
 //! listed in the Chrome install's `extensions` folder, from which Chrome
 //! installs it at its next start (and updates it when its version grows;
 //! on Linux, without asking). Beside it goes the native messaging host's
-//! manifest, which lets the extension start `tabula-chrome` as its host
+//! manifest, which lets the extension start `olo-chrome` as its host
 //! (`host.rs`). Nothing needs root; everything is redone at each start, so
-//! a newly installed Chrome version and a moved `tabula-chrome` are
+//! a newly installed Chrome version and a moved `olo-chrome` are
 //! picked up.
 
 use std::{
@@ -19,10 +19,13 @@ use p256::{
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use tabula_theme::{Palette, Rgba};
+use olo_theme::{Palette, Rgba};
 
 /// The native messaging host's name.
-pub const HOST: &str = "org.tabula.passwords";
+pub const HOST: &str = "com.olodesktop.passwords";
+/// What the host was called before the rename (Tabula), which the
+/// extension Chrome has asks for until it updates to this version's.
+const OLD_HOST: &str = "org.tabula.passwords";
 
 const FILES: &[(&str, &[u8])] = &[
     ("manifest.json", include_bytes!("../extension/manifest.json")),
@@ -79,7 +82,7 @@ fn key(root: &Path) -> std::io::Result<SigningKey> {
     Ok(key)
 }
 
-/// CSS custom properties for the popup from Tabula's palette, light and
+/// CSS custom properties for the popup from Olo's palette, light and
 /// dark.
 fn palette_css() -> String {
     fn vars(p: &Palette) -> String {
@@ -93,12 +96,12 @@ fn palette_css() -> String {
             hex(p.shine),
             hex(p.shadow),
             hex(p.list_selected_background),
-            hex(tabula_theme::mix(p.panel_text, p.panel_background, 0.45)),
+            hex(olo_theme::mix(p.panel_text, p.panel_background, 0.45)),
             hex(p.failure),
         )
     }
-    let light = Palette::for_mode(tabula_theme::ThemeMode::Light);
-    let dark = Palette::for_mode(tabula_theme::ThemeMode::Dark);
+    let light = Palette::for_mode(olo_theme::ThemeMode::Light);
+    let dark = Palette::for_mode(olo_theme::ThemeMode::Dark);
     format!(":root {{ {} }}\n@media (prefers-color-scheme: dark) {{ :root {{ {} }} }}\n", vars(&light), vars(&dark))
 }
 
@@ -168,7 +171,7 @@ fn put(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let tmp = path.with_extension("tabula-tmp");
+    let tmp = path.with_extension("olo-tmp");
     std::fs::write(&tmp, bytes)?;
     std::fs::rename(tmp, path)
 }
@@ -181,18 +184,21 @@ pub fn set_up(root: &Path, chrome_dir: &Path, user_data: &Path, exe: &Path) -> s
     let spki = key.verifying_key().to_public_key_der().map_err(std::io::Error::other)?;
     let id = id_of(spki.as_bytes());
     let version = version();
-    let crx_path = root.join("tabula-passwords.crx");
+    let crx_path = root.join("olo-passwords.crx");
     put(&crx_path, &crx(&key, &zip()))?;
     let external = json!({ "external_crx": crx_path, "external_version": version });
     put(&chrome_dir.join("extensions").join(format!("{id}.json")), &serde_json::to_vec_pretty(&external)?)?;
     let manifest = json!({
         "name": HOST,
-        "description": "Tabula Passwords",
+        "description": "Olo Passwords",
         "path": exe,
         "type": "stdio",
         "allowed_origins": [format!("chrome-extension://{id}/")],
     });
     put(&user_data.join("NativeMessagingHosts").join(format!("{HOST}.json")), &serde_json::to_vec_pretty(&manifest)?)?;
+    let mut old = manifest;
+    old["name"] = OLD_HOST.into();
+    put(&user_data.join("NativeMessagingHosts").join(format!("{OLD_HOST}.json")), &serde_json::to_vec_pretty(&old)?)?;
     Ok(id)
 }
 
@@ -226,20 +232,23 @@ mod tests {
         assert!(key.verifying_key().verify(&message, &sig).is_ok());
         let header = &a[12..12 + header_len];
         assert!(header.windows(sig.to_der().as_bytes().len()).any(|w| w == sig.to_der().as_bytes()));
-        assert_eq!(version(), "1.1.1");
+        assert_eq!(version(), "1.2.0");
     }
 
     #[test]
     fn set_up_writes_everything_once() {
-        let dir = std::env::temp_dir().join(format!("tabula-chrome-ext-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("olo-chrome-ext-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let (root, chrome, data) = (dir.join("root"), dir.join("chrome"), dir.join("data"));
-        let id = set_up(&root, &chrome, &data, Path::new("/usr/bin/tabula-chrome")).unwrap();
-        assert_eq!(id, set_up(&root, &chrome, &data, Path::new("/usr/bin/tabula-chrome")).unwrap(), "the same key");
+        let id = set_up(&root, &chrome, &data, Path::new("/usr/bin/olo-chrome")).unwrap();
+        assert_eq!(id, set_up(&root, &chrome, &data, Path::new("/usr/bin/olo-chrome")).unwrap(), "the same key");
         let ext: serde_json::Value = serde_json::from_slice(&std::fs::read(chrome.join(format!("extensions/{id}.json"))).unwrap()).unwrap();
-        assert_eq!(ext["external_version"], "1.1.1");
-        let host: serde_json::Value = serde_json::from_slice(&std::fs::read(data.join("NativeMessagingHosts/org.tabula.passwords.json")).unwrap()).unwrap();
+        assert_eq!(ext["external_version"], "1.2.0");
+        let host: serde_json::Value = serde_json::from_slice(&std::fs::read(data.join("NativeMessagingHosts/com.olodesktop.passwords.json")).unwrap()).unwrap();
         assert_eq!(host["allowed_origins"][0], format!("chrome-extension://{id}/"));
+        // The extension from before the rename finds its host too.
+        let old: serde_json::Value = serde_json::from_slice(&std::fs::read(data.join("NativeMessagingHosts/org.tabula.passwords.json")).unwrap()).unwrap();
+        assert_eq!((old["name"].as_str(), &old["path"]), (Some("org.tabula.passwords"), &host["path"]));
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(std::fs::metadata(root.join("extension-key.der")).unwrap().permissions().mode() & 0o777, 0o600);
         let _ = std::fs::remove_dir_all(&dir);

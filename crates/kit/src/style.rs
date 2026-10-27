@@ -1,5 +1,5 @@
 //! Fonts, egui visuals and the small set of pixel-exact drawing primitives
-//! every Tabula widget is built from. All geometry is in logical pixels; a
+//! every Olo widget is built from. All geometry is in logical pixels; a
 //! "line" is one logical pixel (two device pixels at 2x).
 
 use std::{
@@ -13,7 +13,7 @@ use egui::{
     Color32, Context, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Painter, Pos2, Rect,
     Shadow, Stroke, Visuals, pos2, vec2,
 };
-use tabula_theme::{Palette, Rgba, mix};
+use olo_theme::{Palette, Rgba, mix};
 
 /// be_plain_font, in logical pixels.
 pub const PLAIN_SIZE: f32 = 12.0;
@@ -25,11 +25,11 @@ pub fn c(rgba: Rgba) -> Color32 {
 }
 
 pub fn darken(rgba: Rgba, tint: f32) -> Color32 {
-    c(tabula_theme::tint(rgba, tint))
+    c(olo_theme::tint(rgba, tint))
 }
 
 pub fn lighten(rgba: Rgba, tint: f32) -> Color32 {
-    c(tabula_theme::tint(rgba, tint))
+    c(olo_theme::tint(rgba, tint))
 }
 
 pub fn disabled_text(p: &Palette) -> Color32 {
@@ -163,12 +163,12 @@ pub fn font_definitions() -> FontDefinitions {
             defs.font_data.insert(key.to_owned(), Arc::new(fd));
             true
         };
-        let ui = add("ui", system_face(&db, tabula_theme::fonts::UI, 400, fontdb::Style::Normal));
-        let ui_bold = add("ui-bold", system_face(&db, tabula_theme::fonts::UI, 700, fontdb::Style::Normal));
-        let ui_italic = add("ui-italic", system_face(&db, tabula_theme::fonts::UI, 400, fontdb::Style::Italic));
-        let mono = add("mono", system_face(&db, tabula_theme::fonts::MONO, 400, fontdb::Style::Normal));
-        let mono_bold = add("mono-bold", system_face(&db, tabula_theme::fonts::MONO, 700, fontdb::Style::Normal));
-        let mono_italic = add("mono-italic", system_face(&db, tabula_theme::fonts::MONO, 400, fontdb::Style::Italic));
+        let ui = add("ui", system_face(&db, olo_theme::fonts::UI, 400, fontdb::Style::Normal));
+        let ui_bold = add("ui-bold", system_face(&db, olo_theme::fonts::UI, 700, fontdb::Style::Normal));
+        let ui_italic = add("ui-italic", system_face(&db, olo_theme::fonts::UI, 400, fontdb::Style::Italic));
+        let mono = add("mono", system_face(&db, olo_theme::fonts::MONO, 400, fontdb::Style::Normal));
+        let mono_bold = add("mono-bold", system_face(&db, olo_theme::fonts::MONO, 700, fontdb::Style::Normal));
+        let mono_italic = add("mono-italic", system_face(&db, olo_theme::fonts::MONO, 400, fontdb::Style::Italic));
         // Wide Unicode coverage (arrows, ⌘, box drawing, ...).
         let fallback = add("fallback", system_face(&db, &["DejaVu Sans", "Noto Sans"], 400, fontdb::Style::Normal));
         let symbols = add("symbols", system_face(&db, &["Noto Sans Symbols 2", "Noto Sans Symbols"], 400, fontdb::Style::Normal));
@@ -291,7 +291,7 @@ pub fn family_ready(ctx: &Context, family: &str) -> bool {
 pub fn apply(ctx: &Context, palette: &Arc<Palette>) {
     ctx.data_mut(|d| d.insert_temp(egui::Id::NULL, palette.clone()));
     let p = palette;
-    let dark = p.mode == tabula_theme::ThemeMode::Dark;
+    let dark = p.mode == olo_theme::ThemeMode::Dark;
     let mut v = if dark { Visuals::dark() } else { Visuals::light() };
     let square = CornerRadius::ZERO;
     v.override_text_color = Some(c(p.panel_text));
@@ -493,12 +493,12 @@ pub fn key_combo_width(ctx: &Context, keys: &str) -> f32 {
 /// Contrast-aware tint: bevels need a stronger push on dark panels to
 /// read at all, so darkening is exaggerated in dark mode.
 pub fn shade(palette: &Palette, rgba: Rgba, tint: f32) -> Color32 {
-    let t = if palette.mode == tabula_theme::ThemeMode::Dark && tint > 1.0 {
+    let t = if palette.mode == olo_theme::ThemeMode::Dark && tint > 1.0 {
         1.0 + (tint - 1.0) * 1.9
     } else {
         tint
     };
-    c(tabula_theme::tint(rgba, t))
+    c(olo_theme::tint(rgba, t))
 }
 
 /// A vertical gradient fill.
@@ -570,7 +570,7 @@ pub fn describe_text(ctx: &Context, role: egui::accesskit::Role, text: &str, r: 
     if text.trim().is_empty() || !r.is_positive() {
         return;
     }
-    let id = egui::Id::unique(("tabula-text", text, r.min.x as i32, r.min.y as i32));
+    let id = egui::Id::unique(("olo-text", text, r.min.x as i32, r.min.y as i32));
     ctx.accesskit_node_builder(id, |n| {
         n.set_role(role);
         n.set_label(text);
@@ -621,10 +621,10 @@ pub enum Syntax {
 }
 
 /// The colour of a token class on document backgrounds. The same hues as
-/// Terminal's Tabula schemes, so code looks alike everywhere; each clears
+/// Terminal's Olo schemes, so code looks alike everywhere; each clears
 /// 4.5:1 against `document_background` in its mode.
 pub fn syntax_color(p: &Palette, s: Syntax) -> Color32 {
-    let dark = p.mode == tabula_theme::ThemeMode::Dark;
+    let dark = p.mode == olo_theme::ThemeMode::Dark;
     let hex = |h: u32| Color32::from_rgb((h >> 16) as u8, (h >> 8) as u8, h as u8);
     match (s, dark) {
         (Syntax::Plain, _) => c(p.document_text),

@@ -1,6 +1,6 @@
 //! Files as every app sees them: what kind a file is (by name, mode and,
 //! for extension-less files, a sniff of its start), and sizes and times
-//! formatted the Tabula way.
+//! formatted the Olo way.
 
 use std::{path::Path, time::SystemTime};
 
@@ -21,7 +21,7 @@ pub enum Kind {
     Spreadsheet,
     Presentation,
     Font,
-    /// A backup of Tabula's settings (Preferences ▸ Backup).
+    /// A backup of Olo's settings (Preferences ▸ Backup).
     SettingsBackup,
 }
 
@@ -62,7 +62,7 @@ impl Kind {
             Kind::Spreadsheet => "Spreadsheet",
             Kind::Presentation => "Presentation",
             Kind::Font => "Font",
-            Kind::SettingsBackup => "Tabula Settings Backup",
+            Kind::SettingsBackup => "Olo Settings Backup",
         }
     }
 }
@@ -92,7 +92,7 @@ pub fn kind_for(path: &Path, is_dir: bool, mode: u32) -> Kind {
         "ttf" | "otf" | "ttc" | "otc" | "woff" | "woff2" => Kind::Font,
         "tsv" => Kind::Text,
         "appimage" => Kind::Application,
-        "tabula-backup" => Kind::SettingsBackup,
+        "olo-backup" => Kind::SettingsBackup,
         _ if mode & 0o111 != 0 => Kind::Executable,
         "" => if sniff_text(path) { Kind::Text } else { Kind::Document },
         _ => Kind::Document,

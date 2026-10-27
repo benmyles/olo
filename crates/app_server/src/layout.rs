@@ -1,9 +1,9 @@
 //! Window placement memory, so windows come back where they were when
-//! app_server restarts in place (`tabula-session reload`) or an app
+//! app_server restarts in place (`olo-session reload`) or an app
 //! re-executes itself after an upgrade.
 //!
 //! On exit app_server writes every window's place to
-//! `$XDG_RUNTIME_DIR/tabula-layout-$WAYLAND_DISPLAY.json`; a closing window
+//! `$XDG_RUNTIME_DIR/olo-layout-$WAYLAND_DISPLAY.json`; a closing window
 //! is remembered in memory too. A new window that is one of those coming
 //! back takes its place and size instead of the next cascade slot:
 //!
@@ -53,7 +53,7 @@ pub struct Placement {
     pub workspace: u32,
     /// Tiled by a tiling command (and the part its edges were dragged to).
     #[serde(default)]
-    pub tile: Option<tabula_protocol::Tile>,
+    pub tile: Option<olo_protocol::Tile>,
     #[serde(default)]
     pub part: Option<(f32, f32, f32, f32)>,
     pub minimized: bool,
@@ -78,7 +78,7 @@ fn now() -> u64 {
 fn path() -> Option<PathBuf> {
     let dir = std::env::var_os("XDG_RUNTIME_DIR")?;
     let display = std::env::var("WAYLAND_DISPLAY").ok()?;
-    Some(PathBuf::from(dir).join(format!("tabula-layout-{display}.json")))
+    Some(olo_xdg::legacy::runtime_file(std::path::Path::new(&dir), &format!("olo-layout-{display}.json")))
 }
 
 /// Places saved by the previous app_server, if it exited moments ago.
@@ -86,7 +86,11 @@ pub fn load() -> Vec<Placement> {
     let Some(p) = path() else { return Vec::new() };
     let Ok(text) = std::fs::read_to_string(&p) else { return Vec::new() };
     let _ = std::fs::remove_file(&p);
-    let list: Vec<Placement> = serde_json::from_str(&text).unwrap_or_default();
+    let mut list: Vec<Placement> = serde_json::from_str(&text).unwrap_or_default();
+    // Left by an app_server from before the rename (Tabula).
+    for e in &mut list {
+        e.app_id = olo_xdg::legacy::new_app_id(&e.app_id);
+    }
     let fresh: Vec<Placement> = list.into_iter().filter(|e| now().saturating_sub(e.at) < RESTART_KEEP.as_secs()).collect();
     info!(windows = fresh.len(), "restoring window layout");
     fresh
@@ -105,7 +109,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         Some(Placement {
             tile,
             part,
-            app_id,
+            app_id: olo_xdg::legacy::new_app_id(&app_id),
             title: w.title(),
             x: loc.x,
             y: loc.y,
@@ -163,6 +167,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         if app_id.is_empty() {
             return None;
         }
+        // Places are kept under new app ids: a program from before the
+        // rename (Tabula) has its old one until it re-executes.
+        let app_id = olo_xdg::legacy::new_app_id(&app_id);
         let owner = window.meta().owner.borrow().clone();
         let age = |e: &Placement| now().saturating_sub(e.at);
         // The same process, reconnected or re-executed.

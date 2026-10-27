@@ -3,12 +3,12 @@
 # (or the other way round is not needed: x86 machines build natively).
 # Rust's x86_64 standard library comes from rustup; C code in -sys crates
 # is compiled by clang against x86_64 glibc and kernel headers unpacked
-# from Fedora's packages into ~/.cache/tabula-dev/x86-sysroot (nothing is
+# from Fedora's packages into ~/.cache/olo-dev/x86-sysroot (nothing is
 # installed system-wide). Nothing is linked: this catches code that only
 # builds on one architecture. Extra arguments go to cargo check.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-CACHE=$HOME/.cache/tabula-dev
+CACHE=$HOME/.cache/olo-dev
 ROOT=$CACHE/x86-sysroot
 I=$ROOT/usr/include
 rustup target list --installed | grep -qx x86_64-unknown-linux-gnu || rustup target add x86_64-unknown-linux-gnu
