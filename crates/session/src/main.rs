@@ -55,8 +55,9 @@ const USAGE: &str = "usage: tabula-session [--tty-udev | --winit | --headless Wx
 const SHELL: &[&[&str]] = &[&["tabula-deskbar"], &["tabula-tracker", "--desktop"]];
 /// Services only the real (logged-in) session runs: the polkit agent
 /// answers for the login session and the notification centre serves the
-/// session bus, which a nested or headless one must never take over.
-const REAL_SHELL: &[&[&str]] = &[&["tabula-polkit-agent"], &["tabula-notifications"]];
+/// session bus, which a nested or headless one must never take over;
+/// Token Pool's gateway listens on the computer's one loopback port.
+const REAL_SHELL: &[&[&str]] = &[&["tabula-polkit-agent"], &["tabula-notifications"], &["tabula-pool", "--service"]];
 /// Give up restarting something that crashes this often.
 const CRASH_LIMIT: usize = 5;
 const CRASH_WINDOW: Duration = Duration::from_secs(60);

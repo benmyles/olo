@@ -75,3 +75,4 @@ notifications|a small brass desk bell (a hotel service bell) with a domed golden
 backup|a chunky grey hard drive with a green arrow curving back around it, the arrow in front at the lower right
 drive-setup|a chunky grey hard drive seen in three-quarter view from slightly above, with a round pie-chart dial on its top face split into blue, yellow and green slices, a small silver wrench in front at the lower right
 agent-screens|a chunky silver computer monitor seen in three-quarter view from slightly above, its screen showing a small blue desktop with a yellow window tab, and in front at the lower right a second smaller arrow pointer in green beside a white arrow pointer, as if two people share the screen
+token-pool|a chunky clear blue glass jar with a silver screw lid, filled with thick round gold coins, two more gold coins stacked in front at the lower right

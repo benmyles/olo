@@ -5,6 +5,11 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Token pooling for Claude Code and Codex, natively~~ (Ben): Token
+  Pool (`tabula-pool`, crates/pool): a loopback gateway the clients are
+  pointed at, subscriptions drained earliest-expiry-first, sign-ins
+  sealed with a keyring key, usage counted without content. HACKING,
+  "Token Pool".
 - ~~NetPositive removed~~ (Ben): Tabula's web browser is Chrome. Gone
   with it: apps/browser, the Servo and WebRender patches (and epaint's,
   needed only because of Servo), the kit's embedded surfaces, and
@@ -483,13 +488,11 @@ as they land (with the commit), add new ones as they come up.
   `--new-window` to the running copy instead of launching a second one
   (Tracker, Terminal and StyledEdit; `apps::NEW_WINDOW`). Agents run
   `tabula-x --new-window`.
-- **Token pooling for Claude Code and Codex, natively** (Ben; after
-  everything else is done): a Tabula version of ~/src/token-pooler's Local
-  mode, without its team/cloud gateway: the local accounts' subscription
-  credentials kept in Tabula (Passwords' store), a loopback gateway the
-  coding clients are pointed at, accounts drained in a reset-aware order,
-  usage recorded (never prompts or completions), and a Deskbar replicant
-  or app showing the pool live in place of its macOS menu bar.
+- **Num Lock on by default, and a setting for it** (Ben): Num Lock
+  starts on; Preferences ▸ Keyboard can turn that off.
+- Token Pool follow-ups: redeem reset credits (Token Pooler can spend
+  a subscription's quota-reset credit when every account is out); keep
+  key order in Claude Code's settings.json when editing it.
 - **Rename Tabula to Olo, use the new brand, ship a wallpaper pack**
   (Ben; the very last thing, after everything else is done):
   - *Rename* everywhere (code, crates, binaries, app ids, environment

@@ -15,6 +15,7 @@ pub const OUR_APPS: &[(&str, &str, &str)] = &[
     ("tabula-screen", "Agent Screens", "agent-screens"),
     ("tabula-logs", "Log Viewer", "logs"),
     ("tabula-screenshot", "Screenshot", "screenshot"),
+    ("tabula-pool", "Token Pool", "token-pool"),
 ];
 
 /// Our applications that open another window when asked while running

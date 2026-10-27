@@ -69,6 +69,7 @@ like pixel alignment is.
 | `crates/kit` | The Interface Kit: Wayland client platform, GPU rendering (egui on wgpu/Vulkan), menus, BeOS widgets, icons, `.desktop` entries. **All apps are built on it.** |
 | `crates/xdg` | `tabula-xdg`: freedesktop plumbing shared by app_server and the kit (re-exported there): data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; Tabula's apps first, except that links and web pages go to the browser chosen in mimeapps.list, else `tabula-chrome`), `find_program`, `spawn_detached`. No egui. |
 | `crates/system` | `tabula-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
+| `crates/pool` | `tabula-token-pool`: token pooling for Claude Code and Codex (see "Token Pool"): the accounts, their sealed store, the drain order and the loopback gateway. |
 | `crates/preview` | `tabula-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Used by Tracker's Quick Look (`Preview::new`, images capped at 3200 px) and the Viewer (`Preview::new_zoomable`: full resolution up to the GPU texture limit, zoom and pan, `zoom` / `set_image_scale`). Images carry halved copies (`load::halvings`) because egui-wgpu makes no mipmaps. Video (`video.rs`, H.264 in mp4 or Matroska and AV1 in Matroska/WebM, with `media.playable` set): a worker demuxes and decodes (OpenH264, or rav1d through `tabula_images::av1::Decoder`) up to six frames ahead, giving each picture the earliest outstanding presentation time (OpenH264 returns display order; it must be made with `Flush::NoFlush`, as the crate's default flush after every packet breaks B-frame reordering and every B-frame then fails), mp4 times shifted by the track's edit list; `Video::tick` shows frames against a clock that follows the sound's reported position when an `audio::Player` is playing it and runs alone otherwise (no sound server in tests, silent files). Seeks go to the key frame before the target (Matroska: scans back for one, further each time) and drop pictures before it; a paused seek still shows its frame. `TABULA_SAMPLES=dir cargo test --release -p tabula-preview video -- --ignored` checks seeking on test.mp4/mkv (one key frame) and gop.mp4/mkv (one a second), made with ffmpeg's testsrc2, plus av1.webm (svt-av1, Opus sound) and bframes.mp4 (any x264-made H.264 High clip with B-frames; `b_frames` checks every picture comes out, in order); `keeps_up` needs av1-1080.mkv (1080p AV1) to decode at well over 30 frames a second (72 on the M2 Max; the YUV to RGB fast path is fixed-point with tables, checked against the float path by `yuv_fast_path`). Audio decodes with symphonia plus `opus.rs` (opus-decoder, OpusHead parsing and pre-skip trim) for Ogg Opus. Picture editing (`edit.rs`): an `Editor` keeps a list of `Op`s (rotate, flip, crop, resize) with undo/redo and a saved mark, and a worker that loads the full picture once, applies new steps to its last result, sends `EditEvent::Shown` (downscaled for the screen, with halvings) for `Preview::show_edited`, and writes PNG, JPEG (quality 92), WebP, BMP, TIFF or GIF atomically (`write`, through a hidden `.name.saving` file); `edit::editable` says which files it can write back. `CropTool` is the crop overlay (drag a frame, move it or its edges; `Preview::image_rect` gives where the picture is drawn, `set_still` stops pan and zoom while it is up). The Viewer's Image menu and File ▸ Save / Save As / Revert use it; Quick Look's footer has Rotate Left / Right (⌘L / ⌘R), which save at once. |
 | `apps/<name>` | One crate per application, binary named `tabula-<name>`. Picked up by the workspace glob. |
 | `vendor/` | Patched copies of dependencies (`[patch.crates-io]`), each explained in `vendor/README.md`; drop them when upstream has the fix. |
@@ -1956,3 +1957,69 @@ login into a plain-http page (localhost aside). Every login that fits is
 listed, nearest first (`tabula_keychain::closeness`: the page's own host,
 then its parent domains from the nearest, then the site's other hosts),
 then by title; an item that can't be read is logged, not hidden silently.
+
+## Token Pool (apps/pool, crates/pool)
+
+Several Claude and ChatGPT subscriptions shared by Claude Code and Codex
+on this computer, the way Token Pooler's Local mode does it on macOS
+(written fresh; no team or cloud gateway). The session's real shell
+runs `tabula-pool --service` (no window; launching `tabula-pool` again
+opens it), which listens on `127.0.0.1:17891` (`TABULA_POOL_PORT`).
+
+- **Gateway** (`gateway.rs`, axum): `/claude/v1/*` goes to Claude's API,
+  `/codex/v1/*` to Codex's Responses API, each with the chosen account's
+  OAuth sign-in in place of the client's (its `authorization`,
+  `x-api-key`, cookies and hop-by-hop headers are never passed on;
+  Claude gets the `oauth-2025-04-20` beta added). Only loopback `Host`s
+  and no `Origin` (no web page can use it). An account's sign-in is
+  refreshed within a minute of expiring, one refresh at a time per
+  account, the rotated refresh token kept; a 401 is refreshed and
+  retried once, then the account is marked signed out and the next
+  tried; a 429 marks the account (or, for a per-model meter, just that
+  model family) out until its reset and the next is tried. Both happen
+  before anything is passed back; a network failure is a 502 and never
+  replayed. With none left, a 429 shaped as the provider's with a
+  `retry-after` of the soonest reset (the clients are set to retry ten
+  times). `x-tabula-pool-account` names who answered. `/pool/status`
+  is the state without sign-ins.
+- **Order** (`schedule.rs`): earliest-expiry-first. The account whose
+  usable quota resets soonest serves, since quota that resets unused is
+  lost; ties go to the older account, then the id. The account serving
+  keeps serving unless another resets more than five minutes sooner.
+  Windows can be model-scoped (Weekly Opus): a Sonnet request isn't
+  held up by Opus's meter.
+- **Usage** is read from the answers as they stream through: only
+  `usage` objects (SSE lines containing "usage", or a JSON body's), the
+  content discarded as it passes. Quota comes from every answer's
+  rate-limit headers and, each minute, the providers' usage reports.
+- **Store** (`store.rs`): `pool.vault` in the config directory, sealed
+  as Passwords seals its own (XChaCha20-Poly1305, header as AAD); the key
+  is 32 random bytes in the login keyring (`TABULA_POOL_KEYFILE`: a file
+  instead, for tests). It is the pool's own, rather than Passwords'
+  1Password-backed store, because the gateway must work, and save the
+  refresh tokens providers rotate, while Passwords is locked. The vault
+  is opened on a worker thread, retried every 30 s while the keyring
+  is shut, and nothing is saved until it has been read.
+- **Adding accounts** (`import.rs`): *this computer's* sign-in is read
+  from `~/.claude/.credentials.json` (`CLAUDE_CONFIG_DIR`) or
+  `~/.codex/auth.json` (`CODEX_HOME`). The pool then refreshes it, so
+  the client's own copy goes stale: point the client at the pool.
+  *Separately* runs the official client's own sign-in in Terminal with
+  its config in a private directory on the runtime tmpfs (`claude auth
+  login`, `codex login` with file storage), takes the result and deletes
+  the directory. The same email again updates that account's sign-in.
+- **Clients** (`clients.rs`): "Claude Code uses the pool" sets
+  `ANTHROPIC_BASE_URL`, a placeholder `ANTHROPIC_AUTH_TOKEN`, an empty
+  `ANTHROPIC_API_KEY` and `CLAUDE_CODE_MAX_RETRIES` in Claude Code's
+  `settings.json` `env`; "Codex uses the pool" adds a `tabula_pool`
+  model provider to `config.toml` (toml_edit, so comments stay) and
+  selects it. What was there before is kept in `pool-clients.json` and
+  put back when unchecked.
+- **Agents**: `tabula-pool --status [--json]`, or `GET /pool/status`.
+
+Tests: `cargo test -p tabula-token-pool` runs the gateway against a fake
+provider. For the window, start a session with a fixture `--home`
+holding fixture credentials, a fake upstream
+(`TABULA_POOL_UPSTREAM=http://127.0.0.1:PORT`: its `/oauth` takes
+refreshes), `TABULA_POOL_PORT` and `TABULA_POOL_KEYFILE`, and a fake
+`claude` or `codex` on `PATH` for separate sign-ins. Never real accounts.

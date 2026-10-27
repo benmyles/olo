@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Token Pool
+
+*13:55* — Claude Code and Codex share several subscriptions through a loopback gateway: each request goes to the account whose quota resets soonest, out-of-quota accounts wait for their reset, sign-ins are refreshed and kept sealed, and usage is counted without keeping any content. Fixture accounts.
+
+![Token Pool](2026-10-27/135505-token-pool.png)
+
 ### Banners in the Deskbar's column
 
 *13:28* — Notification banners are now as wide as the Deskbar and flush with the screen's edge beneath it, where there is usually nothing else, and more compact: the app's icon in the group's title, the text taking the width, buttons sharing it. Preferences adds Never to Show banners for (errors still show).

@@ -1,0 +1,28 @@
+[package]
+name = "tabula-token-pool"
+description = "Token pooling for Claude Code and Codex: the accounts, their quotas, and a loopback gateway that spends them in a reset-aware order"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tabula-system.workspace = true
+tabula-xdg.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "http2"] }
+futures-util = "0.3"
+bytes = "1"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+chacha20poly1305 = "0.11"
+getrandom = "0.3"
+zeroize = "1"
+toml_edit = "0.25"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

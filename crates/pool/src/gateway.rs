@@ -1,0 +1,807 @@
+//! The gateway: an HTTP server on loopback that Claude Code and Codex are
+//! pointed at. Each request goes to the account the scheduler picks, with
+//! that account's sign-in in place of the client's; a refused sign-in is
+//! refreshed once, a rejection for quota moves to the next account, both
+//! before any of the answer has been passed on. Anything else (a network
+//! failure, a server error, a broken stream) is passed back as it is, as
+//! the work upstream may have happened: the client's own retries decide.
+//! Answers stream through; only their usage counts are kept, never what
+//! was asked or answered.
+
+use std::{
+    collections::{HashMap, VecDeque},
+    net::SocketAddr,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+
+use axum::{
+    Router,
+    body::{Body, Bytes},
+    extract::{Path, RawQuery, State},
+    http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
+    response::{IntoResponse, Response},
+    routing::{any, get},
+};
+use futures_util::StreamExt;
+use serde::Serialize;
+use serde_json::{Value, json};
+
+use crate::{
+    model::{Account, Credential, Provider, Usage, model_family, now, today},
+    schedule,
+    store::{Saved, Store},
+    upstream::{self, Failure, Upstreams},
+};
+
+/// Where the gateway listens unless `TABULA_POOL_PORT` says otherwise.
+pub const PORT: u16 = 17891;
+
+pub fn port() -> u16 {
+    std::env::var("TABULA_POOL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(PORT)
+}
+
+/// A request served (for the window's activity list): never its content.
+#[derive(Debug, Clone, Serialize)]
+pub struct Served {
+    pub at: i64,
+    pub account: String,
+    pub provider: Provider,
+    pub model: String,
+    pub status: u16,
+    pub usage: Usage,
+}
+
+/// Everything the gateway and the window share.
+#[derive(Default)]
+pub struct Pool {
+    pub saved: Saved,
+    /// The account lately serving each provider and model family.
+    sticky: HashMap<(Provider, String), String>,
+    /// Requests now going through each account.
+    pub in_flight: HashMap<String, u32>,
+    /// The latest requests, newest last.
+    pub served: VecDeque<Served>,
+    /// Why the gateway isn't listening (or the accounts can't be
+    /// opened), if so.
+    pub error: Option<String>,
+    /// The saved accounts have been read (until then nothing is saved,
+    /// so a keyring that isn't open yet can't cost them).
+    pub loaded: bool,
+}
+
+impl Pool {
+    pub fn account(&self, id: &str) -> Option<&Account> {
+        self.saved.accounts.iter().find(|a| a.id == id)
+    }
+    pub fn account_mut(&mut self, id: &str) -> Option<&mut Account> {
+        self.saved.accounts.iter_mut().find(|a| a.id == id)
+    }
+    pub fn busy(&self, id: &str) -> bool {
+        self.in_flight.get(id).is_some_and(|&n| n > 0)
+    }
+}
+
+/// The gateway's state, shared with the app.
+pub struct Shared {
+    pub pool: Mutex<Pool>,
+    store: Mutex<Option<Store>>,
+    client: reqwest::Client,
+    up: Upstreams,
+    /// One refresh at a time per account.
+    locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    save: std::sync::mpsc::Sender<()>,
+    changed: Box<dyn Fn() + Send + Sync>,
+    runtime: Mutex<Option<tokio::runtime::Handle>>,
+    /// Make the sealed store when there's first something to keep.
+    lazy: bool,
+}
+
+impl Shared {
+    /// `store`: where changes are saved (None: kept in memory, for tests);
+    /// `changed` is called (from any thread) when there is something new
+    /// to show.
+    pub fn new(saved: Saved, store: Option<Store>, up: Upstreams, changed: impl Fn() + Send + Sync + 'static) -> Arc<Shared> {
+        Shared::make(saved, store, up, false, changed)
+    }
+
+    /// The pool as the app runs it: its accounts read from the sealed
+    /// store on a worker thread (again every 30 s while the keyring
+    /// isn't open), the gateway listening on `port`.
+    pub fn launch(port: u16, changed: impl Fn() + Send + Sync + 'static) -> Arc<Shared> {
+        let shared = Shared::make(Saved::default(), None, Upstreams::from_env(), true, changed);
+        shared.pool.lock().unwrap().loaded = false;
+        let s = shared.clone();
+        let _ = std::thread::Builder::new().name("pool-open".into()).spawn(move || {
+            loop {
+                if !crate::store::path().exists() {
+                    s.pool.lock().unwrap().loaded = true;
+                    break;
+                }
+                match Store::open() {
+                    Ok((store, saved)) => {
+                        *s.store.lock().unwrap() = Some(store);
+                        let mut p = s.pool.lock().unwrap();
+                        p.saved = saved;
+                        p.loaded = true;
+                        if p.error.as_deref().is_some_and(|e| !e.starts_with("Can’t listen")) {
+                            p.error = None;
+                        }
+                        break;
+                    }
+                    Err(e) => {
+                        s.pool.lock().unwrap().error = Some(e);
+                        (s.changed)();
+                    }
+                }
+                std::thread::sleep(Duration::from_secs(30));
+            }
+            (s.changed)();
+            s.sync_soon(None);
+        });
+        if let Err(e) = start(shared.clone(), port) {
+            tracing::warn!("pool: {e}");
+        }
+        shared
+    }
+
+    fn make(saved: Saved, store: Option<Store>, up: Upstreams, lazy: bool, changed: impl Fn() + Send + Sync + 'static) -> Arc<Shared> {
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(20))
+            // Thinking can take a while before the first byte.
+            .read_timeout(Duration::from_secs(15 * 60))
+            .build()
+            .expect("HTTP client");
+        let shared = Arc::new(Shared {
+            pool: Mutex::new(Pool { saved, loaded: true, ..Default::default() }),
+            store: Mutex::new(store),
+            client,
+            up,
+            locks: Mutex::new(HashMap::new()),
+            save: tx,
+            changed: Box::new(changed),
+            runtime: Mutex::new(None),
+            lazy,
+        });
+        // Saving off every async and UI thread, a batch at a time.
+        let weak = Arc::downgrade(&shared);
+        let _ = std::thread::Builder::new().name("pool-save".into()).spawn(move || {
+            while rx.recv().is_ok() {
+                std::thread::sleep(Duration::from_millis(300));
+                while rx.try_recv().is_ok() {}
+                let Some(s) = weak.upgrade() else { break };
+                let snapshot = {
+                    let p = s.pool.lock().unwrap();
+                    if !p.loaded {
+                        continue;
+                    }
+                    p.saved.clone()
+                };
+                let mut store = s.store.lock().unwrap();
+                // The first account made: the sealed file (and its key) now.
+                if store.is_none() && s.lazy {
+                    match Store::open() {
+                        Ok((st, _)) => *store = Some(st),
+                        Err(e) => {
+                            s.pool.lock().unwrap().error = Some(e);
+                            (s.changed)();
+                            continue;
+                        }
+                    }
+                }
+                if let Some(st) = store.as_ref()
+                    && let Err(e) = st.save(&snapshot)
+                {
+                    tracing::warn!("pool: {e}");
+                    s.pool.lock().unwrap().error = Some(e);
+                    (s.changed)();
+                }
+            }
+        });
+        shared
+    }
+
+    /// Something changed: save it, and show it.
+    pub fn touch(&self) {
+        let _ = self.save.send(());
+        (self.changed)();
+    }
+
+    fn lock_for(&self, id: &str) -> Arc<tokio::sync::Mutex<()>> {
+        self.locks.lock().unwrap().entry(id.to_owned()).or_default().clone()
+    }
+
+    pub fn snapshot(&self) -> Pool {
+        let p = self.pool.lock().unwrap();
+        Pool { saved: p.saved.clone(), sticky: HashMap::new(), in_flight: p.in_flight.clone(), served: p.served.clone(), error: p.error.clone(), loaded: p.loaded }
+    }
+
+    /// Add an account with its sign-in (and read its quota at once).
+    pub fn add(self: &Arc<Self>, account: Account, credential: Credential) -> Result<(), String> {
+        let id = account.id.clone();
+        {
+            let mut p = self.pool.lock().unwrap();
+            if !p.loaded {
+                return Err(p.error.clone().unwrap_or_else(|| "The pool’s accounts aren’t open yet.".into()));
+            }
+            p.saved.credentials.insert(id.clone(), credential);
+            p.saved.accounts.push(account);
+        }
+        self.touch();
+        self.sync_soon(Some(id));
+        Ok(())
+    }
+
+    /// Replace an account's sign-in (signed in again).
+    pub fn reauth(self: &Arc<Self>, id: &str, credential: Credential) {
+        {
+            let mut p = self.pool.lock().unwrap();
+            p.saved.credentials.insert(id.to_owned(), credential);
+            if let Some(a) = p.account_mut(id) {
+                a.signed_out = None;
+                a.cooldown_until = None;
+            }
+        }
+        self.touch();
+        self.sync_soon(Some(id.to_owned()));
+    }
+
+    pub fn set_enabled(&self, id: &str, on: bool) {
+        if let Some(a) = self.pool.lock().unwrap().account_mut(id) {
+            a.enabled = on;
+        }
+        self.touch();
+    }
+
+    pub fn rename(&self, id: &str, name: &str) {
+        if let Some(a) = self.pool.lock().unwrap().account_mut(id) {
+            a.name = name.to_owned();
+        }
+        self.touch();
+    }
+
+    /// Take an account out of the pool (not while it's serving).
+    pub fn remove(&self, id: &str) -> Result<(), String> {
+        {
+            let mut p = self.pool.lock().unwrap();
+            if p.busy(id) {
+                return Err("It’s answering a request now; pause it and try again when that’s done.".into());
+            }
+            p.saved.accounts.retain(|a| a.id != id);
+            p.saved.credentials.remove(id);
+        }
+        self.touch();
+        Ok(())
+    }
+
+    /// Read quota (and refresh sign-ins due) for one account or all, soon.
+    pub fn sync_soon(self: &Arc<Self>, id: Option<String>) {
+        let Some(rt) = self.runtime.lock().unwrap().clone() else { return };
+        let s = self.clone();
+        rt.spawn(async move { s.sync(id.as_deref()).await });
+    }
+
+    /// The sign-in for `id`, refreshed first if it's (nearly) expired or
+    /// `force`d (the provider refused it).
+    async fn fresh(&self, id: &str, provider: Provider, force: bool, within: i64) -> Result<Credential, Failure> {
+        let lock = self.lock_for(id);
+        let _held = lock.lock().await;
+        // Someone else may have refreshed it while we waited.
+        let current = self.pool.lock().unwrap().saved.credentials.get(id).cloned().ok_or_else(|| Failure::Refused("No sign-in".into()))?;
+        let due = current.expires_at.is_some_and(|e| e - now() < within);
+        if !force && !due {
+            return Ok(current);
+        }
+        match upstream::refresh(&self.client, &self.up, provider, &current).await {
+            Ok(c) => {
+                self.pool.lock().unwrap().saved.credentials.insert(id.to_owned(), c.clone());
+                self.touch();
+                Ok(c)
+            }
+            Err(Failure::Refused(why)) => {
+                self.signed_out(id, &why);
+                Err(Failure::Refused(why))
+            }
+            // Not refused: the old one may still do.
+            Err(e) if !force && current.expires_at.is_none_or(|t| t > now()) => {
+                tracing::warn!("pool: {e}");
+                Ok(current)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    fn signed_out(&self, id: &str, why: &str) {
+        if let Some(a) = self.pool.lock().unwrap().account_mut(id) {
+            a.signed_out = Some(why.to_owned());
+        }
+        self.touch();
+    }
+
+    /// Refresh sign-ins due within ten minutes and read every enabled
+    /// account's quota (or just `only`'s).
+    pub async fn sync(&self, only: Option<&str>) {
+        let accounts: Vec<(String, Provider)> = {
+            let p = self.pool.lock().unwrap();
+            p.saved.accounts.iter().filter(|a| only.is_none_or(|o| o == a.id) && (only.is_some() || a.enabled) && a.signed_out.is_none()).map(|a| (a.id.clone(), a.provider)).collect()
+        };
+        for (id, provider) in accounts {
+            let Ok(cred) = self.fresh(&id, provider, false, 600).await else { continue };
+            let report = match upstream::usage(&self.client, &self.up, provider, &cred).await {
+                Err(Failure::Refused(_)) => match self.fresh(&id, provider, true, 0).await {
+                    Ok(c) => upstream::usage(&self.client, &self.up, provider, &c).await,
+                    Err(e) => Err(e),
+                },
+                r => r,
+            };
+            let mut p = self.pool.lock().unwrap();
+            let Some(a) = p.account_mut(&id) else { continue };
+            match report {
+                Ok((windows, plan)) => {
+                    // The report is the truth; a rejection's per-model
+                    // window stays until it resets.
+                    let t = now();
+                    a.windows.retain(|w| w.name.starts_with("model:") && w.resets_at.is_some_and(|r| r > t));
+                    a.merge_windows(windows);
+                    if plan.is_some() {
+                        a.plan = plan;
+                    }
+                    a.synced = Some(t);
+                    if a.cooldown_until.is_some_and(|c| c <= t) {
+                        a.cooldown_until = None;
+                    }
+                    a.model_cooldowns.retain(|_, &mut c| c > t);
+                }
+                Err(e) => tracing::info!("pool: {}: {e}", a.name),
+            }
+            drop(p);
+            self.touch();
+        }
+    }
+}
+
+/// Run the gateway on its own threads; returns once it is listening (or
+/// couldn't), the error kept in the pool too.
+pub fn start(shared: Arc<Shared>, port: u16) -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(2).thread_name("pool-gateway").enable_all().build().map_err(|e| e.to_string())?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    *shared.runtime.lock().unwrap() = Some(runtime.handle().clone());
+    std::thread::Builder::new()
+        .name("pool-gateway".into())
+        .spawn(move || {
+            runtime.block_on(async move {
+                let addr = SocketAddr::from(([127, 0, 0, 1], port));
+                let listener = match tokio::net::TcpListener::bind(addr).await {
+                    Ok(l) => l,
+                    Err(e) => {
+                        let msg = format!("Can’t listen on {addr}: {e}");
+                        shared.pool.lock().unwrap().error = Some(msg.clone());
+                        shared.touch();
+                        let _ = tx.send(Err(msg));
+                        return;
+                    }
+                };
+                let _ = tx.send(Ok(()));
+                let s = shared.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    loop {
+                        s.sync(None).await;
+                        tokio::time::sleep(Duration::from_secs(60)).await;
+                    }
+                });
+                let app = router(shared.clone(), port);
+                if let Err(e) = axum::serve(listener, app).await {
+                    shared.pool.lock().unwrap().error = Some(format!("The gateway stopped: {e}"));
+                    shared.touch();
+                }
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    rx.recv().map_err(|e| e.to_string())?
+}
+
+#[derive(Clone)]
+struct Ctx {
+    shared: Arc<Shared>,
+    port: u16,
+}
+
+pub fn router(shared: Arc<Shared>, port: u16) -> Router {
+    Router::new()
+        .route("/claude/v1/{*rest}", any(claude))
+        .route("/codex/v1/{*rest}", any(codex))
+        .route("/pool/status", get(status))
+        .with_state(Ctx { shared, port })
+}
+
+/// Only clients on this computer, and never a web page: a browser sends
+/// an Origin, and a DNS-rebinding page a Host that isn't ours.
+fn local_only(headers: &HeaderMap, port: u16) -> Result<(), Box<Response>> {
+    let host = headers.get("host").and_then(|h| h.to_str().ok()).unwrap_or("");
+    let ok_host = [format!("127.0.0.1:{port}"), format!("localhost:{port}"), format!("[::1]:{port}")].iter().any(|h| h == host);
+    if !ok_host || headers.contains_key("origin") {
+        return Err(Box::new((StatusCode::FORBIDDEN, "Only programs on this computer may use the pool.").into_response()));
+    }
+    Ok(())
+}
+
+async fn status(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
+    if let Err(r) = local_only(&headers, ctx.port) {
+        return *r;
+    }
+    axum::Json(status_json(&ctx.shared.snapshot())).into_response()
+}
+
+/// The pool for agents and the command line: no sign-ins.
+pub fn status_json(p: &Pool) -> Value {
+    let t = now();
+    let accounts: Vec<Value> = p
+        .saved
+        .accounts
+        .iter()
+        .map(|a| {
+            json!({
+                "id": a.id, "name": a.name, "provider": a.provider, "enabled": a.enabled,
+                "email": a.email, "plan": a.plan, "signed_out": a.signed_out,
+                "blocked_until": schedule::blocked_until(a, "", t),
+                "windows": a.windows, "today": a.today.1, "total": a.total,
+                "in_flight": p.in_flight.get(&a.id).copied().unwrap_or(0),
+                "last_used": a.last_used, "synced": a.synced,
+            })
+        })
+        .collect();
+    json!({"accounts": accounts, "error": p.error, "loaded": p.loaded, "served": p.served})
+}
+
+async fn claude(State(ctx): State<Ctx>, Path(rest): Path<String>, RawQuery(q): RawQuery, method: Method, headers: HeaderMap, body: Bytes) -> Response {
+    proxy(ctx, Provider::Claude, rest, q, method, headers, body).await
+}
+
+async fn codex(State(ctx): State<Ctx>, Path(rest): Path<String>, RawQuery(q): RawQuery, method: Method, headers: HeaderMap, body: Bytes) -> Response {
+    proxy(ctx, Provider::Codex, rest, q, method, headers, body).await
+}
+
+/// Request headers not passed on: the client's own credentials (the
+/// account's go instead), and hop-by-hop ones.
+fn forwarded(name: &str) -> bool {
+    !matches!(
+        name,
+        "host"
+            | "authorization"
+            | "x-api-key"
+            | "chatgpt-account-id"
+            | "content-length"
+            | "connection"
+            | "transfer-encoding"
+            | "keep-alive"
+            | "proxy-authenticate"
+            | "proxy-authorization"
+            | "te"
+            | "trailer"
+            | "upgrade"
+            | "cookie"
+            | "accept-encoding"
+            | "origin"
+    ) && !name.starts_with("x-tabula-pool-")
+}
+
+/// Response headers not passed back.
+fn returned(name: &str) -> bool {
+    !matches!(name, "content-length" | "connection" | "transfer-encoding" | "keep-alive" | "set-cookie" | "content-encoding")
+}
+
+/// The answer when no account can serve, shaped as the client expects.
+fn unavailable(provider: Provider, status: StatusCode, message: &str, retry: Option<i64>) -> Response {
+    let body = match provider {
+        Provider::Claude => {
+            let kind = if status == StatusCode::TOO_MANY_REQUESTS { "rate_limit_error" } else { "overloaded_error" };
+            json!({"type": "error", "error": {"type": kind, "message": message}})
+        }
+        Provider::Codex => json!({"error": {"type": "usage_limit_reached", "message": message}}),
+    };
+    let mut r = (status, axum::Json(body)).into_response();
+    if let Some(at) = retry
+        && let Ok(v) = HeaderValue::from_str(&(at - now()).max(1).to_string())
+    {
+        r.headers_mut().insert("retry-after", v);
+    }
+    r
+}
+
+async fn proxy(ctx: Ctx, provider: Provider, rest: String, query: Option<String>, method: Method, headers: HeaderMap, body: Bytes) -> Response {
+    if let Err(r) = local_only(&headers, ctx.port) {
+        return *r;
+    }
+    let s = ctx.shared;
+    let model = serde_json::from_slice::<Value>(&body).ok().and_then(|v| v["model"].as_str().map(str::to_owned)).unwrap_or_default();
+    let family = model_family(&model);
+    let url = {
+        let base = match provider {
+            Provider::Claude => format!("{}/v1/{rest}", s.up.claude),
+            Provider::Codex => format!("{}/{rest}", s.up.codex),
+        };
+        match &query {
+            Some(q) => format!("{base}?{q}"),
+            None => base,
+        }
+    };
+    let mut tried: Vec<String> = Vec::new();
+    loop {
+        // Choose, and count it as busy at once.
+        let chosen = {
+            let mut p = s.pool.lock().unwrap();
+            let t = now();
+            let creds = &p.saved.credentials;
+            let sticky = p.sticky.get(&(provider, family.clone())).cloned();
+            let pick = schedule::pick(&p.saved.accounts, provider, &family, sticky.as_deref(), t, &tried, |a| creds.contains_key(&a.id)).map(|a| (a.id.clone(), a.name.clone()));
+            match pick {
+                Some((id, name)) => {
+                    p.sticky.insert((provider, family.clone()), id.clone());
+                    *p.in_flight.entry(id.clone()).or_default() += 1;
+                    (id, name)
+                }
+                None => {
+                    if !p.loaded {
+                        let msg = format!("The pool’s accounts aren’t open yet: {}", p.error.clone().unwrap_or_default());
+                        return unavailable(provider, StatusCode::SERVICE_UNAVAILABLE, &msg, None);
+                    }
+                    let any = p.saved.accounts.iter().any(|a| a.provider == provider && a.enabled && a.signed_out.is_none());
+                    let retry = schedule::next_available(&p.saved.accounts, provider, &family, t);
+                    drop(p);
+                    return if any {
+                        let msg = format!("Every {} account in the pool is out of quota for now.", provider.client());
+                        unavailable(provider, StatusCode::TOO_MANY_REQUESTS, &msg, retry)
+                    } else {
+                        let msg = format!("There are no {} accounts in the pool to use (open Token Pool to add one).", provider.client());
+                        unavailable(provider, StatusCode::SERVICE_UNAVAILABLE, &msg, None)
+                    };
+                }
+            }
+        };
+        let (id, name) = chosen;
+        let done = |s: &Shared| {
+            let mut p = s.pool.lock().unwrap();
+            if let Some(n) = p.in_flight.get_mut(&id) {
+                *n = n.saturating_sub(1);
+            }
+        };
+        let mut cred = match s.fresh(&id, provider, false, 60).await {
+            Ok(c) => c,
+            Err(_) => {
+                done(&s);
+                tried.push(id.clone());
+                continue;
+            }
+        };
+        let mut refreshed = false;
+        let response = loop {
+            let mut req = upstream::authorize(s.client.request(method.clone(), &url), provider, &cred);
+            for (k, v) in headers.iter().filter(|(k, _)| forwarded(k.as_str())) {
+                if provider == Provider::Claude && k == "anthropic-beta" {
+                    continue;
+                }
+                req = req.header(k, v);
+            }
+            if provider == Provider::Claude {
+                req = req.header("anthropic-beta", upstream::with_oauth_beta(headers.get("anthropic-beta").and_then(|v| v.to_str().ok())));
+            }
+            match req.body(body.clone()).send().await {
+                Ok(r) if r.status() == StatusCode::UNAUTHORIZED && !refreshed => {
+                    refreshed = true;
+                    match s.fresh(&id, provider, true, 0).await {
+                        Ok(c) => cred = c,
+                        Err(_) => break None,
+                    }
+                }
+                Ok(r) => break Some(r),
+                Err(e) => {
+                    // Not replayed: it may have reached the provider.
+                    done(&s);
+                    s.touch();
+                    return unavailable(provider, StatusCode::BAD_GATEWAY, &format!("The pool couldn’t reach {}: {e}", provider.client()), None);
+                }
+            }
+        };
+        let Some(r) = response else {
+            done(&s);
+            tried.push(id.clone());
+            continue;
+        };
+        let status = r.status();
+        let t = now();
+        let (windows, rejection) = upstream::header_windows(r.headers(), provider, &family, status.as_u16(), t);
+        {
+            let mut p = s.pool.lock().unwrap();
+            if let Some(a) = p.account_mut(&id) {
+                a.merge_windows(windows);
+                if status == StatusCode::UNAUTHORIZED {
+                    a.signed_out = Some("Its provider refused the sign-in.".into());
+                }
+                if let Some(rej) = &rejection {
+                    if rej.model_only {
+                        a.model_cooldowns.insert(family.clone(), rej.until);
+                    } else {
+                        a.cooldown_until = Some(rej.until);
+                    }
+                }
+            }
+        }
+        if status == StatusCode::UNAUTHORIZED || rejection.is_some() {
+            // Nothing passed on yet: the next account may serve it.
+            done(&s);
+            s.touch();
+            tried.push(id.clone());
+            continue;
+        }
+        return respond(s, r, Finish { id: id.clone(), name, provider, model: model.clone(), status: status.as_u16(), scan: Scan::new(), shared: None });
+    }
+}
+
+/// Counts what a finished answer reports, when it's dropped (done, or
+/// the client went away), and frees its account.
+struct Finish {
+    id: String,
+    name: String,
+    provider: Provider,
+    model: String,
+    status: u16,
+    scan: Scan,
+    shared: Option<Arc<Shared>>,
+}
+
+impl Drop for Finish {
+    fn drop(&mut self) {
+        let Some(s) = self.shared.take() else { return };
+        let mut usage = self.scan.finish();
+        usage.requests = 1;
+        let t = now();
+        {
+            let mut p = s.pool.lock().unwrap();
+            if let Some(n) = p.in_flight.get_mut(&self.id) {
+                *n = n.saturating_sub(1);
+            }
+            if let Some(a) = p.account_mut(&self.id) {
+                a.record(&usage, &today(), t);
+            }
+            p.served.push_back(Served { at: t, account: self.name.clone(), provider: self.provider, model: self.model.clone(), status: self.status, usage });
+            while p.served.len() > 50 {
+                p.served.pop_front();
+            }
+        }
+        s.touch();
+    }
+}
+
+fn respond(s: Arc<Shared>, r: reqwest::Response, mut finish: Finish) -> Response {
+    let status = r.status();
+    let mut out = HeaderMap::new();
+    for (k, v) in r.headers().iter().filter(|(k, _)| returned(k.as_str())) {
+        out.append(k.clone(), v.clone());
+    }
+    if let Ok(v) = HeaderValue::from_str(&finish.name) {
+        out.insert(HeaderName::from_static("x-tabula-pool-account"), v);
+    }
+    finish.scan.sse = r.headers().get("content-type").and_then(|v| v.to_str().ok()).is_some_and(|c| c.starts_with("text/event-stream"));
+    finish.shared = Some(s);
+    let finish = Arc::new(Mutex::new(finish));
+    let stream = r.bytes_stream().map(move |chunk| {
+        if let Ok(b) = &chunk {
+            finish.lock().unwrap().scan.feed(b);
+        }
+        chunk
+    });
+    let mut resp = Response::new(Body::from_stream(stream));
+    *resp.status_mut() = status;
+    *resp.headers_mut() = out;
+    resp
+}
+
+/// Reads the usage counts out of an answer as it passes, keeping nothing
+/// else: server-sent events a line at a time, JSON whole (up to 8 MB).
+struct Scan {
+    sse: bool,
+    pending: Vec<u8>,
+    usage: Usage,
+}
+
+impl Scan {
+    fn new() -> Scan {
+        Scan { sse: false, pending: Vec::new(), usage: Usage::default() }
+    }
+
+    fn feed(&mut self, chunk: &[u8]) {
+        if !self.sse {
+            if self.pending.len() + chunk.len() <= 8 << 20 {
+                self.pending.extend_from_slice(chunk);
+            }
+            return;
+        }
+        self.pending.extend_from_slice(chunk);
+        while let Some(i) = self.pending.iter().position(|&b| b == b'\n') {
+            let line: Vec<u8> = self.pending.drain(..=i).collect();
+            self.line(&line);
+        }
+        // A runaway line (a huge delta) needn't be kept: usage lines are short.
+        if self.pending.len() > 1 << 20 {
+            self.pending.clear();
+        }
+    }
+
+    fn line(&mut self, line: &[u8]) {
+        let Some(data) = line.strip_prefix(b"data:") else { return };
+        // Only lines that can hold usage are parsed.
+        if !data.windows(5).any(|w| w == b"usage") {
+            return;
+        }
+        if let Ok(v) = serde_json::from_slice::<Value>(data.trim_ascii()) {
+            self.event(&v);
+        }
+    }
+
+    fn event(&mut self, v: &Value) {
+        let u = match v["type"].as_str() {
+            Some("message_start") => &v["message"]["usage"],
+            Some("message_delta") => &v["usage"],
+            Some("response.completed") | Some("response.done") => &v["response"]["usage"],
+            _ => &v["usage"],
+        };
+        let n = |k: &str| u[k].as_u64();
+        let input = [n("input_tokens"), n("cache_creation_input_tokens"), n("cache_read_input_tokens")].into_iter().flatten().sum::<u64>();
+        if input > 0 {
+            self.usage.input_tokens = self.usage.input_tokens.max(input);
+        }
+        if let Some(out) = n("output_tokens") {
+            self.usage.output_tokens = self.usage.output_tokens.max(out);
+        }
+    }
+
+    fn finish(&mut self) -> Usage {
+        if !self.sse && !self.pending.is_empty() {
+            if let Ok(v) = serde_json::from_slice::<Value>(&self.pending) {
+                self.event(&v);
+            }
+        } else if self.sse && !self.pending.is_empty() {
+            let rest = std::mem::take(&mut self.pending);
+            self.line(&rest);
+        }
+        self.pending.clear();
+        self.usage.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scans_usage_only() {
+        let mut s = Scan::new();
+        s.sse = true;
+        let events = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10,\"cache_read_input_tokens\":90,\"output_tokens\":1}}}\n\n\
+            data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"secret words\"}}\n\n\
+            data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":42}}\n\n";
+        // Fed in awkward pieces.
+        for piece in events.as_bytes().chunks(7) {
+            s.feed(piece);
+        }
+        assert_eq!(s.finish(), Usage { requests: 0, input_tokens: 100, output_tokens: 42 });
+        let mut s = Scan::new();
+        s.feed(br#"{"id":"x","usage":{"input_tokens":5,"output_tokens":6}}"#);
+        assert_eq!(s.finish(), Usage { requests: 0, input_tokens: 5, output_tokens: 6 });
+        let mut s = Scan::new();
+        s.sse = true;
+        s.feed(b"data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":101,\"output_tokens\":13}}}\n\ndata: [DONE]\n\n");
+        assert_eq!(s.finish(), Usage { requests: 0, input_tokens: 101, output_tokens: 13 });
+    }
+
+    #[test]
+    fn headers_kept_back() {
+        for h in ["authorization", "x-api-key", "cookie", "host", "origin", "x-tabula-pool-x"] {
+            assert!(!forwarded(h), "{h}");
+        }
+        assert!(forwarded("anthropic-version") && forwarded("x-stainless-lang") && forwarded("session_id"));
+        assert!(!returned("set-cookie") && returned("anthropic-ratelimit-unified-5h-utilization"));
+    }
+}
