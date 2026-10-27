@@ -18,7 +18,7 @@ use smithay::{
     output::Output,
     utils::{Logical, Point, Rectangle},
 };
-use tabula_protocol::Reply;
+use tabula_protocol::{ImageFormat, Reply};
 use tracing::warn;
 
 use crate::{
@@ -37,12 +37,13 @@ pub struct Shot {
     pub window: Option<u64>,
     pub border: bool,
     pub pointer: bool,
+    pub format: ImageFormat,
 }
 
 impl Shot {
     /// The whole of whichever output draws next.
     pub fn screen(path: PathBuf) -> Shot {
-        Shot { path, conn: None, output: None, window: None, border: true, pointer: false }
+        Shot { path, conn: None, output: None, window: None, border: true, pointer: false, format: ImageFormat::Png }
     }
 }
 
@@ -169,7 +170,7 @@ fn save(ipc: &mut IpcState, shot: Shot, captured: Result<Captured, String>) {
         }
     };
     let (id, done) = ipc.saving(shot.conn);
-    let path = shot.path;
+    let (path, format) = (shot.path, shot.format);
     std::thread::Builder::new()
         .name("screenshot".into())
         .spawn(move || {
@@ -180,10 +181,19 @@ fn save(ipc: &mut IpcState, shot: Shot, captured: Result<Captured, String>) {
             let mut part = path.clone().into_os_string();
             part.push(".part");
             let part = PathBuf::from(part);
-            let res = image::DynamicImage::ImageRgba8(img)
-                .save_with_format(&part, image::ImageFormat::Png)
-                .and_then(|()| std::fs::rename(&part, &path).map_err(Into::into))
-                .map_err(|e| e.to_string());
+            let res = match format {
+                ImageFormat::Png => image::DynamicImage::ImageRgba8(img)
+                    .save_with_format(&part, image::ImageFormat::Png)
+                    .and_then(|()| std::fs::rename(&part, &path).map_err(Into::into))
+                    .map_err(|e| e.to_string()),
+                ImageFormat::Rgba => {
+                    let mut bytes = Vec::with_capacity(8 + img.as_raw().len());
+                    bytes.extend_from_slice(&img.width().to_le_bytes());
+                    bytes.extend_from_slice(&img.height().to_le_bytes());
+                    bytes.extend_from_slice(img.as_raw());
+                    std::fs::write(&part, bytes).and_then(|()| std::fs::rename(&part, &path)).map_err(|e| e.to_string())
+                }
+            };
             if let Some(tx) = done {
                 let _ = tx.send((id, res));
             }

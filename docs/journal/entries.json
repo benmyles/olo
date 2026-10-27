@@ -1048,5 +1048,11 @@
   "title": "Passwords in Chrome",
   "caption": "A field's context menu in Chrome now has Passwords: each login for the page, with its username, password, one-time code or the whole login. A Tabula extension, installed and kept up to date by tabula-chrome itself, talks to Passwords through tabula-chrome as its native messaging host; the toolbar button lists the page's logins, and a login sent with a form is offered for saving or updating.",
   "image": "2026-10-27/041413-passwords-in-chrome.png"
+ },
+ {
+  "time": "2026-10-27T04:33:42",
+  "title": "Agent Screens",
+  "caption": "Agents get screens of their own: each is a whole Tabula desktop with its own windows, pointer and keyboard focus, so an agent never moves your pointer or takes your focus. tabula-screen starts one and drives it (run, look, windows, click, type, key); the Agent Screens window shows it live, and Take Control lets you step in.",
+  "image": "2026-10-27/043342-agent-screens.png"
  }
 ]

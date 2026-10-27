@@ -13,6 +13,7 @@ pub const OUR_APPS: &[(&str, &str, &str)] = &[
     ("tabula-viewer", "Viewer", "show-image"),
     ("tabula-activity", "Activity Monitor", "activity"),
     ("tabula-drive-setup", "DriveSetup", "drive-setup"),
+    ("tabula-screen", "Agent Screens", "agent-screens"),
     ("tabula-logs", "Log Viewer", "logs"),
     ("tabula-screenshot", "Screenshot", "screenshot"),
 ];

@@ -61,6 +61,9 @@ pub enum Request {
         /// Draw the pointer in.
         #[serde(default)]
         pointer: bool,
+        /// PNG, or raw pixels for a live view (see [`ImageFormat`]).
+        #[serde(default)]
+        format: ImageFormat,
     },
     /// Lock the screen now.
     Lock,
@@ -189,6 +192,33 @@ pub struct WindowInfo {
     pub workspace: u32,
     pub minimized: bool,
     pub focused: bool,
+    /// Where it is on screen, tab and border included (global logical
+    /// pixels), while it is on screen. Only in [`Reply::Windows`] (the
+    /// list [`Event::WindowsChanged`] carries leaves it out, or a window
+    /// being dragged would change it every frame).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame: Option<Frame>,
+}
+
+/// A rectangle in global logical pixels.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Frame {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+/// How [`Request::Screenshot`] writes its picture.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ImageFormat {
+    #[default]
+    Png,
+    /// Width and height (little-endian u32 each), then the rows of
+    /// straight (not premultiplied) RGBA, top first: no encoding, for a
+    /// live view.
+    Rgba,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -715,7 +745,11 @@ pub struct Client {
 
 impl Client {
     pub fn connect() -> Result<Self, ClientError> {
-        let path = socket_path().ok_or(ClientError::NoSocket)?;
+        Self::connect_to(&socket_path().ok_or(ClientError::NoSocket)?)
+    }
+
+    /// Connect to the app_server listening at `path` (another session's).
+    pub fn connect_to(path: &std::path::Path) -> Result<Self, ClientError> {
         let stream = UnixStream::connect(path)?;
         Ok(Client { reader: BufReader::new(stream.try_clone()?), writer: stream })
     }

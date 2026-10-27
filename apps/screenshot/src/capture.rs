@@ -169,6 +169,7 @@ pub fn take(settings: &Settings, hide: bool) -> Result<Shot, String> {
                 window,
                 border: settings.border,
                 pointer: settings.pointer,
+                format: Default::default(),
             },
         )?;
         let image = image::open(&png).map_err(|e| e.to_string())?.into_rgba8();
@@ -184,7 +185,7 @@ pub fn take(settings: &Settings, hide: bool) -> Result<Shot, String> {
 pub fn take_output(output: Option<String>) -> Result<image::RgbaImage, String> {
     let mut client = Client::connect().map_err(|e| e.to_string())?;
     let png = scratch_path().with_extension(format!("{}.png", output.as_deref().unwrap_or("screen")));
-    request(&mut client, &Request::Screenshot { path: png.display().to_string(), output, window: None, border: true, pointer: false })?;
+    request(&mut client, &Request::Screenshot { path: png.display().to_string(), output, window: None, border: true, pointer: false, format: Default::default() })?;
     let image = image::open(&png).map_err(|e| e.to_string())?.into_rgba8();
     let _ = std::fs::remove_file(&png);
     Ok(image)

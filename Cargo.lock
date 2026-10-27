@@ -11365,6 +11365,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabula-screen"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "tabula-kit",
+ "tabula-protocol",
+ "tabula-theme",
+ "tabula-xdg",
+ "tracing",
+]
+
+[[package]]
 name = "tabula-screensaver"
 version = "0.1.0"
 dependencies = [

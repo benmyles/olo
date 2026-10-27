@@ -412,7 +412,7 @@ disabled until `ready`, with Enter and Escape) in a window opened
 with `WindowOptions::alert(title, message)` (sized for the message);
 icons are BeOS's `warning`, `stop`, `info` and `idea`. The kit makes the
 alert a child (`xdg_toplevel.set_parent`) of the app's focused window, or
-of `WindowOptions::parent(id)` when given, and app_server opens any
+of `WindowOptions::parent(id)` (or `parent_opt(Option<id>)`) when given, and app_server opens any
 window with a parent over it as BAlert does: centred across, a quarter
 of the way down.
 
@@ -921,8 +921,9 @@ tests.
 
 ## Screenshots (app_server screenshot.rs, apps/screenshot)
 
-`Request::Screenshot { path, output, window, border, pointer }` (only
-`path` is required) saves a PNG of one output (the one the pointer is on
+`Request::Screenshot { path, output, window, border, pointer, format }` (only
+`path` is required; `format: "rgba"` writes raw pixels instead, see
+`tabula_protocol::ImageFormat`, for live views) saves a PNG of one output (the one the pointer is on
 by default) or of one window, and replies once the file is complete. It
 becomes a `screenshot::Shot` for one output, which every backend takes
 with that output's next frame (`screenshot::take`): the screen via
@@ -1456,6 +1457,46 @@ Client (a GTK headerbar, so every libadwaita app) keeps its own,
 coloured by the theme. Test with a throwaway GTK script in a headless
 session (`tsession run NAME GDK_BACKEND=wayland python3 test.py`, the
 private bus as DBUS_SESSION_BUS_ADDRESS).
+
+## Agent Screens (apps/screen)
+
+Agents get screens of their own: `tabula-screen start [NAME] [--size WxH]
+[--scale N] [--sound]` starts a headless Tabula session (`tabula-session
+--headless`, in its own process group), a whole desktop with its own
+Deskbar, windows, pointer and keyboard focus, so nothing an agent does
+there moves the person's pointer or takes their focus. It runs the
+person's programs and files (their HOME), but with app_server settings
+of its own (`TABULA_APP_SERVER_SETTINGS`, a copy of the person's at 1×
+unless asked, with no lock, screen saver, display sleep or system
+sleep), silent unless `--sound` (`PULSE_SERVER` pointed at nothing), and
+without `DISPLAY` (X programs would show on the person's screen). Screens
+are listed in `$XDG_RUNTIME_DIR/tabula-screens/NAME.json` (the session's
+pid, its sockets, the size); `screens.rs` checks the pid is still that
+session before trusting an entry. The rest is the screen's own app_server
+IPC (`Client::connect_to`): `run` (a program with the screen's
+`WAYLAND_DISPLAY`, `TABULA_SOCKET` and `TABULA_SCREEN`), `look` (a PNG,
+`--window ID` for one), `windows` (`Reply::Windows`, whose `WindowInfo`s
+carry `frame`, their place on screen; the `WindowsChanged` event leaves
+it out, or a drag would send one every frame), `click`, `move`,
+`down`/`up`, `drag`, `scroll`, `wheel`, `key` (chords as people write
+them: `Cmd+S`, `Enter`, `Esc`; parsed by `tabula_protocol::Chord` with
+aliases) and `type` (US keyboard), all as `Request::Synthetic`, in the
+screen's logical pixels. `stop` ends the session, and with it the
+programs on it. `tabula-screen --help` lists it all.
+
+The person's side is the window (`tabula-screen`, or `tabula-screen
+watch NAME`): the screens in a list and the chosen one live beside it,
+about eight frames a second with the agent's pointer drawn in (a worker
+asks for `format: "rgba"` pictures and reads them back; the window never
+waits on a screen). Take Control (⌘K) steps in: the person's pointer,
+wheel and keys over the picture go to that screen through another worker
+(keys by their evdev codes, Ctrl, Shift and Alt pressed and let go as
+each key event says), with a ring in the keyboard-navigation colour
+round the picture, until Stop Controlling. New Screen starts one; Stop
+Screen… ends one after asking. A viewer running on an agent screen
+leaves that screen out of its list. Test it in a sandbox: a private
+`XDG_RUNTIME_DIR`, a fixture HOME and XDG dirs (the screen runs the real
+programs), and a second screen to run the viewer on.
 
 ## Google Chrome (apps/chrome)
 

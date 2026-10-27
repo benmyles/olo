@@ -148,7 +148,11 @@ as they land (with the commit), add new ones as they come up.
   open there: app.fastmail.com never finishes loading; a field's context
   menu should offer the login's verification code (TOTP) beside the
   username and password (~~done in Chrome~~, via Passwords).
-- **Multiplayer screen control for agents** (Ben): an agent starts a
+- **Multiplayer screen control for agents** (Ben; ~~screens, input, pictures,
+  windows, the person watching and taking control~~ done: Agent Screens,
+  `apps/screen`, each screen a headless Tabula session of its own; HACKING,
+  "Agent Screens". Left: the kit's widget tree for agents, and the skills
+  for Claude Code and Codex): an agent starts a
   Tabula screen-control session and gets its own workspace and its own
   cursor and keyboard focus, so its input never disturbs the person, who
   can watch that workspace live (and step in). Complete control: pointer

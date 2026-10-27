@@ -176,6 +176,11 @@ impl WindowOptions {
         self.parent = Some(parent);
         self
     }
+    /// [`parent`](Self::parent), if there is one.
+    pub fn parent_opt(mut self, parent: Option<WindowId>) -> Self {
+        self.parent = parent;
+        self
+    }
 }
 
 /// Clipboard contents: (MIME type, bytes), in order of preference.

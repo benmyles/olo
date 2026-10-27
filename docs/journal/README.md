@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Agent Screens
+
+*04:33* — Agents get screens of their own: each is a whole Tabula desktop with its own windows, pointer and keyboard focus, so an agent never moves your pointer or takes your focus. tabula-screen starts one and drives it (run, look, windows, click, type, key); the Agent Screens window shows it live, and Take Control lets you step in.
+
+![Agent Screens](2026-10-27/043342-agent-screens.png)
+
 ### Passwords in Chrome
 
 *04:14* — A field's context menu in Chrome now has Passwords: each login for the page, with its username, password, one-time code or the whole login. A Tabula extension, installed and kept up to date by tabula-chrome itself, talks to Passwords through tabula-chrome as its native messaging host; the toolbar button lists the page's logins, and a login sent with a form is offered for saving or updating.

@@ -75,6 +75,10 @@ pub struct Twitch {
 pub struct Parked(pub RefCell<Vec<WindowElement>>);
 
 pub fn config_path() -> PathBuf {
+    // An agent's screen keeps settings of its own (see apps/screen).
+    if let Some(path) = std::env::var_os("TABULA_APP_SERVER_SETTINGS") {
+        return PathBuf::from(path);
+    }
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
@@ -177,10 +181,26 @@ impl<B: Backend + 'static> AnvilState<B> {
                     workspace: meta.workspace.get().unwrap_or(self.workspace),
                     minimized: meta.minimized.get(),
                     focused: focused.is_some() && w.wl_surface().map(|s| s.into_owned()) == focused,
+                    frame: None,
                 }
             })
             .collect();
         infos.sort_by_key(|i| i.id);
+        infos
+    }
+
+    /// [`window_infos`](Self::window_infos) with where each window on
+    /// screen is.
+    pub fn window_infos_with_frames(&self) -> Vec<WindowInfo> {
+        let mut infos = self.window_infos();
+        for info in &mut infos {
+            info.frame = self
+                .space
+                .elements()
+                .find(|w| w.id() == info.id)
+                .and_then(|w| self.space.element_geometry(w))
+                .map(|r| tabula_protocol::Frame { x: r.loc.x, y: r.loc.y, width: r.size.w, height: r.size.h });
+        }
         infos
     }
 

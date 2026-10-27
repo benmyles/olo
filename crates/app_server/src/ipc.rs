@@ -219,7 +219,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.ipc.subscribers.push(conn.clone());
                 Reply::Ok
             }
-            Request::ListWindows => Reply::Windows { windows: self.window_infos() },
+            Request::ListWindows => Reply::Windows { windows: self.window_infos_with_frames() },
             Request::Activate { id } => match self.window_by_id(id) {
                 Some(w) => {
                     self.restore_window(&w);
@@ -328,7 +328,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.start_screen_saver(true);
                 Reply::Ok
             }
-            Request::Screenshot { path, output, window, border, pointer } => {
+            Request::Screenshot { path, output, window, border, pointer, format } => {
                 let shot = crate::screenshot::Shot {
                     path: PathBuf::from(path),
                     conn: Some(conn.clone()),
@@ -336,6 +336,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     window,
                     border,
                     pointer,
+                    format,
                 };
                 match self.request_screenshot(shot) {
                     Ok(()) => return None,

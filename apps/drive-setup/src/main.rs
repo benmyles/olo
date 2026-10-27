@@ -1123,18 +1123,6 @@ fn nice_ceiling(v: f64) -> f64 {
     [1.0, 2.0, 5.0, 10.0].iter().map(|k| k * p).find(|&n| n >= v).unwrap_or(10.0 * p)
 }
 
-trait ParentOpt {
-    fn parent_opt(self, parent: Option<WindowId>) -> Self;
-}
-
-impl ParentOpt for WindowOptions {
-    fn parent_opt(self, parent: Option<WindowId>) -> Self {
-        match parent {
-            Some(p) => self.parent(p),
-            None => self,
-        }
-    }
-}
 
 impl App for DriveSetup {
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui) {
