@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""Run every window-management operation app_server offers over IPC, over
+and over, on whatever windows are open, and fail as soon as app_server
+stops answering (a hang freezes the whole desktop: zoom then unzoom once
+deadlocked it).
+
+  wm-sweep SOCKET [ROUNDS]     SOCKET: the session's TABULA_SOCKET
+
+Use a headless session with several screens and a few apps open, e.g.
+
+  tsession start sweep 5120x2880,1920x1080,3456x2160 --session
+  tsession run sweep tabula-terminal; tsession run sweep tabula-styled-edit
+  tools/dev/wm-sweep /tmp/tabula-dev/sweep/…sock
+
+It rearranges the screens too (as in Ben's layout), so windows get moved
+between them while zoomed, minimized and on other workspaces.
+"""
+import json, socket, sys, time
+
+def req(sock, r, timeout=5.0):
+    s = socket.socket(socket.AF_UNIX)
+    s.settimeout(timeout)
+    s.connect(sock)
+    s.sendall((json.dumps(r) + "\n").encode())
+    return json.loads(s.makefile().readline())
+
+def main():
+    if len(sys.argv) < 2:
+        sys.exit(__doc__)
+    sock = sys.argv[1]
+    rounds = int(sys.argv[2]) if len(sys.argv) > 2 else 3
+    outputs = [o["name"] for o in req(sock, {"type": "outputs"})["outputs"]]
+    layouts = [
+        # Side by side, then Ben's: a 1× screen left, the main one raised.
+        [(None, [0, 0]), (None, [2560, 0]), (None, [3520, 0])],
+        [(None, [1920, 1016]), (1.0, [0, 1196]), (None, [4480, 1196])],
+    ]
+    step = 0
+
+    def do(what, r, settle=0.15):
+        nonlocal step
+        step += 1
+        try:
+            reply = req(sock, r)
+            time.sleep(settle)
+            t = time.time()
+            req(sock, {"type": "ping"}, timeout=3.0)
+        except (TimeoutError, socket.timeout, ConnectionError) as e:
+            sys.exit(f"HUNG after step {step}: {what} {json.dumps(r)} ({e})")
+        if (dt := time.time() - t) > 0.5:
+            print(f"slow ({dt:.2f}s) after {what}")
+        return reply
+
+    for n in range(rounds):
+        layout = layouts[n % len(layouts)]
+        for name, (scale, pos) in zip(outputs, layout):
+            do("arrange", {"type": "configure_output", "name": name,
+                           "config": {"mode": None, "scale": scale, "position": pos, "rotation": None, "mirror": None}})
+        wins = [w["id"] for w in req(sock, {"type": "list_windows"})["windows"]]
+        if not wins:
+            sys.exit("no windows: open a few apps first")
+        for w in wins:
+            do("activate", {"type": "activate", "id": w})
+            do("zoom", {"type": "toggle_zoom", "id": w})
+            do("unzoom", {"type": "toggle_zoom", "id": w})
+            do("zoom", {"type": "toggle_zoom", "id": w})
+            do("minimize zoomed", {"type": "minimize", "id": w})
+            do("restore", {"type": "activate", "id": w})
+            do("unzoom", {"type": "toggle_zoom", "id": w})
+            do("to workspace 2", {"type": "move_to_workspace", "id": w, "index": 1})
+            do("switch", {"type": "switch_workspace", "index": 1})
+            do("zoom there", {"type": "toggle_zoom", "id": w})
+            do("back", {"type": "move_to_workspace", "id": w, "index": 0})
+            do("switch back", {"type": "switch_workspace", "index": 0})
+            do("unzoom", {"type": "toggle_zoom", "id": w})
+        # Rearrange with everything zoomed.
+        for w in wins:
+            do("zoom", {"type": "toggle_zoom", "id": w})
+        for name, (scale, pos) in zip(outputs, reversed(layout)):
+            do("rearrange zoomed", {"type": "configure_output", "name": name,
+                                    "config": {"mode": None, "scale": scale, "position": pos, "rotation": None, "mirror": None}})
+        for w in wins:
+            do("unzoom", {"type": "toggle_zoom", "id": w})
+        print(f"round {n + 1}: {step} steps, app_server answering")
+    print("ok")
+
+main()

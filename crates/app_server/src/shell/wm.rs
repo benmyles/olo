@@ -274,11 +274,14 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             .user_data()
             .get::<PreZoom>()
             .and_then(|p| p.0.borrow_mut().take());
+        // (Worked out before taking the surface's lock: inner_size takes it
+        // too, and taking it twice hangs the whole desktop.)
+        let size = pre.map(|r| window.inner_size(r.size));
         match window.0.underlying_surface() {
             WindowSurface::Wayland(t) => {
                 t.with_pending_state(|state| {
                     state.states.unset(xdg_toplevel::State::Maximized);
-                    state.size = pre.map(|r| window.inner_size(r.size));
+                    state.size = size;
                 });
                 if t.is_initial_configure_sent() {
                     t.send_pending_configure();
@@ -287,8 +290,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             #[cfg(feature = "xwayland")]
             WindowSurface::X11(x) => {
                 let _ = x.set_maximized(false);
-                if let Some(r) = pre {
-                    let _ = x.configure(Rectangle::new(r.loc + window.content_offset(), window.inner_size(r.size)));
+                if let (Some(r), Some(size)) = (pre, size) {
+                    let _ = x.configure(Rectangle::new(r.loc + window.content_offset(), size));
                 }
             }
         }

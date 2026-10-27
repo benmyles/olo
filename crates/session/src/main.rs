@@ -20,13 +20,15 @@
 //!
 //! It also restarts app_server and the shell (Deskbar, the Tracker desktop,
 //! and in a real session the polkit agent)
-//! if they crash, and exports the session environment to systemd/D-Bus.
+//! if they crash, ends and restarts an app_server that stops answering
+//! (watchdog.rs), and exports the session environment to systemd/D-Bus.
 //! A real session has keyd (if it runs) leave the modifier keys to
 //! app_server (keyd.rs).
 
 mod keyd;
 mod keyring;
 mod upgrade;
+mod watchdog;
 
 use std::{
     collections::VecDeque,
@@ -141,6 +143,7 @@ struct Session {
     /// Our socket and lock files as made (device, inode): removed at the
     /// end only while still ours, and made again if they vanish.
     files: Vec<(PathBuf, Option<(u64, u64)>)>,
+    watchdog: watchdog::Watchdog,
 }
 
 const RESUME_ENV: &str = "TABULA_SESSION_RESUME";
@@ -180,6 +183,7 @@ impl Session {
         log(format!("session on {display}, pid {}", std::process::id()));
 
         let mut s = Session {
+            watchdog: watchdog::Watchdog::start(ipc_path.clone()),
             display,
             wayland,
             ipc,
@@ -239,6 +243,7 @@ impl Session {
         let ipc_path = runtime_dir().join(format!("tabula-{}.sock", r.display));
         let real = r.backend.iter().any(|b| b == "--tty-udev");
         let mut s = Session {
+            watchdog: watchdog::Watchdog::start(ipc_path.clone()),
             display: r.display,
             wayland,
             ipc,
@@ -284,13 +289,16 @@ impl Session {
 
     fn run(mut self) -> ! {
         loop {
-            match wait_signal(Duration::from_secs(5)) {
+            match wait_signal(Duration::from_secs(2)) {
                 Some(libc::SIGHUP | libc::SIGUSR1) => self.reload(),
                 Some(libc::SIGUSR2) => self.upgrade(),
                 Some(libc::SIGTERM | libc::SIGINT) => self.shutdown(0),
                 _ => {}
             }
             self.reap();
+            if !self.stopping {
+                self.watchdog.check(self.server.pid);
+            }
             if let Some(w) = &mut self.upgrades {
                 w.check();
             }
