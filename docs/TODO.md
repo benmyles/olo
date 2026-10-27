@@ -87,6 +87,14 @@ as they land (with the commit), add new ones as they come up.
   (running shells), and any other app holding work that quitting throws
   away ask first (an alert: Quit / Cancel), so an accidental ⌘Q or close
   doesn't lose it. Apps that save or restore everything don't need to.
+- **Settings & state backup: export/import in one file** (Ben): a native
+  Tabula utility that exports every Tabula setting and piece of saved
+  state, across all Tabula apps (Preferences settings, Tracker views,
+  Deskbar, NetPositive bookmarks/history/learnt fields, Passwords' vault
+  file, keymaps, window state, …), into a single compressed file, and
+  imports one back (with a summary of what it holds and a confirm before
+  replacing anything). In Rust, in process (e.g. tar + zstd crates);
+  secrets stay encrypted as they are on disk.
 - **Terminal tabs, tab groups and coding agents** (Ben; after everything
   else is done): tabs, tab groups that can be saved and reopened, and
   native recognition of coding agents (Claude Code, Codex) running in a
