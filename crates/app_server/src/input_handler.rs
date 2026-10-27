@@ -1408,20 +1408,12 @@ impl AnvilState<UdevData> {
     ) {
         let serial = SCOUNTER.next_serial();
 
-        let max_x = self
-            .space
-            .outputs()
-            .fold(0, |acc, o| acc + self.space.output_geometry(o).unwrap().size.w);
-
-        let max_h_output = self
-            .space
-            .outputs()
-            .max_by_key(|o| self.space.output_geometry(o).unwrap().size.h)
-            .unwrap();
-
-        let max_y = self.space.output_geometry(max_h_output).unwrap().size.h;
-
-        let mut pointer_location = (evt.x_transformed(max_x), evt.y_transformed(max_y)).into();
+        // An absolute device (a tablet, a VM's pointer) spans every screen.
+        let Some(all) = self.space.outputs().filter_map(|o| self.space.output_geometry(o)).reduce(|a, b| a.merge(b)) else {
+            return;
+        };
+        let mut pointer_location: Point<f64, Logical> =
+            (all.loc.x as f64 + evt.x_transformed(all.size.w), all.loc.y as f64 + evt.y_transformed(all.size.h)).into();
 
         // clamp to screen limits
         pointer_location = self.clamp_coords(pointer_location);
@@ -1616,32 +1608,52 @@ impl AnvilState<UdevData> {
         }
     }
 
+    /// Keep the pointer on a screen: a point off every screen goes to the
+    /// nearest point of the nearest one, so it slides along edges and
+    /// crosses wherever screens touch, however they are arranged.
     fn clamp_coords(&self, pos: Point<f64, Logical>) -> Point<f64, Logical> {
-        if self.space.outputs().next().is_none() {
-            return pos;
-        }
+        let screens: Vec<smithay::utils::Rectangle<i32, Logical>> = self.space.outputs().filter_map(|o| self.space.output_geometry(o)).collect();
+        clamp_to_screens(&screens, pos)
+    }
 
-        let (pos_x, pos_y) = pos.into();
-        let max_x = self
-            .space
-            .outputs()
-            .fold(0, |acc, o| acc + self.space.output_geometry(o).unwrap().size.w);
-        let clamped_x = pos_x.clamp(0.0, max_x as f64);
-        let max_y = self
-            .space
-            .outputs()
-            .find(|o| {
-                let geo = self.space.output_geometry(o).unwrap();
-                geo.contains((clamped_x as i32, 0))
-            })
-            .map(|o| self.space.output_geometry(o).unwrap().size.h);
+}
 
-        if let Some(max_y) = max_y {
-            let clamped_y = pos_y.clamp(0.0, max_y as f64);
-            (clamped_x, clamped_y).into()
-        } else {
-            (clamped_x, pos_y).into()
-        }
+/// `pos` if it is on one of `screens`, else the nearest point that is.
+fn clamp_to_screens(screens: &[smithay::utils::Rectangle<i32, Logical>], pos: Point<f64, Logical>) -> Point<f64, Logical> {
+    screens
+        .iter()
+        .map(|g| {
+            // The last pixel's far edge is the next screen's.
+            let x = pos.x.clamp(g.loc.x as f64, (g.loc.x + g.size.w) as f64 - 0.001);
+            let y = pos.y.clamp(g.loc.y as f64, (g.loc.y + g.size.h) as f64 - 0.001);
+            let d = (x - pos.x).powi(2) + (y - pos.y).powi(2);
+            (d, Point::from((x, y)))
+        })
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map_or(pos, |(_, p)| p)
+}
+
+#[cfg(test)]
+mod clamp_tests {
+    use super::*;
+    use smithay::utils::Rectangle;
+
+    #[test]
+    fn pointer_stays_on_screens() {
+        // Dell at (0, 180), built-in at (4480, 180), Studio at (1920, 0).
+        let screens = [Rectangle::new((0, 180).into(), (1920, 1080).into()), Rectangle::new((1920, 0).into(), (2560, 1440).into()), Rectangle::new((4480, 180).into(), (1728, 1080).into())];
+        let at = |x: f64, y: f64| clamp_to_screens(&screens, (x, y).into());
+        // On a screen: unchanged.
+        assert_eq!(at(5000.0, 500.0), (5000.0, 500.0).into());
+        // Across the Dell's right edge onto the Studio (which once couldn't be reached).
+        assert_eq!(at(1925.0, 100.0), (1925.0, 100.0).into());
+        // Above the Dell (no screen there): onto its top edge, not lost.
+        assert_eq!(at(100.0, 50.0), (100.0, 180.0).into());
+        // Far right, below everything: the built-in's corner.
+        let p = at(9000.0, 5000.0);
+        assert!(p.x < 6208.0 && p.x > 6207.9 && p.y < 1260.0 && p.y > 1259.9);
+        // No screens: as it is.
+        assert_eq!(clamp_to_screens(&[], (5.0, 5.0).into()), (5.0, 5.0).into());
     }
 }
 

@@ -1288,10 +1288,8 @@ impl AnvilState<UdevData> {
             );
             let global = output.create_global::<AnvilState<UdevData>>(&self.display_handle);
 
-            let x = self
-                .space
-                .outputs()
-                .fold(0, |acc, o| acc + self.space.output_geometry(o).unwrap().size.w);
+            // Right of the others until the saved arrangement is applied.
+            let x = self.space.outputs().filter_map(|o| self.space.output_geometry(o)).map(|g| g.loc.x + g.size.w).max().unwrap_or(0);
             let position = (x, 0).into();
 
             for m in connector.modes() {

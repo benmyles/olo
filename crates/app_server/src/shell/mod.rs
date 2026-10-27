@@ -536,10 +536,88 @@ pub fn arrange(outputs: &[(String, Size<i32, Logical>)], saved: impl Fn(&str) ->
             placed[i] = Some(Rectangle::new((x, y).into(), *size));
         }
     }
-    let rects: Vec<_> = placed.into_iter().flatten().collect();
+    let mut rects: Vec<_> = placed.into_iter().flatten().collect();
+    close_gaps(&mut rects);
     let min_x = rects.iter().map(|r| r.loc.x).min().unwrap_or(0);
     let min_y = rects.iter().map(|r| r.loc.y).min().unwrap_or(0);
     rects.iter().map(|r| r.loc - Point::from((min_x, min_y))).collect()
+}
+
+/// Whether two screens share a stretch of edge (the pointer can cross).
+fn touching(a: &Rectangle<i32, Logical>, b: &Rectangle<i32, Logical>) -> bool {
+    let (ar, ab, br, bb) = (a.loc.x + a.size.w, a.loc.y + a.size.h, b.loc.x + b.size.w, b.loc.y + b.size.h);
+    let y_shared = a.loc.y.max(b.loc.y) < ab.min(bb);
+    let x_shared = a.loc.x.max(b.loc.x) < ar.min(br);
+    a.overlaps(*b) || (ar == b.loc.x || br == a.loc.x) && y_shared || (ab == b.loc.y || bb == a.loc.y) && x_shared
+}
+
+/// The screens reachable from `from` across shared edges.
+fn reachable(rects: &[Rectangle<i32, Logical>], from: usize) -> Vec<usize> {
+    let mut seen = vec![from];
+    let mut i = 0;
+    while i < seen.len() {
+        let r = rects[seen[i]];
+        for (j, other) in rects.iter().enumerate() {
+            if !seen.contains(&j) && touching(&r, other) {
+                seen.push(j);
+            }
+        }
+        i += 1;
+    }
+    seen
+}
+
+/// Screens that don't touch the rest move over until they do: a gap (left
+/// by a screen that was between them and is unplugged, or saved by an
+/// older version) would leave the pointer unable to reach them. Nearest
+/// first, keeping each one's side and, where it can, its offset.
+fn close_gaps(rects: &mut [Rectangle<i32, Logical>]) {
+    for _ in 0..rects.len() {
+        let group = reachable(rects, 0);
+        if group.len() == rects.len() {
+            return;
+        }
+        let gap = |a: &Rectangle<i32, Logical>, b: &Rectangle<i32, Logical>| {
+            let dx = (a.loc.x - (b.loc.x + b.size.w)).max(b.loc.x - (a.loc.x + a.size.w)).max(0);
+            let dy = (a.loc.y - (b.loc.y + b.size.h)).max(b.loc.y - (a.loc.y + a.size.h)).max(0);
+            dx + dy
+        };
+        let Some((i, j)) = (0..rects.len())
+            .filter(|i| !group.contains(i))
+            .flat_map(|i| group.iter().map(move |&j| (i, j)))
+            .min_by_key(|&(i, j)| gap(&rects[i], &rects[j]))
+        else {
+            return;
+        };
+        let (a, b) = (rects[i], rects[j]);
+        let y_shared = a.loc.y.max(b.loc.y) < (a.loc.y + a.size.h).min(b.loc.y + b.size.h);
+        let x_shared = a.loc.x.max(b.loc.x) < (a.loc.x + a.size.w).min(b.loc.x + b.size.w);
+        let beside = if a.loc.x >= b.loc.x + b.size.w { b.loc.x + b.size.w - a.loc.x } else { b.loc.x - a.loc.x - a.size.w };
+        let below = if a.loc.y >= b.loc.y + b.size.h { b.loc.y + b.size.h - a.loc.y } else { b.loc.y - a.loc.y - a.size.h };
+        let delta: Point<i32, Logical> = if y_shared {
+            (beside, 0).into()
+        } else if x_shared {
+            (0, below).into()
+        } else {
+            // Diagonal: beside it, tops lined up.
+            (beside, b.loc.y - a.loc.y).into()
+        };
+        // Its own neighbours come along; if that would overlap, it goes
+        // alone to the right of the rightmost screen.
+        let moving: Vec<usize> = reachable(rects, i);
+        let fits = moving.iter().all(|&m| {
+            let moved = Rectangle::new(rects[m].loc + delta, rects[m].size);
+            group.iter().all(|&g| !moved.overlaps(rects[g]))
+        });
+        if fits {
+            for m in moving {
+                rects[m].loc += delta;
+            }
+        } else {
+            let right = group.iter().map(|&g| rects[g]).max_by_key(|r| r.loc.x + r.size.w).unwrap_or(b);
+            rects[i].loc = (right.loc.x + right.size.w, right.loc.y).into();
+        }
+    }
 }
 
 /// Marks a layer surface placed on the main display because it didn't
@@ -622,6 +700,41 @@ mod arrange_tests {
 
     fn out(name: &str, w: i32, h: i32) -> (String, Size<i32, Logical>) {
         (name.into(), (w, h).into())
+    }
+
+    #[test]
+    fn gaps_close() {
+        // Ben's three: Dell, Studio Display, built-in, left to right, the
+        // Studio's place lost: the built-in moves back beside the Dell.
+        let outs = [out("DP-2", 1920, 1080), out("DP-1", 2560, 1440), out("eDP-1", 1728, 1080)];
+        let saved = |n: &str| match n {
+            "DP-2" => Some((0, 1196)),
+            "eDP-1" => Some((4480, 1196)),
+            _ => None,
+        };
+        let p = arrange(&outs, saved);
+        assert_eq!(p, vec![(0, 0).into(), (3648, 0).into(), (1920, 0).into()]);
+        // All three saved: as saved (shifted to start at 0, 0).
+        let p = arrange(&outs, |n| match n {
+            "DP-1" => Some((1920, 1016)),
+            n => saved(n),
+        });
+        assert_eq!(p, vec![(0, 180).into(), (1920, 0).into(), (4480, 180).into()]);
+        // One above another with a gap: it comes down to touch.
+        let outs = [out("A", 1728, 1117), out("B", 1920, 1080)];
+        let p = arrange(&outs, |n| match n {
+            "A" => Some((0, 0)),
+            "B" => Some((0, -2000)),
+            _ => None,
+        });
+        assert_eq!(p, vec![(0, 1080).into(), (0, 0).into()]);
+        // Only a corner in common: beside it instead.
+        let p = arrange(&outs, |n| match n {
+            "A" => Some((0, 0)),
+            "B" => Some((1728, 1117)),
+            _ => None,
+        });
+        assert_eq!(p, vec![(0, 0).into(), (1728, 0).into()]);
     }
 
     #[test]

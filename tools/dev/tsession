@@ -91,6 +91,10 @@ def start(name, args):
     cfg = {"appearance": {"theme": theme},
            "power": {"display_off_minutes": 0, "sleep_minutes": 0, "lock_on_display_off": False},
            "screen_saver": {"enabled": False, "lock": False}}
+    # TSESSION_SETTINGS: a JSON file whose top-level keys go over these
+    # (a display layout to test, say).
+    if os.environ.get("TSESSION_SETTINGS"):
+        cfg.update(json.load(open(os.environ["TSESSION_SETTINGS"])))
     json.dump(cfg, open(os.path.join(d, "config", "tabula", "app_server.json"), "w"))
     subprocess.run(["chown", "-R", f"{OWNER.pw_uid}:{OWNER.pw_gid}", d]) if os.getuid() == 0 else None
     env = dict(os.environ, XDG_RUNTIME_DIR=RUNTIME, XDG_CONFIG_HOME=os.path.join(d, "config"), RUST_LOG=os.environ.get("RUST_LOG", "info"))

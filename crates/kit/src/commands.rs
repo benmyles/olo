@@ -136,14 +136,26 @@ impl WindowTree {
             stack.extend(n.children().iter().rev().map(|c| c.0));
         }
         // Text is drawn beside the area that takes the click, not in it:
-        // an unnamed one is named by the text whose middle is inside it.
-        let texts: Vec<(f32, f32, String)> =
-            out.iter().filter(|t| t.role == "Label").filter_map(|t| Some((t.x + t.width / 2.0, t.y + t.height / 2.0, t.name.clone()?))).collect();
-        for n in out.iter_mut().filter(|n| n.clickable && n.name.is_none()) {
-            let inside: Vec<&str> =
-                texts.iter().filter(|(x, y, _)| (n.x..n.x + n.width).contains(x) && (n.y..n.y + n.height).contains(y)).map(|(_, _, t)| t.as_str()).collect();
-            if !inside.is_empty() {
-                n.name = Some(inside.join(" "));
+        // each text (a label, a list cell) names the smallest unnamed one
+        // its middle is inside (a key, not the whole keypad behind it; a
+        // row, by its cells).
+        let inside = |n: &UiNode, x: f32, y: f32| (n.x..n.x + n.width).contains(&x) && (n.y..n.y + n.height).contains(&y);
+        let mut names: Vec<Vec<String>> = vec![Vec::new(); out.len()];
+        for t in out.iter().filter(|t| t.role == "Label" || t.role == "Cell") {
+            let Some(text) = &t.name else { continue };
+            let (x, y) = (t.x + t.width / 2.0, t.y + t.height / 2.0);
+            let smallest = out
+                .iter()
+                .enumerate()
+                .filter(|(_, n)| n.clickable && n.name.is_none() && inside(n, x, y))
+                .min_by(|(_, a), (_, b)| (a.width * a.height).total_cmp(&(b.width * b.height)));
+            if let Some((i, _)) = smallest {
+                names[i].push(text.clone());
+            }
+        }
+        for (n, words) in out.iter_mut().zip(names) {
+            if !words.is_empty() {
+                n.name = Some(words.join(" "));
             }
         }
         WindowTree { title: title.to_owned(), width: size.0, height: size.1, active, nodes: out }
@@ -328,7 +340,11 @@ mod tests {
         use egui::accesskit::{Action, Node, NodeId, Rect, Role, TreeId, TreeInfo, TreeUpdate};
         let rect = |x0, y0, x1, y1| Rect { x0, y0, x1, y1 };
         let mut root = Node::new(Role::Window);
-        root.set_children(vec![NodeId(2), NodeId(3), NodeId(4)]);
+        root.set_children(vec![NodeId(5), NodeId(2), NodeId(3), NodeId(4)]);
+        // Behind it all, a clickable background: the text names the smaller area.
+        let mut back = Node::new(Role::Unknown);
+        back.add_action(Action::Click);
+        back.set_bounds(rect(0.0, 0.0, 300.0, 200.0));
         let mut area = Node::new(Role::Unknown);
         area.add_action(Action::Click);
         area.set_bounds(rect(10.0, 10.0, 110.0, 74.0));
@@ -340,19 +356,20 @@ mod tests {
         field.add_action(Action::Click);
         field.set_bounds(rect(0.0, 80.0, 200.0, 100.0));
         let update = TreeUpdate {
-            nodes: vec![(NodeId(1), root), (NodeId(2), area), (NodeId(3), label), (NodeId(4), field)],
+            nodes: vec![(NodeId(1), root), (NodeId(5), back), (NodeId(2), area), (NodeId(3), label), (NodeId(4), field)],
             tree: Some(TreeInfo::new(NodeId(1))),
             tree_id: TreeId::ROOT,
             focus: NodeId(4),
         };
         let t = WindowTree::from_update("Preferences", (300, 200), true, &update);
         let roles: Vec<&str> = t.nodes.iter().map(|n| n.role.as_str()).collect();
-        assert_eq!(roles, ["Window", "Clickable", "Label", "TextInput"]);
+        assert_eq!(roles, ["Window", "Clickable", "Clickable", "Label", "TextInput"]);
         assert_eq!((t.nodes[0].width, t.nodes[0].height), (300.0, 200.0));
-        assert_eq!(t.nodes[1].name.as_deref(), Some("Appearance"));
-        assert_eq!(t.nodes[1].parent, Some(1));
-        assert!(t.nodes[3].focused && t.nodes[3].clickable && t.nodes[3].name.is_none());
-        assert_eq!(t.nodes[3].value.as_deref(), Some("hi"));
+        assert_eq!(t.nodes[1].name, None);
+        assert_eq!(t.nodes[2].name.as_deref(), Some("Appearance"));
+        assert_eq!(t.nodes[2].parent, Some(1));
+        assert!(t.nodes[4].focused && t.nodes[4].clickable && t.nodes[4].name.is_none());
+        assert_eq!(t.nodes[4].value.as_deref(), Some("hi"));
         assert!(!t.nodes[0].focused);
     }
 }

@@ -39,6 +39,8 @@ pub struct WindowMeta {
     /// It was the focused window before an in-place restart, put back at
     /// this time.
     pub restored_focus: Cell<Option<std::time::Instant>>,
+    /// The process and connection that made it (Wayland windows).
+    pub owner: std::cell::RefCell<Option<(i32, smithay::reexports::wayland_server::backend::ClientId)>>,
 }
 
 impl WindowElement {
@@ -51,6 +53,7 @@ impl WindowElement {
             saved_location: Cell::new(Point::default()),
             placed: Cell::new(false),
             restored_focus: Cell::new(None),
+            owner: std::cell::RefCell::new(None),
         });
         self.user_data().get::<WindowMeta>().unwrap()
     }

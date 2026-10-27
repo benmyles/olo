@@ -293,6 +293,20 @@ pub struct OutputConfig {
     pub brightness: Option<f32>,
 }
 
+impl OutputConfig {
+    /// These settings, with what they leave unset taken from `other`.
+    pub fn or(self, other: &OutputConfig) -> OutputConfig {
+        OutputConfig {
+            mode: self.mode.or_else(|| other.mode.clone()),
+            scale: self.scale.or(other.scale),
+            position: self.position.or(other.position),
+            rotation: self.rotation.or(other.rotation),
+            mirror: self.mirror.or_else(|| other.mirror.clone()),
+            brightness: self.brightness.or(other.brightness),
+        }
+    }
+}
+
 /// The rotations a display can have, clockwise degrees.
 pub const ROTATIONS: [u16; 4] = [0, 90, 180, 270];
 
@@ -501,18 +515,28 @@ impl Default for DisplaySettings {
 
 impl DisplaySettings {
     /// A display's saved settings, by its key or (as older versions saved
-    /// them) its connector.
-    pub fn config(&self, key: &str, connector: &str) -> Option<&OutputConfig> {
-        self.outputs.get(key).or_else(|| self.outputs.get(connector))
+    /// them) its connector, field by field: a key entry holding only a
+    /// brightness mustn't hide the position saved under the connector.
+    pub fn config(&self, key: &str, connector: &str) -> Option<OutputConfig> {
+        let by_key = self.outputs.get(key);
+        let by_connector = (key != connector).then(|| self.outputs.get(connector)).flatten();
+        match (by_key, by_connector) {
+            (Some(k), Some(c)) => Some(k.clone().or(c)),
+            (k, c) => k.or(c).cloned(),
+        }
     }
 
-    /// A display's settings to change, moved from its connector to its key.
+    /// A display's settings to change, moved from its connector to its key
+    /// (merged into what the key has).
     pub fn config_mut(&mut self, key: &str, connector: &str) -> &mut OutputConfig {
         if key != connector
-            && !self.outputs.contains_key(key)
             && let Some(old) = self.outputs.remove(connector)
         {
-            self.outputs.insert(key.to_owned(), old);
+            let merged = match self.outputs.remove(key) {
+                Some(k) => k.or(&old),
+                None => old,
+            };
+            self.outputs.insert(key.to_owned(), merged);
         }
         self.outputs.entry(key.to_owned()).or_default()
     }
@@ -803,6 +827,21 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn display_settings_merge_key_and_connector() {
+        let mut d = DisplaySettings::default();
+        // Position saved by connector (older versions), brightness by key.
+        d.outputs.insert("DP-1".into(), OutputConfig { position: Some((1920, 1016)), ..Default::default() });
+        d.outputs.insert("Apple Studio 1".into(), OutputConfig { brightness: Some(0.5), ..Default::default() });
+        let c = d.config("Apple Studio 1", "DP-1").unwrap();
+        assert_eq!((c.position, c.brightness), (Some((1920, 1016)), Some(0.5)));
+        // Changing it moves everything to the key.
+        d.config_mut("Apple Studio 1", "DP-1").scale = Some(1.5);
+        assert!(!d.outputs.contains_key("DP-1"));
+        let c = &d.outputs["Apple Studio 1"];
+        assert_eq!((c.position, c.brightness, c.scale), (Some((1920, 1016)), Some(0.5), Some(1.5)));
+    }
 
     #[test]
     fn request_wire_format_is_tagged() {

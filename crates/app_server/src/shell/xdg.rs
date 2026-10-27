@@ -47,7 +47,12 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         // of a xdg_surface has to be sent during the commit if
         // the surface is not already configured
         let window = WindowElement(Window::new_wayland_window(surface.clone()));
-        let near = self.new_window_near(surface.wl_surface().client().map(|c| c.id()));
+        let client = surface.wl_surface().client();
+        let pid = client.as_ref().and_then(|c| c.get_credentials(&self.display_handle).ok()).map(|c| c.pid);
+        if let (Some(pid), Some(c)) = (pid, &client) {
+            *window.meta().owner.borrow_mut() = Some((pid, c.id()));
+        }
+        let near = self.new_window_near(client.map(|c| c.id()));
         place_new_window(&mut self.space, near, &window, true);
         // New windows come up focused, as on BeOS.
         self.focus_window(&window);

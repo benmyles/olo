@@ -169,8 +169,11 @@ fn main() {
   theirs with `style::describe_text(ctx, role, text, rect, selected)`.
   **Do the same for any text you paint yourself** that an agent should be
   able to read or click. An area that takes clicks but has no role of its
-  own (`ui.interact`) is reported as `Clickable`, named by the text whose
-  middle lies inside it. Blocks for up to two seconds.
+  own (`ui.interact`) is reported as `Clickable`, named by the texts whose
+  middles lie inside it (each text names the smallest such area). Better,
+  give it a role and name yourself, as DeskCalc's keys do:
+  `resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, "7"))`.
+  Blocks for up to two seconds.
 * **⌘A in text fields** selects all of the field: the kit doesn't send it
   to the menu's Select All while a text field has the keyboard; ⌘C/⌘X/⌘V
   likewise stay with a text field and otherwise go to the menu's Copy, Cut

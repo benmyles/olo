@@ -1,7 +1,8 @@
 //! Power: turning the displays off and sleeping when idle, caffeinated
 //! mode, apps that ask to stay awake (zwp_idle_inhibit), the displays'
-//! brightness (the built-in one's backlight; monitors that take it over
-//! USB, tabula_system::hid_monitor) and the brightness / volume keys.
+//! brightness (the built-in one's backlight; an external one's own kernel
+//! backlight, as Apple silicon gives a Studio Display, or its USB control,
+//! tabula_system::hid_monitor) and the brightness / volume keys.
 //! Each display starts at the brightness kept for it, or full.
 //!
 //! Hardware is only touched when app_server is the real session
@@ -52,9 +53,9 @@ enum Job {
     Suspend,
     Volume(f32),
     ToggleMute,
-    /// Look for USB brightness controls for these connectors.
+    /// Look for brightness controls for these connectors.
     FindDisplays(Vec<String>),
-    /// A USB-controlled display's brightness (by connector).
+    /// An external display's brightness (by connector).
     DisplayBrightness(String, f32),
 }
 
@@ -210,8 +211,8 @@ struct Worker {
     inhibitor: Option<tabula_system::power::Inhibitor>,
     feedback: calloop::channel::Sender<(f32, bool)>,
     found: calloop::channel::Sender<Vec<(String, f32)>>,
-    /// USB-controlled displays, by connector.
-    displays: std::collections::HashMap<String, tabula_system::hid_monitor::HidMonitor>,
+    /// External displays whose brightness we set, by connector.
+    displays: std::collections::HashMap<String, Control>,
     /// Displays we could not read (said once).
     warned: std::collections::HashSet<std::path::PathBuf>,
 }
@@ -242,9 +243,30 @@ fn worker(rx: Receiver<Job>, feedback: calloop::channel::Sender<(f32, bool)>, fo
     }
 }
 
-/// Match the USB brightness controls to connectors by maker.
+/// How an external display's brightness is set.
+enum Control {
+    /// A backlight the kernel gives the connector (Apple silicon's display
+    /// controller does for a Studio Display; the monitor's own USB control
+    /// then takes the value but doesn't change the picture). Written
+    /// through logind, as the built-in one's.
+    Backlight(tabula_system::backlight::Backlight),
+    /// The monitor's USB brightness control.
+    Hid(tabula_system::hid_monitor::HidMonitor),
+}
+
+impl Control {
+    fn set_level(&self, level: f32) -> Result<(), String> {
+        match self {
+            Control::Backlight(b) => b.set_level(level).map_err(|e| e.to_string()),
+            Control::Hid(m) => m.set_level(level).map_err(|e| e.to_string()),
+        }
+    }
+}
+
+/// Find each connector's brightness control: a backlight of its own, else
+/// a USB control matched by maker.
 fn find_displays(
-    displays: &mut std::collections::HashMap<String, tabula_system::hid_monitor::HidMonitor>,
+    displays: &mut std::collections::HashMap<String, Control>,
     warned: &mut std::collections::HashSet<std::path::PathBuf>,
     send: &calloop::channel::Sender<Vec<(String, f32)>>,
     connectors: Vec<String>,
@@ -253,13 +275,20 @@ fn find_displays(
     displays.clear();
     let mut found = Vec::new();
     for c in connectors {
+        if let Some(b) = tabula_system::backlight::for_connector(&c)
+            && let Some(level) = b.level()
+        {
+            found.push((c.clone(), level));
+            displays.insert(c, Control::Backlight(b));
+            continue;
+        }
         let Some(maker) = tabula_system::edid::for_connector(&c).map(|e| e.maker) else { continue };
         let Some(i) = monitors.iter().position(|m| m.edid_vendor() == Some(maker.as_str())) else { continue };
         let m = monitors.remove(i);
         match m.level() {
             Ok(level) => {
                 found.push((c.clone(), level));
-                displays.insert(c, m);
+                displays.insert(c, Control::Hid(m));
             }
             Err(e) => {
                 if warned.insert(m.path.clone()) {

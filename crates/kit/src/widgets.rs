@@ -367,6 +367,11 @@ impl Widget for TextControl<'_> {
         let out = edit.interactive(drag.interactive()).show(&mut child);
         drag.finish(ui, &out);
         let r = out.response.response;
+        if let Some(label) = self.label {
+            // For agents (the widget tree): the field is named by its label.
+            let label = label.trim_end_matches(':').to_owned();
+            ui.ctx().accesskit_node_builder(r.id, |n| n.set_label(label));
+        }
         if well_resp.clicked() {
             ui.memory_mut(|m| m.request_focus(id));
         }
@@ -787,6 +792,14 @@ impl Widget for MenuField<'_> {
         if response_field.has_focus() {
             focus_underline(painter, text_rect, &p);
         }
+        let info = || WidgetInfo {
+            label: self.label.map(|l| l.trim_end_matches(':').to_owned()),
+            current_text_value: Some(text.to_owned()),
+            enabled: ui.is_enabled(),
+            ..WidgetInfo::new(Role::ComboBox)
+        };
+        response.widget_info(info);
+        response_field.widget_info(info);
         response | response_field
     }
 }
@@ -1056,6 +1069,17 @@ enum Arrow {
     Right,
 }
 
+impl Arrow {
+    fn scroll_name(self) -> &'static str {
+        match self {
+            Arrow::Up => "Scroll Up",
+            Arrow::Down => "Scroll Down",
+            Arrow::Left => "Scroll Left",
+            Arrow::Right => "Scroll Right",
+        }
+    }
+}
+
 impl ScrollView {
     pub fn new(id: impl std::hash::Hash + std::fmt::Debug) -> Self {
         ScrollView {
@@ -1316,6 +1340,7 @@ fn scroll_bar(ui: &mut Ui, id: Id, bar: Rect, vertical: bool, offset: &mut f32, 
     let line = 16.0;
     let mut press_arrow = |r: Rect, dir: Arrow, delta: f32, painter: &Painter| {
         let resp = ui.interact(r, id.with(dir as u8), Sense::click_and_drag());
+        resp.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, dir.scroll_name()));
         let down = resp.is_pointer_button_down_on() && enabled;
         if down {
             // Auto-repeat while held: first step immediately, then smooth.
@@ -1347,6 +1372,10 @@ fn scroll_bar(ui: &mut Ui, id: Id, bar: Rect, vertical: bool, offset: &mut f32, 
         .round_ui();
         let track_resp = ui.interact(track, id.with("track"), Sense::click_and_drag());
         let knob_resp = ui.interact(knob, id.with("knob"), Sense::click_and_drag());
+        // For agents: where it is, 0 (top or left) to 1.
+        let at = (*offset / max_offset).clamp(0.0, 1.0) as f64;
+        track_resp.widget_info(|| WidgetInfo { value: Some(at), label: Some("Scroll Bar".into()), ..WidgetInfo::new(Role::ScrollBar) });
+        knob_resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, "Scroll Knob"));
         if knob_resp.dragged() {
             let d = knob_resp.drag_delta();
             let d = if vertical { d.y } else { d.x };
@@ -1600,6 +1629,7 @@ impl<'a> ColumnListView<'a> {
             let r = Rect::from_min_size(pos2(x, header.top()), vec2(w, HEADER_HEIGHT - 1.0));
             let resp = ui.interact(r, self.id.with(("hdr", i)), Sense::click());
             let sorted = self.state.sort.filter(|(c, _)| *c == i);
+            resp.widget_info(|| WidgetInfo { selected: Some(sorted.is_some()), ..WidgetInfo::labeled(Role::ColumnHeader, true, col.title.as_str()) });
             if resp.clicked() {
                 self.state.sort = Some((i, sorted.is_none_or(|(_, asc)| !asc)));
                 out.sort_changed = true;
@@ -1735,6 +1765,8 @@ impl<'a> ColumnListView<'a> {
                         context = resp.interact_pointer_pos().map(|p| (row, p));
                     }
                     let selected = state.selected.contains(&row);
+                    // For agents: a row, named by its cells' text.
+                    resp.widget_info(|| WidgetInfo { selected: Some(selected), ..WidgetInfo::new(Role::Row) });
                     let painter = ui.painter();
                     if selected {
                         let sel = if focused {
@@ -1903,6 +1935,7 @@ impl<'a> TabView<'a> {
             if resp.clicked() {
                 *self.selected = i;
             }
+            resp.widget_info(|| WidgetInfo { selected: Some(i == *self.selected), ..WidgetInfo::labeled(Role::Tab, true, *label) });
             rects.push((r, font, *label));
             x += w - slant + 1.0;
         }

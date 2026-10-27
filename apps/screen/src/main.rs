@@ -279,7 +279,7 @@ fn outline(trees: &[ScreenTree]) -> String {
                 let _ = write!(o, " value={value:?}");
             }
             let _ = write!(o, " at {:.0},{:.0} {:.0}x{:.0}", n.x, n.y, n.width, n.height);
-            for (on, word) in [(!n.enabled, "disabled"), (n.clickable && n.role != "Clickable", "clickable"), (n.focused, "focused"), (n.checked == Some(true), "checked"), (n.selected == Some(true), "selected")] {
+            for (on, word) in [(!n.enabled, "disabled"), (n.clickable && !matches!(n.role.as_str(), "Clickable" | "Button" | "Link" | "MenuItem"), "clickable"), (n.focused, "focused"), (n.checked == Some(true), "checked"), (n.selected == Some(true), "selected")] {
                 if on {
                     let _ = write!(o, " {word}");
                 }

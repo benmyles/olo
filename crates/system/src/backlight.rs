@@ -1,4 +1,5 @@
-//! The built-in display's backlight and the keyboard's. Read from sysfs;
+//! The built-in display's backlight, an external display's when the kernel
+//! gives it one, and the keyboard's. Read from sysfs;
 //! written through logind's `Session.SetBrightness`, which lets the
 //! session's own user change them without root.
 
@@ -20,14 +21,44 @@ fn read(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok().map(|s| s.trim().to_owned())
 }
 
+/// The DRM connector a backlight belongs to ("DP-1"), if it is one's: on
+/// Apple silicon the display controller gives an external Studio Display
+/// a backlight of its own (`dcp-DP-1-bl`, under `card2-DP-1`).
+fn connector_of(dir: &Path) -> Option<String> {
+    let real = std::fs::canonicalize(dir).ok()?;
+    let parent = real.parent()?.file_name()?.to_str()?;
+    let rest = parent.strip_prefix("card")?;
+    let (n, connector) = rest.split_once('-')?;
+    n.chars().all(|c| c.is_ascii_digit()).then(|| connector.to_owned())
+}
+
+/// Whether a connector is a built-in panel's.
+fn built_in(connector: &str) -> bool {
+    ["eDP", "LVDS", "DSI"].iter().any(|p| connector.starts_with(p))
+}
+
+/// The backlight of the display on `connector` (an external one the
+/// kernel drives, as above), if it has one.
+pub fn for_connector(connector: &str) -> Option<Backlight> {
+    std::fs::read_dir("/sys/class/backlight").ok()?.flatten().find_map(|e| {
+        let dir = e.path();
+        (connector_of(&dir)? == connector).then_some(())?;
+        let max: u32 = read(&dir.join("max_brightness"))?.parse().ok().filter(|&m| m > 0)?;
+        Some(Backlight { name: e.file_name().to_string_lossy().into_owned(), max, subsystem: "backlight", dir })
+    })
+}
+
 /// The panel's backlight: firmware and platform interfaces before raw
-/// ones, as the kernel recommends.
+/// ones, as the kernel recommends; never an external display's.
 pub fn internal() -> Option<Backlight> {
     let mut all: Vec<(u8, Backlight)> = std::fs::read_dir("/sys/class/backlight")
         .ok()?
         .flatten()
         .filter_map(|e| {
             let dir = e.path();
+            if connector_of(&dir).is_some_and(|c| !built_in(&c)) {
+                return None;
+            }
             let max: u32 = read(&dir.join("max_brightness"))?.parse().ok().filter(|&m| m > 0)?;
             let rank = match read(&dir.join("type")).as_deref() {
                 Some("firmware") => 0,
@@ -151,5 +182,16 @@ mod tests {
     fn live_read() {
         let b = internal().expect("a backlight");
         eprintln!("{} raw {:?} of {} = {:?}", b.name, b.raw(), b.max, b.level());
+    }
+
+    /// Which backlight is whose (read only): `cargo test -p tabula-system
+    /// live_connectors -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn live_connectors() {
+        eprintln!("internal: {:?}", internal().map(|b| b.name));
+        for c in ["eDP-1", "DP-1", "DP-2", "HDMI-A-1"] {
+            eprintln!("{c}: {:?}", for_connector(c).map(|b| (b.name.clone(), b.raw(), b.max)));
+        }
     }
 }

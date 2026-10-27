@@ -6,7 +6,10 @@
 //! `$XDG_RUNTIME_DIR/tabula-layout-$WAYLAND_DISPLAY.json`; a closing window
 //! is remembered in memory too. A new window whose app id and title match
 //! a remembered one (recent enough) takes its place instead of the next
-//! cascade slot.
+//! cascade slot, when it is the same process on a new connection (it
+//! reconnected, or re-executed itself): an app started again, or a running
+//! one opening a window again, opens where windows open, on the display
+//! in use.
 
 use std::{
     path::PathBuf,
@@ -36,6 +39,12 @@ pub struct Placement {
     pub focused: bool,
     /// Seconds since the epoch when it was recorded.
     pub at: u64,
+    /// The process that showed it (0: not known, any may take it).
+    #[serde(default)]
+    pub pid: i32,
+    /// Its connection then: a window on the same one isn't coming back.
+    #[serde(skip)]
+    pub client: Option<smithay::reexports::wayland_server::backend::ClientId>,
 }
 
 fn now() -> u64 {
@@ -76,6 +85,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             minimized: meta.minimized.get(),
             focused: focused.is_some() && w.wl_surface().as_deref() == focused,
             at: now(),
+            pid: meta.owner.borrow().as_ref().map_or(0, |(pid, _)| *pid),
+            client: meta.owner.borrow().as_ref().map(|(_, c)| c.clone()),
         })
     }
 
@@ -123,7 +134,11 @@ impl<B: Backend + 'static> AnvilState<B> {
             return true;
         }
         let (app_id, title) = (window.app_id(), window.title());
-        let fresh = |e: &Placement| now().saturating_sub(e.at) < KEEP.as_secs();
+        let owner = meta.owner.borrow().clone();
+        let fresh = |e: &Placement| {
+            now().saturating_sub(e.at) < KEEP.as_secs()
+                && owner.as_ref().is_none_or(|(pid, client)| (e.pid == 0 || e.pid == *pid) && e.client.as_ref() != Some(client))
+        };
         let i = self
             .layout
             .iter()

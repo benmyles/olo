@@ -379,6 +379,8 @@ impl App for DeskCalc {
                 )
                 .round_to_pixels(ui.ctx().pixels_per_point());
                 let resp = ui.interact(rect, Id::unique(("deskcalc-key", label)), Sense::click());
+                // For agents (the widget tree): a button named by its key.
+                resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
                 let down = resp.is_pointer_button_down_on() && resp.hovered() || flashing == Some(label);
                 key(ui, rect, label, &font, down, resp.hovered());
                 if resp.clicked() {
