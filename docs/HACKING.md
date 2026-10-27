@@ -178,7 +178,9 @@ fn main() {
   (title, content size, active, nodes in tree order: role, name, value,
   bounds in the content's logical pixels, enabled, clickable, focused,
   checked, selected); it then turns AccessKit off again, so nothing is
-  spent on it otherwise. egui gives its own widgets roles and names; text
+  spent on it otherwise. A program that isn't a kit app can answer for
+  another process with `commands::serve_trees(pid, app_id, trees)` (the
+  Tabula extension's host does it for Chrome). egui gives its own widgets roles and names; text
   painted by hand is only pixels, so `style::label` and `Cell` describe
   theirs with `style::describe_text(ctx, role, text, rect, selected)`.
   **Do the same for any text you paint yourself** that an agent should be
@@ -1548,7 +1550,9 @@ IPC (`Client::connect_to`): `run` (a program with the screen's
 carry `frame`, their place on screen, and `content`, where the app's
 drawing is inside the tab and border; the `WindowsChanged` event leaves
 them out, or a drag would send one every frame), `tree` (each kit app's
-`commands::tree`, matched to its windows by title and size and moved by
+`commands::tree`, matched to its windows by title and size (Chrome's by
+the page title its window's title starts with: see "Chrome's widget
+tree") and moved by
 `content`, so every node is in screen pixels, ready for `click`; an
 outline, or `--json`), `menus` and `invoke` (a window's app's menu bar
 and choosing from it, `commands::menus`/`invoke`), `click`, `move`,
@@ -1668,6 +1672,34 @@ waiting app from the keychain caller's program (`Incoming::from`). Test
 with a throwaway `--user-data-dir` (DevTools needs a non-default one:
 `--remote-debugging-port`), the fake 1Password and a localhost page; the
 fake's "Tabula Test Site" login (`http://localhost`, jane) has a TOTP.
+
+**Chrome's widget tree, for agents** (`extension/tree.js`, `host.rs`).
+The extension (named "Tabula": it does more than passwords) connects to
+its host when its worker starts and stays connected (reconnecting after
+10 s), so a host runs beside every Chrome. The host answers a kit app's
+`tree` socket for its parent, Chrome's browser process (the Wayland
+client app_server names in `WindowInfo::pid`), with
+`commands::serve_trees`: each question goes to the extension as
+`{tree: n}`, which injects `tree.js` into each window's active tab (top
+frame) and answers `{tree: n, windows}` within `TREE_WAIT`. `tree.js`
+walks the page (shadow roots too, at most 4000 nodes) as assistive
+technology sees it: ARIA roles, else the element's (Link, Button,
+TextInput, PasswordInput, CheckBox, ComboBox, Heading, Image, List, Row,
+Cell, Dialog, …), "Clickable" for script-made buttons (an `onclick`, a
+`tabindex`, or where the pointer cursor starts), and "Label" for text
+not inside anything named; names from `aria-labelledby`, `aria-label`,
+the control's `<label>` (which is then left out), `alt`, `placeholder`
+or the text; values, checked, selected, disabled and the focus.
+Passwords' values are never read (`••••••••`). Places are the viewport's
+CSS pixels times the tab's zoom, the page set at the bottom of the
+window below Chrome's tab strip and toolbar (`window.height − page
+height`); a `Window` node and a `Document` node (title, URL) hold it.
+Agent Screens matches a tree to its window by the page title the
+window's title starts with. Chrome's own tab strip and toolbar aren't in
+the tree. Test on an agent screen with a private `XDG_RUNTIME_DIR`, a
+copy of Chrome in a fixture `XDG_DATA_HOME` (`tabula-chrome` writes into
+the install's `extensions` folder) with a fresh `.checked`, a throwaway
+profile and a page served from 127.0.0.1.
 
 ## Log Viewer (apps/logs)
 

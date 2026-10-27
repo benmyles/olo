@@ -23,6 +23,11 @@ const waiting = new Map();
 function connect() {
   port = chrome.runtime.connectNative(HOST);
   port.onMessage.addListener((m) => {
+    // The host asking for the windows' widget trees (for agents).
+    if (m.tree !== undefined) {
+      windowTrees().then((windows) => port?.postMessage({ tree: m.tree, windows }));
+      return;
+    }
     const w = waiting.get(m.id);
     if (!w) return;
     waiting.delete(m.id);
@@ -34,6 +39,8 @@ function connect() {
     port = null;
     for (const w of waiting.values()) w.reject(e);
     waiting.clear();
+    // Back soon, for the trees.
+    setTimeout(() => port || connect(), 10000);
   });
 }
 
@@ -292,3 +299,46 @@ chrome.notifications.onButtonClicked.addListener(async (nid, button) => {
 });
 
 chrome.notifications.onClosed.addListener((nid) => chrome.storage.session.remove(nid));
+
+// ---- Widget trees, for agents ----
+
+// Each window's active page as a widget tree (tree.js), placed in the
+// window's content (logical pixels): the page's CSS pixels times its zoom,
+// below Chrome's own tab strip and toolbar.
+async function windowTrees() {
+  const wins = await chrome.windows.getAll({ populate: true, windowTypes: ["normal", "popup", "app"] });
+  return Promise.all(
+    wins.filter((w) => w.state !== "minimized").map(async (w) => {
+      const tab = (w.tabs || []).find((t) => t.active);
+      const out = { title: tab?.title || "", width: w.width, height: w.height, active: !!w.focused, nodes: [] };
+      out.nodes.push({ id: 1, role: "Window", name: out.title, x: 0, y: 0, width: w.width, height: w.height, enabled: true });
+      if (!tab) return out;
+      let page = null;
+      let zoom = 1;
+      try {
+        zoom = await chrome.tabs.getZoom(tab.id);
+        const [r] = await chrome.scripting.executeScript({ target: { tabId: tab.id, frameIds: [0] }, files: ["tree.js"] });
+        page = r?.result;
+      } catch {}
+      // The page fills the bottom of the window, full width.
+      const ph = page ? page.height * zoom : 0;
+      const top = page ? Math.max(0, w.height - ph) : 0;
+      out.nodes.push({ id: 2, parent: 1, role: "Document", name: tab.title || "", value: tab.url || "", x: 0, y: top, width: w.width, height: ph, enabled: true });
+      for (const n of page?.nodes || []) {
+        out.nodes.push({
+          ...n,
+          id: n.id + 2,
+          parent: (n.parent || 0) + 2,
+          x: n.x * zoom,
+          y: top + n.y * zoom,
+          width: n.width * zoom,
+          height: n.height * zoom,
+        });
+      }
+      return out;
+    }),
+  );
+}
+
+// The host serves the trees only while it runs: keep it running.
+connect();

@@ -7,22 +7,37 @@
 //! with `{id, response}` or `{id, error}`, on a thread of its own, so a
 //! Fill waiting for an unlock holds up nothing else. Only what a browser
 //! needs passes: logins, fill, check, save, unlock and show.
+//!
+//! It also answers agents' questions about Chrome's windows (a kit app's
+//! `tree` socket, for Chrome's process): `{tree: n}` goes to the
+//! extension, which answers `{tree: n, windows}` (background.js, tree.js).
 
 use std::{
+    collections::HashMap,
     io::{Read, Write},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+        mpsc,
+    },
     time::{Duration, Instant},
 };
 
 use serde_json::{Value, json};
 use tabula_keychain::{CallError, Request, Response};
+use tabula_kit::commands::{self, WindowTree};
 use zeroize::Zeroize;
 
 /// The largest message taken from Chrome.
 const MAX_IN: usize = 1 << 20;
 
+/// Tree questions waiting for the extension's answer, by number.
+type Waiting = Arc<Mutex<HashMap<u64, mpsc::Sender<Vec<WindowTree>>>>>;
+
 pub fn run() {
     let out = Arc::new(Mutex::new(std::io::stdout()));
+    let trees: Waiting = Arc::default();
+    serve_trees(out.clone(), trees.clone());
     let mut input = std::io::stdin().lock();
     loop {
         let mut len = [0u8; 4];
@@ -41,6 +56,16 @@ pub fn run() {
         }
         let message: Result<Value, _> = serde_json::from_slice(&buf);
         buf.zeroize();
+        // The extension's answer to a tree question.
+        if let Ok(m) = &message
+            && let Some(n) = m.get("tree").and_then(Value::as_u64)
+        {
+            let windows = m.get("windows").cloned().map(serde_json::from_value).and_then(Result::ok).unwrap_or_default();
+            if let Some(tx) = trees.lock().unwrap_or_else(|e| e.into_inner()).remove(&n) {
+                let _ = tx.send(windows);
+            }
+            continue;
+        }
         let out = out.clone();
         std::thread::spawn(move || {
             let reply = match message {
@@ -49,6 +74,26 @@ pub fn run() {
             };
             send(&out, &reply);
         });
+    }
+}
+
+/// Chrome's windows' widget trees for agents (Agent Screens' `tree`),
+/// answered on Chrome's own process's socket (Chrome starts us), so they
+/// are found as a kit app's are: each is asked of the extension.
+fn serve_trees(out: Arc<Mutex<std::io::Stdout>>, waiting: Waiting) {
+    let chrome = std::os::unix::process::parent_id();
+    let next = AtomicU64::new(1);
+    let served = commands::serve_trees(chrome, "google-chrome", move || {
+        let n = next.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = mpsc::channel();
+        waiting.lock().unwrap_or_else(|e| e.into_inner()).insert(n, tx);
+        send(&out, &json!({ "tree": n }));
+        let got = rx.recv_timeout(commands::TREE_WAIT_FOR).unwrap_or_default();
+        waiting.lock().unwrap_or_else(|e| e.into_inner()).remove(&n);
+        got
+    });
+    if let Err(e) = served {
+        eprintln!("tabula-chrome: can't answer for Chrome's widget trees: {e}");
     }
 }
 

@@ -550,8 +550,11 @@ fn trees(s: &screens::Screen, only: Option<u64>) -> Result<Vec<ScreenTree>, Stri
         let (Some(content), Some(pid)) = (w.content, w.pid) else { continue };
         let Some((_, mine)) = answers.iter_mut().find(|(p, _)| *p == pid as u32) else { continue };
         // An app's windows are told apart by title (and by size, if two share one).
+        // Chrome's are named by their page ("Page - Google Chrome").
         let Some(i) = mine.iter().position(|t| t.title == w.title && t.width as i32 == content.width && t.height as i32 == content.height)
             .or_else(|| mine.iter().position(|t| t.title == w.title))
+            .or_else(|| mine.iter().position(|t| !t.title.is_empty() && w.title.starts_with(&t.title) && t.width as i32 == content.width))
+            .or_else(|| mine.iter().position(|t| t.width as i32 == content.width && t.height as i32 == content.height))
         else {
             continue;
         };

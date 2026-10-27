@@ -28,6 +28,7 @@ const FILES: &[(&str, &[u8])] = &[
     ("manifest.json", include_bytes!("../extension/manifest.json")),
     ("background.js", include_bytes!("../extension/background.js")),
     ("content.js", include_bytes!("../extension/content.js")),
+    ("tree.js", include_bytes!("../extension/tree.js")),
     ("popup.html", include_bytes!("../extension/popup.html")),
     ("popup.css", include_bytes!("../extension/popup.css")),
     ("popup.js", include_bytes!("../extension/popup.js")),
@@ -225,7 +226,7 @@ mod tests {
         assert!(key.verifying_key().verify(&message, &sig).is_ok());
         let header = &a[12..12 + header_len];
         assert!(header.windows(sig.to_der().as_bytes().len()).any(|w| w == sig.to_der().as_bytes()));
-        assert_eq!(version(), "1.0.5");
+        assert_eq!(version(), "1.1.1");
     }
 
     #[test]
@@ -236,7 +237,7 @@ mod tests {
         let id = set_up(&root, &chrome, &data, Path::new("/usr/bin/tabula-chrome")).unwrap();
         assert_eq!(id, set_up(&root, &chrome, &data, Path::new("/usr/bin/tabula-chrome")).unwrap(), "the same key");
         let ext: serde_json::Value = serde_json::from_slice(&std::fs::read(chrome.join(format!("extensions/{id}.json"))).unwrap()).unwrap();
-        assert_eq!(ext["external_version"], "1.0.5");
+        assert_eq!(ext["external_version"], "1.1.1");
         let host: serde_json::Value = serde_json::from_slice(&std::fs::read(data.join("NativeMessagingHosts/org.tabula.passwords.json")).unwrap()).unwrap();
         assert_eq!(host["allowed_origins"][0], format!("chrome-extension://{id}/"));
         use std::os::unix::fs::PermissionsExt;

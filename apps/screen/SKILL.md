@@ -44,7 +44,11 @@ give it a profile of its own:
 tabula-screen run agent tabula-chrome --user-data-dir="$(mktemp -d)" https://example.com
 ```
 
-Chrome has no widget tree yet (see below): read it with `look`.
+Chrome's pages are in the tree too (a `Document` with the page's
+title and address, then its headings, text, links, fields and buttons),
+so `tree`, `click --name`, `set` and `wait` work on web pages. Chrome's
+own tab strip and toolbar aren't: use `key` (`Cmd+L` for the address
+bar, `Cmd+T`, `Cmd+W`) or a picture for those.
 
 ## Read what is on screen
 
@@ -67,7 +71,7 @@ takes clicks (an icon, a menu title), named by the text inside it. A
 table's rows say which they are, `row 13/61`; their cells show only with
 `--cells`. An open menu or dropdown is a `Menu` with a `MenuItem` for each
 item, under the window it opened from. Programs not built on Tabula's kit
-(Chrome, GTK, Qt apps) have no tree: use a picture (their open menus are
+(GTK, Qt apps) have no tree: use a picture (their open menus are
 still in `windows` as `popups`).
 
 ```sh

@@ -5,6 +5,10 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~A widget tree for Chrome~~ (Ben): the Tabula extension's host
+  answers Agent Screens' `tree` for Chrome, with each window's page as
+  assistive technology sees it; the tabula-screens skill says so.
+  HACKING, "Chrome's widget tree, for agents".
 - ~~Num Lock on by default, and a setting for it~~ (Ben): Preferences ▸
   Keyboard ▸ "Num Lock on when Tabula starts".
 - ~~Token pooling for Claude Code and Codex, natively~~ (Ben): Token
@@ -490,14 +494,6 @@ as they land (with the commit), add new ones as they come up.
   `--new-window` to the running copy instead of launching a second one
   (Tracker, Terminal and StyledEdit; `apps::NEW_WINDOW`). Agents run
   `tabula-x --new-window`.
-- **A widget tree for Chrome** (Ben): Agent Screens' `tree` (and the
-  agent API) shows Chrome pages' contents too, structured like a kit
-  app's, though Chrome isn't a kit app: probably a Tabula extension in
-  Tabula Chrome (as the Passwords one, over native messaging with
-  `tabula-chrome`) reporting the page's accessibility tree with screen
-  coordinates, and taking clicks and text on its nodes. The
-  tabula-screens skill already tells agents Chrome is there (with a
-  profile of its own); it then says how to read its tree.
 - Token Pool follow-ups: redeem reset credits (Token Pooler can spend
   a subscription's quota-reset credit when every account is out); keep
   key order in Claude Code's settings.json when editing it.

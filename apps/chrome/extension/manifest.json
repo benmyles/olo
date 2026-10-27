@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Tabula Passwords",
-  "version": "1.0.5",
-  "description": "Fills logins and one-time codes from Tabula's Passwords, and offers to save the ones you use.",
+  "name": "Tabula",
+  "version": "1.1.1",
+  "description": "Fills logins and one-time codes from Tabula's Passwords, offers to save the ones you use, and shows agents what is on the page.",
   "minimum_chrome_version": "120",
   "permissions": ["contextMenus", "nativeMessaging", "notifications", "scripting", "storage"],
   "host_permissions": ["<all_urls>"],

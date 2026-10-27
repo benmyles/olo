@@ -291,6 +291,41 @@ pub(crate) fn listen(to: smithay_client_toolkit::reexports::calloop::channel::Se
     Some(Listening(path))
 }
 
+/// Answer `tree` for process `pid`, a program that isn't a kit app (the
+/// Tabula extension's host does it for Chrome): `trees` is called on the
+/// listening thread for each question and may take up to `TREE_WAIT`.
+/// Its menus are empty and nothing can be invoked. Runs until the
+/// process ends; the socket is left for the next sweep.
+pub fn serve_trees(pid: u32, app_id: &str, trees: impl Fn() -> Vec<WindowTree> + Send + 'static) -> std::io::Result<()> {
+    let path = socket_path(pid);
+    let _ = std::fs::remove_file(&path);
+    let listener = UnixListener::bind(&path)?;
+    let app_id = app_id.to_owned();
+    std::thread::Builder::new().name("trees".into()).spawn(move || {
+        for s in listener.incoming().flatten() {
+            let _ = s.set_read_timeout(Some(WAIT));
+            let mut line = String::new();
+            if BufReader::new(&s).read_line(&mut line).is_err() {
+                continue;
+            }
+            let answer = match serde_json::from_str::<Ask>(&line) {
+                Ok(Ask::Menus(_)) => serde_json::to_string(&Menus { app_id: app_id.clone(), entries: Vec::new() }),
+                Ok(Ask::Invoke(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
+                Ok(Ask::Tree(_)) => serde_json::to_string(&trees()),
+                Err(_) => continue,
+            };
+            if let Ok(answer) = answer {
+                let _ = (&s).write_all(answer.as_bytes());
+                let _ = (&s).write_all(b"\n");
+            }
+        }
+    })?;
+    Ok(())
+}
+
+/// How long [`serve_trees`]' `trees` may take.
+pub const TREE_WAIT_FOR: Duration = TREE_WAIT;
+
 fn ask(pid: u32, ask: &Ask) -> Option<String> {
     let s = UnixStream::connect(socket_path(pid)).ok()?;
     s.set_read_timeout(Some(if matches!(ask, Ask::Tree(_)) { TREE_WAIT + WAIT } else { WAIT * 2 })).ok()?;
