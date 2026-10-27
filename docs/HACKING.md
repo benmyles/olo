@@ -333,7 +333,8 @@ asked for it: drag an image into Claude Code there.
 colours it: `f(text, font, colour)` returns a `LayoutJob` in sections, a `widgets::Highlighter`,
 as Log Viewer's syntax highlighting does), `Slider`
 (`.label().value_text().limits()`), `MenuField` (pop-up choice), `BBox`
-(etched group box with label), `separator`, `StatusBar` (progress),
+(etched group box with label), `separator`, `StatusBar` (progress; `level_bar(painter, rect, fraction,
+fill)` paints just its bar, for list cells),
 `CellGrid` (Pulse's LED meters: a heatmap of small lit cells in sunken
 wells, `GridCell{color, mark, name, selected}` each; `.rows(n)
 .cell_size(px)` fixes its height, and with more cells than fit they
@@ -1142,7 +1143,9 @@ creates, whichever fits.
 
 `tabula_system::disks` is the UDisks2 client (blocking, so call it from
 a worker): `status()` reads `GetManagedObjects` into `Disk`s, `Volume`s
-and `Job`s (all `Serialize`); `watch(f)` calls `f` after each burst of
+and `Job`s (all `Serialize`); each mounted volume's
+`space` (`Space`: size, used, free, from statvfs at its first mount
+point) comes with it; `watch(f)` calls `f` after each burst of
 UDisks signals; the operations (mount, unlock, format with an optional
 LUKS passphrase, create/delete/resize partitions, label, new table,
 eject, SMART update, cancel a job) map UDisks errors to words with
@@ -1150,6 +1153,11 @@ eject, SMART update, cancel a job) map UDisks errors to words with
 a format or delete. `write_image` streams a file onto the fd from
 `OpenForRestore`; `benchmark` reads spread samples and random 4 KiB
 blocks from `OpenForBenchmark` (read-only). UDisks itself asks polkit.
+
+The list's Free column shows a mounted volume's free space after a
+small bar of how full it is (red past 90%), and the status line says
+"N free of M"; while the window is open the app re-reads every 5 s,
+since writing files sends no UDisks signal.
 
 The app runs one step at a time (`DriveSetup::run`: a worker, reporting
 progress; Stop sets its flag, or cancels the UDisks job), shows UDisks'

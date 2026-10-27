@@ -155,6 +155,38 @@ pub struct Volume {
     /// An unlocked encrypted volume's contents.
     pub cleartext: Option<Box<Volume>>,
     pub swap_active: bool,
+    /// How full it is, when mounted (at its first mount point).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub space: Option<Space>,
+}
+
+/// How full a mounted file system is, in bytes (statvfs).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
+pub struct Space {
+    pub size: u64,
+    pub used: u64,
+    /// What can still be written (less the blocks kept for root).
+    pub free: u64,
+}
+
+impl Space {
+    /// How full, 0 to 1, as `df` counts it (the root reserve left out).
+    pub fn fraction(&self) -> f32 {
+        let total = self.used + self.free;
+        if total == 0 { 0.0 } else { self.used as f32 / total as f32 }
+    }
+}
+
+/// The file system mounted at `point`. Blocking: call it from a worker.
+pub fn space(point: &str) -> Option<Space> {
+    let path = std::ffi::CString::new(point).ok()?;
+    // SAFETY: a NUL-terminated path, and a plain struct for statvfs to fill.
+    let mut s: libc::statvfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::statvfs(path.as_ptr(), &mut s) } != 0 {
+        return None;
+    }
+    let unit = s.f_frsize;
+    Some(Space { size: s.f_blocks * unit, used: s.f_blocks.saturating_sub(s.f_bfree) * unit, free: s.f_bavail * unit })
 }
 
 impl Volume {
@@ -472,6 +504,15 @@ fn volume_of(path: &str, ifaces: &HashMap<String, Props>, objects: &Objects) -> 
         encrypted: encrypted.is_some(),
         cleartext,
         swap_active: ifaces.get(SWAP).and_then(|s| get(s, "Active")).unwrap_or(false),
+        space: None,
+    }
+}
+
+/// Fill in how full each mounted volume is.
+fn measure(v: &mut Volume) {
+    v.space = v.mount_points.first().and_then(|p| space(p));
+    if let Some(inner) = &mut v.cleartext {
+        measure(inner);
     }
 }
 
@@ -534,11 +575,12 @@ fn parse(objects: &Objects) -> (Vec<Disk>, Vec<Job>) {
     (disks, jobs)
 }
 
-/// Everything UDisks knows now.
+/// Everything UDisks knows now, and how full what is mounted is.
 pub fn status() -> Result<Status> {
     let c = conn()?;
     let objects: Objects = bus::call(c, DEST, ROOT, "org.freedesktop.DBus.ObjectManager", "GetManagedObjects", &())?;
-    let (disks, jobs) = parse(&objects);
+    let (mut disks, jobs) = parse(&objects);
+    disks.iter_mut().flat_map(|d| d.volumes.iter_mut()).for_each(measure);
     let filesystems = bus::property::<Vec<String>>(c, DEST, &format!("{ROOT}/Manager"), MANAGER, "SupportedFilesystems").unwrap_or_default();
     Ok(Status { disks, jobs, filesystems })
 }
@@ -919,6 +961,16 @@ pub fn benchmark(block: &str, size: u64, count: usize, stop: &AtomicBool, progre
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn space_of_a_mounted_file_system() {
+        let s = space("/").expect("statvfs /");
+        assert!(s.size > 0 && s.used + s.free <= s.size);
+        assert!((0.0..=1.0).contains(&s.fraction()));
+        assert_eq!(space("/no/such/place"), None);
+        assert_eq!(Space { size: 100, used: 75, free: 20 }.fraction(), 75.0 / 95.0);
+        assert_eq!(Space::default().fraction(), 0.0);
+    }
 
     fn v(offset: u64, size: u64) -> Volume {
         Volume { offset, size, ..Default::default() }

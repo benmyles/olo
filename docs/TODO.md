@@ -5,6 +5,9 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~DriveSetup: usage and free space~~ (Ben): a Free column with a bar of
+  how full each mounted volume is (red past 90%), "N free of M" in the
+  status line, `space` in `--list`, re-read every 5 s while open.
 - ~~Fan Out and Undo Window Arrangement~~ (Ben): ⌃⌘/ stacks a display's
   windows with their tabs side by side, narrowing them to stay clear of
   the Deskbar (never below a quarter of the screen); ⌃⌘Z undoes the last
@@ -510,9 +513,10 @@ as they land (with the commit), add new ones as they come up.
   `--new-window` to the running copy instead of launching a second one
   (Tracker, Terminal and StyledEdit; `apps::NEW_WINDOW`). Agents run
   `tabula-x --new-window`.
-- **DriveSetup: usage and free space** (Ben): each mounted volume's
-  used and free space (statvfs, natively, on a worker), as a bar in the
-  list and in the details, live as it changes.
+- **Token Pool heatmap: the cell marks don't fit** (Ben, bugfix): the
+  "C"/"X" drawn in a Now cell overflows its 14 px well at 1× and looks
+  off. `CellGrid` should size the mark to the cell (or drop it when
+  there's no room), checked at 1× and 2×.
 - Token Pool follow-ups: spend a reset credit that would otherwise
   expire unused (needs a consumption-rate estimate, as Token Pooler's
   scheduling.md describes); keep key order in Claude Code's

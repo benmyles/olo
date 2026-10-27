@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### DriveSetup: free space
+
+*14:54* — A Free column shows how full each mounted volume is, and the status line says how much is left; it stays current while the window is open.
+
+![DriveSetup: free space](2026-10-27/145435-drivesetup-free-space.png)
+
 ### Fan Out
 
 *14:49* — ⌃⌘/ stacks a display's windows with their tabs side by side, narrowing them to stay clear of the Deskbar; ⌃⌘Z undoes it.

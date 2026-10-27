@@ -1162,5 +1162,11 @@
   "title": "Fan Out",
   "caption": "\u2303\u2318/ stacks a display's windows with their tabs side by side, narrowing them to stay clear of the Deskbar; \u2303\u2318Z undoes it.",
   "image": "2026-10-27/144918-fan-out.png"
+ },
+ {
+  "time": "2026-10-27T14:54:35",
+  "title": "DriveSetup: free space",
+  "caption": "A Free column shows how full each mounted volume is, and the status line says how much is left; it stays current while the window is open.",
+  "image": "2026-10-27/145435-drivesetup-free-space.png"
  }
 ]

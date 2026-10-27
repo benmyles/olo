@@ -1041,18 +1041,26 @@ impl Widget for StatusBar<'_> {
             painter.galley(text_pos(ui, x, rect.top() + m::LABEL_ROW / 2.0, &g), g, color);
         }
         let bar = Rect::from_min_max(pos2(rect.left(), rect.top() + top), rect.max);
-        painter.rect_filled(bar.shrink(1.0), 0.0, c(p.document_background));
-        let fill = self.color.unwrap_or(c(p.status_bar));
-        let f = self.fraction.clamp(0.0, 1.0);
-        let inner = bar.shrink(1.0);
-        let done = Rect::from_min_max(inner.min, pos2((inner.left() + inner.width() * f).round(), inner.bottom()));
-        if done.width() > 0.0 {
-            style::vgradient(painter, done, fill.linear_multiply(1.0).gamma_multiply(1.0), fill.gamma_multiply(0.8).to_opaque());
-            hline(painter, done.left(), done.right(), done.top(), Color32::from_white_alpha(70));
-        }
-        style::bevel(painter, bar, shade(&p, p.panel_background, 1.45), c(p.shine));
+        level_bar(painter, bar, self.fraction, self.color);
         response
     }
+}
+
+/// [`StatusBar`]'s bar alone, for where there's only a painter (a list
+/// cell): a sunken well filled to `fraction` (with `fill`, or the
+/// palette's status bar colour).
+pub fn level_bar(painter: &Painter, bar: Rect, fraction: f32, fill: Option<Color32>) {
+    let p = style::palette(painter.ctx());
+    painter.rect_filled(bar.shrink(1.0), 0.0, c(p.document_background));
+    let fill = fill.unwrap_or(c(p.status_bar));
+    let f = fraction.clamp(0.0, 1.0);
+    let inner = bar.shrink(1.0);
+    let done = Rect::from_min_max(inner.min, pos2((inner.left() + inner.width() * f).round(), inner.bottom()));
+    if done.width() > 0.0 {
+        style::vgradient(painter, done, fill, fill.gamma_multiply(0.8).to_opaque());
+        hline(painter, done.left(), done.right(), done.top(), Color32::from_white_alpha(70));
+    }
+    style::bevel(painter, bar, shade(&p, p.panel_background, 1.45), c(p.shine));
 }
 
 // ---- CellGrid -----------------------------------------------------------

@@ -33,7 +33,7 @@ use tabula_kit::{
     style::{self, c},
     widgets::{self, Button, Cell, CheckBox, Column, ColumnListView, ListState, MenuField, Slider, StatusBar, TextControl},
 };
-use tabula_system::disks::{self, Disk, Segment, Status, Volume};
+use tabula_system::disks::{self, Disk, Segment, Space, Status, Volume};
 use tabula_theme::mix;
 
 const APP_ID: &str = "tabula.drive-setup";
@@ -45,6 +45,12 @@ const BENCH_SAMPLES: usize = 48;
 /// The name column's indent per level, and its icon.
 const INDENT: f32 = 14.0;
 const ICON: f32 = 16.0;
+/// The Free column's bar of how full a volume is.
+const USAGE_W: f32 = 44.0;
+const USAGE_H: f32 = 10.0;
+/// Re-read this often while the window is open: writing files sends no
+/// UDisks signal, and the free space should stay current.
+const SPACE_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Something in the list or on the map.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -58,7 +64,8 @@ struct Row {
     item: Item,
     depth: usize,
     icon: Option<&'static str>,
-    cells: [String; 5],
+    cells: [String; 6],
+    space: Option<Space>,
 }
 
 fn table_name(d: &Disk) -> String {
@@ -95,7 +102,8 @@ fn push_volume(out: &mut Vec<Row>, v: &Volume, depth: usize) {
         item: Item::Volume(v.path.clone()),
         depth,
         icon,
-        cells: [v.title(), short(&v.device), v.content_name(), format_size(v.size), v.mount_points.join(", ")],
+        cells: [v.title(), short(&v.device), v.content_name(), format_size(v.size), v.space.map(|s| format_size(s.free)).unwrap_or_default(), v.mount_points.join(", ")],
+        space: v.space,
     });
     if let Some(inner) = &v.cleartext {
         push_volume(out, inner, depth + 1);
@@ -107,7 +115,7 @@ fn push_volume(out: &mut Vec<Row>, v: &Volume, depth: usize) {
 fn rows(status: &Status) -> Vec<Row> {
     let mut out = Vec::new();
     for d in &status.disks {
-        out.push(Row { item: Item::Disk(d.path.clone()), depth: 0, icon: Some(disk_icon(d)), cells: [d.name(), short(&d.device), table_name(d), format_size(d.size), String::new()] });
+        out.push(Row { item: Item::Disk(d.path.clone()), depth: 0, icon: Some(disk_icon(d)), cells: [d.name(), short(&d.device), table_name(d), format_size(d.size), String::new(), String::new()], space: None });
         for s in d.segments() {
             match s {
                 Segment::Volume(i) => {
@@ -123,12 +131,18 @@ fn rows(status: &Status) -> Vec<Row> {
                     item: Item::Free { disk: d.path.clone(), offset, size },
                     depth: 1,
                     icon: None,
-                    cells: ["Free space".into(), String::new(), String::new(), format_size(size), String::new()],
+                    cells: ["Free space".into(), String::new(), String::new(), format_size(size), String::new(), String::new()],
+                    space: None,
                 }),
             }
         }
     }
     out
+}
+
+/// Under a tenth left: shown as a warning.
+fn nearly_full(space: &Space) -> bool {
+    space.fraction() > 0.9
 }
 
 /// The longest name a file system takes.
@@ -256,6 +270,8 @@ enum BenchMsg {
 enum Msg {
     Status(Result<Status, String>),
     Changed,
+    /// Time to look at the free space again.
+    Tick,
     Progress(Option<f32>, String),
     Done { fail: String, result: Result<Option<Item>, String> },
     CanResize(WindowId, Result<(bool, bool), String>),
@@ -328,7 +344,7 @@ impl DriveSetup {
         if let Some(id) = self.main {
             return cx.activate(id);
         }
-        let id = cx.open_window(WindowOptions::new("DriveSetup", 660, 480).min_size(480, 340));
+        let id = cx.open_window(WindowOptions::new("DriveSetup", 800, 480).min_size(480, 340));
         self.windows.insert(id, Win::Main);
         self.main = Some(id);
     }
@@ -705,6 +721,14 @@ impl DriveSetup {
             } else if v.mountable {
                 t.push_str(", not mounted");
             }
+            let space = v.space.or_else(|| v.cleartext.as_ref().and_then(|c| c.space));
+            if let Some(sp) = space {
+                t.push_str(&format!("; {} free of {}", format_size(sp.free), format_size(sp.used + sp.free)));
+                if nearly_full(&sp) {
+                    t.push_str(", nearly full");
+                    return (t, true);
+                }
+            }
             return (t, false);
         }
         let d = s.disk;
@@ -761,6 +785,7 @@ impl DriveSetup {
             Column::new("Device", 84.0),
             Column::new("Contents", 120.0),
             Column::new("Size", 72.0).right(),
+            Column::new("Free", 130.0),
             Column::new("Mounted At", 140.0),
         ];
         let at = self.selected.as_ref().and_then(|s| rows.iter().position(|r| &r.item == s));
@@ -770,6 +795,18 @@ impl DriveSetup {
             .scope_builder(egui::UiBuilder::new().max_rect(list_r), |ui| {
                 ColumnListView::new("drive-setup-list", &columns, rows.len(), &mut self.list).reveal(reveal).empty_text("No disks.").show(ui, |cell: &Cell| {
                     let row = &rows[cell.row];
+                    if cell.column == 4
+                        && let Some(space) = row.space
+                    {
+                        let left = cell.rect.left() + m::CELL_INSET;
+                        let bar = Rect::from_min_size(pos2(left, cell.rect.center().y - USAGE_H / 2.0), vec2(USAGE_W, USAGE_H));
+                        let bar = style::snap(cell.painter.ctx(), bar);
+                        let p = style::palette(cell.painter.ctx());
+                        // On panel grey, so its whole bevel shows on the list's white.
+                        cell.painter.rect_filled(bar.expand(1.0), 0.0, c(p.panel_background));
+                        widgets::level_bar(cell.painter, bar, space.fraction(), nearly_full(&space).then(|| c(p.failure)));
+                        return Cell { rect: cell.rect.with_min_x(bar.right()), ..*cell }.text(&row.cells[4]);
+                    }
                     if cell.column != 0 {
                         return cell.text(&row.cells[cell.column]);
                     }
@@ -1215,6 +1252,11 @@ impl App for DriveSetup {
                 }
             }
             Msg::Changed => self.refresh(),
+            Msg::Tick => {
+                if self.main.is_some() {
+                    self.refresh();
+                }
+            }
             Msg::Progress(f, detail) => {
                 if let Some(w) = &mut self.working {
                     w.fraction = f;
@@ -1327,6 +1369,13 @@ fn main() {
             let tell = watcher.clone();
             if let Err(e) = disks::watch(move || tell.send(Msg::Changed)) {
                 tracing::warn!("can't watch UDisks: {e}");
+            }
+        });
+        let ticker = proxy.clone();
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(SPACE_EVERY);
+                ticker.send(Msg::Tick);
             }
         });
         let mut app = DriveSetup {
