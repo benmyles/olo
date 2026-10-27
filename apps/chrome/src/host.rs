@@ -98,7 +98,7 @@ fn answer(m: &Value) -> Value {
 }
 
 /// Ask Passwords; with `start`, start it if it isn't running (then wait
-/// for it, and for the unlock it begins with, as NetPositive does).
+/// for it, and for the unlock it begins with).
 fn ask(request: &Request, start: bool) -> Result<Response, CallError> {
     let mut result = tabula_keychain::call(request);
     if !start || !matches!(result, Err(CallError::NotRunning)) {

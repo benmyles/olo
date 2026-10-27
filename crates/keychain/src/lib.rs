@@ -1,6 +1,6 @@
 //! Passwords is Tabula's keychain: while it runs it answers other Tabula
-//! apps (NetPositive) on a unix socket in `$XDG_RUNTIME_DIR`, one JSON
-//! request and one JSON reply per connection. Only our own user's
+//! programs (Chrome's extension host, the palette) on a unix socket in
+//! `$XDG_RUNTIME_DIR`, one JSON request and one JSON reply per connection. Only our own user's
 //! `tabula-*` programs are served.
 //!
 //! Passwords decides what may be said: logins for a site only while it is
@@ -10,11 +10,6 @@
 //! `op` (`tabula-op`, apps/op) asks with [`Request::Cli`]: Passwords
 //! answers in the shapes 1Password's own `op` prints as JSON, after the
 //! person allows that terminal session.
-//!
-//! Passkeys work the same way: NetPositive asks for a page's passkeys,
-//! and Passwords makes and keeps the keys and signs with them, so private
-//! keys never leave it. Byte strings are unpadded base64url, as in
-//! WebAuthn's JSON forms.
 
 use std::{
     io::{BufRead, BufReader, Write},
@@ -39,23 +34,6 @@ pub enum Request {
     Save { url: String, title: String, username: String, password: String, replace: Option<(String, String)> },
     /// Bring Passwords forward and answer once it is unlocked.
     Unlock,
-    /// The passkeys for relying party `rp_id` usable on `url` (only those
-    /// in `allow` if it isn't empty).
-    Passkeys { url: String, rp_id: String, allow: Vec<String> },
-    /// Make a passkey for `rp_id`; a passkey whose id is in `exclude`
-    /// means the person already has one here.
-    PasskeyCreate {
-        url: String,
-        rp_id: String,
-        rp_name: String,
-        user_id: String,
-        user_name: String,
-        display_name: String,
-        exclude: Vec<String>,
-    },
-    /// Sign in with the passkey in item `id`; `client_data_hash` is the
-    /// SHA-256 of the page's client data.
-    PasskeySign { url: String, rp_id: String, vault: String, id: String, client_data_hash: String },
     /// Items whose title, website or tags hold every word of `query`
     /// (the command palette). Only while unlocked; doesn't wait.
     Search { query: String },
@@ -94,9 +72,6 @@ impl Request {
             | Request::Save { .. }
             | Request::Unlock
             | Request::Show { .. }
-            | Request::Passkeys { .. }
-            | Request::PasskeyCreate { .. }
-            | Request::PasskeySign { .. }
             | Request::Cli { .. } => Duration::from_secs(300),
         }
     }
@@ -131,16 +106,6 @@ pub struct Found {
     pub subtitle: String,
 }
 
-/// A passkey kept in Passwords (one per login item).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Passkey {
-    pub vault: String,
-    pub id: String,
-    pub title: String,
-    pub user_name: String,
-    pub credential_id: String,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Response {
@@ -169,31 +134,12 @@ pub enum Response {
     Locked,
     /// Passwords has no 1Password account set up yet.
     NotSetUp,
-    Passkeys {
-        passkeys: Vec<Passkey>,
-    },
     /// For `Search`.
     Items {
         items: Vec<Found>,
     },
     /// For `Show`.
     Shown,
-    /// A new passkey: `public_key` is its SubjectPublicKeyInfo (DER).
-    PasskeyCreated {
-        title: String,
-        credential_id: String,
-        attestation_object: String,
-        authenticator_data: String,
-        public_key: String,
-    },
-    /// One of `exclude` is already saved.
-    PasskeyExists,
-    Assertion {
-        credential_id: String,
-        authenticator_data: String,
-        signature: String,
-        user_handle: String,
-    },
     Error {
         message: String,
     },
@@ -420,22 +366,6 @@ pub fn closeness(website: &str, page: &str) -> Option<u32> {
     Some(100u32.saturating_sub(shared as u32))
 }
 
-/// Whether a page at `url` may use passkeys for `rp_id`, short of the
-/// public-suffix check (the browser makes that one): a secure page whose
-/// host is `rp_id` or under it.
-pub fn rp_id_fits(rp_id: &str, url: &str) -> bool {
-    let Ok(page) = url::Url::parse(url) else {
-        return false;
-    };
-    let Some(here) = page.host_str().map(str::to_ascii_lowercase) else {
-        return false;
-    };
-    let local = matches!(here.as_str(), "localhost" | "127.0.0.1" | "[::1]");
-    let secure = page.scheme() == "https" || (page.scheme() == "http" && local);
-    let rp_id = rp_id.to_ascii_lowercase();
-    secure && !rp_id.is_empty() && (here == rp_id || here.ends_with(&format!(".{rp_id}")))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -477,17 +407,6 @@ mod tests {
         assert!(matches("http://localhost", "http://localhost:8080/login"));
         assert!(matches("https://localhost", "http://localhost:8080/login"));
         assert!(!matches("https://example.com", "file:///example.com"));
-    }
-
-    #[test]
-    fn rp_ids() {
-        assert!(rp_id_fits("example.com", "https://example.com/"));
-        assert!(rp_id_fits("example.com", "https://login.example.com/"));
-        assert!(!rp_id_fits("login.example.com", "https://example.com/"));
-        assert!(!rp_id_fits("example.com", "http://example.com/"));
-        assert!(!rp_id_fits("example.com", "https://badexample.com/"));
-        assert!(rp_id_fits("localhost", "http://localhost:8765/"));
-        assert!(!rp_id_fits("", "https://example.com/"));
     }
 
     #[test]

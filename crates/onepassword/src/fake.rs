@@ -515,7 +515,7 @@ pub fn sample(account: &str) -> FakeAccount {
         ItemField::new("phone", "phone", ItemFieldType::Phone, "+1 555 0100"),
     ];
     // The local test site's login has a one-time code too (for filling
-    // codes in NetPositive and Chrome).
+    // codes in Chrome).
     let mut local = login("Tabula Test Site", "http://localhost", "jane", "hunter2-but-longer");
     local.sections = vec![crate::ItemSection { id: "otp".into(), title: "Security".into() }];
     local.fields.push(

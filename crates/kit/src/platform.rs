@@ -73,7 +73,7 @@ use wayland_protocols::{
 };
 
 use crate::{
-    app::{App, Clip, Cx, EmbedId, Embedded, Layer, Proxy, Request, WindowId, WindowKind, WindowOptions},
+    app::{App, Clip, Cx, Layer, Proxy, Request, WindowId, WindowKind, WindowOptions},
     input, menu,
     menu::{BarState, Menu, MenuAnchor, MenuRequest, PopupResult, PopupState},
     style,
@@ -121,18 +121,6 @@ enum Role {
         /// Where it is on its parent, as the compositor placed it.
         at: (i32, i32),
     },
-}
-
-/// A subsurface another renderer draws (see `Cx::embed`).
-struct Embed {
-    id: EmbedId,
-    window: WindowId,
-    wl: WlSurface,
-    sub: wayland_client::protocol::wl_subsurface::WlSubsurface,
-    viewport: Option<WpViewport>,
-    rect: Option<egui::Rect>,
-    /// The scale the app was last told.
-    scale: f64,
 }
 
 struct Surface {
@@ -275,10 +263,6 @@ pub struct Kit {
     fractional_manager: Option<WpFractionalScaleManagerV1>,
     viewporter: Option<WpViewporter>,
     idle_inhibit: Option<ZwpIdleInhibitManagerV1>,
-    subcompositor: Option<smithay_client_toolkit::subcompositor::SubcompositorState>,
-    embeds: Vec<Embed>,
-    /// Embeds whose handles the app hasn't been given yet (or anew).
-    announce: Vec<EmbedId>,
 
     gpu: Option<Gpu>,
     surfaces: Vec<Surface>,
@@ -500,9 +484,6 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                 for (id, options) in c.windows {
                     kit.open(id, options);
                 }
-                for (id, window, rect) in c.embeds {
-                    kit.create_embed(window, id, rect);
-                }
             }
         }
         kit.process_requests();
@@ -517,7 +498,6 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
             }
             kit.redraw_due();
             kit.answer_trees();
-            kit.check_embed_scales();
             if kit.conn.flush().is_err() {
                 lost = true;
                 break;
@@ -580,8 +560,6 @@ struct Carried {
     app: Box<dyn App>,
     cx: Cx,
     windows: Vec<(WindowId, WindowOptions)>,
-    /// Embedded surfaces, made again on the new connection.
-    embeds: Vec<(EmbedId, WindowId, Option<egui::Rect>)>,
 }
 
 /// Connect to app_server; while it restarts, keep trying for a while.
@@ -668,7 +646,6 @@ impl Kit {
         let fractional_manager = globals.bind::<WpFractionalScaleManagerV1, _, _>(&qh, 1..=1, KitData).ok();
         let viewporter = globals.bind::<WpViewporter, _, _>(&qh, 1..=1, KitData).ok();
         let compositor = CompositorState::bind(globals, &qh).expect("wl_compositor");
-        let subcompositor = smithay_client_toolkit::subcompositor::SubcompositorState::bind(compositor.wl_compositor().clone(), globals, &qh).ok();
         let idle_inhibit = globals.bind::<ZwpIdleInhibitManagerV1, _, _>(&qh, 1..=1, KitData).ok();
         Kit {
             registry_state: RegistryState::new(globals),
@@ -683,9 +660,6 @@ impl Kit {
                 .ok(),
             session_lock_state: smithay_client_toolkit::session_lock::SessionLockState::new(globals, &qh),
             session_lock: None,
-            subcompositor,
-            embeds: Vec::new(),
-            announce: Vec::new(),
             fractional_manager,
             viewporter,
             idle_inhibit,
@@ -719,8 +693,6 @@ impl Kit {
     /// Tear down every Wayland/GPU object (surfaces before the device and
     /// connection they belong to) and keep the app and its windows.
     fn into_carried(mut self) -> Option<Carried> {
-        let embeds = self.embeds.iter().map(|e| (e.id, e.window, e.rect)).collect();
-        self.lose_embeds(|_| true);
         let windows = self
             .surfaces
             .iter()
@@ -742,109 +714,7 @@ impl Kit {
         let app = self.app.take()?;
         let mut cx = self.cx.take()?;
         cx.requests.clear();
-        Some(Carried { app, cx, windows, embeds })
-    }
-
-    // ---- embedded surfaces ---------------------------------------------
-
-    fn create_embed(&mut self, window: WindowId, id: EmbedId, rect: Option<egui::Rect>) {
-        let Some(parent) = self.surfaces.iter().find(|s| s.id == window) else { return };
-        let Some(sc) = &self.subcompositor else {
-            warn!("no wl_subcompositor: can't embed");
-            return;
-        };
-        let (sub, wl) = sc.create_subsurface(parent.wl.clone(), &self.qh);
-        // Its renderer commits on its own; input goes to the window.
-        sub.set_desync();
-        if let Ok(region) = smithay_client_toolkit::compositor::Region::new(&self.compositor) {
-            wl.set_input_region(Some(region.wl_region()));
-        }
-        let viewport = self.viewporter.as_ref().map(|vp| vp.get_viewport(&wl, &self.qh, KitData));
-        let scale = parent.scale;
-        self.embeds.push(Embed { id, window, wl, sub, viewport, rect: None, scale });
-        if let Some(r) = rect {
-            self.place_embed(id, r);
-        }
-        self.announce.push(id);
-    }
-
-    fn place_embed(&mut self, id: EmbedId, rect: egui::Rect) {
-        let Some(e) = self.embeds.iter_mut().find(|e| e.id == id) else { return };
-        if e.rect == Some(rect) {
-            return;
-        }
-        e.rect = Some(rect);
-        e.sub.set_position(rect.min.x.round() as i32, rect.min.y.round() as i32);
-        let (w, h) = (rect.width().round().max(1.0) as i32, rect.height().round().max(1.0) as i32);
-        match &e.viewport {
-            Some(v) => v.set_destination(w, h),
-            None => e.wl.set_buffer_scale(e.scale.round().max(1.0) as i32),
-        }
-        e.wl.commit();
-        // The position takes effect with the window's next commit.
-        let window = e.window;
-        if let Some(s) = self.surface_mut(window) {
-            s.dirty = true;
-        }
-    }
-
-    /// Tell the app an embed's surface is going, then destroy it.
-    fn lose_embeds(&mut self, which: impl Fn(&Embed) -> bool) {
-        let ids: Vec<EmbedId> = self.embeds.iter().filter(|e| which(e)).map(|e| e.id).collect();
-        if ids.is_empty() {
-            return;
-        }
-        self.with_app(|app, cx| ids.iter().for_each(|&id| app.embed_lost(cx, id)));
-        self.destroy_embeds(|e| ids.contains(&e.id));
-    }
-
-    fn destroy_embeds(&mut self, which: impl Fn(&Embed) -> bool) {
-        let (gone, kept): (Vec<Embed>, Vec<Embed>) = std::mem::take(&mut self.embeds).into_iter().partition(|e| which(e));
-        self.embeds = kept;
-        for e in gone {
-            if let Some(v) = e.viewport {
-                v.destroy();
-            }
-            e.sub.destroy();
-            e.wl.destroy();
-            self.announce.retain(|&a| a != e.id);
-        }
-    }
-
-    /// Hand the app the handles of new embeds, and of any whose window's
-    /// scale changed.
-    fn announce_embeds(&mut self) {
-        let Some(ptr) = NonNull::new(self.conn.backend().display_ptr() as *mut _) else { return };
-        let display = RawDisplayHandle::Wayland(WaylandDisplayHandle::new(ptr));
-        let ready: Vec<Embedded> = std::mem::take(&mut self.announce)
-            .into_iter()
-            .filter_map(|id| {
-                let e = self.embeds.iter().find(|e| e.id == id)?;
-                let surface = RawWindowHandle::Wayland(WaylandWindowHandle::new(NonNull::new(e.wl.id().as_ptr() as *mut _)?));
-                Some(Embedded { id, window: e.window, display, surface, scale: e.scale })
-            })
-            .collect();
-        self.with_app(|app, cx| ready.iter().for_each(|e| app.embedded(cx, e)));
-    }
-
-    /// Embeds follow their window's scale.
-    fn check_embed_scales(&mut self) {
-        for i in 0..self.embeds.len() {
-            let Some(scale) = self.surfaces.iter().find(|s| s.id == self.embeds[i].window).map(|s| s.scale) else { continue };
-            let e = &mut self.embeds[i];
-            if (e.scale - scale).abs() > f64::EPSILON {
-                e.scale = scale;
-                if e.viewport.is_none() {
-                    e.wl.set_buffer_scale(scale.round().max(1.0) as i32);
-                }
-                if !self.announce.contains(&e.id) {
-                    self.announce.push(e.id);
-                }
-            }
-        }
-        if !self.announce.is_empty() {
-            self.announce_embeds();
-        }
+        Some(Carried { app, cx, windows })
     }
 
     fn output_names(&self) -> Vec<String> {
@@ -994,11 +864,7 @@ impl Kit {
         loop {
             let Some(cx) = self.cx.as_mut() else { return };
             if cx.requests.is_empty() {
-                if self.announce.is_empty() {
-                    return;
-                }
-                self.announce_embeds();
-                continue;
+                return;
             }
             let requests = std::mem::take(&mut cx.requests);
             for r in requests {
@@ -1009,13 +875,7 @@ impl Kit {
                         self.linger = false;
                         self.open(id, options)
                     }
-                    Request::Close(id) => {
-                        self.lose_embeds(|e| e.window == id);
-                        self.close(id)
-                    }
-                    Request::Embed(window, id) => self.create_embed(window, id, None),
-                    Request::PlaceEmbed(id, rect) => self.place_embed(id, rect),
-                    Request::RemoveEmbed(id) => self.destroy_embeds(|e| e.id == id),
+                    Request::Close(id) => self.close(id),
                     Request::KeepAwake(id, on) => {
                         let qh = self.qh.clone();
                         let manager = self.idle_inhibit.clone();

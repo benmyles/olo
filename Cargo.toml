@@ -40,14 +40,7 @@ rev = "24647fc8d00131eb7f388efed26e35ea316b0018"
 
 # See vendor/README.md.
 [patch.crates-io]
-epaint = { path = "vendor/epaint" }
 matroska-demuxer = { path = "vendor/matroska-demuxer" }
-servo-constellation = { path = "vendor/servo-constellation" }
-servo-net = { path = "vendor/servo-net" }
-servo-paint = { path = "vendor/servo-paint" }
-servo-paint-api = { path = "vendor/servo-paint-api" }
-servo-pixels = { path = "vendor/servo-pixels" }
-webrender = { path = "vendor/webrender" }
 
 [profile.release]
 debug = "line-tables-only"

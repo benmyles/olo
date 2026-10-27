@@ -90,7 +90,6 @@ fn app_of(path: &str) -> String {
         match stem {
             "tabula" | "" => continue,
             "app_server" => return "Desktop (Preferences)".into(),
-            "netpositive-fields" => return "NetPositive".into(),
             "signatures" => return "Viewer".into(),
             "desktop" => return "Tracker".into(),
             "palette" => return "Palette".into(),
@@ -640,7 +639,7 @@ mod tests {
     #[test]
     fn names_apps() {
         assert_eq!(app_of("config/app_server.json"), "Desktop (Preferences)");
-        assert_eq!(app_of("config/browser.json"), "NetPositive");
+        assert_eq!(app_of("config/terminal.json"), "Terminal");
         assert_eq!(app_of("state/notifications/history.json"), "Notifications");
         assert_eq!(app_of("config/deskcalc.json"), "DeskCalc");
         assert_eq!(app_of("config/some-thing.json"), "Some thing");

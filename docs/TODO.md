@@ -5,6 +5,10 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~NetPositive removed~~ (Ben): Tabula's web browser is Chrome. Gone
+  with it: apps/browser, the Servo and WebRender patches (and epaint's,
+  needed only because of Servo), the kit's embedded surfaces, and
+  passkeys in Passwords (only NetPositive asked for them).
 - ~~1Password's `op` from Passwords~~ (Ben): `tabula-op`, linked as `op`,
   answers `op inject`/`read`/`run`/`item get`/`whoami`/`account list`/`signin`
   from Passwords, asking once per terminal session; Preferences ▸
@@ -37,11 +41,6 @@ as they land (with the commit), add new ones as they come up.
   org.gnome.keyring.SystemPrompter (gcr's protocol and secret exchange,
   natively), so unlocking the login keyring (gh's git credentials hung
   on a GTK prompter that had lost its display) asks in a Tabula alert.
-- ~~slack.com loads in NetPositive~~ (its 28 autoplaying videos made
-  the page OOM): decoders budgeted per page, media downloads and `blob:`
-  downloads on disk, compact frame queues, muted videos pause out of
-  sight; pages end with NetPositive (they outlived it). Left: each video
-  element keeps one full-size picture in Servo.
 - ~~Login keyring in a real session~~ (the session finishes starting the
   daemon PAM unlocked), ~~Passwords lists 1Password's accounts~~.
 
@@ -72,16 +71,11 @@ as they land (with the commit), add new ones as they come up.
 - ~~**Passwords keeps its own store, synced with 1Password both ways**~~
   (Ben): going to 1Password for every look-up is slow and unreliable.
   Passwords should hold every item itself (encrypted at rest, unlocked
-  with the account password or Touch ID) and answer the app, NetPositive
+  with the account password or Touch ID) and answer the app, Chrome
   and the palette from it at once; 1Password is only for syncing, both
   ways (changes either side merge by item version, conflicts kept),
   in the background and when asked. Done: `vault.rs`, `sync.rs`; try it
   on the real account (Ben).
-- ~~**NetPositive fills Google's sign-in**~~ (Ben): two-step sign-ins
-  fill the username alone, hidden decoy fields are skipped, the field
-  menu has the logins at once (fetched when the page loads), and a field
-  filled from the context menu is learnt for that page. Still to try on
-  the real accounts.google.com (Ben).
 - ~~**Tracker opens in column view by default**~~ (Ben), set in
   Preferences ▸ Tracker; open windows keep their own view.
 - ~~**Deskbar: a click on a running app with several windows offers them**~~
@@ -98,8 +92,7 @@ as they land (with the commit), add new ones as they come up.
   `Flush::NoFlush`, mp4 edit lists applied, and WebM seeks fixed
   (vendored matroska-demuxer).
 - ~~**Confirm before quitting apps with state that would be lost**~~
-  (Ben): NetPositive asks before quitting or closing a window that would
-  lose more than one tab or stop downloads; Terminal already asks before
+  (Ben): Terminal asks before
   closing a window with a program running, and its Quit leaves the
   shells in tabula-termd; StyledEdit asks about unsaved documents.
 - ~~**Passwords: never change anything on sync without approval**~~
@@ -110,12 +103,12 @@ as they land (with the commit), add new ones as they come up.
   word in plain bash but not in Claude Code. Check what Terminal sends for
   them (bash binds ESC b / ESC f; others expect CSI 1;3D / 1;3C) and
   whether Claude Code's input understands it; send what xterm does.
-- ~~**Drag and drop everywhere, across apps**~~ (done; NetPositive's part waits with NetPositive, tabled for Chrome) (Ben): everything that shows
+- ~~**Drag and drop everywhere, across apps**~~ (done) (Ben): everything that shows
   files or data can be dragged and dropped, within and between apps and
   to and from other Wayland clients (wl_data_device, text/uri-list and
   the data's own types): Tracker items to any app (e.g. an image into
   Terminal, so Claude Code gets its path), Tracker accepting drops from
-  everything, NetPositive images/links/text, StyledEdit text, Viewer
+  everything, StyledEdit text, Viewer
   images, Passwords fields, Deskbar launches…
   Study how BeOS did it first (the Be Book: BMessage drags with negotiated
   types, drop targets, Tracker clippings) and borrow what still fits.
@@ -140,11 +133,6 @@ as they land (with the commit), add new ones as they come up.
   menu and the context menu in the Trash) that puts the selected files
   back where each came from (the trash's `.trashinfo` original path),
   recreating missing folders and asking on a name clash.
-- ~~**NetPositive: logins for parent domains too**~~ (done: the whole site
-  matched already; now nearest first, `tabula_keychain::closeness`) (Ben): on
-  accounts.google.com, offer logins saved for any parent domain
-  (*.google.com, google.com) as well as the exact host, sorted most
-  specific first.
 - ~~**Passwords: sync every vault, Private included**~~ (archived items failed whole batches; now fetched active-only with a one-by-one fallback, and a Sync Problems window) (Ben): a sync on
   the real account doesn't bring in all vaults (Private missing). Every
   vault the account can read is synced, and errors or items that can't
@@ -154,11 +142,6 @@ as they land (with the commit), add new ones as they come up.
   rotate and flip images, then Save / Save As (as the PDF tools do). Done:
   the Viewer's Image menu (rotate, flip, crop overlay, Adjust Size) with
   undo, Save / Save As / Revert; Quick Look rotates and saves in place.
-- **NetPositive is tabled** (Ben, 2026-10-26): no more work on it for
-  now; Chrome is the web browser to make great instead (below). Left
-  open there: app.fastmail.com never finishes loading; a field's context
-  menu should offer the login's verification code (TOTP) beside the
-  username and password (~~done in Chrome~~, via Passwords).
 - ~~**Multiplayer screen control for agents**~~ (Ben; done: Agent Screens,
   `apps/screen`, each screen a headless Tabula session of its own, watched
   and taken over in the Agent Screens app; `tabula-screen tree` from the
@@ -292,8 +275,8 @@ as they land (with the commit), add new ones as they come up.
   hand); windows placed automatically or by hand are never pushed. It
   should work as you'd expect: shared edges move together, nothing
   overlaps or leaves a gap, neighbours keep a sensible minimum size.
-- **Google Chrome works great in Tabula** (Ben; the browser work now,
-  in place of NetPositive): many sites really need Chrome. When stock Google Chrome is downloaded and run, Tabula
+- **Google Chrome works great in Tabula** (Ben; Tabula's web browser):
+  many sites really need Chrome. When stock Google Chrome is downloaded and run, Tabula
   recognises it: Tabula window chrome (server-side decorations, or
   whatever it takes: flags, policies, runtime patches), light/dark
   following the desktop, and Tabula Passwords filling and saving logins
@@ -431,7 +414,7 @@ as they land (with the commit), add new ones as they come up.
   `--invoke`, `--dismiss`, `--clear`, `--dnd`); GLib's
   `org.gtk.Notifications` (GApplication apps, their actions run on the
   app) and Flatpak apps through the GTK portal; a kit API for Tabula's
-  own apps (`tabula_kit::notify`: NetPositive's pages, Tracker's long
+  own apps (`tabula_kit::notify`: Tracker's long
   copies). Left: Do Not Disturb while sharing the screen, once there is
   screen sharing (app_server's image-copy capture fails every frame
   today; see multiplayer screen control).
@@ -480,7 +463,7 @@ as they land (with the commit), add new ones as they come up.
 - ~~**Settings & state backup: export/import in one file**~~ (Preferences ▸ Backup and `tabula-preferences --export/--inspect/--import`; tested headless) (Ben): a native
   Tabula utility that exports every Tabula setting and piece of saved
   state, across all Tabula apps (Preferences settings, Tracker views,
-  Deskbar, NetPositive bookmarks/history/learnt fields, Passwords' vault
+  Deskbar, Passwords' vault
   file, keymaps, window state, …), into a single compressed file, and
   imports one back (with a summary of what it holds and a confirm before
   replacing anything). In Rust, in process (e.g. tar + zstd crates);
@@ -552,12 +535,11 @@ as they land (with the commit), add new ones as they come up.
   (`Cx::set_fullscreen`).
 - ~~**Momentum scrolling and Mac touchpad behaviour**~~ (Ben): a flick
   glides on after the fingers lift and stops when they touch again
-  (app_server); a mouse wheel notch eases out in NetPositive; taps reach
+  (app_server); taps reach
   every kit control as a press then a release; two-finger tap is the
   secondary click, no middle-click emulation or drag lock.
 - ~~**⌘A in a text field**~~ (Ben) selects the field's text, not the
   page or folder.
-- ~~**NetPositive dark pages**~~ (Ben): View ▸ Dark Pages; per-item recolouring in WebRender as Chrome's Auto Dark Mode does it; pictures true, icons classified.
 
 - **No GNOME or GTK underneath** (Ben): Tabula shouldn't depend on
   any. Today a real session leans on GDM (login), gnome-keyring-daemon
@@ -605,28 +587,11 @@ as they land (with the commit), add new ones as they come up.
 - ~~**Screenshot**~~: Haiku's app (screen or active window, border,
   pointer, delay, five formats, folder choice, clipboard), ⌘⇧3/⌘⇧4/⌘⇧5
   (area) and Print Screen; every backend captures.
-- ~~Web browser~~: **NetPositive** (apps/browser) on Servo, in process,
-  drawn into a kit embedded subsurface: tabs, location field with search,
-  back/forward/reload/stop/home, zoom, bookmarks and history menus, page
-  context menus, `<select>`, dialogs, logins, file uploads, haiku error
-  pages, in-place reload, ~~find in page~~ (a script, since Servo 0.7
-  has no API), ~~downloads~~ (our own HTTP, as Servo 0.7 has no download
-  API), ~~scroll bars~~ (Servo draws none; a script reports
-  the scroll), ~~favicons in tabs~~. ~~dark pages~~ (a style per page, as
-  Servo misapplies the theme), ~~audio/video in pages~~ (our own servo-media backend on Viewer's
-  decoders), ~~a process and systemd unit per site~~ (memory limit, CPU
-  weights, stuck-page bar; guard.rs), ~~Servo's unfinished-but-working web
-  features on~~, ~~cameras, microphones and WebRTC calls~~ (rtc/: H.264 and
-  Opus, data channels, stats; loopback tested). Still to do: trying Google Meet and Zoom themselves,
-  permission prompts (Servo 0.7 implements none of the features behind
-  them but ~~notifications~~, which ask per site and go to the notification centre), ~~a colour picker for `<input type=color>`~~,
-  ~~password manager integration~~.
 - Password manager: ~~Rust 1Password SDK~~ (desktop-app integration;
   fake server for tests), ~~Passwords app~~ (browse, copy, edit, create,
   archive/delete, generator, lock with ~~Touch ID through fprintd~~ or
-  password), ~~browser integration~~ (NetPositive fills from the key
-  button and offers to save logins used), ~~passkeys~~ (WebAuthn in
-  NetPositive, keys made and kept by Passwords in 1Password items).
+  password), ~~browser integration~~ (the Tabula Passwords extension in
+  Chrome).
 - Viewer: ~~image zoom/pan~~ (full resolution up to the texture limit,
   View menu, pinch/⌘-scroll/double-click, drag and scroll to pan; halved
   levels for smooth fitting); ~~video playback (frames + audio)~~ (H.264 in mp4/Matroska, AV1 in
@@ -635,6 +600,12 @@ as they land (with the commit), add new ones as they come up.
 
 ## app_server
 
+- **Window menu on the title tab** (Ben): right-clicking a window's
+  yellow tab opens a context menu with everything that can be done to the
+  window: Hide, Close, Zoom, the tiling choices (halves, quarters, tile
+  with…), move to another workspace or screen, Always on Top, and so on.
+  The same commands as the shortcuts and the palette, and readable and
+  invokable by agents like any menu.
 - **Multiple monitors, managed like macOS Displays.** Hotplug of external
   displays (USB-C/Thunderbolt on the M2), each with its own resolution,
   refresh rate, scale factor (2× default on HiDPI, 1×/1.5× etc. on

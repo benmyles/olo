@@ -487,7 +487,7 @@ fn notifications_menu(quiet: bool) -> Menu {
         .item("Notification Settings…", "pref:notifications", None)
 }
 
-/// "NetPositive, Deskbar and 3 others", for the upgrade alert.
+/// "Terminal, Deskbar and 3 others", for the upgrade alert.
 fn upgrade_message(programs: &[String], closing: &[String]) -> String {
     let names: Vec<String> = programs
         .iter()

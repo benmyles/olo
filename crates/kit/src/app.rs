@@ -38,15 +38,6 @@ pub trait App: 'static {
     /// A message posted from another thread with [`Proxy::send`].
     fn message(&mut self, _cx: &mut Cx, _message: Box<dyn Any + Send>) {}
 
-    /// An embedded surface ([`Cx::embed`]) is ready for its renderer: on
-    /// creation, again after app_server reconnects (new handles), and when
-    /// the window's scale changes.
-    fn embedded(&mut self, _cx: &mut Cx, _embed: &Embedded) {}
-
-    /// An embedded surface is about to go (its window closes, or the
-    /// connection to app_server is lost): stop using its handles now.
-    fn embed_lost(&mut self, _cx: &mut Cx, _id: EmbedId) {}
-
     /// Light/dark changed; the kit already restyled every window.
     fn theme_changed(&mut self, _cx: &mut Cx, _palette: &Palette) {}
 
@@ -193,9 +184,6 @@ pub(crate) enum Request {
     Resize(WindowId, (u32, u32)),
     Fullscreen(WindowId, bool),
     KeepAwake(WindowId, bool),
-    Embed(WindowId, EmbedId),
-    PlaceEmbed(EmbedId, egui::Rect),
-    RemoveEmbed(EmbedId),
     Redraw(WindowId),
     RedrawAll,
     Activate(WindowId),
@@ -210,21 +198,6 @@ pub(crate) enum Request {
     LockSession,
     UnlockSession,
     Quit,
-}
-
-/// A surface embedded in a window ([`Cx::embed`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct EmbedId(pub(crate) u32);
-
-/// What a renderer needs to draw into an embedded surface.
-#[derive(Clone, Copy, Debug)]
-pub struct Embedded {
-    pub id: EmbedId,
-    pub window: WindowId,
-    pub display: raw_window_handle::RawDisplayHandle,
-    pub surface: raw_window_handle::RawWindowHandle,
-    /// Device pixels per logical pixel.
-    pub scale: f64,
 }
 
 /// Delivered to [`App::message`] after [`Cx::lock_session`].
@@ -329,25 +302,6 @@ impl Cx {
     /// callback (the compositor may take it out of fullscreen itself).
     pub fn is_fullscreen(&self, window: WindowId) -> bool {
         self.fullscreen.contains(&window)
-    }
-    /// A surface of the window's own for another renderer to draw into
-    /// (a web engine's GL), above the window's contents where
-    /// [`Cx::place_embed`] puts it. Input still goes to the window (the
-    /// app forwards it). Its handles arrive in [`App::embedded`]; stop
-    /// using them in [`App::embed_lost`] or before [`Cx::remove_embed`].
-    pub fn embed(&mut self, window: WindowId) -> EmbedId {
-        let id = EmbedId(self.next_id);
-        self.next_id += 1;
-        self.requests.push(Request::Embed(window, id));
-        id
-    }
-    /// Where the embedded surface sits, in the window's logical
-    /// coordinates (as egui's); its renderer draws `size × scale` pixels.
-    pub fn place_embed(&mut self, id: EmbedId, rect: egui::Rect) {
-        self.requests.push(Request::PlaceEmbed(id, rect));
-    }
-    pub fn remove_embed(&mut self, id: EmbedId) {
-        self.requests.push(Request::RemoveEmbed(id));
     }
 
     /// Keep the screen from dimming, locking or sleeping while the window

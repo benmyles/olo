@@ -224,19 +224,6 @@ fn main() {
   the frame's events (a touchpad tap brings press and release in one
   frame); pressing the open menu's title again closes it, but a menu that
   slid open as the pointer crossed the bar stays open for that press.
-* Embedded surfaces (another renderer inside a window: NetPositive's web
-  engine): `cx.embed(window)` makes a `wl_subsurface` of the window
-  (desynchronised, empty input region, with a viewport) and returns an
-  `EmbedId`; `App::embedded(cx, &Embedded)` then hands over its raw
-  display and surface handles and the scale, for a GL or Vulkan context of
-  the renderer's own. It is called again after a reconnect (new handles)
-  and when the window's scale changes (same surface; just resize). Place
-  it each frame with `cx.place_embed(id, rect)` (logical, as egui's; it
-  sits above the window's own drawing, which shows through until the
-  renderer's first frame). Input over it reaches the window as usual, for
-  the app to forward. `App::embed_lost(cx, id)` comes before the surface
-  goes (window closing, connection lost): drop everything that uses the
-  handles there. `cx.remove_embed(id)` removes one early.
 * Session lock (the lock screen only): `cx.lock_session()`, then
   `SessionLock::Locked(windows)` in `App::message` (one window per output,
   the first is primary; kept up to date as outputs come and go) and
@@ -658,7 +645,7 @@ PulseAudio protocol, plays nothing, and logs each stream once a second
 `$T run NAME PULSE_SERVER=unix:SOCKET …`.
 
 The headless server renders on the GPU's render node and announces it
-in dmabuf feedback, so GL clients (NetPositive's Servo) get hardware GL
+in dmabuf feedback, so GL clients (Chrome) get hardware GL
 as on the desktop rather than Mesa's software fallback.
 
 Clicks are global logical coordinates: on a screen that isn't at (0, 0),
@@ -968,8 +955,7 @@ the stop back and keeps sending finger scrolls every 8 ms, slowing by
 0.997 a millisecond, then sends the stop; fingers resting again (a hold
 gesture), pointer motion, a click, a swipe or pinch, or a wheel stop it.
 Clients thus see one continuous finger scroll (GTK adds no kinetic scroll
-of its own). NetPositive eases a mouse wheel's notch out over a few frames
-(`input.rs`); kit scroll views have egui's own smoothing. Test with
+of its own). Kit scroll views have egui's own smoothing. Test with
 `tsession flick NAME DY` (ten scroll steps, then the lift);
 `tsession scroll NAME 0 0` is a lift on its own.
 
@@ -1270,8 +1256,8 @@ for a job's bar: transient and silent), `close(id)`. Kinds are
 on the notifier's own thread; what the user does comes back to
 `App::message` as `NoteEvent::Action { id, key, token }` (bring a window
 forward with `cx.activate_with(win, token)`) or `NoteEvent::Closed`.
-NetPositive's page notifications and Tracker's "Finished copying…" (jobs
-of 10 s or more; `TABULA_TRACKER_NOTIFY_AFTER_MS` in debug builds) use it.
+Tracker's "Finished copying…" (jobs
+of 10 s or more; `TABULA_TRACKER_NOTIFY_AFTER_MS` in debug builds) uses it.
 
 `tabula-notifications` serves `org.freedesktop.Notifications` (spec 1.2)
 on the session bus, so `notify-send`, browsers, chat and mail clients and
@@ -1435,117 +1421,6 @@ put it away.
   what was chosen lately.
 * **Keys**: ↑/↓ and Page Up/Down move, Return chooses, the pointer
   hovers and clicks. Actions run on a worker thread.
-
-## NetPositive (apps/browser)
-
-The web browser: Servo 0.7, built in (`engine.rs`), with no system
-libraries (no gstreamer: media is ours, see below; no arboard, the kit
-has the clipboard; no webgpu, which would bring a second wgpu). Scripts
-run on SpiderMonkey with all its JITs (baseline, Ion, wasm), and pages in
-content processes of their own (see "Keeping pages apart"). `engine.rs`
-also turns on the web features Servo has finished but keeps behind
-preferences (WebGL 2, IntersectionObserver, IndexedDB, OffscreenCanvas,
-FontFace, container queries…), which sites like Zoom need to load.
-One `Servo` per process; each window `embed`s a subsurface and makes a
-`WindowRenderingContext` (surfman, EGL) on it in `App::embedded`; each tab
-is a `WebView` on its window's context, and only the active one is shown
-and painted. Servo draws straight into the subsurface; nothing is copied.
-
-* **Asking before quitting.** Quit, Close Window and the close box go
-  through `confirm`: if `what_would_be_lost` finds more than one tab, or
-  downloads running that the last window's closing would stop, a
-  `Win::Confirm` alert asks first (one per window, and one for Quit).
-* **Event loop.** Servo's waker posts `engine::Wake` through the kit
-  proxy (one in flight at a time); `App::message` runs
-  `servo.spin_event_loop()`. The delegate (`engine::Events`, also the
-  clipboard delegate) is called from inside that, while the app is
-  borrowed, so it only queues `(WebViewId, Event)`; `pump` acts on them
-  afterwards, and paints the active view of each window that got a new
-  frame (`paint` + `present`).
-* **Never blocking.** surfman leaves EGL's swap interval at 1, and Mesa
-  then waits for a frame callback on every swap: a hidden window would
-  hang the UI. `Surface::new` sets it to 0; Servo's refresh driver paces
-  frames. When the last surface goes (`embed_lost` on a reconnect),
-  `Surface::terminate` calls `eglTerminate`, so a new connection at the
-  same `wl_display` address can't get Mesa's cached display for the dead
-  one. Views are dropped before their context (the last view's `Painter`
-  deinitialises WebRender with the context current); after a reconnect
-  each tab reloads its URL on the new surface (history and form state are
-  lost; `save_state` keeps windows, tabs and the active one across a
-  binary upgrade).
-* **Input** (`input.rs`): the content rect is an egui widget
-  (`Sense::click_and_drag`, focus lock for Tab/arrows/Escape); window
-  events over it become Servo `InputEvent`s in device pixels: pointer
-  (a press in the page keeps the pointer until release), wheel (egui's
-  delta negated: DOM deltas scroll the view), keys (named keys as key
-  events, text as key down/up per character), IME, and Copy/Cut/Paste
-  (`Event::Paste` stores the text the clipboard delegate answers the
-  page's paste with). The view's focus is the page being the window's
-  keyboard target (`page_focus`), set *before* a click is forwarded and
-  kept while popups have the keyboard: a focus change after the click
-  would blur the element and close a `<select>`'s list.
-* **Page controls** (`EmbedderControl`): context menus and `<select>`
-  lists are kit popups (`MenuAnchor::At`, and `Over` with the chosen
-  option over the field, as a BeOS menu field). Their positions come in
-  CSS pixels, scaled by the page and pinch zoom. `alert` / `confirm` /
-  `prompt` are BAlerts over the window, HTTP logins an alert with Name and
-  Password, `<input type=file>` a kit `FilePanel`; Servo's own permission
-  requests (location, notifications) are denied for now (cameras and
-  microphones are ours: see "Cameras, microphones and calls" below).
-* **Colour schemes** (`scheme.rs`): pages that support dark go dark
-  with the desktop. Stylo takes system colours (`CanvasText`) from the
-  preference even for pages that don't choose a colour scheme, and Servo
-  paints the canvas with a single clear colour, never the page's
-  `Canvas`, so a zero-specificity style gives other pages `color-scheme:
-  light` and dark ones a Canvas background.
-* **Dark pages** (`dark.rs`; View ▸ Dark Pages: Automatic, the default,
-  follows the desktop; Always; Never; `dark_pages` in `browser.json`).
-  Done as Chrome's "Auto Dark Mode for Web Contents" does it: by what
-  each thing a page draws is, in our WebRender (`vendor/webrender`,
-  `src/dark.rs`; see vendor/README.md), never to the finished frame.
-  The scene builder turns CIELAB lightness around (L to 110 − L, hue and
-  chroma kept) for light backgrounds (rectangles, gradient stops; brighter
-  than 128 on Chrome's 0–255 scale), light or near-black borders, and
-  dark text and lines (below 150); colours already right for a dark page
-  stay, so a page that is dark by itself is left nearly alone with no
-  detection. Pictures, video and canvases are untouched, except small
-  ones (160 device pixels or less each way) that Chrome's image
-  classifier calls icons (few colours, not light-on-transparent, not
-  colourful): those are uploaded with their lightness turned around, so
-  a black SVG glyph shows white. The clear colours go dark too (blank
-  tabs, pages without a background). `dark::set` flips a process-wide
-  switch; Servo's painter sends WebRender a transaction at its next render,
-  the scene builder rebuilds every document whose scene predates the
-  change, and icons are re-uploaded the other way round.
-* **Resources** (`resources/`): Servo's defaults (MPL-2.0, see NOTICE)
-  with our own error, certificate and crash pages, which answer in haiku
-  as NetPositive did (new verses). `engine.rs` registers the reader.
-* The location field takes addresses, paths and searches
-  (`location::parse`, unit-tested; searches go to DuckDuckGo's HTML
-  page). A new tab is blank with the field focused; its first load makes
-  a fresh view, so the blank page isn't in its history. Links opened from
-  the context menu go to a background tab; `window.open` and
-  `target=_blank` to a new foreground tab. Settings (home page,
-  bookmarks, the last 1000 pages for the Go menu) are in `browser.json`;
-  cookies, local storage and the HTTP cache in
-  `$XDG_DATA_HOME/tabula/browser` (Servo's `config_dir`).
-* **Notifications** (`notify.rs`): Servo's Notification API is on. A
-  site's first `requestPermission` puts a bar over its tab (Allow / Don’t
-  Allow); the answer is kept by origin in `browser.json`
-  (`notifications`) and given straight away after. While the bar is up
-  the page's script waits on it, so the hang guard waives that tab.
-  Allowed notifications go to the desktop's notification service from a
-  worker thread (app "NetPositive", our icon, the site under the body,
-  tags replace); a click brings the tab forward. Servo 0.7 only shows a
-  notification after loading its pictures, never one without: a page
-  script gives those a one-pixel icon. (Servo has no way yet to fire the
-  page's `onclick`.) Test with a private bus (see Notifications) and a
-  page on `http://127.0.0.1`, NetPositive started with
-  `DBUS_SESSION_BUS_ADDRESS` set to it; page processes then stay out of
-  systemd, since `guard::hand_off` only asks a systemd that is on the bus.
-* Building it turns on vello_cpu's `multithreading` feature for every app
-  built alongside (Servo's canvas wants it), which broke egui's glyph
-  rasterizer: hence `vendor/epaint` (see `vendor/README.md`).
 
 ## Other toolkits' programs (app_server toolkits.rs, state.rs; tabula_theme::toolkit)
 
@@ -1836,7 +1711,7 @@ the same setting with `settings::update`). Its own settings (accounts,
 the generator, the window size) live in `passwords.json`.
 
 **Its own store** (`vault.rs`). Every vault and item lives on this
-computer, so the app, NetPositive and the palette never wait on
+computer, so the app, Chrome's extension and the palette never wait on
 1Password: `passwords.vault` in the config directory, "TABV", a format
 byte, a 24-byte nonce and the JSON sealed with XChaCha20-Poly1305 (header
 as associated data), written whole and atomically (0600) after each
@@ -1847,7 +1722,7 @@ missing is never overwritten with a new one. `TABULA_PASSWORDS_KEYFILE`
 keeps the key in a file instead; tsession sets it for every session, so
 test apps never touch the real keyring. The worker (`store.rs`) owns the
 store: it opens it at the unlock, lets it go at the lock (after a running
-sync), and answers the UI and NetPositive from it. Items keep 1Password's
+sync), and answers the UI, Chrome's extension and op from it. Items keep 1Password's
 types; each entry also records what 1Password last had (version, update
 time, archive state), whether it changed here, and a revision; deletions
 of synced items leave tombstones. Without an account (Keep Only on This
@@ -1979,211 +1854,10 @@ Passwords as above and `op` from `target/debug/tabula-op` through an `op`
 link in a scratch folder with the session's `WAYLAND_DISPLAY` and
 `XDG_RUNTIME_DIR`.
 
-### Find in NetPositive
+### The keychain (crates/keychain)
 
-Servo 0.7 has no find API, so `apps/browser/src/find.rs` builds a script
-from the Find window's settings (case, whole words, wrap, backwards) and
-evaluates it in the top frame: it walks the shown text nodes (skipping
-scripts, styles and anything without boxes), searches from the current
-selection, selects the match and scrolls it to the middle. The selection
-is the cursor, so Find Again (⌘G) continues and a click moves the start.
-Not found puts a note in the status line.
-
-### Scroll bars in NetPositive
-
-Servo 0.7 draws no scroll bars and doesn't tell the embedder where a page
-is scrolled, so `apps/browser/src/scroll.rs` adds a script to the top
-frame that reports `[scrollX, scrollY, width, height, innerWidth,
-innerHeight]` whenever one changes (on scroll, resize and a
-ResizeObserver, at most once a frame). NetPositive draws a kit
-`ScrollBar` beside the page (always the vertical one, the horizontal one
-when the page is wider than the window); moving one runs `scrollTo`, and
-for a moment the bar trusts its own position over the page's reports,
-which lag a frame or two.
-
-### Tab icons in NetPositive
-
-Servo decodes a page's favicon and says when it changes;
-`apps/browser/src/favicon.rs` scales it to a 32 px square (an area
-average going down, whole pixels going up, aspect kept) and the tab strip
-draws it at 16 points. A page that loads without one gets the generic
-`document` icon instead of the last page's.
-
-### Dark pages in NetPositive
-
-NetPositive tells Servo the desktop's theme (`notify_theme_change`, also
-when it changes), so `prefers-color-scheme: dark` works. Servo 0.7 takes
-system colours from that preference even for pages that chose no colour
-scheme, and doesn't paint a dark page's canvas, so
-`apps/browser/src/scheme.rs` adds a zero-specificity style to every
-document in dark mode: `color-scheme: light` for pages that don't support
-dark, and a Canvas background (plus Highlight selection) for those that
-do, judged by `<meta name=color-scheme>` and the root's computed
-`color-scheme`.
-
-### Cameras, microphones and calls in NetPositive
-
-Servo 0.7's WebRTC is a stub, so `apps/browser/src/rtc/` does it. A user
-script (`shim.js`) gives top-level secure pages `navigator.mediaDevices`,
-`MediaStream(Track)`, `RTCPeerConnection`, transceivers, senders,
-receivers, `RTCDataChannel` and `getStats()`. It talks to NetPositive
-through `console.log` with a per-process marker; answers and events come
-back through a window function only the token names (a reply carries
-`id`, an event `ev`).
-
-* **Devices** (`capture.rs`): cameras through Video4Linux (pure Rust;
-  NV12, YUYV and MJPEG made I420), microphones through the sound server.
-  The page asks first: a bar under the toolbar, remembered per site until
-  NetPositive quits. `TABULA_BROWSER_FAKE_CAMERA=1` makes a test card the
-  only camera (real ones aren't even listed), for tests; with
-  `PULSE_SERVER` at tabula-fakesound the microphone is fake too.
-* **The hub** (`hub.rs`): sources (a device, the far end of a call)
-  publish frames; tracks are a page's handles on a source; streams group
-  tracks. `<video>`/`<audio>` playing a stream (`srcObject`) read it from
-  NetPositive over a socket (`live.rs`) into our media player in the
-  page's process.
-* **Calls** (`peer.rs`, `codec.rs`): webrtc-rs 0.21 in process, on a
-  2-thread tokio runtime. Each connection runs the page's calls in order
-  on a task of its own. Sending: a *slot* per transceiver, our own track
-  fed from a hub track by an encoder thread (H.264 Constrained Baseline
-  via openh264, Opus 48 kHz); `replaceTrack` just moves which hub track a
-  slot reads. Receiving: each transceiver is a hub source; H.264 is
-  depacketized into access units and decoded on a thread of its own,
-  which waits for a key picture and asks for one (PLI) after a gap. An
-  interceptor (`KeyRequests`) passes the far end's PLI/FIR on to us,
-  since webrtc-rs keeps inbound RTCP to its interceptors by default.
-  Kinds and m-line order come from the descriptions (a transceiver
-  doesn't know its kind). `getStats()` is webrtc-rs's report plus our
-  picture counts.
-* **Testing**: two `RTCPeerConnection`s in one page, the fake camera and
-  `tabula-fakesound` (its log shows the far end's sound arriving); see
-  the "a call, end to end" journal entry.
-
-### Audio and video in NetPositive
-
-Servo plays media through a servo-media backend; built without gstreamer
-it would play nothing, so `apps/browser/src/media.rs` installs ours before
-Servo starts (the first backend to arrive wins). It plays with Viewer's
-decoders: `tabula_preview::video::Video` (H.264 / AV1 in mp4 / WebM /
-Matroska) and `audio` (symphonia, Opus), which read from an
-`input::Input`, a file or anything `Read + Seek`. Servo pushes the fetched
-bytes into a shared buffer; readers block for bytes not yet there, so
-playback starts early and seeking ahead waits. A driver thread per player
-keeps the clock (the sound's, or its own without a sound server), hands
-Servo each picture as BGRA, and reports state, position and the end.
-Web Audio still goes to servo-media's dummy backend (streams and calls
-are ours, below).
-In multiprocess mode the player runs in the content process, which
-installs the backend too (`guard::content_process`).
-
-Memory follows what's playing, not how many videos a page has (slack.com
-starts twenty-eight, many 2920×2000):
-
-* **Downloads** keep their first MiB in memory and the rest in a
-  nameless file on disk (`tabula_xdg::scratch_file`: O_TMPFILE under
-  `~/.cache/tabula/scratch`, not /tmp, which is memory); readers `pread`
-  it without holding up the bytes coming in.
-* **Decoders are budgeted per page** (`decode_pixels`: the page's memory
-  limit / 128 in pixels, at most 18 M). A player asks `start_decoding`
-  before making one; over budget, the decoders that started longest ago
-  (and at least `TENURE`, 1 s, ago; never audible ones) are asked to let
-  go (`Cmd::Hold`) and the player tries again once they've gone (a let-go
-  decoder counts until its thread has finished: `Video::close` hands it
-  back, then `malloc_trim`). Only playing or seeking evicts: a first
-  picture, or a player held while playing, waits patiently for room
-  others leave. A held player keeps its picture on show. A player paused for
-  `IDLE_RELEASE` (2 s) with its picture up lets its decoder go too.
-* **Muted videos out of sight pause** (the page script, with an
-  IntersectionObserver, as other browsers do; also when autoplay starts
-  one already out of sight) and play again when scrolled back, so their
-  decoders go and the visible ones get the room. A page's own `pause()`
-  or `play()` overrides that.
-* **Queued frames are compact**: YUV planes (`Pic::H264` / `Pic::Av1`),
-  converted to BGRA (`Options::bgra`, what Servo takes, no copy) only at
-  the front of the queue, and read-ahead is bounded in bytes
-  (`QUEUE_BYTES`, 24 MiB: two to six frames).
-
-Each video element still holds one full-size picture in Servo (it takes
-the natural size from the frame, so a smaller one would resize the
-element). slack.com settles at about 840 MB (and loads within 512 MB);
-forty 2920×2000 videos at about 500 MB.
-
-A page script works around Servo 0.7: it fires `timeupdate` only once
-something has read an element's `textTracks` (so the script reads it as
-elements arrive), and after reaching the end it stays at
-HAVE_CURRENT_DATA and never plays again (so `play()` on an element that
-ended reloads it first).
-
-### Keeping pages apart in NetPositive
-
-Servo runs in multiprocess mode: each site's pages (an event loop) get a
-content process, which is this binary again with `--content-process
-TOKEN` (`main` checks first). `guard.rs` then keeps each one boxed in:
-
-* **A systemd unit per process.** The process Servo starts asks the
-  user's systemd (session bus) to run the same command as a transient
-  service, `tabula-browser-<ui pid>-<pid>.service`, waits for it to be
-  active and exits; the service's process connects to Servo in its place.
-  The unit has `MemoryMax` (`guard::page_memory`: a quarter of RAM,
-  1.5–4 GiB; no swap, so a runaway page is OOM-killed instead of
-  grinding), `TasksMax` and a `CPUWeight` NetPositive changes later
-  (`SetUnitProperties`): 100 for the tab you're looking at, 20 hidden,
-  1 stuck. The user manager owns its cgroups, so this needs no
-  privileges, and weights go both ways (nice can only go down without
-  `RLIMIT_NICE`). Without systemd the page stays where Servo started it,
-  niced to 5 with an `RLIMIT_DATA`, and the watch kills it over its RSS
-  limit. A page in a unit isn't NetPositive's child, so it watches
-  NetPositive's pid (`TABULA_BROWSER_UI_PID`, a pidfd) and exits with it;
-  one left in process has `PR_SET_PDEATHSIG`.
-  `TABULA_BROWSER_PAGE_MEMORY` (MiB) sets the limit for tests;
-  `TABULA_BROWSER_SINGLE_PROCESS=1` runs everything in one process.
-* **Which tab is which process.** Every two seconds each tab is asked, by
-  `evaluate_javascript`, for its process id: `canPlayType` of
-  `video/x-tabula-pid; key=…; bit=N` is answered by our media backend in
-  the content process, bit by bit (`guard::pid_bit`; the key is a random
-  one in the environment, so pages can't ask). A tab that hasn't
-  answered in ten seconds is stuck: a bar offers Wait or Stop Page, which
-  kills the process.
-* **Ends.** The `page-guard` thread lists our units each second, learns
-  their main pids, and when one fails reads `Result` (`oom-kill` says
-  "used too much memory" in the tab's bar), then resets it. A NetPositive
-  that crashed leaves failed units, collected on the next start.
-* Servo 0.7 never noticed a content process dying (its pages stayed on
-  the dead event loop and reloads went nowhere), and by default exited
-  the browser when any page panicked: `hard_fail` is off, and
-  `vendor/servo-constellation` treats a process whose lifeline breaks as
-  its event loop panicking, so its tabs get the crash page and reload in
-  a new process.
-
-### Colours in NetPositive
-
-`<input type=color>` arrives as an `EmbedderControl::ColorPicker`;
-NetPositive opens a "Choose a Colour" sheet with a kit `ColorControl`.
-OK selects and submits the colour; Servo 0.7 then sets the value but
-fires no events, so a script waits for the value to land and dispatches
-`input` and `change` on the focused colour input. Cancel submits the
-colour the page had.
-
-### Downloads in NetPositive
-
-Servo 0.7 has no download API, so `apps/browser/src/downloads.rs` finds
-downloads itself and fetches them with ureq on a worker thread (the page's
-cookies, user agent and referrer go along). A user script reports three
-things over the console channel: Servo's "Unknown content type" page (the
-tab goes back and the URL is downloaded), clicks on `a[download]` links
-(also detached anchors clicked from script, and `a.download`, which Servo
-doesn't reflect, is polyfilled), and `blob:` contents, read in the page and
-sent in base64 chunks since only the page can read them. `data:` URLs are
-decoded in process. The context menu adds Download Linked File and
-Download Image. Files go to the XDG download folder as `name.part` and are
-renamed when complete (`name (2).ext` if taken); the name comes from
-Content-Disposition, the `download` attribute or the URL. The Downloads
-window (Window menu) lists them newest first with live progress and rate,
-Stop, Retry (HTTP only), Open and Show (Tracker on the folder).
-
-### Logins in NetPositive (crates/keychain)
-
-While Passwords runs it serves other Tabula apps on
+While Passwords runs it serves other Tabula programs (Chrome's extension
+host, the palette, `op`) on
 `$XDG_RUNTIME_DIR/tabula-keychain-$WAYLAND_DISPLAY.sock`
 (`TABULA_KEYCHAIN_SOCKET` overrides): one JSON request, one JSON reply per
 connection, and only for our own uid running a `tabula-*` program
@@ -2202,57 +1876,3 @@ login into a plain-http page (localhost aside). Every login that fits is
 listed, nearest first (`tabula_keychain::closeness`: the page's own host,
 then its parent domains from the nearest, then the site's other hosts),
 then by title; an item that can't be read is logged, not hidden silently.
-
-NetPositive (`apps/browser/src/logins.rs`): the toolbar's key button asks
-for the page's logins (starting Passwords if needed, then waiting for the
-unlock) and fills the chosen one into the top frame with
-`evaluate_javascript`, after checking the page is still at that origin; a
-one-time code goes on the clipboard with `copy_secret`. The page's
-context menu in a text or password field ends with a Passwords submenu:
-each of the page's logins with its Username and Password, which fill just
-that field (`logins::field_script`, the focused element, origin checked).
-The page's logins are fetched when it finishes loading (`Purpose::Prefetch`)
-and kept per host for `KNOWN_FOR` (10 min), so the menu opens with them at
-once; otherwise it waits up to `FIELD_MENU_WAIT` (400 ms), then opens
-without them (Open Passwords).
-
-Finding the fields (`logins::fill_script`): only fields a person could
-use count (laid out at least 4 px, on screen, visible, not aria-hidden,
-disabled or read-only), so decoys like Google's hidden password field are
-skipped. With no password field on the page (two-step sign-ins), the
-username goes into the focused text field, else one marked
-`autocomplete=username`, else one whose name, id, aria-label or
-autocomplete looks like a user, mail, login or phone field, else an email
-field, else the only text field. **Learnt fields**: filling a field from
-the context menu records its selector (id, name, or an nth-of-type path)
-for that page (origin and path, no query) in
-`netpositive-fields.json` in the config dir (`logins::Learnt`), and the
-key button tries the learnt fields first next time. A user script
-(Servo's `UserContentManager`) watches the top frame for a form sent with
-a password and reports it through `console.log` with a per-process random
-token held in its closure (`show_console_message` drops everything
-else), so an iframe can't make up logins for the page around it. Unless
-Passwords already knows it, a bar offers Save (or Update).
-
-Testing: serve a form on localhost (the fake's "Tabula Test Site" login is
-for `http://localhost`), and start NetPositive with the same variables as
-Passwords so the copy it starts uses the fake.
-
-**Passkeys** (`apps/browser/src/passkeys.rs`, `apps/passwords/src/passkey.rs`).
-A second user script gives top-level secure pages WebAuthn: its own
-`navigator.credentials` (`create`/`get` with `publicKey`; `store` and
-conditional mediation aren't offered) and `PublicKeyCredential` with the
-response classes, `toJSON` and the `parse…FromJSON` helpers. Requests reach
-NetPositive like captured logins (marker + token); answers go back by
-`evaluate_javascript` calling a function named with the token. NetPositive
-checks the relying party (the page's host, or a registrable domain above
-it, via `servo::is_reg_domain`), asks in a bar (Save Passkey; Sign In with
-a pop-up when there are several), builds the client data and sends its
-hash. Passwords checks the relying party against the page again, makes
-P-256 keys from the system's random source, keeps each in a login item's
-"Passkey" section (credential ID, relying party, user handle and name, the
-key concealed: replacing the same account's passkey, joining the login with
-that username, or a new login), and signs `authenticatorData ‖ hash`.
-Attestation is "none" with a zero AAGUID; flags are UP, UV (Passwords is
-unlocked), BE and BS; the counter stays 0. 1Password syncs the section but
-its own apps don't treat it as a passkey. Only ES256; no iframes.

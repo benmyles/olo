@@ -6,7 +6,6 @@ mod cli;
 mod edit;
 mod generator;
 mod lock;
-mod passkey;
 mod store;
 mod sync;
 mod vault;
@@ -515,7 +514,8 @@ impl Passwords {
         }
     }
 
-    /// Another app asks (NetPositive, for a page's logins or passkeys).
+    /// Another app asks (Chrome's extension for a page's logins, the
+    /// palette, op).
     fn keychain(&mut self, cx: &mut Cx, incoming: Incoming) {
         if let Request::Cli { query } = &incoming.request {
             if !self.security.op_cli {
@@ -613,10 +613,6 @@ impl Passwords {
             Request::Logins { url } | Request::Fill { url, .. } | Request::Check { url, .. } | Request::Save { url, .. } => {
                 let url = url.clone();
                 Box::new(move |w| store::fits(w, &url))
-            }
-            Request::Passkeys { rp_id, .. } | Request::PasskeyCreate { rp_id, .. } | Request::PasskeySign { rp_id, .. } => {
-                let rp_id = rp_id.clone();
-                Box::new(move |w| passkey::near(&w.url, &rp_id))
             }
         };
         let candidates: Vec<(String, String)> = self
@@ -1451,7 +1447,7 @@ fn main() {
     }
     tabula_kit::run(APP_ID, |cx| {
         instance::listen(APP_ID, cx.proxy());
-        // Logins for NetPositive's pages.
+        // Logins for Chrome's pages, the palette's search and op.
         let keychain = cx.proxy();
         if let Err(e) = tabula_keychain::serve(move |incoming| keychain.send(incoming)) {
             tracing::warn!("keychain: {e}");

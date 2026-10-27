@@ -1,5 +1,5 @@
 //! Where a media file's bytes come from: a file on disk, or anything else
-//! that can be read and seeked, like NetPositive's download as it arrives.
+//! that can be read and seeked.
 //! Each decoder (pictures, sound) opens its own reader.
 
 use std::{
