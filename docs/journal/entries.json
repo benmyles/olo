@@ -1000,5 +1000,17 @@
   "title": "Drop files on an app in Deskbar",
   "caption": "Files dragged onto a running application in Deskbar highlight it and open with it when dropped.",
   "image": "2026-10-27/023406-drop-files-on-an-app-in-deskbar.png"
+ },
+ {
+  "time": "2026-10-27T02:37:07",
+  "title": "Spring-loaded folders",
+  "caption": "Rest a drag on a folder for a second and it opens, so the drag can go on into it (here a file dragged onto Dest, whose window opened under the pointer).",
+  "image": "2026-10-27/023707-spring-loaded-folders.png"
+ },
+ {
+  "time": "2026-10-27T02:37:59",
+  "title": "Views scroll under a drag",
+  "caption": "A drag held near the top or bottom of any scrolling view scrolls it on, faster nearer the edge, so a drop can reach what was out of view.",
+  "image": "2026-10-27/023759-views-scroll-under-a-drag.png"
  }
 ]

@@ -237,6 +237,8 @@ and offers actions; where it is dropped picks the type and the action.
   where they are, from any app. Viewer and Quick Look drag their file out
   from the picture when it fits (`Preview::take_drag_out`: a drag that
   doesn't pan), Quick Look also from its footer's icon.
+  Tracker's folders are spring-loaded: a drag resting on one for
+  `view::SPRING` (1 s) opens it (`item_drop` times it; `take_spring`).
   Deskbar takes files dropped on a running application's row and opens
   them with it (`open::open_with(handler, paths)`: our apps get them all
   as arguments, a desktop entry at once with %F/%U or once each). `icons::drag_icon(ctx, icon, size, count,
@@ -293,7 +295,7 @@ as Log Viewer's syntax highlighting does), `Slider`
 `ScrollView` (`show`, `show_rows` for virtualised content, `show_in(ui,
 rect, |ui, viewport|)` for content you lay out yourself, `reveal`,
 `ScrollView::scroll_to(ctx, id, offset)`, `.auto_hide(true)` to drop the
-bar when content fits; `SCROLL_BAR` is its width), `ScrollBar`
+bar when content fits; a drag held within 24 px of an edge scrolls it on; `SCROLL_BAR` is its width), `ScrollBar`
 (`::vertical(id).show(ui, rect, &mut offset, content, view)`, a lone bar
 for content the kit doesn't scroll, such as a web page), `ColorControl`
 (BColorControl: grey/red/green/blue ramps and number fields for an

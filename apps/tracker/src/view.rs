@@ -171,7 +171,11 @@ pub fn item_drop(ctx: &egui::Context, h: &Hover, over: Option<(usize, &Entry, bo
     if let Some((i, e, selected)) = over
         && let Some(dir) = drop_folder(e, h.from_here && selected)
     {
-        return (take_drop(ctx, h, dir), Some(i));
+        let took = take_drop(ctx, h, dir);
+        if took {
+            spring(ctx, dir);
+        }
+        return (took, Some(i));
     }
     match here {
         // Dropping in the folder it came from would do nothing (another
@@ -182,6 +186,46 @@ pub fn item_drop(ctx: &egui::Context, h: &Hover, over: Option<(usize, &Entry, bo
         }
         _ => (false, None),
     }
+}
+
+/// How long a drag rests on a folder before it springs open.
+pub const SPRING: Duration = Duration::from_millis(1000);
+
+/// The folder a drag is resting on, since when, and whether it opened.
+#[derive(Clone)]
+struct Spring {
+    dir: PathBuf,
+    since: Instant,
+    opened: bool,
+}
+
+fn spring_id() -> egui::Id {
+    egui::Id::unique("tracker-spring")
+}
+
+/// A drag rests on folder `dir` this frame: after [`SPRING`] it opens
+/// (spring-loaded folders), so the drag can go on into it.
+fn spring(ctx: &egui::Context, dir: &Path) {
+    let now = Instant::now();
+    let mut s = ctx.data(|d| d.get_temp::<Spring>(spring_id())).filter(|s| s.dir == dir).unwrap_or(Spring { dir: dir.to_owned(), since: now, opened: false });
+    // A pause in hovering (the drag left and came back) starts again.
+    if ctx.data(|d| d.get_temp::<Instant>(spring_id().with("seen"))).is_some_and(|t| now - t > Duration::from_millis(250)) {
+        s = Spring { dir: dir.to_owned(), since: now, opened: false };
+    }
+    ctx.data_mut(|d| d.insert_temp(spring_id().with("seen"), now));
+    if !s.opened && now - s.since >= SPRING {
+        s.opened = true;
+        ctx.data_mut(|d| d.insert_temp(spring_id().with("open"), Some(dir.to_owned())));
+    }
+    if !s.opened {
+        ctx.request_repaint_after(Duration::from_millis(50));
+    }
+    ctx.data_mut(|d| d.insert_temp(spring_id(), s));
+}
+
+/// A folder a drag sprang open this frame (the window opens it).
+pub fn take_spring(ctx: &egui::Context) -> Option<PathBuf> {
+    ctx.data_mut(|d| d.remove_temp::<Option<PathBuf>>(spring_id().with("open"))).flatten()
 }
 
 /// Dragging from and dropping on a [`ColumnListView`] of `entries` (a

@@ -1289,31 +1289,9 @@ impl Tracker {
     }
 }
 
-impl App for Tracker {
-    fn save_state(&mut self, cx: &Cx) -> Option<String> {
-        let mut ids: Vec<&WindowId> = self.windows.keys().collect();
-        ids.sort(); // opening order, so they stack as before
-        let mut saved = Saved { hidden: self.hidden, folders: Vec::new(), find: 0, desktop_selected: Vec::new() };
-        for id in ids {
-            match &self.windows[id] {
-                Win::Folder(f) => saved.folders.push(SavedFolder {
-                    path: f.path.clone(),
-                    size: cx.window_size(*id).unwrap_or_else(|| folder_options(&f.path).size),
-                    view: f.view,
-                    sort: f.sort,
-                    selected: f.selected_paths(),
-                }),
-                Win::Find(_) => saved.find += 1,
-                Win::Desktop(d) => saved.desktop_selected = d.selected_paths(),
-                _ => {}
-            }
-        }
-        serde_json::to_string(&saved).ok()
-    }
-
-    fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
-        self.sync_watches();
-        self.asked_drop_ui(cx, window, ui);
+impl Tracker {
+    /// One window's contents, by kind.
+    fn window_ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
         match self.windows.get(&window) {
             Some(Win::Folder(_)) => self.folder_ui(cx, window, ui),
             Some(Win::Desktop(_)) => {
@@ -1381,6 +1359,39 @@ impl App for Tracker {
             Some(Win::Status) => self.status_ui(cx, window, ui),
             Some(Win::Preview) => self.preview_ui(cx, window, ui),
             None => {}
+        }
+    }
+}
+
+impl App for Tracker {
+    fn save_state(&mut self, cx: &Cx) -> Option<String> {
+        let mut ids: Vec<&WindowId> = self.windows.keys().collect();
+        ids.sort(); // opening order, so they stack as before
+        let mut saved = Saved { hidden: self.hidden, folders: Vec::new(), find: 0, desktop_selected: Vec::new() };
+        for id in ids {
+            match &self.windows[id] {
+                Win::Folder(f) => saved.folders.push(SavedFolder {
+                    path: f.path.clone(),
+                    size: cx.window_size(*id).unwrap_or_else(|| folder_options(&f.path).size),
+                    view: f.view,
+                    sort: f.sort,
+                    selected: f.selected_paths(),
+                }),
+                Win::Find(_) => saved.find += 1,
+                Win::Desktop(d) => saved.desktop_selected = d.selected_paths(),
+                _ => {}
+            }
+        }
+        serde_json::to_string(&saved).ok()
+    }
+
+    fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
+        self.sync_watches();
+        self.asked_drop_ui(cx, window, ui);
+        self.window_ui(cx, window, ui);
+        // A drag rested on a folder: open it, so the drag can go on in.
+        if let Some(dir) = view::take_spring(ui.ctx()) {
+            self.open_folder(cx, &dir);
         }
     }
 

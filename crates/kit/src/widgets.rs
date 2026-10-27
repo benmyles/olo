@@ -1195,6 +1195,34 @@ impl ScrollView {
                 changed = true;
             }
         }
+        // Something dragged near an edge: scroll on that way, faster the
+        // nearer it is, so a drop can reach what is out of view.
+        if let Some(h) = crate::dnd::hover(ui.ctx())
+            && content.contains(h.pos)
+        {
+            const EDGE: f32 = 24.0;
+            const SPEED: f32 = 900.0;
+            let dt = ui.input(|i| i.stable_dt).clamp(0.001, 0.05);
+            let step = |into: f32| (1.0 - into / EDGE).clamp(0.0, 1.0) * SPEED * dt;
+            let mut scrolled = false;
+            for (vertical, len, view) in [(true, full.y, content.height()), (false, full.x, content.width())] {
+                if (vertical && !self.vertical) || (!vertical && !self.horizontal) || len <= view {
+                    continue;
+                }
+                let (pos, lo, hi, off) = if vertical { (h.pos.y, content.top(), content.bottom(), &mut offset.y) } else { (h.pos.x, content.left(), content.right(), &mut offset.x) };
+                let before = *off;
+                if pos < lo + EDGE {
+                    *off -= step(pos - lo);
+                } else if pos > hi - EDGE {
+                    *off += step(hi - pos);
+                }
+                *off = off.clamp(0.0, len - view);
+                scrolled |= *off != before;
+            }
+            if scrolled {
+                changed = true;
+            }
+        }
         if vertical_bar {
             let bar = Rect::from_min_max(pos2(content.right(), inner.top()), pos2(inner.right(), content.bottom()));
             changed |= scroll_bar(ui, self.id.with("v"), bar, true, &mut offset.y, full.y, content.height(), &p);

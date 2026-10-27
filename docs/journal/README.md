@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Views scroll under a drag
+
+*02:37* — A drag held near the top or bottom of any scrolling view scrolls it on, faster nearer the edge, so a drop can reach what was out of view.
+
+![Views scroll under a drag](2026-10-27/023759-views-scroll-under-a-drag.png)
+
+### Spring-loaded folders
+
+*02:37* — Rest a drag on a folder for a second and it opens, so the drag can go on into it (here a file dragged onto Dest, whose window opened under the pointer).
+
+![Spring-loaded folders](2026-10-27/023707-spring-loaded-folders.png)
+
 ### Drop files on an app in Deskbar
 
 *02:34* — Files dragged onto a running application in Deskbar highlight it and open with it when dropped.
