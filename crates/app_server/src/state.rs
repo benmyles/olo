@@ -145,6 +145,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     // desktop
     pub space: Space<WindowElement>,
     pub popups: PopupManager,
+    /// Touchpad scrolls gliding on after the fingers lift.
+    pub momentum: crate::momentum::Momentum,
 
     // smithay state
     pub compositor_state: CompositorState,
@@ -883,6 +885,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             handle,
             space: Space::default(),
             popups: PopupManager::default(),
+            momentum: Default::default(),
             compositor_state,
             data_device_state,
             layer_shell_state,

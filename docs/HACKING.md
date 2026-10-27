@@ -176,6 +176,10 @@ fn main() {
   on that screen) or puts it back at its own size; `cx.is_fullscreen`
   says which. A `resize` while fullscreen becomes the size it comes back
   to. Quick Look toggles it with F.
+* Taps: a touchpad tap brings a press and its release together; the kit
+  holds such a release over to the next frame (`input::split_taps`), so
+  egui sees the button down for a frame and press-and-hold controls
+  (menus, scroll arrows, drags) work from taps too.
 * The menu bar opens a menu on press, as on BeOS, reading the press from
   the frame's events (a touchpad tap brings press and release in one
   frame); pressing the open menu's title again closes it, but a menu that
@@ -729,6 +733,22 @@ panel low on the screen under the pointer for 1.6 s (in a real session
 the worker reports the volume it set; headless simulates a volume).
 `TABULA_OSD_SHEET=/tmp/o.png cargo test -p app_server osd_sheet` draws
 every state.
+
+## The touchpad (app_server udev.rs, momentum.rs)
+
+Preferences ▸ Touchpad goes into libinput (`configure_pointer`), with the
+rest set as a Mac trackpad behaves: a two-finger tap is the secondary
+click, no drag lock, no middle-click emulation. Scrolling has momentum, as
+on a Mac (`momentum.rs`): when the fingers lift (libinput's scroll of 0)
+while moving faster than 0.3 px/ms over the last 80 ms, app_server holds
+the stop back and keeps sending finger scrolls every 8 ms, slowing by
+0.997 a millisecond, then sends the stop; fingers resting again (a hold
+gesture), pointer motion, a click, a swipe or pinch, or a wheel stop it.
+Clients thus see one continuous finger scroll (GTK adds no kinetic scroll
+of its own). NetPositive eases a mouse wheel's notch out over a few frames
+(`input.rs`); kit scroll views have egui's own smoothing. Test with
+`tsession flick NAME DY` (ten scroll steps, then the lift);
+`tsession scroll NAME 0 0` is a lift on its own.
 
 ## Night light (app_server night.rs)
 

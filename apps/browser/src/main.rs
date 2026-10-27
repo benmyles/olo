@@ -1351,7 +1351,11 @@ impl NetPositive {
             });
         }
         let events = ui.input(|i| i.events.clone());
-        let fwd = input::forward(&events, viewport, keyboard, &mut b.pointer);
+        let dt = ui.input(|i| i.unstable_dt).min(0.1);
+        let fwd = input::forward(&events, viewport, keyboard, &mut b.pointer, dt);
+        if fwd.scrolling {
+            ui.ctx().request_repaint();
+        }
         if fwd.clicked {
             page.request_focus();
             b.menu = None;

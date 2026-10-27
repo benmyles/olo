@@ -349,6 +349,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn on_pointer_button<B: InputBackend>(&mut self, evt: B::PointerButtonEvent) {
+        self.stop_glide();
         let serial = SCOUNTER.next_serial();
         let button = evt.button_code();
 
@@ -371,6 +372,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn on_gesture_swipe_begin<B: InputBackend>(&mut self, evt: B::GestureSwipeBeginEvent) {
+        self.stop_glide();
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
         pointer.gesture_swipe_begin(
@@ -408,6 +410,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn on_gesture_pinch_begin<B: InputBackend>(&mut self, evt: B::GesturePinchBeginEvent) {
+        self.stop_glide();
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
         pointer.gesture_pinch_begin(
@@ -447,6 +450,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn on_gesture_hold_begin<B: InputBackend>(&mut self, evt: B::GestureHoldBeginEvent) {
+        // Fingers resting on the touchpad.
+        self.stop_glide();
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
         pointer.gesture_hold_begin(
@@ -653,13 +658,72 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
             }
             if evt.source() == AxisSource::Finger {
-                if evt.amount(Axis::Horizontal) == Some(0.0) {
+                let now = std::time::Instant::now();
+                let (h, v) = (evt.amount(Axis::Horizontal), evt.amount(Axis::Vertical));
+                if h.unwrap_or(0.0) == 0.0 && v.unwrap_or(0.0) == 0.0 {
+                    // The fingers lifted: glide on if they were moving,
+                    // and hold the stop back until the glide ends.
+                    if self.momentum.lifted(now) {
+                        self.start_glide();
+                        return;
+                    }
+                } else {
+                    self.momentum.scrolled(now, horizontal_amount, vertical_amount);
+                }
+                if h == Some(0.0) {
                     frame = frame.stop(Axis::Horizontal);
                 }
-                if evt.amount(Axis::Vertical) == Some(0.0) {
+                if v == Some(0.0) {
                     frame = frame.stop(Axis::Vertical);
                 }
+            } else {
+                self.stop_glide();
             }
+            let pointer = self.pointer.clone();
+            pointer.axis(self, frame);
+            pointer.frame(self);
+        }
+    }
+
+    /// Move the glide every few milliseconds until it ends or is stopped.
+    fn start_glide(&mut self) {
+        use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
+        let generation = self.momentum.generation;
+        let _ = self.handle.insert_source(Timer::from_duration(crate::momentum::STEP), move |_, _, state| {
+            if state.momentum.generation != generation || !state.momentum.gliding() {
+                return TimeoutAction::Drop;
+            }
+            let time = InputTime::now();
+            let pointer = state.pointer.clone();
+            match state.momentum.step(std::time::Instant::now()) {
+                Some((dx, dy)) => {
+                    let mut frame = AxisFrame::new(time).source(AxisSource::Finger);
+                    if dx != 0.0 {
+                        frame = frame.value(Axis::Horizontal, dx);
+                    }
+                    if dy != 0.0 {
+                        frame = frame.value(Axis::Vertical, dy);
+                    }
+                    pointer.axis(state, frame);
+                    pointer.frame(state);
+                    TimeoutAction::ToDuration(crate::momentum::STEP)
+                }
+                None => {
+                    let frame = AxisFrame::new(time).source(AxisSource::Finger).stop(Axis::Horizontal).stop(Axis::Vertical);
+                    pointer.axis(state, frame);
+                    pointer.frame(state);
+                    TimeoutAction::Drop
+                }
+            }
+        });
+    }
+
+    /// Fingers back on the touchpad, a click or another scroll: a glide
+    /// stops where it is.
+    pub fn stop_glide(&mut self) {
+        if self.momentum.cancel() {
+            let time = InputTime::now();
+            let frame = AxisFrame::new(time).source(AxisSource::Finger).stop(Axis::Horizontal).stop(Axis::Vertical);
             let pointer = self.pointer.clone();
             pointer.axis(self, frame);
             pointer.frame(self);
@@ -978,7 +1042,17 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
             }
             S::Scroll { dx, dy } => {
+                // As from the touchpad: 0, 0 is the fingers lifting.
+                let now = std::time::Instant::now();
                 let mut frame = AxisFrame::new(time).source(AxisSource::Finger);
+                if dx == 0.0 && dy == 0.0 {
+                    if self.momentum.lifted(now) {
+                        return self.start_glide();
+                    }
+                    frame = frame.stop(Axis::Horizontal).stop(Axis::Vertical);
+                } else {
+                    self.momentum.scrolled(now, dx, dy);
+                }
                 if dx != 0.0 {
                     frame = frame.value(Axis::Horizontal, dx);
                 }
@@ -1197,6 +1271,7 @@ impl AnvilState<UdevData> {
     }
 
     fn on_pointer_move<B: InputBackend>(&mut self, _dh: &DisplayHandle, evt: B::PointerMotionEvent) {
+        self.stop_glide();
         let mut pointer_location = self.pointer.current_location();
         let serial = SCOUNTER.next_serial();
 

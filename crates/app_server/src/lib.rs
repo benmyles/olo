@@ -30,6 +30,7 @@ pub mod ipc;
 pub mod keymap;
 pub mod layout;
 pub mod lock;
+pub mod momentum;
 pub mod night;
 pub mod osd;
 pub mod power;

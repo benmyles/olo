@@ -53,6 +53,33 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Passwords keeps its own store, synced with 1Password both ways**
+  (Ben): going to 1Password for every look-up is slow and unreliable.
+  Passwords should hold every item itself (encrypted at rest, unlocked
+  with the account password or Touch ID) and answer the app, NetPositive
+  and the palette from it at once; 1Password is only for syncing, both
+  ways (changes either side merge by item version, conflicts kept),
+  in the background and when asked.
+- **NetPositive fills Google's sign-in** (Ben): on accounts.google.com the
+  key button lists the matching logins but choosing one says there is no
+  login form; and the username field's context menu ▸ Passwords shows only
+  "Open Passwords", not the logins. Google's two-step sign-in (email
+  first, then the password on its own page, fields built by script and in
+  shadow DOM) needs finding fields one at a time.
+- **Terminal tabs, tab groups and coding agents** (Ben; after everything
+  else is done): tabs, tab groups that can be saved and reopened, and
+  native recognition of coding agents (Claude Code, Codex) running in a
+  tab, so tabs and groups show each agent's state (working, waiting for an
+  answer, blocked) and notify when one needs attention. A tile-all mode
+  shows every group at once, tiled, each group colour-coded. Design it
+  properly (BeOS look, how tabs, groups and colours read).
+- **Token pooling for Claude Code and Codex, natively** (Ben; after
+  everything else is done): a Tabula version of ~/src/token-pooler's Local
+  mode, without its team/cloud gateway: the local accounts' subscription
+  credentials kept in Tabula (Passwords' store), a loopback gateway the
+  coding clients are pointed at, accounts drained in a reset-aware order,
+  usage recorded (never prompts or completions), and a Deskbar replicant
+  or app showing the pool live in place of its macOS menu bar.
 - ~~**Tracker column view scrolls sideways**~~ (Ben): touchpad,
   Shift+wheel or the new scroll bar; it no longer snaps back to the
   active column, which it only follows when the selection moves.
@@ -64,6 +91,11 @@ as they land (with the commit), add new ones as they come up.
   title closes the menu.
 - ~~**Quick Look: F for fullscreen**~~ (Ben), F again for the window
   (`Cx::set_fullscreen`).
+- ~~**Momentum scrolling and Mac touchpad behaviour**~~ (Ben): a flick
+  glides on after the fingers lift and stops when they touch again
+  (app_server); a mouse wheel notch eases out in NetPositive; taps reach
+  every kit control as a press then a release; two-finger tap is the
+  secondary click, no middle-click emulation or drag lock.
 - ~~**⌘A in a text field**~~ (Ben) selects the field's text, not the
   page or folder.
 - ~~**NetPositive dark pages**~~ (Ben): View ▸ Dark Pages; per-item recolouring in WebRender as Chrome's Auto Dark Mode does it; pictures true, icons classified.

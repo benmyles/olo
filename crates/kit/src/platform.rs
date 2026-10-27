@@ -1390,6 +1390,12 @@ impl Kit {
         let max_texture_side = self.gpu.as_ref().map(|g| g.device.limits().max_texture_dimension_2d as usize);
         let s = &mut self.surfaces[i];
         s.dirty = false;
+        // A tap's release waits for the next frame (see input::split_taps).
+        let (events, later) = input::split_taps(std::mem::take(&mut s.events));
+        if !later.is_empty() {
+            s.events = later;
+            s.dirty = true;
+        }
         let mut raw = egui::RawInput {
             // egui assumes 2048 unless told.
             max_texture_side,
@@ -1397,7 +1403,7 @@ impl Kit {
             time: Some(s.start.elapsed().as_secs_f64()),
             focused: self.keyboard_focus.as_ref() == Some(&s.wl)
                 || matches!(s.role, Role::Popup { .. }),
-            events: std::mem::take(&mut s.events),
+            events,
             ..Default::default()
         };
         raw.viewports

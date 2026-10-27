@@ -305,14 +305,23 @@ fn set_gamma(backend: &BackendData, crtc: crtc::Handle, gains: [f64; 3]) {
 
 /// Preferences ▸ Touchpad into libinput: tapping, natural scrolling,
 /// typing palm rejection, click method and speed for touchpads; speed for
-/// mice. Options a device lacks are skipped.
+/// mice; the rest as a Mac trackpad behaves. Options a device lacks are
+/// skipped. (Momentum scrolling is app_server's own: `momentum.rs`.)
 fn configure_pointer(device: &mut smithay::reexports::input::Device, settings: &tabula_protocol::Settings) {
-    use smithay::reexports::input::{ClickMethod, ScrollMethod};
+    use smithay::reexports::input::{ClickMethod, DragLockState, ScrollMethod, TapButtonMap};
     let t = &settings.touchpad;
     let touchpad = device.config_tap_finger_count() > 0;
     if touchpad {
         let _ = device.config_tap_set_enabled(t.tap_to_click);
         let _ = device.config_tap_set_drag_enabled(t.tap_and_drag);
+        // As on a Mac: a two-finger tap is the secondary click, a drag
+        // ends when the finger lifts, and nothing becomes a middle click
+        // (which would paste the selection somewhere by surprise).
+        let _ = device.config_tap_set_button_map(TapButtonMap::LeftRightMiddle);
+        let _ = device.config_tap_set_drag_lock_enabled(DragLockState::Disabled);
+        if device.config_middle_emulation_is_available() {
+            let _ = device.config_middle_emulation_set_enabled(false);
+        }
         if device.config_dwt_is_available() {
             let _ = device.config_dwt_set_enabled(t.disable_while_typing);
         }

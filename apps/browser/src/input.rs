@@ -7,7 +7,7 @@ use servo::{
     KeyboardEvent, Location, Modifiers, MouseButton, MouseButtonAction, MouseButtonEvent, MouseLeftViewportEvent,
     MouseMoveEvent, NamedKey, WebViewPoint, WheelDelta, WheelEvent, WheelMode,
 };
-use tabula_kit::egui::{self, Pos2, Rect};
+use tabula_kit::egui::{self, Pos2, Rect, Vec2};
 
 /// Where the content sits in the window and how many device pixels a
 /// logical one is.
@@ -32,6 +32,8 @@ pub struct Forwarded {
     pub clicked: bool,
     /// Text to hand the page's paste.
     pub paste: Option<String>,
+    /// A mouse wheel's scroll is still easing out: draw another frame.
+    pub scrolling: bool,
 }
 
 /// The pointer, as the content sees it.
@@ -42,11 +44,20 @@ pub struct Pointer {
     /// Buttons pressed in the content and not yet released: until then
     /// the page gets the pointer wherever it goes (a drag-select).
     held: u8,
+    /// Mouse wheel scrolling not yet given to the page (device pixels),
+    /// and where: a notch eases out over a few frames, as on a Mac,
+    /// rather than jumping (the touchpad's own motion goes straight in).
+    wheel: Vec2,
+    wheel_at: Option<WebViewPoint>,
 }
+
+/// How quickly a wheel notch's scroll is given out (seconds to ~63%).
+const WHEEL_EASE: f32 = 0.045;
 
 /// Pointer events over the content (always) and keyboard events (when
 /// the content has the keyboard).
-pub fn forward(events: &[egui::Event], view: Viewport, keyboard: bool, pointer: &mut Pointer) -> Forwarded {
+/// `dt` is the time since the last frame, for easing out wheel scrolls.
+pub fn forward(events: &[egui::Event], view: Viewport, keyboard: bool, pointer: &mut Pointer, dt: f32) -> Forwarded {
     let mut out = Forwarded::default();
     for e in events {
         match e {
@@ -87,7 +98,7 @@ pub fn forward(events: &[egui::Event], view: Viewport, keyboard: bool, pointer: 
                 }
                 out.events.push(InputEvent::MouseButton(MouseButtonEvent::new(action, button, view.point(*pos))));
             }
-            egui::Event::MouseWheel { unit, delta, .. } if pointer.inside => {
+            egui::Event::MouseWheel { unit, delta, source, .. } if pointer.inside => {
                 // Servo takes the delta as egui (and winit) give it, moving
                 // the content, and scrolls by its negative (servo-paint's
                 // webview_renderer.rs); negating it here scrolled backwards.
@@ -97,6 +108,11 @@ pub fn forward(events: &[egui::Event], view: Viewport, keyboard: bool, pointer: 
                     egui::MouseWheelUnit::Page => (*delta, WheelMode::DeltaPage),
                 };
                 let at = view.point(last_pointer(events).unwrap_or(view.rect.center()));
+                if *source == egui::MouseWheelSource::Wheel && mode == WheelMode::DeltaPixel {
+                    pointer.wheel += d;
+                    pointer.wheel_at = Some(at);
+                    continue;
+                }
                 out.events.push(InputEvent::Wheel(WheelEvent::new(
                     WheelDelta { x: d.x as f64, y: d.y as f64, z: 0.0, mode },
                     at,
@@ -146,6 +162,20 @@ pub fn forward(events: &[egui::Event], view: Viewport, keyboard: bool, pointer: 
                 _ => {}
             },
             _ => {}
+        }
+    }
+    // Give out part of what the wheel has left, easing towards rest.
+    if let Some(at) = pointer.wheel_at.clone() {
+        let left = pointer.wheel;
+        let d = if left.length() < 1.0 { left } else { left * (1.0 - (-dt.max(0.001) / WHEEL_EASE).exp()) };
+        pointer.wheel -= d;
+        if d != Vec2::ZERO {
+            out.events.push(InputEvent::Wheel(WheelEvent::new(WheelDelta { x: d.x as f64, y: d.y as f64, z: 0.0, mode: WheelMode::DeltaPixel }, at)));
+        }
+        if pointer.wheel == Vec2::ZERO {
+            pointer.wheel_at = None;
+        } else {
+            out.scrolling = true;
         }
     }
     out
@@ -325,5 +355,64 @@ fn char_code(ch: char) -> Code {
         '/' | '?' => Code::Slash,
         '`' | '~' => Code::Backquote,
         _ => Code::Unidentified,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn wheel_deltas(f: &Forwarded) -> Vec<f64> {
+        f.events.iter().filter_map(|e| if let InputEvent::Wheel(w) = e { Some(w.delta.y) } else { None }).collect()
+    }
+
+    #[test]
+    fn a_wheel_notch_eases_out() {
+        let view = Viewport { rect: Rect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 600.0)), scale: 2.0 };
+        let mut pointer = Pointer::default();
+        let at = egui::pos2(100.0, 100.0);
+        let notch = egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, -48.0),
+            modifiers: Default::default(),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Wheel,
+        };
+        let first = forward(&[egui::Event::PointerMoved(at), notch], view, false, &mut pointer, 1.0 / 60.0);
+        let mut steps = wheel_deltas(&first);
+        assert!(first.scrolling);
+        let mut frames = 1;
+        loop {
+            let f = forward(&[], view, false, &mut pointer, 1.0 / 60.0);
+            steps.extend(wheel_deltas(&f));
+            frames += 1;
+            if !f.scrolling {
+                break;
+            }
+            assert!(frames < 60, "settles");
+        }
+        let total: f64 = steps.iter().sum();
+        assert!((total + 96.0).abs() < 0.01, "the whole notch, in device pixels: {total}");
+        assert!(steps.len() >= 4, "over several frames: {steps:?}");
+        // Easing out; the last sub-pixel remainder goes in one go.
+        let (last, rest) = steps.split_last().unwrap();
+        assert!(rest.windows(2).all(|w| w[1].abs() <= w[0].abs() + 0.01), "easing out: {steps:?}");
+        assert!(last.abs() < 1.0);
+        // The touchpad's own motion isn't delayed.
+        let egui::Event::MouseWheel { unit, delta, modifiers, phase, .. } = notch_like() else { unreachable!() };
+        let pad = egui::Event::MouseWheel { unit, delta, modifiers, phase, source: egui::MouseWheelSource::Trackpad };
+        let f = forward(&[pad], view, false, &mut pointer, 1.0 / 60.0);
+        assert_eq!(wheel_deltas(&f), [-20.0]);
+        assert!(!f.scrolling);
+    }
+
+    fn notch_like() -> egui::Event {
+        egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, -10.0),
+            modifiers: Default::default(),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Wheel,
+        }
     }
 }

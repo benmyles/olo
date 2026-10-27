@@ -123,3 +123,50 @@ pub fn cursor_icon(icon: egui::CursorIcon) -> smithay_client_toolkit::seat::poin
         E::ZoomOut => W::ZoomOut,
     }
 }
+
+/// Split one frame's events so a button's press and its release never
+/// arrive in the same frame: everything up to such a release now, the
+/// release and what follows in the next frame. A touchpad tap delivers
+/// both at once, and egui would then never see the button down (no
+/// press-and-hold state for menus, scroll arrows or drags to begin).
+pub fn split_taps(mut events: Vec<egui::Event>) -> (Vec<egui::Event>, Vec<egui::Event>) {
+    let mut pressed: Vec<egui::PointerButton> = Vec::new();
+    for (i, e) in events.iter().enumerate() {
+        if let egui::Event::PointerButton { button, pressed: down, .. } = e {
+            if *down {
+                pressed.push(*button);
+            } else if pressed.contains(button) {
+                let later = events.split_off(i);
+                return (events, later);
+            }
+        }
+    }
+    (events, Vec::new())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui::{Event, PointerButton, pos2};
+
+    fn button(pressed: bool) -> Event {
+        Event::PointerButton { pos: pos2(1.0, 1.0), button: PointerButton::Primary, pressed, modifiers: Default::default() }
+    }
+
+    #[test]
+    fn taps_take_two_frames() {
+        let moved = Event::PointerMoved(pos2(1.0, 1.0));
+        let (now, later) = split_taps(vec![moved.clone(), button(true), button(false), moved.clone()]);
+        assert_eq!(now, vec![moved.clone(), button(true)]);
+        assert_eq!(later, vec![button(false), moved.clone()]);
+        // A release on its own (the press came in an earlier frame) stays.
+        let (now, later) = split_taps(vec![button(false), moved.clone()]);
+        assert_eq!(now.len(), 2);
+        assert!(later.is_empty());
+        // Two taps in one frame: the second waits for the frame after.
+        let (_, later) = split_taps(vec![button(true), button(false), button(true), button(false)]);
+        let (now, rest) = split_taps(later);
+        assert_eq!(now, vec![button(false), button(true)]);
+        assert_eq!(rest, vec![button(false)]);
+    }
+}
