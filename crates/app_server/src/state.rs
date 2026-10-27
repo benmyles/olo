@@ -139,6 +139,8 @@ impl ClientData for ClientState {
 #[derive(Debug)]
 pub struct AnvilState<BackendData: Backend + 'static> {
     pub backend_data: BackendData,
+    /// The Num Lock setting last applied (None: not yet, at start).
+    pub num_lock_applied: Option<bool>,
     pub socket_name: Option<String>,
     pub display_handle: DisplayHandle,
     pub running: Arc<AtomicBool>,
@@ -924,6 +926,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
 
         let mut state = AnvilState {
             backend_data,
+            num_lock_applied: None,
             display_handle: dh,
             socket_name,
             running: Arc::new(AtomicBool::new(true)),

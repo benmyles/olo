@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Num Lock on at start
+
+*14:00* — Num Lock now starts on, and Preferences ▸ Keyboard can turn that off; the Num Lock key still toggles it, and changing other keyboard settings keeps its state.
+
+![Num Lock on at start](2026-10-27/140037-num-lock-on-at-start.png)
+
 ### Token Pool
 
 *13:55* — Claude Code and Codex share several subscriptions through a loopback gateway: each request goes to the account whose quota resets soonest, out-of-quota accounts wait for their reset, sign-ins are refreshed and kept sealed, and usage is counted without keeping any content. Fixture accounts.

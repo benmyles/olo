@@ -681,6 +681,9 @@ pub struct KeyboardSettings {
     pub command_key: bool,
     /// Caps Lock is another Ctrl.
     pub caps_lock_control: bool,
+    /// Num Lock is on when Tabula starts (and is set so when this
+    /// changes); the Num Lock key still toggles it.
+    pub num_lock: bool,
     /// Tapping ⌘ on its own opens Find (off: only ⌘Space does). Renamed
     /// from `tap_command_find` when it stopped being on by default, so the
     /// old default saved in settings files doesn't keep it on.
@@ -738,6 +741,7 @@ impl Default for KeyboardSettings {
             repeat_rate_hz: 35,
             command_key: true,
             caps_lock_control: true,
+            num_lock: true,
             find_on_command_tap: false,
             terminal_apps: [
                 "tabula.terminal",

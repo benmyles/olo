@@ -488,7 +488,10 @@ of the way down.
    keeps ⌘Tab / ⌘\` (Twitcher), ⌘ arrows and ⌘⌫ and the desktop shortcuts
    (see "Desktop shortcuts and tiling") for itself; terminals listed in
    `KeyboardSettings::terminal_apps` get ⌘ as Ctrl+Shift so physical Ctrl
-   reaches the tty), keyboard focus shown as a navigation-blue underline/frame,
+   reaches the tty; `KeyboardSettings::num_lock` turns Num Lock on at start
+   and when changed, and `apply_input_settings` keeps the Num Lock key's
+   state across keymap changes, re-advertising modifiers to the focused
+   client), keyboard focus shown as a navigation-blue underline/frame,
    Tracker-style spatial behaviour. Modernise freely where it helps
    (smooth scrolling, hi-dpi, search fields, sensible defaults).
 

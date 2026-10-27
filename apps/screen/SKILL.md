@@ -32,6 +32,20 @@ tabula-screen stop agent               # ends the screen and everything on it
 binary you just built) open on that screen. Screens are silent unless
 started with `--sound`. Stop your screens when you are done.
 
+## A web browser
+
+Tabula has Google Chrome (as a Wayland program): `tabula-screen run agent
+tabula-chrome URL`. Chrome keeps one process per profile, so if the
+person already has Chrome open, a launch with their profile opens its
+window on *their* screen. Unless the task needs their signed-in sites,
+give it a profile of its own:
+
+```sh
+tabula-screen run agent tabula-chrome --user-data-dir="$(mktemp -d)" https://example.com
+```
+
+Chrome has no widget tree yet (see below): read it with `look`.
+
 ## Read what is on screen
 
 Prefer the tree to pictures: it is exact, cheap and has coordinates ready

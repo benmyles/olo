@@ -99,6 +99,8 @@ fn keyboard(ui: &mut Ui, s: &mut Settings, power: Option<&PowerStatus>, server: 
         ui.add(TextControl::new(&mut st.test).label("Typing test:").hint("Type here to try the settings"));
     });
 
+    ui.add(CheckBox::new(&mut k.num_lock, "Num Lock on when Tabula starts"));
+
     BBox::new("Mac Keys").show(ui, |ui| {
         ui.add(CheckBox::new(&mut k.command_key, "Use Command as the shortcut key (Command-C copies)"));
         ui.add(CheckBox::new(&mut k.caps_lock_control, "Caps Lock is another Control key"));

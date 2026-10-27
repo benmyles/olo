@@ -788,6 +788,8 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn apply_input_settings(&mut self) {
         let k = self.settings.keyboard.clone();
         if let Some(keyboard) = self.seat.get_keyboard() {
+            // A new keymap starts with every lock off.
+            let was = keyboard.modifier_state().num_lock;
             let xkb = smithay::input::keyboard::XkbConfig {
                 layout: &k.layout,
                 variant: &k.variant,
@@ -798,6 +800,22 @@ impl<B: Backend + 'static> AnvilState<B> {
                 warn!(?e, "bad keyboard layout");
             }
             keyboard.change_repeat_info(self.settings.keyboard.repeat_rate_hz, self.settings.keyboard.repeat_delay_ms);
+            // Num Lock as set at start and when the setting changes;
+            // otherwise as the Num Lock key last left it.
+            let want = match self.num_lock_applied {
+                Some(applied) if applied == k.num_lock => was,
+                _ => k.num_lock,
+            };
+            self.num_lock_applied = Some(k.num_lock);
+            let mut mods = keyboard.modifier_state();
+            if mods.num_lock != want {
+                mods.num_lock = want;
+                keyboard.set_modifier_state(mods);
+            }
+            // The focused client keeps its own lock state until told,
+            // even across the keymap just sent.
+            keyboard.advertise_modifier_state(self);
+            self.backend_data.update_led_state(keyboard.led_state());
         }
         self.backend_data.apply_input_settings(&self.settings);
     }

@@ -1138,5 +1138,11 @@
   "title": "Token Pool",
   "caption": "Claude Code and Codex share several subscriptions through a loopback gateway: each request goes to the account whose quota resets soonest, out-of-quota accounts wait for their reset, sign-ins are refreshed and kept sealed, and usage is counted without keeping any content. Fixture accounts.",
   "image": "2026-10-27/135505-token-pool.png"
+ },
+ {
+  "time": "2026-10-27T14:00:37",
+  "title": "Num Lock on at start",
+  "caption": "Num Lock now starts on, and Preferences \u25b8 Keyboard can turn that off; the Num Lock key still toggles it, and changing other keyboard settings keeps its state.",
+  "image": "2026-10-27/140037-num-lock-on-at-start.png"
  }
 ]
