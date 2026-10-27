@@ -514,7 +514,13 @@ enum Decoder {
 impl Decoder {
     fn new(codec: Codec) -> Result<Decoder, String> {
         Ok(match codec {
-            Codec::H264 => Decoder::H264(Box::new(openh264::decoder::Decoder::new().map_err(|e| e.to_string())?)),
+            // Never flush after a packet: a picture forced out early breaks
+            // the reordering of B-frames, and every B-frame after it fails.
+            Codec::H264 => {
+                let config = openh264::decoder::DecoderConfig::new().flush_after_decode(openh264::decoder::Flush::NoFlush);
+                let d = openh264::decoder::Decoder::with_api_config(openh264::OpenH264API::from_source(), config);
+                Decoder::H264(Box::new(d.map_err(|e| e.to_string())?))
+            }
             // Threads to keep up with large pictures; pictures may come
             // out a few units late.
             Codec::Av1 => Decoder::Av1(av1::Decoder::new(0, 0)?),
@@ -637,6 +643,10 @@ struct Mp4 {
     times: Vec<u64>,
     syncs: Option<Vec<u32>>,
     next: u32,
+    /// Seconds added to the track's times to place them in the movie, from
+    /// its edit list (encoders with B-frames start the pictures a frame or
+    /// two in, so the first shows at 0).
+    shift: f64,
 }
 
 impl Mp4 {
@@ -663,9 +673,23 @@ impl Mp4 {
                 at += e.sample_delta as u64;
             }
         }
+        // An empty edit delays the track; the first real one says where in
+        // the track the movie starts.
+        let mut shift = 0.0;
+        let movie_scale = reader.moov.mvhd.timescale.max(1) as f64;
+        let timescale = t.timescale().max(1) as f64;
+        for e in t.trak.edts.iter().flat_map(|e| e.elst.iter()).flat_map(|l| &l.entries) {
+            if e.media_time == u32::MAX as u64 || e.media_time == u64::MAX {
+                shift += e.segment_duration as f64 / movie_scale;
+            } else {
+                shift -= e.media_time as f64 / timescale;
+                break;
+            }
+        }
         Ok(Mp4 {
             track: *track,
-            timescale: t.timescale().max(1) as f64,
+            timescale,
+            shift,
             sets,
             nal_len: avcc.length_size_minus_one as usize % 4 + 1,
             times,
@@ -694,13 +718,13 @@ impl Demux for Mp4 {
                 data.extend_from_slice(&self.sets);
             }
             media::avcc_to_annexb(&s.bytes, self.nal_len, &mut data);
-            let pts = (s.start_time as i64 + s.rendering_offset as i64) as f64 / self.timescale;
+            let pts = (s.start_time as i64 + s.rendering_offset as i64) as f64 / self.timescale + self.shift;
             return Some(Packet { pts, data });
         }
     }
 
     fn seek(&mut self, secs: f64) {
-        let target = (secs * self.timescale) as u64;
+        let target = ((secs - self.shift).max(0.0) * self.timescale) as u64;
         // The last sample starting at or before the target, then the key
         // frame at or before that.
         let n = self.times.partition_point(|&t| t <= target).max(1) as u32;
@@ -831,12 +855,12 @@ mod tests {
     /// `TABULA_SAMPLES=dir cargo test -p tabula-preview video -- --ignored`
     /// with 8-second 30 fps H.264 clips in `dir`: test.mp4 / test.mkv (one
     /// key frame), gop.mp4 / gop.mkv (one a second) and av1.webm (AV1 with
-    /// reordering, a key frame a second).
+    /// reordering, a key frame a second), and bframes.mp4 (see b_frames).
     #[test]
     #[ignore]
     fn seeks_to_the_frame() {
         let dir = std::path::PathBuf::from(std::env::var("TABULA_SAMPLES").expect("TABULA_SAMPLES"));
-        for name in ["test.mp4", "test.mkv", "gop.mp4", "gop.mkv", "av1.webm"] {
+        for name in ["test.mp4", "test.mkv", "gop.mp4", "gop.mkv", "av1.webm", "bframes.mp4"] {
             for target in [0.0, 5.0, 2.5] {
                 let path = dir.join(name);
                 let shared = Arc::new((Mutex::new(Shared { seek: Some(target), ..Default::default() }), Condvar::new()));
@@ -858,6 +882,40 @@ mod tests {
                 assert!(pts.windows(2).all(|w| w[1] > w[0]), "{name}: in order {pts:?}");
             }
         }
+    }
+
+    /// Every picture of bframes.mp4 (H.264 High with B-frames and implicit
+    /// weighted bi-prediction, as x264 makes by default) comes out, in
+    /// display order.
+    #[test]
+    #[ignore]
+    fn b_frames() {
+        let path = std::path::PathBuf::from(std::env::var("TABULA_SAMPLES").expect("TABULA_SAMPLES")).join("bframes.mp4");
+        let mut demux = Mp4::open(&Input::file(&path)).unwrap();
+        let mut packets = 0;
+        while demux.next().is_some() {
+            packets += 1;
+        }
+        let shared = Arc::new((Mutex::new(Shared::default()), Condvar::new()));
+        let s = shared.clone();
+        let worker = std::thread::spawn(move || decode(&Input::file(&path), &s));
+        let (m, cv) = &*shared;
+        let mut pts = Vec::new();
+        loop {
+            let mut sh = m.lock().unwrap();
+            pts.extend(sh.queue.drain(..).map(|f| f.pts));
+            cv.notify_all();
+            if sh.eof && sh.queue.is_empty() {
+                sh.stop = true;
+                break;
+            }
+            sh = cv.wait_timeout(sh, Duration::from_millis(5)).unwrap().0;
+            drop(sh);
+        }
+        cv.notify_all();
+        worker.join().unwrap().unwrap();
+        assert_eq!(pts.len(), packets, "every picture decodes");
+        assert!(pts.windows(2).all(|w| w[1] > w[0]), "in order {pts:?}");
     }
 
     /// Queued pictures stay compact, and convert as OpenH264 would.
@@ -918,3 +976,4 @@ mod tests {
         }
     }
 }
+

@@ -77,16 +77,21 @@ as they land (with the commit), add new ones as they come up.
   active column's), or a right-clicked folder, in a new Terminal window;
   also in the window's and the desktop's context menus. When Terminal
   gets tabs, open a tab instead.
-- **Video plays the wrong parts at the wrong speed** (Ben):
-  ~/Downloads/a-work-video.mp4 plays in the Viewer with good
-  sound, but the picture jumps around and runs at the wrong speed.
-  Probably frame timing (B-frames / presentation order, edit lists, or a
-  variable frame rate) in `tabula_preview::video`.
+- ~~**Video plays the wrong parts at the wrong speed**~~ (Ben): OpenH264
+  was flushed after every packet, breaking B-frame reordering; now
+  `Flush::NoFlush`, mp4 edit lists applied, and WebM seeks fixed
+  (vendored matroska-demuxer).
 - **Confirm before quitting apps with state that would be lost** (Ben):
   NetPositive (open tabs, form input, downloads in progress), Terminal
   (running shells), and any other app holding work that quitting throws
   away ask first (an alert: Quit / Cancel), so an accidental ⌘Q or close
   doesn't lose it. Apps that save or restore everything don't need to.
+- **GNOME/GTK 4 apps look at home** (Ben): a GTK 4 / libadwaita app
+  opened in Tabula follows light/dark mode properly (and switches live),
+  and gets Tabula's window chrome (yellow tab, BeOS borders) rather than
+  its own client-side decorations: e.g. asking for server-side decorations
+  via xdg-decoration / GTK's settings, and whatever libadwaita needs
+  (portal `org.freedesktop.appearance color-scheme`, dconf) to agree.
 - **Settings & state backup: export/import in one file** (Ben): a native
   Tabula utility that exports every Tabula setting and piece of saved
   state, across all Tabula apps (Preferences settings, Tracker views,

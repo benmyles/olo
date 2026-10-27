@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Videos with B-frames play properly
+
+*21:54* — H.264 High videos with B-frames (most from screen recorders and x264) played with good sound but a picture that jumped and stalled: OpenH264 was asked to flush a picture after every packet, which broke reordering, so every B-frame failed. Now every picture decodes, in display order and in step with the sound (edit lists applied); seeking WebM/AV1 lands on the right frame too.
+
+![Videos with B-frames play properly](2026-10-26/215448-videos-with-b-frames-play-properly.png)
+
 ### Passwords: changes wait while 1Password is away
 
 *21:46* — With 1Password not running, changes are kept and the status line counts what's still to send; they go up on the next sync.

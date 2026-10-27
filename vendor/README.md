@@ -13,6 +13,14 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   `src/text/font_face.rs`) asks for single-threaded contexts, as a glyph
   is far too small for threads anyway.
 
+- **matroska-demuxer 0.8.1** (Zlib OR MIT OR Apache-2.0): seeking with
+  cue points that carry a CueRelativePosition (as ffmpeg writes in WebM)
+  read the position against the file's first cluster instead of the cue's
+  own, so a seek past the first cluster landed in the wrong place and the
+  Viewer showed no picture. The patch (`seek_broad_phase` in `src/lib.rs`)
+  uses the cue's cluster. Its tests (and their 1 MB of sample files) are
+  left out.
+
 - **servo-constellation 0.7.0** (MPL-2.0): in multiprocess mode it never
   notices a content process dying (crashing, or stopped by NetPositive for
   hanging or using too much memory): its pages stay attached to the dead
