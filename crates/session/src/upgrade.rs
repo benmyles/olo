@@ -99,6 +99,14 @@ impl Watcher {
             }
         }
         crate::log(format!("installed {} of {} upgraded programs", done.len(), programs.len()));
+        // New and redrawn icons come with them (a new panel's, say).
+        if let Some(prefix) = self.to.parent() {
+            match sync_icons(&self.from, &prefix.join("share/tabula/icons")) {
+                Ok(0) => {}
+                Ok(n) => crate::log(format!("installed {n} new or changed icons")),
+                Err(e) => crate::log(format!("could not install icons: {e}")),
+            }
+        }
         self.pending = newer(&self.from, &self.to).unwrap_or_default();
         self.publish();
         done
@@ -190,6 +198,44 @@ fn newer(from: &Path, to: &Path) -> Option<Vec<String>> {
     Some(out)
 }
 
+/// Copy the build tree's icons (`data/icons`: the sizes and the manifest,
+/// found above `from`, the build's output directory) into `to` where
+/// they're new or newer; how many.
+fn sync_icons(from: &Path, to: &Path) -> std::io::Result<usize> {
+    let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/icons")).find(|d| d.join("manifest.txt").is_file()) else {
+        return Ok(0);
+    };
+    let newer = |a: &Path, b: &Path| {
+        let m = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+        m(b).is_none_or(|b| m(a).is_some_and(|a| a > b))
+    };
+    let mut n = 0;
+    std::fs::create_dir_all(to)?;
+    if newer(&src.join("manifest.txt"), &to.join("manifest.txt")) {
+        std::fs::copy(src.join("manifest.txt"), to.join("manifest.txt"))?;
+        n += 1;
+    }
+    for e in std::fs::read_dir(&src)?.flatten() {
+        let name = e.file_name();
+        // The pre-scaled sizes (16, 24, …); not the raw sources.
+        if !name.to_str().is_some_and(|n| n.parse::<u32>().is_ok()) || !e.path().is_dir() {
+            continue;
+        }
+        let dir = to.join(&name);
+        std::fs::create_dir_all(&dir)?;
+        for f in std::fs::read_dir(e.path())?.flatten() {
+            let (a, b) = (f.path(), dir.join(f.file_name()));
+            if a.extension().is_some_and(|x| x == "png") && newer(&a, &b) {
+                let tmp = dir.join(format!(".{}.new", f.file_name().to_string_lossy()));
+                std::fs::copy(&a, &tmp)?;
+                std::fs::rename(&tmp, &b)?;
+                n += 1;
+            }
+        }
+    }
+    Ok(n)
+}
+
 /// Put `src` in `dir` as `name`: a clone of the file where the file system
 /// can (btrfs, XFS: instant, no space), else a copy, under a temporary
 /// name renamed into place, so running programs keep their old file.
@@ -220,6 +266,25 @@ mod tests {
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
         let t = SystemTime::now() - Duration::from_secs(age);
         std::fs::File::options().write(true).open(&p).unwrap().set_modified(t).unwrap();
+    }
+
+    #[test]
+    fn icons_come_along() {
+        let base = std::env::temp_dir().join(format!("tabula-icons-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let build = base.join("repo/target/release");
+        std::fs::create_dir_all(&build).unwrap();
+        std::fs::create_dir_all(base.join("repo/data/icons/16")).unwrap();
+        std::fs::create_dir_all(base.join("repo/data/icons/src")).unwrap();
+        std::fs::write(base.join("repo/data/icons/manifest.txt"), "lock|a padlock\n").unwrap();
+        std::fs::write(base.join("repo/data/icons/16/lock.png"), "png").unwrap();
+        std::fs::write(base.join("repo/data/icons/src/lock.png"), "raw").unwrap();
+        let to = base.join("prefix/share/tabula/icons");
+        assert_eq!(sync_icons(&build, &to).unwrap(), 2);
+        assert!(to.join("16/lock.png").is_file() && !to.join("src").exists());
+        // Nothing new: nothing copied.
+        assert_eq!(sync_icons(&build, &to).unwrap(), 0);
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
