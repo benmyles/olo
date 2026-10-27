@@ -16,8 +16,10 @@
 set -eu
 cd "$(dirname "$0")/.."
 TREE=$(pwd -P)
-# Whose session: the invoking user (also when run with sudo).
-USER_NAME=${SUDO_USER:-$(id -un)}
+# Whose session: the invoking user (also when run with sudo; SUDO_USER
+# counts only then, not under `sudo -u someone`, where it names root).
+USER_NAME=$(id -un)
+[ "$(id -u)" = 0 ] && [ -n "${SUDO_USER:-}" ] && USER_NAME=$SUDO_USER
 USER_HOME=$(getent passwd "$USER_NAME" | cut -d: -f6)
 PREFIX=${PREFIX:-$USER_HOME/.local}
 SESSIONS=${SESSIONS:-/usr/local/share/wayland-sessions}
