@@ -164,6 +164,10 @@ as they land (with the commit), add new ones as they come up.
   file pickers, downloads into Tracker, default browser, Deskbar entry:
   all of it as well as Tabula can make it. Ugly hacks are fine as long
   as it is reliable.
+  ~~**Tabula's look**~~ (done: the portals now start in a real session,
+  so it follows light/dark; each profile starts with Tabula's title bar
+  and frame instead of Chrome's own buttons and with the GTK theme's
+  colours; HACKING, "Other toolkits' programs").
   ~~**Installed on first use**~~ (done: `apps/chrome`, `tabula-chrome`;
   tested headless end to end, the real 139 MB download into a fixture
   home, then Chrome running on Wayland in Tabula; kept up to date: once
@@ -274,7 +278,11 @@ as they land (with the commit), add new ones as they come up.
   should move Chrome and GTK apps as far as it moves a Tabula app, with
   the same smooth scrolling (app_server's axis values, value120 and
   discrete steps, and what each toolkit multiplies them by).
-- **GNOME/GTK 4 apps look at home** (Ben): a GTK 4 / libadwaita app
+- **GNOME/GTK 4 apps look at home** (Ben; partly done: the portals start
+  in a real session (they never did, so GTK 4 had no settings at all),
+  and GTK 3, GTK 4 and libadwaita take Tabula's colours, fonts and
+  close-left/zoom-right buttons in both modes. Left: Tabula's window
+  chrome for them; GTK has no xdg-decoration, so it keeps headerbars): a GTK 4 / libadwaita app
   opened in Tabula follows light/dark mode properly (and switches live),
   and gets Tabula's window chrome (yellow tab, BeOS borders) rather than
   its own client-side decorations: e.g. asking for server-side decorations
@@ -357,7 +365,7 @@ as they land (with the commit), add new ones as they come up.
 - **No GNOME or GTK underneath** (Ben): Tabula shouldn't depend on
   any. Today a real session leans on GDM (login), gnome-keyring-daemon
   (secrets, PAM unlock, ssh agent), xdg-desktop-portal-gnome / -gtk (file chooser, screenshot,
-  settings, etc. for other apps: there's no Tabula portals.conf or
+  settings, etc. for other apps: `tabula-portals.conf` picks GTK's
   backend), dconf (where app_server writes color-scheme / gtk-theme so
   GTK apps follow). ~~Wallpapers~~: none needed (the desktop is BeOS's
   own colours per workspace; Choose… starts in Pictures). Replace each
@@ -367,10 +375,11 @@ as they land (with the commit), add new ones as they come up.
   (`org.freedesktop.impl.portal.*` with Tabula's FilePanel and
   screenshot), settings portal. Needs Ben's go-ahead and order: these
   replace what his real session runs on. On Aurora, xdg-desktop-portal
-  1.22 reads backends only from /usr/share/xdg-desktop-portal/portals
-  (read-only) or `XDG_DESKTOP_PORTAL_DIR` (replacing it whole), and GTK
-  apps outside a sandbox read the colour scheme from dconf, not the
-  portal, so dconf stays until GTK apps are gone.
+  1.22 reads backends from /usr/share/xdg-desktop-portal/portals and
+  `$XDG_DATA_HOME/xdg-desktop-portal/portals` (so a Tabula backend can be
+  installed per user), and GTK 4 reads its settings from the portal when
+  it is activatable, so a Tabula Settings portal could replace dconf for
+  it (GTK 3 still reads GSettings).
 - ~~**Terminal sessions that outlive Terminal**~~ (Ben): done. Shells
   live in tabula-termd (one per display); quitting, crashing or upgrading
   Terminal reattaches every window with its scrollback, and tabula-termd

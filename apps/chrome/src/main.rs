@@ -1,9 +1,11 @@
 //! tabula-chrome: Google Chrome in Tabula's applications. When Chrome is
 //! installed it starts it, with the arguments it was given; when it isn't,
 //! it offers to download it from Google (install.rs), shows the download
-//! (which can be cancelled) and starts Chrome once it's in.
+//! (which can be cancelled) and starts Chrome once it's in. New profiles
+//! get Tabula's title bar and the system's colours (prefs.rs).
 
 mod install;
+mod prefs;
 
 use std::{
     os::unix::process::CommandExt,
@@ -193,6 +195,9 @@ fn main() {
                 .stdout(std::process::Stdio::null())
                 .process_group(0)
                 .spawn();
+        }
+        if let Some(dir) = prefs::user_data_dir(&args) {
+            prefs::apply(&dir);
         }
         let e = chrome_command(&chrome, &args).exec();
         eprintln!("tabula-chrome: couldn't start {}: {e}", chrome.display());

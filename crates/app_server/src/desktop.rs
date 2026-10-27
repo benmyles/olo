@@ -727,7 +727,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.settings.appearance.effective_theme = theme;
         self.settings.appearance.night_light_active = night;
         if (theme::set_mode(theme) || force) && B::IS_SESSION {
-            set_toolkit_color_scheme(theme);
+            crate::toolkits::publish(theme);
         }
         let kelvin = night.then_some(self.settings.appearance.night_light.temperature);
         if kelvin != self.night_light || self.white_point.is_none() {
@@ -756,29 +756,6 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         self.backend_data.apply_input_settings(&self.settings);
     }
-}
-
-/// GTK, Qt (via the portal) and Firefox follow this.
-fn set_toolkit_color_scheme(theme: ThemeMode) {
-    let scheme = match theme {
-        ThemeMode::Light => "default",
-        ThemeMode::Dark => "prefer-dark",
-    };
-    let gtk_theme = match theme {
-        ThemeMode::Light => "Adwaita",
-        ThemeMode::Dark => "Adwaita-dark",
-    };
-    // Through the dconf service, which GSettings (and so GTK and the
-    // portals) read; off the compositor thread.
-    std::thread::spawn(move || {
-        let keys = [
-            ("/org/gnome/desktop/interface/color-scheme", scheme),
-            ("/org/gnome/desktop/interface/gtk-theme", gtk_theme),
-        ];
-        if let Err(e) = tabula_system::dconf::set_strings(&keys) {
-            warn!("could not set the toolkit colour scheme: {e}");
-        }
-    });
 }
 
 /// Preferences' rotation (the picture turned clockwise, as macOS labels

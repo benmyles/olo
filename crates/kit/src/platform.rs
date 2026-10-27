@@ -302,6 +302,22 @@ pub struct Kit {
     linger: bool,
 }
 
+/// Wait for the children this process already has as it starts: those an
+/// earlier binary started before re-executing as this one after an
+/// upgrade (the threads that waited for them went with it). Unwaited,
+/// each would stay a zombie when it exits.
+fn reap_inherited() {
+    let me = std::process::id();
+    let Ok(list) = std::fs::read_to_string(format!("/proc/{me}/task/{me}/children")) else { return };
+    for pid in list.split_whitespace().filter_map(|p| p.parse::<libc::pid_t>().ok()) {
+        let _ = std::thread::Builder::new().name("reap".into()).spawn(move || {
+            let mut status = 0;
+            // SAFETY: waiting for our own child.
+            unsafe { libc::waitpid(pid, &mut status, 0) };
+        });
+    }
+}
+
 /// Run an app until it quits or closes its last window.
 ///
 /// Inside a Tabula session (`$TABULA_SESSION` set by tabula-session) the
@@ -320,6 +336,7 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
     // the lock screen) has nothing to reconnect to: it ends with app_server.
     let in_session = std::env::var_os("TABULA_SESSION").is_some() && std::env::var_os("WAYLAND_SOCKET").is_none();
     let binary = Binary::current();
+    reap_inherited();
 
     let mut event_loop: EventLoop<'static, Kit> = EventLoop::try_new().expect("event loop");
     let loop_handle = event_loop.handle();

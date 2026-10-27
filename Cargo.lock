@@ -11073,6 +11073,7 @@ dependencies = [
  "liblzma",
  "quick-xml 0.42.0",
  "rustls",
+ "serde_json",
  "sha2 0.11.1",
  "tabula-kit",
  "tracing",

@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### GTK and Chrome in Tabula's colours
+
+*00:28* — The desktop portals now start in a real session. GTK 3, GTK 4 and libadwaita apps take Tabula's palette, fonts and close-left/zoom-right buttons, in light and dark, and Chrome opens with Tabula's tab and frame instead of its own buttons.
+
+![GTK and Chrome in Tabula's colours](2026-10-27/002846-gtk-and-chrome-in-tabula-s-colours.png)
+
 ### Google Chrome, installed on first use
 
 *00:04* — Google Chrome is one of Tabula's applications. The first time it is opened, Tabula offers to download it from Google's own repository, checks it against the repository's checksum, unpacks it natively into the home folder and starts it, drawing with Wayland in a Tabula window.

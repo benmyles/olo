@@ -20,3 +20,23 @@ pub fn update_activation_environment(vars: &[(&str, &str)]) -> Result<()> {
         &(assignments,),
     )
 }
+
+/// Have the systemd user manager re-read its unit files (after writing one).
+pub fn reload_units() -> Result<()> {
+    bus::call::<_, ()>(bus::session()?, "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager", "Reload", &())
+}
+
+/// Start (`start` true) or stop a systemd user unit, without waiting for
+/// the job to finish.
+pub fn start_unit(name: &str, start: bool) -> Result<()> {
+    let method = if start { "StartUnit" } else { "StopUnit" };
+    bus::call::<_, zvariant::OwnedObjectPath>(
+        bus::session()?,
+        "org.freedesktop.systemd1",
+        "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager",
+        method,
+        &(name, "replace"),
+    )
+    .map(|_| ())
+}

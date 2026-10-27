@@ -6,6 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod toolkit;
+
 pub type Rgba = [u8; 4];
 
 pub const fn rgb(r: u8, g: u8, b: u8) -> Rgba {

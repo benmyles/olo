@@ -40,6 +40,7 @@ pub mod screenshot;
 pub mod sockfile;
 pub mod text;
 pub mod theme;
+pub mod toolkits;
 pub mod twitcher;
 pub mod wallpaper;
 

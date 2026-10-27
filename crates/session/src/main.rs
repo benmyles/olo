@@ -25,6 +25,7 @@
 //! A real session has keyd (if it runs) leave the modifier keys to
 //! app_server (keyd.rs).
 
+mod graphical;
 mod keyd;
 mod keyring;
 mod upgrade;
@@ -503,6 +504,7 @@ impl Session {
         }
         if self.real {
             keyd::restore();
+            graphical::stop();
         }
         for (path, id) in &self.files {
             if id.is_some() && identity(path) == *id {
@@ -723,5 +725,6 @@ fn export_environment() {
         if let Err(e) = tabula_system::env::update_activation_environment(&pairs) {
             log(format!("could not export the environment: {e}"));
         }
+        graphical::start();
     });
 }
