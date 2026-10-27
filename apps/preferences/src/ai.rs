@@ -1,42 +1,16 @@
-//! AI: how Olo's AI features reach their models (the Token Pool, or
-//! an Anthropic API key), and each feature, on or off, with its model and
-//! effort. Smart Tiling is the first.
+//! AI: Olo's AI features, each on or off, with its model (OpenAI's,
+//! through the Token Pool's Codex accounts) and effort. Smart Tiling is
+//! the first.
 
 use olo_kit::{
     egui::Ui,
-    widgets::{BBox, Button, CheckBox, MenuField, StringView, TextControl},
+    widgets::{BBox, CheckBox, MenuField, StringView},
 };
 use olo_protocol::{AI_EFFORTS, AI_MODELS, AiFeature, Settings, shortcuts};
 
-/// The API key being typed, and what saving it said.
-#[derive(Default)]
-pub struct State {
-    key: Option<String>,
-    status: Option<String>,
-}
-
-pub fn ui(ui: &mut Ui, s: &mut Settings, st: &mut State) {
-    let ai = &mut s.ai;
+pub fn ui(ui: &mut Ui, s: &mut Settings) {
     BBox::new("Models").show(ui, |ui| {
-        ui.add(CheckBox::new(&mut ai.use_pool, "Use the Token Pool for AI features"));
-        if ai.use_pool {
-            ui.add(StringView::new("Models are reached with the Token Pool’s accounts, spent in its order.").dim(true).wrap(true));
-        } else {
-            // A few bytes from our own config folder.
-            let key = st.key.get_or_insert_with(|| olo_ai::saved_key().unwrap_or_default());
-            ui.horizontal(|ui| {
-                ui.add(TextControl::new(key).label("Anthropic API key:").password(true).width(ui.available_width() - olo_kit::metrics::BUTTON_MIN_WIDTH - olo_kit::metrics::SPACING));
-                if ui.add(Button::new("Save")).clicked() {
-                    st.status = Some(match olo_ai::save_key(key) {
-                        Ok(()) if key.trim().is_empty() => "Forgotten.".into(),
-                        Ok(()) => "Saved.".into(),
-                        Err(e) => format!("Couldn’t save it: {e}"),
-                    });
-                }
-            });
-            let note = st.status.as_deref().unwrap_or("Astra 6 is only reached through the Token Pool.");
-            ui.add(StringView::new(note).dim(true).wrap(true));
-        }
+        ui.add(StringView::new("AI features use OpenAI’s models through the Token Pool’s Codex accounts, spent in its order.").dim(true).wrap(true));
     });
     let keys = shortcuts::by_id("smart-tile").map(|i| shortcuts::keys_for(i, &s.shortcuts)).unwrap_or_default();
     let how = match keys.first() {
@@ -54,7 +28,7 @@ fn feature(ui: &mut Ui, id: &str, f: &mut AiFeature, label: &str) {
     ui.add(CheckBox::new(&mut f.enabled, label));
     ui.add_enabled_ui(f.enabled, |ui| {
         let models: Vec<&str> = AI_MODELS.iter().map(|(_, name)| *name).collect();
-        let mut m = AI_MODELS.iter().position(|(id, _)| *id == f.model).unwrap_or(0);
+        let mut m = AI_MODELS.iter().position(|(id, _)| *id == f.model_id()).unwrap_or(0);
         if ui.add(MenuField::new((id, "model"), &mut m, &models).label("Model:").divider(70.0)).changed() {
             f.model = AI_MODELS[m].0.into();
         }

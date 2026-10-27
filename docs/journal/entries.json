@@ -1222,5 +1222,11 @@
   "title": "Tabula is now Olo Desktop",
   "caption": "The new brand in About and Deskbar, light and dark: the mark and the olo wordmark, drawn crisp at 2\u00d7 from data/brand. A running Tabula session upgrades into Olo in place, every window and setting kept.",
   "image": "2026-10-27/163441-tabula-is-now-olo-desktop.png"
+ },
+ {
+  "time": "2026-10-27T16:59:18",
+  "title": "OpenAI's models for AI features",
+  "caption": "Preferences \u25b8 AI offers Astra 6 (the default), Sol 6.1, Terra 6.1 and Luna 6, reached through the Token Pool's Codex accounts. A Claude model chosen before reads as Astra; calls turned away for now are retried after a wait.",
+  "image": "2026-10-27/165918-openai-s-models-for-ai-features.png"
  }
 ]

@@ -390,8 +390,9 @@ pub struct Settings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct AiSettings {
-    /// Through the Token Pool (its accounts, spent in its order); off:
-    /// straight to Anthropic with the API key saved in Preferences ▸ AI.
+    /// Claude models through the Token Pool (its accounts, spent in its
+    /// order); off: straight to Anthropic with the saved API key. None is
+    /// offered now: OpenAI's always go through the pool.
     pub use_pool: bool,
     /// Smart Tiling: the model arranges the windows on the screen.
     pub smart_tiling: AiFeature,
@@ -420,14 +421,27 @@ impl Default for AiFeature {
     }
 }
 
-/// The models AI features can use: id, name.
+impl AiFeature {
+    /// The model it uses: the one chosen, or the default if that isn't
+    /// offered any more (a Claude model, chosen before they were dropped).
+    pub fn model_id(&self) -> &str {
+        AI_MODELS.iter().find(|(id, _)| *id == self.model).map_or(AI_MODELS[0].0, |(id, _)| id)
+    }
+
+    /// Its model's name.
+    pub fn model_name(&self) -> &str {
+        AI_MODELS.iter().find(|(id, _)| *id == self.model_id()).map_or(AI_MODELS[0].1, |(_, name)| name)
+    }
+}
+
+/// The models AI features can use, the default first: id, name. OpenAI's
+/// current ones for Codex, reached through the Token Pool's Codex
+/// accounts.
 pub const AI_MODELS: &[(&str, &str)] = &[
-    ("claude-opus-5-5", "Claude Opus 5.5"),
-    ("claude-sonnet-5-5", "Claude Sonnet 5.5"),
-    ("claude-haiku-5-5", "Claude Haiku 5.5"),
-    ("claude-fable-5-1", "Claude Fable 5.1"),
-    // OpenAI's, through the Token Pool's Codex accounts only.
     ("gpt-6-astra", "Astra 6"),
+    ("gpt-6.1-sol", "Sol 6.1"),
+    ("gpt-6.1-terra", "Terra 6.1"),
+    ("gpt-6-luna", "Luna 6"),
 ];
 
 /// Effort levels, least first: id, name.

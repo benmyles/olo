@@ -357,6 +357,13 @@ pub fn header_windows(h: &axum::http::HeaderMap, p: Provider, family: &str, stat
     if status != 429 {
         return (out, None);
     }
+    // Claude says when one of the account's meters ran out
+    // (`…-unified-status: rejected`). Any other 429 (a burst limit, or a
+    // request it won't serve) belongs to the request, not the account:
+    // it goes back to the client as it came, and the account stays in use.
+    if p == Provider::Claude && h.get("anthropic-ratelimit-unified-status").and_then(|v| v.to_str().ok()) != Some("rejected") {
+        return (out, None);
+    }
     let reset = header_num(h, "anthropic-ratelimit-unified-reset").map(|v| v as i64).filter(|&v| v > now);
     let until = reset.or_else(|| retry_after(h, now)).unwrap_or(now + 60);
     // Claude names the meter that ran out; a per-model one leaves the
@@ -413,6 +420,13 @@ mod tests {
         h.insert("anthropic-ratelimit-unified-representative-claim", "five_hour".parse().unwrap());
         h.insert("anthropic-ratelimit-unified-reset", "7000".parse().unwrap());
         assert_eq!(header_windows(&h, Provider::Claude, "fable", 429, 1000).1, Some(Rejection { until: 7000, model_only: false }));
+        // A 429 that isn't a meter running out: not the account's.
+        let mut h = axum::http::HeaderMap::new();
+        h.insert("anthropic-ratelimit-unified-status", "allowed".parse().unwrap());
+        h.insert("retry-after", "5".parse().unwrap());
+        assert_eq!(header_windows(&h, Provider::Claude, "opus", 429, 1000).1, None);
+        h.remove("anthropic-ratelimit-unified-status");
+        assert_eq!(header_windows(&h, Provider::Claude, "opus", 429, 1000).1, None);
         let mut h = axum::http::HeaderMap::new();
         h.insert("x-codex-primary-used-percent", "75".parse().unwrap());
         h.insert("x-codex-primary-reset-after-seconds", "30".parse().unwrap());

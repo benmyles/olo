@@ -149,7 +149,7 @@ impl Panel {
     /// Content size (logical).
     pub fn size(self) -> (u32, u32) {
         match self {
-            Panel::Ai => (440, 330),
+            Panel::Ai => (440, 300),
             Panel::Appearance => (420, 385),
             Panel::Backgrounds => (520, 448),
             Panel::Backup => (420, 400),
@@ -232,7 +232,6 @@ pub enum State {
     Power(power::State),
     ScreenSaver(screensaver::State),
     About(about::State),
-    Ai(Box<ai::State>),
 }
 
 impl State {
@@ -251,7 +250,6 @@ impl State {
             Panel::Power => State::Power(Default::default()),
             Panel::ScreenSaver => State::ScreenSaver(Default::default()),
             Panel::About => State::About(about::State::new()),
-            Panel::Ai => State::Ai(Box::default()),
             _ => State::None,
         }
     }
@@ -276,7 +274,7 @@ pub fn ui(panel: Panel, state: &mut State, ui: &mut egui::Ui, ctx: Ctx<'_>) {
             (Panel::ScreenSaver, State::ScreenSaver(s)) => screensaver::ui(ui, settings, server, s),
             (Panel::Sound, State::Sound(s)) => sound::ui(ui, s),
             (Panel::Security, _) => security::ui(ui, settings),
-            (Panel::Ai, State::Ai(s)) => ai::ui(ui, settings, s),
+            (Panel::Ai, _) => ai::ui(ui, settings),
             (Panel::DateTime, State::DateTime(s)) => datetime::ui(ui, settings, s),
             (Panel::Network, State::Network(s)) => network::ui(ui, s),
             (Panel::Notifications, State::Notifications(s)) => notifications::ui(ui, &settings.clock, s),

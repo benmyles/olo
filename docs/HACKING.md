@@ -1004,15 +1004,25 @@ Smart Tiling (see "AI features") is the first user.
 ## AI features (crates/ai, apps/smart-tile, Preferences ▸ AI)
 
 Preferences ▸ AI (`olo-preferences ai`) holds `Settings::ai`
-(`AiSettings`): `use_pool` (on by default) sends every AI feature
-through the Token Pool's gateway (`http://127.0.0.1:{OLO_POOL_PORT
-or 17891}/claude`, or `/codex` for OpenAI's), off sends Claude calls
-straight to Anthropic with the key saved from that panel
-(`olo_ai::key_path()`, `$XDG_CONFIG_HOME/olo/anthropic-key`, mode
-0600; or `ANTHROPIC_API_KEY`). Each feature is an `AiFeature { enabled,
-model, effort }`, the model one of `AI_MODELS` and the effort one of
-`AI_EFFORTS`; the panel's `feature()` draws its switch and choosers, so
-the next feature is a struct field and a BBox.
+(`AiSettings`). Each feature is an `AiFeature { enabled, model, effort }`,
+the model one of `AI_MODELS` and the effort one of `AI_EFFORTS`; the
+panel's `feature()` draws its switch and choosers, so the next feature
+is a struct field and a BBox. `AI_MODELS` is OpenAI's current Codex
+models (Astra 6, the default; Sol 6.1, Terra 6.1, Luna 6), reached
+through the Token Pool's gateway (`http://127.0.0.1:{OLO_POOL_PORT or
+17891}/codex`) and its Codex accounts. A model no longer listed (a
+Claude model chosen before they were dropped) is read as the default
+(`AiFeature::model_id`), keeping its effort. Claude is still spoken by
+`olo_ai` for when it is offered again: through the pool's `/claude`
+with `use_pool`, otherwise straight to Anthropic with
+`olo_ai::saved_key()` (`$XDG_CONFIG_HOME/olo/anthropic-key` or
+`ANTHROPIC_API_KEY`).
+
+Every call introduces itself as `olo-ai/VERSION` (the pool lists its
+requests by it) and is tried up to 4 times while the answer is 429,
+503 or 529: after the `retry-after` it asks for, else 2, 4, 8 s plus up
+to a quarter at random. Asked to wait over a minute (a quota resetting
+later), it gives up with the server's message.
 
 `olo_ai::ask` sends one question and returns the answer's JSON. For
 Claude it is the Messages API (`anthropic-version: 2026-10-21`): the
@@ -1022,16 +1032,15 @@ schema}}` (structured output), thinking left to the model (adaptive;
 Opus 5.5 can't turn it off), and `fallbacks: "default"` with the
 `server-side-fallback-2026-07-01` beta on every model but Haiku, so a
 declined request is retried on another. `stop_reason` "refusal" and
-"max_tokens" are errors. OpenAI's (`gpt-*`, Astra 6) go only through
-the pool's Codex accounts, to the Responses API as Codex sends it
+"max_tokens" are errors. OpenAI's (`gpt-*`) go to the Responses API as Codex sends it
 (`instructions`, `input_text`/`input_image`, `reasoning.effort` with max
 as xhigh, `text.format` json_schema strict, streamed, not stored);
 `openai_answer` reads the stream's text deltas or the completed
 response. `OLO_AI_BASE_URL` sends every call to a fake server instead:
 **tests never call a real model**.
 
-Smart Tiling (`olo-smart-tile`, Smart Tile ⌃⇧⌘↩, default Claude
-Opus 5.5 at medium) is a process app_server starts, so nothing waits on
+Smart Tiling (`olo-smart-tile`, Smart Tile ⌃⇧⌘↩, default Astra 6 at
+medium; a failure is logged to the journal as well as shown) is a process app_server starts, so nothing waits on
 the model. It asks for the `Arrangement`, takes a PNG of that display
 (before its notification is in it; at most 1568 px on the long side),
 gathers what each kit app's windows show from their widget trees
@@ -2200,8 +2209,12 @@ opens it), which listens on `127.0.0.1:17891` (`OLO_POOL_PORT`).
   refreshed within a minute of expiring, one refresh at a time per
   account, the rotated refresh token kept; a 401 is refreshed and
   retried once, then the account is marked signed out and the next
-  tried; a 429 marks the account (or, for a per-model meter, just that
-  model family) out until its reset and the next is tried. Both happen
+  tried; a 429 that says a meter ran out (Claude's
+  `anthropic-ratelimit-unified-status: rejected`; any 429 from Codex)
+  marks the account (or, for a per-model meter, just that model family)
+  out until its reset and the next is tried. Claude's other 429s (a
+  burst limit, or a request it won't serve on that account) are the
+  request's: passed back as they came, the account left in use. Both happen
   before anything is passed back; a network failure is a 502 and never
   replayed. With none left, a 429 shaped as the provider's with a
   `retry-after` of the soonest reset (the clients are set to retry ten

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### OpenAI's models for AI features
+
+*16:59* — Preferences ▸ AI offers Astra 6 (the default), Sol 6.1, Terra 6.1 and Luna 6, reached through the Token Pool's Codex accounts. A Claude model chosen before reads as Astra; calls turned away for now are retried after a wait.
+
+![OpenAI's models for AI features](2026-10-27/165918-openai-s-models-for-ai-features.png)
+
 ### Tabula is now Olo Desktop
 
 *16:34* — The new brand in About and Deskbar, light and dark: the mark and the olo wordmark, drawn crisp at 2× from data/brand. A running Tabula session upgrades into Olo in place, every window and setting kept.

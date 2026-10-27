@@ -17,7 +17,7 @@ use olo_kit::{
     commands,
     notify::{Note, NoteEvent, NoteKind, Notifier},
 };
-use olo_protocol::{AI_MODELS, Client, Frame, Placement, Reply, Request, WindowInfo};
+use olo_protocol::{Client, Frame, Placement, Reply, Request, WindowInfo};
 
 /// The screenshot sent is no bigger than this on its long side.
 const SHOT_EDGE: u32 = 1568;
@@ -106,7 +106,7 @@ fn run() -> Result<(), String> {
         std::thread::spawn(move || outlines(&windows))
     };
     let shot = screenshot(&mut client, &output)?;
-    let model = AI_MODELS.iter().find(|(id, _)| *id == feature.model).map_or(feature.model.as_str(), |(_, name)| name);
+    let model = feature.model_name();
     let started = Instant::now();
     let note = |done: f32, body: &str| Note::progress("Smart Tiling", done).body(body).icon("ai").action("cancel", "Cancel");
     let id = notes.show(None, note(0.1, &format!("Looking at {} windows…", windows.len())));
@@ -134,9 +134,9 @@ fn run() -> Result<(), String> {
     let (placements, summary) = match answer.map_err(|e| e.to_string()).and_then(|a| placements(&a, &windows)) {
         Ok(p) => p,
         Err(e) => {
-            notes.show(Some(id), Note::new("Smart Tiling didn't work").body(e).icon("ai").kind(NoteKind::Error));
+            notes.show(Some(id), Note::new("Smart Tiling didn't work").body(e.clone()).icon("ai").kind(NoteKind::Error));
             linger();
-            return Err("no arrangement from the model".into());
+            return Err(format!("no arrangement from the model: {e}"));
         }
     };
     let placed = placements.len();

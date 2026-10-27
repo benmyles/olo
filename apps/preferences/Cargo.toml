@@ -13,7 +13,6 @@ olo-kit.workspace = true
 olo-protocol.workspace = true
 olo-screensavers.workspace = true
 olo-system.workspace = true
-olo-ai.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

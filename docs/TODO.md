@@ -5,6 +5,13 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~AI features use OpenAI's models~~ (Ben): Preferences ▸ AI offers
+  Astra 6 (default), Sol 6.1, Terra 6.1 and Luna 6, through the Token
+  Pool's Codex accounts; a Claude model chosen before reads as Astra.
+  Every call retries 429/503/529 with backoff (up to 4 tries). The pool
+  no longer benches an account for a 429 that isn't a spent meter (it
+  was turning every account away with "out of quota" at 13% use) and
+  passes the provider's own message back.
 - ~~Tabula is now Olo Desktop~~ (Ben): plain `olo` in code (crates,
   programs, app ids `olo.X`, `OLO_*`, `~/.config/olo`…, D-Bus
   `com.olodesktop.*`), "Olo Desktop" in public; the brand (mark, wordmark,
@@ -107,6 +114,20 @@ as they land (with the commit), add new ones as they come up.
   on a GTK prompter that had lost its display) asks in an Olo alert.
 - ~~Login keyring in a real session~~ (the session finishes starting the
   daemon PAM unlocked), ~~Passwords lists 1Password's accounts~~.
+
+## Next
+
+- **Resizing tiled windows is slow** (Ben): dragging a window's edge
+  after tiling lags; make it smooth and correct.
+- **Keyboard hints everywhere** (Ben; opt-in, Preferences ▸ Keyboard):
+  everything reachable from the keyboard, like Vim's EasyMotion. A
+  modifier chord (perhaps ⌃⇧) labels every place you might go with a
+  letter (windows, panes, controls, menus and their items, list rows,
+  tabs); pressing one goes there, or, for a place with more inside,
+  labels what's inside it, and so on. Every kind of widget and menu
+  takes part (a kit layer over the widget tree, so apps get it for free;
+  app_server for windows, Deskbar and menus), pixel-perfect in light,
+  dark and night at 2×, and agents can read the labels too.
 
 ## Native rule (no wrapping system tools)
 

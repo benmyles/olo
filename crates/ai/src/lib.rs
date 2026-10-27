@@ -1,10 +1,11 @@
 //! How Olo's AI features (Preferences ▸ AI) reach their models:
-//! Claude through the Token Pool's gateway on this computer (its
-//! accounts, spent in its order) or straight to Anthropic with the API
-//! key saved here; OpenAI's (Astra 6, `gpt-*`) through the pool's Codex
-//! accounts only. One blocking call at a time (the Messages API, or the
+//! OpenAI's (`AI_MODELS`, Astra 6 first) through the Token Pool's Codex
+//! accounts, its gateway on this computer. Claude (through the pool's
+//! Claude accounts, or straight to Anthropic with a saved API key) is
+//! kept for when Claude models are offered again; none is now. One blocking call at a time (the Messages API, or the
 //! Responses API for OpenAI's); call it off the UI thread (a feature's
-//! own process or a worker).
+//! own process or a worker). A call the server turns away for now (429
+//! rate limited, 503/529 overloaded) is tried again after a wait.
 //!
 //! `OLO_AI_BASE_URL` sends every call somewhere else instead (a fake
 //! server, in tests): never a real model there.
@@ -22,13 +23,19 @@ const API_VERSION: &str = "2026-10-21";
 const POOL_PORT: u16 = 17891;
 /// A model looking at a screen and thinking can take a while.
 const TIMEOUT: Duration = Duration::from_secs(300);
+/// Tries at a call the server turns away for now.
+const TRIES: u32 = 4;
+/// The longest wait for another try; asked to wait longer (a quota that
+/// resets in an hour), the call gives up with the server's answer.
+const LONGEST_WAIT: Duration = Duration::from_secs(60);
+/// How the features introduce themselves (the Token Pool lists requests
+/// by it).
+const USER_AGENT: &str = concat!("olo-ai/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("No Anthropic API key is saved (Preferences ▸ AI), and the Token Pool is off.")]
     NoKey,
-    #[error("{0} is reached through the Token Pool, which is off (Preferences ▸ AI).")]
-    NeedsPool(String),
     #[error("Couldn't reach {0}: {1}")]
     Unreachable(String, String),
     #[error("{0}")]
@@ -129,22 +136,27 @@ pub fn is_openai(model: &str) -> bool {
     model.starts_with("gpt-")
 }
 
-/// Ask `feature`'s model; its JSON answer.
+/// Ask `feature`'s model (one still offered: [`AiFeature::model_id`]);
+/// its JSON answer.
 pub fn ask(settings: &AiSettings, feature: &AiFeature, ask: &Ask) -> Result<Value, Error> {
+    let feature = &AiFeature { model: feature.model_id().into(), ..feature.clone() };
     if is_openai(&feature.model) {
-        return ask_openai(settings, feature, ask);
+        return ask_openai(feature, ask);
     }
     let (base, key) = endpoint(settings)?;
     let url = format!("{base}/v1/messages");
-    let client = reqwest::blocking::Client::builder().timeout(TIMEOUT).build().map_err(|e| Error::Unreachable(base.clone(), e.to_string()))?;
-    let mut req = client.post(&url).header("anthropic-version", API_VERSION).json(&body(feature, ask));
-    if fallbacks(&feature.model) {
-        req = req.header("anthropic-beta", "server-side-fallback-2026-07-01");
-    }
-    if let Some(key) = key {
-        req = req.header("x-api-key", key);
-    }
-    let reply = req.send().map_err(|e| Error::Unreachable(base.clone(), e.to_string()))?;
+    let client = http(&base)?;
+    let body = body(feature, ask);
+    let reply = send(&base, || {
+        let mut req = client.post(&url).header("anthropic-version", API_VERSION).json(&body);
+        if fallbacks(&feature.model) {
+            req = req.header("anthropic-beta", "server-side-fallback-2026-07-01");
+        }
+        if let Some(key) = &key {
+            req = req.header("x-api-key", key);
+        }
+        req
+    })?;
     let status = reply.status();
     let reply: Value = reply.json().map_err(|e| Error::Api(format!("{status}: {e}")))?;
     if !status.is_success() {
@@ -152,6 +164,42 @@ pub fn ask(settings: &AiSettings, feature: &AiFeature, ask: &Ask) -> Result<Valu
         return Err(Error::Api(message));
     }
     answer(&reply)
+}
+
+fn http(base: &str) -> Result<reqwest::blocking::Client, Error> {
+    reqwest::blocking::Client::builder().timeout(TIMEOUT).user_agent(USER_AGENT).build().map_err(|e| Error::Unreachable(base.to_owned(), e.to_string()))
+}
+
+/// Send the request `make` builds, again after a wait while the server
+/// turns it away for now; the last answer.
+fn send(base: &str, make: impl Fn() -> reqwest::blocking::RequestBuilder) -> Result<reqwest::blocking::Response, Error> {
+    let mut tries = 0;
+    loop {
+        tries += 1;
+        let reply = make().send().map_err(|e| Error::Unreachable(base.to_owned(), e.to_string()))?;
+        if !matches!(reply.status().as_u16(), 429 | 503 | 529) || tries >= TRIES {
+            return Ok(reply);
+        }
+        match wait(tries, reply.headers()) {
+            Some(d) => std::thread::sleep(d),
+            None => return Ok(reply),
+        }
+    }
+}
+
+/// How long to wait after try `tries` was turned away: what the server
+/// asks (`retry-after`, in seconds), else 2, 4, 8 s, each with up to a
+/// quarter more so callers turned away together don't all come back
+/// together. None if the server asks for longer than `LONGEST_WAIT`.
+fn wait(tries: u32, headers: &reqwest::header::HeaderMap) -> Option<Duration> {
+    let asked = headers.get("retry-after").and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse::<f64>().ok()).filter(|s| s.is_finite() && *s >= 0.0);
+    if let Some(s) = asked {
+        let d = Duration::from_secs_f64(s);
+        return (d <= LONGEST_WAIT).then_some(d);
+    }
+    let base = Duration::from_secs(1 << tries.min(5));
+    let jitter = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_nanos()) as f64 / 1e9 / 4.0;
+    Some(base.mul_f64(1.0 + jitter))
 }
 
 /// The Responses API body for `ask` (as Codex sends it: streamed, not
@@ -178,18 +226,18 @@ pub fn openai_body(feature: &AiFeature, ask: &Ask) -> Value {
     })
 }
 
-fn ask_openai(settings: &AiSettings, feature: &AiFeature, ask: &Ask) -> Result<Value, Error> {
+fn ask_openai(feature: &AiFeature, ask: &Ask) -> Result<Value, Error> {
     let base = match std::env::var("OLO_AI_BASE_URL") {
         Ok(base) => base.trim_end_matches('/').to_owned(),
-        Err(_) if settings.use_pool => {
+        Err(_) => {
             let port = std::env::var("OLO_POOL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(POOL_PORT);
             format!("http://127.0.0.1:{port}/codex")
         }
-        Err(_) => return Err(Error::NeedsPool(feature.model.clone())),
     };
     let url = format!("{base}/v1/responses");
-    let client = reqwest::blocking::Client::builder().timeout(TIMEOUT).build().map_err(|e| Error::Unreachable(base.clone(), e.to_string()))?;
-    let reply = client.post(&url).json(&openai_body(feature, ask)).send().map_err(|e| Error::Unreachable(base.clone(), e.to_string()))?;
+    let client = http(&base)?;
+    let body = openai_body(feature, ask);
+    let reply = send(&base, || client.post(&url).json(&body))?;
     let status = reply.status();
     let text = reply.text().map_err(|e| Error::Api(format!("{status}: {e}")))?;
     if !status.is_success() {
@@ -257,16 +305,26 @@ mod tests {
 
     #[test]
     fn asks_with_effort_schema_and_fallbacks() {
-        let s = AiSettings::default();
+        let opus = AiFeature { model: "claude-opus-5-5".into(), effort: "medium".into(), enabled: true };
         let ask = Ask { system: "s".into(), content: vec![text_block("hi")], schema: json!({"type": "object"}), max_tokens: 100 };
-        let b = body(&s.smart_tiling, &ask);
+        let b = body(&opus, &ask);
         assert_eq!(b["model"], "claude-opus-5-5");
         assert_eq!(b["output_config"]["effort"], "medium");
         assert_eq!(b["output_config"]["format"]["type"], "json_schema");
         assert_eq!(b["fallbacks"], "default");
         assert!(b.get("thinking").is_none());
-        let haiku = AiFeature { model: "claude-haiku-5-5".into(), ..s.smart_tiling };
+        let haiku = AiFeature { model: "claude-haiku-5-5".into(), ..opus };
         assert!(body(&haiku, &ask).get("fallbacks").is_none());
+    }
+
+    #[test]
+    fn astra_by_default_and_for_models_no_longer_offered() {
+        let f = AiSettings::default().smart_tiling;
+        assert_eq!((f.model_id(), f.model_name(), f.effort.as_str()), ("gpt-6-astra", "Astra 6", "medium"));
+        let old = AiFeature { model: "claude-opus-5-5".into(), ..f.clone() };
+        assert_eq!(old.model_id(), "gpt-6-astra");
+        let sol = AiFeature { model: "gpt-6.1-sol".into(), ..f };
+        assert_eq!((sol.model_id(), sol.model_name()), ("gpt-6.1-sol", "Sol 6.1"));
     }
 
     #[test]
@@ -291,6 +349,63 @@ mod tests {
         assert_eq!(openai_answer(&format!("data: {done}\n")).unwrap(), json!({"b": 2}));
         let cut = json!({"type": "response.incomplete", "response": {"status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}}});
         assert!(matches!(openai_answer(&format!("data: {cut}\n")), Err(Error::Truncated)));
+    }
+
+    #[test]
+    fn waits_before_trying_again() {
+        let mut h = reqwest::header::HeaderMap::new();
+        let d = wait(1, &h).unwrap();
+        assert!(d >= Duration::from_secs(2) && d <= Duration::from_millis(2500), "{d:?}");
+        assert!(wait(3, &h).unwrap() >= Duration::from_secs(8));
+        h.insert("retry-after", "7".parse().unwrap());
+        assert_eq!(wait(1, &h), Some(Duration::from_secs(7)));
+        h.insert("retry-after", "3600".parse().unwrap());
+        assert_eq!(wait(1, &h), None);
+    }
+
+    /// A server on loopback that turns the first `busy` requests away
+    /// (429, "retry-after: 0") and then answers 200; how many it saw.
+    fn busy_server(busy: usize) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use std::io::{BufRead, BufReader, Read};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let seen = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count = seen.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { break };
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut length = 0;
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                        break;
+                    }
+                    if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        length = v.trim().parse().unwrap_or(0);
+                    }
+                }
+                let _ = reader.read_exact(&mut vec![0; length]);
+                let n = count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let reply = if n < busy { "HTTP/1.1 429 Too Many Requests\r\nretry-after: 0\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}" } else { "HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}" };
+                let _ = stream.write_all(reply.as_bytes());
+            }
+        });
+        (base, seen)
+    }
+
+    #[test]
+    fn tries_again_when_turned_away() {
+        let (base, seen) = busy_server(2);
+        let client = http(&base).unwrap();
+        let reply = send(&base, || client.post(&base).json(&json!({}))).unwrap();
+        assert_eq!(reply.status(), 200);
+        assert_eq!(seen.load(std::sync::atomic::Ordering::SeqCst), 3);
+        // Turned away every time: the last answer, after TRIES tries.
+        let (base, seen) = busy_server(100);
+        let reply = send(&base, || client.post(&base).json(&json!({}))).unwrap();
+        assert_eq!(reply.status(), 429);
+        assert_eq!(seen.load(std::sync::atomic::Ordering::SeqCst), TRIES as usize);
     }
 
     #[test]
