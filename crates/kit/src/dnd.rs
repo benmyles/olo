@@ -117,6 +117,12 @@ impl DragData {
         self.with(&folder_type(dir), Vec::new())
     }
 
+    /// Asks a folder to make links to the files rather than copies (an
+    /// application dragged out of Deskbar).
+    pub fn as_link(self) -> DragData {
+        self.with(LINK_TYPE, Vec::new())
+    }
+
     /// Adds a type only Tabula's apps know (put first: it is the most
     /// faithful).
     pub fn with(mut self, mime: &str, data: impl Into<Arc<[u8]>>) -> DragData {
@@ -124,6 +130,9 @@ impl DragData {
         self
     }
 }
+
+/// The type (with no data) that [`DragData::as_link`] adds.
+pub const LINK_TYPE: &str = "application/x-tabula-make-link";
 
 /// Something being dragged over a window.
 #[derive(Clone, Debug, PartialEq)]
@@ -193,6 +202,11 @@ pub struct Drop {
 impl Drop {
     pub fn text(&self) -> String {
         String::from_utf8_lossy(&self.data).into_owned()
+    }
+
+    /// The files should be linked to, not copied ([`DragData::as_link`]).
+    pub fn wants_link(&self) -> bool {
+        self.types.iter().any(|t| t == LINK_TYPE)
     }
 
     /// The local paths in a `text/uri-list` (others are left out).

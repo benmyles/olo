@@ -234,7 +234,8 @@ and offers actions; where it is dropped picks the type and the action.
   `DragData::text(s)`; `.with(mime, bytes)` adds a type only Tabula knows,
   first; `.icon(DragIcon)`; `.from_folder(dir)` names the folder the files
   are in (`Hover::from_folder(dir)`), so Tracker refuses dropping them back
-  where they are, from any app. Viewer and Quick Look drag their file out
+  where they are, from any app; `.as_link()` asks a folder for links
+  instead of copies (`Drop::wants_link`). Viewer and Quick Look drag their file out
   from the picture when it fits (`Preview::take_drag_out`: a drag that
   doesn't pan), Quick Look also from its footer's icon, Get Info from its
   icon.
@@ -242,7 +243,11 @@ and offers actions; where it is dropped picks the type and the action.
   `view::SPRING` (1 s) opens it (`item_drop` times it; `take_spring`).
   Deskbar takes files dropped on a running application's row and opens
   them with it (`open::open_with(handler, paths)`: our apps get them all
-  as arguments, a desktop entry at once with %F/%U or once each). `icons::drag_icon(ctx, icon, size, count,
+  as arguments, a desktop entry at once with %F/%U or once each).
+  Dragging a row out carries the application's program `.as_link()`
+  (ours, or an entry whose command is a program alone); Tracker makes a
+  link named as the application, and draws links to our programs with
+  their icons (`Entry::app_icon`). `icons::drag_icon(ctx, icon, size, count,
   hotspot, DragLabel::Below(name) | Right(name) | None)` makes Tracker's
   picture: the icon (stacked for several) and the name highlighted,
   see-through, the name drawn from the glyphs egui already rasterised.

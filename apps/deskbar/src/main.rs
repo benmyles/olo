@@ -126,6 +126,33 @@ impl Deskbar {
         self.entry(&app_id).filter(|e| e.exec.is_some()).map(|e| tabula_kit::open::Handler::Entry(Box::new(e)))
     }
 
+    /// The program of the team `key`, to drag out as a link: ours, or an
+    /// installed application whose command is a program alone.
+    fn program(&mut self, key: &str) -> Option<std::path::PathBuf> {
+        match self.handler(key)? {
+            tabula_kit::open::Handler::Ours(bin) => tabula_kit::find_program(bin),
+            tabula_kit::open::Handler::Entry(e) => {
+                let command = e.command()?;
+                let mut words = command.split_whitespace();
+                let (program, None) = (words.next()?, words.next()) else { return None };
+                let path = std::path::Path::new(program);
+                if path.is_absolute() { path.is_file().then(|| path.to_owned()) } else { tabula_kit::find_program(program) }
+            }
+        }
+    }
+
+    /// Dragging the team `team` out: a link to its program, wherever it
+    /// is dropped (BeOS's Deskbar made links the same way).
+    fn app_drag(&mut self, ctx: &egui::Context, team: &Team) -> Option<tabula_kit::dnd::DragData> {
+        let program = self.program(&team.key)?;
+        let data = tabula_kit::dnd::DragData::files(&[program], tabula_kit::dnd::Actions::COPY).as_link();
+        let icon = team.icon.as_deref().unwrap_or("application");
+        Some(match icons::drag_icon(ctx, icon, 32.0, 1, vec2(16.0, 16.0), icons::DragLabel::Below(&team.name)) {
+            Some(i) => data.icon(i),
+            None => data,
+        })
+    }
+
     fn teams(&mut self) -> Vec<Team> {
         let mut teams: Vec<Team> = Vec::new();
         for key in self.order.clone() {
@@ -702,7 +729,7 @@ impl App for Deskbar {
         // ---- teams
         let mut y = tray.bottom();
         let pointer = ui.input(|i| i.pointer.hover_pos());
-        let hover = tabula_kit::dnd::hover(ui.ctx()).filter(|h| h.has_files() && h.actions.copy);
+        let hover = tabula_kit::dnd::hover(ui.ctx()).filter(|h| h.has_files() && h.actions.copy && !h.has(tabula_kit::dnd::LINK_TYPE));
         for team in &teams {
             let row = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), ROW_H));
             // Files dragged onto an application open with it.
@@ -711,7 +738,12 @@ impl App for Deskbar {
                 tabula_kit::dnd::accept(ui.ctx(), format!("team:{}", team.key), "text/uri-list", tabula_kit::dnd::Action::Copy);
             }
             let id = egui::Id::unique(("team", &team.key));
-            let resp = ui.interact(row, id, Sense::click());
+            let resp = ui.interact(row, id, Sense::click_and_drag());
+            if resp.drag_started()
+                && let Some(data) = self.app_drag(ui.ctx(), team)
+            {
+                cx.start_drag(self.win, data);
+            }
             let open = menu::is_open(ui.ctx(), id);
             // A click brings an application with one window forward; with
             // more it opens the menu of its windows to choose from, as the

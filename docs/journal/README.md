@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Drag an application out of Deskbar
+
+*02:50* — Dragging an application's row out of Deskbar leaves a link to it where it's dropped, named and drawn as the application; opening the link starts it.
+
+![Drag an application out of Deskbar](2026-10-27/025059-drag-an-application-out-of-deskbar.png)
+
 ### GTK windows wear Tabula's chrome
 
 *02:45* — Plain GTK 3 and GTK 4 windows (no headerbar) now get Tabula's tab and frame: app_server speaks KDE's server-decoration protocol, which is how GTK asks for server-side decorations.

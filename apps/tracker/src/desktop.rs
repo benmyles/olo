@@ -528,6 +528,7 @@ fn trash_item() -> Item {
         modified: None,
         mode: 0o40755,
         kind: fs::Kind::Folder,
+        app_icon: None,
     });
     Item { entry, label: "Trash".into(), icon }
 }

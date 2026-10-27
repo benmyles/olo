@@ -20,6 +20,9 @@ pub struct Entry {
     pub modified: Option<SystemTime>,
     pub mode: u32,
     pub kind: Kind,
+    /// The icon of the Tabula application this program (or a link to it)
+    /// is.
+    pub app_icon: Option<&'static str>,
 }
 
 pub use tabula_kit::files::{Kind, format_size, format_time, kind_for};
@@ -39,7 +42,15 @@ pub fn entry(path: &Path) -> Option<Entry> {
         modified: meta.modified().ok(),
         mode,
         kind: kind_for(path, is_dir, mode),
+        app_icon: if is_dir { None } else { app_icon(path, is_link) },
     })
+}
+
+/// One of our applications' icons, for its program or a link to it.
+fn app_icon(path: &Path, is_link: bool) -> Option<&'static str> {
+    let target = if is_link { fs::read_link(path).ok()? } else { path.to_owned() };
+    let name = target.file_name()?.to_str()?;
+    tabula_kit::apps::OUR_APPS.iter().find(|(bin, _, _)| *bin == name).map(|(_, _, icon)| *icon)
 }
 
 pub fn list(dir: &Path, hidden: bool) -> std::io::Result<Vec<Entry>> {
@@ -279,6 +290,16 @@ pub fn make_link(path: &Path) -> std::io::Result<PathBuf> {
 pub fn link_into(path: &Path, dir: &Path) -> std::io::Result<PathBuf> {
     let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
     let to = if path.parent() == Some(dir) { unique(dir, &format!("{name} link")) } else { unique(dir, &name) };
+    std::os::unix::fs::symlink(path, &to)?;
+    Ok(to)
+}
+
+/// A link to the program `path` in `dir`, named as the application is when
+/// it is one of ours ("Terminal", not "tabula-terminal").
+pub fn app_link_into(path: &Path, dir: &Path) -> std::io::Result<PathBuf> {
+    let file = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let name = tabula_kit::apps::OUR_APPS.iter().find(|(bin, _, _)| *bin == file).map_or(file.as_str(), |(_, name, _)| *name);
+    let to = unique(dir, name);
     std::os::unix::fs::symlink(path, &to)?;
     Ok(to)
 }

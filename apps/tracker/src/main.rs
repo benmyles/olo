@@ -1590,6 +1590,27 @@ impl Tracker {
             }
             view::DropTarget::Folder(dest) => dest,
         };
+        // An application dragged out of Deskbar: a link to it, named as
+        // the application is.
+        if drop.wants_link() && drop.mime == "text/uri-list" && !matches!(drop.action, A::Ask) {
+            let mut names = Vec::new();
+            for p in &paths {
+                match fs::app_link_into(p, &dest) {
+                    Ok(to) => names.extend(to.file_name().map(|n| n.to_string_lossy().into_owned())),
+                    Err(e) => {
+                        self.error(cx, format!("Couldn't create a link: {e}"));
+                        break;
+                    }
+                }
+            }
+            if let Some(Win::Desktop(d)) = self.windows.get_mut(&window)
+                && dest == fs::home().join("Desktop")
+            {
+                d.place_new(&names, drop.pos);
+            }
+            self.reload_all();
+            return;
+        }
         // Dropped on the desktop: they go where they were let go.
         if let Some(Win::Desktop(d)) = self.windows.get_mut(&window)
             && dest == fs::home().join("Desktop")

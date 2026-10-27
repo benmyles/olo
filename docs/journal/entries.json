@@ -1018,5 +1018,11 @@
   "title": "GTK windows wear Tabula's chrome",
   "caption": "Plain GTK 3 and GTK 4 windows (no headerbar) now get Tabula's tab and frame: app_server speaks KDE's server-decoration protocol, which is how GTK asks for server-side decorations.",
   "image": "2026-10-27/024529-gtk-windows-wear-tabula-s-chrome.png"
+ },
+ {
+  "time": "2026-10-27T02:50:59",
+  "title": "Drag an application out of Deskbar",
+  "caption": "Dragging an application's row out of Deskbar leaves a link to it where it's dropped, named and drawn as the application; opening the link starts it.",
+  "image": "2026-10-27/025059-drag-an-application-out-of-deskbar.png"
  }
 ]

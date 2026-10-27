@@ -402,7 +402,7 @@ pub fn icon_of(e: &Entry) -> &'static str {
             return if fs::trash_is_empty() { "trash-empty" } else { "trash-full" };
         }
     }
-    e.kind.icon()
+    e.app_icon.unwrap_or_else(|| e.kind.icon())
 }
 
 /// The rect a list name cell's text occupies (after its icon).
