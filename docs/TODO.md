@@ -253,7 +253,39 @@ as they land (with the commit), add new ones as they come up.
   rather than running parted or mkfs; every destructive step behind a
   clear alert naming the disk; polkit for privileges; agent-readable over
   IPC. Never test it on the real disks: loop devices in a test session.
-- **Log viewer app** (Ben): a Tabula app that shows every Tabula
+- **Hide Window everywhere** (Ben): hiding (BeOS's minimize: the window
+  goes, Deskbar shows it greyed) is a desktop shortcut that works on any
+  window, Tabula's or not (app_server, like Zoom and Close: a default
+  binding in `shortcuts.rs`, listed and changeable in Preferences ▸
+  Keyboard), and a command in the ⌘Space palette ("Hide Window", acting
+  on the window that was active before the palette opened).
+- **Notifications, robust and everywhere** (Ben): today
+  `tabula-notifications` serves `org.freedesktop.Notifications` as cards
+  in a corner; make it complete, after Haiku's notification_server and
+  `BNotification` (information, important, error and *progress* types; a
+  group per app; per-app settings in Preferences) and better where we
+  can. Every way apps notify works: freedesktop Notifications (all of
+  spec 1.2: markup with links and bold, replaces-id, sounds and
+  `suppress-sound`, `transient`, inline reply), GLib's `org.gtk.Notifications`
+  (GApplication apps use it when the name is on the bus, as under GNOME),
+  and the portal's `org.freedesktop.impl.portal.Notification` (Flatpak
+  apps, Chrome). Tabula's own apps get a kit API (`cx.notify`, with
+  actions coming back as messages, and progress notes for long jobs:
+  copies, downloads, installs). Then: a notification history
+  (Deskbar opens it; unread count), Do Not Disturb (with a schedule, and
+  while sharing the screen), per-app allow/banner/sound/history choices,
+  grouping and stacking, a click that brings the right window forward
+  (by desktop entry / activation token), notifications kept across a
+  restart, and agent-readable (list, act on, dismiss) over IPC.
+- **Long menus scroll** (found building Log Viewer): a popup menu taller
+  than the screen runs off it. As in BeOS, it should fit the screen with
+  scroll arrows at its ends (and the wheel), in the kit's menus and
+  app_server's popup placement alike.
+- ~~**Log viewer app**~~ (done: `apps/logs`, Log Viewer; the journal read
+  natively, live; Find, program, level and time filters; syntax
+  highlighting; Show in Context; `tabula-logs --print … [--json]` for
+  agents; HACKING, "Log Viewer". Left: the apps' own log files, where
+  there are any beside the journal) (Ben): a Tabula app that shows every Tabula
   event in one place (app_server, tabula-session, Deskbar, Tracker and
   every app's log) so issues can be spotted and tracked down: live tail,
   filter by program, level and text, a time range, warnings and errors

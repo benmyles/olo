@@ -274,7 +274,9 @@ asked for it: drag an image into Claude Code there.
 
 `Button` (`.default(true)` for the Enter button), `CheckBox`, `RadioButton`,
 `Button::pushed(true)` for a toolbar toggle that stays down,
-`TextControl` (`.label("Name:").divider(x)`), `TextView`, `Slider`
+`TextControl` (`.label("Name:").divider(x)`), `TextView` (`.highlight(&f)`
+colours it: `f(text, font, colour)` returns a `LayoutJob` in sections, a `widgets::Highlighter`,
+as Log Viewer's syntax highlighting does), `Slider`
 (`.label().value_text().limits()`), `MenuField` (pop-up choice), `BBox`
 (etched group box with label), `separator`, `StatusBar` (progress),
 `ScrollView` (`show`, `show_rows` for virtualised content, `show_in(ui,
@@ -293,7 +295,9 @@ multi-select list, dragging from below the rows, or from a row's other
 columns when it isn't selected, draws a selection band, as in Tracker's
 list view: ⇧ or ⌘ adds to the selection, and it scrolls on near the
 edges; on a draggable list the name column and selected rows drag the
-items), `TabView`, `color_well`, `heading`,
+items; `.empty_text("No lines match.")` says so in an empty list; a cell
+draws plain text with `text`/`text_with` or sections of their own colours
+with `text_job`), `TabView`, `color_well`, `heading`,
 `form_label`, `window_content`, `button_row`, `context_menu`,
 `popup_menu_at` / `popup_result`, `InlineEdit` (Tracker-style rename in
 place: returns `Editing` / `Commit` / `Cancel`; pads by `INLINE_PAD`, which
@@ -1270,6 +1274,52 @@ running one and becomes `current` for the next start (the one it
 replaced is kept, as Chrome reads its files as it runs; older ones go;
 `.updating` keeps it to one at a time). Test it with a fixture HOME (`tsession run NAME HOME=… XDG_DATA_HOME=…
 target/debug/tabula-chrome`), never Ben's profile.
+
+## Log Viewer (apps/logs)
+
+`tabula-logs` shows every Tabula program's log in one place: what they
+write to stderr goes to the user's journal (through the session's
+journal stream), and Log Viewer reads that journal natively.
+
+- journal.rs: systemd's journal file format (JOURNAL_FILE_FORMAT.md): the
+  header, entries through the chain of entry arrays, fields in data
+  objects (zstd, xz or lz4; the regular and the compact layout). Data
+  objects are cached by offset (most are shared between entries). A
+  file still being written is read on from where it was left, and
+  across journald rotating it (the open file is finished, then the new
+  one opened). `user_files(uid)` finds `user-UID.journal` and its
+  archives in /var/log/journal (or /run/log/journal), oldest first.
+- reader.rs: on a worker thread, every file in batches, then the active
+  one polled every ½ s; `Update::Lines` carries new lines and more text
+  for lines sent before.
+- model.rs: an entry as a line: the program (`_EXE`'s name, else
+  `_COMM` made whole from a longer name seen, else the identifier;
+  Chrome's lines, which Google's launcher passes through `cat`, as
+  chrome), the level and text without terminal colours and without
+  `tracing`'s time and level (or Chromium's `[pid:tid:time:LEVEL:file]`),
+  GLib's `-WARNING **` and panics recognised, and Tabula's own stderr
+  lines Info unless they say otherwise (the session's stream files all
+  of stderr as warnings). Continuation lines (a pretty debug print, a
+  backtrace) join the line before from the same process. `Query`: time
+  (last 10 minutes, hour, today, since startup, all), minimum level, one
+  program or Tabula's or all, and text (in the message or the program).
+- highlight.rs: syntax highlighting as spans: the target `tracing` puts
+  first, `key=value` keys, strings, numbers, paths and URLs, type names,
+  trouble words; the list and the detail pane colour them from the
+  palette.
+- main.rs: Find and the three filters above a `ColumnListView`; the
+  selected line in full (highlighted, selectable) below; Live keeps the
+  list at its end as lines arrive; Show in Context (⌘K, or a line's
+  context menu) shows every line around one, and Back returns to the
+  filters. The filters are kept; Find isn't.
+
+For agents, the same query from the command line, reading the journal
+directly: `tabula-logs --print [--since 10m|2h|1d|today|boot|all] [--level
+debug|info|warning|error] [--program NAME | --all-programs] [--find TEXT]
+[--json] [--follow]` (JSON lines: time in UTC, program, pid, level,
+message). Tests: `cargo test -p tabula-logs` (synthetic journal files
+in both layouts); `-- --include-ignored` also reads this machine's
+journal and highlights every line in it.
 
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 

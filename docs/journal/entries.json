@@ -898,5 +898,11 @@
   "title": "GTK and Chrome in Tabula's colours",
   "caption": "The desktop portals now start in a real session. GTK 3, GTK 4 and libadwaita apps take Tabula's palette, fonts and close-left/zoom-right buttons, in light and dark, and Chrome opens with Tabula's tab and frame instead of its own buttons.",
   "image": "2026-10-27/002846-gtk-and-chrome-in-tabula-s-colours.png"
+ },
+ {
+  "time": "2026-10-27T00:46:59",
+  "title": "Log Viewer",
+  "caption": "A native reader for your journal: Tabula's own programs (or everything), by level and time, with Find, live tail, Show in Context and syntax highlighting on every line. Also a --print command line for agents.",
+  "image": "2026-10-27/004659-log-viewer.png"
  }
 ]

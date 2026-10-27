@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Log Viewer
+
+*00:46* — A native reader for your journal: Tabula's own programs (or everything), by level and time, with Find, live tail, Show in Context and syntax highlighting on every line. Also a --print command line for agents.
+
+![Log Viewer](2026-10-27/004659-log-viewer.png)
+
 ### GTK and Chrome in Tabula's colours
 
 *00:28* — The desktop portals now start in a real session. GTK 3, GTK 4 and libadwaita apps take Tabula's palette, fonts and close-left/zoom-right buttons, in light and dark, and Chrome opens with Tabula's tab and frame instead of its own buttons.

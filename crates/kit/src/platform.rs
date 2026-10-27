@@ -329,7 +329,9 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
+                // usvg warns about every SVG feature it skips (a marker
+                // on each icon drawn); that's noise in the journal.
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,usvg=error")),
         )
         .try_init();
     // A client handed its connection (WAYLAND_SOCKET, as app_server starts

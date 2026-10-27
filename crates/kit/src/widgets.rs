@@ -403,6 +403,10 @@ impl Widget for StringView<'_> {
     }
 }
 
+/// Lays out a [`TextView`]'s text in colour: the text, its font and the
+/// plain text colour.
+pub type Highlighter<'a> = dyn Fn(&str, FontId, Color32) -> egui::text::LayoutJob + 'a;
+
 /// A multi-line text well with a BeOS scroll bar (BTextView in a
 /// BScrollView).
 pub struct TextView<'a> {
@@ -410,11 +414,19 @@ pub struct TextView<'a> {
     text: &'a mut String,
     mono: bool,
     editable: bool,
+    highlight: Option<&'a Highlighter<'a>>,
 }
 
 impl<'a> TextView<'a> {
     pub fn new(id: impl std::hash::Hash + std::fmt::Debug, text: &'a mut String) -> Self {
-        TextView { id: Id::unique(id), text, mono: false, editable: true }
+        TextView { id: Id::unique(id), text, mono: false, editable: true, highlight: None }
+    }
+    /// Colour the text: `highlight` lays it out (given the font and the
+    /// plain text colour) in sections of their own colours. It runs when
+    /// the text changes, so keep it quick.
+    pub fn highlight(mut self, highlight: &'a Highlighter<'a>) -> Self {
+        self.highlight = Some(highlight);
+        self
     }
     pub fn mono(mut self, on: bool) -> Self {
         self.mono = on;
@@ -432,21 +444,32 @@ impl<'a> TextView<'a> {
         let focused = ui.memory(|m| m.has_focus(edit_id));
         let editable = self.editable;
         let text = self.text;
+        let highlight = self.highlight;
         let r = ScrollView::new(self.id)
             .focused(focused)
             .background(p.document_background)
             .show(ui, |ui| {
                 let size = ui.available_size();
-                ui.add_sized(
-                    size,
-                    egui::TextEdit::multiline(&mut *text)
-                        .id(edit_id)
-                        .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(6, 4)))
-                        .font(font)
-                        .text_color(c(p.document_text))
-                        .interactive(editable)
-                        .desired_width(f32::INFINITY),
-                )
+                let color = c(p.document_text);
+                let mut layouter = |ui: &Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
+                    let mut job = highlight.map_or_else(
+                        || egui::text::LayoutJob::simple(buf.as_str().to_owned(), font.clone(), color, wrap),
+                        |h| h(buf.as_str(), font.clone(), color),
+                    );
+                    job.wrap.max_width = wrap;
+                    ui.ctx().fonts_mut(|f| f.layout_job(job))
+                };
+                let mut edit = egui::TextEdit::multiline(&mut *text)
+                    .id(edit_id)
+                    .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(6, 4)))
+                    .font(font.clone())
+                    .text_color(color)
+                    .interactive(editable)
+                    .desired_width(f32::INFINITY);
+                if highlight.is_some() {
+                    edit = edit.layouter(&mut layouter);
+                }
+                ui.add_sized(size, edit)
             });
         edit_menu(ui, edit_id, &r, text, editable, false);
         r
@@ -1423,9 +1446,14 @@ impl Cell<'_> {
         self.text_with(text, plain_font(), self.text_color);
     }
     pub fn text_with(&self, text: &str, font: FontId, color: Color32) {
+        self.text_job(egui::text::LayoutJob::simple_singleline(text.to_owned(), font, color));
+    }
+    /// Draw text laid out in sections of their own colours and fonts (a
+    /// highlighted line), on one line, ellipsized to the cell.
+    pub fn text_job(&self, mut job: egui::text::LayoutJob) {
         let r = self.rect.shrink2(vec2(m::CELL_INSET, 0.0));
-        let mut job = egui::text::LayoutJob::simple_singleline(text.to_owned(), font, color);
         job.wrap = egui::text::TextWrapping::truncate_at_width(r.width().max(0.0));
+        job.break_on_newline = false;
         let g = self.painter.layout_job(job);
         let x = match self.align {
             Align::Max => r.right() - g.size().x,
@@ -1434,7 +1462,7 @@ impl Cell<'_> {
         };
         let size = g.job.sections.first().map_or(style::PLAIN_SIZE, |s| s.format.font_id.size);
         let pos = style::text_origin(self.painter.ctx(), &g, x, r.center().y, size);
-        self.painter.galley(pos, g, color);
+        self.painter.galley(pos, g, self.text_color);
     }
 }
 
@@ -1448,13 +1476,14 @@ pub struct ColumnListView<'a> {
     row_height: f32,
     reveal: Option<usize>,
     draggable: bool,
+    empty: Option<&'a str>,
 }
 
 pub const HEADER_HEIGHT: f32 = 18.0;
 
 impl<'a> ColumnListView<'a> {
     pub fn new(id: impl std::hash::Hash + std::fmt::Debug, columns: &'a [Column], rows: usize, state: &'a mut ListState) -> Self {
-        ColumnListView { id: Id::unique(id), columns, rows, state, row_height: m::LIST_ROW, reveal: None, draggable: false }
+        ColumnListView { id: Id::unique(id), columns, rows, state, row_height: m::LIST_ROW, reveal: None, draggable: false, empty: None }
     }
     pub fn row_height(mut self, h: f32) -> Self {
         self.row_height = h;
@@ -1464,6 +1493,12 @@ impl<'a> ColumnListView<'a> {
     /// bring a selection made in code into view).
     pub fn reveal(mut self, row: Option<usize>) -> Self {
         self.reveal = row;
+        self
+    }
+    /// Say `text` in the middle of the list while it has no rows ("No
+    /// lines match.").
+    pub fn empty_text(mut self, text: &'a str) -> Self {
+        self.empty = Some(text);
         self
     }
     /// Rows can be dragged (see [`ListResponse::drag_started`]).
@@ -1672,6 +1707,12 @@ impl<'a> ColumnListView<'a> {
                 }
             },
         );
+        if rows == 0
+            && let Some(text) = self.empty
+        {
+            let dim = c(tabula_theme::mix(p.list_item_text, p.list_background, 0.5));
+            style::label(&child.painter().with_clip_rect(body), body.center().x, body.center().y, Align::Center, text, plain_font(), dim);
+        }
         if let Some(from) = band_from {
             let mods = ui.input(|i| i.modifiers);
             let base = if mods.command || mods.shift { state.selected.clone() } else { BTreeSet::new() };

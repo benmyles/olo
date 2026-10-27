@@ -1,0 +1,19 @@
+[package]
+name = "tabula-logs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "tabula-logs"
+path = "src/main.rs"
+
+[dependencies]
+tabula-kit.workspace = true
+tabula-theme.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+libc = "0.2"
+zstd = "0.14"
+liblzma = { version = "0.4", features = ["static"] }
+lz4_flex = { version = "0.11", default-features = false, features = ["safe-decode", "std"] }

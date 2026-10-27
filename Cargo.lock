@@ -5325,6 +5325,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "lz4_flex"
+version = "0.11.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "373f5eceeeab7925e0c1098212f2fbc4d416adec9d35051a6ab251e824c1854a"
+
+[[package]]
 name = "lzma-rust2"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11182,6 +11188,20 @@ dependencies = [
  "tabula-kit",
  "tabula-system",
  "tracing",
+]
+
+[[package]]
+name = "tabula-logs"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "liblzma",
+ "lz4_flex",
+ "serde",
+ "serde_json",
+ "tabula-kit",
+ "tabula-theme",
+ "zstd",
 ]
 
 [[package]]
