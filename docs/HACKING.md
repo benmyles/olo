@@ -1516,6 +1516,15 @@ leaves that screen out of its list. Test it in a sandbox: a private
 `XDG_RUNTIME_DIR`, a fixture HOME and XDG dirs (the screen runs the real
 programs), and a second screen to run the viewer on.
 
+Agents learn all this from the **`tabula-screens` skill**
+(`apps/screen/SKILL.md`): a real session (`--tty-udev`, at start and
+after each upgrade; `crates/session/src/skills.rs`, on a thread) puts it
+in `~/.claude/skills/` (or `$CLAUDE_CONFIG_DIR/skills/`) when Claude Code
+is there and in `~/.agents/skills/` when Codex is, replacing only a copy
+that still has Tabula's marker line. **Change SKILL.md with the CLI**:
+it is the agents' manual. Headless sessions never write it, so tests
+don't touch the person's home.
+
 ## Google Chrome (apps/chrome)
 
 `tabula-chrome` is Google Chrome in Tabula's applications (`OUR_APPS`).

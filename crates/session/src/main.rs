@@ -23,11 +23,13 @@
 //! if they crash, ends and restarts an app_server that stops answering
 //! (watchdog.rs), and exports the session environment to systemd/D-Bus.
 //! A real session has keyd (if it runs) leave the modifier keys to
-//! app_server (keyd.rs).
+//! app_server (keyd.rs), and gives coding agents Tabula's skills
+//! (skills.rs).
 
 mod graphical;
 mod keyd;
 mod keyring;
+mod skills;
 mod upgrade;
 mod watchdog;
 
@@ -220,6 +222,7 @@ impl Session {
             keyring::start();
             export_environment();
             keyd::pass_through();
+            skills::start();
         }
         s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
         if !no_shell {
@@ -262,6 +265,10 @@ impl Session {
         };
         s.own_files();
         s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
+        if real {
+            // This version's skills, for agents run from now on.
+            skills::start();
+        }
         // A service this version adds starts now, not at the next login (a
         // session with a shell has Deskbar in it; one without stays so).
         let has_shell = s.shell.iter().any(|c| c.argv == ["tabula-deskbar"]);
