@@ -796,5 +796,17 @@
   "title": "Preferences \u25b8 Tracker",
   "caption": "New Tracker windows open in column view by default; Preferences has a Tracker panel to choose the view new windows open in, and Tracker follows a change at once.",
   "image": "2026-10-26/212259-preferences-tracker.png"
+ },
+ {
+  "time": "2026-10-26T21:27:39",
+  "title": "Deskbar: a click lists an app's windows",
+  "caption": "Clicking an application with more than one window in Deskbar now opens its window menu to pick one (or Show All); with one window it comes forward at once, as before.",
+  "image": "2026-10-26/212739-deskbar-a-click-lists-an-app-s-windows.png"
+ },
+ {
+  "time": "2026-10-26T21:27:39",
+  "title": "Find: Space for Quick Look",
+  "caption": "In Tracker's Find window, Space shows the selected result in Quick Look and the arrow keys step through the results, as in a folder window. A space typed into the Find field still goes into the query.",
+  "image": "2026-10-26/212739-find-space-for-quick-look.png"
  }
 ]

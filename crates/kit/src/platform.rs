@@ -1484,7 +1484,7 @@ impl Kit {
                     // Command-key shortcuts.
                     // ⌘C/⌘X/⌘V arrive as clipboard events; when no text
                     // field takes them they go to the menu's Copy/Cut/Paste.
-                    let text_focus = ui.ctx().egui_wants_keyboard_input();
+                    let text_focus = ui.ctx().text_edit_focused();
                     let pressed: Vec<(egui::Key, bool)> = ui.input(|inp| {
                         inp.events
                             .iter()

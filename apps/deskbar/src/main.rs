@@ -612,12 +612,14 @@ impl App for Deskbar {
             let id = egui::Id::unique(("team", &team.key));
             let resp = ui.interact(row, id, Sense::click());
             let open = menu::is_open(ui.ctx(), id);
-            // A click brings the application forward; the right button
-            // (or holding the left) opens its menu of windows.
-            if resp.clicked() && !open {
+            // A click brings an application with one window forward; with
+            // more it opens the menu of its windows to choose from, as the
+            // right button (or holding the left) always does.
+            let several = team.windows.len() > 1;
+            if resp.clicked() && !open && !several {
                 self.bring_forward(&team.key);
             }
-            if (resp.secondary_clicked() || resp.long_touched()) && !open {
+            if ((resp.clicked() && several) || resp.secondary_clicked() || resp.long_touched()) && !open {
                 menu::request_popup(
                     ui.ctx(),
                     MenuRequest {

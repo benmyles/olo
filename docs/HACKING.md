@@ -151,7 +151,11 @@ fn main() {
   (`commands::invoke(pid, command)`). Both block for at most a second;
   call them off the UI thread.
 * **⌘A in text fields** selects all of the field: the kit doesn't send it
-  to the menu's Select All while a text field has the keyboard.
+  to the menu's Select All while a text field has the keyboard; ⌘C/⌘X/⌘V
+  likewise stay with a text field and otherwise go to the menu's Copy, Cut
+  and Paste. "Has the keyboard" is `ctx.text_edit_focused()`: egui's
+  `egui_wants_keyboard_input()` is true for any focused widget (a list
+  view, a button), so don't use it to mean "typing".
 * **Fixed-size windows**: `WindowOptions::new(..).min_size(w, h).max_size(w, h)`
   (preference panels, alerts).
 * **Raw keys** (`WindowOptions::raw_keys()`): for windows that consume the

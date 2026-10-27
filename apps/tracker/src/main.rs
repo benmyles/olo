@@ -142,6 +142,19 @@ struct FindWin {
     took: Duration,
 }
 
+impl FindWin {
+    /// Move the selection by `d` results (Quick Look's arrow keys).
+    fn step_selection(&mut self, d: isize) -> Option<Entry> {
+        let n = self.results.len();
+        if n == 0 {
+            return None;
+        }
+        let k = self.list.single().map_or(0, |k| (k as isize + d).clamp(0, n as isize - 1) as usize);
+        self.list.select(k);
+        self.results.get(k).map(|h| h.entry.clone())
+    }
+}
+
 enum DialogKind {
     EmptyTrash,
     Error,
@@ -938,6 +951,12 @@ impl Tracker {
     }
 
     fn find_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
+        let Some(Win::Find(fw)) = self.windows.get(&win) else { return };
+        // Space is Quick Look on the selected result, as in a folder
+        // window, unless it goes into the Find field.
+        if !fw.list.selected.is_empty() && !ui.ctx().text_edit_focused() && take_space(ui) {
+            self.toggle_quick_look(cx, win);
+        }
         let Some(Win::Find(fw)) = self.windows.get_mut(&win) else { return };
         let mut start = false;
         let mut open = None;
@@ -1040,6 +1059,7 @@ impl Tracker {
                 });
             }
         }
+        self.follow_selection(cx, win);
         if let Some(e) = open {
             self.open_entry(cx, &e);
         }
@@ -1101,6 +1121,7 @@ impl Tracker {
         let sel = match self.windows.get(&win)? {
             Win::Folder(f) => f.selected_entries(),
             Win::Desktop(d) => d.selected_entries(),
+            Win::Find(fw) => return fw.list.single().and_then(|i| fw.results.get(i)).map(|h| h.entry.clone()),
             _ => return None,
         };
         sel.into_iter().next()
@@ -1188,9 +1209,12 @@ impl Tracker {
             }
             Some(quicklook::Action::Fullscreen) => cx.set_fullscreen(win, !cx.is_fullscreen(win)),
             Some(quicklook::Action::Step(d)) => {
-                if let Some(Win::Folder(f)) = self.windows.get_mut(&source)
-                    && let Some(e) = f.step_selection(d)
-                {
+                let next = match self.windows.get_mut(&source) {
+                    Some(Win::Folder(f)) => f.step_selection(d),
+                    Some(Win::Find(fw)) => fw.step_selection(d),
+                    _ => None,
+                };
+                if let Some(e) = next {
                     cx.redraw(source);
                     self.show_quick_look(cx, source, e);
                 }

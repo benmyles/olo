@@ -67,11 +67,11 @@ as they land (with the commit), add new ones as they come up.
   the real accounts.google.com (Ben).
 - ~~**Tracker opens in column view by default**~~ (Ben), set in
   Preferences ▸ Tracker; open windows keep their own view.
-- **Deskbar: a click on a running app with several windows offers them**
+- ~~**Deskbar: a click on a running app with several windows offers them**~~
   (Ben): one window comes forward at once; with more, the left click
   opens the same menu as the right click (each window, Show All).
-- **Find: Space shows the selected result in Quick Look** (Ben), as in
-  a Tracker window.
+- ~~**Find: Space shows the selected result in Quick Look**~~ (Ben), as in
+  a Tracker window; the arrow keys step through the results.
 - **Tracker: File ▸ Open in Terminal** (Ben; later): opens the current
   folder in Terminal, in a new tab once Terminal has tabs (a new window
   until then); also in the context menu.

@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Find: Space for Quick Look
+
+*21:27* — In Tracker's Find window, Space shows the selected result in Quick Look and the arrow keys step through the results, as in a folder window. A space typed into the Find field still goes into the query.
+
+![Find: Space for Quick Look](2026-10-26/212739-find-space-for-quick-look.png)
+
+### Deskbar: a click lists an app's windows
+
+*21:27* — Clicking an application with more than one window in Deskbar now opens its window menu to pick one (or Show All); with one window it comes forward at once, as before.
+
+![Deskbar: a click lists an app's windows](2026-10-26/212739-deskbar-a-click-lists-an-app-s-windows.png)
+
 ### Preferences ▸ Tracker
 
 *21:22* — New Tracker windows open in column view by default; Preferences has a Tracker panel to choose the view new windows open in, and Tracker follows a change at once.
