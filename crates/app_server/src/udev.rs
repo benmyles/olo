@@ -820,6 +820,14 @@ pub fn run_udev() {
             set_ctm(backend, crtc, [1.0; 3], AtomicCommitFlags::empty());
         }
     }
+    // Leave the displays showing what they show: the next app_server (an
+    // upgrade, a restart) or the greeter takes them from there. Smithay
+    // would otherwise put back the state from before we started, which
+    // flickers and, with DRM master already handed back, only fails
+    // ("Failed to restore previous state … Permission denied").
+    for backend in state.backend_data.backends.values_mut() {
+        backend.drm_output_manager.pause();
+    }
 }
 
 impl DrmLeaseHandler for AnvilState<UdevData> {

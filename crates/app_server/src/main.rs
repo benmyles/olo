@@ -14,17 +14,24 @@ static POSSIBLE_BACKENDS: &[&str] = &[
 static GLOBAL: profiling::tracy_client::ProfiledAllocator<std::alloc::System> =
     profiling::tracy_client::ProfiledAllocator::new(std::alloc::System, 10);
 
+/// Smithay's xdg-popup commit hook still runs for a surface whose popup
+/// the client has destroyed (GTK commits it once more, as it may), finds
+/// no parent, and, with no popup left to post a protocol error on, logs
+/// "surface missing from known popups" as an error. Nothing is wrong, so
+/// that one callsite stays out of the log; the others still show.
+fn bogus_error(m: &tracing::Metadata<'_>) -> bool {
+    *m.level() == tracing::Level::ERROR
+        && m.target() == "smithay::wayland::shell::xdg"
+        && m.file().is_some_and(|f| f.ends_with("shell/xdg/mod.rs"))
+        && m.line() == Some(2065)
+}
+
 // Allow in this function because of existing usage
 #[allow(clippy::uninlined_format_args)]
 fn main() {
-    if let Ok(env_filter) = tracing_subscriber::EnvFilter::try_from_default_env() {
-        tracing_subscriber::fmt()
-            .compact()
-            .with_env_filter(env_filter)
-            .init();
-    } else {
-        tracing_subscriber::fmt().compact().init();
-    }
+    use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+    tracing_subscriber::fmt().compact().with_env_filter(env_filter).finish().with(tracing_subscriber::filter::filter_fn(|m| !bogus_error(m))).init();
 
     profiling::register_thread!("Main Thread");
 
