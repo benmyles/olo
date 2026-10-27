@@ -99,8 +99,8 @@ impl Pty {
 
         let mut env: Vec<(String, String)> = env
             .iter()
-            .cloned()
             .filter(|(k, _)| !matches!(k.as_str(), "XDG_ACTIVATION_TOKEN" | "DESKTOP_STARTUP_ID" | "TABULA_RESTORE"))
+            .cloned()
             .collect();
         for (k, v) in [("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", "Tabula-Terminal")] {
             env.retain(|(ek, _)| ek != k);

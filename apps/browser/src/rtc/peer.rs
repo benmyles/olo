@@ -142,8 +142,11 @@ static RT: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
         .expect("a runtime for calls")
 });
 
+/// Peers by (page, peer id).
+type Peers = Mutex<HashMap<(WebViewId, String), Arc<Peer>>>;
+
 /// Every page's connections.
-static PEERS: LazyLock<Mutex<HashMap<(WebViewId, String), Arc<Peer>>>> = LazyLock::new(Default::default);
+static PEERS: LazyLock<Peers> = LazyLock::new(Default::default);
 
 static NEXT: AtomicU64 = AtomicU64::new(1);
 
@@ -476,7 +479,7 @@ impl Peer {
         match call {
             Call::New { .. } => Ok(json!({})),
             Call::Offer { ice_restart } => {
-                let options = ice_restart.then(|| RTCOfferOptions { ice_restart: true, ..Default::default() });
+                let options = ice_restart.then_some(RTCOfferOptions { ice_restart: true });
                 let d = pc.create_offer(options).await.map_err(op)?;
                 Ok(desc_json(&d))
             }
@@ -528,10 +531,10 @@ impl Peer {
                     let init = RTCRtpTransceiverInit { direction: dir, streams: vec![], send_encodings: vec![] };
                     (pc.add_transceiver_from_kind(codec_kind(kind), Some(init)).await.map_err(op)?, None)
                 };
-                if let Some(slot) = &slot {
-                    if let Ok(Some(sender)) = t.sender().await {
-                        self.start_slot(slot.clone(), sender);
-                    }
+                if let Some(slot) = &slot
+                    && let Ok(Some(sender)) = t.sender().await
+                {
+                    self.start_slot(slot.clone(), sender);
                 }
                 let recv = self.recv(kind);
                 let r = recv.track.clone();
@@ -610,7 +613,7 @@ impl Peer {
                 Ok(Value::Array(list))
             }
             Call::Channel { ch, label, ordered, max_life, max_retransmits, protocol, negotiated } => {
-                let init = RTCDataChannelInit { ordered, max_packet_life_time: max_life, max_retransmits, protocol, negotiated: negotiated.then_some(0), ..Default::default() };
+                let init = RTCDataChannelInit { ordered, max_packet_life_time: max_life, max_retransmits, protocol, negotiated: negotiated.then_some(0) };
                 let dc = pc.create_data_channel(&label, Some(init)).await.map_err(op)?;
                 self.state.lock().unwrap().channels.insert(ch.clone(), dc.clone());
                 RT.spawn(channel_events(Arc::downgrade(&self), ch, dc.clone()));

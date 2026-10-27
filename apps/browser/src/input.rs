@@ -165,7 +165,7 @@ pub fn forward(events: &[egui::Event], view: Viewport, keyboard: bool, pointer: 
         }
     }
     // Give out part of what the wheel has left, easing towards rest.
-    if let Some(at) = pointer.wheel_at.clone() {
+    if let Some(at) = pointer.wheel_at {
         let left = pointer.wheel;
         let d = if left.length() < 1.0 { left } else { left * (1.0 - (-dt.max(0.001) / WHEEL_EASE).exp()) };
         pointer.wheel -= d;

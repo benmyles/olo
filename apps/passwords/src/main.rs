@@ -44,7 +44,7 @@ pub struct Linked {
     pub label: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Settings {
     /// The 1Password accounts to sync with; the first takes items made
@@ -65,12 +65,6 @@ pub struct Settings {
     clear_seconds: Option<u32>,
     generator: generator::Recipe,
     size: Option<(u32, u32)>,
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Settings { accounts: Vec::new(), local_only: false, account: None, account_label: None, lock_minutes: None, clear_seconds: None, generator: Default::default(), size: None }
-    }
 }
 
 fn settings_path() -> std::path::PathBuf {

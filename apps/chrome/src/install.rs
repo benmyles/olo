@@ -377,7 +377,7 @@ fn read_header(r: &mut impl Read, pad: bool) -> Result<HashMap<u32, String>, Str
     let mut index = vec![0u8; count * 16];
     let mut data = vec![0u8; size];
     r.read_exact(&mut index).and_then(|_| r.read_exact(&mut data)).map_err(|_| "The package is cut short.")?;
-    if pad && size % 8 != 0 {
+    if pad && !size.is_multiple_of(8) {
         let mut skip = vec![0u8; 8 - size % 8];
         r.read_exact(&mut skip).map_err(|_| "The package is cut short.")?;
     }
@@ -581,11 +581,11 @@ mod tests {
         }
         out.extend_from_slice(name.as_bytes());
         out.push(0);
-        while out.len() % 4 != 0 {
+        while !out.len().is_multiple_of(4) {
             out.push(0);
         }
         out.extend_from_slice(data);
-        while out.len() % 4 != 0 {
+        while !out.len().is_multiple_of(4) {
             out.push(0);
         }
     }

@@ -131,7 +131,7 @@ pub fn as_text(list: &[Problem]) -> String {
 pub fn reason(e: &onepassword::Error) -> String {
     let text = describe(e);
     let lower = text.to_lowercase();
-    let out = if lower.contains("permission") {
+    if lower.contains("permission") {
         "You don’t have permission to read it in 1Password.".to_string()
     } else if lower.contains("not in an active state") {
         "It’s archived in 1Password, which doesn’t let other apps read archived items.".to_string()
@@ -146,8 +146,7 @@ pub fn reason(e: &onepassword::Error) -> String {
             t.push('.');
         }
         t
-    };
-    out
+    }
 }
 
 /// What a sync would do; nothing is done until [`apply`].

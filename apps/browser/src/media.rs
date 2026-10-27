@@ -992,13 +992,13 @@ impl Driver {
                                 size = Some((p.width, p.height));
                                 announce(size, kinds);
                             }
-                            if !ready || playing {
-                                if let Some(r) = &renderer {
-                                    p.to_bgra(&mut bgra);
-                                    if let Some(frame) = VideoFrame::new(p.width as i32, p.height as i32, Arc::new(Bgra(Arc::new(std::mem::take(&mut bgra))))) {
-                                        r.lock().unwrap().render(frame);
-                                        send(PlayerEvent::VideoFrameUpdated);
-                                    }
+                            if (!ready || playing)
+                                && let Some(r) = &renderer
+                            {
+                                p.to_bgra(&mut bgra);
+                                if let Some(frame) = VideoFrame::new(p.width as i32, p.height as i32, Arc::new(Bgra(Arc::new(std::mem::take(&mut bgra))))) {
+                                    r.lock().unwrap().render(frame);
+                                    send(PlayerEvent::VideoFrameUpdated);
                                 }
                             }
                             if !ready {

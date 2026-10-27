@@ -171,7 +171,7 @@ impl Palette {
             let all = self.fixed.iter().chain(&self.context);
             let mut recent: Vec<(i32, Item)> =
                 all.filter_map(|i| i.action.key().map(|k| (self.recents.boost(&k), i.clone()))).filter(|(b, _)| *b > 0).collect();
-            recent.sort_by(|a, b| b.0.cmp(&a.0));
+            recent.sort_by_key(|r| std::cmp::Reverse(r.0));
             scored = recent.into_iter().take(ROWS).collect();
         } else {
             if let Some(v) = calc::eval(&self.query) {
@@ -337,7 +337,7 @@ impl App for Palette {
                 if scroll.abs() > 0.5 {
                     let max_top = self.results.len().saturating_sub(ROWS);
                     let rows = (-scroll / ROW).round() as isize;
-                    self.top = (self.top as isize + rows.signum().max(-1).min(1) * rows.abs().max(1)).clamp(0, max_top as isize) as usize;
+                    self.top = (self.top as isize + rows.signum() * rows.abs().max(1)).clamp(0, max_top as isize) as usize;
                 }
             }
             let mut chosen = None;
