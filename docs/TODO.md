@@ -599,12 +599,12 @@ as they land (with the commit), add new ones as they come up.
 
 ## app_server
 
-- **Window menu on the title tab** (Ben): right-clicking a window's
-  yellow tab opens a context menu with everything that can be done to the
-  window: Hide, Close, Zoom, the tiling choices (halves, quarters, tile
-  with…), move to another workspace or screen, Always on Top, and so on.
-  The same commands as the shortcuts and the palette, and readable and
-  invokable by agents like any menu.
+- ~~**Window menu on the title tab**~~ (Ben; done: HACKING, "The command
+  palette", window menu): right-clicking a window's yellow tab opens a
+  kit menu of Hide, Zoom, Back to Its Own Size, Center, Tile ▸, Move to
+  Workspace ▸, the displays, Send to Back and Close, the shortcuts' own
+  commands. Not yet: Always on Top (app_server has no such state) and
+  "tile with…" (tiling beside a chosen window).
 - **Multiple monitors, managed like macOS Displays.** Hotplug of external
   displays (USB-C/Thunderbolt on the M2), each with its own resolution,
   refresh rate, scale factor (2× default on HiDPI, 1×/1.5× etc. on

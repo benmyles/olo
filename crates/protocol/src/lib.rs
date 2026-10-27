@@ -40,6 +40,8 @@ pub enum Request {
     Minimize { id: WindowId },
     Close { id: WindowId },
     ToggleZoom { id: WindowId },
+    /// Push a window behind all the others (BeOS's right-click on the tab).
+    SendToBack { id: WindowId },
     /// Put a window's frame (tab and border included, as
     /// [`WindowInfo::frame`]) here, at this size; no longer zoomed.
     Place { id: WindowId, frame: Frame },

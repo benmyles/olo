@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### A window menu on the tab
+
+*13:18* — Right-clicking a window's yellow tab opens its menu: Hide, Zoom, Back to Its Own Size, Center, every tiling choice, Move to Workspace, Send to Back (what the right-click used to do) and Close, the same commands as the shortcuts and the palette.
+
+![A window menu on the tab](2026-10-27/131810-a-window-menu-on-the-tab.png)
+
 ### Notifications: Open and Dismiss
 
 *13:09* — A selected notification's default action now always reads Open (apps often call it Activate), and Dismiss sits beside it: on a conversation it dismisses every notification in it, on a single one just that one. Its buttons no longer overlap.

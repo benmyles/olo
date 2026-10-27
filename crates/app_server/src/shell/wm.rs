@@ -104,7 +104,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
         match (button, hover) {
             (BTN_LEFT, Part::Close | Part::Zoom) => window.decoration().pressed = hover,
-            (BTN_RIGHT, Part::Tab) => self.send_to_back(window),
+            (BTN_RIGHT, Part::Tab) => self.window_menu(window),
             (BTN_LEFT, Part::Tab) => {
                 let location = window.decoration().pointer;
                 let now = Instant::now();
@@ -178,7 +178,22 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
     }
 
-    /// BeOS right-click on the tab: push the window behind all others.
+    /// A right-click on the tab: the window's menu (Hide, Zoom, tiling,
+    /// workspaces, Send to Back, Close), shown by the command palette,
+    /// which stays running, at the pointer on its display.
+    pub fn window_menu(&mut self, window: &WindowElement) {
+        // Not the pointer's own location: this runs inside its grab.
+        let Some(loc) = self.space.element_location(window) else { return };
+        let at = loc.to_f64() + window.decoration().pointer;
+        let Some(output) = self.space.output_under(at).next().cloned() else { return };
+        let Some(geo) = self.space.output_geometry(&output) else { return };
+        let (x, y) = ((at.x - geo.loc.x as f64).round(), (at.y - geo.loc.y as f64).round());
+        let (id, x, y) = (window.id().to_string(), x.to_string(), y.to_string());
+        self.spawn_program("tabula-palette", &["--window-menu", &id, &x, &y, &output.name()]);
+    }
+
+    /// Push the window behind all others (from its menu, as BeOS's
+    /// right-click on the tab did).
     pub fn send_to_back(&mut self, window: &WindowElement) {
         self.space.lower_element(window);
         // Focus follows the new front-most window.

@@ -248,6 +248,13 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 None => not_found(),
             },
+            Request::SendToBack { id } => match self.window_by_id(id) {
+                Some(w) => {
+                    self.send_to_back(&w);
+                    Reply::Ok
+                }
+                None => not_found(),
+            },
             Request::TileApp { app_id } => {
                 if self.tile_app(&app_id) {
                     Reply::Ok

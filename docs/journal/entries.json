@@ -1114,5 +1114,11 @@
   "title": "Notifications: Open and Dismiss",
   "caption": "A selected notification's default action now always reads Open (apps often call it Activate), and Dismiss sits beside it: on a conversation it dismisses every notification in it, on a single one just that one. Its buttons no longer overlap.",
   "image": "2026-10-27/130921-notifications-open-and-dismiss.png"
+ },
+ {
+  "time": "2026-10-27T13:18:10",
+  "title": "A window menu on the tab",
+  "caption": "Right-clicking a window's yellow tab opens its menu: Hide, Zoom, Back to Its Own Size, Center, every tiling choice, Move to Workspace, Send to Back (what the right-click used to do) and Close, the same commands as the shortcuts and the palette.",
+  "image": "2026-10-27/131810-a-window-menu-on-the-tab.png"
  }
 ]

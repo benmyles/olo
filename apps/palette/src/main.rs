@@ -8,10 +8,13 @@
 //!
 //! It stays running between uses so it opens at once: app_server starts
 //! `tabula-palette --toggle`, which hands the toggle to the running copy.
+//! It shows a window's menu (a right-click on its tab) the same way, from
+//! `--window-menu` (window_menu.rs).
 
 mod calc;
 mod rank;
 mod sources;
+mod window_menu;
 
 use std::{collections::HashMap, path::PathBuf};
 
@@ -104,6 +107,8 @@ struct Palette {
     front: Option<WindowInfo>,
     recents: Recents,
     workers: Workers,
+    /// A window's menu, while it shows.
+    window_menu: Option<window_menu::Shown>,
 }
 
 impl Palette {
@@ -218,6 +223,18 @@ impl Palette {
         sources::perform(item.action, front);
     }
 
+    /// A right-click on a window's tab: put the palette away and learn
+    /// what the menu needs.
+    fn ask_window_menu(&mut self, cx: &mut Cx, ask: window_menu::Ask) {
+        if self.win.is_some() {
+            self.hide(cx);
+        }
+        if let Some(old) = self.window_menu.take() {
+            cx.close_window(old.win);
+        }
+        window_menu::learn(ask, cx.proxy());
+    }
+
     fn step(&mut self, by: isize) {
         let n = self.results.len();
         if n == 0 {
@@ -240,7 +257,14 @@ impl Palette {
 }
 
 impl App for Palette {
-    fn ui(&mut self, cx: &mut Cx, _window: tabula_kit::WindowId, ui: &mut egui::Ui) {
+    fn ui(&mut self, cx: &mut Cx, window: tabula_kit::WindowId, ui: &mut egui::Ui) {
+        if let Some(shown) = self.window_menu.as_mut().filter(|s| s.win == window) {
+            if window_menu::ui(shown, ui) {
+                cx.close_window(window);
+                self.window_menu = None;
+            }
+            return;
+        }
         let p = style::palette(ui.ctx());
         let screen = ui.max_rect();
         let shown = self.results.len().min(ROWS);
@@ -398,7 +422,22 @@ impl App for Palette {
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
         let message = match message.downcast::<Launch>() {
             Ok(launch) if launch.args.iter().any(|a| a == "--toggle") => return self.toggle(cx),
-            Ok(_) => return,
+            Ok(launch) => {
+                if let Some(ask) = window_menu::Ask::parse(&launch.args) {
+                    self.ask_window_menu(cx, ask);
+                }
+                return;
+            }
+            Err(m) => m,
+        };
+        let message = match message.downcast::<window_menu::Facts>() {
+            Ok(facts) => {
+                if let Some(old) = self.window_menu.take() {
+                    cx.close_window(old.win);
+                }
+                self.window_menu = Some(window_menu::open(cx, *facts));
+                return;
+            }
             Err(m) => m,
         };
         let Ok(found) = message.downcast::<Found>() else { return };
@@ -438,6 +477,7 @@ fn main() {
         return;
     }
     let toggle = args.iter().any(|a| a == "--toggle");
+    let ask = window_menu::Ask::parse(&args);
     tabula_kit::run(APP_ID, move |cx| {
         cx.stay_resident();
         instance::listen(APP_ID, cx.proxy());
@@ -460,7 +500,11 @@ fn main() {
             front: None,
             recents: Recents::load(),
             workers: sources::workers(cx.proxy()),
+            window_menu: None,
         };
+        if let Some(ask) = ask {
+            palette.ask_window_menu(cx, ask);
+        }
         if toggle {
             palette.toggle(cx);
         }

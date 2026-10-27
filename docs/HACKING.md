@@ -1476,6 +1476,19 @@ put it away.
   what was chosen lately.
 * **Keys**: ↑/↓ and Page Up/Down move, Return chooses, the pointer
   hovers and clicks. Actions run on a worker thread.
+* **The window menu** (`window_menu.rs`): a right-click on a window's
+  yellow tab has app_server (`wm.rs` `window_menu`) start
+  `tabula-palette --window-menu ID X Y OUTPUT`, the point on that output.
+  A worker asks app_server for the window's title and workspace, the
+  workspace count and the displays; the palette then opens a clear
+  full-screen overlay on that output and pops an ordinary kit menu at
+  the point: Hide, Zoom, Back to Its Own Size, Center, Tile ▸ (halves,
+  quarters, thirds), Move to Workspace ▸, the next/previous display
+  (with more than one), Send to Back (BeOS's right-click on the tab,
+  `Request::SendToBack`) and Close. Its items are the shortcuts', done
+  through `RunShortcut { id, window }`, so the menu, the keys and the
+  palette always agree; agents read and choose from it as from any
+  popup. Choosing, a click outside or Escape puts the overlay away.
 
 ## Other toolkits' programs (app_server toolkits.rs, state.rs; tabula_theme::toolkit)
 
