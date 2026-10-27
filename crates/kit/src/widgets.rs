@@ -1529,6 +1529,7 @@ impl Cell<'_> {
         };
         let size = g.job.sections.first().map_or(style::PLAIN_SIZE, |s| s.format.font_id.size);
         let pos = style::text_origin(self.painter.ctx(), &g, x, r.center().y, size);
+        style::describe_text(self.painter.ctx(), egui::accesskit::Role::Cell, g.text(), Rect::from_min_size(pos, g.size()).intersect(r), Some(self.selected));
         self.painter.galley(pos, g, self.text_color);
     }
 }

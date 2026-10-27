@@ -164,6 +164,8 @@ struct Surface {
     /// A press that closed this window's menus; it and its release are
     /// not passed on (clicking outside a menu only dismisses it, as on BeOS).
     swallow: bool,
+    /// This window's tree, from its frame since one was asked for.
+    tree: Option<crate::commands::WindowTree>,
     /// The menu bar, in window coordinates, from the last draw.
     bar_rect: Option<Rect>,
     cursor: egui::CursorIcon,
@@ -289,6 +291,9 @@ pub struct Kit {
     /// The window that last had the keyboard (the one the command palette
     /// acts on).
     last_active: Option<WindowId>,
+    /// Asked for the windows' trees (see `commands`): answered when every
+    /// window has drawn a frame with AccessKit on, or soon after.
+    trees: Vec<(std::sync::mpsc::Sender<Vec<crate::commands::WindowTree>>, Instant)>,
     modifiers: egui::Modifiers,
     last_serial: u32,
     /// What we put on the clipboard: the source and its data by type.
@@ -507,6 +512,7 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                 break;
             }
             kit.redraw_due();
+            kit.answer_trees();
             kit.check_embed_scales();
             if kit.conn.flush().is_err() {
                 lost = true;
@@ -680,6 +686,7 @@ impl Kit {
             pointer_focus: None,
             keyboard_focus: None,
             last_active: None,
+            trees: Vec::new(),
             modifiers: egui::Modifiers::NONE,
             last_serial: 0,
             drag_out: None,
@@ -871,6 +878,41 @@ impl Kit {
                     self.with_app(|app, cx| app.command(cx, w, &cmd));
                 }
             }
+            Query::Tree(reply) => {
+                // Every window draws once with AccessKit on (off again
+                // after: building the tree costs every frame).
+                for s in self.surfaces.iter_mut().filter(|s| matches!(s.role, Role::Toplevel(_))) {
+                    s.ctx.enable_accesskit();
+                    s.tree = None;
+                    s.dirty = true;
+                    s.ctx.request_repaint();
+                }
+                self.trees.push((reply, Instant::now()));
+                self.answer_trees();
+            }
+        }
+    }
+
+    /// Answer the waiting tree questions once every window has its tree
+    /// (or, after a while, with those that have: a hidden window may never
+    /// draw).
+    fn answer_trees(&mut self) {
+        if self.trees.is_empty() {
+            return;
+        }
+        let toplevels = || self.surfaces.iter().filter(|s| matches!(s.role, Role::Toplevel(_)));
+        let all = toplevels().all(|s| s.tree.is_some());
+        let late = self.trees.iter().any(|(_, at)| at.elapsed() > Duration::from_millis(1000));
+        if !all && !late {
+            return;
+        }
+        let trees: Vec<_> = toplevels().filter_map(|s| s.tree.clone()).collect();
+        for (reply, _) in self.trees.drain(..) {
+            let _ = reply.send(trees.clone());
+        }
+        for s in self.surfaces.iter_mut() {
+            s.ctx.disable_accesskit();
+            s.tree = None;
         }
     }
 
@@ -1128,6 +1170,7 @@ impl Kit {
             pointer: None,
             buttons: Vec::new(),
             swallow: false,
+            tree: None,
             bar_rect: None,
             cursor: egui::CursorIcon::Default,
             menus: None,
@@ -1481,6 +1524,11 @@ impl Kit {
                 t = Some(t.map_or(d, |t: Duration| t.min(d)));
             }
         }
+        // A tree question is answered within a second, drawn or not.
+        if let Some((_, at)) = self.trees.first() {
+            let d = (*at + Duration::from_millis(1000)).saturating_duration_since(now) + Duration::from_millis(5);
+            t = Some(t.map_or(d, |t: Duration| t.min(d)));
+        }
         t
     }
 
@@ -1687,6 +1735,14 @@ impl Kit {
 
     fn present(&mut self, id: WindowId, output: egui::FullOutput) {
         let Some(i) = self.surfaces.iter().position(|s| s.id == id) else { return };
+        if !self.trees.is_empty() {
+            let active = self.active_toplevel() == Some(id);
+            let s = &mut self.surfaces[i];
+            if let (Some(update), Role::Toplevel(_)) = (&output.platform_output.accesskit_update, &s.role) {
+                s.tree = Some(crate::commands::WindowTree::from_update(&s.options.title, s.size, active, update));
+            }
+            self.answer_trees();
+        }
         // Platform output: clipboard, cursor, links.
         for cmd in &output.platform_output.commands {
             match cmd {

@@ -546,8 +546,26 @@ pub fn label(
     };
     let pos = text_origin(p.ctx(), &galley, x, center_y, size);
     let r = Rect::from_min_size(pos, galley.size());
+    describe_text(p.ctx(), egui::accesskit::Role::Label, galley.text(), r, None);
     p.galley(pos, galley, color);
     r
+}
+
+/// Text drawn with the painter, for the AccessKit tree agents read
+/// (`commands::tree`); nothing unless one is being made.
+pub fn describe_text(ctx: &Context, role: egui::accesskit::Role, text: &str, r: Rect, selected: Option<bool>) {
+    if text.trim().is_empty() {
+        return;
+    }
+    let id = egui::Id::unique(("tabula-text", text, r.min.x as i32, r.min.y as i32));
+    ctx.accesskit_node_builder(id, |n| {
+        n.set_role(role);
+        n.set_label(text);
+        n.set_bounds(egui::accesskit::Rect { x0: r.min.x as f64, y0: r.min.y as f64, x1: r.max.x as f64, y1: r.max.y as f64 });
+        if let Some(on) = selected {
+            n.set_selected(on);
+        }
+    });
 }
 
 /// A rubber-band selection rectangle (Tracker, desktop, any icon view):

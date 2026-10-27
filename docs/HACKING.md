@@ -158,6 +158,19 @@ fn main() {
   checked), and chooses an enabled one as if from the menu
   (`commands::invoke(pid, command)`). Both block for at most a second;
   call them off the UI thread.
+* **What a window shows, for agents** (`commands::tree(pid)`, automatic):
+  `{"tree":true}` on the same socket turns on egui's AccessKit output for
+  one frame of every window and answers with a `WindowTree` per window
+  (title, content size, active, nodes in tree order: role, name, value,
+  bounds in the content's logical pixels, enabled, clickable, focused,
+  checked, selected); it then turns AccessKit off again, so nothing is
+  spent on it otherwise. egui gives its own widgets roles and names; text
+  painted by hand is only pixels, so `style::label` and `Cell` describe
+  theirs with `style::describe_text(ctx, role, text, rect, selected)`.
+  **Do the same for any text you paint yourself** that an agent should be
+  able to read or click. An area that takes clicks but has no role of its
+  own (`ui.interact`) is reported as `Clickable`, named by the text whose
+  middle lies inside it. Blocks for up to two seconds.
 * **⌘A in text fields** selects all of the field: the kit doesn't send it
   to the menu's Select All while a text field has the keyboard; ⌘C/⌘X/⌘V
   likewise stay with a text field and otherwise go to the menu's Copy, Cut
@@ -1476,8 +1489,13 @@ session before trusting an entry. The rest is the screen's own app_server
 IPC (`Client::connect_to`): `run` (a program with the screen's
 `WAYLAND_DISPLAY`, `TABULA_SOCKET` and `TABULA_SCREEN`), `look` (a PNG,
 `--window ID` for one), `windows` (`Reply::Windows`, whose `WindowInfo`s
-carry `frame`, their place on screen; the `WindowsChanged` event leaves
-it out, or a drag would send one every frame), `click`, `move`,
+carry `frame`, their place on screen, and `content`, where the app's
+drawing is inside the tab and border; the `WindowsChanged` event leaves
+them out, or a drag would send one every frame), `tree` (each kit app's
+`commands::tree`, matched to its windows by title and size and moved by
+`content`, so every node is in screen pixels, ready for `click`; an
+outline, or `--json`), `menus` and `invoke` (a window's app's menu bar
+and choosing from it, `commands::menus`/`invoke`), `click`, `move`,
 `down`/`up`, `drag`, `scroll`, `wheel`, `key` (chords as people write
 them: `Cmd+S`, `Enter`, `Esc`; parsed by `tabula_protocol::Chord` with
 aliases) and `type` (US keyboard), all as `Request::Synthetic`, in the

@@ -8,9 +8,10 @@ mod viewer;
 
 use std::path::PathBuf;
 
+use serde::Serialize;
 use serde_json::json;
-use tabula_kit::instance;
-use tabula_protocol::{ImageFormat, SyntheticEvent};
+use tabula_kit::{commands, instance};
+use tabula_protocol::{Frame, ImageFormat, SyntheticEvent, WindowInfo};
 
 const APP_ID: &str = "tabula.screen";
 
@@ -27,7 +28,14 @@ usage: tabula-screen                         open Agent Screens (watch, take con
                                              start a program on it; prints its pid
        tabula-screen look NAME OUT.png [--window ID] [--no-pointer]
                                              a picture of the screen (or one window)
-       tabula-screen windows NAME            its windows (id, app, title, focused, frame), as JSON
+       tabula-screen windows NAME            its windows (id, app, title, focused, frame, content), as JSON
+       tabula-screen tree NAME [--window ID] [--json]
+                                             what Tabula apps' windows show: buttons, fields,
+                                             text, lists, with where they are on the screen
+       tabula-screen menus NAME [--window ID]
+                                             the menus of a window's app (default: the focused one)
+       tabula-screen invoke NAME COMMAND [--window ID]
+                                             choose a menu command (as `menus` lists it)
        tabula-screen click NAME X Y [--right|--middle] [--double]
        tabula-screen move NAME X Y
        tabula-screen down NAME X Y [--right] | up NAME [--right]
@@ -125,6 +133,27 @@ fn cli(args: &[String]) -> Option<Result<(), String>> {
             println!("{}", serde_json::to_string_pretty(&json!(s.windows()?)).unwrap_or_default());
             Ok(())
         }),
+        "tree" => screen().and_then(|s| {
+            let only = window_arg(rest)?;
+            let trees = trees(&s, only)?;
+            if has(rest, "--json") {
+                println!("{}", serde_json::to_string_pretty(&trees).unwrap_or_default());
+            } else {
+                print!("{}", outline(&trees));
+            }
+            Ok(())
+        }),
+        "menus" => screen().and_then(|s| {
+            let w = app_window(&s, window_arg(rest)?)?;
+            let menus = commands::menus(pid_of(&w)?).ok_or_else(|| format!("{} didn't give its menus", w.app_id))?;
+            println!("{}", serde_json::to_string_pretty(&menus).unwrap_or_default());
+            Ok(())
+        }),
+        "invoke" => screen().and_then(|s| {
+            let command = rest.get(1).filter(|a| !a.starts_with("--")).ok_or("invoke needs a menu command (see `menus`)")?;
+            let w = app_window(&s, window_arg(rest)?)?;
+            if commands::invoke(pid_of(&w)?, command) { Ok(()) } else { Err(format!("{} has no command {command:?} that can be chosen now", w.app_id)) }
+        }),
         "click" => (|| {
             let (x, y) = (number(rest.get(1), "x")?, number(rest.get(2), "y")?);
             input(screens::click(x, y, button(rest), if has(rest, "--double") { 2 } else { 1 }))
@@ -160,6 +189,105 @@ fn cli(args: &[String]) -> Option<Result<(), String>> {
         "type" => (|| input(screens::type_text(&rest.get(1..).filter(|t| !t.is_empty()).ok_or("type needs text")?.join(" "))?))(),
         other => Err(format!("unknown command {other:?}\n{USAGE}")),
     })
+}
+
+fn window_arg(args: &[String]) -> Result<Option<u64>, String> {
+    option(args, "--window").map(|w| w.parse::<u64>().map_err(|_| "--window is a window's id".to_owned())).transpose()
+}
+
+fn pid_of(w: &WindowInfo) -> Result<u32, String> {
+    w.pid.map(|p| p as u32).ok_or_else(|| format!("window {} has no process", w.id))
+}
+
+/// Window `id`, or the focused one.
+fn app_window(s: &screens::Screen, id: Option<u64>) -> Result<WindowInfo, String> {
+    let windows = s.windows()?;
+    match id {
+        Some(id) => windows.into_iter().find(|w| w.id == id).ok_or_else(|| format!("no window {id}")),
+        None => windows.into_iter().find(|w| w.focused).ok_or_else(|| "no window has the focus; give --window".to_owned()),
+    }
+}
+
+/// One window's tree, its nodes placed on the screen.
+#[derive(Serialize)]
+struct ScreenTree {
+    window: u64,
+    app_id: String,
+    title: String,
+    focused: bool,
+    /// Where its content is on the screen.
+    content: Frame,
+    /// In tree order, a node's children after it; x and y are the screen's.
+    nodes: Vec<commands::UiNode>,
+}
+
+/// What the windows on `s` (or just window `only`) show. Windows of apps
+/// not built on the kit, or minimized, have none.
+fn trees(s: &screens::Screen, only: Option<u64>) -> Result<Vec<ScreenTree>, String> {
+    let windows: Vec<WindowInfo> = s.windows()?.into_iter().filter(|w| only.is_none_or(|id| w.id == id)).collect();
+    if let Some(id) = only.filter(|_| windows.is_empty()) {
+        return Err(format!("no window {id}"));
+    }
+    // One question per app, all at once: each can take a frame or two.
+    let mut pids: Vec<u32> = windows.iter().filter(|w| w.content.is_some()).filter_map(|w| w.pid.map(|p| p as u32)).collect();
+    pids.sort_unstable();
+    pids.dedup();
+    let asked: Vec<_> = pids.iter().map(|&pid| (pid, std::thread::spawn(move || commands::tree(pid)))).collect();
+    let mut answers: Vec<(u32, Vec<commands::WindowTree>)> = asked.into_iter().map(|(pid, t)| (pid, t.join().ok().flatten().unwrap_or_default())).collect();
+    let mut out = Vec::new();
+    for w in windows {
+        let (Some(content), Some(pid)) = (w.content, w.pid) else { continue };
+        let Some((_, mine)) = answers.iter_mut().find(|(p, _)| *p == pid as u32) else { continue };
+        // An app's windows are told apart by title (and by size, if two share one).
+        let Some(i) = mine.iter().position(|t| t.title == w.title && t.width as i32 == content.width && t.height as i32 == content.height)
+            .or_else(|| mine.iter().position(|t| t.title == w.title))
+        else {
+            continue;
+        };
+        let tree = mine.remove(i);
+        let nodes = tree.nodes.into_iter().map(|mut n| {
+            n.x += content.x as f32;
+            n.y += content.y as f32;
+            n
+        });
+        out.push(ScreenTree { window: w.id, app_id: w.app_id, title: w.title, focused: w.focused, content, nodes: nodes.collect() });
+    }
+    Ok(out)
+}
+
+/// The trees as an indented outline, one node a line.
+fn outline(trees: &[ScreenTree]) -> String {
+    use std::fmt::Write;
+    let mut o = String::new();
+    for t in trees {
+        let c = t.content;
+        let _ = writeln!(o, "window {} {:?} ({}){} content {},{} {}x{}", t.window, t.title, t.app_id, if t.focused { " focused" } else { "" }, c.x, c.y, c.width, c.height);
+        let mut depth: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
+        for n in &t.nodes {
+            let d = n.parent.and_then(|p| depth.get(&p)).map_or(0, |d| d + 1);
+            depth.insert(n.id, d);
+            // Containers without a name say nothing an agent needs, and a
+            // text run repeats its field's value.
+            if n.role == "TextRun" || n.name.is_none() && n.value.is_none() && matches!(n.role.as_str(), "GenericContainer" | "Window" | "Pane" | "Group" | "ScrollView") {
+                continue;
+            }
+            let _ = write!(o, "{:indent$}{}", "", n.role, indent = 2 + 2 * d.min(8));
+            if let Some(name) = &n.name {
+                let _ = write!(o, " {name:?}");
+            }
+            if let Some(value) = &n.value {
+                let _ = write!(o, " value={value:?}");
+            }
+            let _ = write!(o, " at {:.0},{:.0} {:.0}x{:.0}", n.x, n.y, n.width, n.height);
+            for (on, word) in [(!n.enabled, "disabled"), (n.clickable && n.role != "Clickable", "clickable"), (n.focused, "focused"), (n.checked == Some(true), "checked"), (n.selected == Some(true), "selected")] {
+                if on {
+                    let _ = write!(o, " {word}");
+                }
+            }
+            o.push('\n');
+        }
+    }
+    o
 }
 
 fn shell_quote(s: &str) -> String {

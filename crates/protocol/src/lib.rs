@@ -198,6 +198,9 @@ pub struct WindowInfo {
     /// being dragged would change it every frame).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frame: Option<Frame>,
+    /// Where what the app draws is (inside the tab and border), likewise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<Frame>,
 }
 
 /// A rectangle in global logical pixels.

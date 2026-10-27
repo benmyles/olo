@@ -5,7 +5,10 @@
 //! a window belongs to (`WindowInfo::pid`).
 //!
 //! Newline-delimited JSON, one request and one answer per connection:
-//! `{"menus":true}` → [`Menus`]; `{"invoke":"cmd"}` → `{"ok":bool}`.
+//! `{"menus":true}` → [`Menus`]; `{"invoke":"cmd"}` → `{"ok":bool}`;
+//! `{"tree":true}` → a [`WindowTree`] per window: what each shows, as
+//! egui's AccessKit tree, made for one frame on demand (so agents read
+//! the widgets, their text and places rather than pixels).
 
 use std::{
     io::{BufRead, BufReader, Write},
@@ -41,18 +44,129 @@ pub struct Menus {
     pub entries: Vec<Entry>,
 }
 
+/// One thing in a window: a widget, or text drawn there.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UiNode {
+    pub id: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<u64>,
+    /// AccessKit's role ("Button", "CheckBox", "TextInput", "Label", …);
+    /// "Clickable" for an area that takes clicks but says nothing more
+    /// (an icon, a list row, a menu title), named by the text inside it.
+    pub role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    /// Where it is in the window's content, in logical pixels.
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub enabled: bool,
+    /// It takes clicks.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub clickable: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub focused: bool,
+    /// Checked (check boxes, radio buttons), if it can be.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checked: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected: Option<bool>,
+}
+
+/// What one window shows.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct WindowTree {
+    pub title: String,
+    /// The content's logical size.
+    pub width: u32,
+    pub height: u32,
+    pub active: bool,
+    /// In tree order, a node's children after it.
+    pub nodes: Vec<UiNode>,
+}
+
+impl WindowTree {
+    /// From one frame's AccessKit update (its bounds in logical pixels).
+    pub fn from_update(title: &str, size: (u32, u32), active: bool, update: &egui::accesskit::TreeUpdate) -> WindowTree {
+        use std::collections::HashMap;
+        let nodes: HashMap<u64, &egui::accesskit::Node> = update.nodes.iter().map(|(id, n)| (id.0, n)).collect();
+        let mut parents: HashMap<u64, u64> = HashMap::new();
+        for (id, n) in &update.nodes {
+            for c in n.children() {
+                parents.insert(c.0, id.0);
+            }
+        }
+        let root = update.tree.as_ref().map(|t| t.root.0).or_else(|| update.nodes.iter().map(|(id, _)| id.0).find(|id| !parents.contains_key(id)));
+        let mut out = Vec::new();
+        let mut stack: Vec<u64> = root.into_iter().collect();
+        let mut seen = std::collections::HashSet::new();
+        while let Some(id) = stack.pop() {
+            if !seen.insert(id) {
+                continue;
+            }
+            let Some(n) = nodes.get(&id) else { continue };
+            // The window itself has no bounds: it is all of the content.
+            let r = n.bounds().filter(|_| Some(id) != root).unwrap_or(egui::accesskit::Rect { x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0 });
+            let r = if Some(id) == root { egui::accesskit::Rect { x1: size.0 as f64, y1: size.1 as f64, ..r } } else { r };
+            let text = |s: Option<&str>| s.map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned);
+            let clickable = n.supports_action(egui::accesskit::Action::Click);
+            let role = match n.role() {
+                egui::accesskit::Role::Unknown if clickable => "Clickable".to_owned(),
+                role => format!("{role:?}"),
+            };
+            out.push(UiNode {
+                id,
+                parent: parents.get(&id).copied(),
+                role,
+                name: text(n.label()),
+                value: text(n.value()).or_else(|| n.numeric_value().map(|v| v.to_string())),
+                x: r.x0 as f32,
+                y: r.y0 as f32,
+                width: (r.x1 - r.x0) as f32,
+                height: (r.y1 - r.y0) as f32,
+                enabled: !n.is_disabled(),
+                clickable,
+                focused: update.focus.0 == id && Some(id) != root,
+                checked: n.toggled().map(|t| t == egui::accesskit::Toggled::True),
+                selected: n.is_selected(),
+            });
+            stack.extend(n.children().iter().rev().map(|c| c.0));
+        }
+        // Text is drawn beside the area that takes the click, not in it:
+        // an unnamed one is named by the text whose middle is inside it.
+        let texts: Vec<(f32, f32, String)> =
+            out.iter().filter(|t| t.role == "Label").filter_map(|t| Some((t.x + t.width / 2.0, t.y + t.height / 2.0, t.name.clone()?))).collect();
+        for n in out.iter_mut().filter(|n| n.clickable && n.name.is_none()) {
+            let inside: Vec<&str> =
+                texts.iter().filter(|(x, y, _)| (n.x..n.x + n.width).contains(x) && (n.y..n.y + n.height).contains(y)).map(|(_, _, t)| t.as_str()).collect();
+            if !inside.is_empty() {
+                n.name = Some(inside.join(" "));
+            }
+        }
+        WindowTree { title: title.to_owned(), width: size.0, height: size.1, active, nodes: out }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum Ask {
     Menus(bool),
     Invoke(String),
+    Tree(bool),
 }
 
 /// A question for the UI thread, answered through `reply`.
 pub(crate) enum Query {
     Menus(mpsc::Sender<Menus>),
     Invoke(String, mpsc::Sender<bool>),
+    Tree(mpsc::Sender<Vec<WindowTree>>),
 }
+
+/// How long a tree may take: every window draws a frame for it.
+const TREE_WAIT: Duration = Duration::from_millis(1500);
 
 /// How long the app has to answer (it may be busy drawing).
 const WAIT: Duration = Duration::from_millis(400);
@@ -138,6 +252,11 @@ pub(crate) fn listen(to: smithay_client_toolkit::reexports::calloop::channel::Se
                         let _ = to.send(Query::Invoke(cmd, tx));
                         serde_json::to_string(&serde_json::json!({ "ok": rx.recv_timeout(WAIT).unwrap_or(false) }))
                     }
+                    Ok(Ask::Tree(_)) => {
+                        let (tx, rx) = mpsc::channel();
+                        let _ = to.send(Query::Tree(tx));
+                        serde_json::to_string(&rx.recv_timeout(TREE_WAIT).unwrap_or_default())
+                    }
                     Err(_) => continue,
                 };
                 if let Ok(answer) = answer {
@@ -152,7 +271,7 @@ pub(crate) fn listen(to: smithay_client_toolkit::reexports::calloop::channel::Se
 
 fn ask(pid: u32, ask: &Ask) -> Option<String> {
     let s = UnixStream::connect(socket_path(pid)).ok()?;
-    s.set_read_timeout(Some(WAIT * 2)).ok()?;
+    s.set_read_timeout(Some(if matches!(ask, Ask::Tree(_)) { TREE_WAIT + WAIT } else { WAIT * 2 })).ok()?;
     s.set_write_timeout(Some(WAIT)).ok()?;
     let mut line = serde_json::to_string(ask).ok()?;
     line.push('\n');
@@ -176,6 +295,13 @@ pub fn invoke(pid: u32, command: &str) -> bool {
         .is_some_and(|v| v["ok"] == true)
 }
 
+/// What the windows of the kit app with process id `pid` show (None if
+/// it isn't one, or doesn't answer in time). Blocks for up to two
+/// seconds: call it off the UI thread.
+pub fn tree(pid: u32) -> Option<Vec<WindowTree>> {
+    serde_json::from_str(&ask(pid, &Ask::Tree(true))?).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,5 +321,38 @@ mod tests {
         let json = serde_json::to_string(&m).unwrap();
         assert_eq!(serde_json::from_str::<Menus>(&json).unwrap(), m);
         assert_eq!(serde_json::to_string(&Ask::Menus(true)).unwrap(), r#"{"menus":true}"#);
+    }
+
+    #[test]
+    fn names_what_takes_clicks() {
+        use egui::accesskit::{Action, Node, NodeId, Rect, Role, TreeId, TreeInfo, TreeUpdate};
+        let rect = |x0, y0, x1, y1| Rect { x0, y0, x1, y1 };
+        let mut root = Node::new(Role::Window);
+        root.set_children(vec![NodeId(2), NodeId(3), NodeId(4)]);
+        let mut area = Node::new(Role::Unknown);
+        area.add_action(Action::Click);
+        area.set_bounds(rect(10.0, 10.0, 110.0, 74.0));
+        let mut label = Node::new(Role::Label);
+        label.set_label("Appearance");
+        label.set_bounds(rect(20.0, 50.0, 90.0, 64.0));
+        let mut field = Node::new(Role::TextInput);
+        field.set_value("hi");
+        field.add_action(Action::Click);
+        field.set_bounds(rect(0.0, 80.0, 200.0, 100.0));
+        let update = TreeUpdate {
+            nodes: vec![(NodeId(1), root), (NodeId(2), area), (NodeId(3), label), (NodeId(4), field)],
+            tree: Some(TreeInfo::new(NodeId(1))),
+            tree_id: TreeId::ROOT,
+            focus: NodeId(4),
+        };
+        let t = WindowTree::from_update("Preferences", (300, 200), true, &update);
+        let roles: Vec<&str> = t.nodes.iter().map(|n| n.role.as_str()).collect();
+        assert_eq!(roles, ["Window", "Clickable", "Label", "TextInput"]);
+        assert_eq!((t.nodes[0].width, t.nodes[0].height), (300.0, 200.0));
+        assert_eq!(t.nodes[1].name.as_deref(), Some("Appearance"));
+        assert_eq!(t.nodes[1].parent, Some(1));
+        assert!(t.nodes[3].focused && t.nodes[3].clickable && t.nodes[3].name.is_none());
+        assert_eq!(t.nodes[3].value.as_deref(), Some("hi"));
+        assert!(!t.nodes[0].focused);
     }
 }

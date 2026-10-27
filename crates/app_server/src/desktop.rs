@@ -182,6 +182,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     minimized: meta.minimized.get(),
                     focused: focused.is_some() && w.wl_surface().map(|s| s.into_owned()) == focused,
                     frame: None,
+                    content: None,
                 }
             })
             .collect();
@@ -193,13 +194,19 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// screen is.
     pub fn window_infos_with_frames(&self) -> Vec<WindowInfo> {
         let mut infos = self.window_infos();
+        let frame = |r: smithay::utils::Rectangle<i32, smithay::utils::Logical>| tabula_protocol::Frame { x: r.loc.x, y: r.loc.y, width: r.size.w, height: r.size.h };
         for info in &mut infos {
-            info.frame = self
-                .space
-                .elements()
-                .find(|w| w.id() == info.id)
-                .and_then(|w| self.space.element_geometry(w))
-                .map(|r| tabula_protocol::Frame { x: r.loc.x, y: r.loc.y, width: r.size.w, height: r.size.h });
+            let Some(w) = self.space.elements().find(|w| w.id() == info.id) else { continue };
+            let Some(at) = self.space.element_location(w) else { continue };
+            let geo = smithay::desktop::space::SpaceElement::geometry(w);
+            info.frame = Some(frame(smithay::utils::Rectangle::new(at, geo.size)));
+            // As screenshots find it: where the element draws from, then
+            // past the tab and border.
+            info.content = Some(if w.decorated() {
+                frame(smithay::utils::Rectangle::new(at - geo.loc + crate::shell::deco::content_offset(), w.content_size()))
+            } else {
+                frame(smithay::utils::Rectangle::new(at, geo.size))
+            });
         }
         infos
     }
