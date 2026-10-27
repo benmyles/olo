@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Drop files on an app in Deskbar
+
+*02:34* — Files dragged onto a running application in Deskbar highlight it and open with it when dropped.
+
+![Drop files on an app in Deskbar](2026-10-27/023406-drop-files-on-an-app-in-deskbar.png)
+
 ### Drag a picture out of Viewer
 
 *02:30* — A picture that fits Viewer's window drags out as its file (and, for PNG, JPEG, GIF and WebP, the picture itself for programs that take one). Quick Look does the same, from the picture or its footer's icon. Dropping it back into its own folder is refused.

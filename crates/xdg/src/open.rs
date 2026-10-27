@@ -333,6 +333,38 @@ pub fn open(target: &Target) -> io::Result<()> {
     spawn(&argv)
 }
 
+/// Open `paths` with `handler` (dropped on an app in Deskbar): ours get
+/// them all as arguments; a desktop entry gets them all at once if its
+/// Exec takes several (%F %U), else is started once for each.
+pub fn open_with(handler: &Handler, paths: &[PathBuf]) -> io::Result<()> {
+    let Some(first) = paths.first() else { return Ok(()) };
+    match handler {
+        Handler::Ours(bin) => {
+            let mut argv = vec![find_program(bin).map(PathBuf::into_os_string).unwrap_or_else(|| bin.into())];
+            argv.extend(paths.iter().map(|p| p.clone().into_os_string()));
+            spawn(&argv)
+        }
+        Handler::Entry(e) => {
+            let exec = e.exec.as_deref().unwrap_or_default();
+            if exec.contains("%F") || exec.contains("%U") {
+                let mut argv = command_line(e, &Target::Path(first.clone())).ok_or_else(|| io::Error::other(format!("{} has no Exec line", e.name)))?;
+                let url = |p: &PathBuf| -> OsString { format!("file://{}", p.display()).into() };
+                let at = argv.iter().position(|a| *a == *first.as_os_str() || *a == url(first)).map_or(argv.len(), |i| i + 1);
+                let as_url = exec.contains("%U");
+                let rest: Vec<OsString> = paths[1..].iter().map(|p| if as_url { url(p) } else { p.clone().into_os_string() }).collect();
+                argv.splice(at..at, rest);
+                spawn(&argv)
+            } else {
+                for p in paths {
+                    let argv = command_line(e, &Target::Path(p.clone())).ok_or_else(|| io::Error::other(format!("{} has no Exec line", e.name)))?;
+                    spawn(&argv)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 /// Run `argv` detached (own session, no stdio), reaping it when it exits.
 pub fn spawn(argv: &[OsString]) -> io::Result<()> {
     let (program, args) = argv.split_first().ok_or_else(|| io::Error::other("empty command"))?;

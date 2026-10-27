@@ -113,6 +113,19 @@ impl Deskbar {
         self.entries.entry(app_id.to_owned()).or_insert_with(|| desktop_entry::find(app_id)).clone()
     }
 
+    /// Who opens files dropped on the team `key`: the app itself.
+    fn handler(&mut self, key: &str) -> Option<tabula_kit::open::Handler> {
+        let app_id = self.windows.iter().find(|w| team_key(w) == key)?.app_id.clone();
+        let short = app_id.strip_prefix("tabula.").unwrap_or(&app_id);
+        if let Some((bin, _, _)) = OUR_APPS.iter().find(|(bin, _, _)| bin.strip_prefix("tabula-") == Some(short)) {
+            return Some(tabula_kit::open::Handler::Ours(bin));
+        }
+        if short == "preferences" {
+            return Some(tabula_kit::open::Handler::Ours("tabula-preferences"));
+        }
+        self.entry(&app_id).filter(|e| e.exec.is_some()).map(|e| tabula_kit::open::Handler::Entry(Box::new(e)))
+    }
+
     fn teams(&mut self) -> Vec<Team> {
         let mut teams: Vec<Team> = Vec::new();
         for key in self.order.clone() {
@@ -480,6 +493,20 @@ fn section_bevel(p: &egui::Painter, r: Rect, pal: &Palette) {
 }
 
 impl App for Deskbar {
+    fn dropped(&mut self, _cx: &mut Cx, _window: WindowId, drop: tabula_kit::dnd::Drop) {
+        let Some(key) = drop.target.strip_prefix("team:") else { return };
+        let paths = drop.paths();
+        if paths.is_empty() {
+            return;
+        }
+        let Some(handler) = self.handler(key) else { return };
+        std::thread::spawn(move || {
+            if let Err(e) = tabula_kit::open::open_with(&handler, &paths) {
+                tracing::warn!("couldn't open the dropped files with {}: {e}", handler.name());
+            }
+        });
+    }
+
     fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
         if self.confirm.is_some_and(|(w, _)| w == window) {
             self.confirm = None;
@@ -675,8 +702,14 @@ impl App for Deskbar {
         // ---- teams
         let mut y = tray.bottom();
         let pointer = ui.input(|i| i.pointer.hover_pos());
+        let hover = tabula_kit::dnd::hover(ui.ctx()).filter(|h| h.has_files() && h.actions.copy);
         for team in &teams {
             let row = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), ROW_H));
+            // Files dragged onto an application open with it.
+            let drop_here = hover.as_ref().is_some_and(|h| row.contains(h.pos)) && self.handler(&team.key).is_some();
+            if drop_here {
+                tabula_kit::dnd::accept(ui.ctx(), format!("team:{}", team.key), "text/uri-list", tabula_kit::dnd::Action::Copy);
+            }
             let id = egui::Id::unique(("team", &team.key));
             let resp = ui.interact(row, id, Sense::click());
             let open = menu::is_open(ui.ctx(), id);
@@ -704,7 +737,7 @@ impl App for Deskbar {
             let focused = team.windows.iter().any(|w| w.focused);
             let hidden = team.windows.iter().all(|w| w.minimized);
             let hover = pointer.is_some_and(|p| row.contains(p));
-            if open {
+            if open || drop_here {
                 painter.rect_filled(row, 0.0, c(pal.menu_selected_background));
             } else if focused {
                 // The active application sits slightly recessed.
@@ -720,7 +753,7 @@ impl App for Deskbar {
             if !drawn {
                 icons::paint_tinted(&painter, icon_r, "application", tint);
             }
-            let text_color = if open {
+            let text_color = if open || drop_here {
                 c(pal.menu_selected_item_text)
             } else if hidden {
                 style::disabled_text(&pal)

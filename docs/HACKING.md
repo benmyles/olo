@@ -236,7 +236,10 @@ and offers actions; where it is dropped picks the type and the action.
   are in (`Hover::from_folder(dir)`), so Tracker refuses dropping them back
   where they are, from any app. Viewer and Quick Look drag their file out
   from the picture when it fits (`Preview::take_drag_out`: a drag that
-  doesn't pan), Quick Look also from its footer's icon. `icons::drag_icon(ctx, icon, size, count,
+  doesn't pan), Quick Look also from its footer's icon.
+  Deskbar takes files dropped on a running application's row and opens
+  them with it (`open::open_with(handler, paths)`: our apps get them all
+  as arguments, a desktop entry at once with %F/%U or once each). `icons::drag_icon(ctx, icon, size, count,
   hotspot, DragLabel::Below(name) | Right(name) | None)` makes Tracker's
   picture: the icon (stacked for several) and the name highlighted,
   see-through, the name drawn from the glyphs egui already rasterised.
