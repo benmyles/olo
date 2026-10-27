@@ -19,6 +19,10 @@ pub enum Purpose {
     /// The key button's menu.
     Menu,
     Fill,
+    /// The logins for the page's context menu in a field (its number).
+    Field(u64),
+    /// One value of a login for the field the context menu was for.
+    FillField(Value),
     /// A login was used: offer to save it unless Passwords knows it.
     Check(Box<Offer>),
     Save,
@@ -29,6 +33,23 @@ pub enum Purpose {
     PasskeyCreate(u64),
     /// Signing for the request, over this client data.
     PasskeySign(u64, String),
+}
+
+/// Which of a login's values goes into a field.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Value {
+    Username,
+    Password,
+}
+
+/// The context menu for a field waits this long for the page's logins
+/// before opening without them.
+pub const FIELD_MENU_WAIT: Duration = Duration::from_millis(400);
+
+/// The field's context menu waited long enough (its number).
+pub struct FieldMenuTimeout {
+    pub win: WindowId,
+    pub id: u64,
 }
 
 /// Passwords answered (or couldn't be reached).
@@ -237,6 +258,28 @@ pub fn fill_script(origin: &str, username: &str, password: &str) -> String {
     )
 }
 
+/// Put `value` into the field with the keyboard focus (the one the
+/// context menu was for), in the top frame if it's still at `origin`.
+pub fn field_script(origin: &str, value: &str) -> String {
+    let q = |s: &str| serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into());
+    format!(
+        r#"(function(origin, v) {{
+  if (location.origin !== origin) return 'moved';
+  var e = document.activeElement;
+  if (!e || e.disabled || e.readOnly) return 'none';
+  var proto = e instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : e instanceof HTMLInputElement ? HTMLInputElement.prototype : null;
+  if (!proto) return 'none';
+  try {{ Object.getOwnPropertyDescriptor(proto, 'value').set.call(e, v); }}
+  catch (x) {{ e.value = v; }}
+  e.dispatchEvent(new Event('input', {{bubbles: true}}));
+  e.dispatchEvent(new Event('change', {{bubbles: true}}));
+  return 'filled';
+}})({}, {})"#,
+        q(origin),
+        q(value)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -246,6 +289,8 @@ mod tests {
         let s = fill_script("https://a.example", "o'neil\"</script>", "p\\w\n");
         assert!(s.contains(r#""o'neil\"</script>""#));
         assert!(s.contains(r#""p\\w\n""#));
+        let f = field_script("https://a.example", "x\"</script>");
+        assert!(f.contains(r#""x\"</script>""#) && f.contains("activeElement"));
         let c = capture_script("abc");
         assert!(c.contains("tabula-login-abc:"));
         assert_eq!(token().len(), 32);

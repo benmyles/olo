@@ -12,3 +12,4 @@ tracing.workspace = true
 libc = "0.2"
 url = "2"
 zeroize = "1"
+psl = "2"

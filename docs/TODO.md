@@ -53,6 +53,22 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Command palette on ⌘Space** (Ben, next): a Raycast-style popover
+  that finds anything — apps, the front app's menu commands, files,
+  Passwords items, Preferences panels and settings, desktop actions
+  (tiling, window and workspace shortcuts) — as you type, and does it.
+  ⌘Space shows it; Escape or a click outside hides it; ⌘Space again
+  brings it back. Matching shortcuts and actions show their key combos
+  (type "tile": every tiling shortcut with its keys), so it doubles as a
+  way to learn them. Find (Tracker's query window) stays for searching
+  files in Tracker.
+- **NetPositive dark pages** (Ben, in progress): View ▸ Dark Pages
+  (Automatic, the default, follows the desktop; Always; Never). Pages are
+  darkened on the GPU (each frame redrawn through a lightness-inverting
+  shader that keeps hues), blank pages included; pictures, video and
+  canvases are pre-inverted so they come out as they were; pages that
+  are dark already are left alone.
+
 - **No GNOME or GTK underneath** (Ben): Tabula shouldn't depend on
   any. Today a real session leans on GDM (login), gnome-keyring-daemon
   (secrets, PAM unlock, ssh agent), xdg-desktop-portal-gnome / -gtk (file chooser, screenshot,

@@ -505,10 +505,12 @@ impl Passwords {
     }
 
     fn open_main(&mut self, cx: &mut Cx) {
-        if let Some(w) = self.main {
+        // (Gone if it was closed while we hold the clipboard.)
+        if let Some(w) = self.main.filter(|w| cx.is_open(*w)) {
             cx.activate(w);
             return;
         }
+        self.generator = None;
         let (w, h) = self.settings.size.unwrap_or((920, 580));
         self.main = Some(cx.open_window(WindowOptions::new("Passwords", w, h).min_size(680, 420)));
     }
@@ -799,6 +801,7 @@ impl App for Passwords {
                 if self.editor.as_ref().is_some_and(|e| e.changed()) {
                     self.ask_discard(cx, Then::Close);
                 } else {
+                    self.main = None;
                     cx.quit();
                 }
             }
@@ -842,6 +845,7 @@ impl App for Passwords {
                 self.ask_discard(cx, Then::Close);
                 return;
             }
+            self.main = None;
             cx.quit();
             return;
         }

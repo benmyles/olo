@@ -129,6 +129,9 @@ fn main() {
   There is no clipboard manager,
   so an app that quits (or closes its last window) while it holds the
   clipboard stays running, windowless, until something else is copied.
+  Its windows are gone then: a later launch (forwarded to it) must open
+  a new one, so check `cx.is_open(id)` before activating a window you
+  kept.
 * **Single instance** (`tabula_kit::instance`): call `instance::forward(app_id,
   &args)` first in `main` (returns true if a running copy took the
   arguments; exit then), and `instance::listen(app_id, cx.proxy())` in the
@@ -1347,14 +1350,23 @@ setting; `Locked` if locked), `Fill {url, vault, id}`, `Check {url,
 username, password}` (`Known`, `New` or `Changed`), `Save {…, replace}`,
 and `Unlock`. Fill, Save and Unlock wait while Passwords is locked: it
 comes forward and answers after the unlock. `tabula_keychain::matches`
-is the site rule: the same host or one under it, and never an https login
-into a plain-http page (localhost aside).
+is the site rule, as 1Password's: the same registrable domain (the `psl`
+crate's public suffix list, so mail.google.com's login fills
+accounts.google.com but alice.github.io's never fills bob.github.io), the
+same host where there's none (localhost, addresses), and never an https
+login into a plain-http page (localhost aside). Every login that fits is
+listed; an item that can't be read is logged, not hidden silently.
 
 NetPositive (`apps/browser/src/logins.rs`): the toolbar's key button asks
 for the page's logins (starting Passwords if needed, then waiting for the
 unlock) and fills the chosen one into the top frame with
 `evaluate_javascript`, after checking the page is still at that origin; a
-one-time code goes on the clipboard with `copy_secret`. A user script
+one-time code goes on the clipboard with `copy_secret`. The page's
+context menu in a text or password field ends with a Passwords submenu:
+each of the page's logins with its Username and Password, which fill just
+that field (`logins::field_script`, the focused element, origin checked).
+The menu waits up to `FIELD_MENU_WAIT` (400 ms) for the logins, then opens
+without them (Open Passwords). A user script
 (Servo's `UserContentManager`) watches the top frame for a form sent with
 a password and reports it through `console.log` with a per-process random
 token held in its closure (`show_console_message` drops everything

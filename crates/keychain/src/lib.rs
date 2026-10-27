@@ -312,9 +312,11 @@ pub fn host(url: &str) -> Option<String> {
 }
 
 /// Whether a login saved for `website` belongs on the page at `page`: the
-/// same host or one under it (a login for example.com fills
-/// login.example.com), and never an https login into a plain-http page
-/// unless it's this machine.
+/// same site, as 1Password matches (the same registrable domain, so a
+/// login saved on mail.google.com fills accounts.google.com, but one on
+/// alice.github.io never fills bob.github.io), or the same host where
+/// there is no such domain (localhost, addresses); and never an https
+/// login into a plain-http page unless it's this machine.
 pub fn matches(website: &str, page: &str) -> bool {
     let Ok(page_url) = url::Url::parse(page) else {
         return false;
@@ -325,7 +327,11 @@ pub fn matches(website: &str, page: &str) -> bool {
     let (Some(site), Some(here)) = (host(website), host(page)) else {
         return false;
     };
-    if !(here == site || here.ends_with(&format!(".{site}"))) {
+    let same_site = match (psl::domain_str(&site), psl::domain_str(&here)) {
+        (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+        _ => false,
+    };
+    if !(same_site || here == site || here.ends_with(&format!(".{site}"))) {
         return false;
     }
     let local = matches!(here.as_str(), "localhost" | "127.0.0.1" | "[::1]");
@@ -358,7 +364,13 @@ mod tests {
         assert!(matches("https://github.com", "https://github.com/login"));
         assert!(matches("github.com", "https://www.github.com/login"));
         assert!(matches("https://example.com", "https://login.example.com/"));
-        assert!(!matches("https://login.example.com", "https://example.com/"));
+        // The same site, as 1Password matches.
+        assert!(matches("https://login.example.com", "https://example.com/"));
+        assert!(matches("https://mail.google.com", "https://accounts.google.com/v3/signin"));
+        assert!(matches("google.com", "https://accounts.google.com/"));
+        assert!(!matches("https://alice.github.io", "https://bob.github.io/"));
+        assert!(!matches("https://a.co.uk", "https://b.co.uk/"));
+        assert!(!matches("https://192.168.1.2", "https://192.168.1.3/"));
         assert!(!matches("https://example.com", "https://badexample.com/"));
         assert!(!matches("https://example.com", "https://example.com.evil.net/"));
         assert!(!matches("https://example.com", "http://example.com/"));

@@ -251,6 +251,14 @@ impl Cx {
         text
     }
 
+    /// Whether one of the app's toplevel windows is still open. After
+    /// [`Cx::quit`] an app holding the clipboard runs on with its windows
+    /// gone, and a launch then must open a new window, not activate the
+    /// old one.
+    pub fn is_open(&self, window: WindowId) -> bool {
+        self.sizes.contains_key(&window)
+    }
+
     /// The logical content size of one of the app's toplevel windows.
     pub fn window_size(&self, window: WindowId) -> Option<(u32, u32)> {
         self.sizes.get(&window).copied()

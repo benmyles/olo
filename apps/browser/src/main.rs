@@ -226,6 +226,9 @@ struct Browser {
     /// The key button, and the logins menu to open under it.
     key: Rect,
     logins_menu: Option<Menu>,
+    /// A field's context menu waiting for the page's logins: its number
+    /// and where it opens (the page's menu is in `menu`).
+    field_menu: Option<(u64, egui::Pos2)>,
 }
 
 impl Browser {
@@ -277,6 +280,8 @@ struct NetPositive {
     rtc: rtc::Rtc,
     /// Pages' notifications, to the desktop's notification service.
     notifier: notify::Notifier,
+    /// Fields' context menus asked for so far.
+    field_menus: u64,
 }
 
 impl NetPositive {
@@ -312,6 +317,7 @@ impl NetPositive {
                 popup: None,
                 key: Rect::NOTHING,
                 logins_menu: None,
+                field_menu: None,
             })),
         );
         self.front = Some(win);
@@ -720,34 +726,26 @@ impl NetPositive {
         match control {
             EmbedderControl::ContextMenu(menu) => {
                 let pos = page_rect(menu.position()).min;
-                let mut items = Menu::new("");
-                let mut sep = false;
-                for (n, item) in menu.items().iter().enumerate() {
-                    match item {
-                        ContextMenuItem::Item { label, enabled, action } => {
-                            if sep && !items.items.is_empty() {
-                                items = items.separator();
-                            }
-                            sep = false;
-                            // Servo's words for its own shell; ours for tabs.
-                            let label = match action {
-                                ContextMenuAction::OpenLinkInNewWebView => "Open Link in New Tab",
-                                ContextMenuAction::OpenImageInNewView => "Open Image in New Tab",
-                                ContextMenuAction::CopyImageLink => "Copy Image Address",
-                                _ => label.as_str(),
-                            };
-                            items = items.item(label, format!("{n}"), None).enabled(*enabled);
-                            // Ours, after Servo's Copy for the link or image.
-                            match action {
-                                ContextMenuAction::CopyLink => items = items.item("Download Linked File", "dl-link", None),
-                                ContextMenuAction::CopyImageLink => items = items.item("Download Image", "dl-image", None),
-                                _ => {}
-                            }
-                        }
-                        ContextMenuItem::Separator => sep = true,
-                    }
+                let url = b.tab().map(|t| t.url.clone()).unwrap_or_default();
+                let view_id = b.tab().and_then(|t| t.view.as_ref()).map(|v| v.id());
+                let field = menu.element_info().flags.contains(servo::ContextMenuElementInformationFlags::EditableText);
+                if field && logins::web(&url) && let Some(view_id) = view_id {
+                    // In a field: the page's logins too, once Passwords
+                    // answers (or opening without them if it's slow).
+                    self.field_menus += 1;
+                    let id = self.field_menus;
+                    let Some(b) = self.browser(win) else { return };
+                    b.menu = Some(menu);
+                    b.field_menu = Some((id, pos));
+                    logins::ask(self.proxy.clone(), win, view_id, url.clone(), Purpose::Field(id), Request::Logins { url }, false);
+                    let proxy = self.proxy.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(logins::FIELD_MENU_WAIT);
+                        proxy.send(logins::FieldMenuTimeout { win, id });
+                    });
+                    return;
                 }
-                b.popup = Some((MenuAnchor::At(pos), items, None));
+                b.popup = Some((MenuAnchor::At(pos), page_menu(&menu), None));
                 b.menu = Some(menu);
             }
             EmbedderControl::SelectElement(select) => {
@@ -878,6 +876,13 @@ impl NetPositive {
             }
             "logins" => self.ask_logins(win, Purpose::Menu, |url| Request::Logins { url }),
             "unlock-passwords" => self.ask_logins(win, Purpose::Unlock, |_| Request::Unlock),
+            c if c.starts_with("field-user:") || c.starts_with("field-pass:") => {
+                let value = if c.starts_with("field-user:") { logins::Value::Username } else { logins::Value::Password };
+                if let Some((vault, id)) = c[11..].split_once('/') {
+                    let (vault, id) = (vault.to_string(), id.to_string());
+                    self.ask_logins(win, Purpose::FillField(value), |url| Request::Fill { url, vault, id });
+                }
+            }
             "open-passwords" => {
                 if let Some(program) = tabula_xdg::find_program("tabula-passwords")
                     && let Err(e) = tabula_xdg::open::spawn(&[program.into_os_string()])
@@ -1370,7 +1375,12 @@ impl NetPositive {
             menu::request_popup(ui.ctx(), MenuRequest { menu, source: Id::unique("page-menu"), anchor, selected });
         }
         if let Some(chosen) = widgets::popup_result(ui.ctx(), Id::unique("page-menu")) {
-            if chosen.starts_with("dl-")
+            if chosen.starts_with("field-") || matches!(chosen.as_str(), "unlock-passwords" | "open-passwords") {
+                if let Some(menu) = b.menu.take() {
+                    menu.dismiss();
+                }
+                commands.push(chosen);
+            } else if chosen.starts_with("dl-")
                 && let Some(menu) = b.menu.take()
             {
                 let info = menu.element_info();
@@ -1810,6 +1820,67 @@ fn site_of(url: &str) -> String {
     }
 }
 
+/// The items of a page's context menu, in our words.
+fn page_menu(menu: &ContextMenu) -> Menu {
+    let mut items = Menu::new("");
+    let mut sep = false;
+    for (n, item) in menu.items().iter().enumerate() {
+        match item {
+            ContextMenuItem::Item { label, enabled, action } => {
+                if sep && !items.items.is_empty() {
+                    items = items.separator();
+                }
+                sep = false;
+                // Servo's words for its own shell; ours for tabs.
+                let label = match action {
+                    ContextMenuAction::OpenLinkInNewWebView => "Open Link in New Tab",
+                    ContextMenuAction::OpenImageInNewView => "Open Image in New Tab",
+                    ContextMenuAction::CopyImageLink => "Copy Image Address",
+                    _ => label.as_str(),
+                };
+                items = items.item(label, format!("{n}"), None).enabled(*enabled);
+                // Ours, after Servo's Copy for the link or image.
+                match action {
+                    ContextMenuAction::CopyLink => items = items.item("Download Linked File", "dl-link", None),
+                    ContextMenuAction::CopyImageLink => items = items.item("Download Image", "dl-image", None),
+                    _ => {}
+                }
+            }
+            ContextMenuItem::Separator => sep = true,
+        }
+    }
+    items
+}
+
+/// A field's context menu's Passwords submenu: the page's logins, each
+/// offering its username and password for the field.
+fn passwords_menu(result: Option<&Result<Response, String>>, host: &str) -> Menu {
+    let mut menu = Menu::new("Passwords");
+    match result {
+        Some(Ok(Response::Logins { logins })) if logins.is_empty() => {
+            menu = menu.item(format!("No Logins for {host}"), "none", None).enabled(false);
+        }
+        Some(Ok(Response::Logins { logins })) => {
+            for l in logins {
+                let label = if l.username.is_empty() { l.title.clone() } else { format!("{} — {}", l.title, l.username) };
+                let item = format!("{}/{}", l.vault, l.id);
+                menu = menu.submenu(
+                    Menu::new(truncate(&label, 60))
+                        .item("Username", format!("field-user:{item}"), None)
+                        .enabled(!l.username.is_empty())
+                        .item("Password", format!("field-pass:{item}"), None),
+                );
+            }
+        }
+        Some(Ok(Response::Locked)) => menu = menu.item("Unlock Passwords…", "unlock-passwords", None),
+        Some(Ok(Response::NotSetUp)) => menu = menu.item("Set Up Passwords…", "open-passwords", None),
+        Some(Ok(Response::Error { message })) => menu = menu.item(truncate(message, 60), "none", None).enabled(false),
+        // Not running, or slow to answer.
+        _ => menu = menu.item("Open Passwords", "open-passwords", None),
+    }
+    menu
+}
+
 fn sheet_owner(s: &Sheet) -> Option<WindowId> {
     match s {
         Sheet::Dialog { owner, .. } | Sheet::Login { owner, .. } | Sheet::Color { owner, .. } => Some(*owner),
@@ -2201,6 +2272,18 @@ impl App for NetPositive {
             }
             Err(m) => m,
         };
+        let message = match message.downcast::<logins::FieldMenuTimeout>() {
+            Ok(t) => {
+                if let Some(b) = self.browser(t.win)
+                    && b.field_menu.is_some_and(|(id, _)| id == t.id)
+                {
+                    let host = b.tab().and_then(|t| tabula_keychain::host(&t.url)).unwrap_or_default();
+                    self.open_field_menu(cx, t.win, None, &host);
+                }
+                return;
+            }
+            Err(m) => m,
+        };
         let message = match message.downcast::<notify::Clicked>() {
             Ok(clicked) => {
                 if let Some((win, i)) = self.find(clicked.view) {
@@ -2323,6 +2406,17 @@ fn truncate(s: &str, n: usize) -> String {
 impl NetPositive {
     /// Ask Passwords about the active tab's page (starting Passwords if
     /// it isn't running).
+    /// Open a field's context menu that was waiting for the page's logins
+    /// (`result`; None if they didn't come in time).
+    fn open_field_menu(&mut self, cx: &mut Cx, win: WindowId, result: Option<&Result<Response, String>>, host: &str) {
+        let Some(b) = self.browser(win) else { return };
+        let Some((_, pos)) = b.field_menu.take() else { return };
+        let Some(menu) = &b.menu else { return };
+        let items = page_menu(menu).separator().submenu(passwords_menu(result, host));
+        b.popup = Some((MenuAnchor::At(pos), items, None));
+        cx.redraw(win);
+    }
+
     fn ask_logins(&mut self, win: WindowId, purpose: Purpose, request: impl FnOnce(String) -> Request) {
         let Some(b) = self.browser(win) else { return };
         let Some(tab) = b.tab() else { return };
@@ -2430,6 +2524,26 @@ impl NetPositive {
         let Some(b) = self.browser(win) else { return };
         let host = tabula_keychain::host(&url).unwrap_or_else(|| "this site".into());
         match purpose {
+            Purpose::Field(id) => {
+                if b.field_menu.is_some_and(|(n, _)| n == id) {
+                    self.open_field_menu(cx, win, Some(&result), &host);
+                }
+            }
+            Purpose::FillField(value) => {
+                if let Ok(Response::Credentials { username, password, .. }) = &result
+                    && let Some(view) = b.tabs[i].view.clone()
+                    && let Ok(origin) = Url::parse(&url).map(|u| u.origin().ascii_serialization())
+                {
+                    let v = if value == logins::Value::Username { username } else { password };
+                    view.evaluate_javascript(logins::field_script(&origin, v), |_| {});
+                    if waited {
+                        cx.activate(win);
+                    }
+                } else if let Ok(Response::Error { message }) = &result {
+                    b.tabs[i].status = Some(message.clone());
+                    cx.redraw(win);
+                }
+            }
             Purpose::Menu | Purpose::Unlock => {
                 if matches!(result, Ok(Response::Unlocked)) {
                     return self.ask_logins(win, Purpose::Menu, |url| Request::Logins { url });
@@ -2717,6 +2831,7 @@ fn main() {
             pings: guard::Pings::default(),
             watch: guard::watch(cx.proxy()),
             notifier: notify::Notifier::new(cx.proxy()),
+            field_menus: 0,
         };
         let restored: Option<Saved> = cx.restored_state().and_then(|s| serde_json::from_str(&s).ok());
         match restored {

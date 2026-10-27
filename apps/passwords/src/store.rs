@@ -275,7 +275,9 @@ fn keychain(c: &Client, request: &Request, candidates: &[(String, String)], vaul
         Request::Logins { .. } => {
             let mut logins: Vec<tabula_keychain::Login> = candidates
                 .iter()
-                .filter_map(|(vault, id)| c.items().get(vault, id).ok())
+                .filter_map(|(vault, id)| {
+                    c.items().get(vault, id).map_err(|e| tracing::warn!("login {id} for a page: couldn't read it: {e}")).ok()
+                })
                 .map(|item| tabula_keychain::Login {
                     vault: item.vault_id.clone(),
                     id: item.id.clone(),
