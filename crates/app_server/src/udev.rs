@@ -1114,20 +1114,26 @@ impl AnvilState<UdevData> {
             .unwrap_or(false);
 
         let display_info = display_info::for_connector(drm_device, connector.handle());
+        // The kernel's copy of the EDID when the DRM route gives nothing
+        // (Apple Silicon's DCP).
+        let edid = tabula_system::edid::for_connector(&output_name);
 
         let make = display_info
             .as_ref()
             .and_then(|info| info.make())
+            .or_else(|| edid.as_ref().map(|e| e.maker.clone()))
             .unwrap_or_else(|| "Unknown".into());
 
         let model = display_info
             .as_ref()
             .and_then(|info| info.model())
+            .or_else(|| edid.as_ref().and_then(|e| e.model.clone()))
             .unwrap_or_else(|| "Unknown".into());
 
         let serial_number = display_info
             .as_ref()
             .and_then(|info| info.serial())
+            .or_else(|| edid.as_ref().and_then(|e| e.serial.clone()))
             .unwrap_or_else(|| "Unknown".into());
 
         if non_desktop {

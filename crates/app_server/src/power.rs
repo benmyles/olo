@@ -241,15 +241,6 @@ fn worker(rx: Receiver<Job>, feedback: calloop::channel::Sender<(f32, bool)>, fo
     }
 }
 
-/// The maker (EDID PNP id) of the monitor on `connector`.
-fn edid_maker(connector: &str) -> Option<String> {
-    let dir = std::fs::read_dir("/sys/class/drm").ok()?;
-    let entry = dir.flatten().find(|e| e.file_name().to_string_lossy().split_once('-').is_some_and(|(card, c)| card.starts_with("card") && c == connector))?;
-    let edid = std::fs::read(entry.path().join("edid")).ok()?;
-    let id = u16::from_be_bytes([*edid.get(8)?, *edid.get(9)?]);
-    Some([10, 5, 0].iter().map(|s| (((id >> s) & 31) as u8 + b'@') as char).collect())
-}
-
 /// Match the USB brightness controls to connectors by maker.
 fn find_displays(
     displays: &mut std::collections::HashMap<String, tabula_system::hid_monitor::HidMonitor>,
@@ -261,7 +252,7 @@ fn find_displays(
     displays.clear();
     let mut found = Vec::new();
     for c in connectors {
-        let Some(maker) = edid_maker(&c) else { continue };
+        let Some(maker) = tabula_system::edid::for_connector(&c).map(|e| e.maker) else { continue };
         let Some(i) = monitors.iter().position(|m| m.edid_vendor() == Some(maker.as_str())) else { continue };
         let m = monitors.remove(i);
         match m.level() {

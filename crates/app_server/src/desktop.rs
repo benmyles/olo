@@ -488,7 +488,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         };
         let mut sources: Vec<(Output, Option<Output>)> = Vec::new();
         for o in &all {
-            let source = wanted(o).and_then(|key| all.iter().find(|s| *s != o && display_key(s) == key && wanted(s).is_none()).cloned());
+            let source = wanted(o).and_then(|key| all.iter().find(|s| *s != o && (display_key(s) == key || s.name() == key) && wanted(s).is_none()).cloned());
             sources.push((o.clone(), source));
         }
         let mut changed = Vec::new();
