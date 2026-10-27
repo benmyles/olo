@@ -4,6 +4,8 @@
 
 /// Between controls placed side by side or stacked.
 pub const SPACING: f32 = 8.0;
+/// The vertical Deskbar's width; notification banners share its column.
+pub const DESKBAR_WIDTH: f32 = 172.0;
 /// Between closely related items (a stack of check boxes).
 pub const TIGHT: f32 = 4.0;
 /// From a window (or tab panel) edge to its content.

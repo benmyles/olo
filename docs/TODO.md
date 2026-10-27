@@ -467,11 +467,11 @@ as they land (with the commit), add new ones as they come up.
   imports one back (with a summary of what it holds and a confirm before
   replacing anything). In Rust, in process (e.g. tar + zstd crates);
   secrets stay encrypted as they are on disk.
-- **Notification banners: never, Deskbar-wide, compact** (Ben):
-  Preferences ▸ Notifications' "Show banners for:" gets a "Never" choice.
-  The default banner style becomes as wide as the Deskbar and sits in
-  line with it (that column is usually free space, so banners don't
-  cover anything else), and banners get more compact and better looking.
+- ~~**Notification banners: never, Deskbar-wide, compact**~~ (Ben; done:
+  HACKING, Notifications main.rs): "Show banners for:" has Never (only
+  errors show); banners are the Deskbar's width, flush with the right
+  edge in its column, with tighter padding and no big icon unless the
+  app sent a picture.
 - ~~**Notifications: Dismiss, and Activate becomes Open**~~ (Ben; done:
   a selected note has Dismiss, which takes the whole conversation when
   it gathers several; the default action always reads Open; By App's

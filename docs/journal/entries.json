@@ -1126,5 +1126,11 @@
   "title": "New Window for a running app",
   "caption": "Right-clicking a running Tabula app in Tracker (or opening its menu in Deskbar) offers New Window: the running copy opens another window, as BeOS's Deskbar did, instead of a second copy starting. Terminal, StyledEdit and Tracker answer it.",
   "image": "2026-10-27/132434-new-window-for-a-running-app.png"
+ },
+ {
+  "time": "2026-10-27T13:28:40",
+  "title": "Banners in the Deskbar's column",
+  "caption": "Notification banners are now as wide as the Deskbar and flush with the screen's edge beneath it, where there is usually nothing else, and more compact: the app's icon in the group's title, the text taking the width, buttons sharing it. Preferences adds Never to Show banners for (errors still show).",
+  "image": "2026-10-27/132840-banners-in-the-deskbar-s-column.png"
  }
 ]

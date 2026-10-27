@@ -18,7 +18,7 @@ use tabula_kit::{
 use tabula_protocol::{Client, Event, Reply, Request, WindowInfo};
 
 /// Logical width of the vertical Deskbar.
-const WIDTH: f32 = 172.0;
+const WIDTH: f32 = tabula_kit::metrics::DESKBAR_WIDTH;
 const TILE_H: f32 = 30.0;
 const ROW_H: f32 = 24.0;
 const ICON: f32 = 16.0;

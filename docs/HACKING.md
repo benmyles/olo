@@ -1346,14 +1346,19 @@ notifications.
   name it waits and retries every 30 s rather than taking it. (zbus's
   `Builder::name` treats "taken" as success; `serve` checks the
   RequestName reply itself.)
-- main.rs: one layer surface (Top layer, anchored bottom right) opened
-  for the first card and closed with the last, resized to the stack. Up
+- main.rs: one layer surface (Top layer, anchored bottom right, flush
+  with the edge) opened for the first card and closed with the last,
+  resized to the stack. Cards are `metrics::DESKBAR_WIDTH` wide, so they
+  stack in the Deskbar's column, usually free space. Up
   to four cards show, grouped by app under a title row with the app's
   icon and name (and a close box for all of a group's), oldest first; the
   rest wait. Important notes wear a blue edge, errors a red one; progress
   shows a `StatusBar`; links in the body open with `open::open`. A card
-  shows the picture sent, else the named icon, ours for common theme
-  names (`icon_names`), the app's desktop-entry icon, then info/warning.
+  shows the picture sent (24 px) beside its text; without one the text
+  takes the width, the group's title row already showing the named icon
+  (ours for common theme names, `icon_names`), the app's desktop-entry
+  icon, or info/warning. Action buttons share the width when they must.
+  Banner `seconds` 0 ("Never" in Preferences) shows only errors.
   A click on a card runs its `default` action: the card asks the kit
   for an activation token from that click (`Cx::activation_token`) and
   sends `ActivationToken`, `ActionInvoked`, then `NotificationClosed`, so

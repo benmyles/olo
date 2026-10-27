@@ -48,10 +48,13 @@ use tabula_kit::{
 use tabula_protocol::{HistoryView, NotificationSettings, NotificationState};
 
 const APP_ID: &str = "tabula.notifications";
-/// A card's width (logical).
-const WIDTH: f32 = 340.0;
-const PAD: f32 = 10.0;
-const ICON: f32 = 32.0;
+/// A card's width (logical): the Deskbar's, so banners line up under
+/// it at the screen's right edge, in a column that is usually free.
+const WIDTH: f32 = m::DESKBAR_WIDTH;
+const PAD: f32 = 8.0;
+/// A picture the app sent (a contact, a site); without one the group's
+/// header already shows whose it is, and the text takes the width.
+const ICON: f32 = 24.0;
 /// Between groups, and from the display's edges.
 const GAP: f32 = 8.0;
 /// A group's title row: the app's icon and name.
@@ -174,11 +177,14 @@ impl Notifications {
         self.refresh_settings();
         let app = self.settings.app(&note.app_name);
         let quiet = self.quiet();
+        // Banners set to Never (0 seconds) still show errors, for a while.
+        let never = self.settings.seconds == 0;
         if note.timeout == Some(server::DEFAULT_TIMEOUT) {
-            note.timeout = Some(Duration::from_secs(self.settings.seconds.clamp(2, 60) as u64));
+            let seconds = if never { 10 } else { self.settings.seconds.clamp(2, 60) };
+            note.timeout = Some(Duration::from_secs(seconds as u64));
         }
         // Do Not Disturb keeps all but errors off the screen and quiet.
-        let banner = app.banners && (!quiet || note.kind == Kind::Error);
+        let banner = app.banners && ((!quiet && !never) || note.kind == Kind::Error);
         if app.sounds
             && !quiet
             && !note.replaces
@@ -231,7 +237,7 @@ impl Notifications {
                     layer: Layer::Top,
                     anchor: (false, true, false, true),
                     exclusive_zone: 0,
-                    margin: (0, GAP as i32, GAP as i32, 0),
+                    margin: (0, 0, GAP as i32, 0),
                     keyboard: tabula_kit::Keyboard::None,
                     namespace: "notifications".into(),
                     output: None,
@@ -610,8 +616,7 @@ impl App for Notifications {
             return self.history_ui(cx, window, ui);
         }
         let p = style::palette(ui.ctx());
-        let text_x = PAD + ICON + PAD;
-        let text_w = WIDTH - text_x - PAD;
+        let text_x = |card: &Card| if card.note.picture.is_some() { PAD + ICON + PAD } else { PAD + 4.0 };
         let hover = ui.input(|i| i.pointer.hover_pos());
         // The shown ones, grouped by app (in the order the apps first
         // show), oldest first in each.
@@ -639,6 +644,7 @@ impl App for Notifications {
             let mut laid = Vec::new();
             for &i in members {
                 let card = &self.cards[i];
+                let text_w = WIDTH - text_x(card) - PAD;
                 let title = galley(ui, &card.note.summary, c(p.panel_text), text_w - 18.0, 2, style::bold_font());
                 let body = body_galley(ui, &card.note.body, &p, text_w);
                 let buttons = card.note.actions.iter().any(|(k, l)| k != "default" && !l.is_empty());
@@ -649,7 +655,10 @@ impl App for Notifications {
                 if card.note.progress.is_some() {
                     h += m::TIGHT + 10.0;
                 }
-                h = h.max(ICON + PAD) + PAD;
+                if card.note.picture.is_some() {
+                    h = h.max(ICON + PAD);
+                }
+                h += PAD;
                 if card.note.reply.is_some() {
                     h += m::CONTROL_HEIGHT + PAD;
                 }
@@ -728,7 +737,7 @@ impl App for Notifications {
                 }
                 // The whole card is the default action.
                 let click = ui.interact(rect, ui.make_persistent_id(("card", id)), Sense::click());
-                // Icon: the picture sent, the app's icon, or a generic one.
+                // The picture sent, if any.
                 let icon_r = Rect::from_min_size(rect.min + vec2(PAD, PAD), vec2(ICON, ICON));
                 if card.picture.is_none()
                     && let Some(pic) = &card.note.picture
@@ -739,11 +748,10 @@ impl App for Notifications {
                 if let Some(tex) = &card.picture {
                     let r = icons::fit(ui.ctx(), tex, icon_r);
                     painter.image(tex.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
-                } else {
-                    let _ = icon_names(&card.note).iter().any(|n| icons::paint(&painter, icon_r, n));
                 }
                 // Its close box.
-                let x = rect.left() + text_x;
+                let x = rect.left() + text_x(card);
+                let text_w = WIDTH - text_x(card) - PAD;
                 let close = Rect::from_center_size(pos2(rect.right() - PAD - 6.0, rect.top() + PAD + 7.0), vec2(12.0, 12.0));
                 let close_resp = ui.interact(close.expand(3.0), ui.make_persistent_id(("close", id)), Sense::click());
                 close_box(&painter, close, if close_resp.hovered() { c(p.panel_text) } else { style::disabled_text(&p) });
@@ -772,10 +780,13 @@ impl App for Notifications {
                 let buttons: Vec<(String, String)> = card.note.actions.iter().filter(|(k, l)| k != "default" && !l.is_empty()).cloned().collect();
                 if !buttons.is_empty() {
                     let mut bx = rect.right() - PAD;
+                    // In the narrow column they share the width when they must.
+                    let n = buttons.len() as f32;
+                    let share = ((WIDTH - 2.0 * PAD - (n - 1.0) * m::SPACING) / n).floor();
                     for (key, label) in buttons.iter().rev() {
-                        let w = (style::label_width(ui.ctx(), label, style::plain_font()) + 24.0).max(m::BUTTON_MIN_WIDTH);
+                        let w = (style::label_width(ui.ctx(), label, style::plain_font()) + 24.0).max(m::BUTTON_MIN_WIDTH).min(share);
                         let r = Rect::from_min_size(pos2(bx - w, by), vec2(w, m::CONTROL_HEIGHT));
-                        if ui.put(r, Button::new(label.as_str())).clicked() {
+                        if ui.put(r, Button::new(label.as_str()).min_width(w)).clicked() {
                             pressed = Some(key.clone());
                         }
                         bx -= w + m::SPACING;

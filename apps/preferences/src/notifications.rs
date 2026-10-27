@@ -125,8 +125,9 @@ pub fn ui(ui: &mut Ui, clock: &ClockSettings, st: &mut State) {
         }
     });
     BBox::new("Banners").show(ui, |ui| {
-        let choices = [3, 6, 10, 20, 30];
-        let names: Vec<String> = choices.iter().map(|s| format!("{s} seconds")).collect();
+        // 0: never (errors still show).
+        let choices = [3, 6, 10, 20, 30, 0];
+        let names: Vec<String> = choices.iter().map(|&s| if s == 0 { "Never".to_owned() } else { format!("{s} seconds") }).collect();
         let mut names: Vec<&str> = names.iter().map(String::as_str).collect();
         let custom = format!("{} seconds", s.seconds);
         let mut i = match choices.iter().position(|&c| c == s.seconds) {
@@ -140,7 +141,8 @@ pub fn ui(ui: &mut Ui, clock: &ClockSettings, st: &mut State) {
         if let Some(&c) = choices.get(i) {
             s.seconds = c;
         }
-        ui.add(StringView::new("Unless the app says; kept while the pointer is over it.").dim(true));
+        let note = if s.seconds == 0 { "Only errors show; the rest go to the history." } else { "Unless the app says; kept while the pointer is over it." };
+        ui.add(StringView::new(note).dim(true));
     });
     apps_ui(ui, st, &mut s);
     if st.settings.as_ref() != Some(&s) {

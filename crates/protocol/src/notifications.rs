@@ -19,7 +19,8 @@ pub struct NotificationSettings {
     /// Do Not Disturb every day between these times (minutes after
     /// midnight, local time; the end may be the next morning).
     pub schedule: Option<(u16, u16)>,
-    /// How long a notification stays (seconds) when its app leaves it to us.
+    /// How long a notification stays (seconds) when its app leaves it to us;
+    /// 0: no banners at all but errors ("Never").
     pub seconds: u32,
     /// By app name, as apps give it.
     pub apps: BTreeMap<String, AppNotifications>,

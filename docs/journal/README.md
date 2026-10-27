@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Banners in the Deskbar's column
+
+*13:28* — Notification banners are now as wide as the Deskbar and flush with the screen's edge beneath it, where there is usually nothing else, and more compact: the app's icon in the group's title, the text taking the width, buttons sharing it. Preferences adds Never to Show banners for (errors still show).
+
+![Banners in the Deskbar's column](2026-10-27/132840-banners-in-the-deskbar-s-column.png)
+
 ### New Window for a running app
 
 *13:24* — Right-clicking a running Tabula app in Tracker (or opening its menu in Deskbar) offers New Window: the running copy opens another window, as BeOS's Deskbar did, instead of a second copy starting. Terminal, StyledEdit and Tracker answer it.
