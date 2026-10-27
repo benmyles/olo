@@ -301,17 +301,30 @@ pub fn resolve(data: &Data, text: &str) -> Result<String, String> {
     if r.section.is_none() && (r.field == "notesPlain" || r.field.eq_ignore_ascii_case("notes")) {
         return Ok(i.notes.clone());
     }
-    let section = match &r.section {
-        Some(s) => Some(
-            find(i.sections.iter(), s, |x| &x.id, |x| &x.title)
-                .map_err(|e| format!("{text}: section \"{s}\" in item \"{}\": {e}", i.title))?
-                .id
-                .clone(),
-        ),
+    // Sections and fields are taken by ID, else by name; when several
+    // share a name, every one is looked in and the first match wins.
+    let sections: Option<Vec<&str>> = match &r.section {
+        Some(s) => {
+            let by_id: Vec<&str> = i.sections.iter().filter(|x| x.id == *s).map(|x| x.id.as_str()).collect();
+            let found = if by_id.is_empty() {
+                i.sections.iter().filter(|x| x.title.eq_ignore_ascii_case(s)).map(|x| x.id.as_str()).collect()
+            } else {
+                by_id
+            };
+            if found.is_empty() {
+                return Err(format!("{text}: no section \"{s}\" in item \"{}\"", i.title));
+            }
+            Some(found)
+        }
         None => None,
     };
-    let candidates = i.fields.iter().filter(|f| section.is_none() || f.section_id == section);
-    let field = find(candidates, &r.field, |f| &f.id, |f| &f.title).map_err(|e| if e == "not found" { not_found() } else { format!("{text}: {e}") })?;
+    let candidates = || {
+        i.fields.iter().filter(|f| sections.as_ref().is_none_or(|ids| f.section_id.as_deref().is_some_and(|id| ids.contains(&id))))
+    };
+    let field = candidates()
+        .find(|f| f.id == r.field)
+        .or_else(|| candidates().find(|f| f.title.eq_ignore_ascii_case(&r.field)))
+        .ok_or_else(not_found)?;
     Ok(match r.attribute {
         Some(reference::Attribute::Otp) => Totp::parse(&field.value).map_err(|e| format!("{text}: {e}"))?.now().0,
         Some(reference::Attribute::Type) => field_type(field.field_type).to_string(),
@@ -408,8 +421,16 @@ mod tests {
         assert_eq!(resolve(&d, "op://developers/app env/username").unwrap(), "me");
         assert_eq!(resolve(&d, "op://Developers/App Env/ai/OPENAI_API_KEY").unwrap(), "sk-1");
         assert_eq!(resolve(&d, "op://v1/i1/s2/f2").unwrap(), "sk-2");
-        // Without its section, the label is in two sections.
-        assert!(resolve(&d, "op://Developers/App Env/OPENAI_API_KEY").unwrap_err().contains("more than one"));
+        // Without its section, the label is in two sections: the first.
+        assert_eq!(resolve(&d, "op://Developers/App Env/OPENAI_API_KEY").unwrap(), "sk-1");
+        // Two sections with one name: both are looked in.
+        let mut two = data();
+        two.entries[0].item.sections[1].title = "ai".into();
+        two.entries[0].item.fields[2].section_id = Some("s2".into());
+        two.entries[0].item.fields[2].title = "OTHER".into();
+        assert_eq!(resolve(&two, "op://Developers/App Env/ai/OPENAI_API_KEY").unwrap(), "sk-2");
+        assert_eq!(resolve(&two, "op://Developers/App Env/ai/OTHER").unwrap(), "sk-1");
+        assert!(resolve(&d, "op://Developers/App Env/nope/OPENAI_API_KEY").unwrap_err().contains("no section"));
         assert_eq!(resolve(&d, "op://Developers/App Env/notesPlain").unwrap(), "a note");
         assert_eq!(resolve(&d, "op://Developers/App Env/password?attribute=type").unwrap(), "CONCEALED");
         assert_eq!(resolve(&d, "op://Developers/App Env/one-time password?attribute=otp").unwrap().len(), 6);
