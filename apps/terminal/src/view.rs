@@ -754,6 +754,7 @@ fn modifier_param(m: egui::Modifiers) -> u8 {
 /// The bytes for a key, or None when it's left to the text event.
 pub fn key_bytes(key: Key, m: egui::Modifiers, mode: TermMode) -> Option<Vec<u8>> {
     let mp = modifier_param(m);
+    let kitty = mode.intersects(TermMode::KITTY_KEYBOARD_PROTOCOL);
     let csi = |letter: char| -> Vec<u8> {
         if mp > 1 {
             format!("\x1b[1;{mp}{letter}").into_bytes()
@@ -780,9 +781,11 @@ pub fn key_bytes(key: Key, m: egui::Modifiers, mode: TermMode) -> Option<Vec<u8>
         Key::ArrowDown => csi('B'),
         // Option+←/→ alone: a word back or forward, as macOS Terminal
         // sends it (readline, zsh and fish all know ESC b / ESC f; bash
-        // leaves xterm's CSI 1;3 D unbound).
-        Key::ArrowRight if m.alt && !m.ctrl && !m.shift => b"\x1bf".to_vec(),
-        Key::ArrowLeft if m.alt && !m.ctrl && !m.shift => b"\x1bb".to_vec(),
+        // leaves xterm's CSI 1;3 D unbound). A program that asked for the
+        // kitty keyboard protocol (Claude Code, …) gets the protocol's
+        // CSI 1;3 D and reads it as Alt+← itself.
+        Key::ArrowRight if m.alt && !m.ctrl && !m.shift && !kitty => b"\x1bf".to_vec(),
+        Key::ArrowLeft if m.alt && !m.ctrl && !m.shift && !kitty => b"\x1bb".to_vec(),
         Key::ArrowRight => csi('C'),
         Key::ArrowLeft => csi('D'),
         Key::Home => csi('H'),
@@ -1215,5 +1218,9 @@ mod tests {
         let both = egui::Modifiers { alt: true, shift: true, ..Default::default() };
         assert_eq!(key_bytes(Key::ArrowLeft, both, TermMode::empty()).unwrap(), b"\x1b[1;4D");
         assert_eq!(key_bytes(Key::ArrowLeft, egui::Modifiers::NONE, TermMode::empty()).unwrap(), b"\x1b[D");
+        // Under the kitty keyboard protocol, the protocol's own form.
+        let kitty = TermMode::DISAMBIGUATE_ESC_CODES;
+        assert_eq!(key_bytes(Key::ArrowLeft, alt, kitty).unwrap(), b"\x1b[1;3D");
+        assert_eq!(key_bytes(Key::ArrowRight, alt, kitty).unwrap(), b"\x1b[1;3C");
     }
 }

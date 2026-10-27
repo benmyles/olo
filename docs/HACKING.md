@@ -928,7 +928,10 @@ images).
 Keys: physical Ctrl goes to the shell. ⌘ reaches Terminal as Ctrl+Shift
 (see keymap.rs); Ctrl+Shift with a menu shortcut's key
 (`view::SHORTCUTS`, kept in step with the menus) is Terminal's, and any
-other goes to the shell as Ctrl+key, so ⌘R searches history like Ctrl+R.
+other goes to the shell as Ctrl+key, so ⌘R searches history like Ctrl+R. ⌥←/⌥→ send ESC b / ESC f
+(a word back/forward in readline, zsh and fish), except to a program
+using the kitty keyboard protocol (Claude Code), which gets the
+protocol's `CSI 1;3 D` / `C` and reads ESC b as Escape then b.
 
 ## The polkit agent (apps/polkit-agent, tabula_system::polkit)
 

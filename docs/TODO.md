@@ -89,7 +89,8 @@ as they land (with the commit), add new ones as they come up.
 - ~~**Passwords: never change anything on sync without approval**~~
   (Ben): plan, Review Sync, apply (sync.rs); plus ~~File ▸ Reset
   Passwords…~~ (local only).
-- **Terminal: ⌥←/⌥→ in Claude Code** (Ben): Option+Left/Right move by a
+- ~~**Terminal: ⌥←/⌥→ in Claude Code**~~ (fixed: under the kitty keyboard
+  protocol they're now `CSI 1;3 D/C`) (Ben): Option+Left/Right move by a
   word in plain bash but not in Claude Code. Check what Terminal sends for
   them (bash binds ESC b / ESC f; others expect CSI 1;3D / 1;3C) and
   whether Claude Code's input understands it; send what xterm does.
