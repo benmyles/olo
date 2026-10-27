@@ -285,7 +285,12 @@ for content the kit doesn't scroll, such as a web page), `ColorControl`
 `ColumnListView` + `Column` + `ListState` (sortable, resizable,
 multi-select, context clicks; `.reveal(row)` scrolls a row selected in code
 into view; `.draggable()` reports `ListResponse::drag_started` and the
-rows on screen, `visible` / `row_at(pos)`, for drop targets), `TabView`, `color_well`, `heading`,
+rows on screen, `visible` / `row_at(pos)`, for drop targets; in a
+multi-select list, dragging from below the rows, or from a row's other
+columns when it isn't selected, draws a selection band, as in Tracker's
+list view: ⇧ or ⌘ adds to the selection, and it scrolls on near the
+edges; on a draggable list the name column and selected rows drag the
+items), `TabView`, `color_well`, `heading`,
 `form_label`, `window_content`, `button_row`, `context_menu`,
 `popup_menu_at` / `popup_result`, `InlineEdit` (Tracker-style rename in
 place: returns `Editing` / `Commit` / `Cancel`; pads by `INLINE_PAD`, which

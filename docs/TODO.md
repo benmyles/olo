@@ -216,7 +216,7 @@ as they land (with the commit), add new ones as they come up.
   tiled (e.g. to the right half) and then unzooming must put it back in
   that tile, not some older frame (PreZoom should be the frame just
   before the zoom, tiles included, and the tile state restored).
-- **Band selection everywhere** (Ben): dragging from empty space draws a
+- ~~**Band selection everywhere**~~ (kit `ColumnListView`, so Tracker's list view and every list; Tracker's column view from below a column's items; icon view and desktop as before; scrolls on near the edges; tested headless) (Ben): dragging from empty space draws a
   selection band and selects every item it touches (⇧/⌘ add to the
   selection) in Tracker's list and column views as it already does in the
   icon view and on the desktop, so several things can be picked to move.
@@ -232,6 +232,18 @@ as they land (with the commit), add new ones as they come up.
   from the Deskbar tray sometimes opened behind every other window
   (after Tile All). A newly opened dialog or alert must be raised and
   focused.
+- **Disk manager** (Ben): a native Tabula utility for disks and
+  partitions, after BeOS's DriveSetup (and Haiku's): the disks as a tree
+  with their partitions drawn to scale, and per partition: mount and
+  unmount, initialize (format) with a file system, create/delete/resize
+  partitions, set the name, show what is on it (size, used, file system,
+  where mounted). Improve on it where we can: SMART health and
+  temperature, encryption (LUKS) unlock and setup, USB sticks and SD cards
+  (write an image, eject safely), a benchmark, and live progress for long
+  jobs that can be cancelled. Native: talk to UDisks2 over D-Bus (zbus)
+  rather than running parted or mkfs; every destructive step behind a
+  clear alert naming the disk; polkit for privileges; agent-readable over
+  IPC. Never test it on the real disks: loop devices in a test session.
 - **Log viewer app** (Ben): a Tabula app that shows every Tabula
   event in one place (app_server, tabula-session, Deskbar, Tracker and
   every app's log) so issues can be spotted and tracked down: live tail,

@@ -1563,6 +1563,12 @@ impl<'a> ColumnListView<'a> {
         let mut selection_changed = false;
         let mut activated = None;
         let mut context = None;
+        // A selection band: where it started (y in content coordinates)
+        // and what was selected before it (⇧ or ⌘ adds to that).
+        let band_id = id.with("band");
+        let mut band = ui.ctx().data(|d| d.get_temp::<(Pos2, BTreeSet<usize>)>(band_id));
+        let mut band_from = None;
+        let mut content_top = body.top();
         if let Some(row) = self.reveal {
             let context = ((body.height() / row_h / 2.0).floor() - 1.0).max(0.0);
             let (top, bottom) = ((row as f32 - context).max(0.0) * row_h, (row as f32 + 1.0 + context) * row_h);
@@ -1578,18 +1584,28 @@ impl<'a> ColumnListView<'a> {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 let left = ui.max_rect().left();
                 let right = ui.max_rect().right();
+                content_top = ui.max_rect().top() - range.start as f32 * row_h;
+                let sense = if draggable || state.multiple { Sense::click_and_drag() } else { Sense::click() };
                 for row in range {
-                    let sense = if draggable { Sense::click_and_drag() } else { Sense::click() };
                     let (r, resp) = ui.allocate_exact_size(vec2(right - left, row_h), sense);
                     let r = Rect::from_min_max(pos2(left, r.top()), pos2(right, r.bottom()));
                     visible.push((row, r.intersect(ui.clip_rect())));
-                    if draggable && resp.drag_started() {
+                    if resp.drag_started() {
                         ui.memory_mut(|m| m.request_focus(focus_id));
-                        if !state.selected.contains(&row) {
-                            state.select(row);
-                            selection_changed = true;
+                        // As in Tracker's list view: a selected row, or the
+                        // first (name) column, drags the items; the rest of
+                        // a row draws a selection band.
+                        let press = ui.input(|i| i.pointer.press_origin()).unwrap_or(r.min);
+                        let on_item = state.selected.contains(&row) || columns.len() == 1 || press.x < left + widths[0];
+                        if draggable && on_item {
+                            if !state.selected.contains(&row) {
+                                state.select(row);
+                                selection_changed = true;
+                            }
+                            *drag_started = Some((row, resp.dragged_by(egui::PointerButton::Secondary)));
+                        } else if state.multiple && resp.dragged_by(egui::PointerButton::Primary) {
+                            band_from = Some(press);
                         }
-                        *drag_started = Some((row, resp.dragged_by(egui::PointerButton::Secondary)));
                     }
                     if resp.clicked() || resp.secondary_clicked() || resp.double_clicked() {
                         ui.memory_mut(|m| m.request_focus(focus_id));
@@ -1635,8 +1651,66 @@ impl<'a> ColumnListView<'a> {
                         x += w;
                     }
                 }
+                // Below the last row: a click clears the selection, a drag
+                // draws a band.
+                let rest = Rect::from_min_max(pos2(left, content_top + rows as f32 * row_h), pos2(right, ui.clip_rect().bottom()));
+                if rest.height() > 0.0 {
+                    let resp = ui.interact(rest, id.with("rest"), sense);
+                    if resp.clicked() {
+                        ui.memory_mut(|m| m.request_focus(focus_id));
+                        let mods = ui.input(|i| i.modifiers);
+                        if !(mods.command || mods.shift) && !state.selected.is_empty() {
+                            state.selected.clear();
+                            state.anchor = None;
+                            selection_changed = true;
+                        }
+                    }
+                    if resp.drag_started() && state.multiple && resp.dragged_by(egui::PointerButton::Primary) {
+                        ui.memory_mut(|m| m.request_focus(focus_id));
+                        band_from = ui.input(|i| i.pointer.press_origin());
+                    }
+                }
             },
         );
+        if let Some(from) = band_from {
+            let mods = ui.input(|i| i.modifiers);
+            let base = if mods.command || mods.shift { state.selected.clone() } else { BTreeSet::new() };
+            band = Some((pos2(from.x, from.y - content_top), base));
+        }
+        let (down, pointer) = ui.input(|i| (i.pointer.primary_down(), i.pointer.latest_pos()));
+        match (&band, down, pointer) {
+            (Some((from, base)), true, Some(now)) => {
+                let (top, bottom) = (from.y.min(now.y - content_top), from.y.max(now.y - content_top));
+                let first = (top / row_h).floor().max(0.0) as usize;
+                let end = ((bottom / row_h).ceil().max(0.0) as usize).min(rows);
+                let mut selected = base.clone();
+                selected.extend(first..end.max(first));
+                if selected != state.selected {
+                    state.anchor = (first < end).then_some(first).or(state.anchor);
+                    state.selected = selected;
+                    selection_changed = true;
+                }
+                let r = Rect::from_two_pos(pos2(from.x, from.y + content_top), now).intersect(body);
+                style::selection_band(&ui.painter().with_clip_rect(body), r, &p);
+                // Near or past the top or bottom: scroll on.
+                let edge = row_h / 2.0;
+                let step = if now.y > body.bottom() - edge {
+                    ((now.y - body.bottom() + edge) / 2.0).clamp(2.0, row_h * 2.0)
+                } else if now.y < body.top() + edge {
+                    -((body.top() + edge - now.y) / 2.0).clamp(2.0, row_h * 2.0)
+                } else {
+                    0.0
+                };
+                if step != 0.0 {
+                    let (vt, vb) = (body.top() - content_top, body.bottom() - content_top);
+                    let (t, b) = if step > 0.0 { (vb + step - 1.0, vb + step) } else { (vt + step, vt + step + 1.0) };
+                    ScrollView::reveal(ui.ctx(), id.with("scroll"), t.max(0.0), b.min(rows as f32 * row_h).max(1.0));
+                }
+                let kept = (*from, base.clone());
+                ui.ctx().data_mut(|d| d.insert_temp(band_id, kept));
+            }
+            _ => ui.ctx().data_mut(|d| d.remove::<(Pos2, BTreeSet<usize>)>(band_id)),
+        }
         out.selection_changed |= selection_changed;
         out.activated = out.activated.or(activated);
         out.context = out.context.or(context);

@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Band selection in lists
+
+*23:46* — Dragging from a row's other columns, or from below the rows, draws a selection band in Tracker's list view and in every kit list (⇧ or ⌘ adds; it scrolls on near the edges). The column view does the same from below a column's items.
+
+![Band selection in lists](2026-10-26/234628-band-selection-in-lists.png)
+
 ### Drag and drop
 
 *23:12* — Files drag between Tracker's views, the desktop, other apps and other Wayland programs, BeOS-style: a see-through picture with the name, folders light up to take them, move within a disk and copy across, a right-button drag asks Move/Copy/Link. Desktop icons stay where you put them. Drop a file on Terminal to type its path (an image into Claude Code).

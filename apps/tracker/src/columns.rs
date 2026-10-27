@@ -36,6 +36,9 @@ enum Event {
     Context { col: usize, row: Option<usize>, pos: Pos2 },
     /// A drag started on a row; where on its icon the pointer is.
     Drag { col: usize, row: usize, hotspot: egui::Vec2, ask: bool },
+    /// A selection band (drawn from below a column's items) now selects
+    /// these.
+    Band { col: usize, selected: std::collections::BTreeSet<usize> },
 }
 
 fn column(f: &FolderWin, k: usize) -> (&std::path::Path, &[Entry], &widgets::ListState) {
@@ -191,6 +194,15 @@ pub fn columns_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, actions: &mut 
                     actions.push(Action::Drag(view::Drag { paths, icon: view::icon_of(e), size: view::MINI, hotspot, ask, name: e.name.clone(), below: false }));
                 }
             }
+            Event::Band { col, selected } => {
+                let (_, list) = column_mut(f, col);
+                if list.selected != selected {
+                    list.anchor = selected.first().copied().or(list.anchor);
+                    list.selected = selected;
+                    f.panes.truncate(col);
+                }
+                f.active = col;
+            }
             Event::Context { col, row, pos } => {
                 match row {
                     Some(row) if !column(f, col).2.selected.contains(&row) => choose(f, col, row),
@@ -291,6 +303,44 @@ fn draw_column(
             tabula_kit::dnd::outline(ui, clip);
         }
         let mods = ui.input(|i| i.modifiers);
+        // A selection band, from below the items (where it started, in
+        // content coordinates, and what ⇧ or Ctrl kept selected).
+        let band_id = egui::Id::unique(("col-band", path));
+        let origin = ui.min_rect().top();
+        if resp.drag_started() && resp.dragged_by(egui::PointerButton::Primary)
+            && let Some(at) = ui.input(|i| i.pointer.press_origin()).filter(|&at| row_at(at).is_none())
+        {
+            let base = if mods.ctrl || mods.shift { list.selected.clone() } else { Default::default() };
+            ui.ctx().data_mut(|d| d.insert_temp(band_id, (pos2(at.x, at.y - origin), base)));
+        }
+        let band = ui.ctx().data(|d| d.get_temp::<(Pos2, std::collections::BTreeSet<usize>)>(band_id));
+        match (band, resp.dragged(), ui.input(|i| i.pointer.latest_pos())) {
+            (Some((from, base)), true, Some(now)) => {
+                let (y0, y1) = (from.y.min(now.y - origin) + origin - top, from.y.max(now.y - origin) + origin - top);
+                let first = (y0 / m::LIST_ROW).floor().max(0.0) as usize;
+                let end = ((y1 / m::LIST_ROW).ceil().max(0.0) as usize).min(rows);
+                let mut selected = base;
+                selected.extend(first..end.max(first));
+                events.push(Event::Band { col: k, selected });
+                let r = Rect::from_two_pos(pos2(from.x, from.y + origin), now);
+                style::selection_band(&ui.painter().with_clip_rect(clip), r.intersect(clip), p);
+                // Near or past the column's top or bottom: scroll on.
+                let edge = m::LIST_ROW / 2.0;
+                let step = if now.y > clip.bottom() - edge {
+                    ((now.y - clip.bottom() + edge) / 2.0).clamp(2.0, 2.0 * m::LIST_ROW)
+                } else if now.y < clip.top() + edge {
+                    -((clip.top() + edge - now.y) / 2.0).clamp(2.0, 2.0 * m::LIST_ROW)
+                } else {
+                    0.0
+                };
+                if step != 0.0 {
+                    let y = if step > 0.0 { clip.bottom() - origin + step } else { clip.top() - origin + step };
+                    ScrollView::reveal(ui.ctx(), ("col", path), (y - 1.0).max(0.0), (y + 1.0).min(content.height()));
+                }
+            }
+            (Some(_), _, _) => ui.ctx().data_mut(|d| d.remove::<(Pos2, std::collections::BTreeSet<usize>)>(band_id)),
+            _ => {}
+        }
         if let Some(pos) = resp.interact_pointer_pos() {
             if resp.drag_started() {
                 // Where the button went down, not where the drag got to.

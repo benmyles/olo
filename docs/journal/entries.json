@@ -874,5 +874,11 @@
   "title": "Drag and drop",
   "caption": "Files drag between Tracker's views, the desktop, other apps and other Wayland programs, BeOS-style: a see-through picture with the name, folders light up to take them, move within a disk and copy across, a right-button drag asks Move/Copy/Link. Desktop icons stay where you put them. Drop a file on Terminal to type its path (an image into Claude Code).",
   "image": "2026-10-26/231257-drag-and-drop.png"
+ },
+ {
+  "time": "2026-10-26T23:46:28",
+  "title": "Band selection in lists",
+  "caption": "Dragging from a row's other columns, or from below the rows, draws a selection band in Tracker's list view and in every kit list (\u21e7 or \u2318 adds; it scrolls on near the edges). The column view does the same from below a column's items.",
+  "image": "2026-10-26/234628-band-selection-in-lists.png"
  }
 ]
