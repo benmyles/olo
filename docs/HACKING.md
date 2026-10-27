@@ -1371,6 +1371,27 @@ and painted. Servo draws straight into the subsurface; nothing is copied.
   built alongside (Servo's canvas wants it), which broke egui's glyph
   rasterizer: hence `vendor/epaint` (see `vendor/README.md`).
 
+## Other toolkits' programs (app_server toolkits.rs, state.rs; tabula_theme::toolkit)
+
+Programs not built on the kit take Tabula's look as far as their toolkit
+allows. `toolkits.rs` publishes the palette where GTK 3, GTK 4,
+libadwaita and Chrome read it (GSettings through dconf, the Tabula and
+Tabula-dark GTK themes, GTK 4's user stylesheet, BeOS's close-left,
+zoom-right title buttons); see its module comment.
+
+Window chrome: app_server offers server-side decorations two ways.
+xdg-decoration (`zxdg_decoration_manager_v1`) is what Chrome, Qt and most
+others ask through. GTK 3 and GTK 4 don't speak it; they speak KDE's
+`org_kde_kwin_server_decoration`, whose default mode app_server
+announces as Server, so a GTK window with no headerbar draws no
+decorations of its own and gets Tabula's tab and frame
+(`KdeDecorationHandler` in state.rs, `kde_server_side`, read in
+`shell/xdg.rs` with the xdg-decoration mode). A window that asks for
+Client (a GTK headerbar, so every libadwaita app) keeps its own,
+coloured by the theme. Test with a throwaway GTK script in a headless
+session (`tsession run NAME GDK_BACKEND=wayland python3 test.py`, the
+private bus as DBUS_SESSION_BUS_ADDRESS).
+
 ## Google Chrome (apps/chrome)
 
 `tabula-chrome` is Google Chrome in Tabula's applications (`OUR_APPS`).

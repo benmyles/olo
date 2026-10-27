@@ -161,6 +161,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub viewporter_state: ViewporterState,
     pub xdg_activation_state: XdgActivationState,
     pub xdg_decoration_state: XdgDecorationState,
+    /// KDE's server-decoration protocol, which GTK 3 and 4 use (they have
+    /// no xdg-decoration) to let us draw their tab and frame.
+    pub kde_decoration_state: smithay::wayland::shell::kde::decoration::KdeDecorationState,
     pub xdg_shell_state: XdgShellState,
     pub presentation_state: PresentationState,
     pub fractional_scale_manager_state: FractionalScaleManagerState,
@@ -596,6 +599,72 @@ impl<BackendData: Backend> XdgDecorationHandler for AnvilState<BackendData> {
     }
 }
 
+/// A surface's choice over KDE's server-decoration protocol: true when we
+/// draw its tab and frame.
+pub struct KdeServerSide(pub std::sync::atomic::AtomicBool);
+
+/// Whether `surface` asked (over KDE's protocol) for our tab and frame.
+pub fn kde_server_side(surface: &WlSurface) -> bool {
+    smithay::wayland::compositor::with_states(surface, |states| {
+        states.data_map.get::<KdeServerSide>().is_some_and(|k| k.0.load(std::sync::atomic::Ordering::Relaxed))
+    })
+}
+
+impl<BackendData: Backend> smithay::wayland::shell::kde::decoration::KdeDecorationHandler for AnvilState<BackendData> {
+    fn kde_decoration_state(&self) -> &smithay::wayland::shell::kde::decoration::KdeDecorationState {
+        &self.kde_decoration_state
+    }
+
+    fn new_decoration(
+        &mut self,
+        surface: &WlSurface,
+        decoration: &smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration,
+    ) {
+        use smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::Mode;
+        decoration.mode(Mode::Server);
+        self.set_kde_mode(surface, true);
+    }
+
+    fn request_mode(
+        &mut self,
+        surface: &WlSurface,
+        decoration: &smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration,
+        mode: smithay::reexports::wayland_server::WEnum<
+            smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::Mode,
+        >,
+    ) {
+        use smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::Mode;
+        // A window that draws its own titlebar (a GTK headerbar) asks for
+        // client mode: honour it, or it would wear two.
+        let server = !matches!(mode, smithay::reexports::wayland_server::WEnum::Value(Mode::Client | Mode::None));
+        decoration.mode(if server { Mode::Server } else { Mode::Client });
+        self.set_kde_mode(surface, server);
+    }
+
+    fn release(
+        &mut self,
+        _decoration: &smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration,
+        surface: &WlSurface,
+    ) {
+        self.set_kde_mode(surface, false);
+    }
+}
+
+impl<BackendData: Backend> AnvilState<BackendData> {
+    fn set_kde_mode(&mut self, surface: &WlSurface, server: bool) {
+        smithay::wayland::compositor::with_states(surface, |states| {
+            states.data_map.insert_if_missing_threadsafe(|| KdeServerSide(std::sync::atomic::AtomicBool::new(false)));
+            if let Some(k) = states.data_map.get::<KdeServerSide>() {
+                k.0.store(server, std::sync::atomic::Ordering::Relaxed);
+            }
+        });
+        // A window already up changes its frame now.
+        if let Some(window) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface)).cloned() {
+            window.set_ssd(server);
+        }
+    }
+}
+
 impl<BackendData: Backend> FractionalScaleHandler for AnvilState<BackendData> {
     fn new_fractional_scale(
         &mut self,
@@ -834,6 +903,10 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let viewporter_state = ViewporterState::new::<Self>(&dh);
         let xdg_activation_state = XdgActivationState::new::<Self>(&dh);
         let xdg_decoration_state = XdgDecorationState::new::<Self>(&dh);
+        let kde_decoration_state = smithay::wayland::shell::kde::decoration::KdeDecorationState::new::<Self>(
+            &dh,
+            smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration_manager::Mode::Server,
+        );
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
         let presentation_state = PresentationState::new::<Self>(&dh, clock.id() as u32);
         let fractional_scale_manager_state = FractionalScaleManagerState::new::<Self>(&dh);
@@ -906,6 +979,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             viewporter_state,
             xdg_activation_state,
             xdg_decoration_state,
+            kde_decoration_state,
             xdg_shell_state,
             presentation_state,
             fractional_scale_manager_state,

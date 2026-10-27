@@ -308,11 +308,14 @@ as they land (with the commit), add new ones as they come up.
   should move Chrome and GTK apps as far as it moves a Tabula app, with
   the same smooth scrolling (app_server's axis values, value120 and
   discrete steps, and what each toolkit multiplies them by).
-- **GNOME/GTK 4 apps look at home** (Ben; partly done: the portals start
+- ~~**GNOME/GTK 4 apps look at home**~~ (done: the portals start
   in a real session (they never did, so GTK 4 had no settings at all),
   and GTK 3, GTK 4 and libadwaita take Tabula's colours, fonts and
-  close-left/zoom-right buttons in both modes. Left: Tabula's window
-  chrome for them; GTK has no xdg-decoration, so it keeps headerbars): a GTK 4 / libadwaita app
+  close-left/zoom-right buttons in both modes; GTK windows without a
+  headerbar get Tabula's tab and frame through KDE's server-decoration
+  protocol, tested headless with GTK 3 and 4; headerbar and libadwaita
+  windows draw their own, by design, in Tabula's colours; HACKING,
+  "Other toolkits' programs") (Ben): a GTK 4 / libadwaita app
   opened in Tabula follows light/dark mode properly (and switches live),
   and gets Tabula's window chrome (yellow tab, BeOS borders) rather than
   its own client-side decorations: e.g. asking for server-side decorations

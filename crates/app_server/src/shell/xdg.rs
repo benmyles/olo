@@ -176,7 +176,8 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
                     .state
                     .decoration_mode
                     .map(|mode| mode == Mode::ServerSide)
-                    .unwrap_or(false);
+                    .unwrap_or(false)
+                    || crate::state::kde_server_side(&surface);
                 window.set_ssd(is_ssd);
             }
         }

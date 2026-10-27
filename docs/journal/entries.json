@@ -1012,5 +1012,11 @@
   "title": "Views scroll under a drag",
   "caption": "A drag held near the top or bottom of any scrolling view scrolls it on, faster nearer the edge, so a drop can reach what was out of view.",
   "image": "2026-10-27/023759-views-scroll-under-a-drag.png"
+ },
+ {
+  "time": "2026-10-27T02:45:29",
+  "title": "GTK windows wear Tabula's chrome",
+  "caption": "Plain GTK 3 and GTK 4 windows (no headerbar) now get Tabula's tab and frame: app_server speaks KDE's server-decoration protocol, which is how GTK asks for server-side decorations.",
+  "image": "2026-10-27/024529-gtk-windows-wear-tabula-s-chrome.png"
  }
 ]

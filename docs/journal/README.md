@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### GTK windows wear Tabula's chrome
+
+*02:45* — Plain GTK 3 and GTK 4 windows (no headerbar) now get Tabula's tab and frame: app_server speaks KDE's server-decoration protocol, which is how GTK asks for server-side decorations.
+
+![GTK windows wear Tabula's chrome](2026-10-27/024529-gtk-windows-wear-tabula-s-chrome.png)
+
 ### Views scroll under a drag
 
 *02:37* — A drag held near the top or bottom of any scrolling view scrolls it on, faster nearer the edge, so a drop can reach what was out of view.
