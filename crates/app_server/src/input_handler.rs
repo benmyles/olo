@@ -203,7 +203,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 self.show_indicator(crate::osd::Indicator::Caffeinated { on, detail: detail.into() });
             }
             S::ScreenshotScreen => self.spawn_program("tabula-screenshot", &["--silent"]),
-            S::ScreenshotWindow => self.spawn_program("tabula-screenshot", &["--silent", "--window"]),
+            // The target by id: from the palette, the palette is active.
+            S::ScreenshotWindow => match &focused {
+                Some(w) => self.spawn_program("tabula-screenshot", &["--silent", "--window", &w.meta().id.to_string()]),
+                None => self.spawn_program("tabula-screenshot", &["--silent", "--window"]),
+            },
             S::ScreenshotRegion => self.spawn_program("tabula-screenshot", &["--region"]),
             S::ScreenshotApp => {
                 let open = self.all_windows().into_iter().find(|w| w.app_id() == "tabula.screenshot");

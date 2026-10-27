@@ -1171,9 +1171,13 @@ impl<'a> CellGrid<'a> {
                 hline(painter, inner.left(), inner.right(), inner.top(), Color32::from_white_alpha(80));
             }
             if let Some(mark) = item.mark.as_deref().filter(|_| size >= 11.0) {
-                let font = FontId::proportional((size * 0.7).round());
+                // Centred on its capitals (not the line box, which sits
+                // it high), and kept inside the well.
+                let font = FontId::proportional((size * 0.64).round());
                 let ink = if item.color.is_some() { Color32::WHITE } else { c(p.panel_text) };
-                painter.text(inner.center(), egui::Align2::CENTER_CENTER, mark, font, ink);
+                let g = layout(ui, mark, font, ink);
+                let at = text_pos(ui, inner.center().x - g.size().x / 2.0, inner.center().y, &g);
+                painter.with_clip_rect(inner).galley(at, g, ink);
             }
             if item.selected {
                 style::frame_rect(painter, cell.expand(1.0), c(p.keyboard_navigation));

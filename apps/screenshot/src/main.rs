@@ -4,7 +4,7 @@
 //! active window, with or without its border and the pointer, after a
 //! delay. Our own window steps aside while a picture is taken.
 //!
-//! `--silent [--window]` (⌘⇧3, Print Screen, Alt+Print Screen) saves one
+//! `--silent [--window [ID]]` (⌘⇧3, Print Screen, Alt+Print Screen) saves one
 //! straight into the folder, as `screenshotN`, with no window; `--region`
 //! (⌘⇧4) lets you drag out part of the screen first (region.rs).
 
@@ -450,9 +450,10 @@ impl Drop for Screenshot {
 }
 
 /// ⌘⇧3 and friends: one picture, saved, no window.
-fn silent(window: bool) -> std::process::ExitCode {
+fn silent(window: bool, window_id: Option<tabula_protocol::WindowId>) -> std::process::ExitCode {
     let mut settings = Settings::load();
     settings.window = window;
+    settings.window_id = window_id;
     settings.delay = 0;
     let result = capture::take(&settings, false).and_then(|shot| {
         let folder = settings.folder();
@@ -489,7 +490,10 @@ fn main() -> std::process::ExitCode {
         };
     }
     if args.iter().any(|a| a == "--silent") {
-        return silent(args.iter().any(|a| a == "--window"));
+        // `--window` alone: the active window; `--window ID`: that one.
+        let at = args.iter().position(|a| a == "--window");
+        let id = at.and_then(|i| args.get(i + 1)).and_then(|a| a.parse().ok());
+        return silent(at.is_some(), id);
     }
     if instance::forward(APP_ID, &args) {
         return std::process::ExitCode::SUCCESS;

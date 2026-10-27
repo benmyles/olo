@@ -5,6 +5,10 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Screenshot Window from the palette~~ (Ben): takes the window the
+  palette was opened over (`--window ID`), not whatever is active then.
+- ~~Token Pool heatmap marks~~ (Ben): a cell's "C"/"X" is centred on its
+  capitals and kept inside the well.
 - ~~DriveSetup: usage and free space~~ (Ben): a Free column with a bar of
   how full each mounted volume is (red past 90%), "N free of M" in the
   status line, `space` in `--list`, re-read every 5 s while open.
@@ -513,10 +517,6 @@ as they land (with the commit), add new ones as they come up.
   `--new-window` to the running copy instead of launching a second one
   (Tracker, Terminal and StyledEdit; `apps::NEW_WINDOW`). Agents run
   `tabula-x --new-window`.
-- **Token Pool heatmap: the cell marks don't fit** (Ben, bugfix): the
-  "C"/"X" drawn in a Now cell overflows its 14 px well at 1× and looks
-  off. `CellGrid` should size the mark to the cell (or drop it when
-  there's no room), checked at 1× and 2×.
 - Token Pool follow-ups: spend a reset credit that would otherwise
   expire unused (needs a consumption-rate estimate, as Token Pooler's
   scheduling.md describes); keep key order in Claude Code's

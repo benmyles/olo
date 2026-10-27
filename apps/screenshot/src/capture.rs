@@ -20,11 +20,15 @@ pub struct Settings {
     pub delay: u32,
     pub format: Format,
     pub folder: Option<PathBuf>,
+    /// The window to take (`--window ID`), rather than the active one:
+    /// from the command palette, which is itself active by then.
+    #[serde(skip)]
+    pub window_id: Option<tabula_protocol::WindowId>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { window: false, border: true, pointer: false, delay: 0, format: Format::Png, folder: None }
+        Settings { window: false, border: true, pointer: false, delay: 0, format: Format::Png, folder: None, window_id: None }
     }
 }
 
@@ -154,7 +158,9 @@ pub fn take(settings: &Settings, hide: bool) -> Result<Shot, String> {
     }
     std::thread::sleep(Duration::from_secs(settings.delay.min(60) as u64));
     let result = (|| {
-        let window = if settings.window {
+        let window = if let Some(id) = settings.window_id {
+            Some(id)
+        } else if settings.window {
             // The active window, or the whole screen if there is none.
             windows(&mut client)?.into_iter().find(|w| w.focused && !w.minimized && w.pid != Some(me)).map(|w| w.id)
         } else {

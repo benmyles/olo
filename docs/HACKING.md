@@ -1058,9 +1058,11 @@ JPEG, BMP, TIFF, WebP) / Save in (Home, Desktop, Pictures, Choose
 folder…). New screenshot minimizes its own window first (so it isn't in
 the picture and the active window is the one behind it) and brings it
 back; Save writes `screenshotN` and quits; Copy to clipboard offers
-`image/png`. Settings are in `screenshot.json`. `--silent [--window]` saves
-straight into the folder with no window: app_server runs it for ⌘⇧3 and
-Print Screen (the screen) and Alt+Print Screen (the active window).
+`image/png`. Settings are in `screenshot.json`. `--silent [--window [ID]]`
+saves straight into the folder with no window: app_server runs it for ⌘⇧3
+and Print Screen (the screen) and Alt+Print Screen (the shortcut's target
+window by id: the active one, or the one the palette was opened over,
+since the palette is active by the time it runs).
 `--region` (⌘⇧4, region.rs) captures every output, covers each with an
 exclusive overlay showing its picture dimmed, and saves the rectangle you
 drag (its size in pixels follows the corner); Escape or a click cancels.
