@@ -330,6 +330,28 @@ impl Doc {
         self.generation += 1;
     }
 
+    /// Move bytes `from` to byte `to` (of the text before the move),
+    /// styles and all, as one undoable step (text dragged within the
+    /// document). Where it went, in bytes.
+    pub fn move_text(&mut self, from: Range<usize>, to: usize, selection: Range<usize>) -> Range<usize> {
+        if (from.start..=from.end).contains(&to) {
+            return from;
+        }
+        let text = self.text[from.clone()].to_owned();
+        let clip = self.clip.take();
+        self.copied(from.clone());
+        self.push_undo(selection);
+        self.last_edit = None;
+        self.typing = None;
+        self.splice(from.clone(), "");
+        let at = if to > from.end { to - from.len() } else { to };
+        self.splice(at..at, &text);
+        self.clip = clip;
+        self.redo.clear();
+        self.generation += 1;
+        at..at + text.len()
+    }
+
     /// Remember a copy, so pasting it here keeps its styles.
     pub fn copied(&mut self, range: Range<usize>) {
         let text = self.text[range.clone()].to_owned();
@@ -644,6 +666,17 @@ mod tests {
         d.copied(0..3);
         d.sync("ab cdab ", 5..5);
         assert_eq!(lens(&d), [(2, true), (3, false), (2, true), (1, false)]);
+    }
+
+    #[test]
+    fn moving_keeps_styles() {
+        let mut d = Doc::new("ab cd ef".into(), None);
+        d.restyle(0..2, 0..0, |s| s.bold = true);
+        assert_eq!(d.move_text(0..3, 8, 0..3), 5..8);
+        assert_eq!(d.text(), "cd efab ");
+        assert_eq!(lens(&d), [(5, false), (2, true), (1, false)]);
+        d.undo(5..8);
+        assert_eq!(d.text(), "ab cd ef");
     }
 
     #[test]

@@ -115,8 +115,9 @@ as they land (with the commit), add new ones as they come up.
   secondary-button drag asks Move/Copy/Link, text becomes a clipping);
   desktop icons placed freely and kept (Clean Up puts them back on the
   grid); Terminal types dropped paths (shell-quoted) or text; Viewer
-  and StyledEdit open dropped files. **Left:** dragging text out of and
-  into text fields and StyledEdit (move within, copy between), ~~Viewer
+  and StyledEdit open dropped files. **Left:** ~~dragging text out of and
+  into text fields and StyledEdit (move within, copy between)~~ (done:
+  kit `text_drag`, tested headless), ~~Viewer
   images out (the file and image/png)~~ (done, with Quick Look's), Passwords fields (a username or
   password onto another app's field), Deskbar (~~drop files on an app to
   open them with it~~ done; ~~drag an app out to make a link~~ done), dragging from

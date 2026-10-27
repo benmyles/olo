@@ -378,7 +378,14 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                 if drop.action == crate::dnd::Action::Ask {
                     offer.set_actions(DndAction::Copy, DndAction::Copy);
                 }
-                kit.with_app(|app, cx| app.dropped(cx, window, drop));
+                if drop.target.starts_with(crate::dnd::WIDGET) {
+                    if let Some(s) = kit.surface_mut(window) {
+                        crate::dnd::deliver(&s.ctx, drop);
+                        s.dirty = true;
+                    }
+                } else {
+                    kit.with_app(|app, cx| app.dropped(cx, window, drop));
+                }
                 offer.finish();
                 offer.destroy();
                 let _ = kit.conn.flush();
@@ -1664,6 +1671,9 @@ impl Kit {
         if hover.is_some() {
             let accepted = crate::dnd::end_frame(&ctx);
             self.tell_offer(accepted);
+        }
+        if let Some(data) = crate::dnd::take_start(&ctx) {
+            self.start_drag(id, data);
         }
         self.present(id, output);
         if menu::take_paste(&ctx)

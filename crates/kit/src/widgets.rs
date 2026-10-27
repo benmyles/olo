@@ -340,6 +340,12 @@ impl Widget for TextControl<'_> {
         let probe = ui.painter().layout_no_wrap("X".into(), font.clone(), Color32::BLACK);
         let top = style::text_origin(ui.ctx(), &probe, 0.0, well.center().y, font.size).y;
         let line = Rect::from_min_max(pos2(well.left() + m::TEXT_INSET, top), pos2(well.right() - m::TEXT_INSET, top + row_h));
+        let enabled = ui.is_enabled();
+        let mut drag = crate::text_drag::TextDrag::new(ui, id, enabled, self.password, false);
+        if let Some(d) = drag.take_drop() {
+            let r = crate::text_drag::apply(&mut *self.text, &d);
+            crate::text_drag::select(ui.ctx(), id, r);
+        }
         let mut edit = egui::TextEdit::singleline(&mut *self.text)
             .id(id)
             .frame(egui::Frame::NONE)
@@ -358,7 +364,9 @@ impl Widget for TextControl<'_> {
         let well_resp = ui.interact(well, id.with("well"), Sense::CLICK);
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(line));
         child.set_clip_rect(well.shrink(2.0).intersect(ui.clip_rect()));
-        let r = child.add(edit);
+        let out = edit.interactive(drag.interactive()).show(&mut child);
+        drag.finish(ui, &out);
+        let r = out.response.response;
         if well_resp.clicked() {
             ui.memory_mut(|m| m.request_focus(id));
         }
@@ -468,6 +476,11 @@ impl<'a> TextView<'a> {
         let editable = self.editable;
         let text = self.text;
         let highlight = self.highlight;
+        let mut drag = crate::text_drag::TextDrag::new(ui, edit_id, editable, false, true);
+        if let Some(d) = drag.take_drop() {
+            let r = crate::text_drag::apply(&mut *text, &d);
+            crate::text_drag::select(ui.ctx(), edit_id, r);
+        }
         let r = ScrollView::new(self.id)
             .focused(focused)
             .background(p.document_background)
@@ -487,12 +500,15 @@ impl<'a> TextView<'a> {
                     .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(6, 4)))
                     .font(font.clone())
                     .text_color(color)
-                    .interactive(editable)
-                    .desired_width(f32::INFINITY);
+                    .interactive(editable && drag.interactive())
+                    .desired_width(f32::INFINITY)
+                    .min_size(size);
                 if highlight.is_some() {
                     edit = edit.layouter(&mut layouter);
                 }
-                ui.add_sized(size, edit)
+                let out = edit.show(ui);
+                drag.finish(ui, &out);
+                out.response.response
             });
         edit_menu(ui, edit_id, &r, text, editable, false);
         r

@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Drag text in and out of text fields
+
+*03:03* — Press on selected text and drag it: within a StyledEdit document it moves (styles and all), into another field or app it's copied, onto a folder it becomes a clipping. A caret shows where it will land.
+
+![Drag text in and out of text fields](2026-10-27/030344-drag-text-in-and-out-of-text-fields.png)
+
 ### Drag an application out of Deskbar
 
 *02:50* — Dragging an application's row out of Deskbar leaves a link to it where it's dropped, named and drawn as the application; opening the link starts it.

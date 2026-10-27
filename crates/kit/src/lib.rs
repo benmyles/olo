@@ -23,6 +23,7 @@ pub mod notify;
 mod platform;
 pub mod settings;
 pub mod style;
+pub mod text_drag;
 mod theme_watch;
 pub mod widgets;
 

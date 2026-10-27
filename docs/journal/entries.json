@@ -1024,5 +1024,11 @@
   "title": "Drag an application out of Deskbar",
   "caption": "Dragging an application's row out of Deskbar leaves a link to it where it's dropped, named and drawn as the application; opening the link starts it.",
   "image": "2026-10-27/025059-drag-an-application-out-of-deskbar.png"
+ },
+ {
+  "time": "2026-10-27T03:03:44",
+  "title": "Drag text in and out of text fields",
+  "caption": "Press on selected text and drag it: within a StyledEdit document it moves (styles and all), into another field or app it's copied, onto a folder it becomes a clipping. A caret shows where it will land.",
+  "image": "2026-10-27/030344-drag-text-in-and-out-of-text-fields.png"
  }
 ]

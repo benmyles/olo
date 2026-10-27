@@ -16,6 +16,7 @@ use std::{
 use doc::{Align, Doc, Run, Style, byte_of, char_of};
 use serde::{Deserialize, Serialize};
 use tabula_kit::{
+    text_drag::{TextDrag, TextDrop},
     App, Cx, Menu, WindowId, WindowOptions,
     egui::{
         self, Color32, Galley, Id, Key, Modifiers, Rect, Ui, pos2,
@@ -607,6 +608,25 @@ impl StyledEdit {
         // While a menu is open the window hasn't the keyboard, and the
         // field's selection can't be trusted.
         let active = focused && ui.input(|i| i.focused);
+        // Text dropped on the document (moved within it, styles and all).
+        let mut drag = TextDrag::new(ui, edit_id, editable, false, true);
+        if let Some(drop) = drag.take_drop() {
+            let t = d.doc.text();
+            let r = match drop {
+                TextDrop::Insert { at, text } => {
+                    let b = byte_of(t, at);
+                    d.doc.replace(b..b, &text, d.selection.clone());
+                    b..b + text.len()
+                }
+                TextDrop::Move { from, to, .. } => {
+                    let from = byte_of(t, from.start)..byte_of(t, from.end);
+                    let to = byte_of(t, to);
+                    d.doc.move_text(from, to, d.selection.clone())
+                }
+            };
+            let t = d.doc.text();
+            d.reset_buffer(char_of(t, r.start)..char_of(t, r.end));
+        }
         let reveal = d.select.take();
         if let Some(r) = &reveal {
             d.selection = r.clone();
@@ -663,8 +683,10 @@ impl StyledEdit {
                     .desired_width(if wrap { size.x } else { f32::INFINITY })
                     .min_size(size)
                     .lock_focus(true)
+                    .interactive(drag.interactive())
                     .layouter(&mut layouter)
                     .show(ui);
+                drag.finish(ui, &out);
                 if let Some(range) = out.state.cursor.char_range()
                     && !range.is_empty()
                     && let Some(laid) = latest.borrow().clone()

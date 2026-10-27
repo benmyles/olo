@@ -272,6 +272,43 @@ pub fn outline(ui: &egui::Ui, rect: egui::Rect) {
         .rect_stroke(rect.shrink(1.0), 0.0, egui::Stroke::new(2.0, crate::style::c(p.keyboard_navigation)), egui::StrokeKind::Inside);
 }
 
+/// Drops on the kit's own widgets (text into a text field) are named with
+/// this; they go to the widget, not to [`crate::App::dropped`].
+pub(crate) const WIDGET: &str = "tabula-widget:";
+
+fn start_id() -> Id {
+    Id::unique("tabula-dnd-start")
+}
+
+fn widget_drops_id() -> Id {
+    Id::unique("tabula-dnd-widget-drops")
+}
+
+/// Start dragging `data` out of this window from a widget, which has no
+/// [`crate::Cx`] (what [`crate::Cx::start_drag`] does, after the frame).
+pub fn start(ctx: &Context, data: DragData) {
+    ctx.data_mut(|d| d.insert_temp(start_id(), Some(data)));
+}
+
+pub(crate) fn take_start(ctx: &Context) -> Option<DragData> {
+    ctx.data_mut(|d| d.remove_temp::<Option<DragData>>(start_id())).flatten()
+}
+
+/// A drop for one of the kit's widgets, kept for it to take next frame.
+pub(crate) fn deliver(ctx: &Context, drop: Drop) {
+    ctx.data_mut(|d| d.get_temp_mut_or_default::<Vec<Drop>>(widget_drops_id()).push(drop));
+    ctx.request_repaint();
+}
+
+/// The drop on the widget that accepted as `target` (with [`WIDGET`]).
+pub(crate) fn take_widget_drop(ctx: &Context, target: &str) -> Option<Drop> {
+    ctx.data_mut(|d| {
+        let drops = d.get_temp_mut_or_default::<Vec<Drop>>(widget_drops_id());
+        let i = drops.iter().position(|x| x.target == target)?;
+        Some(drops.remove(i))
+    })
+}
+
 pub(crate) fn begin_frame(ctx: &Context, hover: Option<Hover>) {
     ctx.data_mut(|d| {
         d.insert_temp(hover_id(), hover);

@@ -265,6 +265,19 @@ and offers actions; where it is dropped picks the type and the action.
   any file dropped on it (Viewer, StyledEdit). On release the kit reads
   the data off the UI thread and calls `App::dropped(window, Drop)`
   (`target`, `mime`, `data`, `action`, `pos`; `paths()`, `text()`).
+* **Text** (`text_drag`): press on the selection in a text field and drag
+  it out, as on BeOS; dropped back in the same field it moves, anywhere
+  else it is copied (a folder makes a clipping). Text dragged over a field
+  shows a caret where it would go and is put there, selected; files are
+  left to the window. `TextControl` and `TextView` do it themselves; a
+  field of an app's own calls `TextDrag::new(ui, id, editable, password,
+  multiline)` before its `TextEdit` (making `take_drop()` with
+  `text_drag::apply`, or its own editing, and showing the editor
+  `.interactive(drag.interactive())`) and `drag.finish(ui, &out)` after.
+  StyledEdit makes a move with `Doc::move_text`, so styles and undo
+  follow. A widget starts a drag with `dnd::start(ctx, data)` (it has no
+  `Cx`); drops accepted with a `dnd::WIDGET` target go to the widget,
+  not to `App::dropped`.
 * `Action::Ask` (a secondary-button drag, as on BeOS): the place it lands
   shows a menu (Tracker: Move Here / Copy Here / Create Link Here).
 * `RUST_LOG=tabula_kit=debug` traces drags (start, enter, the offer told,
