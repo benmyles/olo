@@ -519,3 +519,58 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
     }
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One frame of the bar with these events; the title "File" sits at
+    /// the bar's left.
+    fn frame(ctx: &egui::Context, events: Vec<egui::Event>, state: &mut BarState) {
+        let menus = [Menu::new("File").item("Close", "close", None), Menu::new("Edit").item("Copy", "copy", None)];
+        let raw = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(400.0, 300.0))),
+            events,
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(raw, |ui| {
+            menu_bar(ui, &menus, state);
+        });
+        out.textures_delta.clear();
+    }
+
+    fn press(at: Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() }
+    }
+
+    #[test]
+    fn a_tap_opens_and_a_second_closes() {
+        let ctx = egui::Context::default();
+        let file = pos2(15.0, 10.0);
+        let mut state = BarState::default();
+        frame(&ctx, vec![egui::Event::PointerMoved(file)], &mut state);
+        // A touchpad tap: press and release in the same frame.
+        frame(&ctx, vec![press(file, true), press(file, false)], &mut state);
+        assert_eq!(state.open.map(|o| o.0), Some(0));
+        frame(&ctx, vec![press(file, true), press(file, false)], &mut state);
+        assert_eq!(state.open, None);
+    }
+
+    #[test]
+    fn sliding_switches_and_its_press_keeps_it() {
+        let ctx = egui::Context::default();
+        let file = pos2(15.0, 10.0);
+        let mut state = BarState::default();
+        frame(&ctx, vec![egui::Event::PointerMoved(file)], &mut state);
+        frame(&ctx, vec![press(file, true), press(file, false)], &mut state);
+        // Over to Edit: it opens as the pointer crosses...
+        let edit = pos2(file.x + 40.0, 10.0);
+        frame(&ctx, vec![egui::Event::PointerMoved(edit)], &mut state);
+        assert_eq!(state.open.map(|o| o.0), Some(1));
+        // ...and a click there keeps it open; the next one closes it.
+        frame(&ctx, vec![press(edit, true), press(edit, false)], &mut state);
+        assert_eq!(state.open.map(|o| o.0), Some(1));
+        frame(&ctx, vec![press(edit, true), press(edit, false)], &mut state);
+        assert_eq!(state.open, None);
+    }
+}

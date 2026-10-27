@@ -316,8 +316,32 @@ pub fn find_passwords(query: &str) -> Vec<Item> {
                     .icon("passwords")
             })
             .collect(),
+        // Say why there are none, and offer the way in.
+        Ok(tabula_keychain::Response::Locked) => vec![
+            Item::new(Kind::Password, "Unlock Passwords to search its items", Action::Spawn(vec!["tabula-passwords".into()]))
+                .subtitle("Passwords is locked")
+                .icon("passwords")
+                .keywords(query.to_lowercase()),
+        ],
         _ => Vec::new(),
     }
+}
+
+/// The items matching `words`, best first (at most 60), with their scores:
+/// how well each matches, what kind it is, how lately it was chosen
+/// (`boost` of its recents key) and whether it can be done now.
+pub fn ranked<'a>(words: &[String], items: impl Iterator<Item = &'a Item>, boost: impl Fn(&str) -> i32) -> Vec<(i32, Item)> {
+    let mut scored: Vec<(i32, Item)> = Vec::new();
+    for item in items {
+        let haystack = format!("{} {}", item.keywords, item.subtitle.to_lowercase());
+        let Some(s) = crate::rank::score(words, &item.title, &haystack) else { continue };
+        let boost = item.action.key().map_or(0, |k| boost(&k));
+        let disabled = if item.enabled { 0 } else { -20 };
+        scored.push((s + item.kind.weight() + boost + disabled, item.clone()));
+    }
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.title.cmp(&b.1.title)));
+    scored.truncate(60);
+    scored
 }
 
 /// Do `action` (on a worker thread: it may wait on other processes).
@@ -465,6 +489,61 @@ mod tests {
         assert_eq!(found[0].subtitle, "~/Pictures");
         assert!(find_files(&paths, &crate::rank::words("p"), home).is_empty());
         assert_eq!(find_files(&paths, &crate::rank::words("palette"), home)[0].title, "palette");
+    }
+
+    fn titles(found: &[(i32, Item)]) -> Vec<&str> {
+        found.iter().map(|(_, i)| i.title.as_str()).collect()
+    }
+
+    fn shortcut(id: &str, title: &str, group: &str, enabled: bool) -> Item {
+        let mut i = Item::new(Kind::Shortcut, title, Action::Shortcut(id.into())).subtitle(group).keywords(format!("{} {group}", id.replace('-', " ")));
+        i.enabled = enabled;
+        i
+    }
+
+    fn file(path: &str) -> Item {
+        let p = PathBuf::from(path);
+        Item::new(Kind::File, p.file_name().unwrap().to_string_lossy(), Action::Open(p.clone())).subtitle("~/src")
+    }
+
+    #[test]
+    fn shortcuts_before_files() {
+        // Typing "tile" lists every tiling shortcut ahead of files named
+        // tile…, even with no window in front to tile (disabled).
+        let items = [
+            file("/home/x/src/tile.h"),
+            file("/home/x/src/tile_cache"),
+            shortcut("tile-left", "Left half", "Windows", false),
+            shortcut("tile-right", "Right half", "Windows", false),
+            shortcut("tile-all", "Tile all windows on the display", "Arranging", true),
+            shortcut("lock", "Lock the screen", "Desktop", true),
+        ];
+        let found = ranked(&crate::rank::words("tile"), items.iter(), |_| 0);
+        assert_eq!(titles(&found), ["Tile all windows on the display", "Left half", "Right half", "tile.h", "tile_cache"]);
+    }
+
+    #[test]
+    fn apps_before_commands_before_files() {
+        let items = [
+            file("/home/x/terminal.txt"),
+            Item::new(Kind::Command, "Terminal Settings…", Action::Copy(String::new())),
+            Item::new(Kind::Application, "Terminal", Action::Spawn(vec!["tabula-terminal".into()])),
+        ];
+        let found = ranked(&crate::rank::words("term"), items.iter(), |_| 0);
+        assert_eq!(titles(&found), ["Terminal", "Terminal Settings…", "terminal.txt"]);
+    }
+
+    #[test]
+    fn recently_chosen_comes_first() {
+        let items = [shortcut("tile-left", "Left half", "Windows", true), shortcut("tile-right", "Right half", "Windows", true)];
+        let found = ranked(&crate::rank::words("half"), items.iter(), |k| if k == "shortcut:tile-right" { 40 } else { 0 });
+        assert_eq!(titles(&found), ["Right half", "Left half"]);
+    }
+
+    #[test]
+    fn nothing_unmatched() {
+        let items = [shortcut("lock", "Lock the screen", "Desktop", true), file("/home/x/src/notes.txt")];
+        assert!(ranked(&crate::rank::words("zzzz"), items.iter(), |_| 0).is_empty());
     }
 
     #[test]

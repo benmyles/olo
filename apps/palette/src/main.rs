@@ -180,15 +180,8 @@ impl Palette {
                 item.keywords = String::new();
                 scored.push((i32::MAX / 2, item));
             }
-            for item in self.fixed.iter().chain(&self.context).chain(&self.menus).chain(&self.passwords).chain(&self.files) {
-                let haystack = format!("{} {}", item.keywords, item.subtitle.to_lowercase());
-                let Some(s) = rank::score(&words, &item.title, &haystack) else { continue };
-                let boost = item.action.key().map_or(0, |k| self.recents.boost(&k));
-                let disabled = if item.enabled { 0 } else { -20 };
-                scored.push((s + item.kind.weight() + boost + disabled, item.clone()));
-            }
-            scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.title.cmp(&b.1.title)));
-            scored.truncate(60);
+            let all = self.fixed.iter().chain(&self.context).chain(&self.menus).chain(&self.passwords).chain(&self.files);
+            scored.extend(sources::ranked(&words, all, |k| self.recents.boost(k)));
             let q = self.query.trim().to_owned();
             scored.push((i32::MIN, Item::new(Kind::Web, format!("Search the web for “{q}”"), Action::Search(q)).icon("browser").subtitle("NetPositive")));
         }
