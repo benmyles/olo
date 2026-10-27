@@ -778,6 +778,11 @@ pub fn key_bytes(key: Key, m: egui::Modifiers, mode: TermMode) -> Option<Vec<u8>
     Some(match key {
         Key::ArrowUp => csi('A'),
         Key::ArrowDown => csi('B'),
+        // Option+←/→ alone: a word back or forward, as macOS Terminal
+        // sends it (readline, zsh and fish all know ESC b / ESC f; bash
+        // leaves xterm's CSI 1;3 D unbound).
+        Key::ArrowRight if m.alt && !m.ctrl && !m.shift => b"\x1bf".to_vec(),
+        Key::ArrowLeft if m.alt && !m.ctrl && !m.shift => b"\x1bb".to_vec(),
         Key::ArrowRight => csi('C'),
         Key::ArrowLeft => csi('D'),
         Key::Home => csi('H'),
@@ -1194,5 +1199,21 @@ fn pointer(ui: &Ui, s: &mut Session, m: &Metrics, resp: &egui::Response, rect: R
     }
     if resp.secondary_clicked() {
         out.context_menu = Some(pos);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn option_arrows_move_by_word() {
+        let alt = egui::Modifiers { alt: true, ..Default::default() };
+        assert_eq!(key_bytes(Key::ArrowLeft, alt, TermMode::empty()).unwrap(), b"\x1bb");
+        assert_eq!(key_bytes(Key::ArrowRight, alt, TermMode::empty()).unwrap(), b"\x1bf");
+        // With others held, xterm's modified arrows.
+        let both = egui::Modifiers { alt: true, shift: true, ..Default::default() };
+        assert_eq!(key_bytes(Key::ArrowLeft, both, TermMode::empty()).unwrap(), b"\x1b[1;4D");
+        assert_eq!(key_bytes(Key::ArrowLeft, egui::Modifiers::NONE, TermMode::empty()).unwrap(), b"\x1b[D");
     }
 }
