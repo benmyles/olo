@@ -1,9 +1,11 @@
 //! The worker that owns the local store (`vault.rs`): the UI sends jobs
 //! and gets replies through the kit proxy, so opening the store (the
 //! keyring may ask) and saving it never hold up a frame. Syncing with
-//! 1Password runs on a thread of its own (`sync.rs`) from a snapshot,
-//! and its findings come back here to be applied. A reconnect starts a
-//! new generation; replies from an older one are dropped.
+//! 1Password runs on threads of its own (`sync.rs`) from a snapshot: a
+//! plan comes back here and waits for the person's approval (unless it
+//! changes nothing they'd see), then the approved changes are made and
+//! recorded. A reconnect starts a new generation; replies from an older
+//! one are dropped.
 
 use std::{collections::VecDeque, sync::mpsc, thread};
 
@@ -15,7 +17,7 @@ use tabula_kit::Proxy;
 
 use crate::{
     passkey,
-    sync::{self, Report},
+    sync::{self, Plan, Report, Row},
     vault::Vault,
 };
 
@@ -32,16 +34,29 @@ pub enum Job {
     /// Answer another app (NetPositive): `candidates` are the logins
     /// saved for its page; `vault` is where a new one goes.
     Keychain { incoming: Box<Incoming>, candidates: Vec<(String, String)>, vault: String },
-    /// Sync with this 1Password account (unless one is running).
+    /// Work out what syncing with this 1Password account would change
+    /// (unless a sync is running).
     Sync { account: String },
+    /// The plan worked out (sent by its thread).
+    Planned(Result<Plan, String>),
+    /// Make the changes of the plan the person reviewed.
+    Approve { plan: u64 },
+    /// The person said no: drop the plan.
+    Decline,
     /// A sync finished (sent by its thread).
     SyncDone(Result<Report, String>),
+    /// Erase the store here (never anything in 1Password).
+    Reset,
 }
 
 /// How syncing with 1Password is going.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SyncState {
     Running,
+    /// Changes waiting for the person's approval.
+    Review { changes: usize, pending: usize },
+    /// The person didn't approve the last plan.
+    Declined { pending: usize },
     Done { at: DateTime<Utc>, received: usize, sent: usize, errors: Vec<String>, pending: usize },
     Failed { message: String, pending: usize },
 }
@@ -61,6 +76,10 @@ pub enum Reply {
     /// An item has a new id (1Password gave it one).
     Renamed { old: String, new: String },
     Sync(SyncState),
+    /// A plan to review (`plan` is its id for [`Job::Approve`]).
+    Review { plan: u64, rows: Vec<Row>, errors: Vec<String> },
+    /// The store was erased.
+    Reset,
     /// An operation failed (the store is still good).
     Error(String),
     /// A fetch failed: the item may be gone.
@@ -127,6 +146,9 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
     let mut generation = 0;
     let mut syncing = false;
     let mut close_after_sync = false;
+    // A plan waiting for approval, and the last plan's id.
+    let mut waiting: Option<Plan> = None;
+    let mut plans = 0u64;
     let mut queue: VecDeque<(u64, Job)> = VecDeque::new();
     loop {
         if queue.is_empty() {
@@ -138,7 +160,7 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
         queue.extend(rx.try_iter());
         let Some((gen_of_job, job)) = queue.pop_front() else { continue };
         // A finished sync always lands: what it sent must be recorded.
-        if gen_of_job < generation && !matches!(job, Job::SyncDone(_)) {
+        if gen_of_job < generation && !matches!(job, Job::SyncDone(_) | Job::Planned(_)) {
             continue;
         }
         // Only the latest selection's item is worth fetching.
@@ -164,9 +186,60 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                 continue;
             }
             Job::Close => {
+                waiting = None;
                 if syncing {
                     close_after_sync = true;
                 } else {
+                    vault = None;
+                }
+                continue;
+            }
+            Job::Reset => {
+                if syncing {
+                    reply(Reply::Error("Wait for the sync to finish, then reset.".into()));
+                    continue;
+                }
+                waiting = None;
+                // Even a store that can't be opened (damaged, its key lost)
+                // can be erased.
+                let done = match vault.as_mut() {
+                    Some(v) => v.reset(),
+                    None => match std::fs::remove_file(crate::vault::path()) {
+                        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(Error::Core(e.to_string())),
+                        _ => Ok(()),
+                    },
+                };
+                match done {
+                    Ok(()) => reply(Reply::Reset),
+                    Err(e) => reply(Reply::Error(format!("Couldn’t reset: {}", describe(&e)))),
+                }
+                continue;
+            }
+            Job::Planned(result) => {
+                syncing = false;
+                let fresh = gen_of_job >= generation;
+                match vault.as_mut() {
+                    Some(v) if fresh => match result {
+                        Ok(plan) if plan.visible() => {
+                            plans += 1;
+                            let mut plan = plan;
+                            plan.id = plans;
+                            reply(Reply::Review { plan: plan.id, rows: plan.rows.clone(), errors: plan.errors.clone() });
+                            reply(Reply::Sync(SyncState::Review { changes: plan.rows.len(), pending: v.pending() }));
+                            waiting = Some(plan);
+                        }
+                        // Nothing the person would see: record what was
+                        // looked at (and send any unchanged-looking edits).
+                        Ok(plan) => {
+                            syncing = true;
+                            apply_plan(plan, gen_of_job, &back);
+                        }
+                        Err(message) => reply(Reply::Sync(SyncState::Failed { message, pending: v.pending() })),
+                    },
+                    _ => {}
+                }
+                if close_after_sync && !syncing {
+                    close_after_sync = false;
                     vault = None;
                 }
                 continue;
@@ -206,22 +279,39 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
         }
         let Some(v) = vault.as_mut() else { continue };
         match job {
-            Job::Open | Job::Close | Job::SyncDone(_) => unreachable!(),
+            Job::Open | Job::Close | Job::SyncDone(_) | Job::Planned(_) | Job::Reset => unreachable!(),
             Job::Sync { account } => {
                 if syncing {
                     continue;
                 }
                 syncing = true;
+                waiting = None;
                 reply(Reply::Sync(SyncState::Running));
                 let snap = v.snapshot(&account);
                 let back = back.clone();
                 thread::Builder::new()
-                    .name("onepassword-sync".into())
+                    .name("onepassword-plan".into())
                     .spawn(move || {
-                        let _ = back.send((gen_of_job, Job::SyncDone(sync::run(&snap, &socket()))));
+                        let _ = back.send((gen_of_job, Job::Planned(sync::plan(&snap, &socket()))));
                     })
                     .expect("thread");
             }
+            Job::Approve { plan } => {
+                // Only the plan that was shown.
+                if syncing || waiting.as_ref().is_none_or(|p| p.id != plan) {
+                    continue;
+                }
+                let Some(plan) = waiting.take() else { continue };
+                syncing = true;
+                reply(Reply::Sync(SyncState::Running));
+                apply_plan(plan, gen_of_job, &back);
+            }
+            Job::Decline => {
+                if waiting.take().is_some() {
+                    reply(Reply::Sync(SyncState::Declined { pending: v.pending() }));
+                }
+            }
+
             Job::Get { vault, item } => match v.get(&vault, &item) {
                 Ok(i) => reply(Reply::Item(Box::new(i))),
                 Err(e) => reply(Reply::Missing { item, error: describe(&e) }),
@@ -253,6 +343,17 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
             }
         }
     }
+}
+
+/// Make an approved plan's changes on a thread of its own.
+fn apply_plan(plan: Plan, generation: u64, back: &mpsc::Sender<(u64, Job)>) {
+    let back = back.clone();
+    thread::Builder::new()
+        .name("onepassword-sync".into())
+        .spawn(move || {
+            let _ = back.send((generation, Job::SyncDone(sync::apply(plan, &socket()))));
+        })
+        .expect("thread");
 }
 
 fn error(e: &Error) -> Response {

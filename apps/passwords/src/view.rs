@@ -225,6 +225,9 @@ fn setup(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
         app.settings.local_only = false;
         app.sync = None;
         app.save_settings();
+        // Sync at once, and its changes open for review.
+        app.show_review = true;
+        app.sync_asked = None;
         app.connect(cx);
     }
 }
@@ -333,9 +336,18 @@ fn browser(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
         }
     };
     style::label(ui.painter(), status.left() + m::SPACING, status.center().y, Align::Min, text, style::small_font(), style::c(p.panel_text));
+    // Waiting changes: a click shows them (or looks again, if declined).
+    let review_click = matches!(app.sync, Some(SyncState::Review { .. } | SyncState::Declined { .. })) && !matches!(app.conn, Conn::Failed(_));
     let right = match (&app.conn, &app.sync) {
         (Conn::Failed(m), _) => Some((m.split('.').next().unwrap_or(m).to_string(), true, None)),
         (_, Some(SyncState::Running)) => Some(("Syncing with 1Password…".to_string(), false, None)),
+        (_, Some(SyncState::Review { changes, .. })) => {
+            Some((format!("{} to review", if *changes == 1 { "1 sync change".to_string() } else { format!("{changes} sync changes") }), false, None))
+        }
+        (_, Some(SyncState::Declined { pending })) => {
+            let to_send = if *pending > 0 { format!(" · {pending} to send") } else { String::new() };
+            Some((format!("Not synced: changes not applied{to_send}"), false, None))
+        }
         (_, Some(SyncState::Done { at, errors, pending, .. })) => {
             let ago = sync_ago(*at);
             match (errors.first(), pending) {
@@ -360,6 +372,13 @@ fn browser(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
             && ui.interact(r, Id::unique("passwords-sync-status"), Sense::click()).clicked()
         {
             app.show_problem(cx, detail);
+        }
+        if review_click && ui.interact(r, Id::unique("passwords-sync-review"), Sense::click()).clicked() {
+            if app.review.is_some() {
+                app.open_review(cx);
+            } else {
+                app.sync_and_review(cx);
+            }
         }
     }
 
@@ -879,4 +898,89 @@ fn buttons(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
 /// Adds `widget` in `rect` without moving the layout cursor (`Ui::put` does).
 fn place(ui: &mut Ui, rect: Rect, widget: impl egui::Widget) -> egui::Response {
     ui.new_child(UiBuilder::new().max_rect(rect)).add(widget)
+}
+
+/// What the review window asks for.
+pub enum ReviewAction {
+    Apply,
+    Cancel,
+}
+
+const REVIEW_ROW: f32 = 42.0;
+
+/// The Review Sync window: every change a sync would make, both ways,
+/// and nothing happens until Apply.
+pub fn review(app: &Passwords, ui: &mut Ui) -> Option<ReviewAction> {
+    let Some(review) = &app.review else { return None };
+    let p = style::palette(ui.ctx());
+    let mut action = None;
+    widgets::window_content(ui, |ui| {
+        ui.spacing_mut().item_spacing.y = m::SPACING;
+        let here = review.rows.iter().filter(|r| r.here).count();
+        let there = review.rows.len() - here;
+        let count = |n: usize| if n == 1 { "1 change".to_string() } else { format!("{n} changes") };
+        let mut sides = Vec::new();
+        if here > 0 {
+            sides.push(format!("{} on this computer", count(here)));
+        }
+        if there > 0 {
+            sides.push(format!("{} in 1Password", count(there)));
+        }
+        let text = format!(
+            "Syncing with {} makes {}. Nothing changes on either side until you apply them.",
+            app.account_label(),
+            sides.join(" and ")
+        );
+        let g = ui.painter().layout(text, style::plain_font(), style::c(p.panel_text), ui.available_width());
+        let (r, _) = ui.allocate_exact_size(g.size(), Sense::hover());
+        ui.painter().galley(r.min, g, style::c(p.panel_text));
+        let errors = (!review.errors.is_empty()).then(|| format!("Some of 1Password couldn’t be read, so it isn’t included: {}", review.errors.join(" ")));
+        let error_height = errors.as_ref().map_or(0.0, |e| {
+            ui.painter().layout(e.clone(), style::small_font(), style::c(p.failure), ui.available_width()).size().y + m::SPACING
+        });
+        let list_height = ui.available_height() - m::CONTROL_HEIGHT - 4.0 - m::SPACING - error_height;
+        ui.allocate_ui(vec2(ui.available_width(), list_height), |ui| {
+            ScrollView::new("passwords-review").background(p.list_background).show_rows(ui, REVIEW_ROW, review.rows.len(), |ui, range| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                for row in &review.rows[range] {
+                    let (r, response) = ui.allocate_exact_size(vec2(ui.available_width(), REVIEW_ROW), Sense::hover());
+                    icons::paint(ui.painter(), Rect::from_center_size(pos2(r.left() + m::SPACING + 16.0, r.center().y), vec2(32.0, 32.0)), icon(row.category));
+                    let x = r.left() + m::SPACING * 2.0 + 32.0;
+                    let width = r.right() - x - m::SPACING;
+                    let title = if row.vault.is_empty() { row.title.clone() } else { format!("{}  ·  {}", row.title, row.vault) };
+                    let mut action = row.action().to_string();
+                    if !row.detail.is_empty() {
+                        action = format!("{action}: {}", row.detail);
+                    }
+                    let warn = matches!(row.what, crate::sync::What::Delete | crate::sync::What::Conflict);
+                    for (line, font, color, dy) in [
+                        (title, style::plain_font(), style::c(p.list_item_text), -8.0),
+                        (action.clone(), style::small_font(), if warn { style::c(p.failure) } else { dim(&p) }, 8.0),
+                    ] {
+                        let mut job = egui::text::LayoutJob::simple_singleline(line, font.clone(), color);
+                        job.wrap = egui::text::TextWrapping::truncate_at_width(width);
+                        let g = ui.painter().layout_job(job);
+                        let pos = style::text_origin(ui.ctx(), &g, x, r.center().y + dy, font.size);
+                        ui.painter().galley(pos, g, color);
+                    }
+                    response.on_hover_text(action);
+                }
+            });
+        });
+        if let Some(e) = errors {
+            let g = ui.painter().layout(e, style::small_font(), style::c(p.failure), ui.available_width());
+            let (r, _) = ui.allocate_exact_size(g.size(), Sense::hover());
+            ui.painter().galley(r.min, g, style::c(p.failure));
+        }
+        buttons(ui, |ui| {
+            let apply = if review.rows.len() == 1 { "Apply Change".to_string() } else { format!("Apply {} Changes", review.rows.len()) };
+            if ui.add(Button::new(&apply).default(true)).clicked() {
+                action = Some(ReviewAction::Apply);
+            }
+            if ui.add(Button::new("Cancel")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                action = Some(ReviewAction::Cancel);
+            }
+        });
+    });
+    action
 }

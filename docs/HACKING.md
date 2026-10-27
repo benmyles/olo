@@ -1251,26 +1251,47 @@ of synced items leave tombstones. Without an account (Keep Only on This
 Computer) items live in a local "Personal" vault.
 
 **Syncing with 1Password** (`sync.rs`, optional: the setup panel or File ▸
-Sync with 1Password…): on its own thread from a snapshot, at the unlock,
-every 5 minutes, 3 s after a change here, and on File ▸ Sync Now. Down:
-vaults whose `content_version` moved are listed (both states); new or
-changed items (update time or state) are fetched fifty at a time with
-`get_all`; items gone there go here unless changed here (then they're
-sent again as new). Up: new items are created (1Password's id replaces
-ours; the UI follows `Reply::Renamed`), changed ones put against the
-version last seen, archives archived, tombstones deleted. Changed on both
-sides: 1Password's copy stays as the item and ours is kept beside it as
-"… (conflict)", which goes up next time. A push that lands after another
-edit here keeps the edit pending (revisions). The first sync with an
-account brings in everything; local-only items move to its Personal (or
-first) vault; another account drops what came from the old one. The
-status line says how it went ("Synced 2 minutes ago", "Not synced: … · 3
-to send"; click a problem for all of it). Files attached in 1Password
-aren't copied (their metadata is), so they aren't shown.
+Sync with 1Password…) never changes anything, on either side, without the
+person's approval. It runs in two steps, each on its own thread:
+
+* `sync::plan`, from a snapshot (`Vault::snapshot` changes nothing, even
+  for an account switch), only reads. Down: vaults whose
+  `content_version` moved are listed (both states); new or changed items
+  (update time or state) are fetched fifty at a time with `get_all`;
+  items gone there are noted. Up: 1Password's copies of items changed here
+  are fetched to compare. The plan is the store's `Change`s, what to send,
+  and a `Row` for every change either side would see (add, change with the
+  parts that differ by name, never values, archive, delete, keep both).
+* The store keeps the plan and the UI shows its rows in Review Sync. Only
+  `Job::Approve` with that plan's id runs `sync::apply`, which makes
+  exactly those changes. A changed item is put against the version that
+  was reviewed, and a deletion checks it first, so anything changed in
+  1Password meanwhile is refused (reported) rather than overwritten, and
+  comes up in the next review. A plan nobody would notice (nothing but
+  what was looked at) applies without asking.
+
+Plans are made at the unlock, every 5 minutes, 3 s after a change here
+(the status line then says "3 sync changes to review"; a click opens
+them), and on File ▸ Sync Now or the setup panel's Sync (the review opens
+at once). Automatic plans wait while Review Sync is open. Cancel leaves
+"Not synced: changes not applied". Changed on both sides: 1Password's copy
+stays as the item and ours is kept beside it as "… (conflict)", to be
+reviewed next time. A push that lands after another edit here keeps the
+edit pending (revisions). The first sync with an account brings in
+everything; local-only items move to its Personal (or first) vault;
+another account drops what came from the old one (`Change::Account`, shown
+in the review). Files attached in 1Password aren't copied (their metadata
+is), so they aren't shown.
+
+**Reset** (File ▸ Reset Passwords…, after an alert) erases the store here
+(`Vault::reset`, or the file if it can't be opened) and the account
+choice, back to the setup panel. It never touches 1Password: pending
+deletions go with the rest.
 
 `cargo test -p tabula-passwords` covers the store (sealing, wrong keys,
-conflicts, races, accounts) and syncing against the in-process fake
-(both ways, conflicts, nothing to do, 1Password down). The Secret Service
+conflicts, races, accounts, reset) and syncing against the in-process fake
+(both ways, conflicts, nothing to do, 1Password down, and that a plan
+changes nothing and names every change). The Secret Service
 client has an ignored test for a private keyring:
 `tools/dev/private-keyring start` (busd plus its own gnome-keyring; needs
 `cargo install busd --root /tmp/tabula-dev/busd`), then

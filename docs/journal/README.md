@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Passwords asks before syncing anything
+
+*22:08* — Syncing with 1Password now works out every change first, both ways (adding, changing, archiving, deleting, with the parts that differ), and makes none until you approve them in Review Sync. Automatic syncs only say how many changes are waiting.
+
+![Passwords asks before syncing anything](2026-10-26/220845-passwords-asks-before-syncing-anything.png)
+
 ### NetPositive asks before quitting
 
 *22:00* — Quitting NetPositive (or closing a window) with several tabs open, or downloads still running, now asks first, so a stray ⌘Q doesn't throw the tabs away.

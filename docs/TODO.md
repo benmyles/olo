@@ -86,11 +86,21 @@ as they land (with the commit), add new ones as they come up.
   lose more than one tab or stop downloads; Terminal already asks before
   closing a window with a program running, and its Quit leaves the
   shells in tabula-termd; StyledEdit asks about unsaved documents.
-- **Passwords: never change anything on sync without approval** (Ben):
-  every sync first works out exactly what it would change, both ways
-  (items added, edited, archived or deleted here and in 1Password, with
-  the fields that differ), shows it, and applies it only once approved;
-  nothing changes on either side until then.
+- ~~**Passwords: never change anything on sync without approval**~~
+  (Ben): plan, Review Sync, apply (sync.rs); plus ~~File ▸ Reset
+  Passwords…~~ (local only).
+- **Terminal: ⌥←/⌥→ in Claude Code** (Ben): Option+Left/Right move by a
+  word in plain bash but not in Claude Code. Check what Terminal sends for
+  them (bash binds ESC b / ESC f; others expect CSI 1;3D / 1;3C) and
+  whether Claude Code's input understands it; send what xterm does.
+- **Tracker: restore from the Trash** (Ben): a Restore command (File
+  menu and the context menu in the Trash) that puts the selected files
+  back where each came from (the trash's `.trashinfo` original path),
+  recreating missing folders and asking on a name clash.
+- **NetPositive: logins for parent domains too** (Ben): on
+  accounts.google.com, offer logins saved for any parent domain
+  (*.google.com, google.com) as well as the exact host, sorted most
+  specific first.
 - **Passwords: sync with several 1Password accounts** (Ben): setup now
   makes you pick one account; Passwords should sync with every account
   the 1Password app has signed in (each account's vaults shown under it,

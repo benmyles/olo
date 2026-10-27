@@ -81,6 +81,7 @@ pub enum Conn {
 }
 
 enum Alert {
+    ConfirmReset,
     ConfirmDelete { vault: String, item: String, title: String },
     DiscardChanges { then: Box<Then> },
     Message(String),
@@ -108,6 +109,17 @@ pub enum Accounts {
     Unknown,
     Finding,
     Found(Vec<onepassword::accounts::Account>),
+}
+
+const RESET: &str = "Erase everything Passwords keeps on this computer and start again? Its items, changes not yet sent to 1Password, and the choice of account all go. Nothing in 1Password is changed. This can’t be undone.";
+
+/// A sync's changes, waiting for the person's approval.
+pub struct Review {
+    pub plan: u64,
+    pub rows: Vec<sync::Row>,
+    pub errors: Vec<String>,
+    /// The Review Sync window, while it's open.
+    pub window: Option<WindowId>,
 }
 
 /// Ticks for the auto-lock, syncing and one-time-password countdowns.
@@ -150,8 +162,13 @@ pub struct Passwords {
     /// Syncing with 1Password: how the last one went.
     pub sync: Option<SyncState>,
     /// When the last sync was asked for, and when the next is due early.
-    sync_asked: Option<Instant>,
+    pub sync_asked: Option<Instant>,
     sync_due: Option<Instant>,
+    /// The latest sync's changes, until applied or declined.
+    pub review: Option<Review>,
+    /// Open the review as soon as the sync asked for has one (the person
+    /// asked; automatic syncs only say so in the status line).
+    pub show_review: bool,
 }
 
 fn host(url: &str) -> Option<String> {
@@ -265,6 +282,61 @@ impl Passwords {
         self.sync_asked = Some(Instant::now());
         self.sync_due = None;
         self.store.send(Job::Sync { account });
+    }
+
+    /// Sync now because the person asked: its changes open for review.
+    pub fn sync_and_review(&mut self, cx: &mut Cx) {
+        if self.review.as_ref().is_some_and(|r| r.window.is_some()) {
+            return self.open_review(cx);
+        }
+        self.show_review = true;
+        self.sync_now();
+    }
+
+    /// Show the waiting changes.
+    pub fn open_review(&mut self, cx: &mut Cx) {
+        let Some(review) = &mut self.review else { return };
+        match review.window {
+            Some(w) => cx.activate(w),
+            None => review.window = Some(cx.open_window(WindowOptions::new("Review Sync", 560, 440).min_size(420, 300))),
+        }
+    }
+
+    /// The review is over (applied, declined, or overtaken).
+    fn end_review(&mut self, cx: &mut Cx) {
+        if let Some(w) = self.review.take().and_then(|r| r.window) {
+            cx.close_window(w);
+        }
+    }
+
+    /// Ask, then erase everything kept here (nothing in 1Password).
+    fn confirm_reset(&mut self, cx: &mut Cx) {
+        let w = cx.open_window(WindowOptions::alert("Reset Passwords", RESET));
+        self.alerts.insert(w, Alert::ConfirmReset);
+    }
+
+    /// The store was erased: back to the start.
+    fn after_reset(&mut self, cx: &mut Cx) {
+        self.end_review(cx);
+        self.editor = None;
+        self.vaults.clear();
+        self.items.clear();
+        self.details.clear();
+        self.missing.clear();
+        self.revealed.clear();
+        self.selected = None;
+        self.source = Source::All;
+        self.settings.account = None;
+        self.settings.account_label = None;
+        self.settings.local_only = false;
+        self.save_settings();
+        self.sync = None;
+        self.sync_due = None;
+        self.sync_asked = None;
+        self.account_field.clear();
+        self.accounts = Accounts::Unknown;
+        self.conn = Conn::Setup;
+        self.flash("Passwords was reset");
     }
 
     /// Keep items only here from now on (no syncing).
@@ -426,6 +498,8 @@ impl Passwords {
         if let Some((w, _)) = self.generator.take() {
             cx.close_window(w);
         }
+        // A waiting plan holds secrets too; it is worked out again later.
+        self.end_review(cx);
         // The store lets go of its secrets (after a running sync).
         self.store.send(Job::Close);
         self.lock.lock();
@@ -629,8 +703,22 @@ impl Passwords {
                         tracing::warn!("sync: {e}");
                     }
                 }
+                if !matches!(state, SyncState::Review { .. }) {
+                    self.end_review(cx);
+                }
+                if !matches!(state, SyncState::Running | SyncState::Review { .. }) {
+                    self.show_review = false;
+                }
                 self.sync = Some(state);
             }
+            Reply::Review { plan, rows, errors } => {
+                let window = self.review.take().and_then(|r| r.window);
+                self.review = Some(Review { plan, rows, errors, window });
+                if std::mem::take(&mut self.show_review) || window.is_some() {
+                    self.open_review(cx);
+                }
+            }
+            Reply::Reset => self.after_reset(cx),
             Reply::Failed(message) => {
                 self.conn = Conn::Failed(message);
                 self.loading = false;
@@ -750,7 +838,8 @@ impl Passwords {
 
     fn tick(&mut self, cx: &mut Cx) {
         let due = self.sync_due.is_some_and(|t| Instant::now() >= t) || self.sync_asked.is_some_and(|t| t.elapsed() >= SYNC_EVERY);
-        if due {
+        // Not while the person is looking at what the last one found.
+        if due && self.review.as_ref().is_none_or(|r| r.window.is_none()) {
             self.sync_now();
         }
         let idle = self.last_use.elapsed();
@@ -837,8 +926,26 @@ impl App for Passwords {
             }
             return;
         }
+        if let Some(review) = &self.review
+            && review.window == Some(window)
+        {
+            let plan = review.plan;
+            match view::review(self, ui) {
+                Some(view::ReviewAction::Apply) => {
+                    self.store.send(Job::Approve { plan });
+                    self.end_review(cx);
+                }
+                Some(view::ReviewAction::Cancel) => {
+                    self.store.send(Job::Decline);
+                    self.end_review(cx);
+                }
+                None => {}
+            }
+            return;
+        }
         if let Some(alert) = self.alerts.get(&window) {
             let (icon, message, buttons): (&str, String, &[&str]) = match alert {
+                Alert::ConfirmReset => ("warning", RESET.into(), &["Cancel", "Erase and Start Again"]),
                 Alert::ConfirmDelete { title, .. } => {
                     ("warning", format!("Delete “{title}” for good? This can’t be undone."), &["Cancel", "Delete"])
                 }
@@ -852,6 +959,7 @@ impl App for Passwords {
                         self.store.send(Job::Delete { vault, item });
                     }
                     Some(Alert::DiscardChanges { then }) if choice == 1 => self.after_discard(cx, *then),
+                    Some(Alert::ConfirmReset) if choice == 1 => self.store.send(Job::Reset),
                     _ => {}
                 }
                 self.redraw(cx);
@@ -884,6 +992,8 @@ impl App for Passwords {
             .enabled(ready && self.settings.account.is_some() && self.sync != Some(SyncState::Running))
             .item("Sync with 1Password…", "account", None)
             .enabled(!self.lock.locked)
+            .item("Reset Passwords…", "reset", None)
+            .enabled(!self.lock.locked && self.set_up())
             .separator()
             .item("Close", "close", Some(Key::W))
             .item("Quit", "quit", Some(Key::Q));
@@ -934,7 +1044,8 @@ impl App for Passwords {
             }
             "lock" => self.do_lock(cx),
             "account" => self.change_account(),
-            "sync" => self.sync_now(),
+            "sync" => self.sync_and_review(cx),
+            "reset" => self.confirm_reset(cx),
             "generator" => self.open_generator(cx, None),
             "find" => self.focus_search = true,
             "edit" => self.edit_selected(cx),
@@ -980,6 +1091,11 @@ impl App for Passwords {
         if self.generator.as_ref().is_some_and(|(w, _)| *w == window) {
             self.generator = None;
             self.save_settings();
+        }
+        if self.review.as_ref().is_some_and(|r| r.window == Some(window)) {
+            self.store.send(Job::Decline);
+            self.end_review(cx);
+            return;
         }
         self.alerts.remove(&window);
         cx.close_window(window);
@@ -1110,6 +1226,8 @@ fn main() {
             sync: None,
             sync_asked: None,
             sync_due: None,
+            review: None,
+            show_review: false,
         };
         if let Some(saved) = saved {
             app.source = saved.source;

@@ -844,5 +844,11 @@
   "title": "NetPositive asks before quitting",
   "caption": "Quitting NetPositive (or closing a window) with several tabs open, or downloads still running, now asks first, so a stray \u2318Q doesn't throw the tabs away.",
   "image": "2026-10-26/220007-netpositive-asks-before-quitting.png"
+ },
+ {
+  "time": "2026-10-26T22:08:45",
+  "title": "Passwords asks before syncing anything",
+  "caption": "Syncing with 1Password now works out every change first, both ways (adding, changing, archiving, deleting, with the parts that differ), and makes none until you approve them in Review Sync. Automatic syncs only say how many changes are waiting.",
+  "image": "2026-10-26/220845-passwords-asks-before-syncing-anything.png"
  }
 ]

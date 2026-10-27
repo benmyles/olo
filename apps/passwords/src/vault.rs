@@ -113,14 +113,24 @@ pub enum Change {
     Pushed { local_id: String, rev: u64, item: Box<Item>, state: ItemState },
     /// A deletion reached 1Password.
     Buried(Tombstone),
+    /// Now syncing with this account: items from another one go (those
+    /// made here stay, in the local vault, to be sent).
+    Account(String),
 }
 
 /// What a sync starts from: a copy of the store's sync state.
 pub struct Snapshot {
     pub account: String,
     pub synced: HashMap<String, u32>,
+    /// As they will be once the sync is approved (after an account switch:
+    /// only the items made here, in the local vault).
     pub entries: Vec<Entry>,
     pub tombstones: Vec<Tombstone>,
+    pub vaults: Vec<VaultOverview>,
+    /// A different account from last time: the sync starts with
+    /// [`Change::Account`], and these, from the old account, go.
+    pub switching: bool,
+    pub dropped: Vec<Entry>,
 }
 
 pub struct Vault {
@@ -379,28 +389,49 @@ impl Vault {
     /// Start a sync with `account`. A different account than last time
     /// starts afresh: what came from the old one goes, what was made here
     /// stays and goes to the new one.
-    pub fn snapshot(&mut self, account: &str) -> Snapshot {
-        if self.data.account.as_deref() != Some(account) {
+    /// What a sync with `account` starts from. Changes nothing: switching
+    /// accounts happens when the sync is approved ([`Change::Account`]).
+    pub fn snapshot(&self, account: &str) -> Snapshot {
+        let switching = self.data.account.as_deref() != Some(account);
+        let (mut entries, mut dropped, mut tombstones, mut synced) =
+            (self.data.entries.clone(), Vec::new(), self.data.tombstones.clone(), self.data.synced.clone());
+        if switching {
+            synced.clear();
             if self.data.account.is_some() {
-                self.data.entries.retain(|e| e.remote.is_none());
-                self.data.tombstones.clear();
-                self.data.vaults.retain(|v| v.id.starts_with(LOCAL));
-                if self.data.vaults.is_empty() {
-                    self.data.vaults.push(local_vault());
-                }
-                for e in &mut self.data.entries {
+                (entries, dropped) = entries.into_iter().partition(|e| e.remote.is_none());
+                tombstones.clear();
+                for e in &mut entries {
                     e.item.vault_id = local_vault().id;
                 }
             }
-            self.data.synced.clear();
-            self.data.account = Some(account.to_string());
         }
-        Snapshot {
-            account: account.to_string(),
-            synced: self.data.synced.clone(),
-            entries: self.data.entries.clone(),
-            tombstones: self.data.tombstones.clone(),
+        Snapshot { account: account.to_string(), synced, entries, tombstones, vaults: self.data.vaults.clone(), switching, dropped }
+    }
+
+    fn switch_account(&mut self, account: String) {
+        if self.data.account.as_deref() == Some(&account) {
+            return;
         }
+        if self.data.account.is_some() {
+            self.data.entries.retain(|e| e.remote.is_none());
+            self.data.tombstones.clear();
+            self.data.vaults.retain(|v| v.id.starts_with(LOCAL));
+            if self.data.vaults.is_empty() {
+                self.data.vaults.push(local_vault());
+            }
+            for e in &mut self.data.entries {
+                e.item.vault_id = local_vault().id;
+            }
+        }
+        self.data.synced.clear();
+        self.data.account = Some(account);
+    }
+
+    /// Erase everything kept here (items, pending changes, which account
+    /// was synced) for a fresh start. Nothing is sent to 1Password.
+    pub fn reset(&mut self) -> Result<()> {
+        self.data = Data { vaults: vec![local_vault()], ..Default::default() };
+        self.save()
     }
 
     /// Apply what a sync learned. Returns the ids that changed
@@ -449,6 +480,7 @@ impl Vault {
                     }
                 }
                 Change::Buried(t) => self.data.tombstones.retain(|x| *x != t),
+                Change::Account(account) => self.switch_account(account),
             }
         }
         self.data.last_sync = Some(Utc::now());
@@ -669,11 +701,20 @@ mod tests {
         v.snapshot("one");
         v.apply(vec![Change::Vaults(vec![remote_vault("v1")]), Change::Fetched { item: Box::new(theirs("a", 1)), state: ItemState::Active }])
             .unwrap();
+        v.apply(vec![Change::Account("one".into())]).unwrap();
         let mine = login(&mut v, "Mine");
         let snap = v.snapshot("two");
         assert_eq!(snap.entries.len(), 1);
         assert_eq!(snap.entries[0].item.id, mine.id);
+        assert!(snap.switching && snap.dropped.len() == 1);
+        // Nothing changes until the sync is approved.
+        assert!(v.get("", "a").is_ok());
+        v.apply(vec![Change::Account("two".into())]).unwrap();
         assert!(v.data.synced.is_empty());
         assert!(v.get("", "a").is_err());
+        assert!(v.get("", &mine.id).is_ok());
+        // A reset leaves nothing.
+        v.reset().unwrap();
+        assert!(v.data.entries.is_empty() && v.data.account.is_none() && v.data.tombstones.is_empty());
     }
 }
