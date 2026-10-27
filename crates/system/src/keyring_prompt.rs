@@ -524,10 +524,11 @@ fn parse_exchange(text: &str) -> HashMap<String, Vec<u8>> {
     for line in text.lines().map(str::trim) {
         if let Some(group) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
             ours = group == PROTOCOL;
-        } else if ours && let Some((k, v)) = line.split_once('=') {
-            if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(v.trim()) {
-                out.insert(k.trim().to_string(), bytes);
-            }
+        } else if ours
+            && let Some((k, v)) = line.split_once('=')
+            && let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(v.trim())
+        {
+            out.insert(k.trim().to_string(), bytes);
         }
     }
     out

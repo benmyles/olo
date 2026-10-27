@@ -748,5 +748,11 @@
   "title": "Notifications",
   "caption": "A native notification centre: apps' notifications (org.freedesktop.Notifications) appear as cards in the lower right with the app's icon, the summary, the body and their actions. A click is the default action; they go by themselves unless critical, and wait while the pointer is over them.",
   "image": "2026-10-26/190052-notifications.png"
+ },
+ {
+  "time": "2026-10-26T19:16:58",
+  "title": "NetPositive: web notifications",
+  "caption": "Sites can show notifications: the first time one asks, a bar over its tab offers Allow or Don\u2019t Allow (remembered per site); allowed notifications appear in the desktop's notification centre, and a click brings the tab forward.",
+  "image": "2026-10-26/191658-netpositive-web-notifications.png"
  }
 ]

@@ -1031,6 +1031,20 @@ and painted. Servo draws straight into the subsurface; nothing is copied.
   bookmarks, the last 1000 pages for the Go menu) are in `browser.json`;
   cookies, local storage and the HTTP cache in
   `$XDG_DATA_HOME/tabula/browser` (Servo's `config_dir`).
+* **Notifications** (`notify.rs`): Servo's Notification API is on. A
+  site's first `requestPermission` puts a bar over its tab (Allow / Don’t
+  Allow); the answer is kept by origin in `browser.json`
+  (`notifications`) and given straight away after. While the bar is up
+  the page's script waits on it, so the hang guard waives that tab.
+  Allowed notifications go to the desktop's notification service from a
+  worker thread (app "NetPositive", our icon, the site under the body,
+  tags replace); a click brings the tab forward. Servo 0.7 only shows a
+  notification after loading its pictures, never one without: a page
+  script gives those a one-pixel icon. (Servo has no way yet to fire the
+  page's `onclick`.) Test with a private bus (see Notifications) and a
+  page on `http://127.0.0.1`, NetPositive started with
+  `DBUS_SESSION_BUS_ADDRESS` set to it; page processes then stay out of
+  systemd, since `guard::hand_off` only asks a systemd that is on the bus.
 * Building it turns on vello_cpu's `multithreading` feature for every app
   built alongside (Servo's canvas wants it), which broke egui's glyph
   rasterizer: hence `vendor/epaint` (see `vendor/README.md`).

@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### NetPositive: web notifications
+
+*19:16* — Sites can show notifications: the first time one asks, a bar over its tab offers Allow or Don’t Allow (remembered per site); allowed notifications appear in the desktop's notification centre, and a click brings the tab forward.
+
+![NetPositive: web notifications](2026-10-26/191658-netpositive-web-notifications.png)
+
 ### Notifications
 
 *19:00* — A native notification centre: apps' notifications (org.freedesktop.Notifications) appear as cards in the lower right with the app's icon, the summary, the body and their actions. A click is the default action; they go by themselves unless critical, and wait while the pointer is over them.

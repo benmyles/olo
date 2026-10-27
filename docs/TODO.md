@@ -112,7 +112,7 @@ as they land (with the commit), add new ones as they come up.
   features on~~, ~~cameras, microphones and WebRTC calls~~ (rtc/: H.264 and
   Opus, data channels, stats; loopback tested). Still to do: trying Google Meet and Zoom themselves,
   permission prompts (Servo 0.7 implements none of the features behind
-  them but notifications; ~~a Tabula notification centre~~ now exists, so web notifications can be wired to it), ~~a colour picker for `<input type=color>`~~,
+  them but ~~notifications~~, which ask per site and go to the notification centre), ~~a colour picker for `<input type=color>`~~,
   ~~password manager integration~~.
 - Password manager: ~~Rust 1Password SDK~~ (desktop-app integration;
   fake server for tests), ~~Passwords app~~ (browse, copy, edit, create,

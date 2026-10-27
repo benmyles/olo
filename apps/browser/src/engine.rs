@@ -19,7 +19,7 @@ use std::{
 
 use servo::{
     AuthenticationRequest, ClipboardDelegate, ConsoleLogLevel, CreateNewWebViewRequest, Cursor, EmbedderControl,
-    EmbedderControlId, EventLoopWaker, LoadStatus, Opts, PermissionRequest, RenderingContext, Servo, ServoBuilder,
+    EmbedderControlId, EventLoopWaker, LoadStatus, Notification, Opts, PermissionRequest, RenderingContext, Servo, ServoBuilder,
     StringRequest, UserContentManager, UserScript, WebView, WebViewDelegate, WebViewId, WindowRenderingContext,
     resources::{Resource, ResourceReaderMethods},
 };
@@ -63,6 +63,8 @@ pub enum Event {
     Control(EmbedderControl),
     HideControl(EmbedderControlId),
     Permission(PermissionRequest),
+    /// The page shows a notification (it has been allowed to).
+    Notification(Notification),
     Authenticate(AuthenticationRequest),
     Copy(String),
     /// A login was just used on the page (logins.rs's capture script).
@@ -151,6 +153,9 @@ impl WebViewDelegate for Events {
     fn request_permission(&self, w: WebView, request: PermissionRequest) {
         self.push(&w, Event::Permission(request));
     }
+    fn show_notification(&self, w: WebView, notification: Notification) {
+        self.push(&w, Event::Notification(notification));
+    }
     fn request_authentication(&self, w: WebView, request: AuthenticationRequest) {
         self.push(&w, Event::Authenticate(request));
     }
@@ -217,8 +222,9 @@ pub struct Engine {
 }
 
 /// Servo's preferences: its defaults, plus web features it has but keeps
-/// off by default that today's sites (Google's, Zoom's) expect. Left off:
-/// notifications and geolocation (no prompts yet), the async clipboard,
+/// off by default that today's sites (Google's, Zoom's) expect, and
+/// notifications (asked about per site; notify.rs). Left off: geolocation
+/// (no prompt yet), the async clipboard,
 /// service workers (incomplete) and WebRTC (no backend yet).
 fn preferences() -> servo::Preferences {
     servo::Preferences {
@@ -227,6 +233,7 @@ fn preferences() -> servo::Preferences {
         dom_webgl2_enabled: true,
         dom_offscreen_canvas_enabled: true,
         dom_permissions_enabled: true,
+        dom_notification_enabled: true,
         dom_fontface_enabled: true,
         dom_adoptedstylesheet_enabled: true,
         dom_exec_command_enabled: true,
@@ -261,6 +268,7 @@ impl Engine {
         content.add_script(Rc::new(UserScript::from(crate::scheme::script())));
         content.add_script(Rc::new(UserScript::from(crate::media::script())));
         content.add_script(Rc::new(UserScript::from(crate::rtc::script(&token))));
+        content.add_script(Rc::new(UserScript::from(crate::notify::script())));
         let events = Events {
             login_marker: crate::logins::marker(&token),
             passkey_marker: crate::passkeys::marker(&token),

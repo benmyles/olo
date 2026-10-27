@@ -160,6 +160,14 @@ fn hand_off(token: &str) -> Result<(), String> {
     let exe = format!("/proc/{}/exe", std::process::id());
     let argv0 = name.unwrap_or_else(|| exe.clone());
     let bus = Connection::session().map_err(|e| e.to_string())?;
+    // Only a running systemd: asking for one that isn't there could start
+    // a wait on bus activation that never ends.
+    let dbus = zbus::blocking::fdo::DBusProxy::new(&bus).map_err(|e| e.to_string())?;
+    let systemd = zbus::names::BusName::try_from(SYSTEMD).map_err(|e| e.to_string())?;
+    let running = dbus.name_has_owner(systemd).map_err(|e| e.to_string())?;
+    if !running {
+        return Err("no systemd on the session bus".into());
+    }
     let name = format!("tabula-browser-{}-{}.service", std::os::unix::process::parent_id(), std::process::id());
     let mut env: Vec<String> =
         std::env::vars_os().filter_map(|(k, v)| Some(format!("{}={}", k.to_str()?, v.to_str()?))).filter(|kv| !kv.starts_with('=')).collect();

@@ -14,6 +14,7 @@ mod input;
 mod location;
 mod logins;
 mod media;
+mod notify;
 mod passkeys;
 mod rtc;
 mod scheme;
@@ -34,7 +35,7 @@ use passkeys::{Ask, AskKind, PageRequest};
 use serde::{Deserialize, Serialize};
 use servo::{
     AuthenticationRequest, ContextMenu, ContextMenuAction, ContextMenuItem, Cursor, ColorPicker, EmbedderControl, FilePicker,
-    LoadStatus, RgbColor, SelectElement, SelectElementOptionOrOptgroup, SimpleDialog, Theme, WebView, WebViewBuilder, WebViewId,
+    LoadStatus, PermissionFeature, PermissionRequest, RgbColor, SelectElement, SelectElementOptionOrOptgroup, SimpleDialog, Theme, WebView, WebViewBuilder, WebViewId,
 };
 use tabula_keychain::{Request, Response};
 use tabula_kit::{
@@ -85,11 +86,13 @@ struct Settings {
     bookmarks: Vec<Bookmark>,
     /// Pages visited, most recent last.
     history: Vec<Bookmark>,
+    /// Sites' notifications: allowed (true) or blocked, by origin.
+    notifications: BTreeMap<String, bool>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { home: "about:blank".into(), bookmarks: Vec::new(), history: Vec::new() }
+        Settings { home: "about:blank".into(), bookmarks: Vec::new(), history: Vec::new(), notifications: BTreeMap::new() }
     }
 }
 
@@ -128,6 +131,9 @@ struct Tab {
     /// The page's requests for the camera or microphone, asked about in
     /// a bar one at a time.
     media: VecDeque<rtc::MediaAsk>,
+    /// The page asks to show notifications (its site, and the request,
+    /// answered from the bar).
+    notify_ask: Option<(String, PermissionRequest)>,
     /// Where the page is scrolled, as it last said.
     scroll: Option<scroll::Metrics>,
     /// Where our scroll bars just put it, shown over the page's reports
@@ -160,6 +166,7 @@ impl Tab {
             offer: None,
             passkey: None,
             media: VecDeque::new(),
+            notify_ask: None,
             scroll: None,
             scrolled: None,
             favicon: None,
@@ -268,6 +275,8 @@ struct NetPositive {
     watch: guard::Watch,
     /// Cameras, microphones and calls in pages.
     rtc: rtc::Rtc,
+    /// Pages' notifications, to the desktop's notification service.
+    notifier: notify::Notifier,
 }
 
 impl NetPositive {
@@ -570,10 +579,36 @@ impl NetPositive {
                     }
                 }
                 Event::Copy(text) => cx.copy(text),
+                Event::Permission(request) if matches!(request.feature(), PermissionFeature::Notifications) => {
+                    // Asked once per site, in a bar; the answer is kept.
+                    let Some(b) = self.browser(win) else { continue };
+                    let origin = site_of(&b.tabs[i].url);
+                    let decided = self.settings.notifications.get(&origin).copied();
+                    let Some(b) = self.browser(win) else { continue };
+                    match decided {
+                        Some(true) => request.allow(),
+                        Some(false) => request.deny(),
+                        None if origin.is_empty() => request.deny(),
+                        None => {
+                            // A second ask while one is up: the first answer does.
+                            if let Some((_, old)) = b.tabs[i].notify_ask.replace((origin, request)) {
+                                old.deny();
+                            }
+                            cx.redraw(win);
+                        }
+                    }
+                }
                 Event::Permission(request) => {
-                    // No prompts for cameras, locations or notifications yet.
+                    // No prompts for locations yet (cameras ask through rtc).
                     tracing::info!("denied {:?}", request.feature());
                     request.deny();
+                }
+                Event::Notification(n) => {
+                    let Some(b) = self.browser(win) else { continue };
+                    let origin = site_of(&b.tabs[i].url);
+                    if self.settings.notifications.get(&origin) == Some(&true) {
+                        self.notifier.show(notify::Note { view: id, origin, title: n.title, body: n.body, tag: n.tag, sticky: n.require_interaction });
+                    }
                 }
                 Event::Authenticate(request) => {
                     let site = request.url().host_str().unwrap_or("this site").to_string();
@@ -909,6 +944,18 @@ impl NetPositive {
                 }
                 cx.redraw(win);
             }
+            "notify-allow" | "notify-block" => {
+                let allow = command == "notify-allow";
+                if let Some(b) = self.browser(win)
+                    && let Some(tab) = b.tabs.get_mut(b.active)
+                    && let Some((origin, request)) = tab.notify_ask.take()
+                {
+                    if allow { request.allow() } else { request.deny() }
+                    self.settings.notifications.insert(origin, allow);
+                    self.save_settings();
+                }
+                cx.redraw(win);
+            }
             "dismiss-stopped" => {
                 if let Some(b) = self.browser(win)
                     && let Some(tab) = b.tabs.get_mut(b.active)
@@ -1121,6 +1168,14 @@ impl NetPositive {
                 let buttons = vec![("OK", true, "dismiss-stopped")];
                 let bar = Rect::from_min_size(pos2(full.left(), top), vec2(full.width(), OFFER_HEIGHT));
                 notice(ui, &painter, bar, Notice { icon: "stop", text: text.clone(), error: false, choice: None, buttons }, &mut commands);
+                top = bar.bottom();
+            }
+            if let Some((origin, _)) = &tab.notify_ask {
+                let host = url::Url::parse(origin).ok().and_then(|u| u.host_str().map(String::from)).unwrap_or_else(|| origin.clone());
+                let buttons = vec![("Allow", true, "notify-allow"), ("Don’t Allow", true, "notify-block")];
+                let bar = Rect::from_min_size(pos2(full.left(), top), vec2(full.width(), OFFER_HEIGHT));
+                let text = format!("“{host}” wants to show notifications.");
+                notice(ui, &painter, bar, Notice { icon: "info", text, error: false, choice: None, buttons }, &mut commands);
                 top = bar.bottom();
             }
             if let Some(ask) = tab.media.front() {
@@ -1746,6 +1801,15 @@ impl NetPositive {
     }
 }
 
+/// A page's site, as notification answers are kept ("https://host:port");
+/// empty for pages that have none (files, data:).
+fn site_of(url: &str) -> String {
+    match url::Url::parse(url).map(|u| u.origin()) {
+        Ok(o) if o.is_tuple() => o.ascii_serialization(),
+        _ => String::new(),
+    }
+}
+
 fn sheet_owner(s: &Sheet) -> Option<WindowId> {
     match s {
         Sheet::Dialog { owner, .. } | Sheet::Login { owner, .. } | Sheet::Color { owner, .. } => Some(*owner),
@@ -2132,6 +2196,16 @@ impl App for NetPositive {
                 let view = self.windows.values().filter_map(|w| if let Win::Browser(b) = w { Some(b) } else { None }).flat_map(|b| b.tabs.iter()).filter_map(|t| t.view.as_ref()).find(|v| v.id() == reply.view);
                 if let Some(view) = view {
                     view.evaluate_javascript(reply.script, |_| {});
+                }
+                return;
+            }
+            Err(m) => m,
+        };
+        let message = match message.downcast::<notify::Clicked>() {
+            Ok(clicked) => {
+                if let Some((win, i)) = self.find(clicked.view) {
+                    self.select_tab(cx, win, i);
+                    cx.activate(win);
                 }
                 return;
             }
@@ -2528,6 +2602,11 @@ impl NetPositive {
                     for (i, tab) in b.tabs.iter_mut().enumerate() {
                         let Some(view) = &tab.view else { continue };
                         self.pings.ask(view);
+                        // A page asking to show notifications waits for the
+                        // answer (Servo holds its script until then).
+                        if tab.notify_ask.is_some() {
+                            self.pings.wait(view.id());
+                        }
                         let hung = self.pings.hung(view.id());
                         if hung != tab.hung {
                             tab.hung = hung;
@@ -2637,6 +2716,7 @@ fn main() {
             proxy: cx.proxy(),
             pings: guard::Pings::default(),
             watch: guard::watch(cx.proxy()),
+            notifier: notify::Notifier::new(cx.proxy()),
         };
         let restored: Option<Saved> = cx.restored_state().and_then(|s| serde_json::from_str(&s).ok());
         match restored {
