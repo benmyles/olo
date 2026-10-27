@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Passwords: every vault, and sync problems you can read
+
+*22:26* — 1Password won't let other apps read archived items, and one archived item failed a whole batch of fifty, so most of Personal and Private never arrived. Now only active items are fetched, an item archived there is archived here from its listing, and a failed batch is retried one item at a time. What still can't sync is listed in a Sync Problems window, grouped by vault, each with its reason, instead of a wall of red text.
+
+![Passwords: every vault, and sync problems you can read](2026-10-26/222604-passwords-every-vault-and-sync-problems-you-can-.png)
+
 ### Restore from the Trash
 
 *22:16* — Items in the Trash can go back where they came from: Restore in the File menu or an item's menu puts them back in their folders (made again if gone), and never over something new in their place.

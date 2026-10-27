@@ -101,6 +101,8 @@ as they land (with the commit), add new ones as they come up.
   Terminal, so Claude Code gets its path), Tracker accepting drops from
   everything, NetPositive images/links/text, StyledEdit text, Viewer
   images, Passwords fields, Deskbar launches…
+  Study how BeOS did it first (the Be Book: BMessage drags with negotiated
+  types, drop targets, Tracker clippings) and borrow what still fits.
 - ~~**Tracker: restore from the Trash**~~ (File ▸ Restore and the item
   menu, `ops::Kind::Restore`; a clash gets a number instead of asking) (Ben): a Restore command (File
   menu and the context menu in the Trash) that puts the selected files
@@ -111,6 +113,13 @@ as they land (with the commit), add new ones as they come up.
   accounts.google.com, offer logins saved for any parent domain
   (*.google.com, google.com) as well as the exact host, sorted most
   specific first.
+- ~~**Passwords: sync every vault, Private included**~~ (archived items failed whole batches; now fetched active-only with a one-by-one fallback, and a Sync Problems window) (Ben): a sync on
+  the real account doesn't bring in all vaults (Private missing). Every
+  vault the account can read is synced, and errors or items that can't
+  sync are listed clearly (by vault and item, with the reason), not as a
+  wall of red text.
+- **Quick Look / Viewer: basic image editing** (Ben): crop, resize,
+  rotate and flip images, then Save / Save As (as the PDF tools do).
 - **Passwords: sync with several 1Password accounts** (Ben): setup now
   makes you pick one account; Passwords should sync with every account
   the 1Password app has signed in (each account's vaults shown under it,

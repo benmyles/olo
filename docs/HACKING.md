@@ -1261,7 +1261,13 @@ person's approval. It runs in two steps, each on its own thread:
   for an account switch), only reads. Down: vaults whose
   `content_version` moved are listed (both states); new or changed items
   (update time or state) are fetched fifty at a time with `get_all`;
-  items gone there are noted. Up: 1Password's copies of items changed here
+  items gone there are noted. 1Password refuses to give apps archived
+  items ("item is not in an active state"), and one archived id fails a
+  whole `get_all`, so only active items are fetched: an item archived
+  there since is archived here from its listing (`Change::Archived`),
+  archived items never synced are left out with a note, and whatever a
+  batch didn't bring is fetched one at a time, so a bad item costs only
+  itself. Up: 1Password's copies of items changed here
   are fetched to compare. The plan is the store's `Change`s, what to send,
   and a `Row` for every change either side would see (add, change with the
   parts that differ by name, never values, archive, delete, keep both).
@@ -1286,6 +1292,16 @@ another account drops what came from the old one (`Change::Account`, shown
 in the review). Files attached in 1Password aren't copied (their metadata
 is), so they aren't shown.
 
+**Problems** are `sync::Problem`s (vault, item or none, a reason in plain
+words from `sync::reason`, and whether it's only a note), never joined
+text. The status line counts them ("Synced just now · 2 problems", red
+only for failures); the review shows one line ("⚠ 2 problems reading
+1Password…"). Either opens Sync Problems: grouped by vault
+(`sync::grouped`, repeats dropped), a warning or info icon, the item and
+its reason under it, with Copy (`sync::as_text`) and Sync Again. The fake
+behaves as 1Password does: archived items can't be read, and a vault with
+`"no_access": true` can't be listed.
+
 **Reset** (File ▸ Reset Passwords…, after an alert) erases the store here
 (`Vault::reset`, or the file if it can't be opened) and the account
 choice, back to the setup panel. It never touches 1Password: pending
@@ -1293,8 +1309,9 @@ deletions go with the rest.
 
 `cargo test -p tabula-passwords` covers the store (sealing, wrong keys,
 conflicts, races, accounts, reset) and syncing against the in-process fake
-(both ways, conflicts, nothing to do, 1Password down, and that a plan
-changes nothing and names every change). The Secret Service
+(both ways, conflicts, nothing to do, 1Password down, that a plan
+changes nothing and names every change, and archived items and an
+unlistable vault). The Secret Service
 client has an ignored test for a private keyring:
 `tools/dev/private-keyring start` (busd plus its own gnome-keyring; needs
 `cargo install busd --root /tmp/tabula-dev/busd`), then

@@ -39,6 +39,10 @@ pub struct FakeVault {
     /// File contents by file id.
     #[serde(default)]
     pub files: BTreeMap<String, String>,
+    /// The account may see the vault but not list its items (as with a
+    /// vault shared without that permission).
+    #[serde(default)]
+    pub no_access: bool,
 }
 
 /// The stand-in account's UUID (26 characters, like 1Password's).
@@ -324,6 +328,9 @@ fn invoke_method(account: &mut FakeAccount, method: &str, params: &Value) -> Res
         }
         "ItemsList" => {
             let vault = vault_mut(account, arg(params, "vault_id")?)?;
+            if vault.no_access {
+                return Err(error("Internal", "you do not have the right permissions to perform this action: performing an item operation"));
+            }
             let filters: Vec<crate::ItemListFilter> = parse(&params["filters"])?;
             let (active, archived) = filters
                 .iter()
@@ -343,11 +350,19 @@ fn invoke_method(account: &mut FakeAccount, method: &str, params: &Value) -> Res
             let vault = vault_mut(account, arg(params, "vault_id")?)?;
             let id = arg(params, "item_id")?;
             let item = vault.items.iter().find(|i| i.id == id).ok_or_else(|| error("Internal", "item not found"))?;
+            // As 1Password: apps can't read archived items.
+            if vault.archived.contains(&id.to_string()) {
+                return Err(error("Internal", "item is not in an active state"));
+            }
             (value(&computed(item.clone()))?, false)
         }
         "ItemsGetAll" => {
             let vault = vault_mut(account, arg(params, "vault_id")?)?;
             let ids: Vec<String> = parse(&params["item_ids"])?;
+            // One archived item fails the lot, as in 1Password.
+            if ids.iter().any(|id| vault.archived.contains(id)) {
+                return Err(error("Internal", "item is not in an active state"));
+            }
             let responses: Vec<Value> = ids
                 .iter()
                 .map(|id| match vault.items.iter().find(|i| &i.id == id) {
@@ -446,8 +461,8 @@ pub fn sample(account: &str) -> FakeAccount {
         updated_at: t("2026-10-01T10:00:00Z"),
     };
     let mut vaults = vec![
-        FakeVault { vault: vault("personalvault0000000000000", "Personal", VaultType::Personal), items: vec![], archived: vec![], files: BTreeMap::new() },
-        FakeVault { vault: vault("sharedvault00000000000000a", "Household", VaultType::UserCreated), items: vec![], archived: vec![], files: BTreeMap::new() },
+        FakeVault { vault: vault("personalvault0000000000000", "Personal", VaultType::Personal), items: vec![], archived: vec![], files: BTreeMap::new(), no_access: false },
+        FakeVault { vault: vault("sharedvault00000000000000a", "Household", VaultType::UserCreated), items: vec![], archived: vec![], files: BTreeMap::new(), no_access: false },
     ];
     let login = |title: &str, url: &str, user: &str, password: &str| {
         let mut p = ItemCreateParams::new(ItemCategory::Login, "", title);

@@ -4,7 +4,11 @@
 //! [`plan`] only reads. Down: vaults whose content version moved since
 //! the last sync are listed; items new or changed there (by update time
 //! or archive state) are fetched fifty at a time; items gone there are
-//! noted. Up: items changed here are compared with 1Password's copies.
+//! noted. 1Password doesn't let apps read archived items, so those are
+//! never fetched: an item archived there is archived here from its
+//! listing, and archived items never synced are left out (with a note).
+//! A batch that fails is read again one item at a time, so one bad item
+//! costs only itself. Up: items changed here are compared with 1Password's copies.
 //! The result is every change either side would see, as [`Row`]s for
 //! the person to review, and nothing has changed anywhere.
 //!
@@ -27,7 +31,7 @@ use crate::{
 pub struct Report {
     pub changes: Vec<Change>,
     /// What failed, for the person; the rest still applies.
-    pub errors: Vec<String>,
+    pub problems: Vec<Problem>,
     pub received: usize,
     pub sent: usize,
 }
@@ -72,6 +76,80 @@ impl Row {
     }
 }
 
+/// Something a sync couldn't do, for the person: where, and why in
+/// their words.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Problem {
+    /// The vault's name, or "" when it isn't about one.
+    pub vault: String,
+    /// The item's title, or None when it's about the whole vault.
+    pub item: Option<String>,
+    pub reason: String,
+    /// Only something to know (left out on purpose), not a failure.
+    pub note: bool,
+}
+
+impl Problem {
+    pub fn error(vault: &str, item: Option<&str>, reason: impl Into<String>) -> Problem {
+        Problem { vault: vault.into(), item: item.map(Into::into), reason: reason.into(), note: false }
+    }
+}
+
+/// `list` in the order shown: by vault (those not in one last), then
+/// failures before notes, then by item; repeats dropped.
+pub fn grouped(mut list: Vec<Problem>) -> Vec<Problem> {
+    list.sort_by(|a, b| {
+        (a.vault.is_empty(), a.vault.to_lowercase(), a.note, a.item.is_some(), a.item.as_ref().map(|i| i.to_lowercase()))
+            .cmp(&(b.vault.is_empty(), b.vault.to_lowercase(), b.note, b.item.is_some(), b.item.as_ref().map(|i| i.to_lowercase())))
+    });
+    list.dedup();
+    list
+}
+
+/// The problems as plain text, to copy.
+pub fn as_text(list: &[Problem]) -> String {
+    let mut out = String::new();
+    let mut vault = None;
+    for p in list {
+        if vault != Some(&p.vault) {
+            if vault.is_some() {
+                out.push('\n');
+            }
+            out.push_str(if p.vault.is_empty() { "Not in a vault" } else { &p.vault });
+            out.push('\n');
+            vault = Some(&p.vault);
+        }
+        match &p.item {
+            Some(item) => out.push_str(&format!("  {item}: {}\n", p.reason)),
+            None => out.push_str(&format!("  {}\n", p.reason)),
+        }
+    }
+    out
+}
+
+/// Why 1Password refused, as the person would put it.
+pub fn reason(e: &onepassword::Error) -> String {
+    let text = describe(e);
+    let lower = text.to_lowercase();
+    let out = if lower.contains("permission") {
+        "You don’t have permission to read it in 1Password.".to_string()
+    } else if lower.contains("not in an active state") {
+        "It’s archived in 1Password, which doesn’t let other apps read archived items.".to_string()
+    } else if lower.contains("not found") {
+        "It’s no longer in 1Password.".to_string()
+    } else {
+        let mut t = text;
+        if let Some(first) = t.get(..1) {
+            t = first.to_uppercase() + &t[1..];
+        }
+        if !t.ends_with('.') {
+            t.push('.');
+        }
+        t
+    };
+    out
+}
+
 /// What a sync would do; nothing is done until [`apply`].
 pub struct Plan {
     /// Set by the store, so an approval is for the plan that was shown.
@@ -79,9 +157,11 @@ pub struct Plan {
     pub account: String,
     pub rows: Vec<Row>,
     /// Problems reading 1Password; what was read is still in the plan.
-    pub errors: Vec<String>,
+    pub problems: Vec<Problem>,
     down: Vec<Change>,
     up: Vec<Up>,
+    /// Vault names by id, for problems found while applying.
+    titles: HashMap<String, String>,
 }
 
 impl Plan {
@@ -173,7 +253,7 @@ fn changed(parts: &[String]) -> String {
 pub fn plan(snap: &Snapshot, socket: &str) -> Result<Plan, String> {
     let c = client(&snap.account, socket)?;
     let vaults = c.vaults().list(None).map_err(|e| describe(&e))?;
-    let mut p = Plan { id: 0, account: snap.account.clone(), rows: Vec::new(), errors: Vec::new(), down: Vec::new(), up: Vec::new() };
+    let mut p = Plan { id: 0, account: snap.account.clone(), rows: Vec::new(), problems: Vec::new(), down: Vec::new(), up: Vec::new(), titles: HashMap::new() };
     let title_of = |id: &str| -> String {
         vaults.iter().chain(&snap.vaults).find(|v| v.id == id).map(|v| v.title.clone()).unwrap_or_default()
     };
@@ -185,6 +265,7 @@ pub fn plan(snap: &Snapshot, socket: &str) -> Result<Plan, String> {
             p.rows.push(row(true, What::Delete, &e.item, "From the 1Password account synced before".into()));
         }
     }
+    p.titles = vaults.iter().chain(&snap.vaults).map(|v| (v.id.clone(), v.title.clone())).collect();
     p.down.push(Change::Vaults(vaults.clone()));
     let home = Vault::default_vault(&vaults).map(|v| v.id.clone());
     let known: HashSet<&str> = vaults.iter().map(|v| v.id.as_str()).collect();
@@ -197,6 +278,9 @@ pub fn plan(snap: &Snapshot, socket: &str) -> Result<Plan, String> {
     // store to see both sides.
     let mut changed_there = HashSet::new();
 
+    // Archived in 1Password: never read (it won't let apps), so changes
+    // made here to these can't go up either.
+    let mut archived_there = HashSet::new();
     let all = [ItemListFilter::ByState(ItemListFilterByState { active: true, archived: true })];
     for v in &vaults {
         if snap.synced.get(&v.id) == Some(&v.content_version) {
@@ -205,41 +289,80 @@ pub fn plan(snap: &Snapshot, socket: &str) -> Result<Plan, String> {
         let list = match c.items().list(&v.id, &all) {
             Ok(l) => l,
             Err(e) => {
-                p.errors.push(format!("Couldn’t list {}: {}", v.title, describe(&e)));
+                p.problems.push(Problem::error(&v.title, None, format!("Couldn’t list its items. {}", reason(&e))));
                 continue;
             }
         };
         let mut whole = true;
         let states: HashMap<&str, ItemState> = list.iter().map(|o| (o.id.as_str(), o.state)).collect();
-        let stale: Vec<String> = list
-            .iter()
-            .filter(|o| match local.get(o.id.as_str()).and_then(|e| e.remote.as_ref()) {
-                Some(seen) => seen.updated_at != o.updated_at || seen.state != o.state,
-                None => true,
-            })
-            .map(|o| o.id.clone())
-            .collect();
+        let mut stale = Vec::new();
+        let mut left_out = 0;
+        for o in &list {
+            let mine = local.get(o.id.as_str());
+            let seen = mine.and_then(|e| e.remote.as_ref());
+            if seen.is_some_and(|seen| seen.updated_at == o.updated_at && seen.state == o.state) {
+                continue;
+            }
+            if o.state != ItemState::Archived {
+                stale.push(o.id.clone());
+                continue;
+            }
+            archived_there.insert(o.id.clone());
+            match (mine, seen) {
+                (None, _) => left_out += 1,
+                // Archived there since: archive ours, as it was.
+                (Some(e), Some(seen)) if seen.state != ItemState::Archived && !e.dirty => {
+                    p.rows.push(row(true, What::Archive, &e.item, String::new()));
+                    p.down.push(Change::Archived { id: o.id.clone(), updated_at: o.updated_at });
+                }
+                (Some(e), Some(seen)) if seen.state != ItemState::Archived => {
+                    p.problems.push(Problem::error(
+                        &v.title,
+                        Some(&e.item.title),
+                        "Archived in 1Password but changed here, so yours wasn’t sent. Restore it in 1Password to sync it.",
+                    ));
+                }
+                // Changed while archived: nothing to read.
+                _ => {}
+            }
+        }
+        if left_out > 0 {
+            let n = if left_out == 1 { "1 archived item isn’t".to_string() } else { format!("{left_out} archived items aren’t") };
+            p.problems.push(Problem {
+                vault: v.title.clone(),
+                item: None,
+                reason: format!("{n} copied: 1Password doesn’t let other apps read its archive."),
+                note: true,
+            });
+        }
+        let titles: HashMap<&str, &str> = list.iter().map(|o| (o.id.as_str(), o.title.as_str())).collect();
         for ids in stale.chunks(BATCH) {
             let mut got = match c.items().get_all(&v.id, ids) {
                 Ok(resp) => individual_items(resp),
                 Err(e) => {
-                    whole = false;
-                    p.errors.push(format!("Couldn’t read items in {}: {}", v.title, describe(&e)));
-                    continue;
+                    tracing::info!("sync: reading {} at once failed ({e}); one at a time", ids.len());
+                    HashMap::new()
                 }
             };
+            // Any the batch didn't bring, one by one: only a bad one is lost.
+            for id in ids.iter().filter(|id| !got.contains_key(*id)).cloned().collect::<Vec<_>>() {
+                match c.items().get(&v.id, &id) {
+                    Ok(item) => {
+                        got.insert(id, item);
+                    }
+                    Err(e) => {
+                        whole = false;
+                        let title = titles.get(id.as_str()).copied().unwrap_or("An item");
+                        p.problems.push(Problem::error(&v.title, Some(title), reason(&e)));
+                    }
+                }
+            }
             for id in ids {
-                let Some(item) = got.remove(id) else {
-                    whole = false;
-                    continue;
-                };
+                let Some(item) = got.remove(id) else { continue };
                 changed_there.insert(id.clone());
                 let state = states.get(id.as_str()).copied().unwrap_or(ItemState::Active);
                 match local.get(id.as_str()) {
-                    None => {
-                        let detail = if state == ItemState::Archived { "In the archive".into() } else { String::new() };
-                        p.rows.push(row(true, What::Add, &item, detail));
-                    }
+                    None => p.rows.push(row(true, What::Add, &item, String::new())),
                     Some(e) if e.dirty && e.remote.as_ref().is_some_and(|r| r.version != item.version) => {
                         let detail = format!(
                             "Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”",
@@ -250,14 +373,11 @@ pub fn plan(snap: &Snapshot, socket: &str) -> Result<Plan, String> {
                     // Only ours changed; it goes up next time.
                     Some(e) if e.dirty => {}
                     Some(e) => {
-                        let parts = differences(&e.item, &item);
-                        if state == ItemState::Archived && e.state != ItemState::Archived {
-                            p.rows.push(row(true, What::Archive, &item, changed(&parts)));
-                        } else if !parts.is_empty() || state != e.state {
-                            let mut parts = parts;
-                            if state != e.state {
-                                parts.push("out of the archive".into());
-                            }
+                        let mut parts = differences(&e.item, &item);
+                        if state != e.state {
+                            parts.push("out of the archive".into());
+                        }
+                        if !parts.is_empty() {
                             p.rows.push(row(true, What::Change, &item, changed(&parts)));
                         }
                     }
@@ -282,7 +402,8 @@ pub fn plan(snap: &Snapshot, socket: &str) -> Result<Plan, String> {
     }
 
     // Up: 1Password's copies of our changed items, to compare.
-    let dirty: Vec<&Entry> = snap.entries.iter().filter(|e| e.dirty && !changed_there.contains(&e.item.id)).collect();
+    let dirty: Vec<&Entry> =
+        snap.entries.iter().filter(|e| e.dirty && !changed_there.contains(&e.item.id) && !archived_there.contains(&e.item.id)).collect();
     let mut theirs: HashMap<String, Item> = HashMap::new();
     let mut by_vault: HashMap<&str, Vec<String>> = HashMap::new();
     for e in dirty.iter().filter(|e| e.remote.is_some() && known.contains(e.item.vault_id.as_str())) {
@@ -292,14 +413,15 @@ pub fn plan(snap: &Snapshot, socket: &str) -> Result<Plan, String> {
         for ids in ids.chunks(BATCH) {
             match c.items().get_all(vault, ids) {
                 Ok(resp) => theirs.extend(individual_items(resp)),
-                Err(e) => p.errors.push(format!("Couldn’t read items in {}: {}", title_of(vault), describe(&e))),
+                // Those missing are reported below, item by item.
+                Err(e) => tracing::info!("sync: reading {} at once failed ({e})", ids.len()),
             }
         }
     }
     for e in dirty {
         let vault = if known.contains(e.item.vault_id.as_str()) { Some(e.item.vault_id.clone()) } else { home.clone() };
         let Some(vault) = vault else {
-            p.errors.push(format!("“{}” has no vault to go to in 1Password.", e.item.title));
+            p.problems.push(Problem::error("", Some(&e.item.title), "It has no vault to go to in 1Password, so it wasn’t sent."));
             continue;
         };
         let archive = e.state == ItemState::Archived;
@@ -313,9 +435,16 @@ pub fn plan(snap: &Snapshot, socket: &str) -> Result<Plan, String> {
                 p.rows.push(row(false, What::Add, &shown, detail));
             }
             Some(seen) => {
-                let Some(there) = theirs.remove(&e.item.id) else {
-                    p.errors.push(format!("Couldn’t read “{}” in 1Password, so it wasn’t compared.", e.item.title));
-                    continue;
+                let there = match theirs.remove(&e.item.id) {
+                    Some(there) => there,
+                    None => match c.items().get(&e.item.vault_id, &e.item.id) {
+                        Ok(there) => there,
+                        Err(err) => {
+                            let why = format!("Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}", reason(&err));
+                            p.problems.push(Problem::error(&title_of(&e.item.vault_id), Some(&e.item.title), why));
+                            continue;
+                        }
+                    },
                 };
                 if there.version != seen.version {
                     // Changed there after all: as for a conflict found above.
@@ -357,7 +486,9 @@ pub fn apply(plan: Plan, socket: &str) -> Result<Report, String> {
     let c = client(&plan.account, socket)?;
     let mut r = Report { received: plan.rows.iter().filter(|r| r.here).count(), ..Default::default() };
     r.changes = plan.down;
-    r.errors = plan.errors;
+    r.problems = plan.problems;
+    let titles = plan.titles;
+    let title_of = |id: &str| titles.get(id).cloned().unwrap_or_default();
     for up in plan.up {
         match up {
             Up::Send { local_id, rev, item, vault, seen, archive } => {
@@ -373,11 +504,11 @@ pub fn apply(plan: Plan, socket: &str) -> Result<Report, String> {
                     Ok(i) => i,
                     Err(err) if seen.is_some() => {
                         tracing::info!("sync: put refused: {err}");
-                        r.errors.push(format!("“{}” changed in 1Password after you reviewed it, so yours wasn’t sent. Sync again to review it.", item.title));
+                        r.problems.push(Problem::error(&title_of(&vault), Some(&item.title), "Changed in 1Password after you reviewed it, so yours wasn’t sent. Sync again to review it."));
                         continue;
                     }
                     Err(err) => {
-                        r.errors.push(format!("Couldn’t send “{}”: {}", item.title, describe(&err)));
+                        r.problems.push(Problem::error(&title_of(&vault), Some(&item.title), format!("Couldn’t send it. {}", reason(&err))));
                         continue;
                     }
                 };
@@ -385,7 +516,7 @@ pub fn apply(plan: Plan, socket: &str) -> Result<Report, String> {
                 if archive {
                     match c.items().archive(&sent.vault_id, &sent.id) {
                         Ok(()) => state = ItemState::Archived,
-                        Err(err) => r.errors.push(format!("Couldn’t archive “{}”: {}", item.title, describe(&err))),
+                        Err(err) => r.problems.push(Problem::error(&title_of(&vault), Some(&item.title), format!("Couldn’t archive it. {}", reason(&err)))),
                     }
                 }
                 r.changes.push(Change::Pushed { local_id, rev, item: Box::new(sent), state });
@@ -394,12 +525,12 @@ pub fn apply(plan: Plan, socket: &str) -> Result<Report, String> {
             Up::Delete { tomb, version, title } => {
                 match c.items().get(&tomb.vault, &tomb.id) {
                     Ok(now) if now.version != version => {
-                        r.errors.push(format!("“{title}” changed in 1Password after you reviewed it, so it wasn’t deleted there. Sync again to review it."));
+                        r.problems.push(Problem::error(&title_of(&tomb.vault), Some(&title), "Changed in 1Password after you reviewed it, so it wasn’t deleted there. Sync again to review it."));
                         continue;
                     }
                     Ok(_) => {
                         if let Err(err) = c.items().delete(&tomb.vault, &tomb.id) {
-                            r.errors.push(format!("Couldn’t delete “{title}” in 1Password: {}", describe(&err)));
+                            r.problems.push(Problem::error(&title_of(&tomb.vault), Some(&title), format!("Couldn’t delete it in 1Password. {}", reason(&err))));
                             continue;
                         }
                     }
@@ -436,8 +567,12 @@ mod tests {
     }
 
     fn world(name: &str) -> World {
+        world_with(name, sample(ACCOUNT))
+    }
+
+    fn world_with(name: &str, data: onepassword::fake::FakeAccount) -> World {
         let socket = format!("tabula-passwords-sync-{}-{name}", std::process::id());
-        let fake = Fake::start(&socket, sample(ACCOUNT)).unwrap();
+        let fake = Fake::start(&socket, data).unwrap();
         let client = Client::builder().desktop_app_integration(ACCOUNT).integration_info("test", "1").desktop_socket(&socket).build().unwrap();
         let dir = std::env::temp_dir().join(format!("tabula-sync-test-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -451,7 +586,7 @@ mod tests {
         fn sync(&mut self) -> (usize, usize) {
             let plan = self.plan();
             let r = super::apply(plan, &self.socket).unwrap();
-            assert!(r.errors.is_empty(), "{:?}", r.errors);
+            assert!(r.problems.is_empty(), "{:?}", r.problems);
             self.vault.apply(r.changes).unwrap();
             (r.received, r.sent)
         }
@@ -459,7 +594,7 @@ mod tests {
         fn plan(&self) -> super::Plan {
             let snap = self.vault.snapshot(ACCOUNT);
             let plan = super::plan(&snap, &self.socket).unwrap();
-            assert!(plan.errors.is_empty(), "{:?}", plan.errors);
+            assert!(plan.problems.is_empty(), "{:?}", plan.problems);
             plan
         }
 
@@ -472,7 +607,8 @@ mod tests {
             let all = [ItemListFilter::ByState(ItemListFilterByState { active: true, archived: true })];
             let mut out: Vec<(String, ItemState)> = Vec::new();
             for v in self.client.vaults().list(None).unwrap() {
-                out.extend(self.client.items().list(&v.id, &all).unwrap().into_iter().map(|o| (o.title, o.state)));
+                // (Skipping any the account can't list.)
+                out.extend(self.client.items().list(&v.id, &all).unwrap_or_default().into_iter().map(|o| (o.title, o.state)));
             }
             out.sort_by(|a, b| a.0.cmp(&b.0));
             out
@@ -592,10 +728,59 @@ mod tests {
         again.title = "GitHub (theirs)".into();
         w.client.items().put(&again).unwrap();
         let r = super::apply(plan, &w.socket).unwrap();
-        assert!(r.errors.iter().any(|e| e.contains("after you reviewed it")), "{:?}", r.errors);
+        assert!(r.problems.iter().any(|e| e.item.as_deref() == Some("GitHub") && e.reason.contains("after you reviewed it")), "{:?}", r.problems);
         w.vault.apply(r.changes).unwrap();
         assert_eq!(w.client.items().get(&personal, &github.id).unwrap().title, "GitHub (theirs)");
         assert!(w.local("Mail (renamed)").is_some());
         assert!(!w.remote().iter().any(|(t, _)| t == "Streaming"));
+    }
+
+    /// 1Password won't let apps read archived items, and one in a batch
+    /// fails the batch: every active item still comes in, archived ones
+    /// are left out with a note, an item archived there is archived here
+    /// from its listing, and a vault that can't be listed is one problem.
+    #[test]
+    fn archived_and_unreadable() {
+        use super::What;
+        let mut data = sample(ACCOUNT);
+        let mut staging = data.vaults[1].clone();
+        staging.vault.id = "stagingvault0000000000000a".into();
+        staging.vault.title = "Staging".into();
+        staging.no_access = true;
+        data.vaults.push(staging);
+        let mut w = world_with("archived", data);
+        let personal = w.client.vaults().list(None).unwrap().into_iter().find(|v| v.title == "Personal").unwrap().id;
+        // More than a batch, with one archived in the middle of it.
+        let mut made = Vec::new();
+        for n in 0..70 {
+            let p = onepassword::ItemCreateParams::new(ItemCategory::SecureNote, personal.clone(), format!("Note {n:02}"));
+            made.push(w.client.items().create(&p).unwrap());
+        }
+        w.client.items().archive(&personal, &made[30].id).unwrap();
+
+        let snap = w.vault.snapshot(ACCOUNT);
+        let plan = super::plan(&snap, &w.socket).unwrap();
+        let problems: Vec<(&str, Option<&str>, bool)> = plan.problems.iter().map(|p| (p.vault.as_str(), p.item.as_deref(), p.note)).collect();
+        assert_eq!(problems.len(), 2, "{:?}", plan.problems);
+        assert!(problems.contains(&("Personal", None, true)), "{problems:?}");
+        assert!(problems.contains(&("Staging", None, false)), "{problems:?}");
+        assert!(plan.problems.iter().any(|p| p.reason.contains("permission")));
+        let r = super::apply(plan, &w.socket).unwrap();
+        w.vault.apply(r.changes).unwrap();
+        let active: Vec<_> = w.remote().into_iter().filter(|(_, s)| *s == ItemState::Active).collect();
+        assert_eq!(w.local_titles(), active, "every active item, none archived");
+
+        // Archived there after syncing: archived here too, from the list.
+        w.client.items().archive(&personal, &made[5].id).unwrap();
+        let snap = w.vault.snapshot(ACCOUNT);
+        let plan = super::plan(&snap, &w.socket).unwrap();
+        let rows: Vec<(bool, What, &str)> = plan.rows.iter().map(|r| (r.here, r.what, r.title.as_str())).collect();
+        assert_eq!(rows, vec![(true, What::Archive, "Note 05")]);
+        let r = super::apply(plan, &w.socket).unwrap();
+        w.vault.apply(r.changes).unwrap();
+        assert!(w.local_titles().contains(&("Note 05".into(), ItemState::Archived)));
+        // The note says how many were left out, and stays a note.
+        let text = super::as_text(&super::grouped(r.problems));
+        assert!(text.contains("Staging\n  "), "{text}");
     }
 }

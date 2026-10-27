@@ -106,6 +106,9 @@ pub enum Change {
     Listed { vault: String, content_version: u32 },
     /// An item new or changed in 1Password.
     Fetched { item: Box<Item>, state: ItemState },
+    /// An item archived in 1Password (which won't let it be read): ours,
+    /// unchanged here, is archived too.
+    Archived { id: String, updated_at: DateTime<Utc> },
     /// An item gone from 1Password.
     Gone { id: String },
     /// Ours reached 1Password: `item` is 1Password's copy (its id may be
@@ -445,6 +448,17 @@ impl Vault {
                     self.data.synced.insert(vault, content_version);
                 }
                 Change::Fetched { item, state } => self.apply_fetched(*item, state),
+                Change::Archived { id, updated_at } => {
+                    let rev = self.rev();
+                    if let Some(e) = self.data.entries.iter_mut().find(|e| e.item.id == id && !e.dirty)
+                        && let Some(remote) = e.remote.as_mut()
+                    {
+                        remote.updated_at = updated_at;
+                        remote.state = ItemState::Archived;
+                        e.state = ItemState::Archived;
+                        e.rev = rev;
+                    }
+                }
                 Change::Gone { id } => {
                     if let Some(at) = self.data.entries.iter().position(|e| e.item.id == id && e.remote.is_some()) {
                         if self.data.entries[at].dirty {

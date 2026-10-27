@@ -57,7 +57,7 @@ pub enum SyncState {
     Review { changes: usize, pending: usize },
     /// The person didn't approve the last plan.
     Declined { pending: usize },
-    Done { at: DateTime<Utc>, received: usize, sent: usize, errors: Vec<String>, pending: usize },
+    Done { at: DateTime<Utc>, received: usize, sent: usize, problems: Vec<crate::sync::Problem>, pending: usize },
     Failed { message: String, pending: usize },
 }
 
@@ -77,7 +77,7 @@ pub enum Reply {
     Renamed { old: String, new: String },
     Sync(SyncState),
     /// A plan to review (`plan` is its id for [`Job::Approve`]).
-    Review { plan: u64, rows: Vec<Row>, errors: Vec<String> },
+    Review { plan: u64, rows: Vec<Row>, problems: Vec<crate::sync::Problem> },
     /// The store was erased.
     Reset,
     /// An operation failed (the store is still good).
@@ -224,7 +224,7 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                             plans += 1;
                             let mut plan = plan;
                             plan.id = plans;
-                            reply(Reply::Review { plan: plan.id, rows: plan.rows.clone(), errors: plan.errors.clone() });
+                            reply(Reply::Review { plan: plan.id, rows: plan.rows.clone(), problems: plan.problems.clone() });
                             reply(Reply::Sync(SyncState::Review { changes: plan.rows.len(), pending: v.pending() }));
                             waiting = Some(plan);
                         }
@@ -249,7 +249,7 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                 let Some(v) = vault.as_mut() else { continue };
                 match result {
                     Ok(report) => {
-                        let errors = report.errors;
+                        let problems = report.problems;
                         match v.apply(report.changes) {
                             Ok(renamed) => {
                                 for (old, new) in renamed {
@@ -260,7 +260,7 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                                     at: Utc::now(),
                                     received: report.received,
                                     sent: report.sent,
-                                    errors,
+                                    problems,
                                     pending: v.pending(),
                                 }));
                             }

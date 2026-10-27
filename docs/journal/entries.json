@@ -856,5 +856,11 @@
   "title": "Restore from the Trash",
   "caption": "Items in the Trash can go back where they came from: Restore in the File menu or an item's menu puts them back in their folders (made again if gone), and never over something new in their place.",
   "image": "2026-10-26/221633-restore-from-the-trash.png"
+ },
+ {
+  "time": "2026-10-26T22:26:04",
+  "title": "Passwords: every vault, and sync problems you can read",
+  "caption": "1Password won't let other apps read archived items, and one archived item failed a whole batch of fifty, so most of Personal and Private never arrived. Now only active items are fetched, an item archived there is archived here from its listing, and a failed batch is retried one item at a time. What still can't sync is listed in a Sync Problems window, grouped by vault, each with its reason, instead of a wall of red text.",
+  "image": "2026-10-26/222604-passwords-every-vault-and-sync-problems-you-can-.png"
  }
 ]

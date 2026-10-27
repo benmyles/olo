@@ -4,6 +4,10 @@ Read [docs/HACKING.md](docs/HACKING.md) before changing anything. It is the
 source of truth for layout, the kit, look-and-feel rules and testing. These
 rules are universal and non-negotiable:
 
+- **BeOS-inspired, not a BeOS replica.** For everything you design, first
+  look at how BeOS did it (the Be Book, Tracker, the kits) and keep
+  whatever still makes sense in 2026 for what we're building; where there
+  is a better modern way, use that instead.
 - **Never block the UI.** Anything that can take more than a frame runs on a
   worker thread, shows live progress, streams results and can be cancelled.
   See "The responsiveness rule" in HACKING.md.

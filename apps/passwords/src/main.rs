@@ -117,7 +117,7 @@ const RESET: &str = "Erase everything Passwords keeps on this computer and start
 pub struct Review {
     pub plan: u64,
     pub rows: Vec<sync::Row>,
-    pub errors: Vec<String>,
+    pub problems: Vec<sync::Problem>,
     /// The Review Sync window, while it's open.
     pub window: Option<WindowId>,
 }
@@ -166,6 +166,8 @@ pub struct Passwords {
     sync_due: Option<Instant>,
     /// The latest sync's changes, until applied or declined.
     pub review: Option<Review>,
+    /// The Sync Problems window and what it lists.
+    pub problems: Option<(WindowId, Vec<sync::Problem>)>,
     /// Open the review as soon as the sync asked for has one (the person
     /// asked; automatic syncs only say so in the status line).
     pub show_review: bool,
@@ -626,6 +628,24 @@ impl Passwords {
         self.show_error(cx, message);
     }
 
+    /// What a sync couldn't do, item by item, grouped by vault.
+    pub fn show_problems(&mut self, cx: &mut Cx, list: Vec<sync::Problem>) {
+        let list = sync::grouped(list);
+        match &mut self.problems {
+            Some((w, shown)) => {
+                *shown = list;
+                cx.activate(*w);
+            }
+            None => {
+                let mut options = WindowOptions::new("Sync Problems", 520, 400).min_size(400, 260);
+                if let Some(main) = self.main {
+                    options = options.parent(main);
+                }
+                self.problems = Some((cx.open_window(options), list));
+            }
+        }
+    }
+
     fn confirm_delete(&mut self, cx: &mut Cx) {
         let Some(o) = self.selected.as_ref().and_then(|s| self.overview(s)).cloned() else { return };
         let message = format!("Delete “{}” for good? This can’t be undone.", o.title);
@@ -698,9 +718,9 @@ impl Passwords {
                 }
             }
             Reply::Sync(state) => {
-                if let SyncState::Done { errors, .. } = &state {
-                    for e in errors {
-                        tracing::warn!("sync: {e}");
+                if let SyncState::Done { problems, .. } = &state {
+                    for e in problems.iter().filter(|e| !e.note) {
+                        tracing::warn!("sync: {}: {}: {}", e.vault, e.item.as_deref().unwrap_or("(vault)"), e.reason);
                     }
                 }
                 if !matches!(state, SyncState::Review { .. }) {
@@ -711,9 +731,9 @@ impl Passwords {
                 }
                 self.sync = Some(state);
             }
-            Reply::Review { plan, rows, errors } => {
+            Reply::Review { plan, rows, problems } => {
                 let window = self.review.take().and_then(|r| r.window);
-                self.review = Some(Review { plan, rows, errors, window });
+                self.review = Some(Review { plan, rows, problems, window });
                 if std::mem::take(&mut self.show_review) || window.is_some() {
                     self.open_review(cx);
                 }
@@ -939,6 +959,26 @@ impl App for Passwords {
                     self.store.send(Job::Decline);
                     self.end_review(cx);
                 }
+                Some(view::ReviewAction::Problems) => {
+                    let list = self.review.as_ref().map(|r| r.problems.clone()).unwrap_or_default();
+                    self.show_problems(cx, list);
+                }
+                None => {}
+            }
+            return;
+        }
+        if self.problems.as_ref().is_some_and(|(w, _)| *w == window) {
+            match view::problems(self, ui) {
+                Some(view::ProblemsAction::Close) => {
+                    self.problems = None;
+                    cx.close_window(window);
+                }
+                Some(view::ProblemsAction::SyncAgain) => {
+                    self.problems = None;
+                    cx.close_window(window);
+                    self.sync_and_review(cx);
+                }
+                Some(view::ProblemsAction::Copy(text)) => cx.copy(text),
                 None => {}
             }
             return;
@@ -1092,6 +1132,9 @@ impl App for Passwords {
             self.generator = None;
             self.save_settings();
         }
+        if self.problems.as_ref().is_some_and(|(w, _)| *w == window) {
+            self.problems = None;
+        }
         if self.review.as_ref().is_some_and(|r| r.window == Some(window)) {
             self.store.send(Job::Decline);
             self.end_review(cx);
@@ -1227,6 +1270,7 @@ fn main() {
             sync_asked: None,
             sync_due: None,
             review: None,
+            problems: None,
             show_review: false,
         };
         if let Some(saved) = saved {

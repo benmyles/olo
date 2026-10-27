@@ -348,19 +348,26 @@ fn browser(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
             let to_send = if *pending > 0 { format!(" · {pending} to send") } else { String::new() };
             Some((format!("Not synced: changes not applied{to_send}"), false, None))
         }
-        (_, Some(SyncState::Done { at, errors, pending, .. })) => {
+        (_, Some(SyncState::Done { at, problems, pending, .. })) => {
             let ago = sync_ago(*at);
-            match (errors.first(), pending) {
-                (Some(first), _) => Some((format!("Synced {ago}, with problems"), true, Some(errors.join("\n\n")).filter(|_| !first.is_empty()))),
-                (None, 0) => Some((format!("Synced {ago}"), false, None)),
-                (None, n) => Some((format!("Synced {ago} · {n} to send"), false, None)),
+            let failed = problems.iter().filter(|p| !p.note).count();
+            let mut text = format!("Synced {ago}");
+            if *pending > 0 {
+                text += &format!(" · {pending} to send");
             }
+            if failed > 0 {
+                text += &if failed == 1 { " · 1 problem".to_string() } else { format!(" · {failed} problems") };
+            } else if !problems.is_empty() {
+                text += " · some items left out";
+            }
+            let more = (!problems.is_empty()).then(|| More::Problems(problems.clone()));
+            Some((text, failed > 0, more))
         }
         (_, Some(SyncState::Failed { message, pending })) => {
             // The first clause; a click shows the rest.
             let first = message.split(['.', ',']).next().unwrap_or(message);
             let to_send = if *pending > 0 { format!(" · {pending} to send") } else { String::new() };
-            Some((format!("Not synced: {first}{to_send}"), true, Some(message.clone())))
+            Some((format!("Not synced: {first}{to_send}"), true, Some(More::Text(message.clone()))))
         }
         _ => None,
     };
@@ -368,10 +375,17 @@ fn browser(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
         let color = if bad { style::c(p.failure) } else { style::disabled_text(&p) };
         let r = style::label(ui.painter(), status.right() - m::SPACING, status.center().y, Align::Max, text, style::small_font(), color);
         // Click a problem to read all of it.
-        if let Some(detail) = detail
-            && ui.interact(r, Id::unique("passwords-sync-status"), Sense::click()).clicked()
-        {
-            app.show_problem(cx, detail);
+        if let Some(detail) = detail {
+            let response = ui.interact(r, Id::unique("passwords-sync-status"), Sense::click());
+            if response.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if response.clicked() {
+                match detail {
+                    More::Text(text) => app.show_problem(cx, text),
+                    More::Problems(list) => app.show_problems(cx, list),
+                }
+            }
         }
         if review_click && ui.interact(r, Id::unique("passwords-sync-review"), Sense::click()).clicked() {
             if app.review.is_some() {
@@ -900,10 +914,17 @@ fn place(ui: &mut Ui, rect: Rect, widget: impl egui::Widget) -> egui::Response {
     ui.new_child(UiBuilder::new().max_rect(rect)).add(widget)
 }
 
+/// What a click on the sync status shows.
+enum More {
+    Text(String),
+    Problems(Vec<crate::sync::Problem>),
+}
+
 /// What the review window asks for.
 pub enum ReviewAction {
     Apply,
     Cancel,
+    Problems,
 }
 
 const REVIEW_ROW: f32 = 42.0;
@@ -934,11 +955,7 @@ pub fn review(app: &Passwords, ui: &mut Ui) -> Option<ReviewAction> {
         let g = ui.painter().layout(text, style::plain_font(), style::c(p.panel_text), ui.available_width());
         let (r, _) = ui.allocate_exact_size(g.size(), Sense::hover());
         ui.painter().galley(r.min, g, style::c(p.panel_text));
-        let errors = (!review.errors.is_empty()).then(|| format!("Some of 1Password couldn’t be read, so it isn’t included: {}", review.errors.join(" ")));
-        let error_height = errors.as_ref().map_or(0.0, |e| {
-            ui.painter().layout(e.clone(), style::small_font(), style::c(p.failure), ui.available_width()).size().y + m::SPACING
-        });
-        let list_height = ui.available_height() - m::CONTROL_HEIGHT - 4.0 - m::SPACING - error_height;
+        let list_height = ui.available_height() - m::CONTROL_HEIGHT - 4.0 - m::SPACING;
         ui.allocate_ui(vec2(ui.available_width(), list_height), |ui| {
             ScrollView::new("passwords-review").background(p.list_background).show_rows(ui, REVIEW_ROW, review.rows.len(), |ui, range| {
                 ui.spacing_mut().item_spacing.y = 0.0;
@@ -967,11 +984,6 @@ pub fn review(app: &Passwords, ui: &mut Ui) -> Option<ReviewAction> {
                 }
             });
         });
-        if let Some(e) = errors {
-            let g = ui.painter().layout(e, style::small_font(), style::c(p.failure), ui.available_width());
-            let (r, _) = ui.allocate_exact_size(g.size(), Sense::hover());
-            ui.painter().galley(r.min, g, style::c(p.failure));
-        }
         buttons(ui, |ui| {
             let apply = if review.rows.len() == 1 { "Apply Change".to_string() } else { format!("Apply {} Changes", review.rows.len()) };
             if ui.add(Button::new(&apply).default(true)).clicked() {
@@ -980,7 +992,134 @@ pub fn review(app: &Passwords, ui: &mut Ui) -> Option<ReviewAction> {
             if ui.add(Button::new("Cancel")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 action = Some(ReviewAction::Cancel);
             }
+            // What couldn't be read: a line on the left, the list a click away.
+            if !review.problems.is_empty() {
+                ui.with_layout(egui::Layout::left_to_right(Align::Center), |ui| {
+                    if problems_note(ui, &review.problems).clicked() {
+                        action = Some(ReviewAction::Problems);
+                    }
+                });
+            }
         });
     });
     action
+}
+
+/// "⚠ 3 items couldn’t be read", in the window's own text, as a link
+/// to the Sync Problems window.
+fn problems_note(ui: &mut Ui, list: &[crate::sync::Problem]) -> egui::Response {
+    let p = style::palette(ui.ctx());
+    let failed = list.iter().filter(|p| !p.note).count();
+    let (icon, text) = match failed {
+        0 => ("info", "Some items are left out…".to_string()),
+        1 => ("warning", "1 problem reading 1Password…".to_string()),
+        n => ("warning", format!("{n} problems reading 1Password…")),
+    };
+    let g = ui.painter().layout_no_wrap(text, style::small_font(), style::c(p.panel_text));
+    let (r, response) = ui.allocate_exact_size(vec2(16.0 + m::SPACING / 2.0 + g.size().x, m::CONTROL_HEIGHT), Sense::click());
+    icons::paint(ui.painter(), Rect::from_center_size(pos2(r.left() + 8.0, r.center().y), vec2(16.0, 16.0)), icon);
+    let x = r.left() + 16.0 + m::SPACING / 2.0;
+    let color = style::c(p.panel_text);
+    let pos = style::text_origin(ui.ctx(), &g, x, r.center().y, style::small_font().size);
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        let y = pos.y + g.size().y - 1.0;
+        ui.painter().hline(x..=x + g.size().x, y, egui::Stroke::new(1.0, color));
+    }
+    ui.painter().galley(pos, g, color);
+    response
+}
+
+/// What the Sync Problems window asks for.
+pub enum ProblemsAction {
+    Close,
+    SyncAgain,
+    Copy(String),
+}
+
+/// The Sync Problems window: what a sync couldn't do, grouped by vault,
+/// each with its reason in plain words.
+pub fn problems(app: &Passwords, ui: &mut Ui) -> Option<ProblemsAction> {
+    let Some((_, list)) = &app.problems else { return None };
+    let p = style::palette(ui.ctx());
+    let mut action = None;
+    widgets::window_content(ui, |ui| {
+        ui.spacing_mut().item_spacing.y = m::SPACING;
+        let failed = list.iter().filter(|p| !p.note).count();
+        // While a review waits, nothing has synced yet.
+        let reviewing = app.review.is_some();
+        let text = match (reviewing, failed) {
+            (true, 0) => "These are left out of the sync under review:",
+            (true, _) => "These parts of 1Password couldn’t be read, so they aren’t in the sync under review:",
+            (false, 0) => "Everything else synced. These were left out:",
+            (false, 1) => "Everything else synced, but this couldn’t be:",
+            (false, _) => "Everything else synced, but these couldn’t be:",
+        };
+        let g = ui.painter().layout(text.into(), style::plain_font(), style::c(p.panel_text), ui.available_width());
+        let (r, _) = ui.allocate_exact_size(g.size(), Sense::hover());
+        ui.painter().galley(r.min, g, style::c(p.panel_text));
+        let list_height = ui.available_height() - m::CONTROL_HEIGHT - 4.0 - m::SPACING;
+        ui.allocate_ui(vec2(ui.available_width(), list_height), |ui| {
+            ScrollView::new("passwords-problems").background(p.list_background).show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                let width = ui.available_width();
+                let mut vault: Option<&str> = None;
+                for problem in list {
+                    if vault != Some(problem.vault.as_str()) {
+                        vault = Some(problem.vault.as_str());
+                        let name = if problem.vault.is_empty() { "Not in a vault" } else { problem.vault.as_str() };
+                        let (r, _) = ui.allocate_exact_size(vec2(width, 26.0), Sense::hover());
+                        let font = style::bold_font();
+                        let mut job = egui::text::LayoutJob::simple_singleline(name.to_string(), font.clone(), style::c(p.list_item_text));
+                        job.wrap = egui::text::TextWrapping::truncate_at_width(width - m::SPACING * 2.0);
+                        let g = ui.painter().layout_job(job);
+                        let pos = style::text_origin(ui.ctx(), &g, r.left() + m::SPACING, r.center().y + 2.0, font.size);
+                        ui.painter().galley(pos, g, style::c(p.list_item_text));
+                        ui.painter().hline(r.left()..=r.right(), r.bottom() - 0.5, egui::Stroke::new(1.0, dim(&p).gamma_multiply(0.4)));
+                    }
+                    problem_row(ui, &p, problem, width);
+                }
+            });
+        });
+        buttons(ui, |ui| {
+            if ui.add(Button::new("Close").default(true)).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                action = Some(ProblemsAction::Close);
+            }
+            if failed > 0 && !reviewing && ui.add(Button::new("Sync Again")).clicked() {
+                action = Some(ProblemsAction::SyncAgain);
+            }
+            if ui.add(Button::new("Copy")).clicked() {
+                action = Some(ProblemsAction::Copy(crate::sync::as_text(list)));
+            }
+        });
+    });
+    action
+}
+
+/// One problem: its icon, the item (or the reason, for the whole
+/// vault) and the reason under it, wrapped.
+fn problem_row(ui: &mut Ui, p: &tabula_theme::Palette, problem: &crate::sync::Problem, width: f32) {
+    let x = m::SPACING * 2.0 + 16.0;
+    let text_width = width - x - m::SPACING;
+    let title = problem.item.as_ref().map(|item| {
+        let mut job = egui::text::LayoutJob::simple_singleline(item.clone(), style::plain_font(), style::c(p.list_item_text));
+        job.wrap = egui::text::TextWrapping::truncate_at_width(text_width);
+        ui.painter().layout_job(job)
+    });
+    let reason_font = if title.is_some() { style::small_font() } else { style::plain_font() };
+    let reason_color = if title.is_some() { dim(p) } else { style::c(p.list_item_text) };
+    let reason = ui.painter().layout(problem.reason.clone(), reason_font, reason_color, text_width);
+    let pad = 6.0;
+    let height = pad * 2.0 + title.as_ref().map_or(0.0, |t| t.size().y + 1.0) + reason.size().y;
+    let (r, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+    let icon = if problem.note { "info" } else { "warning" };
+    let first_line = title.as_ref().map_or(reason.rows.first().map_or(16.0, |row| row.height()), |t| t.size().y);
+    icons::paint(ui.painter(), Rect::from_min_size(pos2(r.left() + m::SPACING, r.top() + pad + (first_line - 16.0) / 2.0), vec2(16.0, 16.0)), icon);
+    let mut y = r.top() + pad;
+    if let Some(t) = title {
+        let h = t.size().y;
+        ui.painter().galley(pos2(r.left() + x, y), t, style::c(p.list_item_text));
+        y += h + 1.0;
+    }
+    ui.painter().galley(pos2(r.left() + x, y), reason, reason_color);
 }
