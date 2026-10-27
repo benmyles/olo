@@ -182,6 +182,8 @@ pub enum Shortcut {
     Center,
     /// Hide the focused window (minimize it to Deskbar).
     Hide,
+    /// Roll the focused window up to just its tab, or back down.
+    RollUp,
     /// The focused window to the next / previous display.
     NextDisplay,
     PreviousDisplay,
@@ -304,6 +306,7 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::Restore, "restore", WINDOWS, "Back to its own size", &["Shift+Cmd+Backspace"]),
     s(Shortcut::Center, "center", WINDOWS, "Center", &["Ctrl+Cmd+C"]),
     s(Shortcut::Hide, "hide-window", WINDOWS, "Hide window", &["Cmd+M"]),
+    s(Shortcut::RollUp, "roll-up", WINDOWS, "Roll up or down", &["Ctrl+Cmd+M"]),
     s(Shortcut::NextDisplay, "next-display", WINDOWS, "To the next display", &["Ctrl+Alt+Cmd+Right"]),
     s(Shortcut::PreviousDisplay, "previous-display", WINDOWS, "To the previous display", &["Ctrl+Alt+Cmd+Left"]),
     s(Shortcut::TileAll, "tile-all", ARRANGE, "Tile all windows on the display", &["Ctrl+Cmd+Return"]),

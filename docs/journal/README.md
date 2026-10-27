@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Roll up
+
+*15:45* — Double-click a tab (or ⌃⌘M, or Roll Up in its menu) and only the tab stays; again brings the window back.
+
+![Roll up](2026-10-27/154533-roll-up.png)
+
 ### Appearance: Longest window title
 
 *15:40* — The new slider in Preferences ▸ Appearance.

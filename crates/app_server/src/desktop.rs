@@ -182,6 +182,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     workspace: meta.workspace.get().unwrap_or(self.workspace),
                     minimized: meta.minimized.get(),
                     focused: focused.is_some() && w.wl_surface().map(|s| s.into_owned()) == focused,
+                    rolled: w.rolled(),
                     kept,
                     frame: None,
                     content: None,

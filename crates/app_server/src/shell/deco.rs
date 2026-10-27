@@ -58,6 +58,8 @@ pub struct Decoration {
     /// run inside smithay's pointer lock, so they can't ask the pointer.
     pub pointer: Point<f64, Logical>,
     pub last_tab_press: Option<(Instant, Point<f64, Logical>)>,
+    /// Rolled up: only the tab shows (and takes the pointer).
+    pub rolled: bool,
     title_width: Option<(String, i32)>,
     tab: Option<(TabKey, MemoryRenderBuffer)>,
     frame_ids: Vec<Id>,
@@ -98,6 +100,7 @@ impl Default for Decoration {
             pressed: Part::None,
             pointer: Point::default(),
             last_tab_press: None,
+            rolled: false,
             title_width: None,
             tab: None,
             frame_ids: (0..20).map(|_| Id::new()).collect(),
@@ -181,6 +184,9 @@ impl Decoration {
         let tab = self.tab_layout(title, content);
         let (w, h) = (content.w + 2 * BORDER, content.h + TAB_HEIGHT + 2 * BORDER);
         let contains = |r: Rectangle<i32, Logical>| r.to_f64().contains(p);
+        if self.rolled && p.y >= TAB_HEIGHT as f64 {
+            return Part::None;
+        }
         if p.y < TAB_HEIGHT as f64 {
             if !contains(tab.rect()) {
                 return Part::None;

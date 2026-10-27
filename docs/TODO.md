@@ -5,6 +5,8 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Roll up windows~~ (Ben): ⌃⌘M, Roll Up in the tab's menu, the palette,
+  or double-click the tab: only the tab stays; again rolls it down.
 - ~~Longest tab title~~ (Ben): Preferences ▸ Appearance ▸ Longest window
   title (20–200 characters, 100 by default); longer titles end in "…".
 - ~~Terminal: Rename Group and Ungroup did nothing~~ (Ben): no context
@@ -534,9 +536,6 @@ as they land (with the commit), add new ones as they come up.
   `--new-window` to the running copy instead of launching a second one
   (Tracker, Terminal and StyledEdit; `apps::NEW_WINDOW`). Agents run
   `tabula-x --new-window`.
-- **Roll up windows** (Ben): roll a window up to just its tab and back
-  down: a shortcut, an item in the tab's context menu, a command in the
-  palette (⌘Space), and double-clicking the tab (again rolls it down).
 - **Icons in the Deskbar menu** (Ben): an Appearance preference, on by
   default, to show icons beside every item in the Deskbar menu (each
   application, each preference panel, and the other commands), with any

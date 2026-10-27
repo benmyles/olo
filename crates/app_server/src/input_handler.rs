@@ -235,6 +235,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.restore(&w);
                 }
             }
+            S::RollUp => {
+                if let Some(w) = focused {
+                    self.toggle_rolled(&w);
+                }
+            }
             S::Tile(_) | S::Zoom | S::Restore | S::Center | S::Hide | S::NextDisplay | S::PreviousDisplay => {
                 let Some(w) = focused else { return };
                 match shortcut {

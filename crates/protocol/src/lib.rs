@@ -211,6 +211,9 @@ pub struct WindowInfo {
     pub workspace: u32,
     pub minimized: bool,
     pub focused: bool,
+    /// Rolled up to just its tab.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rolled: bool,
     /// Its program keeps it through a window server restart (an upgrade):
     /// Tabula's own apps, and Wayland programs that came through
     /// tabula-wlproxy.

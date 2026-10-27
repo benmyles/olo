@@ -120,6 +120,11 @@ impl WindowElement {
         }
     }
 
+    /// Rolled up to just its tab.
+    pub fn rolled(&self) -> bool {
+        self.decorated() && self.decoration().rolled
+    }
+
     fn on_decoration(&self, location: Point<f64, Logical>) -> bool {
         if !self.decorated() {
             return false;
@@ -136,6 +141,9 @@ impl WindowElement {
     ) -> Option<(PointerFocusTarget, Point<i32, Logical>)> {
         if self.on_decoration(location) {
             return Some((PointerFocusTarget::SSD(SSD(self.clone())), Point::default()));
+        }
+        if self.rolled() {
+            return None;
         }
         let offset = self.client_render_offset();
 
@@ -477,6 +485,10 @@ impl SpaceElement for WindowElement {
     }
     fn bbox(&self) -> Rectangle<i32, Logical> {
         let bbox = SpaceElement::bbox(&self.0);
+        if self.rolled() {
+            let tab = self.decoration().tab_layout(&self.title(), self.content_size());
+            return tab.rect();
+        }
         if self.decorated() {
             let geo = SpaceElement::geometry(&self.0);
             let frame = Rectangle::from_size(geo.size + deco::extra_size());
@@ -489,7 +501,7 @@ impl SpaceElement for WindowElement {
     }
     fn is_in_input_region(&self, point: &Point<f64, Logical>) -> bool {
         self.on_decoration(*point)
-            || SpaceElement::is_in_input_region(&self.0, &(*point - self.client_render_offset().to_f64()))
+            || !self.rolled() && SpaceElement::is_in_input_region(&self.0, &(*point - self.client_render_offset().to_f64()))
     }
     fn z_index(&self) -> u8 {
         SpaceElement::z_index(&self.0)
@@ -551,6 +563,9 @@ where
             let (tabs, frame) =
                 self.decoration()
                     .render_elements(renderer, &title, content, location, scale, alpha);
+            if self.rolled() {
+                return tabs.into_iter().map(WindowRenderElement::Tab).map(C::from).collect();
+            }
             let client_location = location + self.client_render_offset().to_physical_precise_round(scale);
             let window_elements: Vec<WindowRenderElement<R>> =
                 AsRenderElements::render_elements(&self.0, renderer, client_location, scale, alpha);

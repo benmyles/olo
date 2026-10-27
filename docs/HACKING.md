@@ -934,6 +934,13 @@ and part (`Placed`, in `AnvilState::arranged`); Undo Window Arrangement
 so undoing again redoes. Agents run both with
 `{"type":"run_shortcut","id":"fan-out"}` / `"undo-arrangement"`.
 
+Roll Up (`toggle_rolled`, ⌃⌘M, the tab's menu, the palette, or a
+double-click on the tab, which used to hide the window) leaves just the
+window's tab: `Decoration::rolled` makes the element's bbox the tab, draws
+only the tab, and passes the pointer through everywhere else. It is in
+`WindowInfo::rolled` and kept across a reload (`layout::Placement`).
+Agents roll with `{"type":"run_shortcut","id":"roll-up","window":ID}`.
+
 Other programs arrange windows through two requests: `Arrangement`
 answers the active display's connector, its tiling area (global logical
 pixels) and its windows on this workspace, front first, with frames;

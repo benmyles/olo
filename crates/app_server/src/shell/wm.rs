@@ -117,7 +117,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 };
                 if double {
                     window.decoration().last_tab_press = None;
-                    self.minimize_window(window);
+                    self.toggle_rolled(window);
                     return;
                 }
                 let shift = seat
@@ -216,6 +216,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             keyboard.unset_grab(self);
         }
         keyboard.set_focus(self, Some(KeyboardFocusTarget::from(window.clone())), serial);
+    }
+
+    /// Roll a window up to just its tab, or back down.
+    pub fn toggle_rolled(&mut self, window: &WindowElement) {
+        if !window.decorated() {
+            return;
+        }
+        let rolled = !window.decoration().rolled;
+        window.decoration().rolled = rolled;
+        tracing::info!(id = window.id(), rolled, "rolled");
     }
 
     pub fn minimize_window(&mut self, window: &WindowElement) {

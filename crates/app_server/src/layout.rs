@@ -58,6 +58,9 @@ pub struct Placement {
     pub part: Option<(f32, f32, f32, f32)>,
     pub minimized: bool,
     pub focused: bool,
+    /// Rolled up to its tab.
+    #[serde(default)]
+    pub rolled: bool,
     /// Seconds since the epoch when it was recorded.
     pub at: u64,
     /// The process that showed it (0: not known, any may take it).
@@ -111,6 +114,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             workspace: meta.workspace.get().unwrap_or(self.workspace),
             minimized: meta.minimized.get(),
             focused: focused.is_some() && w.wl_surface().as_deref() == focused,
+            rolled: w.rolled(),
             at: now(),
             pid: meta.owner.borrow().as_ref().map_or(0, |(pid, _)| *pid),
             client: meta.owner.borrow().as_ref().map(|(_, c)| c.clone()),
@@ -215,6 +219,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.space.map_element(window.clone(), Point::from((p.x, p.y)), p.focused);
         meta.put_back.set(true);
         Self::set_tile_state(&window, p.tile, p.part);
+        window.decoration().rolled = p.rolled;
         meta.restored_focus.set(p.focused.then(std::time::Instant::now));
         if p.workspace != self.workspace {
             self.move_to_workspace(&window, p.workspace);

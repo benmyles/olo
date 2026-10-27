@@ -41,6 +41,8 @@ pub struct Facts {
     pub workspace: u32,
     pub workspaces: u32,
     pub displays: usize,
+    /// Rolled up to its tab.
+    pub rolled: bool,
 }
 
 /// Ask app_server about the window, then hand the answer to the app.
@@ -57,7 +59,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             Ok(Reply::Outputs { outputs }) => outputs.iter().filter(|o| o.mirror_of.is_none()).count(),
             _ => 1,
         };
-        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, displays });
+        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, displays, rolled: w.rolled });
     });
 }
 
@@ -96,6 +98,7 @@ pub fn build(f: &Facts) -> Menu {
     }
     let mut m = Menu::new(f.title.clone());
     m = shortcut(m, "hide-window", "Hide");
+    m = shortcut(m, "roll-up", if f.rolled { "Roll Down" } else { "Roll Up" });
     m = shortcut(m, "zoom", "Zoom");
     m = shortcut(m, "restore", "Back to Its Own Size");
     m = shortcut(m, "center", "Center");
@@ -194,7 +197,7 @@ mod tests {
         assert_eq!(ask, Ask { window: 7, at: pos2(120.0, 40.5), output: Some("HEADLESS-1".into()) });
         assert_eq!(Ask::parse(&args[..4]).unwrap().output, None);
         // Every item is a shortcut app_server knows, or one of ours.
-        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2 };
+        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false };
         fn commands(m: &Menu, out: &mut Vec<String>) {
             for item in &m.items {
                 match item {
