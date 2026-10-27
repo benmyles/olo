@@ -70,6 +70,8 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
     way as they go up to the texture cache (`resource_cache.rs`, again
     when the switch changes); photos never are. `lib.rs` also allows
     `deprecated`, whose warnings a crates.io build would have capped.
+    WebRender isn't a workspace member, so its `dark.rs` tests run with
+    `tools/dev/test-webrender-dark`.
   - `servo-paint` (`painter.rs`) sends WebRender a transaction at its next
     render after the switch changes (so the scene is rebuilt without the
     page doing anything) and darkens its own clear colour, which is what

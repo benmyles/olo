@@ -1,0 +1,25 @@
+#!/bin/sh
+# Run the unit tests of the vendored WebRender's dark-pages module
+# (vendor/webrender/src/dark.rs). WebRender is a patched dependency, not a
+# workspace member, so `cargo test -p webrender` can't; this builds the one
+# file against webrender_api in a scratch crate instead.
+set -e
+root=$(cd "$(dirname "$0")/../.." && pwd)
+version=$(grep -A1 'name = "webrender_api"' "$root/Cargo.lock" | sed -n 's/version = "\(.*\)"/\1/p')
+dir=${TMPDIR:-/tmp}/tabula-webrender-dark
+mkdir -p "$dir/src"
+cat > "$dir/Cargo.toml" <<TOML
+[package]
+name = "webrender-dark-tests"
+version = "0.0.0"
+edition = "2021"
+[dependencies]
+webrender_api = "=$version"
+[workspace]
+TOML
+cat > "$dir/src/lib.rs" <<RS
+extern crate webrender_api as api;
+#[path = "$root/vendor/webrender/src/dark.rs"]
+pub mod dark;
+RS
+cd "$dir" && cargo test --quiet
