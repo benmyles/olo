@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Terminal tabs
+
+*12:38* — Terminal windows hold tabs: ⌘T opens one in the same folder, ⌘[ and ⌘] or Ctrl+Tab move between them, and tabs drag to reorder. A bell in a hidden tab marks it with a dot; Move Tab to New Window splits one off. The window grows by the strip so the grid stays the same, and tabs come back after an upgrade.
+
+![Terminal tabs](2026-10-27/123802-terminal-tabs.png)
+
 ### Preferences: op on or off
 
 *12:15* — Preferences ▸ Security has a Command line box to turn op off; it's on by default.

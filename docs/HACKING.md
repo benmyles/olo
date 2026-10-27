@@ -338,7 +338,13 @@ list view: ⇧ or ⌘ adds to the selection, and it scrolls on near the
 edges; on a draggable list the name column and selected rows drag the
 items; `.empty_text("No lines match.")` says so in an empty list; a cell
 draws plain text with `text`/`text_with` or sections of their own colours
-with `text_job`), `TabView`, `color_well`, `heading`,
+with `text_job`), `TabView`, `TabStrip` (a row of document tabs under
+a menu or tool bar, `TAB_HEIGHT` tall: `StripTab { label, icon, color,
+status }` each, the selected one open into the content, close boxes,
+middle-click to close, a + button, drag along the row to reorder; it
+returns a `StripAction` (`Select`, `Close`, `New`, `Menu(i, pos)` for a
+right-click, `Move { from, to }`); each tab is a `Tab` in the
+accessibility tree with its status in its name), `color_well`, `heading`,
 `form_label`, `window_content`, `button_row`, `context_menu`,
 `popup_menu_at` / `popup_result`, `InlineEdit` (Tracker-style rename in
 place: returns `Editing` / `Commit` / `Cancel`; pads by `INLINE_PAD`, which
@@ -1156,7 +1162,7 @@ elsewhere (a launch with arguments opens a new one as well). Closing a
 window hangs up its shell. If Terminal **crashes**, tabula-termd starts
 it again after 2 s (up to 3 times a minute, only while the session and
 its Wayland socket are there). An **upgrade** re-executes both in place:
-Terminal keeps which shell was in which window (`save_state`), and
+Terminal keeps which shells were in which window (`save_state`), and
 tabula-termd hands its PTYs and replays to its new self through an
 inherited file (`TABULA_TERMD_RESTORE`); Terminal reconnects on its own.
 (A Terminal from before tabula-termd hands its shells' PTYs to its new
@@ -1170,9 +1176,25 @@ the file there is still its own. Each screen is kept twice (in
 tabula-termd and in Terminal), so a full scrollback costs about twice
 what it used to.
 
+**Tabs.** A window holds one or more shells (`TermWin::tabs`, each a
+`Tab` with its own `Session`); its strip (the kit's `TabStrip`) shows
+once there are two, and the window grows or shrinks by the strip so the
+grid stays the same. Every tab has the window's grid, so a program in a
+hidden tab lays itself out right; a hidden tab isn't drawn (its Wakeup
+waits until it shows), and its bell marks it with a dot. Messages from
+the emulator carry the shell's id, not the window's, so a tab can move:
+**Tabs ▸ Move Tab to New Window** (or the tab's context menu). New Tab
+(⌘T) starts in the current tab's folder; ⌘W closes the tab, Close Window
+the lot (asking if anything is running). ⌘[ / ⌘], ⌘1…⌘9, Ctrl+Tab /
+Ctrl+Shift+Tab and Ctrl+Page Up / Page Down go through them (the shell
+never sees those). `tabula-terminal --tab [-w DIR]` opens a tab in the
+Terminal window last in front (Tracker's Open in Terminal does), a window
+if there is none. `save_state` keeps each window's tabs in order and
+which one shows.
+
 **Terminal ▸ Terminal Daemon…** (`src/daemon.rs`) shows tabula-termd's
 process and uptime and its shells (whether each is shown here, in
-another Terminal, or nowhere; double-click one to show it), refreshed
+another Terminal, or nowhere; double-click one to show it, bringing its tab forward), refreshed
 every 2 s off the UI thread. **Restart** re-executes it in place (shells
 kept); **Start Over…** (after an alert) ends it, by its pid, with SIGTERM
 then SIGKILL, starts a fresh one, and opens a new window once the old

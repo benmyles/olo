@@ -1989,6 +1989,160 @@ impl<'a> TabView<'a> {
     }
 }
 
+// ---- TabStrip -----------------------------------------------------------
+
+/// Paints an icon into its rectangle.
+pub type PaintIcon<'a> = &'a dyn Fn(&Painter, Rect);
+
+/// One tab in a [`TabStrip`].
+pub struct StripTab<'a> {
+    pub label: &'a str,
+    /// Paints the 16×16 icon left of the label.
+    pub icon: Option<PaintIcon<'a>>,
+    /// A band along the tab's top edge: the colour of its group.
+    pub color: Option<Color32>,
+    /// What the tab is doing, for screen readers and agents ("waiting
+    /// for an answer"); the icon shows it.
+    pub status: Option<&'a str>,
+}
+
+/// What the person did to a [`TabStrip`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StripAction {
+    Select(usize),
+    Close(usize),
+    /// The + after the last tab.
+    New,
+    /// A right-click on a tab, at the pointer.
+    Menu(usize, Pos2),
+    /// A tab dragged along the row to another place.
+    Move { from: usize, to: usize },
+}
+
+/// Widest a [`TabStrip`] tab grows.
+pub const STRIP_TAB_MAX: f32 = 220.0;
+
+/// A row of document tabs under a window's tool or menu bar
+/// (Terminal's shells): the selected one open into the content below,
+/// each with a close box (middle-click closes too), a plus button after
+/// the last, and tabs dragged along the row to reorder them.
+/// Each tab is a `Tab` in the accessibility tree, its status in its name.
+pub struct TabStrip<'a> {
+    id: Id,
+    tabs: &'a [StripTab<'a>],
+    active: usize,
+    max_width: f32,
+    new_tab: bool,
+}
+
+impl<'a> TabStrip<'a> {
+    pub fn new(id: impl std::hash::Hash + std::fmt::Debug, tabs: &'a [StripTab<'a>], active: usize) -> Self {
+        TabStrip { id: Id::unique(id), tabs, active, max_width: STRIP_TAB_MAX, new_tab: true }
+    }
+
+    /// Without the + button.
+    pub fn no_new_tab(mut self) -> Self {
+        self.new_tab = false;
+        self
+    }
+
+    /// `strip` is [`TAB_HEIGHT`] tall and the window's width.
+    pub fn show(self, ui: &mut Ui, strip: Rect) -> Option<StripAction> {
+        let p = style::palette(ui.ctx());
+        let painter = ui.painter_at(strip);
+        let bg = p.panel_background;
+        painter.rect_filled(strip, 0.0, shade(&p, bg, 1.07));
+        hline(&painter, strip.left(), strip.right(), strip.bottom() - 1.0, shade(&p, bg, 1.3));
+        let n = self.tabs.len();
+        let new_w = if self.new_tab { m::CONTROL_HEIGHT + m::TIGHT } else { 0.0 };
+        let width = ((strip.width() - 2.0 * m::TIGHT - new_w) / n.max(1) as f32).min(self.max_width).floor().max(1.0);
+        let slot = |i: usize| Rect::from_min_size(pos2(strip.left() + m::TIGHT + i as f32 * width, strip.top() + 2.0), vec2(width, TAB_HEIGHT - 2.0));
+        let drag_id = self.id.with("dragging");
+        let mut action = None;
+        for (i, tab) in self.tabs.iter().enumerate() {
+            let r = slot(i);
+            let selected = i == self.active;
+            let resp = ui.interact(r, self.id.with(("tab", i)), Sense::click_and_drag());
+            let name = match tab.status {
+                Some(s) => format!("{}, {s}", tab.label),
+                None => tab.label.to_owned(),
+            };
+            resp.widget_info(|| WidgetInfo { selected: Some(selected), ..WidgetInfo::labeled(Role::Tab, true, &name) });
+            if selected {
+                painter.rect_filled(r, 0.0, c(bg));
+                hline(&painter, r.left(), r.right(), r.top(), c(p.shine));
+                vline(&painter, r.left(), r.top(), r.bottom(), c(p.shine));
+                vline(&painter, r.right() - 1.0, r.top(), r.bottom(), shade(&p, bg, 1.4));
+            } else {
+                vline(&painter, r.right() - 1.0, r.top() + 3.0, r.bottom() - 3.0, shade(&p, bg, 1.3));
+            }
+            if let Some(color) = tab.color {
+                let band = Rect::from_min_size(pos2(r.left() + 1.0, r.top() + if selected { 1.0 } else { 0.0 }), vec2(r.width() - 2.0, 3.0));
+                painter.rect_filled(band, 0.0, color);
+            }
+            let close = Rect::from_center_size(pos2(r.right() - m::SPACING - 4.0, r.center().y), vec2(12.0, 12.0));
+            let close_resp = ui.interact(close, self.id.with(("close", i)), Sense::click());
+            close_resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Close {}", tab.label)));
+            if selected || resp.hovered() || close_resp.hovered() {
+                let color = if close_resp.hovered() { c(p.panel_text) } else { shade(&p, bg, 1.6) };
+                let k = close.shrink(3.0);
+                painter.line_segment([k.left_top(), k.right_bottom()], Stroke::new(1.5, color));
+                painter.line_segment([k.right_top(), k.left_bottom()], Stroke::new(1.5, color));
+            }
+            let mut left = r.left() + m::SPACING;
+            if let Some(paint) = tab.icon {
+                let icon = style::snap(ui.ctx(), Rect::from_min_size(pos2(left, r.center().y - 8.0), vec2(16.0, 16.0)));
+                paint(&painter, icon);
+                left = icon.right() + m::TIGHT + 1.0;
+            }
+            let font = if selected { bold_font() } else { plain_font() };
+            let clip = Rect::from_min_max(pos2(left, r.top()), pos2(close.left() - m::TIGHT, r.bottom()));
+            let text_color = if selected { c(p.panel_text) } else { shade(&p, p.panel_text, 0.8) };
+            style::label(&painter.with_clip_rect(clip), clip.left(), r.center().y, Align::Min, tab.label, font, text_color);
+            if close_resp.clicked() || resp.middle_clicked() {
+                action = Some(StripAction::Close(i));
+            } else if resp.secondary_clicked() {
+                action = resp.interact_pointer_pos().map(|at| StripAction::Menu(i, at));
+            } else if resp.clicked() {
+                action = Some(StripAction::Select(i));
+            }
+            if resp.drag_started() && n > 1 {
+                ui.ctx().data_mut(|d| d.insert_temp(drag_id, i));
+            }
+        }
+        // A tab being dragged: a mark where it would go.
+        if let Some(from) = ui.ctx().data(|d| d.get_temp::<usize>(drag_id)) {
+            let pointer = ui.ctx().pointer_latest_pos();
+            let to = pointer.map_or(from, |pos| (((pos.x - strip.left() - m::TIGHT) / width).round().max(0.0) as usize).min(n));
+            let x = slot(to).left().clamp(strip.left() + 1.0, strip.right() - 2.0);
+            let mark = c(p.keyboard_navigation);
+            painter.rect_filled(Rect::from_min_max(pos2(x - 1.0, strip.top() + 2.0), pos2(x + 1.0, strip.bottom() - 1.0)), 0.0, mark);
+            if !ui.input(|i| i.pointer.any_down()) {
+                ui.ctx().data_mut(|d| d.remove::<usize>(drag_id));
+                let to = if to > from { to - 1 } else { to };
+                if to != from && from < n {
+                    action = Some(StripAction::Move { from, to });
+                }
+            } else {
+                ui.ctx().request_repaint();
+            }
+        }
+        if self.new_tab {
+            let plus = Rect::from_min_size(pos2(strip.left() + m::TIGHT + n as f32 * width + m::TIGHT, strip.top() + 2.0), vec2(new_w, TAB_HEIGHT - 4.0));
+            let resp = ui.interact(plus, self.id.with("new"), Sense::click());
+            resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, "New Tab"));
+            let color = if resp.hovered() { c(p.panel_text) } else { shade(&p, bg, 1.6) };
+            let k = Rect::from_center_size(plus.center(), vec2(9.0, 9.0));
+            hline(&painter, k.left(), k.right(), k.center().y.floor(), color);
+            vline(&painter, k.center().x.floor(), k.top(), k.bottom(), color);
+            if resp.clicked() {
+                action = Some(StripAction::New);
+            }
+        }
+        action
+    }
+}
+
 // ---- small helpers ------------------------------------------------------
 
 /// The standard window content area: inset from the window edges by

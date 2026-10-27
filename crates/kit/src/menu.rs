@@ -44,6 +44,8 @@ impl Shortcut {
             Key::Slash => "/".into(),
             Key::Plus | Key::Equals => "+".into(),
             Key::Minus => "-".into(),
+            Key::OpenBracket => "[".into(),
+            Key::CloseBracket => "]".into(),
             Key::Backspace => "⌫".into(),
             Key::Enter => "↵".into(),
             Key::ArrowUp => "↑".into(),

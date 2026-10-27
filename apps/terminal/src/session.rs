@@ -1,4 +1,4 @@
-//! One shell in one window: the emulator state (alacritty_terminal's
+//! One shell (a tab of a window): the emulator state (alacritty_terminal's
 //! `Term`), fed from tabula-termd (which runs the shell), and what the
 //! window needs to know.
 
@@ -17,7 +17,7 @@ use alacritty_terminal::{
     sync::FairMutex,
     term::{Config, Term},
 };
-use tabula_kit::{Proxy, WindowId};
+use tabula_kit::Proxy;
 
 use crate::{
     client::{Chunk, Link, Writer},
@@ -26,7 +26,7 @@ use crate::{
 
 /// What the emulator reports to the app (via the kit's message channel).
 pub enum TermEvent {
-    /// New output to draw (at most one in flight per window).
+    /// New output to draw (at most one in flight per shell).
     Wakeup,
     Title(Option<String>),
     Bell,
@@ -34,11 +34,12 @@ pub enum TermEvent {
     Exited(Option<i32>),
 }
 
-pub struct Message(pub WindowId, pub TermEvent);
+/// An event from shell `.0` (its id: tabs move between windows).
+pub struct Message(pub u64, pub TermEvent);
 
 #[derive(Clone)]
 pub struct Listener {
-    win: WindowId,
+    shell: u64,
     proxy: Proxy,
     writer: Writer,
     shared: Arc<io::Shared>,
@@ -88,7 +89,7 @@ impl EventListener for Listener {
             }
             _ => return,
         };
-        self.proxy.send(Message(self.win, e));
+        self.proxy.send(Message(self.shell, e));
     }
 }
 
@@ -121,16 +122,16 @@ fn grid(size: Size, cell: (u16, u16)) -> wire::Grid {
 }
 
 impl Session {
-    /// Start a shell (or attach to one) for window `win`. Whether it
-    /// worked arrives later: output, or `Exited`.
-    pub fn start(win: WindowId, proxy: Proxy, link: &Link, size: Size, cell: (u16, u16), scheme: crate::colors::Scheme, start: Start) -> Session {
+    /// Start a shell (or attach to one). Whether it worked arrives
+    /// later: output, or `Exited`.
+    pub fn start(proxy: Proxy, link: &Link, size: Size, cell: (u16, u16), scheme: crate::colors::Scheme, start: Start) -> Session {
         let id = match &start {
             Start::Spawn { .. } | Start::Adopt { .. } => link.new_id(),
             Start::Attach(id) => *id,
         };
         let shared = Arc::new(io::Shared::new(cell, size, scheme));
         let writer = link.writer(id);
-        let listener = Listener { win, proxy: proxy.clone(), writer: writer.clone(), shared: shared.clone() };
+        let listener = Listener { shell: id, proxy: proxy.clone(), writer: writer.clone(), shared: shared.clone() };
         let config = Config { scrolling_history: wire::SCROLLBACK, kitty_keyboard: true, ..Config::default() };
         let term = Arc::new(FairMutex::new(Term::new(config, &size, listener)));
         let pending = Arc::new(AtomicBool::new(false));
@@ -138,11 +139,11 @@ impl Session {
             let (pending, proxy) = (pending.clone(), proxy.clone());
             move || {
                 if !pending.swap(true, Ordering::AcqRel) {
-                    proxy.send(Message(win, TermEvent::Wakeup));
+                    proxy.send(Message(id, TermEvent::Wakeup));
                 }
             }
         };
-        let exited = move |code| proxy.send(Message(win, TermEvent::Exited(code)));
+        let exited = move |code| proxy.send(Message(id, TermEvent::Exited(code)));
         let (tx, rx) = mpsc::channel();
         spawn_feeder(rx, term.clone(), shared.clone(), wake, writer, exited);
         match start {

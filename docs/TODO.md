@@ -62,7 +62,8 @@ as they land (with the commit), add new ones as they come up.
 ## Apps
 
 - **Terminal tabs, tab groups and coding agents** (Ben; next up,
-  prioritized 2026-10-27): tabs, tab groups that can be saved and reopened, and
+  prioritized 2026-10-27): ~~tabs~~ (done: the kit's `TabStrip`; HACKING,
+  Terminal "Tabs"), tab groups that can be saved and reopened, and
   native recognition of coding agents (Claude Code, Codex) running in a
   tab, so tabs and groups show each agent's state (working, waiting for an
   answer, blocked) and notify when one needs attention. A tile-all mode
@@ -85,8 +86,8 @@ as they land (with the commit), add new ones as they come up.
   a Tracker window; the arrow keys step through the results.
 - ~~**Tracker: File ▸ Open in Terminal**~~ (Ben): the folder shown (the
   active column's), or a right-clicked folder, in a new Terminal window;
-  also in the window's and the desktop's context menus. When Terminal
-  gets tabs, open a tab instead.
+  also in the window's and the desktop's context menus, as a new tab in
+  the Terminal window last in front.
 - ~~**Video plays the wrong parts at the wrong speed**~~ (Ben): OpenH264
   was flushed after every packet, breaking B-frame reordering; now
   `Flush::NoFlush`, mp4 edit lists applied, and WebM seeks fixed

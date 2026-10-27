@@ -328,10 +328,11 @@ pub fn opener_name(entry: &Entry) -> Option<String> {
 }
 
 /// Show any file in its own Viewer window.
-/// A new Terminal window (a tab, once Terminal has them) in `dir`.
+/// A new Terminal tab in `dir` (in the Terminal window last in front;
+/// a window if there is none).
 pub fn open_in_terminal(dir: &Path) {
     let terminal = tabula_kit::find_program("tabula-terminal").map_or_else(|| "tabula-terminal".into(), PathBuf::into_os_string);
-    if let Err(e) = opener::spawn(&[terminal, "-w".into(), dir.as_os_str().to_owned()]) {
+    if let Err(e) = opener::spawn(&[terminal, "--tab".into(), "-w".into(), dir.as_os_str().to_owned()]) {
         tracing::warn!("terminal in {}: {e}", dir.display());
     }
 }

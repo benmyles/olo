@@ -32,8 +32,9 @@ pub fn key_from_keysym(sym: Keysym) -> Option<Key> {
         Keysym::colon => Colon,
         Keysym::apostrophe => Quote,
         Keysym::grave => Backtick,
-        Keysym::bracketleft => OpenBracket,
-        Keysym::bracketright => CloseBracket,
+        // With Shift (⌘[ in a terminal arrives as Ctrl+Shift+[) too.
+        Keysym::bracketleft | Keysym::braceleft => OpenBracket,
+        Keysym::bracketright | Keysym::braceright => CloseBracket,
         Keysym::question => Questionmark,
         Keysym::_0 | Keysym::KP_0 | Keysym::parenright => Num0,
         Keysym::_1 | Keysym::KP_1 | Keysym::exclam => Num1,

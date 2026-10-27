@@ -1096,5 +1096,11 @@
   "title": "Preferences: op on or off",
   "caption": "Preferences \u25b8 Security has a Command line box to turn op off; it's on by default.",
   "image": "2026-10-27/121525-preferences-op-on-or-off.png"
+ },
+ {
+  "time": "2026-10-27T12:38:02",
+  "title": "Terminal tabs",
+  "caption": "Terminal windows hold tabs: \u2318T opens one in the same folder, \u2318[ and \u2318] or Ctrl+Tab move between them, and tabs drag to reorder. A bell in a hidden tab marks it with a dot; Move Tab to New Window splits one off. The window grows by the strip so the grid stays the same, and tabs come back after an upgrade.",
+  "image": "2026-10-27/123802-terminal-tabs.png"
  }
 ]

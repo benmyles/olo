@@ -938,8 +938,34 @@ fn legacy_with_event(key: Key, m: egui::Modifiers, event: u8) -> Option<Vec<u8>>
 /// The keys of the menu shortcuts (Ctrl+Shift+key, whether or not the
 /// item is enabled just now; ⇧= arrives as Plus). Keep in step with
 /// `menu_bar` in main.rs.
-pub const SHORTCUTS: [Key; 14] =
-    [Key::N, Key::W, Key::Q, Key::C, Key::V, Key::A, Key::F, Key::G, Key::E, Key::K, Key::Equals, Key::Plus, Key::Minus, Key::Num0];
+pub const SHORTCUTS: &[Key] = &[
+    Key::N,
+    Key::T,
+    Key::W,
+    Key::Q,
+    Key::C,
+    Key::V,
+    Key::A,
+    Key::F,
+    Key::G,
+    Key::E,
+    Key::K,
+    Key::Equals,
+    Key::Plus,
+    Key::Minus,
+    Key::Num0,
+    Key::OpenBracket,
+    Key::CloseBracket,
+    Key::Num1,
+    Key::Num2,
+    Key::Num3,
+    Key::Num4,
+    Key::Num5,
+    Key::Num6,
+    Key::Num7,
+    Key::Num8,
+    Key::Num9,
+];
 
 fn keyboard(ui: &Ui, s: &Session, out: &mut Output) {
     let mode = *s.term.lock().mode();
