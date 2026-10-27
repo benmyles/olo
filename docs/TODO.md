@@ -201,7 +201,49 @@ as they land (with the commit), add new ones as they come up.
   and Passwords, brightness, keyboard backlight, power profiles and
   battery, suspend, and an x86_64 Chrome. Build and test x86_64 in CI or
   a VM before it arrives.
-- **Scrolling feels the same everywhere** (Ben): in Chrome scrolling is
+- **Passwords settings in a new Security preferences panel** (Ben):
+  choose automatic sync with 1Password or sync only on demand, and how
+  long Passwords waits before locking itself (or never). Preferences
+  gets a Security panel for them (and a home for other security
+  settings later); Passwords follows changes live.
+- **Other programs survive a Tabula upgrade** (Ben): when app_server
+  restarts for an upgrade, Chrome and other non-Tabula Wayland/X11 apps
+  keep running with their windows, as Tabula's own apps do (e.g. hand
+  the listening socket and client connections to the new app_server,
+  or a small proxy that holds client connections across the restart
+  and replays their state; Xwayland likewise).
+- **Unzoom goes back to where it was** (Ben): zooming a window that was
+  tiled (e.g. to the right half) and then unzooming must put it back in
+  that tile, not some older frame (PreZoom should be the frame just
+  before the zoom, tiles included, and the tile state restored).
+- **Band selection everywhere** (Ben): dragging from empty space draws a
+  selection band and selects every item it touches (⇧/⌘ add to the
+  selection) in Tracker's list and column views as it already does in the
+  icon view and on the desktop, so several things can be picked to move.
+  Put it in the kit (ColumnListView and any list of items) so every app
+  selects the same way; check how BeOS did it (Tracker's BPoseView,
+  BListView, the Be Book's selection conventions) for one consistent
+  behaviour across apps.
+- ~~**Dialogs always come to the front**~~ (the window focused before an
+  upgrade or reload kept a claim to focus for good, so a window reopened
+  in its remembered place, like the Upgrade alert Deskbar closes and
+  reopens, came up under it; now the claim lasts only while windows come
+  back) (Ben): the Upgrade Tabula dialog
+  from the Deskbar tray sometimes opened behind every other window
+  (after Tile All). A newly opened dialog or alert must be raised and
+  focused.
+- **Night light does nothing on the MacBook** (Ben): turning it on in
+  Preferences changes nothing on screen. app_server gets the request and
+  fades (log: `night light kelvin=Some(…)`), but no gamma warning is
+  logged, so the Apple display driver most likely offers no legacy gamma
+  ramp (`gamma_length` < 2) and `udev.rs` `set_gamma` returns quietly.
+  Do it where it always works: use the CRTC's `GAMMA_LUT`/`CTM`
+  properties through atomic modesetting when the driver has them, or
+  else tint in the compositor's own render (a colour-matrix pass over
+  the frame, which also covers screenshots and headless outputs). Show
+  in Preferences when the screen can't do it; check external displays
+  too.
+- ~~**Scrolling feels the same everywhere**~~ (app_server `scroll.rs`: Chromium ×1/12 a touchpad, ×0.4 a wheel; GTK 4 ×0.4 a touchpad; measured headless; GTK 3 not yet) (Ben): in Chrome scrolling is
   far too fast (maybe GTK apps too). A wheel notch or touchpad swipe
   should move Chrome and GTK apps as far as it moves a Tabula app, with
   the same smooth scrolling (app_server's axis values, value120 and

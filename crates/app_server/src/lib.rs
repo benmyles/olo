@@ -35,6 +35,7 @@ pub mod night;
 pub mod osd;
 pub mod power;
 pub mod saver;
+pub mod scroll;
 pub mod screenshot;
 pub mod sockfile;
 pub mod text;

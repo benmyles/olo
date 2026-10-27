@@ -133,7 +133,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let Some(i) = i else { return true };
         let p = self.layout.remove(i);
         self.space.map_element(window.clone(), Point::from((p.x, p.y)), p.focused);
-        meta.restored_focus.set(p.focused);
+        meta.restored_focus.set(p.focused.then(std::time::Instant::now));
         if p.workspace != self.workspace {
             self.move_to_workspace(&window, p.workspace);
         } else if p.minimized {
@@ -141,12 +141,13 @@ impl<B: Backend + 'static> AnvilState<B> {
         } else if p.focused {
             self.focus_window(&window);
         } else {
-            // New windows come up focused, but the window that had focus
-            // before the restart keeps it.
-            let had_focus = self.space.elements().rev().find(|w| w.meta().restored_focus.get()).cloned();
-            if let Some(f) = had_focus {
-                self.focus_window(&f);
-            }
+            // New windows come up focused, but while windows are coming
+            // back after a restart, the one that had focus keeps it. (Not
+            // later: a dialog opened again a minute on must come up in
+            // front, not under that window.)
+            let coming_back = |w: &&WindowElement| w.meta().restored_focus.get().is_some_and(|t| t.elapsed() < KEEP);
+            let front = self.space.elements().rev().find(coming_back).cloned().unwrap_or_else(|| window.clone());
+            self.focus_window(&front);
         }
         false
     }

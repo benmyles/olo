@@ -818,6 +818,18 @@ of its own). NetPositive eases a mouse wheel's notch out over a few frames
 `tsession flick NAME DY` (ten scroll steps, then the lift);
 `tsession scroll NAME 0 0` is a lift on its own.
 
+**Scrolling** goes the same distance in every program (`scroll.rs`, at
+the one place app_server hands a scroll to a client): Tabula's apps
+scroll a finger scroll's values as logical pixels and a wheel notch 48.
+Chromium (Chrome, Chromium, Electron apps: found by `icudtl.dat` and a V8
+snapshot beside the program) scrolls finger values 12× as far and a notch
+120 px, so gets them ×1/12 and ×0.4 (value and value120); GTK 4 (a
+process with `libgtk-4.so` mapped) scrolls finger values 2.5× as far (a
+notch the same 48), so gets them ×0.4. Measured headless: a page whose
+title shows `scrollY` with rows every 10 px (Chrome), and a numbered
+file in gnome-text-editor (24 px lines); `tsession scroll NAME 0 N` (no
+lift) and `tsession wheel NAME 1`. Re-measure after a toolkit update.
+
 ## Night light (app_server night.rs)
 
 Preferences ▸ Appearance's night light (off, on, or scheduled, at a

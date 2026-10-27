@@ -110,8 +110,15 @@ pub enum SyntheticEvent {
     Button { button: u32, pressed: bool },
     /// evdev key code (e.g. 30 = A, 29 = left Ctrl).
     Key { key: u32, pressed: bool },
-    /// Scroll by logical pixels.
+    /// Scroll by logical pixels, as on a touchpad (0, 0: the fingers lift).
     Scroll { dx: f64, dy: f64 },
+    /// Turn a mouse wheel by whole notches (positive: down / right).
+    Wheel {
+        #[serde(default)]
+        dx: i32,
+        #[serde(default)]
+        dy: i32,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

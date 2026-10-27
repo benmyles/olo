@@ -19,6 +19,7 @@
   tsession drag NAME X1 Y1 X2 Y2
   tsession key NAME CODE [CODE...]             evdev codes pressed together (29=Ctrl, 42=Shift)
   tsession type NAME TEXT                      type ASCII text
+  tsession wheel NAME NOTCHES [H-NOTCHES]      turn a mouse wheel (positive: down)
   tsession scroll NAME DX DY                  (0 0: the fingers lift)
   tsession flick NAME DY                       a fast two-finger scroll that glides on
   tsession theme NAME light|dark
@@ -279,6 +280,9 @@ def main():
         move(name, float(a[0]), float(a[1]))
         synth(name, [{"type": "button", "button": 0x110, "pressed": True}, {"type": "button", "button": 0x110, "pressed": False}])
         time.sleep(0.15)
+    elif cmd == "wheel":
+        synth(name, [{"type": "wheel", "dx": int(a[1]) if len(a) > 1 else 0, "dy": int(a[0])}])
+        time.sleep(0.05)
     elif cmd == "up":
         b = 0x111 if a and a[0] == "right" else 0x110
         synth(name, [{"type": "button", "button": b, "pressed": False}])

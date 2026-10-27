@@ -1041,6 +1041,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.process_common_key_action(action);
                 }
             }
+            S::Wheel { dx, dy } => {
+                // As libinput reports a wheel: 15° and 120 a notch.
+                self.stop_glide();
+                let mut frame = AxisFrame::new(time).source(AxisSource::Wheel);
+                if dx != 0 {
+                    frame = frame.value(Axis::Horizontal, dx as f64 * 15.0).v120(Axis::Horizontal, dx * 120);
+                }
+                if dy != 0 {
+                    frame = frame.value(Axis::Vertical, dy as f64 * 15.0).v120(Axis::Vertical, dy * 120);
+                }
+                pointer.axis(self, frame);
+                pointer.frame(self);
+            }
             S::Scroll { dx, dy } => {
                 // As from the touchpad: 0, 0 is the fingers lifting.
                 let now = std::time::Instant::now();

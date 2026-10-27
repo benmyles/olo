@@ -172,6 +172,14 @@ impl<BackendData: Backend> PointerTarget<AnvilState<BackendData>> for PointerFoc
         data: &mut AnvilState<BackendData>,
         frame: AxisFrame,
     ) {
+        // Scrolled as far as in Tabula's own apps, whatever draws it.
+        let frame = match self {
+            Self::WlSurface(w) => match w.client().and_then(|c| c.get_credentials(&data.display_handle).ok()) {
+                Some(c) => crate::scroll::adjust(frame, crate::scroll::toolkit(c.pid)),
+                None => frame,
+            },
+            _ => frame,
+        };
         self.inner_pointer_target().axis(seat, data, frame)
     }
     fn frame(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>) {

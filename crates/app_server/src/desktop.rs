@@ -36,8 +36,9 @@ pub struct WindowMeta {
     pub saved_location: Cell<Point<i32, Logical>>,
     /// Set on the first commit, once placement memory has been consulted.
     pub placed: Cell<bool>,
-    /// It was the focused window before an in-place restart.
-    pub restored_focus: Cell<bool>,
+    /// It was the focused window before an in-place restart, put back at
+    /// this time.
+    pub restored_focus: Cell<Option<std::time::Instant>>,
 }
 
 impl WindowElement {
@@ -49,7 +50,7 @@ impl WindowElement {
             minimized: Cell::new(false),
             saved_location: Cell::new(Point::default()),
             placed: Cell::new(false),
-            restored_focus: Cell::new(false),
+            restored_focus: Cell::new(None),
         });
         self.user_data().get::<WindowMeta>().unwrap()
     }
