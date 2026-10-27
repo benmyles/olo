@@ -164,6 +164,60 @@ as they land (with the commit), add new ones as they come up.
   injected automatically into Claude Code and Codex when they run under
   Tabula. Agent-first from the ground up: everything designed to work
   seamlessly for agents and people alike.
+- **Agent Screens: bugs and improvements from an agent using it** (Ben,
+  2026-10-27; feedback from an agent working with `tabula-screen`).
+  Bugs:
+  1. *Popups are invisible:* a dropdown's menu (Log Viewer's level filter)
+     shows on screen but is in neither `tree` nor `windows`. Popups belong
+     in `tree` (under the window that owns them) and in `windows`.
+  2. *`scroll` never ends the touchpad gesture:* scrolling past the top of
+     a list leaves the overscroll gap (first row stuck at y≈240, knob
+     wrong). Send the gesture end after the movement (`--no-end` to leave
+     it open).
+  3. *`drag` is too abrupt:* dragging a scrollbar knob or a window's
+     corner does nothing, while `down`/`move`/`up` in steps works. Send
+     intermediate moves with small delays (`--steps N`,
+     `--duration MS`).
+  4. *`wheel` stops short:* `wheel agent -30` didn't reach the top of a
+     ~60-row list. Capped per call, or merged into one event? Not yet
+     known.
+  5. *Focus lost:* after a click on a list row, `windows` shows the only
+     window unfocused and `invoke` fails ("no window has the focus").
+     Find out why (perhaps the app). With one window, `invoke` and
+     `menus` should just use it.
+  6. *Rows take the header's names:* a table row partly under a sticky
+     header gets the header's titles in its name, and hidden rows are
+     reported under the header. Clip rows to what shows and mark them
+     clipped or offscreen. (a62e672 clipped rows and cells; check against
+     this report.)
+  Improvements:
+  7. *Waiting for the app:* `tabula-screen wait agent --idle` (until the
+     window stops redrawing), `wait --text "61 lines"` or `--role Row
+     --name …`, or `--wait` on actions. Show in Context took 5–9 s and
+     Find ~1 s; sleeps still read stale state.
+  8. *Click by name:* `click agent --name "Errors Only"`, `--role Button
+     --name "="`, `--match 'Row:panicked'`, returning what matched.
+  9. *Filter the tree:* `--role`, `--name-contains`, `--visible-only`,
+     `--depth`, `--max-len`. Big tables print each row three ways (Row,
+     Cell × n, Unknown).
+  10. *Set fields and choose items directly:* `set agent --name Find
+      "PAM"`, `select agent --name Level "Errors Only"` (a dropdown opens
+      with the current item under the pointer, so a second click lands on
+      the wrong item).
+  11. *Window commands:* `resize agent --window 1 1300x850`, `maximize`,
+      `focus`, `close`, `move`; the tree could report resize handles.
+  12. *Tables:* `scroll-to agent --name …`; the tree giving scroll range
+      and row count (`rows=61 visible=13..25`), or every row with an
+      offscreen flag.
+  13. *JSON from every command:* `click`, `type` and `key` return the
+      focused element or window afterwards.
+  14. *Pictures:* `look --crop x,y,w,h`, saving to a scratch folder by
+      default with the path printed, and hiding the pointer.
+  15. *Clearer errors:* `type` says which element got the text (it went
+      silently to a list); `invoke`'s focus error lists the windows.
+  16. *Skill doc:* prefer `wheel` for lists (until 2 is fixed); dropdowns
+      open relative to the current item; Find-style fields can be slow
+      to update; `windows` doesn't list popups (until 1 is fixed).
 - **Google Chrome works great in Tabula** (Ben; the browser work now,
   in place of NetPositive): many sites really need Chrome. When stock Google Chrome is downloaded and run, Tabula
   recognises it: Tabula window chrome (server-side decorations, or
@@ -235,6 +289,15 @@ as they land (with the commit), add new ones as they come up.
   and Passwords, brightness, keyboard backlight, power profiles and
   battery, suspend, and an x86_64 Chrome. Build and test x86_64 in CI or
   a VM before it arrives.
+  Done so far: `tools/setup.sh` (checks by capability, installs with dnf or
+  layers with rpm-ostree, Rust through rustup if it's too old, builds and
+  installs; `--check` reports only); `tools/dev/x86-check` (the whole
+  workspace type-checks for x86_64 from this Mac, clean); the GPU Tabula
+  draws with is the boot GPU (Intel on a hybrid ThinkPad;
+  `ANVIL_DRM_DEVICE` overrides); touch screens, keyboard backlights
+  (`*kbd_backlight`) and laptop panel brightness are already generic.
+  Waiting on the machine: NVIDIA for apps and external displays, HDR and
+  wide colour, VRR, the haptic touchpad, IR face sign-in.
 - ~~**Passwords settings in a new Security preferences panel**~~ (Preferences ▸ Security: sync automatically or only when asked, lock after idle, lock with the screen, clipboard clearing; Passwords follows them live; carried over from passwords.json; the panel and settings round trip tested headless, Passwords' side not yet run against them) (Ben):
   choose automatic sync with 1Password or sync only on demand, and how
   long Passwords waits before locking itself (or never). Preferences

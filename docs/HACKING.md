@@ -543,6 +543,12 @@ hands both to app_server, so clients never see the sockets disappear.
   replace an installed binary by writing over it (install to a temporary
   name and rename, as `tools/install-session.sh` does).
 
+On a fresh Fedora machine (x86_64 or aarch64, Workstation or atomic),
+`tools/setup.sh` installs what's missing, builds and installs; `--check`
+only reports. `tools/dev/x86-check` type-checks the workspace for x86_64
+from an aarch64 machine (x86 headers unpacked under ~/.cache; nothing
+installed).
+
 Install for the login screen with `tools/install-session.sh` (as
 yourself; it asks for sudo once). It builds release binaries into
 `~/.local/bin` (so upgrades need no root), icons into

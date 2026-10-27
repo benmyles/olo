@@ -1,0 +1,29 @@
+#!/bin/bash
+# Type-check the whole workspace for x86_64 on an aarch64 Fedora machine
+# (or the other way round is not needed: x86 machines build natively).
+# Rust's x86_64 standard library comes from rustup; C code in -sys crates
+# is compiled by clang against x86_64 glibc and kernel headers unpacked
+# from Fedora's packages into ~/.cache/tabula-dev/x86-sysroot (nothing is
+# installed system-wide). Nothing is linked: this catches code that only
+# builds on one architecture. Extra arguments go to cargo check.
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+CACHE=$HOME/.cache/tabula-dev
+ROOT=$CACHE/x86-sysroot
+I=$ROOT/usr/include
+rustup target list --installed | grep -qx x86_64-unknown-linux-gnu || rustup target add x86_64-unknown-linux-gnu
+if [ ! -e "$I/gnu/stubs-64.h" ] || [ ! -e "$I/asm/unistd_64.h" ]; then
+    mkdir -p "$ROOT/rpms"
+    (cd "$ROOT/rpms" && dnf download -q --forcearch=x86_64 glibc-devel kernel-headers)
+    for r in "$ROOT"/rpms/glibc-devel-*.x86_64.rpm "$ROOT"/rpms/kernel-headers-*.x86_64.rpm; do
+        (cd "$ROOT" && rpm2cpio "$r" | cpio -idm --quiet)
+    done
+fi
+V=$(ls /usr/include/c++/ | sort -V | tail -1)
+CXX_INC="-isystem /usr/include/c++/$V -isystem /usr/include/c++/$V/$(uname -m)-redhat-linux"
+export PKG_CONFIG_ALLOW_CROSS=1 CC_x86_64_unknown_linux_gnu=clang CXX_x86_64_unknown_linux_gnu=clang++
+export CFLAGS_x86_64_unknown_linux_gnu="--target=x86_64-linux-gnu -isystem $I"
+export CXXFLAGS_x86_64_unknown_linux_gnu="--target=x86_64-linux-gnu $CXX_INC -isystem $I"
+export BINDGEN_EXTRA_CLANG_ARGS_x86_64_unknown_linux_gnu="--target=x86_64-linux-gnu $CXX_INC -isystem $I"
+export CARGO_TARGET_DIR=$CACHE/x86-check
+exec cargo check --workspace --all-targets --target x86_64-unknown-linux-gnu "$@"
