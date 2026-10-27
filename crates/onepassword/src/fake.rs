@@ -70,6 +70,10 @@ pub struct FakeAccount {
     #[serde(default = "fake_uuid")]
     pub uuid: String,
     pub vaults: Vec<FakeVault>,
+    /// More accounts signed in to the same app (on the same socket, as
+    /// in 1Password), each answering to its own name or UUID.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub others: Vec<FakeAccount>,
 }
 
 /// Runs until dropped.
@@ -172,10 +176,16 @@ impl State {
     }
 
     fn answer(&self, request: Request) -> Result<Value, Value> {
-        let mut account = self.account.lock().unwrap_or_else(|e| e.into_inner());
-        if request.account_name != account.account && request.account_name != account.uuid {
-            return Err(error("Internal", format!("no account named '{}' is signed in", request.account_name)));
-        }
+        let mut root = self.account.lock().unwrap_or_else(|e| e.into_inner());
+        let named = |a: &FakeAccount| request.account_name == a.account || request.account_name == a.uuid;
+        let account = if named(&root) {
+            &mut *root
+        } else {
+            match root.others.iter_mut().find(|a| named(a)) {
+                Some(a) => a,
+                None => return Err(error("Internal", format!("no account named '{}' is signed in", request.account_name))),
+            }
+        };
         match request.kind.as_str() {
             "init_client" => Ok(json!(self.next_client.fetch_add(1, Ordering::Relaxed))),
             "release_client" => Ok(Value::Null),
@@ -186,9 +196,9 @@ impl State {
                 let invoke: Value = serde_json::from_slice(&request.payload).map_err(|e| error("Internal", e.to_string()))?;
                 let method = invoke["invocation"]["parameters"]["name"].as_str().unwrap_or_default().to_string();
                 let params = &invoke["invocation"]["parameters"]["parameters"];
-                let (result, changed) = invoke_method(&mut account, &method, params)?;
+                let (result, changed) = invoke_method(account, &method, params)?;
                 if changed && let Some(path) = &self.save {
-                    let _ = std::fs::write(path, serde_json::to_vec_pretty(&*account).unwrap_or_default());
+                    let _ = std::fs::write(path, serde_json::to_vec_pretty(&*root).unwrap_or_default());
                 }
                 Ok(result)
             }
@@ -518,5 +528,5 @@ pub fn sample(account: &str) -> FakeAccount {
     for p in [login("Streaming", "https://tv.example.org", "family@example.com", "Popcorn-Saturday-31"), server] {
         create(&mut vaults[1], p);
     }
-    FakeAccount { account: account.into(), uuid: UUID.into(), vaults }
+    FakeAccount { account: account.into(), uuid: UUID.into(), vaults, others: Vec::new() }
 }

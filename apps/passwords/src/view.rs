@@ -147,26 +147,32 @@ fn setup(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
     }
     let mut connect = false;
     let cancel_to = app.set_up();
-    let listed: Vec<onepassword::accounts::Account> = match &app.accounts {
+    // The app's accounts, then any synced now that it doesn't list.
+    let mut listed: Vec<onepassword::accounts::Account> = match &app.accounts {
         Accounts::Found(list) => list.clone(),
         _ => Vec::new(),
     };
+    for l in &app.settings.accounts {
+        if !listed.iter().any(|a| same(a, &l.id)) {
+            listed.push(onepassword::accounts::Account { uuid: l.id.clone(), name: l.label.clone(), email: String::new(), address: String::new() });
+        }
+    }
     let mut keep_local = false;
     let message = format!(
-        "Passwords keeps your items on this computer, encrypted, and can keep them in step with a 1Password account both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then {} the account.",
+        "Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then {} the accounts.",
         if listed.is_empty() { "name" } else { "choose" }
     );
     panel(ui, full, "passwords", "Sync with 1Password?", &message, |ui| {
         let p = style::palette(ui.ctx());
         for a in &listed {
-            let chosen = !app.other_account && app.account_field == a.uuid;
-            let r = ui.add(widgets::RadioButton::new(chosen, &a.name));
+            let mut on = app.chosen.iter().any(|c| same(a, c));
+            let r = ui.add(widgets::CheckBox::new(&mut on, &a.name));
             if r.clicked() {
-                app.other_account = false;
-                app.account_field = a.uuid.clone();
-            }
-            if r.double_clicked() {
-                connect = true;
+                if on {
+                    app.chosen.push(linked_id(app, a));
+                } else {
+                    app.chosen.retain(|c| !same(a, c));
+                }
             }
             let detail = [a.email.as_str(), a.address.as_str()].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join(" · ");
             if !detail.is_empty() {
@@ -175,61 +181,81 @@ fn setup(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
                 ui.painter().galley(pos2(rect.left() + 21.0, rect.top() - m::SPACING * 0.75), g, style::disabled_text(&p));
             }
         }
-        if !listed.is_empty() && ui.add(widgets::RadioButton::new(app.other_account, "Another account")).clicked() && !app.other_account {
-            app.other_account = true;
-            app.account_field.clear();
+        if !listed.is_empty() {
+            let mut on = app.other_account;
+            if ui.add(widgets::CheckBox::new(&mut on, "Another account")).clicked() {
+                app.other_account = on;
+            }
         }
         if listed.is_empty() || app.other_account {
             let field = ui.add(TextControl::new(&mut app.account_field).label("Account:").divider(70.0).hint("as in 1Password's sidebar, or its UUID"));
             if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 connect = true;
             }
-            if !field.has_focus() && app.account_field.is_empty() {
+            if !field.has_focus() && app.account_field.is_empty() && app.chosen.is_empty() {
                 field.request_focus();
             }
         } else if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             connect = true;
         }
+        let any = !app.chosen.is_empty() || ((listed.is_empty() || app.other_account) && !app.account_field.trim().is_empty());
         buttons(ui, |ui| {
-            let ok = ui.add_enabled(!app.account_field.trim().is_empty(), Button::new("Sync").default(true));
+            let ok = ui.add_enabled(any, Button::new("Sync").default(true));
             if ok.clicked() {
                 connect = true;
             }
-            if ui.add(Button::new("Keep Only on This Computer")).clicked() {
+            if !cancel_to && ui.add(Button::new("Keep Only on This Computer")).clicked() {
                 keep_local = true;
             }
             if cancel_to && ui.add(Button::new("Cancel")).clicked() {
-                app.account_field = app.settings.account.clone().unwrap_or_default();
                 app.conn = if app.vaults.is_empty() { Conn::Connecting } else { Conn::Ready };
                 if app.vaults.is_empty() {
                     app.connect(cx);
                 }
             }
         });
+        if !any && cancel_to {
+            let g = ui.painter().layout(
+                "With no account chosen, Passwords keeps its items only on this computer.".into(),
+                style::small_font(),
+                style::disabled_text(&p),
+                ui.available_width(),
+            );
+            let (r, _) = ui.allocate_exact_size(g.size(), Sense::hover());
+            ui.painter().galley(r.min, g, style::disabled_text(&p));
+        }
     });
     if keep_local {
         app.keep_local(cx);
         return;
     }
-    if connect && !app.account_field.trim().is_empty() {
-        let account = app.account_field.trim().to_string();
-        if app.settings.account.as_deref() != Some(&account) {
-            app.vaults.clear();
-            app.items.clear();
-            app.details.clear();
-            app.selected = None;
-            app.source = Source::All;
+    if connect {
+        let mut chosen: Vec<crate::Linked> = listed
+            .iter()
+            .filter(|a| app.chosen.iter().any(|c| same(a, c)))
+            .map(|a| crate::Linked { id: linked_id(app, a), label: a.name.clone() })
+            .collect();
+        let typed = app.account_field.trim().to_string();
+        if (listed.is_empty() || app.other_account) && !typed.is_empty() && !chosen.iter().any(|c| c.id == typed) {
+            chosen.push(crate::Linked { id: typed.clone(), label: typed });
         }
-        app.settings.account_label = listed.iter().find(|a| a.uuid == account).map(|a| a.name.clone());
-        app.settings.account = Some(account);
-        app.settings.local_only = false;
-        app.sync = None;
-        app.save_settings();
-        // Sync at once, and its changes open for review.
-        app.show_review = true;
-        app.sync_asked = None;
-        app.connect(cx);
+        if chosen.is_empty() && !cancel_to {
+            return;
+        }
+        app.choose_accounts(cx, chosen);
     }
+}
+
+/// Whether `id` (a UUID, or a name typed by hand) is the account `a`.
+fn same(a: &onepassword::accounts::Account, id: &str) -> bool {
+    a.uuid == id || a.name == id
+}
+
+/// The id to sync `a` by: the one already in use for it (an account once
+/// named by hand keeps its name, which its synced vaults are kept under),
+/// else its UUID.
+fn linked_id(app: &Passwords, a: &onepassword::accounts::Account) -> String {
+    app.settings.accounts.iter().find(|l| same(a, &l.id)).map_or_else(|| a.uuid.clone(), |l| l.id.clone())
 }
 
 /// "just now", "5 minutes ago", "at 14:05".
@@ -412,9 +438,24 @@ fn sources_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
     let active = |i: &&ItemOverview| i.state == ItemState::Active;
     let mut rows: Vec<(Option<Source>, String, &str, usize)> = Vec::new();
     rows.push((Some(Source::All), "All Items".into(), "passwords", app.items.iter().filter(active).count()));
-    if !app.vaults.is_empty() {
-        rows.push((None, "Vaults".into(), "", 0));
-        for v in &app.vaults {
+    // With several accounts, each account's vaults under its name (as
+    // Tracker lists volumes), then any kept only here.
+    let mut groups: Vec<(String, Vec<&onepassword::VaultOverview>)> = Vec::new();
+    if app.settings.accounts.len() > 1 {
+        for l in &app.settings.accounts {
+            let vaults: Vec<_> = app.vaults.iter().filter(|v| app.vault_accounts.get(&v.id) == Some(&l.id)).collect();
+            groups.push((l.label.clone(), vaults));
+        }
+        let here: Vec<_> = app.vaults.iter().filter(|v| !app.vault_accounts.contains_key(&v.id)).collect();
+        if !here.is_empty() {
+            groups.push(("On This Computer".into(), here));
+        }
+    } else if !app.vaults.is_empty() {
+        groups.push(("Vaults".into(), app.vaults.iter().collect()));
+    }
+    for (heading, vaults) in groups.into_iter().filter(|(_, v)| !v.is_empty()) {
+        rows.push((None, heading, "", 0));
+        for v in vaults {
             let n = app.items.iter().filter(active).filter(|i| i.vault_id == v.id).count();
             rows.push((Some(Source::Vault(v.id.clone())), v.title.clone(), "vault", n));
         }
@@ -614,7 +655,7 @@ fn detail_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
     let mut child = child(ui, inner);
 
     if app.editor.is_some() {
-        let vaults = app.vaults.clone();
+        let vaults: Vec<_> = app.vaults.iter().map(|v| onepassword::VaultOverview { title: app.vault_name(v), ..v.clone() }).collect();
         let mut action = None;
         ScrollView::new("passwords-editor").border(false).auto_hide(true).show(&mut child, |ui| {
             let mut content = ui.new_child(
@@ -651,7 +692,7 @@ fn detail_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
             Some(e) => (format!("Couldn’t open this item: {e}"), style::c(p.failure)),
             None => ("Loading…".to_string(), dim(&p)),
         };
-        header(&mut child, &overview.title, overview.category, app.vault_title(&overview.vault_id));
+        header(&mut child, &overview.title, overview.category, &app.vault_title(&overview.vault_id));
         let g = child.painter().layout(text, style::plain_font(), color, inner.width() - 2.0 * m::WINDOW_INSET);
         child.painter().galley(pos2(inner.left() + m::WINDOW_INSET, inner.top() + 96.0), g, color);
         return;

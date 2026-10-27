@@ -7,7 +7,11 @@
 //! recorded. A reconnect starts a new generation; replies from an older
 //! one are dropped.
 
-use std::{collections::VecDeque, sync::mpsc, thread};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::mpsc,
+    thread,
+};
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use chrono::{DateTime, Utc};
@@ -34,9 +38,13 @@ pub enum Job {
     /// Answer another app (NetPositive): `candidates` are the logins
     /// saved for its page; `vault` is where a new one goes.
     Keychain { incoming: Box<Incoming>, candidates: Vec<(String, String)>, vault: String },
-    /// Work out what syncing with this 1Password account would change
+    /// Work out what syncing with these 1Password accounts (id, name;
+    /// the first takes items made here) would change, as one review
     /// (unless a sync is running).
-    Sync { account: String },
+    Sync { accounts: Vec<(String, String)> },
+    /// Stop syncing with an account: its items go from here (never
+    /// anything in 1Password).
+    RemoveAccount { account: String },
     /// The plan worked out (sent by its thread).
     Planned(Result<Plan, String>),
     /// Make the changes of the plan the person reviewed.
@@ -64,7 +72,8 @@ pub enum SyncState {
 pub enum Reply {
     Connected,
     Failed(String),
-    Vaults(Vec<VaultOverview>),
+    /// The vaults, and which account each synced one is in.
+    Vaults { vaults: Vec<VaultOverview>, accounts: HashMap<String, String> },
     Items { vault: String, items: Vec<ItemOverview> },
     /// A refresh finished.
     Loaded,
@@ -134,7 +143,7 @@ impl Store {
 
 fn refresh(v: &Vault, reply: &impl Fn(Reply)) {
     let vaults = v.vaults();
-    reply(Reply::Vaults(vaults.clone()));
+    reply(Reply::Vaults { vaults: vaults.clone(), accounts: v.data.vault_account.clone() });
     for vault in vaults {
         reply(Reply::Items { items: v.items(&vault.id), vault: vault.id });
     }
@@ -280,21 +289,46 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
         let Some(v) = vault.as_mut() else { continue };
         match job {
             Job::Open | Job::Close | Job::SyncDone(_) | Job::Planned(_) | Job::Reset => unreachable!(),
-            Job::Sync { account } => {
+            Job::Sync { accounts } => {
                 if syncing {
                     continue;
                 }
                 syncing = true;
                 waiting = None;
                 reply(Reply::Sync(SyncState::Running));
-                let snap = v.snapshot(&account);
+                let several = accounts.len() > 1;
+                let snaps: Vec<_> = accounts
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (account, label))| {
+                        let mut snap = v.snapshot(account, i == 0);
+                        if several {
+                            snap.label = label.clone();
+                        }
+                        snap
+                    })
+                    .collect();
                 let back = back.clone();
                 thread::Builder::new()
                     .name("onepassword-plan".into())
                     .spawn(move || {
-                        let _ = back.send((gen_of_job, Job::Planned(sync::plan(&snap, &socket()))));
+                        let _ = back.send((gen_of_job, Job::Planned(sync::plan(&snaps, &socket()))));
                     })
                     .expect("thread");
+            }
+            Job::RemoveAccount { account } => {
+                // A sync in flight would bring it back.
+                if syncing {
+                    reply(Reply::Error("Wait for the sync to finish, then remove the account.".into()));
+                    continue;
+                }
+                if waiting.take().is_some() {
+                    reply(Reply::Sync(SyncState::Declined { pending: v.pending() }));
+                }
+                match v.remove_account(&account) {
+                    Ok(()) => refresh(v, &reply),
+                    Err(e) => reply(Reply::Error(format!("Couldn’t remove the account: {}", describe(&e)))),
+                }
             }
             Job::Approve { plan } => {
                 // Only the plan that was shown.

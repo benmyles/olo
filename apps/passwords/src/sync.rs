@@ -154,10 +154,18 @@ pub fn reason(e: &onepassword::Error) -> String {
 pub struct Plan {
     /// Set by the store, so an approval is for the plan that was shown.
     pub id: u64,
-    pub account: String,
     pub rows: Vec<Row>,
     /// Problems reading 1Password; what was read is still in the plan.
     pub problems: Vec<Problem>,
+    parts: Vec<Part>,
+}
+
+/// One account's share of a plan.
+struct Part {
+    account: String,
+    label: String,
+    rows: Vec<Row>,
+    problems: Vec<Problem>,
     down: Vec<Change>,
     up: Vec<Up>,
     /// Vault names by id, for problems found while applying.
@@ -247,26 +255,53 @@ fn changed(parts: &[String]) -> String {
     text
 }
 
-/// Work out what syncing `snap` with its account through the 1Password
-/// app's `socket` would change. Reads only. Err: 1Password couldn't be
-/// reached at all.
-pub fn plan(snap: &Snapshot, socket: &str) -> Result<Plan, String> {
-    let c = client(&snap.account, socket)?;
-    let vaults = c.vaults().list(None).map_err(|e| describe(&e))?;
-    let mut p = Plan { id: 0, account: snap.account.clone(), rows: Vec::new(), problems: Vec::new(), down: Vec::new(), up: Vec::new(), titles: HashMap::new() };
-    let title_of = |id: &str| -> String {
-        vaults.iter().chain(&snap.vaults).find(|v| v.id == id).map(|v| v.title.clone()).unwrap_or_default()
-    };
-    let row = |here, what, item: &Item, detail: String| Row { here, what, title: item.title.clone(), category: item.category, vault: title_of(&item.vault_id), detail };
-
-    if snap.switching {
-        p.down.push(Change::Account(snap.account.clone()));
-        for e in &snap.dropped {
-            p.rows.push(row(true, What::Delete, &e.item, "From the 1Password account synced before".into()));
+/// Work out what syncing each account (a snapshot each, the first
+/// account first) through the 1Password app's `socket` would change, as
+/// one plan. Reads only. An account that can't be reached is a problem;
+/// Err: none could be.
+pub fn plan(snaps: &[Snapshot], socket: &str) -> Result<Plan, String> {
+    let mut plan = Plan { id: 0, rows: Vec::new(), problems: Vec::new(), parts: Vec::new() };
+    let mut failed = None;
+    for snap in snaps {
+        match plan_account(snap, socket) {
+            Ok(mut part) => {
+                plan.rows.append(&mut part.rows);
+                plan.problems.append(&mut part.problems);
+                plan.parts.push(part);
+            }
+            Err(message) => {
+                let name = if snap.label.is_empty() { snap.account.clone() } else { snap.label.clone() };
+                plan.problems.push(Problem::error(&format!("{name} (account)"), None, format!("Couldn’t sync this account. {message}")));
+                failed.get_or_insert(message);
+            }
         }
     }
-    p.titles = vaults.iter().chain(&snap.vaults).map(|v| (v.id.clone(), v.title.clone())).collect();
-    p.down.push(Change::Vaults(vaults.clone()));
+    match failed {
+        Some(message) if plan.parts.is_empty() => Err(message),
+        _ => Ok(plan),
+    }
+}
+
+/// [`plan`] for one account.
+fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
+    let c = client(&snap.account, socket)?;
+    let vaults = c.vaults().list(None).map_err(|e| describe(&e))?;
+    let mut p = Part {
+        account: snap.account.clone(),
+        label: snap.label.clone(),
+        rows: Vec::new(),
+        problems: Vec::new(),
+        down: Vec::new(),
+        up: Vec::new(),
+        titles: HashMap::new(),
+    };
+    // With several accounts, a vault is named with its account's.
+    let name = |v: &onepassword::VaultOverview| if snap.label.is_empty() { v.title.clone() } else { format!("{} ({})", v.title, snap.label) };
+    let title_of = |id: &str| -> String { vaults.iter().chain(&snap.vaults).find(|v| v.id == id).map(name).unwrap_or_default() };
+    let row = |here, what, item: &Item, detail: String| Row { here, what, title: item.title.clone(), category: item.category, vault: title_of(&item.vault_id), detail };
+
+    p.titles = vaults.iter().chain(&snap.vaults).map(|v| (v.id.clone(), name(v))).collect();
+    p.down.push(Change::Vaults { account: snap.account.clone(), vaults: vaults.clone(), home: snap.home });
     let home = Vault::default_vault(&vaults).map(|v| v.id.clone());
     let known: HashSet<&str> = vaults.iter().map(|v| v.id.as_str()).collect();
     // Synced items whose vault is gone from 1Password go with it.
@@ -289,7 +324,7 @@ pub fn plan(snap: &Snapshot, socket: &str) -> Result<Plan, String> {
         let list = match c.items().list(&v.id, &all) {
             Ok(l) => l,
             Err(e) => {
-                p.problems.push(Problem::error(&v.title, None, format!("Couldn’t list its items. {}", reason(&e))));
+                p.problems.push(Problem::error(&title_of(&v.id), None, format!("Couldn’t list its items. {}", reason(&e))));
                 continue;
             }
         };
@@ -317,7 +352,7 @@ pub fn plan(snap: &Snapshot, socket: &str) -> Result<Plan, String> {
                 }
                 (Some(e), Some(seen)) if seen.state != ItemState::Archived => {
                     p.problems.push(Problem::error(
-                        &v.title,
+                        &title_of(&v.id),
                         Some(&e.item.title),
                         "Archived in 1Password but changed here, so yours wasn’t sent. Restore it in 1Password to sync it.",
                     ));
@@ -329,7 +364,7 @@ pub fn plan(snap: &Snapshot, socket: &str) -> Result<Plan, String> {
         if left_out > 0 {
             let n = if left_out == 1 { "1 archived item isn’t".to_string() } else { format!("{left_out} archived items aren’t") };
             p.problems.push(Problem {
-                vault: v.title.clone(),
+                vault: title_of(&v.id),
                 item: None,
                 reason: format!("{n} copied: 1Password doesn’t let other apps read its archive."),
                 note: true,
@@ -353,7 +388,7 @@ pub fn plan(snap: &Snapshot, socket: &str) -> Result<Plan, String> {
                     Err(e) => {
                         whole = false;
                         let title = titles.get(id.as_str()).copied().unwrap_or("An item");
-                        p.problems.push(Problem::error(&v.title, Some(title), reason(&e)));
+                        p.problems.push(Problem::error(&title_of(&v.id), Some(title), reason(&e)));
                     }
                 }
             }
@@ -481,64 +516,76 @@ pub fn plan(snap: &Snapshot, socket: &str) -> Result<Plan, String> {
 }
 
 /// Make the changes in `plan` (approved): returns what the store is to
-/// record. Err: 1Password couldn't be reached at all (nothing changes).
+/// record. An account that can't be reached now is a problem (what was
+/// read from it still applies).
 pub fn apply(plan: Plan, socket: &str) -> Result<Report, String> {
-    let c = client(&plan.account, socket)?;
-    let mut r = Report { received: plan.rows.iter().filter(|r| r.here).count(), ..Default::default() };
-    r.changes = plan.down;
-    r.problems = plan.problems;
-    let titles = plan.titles;
-    let title_of = |id: &str| titles.get(id).cloned().unwrap_or_default();
-    for up in plan.up {
-        match up {
-            Up::Send { local_id, rev, item, vault, seen, archive } => {
-                let sent = match &seen {
-                    None => c.items().create(&params(&item, &vault)),
-                    Some(seen) => {
-                        let mut item = (*item).clone();
-                        item.version = seen.version;
-                        c.items().put(&item)
-                    }
-                };
-                let sent = match sent {
-                    Ok(i) => i,
-                    Err(err) if seen.is_some() => {
-                        tracing::info!("sync: put refused: {err}");
-                        r.problems.push(Problem::error(&title_of(&vault), Some(&item.title), "Changed in 1Password after you reviewed it, so yours wasn’t sent. Sync again to review it."));
-                        continue;
-                    }
-                    Err(err) => {
-                        r.problems.push(Problem::error(&title_of(&vault), Some(&item.title), format!("Couldn’t send it. {}", reason(&err))));
-                        continue;
-                    }
-                };
-                let mut state = ItemState::Active;
-                if archive {
-                    match c.items().archive(&sent.vault_id, &sent.id) {
-                        Ok(()) => state = ItemState::Archived,
-                        Err(err) => r.problems.push(Problem::error(&title_of(&vault), Some(&item.title), format!("Couldn’t archive it. {}", reason(&err)))),
-                    }
-                }
-                r.changes.push(Change::Pushed { local_id, rev, item: Box::new(sent), state });
-                r.sent += 1;
+    let mut r = Report { received: plan.rows.iter().filter(|r| r.here).count(), problems: plan.problems, ..Default::default() };
+    for part in plan.parts {
+        r.changes.extend(part.down);
+        if part.up.is_empty() {
+            continue;
+        }
+        let c = match client(&part.account, socket) {
+            Ok(c) => c,
+            Err(message) => {
+                let name = if part.label.is_empty() { part.account.clone() } else { part.label.clone() };
+                r.problems.push(Problem::error(&format!("{name} (account)"), None, format!("Couldn’t send this account’s changes. {message}")));
+                continue;
             }
-            Up::Delete { tomb, version, title } => {
-                match c.items().get(&tomb.vault, &tomb.id) {
-                    Ok(now) if now.version != version => {
-                        r.problems.push(Problem::error(&title_of(&tomb.vault), Some(&title), "Changed in 1Password after you reviewed it, so it wasn’t deleted there. Sync again to review it."));
-                        continue;
-                    }
-                    Ok(_) => {
-                        if let Err(err) = c.items().delete(&tomb.vault, &tomb.id) {
-                            r.problems.push(Problem::error(&title_of(&tomb.vault), Some(&title), format!("Couldn’t delete it in 1Password. {}", reason(&err))));
+        };
+        let titles = part.titles;
+        let title_of = |id: &str| titles.get(id).cloned().unwrap_or_default();
+        for up in part.up {
+            match up {
+                Up::Send { local_id, rev, item, vault, seen, archive } => {
+                    let sent = match &seen {
+                        None => c.items().create(&params(&item, &vault)),
+                        Some(seen) => {
+                            let mut item = (*item).clone();
+                            item.version = seen.version;
+                            c.items().put(&item)
+                        }
+                    };
+                    let sent = match sent {
+                        Ok(i) => i,
+                        Err(err) if seen.is_some() => {
+                            tracing::info!("sync: put refused: {err}");
+                            r.problems.push(Problem::error(&title_of(&vault), Some(&item.title), "Changed in 1Password after you reviewed it, so yours wasn’t sent. Sync again to review it."));
                             continue;
                         }
+                        Err(err) => {
+                            r.problems.push(Problem::error(&title_of(&vault), Some(&item.title), format!("Couldn’t send it. {}", reason(&err))));
+                            continue;
+                        }
+                    };
+                    let mut state = ItemState::Active;
+                    if archive {
+                        match c.items().archive(&sent.vault_id, &sent.id) {
+                            Ok(()) => state = ItemState::Archived,
+                            Err(err) => r.problems.push(Problem::error(&title_of(&vault), Some(&item.title), format!("Couldn’t archive it. {}", reason(&err)))),
+                        }
                     }
-                    // Gone already.
-                    Err(_) => {}
+                    r.changes.push(Change::Pushed { local_id, rev, item: Box::new(sent), state });
+                    r.sent += 1;
                 }
-                r.changes.push(Change::Buried(tomb));
-                r.sent += 1;
+                Up::Delete { tomb, version, title } => {
+                    match c.items().get(&tomb.vault, &tomb.id) {
+                        Ok(now) if now.version != version => {
+                            r.problems.push(Problem::error(&title_of(&tomb.vault), Some(&title), "Changed in 1Password after you reviewed it, so it wasn’t deleted there. Sync again to review it."));
+                            continue;
+                        }
+                        Ok(_) => {
+                            if let Err(err) = c.items().delete(&tomb.vault, &tomb.id) {
+                                r.problems.push(Problem::error(&title_of(&tomb.vault), Some(&title), format!("Couldn’t delete it in 1Password. {}", reason(&err))));
+                                continue;
+                            }
+                        }
+                        // Gone already.
+                        Err(_) => {}
+                    }
+                    r.changes.push(Change::Buried(tomb));
+                    r.sent += 1;
+                }
             }
         }
     }
@@ -592,8 +639,8 @@ mod tests {
         }
 
         fn plan(&self) -> super::Plan {
-            let snap = self.vault.snapshot(ACCOUNT);
-            let plan = super::plan(&snap, &self.socket).unwrap();
+            let snap = self.vault.snapshot(ACCOUNT, true);
+            let plan = super::plan(&[snap], &self.socket).unwrap();
             assert!(plan.problems.is_empty(), "{:?}", plan.problems);
             plan
         }
@@ -683,8 +730,8 @@ mod tests {
     #[test]
     fn an_unreachable_1password_changes_nothing() {
         let w = world("down");
-        let snap = w.vault.snapshot(ACCOUNT);
-        assert!(super::plan(&snap, "tabula-passwords-sync-nobody-here").is_err());
+        let snap = w.vault.snapshot(ACCOUNT, true);
+        assert!(super::plan(&[snap], "tabula-passwords-sync-nobody-here").is_err());
         assert!(w.vault.data.entries.is_empty());
     }
 
@@ -758,8 +805,8 @@ mod tests {
         }
         w.client.items().archive(&personal, &made[30].id).unwrap();
 
-        let snap = w.vault.snapshot(ACCOUNT);
-        let plan = super::plan(&snap, &w.socket).unwrap();
+        let snap = w.vault.snapshot(ACCOUNT, true);
+        let plan = super::plan(&[snap], &w.socket).unwrap();
         let problems: Vec<(&str, Option<&str>, bool)> = plan.problems.iter().map(|p| (p.vault.as_str(), p.item.as_deref(), p.note)).collect();
         assert_eq!(problems.len(), 2, "{:?}", plan.problems);
         assert!(problems.contains(&("Personal", None, true)), "{problems:?}");
@@ -772,8 +819,8 @@ mod tests {
 
         // Archived there after syncing: archived here too, from the list.
         w.client.items().archive(&personal, &made[5].id).unwrap();
-        let snap = w.vault.snapshot(ACCOUNT);
-        let plan = super::plan(&snap, &w.socket).unwrap();
+        let snap = w.vault.snapshot(ACCOUNT, true);
+        let plan = super::plan(&[snap], &w.socket).unwrap();
         let rows: Vec<(bool, What, &str)> = plan.rows.iter().map(|r| (r.here, r.what, r.title.as_str())).collect();
         assert_eq!(rows, vec![(true, What::Archive, "Note 05")]);
         let r = super::apply(plan, &w.socket).unwrap();
@@ -782,5 +829,60 @@ mod tests {
         // The note says how many were left out, and stays a note.
         let text = super::as_text(&super::grouped(r.problems));
         assert!(text.contains("Staging\n  "), "{text}");
+    }
+
+    /// Two accounts on one 1Password app: one review names each vault
+    /// with its account, items go back to their own account, and an
+    /// account that can't be reached is a problem, not a failure.
+    #[test]
+    fn several_accounts_in_one_review() {
+        let mut data = sample(ACCOUNT);
+        let mut work = sample("Work");
+        work.uuid = "TABULATESTACCOUNT000000002".into();
+        for v in &mut work.vaults {
+            v.vault.id = format!("w{}", &v.vault.id[1..]);
+            for i in &mut v.items {
+                i.vault_id = v.vault.id.clone();
+            }
+        }
+        data.others.push(work);
+        let mut w = world_with("several", data);
+        let snaps = |w: &World, accounts: &[(&str, &str)]| -> Vec<crate::vault::Snapshot> {
+            accounts
+                .iter()
+                .enumerate()
+                .map(|(i, (id, label))| {
+                    let mut s = w.vault.snapshot(id, i == 0);
+                    s.label = label.to_string();
+                    s
+                })
+                .collect()
+        };
+        let both = [(ACCOUNT, "Home"), ("Work", "Work")];
+        let plan = super::plan(&snaps(&w, &both), &w.socket).unwrap();
+        assert!(plan.problems.is_empty(), "{:?}", plan.problems);
+        assert!(plan.rows.iter().any(|r| r.vault == "Personal (Home)"));
+        assert!(plan.rows.iter().any(|r| r.vault == "Personal (Work)"));
+        let r = super::apply(plan, &w.socket).unwrap();
+        w.vault.apply(r.changes).unwrap();
+        let home = w.remote().len();
+        assert_eq!(w.vault.data.entries.len(), home * 2, "both accounts' items");
+        assert!(super::plan(&snaps(&w, &both), &w.socket).unwrap().rows.is_empty(), "nothing more");
+
+        // An edit to a Work item goes to Work, not to the first account.
+        let mut item = w.vault.data.entries.iter().find(|e| e.item.vault_id.starts_with('w') && e.item.title == "GitHub").unwrap().item.clone();
+        item.title = "GitHub at work".into();
+        w.vault.put(&item).unwrap();
+        let r = super::apply(super::plan(&snaps(&w, &both), &w.socket).unwrap(), &w.socket).unwrap();
+        assert!(r.problems.is_empty(), "{:?}", r.problems);
+        w.vault.apply(r.changes).unwrap();
+        let work = Client::builder().desktop_app_integration("Work").integration_info("test", "1").desktop_socket(&w.socket).build().unwrap();
+        assert_eq!(work.items().get(&item.vault_id, &item.id).unwrap().title, "GitHub at work");
+        assert!(!w.remote().iter().any(|(t, _)| t == "GitHub at work"), "not in the first account");
+
+        // One account unreachable: the rest still syncs.
+        let plan = super::plan(&snaps(&w, &[(ACCOUNT, "Home"), ("Nobody", "Club")]), &w.socket).unwrap();
+        assert_eq!(plan.problems.len(), 1);
+        assert_eq!(plan.problems[0].vault, "Club (account)");
     }
 }

@@ -13,7 +13,7 @@
 //! `TABULA_PASSWORDS_KEYFILE` keeps it in a file instead (tests).
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
@@ -92,16 +92,21 @@ pub struct Data {
     /// unchanged one needn't be listed again.
     pub synced: HashMap<String, u32>,
     pub last_sync: Option<DateTime<Utc>>,
-    /// The account this store syncs with; another account starts afresh.
-    pub account: Option<String>,
+    /// Which 1Password account each synced vault is in (vaults made here,
+    /// [`LOCAL`], are in none: their items go to the first account).
+    pub vault_account: HashMap<String, String>,
+    /// Before several accounts: the one account (read once, then moved
+    /// into `vault_account`).
+    account: Option<String>,
     next_rev: u64,
 }
 
 /// What a sync learned, applied with [`Vault::apply`].
 #[derive(Debug)]
 pub enum Change {
-    /// 1Password's vaults, all of them.
-    Vaults(Vec<VaultOverview>),
+    /// All of an account's vaults in 1Password. `home`: the first
+    /// account, where items made here go.
+    Vaults { account: String, vaults: Vec<VaultOverview>, home: bool },
     /// A vault was listed at this content version.
     Listed { vault: String, content_version: u32 },
     /// An item new or changed in 1Password.
@@ -116,24 +121,23 @@ pub enum Change {
     Pushed { local_id: String, rev: u64, item: Box<Item>, state: ItemState },
     /// A deletion reached 1Password.
     Buried(Tombstone),
-    /// Now syncing with this account: items from another one go (those
-    /// made here stay, in the local vault, to be sent).
-    Account(String),
 }
 
-/// What a sync starts from: a copy of the store's sync state.
+/// What a sync with one account starts from: a copy of the store's sync
+/// state for that account's vaults (and, for the first account, the
+/// items made here).
 pub struct Snapshot {
     pub account: String,
+    /// How the person knows the account, when there are several (it goes
+    /// after vault names); else "".
+    pub label: String,
+    /// The first account: items made here go to it.
+    pub home: bool,
     pub synced: HashMap<String, u32>,
-    /// As they will be once the sync is approved (after an account switch:
-    /// only the items made here, in the local vault).
     pub entries: Vec<Entry>,
     pub tombstones: Vec<Tombstone>,
+    /// Every vault known here, for names.
     pub vaults: Vec<VaultOverview>,
-    /// A different account from last time: the sync starts with
-    /// [`Change::Account`], and these, from the old account, go.
-    pub switching: bool,
-    pub dropped: Vec<Entry>,
 }
 
 pub struct Vault {
@@ -267,6 +271,13 @@ impl Vault {
             }
             None => Data { vaults: vec![local_vault()], ..Default::default() },
         };
+        let mut data = data;
+        // From when there was one account: its vaults are its.
+        if let Some(account) = data.account.take() {
+            for v in data.vaults.iter().filter(|v| !v.id.starts_with(LOCAL)) {
+                data.vault_account.entry(v.id.clone()).or_insert_with(|| account.clone());
+            }
+        }
         let v = Vault { key, file, data };
         if !v.file.exists() {
             v.save()?;
@@ -389,45 +400,47 @@ impl Vault {
         self.data.entries.iter().filter(|e| e.dirty).count() + self.data.tombstones.len()
     }
 
-    /// Start a sync with `account`. A different account than last time
-    /// starts afresh: what came from the old one goes, what was made here
-    /// stays and goes to the new one.
-    /// What a sync with `account` starts from. Changes nothing: switching
-    /// accounts happens when the sync is approved ([`Change::Account`]).
-    pub fn snapshot(&self, account: &str) -> Snapshot {
-        let switching = self.data.account.as_deref() != Some(account);
-        let (mut entries, mut dropped, mut tombstones, mut synced) =
-            (self.data.entries.clone(), Vec::new(), self.data.tombstones.clone(), self.data.synced.clone());
-        if switching {
-            synced.clear();
-            if self.data.account.is_some() {
-                (entries, dropped) = entries.into_iter().partition(|e| e.remote.is_none());
-                tombstones.clear();
-                for e in &mut entries {
-                    e.item.vault_id = local_vault().id;
-                }
-            }
-        }
-        Snapshot { account: account.to_string(), synced, entries, tombstones, vaults: self.data.vaults.clone(), switching, dropped }
+    /// Whether `vault` is synced with `account` (`home`: the first
+    /// account, which also takes the vaults made here).
+    fn ours(&self, vault: &str, account: &str, home: bool) -> bool {
+        self.data.vault_account.get(vault).map_or(home, |a| a == account)
     }
 
-    fn switch_account(&mut self, account: String) {
-        if self.data.account.as_deref() == Some(&account) {
-            return;
+    /// What a sync with `account` starts from. Changes nothing.
+    pub fn snapshot(&self, account: &str, home: bool) -> Snapshot {
+        let ours = |vault: &str| self.ours(vault, account, home);
+        Snapshot {
+            account: account.to_string(),
+            label: String::new(),
+            home,
+            synced: self.data.synced.iter().filter(|(v, _)| ours(v)).map(|(v, n)| (v.clone(), *n)).collect(),
+            entries: self.data.entries.iter().filter(|e| ours(&e.item.vault_id)).cloned().collect(),
+            tombstones: self.data.tombstones.iter().filter(|t| ours(&t.vault)).cloned().collect(),
+            vaults: self.data.vaults.clone(),
         }
-        if self.data.account.is_some() {
-            self.data.entries.retain(|e| e.remote.is_none());
-            self.data.tombstones.clear();
-            self.data.vaults.retain(|v| v.id.starts_with(LOCAL));
-            if self.data.vaults.is_empty() {
-                self.data.vaults.push(local_vault());
-            }
-            for e in &mut self.data.entries {
-                e.item.vault_id = local_vault().id;
-            }
+    }
+
+    /// Stop syncing with `account`: its vaults and their items go from
+    /// here (items made here and never sent stay, in the local vault, to
+    /// go to the first account). Nothing changes in 1Password.
+    pub fn remove_account(&mut self, account: &str) -> Result<()> {
+        let gone: HashSet<String> = self.data.vault_account.iter().filter(|(_, a)| *a == account).map(|(v, _)| v.clone()).collect();
+        self.data.entries.retain(|e| !gone.contains(&e.item.vault_id) || e.remote.is_none());
+        let local = local_vault();
+        let mut kept = false;
+        for e in self.data.entries.iter_mut().filter(|e| gone.contains(&e.item.vault_id)) {
+            e.item.vault_id = local.id.clone();
+            e.dirty = true;
+            kept = true;
         }
-        self.data.synced.clear();
-        self.data.account = Some(account);
+        self.data.tombstones.retain(|t| !gone.contains(&t.vault));
+        self.data.synced.retain(|v, _| !gone.contains(v));
+        self.data.vaults.retain(|v| !gone.contains(&v.id));
+        self.data.vault_account.retain(|_, a| a != account);
+        if (kept || self.data.vaults.is_empty()) && !self.data.vaults.iter().any(|v| v.id == local.id) {
+            self.data.vaults.push(local);
+        }
+        self.save()
     }
 
     /// Erase everything kept here (items, pending changes, which account
@@ -443,7 +456,7 @@ impl Vault {
         let mut renamed = Vec::new();
         for change in changes {
             match change {
-                Change::Vaults(remote) => self.apply_vaults(remote),
+                Change::Vaults { account, vaults, home } => self.apply_vaults(account, vaults, home),
                 Change::Listed { vault, content_version } => {
                     self.data.synced.insert(vault, content_version);
                 }
@@ -494,7 +507,6 @@ impl Vault {
                     }
                 }
                 Change::Buried(t) => self.data.tombstones.retain(|x| *x != t),
-                Change::Account(account) => self.switch_account(account),
             }
         }
         self.data.last_sync = Some(Utc::now());
@@ -512,22 +524,29 @@ impl Vault {
             .or(vaults.first())
     }
 
-    fn apply_vaults(&mut self, remote: Vec<VaultOverview>) {
-        let Some(home) = Self::default_vault(&remote).map(|v| v.id.clone()) else { return };
-        let known: Vec<&str> = remote.iter().map(|v| v.id.as_str()).collect();
-        // Items in vaults 1Password doesn't have (made here, or a vault
-        // gone there): synced ones go with their vault; changed or new
-        // ones move to the default vault, to be sent.
-        self.data.entries.retain(|e| known.contains(&e.item.vault_id.as_str()) || e.remote.is_none() || e.dirty);
-        for e in &mut self.data.entries {
-            if !known.contains(&e.item.vault_id.as_str()) {
-                e.item.vault_id = home.clone();
-                e.remote = None;
-                e.dirty = true;
-            }
+    fn apply_vaults(&mut self, account: String, remote: Vec<VaultOverview>, home: bool) {
+        let Some(home_vault) = Self::default_vault(&remote).map(|v| v.id.clone()) else { return };
+        let known: HashSet<&str> = remote.iter().map(|v| v.id.as_str()).collect();
+        let map = self.data.vault_account.clone();
+        let ours = |vault: &str| map.get(vault).map_or(home, |a| *a == account);
+        // This account's items in vaults 1Password doesn't have (made
+        // here, or a vault gone there): synced ones go with their vault;
+        // changed or new ones move to its default vault, to be sent.
+        let stray = |vault: &str| ours(vault) && !known.contains(vault);
+        self.data.entries.retain(|e| !stray(&e.item.vault_id) || e.remote.is_none() || e.dirty);
+        for e in self.data.entries.iter_mut().filter(|e| stray(&e.item.vault_id)) {
+            e.item.vault_id = home_vault.clone();
+            e.remote = None;
+            e.dirty = true;
         }
-        self.data.synced.retain(|id, _| known.contains(&id.as_str()));
-        self.data.vaults = remote;
+        self.data.synced.retain(|id, _| !ours(id) || known.contains(id.as_str()));
+        // This account's vaults, as 1Password has them, after the others.
+        self.data.vaults.retain(|v| !ours(&v.id));
+        self.data.vault_account.retain(|_, a| *a != account);
+        for v in &remote {
+            self.data.vault_account.insert(v.id.clone(), account.clone());
+        }
+        self.data.vaults.extend(remote);
     }
 
     fn apply_fetched(&mut self, item: Item, state: ItemState) {
@@ -639,10 +658,10 @@ mod tests {
     fn local_items_move_to_1password_and_conflicts_are_kept() {
         let (mut v, _) = fresh("sync");
         let mine = login(&mut v, "Mine");
-        let snap = v.snapshot("acct");
+        let snap = v.snapshot("acct", true);
         assert_eq!(snap.entries.len(), 1);
         // 1Password has a vault: the local one's item moves there.
-        v.apply(vec![Change::Vaults(vec![remote_vault("v1")])]).unwrap();
+        v.apply(vec![Change::Vaults { account: "acct".into(), vaults: vec![remote_vault("v1")], home: true }]).unwrap();
         assert_eq!(v.get("", &mine.id).unwrap().vault_id, "v1");
         assert!(v.data.entries[0].dirty && v.data.entries[0].remote.is_none());
         // Sent, and 1Password gave it its own id.
@@ -674,8 +693,8 @@ mod tests {
     #[test]
     fn a_push_racing_an_edit_keeps_the_edit() {
         let (mut v, _) = fresh("race");
-        v.snapshot("acct");
-        v.apply(vec![Change::Vaults(vec![remote_vault("v1")])]).unwrap();
+        v.snapshot("acct", true);
+        v.apply(vec![Change::Vaults { account: "acct".into(), vaults: vec![remote_vault("v1")], home: true }]).unwrap();
         let mine = login(&mut v, "Mine");
         let rev = v.data.entries[0].rev;
         let mut edited = mine.clone();
@@ -693,9 +712,9 @@ mod tests {
     #[test]
     fn gone_there_goes_here_unless_changed() {
         let (mut v, _) = fresh("gone");
-        v.snapshot("acct");
+        v.snapshot("acct", true);
         v.apply(vec![
-            Change::Vaults(vec![remote_vault("v1")]),
+            Change::Vaults { account: "acct".into(), vaults: vec![remote_vault("v1")], home: true },
             Change::Fetched { item: Box::new(theirs("a", 3)), state: ItemState::Active },
             Change::Fetched { item: Box::new(theirs("b", 3)), state: ItemState::Active },
         ])
@@ -710,25 +729,56 @@ mod tests {
     }
 
     #[test]
-    fn another_account_starts_afresh_but_keeps_local_items() {
-        let (mut v, _) = fresh("account");
-        v.snapshot("one");
-        v.apply(vec![Change::Vaults(vec![remote_vault("v1")]), Change::Fetched { item: Box::new(theirs("a", 1)), state: ItemState::Active }])
-            .unwrap();
-        v.apply(vec![Change::Account("one".into())]).unwrap();
+    fn several_accounts_keep_to_their_own_vaults() {
+        let (mut v, _) = fresh("accounts");
         let mine = login(&mut v, "Mine");
-        let snap = v.snapshot("two");
-        assert_eq!(snap.entries.len(), 1);
-        assert_eq!(snap.entries[0].item.id, mine.id);
-        assert!(snap.switching && snap.dropped.len() == 1);
-        // Nothing changes until the sync is approved.
+        let vaults = |account: &str, ids: &[&str], home| Change::Vaults { account: account.into(), vaults: ids.iter().map(|id| remote_vault(id)).collect(), home };
+        let fetched = |id: &str, vault: &str| {
+            let mut item = theirs(id, 1);
+            item.vault_id = vault.into();
+            Change::Fetched { item: Box::new(item), state: ItemState::Active }
+        };
+        // Only the first account takes items made here.
+        assert!(v.snapshot("two", false).entries.is_empty());
+        assert_eq!(v.snapshot("one", true).entries.len(), 1);
+        v.apply(vec![vaults("one", &["v1"], true), fetched("a", "v1"), vaults("two", &["w1", "w2"], false), fetched("b", "w1")]).unwrap();
+        assert_eq!(v.get("", &mine.id).unwrap().vault_id, "v1");
+        assert_eq!(v.data.vaults.iter().map(|v| v.id.as_str()).collect::<Vec<_>>(), ["v1", "w1", "w2"]);
+        // Each account's snapshot holds only its vaults' items, so one
+        // account never sees another's vaults as gone.
+        let one: Vec<String> = v.snapshot("one", true).entries.iter().map(|e| e.item.id.clone()).collect();
+        let two: Vec<String> = v.snapshot("two", false).entries.iter().map(|e| e.item.id.clone()).collect();
+        assert!(one.contains(&"a".to_string()) && !one.contains(&"b".to_string()));
+        assert_eq!(two, ["b"]);
+        // A vault gone from one account takes only its items.
+        v.apply(vec![vaults("two", &["w2"], false)]).unwrap();
+        assert!(v.get("", "b").is_err() && v.get("", "a").is_ok());
+        // Removing an account: its items go, an unsent one stays here.
+        v.apply(vec![fetched("c", "w2")]).unwrap();
+        let mut p = ItemCreateParams::new(onepassword::ItemCategory::Login, "w2", "Unsent");
+        p.fields = vec![];
+        let unsent = v.create(&p).unwrap();
+        v.remove_account("two").unwrap();
+        assert!(v.get("", "c").is_err());
+        assert_eq!(v.get("", &unsent.id).unwrap().vault_id, local_vault().id);
         assert!(v.get("", "a").is_ok());
-        v.apply(vec![Change::Account("two".into())]).unwrap();
-        assert!(v.data.synced.is_empty());
-        assert!(v.get("", "a").is_err());
-        assert!(v.get("", &mine.id).is_ok());
+        assert!(!v.data.vault_account.values().any(|a| a == "two"));
         // A reset leaves nothing.
         v.reset().unwrap();
-        assert!(v.data.entries.is_empty() && v.data.account.is_none() && v.data.tombstones.is_empty());
+        assert!(v.data.entries.is_empty() && v.data.vault_account.is_empty() && v.data.tombstones.is_empty());
+    }
+
+    /// A store from when there was one account takes it for its vaults.
+    #[test]
+    fn one_account_stores_carry_over() {
+        let (mut v, dir) = fresh("legacy");
+        v.data.vaults.push(remote_vault("v1"));
+        v.data.account = Some("old".into());
+        v.save().unwrap();
+        let file = v.file.clone();
+        drop(v);
+        let v = Vault::open_at(file, Some(&dir.join("key"))).unwrap();
+        assert_eq!(v.data.vault_account.get("v1").map(String::as_str), Some("old"));
+        assert!(!v.data.vault_account.contains_key(&local_vault().id));
     }
 }

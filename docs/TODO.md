@@ -120,7 +120,18 @@ as they land (with the commit), add new ones as they come up.
   wall of red text.
 - **Quick Look / Viewer: basic image editing** (Ben): crop, resize,
   rotate and flip images, then Save / Save As (as the PDF tools do).
-- **Passwords: sync with several 1Password accounts** (Ben): setup now
+- **NetPositive: app.fastmail.com never finishes loading** (Ben): it
+  stays stuck loading. Find what it waits for (a script, worker, storage
+  or network feature Servo lacks or we don't provide) and fix it.
+- **Google Chrome works great in Tabula** (Ben): many sites really need
+  Chrome. When stock Google Chrome is downloaded and run, Tabula
+  recognises it: Tabula window chrome (server-side decorations, or
+  whatever it takes: flags, policies, runtime patches), light/dark
+  following the desktop, and Tabula Passwords filling and saving logins
+  in it seamlessly (e.g. a native-messaging host plus an extension
+  installed by policy, speaking the keychain protocol). Ugly hacks are
+  fine as long as it is reliable.
+- ~~**Passwords: sync with several 1Password accounts**~~ (ticked in File ▸ 1Password Accounts…, one review, the sidebar grouped by account) (Ben): setup now
   makes you pick one account; Passwords should sync with every account
   the 1Password app has signed in (each account's vaults shown under it,
   items keeping which account and vault they belong to, per-account sync

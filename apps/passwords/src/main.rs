@@ -34,15 +34,27 @@ use crate::{
 
 const APP_ID: &str = "tabula.passwords";
 
+/// A 1Password account Passwords syncs with.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Linked {
+    /// Its UUID (or its name in 1Password's sidebar, if typed).
+    pub id: String,
+    /// How to name it to the person.
+    pub label: String,
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
-    /// The 1Password account to sync with: its UUID (or its name in
-    /// 1Password's sidebar). None: no syncing.
-    account: Option<String>,
+    /// The 1Password accounts to sync with; the first takes items made
+    /// here. None: no syncing.
+    accounts: Vec<Linked>,
     /// Chosen to keep items only on this computer.
     local_only: bool,
-    /// How to name it to the user.
+    /// From when there was one account (read once into `accounts`).
+    #[serde(skip_serializing)]
+    account: Option<String>,
+    #[serde(skip_serializing)]
     account_label: Option<String>,
     /// Lock after this long without use (0: only when asked).
     lock_minutes: u32,
@@ -54,7 +66,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { account: None, local_only: false, account_label: None, lock_minutes: 10, clear_seconds: 90, generator: Default::default(), size: None }
+        Settings { accounts: Vec::new(), local_only: false, account: None, account_label: None, lock_minutes: 10, clear_seconds: 90, generator: Default::default(), size: None }
     }
 }
 
@@ -82,6 +94,8 @@ pub enum Conn {
 
 enum Alert {
     ConfirmReset,
+    /// Stop syncing with `removed`, then sync with `keep`.
+    ConfirmRemove { removed: Vec<Linked>, keep: Vec<Linked> },
     ConfirmDelete { vault: String, item: String, title: String },
     DiscardChanges { then: Box<Then> },
     Message(String),
@@ -111,6 +125,13 @@ pub enum Accounts {
     Found(Vec<onepassword::accounts::Account>),
 }
 
+/// What removing accounts does, for the alert.
+fn remove_message(removed: &[Linked]) -> String {
+    let names = removed.iter().map(|l| format!("“{}”", l.label)).collect::<Vec<_>>().join(" and ");
+    let its = if removed.len() == 1 { "Its" } else { "Their" };
+    format!("Stop syncing with {names}? {its} items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.")
+}
+
 const RESET: &str = "Erase everything Passwords keeps on this computer and start again? Its items, changes not yet sent to 1Password, and the choice of account all go. Nothing in 1Password is changed. This can’t be undone.";
 
 /// A sync's changes, waiting for the person's approval.
@@ -133,11 +154,15 @@ pub struct Passwords {
     settings: Settings,
     store: Store,
     conn: Conn,
+    /// The setup's choices: listed accounts ticked, and one named by hand.
+    pub chosen: Vec<String>,
     account_field: String,
     accounts: Accounts,
     /// Naming an account by hand rather than choosing a listed one.
     other_account: bool,
     vaults: Vec<VaultOverview>,
+    /// Which account each synced vault is in.
+    pub vault_accounts: HashMap<String, String>,
     items: Vec<ItemOverview>,
     loading: bool,
     details: HashMap<String, Item>,
@@ -179,8 +204,16 @@ fn host(url: &str) -> Option<String> {
 }
 
 impl Passwords {
-    fn vault_title(&self, id: &str) -> &str {
-        self.vaults.iter().find(|v| v.id == id).map_or("", |v| v.title.as_str())
+    /// A vault's name, with its account's when there are several.
+    fn vault_title(&self, id: &str) -> String {
+        self.vaults.iter().find(|v| v.id == id).map_or(String::new(), |v| self.vault_name(v))
+    }
+
+    pub fn vault_name(&self, v: &VaultOverview) -> String {
+        match self.vault_accounts.get(&v.id).and_then(|a| self.settings.accounts.iter().find(|l| &l.id == a)) {
+            Some(l) if self.settings.accounts.len() > 1 => format!("{} ({})", v.title, l.label),
+            _ => v.title.clone(),
+        }
     }
 
     fn overview(&self, id: &str) -> Option<&ItemOverview> {
@@ -260,7 +293,7 @@ impl Passwords {
 
     /// Whether the person has chosen how to keep their items.
     pub fn set_up(&self) -> bool {
-        self.settings.account.is_some() || self.settings.local_only
+        !self.settings.accounts.is_empty() || self.settings.local_only
     }
 
     /// Open the store (the setup comes first if it hasn't been done).
@@ -277,13 +310,16 @@ impl Passwords {
 
     /// Sync with 1Password now, if there's an account and the store is open.
     pub fn sync_now(&mut self) {
-        let Some(account) = self.settings.account.clone() else { return };
+        if self.settings.accounts.is_empty() {
+            return;
+        }
+        let accounts = self.settings.accounts.iter().map(|l| (l.id.clone(), l.label.clone())).collect();
         if self.lock.locked || self.conn != Conn::Ready || self.sync == Some(SyncState::Running) {
             return;
         }
         self.sync_asked = Some(Instant::now());
         self.sync_due = None;
-        self.store.send(Job::Sync { account });
+        self.store.send(Job::Sync { accounts });
     }
 
     /// Sync now because the person asked: its changes open for review.
@@ -328,14 +364,14 @@ impl Passwords {
         self.revealed.clear();
         self.selected = None;
         self.source = Source::All;
-        self.settings.account = None;
-        self.settings.account_label = None;
+        self.settings.accounts.clear();
         self.settings.local_only = false;
         self.save_settings();
         self.sync = None;
         self.sync_due = None;
         self.sync_asked = None;
         self.account_field.clear();
+        self.chosen.clear();
         self.accounts = Accounts::Unknown;
         self.conn = Conn::Setup;
         self.flash("Passwords was reset");
@@ -343,19 +379,59 @@ impl Passwords {
 
     /// Keep items only here from now on (no syncing).
     pub fn keep_local(&mut self, cx: &mut Cx) {
-        self.settings.account = None;
-        self.settings.account_label = None;
+        self.settings.accounts.clear();
         self.settings.local_only = true;
         self.sync = None;
         self.save_settings();
         self.connect(cx);
     }
 
-    /// Back to choosing the account (listing the app's afresh).
+    /// Back to choosing the accounts (listing the app's afresh).
     pub fn change_account(&mut self) {
-        self.account_field = self.settings.account.clone().unwrap_or_default();
+        self.chosen = self.settings.accounts.iter().map(|l| l.id.clone()).collect();
+        self.account_field.clear();
+        self.other_account = false;
         self.accounts = Accounts::Unknown;
         self.conn = Conn::Setup;
+    }
+
+    /// The setup's choice: sync with `chosen` (the accounts kept keep
+    /// their order, so the first stays first). Dropping any asks first.
+    pub fn choose_accounts(&mut self, cx: &mut Cx, chosen: Vec<Linked>) {
+        let mut keep: Vec<Linked> = self.settings.accounts.iter().filter(|l| chosen.iter().any(|c| c.id == l.id)).cloned().collect();
+        keep.extend(chosen.into_iter().filter(|c| !self.settings.accounts.iter().any(|l| l.id == c.id)));
+        let removed: Vec<Linked> = self.settings.accounts.iter().filter(|l| !keep.iter().any(|k| k.id == l.id)).cloned().collect();
+        if removed.is_empty() {
+            return self.link_accounts(cx, Vec::new(), keep);
+        }
+        let message = remove_message(&removed);
+        let mut options = WindowOptions::alert("Remove Account", &message);
+        if let Some(main) = self.main {
+            options = options.parent(main);
+        }
+        let w = cx.open_window(options);
+        self.alerts.insert(w, Alert::ConfirmRemove { removed, keep });
+    }
+
+    fn link_accounts(&mut self, cx: &mut Cx, removed: Vec<Linked>, keep: Vec<Linked>) {
+        for l in &removed {
+            self.store.send(Job::RemoveAccount { account: l.id.clone() });
+        }
+        let first = self.settings.accounts.is_empty() && !self.settings.local_only;
+        self.settings.accounts = keep;
+        self.settings.local_only = self.settings.accounts.is_empty();
+        self.save_settings();
+        self.sync = None;
+        // Sync at once, and its changes open for review.
+        self.show_review = true;
+        self.sync_asked = None;
+        if first || self.vaults.is_empty() {
+            self.connect(cx);
+        } else {
+            self.conn = Conn::Ready;
+            self.sync_now();
+            self.redraw(cx);
+        }
     }
 
     /// Read the 1Password app's accounts off the UI thread.
@@ -365,9 +441,15 @@ impl Passwords {
         std::thread::spawn(move || proxy.send(Accounts::Found(onepassword::accounts::local())));
     }
 
-    /// The account as the user knows it.
+    /// The accounts as the person knows them: "Family", "Family and
+    /// Work", "Family, Work and Club".
     pub fn account_label(&self) -> String {
-        self.settings.account_label.clone().or_else(|| self.settings.account.clone()).unwrap_or_default()
+        let names: Vec<&str> = self.settings.accounts.iter().map(|l| l.label.as_str()).collect();
+        match names.as_slice() {
+            [] => String::new(),
+            [one] => one.to_string(),
+            [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+        }
     }
 
     fn redraw(&self, cx: &mut Cx) {
@@ -744,10 +826,16 @@ impl Passwords {
                 self.loading = false;
                 self.serve_waiting(cx);
             }
-            Reply::Vaults(vaults) => {
+            Reply::Vaults { vaults, accounts } => {
                 let ids: HashSet<&str> = vaults.iter().map(|v| v.id.as_str()).collect();
                 self.items.retain(|i| ids.contains(i.vault_id.as_str()));
+                if let Source::Vault(v) = &self.source
+                    && !ids.contains(v.as_str())
+                {
+                    self.source = Source::All;
+                }
                 self.vaults = vaults;
+                self.vault_accounts = accounts;
             }
             Reply::Items { vault, items } => {
                 self.items.retain(|i| i.vault_id != vault);
@@ -851,7 +939,7 @@ impl Passwords {
 
     /// Something changed here: send it to 1Password soon.
     fn changed_here(&mut self) {
-        if self.settings.account.is_some() {
+        if !self.settings.accounts.is_empty() {
             self.sync_due = Some(Instant::now() + SYNC_AFTER_CHANGE);
         }
     }
@@ -986,6 +1074,7 @@ impl App for Passwords {
         if let Some(alert) = self.alerts.get(&window) {
             let (icon, message, buttons): (&str, String, &[&str]) = match alert {
                 Alert::ConfirmReset => ("warning", RESET.into(), &["Cancel", "Erase and Start Again"]),
+                Alert::ConfirmRemove { removed, .. } => ("warning", remove_message(removed), &["Cancel", "Remove"]),
                 Alert::ConfirmDelete { title, .. } => {
                     ("warning", format!("Delete “{title}” for good? This can’t be undone."), &["Cancel", "Delete"])
                 }
@@ -1000,6 +1089,7 @@ impl App for Passwords {
                     }
                     Some(Alert::DiscardChanges { then }) if choice == 1 => self.after_discard(cx, *then),
                     Some(Alert::ConfirmReset) if choice == 1 => self.store.send(Job::Reset),
+                    Some(Alert::ConfirmRemove { removed, keep }) if choice == 1 => self.link_accounts(cx, removed, keep),
                     _ => {}
                 }
                 self.redraw(cx);
@@ -1029,8 +1119,8 @@ impl App for Passwords {
             .item("Lock", "lock", Some(Key::L))
             .enabled(!self.lock.locked)
             .item("Sync Now", "sync", None)
-            .enabled(ready && self.settings.account.is_some() && self.sync != Some(SyncState::Running))
-            .item("Sync with 1Password…", "account", None)
+            .enabled(ready && !self.settings.accounts.is_empty() && self.sync != Some(SyncState::Running))
+            .item("1Password Accounts…", "account", None)
             .enabled(!self.lock.locked)
             .item("Reset Passwords…", "reset", None)
             .enabled(!self.lock.locked && self.set_up())
@@ -1175,17 +1265,13 @@ impl App for Passwords {
         let msg = match msg.downcast::<Accounts>() {
             Ok(found) => {
                 if let Accounts::Found(list) = &*found {
-                    // Choose the one in use, else the first; by hand if none fits.
-                    let field = self.account_field.trim();
-                    if let Some(a) = list.iter().find(|a| a.uuid == field || a.name == field) {
-                        self.account_field = a.uuid.clone();
-                        self.other_account = false;
-                    } else if field.is_empty() {
-                        self.account_field = list.first().map(|a| a.uuid.clone()).unwrap_or_default();
-                        self.other_account = list.is_empty();
-                    } else {
-                        self.other_account = true;
+                    // Those in use; with none yet, the first listed.
+                    if self.chosen.is_empty()
+                        && let Some(a) = list.first()
+                    {
+                        self.chosen.push(a.uuid.clone());
                     }
+                    self.other_account = list.is_empty();
                 }
                 self.accounts = *found;
                 self.redraw(cx);
@@ -1223,8 +1309,15 @@ fn main() {
         if let Err(e) = tabula_keychain::serve(move |incoming| keychain.send(incoming)) {
             tracing::warn!("keychain: {e}");
         }
-        let settings: Settings =
+        let mut settings: Settings =
             std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        // From when there was one account.
+        if let Some(id) = settings.account.take()
+            && settings.accounts.is_empty()
+        {
+            let label = settings.account_label.take().unwrap_or_else(|| id.clone());
+            settings.accounts.push(Linked { id, label });
+        }
         let proxy = cx.proxy();
         {
             let proxy = proxy.clone();
@@ -1238,9 +1331,10 @@ fn main() {
         }
         let saved: Option<Saved> = cx.restored_state().and_then(|s| serde_json::from_str(&s).ok());
         // Locked from the start once there are items to protect.
-        let locked = settings.account.is_some() || settings.local_only;
+        let locked = !settings.accounts.is_empty() || settings.local_only;
         let mut app = Passwords {
-            account_field: settings.account.clone().unwrap_or_default(),
+            chosen: settings.accounts.iter().map(|l| l.id.clone()).collect(),
+            account_field: String::new(),
             accounts: Accounts::Unknown,
             other_account: false,
             store: Store::new(proxy.clone()),
@@ -1248,6 +1342,7 @@ fn main() {
             conn: if locked { Conn::Connecting } else { Conn::Setup },
             settings,
             vaults: Vec::new(),
+            vault_accounts: HashMap::new(),
             items: Vec::new(),
             loading: false,
             details: HashMap::new(),

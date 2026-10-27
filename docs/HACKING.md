@@ -1254,7 +1254,7 @@ of synced items leave tombstones. Without an account (Keep Only on This
 Computer) items live in a local "Personal" vault.
 
 **Syncing with 1Password** (`sync.rs`, optional: the setup panel or File ▸
-Sync with 1Password…) never changes anything, on either side, without the
+1Password Accounts…) never changes anything, on either side, without the
 person's approval. It runs in two steps, each on its own thread:
 
 * `sync::plan`, from a snapshot (`Vault::snapshot` changes nothing, even
@@ -1287,9 +1287,24 @@ at once). Automatic plans wait while Review Sync is open. Cancel leaves
 stays as the item and ours is kept beside it as "… (conflict)", to be
 reviewed next time. A push that lands after another edit here keeps the
 edit pending (revisions). The first sync with an account brings in
-everything; local-only items move to its Personal (or first) vault;
-another account drops what came from the old one (`Change::Account`, shown
-in the review). Files attached in 1Password aren't copied (their metadata
+everything; local-only items move to its Personal (or first) vault.
+
+**Several accounts.** The setup ticks any of the 1Password app's accounts
+(`Settings::accounts`, `Linked { id, label }`; the first takes items made
+here; an id is the UUID, or a name typed by hand, which the app also
+answers to and which is kept). The store keeps which account each vault is
+in (`Data::vault_account`); `Vault::snapshot(account, home)` holds only that
+account's vaults (and, for the first, the local vault), so one account
+never sees another's vaults as gone. `Job::Sync { accounts }` plans each
+in turn into one `Plan` of per-account parts, one review: with more than
+one account a vault is named "Personal (Work)" there, in problems, the
+editor and the item's header, and the sidebar lists each account's vaults
+under its name (as Tracker lists volumes). An account that can't be
+reached is a problem, not a failure, unless none can be. Unticking one
+asks first, then `Job::RemoveAccount` drops its vaults and items here
+(never-sent items stay, in the local vault). Stores and settings from the
+one-account days carry over (`Data::account`, `Settings::account`). The
+fake serves more signed-in accounts on one socket (`FakeAccount::others`). Files attached in 1Password aren't copied (their metadata
 is), so they aren't shown.
 
 **Problems** are `sync::Problem`s (vault, item or none, a reason in plain
@@ -1310,8 +1325,8 @@ deletions go with the rest.
 `cargo test -p tabula-passwords` covers the store (sealing, wrong keys,
 conflicts, races, accounts, reset) and syncing against the in-process fake
 (both ways, conflicts, nothing to do, 1Password down, that a plan
-changes nothing and names every change, and archived items and an
-unlistable vault). The Secret Service
+changes nothing and names every change, archived items and an
+unlistable vault, and several accounts in one review). The Secret Service
 client has an ignored test for a private keyring:
 `tools/dev/private-keyring start` (busd plus its own gnome-keyring; needs
 `cargo install busd --root /tmp/tabula-dev/busd`), then

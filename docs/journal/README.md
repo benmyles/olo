@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Passwords: several 1Password accounts
+
+*22:40* — Passwords now syncs with every 1Password account you tick (File ▸ 1Password Accounts…), in one review. The sidebar lists each account's vaults under its name, a vault is named with its account wherever it could be confused, and removing an account asks first and only removes its items from this computer.
+
+![Passwords: several 1Password accounts](2026-10-26/224028-passwords-several-1password-accounts.png)
+
 ### Passwords: every vault, and sync problems you can read
 
 *22:26* — 1Password won't let other apps read archived items, and one archived item failed a whole batch of fifty, so most of Personal and Private never arrived. Now only active items are fetched, an item archived there is archived here from its listing, and a failed batch is retried one item at a time. What still can't sync is listed in a Sync Problems window, grouped by vault, each with its reason, instead of a wall of red text.
