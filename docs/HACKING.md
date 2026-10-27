@@ -484,6 +484,39 @@ Tabula upgrades without logging out. `tabula-session` (what the login
 screen runs) owns the Wayland socket (`wayland-N`) and the IPC socket and
 hands both to app_server, so clients never see the sockets disappear.
 
+* **Other programs** (Chrome, GTK and Qt apps, terminals) connect to
+  `wayland-N`, which belongs to `tabula-wlproxy` (`crates/wlproxy`).
+  It opens a connection to app_server for each of them on
+  `$XDG_RUNTIME_DIR/tabula-wayland-N-proxied`, which begins with a 16-byte
+  hello naming the program's pid. app_server answers with its own pid,
+  and uses the program's pid everywhere it would read the socket's
+  (`state::client_pid`). The proxy decodes every message and records
+  each object's lasting state: how it was made, setters that still hold,
+  and a surface's committed buffer, scale and regions. It also keeps each
+  buffer's recipe, with descriptors.
+* When app_server goes away, the proxy tells each program what a
+  restart ends: pointer and keyboard leave, frame callbacks fire, popups
+  are dismissed, selections are cancelled. The program's requests wait.
+  On the next app_server the proxy remakes the objects with the same
+  ids, matches globals by interface and order, commits each window's
+  role and acknowledges its configure, then commits the contents. The
+  waiting requests go on after that. The program never notices, and the
+  window returns to its place (same pid, new client: `layout.rs`).
+* The proxy shows programs only the globals it can decode
+  (`wlproxy/src/interfaces.rs`); add a protocol there before an outside
+  program can use it. Set `TABULA_WLPROXY_DEBUG=1` for the session
+  (`tsession` passes it on) to log every replayed request. Set
+  `TABULA_NO_WAYLAND_PROXY=1` to have app_server take `wayland-N` itself.
+  If the proxy keeps crashing, the session does that on its own. X11
+  programs (Xwayland is app_server's child) still close on a restart.
+* **Tabula's own apps** connect straight to app_server on
+  `$XDG_RUNTIME_DIR/tabula-wayland-N-direct` (the kit's `connect_once`).
+  They reconnect and re-execute by themselves, as below.
+* Test with `tsession start NAME --session`. Run an outside program in
+  it with a fixture `HOME` and a private bus (`tools/dev/busd-lenient`),
+  then run `tsession reload NAME` a few times and check it still draws,
+  takes input and opens menus.
+
 * `tabula-session reload` (SIGHUP): if `tabula-session` itself was
   upgraded it re-executes the new binary first, keeping its children and
   sockets. Then it stops app_server (SIGTERM; it saves every window's

@@ -240,7 +240,7 @@ as they land (with the commit), add new ones as they come up.
   long Passwords waits before locking itself (or never). Preferences
   gets a Security panel for them (and a home for other security
   settings later); Passwords follows changes live.
-- **Other programs survive a Tabula upgrade** (Ben): when app_server
+- ~~**Other programs survive a Tabula upgrade**~~ (Wayland programs done: `tabula-wlproxy` holds their connections and replays their state on the new app_server; tested headless with GNOME Text Editor, kitty and Chrome through several reloads, a menu open during one, a tabula-session re-exec and a proxy crash; HACKING, "The session and in-place reload". Left: X11 programs, through an Xwayland kept outside app_server, and the first upgrade to this version still closes them, as before) (Ben): when app_server
   restarts for an upgrade, Chrome and other non-Tabula Wayland/X11 apps
   keep running with their windows, as Tabula's own apps do (e.g. hand
   the listening socket and client connections to the new app_server,

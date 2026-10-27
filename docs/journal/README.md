@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Other programs survive an app_server restart
+
+*10:02* — GNOME Text Editor kept its window through tabula-wlproxy: the first line typed before app_server restarted, the second after, with no reconnect in the app.
+
+![Other programs survive an app_server restart](2026-10-27/100230-other-programs-survive-an-app-server-restart.png)
+
 ### Chrome's notifications in Tabula
 
 *08:59* — Google Chrome's notifications now come to Tabula's notifications app: a site's notification shows with Chrome's name and icon and the site as a link, a click goes back to the page, and Chrome's Settings button opens its notification settings.

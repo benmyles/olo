@@ -11509,6 +11509,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabula-wlproxy"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
+]
+
+[[package]]
 name = "tabula-xdg"
 version = "0.1.0"
 dependencies = [

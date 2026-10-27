@@ -48,7 +48,7 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         // the surface is not already configured
         let window = WindowElement(Window::new_wayland_window(surface.clone()));
         let client = surface.wl_surface().client();
-        let pid = client.as_ref().and_then(|c| c.get_credentials(&self.display_handle).ok()).map(|c| c.pid);
+        let pid = client.as_ref().and_then(|c| crate::state::client_pid(c, &self.display_handle));
         if let (Some(pid), Some(c)) = (pid, &client) {
             *window.meta().owner.borrow_mut() = Some((pid, c.id()));
         }

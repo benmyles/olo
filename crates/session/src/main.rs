@@ -123,6 +123,18 @@ struct Resume {
     /// Re-executed in the middle of a reload, which the new self finishes.
     #[serde(default)]
     reloading: bool,
+    #[serde(default)]
+    proxy: Option<Proxy>,
+}
+
+/// tabula-wlproxy and app_server's two other sockets: one for Tabula's own
+/// apps (which reconnect by themselves), one the proxy connects to for
+/// everything else (which it keeps alive across app_server restarts).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Proxy {
+    direct_fd: RawFd,
+    proxied_fd: RawFd,
+    child: Child,
 }
 
 struct Session {
@@ -147,6 +159,10 @@ struct Session {
     /// end only while still ours, and made again if they vanish.
     files: Vec<(PathBuf, Option<(u64, u64)>)>,
     watchdog: watchdog::Watchdog,
+    /// The direct and proxied listeners and the proxy, once started.
+    proxy: Option<(UnixListener, UnixListener, Child)>,
+    /// The proxy kept crashing: app_server takes the socket itself.
+    no_proxy: bool,
 }
 
 const RESUME_ENV: &str = "TABULA_SESSION_RESUME";
@@ -201,6 +217,8 @@ impl Session {
             upgrades: None,
             keyd_at: Instant::now(),
             files: Vec::new(),
+            proxy: None,
+            no_proxy: std::env::var_os("TABULA_NO_WAYLAND_PROXY").is_some(),
         };
         s.own_files();
         s.start_server();
@@ -244,6 +262,12 @@ impl Session {
         for fd in [r.wayland_fd, r.ipc_fd, r.lock_fd] {
             set_cloexec(fd, true);
         }
+        // SAFETY: as above.
+        let proxy = r.proxy.map(|p| unsafe {
+            set_cloexec(p.direct_fd, true);
+            set_cloexec(p.proxied_fd, true);
+            (UnixListener::from_raw_fd(p.direct_fd), UnixListener::from_raw_fd(p.proxied_fd), p.child)
+        });
         let ipc_path = runtime_dir().join(format!("tabula-{}.sock", r.display));
         let real = r.backend.iter().any(|b| b == "--tty-udev");
         let mut s = Session {
@@ -262,6 +286,8 @@ impl Session {
             upgrades: None,
             keyd_at: Instant::now(),
             files: Vec::new(),
+            proxy,
+            no_proxy: std::env::var_os("TABULA_NO_WAYLAND_PROXY").is_some(),
         };
         s.own_files();
         s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
@@ -291,21 +317,75 @@ impl Session {
     fn start_server(&mut self) {
         let mut argv = vec!["tabula-app-server".to_owned()];
         argv.extend(self.backend.iter().cloned());
-        let fds = [self.wayland.as_raw_fd(), self.ipc.as_raw_fd()];
-        let env = [
-            ("TABULA_WAYLAND_FD", fds[0].to_string()),
-            ("TABULA_IPC_FD", fds[1].to_string()),
-        ];
+        self.start_proxy();
+        let mut fds = vec![self.wayland.as_raw_fd(), self.ipc.as_raw_fd()];
+        if let Some((direct, proxied, _)) = &self.proxy {
+            fds[0] = direct.as_raw_fd();
+            fds.push(proxied.as_raw_fd());
+        }
+        let mut env = vec![("TABULA_WAYLAND_FD", fds[0].to_string()), ("TABULA_IPC_FD", fds[1].to_string())];
+        if let Some(fd) = fds.get(2) {
+            env.push(("TABULA_WAYLAND_PROXY_FD", fd.to_string()));
+        }
         // The listening sockets must survive into app_server.
-        for fd in fds {
+        for &fd in &fds {
             set_cloexec(fd, false);
         }
         self.server.argv = argv.clone();
         self.server.pid = spawn(&argv, &env).unwrap_or(0);
-        for fd in fds {
+        for &fd in &fds {
             set_cloexec(fd, true);
         }
         log(format!("app_server started (pid {})", self.server.pid));
+    }
+
+    /// Where Tabula's own apps connect, and where the proxy does.
+    fn direct_path(&self) -> PathBuf {
+        runtime_dir().join(format!("tabula-{}-direct", self.display))
+    }
+
+    fn proxied_path(&self) -> PathBuf {
+        runtime_dir().join(format!("tabula-{}-proxied", self.display))
+    }
+
+    /// Put tabula-wlproxy on the session's socket, if it isn't there.
+    fn start_proxy(&mut self) {
+        if self.no_proxy {
+            if let Some((_, _, child)) = self.proxy.take()
+                && child.pid > 0
+            {
+                // SAFETY: signalling our own child.
+                unsafe { libc::kill(child.pid, libc::SIGTERM) };
+            }
+            return;
+        }
+        if self.proxy.is_none() {
+            let bind = |p: &Path| {
+                let _ = std::fs::remove_file(p);
+                UnixListener::bind(p)
+            };
+            match (bind(&self.direct_path()), bind(&self.proxied_path())) {
+                (Ok(direct), Ok(proxied)) => {
+                    self.proxy = Some((direct, proxied, Child { argv: vec!["tabula-wlproxy".into()], pid: 0, crashes: VecDeque::new() }));
+                    self.own_files();
+                }
+                (Err(e), _) | (_, Err(e)) => {
+                    log(format!("could not make the proxy's sockets ({e}); programs connect to app_server directly"));
+                    self.no_proxy = true;
+                    return;
+                }
+            }
+        }
+        let upstream = self.proxied_path();
+        let fd = self.wayland.as_raw_fd();
+        let Some((_, _, child)) = &mut self.proxy else { return };
+        if child.pid > 0 {
+            return;
+        }
+        set_cloexec(fd, false);
+        child.pid = spawn(&child.argv, &[("TABULA_WAYLAND_FD", fd.to_string()), ("TABULA_WAYLAND_UPSTREAM", upstream.display().to_string())]).unwrap_or(0);
+        set_cloexec(fd, true);
+        log(format!("tabula-wlproxy started (pid {})", child.pid));
     }
 
     fn run(mut self) -> ! {
@@ -358,7 +438,11 @@ impl Session {
 
     fn own_files(&mut self) {
         let lock = runtime_dir().join(format!("{}.lock", self.display));
-        self.files = [self.wayland_path(), lock, self.ipc_path.clone()].into_iter().map(|p| {
+        let mut paths = vec![self.wayland_path(), lock, self.ipc_path.clone()];
+        if self.proxy.is_some() {
+            paths.extend([self.direct_path(), self.proxied_path()]);
+        }
+        self.files = paths.into_iter().map(|p| {
             let id = identity(&p);
             (p, id)
         }).collect();
@@ -429,7 +513,11 @@ impl Session {
     /// Become the upgraded tabula-session, keeping children and sockets
     /// (and then reload, if `reloading`).
     fn exec_self(&mut self, reloading: bool) {
-        let fds = [self.wayland.as_raw_fd(), self.ipc.as_raw_fd(), self.lock.as_raw_fd()];
+        let mut fds = vec![self.wayland.as_raw_fd(), self.ipc.as_raw_fd(), self.lock.as_raw_fd()];
+        let proxy = self.proxy.as_ref().map(|(direct, proxied, child)| Proxy { direct_fd: direct.as_raw_fd(), proxied_fd: proxied.as_raw_fd(), child: child.clone() });
+        if let Some(p) = &proxy {
+            fds.extend([p.direct_fd, p.proxied_fd]);
+        }
         let resume = Resume {
             display: self.display.clone(),
             wayland_fd: fds[0],
@@ -439,16 +527,17 @@ impl Session {
             server: self.server.clone(),
             shell: self.shell.clone(),
             reloading,
+            proxy,
         };
         let Ok(state) = serde_json::to_string(&resume) else { return };
-        for fd in fds {
+        for &fd in &fds {
             set_cloexec(fd, false);
         }
         log("tabula-session was upgraded; re-executing");
         // The signal mask is inherited across exec, which is what we want.
         let e = Command::new(exe()).env(RESUME_ENV, state).exec();
         log(format!("re-exec failed ({e}); carrying on"));
-        for fd in fds {
+        for &fd in &fds {
             set_cloexec(fd, true);
         }
     }
@@ -478,6 +567,19 @@ impl Session {
                     self.shutdown(1);
                 }
                 self.start_server();
+            } else if let Some((_, _, c)) = self.proxy.as_mut().filter(|p| p.2.pid == pid) {
+                c.pid = 0;
+                if self.stopping {
+                    continue;
+                }
+                log(format!("tabula-wlproxy exited ({}); other programs lost their windows", describe(status)));
+                if note_crash(c) {
+                    self.start_proxy();
+                } else {
+                    log("tabula-wlproxy keeps exiting; app_server takes the socket itself from now on");
+                    self.no_proxy = true;
+                    self.reload();
+                }
             } else if let Some(i) = self.shell.iter().position(|c| c.pid == pid) {
                 if self.stopping {
                     continue;
@@ -497,7 +599,8 @@ impl Session {
     fn shutdown(&mut self, code: i32) -> ! {
         self.stopping = true;
         log("ending the session");
-        let pids: Vec<i32> = self.shell.iter().map(|c| c.pid).chain([self.server.pid]).filter(|&p| p > 0).collect();
+        let proxy = self.proxy.as_ref().map_or(0, |p| p.2.pid);
+        let pids: Vec<i32> = self.shell.iter().map(|c| c.pid).chain([self.server.pid, proxy]).filter(|&p| p > 0).collect();
         for &p in &pids {
             // SAFETY: signalling our own children.
             unsafe { libc::kill(p, libc::SIGTERM) };

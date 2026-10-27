@@ -122,6 +122,17 @@ pub struct ClientState {
     pub security_context: Option<SecurityContext>,
     /// Set when the client goes away (the lock screen's, so a crash is noticed).
     pub gone: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// The program a tabula-wlproxy connection speaks for.
+    pub pid: Option<i32>,
+}
+
+/// The process behind a client: the program itself, also when it comes
+/// through tabula-wlproxy (whose own pid the socket shows).
+pub fn client_pid(client: &Client, dh: &DisplayHandle) -> Option<i32> {
+    if let Some(pid) = client.get_data::<ClientState>().and_then(|s| s.pid) {
+        return Some(pid);
+    }
+    client.get_credentials(dh).ok().map(|c| c.pid)
 }
 impl ClientData for ClientState {
     /// Notification that a client was initialized
@@ -496,7 +507,7 @@ impl<BackendData: Backend> TextInputActivation for AnvilState<BackendData> {}
 impl<BackendData: Backend> AnvilState<BackendData> {
     /// Whether `surface` belongs to one of Tabula's own programs.
     fn is_our_program(&self, surface: &WlSurface) -> bool {
-        let Some(pid) = surface.client().and_then(|c| c.get_credentials(&self.display_handle).ok()).map(|c| c.pid) else {
+        let Some(pid) = surface.client().and_then(|c| client_pid(&c, &self.display_handle)) else {
             return false;
         };
         std::fs::read_link(format!("/proc/{pid}/exe"))
@@ -840,6 +851,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 })
                 .expect("Failed to init inherited wayland socket");
             info!(name, "Listening on wayland socket from tabula-session");
+            proxied_wayland_socket(&handle);
             Some(name)
         } else if listen_on_socket {
             // Our own socket (not smithay's ListeningSocketSource, which
@@ -1497,6 +1509,78 @@ pub trait Backend {
     fn set_white_point(&mut self, _gains: [f64; 3]) {}
     fn set_mode(&mut self, _output: &Output, _mode: smithay::output::Mode) -> Result<(), String> {
         Err("This display's resolution can't be changed.".into())
+    }
+}
+
+/// The socket tabula-wlproxy connects to for other programs
+/// (`TABULA_WAYLAND_PROXY_FD`). Each connection opens with a 16-byte
+/// hello, "TBPX", version, the program's pid, uid; we answer "TBPX",
+/// version, our pid, 0 (so the proxy knows a new app_server from the old
+/// one) and the Wayland stream follows.
+fn proxied_wayland_socket<BackendData: Backend + 'static>(handle: &LoopHandle<'static, AnvilState<BackendData>>) {
+    use std::io::{Read, Write};
+    use std::os::fd::FromRawFd;
+    let Some(fd) = std::env::var("TABULA_WAYLAND_PROXY_FD").ok().and_then(|f| f.parse::<i32>().ok()) else { return };
+    // SAFETY: tabula-session passes this fd to us alone.
+    let listener = unsafe { std::os::unix::net::UnixListener::from_raw_fd(fd) };
+    crate::set_cloexec(fd);
+    // SAFETY: called during single-threaded start-up.
+    unsafe { std::env::remove_var("TABULA_WAYLAND_PROXY_FD") };
+    listener.set_nonblocking(true).expect("nonblocking socket");
+    let accept = handle.insert_source(Generic::new(listener, Interest::READ, Mode::Level), |_, listener, data| {
+        loop {
+            let stream = match listener.accept() {
+                Ok((stream, _)) => stream,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => {
+                    warn!(?e, "accept failed");
+                    break;
+                }
+            };
+            let _ = stream.set_nonblocking(true);
+            let mut hello = Vec::with_capacity(16);
+            let read = data.handle.insert_source(Generic::new(stream, Interest::READ, Mode::Level), move |_, stream, data| {
+                let mut buf = [0u8; 16];
+                match (&**stream).read(&mut buf[..16 - hello.len()]) {
+                    Ok(0) => return Ok(PostAction::Remove),
+                    Ok(n) => hello.extend_from_slice(&buf[..n]),
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => return Ok(PostAction::Continue),
+                    Err(_) => return Ok(PostAction::Remove),
+                }
+                if hello.len() < 16 {
+                    return Ok(PostAction::Continue);
+                }
+                if &hello[..4] != b"TBPX" {
+                    warn!("a proxied connection without the hello");
+                    return Ok(PostAction::Remove);
+                }
+                let pid = i32::from_ne_bytes(hello[8..12].try_into().unwrap());
+                let mut reply = Vec::with_capacity(16);
+                reply.extend_from_slice(b"TBPX");
+                reply.extend_from_slice(&1u32.to_ne_bytes());
+                reply.extend_from_slice(&(std::process::id() as i32).to_ne_bytes());
+                reply.extend_from_slice(&0u32.to_ne_bytes());
+                // A new socket's buffer takes 16 bytes.
+                if (&**stream).write_all(&reply).is_err() {
+                    return Ok(PostAction::Remove);
+                }
+                if let Ok(s) = (**stream).try_clone() {
+                    let state = ClientState { pid: (pid > 0).then_some(pid), ..Default::default() };
+                    if let Err(err) = data.display_handle.insert_client(s, Arc::new(state)) {
+                        warn!("Error adding wayland client: {}", err);
+                    }
+                }
+                Ok(PostAction::Remove)
+            });
+            if let Err(e) = read {
+                warn!(?e, "could not wait for a proxied connection's hello");
+            }
+        }
+        Ok(PostAction::Continue)
+    });
+    match accept {
+        Ok(_) => info!("Listening for tabula-wlproxy"),
+        Err(e) => warn!(?e, "could not listen for tabula-wlproxy"),
     }
 }
 

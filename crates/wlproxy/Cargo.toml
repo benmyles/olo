@@ -1,0 +1,17 @@
+[package]
+name = "tabula-wlproxy"
+description = "Holds other programs' Wayland connections across app_server restarts and replays their state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "tabula-wlproxy"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"
+wayland-backend = "0.3"
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging", "unstable"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }

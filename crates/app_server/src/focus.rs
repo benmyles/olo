@@ -174,8 +174,8 @@ impl<BackendData: Backend> PointerTarget<AnvilState<BackendData>> for PointerFoc
     ) {
         // Scrolled as far as in Tabula's own apps, whatever draws it.
         let frame = match self {
-            Self::WlSurface(w) => match w.client().and_then(|c| c.get_credentials(&data.display_handle).ok()) {
-                Some(c) => crate::scroll::adjust(frame, crate::scroll::toolkit(c.pid)),
+            Self::WlSurface(w) => match w.client().and_then(|c| crate::state::client_pid(&c, &data.display_handle)) {
+                Some(pid) => crate::scroll::adjust(frame, crate::scroll::toolkit(pid)),
                 None => frame,
             },
             _ => frame,

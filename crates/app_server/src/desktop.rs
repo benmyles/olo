@@ -169,11 +169,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             })
             .map(|w| {
                 let pid = w.wl_surface().and_then(|s| {
-                    self.display_handle
-                        .get_client(s.id())
-                        .ok()
-                        .and_then(|c| c.get_credentials(&self.display_handle).ok())
-                        .map(|c| c.pid)
+                    self.display_handle.get_client(s.id()).ok().and_then(|c| crate::state::client_pid(&c, &self.display_handle))
                 });
                 let meta = w.meta();
                 WindowInfo {

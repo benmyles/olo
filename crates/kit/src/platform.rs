@@ -584,7 +584,7 @@ struct Carried {
 fn connect(retry: bool) -> Option<Connection> {
     let deadline = Instant::now() + Duration::from_secs(if retry { 20 } else { 0 });
     loop {
-        match Connection::connect_to_env() {
+        match connect_once() {
             Ok(c) => return Some(c),
             Err(e) if Instant::now() >= deadline => {
                 if !retry {
@@ -595,6 +595,20 @@ fn connect(retry: bool) -> Option<Connection> {
             Err(_) => std::thread::sleep(Duration::from_millis(100)),
         }
     }
+}
+
+/// In a Tabula session, straight to app_server: the session's socket is
+/// tabula-wlproxy's, which keeps other programs' windows across an
+/// app_server restart; we reconnect by ourselves instead.
+fn connect_once() -> Result<Connection, wayland_client::ConnectError> {
+    if std::env::var_os("WAYLAND_SOCKET").is_none()
+        && let (Some(dir), Some(display)) = (std::env::var_os("XDG_RUNTIME_DIR"), std::env::var("WAYLAND_DISPLAY").ok())
+        && !display.contains('/')
+        && let Ok(stream) = std::os::unix::net::UnixStream::connect(std::path::Path::new(&dir).join(format!("tabula-{display}-direct")))
+    {
+        return Connection::from_socket(stream);
+    }
+    Connection::connect_to_env()
 }
 
 /// Our own executable, to notice when an upgrade replaces it.
