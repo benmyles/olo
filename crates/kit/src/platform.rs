@@ -2045,7 +2045,7 @@ impl Kit {
         let mut pool = smithay_client_toolkit::shm::slot::SlotPool::new(w * h * 4, &self.shm).ok()?;
         let (buffer, canvas) = pool.create_buffer(w as i32, h as i32, w as i32 * 4, Format::Argb8888).ok()?;
         // Premultiplied BGRA, as wl_shm's ARGB8888 is in memory.
-        for (px, c) in canvas.chunks_exact_mut(4).zip(icon.image.pixels.iter()) {
+        for (px, c) in canvas.as_chunks_mut::<4>().0.iter_mut().zip(icon.image.pixels.iter()) {
             px.copy_from_slice(&[c.b(), c.g(), c.r(), c.a()]);
         }
         let wl = self.compositor.create_surface(&self.qh);

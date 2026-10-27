@@ -4,7 +4,7 @@
 //! debug print, a backtrace) joined back into the line it belongs to.
 //! Then which lines a query shows.
 
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
@@ -192,14 +192,39 @@ fn program_of(e: &Entry, full: &mut Vec<Arc<str>>) -> Arc<str> {
         return exe;
     }
     if let Some(comm) = e.get(Field::Comm) {
-        if comm.len() == COMM_MAX
-            && let Some(known) = full.iter().find(|k| k.starts_with(comm))
-        {
-            return known.clone();
+        if comm.len() == COMM_MAX {
+            if let Some(known) = full.iter().find(|k| k.starts_with(comm)) {
+                return known.clone();
+            }
+            // A program that came and went before journald saw its file
+            // (a screenshot): one of ours, installed beside us.
+            if let Some(name) = installed().iter().find(|n| n.starts_with(comm)) {
+                let name: Arc<str> = Arc::from(name.as_str());
+                full.push(name.clone());
+                return name;
+            }
         }
         return Arc::from(comm);
     }
     Arc::from(e.get(Field::Identifier).and_then(base).unwrap_or_else(|| "?".into()))
+}
+
+/// Tabula's programs with names longer than a process name, from the
+/// directory this one runs from.
+fn installed() -> &'static [String] {
+    static NAMES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    NAMES.get_or_init(|| {
+        let dir = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf));
+        let mut names: Vec<String> = dir
+            .and_then(|d| std::fs::read_dir(d).ok())
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok()?.file_name().into_string().ok())
+            .filter(|n| n.starts_with("tabula-") && n.len() > COMM_MAX && !n.contains('.'))
+            .collect();
+        names.sort();
+        names
+    })
 }
 
 /// Turns entries into lines, joining continuations.

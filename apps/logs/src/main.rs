@@ -560,6 +560,7 @@ fn print(args: &[String]) -> i32 {
     };
     reader::run(follow, &mut |u| match u {
         Update::Lines { new, more } => {
+            let idle = new.is_empty() && more.is_empty();
             for (i, text) in more {
                 if let Some(l) = lines.get_mut(i) {
                     l.message.push('\n');
@@ -568,8 +569,9 @@ fn print(args: &[String]) -> i32 {
             }
             lines.extend(new);
             if loaded {
-                // Following: hold back the newest line a poll, for its continuations.
-                let upto = lines.len().saturating_sub(1);
+                // Following: hold back the newest line until a poll finds
+                // nothing more (its continuations come with it or not at all).
+                let upto = if idle { lines.len() } else { lines.len().saturating_sub(1) };
                 return flush(&mut lines, upto, &mut out);
             }
             true
