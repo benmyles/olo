@@ -1741,13 +1741,15 @@ impl AnvilState<UdevData> {
                 warn!("Error during rendering: {:#?}", err);
                 match err {
                     SwapBuffersError::AlreadySwapped => false,
-                    SwapBuffersError::TemporaryFailure(err) => match err.downcast_ref::<DrmError>() {
-                        Some(DrmError::DeviceInactive) => true,
-                        Some(DrmError::Access(DrmAccessError { source, .. })) => {
-                            source.kind() == io::ErrorKind::PermissionDenied
-                        }
-                        _ => false,
-                    },
+                    // Nothing was queued, so no VBlank will come to drive the
+                    // next frame: try again in a frame, from scratch. A flip
+                    // refused with EBUSY (the previous master's last flip, or
+                    // our own modeset, still in flight) would otherwise leave
+                    // the screen black for good.
+                    SwapBuffersError::TemporaryFailure(_) => {
+                        surface.drm_output.reset_buffers();
+                        true
+                    }
                     SwapBuffersError::ContextLost(err) => match err.downcast_ref::<DrmError>() {
                         Some(DrmError::TestFailed(_)) => {
                             // reset the complete state, disabling all connectors and planes in case we hit a test failed
