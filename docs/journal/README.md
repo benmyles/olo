@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Right-click in text fields
+
+*17:29* — Every text field now has Cut, Copy, Paste and Select All on right-click (keeping the selection), and double/triple-click select a word or the whole line, here in NetPositive's location field.
+
+![Right-click in text fields](2026-10-26/172959-right-click-in-text-fields.png)
+
 ### Zoom leaves Deskbar alone
 
 *17:18* — A zoomed window now stops 4 px short of Deskbar, as on BeOS, instead of running under it.

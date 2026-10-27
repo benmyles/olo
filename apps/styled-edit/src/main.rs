@@ -571,9 +571,11 @@ impl StyledEdit {
         cx.redraw(win);
     }
 
-    fn doc_ui(&mut self, window: WindowId, ui: &mut Ui) {
+    /// The document window; returns a command chosen from the text's
+    /// right-click menu.
+    fn doc_ui(&mut self, window: WindowId, ui: &mut Ui) -> Option<String> {
         let p = style::palette(ui.ctx());
-        let Some(Win::Doc(d)) = self.windows.get_mut(&window) else { return };
+        let Some(Win::Doc(d)) = self.windows.get_mut(&window) else { return None };
         let fonts = &mut self.fonts;
         let full = ui.max_rect();
         let status = Rect::from_min_max(pos2(full.left(), full.bottom() - STATUS_H), full.max);
@@ -678,6 +680,19 @@ impl StyledEdit {
         {
             d.selection = sorted(r);
         }
+        // Right-click: the Edit menu's own commands, so styles go along.
+        let chosen = widgets::context_menu(&out.response, || {
+            let selected = !d.selection.is_empty();
+            Menu::new("Edit")
+                .item("Cut", "cut", Some(Key::X))
+                .enabled(editable && selected)
+                .item("Copy", "copy", Some(Key::C))
+                .enabled(selected)
+                .item("Paste", "paste", Some(Key::V))
+                .enabled(editable)
+                .separator()
+                .item("Select All", "select-all", Some(Key::A))
+        });
         if let Some(r) = reveal {
             let rect = out.galley.pos_from_cursor(CCursor::new(r.end));
             ui.scroll_to_rect(rect.translate(out.galley_pos.to_vec2()).expand(8.0), Some(egui::Align::Center));
@@ -713,6 +728,7 @@ impl StyledEdit {
             egui::FontId::proportional(style::SMALL_SIZE),
             c(p.panel_text),
         );
+        chosen
     }
 
     fn find_ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui, doc: WindowId, replace: bool) {
@@ -846,7 +862,11 @@ const REPLACE_H: f32 = FIND_H + m::CONTROL_HEIGHT + m::TIGHT + m::MARK_ROW + m::
 impl App for StyledEdit {
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui) {
         match self.windows.get_mut(&window) {
-            Some(Win::Doc(_)) => self.doc_ui(window, ui),
+            Some(Win::Doc(_)) => {
+                if let Some(command) = self.doc_ui(window, ui) {
+                    self.doc_command(cx, window, &command);
+                }
+            }
             Some(Win::Find { doc, replace }) => {
                 let (doc, replace) = (*doc, *replace);
                 self.find_ui(cx, window, ui, doc, replace);

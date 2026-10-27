@@ -340,7 +340,7 @@ impl Widget for TextControl<'_> {
         let probe = ui.painter().layout_no_wrap("X".into(), font.clone(), Color32::BLACK);
         let top = style::text_origin(ui.ctx(), &probe, 0.0, well.center().y, font.size).y;
         let line = Rect::from_min_max(pos2(well.left() + m::TEXT_INSET, top), pos2(well.right() - m::TEXT_INSET, top + row_h));
-        let mut edit = egui::TextEdit::singleline(self.text)
+        let mut edit = egui::TextEdit::singleline(&mut *self.text)
             .id(id)
             .frame(egui::Frame::NONE)
             .margin(egui::Margin::ZERO)
@@ -351,18 +351,21 @@ impl Widget for TextControl<'_> {
         if let Some(hint) = self.hint {
             edit = edit.hint_text(egui::RichText::new(hint).color(style::disabled_text(&p)));
         }
+        // The whole well focuses the editor, not just the text line (not a
+        // Tab stop of its own: Tab goes from field to field). Made before
+        // the editor so the editor is on top: double and triple clicks on
+        // the text must reach it.
+        let well_resp = ui.interact(well, id.with("well"), Sense::CLICK);
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(line));
         child.set_clip_rect(well.shrink(2.0).intersect(ui.clip_rect()));
         let r = child.add(edit);
-        // The whole well focuses the editor, not just the text line (not a
-        // Tab stop of its own: Tab goes from field to field).
-        let well_resp = ui.interact(well, id.with("well"), Sense::CLICK);
         if well_resp.clicked() {
             ui.memory_mut(|m| m.request_focus(id));
         }
         if well_resp.hovered() {
             ui.ctx().set_cursor_icon(CursorIcon::Text);
         }
+        edit_menu(ui, id, &(r.clone() | well_resp), self.text, ui.is_enabled(), self.password);
         r
     }
 }
@@ -429,14 +432,14 @@ impl<'a> TextView<'a> {
         let focused = ui.memory(|m| m.has_focus(edit_id));
         let editable = self.editable;
         let text = self.text;
-        ScrollView::new(self.id)
+        let r = ScrollView::new(self.id)
             .focused(focused)
             .background(p.document_background)
             .show(ui, |ui| {
                 let size = ui.available_size();
                 ui.add_sized(
                     size,
-                    egui::TextEdit::multiline(text)
+                    egui::TextEdit::multiline(&mut *text)
                         .id(edit_id)
                         .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(6, 4)))
                         .font(font)
@@ -444,7 +447,9 @@ impl<'a> TextView<'a> {
                         .interactive(editable)
                         .desired_width(f32::INFINITY),
                 )
-            })
+            });
+        edit_menu(ui, edit_id, &r, text, editable, false);
+        r
     }
 }
 
@@ -722,6 +727,81 @@ impl Widget for MenuField<'_> {
         }
         response | response_field
     }
+}
+
+/// The right-click menu of a text field (Cut, Copy, Paste, Select All),
+/// for the `egui::TextEdit` `id` editing `text`; call it after adding the
+/// editor, with its response. TextControl and TextView have it already;
+/// apps with their own `TextEdit` call this so every field behaves alike.
+pub fn edit_menu(ui: &Ui, id: Id, response: &Response, text: &mut String, editable: bool, password: bool) {
+    let ctx = ui.ctx();
+    let source = id.with("edit-menu");
+    // egui moves the caret on any press, the right button's too: keep the
+    // selection a right-click lands on, so the menu can act on it.
+    let kept = id.with("edit-menu-selection");
+    let right = ctx.input(|i| (i.pointer.button_pressed(egui::PointerButton::Secondary), i.pointer.button_down(egui::PointerButton::Secondary)));
+    if right.0 && response.hovered() {
+        if let Some(range) = ctx.data(|d| d.get_temp::<egui::text::CCursorRange>(kept))
+            && let Some(mut s) = egui::TextEdit::load_state(ctx, id)
+        {
+            s.cursor.set_char_range(Some(range));
+            s.store(ctx, id);
+        }
+    } else if !right.1
+        && let Some(range) = egui::TextEdit::load_state(ctx, id).and_then(|s| s.cursor.char_range())
+    {
+        ctx.data_mut(|d| d.insert_temp(kept, range));
+    }
+    let state = egui::TextEdit::load_state(ctx, id);
+    // The selection as byte offsets, start first.
+    let selection = state.as_ref().and_then(|s| s.cursor.char_range()).map(|r| {
+        let (p, q): (usize, usize) = (r.primary.index.into(), r.secondary.index.into());
+        let (a, b) = (p.min(q), p.max(q));
+        let byte = |i: usize| text.char_indices().nth(i).map_or(text.len(), |(o, _)| o);
+        (byte(a), byte(b), a)
+    });
+    let selected = selection.filter(|(a, b, _)| a < b);
+    if response.secondary_clicked()
+        && let Some(pos) = ctx.input(|i| i.pointer.interact_pos())
+    {
+        ctx.memory_mut(|m| m.request_focus(id));
+        let copyable = selected.is_some() && !password;
+        let menu = Menu::new("Edit")
+            .item("Cut", "cut", Some(Key::X))
+            .enabled(editable && copyable)
+            .item("Copy", "copy", Some(Key::C))
+            .enabled(copyable)
+            .item("Paste", "paste", Some(Key::V))
+            .enabled(editable)
+            .separator()
+            .item("Select All", "select-all", Some(Key::A))
+            .enabled(!text.is_empty());
+        menu::request_popup(ctx, MenuRequest { menu, source, anchor: MenuAnchor::At(pos), selected: None });
+    }
+    let Some(command) = menu::take_chosen(ctx, source) else { return };
+    ctx.memory_mut(|m| m.request_focus(id));
+    let set = |range: egui::text::CCursorRange| {
+        let mut s = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
+        s.cursor.set_char_range(Some(range));
+        s.store(ctx, id);
+    };
+    match command.as_str() {
+        "copy" | "cut" if !password => {
+            let Some((a, b, start)) = selected else { return };
+            ctx.copy_text(text[a..b].to_owned());
+            if command == "cut" && editable {
+                text.replace_range(a..b, "");
+                set(egui::text::CCursorRange::one(egui::text::CCursor::new(start)));
+            }
+        }
+        "paste" if editable => menu::request_paste(ctx),
+        "select-all" => set(egui::text::CCursorRange::two(
+            egui::text::CCursor::new(0),
+            egui::text::CCursor::new(text.chars().count()),
+        )),
+        _ => {}
+    }
+    ctx.request_repaint();
 }
 
 /// Show a context menu when `response` is right-clicked; returns the chosen

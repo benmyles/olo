@@ -1011,6 +1011,7 @@ impl PdfView {
             te = te.char_limit(n);
         }
         let resp = ui.put(edit_rect, te);
+        widgets::edit_menu(ui, id, &resp, &mut self.buffer, true, password);
         if self.focus_pending {
             resp.request_focus();
             self.focus_pending = false;
@@ -1050,6 +1051,7 @@ impl PdfView {
             .desired_width(r.width() - 2.0 * pad)
             .desired_rows(1);
         let resp = ui.put(r.shrink(pad), te);
+        widgets::edit_menu(ui, id, &resp, &mut self.buffer, true, false);
         if self.focus_pending {
             resp.request_focus();
             self.focus_pending = false;

@@ -201,6 +201,20 @@ pub(crate) fn take_request(ctx: &egui::Context) -> Option<MenuRequest> {
     })
 }
 
+fn paste_key() -> egui::Id {
+    egui::Id::unique("tabula-paste-request")
+}
+
+/// Ask the kit to paste the clipboard's text into this window once the
+/// frame is drawn (it arrives as an `egui::Event::Paste`, as ⌘V's does).
+pub fn request_paste(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.insert_temp(paste_key(), true));
+}
+
+pub(crate) fn take_paste(ctx: &egui::Context) -> bool {
+    ctx.data_mut(|d| d.remove_temp::<bool>(paste_key())).unwrap_or(false)
+}
+
 pub(crate) fn deliver_chosen(ctx: &egui::Context, source: egui::Id, command: String) {
     ctx.data_mut(|d| d.insert_temp(source.with("menu-chosen"), command));
 }

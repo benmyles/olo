@@ -718,5 +718,11 @@
   "title": "Zoom leaves Deskbar alone",
   "caption": "A zoomed window now stops 4 px short of Deskbar, as on BeOS, instead of running under it.",
   "image": "2026-10-26/171816-zoom-leaves-deskbar-alone.png"
+ },
+ {
+  "time": "2026-10-26T17:29:59",
+  "title": "Right-click in text fields",
+  "caption": "Every text field now has Cut, Copy, Paste and Select All on right-click (keeping the selection), and double/triple-click select a word or the whole line, here in NetPositive's location field.",
+  "image": "2026-10-26/172959-right-click-in-text-fields.png"
  }
 ]

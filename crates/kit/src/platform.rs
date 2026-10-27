@@ -1459,6 +1459,11 @@ impl Kit {
         };
 
         self.present(id, output);
+        if menu::take_paste(&ctx)
+            && let Some(wl) = self.surface_mut(id).map(|s| s.wl.clone())
+        {
+            self.paste(&wl);
+        }
         self.handle_menu_events(menu_events);
         self.process_requests();
     }

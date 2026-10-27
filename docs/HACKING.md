@@ -34,6 +34,12 @@ like pixel alignment is.
    `request_repaint_after` only while work is running.
 6. **app_server never waits on a client.** Clients that stall must not stall
    the desktop.
+7. **Stay current without polling.** What is on screen reflects the system
+   as it changes: watch files with inotify (Tracker's `watch.rs`: one thread,
+   changed items stat'ed off the UI thread, bursts gathered for ~30 ms,
+   a full relist on queue overflow) and the mount table with `POLLPRI` on
+   `/proc/self/mountinfo`. No timers that re-read the disk to look for
+   changes.
 8. **app_server never deadlocks.** A hang there freezes the whole desktop.
    Smithay's per-surface lock isn't re-entrant: inside a closure given to
    `with_pending_state`, `with_states`, `with_committed_state` or
@@ -45,12 +51,6 @@ like pixel alignment is.
    operation on several screens and fails on the first hang. Use
    `std::sync::Mutex` only with nothing else locked and never across a
    call back into app_server.
-7. **Stay current without polling.** What is on screen reflects the system
-   as it changes: watch files with inotify (Tracker's `watch.rs`: one thread,
-   changed items stat'ed off the UI thread, bursts gathered for ~30 ms,
-   a full relist on queue overflow) and the mount table with `POLLPRI` on
-   `/proc/self/mountinfo`. No timers that re-read the disk to look for
-   changes.
 
 ## Layout
 
@@ -194,6 +194,17 @@ place: returns `Editing` / `Commit` / `Cancel`; pads by `INLINE_PAD`, which
 matches `style::text_highlight`), `alert(ui, icon, message, &buttons)` (a
 BAlert; open its window with `WindowOptions::alert(title, message)`; the
 last button is the default, Escape picks the first).
+
+Text fields behave the same everywhere: click places the caret,
+double-click selects a word, triple-click the line, and right-click opens
+Cut / Copy / Paste / Select All, keeping the selection it landed on.
+`TextControl` and `TextView` do this themselves; an app with its own
+`egui::TextEdit` calls `widgets::edit_menu(ui, id, &response, &mut text,
+editable, password)` after adding it (an editor that keeps more than text,
+like StyledEdit's styles, opens a `context_menu` with its own Edit commands
+instead). Nothing may sit on top of a `TextEdit` that senses clicks, or
+double and triple clicks never reach it. `menu::request_paste(ctx)` pastes
+the clipboard into the window as ⌘V does.
 
 Colour emoji (`tabula_kit::emoji`, on `crates/emoji`): egui's text is
 monochrome, so code that places glyphs itself calls

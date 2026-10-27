@@ -326,6 +326,7 @@ impl App for DeskCalc {
             .text_color(c(p.document_text))
             .desired_width(text_rect.width())
             .show(&mut child);
+        widgets::edit_menu(ui, edit_id, &out.response, &mut self.settings.expression, true, false);
         if out.response.changed() {
             self.recall = None;
         }
