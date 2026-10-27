@@ -838,5 +838,11 @@
   "title": "Videos with B-frames play properly",
   "caption": "H.264 High videos with B-frames (most from screen recorders and x264) played with good sound but a picture that jumped and stalled: OpenH264 was asked to flush a picture after every packet, which broke reordering, so every B-frame failed. Now every picture decodes, in display order and in step with the sound (edit lists applied); seeking WebM/AV1 lands on the right frame too.",
   "image": "2026-10-26/215448-videos-with-b-frames-play-properly.png"
+ },
+ {
+  "time": "2026-10-26T22:00:07",
+  "title": "NetPositive asks before quitting",
+  "caption": "Quitting NetPositive (or closing a window) with several tabs open, or downloads still running, now asks first, so a stray \u2318Q doesn't throw the tabs away.",
+  "image": "2026-10-26/220007-netpositive-asks-before-quitting.png"
  }
 ]

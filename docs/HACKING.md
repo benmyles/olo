@@ -1065,6 +1065,10 @@ One `Servo` per process; each window `embed`s a subsurface and makes a
 is a `WebView` on its window's context, and only the active one is shown
 and painted. Servo draws straight into the subsurface; nothing is copied.
 
+* **Asking before quitting.** Quit, Close Window and the close box go
+  through `confirm`: if `what_would_be_lost` finds more than one tab, or
+  downloads running that the last window's closing would stop, a
+  `Win::Confirm` alert asks first (one per window, and one for Quit).
 * **Event loop.** Servo's waker posts `engine::Wake` through the kit
   proxy (one in flight at a time); `App::message` runs
   `servo.spin_event_loop()`. The delegate (`engine::Events`, also the

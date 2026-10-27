@@ -81,11 +81,23 @@ as they land (with the commit), add new ones as they come up.
   was flushed after every packet, breaking B-frame reordering; now
   `Flush::NoFlush`, mp4 edit lists applied, and WebM seeks fixed
   (vendored matroska-demuxer).
-- **Confirm before quitting apps with state that would be lost** (Ben):
-  NetPositive (open tabs, form input, downloads in progress), Terminal
-  (running shells), and any other app holding work that quitting throws
-  away ask first (an alert: Quit / Cancel), so an accidental ⌘Q or close
-  doesn't lose it. Apps that save or restore everything don't need to.
+- ~~**Confirm before quitting apps with state that would be lost**~~
+  (Ben): NetPositive asks before quitting or closing a window that would
+  lose more than one tab or stop downloads; Terminal already asks before
+  closing a window with a program running, and its Quit leaves the
+  shells in tabula-termd; StyledEdit asks about unsaved documents.
+- **Passwords: never change anything on sync without approval** (Ben):
+  every sync first works out exactly what it would change, both ways
+  (items added, edited, archived or deleted here and in 1Password, with
+  the fields that differ), shows it, and applies it only once approved;
+  nothing changes on either side until then.
+- **Passwords: sync with several 1Password accounts** (Ben): setup now
+  makes you pick one account; Passwords should sync with every account
+  the 1Password app has signed in (each account's vaults shown under it,
+  items keeping which account and vault they belong to, per-account sync
+  state and errors), with accounts added or removed later in its
+  settings. The store and sync (`vault.rs`, `sync.rs`) key remote state
+  by account as well as vault.
 - **GNOME/GTK 4 apps look at home** (Ben): a GTK 4 / libadwaita app
   opened in Tabula follows light/dark mode properly (and switches live),
   and gets Tabula's window chrome (yellow tab, BeOS borders) rather than

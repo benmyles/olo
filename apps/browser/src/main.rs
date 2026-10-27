@@ -260,6 +260,9 @@ enum Win {
     /// The Find window for a browser window.
     Find { target: WindowId },
     Downloads,
+    /// "Quit NetPositive?" (no target) or "Close this window?", asked
+    /// before throwing away tabs or stopping downloads.
+    Confirm { target: Option<WindowId>, message: String },
 }
 
 struct NetPositive {
@@ -463,6 +466,61 @@ impl NetPositive {
         cx.redraw(win);
     }
 
+    /// Close browser window `target` (or quit, for None), first asking if
+    /// that would lose more than one tab or stop downloads.
+    fn confirm(&mut self, cx: &mut Cx, target: Option<WindowId>) {
+        let Some(message) = self.what_would_be_lost(target) else {
+            return match target {
+                Some(win) => self.close_browser(cx, win),
+                None => {
+                    self.save_settings();
+                    cx.quit();
+                }
+            };
+        };
+        // One question at a time for each window (and for quitting).
+        if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Confirm { target: t, .. } if *t == target)) {
+            return cx.activate(id);
+        }
+        let title = if target.is_some() { "Close Window" } else { "Quit NetPositive" };
+        let id = cx.open_window(WindowOptions::alert(title, &message));
+        self.windows.insert(id, Win::Confirm { target, message });
+    }
+
+    /// What closing `target` (or quitting) would throw away, as the
+    /// question to ask; None if nothing worth asking about.
+    fn what_would_be_lost(&self, target: Option<WindowId>) -> Option<String> {
+        let browsers: Vec<&Browser> = self
+            .windows
+            .iter()
+            .filter(|(id, _)| target.is_none_or(|t| t == **id))
+            .filter_map(|(_, w)| if let Win::Browser(b) = w { Some(&**b) } else { None })
+            .collect();
+        let tabs: usize = browsers.iter().map(|b| b.tabs.len()).sum();
+        // Downloads stop only when the last window goes.
+        let last = self.windows.values().filter(|w| matches!(w, Win::Browser(_))).count() <= browsers.len();
+        let running = if last { self.downloads.iter().filter(|d| matches!(d.state, downloads::State::Running)).count() } else { 0 };
+        if tabs <= 1 && running == 0 {
+            return None;
+        }
+        let plural = |n: usize, one: &str, many: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {many}") };
+        let mut message = match (target, browsers.len()) {
+            _ if tabs <= 1 => String::new(),
+            (Some(_), _) => format!("Close this window and its {} tabs?", tabs),
+            (None, 1) => format!("Quit NetPositive? Its {} will close.", plural(tabs, "tab", "tabs")),
+            (None, n) => format!("Quit NetPositive? Its {} with {} will close.", plural(n, "window", "windows"), plural(tabs, "tab", "tabs")),
+        };
+        if running > 0 {
+            let stop = format!("{} in progress will stop.", plural(running, "download", "downloads"));
+            message = match (message.is_empty(), target) {
+                (true, Some(_)) => format!("Close this window? {stop}"),
+                (true, None) => format!("Quit NetPositive? {stop}"),
+                (false, _) => format!("{message} {stop}"),
+            };
+        }
+        Some(message)
+    }
+
     fn close_browser(&mut self, cx: &mut Cx, win: WindowId) {
         // The views go before their GL context; then the window and its
         // surface (`embed_lost` finds nothing left to drop).
@@ -477,6 +535,7 @@ impl NetPositive {
             .filter(|(_, w)| match w {
                 Win::Sheet(s) => sheet_owner(s) == Some(win),
                 Win::Find { target } => *target == win,
+                Win::Confirm { target, .. } => *target == Some(win),
                 Win::Browser(_) | Win::Downloads => false,
             })
             .map(|(&id, _)| id)
@@ -865,11 +924,8 @@ impl NetPositive {
                     self.close_tab(cx, win, i);
                 }
             }
-            "close-window" => self.close_browser(cx, win),
-            "quit" => {
-                self.save_settings();
-                cx.quit();
-            }
+            "close-window" => self.confirm(cx, Some(win)),
+            "quit" => self.confirm(cx, None),
             "open-location" => {
                 if let Some(b) = self.browser(win) {
                     b.focus_location = true;
@@ -2217,6 +2273,22 @@ impl App for NetPositive {
             Some(Win::Sheet(_)) => self.sheet_ui(cx, window, ui),
             Some(&Win::Find { target }) => self.find_ui(cx, window, ui, target),
             Some(Win::Downloads) => self.downloads_ui(cx, window, ui),
+            Some(Win::Confirm { target, message }) => {
+                let (target, message) = (*target, message.clone());
+                let Some(choice) = widgets::alert(ui, "warning", &message, &["Cancel", if target.is_some() { "Close" } else { "Quit" }]) else {
+                    return;
+                };
+                self.windows.remove(&window);
+                cx.close_window(window);
+                match (choice, target) {
+                    (1, Some(target)) => self.close_browser(cx, target),
+                    (1, None) => {
+                        self.save_settings();
+                        cx.quit();
+                    }
+                    _ => {}
+                }
+            }
             None => {}
         }
     }
@@ -2303,8 +2375,8 @@ impl App for NetPositive {
 
     fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
         match self.windows.get(&window) {
-            Some(Win::Browser(_)) => self.close_browser(cx, window),
-            Some(Win::Sheet(_) | Win::Find { .. } | Win::Downloads) => {
+            Some(Win::Browser(_)) => self.confirm(cx, Some(window)),
+            Some(Win::Sheet(_) | Win::Find { .. } | Win::Downloads | Win::Confirm { .. }) => {
                 // Closing a sheet cancels it (dropping the request does).
                 self.windows.remove(&window);
                 cx.close_window(window);

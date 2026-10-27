@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### NetPositive asks before quitting
+
+*22:00* — Quitting NetPositive (or closing a window) with several tabs open, or downloads still running, now asks first, so a stray ⌘Q doesn't throw the tabs away.
+
+![NetPositive asks before quitting](2026-10-26/220007-netpositive-asks-before-quitting.png)
+
 ### Videos with B-frames play properly
 
 *21:54* — H.264 High videos with B-frames (most from screen recorders and x264) played with good sound but a picture that jumped and stalled: OpenH264 was asked to flush a picture after every packet, which broke reordering, so every B-frame failed. Now every picture decodes, in display order and in step with the sound (edit lists applied); seeking WebM/AV1 lands on the right frame too.
