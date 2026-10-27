@@ -4,12 +4,19 @@
 //!
 //! On exit app_server writes every window's place to
 //! `$XDG_RUNTIME_DIR/tabula-layout-$WAYLAND_DISPLAY.json`; a closing window
-//! is remembered in memory too. A new window whose app id and title match
-//! a remembered one (recent enough) takes its place instead of the next
-//! cascade slot, when it is the same process on a new connection (it
-//! reconnected, or re-executed itself): an app started again, or a running
-//! one opening a window again, opens where windows open, on the display
-//! in use.
+//! is remembered in memory too. A new window that is one of those coming
+//! back takes its place and size instead of the next cascade slot:
+//!
+//! - the same process on a new connection (it reconnected, or re-executed
+//!   itself after an upgrade), by app id and title, else app id (titles
+//!   change) within a minute;
+//! - an app started again after its old process ended (Chrome restarting
+//!   restores its windows), by app id and the very same title, within a
+//!   quarter of an hour.
+//!
+//! Anything else is a new window, and opens where new windows open: on
+//! the display in use (under the pointer, or beside the app's focused
+//! window). That includes a running app opening a window again.
 
 use std::{
     path::PathBuf,
@@ -27,6 +34,10 @@ use crate::{
 
 /// How long a remembered place is offered to a returning window.
 const KEEP: Duration = Duration::from_secs(60);
+/// How long a closed window's place waits for its app to start again.
+const RESTART_KEEP: Duration = Duration::from_secs(15 * 60);
+/// At most this many closed windows are remembered.
+const MAX_REMEMBERED: usize = 200;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Placement {
@@ -34,6 +45,11 @@ pub struct Placement {
     pub title: String,
     pub x: i32,
     pub y: i32,
+    /// Its content's size (0: not known).
+    #[serde(default)]
+    pub width: i32,
+    #[serde(default)]
+    pub height: i32,
     pub workspace: u32,
     pub minimized: bool,
     pub focused: bool,
@@ -63,7 +79,7 @@ pub fn load() -> Vec<Placement> {
     let Ok(text) = std::fs::read_to_string(&p) else { return Vec::new() };
     let _ = std::fs::remove_file(&p);
     let list: Vec<Placement> = serde_json::from_str(&text).unwrap_or_default();
-    let fresh: Vec<Placement> = list.into_iter().filter(|e| now().saturating_sub(e.at) < KEEP.as_secs()).collect();
+    let fresh: Vec<Placement> = list.into_iter().filter(|e| now().saturating_sub(e.at) < RESTART_KEEP.as_secs()).collect();
     info!(windows = fresh.len(), "restoring window layout");
     fresh
 }
@@ -76,11 +92,14 @@ impl<B: Backend + 'static> AnvilState<B> {
         if app_id.is_empty() {
             return None;
         }
+        let size = w.content_size();
         Some(Placement {
             app_id,
             title: w.title(),
             x: loc.x,
             y: loc.y,
+            width: size.w,
+            height: size.h,
             workspace: meta.workspace.get().unwrap_or(self.workspace),
             minimized: meta.minimized.get(),
             focused: focused.is_some() && w.wl_surface().as_deref() == focused,
@@ -95,7 +114,10 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn remember_placement(&mut self, w: &WindowElement) {
         let focused = self.seat.get_keyboard().and_then(|k| k.current_focus()).and_then(|f| f.wl_surface().map(|s| s.into_owned()));
         if let Some(p) = self.placement_of(w, focused.as_ref()) {
-            self.layout.retain(|e| now().saturating_sub(e.at) < KEEP.as_secs());
+            self.layout.retain(|e| now().saturating_sub(e.at) < RESTART_KEEP.as_secs());
+            if self.layout.len() >= MAX_REMEMBERED {
+                self.layout.remove(0);
+            }
             self.layout.push(p);
         }
     }
@@ -119,9 +141,58 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
     }
 
-    /// On a window's first commit (when its app id and title are known):
-    /// put it back where it was before the restart, if we remember it. True when this is its first showing and nothing was
-    /// remembered for it, so it is still to be placed.
+    /// The remembered place `window` is coming back to, if it is one
+    /// coming back (see the top of this file); taken from the list.
+    fn take_placement(&mut self, window: &WindowElement) -> Option<Placement> {
+        if self.layout.is_empty() {
+            return None;
+        }
+        let (app_id, title) = (window.app_id(), window.title());
+        if app_id.is_empty() {
+            return None;
+        }
+        let owner = window.meta().owner.borrow().clone();
+        let age = |e: &Placement| now().saturating_sub(e.at);
+        // The same process, reconnected or re-executed.
+        let same = |e: &Placement| {
+            age(e) < KEEP.as_secs() && owner.as_ref().is_none_or(|(pid, client)| (e.pid == 0 || e.pid == *pid) && e.client.as_ref() != Some(client))
+        };
+        // The app started again: its old process is gone.
+        let restarted = |e: &Placement| {
+            age(e) < RESTART_KEEP.as_secs()
+                && e.pid > 0
+                && owner.as_ref().is_some_and(|(pid, _)| e.pid != *pid)
+                && !std::path::Path::new(&format!("/proc/{}", e.pid)).exists()
+        };
+        // The newest first: the place it had last.
+        let i = (0..self.layout.len()).rev().find(|&i| {
+            let e = &self.layout[i];
+            e.app_id == app_id && (e.title == title && (same(e) || restarted(e)))
+        });
+        // Titles can change (a terminal's follows its directory).
+        let i = i.or_else(|| (0..self.layout.len()).rev().find(|&i| same(&self.layout[i]) && self.layout[i].app_id == app_id))?;
+        Some(self.layout.remove(i))
+    }
+
+    /// On a window's first commit, before its first configure: if it is
+    /// coming back, claim its place and ask for its old size.
+    pub fn claim_placement(&mut self, surface: &WlSurface) {
+        let Some(window) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface)).cloned() else { return };
+        if window.meta().placed.get() || window.meta().returning.borrow().is_some() {
+            return;
+        }
+        let Some(p) = self.take_placement(&window) else { return };
+        if p.width > 0
+            && p.height > 0
+            && let Some(toplevel) = window.0.toplevel()
+        {
+            toplevel.with_pending_state(|state| state.size = Some((p.width, p.height).into()));
+        }
+        *window.meta().returning.borrow_mut() = Some(p);
+    }
+
+    /// On a window's first showing: put it back where it was, if it is
+    /// coming back. True when it isn't, so it is still to be placed.
     pub fn restore_placement(&mut self, surface: &WlSurface) -> bool {
         let Some(window) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface)).cloned() else {
             return false;
@@ -130,23 +201,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         if meta.placed.replace(true) {
             return false;
         }
-        if self.layout.is_empty() {
-            return true;
-        }
-        let (app_id, title) = (window.app_id(), window.title());
-        let owner = meta.owner.borrow().clone();
-        let fresh = |e: &Placement| {
-            now().saturating_sub(e.at) < KEEP.as_secs()
-                && owner.as_ref().is_none_or(|(pid, client)| (e.pid == 0 || e.pid == *pid) && e.client.as_ref() != Some(client))
-        };
-        let i = self
-            .layout
-            .iter()
-            .position(|e| fresh(e) && e.app_id == app_id && e.title == title)
-            // Titles can change (a terminal's follows its directory).
-            .or_else(|| self.layout.iter().position(|e| fresh(e) && e.app_id == app_id));
-        let Some(i) = i else { return true };
-        let p = self.layout.remove(i);
+        // Claimed at its first commit, or (its title came later) now.
+        let claimed = meta.returning.borrow_mut().take();
+        let Some(p) = claimed.or_else(|| self.take_placement(&window)) else { return true };
         self.space.map_element(window.clone(), Point::from((p.x, p.y)), p.focused);
         meta.restored_focus.set(p.focused.then(std::time::Instant::now));
         if p.workspace != self.workspace {

@@ -41,6 +41,10 @@ pub struct WindowMeta {
     pub restored_focus: Cell<Option<std::time::Instant>>,
     /// The process and connection that made it (Wayland windows).
     pub owner: std::cell::RefCell<Option<(i32, smithay::reexports::wayland_server::backend::ClientId)>>,
+    /// The remembered place it is coming back to, claimed on its first
+    /// commit (so its first configure has the old size) and taken when it
+    /// first shows.
+    pub returning: std::cell::RefCell<Option<crate::layout::Placement>>,
 }
 
 impl WindowElement {
@@ -54,6 +58,7 @@ impl WindowElement {
             placed: Cell::new(false),
             restored_focus: Cell::new(None),
             owner: std::cell::RefCell::new(None),
+            returning: std::cell::RefCell::new(None),
         });
         self.user_data().get::<WindowMeta>().unwrap()
     }

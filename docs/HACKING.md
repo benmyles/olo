@@ -522,7 +522,17 @@ hands both to app_server, so clients never see the sockets disappear.
   sockets. Then it stops app_server (SIGTERM; it saves every window's
   place to `$XDG_RUNTIME_DIR/tabula-layout-<display>.json`) and starts the
   one now on disk, which puts returning windows back (same app id and
-  title within 60 s; position, workspace, minimized, focus).
+  title within 60 s; position, size, workspace, minimized, focus).
+  `layout.rs` decides what is returning: the same process on a new
+  connection (title, else app id, within a minute), or an app started
+  again after its old process ended, with the very same app id and title
+  within 15 minutes (Chrome restarting restores its windows; closed
+  windows are remembered in memory, up to 200). The place is claimed at
+  the window's first commit, so its first configure already has the old
+  size, and applied when it maps. Everything else is a new window and
+  opens on the display in use (`new_window_near`: beside the app's
+  focused window, else under the pointer), including a running app
+  opening a window again.
 * Kit apps notice the lost connection and reconnect (for up to 20 s). An
   app whose binary didn't change keeps everything and recreates its
   windows exactly. One whose binary changed calls `App::save_state`,

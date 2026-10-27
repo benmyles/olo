@@ -61,6 +61,9 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
             if surface_initial_mapped(surface) && state.restore_placement(surface) {
                 state.place_over_parent(surface);
             }
+            // A window coming back asks for its old size in its first
+            // configure (sent just below).
+            state.claim_placement(surface);
             handle_toplevel_commit(&mut state.space, surface);
         });
     }
