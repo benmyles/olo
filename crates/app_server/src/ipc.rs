@@ -248,6 +248,13 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 None => not_found(),
             },
+            Request::TileApp { app_id } => {
+                if self.tile_app(&app_id) {
+                    Reply::Ok
+                } else {
+                    Reply::Error { message: format!("no windows of {app_id} to tile") }
+                }
+            }
             Request::Place { id, frame } => match self.window_by_id(id) {
                 Some(w) if self.space.element_location(&w).is_some() => {
                     let size = (frame.width.max(1), frame.height.max(1));

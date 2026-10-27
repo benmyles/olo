@@ -1,7 +1,8 @@
 //! Terminal: a shell in a window, BeOS style (one process, any number of
 //! windows), on alacritty's terminal emulator. GPU-drawn through the kit,
 //! with Tabula's own light and dark colour schemes. A window can hold
-//! several shells as tabs.
+//! several shells as tabs, and be a named, coloured group of them that
+//! can be saved and opened again (groups.rs).
 //!
 //! The shells run in tabula-termd (termd.rs), so they outlive Terminal:
 //! quit it, or have it crash or upgrade, and the next Terminal opens a
@@ -12,6 +13,7 @@ mod colors;
 mod daemon;
 mod find;
 mod graphics;
+mod groups;
 mod io;
 mod links;
 mod session;
@@ -33,6 +35,7 @@ use tabula_kit::{
 };
 
 use colors::Scheme;
+use groups::Group;
 use session::{Message, Session, Size, Start, TermEvent};
 use view::{GlyphCache, Metrics, Mouse};
 
@@ -132,11 +135,13 @@ struct TermWin {
     snap_to: Option<(usize, usize)>,
     shown_title: String,
     focused: bool,
+    group: Option<Group>,
 }
 
 impl TermWin {
-    fn new(tabs: Vec<Tab>, active: usize, snap_to: Option<(usize, usize)>) -> TermWin {
-        TermWin { active: active.min(tabs.len().saturating_sub(1)), tabs, glyphs: GlyphCache::default(), snap_to, shown_title: String::new(), focused: true }
+    fn new(tabs: Vec<Tab>, active: usize, snap_to: Option<(usize, usize)>, group: Option<Group>) -> TermWin {
+        let active = active.min(tabs.len().saturating_sub(1));
+        TermWin { active, tabs, glyphs: GlyphCache::default(), snap_to, shown_title: String::new(), focused: true, group }
     }
 
     fn tab(&self) -> &Tab {
@@ -152,8 +157,18 @@ impl TermWin {
         (s.cols, s.rows)
     }
 
+    /// The tab strip shows: several tabs, or a group (its name leads it).
     fn strip(&self) -> bool {
-        self.tabs.len() > 1
+        self.tabs.len() > 1 || self.group.is_some()
+    }
+
+    /// Group or not, keeping the grid as the strip comes or goes.
+    fn set_group(&mut self, group: Option<Group>) {
+        let had = self.strip();
+        self.group = group;
+        if had != self.strip() {
+            self.snap_to = Some(self.grid());
+        }
     }
 
     fn position(&self, shell: u64) -> Option<usize> {
@@ -177,6 +192,7 @@ impl TermWin {
     /// Take tab `i` out; the one after it (or else before) shows.
     fn take(&mut self, i: usize) -> Tab {
         let was_active = i == self.active;
+        let had = self.strip();
         let tab = self.tabs.remove(i);
         if self.active > i {
             self.active -= 1;
@@ -188,8 +204,8 @@ impl TermWin {
                 t.report_focus(true);
             }
         }
-        // The strip comes and goes with the second tab: keep the grid.
-        if self.tabs.len() == 1 {
+        // The strip can go with the second tab: keep the grid.
+        if had != self.strip() {
             self.snap_to = Some(self.grid());
         }
         tab
@@ -206,6 +222,8 @@ enum Win {
     Daemon(Box<daemon::DaemonWin>),
     /// "Start tabula-termd over?" for the Terminal Daemon window.
     ConfirmStartOver { target: WindowId },
+    /// Name (or rename) a window's group and choose its colour.
+    NameGroup { target: WindowId, name: String, color: usize },
 }
 
 struct Terminal {
@@ -220,6 +238,8 @@ struct Terminal {
     respawn: bool,
     /// The terminal window last in front, for new tabs from outside.
     front: Option<WindowId>,
+    /// Groups saved to open again (groups.rs).
+    saved_groups: Vec<groups::Saved>,
 }
 
 /// Room above the grid: the menu bar, and the tab strip if shown.
@@ -256,6 +276,8 @@ struct SavedWindow {
     #[serde(default)]
     active: usize,
     size: (u32, u32),
+    #[serde(default)]
+    group: Option<Group>,
 }
 
 /// What a Terminal from before tabula-termd handed on: the shells
@@ -288,16 +310,16 @@ impl Terminal {
     fn open(&mut self, cx: &mut Cx, cwd: Option<PathBuf>, command: Option<Vec<String>>) {
         let (cols, rows) = (self.settings.cols, self.settings.rows);
         let options = self.window_options(cols, rows, false);
-        self.add(cx, options, Size { cols, rows }, Some((cols, rows)), vec![Start::Spawn { command, cwd }], 0);
+        self.add(cx, options, Size { cols, rows }, Some((cols, rows)), vec![Start::Spawn { command, cwd }], 0, None);
     }
 
     /// A window on shells tabula-termd already has (sized as it was, if
     /// we know), one tab each.
-    fn reopen(&mut self, cx: &mut Cx, shells: &[&wire::ShellInfo], size: Option<(u32, u32)>, active: usize) {
+    fn reopen(&mut self, cx: &mut Cx, shells: &[&wire::ShellInfo], size: Option<(u32, u32)>, active: usize, group: Option<Group>) {
         let active = active.min(shells.len() - 1);
         let shown = shells[active];
         let (cols, rows) = (shown.grid.cols.max(1) as usize, shown.grid.rows.max(1) as usize);
-        let mut options = self.window_options(cols, rows, shells.len() > 1);
+        let mut options = self.window_options(cols, rows, shells.len() > 1 || group.is_some());
         if let Some(size) = size {
             options.size = size;
         }
@@ -306,7 +328,7 @@ impl Terminal {
         }
         let snap = size.is_none().then_some((cols, rows));
         let starts = shells.iter().map(|s| Start::Attach(s.id)).collect();
-        self.add(cx, options, Size { cols, rows }, snap, starts, active);
+        self.add(cx, options, Size { cols, rows }, snap, starts, active, group);
     }
 
     fn start(&self, cx: &Cx, size: Size, start: Start) -> Tab {
@@ -314,10 +336,11 @@ impl Terminal {
         Tab::new(Session::start(cx.proxy(), &self.link, size, cell, self.scheme(), start))
     }
 
-    fn add(&mut self, cx: &mut Cx, options: WindowOptions, size: Size, snap_to: Option<(usize, usize)>, starts: Vec<Start>, active: usize) {
+    #[allow(clippy::too_many_arguments)]
+    fn add(&mut self, cx: &mut Cx, options: WindowOptions, size: Size, snap_to: Option<(usize, usize)>, starts: Vec<Start>, active: usize, group: Option<Group>) {
         let id = cx.open_window(options);
         let tabs = starts.into_iter().map(|s| self.start(cx, size, s)).collect();
-        self.windows.insert(id, Win::Term(Box::new(TermWin::new(tabs, active, snap_to))));
+        self.windows.insert(id, Win::Term(Box::new(TermWin::new(tabs, active, snap_to, group))));
     }
 
     /// A new tab in `win`, after the one showing, and show it.
@@ -327,8 +350,9 @@ impl Terminal {
         let tab = self.start(cx, Size { cols, rows }, start);
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
         let at = t.active + 1;
+        let had = t.strip();
         t.tabs.insert(at, tab);
-        if t.tabs.len() == 2 {
+        if !had {
             // Room for the strip, keeping the grid.
             t.snap_to = Some((cols, rows));
         }
@@ -398,11 +422,11 @@ impl Terminal {
             }
             used.extend(mine.iter().map(|s| s.id));
             let active = mine.iter().position(|s| Some(s.id) == shown).unwrap_or(0);
-            self.reopen(cx, &mine, Some(w.size), active);
+            self.reopen(cx, &mine, Some(w.size), active, w.group.clone());
         }
         let rest: Vec<&wire::ShellInfo> = free.iter().filter(|s| !used.contains(&s.id)).copied().collect();
         for shell in &rest {
-            self.reopen(cx, &[shell], None, 0);
+            self.reopen(cx, &[shell], None, 0, None);
         }
         !used.is_empty() || !rest.is_empty()
     }
@@ -421,7 +445,7 @@ impl Terminal {
             let mut options = self.window_options(w.cols, w.rows, false);
             options.size = w.size;
             let size = Size { cols: w.cols.max(1), rows: w.rows.max(1) };
-            self.add(cx, options, size, None, vec![Start::Adopt { pty, pid: w.pid, title: w.title, replay: w.contents }], 0);
+            self.add(cx, options, size, None, vec![Start::Adopt { pty, pid: w.pid, title: w.title, replay: w.contents }], 0, None);
             any = true;
         }
         any
@@ -520,13 +544,18 @@ impl Terminal {
             let strip = egui::Rect::from_min_size(full.min, egui::vec2(full.width(), STRIP));
             area.min.y = strip.max.y;
             let icons: Vec<_> = t.tabs.iter().map(|tab| tab_icon(tab.rang)).collect();
+            let color = t.group.as_ref().map(|g| groups::color(g.color, self.dark));
             let items: Vec<StripTab> = t
                 .tabs
                 .iter()
                 .zip(&icons)
-                .map(|(tab, icon)| StripTab { label: &tab.title, icon: Some(icon), color: None, status: tab.rang.then_some("bell rang") })
+                .map(|(tab, icon)| StripTab { label: &tab.title, icon: Some(icon), color, status: tab.rang.then_some("bell rang") })
                 .collect();
-            action = TabStrip::new(("terminal-tabs", win), &items, t.active).show(ui, strip);
+            let mut bar = TabStrip::new(("terminal-tabs", win), &items, t.active);
+            if let (Some(g), Some(color)) = (&t.group, color) {
+                bar = bar.group(&g.name, color);
+            }
+            action = bar.show(ui, strip);
         }
         t.tab().session.woke();
         {
@@ -542,7 +571,7 @@ impl Terminal {
                 cx.resize(win, want);
             }
         }
-        let TermWin { tabs, active, glyphs, .. } = &mut **t;
+        let TermWin { tabs, active, glyphs, group, .. } = &mut **t;
         let tab = &mut tabs[*active];
         let session_cwd = {
             let shared = tab.session.shared.clone();
@@ -582,11 +611,15 @@ impl Terminal {
                 tab.bell = None;
             }
         }
-        // Titles: each tab's, and the window's is the one showing.
+        // Titles: each tab's, and the window's is the one showing (after
+        // its group's name).
         for tab in tabs.iter_mut() {
             tab.title = tab.current_title();
         }
-        let title = tabs[*active].title.clone();
+        let title = match group {
+            Some(g) => format!("{} — {}", g.name, tabs[*active].title),
+            None => tabs[*active].title.clone(),
+        };
         if title != t.shown_title {
             t.shown_title = title.clone();
             cx.set_title(win, title);
@@ -621,6 +654,18 @@ impl Terminal {
                 t.tabs.insert(to.min(t.tabs.len()), tab);
                 t.active = t.position(shown).unwrap_or(0);
                 cx.redraw(win);
+            }
+            Some(StripAction::Group(pos)) => {
+                let menu = Menu::new("")
+                    .item("Rename Group…", "name-group", None)
+                    .item("Save Group", "save-group", None)
+                    .item("Ungroup", "ungroup", None)
+                    .separator()
+                    .item("Show All Groups", "tile-groups", None);
+                menu::request_popup(
+                    ui.ctx(),
+                    MenuRequest { menu, source: ui.make_persistent_id("group-menu"), anchor: MenuAnchor::At(pos), selected: None },
+                );
             }
             Some(StripAction::Menu(i, pos)) => {
                 let shell = t.tabs[i].session.id;
@@ -705,7 +750,7 @@ impl Terminal {
         options.title = tab.title.clone();
         tab.rang = false;
         let id = cx.open_window(options);
-        self.windows.insert(id, Win::Term(Box::new(TermWin::new(vec![tab], 0, Some((cols, rows))))));
+        self.windows.insert(id, Win::Term(Box::new(TermWin::new(vec![tab], 0, Some((cols, rows)), None))));
     }
 }
 
@@ -782,6 +827,81 @@ impl Terminal {
     }
 }
 
+const NAME_W: f32 = 340.0;
+const NAME_H: f32 = 2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + 2.0 * m::SPACING + SWATCH + m::SPACING + m::CONTROL_HEIGHT;
+const SWATCH: f32 = 22.0;
+
+impl Terminal {
+    /// Saved group `i`: its window if one is open, else a new one with
+    /// a shell in each tab's folder.
+    fn open_group(&mut self, cx: &mut Cx, i: usize) {
+        let Some(saved) = self.saved_groups.get(i).cloned() else { return };
+        let open = self.windows.iter().find(|(_, w)| matches!(w, Win::Term(x) if x.group.as_ref().is_some_and(|g| g.name == saved.group.name)));
+        if let Some((&id, _)) = open {
+            return cx.activate(id);
+        }
+        let (cols, rows) = (self.settings.cols, self.settings.rows);
+        let options = self.window_options(cols, rows, true);
+        let mut starts: Vec<Start> = saved.tabs.iter().map(|t| Start::Spawn { command: None, cwd: t.cwd.clone().filter(|d| d.is_dir()) }).collect();
+        if starts.is_empty() {
+            starts.push(Start::Spawn { command: None, cwd: None });
+        }
+        self.add(cx, options, Size { cols, rows }, Some((cols, rows)), starts, saved.active, Some(saved.group));
+    }
+
+    /// The Group window: a name and a colour for `target`'s group.
+    fn name_group_ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
+        let Some(Win::NameGroup { target, name, color }) = self.windows.get_mut(&window) else { return };
+        let target = *target;
+        let full = ui.max_rect().shrink(m::WINDOW_INSET);
+        ui.scope_builder(egui::UiBuilder::new().max_rect(full).layout(egui::Layout::top_down(egui::Align::Min)), |ui| {
+            ui.add(TextControl::new(name).label("Name:").divider(50.0).autofocus(true));
+        });
+        // The colours, as swatches; the chosen one ringed.
+        let p = style::palette(ui.ctx());
+        let top = full.top() + m::CONTROL_HEIGHT + 2.0 * m::SPACING;
+        style::label(ui.painter(), full.left(), top + SWATCH / 2.0, egui::Align::Min, "Color:", style::plain_font(), style::c(p.panel_text));
+        for i in 0..groups::COLORS.len() {
+            let r = egui::Rect::from_min_size(egui::pos2(full.left() + 50.0 + i as f32 * (SWATCH + m::SPACING), top), egui::vec2(SWATCH, SWATCH));
+            let resp = ui.interact(r, ui.make_persistent_id(("swatch", i)), egui::Sense::click());
+            resp.widget_info(|| egui::WidgetInfo { selected: Some(*color == i), ..egui::WidgetInfo::labeled(egui::Role::RadioButton, true, groups::COLORS[i].0) });
+            if resp.clicked() {
+                *color = i;
+            }
+            if *color == i {
+                ui.painter().circle_stroke(r.center(), SWATCH / 2.0, egui::Stroke::new(2.0, style::c(p.keyboard_navigation)));
+            }
+            ui.painter().circle_filled(r.center(), SWATCH / 2.0 - 3.0, groups::color(i, self.dark));
+        }
+        let bw = m::BUTTON_MIN_WIDTH;
+        let y = full.bottom() - m::CONTROL_HEIGHT;
+        let ok_r = egui::Rect::from_min_size(egui::pos2(full.right() - bw, y), egui::vec2(bw, m::CONTROL_HEIGHT));
+        let cancel_r = ok_r.translate(egui::vec2(-(bw + m::SPACING + 2.0), 0.0));
+        let cancel = ui.put(cancel_r, Button::new("Cancel")).clicked() || ui.input(|i| i.key_pressed(Key::Escape));
+        let ready = !name.trim().is_empty();
+        let ok = ui.add_enabled_ui(ready, |ui| ui.put(ok_r, Button::new("OK").default(true))).inner.clicked()
+            || ready && ui.input(|i| i.key_pressed(Key::Enter));
+        if !(ok || cancel) {
+            return;
+        }
+        let group = Group { name: name.trim().to_owned(), color: *color };
+        self.windows.remove(&window);
+        cx.close_window(window);
+        if ok && let Some(Win::Term(t)) = self.windows.get_mut(&target) {
+            // A saved group renamed here keeps its saved tabs under the new name.
+            if let Some(old) = t.group.as_ref()
+                && let Some(s) = self.saved_groups.iter_mut().find(|s| s.group.name == old.name)
+            {
+                s.group = group.clone();
+                groups::store(&self.saved_groups);
+            }
+            t.set_group(Some(group));
+            cx.redraw(target);
+            cx.activate(target);
+        }
+    }
+}
+
 impl App for Terminal {
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
         match self.windows.get(&window) {
@@ -801,6 +921,7 @@ impl App for Terminal {
                 }
             }
             Some(&Win::Find { target }) => self.find_ui(cx, window, ui, target),
+            Some(Win::NameGroup { .. }) => self.name_group_ui(cx, window, ui),
             Some(Win::Daemon(_)) => {
                 let Some(Win::Daemon(d)) = self.windows.get_mut(&window) else { return };
                 match d.ui(cx, ui) {
@@ -816,7 +937,7 @@ impl App for Terminal {
                             cx.activate(id);
                             cx.redraw(id);
                         }
-                        None => self.reopen(cx, &[&shell], None, 0),
+                        None => self.reopen(cx, &[&shell], None, 0, None),
                     },
                     None => {}
                 }
@@ -877,6 +998,27 @@ impl App for Terminal {
             .item("Tabula Dark", "scheme-dark", None)
             .checked(self.settings.scheme == SchemeChoice::Dark);
         const NUMBERS: [Key; 9] = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9];
+        let grouped = t.group.is_some();
+        let mut open_group = Menu::new("Open Saved Group");
+        let mut forget_group = Menu::new("Forget Saved Group");
+        for (i, g) in self.saved_groups.iter().enumerate() {
+            let open = self.windows.values().any(|w| matches!(w, Win::Term(x) if x.group.as_ref().is_some_and(|x| x.name == g.group.name)));
+            open_group = open_group.item(&g.group.name, format!("open-group:{i}"), None).checked(open);
+            forget_group = forget_group.item(&g.group.name, format!("forget-group:{i}"), None);
+        }
+        if self.saved_groups.is_empty() {
+            open_group = open_group.item("No Saved Groups", "none", None).enabled(false);
+            forget_group = forget_group.item("No Saved Groups", "none", None).enabled(false);
+        }
+        let group = Menu::new("Group")
+            .item(if grouped { "Rename Group…" } else { "Name Group…" }, "name-group", None)
+            .item("Save Group", "save-group", None)
+            .enabled(grouped)
+            .item("Ungroup", "ungroup", None)
+            .enabled(grouped)
+            .separator()
+            .submenu(open_group)
+            .submenu(forget_group);
         let mut tabs = Menu::new("Tabs")
             .item_shift("Previous Tab", "prev-tab", Key::OpenBracket)
             .enabled(several)
@@ -885,6 +1027,9 @@ impl App for Terminal {
             .separator()
             .item("Move Tab to New Window", "detach", None)
             .enabled(several)
+            .separator()
+            .submenu(group)
+            .item("Show All Groups", "tile-groups", None)
             .separator();
         for (i, tab) in t.tabs.iter().enumerate() {
             let label = if tab.rang { format!("{} 🔔", tab.title) } else { tab.title.clone() };
@@ -952,6 +1097,40 @@ impl App for Terminal {
                 let shell = t.tab().session.id;
                 self.detach(cx, window, shell);
             }
+            "name-group" => {
+                let (name, color) = match &t.group {
+                    Some(g) => (g.name.clone(), g.color),
+                    None => {
+                        let groups: Vec<&Group> = self.windows.values().filter_map(|w| if let Win::Term(x) = w { x.group.as_ref() } else { None }).collect();
+                        let names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).chain(self.saved_groups.iter().map(|g| g.group.name.as_str())).collect();
+                        let colors: Vec<usize> = groups.iter().map(|g| g.color).collect();
+                        (groups::new_name(&names), groups::new_color(&colors))
+                    }
+                };
+                if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::NameGroup { target, .. } if *target == window)) {
+                    cx.activate(id);
+                } else {
+                    let id = cx.open_window(WindowOptions::new("Group", NAME_W as u32, NAME_H as u32).min_size(NAME_W as u32, NAME_H as u32).max_size(NAME_W as u32, NAME_H as u32));
+                    self.windows.insert(id, Win::NameGroup { target: window, name, color });
+                }
+            }
+            "ungroup" => {
+                t.set_group(None);
+                cx.redraw(window);
+            }
+            "save-group" => {
+                if let Some(group) = t.group.clone() {
+                    let tabs = t.tabs.iter().map(|x| groups::SavedTab { cwd: x.session.cwd(), title: x.title.clone() }).collect();
+                    let saved = groups::Saved { group, tabs, active: t.active };
+                    match self.saved_groups.iter_mut().find(|g| g.group.name == saved.group.name) {
+                        Some(g) => *g = saved,
+                        None => self.saved_groups.push(saved),
+                    }
+                    self.saved_groups.sort_by_key(|g| g.group.name.to_lowercase());
+                    groups::store(&self.saved_groups);
+                }
+            }
+            "tile-groups" => cx.tile_my_windows(),
             "quit" => {
                 // The shells stay in tabula-termd for next time.
                 self.link.bye();
@@ -1042,6 +1221,13 @@ impl App for Terminal {
                     self.close_tab_requested(cx, window, shell);
                 } else if let Some(shell) = c.strip_prefix("tab-detach:").and_then(|n| n.parse().ok()) {
                     self.detach(cx, window, shell);
+                } else if let Some(i) = c.strip_prefix("open-group:").and_then(|n| n.parse::<usize>().ok()) {
+                    self.open_group(cx, i);
+                } else if let Some(i) = c.strip_prefix("forget-group:").and_then(|n| n.parse::<usize>().ok()) {
+                    if i < self.saved_groups.len() {
+                        self.saved_groups.remove(i);
+                        groups::store(&self.saved_groups);
+                    }
                 } else if let Some(keep) = c.strip_prefix("tab-close-others:").and_then(|n| n.parse::<u64>().ok()) {
                     let others: Vec<u64> = t.tabs.iter().map(|x| x.session.id).filter(|&s| s != keep).collect();
                     for shell in others {
@@ -1068,7 +1254,7 @@ impl App for Terminal {
                 let id = cx.open_window(WindowOptions::alert("Terminal", &message));
                 self.windows.insert(id, Win::ConfirmClose { target: window, shell: None, message });
             }
-            Some(Win::ConfirmClose { .. } | Win::Find { .. } | Win::Daemon(_) | Win::ConfirmStartOver { .. }) => {
+            Some(Win::ConfirmClose { .. } | Win::Find { .. } | Win::Daemon(_) | Win::ConfirmStartOver { .. } | Win::NameGroup { .. }) => {
                 self.windows.remove(&window);
                 cx.close_window(window);
             }
@@ -1143,7 +1329,13 @@ impl App for Terminal {
                     let tabs: Vec<u64> = t.tabs.iter().filter(|x| x.session.exited.is_none()).map(|x| x.session.id).collect();
                     let shell = t.tab().session.id;
                     let active = tabs.iter().position(|&s| s == shell).unwrap_or(0);
-                    (!tabs.is_empty()).then(|| SavedWindow { shell: tabs[active], tabs, active, size: cx.window_size(id).unwrap_or((640, 400)) })
+                    (!tabs.is_empty()).then(|| SavedWindow {
+                        shell: tabs[active],
+                        tabs,
+                        active,
+                        size: cx.window_size(id).unwrap_or((640, 400)),
+                        group: t.group.clone(),
+                    })
                 }
                 _ => None,
             })
@@ -1175,6 +1367,7 @@ fn main() {
             search: find::Search::default(),
             respawn: false,
             front: None,
+            saved_groups: groups::load(),
         };
         let state = cx.restored_state();
         let saved = state.as_deref().and_then(|s| serde_json::from_str::<Saved>(s).ok());

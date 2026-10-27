@@ -395,6 +395,17 @@ impl Cx {
     pub fn app_id(&self) -> &str {
         &self.app_id
     }
+    /// Ask app_server to tile this app's resizable windows in a grid on
+    /// the active display, in front (a way to see all its documents at
+    /// once). Off the UI thread; does nothing outside Tabula.
+    pub fn tile_my_windows(&self) {
+        let app_id = self.app_id.clone();
+        std::thread::spawn(move || {
+            if let Ok(mut client) = tabula_protocol::Client::connect() {
+                let _ = client.request(&tabula_protocol::Request::TileApp { app_id });
+            }
+        });
+    }
 }
 
 /// Send messages to [`App::message`] from any thread.

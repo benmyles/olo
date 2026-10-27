@@ -63,11 +63,13 @@ as they land (with the commit), add new ones as they come up.
 
 - **Terminal tabs, tab groups and coding agents** (Ben; next up,
   prioritized 2026-10-27): ~~tabs~~ (done: the kit's `TabStrip`; HACKING,
-  Terminal "Tabs"), tab groups that can be saved and reopened, and
+  Terminal "Tabs"), ~~tab groups that can be saved and reopened~~ (done:
+  a window is a named, coloured group; HACKING, Terminal "Groups"), and
   native recognition of coding agents (Claude Code, Codex) running in a
   tab, so tabs and groups show each agent's state (working, waiting for an
-  answer, blocked) and notify when one needs attention. A tile-all mode
-  shows every group at once, tiled, each group colour-coded. Design it
+  answer, blocked) and notify when one needs attention. ~~A tile-all mode
+  shows every group at once, tiled, each group colour-coded~~ (done: Show
+  All Groups). Design it
   properly (BeOS look, how tabs, groups and colours read).
 - ~~**Passwords keeps its own store, synced with 1Password both ways**~~
   (Ben): going to 1Password for every look-up is slow and unreliable.

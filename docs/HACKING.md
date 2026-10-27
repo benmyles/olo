@@ -216,6 +216,11 @@ fn main() {
   on that screen) or puts it back at its own size; `cx.is_fullscreen`
   says which. A `resize` while fullscreen becomes the size it comes back
   to. Quick Look toggles it with F.
+* Showing all of an app's documents: `cx.tile_my_windows()` asks
+  app_server (`Request::TileApp { app_id }`, off the UI thread) to tile
+  the app's resizable windows on this workspace in a grid on the active
+  display, in front (alerts and other fixed-size panels stay put).
+  Terminal's Show All Groups uses it.
 * Taps: a touchpad tap brings a press and its release together; the kit
   holds such a release over to the next frame (`input::split_taps`), so
   egui sees the button down for a frame and press-and-hold controls
@@ -1191,6 +1196,17 @@ never sees those). `tabula-terminal --tab [-w DIR]` opens a tab in the
 Terminal window last in front (Tracker's Open in Terminal does), a window
 if there is none. `save_state` keeps each window's tabs in order and
 which one shows.
+
+**Groups** (`src/groups.rs`). A window can be a named group with a colour
+(Tabs ▸ Group ▸ Name Group…, or click the group's name in the strip): the
+name leads the strip in its colour, every tab carries a band of it, the
+window's title is "name — tab", and the strip shows even with one tab.
+Save Group keeps the group and each tab's folder in
+`terminal-groups.json` (config dir); Open Saved Group brings its window
+forward, or opens one with a shell in each folder; Forget Saved Group
+drops it. Show All Groups tiles every Terminal window (`cx.tile_my_windows`),
+so each group is in view at once, told apart by colour. `save_state` keeps
+each window's group across an upgrade.
 
 **Terminal ▸ Terminal Daemon…** (`src/daemon.rs`) shows tabula-termd's
 process and uptime and its shells (whether each is shown here, in

@@ -2017,6 +2017,8 @@ pub enum StripAction {
     Menu(usize, Pos2),
     /// A tab dragged along the row to another place.
     Move { from: usize, to: usize },
+    /// A click on the group's name, at the pointer.
+    Group(Pos2),
 }
 
 /// Widest a [`TabStrip`] tab grows.
@@ -2033,11 +2035,12 @@ pub struct TabStrip<'a> {
     active: usize,
     max_width: f32,
     new_tab: bool,
+    group: Option<(&'a str, Color32)>,
 }
 
 impl<'a> TabStrip<'a> {
     pub fn new(id: impl std::hash::Hash + std::fmt::Debug, tabs: &'a [StripTab<'a>], active: usize) -> Self {
-        TabStrip { id: Id::unique(id), tabs, active, max_width: STRIP_TAB_MAX, new_tab: true }
+        TabStrip { id: Id::unique(id), tabs, active, max_width: STRIP_TAB_MAX, new_tab: true, group: None }
     }
 
     /// Without the + button.
@@ -2046,19 +2049,43 @@ impl<'a> TabStrip<'a> {
         self
     }
 
+    /// The tabs are a named group: its name leads the row in its colour
+    /// (clicking it gives [`StripAction::Group`]).
+    pub fn group(mut self, name: &'a str, color: Color32) -> Self {
+        self.group = Some((name, color));
+        self
+    }
+
     /// `strip` is [`TAB_HEIGHT`] tall and the window's width.
-    pub fn show(self, ui: &mut Ui, strip: Rect) -> Option<StripAction> {
+    pub fn show(self, ui: &mut Ui, full: Rect) -> Option<StripAction> {
         let p = style::palette(ui.ctx());
-        let painter = ui.painter_at(strip);
+        let painter = ui.painter_at(full);
         let bg = p.panel_background;
-        painter.rect_filled(strip, 0.0, shade(&p, bg, 1.07));
-        hline(&painter, strip.left(), strip.right(), strip.bottom() - 1.0, shade(&p, bg, 1.3));
+        painter.rect_filled(full, 0.0, shade(&p, bg, 1.07));
+        hline(&painter, full.left(), full.right(), full.bottom() - 1.0, shade(&p, bg, 1.3));
+        let mut action = None;
+        let mut strip = full;
+        if let Some((name, color)) = self.group {
+            let text_w = style::label_width(ui.ctx(), name, bold_font());
+            let chip = Rect::from_min_size(pos2(full.left() + m::TIGHT + 1.0, full.top() + 3.0), vec2((text_w + 2.0 * m::SPACING).round(), TAB_HEIGHT - 6.0));
+            let chip = style::snap(ui.ctx(), chip);
+            let resp = ui.interact(chip, self.id.with("group"), Sense::click());
+            resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Group {name}")));
+            painter.rect_filled(chip, 4.0, color);
+            let [r, g, b, _] = color.to_array();
+            let light = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32 > 150.0;
+            let ink = if light { Color32::from_gray(20) } else { Color32::WHITE };
+            style::label(&painter, chip.center().x, chip.center().y, Align::Center, name, bold_font(), ink);
+            if resp.clicked() || resp.secondary_clicked() {
+                action = resp.interact_pointer_pos().map(StripAction::Group);
+            }
+            strip.min.x = chip.right() + m::TIGHT;
+        }
         let n = self.tabs.len();
         let new_w = if self.new_tab { m::CONTROL_HEIGHT + m::TIGHT } else { 0.0 };
         let width = ((strip.width() - 2.0 * m::TIGHT - new_w) / n.max(1) as f32).min(self.max_width).floor().max(1.0);
         let slot = |i: usize| Rect::from_min_size(pos2(strip.left() + m::TIGHT + i as f32 * width, strip.top() + 2.0), vec2(width, TAB_HEIGHT - 2.0));
         let drag_id = self.id.with("dragging");
-        let mut action = None;
         for (i, tab) in self.tabs.iter().enumerate() {
             let r = slot(i);
             let selected = i == self.active;

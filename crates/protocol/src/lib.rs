@@ -104,6 +104,9 @@ pub enum Request {
         #[serde(default)]
         window: Option<WindowId>,
     },
+    /// Tile the resizable windows of app `app_id` on this workspace in a
+    /// grid on the active display, in front of the rest.
+    TileApp { app_id: String },
     /// Inject input as if from a device (for automated UI tests).
     Synthetic { events: Vec<SyntheticEvent> },
     Quit,

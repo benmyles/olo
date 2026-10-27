@@ -570,6 +570,44 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         info!(windows = windows.len(), "tiled all");
     }
 
+    /// The resizable windows of app `app_id` on this workspace (not its
+    /// alerts or other fixed-size panels) in a grid on the active display,
+    /// in front, in reading order of where they are now: an app showing
+    /// all its documents at once (Terminal's groups). False if it has none.
+    pub fn tile_app(&mut self, app_id: &str) -> bool {
+        let Some(output) = self.active_output() else { return false };
+        let Some(area) = self.tile_area(&output) else { return false };
+        use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
+        let resizable = |w: &WindowElement| {
+            w.wl_surface().is_none_or(|s| {
+                with_states(&s, |st| {
+                    let mut cached = st.cached_state.get::<SurfaceCachedState>();
+                    let c = cached.current();
+                    (c.max_size.w == 0 || c.max_size.w > c.min_size.w) && (c.max_size.h == 0 || c.max_size.h > c.min_size.h)
+                })
+            })
+        };
+        let mut windows: Vec<WindowElement> = self.space.elements().filter(|w| w.app_id() == app_id && resizable(w)).cloned().collect();
+        if windows.is_empty() {
+            return false;
+        }
+        windows.sort_by_key(|w| {
+            let g = self.space.element_geometry(w).unwrap_or_default();
+            (g.loc.y + g.size.h / 2, g.loc.x + g.size.w / 2)
+        });
+        let cells = grid(area, windows.len(), self.tile_gap());
+        for (w, cell) in windows.iter().zip(cells) {
+            Self::set_tiled(w, None);
+            self.set_frame(w, cell, true);
+            self.space.raise_element(w, false);
+        }
+        if let Some(front) = windows.last() {
+            self.focus_window(front);
+        }
+        info!(app_id, windows = windows.len(), "tiled an app's windows");
+        true
+    }
+
     /// Every window on the active display stacked diagonally from the top
     /// left, as they open, front-most last; each its own size where it
     /// fits.
