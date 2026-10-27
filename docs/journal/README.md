@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Drag a picture out of Viewer
+
+*02:30* — A picture that fits Viewer's window drags out as its file (and, for PNG, JPEG, GIF and WebP, the picture itself for programs that take one). Quick Look does the same, from the picture or its footer's icon. Dropping it back into its own folder is refused.
+
+![Drag a picture out of Viewer](2026-10-27/023043-drag-a-picture-out-of-viewer.png)
+
 ### Backups have their own icon
 
 *02:23* — Tracker shows .tabula-backup files with the new backup icon; opening one shows it in Preferences ▸ Backup, ready to import.

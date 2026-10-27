@@ -37,6 +37,8 @@ pub enum Action {
     Fullscreen,
     /// Turn the picture a quarter left (false) or right (true) and save it.
     Rotate(bool),
+    /// Drag the file out (from the picture, or the footer's icon).
+    Drag(view::Drag),
 }
 
 pub struct QuickLook {
@@ -176,7 +178,16 @@ impl QuickLook {
         let content = Rect::from_min_max(full.min, pos2(full.right(), full.bottom() - FOOTER));
         let footer = Rect::from_min_max(pos2(full.left(), content.bottom()), full.max);
         self.preview.ui(ui, content);
+        if self.preview.take_drag_out() {
+            action = Some(Action::Drag(self.drag(vec2(16.0, 16.0))));
+        }
         self.footer(ui, footer).or(action)
+    }
+
+    /// Dragging the item out, with the pointer `hotspot` into its icon.
+    fn drag(&self, hotspot: egui::Vec2) -> view::Drag {
+        let e = &self.entry;
+        view::Drag { paths: vec![e.path.clone()], icon: view::icon_of(e), size: 32.0, hotspot, ask: false, name: e.name.clone(), below: true }
     }
 
     fn footer(&mut self, ui: &mut Ui, r: Rect) -> Option<Action> {
@@ -188,6 +199,13 @@ impl QuickLook {
         let inner = r.shrink2(vec2(m::SPACING, m::TIGHT));
         let icon = Rect::from_center_size(pos2(inner.left() + 8.0, inner.center().y + 1.0), vec2(16.0, 16.0));
         icons::paint(painter, icon, view::icon_of(&self.entry));
+        // The icon is the item: drag it out, as a document's proxy icon.
+        let mut action = None;
+        let grab = ui.interact(icon.expand(2.0), ui.make_persistent_id("ql-proxy"), egui::Sense::drag());
+        if grab.drag_started() {
+            action = Some(Action::Drag(self.drag(vec2(16.0, 16.0))));
+        }
+        let painter = ui.painter();
         let label = match &self.opener {
             Some(app) => format!("Open with {app}"),
             None => "Open".into(),
@@ -211,7 +229,6 @@ impl QuickLook {
         let pos = style::text_origin(ui.ctx(), &g, icon.right() + m::TIGHT * 2.0, inner.center().y, style::PLAIN_SIZE);
         painter.galley(pos, g, style::disabled_text(&p));
         let br = Rect::from_min_max(pos2(inner.right() - bw, inner.top()), inner.max);
-        let mut action = None;
         let mut left = br.left();
         if pop {
             let pr = Rect::from_min_size(pos2(left - m::TIGHT - pw, inner.top()), vec2(pw, inner.height()));

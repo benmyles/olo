@@ -110,6 +110,13 @@ impl DragData {
         self
     }
 
+    /// Says which folder the files come from (a type naming it, with no
+    /// data), so a folder window can refuse them being dropped back where
+    /// they are ([`Hover::from_folder`]) before the drop.
+    pub fn from_folder(self, dir: &std::path::Path) -> DragData {
+        self.with(&folder_type(dir), Vec::new())
+    }
+
     /// Adds a type only Tabula's apps know (put first: it is the most
     /// faithful).
     pub fn with(mut self, mime: &str, data: impl Into<Arc<[u8]>>) -> DragData {
@@ -143,6 +150,11 @@ impl Hover {
         wanted.iter().copied().find(|w| self.has(w))
     }
 
+    /// The files come from folder `dir` (see [`DragData::from_folder`]).
+    pub fn from_folder(&self, dir: &std::path::Path) -> bool {
+        self.has(&folder_type(dir))
+    }
+
     /// Files (or URIs).
     pub fn has_files(&self) -> bool {
         self.has("text/uri-list")
@@ -152,6 +164,14 @@ impl Hover {
     pub fn text_type(&self) -> Option<&'static str> {
         self.best(&["text/plain;charset=utf-8", "UTF8_STRING", "text/plain", "TEXT", "STRING"])
     }
+}
+
+/// The type naming a folder (a hash of its path: types are short names).
+fn folder_type(dir: &std::path::Path) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    dir.hash(&mut h);
+    format!("application/x-tabula-from-folder-{:016x}", h.finish())
 }
 
 /// A drop: what [`accept`] asked for, read in full.

@@ -116,11 +116,11 @@ as they land (with the commit), add new ones as they come up.
   desktop icons placed freely and kept (Clean Up puts them back on the
   grid); Terminal types dropped paths (shell-quoted) or text; Viewer
   and StyledEdit open dropped files. **Left:** dragging text out of and
-  into text fields and StyledEdit (move within, copy between), Viewer
-  images out (the file and image/png), Passwords fields (a username or
+  into text fields and StyledEdit (move within, copy between), ~~Viewer
+  images out (the file and image/png)~~ (done, with Quick Look's), Passwords fields (a username or
   password onto another app's field), Deskbar (drop files on an app to
   open them with it; drag an app out to make a link), dragging from
-  Tracker's Get Info and Quick Look, spring-loaded folders (hover on a
+  Tracker's Get Info, spring-loaded folders (hover on a
   folder while dragging to open it), scrolling a view when a drag nears
   its edge.
 - ~~**Tracker: restore from the Trash**~~ (File ▸ Restore and the item

@@ -54,8 +54,11 @@ impl Drag {
         // Which folder it comes from, so dropping back there is refused
         // but other folders in the same window (columns) take it.
         let from = self.paths.first().and_then(|p| p.parent()).map(Path::to_path_buf);
-        ctx.data_mut(|d| d.insert_temp(drag_from_id(), from));
+        ctx.data_mut(|d| d.insert_temp(drag_from_id(), from.clone()));
         let mut data = dnd::DragData::files(&self.paths, dnd::Actions::ALL);
+        if let Some(dir) = &from {
+            data = data.from_folder(dir);
+        }
         if let Some(dev) = self.paths.first().and_then(|p| std::fs::symlink_metadata(p).ok()).map(|m| m.dev()) {
             data = data.with(&device_type(dev), Vec::new());
         }
@@ -172,8 +175,9 @@ pub fn item_drop(ctx: &egui::Context, h: &Hover, over: Option<(usize, &Entry, bo
     }
     match here {
         // Dropping in the folder it came from would do nothing (another
-        // column of the same window is another folder).
-        Some(dir) if !(h.from_here && ctx.data(|d| d.get_temp::<Option<PathBuf>>(drag_from_id())).flatten().as_deref() == Some(dir)) => {
+        // column of the same window is another folder); nor from another
+        // app's drag of a file here (Viewer, Quick Look).
+        Some(dir) if !(h.from_here && ctx.data(|d| d.get_temp::<Option<PathBuf>>(drag_from_id())).flatten().as_deref() == Some(dir)) && !h.from_folder(dir) => {
             (take_drop(ctx, h, dir), None)
         }
         _ => (false, None),

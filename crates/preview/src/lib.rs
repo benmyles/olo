@@ -96,6 +96,9 @@ pub struct Preview {
     view: ImageView,
     /// Pan and zoom are paused (a tool over the picture takes the drags).
     still: bool,
+    /// A drag started on the picture while there was nothing to pan: it
+    /// is a drag of the file out (see [`Preview::take_drag_out`]).
+    drag_out: bool,
 }
 
 /// Zoom and pan of an image: `zoom` is points per image pixel (None fits
@@ -147,6 +150,7 @@ impl Preview {
             zoomable,
             view: ImageView::default(),
             still: false,
+            drag_out: false,
         };
         q.spawn(send);
         q
@@ -342,6 +346,12 @@ impl Preview {
 
     /// Pause pan and zoom by dragging (a tool over the picture wants the
     /// drags).
+    /// A drag started on the picture where it doesn't pan (it fits the
+    /// view, or the view doesn't zoom): the app drags the file out.
+    pub fn take_drag_out(&mut self) -> bool {
+        std::mem::take(&mut self.drag_out)
+    }
+
     pub fn set_still(&mut self, on: bool) {
         self.still = on;
     }
@@ -430,8 +440,9 @@ impl Preview {
                 let fit = ((r.width() - 2.0 * m::SPACING) / full.x).min((r.height() - 2.0 * m::SPACING) / full.y).clamp(0.001, 1.0);
                 let v = &mut self.view;
                 v.fit = fit;
+                let mut drag = false;
                 if self.zoomable && !self.still {
-                    pan_and_zoom(ui, r, full, v, (id, "image"));
+                    drag = pan_and_zoom(ui, r, full, v, (id, "image"));
                 }
                 let k = v.zoom.unwrap_or(fit);
                 if v.zoom.is_none() {
@@ -448,6 +459,13 @@ impl Preview {
                     None => texture(ui.ctx(), &mut self.textures, 0, image),
                 };
                 v.rect = Some((ir, r));
+                if !self.zoomable {
+                    drag = ui.interact(ir.intersect(r), ui.make_persistent_id((id, "image-drag")), Sense::drag()).drag_started();
+                }
+                // Only from the picture itself, where the button went down.
+                if drag && ui.input(|i| i.pointer.press_origin()).is_some_and(|o| ir.intersect(r).contains(o)) {
+                    self.drag_out = true;
+                }
                 checker(ui.painter(), ir.intersect(r), &p);
                 ui.painter().image(tex.id(), ir, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
             }
@@ -580,7 +598,9 @@ fn note_of(b: &Body) -> String {
 /// Pinch, ⌘-scroll and double-click zoom about the pointer; drag and
 /// scroll pan an image bigger than the view. Keeps the image covering the
 /// view where it can.
-fn pan_and_zoom(ui: &mut Ui, r: Rect, full: egui::Vec2, v: &mut ImageView, id: impl egui::AsIdSalt) {
+/// Pan and zoom the picture; true when a drag starts while it fits (so
+/// there is nothing to pan).
+fn pan_and_zoom(ui: &mut Ui, r: Rect, full: egui::Vec2, v: &mut ImageView, id: impl egui::AsIdSalt) -> bool {
     let resp = ui.interact(r, ui.make_persistent_id(id), Sense::click_and_drag());
     let k = v.zoom.unwrap_or(v.fit);
     if v.zoom.is_none() {
@@ -623,6 +643,7 @@ fn pan_and_zoom(ui: &mut Ui, r: Rect, full: egui::Vec2, v: &mut ImageView, id: i
             *c = if len * k <= view { len / 2.0 } else { c.clamp(half, len - half) };
         }
     }
+    resp.drag_started() && !bigger
 }
 
 fn texture<'a>(ctx: &egui::Context, cache: &'a mut HashMap<usize, TextureHandle>, key: usize, img: &load::Image) -> &'a TextureHandle {

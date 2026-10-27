@@ -658,6 +658,9 @@ impl Viewer {
             }
             Content::Other(prev) => {
                 prev.ui(ui, full);
+                if prev.take_drag_out() {
+                    cx.start_drag(win, file_drag(ui.ctx(), &d.path));
+                }
                 if prev.playing_video() != d.awake {
                     d.awake = !d.awake;
                     cx.keep_awake(win, d.awake);
@@ -1086,6 +1089,32 @@ impl App for Viewer {
             })
             .collect();
         serde_json::to_string(&Saved { files }).ok()
+    }
+}
+
+/// Dragging the document out (from a picture that fits the window): the
+/// file, and for a common picture format its bytes too, for programs that
+/// take an image rather than a file.
+fn file_drag(ctx: &egui::Context, path: &Path) -> tabula_kit::dnd::DragData {
+    use tabula_kit::dnd::{Actions, DragData};
+    let mut data = DragData::files(&[path.to_path_buf()], Actions::COPY);
+    if let Some(dir) = path.parent() {
+        data = data.from_folder(dir);
+    }
+    let mime = tabula_kit::mime::for_path(path);
+    let small = std::fs::metadata(path).is_ok_and(|m| m.len() <= 16 << 20);
+    if matches!(mime.as_str(), "image/png" | "image/jpeg" | "image/gif" | "image/webp")
+        && small
+        && let Ok(bytes) = std::fs::read(path)
+    {
+        // After the file: a folder takes the file, an editor the picture.
+        data.types.push((mime, bytes.into()));
+    }
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let icon = Item::stat(path).map_or_else(|| "document".to_owned(), |i| i.icon);
+    match tabula_kit::icons::drag_icon(ctx, &icon, 32.0, 1, vec2(16.0, 16.0), tabula_kit::icons::DragLabel::Below(&name)) {
+        Some(i) => data.icon(i),
+        None => data,
     }
 }
 

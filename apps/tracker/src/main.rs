@@ -1267,6 +1267,7 @@ impl Tracker {
                 fs::open_in_viewer(&e.path);
             }
             Some(quicklook::Action::Fullscreen) => cx.set_fullscreen(win, !cx.is_fullscreen(win)),
+            Some(quicklook::Action::Drag(d)) => cx.start_drag(win, d.data(ui.ctx())),
             Some(quicklook::Action::Rotate(right)) => {
                 let (proxy, path) = (cx.proxy(), q.entry.path.clone());
                 q.rotate(right, move |ev| proxy.send(Msg::Edited(path.clone(), ev)));

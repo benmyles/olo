@@ -232,7 +232,11 @@ and offers actions; where it is dropped picks the type and the action.
   Actions)` carries `text/uri-list` (file:// URIs: file managers,
   browsers, editors) and the paths as plain text (terminals);
   `DragData::text(s)`; `.with(mime, bytes)` adds a type only Tabula knows,
-  first; `.icon(DragIcon)`. `icons::drag_icon(ctx, icon, size, count,
+  first; `.icon(DragIcon)`; `.from_folder(dir)` names the folder the files
+  are in (`Hover::from_folder(dir)`), so Tracker refuses dropping them back
+  where they are, from any app. Viewer and Quick Look drag their file out
+  from the picture when it fits (`Preview::take_drag_out`: a drag that
+  doesn't pan), Quick Look also from its footer's icon. `icons::drag_icon(ctx, icon, size, count,
   hotspot, DragLabel::Below(name) | Right(name) | None)` makes Tracker's
   picture: the icon (stacked for several) and the name highlighted,
   see-through, the name drawn from the glyphs egui already rasterised.

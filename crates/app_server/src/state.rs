@@ -247,9 +247,14 @@ impl<BackendData: Backend> WaylandDndGrabHandler for AnvilState<BackendData> {
         serial: Serial,
         type_: GrabType,
     ) {
-        self.dnd_icon = icon.map(|surface| DndIcon {
-            surface,
-            offset: (0, 0).into(),
+        // The icon was committed (with its hotspot as a buffer offset)
+        // before the drag began, while it wasn't known to be the icon:
+        // take that offset now, or the pointer holds it by its corner.
+        self.dnd_icon = icon.map(|surface| {
+            let offset = smithay::wayland::compositor::with_states(&surface, |states| {
+                states.cached_state.get::<smithay::wayland::compositor::SurfaceAttributes>().current().buffer_delta.take().unwrap_or_default()
+            });
+            DndIcon { surface, offset }
         });
 
         match type_ {
