@@ -1264,7 +1264,11 @@ stream; only `./opt/google/chrome/`, no setuid bits, no `..`) into
 removed. It installs Chrome's icons into the hicolor theme and a
 `google-chrome.desktop` that starts it through `tabula-chrome` (NoDisplay,
 as Tabula lists it itself; rewritten when it isn't ours). Nothing needs
-root. Test it with a fixture HOME (`tsession run NAME HOME=… XDG_DATA_HOME=…
+root. Once a day (`.checked`), a start also runs `tabula-chrome
+--tabula-update` in the background: a newer version is put in beside the
+running one and becomes `current` for the next start (the one it
+replaced is kept, as Chrome reads its files as it runs; older ones go;
+`.updating` keeps it to one at a time). Test it with a fixture HOME (`tsession run NAME HOME=… XDG_DATA_HOME=…
 target/debug/tabula-chrome`), never Ben's profile.
 
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)

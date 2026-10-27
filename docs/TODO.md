@@ -166,9 +166,10 @@ as they land (with the commit), add new ones as they come up.
   as it is reliable.
   ~~**Installed on first use**~~ (done: `apps/chrome`, `tabula-chrome`;
   tested headless end to end, the real 139 MB download into a fixture
-  home, then Chrome running on Wayland in Tabula. Left: updating to a
-  newer version from the same repo, and Chromium where Google has no
-  build) (Ben): Google Chrome is always listed in
+  home, then Chrome running on Wayland in Tabula; kept up to date: once
+  a day a start fetches a newer version in the background for the next
+  start, tested from a stand-in old version. Left: Chromium where Google
+  has no build) (Ben): Google Chrome is always listed in
   Deskbar's apps; the first launch downloads it (Google ships arm64
   Linux packages now: dl.google.com/linux/chrome/rpm/stable/aarch64,
   checked against the repo's sha256), unpacks it in process (rpm cpio

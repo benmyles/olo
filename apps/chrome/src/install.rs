@@ -73,6 +73,7 @@ fn arch() -> Result<&'static str, String> {
 }
 
 fn agent() -> ureq::Agent {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let tls = ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
     ureq::Agent::config_builder()
         .tls_config(tls)
@@ -230,6 +231,54 @@ pub fn install(cancel: &AtomicBool, tell: &dyn Fn(Progress)) {
 fn run(cancel: &AtomicBool, tell: &dyn Fn(Progress)) -> Result<Option<PathBuf>, String> {
     tell(Progress::Looking);
     let package = latest()?;
+    put_in(package, cancel, tell)
+}
+
+/// The version `current` points at.
+pub fn current_version() -> Option<String> {
+    fs::read_link(root().join("current")).ok().map(|p| p.to_string_lossy().into_owned())
+}
+
+/// How often to look for a newer Chrome.
+const CHECK_EVERY: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// Whether it's time to look for a newer Chrome (not looked for a day).
+pub fn update_due() -> bool {
+    let stamp = root().join(".checked");
+    fs::metadata(&stamp).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_none_or(|age| age >= CHECK_EVERY)
+}
+
+/// Look for a newer Chrome and put it in beside the one in use (which
+/// keeps running; the next start is the new one). Quiet: what happened
+/// goes to the log. One at a time.
+pub fn update_quietly() {
+    let root = root();
+    let _ = fs::write(root.join(".checked"), b"");
+    let lock = root.join(".updating");
+    // A lock left by an update that died an hour ago doesn't count.
+    if fs::metadata(&lock).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > Duration::from_secs(3600)) {
+        let _ = fs::remove_file(&lock);
+    }
+    if fs::OpenOptions::new().write(true).create_new(true).open(&lock).is_err() {
+        return;
+    }
+    let outcome = latest().and_then(|package| {
+        if current_version().as_deref() == Some(package.version.as_str()) {
+            return Ok(None);
+        }
+        eprintln!("tabula-chrome: updating Chrome to {}", package.version);
+        put_in(package, &AtomicBool::new(false), &|_| {})
+    });
+    match outcome {
+        Ok(Some(p)) => eprintln!("tabula-chrome: Chrome updated: {}", p.display()),
+        Ok(None) => {}
+        Err(e) => eprintln!("tabula-chrome: couldn't update Chrome: {e}"),
+    }
+    let _ = fs::remove_file(&lock);
+}
+
+/// Download, check and unpack `package`, and make it the current one.
+fn put_in(package: Package, cancel: &AtomicBool, tell: &dyn Fn(Progress)) -> Result<Option<PathBuf>, String> {
     let root = root();
     fs::create_dir_all(&root).map_err(|e| format!("Couldn't make {}: {e}.", root.display()))?;
     let rpm = root.join(format!(".{PACKAGE}-{}.rpm.part", package.version));
@@ -258,16 +307,19 @@ fn run(cancel: &AtomicBool, tell: &dyn Fn(Progress)) -> Result<Option<PathBuf>, 
         let _ = fs::remove_dir_all(&staging);
         return Err("The package didn't hold Chrome.".into());
     }
+    let before = current_version();
     let _ = fs::remove_dir_all(&dest);
     fs::rename(&staging, &dest).map_err(|e| e.to_string())?;
     // `current` switches over in one step.
     let link = root.join(".current.new");
     let _ = fs::remove_file(&link);
     symlink(&package.version, &link).and_then(|_| fs::rename(&link, root.join("current"))).map_err(|e| e.to_string())?;
-    // Older versions go (one that is running keeps its open files).
+    // Older versions go, but not the one just replaced: it may still be
+    // running, and Chrome reads its files as it goes.
     for e in fs::read_dir(&root).into_iter().flatten().flatten() {
-        let n = e.file_name();
-        if n != *package.version.as_str() && n != "current" && !n.to_string_lossy().starts_with('.') && e.path().is_dir() {
+        let n = e.file_name().to_string_lossy().into_owned();
+        let keep = n == package.version || n == "current" || n.starts_with('.') || before.as_deref() == Some(n.as_str());
+        if !keep && e.path().is_dir() {
             let _ = fs::remove_dir_all(e.path());
         }
     }

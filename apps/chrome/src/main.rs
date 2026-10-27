@@ -57,10 +57,7 @@ impl Installer {
         let (proxy, cancel) = (cx.proxy(), self.cancel.clone());
         std::thread::Builder::new()
             .name("install".into())
-            .spawn(move || {
-                let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
-                install::install(&cancel, &|p| proxy.send(p))
-            })
+            .spawn(move || install::install(&cancel, &|p| proxy.send(p)))
             .expect("thread");
     }
 }
@@ -180,6 +177,22 @@ fn main() {
             && let Some(dir) = chrome.parent()
         {
             let _ = install::set_up(&dir.canonicalize().unwrap_or_else(|_| dir.to_owned()));
+        }
+        // Once a day, a newer Chrome is fetched in the background (it is
+        // used from the next start on).
+        if args.first().map(String::as_str) == Some("--tabula-update") {
+            install::update_quietly();
+            return;
+        }
+        if install::update_due()
+            && let Ok(exe) = std::env::current_exe()
+        {
+            let _ = std::process::Command::new(exe)
+                .arg("--tabula-update")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .process_group(0)
+                .spawn();
         }
         let e = chrome_command(&chrome, &args).exec();
         eprintln!("tabula-chrome: couldn't start {}: {e}", chrome.display());
