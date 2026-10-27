@@ -1,6 +1,6 @@
 //! Talking to the system natively, in process: PAM (passwords), fprintd
 //! (Touch ID), logind (power, inhibitors, backlight), the battery,
-//! NetworkManager (Wi-Fi), BlueZ (Bluetooth), timedated (clock and time zone), polkit (the authentication agent), the keyring's password prompts, the D-Bus activation environment, dconf (the
+//! NetworkManager (Wi-Fi), BlueZ (Bluetooth), timedated (clock and time zone), UDisks2 (disks and partitions), polkit (the authentication agent), the keyring's password prompts, the D-Bus activation environment, dconf (the
 //! settings GTK apps read) and the sound server (PulseAudio protocol, which
 //! PipeWire speaks too). Everything here blocks, so call it from a worker
 //! thread, never the UI thread.
@@ -11,6 +11,7 @@ pub mod backlight;
 pub mod battery;
 pub mod bluetooth;
 pub mod dconf;
+pub mod disks;
 pub mod env;
 pub mod fingerprint;
 pub mod edid;
@@ -42,6 +43,12 @@ mod live {
         println!("volume: {:?}", crate::audio::volume());
         println!("time: {:?}", crate::time::status());
         println!("zones: {:?}", crate::time::timezones().map(|z| z.len()));
+        if let Ok(s) = crate::disks::status() {
+            for d in &s.disks {
+                println!("disk {} {} {} {:?}: {:?}", d.device, d.kind(), d.size, d.table, d.volumes.iter().map(|v| (v.device.as_str(), v.content.as_str(), v.mounted())).collect::<Vec<_>>());
+            }
+            println!("filesystems: {:?}", s.filesystems);
+        }
     }
 
     /// Writes the given dconf string key back (set DCONF_KEY and

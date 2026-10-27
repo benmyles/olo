@@ -1995,25 +1995,7 @@ fn sheet_owner(s: &Sheet) -> Option<WindowId> {
 
 /// Cancel / OK along the bottom of an alert with fields.
 fn choice_row(ui: &mut egui::Ui, column: Rect, buttons: &[&str]) -> Option<usize> {
-    let row = Rect::from_min_max(pos2(column.left(), column.bottom() - m::CONTROL_HEIGHT), column.max);
-    let mut chosen = None;
-    ui.scope_builder(egui::UiBuilder::new().max_rect(row), |ui| {
-        widgets::button_row(ui, |ui| {
-            for (i, label) in buttons.iter().enumerate().rev() {
-                if ui.add(Button::new(label).default(i + 1 == buttons.len())).clicked() {
-                    chosen = Some(i);
-                }
-            }
-        });
-    });
-    ui.input(|i| {
-        if i.key_pressed(Key::Enter) {
-            chosen = Some(buttons.len() - 1);
-        } else if i.key_pressed(Key::Escape) {
-            chosen = Some(0);
-        }
-    });
-    chosen
+    widgets::alert_buttons(ui, column, buttons, true)
 }
 
 fn select_all(ctx: &egui::Context, id: Id, text: &str) {

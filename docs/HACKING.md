@@ -405,7 +405,10 @@ popup is destroyed.
 
 Alerts: `widgets::alert(ui, icon, message, buttons)` (or
 `widgets::alert_frame(ui, icon)` for an alert with fields, which draws the
-stripe and icon and returns the content column) in a window opened
+stripe and icon and returns the content column; `alert_text(ui, column,
+top, text)` writes wrapped text in it and `alert_buttons(ui, column,
+buttons, ready)` puts the buttons along its bottom, the default one
+disabled until `ready`, with Enter and Escape) in a window opened
 with `WindowOptions::alert(title, message)` (sized for the message);
 icons are BeOS's `warning`, `stop`, `info` and `idea`. The kit makes the
 alert a child (`xdg_toplevel.set_parent`) of the app's focused window, or
@@ -1007,6 +1010,50 @@ process is hidden or exits, so a re-sort never moves it onto another
 process. Quit sends SIGTERM; Force Quit asks first, then SIGKILL; EPERM
 is an alert. **In tests, only ever quit a process you started, selected
 by its exact ID.**
+
+## DriveSetup (apps/drive-setup, tabula_system::disks, udisks-fake)
+
+BeOS's DriveSetup with Haiku's disk map: the chosen disk drawn to scale
+(`map.rs`: every stretch at least 48 px so small partitions keep their
+labels, coloured by family: Linux, Windows and everywhere, encrypted,
+swap; an unlocked volume shows what is inside under a purple band; free
+space hatched) over a `ColumnListView` of every disk, its partitions
+(logical ones under their container, unlocked contents under what holds
+them) and its free space. The Disk and Partition menus and the context
+menu act on the selection; double-click opens, mounts, unlocks or
+creates, whichever fits.
+
+`tabula_system::disks` is the UDisks2 client (blocking, so call it from
+a worker): `status()` reads `GetManagedObjects` into `Disk`s, `Volume`s
+and `Job`s (all `Serialize`); `watch(f)` calls `f` after each burst of
+UDisks signals; the operations (mount, unlock, format with an optional
+LUKS passphrase, create/delete/resize partitions, label, new table,
+eject, SMART update, cancel a job) map UDisks errors to words with
+`error_text`. `release(volume)` unmounts and locks what is in use before
+a format or delete. `write_image` streams a file onto the fd from
+`OpenForRestore`; `benchmark` reads spread samples and random 4 KiB
+blocks from `OpenForBenchmark` (read-only). UDisks itself asks polkit.
+
+The app runs one step at a time (`DriveSetup::run`: a worker, reporting
+progress; Stop sets its flag, or cancels the UDisks job), shows UDisks'
+own job progress in the status line, and re-reads on every change.
+Destructive steps are behind an alert or form naming the disk and
+device; nothing destructive is offered for the disk or volumes holding
+the running system (`Volume::system`, `Disk::system`). The forms are
+alert windows with fields (`alert_frame` + `alert_text` +
+`alert_buttons`) that resize to what they show. Agents: `--list` prints
+`Status` as JSON; `--mount`, `--unmount` and `--eject DEVICE` do the safe
+steps.
+
+**Never test on real disks.** `TABULA_UDISKS_BUS=ADDRESS` points the
+client at another bus, where `udisks-fake --address ADDRESS` (in
+tabula-system) plays UDisks2 with four made-up disks (an NVMe system
+disk, an empty SD card, a USB stick, an encrypted USB disk whose
+passphrase is `secret`), real job progress and cancelling, and pipes
+that drain at 256 MB/s for images. `cargo test -p tabula-system --test
+udisks_fake` runs everything against it when `TABULA_TEST_BUS` names a
+private bus (busd), and skips otherwise. Reading the real UDisks
+read-only (`--list`) is fine.
 
 ## Terminal (apps/terminal)
 

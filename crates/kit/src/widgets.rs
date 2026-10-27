@@ -2229,8 +2229,9 @@ pub fn alert_height(message: &str) -> u32 {
 
 /// BAlert: a darker stripe down the left with the icon straddling it, the
 /// message beside it, and buttons along the bottom right (the last one is
-/// the default). Returns the index of the button chosen; Escape chooses
-/// the first when there is more than one, as Cancel usually comes first.
+/// the default, chosen by Enter). Returns the index of the button chosen;
+/// Escape chooses the first when there is more than one, as Cancel
+/// usually comes first.
 /// The BAlert backdrop: the stripe down the left with `icon` straddling
 /// it. Returns the column for the alert's content, beside the icon and
 /// inside the window's margins (for alerts with more than a message, such
@@ -2244,6 +2245,45 @@ pub fn alert_frame(ui: &mut Ui, icon: &str) -> Rect {
     let icon_rect = Rect::from_min_size(pos2(stripe.right() - ALERT_ICON / 2.0, full.top() + m::WINDOW_INSET), vec2(ALERT_ICON, ALERT_ICON));
     crate::icons::paint(painter, icon_rect, icon);
     Rect::from_min_max(pos2(full.left() + ALERT_TEXT_X, full.top() + m::WINDOW_INSET), pos2(full.right() - m::WINDOW_INSET, full.bottom() - m::WINDOW_INSET))
+}
+
+/// Text in an alert's `column` (from [`alert_frame`]) from `top`, wrapped
+/// to it; where it ends.
+pub fn alert_text(ui: &Ui, column: Rect, top: f32, text: &str) -> f32 {
+    let p = style::palette(ui.ctx());
+    let mut job = egui::text::LayoutJob::single_section(text.to_owned(), egui::TextFormat::simple(plain_font(), c(p.panel_text)));
+    job.wrap.max_width = column.width();
+    let g = ui.painter().layout_job(job);
+    let bottom = top + g.size().y;
+    ui.painter().galley(pos2(column.left(), top), g, c(p.panel_text));
+    bottom
+}
+
+/// The buttons along the bottom of an alert's `column` (from
+/// [`alert_frame`]), for alerts with fields of their own: the last is the
+/// default, chosen by Enter, and is disabled until `ready`; Escape
+/// chooses the first.
+pub fn alert_buttons(ui: &mut Ui, column: Rect, buttons: &[&str], ready: bool) -> Option<usize> {
+    let row = Rect::from_min_max(pos2(column.left(), column.bottom() - m::CONTROL_HEIGHT), column.max);
+    let mut chosen = None;
+    ui.scope_builder(egui::UiBuilder::new().max_rect(row), |ui| {
+        button_row(ui, |ui| {
+            for (i, label) in buttons.iter().enumerate().rev() {
+                let last = i + 1 == buttons.len();
+                if ui.add_enabled(ready || !last, Button::new(label).default(last)).clicked() {
+                    chosen = Some(i);
+                }
+            }
+        });
+    });
+    ui.input(|i| {
+        if i.key_pressed(Key::Enter) && ready {
+            chosen = Some(buttons.len() - 1);
+        } else if i.key_pressed(Key::Escape) {
+            chosen = Some(0);
+        }
+    });
+    chosen
 }
 
 pub fn alert(ui: &mut Ui, icon: &str, message: &str, buttons: &[&str]) -> Option<usize> {
@@ -2273,9 +2313,13 @@ pub fn alert(ui: &mut Ui, icon: &str, message: &str, buttons: &[&str]) -> Option
             }
         });
     });
-    if buttons.len() > 1 && ui.input(|i| i.key_pressed(Key::Escape)) {
-        chosen = Some(0);
-    }
+    ui.input(|i| {
+        if i.key_pressed(Key::Enter) {
+            chosen = Some(buttons.len() - 1);
+        } else if buttons.len() > 1 && i.key_pressed(Key::Escape) {
+            chosen = Some(0);
+        }
+    });
     chosen
 }
 

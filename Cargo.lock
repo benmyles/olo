@@ -11110,6 +11110,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabula-drive-setup"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tabula-kit",
+ "tabula-system",
+ "tabula-theme",
+ "tracing",
+]
+
+[[package]]
 name = "tabula-emoji"
 version = "0.1.0"
 dependencies = [
@@ -11404,6 +11416,7 @@ version = "0.1.0"
 dependencies = [
  "aes 0.9.3",
  "async-channel",
+ "async-io",
  "base64 0.22.1",
  "cbc",
  "futures-lite",

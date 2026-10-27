@@ -249,7 +249,8 @@ as they land (with the commit), add new ones as they come up.
   from the Deskbar tray sometimes opened behind every other window
   (after Tile All). A newly opened dialog or alert must be raised and
   focused.
-- **Disk manager** (Ben): a native Tabula utility for disks and
+- ~~**Disk manager**~~ (done: DriveSetup, apps/drive-setup, tested against
+  `udisks-fake` on a private bus rather than loop devices) (Ben): a native Tabula utility for disks and
   partitions, after BeOS's DriveSetup (and Haiku's): the disks as a tree
   with their partitions drawn to scale, and per partition: mount and
   unmount, initialize (format) with a file system, create/delete/resize

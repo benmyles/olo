@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### DriveSetup
+
+*03:46* — A new app for disks, after BeOS's DriveSetup: a map of the chosen disk over every disk, partition and unlocked volume. Mount, unlock, format (optionally encrypted), create, resize, rename and delete partitions, new partition tables, write a disk image, eject, check health and benchmark, all through UDisks on worker threads with live progress and Stop. The disk holding the running system is never offered for anything destructive. Shown against udisks-fake, never real disks.
+
+![DriveSetup](2026-10-27/034630-drivesetup.png)
+
 ### Drag a field out of Passwords
 
 *03:07* — Drag a username, password, one-time code or website from an item onto another app's field; the drag shows the field's name, never the secret.
