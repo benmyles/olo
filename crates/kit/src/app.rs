@@ -194,6 +194,7 @@ pub(crate) enum Request {
     Redraw(WindowId),
     RedrawAll,
     Activate(WindowId),
+    ActivateWith(WindowId, String),
     Token(WindowId, u64),
     SetKeyboard(WindowId, Keyboard),
     Copy(String),
@@ -369,6 +370,15 @@ impl Cx {
     }
     pub fn activate(&mut self, window: WindowId) {
         self.requests.push(Request::Activate(window));
+    }
+    /// Bring `window` forward with a token another program handed over
+    /// (a notification's click, as [`notify::NoteEvent::Action`](crate::notify::NoteEvent)
+    /// gives it); without one, as [`activate`](Self::activate).
+    pub fn activate_with(&mut self, window: WindowId, token: Option<String>) {
+        self.requests.push(match token {
+            Some(t) => Request::ActivateWith(window, t),
+            None => Request::Activate(window),
+        });
     }
     /// Ask for an activation token from the latest input in `window` (a
     /// click), to hand to another program so its window may come forward;

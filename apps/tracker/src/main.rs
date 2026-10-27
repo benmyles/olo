@@ -206,6 +206,9 @@ pub struct Tracker {
     jobs: Vec<(ops::Job, Option<WindowId>)>,
     next_job: u64,
     status_win: Option<WindowId>,
+    /// Long jobs say when they're done; Show opens where the items went.
+    notes: tabula_kit::notify::Notifier,
+    note_dirs: HashMap<tabula_kit::notify::NoteId, PathBuf>,
     /// Content height the status window was last sized to.
     status_size: u32,
     /// Live updates for every folder shown (None if inotify is missing).
@@ -232,6 +235,18 @@ fn ask_drop_id() -> egui::Id {
 const STATUS_WIDTH: u32 = 420;
 /// Jobs that finish sooner than this never show the status window.
 const STATUS_DELAY: Duration = Duration::from_millis(400);
+/// Jobs that ran this long notify when they finish.
+const NOTIFY_AFTER: Duration = Duration::from_secs(10);
+
+/// [`NOTIFY_AFTER`]; debug builds take `TABULA_TRACKER_NOTIFY_AFTER_MS`
+/// (tests have no ten-second copies).
+fn notify_after() -> Duration {
+    #[cfg(debug_assertions)]
+    if let Some(ms) = std::env::var("TABULA_TRACKER_NOTIFY_AFTER_MS").ok().and_then(|v| v.parse().ok()) {
+        return Duration::from_millis(ms);
+    }
+    NOTIFY_AFTER
+}
 
 fn sort_entries(entries: &mut [Entry], key: SortKey, asc: bool) {
     entries.sort_by(|a, b| {
@@ -1399,6 +1414,26 @@ impl App for Tracker {
             Ok(launch) => return self.handle_args(cx, &launch.args),
             Err(m) => m,
         };
+        let message = match message.downcast::<tabula_kit::notify::NoteEvent>() {
+            Ok(e) => {
+                match *e {
+                    tabula_kit::notify::NoteEvent::Action { id, token, .. } => {
+                        if let Some(dir) = self.note_dirs.remove(&id) {
+                            let path = dir.canonicalize().unwrap_or(dir);
+                            match self.windows.iter().find(|(_, w)| matches!(w, Win::Folder(f) if f.path == path)).map(|(id, _)| *id) {
+                                Some(win) => cx.activate_with(win, token),
+                                None => self.open_folder(cx, &path),
+                            }
+                        }
+                    }
+                    tabula_kit::notify::NoteEvent::Closed { id } => {
+                        self.note_dirs.remove(&id);
+                    }
+                }
+                return;
+            }
+            Err(m) => m,
+        };
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
             Msg::Settings(s) => self.default_view = s.default_view,
@@ -1624,6 +1659,16 @@ impl Tracker {
             f.select_paths(&outcome.created);
             cx.redraw(w);
         }
+        // A long job may have been left to run in the background: say it's
+        // done.
+        if outcome.error.is_none() && !outcome.cancelled && job.started.elapsed() >= notify_after() {
+            let note = tabula_kit::notify::Note::new(&job.finished);
+            let note = if job.dest.is_some() { note.action("default", "Show") } else { note };
+            let n = self.notes.show(None, note);
+            if let Some(d) = job.dest.clone() {
+                self.note_dirs.insert(n, d);
+            }
+        }
         if let Some(e) = outcome.error {
             let what = job.title.chars().next().map(|c| c.to_lowercase().chain(job.title.chars().skip(1)).collect::<String>());
             self.error(cx, format!("An error occurred while {}: {e}", what.unwrap_or_default()));
@@ -1714,6 +1759,8 @@ fn main() {
             jobs: Vec::new(),
             next_job: 1,
             status_win: None,
+            notes: tabula_kit::notify::Notifier::new(cx.proxy(), "Tracker", "tabula-tracker"),
+            note_dirs: HashMap::new(),
             status_size: 0,
             watcher,
             quicklook: None,

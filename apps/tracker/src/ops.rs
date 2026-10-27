@@ -72,6 +72,10 @@ pub struct Job {
     pub id: u64,
     /// "Copying 3 items to “Documents”".
     pub title: String,
+    /// "Finished copying 3 items to “Documents”", for a notification.
+    pub finished: String,
+    /// Where the items went, if anywhere.
+    pub dest: Option<PathBuf>,
     pub progress: Arc<Progress>,
     pub cancel: Arc<AtomicBool>,
     pub started: Instant,
@@ -102,6 +106,14 @@ fn title(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
     }
 }
 
+/// The job's title once it is done: "Finished copying …".
+fn finished(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
+    let t = title(kind, sources, dest);
+    let mut lower = t.chars();
+    let first = lower.next().map(|c| c.to_lowercase().collect::<String>()).unwrap_or_default();
+    format!("Finished {first}{}", lower.as_str())
+}
+
 /// Start a job on a worker thread; `done` runs on that thread when it ends.
 pub fn start(
     id: u64,
@@ -113,6 +125,8 @@ pub fn start(
     let job = Job {
         id,
         title: title(kind, &sources, dest.as_deref()),
+        finished: finished(kind, &sources, dest.as_deref()),
+        dest: dest.clone(),
         progress: Arc::new(Progress { counting: AtomicBool::new(true), ..Default::default() }),
         cancel: Arc::new(AtomicBool::new(false)),
         started: Instant::now(),

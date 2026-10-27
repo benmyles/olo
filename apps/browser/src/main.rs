@@ -2426,11 +2426,17 @@ impl App for NetPositive {
             }
             Err(m) => m,
         };
-        let message = match message.downcast::<notify::Clicked>() {
-            Ok(clicked) => {
-                if let Some((win, i)) = self.find(clicked.view) {
+        let message = match message.downcast::<tabula_kit::notify::NoteEvent>() {
+            Ok(e) => {
+                if let Some(view) = self.notifier.event(&e)
+                    && let Some((win, i)) = self.find(view)
+                {
                     self.select_tab(cx, win, i);
-                    cx.activate(win);
+                    let token = match *e {
+                        tabula_kit::notify::NoteEvent::Action { token, .. } => token,
+                        _ => None,
+                    };
+                    cx.activate_with(win, token);
                 }
                 return;
             }

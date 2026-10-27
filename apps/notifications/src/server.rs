@@ -116,7 +116,7 @@ pub enum Reason {
 }
 
 struct Service {
-    next: AtomicU32,
+    next: std::sync::Arc<AtomicU32>,
     /// Ids by (app, tag) for the hints that say "replace the last one with
     /// this tag" (volume and brightness pop-ups, a download's progress).
     tags: std::sync::Mutex<HashMap<(String, String), u32>>,
@@ -257,6 +257,11 @@ pub fn note(
         let (_, label) = actions.remove(i);
         text("x-kde-reply-placeholder-text").unwrap_or(if label.is_empty() { "Reply".into() } else { label })
     });
+    // Senders that give no name (the GTK portal's): the desktop entry's.
+    let app_name = match &desktop_entry {
+        Some(e) if app_name.trim().is_empty() => crate::gtk::app_name(e),
+        _ => app_name,
+    };
     let progress = hint("value")
         .and_then(|v| i32::try_from(v).ok().or_else(|| u32::try_from(v).ok().map(|u| u.min(100) as i32)))
         .map(|v| v.clamp(0, 100) as f32 / 100.0);
@@ -329,6 +334,8 @@ fn picture(v: &OwnedValue) -> Option<Picture> {
 /// The service, while it runs.
 pub struct Bus {
     conn: zbus::blocking::Connection,
+    /// Notes that came over org.gtk.Notifications, answered differently.
+    gtk: crate::gtk::Shared,
 }
 
 impl Bus {
@@ -348,26 +355,53 @@ impl Bus {
         };
         let to_ui: std::sync::Arc<dyn Fn(In) + Send + Sync> = std::sync::Arc::new(to_ui);
         let ui = to_ui.clone();
-        let service = Service { next: AtomicU32::new(first.max(1)), tags: Default::default(), to_ui: Box::new(move |m| ui(m)) };
+        let next = std::sync::Arc::new(AtomicU32::new(first.max(1)));
+        let service = Service { next: next.clone(), tags: Default::default(), to_ui: Box::new(move |m| ui(m)) };
+        let gtk: crate::gtk::Shared = Default::default();
+        let ui = to_ui.clone();
+        let gtk_service = crate::gtk::Service { next, registry: gtk.clone(), to_ui: Box::new(move |m| ui(m)) };
         let controls = Controls { snapshot, to_ui };
-        let conn = builder.serve_at(PATH, service)?.serve_at(CONTROL_PATH, controls)?.build()?;
+        let conn = builder.serve_at(PATH, service)?.serve_at(crate::gtk::PATH, gtk_service)?.serve_at(CONTROL_PATH, controls)?.build()?;
         // (The builder's `name` counts "someone else has it" as success.)
-        match conn.request_name_with_flags(NAME, zbus::fdo::RequestNameFlags::DoNotQueue.into())? {
-            zbus::fdo::RequestNameReply::PrimaryOwner | zbus::fdo::RequestNameReply::AlreadyOwner => Ok(Bus { conn }),
-            _ => Err(zbus::Error::NameTaken),
+        let flags = zbus::fdo::RequestNameFlags::DoNotQueue.into();
+        match conn.request_name_with_flags(NAME, flags)? {
+            zbus::fdo::RequestNameReply::PrimaryOwner | zbus::fdo::RequestNameReply::AlreadyOwner => {}
+            _ => return Err(zbus::Error::NameTaken),
         }
+        // GLib's interface too, so GApplication apps use it (their actions
+        // then reach the app even after it quit). Not ours if a GNOME Shell
+        // has it.
+        if let Err(e) = conn.request_name_with_flags(crate::gtk::NAME, flags) {
+            tracing::info!("notifications: no {}: {e}", crate::gtk::NAME);
+        }
+        Ok(Bus { conn, gtk })
     }
 
     pub fn closed(&self, id: u32, reason: Reason) {
+        let mut gtk = self.gtk.lock().unwrap();
+        if gtk.contains(id) {
+            // GLib's interface has no such signal.
+            gtk.forget(id);
+            return;
+        }
         let _ = self.conn.emit_signal(None::<()>, PATH, NAME, "NotificationClosed", &(id, reason as u32));
     }
 
     pub fn action(&self, id: u32, key: &str) {
+        if let Some((app, action, token)) = self.gtk.lock().unwrap().resolve(id, key) {
+            crate::gtk::activate(self.conn.clone(), app, action, token);
+            return;
+        }
         let _ = self.conn.emit_signal(None::<()>, PATH, NAME, "ActionInvoked", &(id, key));
     }
 
     /// Sent just before an action, so the app may bring its window forward.
     pub fn activation_token(&self, id: u32, token: &str) {
+        let mut gtk = self.gtk.lock().unwrap();
+        if gtk.contains(id) {
+            gtk.set_token(id, token);
+            return;
+        }
         let _ = self.conn.emit_signal(None::<()>, PATH, NAME, "ActivationToken", &(id, token));
     }
 

@@ -270,13 +270,13 @@ as they land (with the commit), add new ones as they come up.
   by hand, for a while or on a daily schedule; per-app banner, sound and
   history choices (Preferences ▸ Notifications); agent-readable
   (`org.tabula.Notifications1`, `tabula-notifications --list --json`,
-  `--invoke`, `--dismiss`, `--clear`, `--dnd`). Left: GLib's
-  `org.gtk.Notifications` (GApplication apps use it when the name is on
-  the bus, as under GNOME) and the portal's
-  `org.freedesktop.impl.portal.Notification` (Flatpak apps); a kit API
-  for Tabula's own apps (`cx.notify`, actions back as messages, progress
-  notes for copies, downloads, installs); Do Not Disturb while sharing
-  the screen.
+  `--invoke`, `--dismiss`, `--clear`, `--dnd`); GLib's
+  `org.gtk.Notifications` (GApplication apps, their actions run on the
+  app) and Flatpak apps through the GTK portal; a kit API for Tabula's
+  own apps (`tabula_kit::notify`: NetPositive's pages, Tracker's long
+  copies). Left: Do Not Disturb while sharing the screen, once there is
+  screen sharing (app_server's image-copy capture fails every frame
+  today; see multiplayer screen control).
 - ~~**Log viewer app**~~ (done: `apps/logs`, Log Viewer; the journal read
   natively, live; Find, program, level and time filters; syntax
   highlighting; Show in Context; `tabula-logs --print … [--json]` for

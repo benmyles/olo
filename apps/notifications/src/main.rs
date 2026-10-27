@@ -23,6 +23,7 @@
 //! bus.
 
 mod cli;
+mod gtk;
 mod markup;
 mod server;
 mod sound;

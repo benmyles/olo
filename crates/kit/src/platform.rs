@@ -1018,6 +1018,11 @@ impl Kit {
                             );
                         }
                     }
+                    Request::ActivateWith(id, token) => {
+                        if let (Some(act), Some(s)) = (&self.activation, self.surfaces.iter().find(|s| s.id == id)) {
+                            act.activate::<Kit>(&s.wl, token);
+                        }
+                    }
                     Request::SetKeyboard(id, keyboard) => {
                         if let Some(s) = self.surfaces.iter().find(|s| s.id == id)
                             && let Role::Layer(l) = &s.role

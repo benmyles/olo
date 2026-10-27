@@ -1085,6 +1085,18 @@ a Secret Service client calling `Unlock` and `Prompt`.
 
 ## Notifications (apps/notifications)
 
+Tabula's own apps notify through the kit: `tabula_kit::notify::Notifier::
+new(cx.proxy(), "Tracker", "tabula-tracker")`, then `show(None,
+Note::new("Copied").body(…).action("default", "Show"))` → a `NoteId`;
+`show(Some(id), …)` updates it in place (`Note::progress(title, 0.4)`
+for a job's bar: transient and silent), `close(id)`. Kinds are
+`NoteKind::{Information, Important, Error, Progress}`. The bus is used
+on the notifier's own thread; what the user does comes back to
+`App::message` as `NoteEvent::Action { id, key, token }` (bring a window
+forward with `cx.activate_with(win, token)`) or `NoteEvent::Closed`.
+NetPositive's page notifications and Tracker's "Finished copying…" (jobs
+of 10 s or more; `TABULA_TRACKER_NOTIFY_AFTER_MS` in debug builds) use it.
+
 `tabula-notifications` serves `org.freedesktop.Notifications` (spec 1.2)
 on the session bus, so `notify-send`, browsers, chat and mail clients and
 anything else using libnotify reach the user. The real session starts it
@@ -1152,6 +1164,21 @@ notifications.
   `$XDG_RUNTIME_DIR/tabula-notifications-$WAYLAND_DISPLAY.json`, which
   Deskbar's bell reads twice a second (the badge; struck through while
   quiet; right-click for Do Not Disturb).
+- gtk.rs: GLib's `org.gtk.Notifications` (`AddNotification`,
+  `RemoveNotification`), owned beside the standard name so GApplication
+  apps (`g_application_send_notification`) use it, as under GNOME. Notes
+  are keyed by (app id, the app's id) and share the id counter; `title`,
+  `body` / `markup-body`, a serialized GIcon (themed, file, or bytes
+  decoded with `image`), `priority` (high: important, urgent: error),
+  `category`, `default-action` and app-action `buttons` (keys `gtk-N`;
+  `win.*` ones are dropped, as GLib only runs `app.*`). An action calls
+  `org.freedesktop.Application.ActivateAction` (or `Activate`) on the
+  app itself, on a thread, with the click's activation token in the
+  platform data; D-Bus starts the app if it has quit. There is no closed
+  signal. Flatpak apps reach us through the portal: `tabula-portals.conf`
+  leaves Notification to xdg-desktop-portal-gtk, which sends a plain
+  `Notify` (no app name: we take the `desktop-entry` hint's) and runs the
+  app's action itself when we signal `ActionInvoked`.
 - For agents: `org.tabula.Notifications1` at `/org/tabula/Notifications`
   (`List` → JSON, `Invoke`, `Dismiss`, `ClearHistory`, `ShowHistory`,
   `SetDoNotDisturb`), and the same from the command line (cli.rs):

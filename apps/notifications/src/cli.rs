@@ -69,7 +69,7 @@ fn list(address: Option<&str>, json: bool) -> zbus::Result<()> {
     println!("{} unread{}", v["unread"].as_u64().unwrap_or(0), if v["quiet"].as_bool() == Some(true) { ", Do Not Disturb" } else { "" });
     for e in entries.iter().rev() {
         let state = [(e.shown, "shown"), (e.live, "open"), (e.unread, "unread")].iter().filter(|(on, _)| *on).map(|(_, s)| *s).collect::<Vec<_>>().join(", ");
-        let actions: Vec<&str> = e.actions.iter().map(|(k, _)| k.as_str()).collect();
+        let actions: Vec<String> = e.actions.iter().map(|(k, l)| if l.is_empty() || l == k { k.clone() } else { format!("{k} ({l})") }).collect();
         println!("{:>5}  {}  {}: {}{}", e.id, crate::when(e.time), e.app, e.summary, if state.is_empty() { String::new() } else { format!("  [{state}]") });
         if !e.text.is_empty() {
             println!("       {}", e.text.replace('\n', "\n       "));

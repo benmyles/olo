@@ -5,6 +5,18 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Tracker says when a long copy is done
+
+*01:58* — Through the kit's new notify API: a copy or move that ran 10 s or more posts “Finished copying …”; clicking it shows the folder.
+
+![Tracker says when a long copy is done](2026-10-27/015834-tracker-says-when-a-long-copy-is-done.png)
+
+### GApplication notifications
+
+*01:58* — tabula-notifications now also serves GLib's org.gtk.Notifications: a GApplication's notification (here a test app's, with an app.reply button) shows like any other, and its actions run on the app over org.freedesktop.Application.
+
+![GApplication notifications](2026-10-27/015833-gapplication-notifications.png)
+
 ### Preferences ▸ Notifications
 
 *01:41* — Do Not Disturb by hand or every day at set times, how long banners stay, and per-app banners, sounds and history (apps appear once they have notified). Dark theme.

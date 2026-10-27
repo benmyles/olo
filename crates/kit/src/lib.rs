@@ -19,6 +19,7 @@ mod input;
 pub mod instance;
 pub mod menu;
 pub mod metrics;
+pub mod notify;
 mod platform;
 pub mod settings;
 pub mod style;

@@ -11179,6 +11179,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wgpu",
+ "zbus",
 ]
 
 [[package]]
@@ -11208,6 +11209,7 @@ dependencies = [
 name = "tabula-notifications"
 version = "0.1.0"
 dependencies = [
+ "image",
  "libc",
  "serde",
  "serde_json",
