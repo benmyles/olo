@@ -130,7 +130,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let _ = x.configure(Rectangle::new(frame.loc + window.content_offset(), content));
             }
         }
-        self.space.map_element(window.clone(), frame.loc, false);
+        self.space.relocate_element(window, frame.loc);
     }
 
     fn tiled(window: &WindowElement) -> Option<Tile> {
@@ -224,11 +224,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 self.set_frame(window, Rectangle::new(loc, size), false);
             } else {
                 // Somewhere on the new display first, so it is "on" it.
-                self.space.map_element(window.clone(), loc, false);
+                self.space.relocate_element(window, loc);
             }
         } else {
             let slot = self.free_cascade_slot(to, window);
-            self.space.map_element(window.clone(), slot, false);
+            self.space.relocate_element(window, slot);
         }
         self.refit(window);
     }
@@ -267,7 +267,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if size != frame.size {
             self.set_frame(window, Rectangle::new(loc, size), false);
         } else if loc != frame.loc {
-            self.space.map_element(window.clone(), loc, false);
+            self.space.relocate_element(window, loc);
         }
     }
 
@@ -370,7 +370,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             // Smaller if it would run off the display from there.
             let area = self.usable_area(&main).unwrap_or_default();
             let room: Size<i32, Logical> = Size::from((area.loc.x + area.size.w - slot.x, area.loc.y + area.size.h - slot.y));
-            self.space.map_element(w.clone(), slot, false);
+            self.space.relocate_element(w, slot);
             if (frame.size.w > room.w || frame.size.h > room.h) && room.w > area.size.w / 2 && room.h > area.size.h / 2 {
                 self.set_frame(w, Rectangle::new(slot, Size::from((frame.size.w.min(room.w), frame.size.h.min(room.h)))), false);
             }

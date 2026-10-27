@@ -560,9 +560,26 @@ pub fn fixup_positions(
         .collect();
     let keys: std::collections::HashMap<String, String> = outputs.iter().map(|o| (o.name(), crate::desktop::display_key(o))).collect();
     let positions = arrange(&sizes, |name| display.config(keys.get(name).map_or(name, |k| k.as_str()), name).and_then(|c| c.position));
+    // Each window's screen (under the middle of its frame) and where on
+    // it, so screens moving in the arrangement take their windows along.
+    let on: Vec<(WindowElement, Output, Point<i32, Logical>)> = space
+        .elements()
+        .filter_map(|w| {
+            let loc = space.element_location(w)?;
+            let f = space.element_geometry(w)?;
+            let middle = (f.loc + f.size.downscale(2).to_point()).to_f64();
+            let o = space.output_under(middle).next()?.clone();
+            Some((w.clone(), o.clone(), loc - space.output_geometry(&o)?.loc))
+        })
+        .collect();
     for (output, at) in outputs.iter().zip(positions) {
         space.map_output(output, at);
         layer_map_for_output(output).arrange();
+    }
+    for (w, o, offset) in on {
+        if let Some(g) = space.output_geometry(&o) {
+            space.relocate_element(&w, g.loc + offset);
+        }
     }
 
     // fixup windows

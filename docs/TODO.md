@@ -141,12 +141,10 @@ as they land (with the commit), add new ones as they come up.
   model, serial; connector entries migrate), ~~mirroring~~ (fit and centred,
   "Use as" in Preferences).
 
-- **Windows while rearranging displays** (Ben, real 3-display session):
-  dragging screens around in Preferences ▸ Display moves windows to odd
-  places at each step. Keep each window on the screen it was on, at the
-  same position relative to that screen, as screens move; only windows
-  on a removed or shrunk screen should move, and on to the nearest one.
-  Do after everything else.
+- ~~**Windows while rearranging displays**~~ (Ben): each window stays on
+  its screen at the same place as screens are dragged around
+  (`fixup_positions`); windows on a removed screen go to the main one,
+  cascaded, and ones that no longer fit are fitted (`rehome_windows`).
 
 - ~~Cursor shapes~~ (Haiku's cursors via tabula-hvif, cursor-shape-v1);
   ~~night light~~ (CRTC gamma ramps, faded); ~~libinput settings~~ (touchpad tap, tap-drag, dwt, click
