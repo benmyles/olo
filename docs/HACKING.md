@@ -1017,11 +1017,30 @@ and painted. Servo draws straight into the subsurface; nothing is copied.
   Password, `<input type=file>` a kit `FilePanel`; Servo's own permission
   requests (location, notifications) are denied for now (cameras and
   microphones are ours: see "Cameras, microphones and calls" below).
-* **Pages are light in every mode.** Stylo takes system colours
-  (`CanvasText`) from the preference even for pages that don't choose a
-  colour scheme, and Servo paints the canvas with a single clear colour
-  (a pref), never the page's `Canvas`: telling pages "dark" would give
-  light text on white. The window around the page follows the theme.
+* **Colour schemes** (`scheme.rs`): pages that support dark go dark
+  with the desktop. Stylo takes system colours (`CanvasText`) from the
+  preference even for pages that don't choose a colour scheme, and Servo
+  paints the canvas with a single clear colour, never the page's
+  `Canvas`, so a zero-specificity style gives other pages `color-scheme:
+  light` and dark ones a Canvas background.
+* **Dark pages** (`dark.rs`; View ▸ Dark Pages: Automatic, the default,
+  follows the desktop; Always; Never; `dark_pages` in `browser.json`).
+  `Surface::present` runs `Darkener` after Servo paints: the frame is
+  blitted to a texture and drawn back through a fragment shader computing
+  `x + 1 − 2·luminance(x)` (CSS's weights), which turns perceived
+  lightness around and keeps hue, then maps it into 0.105–0.925 (no pure
+  black or white). That transform is exactly CSS `invert(1)
+  hue-rotate(180deg)` and is its own inverse, so the page script gives
+  `img, video, canvas, embed, object` and childless elements with a
+  `url()` background (marked `data-tabula-pic`) that filter: they come out
+  as they were, a little dimmer (measured mean error 0.03; only the most
+  saturated colours, which the CSS filter clips, darken). The pass saves
+  and restores every bit of GL state it touches (WebRender caches its
+  bindings). The script also samples the background behind a 5×5 grid
+  of points (and the body's text colour) and reports a page that is dark
+  by itself; that tab isn't darkened (`Tab::page_dark`, reset on
+  navigation). The script is re-registered when the setting changes, and
+  open pages are told through a token-named function.
 * **Resources** (`resources/`): Servo's defaults (MPL-2.0, see NOTICE)
   with our own error, certificate and crash pages, which answer in haiku
   as NetPositive did (new verses). `engine.rs` registers the reader.

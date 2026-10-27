@@ -5,6 +5,7 @@
 //! Servo's GL straight into an embedded subsurface, and a status line.
 //! Input over the page is forwarded from egui (input.rs).
 
+mod dark;
 mod downloads;
 mod engine;
 mod favicon;
@@ -88,11 +89,13 @@ struct Settings {
     history: Vec<Bookmark>,
     /// Sites' notifications: allowed (true) or blocked, by origin.
     notifications: BTreeMap<String, bool>,
+    /// View ▸ Dark Pages.
+    dark_pages: dark::DarkPages,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { home: "about:blank".into(), bookmarks: Vec::new(), history: Vec::new(), notifications: BTreeMap::new() }
+        Settings { home: "about:blank".into(), bookmarks: Vec::new(), history: Vec::new(), notifications: BTreeMap::new(), dark_pages: dark::DarkPages::Auto }
     }
 }
 
@@ -134,6 +137,9 @@ struct Tab {
     /// The page asks to show notifications (its site, and the request,
     /// answered from the bar).
     notify_ask: Option<(String, PermissionRequest)>,
+    /// The page is dark by itself (dark.rs's script said so): it isn't
+    /// darkened.
+    page_dark: bool,
     /// Where the page is scrolled, as it last said.
     scroll: Option<scroll::Metrics>,
     /// Where our scroll bars just put it, shown over the page's reports
@@ -167,6 +173,7 @@ impl Tab {
             passkey: None,
             media: VecDeque::new(),
             notify_ask: None,
+            page_dark: false,
             scroll: None,
             scrolled: None,
             favicon: None,
@@ -229,9 +236,16 @@ struct Browser {
     /// A field's context menu waiting for the page's logins: its number
     /// and where it opens (the page's menu is in `menu`).
     field_menu: Option<(u64, egui::Pos2)>,
+    /// Pages are darkened (View ▸ Dark Pages, with the desktop's theme).
+    dark: bool,
 }
 
 impl Browser {
+    /// Whether the page shown now is darkened.
+    fn darkens(&self) -> bool {
+        self.dark && !self.tab().is_some_and(|t| t.page_dark)
+    }
+
     fn tab(&self) -> Option<&Tab> {
         self.tabs.get(self.active)
     }
@@ -318,10 +332,29 @@ impl NetPositive {
                 key: Rect::NOTHING,
                 logins_menu: None,
                 field_menu: None,
+                dark: self.settings.dark_pages.on(self.dark),
             })),
         );
         self.front = Some(win);
         win
+    }
+
+    /// Dark Pages or the desktop's theme changed: tell the engine (new
+    /// pages), the pages (their pictures) and the windows, and redraw.
+    fn apply_dark(&mut self) {
+        let on = self.settings.dark_pages.on(self.dark);
+        self.engine.set_dark(on);
+        let call = format!("window[{}] && window[{}]({on})", serde_json::to_string(&dark::switch(&self.engine.token)).unwrap_or_default(), serde_json::to_string(&dark::switch(&self.engine.token)).unwrap_or_default());
+        for w in self.windows.values_mut() {
+            let Win::Browser(b) = w else { continue };
+            for view in b.tabs.iter().filter_map(|t| t.view.as_ref()) {
+                view.evaluate_javascript(call.clone(), |_| {});
+            }
+            if b.dark != on {
+                b.dark = on;
+                show_active(b);
+            }
+        }
     }
 
     fn browser(&mut self, win: WindowId) -> Option<&mut Browser> {
@@ -635,6 +668,8 @@ impl NetPositive {
                     match event {
                         Event::Url(url) => {
                             tab.url = url.to_string();
+                            // Until the new page says otherwise.
+                            tab.page_dark = false;
                             if is_active && !b.editing {
                                 b.location = location::display(url.as_str());
                             }
@@ -666,6 +701,14 @@ impl NetPositive {
                         Event::Favicon => {
                             tab.new_favicon = tab.view.as_ref().and_then(|v| v.favicon().and_then(|i| favicon::square(&i)));
                             tab.favicon_seen = tab.new_favicon.is_some();
+                        }
+                        Event::PageDark(dark) => {
+                            if tab.page_dark != dark {
+                                tab.page_dark = dark;
+                                if is_active && !painted.contains(&win) {
+                                    painted.push(win);
+                                }
+                            }
                         }
                         Event::Scroll(metrics) => {
                             if tab.scroll == Some(metrics) {
@@ -705,8 +748,7 @@ impl NetPositive {
                 && let (Some(view), Some(surface)) = (b.view(), &b.surface)
             {
                 view.paint();
-                use servo::RenderingContext;
-                surface.context.present();
+                surface.present(b.darkens());
             }
         }
     }
@@ -1026,6 +1068,15 @@ impl NetPositive {
                 {
                     view.load(url);
                 }
+            }
+            c if c.starts_with("dark-pages:") => {
+                self.settings.dark_pages = match &c[11..] {
+                    "always" => dark::DarkPages::Always,
+                    "never" => dark::DarkPages::Never,
+                    _ => dark::DarkPages::Auto,
+                };
+                self.save_settings();
+                self.apply_dark();
             }
             "zoom-in" | "zoom-out" | "zoom-reset" => {
                 let z = view.page_zoom();
@@ -1932,9 +1983,8 @@ fn show_active(b: &mut Browser) {
         }
     }
     if let (Some(v), Some(s)) = (b.view(), &b.surface) {
-        use servo::RenderingContext;
         v.paint();
-        s.context.present();
+        s.present(b.darkens());
     }
 }
 
@@ -2149,6 +2199,7 @@ fn cursor_icon(cursor: Cursor) -> CursorIcon {
 impl App for NetPositive {
     fn theme_changed(&mut self, _cx: &mut Cx, palette: &tabula_kit::theme::Palette) {
         self.dark = palette.mode == tabula_kit::theme::ThemeMode::Dark;
+        self.apply_dark();
         let theme = self.theme();
         for w in self.windows.values() {
             if let Win::Browser(b) = w {
@@ -2202,7 +2253,17 @@ impl App for NetPositive {
             .separator()
             .item("Zoom In", "zoom-in", Some(Key::Equals))
             .item("Zoom Out", "zoom-out", Some(Key::Minus))
-            .item("Actual Size", "zoom-reset", Some(Key::Num0));
+            .item("Actual Size", "zoom-reset", Some(Key::Num0))
+            .separator()
+            .submenu(
+                Menu::new("Dark Pages")
+                    .item("Automatic", "dark-pages:auto", None)
+                    .checked(self.settings.dark_pages == dark::DarkPages::Auto)
+                    .item("Always", "dark-pages:always", None)
+                    .checked(self.settings.dark_pages == dark::DarkPages::Always)
+                    .item("Never", "dark-pages:never", None)
+                    .checked(self.settings.dark_pages == dark::DarkPages::Never),
+            );
         let mut go = Menu::new("Go")
             .item("Back", "back", Some(Key::OpenBracket))
             .enabled(can_back)
@@ -2813,7 +2874,8 @@ fn main() {
         instance::listen(APP_ID, cx.proxy());
         let settings: Settings =
             std::fs::read_to_string(settings_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-        let engine = Engine::new(cx.proxy());
+        let desktop_dark = cx.palette().mode == tabula_kit::theme::ThemeMode::Dark;
+        let engine = Engine::new(cx.proxy(), settings.dark_pages.on(desktop_dark));
         let rtc = rtc::Rtc::new(cx.proxy(), &engine.token);
         let mut app = NetPositive {
             engine,

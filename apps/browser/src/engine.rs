@@ -79,6 +79,8 @@ pub enum Event {
     Passkey(crate::passkeys::PageRequest),
     /// The top document scrolled or changed size (scroll.rs's script).
     Scroll(crate::scroll::Metrics),
+    /// Whether the page is dark by itself (dark.rs's script).
+    PageDark(bool),
     /// A camera, microphone or call request (rtc's script).
     Rtc(crate::rtc::Request),
 }
@@ -92,6 +94,7 @@ pub struct Events {
     download_marker: String,
     scroll_marker: String,
     rtc_marker: String,
+    dark_marker: String,
     /// Text for the next paste a page asks for (we read the clipboard
     /// before telling Servo to paste).
     pub paste: RefCell<Option<String>>,
@@ -186,6 +189,10 @@ impl WebViewDelegate for Events {
                 Ok(request) => self.push(&w, Event::Rtc(request)),
                 Err(e) => tracing::warn!("rtc request: {e}: {json}"),
             }
+        } else if let Some(json) = message.strip_prefix(&self.dark_marker) {
+            if let Ok(dark) = serde_json::from_str(json) {
+                self.push(&w, Event::PageDark(dark));
+            }
         } else if let Some(json) = message.strip_prefix(&self.passkey_marker) {
             match serde_json::from_str(json) {
                 Ok(request) => self.push(&w, Event::Passkey(request)),
@@ -219,6 +226,9 @@ pub struct Engine {
     pub content: Rc<UserContentManager>,
     /// Names our scripts' messages and the passkey answer function.
     pub token: String,
+    /// dark.rs's script as new pages get it (it knows whether pages are
+    /// being darkened).
+    dark: RefCell<Option<Rc<UserScript>>>,
 }
 
 /// Servo's preferences: its defaults, plus web features it has but keeps
@@ -248,7 +258,7 @@ fn preferences() -> servo::Preferences {
 }
 
 impl Engine {
-    pub fn new(proxy: Proxy) -> Engine {
+    pub fn new(proxy: Proxy, dark: bool) -> Engine {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         // Servo's default is to exit when any page's script panics.
         let opts = Opts { config_dir: data_dir(), multiprocess: multiprocess(), hard_fail: false, ..Default::default() };
@@ -275,9 +285,21 @@ impl Engine {
             download_marker: crate::downloads::marker(&token),
             scroll_marker: crate::scroll::marker(&token),
             rtc_marker: crate::rtc::marker(&token),
+            dark_marker: crate::dark::marker(&token),
             ..Default::default()
         };
-        Engine { servo, pending, events: Rc::new(events), content, token }
+        let engine = Engine { servo, pending, events: Rc::new(events), content, token, dark: RefCell::new(None) };
+        engine.set_dark(dark);
+        engine
+    }
+
+    /// Whether new pages are darkened (open ones are told separately).
+    pub fn set_dark(&self, on: bool) {
+        let script = Rc::new(UserScript::from(crate::dark::script(&self.token, on)));
+        if let Some(old) = self.dark.replace(Some(script.clone())) {
+            self.content.remove_script(old);
+        }
+        self.content.add_script(script);
     }
 
     /// Let Servo run what it woke us for; returns what the views said.
@@ -309,6 +331,9 @@ fn data_dir() -> Option<PathBuf> {
 pub struct Surface {
     pub context: Rc<WindowRenderingContext>,
     egl_display: Option<khronos_egl::Display>,
+    /// The dark pages pass, made the first time it's needed (Err: its
+    /// shader didn't build, so pages show as they are).
+    darkener: RefCell<Option<Result<crate::dark::Darkener, ()>>>,
 }
 
 impl Surface {
@@ -333,7 +358,25 @@ impl Surface {
             }
             Some(display)
         });
-        Ok(Surface { context: Rc::new(context), egl_display })
+        Ok(Surface { context: Rc::new(context), egl_display, darkener: RefCell::new(None) })
+    }
+
+    /// Show the frame Servo just painted, darkened if `dark`.
+    pub fn present(&self, dark: bool) {
+        if dark {
+            let gl = self.context.glow_gl_api();
+            let mut darkener = self.darkener.borrow_mut();
+            let pass = darkener.get_or_insert_with(|| {
+                crate::dark::Darkener::new(&gl).map_err(|e| tracing::warn!("dark pages off: {e}"))
+            });
+            if let Ok(pass) = pass {
+                // Servo's framebuffer for this window, bound.
+                self.context.prepare_for_rendering();
+                let size = self.context.size();
+                pass.apply(&gl, (size.width as i32, size.height as i32));
+            }
+        }
+        self.context.present();
     }
 
     pub fn resize(&self, size: dpi::PhysicalSize<u32>) {

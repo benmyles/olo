@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### NetPositive: dark pages
+
+*19:47* — View ▸ Dark Pages (Automatic, the default, follows the desktop; Always; Never). Each frame is redrawn on the GPU through a shader that turns lightness around and keeps hues, so every page goes dark, blank ones included; pictures, video and canvases are pre-inverted with the CSS filter the shader undoes, and pages that are dark already are left alone. Left: Never; right: Always.
+
+![NetPositive: dark pages](2026-10-26/194719-netpositive-dark-pages.png)
+
 ### NetPositive: web notifications
 
 *19:16* — Sites can show notifications: the first time one asks, a bar over its tab offers Allow or Don’t Allow (remembered per site); allowed notifications appear in the desktop's notification centre, and a click brings the tab forward.
