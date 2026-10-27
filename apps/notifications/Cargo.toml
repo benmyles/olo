@@ -1,0 +1,15 @@
+[package]
+name = "tabula-notifications"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "tabula-notifications"
+path = "src/main.rs"
+
+[dependencies]
+tabula-kit.workspace = true
+tabula-xdg.workspace = true
+tracing.workspace = true
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }

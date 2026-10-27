@@ -927,6 +927,41 @@ start a bus (`dbus-broker-launch` with a listening socket handed over as
 `tabula-polkit-agent --keyring-test unix:path=…` in a headless session and
 a Secret Service client calling `Unlock` and `Prompt`.
 
+## Notifications (apps/notifications)
+
+`tabula-notifications` serves `org.freedesktop.Notifications` (spec 1.2)
+on the session bus, so `notify-send`, browsers, chat and mail clients and
+anything else using libnotify reach the user. The real session starts it
+(`REAL_SHELL` in tabula-session; an upgrade starts it in a running session
+too); a nested or headless one never does, since it would take the user's
+notifications.
+
+- server.rs: the zbus interface on its own thread. `Notify` becomes a
+  `Note` (markup stripped to text with `plain`, `image-data` decoded to RGBA,
+  `urgency`/`resident`/`desktop-entry` hints read, the timeout resolved:
+  -1 is 6 s, 0 and critical are until dismissed) and goes to the UI as
+  `In::Show`; `CloseNotification` as `In::Close`. The UI answers with
+  `Bus::closed` (reason 1 expired, 2 dismissed, 3 closed by the app) and
+  `Bus::action`. If another service owns the name it waits and retries
+  every 30 s rather than taking it. (zbus's `Builder::name` treats "taken"
+  as success; `serve` checks the RequestName reply itself.)
+- main.rs: one layer surface (Top layer, anchored bottom right, no
+  keyboard) opened for the first card and closed with the last, resized to
+  the stack. Up to four cards show, oldest at the top; the rest wait. A
+  card shows the picture sent, else the named icon, ours for common theme
+  names (`icon_names`), the app's desktop-entry icon, then info/warning.
+  A click on the card is its `default` action (or dismisses it); action
+  buttons along the bottom; the close box dismisses. While the pointer is
+  over a card it does not expire.
+
+Test it on a private bus: `busd -a unix:path=/tmp/tabula-dev/NAME/bus.sock`
+(`cargo install busd`; Aurora's dbus-broker-launch needs systemd), then
+`tsession run NAME tabula-notifications --bus unix:path=…` and send with
+`gdbus call -a unix:path=… -d org.freedesktop.Notifications -o
+/org/freedesktop/Notifications -m org.freedesktop.Notifications.Notify --
+APP 0 ICON SUMMARY BODY '["default","Open"]' '{}' -1`; `gdbus monitor -a …`
+shows the signals. Unit tests: `cargo test -p tabula-notifications`.
+
 ## NetPositive (apps/browser)
 
 The web browser: Servo 0.7, built in (`engine.rs`), with no system

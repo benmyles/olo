@@ -51,9 +51,9 @@ const USAGE: &str = "usage: tabula-session [--tty-udev | --winit | --headless Wx
 
 const SHELL: &[&[&str]] = &[&["tabula-deskbar"], &["tabula-tracker", "--desktop"]];
 /// Services only the real (logged-in) session runs: the polkit agent
-/// answers for the login session, which a nested or headless one must
-/// never take over.
-const REAL_SHELL: &[&[&str]] = &[&["tabula-polkit-agent"]];
+/// answers for the login session and the notification centre serves the
+/// session bus, which a nested or headless one must never take over.
+const REAL_SHELL: &[&[&str]] = &[&["tabula-polkit-agent"], &["tabula-notifications"]];
 /// Give up restarting something that crashes this often.
 const CRASH_LIMIT: usize = 5;
 const CRASH_WINDOW: Duration = Duration::from_secs(60);
@@ -261,6 +261,19 @@ impl Session {
         };
         s.own_files();
         s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
+        // A service this version adds starts now, not at the next login (a
+        // session with a shell has Deskbar in it; one without stays so).
+        let has_shell = s.shell.iter().any(|c| c.argv == ["tabula-deskbar"]);
+        if real && has_shell {
+            for argv in REAL_SHELL {
+                let argv: Vec<String> = argv.iter().map(|a| a.to_string()).collect();
+                if !s.shell.iter().any(|c| c.argv == argv) {
+                    log(format!("starting {} (new in this version)", argv[0]));
+                    let pid = spawn(&argv, &[]).unwrap_or(0);
+                    s.shell.push(Child { argv, pid, crashes: VecDeque::new() });
+                }
+            }
+        }
         if r.reloading {
             s.reload();
         }

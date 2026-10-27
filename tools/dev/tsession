@@ -167,7 +167,7 @@ def run(name, cmd):
         assigns.append(cmd.pop(0))
     if "HOME" in e and not any(a.startswith("HOME=") for a in assigns):
         assigns.append(f"HOME={e['HOME']}")
-    env = dict(os.environ, **{k: v for k, v in e.items() if k != "pid"}, RUST_LOG=os.environ.get("RUST_LOG", "warn"))
+    env = dict(os.environ, **{k: v for k, v in e.items() if k not in ("pid", "sockets")}, RUST_LOG=os.environ.get("RUST_LOG", "warn"))
     # Headless sessions are silent: point the sound server at a plain file
     # (connecting fails) rather than the user's real speakers.
     mute = os.path.join(BASE, name, "no-sound")

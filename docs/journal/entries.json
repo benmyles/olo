@@ -742,5 +742,11 @@
   "title": "Keyboard shortcuts in Preferences",
   "caption": "Keyboard \u25b8 Shortcuts lists the desktop's shortcuts, with the space around tiled windows. Click one and type new keys (here Left half became \u2303\u2325L); keys taken from another shortcut are said, and Default Keys puts them all back.",
   "image": "2026-10-26/181958-keyboard-shortcuts-in-preferences.png"
+ },
+ {
+  "time": "2026-10-26T19:00:52",
+  "title": "Notifications",
+  "caption": "A native notification centre: apps' notifications (org.freedesktop.Notifications) appear as cards in the lower right with the app's icon, the summary, the body and their actions. A click is the default action; they go by themselves unless critical, and wait while the pointer is over them.",
+  "image": "2026-10-26/190052-notifications.png"
  }
 ]

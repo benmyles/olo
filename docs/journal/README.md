@@ -5,6 +5,12 @@ Tabula's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-26
 
+### Notifications
+
+*19:00* — A native notification centre: apps' notifications (org.freedesktop.Notifications) appear as cards in the lower right with the app's icon, the summary, the body and their actions. A click is the default action; they go by themselves unless critical, and wait while the pointer is over them.
+
+![Notifications](2026-10-26/190052-notifications.png)
+
 ### Keyboard shortcuts in Preferences
 
 *18:19* — Keyboard ▸ Shortcuts lists the desktop's shortcuts, with the space around tiled windows. Click one and type new keys (here Left half became ⌃⌥L); keys taken from another shortcut are said, and Default Keys puts them all back.

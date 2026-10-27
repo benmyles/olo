@@ -11154,6 +11154,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabula-notifications"
+version = "0.1.0"
+dependencies = [
+ "tabula-kit",
+ "tabula-xdg",
+ "tracing",
+ "zbus",
+]
+
+[[package]]
 name = "tabula-onepassword"
 version = "0.1.0"
 dependencies = [
