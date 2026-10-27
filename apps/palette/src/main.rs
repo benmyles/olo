@@ -183,7 +183,7 @@ impl Palette {
             let all = self.fixed.iter().chain(&self.context).chain(&self.menus).chain(&self.passwords).chain(&self.files);
             scored.extend(sources::ranked(&words, all, |k| self.recents.boost(k)));
             let q = self.query.trim().to_owned();
-            scored.push((i32::MIN, Item::new(Kind::Web, format!("Search the web for “{q}”"), Action::Search(q)).icon("browser").subtitle("NetPositive")));
+            scored.push((i32::MIN, Item::new(Kind::Web, format!("Search the web for “{q}”"), Action::Search(q)).icon("browser").subtitle("Web browser")));
         }
         self.results = scored.into_iter().map(|(_, i)| i).collect();
         self.selected = self.selected.min(self.results.len().saturating_sub(1));

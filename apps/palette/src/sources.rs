@@ -79,7 +79,7 @@ pub enum Action {
     Copy(String),
     /// The desktop's light or dark appearance.
     Theme(bool),
-    /// Search the web in NetPositive.
+    /// Search the web in the web browser.
     Search(String),
 }
 
@@ -403,15 +403,25 @@ pub fn perform(action: Action, front: Option<u64>) {
                 }
                 Ok(())
             }
-            Action::Search(text) => match tabula_kit::find_program("tabula-browser") {
-                Some(p) => std::process::Command::new(p).arg(text).spawn().map(|_| ()).map_err(|e| e.to_string()),
-                None => Err("NetPositive isn’t installed".into()),
-            },
+            Action::Search(text) => tabula_kit::open::open(&tabula_kit::open::Target::Url(search_url(&text))).map_err(|e| e.to_string()),
         };
         if let Err(e) = result {
             tracing::warn!("palette: {e}");
         }
     });
+}
+
+/// A web search for `text` (Google, as Chrome would), percent-encoded.
+fn search_url(text: &str) -> String {
+    let mut q = String::new();
+    for b in text.trim().bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => q.push(b as char),
+            b' ' => q.push('+'),
+            _ => q.push_str(&format!("%{b:02X}")),
+        }
+    }
+    format!("https://www.google.com/search?q={q}")
 }
 
 /// Work done off the UI thread: one channel per kind, so a slow
@@ -479,6 +489,11 @@ pub fn workers(proxy: Proxy) -> Workers {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn search_urls() {
+        assert_eq!(search_url(" rust & café "), "https://www.google.com/search?q=rust+%26+caf%C3%A9");
+    }
 
     #[test]
     fn files_by_name() {

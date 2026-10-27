@@ -84,7 +84,7 @@ fn ours(mime: &str) -> Option<&'static str> {
     let (major, _) = mime.split_once('/').unwrap_or((mime, ""));
     let candidates: &[&'static str] = match (major, mime) {
         (_, "inode/directory") => &["tabula-tracker"],
-        (_, "text/html" | "application/xhtml+xml") => &["tabula-browser", "tabula-styled-edit"],
+        (_, "text/html" | "application/xhtml+xml") => &["tabula-chrome", "tabula-styled-edit"],
         ("text", _) | (_, "application/x-shellscript" | "application/json" | "application/xml" | "application/toml") => {
             &["tabula-styled-edit", "tabula-viewer"]
         }
@@ -103,10 +103,15 @@ fn ours(mime: &str) -> Option<&'static str> {
             | "application/vnd.oasis.opendocument.spreadsheet"
             | "application/vnd.oasis.opendocument.presentation",
         ) => &["tabula-viewer"],
-        (_, "x-scheme-handler/http" | "x-scheme-handler/https") => &["tabula-browser"],
+        (_, "x-scheme-handler/http" | "x-scheme-handler/https") => &["tabula-chrome"],
         _ => &[],
     };
     candidates.iter().copied().find(|bin| find_program(bin).is_some())
+}
+
+/// Links and pages: what a web browser opens.
+fn is_web(mime: &str) -> bool {
+    matches!(mime, "x-scheme-handler/http" | "x-scheme-handler/https" | "text/html" | "application/xhtml+xml")
 }
 
 fn config_home() -> PathBuf {
@@ -189,12 +194,23 @@ fn parents(mime: &str) -> Vec<String> {
 
 /// Who opens `mime`.
 pub fn handler(mime: &str) -> Option<Handler> {
+    let files: Vec<String> = mimeapps_files().iter().filter_map(|f| std::fs::read_to_string(f).ok()).collect();
+    // The web browser is the person's choice (Tabula's own Chrome
+    // otherwise); everything else opens in Tabula's apps first.
+    if is_web(mime) {
+        for text in &files {
+            for file in defaults_in(text, mime) {
+                if let Some(e) = entry_by_file(&file) {
+                    return Some(Handler::Entry(Box::new(e)));
+                }
+            }
+        }
+    }
     if let Some(bin) = ours(mime) {
         return Some(Handler::Ours(bin));
     }
     let mut types = vec![mime.to_owned()];
     types.extend(parents(mime));
-    let files: Vec<String> = mimeapps_files().iter().filter_map(|f| std::fs::read_to_string(f).ok()).collect();
     for t in &types {
         for text in &files {
             for file in defaults_in(text, t) {
