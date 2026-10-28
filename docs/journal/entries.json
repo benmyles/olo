@@ -1414,5 +1414,17 @@
   "title": "Touchpad: 576 tall, measured by the layout lint",
   "caption": "The layout lint runs Touchpad with every pad and profile. Its worst case is a MacBook pad without pressure on Touch, which shows both notes. At 520 the While Typing box ran 56 px past the tab and over Defaults/Revert. At 564 it was still 12 px past at 2\u00d7, leaving 8 px instead of the box's 20 px inset. At 576 it fits. Without a pad (here) the notes aren't shown, so that room is left over.",
   "image": "2026-10-27/232039-touchpad-576-tall-measured-by-the-layout-lint.png"
+ },
+ {
+  "time": "2026-10-28T00:09:01",
+  "title": "A wallpaper for every theme",
+  "caption": "Each theme now has its own wallpaper in the pack, light and dark, drawn in its material with the wordmark's o as the hero: BeBox, Soft Be, Toybox, Papercraft, Enamel, Halftone and Classic (rows, light then dark). BeBox's is the new default.",
+  "image": "2026-10-28/000901-a-wallpaper-for-every-theme.png"
+ },
+ {
+  "time": "2026-10-28T00:09:04",
+  "title": "Themes switch the wallpaper too",
+  "caption": "Choosing a theme in Preferences \u25b8 Themes now also sets the wallpaper to that theme's own (here Toybox); Backgrounds can still pick another.",
+  "image": "2026-10-28/000904-themes-switch-the-wallpaper-too.png"
  }
 ]

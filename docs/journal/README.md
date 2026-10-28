@@ -3,6 +3,20 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-10-28
+
+### Themes switch the wallpaper too
+
+*00:09* — Choosing a theme in Preferences ▸ Themes now also sets the wallpaper to that theme's own (here Toybox); Backgrounds can still pick another.
+
+![Themes switch the wallpaper too](2026-10-28/000904-themes-switch-the-wallpaper-too.png)
+
+### A wallpaper for every theme
+
+*00:09* — Each theme now has its own wallpaper in the pack, light and dark, drawn in its material with the wordmark's o as the hero: BeBox, Soft Be, Toybox, Papercraft, Enamel, Halftone and Classic (rows, light then dark). BeBox's is the new default.
+
+![A wallpaper for every theme](2026-10-28/000901-a-wallpaper-for-every-theme.png)
+
 ## 2026-10-27
 
 ### Touchpad: 576 tall, measured by the layout lint

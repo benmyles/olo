@@ -157,7 +157,7 @@ impl Panel {
         match self {
             Panel::Ai => (440, 300),
             Panel::Appearance => (420, 385),
-            Panel::Backgrounds => (520, 448),
+            Panel::Backgrounds => (640, 530),
             Panel::Backup => (420, 400),
             Panel::Bluetooth => (440, 340),
             Panel::DateTime => (460, 370),
@@ -220,7 +220,10 @@ impl Panel {
             Panel::ScreenSaver => settings.screen_saver = from.screen_saver.clone(),
             Panel::Security => settings.security = from.security.clone(),
             Panel::Ai => settings.ai = from.ai.clone(),
-            Panel::Themes => settings.appearance.icon_theme = from.appearance.icon_theme.clone(),
+            Panel::Themes => {
+                settings.appearance.icon_theme = from.appearance.icon_theme.clone();
+                settings.wallpaper = from.wallpaper.clone();
+            }
             Panel::Display | Panel::Backup | Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications => {}
         }
     }

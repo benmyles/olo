@@ -185,6 +185,36 @@ python3 tools/mkicons.py --theme toybox NAME
 python3 tools/iconsheet.py /tmp/toybox.png --theme toybox
 ```
 
+### Theme wallpapers
+
+Each theme also has a wallpaper of its own: the pack's picture named
+after it (`data/wallpapers/{4k,ultrawide,thumbs}/<id>.png` and
+`<id>-dark.png`), drawn in the theme's material with the wordmark's `o`
+as the hero. The themes' come first in `pack.txt`, the default theme's
+first of all, so a new install starts with it. Choosing a theme in
+Preferences ▸ Themes switches the wallpaper to it
+(`olo_xdg::themes::wallpaper`); Backgrounds can still pick any other.
+
+`tools/genwallpaper.py` draws them with the same model as the icons, at
+quality "high" and full 4K, with the theme's reference icons and
+wordmark attached as style references. Each theme's scene is in its
+`SCENES`; `--scene TEXT` tries another one, and the chosen one goes back
+in `SCENES`. Candidates go to `data/wallpapers/src/` (gitignored), each
+with a `.json` sidecar. The API key is read from `OPENAI_API_KEY` or
+`~ben/.env`; never print, log or commit it.
+
+```sh
+python3 tools/genwallpaper.py toybox --variants 2        # candidates
+python3 tools/genwallpaper.py toybox --dark-from data/wallpapers/src/toybox-1.png
+python3 tools/genwallpaper.py toybox --promote data/wallpapers/src/toybox-1.png --crop-y 300
+python3 tools/genwallpaper.py toybox --promote data/wallpapers/src/toybox-dark-1.png --dark --crop-y 300
+```
+
+`--promote` writes the 4K picture, the 3840×1648 ultrawide band (from
+`--crop-y`, default the middle; keep the hero inside it) and the 320×180
+thumbnail. `cargo test -p olo-xdg` checks every theme has all six
+(`themes::tests::every_theme_has_its_wallpaper`).
+
 ## Using icons in code
 
 `olo_kit::icons::paint(painter, rect, "name")`. Names come from the

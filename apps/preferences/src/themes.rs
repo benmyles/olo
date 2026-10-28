@@ -2,7 +2,8 @@
 //! Tracker, Twitcher, every app). A row per theme, each drawn in that
 //! theme: its name and a line about it, its wordmark and a few of its
 //! icons. Choosing one sets `Appearance::icon_theme`, which every app
-//! follows at once.
+//! follows at once, and the wallpaper to the theme's own
+//! (`themes::wallpaper`), which Backgrounds can change after.
 
 use olo_kit::{
     brand,
@@ -24,7 +25,7 @@ const WORD: f32 = 24.0;
 const WORD_SLOT: f32 = 64.0;
 
 pub fn ui(ui: &mut Ui, s: &mut Settings) {
-    ui.add(StringView::new("The look of every icon and of the Olo wordmark, in every app.").dim(true));
+    ui.add(StringView::new("The look of every icon and of the Olo wordmark, in every app, and a wallpaper to match.").dim(true));
     let p = style::palette(ui.ctx());
     let dark = p.mode == olo_kit::theme::ThemeMode::Dark;
     let chosen = themes::resolve(&s.appearance.icon_theme).id;
@@ -42,7 +43,7 @@ pub fn ui(ui: &mut Ui, s: &mut Settings) {
         }
         // Anywhere on the row chooses it; the radio button is on top.
         if ui.interact(row, ui.scope_id().with(("theme-row", t.id)), Sense::click()).clicked() {
-            s.appearance.icon_theme = t.id.to_owned();
+            choose(s, t.id);
         }
         let icons_at = row.right() - icons_w;
         let word = Rect::from_center_size(pos2(icons_at - m::SPACING - WORD_SLOT / 2.0, row.center().y), vec2(WORD_SLOT, WORD));
@@ -50,7 +51,7 @@ pub fn ui(ui: &mut Ui, s: &mut Settings) {
         let name_y = row.center().y - m::MARK_ROW / 2.0;
         let radio = Rect::from_min_size(pos2(row.left(), name_y - m::MARK_ROW / 2.0), vec2(text_w, m::MARK_ROW));
         if at_left(ui, radio, RadioButton::new(t.id == chosen, t.name)).clicked() {
-            s.appearance.icon_theme = t.id.to_owned();
+            choose(s, t.id);
         }
         // The line about it, under the name.
         let indent = row.left() + 13.0 + m::MARK_GAP;
@@ -66,8 +67,29 @@ pub fn ui(ui: &mut Ui, s: &mut Settings) {
     }
 }
 
+/// Switch to theme `id`, and to its wallpaper.
+fn choose(s: &mut Settings, id: &str) {
+    s.appearance.icon_theme = id.to_owned();
+    s.wallpaper = Some(themes::wallpaper(id));
+}
+
 /// `widget` at the left of `rect`, centred vertically (`Ui::put` would
 /// centre it across too).
 fn at_left(ui: &mut Ui, rect: Rect, widget: impl egui::Widget) -> egui::Response {
     ui.scope_builder(egui::UiBuilder::new().max_rect(rect).layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| ui.add(widget)).inner
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_theme_brings_its_wallpaper() {
+        // A new install starts in the default theme on its wallpaper.
+        let mut s = Settings::default();
+        assert_eq!(s.appearance.icon_theme, themes::DEFAULT);
+        assert_eq!(s.wallpaper, Some(themes::wallpaper(themes::DEFAULT)));
+        choose(&mut s, "halftone");
+        assert_eq!((s.appearance.icon_theme.as_str(), s.wallpaper.as_deref()), ("halftone", Some("pack:halftone")));
+    }
 }

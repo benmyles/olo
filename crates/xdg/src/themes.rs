@@ -82,6 +82,13 @@ pub fn set(id: &str) -> bool {
     !std::ptr::eq(before, &THEMES[i])
 }
 
+/// Theme `id`'s own wallpaper, as the wallpaper setting names it: the
+/// pack's picture by the theme's id (data/wallpapers), drawn in its look.
+/// Choosing a theme in Preferences switches to it.
+pub fn wallpaper(id: &str) -> String {
+    format!("{}{}", crate::wallpapers::PACK, resolve(id).id)
+}
+
 /// The directories theme `id` overlays on the classic set, most
 /// important first (none for the classic set itself).
 fn overlays(id: &str) -> impl Iterator<Item = PathBuf> {
@@ -148,6 +155,26 @@ mod tests {
             assert!(missing.is_empty(), "{} lacks {missing:?}", t.id);
             let img = crate::decode_png(&dir.join("brand/olo-wordmark.png")).unwrap_or_else(|| panic!("{}'s wordmark", t.id));
             assert!(img.width > img.height && img.height >= 128);
+        }
+    }
+
+    #[test]
+    fn every_theme_has_its_wallpaper() {
+        // In the pack, light and dark, at each shape; the default theme's
+        // is the pack's first, so a new install starts with it.
+        let dir = repo_data().join("wallpapers");
+        let pack = crate::wallpapers::parse(&std::fs::read_to_string(dir.join("pack.txt")).unwrap(), &dir);
+        assert_eq!(pack[0].setting(), wallpaper(DEFAULT));
+        assert_eq!(crate::wallpapers::default_setting(), wallpaper(DEFAULT));
+        for t in THEMES {
+            let w = pack.iter().find(|w| w.setting() == wallpaper(t.id)).unwrap_or_else(|| panic!("{} has no wallpaper", t.id));
+            assert!(w.dark, "{} has no dark wallpaper", t.id);
+            for (shape, size) in [("4k", (3840, 2160)), ("ultrawide", (3840, 1648)), ("thumbs", (320, 180))] {
+                for name in [t.id.to_owned(), format!("{}-dark", t.id)] {
+                    let img = crate::decode_png(&dir.join(shape).join(format!("{name}.png"))).unwrap_or_else(|| panic!("{shape}/{name}"));
+                    assert_eq!((img.width, img.height), size, "{shape}/{name}");
+                }
+            }
         }
     }
 

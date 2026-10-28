@@ -1,7 +1,16 @@
 # The wallpaper pack: name|label. Each has 4k/NAME.png (16:9) and
 # ultrawide/NAME.png (21:9); NAME-dark.png beside it, when there is one,
 # is shown in dark mode. thumbs/ holds the previews. The first is the
-# default for a new install.
+# default for a new install. The themes' own come first, each named after
+# its theme (Preferences ▸ Themes switches to it), the default theme's
+# first of all.
+bebox|BeBox
+soft-be|Soft Be
+toybox|Toybox
+papercraft|Papercraft
+enamel|Enamel
+halftone|Halftone
+classic|Classic
 dusk-gradient|Dusk
 boing|Boing
 be-blue|Be Blue

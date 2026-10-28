@@ -875,8 +875,9 @@ impl Default for Settings {
             workspace_count: 4,
             // BeOS R5's default desktop blue, then a few Haiku-ish alternates.
             workspace_colors: vec![[51, 102, 152], [0, 128, 128], [102, 51, 153], [96, 96, 96]],
-            // A new install starts with the pack's first picture.
-            wallpaper: Some("pack:dusk-gradient".into()),
+            // A new install starts with the default theme's own wallpaper
+            // (`olo_xdg::themes::wallpaper`), the pack's first.
+            wallpaper: Some("pack:bebox".into()),
             focus_follows_mouse: false,
             touchpad: TouchpadSettings::default(),
             keyboard: KeyboardSettings::default(),

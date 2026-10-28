@@ -35,7 +35,7 @@ pub fn pack() -> Vec<Wallpaper> {
     parse(&std::fs::read_to_string(dir.join("pack.txt")).unwrap_or_default(), &dir)
 }
 
-fn parse(text: &str, dir: &Path) -> Vec<Wallpaper> {
+pub(crate) fn parse(text: &str, dir: &Path) -> Vec<Wallpaper> {
     text.lines()
         .map(str::trim)
         .filter(|l| !l.is_empty() && !l.starts_with('#'))
@@ -47,9 +47,9 @@ fn parse(text: &str, dir: &Path) -> Vec<Wallpaper> {
         .collect()
 }
 
-/// The setting a new install starts with.
+/// The setting a new install starts with: the default theme's own.
 pub fn default_setting() -> String {
-    format!("{PACK}dusk-gradient")
+    crate::themes::wallpaper(crate::themes::DEFAULT)
 }
 
 /// Wider than this (width over height) takes the ultrawide version.

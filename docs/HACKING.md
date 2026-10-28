@@ -932,7 +932,11 @@ launcher lists them. The panel list Deskbar shows is
   wallpaper pack, or Your Own. The pack (`data/wallpapers`, Git LFS;
   `olo_xdg::wallpapers`) lists its pictures in `pack.txt` (the first
   is a new install's default), each in `4k/` (16:9) and `ultrawide/`
-  (21:9), some with a `-dark` version, and previews in `thumbs/`. The
+  (21:9), some with a `-dark` version, and previews in `thumbs/`. Each
+  theme's own wallpaper leads the list, named after it (see "Theme
+  wallpapers" in [ICONS.md](ICONS.md)); choosing a theme in Themes sets
+  `wallpaper` to it too, so an agent switching looks over IPC sets both
+  `appearance.icon_theme` and `wallpaper` (`themes::wallpaper(id)`). The
   setting holds `pack:NAME`, and `wallpapers::resolve` gives the file
   for a screen's shape (2:1 or wider takes the ultrawide one) and the
   effective theme, so it follows dark mode (Auto's schedule too) live.
@@ -979,7 +983,8 @@ launcher lists them. The panel list Deskbar shows is
 * Themes (`themes.rs`): a row per theme in `olo_xdg::themes::THEMES`,
   each drawn in that theme (`icons::paint_in`, `brand::wordmark_in`):
   a radio button with its name, a line about it, its wordmark and six of
-  its icons; clicking anywhere on a row chooses it. The choice is
+  its icons; clicking anywhere on a row chooses it, and its wallpaper
+  (`choose`). The choice is
   `Appearance::icon_theme` (an id; unknown ones draw the default,
   `bebox`), so agents set it with `SetSettings` like any other.
   Every process draws in one theme, `olo_xdg::themes::current()`: the
