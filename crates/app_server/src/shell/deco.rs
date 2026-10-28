@@ -62,6 +62,9 @@ pub struct Decoration {
     pub last_press: Option<(Instant, Point<f64, Logical>, Part)>,
     /// Rolled up: only the tab shows (and takes the pointer).
     pub rolled: bool,
+    /// Behind another window of its group: only the tab shows, as when
+    /// rolled up (`groups::mark_behind`).
+    pub behind: bool,
     /// Its tab's width when the window is in a group (each window's tab
     /// gets its place along the shared top, `groups`); else as wide as its
     /// title wants.
@@ -107,6 +110,7 @@ impl Default for Decoration {
             pointer: Point::default(),
             last_press: None,
             rolled: false,
+            behind: false,
             tab_width: None,
             title_width: None,
             tab: None,
@@ -199,7 +203,7 @@ impl Decoration {
         let tab = self.tab_layout(title, content);
         let (w, h) = (content.w + 2 * BORDER, content.h + TAB_HEIGHT + 2 * BORDER);
         let contains = |r: Rectangle<i32, Logical>| r.to_f64().contains(p);
-        if self.rolled && p.y >= TAB_HEIGHT as f64 {
+        if (self.rolled || self.behind) && p.y >= TAB_HEIGHT as f64 {
             return Part::None;
         }
         if p.y < TAB_HEIGHT as f64 {

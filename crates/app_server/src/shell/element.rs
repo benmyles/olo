@@ -125,6 +125,14 @@ impl WindowElement {
         self.decorated() && self.decoration().rolled
     }
 
+    /// Only its tab shows: rolled up, or behind others in its group.
+    fn tab_only(&self) -> bool {
+        self.decorated() && {
+            let d = self.decoration();
+            d.rolled || d.behind
+        }
+    }
+
     fn on_decoration(&self, location: Point<f64, Logical>) -> bool {
         if !self.decorated() {
             return false;
@@ -142,7 +150,7 @@ impl WindowElement {
         if self.on_decoration(location) {
             return Some((PointerFocusTarget::SSD(SSD(self.clone())), Point::default()));
         }
-        if self.rolled() {
+        if self.tab_only() {
             return None;
         }
         let offset = self.client_render_offset();
@@ -501,7 +509,7 @@ impl SpaceElement for WindowElement {
     }
     fn is_in_input_region(&self, point: &Point<f64, Logical>) -> bool {
         self.on_decoration(*point)
-            || !self.rolled() && SpaceElement::is_in_input_region(&self.0, &(*point - self.client_render_offset().to_f64()))
+            || !self.tab_only() && SpaceElement::is_in_input_region(&self.0, &(*point - self.client_render_offset().to_f64()))
     }
     fn z_index(&self) -> u8 {
         SpaceElement::z_index(&self.0)
@@ -563,7 +571,7 @@ where
             let (tabs, frame) =
                 self.decoration()
                     .render_elements(renderer, &title, content, location, scale, alpha);
-            if self.rolled() {
+            if self.tab_only() {
                 return tabs.into_iter().map(WindowRenderElement::Tab).map(C::from).collect();
             }
             let client_location = location + self.client_render_offset().to_physical_precise_round(scale);

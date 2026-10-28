@@ -249,6 +249,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             },
             Request::ToggleZoom { id } => match self.window_by_id(id) {
                 Some(w) => {
+                    self.front_of_group(&w);
                     self.toggle_zoom(&w);
                     Reply::Ok
                 }
@@ -284,6 +285,9 @@ impl<B: Backend + 'static> AnvilState<B> {
             Request::Place { id, frame } => match self.window_by_id(id) {
                 Some(w) if self.space.element_location(&w).is_some() => {
                     let size = (frame.width.max(1), frame.height.max(1));
+                    // As if moved and sized by hand: its own place now.
+                    self.front_of_group(&w);
+                    self.forget_tile(&w);
                     self.set_frame(&w, smithay::utils::Rectangle::new((frame.x, frame.y).into(), size.into()), false);
                     Reply::Ok
                 }

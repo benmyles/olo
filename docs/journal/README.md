@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-28
 
+### Desktop menu over windows
+
+*00:49* — The desktop's right-click menu opened over a window was drawn behind it, and clicks went to the window. app_server now draws the desktop layer's menus over the windows and the Deskbar (under only the Overlay layer) and finds them there for the pointer and keyboard.
+
+![Desktop menu over windows](2026-10-28/004935-desktop-menu-over-windows.png)
+
 ### Themes switch the wallpaper too
 
 *00:09* — Choosing a theme in Preferences ▸ Themes now also sets the wallpaper to that theme's own (here Toybox); Backgrounds can still pick another.

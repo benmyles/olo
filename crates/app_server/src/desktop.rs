@@ -48,6 +48,9 @@ pub struct WindowMeta {
     /// Put back where it was: left there at its first size, though it
     /// hangs off the screen, as long as its tab is on it.
     pub put_back: Cell<bool>,
+    /// The displays there were when it left the space: if they are just
+    /// the same when it comes back, so is it.
+    pub left_among: std::cell::RefCell<Vec<Rectangle<i32, Logical>>>,
 }
 
 impl WindowElement {
@@ -63,6 +66,7 @@ impl WindowElement {
             owner: std::cell::RefCell::new(None),
             returning: std::cell::RefCell::new(None),
             put_back: Cell::new(false),
+            left_among: Default::default(),
         });
         self.user_data().get::<WindowMeta>().unwrap()
     }
@@ -283,8 +287,13 @@ impl<B: Backend + 'static> AnvilState<B> {
             window.meta().workspace.set(Some(self.workspace));
         }
         window.set_activate(false);
+        *window.meta().left_among.borrow_mut() = self.display_frames();
         self.space.unmap_elem(window);
         self.parked.0.borrow_mut().push(window.clone());
+    }
+
+    fn display_frames(&self) -> Vec<Rectangle<i32, Logical>> {
+        self.space.outputs().filter_map(|o| self.space.output_geometry(o)).collect()
     }
 
     fn unpark(&mut self, window: &WindowElement) {
@@ -293,8 +302,8 @@ impl<B: Backend + 'static> AnvilState<B> {
         window.meta().workspace.set(Some(self.workspace));
         let loc = window.meta().saved_location.get();
         self.space.map_element(window.clone(), loc, false);
-        // Its display may have gone while it was away.
-        self.rehome_window(window);
+        let changed = *window.meta().left_among.borrow() != self.display_frames();
+        self.welcome_back(window, changed);
     }
 
     pub fn minimize(&mut self, window: &WindowElement) {

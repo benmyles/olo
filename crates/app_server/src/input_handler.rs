@@ -13,7 +13,7 @@ use smithay::{
         GesturePinchUpdateEvent as _, GestureSwipeUpdateEvent as _, InputBackend, InputEvent, InputTime,
         KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, TouchEvent,
     },
-    desktop::{WindowSurfaceType, layer_map_for_output},
+    desktop::{WindowSurfaceType, layer_map_for_output, utils::under_from_surface_tree},
     input::{
         keyboard::{FilterResult, Keysym, ModifiersState, keysyms as xkb},
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
@@ -275,6 +275,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
             S::Tile(_) | S::Zoom | S::ZoomVertical | S::ZoomHorizontal | S::Restore | S::Center | S::Hide | S::NextDisplay | S::PreviousDisplay => {
                 let Some(w) = focused else { return };
+                if shortcut != S::Hide {
+                    self.front_of_group(&w);
+                }
                 match shortcut {
                     S::Tile(tile) => self.tile_window(&w, tile),
                     S::Zoom => {
@@ -570,6 +573,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                             keyboard.set_focus(self, Some(layer.clone().into()), serial);
                             return;
                         }
+                drop(layers);
+                // A desktop menu, over the windows: not the window under it.
+                if self.lower_layer_menu_under(output, location).is_some() {
+                    return;
+                }
             }
 
             if let Some((window, _)) = self.space.element_under(location).map(|(w, p)| (w.clone(), p)) {
@@ -609,7 +617,17 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             geometry.contains(pos.to_i32_round())
         })?;
         let output_geo = self.space.output_geometry(output).unwrap();
+        // (Before the layer map is taken: it takes it too.)
+        let menu = self.lower_layer_menu_under(output, pos);
         let layers = layer_map_for_output(output);
+        let layer_under = |layer| {
+            layers.layer_under(layer, pos - output_geo.loc.to_f64()).and_then(|layer| {
+                let layer_loc = layers.layer_geometry(layer).unwrap().loc;
+                layer
+                    .surface_under(pos - output_geo.loc.to_f64() - layer_loc.to_f64(), WindowSurfaceType::ALL)
+                    .map(|(surface, loc)| (PointerFocusTarget::from(surface), loc + layer_loc + output_geo.loc))
+            })
+        };
 
         let mut under = None;
         if let Some((surface, loc)) = output
@@ -619,23 +637,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             .and_then(|w| w.surface_under(pos - output_geo.loc.to_f64(), WindowSurfaceType::ALL))
         {
             under = Some((surface, loc + output_geo.loc));
-        } else if let Some(focus) = layers
-            .layer_under(WlrLayer::Overlay, pos - output_geo.loc.to_f64())
-            .or_else(|| layers.layer_under(WlrLayer::Top, pos - output_geo.loc.to_f64()))
-            .and_then(|layer| {
-                let layer_loc = layers.layer_geometry(layer).unwrap().loc;
-                layer
-                    .surface_under(
-                        pos - output_geo.loc.to_f64() - layer_loc.to_f64(),
-                        WindowSurfaceType::ALL,
-                    )
-                    .map(|(surface, loc)| {
-                        (
-                            PointerFocusTarget::from(surface),
-                            loc + layer_loc + output_geo.loc,
-                        )
-                    })
-            })
+        } else if let Some(focus) = layer_under(WlrLayer::Overlay)
+            .or_else(|| menu.map(|(surface, loc)| (PointerFocusTarget::from(surface), loc)))
+            .or_else(|| layer_under(WlrLayer::Top))
         {
             under = Some(focus)
         } else if let Some(focus) = self.space.element_under(pos).and_then(|(window, loc)| {
@@ -644,27 +648,23 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 .map(|(surface, surf_loc)| (surface, surf_loc + loc))
         }) {
             under = Some(focus);
-        } else if let Some(focus) = layers
-            .layer_under(WlrLayer::Bottom, pos - output_geo.loc.to_f64())
-            .or_else(|| layers.layer_under(WlrLayer::Background, pos - output_geo.loc.to_f64()))
-            .and_then(|layer| {
-                let layer_loc = layers.layer_geometry(layer).unwrap().loc;
-                layer
-                    .surface_under(
-                        pos - output_geo.loc.to_f64() - layer_loc.to_f64(),
-                        WindowSurfaceType::ALL,
-                    )
-                    .map(|(surface, loc)| {
-                        (
-                            PointerFocusTarget::from(surface),
-                            loc + layer_loc + output_geo.loc,
-                        )
-                    })
-            })
-        {
+        } else if let Some(focus) = layer_under(WlrLayer::Bottom).or_else(|| layer_under(WlrLayer::Background)) {
             under = Some(focus)
         };
         under.map(|(s, l)| (s, l.to_f64()))
+    }
+
+    /// The surface of a desktop menu at `pos` (global), and where it is
+    /// (`shell::lower_layer_menus`). Takes `output`'s layer map.
+    fn lower_layer_menu_under(
+        &self,
+        output: &smithay::output::Output,
+        pos: Point<f64, Logical>,
+    ) -> Option<(smithay::reexports::wayland_server::protocol::wl_surface::WlSurface, Point<i32, Logical>)> {
+        let origin = self.space.output_geometry(output)?.loc;
+        crate::shell::lower_layer_menus(output)
+            .into_iter()
+            .find_map(|(menu, at)| under_from_surface_tree(&menu, pos, origin + at, WindowSurfaceType::ALL))
     }
 
     fn on_pointer_axis<B: InputBackend>(&mut self, evt: B::PointerAxisEvent) {

@@ -772,6 +772,18 @@ The headless server renders on the GPU's render node and announces it
 in dmabuf feedback, so GL clients (Chrome) get hardware GL
 as on the desktop rather than Mesa's software fallback.
 
+`tools/dev/wm-fuzz NAME [--seed N] [--steps N] [--keep-going]` is an
+adversarial window-management fuzzer: on a session with two screens and
+the shell (`$T start fz 2560x1600,1920x1080 --session --shell`) it opens
+and closes Terminal, StyledEdit and Tracker windows and drives random
+combinations of every arranging command, shortcut, switcher, workspace
+and display change, checking after each step that app_server answers,
+every shown window is on a display with its tab in reach, exactly one
+shown window has the keyboard, commands that shouldn't move other
+windows don't, and round trips (zoom/unzoom, tile/Restore, Undo, a
+workspace or display and back) come back exactly. A run is reproducible
+from its seed. Run it after changing anything in shell/.
+
 Clicks are global logical coordinates: on a screen that isn't at (0, 0),
 add its position (`$T ipc NAME '{"type":"outputs"}'`). `start` rewrites
 the session's app_server.json, so test persistence with `--session` and
@@ -963,6 +975,12 @@ launcher lists them. The panel list Deskbar shows is
   (`DisplaySettings::main`, else the first) gets layer surfaces that name
   no output (Deskbar, the desktop): they carry `shell::AutoOutput` and
   move when the main display changes or their output is unplugged.
+  render.rs draws the layers itself, front to back: Overlay, the menus
+  of the Background and Bottom layers (the desktop's right-click menu,
+  `shell::lower_layer_menus`), Top (Deskbar), the windows, then the
+  Background and Bottom surfaces; `surface_under` and keyboard focus
+  find them in the same order, so a desktop menu opened over a window
+  is in front of it and takes its clicks.
   Identify (`IdentifyOutputs`) shows each display's name for 4 s
   (app_server `identify.rs`). Settings are kept per monitor under
   `olo_protocol::display_key` ("make model serial" from the EDID,
@@ -1138,6 +1156,14 @@ arranging or moving or sizing by hand forgets it (`set_tiled`). As with
 Zoom, a reload keeps the geometry only. Agents:
 `{"type":"run_shortcut","id":"zoom-vertical","window":ID}`.
 
+A window that comes back (from another workspace, from being hidden) is
+left exactly where it was unless the displays changed while it was away
+(`welcome_back`: then it is rehomed); a tiled or zoomed one is only
+refitted to its room, in case the Deskbar moved. `refit` leaves a window
+alone when it fits and is in reach (`in_reach`: the top of its tab or
+frame inside the area, at least 48 px of it across), even hanging off
+an edge, as people leave windows.
+
 Next Tab / Previous Tab (⌥⇥ / ⌥⇧⇥) are keys, not actions: the keymap
 types Ctrl+Tab / Ctrl+Shift+Tab into the focused window (`stand_for`),
 which Chrome, Firefox, GTK, Qt and the kit all take for the next and
@@ -1157,9 +1183,20 @@ title wants, or all an equal share if they don't fit, so tabs never
 overlap; `Decoration::tab_width`, `tab_offset`). `sync_groups` runs every
 `tick`: the front-most member leads, newcomers take its frame
 (`join_group`), and the group is raised together so clicking a tab
-brings that window to the front of the frame. Moving, resizing, rolling
-up and tiling (one cell per group) act on the whole group;
-`behind_in_group` windows are skipped by the arranging commands. A
+brings that window to the front of the frame. The leader is the
+front-most window that was already in the group (then one already on
+screen, then the front-most), at the size it was asked for if it hasn't
+drawn it yet, so a window that opens, comes back or arrives from
+another workspace joins the group where it is instead of pulling it
+along; the others take the leader's arrangement too (tile, zoom, the
+frames Restore and unzoom go back to: `share_arrangement`). Only the
+front window is drawn whole and takes input over its frame: the ones
+behind it show just their tabs (`mark_behind`, before every frame,
+`Decoration::behind`), so they never show around it while it is sized
+smaller; a capture for an agent draws a window whole. Moving, resizing,
+rolling up and tiling (one cell per group) act on the whole group; an
+arranging command on a window behind brings it to the front first
+(`front_of_group`). A
 window leaving a group gets its own tab back and steps out by `CASCADE`
 so it isn't hidden. Grouping is on for every app; the ones a person
 turns off are `TilingSettings::ungrouped_apps` (app ids), toggled by

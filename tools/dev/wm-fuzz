@@ -1,0 +1,651 @@
+#!/usr/bin/env python3
+"""Adversarial window-management fuzzer: drive app_server with random
+combinations of every arranging command, shortcut, switcher, workspace
+and display change, on real apps, and check after each step that the
+desktop is still sane.
+
+  wm-fuzz NAME [--seed N] [--steps N] [--keep-going] [--quiet]
+
+NAME is a tsession with two or more screens and the shell, e.g.
+
+  tsession start fz 2560x1600,1920x1080 --session --shell
+  tools/dev/wm-fuzz fz --steps 400
+
+It opens and closes windows of olo-terminal, olo-styled-edit and
+olo-tracker itself. A run is reproducible from its seed (printed first)
+as long as the session starts the same way. On a failure it prints the
+seed, the step, the last commands and what was wrong, and stops (with
+--keep-going it carries on and lists every failure at the end).
+
+What is checked, after every step once the windows have settled:
+
+  * app_server answers a ping within a second;
+  * every shown window is on a display, with its tab reachable, and none
+    is empty;
+  * if any window is shown, exactly one has the keyboard, and it is a
+    shown one; a hidden or away window never does;
+  * commands that shouldn't move other windows don't: activating one,
+    Cmd+Tab and Cmd+` however far you cycle, sending to back, hiding or
+    showing one, opening a new window (it may join its app's group, but
+    nothing else changes), going to another workspace and back;
+  * round trips come back exactly: zoom and unzoom (also along one
+    axis), a tile then Restore, an arrangement then Undo Window
+    Arrangement, a window to another workspace and back, a window to the
+    next display and back;
+  * tiles and zooms stay inside the display's tiling area (`arrangement`).
+"""
+import json, os, random, socket, subprocess, sys, time
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+TSESSION = os.path.join(ROOT, "tools", "dev", "tsession")
+APPS = ["olo-terminal", "olo-styled-edit", "olo-tracker"]
+# How to ask each for a window: StyledEdit and Tracker bring theirs forward
+# when launched bare (a folder already open, too), as BeOS apps do.
+LAUNCH = {"olo-terminal": [[]], "olo-styled-edit": [["--new-window"], []],
+          "olo-tracker": [["/"], ["/usr"], ["/etc"], ["/tmp"], ["/usr/share"], ["/var"], []]}
+
+TILES = ["tile-left", "tile-right", "tile-top", "tile-bottom", "tile-top-left", "tile-top-right",
+         "tile-bottom-left", "tile-bottom-right", "tile-left-third", "tile-center-third",
+         "tile-right-third", "tile-left-two-thirds", "tile-right-two-thirds"]
+WINDOW_CMDS = TILES + ["zoom", "zoom-vertical", "zoom-horizontal", "restore", "center", "hide-window",
+                       "roll-up", "next-tab", "previous-tab", "next-display", "previous-display"]
+ARRANGE_CMDS = ["tile-all", "zoom-all", "cascade-all", "fan-out", "cascade-others", "fan-out-others",
+                "undo-arrangement", "show-desktop"]
+WORKSPACE_CMDS = ["next-workspace", "previous-workspace", "window-to-next-workspace",
+                  "window-to-previous-workspace", "workspace-1", "workspace-2", "workspace-3",
+                  "window-to-workspace-1", "window-to-workspace-2", "window-to-workspace-3"]
+
+# Key chords for some of them, pressed as a person would (they act on the
+# window with the keyboard, so focus bugs show).
+CTRL, SHIFT, ALT, CMD = 29, 42, 56, 125
+KEYS = {
+    "tile-left": [SHIFT, CMD, 105], "tile-right": [SHIFT, CMD, 106], "tile-top": [SHIFT, CMD, 103],
+    "tile-bottom": [SHIFT, CMD, 108], "tile-top-left": [CTRL, CMD, 22], "tile-bottom-right": [CTRL, CMD, 37],
+    "tile-left-third": [CTRL, CMD, 32], "tile-center-third": [CTRL, CMD, 33], "zoom": [SHIFT, CMD, 28],
+    "zoom-vertical": [ALT, SHIFT, CMD, 103], "zoom-horizontal": [ALT, SHIFT, CMD, 105],
+    "restore": [SHIFT, CMD, 14], "center": [CTRL, CMD, 46], "hide-window": [CMD, 50],
+    "roll-up": [CTRL, CMD, 50], "next-tab": [ALT, 15], "tile-all": [CTRL, CMD, 28],
+    "zoom-all": [CTRL, ALT, CMD, 28], "cascade-all": [CTRL, CMD, 43], "fan-out": [CTRL, CMD, 53],
+    "undo-arrangement": [CTRL, CMD, 44], "next-workspace": [CTRL, CMD, 106],
+    "previous-workspace": [CTRL, CMD, 105], "window-to-next-workspace": [CTRL, SHIFT, CMD, 106],
+}
+
+
+class Failure(Exception):
+    pass
+
+
+class Fuzz:
+    def __init__(self, name, seed, quiet):
+        self.name = name
+        env = json.load(open(os.path.join("/tmp/olo-dev", name, "env.json")))
+        self.sock = env["OLO_SOCKET"]
+        self.rng = random.Random(seed)
+        self.seed = seed
+        self.quiet = quiet
+        self.history = []
+        self.failures = []
+        self.step = 0
+        outs = self.req({"type": "outputs"})["outputs"]
+        self.outputs = [o["name"] for o in outs]
+        self.home = {o["name"]: (o["position"], o["scale"]) for o in outs}
+
+    # ---- talking to app_server ----
+
+    def req(self, r, timeout=5.0):
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(timeout)
+        try:
+            s.connect(self.sock)
+            s.sendall((json.dumps(r) + "\n").encode())
+            line = s.makefile().readline()
+        except (TimeoutError, socket.timeout, ConnectionError) as e:
+            raise Failure(f"app_server didn't answer {r.get('type')}: {e}")
+        finally:
+            s.close()
+        if not line:
+            raise Failure(f"app_server closed the connection on {r.get('type')}")
+        reply = json.loads(line)
+        if reply.get("type") == "error":
+            raise Failure(f"{r} -> error {reply.get('message')}")
+        return reply
+
+    def windows(self):
+        return {w["id"]: w for w in self.req({"type": "list_windows"})["windows"]}
+
+    def workspace(self):
+        return self.req({"type": "workspaces"}).get("current", 0)
+
+    def settle(self, timeout=3.0):
+        """The windows once they stop changing (clients answer configures
+        in their own time). Every state seen on the way, a few
+        milliseconds apart, is kept in `trail`, so a window that jumps
+        and comes back (a flicker) is caught too."""
+        t0 = time.time()
+        self.trail = []
+        last, since = None, time.time()
+        while True:
+            now = self.windows()
+            key = {i: (fr(w), w["minimized"], w["workspace"], w["focused"]) for i, w in now.items()}
+            if key != last:
+                self.trail.append(now)
+                last, since = key, time.time()
+            elif time.time() - since > 0.25 or time.time() - t0 > timeout:
+                return now
+            time.sleep(0.004)
+
+    def keys(self, codes):
+        ev = [{"type": "key", "key": k, "pressed": True} for k in codes]
+        ev += [{"type": "key", "key": k, "pressed": False} for k in reversed(codes)]
+        self.req({"type": "synthetic", "events": ev})
+
+    def shortcut(self, sid, window=None):
+        r = {"type": "run_shortcut", "id": sid}
+        if window is not None:
+            r["window"] = window
+        self.req(r)
+
+    def spawn(self, app, args=()):
+        subprocess.run([TSESSION, "run", self.name, app, *args], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+
+    # ---- the desktop's shape ----
+
+    def output_rects(self):
+        rects = []
+        for o in self.req({"type": "outputs"})["outputs"]:
+            if o.get("mirror_of"):
+                continue
+            m, s = o["current_mode"], o["scale"] or 1.0
+            w, h = (m["width"], m["height"]) if o.get("rotation", 0) in (0, 180) else (m["height"], m["width"])
+            rects.append((o["position"][0], o["position"][1], round(w / s), round(h / s)))
+        return rects
+
+    def area(self):
+        a = self.req({"type": "arrangement"})
+        return a.get("output"), rect(a["area"]) if a.get("area") else None
+
+    # ---- checks ----
+
+    def fail(self, what):
+        msg = f"step {self.step} (seed {self.seed}): {what}\n  last: " + "\n        ".join(self.history[-12:])
+        if self.keep_going:
+            self.failures.append(msg)
+            print("FAIL " + msg, flush=True)
+        else:
+            raise Failure(msg)
+
+    def check_sane(self, wins):
+        t = time.time()
+        self.req({"type": "ping"}, timeout=1.0)
+        if time.time() - t > 1.0:
+            self.fail("ping took over a second")
+        ws = self.workspace()
+        outs = self.output_rects()
+        shown = [w for w in wins.values() if w["workspace"] == ws and not w["minimized"]]
+        for w in shown:
+            if fr(w) is None:
+                self.fail(f"shown window {w['id']} ({w['app_id']}) has no frame")
+                continue
+            x, y, cw, ch = fr(w)
+            if cw <= 0 or ch <= 0:
+                self.fail(f"window {w['id']} ({w['app_id']}) is empty: {fr(w)}")
+            # Within reach: enough of its top edge on some display to take
+            # hold of (it may hang off an edge, as a person can leave it).
+            top = (x, y, cw, min(ch, 20))
+            if not any(overlap(top, o) >= min(cw, 32) * min(ch, 20) and o[1] <= y for o in outs):
+                self.fail(f"window {w['id']} ({w['app_id']}) is off the displays: {fr(w)}; displays {outs}")
+        focused = [w for w in wins.values() if w["focused"]]
+        if shown and len(focused) != 1:
+            self.fail(f"{len(focused)} windows have the keyboard with {len(shown)} shown: {[w['id'] for w in focused]}")
+        for w in focused:
+            if w["minimized"] or w["workspace"] != ws:
+                self.fail(f"window {w['id']} has the keyboard but is {'hidden' if w['minimized'] else 'on workspace %d' % w['workspace']}")
+
+    def check_round_trip(self, what, before, after, moving):
+        """Everything back as it was; only `moving` moved on the way."""
+        moved = {i: (fr(before[i]), fr(after[i])) for i in before
+                 if i in after and fr(before[i]) and fr(after[i]) and fr(before[i]) != fr(after[i])}
+        if moved:
+            self.fail(f"{what} didn't come back: " + ", ".join(f"{i} ({before[i]['app_id']}) {a} -> {b}" for i, (a, b) in moved.items()))
+            return
+        self.check_steady(what, before, moving)
+
+    def check_unchanged(self, what, before, after, skip=()):
+        moved = {i: (fr(before[i]), fr(after[i])) for i in before
+                 if i in after and i not in skip and fr(before[i]) and fr(after[i]) and fr(before[i]) != fr(after[i])
+                 and before[i]["workspace"] == after[i]["workspace"]}
+        if moved:
+            self.fail(f"{what} moved other windows: " + ", ".join(f"{i} ({before[i]['app_id']}) {a} -> {b}" for i, (a, b) in moved.items()))
+            return
+        self.check_steady(what, before, skip)
+
+    def check_steady(self, what, before, skip=()):
+        """No window outside `skip` changed on the way, even for a moment."""
+        for state in getattr(self, "trail", []):
+            flick = {i: (fr(before[i]), fr(w)) for i, w in state.items()
+                     if i in before and i not in skip and fr(before[i]) and fr(w) and fr(before[i]) != fr(w)}
+            if flick:
+                self.fail(f"{what} flickered other windows: " + ", ".join(f"{i} ({before[i]['app_id']}) {a} -> {b} and back" for i, (a, b) in flick.items()))
+                return
+
+    def check_back(self, what, wid, before, after):
+        if wid in before and wid in after and fr(before[wid]) and fr(before[wid]) != fr(after[wid]):
+            self.fail(f"{what} didn't come back: window {wid} ({before[wid]['app_id']}) {fr(before[wid])} -> {fr(after[wid])}")
+
+    def check_inside_area(self, what, wid, wins):
+        out, area = self.area()
+        w = wins.get(wid)
+        if not w or not area or w["minimized"] or fr(w) is None:
+            return
+        x, y, cw, ch = fr(w)
+        ax, ay, aw, ah = area
+        # Only if it is on the active display (the one `arrangement` describes).
+        if overlap(fr(w), area) == 0:
+            return
+        if x < ax or y < ay or x + cw > ax + aw or y + ch > ay + ah:
+            # A window can't be smaller than its minimum: only fail when it
+            # sticks out past the area's far edges by more than that slack.
+            self.fail(f"{what}: window {wid} ({w['app_id']}) {fr(w)} sticks out of the tiling area {area} on {out}")
+
+    # ---- what a step can do ----
+
+    def mates(self, wins, w):
+        """`w` and the windows in its group (its app's others shown here:
+        every app the fuzzer opens is grouped), which follow it."""
+        if w not in wins:
+            return {w}
+        ws = self.workspace()
+        app = wins[w]["app_id"]
+        return {i for i, o in wins.items() if o["app_id"] == app and o["workspace"] == ws and not o["minimized"]} | {w}
+
+    def shown(self, wins):
+        ws = self.workspace()
+        return [i for i, w in wins.items() if w["workspace"] == ws and not w["minimized"]]
+
+    def pick(self, ids):
+        return self.rng.choice(sorted(ids)) if ids else None
+
+    def log(self, what):
+        self.history.append(f"{self.step}: {what}")
+        if not self.quiet:
+            print(f"{self.step:4d} {what}", flush=True)
+
+    def run_step(self):
+        self.step += 1
+        wins = self.windows()
+        shown = self.shown(wins)
+        ops = [
+            (12, self.op_shortcut), (6, self.op_keys), (5, self.op_arrange), (4, self.op_activate),
+            (5, self.op_twitch), (2, self.op_twitch_windows), (3, self.op_send_to_back), (3, self.op_hide_show),
+            (3, self.op_open), (1, self.op_close), (3, self.op_workspace_trip), (2, self.op_workspace_cmd),
+            (4, self.op_zoom_trip), (5, self.op_tile_trip), (3, self.op_arrange_trip), (2, self.op_window_ws_trip),
+            (2, self.op_display_trip), (1, self.op_displays), (2, self.op_place),
+        ]
+        if len(wins) < 3:
+            ops = [(1, self.op_open)]
+        total = sum(w for w, _ in ops)
+        n = self.rng.uniform(0, total)
+        for weight, op in ops:
+            n -= weight
+            if n <= 0:
+                break
+        op(wins, shown)
+
+    def op_shortcut(self, wins, shown):
+        sid = self.rng.choice(WINDOW_CMDS)
+        w = self.pick(shown) if self.rng.random() < 0.8 else None
+        self.log(f"shortcut {sid} on {w}")
+        self.shortcut(sid, w)
+        after = self.settle()
+        self.check_sane(after)
+        if sid in TILES and w in after and not after[w]["minimized"]:
+            self.check_inside_area(sid, w, after)
+
+    def op_keys(self, wins, shown):
+        sid = self.rng.choice(sorted(KEYS))
+        self.log(f"keys {sid}")
+        self.keys(KEYS[sid])
+        self.check_sane(self.settle())
+
+    def op_arrange(self, wins, shown):
+        sid = self.rng.choice(ARRANGE_CMDS)
+        w = self.pick(shown)
+        self.log(f"arrange {sid} (with {w})")
+        if w is not None:
+            self.req({"type": "activate", "id": w})
+        self.shortcut(sid, w)
+        self.check_sane(self.settle())
+
+    def op_activate(self, wins, shown):
+        w = self.pick(wins)
+        if w is None:
+            return
+        self.log(f"activate {w} ({wins[w]['app_id']}{', hidden' if wins[w]['minimized'] else ''}, ws {wins[w]['workspace']})")
+        ws = self.workspace()
+        self.req({"type": "activate", "id": w})
+        after = self.settle()
+        self.check_sane(after)
+        if wins[w]["workspace"] == ws:
+            self.check_unchanged(f"activating {w}", wins, after, skip={w})
+        if not after[w]["focused"]:
+            self.fail(f"activated window {w} doesn't have the keyboard")
+
+    def twitch(self, key, n, back):
+        mods = [CMD] + ([SHIFT] if back else [])
+        ev = [{"type": "key", "key": k, "pressed": True} for k in mods]
+        for _ in range(n):
+            ev += [{"type": "key", "key": key, "pressed": True}, {"type": "key", "key": key, "pressed": False}]
+            if self.rng.random() < 0.3:
+                # Wander with the arrows too.
+                arrow = self.rng.choice([103, 105, 106, 108])
+                ev += [{"type": "key", "key": arrow, "pressed": True}, {"type": "key", "key": arrow, "pressed": False}]
+        ev += [{"type": "key", "key": k, "pressed": False} for k in reversed(mods)]
+        if self.rng.random() < 0.5:
+            # One key at a time, with the loop turning between them, as typed.
+            for e in ev:
+                self.req({"type": "synthetic", "events": [e]})
+                time.sleep(0.03)
+        else:
+            self.req({"type": "synthetic", "events": ev})
+
+    def check_twitch(self, what, wins, after):
+        self.check_sane(after)
+        # The chosen window: the focused one now. Every other one is as it
+        # was: where it was, hidden if it was, on its workspace.
+        chosen = [i for i, w in after.items() if w["focused"]]
+        for i, w in wins.items():
+            if i in chosen or i not in after:
+                continue
+            a = after[i]
+            if a["minimized"] != w["minimized"]:
+                self.fail(f"{what}: window {i} ({w['app_id']}) was {'hidden' if w['minimized'] else 'shown'} and is now {'hidden' if a['minimized'] else 'shown'}")
+            if a["workspace"] != w["workspace"]:
+                self.fail(f"{what}: window {i} moved from workspace {w['workspace']} to {a['workspace']}")
+        ws_before = {i: w["workspace"] for i, w in wins.items()}
+        moved = {i: (fr(wins[i]), fr(after[i])) for i in wins
+                 if i in after and i not in chosen and fr(wins[i]) and fr(after[i]) and fr(wins[i]) != fr(after[i])}
+        if moved:
+            self.fail(f"{what} (chose {chosen}) moved windows: " + ", ".join(f"{i} ({wins[i]['app_id']}, ws {ws_before[i]}) {a} -> {b}" for i, (a, b) in moved.items())
+                      + "\n  before: " + state(wins) + "\n  after:  " + state(after))
+        else:
+            self.check_steady(what, wins, skip=set(chosen))
+
+    def op_twitch(self, wins, shown):
+        n, back = self.rng.randint(1, 5), self.rng.random() < 0.25
+        self.log(f"cmd-tab x{n}{' back' if back else ''}")
+        self.twitch(15, n, back)
+        self.check_twitch(f"Cmd+Tab x{n}", wins, self.settle())
+
+    def op_twitch_windows(self, wins, shown):
+        n = self.rng.randint(1, 3)
+        self.log(f"cmd-` x{n}")
+        self.twitch(41, n, False)
+        self.check_twitch(f"Cmd+` x{n}", wins, self.settle())
+
+    def op_send_to_back(self, wins, shown):
+        w = self.pick(shown)
+        if w is None:
+            return
+        self.log(f"send {w} to back")
+        self.req({"type": "send_to_back", "id": w})
+        after = self.settle()
+        self.check_sane(after)
+        self.check_unchanged(f"sending {w} to back", wins, after)
+
+    def op_hide_show(self, wins, shown):
+        w = self.pick(shown)
+        if w is None:
+            return
+        self.log(f"hide {w} ({wins[w]['app_id']}) and show it again")
+        self.req({"type": "minimize", "id": w})
+        mid = self.settle()
+        self.check_sane(mid)
+        self.check_unchanged(f"hiding {w}", wins, mid, skip=self.mates(wins, w))
+        self.req({"type": "activate", "id": w})
+        after = self.settle()
+        self.check_sane(after)
+        self.check_unchanged(f"hiding and showing {w}", wins, after, skip=self.mates(wins, w))
+        # It comes back where it was, unless its group has moved on.
+        if not any(after[o]["app_id"] == wins[w]["app_id"] for o in shown if o != w and o in after):
+            self.check_back(f"hiding and showing {w}", w, wins, after)
+
+    def op_open(self, wins, shown):
+        app = self.rng.choice(APPS)
+        args = self.rng.choice(LAUNCH[app])
+        self.log(f"open {' '.join([app, *args])}")
+        self.spawn(app, args)
+        t0, seen = time.time(), []
+        app_id = "olo." + app[4:]
+        while time.time() - t0 < 4:
+            now = self.windows()
+            if not seen or now != seen[-1]:
+                seen.append(now)
+            if set(now) - set(wins):
+                break
+            time.sleep(0.004)
+        after = self.settle()
+        self.trail = seen + self.trail
+        self.check_sane(after)
+        new = set(after) - set(wins)
+        if not new:
+            # Brought one of its windows forward instead.
+            front = [i for i, w in after.items() if w["focused"]]
+            if not front or after[front[0]]["app_id"] != app_id:
+                self.fail(f"launching {app} {args} showed none of its windows (focused: {front})")
+            self.check_unchanged(f"launching {app} again", wins, after, skip=set(front) | self.mates(after, front[0]) if front else set())
+            return
+        self.check_unchanged(f"opening {app}", wins, after, skip=new)
+        for n in new:
+            if not after[n]["focused"]:
+                self.fail(f"new window {n} ({after[n]['app_id']}) doesn't have the keyboard")
+
+    def op_close(self, wins, shown):
+        if len(wins) <= 3:
+            return
+        w = self.pick(shown)
+        if w is None:
+            return
+        self.log(f"close {w} ({wins[w]['app_id']})")
+        self.req({"type": "close", "id": w})
+        after = self.settle()
+        if w in after:
+            # StyledEdit asks before closing a changed document; leave it.
+            return
+        self.check_sane(after)
+        self.check_unchanged(f"closing {w}", wins, after)
+
+    def op_workspace_trip(self, wins, shown):
+        ws = self.workspace()
+        to = self.rng.choice([i for i in range(4) if i != ws])
+        self.log(f"workspace {ws} -> {to} -> {ws}")
+        self.req({"type": "switch_workspace", "index": to})
+        mid = self.settle()
+        self.check_sane(mid)
+        self.req({"type": "switch_workspace", "index": ws})
+        after = self.settle()
+        self.check_sane(after)
+        self.check_round_trip(f"going to workspace {to} and back", wins, after, set())
+
+    def op_workspace_cmd(self, wins, shown):
+        sid = self.rng.choice(WORKSPACE_CMDS)
+        w = self.pick(shown)
+        self.log(f"shortcut {sid} on {w}")
+        self.shortcut(sid, w)
+        self.check_sane(self.settle())
+
+    def op_zoom_trip(self, wins, shown):
+        w = self.pick(shown)
+        if w is None:
+            return
+        how = self.rng.choice(["zoom", "zoom-vertical", "zoom-horizontal", "ipc-zoom"])
+        self.log(f"{how} {w} ({wins[w]['app_id']}) and back")
+        for _ in range(2):
+            if how == "ipc-zoom":
+                self.req({"type": "toggle_zoom", "id": w})
+            else:
+                self.shortcut(how, w)
+            mid = self.settle()
+            self.check_sane(mid)
+            if _ == 0 and how in ("zoom", "ipc-zoom"):
+                self.check_inside_area(how, w, mid)
+        self.check_round_trip(f"{how} twice on {w}", wins, mid, self.mates(wins, w))
+
+    def op_tile_trip(self, wins, shown):
+        w = self.pick(shown)
+        if w is None:
+            return
+        tiles = self.rng.sample(TILES, self.rng.randint(1, 3))
+        # (Not Center: where it centers is the window's own place then.)
+        extra = self.rng.choice([None, None, "zoom", "zoom-vertical", "zoom-horizontal"])
+        self.log(f"restore {w} ({wins[w]['app_id']}), {' then '.join(tiles + ([extra] if extra else []))}, then restore")
+        # From its own frame (Restore first), and back to it.
+        self.shortcut("restore", w)
+        own = self.settle()
+        self.check_sane(own)
+        self.check_unchanged(f"restoring {w}", wins, own, skip=self.mates(wins, w))
+        for t in tiles + ([extra] if extra else []):
+            self.shortcut(t, w)
+            mid = self.settle()
+            self.check_sane(mid)
+            if t in TILES or t == "zoom":
+                self.check_inside_area(t, w, mid)
+        self.shortcut("restore", w)
+        after = self.settle()
+        self.check_sane(after)
+        self.check_round_trip(f"{'/'.join(tiles + ([extra] if extra else []))} then restore on {w}", own, after, self.mates(own, w))
+
+    def op_arrange_trip(self, wins, shown):
+        if len(shown) < 2:
+            return
+        sid = self.rng.choice(["tile-all", "cascade-all", "fan-out", "zoom-all", "cascade-others", "fan-out-others"])
+        w = self.pick(shown)
+        self.log(f"{sid} (with {w}) then undo")
+        self.req({"type": "activate", "id": w})
+        before = self.settle()
+        self.shortcut(sid, w)
+        mid = self.settle()
+        self.check_sane(mid)
+        if sid == "tile-all":
+            for i in self.shown(mid):
+                self.check_inside_area(sid, i, mid)
+        self.shortcut("undo-arrangement", w)
+        after = self.settle()
+        self.check_sane(after)
+        self.check_round_trip(f"{sid} then undo", before, after, set(before))
+
+    def op_window_ws_trip(self, wins, shown):
+        w = self.pick(shown)
+        if w is None:
+            return
+        ws = self.workspace()
+        to = self.rng.choice([i for i in range(4) if i != ws])
+        self.log(f"window {w} to workspace {to} and back")
+        self.req({"type": "move_to_workspace", "id": w, "index": to})
+        mid = self.settle()
+        self.check_sane(mid)
+        self.check_unchanged(f"moving {w} away", wins, mid, skip=self.mates(wins, w))
+        self.req({"type": "switch_workspace", "index": to})
+        self.settle()
+        self.req({"type": "move_to_workspace", "id": w, "index": ws})
+        self.req({"type": "switch_workspace", "index": ws})
+        after = self.settle()
+        self.check_sane(after)
+        self.check_unchanged(f"moving {w} away and back", wins, after, skip=self.mates(wins, w))
+        if not any(after[o]["app_id"] == wins[w]["app_id"] for o in shown if o != w and o in after):
+            self.check_back(f"moving {w} to workspace {to} and back", w, wins, after)
+
+    def op_display_trip(self, wins, shown):
+        w = self.pick(shown)
+        if w is None or len(self.output_rects()) < 2:
+            return
+        self.log(f"{w} ({wins[w]['app_id']}) to the next display and back")
+        self.shortcut("next-display", w)
+        mid = self.settle()
+        self.check_sane(mid)
+        self.check_unchanged(f"{w} to the next display", wins, mid, skip=self.mates(wins, w))
+        self.shortcut("previous-display", w)
+        after = self.settle()
+        self.check_sane(after)
+        self.check_round_trip(f"{w} to the next display and back", wins, after, self.mates(wins, w))
+
+    def op_displays(self, wins, shown):
+        if len(self.outputs) < 2:
+            return
+        name = self.rng.choice(self.outputs[1:])
+        what = self.rng.choice(["move", "scale", "mirror", "home"])
+        cfg = {"mode": None, "scale": None, "position": None, "rotation": None, "mirror": None}
+        if what == "move":
+            cfg["position"] = self.rng.choice([[1280, 0], [1280, 400], [-960, 0], [0, 800], [200, -540]])
+        elif what == "scale":
+            cfg["scale"] = self.rng.choice([1.0, 1.5, 2.0])
+        elif what == "mirror":
+            cfg["mirror"] = self.req({"type": "outputs"})["outputs"][0]["key"]
+        else:
+            pos, scale = self.home[name]
+            cfg.update(position=pos, scale=scale, mirror="")
+        self.log(f"display {name}: {what} {json.dumps({k: v for k, v in cfg.items() if v is not None})}")
+        self.req({"type": "configure_output", "name": name, "config": cfg})
+        self.check_sane(self.settle())
+
+    def op_place(self, wins, shown):
+        w = self.pick(shown)
+        if w is None:
+            return
+        outs = self.output_rects()
+        ox, oy, ow, oh = self.rng.choice(outs)
+        frame = {"x": ox + self.rng.randint(-200, ow), "y": oy + self.rng.randint(-50, oh),
+                 "width": self.rng.randint(80, ow + 200), "height": self.rng.randint(60, oh + 200)}
+        self.log(f"place {w} at {frame}")
+        self.req({"type": "place", "id": w, "frame": frame})
+        after = self.settle()
+        self.check_sane(after)
+        self.check_unchanged(f"placing {w}", wins, after, skip=self.mates(wins, w))
+
+    def run(self, steps, keep_going):
+        self.keep_going = keep_going
+        print(f"wm-fuzz {self.name}: seed {self.seed}, {steps} steps", flush=True)
+        try:
+            for _ in range(steps):
+                self.run_step()
+        except Failure as e:
+            print(f"FAIL {e}", flush=True)
+            return 1
+        if self.failures:
+            print(f"\n{len(self.failures)} failures (seed {self.seed})")
+            return 1
+        print(f"ok: {steps} steps (seed {self.seed})")
+        return 0
+
+
+def state(wins):
+    return "; ".join(f"{i} {w['app_id'][4:]} ws{w['workspace']}{' hidden' if w['minimized'] else ''}{' *' if w['focused'] else ''} {fr(w)}"
+                     for i, w in sorted(wins.items()))
+
+
+def rect(f):
+    return (f["x"], f["y"], f["width"], f["height"])
+
+
+def fr(w):
+    """Its frame; None while it is hidden or on another workspace."""
+    return rect(w["frame"]) if w.get("frame") else None
+
+
+def overlap(a, b):
+    w = min(a[0] + a[2], b[0] + b[2]) - max(a[0], b[0])
+    h = min(a[1] + a[3], b[1] + b[3]) - max(a[1], b[1])
+    return max(w, 0) * max(h, 0)
+
+
+def main():
+    a = sys.argv[1:]
+    if not a or a[0].startswith("-"):
+        sys.exit(__doc__)
+    name = a[0]
+    seed = int(a[a.index("--seed") + 1]) if "--seed" in a else random.randrange(1 << 30)
+    steps = int(a[a.index("--steps") + 1]) if "--steps" in a else 200
+    sys.exit(Fuzz(name, seed, "--quiet" in a).run(steps, "--keep-going" in a))
+
+
+if __name__ == "__main__":
+    main()

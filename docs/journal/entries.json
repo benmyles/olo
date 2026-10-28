@@ -1426,5 +1426,11 @@
   "title": "Themes switch the wallpaper too",
   "caption": "Choosing a theme in Preferences \u25b8 Themes now also sets the wallpaper to that theme's own (here Toybox); Backgrounds can still pick another.",
   "image": "2026-10-28/000904-themes-switch-the-wallpaper-too.png"
+ },
+ {
+  "time": "2026-10-28T00:49:35",
+  "title": "Desktop menu over windows",
+  "caption": "The desktop's right-click menu opened over a window was drawn behind it, and clicks went to the window. app_server now draws the desktop layer's menus over the windows and the Deskbar (under only the Overlay layer) and finds them there for the pointer and keyboard.",
+  "image": "2026-10-28/004935-desktop-menu-over-windows.png"
  }
 ]

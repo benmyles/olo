@@ -374,6 +374,20 @@ pub fn fan_in(cell: Rectangle<i32, Logical>, tabs: &[i32], tab_h: i32) -> Vec<(R
         .collect()
 }
 
+/// How much of a window's top edge must be in the area for it to be in
+/// reach: enough of its tab or frame to take hold of.
+const REACH: (i32, i32) = (48, olo_theme::deco::TAB_HEIGHT);
+
+/// Whether a window at `frame` can be taken hold of in `area`: its top
+/// edge is inside the area top to bottom, and enough of it across.
+pub fn in_reach(frame: Rectangle<i32, Logical>, area: Rectangle<i32, Logical>) -> bool {
+    let (w, h) = REACH;
+    let top = Rectangle::new(frame.loc, Size::from((frame.size.w, h.min(frame.size.h))));
+    frame.loc.y >= area.loc.y
+        && frame.loc.y + h <= area.loc.y + area.size.h
+        && top.intersection(area).is_some_and(|r| r.size.w >= w.min(frame.size.w))
+}
+
 /// Not a fixed-size window (an alert, a panel such as DeskCalc's).
 pub(super) fn resizable(w: &WindowElement) -> bool {
     use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
@@ -538,6 +552,36 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     pub fn set_tile_state(window: &WindowElement, tile: Option<Tile>, part: Option<Part>) {
         Self::set_tiled(window, tile);
         Self::set_part(window, tile.and(part));
+    }
+
+    /// Give `w` the arrangement `leader` has: its tile and part, its zoom
+    /// (along an axis too), and the frames Restore and unzooming go back
+    /// to. A group is one window to arranging, so whichever of its
+    /// windows is in front later (a tab clicked, a window back from
+    /// another workspace), the group stays where it is.
+    pub(super) fn share_arrangement(&mut self, leader: &WindowElement, w: &WindowElement) {
+        Self::set_tile_state(w, Self::tiled(leader), Self::custom_part(leader));
+        Self::set_zoomed_along(w, Self::zoomed_along(leader));
+        let pre = leader.user_data().get::<PreZoom>().and_then(|p| *p.0.borrow());
+        let from = leader.user_data().get::<ZoomedFrom>().and_then(|z| *z.0.borrow());
+        w.user_data().insert_if_missing(PreZoom::default);
+        w.user_data().insert_if_missing(ZoomedFrom::default);
+        *w.user_data().get::<PreZoom>().unwrap().0.borrow_mut() = pre;
+        *w.user_data().get::<ZoomedFrom>().unwrap().0.borrow_mut() = from;
+        let zoomed = self.is_zoomed(leader);
+        if self.is_zoomed(w) != zoomed {
+            let WindowSurface::Wayland(t) = w.0.underlying_surface();
+            t.with_pending_state(|s| {
+                if zoomed {
+                    s.states.set(xdg_toplevel::State::Maximized);
+                } else {
+                    s.states.unset(xdg_toplevel::State::Maximized);
+                }
+            });
+            if t.is_initial_configure_sent() {
+                t.send_pending_configure();
+            }
+        }
     }
 
     /// Tile a window into part of its display (a tiling command: its
@@ -817,7 +861,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// Fit a window to the display it is on now: re-tile or re-zoom it
     /// there (along its axis, if it is zoomed along one), else shrink it
-    /// to fit and bring its tab into view.
+    /// to fit and bring its tab into view. A window that fits and can be
+    /// reached stays exactly where it is, even hanging off an edge, as
+    /// people leave windows: this runs whenever a window comes back
+    /// (from another workspace, from being hidden) and when displays
+    /// change, and nothing should move then for no reason.
     pub fn refit(&mut self, window: &WindowElement) {
         // (Zoomed first: a tiled window can be zoomed, and stays so.)
         if self.is_zoomed(window) {
@@ -841,6 +889,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return;
         }
         let size = Size::from((frame.size.w.min(area.size.w), frame.size.h.min(area.size.h)));
+        if size == frame.size && in_reach(frame, area) {
+            return;
+        }
         let loc = Point::from((
             frame.loc.x.clamp(area.loc.x, area.loc.x + area.size.w - size.w),
             frame.loc.y.clamp(area.loc.y, area.loc.y + area.size.h - size.h),
@@ -1176,6 +1227,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     fn on_a_display(&self, r: Rectangle<i32, Logical>) -> bool {
         self.space.outputs().any(|o| self.space.output_geometry(o).is_some_and(|g| g.overlaps(r)))
+    }
+
+    /// A window back from another workspace or from being hidden:
+    /// rehomed if the displays changed while it was away, else just as
+    /// it was (only re-tiled or re-zoomed, if the room for that changed:
+    /// the Deskbar may have moved). A window someone made bigger than its
+    /// display, across two, stays so.
+    pub fn welcome_back(&mut self, w: &WindowElement, displays_changed: bool) {
+        if displays_changed {
+            self.rehome_window(w);
+        } else if Self::tiled(w).is_some() || self.is_zoomed(w) || Self::zoomed_along(w).is_some() {
+            self.refit(w);
+        }
     }
 
     /// One window (mapped): onto the main display if it is on none, then

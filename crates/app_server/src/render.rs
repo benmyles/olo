@@ -5,8 +5,8 @@ use smithay::{
         Color32F, ExportMem, ImportAll, ImportMem, Offscreen, Renderer, TextureMapping,
         damage::{Error as OutputDamageTrackerError, OutputDamageTracker, RenderOutputResult},
         element::{
-            AsRenderElements, RenderElement, Wrap,
-            surface::WaylandSurfaceRenderElement,
+            AsRenderElements, Kind, RenderElement, Wrap,
+            surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
             utils::{
                 ConstrainAlign, ConstrainScaleBehavior, CropRenderElement, Relocate, RelocateRenderElement,
                 RescaleRenderElement,
@@ -14,11 +14,14 @@ use smithay::{
         },
     },
     },
-    desktop::space::{
-        ConstrainBehavior, ConstrainReference, Space, SpaceRenderElements, constrain_space_element,
+    desktop::{
+        LayerSurface, layer_map_for_output,
+        space::{ConstrainBehavior, ConstrainReference, Space, SpaceRenderElements, constrain_space_element},
     },
     output::Output,
-    utils::{Buffer, Physical, Point, Rectangle, Size, Transform},
+    reexports::wayland_server::protocol::wl_surface::WlSurface,
+    utils::{Buffer, Logical, Physical, Point, Rectangle, Size, Transform},
+    wayland::shell::wlr_layer::Layer,
 };
 
 #[cfg(feature = "debug")]
@@ -233,6 +236,64 @@ where
     }
 }
 
+/// The layer surfaces and windows, front first, as smithay's
+/// `space_render_elements` draws them but for the menus of the Background
+/// and Bottom layers (`shell::lower_layer_menus`): over the windows and
+/// the Top layer rather than under the windows with their surface.
+fn space_elements<R>(
+    renderer: &mut R,
+    space: &Space<WindowElement>,
+    output: &Output,
+) -> Vec<SpaceRenderElements<R, WindowRenderElement<R>>>
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: Clone + Send + 'static,
+{
+    let scale = output.current_scale().fractional_scale();
+    let layers: Vec<(LayerSurface, Point<i32, Logical>)> = {
+        let map = layer_map_for_output(output);
+        map.layers().rev().filter_map(|l| map.layer_geometry(l).map(|g| (l.clone(), g.loc))).collect()
+    };
+    let mut out = Vec::new();
+    // A layer surface with its menus, or (`tree`) a surface alone.
+    let whole = |renderer: &mut R, out: &mut Vec<_>, layer: Layer| {
+        for (l, at) in layers.iter().filter(|(l, _)| l.layer() == layer) {
+            let elements: Vec<WaylandSurfaceRenderElement<R>> =
+                AsRenderElements::<R>::render_elements(l, renderer, at.to_physical_precise_round(scale), scale.into(), 1.0);
+            out.extend(elements.into_iter().map(SpaceRenderElements::Surface));
+        }
+    };
+    let tree = |renderer: &mut R, out: &mut Vec<_>, surface: &WlSurface, at: Point<i32, Logical>| {
+        let elements: Vec<WaylandSurfaceRenderElement<R>> = render_elements_from_surface_tree(
+            renderer,
+            surface,
+            at.to_physical_precise_round(scale),
+            scale,
+            1.0,
+            Kind::Unspecified,
+        );
+        out.extend(elements.into_iter().map(SpaceRenderElements::Surface));
+    };
+    whole(renderer, &mut out, Layer::Overlay);
+    for (menu, at) in crate::shell::lower_layer_menus(output) {
+        tree(renderer, &mut out, &menu, at);
+    }
+    whole(renderer, &mut out, Layer::Top);
+    if let Some(region) = space.output_geometry(output) {
+        out.extend(
+            space
+                .render_elements_for_region(renderer, &region, scale, 1.0)
+                .into_iter()
+                .map(|e| SpaceRenderElements::Element(Wrap::from(e))),
+        );
+    }
+    // The lower layers themselves, without their menus.
+    for (l, at) in layers.iter().filter(|(l, _)| matches!(l.layer(), Layer::Bottom | Layer::Background)) {
+        tree(renderer, &mut out, l.wl_surface(), *at);
+    }
+    out
+}
+
 pub fn output_elements<R>(
     output: &Output,
     space: &Space<WindowElement>,
@@ -295,13 +356,8 @@ where
             output_render_elements.extend(space_preview_elements(renderer, space, output));
         }
 
-        let space_elements = smithay::desktop::space::space_render_elements::<_, WindowElement, _>(
-            renderer,
-            [space],
-            output,
-            1.0,
-        )
-        .expect("output without mode?");
+        crate::shell::groups::mark_behind(space);
+        let space_elements = space_elements(renderer, space, output);
         output_render_elements.extend(space_elements.into_iter().map(OutputRenderElements::Space));
         // The wallpaper goes under everything, over the workspace colour.
         output_render_elements.extend(

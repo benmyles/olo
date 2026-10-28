@@ -148,6 +148,9 @@ where
         Rectangle::new(origin + crate::shell::deco::content_offset(), window.content_size())
     };
     let location = (origin - rect.loc).to_f64().to_physical(scale).to_i32_round();
+    // Whole, though it is behind others in its group (marked so again
+    // before the next frame).
+    window.decoration().behind = false;
     let elements: Vec<WindowRenderElement<R>> = window.render_elements(renderer, location, scale.into(), 1.0);
     let size = rect.size.to_f64().to_physical(scale).to_i32_round();
     let img = crate::render::offscreen(renderer, size, scale, &elements, Color32F::TRANSPARENT)?;

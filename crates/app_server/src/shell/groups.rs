@@ -10,17 +10,20 @@
 //! `tick`) the groupable windows in the space are gathered by app, and
 //! each group of two or more is brought together. Its frame is that of
 //! its front-most window that was already in the group (else, for a group
-//! just forming, of one that was already on screen, else the front-most):
+//! just forming, of one that was already on screen, else the front-most;
+//! at the size it has been asked for, if it hasn't drawn that yet):
 //! a window that opens, comes back from being hidden or arrives from
 //! another workspace joins the group where it is, rather than pulling it
 //! to where the new window happened to open. Sizes follow only between
 //! pointer grabs, so a hidden window isn't asked for a new size on every
-//! step of a resize. Dialogs (windows with a parent), fixed-size panels
-//! and fullscreen windows are never grouped.
+//! step of a resize. Only the front window is drawn whole: the others
+//! show just their tabs (`mark_behind`), so they don't show around it
+//! while it is sized smaller. Dialogs (windows with a parent),
+//! fixed-size panels and fullscreen windows are never grouped.
 
 use smithay::{
-    desktop::WindowSurface,
-    utils::{Logical, Point, Rectangle},
+    desktop::{Space, WindowSurface},
+    utils::{IsAlive, Logical, Point, Rectangle, Size},
 };
 
 use super::{
@@ -36,6 +39,11 @@ pub struct Groups {
     seen: Vec<WindowElement>,
     /// The windows in a group.
     members: Vec<WindowElement>,
+    /// Ones of those away on another workspace (not hidden), and whether
+    /// each was in a group: back, they are still what was on screen, and
+    /// a window shown with them (Twitcher passing a hidden one) joins
+    /// them rather than leading.
+    away: Vec<(WindowElement, bool)>,
 }
 
 impl Groups {
@@ -75,6 +83,34 @@ pub fn tab_bar(wanted: &[i32], frame_w: i32) -> Vec<(i32, i32)> {
         .collect()
 }
 
+/// Each window behind another of its group marked so, to show only its
+/// tab: done before drawing (and once a turn, for the pointer), from the
+/// stacking order then, so a tab clicked forward is drawn whole at once.
+pub fn mark_behind(space: &Space<WindowElement>) {
+    let mut fronts: Vec<String> = Vec::new();
+    for w in space.elements().rev().filter(|w| w.decorated()) {
+        let mut d = w.decoration();
+        // (A tab of its own width: not in a group.)
+        let behind = d.tab_width.is_some() && {
+            let app = w.app_id();
+            fronts.contains(&app) || {
+                fronts.push(app);
+                false
+            }
+        };
+        d.behind = behind;
+    }
+}
+
+/// The frame size `w` was asked for and hasn't drawn yet, if any.
+fn size_on_the_way(w: &WindowElement) -> Option<Size<i32, Logical>> {
+    let WindowSurface::Wayland(t) = w.0.underlying_surface();
+    let asked = t.with_pending_state(|s| s.size)?;
+    let drawn = t.with_committed_state(|s| s.and_then(|s| s.size));
+    // (Outside the surface's lock: `outer_size` takes it too.)
+    (drawn != Some(asked)).then(|| w.outer_size(asked))
+}
+
 impl<BackendData: Backend> AnvilState<BackendData> {
     /// A window in a group but not its front one: arranging commands
     /// move the front one and the rest follow.
@@ -86,14 +122,26 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         self.space.elements().rev().find(|o| o.app_id() == app && self.groups.has(o)).is_some_and(|front| front != w)
     }
 
+    /// A window behind others in its group to the front of it, as
+    /// clicking its tab does, before an arranging command is done to it:
+    /// the group follows its front window, and would put it back.
+    pub fn front_of_group(&mut self, w: &WindowElement) {
+        if self.behind_in_group(w) {
+            self.space.raise_element(w, false);
+        }
+    }
+
     /// Whether `app_id`'s windows are grouped (the default).
     pub fn groups_app(&self, app_id: &str) -> bool {
         !app_id.is_empty() && !self.settings.tiling.ungrouped_apps.iter().any(|a| a == app_id)
     }
 
+    /// (Only once it has shown and been put in its place, which may be
+    /// where it was before a restart: before then it isn't there yet,
+    /// and would lead its group off to that place.)
     fn groupable(&self, w: &WindowElement) -> bool {
         let WindowSurface::Wayland(t) = w.0.underlying_surface();
-        w.decorated() && t.parent().is_none() && resizable(w) && self.groups_app(&w.app_id())
+        w.meta().placed.get() && w.decorated() && t.parent().is_none() && resizable(w) && self.groups_app(&w.app_id())
     }
 
     /// The groups on screen now, each back to front.
@@ -115,18 +163,29 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let (seen, groups) = self.current_groups();
         let before = std::mem::take(&mut self.groups);
         let resizing = self.pointer.is_grabbed();
+        let was_member = |w: &WindowElement| before.members.contains(w) || before.away.iter().any(|(a, m)| a == w && *m);
+        let was_seen = |w: &WindowElement| before.seen.contains(w) || before.away.iter().any(|(a, _)| a == w);
         let mut members = Vec::new();
         for g in &groups {
             let leader = g
                 .iter()
                 .rev()
-                .find(|w| before.members.contains(w))
-                .or_else(|| g.iter().rev().find(|w| before.seen.contains(w)))
+                .find(|w| was_member(w))
+                .or_else(|| g.iter().rev().find(|w| was_seen(w)))
                 .unwrap_or(&g[g.len() - 1])
                 .clone();
-            let Some(frame) = self.space.element_geometry(&leader) else { continue };
+            let Some(mut frame) = self.space.element_geometry(&leader) else { continue };
+            // Where it is going, not the size it is leaving: a window that
+            // has just joined (opened, come back, arrived) leads from the
+            // next turn, before it has drawn at the group's size, and the
+            // others would follow its old one, for a frame (a flicker) or
+            // for good if it left again first (Twitcher passing it over).
+            if let Some(size) = size_on_the_way(&leader) {
+                frame.size = size;
+            }
             for w in g.iter().filter(|w| **w != leader) {
                 self.join_group(w, frame, resizing);
+                self.share_arrangement(&leader, w);
             }
             self.keep_together(g);
             self.lay_tabs(g, frame.size.w);
@@ -154,7 +213,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 self.space.relocate_element(w, frame.loc + Point::from((under * CASCADE, under * CASCADE)));
             }
         }
-        self.groups = Groups { seen, members };
+        let away = before
+            .seen
+            .iter()
+            .map(|w| (w.clone(), before.members.contains(w)))
+            .chain(before.away.iter().cloned())
+            .filter(|(w, _)| w.alive() && self.space.element_location(w).is_none() && !w.meta().minimized.get())
+            .collect();
+        self.groups = Groups { seen, members, away };
+        mark_behind(&self.space);
     }
 
     /// `w` at the group's frame: moved there now, and sized to it unless

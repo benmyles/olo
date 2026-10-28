@@ -55,6 +55,24 @@ pub(crate) use self::deco::fill;
 pub use self::element::*;
 pub use self::grabs::*;
 
+/// The menus of the Background and Bottom layers (the desktop's), each
+/// with where it is on `output`, front first. Like any menu they go over
+/// the windows and the Top layer (Deskbar), under only the Overlay layer,
+/// not under the windows with their surface, where smithay would put
+/// them: render.rs draws them there, and `surface_under` finds them there.
+pub fn lower_layer_menus(output: &Output) -> Vec<(WlSurface, Point<i32, Logical>)> {
+    let map = layer_map_for_output(output);
+    map.layers()
+        .rev()
+        .filter(|l| matches!(l.layer(), Layer::Background | Layer::Bottom))
+        .filter_map(|l| map.layer_geometry(l).map(|g| (l, g.loc)))
+        .flat_map(|(l, at)| {
+            PopupManager::popups_for_surface(l.wl_surface())
+                .map(move |(p, offset)| (p.wl_surface().clone(), at + offset - p.geometry().loc))
+        })
+        .collect()
+}
+
 fn fullscreen_output_geometry(
     wl_surface: &WlSurface,
     wl_output: Option<&wl_output::WlOutput>,
