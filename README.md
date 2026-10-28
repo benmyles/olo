@@ -29,7 +29,7 @@ On Fedora (Workstation or an atomic desktop such as Silverblue or Aurora;
 x86_64 or aarch64):
 
 ```sh
-git clone https://github.com/benmyles/tabula olo && cd olo && tools/setup.sh
+git clone https://github.com/benmyles/olo && cd olo && tools/setup.sh
 ```
 
 Run it as yourself; it asks for sudo when it needs root. It installs what's

@@ -2,7 +2,7 @@
 # Set up Olo on a Fedora machine (x86_64 or aarch64; Workstation, or an
 # atomic desktop such as Silverblue or Aurora), from a fresh clone:
 #
-#   git clone https://github.com/benmyles/tabula && cd tabula && tools/setup.sh
+#   git clone https://github.com/benmyles/olo && cd olo && tools/setup.sh
 #
 # Run it as yourself; it asks for sudo when it needs root. It checks and
 # installs what Olo needs (packages, a recent Rust), builds it, puts it

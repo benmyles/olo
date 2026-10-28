@@ -23,7 +23,7 @@ const TARGET_UNIT: &str = "\
 # Written by olo-session: the Olo desktop is running.
 [Unit]
 Description=Olo Desktop session
-Documentation=https://github.com/benmyles/tabula
+Documentation=https://github.com/benmyles/olo
 BindsTo=graphical-session.target
 Before=graphical-session.target
 Wants=graphical-session-pre.target
