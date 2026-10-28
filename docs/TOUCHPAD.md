@@ -119,8 +119,30 @@ same peak. With the logging plugin over 90 s, all 44 real touches counted
 (the lightest peaked at 14, against `touch_on` 13) and the 5 left out
 were hovers (peak 0, ≤ 1.3 mm travel). Run side by side with stock on the
 same input, scrolling matched (314 vs 316 frames) and the motions the
-filter left out were the hovers'. Not yet checked on the real pad:
-clicking with a palm resting.
+filter left out were the hovers'.
+
+A second side-by-side run (90 s: pointing, scrolling, clicking with a
+palm resting, a palm at the top right, hovering) found:
+
+- **Clicks are right.** All 5 clicks came through, 4 of them with one
+  or two palms resting; the filter's click came from the fingers alone
+  (sums 120–143), with no click lost or added.
+- **Fast, light swipes are lost.** Two real touches never reached
+  `touch_on` 13: one peaked at 11 over 33 mm in 255 ms, one at 5 over
+  12 mm. Scroll frames fell from 360 (stock) to 147. Hovers peaked at
+  0, occasionally 3–5, so no pressure threshold separates them from such
+  swipes, and the right-edge palm (≤ 12) sits in the same range.
+- **Hovers were already small.** With the local 450:150 touch-size
+  quirk, stock libinput ignores most hovers by size (they measured
+  48–604 here), so leaving them out by pressure gains little.
+- **Palms here measured 1700–1950**, just over `palm_size` 1600; a
+  palm that is still growing can count for a moment before it is
+  recognised.
+
+So the filter stays off for touch detection. What does help, and needs
+no threshold, is the click from the fingers alone, palms staying palms,
+and major-first sizes; a mode that counts every contact (no pressure
+threshold) and keeps those is the next thing to try.
 
 ## Preferences ▸ Touchpad
 
