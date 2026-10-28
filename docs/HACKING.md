@@ -916,6 +916,12 @@ launcher lists them. The panel list Deskbar shows is
   module, add it to `PREFERENCE_PANELS`, journal it light and dark.
 * Tracker (`tracker.rs`) sets `Settings::tracker` (the view new folder
   windows open in); its icon is Tracker's own, as in Haiku.
+* Windows (`windows.rs`) sets the space Olo leaves around the windows it
+  arranges (`Settings::tiling`: margin at the display's edges, gap
+  between windows), with a miniature of the main display tiled three
+  ways that follows the sliders. app_server refits arranged windows as
+  they change, so the sliders move them live. Deskbar's Window
+  Arrangement menu ends with Windows Preferences….
 * Network (`network.rs`) reads NetworkManager through
   `olo_system::network` on a worker thread (devices, addresses,
   networks in range merged by SSID, saved connections; a scan every 30 s)
@@ -1119,9 +1125,17 @@ Preferences ▸ Keyboard ▸ Shortcuts lists them; clicking one sends
 physical modifiers (only it can tell ⌘ from Ctrl) and answers with
 `Event::ShortcutRecorded` (Esc cancels, ⌫ clears; it gives up after 30 s).
 
-Tiling (`shell/tiling.rs`) works on the display's usable area (zoom's: no
-Deskbar or panels) less `Settings::tiling.margin`, with `tiling.gap`
-between windows. A tiled or zoomed window remembers its own frame
+Tiling (`shell/tiling.rs`) works on the display's usable area (no
+Deskbar or panels) less `Settings::tiling.margin` (`tile_area`), with
+`tiling.gap` between windows (`part`: each inner edge gives up half).
+Every arrangement keeps to it: tiling, Tile All and Smart Tile, zooming
+(`zoom_area`) and zooming along one axis, Center, Cascade and Fan Out.
+When the margin or gap changes (Preferences ▸ Windows),
+`tiling_space_changed` refits every tiled and zoomed window in place
+(`refit`) without changing which is in front: a zoom, an unzoom or any
+other move of a mapped window relocates it (`relocate_element`), since
+`map_element` raises and activates. Windows of their own size only
+have to stay on the display. A tiled or zoomed window remembers its own frame
 (`PreZoom`), which Restore puts back, and which part it was tiled into,
 so it is re-tiled when its display changes. Unzooming goes back to where
 it was zoomed from: its tile, a place Tile All gave it (`ZoomedFrom`), or

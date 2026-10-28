@@ -31,6 +31,7 @@ mod touchpad;
 mod tracker;
 #[cfg(test)]
 mod ui_lint;
+mod windows;
 mod workspaces;
 
 use std::collections::BTreeMap;

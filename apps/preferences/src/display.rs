@@ -87,7 +87,7 @@ fn scale_text(scale: f64) -> String {
 
 /// Logical size (what apps lay out in) of an output at its mode, scale
 /// and rotation.
-fn logical(o: &OutputInfo) -> (f64, f64) {
+pub(crate) fn logical(o: &OutputInfo) -> (f64, f64) {
     let (w, h) = o.current_mode.as_ref().map_or((1920, 1080), |m| (m.width, m.height));
     let (w, h) = if o.rotation % 180 == 90 { (h, w) } else { (w, h) };
     (w as f64 / o.scale.max(0.1), h as f64 / o.scale.max(0.1))

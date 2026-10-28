@@ -4,9 +4,10 @@
 //! showing the desktop; zooming one along a single axis (top to bottom
 //! or side to side, the other as it is); and putting
 //! windows back on a display when theirs goes away (unplugged, or set to
-//! mirror). Tiled windows keep space around them
-//! (`Settings::tiling`: gap and margin) and remember how they were, so
-//! Restore (or unzooming) puts them back.
+//! mirror). Arranged and zoomed windows keep space around them
+//! (`Settings::tiling`: gap and margin, Preferences ▸ Windows), are
+//! refitted when it changes (`tiling_space_changed`), and remember how
+//! they were, so Restore (or unzooming) puts them back.
 //!
 //! Tiled windows that meet move together: dragging the edge of one moves
 //! the edges of the other tiled windows on that line (beside it across the
@@ -405,8 +406,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         self.settings.tiling.gap.min(200) as i32
     }
 
-    /// Where tiled windows go on a display.
-    fn tile_area(&self, output: &Output) -> Option<Rectangle<i32, Logical>> {
+    /// Where tiled and zoomed windows go on a display: its usable area
+    /// inside the margins.
+    pub(super) fn tile_area(&self, output: &Output) -> Option<Rectangle<i32, Logical>> {
         Some(inset(self.usable_area(output)?, self.settings.tiling.margin.min(400) as i32))
     }
 
@@ -762,7 +764,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     pub fn center_window(&mut self, window: &WindowElement) {
-        let (Some(area), Some(frame)) = (self.window_output(window).and_then(|o| self.usable_area(&o)), self.own_frame(window)) else {
+        let (Some(area), Some(frame)) = (self.window_output(window).and_then(|o| self.tile_area(&o)), self.own_frame(window)) else {
             return;
         };
         let size = Size::from((frame.size.w.min(area.size.w), frame.size.h.min(area.size.h)));
@@ -880,14 +882,18 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             self.retile(window, tile);
             return;
         }
-        let (Some(area), Some(frame)) = (self.zoom_area(window), self.space.element_geometry(window)) else { return };
         if let Some(z) = Self::zoomed_along(window) {
+            let (Some(area), Some(frame)) = (self.zoom_area(window), self.space.element_geometry(window)) else { return };
             let fitted = zoom_along(frame, area, z.axis);
             if fitted != frame {
                 self.set_frame(window, fitted, false);
             }
             return;
         }
+        // A window of its own size only has to be on the display (the
+        // margins are for arranging).
+        let area = self.window_output(window).and_then(|o| self.usable_area(&o));
+        let (Some(area), Some(frame)) = (area, self.space.element_geometry(window)) else { return };
         let size = Size::from((frame.size.w.min(area.size.w), frame.size.h.min(area.size.h)));
         if size == frame.size && in_reach(frame, area) {
             return;
@@ -1239,6 +1245,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             self.rehome_window(w);
         } else if Self::tiled(w).is_some() || self.is_zoomed(w) || Self::zoomed_along(w).is_some() {
             self.refit(w);
+        }
+    }
+
+    /// The space around arranged windows changed (`Settings::tiling`):
+    /// tiled and zoomed windows on this workspace take their places again
+    /// with it, at once; the rest when they come back (`welcome_back`).
+    pub fn tiling_space_changed(&mut self) {
+        let all: Vec<WindowElement> = self.space.elements().filter(|w| !self.behind_in_group(w)).cloned().collect();
+        for w in &all {
+            self.welcome_back(w, false);
         }
     }
 

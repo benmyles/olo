@@ -327,6 +327,8 @@ impl Deskbar {
             .enabled(focused)
             .separator()
             .item("Undo Window Arrangement", "arrange:undo-arrangement", None)
+            .separator()
+            .item("Windows Preferences…", "pref:windows", None)
     }
 
     /// Go to a workspace, or move the focused window to one.

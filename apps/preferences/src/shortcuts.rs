@@ -1,14 +1,14 @@
 //! Keyboard ▸ Shortcuts: app_server's own shortcuts (tiling, workspaces,
-//! Find, screenshots, …) and the space around tiled windows. Click a
-//! shortcut's keys, then type new ones: app_server records them (only it
-//! can tell ⌘ from Ctrl) and they replace the old, taken from any other
-//! shortcut that had them.
+//! Find, screenshots, …); the space they leave around windows is in
+//! Windows. Click a shortcut's keys, then type new ones: app_server
+//! records them (only it can tell ⌘ from Ctrl) and they replace the old,
+//! taken from any other shortcut that had them.
 
 use olo_kit::{
     egui::{Align2, Rect, Sense, Ui, UiBuilder, pos2, vec2},
     metrics as m,
     style::{self, c},
-    widgets::{BBox, Button, ScrollView, Slider, StringView},
+    widgets::{Button, ScrollView, StringView},
 };
 use olo_protocol::{
     Chord, Settings,
@@ -64,18 +64,6 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, server: &Server, st: &mut State) {
             }
         };
     }
-
-    BBox::new("Tiled Windows").show(ui, |ui| {
-        let t = &mut s.tiling;
-        let mut gap = t.gap as f32;
-        let text = format!("{gap:.0}");
-        ui.add(Slider::new(&mut gap, 0.0..=48.0).step(1.0).label("Space between windows").value_text(text).limits("None", "Wide"));
-        t.gap = gap as u32;
-        let mut margin = t.margin as f32;
-        let text = format!("{margin:.0}");
-        ui.add(Slider::new(&mut margin, 0.0..=64.0).step(1.0).label("Space at the edges").value_text(text).limits("None", "Wide"));
-        t.margin = margin as u32;
-    });
 
     let p = style::palette(ui.ctx());
     let rows = rows();

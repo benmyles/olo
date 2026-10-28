@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-28
 
+### Preferences ▸ Windows in dark mode
+
+*01:56* — The Windows panel in BeBox dark: the miniature's windows take the document colour and the theme's tab colours.
+
+![Preferences ▸ Windows in dark mode](2026-10-28/015604-preferences-windows-in-dark-mode.png)
+
+### Preferences ▸ Windows: space around arranged windows
+
+*01:56* — A new Windows panel sets the margin at the display's edges and the gap between windows, with a miniature of the main display that follows the sliders. Tiling, zooming, Tile All, Smart Tile, Center, cascading and fanning out all keep to it, and app_server refits tiled and zoomed windows live as the sliders move, without changing which window is in front. Here a margin of 26 and a gap of 12; Deskbar's Window Arrangement menu now ends with Windows Preferences….
+
+![Preferences ▸ Windows: space around arranged windows](2026-10-28/015603-preferences-windows-space-around-arranged-window.png)
+
 ### Minimized windows in Deskbar's window list
 
 *01:34* — An app's window list in Deskbar marks a minimized window as a Mac's Window menu does: a hollow diamond where the check mark goes and a lighter label. It can still be chosen to bring the window back; agents read minimized on the item.

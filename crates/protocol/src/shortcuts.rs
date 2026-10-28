@@ -436,7 +436,7 @@ pub fn assign(changed: &mut ShortcutSettings, id: &str, chord: Option<Chord>) ->
     taken
 }
 
-/// Space around tiled windows (Preferences ▸ Keyboard ▸ Shortcuts).
+/// Space around arranged windows (Preferences ▸ Windows), and grouping.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct TilingSettings {

@@ -282,9 +282,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         self.restore(window);
     }
 
-    /// Usable area for windows on the output the window is (mostly) on.
+    /// Where a window zooms to on the display it is (mostly) on: the
+    /// tiling area, inside the margins (`Settings::tiling`).
     pub fn zoom_area(&self, window: &WindowElement) -> Option<Rectangle<i32, Logical>> {
-        self.usable_area(&self.window_output(window)?)
+        self.tile_area(&self.window_output(window)?)
     }
 
     /// The display a window is on: the one under the middle of its frame,
@@ -326,7 +327,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         Some(area)
     }
 
-    /// Zoom (maximize) a window into the usable area, frame included.
+    /// Zoom (maximize) a window into the tiling area, frame included.
     pub fn zoom_window(&mut self, window: &WindowElement) {
         let Some(area) = self.zoom_area(window) else {
             return;
@@ -356,7 +357,14 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
             }
         }
-        self.space.map_element(window.clone(), area.loc, true);
+        // Moved, not mapped again: mapping raises and activates, and a
+        // zoom keeps its place in the stack (Zoom All, a refit when the
+        // margins change, a client's own maximize).
+        if self.space.element_location(window).is_some() {
+            self.space.relocate_element(window, area.loc);
+        } else {
+            self.space.map_element(window.clone(), area.loc, true);
+        }
     }
 
     pub fn unzoom_window(&mut self, window: &WindowElement) {
@@ -390,7 +398,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
         }
         if let Some(r) = pre {
-            self.space.map_element(window.clone(), r.loc, true);
+            self.space.relocate_element(window, r.loc);
         }
     }
 

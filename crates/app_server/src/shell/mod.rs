@@ -206,7 +206,7 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
 
                     if let Some(buffer_offset) = buffer_offset {
                         let current_loc = self.space.element_location(&window).unwrap();
-                        self.space.map_element(window.clone(), current_loc + buffer_offset, false);
+                        self.space.relocate_element(&window, current_loc + buffer_offset);
                     }
                     keep_on_screen(&mut self.space, surface, &window);
                     self.tile_follower_drew(&window);
@@ -378,7 +378,7 @@ fn keep_on_screen(space: &mut Space<WindowElement>, surface: &WlSurface, window:
     let y = fit(geo.loc.y, geo.size.h, zone.loc.y, zone.size.h);
     if (x, y) != (geo.loc.x, geo.loc.y) {
         let loc = space.element_location(window).unwrap_or_default();
-        space.map_element(window.clone(), loc + Point::from((x - geo.loc.x, y - geo.loc.y)), false);
+        space.relocate_element(window, loc + Point::from((x - geo.loc.x, y - geo.loc.y)));
     }
 }
 

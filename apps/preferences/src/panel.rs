@@ -8,7 +8,7 @@ use olo_kit::{
 };
 use olo_protocol::Settings;
 
-use crate::{Ctx, about, ai, appearance, backup, bluetooth, datetime, display, keyboard, network, notifications, power, screensaver, security, sound, themes, touchid, touchpad, tracker, workspaces};
+use crate::{Ctx, about, ai, appearance, backup, bluetooth, datetime, display, keyboard, network, notifications, power, screensaver, security, sound, themes, touchid, touchpad, tracker, windows, workspaces};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -30,6 +30,7 @@ pub enum Panel {
     TouchId,
     Touchpad,
     Tracker,
+    Windows,
     Workspaces,
     About,
 }
@@ -54,6 +55,7 @@ impl Panel {
         Panel::TouchId,
         Panel::Touchpad,
         Panel::Tracker,
+        Panel::Windows,
         Panel::Workspaces,
         Panel::About,
     ];
@@ -73,6 +75,7 @@ impl Panel {
             "passwords" | "privacy" => Some(Panel::Security),
             "smart-tiling" | "models" => Some(Panel::Ai),
             "theme" | "icons" | "icon-theme" => Some(Panel::Themes),
+            "window" | "tiling" | "margins" | "gaps" => Some(Panel::Windows),
             _ => None,
         })
     }
@@ -97,6 +100,7 @@ impl Panel {
             Panel::TouchId => "touchid",
             Panel::Touchpad => "touchpad",
             Panel::Tracker => "tracker",
+            Panel::Windows => "windows",
             Panel::Workspaces => "workspaces",
             Panel::About => "about",
         }
@@ -122,6 +126,7 @@ impl Panel {
             Panel::TouchId => "Touch ID",
             Panel::Touchpad => "Touchpad",
             Panel::Tracker => "Tracker",
+            Panel::Windows => "Windows",
             Panel::Workspaces => "Workspaces",
             Panel::About => "About Olo Desktop",
         }
@@ -147,6 +152,7 @@ impl Panel {
             Panel::TouchId => "fingerprint",
             Panel::Touchpad => "touchpad",
             Panel::Tracker => "tracker",
+            Panel::Windows => "windows",
             Panel::Workspaces => "workspaces",
             Panel::About => "about",
         }
@@ -175,6 +181,7 @@ impl Panel {
             // pressure and the Apple driver's click thresholds).
             Panel::Touchpad => (460, 576),
             Panel::Tracker => (300, 181),
+            Panel::Windows => (400, 440),
             Panel::Workspaces => (360, 164),
             Panel::About => (440, 290),
         }
@@ -206,7 +213,10 @@ impl Panel {
             Panel::Keyboard => {
                 settings.keyboard = from.keyboard.clone();
                 settings.shortcuts = from.shortcuts.clone();
-                settings.tiling = from.tiling.clone();
+            }
+            Panel::Windows => {
+                settings.tiling.gap = from.tiling.gap;
+                settings.tiling.margin = from.tiling.margin;
             }
             Panel::Touchpad => {
                 settings.touchpad = from.touchpad.clone();
@@ -299,6 +309,7 @@ pub fn ui(panel: Panel, state: &mut State, ui: &mut egui::Ui, ctx: Ctx<'_>) {
             (Panel::TouchId, State::TouchId(s)) => touchid::ui(ui, s),
             (Panel::Touchpad, State::Touchpad(s)) => touchpad::ui(ui, settings, s),
             (Panel::Tracker, _) => tracker::ui(ui, settings),
+            (Panel::Windows, _) => windows::ui(ui, settings, outputs),
             (Panel::Workspaces, _) => workspaces::ui(ui, settings),
             (Panel::About, State::About(s)) => about::ui(ui, s),
             _ => {}

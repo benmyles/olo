@@ -50,6 +50,7 @@ pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
     ("touchid", "Touch ID", "fingerprint"),
     ("touchpad", "Touchpad", "touchpad"),
     ("tracker", "Tracker", "tracker"),
+    ("windows", "Windows", "windows"),
     ("workspaces", "Workspaces", "workspaces"),
 ];
 
