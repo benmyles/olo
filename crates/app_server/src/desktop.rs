@@ -80,6 +80,10 @@ pub struct Twitch {
     pub apps: bool,
     /// (workspace, window ids), in workspace order.
     pub rows: Vec<(u32, Vec<u64>)>,
+    /// Tab's order: every cell (row, index), the most recently used
+    /// first, whatever its workspace, so ⌘Tab goes back and forth between
+    /// the last two apps wherever they are.
+    order: Vec<(usize, usize)>,
     pub row: usize,
     pub index: usize,
     /// Where switching began, for Esc.
@@ -260,6 +264,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn tick(&mut self) {
         self.parked.0.borrow_mut().retain(|w| w.alive());
         self.sync_groups();
+        self.note_recent();
         let infos = self.window_infos();
         if infos != self.last_window_infos {
             crate::twitcher::prewarm(infos.iter().map(|i| i.app_id.as_str()));
@@ -363,6 +368,27 @@ impl<B: Backend + 'static> AnvilState<B> {
         v
     }
 
+    /// Keep `recent` up to date: the focused window first (but not the
+    /// ones Twitcher passes over while switching).
+    fn note_recent(&mut self) {
+        if self.twitch.is_some() {
+            return;
+        }
+        let Some(id) = self.focused_window().map(|w| w.id()) else { return };
+        if self.recent.first() != Some(&id) {
+            self.recent.retain(|r| *r != id);
+            self.recent.insert(0, id);
+            let alive: Vec<u64> = self.recent.iter().copied().filter(|r| self.window_by_id(*r).is_some()).collect();
+            self.recent = alive;
+        }
+    }
+
+    /// How recently window `id` had the focus (0: most), never-focused
+    /// ones after all the others.
+    fn recency(&self, id: u64) -> usize {
+        self.recent.iter().position(|r| *r == id).unwrap_or(usize::MAX)
+    }
+
     /// Windows on workspace `ws` (another one), front first, minimized
     /// ones last.
     fn parked_windows(&self, ws: u32) -> Vec<WindowElement> {
@@ -374,13 +400,15 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     /// Twitcher's rows: for each workspace with any, its apps (one window
-    /// each, the front-most) or, for ⌘\`, the focused app's windows.
+    /// each, the one used last) or, for ⌘\`, the focused app's windows,
+    /// the most recently used first.
     fn twitch_rows(&self, apps: bool) -> Vec<(u32, Vec<u64>)> {
         let app = self.focused_window().map(|w| w.app_id());
         let count = self.settings.workspace_count.max(1).max(self.workspace + 1);
         (0..count)
             .filter_map(|ws| {
-                let windows = if ws == self.workspace { self.workspace_windows() } else { self.parked_windows(ws) };
+                let mut windows = if ws == self.workspace { self.workspace_windows() } else { self.parked_windows(ws) };
+                windows.sort_by_key(|w| self.recency(w.id()));
                 let ids: Vec<u64> = if apps {
                     let mut seen = Vec::new();
                     windows
@@ -403,43 +431,42 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     /// ⌘Tab (`apps`) or ⌘\`: bring the next app, or the focused app's next
-    /// window, on this workspace to the front. The order is fixed while ⌘
-    /// is held, so repeated presses walk it; ↑/↓ go to another
-    /// workspace's row (`twitch_move`).
+    /// window, to the front, on whichever workspace it is, the most
+    /// recently used first. The order is fixed while ⌘ is held, so
+    /// repeated presses walk it; the arrows move about the rows
+    /// (`twitch_move`).
     pub fn twitch_step(&mut self, apps: bool, back: bool) {
         if self.twitch.as_ref().is_none_or(|t| t.apps != apps) {
             let rows = self.twitch_rows(apps);
-            if rows.iter().map(|r| r.1.len()).sum::<usize>() < 2 {
+            let mut order: Vec<(usize, usize)> =
+                rows.iter().enumerate().flat_map(|(r, row)| (0..row.1.len()).map(move |i| (r, i))).collect();
+            if order.len() < 2 {
                 return;
             }
-            // Start on the focused window's entry, so the first press moves
-            // to the one behind it.
+            order.sort_by_key(|&(r, i)| self.recency(rows[r].1[i]));
+            // Start on the focused window's cell, so the first press moves
+            // to the one used before it; with none, on the last, so it
+            // moves to the first.
             let focus = self.focused_window();
             let focused = focus.as_ref().map(|w| (w.id(), w.app_id()));
-            let row = rows.iter().position(|r| r.0 == self.workspace);
-            let index = row
-                .and_then(|r| {
-                    rows[r].1.iter().position(|id| {
-                        focused.as_ref().is_some_and(|(fid, fapp)| {
-                            *id == *fid || (apps && self.window_by_id(*id).is_some_and(|w| w.app_id() == *fapp))
+            let start = order
+                .iter()
+                .position(|&(r, i)| {
+                    let id = rows[r].1[i];
+                    rows[r].0 == self.workspace
+                        && focused.as_ref().is_some_and(|(fid, fapp)| {
+                            id == *fid || (apps && self.window_by_id(id).is_some_and(|w| w.app_id() == *fapp))
                         })
-                    })
                 })
-                .unwrap_or(0);
+                .unwrap_or(order.len() - 1);
+            let (row, index) = order[start];
             let stacks = vec![(self.workspace, self.space.elements().cloned().collect())];
-            // With nothing here, the first press shows the next row's first.
-            let (row, index) = match row {
-                Some(r) => (r, index),
-                None => (0, rows[0].1.len() - 1),
-            };
-            self.twitch = Some(Twitch { apps, rows, row, index, home: self.workspace, focus, stacks, unhidden: None });
+            self.twitch = Some(Twitch { apps, rows, order, row, index, home: self.workspace, focus, stacks, unhidden: None });
         }
         let Some(t) = self.twitch.as_mut() else { return };
-        let n = t.rows[t.row].1.len();
-        if n < 2 && t.rows[t.row].0 == self.workspace {
-            return;
-        }
-        t.index = if back { (t.index + n - 1) % n } else { (t.index + 1) % n };
+        let n = t.order.len();
+        let at = t.order.iter().position(|&c| c == (t.row, t.index)).unwrap_or(0);
+        (t.row, t.index) = t.order[if back { (at + n - 1) % n } else { (at + 1) % n }];
         self.twitch_show();
     }
 

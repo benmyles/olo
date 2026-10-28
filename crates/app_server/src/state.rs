@@ -192,6 +192,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub lock: crate::lock::Lock,
     /// Twitcher, while ⌘Tab / ⌘\` is held.
     pub twitch: Option<crate::desktop::Twitch>,
+    /// Window ids, the most recently focused first (Twitcher's order).
+    pub recent: Vec<u64>,
     /// A tiled window's edges being dragged (see `shell::tiling`).
     pub tile_drag: Option<crate::shell::tiling::TileDrag>,
     /// Tiled neighbours following a drag of their shared edge, until
@@ -974,6 +976,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             saver: Default::default(),
             lock,
             twitch: None,
+            recent: Vec::new(),
             tile_drag: None,
             tile_followers: Vec::new(),
             twitcher: Default::default(),

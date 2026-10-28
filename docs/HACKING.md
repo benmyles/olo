@@ -949,9 +949,12 @@ from when switching began (`Twitch::stacks`): passing on puts the last one
 back in its place (minimized again if it was), so when ⌘ is let go only
 the chosen window has moved. It has a row for each workspace with
 windows on it (`twitch_rows`, numbered at the left when there are more
-than one): Tab and ←/→ walk the row, ↑/↓ go to the row above or below
-(its front-most first), and showing a window on another workspace goes
-there, each workspace's stacking kept as it was when first shown. Esc
+than one), each app's cell its most recently used window. Tab walks
+every cell in order of use (`AnvilState::recent`, kept by `note_recent`
+in `tick`, not while switching), whatever its workspace, so ⌘Tab goes
+back and forth between the last two apps wherever they are; ←/→ walk
+the chosen row and ↑/↓ go to the row above or below (its most recent
+first). Showing a window on another workspace goes there, each workspace's stacking kept as it was when first shown. Esc
 puts everything back, workspace and focus too (`twitch_cancel`). With
 keyboard hints on, every cell carries a hint badge
 (`hints::badge_pixmap`, letters running across the rows,
