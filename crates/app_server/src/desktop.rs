@@ -105,13 +105,29 @@ pub fn config_path() -> PathBuf {
 }
 
 pub fn load_settings() -> Settings {
-    match std::fs::read_to_string(config_path()) {
+    let mut settings = match std::fs::read_to_string(config_path()) {
         Ok(text) => serde_json::from_str(&text).unwrap_or_else(|e| {
             warn!(?e, "ignoring malformed settings");
             Settings::default()
         }),
         Err(_) => Settings::default(),
+    };
+    adopt_old_app_ids(&mut settings);
+    settings
+}
+
+/// Settings saved before the rename name Tabula's apps (`tabula.terminal`):
+/// as Olo's, or Terminal stops being a terminal to the keymap (and ⌘V
+/// no longer pastes in it).
+fn adopt_old_app_ids(settings: &mut Settings) {
+    let apps = &mut settings.keyboard.terminal_apps;
+    let mut seen = Vec::with_capacity(apps.len());
+    for id in apps.drain(..).map(|id| olo_xdg::legacy::new_app_id(&id)) {
+        if !seen.contains(&id) {
+            seen.push(id);
+        }
     }
+    *apps = seen;
 }
 
 pub(crate) fn save_settings(settings: &Settings) {
@@ -855,5 +871,18 @@ pub fn rotation_transform(degrees: u16) -> smithay::utils::Transform {
         180 => Transform::_180,
         270 => Transform::_90,
         _ => Transform::Normal,
+    }
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::*;
+
+    #[test]
+    fn old_terminal_app_ids_are_olos() {
+        let mut s = Settings::default();
+        s.keyboard.terminal_apps = ["tabula.terminal", "olo.terminal", "foot"].map(String::from).to_vec();
+        adopt_old_app_ids(&mut s);
+        assert_eq!(s.keyboard.terminal_apps, ["olo.terminal", "foot"]);
     }
 }

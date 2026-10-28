@@ -5,6 +5,10 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~⌘V doesn't paste in Terminal~~ (Ben): settings saved before the
+  rename listed `tabula.terminal` as a terminal, so Olo's Terminal got
+  ⌘V as Ctrl+V (bash's quoted-insert). Old app ids in saved settings are
+  Olo's now (`adopt_old_app_ids`).
 - ~~Deskbar's Olo menu arranges windows~~ (Ben): Window Arrangement,
   Workspaces (with Move Window To) and Show or Hide All Windows, acting
   on the window that had the focus.
