@@ -159,6 +159,13 @@ fn chrome_command(chrome: &Path, args: &[String]) -> std::process::Command {
         cmd.arg("--ozone-platform=wayland");
     }
     cmd.args(args);
+    // A link opened from a shell or an agent has no click to take a token
+    // from: without one, Chrome opens it in a window that may be on
+    // another workspace and nothing shows it. With one, that window comes
+    // forward.
+    if let Some(token) = olo_protocol::launch_activation_token(std::time::Duration::from_millis(500)) {
+        cmd.env("XDG_ACTIVATION_TOKEN", token);
+    }
     cmd
 }
 

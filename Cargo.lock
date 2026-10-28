@@ -4088,6 +4088,7 @@ dependencies = [
  "liblzma",
  "olo-keychain",
  "olo-kit",
+ "olo-protocol",
  "olo-theme",
  "p256",
  "quick-xml 0.42.0",

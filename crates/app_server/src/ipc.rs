@@ -225,6 +225,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Reply::Ok
             }
             Request::ListWindows => Reply::Windows { windows: self.window_infos_with_frames() },
+            Request::ActivationToken => Reply::ActivationToken { token: self.issue_activation_token() },
             Request::Activate { id } => match self.window_by_id(id) {
                 Some(w) => {
                     self.restore_window(&w);

@@ -10,6 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 olo-kit.workspace = true
+olo-protocol.workspace = true
 tracing.workspace = true
 serde_json.workspace = true
 sha2 = "0.11"

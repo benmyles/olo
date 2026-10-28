@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### A link opened from outside comes forward
+
+*21:43* — A link opened from a shell or an agent (through olo-chrome) now takes you to the Chrome window it opened in, from whatever workspace: olo-chrome asks app_server for an activation token and Chrome uses it. Here the page was opened from workspace 3, and Olo moved to workspace 1, where the window is.
+
+![A link opened from outside comes forward](2026-10-27/214350-a-link-opened-from-outside-comes-forward.png)
+
 ### Keyboard hints on a double Control
 
 *21:35* — Keyboard hints now come up when Control is pressed twice quickly, in place of Control and Shift together. How quickly is Preferences ▸ Keyboard ▸ Double-press speed (400 ms by default).

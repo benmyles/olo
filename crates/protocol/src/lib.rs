@@ -37,6 +37,12 @@ pub enum Request {
     Subscribe,
     ListWindows,
     Activate { id: WindowId },
+    /// An xdg-activation token for a program about to be started (as
+    /// `XDG_ACTIVATION_TOKEN`), so the window it opens, or the running
+    /// instance it hands its work to (a link opening as a new tab in
+    /// Chrome), comes forward, from whatever workspace. For launchers run
+    /// without a click to take a token from (a link opened from a shell).
+    ActivationToken,
     /// BeOS "minimize": hide the window; Deskbar shows it greyed out.
     Minimize { id: WindowId },
     Close { id: WindowId },
@@ -154,6 +160,7 @@ pub enum Reply {
     Ok,
     Pong { version: String },
     Error { message: String },
+    ActivationToken { token: String },
     Windows { windows: Vec<WindowInfo> },
     Workspaces { current: u32, count: u32 },
     Outputs { outputs: Vec<OutputInfo> },
@@ -979,6 +986,25 @@ pub enum ClientError {
 pub struct Client {
     writer: UnixStream,
     reader: BufReader<UnixStream>,
+}
+
+/// An xdg-activation token from app_server ([`Request::ActivationToken`])
+/// for a program about to be started, unless the environment already
+/// carries one (a launch from a click); None after `timeout` or outside
+/// Olo. Set it as `XDG_ACTIVATION_TOKEN`, so the window the program opens,
+/// or the running instance it hands its work to, comes forward.
+pub fn launch_activation_token(timeout: std::time::Duration) -> Option<String> {
+    if std::env::var_os("XDG_ACTIVATION_TOKEN").is_some() {
+        return None;
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let token = Client::connect().and_then(|mut c| c.request(&Request::ActivationToken));
+        if let Ok(Reply::ActivationToken { token }) = token {
+            let _ = tx.send(token);
+        }
+    });
+    rx.recv_timeout(timeout).ok()
 }
 
 impl Client {

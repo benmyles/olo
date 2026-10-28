@@ -497,6 +497,24 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 }
 
+/// Marks the xdg-activation tokens app_server handed out over IPC
+/// ([`Request::ActivationToken`](olo_protocol::Request::ActivationToken)).
+struct IssuedToken;
+
+impl<BackendData: Backend> AnvilState<BackendData> {
+    /// A token that brings forward whatever window uses it, for a program
+    /// about to be started. Anyone who can reach the IPC socket can raise
+    /// windows anyway (`Request::Activate`).
+    pub fn issue_activation_token(&mut self) -> String {
+        // Unused ones don't pile up.
+        self.xdg_activation_state.retain_tokens(|_, data| data.timestamp.elapsed() < Duration::from_secs(60));
+        let data = XdgActivationTokenData::default();
+        data.user_data.insert_if_missing(|| IssuedToken);
+        let (token, _) = self.xdg_activation_state.create_external_token(data);
+        token.to_string()
+    }
+}
+
 impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
     fn activation_state(&mut self) -> &mut XdgActivationState {
         &mut self.xdg_activation_state
@@ -528,10 +546,15 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
             })
         });
         // One of our programs handing its user's click on to another app
-        // (a notification clicked brings the app that sent it forward).
-        let handed = token_data.serial.is_some() && token_data.surface.as_ref().is_some_and(|s| self.is_our_program(s));
+        // (a notification clicked brings the app that sent it forward), or
+        // a token we handed out for a launch (olo-chrome opening a link).
+        let handed = token_data.serial.is_some() && token_data.surface.as_ref().is_some_and(|s| self.is_our_program(s))
+            || token_data.user_data.get::<IssuedToken>().is_some();
         if !fresh && !handed && !self.is_our_program(&surface) {
-            tracing::info!("activation request ignored (no recent input; app {:?})", token_data.app_id);
+            let app = smithay::wayland::compositor::with_states(&surface, |s| {
+                s.data_map.get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>().and_then(|d| d.lock().ok()?.app_id.clone())
+            });
+            tracing::info!(?app, token_app = ?token_data.app_id, "activation request ignored (no recent input)");
             return;
         }
         if token_data.timestamp.elapsed().as_secs() < 10 {

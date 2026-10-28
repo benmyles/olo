@@ -135,7 +135,13 @@ fn main() {
   `proxy`, `window_size`, `restored_state`, `activation_token(window,
   tag)` (an xdg-activation token from the latest input in the window,
   delivered as an `ActivationToken { tag, token }` message, to hand to
-  another program so its window may come forward), `set_keyboard(window,
+  another program so its window may come forward; app_server honours a
+  request only with fresh input from the asking app, a click handed on
+  by one of our programs, or a token it issued itself:
+  `olo_protocol::launch_activation_token` asks for one
+  (`Request::ActivationToken`) for launchers run without a click, as
+  olo-chrome does so a link opened from a shell or an agent brings
+  Chrome's window forward from whatever workspace), `set_keyboard(window,
   Keyboard)` (a layer window taking the keyboard or not). Worker threads may call
   `ctx.request_repaint()` (or `_after`) on a window's context: the kit
   wakes its loop through egui's repaint callback and redraws that window.
