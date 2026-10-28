@@ -1450,5 +1450,17 @@
   "title": "Terminal polished (light)",
   "caption": "The same strip and padding in the light theme: the selected tab opens into the screen's own background (TabStrip::opens_into).",
   "image": "2026-10-28/010731-terminal-polished-light.png"
+ },
+ {
+  "time": "2026-10-28T01:24:25",
+  "title": "Quick Look: a window of its own, over Tracker",
+  "caption": "Space in Tracker opens Quick Look as a dialog window (xdg_dialog_v1, parented to the Tracker window) instead of a tab: it is sized for the file, so it can be bigger than the folder window, opens centred over it before its first frame, and stays in front of it when the folder window is clicked.",
+  "image": "2026-10-28/012425-quick-look-a-window-of-its-own-over-tracker.png"
+ },
+ {
+  "time": "2026-10-28T01:24:28",
+  "title": "Context menus show their keys",
+  "caption": "Every context menu takes the keys its commands have in the window's menu bar (Menu::keys_from), so Tracker's item menu shows \u2318O, \u2318Y, \u2318I and so on, and the window tab menu shows the person's own desktop shortcuts.",
+  "image": "2026-10-28/012428-context-menus-show-their-keys.png"
  }
 ]

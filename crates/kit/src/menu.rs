@@ -33,6 +33,10 @@ pub struct Action {
     /// [`crate::icons::paint`]). A popup with any icons gives them all a
     /// column, between the check marks and the labels.
     pub icon: Option<String>,
+    /// Keys shown for it that aren't a ⌘ [`Shortcut`] of the window's own:
+    /// a desktop shortcut or any chord ("⌃⌘H", "⌥⇧⇥"), as on a Mac. Only
+    /// shown: whoever the keys go to acts on them.
+    pub keys: Option<String>,
 }
 
 /// A command-key shortcut. The command key is Ctrl (which app_server's
@@ -64,6 +68,14 @@ impl Shortcut {
         };
         if self.shift { format!("⇧{key}") } else { key }
     }
+    /// All its keys as on a Mac: "⌘W", "⇧⌘T".
+    pub fn keys(&self) -> String {
+        let key = self.label();
+        match key.strip_prefix('⇧') {
+            Some(k) => format!("⇧⌘{k}"),
+            None => format!("⌘{key}"),
+        }
+    }
 }
 
 impl Menu {
@@ -79,6 +91,7 @@ impl Menu {
             enabled: true,
             checked: false,
             icon: None,
+            keys: None,
         }));
         self
     }
@@ -90,6 +103,7 @@ impl Menu {
             enabled: true,
             checked: false,
             icon: None,
+            keys: None,
         }));
         self
     }
@@ -119,6 +133,13 @@ impl Menu {
         }
         self
     }
+    /// Show `keys` beside the last item (see [`Action::keys`]).
+    pub fn keys(mut self, keys: impl Into<String>) -> Self {
+        if let Some(MenuItem::Action(a)) = self.items.last_mut() {
+            a.keys = Some(keys.into());
+        }
+        self
+    }
     /// Give the last item (an action or a submenu) an icon.
     pub fn icon(mut self, name: impl Into<String>) -> Self {
         match self.items.last_mut() {
@@ -135,6 +156,34 @@ impl Menu {
             MenuItem::Submenu(m) => m.icon.is_some(),
             MenuItem::Separator => false,
         })
+    }
+
+    /// The item for `command`, searching submenus too.
+    pub fn find_action(&self, command: &str) -> Option<&Action> {
+        self.items.iter().find_map(|item| match item {
+            MenuItem::Action(a) if a.command == command => Some(a),
+            MenuItem::Submenu(m) => m.find_action(command),
+            _ => None,
+        })
+    }
+
+    /// Give every item without keys the keys its command has in `bar`
+    /// (the window's menu bar). The kit does this to every context menu
+    /// a window opens, so a command shows its shortcut wherever it is
+    /// offered without the app saying it twice.
+    pub fn keys_from(&mut self, bar: &[Menu]) {
+        for item in &mut self.items {
+            match item {
+                MenuItem::Action(a) if a.shortcut.is_none() && a.keys.is_none() => {
+                    if let Some(b) = bar.iter().find_map(|m| m.find_action(&a.command)) {
+                        a.shortcut = b.shortcut;
+                        a.keys = b.keys.clone();
+                    }
+                }
+                MenuItem::Submenu(m) => m.keys_from(bar),
+                _ => {}
+            }
+        }
     }
 
     /// Find the command bound to a shortcut, searching submenus too.
@@ -165,7 +214,11 @@ impl Menu {
 
 impl Action {
     pub fn new(label: impl Into<String>, command: impl Into<String>) -> Self {
-        Action { label: label.into(), command: command.into(), shortcut: None, enabled: true, checked: false, icon: None }
+        Action { label: label.into(), command: command.into(), shortcut: None, enabled: true, checked: false, icon: None, keys: None }
+    }
+    /// The keys shown beside it, as on a Mac ("⌘W", "⌃⌘H").
+    pub fn key_label(&self) -> Option<String> {
+        self.shortcut.map(|s| s.keys()).or_else(|| self.keys.clone())
     }
     pub fn key(mut self, key: Key) -> Self {
         self.shortcut = Some(Shortcut { key, shift: false });
@@ -185,6 +238,10 @@ impl Action {
     }
     pub fn icon(mut self, name: impl Into<String>) -> Self {
         self.icon = Some(name.into());
+        self
+    }
+    pub fn keys(mut self, keys: impl Into<String>) -> Self {
+        self.keys = Some(keys.into());
         self
     }
 }
@@ -406,8 +463,8 @@ pub fn popup_size(ctx: &egui::Context, menu: &Menu) -> Vec2 {
         match item {
             MenuItem::Action(a) => {
                 label_w = label_w.max(measure(&a.label));
-                if let Some(s) = a.shortcut {
-                    key_w = key_w.max(style::shortcut_width(ctx, &s.label()));
+                if let Some(keys) = a.key_label() {
+                    key_w = key_w.max(style::key_combo_width(ctx, &keys));
                 }
                 h += ITEM_HEIGHT;
             }
@@ -518,7 +575,7 @@ pub(crate) fn popup_nodes(menu: &Menu, state: &PopupState, size: (u32, u32), fir
             MenuItem::Separator => continue,
             MenuItem::Action(a) => {
                 n.name = Some(a.label.clone());
-                n.value = a.shortcut.map(|s| s.label());
+                n.value = a.key_label();
                 n.enabled = a.enabled;
                 n.checked = a.checked.then_some(true);
             }
@@ -695,8 +752,8 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
                     item_icon(&painter, *row, left, name, a.enabled);
                 }
                 style::label(&painter, row.left() + label_left, row.center().y, egui::Align::Min, &a.label, font(), text_color);
-                if let Some(s) = a.shortcut {
-                    style::shortcut(&painter, pos2(row.right() - ITEM_RIGHT, row.center().y), &s.label(), text_color);
+                if let Some(keys) = a.key_label() {
+                    style::key_combo(&painter, pos2(row.right() - ITEM_RIGHT, row.center().y), &keys, text_color);
                 }
                 if a.enabled && released && hovered == Some(i) && result == PopupResult::None {
                     result = PopupResult::Chosen(a.command.clone());
@@ -751,6 +808,32 @@ mod tests {
         assert_eq!((first.x, first.y, first.height, first.selected), (POPUP_BORDER, POPUP_BORDER + 2.0, ITEM_HEIGHT, Some(true)));
         assert_eq!(last.y, first.y + ITEM_HEIGHT + SEPARATOR_HEIGHT);
         assert!(last.checked == Some(true) && !last.enabled && last.parent == Some(100));
+    }
+
+    #[test]
+    fn context_menus_take_the_bars_keys() {
+        let bar = [
+            Menu::new("File").item("Open", "open", Some(Key::O)).submenu(Menu::new("Recent").item_shift("Reopen", "reopen", Key::T)),
+            Menu::new("Window").action(Action::new("Hide", "hide").keys("⌃⌘H")),
+        ];
+        let mut context = Menu::new("")
+            .item("Open", "open", None)
+            .item("Hide", "hide", None)
+            .item("Rename", "rename", None)
+            .item("Copy", "open", Some(Key::C))
+            .submenu(Menu::new("More").item("Reopen", "reopen", None));
+        context.keys_from(&bar);
+        let keys: Vec<_> = context
+            .items
+            .iter()
+            .map(|i| match i {
+                MenuItem::Action(a) => a.key_label(),
+                MenuItem::Submenu(m) => m.find_action("reopen").and_then(Action::key_label),
+                MenuItem::Separator => None,
+            })
+            .collect();
+        // Its own keys win; a command the bar doesn't have stays bare.
+        assert_eq!(keys, [Some("⌘O".into()), Some("⌃⌘H".into()), None, Some("⌘C".into()), Some("⇧⌘T".into())]);
     }
 
     #[test]

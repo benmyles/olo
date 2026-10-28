@@ -427,12 +427,6 @@ pub fn latch(p: &Painter, r: Rect, open: bool, color: Color32) {
     p.add(egui::Shape::convex_polygon(pts, color, Stroke::NONE));
 }
 
-/// Right-aligned shortcut label: the ⌘ glyph set tight against the key,
-/// both on one baseline.
-pub fn shortcut(p: &Painter, right_center: Pos2, label: &str, color: Color32) {
-    key_combo(p, right_center, &format!("⌘{label}"), color);
-}
-
 /// Right-aligned keys with any modifiers, as on a Mac ("⌃⌥⇧⌘←"), each
 /// symbol on the text's baseline.
 pub fn key_combo(p: &Painter, right_center: Pos2, keys: &str, color: Color32) {
@@ -473,11 +467,6 @@ fn combo_parts(label: &str) -> Vec<String> {
         parts.push(run);
     }
     parts
-}
-
-/// Width of a shortcut label as [`shortcut`] draws it.
-pub fn shortcut_width(ctx: &Context, label: &str) -> f32 {
-    key_combo_width(ctx, &format!("⌘{label}"))
 }
 
 /// Width of keys as [`key_combo`] draws them.

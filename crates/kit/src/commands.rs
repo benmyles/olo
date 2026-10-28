@@ -215,7 +215,7 @@ pub fn flatten(app_id: &str, bar: &[Menu]) -> Menus {
                     path: path.clone(),
                     label: a.label.clone(),
                     command: a.command.clone(),
-                    keys: a.shortcut.map(|s| format!("⌘{}", s.label())),
+                    keys: a.key_label(),
                     enabled: a.enabled,
                     checked: a.checked,
                 }),

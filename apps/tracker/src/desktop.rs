@@ -399,11 +399,11 @@ impl Desktop {
         {
             let menu = match hit(pos) {
                 Some(i) if i == self.items.len() => Menu::new("")
-                    .item("Open", "open", None)
+                    .item("Open", "open", Some(Key::O))
                     .item("Empty Trash", "empty-trash", None)
                     .enabled(!fs::trash_is_empty()),
                 Some(i) => {
-                    let mut m = Menu::new("").item("Open", "open", None);
+                    let mut m = Menu::new("").item("Open", "open", Some(Key::O));
                     // A running app of ours can open another window.
                     if self.selected.len() <= 1 && self.item(i).and_then(|it| fs::running_app(&it.entry)).is_some() {
                         m = m.item("New Window", "new-window", None);
@@ -411,9 +411,9 @@ impl Desktop {
                     if self.selected.len() <= 1 {
                         m = fs::grouping_item(m, self.item(i).map(|it| &it.entry));
                     }
-                    m.item("Get Info", "info", None)
+                    m.item("Get Info", "info", Some(Key::I))
                     .separator()
-                    .item("Move to Trash", "trash", None)
+                    .item("Move to Trash", "trash", Some(Key::T))
                     .enabled(!self.movable().is_empty())
                 }
                 None => Menu::new("")
@@ -453,7 +453,8 @@ impl Desktop {
         }
 
         // Keyboard (when the desktop has focus and no name is being
-        // edited): Enter opens, ⌘T trashes, ⌘E / F2 edits a name.
+        // edited): Enter / ⌘O opens, ⌘T trashes, ⌘I gets info, ⌘E / F2
+        // edits a name.
         let typing = self.editing.is_some() || ui.ctx().egui_wants_keyboard_input();
         let mut edit = false;
         ui.input(|i| {
@@ -463,7 +464,7 @@ impl Desktop {
             for e in &i.events {
                 if let egui::Event::Key { key, pressed: true, modifiers, .. } = e {
                     match (key, modifiers.ctrl) {
-                        (Key::Enter, false) | (Key::ArrowDown, true) => {
+                        (Key::Enter, false) | (Key::ArrowDown | Key::O, true) => {
                             actions.extend(self.selected_entries().into_iter().map(Action::Open))
                         }
                         (Key::T, true) | (Key::Delete, false) if !self.movable().is_empty() => {

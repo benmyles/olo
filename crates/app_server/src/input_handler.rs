@@ -582,6 +582,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
             if let Some((window, _)) = self.space.element_under(location).map(|(w, p)| (w.clone(), p)) {
                 self.space.raise_element(&window, true);
+                self.keep_children_above();
                 keyboard.set_focus(self, Some(window.into()), serial);
                 return;
             }

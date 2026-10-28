@@ -89,6 +89,7 @@ use smithay::{
             xdg::{
                 ToplevelSurface, XdgShellState,
                 decoration::{XdgDecorationHandler, XdgDecorationState},
+                dialog::{XdgDialogHandler, XdgDialogState},
             },
         },
         shm::{ShmHandler, ShmState},
@@ -165,6 +166,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub viewporter_state: ViewporterState,
     pub xdg_activation_state: XdgActivationState,
     pub xdg_decoration_state: XdgDecorationState,
+    /// xdg-dialog: which windows are dialogs and panels, never grouped.
+    pub xdg_dialog_state: XdgDialogState,
     /// KDE's server-decoration protocol, which GTK 3 and 4 use (they have
     /// no xdg-decoration) to let us draw their tab and frame.
     pub kde_decoration_state: smithay::wayland::shell::kde::decoration::KdeDecorationState,
@@ -580,6 +583,8 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
     }
 }
 
+impl<BackendData: Backend> XdgDialogHandler for AnvilState<BackendData> {}
+
 impl<BackendData: Backend> XdgDecorationHandler for AnvilState<BackendData> {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
         use xdg_decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
@@ -908,6 +913,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let viewporter_state = ViewporterState::new::<Self>(&dh);
         let xdg_activation_state = XdgActivationState::new::<Self>(&dh);
         let xdg_decoration_state = XdgDecorationState::new::<Self>(&dh);
+        let xdg_dialog_state = XdgDialogState::new::<Self>(&dh);
         let kde_decoration_state = smithay::wayland::shell::kde::decoration::KdeDecorationState::new::<Self>(
             &dh,
             smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration_manager::Mode::Server,
@@ -981,6 +987,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             viewporter_state,
             xdg_activation_state,
             xdg_decoration_state,
+            xdg_dialog_state,
             kde_decoration_state,
             xdg_shell_state,
             presentation_state,

@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-28
 
+### Context menus show their keys
+
+*01:24* — Every context menu takes the keys its commands have in the window's menu bar (Menu::keys_from), so Tracker's item menu shows ⌘O, ⌘Y, ⌘I and so on, and the window tab menu shows the person's own desktop shortcuts.
+
+![Context menus show their keys](2026-10-28/012428-context-menus-show-their-keys.png)
+
+### Quick Look: a window of its own, over Tracker
+
+*01:24* — Space in Tracker opens Quick Look as a dialog window (xdg_dialog_v1, parented to the Tracker window) instead of a tab: it is sized for the file, so it can be bigger than the folder window, opens centred over it before its first frame, and stays in front of it when the folder window is clicked.
+
+![Quick Look: a window of its own, over Tracker](2026-10-28/012425-quick-look-a-window-of-its-own-over-tracker.png)
+
 ### Terminal polished (light)
 
 *01:07* — The same strip and padding in the light theme: the selected tab opens into the screen's own background (TabStrip::opens_into).

@@ -212,6 +212,13 @@ fn main() {
   view, a button), so don't use it to mean "typing".
 * **Fixed-size windows**: `WindowOptions::new(..).min_size(w, h).max_size(w, h)`
   (preference panels, alerts).
+* **Dialogs** (`WindowOptions::dialog()`, with `.parent(id)`): a window
+  that belongs to another and should stay in front of it without being
+  its size, such as Tracker's Quick Look. The kit marks it with
+  `xdg_dialog_v1` (alerts are also `set_modal`); app_server opens it over
+  its parent before its first frame (kept on screen), never groups it
+  into the parent's tabs and keeps any child above its parent when the
+  parent is clicked, focused or raised (`wm.rs` `keep_children_above`).
 * **Raw keys** (`WindowOptions::raw_keys()`): for windows that consume the
   keyboard themselves (Terminal). ⌘-letter combinations reach the app as
   key events instead of menu shortcuts or clipboard events (⌘⇧C/X/V still
@@ -347,6 +354,17 @@ anchor, selected })`. The choice goes back to the widget named by
 widget takes it in the next frame it goes to `App::command`, as a menu
 bar item's would, so an app's own context menus just use its command
 names.
+
+Every item with keys shows them, right-aligned and in Mac order ("⌘O",
+"⇧⌘T", "⌃⌘H"), in context menus as in the bar. `request_popup` gives
+each item without keys the keys its command has in the window's menu
+bar (`Menu::keys_from`), so a context menu's Open shows ⌘O without the
+app saying so twice; keep context menu commands the bar's. Keys that
+aren't a ⌘ shortcut of the window's own (a desktop shortcut from
+`olo_protocol::shortcuts`, a plain key such as Space for Quick Look)
+are named with `.keys("⌃⌘H")` after the item (`Action::keys`); they are
+only shown, whoever gets the keys acts on them. `Action::key_label()` is
+what's shown, and agents read it as the item's `value`.
 
 ### Widgets (`olo_kit::widgets`)
 
@@ -513,8 +531,7 @@ of the way down.
    to baseline, so every label's highlight is the same height); drag-select
    bands with `style::selection_band`. Keys as on a Mac menu ("⇧⌘←", each
    symbol on the text's baseline, though they come from a fallback font):
-   `style::key_combo(painter, right_center, keys, color)` (and
-   `style::shortcut` for a ⌘ menu shortcut).
+   `style::key_combo(painter, right_center, keys, color)`.
 4. **Lines are one logical pixel** (`style::hline`, `vline`, `frame_rect`,
    `bevel`, `sunken`, `raised`). Snap rects to the pixel grid
    (`style::snap`). No blurry half-pixel lines. An outline's fold mark
@@ -2028,8 +2045,9 @@ put it away.
   (with more than one), Send to Back (BeOS's right-click on the tab,
   `Request::SendToBack`) and Close. Its items are the shortcuts', done
   through `RunShortcut { id, window }`, so the menu, the keys and the
-  palette always agree; agents read and choose from it as from any
-  popup. Choosing, a click outside or Escape puts the overlay away.
+  palette always agree, and each shows the person's own keys for it
+  (`shortcuts::keys_for` with their `ShortcutSettings`); agents read and
+  choose from it as from any popup. Choosing, a click outside or Escape puts the overlay away.
 
 ## Other toolkits' programs (app_server toolkits.rs, state.rs; olo_theme::toolkit)
 

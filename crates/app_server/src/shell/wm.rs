@@ -228,6 +228,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     pub fn focus_window(&mut self, window: &WindowElement) {
         self.space.raise_element(window, true);
+        self.keep_children_above();
         let serial = smithay::utils::SERIAL_COUNTER.next_serial();
         let keyboard = self.seat.get_keyboard().unwrap();
         // A menu's popup grab may still be live (the menu that opened this
@@ -237,6 +238,25 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             keyboard.unset_grab(self);
         }
         keyboard.set_focus(self, Some(KeyboardFocusTarget::from(window.clone())), serial);
+    }
+
+    /// Each window that names a parent (a dialog, Tracker's Quick Look)
+    /// in front of it, as `xdg_toplevel.set_parent` asks, like BeOS's
+    /// floating and modal feels: whatever raised the parent, its children
+    /// come back over it, in their order, and theirs over them. Done
+    /// wherever a window is raised, and once a turn for the rest.
+    pub fn keep_children_above(&mut self) {
+        // Space only raises to the top: a child under its parent goes
+        // there, which is just over the parent (only just raised itself).
+        for _ in 0..=self.space.elements().count() {
+            let order: Vec<WindowElement> = self.space.elements().cloned().collect();
+            let under = order.iter().enumerate().find(|(i, w)| {
+                let Some(parent) = w.0.toplevel().and_then(|t| t.parent()) else { return false };
+                order[i + 1..].iter().any(|p| p.wl_surface().as_deref() == Some(&parent))
+            });
+            let Some((_, child)) = under else { return };
+            self.space.raise_element(&child.clone(), false);
+        }
     }
 
     /// Roll a window up to just its tab, or back down.

@@ -11,7 +11,10 @@ use olo_kit::{
     menu::{self, Menu},
     widgets,
 };
-use olo_protocol::{Client, Reply, Request, shortcuts};
+use olo_protocol::{
+    Client, Reply, Request,
+    shortcuts::{self, ShortcutSettings},
+};
 
 /// What `--window-menu` asked for.
 #[derive(Debug, Clone, PartialEq)]
@@ -43,6 +46,8 @@ pub struct Facts {
     pub displays: usize,
     /// Rolled up to its tab.
     pub rolled: bool,
+    /// Shortcut keys changed from the defaults, to show the ones in use.
+    pub keys: ShortcutSettings,
 }
 
 /// Ask app_server about the window, then hand the answer to the app.
@@ -59,17 +64,30 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             Ok(Reply::Outputs { outputs }) => outputs.iter().filter(|o| o.mirror_of.is_none()).count(),
             _ => 1,
         };
-        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, displays, rolled: w.rolled });
+        let keys = match c.request(&Request::GetSettings) {
+            Ok(Reply::Settings { settings }) => settings.shortcuts,
+            _ => Default::default(),
+        };
+        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, displays, rolled: w.rolled, keys });
     });
 }
 
-/// A shortcut's item, by its id.
-fn shortcut(m: Menu, id: &str, label: &str) -> Menu {
-    debug_assert!(shortcuts::SHORTCUTS.iter().any(|s| s.id == id), "{id}");
-    m.item(label, format!("shortcut:{id}"), None)
+/// The keys shortcut `id` has now, as on a Mac ("⌃⌘H").
+fn keys(f: &Facts, id: &str) -> Option<String> {
+    let info = shortcuts::by_id(id);
+    debug_assert!(info.is_some(), "{id}");
+    shortcuts::keys_for(info?, &f.keys).first().map(|c| c.symbols())
 }
 
 pub fn build(f: &Facts) -> Menu {
+    // A shortcut's item, by its id, with its keys.
+    let shortcut = |m: Menu, id: &str, label: &str| {
+        let m = m.item(label, format!("shortcut:{id}"), None);
+        match keys(f, id) {
+            Some(k) => m.keys(k),
+            None => m,
+        }
+    };
     let tile = [
         ("tile-left", "Left Half"),
         ("tile-right", "Right Half"),
@@ -92,6 +110,9 @@ pub fn build(f: &Facts) -> Menu {
     let mut spaces = Menu::new("Move to Workspace");
     for n in 0..f.workspaces.max(1) {
         spaces = spaces.item(format!("Workspace {}", n + 1), format!("workspace:{n}"), None);
+        if let Some(k) = keys(f, &format!("window-to-workspace-{}", n + 1)) {
+            spaces = spaces.keys(k);
+        }
         if n == f.workspace {
             spaces = spaces.checked(true).enabled(false);
         }
@@ -199,7 +220,10 @@ mod tests {
         assert_eq!(ask, Ask { window: 7, at: pos2(120.0, 40.5), output: Some("HEADLESS-1".into()) });
         assert_eq!(Ask::parse(&args[..4]).unwrap().output, None);
         // Every item is a shortcut app_server knows, or one of ours.
-        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false };
+        let mut changed = ShortcutSettings::new();
+        changed.insert("zoom".into(), vec!["Ctrl+Cmd+Z".into()]);
+        changed.insert("center".into(), vec![]);
+        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false, keys: changed };
         fn commands(m: &Menu, out: &mut Vec<String>) {
             for item in &m.items {
                 match item {
@@ -218,5 +242,19 @@ mod tests {
             assert!(known, "{c}");
         }
         assert!(all.contains(&"shortcut:next-display".to_owned()) && all.contains(&"workspace:2".to_owned()));
+        // Each shows the keys it has now: changed, default, or none.
+        let menu = build(&facts);
+        let keys_of = |label: &str| {
+            menu.items.iter().find_map(|i| match i {
+                menu::MenuItem::Action(a) if a.label == label => Some(a.key_label()),
+                _ => None,
+            })
+        };
+        assert_eq!(keys_of("Zoom"), Some(Some("⌃⌘Z".into())));
+        assert_eq!(keys_of("Hide"), Some(Some("⌘M".into())));
+        assert_eq!(keys_of("Center"), Some(None));
+        let Some(menu::MenuItem::Submenu(spaces)) = menu.items.iter().find(|i| matches!(i, menu::MenuItem::Submenu(s) if s.title == "Move to Workspace")) else { panic!() };
+        let menu::MenuItem::Action(first) = &spaces.items[0] else { panic!() };
+        assert_eq!(first.key_label().as_deref(), Some("⌃⇧⌘1"));
     }
 }

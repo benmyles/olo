@@ -6,7 +6,7 @@
 //! at once, as Quick Look does on the Mac; anything more is Viewer's job.
 
 use olo_kit::{
-    WindowId,
+    WindowId, WindowOptions,
     egui::{self, Key, Rect, Ui, pos2, vec2},
     icons, metrics as m,
     style::{self, c},
@@ -25,6 +25,14 @@ use crate::{
 
 /// The bar along the bottom: what the item is, pop out, and Open.
 const FOOTER: f32 = m::CONTROL_HEIGHT + 2.0 * m::TIGHT + 2.0;
+
+/// Quick Look's window: a panel over the window whose selection it shows
+/// (a folder or Find window; the desktop can't be a parent), never one of
+/// Tracker's tabs, so it is as big as what it shows wants, not the folder
+/// window's size.
+pub fn window_options(title: String, size: (u32, u32), source: WindowId) -> WindowOptions {
+    WindowOptions::new(title, size.0, size.1).min_size(320, 200).parent(source).dialog()
+}
 
 pub enum Action {
     Close,

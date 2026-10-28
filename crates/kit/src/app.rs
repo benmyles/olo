@@ -82,6 +82,11 @@ pub struct WindowOptions {
     /// An alert: without a `parent`, it belongs to whichever of the app's
     /// windows has the keyboard when it opens.
     pub alert: bool,
+    /// A dialog or panel (Quick Look, an inspector) rather than a
+    /// document window: app_server never makes it one of the app's tabs,
+    /// so it keeps the size it asks for, bigger than its parent if it
+    /// likes; with a `parent`, it opens over it and stays in front of it.
+    pub dialog: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -136,6 +141,7 @@ impl Default for WindowOptions {
             raw_keys: false,
             parent: None,
             alert: false,
+            dialog: false,
         }
     }
 }
@@ -173,6 +179,11 @@ impl WindowOptions {
     /// [`parent`](Self::parent), if there is one.
     pub fn parent_opt(mut self, parent: Option<WindowId>) -> Self {
         self.parent = parent;
+        self
+    }
+    /// A dialog or panel, not a document window (see [`Self::dialog`]).
+    pub fn dialog(mut self) -> Self {
+        self.dialog = true;
         self
     }
 }

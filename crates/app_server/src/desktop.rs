@@ -268,6 +268,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn tick(&mut self) {
         self.parked.0.borrow_mut().retain(|w| w.alive());
         self.sync_groups();
+        self.keep_children_above();
         self.note_recent();
         let infos = self.window_infos();
         if infos != self.last_window_infos {

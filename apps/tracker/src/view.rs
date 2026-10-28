@@ -435,7 +435,9 @@ pub fn item_menu(f: &FolderWin) -> Menu {
     let one = f.current().1.selected.len() == 1;
     let in_trash = f.current_dir().starts_with(fs::trash_files());
     let mut menu = Menu::new("")
-        .item("Open", "open", Some(Key::O));
+        .item("Open", "open", Some(Key::O))
+        .item("Quick Look", "quick-look", Some(Key::Y))
+        .enabled(one);
     // A running app of ours can open another window.
     if one && f.selected_entries().first().and_then(fs::running_app).is_some() {
         menu = menu.item("New Window", "new-window", None);

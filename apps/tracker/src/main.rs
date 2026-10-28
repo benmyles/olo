@@ -1515,7 +1515,7 @@ impl App for Tracker {
                 match q.win {
                     None if fresh => {
                         let title = q.entry.name.clone();
-                        let id = cx.open_window(WindowOptions::new(title, size.0, size.1).min_size(320, 200));
+                        let id = cx.open_window(quicklook::window_options(title, size, q.source));
                         q.win = Some(id);
                         self.windows.insert(id, Win::Preview);
                     }
@@ -1545,7 +1545,7 @@ impl App for Tracker {
                 let screen = cx.screen_size();
                 if let Some(q) = self.quicklook.as_mut().filter(|q| q.generation() == generation && q.win.is_none()) {
                     let size = q.ideal_size(screen);
-                    let id = cx.open_window(WindowOptions::new(q.entry.name.clone(), size.0, size.1).min_size(320, 200));
+                    let id = cx.open_window(quicklook::window_options(q.entry.name.clone(), size, q.source));
                     q.win = Some(id);
                     self.windows.insert(id, Win::Preview);
                 }

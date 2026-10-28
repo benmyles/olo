@@ -18,8 +18,9 @@
 //! pointer grabs, so a hidden window isn't asked for a new size on every
 //! step of a resize. Only the front window is drawn whole: the others
 //! show just their tabs (`mark_behind`), so they don't show around it
-//! while it is sized smaller. Dialogs (windows with a parent),
-//! fixed-size panels and fullscreen windows are never grouped.
+//! while it is sized smaller. Dialogs (windows with a parent, or that
+//! say they are one with xdg-dialog), fixed-size panels and fullscreen
+//! windows are never grouped.
 
 use smithay::{
     desktop::{Space, WindowSurface},
@@ -102,6 +103,16 @@ pub fn mark_behind(space: &Space<WindowElement>) {
     }
 }
 
+/// A dialog or panel, not a document window: it names a parent, or says
+/// so with xdg-dialog (the kit's `WindowOptions::dialog`, Quick Look).
+fn is_dialog(t: &smithay::wayland::shell::xdg::ToplevelSurface) -> bool {
+    use smithay::wayland::{compositor, shell::xdg::{XdgToplevelSurfaceData, dialog::ToplevelDialogHint}};
+    t.parent().is_some()
+        || compositor::with_states(t.wl_surface(), |s| {
+            s.data_map.get::<XdgToplevelSurfaceData>().is_some_and(|d| d.lock().unwrap().dialog_hint != ToplevelDialogHint::Unknown)
+        })
+}
+
 /// The frame size `w` was asked for and hasn't drawn yet, if any.
 fn size_on_the_way(w: &WindowElement) -> Option<Size<i32, Logical>> {
     let WindowSurface::Wayland(t) = w.0.underlying_surface();
@@ -141,7 +152,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// and would lead its group off to that place.)
     fn groupable(&self, w: &WindowElement) -> bool {
         let WindowSurface::Wayland(t) = w.0.underlying_surface();
-        w.meta().placed.get() && w.decorated() && t.parent().is_none() && resizable(w) && self.groups_app(&w.app_id())
+        w.meta().placed.get() && w.decorated() && !is_dialog(t) && resizable(w) && self.groups_app(&w.app_id())
     }
 
     /// The groups on screen now, each back to front.

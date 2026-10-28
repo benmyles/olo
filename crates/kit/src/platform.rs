@@ -69,7 +69,10 @@ use wayland_protocols::{
         idle_inhibit::zv1::client::{zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1, zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1},
         viewporter::client::{wp_viewport::WpViewport, wp_viewporter::WpViewporter},
     },
-    xdg::shell::client::xdg_positioner,
+    xdg::{
+        dialog::v1::client::{xdg_dialog_v1::XdgDialogV1, xdg_wm_dialog_v1::XdgWmDialogV1},
+        shell::client::xdg_positioner,
+    },
 };
 
 use crate::{
@@ -266,6 +269,7 @@ pub struct Kit {
     fractional_manager: Option<WpFractionalScaleManagerV1>,
     viewporter: Option<WpViewporter>,
     idle_inhibit: Option<ZwpIdleInhibitManagerV1>,
+    dialogs: Option<XdgWmDialogV1>,
 
     gpu: Option<Gpu>,
     surfaces: Vec<Surface>,
@@ -651,6 +655,7 @@ impl Kit {
         let viewporter = globals.bind::<WpViewporter, _, _>(&qh, 1..=1, KitData).ok();
         let compositor = CompositorState::bind(globals, &qh).expect("wl_compositor");
         let idle_inhibit = globals.bind::<ZwpIdleInhibitManagerV1, _, _>(&qh, 1..=1, KitData).ok();
+        let dialogs = globals.bind::<XdgWmDialogV1, _, _>(&qh, 1..=1, KitData).ok();
         Kit {
             registry_state: RegistryState::new(globals),
             seat_state: SeatState::new(globals, &qh),
@@ -667,6 +672,7 @@ impl Kit {
             fractional_manager,
             viewporter,
             idle_inhibit,
+            dialogs,
             conn,
             qh,
             loop_handle,
@@ -1131,6 +1137,15 @@ impl Kit {
                 };
                 if let Some(Role::Toplevel(p)) = parent.map(|s| &s.role) {
                     window.set_parent(Some(p));
+                }
+                // Not a document window (xdg-dialog): never a tab.
+                if (options.dialog || options.alert)
+                    && let Some(m) = &self.dialogs
+                {
+                    let d = m.get_xdg_dialog(window.xdg_toplevel(), &self.qh, KitData);
+                    if options.alert {
+                        d.set_modal();
+                    }
                 }
                 window.commit();
                 Role::Toplevel(window)
@@ -1661,7 +1676,10 @@ impl Kit {
             }
             s.bar = bar;
             s.menus = menus;
-            if let Some(request) = menu::take_request(&ctx) {
+            if let Some(mut request) = menu::take_request(&ctx) {
+                if let Some(bar) = &s.menus {
+                    request.menu.keys_from(bar);
+                }
                 menu_events.push(MenuEvent::Context(id, request));
             }
             // A context menu's choice no widget asked for is a command.
@@ -2238,6 +2256,12 @@ impl Dispatch2<WpFractionalScaleManagerV1, Kit> for KitData {
 }
 impl Dispatch2<ZwpIdleInhibitManagerV1, Kit> for KitData {
     fn event(&self, _: &mut Kit, _: &ZwpIdleInhibitManagerV1, _: <ZwpIdleInhibitManagerV1 as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<Kit>) {}
+}
+impl Dispatch2<XdgWmDialogV1, Kit> for KitData {
+    fn event(&self, _: &mut Kit, _: &XdgWmDialogV1, _: <XdgWmDialogV1 as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<Kit>) {}
+}
+impl Dispatch2<XdgDialogV1, Kit> for KitData {
+    fn event(&self, _: &mut Kit, _: &XdgDialogV1, _: <XdgDialogV1 as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<Kit>) {}
 }
 impl Dispatch2<ZwpIdleInhibitorV1, Kit> for KitData {
     fn event(&self, _: &mut Kit, _: &ZwpIdleInhibitorV1, _: <ZwpIdleInhibitorV1 as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<Kit>) {}
