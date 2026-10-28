@@ -37,6 +37,7 @@ impl Ask {
 }
 
 /// What the menu needs to know, learned off the UI thread.
+#[derive(Clone)]
 pub struct Facts {
     pub ask: Ask,
     pub title: String,
@@ -46,6 +47,8 @@ pub struct Facts {
     pub displays: usize,
     /// Rolled up to its tab.
     pub rolled: bool,
+    /// In a group with other windows (their tabs side by side).
+    pub grouped: bool,
     /// Shortcut keys changed from the defaults, to show the ones in use.
     pub keys: ShortcutSettings,
 }
@@ -68,7 +71,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             Ok(Reply::Settings { settings }) => settings.shortcuts,
             _ => Default::default(),
         };
-        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, displays, rolled: w.rolled, keys });
+        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, displays, rolled: w.rolled, grouped: w.group.is_some(), keys });
     });
 }
 
@@ -130,7 +133,12 @@ pub fn build(f: &Facts) -> Menu {
         m = shortcut(m, "next-display", "To the Next Display");
         m = shortcut(m, "previous-display", "To the Previous Display");
     }
-    m.separator().item("Send to Back", "send-to-back", None).separator().item("Close", "close", None)
+    m = m.separator();
+    if f.grouped {
+        // As ⌘-dragging its tab out of the group does.
+        m = m.item("Remove from Group", "ungroup", None);
+    }
+    m.item("Send to Back", "send-to-back", None).separator().item("Close", "close", None)
 }
 
 /// Do `command` to `window`, off the UI thread.
@@ -142,6 +150,7 @@ pub fn perform(window: u64, command: &str) {
     } else {
         match command {
             "send-to-back" => Request::SendToBack { id: window },
+            "ungroup" => Request::UngroupWindow { id: window },
             "close" => Request::Close { id: window },
             _ => return,
         }
@@ -223,7 +232,7 @@ mod tests {
         let mut changed = ShortcutSettings::new();
         changed.insert("zoom".into(), vec!["Ctrl+Cmd+Z".into()]);
         changed.insert("center".into(), vec![]);
-        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false, keys: changed };
+        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false, grouped: true, keys: changed };
         fn commands(m: &Menu, out: &mut Vec<String>) {
             for item in &m.items {
                 match item {
@@ -238,9 +247,14 @@ mod tests {
         for c in &all {
             let known = c.strip_prefix("shortcut:").is_some_and(|id| shortcuts::SHORTCUTS.iter().any(|s| s.id == id))
                 || c.starts_with("workspace:")
-                || ["send-to-back", "close"].contains(&c.as_str());
+                || ["send-to-back", "close", "ungroup"].contains(&c.as_str());
             assert!(known, "{c}");
         }
+        // Remove from Group only for a window in one.
+        assert!(all.contains(&"ungroup".to_owned()));
+        let mut alone = Vec::new();
+        commands(&build(&Facts { grouped: false, ..facts.clone() }), &mut alone);
+        assert!(!alone.contains(&"ungroup".to_owned()));
         assert!(all.contains(&"shortcut:next-display".to_owned()) && all.contains(&"workspace:2".to_owned()));
         // Each shows the keys it has now: changed, default, or none.
         let menu = build(&facts);

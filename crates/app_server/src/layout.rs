@@ -65,6 +65,12 @@ pub struct Placement {
     /// after Tile All).
     #[serde(default)]
     pub tab_offset: i32,
+    /// How it groups (taken out of its group or put in one by hand), and
+    /// its tab's place among its group's (0: not known).
+    #[serde(default)]
+    pub grouping: crate::shell::groups::Grouping,
+    #[serde(default)]
+    pub tab_order: u64,
     /// Seconds since the epoch when it was recorded.
     pub at: u64,
     /// The process that showed it (0: not known, any may take it).
@@ -124,6 +130,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             focused: focused.is_some() && w.wl_surface().as_deref() == focused,
             rolled: w.rolled(),
             tab_offset: w.decoration().tab_offset,
+            grouping: meta.grouping.borrow().clone(),
+            tab_order: meta.tab_order.get(),
             at: now(),
             pid: meta.owner.borrow().as_ref().map_or(0, |(pid, _)| *pid),
             client: meta.owner.borrow().as_ref().map(|(_, c)| c.clone()),
@@ -233,6 +241,11 @@ impl<B: Backend + 'static> AnvilState<B> {
         Self::set_tile_state(&window, p.tile, p.part);
         window.decoration().rolled = p.rolled;
         window.decoration().tab_offset = p.tab_offset;
+        crate::shell::groups::note_restored(&p.grouping, p.tab_order);
+        *meta.grouping.borrow_mut() = p.grouping.clone();
+        if p.tab_order > 0 {
+            meta.tab_order.set(p.tab_order);
+        }
         // The displays may have changed since it was there: in its tile on
         // the display it is on, or else onto one if it is out of reach.
         self.refit(&window);

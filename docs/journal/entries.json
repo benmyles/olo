@@ -1492,5 +1492,11 @@
   "title": "Terminal: Catppuccin colours",
   "caption": "Settings \u25b8 Colors offers Catppuccin Latte and Frapp\u00e9 for light mode, Macchiato and Mocha for dark; Frapp\u00e9 (left, light mode) and Macchiato (right, dark mode) are the defaults.",
   "image": "2026-10-28/105656-terminal-catppuccin-colours.png"
+ },
+ {
+  "time": "2026-10-28T10:57:26",
+  "title": "Window groups: \u2318-dragging a tab into another group",
+  "caption": "Any window can be grouped by hand: \u2318-drag its tab over another window's (here Tracker's over Terminal's); it folds into its tab where it would go and that group lights up in the focus blue (light, dark). Let go, and it joins. \u2318-dragging a tab away pops the window out; along the tabs, it reorders them.",
+  "image": "2026-10-28/105726-window-groups-dragging-a-tab-into-another-group.png"
  }
 ]

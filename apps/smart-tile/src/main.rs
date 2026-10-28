@@ -307,8 +307,13 @@ mod tests {
             rolled: false,
             zoomed: false,
             kept: false,
+            group: None,
+            groupable: true,
+            output: None,
+            tab: None,
             frame: Some(Frame { x: 0, y: 0, width: 10, height: 10 }),
             content: None,
+            tab_frame: None,
             popups: vec![],
         }
     }

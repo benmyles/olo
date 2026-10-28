@@ -59,6 +59,11 @@ pub struct WindowMeta {
     /// group's: back somewhere it isn't grouped, untouched (still at the
     /// group's frame), it has its own again.
     pub joined: Cell<Option<(Rectangle<i32, Logical>, Rectangle<i32, Logical>)>>,
+    /// How it groups (`shell::groups`): with its app's others, on its own
+    /// (taken out by hand) or in a group it was put in.
+    pub grouping: RefCell<crate::shell::groups::Grouping>,
+    /// Where its tab goes among its group's (lowest first).
+    pub tab_order: Cell<u64>,
 }
 
 impl WindowElement {
@@ -77,6 +82,8 @@ impl WindowElement {
             left_among: Default::default(),
             arrived: Cell::new(None),
             joined: Cell::new(None),
+            grouping: Default::default(),
+            tab_order: Cell::new(crate::shell::groups::next_tab_order()),
         });
         self.user_data().get::<WindowMeta>().unwrap()
     }
@@ -201,6 +208,17 @@ impl<B: Backend + 'static> AnvilState<B> {
         v
     }
 
+    /// The display `w` is on, or was on while hidden or on another
+    /// workspace (where it comes back).
+    fn display_of(&self, w: &WindowElement) -> Option<Output> {
+        if self.space.element_location(w).is_some() {
+            return self.window_output(w);
+        }
+        let size = smithay::desktop::space::SpaceElement::geometry(w).size;
+        let middle = (w.meta().saved_location.get() + size.downscale(2).to_point()).to_f64();
+        self.space.output_under(middle).next().cloned().or_else(|| self.main_output())
+    }
+
     pub fn window_by_id(&self, id: u64) -> Option<WindowElement> {
         self.all_windows().into_iter().find(|w| w.id() == id)
     }
@@ -220,6 +238,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 let kept = olo_xdg::apps::our_app(&w.app_id()).is_some()
                     || client.and_then(|c| c.get_data::<crate::state::ClientState>().map(|s| s.proxied)).unwrap_or(false);
                 let meta = w.meta();
+                let place = self.groups.place(&w);
                 WindowInfo {
                     id: meta.id,
                     app_id: w.app_id(),
@@ -231,8 +250,13 @@ impl<B: Backend + 'static> AnvilState<B> {
                     rolled: w.rolled(),
                     zoomed: self.is_zoomed(&w),
                     kept,
+                    group: place.map(|(g, _)| g),
+                    groupable: self.groupable(&w),
+                    output: self.display_of(&w).map(|o| o.name()),
+                    tab: place.map(|(_, t)| t),
                     frame: None,
                     content: None,
+                    tab_frame: None,
                     popups: Vec::new(),
                 }
             })
@@ -258,6 +282,11 @@ impl<B: Backend + 'static> AnvilState<B> {
             } else {
                 frame(smithay::utils::Rectangle::new(at, geo.size))
             });
+            if w.decorated() {
+                let (title, content) = (w.title(), w.content_size());
+                let tab = w.decoration().tab_layout(&title, content).rect();
+                info.tab_frame = Some(frame(smithay::utils::Rectangle::new(at - geo.loc + tab.loc, tab.size)));
+            }
             // Popups are placed from the client's geometry.
             if let Some(surface) = w.wl_surface() {
                 let origin = at + w.content_offset();
@@ -326,13 +355,12 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.welcome_back(window, changed);
         // Out of the group it joined when it last arrived, untouched: its
         // own frame again (unless it joins one here too).
-        // (Others of its app coming back here too, a workspace being
+        // (Others of its group coming back here too, a workspace being
         // switched to, count: they are put back one by one.)
-        let app = window.app_id();
-        let alone = !self.space.elements().any(|o| o != window && o.app_id() == app)
-            && !self.parked.0.borrow().iter().any(|o| {
-                o != window && o.app_id() == app && o.meta().workspace.get() == Some(self.workspace) && !o.meta().minimized.get()
-            });
+        let key = self.group_key(window);
+        let mate = |o: &WindowElement| o != window && key.is_some() && self.group_key(o) == key;
+        let alone = !self.space.elements().any(mate)
+            && !self.parked.0.borrow().iter().any(|o| mate(o) && o.meta().workspace.get() == Some(self.workspace) && !o.meta().minimized.get());
         if let Some((own, group)) = window.meta().joined.get()
             && alone
             && self.space.element_geometry(window) == Some(group)
@@ -960,7 +988,14 @@ impl<B: Backend + 'static> AnvilState<B> {
         if olo_xdg::themes::set(&settings.appearance.icon_theme) {
             crate::twitcher::theme_changed();
         }
+        // Group Windows on again for an app: its windows taken out by hand
+        // go back in too.
+        let regrouped: Vec<String> =
+            self.settings.tiling.ungrouped_apps.iter().filter(|a| !settings.tiling.ungrouped_apps.contains(a)).cloned().collect();
         self.settings = settings;
+        if !regrouped.is_empty() {
+            self.regroup_apps(&regrouped);
+        }
         self.keymap.set_bindings(olo_protocol::shortcuts::bindings(&self.settings.shortcuts));
         if self.workspace >= self.settings.workspace_count.max(1) {
             self.switch_workspace(self.settings.workspace_count.max(1) - 1);

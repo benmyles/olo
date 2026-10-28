@@ -199,6 +199,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub recent: Vec<u64>,
     /// A tiled window's edges being dragged (see `shell::tiling`).
     pub tile_drag: Option<crate::shell::tiling::TileDrag>,
+    /// A tab ⌘-dragged along its group's, out of it or into another
+    /// (`shell::tabdrag`).
+    pub tab_drag: Option<crate::shell::tabdrag::TabDrag>,
     /// Tiled neighbours following a drag of their shared edge, until
     /// they've drawn the size it left them.
     pub tile_followers: Vec<crate::shell::tiling::Follower>,
@@ -1014,6 +1017,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             twitch: None,
             recent: Vec::new(),
             tile_drag: None,
+            tab_drag: None,
             tile_followers: Vec::new(),
             twitcher: Default::default(),
             hints: Default::default(),

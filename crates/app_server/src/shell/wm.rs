@@ -132,7 +132,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     .get_keyboard()
                     .map(|k| k.modifier_state().shift)
                     .unwrap_or(false);
-                if shift {
+                // ⌘-drag: along its group's tabs, out of the group, or into
+                // another (shell/tabdrag.rs).
+                if self.command_held() && self.groupable(window) {
+                    self.start_tab_drag(window, serial);
+                } else if shift {
                     self.start_tab_slide(window, serial);
                 } else {
                     self.start_move(seat, window, serial);
@@ -266,8 +270,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
         let rolled = !window.decoration().rolled;
         // A group rolls up together (its tabs stay side by side).
-        let app = window.app_id();
-        let together: Vec<WindowElement> = if self.groups.has(window) { self.groups.members_of(&app) } else { vec![window.clone()] };
+        let mut together = self.groups.mates(window);
+        if together.is_empty() {
+            together.push(window.clone());
+        }
         for w in &together {
             w.decoration().rolled = rolled;
         }

@@ -49,6 +49,23 @@ pub enum Request {
     ToggleZoom { id: WindowId },
     /// Push a window behind all the others (BeOS's right-click on the tab).
     SendToBack { id: WindowId },
+    /// Put a window in the group of window `with` (or a new group with
+    /// it, if it is in none), whatever their apps, its tab at `index`
+    /// among the group's (else last), as ⌘-dragging its tab onto that
+    /// window's does: it takes the group's frame and comes to the front.
+    /// Both must be showing.
+    GroupWindow {
+        id: WindowId,
+        with: WindowId,
+        #[serde(default)]
+        index: Option<u32>,
+    },
+    /// Take a window out of its group, as ⌘-dragging its tab away does: on
+    /// its own from then on (it no longer joins its app's group), stepped
+    /// out so the group shows, in front.
+    UngroupWindow { id: WindowId },
+    /// Move a window's tab to `index` among its group's tabs.
+    MoveTab { id: WindowId, index: u32 },
     /// Put a window's frame (tab and border included, as
     /// [`WindowInfo::frame`]) here, at this size; no longer zoomed. It
     /// may hang off a display's edge, but no further than a person could
@@ -274,6 +291,24 @@ pub struct WindowInfo {
     /// olo-wlproxy.
     #[serde(default)]
     pub kept: bool,
+    /// The group it is in on screen, sharing a frame with the others with
+    /// this number, each its own tab along the top. An app's windows are
+    /// grouped by themselves; any window can be put in a group or taken
+    /// out by hand (⌘-dragging its tab, [`Request::GroupWindow`],
+    /// [`Request::UngroupWindow`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<u64>,
+    /// It can be put in a group: a document window, not a dialog, a
+    /// fixed-size panel or fullscreen.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub groupable: bool,
+    /// The display it is on (its connector), or was on while hidden or
+    /// on another workspace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    /// Its tab's place in its group, from the left ([`Request::MoveTab`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab: Option<u32>,
     /// Where it is on screen, tab and border included (global logical
     /// pixels), while it is on screen. Only in [`Reply::Windows`] (the
     /// list [`Event::WindowsChanged`] carries leaves it out, or a window
@@ -283,6 +318,10 @@ pub struct WindowInfo {
     /// Where what the app draws is (inside the tab and border), likewise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content: Option<Frame>,
+    /// Its tab (to click, or ⌘-drag along its group or to another),
+    /// likewise; none for a window without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab_frame: Option<Frame>,
     /// Its open popups (menus, dropdowns, tooltips), submenus after the
     /// menus they open from, likewise.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

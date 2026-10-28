@@ -69,6 +69,15 @@ pub struct Decoration {
     /// gets its place along the shared top, `groups`); else as wide as its
     /// title wants.
     pub tab_width: Option<i32>,
+    /// The number of the group it is in (`groups::Groups::place`).
+    pub group: Option<u64>,
+    /// Being put in a group by hand (`tabdrag`): only its tab shows, in
+    /// its place among the group's, while it is held over them and until
+    /// it has drawn at the group's size (since then, if let go).
+    pub docked: bool,
+    pub docked_since: Option<Instant>,
+    /// Its group is where the tab being dragged would go: lit up.
+    pub target: bool,
     title_width: Option<(String, i32)>,
     /// The tab as drawn for its last few looks (focused or not, a box
     /// hovered or pressed), the current one first: going back to one
@@ -78,7 +87,7 @@ pub struct Decoration {
     tabs: Vec<(TabKey, MemoryRenderBuffer)>,
     frame_ids: Vec<Id>,
     frame_commit: CommitCounter,
-    frame_key: Option<(bool, u64)>,
+    frame_key: Option<(bool, u64, bool)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -90,6 +99,7 @@ struct TabKey {
     width: i32,
     phys: (i32, i32),
     generation: u64,
+    target: bool,
 }
 
 pub const DOUBLE_CLICK: Duration = Duration::from_millis(400);
@@ -120,6 +130,10 @@ impl Default for Decoration {
             rolled: false,
             behind: false,
             tab_width: None,
+            group: None,
+            docked: false,
+            docked_since: None,
+            target: false,
             title_width: None,
             tabs: Vec::new(),
             frame_ids: (0..20).map(|_| Id::new()).collect(),
@@ -201,6 +215,10 @@ impl Decoration {
             Some(w) => w,
             None => self.wanted_tab_width(title),
         };
+        // Docked: its place among another frame's tabs, wherever that is.
+        if self.docked {
+            return TabLayout { x: self.tab_offset.max(0), width: wanted.max(1) };
+        }
         let width = wanted.min(frame_w).max(1);
         let x = self.tab_offset.clamp(0, (frame_w - width).max(0));
         TabLayout { x, width }
@@ -211,7 +229,7 @@ impl Decoration {
         let tab = self.tab_layout(title, content);
         let (w, h) = (content.w + 2 * BORDER, content.h + TAB_HEIGHT + 2 * BORDER);
         let contains = |r: Rectangle<i32, Logical>| r.to_f64().contains(p);
-        if (self.rolled || self.behind) && p.y >= TAB_HEIGHT as f64 {
+        if (self.rolled || self.behind || self.docked) && p.y >= TAB_HEIGHT as f64 {
             return Part::None;
         }
         if p.y < TAB_HEIGHT as f64 {
@@ -308,6 +326,7 @@ impl Decoration {
             width: tab.width,
             phys,
             generation,
+            target: self.target,
         };
         if let Some(i) = self.tabs.iter().position(|(k, _)| *k == key) {
             let looked = self.tabs.remove(i);
@@ -343,12 +362,16 @@ impl Decoration {
         }
 
         // Frame: five concentric bevel lines, each drawn as four rects.
-        let fkey = (self.focused, generation);
+        let fkey = (self.focused, generation, self.target);
         if self.frame_key != Some(fkey) {
             self.frame_key = Some(fkey);
             self.frame_commit.increment();
         }
         let f = if self.focused { &palette.frame_focused } else { &palette.frame_unfocused };
+        // A group a tab is held over: its outer lines in the focus blue,
+        // as its tabs' outlines are.
+        let lit = [palette.keyboard_navigation, palette.keyboard_navigation, f[2], f[3], f[4], f[5]];
+        let f = if self.target { &lit } else { f };
         let (w, h) = (content.w + 2 * BORDER, content.h + TAB_HEIGHT + 2 * BORDER);
         let (x0, y0) = (location.x, location.y);
         let rect = |l: i32, t: i32, r: i32, b: i32| -> Rectangle<i32, Physical> {
@@ -447,12 +470,16 @@ fn draw_tab(palette: &Palette, key: &TabKey, tab: &TabLayout, s: f64) -> Pixmap 
         )
     };
     let outline = if key.focused { palette.frame_focused[0] } else { palette.frame_unfocused[0] };
+    // Where a dragged tab would go: tinted, and outlined twice as thick
+    // in the focus blue (`Decoration::target`).
+    let nav = palette.keyboard_navigation;
+    let (base, outline, line) = if key.target { (mix(base, nav, 0.18), nav, 2 * u) } else { (base, outline, u) };
 
     fill(&mut pixmap, 0, 0, w, h, base);
     // Outline on three sides; the frame's top line closes the bottom.
-    fill(&mut pixmap, 0, 0, w, u, outline);
-    fill(&mut pixmap, 0, 0, u, h, outline);
-    fill(&mut pixmap, w - u, 0, u, h, outline);
+    fill(&mut pixmap, 0, 0, w, line, outline);
+    fill(&mut pixmap, 0, 0, line, h, outline);
+    fill(&mut pixmap, w - line, 0, line, h, outline);
     // Bevel.
     fill(&mut pixmap, u, u, w - 2 * u, u, light);
     fill(&mut pixmap, u, u, u, h - u, light);

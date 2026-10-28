@@ -32,7 +32,20 @@ What is checked, after every step once the windows have settled:
     axis), a tile then Restore, an arrangement then Undo Window
     Arrangement, a window to another workspace and back, a window to the
     next display and back;
-  * tiles and zooms stay inside the display's tiling area (`arrangement`).
+  * tiles and zooms stay inside the display's tiling area (`arrangement`);
+  * groups hold together: each has two or more windows, all shown here,
+    sharing one frame, their tabs numbered 0..n-1 and laid side by side
+    along its top in that order; windows of different apps share one only
+    if one was put in by hand; a window taken out by hand stays out until
+    put in one again;
+  * ⌘-dragging a tab along its group puts it in the place it was let go
+    at, and moves nothing; pulled away, the window comes out on its own
+    under the pointer and the rest stay put; held over another group's
+    (or window's) tabs, it shows as a tab in the place it would take, and
+    let go, it is in that group there, exactly as it showed;
+  * GroupWindow, UngroupWindow and MoveTab do the same for agents;
+  * app_server never panics (its log, which outlives a restart, is
+    watched).
 """
 import json, os, random, socket, subprocess, sys, time
 
@@ -58,6 +71,15 @@ WORKSPACE_CMDS = ["next-workspace", "previous-workspace", "window-to-next-worksp
 # Key chords for some of them, pressed as a person would (they act on the
 # window with the keyboard, so focus bugs show).
 CTRL, SHIFT, ALT, CMD = 29, 42, 56, 125
+BTN_LEFT = 0x110
+# The window decoration's measures (olo_theme::deco) and ⌘-dragging's
+# (app_server's shell/tabdrag.rs).
+TAB_H, BOX_INSET, BOX_SIZE = 21, 5, 13
+TEAR, TEAR_SIDE, NEAR = 24, 48, 12
+# A tab at least this wide has its middle clear of its boxes (and of the
+# hit area around them): there it can be taken hold of without closing or
+# zooming the window.
+TAB_GRIP = 2 * (BOX_INSET + BOX_SIZE + 2) + 8
 KEYS = {
     "tile-left": [SHIFT, CMD, 105], "tile-right": [SHIFT, CMD, 106], "tile-top": [SHIFT, CMD, 103],
     "tile-bottom": [SHIFT, CMD, 108], "tile-top-left": [CTRL, CMD, 22], "tile-bottom-right": [CTRL, CMD, 37],
@@ -89,6 +111,16 @@ class Fuzz:
         outs = self.req({"type": "outputs"})["outputs"]
         self.outputs = [o["name"] for o in outs]
         self.home = {o["name"]: (o["position"], o["scale"]) for o in outs}
+        # Windows put in a group by hand (or joined by one), which may
+        # share it with other apps', and ones taken out by hand since. (Any
+        # window there already may have been, in a run before.)
+        self.by_hand, self.alone = set(self.windows()), set()
+        self.last_press = 0.0
+        self.server_log = os.path.join("/tmp/olo-dev", name, "app_server.log")
+        try:
+            self.log_at = os.path.getsize(self.server_log)
+        except OSError:
+            self.log_at = None
 
     # ---- talking to app_server ----
 
@@ -106,9 +138,17 @@ class Fuzz:
         if not line:
             raise Failure(f"app_server closed the connection on {r.get('type')}")
         reply = json.loads(line)
-        if reply.get("type") == "error":
+        if reply.get("type") == "error" and not getattr(self, "errors_ok", False):
             raise Failure(f"{r} -> error {reply.get('message')}")
         return reply
+
+    def try_req(self, r):
+        """`r`'s reply, an error one too."""
+        self.errors_ok = True
+        try:
+            return self.req(r)
+        finally:
+            self.errors_ok = False
 
     def windows(self):
         return {w["id"]: w for w in self.req({"type": "list_windows"})["windows"]}
@@ -200,6 +240,62 @@ class Fuzz:
         for w in focused:
             if w["minimized"] or w["workspace"] != ws:
                 self.fail(f"window {w['id']} has the keyboard but is {'hidden' if w['minimized'] else 'on workspace %d' % w['workspace']}")
+        self.check_groups(wins, ws)
+        self.check_log()
+
+    def check_log(self):
+        """No panic in app_server's log since the last look (olo-session
+        would start it again, and the windows come back, hiding it)."""
+        if self.log_at is None:
+            return
+        try:
+            with open(self.server_log, "rb") as f:
+                f.seek(self.log_at)
+                new = f.read().decode(errors="replace")
+        except OSError:
+            return
+        self.log_at += len(new.encode())
+        for line in new.splitlines():
+            if "panicked" in line:
+                self.fail(f"app_server panicked: {line.strip()}")
+
+    def check_groups(self, wins, ws):
+        groups = {}
+        for i, w in wins.items():
+            g = w.get("group")
+            if g is None:
+                if w.get("tab") is not None:
+                    self.fail(f"window {i} has tab place {w['tab']} but no group")
+                continue
+            if w["minimized"] or w["workspace"] != ws:
+                self.fail(f"window {i} is {'hidden' if w['minimized'] else 'away'} but in group {g}")
+            groups.setdefault(g, []).append(i)
+        for g, m in groups.items():
+            if len(m) < 2:
+                self.fail(f"group {g} is just window {m[0]}")
+                continue
+            order = sorted(m, key=lambda i: wins[i].get("tab") or 0)
+            if [wins[i].get("tab") for i in order] != list(range(len(m))):
+                self.fail(f"group {g}'s tab places are {[(i, wins[i].get('tab')) for i in order]}")
+            frames = {fr(wins[i]) for i in m}
+            if len(frames) > 1:
+                self.fail(f"group {g}'s windows don't share a frame: " + ", ".join(f"{i} {fr(wins[i])}" for i in order))
+                continue
+            x, y, fw, _ = frames.pop()
+            end = x
+            for i in order:
+                t = wins[i].get("tab_frame")
+                if not t or t["y"] != y or t["height"] != TAB_H or t["x"] < end or t["x"] + t["width"] > x + fw:
+                    self.fail(f"group {g}'s tabs aren't side by side along its top {(x, y, fw)} in order: "
+                              + ", ".join(f"{o} {tab_rect(wins[o])}" for o in order))
+                    break
+                end = t["x"] + t["width"]
+            apps = {wins[i]["app_id"] for i in m}
+            if len(apps) > 1 and not set(m) & self.by_hand:
+                self.fail(f"group {g} mixes {sorted(apps)} though none of {order} was put in it by hand")
+        for i in sorted(self.alone):
+            if i in wins and wins[i].get("group") is not None:
+                self.fail(f"window {i}, taken out of its group by hand, is in group {wins[i]['group']} again")
 
     def check_round_trip(self, what, before, after, moving):
         """Everything back as it was; only `moving` moved on the way."""
@@ -250,13 +346,26 @@ class Fuzz:
     # ---- what a step can do ----
 
     def mates(self, wins, w):
-        """`w` and the windows in its group (its app's others shown here:
-        every app the fuzzer opens is grouped), which follow it."""
+        """`w` and the windows in its group, which follow it."""
         if w not in wins:
             return {w}
-        ws = self.workspace()
-        app = wins[w]["app_id"]
-        return {i for i, o in wins.items() if o["app_id"] == app and o["workspace"] == ws and not o["minimized"]} | {w}
+        return set(self.group_of(wins, w))
+
+    def group_of(self, wins, w):
+        """The windows in `w`'s group in the order of their tabs (just `w`
+        if it is in none)."""
+        g = wins[w].get("group")
+        if g is None:
+            return [w]
+        return sorted((i for i, o in wins.items() if o.get("group") == g), key=lambda i: wins[i].get("tab") or 0)
+
+    def groups(self, wins):
+        """The groups, each in tab order, by number."""
+        out = {}
+        for i in sorted(wins, key=lambda i: wins[i].get("tab") or 0):
+            if wins[i].get("group") is not None:
+                out.setdefault(wins[i]["group"], []).append(i)
+        return out
 
     def shown(self, wins):
         ws = self.workspace()
@@ -280,6 +389,8 @@ class Fuzz:
             (3, self.op_open), (1, self.op_close), (3, self.op_workspace_trip), (2, self.op_workspace_cmd),
             (4, self.op_zoom_trip), (5, self.op_tile_trip), (3, self.op_arrange_trip), (2, self.op_window_ws_trip),
             (2, self.op_display_trip), (1, self.op_displays), (2, self.op_place),
+            (4, self.op_tab_along), (3, self.op_tab_out), (4, self.op_tab_in),
+            (2, self.op_group_window), (2, self.op_ungroup_window), (2, self.op_move_tab),
         ]
         if len(wins) < 3:
             ops = [(1, self.op_open)]
@@ -405,8 +516,9 @@ class Fuzz:
         after = self.settle()
         self.check_sane(after)
         self.check_unchanged(f"hiding and showing {w}", wins, after, skip=self.mates(wins, w))
-        # It comes back where it was, unless its group has moved on.
-        if not any(after[o]["app_id"] == wins[w]["app_id"] for o in shown if o != w and o in after):
+        # It comes back where it was, unless it was in a group (which
+        # it goes back to, wherever that is now).
+        if wins[w].get("group") is None:
             self.check_back(f"hiding and showing {w}", w, wins, after)
 
     def op_open(self, wins, shown):
@@ -556,7 +668,7 @@ class Fuzz:
         after = self.settle()
         self.check_sane(after)
         self.check_unchanged(f"moving {w} away and back", wins, after, skip=self.mates(wins, w))
-        if not any(after[o]["app_id"] == wins[w]["app_id"] for o in shown if o != w and o in after):
+        if wins[w].get("group") is None:
             self.check_back(f"moving {w} to workspace {to} and back", w, wins, after)
 
     def op_display_trip(self, wins, shown):
@@ -606,6 +718,301 @@ class Fuzz:
         self.check_sane(after)
         self.check_unchanged(f"placing {w}", wins, after, skip=self.mates(wins, w))
 
+    # ---- groups by hand ----
+
+    def hold_ready(self, w):
+        """`w` in front, ready to be ⌘-dragged by its tab: the windows
+        then, where to take hold of its tab, and its display's tiling
+        area; None if its tab can't be taken hold of (too narrow to miss
+        its boxes, or not inside the tiling area: off its display, or
+        under Deskbar)."""
+        self.req({"type": "activate", "id": w})
+        wins = self.settle()
+        if w not in wins or wins[w]["minimized"] or not wins[w]["focused"]:
+            return None
+        t = wins[w].get("tab_frame")
+        if not t or t["width"] < TAB_GRIP:
+            return None
+        at = (t["x"] + t["width"] / 2, t["y"] + t["height"] / 2)
+        _, area = self.area()
+        if not area or not inside(at, area):
+            return None
+        return wins, at, area
+
+    def cmd_drag(self, start, path, before_letting_go=None):
+        """⌘-drag from `start` through the points of `path`, as a person
+        would: ⌘ down, press, move a step at a time, let go, ⌘ up. Returns
+        what `before_letting_go` (if any) does, at the end of the path."""
+        # (Two presses on a tab in a moment are a double-click: rolling up.)
+        time.sleep(max(0.0, 0.45 - (time.time() - self.last_press)))
+        self.last_press = time.time()
+        ev = lambda e: self.req({"type": "synthetic", "events": [e]})
+        ev({"type": "move", "x": start[0], "y": start[1]})
+        ev({"type": "key", "key": CMD, "pressed": True})
+        ev({"type": "button", "button": BTN_LEFT, "pressed": True})
+        # (The drag starts once the loop turns.)
+        time.sleep(0.03)
+        x, y = start
+        for tx, ty in path:
+            n = max(2, int(max(abs(tx - x), abs(ty - y)) / 40))
+            for k in range(1, n + 1):
+                ev({"type": "move", "x": x + (tx - x) * k / n, "y": y + (ty - y) * k / n})
+            x, y = tx, ty
+            time.sleep(0.01)
+        seen = before_letting_go() if before_letting_go else None
+        ev({"type": "button", "button": BTN_LEFT, "pressed": False})
+        ev({"type": "key", "key": CMD, "pressed": False})
+        self.last_press = time.time()
+        return seen
+
+    def pull_away(self, at, frame):
+        """A point straight above or below `at`, on a tab bar of `frame`,
+        far enough from it for the tab to come out; on a display."""
+        for dy in self.rng.sample([70, -70], 2):
+            p = (at[0], at[1] + dy)
+            if self.on_display(p):
+                return p
+        return None
+
+    def on_display(self, p):
+        return any(inside(p, o) for o in self.output_rects())
+
+    def bands(self, wins, but):
+        """Each shown window's tab bar, and as near to it as a held tab
+        goes in there (`NEAR`), but `but`'s."""
+        ws = self.workspace()
+        out = []
+        for i, w in wins.items():
+            if i in but or w["minimized"] or w["workspace"] != ws or not fr(w):
+                continue
+            x, y, cw, _ = fr(w)
+            out.append((x, y - NEAR, cw, TAB_H + 2 * NEAR))
+        return out
+
+    def op_tab_along(self, wins, shown):
+        groups = [g for g in self.groups(wins).values() if g[0] in shown]
+        if not groups:
+            return
+        w = self.rng.choice(self.rng.choice(groups))
+        ready = self.hold_ready(w)
+        if not ready:
+            return
+        wins, at, _ = ready
+        g = self.group_of(wins, w)
+        if len(g) < 2:
+            return
+        x, y, fw, _ = fr(wins[w])
+        others = [i for i in g if i != w]
+        wanted = [wins[i]["tab_frame"]["width"] for i in others]
+        to_place = self.rng.randrange(len(g))
+        sx, sw = tab_slot(wanted, wins[w]["tab_frame"]["width"], fw, to_place)
+        # Its middle over that place's, a little up or down along the bar.
+        to = (x + sx + sw / 2, at[1] + self.rng.uniform(-8, 8))
+        if not self.on_display(to):
+            return
+        self.log(f"cmd-drag {w}'s tab from place {g.index(w)} to {to_place} along group {wins[w]['group']} {g}")
+        self.cmd_drag(at, [to])
+        after = self.settle()
+        self.check_sane(after)
+        want = others[:to_place] + [w] + others[to_place:]
+        if w not in after or self.group_of(after, w) != want:
+            self.fail(f"cmd-dragging {w}'s tab to place {to_place}: the group is {self.group_of(after, w) if w in after else '?'}, not {want}")
+        self.check_unchanged(f"cmd-dragging {w}'s tab along its group", wins, after)
+
+    def op_tab_out(self, wins, shown):
+        groups = [g for g in self.groups(wins).values() if g[0] in shown]
+        if not groups:
+            return
+        w = self.rng.choice(self.rng.choice(groups))
+        ready = self.hold_ready(w)
+        if not ready:
+            return
+        wins, at, _ = ready
+        g = self.group_of(wins, w)
+        if len(g) < 2:
+            return
+        away = self.pull_away(at, fr(wins[w]))
+        if not away:
+            return
+        # Let go somewhere on a display clear of every tab bar (over one, it
+        # would go in there), maybe by way of others.
+        bands = self.bands(wins, {w})
+        spots = []
+        for _ in range(40):
+            ox, oy, ow, oh = self.rng.choice(self.output_rects())
+            p = (ox + self.rng.uniform(40, max(41, ow - 40)), oy + self.rng.uniform(40, max(41, oh - 40)))
+            if not any(inside(p, b) for b in bands):
+                spots.append(p)
+                if len(spots) > self.rng.randrange(3):
+                    break
+        if not spots:
+            return
+        to = spots[-1]
+        self.log(f"cmd-drag {w}'s tab out of group {wins[w]['group']} {g} to {fmt(to)}" + (f" by way of {[fmt(p) for p in spots[:-1]]}" if len(spots) > 1 else ""))
+        self.cmd_drag(at, [away] + spots)
+        self.alone.add(w)
+        self.by_hand.discard(w)
+        after = self.settle()
+        self.check_sane(after)
+        if w not in after:
+            return
+        rest = [i for i in g if i != w]
+        if after[w].get("group") is not None:
+            self.fail(f"{w}, cmd-dragged out of its group, is in group {after[w]['group']}")
+        if len(rest) > 1 and self.group_of(after, rest[0]) != rest:
+            self.fail(f"the rest of {w}'s group {rest} came apart: now {self.group_of(after, rest[0])}")
+        # The pointer still on its tab, which is the size it was.
+        t = tab_rect(after[w])
+        if not t or not inside(to, (t[0] - 1, t[1] - 1, t[2] + 2, t[3] + 2)):
+            self.fail(f"{w}, let go at {fmt(to)} after cmd-dragging it out, has its tab at {t}")
+        if fr(after[w]) and fr(after[w])[2:] != fr(wins[w])[2:]:
+            self.fail(f"{w}, cmd-dragged out of its group, changed size: {fr(wins[w])} -> {fr(after[w])}")
+        self.check_unchanged(f"cmd-dragging {w} out of its group", wins, after, skip={w})
+
+    def op_tab_in(self, wins, shown):
+        if len(shown) < 2:
+            return
+        w = self.pick(shown)
+        targets = [i for i in shown if i not in self.mates(wins, w)]
+        if not targets:
+            return
+        t = self.pick(targets)
+        # Its group in front, then w's in front of that: only w's can hide
+        # it.
+        self.req({"type": "activate", "id": t})
+        self.settle()
+        _, t_area = self.area()
+        ready = self.hold_ready(w)
+        if not ready or not t_area:
+            return
+        wins, at, _ = ready
+        if t not in wins or wins[t]["minimized"] or t in self.mates(wins, w) or not fr(wins[t]):
+            return
+        tg = self.group_of(wins, t)
+        x, y, fw, _ = fr(wins[t])
+        cover = [fr(wins[i]) for i in self.mates(wins, w) if i != w]
+        cover = [(cx, cy - NEAR, cw, ch + NEAR) for cx, cy, cw, ch in cover]
+        # Over its tab bar; on its very tab if it is a dialog or panel, which
+        # hides what is behind it only there (else a group behind it could
+        # be there to go in).
+        bar = (x + 2, y - NEAR + 2, fw - 4, TAB_H + 2 * NEAR - 4)
+        if not wins[t].get("groupable"):
+            tx, ty, tw, th = tab_rect(wins[t])
+            bar = (tx + 1, ty + 1, tw - 2, th - 2)
+        to = None
+        for _ in range(20):
+            p = (bar[0] + self.rng.uniform(0, max(1, bar[2])), bar[1] + self.rng.uniform(0, max(1, bar[3])))
+            if inside(p, t_area) and not any(inside(p, c) for c in cover):
+                to = p
+                break
+        away = self.pull_away(at, fr(wins[w]))
+        if not to or not away:
+            return
+        # (A dialog or panel is never grouped: ⌘-dragging one moves it, as
+        # any drag does, and one is no place to go in.)
+        joins = wins[w].get("groupable") and wins[t].get("groupable")
+        name = lambda i: f"{i} ({wins[i]['app_id']}{'' if wins[i].get('groupable') else ', not groupable'}, group {wins[i].get('group')})"
+        self.log(f"cmd-drag {name(w)} onto {name(t)}'s tabs {tg} at {fmt(to)}")
+        shown_as = self.cmd_drag(at, [away, to], self.windows)
+        if joins:
+            self.by_hand |= {w, t}
+            self.alone -= {w, t}
+        elif wins[w].get("group") is not None:
+            self.alone.add(w)
+        after = self.settle()
+        self.check_sane(after)
+        if w not in after or t not in after:
+            return
+        if not joins:
+            if after[w].get("group") is not None or self.group_of(after, t) != tg:
+                self.fail(f"{name(w)} let go over {name(t)}'s tabs went in: {self.group_of(after, w)}")
+            return
+        # Held there, it showed as a tab among theirs, in its place.
+        held = tab_rect(shown_as.get(w, {}))
+        theirs = [tab_rect(shown_as[i]) for i in tg if i in shown_as]
+        if not held or held[1] != y or held[0] < x or held[0] + held[2] > x + fw or any(r and overlap(held, r) for r in theirs):
+            self.fail(f"{w} held over {t}'s tabs showed its tab at {held}, not among theirs {theirs} along {(x, y, fw)}")
+        got = self.group_of(after, w)
+        if after[w].get("group") is None or set(got) != set(tg) | {w} or [i for i in got if i != w] != tg:
+            self.fail(f"{w} let go over {t}'s tabs: its group is {got}, not {tg} with it")
+        # Where it showed it would go.
+        elif held and tab_rect(after[w]) != held:
+            self.fail(f"{w} showed its tab at {held} over {t}'s, but went in at {tab_rect(after[w])}")
+        self.check_unchanged(f"cmd-dragging {w} into {t}'s group", wins, after, skip={w})
+
+    def op_group_window(self, wins, shown):
+        if len(shown) < 2:
+            return
+        w = self.pick(shown)
+        t = self.pick([i for i in shown if i != w])
+        joins = wins[w].get("groupable") and wins[t].get("groupable")
+        tg = [i for i in self.group_of(wins, t) if i != w]
+        index = self.rng.choice([None] + list(range(len(tg) + 2)))
+        self.log(f"group_window {w} ({wins[w]['app_id']}) with {t} ({wins[t]['app_id']}, group {tg}) at {index}")
+        r = {"type": "group_window", "id": w, "with": t}
+        if index is not None:
+            r["index"] = index
+        reply = self.try_req(r)
+        if reply.get("type") != "error" and joins:
+            self.by_hand |= {w, t}
+            self.alone -= {w, t}
+        after = self.settle()
+        self.check_sane(after)
+        if (reply.get("type") == "error") == bool(joins):
+            self.fail(f"group_window {w} with {t}: {reply.get('message', 'done')}, though {w} is {'' if wins[w].get('groupable') else 'not '}groupable and {t} {'is' if wins[t].get('groupable') else 'is not'}")
+        if reply.get("type") == "error":
+            self.check_unchanged(f"group_window {w} with {t}, refused", wins, after)
+            return
+        at = len(tg) if index is None else min(index, len(tg))
+        want = tg[:at] + [w] + tg[at:]
+        if w in after and self.group_of(after, w) != want:
+            self.fail(f"group_window {w} with {t} at {index}: the group is {self.group_of(after, w)}, not {want}")
+        if w in after and not after[w]["focused"]:
+            self.fail(f"group_window {w} with {t}: {w} doesn't have the keyboard")
+        self.check_unchanged(f"group_window {w} with {t}", wins, after, skip={w})
+
+    def op_ungroup_window(self, wins, shown):
+        groups = [g for g in self.groups(wins).values() if g[0] in shown]
+        if not groups:
+            return
+        w = self.rng.choice(self.rng.choice(groups))
+        rest = [i for i in self.group_of(wins, w) if i != w]
+        self.log(f"ungroup_window {w} (group {wins[w]['group']} {self.group_of(wins, w)})")
+        self.req({"type": "ungroup_window", "id": w})
+        self.alone.add(w)
+        self.by_hand.discard(w)
+        after = self.settle()
+        self.check_sane(after)
+        if w not in after:
+            return
+        if after[w].get("group") is not None:
+            self.fail(f"ungroup_window {w}: it is in group {after[w]['group']}")
+        if not after[w]["focused"]:
+            self.fail(f"ungroup_window {w}: it doesn't have the keyboard")
+        # Stepped out from the group as a cascade, at its size.
+        if fr(after[w]) == fr(wins[w]) or fr(after[w])[2:] != fr(wins[w])[2:]:
+            self.fail(f"ungroup_window {w}: {fr(wins[w])} -> {fr(after[w])}")
+        if len(rest) > 1 and self.group_of(after, rest[0]) != rest:
+            self.fail(f"ungroup_window {w}: the rest of its group {rest} came apart: now {self.group_of(after, rest[0])}")
+        self.check_unchanged(f"ungroup_window {w}", wins, after, skip={w})
+
+    def op_move_tab(self, wins, shown):
+        groups = [g for g in self.groups(wins).values() if g[0] in shown]
+        if not groups:
+            return
+        g = self.rng.choice(groups)
+        w = self.rng.choice(g)
+        index = self.rng.randrange(len(g) + 1)
+        self.log(f"move_tab {w} to {index} in group {wins[w]['group']} {g}")
+        self.req({"type": "move_tab", "id": w, "index": index})
+        after = self.settle()
+        self.check_sane(after)
+        others = [i for i in g if i != w]
+        want = others[:index] + [w] + others[index:]
+        if w in after and self.group_of(after, w) != want:
+            self.fail(f"move_tab {w} to {index}: the group is {self.group_of(after, w)}, not {want}")
+        self.check_unchanged(f"move_tab {w}", wins, after)
+
     def run(self, steps, keep_going):
         self.keep_going = keep_going
         print(f"wm-fuzz {self.name}: seed {self.seed}, {steps} steps", flush=True)
@@ -634,6 +1041,43 @@ def rect(f):
 def fr(w):
     """Its frame; None while it is hidden or on another workspace."""
     return rect(w["frame"]) if w.get("frame") else None
+
+
+def tab_rect(w):
+    t = w.get("tab_frame")
+    return rect(t) if t else None
+
+
+def inside(p, r):
+    return r[0] <= p[0] < r[0] + r[2] and r[1] <= p[1] < r[1] + r[3]
+
+
+def fmt(p):
+    return f"({p[0]:.0f}, {p[1]:.0f})"
+
+
+def tab_bar(wanted, frame_w):
+    """Each tab's offset and width along a group's top (as app_server's
+    shell/groups.rs `tab_bar` lays them)."""
+    n = len(wanted)
+    if not n:
+        return []
+    if sum(wanted) <= frame_w:
+        widths = list(wanted)
+    else:
+        each = max(frame_w // n, 1)
+        widths = [each] * (n - 1) + [max(frame_w - each * (n - 1), 1)]
+    out, x = [], 0
+    for w in widths:
+        out.append((x, w))
+        x += w
+    return out
+
+
+def tab_slot(wanted, width, frame_w, place):
+    """The offset and width a tab `width` wide has at `place` among tabs
+    wanting `wanted`."""
+    return tab_bar(wanted[:place] + [width] + wanted[place:], frame_w)[place]
 
 
 def overlap(a, b):

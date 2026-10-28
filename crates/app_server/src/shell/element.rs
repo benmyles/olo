@@ -125,11 +125,12 @@ impl WindowElement {
         self.decorated() && self.decoration().rolled
     }
 
-    /// Only its tab shows: rolled up, or behind others in its group.
+    /// Only its tab shows: rolled up, behind others in its group, or
+    /// being put in a group by hand.
     fn tab_only(&self) -> bool {
         self.decorated() && {
             let d = self.decoration();
-            d.rolled || d.behind
+            d.rolled || d.behind || d.docked
         }
     }
 
@@ -493,7 +494,7 @@ impl SpaceElement for WindowElement {
     }
     fn bbox(&self) -> Rectangle<i32, Logical> {
         let bbox = SpaceElement::bbox(&self.0);
-        if self.rolled() {
+        if self.rolled() || self.decorated() && self.decoration().docked {
             let tab = self.decoration().tab_layout(&self.title(), self.content_size());
             return tab.rect();
         }

@@ -825,8 +825,11 @@ and display change, checking after each step that app_server answers,
 every shown window is on a display with its tab in reach, exactly one
 shown window has the keyboard, commands that shouldn't move other
 windows don't, and round trips (zoom/unzoom, tile/Restore, Undo, a
-workspace or display and back) come back exactly. A run is reproducible
-from its seed. Run it after changing anything in shell/.
+workspace or display and back) come back exactly. It ⌘-drags tabs along,
+out of and into groups, and uses GroupWindow / UngroupWindow / MoveTab,
+checking that groups hold together (one frame, tabs side by side in
+order, other apps' windows only by hand). A run is reproducible from
+its seed. Run it after changing anything in shell/.
 
 `tools/dev/perf-fuzz NAME [--seed N] [--steps N] [--keep-going]` is its
 counterpart for speed: on the same kind of session it hammers the
@@ -1311,7 +1314,31 @@ window leaving a group gets its own tab back and steps out by `CASCADE`
 so it isn't hidden. Grouping is on for every app; the ones a person
 turns off are `TilingSettings::ungrouped_apps` (app ids), toggled by
 Group Windows in Deskbar's team menu and in Tracker's menu for an app
-(`olo_kit::settings::groups_windows` / `set_groups_windows`).
+(`olo_kit::settings::groups_windows` / `set_groups_windows`). A group's
+frame is never smaller than any of its windows can be (`least_frame`).
+
+Only an app's own windows group by themselves, but any windows can be
+grouped by hand (`WindowMeta::grouping`: `Auto`, `Alone` once taken out,
+`With(key)` once put in one; `tab_order` places each tab). ⌘-dragging a
+tab (shell/tabdrag.rs) works as Haiku's Stack & Tile does, with ⌘ for
+its Option key: along its group's tabs it reorders them, the others
+making room where it would go; pulled `TEAR` px above or below the tab
+row (or `TEAR_SIDE` past its ends) the window comes out and follows the
+pointer on its own (`Alone`, so it doesn't just join its app's group
+again); held within `NEAR` px of another group's tabs, or a lone
+window's, it folds into just its tab in the place it would take, and
+that group's tabs and frame light up in the focus blue
+(`Decoration::target`); let go there, it joins at that place
+(`put_in_group`, showing only its tab for up to `DOCKING` while it draws
+at the group's size). Back over its own group, it goes back in. A plain
+drag still moves the whole group. The window menu (the palette's) has
+Remove from Group. Dialogs, fixed-size panels and fullscreen windows
+never group (`groupable`). Agents do the same with `GroupWindow { id,
+with, index }` (into `with`'s group, or a new one with it), `UngroupWindow
+{ id }` and `MoveTab { id, index }`; `WindowInfo` says `group` (a number
+its members share), `tab` (its place), `groupable`, `output` (the
+display it is on, or was on while hidden) and, in `Reply::Windows`,
+`tab_frame` (where to click or ⌘-drag its tab).
 
 Other programs arrange windows through two requests: `Arrangement`
 answers the active display's connector, its tiling area (global logical

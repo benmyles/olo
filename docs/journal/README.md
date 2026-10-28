@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-28
 
+### Window groups: ⌘-dragging a tab into another group
+
+*10:57* — Any window can be grouped by hand: ⌘-drag its tab over another window's (here Tracker's over Terminal's); it folds into its tab where it would go and that group lights up in the focus blue (light, dark). Let go, and it joins. ⌘-dragging a tab away pops the window out; along the tabs, it reorders them.
+
+![Window groups: ⌘-dragging a tab into another group](2026-10-28/105726-window-groups-dragging-a-tab-into-another-group.png)
+
 ### Terminal: Catppuccin colours
 
 *10:56* — Settings ▸ Colors offers Catppuccin Latte and Frappé for light mode, Macchiato and Mocha for dark; Frappé (left, light mode) and Macchiato (right, dark mode) are the defaults.

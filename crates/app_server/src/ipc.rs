@@ -264,6 +264,28 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 None => not_found(),
             },
+            Request::GroupWindow { id, with, index } => match (self.window_by_id(id), self.window_by_id(with)) {
+                (Some(w), Some(t)) if self.space.element_location(&w).is_some() && self.space.element_location(&t).is_some() => {
+                    if self.put_in_group(&w, &t, index.map(|i| i as usize)) {
+                        self.focus_window(&w);
+                        Reply::Ok
+                    } else {
+                        Reply::Error { message: format!("window {id} can't be grouped with {with} (one is a dialog, a fixed-size panel or fullscreen, or they are the same window)") }
+                    }
+                }
+                (Some(_), Some(_)) => Reply::Error { message: "both windows must be showing".into() },
+                _ => not_found(),
+            },
+            Request::UngroupWindow { id } => match self.window_by_id(id) {
+                Some(w) if self.ungroup_window(&w) => Reply::Ok,
+                Some(_) => Reply::Error { message: format!("window {id} isn't in a group") },
+                None => not_found(),
+            },
+            Request::MoveTab { id, index } => match self.window_by_id(id) {
+                Some(w) if self.move_tab(&w, index as usize) => Reply::Ok,
+                Some(_) => Reply::Error { message: format!("window {id} isn't in a group") },
+                None => not_found(),
+            },
             Request::Arrangement => match self.arrangement() {
                 Some((output, area, windows)) => {
                     let infos = self.window_infos_with_frames();

@@ -403,6 +403,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             if self.hints.active() {
                 self.hints.close();
             }
+            // A ⌘-click: letting go of ⌘ after isn't a tap of it.
+            self.keymap.command_used();
             self.update_keyboard_focus(self.pointer.current_location(), serial);
         };
         let pointer = self.pointer.clone();

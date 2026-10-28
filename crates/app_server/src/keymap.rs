@@ -211,6 +211,19 @@ impl Keymap {
         self.recording = on;
     }
 
+    /// A ⌘ key is held (one standing for the command key).
+    pub fn command_held(&self) -> bool {
+        self.cmd_keys > 0
+    }
+
+    /// Something was done with ⌘ held other than typing (a click, a
+    /// ⌘-drag of a tab): letting go of it is no tap.
+    pub fn command_used(&mut self) {
+        if self.cmd_keys > 0 {
+            self.cmd_used = true;
+        }
+    }
+
     pub fn recording(&self) -> bool {
         self.recording
     }
@@ -636,6 +649,12 @@ mod tests {
         r.down(LEFTMETA);
         r.t += TAP;
         assert_eq!(r.up(LEFTMETA), [Key(RIGHTCTRL, false)]);
+        // A ⌘-click (⌘-dragging a tab) in between: not a tap either.
+        r.down(LEFTMETA);
+        assert!(r.k.command_held());
+        r.k.command_used();
+        assert_eq!(r.up(LEFTMETA), [Key(RIGHTCTRL, false)]);
+        assert!(!r.k.command_held());
     }
 
     #[test]
