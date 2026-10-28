@@ -1,7 +1,9 @@
-//! Terminal colour schemes. The defaults are Olo's own: a warm paper
-//! white with ink-dark text in light mode and a soft graphite in dark
-//! mode, with ANSI colours tuned so every one of the 16 reads clearly on
-//! the background (no neon green on black).
+//! Terminal colour schemes: Olo's own (a warm paper white with ink-dark
+//! text in light mode and a soft graphite in dark mode, with ANSI colours
+//! tuned so every one of the 16 reads clearly on the background: no neon
+//! green on black) and Catppuccin's four flavours, as its palette
+//! (v1.8.0) gives them. One is chosen for light mode and one for dark
+//! (`SchemeId::light` / `dark`); Frappé and Macchiato by default.
 
 use alacritty_terminal::{
     term::color::Colors,
@@ -18,6 +20,58 @@ pub struct Scheme {
     pub selection: Rgb,
     /// Black, red, green, yellow, blue, magenta, cyan, white; then bright.
     pub ansi: [Rgb; 16],
+}
+
+/// A scheme Terminal offers, as kept in its settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SchemeId {
+    OloLight,
+    OloDark,
+    Latte,
+    Frappe,
+    Macchiato,
+    Mocha,
+}
+
+impl SchemeId {
+    /// The ones offered for light mode, and for dark mode (Frappé, the
+    /// lightest of Catppuccin's darks, is a light-mode choice here).
+    pub const LIGHT: [SchemeId; 3] = [SchemeId::OloLight, SchemeId::Latte, SchemeId::Frappe];
+    pub const DARK: [SchemeId; 3] = [SchemeId::OloDark, SchemeId::Macchiato, SchemeId::Mocha];
+
+    pub fn light() -> SchemeId {
+        SchemeId::Frappe
+    }
+
+    pub fn dark() -> SchemeId {
+        SchemeId::Macchiato
+    }
+
+    pub fn scheme(self) -> Scheme {
+        match self {
+            SchemeId::OloLight => Scheme::light(),
+            SchemeId::OloDark => Scheme::dark(),
+            SchemeId::Latte => Scheme::latte(),
+            SchemeId::Frappe => Scheme::frappe(),
+            SchemeId::Macchiato => Scheme::macchiato(),
+            SchemeId::Mocha => Scheme::mocha(),
+        }
+    }
+
+    /// Its name in menus.
+    pub fn name(self) -> &'static str {
+        self.scheme().name
+    }
+
+    /// Its menu command, and back.
+    pub fn command(self) -> String {
+        format!("colors:{}", serde_json::to_value(self).ok().and_then(|v| v.as_str().map(str::to_owned)).unwrap_or_default())
+    }
+
+    pub fn from_command(command: &str) -> Option<SchemeId> {
+        serde_json::from_value(serde_json::Value::String(command.strip_prefix("colors:")?.to_owned())).ok()
+    }
 }
 
 const fn rgb(hex: u32) -> Rgb {
@@ -57,8 +111,46 @@ impl Scheme {
         }
     }
 
-    pub fn for_mode(dark: bool) -> Scheme {
-        if dark { Scheme::dark() } else { Scheme::light() }
+    /// A Catppuccin flavour, as its own ports draw it: Text on Base, the
+    /// palette's ANSI colours, a Rosewater cursor, and the selection in
+    /// Overlay 2 at a quarter over Base (its style guide's 20–30%).
+    fn catppuccin(name: &'static str, text: u32, base: u32, overlay2: u32, rosewater: u32, ansi: [u32; 16]) -> Scheme {
+        Scheme {
+            name,
+            foreground: rgb(text),
+            background: rgb(base),
+            cursor: rgb(rosewater),
+            selection: mix(rgb(overlay2), rgb(base), 0.25),
+            ansi: ansi.map(rgb),
+        }
+    }
+
+    pub fn latte() -> Scheme {
+        Scheme::catppuccin("Catppuccin Latte", 0x4c4f69, 0xeff1f5, 0x7c7f93, 0xdc8a78, [
+            0x5c5f77, 0xd20f39, 0x40a02b, 0xdf8e1d, 0x1e66f5, 0xea76cb, 0x179299, 0xacb0be,
+            0x6c6f85, 0xde293e, 0x49af3d, 0xeea02d, 0x456eff, 0xfe85d8, 0x2d9fa8, 0xbcc0cc,
+        ])
+    }
+
+    pub fn frappe() -> Scheme {
+        Scheme::catppuccin("Catppuccin Frappé", 0xc6d0f5, 0x303446, 0x949cbb, 0xf2d5cf, [
+            0x51576d, 0xe78284, 0xa6d189, 0xe5c890, 0x8caaee, 0xf4b8e4, 0x81c8be, 0xa5adce,
+            0x626880, 0xe67172, 0x8ec772, 0xd9ba73, 0x7b9ef0, 0xf2a4db, 0x5abfb5, 0xb5bfe2,
+        ])
+    }
+
+    pub fn macchiato() -> Scheme {
+        Scheme::catppuccin("Catppuccin Macchiato", 0xcad3f5, 0x24273a, 0x939ab7, 0xf4dbd6, [
+            0x494d64, 0xed8796, 0xa6da95, 0xeed49f, 0x8aadf4, 0xf5bde6, 0x8bd5ca, 0xa5adcb,
+            0x5b6078, 0xec7486, 0x8ccf7f, 0xe1c682, 0x78a1f6, 0xf2a9dd, 0x63cbc0, 0xb8c0e0,
+        ])
+    }
+
+    pub fn mocha() -> Scheme {
+        Scheme::catppuccin("Catppuccin Mocha", 0xcdd6f4, 0x1e1e2e, 0x9399b2, 0xf5e0dc, [
+            0x45475a, 0xf38ba8, 0xa6e3a1, 0xf9e2af, 0x89b4fa, 0xf5c2e7, 0x94e2d5, 0xa6adc8,
+            0x585b70, 0xf37799, 0x89d88b, 0xebd391, 0x74a8fc, 0xf2aede, 0x6bd7ca, 0xbac2de,
+        ])
     }
 
     /// The colour `index` of the 256-colour palette.
@@ -146,6 +238,41 @@ mod tests {
             }
             assert!(contrast(s.foreground, s.selection) > 7.0, "{} selection", s.name);
         }
+    }
+
+    /// Catppuccin is drawn as its palette gives it, not "improved": its
+    /// colours are checked against palette.json, and only for what it
+    /// promises (text that reads, a selection that doesn't hide it).
+    #[test]
+    fn catppuccin_as_its_palette() {
+        let s = Scheme::mocha();
+        assert_eq!((s.foreground, s.background, s.cursor), (rgb(0xcdd6f4), rgb(0x1e1e2e), rgb(0xf5e0dc)));
+        assert_eq!((s.ansi[1], s.ansi[9], s.ansi[15]), (rgb(0xf38ba8), rgb(0xf37799), rgb(0xbac2de)));
+        // Overlay 2 at a quarter over Base (Ghostty's port has #353749 at a fifth).
+        assert_eq!(s.selection, rgb(0x3b3d4f));
+        let l = Scheme::latte();
+        assert_eq!((l.foreground, l.background, l.ansi[0], l.ansi[7]), (rgb(0x4c4f69), rgb(0xeff1f5), rgb(0x5c5f77), rgb(0xacb0be)));
+        assert_eq!((Scheme::frappe().background, Scheme::macchiato().background), (rgb(0x303446), rgb(0x24273a)));
+        for id in SchemeId::LIGHT.into_iter().chain(SchemeId::DARK) {
+            let s = id.scheme();
+            assert!(contrast(s.foreground, s.background) >= 7.0, "{} text: {:.2}", s.name, contrast(s.foreground, s.background));
+            assert!(contrast(s.foreground, s.selection) >= 4.5, "{} selection: {:.2}", s.name, contrast(s.foreground, s.selection));
+            assert_ne!(s.cursor, s.background, "{} cursor", s.name);
+        }
+    }
+
+    #[test]
+    fn choices() {
+        // Frappé in light mode and Macchiato in dark, unless chosen.
+        assert_eq!((SchemeId::light(), SchemeId::dark()), (SchemeId::Frappe, SchemeId::Macchiato));
+        assert!(SchemeId::LIGHT.contains(&SchemeId::light()) && SchemeId::DARK.contains(&SchemeId::dark()));
+        for id in SchemeId::LIGHT.into_iter().chain(SchemeId::DARK) {
+            assert_eq!(SchemeId::from_command(&id.command()), Some(id), "{}", id.command());
+        }
+        assert_eq!(SchemeId::Frappe.command(), "colors:frappe");
+        assert_eq!(SchemeId::OloLight.command(), "colors:olo-light");
+        assert_eq!(SchemeId::from_command("colors:nope"), None);
+        assert_eq!(SchemeId::Frappe.name(), "Catppuccin Frappé");
     }
 
     #[test]

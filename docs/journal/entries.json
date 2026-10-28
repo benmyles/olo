@@ -1486,5 +1486,11 @@
   "title": "Preferences \u25b8 Windows in dark mode",
   "caption": "The Windows panel in BeBox dark: the miniature's windows take the document colour and the theme's tab colours.",
   "image": "2026-10-28/015604-preferences-windows-in-dark-mode.png"
+ },
+ {
+  "time": "2026-10-28T10:56:56",
+  "title": "Terminal: Catppuccin colours",
+  "caption": "Settings \u25b8 Colors offers Catppuccin Latte and Frapp\u00e9 for light mode, Macchiato and Mocha for dark; Frapp\u00e9 (left, light mode) and Macchiato (right, dark mode) are the defaults.",
+  "image": "2026-10-28/105656-terminal-catppuccin-colours.png"
  }
 ]

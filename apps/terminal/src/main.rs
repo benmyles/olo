@@ -1,6 +1,7 @@
 //! Terminal: a shell in a window, BeOS style (one process, any number of
 //! windows), on alacritty's terminal emulator. GPU-drawn through the kit,
-//! with Olo's own light and dark colour schemes. A window can hold
+//! with Olo's own light and dark colour schemes and Catppuccin's
+//! (colors.rs), one for each appearance. A window can hold
 //! several shells as tabs, and be a named, coloured group of them that
 //! can be saved and opened again (groups.rs). Tabs running a coding agent
 //! show what it's doing, and say when it needs you (agent.rs).
@@ -37,7 +38,7 @@ use olo_kit::{
 };
 
 use agent::{Agent, State};
-use colors::Scheme;
+use colors::{Scheme, SchemeId};
 use groups::Group;
 use olo_kit::notify::{Note, NoteEvent, NoteId, NoteKind, Notifier};
 use session::{Message, Session, Size, Start, TermEvent};
@@ -110,12 +111,16 @@ fn pane_head(ui: &egui::Ui, pane: egui::Rect, title: &str, icon: &dyn Fn(&egui::
     style::label_fit(painter, x, cy, egui::Align::Min, title, font, color, head.right() - m::SPACING - x);
 }
 
+/// Which of the two schemes (`Settings::light_colors`, `dark_colors`)
+/// Terminal draws with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
 enum SchemeChoice {
     /// Follow the desktop's light/dark appearance.
     #[default]
     Auto,
+    /// Always the light-mode one.
     Light,
+    /// Always the dark-mode one.
     Dark,
 }
 
@@ -125,11 +130,23 @@ struct Settings {
     scheme: SchemeChoice,
     cols: usize,
     rows: usize,
+    /// The colours in light mode, and in dark mode.
+    #[serde(default = "SchemeId::light")]
+    light_colors: SchemeId,
+    #[serde(default = "SchemeId::dark")]
+    dark_colors: SchemeId,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { text_size: DEFAULT_TEXT_SIZE, scheme: SchemeChoice::Auto, cols: DEFAULT_SIZE.0, rows: DEFAULT_SIZE.1 }
+        Settings {
+            text_size: DEFAULT_TEXT_SIZE,
+            scheme: SchemeChoice::Auto,
+            cols: DEFAULT_SIZE.0,
+            rows: DEFAULT_SIZE.1,
+            light_colors: SchemeId::light(),
+            dark_colors: SchemeId::dark(),
+        }
     }
 }
 
@@ -139,7 +156,23 @@ fn settings_path() -> PathBuf {
 
 impl Settings {
     fn load() -> Settings {
-        std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+        std::fs::read_to_string(settings_path()).ok().map(|t| Settings::parse(&t)).unwrap_or_default()
+    }
+
+    fn parse(text: &str) -> Settings {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else { return Settings::default() };
+        // From before there was a choice for each appearance, Light and
+        // Dark were Olo Light and Olo Dark, always: still so.
+        let before = value.get("light_colors").is_none() && value.get("dark_colors").is_none();
+        let mut s: Settings = serde_json::from_value(value).unwrap_or_default();
+        if before {
+            match s.scheme {
+                SchemeChoice::Light => s.light_colors = SchemeId::OloLight,
+                SchemeChoice::Dark => s.dark_colors = SchemeId::OloDark,
+                SchemeChoice::Auto => {}
+            }
+        }
+        s
     }
 
     fn save(&self) {
@@ -384,11 +417,13 @@ struct LegacyWindow {
 
 impl Terminal {
     fn scheme(&self) -> Scheme {
-        match self.settings.scheme {
-            SchemeChoice::Auto => Scheme::for_mode(self.dark),
-            SchemeChoice::Light => Scheme::light(),
-            SchemeChoice::Dark => Scheme::dark(),
-        }
+        let s = &self.settings;
+        let dark = match s.scheme {
+            SchemeChoice::Auto => self.dark,
+            SchemeChoice::Light => false,
+            SchemeChoice::Dark => true,
+        };
+        if dark { s.dark_colors.scheme() } else { s.light_colors.scheme() }
     }
 
     fn open(&mut self, cx: &mut Cx, cwd: Option<PathBuf>, command: Option<Vec<String>>) {
@@ -1199,13 +1234,19 @@ impl App for Terminal {
         for s in TEXT_SIZES {
             text = text.item(format!("{s}"), format!("size-{s}"), None).checked(self.settings.text_size == s);
         }
+        let pick = |title: &str, ids: [SchemeId; 3], chosen: SchemeId| {
+            ids.iter().fold(Menu::new(title), |m, &id| m.item(id.name(), id.command(), None).checked(id == chosen))
+        };
         let scheme = Menu::new("Colors")
             .item("Match Appearance", "scheme-auto", None)
             .checked(self.settings.scheme == SchemeChoice::Auto)
-            .item("Olo Light", "scheme-light", None)
+            .item("Always Light", "scheme-light", None)
             .checked(self.settings.scheme == SchemeChoice::Light)
-            .item("Olo Dark", "scheme-dark", None)
-            .checked(self.settings.scheme == SchemeChoice::Dark);
+            .item("Always Dark", "scheme-dark", None)
+            .checked(self.settings.scheme == SchemeChoice::Dark)
+            .separator()
+            .submenu(pick("Light Colors", SchemeId::LIGHT, self.settings.light_colors))
+            .submenu(pick("Dark Colors", SchemeId::DARK, self.settings.dark_colors));
         const NUMBERS: [Key; 9] = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9];
         let grouped = t.group.is_some();
         let mut open_group = Menu::new("Open Saved Group");
@@ -1437,6 +1478,15 @@ impl App for Terminal {
                 self.settings.save();
                 cx.redraw_all();
             }
+            c if let Some(id) = SchemeId::from_command(c) => {
+                if SchemeId::DARK.contains(&id) {
+                    self.settings.dark_colors = id;
+                } else {
+                    self.settings.light_colors = id;
+                }
+                self.settings.save();
+                cx.redraw_all();
+            }
             c => {
                 if let Some(i) = c.strip_prefix("tab:").and_then(|n| n.parse().ok()) {
                     t.select(i);
@@ -1648,5 +1698,31 @@ mod drop_tests {
         assert_eq!(super::shell_quote("/tmp/a.png"), "/tmp/a.png");
         assert_eq!(super::shell_quote("/tmp/My Photo.png"), "'/tmp/My Photo.png'");
         assert_eq!(super::shell_quote("/tmp/it's"), "'/tmp/it'\\''s'");
+    }
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::{SchemeChoice, SchemeId, Settings};
+
+    #[test]
+    fn colours_for_each_appearance() {
+        // New: Catppuccin Frappé in light mode, Macchiato in dark.
+        let s = Settings::parse("{}");
+        assert_eq!((s.light_colors, s.dark_colors), (SchemeId::Frappe, SchemeId::Macchiato));
+        let old = r#"{"text_size":12.0,"cols":120,"rows":25,"scheme":"#;
+        // Saved before the choice: matching the appearance takes the new
+        // defaults, while one who picked Olo Light (or Dark) keeps it.
+        let s = Settings::parse(&format!("{old}\"Auto\"}}"));
+        assert_eq!((s.scheme, s.light_colors, s.dark_colors), (SchemeChoice::Auto, SchemeId::Frappe, SchemeId::Macchiato));
+        let s = Settings::parse(&format!("{old}\"Light\"}}"));
+        assert_eq!((s.scheme, s.light_colors), (SchemeChoice::Light, SchemeId::OloLight));
+        let s = Settings::parse(&format!("{old}\"Dark\"}}"));
+        assert_eq!((s.scheme, s.dark_colors), (SchemeChoice::Dark, SchemeId::OloDark));
+        // Saved since: as saved.
+        let s = Settings::parse(&format!("{old}\"Light\",\"light_colors\":\"latte\",\"dark_colors\":\"mocha\"}}"));
+        assert_eq!((s.light_colors, s.dark_colors), (SchemeId::Latte, SchemeId::Mocha));
+        let round = Settings::parse(&serde_json::to_string(&s).unwrap());
+        assert_eq!((round.scheme, round.light_colors, round.dark_colors), (s.scheme, s.light_colors, s.dark_colors));
     }
 }

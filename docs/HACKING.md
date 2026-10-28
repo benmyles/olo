@@ -1879,6 +1879,16 @@ other goes to the shell as Ctrl+key, so ⌘R searches history like Ctrl+R. ⌥�
 using the kitty keyboard protocol (Claude Code), which gets the
 protocol's `CSI 1;3 D` / `C` and reads ESC b as Escape then b.
 
+**Colours** (`src/colors.rs`, Settings ▸ Colors). Match Appearance,
+Always Light or Always Dark picks which of two schemes shows; Light
+Colors offers Olo Light, Catppuccin Latte and Catppuccin Frappé, Dark
+Colors Olo Dark, Catppuccin Macchiato and Mocha (`SchemeId::LIGHT` /
+`DARK`). Frappé, the lightest of Catppuccin's dark flavours, is the
+light default and Macchiato the dark one (`SchemeId::light` / `dark`).
+A Catppuccin scheme draws as its own ports do (`Scheme::catppuccin`:
+Text on Base, Rosewater cursor, its 16 ANSI colours); the choices are
+`Settings::light_colors` / `dark_colors`.
+
 ## The polkit agent (apps/polkit-agent, olo_system::polkit)
 
 Asks for a password when a program needs an administrator (timedated,

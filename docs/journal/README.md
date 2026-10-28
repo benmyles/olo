@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-28
 
+### Terminal: Catppuccin colours
+
+*10:56* — Settings ▸ Colors offers Catppuccin Latte and Frappé for light mode, Macchiato and Mocha for dark; Frappé (left, light mode) and Macchiato (right, dark mode) are the defaults.
+
+![Terminal: Catppuccin colours](2026-10-28/105656-terminal-catppuccin-colours.png)
+
 ### Preferences ▸ Windows in dark mode
 
 *01:56* — The Windows panel in BeBox dark: the miniature's windows take the document colour and the theme's tab colours.
