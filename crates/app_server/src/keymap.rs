@@ -72,6 +72,13 @@ pub enum Action {
     NextWindow { back: bool },
     /// ⌘ released after switching: commit Twitcher's choice.
     SwitchDone,
+    /// An arrow while switching: along the row (←/→) or to another
+    /// workspace's row (↑/↓).
+    SwitchMove { dx: i32, dy: i32 },
+    /// A letter while switching, with keyboard hints on: the cell it marks.
+    SwitchPick(char),
+    /// Esc while switching: everything back as it was.
+    SwitchCancel,
     /// A tap of ⌘ (if chosen), or keyd's spelling of one.
     Palette,
     /// A tap of Control and Shift together (if chosen): keyboard hints.
@@ -318,6 +325,25 @@ impl Keymap {
         }
         if self.cmd_keys > 0 {
             self.cmd_used = true;
+        }
+        if self.switching && self.cmd_keys > 0 && !self.ctrl() && !self.alt() {
+            let action = match key {
+                LEFT => Some(Action::SwitchMove { dx: -1, dy: 0 }),
+                RIGHT => Some(Action::SwitchMove { dx: 1, dy: 0 }),
+                UP => Some(Action::SwitchMove { dx: 0, dy: -1 }),
+                DOWN => Some(Action::SwitchMove { dx: 0, dy: 1 }),
+                ESC => {
+                    self.switching = false;
+                    Some(Action::SwitchCancel)
+                }
+                _ if opts.hints && !self.shift() => crate::hints::letter(key).map(Action::SwitchPick),
+                _ => None,
+            };
+            if let Some(action) = action {
+                out.push(Out::Action(action));
+                self.held.insert(key, h);
+                return;
+            }
         }
         let chord = self.chord(key);
         if let Some(&(_, shortcut)) = self.bindings.iter().find(|(c, _)| *c == chord) {
@@ -568,6 +594,31 @@ mod tests {
         assert_eq!(r.down(GRAVE), [Out::Action(Action::NextWindow { back: false })]);
         r.up(GRAVE);
         assert_eq!(r.up(LEFTMETA), [Key(RIGHTCTRL, false), Out::Action(Action::SwitchDone)]);
+    }
+
+    #[test]
+    fn twitcher_arrows_letters_and_esc() {
+        let mut r = Rig::new();
+        r.down(LEFTMETA);
+        // Not switching yet: ⌘← is Home.
+        assert!(!r.down(LEFT).contains(&Out::Action(Action::SwitchMove { dx: -1, dy: 0 })));
+        r.up(LEFT);
+        r.down(TAB);
+        r.up(TAB);
+        assert_eq!(r.down(DOWN), [Out::Action(Action::SwitchMove { dx: 0, dy: 1 })]);
+        assert_eq!(r.up(DOWN), []);
+        assert_eq!(r.down(LEFT), [Out::Action(Action::SwitchMove { dx: -1, dy: 0 })]);
+        r.up(LEFT);
+        // Letters only with hints on.
+        let off = Options { hints: false, ..OPTS };
+        assert!(!r.k.feed(A, true, r.t, off, false).iter().any(|o| matches!(o, Out::Action(_))));
+        r.k.feed(A, false, r.t, off, false);
+        assert_eq!(r.down(A), [Out::Action(Action::SwitchPick('a'))]);
+        r.up(A);
+        assert_eq!(r.down(ESC), [Out::Action(Action::SwitchCancel)]);
+        r.up(ESC);
+        // Cancelled: letting go of ⌘ commits nothing.
+        assert_eq!(r.up(LEFTMETA), [Key(RIGHTCTRL, false)]);
     }
 
     #[test]

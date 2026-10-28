@@ -304,11 +304,11 @@ fn twitcher_overlay(
         .into_iter()
         .map(crate::render::CustomRenderElements::Overlay)
         .collect();
-    let Some((entries, selected)) = state.twitcher_entries() else { return out };
+    let Some(shown) = state.twitcher_entries() else { return out };
     out.extend(
         state
             .twitcher
-            .element(&mut state.backend_data.renderer, &entries, selected, geo.size, scale)
+            .element(&mut state.backend_data.renderer, &shown, geo.size, scale)
             .map(crate::render::CustomRenderElements::Overlay),
     );
     out

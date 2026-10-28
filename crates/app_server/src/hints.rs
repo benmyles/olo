@@ -365,7 +365,7 @@ pub fn letter(key: u32) -> Option<char> {
     ROWS.iter().find_map(|&(first, row)| key.checked_sub(first).and_then(|i| row.chars().nth(i as usize)))
 }
 
-fn label(i: usize) -> char {
+pub fn label(i: usize) -> char {
     LETTERS.chars().nth(i).unwrap_or('?')
 }
 
@@ -862,6 +862,16 @@ fn solid(c: [u8; 4]) -> MemoryRenderBuffer {
 /// A BeOS-yellow key cap with the letter on it, at `s` device pixels a
 /// logical one.
 fn badge(p: &olo_theme::Palette, c: char, s: f64) -> (MemoryRenderBuffer, Size<i32, Physical>) {
+    let pm = badge_pixmap(p, c, s);
+    let (w, h) = (pm.width() as i32, pm.height() as i32);
+    let bsize: Size<i32, Buffer> = (w, h).into();
+    let buffer = MemoryRenderBuffer::from_slice(pm.data(), Fourcc::Abgr8888, bsize, 1, Transform::Normal, Some(vec![Rectangle::from_size(bsize)]));
+    (buffer, (w, h).into())
+}
+
+/// A hint's yellow badge with `c` on it, at scale `s` (Twitcher letters
+/// its cells with the same).
+pub fn badge_pixmap(p: &olo_theme::Palette, c: char, s: f64) -> Pixmap {
     let px = |l: f64| (l * s).round() as i32;
     let u = px(1.0).max(1);
     let label = c.to_ascii_uppercase().to_string();
@@ -878,9 +888,7 @@ fn badge(p: &olo_theme::Palette, c: char, s: f64) -> (MemoryRenderBuffer, Size<i
     fill(&mut pm, w - 2 * u, u, u, h - 2 * u, p.tab_focused_shadow);
     let y = (h as f32 - size * 1.25) / 2.0;
     text::draw(&mut pm, &label, ((w - tw) as f32 / 2.0).round(), y.round(), size, true, p.tab_text_focused);
-    let bsize: Size<i32, Buffer> = (w, h).into();
-    let buffer = MemoryRenderBuffer::from_slice(pm.data(), Fourcc::Abgr8888, bsize, 1, Transform::Normal, Some(vec![Rectangle::from_size(bsize)]));
-    (buffer, (w, h).into())
+    pm
 }
 
 #[cfg(test)]

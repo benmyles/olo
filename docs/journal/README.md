@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Twitcher rows, dark
+
+*20:07* — The same, in dark mode.
+
+![Twitcher rows, dark](2026-10-27/200725-twitcher-rows-dark.png)
+
+### Twitcher: a row per workspace
+
+*20:07* — ⌘Tab shows a row of apps for each workspace with windows; ↑/↓ change rows and workspaces, ←/→ walk a row, Esc puts everything back. With keyboard hints on, each cell has a letter to pick it by.
+
+![Twitcher: a row per workspace](2026-10-27/200725-twitcher-a-row-per-workspace.png)
+
 ### Palette: open windows first
 
 *20:01* — Typing an app's name in ⌘Space lists its open windows before the app itself, the one already in front last.

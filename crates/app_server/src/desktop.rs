@@ -73,16 +73,22 @@ impl WindowElement {
 }
 
 /// Twitcher's state while ⌘ is held: the candidates as they stood when
-/// switching began (front first), and which one is chosen.
+/// switching began, a row per workspace (front first), and which one is
+/// chosen.
 #[derive(Debug)]
 pub struct Twitch {
     pub apps: bool,
-    pub ids: Vec<u64>,
+    /// (workspace, window ids), in workspace order.
+    pub rows: Vec<(u32, Vec<u64>)>,
+    pub row: usize,
     pub index: usize,
-    /// The windows' stacking when switching began (back first): each one
-    /// passed over goes back into it, so only the one chosen ends up
-    /// raised.
-    stack: Vec<WindowElement>,
+    /// Where switching began, for Esc.
+    home: u32,
+    focus: Option<WindowElement>,
+    /// Each workspace's stacking when Twitcher first showed it (back
+    /// first): each window passed over goes back into it, so only the one
+    /// chosen ends up raised.
+    stacks: Vec<(u32, Vec<WindowElement>)>,
     /// The minimized window being shown now, hidden again when passed.
     unhidden: Option<WindowElement>,
 }
@@ -357,59 +363,143 @@ impl<B: Backend + 'static> AnvilState<B> {
         v
     }
 
+    /// Windows on workspace `ws` (another one), front first, minimized
+    /// ones last.
+    fn parked_windows(&self, ws: u32) -> Vec<WindowElement> {
+        let parked = self.parked.0.borrow();
+        let on = |w: &&WindowElement| w.meta().workspace.get() == Some(ws);
+        let mut v: Vec<WindowElement> = parked.iter().rev().filter(on).filter(|w| !w.meta().minimized.get()).cloned().collect();
+        v.extend(parked.iter().rev().filter(on).filter(|w| w.meta().minimized.get()).cloned());
+        v
+    }
+
+    /// Twitcher's rows: for each workspace with any, its apps (one window
+    /// each, the front-most) or, for ⌘\`, the focused app's windows.
+    fn twitch_rows(&self, apps: bool) -> Vec<(u32, Vec<u64>)> {
+        let app = self.focused_window().map(|w| w.app_id());
+        let count = self.settings.workspace_count.max(1).max(self.workspace + 1);
+        (0..count)
+            .filter_map(|ws| {
+                let windows = if ws == self.workspace { self.workspace_windows() } else { self.parked_windows(ws) };
+                let ids: Vec<u64> = if apps {
+                    let mut seen = Vec::new();
+                    windows
+                        .iter()
+                        .filter(|w| {
+                            let a = w.app_id();
+                            !seen.contains(&a) && {
+                                seen.push(a);
+                                true
+                            }
+                        })
+                        .map(|w| w.id())
+                        .collect()
+                } else {
+                    windows.iter().filter(|w| Some(w.app_id()) == app).map(|w| w.id()).collect()
+                };
+                (!ids.is_empty()).then_some((ws, ids))
+            })
+            .collect()
+    }
+
     /// ⌘Tab (`apps`) or ⌘\`: bring the next app, or the focused app's next
-    /// window, to the front. The order is fixed while ⌘ is held, so
-    /// repeated presses walk it.
+    /// window, on this workspace to the front. The order is fixed while ⌘
+    /// is held, so repeated presses walk it; ↑/↓ go to another
+    /// workspace's row (`twitch_move`).
     pub fn twitch_step(&mut self, apps: bool, back: bool) {
         if self.twitch.as_ref().is_none_or(|t| t.apps != apps) {
-            let windows = self.workspace_windows();
-            let ids = if apps {
-                let mut seen = Vec::new();
-                let mut ids = Vec::new();
-                for w in &windows {
-                    let app = w.app_id();
-                    if !seen.contains(&app) {
-                        seen.push(app);
-                        ids.push(w.id());
-                    }
-                }
-                ids
-            } else {
-                let app = self.focused_window().map(|w| w.app_id());
-                windows.iter().filter(|w| Some(w.app_id()) == app).map(|w| w.id()).collect()
-            };
+            let rows = self.twitch_rows(apps);
+            if rows.iter().map(|r| r.1.len()).sum::<usize>() < 2 {
+                return;
+            }
             // Start on the focused window's entry, so the first press moves
             // to the one behind it.
-            let focused = self.focused_window().map(|w| (w.id(), w.app_id()));
-            let index = ids
-                .iter()
-                .position(|id| {
-                    focused.as_ref().is_some_and(|(fid, fapp)| {
-                        *id == *fid || (apps && self.window_by_id(*id).is_some_and(|w| w.app_id() == *fapp))
+            let focus = self.focused_window();
+            let focused = focus.as_ref().map(|w| (w.id(), w.app_id()));
+            let row = rows.iter().position(|r| r.0 == self.workspace);
+            let index = row
+                .and_then(|r| {
+                    rows[r].1.iter().position(|id| {
+                        focused.as_ref().is_some_and(|(fid, fapp)| {
+                            *id == *fid || (apps && self.window_by_id(*id).is_some_and(|w| w.app_id() == *fapp))
+                        })
                     })
                 })
                 .unwrap_or(0);
-            let stack = self.space.elements().cloned().collect();
-            self.twitch = Some(Twitch { apps, ids, index, stack, unhidden: None });
+            let stacks = vec![(self.workspace, self.space.elements().cloned().collect())];
+            // With nothing here, the first press shows the next row's first.
+            let (row, index) = match row {
+                Some(r) => (r, index),
+                None => (0, rows[0].1.len() - 1),
+            };
+            self.twitch = Some(Twitch { apps, rows, row, index, home: self.workspace, focus, stacks, unhidden: None });
         }
         let Some(t) = self.twitch.as_mut() else { return };
-        if t.ids.len() < 2 {
+        let n = t.rows[t.row].1.len();
+        if n < 2 && t.rows[t.row].0 == self.workspace {
             return;
         }
-        let n = t.ids.len();
         t.index = if back { (t.index + n - 1) % n } else { (t.index + 1) % n };
-        let id = t.ids[t.index];
-        let (unhidden, stack) = (t.unhidden.take(), t.stack.clone());
-        let Some(w) = self.window_by_id(id) else { return };
-        // The one shown before back as it was: hidden again if it was
-        // minimized, and every window back in its place in the stack.
-        if let Some(u) = unhidden.filter(|u| *u != w) {
+        self.twitch_show();
+    }
+
+    /// ←/→ (`dx`) along the chosen row, ↑/↓ (`dy`) to the row of the
+    /// workspace above or below, starting at its front-most.
+    pub fn twitch_move(&mut self, dx: i32, dy: i32) {
+        let Some(t) = self.twitch.as_mut() else { return };
+        if dy != 0 {
+            let row = (t.row as i32 + dy).clamp(0, t.rows.len() as i32 - 1) as usize;
+            if row == t.row {
+                return;
+            }
+            (t.row, t.index) = (row, 0);
+        } else {
+            let n = t.rows[t.row].1.len() as i32;
+            t.index = (t.index as i32 + dx).rem_euclid(n) as usize;
+        }
+        self.twitch_show();
+    }
+
+    /// A letter typed with keyboard hints on: choose the cell it marks.
+    pub fn twitch_pick(&mut self, c: char) {
+        let Some((row, index)) = self.twitcher_entries().and_then(|s| s.find(c)) else { return };
+        if let Some(t) = self.twitch.as_mut() {
+            (t.row, t.index) = (row, index);
+        }
+        self.twitch_show();
+        self.twitch_done();
+    }
+
+    /// Put this workspace's windows back as they were stacked when
+    /// Twitcher first showed it, and hide again a minimized one shown.
+    fn twitch_restack(&mut self) {
+        let Some(t) = self.twitch.as_mut() else { return };
+        let unhidden = t.unhidden.take();
+        let stack = t.stacks.iter().find(|s| s.0 == self.workspace).map(|s| s.1.clone()).unwrap_or_default();
+        if let Some(u) = unhidden {
             self.minimize(&u);
         }
         for s in &stack {
             if self.space.element_location(s).is_some() {
                 self.space.raise_element(s, false);
             }
+        }
+    }
+
+    /// Bring the chosen window forward, on its workspace, with everything
+    /// passed over back in its place.
+    fn twitch_show(&mut self) {
+        let Some(t) = self.twitch.as_ref() else { return };
+        let (ws, id) = (t.rows[t.row].0, t.rows[t.row].1[t.index]);
+        let Some(w) = self.window_by_id(id) else { return };
+        self.twitch_restack();
+        if ws != self.workspace {
+            self.switch_workspace(ws);
+            let stack = self.space.elements().cloned().collect();
+            if let Some(t) = self.twitch.as_mut().filter(|t| !t.stacks.iter().any(|s| s.0 == ws)) {
+                t.stacks.push((ws, stack));
+            }
+            self.twitch_restack();
         }
         let was_hidden = w.meta().minimized.get();
         self.restore(&w);
@@ -418,22 +508,42 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
     }
 
-    /// What Twitcher shows: its cells and the chosen one.
-    pub fn twitcher_entries(&self) -> Option<(Vec<crate::twitcher::Entry>, usize)> {
+    /// What Twitcher shows.
+    pub fn twitcher_entries(&self) -> Option<crate::twitcher::Shown> {
         let t = self.twitch.as_ref()?;
-        let entries: Vec<_> = t
-            .ids
-            .iter()
-            .filter_map(|id| self.window_by_id(*id))
-            .map(|w| crate::twitcher::Entry { app_id: w.app_id(), title: (!t.apps).then(|| w.title()) })
-            .collect();
-        (entries.len() == t.ids.len()).then_some((entries, t.index))
+        let mut rows = Vec::new();
+        for (ws, ids) in &t.rows {
+            let entries: Vec<_> = ids
+                .iter()
+                .filter_map(|id| self.window_by_id(*id))
+                .map(|w| crate::twitcher::Entry { app_id: w.app_id(), title: (!t.apps).then(|| w.title()) })
+                .collect();
+            if entries.len() != ids.len() {
+                return None;
+            }
+            rows.push(crate::twitcher::Row { workspace: *ws, entries });
+        }
+        Some(crate::twitcher::Shown { rows, row: t.row, index: t.index, letters: self.settings.keyboard.hints })
     }
 
     /// ⌘ released: the chosen window stays in front, the rest where they
     /// were (`twitch_step` put each back as it passed it).
     pub fn twitch_done(&mut self) {
         self.twitch = None;
+    }
+
+    /// Esc while switching: back to the workspace and window switching
+    /// began on, everything as it was.
+    pub fn twitch_cancel(&mut self) {
+        let Some(home) = self.twitch.as_ref().map(|t| t.home) else { return };
+        self.twitch_restack();
+        if self.workspace != home {
+            self.switch_workspace(home);
+            self.twitch_restack();
+        }
+        if let Some(f) = self.twitch.take().and_then(|t| t.focus).filter(|f| self.space.element_location(f).is_some()) {
+            self.focus_window(&f);
+        }
     }
 
     /// Start one of our programs in the session, without waiting for it.

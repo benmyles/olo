@@ -1806,7 +1806,7 @@ impl AnvilState<UdevData> {
                 self.hints.elements(&mut renderer, output_geo, scale).into_iter().map(CustomRenderElements::Overlay).collect();
             overlays.extend(
                 twitcher
-                    .and_then(|(entries, selected)| self.twitcher.element(&mut renderer, &entries, selected, output_size, scale))
+                    .and_then(|shown| self.twitcher.element(&mut renderer, &shown, output_size, scale))
                     .map(CustomRenderElements::Overlay),
             );
             overlays

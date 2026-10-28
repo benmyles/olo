@@ -1294,5 +1294,17 @@
   "title": "Palette: open windows first",
   "caption": "Typing an app's name in \u2318Space lists its open windows before the app itself, the one already in front last.",
   "image": "2026-10-27/200134-palette-open-windows-first.png"
+ },
+ {
+  "time": "2026-10-27T20:07:25",
+  "title": "Twitcher: a row per workspace",
+  "caption": "\u2318Tab shows a row of apps for each workspace with windows; \u2191/\u2193 change rows and workspaces, \u2190/\u2192 walk a row, Esc puts everything back. With keyboard hints on, each cell has a letter to pick it by.",
+  "image": "2026-10-27/200725-twitcher-a-row-per-workspace.png"
+ },
+ {
+  "time": "2026-10-27T20:07:25",
+  "title": "Twitcher rows, dark",
+  "caption": "The same, in dark mode.",
+  "image": "2026-10-27/200725-twitcher-rows-dark.png"
  }
 ]

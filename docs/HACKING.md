@@ -945,9 +945,19 @@ the keyboard, so app_server sees no focused window by then).
 
 Twitcher (⌘Tab, ⌘\`, `twitch_step`) shows each window it passes by
 bringing it forward (a minimized one unminimized), but keeps the stacking
-from when switching began (`Twitch::stack`): passing on puts the last one
+from when switching began (`Twitch::stacks`): passing on puts the last one
 back in its place (minimized again if it was), so when ⌘ is let go only
-the chosen window has moved.
+the chosen window has moved. It has a row for each workspace with
+windows on it (`twitch_rows`, numbered at the left when there are more
+than one): Tab and ←/→ walk the row, ↑/↓ go to the row above or below
+(its front-most first), and showing a window on another workspace goes
+there, each workspace's stacking kept as it was when first shown. Esc
+puts everything back, workspace and focus too (`twitch_cancel`). With
+keyboard hints on, every cell carries a hint badge
+(`hints::badge_pixmap`, letters running across the rows,
+`twitcher::Shown::letter`) and typing its letter while ⌘ is held
+chooses it (`twitch_pick`). The keys reach it as keymap actions
+(`SwitchMove`, `SwitchPick`, `SwitchCancel`) only while switching.
 
 ## Desktop shortcuts and tiling (olo_protocol::shortcuts, app_server keymap.rs, shell/tiling.rs)
 

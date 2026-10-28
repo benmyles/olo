@@ -1,5 +1,7 @@
 //! Twitcher: the strip of app icons shown while ⌘Tab / ⌘\` is held, as on
-//! BeOS. `desktop::twitch_step` decides what is chosen; this draws it.
+//! BeOS, a row for each workspace with windows on it (numbered at the
+//! left when there are more than one). `desktop::twitch_step` decides what
+//! is chosen; this draws it.
 //!
 //! App names and icons come from .desktop entries and icon themes, which
 //! means file system work, so they are looked up on a worker thread the
@@ -37,6 +39,9 @@ const PAD: i32 = 12;
 const LABEL: i32 = 22;
 const MIN_WIDTH: i32 = 240;
 const FONT: f32 = 12.0;
+/// The workspace numbers' column, and the gap between rows.
+const GUTTER: i32 = 24;
+const ROW_GAP: i32 = 6;
 
 /// Device sizes icons are decoded at; others are scaled from the next one up.
 const ICON_PX: [u32; 2] = [48, 96];
@@ -120,12 +125,61 @@ pub struct Entry {
     pub title: Option<String>,
 }
 
+/// A workspace's cells.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Row {
+    pub workspace: u32,
+    pub entries: Vec<Entry>,
+}
+
+/// What Twitcher shows: its rows (in workspace order), the chosen cell,
+/// and whether the cells are lettered (keyboard hints are on).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Shown {
+    pub rows: Vec<Row>,
+    pub row: usize,
+    pub index: usize,
+    pub letters: bool,
+}
+
+impl Shown {
+    fn cells(&self) -> usize {
+        self.rows.iter().map(|r| r.entries.len()).sum()
+    }
+
+    /// The letter of cell `index` of row `row`, if it has one: every cell
+    /// in reading order, while letters last.
+    pub fn letter(&self, row: usize, index: usize) -> Option<char> {
+        if !self.letters {
+            return None;
+        }
+        let n = self.rows[..row].iter().map(|r| r.entries.len()).sum::<usize>() + index;
+        (n < crate::hints::LETTERS.len()).then(|| crate::hints::label(n))
+    }
+
+    /// The cell lettered `c`.
+    pub fn find(&self, c: char) -> Option<(usize, usize)> {
+        let n = crate::hints::LETTERS.find(c)?;
+        let mut first = 0;
+        for (r, row) in self.rows.iter().enumerate() {
+            if n < first + row.entries.len() {
+                return self.letters.then_some((r, n - first));
+            }
+            first += row.entries.len();
+        }
+        None
+    }
+
+    fn selected(&self) -> Option<&Entry> {
+        self.rows.get(self.row)?.entries.get(self.index)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 struct Key {
-    entries: Vec<Entry>,
-    /// Which of them have resolved (so a late lookup redraws).
+    shown: Shown,
+    /// Which apps have resolved (so a late lookup redraws).
     resolved: Vec<bool>,
-    selected: usize,
     scale_milli: i64,
     generation: u64,
 }
@@ -147,8 +201,7 @@ impl Overlay {
     pub fn element<R>(
         &mut self,
         renderer: &mut R,
-        entries: &[Entry],
-        selected: usize,
+        shown: &Shown,
         output_size: Size<i32, smithay::utils::Logical>,
         scale: f64,
     ) -> Option<MemoryRenderBufferRenderElement<R>>
@@ -156,18 +209,17 @@ impl Overlay {
         R: Renderer + ImportMem,
         R::TextureId: Send + Clone + 'static,
     {
-        if entries.len() < 2 {
+        if shown.cells() < 2 {
             return None;
         }
         let key = Key {
-            entries: entries.to_vec(),
-            resolved: entries.iter().map(|e| info(&e.app_id).is_some()).collect(),
-            selected,
+            shown: shown.clone(),
+            resolved: shown.rows.iter().flat_map(|r| &r.entries).map(|e| info(&e.app_id).is_some()).collect(),
             scale_milli: (scale * 1000.0).round() as i64,
             generation: theme::generation(),
         };
         if self.cached.as_ref().is_none_or(|(k, _, _)| *k != key) {
-            let pixmap = draw(&theme::palette(), entries, selected, scale);
+            let pixmap = draw(&theme::palette(), shown, scale);
             let size: Size<i32, Buffer> = (pixmap.width() as i32, pixmap.height() as i32).into();
             let buffer = MemoryRenderBuffer::from_slice(
                 pixmap.data(),
@@ -198,13 +250,17 @@ impl Overlay {
     }
 }
 
-/// Panel size in logical pixels for `n` cells.
-pub fn panel_size(n: usize) -> (i32, i32) {
-    ((2 * PAD + n as i32 * CELL).max(MIN_WIDTH), PAD + CELL + LABEL + PAD)
+/// Panel size in logical pixels for rows of `lens` cells.
+pub fn panel_size(lens: &[usize]) -> (i32, i32) {
+    let gutter = if lens.len() > 1 { GUTTER } else { 0 };
+    let widest = lens.iter().copied().max().unwrap_or(0) as i32;
+    let rows = lens.len().max(1) as i32;
+    ((2 * PAD + gutter + widest * CELL).max(MIN_WIDTH), PAD + rows * CELL + (rows - 1) * ROW_GAP + LABEL + PAD)
 }
 
-fn draw(p: &Palette, entries: &[Entry], selected: usize, s: f64) -> Pixmap {
-    let (lw, lh) = panel_size(entries.len());
+fn draw(p: &Palette, shown: &Shown, s: f64) -> Pixmap {
+    let lens: Vec<usize> = shown.rows.iter().map(|r| r.entries.len()).collect();
+    let (lw, lh) = panel_size(&lens);
     let px = |l: i32| (l as f64 * s).round() as i32;
     let u = px(1).max(1);
     let (w, h) = (px(lw), px(lh));
@@ -217,44 +273,64 @@ fn draw(p: &Palette, entries: &[Entry], selected: usize, s: f64) -> Pixmap {
     fill(&mut pm, u, h - 2 * u, w - 2 * u, u, p.shadow);
     fill(&mut pm, w - 2 * u, u, u, h - 2 * u, p.shadow);
 
-    let row_w = entries.len() as i32 * CELL;
-    let x0 = (lw - row_w) / 2;
+    let numbered = shown.rows.len() > 1;
+    let gutter = if numbered { GUTTER } else { 0 };
     let icon_px = px(ICON) as u32;
-    for (i, e) in entries.iter().enumerate() {
-        let cx = x0 + i as i32 * CELL;
-        if i == selected {
-            let (x, y, cw) = (px(cx), px(PAD), px(cx + CELL) - px(cx));
-            fill(&mut pm, x, y, cw, px(PAD + CELL) - y, p.menu_selected_border);
-            fill(&mut pm, x + u, y + u, cw - 2 * u, px(PAD + CELL) - y - 2 * u, p.menu_selected_background);
+    let size = FONT * s as f32;
+    for (r, row) in shown.rows.iter().enumerate() {
+        let top = PAD + r as i32 * (CELL + ROW_GAP);
+        if r > 0 {
+            // An etched line between workspaces.
+            let y = px(top - ROW_GAP / 2);
+            fill(&mut pm, px(PAD), y - u, w - 2 * px(PAD), u, p.shadow);
+            fill(&mut pm, px(PAD), y, w - 2 * px(PAD), u, p.shine);
         }
-        let Some(info) = info(&e.app_id) else { continue };
-        // The smallest decoded size at least as large as needed.
-        let Some((_, icon)) = info
-            .icons
-            .iter()
-            .find(|(s, _)| *s >= icon_px)
-            .or(info.icons.last())
-        else {
-            continue;
-        };
-        let k = icon_px as f32 / icon.width() as f32;
-        let off = (CELL - ICON) / 2;
-        let paint = PixmapPaint { quality: FilterQuality::Bicubic, ..Default::default() };
-        let t = SkTransform::from_row(k, 0.0, 0.0, k, px(cx + off) as f32, px(PAD + off) as f32);
-        pm.draw_pixmap(0, 0, icon.as_ref().as_ref(), &paint, t, None);
+        if numbered {
+            let n = (row.workspace + 1).to_string();
+            let tw = text::measure(&n, size, true);
+            let color = if r == shown.row { p.panel_text } else { p.tab_text_unfocused };
+            let y = px(top) as f32 + (px(CELL) as f32 - size * 1.25) / 2.0;
+            text::draw(&mut pm, &n, (px(PAD) as f32 + (px(GUTTER) as f32 - tw) / 2.0).round(), y.round(), size, true, color);
+        }
+        let x0 = PAD + gutter + (lw - 2 * PAD - gutter - row.entries.len() as i32 * CELL) / 2;
+        for (i, e) in row.entries.iter().enumerate() {
+            let cx = x0 + i as i32 * CELL;
+            if r == shown.row && i == shown.index {
+                let (x, y, cw) = (px(cx), px(top), px(cx + CELL) - px(cx));
+                let ch = px(top + CELL) - y;
+                fill(&mut pm, x, y, cw, ch, p.menu_selected_border);
+                fill(&mut pm, x + u, y + u, cw - 2 * u, ch - 2 * u, p.menu_selected_background);
+            }
+            if let Some(info) = info(&e.app_id) {
+                // The smallest decoded size at least as large as needed.
+                if let Some((_, icon)) = info.icons.iter().find(|(s, _)| *s >= icon_px).or(info.icons.last()) {
+                    let k = icon_px as f32 / icon.width() as f32;
+                    let off = (CELL - ICON) / 2;
+                    let paint = PixmapPaint { quality: FilterQuality::Bicubic, ..Default::default() };
+                    let t = SkTransform::from_row(k, 0.0, 0.0, k, px(cx + off) as f32, px(top + off) as f32);
+                    pm.draw_pixmap(0, 0, icon.as_ref().as_ref(), &paint, t, None);
+                }
+            }
+            if let Some(c) = shown.letter(r, i) {
+                // Its hint, on the cell's lower right.
+                let b = crate::hints::badge_pixmap(p, c, s);
+                let bx = px(cx + CELL) - u - b.width() as i32;
+                let by = px(top + CELL) - u - b.height() as i32;
+                pm.draw_pixmap(bx, by, b.as_ref(), &PixmapPaint::default(), SkTransform::identity(), None);
+            }
+        }
     }
 
     // The chosen app's name (or window's title) beneath.
-    if let Some(e) = entries.get(selected) {
+    if let Some(e) = shown.selected() {
         let label = e
             .title
             .clone()
             .or_else(|| info(&e.app_id).map(|i| i.name))
             .unwrap_or_else(|| fallback_name(&e.app_id));
-        let size = FONT * s as f32;
         let label = text::ellipsize(&label, size, true, (px(lw - 2 * PAD)) as f32);
         let tw = text::measure(&label, size, true);
-        let y = px(PAD + CELL) as f32 + (px(LABEL) as f32 - size * 1.25) / 2.0;
+        let y = px(lh - PAD - LABEL) as f32 + (px(LABEL) as f32 - size * 1.25) / 2.0;
         text::draw(&mut pm, &label, ((w as f32 - tw) / 2.0).round(), y.round(), size, true, p.panel_text);
     }
     pm
@@ -268,7 +344,20 @@ mod tests {
     fn names_and_sizes() {
         assert_eq!(fallback_name("olo.tracker"), "Tracker");
         assert_eq!(fallback_name("foot"), "Foot");
-        assert_eq!(panel_size(2), (MIN_WIDTH, PAD + CELL + LABEL + PAD));
-        assert_eq!(panel_size(10).0, 2 * PAD + 10 * CELL);
+        assert_eq!(panel_size(&[2]), (MIN_WIDTH, PAD + CELL + LABEL + PAD));
+        assert_eq!(panel_size(&[10]).0, 2 * PAD + 10 * CELL);
+        // More than one workspace: numbered rows.
+        assert_eq!(panel_size(&[10, 3]), (2 * PAD + GUTTER + 10 * CELL, PAD + 2 * CELL + ROW_GAP + LABEL + PAD));
+    }
+
+    #[test]
+    fn letters_run_across_rows() {
+        let e = |a: &str| Entry { app_id: a.into(), title: None };
+        let mut shown = Shown { rows: vec![Row { workspace: 0, entries: vec![e("a"), e("b")] }, Row { workspace: 2, entries: vec![e("c")] }], row: 0, index: 0, letters: true };
+        assert_eq!(shown.letter(1, 0), Some('d'));
+        assert_eq!(shown.find('d'), Some((1, 0)));
+        assert_eq!(shown.find('f'), None);
+        shown.letters = false;
+        assert_eq!((shown.letter(0, 0), shown.find('a')), (None, None));
     }
 }

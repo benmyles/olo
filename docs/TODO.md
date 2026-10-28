@@ -5,6 +5,9 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~⌘Tab across workspaces~~ (Ben): a row of apps per workspace;
+  ↑/↓ change rows (and workspaces), ←/→ walk a row, Esc puts everything
+  back, and with keyboard hints on each cell has a letter to pick it by.
 - ~~⌘Space finds an app's open windows first~~ (Ben): typing an app's
   name lists its windows before the app, so the palette switches windows
   too.
