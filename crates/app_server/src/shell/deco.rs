@@ -57,7 +57,9 @@ pub struct Decoration {
     /// Where the pointer last moved over the decoration. Button handlers
     /// run inside smithay's pointer lock, so they can't ask the pointer.
     pub pointer: Point<f64, Logical>,
-    pub last_tab_press: Option<(Instant, Point<f64, Logical>)>,
+    /// The last press on the tab or an edge (when, where, which), to
+    /// tell a double-click.
+    pub last_press: Option<(Instant, Point<f64, Logical>, Part)>,
     /// Rolled up: only the tab shows (and takes the pointer).
     pub rolled: bool,
     /// Its tab's width when the window is in a group (each window's tab
@@ -103,7 +105,7 @@ impl Default for Decoration {
             hover: Part::None,
             pressed: Part::None,
             pointer: Point::default(),
-            last_tab_press: None,
+            last_press: None,
             rolled: false,
             tab_width: None,
             title_width: None,

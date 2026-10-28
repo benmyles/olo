@@ -990,9 +990,9 @@ chooses it (`twitch_pick`). The keys reach it as keymap actions
 
 app_server's own shortcuts are one table, `olo_protocol::shortcuts::SHORTCUTS`:
 each a `Shortcut` (tile the focused window into a half, quarter or third,
-zoom, back to its own size, center, to the next display, tile or cascade
-all windows on the display, show the desktop, workspaces, Find, lock,
-caffeinated, screenshots), a group, a title and default keys written
+zoom, zoom along one axis, back to its own size, center, to the next
+display, tile or cascade all windows on the display,
+show the desktop, workspaces, Find, lock, caffeinated, screenshots), a group, a title and default keys written
 "Shift+Cmd+Left" (`Chord`; Cmd is ⌘). `Settings::shortcuts` keeps only
 changes (an empty list turns one off), so new shortcuts get their defaults.
 `shortcuts::assign` gives one shortcut a chord and takes it from any other;
@@ -1068,6 +1068,23 @@ window's tab: `Decoration::rolled` makes the element's bbox the tab, draws
 only the tab, and passes the pointer through everywhere else. It is in
 `WindowInfo::rolled` and kept across a reload (`layout::Placement`).
 Agents roll with `{"type":"run_shortcut","id":"roll-up","window":ID}`.
+
+Zoom Vertically / Zoom Horizontally (`toggle_zoom_along`, ⌥⇧⌘↑ or ↓ /
+⌥⇧⌘← or →, the window menu, or a double-click on the frame's top or
+bottom edge / left or right edge) zoom the window along one axis only:
+the whole height (width) of the tiling area, the other axis as it is,
+pulled in and narrowed only if it doesn't fit (`zoom_along`). The window
+keeps where it came from (`Along`: a `ZoomedAlong` with its frame, its
+tile and part, and whether it had a `PreZoom` already), and the same
+command again unzooms that axis only (`unzoom_along`): back into its
+tile if it had one, else to its old height (width), keeping whatever was
+done across meanwhile. Zooming the other axis too is Zoom (and Zoom's
+unzoom goes back to the one-axis zoom, `ZoomedFrom`); unzooming one axis
+of a full zoom leaves the other zoomed. The zoomed axis follows its
+display (`refit`, `move_to_output`, `rehome_windows`); any tiling,
+arranging or moving or sizing by hand forgets it (`set_tiled`). As with
+Zoom, a reload keeps the geometry only. Agents:
+`{"type":"run_shortcut","id":"zoom-vertical","window":ID}`.
 
 Window groups (shell/groups.rs): an app's top-level, decorated,
 resizable windows on the same workspace share one frame, with a tab

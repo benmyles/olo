@@ -176,6 +176,11 @@ pub enum Shortcut {
     Tile(Tile),
     /// Zoom the focused window, or unzoom it.
     Zoom,
+    /// Zoom the focused window top to bottom only (its width and place
+    /// across as they are), or unzoom it that way.
+    ZoomVertical,
+    /// Zoom the focused window side to side only, or unzoom it that way.
+    ZoomHorizontal,
     /// The focused window back as it was before it was tiled or zoomed.
     Restore,
     /// The focused window to the middle of its display.
@@ -312,6 +317,8 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::Tile(Tile::LeftTwoThirds), "tile-left-two-thirds", WINDOWS, "Left two thirds", &["Ctrl+Cmd+E"]),
     s(Shortcut::Tile(Tile::RightTwoThirds), "tile-right-two-thirds", WINDOWS, "Right two thirds", &["Ctrl+Cmd+T"]),
     s(Shortcut::Zoom, "zoom", WINDOWS, "Zoom or unzoom", &["Shift+Cmd+Return"]),
+    s(Shortcut::ZoomVertical, "zoom-vertical", WINDOWS, "Zoom vertically", &["Alt+Shift+Cmd+Up", "Alt+Shift+Cmd+Down"]),
+    s(Shortcut::ZoomHorizontal, "zoom-horizontal", WINDOWS, "Zoom horizontally", &["Alt+Shift+Cmd+Left", "Alt+Shift+Cmd+Right"]),
     s(Shortcut::Restore, "restore", WINDOWS, "Back to its own size", &["Shift+Cmd+Backspace"]),
     s(Shortcut::Center, "center", WINDOWS, "Center", &["Ctrl+Cmd+C"]),
     s(Shortcut::Hide, "hide-window", WINDOWS, "Hide window", &["Cmd+M"]),

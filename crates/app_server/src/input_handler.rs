@@ -258,7 +258,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.toggle_rolled(&w);
                 }
             }
-            S::Tile(_) | S::Zoom | S::Restore | S::Center | S::Hide | S::NextDisplay | S::PreviousDisplay => {
+            S::Tile(_) | S::Zoom | S::ZoomVertical | S::ZoomHorizontal | S::Restore | S::Center | S::Hide | S::NextDisplay | S::PreviousDisplay => {
                 let Some(w) = focused else { return };
                 match shortcut {
                     S::Tile(tile) => self.tile_window(&w, tile),
@@ -271,6 +271,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                             self.zoom_window(&w);
                         }
                     }
+                    S::ZoomVertical => self.toggle_zoom_along(&w, crate::shell::tiling::Axis::Vertical),
+                    S::ZoomHorizontal => self.toggle_zoom_along(&w, crate::shell::tiling::Axis::Horizontal),
                     S::Restore => self.restore_frame(&w),
                     S::Center => self.center_window(&w),
                     S::Hide => self.minimize_window(&w),

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Zoom Vertically and Zoom Horizontally
+
+*23:14* — A window's menu can now zoom it along one axis only: Zoom Vertically makes it as tall as the screen and keeps its width and place across; Zoom Horizontally does the same the other way. Here the Themes window has been zoomed vertically. Alt+Shift+Cmd+Up or Down and Alt+Shift+Cmd+Left or Right do the same, as does double-clicking the window's top or bottom (or left or right) edge.
+
+![Zoom Vertically and Zoom Horizontally](2026-10-27/231457-zoom-vertically-and-zoom-horizontally.png)
+
 ### Themes: the Deskbar and desktop in each theme
 
 *23:14* — The same Deskbar menu, Applications submenu and desktop icons in each of the seven themes, left to right and top to bottom: Soft Be, BeBox, Toybox, Papercraft, Enamel, Halftone and Classic. The wordmark and every app's icon change together.

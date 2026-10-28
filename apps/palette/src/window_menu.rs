@@ -100,6 +100,8 @@ pub fn build(f: &Facts) -> Menu {
     m = shortcut(m, "hide-window", "Hide");
     m = shortcut(m, "roll-up", if f.rolled { "Roll Down" } else { "Roll Up" });
     m = shortcut(m, "zoom", "Zoom");
+    m = shortcut(m, "zoom-vertical", "Zoom Vertically");
+    m = shortcut(m, "zoom-horizontal", "Zoom Horizontally");
     m = shortcut(m, "restore", "Back to Its Own Size");
     m = shortcut(m, "center", "Center");
     m = m.separator().submenu(tile).submenu(spaces);

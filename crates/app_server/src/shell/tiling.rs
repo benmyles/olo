@@ -1,7 +1,8 @@
 //! Arranging windows from the keyboard (olo_protocol::shortcuts): tiling
 //! one into part of its display, centering it, moving it to another
 //! display, tiling, cascading or fanning them all out (and undoing that),
-//! showing the desktop; and putting
+//! showing the desktop; zooming one along a single axis (top to bottom
+//! or side to side, the other as it is); and putting
 //! windows back on a display when theirs goes away (unplugged, or set to
 //! mirror). Tiled windows keep space around them
 //! (`Settings::tiling`: gap and margin) and remember how they were, so
@@ -60,6 +61,75 @@ pub struct Placed {
 /// its tile's own.
 #[derive(Default)]
 struct TilePart(Cell<Option<Part>>);
+
+/// The way Zoom Vertically and Zoom Horizontally zoom a window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Axis {
+    /// Top to bottom.
+    Vertical,
+    /// Side to side.
+    Horizontal,
+}
+
+impl Axis {
+    fn other(self) -> Axis {
+        match self {
+            Axis::Vertical => Axis::Horizontal,
+            Axis::Horizontal => Axis::Vertical,
+        }
+    }
+}
+
+/// A window zoomed along one axis, and what unzooming it that way puts
+/// back: the frame it was zoomed from, whether its own frame was kept
+/// already (tiled, arranged or zoomed: Restore still goes back there),
+/// and the tile it was in.
+#[derive(Debug, Clone, Copy)]
+struct ZoomedAlong {
+    axis: Axis,
+    from: Rectangle<i32, Logical>,
+    kept: bool,
+    tile: Option<(Tile, Option<Part>)>,
+}
+
+#[derive(Default)]
+struct Along(Cell<Option<ZoomedAlong>>);
+
+/// `frame` zoomed along `axis` of `area`: all of it that way, and as it
+/// is the other (moved in only as far as it must to be on it).
+pub fn zoom_along(frame: Rectangle<i32, Logical>, area: Rectangle<i32, Logical>, axis: Axis) -> Rectangle<i32, Logical> {
+    let fit = |at: i32, len: i32, start: i32, room: i32| {
+        let len = len.min(room);
+        (at.clamp(start, start + room - len), len)
+    };
+    match axis {
+        Axis::Vertical => {
+            let (x, w) = fit(frame.loc.x, frame.size.w, area.loc.x, area.size.w);
+            Rectangle::new(Point::from((x, area.loc.y)), Size::from((w, area.size.h)))
+        }
+        Axis::Horizontal => {
+            let (y, h) = fit(frame.loc.y, frame.size.h, area.loc.y, area.size.h);
+            Rectangle::new(Point::from((area.loc.x, y)), Size::from((area.size.w, h)))
+        }
+    }
+}
+
+/// `frame` unzoomed along `axis`: that way as `from` was, the other as
+/// it is.
+pub fn unzoom_along(frame: Rectangle<i32, Logical>, from: Rectangle<i32, Logical>, axis: Axis) -> Rectangle<i32, Logical> {
+    match axis {
+        Axis::Vertical => Rectangle::new(Point::from((frame.loc.x, from.loc.y)), Size::from((frame.size.w, from.size.h))),
+        Axis::Horizontal => Rectangle::new(Point::from((from.loc.x, frame.loc.y)), Size::from((from.size.w, frame.size.h))),
+    }
+}
+
+/// `frame` covers all of `area` along `axis`.
+fn spans(frame: Rectangle<i32, Logical>, area: Rectangle<i32, Logical>, axis: Axis) -> bool {
+    match axis {
+        Axis::Vertical => frame.loc.y == area.loc.y && frame.size.h == area.size.h,
+        Axis::Horizontal => frame.loc.x == area.loc.x && frame.size.w == area.size.w,
+    }
+}
 
 /// The narrowest (and shortest) a tiled neighbour is pushed to.
 const MIN_TILE: i32 = 160;
@@ -365,10 +435,88 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         window.user_data().get::<Tiled>().and_then(|t| t.0.get())
     }
 
+    /// Tiled into `tile` (or not), in its tile's own part. Either way
+    /// no longer zoomed along one axis: every arrangement, and any hand
+    /// move or resize, comes through here.
     fn set_tiled(window: &WindowElement, tile: Option<Tile>) {
         window.user_data().insert_if_missing(Tiled::default);
         window.user_data().get::<Tiled>().unwrap().0.set(tile);
         Self::set_part(window, None);
+        Self::set_zoomed_along(window, None);
+    }
+
+    fn zoomed_along(window: &WindowElement) -> Option<ZoomedAlong> {
+        window.user_data().get::<Along>().and_then(|a| a.0.get())
+    }
+
+    fn set_zoomed_along(window: &WindowElement, z: Option<ZoomedAlong>) {
+        window.user_data().insert_if_missing(Along::default);
+        window.user_data().get::<Along>().unwrap().0.set(z);
+    }
+
+    /// The axis a window is zoomed along alone, if it is.
+    pub fn zoomed_axis(window: &WindowElement) -> Option<Axis> {
+        Self::zoomed_along(window).map(|z| z.axis)
+    }
+
+    /// Zoom a window along `axis` (Zoom Vertically, Zoom Horizontally),
+    /// or unzoom it that way, the other way left as it is. Zoomed along
+    /// both, it is zoomed; a zoomed window zoomed along one is unzoomed
+    /// the other way. Unzoomed, it goes back that way to where it was
+    /// (into its tile, if it was in one).
+    pub fn toggle_zoom_along(&mut self, window: &WindowElement, axis: Axis) {
+        let (Some(area), Some(here)) = (self.zoom_area(window), self.space.element_geometry(window)) else { return };
+        let pre = window.user_data().get::<PreZoom>().and_then(|p| *p.0.borrow());
+        let along = Self::zoomed_along(window);
+        let tile = Self::tiled(window).map(|t| (t, Self::custom_part(window)));
+        if self.is_zoomed(window) {
+            // Zoomed both ways: just the other way now.
+            let zoomed_from = window.user_data().get::<ZoomedFrom>().and_then(|z| z.0.borrow_mut().take());
+            let stays = axis.other();
+            let z = match along {
+                Some(z) => ZoomedAlong { axis: stays, ..z },
+                None => ZoomedAlong { axis: stays, from: zoomed_from.or(pre).unwrap_or(here), kept: zoomed_from.is_some(), tile },
+            };
+            Self::set_tiled(window, None);
+            self.set_frame(window, zoom_along(z.from, area, stays), true);
+            Self::set_zoomed_along(window, Some(z));
+        } else if let Some(z) = along.filter(|z| z.axis == axis) {
+            // Back that way.
+            Self::set_zoomed_along(window, None);
+            match z.tile {
+                Some((tile, part)) => {
+                    Self::set_tile_state(window, Some(tile), part);
+                    self.retile(window, tile);
+                }
+                None => self.set_frame(window, unzoom_along(here, z.from, axis), false),
+            }
+            // (After: retiling keeps where it is.)
+            if !z.kept
+                && let Some(p) = window.user_data().get::<PreZoom>()
+            {
+                p.0.borrow_mut().take();
+            }
+        } else if let Some(z) = along {
+            // Zoomed the other way already: both ways is zoomed, and
+            // unzooms back to just that way.
+            self.zoom_window(window);
+            if let Some(f) = window.user_data().get::<ZoomedFrom>() {
+                *f.0.borrow_mut() = Some(zoom_along(z.from, area, z.axis));
+            }
+        } else if let Some(pre) = pre.filter(|_| tile.is_none() && spans(here, area, axis)) {
+            // Zoomed this way, then sized or moved by hand the other way
+            // (which forgot it): back that way all the same.
+            if let Some(p) = window.user_data().get::<PreZoom>() {
+                p.0.borrow_mut().take();
+            }
+            self.set_frame(window, unzoom_along(here, pre, axis), false);
+        } else {
+            let z = ZoomedAlong { axis, from: here, kept: pre.is_some(), tile };
+            Self::set_tiled(window, None);
+            self.set_frame(window, zoom_along(here, area, axis), true);
+            Self::set_zoomed_along(window, Some(z));
+        }
+        info!(window = window.id(), ?axis, along = ?Self::zoomed_axis(window), zoomed = self.is_zoomed(window), "zoomed along");
     }
 
     fn set_part(window: &WindowElement, part: Option<Part>) {
@@ -617,18 +765,34 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let f = (v - origin) as f32 / (len - size).max(1) as f32;
                 (f.clamp(0.0, 1.0) * (dlen - size).max(0) as f32).round() as i32
             };
-            let size = Size::from((own.size.w.min(dest.size.w), own.size.h.min(dest.size.h)));
-            let loc = dest.loc
-                + Point::from((
-                    rel(own.loc.x, src.loc.x, src.size.w, dest.size.w, size.w),
-                    rel(own.loc.y, src.loc.y, src.size.h, dest.size.h, size.h),
-                ));
+            let place = |r: Rectangle<i32, Logical>| {
+                let size = Size::from((r.size.w.min(dest.size.w), r.size.h.min(dest.size.h)));
+                let loc = dest.loc
+                    + Point::from((
+                        rel(r.loc.x, src.loc.x, src.size.w, dest.size.w, size.w),
+                        rel(r.loc.y, src.loc.y, src.size.h, dest.size.h, size.h),
+                    ));
+                Rectangle::new(loc, size)
+            };
+            let Rectangle { loc, size } = place(own);
             if let Some(p) = window.user_data().get::<PreZoom>()
                 && p.0.borrow().is_some()
             {
                 *p.0.borrow_mut() = Some(Rectangle::new(loc, size));
             }
-            if !zoomed && Self::tiled(window).is_none() {
+            // What unzooming it puts back goes along too.
+            let along = Self::zoomed_along(window).map(|z| ZoomedAlong { from: place(z.from), ..z });
+            if let Some(z) = along {
+                Self::set_zoomed_along(window, Some(z));
+            }
+            if let Some(f) = window.user_data().get::<ZoomedFrom>() {
+                let moved = f.0.borrow().map(|r| along.map_or_else(|| place(r), |z| zoom_along(z.from, dest, z.axis)));
+                *f.0.borrow_mut() = moved;
+            }
+            if let Some(z) = along.filter(|_| !zoomed) {
+                // Re-zoomed along its axis there (by `refit`).
+                self.space.relocate_element(window, z.from.loc);
+            } else if !zoomed && Self::tiled(window).is_none() {
                 self.set_frame(window, Rectangle::new(loc, size), false);
             } else {
                 // Somewhere on the new display first, so it is "on" it.
@@ -652,7 +816,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     /// Fit a window to the display it is on now: re-tile or re-zoom it
-    /// there, else shrink it to fit and bring its tab into view.
+    /// there (along its axis, if it is zoomed along one), else shrink it
+    /// to fit and bring its tab into view.
     pub fn refit(&mut self, window: &WindowElement) {
         // (Zoomed first: a tiled window can be zoomed, and stays so.)
         if self.is_zoomed(window) {
@@ -668,6 +833,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return;
         }
         let (Some(area), Some(frame)) = (self.zoom_area(window), self.space.element_geometry(window)) else { return };
+        if let Some(z) = Self::zoomed_along(window) {
+            let fitted = zoom_along(frame, area, z.axis);
+            if fitted != frame {
+                self.set_frame(window, fitted, false);
+            }
+            return;
+        }
         let size = Size::from((frame.size.w.min(area.size.w), frame.size.h.min(area.size.h)));
         let loc = Point::from((
             frame.loc.x.clamp(area.loc.x, area.loc.x + area.size.w - size.w),
@@ -1030,6 +1202,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         {
             w.user_data().get::<PreZoom>().unwrap().0.replace(Some(Rectangle::new(at, r.size)));
         }
+        if let Some(z) = Self::zoomed_along(w)
+            && !self.on_a_display(z.from)
+            && let Some(at) = self.space.element_location(w)
+        {
+            Self::set_zoomed_along(w, Some(ZoomedAlong { from: Rectangle::new(at, z.from.size), ..z }));
+        }
         self.refit(w);
     }
 }
@@ -1040,6 +1218,32 @@ mod tests {
 
     fn r(x: i32, y: i32, w: i32, h: i32) -> Rectangle<i32, Logical> {
         Rectangle::new((x, y).into(), (w, h).into())
+    }
+
+    #[test]
+    fn zooming_along_one_axis_keeps_the_other() {
+        let area = r(0, 30, 1280, 770);
+        let w = r(100, 200, 500, 300);
+        assert_eq!(zoom_along(w, area, Axis::Vertical), r(100, 30, 500, 770));
+        assert_eq!(zoom_along(w, area, Axis::Horizontal), r(0, 200, 1280, 300));
+        // Both ways is the whole area.
+        assert_eq!(zoom_along(zoom_along(w, area, Axis::Vertical), area, Axis::Horizontal), area);
+        // Partly off the area: pulled in, and no wider than it.
+        assert_eq!(zoom_along(r(1000, 0, 500, 300), area, Axis::Vertical), r(780, 30, 500, 770));
+        assert_eq!(zoom_along(r(-50, 0, 1500, 300), area, Axis::Vertical), r(0, 30, 1280, 770));
+    }
+
+    #[test]
+    fn unzooming_along_one_axis_leaves_the_other() {
+        let area = r(0, 30, 1280, 770);
+        let from = r(100, 200, 500, 300);
+        let zoomed = zoom_along(from, area, Axis::Vertical);
+        assert!(spans(zoomed, area, Axis::Vertical) && !spans(zoomed, area, Axis::Horizontal));
+        assert_eq!(unzoom_along(zoomed, from, Axis::Vertical), from);
+        // Moved across while zoomed: it stays where it was moved to.
+        let moved = r(400, 30, 500, 770);
+        assert_eq!(unzoom_along(moved, from, Axis::Vertical), r(400, 200, 500, 300));
+        assert_eq!(unzoom_along(r(0, 50, 1280, 300), from, Axis::Horizontal), r(100, 50, 500, 300));
     }
 
     #[test]

@@ -1,5 +1,9 @@
 //! BeOS window-management behaviour: what clicking and dragging the tab and
 //! frame does, zoom, minimize and send-to-back.
+//!
+//! Double-clicking the tab rolls the window up; double-clicking its top
+//! or bottom edge zooms it vertically, its left or right edge
+//! horizontally (`toggle_zoom_along`); the corners only resize.
 
 use std::{cell::RefCell, time::Instant};
 
@@ -22,6 +26,7 @@ use smithay::{
 use super::{
     ResizeEdge, WindowElement,
     deco::{DOUBLE_CLICK, Part},
+    tiling::Axis,
 };
 use crate::{
     focus::{KeyboardFocusTarget, PointerFocusTarget},
@@ -42,6 +47,19 @@ pub(super) struct PreZoom(pub(super) RefCell<Option<Rectangle<i32, Logical>>>);
 /// go back to when it is unzoomed (its own frame stays in [`PreZoom`]).
 #[derive(Default)]
 pub(super) struct ZoomedFrom(pub(super) RefCell<Option<Rectangle<i32, Logical>>>);
+
+/// A press on `part` of a window's tab or frame: true if it is the
+/// second of a double-click there.
+fn double_click(window: &WindowElement, part: Part) -> bool {
+    let mut deco = window.decoration();
+    let (now, at) = (Instant::now(), deco.pointer);
+    let prev = deco.last_press.replace((now, at, part));
+    let double = prev.is_some_and(|(t, p, was)| was == part && now.duration_since(t) < DOUBLE_CLICK && (p - at).x.abs() + (p - at).y.abs() < 6.0);
+    if double {
+        deco.last_press = None;
+    }
+    double
+}
 
 fn cursor_for(part: Part) -> CursorIcon {
     match part {
@@ -106,17 +124,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             (BTN_LEFT, Part::Close | Part::Zoom) => window.decoration().pressed = hover,
             (BTN_RIGHT, Part::Tab) => self.window_menu(window),
             (BTN_LEFT, Part::Tab) => {
-                let location = window.decoration().pointer;
-                let now = Instant::now();
-                let double = {
-                    let mut deco = window.decoration();
-                    let prev = deco.last_tab_press.replace((now, location));
-                    prev.is_some_and(|(t, p)| {
-                        now.duration_since(t) < DOUBLE_CLICK && (p - location).x.abs() + (p - location).y.abs() < 6.0
-                    })
-                };
-                if double {
-                    window.decoration().last_tab_press = None;
+                if double_click(window, hover) {
                     self.toggle_rolled(window);
                     return;
                 }
@@ -130,7 +138,20 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.start_move(seat, window, serial);
                 }
             }
-            (BTN_LEFT, Part::Frame(edges)) => self.start_resize(seat, window, serial, edges),
+            (BTN_LEFT, Part::Frame(edges)) => {
+                let axis = match edges {
+                    e if e == ResizeEdge::TOP || e == ResizeEdge::BOTTOM => Some(Axis::Vertical),
+                    e if e == ResizeEdge::LEFT || e == ResizeEdge::RIGHT => Some(Axis::Horizontal),
+                    _ => None,
+                };
+                if let Some(axis) = axis
+                    && double_click(window, hover)
+                {
+                    self.toggle_zoom_along(window, axis);
+                    return;
+                }
+                self.start_resize(seat, window, serial, edges);
+            }
             _ => {}
         }
     }
