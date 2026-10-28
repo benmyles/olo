@@ -281,6 +281,7 @@ fn draw_column(
             if selected {
                 painter.rect_filled(r, 0.0, sel_bg);
             }
+            style::describe_item(ui.ctx(), &e.name, r.intersect(painter.clip_rect()), selected);
             let icon = Rect::from_min_size(pos2(r.left() + m::CELL_INSET, r.center().y - view::MINI / 2.0), vec2(view::MINI, view::MINI));
             icons::paint(painter, icon, view::icon_of(e));
             let x = icon.right() + m::MARK_GAP;

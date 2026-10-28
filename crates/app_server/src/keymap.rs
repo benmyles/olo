@@ -2,7 +2,8 @@
 //! (so ⌘C copies everywhere, GTK and Firefox included), while app_server
 //! keeps some ⌘ keys for itself: ⌘Tab / ⌘\` (Twitcher), ⌘ arrows and ⌘⌫
 //! (line and document navigation), a tap of ⌘ alone (the command palette, if chosen in
-//! Preferences), and first of all the shortcuts in `Settings::shortcuts`
+//! Preferences), a tap of Control and Shift together (keyboard hints, if
+//! chosen), and first of all the shortcuts in `Settings::shortcuts`
 //! (olo_protocol::shortcuts: tiling, workspaces, Find, lock,
 //! screenshots, …). Caps Lock is another Ctrl. Terminals keep physical
 //! Ctrl for the tty, so ⌘ reaches them as Ctrl+Shift.
@@ -55,6 +56,9 @@ use code::*;
 /// A ⌘ press and release with nothing in between, shorter than this, is a
 /// tap (the command palette).
 pub const TAP: Duration = Duration::from_millis(350);
+/// Control and Shift pressed together and let go with nothing typed,
+/// within this, is a tap (keyboard hints): two keys take a little longer.
+pub const HINTS_TAP: Duration = Duration::from_millis(700);
 
 /// The virtual Ctrl that stands for ⌘. Physical Ctrl and Caps Lock use the
 /// left one; keys are reference-counted, so sharing is harmless.
@@ -70,6 +74,8 @@ pub enum Action {
     SwitchDone,
     /// A tap of ⌘ (if chosen), or keyd's spelling of one.
     Palette,
+    /// A tap of Control and Shift together (if chosen): keyboard hints.
+    Hints,
     /// One of the shortcuts in the settings.
     Shortcut(Shortcut),
 }
@@ -89,6 +95,7 @@ pub struct Options {
     pub command_key: bool,
     pub caps_lock_control: bool,
     pub tap_command_find: bool,
+    pub hints: bool,
 }
 
 impl From<&olo_protocol::KeyboardSettings> for Options {
@@ -97,6 +104,7 @@ impl From<&olo_protocol::KeyboardSettings> for Options {
             command_key: k.command_key,
             caps_lock_control: k.caps_lock_control,
             tap_command_find: k.find_on_command_tap,
+            hints: k.hints,
         }
     }
 }
@@ -130,6 +138,26 @@ pub struct Keymap {
     bindings: Vec<(Chord, Shortcut)>,
     /// The next key is a shortcut being recorded.
     recording: bool,
+    /// Control and Shift going down together, for a tap (keyboard hints).
+    hints_tap: Option<HintsTap>,
+}
+
+#[derive(Debug)]
+struct HintsTap {
+    since: Instant,
+    ctrl: bool,
+    shift: bool,
+    /// Another key was pressed too: not a tap.
+    spoiled: bool,
+}
+
+/// Physical Control (or Caps Lock as one), for the hints' tap.
+fn ctrl_key(key: u32, opts: Options) -> bool {
+    matches!(key, LEFTCTRL | RIGHTCTRL) || (opts.caps_lock_control && key == CAPSLOCK)
+}
+
+fn shift_key(key: u32) -> bool {
+    matches!(key, LEFTSHIFT | RIGHTSHIFT)
 }
 
 impl Keymap {
@@ -241,6 +269,18 @@ impl Keymap {
         if self.held.contains_key(&key) {
             // A duplicate press (two devices, or a stuck state): ignore.
             return;
+        }
+        if opts.hints {
+            let (ctrl, shift) = (ctrl_key(key, opts), shift_key(key));
+            if ctrl || shift {
+                // Any other key already down (⌘, a letter) spoils it.
+                let spoiled = self.held.keys().any(|&k| !ctrl_key(k, opts) && !shift_key(k));
+                let t = self.hints_tap.get_or_insert(HintsTap { since: now, ctrl: false, shift: false, spoiled });
+                t.ctrl |= ctrl;
+                t.shift |= shift;
+            } else if let Some(t) = self.hints_tap.as_mut() {
+                t.spoiled = true;
+            }
         }
         let mut h = Held::default();
         if opts.command_key && (key == LEFTMETA || key == RIGHTMETA) {
@@ -388,6 +428,18 @@ impl Keymap {
             self.cmd_ctrl = true;
             self.emit_press(CMD_CTRL, out);
         }
+        // The last of Control and Shift up: a tap of both, nothing else?
+        if (ctrl_key(key, opts) || shift_key(key)) && !self.held.keys().any(|&k| ctrl_key(k, opts) || shift_key(k)) {
+            if let Some(t) = self.hints_tap.take()
+                && opts.hints
+                && t.ctrl
+                && t.shift
+                && !t.spoiled
+                && now.duration_since(t.since) < HINTS_TAP
+            {
+                out.push(Out::Action(Action::Hints));
+            }
+        }
     }
 }
 
@@ -395,7 +447,7 @@ impl Keymap {
 mod tests {
     use super::*;
 
-    const OPTS: Options = Options { command_key: true, caps_lock_control: true, tap_command_find: true };
+    const OPTS: Options = Options { command_key: true, caps_lock_control: true, tap_command_find: true, hints: true };
     const C: u32 = 46;
 
     struct Rig {
@@ -456,6 +508,51 @@ mod tests {
         r.down(LEFTMETA);
         r.t += TAP;
         assert_eq!(r.up(LEFTMETA), [Key(RIGHTCTRL, false)]);
+    }
+
+    #[test]
+    fn control_and_shift_tapped_together_shows_hints() {
+        let hints = |outs: Vec<Out>| outs.contains(&Out::Action(Action::Hints));
+        let mut r = Rig::new();
+        r.down(LEFTCTRL);
+        r.down(LEFTSHIFT);
+        assert!(!hints(r.up(LEFTSHIFT)));
+        assert!(hints(r.up(LEFTCTRL)));
+        // Caps Lock is a Control key too, in either order.
+        r.down(RIGHTSHIFT);
+        r.down(CAPSLOCK);
+        r.up(RIGHTSHIFT);
+        assert!(hints(r.up(CAPSLOCK)));
+        // Something typed with them (⌃⇧C): not a tap.
+        r.down(LEFTCTRL);
+        r.down(LEFTSHIFT);
+        r.down(C);
+        r.up(C);
+        r.up(LEFTSHIFT);
+        assert!(!hints(r.up(LEFTCTRL)));
+        // One of them alone, or held too long: not a tap.
+        r.down(LEFTSHIFT);
+        assert!(!hints(r.up(LEFTSHIFT)));
+        r.down(LEFTCTRL);
+        r.down(LEFTSHIFT);
+        r.t += HINTS_TAP;
+        r.up(LEFTSHIFT);
+        assert!(!hints(r.up(LEFTCTRL)));
+        // ⌘ with them: not a tap either.
+        r.down(LEFTMETA);
+        r.down(LEFTCTRL);
+        r.down(LEFTSHIFT);
+        r.up(LEFTSHIFT);
+        assert!(!hints(r.up(LEFTCTRL)));
+        r.up(LEFTMETA);
+        // Off in the settings: nothing.
+        let off = Options { hints: false, ..OPTS };
+        let mut k = Keymap::default();
+        let t = Instant::now();
+        k.feed(LEFTCTRL, true, t, off, false);
+        k.feed(LEFTSHIFT, true, t, off, false);
+        k.feed(LEFTSHIFT, false, t, off, false);
+        assert!(!hints(k.feed(LEFTCTRL, false, t, off, false)));
     }
 
     #[test]
@@ -608,7 +705,7 @@ mod tests {
     #[test]
     fn disabled_passes_through() {
         let mut k = Keymap::default();
-        let off = Options { command_key: false, caps_lock_control: false, tap_command_find: false };
+        let off = Options { command_key: false, caps_lock_control: false, tap_command_find: false, hints: false };
         let t = Instant::now();
         assert_eq!(k.feed(LEFTMETA, true, t, off, false), [Key(LEFTMETA, true)]);
         assert_eq!(k.feed(TAB, true, t, off, false), [Key(TAB, true)]);

@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Keyboard hints in menus (dark)
+
+*17:42* — A pick that opens a menu letters its items next, skipping disabled ones; a submenu's come first.
+
+![Keyboard hints in menus (dark)](2026-10-27/174223-keyboard-hints-in-menus-dark.png)
+
+### Keyboard hints
+
+*17:42* — Tapping Control and Shift together (opt-in, Preferences ▸ Keyboard ▸ Keyboard Hints) puts a letter on everything that can be picked: the focused window's controls, other windows by their tabs, Deskbar and the desktop's icons. Typing one picks it.
+
+![Keyboard hints](2026-10-27/174220-keyboard-hints.png)
+
 ### OpenAI's models for AI features
 
 *16:59* — Preferences ▸ AI offers Astra 6 (the default), Sol 6.1, Terra 6.1 and Luna 6, reached through the Token Pool's Codex accounts. A Claude model chosen before reads as Astra; calls turned away for now are retried after a wait.

@@ -5,6 +5,12 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Keyboard hints everywhere~~ (Ben; opt-in, Preferences ▸ Keyboard):
+  tapping ⌃⇧ letters every control, menu item, list row, icon, window and
+  Deskbar entry; a letter picks it or letters what's inside, as Vim's
+  EasyMotion does. From the kit's trees (Tracker's icons and column rows
+  are in them now, as are layer surfaces), so every kit app takes part;
+  agents read the letters with `{"type":"hints"}`.
 - ~~Resizing tiled windows is slow~~ (Ben): neighbours following a
   dragged edge got a configure per pointer motion and fell seconds
   behind, overlapping the dragged window by up to 100 px. They're paced
@@ -120,18 +126,6 @@ as they land (with the commit), add new ones as they come up.
   on a GTK prompter that had lost its display) asks in an Olo alert.
 - ~~Login keyring in a real session~~ (the session finishes starting the
   daemon PAM unlocked), ~~Passwords lists 1Password's accounts~~.
-
-## Next
-
-- **Keyboard hints everywhere** (Ben; opt-in, Preferences ▸ Keyboard):
-  everything reachable from the keyboard, like Vim's EasyMotion. A
-  modifier chord (perhaps ⌃⇧) labels every place you might go with a
-  letter (windows, panes, controls, menus and their items, list rows,
-  tabs); pressing one goes there, or, for a place with more inside,
-  labels what's inside it, and so on. Every kind of widget and menu
-  takes part (a kit layer over the widget tree, so apps get it for free;
-  app_server for windows, Deskbar and menus), pixel-perfect in light,
-  dark and night at 2×, and agents can read the labels too.
 
 ## Native rule (no wrapping system tools)
 

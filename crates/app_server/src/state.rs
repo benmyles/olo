@@ -198,6 +198,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// they've drawn the size it left them.
     pub tile_followers: Vec<crate::shell::tiling::Follower>,
     pub twitcher: crate::twitcher::Overlay,
+    /// Keyboard hints (⌃⇧ tapped), and their overlay.
+    pub hints: crate::hints::Hints,
     pub wallpaper: crate::wallpaper::Loader,
     pub cursor_status: CursorImageStatus,
     pub seat_name: String,
@@ -973,6 +975,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             tile_drag: None,
             tile_followers: Vec::new(),
             twitcher: Default::default(),
+            hints: Default::default(),
             wallpaper: Default::default(),
             cursor_status: CursorImageStatus::default_named(),
             seat_name,

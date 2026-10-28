@@ -769,10 +769,23 @@ impl Kit {
                     self.with_app(|app, cx| app.command(cx, w, &cmd));
                 }
             }
+            Query::Focus(node) => {
+                // Ids are the window's own: only the one that has it acts.
+                for s in self.surfaces.iter_mut().filter(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_))) {
+                    s.events.push(egui::Event::AccessKitActionRequest(egui::accesskit::ActionRequest {
+                        action: egui::accesskit::Action::Focus,
+                        target_node: egui::accesskit::NodeId(node),
+                        target_tree: egui::accesskit::TreeId::ROOT,
+                        data: None,
+                    }));
+                    s.dirty = true;
+                    s.ctx.request_repaint();
+                }
+            }
             Query::Tree(reply) => {
                 // Every window draws once with AccessKit on (off again
                 // after: building the tree costs every frame).
-                for s in self.surfaces.iter_mut().filter(|s| matches!(s.role, Role::Toplevel(_))) {
+                for s in self.surfaces.iter_mut().filter(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_))) {
                     s.ctx.enable_accesskit();
                     s.tree = None;
                     s.dirty = true;
@@ -791,7 +804,8 @@ impl Kit {
         if self.trees.is_empty() {
             return;
         }
-        let toplevels = || self.surfaces.iter().filter(|s| matches!(s.role, Role::Toplevel(_)));
+        // Windows, and layer surfaces (Deskbar) marked with their namespace.
+        let toplevels = || self.surfaces.iter().filter(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_)));
         let all = toplevels().all(|s| s.tree.is_some());
         let late = self.trees.iter().any(|(_, at)| at.elapsed() > Duration::from_millis(1000));
         if !all && !late {
@@ -1668,8 +1682,12 @@ impl Kit {
         if !self.trees.is_empty() {
             let active = self.active_toplevel() == Some(id);
             let s = &mut self.surfaces[i];
-            if let (Some(update), Role::Toplevel(_)) = (&output.platform_output.accesskit_update, &s.role) {
-                s.tree = Some(crate::commands::WindowTree::from_update(&s.options.title, s.size, active, update));
+            if let (Some(update), Role::Toplevel(_) | Role::Layer(_)) = (&output.platform_output.accesskit_update, &s.role) {
+                let mut tree = crate::commands::WindowTree::from_update(&s.options.title, s.size, active, update);
+                if let WindowKind::Layer(lo) = &s.options.kind {
+                    tree.layer = Some(lo.namespace.clone());
+                }
+                s.tree = Some(tree);
             }
             self.answer_trees();
         }

@@ -1,0 +1,1042 @@
+//! Keyboard hints (Preferences ▸ Keyboard): tapping Control and Shift
+//! together puts a letter on everything that can be picked: the focused
+//! window's controls, the other windows (on their tabs) and Deskbar.
+//! Typing a letter clicks what it marks or, for a part with more inside
+//! (a box of controls, Deskbar, another window), letters what is inside,
+//! and so on down; Backspace goes back up and Esc puts them away. When a
+//! click opens a menu, its items are lettered next.
+//!
+//! What can be picked comes from the kit's widget trees (the same ones
+//! agents read, `olo-menus-PID.sock`), asked for on worker threads; the
+//! letters showing are [`Request::Hints`](olo_protocol::Request::Hints)
+//! for agents.
+//!
+//! A level never has more than 26 letters: everything is lettered at once
+//! when it fits, else the window's groups (as its boxes nest) are opened
+//! smallest first while they fit, and what is left is lettered by group.
+
+use std::{
+    collections::HashMap,
+    io::{BufRead, BufReader, Write},
+    os::unix::net::UnixStream,
+    path::PathBuf,
+    sync::mpsc,
+    time::{Duration, Instant},
+};
+
+use serde::Deserialize;
+use smithay::{
+    backend::{
+        allocator::Fourcc,
+        renderer::{
+            ImportMem, Renderer,
+            element::{
+                Kind,
+                memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
+            },
+        },
+    },
+    desktop::layer_map_for_output,
+    reexports::wayland_server::{Resource, protocol::wl_surface::WlSurface},
+    wayland::seat::WaylandFocus,
+    reexports::calloop::timer::{TimeoutAction, Timer},
+    utils::{Buffer, Logical, Physical, Point, Rectangle, Size, Transform},
+};
+use tiny_skia::Pixmap;
+
+use crate::{
+    shell::{WindowElement, fill},
+    state::{AnvilState, Backend},
+    text, theme,
+};
+
+/// Home row first.
+pub const LETTERS: &str = "asdfghjklqwertyuiopzxcvbnm";
+
+/// What picking gives the keyboard to rather than clicks.
+const FOCUSED: [&str; 6] = ["Slider", "SpinButton", "ScrollBar", "TextInput", "MultilineTextInput", "SearchInput"];
+
+/// How long the apps have to say what they show.
+const WAIT: Duration = Duration::from_millis(500);
+/// After a click, how long before looking for a menu it opened (and
+/// putting the pointer back).
+const SETTLE: Duration = Duration::from_millis(150);
+const POLL: Duration = Duration::from_millis(8);
+
+/// Badge sizes, logical.
+const BADGE_H: i32 = 16;
+const BADGE_PAD: i32 = 4;
+const FONT: f32 = 11.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Rect {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+impl Rect {
+    fn union(self, o: Rect) -> Rect {
+        let (x, y) = (self.x.min(o.x), self.y.min(o.y));
+        Rect { x, y, w: (self.x + self.w).max(o.x + o.w) - x, h: (self.y + self.h).max(o.y + o.h) - y }
+    }
+
+    fn centre(&self) -> (f64, f64) {
+        (self.x + self.w / 2.0, self.y + self.h / 2.0)
+    }
+
+    fn contains_point(&self, (x, y): (f64, f64)) -> bool {
+        x >= self.x && y >= self.y && x < self.x + self.w && y < self.y + self.h
+    }
+
+    fn offset(self, dx: f64, dy: f64) -> Rect {
+        Rect { x: self.x + dx, y: self.y + dy, ..self }
+    }
+}
+
+/// Something a letter can pick.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Node {
+    /// A control, menu item, icon…: picking it clicks its middle, or gives
+    /// it the keyboard (a slider or text field, which a click would
+    /// change). `node` is its id in process `pid`'s tree.
+    Leaf { rect: Rect, name: Option<String>, role: String, pid: u32, node: u64 },
+    /// A part of a window (a box, Deskbar): picking it letters what's inside.
+    /// Outlined, unless it is a layer surface's (windows may cover it).
+    Group { rect: Rect, name: Option<String>, kids: Vec<Node>, outline: bool },
+    /// Another window (its tab): picking it brings it forward and letters
+    /// its content.
+    Window { id: u64, rect: Rect, name: String },
+}
+
+impl Node {
+    pub fn rect(&self) -> Rect {
+        match self {
+            Node::Leaf { rect, .. } | Node::Group { rect, .. } | Node::Window { rect, .. } => *rect,
+        }
+    }
+
+    fn group(name: Option<String>, kids: Vec<Node>) -> Node {
+        let rect = kids.iter().map(Node::rect).reduce(Rect::union).unwrap_or_default();
+        Node::Group { rect, name, kids, outline: true }
+    }
+
+    /// A layer surface's group: not outlined.
+    fn layer(name: String, kids: Vec<Node>) -> Node {
+        let rect = kids.iter().map(Node::rect).reduce(Rect::union).unwrap_or_default();
+        Node::Group { rect, name: Some(name), kids, outline: false }
+    }
+
+    /// How many letters it takes with everything inside lettered.
+    fn leaves(&self) -> usize {
+        match self {
+            Node::Group { kids, .. } => kids.iter().map(Node::leaves).sum(),
+            _ => 1,
+        }
+    }
+
+    fn flatten(self, out: &mut Vec<Node>) {
+        match self {
+            Node::Group { kids, .. } => kids.into_iter().for_each(|k| k.flatten(out)),
+            n => out.push(n),
+        }
+    }
+
+    fn info(&self, label: char) -> olo_protocol::HintInfo {
+        let r = self.rect();
+        let (name, role) = match self {
+            Node::Leaf { name, role, .. } => (name.clone(), role.clone()),
+            Node::Group { name, .. } => (name.clone(), "Group".to_owned()),
+            Node::Window { name, .. } => (Some(name.clone()), "Window".to_owned()),
+        };
+        olo_protocol::HintInfo { label: label.to_string(), x: r.x, y: r.y, width: r.w, height: r.h, name, role }
+    }
+}
+
+/// The parts of the kit's tree (`olo_kit::commands`) hints need.
+#[derive(Debug, Clone, Deserialize)]
+pub struct UiNode {
+    pub id: u64,
+    #[serde(default)]
+    pub parent: Option<u64>,
+    pub role: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub enabled: bool,
+    #[serde(default)]
+    pub clickable: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WindowTree {
+    pub title: String,
+    pub width: f64,
+    pub height: f64,
+    #[serde(default)]
+    pub layer: Option<String>,
+    pub nodes: Vec<UiNode>,
+}
+
+/// What a window (or layer surface) at `origin` (global logical) shows,
+/// as hint nodes in tree order. With a menu open, only its items.
+pub fn build(tree: &WindowTree, origin: (f64, f64), pid: u32) -> Vec<Node> {
+    let nodes = &tree.nodes;
+    let content = Rect { x: 0.0, y: 0.0, w: tree.width, h: tree.height };
+    let rect = |n: &UiNode| Rect { x: n.x, y: n.y, w: n.width, h: n.height };
+    // Menu items hang outside the window; everything else must show in it.
+    let target = |n: &UiNode| {
+        n.clickable && n.enabled && n.width > 0.0 && n.height > 0.0 && (n.role == "MenuItem" || content.contains_point(rect(n).centre()))
+    };
+    let mut targets: Vec<bool> = nodes.iter().map(target).collect();
+    // A nameless area behind others (a list's background) is not one, nor
+    // is the outside of a control around its own inside (a menu field
+    // and its label, around the field).
+    let ids: Vec<usize> = (0..nodes.len()).filter(|&i| targets[i]).collect();
+    for &i in &ids {
+        let (a, r) = (&nodes[i], rect(&nodes[i]));
+        let covers = ids.iter().any(|&j| {
+            let b = &nodes[j];
+            let inside = r.contains_point(rect(b).centre()) && b.width * b.height < r.w * r.h;
+            j != i && inside && (a.name.is_none() || a.name == b.name || a.role == b.role)
+        });
+        if covers {
+            targets[i] = false;
+        }
+    }
+    let menu = nodes.iter().zip(&targets).any(|(n, &t)| t && n.role == "MenuItem");
+    let index: HashMap<u64, usize> = nodes.iter().enumerate().map(|(i, n)| (n.id, i)).collect();
+    let mut kids: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
+    let mut roots = Vec::new();
+    for (i, n) in nodes.iter().enumerate() {
+        match n.parent.and_then(|p| index.get(&p)) {
+            Some(&p) if p != i => kids[p].push(i),
+            _ => roots.push(i),
+        }
+    }
+    struct Walk<'a> {
+        nodes: &'a [UiNode],
+        kids: Vec<Vec<usize>>,
+        targets: Vec<bool>,
+        origin: (f64, f64),
+        pid: u32,
+    }
+    impl Walk<'_> {
+        fn walk(&self, i: usize, depth: usize) -> Vec<Node> {
+            let n = &self.nodes[i];
+            // Deep enough for any real window; stops a malformed tree.
+            let inner: Vec<Node> = if depth > 64 { Vec::new() } else { self.kids[i].iter().flat_map(|&k| self.walk(k, depth + 1)).collect() };
+            if self.targets[i] {
+                let rect = Rect { x: n.x, y: n.y, w: n.width, h: n.height }.offset(self.origin.0, self.origin.1);
+                let leaf = Node::Leaf { rect, name: n.name.clone(), role: n.role.clone(), pid: self.pid, node: n.id };
+                if inner.is_empty() {
+                    return vec![leaf];
+                }
+                // A control with controls inside (a row with a check box): both.
+                return vec![Node::group(n.name.clone(), std::iter::once(leaf).chain(inner).collect())];
+            }
+            if inner.len() > 1 { vec![Node::group(n.name.clone(), inner)] } else { inner }
+        }
+    }
+    let walk = Walk { nodes, kids, targets, origin, pid };
+    let mut out: Vec<Node> = roots.iter().flat_map(|&r| walk.walk(r, 0)).collect();
+    if menu {
+        // A menu's items, however they nest.
+        let mut flat = Vec::new();
+        out.into_iter().for_each(|n| n.flatten(&mut flat));
+        flat.retain(|n| matches!(n, Node::Leaf { role, .. } if role == "MenuItem"));
+        // Menus come in the order they opened, each a column of items: the
+        // last opened (a submenu) first.
+        let column = |n: &Node| (n.rect().x.round() as i64, n.rect().w.round() as i64);
+        let mut columns: Vec<(i64, i64)> = Vec::new();
+        for n in &flat {
+            if !columns.contains(&column(n)) {
+                columns.push(column(n));
+            }
+        }
+        out = columns.iter().rev().flat_map(|c| flat.iter().filter(|n| column(n) == *c).cloned().collect::<Vec<_>>()).collect();
+    }
+    // One group around everything says nothing.
+    while out.len() == 1 && matches!(out[0], Node::Group { .. }) {
+        let Some(Node::Group { kids, .. }) = out.pop() else { unreachable!() };
+        out = kids;
+    }
+    out
+}
+
+/// `nodes` with only the leaves `keep` lets through (those that can be
+/// clicked: nothing else in front of them), groups made again around them.
+pub fn prune(nodes: Vec<Node>, keep: &dyn Fn(&Node) -> bool) -> Vec<Node> {
+    let mut out = Vec::new();
+    for n in nodes {
+        match n {
+            Node::Group { name, kids, outline, .. } => {
+                let mut kids = prune(kids, keep);
+                if kids.len() > 1 {
+                    let rect = kids.iter().map(Node::rect).reduce(Rect::union).unwrap_or_default();
+                    out.push(Node::Group { rect, name, kids, outline });
+                } else {
+                    out.append(&mut kids);
+                }
+            }
+            n if keep(&n) => out.push(n),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// At most `budget` nodes to letter for `nodes`: all of them, flattened,
+/// when they fit; else groups opened smallest first while they fit; and
+/// if there are still too many, the last ones put together in runs.
+pub fn expand(nodes: Vec<Node>, budget: usize) -> Vec<Node> {
+    let budget = budget.max(1);
+    if nodes.iter().map(Node::leaves).sum::<usize>() <= budget {
+        let mut flat = Vec::new();
+        nodes.into_iter().for_each(|n| n.flatten(&mut flat));
+        return flat;
+    }
+    let mut items = nodes;
+    loop {
+        // A lone group opens whatever its size.
+        if items.len() == 1 && matches!(items[0], Node::Group { .. }) {
+            let Some(Node::Group { kids, .. }) = items.pop() else { unreachable!() };
+            items = kids;
+            continue;
+        }
+        let smallest = items
+            .iter()
+            .enumerate()
+            .filter_map(|(i, n)| match n {
+                Node::Group { kids, .. } => Some((i, kids.len())),
+                _ => None,
+            })
+            .filter(|&(_, k)| items.len() - 1 + k <= budget)
+            .min_by_key(|&(_, k)| k);
+        let Some((i, _)) = smallest else { break };
+        let Node::Group { kids, .. } = items.remove(i) else { unreachable!() };
+        items.splice(i..i, kids);
+    }
+    if items.len() > budget && budget > 1 {
+        // As few runs as will do, of `per` at most, after letters of their own.
+        let per = items.len().div_ceil(budget).max(2);
+        let runs = (items.len() - budget).div_ceil(per - 1);
+        let mut it = items.into_iter();
+        let mut level: Vec<Node> = it.by_ref().take(budget - runs).collect();
+        let rest: Vec<Node> = it.collect();
+        let size = rest.len().div_ceil(runs);
+        for run in rest.chunks(size) {
+            level.push(if run.len() == 1 { run[0].clone() } else { Node::group(None, run.to_vec()) });
+        }
+        items = level;
+    }
+    items
+}
+
+/// The first level: the focused window's content (on the home row), then
+/// the other windows, Deskbar and the desktop.
+pub fn first_level(content: Vec<Node>, mut others: Vec<Node>, budget: usize) -> Vec<Node> {
+    // Everything at once, if it fits.
+    if content.iter().chain(&others).map(Node::leaves).sum::<usize>() <= budget {
+        let mut level = Vec::new();
+        content.into_iter().chain(others).for_each(|n| n.flatten(&mut level));
+        return level;
+    }
+    // Many windows share one letter rather than crowd out the content.
+    let windows = others.iter().filter(|n| matches!(n, Node::Window { .. })).count();
+    if windows > 1 && others.len() > budget / 2 {
+        let (w, rest): (Vec<Node>, Vec<Node>) = others.into_iter().partition(|n| matches!(n, Node::Window { .. }));
+        others = rest;
+        others.insert(0, Node::group(Some("Windows".into()), w));
+    }
+    let room = budget.saturating_sub(others.len()).max(1);
+    let mut level = if content.is_empty() { Vec::new() } else { expand(content, room) };
+    level.extend(others);
+    level
+}
+
+/// The letter typed, from its evdev code (as on a US keyboard).
+pub fn letter(key: u32) -> Option<char> {
+    const ROWS: [(u32, &str); 3] = [(16, "qwertyuiop"), (30, "asdfghjkl"), (44, "zxcvbnm")];
+    ROWS.iter().find_map(|&(first, row)| key.checked_sub(first).and_then(|i| row.chars().nth(i as usize)))
+}
+
+fn label(i: usize) -> char {
+    LETTERS.chars().nth(i).unwrap_or('?')
+}
+
+// ---------------------------------------------------------------------------
+// Asking the apps.
+
+fn socket_path(pid: u32) -> PathBuf {
+    let rt = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    rt.join(format!("olo-menus-{pid}.sock"))
+}
+
+/// Process `pid`'s trees (None if it isn't a kit app or is too slow).
+/// Blocks: call it off the event loop.
+fn ask(pid: u32) -> Option<Vec<WindowTree>> {
+    let s = UnixStream::connect(socket_path(pid)).ok()?;
+    s.set_read_timeout(Some(WAIT * 2)).ok()?;
+    s.set_write_timeout(Some(WAIT)).ok()?;
+    (&s).write_all(b"{\"tree\":true}\n").ok()?;
+    let mut line = String::new();
+    BufReader::new(&s).read_line(&mut line).ok()?;
+    serde_json::from_str(&line).ok()
+}
+
+/// Give the keyboard to widget `node` of process `pid`. Blocks.
+fn focus(pid: u32, node: u64) {
+    let Ok(s) = UnixStream::connect(socket_path(pid)) else { return };
+    let _ = s.set_write_timeout(Some(WAIT));
+    let _ = s.set_read_timeout(Some(WAIT));
+    if (&s).write_all(format!("{{\"focus\":{node}}}\n").as_bytes()).is_ok() {
+        let _ = BufReader::new(&s).read_line(&mut String::new());
+    }
+}
+
+/// Where a tree is wanted from.
+#[derive(Debug, Clone)]
+enum Place {
+    Window { id: u64, title: String, content: Rect, surface: Option<WlSurface> },
+    Layer { namespace: String, rect: Rect, surface: Option<WlSurface> },
+}
+
+impl Place {
+    fn surface(&self) -> Option<&WlSurface> {
+        match self {
+            Place::Window { surface, .. } | Place::Layer { surface, .. } => surface.as_ref(),
+        }
+    }
+}
+
+/// What the answers are for.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Purpose {
+    /// The first level.
+    Start,
+    /// The content of a window just brought forward.
+    Window(u64),
+    /// After a click: a menu it opened, if any.
+    Menu,
+}
+
+/// The tree in `trees` for `place`, matched as `olo-screen tree` does.
+fn find<'a>(trees: &'a [WindowTree], place: &Place) -> Option<&'a WindowTree> {
+    match place {
+        Place::Layer { namespace, .. } => trees.iter().find(|t| t.layer.as_deref() == Some(namespace)),
+        Place::Window { title, content, .. } => {
+            let windows = || trees.iter().filter(|t| t.layer.is_none());
+            let sized = |t: &&WindowTree| t.width as i32 == content.w as i32 && t.height as i32 == content.h as i32;
+            windows()
+                .find(|t| t.title == *title && sized(t))
+                .or_else(|| windows().find(|t| t.title == *title))
+                .or_else(|| windows().find(|t| !t.title.is_empty() && title.starts_with(&t.title) && t.width as i32 == content.w as i32))
+                .or_else(|| windows().find(sized))
+        }
+    }
+}
+
+fn origin(place: &Place) -> (f64, f64) {
+    match place {
+        Place::Window { content, .. } | Place::Layer { rect: content, .. } => (content.x, content.y),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// State.
+
+#[derive(Default)]
+pub struct Hints {
+    /// The levels picked through, the last one showing; empty when off.
+    levels: Vec<Vec<Node>>,
+    /// Asking the apps for a level, keys held back meanwhile (answers
+    /// with another generation are stale).
+    fetching: bool,
+    generation: u64,
+    /// Keys pressed while hints showed, whose releases are ours too.
+    swallowed: Vec<u32>,
+    overlay: Overlay,
+}
+
+impl std::fmt::Debug for Hints {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Hints").field("levels", &self.levels.len()).field("fetching", &self.fetching).finish()
+    }
+}
+
+impl Hints {
+    pub fn active(&self) -> bool {
+        !self.levels.is_empty() || self.fetching
+    }
+
+    /// The level showing (none while asking the apps).
+    pub fn showing(&self) -> &[Node] {
+        if self.fetching { &[] } else { self.levels.last().map(Vec::as_slice).unwrap_or(&[]) }
+    }
+
+    pub fn infos(&self) -> Vec<olo_protocol::HintInfo> {
+        self.showing().iter().enumerate().map(|(i, n)| n.info(label(i))).collect()
+    }
+
+    /// The letters showing, as elements for the output at `output`
+    /// (global logical) drawn at `scale`.
+    pub fn elements<R>(&mut self, renderer: &mut R, output: Rectangle<i32, Logical>, scale: f64) -> Vec<MemoryRenderBufferRenderElement<R>>
+    where
+        R: Renderer + ImportMem,
+        R::TextureId: Send + Clone + 'static,
+    {
+        let showing = if self.fetching { &[][..] } else { self.levels.last().map(Vec::as_slice).unwrap_or(&[]) };
+        self.overlay.elements(renderer, showing, output, scale)
+    }
+
+    pub fn close(&mut self) {
+        self.levels.clear();
+        self.fetching = false;
+        self.generation += 1;
+    }
+}
+
+impl<B: Backend + 'static> AnvilState<B> {
+    /// ⌃⇧ tapped: show the hints, or put them away.
+    pub fn toggle_hints(&mut self) {
+        if !self.settings.keyboard.hints || self.lock.locked() {
+            return;
+        }
+        if self.hints.active() {
+            self.hints.close();
+        } else {
+            self.fetch_hints(Purpose::Start, None);
+        }
+    }
+
+    /// A key, while hints may be showing: true if it was theirs.
+    pub fn hints_key(&mut self, key: u32, pressed: bool) -> bool {
+        const ESC: u32 = 1;
+        const BACKSPACE: u32 = 14;
+        // Ctrl, Shift, Alt, Super and Caps Lock pass (⌃⇧ again hides them).
+        const MODIFIERS: [u32; 9] = [29, 97, 42, 54, 56, 100, 125, 126, 58];
+        if !pressed {
+            let Some(i) = self.hints.swallowed.iter().position(|k| *k == key) else { return false };
+            self.hints.swallowed.swap_remove(i);
+            return true;
+        }
+        if !self.hints.active() || MODIFIERS.contains(&key) {
+            return false;
+        }
+        if self.lock.locked() || !self.settings.keyboard.hints {
+            self.hints.close();
+            return false;
+        }
+        let Some(pick) = (match key {
+            ESC => {
+                self.hints.close();
+                None
+            }
+            BACKSPACE => {
+                if self.hints.levels.len() > 1 && !self.hints.fetching {
+                    self.hints.levels.pop();
+                } else {
+                    self.hints.close();
+                }
+                None
+            }
+            k => match letter(k) {
+                Some(c) => Some(LETTERS.find(c).unwrap_or(usize::MAX)),
+                // Anything else puts them away and does what it does.
+                None => {
+                    self.hints.close();
+                    return false;
+                }
+            },
+        }) else {
+            self.hints.swallowed.push(key);
+            return true;
+        };
+        self.hints.swallowed.push(key);
+        if let Some(node) = self.hints.showing().get(pick).cloned() {
+            self.pick_hint(node);
+        }
+        true
+    }
+
+    fn pick_hint(&mut self, node: Node) {
+        match node {
+            Node::Group { kids, .. } => {
+                let level = expand(kids, LETTERS.len());
+                self.hints.levels.push(level);
+            }
+            Node::Window { id, .. } => {
+                let Some(w) = self.window_by_id(id) else { return self.hints.close() };
+                self.restore(&w);
+                self.fetch_hints(Purpose::Window(id), Some(w));
+            }
+            Node::Leaf { role, pid, node, .. } if FOCUSED.contains(&role.as_str()) => {
+                self.hints.close();
+                std::thread::spawn(move || focus(pid, node));
+            }
+            Node::Leaf { rect, .. } => {
+                self.hints.close();
+                use olo_protocol::SyntheticEvent as S;
+                let back = self.pointer.current_location();
+                let (x, y) = rect.centre();
+                self.synthetic_input(S::Move { x, y });
+                self.synthetic_input(S::Button { button: 0x110, pressed: true });
+                self.synthetic_input(S::Button { button: 0x110, pressed: false });
+                // The pointer goes back once the app has seen the click
+                // there (a menu acts on the item under it), if it hasn't
+                // been moved since.
+                let _ = self.handle.insert_source(Timer::from_duration(SETTLE), move |_, _, state| {
+                    let at = state.pointer.current_location();
+                    if (at.x - x).abs() < 0.5 && (at.y - y).abs() < 0.5 {
+                        state.synthetic_input(S::Move { x: back.x, y: back.y });
+                    }
+                    TimeoutAction::Drop
+                });
+                // A menu it opened is lettered next (it may have the
+                // keyboard, so the window is the one clicked).
+                let window = self.space.element_under((x, y)).map(|(w, _)| w.clone());
+                let generation = self.hints.generation;
+                let _ = self.handle.insert_source(Timer::from_duration(SETTLE), move |_, _, state| {
+                    if state.hints.generation == generation && !state.hints.active() {
+                        state.fetch_hints(Purpose::Menu, window.clone());
+                    }
+                    TimeoutAction::Drop
+                });
+            }
+        }
+    }
+
+    /// The places to ask about, with their processes: the focused window
+    /// (or `window`) and the layer surfaces (Deskbar, the desktop).
+    fn hint_places(&self, window: Option<&WindowElement>) -> Vec<(u32, Place)> {
+        let mut places = Vec::new();
+        let infos = self.window_infos_with_frames();
+        // The focused window, or (a menu has the keyboard) the front one.
+        let want = window
+            .map(|w| w.id())
+            .or_else(|| infos.iter().find(|i| i.focused).map(|i| i.id))
+            .or_else(|| self.space.elements().next_back().map(|w| w.id()));
+        for i in infos.iter().filter(|i| Some(i.id) == want) {
+            if let (Some(pid), Some(c)) = (i.pid, i.content) {
+                let content = Rect { x: c.x as f64, y: c.y as f64, w: c.width as f64, h: c.height as f64 };
+                let surface = self.window_by_id(i.id).and_then(|w| w.wl_surface().map(|s| s.into_owned()));
+                places.push((pid as u32, Place::Window { id: i.id, title: i.title.clone(), content, surface }));
+            }
+        }
+        for output in self.space.outputs() {
+            let Some(geo) = self.space.output_geometry(output) else { continue };
+            let map = layer_map_for_output(output);
+            // Deskbar, the desktop's icons, notifications…
+            for l in map.layers() {
+                let Some(g) = map.layer_geometry(l) else { continue };
+                let Some(client) = self.display_handle.get_client(l.wl_surface().id()).ok() else { continue };
+                let Some(pid) = crate::state::client_pid(&client, &self.display_handle) else { continue };
+                let rect = Rect { x: (geo.loc.x + g.loc.x) as f64, y: (geo.loc.y + g.loc.y) as f64, w: g.size.w as f64, h: g.size.h as f64 };
+                let surface = Some(l.wl_surface().clone());
+                places.push((pid as u32, Place::Layer { namespace: l.namespace().to_owned(), rect, surface }));
+            }
+        }
+        places
+    }
+
+    /// Would a click on `node` reach `owner` (and not a window in front of
+    /// it)? An open menu is in front of everything.
+    fn clicks_reach(&self, owner: Option<&WlSurface>, node: &Node) -> bool {
+        if matches!(node, Node::Leaf { role, .. } if role == "MenuItem") {
+            return true;
+        }
+        let (x, y) = node.rect().centre();
+        let Some((under, _)) = self.surface_under((x, y).into()) else { return false };
+        let Some(mut s) = under.wl_surface().map(|s| s.into_owned()) else { return false };
+        // Up from subsurfaces and popups to the window or layer surface.
+        for _ in 0..16 {
+            if let Some(parent) = smithay::wayland::compositor::get_parent(&s) {
+                s = parent;
+            } else if let Some(root) = self.popups.find_popup(&s).and_then(|p| smithay::desktop::find_popup_root_surface(&p).ok()) {
+                s = root;
+            } else {
+                break;
+            }
+        }
+        owner == Some(&s)
+    }
+
+    /// The other windows showing on this workspace, by their tabs.
+    fn hint_windows(&self, except: Option<u64>) -> Vec<Node> {
+        let mut out = Vec::new();
+        // Front first.
+        for w in self.space.elements().rev() {
+            let meta = w.meta();
+            if Some(meta.id) == except || meta.minimized.get() || meta.workspace.get().is_some_and(|ws| ws != self.workspace) {
+                continue;
+            }
+            let Some(at) = self.space.element_location(w) else { continue };
+            let rect = if w.decorated() {
+                let tab = w.decoration().tab_layout(&w.title(), w.content_size()).rect();
+                Rect { x: (at.x + tab.loc.x) as f64, y: (at.y + tab.loc.y) as f64, w: tab.size.w as f64, h: tab.size.h as f64 }
+            } else {
+                let geo = smithay::desktop::space::SpaceElement::geometry(w);
+                Rect { x: at.x as f64, y: at.y as f64, w: geo.size.w as f64, h: geo.size.h.min(24) as f64 }
+            };
+            out.push(Node::Window { id: meta.id, rect, name: w.title() });
+        }
+        out
+    }
+
+    /// Ask the apps what they show (on worker threads), then letter it.
+    fn fetch_hints(&mut self, purpose: Purpose, window: Option<WindowElement>) {
+        self.hints.generation += 1;
+        let generation = self.hints.generation;
+        // Looking for a menu after a click leaves the keys alone meanwhile
+        // (they may be for what was clicked).
+        self.hints.fetching = purpose != Purpose::Menu;
+        let places = self.hint_places(window.as_ref());
+        let mut pids: Vec<u32> = places.iter().map(|(p, _)| *p).collect();
+        pids.sort_unstable();
+        pids.dedup();
+        let (tx, rx) = mpsc::channel();
+        for &pid in &pids {
+            let tx = tx.clone();
+            // One that can't start is waited for until the deadline.
+            let _ = std::thread::Builder::new().name("hints".into()).spawn(move || {
+                let _ = tx.send((pid, ask(pid).unwrap_or_default()));
+            });
+        }
+        let deadline = Instant::now() + WAIT;
+        let mut answers: HashMap<u32, Vec<WindowTree>> = HashMap::new();
+        let _ = self.handle.insert_source(Timer::immediate(), move |_, _, state| {
+            if state.hints.generation != generation {
+                return TimeoutAction::Drop;
+            }
+            while let Ok((pid, trees)) = rx.try_recv() {
+                answers.insert(pid, trees);
+            }
+            if answers.len() < pids.len() && Instant::now() < deadline {
+                return TimeoutAction::ToDuration(POLL);
+            }
+            state.hints_arrived(purpose, &places, &answers);
+            TimeoutAction::Drop
+        });
+    }
+
+    fn hints_arrived(&mut self, purpose: Purpose, places: &[(u32, Place)], answers: &HashMap<u32, Vec<WindowTree>>) {
+        self.hints.fetching = false;
+        let mut content = Vec::new();
+        let mut layers = Vec::new();
+        for (pid, place) in places {
+            let Some(tree) = answers.get(pid).and_then(|t| find(t, place)) else { continue };
+            let nodes = prune(build(tree, origin(place), *pid), &|n| self.clicks_reach(place.surface(), n));
+            match place {
+                Place::Window { .. } => content.extend(nodes),
+                Place::Layer { namespace, .. } if !nodes.is_empty() => {
+                    let name = Some(tree.title.clone()).filter(|t| !t.is_empty()).unwrap_or_else(|| namespace.clone());
+                    layers.push(Node::layer(name, nodes));
+                }
+                Place::Layer { .. } => {}
+            }
+        }
+        let budget = LETTERS.len();
+        let level = match purpose {
+            Purpose::Start => {
+                let focused = places.iter().find_map(|(_, p)| match p {
+                    Place::Window { id, .. } => Some(*id),
+                    _ => None,
+                });
+                let mut others = self.hint_windows(focused);
+                others.extend(layers);
+                first_level(content, others, budget)
+            }
+            Purpose::Window(_) => expand(content, budget),
+            Purpose::Menu => {
+                let menu = |n: &Node| matches!(n, Node::Leaf { role, .. } if role == "MenuItem");
+                let mut items: Vec<Node> = Vec::new();
+                content.into_iter().chain(layers).for_each(|n| n.flatten(&mut items));
+                items.retain(menu);
+                expand(items, budget)
+            }
+        };
+        if level.is_empty() {
+            // (A click that opened no menu is the usual case.)
+            if purpose != Purpose::Menu {
+                tracing::debug!(?purpose, "nothing to hint");
+                self.hints.close();
+            }
+            return;
+        }
+        // A window's content comes after the level that picked it.
+        if !matches!(purpose, Purpose::Window(_)) {
+            self.hints.levels.clear();
+        }
+        self.hints.levels.push(level);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Drawing.
+
+/// The badges and group outlines, each its own buffer (an element's id is
+/// its buffer's).
+#[derive(Default)]
+pub struct Overlay {
+    badges: HashMap<char, (MemoryRenderBuffer, Size<i32, Physical>)>,
+    lines: Vec<MemoryRenderBuffer>,
+    /// The scale and theme generation the buffers were drawn for.
+    key: (i64, u64),
+}
+
+impl Overlay {
+    /// Badges in front of group outlines.
+    fn elements<R>(&mut self, renderer: &mut R, showing: &[Node], output: Rectangle<i32, Logical>, scale: f64) -> Vec<MemoryRenderBufferRenderElement<R>>
+    where
+        R: Renderer + ImportMem,
+        R::TextureId: Send + Clone + 'static,
+    {
+        if showing.is_empty() {
+            return Vec::new();
+        }
+        let key = ((scale * 1000.0).round() as i64, theme::generation());
+        if self.key != key {
+            self.badges.clear();
+            self.lines.clear();
+            self.key = key;
+        }
+        let palette = theme::palette();
+        let out = Rect { x: output.loc.x as f64, y: output.loc.y as f64, w: output.size.w as f64, h: output.size.h as f64 };
+        let phys = |x: f64, y: f64| -> Point<f64, Physical> { (((x - out.x) * scale).round(), ((y - out.y) * scale).round()).into() };
+        let mut badges = Vec::new();
+        let mut lines = Vec::new();
+        let mut line = 0;
+        for (i, node) in showing.iter().enumerate() {
+            let r = node.rect();
+            let on = |x: f64, y: f64| out.contains_point((x, y));
+            let c = label(i);
+            let (buffer, size) = self.badges.entry(c).or_insert_with(|| badge(&palette, c, scale));
+            let (bw, bh) = (size.w as f64 / scale, size.h as f64 / scale);
+            // Its left edge, middle height; a group's and window's top left.
+            let (mut bx, mut by) = match node {
+                Node::Leaf { .. } => (r.x, r.y + (r.h - bh) / 2.0),
+                // Over the close box, clear of the title.
+                Node::Window { .. } => (r.x + 3.0, r.y + (r.h - bh) / 2.0),
+                Node::Group { .. } => (r.x - 2.0, r.y - 2.0),
+            };
+            if !on(bx + bw / 2.0, by + bh / 2.0) && !on(r.centre().0, r.centre().1) {
+                continue;
+            }
+            bx = bx.clamp(out.x, out.x + out.w - bw);
+            by = by.clamp(out.y, out.y + out.h - bh);
+            let logical = ((size.w as f64 / scale).round() as i32, (size.h as f64 / scale).round() as i32);
+            let src = Rectangle::from_size((size.w as f64, size.h as f64).into());
+            if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(renderer, phys(bx, by), buffer, None, Some(src), Some(logical.into()), Kind::Unspecified) {
+                badges.push(e);
+            }
+            if let Node::Group { outline: true, .. } = node {
+                let (x0, y0, x1, y1) = (r.x - 2.0, r.y - 2.0, r.x + r.w + 2.0, r.y + r.h + 2.0);
+                // Top, bottom, left, right, a logical pixel thick.
+                for (x, y, w, h) in [(x0, y0, x1 - x0, 1.0), (x0, y1 - 1.0, x1 - x0, 1.0), (x0, y0, 1.0, y1 - y0), (x1 - 1.0, y0, 1.0, y1 - y0)] {
+                    if self.lines.len() <= line {
+                        self.lines.push(solid(palette.keyboard_navigation));
+                    }
+                    let size: Size<i32, Logical> = ((w.round() as i32).max(1), (h.round() as i32).max(1)).into();
+                    let src = Rectangle::from_size((1.0, 1.0).into());
+                    if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(renderer, phys(x, y), &self.lines[line], None, Some(src), Some(size), Kind::Unspecified) {
+                        lines.push(e);
+                    }
+                    line += 1;
+                }
+            }
+        }
+        badges.extend(lines);
+        badges
+    }
+}
+
+fn solid(c: [u8; 4]) -> MemoryRenderBuffer {
+    MemoryRenderBuffer::from_slice(&c, Fourcc::Abgr8888, (1, 1), 1, Transform::Normal, Some(vec![Rectangle::from_size((1, 1).into())]))
+}
+
+/// A BeOS-yellow key cap with the letter on it, at `s` device pixels a
+/// logical one.
+fn badge(p: &olo_theme::Palette, c: char, s: f64) -> (MemoryRenderBuffer, Size<i32, Physical>) {
+    let px = |l: f64| (l * s).round() as i32;
+    let u = px(1.0).max(1);
+    let label = c.to_ascii_uppercase().to_string();
+    let size = FONT * s as f32;
+    let tw = text::measure(&label, size, true).ceil() as i32;
+    let h = px(BADGE_H as f64);
+    let w = (tw + 2 * px(BADGE_PAD as f64)).max(h);
+    let mut pm = Pixmap::new(w as u32, h as u32).expect("hint pixmap");
+    fill(&mut pm, 0, 0, w, h, p.frame_focused[0]);
+    fill(&mut pm, u, u, w - 2 * u, h - 2 * u, p.tab_focused);
+    fill(&mut pm, u, u, w - 2 * u, u, p.tab_focused_light);
+    fill(&mut pm, u, u, u, h - 2 * u, p.tab_focused_light);
+    fill(&mut pm, u, h - 2 * u, w - 2 * u, u, p.tab_focused_shadow);
+    fill(&mut pm, w - 2 * u, u, u, h - 2 * u, p.tab_focused_shadow);
+    let y = (h as f32 - size * 1.25) / 2.0;
+    text::draw(&mut pm, &label, ((w - tw) as f32 / 2.0).round(), y.round(), size, true, p.tab_text_focused);
+    let bsize: Size<i32, Buffer> = (w, h).into();
+    let buffer = MemoryRenderBuffer::from_slice(pm.data(), Fourcc::Abgr8888, bsize, 1, Transform::Normal, Some(vec![Rectangle::from_size(bsize)]));
+    (buffer, (w, h).into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn n(id: u64, parent: Option<u64>, role: &str, name: Option<&str>, (x, y, w, h): (f64, f64, f64, f64), clickable: bool) -> UiNode {
+        UiNode { id, parent, role: role.into(), name: name.map(Into::into), x, y, width: w, height: h, enabled: true, clickable }
+    }
+
+    fn tree(nodes: Vec<UiNode>) -> WindowTree {
+        WindowTree { title: "Prefs".into(), width: 400.0, height: 300.0, layer: None, nodes }
+    }
+
+    fn names(level: &[Node]) -> Vec<String> {
+        level
+            .iter()
+            .map(|n| match n {
+                Node::Leaf { name, .. } => name.clone().unwrap_or_default(),
+                Node::Group { name, kids, .. } => format!("{}[{}]", name.clone().unwrap_or_default(), kids.len()),
+                Node::Window { name, .. } => format!("<{name}>"),
+            })
+            .collect()
+    }
+
+    fn leaf(name: &str) -> Node {
+        Node::Leaf { rect: Rect { x: 0.0, y: 0.0, w: 10.0, h: 10.0 }, name: Some(name.into()), role: "Button".into(), pid: 1, node: 0 }
+    }
+
+    #[test]
+    fn controls_in_their_boxes() {
+        let t = tree(vec![
+            n(1, None, "Window", None, (0.0, 0.0, 400.0, 300.0), false),
+            n(2, Some(1), "GenericContainer", Some("Key Repeat"), (0.0, 0.0, 0.0, 0.0), false),
+            n(3, Some(2), "Slider", Some("Delay"), (10.0, 20.0, 100.0, 20.0), true),
+            n(4, Some(2), "Slider", Some("Rate"), (10.0, 50.0, 100.0, 20.0), true),
+            n(5, Some(1), "GenericContainer", Some("Mac Keys"), (0.0, 0.0, 0.0, 0.0), false),
+            n(6, Some(5), "CheckBox", Some("Command"), (10.0, 120.0, 100.0, 20.0), true),
+            n(7, Some(6), "Label", Some("Command"), (30.0, 120.0, 80.0, 20.0), false),
+            // Disabled, and scrolled out of the window: not lettered.
+            n(8, Some(5), "CheckBox", Some("Off"), (10.0, 150.0, 100.0, 20.0), true),
+            n(9, Some(5), "Button", Some("Below"), (10.0, 900.0, 100.0, 20.0), true),
+        ]);
+        let mut t = t;
+        t.nodes[7].enabled = false;
+        let built = build(&t, (100.0, 50.0), 1);
+        assert_eq!(names(&built), ["Key Repeat[2]", "Command"]);
+        assert_eq!(built[1].rect(), Rect { x: 110.0, y: 170.0, w: 100.0, h: 20.0 });
+        // Few enough: everything at once.
+        assert_eq!(names(&expand(built.clone(), 26)), ["Delay", "Rate", "Command"]);
+        // Too many: by box.
+        assert_eq!(names(&expand(built, 2)), ["Key Repeat[2]", "Command"]);
+    }
+
+    #[test]
+    fn a_background_that_takes_clicks_is_not_a_target() {
+        let t = tree(vec![
+            n(1, None, "Window", None, (0.0, 0.0, 400.0, 300.0), false),
+            n(2, Some(1), "Clickable", None, (0.0, 0.0, 400.0, 300.0), true),
+            n(3, Some(1), "Clickable", Some("a.txt"), (10.0, 10.0, 60.0, 60.0), true),
+            n(4, Some(1), "Clickable", Some("b.txt"), (80.0, 10.0, 60.0, 60.0), true),
+        ]);
+        assert_eq!(names(&build(&t, (0.0, 0.0), 1)), ["a.txt", "b.txt"]);
+    }
+
+    #[test]
+    fn a_control_around_its_own_field_is_one() {
+        let t = tree(vec![
+            n(1, None, "Window", None, (0.0, 0.0, 400.0, 300.0), false),
+            n(2, Some(1), "ComboBox", Some("Match"), (10.0, 10.0, 175.0, 24.0), true),
+            n(3, Some(1), "ComboBox", Some("Match"), (54.0, 10.0, 131.0, 24.0), true),
+            // A row with a check box in it: both.
+            n(4, Some(1), "Row", Some("a.txt"), (0.0, 100.0, 400.0, 20.0), true),
+            n(5, Some(1), "CheckBox", Some("Done"), (4.0, 102.0, 16.0, 16.0), true),
+        ]);
+        let built = build(&t, (0.0, 0.0), 1);
+        assert_eq!(names(&built), ["Match", "a.txt", "Done"]);
+        assert_eq!(built[0].rect().x, 54.0);
+    }
+
+    #[test]
+    fn an_open_menu_is_all_there_is() {
+        let t = tree(vec![
+            n(1, None, "Window", None, (0.0, 0.0, 400.0, 300.0), false),
+            n(2, Some(1), "Clickable", Some("File"), (0.0, 0.0, 40.0, 20.0), true),
+            n(3, Some(1), "Button", Some("OK"), (300.0, 250.0, 60.0, 20.0), true),
+            // Hanging below the window.
+            n(4, None, "MenuItem", Some("New"), (0.0, 20.0, 120.0, 20.0), true),
+            n(5, None, "MenuItem", Some("Quit"), (0.0, 290.0, 120.0, 20.0), true),
+        ]);
+        assert_eq!(names(&build(&t, (0.0, 0.0), 1)), ["New", "Quit"]);
+        // A submenu open from it: its items first.
+        let mut t = t;
+        t.nodes.push(n(6, None, "MenuItem", Some("Recent"), (120.0, 40.0, 90.0, 20.0), true));
+        assert_eq!(names(&build(&t, (0.0, 0.0), 1)), ["Recent", "New", "Quit"]);
+    }
+
+    #[test]
+    fn groups_open_smallest_first_and_runs_share_a_letter() {
+        let g = |name: &str, k: usize| Node::group(Some(name.into()), (0..k).map(|i| leaf(&format!("{name}{i}"))).collect());
+        let level = expand(vec![g("a", 3), g("b", 20), g("c", 5)], 10);
+        assert_eq!(names(&level), ["a0", "a1", "a2", "b[20]", "c0", "c1", "c2", "c3", "c4"]);
+        // A lone group opens whatever its size; 60 is 9 letters, then runs of 3.
+        let level = expand(vec![g("x", 60)], 26);
+        assert_eq!(level.len(), 26);
+        assert_eq!(names(&level[8..10]), ["x8", "[3]"]);
+        assert_eq!(names(&level[25..]), ["[3]"]);
+        assert_eq!(level.iter().map(Node::leaves).sum::<usize>(), 60);
+        // 30 in 23: 16 letters and 7 pairs.
+        let level = expand((0..30).map(|i| leaf(&i.to_string())).collect(), 23);
+        assert_eq!(level.len(), 23);
+        assert_eq!(level.iter().filter(|n| matches!(n, Node::Group { .. })).count(), 7);
+    }
+
+    #[test]
+    fn content_first_then_windows_and_deskbar() {
+        let content: Vec<Node> = (0..30).map(|i| leaf(&format!("c{i}"))).collect();
+        let w = |id: u64| Node::Window { id, rect: Rect::default(), name: format!("w{id}") };
+        let level = first_level(content.clone(), vec![w(1), w(2), Node::group(Some("Deskbar".into()), vec![leaf("d")])], 26);
+        assert_eq!(level.len(), 26);
+        assert_eq!(names(&level[23..]), ["<w1>", "<w2>", "Deskbar[1]"]);
+        // Many windows share one letter.
+        let many: Vec<Node> = (0..20).map(w).collect();
+        let level = first_level(content, many, 26);
+        assert_eq!(names(&level[25..]), ["Windows[20]"]);
+        // Few enough: all of it lettered.
+        let level = first_level(vec![leaf("c")], vec![w(1), Node::group(Some("Deskbar".into()), vec![leaf("d"), leaf("e")])], 26);
+        assert_eq!(names(&level), ["c", "<w1>", "d", "e"]);
+    }
+
+    #[test]
+    fn what_cannot_be_clicked_goes() {
+        let g = Node::group(Some("box".into()), vec![leaf("a"), leaf("b")]);
+        let level = prune(vec![g.clone(), leaf("c")], &|n| !matches!(n, Node::Leaf { name: Some(n), .. } if n == "b"));
+        assert_eq!(names(&level), ["a", "c"]);
+        assert_eq!(prune(vec![g], &|_| true).len(), 1);
+    }
+
+    #[test]
+    fn letters_from_keys() {
+        assert_eq!(letter(30), Some('a'));
+        assert_eq!(letter(16), Some('q'));
+        assert_eq!(letter(50), Some('m'));
+        assert_eq!(letter(28), None);
+        assert_eq!(LETTERS.len(), 26);
+        assert!(('a'..='z').all(|c| LETTERS.contains(c)));
+    }
+
+    #[test]
+    fn trees_from_the_kit_parse() {
+        let json = r#"[{"title":"Preferences","width":480,"height":560,"active":true,"layer":"deskbar","nodes":[
+            {"id":1,"role":"Button","name":"OK","x":1.5,"y":2,"width":30,"height":20,"enabled":true,"clickable":true,"checked":false}]}]"#;
+        let trees: Vec<WindowTree> = serde_json::from_str(json).unwrap();
+        assert_eq!(trees[0].layer.as_deref(), Some("deskbar"));
+        let place = Place::Layer { namespace: "deskbar".into(), rect: Rect::default(), surface: None };
+        assert!(find(&trees, &place).is_some());
+        assert_eq!(names(&build(&trees[0], (0.0, 0.0), 1)), ["OK"]);
+    }
+}

@@ -51,6 +51,9 @@ pub enum Request {
     Outputs,
     ConfigureOutput { name: String, config: OutputConfig },
     GetSettings,
+    /// The keyboard hints showing now (Preferences ▸ Keyboard): each
+    /// letter, where it is and what it picks.
+    Hints,
     SetSettings { settings: Settings },
     /// Save a PNG of one screen (`output`, or the one the pointer is on)
     /// or of one window, answering once the file is complete.
@@ -151,6 +154,8 @@ pub enum Reply {
     Workspaces { current: u32, count: u32 },
     Outputs { outputs: Vec<OutputInfo> },
     Settings { settings: Settings },
+    /// The keyboard hints showing now (none when they're off).
+    Hints { hints: Vec<HintInfo> },
     /// [`Request::Arrangement`]'s answer: the display's connector, the
     /// area tiling uses (global logical pixels: the display less Deskbar
     /// and the margins), and its windows on this workspace, front first.
@@ -787,6 +792,27 @@ pub struct KeyboardSettings {
     /// Apps that keep physical Ctrl for themselves (terminals): ⌘ reaches
     /// them as Ctrl+Shift, so Ctrl+C still interrupts. Matched on app_id.
     pub terminal_apps: Vec<String>,
+    /// Keyboard hints: tapping Control and Shift together puts a letter on
+    /// everything that can be picked (windows, controls, menu items);
+    /// typing one picks it, or letters what's inside it.
+    pub hints: bool,
+}
+
+/// One keyboard hint: the letters that pick it, where it is (global
+/// logical pixels), and what it is.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HintInfo {
+    pub label: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    /// Its name ("Save", a window's title), if it has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// AccessKit's role ("Button", "MenuItem", …), "Window", or "Group" for
+    /// a part of a window whose own hints come next.
+    pub role: String,
 }
 
 impl Default for Settings {
@@ -842,6 +868,7 @@ impl Default for KeyboardSettings {
             caps_lock_control: true,
             num_lock: true,
             find_on_command_tap: false,
+            hints: false,
             terminal_apps: [
                 "olo.terminal",
                 "org.gnome.Ptyxis",

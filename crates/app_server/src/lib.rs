@@ -11,6 +11,7 @@
 pub mod cursor;
 pub mod drawing;
 pub mod focus;
+pub mod hints;
 pub mod input_handler;
 #[cfg(feature = "libei")]
 pub mod libei;

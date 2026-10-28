@@ -366,6 +366,7 @@ pub fn edit_label(ui: &mut Ui, l: &ItemLayout, editing: &mut Option<(PathBuf, St
 /// colour with a shadow instead of on a document background. With
 /// `label` false only the icon is drawn (its name is being edited).
 pub fn paint_item(ui: &Ui, l: &ItemLayout, icon: &str, selected: bool, desktop: bool, label: bool, p: &Palette) {
+    style::describe_item(ui.ctx(), l.galley.text(), l.hit().intersect(ui.clip_rect()), selected);
     let painter = ui.painter();
     if !label {
         icons::paint(painter, l.icon, icon);

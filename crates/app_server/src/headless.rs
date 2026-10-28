@@ -287,8 +287,8 @@ pub fn run_headless(size_arg: Option<&str>) {
     state.save_layout();
 }
 
-/// Twitcher, if it is up, as an element for `output` (or, while locked,
-/// the lock screen).
+/// Keyboard hints and Twitcher, if they are up, as elements for `output`
+/// (or, while locked, the lock screen).
 fn twitcher_overlay(
     state: &mut AnvilState<HeadlessData>,
     output: &Output,
@@ -296,15 +296,22 @@ fn twitcher_overlay(
     if state.lock.locked() {
         return crate::lock::elements(&state.lock, &mut state.backend_data.renderer, output);
     }
-    let Some((entries, selected)) = state.twitcher_entries() else { return Vec::new() };
-    let output_size = state.space.output_geometry(output).map(|g| g.size).unwrap_or_default();
+    let geo = state.space.output_geometry(output).unwrap_or_default();
     let scale = output.current_scale().fractional_scale();
-    state
-        .twitcher
-        .element(&mut state.backend_data.renderer, &entries, selected, output_size, scale)
-        .map(crate::render::CustomRenderElements::Overlay)
+    let mut out: Vec<_> = state
+        .hints
+        .elements(&mut state.backend_data.renderer, geo, scale)
         .into_iter()
-        .collect()
+        .map(crate::render::CustomRenderElements::Overlay)
+        .collect();
+    let Some((entries, selected)) = state.twitcher_entries() else { return out };
+    out.extend(
+        state
+            .twitcher
+            .element(&mut state.backend_data.renderer, &entries, selected, geo.size, scale)
+            .map(crate::render::CustomRenderElements::Overlay),
+    );
+    out
 }
 
 fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {

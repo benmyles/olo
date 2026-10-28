@@ -1754,7 +1754,8 @@ impl AnvilState<UdevData> {
         self.pre_repaint(&output, frame_target);
         let desktop_color = self.desktop_color();
         let twitcher = self.twitcher_entries();
-        let output_size = self.space.output_geometry(&output).map(|g| g.size).unwrap_or_default();
+        let output_geo = self.space.output_geometry(&output).unwrap_or_default();
+        let output_size = output_geo.size;
 
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
             device
@@ -1800,14 +1801,15 @@ impl AnvilState<UdevData> {
         let overlays: Vec<CustomRenderElements<_>> = if locked {
             crate::lock::elements(&self.lock, &mut renderer, &output)
         } else {
-            twitcher
-                .and_then(|(entries, selected)| {
-                    let scale = output.current_scale().fractional_scale();
-                    self.twitcher.element(&mut renderer, &entries, selected, output_size, scale)
-                })
-                .map(CustomRenderElements::Overlay)
-                .into_iter()
-                .collect()
+            let scale = output.current_scale().fractional_scale();
+            let mut overlays: Vec<CustomRenderElements<_>> =
+                self.hints.elements(&mut renderer, output_geo, scale).into_iter().map(CustomRenderElements::Overlay).collect();
+            overlays.extend(
+                twitcher
+                    .and_then(|(entries, selected)| self.twitcher.element(&mut renderer, &entries, selected, output_size, scale))
+                    .map(CustomRenderElements::Overlay),
+            );
+            overlays
         };
 
         // The built-in cursor this pointer shows, at this screen's scale.

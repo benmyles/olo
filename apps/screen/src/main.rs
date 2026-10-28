@@ -544,7 +544,11 @@ fn trees(s: &screens::Screen, only: Option<u64>) -> Result<Vec<ScreenTree>, Stri
     pids.sort_unstable();
     pids.dedup();
     let asked: Vec<_> = pids.iter().map(|&pid| (pid, std::thread::spawn(move || commands::tree(pid)))).collect();
-    let mut answers: Vec<(u32, Vec<commands::WindowTree>)> = asked.into_iter().map(|(pid, t)| (pid, t.join().ok().flatten().unwrap_or_default())).collect();
+    // Windows only: Deskbar and other layer surfaces have no window here.
+    let mut answers: Vec<(u32, Vec<commands::WindowTree>)> = asked
+        .into_iter()
+        .map(|(pid, t)| (pid, t.join().ok().flatten().unwrap_or_default().into_iter().filter(|t| t.layer.is_none()).collect()))
+        .collect();
     let mut out = Vec::new();
     for w in windows {
         let (Some(content), Some(pid)) = (w.content, w.pid) else { continue };

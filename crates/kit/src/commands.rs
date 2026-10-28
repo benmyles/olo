@@ -8,7 +8,9 @@
 //! `{"menus":true}` → [`Menus`]; `{"invoke":"cmd"}` → `{"ok":bool}`;
 //! `{"tree":true}` → a [`WindowTree`] per window: what each shows, as
 //! egui's AccessKit tree, made for one frame on demand (so agents read
-//! the widgets, their text and places rather than pixels).
+//! the widgets, their text and places rather than pixels);
+//! `{"focus":ID}` → `{"ok":true}`: give the keyboard to the widget with
+//! that tree id (a slider or text field, which a click would change).
 
 use std::{
     io::{BufRead, BufReader, Write},
@@ -89,6 +91,9 @@ pub struct WindowTree {
     pub width: u32,
     pub height: u32,
     pub active: bool,
+    /// A layer surface's namespace ("deskbar"); None for a window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer: Option<String>,
     /// In tree order, a node's children after it.
     pub nodes: Vec<UiNode>,
 }
@@ -168,7 +173,7 @@ impl WindowTree {
                 n.name = Some(words.join(" "));
             }
         }
-        WindowTree { title: title.to_owned(), width: size.0, height: size.1, active, nodes: out }
+        WindowTree { title: title.to_owned(), width: size.0, height: size.1, active, layer: None, nodes: out }
     }
 }
 
@@ -178,6 +183,7 @@ enum Ask {
     Menus(bool),
     Invoke(String),
     Tree(bool),
+    Focus(u64),
 }
 
 /// A question for the UI thread, answered through `reply`.
@@ -185,6 +191,7 @@ pub(crate) enum Query {
     Menus(mpsc::Sender<Menus>),
     Invoke(String, mpsc::Sender<bool>),
     Tree(mpsc::Sender<Vec<WindowTree>>),
+    Focus(u64),
 }
 
 /// How long a tree may take: every window draws a frame for it.
@@ -274,6 +281,10 @@ pub(crate) fn listen(to: smithay_client_toolkit::reexports::calloop::channel::Se
                         let _ = to.send(Query::Invoke(cmd, tx));
                         serde_json::to_string(&serde_json::json!({ "ok": rx.recv_timeout(WAIT).unwrap_or(false) }))
                     }
+                    Ok(Ask::Focus(id)) => {
+                        let _ = to.send(Query::Focus(id));
+                        serde_json::to_string(&serde_json::json!({ "ok": true }))
+                    }
                     Ok(Ask::Tree(_)) => {
                         let (tx, rx) = mpsc::channel();
                         let _ = to.send(Query::Tree(tx));
@@ -310,7 +321,7 @@ pub fn serve_trees(pid: u32, app_id: &str, trees: impl Fn() -> Vec<WindowTree> +
             }
             let answer = match serde_json::from_str::<Ask>(&line) {
                 Ok(Ask::Menus(_)) => serde_json::to_string(&Menus { app_id: app_id.clone(), entries: Vec::new() }),
-                Ok(Ask::Invoke(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
+                Ok(Ask::Invoke(_) | Ask::Focus(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
                 Ok(Ask::Tree(_)) => serde_json::to_string(&trees()),
                 Err(_) => continue,
             };
@@ -348,6 +359,14 @@ pub fn menus(pid: u32) -> Option<Menus> {
 /// its last active window. Blocks briefly: call it off the UI thread.
 pub fn invoke(pid: u32, command: &str) -> bool {
     ask(pid, &Ask::Invoke(command.to_owned()))
+        .and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok())
+        .is_some_and(|v| v["ok"] == true)
+}
+
+/// Give the keyboard to the widget with tree id `node` in the kit app
+/// with process id `pid`. Blocks briefly: call it off the UI thread.
+pub fn focus(pid: u32, node: u64) -> bool {
+    ask(pid, &Ask::Focus(node))
         .and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok())
         .is_some_and(|v| v["ok"] == true)
 }

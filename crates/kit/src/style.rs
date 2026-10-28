@@ -581,6 +581,22 @@ pub fn describe_text(ctx: &Context, role: egui::accesskit::Role, text: &str, r: 
     });
 }
 
+/// A painted item that takes clicks (an icon, a column's row), for the
+/// AccessKit tree: agents and keyboard hints pick it by its middle.
+pub fn describe_item(ctx: &Context, text: &str, r: Rect, selected: bool) {
+    if text.trim().is_empty() || !r.is_positive() {
+        return;
+    }
+    let id = egui::Id::unique(("olo-item", text, r.min.x as i32, r.min.y as i32));
+    ctx.accesskit_node_builder(id, |n| {
+        n.set_role(egui::accesskit::Role::ListItem);
+        n.set_label(text);
+        n.set_bounds(egui::accesskit::Rect { x0: r.min.x as f64, y0: r.min.y as f64, x1: r.max.x as f64, y1: r.max.y as f64 });
+        n.add_action(egui::accesskit::Action::Click);
+        n.set_selected(selected);
+    });
+}
+
 /// A rubber-band selection rectangle (Tracker, desktop, any icon view):
 /// a one-pixel navigation-blue frame over a faint tint of the same colour.
 pub fn selection_band(p: &Painter, r: Rect, palette: &Palette) {

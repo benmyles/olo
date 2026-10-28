@@ -355,6 +355,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Err(message) => Reply::Error { message },
             },
             Request::GetSettings => Reply::Settings { settings: self.settings.clone() },
+            Request::Hints => Reply::Hints { hints: self.hints.infos() },
             Request::SetSettings { settings } => {
                 self.set_settings(settings);
                 Reply::Ok

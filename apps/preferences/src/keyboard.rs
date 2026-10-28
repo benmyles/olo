@@ -107,6 +107,15 @@ fn keyboard(ui: &mut Ui, s: &mut Settings, power: Option<&PowerStatus>, server: 
         ui.add_enabled(k.command_key, CheckBox::new(&mut k.find_on_command_tap, "Tap Command on its own for the command palette"));
     });
 
+    BBox::new("Keyboard Hints").show(ui, |ui| {
+        ui.add(CheckBox::new(&mut k.hints, "Tap Control and Shift together for keyboard hints"));
+        ui.add(
+            StringView::new("A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.")
+                .dim(true)
+                .wrap(true),
+        );
+    });
+
     BBox::new("Backlight").show(ui, |ui| match power.and_then(|p| p.keyboard_backlight) {
         Some(level) => {
             if st.backlight.is_some_and(|(_, at)| at.elapsed() > std::time::Duration::from_millis(600)) {

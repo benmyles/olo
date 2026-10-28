@@ -181,11 +181,17 @@ fn main() {
   checked, selected); it then turns AccessKit off again, so nothing is
   spent on it otherwise. A program that isn't a kit app can answer for
   another process with `commands::serve_trees(pid, app_id, trees)` (the
-  Olo extension's host does it for Chrome). egui gives its own widgets roles and names; text
+  Olo extension's host does it for Chrome). Layer surfaces (Deskbar,
+  the desktop) answer too, marked with their namespace (`layer`).
+  egui gives its own widgets roles and names; text
   painted by hand is only pixels, so `style::label` and `Cell` describe
   theirs with `style::describe_text(ctx, role, text, rect, selected)`.
   **Do the same for any text you paint yourself** that an agent should be
-  able to read or click. An area that takes clicks but has no role of its
+  able to read or click; a painted item that takes clicks (an icon, a
+  column's row) is `style::describe_item(ctx, text, rect, selected)`, a
+  clickable `ListItem`, so agents and keyboard hints can pick it.
+  `{"focus":ID}` (`commands::focus(pid, id)`) gives the keyboard to the
+  widget with that tree id, as AccessKit's Focus action. An area that takes clicks but has no role of its
   own (`ui.interact`) is reported as `Clickable`, named by the texts whose
   middles lie inside it (each text names the smallest such area). Better,
   give it a role and name yourself, as DeskCalc's keys do:
@@ -1008,6 +1014,42 @@ pixels) and its windows on this workspace, front first, with frames;
 ones in those fractions of the area (`arrange`), as Tile All does its
 cells: undoable, and tiled as `Tile::Cell` so their edges move together.
 Smart Tiling (see "AI features") is the first user.
+
+## Keyboard hints (app_server hints.rs, Preferences ▸ Keyboard)
+
+Opt-in (`KeyboardSettings::hints`). Tapping Control and Shift together
+(Caps Lock counts as Control when it is one), with nothing else and
+within `HINTS_TAP`, is the keymap's `Action::Hints`: a yellow key cap
+with a letter goes on everything that can be picked, as Vim's
+EasyMotion does. Typing a letter picks it; Backspace goes back a level;
+Esc, a click or any other key (which then does what it does) puts them
+away; tapping ⌃⇧ again does too. Letters are by key position, as on a
+US keyboard, home row first (`LETTERS`).
+
+What can be picked comes from the kit's trees (`{"tree":true}`, asked on
+worker threads, 500 ms at most): the focused window's controls, the
+other windows (by their tabs; picking one brings it forward and letters
+its content next) and every layer surface (Deskbar, the desktop's icons,
+notifications). `build` turns a tree into `Node`s: what is clickable,
+enabled and shows in the window, less a nameless area behind others (a
+list's background) and the outside of a control around its own inside;
+boxes (egui's nesting) are `Group`s. With a menu open, only its items,
+the last opened (a submenu) first. `prune` drops what a click wouldn't
+reach (a window in front: `clicks_reach` follows the surface under the
+middle up to its window or layer). A level never has more than 26
+letters (`expand`): all of it when it fits; else groups opened smallest
+first while they fit, outlined in navigation blue, and what's left
+after 25 letters in runs. Picking a leaf clicks its middle (the pointer
+goes back after `SETTLE` if untouched) and then looks for a menu it
+opened, whose items are lettered next; sliders, text fields and the
+like are given the keyboard instead (`{"focus":ID}`), as a click would
+change them. The badges are memory buffers in front of everything
+(`Hints::elements`, from both backends), cached per letter, scale and
+theme.
+
+Agents read the letters showing with `{"type":"hints"}` (label, global
+rectangle, name, role: AccessKit's, `Window` or `Group`) and type them
+as keys.
 
 ## AI features (crates/ai, apps/smart-tile, Preferences ▸ AI)
 

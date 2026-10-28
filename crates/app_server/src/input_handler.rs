@@ -134,6 +134,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if self.media_key(key, pressed) {
             return KeyAction::None;
         }
+        if self.hints_key(key, pressed) {
+            return KeyAction::None;
+        }
         let opts = crate::keymap::Options::from(&self.settings.keyboard);
         let terminal = self.focused_window().is_some_and(|w| {
             let id = w.app_id();
@@ -171,6 +174,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             A::SwitchDone => self.twitch_done(),
             A::Palette => self.shortcut(olo_protocol::Shortcut::Palette),
             A::Shortcut(s) => self.shortcut(s),
+            A::Hints => self.toggle_hints(),
         }
     }
 
@@ -361,6 +365,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let state = wl_pointer::ButtonState::from(evt.state());
 
         if wl_pointer::ButtonState::Pressed == state {
+            // Clicking puts keyboard hints away.
+            if self.hints.active() {
+                self.hints.close();
+            }
             self.update_keyboard_focus(self.pointer.current_location(), serial);
         };
         let pointer = self.pointer.clone();
