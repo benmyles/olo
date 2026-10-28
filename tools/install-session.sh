@@ -24,8 +24,13 @@ USER_HOME=$(getent passwd "$USER_NAME" | cut -d: -f6)
 PREFIX=${PREFIX:-$USER_HOME/.local}
 SESSIONS=${SESSIONS:-/usr/local/share/wayland-sessions}
 
+# Under sudo, with the user's own toolchain first (~/.cargo/bin: rustup's
+# cargo and any rustc wrapper its config names), not sudo's secure_path,
+# which finds the system's cargo or none.
 as_user() {
-    if [ "$(id -u)" = 0 ] && [ "$USER_NAME" != root ]; then sudo -u "$USER_NAME" "$@"; else "$@"; fi
+    if [ "$(id -u)" = 0 ] && [ "$USER_NAME" != root ]; then
+        sudo -H -u "$USER_NAME" env PATH="$USER_HOME/.cargo/bin:$PATH" "$@"
+    else "$@"; fi
 }
 as_root() {
     if [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi
