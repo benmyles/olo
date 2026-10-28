@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod notifications;
 pub mod shortcuts;
+pub mod touchpad;
 pub use notifications::{AppNotifications, HistoryView, NotificationSettings, NotificationState};
 pub use shortcuts::{Chord, Shortcut, ShortcutSettings, Tile, TilingSettings};
 
@@ -50,6 +51,9 @@ pub enum Request {
     MoveToWorkspace { id: WindowId, index: u32 },
     Outputs,
     ConfigureOutput { name: String, config: OutputConfig },
+    /// The pointing devices plugged in: touchpads (with the kind of pad and
+    /// the profile that suits it) and mice.
+    InputDevices,
     GetSettings,
     /// The keyboard hints showing now (Preferences ▸ Keyboard): each
     /// letter, where it is and what it picks.
@@ -153,6 +157,7 @@ pub enum Reply {
     Windows { windows: Vec<WindowInfo> },
     Workspaces { current: u32, count: u32 },
     Outputs { outputs: Vec<OutputInfo> },
+    InputDevices { devices: Vec<touchpad::InputDeviceInfo> },
     Settings { settings: Settings },
     /// The keyboard hints showing now (none when they're off).
     Hints { hints: Vec<HintInfo> },
@@ -767,6 +772,41 @@ pub struct TouchpadSettings {
     pub clickfinger: bool,
     /// libinput accel speed, -1.0 ..= 1.0
     pub speed: f64,
+    /// The tuning profile (`touchpad::PROFILES`); "custom" once changed by
+    /// hand.
+    pub profile: String,
+    /// Olo's touch filter for pads that report pressure.
+    pub filter: touchpad::TouchFilter,
+    /// "adaptive" or "flat" (no acceleration).
+    pub accel_profile: String,
+    /// Touchpad scrolling distance, 1.0 as measured against Olo's apps.
+    pub scroll_speed: f64,
+    /// A flick keeps scrolling after the fingers lift (`momentum.rs`).
+    pub momentum: bool,
+    /// How far a flick glides, 1.0 as macOS's normal deceleration.
+    pub glide: f64,
+    /// After tap-and-drag lifts: "off", "timeout" or "sticky".
+    pub drag_lock: String,
+    /// Three-finger drag: 0 off, 3 or 4 fingers.
+    pub three_finger_drag: u8,
+    /// Tapping (and clicking with) two fingers: "lrm" (two right-click,
+    /// three middle-click) or "lmr".
+    pub tap_button_map: String,
+    pub clickfinger_button_map: String,
+    /// Pressing both buttons at once is a middle click.
+    pub middle_emulation: bool,
+    /// Ignore the touchpad while the pointing stick is used.
+    pub dwtp: bool,
+    /// How long after typing the touchpad stays ignored, 0 for libinput's
+    /// own.
+    pub dwt_timeout_ms: u32,
+    /// "two-finger" or "edge".
+    pub scroll_method: String,
+    pub left_handed: bool,
+    /// Turn the touchpad off while a mouse is plugged in.
+    pub off_with_mouse: bool,
+    /// Mice: "adaptive" or "flat".
+    pub mouse_accel_profile: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -852,6 +892,23 @@ impl Default for TouchpadSettings {
             disable_while_typing: true,
             clickfinger: true,
             speed: 0.0,
+            profile: "macbook".into(),
+            filter: touchpad::TouchFilter::default(),
+            accel_profile: "adaptive".into(),
+            scroll_speed: 1.0,
+            momentum: true,
+            glide: 1.0,
+            drag_lock: "off".into(),
+            three_finger_drag: 0,
+            tap_button_map: "lrm".into(),
+            clickfinger_button_map: "lrm".into(),
+            middle_emulation: false,
+            dwtp: true,
+            dwt_timeout_ms: 0,
+            scroll_method: "two-finger".into(),
+            left_handed: false,
+            off_with_mouse: false,
+            mouse_accel_profile: "adaptive".into(),
         }
     }
 }

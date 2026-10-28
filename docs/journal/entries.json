@@ -1306,5 +1306,17 @@
   "title": "Twitcher rows, dark",
   "caption": "The same, in dark mode.",
   "image": "2026-10-27/200725-twitcher-rows-dark.png"
+ },
+ {
+  "time": "2026-10-27T20:42:17",
+  "title": "Touchpad preferences: profiles and every tunable",
+  "caption": "Preferences \u25b8 Touchpad now names the pad app_server found and recommends a profile (MacBook, Magic Trackpad, Standard; hand tuning makes it Custom). Touch holds Olo's palm and hover filter, a libinput plugin that counts a touch only while it presses, ignores palms and makes the click from the fingers' pressure alone; Gestures has scrolling speed, momentum glide, three-finger drag, drag lock and acceleration.",
+  "image": "2026-10-27/204217-touchpad-preferences-profiles-and-every-tunable.png"
+ },
+ {
+  "time": "2026-10-27T20:42:17",
+  "title": "Touchpad preferences in dark",
+  "caption": "The Touch, Gestures and Mouse tabs in dark mode.",
+  "image": "2026-10-27/204217-touchpad-preferences-in-dark.png"
  }
 ]

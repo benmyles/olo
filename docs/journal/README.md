@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Touchpad preferences in dark
+
+*20:42* — The Touch, Gestures and Mouse tabs in dark mode.
+
+![Touchpad preferences in dark](2026-10-27/204217-touchpad-preferences-in-dark.png)
+
+### Touchpad preferences: profiles and every tunable
+
+*20:42* — Preferences ▸ Touchpad now names the pad app_server found and recommends a profile (MacBook, Magic Trackpad, Standard; hand tuning makes it Custom). Touch holds Olo's palm and hover filter, a libinput plugin that counts a touch only while it presses, ignores palms and makes the click from the fingers' pressure alone; Gestures has scrolling speed, momentum glide, three-finger drag, drag lock and acceleration.
+
+![Touchpad preferences: profiles and every tunable](2026-10-27/204217-touchpad-preferences-profiles-and-every-tunable.png)
+
 ### Twitcher rows, dark
 
 *20:07* — The same, in dark mode.

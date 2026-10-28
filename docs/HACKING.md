@@ -1253,7 +1253,24 @@ the worker reports the volume it set; headless simulates a volume).
 `OLO_OSD_SHEET=/tmp/o.png cargo test -p app_server osd_sheet` draws
 every state.
 
-## The touchpad (app_server udev.rs, momentum.rs)
+## The touchpad (app_server udev.rs, momentum.rs, touch_filter.rs)
+
+[TOUCHPAD.md](TOUCHPAD.md) has the measurements and the reasoning.
+Preferences ▸ Touchpad has four tabs (Touchpad, Touch, Gestures, Mouse)
+and a tuning profile (protocol `touchpad.rs`: `PROFILES`,
+`apply_profile`; changing any tuning by hand makes it "custom"); the
+pad and the profile it suits come from `Request::InputDevices`
+(`DeviceKind::detect`). On MacBook pads (Apple MTP) app_server loads
+**Olo's touch filter** into its libinput: `touchpad.lua`, a libinput
+1.30 Lua plugin written with the settings filled in to
+`$XDG_RUNTIME_DIR/olo/libinput-plugins` (`touch_filter::install`). It
+counts a touch only while it presses, reports palms and hovering
+fingers with no size, and makes the click from the fingers' pressure
+alone. Plugins are read when libinput starts, so `start_libinput` makes
+a new libinput context when the filter's settings change.
+`cargo test -p app_server touch_filter` runs the plugin in mlua against
+scripted frames; `examples/touch_filter_probe.rs` runs it on a real
+device (root, read-only).
 
 Preferences ▸ Touchpad goes into libinput (`configure_pointer`), with the
 rest set as a Mac trackpad behaves: a two-finger tap is the secondary
@@ -1261,7 +1278,9 @@ click, no drag lock, no middle-click emulation. Scrolling has momentum, as
 on a Mac (`momentum.rs`): when the fingers lift (libinput's scroll of 0)
 while moving faster than 0.3 px/ms over the last 80 ms, app_server holds
 the stop back and keeps sending finger scrolls every 8 ms, slowing by
-0.997 a millisecond, then sends the stop; fingers resting again (a hold
+0.997 a millisecond (`glide` stretches that: 2.0 glides twice as far;
+`scroll_speed` scales finger scrolls before momentum samples them),
+then sends the stop; fingers resting again (a hold
 gesture), pointer motion, a click, a swipe or pinch, or a wheel stop it.
 Clients thus see one continuous finger scroll (GTK adds no kinetic scroll
 of its own). Kit scroll views have egui's own smoothing. Test with

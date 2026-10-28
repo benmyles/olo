@@ -42,6 +42,7 @@ pub mod sockfile;
 pub mod text;
 pub mod theme;
 pub mod toolkits;
+pub mod touch_filter;
 pub mod twitcher;
 pub mod wallpaper;
 

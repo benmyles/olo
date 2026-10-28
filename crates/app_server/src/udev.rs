@@ -149,6 +149,13 @@ pub struct UdevData {
     /// would turn them back on).
     displays_off: bool,
     loop_handle: smithay::reexports::calloop::LoopHandle<'static, AnvilState<UdevData>>,
+    /// libinput and its event source (started again when Olo's touch
+    /// filter changes: `touch_filter`).
+    libinput: Option<(Libinput, RegistrationToken)>,
+    /// The touch filter libinput loaded.
+    touch_filter: Option<String>,
+    /// Bumped by each change to the filter, so only the newest restart runs.
+    filter_restart: u64,
 }
 
 impl UdevData {
@@ -190,6 +197,91 @@ impl DmabufHandler for AnvilState<UdevData> {
             notifier.failed();
         }
     }
+}
+
+impl UdevData {
+    /// Start libinput (again: devices come back as new), with Olo's
+    /// touch filter for the current settings and any plugins installed
+    /// system-wide.
+    fn start_libinput(&mut self) {
+        if let Some((_, token)) = self.libinput.take() {
+            self.loop_handle.remove(token);
+            // They went with the old context, and come back as added.
+            self.keyboards.clear();
+            self.pointers.clear();
+        }
+        let context = Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(self.session.clone().into());
+        let touchpad = self.input_settings.as_ref().map(|s| s.touchpad.clone()).unwrap_or_default();
+        self.touch_filter = crate::touch_filter::install(&touchpad);
+        if self.touch_filter.is_some() {
+            context.plugin_system_append_path(&crate::touch_filter::dir().to_string_lossy());
+        }
+        context.plugin_system_append_default_paths();
+        if let Err(e) = context.plugin_system_load_plugins(smithay::reexports::input::PluginSystemFlags::empty()) {
+            warn!(%e, "libinput plugins not loaded");
+        }
+        let mut seat_context = context.clone();
+        if seat_context.udev_assign_seat(&self.session.seat()).is_err() {
+            error!("libinput could not take the seat");
+        }
+        let backend = LibinputInputBackend::new(context.clone());
+        match self.loop_handle.insert_source(backend, |event, _, data| on_input_event(data, event)) {
+            Ok(token) => self.libinput = Some((context, token)),
+            Err(e) => error!(%e, "could not watch libinput"),
+        }
+        info!(touch_filter = self.touch_filter.is_some(), "libinput started");
+    }
+}
+
+/// An event from libinput: keep track of the devices, then handle it.
+fn on_input_event(data: &mut AnvilState<UdevData>, mut event: InputEvent<LibinputInputBackend>) {
+    let dh = data.backend_data.dh.clone();
+    if let InputEvent::DeviceAdded { device } = &mut event {
+        if device.has_capability(DeviceCapability::Keyboard) {
+            if let Some(led_state) = data.seat.get_keyboard().map(|keyboard| keyboard.led_state()) {
+                device.led_update(led_state.into());
+            }
+            data.backend_data.keyboards.push(device.clone());
+        }
+        if device.has_capability(DeviceCapability::Pointer) {
+            if let Some(settings) = &data.backend_data.input_settings {
+                configure_pointer(device, settings);
+            }
+            data.backend_data.pointers.push(device.clone());
+        }
+    } else if let InputEvent::DeviceRemoved { ref device } = event {
+        data.backend_data.keyboards.retain(|item| item != device);
+        data.backend_data.pointers.retain(|item| item != device);
+    }
+    data.process_input_event(&dh, event)
+}
+
+/// What Preferences shows of a pointing device.
+fn device_info(device: &smithay::reexports::input::Device) -> olo_protocol::touchpad::InputDeviceInfo {
+    use olo_protocol::touchpad::{DeviceKind, InputDeviceInfo};
+    let touchpad = device.config_tap_finger_count() > 0;
+    let kind = DeviceKind::detect(&device.name(), device.id_vendor(), device.id_product(), touchpad);
+    let pressure = touchpad && abs_capable(device.sysname(), 0x3a);
+    let driver_click = matches!(kind, DeviceKind::AppleMtp).then(|| {
+        let param = |name: &str| std::fs::read_to_string(format!("/sys/module/hid_magicmouse/parameters/{name}")).ok()?.trim().parse::<u32>().ok();
+        Some((param("haptic_press_threshold")?, param("haptic_release_threshold")?))
+    });
+    InputDeviceInfo {
+        name: device.name().into_owned(),
+        kind,
+        size_mm: device.size(),
+        pressure,
+        recommended: kind.recommended().to_owned(),
+        driver_click: driver_click.flatten(),
+    }
+}
+
+/// Whether input device `sysname` (event1) reports absolute axis `code`.
+fn abs_capable(sysname: &str, code: u32) -> bool {
+    let Ok(caps) = std::fs::read_to_string(format!("/sys/class/input/{sysname}/device/capabilities/abs")) else { return false };
+    // Hex words, most significant first, each 64 bits wide.
+    let words: Vec<u64> = caps.split_whitespace().rev().filter_map(|w| u64::from_str_radix(w, 16).ok()).collect();
+    words.get(code as usize / 64).is_some_and(|w| w & (1 << (code % 64)) != 0)
 }
 
 impl Backend for UdevData {
@@ -254,10 +346,33 @@ impl Backend for UdevData {
     }
 
     fn apply_input_settings(&mut self, settings: &olo_protocol::Settings) {
+        self.input_settings = Some(settings.clone());
+        // The touch filter is read when libinput starts: start it again,
+        // once a slider has settled and nothing is held (the new context
+        // would never send the release of a button the old one pressed).
+        if self.libinput.is_some() && crate::touch_filter::render(&settings.touchpad) != self.touch_filter {
+            self.filter_restart += 1;
+            let generation = self.filter_restart;
+            let _ = self.loop_handle.insert_source(Timer::from_duration(Duration::from_millis(400)), move |_, _, data| {
+                if data.backend_data.filter_restart != generation {
+                    return TimeoutAction::Drop;
+                }
+                let held = data.seat.get_pointer().is_some_and(|p| p.is_grabbed())
+                    || data.seat.get_keyboard().is_some_and(|k| !k.pressed_keys().is_empty());
+                if held || !data.backend_data.session.is_active() {
+                    return TimeoutAction::ToDuration(Duration::from_millis(200));
+                }
+                data.backend_data.start_libinput();
+                TimeoutAction::Drop
+            });
+        }
         for device in self.pointers.iter_mut() {
             configure_pointer(device, settings);
         }
-        self.input_settings = Some(settings.clone());
+    }
+
+    fn input_devices(&self) -> Vec<olo_protocol::touchpad::InputDeviceInfo> {
+        self.pointers.iter().map(device_info).collect()
     }
 
     fn set_mode(&mut self, output: &Output, mode: WlMode) -> Result<(), String> {
@@ -381,36 +496,67 @@ struct Ctm {
     pending: Option<[f64; 3]>,
 }
 
-/// Preferences ▸ Touchpad into libinput: tapping, natural scrolling,
-/// typing palm rejection, click method and speed for touchpads; speed for
-/// mice; the rest as a Mac trackpad behaves. Options a device lacks are
-/// skipped. (Momentum scrolling is app_server's own: `momentum.rs`.)
+/// Preferences ▸ Touchpad into libinput: tapping, dragging, clicking,
+/// scrolling, palm rejection while typing and speed for touchpads; speed
+/// and acceleration for mice. Options a device lacks are skipped.
+/// (Momentum and scrolling distance are app_server's own: `momentum.rs`,
+/// `scroll.rs`; palm and hover filtering is `touch_filter`.)
 fn configure_pointer(device: &mut smithay::reexports::input::Device, settings: &olo_protocol::Settings) {
-    use smithay::reexports::input::{ClickMethod, DragLockState, ScrollMethod, TapButtonMap};
+    use smithay::reexports::input::{
+        AccelProfile, ClickMethod, ClickfingerButtonMap, DragLockState, ScrollMethod, SendEventsMode, TapButtonMap, ThreeFingerDragState,
+    };
     let t = &settings.touchpad;
     let touchpad = device.config_tap_finger_count() > 0;
+    let lrm = |map: &str| map != "lmr";
     if touchpad {
         let _ = device.config_tap_set_enabled(t.tap_to_click);
         let _ = device.config_tap_set_drag_enabled(t.tap_and_drag);
-        // As on a Mac: a two-finger tap is the secondary click, a drag
-        // ends when the finger lifts, and nothing becomes a middle click
-        // (which would paste the selection somewhere by surprise).
-        let _ = device.config_tap_set_button_map(TapButtonMap::LeftRightMiddle);
-        let _ = device.config_tap_set_drag_lock_enabled(DragLockState::Disabled);
-        if device.config_middle_emulation_is_available() {
-            let _ = device.config_middle_emulation_set_enabled(false);
+        let _ = device.config_tap_set_button_map(if lrm(&t.tap_button_map) { TapButtonMap::LeftRightMiddle } else { TapButtonMap::LeftMiddleRight });
+        let _ = device.config_tap_set_drag_lock_enabled(match t.drag_lock.as_str() {
+            "timeout" => DragLockState::EnabledTimeout,
+            "sticky" => DragLockState::EnabledSticky,
+            _ => DragLockState::Disabled,
+        });
+        if device.config_3fg_drag_get_finger_count() >= 3 {
+            let _ = device.config_3fg_drag_set_enabled(match t.three_finger_drag {
+                3 => ThreeFingerDragState::EnabledThreeFinger,
+                4 => ThreeFingerDragState::EnabledFourFinger,
+                _ => ThreeFingerDragState::Disabled,
+            });
         }
         if device.config_dwt_is_available() {
             let _ = device.config_dwt_set_enabled(t.disable_while_typing);
+            if t.dwt_timeout_ms > 0 {
+                set_dwt_timeout(device, t.dwt_timeout_ms);
+            }
+        }
+        if device.config_dwtp_is_available() {
+            let _ = device.config_dwtp_set_enabled(t.dwtp);
         }
         let methods = device.config_click_methods();
         let method = if t.clickfinger { ClickMethod::Clickfinger } else { ClickMethod::ButtonAreas };
         if methods.contains(&method) {
             let _ = device.config_click_set_method(method);
         }
-        if device.config_scroll_methods().contains(&ScrollMethod::TwoFinger) {
-            let _ = device.config_scroll_set_method(ScrollMethod::TwoFinger);
+        let _ = device.config_click_clickfinger_set_button_map(if lrm(&t.clickfinger_button_map) {
+            ClickfingerButtonMap::LeftRightMiddle
+        } else {
+            ClickfingerButtonMap::LeftMiddleRight
+        });
+        let scroll = if t.scroll_method == "edge" { ScrollMethod::Edge } else { ScrollMethod::TwoFinger };
+        if device.config_scroll_methods().contains(&scroll) {
+            let _ = device.config_scroll_set_method(scroll);
         }
+        let modes = device.config_send_events_modes();
+        if modes.contains(SendEventsMode::DISABLED_ON_EXTERNAL_MOUSE) {
+            let _ = device.config_send_events_set_mode(if t.off_with_mouse { SendEventsMode::DISABLED_ON_EXTERNAL_MOUSE } else { SendEventsMode::ENABLED });
+        }
+    }
+    if device.config_middle_emulation_is_available() {
+        let _ = device.config_middle_emulation_set_enabled(t.middle_emulation);
+    }
+    if device.config_left_handed_is_available() {
+        let _ = device.config_left_handed_set(t.left_handed);
     }
     if device.config_scroll_has_natural_scroll() {
         let _ = device.config_scroll_set_natural_scroll_enabled(t.natural_scroll);
@@ -418,8 +564,26 @@ fn configure_pointer(device: &mut smithay::reexports::input::Device, settings: &
     if device.config_accel_is_available() {
         let speed = if touchpad { t.speed } else { settings.mouse_speed };
         let _ = device.config_accel_set_speed(speed.clamp(-1.0, 1.0));
+        let profile = if touchpad { &t.accel_profile } else { &t.mouse_accel_profile };
+        let _ = device.config_accel_set_profile(if profile == "flat" { AccelProfile::Flat } else { AccelProfile::Adaptive });
     }
     info!(device = %device.name(), touchpad, "applied pointer settings");
+}
+
+/// How long after typing the touchpad stays ignored (libinput 1.31; looked
+/// up at run time so an older libinput still works).
+fn set_dwt_timeout(device: &mut smithay::reexports::input::Device, ms: u32) {
+    use smithay::reexports::input::AsRaw;
+    type SetTimeout = unsafe extern "C" fn(*mut smithay::reexports::input::ffi::libinput_device, u32) -> i32;
+    static SET: std::sync::OnceLock<Option<SetTimeout>> = std::sync::OnceLock::new();
+    let set = SET.get_or_init(|| {
+        let name = c"libinput_device_config_dwt_set_timeout";
+        let f = unsafe { libc::dlsym(libc::RTLD_DEFAULT, name.as_ptr()) };
+        (!f.is_null()).then(|| unsafe { std::mem::transmute::<*mut libc::c_void, SetTimeout>(f) })
+    });
+    if let Some(set) = set {
+        unsafe { set(device.as_raw_mut(), ms) };
+    }
 }
 
 /// `--probe-gpus`: what each DRM device offers, as the session would
@@ -534,6 +698,9 @@ pub fn run_udev() {
         white_point: [1.0; 3],
         displays_off: false,
         loop_handle: event_loop.handle(),
+        libinput: None,
+        touch_filter: None,
+        filter_restart: 0,
     };
     let mut state = AnvilState::init(display, event_loop.handle(), data, true);
 
@@ -551,46 +718,15 @@ pub fn run_udev() {
     /*
      * Initialize libinput backend
      */
-    let mut libinput_context = Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(
-        state.backend_data.session.clone().into(),
-    );
-    libinput_context.udev_assign_seat(&state.seat_name).unwrap();
-    let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
-
-    /*
-     * Bind all our objects that get driven by the event loop
-     */
-    event_loop
-        .handle()
-        .insert_source(libinput_backend, move |mut event, _, data| {
-            let dh = data.backend_data.dh.clone();
-            if let InputEvent::DeviceAdded { device } = &mut event {
-                if device.has_capability(DeviceCapability::Keyboard) {
-                    if let Some(led_state) = data.seat.get_keyboard().map(|keyboard| keyboard.led_state()) {
-                        device.led_update(led_state.into());
-                    }
-                    data.backend_data.keyboards.push(device.clone());
-                }
-                if device.has_capability(DeviceCapability::Pointer) {
-                    if let Some(settings) = &data.backend_data.input_settings {
-                        configure_pointer(device, settings);
-                    }
-                    data.backend_data.pointers.push(device.clone());
-                }
-            } else if let InputEvent::DeviceRemoved { ref device } = event {
-                data.backend_data.keyboards.retain(|item| item != device);
-                data.backend_data.pointers.retain(|item| item != device);
-            }
-
-            data.process_input_event(&dh, event)
-        })
-        .unwrap();
+    state.backend_data.start_libinput();
 
     event_loop
         .handle()
         .insert_source(notifier, move |event, &mut (), data| match event {
             SessionEvent::PauseSession => {
-                libinput_context.suspend();
+                if let Some((libinput, _)) = data.backend_data.libinput.as_mut() {
+                    libinput.suspend();
+                }
                 info!("pausing session");
 
                 for backend in data.backend_data.backends.values_mut() {
@@ -604,7 +740,9 @@ pub fn run_udev() {
             SessionEvent::ActivateSession => {
                 info!("resuming session");
 
-                if let Err(err) = libinput_context.resume() {
+                if let Some((libinput, _)) = data.backend_data.libinput.as_mut()
+                    && let Err(err) = libinput.resume()
+                {
                     error!("Failed to resume libinput context: {:?}", err);
                 }
                 for (node, backend) in data

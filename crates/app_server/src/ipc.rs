@@ -305,6 +305,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 None => not_found(),
             },
             Request::Outputs => Reply::Outputs { outputs: self.output_infos() },
+            Request::InputDevices => Reply::InputDevices { devices: self.backend_data.input_devices() },
             Request::PowerStatus => Reply::Power { status: self.power_status() },
             Request::Lock => {
                 self.lock_screen();

@@ -5,6 +5,15 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Touchpad drags, palms and stalls~~ (Ben): Olo's touch filter (a
+  libinput plugin app_server loads; docs/TOUCHPAD.md) counts a touch
+  only while it presses, ignores palms and makes the click from the
+  fingers alone; Preferences ▸ Touchpad detects the pad, recommends a
+  profile (MacBook, Magic Trackpad, Standard, Custom) and has every
+  tunable: filter thresholds, click pressure, scrolling speed, glide,
+  three-finger drag, drag lock, button maps, acceleration, typing
+  timeouts. The driver-side fix is written up, not done (Ben's call).
+
 - ~~⌘Tab across workspaces~~ (Ben): in order of use whatever the
   workspace, so ⌘Tab flips between the last two apps; a row of apps per workspace;
   ↑/↓ change rows (and workspaces), ←/→ walk a row, Esc puts everything

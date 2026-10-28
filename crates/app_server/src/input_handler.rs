@@ -659,6 +659,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             .unwrap_or_else(|| evt.amount_v120(input::Axis::Vertical).unwrap_or(0.0) * 15.0 / 120.);
         let horizontal_amount_discrete = evt.amount_v120(input::Axis::Horizontal);
         let vertical_amount_discrete = evt.amount_v120(input::Axis::Vertical);
+        // Preferences ▸ Touchpad ▸ Scrolling speed, before momentum
+        // samples it so a glide goes as far again.
+        let (horizontal_amount, vertical_amount) = match evt.source() {
+            AxisSource::Finger => {
+                let k = self.settings.touchpad.scroll_speed.clamp(0.25, 4.0);
+                (horizontal_amount * k, vertical_amount * k)
+            }
+            _ => (horizontal_amount, vertical_amount),
+        };
 
         {
             let mut frame = AxisFrame::new(evt.time()).source(evt.source());

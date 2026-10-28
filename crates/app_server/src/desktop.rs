@@ -996,6 +996,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             keyboard.advertise_modifier_state(self);
             self.backend_data.update_led_state(keyboard.led_state());
         }
+        let t = &self.settings.touchpad;
+        self.momentum.length = if t.momentum { t.glide.clamp(0.25, 3.0) } else { 0.0 };
         self.backend_data.apply_input_settings(&self.settings);
     }
 }

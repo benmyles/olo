@@ -33,6 +33,8 @@ olo-xdg.workspace = true
 tiny-skia = "0.12"
 cosmic-text = "0.19"
 olo-images.workspace = true
+# Smithay's libinput, with the newer options (three-finger drag, plugins).
+input = { version = "0.10", optional = true, features = ["libinput_1_30"] }
 
 [dependencies.smithay]
 workspace = true
@@ -44,6 +46,7 @@ egl = ["smithay/use_system_lib", "smithay/backend_egl"]
 udev = [
   "smithay-drm-extras",
   "smithay/backend_libinput",
+  "dep:input",
   "smithay/backend_udev",
   "smithay/backend_drm",
   "smithay/backend_gbm",
@@ -59,3 +62,7 @@ libei = ["smithay/backend_libei", "udev"]
 renderer_sync = []
 debug = []
 profile-with-tracy-mem = []
+
+[dev-dependencies]
+# Runs touchpad.lua against scripted frames (touch_filter's tests).
+mlua = { version = "0.10", features = ["lua54", "vendored"] }

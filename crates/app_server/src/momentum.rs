@@ -24,12 +24,21 @@ const DECAY: f64 = 0.997;
 /// How often the glide moves.
 pub const STEP: Duration = Duration::from_millis(8);
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Momentum {
     samples: VecDeque<(Instant, f64, f64)>,
     glide: Option<Glide>,
     /// Bumped by every glide, so a stale timer knows to stop.
     pub generation: u64,
+    /// How far a glide goes, 1.0 as macOS's normal (Preferences ▸
+    /// Touchpad); 0 turns momentum off.
+    pub length: f64,
+}
+
+impl Default for Momentum {
+    fn default() -> Self {
+        Momentum { samples: VecDeque::new(), glide: None, generation: 0, length: 1.0 }
+    }
 }
 
 #[derive(Debug)]
@@ -53,6 +62,9 @@ impl Momentum {
     /// stop and call [`Momentum::step`] every [`STEP`]).
     pub fn lifted(&mut self, now: Instant) -> bool {
         let samples = std::mem::take(&mut self.samples);
+        if self.length <= 0.0 {
+            return false;
+        }
         let Some(&(first, ..)) = samples.iter().find(|s| now.duration_since(s.0) <= WINDOW) else { return false };
         let Some(&(last, ..)) = samples.back() else { return false };
         if now.duration_since(last) > RESTED {
@@ -77,9 +89,11 @@ impl Momentum {
         let g = self.glide.as_mut()?;
         let ms = now.duration_since(g.last).as_secs_f64() * 1000.0;
         g.last = now;
-        // Distance is the integral of v·DECAY^t over the step.
-        let keep = DECAY.powf(ms);
-        let travel = (1.0 - keep) / -DECAY.ln();
+        // Distance is the integral of v·decay^t over the step; a glide
+        // goes v0 / -ln(decay), so `length` scales the log.
+        let decay = DECAY.powf(1.0 / self.length.max(0.1));
+        let keep = decay.powf(ms);
+        let travel = (1.0 - keep) / -decay.ln();
         let (dx, dy) = (g.vx * travel, g.vy * travel);
         g.vx *= keep;
         g.vy *= keep;
@@ -137,6 +151,28 @@ mod tests {
         assert!((550.0..700.0).contains(&moved), "{moved}");
         assert!((150..400).contains(&steps), "{steps}");
         assert!(!m.gliding());
+    }
+
+    #[test]
+    fn length_scales_the_glide() {
+        let glide = |length: f64| {
+            let mut m = Momentum { length, ..Default::default() };
+            let t = flick(&mut m, Instant::now(), 12.0, 10);
+            if !m.lifted(t) {
+                return 0.0;
+            }
+            let (mut total, mut t) = (0.0, t);
+            loop {
+                t += STEP;
+                match m.step(t) {
+                    Some((_, dy)) => total += dy,
+                    None => return total,
+                }
+            }
+        };
+        let (normal, long) = (glide(1.0), glide(2.0));
+        assert!(long > 1.8 * normal && long < 2.2 * normal, "{normal} {long}");
+        assert_eq!(glide(0.0), 0.0);
     }
 
     #[test]
