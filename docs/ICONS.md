@@ -127,11 +127,72 @@ python3 tools/iconsheet.py docs/img/icon-reference.png \
     $(ls data/icons/reference | sed 's/\.png$//')
 ```
 
+## Themes
+
+The whole set, the `olo` mark and the wordmark come in seven looks, chosen
+in Preferences ▸ Themes (`Appearance::icon_theme`; new users get Soft
+Be). Every app follows the choice at once. The style above is **Classic**:
+`data/icons` and `data/brand` themselves. Every other theme draws the same
+subjects in its own medium, and keeps the Be grammar: a three-quarter
+view from the upper left, flat things lying on the desk, chunky shapes that
+read at 16 px, a soft cast shadow to the lower right, and Be blue and BeOS
+tab yellow as the brand colours.
+
+| Id | Name | Medium |
+|---|---|---|
+| `soft-be` | Soft Be (the default) | Soft matte clay. |
+| `bebox` | BeBox | Graphite plastic, panel lines and the BeBox's LED columns. |
+| `toybox` | Toybox | Painted beech toys. |
+| `papercraft` | Papercraft | Folded card, one flat tone per face, as in R5. |
+| `enamel` | Enamel | Hard enamel pins with polished gold rims for the outline. |
+| `halftone` | Halftone | Flat ink, a heavy black line and halftone-dot shading. |
+| `classic` | Classic | This guide's glossy set. |
+
+A theme lives in `data/themes/<id>/`:
+
+| Path | What |
+|---|---|
+| `style.txt` | Its style prompt, used in place of the house style. |
+| `reference/` | Its reference icons, 512 px: folder, application, disk, terminal and home. |
+| `src/` | Raw 1024² renders and their sidecars (gitignored). |
+| `icons/<px>/<name>.png` | The shipped sizes, laid out as in `data/icons`. |
+| `brand/olo-wordmark.png` | Its wordmark, one picture for light and dark (an `olo-wordmark-on-dark.png` beside it is used on dark when present). |
+
+Rules:
+
+* **A theme draws every icon in the manifest**, `olo` and `themes`
+  included, at every size, plus its wordmark. `cargo test -p olo-xdg`
+  checks this (`themes::tests::every_theme_is_complete`). At run time a
+  missing icon falls back to the Classic one, but never ship a theme with
+  gaps.
+* **A new manifest icon is generated for every theme**, against that
+  theme's references. `genicon.py --theme ID` uses the theme's
+  `style.txt` and `reference/`, drops "glossy" from the subject (the
+  manifest is written for Classic) and writes to `data/themes/ID/src/`.
+* The theme sets were first drawn one image per icon (about 500), not as
+  two candidates each, and then reviewed on a contact sheet per theme.
+  Redraw any icon that drifts with `--variants 2` as usual.
+* The PNGs are in Git LFS (`.gitattributes`). Install and upgrade copy
+  each theme's `icons/` and `brand/` to `~/.local/share/olo/themes/`.
+
+```sh
+# A new icon NAME, in every theme (one image each; skips ones already drawn)
+tools/genicons.sh --theme soft-be,bebox,toybox,papercraft,enamel,halftone NAME
+# …or candidates for one theme
+python3 tools/genicon.py --theme toybox NAME "subject" --variants 2
+# Review, then render the sizes
+python3 tools/mkicons.py --theme toybox NAME
+python3 tools/iconsheet.py /tmp/toybox.png --theme toybox
+```
+
 ## Using icons in code
 
 `olo_kit::icons::paint(painter, rect, "name")`. Names come from the
 manifest; freedesktop icon names and absolute paths also work. The kit
-picks the smallest pre-scaled size that covers the rect in device pixels.
-Use these sizes: 16 for lists, menus and the Deskbar; 32 for Tracker mini
-icons and dialogs; 48 to 64 for the Tracker icon view and desktop; 128 for
-About boxes. Don't tint, recolour or scale icons up beyond 256 px.
+picks the smallest pre-scaled size that covers the rect in device pixels,
+in the current theme (`olo_xdg::themes::current()`); to show another
+theme, as Preferences does, use `icons::paint_in(painter, rect, theme,
+name)` and `brand::wordmark_in`. Use these sizes: 16 for lists, menus and
+the Deskbar; 32 for Tracker mini icons and dialogs; 48 to 64 for the
+Tracker icon view and desktop; 128 for About boxes. Don't tint, recolour
+or scale icons up beyond 256 px.

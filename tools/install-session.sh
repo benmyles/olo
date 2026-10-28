@@ -69,6 +69,13 @@ done
 [ "$(readlink "$PREFIX/bin/op" 2>/dev/null)" = tabula-op ] && as_user ln -sfn olo-op "$PREFIX/bin/op"
 [ -e "$PREFIX/bin/op" ] || [ -L "$PREFIX/bin/op" ] || as_user ln -s olo-op "$PREFIX/bin/op"
 as_user cp -r data/icons data/brand "$PREFIX/share/olo/"
+# The themes (Preferences ▸ Themes): each one's icons and wordmark, not
+# its sources.
+for theme in data/themes/*/; do
+    theme=${theme%/}
+    as_user mkdir -p "$PREFIX/share/olo/themes/${theme##*/}"
+    as_user cp -r --reflink=auto "$theme/icons" "$theme/brand" "$PREFIX/share/olo/themes/${theme##*/}/"
+done
 # The wallpaper pack (a reflink copy where the file system can).
 as_user cp -r --reflink=auto data/wallpapers "$PREFIX/share/olo/"
 echo "$TREE/target/release" | as_user tee "$PREFIX/share/olo/build-dir" > /dev/null

@@ -702,6 +702,9 @@ pub struct Appearance {
     /// Deskbar's menu shows each item's icon: applications, preferences,
     /// commands.
     pub menu_icons: bool,
+    /// The theme every icon and the wordmark are drawn in (an id from
+    /// `olo_xdg::themes::THEMES`; unknown ids draw the default).
+    pub icon_theme: String,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -742,6 +745,7 @@ impl Default for Appearance {
             effective_theme: olo_theme::ThemeMode::Light,
             night_light_active: false,
             menu_icons: true,
+            icon_theme: "soft-be".into(),
         }
     }
 }

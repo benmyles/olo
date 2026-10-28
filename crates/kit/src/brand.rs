@@ -1,23 +1,23 @@
-//! Olo's brand: the wordmark (`data/brand`), drawn crisp at the size
-//! asked for, in its light or dark version by the palette.
+//! Olo's brand: the wordmark (`data/brand`, or the current theme's
+//! `data/themes/<id>/brand`), drawn crisp at the size asked for, in its
+//! light or dark version by the palette.
 
 use std::{collections::HashMap, sync::Arc};
 
 use egui::{Color32, ColorImage, Painter, Rect, TextureHandle, TextureOptions, pos2, vec2};
 
-/// The wordmark's file in a data directory (`brand/…`), for a light or a
-/// dark background.
-fn file(dark: bool) -> &'static str {
-    if dark { "brand/olo-wordmark-on-dark.png" } else { "brand/olo-wordmark.png" }
-}
+type Source = Arc<(Vec<[u8; 4]>, usize, usize)>;
 
-/// The wordmark, trimmed to what it draws: its pixels, width and height.
-fn source(dark: bool) -> Option<Arc<(Vec<[u8; 4]>, usize, usize)>> {
-    static CACHE: std::sync::Mutex<[Option<Option<Arc<(Vec<[u8; 4]>, usize, usize)>>>; 2]> = std::sync::Mutex::new([None, None]);
+/// Theme `theme`'s wordmark, trimmed to what it draws: its pixels, width
+/// and height.
+fn source(theme: &'static str, dark: bool) -> Option<Source> {
+    static CACHE: std::sync::Mutex<Option<HashMap<(&'static str, bool), Option<Source>>>> = std::sync::Mutex::new(None);
     let mut cache = CACHE.lock().unwrap();
-    cache[dark as usize]
-        .get_or_insert_with(|| {
-            let img = olo_xdg::data_dirs().iter().find_map(|d| olo_xdg::decode_png(&d.join(file(dark))))?;
+    cache
+        .get_or_insert_default()
+        .entry((theme, dark))
+        .or_insert_with(|| {
+            let img = olo_xdg::decode_png(&olo_xdg::themes::wordmark_file(theme, dark)?)?;
             let (w, h) = (img.width as usize, img.height as usize);
             let px: Vec<[u8; 4]> = img.rgba.as_chunks::<4>().0.to_vec();
             let alpha = |x: usize, y: usize| px[y * w + x][3] > 8;
@@ -33,26 +33,50 @@ fn source(dark: bool) -> Option<Arc<(Vec<[u8; 4]>, usize, usize)>> {
 
 /// How wide the wordmark is when `height` tall (0 if it can't be found).
 pub fn wordmark_width(height: f32) -> f32 {
-    source(false).map_or(0.0, |s| height * s.1 as f32 / s.2 as f32)
+    wordmark_width_in(olo_xdg::themes::current().id, height)
+}
+
+/// As [`wordmark_width`], for theme `theme`'s wordmark.
+pub fn wordmark_width_in(theme: &str, height: f32) -> f32 {
+    source(olo_xdg::themes::resolve(theme).id, false).map_or(0.0, |s| height * s.1 as f32 / s.2 as f32)
 }
 
 /// Draw the wordmark `rect.height()` tall at `rect`'s left, centred
 /// vertically; the rect it took, or None if it can't be found.
 pub fn wordmark(painter: &Painter, rect: Rect, dark: bool) -> Option<Rect> {
+    wordmark_in(painter, rect, dark, olo_xdg::themes::current().id)
+}
+
+/// Textures by theme, background and device height, and the theme they
+/// were last asked for in (when that changes, the others go).
+#[derive(Default)]
+struct Textures {
+    current: &'static str,
+    map: HashMap<(&'static str, bool, usize), TextureHandle>,
+}
+
+/// As [`wordmark`], theme `theme`'s.
+pub fn wordmark_in(painter: &Painter, rect: Rect, dark: bool, theme: &str) -> Option<Rect> {
     let ctx = painter.ctx();
     let ppp = ctx.pixels_per_point();
-    let src = source(dark)?;
+    let theme = olo_xdg::themes::resolve(theme).id;
+    let src = source(theme, dark)?;
     let th = (rect.height() * ppp).round().max(1.0) as usize;
     let tw = ((th as f32) * src.1 as f32 / src.2 as f32).round().max(1.0) as usize;
-    let key = egui::Id::unique(("olo-wordmark", dark, th));
     let cache_id = egui::Id::unique("olo-brand-textures");
-    let cache = ctx.data_mut(|d| d.get_temp_mut_or_default::<Arc<std::sync::Mutex<HashMap<egui::Id, TextureHandle>>>>(cache_id).clone());
+    let cache = ctx.data_mut(|d| d.get_temp_mut_or_default::<Arc<std::sync::Mutex<Textures>>>(cache_id).clone());
+    let mut cache = cache.lock().unwrap();
+    let now = olo_xdg::themes::current().id;
+    if cache.current != now {
+        cache.current = now;
+        cache.map.retain(|k, _| k.0 == now);
+    }
     let tex = cache
-        .lock()
-        .unwrap()
-        .entry(key)
-        .or_insert_with(|| ctx.load_texture(format!("wordmark@{th}{}", if dark { "-dark" } else { "" }), shrink(&src.0, src.1, src.2, tw, th), TextureOptions::LINEAR))
+        .map
+        .entry((theme, dark, th))
+        .or_insert_with(|| ctx.load_texture(format!("wordmark:{theme}@{th}{}", if dark { "-dark" } else { "" }), shrink(&src.0, src.1, src.2, tw, th), TextureOptions::LINEAR))
         .clone();
+    drop(cache);
     let size = vec2(tw as f32, th as f32) / ppp;
     let top = ((rect.center().y - size.y / 2.0) * ppp).round() / ppp;
     let left = (rect.left() * ppp).round() / ppp;
@@ -115,8 +139,8 @@ mod tests {
     fn the_wordmark_is_shipped() {
         // From the repository's data directory, as in development.
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data");
-        for dark in [false, true] {
-            let img = olo_xdg::decode_png(&dir.join(file(dark))).expect("the wordmark");
+        for file in ["brand/olo-wordmark.png", "brand/olo-wordmark-on-dark.png"] {
+            let img = olo_xdg::decode_png(&dir.join(file)).expect("the wordmark");
             assert!(img.width > img.height && img.height >= 128);
         }
     }

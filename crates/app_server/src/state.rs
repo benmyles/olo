@@ -1022,6 +1022,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 // `op` is there (or not) as Preferences ▸ Security says.
                 olo_xdg::link_op_here(settings.security.passwords.op_cli);
                 crate::shell::deco::set_title_chars(settings.tab_title_chars);
+                olo_xdg::themes::set(&settings.appearance.icon_theme);
                 settings
             },
             ipc: Default::default(),

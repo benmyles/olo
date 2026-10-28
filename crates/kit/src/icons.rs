@@ -1,9 +1,12 @@
 //! Icons: Olo's own set (data/icons/<px>/<name>.png, pre-scaled to
-//! device sizes) with a freedesktop icon-theme fallback, so Deskbar and
-//! Tracker can show third-party apps and file types too.
+//! device sizes, in the theme chosen in Preferences ▸ Themes) with a
+//! freedesktop icon-theme fallback, so Deskbar and Tracker can show
+//! third-party apps and file types too.
 //!
-//! Textures are cached per window context and keyed by device size, so
-//! every icon is drawn 1:1 from a source made for that size.
+//! Textures are cached per window context and keyed by theme and device
+//! size, so every icon is drawn 1:1 from a source made for that size.
+//! When the theme changes the kit repaints every window and the old
+//! theme's textures go.
 
 use std::{
     collections::HashMap,
@@ -132,21 +135,40 @@ pub fn drag_icon(ctx: &Context, name: &str, logical: f32, count: usize, hotspot:
     Some(crate::dnd::DragIcon { image: out, scale, hotspot: hotspot + shift })
 }
 
-type Cache = HashMap<(String, u32), Option<TextureHandle>>;
+/// Textures by theme, name and device size, and the theme they were last
+/// asked for in (when that changes, the others go).
+#[derive(Default)]
+struct Cache {
+    current: &'static str,
+    map: HashMap<(&'static str, String, u32), Option<TextureHandle>>,
+}
 
 /// The icon `name` (ours, a theme icon name, or an absolute path) as a
-/// texture for drawing at `logical` points on `ctx`.
+/// texture for drawing at `logical` points on `ctx`, in the current theme.
 pub fn texture(ctx: &Context, name: &str, logical: f32) -> Option<TextureHandle> {
+    texture_in(ctx, olo_xdg::themes::current().id, name, logical)
+}
+
+/// As [`texture`], in theme `theme` (e.g. to show a theme before it is
+/// chosen).
+pub fn texture_in(ctx: &Context, theme: &str, name: &str, logical: f32) -> Option<TextureHandle> {
+    let theme = olo_xdg::themes::resolve(theme).id;
     let px = (logical * ctx.pixels_per_point()).round().max(1.0) as u32;
-    let key = (name.to_owned(), px);
+    let key = (theme, name.to_owned(), px);
     let cache_id = egui::Id::unique("olo-icon-cache");
-    if let Some(hit) = ctx.data(|d| d.get_temp::<Arc<std::sync::Mutex<Cache>>>(cache_id)).and_then(|c| c.lock().unwrap().get(&key).cloned()) {
-        return hit;
-    }
-    let image = olo_xdg::load_icon(name, px).map(to_color_image);
-    let tex = image.map(|img| ctx.load_texture(format!("icon:{name}@{px}"), img, TextureOptions::LINEAR));
     let cache = ctx.data_mut(|d| d.get_temp_mut_or_default::<Arc<std::sync::Mutex<Cache>>>(cache_id).clone());
-    cache.lock().unwrap().insert(key, tex.clone());
+    let mut cache = cache.lock().unwrap();
+    let now = olo_xdg::themes::current().id;
+    if cache.current != now {
+        cache.current = now;
+        cache.map.retain(|k, _| k.0 == now);
+    }
+    if let Some(hit) = cache.map.get(&key) {
+        return hit.clone();
+    }
+    let image = olo_xdg::load_icon_in(theme, name, px).map(to_color_image);
+    let tex = image.map(|img| ctx.load_texture(format!("icon:{theme}/{name}@{px}"), img, TextureOptions::LINEAR));
+    cache.map.insert(key, tex.clone());
     tex
 }
 
@@ -156,18 +178,31 @@ pub fn paint(painter: &Painter, rect: Rect, name: &str) -> bool {
     paint_tinted(painter, rect, name, Color32::WHITE)
 }
 
+/// As [`paint`], in theme `theme`.
+pub fn paint_in(painter: &Painter, rect: Rect, theme: &str, name: &str) -> bool {
+    let Some(tex) = texture_in(painter.ctx(), theme, name, rect.width().max(rect.height())) else {
+        return false;
+    };
+    paint_texture(painter, rect, &tex, Color32::WHITE);
+    true
+}
+
 /// As [`paint`], multiplied by `tint` (e.g. half alpha for a dragged or
 /// cut item, or the selection darkening Tracker applies).
 pub fn paint_tinted(painter: &Painter, rect: Rect, name: &str, tint: Color32) -> bool {
-    let ctx = painter.ctx();
-    let Some(tex) = texture(ctx, name, rect.width().max(rect.height())) else {
+    let Some(tex) = texture(painter.ctx(), name, rect.width().max(rect.height())) else {
         return false;
     };
+    paint_texture(painter, rect, &tex, tint);
+    true
+}
+
+fn paint_texture(painter: &Painter, rect: Rect, tex: &TextureHandle, tint: Color32) {
+    let ctx = painter.ctx();
     let ppp = ctx.pixels_per_point();
     let snap = |v: f32| (v * ppp).round() / ppp;
     let r = Rect::from_min_max(pos2(snap(rect.min.x), snap(rect.min.y)), pos2(snap(rect.max.x), snap(rect.max.y)));
     painter.image(tex.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), tint);
-    true
 }
 
 // ---- thumbnails ----------------------------------------------------------

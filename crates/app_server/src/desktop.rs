@@ -903,6 +903,10 @@ impl<B: Backend + 'static> AnvilState<B> {
         settings.appearance.night_light_active = self.settings.appearance.night_light_active;
         // Tabs are laid out and drawn again (their cache keys on the cut title).
         crate::shell::deco::set_title_chars(settings.tab_title_chars);
+        // Twitcher looks its icons up again, in the new theme.
+        if olo_xdg::themes::set(&settings.appearance.icon_theme) {
+            crate::twitcher::theme_changed();
+        }
         self.settings = settings;
         self.keymap.set_bindings(olo_protocol::shortcuts::bindings(&self.settings.shortcuts));
         if self.workspace >= self.settings.workspace_count.max(1) {

@@ -59,6 +59,15 @@ fn cache() -> &'static Cache {
     CACHE.get_or_init(Default::default)
 }
 
+/// Bumped whenever an app's name and icons are (re)looked up, so the
+/// strip is drawn again with them.
+static LOOKED_UP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn store(app_id: String, info: AppInfo) {
+    cache().lock().unwrap().insert(app_id, Some(info));
+    LOOKED_UP.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn to_pixmap(img: olo_xdg::Image) -> Option<Pixmap> {
     let img = img.into_premultiplied();
     let size = tiny_skia::IntSize::from_wh(img.width, img.height)?;
@@ -108,7 +117,24 @@ pub fn prewarm<'a>(app_ids: impl IntoIterator<Item = &'a str>) {
     std::thread::spawn(move || {
         for id in todo {
             let info = resolve(&id);
-            cache().lock().unwrap().insert(id, Some(info));
+            store(id, info);
+        }
+    });
+}
+
+/// Look every app seen so far up again, in the theme just chosen (each
+/// keeps its old icons until its new ones are ready).
+pub fn theme_changed() {
+    let ids: Vec<String> = cache().lock().unwrap().keys().cloned().collect();
+    std::thread::spawn(move || {
+        let theme = olo_xdg::themes::current().id;
+        for id in ids {
+            let info = resolve(&id);
+            // Chosen again meanwhile: that change's lookup takes over.
+            if olo_xdg::themes::current().id != theme {
+                return;
+            }
+            store(id, info);
         }
     });
 }
@@ -178,8 +204,8 @@ impl Shown {
 #[derive(Debug, Clone, PartialEq)]
 struct Key {
     shown: Shown,
-    /// Which apps have resolved (so a late lookup redraws).
-    resolved: Vec<bool>,
+    /// Lookups so far (so a late one, or a new theme's, redraws).
+    looked_up: u64,
     scale_milli: i64,
     generation: u64,
 }
@@ -214,7 +240,7 @@ impl Overlay {
         }
         let key = Key {
             shown: shown.clone(),
-            resolved: shown.rows.iter().flat_map(|r| &r.entries).map(|e| info(&e.app_id).is_some()).collect(),
+            looked_up: LOOKED_UP.load(std::sync::atomic::Ordering::Relaxed),
             scale_milli: (scale * 1000.0).round() as i64,
             generation: theme::generation(),
         };

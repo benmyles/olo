@@ -90,3 +90,4 @@ multimedia|a black film clapperboard leaning against a glossy black eighth-note 
 office|a stack of white papers with a blue binder clip and a yellow pencil lying beside it
 other-applications|an open cardboard box with a few small application cubes in different colours peeking out
 disk-usage|a thick round ring-chart disc standing upright, its inner and outer rings split into segments of Be blue, tab yellow, signal green and alert red around a grey hub, with a silver magnifying glass in front at the lower right
+themes|a fan of four chunky colour swatch cards in Be blue, BeOS tab yellow, alert red and signal green, joined by a silver rivet at one corner, lying spread on the desk

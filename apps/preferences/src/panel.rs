@@ -8,7 +8,7 @@ use olo_kit::{
 };
 use olo_protocol::Settings;
 
-use crate::{Ctx, about, ai, appearance, backup, bluetooth, datetime, display, keyboard, network, notifications, power, screensaver, security, sound, touchid, touchpad, tracker, workspaces};
+use crate::{Ctx, about, ai, appearance, backup, bluetooth, datetime, display, keyboard, network, notifications, power, screensaver, security, sound, themes, touchid, touchpad, tracker, workspaces};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -26,6 +26,7 @@ pub enum Panel {
     ScreenSaver,
     Security,
     Sound,
+    Themes,
     TouchId,
     Touchpad,
     Tracker,
@@ -49,6 +50,7 @@ impl Panel {
         Panel::ScreenSaver,
         Panel::Security,
         Panel::Sound,
+        Panel::Themes,
         Panel::TouchId,
         Panel::Touchpad,
         Panel::Tracker,
@@ -70,6 +72,7 @@ impl Panel {
             "time" | "date" | "clock" | "date-time" => Some(Panel::DateTime),
             "passwords" | "privacy" => Some(Panel::Security),
             "smart-tiling" | "models" => Some(Panel::Ai),
+            "theme" | "icons" | "icon-theme" => Some(Panel::Themes),
             _ => None,
         })
     }
@@ -90,6 +93,7 @@ impl Panel {
             Panel::ScreenSaver => "screensaver",
             Panel::Security => "security",
             Panel::Sound => "sound",
+            Panel::Themes => "themes",
             Panel::TouchId => "touchid",
             Panel::Touchpad => "touchpad",
             Panel::Tracker => "tracker",
@@ -114,6 +118,7 @@ impl Panel {
             Panel::ScreenSaver => "Screen Saver",
             Panel::Security => "Security",
             Panel::Sound => "Sound",
+            Panel::Themes => "Themes",
             Panel::TouchId => "Touch ID",
             Panel::Touchpad => "Touchpad",
             Panel::Tracker => "Tracker",
@@ -138,6 +143,7 @@ impl Panel {
             Panel::ScreenSaver => "screensaver",
             Panel::Security => "security",
             Panel::Sound => "sound",
+            Panel::Themes => "themes",
             Panel::TouchId => "fingerprint",
             Panel::Touchpad => "touchpad",
             Panel::Tracker => "tracker",
@@ -163,6 +169,7 @@ impl Panel {
             Panel::ScreenSaver => (500, 400),
             Panel::Security => (420, 354),
             Panel::Sound => (440, 270),
+            Panel::Themes => (560, 476),
             Panel::TouchId => (420, 330),
             Panel::Touchpad => (460, 520),
             Panel::Tracker => (300, 180),
@@ -211,6 +218,7 @@ impl Panel {
             Panel::ScreenSaver => settings.screen_saver = from.screen_saver.clone(),
             Panel::Security => settings.security = from.security.clone(),
             Panel::Ai => settings.ai = from.ai.clone(),
+            Panel::Themes => settings.appearance.icon_theme = from.appearance.icon_theme.clone(),
             Panel::Display | Panel::Backup | Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications => {}
         }
     }
@@ -277,6 +285,7 @@ pub fn ui(panel: Panel, state: &mut State, ui: &mut egui::Ui, ctx: Ctx<'_>) {
             (Panel::Sound, State::Sound(s)) => sound::ui(ui, s),
             (Panel::Security, _) => security::ui(ui, settings),
             (Panel::Ai, _) => ai::ui(ui, settings),
+            (Panel::Themes, _) => themes::ui(ui, settings),
             (Panel::DateTime, State::DateTime(s)) => datetime::ui(ui, settings, s),
             (Panel::Network, State::Network(s)) => network::ui(ui, s),
             (Panel::Notifications, State::Notifications(s)) => notifications::ui(ui, &settings.clock, s),

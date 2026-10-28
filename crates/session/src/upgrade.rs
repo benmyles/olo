@@ -111,6 +111,11 @@ impl Watcher {
                 Ok(n) => crate::log(format!("installed {n} new or changed brand pictures")),
                 Err(e) => crate::log(format!("could not install the brand pictures: {e}")),
             }
+            match sync_themes(&self.from, &prefix.join("share/olo/themes")) {
+                Ok(0) => {}
+                Ok(n) => crate::log(format!("installed {n} new or changed theme pictures")),
+                Err(e) => crate::log(format!("could not install the themes: {e}")),
+            }
             match sync_wallpapers(&self.from, &prefix.join("share/olo/wallpapers")) {
                 Ok(0) => {}
                 Ok(n) => crate::log(format!("installed {n} new or changed wallpapers")),
@@ -244,32 +249,45 @@ fn sync_icons(from: &Path, to: &Path) -> std::io::Result<usize> {
     let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/icons")).find(|d| d.join("manifest.txt").is_file()) else {
         return Ok(0);
     };
-    let newer = |a: &Path, b: &Path| {
-        let m = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
-        m(b).is_none_or(|b| m(a).is_some_and(|a| a > b))
-    };
-    let mut n = 0;
     std::fs::create_dir_all(to)?;
-    if newer(&src.join("manifest.txt"), &to.join("manifest.txt")) {
+    let mut n = 0;
+    if is_newer(&src.join("manifest.txt"), &to.join("manifest.txt")) {
         std::fs::copy(src.join("manifest.txt"), to.join("manifest.txt"))?;
         n += 1;
     }
-    for e in std::fs::read_dir(&src)?.flatten() {
+    Ok(n + sync_sizes(&src, to)?)
+}
+
+/// Whether `a` was changed after `b`, or `b` is missing.
+fn is_newer(a: &Path, b: &Path) -> bool {
+    let m = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    m(b).is_none_or(|b| m(a).is_some_and(|a| a > b))
+}
+
+/// Copy an icon set's pre-scaled sizes (`src/16`, `src/24`, …; not its
+/// raw sources) into `to` where new or newer; how many.
+fn sync_sizes(src: &Path, to: &Path) -> std::io::Result<usize> {
+    let mut n = 0;
+    for e in std::fs::read_dir(src)?.flatten() {
         let name = e.file_name();
-        // The pre-scaled sizes (16, 24, …); not the raw sources.
-        if !name.to_str().is_some_and(|n| n.parse::<u32>().is_ok()) || !e.path().is_dir() {
-            continue;
+        if name.to_str().is_some_and(|n| n.parse::<u32>().is_ok()) && e.path().is_dir() {
+            n += sync_pngs(&e.path(), &to.join(&name))?;
         }
-        let dir = to.join(&name);
-        std::fs::create_dir_all(&dir)?;
-        for f in std::fs::read_dir(e.path())?.flatten() {
-            let (a, b) = (f.path(), dir.join(f.file_name()));
-            if a.extension().is_some_and(|x| x == "png") && newer(&a, &b) {
-                let tmp = dir.join(format!(".{}.new", f.file_name().to_string_lossy()));
-                std::fs::copy(&a, &tmp)?;
-                std::fs::rename(&tmp, &b)?;
-                n += 1;
-            }
+    }
+    Ok(n)
+}
+
+/// Copy the PNGs in `src` into `to` where new or newer, each put in place
+/// whole (a clone where the file system can); how many.
+fn sync_pngs(src: &Path, to: &Path) -> std::io::Result<usize> {
+    let mut n = 0;
+    std::fs::create_dir_all(to)?;
+    for e in std::fs::read_dir(src)?.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if name.ends_with(".png") && is_newer(&e.path(), &to.join(&name)) {
+            install(&e.path(), to, &name)?;
+            std::fs::set_permissions(to.join(&name), std::fs::Permissions::from_mode(0o644))?;
+            n += 1;
         }
     }
     Ok(n)
@@ -281,16 +299,24 @@ fn sync_brand(from: &Path, to: &Path) -> std::io::Result<usize> {
     let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/brand")).find(|d| d.is_dir()) else {
         return Ok(0);
     };
-    let m = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    sync_pngs(&src, to)
+}
+
+/// Copy the build tree's themes (`data/themes/<id>`: each one's sizes and
+/// wordmark, not its sources or references) into `to` where new or
+/// newer; how many.
+fn sync_themes(from: &Path, to: &Path) -> std::io::Result<usize> {
+    let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/themes")).find(|d| d.is_dir()) else {
+        return Ok(0);
+    };
     let mut n = 0;
-    std::fs::create_dir_all(to)?;
     for e in std::fs::read_dir(&src)?.flatten() {
-        let (a, b) = (e.path(), to.join(e.file_name()));
-        if a.extension().is_some_and(|x| x == "png") && m(&b).is_none_or(|b| m(&a).is_some_and(|a| a > b)) {
-            let tmp = to.join(format!(".{}.new", e.file_name().to_string_lossy()));
-            std::fs::copy(&a, &tmp)?;
-            std::fs::rename(&tmp, &b)?;
-            n += 1;
+        let (theme, dest) = (e.path(), to.join(e.file_name()));
+        if theme.join("icons").is_dir() {
+            n += sync_sizes(&theme.join("icons"), &dest.join("icons"))?;
+        }
+        if theme.join("brand").is_dir() {
+            n += sync_pngs(&theme.join("brand"), &dest.join("brand"))?;
         }
     }
     Ok(n)
@@ -303,10 +329,6 @@ fn sync_wallpapers(from: &Path, to: &Path) -> std::io::Result<usize> {
     let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/wallpapers")).find(|d| d.join("pack.txt").is_file()) else {
         return Ok(0);
     };
-    let newer = |a: &Path, b: &Path| {
-        let m = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
-        m(b).is_none_or(|b| m(a).is_some_and(|a| a > b))
-    };
     let mut n = 0;
     for sub in ["", "4k", "ultrawide", "thumbs"] {
         let (from_dir, to_dir) = (src.join(sub), to.join(sub));
@@ -314,7 +336,7 @@ fn sync_wallpapers(from: &Path, to: &Path) -> std::io::Result<usize> {
         std::fs::create_dir_all(&to_dir)?;
         for e in entries.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
-            if e.path().is_file() && (name.ends_with(".png") || name == "pack.txt") && newer(&e.path(), &to_dir.join(&name)) {
+            if e.path().is_file() && (name.ends_with(".png") || name == "pack.txt") && is_newer(&e.path(), &to_dir.join(&name)) {
                 install(&e.path(), &to_dir, &name)?;
                 std::fs::set_permissions(to_dir.join(&name), std::fs::Permissions::from_mode(0o644))?;
                 n += 1;
@@ -372,6 +394,30 @@ mod tests {
         assert!(to.join("16/lock.png").is_file() && !to.join("src").exists());
         // Nothing new: nothing copied.
         assert_eq!(sync_icons(&build, &to).unwrap(), 0);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn themes_come_along() {
+        let base = std::env::temp_dir().join(format!("olo-themes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let build = base.join("repo/target/release");
+        let theme = base.join("repo/data/themes/soft-be");
+        std::fs::create_dir_all(&build).unwrap();
+        for dir in ["icons/16", "brand", "src", "reference"] {
+            std::fs::create_dir_all(theme.join(dir)).unwrap();
+        }
+        std::fs::write(theme.join("icons/16/lock.png"), "png").unwrap();
+        std::fs::write(theme.join("brand/olo-wordmark.png"), "png").unwrap();
+        std::fs::write(theme.join("src/lock.png"), "raw").unwrap();
+        std::fs::write(theme.join("reference/lock.png"), "ref").unwrap();
+        std::fs::write(theme.join("style.txt"), "clay").unwrap();
+        let to = base.join("prefix/share/olo/themes");
+        assert_eq!(sync_themes(&build, &to).unwrap(), 2);
+        let ours = to.join("soft-be");
+        assert!(ours.join("icons/16/lock.png").is_file() && ours.join("brand/olo-wordmark.png").is_file());
+        assert!(!ours.join("src").exists() && !ours.join("reference").exists() && !ours.join("style.txt").exists());
+        assert_eq!(sync_themes(&build, &to).unwrap(), 0);
         let _ = std::fs::remove_dir_all(&base);
     }
 

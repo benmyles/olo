@@ -25,6 +25,7 @@ mod security;
 mod server;
 mod shortcuts;
 mod sound;
+mod themes;
 mod touchid;
 mod touchpad;
 mod tracker;

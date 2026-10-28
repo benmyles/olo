@@ -67,7 +67,7 @@ like pixel alignment is.
 | `crates/protocol` | JSON-lines IPC between app_server and our apps (`Client`, `Request`, `Reply`, `Event`, `Settings`). |
 | `crates/theme` | `Palette` (light/dark), BeOS tint helpers, decorator metrics, font lists. |
 | `crates/kit` | The Interface Kit: Wayland client platform, GPU rendering (egui on wgpu/Vulkan), menus, BeOS widgets, icons, `.desktop` entries. **All apps are built on it.** |
-| `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit (re-exported there): data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; Olo's apps first, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`), `find_program`, `spawn_detached`. No egui. |
+| `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit (re-exported there): data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; Olo's apps first, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`), `find_program`, `spawn_detached`. No egui. |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `crates/pool` | `olo-token-pool`: token pooling for Claude Code and Codex (see "Token Pool"): the accounts, their sealed store, the drain order and the loopback gateway. |
 | `crates/ai` | `olo-ai`: how AI features reach their models (see "AI features"): `ask(&settings.ai, &feature, &Ask)` → the answer's JSON. Blocking; call off the UI thread. |
@@ -75,6 +75,7 @@ like pixel alignment is.
 | `apps/<name>` | One crate per application, binary named `olo-<name>`. Picked up by the workspace glob. |
 | `vendor/` | Patched copies of dependencies (`[patch.crates-io]`), each explained in `vendor/README.md`; drop them when upstream has the fix. |
 | `data/icons` | Icon set, pre-scaled to device sizes (`data/icons/<px>/<name>.png`). |
+| `data/themes` | The other looks of the icons and wordmark (`data/themes/<id>/icons/<px>/<name>.png`, `brand/`), chosen in Preferences ▸ Themes; see "Themes" in [ICONS.md](ICONS.md). |
 | `data/session` | `olo.desktop` for the login screen (installed by `tools/install-session.sh`). |
 | `tools/` | `install-session.sh` (release build → `~/.local`, session entry → `/usr/local/share/wayland-sessions`), `dev/tsession` (headless UI testing), `genicon.py`/`genicons.sh`/`mkicons.py`/`iconsheet.py` (icons, see [ICONS.md](ICONS.md)). |
 
@@ -511,8 +512,10 @@ of the way down.
 5. **Icons**: `olo_kit::icons::paint(painter, rect, "name")` with names
    from `data/icons/manifest.txt` (or freedesktop names / absolute paths).
    Sizes 16 (lists, Deskbar), 32 (Tracker list), 48–64 (Tracker icon view),
-   128 (About boxes). Olo's wordmark is `olo_kit::brand::wordmark(painter,
-   rect, dark)` (from `data/brand`, shrunk crisply to the height asked
+   128 (About boxes). Icons and the wordmark are drawn in the theme chosen
+   in Preferences ▸ Themes, and redrawn when it changes; never keep an
+   icon's texture yourself. Olo's wordmark is `olo_kit::brand::wordmark(painter,
+   rect, dark)` (from `data/brand` or the theme's `brand/`, shrunk crisply to the height asked
    for; `wordmark_width(h)` to lay it out); Deskbar's tile shows it alone,
 centred (beside the `olo` mark it read as "o olo"). Image previews: `icons::thumbnail(ctx, path, size)`
    decodes off-thread and returns `None` until ready (it repaints when
@@ -926,6 +929,21 @@ launcher lists them. The panel list Deskbar shows is
   pass the full buffer as `src` to `MemoryRenderBufferRenderElement::
   from_buffer`; without it the buffer counts as logical pixels and is
   drawn at twice its size on a 2× screen.
+* Themes (`themes.rs`): a row per theme in `olo_xdg::themes::THEMES`,
+  each drawn in that theme (`icons::paint_in`, `brand::wordmark_in`):
+  a radio button with its name, a line about it, its wordmark and six of
+  its icons; clicking anywhere on a row chooses it. The choice is
+  `Appearance::icon_theme` (an id; unknown ones draw the default,
+  `soft-be`), so agents set it with `SetSettings` like any other.
+  Every process draws in one theme, `olo_xdg::themes::current()`: the
+  kit sets it from the settings before the first frame
+  (`theme_watch::initial_palette`) and on every `SettingsChanged`
+  (`Kit::set_icon_theme`, which redraws every window; the icon and
+  wordmark caches are keyed by theme and drop the old one's), and
+  app_server sets it on load and in `set_settings`, where Twitcher looks
+  its apps' icons up again (`twitcher::theme_changed`). Outside Olo,
+  `OLO_ICON_THEME=id` picks one. `find_icon` looks in the theme's
+  `themes/<id>/icons` in every data directory, then in `icons`.
 * About (`about.rs`) has Restart Olo: SIGHUP to `$OLO_SESSION_PID`,
   the same in-place reload as `olo-session reload` (disabled outside
   a session).

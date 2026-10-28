@@ -1,6 +1,7 @@
 /target
 *.png.tmp
 /data/icons/src/
+/data/themes/*/src/
 /.claude/
 docs/journal/.cache/
 __pycache__/

@@ -399,14 +399,15 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         })
         .expect("paste channel");
 
-    // Live theme from app_server.
+    // Live palette and icon theme from app_server.
     let palette = Arc::new(crate::theme_watch::initial_palette());
-    let (theme_tx, theme_rx) = channel::channel::<Palette>();
+    let (theme_tx, theme_rx) = channel::channel::<crate::theme_watch::Look>();
     crate::theme_watch::spawn(theme_tx);
     loop_handle
         .insert_source(theme_rx, |event, _, kit: &mut Kit| {
-            if let channel::Event::Msg(p) = event {
-                kit.set_palette(Arc::new(p));
+            if let channel::Event::Msg(look) = event {
+                kit.set_icon_theme(&look.icon_theme);
+                kit.set_palette(Arc::new(look.palette));
             }
         })
         .expect("theme channel");
@@ -1235,6 +1236,18 @@ impl Kit {
     }
 
     // ---- palette ------------------------------------------------------
+
+    /// Draw icons and the wordmark in theme `id` from now on: every
+    /// window draws again (the icon caches drop the old theme's).
+    fn set_icon_theme(&mut self, id: &str) {
+        if !olo_xdg::themes::set(id) {
+            return;
+        }
+        info!(theme = olo_xdg::themes::current().id, "icon theme changed");
+        for s in &mut self.surfaces {
+            s.dirty = true;
+        }
+    }
 
     fn set_palette(&mut self, p: Arc<Palette>) {
         if *self.palette == *p {

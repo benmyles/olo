@@ -1,6 +1,7 @@
 //! Freedesktop plumbing shared by app_server and the kit (which re-exports
 //! it): Olo's data directories, `.desktop` entries, and icon lookup
-//! (Olo's own pre-scaled set first, then icon themes) and decoding.
+//! (Olo's own pre-scaled set in the current [`themes`] theme first, then
+//! freedesktop icon themes) and decoding.
 
 use std::{
     path::{Path, PathBuf},
@@ -12,6 +13,7 @@ pub mod legacy;
 pub mod desktop_entry;
 pub mod mime;
 pub mod open;
+pub mod themes;
 pub mod trash;
 pub mod wallpapers;
 
@@ -63,17 +65,24 @@ pub fn xdg_data_dirs() -> Vec<PathBuf> {
     v
 }
 
-/// Find the best source file for `name` at `px` device pixels.
+/// Find the best source file for `name` at `px` device pixels, in the
+/// current theme.
 pub fn find_icon(name: &str, px: u32) -> Option<PathBuf> {
+    find_icon_in(themes::current().id, name, px)
+}
+
+/// As [`find_icon`], in theme `theme` (e.g. to show it before it is
+/// chosen).
+pub fn find_icon_in(theme: &str, name: &str, px: u32) -> Option<PathBuf> {
     if name.starts_with('/') {
         let p = PathBuf::from(name);
         return p.is_file().then_some(p);
     }
     // Ours: the smallest pre-scaled size at least as large as needed.
-    for dir in data_dirs() {
+    for dir in themes::icon_dirs(theme) {
         let sizes = OWN_SIZES.iter().filter(|&&s| s >= px).chain(OWN_SIZES.iter().rev().filter(|&&s| s < px));
         for s in sizes {
-            let p = dir.join("icons").join(s.to_string()).join(format!("{name}.png"));
+            let p = dir.join(s.to_string()).join(format!("{name}.png"));
             if p.is_file() {
                 return Some(p);
             }
@@ -147,7 +156,12 @@ impl Image {
 /// Icon `name` (ours, a theme name, or an absolute path) decoded for `px`
 /// device pixels: the best pre-scaled PNG, or an SVG rendered at `px`.
 pub fn load_icon(name: &str, px: u32) -> Option<Image> {
-    let path = find_icon(name, px)?;
+    load_icon_in(themes::current().id, name, px)
+}
+
+/// As [`load_icon`], in theme `theme`.
+pub fn load_icon_in(theme: &str, name: &str, px: u32) -> Option<Image> {
+    let path = find_icon_in(theme, name, px)?;
     if path.extension().is_some_and(|e| e == "svg") { render_svg(&path, px) } else { decode_png(&path) }
 }
 

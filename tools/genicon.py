@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate an Olo icon with OpenAI's sunburst image model.
 
-    genicon.py NAME "subject" [--variants N] [--no-ref] [--out DIR]
+    genicon.py NAME "subject" [--variants N] [--no-ref] [--theme ID] [--out DIR]
 
 See docs/ICONS.md for the style guide. Always uses gpt-image-2.5-sunburst
 at quality "high" (the maximum); this is a project requirement and not
@@ -16,15 +16,21 @@ with `mv data/icons/src/candidates/NAME-2.png data/icons/src/NAME.png`.
 Otherwise writes data/icons/src/NAME.png. Each output gets a .json
 sidecar recording model, quality, prompt and references.
 
+With --theme ID, draws the icon for theme data/themes/ID instead: its
+style.txt replaces the house style, its reference/ icons are the
+references, and the output goes to data/themes/ID/src/ (see "Themes" in
+docs/ICONS.md).
+
 Reads OPENAI_API_KEY from the environment or ~ben/.env. Never print it.
 """
-import argparse, base64, glob, json, os, sys, time, urllib.error, urllib.request, uuid
+import argparse, base64, glob, json, os, re, sys, time, urllib.error, urllib.request, uuid
 
 MODEL = "gpt-image-2.5-sunburst"
 QUALITY = "high"
 SIZE = "1024x1024"
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "icons")
+THEMES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "themes")
 
 # The house style. Keep in sync with docs/ICONS.md ("Style").
 STYLE = (
@@ -39,6 +45,12 @@ STYLE = (
 REFERENCE = (
     "The attached images are reference icons from the same icon set. Match their style exactly: the same "
     "viewing angle, outline weight, shading, saturation, lighting direction, level of detail and padding. "
+    "Do not copy their subjects or include them in the image; draw only the new subject. "
+)
+# For a theme, whose look is as much its material as its geometry.
+THEME_REFERENCE = (
+    "The attached images are reference icons from the same icon set. Match their style exactly: the same "
+    "material, rendering, outline, palette, viewing angle, lighting, cast shadow, level of detail and padding. "
     "Do not copy their subjects or include them in the image; draw only the new subject. "
 )
 
@@ -96,21 +108,31 @@ def main():
     ap.add_argument("subject")
     ap.add_argument("--variants", type=int, default=1)
     ap.add_argument("--no-ref", action="store_true")
-    ap.add_argument("--out", default=os.path.join(ROOT, "src"))
+    ap.add_argument("--theme", help="draw for data/themes/THEME (its style and references)")
+    ap.add_argument("--out")
     a = ap.parse_args()
 
-    refs = [] if a.no_ref else sorted(glob.glob(os.path.join(ROOT, "reference", "*.png")))
+    root, style, reference, subject = ROOT, STYLE, REFERENCE, a.subject
+    if a.theme:
+        root = os.path.join(THEMES, a.theme)
+        style = open(os.path.join(root, "style.txt")).read().strip() + " "
+        reference = THEME_REFERENCE
+        # The manifest's subjects are written for the classic set; a theme
+        # brings its own finish.
+        subject = re.sub(r"\bglossy\s+", "", subject)
+    refs = [] if a.no_ref else sorted(glob.glob(os.path.join(root, "reference", "*.png")))
     refs = [r for r in refs if os.path.basename(r)[:-4] != a.name]  # never reference itself
-    prompt = STYLE + (REFERENCE if refs else "") + "Subject: " + a.subject
+    prompt = style + (reference if refs else "") + "Subject: " + subject
     images = generate(prompt, refs, a.variants)
 
-    out = os.path.join(a.out, "candidates") if a.variants > 1 else a.out
+    base = a.out or os.path.join(root, "src")
+    out = os.path.join(base, "candidates") if a.variants > 1 else base
     os.makedirs(out, exist_ok=True)
     for i, data in enumerate(images, 1):
         stem = f"{a.name}-{i}" if a.variants > 1 else a.name
         path = os.path.join(out, stem + ".png")
         open(path, "wb").write(data)
-        json.dump({"model": MODEL, "quality": QUALITY, "size": SIZE, "subject": a.subject, "prompt": prompt,
+        json.dump({"model": MODEL, "quality": QUALITY, "size": SIZE, "theme": a.theme, "subject": subject, "prompt": prompt,
                    "references": [os.path.basename(r) for r in refs],
                    "created": time.strftime("%Y-%m-%dT%H:%M:%S")},
                   open(os.path.join(out, stem + ".json"), "w"), indent=1)

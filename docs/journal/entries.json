@@ -1342,5 +1342,23 @@
   "title": "A link opened from outside comes forward",
   "caption": "A link opened from a shell or an agent (through olo-chrome) now takes you to the Chrome window it opened in, from whatever workspace: olo-chrome asks app_server for an activation token and Chrome uses it. Here the page was opened from workspace 3, and Olo moved to workspace 1, where the window is.",
   "image": "2026-10-27/214350-a-link-opened-from-outside-comes-forward.png"
+ },
+ {
+  "time": "2026-10-27T23:12:01",
+  "title": "Preferences: Themes (dark)",
+  "caption": "A new Themes panel picks the look of every icon and the Olo wordmark, in every app, the Deskbar and the desktop: Soft Be (the new default), BeBox, Toybox, Papercraft, Enamel, Halftone and Classic (Olo's first set). It applies at once, everywhere.",
+  "image": "2026-10-27/231201-preferences-themes-dark.png"
+ },
+ {
+  "time": "2026-10-27T23:12:16",
+  "title": "Preferences: Themes",
+  "caption": "The Themes panel in light mode: each theme is shown by its wordmark and a row of its icons; Soft Be is the default.",
+  "image": "2026-10-27/231216-preferences-themes.png"
+ },
+ {
+  "time": "2026-10-27T23:14:02",
+  "title": "Themes: the Deskbar and desktop in each theme",
+  "caption": "The same Deskbar menu, Applications submenu and desktop icons in each of the seven themes, left to right and top to bottom: Soft Be, BeBox, Toybox, Papercraft, Enamel, Halftone and Classic. The wordmark and every app's icon change together.",
+  "image": "2026-10-27/231402-themes-the-deskbar-and-desktop-in-each-theme.png"
  }
 ]

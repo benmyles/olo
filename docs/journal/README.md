@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Themes: the Deskbar and desktop in each theme
+
+*23:14* — The same Deskbar menu, Applications submenu and desktop icons in each of the seven themes, left to right and top to bottom: Soft Be, BeBox, Toybox, Papercraft, Enamel, Halftone and Classic. The wordmark and every app's icon change together.
+
+![Themes: the Deskbar and desktop in each theme](2026-10-27/231402-themes-the-deskbar-and-desktop-in-each-theme.png)
+
+### Preferences: Themes
+
+*23:12* — The Themes panel in light mode: each theme is shown by its wordmark and a row of its icons; Soft Be is the default.
+
+![Preferences: Themes](2026-10-27/231216-preferences-themes.png)
+
+### Preferences: Themes (dark)
+
+*23:12* — A new Themes panel picks the look of every icon and the Olo wordmark, in every app, the Deskbar and the desktop: Soft Be (the new default), BeBox, Toybox, Papercraft, Enamel, Halftone and Classic (Olo's first set). It applies at once, everywhere.
+
+![Preferences: Themes (dark)](2026-10-27/231201-preferences-themes-dark.png)
+
 ### A link opened from outside comes forward
 
 *21:43* — A link opened from a shell or an agent (through olo-chrome) now takes you to the Chrome window it opened in, from whatever workspace: olo-chrome asks app_server for an activation token and Chrome uses it. Here the page was opened from workspace 3, and Olo moved to workspace 1, where the window is.
