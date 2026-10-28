@@ -10,7 +10,10 @@
 //! egui's AccessKit tree, made for one frame on demand (so agents read
 //! the widgets, their text and places rather than pixels);
 //! `{"focus":ID}` → `{"ok":true}`: give the keyboard to the widget with
-//! that tree id (a slider or text field, which a click would change).
+//! that tree id (a slider or text field, which a click would change);
+//! `{"frames":true}` → a [`FrameTimes`] per window, since the last ask
+//! (answered by the UI thread, so how long the answer takes is how long
+//! the app keeps people waiting; tools/dev/perf-fuzz).
 
 use std::{
     io::{BufRead, BufReader, Write},
@@ -181,6 +184,21 @@ impl WindowTree {
     }
 }
 
+/// How one window kept up since the last ask: frames drawn, and the
+/// slowest and total time drawing them (microseconds, from taking its
+/// input to handing the frame to the GPU), and what draws them: the
+/// adapter's name, API and kind ("Apple M2 (Vulkan, IntegratedGpu)"; a
+/// `Cpu` one is software rendering, which should never happen).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct FrameTimes {
+    pub title: String,
+    pub frames: u32,
+    pub slowest_us: u64,
+    pub total_us: u64,
+    #[serde(default)]
+    pub adapter: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum Ask {
@@ -188,6 +206,7 @@ enum Ask {
     Invoke(String),
     Tree(bool),
     Focus(u64),
+    Frames(bool),
 }
 
 /// A question for the UI thread, answered through `reply`.
@@ -196,6 +215,7 @@ pub(crate) enum Query {
     Invoke(String, mpsc::Sender<bool>),
     Tree(mpsc::Sender<Vec<WindowTree>>),
     Focus(u64),
+    Frames(mpsc::Sender<Vec<FrameTimes>>),
 }
 
 /// How long a tree may take: every window draws a frame for it.
@@ -294,6 +314,11 @@ pub(crate) fn listen(to: smithay_client_toolkit::reexports::calloop::channel::Se
                         let _ = to.send(Query::Tree(tx));
                         serde_json::to_string(&rx.recv_timeout(TREE_WAIT).unwrap_or_default())
                     }
+                    Ok(Ask::Frames(_)) => {
+                        let (tx, rx) = mpsc::channel();
+                        let _ = to.send(Query::Frames(tx));
+                        serde_json::to_string(&rx.recv_timeout(TREE_WAIT).unwrap_or_default())
+                    }
                     Err(_) => continue,
                 };
                 if let Ok(answer) = answer {
@@ -326,6 +351,7 @@ pub fn serve_trees(pid: u32, app_id: &str, trees: impl Fn() -> Vec<WindowTree> +
             let answer = match serde_json::from_str::<Ask>(&line) {
                 Ok(Ask::Menus(_)) => serde_json::to_string(&Menus { app_id: app_id.clone(), entries: Vec::new() }),
                 Ok(Ask::Invoke(_) | Ask::Focus(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
+                Ok(Ask::Frames(_)) => serde_json::to_string(&Vec::<FrameTimes>::new()),
                 Ok(Ask::Tree(_)) => serde_json::to_string(&trees()),
                 Err(_) => continue,
             };

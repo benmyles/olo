@@ -199,9 +199,11 @@ fn accept<B: Backend + 'static>(state: &mut AnvilState<B>, stream: UnixStream) {
                 }
                 match serde_json::from_str::<Request>(line) {
                     Ok(req) => {
+                        let start = std::time::Instant::now();
                         if let Some(reply) = state.handle_ipc(req, &conn) {
                             conn.send(&reply);
                         }
+                        state.timings.handled(|| format!("request {}", serde_json::from_str::<serde_json::Value>(line).ok().and_then(|v| v["type"].as_str().map(str::to_owned)).unwrap_or_default()), start);
                     }
                     Err(e) => conn.send(&Reply::Error { message: format!("bad request: {e}") }),
                 }
@@ -393,6 +395,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     Err(message) => Reply::Error { message },
                 }
             }
+            Request::Timings => Reply::Timings { timings: self.take_timings() },
             Request::Quit => {
                 self.running.store(false, std::sync::atomic::Ordering::SeqCst);
                 Reply::Ok

@@ -1,0 +1,495 @@
+#!/usr/bin/env python3
+"""Adversarial performance fuzzer: hammer a session with random bursts of
+what people do quickly (dragging and resizing windows, Cmd+Tab and
+workspace spam, arranging, opening and closing many windows, flipping
+the theme and display scale, flooding a terminal, scrolling, typing)
+and check after every burst that nothing kept anyone waiting.
+
+  perf-fuzz NAME [--seed N] [--steps N] [--keep-going] [--quiet]
+                 [--stall MS] [--frame MS] [--app-frame MS] [--answer MS] [--rss MB]
+                 [--only drag,resize,...]
+
+NAME is a tsession with two screens and the shell, e.g.
+
+  tsession start pf 2560x1600,1920x1080 --session --shell
+  tools/dev/perf-fuzz pf --steps 60
+
+A run is reproducible from its seed. What is checked, per burst:
+
+  * app_server's event loop never stalls: its heartbeat (`timings`)
+    never comes more than --stall ms late (default 33: two frames), and a ping sent
+    every few milliseconds all through the burst is answered within it;
+  * no frame of app_server's takes more than --frame ms to draw
+    (default 16: a 60 Hz frame);
+  * every kit app's windows draw each frame within --app-frame ms
+    (default 50), and the app answers a question within --answer ms
+    (default 250): its UI thread is never blocked (`{"frames":true}` on
+    its socket, answered by the UI thread);
+  * every kit app draws on the GPU (its wgpu adapter isn't a `Cpu` one);
+  * at the end, with the windows it opened closed again, app_server has
+    no more file descriptors or threads than it started with, and has
+    grown no more than --rss MiB (default 200) (leaks).
+
+At the end it prints the worst numbers for each kind of burst. --only
+runs just those kinds (drag, resize, shortcuts, arrange, switcher,
+workspaces, open-many, close-some, theme, scale, flood-terminal, type,
+scroll, hints, show-desktop).
+"""
+import json, os, random, socket, subprocess, sys, threading, time
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+TSESSION = os.path.join(ROOT, "tools", "dev", "tsession")
+APPS = ["olo-terminal", "olo-styled-edit", "olo-tracker"]
+CTRL, SHIFT, ALT, CMD, TAB, ESC, RET, SPACE = 29, 42, 56, 125, 15, 1, 28, 57
+BTN_LEFT = 0x110
+WINDOW_CMDS = ["tile-left", "tile-right", "tile-top", "tile-bottom", "tile-top-left", "tile-bottom-right",
+               "tile-left-third", "tile-center-third", "zoom", "zoom-vertical", "zoom-horizontal", "restore",
+               "center", "roll-up", "next-display", "previous-display"]
+ARRANGE_CMDS = ["tile-all", "zoom-all", "cascade-all", "fan-out", "undo-arrangement"]
+# evdev codes for typing.
+KEYCODES = {**{c: k for c, k in zip("1234567890", range(2, 12))},
+            **{c: k for c, k in zip("qwertyuiop", range(16, 26))},
+            **{c: k for c, k in zip("asdfghjkl", range(30, 39))},
+            **{c: k for c, k in zip("zxcvbnm", range(44, 51))},
+            " ": SPACE, "\n": RET, "-": 12, ".": 52, "/": 53}
+
+
+class Failure(Exception):
+    pass
+
+
+def frame_of(w):
+    f = w.get("frame")
+    return f and (f["x"], f["y"], f["width"], f["height"])
+
+
+class Fuzz:
+    def __init__(self, name, seed, quiet, budgets):
+        self.name = name
+        env = json.load(open(os.path.join("/tmp/olo-dev", name, "env.json")))
+        self.sock = env["OLO_SOCKET"]
+        self.runtime = env["XDG_RUNTIME_DIR"]
+        self.rng = random.Random(seed)
+        self.seed, self.quiet, self.budgets = seed, quiet, budgets
+        self.failures, self.history, self.step = [], [], 0
+        self.worst = {}
+        self.opened = []
+        self.server = self.server_pid()
+        outs = self.req({"type": "outputs"})["outputs"]
+        self.outputs = {o["name"]: (o["position"], o["scale"]) for o in outs}
+
+    # ---- talking to app_server and the apps ----
+
+    def req(self, r, timeout=5.0):
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(timeout)
+        try:
+            s.connect(self.sock)
+            s.sendall((json.dumps(r) + "\n").encode())
+            line = s.makefile().readline()
+        except (TimeoutError, socket.timeout, ConnectionError) as e:
+            raise Failure(f"app_server didn't answer {r.get('type')}: {e}")
+        finally:
+            s.close()
+        if not line:
+            raise Failure(f"app_server closed the connection on {r.get('type')}")
+        reply = json.loads(line)
+        if reply.get("type") == "error":
+            raise Failure(f"{r.get('type')} -> error {reply.get('message')}")
+        return reply
+
+    def ask_app(self, pid, timeout=2.0):
+        """`{"frames":true}` on an app's socket: (its answer, seconds it took)."""
+        path = os.path.join(self.runtime, f"olo-menus-{pid}.sock")
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(timeout)
+        t = time.time()
+        try:
+            s.connect(path)
+            s.sendall(b'{"frames":true}\n')
+            line = s.makefile().readline()
+        except (OSError, socket.timeout):
+            return None, time.time() - t
+        finally:
+            s.close()
+        return (json.loads(line) if line else None), time.time() - t
+
+    def windows(self):
+        return {w["id"]: w for w in self.req({"type": "list_windows"})["windows"]}
+
+    def synthetic(self, events):
+        self.req({"type": "synthetic", "events": events})
+
+    def keys(self, codes):
+        ev = [{"type": "key", "key": k, "pressed": True} for k in codes]
+        ev += [{"type": "key", "key": k, "pressed": False} for k in reversed(codes)]
+        self.synthetic(ev)
+
+    def type_text(self, text):
+        for ch in text:
+            code = KEYCODES.get(ch)
+            if code is not None:
+                self.keys([code])
+
+    def shortcut(self, sid, window=None):
+        r = {"type": "run_shortcut", "id": sid}
+        if window is not None:
+            r["window"] = window
+        self.req(r)
+
+    def spawn(self, app, args=()):
+        subprocess.run([TSESSION, "run", self.name, app, *args], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+
+    def server_pid(self):
+        """app_server: the session's child running olo-app-server."""
+        env = json.load(open(os.path.join("/tmp/olo-dev", self.name, "env.json")))
+        todo = [env["pid"]]
+        while todo:
+            pid = todo.pop()
+            try:
+                if b"olo-app-server" in open(f"/proc/{pid}/cmdline", "rb").read():
+                    return pid
+                todo += [int(c) for c in open(f"/proc/{pid}/task/{pid}/children").read().split()]
+            except OSError:
+                pass
+        return None
+
+    def resources(self):
+        if not self.server:
+            return None
+        try:
+            fds = len(os.listdir(f"/proc/{self.server}/fd"))
+            threads = len(os.listdir(f"/proc/{self.server}/task"))
+            rss = int(open(f"/proc/{self.server}/statm").read().split()[1]) * os.sysconf("SC_PAGE_SIZE") // 1024
+        except OSError:
+            return None
+        return fds, threads, rss
+
+    # ---- measuring ----
+
+    def measure(self, what, burst):
+        """Run `burst`, pinging all the while; then check the timings."""
+        self.req({"type": "timings"})
+        for pid in self.app_pids():
+            self.ask_app(pid)
+        pings, stop = [], threading.Event()
+
+        def pinger():
+            while not stop.is_set():
+                t = time.time()
+                try:
+                    self.req({"type": "ping"}, timeout=2.0)
+                except Failure:
+                    pass
+                pings.append(time.time() - t)
+                time.sleep(0.004)
+
+        th = threading.Thread(target=pinger, daemon=True)
+        th.start()
+        try:
+            burst()
+            time.sleep(0.4)
+        finally:
+            stop.set()
+            th.join()
+        t = self.req({"type": "timings"})["timings"]
+        b = self.budgets
+        stall = t["latest_beat_us"] / 1000
+        ping = max(pings, default=0) * 1000
+        slow = t.get("slowest") or ["", 0]
+        if t["beats"] == 0:
+            self.fail(what, "app_server's heartbeat never beat")
+        if stall > b["stall"]:
+            self.fail(what, f"app_server's event loop stalled {stall:.0f} ms (slowest: {slow[0]} {slow[1] / 1000:.0f} ms)")
+        if ping > b["stall"] + 20:
+            self.fail(what, f"a ping took {ping:.0f} ms")
+        frame = 0
+        for o in t["outputs"]:
+            ms = o["slowest_us"] / 1000
+            frame = max(frame, ms)
+            if ms > b["frame"]:
+                self.fail(what, f"{o['output']}: a frame took {ms:.1f} ms to draw (average {o['total_us'] / max(o['frames'], 1) / 1000:.1f} ms over {o['frames']})")
+        app_frame, answer = 0, 0
+        for pid, app in self.app_pids().items():
+            times, took = self.ask_app(pid)
+            took *= 1000
+            answer = max(answer, took)
+            if times is None:
+                if os.path.exists(f"/proc/{pid}"):
+                    self.fail(what, f"{app} ({pid}) didn't answer in {took:.0f} ms")
+                continue
+            if took > b["answer"]:
+                self.fail(what, f"{app} ({pid}) took {took:.0f} ms to answer: its UI thread was busy")
+            for w in times:
+                if "Cpu)" in w.get("adapter", ""):
+                    self.fail(what, f"{app} draws in software: {w['adapter']}")
+                ms = w["slowest_us"] / 1000
+                app_frame = max(app_frame, ms)
+                if ms > b["app_frame"]:
+                    self.fail(what, f"{app} window {w['title']!r}: a frame took {ms:.0f} ms (average {w['total_us'] / max(w['frames'], 1) / 1000:.1f} ms over {w['frames']})")
+        kind = what.split(" ")[0]
+        old = self.worst.get(kind, (0, 0, 0, 0, 0, ""))
+        culprit = f"{slow[0]} {slow[1] / 1000:.1f}" if stall >= old[0] else old[5]
+        self.worst[kind] = (max(old[0], stall), max(old[1], ping), max(old[2], frame), max(old[3], app_frame), max(old[4], answer), culprit)
+
+    def app_pids(self):
+        return {w["pid"]: w["app_id"] for w in self.windows().values() if w.get("pid")}
+
+    def fail(self, what, msg):
+        line = f"step {self.step} (seed {self.seed}) {what}: {msg}"
+        self.failures.append(line)
+        print("FAIL " + line, flush=True)
+
+    # ---- bursts ----
+
+    def pick_window(self, wins=None):
+        wins = wins or self.windows()
+        shown = [w for w in wins.values() if not w["minimized"] and frame_of(w)]
+        return self.rng.choice(shown) if shown else None
+
+    def op_drag(self):
+        w = self.pick_window()
+        if not w:
+            return
+        x, y, cw, _ = frame_of(w)
+        sx, sy = x + min(40, cw // 2), y + 10
+        dx, dy = self.rng.randint(-400, 400), self.rng.randint(-200, 200)
+
+        def burst():
+            self.synthetic([{"type": "move", "x": sx, "y": sy}, {"type": "button", "button": BTN_LEFT, "pressed": True}])
+            for i in range(1, 121):
+                self.synthetic([{"type": "move", "x": sx + dx * i / 120, "y": sy + dy * i / 120}])
+                time.sleep(0.004)
+            self.synthetic([{"type": "button", "button": BTN_LEFT, "pressed": False}])
+        self.measure(f"drag {w['id']} ({w['app_id']})", burst)
+
+    def op_resize(self):
+        w = self.pick_window()
+        if not w:
+            return
+        x, y, cw, ch = frame_of(w)
+        sx, sy = x + cw - 2, y + ch - 2
+        dx, dy = self.rng.randint(-300, 300), self.rng.randint(-200, 200)
+
+        def burst():
+            self.synthetic([{"type": "move", "x": sx, "y": sy}, {"type": "button", "button": BTN_LEFT, "pressed": True}])
+            for i in range(1, 121):
+                self.synthetic([{"type": "move", "x": sx + dx * i / 120, "y": sy + dy * i / 120}])
+                time.sleep(0.004)
+            self.synthetic([{"type": "button", "button": BTN_LEFT, "pressed": False}])
+        self.measure(f"resize {w['id']} ({w['app_id']})", burst)
+
+    def op_shortcuts(self):
+        cmds = [self.rng.choice(WINDOW_CMDS) for _ in range(30)]
+        self.measure(f"shortcuts x{len(cmds)}", lambda: [self.shortcut(c) for c in cmds])
+
+    def op_arrange(self):
+        cmds = [self.rng.choice(ARRANGE_CMDS) for _ in range(12)]
+        self.measure(f"arrange x{len(cmds)}", lambda: [self.shortcut(c) for c in cmds])
+
+    def op_switcher(self):
+        n = self.rng.randint(5, 40)
+
+        def burst():
+            self.synthetic([{"type": "key", "key": CMD, "pressed": True}])
+            for _ in range(n):
+                self.synthetic([{"type": "key", "key": TAB, "pressed": True}, {"type": "key", "key": TAB, "pressed": False}])
+                time.sleep(0.01)
+            self.synthetic([{"type": "key", "key": CMD, "pressed": False}])
+        self.measure(f"switcher x{n}", burst)
+
+    def op_workspaces(self):
+        n = self.rng.randint(5, 20)
+        cmds = [self.rng.choice(["next-workspace", "previous-workspace", "workspace-1", "workspace-2"]) for _ in range(n)]
+
+        def burst():
+            for c in cmds:
+                self.shortcut(c)
+            self.shortcut("workspace-1")
+        self.measure(f"workspaces x{n}", burst)
+
+    def op_open_many(self):
+        n = self.rng.randint(3, 8)
+        before = set(self.windows())
+
+        def burst():
+            for _ in range(n):
+                app = self.rng.choice(APPS)
+                args = ["--new-window"] if app == "olo-styled-edit" else (["/usr/bin"] if app == "olo-tracker" else [])
+                self.spawn(app, args)
+            deadline = time.time() + 6
+            while time.time() < deadline and len(set(self.windows()) - before) < n:
+                time.sleep(0.05)
+        self.measure(f"open x{n}", burst)
+        self.opened += sorted(set(self.windows()) - before)
+
+    def op_close_some(self):
+        wins = self.windows()
+        mine = [i for i in self.opened if i in wins]
+        if not mine:
+            return
+        pick = self.rng.sample(mine, min(len(mine), self.rng.randint(1, 6)))
+
+        def burst():
+            for i in pick:
+                self.req({"type": "close", "id": i})
+            deadline = time.time() + 4
+            while time.time() < deadline and set(pick) & set(self.windows()):
+                time.sleep(0.05)
+        self.measure(f"close x{len(pick)}", burst)
+        self.opened = [i for i in self.opened if i not in pick]
+
+    def op_theme(self):
+        n = self.rng.randint(2, 6)
+
+        def burst():
+            for i in range(n):
+                s = self.req({"type": "get_settings"})["settings"]
+                s["appearance"]["theme"] = "dark" if s["appearance"]["theme"] != "dark" else "light"
+                self.req({"type": "set_settings", "settings": s})
+                time.sleep(0.15)
+        self.measure(f"theme x{n}", burst)
+
+    def op_scale(self):
+        names = list(self.outputs)
+        if len(names) < 2:
+            return
+        name = names[1]
+        scale = self.rng.choice([1.0, 1.5, 2.0])
+
+        def burst():
+            cfg = {"mode": None, "scale": scale, "position": None, "rotation": None, "mirror": None}
+            self.req({"type": "configure_output", "name": name, "config": cfg})
+            time.sleep(0.8)
+            pos, home = self.outputs[name]
+            cfg.update(scale=home, position=pos)
+            self.req({"type": "configure_output", "name": name, "config": cfg})
+        self.measure(f"scale {name} {scale}", burst)
+
+    def op_flood_terminal(self):
+        terms = [w for w in self.windows().values() if w["app_id"] == "olo.terminal" and not w["minimized"]]
+        if not terms:
+            return
+        w = self.rng.choice(terms)
+        n = self.rng.choice([20000, 100000, 300000])
+
+        def burst():
+            self.req({"type": "activate", "id": w["id"]})
+            time.sleep(0.2)
+            self.type_text(f"seq 1 {n}\n")
+            time.sleep(1.5)
+        self.measure(f"flood {w['id']} seq {n}", burst)
+
+    def op_type(self):
+        w = self.pick_window()
+        if not w or w["app_id"] != "olo.styled-edit":
+            return
+        text = "".join(self.rng.choice("abcdefghijklmnop qrstuvwxyz\n") for _ in range(150))
+
+        def burst():
+            self.req({"type": "activate", "id": w["id"]})
+            time.sleep(0.1)
+            self.type_text(text)
+        self.measure(f"type {w['id']} x{len(text)}", burst)
+
+    def op_scroll(self):
+        w = self.pick_window()
+        if not w:
+            return
+        x, y, cw, ch = frame_of(w)
+
+        def burst():
+            self.synthetic([{"type": "move", "x": x + cw / 2, "y": y + ch / 2}])
+            for i in range(80):
+                d = 30 if (i // 20) % 2 == 0 else -30
+                self.synthetic([{"type": "scroll", "dx": 0, "dy": d}])
+                time.sleep(0.008)
+            self.synthetic([{"type": "scroll", "dx": 0, "dy": 0}])
+        self.measure(f"scroll {w['id']} ({w['app_id']})", burst)
+
+    def op_hints(self):
+        def burst():
+            for _ in range(3):
+                self.keys([CTRL])
+                time.sleep(0.05)
+                self.keys([CTRL])
+                time.sleep(0.4)
+                self.keys([ESC])
+        self.measure("hints x3", burst)
+
+    def op_show_desktop(self):
+        self.measure("show-desktop x6", lambda: [self.shortcut("show-desktop") for _ in range(6)])
+
+    def run(self, steps, keep_going):
+        ops = [self.op_drag, self.op_resize, self.op_shortcuts, self.op_arrange, self.op_switcher, self.op_workspaces,
+               self.op_open_many, self.op_close_some, self.op_theme, self.op_scale, self.op_flood_terminal, self.op_type,
+               self.op_scroll, self.op_hints, self.op_show_desktop]
+        weights = [3, 3, 2, 2, 2, 2, 1, 2, 1, 1, 1, 1, 2, 1, 1]
+        if self.only:
+            weights = [1 if op.__name__[3:].replace("_", "-") in self.only else 0 for op in ops]
+        start = self.resources()
+        for self.step in range(1, steps + 1):
+            op = self.rng.choices(ops, weights)[0]
+            name = op.__name__[3:]
+            self.history.append(f"{self.step}: {name}")
+            if not self.quiet:
+                print(f"{self.step:4} {name}", flush=True)
+            n = len(self.failures)
+            try:
+                op()
+            except Failure as e:
+                self.fail(name, str(e))
+            if len(self.failures) > n and not keep_going:
+                break
+        # Close what was opened, then look for leaks.
+        for i in self.opened:
+            try:
+                self.req({"type": "close", "id": i})
+            except Failure:
+                pass
+        # Buffers still in flight hold file descriptors for a moment:
+        # given a few seconds to settle before anything counts as a leak.
+        deadline = time.time() + 6.0
+        time.sleep(2.0)
+        end = self.resources()
+        while start and end and end[0] > start[0] + 2 and time.time() < deadline:
+            time.sleep(0.5)
+            end = self.resources()
+        if start and end:
+            if end[0] > start[0] + 2:
+                self.fail("end", f"app_server has {end[0] - start[0]} more file descriptors than it started with ({start[0]} -> {end[0]})")
+            if end[1] > start[1]:
+                self.fail("end", f"app_server has {end[1] - start[1]} more threads than it started with")
+            if end[2] - start[2] > self.budgets["rss"] * 1024:
+                self.fail("end", f"app_server grew {(end[2] - start[2]) // 1024} MiB ({start[2] // 1024} -> {end[2] // 1024} MiB)")
+            print(f"app_server: fds {start[0]} -> {end[0]}, threads {start[1]} -> {end[1]}, rss {start[2] // 1024} -> {end[2] // 1024} MiB")
+        print(f"{'burst':<14} {'stall':>7} {'ping':>7} {'frame':>7} {'app frame':>10} {'answer':>8}   slowest handler (worst, ms)")
+        for kind, (stall, ping, frame, app_frame, answer, culprit) in sorted(self.worst.items()):
+            print(f"{kind:<14} {stall:7.1f} {ping:7.1f} {frame:7.1f} {app_frame:10.1f} {answer:8.1f}   {culprit}")
+        return not self.failures
+
+
+def main():
+    args = sys.argv[1:]
+    if not args or args[0].startswith("-"):
+        print(__doc__)
+        sys.exit(2)
+    name = args[0]
+
+    def opt(flag, default, kind=int):
+        return kind(args[args.index(flag) + 1]) if flag in args else default
+    seed = opt("--seed", random.randrange(1 << 30))
+    budgets = {"stall": opt("--stall", 33.0, float), "frame": opt("--frame", 16.0, float),
+               "app_frame": opt("--app-frame", 50.0, float), "answer": opt("--answer", 250.0, float),
+               "rss": opt("--rss", 200)}
+    fuzz = Fuzz(name, seed, "--quiet" in args, budgets)
+    fuzz.only = opt("--only", "", str).split(",") if "--only" in args else []
+    steps = opt("--steps", 60)
+    print(f"perf-fuzz {name}: seed {seed}, {steps} steps", flush=True)
+    ok = fuzz.run(steps, "--keep-going" in args)
+    print(("ok" if ok else f"{len(fuzz.failures)} failures") + f" (seed {seed})")
+    sys.exit(0 if ok else 1)
+
+
+if __name__ == "__main__":
+    main()

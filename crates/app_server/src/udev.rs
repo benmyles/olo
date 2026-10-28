@@ -130,6 +130,8 @@ pub struct UdevData {
     pub session: LibSeatSession,
     dh: DisplayHandle,
     dmabuf_state: Option<(DmabufState, DmabufGlobal)>,
+    /// Clients' new buffers, checked off the loop (`dmabuf_check`).
+    dmabuf_checks: Option<crate::dmabuf_check::Checks>,
     syncobj_state: Option<DrmSyncobjState>,
     primary_gpu: DrmNode,
     gpus: GpuManager<GbmGlesBackend<GlesRenderer, DrmDeviceFd>>,
@@ -182,12 +184,29 @@ impl DmabufHandler for AnvilState<UdevData> {
     }
 
     fn dmabuf_imported(&mut self, _global: &DmabufGlobal, dmabuf: Dmabuf, notifier: ImportNotifier) {
-        if self
-            .backend_data
-            .gpus
-            .single_renderer(&self.backend_data.primary_gpu)
-            .and_then(|mut renderer| renderer.import_dmabuf(&dmabuf, None))
-            .is_ok()
+        // Checked off the loop (`dmabuf_check`); here only if that can't be.
+        let (dmabuf, notifier) = match &mut self.backend_data.dmabuf_checks {
+            Some(checks) => match checks.start(dmabuf, notifier) {
+                None => return,
+                Some(back) => back,
+            },
+            None => (dmabuf, notifier),
+        };
+        self.dmabuf_checked(dmabuf, notifier, true, None);
+    }
+}
+
+impl AnvilState<UdevData> {
+    /// Import a checked buffer, tell the client whether it is good, and let
+    /// its commits waiting for that through.
+    fn dmabuf_checked(&mut self, dmabuf: Dmabuf, notifier: ImportNotifier, ok: bool, gate: Option<crate::dmabuf_check::Gate>) {
+        if ok
+            && self
+                .backend_data
+                .gpus
+                .single_renderer(&self.backend_data.primary_gpu)
+                .and_then(|mut renderer| renderer.import_dmabuf(&dmabuf, None))
+                .is_ok()
         {
             if dmabuf.node().is_none() {
                 dmabuf.set_node(self.backend_data.primary_gpu);
@@ -195,6 +214,10 @@ impl DmabufHandler for AnvilState<UdevData> {
             let _ = notifier.successful::<AnvilState<UdevData>>();
         } else {
             notifier.failed();
+        }
+        let dh = self.display_handle.clone();
+        for client in gate.map(|g| g.open()).unwrap_or_default() {
+            smithay::wayland::compositor::CompositorHandler::client_compositor_state(self, &client).blocker_cleared(self, &dh);
         }
     }
 }
@@ -285,6 +308,9 @@ fn abs_capable(sysname: &str, code: u32) -> bool {
 }
 
 impl Backend for UdevData {
+    fn dmabuf_gate(&self, dmabuf: &Dmabuf) -> Option<crate::dmabuf_check::Gate> {
+        self.dmabuf_checks.as_ref()?.gate(dmabuf)
+    }
     const HAS_RELATIVE_MOTION: bool = true;
     const HAS_GESTURES: bool = true;
     const IS_SESSION: bool = true;
@@ -683,6 +709,7 @@ pub fn run_udev() {
     let data = UdevData {
         dh: display_handle.clone(),
         dmabuf_state: None,
+        dmabuf_checks: None,
         syncobj_state: None,
         session,
         primary_gpu,
@@ -864,6 +891,15 @@ pub fn run_udev() {
     let global = dmabuf_state
         .create_global_with_default_feedback::<AnvilState<UdevData>>(&display_handle, &default_feedback);
     state.backend_data.dmabuf_state = Some((dmabuf_state, global));
+    let egl_display = AsRef::<GlesRenderer>::as_ref(&renderer).egl_context().display().clone();
+    let (checked, answers) = smithay::reexports::calloop::channel::channel();
+    state.backend_data.dmabuf_checks = Some(crate::dmabuf_check::Checks::new(egl_display, checked));
+    let _ = state.handle.insert_source(answers, |event, _, state: &mut AnvilState<UdevData>| {
+        let smithay::reexports::calloop::channel::Event::Msg(p) = event else { return };
+        if let Some((dmabuf, notifier, gate)) = state.backend_data.dmabuf_checks.as_mut().and_then(|c| c.finish(&p)) {
+            state.dmabuf_checked(dmabuf, notifier, p.image.is_some(), Some(gate));
+        }
+    });
 
     let gpus = &mut state.backend_data.gpus;
     state
@@ -938,10 +974,14 @@ pub fn run_udev() {
         if result.is_err() {
             state.running.store(false, Ordering::SeqCst);
         } else {
+            let start = Instant::now();
             state.space.refresh();
             state.popups.cleanup();
             state.tick();
+            state.timings.handled(|| "tick".into(), start);
+            let start = Instant::now();
             display_handle.flush_clients().unwrap();
+            state.timings.handled(|| "flushing to clients".into(), start);
         }
     }
     state.save_layout();
@@ -1971,6 +2011,7 @@ impl AnvilState<UdevData> {
             locked,
             fit,
         );
+        self.timings.frame(&output.name(), start.elapsed());
         let reschedule = match result {
             Ok((has_rendered, states)) => {
                 let dmabuf_feedback = surface.dmabuf_feedback.clone();

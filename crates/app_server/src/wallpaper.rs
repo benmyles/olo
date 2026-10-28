@@ -2,17 +2,23 @@
 //! and drawn behind everything (Tracker's desktop layer is transparent, and
 //! the workspace colour shows until the picture is ready or if it can't be
 //! read). Decoding and scaling a camera-sized JPEG takes a while, so it is
-//! done on a worker thread per output size; the finished buffer is kept on
-//! the output, where `render::output_elements` finds it. A picture from
+//! done on a worker thread, one picture at a time and only the latest asked
+//! for each output (flipping the theme quickly would otherwise decode a
+//! dozen at once); the finished buffer is kept on the output, where
+//! `render::output_elements` finds it. A picture from
 //! the pack (`olo_xdg::wallpapers`) comes in the version for each
 //! screen's shape and the current mode.
 
 use std::{
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{Mutex, mpsc},
 };
 
-use image::{DynamicImage, RgbaImage, imageops::FilterType};
+use fast_image_resize::{
+    self as fir, PixelType, ResizeAlg, ResizeOptions, Resizer,
+    images::{Image, ImageRef},
+};
+use image::{DynamicImage, RgbaImage};
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -47,12 +53,57 @@ struct Slot {
     shown: Option<MemoryRenderBuffer>,
 }
 
-type Done = (String, Key, Result<RgbaImage, String>);
+/// A worker's picture for an output, ready to draw.
+type Done = (String, Key, Result<MemoryRenderBuffer, String>);
 
-/// The worker threads' way back to the event loop.
+/// What the worker is asked: a picture for an output, or to give back
+/// the memory pictures took (once a new one has replaced the old).
+enum Job {
+    Load(String, Key),
+    Trim,
+}
+
+/// The way to the worker.
 #[derive(Debug, Default)]
 pub struct Loader {
-    tx: Option<channel::Sender<Done>>,
+    jobs: Option<mpsc::Sender<Job>>,
+}
+
+/// The worker: the latest picture asked for each output, one at a time,
+/// each sent back to the loop through `done` ready to draw.
+fn work(jobs: mpsc::Receiver<Job>, done: channel::Sender<Done>) {
+    while let Ok(job) = jobs.recv() {
+        let mut todo: Vec<(String, Key)> = Vec::new();
+        let mut trim = false;
+        for job in std::iter::once(job).chain(jobs.try_iter()) {
+            match job {
+                Job::Load(name, key) => {
+                    todo.retain(|(n, _)| *n != name);
+                    todo.push((name, key));
+                }
+                Job::Trim => trim = true,
+            }
+        }
+        for (name, key) in todo {
+            // Ready to draw: copied into its buffer here, not on the loop.
+            let result = load(&key.path, key.size).map(|img| {
+                let size: Size<i32, Buffer> = (img.width() as i32, img.height() as i32).into();
+                let opaque = img.pixels().all(|p| p[3] == 255);
+                MemoryRenderBuffer::from_slice(img.as_raw(), Fourcc::Abgr8888, size, 1, Transform::Normal, opaque.then(|| vec![Rectangle::from_size(size)]))
+            });
+            if done.send((name, key, result)).is_err() {
+                return;
+            }
+        }
+        // What reading took, and the pictures replaced, go back to the
+        // system rather than staying with the allocator for good.
+        #[cfg(target_env = "gnu")]
+        if trim {
+            unsafe {
+                libc::malloc_trim(0);
+            }
+        }
+    }
 }
 
 fn slot(output: &Output) -> &Mutex<Slot> {
@@ -75,14 +126,23 @@ fn decode(path: &Path) -> Result<DynamicImage, String> {
 }
 
 /// Read `path` the right way up and scale it to cover `size`, cropping the
-/// overhang evenly (a centred "fill", as most desktops default to).
+/// overhang evenly (a centred "fill", as most desktops default to). One
+/// copy of the picture at a time: cropped as it is scaled, in 8 bits
+/// (an 8K picture would otherwise pass through several full-size copies
+/// and a float one, hundreds of megabytes, for each display at once).
 fn load(path: &Path, (w, h): (u32, u32)) -> Result<RgbaImage, String> {
-    let img = decode(path)?;
+    let img = decode(path)?.into_rgba8();
     let (sw, sh) = (img.width().max(1), img.height().max(1));
     let scale = (w as f64 / sw as f64).max(h as f64 / sh as f64);
     let (cw, ch) = (((w as f64 / scale).round() as u32).clamp(1, sw), ((h as f64 / scale).round() as u32).clamp(1, sh));
-    let cropped = img.crop_imm((sw - cw) / 2, (sh - ch) / 2, cw, ch);
-    let mut out = image::imageops::resize(&cropped.to_rgba8(), w, h, FilterType::CatmullRom);
+    let src = ImageRef::new(img.width(), img.height(), img.as_raw(), PixelType::U8x4).map_err(|e| e.to_string())?;
+    let mut scaled = Image::new(w, h, PixelType::U8x4);
+    let options = ResizeOptions::new()
+        .resize_alg(ResizeAlg::Convolution(fir::FilterType::CatmullRom))
+        .crop(((sw - cw) / 2) as f64, ((sh - ch) / 2) as f64, cw as f64, ch as f64);
+    Resizer::new().resize(&src, &mut scaled, &options).map_err(|e| e.to_string())?;
+    drop(img);
+    let mut out = RgbaImage::from_raw(w, h, scaled.into_vec()).ok_or("scaled picture of the wrong size")?;
     // The renderer wants premultiplied alpha.
     for p in out.pixels_mut() {
         let a = p[3] as u32;
@@ -98,35 +158,39 @@ fn load(path: &Path, (w, h): (u32, u32)) -> Result<RgbaImage, String> {
 impl<B: Backend + 'static> AnvilState<B> {
     /// Listen for finished pictures. Called once at start-up.
     pub fn start_wallpaper(&mut self) {
-        let (tx, rx) = channel::channel::<Done>();
+        let (done, rx) = channel::channel::<Done>();
+        let (jobs, todo) = mpsc::channel();
+        let _ = std::thread::Builder::new().name("wallpaper".into()).spawn(move || work(todo, done));
         let _ = self.handle.insert_source(rx, |event, _, state| {
             let ChannelEvent::Msg((name, key, result)) = event else { return };
-            let Some(output) = state.space.outputs().find(|o| o.name() == name).cloned() else { return };
-            let mut slot = slot(&output).lock().unwrap();
-            if slot.wanted.as_ref() != Some(&key) {
-                return; // Superseded while it was being read.
-            }
-            match result {
-                Ok(img) => {
-                    let size: Size<i32, Buffer> = (img.width() as i32, img.height() as i32).into();
-                    let opaque = img.pixels().all(|p| p[3] == 255);
-                    slot.shown = Some(MemoryRenderBuffer::from_slice(
-                        img.as_raw(),
-                        Fourcc::Abgr8888,
-                        size,
-                        1,
-                        Transform::Normal,
-                        opaque.then(|| vec![Rectangle::from_size(size)]),
-                    ));
-                    info!(output = name, path = %key.path.display(), "wallpaper ready");
-                }
-                Err(e) => {
-                    warn!(path = %key.path.display(), "can't show the wallpaper: {e}");
-                    slot.shown = None;
-                }
-            }
+            let start = std::time::Instant::now();
+            state.wallpaper_arrived(name, key, result);
+            state.timings.handled(|| "wallpaper ready".into(), start);
         });
-        self.wallpaper.tx = Some(tx);
+        self.wallpaper.jobs = Some(jobs);
+    }
+
+    fn wallpaper_arrived(&mut self, name: String, key: Key, result: Result<MemoryRenderBuffer, String>) {
+        let Some(output) = self.space.outputs().find(|o| o.name() == name).cloned() else { return };
+        let mut slot = slot(&output).lock().unwrap();
+        if slot.wanted.as_ref() != Some(&key) {
+            return; // Superseded while it was being read.
+        }
+        match result {
+            Ok(buffer) => {
+                slot.shown = Some(buffer);
+                info!(output = name, path = %key.path.display(), "wallpaper ready");
+                // The picture replaced is freed: the worker gives the memory
+                // back (off the loop, which that would hold up a moment).
+                if let Some(jobs) = &self.wallpaper.jobs {
+                    let _ = jobs.send(Job::Trim);
+                }
+            }
+            Err(e) => {
+                warn!(path = %key.path.display(), "can't show the wallpaper: {e}");
+                slot.shown = None;
+            }
+        }
     }
 
     /// Make sure `output` has (or is getting) the current wallpaper at its
@@ -150,12 +214,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         // A new size of the same picture keeps the old one up meanwhile;
         // a different picture too, so the change is a single swap.
         slot.wanted = Some(key.clone());
-        let Some(tx) = self.wallpaper.tx.clone() else { return };
-        let name = output.name();
-        std::thread::spawn(move || {
-            let result = load(&key.path, key.size);
-            let _ = tx.send((name, key, result));
-        });
+        if let Some(jobs) = &self.wallpaper.jobs {
+            let _ = jobs.send(Job::Load(output.name(), key));
+        }
     }
 }
 

@@ -61,6 +61,7 @@ pub struct HeadlessData {
     renderer: GlesRenderer,
     screens: Vec<Screen>,
     dmabuf_state: (DmabufState, DmabufGlobal),
+    dmabuf_checks: crate::dmabuf_check::Checks,
 }
 
 impl DmabufHandler for AnvilState<HeadlessData> {
@@ -69,15 +70,33 @@ impl DmabufHandler for AnvilState<HeadlessData> {
     }
 
     fn dmabuf_imported(&mut self, _global: &DmabufGlobal, dmabuf: Dmabuf, notifier: ImportNotifier) {
-        if self.backend_data.renderer.import_dmabuf(&dmabuf, None).is_ok() {
+        // Checked off the loop (`dmabuf_check`); here only if that can't be.
+        if let Some((dmabuf, notifier)) = self.backend_data.dmabuf_checks.start(dmabuf, notifier) {
+            self.dmabuf_checked(dmabuf, notifier, true, None);
+        }
+    }
+}
+
+impl AnvilState<HeadlessData> {
+    /// Import a checked buffer, tell the client whether it is good, and let
+    /// its commits waiting for that through.
+    fn dmabuf_checked(&mut self, dmabuf: Dmabuf, notifier: ImportNotifier, ok: bool, gate: Option<crate::dmabuf_check::Gate>) {
+        if ok && self.backend_data.renderer.import_dmabuf(&dmabuf, None).is_ok() {
             let _ = notifier.successful::<AnvilState<HeadlessData>>();
         } else {
             notifier.failed();
+        }
+        let dh = self.display_handle.clone();
+        for client in gate.map(|g| g.open()).unwrap_or_default() {
+            smithay::wayland::compositor::CompositorHandler::client_compositor_state(self, &client).blocker_cleared(self, &dh);
         }
     }
 }
 
 impl Backend for HeadlessData {
+    fn dmabuf_gate(&self, dmabuf: &Dmabuf) -> Option<crate::dmabuf_check::Gate> {
+        self.dmabuf_checks.gate(dmabuf)
+    }
     fn seat_name(&self) -> String {
         "headless".into()
     }
@@ -209,8 +228,20 @@ pub fn run_headless(size_arg: Option<&str>) {
         None => dmabuf_state.create_global::<AnvilState<HeadlessData>>(&display_handle, formats),
     };
 
+    let (checked, answers) = smithay::reexports::calloop::channel::channel();
+    let dmabuf_checks = crate::dmabuf_check::Checks::new(renderer.egl_context().display().clone(), checked);
+    event_loop
+        .handle()
+        .insert_source(answers, |event, _, state: &mut AnvilState<HeadlessData>| {
+            let smithay::reexports::calloop::channel::Event::Msg(p) = event else { return };
+            if let Some((dmabuf, notifier, gate)) = state.backend_data.dmabuf_checks.finish(&p) {
+                state.dmabuf_checked(dmabuf, notifier, p.image.is_some(), Some(gate));
+            }
+        })
+        .expect("dmabuf checks");
+
     let outputs: Vec<Output> = screens.iter().map(|s| s.output.clone()).collect();
-    let data = HeadlessData { renderer, screens, dmabuf_state: (dmabuf_state, dmabuf_global) };
+    let data = HeadlessData { renderer, screens, dmabuf_state: (dmabuf_state, dmabuf_global), dmabuf_checks };
     let mut state = AnvilState::init(display, event_loop.handle(), data, true);
     let shm_formats = state.backend_data.renderer.shm_formats();
     state.shm_state.update_formats(shm_formats);
@@ -249,9 +280,11 @@ pub fn run_headless(size_arg: Option<&str>) {
             state.running.store(false, Ordering::SeqCst);
             break;
         }
+        let start = std::time::Instant::now();
         state.space.refresh();
         state.popups.cleanup();
         state.tick();
+        state.timings.handled(|| "tick".into(), start);
         for output in &outputs {
             for shot in state.ipc.shots_for(output) {
                 let color = state.desktop_color();
@@ -282,7 +315,9 @@ pub fn run_headless(size_arg: Option<&str>) {
                 );
             }
         }
+        let start = std::time::Instant::now();
         let _ = state.display_handle.flush_clients();
+        state.timings.handled(|| "flushing to clients".into(), start);
     }
     state.save_layout();
 }
@@ -320,6 +355,7 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
     let source = crate::render::mirror_source(&screen);
     let fit = source.as_ref().map(|s| crate::render::fit_outputs(&screen, s, &state.space));
     let output = source.as_ref().unwrap_or(&screen);
+    let (start, name) = (std::time::Instant::now(), output.name());
     let now = state.clock.now();
     let frame_target = now + Duration::from_micros(16_667);
     state.pre_repaint(output, frame_target);
@@ -367,4 +403,5 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
         }
         Err(e) => warn!("headless render: {e:?}"),
     }
+    state.timings.frame(&name, start.elapsed());
 }

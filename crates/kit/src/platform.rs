@@ -87,6 +87,10 @@ use crate::{
 /// Popup path root meaning "the surface's ad-hoc menu", not a bar menu.
 const CONTEXT: usize = usize::MAX;
 
+/// The longest a configure waits for the frame on its way to be shown
+/// (`Kit::draw_configured`): about a frame.
+const CONFIGURED_WAIT: Duration = Duration::from_millis(16);
+
 fn menu_of(s: &Surface, path: &[usize]) -> Option<Menu> {
     let root = if path[0] == CONTEXT {
         s.context.as_ref().map(|r| &r.menu)
@@ -152,6 +156,12 @@ struct Surface {
     dirty: bool,
     frame_pending: bool,
     repaint_at: Option<Instant>,
+    /// Configured meanwhile: drawn when the frame on its way has been
+    /// shown, or by this time at the latest (`draw_configured`).
+    configure_due: Option<Instant>,
+    /// Its size changed: the GPU surface is set up again before the next
+    /// draw (once for a burst of sizes, not for each).
+    reconfigure: bool,
     events: Vec<egui::Event>,
     pointer: Option<Pos2>,
     /// Buttons pressed on this surface and not yet released here.
@@ -161,6 +171,10 @@ struct Surface {
     swallow: bool,
     /// This window's tree, from its frame since one was asked for.
     tree: Option<crate::commands::WindowTree>,
+    /// Its frames since `{"frames":true}` was last answered, and whether
+    /// the draw under way got as far as the GPU.
+    times: crate::commands::FrameTimes,
+    presented: bool,
     /// The menu bar, in window coordinates, from the last draw.
     bar_rect: Option<Rect>,
     cursor: egui::CursorIcon,
@@ -801,6 +815,19 @@ impl Kit {
                 self.trees.push((reply, Instant::now()));
                 self.answer_trees();
             }
+            Query::Frames(reply) => {
+                let adapter = self.gpu.as_ref().map_or_else(String::new, |g| {
+                    let i = g.adapter.get_info();
+                    format!("{} ({:?}, {:?})", i.name, i.backend, i.device_type)
+                });
+                let times = self
+                    .surfaces
+                    .iter_mut()
+                    .filter(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_)))
+                    .map(|s| crate::commands::FrameTimes { title: s.options.title.clone(), adapter: adapter.clone(), ..std::mem::take(&mut s.times) })
+                    .collect();
+                let _ = reply.send(times);
+            }
         }
     }
 
@@ -1109,6 +1136,10 @@ impl Kit {
             buttons: Vec::new(),
             swallow: false,
             tree: None,
+            configure_due: None,
+            reconfigure: false,
+            times: Default::default(),
+            presented: false,
             bar_rect: None,
             cursor: egui::CursorIcon::Default,
             menus: None,
@@ -1485,7 +1516,7 @@ impl Kit {
             if s.dirty && !s.frame_pending && s.configured {
                 return Some(Duration::ZERO);
             }
-            if let Some(at) = s.repaint_at {
+            for at in [s.repaint_at, s.configure_due].into_iter().flatten() {
                 let d = at.saturating_duration_since(now);
                 t = Some(t.map_or(d, |t: Duration| t.min(d)));
             }
@@ -1509,6 +1540,12 @@ impl Kit {
                 s.repaint_at = None;
                 s.dirty = true;
             }
+            // Configured, and the frame on its way never shown (a hidden
+            // window's callbacks come slowly): drawn now anyway.
+            if s.configure_due.is_some_and(|at| at <= now) {
+                s.configure_due = None;
+                s.frame_pending = false;
+            }
             if s.dirty && s.configured && !s.frame_pending {
                 let id = s.id;
                 self.draw(id);
@@ -1516,11 +1553,42 @@ impl Kit {
         }
     }
 
+    /// After a configure: drawn right away (the first frame maps the
+    /// window), unless a frame is still on its way to the screen; then
+    /// once that has been shown, or a frame's time from now at the
+    /// latest. A burst of configures (a window resized by the pointer,
+    /// tiling keys held down) draws once a frame, not once each, which
+    /// would swamp the GPU and hold up the whole desktop.
+    fn draw_configured(&mut self, i: usize) {
+        let s = &mut self.surfaces[i];
+        if s.frame_pending {
+            s.configure_due.get_or_insert(Instant::now() + CONFIGURED_WAIT);
+            return;
+        }
+        let id = s.id;
+        self.draw(id);
+    }
+
     fn draw(&mut self, id: WindowId) {
+        let start = Instant::now();
+        self.draw_frame(id);
+        if let Some(s) = self.surface_mut(id)
+            && std::mem::take(&mut s.presented)
+        {
+            let us = start.elapsed().as_micros() as u64;
+            s.times.frames += 1;
+            s.times.slowest_us = s.times.slowest_us.max(us);
+            s.times.total_us += us;
+        }
+    }
+
+    fn draw_frame(&mut self, id: WindowId) {
         let Some(i) = self.surfaces.iter().position(|s| s.id == id) else { return };
-        if self.surfaces[i].gpu_surface.is_none() {
+        let resized = std::mem::take(&mut self.surfaces[i].reconfigure);
+        if self.surfaces[i].gpu_surface.is_none() || resized {
             self.configure_gpu_surface(i);
         }
+        self.surfaces[i].configure_due = None;
         if self.surfaces[i].gpu_surface.is_none() {
             return;
         }
@@ -1815,6 +1883,7 @@ impl Kit {
         // Throttle to the compositor's frame clock.
         s.wl.frame(&self.qh, FrameCallbackData(s.wl.clone()));
         s.frame_pending = true;
+        s.presented = true;
         gpu.queue.present(frame);
     }
 
@@ -2342,12 +2411,9 @@ impl WindowHandler for Kit {
         s.configured = true;
         s.dirty = true;
         if changed {
-            self.configure_gpu_surface(i);
+            self.surfaces[i].reconfigure = true;
         }
-        // Draw right away; the first frame maps the window.
-        self.surfaces[i].frame_pending = false;
-        let id = self.surfaces[i].id;
-        self.draw(id);
+        self.draw_configured(i);
     }
 }
 
@@ -2409,11 +2475,9 @@ impl smithay_client_toolkit::session_lock::SessionLockHandler for Kit {
         s.configured = true;
         s.dirty = true;
         if changed {
-            self.configure_gpu_surface(i);
+            self.surfaces[i].reconfigure = true;
         }
-        self.surfaces[i].frame_pending = false;
-        let id = self.surfaces[i].id;
-        self.draw(id);
+        self.draw_configured(i);
     }
 }
 
@@ -2445,11 +2509,9 @@ impl LayerShellHandler for Kit {
         s.configured = true;
         s.dirty = true;
         if changed {
-            self.configure_gpu_surface(i);
+            self.surfaces[i].reconfigure = true;
         }
-        self.surfaces[i].frame_pending = false;
-        let id = self.surfaces[i].id;
-        self.draw(id);
+        self.draw_configured(i);
     }
 }
 
@@ -2472,11 +2534,9 @@ impl PopupHandler for Kit {
         s.configured = true;
         s.dirty = true;
         if changed {
-            self.configure_gpu_surface(i);
+            self.surfaces[i].reconfigure = true;
         }
-        self.surfaces[i].frame_pending = false;
-        let id = self.surfaces[i].id;
-        self.draw(id);
+        self.draw_configured(i);
     }
 
     fn done(&mut self, _: &Connection, _: &QueueHandle<Self>, popup: &Popup) {

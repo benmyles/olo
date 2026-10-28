@@ -39,7 +39,11 @@ like pixel alignment is.
    never flood the event loop, and poll shared progress counters with
    `request_repaint_after` only while work is running.
 6. **app_server never waits on a client.** Clients that stall must not stall
-   the desktop.
+   the desktop. Nor on the GPU driver: a client's new buffer is checked
+   (its first import, milliseconds on some GPUs, every frame of a resize)
+   on a worker (`dmabuf_check`), and a commit showing it waits for that
+   rather than importing it on the loop. Measure with
+   `tools/dev/perf-fuzz` (`{"type":"timings"}` names what held the loop).
 7. **Stay current without polling.** What is on screen reflects the system
    as it changes: watch files with inotify (Tracker's `watch.rs`: one thread,
    changed items stat'ed off the UI thread, bursts gathered for ~30 ms,
@@ -193,6 +197,13 @@ fn main() {
   egui gives its own widgets roles and names; text
   painted by hand is only pixels, so `style::label` and `Cell` describe
   theirs with `style::describe_text(ctx, role, text, rect, selected)`.
+* **How a window keeps up** (automatic): `{"frames":true}` on the same
+  socket answers, per window, the frames drawn since the last ask and
+  the slowest and total time drawing them (`FrameTimes`, microseconds
+  from taking input to handing the frame to the GPU), and the wgpu
+  adapter drawing them (a `Cpu` one would be software rendering). The
+  UI thread answers it, so how long the answer takes is how long the app
+  would keep a person waiting (`tools/dev/perf-fuzz`).
   **Do the same for any text you paint yourself** that an agent should be
   able to read or click; a painted item that takes clicks (an icon, a
   column's row) is `style::describe_item(ctx, text, rect, selected)`, a
@@ -817,6 +828,22 @@ windows don't, and round trips (zoom/unzoom, tile/Restore, Undo, a
 workspace or display and back) come back exactly. A run is reproducible
 from its seed. Run it after changing anything in shell/.
 
+`tools/dev/perf-fuzz NAME [--seed N] [--steps N] [--keep-going]` is its
+counterpart for speed: on the same kind of session it hammers the
+desktop with random bursts (dragging and resizing windows, Cmd+Tab and
+workspace spam, arranging, opening and closing many windows, flipping
+the theme and a display's scale, flooding a terminal, scrolling, typing,
+keyboard hints) and checks each one against budgets: app_server's event
+loop never stalls for more than two frames (`{"type":"timings"}`: a
+heartbeat that runs while anyone asks, whose lateness is whatever held
+the loop, with the slowest request, input event, clients' requests or
+tick named; and a ping every few milliseconds all through the burst), no
+app_server frame takes longer than a 60 Hz frame to draw, every kit app
+draws each frame within 50 ms, on the GPU, and answers within 250 ms
+(`{"frames":true}`), and no file descriptors, threads or memory leak. It
+ends with the worst numbers per kind of burst. Run it after changing
+anything that runs per frame or per event.
+
 Clicks are global logical coordinates: on a screen that isn't at (0, 0),
 add its position (`$T ipc NAME '{"type":"outputs"}'`). `start` rewrites
 the session's app_server.json, so test persistence with `--session` and
@@ -997,9 +1024,14 @@ launcher lists them. The panel list Deskbar shows is
   FilePanel (picture types only) as a child window for your own file;
   its text field follows the setting when it changes elsewhere. app_server draws the wallpaper (`wallpaper.rs`):
   each output's picture is decoded (JPEG XL too, via jxl-oxide), scaled
-  to cover and cropped on a worker thread, kept in the output's user
+  to cover and cropped on a worker thread (one picture at a time, only
+  the latest asked for each output), kept in the output's user
   data and drawn under every surface; the workspace colour shows until
-  it is ready or if the file can't be read.
+  it is ready or if the file can't be read. Scaling is in 8 bits with
+  the crop applied as it scales (`fast_image_resize`), one full-size copy
+  at a time, and the memory it took goes back to the system afterwards
+  (`malloc_trim`), so switching themes doesn't leave app_server hundreds
+  of megabytes bigger.
 * Display (`display.rs`): a map of the screens; drag one and `snap` puts
   it edge to edge with the nearest other (sharing at least 64 px, lined
   up with edges or centres when close), and every screen's position is

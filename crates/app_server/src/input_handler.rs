@@ -1142,6 +1142,20 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 #[cfg(feature = "udev")]
 impl AnvilState<UdevData> {
     pub fn process_input_event<B: InputBackend>(&mut self, dh: &DisplayHandle, event: InputEvent<B>) {
+        let start = std::time::Instant::now();
+        let kind = match &event {
+            InputEvent::Keyboard { .. } => "key",
+            InputEvent::PointerMotion { .. } | InputEvent::PointerMotionAbsolute { .. } => "pointer motion",
+            InputEvent::PointerButton { .. } => "pointer button",
+            InputEvent::PointerAxis { .. } => "scroll",
+            InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => "device",
+            _ => "gesture or touch",
+        };
+        self.handle_input_event(dh, event);
+        self.timings.handled(|| format!("input {kind}"), start);
+    }
+
+    fn handle_input_event<B: InputBackend>(&mut self, dh: &DisplayHandle, event: InputEvent<B>) {
         if !matches!(event, InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. }) {
             self.power_activity();
         }

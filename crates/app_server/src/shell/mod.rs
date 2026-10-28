@@ -153,6 +153,13 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
                     })
             });
             if let Some(dmabuf) = maybe_dmabuf {
+                // Not shown before it is checked (`dmabuf_check`).
+                if let Some(gate) = state.backend_data.dmabuf_gate(&dmabuf)
+                    && let Some(client) = surface.client()
+                {
+                    gate.hold(client);
+                    add_blocker(surface, gate);
+                }
                 #[cfg(feature = "udev")]
                 if let Some(acquire_point) = acquire_point
                     && let Ok((blocker, source)) = acquire_point.generate_blocker() {

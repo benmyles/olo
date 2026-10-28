@@ -603,6 +603,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// were (`twitch_step` put each back as it passed it).
     pub fn twitch_done(&mut self) {
         self.twitch = None;
+        self.twitcher.forget();
     }
 
     /// Esc while switching: back to the workspace and window switching
@@ -617,6 +618,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         if let Some(f) = self.twitch.take().and_then(|t| t.focus).filter(|f| self.space.element_location(f).is_some()) {
             self.focus_window(&f);
         }
+        self.twitcher.forget();
     }
 
     /// Start one of our programs in the session, without waiting for it.
@@ -944,6 +946,8 @@ impl<B: Backend + 'static> AnvilState<B> {
         let scale_changed = settings.display != self.settings.display;
         let main_changed = settings.display.main != self.settings.display.main;
         let space_changed = (settings.tiling.gap, settings.tiling.margin) != (self.settings.tiling.gap, self.settings.tiling.margin);
+        // A keymap takes milliseconds to build: only when they changed.
+        let input_changed = settings.keyboard != self.settings.keyboard || settings.touchpad != self.settings.touchpad;
         if settings.security.passwords.op_cli != self.settings.security.passwords.op_cli {
             olo_xdg::link_op_here(settings.security.passwords.op_cli);
         }
@@ -979,7 +983,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         if space_changed {
             self.tiling_space_changed();
         }
-        self.apply_input_settings();
+        if input_changed {
+            self.apply_input_settings();
+        }
         self.update_appearance(true);
         save_settings(&self.settings);
     }

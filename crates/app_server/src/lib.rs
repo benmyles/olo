@@ -26,6 +26,7 @@ pub mod headless;
 pub mod winit;
 
 pub mod desktop;
+pub mod dmabuf_check;
 pub mod identify;
 pub mod ipc;
 pub mod keymap;
@@ -41,6 +42,7 @@ pub mod screenshot;
 pub mod sockfile;
 pub mod text;
 pub mod theme;
+pub mod timings;
 pub mod toolkits;
 pub mod touch_filter;
 pub mod twitcher;

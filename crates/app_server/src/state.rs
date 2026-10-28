@@ -222,6 +222,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub workspace: u32,
     pub settings: olo_protocol::Settings,
     pub ipc: crate::ipc::IpcState,
+    /// Frame times and event-loop lateness, while watched (`timings`).
+    pub timings: crate::timings::Timings,
     pub last_window_infos: Vec<olo_protocol::WindowInfo>,
     /// Remembered window places (see `layout`).
     pub layout: Vec<crate::layout::Placement>,
@@ -893,10 +895,12 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 Generic::new(display, Interest::READ, Mode::Level),
                 |_, display, data| {
                     profiling::scope!("dispatch_clients");
+                    let start = std::time::Instant::now();
                     // Safety: we don't drop the display
                     unsafe {
                         display.get_mut().dispatch_clients(data).unwrap();
                     }
+                    data.timings.handled(|| "clients' requests".into(), start);
                     Ok(PostAction::Continue)
                 },
             )
@@ -1035,6 +1039,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 settings
             },
             ipc: Default::default(),
+            timings: Default::default(),
             last_window_infos: Vec::new(),
             layout: crate::layout::load(),
             night_light: None,
@@ -1441,6 +1446,11 @@ pub fn take_presentation_feedback(
 }
 
 pub trait Backend {
+    /// What a commit of `dmabuf` must wait for, while it is being checked
+    /// (`dmabuf_check`).
+    fn dmabuf_gate(&self, _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Option<crate::dmabuf_check::Gate> {
+        None
+    }
     const HAS_RELATIVE_MOTION: bool = false;
     const HAS_GESTURES: bool = false;
     /// Running as the real desktop session (not nested for development).

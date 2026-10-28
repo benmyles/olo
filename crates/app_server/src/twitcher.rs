@@ -210,18 +210,30 @@ struct Key {
     generation: u64,
 }
 
+/// How many looks of the panel are kept drawn while it is up.
+const LOOKS: usize = 8;
+
+/// The panel as drawn for its last few looks (each selection), the
+/// current one first: cycling back to one shows the texture already on
+/// the GPU rather than uploading another, which can hold up a frame by
+/// milliseconds while the GPU is busy. Forgotten when the panel goes.
 #[derive(Default)]
 pub struct Overlay {
-    cached: Option<(Key, MemoryRenderBuffer, Size<i32, Physical>)>,
+    cached: Vec<(Key, MemoryRenderBuffer, Size<i32, Physical>)>,
 }
 
 impl std::fmt::Debug for Overlay {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Overlay").field("cached", &self.cached.as_ref().map(|(k, _, s)| (k, s))).finish()
+        f.debug_struct("Overlay").field("cached", &self.cached.iter().map(|(k, _, s)| (k, s)).collect::<Vec<_>>()).finish()
     }
 }
 
 impl Overlay {
+    /// The panel is gone: let its pictures go too.
+    pub fn forget(&mut self) {
+        self.cached.clear();
+    }
+
     /// The Twitcher panel centred in an output of `output_size` (logical)
     /// at `scale`, or None if there is nothing to show.
     pub fn element<R>(
@@ -244,7 +256,10 @@ impl Overlay {
             scale_milli: (scale * 1000.0).round() as i64,
             generation: theme::generation(),
         };
-        if self.cached.as_ref().is_none_or(|(k, _, _)| *k != key) {
+        if let Some(i) = self.cached.iter().position(|(k, _, _)| *k == key) {
+            let looked = self.cached.remove(i);
+            self.cached.insert(0, looked);
+        } else {
             let pixmap = draw(&theme::palette(), shown, scale);
             let size: Size<i32, Buffer> = (pixmap.width() as i32, pixmap.height() as i32).into();
             let buffer = MemoryRenderBuffer::from_slice(
@@ -255,9 +270,10 @@ impl Overlay {
                 Transform::Normal,
                 Some(vec![Rectangle::from_size(size)]),
             );
-            self.cached = Some((key, buffer, (size.w, size.h).into()));
+            self.cached.insert(0, (key, buffer, (size.w, size.h).into()));
+            self.cached.truncate(LOOKS);
         }
-        let (_, buffer, phys) = self.cached.as_ref()?;
+        let (_, buffer, phys) = self.cached.first()?;
         let out = output_size.to_f64().to_physical(scale);
         let loc: Point<f64, Physical> =
             (((out.w - phys.w as f64) / 2.0).round(), ((out.h - phys.h as f64) / 2.0).round()).into();

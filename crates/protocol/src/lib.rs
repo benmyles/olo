@@ -133,6 +133,9 @@ pub enum Request {
     Arrange { windows: Vec<Placement> },
     /// Inject input as if from a device (for automated UI tests).
     Synthetic { events: Vec<SyntheticEvent> },
+    /// How app_server has kept up since the last ask ([`Timings`]), and
+    /// keep watching for another minute (for tools/dev/perf-fuzz).
+    Timings,
     Quit,
 }
 
@@ -175,7 +178,36 @@ pub enum Reply {
     /// and the margins), and its windows on this workspace, front first.
     Arrangement { output: String, area: Frame, windows: Vec<WindowInfo> },
     Power { status: PowerStatus },
+    Timings { timings: Timings },
     Event { event: Event },
+}
+
+/// [`Request::Timings`]'s answer: how app_server kept up since the last
+/// ask. Durations in microseconds.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct Timings {
+    /// Each display's frames.
+    pub outputs: Vec<FrameTimings>,
+    /// Beats of a heartbeat that runs while anyone is watching, and the
+    /// latest one came past when it was due: whatever blocks app_server's
+    /// event loop (a slow request, input handler or commit) shows here.
+    pub beats: u32,
+    pub latest_beat_us: u64,
+    /// The slowest thing app_server did between beats (what it was, how
+    /// long it took): a request ("request run_shortcut"), an input event,
+    /// clients' requests (their commits among them), or the "tick" after
+    /// each turn of the loop; to tell what made a beat late.
+    pub slowest: Option<(String, u64)>,
+}
+
+/// How long one display's frames took to draw: from gathering what is on
+/// it to handing the frame over.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct FrameTimings {
+    pub output: String,
+    pub frames: u32,
+    pub slowest_us: u64,
+    pub total_us: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

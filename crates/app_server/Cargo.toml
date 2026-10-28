@@ -35,6 +35,7 @@ cosmic-text = "0.19"
 olo-images.workspace = true
 # Smithay's libinput, with the newer options (three-finger drag, plugins).
 input = { version = "0.10", optional = true, features = ["libinput_1_30"] }
+fast_image_resize = "5"
 
 [dependencies.smithay]
 workspace = true

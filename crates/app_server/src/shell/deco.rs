@@ -70,7 +70,12 @@ pub struct Decoration {
     /// title wants.
     pub tab_width: Option<i32>,
     title_width: Option<(String, i32)>,
-    tab: Option<(TabKey, MemoryRenderBuffer)>,
+    /// The tab as drawn for its last few looks (focused or not, a box
+    /// hovered or pressed), the current one first: going back to one
+    /// (Cmd+Tab back and forth, the pointer over the boxes) shows the
+    /// texture already on the GPU rather than uploading another, which
+    /// can hold up a frame by milliseconds while the GPU is busy.
+    tabs: Vec<(TabKey, MemoryRenderBuffer)>,
     frame_ids: Vec<Id>,
     frame_commit: CommitCounter,
     frame_key: Option<(bool, u64)>,
@@ -88,6 +93,9 @@ struct TabKey {
 }
 
 pub const DOUBLE_CLICK: Duration = Duration::from_millis(400);
+
+/// How many looks of a tab are kept drawn (`Decoration::tabs`).
+const TAB_LOOKS: usize = 6;
 
 /// Logical extra size the decoration adds around the client's geometry.
 pub fn extra_size() -> Size<i32, Logical> {
@@ -113,7 +121,7 @@ impl Default for Decoration {
             behind: false,
             tab_width: None,
             title_width: None,
-            tab: None,
+            tabs: Vec::new(),
             frame_ids: (0..20).map(|_| Id::new()).collect(),
             frame_commit: CommitCounter::default(),
             frame_key: None,
@@ -301,7 +309,10 @@ impl Decoration {
             phys,
             generation,
         };
-        if self.tab.as_ref().is_none_or(|(k, _)| *k != key) && phys.0 > 0 && phys.1 > 0 {
+        if let Some(i) = self.tabs.iter().position(|(k, _)| *k == key) {
+            let looked = self.tabs.remove(i);
+            self.tabs.insert(0, looked);
+        } else if phys.0 > 0 && phys.1 > 0 {
             let pixmap = draw_tab(&palette, &key, &tab, s);
             let size: Size<i32, Buffer> = phys.into();
             let buffer = MemoryRenderBuffer::from_slice(
@@ -312,10 +323,11 @@ impl Decoration {
                 Transform::Normal,
                 Some(vec![Rectangle::from_size(size)]),
             );
-            self.tab = Some((key, buffer));
+            self.tabs.insert(0, (key, buffer));
+            self.tabs.truncate(TAB_LOOKS);
         }
         let mut tabs = Vec::new();
-        if let Some((key, buffer)) = &self.tab {
+        if let Some((key, buffer)) = self.tabs.first() {
             let loc = location + Point::<i32, Physical>::from((px(tab.x), 0));
             if let Ok(elem) = MemoryRenderBufferRenderElement::from_buffer(
                 renderer,
