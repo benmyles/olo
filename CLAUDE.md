@@ -37,3 +37,5 @@ rules are universal and non-negotiable:
   against the reference set).
 - **Test headless** with `tools/dev/tsession`; never open windows on the
   user's display. Journal visible changes with `tools/journal.py`.
+- **No forks or subagents.** Do all the work yourself, in this session:
+  never spawn a fork, subagent or background agent for any part of a task.
