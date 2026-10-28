@@ -14,10 +14,11 @@
 --    which libinput's size-based touch detection would read as too small).
 -- What is left out is reported with no size, so libinput sees it hover.
 --
--- Until a pad has sent a pressure, its frames pass through untouched:
--- libinput can keep pressure from plugins (it does on the 16" M2 Max),
--- and without it every touch would look like a hover and the pad would
--- go dead.
+-- libinput drops pressure on pads it takes for pressure pads: those with
+-- INPUT_PROP_PRESSUREPAD (app_server's quirk takes it away) or a pressure
+-- axis with a resolution (cleared below, before libinput looks). Until a
+-- pad has sent a pressure, its frames pass through untouched: without
+-- it every touch would look like a hover and the pad would go dead.
 
 local CONFIG = {} -- @CONFIG@ (replaced by app_server)
 
@@ -144,6 +145,10 @@ libinput:connect("new-evdev-device", function(device)
     local usages = device:usages()
     if not (usages[evdev.ABS_MT_PRESSURE] and usages[evdev.ABS_MT_TOUCH_MAJOR] and usages[evdev.ABS_MT_TOUCH_MINOR]) then
         return
+    end
+    device:set_absinfo(evdev.ABS_MT_PRESSURE, { resolution = 0 })
+    if device:absinfos()[evdev.ABS_PRESSURE] then
+        device:set_absinfo(evdev.ABS_PRESSURE, { resolution = 0 })
     end
     libinput:log_info("olo: filtering touches on " .. device:name())
     local state = { slot = 0, slots = {}, button = false, pressure = false }

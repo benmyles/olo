@@ -7,6 +7,14 @@
 //!
 //! The plugin is read once, when libinput starts, so `udev.rs` starts
 //! libinput again when the filter's settings change.
+//!
+//! These pads say they are pressure pads (`INPUT_PROP_PRESSUREPAD`), and
+//! libinput drops pressure from those before plugins see it. So with the
+//! filter on, app_server also writes a quirk into the user's own quirks
+//! (`$XDG_RUNTIME_DIR/libinput/`, read by libinput 1.31) that takes the
+//! property away and turns off libinput's palm detection by pressure
+//! (the filter does palms), and the plugin clears the pressure axis's
+//! resolution, libinput's other sign of a pressure pad.
 
 use std::path::PathBuf;
 
@@ -19,6 +27,16 @@ pub const DEVICES: &[&str] = &["Apple MTP"];
 
 const TEMPLATE: &str = include_str!("touchpad.lua");
 const FILE: &str = "50-olo-touchpad.lua";
+const QUIRKS_FILE: &str = "olo-touchpad.quirks";
+
+/// The quirk that lets pressure through to the plugin.
+pub fn quirks() -> String {
+    let sections: Vec<String> = DEVICES
+        .iter()
+        .map(|d| format!("[Olo touch filter: {d}]\nMatchUdevType=touchpad\nMatchName=*{d}*\nAttrInputProp=-INPUT_PROP_PRESSUREPAD\nAttrPalmPressureThreshold=0\n"))
+        .collect();
+    format!("# Written by Olo's app_server while its touch filter is on (docs/TOUCHPAD.md).\n\n{}", sections.join("\n"))
+}
 
 /// The plugin for these settings, or None when the filter is off.
 pub fn render(t: &TouchpadSettings) -> Option<String> {
@@ -47,21 +65,34 @@ pub fn dir() -> PathBuf {
     runtime.join("olo").join("libinput-plugins")
 }
 
-/// Write (or remove) the plugin for `t`; what was written.
+/// The user's own libinput quirks.
+fn quirks_dir() -> PathBuf {
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    runtime.join("libinput")
+}
+
+/// Write (or remove) the plugin and quirk for `t`, before libinput
+/// starts; the plugin written.
 pub fn install(t: &TouchpadSettings) -> Option<String> {
     let plugin = render(t);
-    let dir = dir();
-    let path = dir.join(FILE);
+    let (dir, quirks_dir) = (dir(), quirks_dir());
+    let (path, quirks_path) = (dir.join(FILE), quirks_dir.join(QUIRKS_FILE));
     match &plugin {
         Some(text) => {
-            let written = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, text));
+            let written = std::fs::create_dir_all(&dir)
+                .and_then(|_| std::fs::write(&path, text))
+                .and_then(|_| std::fs::create_dir_all(&quirks_dir))
+                .and_then(|_| std::fs::write(&quirks_path, quirks()));
             if let Err(e) = written {
                 tracing::warn!(%e, path = %path.display(), "could not write the touch filter");
+                let _ = std::fs::remove_file(&path);
+                let _ = std::fs::remove_file(&quirks_path);
                 return None;
             }
         }
         None => {
             let _ = std::fs::remove_file(&path);
+            let _ = std::fs::remove_file(&quirks_path);
         }
     }
     plugin
@@ -79,6 +110,12 @@ mod tests {
         assert!(!lua.contains("@CONFIG@"));
         t.filter.enabled = false;
         assert_eq!(render(&t), None);
+    }
+
+    #[test]
+    fn the_quirk_lets_pressure_through() {
+        let q = quirks();
+        assert!(q.contains("[Olo touch filter: Apple MTP]\nMatchUdevType=touchpad\nMatchName=*Apple MTP*\nAttrInputProp=-INPUT_PROP_PRESSUREPAD\nAttrPalmPressureThreshold=0\n"));
     }
 
     const SLOT: u32 = 0x3_002f;
@@ -100,12 +137,15 @@ mod tests {
             let lua = mlua::Lua::new();
             lua.load(format!(
                 "evdev = {{ ABS_MT_SLOT = {SLOT}, ABS_MT_TOUCH_MAJOR = {MAJOR}, ABS_MT_TOUCH_MINOR = {MINOR}, \
-                 ABS_MT_TRACKING_ID = {ID}, ABS_MT_PRESSURE = {PRESSURE}, BTN_LEFT = {BTN_LEFT} }}
+                 ABS_MT_TRACKING_ID = {ID}, ABS_MT_PRESSURE = {PRESSURE}, ABS_PRESSURE = 0x30018, BTN_LEFT = {BTN_LEFT} }}
                  hooks = {{}}
+                 resolution = {{ [{PRESSURE}] = 1, [0x30018] = 1 }}
                  libinput = {{ register = function() end, log_info = function() end,
                                connect = function(_, _, f) hooks.new = f end }}
                  pad = {{ name = function() return 'Apple MTP multi-touch' end,
                           usages = function() return {{ [{PRESSURE}] = true, [{MAJOR}] = true, [{MINOR}] = true }} end,
+                          absinfos = function() return {{ [{PRESSURE}] = {{ resolution = resolution[{PRESSURE}] }}, [0x30018] = {{ resolution = resolution[0x30018] }} }} end,
+                          set_absinfo = function(_, u, a) if a.resolution then resolution[u] = a.resolution end end,
                           connect = function(_, _, f) hooks.frame = f end }}"
             ))
             .exec()
@@ -139,6 +179,9 @@ mod tests {
     #[test]
     fn hover_and_palms_have_no_size_and_cant_click() {
         let mut pad = Pad::new(&TouchpadSettings::default());
+        // The pressure axes lose their resolution, so libinput keeps them.
+        let res: (i64, i64) = pad.lua.load(format!("return resolution[{PRESSURE}], resolution[0x30018]")).eval().unwrap();
+        assert_eq!(res, (0, 0));
         // A finger hovering (no pressure) is reported with no size.
         let out = pad.frame(8, &[(SLOT, 0), (ID, 1), (PRESSURE, 0), (MAJOR, 300), (MINOR, 500)]);
         assert_eq!(sizes(&out), [(MAJOR, 0), (MINOR, 0)]);

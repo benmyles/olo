@@ -85,24 +85,42 @@ Tests: `cargo test -p app_server touch_filter` runs the plugin in Lua
 API. `examples/touch_filter_probe.rs` loads plugins into a libinput path
 context on a real device (root, read-only) and prints what comes out.
 
-## It doesn't work on this pad yet (27 October 2026)
+## Getting pressure to the plugin (27 October 2026)
 
-Turned on in Ben's session, the filter made the pad dead: libinput never
-hands the plugin a pressure on this pad. Through the plugin, frames carry
-tracking ids, touch and width sizes, orientation and position, and no
-`ABS_MT_PRESSURE`, though the device has the axis and reading
-/dev/input/event1 directly shows it. With no pressure, no touch ever
-started, so libinput saw only hovering fingers. Where libinput drops it
-is still to find (no quirk of ours or the system's disables pressure);
-`touch_filter_probe` with a logging copy of the plugin shows it on the
-real pad.
+Turned on in Ben's session the first time, the filter made the pad dead:
+libinput never handed the plugin a pressure, so no touch ever started.
+libinput 1.31 drops pressure on pads it takes for *pressure pads*
+(`tp_init_pressurepad`, evdev-mt-touchpad.c): those with
+`INPUT_PROP_PRESSUREPAD`, or whose `ABS_MT_PRESSURE` has a resolution.
+The MTP driver does both (properties 0x85, resolution 1), because the pad
+clicks by pressure.
 
-Since then the filter passes a pad's frames through untouched until it
-has seen a pressure from it (test `without_pressure_frames_pass_untouched`,
-from the real frames), and the palm size is 1600. Ben's session has the
-filter off. Before it goes on again: get pressure to the plugin (or
-find the filter works from size alone), and check on the real pad with
-the probe, with and without the filter, before shipping.
+Two things now let it through, both only while the filter is on:
+
+- app_server writes a quirk into the user's own quirks,
+  `$XDG_RUNTIME_DIR/libinput/olo-touchpad.quirks` (libinput reads that
+  directory after the system's, at seat assignment, which comes after
+  `touch_filter::install`): `AttrInputProp=-INPUT_PROP_PRESSUREPAD`, and
+  `AttrPalmPressureThreshold=0` so libinput's own palm detection by
+  pressure (130 by default, which a firm finger would reach) stays off.
+- The plugin sets the pressure axes' resolution to 0 in
+  `new-evdev-device`, which runs before the touchpad is set up.
+
+Pressure doesn't otherwise change libinput's behaviour here: touch
+detection stays size-based (a touch-size range wins), and thumb detection
+by pressure needs a quirk of its own. If pressure still never arrives,
+the filter passes frames through untouched (test
+`without_pressure_frames_pass_untouched`), and a plugin that errors is
+unloaded by libinput, leaving the pad as stock.
+
+Checked on the real pad (`touch_filter_probe`, read-only, while Ben used
+it): the plugin saw 1306 pressure events where the device sent 1349,
+same peak. With the logging plugin over 90 s, all 44 real touches counted
+(the lightest peaked at 14, against `touch_on` 13) and the 5 left out
+were hovers (peak 0, ≤ 1.3 mm travel). Run side by side with stock on the
+same input, scrolling matched (314 vs 316 frames) and the motions the
+filter left out were the hovers'. Not yet checked on the real pad:
+clicking with a palm resting.
 
 ## Preferences ▸ Touchpad
 

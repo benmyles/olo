@@ -1266,8 +1266,12 @@ pad and the profile it suits come from `Request::InputDevices`
 `$XDG_RUNTIME_DIR/olo/libinput-plugins` (`touch_filter::install`). It
 counts a touch only while it presses, reports palms and hovering
 fingers with no size, and makes the click from the fingers' pressure
-alone. Plugins are read when libinput starts, so `start_libinput` makes
-a new libinput context when the filter's settings change.
+alone. libinput drops pressure on pressure pads, so with the filter on
+`install` also writes a quirk, `$XDG_RUNTIME_DIR/libinput/olo-touchpad.quirks`,
+that takes `INPUT_PROP_PRESSUREPAD` away, and the plugin clears the
+pressure axis's resolution (docs/TOUCHPAD.md). Plugins and quirks are
+read when libinput starts, so `start_libinput` makes a new libinput
+context when the filter's settings change.
 `cargo test -p app_server touch_filter` runs the plugin in mlua against
 scripted frames; `examples/touch_filter_probe.rs` runs it on a real
 device (root, read-only).
