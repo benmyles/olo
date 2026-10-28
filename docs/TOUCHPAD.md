@@ -61,24 +61,28 @@ Nothing system-wide changes: no quirks, no module parameters, no root.
 
 For devices named "Apple MTP" that report pressure and touch size:
 
-- **A touch counts only while it presses:** from pressure ≥ 13
-  (`touch_on`) until it has stayed below 3 (`touch_off`) for 60 ms
-  (`lift_ms`), which rides out the light dips of a moving finger.
+- **A touch counts only while it is on the glass:** from pressure ≥ 1
+  (`touch_on`) until it has had none (`touch_off` 1) for 60 ms
+  (`lift_ms`), which rides out a moving finger's dips. Hovering fingers
+  report no pressure; a fast light swipe can peak at 5, so a higher
+  threshold loses it. libinput's own size rule still applies after.
 - **Palms are left out:** a contact that reaches size 1600
   (`palm_size`, libinput's own threshold: a finger pressed flat
   measured 1030) is a palm for as long as it lasts, even if it shrinks.
 - **Left-out contacts are reported with size 0**, so libinput sees them
   hover; positions and tracking ids are untouched. Contacts that count
   are reported major-first.
-- **The click comes from the fingers alone:** the driver's `BTN_LEFT`
-  is dropped and a new one is made from the summed pressure of
-  non-palm contacts (press 120, release 75 by default; Light 80/50,
-  Firm 180/115).
+- **A palm can't click:** with no palm on the pad the driver's
+  `BTN_LEFT` passes as it is; with one, it counts only while the
+  non-palm contacts alone press hard enough (press 120, release 75 by
+  default; Light 80/50, Firm 180/115). Olo never clicks when the driver
+  doesn't: a contact just short of palm size pressed 134 without the
+  driver clicking, and a click nobody feels is worse than none.
 
 What it can't do: the *felt* click (the haptic) is the driver's, at its
 own summed thresholds. A palm can still make the pad buzz, but the
-click it would have sent no longer arrives. With Light or Firm you feel
-the click at the driver's pressure, and Olo counts it at its own.
+click it would have sent no longer arrives. Light can't make clicks
+lighter than the driver's; Firm makes them firmer while a palm rests.
 
 Tests: `cargo test -p app_server touch_filter` runs the plugin in Lua
 (mlua) against scripted frames, with a stand-in for libinput's plugin
@@ -139,10 +143,12 @@ palm resting, a palm at the top right, hovering) found:
   palm that is still growing can count for a moment before it is
   recognised.
 
-So the filter stays off for touch detection. What does help, and needs
-no threshold, is the click from the fingers alone, palms staying palms,
-and major-first sizes; a mode that counts every contact (no pressure
-threshold) and keeps those is the next thing to try.
+So `touch_on` went to 1: anything on the glass counts, and libinput's
+size rule decides the rest, as stock. A short third run with that showed
+the contact above (size 1576, pressure 134) making a click the driver
+didn't, hence the click rule above. Ben's session has had the filter on
+since 27 October 2026, 21:55, with `touch_on` 1 and the driver's own
+click (`palm_proof_click` off) until a build with that rule is in.
 
 ## Preferences ▸ Touchpad
 

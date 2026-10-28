@@ -137,20 +137,20 @@ fn touchpad(ui: &mut Ui, t: &mut TouchpadSettings, asked: bool, pad: Option<&Inp
 fn touch(ui: &mut Ui, t: &mut TouchpadSettings, pad: Option<&InputDeviceInfo>) {
     let f = &mut t.filter;
     BBox::new("Palms and Hovering Fingers").show(ui, |ui| {
-        ui.add(CheckBox::new(&mut f.enabled, "Count a touch only while it presses, and ignore palms"));
+        ui.add(CheckBox::new(&mut f.enabled, "Ignore hovering fingers and palms"));
         if pad.is_some_and(|p| !p.pressure) {
             ui.add(StringView::new("This touchpad doesn't report pressure, so it is left to libinput.").dim(true).wrap(true));
         }
         ui.add_enabled_ui(f.enabled, |ui| {
             let mut on = f.touch_on as f32;
             let text = format!("{on:.0}");
-            ui.add(Slider::new(&mut on, 5.0..=40.0).step(1.0).label("A touch starts at pressure").value_text(text).limits("Lighter", "Firmer"));
+            ui.add(Slider::new(&mut on, 1.0..=40.0).step(1.0).label("A touch starts at pressure").value_text(text).limits("Any touch", "Firmer"));
             f.touch_on = on as u32;
             let mut palm = f.palm_size as f32;
             let text = format!("{palm:.0}");
             ui.add(Slider::new(&mut palm, 600.0..=2000.0).step(50.0).label("A palm is a contact as large as").value_text(text).limits("Smaller", "Larger"));
             f.palm_size = palm as u32;
-            ui.add(CheckBox::new(&mut f.palm_proof_click, "Click with the fingers' pressure alone (a resting palm can't click)"));
+            ui.add(CheckBox::new(&mut f.palm_proof_click, "A resting palm can't click (its pressure doesn't count)"));
         });
     });
     BBox::new("Click").show(ui, |ui| {
@@ -168,7 +168,7 @@ fn touch(ui: &mut Ui, t: &mut TouchpadSettings, pad: Option<&InputDeviceInfo>) {
             (f.click_press, f.click_release) = (*press, *release);
         }
         if let Some((press, release)) = pad.and_then(|p| p.driver_click) {
-            let note = format!("You feel the pad's own click at {press}/{release} (all contacts); Olo counts it from the fingers alone.");
+            let note = format!("The pad clicks at {press}/{release} (all contacts together); with a palm on it, Olo counts the click only if the fingers press that hard alone.");
             ui.add(StringView::new(&note).dim(true).wrap(true));
         }
     });

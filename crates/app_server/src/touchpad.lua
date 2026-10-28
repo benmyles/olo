@@ -8,8 +8,11 @@
 --    hovering just above the glass is not a second finger;
 --  * a contact as large as a palm (`palm_size`) is left out for as long
 --    as it lasts;
---  * the click comes from the pressure of the fingers alone (palms left
---    out), in place of the driver's, which sums everything touching;
+--  * with a palm on the pad, the driver's click (made from the pressure of
+--    everything touching) counts only if the fingers alone press hard
+--    enough; without one it passes as it is. Olo never clicks when the
+--    driver doesn't: the pad's haptic click is the driver's, and a click
+--    nobody felt is worse than none;
 --  * a touch's size is reported major-first (the driver can swap them,
 --    which libinput's size-based touch detection would read as too small).
 -- What is left out is reported with no size, so libinput sees it hover.
@@ -77,14 +80,15 @@ local function filter(state, frame, time)
         elseif u == evdev.ABS_MT_TOUCH_MINOR then
             contact(state, slot).minor = v
         elseif (u == evdev.BTN_LEFT) and CONFIG.click then
-            -- The driver's click: made again below from the fingers.
+            -- The driver's click: passed on below, unless a palm made it.
+            state.driver = v == 1
         else
             table.insert(out, e)
         end
     end
     state.slot = slot
 
-    local fingers = 0
+    local fingers, palms = 0, 0
     local moved = false
     for n, c in pairs(state.slots) do
         if c.id >= 0 then
@@ -116,7 +120,9 @@ local function filter(state, frame, time)
                 c.shown = shown
                 moved = true
             end
-            if not c.palm then
+            if c.palm then
+                palms = palms + 1
+            else
                 fingers = fingers + c.pressure
             end
         end
@@ -127,10 +133,12 @@ local function filter(state, frame, time)
     end
 
     if CONFIG.click then
-        if not state.button and fingers >= CONFIG.press then
+        local fingers_press = palms == 0 or fingers >= CONFIG.press
+        local fingers_let_go = palms > 0 and fingers <= CONFIG.release
+        if not state.button and state.driver and fingers_press then
             state.button = true
             table.insert(out, { usage = evdev.BTN_LEFT, value = 1 })
-        elseif state.button and fingers <= CONFIG.release then
+        elseif state.button and (not state.driver or fingers_let_go) then
             state.button = false
             table.insert(out, { usage = evdev.BTN_LEFT, value = 0 })
         end
@@ -151,7 +159,7 @@ libinput:connect("new-evdev-device", function(device)
         device:set_absinfo(evdev.ABS_PRESSURE, { resolution = 0 })
     end
     libinput:log_info("olo: filtering touches on " .. device:name())
-    local state = { slot = 0, slots = {}, button = false, pressure = false }
+    local state = { slot = 0, slots = {}, button = false, driver = false, pressure = false }
     device:connect("evdev-frame", function(_, frame, time)
         return filter(state, frame, time)
     end)

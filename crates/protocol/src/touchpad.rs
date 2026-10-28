@@ -87,9 +87,9 @@ pub const PROFILES: &[(&str, &str, &str)] = &[
 ];
 
 /// Olo's touch filter (a libinput plugin app_server writes and loads):
-/// on pads that report each finger's pressure, a touch counts only while
-/// it presses, palms are left out, and the click comes from the fingers'
-/// pressure alone.
+/// on pads that report each finger's pressure, a contact counts only while
+/// it touches the glass (hovering fingers report none), palms are left
+/// out, and the click comes from the fingers' pressure alone.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct TouchFilter {
@@ -111,16 +111,16 @@ pub struct TouchFilter {
 
 impl Default for TouchFilter {
     fn default() -> Self {
-        // Measured on a 16" M2 Max (docs/TOUCHPAD.md): fingers press 14 and
-        // up (lightest dips ~6 while moving), palms and hovering fingers
-        // 0-12; fingers reach ~1030 across when pressed flat, palms
-        // 990-3800, so palms by size start where libinput's do (1600) and
-        // the smaller ones are left to pressure. The click thresholds are
-        // the driver's own.
+        // Measured on a 16" M2 Max (docs/TOUCHPAD.md): hovering fingers
+        // report no pressure, while a fast light swipe can peak at 5, so
+        // anything touching the glass counts (libinput's size rule still
+        // applies after); fingers reach ~1030 across when pressed flat,
+        // palms 1700-3800, so palms by size start where libinput's do
+        // (1600). The click thresholds are the driver's own.
         TouchFilter {
             enabled: true,
-            touch_on: 13,
-            touch_off: 3,
+            touch_on: 1,
+            touch_off: 1,
             lift_ms: 60,
             palm_size: 1600,
             palm_proof_click: true,

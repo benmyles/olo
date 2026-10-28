@@ -106,7 +106,7 @@ mod tests {
     fn renders_the_settings() {
         let mut t = TouchpadSettings::default();
         let lua = render(&t).unwrap();
-        assert!(lua.contains("local CONFIG = { devices = { \"Apple MTP\" }, touch_on = 13, touch_off = 3, lift_ms = 60, palm_size = 1600, click = true, press = 120, release = 75 }"));
+        assert!(lua.contains("local CONFIG = { devices = { \"Apple MTP\" }, touch_on = 1, touch_off = 1, lift_ms = 60, palm_size = 1600, click = true, press = 120, release = 75 }"));
         assert!(!lua.contains("@CONFIG@"));
         t.filter.enabled = false;
         assert_eq!(render(&t), None);
@@ -193,12 +193,31 @@ mod tests {
         let out = pad.frame(8, &[(SLOT, 1), (ID, 2), (PRESSURE, 400), (MAJOR, 3000), (MINOR, 3200), (BTN_LEFT, 1)]);
         assert!(!out.contains(&(BTN_LEFT, 1)), "{out:?}");
         assert_eq!(sizes(&out), [(MAJOR, 0), (MINOR, 0)], "a palm has no size");
-        // It stays a palm when it shrinks, and the finger clicks alone.
+        // It stays a palm when it shrinks; the finger pressing hard enough
+        // on its own makes the driver's click count.
         let out = pad.frame(8, &[(MAJOR, 600), (MINOR, 600), (SLOT, 0), (PRESSURE, 130)]);
         assert_eq!(sizes(&out), []);
         assert!(out.contains(&(BTN_LEFT, 1)), "{out:?}");
-        // ...and lets go when the finger does, though the palm presses on.
-        let out = pad.frame(8, &[(PRESSURE, 70), (BTN_LEFT, 0)]);
+        // It lets go when the finger does, though the palm keeps the
+        // driver's click down.
+        let out = pad.frame(8, &[(PRESSURE, 70)]);
+        assert!(out.contains(&(BTN_LEFT, 0)), "{out:?}");
+        assert!(!pad.frame(8, &[(BTN_LEFT, 0)]).iter().any(|&(u, _)| u == BTN_LEFT));
+    }
+
+    /// A contact just short of a palm pressed 134 on the 16" M2 Max and the
+    /// driver didn't click: neither may Olo (a click nobody felt).
+    #[test]
+    fn no_click_unless_the_driver_clicks() {
+        let mut pad = Pad::new(&TouchpadSettings::default());
+        let out = pad.frame(8, &[(SLOT, 0), (ID, 1), (PRESSURE, 134), (MAJOR, 1576), (MINOR, 1200)]);
+        assert!(!out.iter().any(|&(u, _)| u == BTN_LEFT), "{out:?}");
+        // Without a palm the driver's click passes as it is, both ways.
+        let out = pad.frame(8, &[(PRESSURE, 90), (BTN_LEFT, 1)]);
+        assert!(out.contains(&(BTN_LEFT, 1)), "{out:?}");
+        let out = pad.frame(8, &[(PRESSURE, 140)]);
+        assert!(!out.iter().any(|&(u, _)| u == BTN_LEFT));
+        let out = pad.frame(8, &[(PRESSURE, 60), (BTN_LEFT, 0)]);
         assert!(out.contains(&(BTN_LEFT, 0)), "{out:?}");
     }
 
@@ -217,20 +236,34 @@ mod tests {
     }
 
     #[test]
-    fn a_touch_ends_only_after_staying_light() {
+    fn a_touch_ends_only_after_leaving_the_glass() {
         let mut pad = Pad::new(&TouchpadSettings::default());
         pad.frame(8, &[(SLOT, 0), (ID, 1), (PRESSURE, 20), (MAJOR, 400), (MINOR, 300)]);
-        // A light dip while moving keeps the touch...
+        // A moment with no pressure while moving keeps the touch...
+        assert_eq!(sizes(&pad.frame(8, &[(PRESSURE, 0)])), []);
+        assert_eq!(sizes(&pad.frame(40, &[(PRESSURE, 0)])), []);
         assert_eq!(sizes(&pad.frame(8, &[(PRESSURE, 2)])), []);
-        assert_eq!(sizes(&pad.frame(40, &[(PRESSURE, 1)])), []);
-        assert_eq!(sizes(&pad.frame(8, &[(PRESSURE, 9)])), []);
-        // ...staying light for lift_ms ends it.
-        pad.frame(8, &[(PRESSURE, 2)]);
-        assert_eq!(sizes(&pad.frame(70, &[(PRESSURE, 2)])), [(MAJOR, 0), (MINOR, 0)]);
+        // ...staying off the glass for lift_ms ends it.
+        pad.frame(8, &[(PRESSURE, 0)]);
+        assert_eq!(sizes(&pad.frame(70, &[(PRESSURE, 0)])), [(MAJOR, 0), (MINOR, 0)]);
         // A new contact in the slot starts afresh.
         let out = pad.frame(8, &[(ID, -1)]);
         assert_eq!(sizes(&out), []);
         let out = pad.frame(8, &[(ID, 2), (PRESSURE, 25), (MAJOR, 400), (MINOR, 300)]);
         assert_eq!(sizes(&out), [(MAJOR, 400), (MINOR, 300)]);
+    }
+
+    /// A fast, light swipe on the 16" M2 Max peaked at pressure 5 over
+    /// 12 mm; a threshold of 13 lost it (docs/TOUCHPAD.md).
+    #[test]
+    fn a_light_swipe_counts() {
+        let mut pad = Pad::new(&TouchpadSettings::default());
+        let out = pad.frame(8, &[(SLOT, 0), (ID, 1), (PRESSURE, 0), (MAJOR, 300), (MINOR, 794)]);
+        assert_eq!(sizes(&out), [(MAJOR, 0), (MINOR, 0)], "not yet on the glass");
+        let out = pad.frame(8, &[(PRESSURE, 3)]);
+        assert_eq!(sizes(&out), [(MAJOR, 794), (MINOR, 300)]);
+        for p in [5, 4, 2, 1] {
+            assert_eq!(sizes(&pad.frame(8, &[(PRESSURE, p)])), []);
+        }
     }
 }
