@@ -130,8 +130,8 @@ python3 tools/iconsheet.py docs/img/icon-reference.png \
 ## Themes
 
 The whole set, the `olo` mark and the wordmark come in seven looks, chosen
-in Preferences ▸ Themes (`Appearance::icon_theme`; new users get Soft
-Be). Every app follows the choice at once. The style above is **Classic**:
+in Preferences ▸ Themes (`Appearance::icon_theme`; new users get
+BeBox). Every app follows the choice at once. The style above is **Classic**:
 `data/icons` and `data/brand` themselves. Every other theme draws the same
 subjects in its own medium, and keeps the Be grammar: a three-quarter
 view from the upper left, flat things lying on the desk, chunky shapes that
@@ -140,8 +140,8 @@ tab yellow as the brand colours.
 
 | Id | Name | Medium |
 |---|---|---|
-| `soft-be` | Soft Be (the default) | Soft matte clay. |
-| `bebox` | BeBox | Graphite plastic, panel lines and the BeBox's LED columns. |
+| `bebox` | BeBox (the default) | Graphite plastic, panel lines and the BeBox's LED columns. |
+| `soft-be` | Soft Be | Soft matte clay. |
 | `toybox` | Toybox | Painted beech toys. |
 | `papercraft` | Papercraft | Folded card, one flat tone per face, as in R5. |
 | `enamel` | Enamel | Hard enamel pins with polished gold rims for the outline. |
@@ -177,7 +177,7 @@ Rules:
 
 ```sh
 # A new icon NAME, in every theme (one image each; skips ones already drawn)
-tools/genicons.sh --theme soft-be,bebox,toybox,papercraft,enamel,halftone NAME
+tools/genicons.sh --theme bebox,soft-be,toybox,papercraft,enamel,halftone NAME
 # …or candidates for one theme
 python3 tools/genicon.py --theme toybox NAME "subject" --variants 2
 # Review, then render the sizes

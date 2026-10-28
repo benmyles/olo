@@ -981,7 +981,7 @@ launcher lists them. The panel list Deskbar shows is
   a radio button with its name, a line about it, its wordmark and six of
   its icons; clicking anywhere on a row chooses it. The choice is
   `Appearance::icon_theme` (an id; unknown ones draw the default,
-  `soft-be`), so agents set it with `SetSettings` like any other.
+  `bebox`), so agents set it with `SetSettings` like any other.
   Every process draws in one theme, `olo_xdg::themes::current()`: the
   kit sets it from the settings before the first frame
   (`theme_watch::initial_palette`) and on every `SettingsChanged`

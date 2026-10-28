@@ -745,7 +745,7 @@ impl Default for Appearance {
             effective_theme: olo_theme::ThemeMode::Light,
             night_light_active: false,
             menu_icons: true,
-            icon_theme: "soft-be".into(),
+            icon_theme: "bebox".into(),
         }
     }
 }

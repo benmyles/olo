@@ -24,8 +24,8 @@ pub struct Theme {
 
 /// Every theme, in the order Preferences shows them.
 pub const THEMES: &[Theme] = &[
-    Theme { id: "soft-be", name: "Soft Be", about: "Soft matte clay on the Be desk." },
     Theme { id: "bebox", name: "BeBox", about: "Graphite and blinking lights." },
+    Theme { id: "soft-be", name: "Soft Be", about: "Soft matte clay on the Be desk." },
     Theme { id: "toybox", name: "Toybox", about: "Painted wooden toys." },
     Theme { id: "papercraft", name: "Papercraft", about: "Folded card, one tone a face." },
     Theme { id: "enamel", name: "Enamel", about: "Enamel pins in polished gold." },
@@ -34,7 +34,7 @@ pub const THEMES: &[Theme] = &[
 ];
 
 /// The theme a new user gets (and an unknown setting falls back to).
-pub const DEFAULT: &str = "soft-be";
+pub const DEFAULT: &str = "bebox";
 
 /// The set in `<data>/icons` and `<data>/brand` itself, with no overlay.
 pub const CLASSIC: &str = "classic";
