@@ -108,7 +108,18 @@ fn keyboard(ui: &mut Ui, s: &mut Settings, power: Option<&PowerStatus>, server: 
     });
 
     BBox::new("Keyboard Hints").show(ui, |ui| {
-        ui.add(CheckBox::new(&mut k.hints, "Tap Control and Shift together for keyboard hints"));
+        ui.add(CheckBox::new(&mut k.hints, "Press Control twice for keyboard hints"));
+        let mut speed = k.double_press_ms as f32;
+        let text = format!("{speed:.0} ms");
+        ui.add_enabled(
+            k.hints,
+            Slider::new(&mut speed, 150.0..=800.0)
+                .step(25.0)
+                .label("Double-press speed")
+                .value_text(text)
+                .limits("Fast", "Slow"),
+        );
+        k.double_press_ms = speed as u32;
         ui.add(
             StringView::new("A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.")
                 .dim(true)

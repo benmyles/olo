@@ -832,10 +832,13 @@ pub struct KeyboardSettings {
     /// Apps that keep physical Ctrl for themselves (terminals): ⌘ reaches
     /// them as Ctrl+Shift, so Ctrl+C still interrupts. Matched on app_id.
     pub terminal_apps: Vec<String>,
-    /// Keyboard hints: tapping Control and Shift together puts a letter on
+    /// Keyboard hints: pressing Control twice quickly puts a letter on
     /// everything that can be picked (windows, controls, menu items);
     /// typing one picks it, or letters what's inside it.
     pub hints: bool,
+    /// How quickly a double press (Control twice, for hints) must come,
+    /// in milliseconds: the second press within this of the first.
+    pub double_press_ms: u32,
 }
 
 /// One keyboard hint: the letters that pick it, where it is (global
@@ -926,6 +929,7 @@ impl Default for KeyboardSettings {
             num_lock: true,
             find_on_command_tap: false,
             hints: false,
+            double_press_ms: 400,
             terminal_apps: [
                 "olo.terminal",
                 "org.gnome.Ptyxis",

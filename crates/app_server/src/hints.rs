@@ -1,5 +1,5 @@
-//! Keyboard hints (Preferences ▸ Keyboard): tapping Control and Shift
-//! together puts a letter on everything that can be picked: the focused
+//! Keyboard hints (Preferences ▸ Keyboard): pressing Control twice
+//! quickly puts a letter on everything that can be picked: the focused
 //! window's controls, the other windows (on their tabs) and Deskbar.
 //! Typing a letter clicks what it marks or, for a part with more inside
 //! (a box of controls, Deskbar, another window), letters what is inside,
@@ -502,7 +502,7 @@ impl Hints {
 }
 
 impl<B: Backend + 'static> AnvilState<B> {
-    /// ⌃⇧ tapped: show the hints, or put them away.
+    /// Control pressed twice: show the hints, or put them away.
     pub fn toggle_hints(&mut self) {
         if !self.settings.keyboard.hints || self.lock.locked() {
             return;
@@ -518,7 +518,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn hints_key(&mut self, key: u32, pressed: bool) -> bool {
         const ESC: u32 = 1;
         const BACKSPACE: u32 = 14;
-        // Ctrl, Shift, Alt, Super and Caps Lock pass (⌃⇧ again hides them).
+        // Ctrl, Shift, Alt, Super and Caps Lock pass (⌃⌃ again hides them).
         const MODIFIERS: [u32; 9] = [29, 97, 42, 54, 56, 100, 125, 126, 58];
         if !pressed {
             let Some(i) = self.hints.swallowed.iter().position(|k| *k == key) else { return false };

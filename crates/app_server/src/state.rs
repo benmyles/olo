@@ -200,7 +200,7 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// they've drawn the size it left them.
     pub tile_followers: Vec<crate::shell::tiling::Follower>,
     pub twitcher: crate::twitcher::Overlay,
-    /// Keyboard hints (⌃⇧ tapped), and their overlay.
+    /// Keyboard hints (Control pressed twice), and their overlay.
     pub hints: crate::hints::Hints,
     pub wallpaper: crate::wallpaper::Loader,
     pub cursor_status: CursorImageStatus,

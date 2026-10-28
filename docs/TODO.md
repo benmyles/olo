@@ -50,7 +50,7 @@ as they land (with the commit), add new ones as they come up.
 - ~~Cascade Others, Fan Out Others~~ (Ben): ⌃⇧⌘\ and ⌃⇧⌘/ arrange every
   window but the focused one, which is left where it is, in front.
 - ~~Keyboard hints everywhere~~ (Ben; opt-in, Preferences ▸ Keyboard):
-  tapping ⌃⇧ letters every control, menu item, list row, icon, window and
+  pressing Control twice letters every control, menu item, list row, icon, window and
   Deskbar entry; a letter picks it or letters what's inside, as Vim's
   EasyMotion does. From the kit's trees (Tracker's icons and column rows
   are in them now, as are layer surfaces), so every kit app takes part;

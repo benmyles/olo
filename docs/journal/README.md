@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Keyboard hints on a double Control
+
+*21:35* — Keyboard hints now come up when Control is pressed twice quickly, in place of Control and Shift together. How quickly is Preferences ▸ Keyboard ▸ Double-press speed (400 ms by default).
+
+![Keyboard hints on a double Control](2026-10-27/213534-keyboard-hints-on-a-double-control.png)
+
 ### The DiskUsage icon
 
 *21:04* — A ring chart with a magnifier, generated against the reference set, beside DriveSetup and its neighbours on the light, dark and night panels.

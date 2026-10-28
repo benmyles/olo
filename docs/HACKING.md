@@ -1071,13 +1071,15 @@ Smart Tiling (see "AI features") is the first user.
 
 ## Keyboard hints (app_server hints.rs, Preferences ▸ Keyboard)
 
-Opt-in (`KeyboardSettings::hints`). Tapping Control and Shift together
-(Caps Lock counts as Control when it is one), with nothing else and
-within `HINTS_TAP`, is the keymap's `Action::Hints`: a yellow key cap
-with a letter goes on everything that can be picked, as Vim's
-EasyMotion does. Typing a letter picks it; Backspace goes back a level;
+Opt-in (`KeyboardSettings::hints`). Pressing Control twice quickly
+(either Control, or Caps Lock when it is one), with nothing else down or
+typed in between, is the keymap's `Action::Hints`: the second press must
+come within `KeyboardSettings::double_press_ms` of the first (Preferences
+▸ Keyboard ▸ Double-press speed, 400 ms by default) and each press be
+shorter than that. A yellow key cap with a letter goes on everything
+that can be picked, as Vim's EasyMotion does. Typing a letter picks it; Backspace goes back a level;
 Esc, a click or any other key (which then does what it does) puts them
-away; tapping ⌃⇧ again does too. Letters are by key position, as on a
+away; pressing Control twice again does too. Letters are by key position, as on a
 US keyboard, home row first (`LETTERS`).
 
 What can be picked comes from the kit's trees (`{"tree":true}`, asked on

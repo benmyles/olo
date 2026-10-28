@@ -2,7 +2,7 @@
 //! (so ⌘C copies everywhere, GTK and Firefox included), while app_server
 //! keeps some ⌘ keys for itself: ⌘Tab / ⌘\` (Twitcher), ⌘ arrows and ⌘⌫
 //! (line and document navigation), a tap of ⌘ alone (the command palette, if chosen in
-//! Preferences), a tap of Control and Shift together (keyboard hints, if
+//! Preferences), Control pressed twice quickly (keyboard hints, if
 //! chosen), and first of all the shortcuts in `Settings::shortcuts`
 //! (olo_protocol::shortcuts: tiling, workspaces, Find, lock,
 //! screenshots, …). Caps Lock is another Ctrl. Terminals keep physical
@@ -56,9 +56,6 @@ use code::*;
 /// A ⌘ press and release with nothing in between, shorter than this, is a
 /// tap (the command palette).
 pub const TAP: Duration = Duration::from_millis(350);
-/// Control and Shift pressed together and let go with nothing typed,
-/// within this, is a tap (keyboard hints): two keys take a little longer.
-pub const HINTS_TAP: Duration = Duration::from_millis(700);
 
 /// The virtual Ctrl that stands for ⌘. Physical Ctrl and Caps Lock use the
 /// left one; keys are reference-counted, so sharing is harmless.
@@ -81,7 +78,7 @@ pub enum Action {
     SwitchCancel,
     /// A tap of ⌘ (if chosen), or keyd's spelling of one.
     Palette,
-    /// A tap of Control and Shift together (if chosen): keyboard hints.
+    /// Control pressed twice quickly (if chosen): keyboard hints.
     Hints,
     /// One of the shortcuts in the settings.
     Shortcut(Shortcut),
@@ -103,6 +100,9 @@ pub struct Options {
     pub caps_lock_control: bool,
     pub tap_command_find: bool,
     pub hints: bool,
+    /// How quickly a double press must come: the second press within this
+    /// of the first, each press shorter than it.
+    pub double_press: Duration,
 }
 
 impl From<&olo_protocol::KeyboardSettings> for Options {
@@ -112,6 +112,7 @@ impl From<&olo_protocol::KeyboardSettings> for Options {
             caps_lock_control: k.caps_lock_control,
             tap_command_find: k.find_on_command_tap,
             hints: k.hints,
+            double_press: Duration::from_millis(k.double_press_ms.clamp(100, 1000) as u64),
         }
     }
 }
@@ -145,26 +146,24 @@ pub struct Keymap {
     bindings: Vec<(Chord, Shortcut)>,
     /// The next key is a shortcut being recorded.
     recording: bool,
-    /// Control and Shift going down together, for a tap (keyboard hints).
-    hints_tap: Option<HintsTap>,
+    /// Control going down and up on its own, for a double press
+    /// (keyboard hints).
+    ctrl_presses: Option<CtrlPresses>,
 }
 
 #[derive(Debug)]
-struct HintsTap {
+struct CtrlPresses {
+    /// The first press.
     since: Instant,
-    ctrl: bool,
-    shift: bool,
-    /// Another key was pressed too: not a tap.
-    spoiled: bool,
+    /// The press going on now.
+    down: Instant,
+    /// Presses already let go.
+    done: u8,
 }
 
-/// Physical Control (or Caps Lock as one), for the hints' tap.
+/// Physical Control (or Caps Lock as one), for the hints' double press.
 fn ctrl_key(key: u32, opts: Options) -> bool {
     matches!(key, LEFTCTRL | RIGHTCTRL) || (opts.caps_lock_control && key == CAPSLOCK)
-}
-
-fn shift_key(key: u32) -> bool {
-    matches!(key, LEFTSHIFT | RIGHTSHIFT)
 }
 
 impl Keymap {
@@ -278,16 +277,13 @@ impl Keymap {
             return;
         }
         if opts.hints {
-            let (ctrl, shift) = (ctrl_key(key, opts), shift_key(key));
-            if ctrl || shift {
-                // Any other key already down (⌘, a letter) spoils it.
-                let spoiled = self.held.keys().any(|&k| !ctrl_key(k, opts) && !shift_key(k));
-                let t = self.hints_tap.get_or_insert(HintsTap { since: now, ctrl: false, shift: false, spoiled });
-                t.ctrl |= ctrl;
-                t.shift |= shift;
-            } else if let Some(t) = self.hints_tap.as_mut() {
-                t.spoiled = true;
-            }
+            // Control on its own, nothing else down (⌘, Shift, a letter),
+            // starts a double press or is its second.
+            self.ctrl_presses = match self.ctrl_presses.take() {
+                _ if !ctrl_key(key, opts) || !self.held.is_empty() => None,
+                Some(p) if p.done == 1 && now.duration_since(p.since) < opts.double_press => Some(CtrlPresses { down: now, ..p }),
+                _ => Some(CtrlPresses { since: now, down: now, done: 0 }),
+            };
         }
         let mut h = Held::default();
         if opts.command_key && (key == LEFTMETA || key == RIGHTMETA) {
@@ -454,16 +450,18 @@ impl Keymap {
             self.cmd_ctrl = true;
             self.emit_press(CMD_CTRL, out);
         }
-        // The last of Control and Shift up: a tap of both, nothing else?
-        if (ctrl_key(key, opts) || shift_key(key)) && !self.held.keys().any(|&k| ctrl_key(k, opts) || shift_key(k)) {
-            if let Some(t) = self.hints_tap.take()
-                && opts.hints
-                && t.ctrl
-                && t.shift
-                && !t.spoiled
-                && now.duration_since(t.since) < HINTS_TAP
-            {
+        // Control let go, quickly and with nothing else pressed: the
+        // second time, that's a double press.
+        if ctrl_key(key, opts)
+            && let Some(mut p) = self.ctrl_presses.take()
+            && opts.hints
+            && now.duration_since(p.down) < opts.double_press
+        {
+            p.done += 1;
+            if p.done == 2 {
                 out.push(Out::Action(Action::Hints));
+            } else {
+                self.ctrl_presses = Some(p);
             }
         }
     }
@@ -473,7 +471,7 @@ impl Keymap {
 mod tests {
     use super::*;
 
-    const OPTS: Options = Options { command_key: true, caps_lock_control: true, tap_command_find: true, hints: true };
+    const OPTS: Options = Options { command_key: true, caps_lock_control: true, tap_command_find: true, hints: true, double_press: Duration::from_millis(400) };
     const C: u32 = 46;
 
     struct Rig {
@@ -537,48 +535,74 @@ mod tests {
     }
 
     #[test]
-    fn control_and_shift_tapped_together_shows_hints() {
+    fn control_pressed_twice_shows_hints() {
         let hints = |outs: Vec<Out>| outs.contains(&Out::Action(Action::Hints));
         let mut r = Rig::new();
         r.down(LEFTCTRL);
-        r.down(LEFTSHIFT);
-        assert!(!hints(r.up(LEFTSHIFT)));
-        assert!(hints(r.up(LEFTCTRL)));
-        // Caps Lock is a Control key too, in either order.
-        r.down(RIGHTSHIFT);
-        r.down(CAPSLOCK);
-        r.up(RIGHTSHIFT);
-        assert!(hints(r.up(CAPSLOCK)));
-        // Something typed with them (⌃⇧C): not a tap.
+        assert!(!hints(r.up(LEFTCTRL)));
         r.down(LEFTCTRL);
-        r.down(LEFTSHIFT);
+        assert!(hints(r.up(LEFTCTRL)));
+        // Either Control, or Caps Lock as one.
+        r.t += Duration::from_secs(1);
+        r.down(CAPSLOCK);
+        r.up(CAPSLOCK);
+        r.down(RIGHTCTRL);
+        assert!(hints(r.up(RIGHTCTRL)));
+        // A third press starts again.
+        r.down(LEFTCTRL);
+        assert!(!hints(r.up(LEFTCTRL)));
+        // Too slow between the presses: the second is a first.
+        r.t += Duration::from_millis(400);
+        r.down(LEFTCTRL);
+        assert!(!hints(r.up(LEFTCTRL)));
+        r.down(LEFTCTRL);
+        assert!(hints(r.up(LEFTCTRL)));
+        // Held too long: not a press.
+        r.t += Duration::from_secs(1);
+        r.down(LEFTCTRL);
+        r.up(LEFTCTRL);
+        r.down(LEFTCTRL);
+        r.t += Duration::from_millis(400);
+        assert!(!hints(r.up(LEFTCTRL)));
+        // Something typed with it (^C, then Control): not a double press.
+        r.t += Duration::from_secs(1);
+        r.down(LEFTCTRL);
         r.down(C);
         r.up(C);
-        r.up(LEFTSHIFT);
-        assert!(!hints(r.up(LEFTCTRL)));
-        // One of them alone, or held too long: not a tap.
-        r.down(LEFTSHIFT);
-        assert!(!hints(r.up(LEFTSHIFT)));
+        r.up(LEFTCTRL);
         r.down(LEFTCTRL);
-        r.down(LEFTSHIFT);
-        r.t += HINTS_TAP;
-        r.up(LEFTSHIFT);
         assert!(!hints(r.up(LEFTCTRL)));
-        // ⌘ with them: not a tap either.
-        r.down(LEFTMETA);
+        // A key between the presses spoils it too.
+        r.t += Duration::from_secs(1);
         r.down(LEFTCTRL);
-        r.down(LEFTSHIFT);
-        r.up(LEFTSHIFT);
+        r.up(LEFTCTRL);
+        r.down(C);
+        r.up(C);
+        r.down(LEFTCTRL);
         assert!(!hints(r.up(LEFTCTRL)));
-        r.up(LEFTMETA);
+        // With Shift or ⌘ down: no.
+        r.t += Duration::from_secs(1);
+        r.down(LEFTSHIFT);
+        r.down(LEFTCTRL);
+        r.up(LEFTCTRL);
+        r.down(LEFTCTRL);
+        assert!(!hints(r.up(LEFTCTRL)));
+        r.up(LEFTSHIFT);
+        // The speed is a setting.
+        let slow = Options { double_press: Duration::from_millis(800), ..OPTS };
+        let mut k = Keymap::default();
+        let t = Instant::now();
+        k.feed(LEFTCTRL, true, t, slow, false);
+        k.feed(LEFTCTRL, false, t + Duration::from_millis(100), slow, false);
+        k.feed(LEFTCTRL, true, t + Duration::from_millis(600), slow, false);
+        assert!(hints(k.feed(LEFTCTRL, false, t + Duration::from_millis(700), slow, false)));
         // Off in the settings: nothing.
         let off = Options { hints: false, ..OPTS };
         let mut k = Keymap::default();
-        let t = Instant::now();
-        k.feed(LEFTCTRL, true, t, off, false);
-        k.feed(LEFTSHIFT, true, t, off, false);
-        k.feed(LEFTSHIFT, false, t, off, false);
-        assert!(!hints(k.feed(LEFTCTRL, false, t, off, false)));
+        for _ in 0..2 {
+            k.feed(LEFTCTRL, true, t, off, false);
+            assert!(!hints(k.feed(LEFTCTRL, false, t, off, false)));
+        }
     }
 
     #[test]
@@ -756,7 +780,7 @@ mod tests {
     #[test]
     fn disabled_passes_through() {
         let mut k = Keymap::default();
-        let off = Options { command_key: false, caps_lock_control: false, tap_command_find: false, hints: false };
+        let off = Options { command_key: false, caps_lock_control: false, tap_command_find: false, hints: false, double_press: Duration::from_millis(400) };
         let t = Instant::now();
         assert_eq!(k.feed(LEFTMETA, true, t, off, false), [Key(LEFTMETA, true)]);
         assert_eq!(k.feed(TAB, true, t, off, false), [Key(TAB, true)]);

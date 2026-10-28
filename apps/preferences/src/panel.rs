@@ -156,7 +156,7 @@ impl Panel {
             Panel::Bluetooth => (440, 340),
             Panel::DateTime => (460, 370),
             Panel::Display => (480, 490),
-            Panel::Keyboard => (480, 668),
+            Panel::Keyboard => (480, 727),
             Panel::Network => (460, 360),
             Panel::Notifications => (440, 420),
             Panel::Power => (460, 362),
