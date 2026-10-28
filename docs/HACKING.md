@@ -1780,8 +1780,10 @@ put it away.
 * **Ranking** (`rank.rs`): every word typed must match the title (start,
   word start, anywhere) or the item's keywords, or as initials ("nw");
   then by kind (apps before files) and by how often and how lately each
-  thing was chosen (`~/.config/olo/palette.json`). Nothing typed lists
-  what was chosen lately.
+  thing was chosen (`~/.config/olo/palette.json`). An open window is
+  also found by its app's name and comes just before the app itself
+  (switching beats opening another), the one in front last. Nothing
+  typed lists what was chosen lately.
 * **Keys**: ↑/↓ and Page Up/Down move, Return chooses, the pointer
   hovers and clicks. Actions run on a worker thread.
 * **The window menu** (`window_menu.rs`): a right-click on a window's

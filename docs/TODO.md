@@ -5,6 +5,9 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~⌘Space finds an app's open windows first~~ (Ben): typing an app's
+  name lists its windows before the app, so the palette switches windows
+  too.
 - ~~Group an app's windows~~ (Ben): an app's windows share one frame
   with a proper tab bar (side by side, never overlapping); Group Windows
   in Deskbar's team menu and Tracker's menu for an app turns it off or

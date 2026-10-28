@@ -205,7 +205,8 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
         item.enabled = front.is_some() || info.group != shortcuts::WINDOWS;
         items.push(item);
     }
-    for w in &windows {
+    // The one in front last: switching to it does nothing.
+    for w in windows.iter().filter(|w| !w.focused).chain(windows.iter().filter(|w| w.focused)) {
         let (app, icon) = match our_app(&w.app_id) {
             Some((name, icon)) => (name.to_owned(), Some(icon.to_owned())),
             None => match desktop_entry::find(&w.app_id) {
@@ -334,12 +335,25 @@ pub fn ranked<'a>(words: &[String], items: impl Iterator<Item = &'a Item>, boost
     let mut scored: Vec<(i32, Item)> = Vec::new();
     for item in items {
         let haystack = format!("{} {}", item.keywords, item.subtitle.to_lowercase());
-        let Some(s) = crate::rank::score(words, &item.title, &haystack) else { continue };
+        let own = crate::rank::score(words, &item.title, &haystack);
+        // A window is also found by its app's name, as the app is.
+        let own = if item.kind == Kind::Window { own.max(crate::rank::score(words, &item.subtitle, "")) } else { own };
+        let Some(s) = own else { continue };
         let boost = item.action.key().map_or(0, |k| boost(&k));
         let disabled = if item.enabled { 0 } else { -20 };
         scored.push((s + item.kind.weight() + boost + disabled, item.clone()));
     }
-    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.title.cmp(&b.1.title)));
+    // An app's open windows come just before the app: switching to one
+    // is likelier wanted than another window.
+    let apps: Vec<(String, i32)> = scored.iter().filter(|(_, i)| i.kind == Kind::Application).map(|(s, i)| (i.title.clone(), *s)).collect();
+    for (s, item) in scored.iter_mut().filter(|(_, i)| i.kind == Kind::Window) {
+        if let Some((_, a)) = apps.iter().find(|(t, _)| *t == item.subtitle) {
+            *s = (*s).max(a + 1);
+        }
+    }
+    // Windows that tie keep their order (the one in front last).
+    let both_windows = |a: &Item, b: &Item| a.kind == Kind::Window && b.kind == Kind::Window;
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| if both_windows(&a.1, &b.1) { std::cmp::Ordering::Equal } else { a.1.title.cmp(&b.1.title) }));
     scored.truncate(60);
     scored
 }
@@ -489,6 +503,18 @@ pub fn workers(proxy: Proxy) -> Workers {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn open_windows_before_their_app() {
+        let app = Item::new(Kind::Application, "StyledEdit", Action::Spawn(vec!["olo-styled-edit".into()])).keywords("styled-edit");
+        let w = |id, title: &str| Item::new(Kind::Window, title, Action::Activate(id)).subtitle("StyledEdit").keywords("window switch styledit");
+        let other = Item::new(Kind::Window, "styledit notes", Action::Activate(9)).subtitle("Terminal");
+        let items = [app, w(2, "zeta.txt"), w(1, "alpha.txt"), other];
+        let titles: Vec<String> = ranked(&crate::rank::words("styled"), items.iter(), |_| 0).into_iter().map(|(_, i)| i.title).collect();
+        assert_eq!(titles[..3], ["zeta.txt", "alpha.txt", "StyledEdit"]);
+        let titles: Vec<String> = ranked(&crate::rank::words("StyledEdit"), items.iter(), |_| 0).into_iter().map(|(_, i)| i.title).collect();
+        assert_eq!(titles[..3], ["zeta.txt", "alpha.txt", "StyledEdit"]);
+    }
 
     #[test]
     fn search_urls() {

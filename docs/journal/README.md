@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Palette: open windows first
+
+*20:01* — Typing an app's name in ⌘Space lists its open windows before the app itself, the one already in front last.
+
+![Palette: open windows first](2026-10-27/200134-palette-open-windows-first.png)
+
 ### Window groups, dark
 
 *19:59* — The same group's tab bar in dark mode.
