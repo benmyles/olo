@@ -190,6 +190,7 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
                         self.space.map_element(window.clone(), current_loc + buffer_offset, false);
                     }
                     keep_on_screen(&mut self.space, surface, &window);
+                    self.tile_follower_drew(&window);
                 }
             }
         }

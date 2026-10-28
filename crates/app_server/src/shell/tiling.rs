@@ -12,7 +12,10 @@
 //! gap, or in line with it), as the split between them. They stay tiled,
 //! in the parts they now have. Windows not tiled by a command are never
 //! pushed, and a tiled window sized by hand with no tiled neighbours is
-//! no longer tiled.
+//! no longer tiled. Neighbours are paced like the dragged window: a new
+//! size only once they have answered the last, and moved only when they
+//! draw it (`Follower`), so nothing queues up or jumps ahead of its
+//! picture.
 
 use std::cell::Cell;
 
@@ -20,7 +23,7 @@ use smithay::{
     desktop::{WindowSurface, space::SpaceElement},
     output::Output,
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
-    utils::{Logical, Point, Rectangle, Size},
+    utils::{IsAlive, Logical, Point, Rectangle, Size},
 };
 use olo_protocol::Tile;
 use tracing::info;
@@ -81,6 +84,34 @@ struct Link {
     follows: Side,
     /// The smallest frame it takes (its app's minimum, or `MIN_TILE`).
     min: Size<i32, Logical>,
+}
+
+/// A tiled neighbour following a drag (and catching up after it): its
+/// frame when the drag began and the one asked of it now.
+#[derive(Debug)]
+pub struct Follower {
+    window: WindowElement,
+    start: Rectangle<i32, Logical>,
+    target: Rectangle<i32, Logical>,
+}
+
+/// Each linked neighbour once, with its frame when the drag began and the
+/// one it takes when the dragged window's size has changed by `d` (every
+/// side of it that follows moved).
+fn targets(links: &[Link], d: (i32, i32)) -> Vec<(WindowElement, Rectangle<i32, Logical>, Rectangle<i32, Logical>)> {
+    fold_sides(links.iter().map(|l| (l.window.clone(), l.start, l.side, l.follows)), d)
+}
+
+/// `targets` for any key: (key, start, its side, the side it follows).
+fn fold_sides<K: PartialEq>(links: impl Iterator<Item = (K, Rectangle<i32, Logical>, Side, Side)>, d: (i32, i32)) -> Vec<(K, Rectangle<i32, Logical>, Rectangle<i32, Logical>)> {
+    let mut out: Vec<(K, Rectangle<i32, Logical>, Rectangle<i32, Logical>)> = Vec::new();
+    for (k, start, side, follows) in links {
+        match out.iter_mut().find(|(w, ..)| *w == k) {
+            Some((_, _, r)) => *r = with_side(*r, side, moved(follows, d)),
+            None => out.push((k, start, with_side(start, side, moved(follows, d)))),
+        }
+    }
+    out
 }
 
 /// A tiled window's edges being dragged, and the neighbours that follow.
@@ -407,10 +438,57 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return;
         }
         t.applied = d;
-        let moves: Vec<_> = t.links.iter().map(|l| (l.window.clone(), with_side(l.start, l.side, moved(l.follows, d)))).collect();
-        for (w, r) in moves {
-            if self.space.element_geometry(&w) != Some(r) {
-                self.set_frame(&w, r, false);
+        for (w, start, target) in targets(&t.links, d) {
+            self.follow(&w, start, target);
+        }
+    }
+
+    /// Ask a neighbour that began at `start` for the frame `target`: now
+    /// if it has answered the last size asked, else when it does. It moves
+    /// when it draws it (`tile_follower_drew`).
+    fn follow(&mut self, window: &WindowElement, start: Rectangle<i32, Logical>, target: Rectangle<i32, Logical>) {
+        match self.tile_followers.iter_mut().find(|f| f.window == *window) {
+            Some(f) => (f.start, f.target) = (start, target),
+            None => self.tile_followers.push(Follower { window: window.clone(), start, target }),
+        }
+        let content = window.inner_size(target.size);
+        match window.0.underlying_surface() {
+            WindowSurface::Wayland(t) => {
+                t.with_pending_state(|state| {
+                    state.states.unset(xdg_toplevel::State::Maximized);
+                    state.size = Some(content);
+                });
+                if t.is_initial_configure_sent() {
+                    super::grabs::send_when_caught_up(t);
+                }
+            }
+        }
+    }
+
+    /// A window committed: if it is following a drag, put it where the
+    /// size it drew belongs (the sides that don't move where they were)
+    /// and ask for the frame the drag has got to since. Once it has
+    /// caught up with a drag that's over, it's done.
+    pub fn tile_follower_drew(&mut self, window: &WindowElement) {
+        let Some(i) = self.tile_followers.iter().position(|f| f.window == *window) else { return };
+        let (start, target) = (self.tile_followers[i].start, self.tile_followers[i].target);
+        let (Some(loc), Some(geo)) = (self.space.element_location(window), self.space.element_geometry(window)) else {
+            self.tile_followers.remove(i);
+            return;
+        };
+        let x = if target.loc.x != start.loc.x { target.loc.x + target.size.w - geo.size.w } else { target.loc.x };
+        let y = if target.loc.y != start.loc.y { target.loc.y + target.size.h - geo.size.h } else { target.loc.y };
+        let at = Point::from((x, y)) - (geo.loc - loc);
+        if at != loc {
+            self.space.relocate_element(window, at);
+        }
+        match window.0.underlying_surface() {
+            WindowSurface::Wayland(t) => {
+                if t.has_pending_changes() {
+                    super::grabs::send_when_caught_up(t);
+                } else if self.tile_drag.is_none() && !super::grabs::awaiting_ack(t) {
+                    self.tile_followers.remove(i);
+                }
             }
         }
     }
@@ -424,7 +502,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
         let gap = self.tile_gap();
         let Some(area) = self.window_output(&t.window).and_then(|o| self.tile_area(&o)) else { return };
-        let mut frames: Vec<(WindowElement, Rectangle<i32, Logical>)> = t.links.iter().filter_map(|l| Some((l.window.clone(), self.space.element_geometry(&l.window)?))).collect();
+        self.tile_followers.retain(|f| f.window.alive());
+        // The frames the drag asked for (they may not have drawn them yet).
+        let mut frames: Vec<(WindowElement, Rectangle<i32, Logical>)> = targets(&t.links, t.applied).into_iter().map(|(w, _, r)| (w, r)).collect();
         // Its own frame as the drag left it (it may not have drawn it yet).
         let own = t.sides.iter().fold(t.start, |r, &side| with_side(r, side, moved(side, t.applied)));
         frames.push((t.window.clone(), own));
@@ -892,6 +972,18 @@ mod tests {
         // Growing by 130 to the left moves that side left; the right stays.
         let grown = with_side(r(556, 404, 540, 388), Side::Left, moved(Side::Left, (130, 0)));
         assert_eq!(grown, r(426, 404, 670, 388));
+    }
+
+    #[test]
+    fn a_neighbour_on_two_sides_follows_both() {
+        // Dragging the bottom-right corner of the top-left window: the
+        // window to its lower right follows across the bottom (its top)
+        // and in line on the right (its right), both at once.
+        let links = [(1, r(500, 400, 500, 400), Side::Top, Side::Bottom), (1, r(500, 400, 500, 400), Side::Right, Side::Right), (2, r(0, 400, 492, 400), Side::Top, Side::Bottom)];
+        let t = fold_sides(links.into_iter(), (30, -20));
+        assert_eq!(t.len(), 2);
+        assert_eq!(t[0], (1, r(500, 400, 500, 400), r(500, 380, 530, 420)));
+        assert_eq!(t[1], (2, r(0, 400, 492, 400), r(0, 380, 492, 420)));
     }
 
     #[test]

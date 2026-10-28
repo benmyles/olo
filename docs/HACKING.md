@@ -958,7 +958,15 @@ else its own frame. Moving it by hand forgets the tile (`forget_tile`).
 Resizing it by an edge moves its tiled neighbours with it (`TileDrag`,
 driven by the resize grabs): at the drag's start, `links_for` finds the
 other tiled windows on the display with a side on that edge's line
-(across the gap, or in line), which follow it live; the drag stops where
+(across the gap, or in line), which follow it live. They're paced like
+the dragged window (`send_when_caught_up`): a new size goes out only
+once they've answered the last, and each is moved only when it commits
+(`tile_follower_drew`: the sides that don't move stay put, whatever size
+it drew), and keeps catching up after the drag (`Follower`). A
+neighbour linked on two sides (a corner drag) moves both. Sending one
+per pointer motion queued configures faster than apps draw: the
+neighbour lagged seconds behind and overlapped the window being dragged.
+The drag stops where
 one would get smaller than its app's minimum or `MIN_TILE`; at the end
 each keeps its new part (`TilePart`, fractions that `part` turns back
 into the same frame: `fraction_of`), which `retile` uses from then on (a

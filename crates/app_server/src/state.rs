@@ -194,6 +194,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub twitch: Option<crate::desktop::Twitch>,
     /// A tiled window's edges being dragged (see `shell::tiling`).
     pub tile_drag: Option<crate::shell::tiling::TileDrag>,
+    /// Tiled neighbours following a drag of their shared edge, until
+    /// they've drawn the size it left them.
+    pub tile_followers: Vec<crate::shell::tiling::Follower>,
     pub twitcher: crate::twitcher::Overlay,
     pub wallpaper: crate::wallpaper::Loader,
     pub cursor_status: CursorImageStatus,
@@ -968,6 +971,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             lock,
             twitch: None,
             tile_drag: None,
+            tile_followers: Vec::new(),
             twitcher: Default::default(),
             wallpaper: Default::default(),
             cursor_status: CursorImageStatus::default_named(),

@@ -299,13 +299,13 @@ impl From<ResizeEdge> for xdg_toplevel::ResizeEdge {
 /// the last one: a configure per pointer motion would queue up faster than
 /// the client can draw, and the window would lag ever further behind. What
 /// waits goes out on the client's next commit (`resize_caught_up`).
-fn send_when_caught_up(xdg: &smithay::wayland::shell::xdg::ToplevelSurface) {
+pub(super) fn send_when_caught_up(xdg: &smithay::wayland::shell::xdg::ToplevelSurface) {
     if !awaiting_ack(xdg) {
         xdg.send_pending_configure();
     }
 }
 
-fn awaiting_ack(xdg: &smithay::wayland::shell::xdg::ToplevelSurface) -> bool {
+pub(super) fn awaiting_ack(xdg: &smithay::wayland::shell::xdg::ToplevelSurface) -> bool {
     with_states(xdg.wl_surface(), |states| {
         states
             .data_map

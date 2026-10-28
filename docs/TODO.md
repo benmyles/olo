@@ -5,6 +5,12 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Resizing tiled windows is slow~~ (Ben): neighbours following a
+  dragged edge got a configure per pointer motion and fell seconds
+  behind, overlapping the dragged window by up to 100 px. They're paced
+  like the dragged window and moved only when they draw (a 500 Hz drag:
+  302 configures and 1.8 s to catch up before, about 110 and 0.03 s now;
+  the gap stays even).
 - ~~AI features use OpenAI's models~~ (Ben): Preferences ▸ AI offers
   Astra 6 (default), Sol 6.1, Terra 6.1 and Luna 6, through the Token
   Pool's Codex accounts; a Claude model chosen before reads as Astra.
@@ -117,8 +123,6 @@ as they land (with the commit), add new ones as they come up.
 
 ## Next
 
-- **Resizing tiled windows is slow** (Ben): dragging a window's edge
-  after tiling lags; make it smooth and correct.
 - **Keyboard hints everywhere** (Ben; opt-in, Preferences ▸ Keyboard):
   everything reachable from the keyboard, like Vim's EasyMotion. A
   modifier chord (perhaps ⌃⇧) labels every place you might go with a
