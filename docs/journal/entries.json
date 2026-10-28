@@ -1318,5 +1318,17 @@
   "title": "Touchpad preferences in dark",
   "caption": "The Touch, Gestures and Mouse tabs in dark mode.",
   "image": "2026-10-27/204217-touchpad-preferences-in-dark.png"
+ },
+ {
+  "time": "2026-10-27T21:04:30",
+  "title": "DiskUsage: where the space went",
+  "caption": "A new app: Haiku's DiskUsage ring chart (the folder in the middle, its contents in rings outwards; click to go in, the middle to go up) beside the folder's contents by size, with bars in the slices' colours, and DaisyDisk's Collector along the bottom: drag rows or slices in (or \u2318D), then Move to Trash or Delete. The scan runs on a worker and the chart grows as it goes; it stays on one file system and counts hard links once.",
+  "image": "2026-10-27/210430-diskusage-where-the-space-went.png"
+ },
+ {
+  "time": "2026-10-27T21:04:31",
+  "title": "The DiskUsage icon",
+  "caption": "A ring chart with a magnifier, generated against the reference set, beside DriveSetup and its neighbours on the light, dark and night panels.",
+  "image": "2026-10-27/210431-the-diskusage-icon.png"
  }
 ]

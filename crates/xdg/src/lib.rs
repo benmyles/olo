@@ -12,6 +12,7 @@ pub mod legacy;
 pub mod desktop_entry;
 pub mod mime;
 pub mod open;
+pub mod trash;
 pub mod wallpapers;
 
 /// Device-pixel sizes shipped in data/icons.

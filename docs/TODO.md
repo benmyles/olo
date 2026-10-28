@@ -5,6 +5,11 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~DiskUsage~~ (Ben): a new app for finding and reclaiming disk space,
+  Haiku's ring chart beside a list by size, with DaisyDisk's Collector
+  (drag in, then Move to Trash or Delete); volumes from mountinfo, a
+  streaming worker scan that stays on one file system.
+
 - ~~Touchpad drags, palms and stalls~~ (Ben): Olo's touch filter (a
   libinput plugin app_server loads; docs/TOUCHPAD.md) counts a touch
   only while it presses, ignores palms and makes the click from the

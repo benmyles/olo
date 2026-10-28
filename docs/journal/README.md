@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### The DiskUsage icon
+
+*21:04* — A ring chart with a magnifier, generated against the reference set, beside DriveSetup and its neighbours on the light, dark and night panels.
+
+![The DiskUsage icon](2026-10-27/210431-the-diskusage-icon.png)
+
+### DiskUsage: where the space went
+
+*21:04* — A new app: Haiku's DiskUsage ring chart (the folder in the middle, its contents in rings outwards; click to go in, the middle to go up) beside the folder's contents by size, with bars in the slices' colours, and DaisyDisk's Collector along the bottom: drag rows or slices in (or ⌘D), then Move to Trash or Delete. The scan runs on a worker and the chart grows as it goes; it stays on one file system and counts hard links once.
+
+![DiskUsage: where the space went](2026-10-27/210430-diskusage-where-the-space-went.png)
+
 ### Touchpad preferences in dark
 
 *20:42* — The Touch, Gestures and Mouse tabs in dark mode.

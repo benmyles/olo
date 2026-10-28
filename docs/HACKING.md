@@ -1464,6 +1464,40 @@ udisks_fake` runs everything against it when `OLO_TEST_BUS` names a
 private bus (busd), and skips otherwise. Reading the real UDisks
 read-only (`--list`) is fine.
 
+## DiskUsage (apps/disk-usage)
+
+Where a disk's space has gone, and getting it back: Haiku's DiskUsage
+ring chart (`chart.rs`: the folder in the middle, what's in it in the
+first ring by share of its size, their contents in rings outwards, five
+deep; slices under ~0.7° left out; each first-ring item keeps a hue
+outwards, lighter, files greyer) beside a list of the folder by size
+whose bars wear the slices' colours, and DaisyDisk's Collector along the
+bottom: drag rows or slices into it (or ⌘D, Item ▸ Add to Collector),
+then Move to Trash or Delete… (confirmed) all at once. Click a slice to
+go into it, the middle (or Up, ⌘↑, Backspace) to go back up.
+
+The start screen lists Home and each disk file system once
+(`volumes.rs`, from /proc/self/mountinfo; statvfs for size and free
+space). Scanning (`scan.rs`) is a worker thread that adds each folder to
+a shared `Tree` in one write, so the chart and list grow as it goes
+(the window sorts while it runs; the tree is sorted once at the end).
+Sizes are allocated blocks, hard links count once, symlinks are never
+followed, and it stays on one file system: `volumes::Mounts` crosses a
+mount point only for another part of the same file system (a btrfs
+`/home` under `/`), never `/proc`, `/tmp`, other disks or a bind mount
+of what it already covers. Moving to the Trash (`olo_kit::trash`) and
+deleting run on a thread too; the tree drops what went
+(`Tree::remove`). `save_state` keeps the scanned folder, the folder
+shown and the Collector; after a re-exec it scans again and goes back.
+Test against a fixture home (`fallocate` files under /var/tmp) with
+`tsession run NAME HOME=… target/debug/olo-disk-usage DIR`.
+
+The freedesktop Trash helpers Tracker and DiskUsage share are
+`olo_kit::trash` (olo_xdg): `trash_slot` reserves a name and writes the
+.trashinfo, `trash_origin` reads it back, `move_to_trash` renames into
+the Trash when on the same volume (Tracker copies across volumes with
+progress instead).
+
 ## Terminal (apps/terminal)
 
 The shells don't run in Terminal: they run in **olo-termd**

@@ -4124,6 +4124,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-disk-usage"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-kit",
+ "olo-theme",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "olo-drive-setup"
 version = "0.1.0"
 dependencies = [

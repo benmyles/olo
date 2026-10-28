@@ -89,3 +89,4 @@ internet|a glossy blue globe with green continents and a thin silver orbit ring 
 multimedia|a black film clapperboard leaning against a glossy black eighth-note musical note
 office|a stack of white papers with a blue binder clip and a yellow pencil lying beside it
 other-applications|an open cardboard box with a few small application cubes in different colours peeking out
+disk-usage|a thick round ring-chart disc standing upright, its inner and outer rings split into segments of Be blue, tab yellow, signal green and alert red around a grey hub, with a silver magnifying glass in front at the lower right
