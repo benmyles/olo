@@ -75,7 +75,7 @@ mod tests {
     fn renders_the_settings() {
         let mut t = TouchpadSettings::default();
         let lua = render(&t).unwrap();
-        assert!(lua.contains("local CONFIG = { devices = { \"Apple MTP\" }, touch_on = 13, touch_off = 3, lift_ms = 60, palm_size = 1000, click = true, press = 120, release = 75 }"));
+        assert!(lua.contains("local CONFIG = { devices = { \"Apple MTP\" }, touch_on = 13, touch_off = 3, lift_ms = 60, palm_size = 1600, click = true, press = 120, release = 75 }"));
         assert!(!lua.contains("@CONFIG@"));
         t.filter.enabled = false;
         assert_eq!(render(&t), None);
@@ -126,7 +126,8 @@ mod tests {
                 frame.push(e).unwrap();
             }
             let hook: mlua::Function = self.lua.load("hooks.frame").eval().unwrap();
-            let out: mlua::Table = hook.call((mlua::Value::Nil, frame, self.time)).unwrap();
+            // nil: the frame goes on as it came.
+            let Some(out): Option<mlua::Table> = hook.call((mlua::Value::Nil, frame, self.time)).unwrap() else { return events.to_vec() };
             out.sequence_values::<mlua::Table>().map(|e| e.unwrap()).map(|e| (e.get("usage").unwrap(), e.get("value").unwrap())).collect()
         }
     }
@@ -156,6 +157,20 @@ mod tests {
         // ...and lets go when the finger does, though the palm presses on.
         let out = pad.frame(8, &[(PRESSURE, 70), (BTN_LEFT, 0)]);
         assert!(out.contains(&(BTN_LEFT, 0)), "{out:?}");
+    }
+
+    /// What the 16" M2 Max's pad looked like through libinput: sizes,
+    /// widths, orientation and position, but never a pressure. The frames
+    /// must pass untouched (they once made every touch a hover).
+    #[test]
+    fn without_pressure_frames_pass_untouched() {
+        const WIDTH: u32 = 0x3_0032;
+        const X: u32 = 0x3_0035;
+        let mut pad = Pad::new(&TouchpadSettings::default());
+        let landing = [(ID, 18115), (MAJOR, 54), (MINOR, 98), (WIDTH, 1564), (X, 3191), (BTN_LEFT, 1)];
+        assert_eq!(pad.frame(8, &landing), landing);
+        let flat = [(MAJOR, 1030), (MINOR, 674), (BTN_LEFT, 0)];
+        assert_eq!(pad.frame(8, &flat), flat);
     }
 
     #[test]

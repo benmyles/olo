@@ -113,14 +113,16 @@ impl Default for TouchFilter {
     fn default() -> Self {
         // Measured on a 16" M2 Max (docs/TOUCHPAD.md): fingers press 14 and
         // up (lightest dips ~6 while moving), palms and hovering fingers
-        // 0-12; fingers are at most ~860 across, palms 990-3800. The click
-        // thresholds are the driver's own.
+        // 0-12; fingers reach ~1030 across when pressed flat, palms
+        // 990-3800, so palms by size start where libinput's do (1600) and
+        // the smaller ones are left to pressure. The click thresholds are
+        // the driver's own.
         TouchFilter {
             enabled: true,
             touch_on: 13,
             touch_off: 3,
             lift_ms: 60,
-            palm_size: 1000,
+            palm_size: 1600,
             palm_proof_click: true,
             click_press: 120,
             click_release: 75,

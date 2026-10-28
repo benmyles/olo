@@ -64,8 +64,9 @@ For devices named "Apple MTP" that report pressure and touch size:
 - **A touch counts only while it presses:** from pressure ≥ 13
   (`touch_on`) until it has stayed below 3 (`touch_off`) for 60 ms
   (`lift_ms`), which rides out the light dips of a moving finger.
-- **Palms are left out:** a contact that reaches size 1000
-  (`palm_size`) is a palm for as long as it lasts, even if it shrinks.
+- **Palms are left out:** a contact that reaches size 1600
+  (`palm_size`, libinput's own threshold: a finger pressed flat
+  measured 1030) is a palm for as long as it lasts, even if it shrinks.
 - **Left-out contacts are reported with size 0**, so libinput sees them
   hover; positions and tracking ids are untouched. Contacts that count
   are reported major-first.
@@ -83,6 +84,25 @@ Tests: `cargo test -p app_server touch_filter` runs the plugin in Lua
 (mlua) against scripted frames, with a stand-in for libinput's plugin
 API. `examples/touch_filter_probe.rs` loads plugins into a libinput path
 context on a real device (root, read-only) and prints what comes out.
+
+## It doesn't work on this pad yet (27 October 2026)
+
+Turned on in Ben's session, the filter made the pad dead: libinput never
+hands the plugin a pressure on this pad. Through the plugin, frames carry
+tracking ids, touch and width sizes, orientation and position, and no
+`ABS_MT_PRESSURE`, though the device has the axis and reading
+/dev/input/event1 directly shows it. With no pressure, no touch ever
+started, so libinput saw only hovering fingers. Where libinput drops it
+is still to find (no quirk of ours or the system's disables pressure);
+`touch_filter_probe` with a logging copy of the plugin shows it on the
+real pad.
+
+Since then the filter passes a pad's frames through untouched until it
+has seen a pressure from it (test `without_pressure_frames_pass_untouched`,
+from the real frames), and the palm size is 1600. Ben's session has the
+filter off. Before it goes on again: get pressure to the plugin (or
+find the filter works from size alone), and check on the real pad with
+the probe, with and without the filter, before shipping.
 
 ## Preferences ▸ Touchpad
 
