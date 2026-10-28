@@ -165,16 +165,18 @@ impl Panel {
             Panel::Keyboard => (480, 727),
             Panel::Network => (460, 360),
             Panel::Notifications => (440, 420),
-            Panel::Power => (460, 362),
+            Panel::Power => (460, 363),
             Panel::ScreenSaver => (500, 400),
             Panel::Security => (420, 354),
-            Panel::Sound => (440, 270),
+            Panel::Sound => (440, 272),
             Panel::Themes => (560, 476),
             Panel::TouchId => (420, 330),
-            Panel::Touchpad => (460, 520),
-            Panel::Tracker => (300, 180),
+            // Tall enough for Touch with both of its notes (a pad with no
+            // pressure and the Apple driver's click thresholds).
+            Panel::Touchpad => (460, 576),
+            Panel::Tracker => (300, 181),
             Panel::Workspaces => (360, 164),
-            Panel::About => (420, 290),
+            Panel::About => (440, 290),
         }
     }
 

@@ -536,6 +536,14 @@ centred (beside the `olo` mark it read as "o olo"). Image previews: `icons::thum
    client), keyboard focus shown as a navigation-blue underline/frame,
    Tracker-style spatial behaviour. Modernise freely where it helps
    (smooth scrolling, hi-dpi, search fields, sensible defaults).
+7. **Everything fits** at the window's size, light and dark, at 1× and
+   2×, with the longest things it may show: nothing runs past the area
+   it was given or over a neighbour, and no fixed text is cut short. A
+   fixed-size window (a preference panel, a dialog) proves it with a
+   layout lint test (see "Layout lint" under Testing). Kit containers and
+   controls take part by themselves; a view that marks out an area or
+   draws a control by hand notes it with `layout_lint::area` /
+   `layout_lint::control`, and a new kit widget calls them too.
 
 ## The session and in-place reload
 
@@ -773,6 +781,45 @@ Look at your screenshots. Then zoom in to 4× and check edges, insets,
 alignment and text placement pixel by pixel, in **both** light and dark.
 Compare against BeOS R5 / Haiku screenshots from memory. Fix anything that
 looks even slightly off before calling something done.
+
+### Layout lint (`olo_kit::layout_lint`)
+
+Whether a window's content fits depends on fonts, wrapping, the scale and
+what it is showing, so the lint runs the real UI code rather than reading
+it: `layout_lint::check(size, |ui| view(ui))` (or `assert_fits(name,
+size, view)`) runs a view headlessly in plain egui (no GPU, no Wayland,
+the kit's own fonts and style, as `platform.rs` makes a window's context)
+at the size its window gets, in light and dark at 1× and 2×, three passes
+each, and returns one line per problem with the looks it shows in:
+
+- an area's content running past it (more than half a point): a tab
+  view's panel, a `BBox`, `window_content`, or one a view notes itself
+  (Preferences notes each panel's body above Defaults / Revert);
+- a control outside the window, or over another control on the same
+  layer (`Touch` running under Defaults);
+- text that doesn't fit: a label closer than `TIGHT` to its field
+  (`MenuField`, `TextControl` dividers), a `Slider`'s label and value or
+  limits running together, tabs wider than their view, a `StringView`
+  cut short with "…".
+
+Kit containers and controls note themselves while a check runs (one
+atomic load each otherwise). Inside something that clips (a
+`ScrollView`) content may run on, so only what shows counts. Lint tests
+are `#[test]`s named `ui_lint_*`, so `cargo ui-lint` (an alias in
+`.cargo/config.toml`, which lists the crates that have them) runs them
+all, and `tools/install-session.sh` runs it before it builds: a window
+that doesn't fit stops the install. They're ordinary tests too, so
+`cargo test` runs them.
+
+Give the view the longest things it may show, as real machines give them:
+Preferences' `ui_lint.rs` runs every panel and every tab with made-up
+devices (a MacBook pad with no pressure and the driver's click
+thresholds, long Bluetooth and sound device names, a long processor
+name, displays, networks, fingers); the panels' workers start nothing
+under `cfg(test)` and their shared state starts filled
+(`touchpad::State::showing(tab, devices)`, `keyboard::State::showing(tab)`,
+`about::State::sample()`, `Server::detached()`, …). A new fixed-size
+window or dialog gets a lint test the same way.
 
 Memory: measure release builds (`cargo build --release -p APP`, then
 `grep -E 'VmRSS|RssAnon|RssShmem' /proc/PID/status`; RssShmem is GPU

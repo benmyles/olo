@@ -25,6 +25,14 @@ pub struct State {
     last_display_off: Option<u32>,
 }
 
+#[cfg(test)]
+impl State {
+    /// On `tab` (for the layout lint).
+    pub fn showing(tab: usize) -> State {
+        State { tab, ..Default::default() }
+    }
+}
+
 /// The minutes the sliders step through.
 const MINUTES: &[u32] = &[1, 2, 3, 4, 5, 10, 15, 20, 30, 45, 60, 90, 120, 180];
 

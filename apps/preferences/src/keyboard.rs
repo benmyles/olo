@@ -20,6 +20,14 @@ pub struct State {
     shortcuts: crate::shortcuts::State,
 }
 
+#[cfg(test)]
+impl State {
+    /// On `tab` (for the layout lint).
+    pub fn showing(tab: usize) -> State {
+        State { tab, ..Default::default() }
+    }
+}
+
 /// Common layouts: xkb name and what to call it.
 const LAYOUTS: &[(&str, &str)] = &[
     ("us", "English (US)"),

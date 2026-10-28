@@ -14,6 +14,7 @@ pub use olo_xdg::{apps, desktop_entry, legacy, mime, open, themes, trash, wallpa
 pub mod file_panel;
 pub mod files;
 pub mod icons;
+pub mod layout_lint;
 /// Decoding pictures (see the `olo-images` crate).
 pub use olo_images as images;
 mod input;

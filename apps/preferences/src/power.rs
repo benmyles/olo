@@ -26,6 +26,14 @@ pub struct State {
     battery: Option<Shared>,
 }
 
+#[cfg(test)]
+impl State {
+    /// With `battery` already read (for the layout lint).
+    pub fn showing(battery: Option<Battery>) -> State {
+        State { battery: Some(Arc::new(Mutex::new(Some(battery)))) }
+    }
+}
+
 fn poll(ctx: &olo_kit::egui::Context) -> Shared {
     let battery: Shared = Default::default();
     let (out, ctx) = (Arc::downgrade(&battery), ctx.clone());
@@ -104,7 +112,7 @@ pub fn minutes_menu(ui: &mut Ui, id: &str, label: &str, choices: &[u32], value: 
             names.len() - 1
         }
     };
-    ui.add(MenuField::new(id, &mut i, &names).label(label).divider(170.0));
+    ui.add(MenuField::new(id, &mut i, &names).label(label).divider(176.0));
     if let Some(&m) = choices.get(i) {
         *value = m;
     }

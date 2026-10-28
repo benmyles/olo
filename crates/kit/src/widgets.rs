@@ -15,6 +15,7 @@ use egui::{
 use olo_theme::Palette;
 
 use crate::{
+    layout_lint as lint,
     menu::{self, Menu, MenuAnchor, MenuRequest},
     style::{self, bold_font, c, frame_rect, hline, plain_font, shade, vline},
 };
@@ -86,6 +87,7 @@ impl Widget for Button<'_> {
         let ring = if self.default { 3.0 } else { 0.0 };
         let w = (galley.size().x + 2.0 * m::CONTROL_PAD).max(self.min_width).round();
         let (r, mut response) = ui.allocate_exact_size(vec2(w, CONTROL_HEIGHT), Sense::click());
+        lint::control(ui, || lint::quoted("button", self.label), r);
         let outer = r.expand(ring);
         if self.default && ui.is_enabled() && ui.input(|i| i.key_pressed(Key::Enter)) && !ui.ctx().egui_wants_keyboard_input()
         {
@@ -169,6 +171,7 @@ impl Widget for CheckBox<'_> {
         let galley = layout(ui, self.label, plain_font(), color);
         let size = vec2(12.0 + MARK_GAP + galley.size().x.ceil(), m::MARK_ROW);
         let (rect, mut response) = ui.allocate_exact_size(size, Sense::click());
+        lint::control(ui, || lint::quoted("check box", self.label), rect);
         if response.clicked() {
             *self.value = !*self.value;
             response.mark_changed();
@@ -217,6 +220,7 @@ impl Widget for RadioButton<'_> {
         let galley = layout(ui, self.label, plain_font(), color);
         let size = vec2(13.0 + MARK_GAP + galley.size().x.ceil(), m::MARK_ROW);
         let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+        lint::control(ui, || lint::quoted("radio button", self.label), rect);
         response.widget_info(|| WidgetInfo::selected(Role::RadioButton, ui.is_enabled(), self.selected, self.label));
         if !ui.is_rect_visible(rect) {
             return response;
@@ -310,11 +314,13 @@ impl Widget for TextControl<'_> {
         let p = style::palette(ui.ctx());
         let width = self.width.unwrap_or_else(|| ui.available_width());
         let (rect, _) = ui.allocate_exact_size(vec2(width, CONTROL_HEIGHT), Sense::hover());
+        lint::control(ui, || lint::quoted("text control", self.label.unwrap_or_default()), rect);
         let mut well = rect;
         if let Some(label) = self.label {
             let color = text_color(ui, &p);
             let galley = layout(ui, label, plain_font(), color);
             let divider = self.divider.unwrap_or(galley.size().x.ceil() + m::LABEL_GAP);
+            lint::text(ui, || format!("{}'s label", lint::quoted("text control", label)), galley.size().x + m::TIGHT, divider);
             let pos = text_pos(ui, rect.left(), rect.center().y, &galley);
             ui.painter().galley(pos, galley, color);
             well.min.x = rect.left() + divider;
@@ -438,10 +444,16 @@ impl Widget for StringView<'_> {
             // where a single line's would be.
             let pad = (CONTROL_HEIGHT - galley.rows[0].height()).max(0.0) / 2.0;
             let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x.ceil(), galley.size().y + 2.0 * pad), Sense::hover());
+            lint::control(ui, || lint::quoted("text", self.text), rect);
             ui.painter().galley(pos2(rect.left(), rect.top() + pad), galley, color);
             return resp;
         }
         let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x.ceil(), CONTROL_HEIGHT), Sense::hover());
+        lint::control(ui, || lint::quoted("text", self.text), rect);
+        if galley.elided && lint::on() {
+            let whole = layout(ui, self.text, plain_font(), color).size().x;
+            lint::text(ui, || format!("{} (cut short with “…”)", lint::quoted("text", self.text)), whole, width);
+        }
         let pos = text_pos(ui, rect.left(), rect.center().y, &galley);
         ui.painter().galley(pos, galley, color);
         resp
@@ -590,6 +602,20 @@ impl Widget for Slider<'_> {
         let bottom = if self.limits.is_some() { m::LABEL_ROW } else { 0.0 };
         let height = top + THUMB_H + 2.0 + bottom;
         let (rect, mut response) = ui.allocate_exact_size(vec2(width, height), Sense::click_and_drag());
+        let name = || lint::quoted("slider", self.label.unwrap_or_default());
+        lint::control(ui, name, rect);
+        if lint::on() {
+            // The label and value share the line above the bar, the limits
+            // the one below.
+            let w = |t: Option<&str>, font: FontId| t.map_or(0.0, |t| layout(ui, t, font, color).size().x);
+            let small = FontId::proportional(style::SMALL_SIZE);
+            let above = w(self.label, plain_font()) + w(self.value_text.as_deref(), plain_font());
+            lint::text(ui, || format!("{}'s label and value", name()), above + m::SPACING, width);
+            if let Some((min, max)) = self.limits {
+                let below = w(Some(min), small.clone()) + w(Some(max), small);
+                lint::text(ui, || format!("{}'s limits", name()), below + m::SPACING, width);
+            }
+        }
         let (lo, hi) = (*self.range.start(), *self.range.end());
         let track = Rect::from_min_max(
             pos2(rect.left() + THUMB_W / 2.0, rect.top() + top),
@@ -747,6 +773,13 @@ impl Widget for MenuField<'_> {
         let width = self.width.unwrap_or((label_w + m::TEXT_INSET + widest + 12.0 + 18.0).ceil());
         let (rect, mut response) = ui.allocate_exact_size(vec2(width, CONTROL_HEIGHT), Sense::click());
         let field = Rect::from_min_max(pos2(rect.left() + label_w, rect.top()), rect.max);
+        let name = || lint::quoted("menu field", self.label.unwrap_or_default());
+        lint::control(ui, name, rect);
+        if let Some(l) = self.label
+            && lint::on()
+        {
+            lint::text(ui, || format!("{}'s label", name()), layout(ui, l, plain_font(), color).size().x + m::TIGHT, label_w);
+        }
         let response_field = ui.interact(field, self.id, Sense::click());
         if let Some(cmd) = menu::take_chosen(ui.ctx(), self.id)
             && let Ok(i) = cmd.parse::<usize>()
@@ -787,7 +820,11 @@ impl Widget for MenuField<'_> {
         frame_rect(painter, field, shade(&p, p.panel_background, 1.55));
         style::bevel(painter, field.shrink(1.0), c(p.shine), shade(&p, base, 1.2));
         let text = self.options.get(*self.selected).copied().unwrap_or("");
-        let g = layout(ui, text, plain_font(), color);
+        // In a field of set width, a choice too long is cut short before
+        // the drop-down mark (the menu shows it whole).
+        let mut job = egui::text::LayoutJob::simple_singleline(text.to_owned(), plain_font(), color);
+        job.wrap = egui::text::TextWrapping::truncate_at_width((field.width() - m::TEXT_INSET - 15.0 - m::TIGHT).max(0.0));
+        let g = ui.painter().layout_job(job);
         let pos = text_pos(ui, field.left() + m::TEXT_INSET, field.center().y, &g);
         let text_rect = Rect::from_min_size(pos, g.size());
         painter.galley(pos, g, color);
@@ -957,6 +994,7 @@ impl<'a> BBox<'a> {
         child.spacing_mut().item_spacing.y = m::TIGHT;
         let r = add(&mut child);
         let used = child.min_rect();
+        lint::area(ui, || self.label.map_or_else(|| "box".into(), |l| lint::quoted("box", l)), content, used);
         let right = if horizontal {
             let label_w = galley.as_ref().map_or(0.0, |g| g.size().x + 24.0);
             (used.right() + pad).max(outer.left() + label_w).min(outer.right())
@@ -2204,6 +2242,8 @@ impl<'a> TabView<'a> {
             rects.push((r, font, *label));
             x += w - slant + 1.0;
         }
+        let tabs_right = rects.last().map_or(outer.left(), |(r, ..)| r.right());
+        lint::text(ui, || format!("the tabs {:?}", self.tabs), tabs_right - outer.left(), outer.width());
         // Unselected tabs first, right to left so left ones overlap.
         let draw_tab = |r: Rect, selected: bool, label: &str, font: FontId| {
             let top = if selected { r.top() } else { r.top() + 2.0 };
@@ -2238,6 +2278,8 @@ impl<'a> TabView<'a> {
         let content = panel.shrink(m::WINDOW_INSET);
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(content).layout(egui::Layout::top_down(Align::Min)));
         let r = add(&mut child, *self.selected);
+        let tab = self.tabs.get(*self.selected).copied().unwrap_or_default();
+        lint::area(ui, || lint::quoted("tab", tab), content, child.min_rect());
         ui.advance_cursor_after_rect(outer);
         r
     }
@@ -2471,6 +2513,7 @@ pub fn window_content<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     let rect = ui.available_rect_before_wrap().shrink(m::WINDOW_INSET);
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(egui::Layout::top_down(Align::Min)));
     let r = add(&mut child);
+    lint::area(ui, || "the window's content".into(), rect, child.min_rect());
     ui.advance_cursor_after_rect(ui.available_rect_before_wrap());
     r
 }

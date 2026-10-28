@@ -48,6 +48,10 @@ fn link() -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
+        if fake_networks() {
+            // From the first frame (the one the layout lint checks).
+            shared.lock().unwrap().status = Some(Ok(fake_status()));
+        }
         let contexts: Arc<Mutex<Vec<Context>>> = Default::default();
         let (tx, rx) = channel::<Request>();
         let (sh, ctxs) = (shared.clone(), contexts.clone());
@@ -124,13 +128,14 @@ fn link() -> &'static Link {
 /// `OLO_FAKE_NETWORKS=1` (debug builds): made-up Wi-Fi networks, so
 /// the panel and the enterprise sheet can be tried headless without
 /// touching NetworkManager or showing the networks around the machine.
+/// Tests always have them.
 fn fake_networks() -> bool {
-    cfg!(debug_assertions) && std::env::var_os("OLO_FAKE_NETWORKS").is_some()
+    cfg!(test) || (cfg!(debug_assertions) && std::env::var_os("OLO_FAKE_NETWORKS").is_some())
 }
 
-fn fake_worker(sh: &Arc<Mutex<Shared>>, wake: &dyn Fn(), rx: &std::sync::mpsc::Receiver<Request>) {
+fn fake_status() -> Status {
     let net = |ssid: &str, strength, secure, enterprise| Network { ssid: ssid.into(), strength, secure, enterprise, ap: format!("/ap/{ssid}"), active: false, known: false };
-    let mut status = Status {
+    Status {
         wireless_enabled: true,
         wireless_hardware: true,
         devices: vec![Device {
@@ -147,7 +152,11 @@ fn fake_worker(sh: &Arc<Mutex<Shared>>, wake: &dyn Fn(), rx: &std::sync::mpsc::R
             speed: None,
         }],
         networks: vec![net("Olo Campus", 90, true, true), net("Olo Home", 70, true, false), net("Olo Guest", 40, false, false)],
-    };
+    }
+}
+
+fn fake_worker(sh: &Arc<Mutex<Shared>>, wake: &dyn Fn(), rx: &std::sync::mpsc::Receiver<Request>) {
+    let mut status = fake_status();
     loop {
         sh.lock().unwrap().status = Some(Ok(status.clone()));
         wake();
@@ -194,6 +203,14 @@ pub struct State {
     /// Join was clicked on a new enterprise network: main opens the sheet
     /// that asks for its credentials (device path, network).
     pub enterprise: Option<(String, Network)>,
+}
+
+#[cfg(test)]
+impl State {
+    /// On `tab` (for the layout lint).
+    pub fn showing(tab: usize) -> State {
+        State { tab, ..Default::default() }
+    }
 }
 
 impl State {

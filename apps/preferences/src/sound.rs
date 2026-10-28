@@ -34,15 +34,40 @@ struct Link {
     contexts: Arc<Mutex<Vec<Context>>>,
 }
 
+/// What tests show instead of the sound server's devices (for the layout
+/// lint): long names.
+#[cfg(test)]
+fn sample(devices: &Shared) {
+    let device = |name: &str, description: &str, is_default| audio::Device {
+        name: name.into(),
+        description: description.into(),
+        volume: audio::Volume { level: 0.6, muted: false },
+        channels: 2,
+        is_default,
+    };
+    *devices.lock().unwrap() = Some(Some(Devices {
+        outputs: vec![
+            device("speakers", "MacBook Pro Speakers (Built-in Audio Analog Stereo)", true),
+            device("hdmi", "LG UltraFine Display Audio (HDMI / DisplayPort 2 Output)", false),
+        ],
+        inputs: vec![device("mic", "MacBook Pro Microphone Array (Built-in Audio Analog Stereo)", true)],
+    }));
+}
+
 fn link() -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let devices: Shared = Default::default();
+        #[cfg(test)]
+        sample(&devices);
         let contexts: Arc<Mutex<Vec<Context>>> = Default::default();
         let (shared, wake) = (devices.clone(), contexts.clone());
         std::thread::Builder::new()
             .name("sound-watch".into())
             .spawn(move || {
+                if cfg!(test) {
+                    return;
+                }
                 audio::watch_devices(|d| {
                     *shared.lock().unwrap() = Some(d);
                     for ctx in wake.lock().unwrap().iter() {

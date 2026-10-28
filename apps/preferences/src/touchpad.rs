@@ -29,6 +29,14 @@ pub struct State {
     devices: Option<Shared>,
 }
 
+#[cfg(test)]
+impl State {
+    /// On `tab`, with `devices` already reported (for the layout lint).
+    pub fn showing(tab: usize, devices: Vec<InputDeviceInfo>) -> State {
+        State { tab, devices: Some(Arc::new(Mutex::new(Some(devices)))) }
+    }
+}
+
 /// Asks app_server for its devices now and every few seconds (a Magic
 /// Trackpad may come and go), until the panel closes.
 fn poll(ctx: &egui::Context) -> Shared {

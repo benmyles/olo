@@ -29,6 +29,8 @@ mod themes;
 mod touchid;
 mod touchpad;
 mod tracker;
+#[cfg(test)]
+mod ui_lint;
 mod workspaces;
 
 use std::collections::BTreeMap;

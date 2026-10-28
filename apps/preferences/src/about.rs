@@ -37,6 +37,20 @@ impl State {
         std::thread::spawn(move || *out.lock().unwrap() = Some(gather()));
         State { facts, restarted: None, error: None }
     }
+
+    /// Long facts as real machines give them, already read (for the
+    /// layout lint).
+    #[cfg(test)]
+    pub fn sample() -> State {
+        let facts = Facts {
+            machine: "Apple MacBook Pro (16-inch, M2 Max, 2023)".into(),
+            processor: "AMD Ryzen 9 7945HX with Radeon Graphics, 32 cores".into(),
+            memory: "128 GB".into(),
+            kernel: "Linux 7.3.0-2.fc44.aurora.aarch64+16k".into(),
+            uptime: Some((Duration::from_secs(400 * 86_400 + 23 * 3600 + 59 * 60), Instant::now())),
+        };
+        State { facts: Arc::new(Mutex::new(Some(facts))), restarted: None, error: None }
+    }
 }
 
 fn read(path: &str) -> String {

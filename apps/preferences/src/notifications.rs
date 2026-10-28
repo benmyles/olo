@@ -57,6 +57,16 @@ impl Default for State {
     }
 }
 
+#[cfg(test)]
+impl State {
+    /// The default settings and apps with long names, already read, with
+    /// no watcher (for the layout lint).
+    pub fn sample() -> State {
+        let apps = ["Google Chrome", "Terminal", "olo.some-very-long-application-identifier"].map(str::to_owned).to_vec();
+        State { settings: Some(NotificationSettings::default()), apps, rx: channel().1, edited: None }
+    }
+}
+
 /// Apps that have sent notifications (from the history), by name.
 fn known_apps() -> Vec<String> {
     let path = olo_kit::state_dir().join("notifications").join("history.json");

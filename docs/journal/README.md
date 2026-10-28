@@ -5,6 +5,42 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Touchpad: 576 tall, measured by the layout lint
+
+*23:20* — The layout lint runs Touchpad with every pad and profile. Its worst case is a MacBook pad without pressure on Touch, which shows both notes. At 520 the While Typing box ran 56 px past the tab and over Defaults/Revert. At 564 it was still 12 px past at 2×, leaving 8 px instead of the box's 20 px inset. At 576 it fits. Without a pad (here) the notes aren't shown, so that room is left over.
+
+![Touchpad: 576 tall, measured by the layout lint](2026-10-27/232039-touchpad-576-tall-measured-by-the-layout-lint.png)
+
+### About: wide enough for long facts
+
+*23:19* — The layout lint runs About with long real-world facts (e.g. “AMD Ryzen 9 7945HX with Radeon Graphics, 32 cores”); at 420 the processor was cut short with “…”, so About is now 440 wide.
+
+![About: wide enough for long facts](2026-10-27/231957-about-wide-enough-for-long-facts.png)
+
+### Tracker: after the layout lint
+
+*23:19* — One pixel taller (300×181): the box ends WINDOW_INSET above Defaults/Revert.
+
+![Tracker: after the layout lint](2026-10-27/231957-tracker-after-the-layout-lint.png)
+
+### Tracker: before the layout lint
+
+*23:19* — The layout lint found the New Windows Open In box 1 px past the panel's body at 2× (11 px to the buttons, not 12).
+
+![Tracker: before the layout lint](2026-10-27/231957-tracker-before-the-layout-lint.png)
+
+### Power: after the layout lint
+
+*23:19* — One pixel taller (460×363) so the boxes clear the buttons by WINDOW_INSET, and the menu fields' divider moved out to 176 so the longest label has a LABEL_GAP before its field.
+
+![Power: after the layout lint](2026-10-27/231956-power-after-the-layout-lint.png)
+
+### Power: before the layout lint
+
+*23:19* — Caught by the new layout lint (olo_kit::layout_lint): at 2× the Caffeinated box ran 1 px past the window's body, leaving 11 px above Defaults/Revert instead of WINDOW_INSET (12), and “Put the computer to sleep after:” stood 3 px from its field.
+
+![Power: before the layout lint](2026-10-27/231956-power-before-the-layout-lint.png)
+
 ### Keyboard: Option+Tab switches tabs
 
 *23:15* — Option+Tab and Option+Shift+Tab now move to the next and previous tab in any window that has tabs: Chrome, Terminal, Firefox, GTK and Qt apps and Olo's own tabbed windows. Like every shortcut, they can be changed in Keyboard. The new Zoom vertically and Zoom horizontally shortcuts are listed here too.
@@ -16,6 +52,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 *23:14* — A window's menu can now zoom it along one axis only: Zoom Vertically makes it as tall as the screen and keeps its width and place across; Zoom Horizontally does the same the other way. Here the Themes window has been zoomed vertically. Alt+Shift+Cmd+Up or Down and Alt+Shift+Cmd+Left or Right do the same, as does double-clicking the window's top or bottom (or left or right) edge.
 
 ![Zoom Vertically and Zoom Horizontally](2026-10-27/231457-zoom-vertically-and-zoom-horizontally.png)
+
+### Touchpad: the Touch tab ran into the buttons
+
+*23:14* — Before (left), the Touch tab ran past the bottom of the Touchpad window, so its last setting sat on top of the Defaults and Revert buttons. A first fix (right, 564 tall) clears the buttons but still squeezes the While Typing box at the bottom; the layout lint later measured it 12 px short, and the window is now 576 tall.
+
+![Touchpad: the Touch tab ran into the buttons](2026-10-27/231413-touchpad-the-touch-tab-fits.png)
 
 ### Themes: the Deskbar and desktop in each theme
 

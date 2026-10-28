@@ -50,16 +50,30 @@ struct Link {
     contexts: Arc<Mutex<Vec<Context>>>,
 }
 
+/// What tests show instead of timedated's (for the layout lint): the
+/// longest zone name.
+#[cfg(test)]
+fn sample(sh: &mut Shared) {
+    let zone = "America/Argentina/ComodRivadavia";
+    sh.status = Some(Ok(TimeStatus { timezone: zone.into(), ntp: true, ntp_synchronized: true, can_ntp: true, local_rtc: false }));
+    sh.zones = Arc::new(vec![zone.into(), "Europe/London".into(), "UTC".into()]);
+}
+
 fn link() -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
+        #[cfg(test)]
+        sample(&mut shared.lock().unwrap());
         let contexts: Arc<Mutex<Vec<Context>>> = Default::default();
         let (tx, rx) = channel::<Request>();
         let (sh, ctxs) = (shared.clone(), contexts.clone());
         std::thread::Builder::new()
             .name("timedate".into())
             .spawn(move || {
+                if cfg!(test) {
+                    return;
+                }
                 let wake = || ctxs.lock().unwrap().iter().for_each(|c| c.request_repaint());
                 match systime::timezones() {
                     Ok(z) => sh.lock().unwrap().zones = Arc::new(z),
@@ -121,6 +135,14 @@ pub struct State {
     zone_selected: bool,
     /// A row selected in code, to scroll into view.
     reveal: Option<usize>,
+}
+
+#[cfg(test)]
+impl State {
+    /// On `tab` (for the layout lint).
+    pub fn showing(tab: usize) -> State {
+        State { tab, ..Default::default() }
+    }
 }
 
 pub fn ui(ui: &mut Ui, s: &mut Settings, st: &mut State) {

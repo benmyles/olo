@@ -31,6 +31,9 @@ as_root() {
     if [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi
 }
 
+# The layout lint first (docs/HACKING.md, "Layout lint"): a window whose
+# content doesn't fit stops the install.
+as_user cargo ui-lint
 as_user cargo build --release --workspace
 # An install from before the rename (Tabula): its folders become Olo's,
 # with links by the old names (as every Olo program does at start, but

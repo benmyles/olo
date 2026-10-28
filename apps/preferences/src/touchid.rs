@@ -59,6 +59,10 @@ fn link() -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
+        if let Some(fake) = fake_fingers() {
+            // From the first frame (the one the layout lint checks).
+            shared.lock().unwrap().fingers = Some(Ok(fake));
+        }
         let contexts: Arc<Mutex<Vec<Context>>> = Default::default();
         let (tx, rx) = channel::<Request>();
         let (sh, ctxs) = (shared.clone(), contexts.clone());
@@ -166,6 +170,10 @@ fn enroll(sh: &Arc<Mutex<Shared>>, ctxs: &Arc<Mutex<Vec<Context>>>, me: &str, fi
 /// pretend to be a sensor with these fingers, so the panel can be tried
 /// headless without touching the real sensor or the user's prints.
 fn fake_fingers() -> Option<Vec<String>> {
+    if cfg!(test) {
+        // Tests always have some.
+        return Some(["right-index-finger", "right-middle-finger", "left-thumb"].map(str::to_owned).to_vec());
+    }
     if !cfg!(debug_assertions) {
         return None;
     }

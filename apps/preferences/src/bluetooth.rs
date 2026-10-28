@@ -49,16 +49,47 @@ fn wake(contexts: &Mutex<Vec<Context>>) {
     contexts.lock().unwrap().iter().for_each(|c| c.request_repaint());
 }
 
+/// What tests show instead of BlueZ's (for the layout lint): an adapter
+/// searching, and devices with long names.
+#[cfg(test)]
+fn sample(sh: &mut Shared) {
+    let device = |name: &str, icon: &str, paired, connected, battery| bt::Device {
+        path: format!("/org/bluez/hci0/{name}"),
+        name: name.into(),
+        address: "AC:DE:48:00:11:22".into(),
+        icon: icon.into(),
+        named: true,
+        paired,
+        connected,
+        trusted: paired,
+        rssi: Some(-60),
+        battery,
+    };
+    sh.status = Some(Ok(Status {
+        adapter: Some(bt::Adapter { path: "/org/bluez/hci0".into(), name: "aurora".into(), address: "AC:DE:48:00:00:01".into(), powered: true, discoverable: false, discovering: true }),
+        devices: vec![
+            device("Someone's AirPods Pro (2nd generation)", "audio-headphones", true, true, Some(80)),
+            device("Magic Keyboard with Touch ID and Numeric Keypad", "input-keyboard", true, false, Some(55)),
+            device("Living Room Television", "video-display", false, false, None),
+        ],
+    }));
+}
+
 fn link() -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
+        #[cfg(test)]
+        sample(&mut shared.lock().unwrap());
         let contexts: Arc<Mutex<Vec<Context>>> = Default::default();
         let (tx, rx) = channel::<Request>();
         let (sh, ctxs) = (shared.clone(), contexts.clone());
         std::thread::Builder::new()
             .name("bluetooth".into())
             .spawn(move || {
+                if cfg!(test) {
+                    return;
+                }
                 let agent = {
                     let (sh, ctxs) = (sh.clone(), ctxs.clone());
                     Agent::register(move |e| {

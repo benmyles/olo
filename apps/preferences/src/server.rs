@@ -58,6 +58,13 @@ impl Server {
         Server { tx, recorded }
     }
 
+    /// A link to nowhere: what it's asked to send is dropped (for the
+    /// layout lint).
+    #[cfg(test)]
+    pub fn detached() -> Server {
+        Server { tx: channel().0, recorded: Recorded::default() }
+    }
+
     pub fn set_settings(&self, settings: Settings) {
         let _ = self.tx.send(Out::Settings(Box::new(settings)));
     }
