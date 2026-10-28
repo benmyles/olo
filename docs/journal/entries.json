@@ -1258,5 +1258,23 @@
   "title": "Cascade Others",
   "caption": "\u2303\u21e7\u2318\\ with notes.txt focused: every other window is cascaded from the top left, and notes.txt stays where it was, in front. Fan Out Others (\u2303\u21e7\u2318/) does the same with Fan Out.",
   "image": "2026-10-27/193159-cascade-others.png"
+ },
+ {
+  "time": "2026-10-27T19:43:14",
+  "title": "Deskbar: Window Arrangement",
+  "caption": "The Olo menu now has the desktop-wide commands: Window Arrangement (Tile All, Smart Tile, Zoom All, Cascade All, Fan Out, Cascade and Fan Out Others, Undo), Workspaces and Show or Hide All Windows. The Deskbar tile shows the olo wordmark alone, centred.",
+  "image": "2026-10-27/194314-deskbar-window-arrangement.png"
+ },
+ {
+  "time": "2026-10-27T19:43:15",
+  "title": "Deskbar: Workspaces",
+  "caption": "Go to a workspace, or move the window that had the focus to one.",
+  "image": "2026-10-27/194315-deskbar-workspaces.png"
+ },
+ {
+  "time": "2026-10-27T19:43:17",
+  "title": "Fan Out Others from the menu",
+  "caption": "Chosen from Deskbar with README.md focused: the other windows fan out along the top and README.md stays where it was, in front.",
+  "image": "2026-10-27/194317-fan-out-others-from-the-menu.png"
  }
 ]

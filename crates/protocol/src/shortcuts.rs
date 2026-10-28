@@ -197,6 +197,8 @@ pub enum Shortcut {
     /// Every window on the active display stacked at the top left with
     /// their tabs side by side.
     FanOut,
+    /// Every window on the active display zoomed (again: unzoomed).
+    ZoomAll,
     /// Cascade All and Fan Out for every window but the focused one,
     /// which stays where it is, in front.
     CascadeOthers,
@@ -214,6 +216,9 @@ pub enum Shortcut {
     /// with it).
     WindowToNextWorkspace,
     WindowToPreviousWorkspace,
+    /// The focused window to workspace 1–9 (counting from 0), following
+    /// it there.
+    WindowToWorkspace(u8),
     /// The command palette (apps/palette).
     Palette,
     Find,
@@ -315,6 +320,7 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::PreviousDisplay, "previous-display", WINDOWS, "To the previous display", &["Ctrl+Alt+Cmd+Left"]),
     s(Shortcut::TileAll, "tile-all", ARRANGE, "Tile all windows on the display", &["Ctrl+Cmd+Return"]),
     s(Shortcut::SmartTile, "smart-tile", ARRANGE, "Smart tile all windows on the display", &["Ctrl+Shift+Cmd+Return"]),
+    s(Shortcut::ZoomAll, "zoom-all", ARRANGE, "Zoom or unzoom all windows on the display", &["Ctrl+Alt+Cmd+Return"]),
     s(Shortcut::CascadeAll, "cascade-all", ARRANGE, "Cascade all windows on the display", &["Ctrl+Cmd+Backslash"]),
     s(Shortcut::FanOut, "fan-out", ARRANGE, "Fan out all windows, tabs side by side", &["Ctrl+Cmd+Slash"]),
     s(Shortcut::CascadeOthers, "cascade-others", ARRANGE, "Cascade the other windows, leaving this one", &["Ctrl+Shift+Cmd+Backslash"]),
@@ -334,6 +340,15 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::Workspace(6), "workspace-7", WORKSPACES, "Workspace 7", &["Ctrl+Cmd+7"]),
     s(Shortcut::Workspace(7), "workspace-8", WORKSPACES, "Workspace 8", &["Ctrl+Cmd+8"]),
     s(Shortcut::Workspace(8), "workspace-9", WORKSPACES, "Workspace 9", &["Ctrl+Cmd+9"]),
+    s(Shortcut::WindowToWorkspace(0), "window-to-workspace-1", WORKSPACES, "Window to workspace 1", &["Ctrl+Shift+Cmd+1"]),
+    s(Shortcut::WindowToWorkspace(1), "window-to-workspace-2", WORKSPACES, "Window to workspace 2", &["Ctrl+Shift+Cmd+2"]),
+    s(Shortcut::WindowToWorkspace(2), "window-to-workspace-3", WORKSPACES, "Window to workspace 3", &["Ctrl+Shift+Cmd+3"]),
+    s(Shortcut::WindowToWorkspace(3), "window-to-workspace-4", WORKSPACES, "Window to workspace 4", &["Ctrl+Shift+Cmd+4"]),
+    s(Shortcut::WindowToWorkspace(4), "window-to-workspace-5", WORKSPACES, "Window to workspace 5", &["Ctrl+Shift+Cmd+5"]),
+    s(Shortcut::WindowToWorkspace(5), "window-to-workspace-6", WORKSPACES, "Window to workspace 6", &["Ctrl+Shift+Cmd+6"]),
+    s(Shortcut::WindowToWorkspace(6), "window-to-workspace-7", WORKSPACES, "Window to workspace 7", &["Ctrl+Shift+Cmd+7"]),
+    s(Shortcut::WindowToWorkspace(7), "window-to-workspace-8", WORKSPACES, "Window to workspace 8", &["Ctrl+Shift+Cmd+8"]),
+    s(Shortcut::WindowToWorkspace(8), "window-to-workspace-9", WORKSPACES, "Window to workspace 9", &["Ctrl+Shift+Cmd+9"]),
     s(Shortcut::Palette, "palette", DESKTOP, "Command palette", &["Cmd+Space"]),
     s(Shortcut::Find, "find", DESKTOP, "Find", &["Alt+Cmd+Space"]),
     s(Shortcut::Lock, "lock", DESKTOP, "Lock the screen", &["Ctrl+Cmd+Q"]),

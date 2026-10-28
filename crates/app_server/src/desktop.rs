@@ -79,6 +79,12 @@ pub struct Twitch {
     pub apps: bool,
     pub ids: Vec<u64>,
     pub index: usize,
+    /// The windows' stacking when switching began (back first): each one
+    /// passed over goes back into it, so only the one chosen ends up
+    /// raised.
+    stack: Vec<WindowElement>,
+    /// The minimized window being shown now, hidden again when passed.
+    unhidden: Option<WindowElement>,
 }
 
 /// Windows not currently in the space: minimized, or on another workspace.
@@ -366,7 +372,8 @@ impl<B: Backend + 'static> AnvilState<B> {
                     })
                 })
                 .unwrap_or(0);
-            self.twitch = Some(Twitch { apps, ids, index });
+            let stack = self.space.elements().cloned().collect();
+            self.twitch = Some(Twitch { apps, ids, index, stack, unhidden: None });
         }
         let Some(t) = self.twitch.as_mut() else { return };
         if t.ids.len() < 2 {
@@ -375,8 +382,22 @@ impl<B: Backend + 'static> AnvilState<B> {
         let n = t.ids.len();
         t.index = if back { (t.index + n - 1) % n } else { (t.index + 1) % n };
         let id = t.ids[t.index];
-        if let Some(w) = self.window_by_id(id) {
-            self.restore(&w);
+        let (unhidden, stack) = (t.unhidden.take(), t.stack.clone());
+        let Some(w) = self.window_by_id(id) else { return };
+        // The one shown before back as it was: hidden again if it was
+        // minimized, and every window back in its place in the stack.
+        if let Some(u) = unhidden.filter(|u| *u != w) {
+            self.minimize(&u);
+        }
+        for s in &stack {
+            if self.space.element_location(s).is_some() {
+                self.space.raise_element(s, false);
+            }
+        }
+        let was_hidden = w.meta().minimized.get();
+        self.restore(&w);
+        if let Some(t) = self.twitch.as_mut() {
+            t.unhidden = was_hidden.then_some(w);
         }
     }
 
@@ -392,7 +413,8 @@ impl<B: Backend + 'static> AnvilState<B> {
         (entries.len() == t.ids.len()).then_some((entries, t.index))
     }
 
-    /// ⌘ released: the chosen window stays in front.
+    /// ⌘ released: the chosen window stays in front, the rest where they
+    /// were (`twitch_step` put each back as it passed it).
     pub fn twitch_done(&mut self) {
         self.twitch = None;
     }

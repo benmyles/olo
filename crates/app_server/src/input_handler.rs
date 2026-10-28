@@ -224,10 +224,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             // Slow (a model looks at the screen): its own process, which
             // shows progress and sends Arrange when it has an answer.
             S::SmartTile => self.spawn_program("olo-smart-tile", &[]),
-            S::CascadeAll => self.cascade_all(false),
-            S::FanOut => self.fan_out(false),
-            S::CascadeOthers => self.cascade_all(true),
-            S::FanOutOthers => self.fan_out(true),
+            S::ZoomAll => self.zoom_all(),
+            S::CascadeAll => self.cascade_all(None),
+            S::FanOut => self.fan_out(None),
+            S::CascadeOthers => self.cascade_all(focused.as_ref()),
+            S::FanOutOthers => self.fan_out(focused.as_ref()),
             S::UndoArrangement => self.undo_arrangement(),
             S::ShowDesktop => self.show_desktop(),
             S::NextWorkspace => self.switch_workspace((self.workspace + 1).min(workspaces - 1)),
@@ -237,6 +238,14 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let Some(w) = focused else { return };
                 let to = if shortcut == S::WindowToNextWorkspace { (self.workspace + 1).min(workspaces - 1) } else { self.workspace.saturating_sub(1) };
                 if to != self.workspace {
+                    self.move_to_workspace(&w, to);
+                    self.restore(&w);
+                }
+            }
+            S::WindowToWorkspace(i) => {
+                let Some(w) = focused else { return };
+                let to = u32::from(i);
+                if to < workspaces && to != self.workspace {
                     self.move_to_workspace(&w, to);
                     self.restore(&w);
                 }

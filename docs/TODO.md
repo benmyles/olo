@@ -5,6 +5,15 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Deskbar's Olo menu arranges windows~~ (Ben): Window Arrangement,
+  Workspaces (with Move Window To) and Show or Hide All Windows, acting
+  on the window that had the focus.
+- ~~Zoom All, Window to Workspace 1–9~~ (Ben): ⌃⌥⌘↩ zooms (or unzooms)
+  every window on the display; ⌃⇧⌘1–9 move the focused window to a
+  workspace.
+- ~~⌘Tab keeps the stacking~~ (Ben): windows passed over go back where
+  they were; only the chosen one is raised.
+- ~~Deskbar shows the wordmark alone~~ (Ben), centred in its tile.
 - ~~Rolled-up windows share one tile~~ (Ben): Tile All (and Tile App) gives
   the rolled-up windows one cell between them, their tabs fanned out along
   its top (a row lower when full), not a nearly empty cell each; tab

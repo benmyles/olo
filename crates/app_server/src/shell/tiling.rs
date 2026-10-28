@@ -304,6 +304,18 @@ pub fn fan_in(cell: Rectangle<i32, Logical>, tabs: &[i32], tab_h: i32) -> Vec<(R
         .collect()
 }
 
+/// Not a fixed-size window (an alert, a panel such as DeskCalc's).
+fn resizable(w: &WindowElement) -> bool {
+    use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
+    w.wl_surface().is_none_or(|s| {
+        with_states(&s, |st| {
+            let mut cached = st.cached_state.get::<SurfaceCachedState>();
+            let c = cached.current();
+            (c.max_size.w == 0 || c.max_size.w > c.min_size.w) && (c.max_size.h == 0 || c.max_size.h > c.min_size.h)
+        })
+    })
+}
+
 impl<BackendData: Backend> AnvilState<BackendData> {
     fn tile_gap(&self) -> i32 {
         self.settings.tiling.gap.min(200) as i32
@@ -724,11 +736,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// always fit, narrower ones more); past that the rest go as far
     /// right as they fit, their tabs slid along them to keep stepping
     /// right, and overlap only when there's no room left for them.
-    /// `others`: all but the focused window, left where it is.
-    pub fn fan_out(&mut self, others: bool) {
-        let Some(output) = self.active_output() else { return };
+    /// `keep`: all but that window, left where it is.
+    pub fn fan_out(&mut self, keep: Option<&WindowElement>) {
+        let Some(output) = self.arranged_output(keep) else { return };
         let (Some(area), Some(screen)) = (self.tile_area(&output), self.space.output_geometry(&output)) else { return };
-        let (windows, kept) = self.windows_to_arrange(&output, others);
+        let (windows, kept) = self.windows_to_arrange(&output, keep);
         if windows.is_empty() {
             return;
         }
@@ -769,14 +781,20 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             x = at + offset + tab;
         }
         self.bring_back(kept);
-        info!(windows = order.len(), others, "fanned out");
+        info!(windows = order.len(), "fanned out");
+    }
+
+    /// The display an arranging command works on: the kept window's, else
+    /// the active one.
+    fn arranged_output(&self, keep: Option<&WindowElement>) -> Option<Output> {
+        keep.and_then(|w| self.window_output(w)).or_else(|| self.active_output())
     }
 
     /// The windows on `output` an arranging command moves: all of them,
-    /// or (`others`) all but the focused one, which it hands back.
-    fn windows_to_arrange(&self, output: &Output, others: bool) -> (Vec<WindowElement>, Option<WindowElement>) {
+    /// or all but `keep`, which it hands back if it is there.
+    fn windows_to_arrange(&self, output: &Output, keep: Option<&WindowElement>) -> (Vec<WindowElement>, Option<WindowElement>) {
         let mut windows = self.windows_on(output);
-        let kept = others.then(|| self.focused_window()).flatten().filter(|f| windows.contains(f));
+        let kept = keep.filter(|k| windows.contains(k)).cloned();
         windows.retain(|w| Some(w) != kept.as_ref());
         (windows, kept)
     }
@@ -834,6 +852,27 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
     }
 
+    /// Every resizable window on the active display zoomed; if they all
+    /// are, every one unzoomed (back into its tile or cell, if it had
+    /// one, as Zoom does).
+    pub fn zoom_all(&mut self) {
+        let Some(output) = self.active_output() else { return };
+        let windows: Vec<WindowElement> = self.windows_on(&output).into_iter().filter(resizable).collect();
+        if windows.is_empty() {
+            return;
+        }
+        self.remember_arrangement(&windows);
+        let unzoom = windows.iter().all(|w| self.is_zoomed(w));
+        for w in &windows {
+            match (unzoom, self.is_zoomed(w)) {
+                (true, _) => self.unzoom_window(w),
+                (false, false) => self.zoom_window(w),
+                _ => {}
+            }
+        }
+        info!(windows = windows.len(), unzoom, "zoomed all");
+    }
+
     /// The active display, the area tiling uses on it, and its windows,
     /// front first: what an arranger (Smart Tiling) works with.
     pub fn arrangement(&self) -> Option<(Output, Rectangle<i32, Logical>, Vec<WindowElement>)> {
@@ -879,16 +918,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     pub fn tile_app(&mut self, app_id: &str) -> bool {
         let Some(output) = self.active_output() else { return false };
         let Some(area) = self.tile_area(&output) else { return false };
-        use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
-        let resizable = |w: &WindowElement| {
-            w.wl_surface().is_none_or(|s| {
-                with_states(&s, |st| {
-                    let mut cached = st.cached_state.get::<SurfaceCachedState>();
-                    let c = cached.current();
-                    (c.max_size.w == 0 || c.max_size.w > c.min_size.w) && (c.max_size.h == 0 || c.max_size.h > c.min_size.h)
-                })
-            })
-        };
         let mut windows: Vec<WindowElement> = self.space.elements().filter(|w| w.app_id() == app_id && resizable(w)).cloned().collect();
         if windows.is_empty() {
             return false;
@@ -911,12 +940,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// Every window on the active display stacked diagonally from the top
     /// left, as they open, front-most last; each its own size where it
-    /// fits. `others`: all but the focused window, left where it is, in
-    /// front.
-    pub fn cascade_all(&mut self, others: bool) {
-        let Some(output) = self.active_output() else { return };
+    /// fits. `keep`: all but that window, left where it is, in front.
+    pub fn cascade_all(&mut self, keep: Option<&WindowElement>) {
+        let Some(output) = self.arranged_output(keep) else { return };
         let Some(area) = self.tile_area(&output) else { return };
-        let (windows, kept) = self.windows_to_arrange(&output, others);
+        let (windows, kept) = self.windows_to_arrange(&output, keep);
         self.remember_arrangement(&windows);
         let n = windows.len() as i32;
         for (i, w) in windows.iter().enumerate() {

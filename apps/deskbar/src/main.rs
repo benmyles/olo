@@ -96,6 +96,9 @@ struct Deskbar {
     entries: HashMap<String, Option<DesktopEntry>>,
     height: f32,
     scroll_acc: f32,
+    /// The window that last had the focus: still "this window" for the
+    /// Olo menu's commands while the menu holds the keyboard.
+    last_focused: Option<u64>,
     /// The Restart / Shut Down confirmation, while it is open.
     confirm: Option<(WindowId, Power)>,
     /// The "upgrade and reload?" alert, while it is open, with its message.
@@ -201,6 +204,8 @@ impl Deskbar {
             }
         }
         self.order.retain(|k| windows.iter().any(|w| &team_key(w) == k));
+        let focused = windows.iter().find(|w| w.focused).map(|w| w.id);
+        self.last_focused = focused.or(self.last_focused.filter(|id| windows.iter().any(|w| w.id == *id && !w.minimized)));
         self.windows = windows;
     }
 
@@ -262,6 +267,13 @@ impl Deskbar {
             .item("Find…", "find", None)
             .icon("query")
             .separator()
+            .submenu(self.arrange_menu())
+            .icon("display")
+            .submenu(self.workspaces_menu())
+            .icon("workspaces")
+            .item("Show or Hide All Windows", "arrange:show-desktop", None)
+            .icon("desktop")
+            .separator()
             .submenu(self.caffeine_menu())
             .icon("stay-awake")
             .item("Lock Screen", "lock", None)
@@ -279,6 +291,49 @@ impl Deskbar {
             .icon("other-applications")
             .submenu(prefs)
             .icon("preferences")
+    }
+
+    /// The focused window (what "Others" leaves alone and a window is
+    /// moved from), if any: the last one, as opening this menu takes the
+    /// focus.
+    fn focused_window(&self) -> Option<u64> {
+        self.last_focused.filter(|id| self.windows.iter().any(|w| w.id == *id && w.workspace == self.workspace.0))
+    }
+
+    /// The arranging commands app_server's shortcuts do (`arrange:` and a
+    /// shortcut id), for the active display.
+    fn arrange_menu(&self) -> Menu {
+        let focused = self.focused_window().is_some();
+        Menu::new("Window Arrangement")
+            .item("Tile All", "arrange:tile-all", None)
+            .item("Smart Tile", "arrange:smart-tile", None)
+            .item("Zoom All", "arrange:zoom-all", None)
+            .item("Cascade All", "arrange:cascade-all", None)
+            .item("Fan Out", "arrange:fan-out", None)
+            .separator()
+            .item("Cascade Others", "arrange:cascade-others", None)
+            .enabled(focused)
+            .item("Fan Out Others", "arrange:fan-out-others", None)
+            .enabled(focused)
+            .separator()
+            .item("Undo Window Arrangement", "arrange:undo-arrangement", None)
+    }
+
+    /// Go to a workspace, or move the focused window to one.
+    fn workspaces_menu(&self) -> Menu {
+        let (current, count) = (self.workspace.0, self.workspace.1.clamp(1, 9));
+        let mut m = Menu::new("Workspaces");
+        for i in 0..count {
+            m = m.item(format!("Workspace {}", i + 1), format!("arrange:workspace-{}", i + 1), None).checked(i == current);
+        }
+        if count > 1 && self.focused_window().is_some() {
+            let mut to = Menu::new("Move Window To");
+            for i in 0..count {
+                to = to.item(format!("Workspace {}", i + 1), format!("arrange:window-to-workspace-{}", i + 1), None).enabled(i != current);
+            }
+            m = m.separator().submenu(to);
+        }
+        m.separator().item("Workspaces Preferences…", "pref:workspaces", None)
     }
 
     fn team_menu(&self, team: &Team) -> Menu {
@@ -379,6 +434,7 @@ impl Deskbar {
             Some(("run", bin)) => spawn(bin),
             Some(("pref", panel)) => spawn(&format!("olo-preferences {panel}")),
             Some(("caff", arg)) => self.caffeine_command(arg),
+            Some(("arrange", id)) => request(Request::RunShortcut { id: id.into(), window: self.focused_window() }),
             Some(("notif", "history")) => spawn("olo-notifications --history"),
             Some(("notif", arg)) => self.do_not_disturb(arg),
             Some(("desktop", id)) => {
@@ -648,15 +704,13 @@ impl App for Deskbar {
             shade(&pal, pal.panel_background, 1.04),
         );
         section_bevel(&painter, tile, &pal);
-        let logo = Rect::from_center_size(pos2(tile.left() + 22.0, tile.center().y), vec2(22.0, 22.0));
-        if !icons::paint(&painter, logo, "olo") {
-            icons::paint(&painter, logo, "application");
-        }
-        // The mark and the wordmark: the brand's lockup.
+        // The wordmark alone, centred (beside the mark it read as "o olo").
         let dark = pal.mode == olo_kit::theme::ThemeMode::Dark;
-        let word = Rect::from_min_size(pos2(logo.right() + 7.0, tile.center().y - 8.0), vec2(tile.right() - logo.right(), 16.0));
+        let word_h = 18.0;
+        let word_w = olo_kit::brand::wordmark_width(word_h);
+        let word = Rect::from_min_size(pos2(tile.center().x - word_w / 2.0, tile.center().y - word_h / 2.0), vec2(word_w, word_h));
         if olo_kit::brand::wordmark(&painter, word, dark).is_none() {
-            style::label(&painter, logo.right() + 8.0, tile.center().y, egui::Align::Min, "Olo", egui::FontId::new(14.0, style::bold()), c(pal.panel_text));
+            style::label(&painter, tile.center().x, tile.center().y, egui::Align::Center, "Olo", egui::FontId::new(14.0, style::bold()), c(pal.panel_text));
         }
 
         // ---- tray: the date and time, then the status icons
@@ -1015,6 +1069,7 @@ fn main() {
             entries: HashMap::new(),
             height: TILE_H + tray_height(1),
             scroll_acc: 0.0,
+            last_focused: None,
             confirm: None,
             upgrade_ask: None,
         }

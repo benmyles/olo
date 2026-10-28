@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Fan Out Others from the menu
+
+*19:43* — Chosen from Deskbar with README.md focused: the other windows fan out along the top and README.md stays where it was, in front.
+
+![Fan Out Others from the menu](2026-10-27/194317-fan-out-others-from-the-menu.png)
+
+### Deskbar: Workspaces
+
+*19:43* — Go to a workspace, or move the window that had the focus to one.
+
+![Deskbar: Workspaces](2026-10-27/194315-deskbar-workspaces.png)
+
+### Deskbar: Window Arrangement
+
+*19:43* — The Olo menu now has the desktop-wide commands: Window Arrangement (Tile All, Smart Tile, Zoom All, Cascade All, Fan Out, Cascade and Fan Out Others, Undo), Workspaces and Show or Hide All Windows. The Deskbar tile shows the olo wordmark alone, centred.
+
+![Deskbar: Window Arrangement](2026-10-27/194314-deskbar-window-arrangement.png)
+
 ### Cascade Others
 
 *19:31* — ⌃⇧⌘\ with notes.txt focused: every other window is cascaded from the top left, and notes.txt stays where it was, in front. Fan Out Others (⌃⇧⌘/) does the same with Fan Out.

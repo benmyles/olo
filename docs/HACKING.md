@@ -507,7 +507,8 @@ of the way down.
    Sizes 16 (lists, Deskbar), 32 (Tracker list), 48–64 (Tracker icon view),
    128 (About boxes). Olo's wordmark is `olo_kit::brand::wordmark(painter,
    rect, dark)` (from `data/brand`, shrunk crisply to the height asked
-   for; `wordmark_width(h)` to lay it out), beside the `olo` icon. Image previews: `icons::thumbnail(ctx, path, size)`
+   for; `wordmark_width(h)` to lay it out); Deskbar's tile shows it alone,
+centred (beside the `olo` mark it read as "o olo"). Image previews: `icons::thumbnail(ctx, path, size)`
    decodes off-thread and returns `None` until ready (it repaints when
    done); place it with `icons::fit(ctx, &tex, bounds)` so it is never
    upscaled or blurred. Need a new one? Follow **[ICONS.md](ICONS.md)**: the
@@ -934,6 +935,20 @@ icon on every item (`OUR_APPS` and `PREFERENCE_PANELS` icons, each
 .desktop entry's, a sunburst icon per command and category) and strips
 them all when it's off.
 
+The Olo menu also has the desktop-wide commands app_server's shortcuts
+do: Window Arrangement (Tile All, Smart Tile, Zoom All, Cascade All, Fan
+Out, Cascade / Fan Out Others, Undo), Workspaces (go to one, Move Window
+To, Workspaces preferences) and Show or Hide All Windows. Each is
+`arrange:` and a shortcut id, sent as `Request::RunShortcut` naming the
+window that last had the focus (`last_focused`: opening the menu takes
+the keyboard, so app_server sees no focused window by then).
+
+Twitcher (⌘Tab, ⌘\`, `twitch_step`) shows each window it passes by
+bringing it forward (a minimized one unminimized), but keeps the stacking
+from when switching began (`Twitch::stack`): passing on puts the last one
+back in its place (minimized again if it was), so when ⌘ is let go only
+the chosen window has moved.
+
 ## Desktop shortcuts and tiling (olo_protocol::shortcuts, app_server keymap.rs, shell/tiling.rs)
 
 app_server's own shortcuts are one table, `olo_protocol::shortcuts::SHORTCUTS`:
@@ -997,9 +1012,12 @@ tie), each starts at the last one's tab end, is narrowed so it doesn't
 reach under the Deskbar but not below a quarter of the display (nor its
 app's minimum), and past that is pinned as far right as it fits with its
 tab slid along it (`tab_offset`, kept across a restart in the layout),
-so the tabs overlap only then. Cascade Others and Fan Out Others (⌃⇧⌘\,
-⌃⇧⌘/: `others`) arrange all but the focused window, which stays where it
-is, in front and focused (`windows_to_arrange`, `bring_back`). Every
+so the tabs overlap only then. Zoom All (`zoom_all`, ⌃⌥⌘↩) zooms every resizable window on
+the display, or unzooms them all if they all are. Window to Workspace 1–9
+(⌃⇧⌘1–9) moves the focused window there and follows it. Cascade Others and Fan Out Others (⌃⇧⌘\,
+⌃⇧⌘/: `keep`) arrange all but the focused window (or the one the
+palette or Deskbar's menu names), which stays where it is, in front and
+focused (`windows_to_arrange`, `bring_back`). Every
 arranging command (Tile All, Tile App, Cascade, Fan Out) first calls
 `remember_arrangement`, which keeps each window's frame, tab offset, tile
 and part (`Placed`, in `AnvilState::arranged`); Undo Window Arrangement
