@@ -810,7 +810,7 @@ impl Terminal {
                     .item("Move to New Window", format!("tab-detach:{shell}"), None)
                     .separator()
                     .item("Close Other Tabs", format!("tab-close-others:{shell}"), None)
-                    .item("Close Tab", format!("tab-close:{shell}"), None);
+                    .item_shift("Close Tab", format!("tab-close:{shell}"), Key::W);
                 menu::request_popup(
                     ui.ctx(),
                     MenuRequest { menu, source: ui.make_persistent_id("tab-menu"), anchor: MenuAnchor::At(pos), selected: None },

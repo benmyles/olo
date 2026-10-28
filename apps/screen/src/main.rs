@@ -685,7 +685,7 @@ fn outline(trees: &[ScreenTree], filter: &Filter) -> String {
             if let (Some(row), Some(rows)) = (n.row, n.rows) {
                 let _ = write!(o, " row {}/{rows}", row + 1);
             }
-            for (on, word) in [(!n.enabled, "disabled"), (n.clickable && !matches!(n.role.as_str(), "Clickable" | "Button" | "Link" | "MenuItem" | "Row"), "clickable"), (n.focused, "focused"), (n.checked == Some(true), "checked"), (n.selected == Some(true), "selected")] {
+            for (on, word) in [(!n.enabled, "disabled"), (n.clickable && !matches!(n.role.as_str(), "Clickable" | "Button" | "Link" | "MenuItem" | "Row"), "clickable"), (n.focused, "focused"), (n.checked == Some(true), "checked"), (n.selected == Some(true), "selected"), (n.minimized, "minimized")] {
                 if on {
                     let _ = write!(o, " {word}");
                 }

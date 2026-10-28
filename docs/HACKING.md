@@ -366,6 +366,11 @@ are named with `.keys("⌃⌘H")` after the item (`Action::keys`); they are
 only shown, whoever gets the keys acts on them. `Action::key_label()` is
 what's shown, and agents read it as the item's `value`.
 
+In a list of windows, `.minimized(true)` after an item marks a minimized
+one: a hollow diamond where the check mark goes and a lighter label
+(`style::diamond`), still enabled (choosing it brings the window back);
+agents read `minimized` on its `MenuItem` node.
+
 ### Widgets (`olo_kit::widgets`)
 
 `StringView` (a label; `.dim(true)` for hints, `.wrap(true)` for a paragraph, `.color(c)`), `Button` (`.default(true)` for the Enter button), `CheckBox`, `RadioButton`,
@@ -1064,6 +1069,16 @@ To, Workspaces preferences) and Show or Hide All Windows. Each is
 `arrange:` and a shortcut id, sent as `Request::RunShortcut` naming the
 window that last had the focus (`last_focused`: opening the menu takes
 the keyboard, so app_server sees no focused window by then).
+Each item shows the keys the person has for it (`add_keys`:
+`shortcuts::keys_for` with `Settings::shortcuts`, sent on every
+settings change).
+
+Clicking an app's row in Deskbar lists its windows (`team_menu`), as
+BeOS's Deskbar did: the focused one checked, one on another workspace
+with that workspace's number, and a minimized one marked as a Mac's
+Window menu does, a hollow diamond and a lighter label (`.minimized(true)`,
+`Action::minimized`; agents read `minimized` on its `MenuItem`). Choosing
+one brings it back.
 
 Twitcher (⌘Tab, ⌘\`, `twitch_step`) shows each window it passes by
 bringing it forward (a minimized one unminimized), but keeps the stacking

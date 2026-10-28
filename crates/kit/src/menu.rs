@@ -37,6 +37,10 @@ pub struct Action {
     /// a desktop shortcut or any chord ("⌃⌘H", "⌥⇧⇥"), as on a Mac. Only
     /// shown: whoever the keys go to acts on them.
     pub keys: Option<String>,
+    /// It stands for a minimized window, in a list of windows: a hollow
+    /// diamond where the check mark goes and a lighter label, as a Mac's
+    /// Window menu shows one. It can still be chosen (to bring it back).
+    pub minimized: bool,
 }
 
 /// A command-key shortcut. The command key is Ctrl (which app_server's
@@ -92,6 +96,7 @@ impl Menu {
             checked: false,
             icon: None,
             keys: None,
+            minimized: false,
         }));
         self
     }
@@ -104,6 +109,7 @@ impl Menu {
             checked: false,
             icon: None,
             keys: None,
+            minimized: false,
         }));
         self
     }
@@ -137,6 +143,13 @@ impl Menu {
     pub fn keys(mut self, keys: impl Into<String>) -> Self {
         if let Some(MenuItem::Action(a)) = self.items.last_mut() {
             a.keys = Some(keys.into());
+        }
+        self
+    }
+    /// Mark the last item a minimized window (see [`Action::minimized`]).
+    pub fn minimized(mut self, on: bool) -> Self {
+        if let Some(MenuItem::Action(a)) = self.items.last_mut() {
+            a.minimized = on;
         }
         self
     }
@@ -214,7 +227,7 @@ impl Menu {
 
 impl Action {
     pub fn new(label: impl Into<String>, command: impl Into<String>) -> Self {
-        Action { label: label.into(), command: command.into(), shortcut: None, enabled: true, checked: false, icon: None, keys: None }
+        Action { label: label.into(), command: command.into(), shortcut: None, enabled: true, checked: false, icon: None, keys: None, minimized: false }
     }
     /// The keys shown beside it, as on a Mac ("⌘W", "⌃⌘H").
     pub fn key_label(&self) -> Option<String> {
@@ -242,6 +255,10 @@ impl Action {
     }
     pub fn keys(mut self, keys: impl Into<String>) -> Self {
         self.keys = Some(keys.into());
+        self
+    }
+    pub fn minimized(mut self, on: bool) -> Self {
+        self.minimized = on;
         self
     }
 }
@@ -539,8 +556,8 @@ impl PopupLayout {
 
 /// What a popup menu of `size` shows, for agents (`commands::tree`): a
 /// `Menu` node, then a `MenuItem` for each item in view (separators left
-/// out), named by its label, with its shortcut as the value. Ids start at
-/// `first_id`.
+/// out), named by its label, with its shortcut as the value and whether
+/// it is a minimized window. Ids start at `first_id`.
 pub(crate) fn popup_nodes(menu: &Menu, state: &PopupState, size: (u32, u32), first_id: u64) -> Vec<crate::commands::UiNode> {
     use crate::commands::UiNode;
     let rect = Rect::from_min_size(Pos2::ZERO, vec2(size.0 as f32, size.1 as f32));
@@ -562,6 +579,7 @@ pub(crate) fn popup_nodes(menu: &Menu, state: &PopupState, size: (u32, u32), fir
         selected: None,
         row: None,
         rows: None,
+        minimized: false,
     };
     let mut nodes = vec![node(first_id, None, "Menu", (!menu.title.is_empty()).then(|| menu.title.clone()), rect)];
     for (i, (item, row)) in menu.items.iter().zip(layout.rows(state.scroll.clamp(0.0, layout.max_scroll))).enumerate() {
@@ -578,6 +596,7 @@ pub(crate) fn popup_nodes(menu: &Menu, state: &PopupState, size: (u32, u32), fir
                 n.value = a.key_label();
                 n.enabled = a.enabled;
                 n.checked = a.checked.then_some(true);
+                n.minimized = a.minimized;
             }
             MenuItem::Submenu(m) => n.name = Some(format!("{} ▸", m.title)),
         }
@@ -739,14 +758,19 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
                     style::disabled_text(&p)
                 } else if selected {
                     c(p.menu_selected_item_text)
+                } else if a.minimized {
+                    c(olo_theme::mix(p.menu_item_text, p.menu_background, 0.38))
                 } else {
                     c(p.menu_item_text)
                 };
                 if selected {
                     painter.rect_filled(*row, 0.0, c(p.menu_selected_background));
                 }
+                let mark = Rect::from_center_size(pos2(row.left() + 10.0, row.center().y), vec2(9.0, 9.0));
                 if a.checked {
-                    style::check_mark(&painter, Rect::from_center_size(pos2(row.left() + 10.0, row.center().y), vec2(9.0, 9.0)), text_color);
+                    style::check_mark(&painter, mark, text_color);
+                } else if a.minimized {
+                    style::diamond(&painter, mark, text_color);
                 }
                 if let (Some(left), Some(name)) = (icon_left, &a.icon) {
                     item_icon(&painter, *row, left, name, a.enabled);
@@ -808,6 +832,17 @@ mod tests {
         assert_eq!((first.x, first.y, first.height, first.selected), (POPUP_BORDER, POPUP_BORDER + 2.0, ITEM_HEIGHT, Some(true)));
         assert_eq!(last.y, first.y + ITEM_HEIGHT + SEPARATOR_HEIGHT);
         assert!(last.checked == Some(true) && !last.enabled && last.parent == Some(100));
+    }
+
+    #[test]
+    fn agents_see_which_windows_are_minimized() {
+        let menu = Menu::new("Terminal").item("~", "win:1", None).checked(true).item("src", "win:2", None).minimized(true);
+        let nodes = popup_nodes(&menu, &PopupState::default(), (170, 55), 0);
+        let marks: Vec<_> = nodes[1..].iter().map(|n| (n.checked, n.minimized, n.enabled)).collect();
+        // Minimized is a look, not a state that stops it being chosen.
+        assert_eq!(marks, [(Some(true), false, true), (None, true, true)]);
+        assert!(!serde_json::to_string(&nodes[1]).unwrap().contains("minimized"));
+        assert!(serde_json::to_string(&nodes[2]).unwrap().contains("\"minimized\":true"));
     }
 
     #[test]

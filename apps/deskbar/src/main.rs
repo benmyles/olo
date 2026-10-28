@@ -15,7 +15,10 @@ use olo_kit::{
     theme::Palette,
     widgets,
 };
-use olo_protocol::{Client, Event, Reply, Request, WindowInfo};
+use olo_protocol::{
+    Client, Event, Reply, Request, WindowInfo,
+    shortcuts::{self, ShortcutSettings},
+};
 
 /// Logical width of the vertical Deskbar.
 const WIDTH: f32 = olo_kit::metrics::DESKBAR_WIDTH;
@@ -67,9 +70,9 @@ enum Msg {
     Workspace(u32, u32),
     Status(status::Status),
     Power(olo_protocol::PowerStatus),
-    /// The clock's settings, whether the Olo menu shows icons, and the
-    /// apps whose windows aren't grouped.
-    Settings(olo_protocol::ClockSettings, bool, Vec<String>),
+    /// The clock's settings, whether the Olo menu shows icons, the apps
+    /// whose windows aren't grouped and the person's shortcut keys.
+    Settings(olo_protocol::ClockSettings, bool, Vec<String>, ShortcutSettings),
 }
 
 /// A team: the windows of one application.
@@ -102,6 +105,9 @@ struct Deskbar {
     last_focused: Option<u64>,
     /// Apps whose windows aren't grouped (`TilingSettings::ungrouped_apps`).
     ungrouped: Vec<String>,
+    /// The person's changes to app_server's shortcuts, for the keys the
+    /// Olo menu shows.
+    keys: ShortcutSettings,
     /// The Restart / Shut Down confirmation, while it is open.
     confirm: Option<(WindowId, Power)>,
     /// The "upgrade and reload?" alert, while it is open, with its message.
@@ -213,7 +219,8 @@ impl Deskbar {
     }
 
     fn olo_menu(&self) -> Menu {
-        let menu = self.olo_menu_with_icons();
+        let mut menu = self.olo_menu_with_icons();
+        add_keys(&mut menu, &self.keys);
         if self.menu_icons { menu } else { without_icons(menu) }
     }
 
@@ -348,7 +355,7 @@ impl Deskbar {
             } else {
                 title
             };
-            m = m.item(label, format!("win:{}", w.id), None).checked(w.focused);
+            m = m.item(label, format!("win:{}", w.id), None).checked(w.focused).minimized(w.minimized);
         }
         // An app of ours with several windows opens another, as BeOS's
         // Deskbar offered.
@@ -581,6 +588,28 @@ fn team_key_of(w: &WindowInfo) -> String {
 
 /// `menu` and its submenus with no icons (Appearance ▸ Show icons in the
 /// Deskbar menu, off).
+/// Show beside each of the Olo menu's commands that app_server also has
+/// as a shortcut (`find`, `lock`, `arrange:` and a shortcut id) the keys
+/// the person has for it.
+fn add_keys(menu: &mut Menu, changed: &ShortcutSettings) {
+    for item in &mut menu.items {
+        match item {
+            MenuItem::Action(a) => {
+                let id = a.command.strip_prefix("arrange:").unwrap_or(&a.command);
+                if let Some(info) = shortcuts::by_id(id) {
+                    a.keys = shortcuts::keys_for(info, changed).first().map(|c| c.symbols());
+                }
+            }
+            MenuItem::Submenu(m) => add_keys(m, changed),
+            MenuItem::Separator => {}
+        }
+    }
+}
+
+fn settings_msg(settings: olo_protocol::Settings) -> Msg {
+    Msg::Settings(settings.clock, settings.appearance.menu_icons, settings.tiling.ungrouped_apps, settings.shortcuts)
+}
+
 fn without_icons(mut menu: Menu) -> Menu {
     menu.icon = None;
     menu.items = menu
@@ -995,10 +1024,11 @@ impl App for Deskbar {
                     self.caffeinated_until = p.caffeinated_until;
                     self.caffeinated_lid = p.caffeinated_lid;
                 }
-                Msg::Settings(clock, icons, ungrouped) => {
+                Msg::Settings(clock, icons, ungrouped, keys) => {
                     self.clock = clock;
                     self.menu_icons = icons;
                     self.ungrouped = ungrouped;
+                    self.keys = keys;
                 }
             }
             cx.redraw(self.win);
@@ -1026,7 +1056,7 @@ fn watch_server(proxy: olo_kit::Proxy) {
                         proxy.send(Msg::Power(status));
                     }
                     if let Ok(Reply::Settings { settings }) = c.request(&Request::GetSettings) {
-                        proxy.send(Msg::Settings(settings.clock, settings.appearance.menu_icons, settings.tiling.ungrouped_apps));
+                        proxy.send(settings_msg(settings));
                     }
                     if let Ok(events) = c.into_events() {
                         for e in events.flatten() {
@@ -1035,7 +1065,7 @@ fn watch_server(proxy: olo_kit::Proxy) {
                                 Event::WorkspaceChanged { current, count } => proxy.send(Msg::Workspace(current, count)),
                                 Event::PowerChanged { status } => proxy.send(Msg::Power(status)),
                                 Event::SettingsChanged { settings } => {
-                                    proxy.send(Msg::Settings(settings.clock, settings.appearance.menu_icons, settings.tiling.ungrouped_apps))
+                                    proxy.send(settings_msg(settings))
                                 }
                                 _ => {}
                             }
@@ -1086,6 +1116,7 @@ fn main() {
             scroll_acc: 0.0,
             last_focused: None,
             ungrouped: Vec::new(),
+            keys: ShortcutSettings::new(),
             confirm: None,
             upgrade_ask: None,
         }

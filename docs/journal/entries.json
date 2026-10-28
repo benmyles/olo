@@ -1462,5 +1462,17 @@
   "title": "Context menus show their keys",
   "caption": "Every context menu takes the keys its commands have in the window's menu bar (Menu::keys_from), so Tracker's item menu shows \u2318O, \u2318Y, \u2318I and so on, and the window tab menu shows the person's own desktop shortcuts.",
   "image": "2026-10-28/012428-context-menus-show-their-keys.png"
+ },
+ {
+  "time": "2026-10-28T01:34:04",
+  "title": "Olo menu shows its shortcuts",
+  "caption": "Deskbar's Olo menu shows the keys the person has for each desktop-wide command (Find, Window Arrangement, Show or Hide All Windows, Lock Screen), following changes in Keyboard preferences.",
+  "image": "2026-10-28/013404-olo-menu-shows-its-shortcuts.png"
+ },
+ {
+  "time": "2026-10-28T01:34:06",
+  "title": "Minimized windows in Deskbar's window list",
+  "caption": "An app's window list in Deskbar marks a minimized window as a Mac's Window menu does: a hollow diamond where the check mark goes and a lighter label. It can still be chosen to bring the window back; agents read minimized on the item.",
+  "image": "2026-10-28/013406-minimized-windows-in-deskbar-s-window-list.png"
  }
 ]

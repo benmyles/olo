@@ -81,6 +81,9 @@ pub struct UiNode {
     pub row: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rows: Option<usize>,
+    /// A menu item standing for a minimized window ([`crate::menu::Action::minimized`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub minimized: bool,
 }
 
 /// What one window shows.
@@ -147,6 +150,7 @@ impl WindowTree {
                 selected: n.is_selected().or_else(|| n.toggled().filter(|_| picks).map(|t| t == egui::accesskit::Toggled::True)),
                 row: n.row_index(),
                 rows: n.row_count(),
+                minimized: false,
             });
             stack.extend(n.children().iter().rev().map(|c| c.0));
         }

@@ -415,6 +415,15 @@ pub fn check_mark(p: &Painter, r: Rect, color: Color32) {
     p.add(egui::Shape::line(pts, Stroke::new(1.6, color)));
 }
 
+/// A hollow diamond in `r` (a minimized window in a menu of windows, where
+/// a check mark would go).
+pub fn diamond(p: &Painter, r: Rect, color: Color32) {
+    let m = snap(p.ctx(), Rect::from_center_size(r.center(), vec2(8.0, 8.0))).center();
+    let h = r.width().min(r.height()) / 2.0 - 0.5;
+    let pts = vec![pos2(m.x, m.y - h), pos2(m.x + h, m.y), pos2(m.x, m.y + h), pos2(m.x - h, m.y)];
+    p.add(egui::Shape::closed_line(pts, Stroke::new(1.2, color)));
+}
+
 /// BOutlineListView's latch: a small solid triangle centred in `r`,
 /// pointing right while its group is folded and down while open.
 pub fn latch(p: &Painter, r: Rect, open: bool, color: Color32) {

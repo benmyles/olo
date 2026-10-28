@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-28
 
+### Minimized windows in Deskbar's window list
+
+*01:34* — An app's window list in Deskbar marks a minimized window as a Mac's Window menu does: a hollow diamond where the check mark goes and a lighter label. It can still be chosen to bring the window back; agents read minimized on the item.
+
+![Minimized windows in Deskbar's window list](2026-10-28/013406-minimized-windows-in-deskbar-s-window-list.png)
+
+### Olo menu shows its shortcuts
+
+*01:34* — Deskbar's Olo menu shows the keys the person has for each desktop-wide command (Find, Window Arrangement, Show or Hide All Windows, Lock Screen), following changes in Keyboard preferences.
+
+![Olo menu shows its shortcuts](2026-10-28/013404-olo-menu-shows-its-shortcuts.png)
+
 ### Context menus show their keys
 
 *01:24* — Every context menu takes the keys its commands have in the window's menu bar (Menu::keys_from), so Tracker's item menu shows ⌘O, ⌘Y, ⌘I and so on, and the window tab menu shows the person's own desktop shortcuts.
