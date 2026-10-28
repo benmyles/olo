@@ -61,6 +61,10 @@ pub struct Placement {
     /// Rolled up to its tab.
     #[serde(default)]
     pub rolled: bool,
+    /// How far its tab is slid along its top (Fan Out, rolled windows
+    /// after Tile All).
+    #[serde(default)]
+    pub tab_offset: i32,
     /// Seconds since the epoch when it was recorded.
     pub at: u64,
     /// The process that showed it (0: not known, any may take it).
@@ -119,6 +123,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             minimized: meta.minimized.get(),
             focused: focused.is_some() && w.wl_surface().as_deref() == focused,
             rolled: w.rolled(),
+            tab_offset: w.decoration().tab_offset,
             at: now(),
             pid: meta.owner.borrow().as_ref().map_or(0, |(pid, _)| *pid),
             client: meta.owner.borrow().as_ref().map(|(_, c)| c.clone()),
@@ -227,6 +232,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         meta.put_back.set(true);
         Self::set_tile_state(&window, p.tile, p.part);
         window.decoration().rolled = p.rolled;
+        window.decoration().tab_offset = p.tab_offset;
         meta.restored_focus.set(p.focused.then(std::time::Instant::now));
         if p.workspace != self.workspace {
             self.move_to_workspace(&window, p.workspace);

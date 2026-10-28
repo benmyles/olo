@@ -1240,5 +1240,23 @@
   "title": "Keyboard hints in menus (dark)",
   "caption": "A pick that opens a menu letters its items next, skipping disabled ones; a submenu's come first.",
   "image": "2026-10-27/174223-keyboard-hints-in-menus-dark.png"
+ },
+ {
+  "time": "2026-10-27T19:31:53",
+  "title": "Rolled-up windows share one tile",
+  "caption": "Tile All with four of seven windows rolled up: the three open ones get a cell each, and the four rolled-up ones share the last cell, their tabs side by side along its top. Unrolling one fills that cell.",
+  "image": "2026-10-27/193153-rolled-up-windows-share-one-tile.png"
+ },
+ {
+  "time": "2026-10-27T19:31:56",
+  "title": "Rolled-up windows share one tile (dark)",
+  "caption": "The same arrangement in dark mode.",
+  "image": "2026-10-27/193156-rolled-up-windows-share-one-tile-dark.png"
+ },
+ {
+  "time": "2026-10-27T19:31:59",
+  "title": "Cascade Others",
+  "caption": "\u2303\u21e7\u2318\\ with notes.txt focused: every other window is cascaded from the top left, and notes.txt stays where it was, in front. Fan Out Others (\u2303\u21e7\u2318/) does the same with Fan Out.",
+  "image": "2026-10-27/193159-cascade-others.png"
  }
 ]

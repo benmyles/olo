@@ -977,7 +977,11 @@ one would get smaller than its app's minimum or `MIN_TILE`; at the end
 each keeps its new part (`TilePart`, fractions that `part` turns back
 into the same frame: `fraction_of`), which `retile` uses from then on (a
 tiling command starts afresh; Tile All and Tile App tile each window as a
-`Tile::Cell`, its grid cell as its part, so they link the same way). A tiled window with no tiled neighbours
+`Tile::Cell`, its grid cell as its part, so they link the same way;
+rolled-up windows don't get a cell each but share the last one
+(`tile_grid`), each the whole cell with their tabs side by side along its
+top, a row lower when a row is full (`fan_in`), so unrolling one fills
+the cell). A tiled window with no tiled neighbours
 on that line is being sized away from its tile, and forgets it. Windows
 not tiled by a command are never pushed. Tiles and parts are kept across
 a restart in the layout (`Placement::tile`, `part`). Moving screens in
@@ -992,7 +996,10 @@ tabs side by side: in the order of their tabs' x (front-most first on a
 tie), each starts at the last one's tab end, is narrowed so it doesn't
 reach under the Deskbar but not below a quarter of the display (nor its
 app's minimum), and past that is pinned as far right as it fits with its
-tab slid along it (`tab_offset`), so the tabs overlap only then. Every
+tab slid along it (`tab_offset`, kept across a restart in the layout),
+so the tabs overlap only then. Cascade Others and Fan Out Others (⌃⇧⌘\,
+⌃⇧⌘/: `others`) arrange all but the focused window, which stays where it
+is, in front and focused (`windows_to_arrange`, `bring_back`). Every
 arranging command (Tile All, Tile App, Cascade, Fan Out) first calls
 `remember_arrangement`, which keeps each window's frame, tab offset, tile
 and part (`Placed`, in `AnvilState::arranged`); Undo Window Arrangement

@@ -197,6 +197,10 @@ pub enum Shortcut {
     /// Every window on the active display stacked at the top left with
     /// their tabs side by side.
     FanOut,
+    /// Cascade All and Fan Out for every window but the focused one,
+    /// which stays where it is, in front.
+    CascadeOthers,
+    FanOutOthers,
     /// Put the windows back as they were before the last arrangement
     /// (again: as the arrangement had them).
     UndoArrangement,
@@ -313,6 +317,8 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::SmartTile, "smart-tile", ARRANGE, "Smart tile all windows on the display", &["Ctrl+Shift+Cmd+Return"]),
     s(Shortcut::CascadeAll, "cascade-all", ARRANGE, "Cascade all windows on the display", &["Ctrl+Cmd+Backslash"]),
     s(Shortcut::FanOut, "fan-out", ARRANGE, "Fan out all windows, tabs side by side", &["Ctrl+Cmd+Slash"]),
+    s(Shortcut::CascadeOthers, "cascade-others", ARRANGE, "Cascade the other windows, leaving this one", &["Ctrl+Shift+Cmd+Backslash"]),
+    s(Shortcut::FanOutOthers, "fan-out-others", ARRANGE, "Fan out the other windows, leaving this one", &["Ctrl+Shift+Cmd+Slash"]),
     s(Shortcut::UndoArrangement, "undo-arrangement", ARRANGE, "Undo window arrangement", &["Ctrl+Cmd+Z"]),
     s(Shortcut::ShowDesktop, "show-desktop", ARRANGE, "Show the desktop", &["Ctrl+Cmd+H"]),
     s(Shortcut::NextWorkspace, "next-workspace", WORKSPACES, "Next workspace", &["Ctrl+Cmd+Right"]),

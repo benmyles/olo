@@ -284,6 +284,26 @@ pub fn grid(area: Rectangle<i32, Logical>, n: usize, gap: i32) -> Vec<Rectangle<
     out
 }
 
+/// Rolled-up windows sharing `cell`, fanned out in it: each takes the
+/// whole cell (so it fills it when unrolled), their tabs (`tabs` wide)
+/// side by side along its top as Fan Out puts them, a row of tabs lower
+/// (`tab_h`) when a row is full. Each one's frame and tab offset.
+pub fn fan_in(cell: Rectangle<i32, Logical>, tabs: &[i32], tab_h: i32) -> Vec<(Rectangle<i32, Logical>, i32)> {
+    let (mut x, mut row) = (0, 0);
+    tabs.iter()
+        .map(|&tab| {
+            if x > 0 && x + tab > cell.size.w {
+                (x, row) = (0, row + 1);
+            }
+            let down = (row * tab_h).min((cell.size.h - tab_h).max(0));
+            let frame = Rectangle::new(cell.loc + Point::from((0, down)), Size::from((cell.size.w, (cell.size.h - down).max(1))));
+            let offset = x;
+            x += tab;
+            (frame, offset)
+        })
+        .collect()
+}
+
 impl<BackendData: Backend> AnvilState<BackendData> {
     fn tile_gap(&self) -> i32 {
         self.settings.tiling.gap.min(200) as i32
@@ -704,10 +724,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// always fit, narrower ones more); past that the rest go as far
     /// right as they fit, their tabs slid along them to keep stepping
     /// right, and overlap only when there's no room left for them.
-    pub fn fan_out(&mut self) {
+    /// `others`: all but the focused window, left where it is.
+    pub fn fan_out(&mut self, others: bool) {
         let Some(output) = self.active_output() else { return };
         let (Some(area), Some(screen)) = (self.tile_area(&output), self.space.output_geometry(&output)) else { return };
-        let windows = self.windows_on(&output);
+        let (windows, kept) = self.windows_to_arrange(&output, others);
         if windows.is_empty() {
             return;
         }
@@ -747,11 +768,29 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             w.decoration().tab_offset = offset;
             x = at + offset + tab;
         }
-        info!(windows = order.len(), "fanned out");
+        self.bring_back(kept);
+        info!(windows = order.len(), others, "fanned out");
+    }
+
+    /// The windows on `output` an arranging command moves: all of them,
+    /// or (`others`) all but the focused one, which it hands back.
+    fn windows_to_arrange(&self, output: &Output, others: bool) -> (Vec<WindowElement>, Option<WindowElement>) {
+        let mut windows = self.windows_on(output);
+        let kept = others.then(|| self.focused_window()).flatten().filter(|f| windows.contains(f));
+        windows.retain(|w| Some(w) != kept.as_ref());
+        (windows, kept)
+    }
+
+    /// The window an arrangement left alone, in front and focused again.
+    fn bring_back(&mut self, kept: Option<WindowElement>) {
+        if let Some(w) = kept {
+            self.space.raise_element(&w, false);
+            self.focus_window(&w);
+        }
     }
 
     /// Every window on the active display in a grid, in reading order of
-    /// where they are now.
+    /// where they are now; the rolled-up ones fanned out in one cell.
     pub fn tile_all(&mut self) {
         let Some(output) = self.active_output() else { return };
         let Some(area) = self.tile_area(&output) else { return };
@@ -761,12 +800,38 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             let g = self.space.element_geometry(w).unwrap_or_default();
             (g.loc.y + g.size.h / 2, g.loc.x + g.size.w / 2)
         });
-        let cells = grid(area, windows.len(), self.tile_gap());
-        for (w, cell) in windows.iter().zip(cells) {
+        self.tile_grid(area, &windows);
+        info!(windows = windows.len(), "tiled all");
+    }
+
+    /// `windows` (in reading order) tiled in a grid over `area`, a cell
+    /// each, except the rolled-up ones: those share the last cell, fanned
+    /// out in it (`fan_in`), rather than each leaving a cell nearly empty.
+    fn tile_grid(&mut self, area: Rectangle<i32, Logical>, windows: &[WindowElement]) {
+        let (rolled, open): (Vec<WindowElement>, Vec<WindowElement>) = windows.iter().cloned().partition(|w| w.rolled());
+        let mut cells = grid(area, open.len() + usize::from(!rolled.is_empty()), self.tile_gap());
+        let shared = if rolled.is_empty() { None } else { cells.pop() };
+        for (w, cell) in open.iter().zip(cells) {
             self.set_frame(w, cell, true);
             self.set_cell(w, area, cell);
         }
-        info!(windows = windows.len(), "tiled all");
+        let Some(cell) = shared else { return };
+        let tabs: Vec<i32> = rolled
+            .iter()
+            .map(|w| {
+                let (title, content) = (w.title(), w.inner_size(cell.size));
+                let mut d = w.decoration();
+                d.tab_offset = 0;
+                d.tab_layout(&title, content).width
+            })
+            .collect();
+        for (w, (frame, offset)) in rolled.iter().zip(fan_in(cell, &tabs, olo_theme::deco::TAB_HEIGHT)) {
+            let min = self.min_frame(w);
+            let frame = Rectangle::new(frame.loc, Size::from((frame.size.w.max(min.w), frame.size.h.max(min.h))));
+            self.set_frame(w, frame, true);
+            self.set_cell(w, area, frame);
+            w.decoration().tab_offset = offset;
+        }
     }
 
     /// The active display, the area tiling uses on it, and its windows,
@@ -833,10 +898,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             let g = self.space.element_geometry(w).unwrap_or_default();
             (g.loc.y + g.size.h / 2, g.loc.x + g.size.w / 2)
         });
-        let cells = grid(area, windows.len(), self.tile_gap());
-        for (w, cell) in windows.iter().zip(cells) {
-            self.set_frame(w, cell, true);
-            self.set_cell(w, area, cell);
+        self.tile_grid(area, &windows);
+        for w in &windows {
             self.space.raise_element(w, false);
         }
         if let Some(front) = windows.last() {
@@ -848,11 +911,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// Every window on the active display stacked diagonally from the top
     /// left, as they open, front-most last; each its own size where it
-    /// fits.
-    pub fn cascade_all(&mut self) {
+    /// fits. `others`: all but the focused window, left where it is, in
+    /// front.
+    pub fn cascade_all(&mut self, others: bool) {
         let Some(output) = self.active_output() else { return };
         let Some(area) = self.tile_area(&output) else { return };
-        let windows = self.windows_on(&output);
+        let (windows, kept) = self.windows_to_arrange(&output, others);
         self.remember_arrangement(&windows);
         let n = windows.len() as i32;
         for (i, w) in windows.iter().enumerate() {
@@ -868,7 +932,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             self.set_frame(w, Rectangle::new(at, size), false);
             self.space.raise_element(w, false);
         }
-        if let Some(front) = windows.last() {
+        if kept.is_some() {
+            self.bring_back(kept);
+        } else if let Some(front) = windows.last() {
             self.focus_window(front);
         }
     }
@@ -1001,5 +1067,21 @@ mod tests {
         assert_eq!(five[0], r(0, 0, 533, 450));
         assert_eq!(five[3], r(0, 450, 800, 450));
         assert!(grid(area, 0, 8).is_empty());
+    }
+
+    #[test]
+    fn rolled_windows_fan_out_in_one_cell() {
+        let cell = r(800, 450, 300, 400);
+        let fanned = fan_in(cell, &[120, 100, 90, 140], 21);
+        // Side by side along the top, each the whole cell.
+        assert_eq!(fanned[0], (cell, 0));
+        assert_eq!(fanned[1], (cell, 120));
+        // The third's tab won't fit beside them: a row lower.
+        assert_eq!(fanned[2], (r(800, 471, 300, 379), 0));
+        assert_eq!(fanned[3], (r(800, 471, 300, 379), 90));
+        // However many, the tabs stay in the cell.
+        let many = fan_in(r(0, 0, 100, 50), &[100; 6], 21);
+        assert!(many.iter().all(|(f, _)| f.loc.y + 21 <= 50 && f.size.h >= 21));
+        assert!(fan_in(cell, &[], 21).is_empty());
     }
 }

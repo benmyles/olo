@@ -5,6 +5,12 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Rolled-up windows share one tile~~ (Ben): Tile All (and Tile App) gives
+  the rolled-up windows one cell between them, their tabs fanned out along
+  its top (a row lower when full), not a nearly empty cell each; tab
+  offsets now survive a reload.
+- ~~Cascade Others, Fan Out Others~~ (Ben): ⌃⇧⌘\ and ⌃⇧⌘/ arrange every
+  window but the focused one, which is left where it is, in front.
 - ~~Keyboard hints everywhere~~ (Ben; opt-in, Preferences ▸ Keyboard):
   tapping ⌃⇧ letters every control, menu item, list row, icon, window and
   Deskbar entry; a letter picks it or letters what's inside, as Vim's

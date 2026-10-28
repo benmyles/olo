@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Cascade Others
+
+*19:31* — ⌃⇧⌘\ with notes.txt focused: every other window is cascaded from the top left, and notes.txt stays where it was, in front. Fan Out Others (⌃⇧⌘/) does the same with Fan Out.
+
+![Cascade Others](2026-10-27/193159-cascade-others.png)
+
+### Rolled-up windows share one tile (dark)
+
+*19:31* — The same arrangement in dark mode.
+
+![Rolled-up windows share one tile (dark)](2026-10-27/193156-rolled-up-windows-share-one-tile-dark.png)
+
+### Rolled-up windows share one tile
+
+*19:31* — Tile All with four of seven windows rolled up: the three open ones get a cell each, and the four rolled-up ones share the last cell, their tabs side by side along its top. Unrolling one fills that cell.
+
+![Rolled-up windows share one tile](2026-10-27/193153-rolled-up-windows-share-one-tile.png)
+
 ### Keyboard hints in menus (dark)
 
 *17:42* — A pick that opens a menu letters its items next, skipping disabled ones; a submenu's come first.

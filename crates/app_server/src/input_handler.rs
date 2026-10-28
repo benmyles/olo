@@ -224,8 +224,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             // Slow (a model looks at the screen): its own process, which
             // shows progress and sends Arrange when it has an answer.
             S::SmartTile => self.spawn_program("olo-smart-tile", &[]),
-            S::CascadeAll => self.cascade_all(),
-            S::FanOut => self.fan_out(),
+            S::CascadeAll => self.cascade_all(false),
+            S::FanOut => self.fan_out(false),
+            S::CascadeOthers => self.cascade_all(true),
+            S::FanOutOthers => self.fan_out(true),
             S::UndoArrangement => self.undo_arrangement(),
             S::ShowDesktop => self.show_desktop(),
             S::NextWorkspace => self.switch_workspace((self.workspace + 1).min(workspaces - 1)),
