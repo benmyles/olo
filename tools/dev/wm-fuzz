@@ -4,7 +4,7 @@ combinations of every arranging command, shortcut, switcher, workspace
 and display change, on real apps, and check after each step that the
 desktop is still sane.
 
-  wm-fuzz NAME [--seed N] [--steps N] [--keep-going] [--quiet]
+  wm-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going] [--quiet]
 
 NAME is a tsession with two or more screens and the shell, e.g.
 
@@ -15,7 +15,9 @@ It opens and closes windows of olo-terminal, olo-styled-edit and
 olo-tracker itself. A run is reproducible from its seed (printed first)
 as long as the session starts the same way. On a failure it prints the
 seed, the step, the last commands and what was wrong, and stops (with
---keep-going it carries on and lists every failure at the end).
+--keep-going it carries on and lists every failure at the end). --only
+app_resize,tab_in runs just those steps (the `op_` methods), to go after
+one thing.
 
 What is checked, after every step once the windows have settled:
 
@@ -32,7 +34,13 @@ What is checked, after every step once the windows have settled:
     axis), a tile then Restore, an arrangement then Undo Window
     Arrangement, a window to another workspace and back, a window to the
     next display and back;
-  * tiles and zooms stay inside the display's tiling area (`arrangement`);
+  * tiles and zooms stay inside the display's tiling area (`arrangement`),
+    and a zoomed window stays there whatever it or its app does after;
+  * an app resizing its own window (a new Terminal tab bringing its tab
+    strip, closing it again, a bigger or smaller text size) never takes
+    it past its display, and doesn't change the size of one zoomed,
+    zoomed one way or tiled (Olo holds it to that); a new or closed tab
+    doesn't change a window's size at all, flickering included;
   * groups hold together: each has two or more windows, all shown here,
     sharing one frame, their tabs numbered 0..n-1 and laid side by side
     along its top in that order; windows of different apps share one only
@@ -115,6 +123,9 @@ class Fuzz:
         # share it with other apps', and ones taken out by hand since. (Any
         # window there already may have been, in a run before.)
         self.by_hand, self.alone = set(self.windows()), set()
+        # Steps Terminal's text size has been made bigger (less smaller).
+        self.text_steps = 0
+        self.only = set()
         self.last_press = 0.0
         self.server_log = os.path.join("/tmp/olo-dev", name, "app_server.log")
         try:
@@ -241,7 +252,19 @@ class Fuzz:
             if w["minimized"] or w["workspace"] != ws:
                 self.fail(f"window {w['id']} has the keyboard but is {'hidden' if w['minimized'] else 'on workspace %d' % w['workspace']}")
         self.check_groups(wins, ws)
+        self.check_zoomed(wins, ws)
         self.check_log()
+
+    def check_zoomed(self, wins, ws):
+        """A zoomed window on the active display fills (at most) its tiling
+        area, whatever happened since it was zoomed."""
+        zoomed = [w for w in wins.values() if w.get("zoomed") and w["workspace"] == ws and not w["minimized"] and fr(w)]
+        if not zoomed:
+            return
+        out, area = self.area()
+        for w in zoomed:
+            if area and overlap(fr(w), area) and not contains(area, fr(w)):
+                self.fail(f"zoomed window {w['id']} ({w['app_id']}) {fr(w)} sticks out of the tiling area {area} on {out}")
 
     def check_log(self):
         """No panic in app_server's log since the last look (olo-session
@@ -391,7 +414,10 @@ class Fuzz:
             (2, self.op_display_trip), (1, self.op_displays), (2, self.op_place),
             (4, self.op_tab_along), (3, self.op_tab_out), (4, self.op_tab_in),
             (2, self.op_group_window), (2, self.op_ungroup_window), (2, self.op_move_tab),
+            (4, self.op_app_resize),
         ]
+        if self.only:
+            ops = [(w, op) for w, op in ops if op.__name__[3:] in self.only]
         if len(wins) < 3:
             ops = [(1, self.op_open)]
         total = sum(w for w, _ in ops)
@@ -717,6 +743,85 @@ class Fuzz:
         after = self.settle()
         self.check_sane(after)
         self.check_unchanged(f"placing {w}", wins, after, skip=self.mates(wins, w))
+
+    # ---- apps resizing their windows ----
+
+    def op_app_resize(self, wins, shown):
+        """Terminal resizing its own window: a new tab (its tab strip
+        comes), closing it again (the strip goes), a bigger or smaller
+        text size (every Terminal window keeps its grid). First the
+        window is left as it is, zoomed, zoomed one way, tiled, or made
+        as tall as its display on its own (filling the screen is where
+        growing went past it)."""
+        terms = [i for i in shown if wins[i]["app_id"] == "olo.terminal"]
+        w = self.pick(terms)
+        if w is None:
+            return
+        how = self.rng.choice(["as it is", "zoom", "zoom-vertical", "tile-left", "tile-top", "tall"])
+        if self.text_steps >= 2:
+            what = self.rng.choice(["new tab", "new tab, closed", "smaller text"])
+        elif self.text_steps <= -1:
+            what = self.rng.choice(["new tab", "new tab, closed", "bigger text"])
+        else:
+            what = self.rng.choice(["new tab", "new tab, closed", "bigger text", "smaller text"])
+        self.log(f"Terminal {w}, {how}: {what}")
+        if how == "tall":
+            self.shortcut("restore", w)
+            now = self.settle()
+            if w not in now or fr(now[w]) is None:
+                return
+            home = max(self.output_rects(), key=lambda o: overlap(fr(now[w]), o))
+            frame = {"x": home[0] + home[2] // 4, "y": home[1], "width": min(home[2] // 2, 1000), "height": home[3]}
+            self.req({"type": "place", "id": w, "frame": frame})
+        elif how != "as it is" and not (how == "zoom" and wins[w].get("zoomed")):
+            self.shortcut(how, w)
+        self.req({"type": "activate", "id": w})
+        before = self.settle()
+        self.check_sane(before)
+        if w not in before or not before[w]["focused"] or fr(before[w]) is None:
+            return
+        held = how in ("zoom", "zoom-vertical", "tile-left", "tile-top") or before[w].get("zoomed")
+        if what.startswith("new tab"):
+            self.keys([CMD, SHIFT, 20])
+            mid = self.settle()
+            self.check_sane(mid)
+            self.check_steady(f"a new tab in {w}", before)
+            self.check_unchanged(f"a new tab in {w}", before, mid)
+            if what.endswith("closed") and w in mid and mid[w]["focused"]:
+                time.sleep(0.3)
+                self.keys([CMD, SHIFT, 17])
+                after = self.settle()
+                self.check_sane(after)
+                if w not in after:
+                    self.fail(f"closing the new tab in {w} closed the window")
+                self.check_steady(f"closing the new tab in {w}", mid)
+                self.check_unchanged(f"closing the new tab in {w}", mid, after)
+            return
+        bigger = what == "bigger text"
+        self.text_steps += 1 if bigger else -1
+        self.keys([CMD, SHIFT, 13 if bigger else 12])
+        after = self.settle()
+        self.check_sane(after)
+        terms = [i for i in terms if i in before and i in after and fr(before[i]) and fr(after[i])]
+        self.check_unchanged(what, before, after, skip=set().union(*(self.mates(before, i) for i in terms)))
+        outs = self.output_rects()
+        for i in terms:
+            if fr(after[i]) == fr(before[i]):
+                continue
+            home = max(outs, key=lambda o: overlap(fr(after[i]), o))
+            if not contains(home, fr(after[i])):
+                self.fail(f"{what}: Terminal window {i} went from {fr(before[i])} to {fr(after[i])}, past its display {home}")
+            if before[i].get("zoomed"):
+                self.fail(f"{what}: zoomed Terminal window {i} changed size: {fr(before[i])} -> {fr(after[i])}")
+        if held and fr(after.get(w, {})) != fr(before[w]):
+            self.fail(f"{what}: Terminal window {w} ({how}) didn't keep its size: {fr(before[w])} -> {fr(after.get(w, {}))}")
+        # A zoomed one keeps it all along (no flicker).
+        for i in terms:
+            if before[i].get("zoomed"):
+                for t in self.trail:
+                    if i in t and fr(t[i]) and fr(t[i]) != fr(before[i]):
+                        self.fail(f"{what}: zoomed Terminal window {i} flickered to {fr(t[i])} (from {fr(before[i])})")
+                        break
 
     # ---- groups by hand ----
 
@@ -1048,6 +1153,11 @@ def tab_rect(w):
     return rect(t) if t else None
 
 
+def contains(r, f):
+    """Rectangle `f` is all inside `r`."""
+    return r[0] <= f[0] and r[1] <= f[1] and f[0] + f[2] <= r[0] + r[2] and f[1] + f[3] <= r[1] + r[3]
+
+
 def inside(p, r):
     return r[0] <= p[0] < r[0] + r[2] and r[1] <= p[1] < r[1] + r[3]
 
@@ -1093,7 +1203,13 @@ def main():
     name = a[0]
     seed = int(a[a.index("--seed") + 1]) if "--seed" in a else random.randrange(1 << 30)
     steps = int(a[a.index("--steps") + 1]) if "--steps" in a else 200
-    sys.exit(Fuzz(name, seed, "--quiet" in a).run(steps, "--keep-going" in a))
+    fuzz = Fuzz(name, seed, "--quiet" in a)
+    if "--only" in a:
+        fuzz.only = set(a[a.index("--only") + 1].split(","))
+        unknown = fuzz.only - {m[3:] for m in dir(fuzz) if m.startswith("op_")}
+        if unknown:
+            sys.exit(f"wm-fuzz: no such step: {', '.join(sorted(unknown))}")
+    sys.exit(fuzz.run(steps, "--keep-going" in a))
 
 
 if __name__ == "__main__":

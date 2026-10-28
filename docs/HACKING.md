@@ -816,7 +816,7 @@ The headless server renders on the GPU's render node and announces it
 in dmabuf feedback, so GL clients (Chrome) get hardware GL
 as on the desktop rather than Mesa's software fallback.
 
-`tools/dev/wm-fuzz NAME [--seed N] [--steps N] [--keep-going]` is an
+`tools/dev/wm-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going]` is an
 adversarial window-management fuzzer: on a session with two screens and
 the shell (`$T start fz 2560x1600,1920x1080 --session --shell`) it opens
 and closes Terminal, StyledEdit and Tracker windows and drives random
@@ -828,8 +828,14 @@ windows don't, and round trips (zoom/unzoom, tile/Restore, Undo, a
 workspace or display and back) come back exactly. It ⌘-drags tabs along,
 out of and into groups, and uses GroupWindow / UngroupWindow / MoveTab,
 checking that groups hold together (one frame, tabs side by side in
-order, other apps' windows only by hand). A run is reproducible from
-its seed. Run it after changing anything in shell/.
+order, other apps' windows only by hand). It also has apps resize their
+own windows (`op_app_resize`: a new Terminal tab, closing it, a bigger
+or smaller text size, on a window as it is, zoomed, tiled or as tall as
+its display) and checks that nothing grows past its display or out of
+the size it was zoomed or tiled to; zoomed windows must stay inside the
+tiling area after every step. A run is reproducible from its seed;
+`--only app_resize,tab_in` runs just those steps (the `op_` methods). Run
+it after changing anything in shell/.
 
 `tools/dev/perf-fuzz NAME [--seed N] [--steps N] [--keep-going]` is its
 counterpart for speed: on the same kind of session it hammers the
@@ -1835,9 +1841,11 @@ what it used to.
 
 **Tabs.** A window holds one or more shells (`TermWin::tabs`, each a
 `Tab` with its own `Session`); its strip (the kit's `TabStrip`) shows
-once there are two, and the window grows or shrinks by the strip so the
-grid stays the same. Every tab has the window's grid, so a program in a
-hidden tab lays itself out right; a hidden tab isn't drawn (its Wakeup
+once there are two, in the window as it is: the grid gives up a row or
+so rather than the window growing (which took a window filling the
+screen, or zoomed, past the bottom). Every tab has the window's grid,
+so a program in a hidden tab lays itself out right; a hidden tab isn't
+drawn (its Wakeup
 waits until it shows), and its bell marks it with a dot. Messages from
 the emulator carry the shell's id, not the window's, so a tab can move:
 **Tabs ▸ Move Tab to New Window** (or the tab's context menu). New Tab

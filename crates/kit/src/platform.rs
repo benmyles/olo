@@ -152,6 +152,8 @@ struct Surface {
     /// Filling the screen, and the size to go back to.
     fullscreen: bool,
     windowed: Option<(u32, u32)>,
+    /// Zoomed: the compositor chooses its size, not the app.
+    maximized: bool,
     configured: bool,
     dirty: bool,
     frame_pending: bool,
@@ -976,6 +978,9 @@ impl Kit {
                         } else if s.fullscreen {
                             // The size to come back to.
                             s.windowed = Some(size);
+                        } else if s.maximized {
+                            // Zoomed to the size it was given: it keeps it
+                            // (the app adapts, as to a hand resize).
                         } else if s.size != size {
                             s.size = size;
                             s.dirty = true;
@@ -1127,6 +1132,7 @@ impl Kit {
             inhibitor: None,
             fullscreen: false,
             windowed: None,
+            maximized: false,
             configured: false,
             dirty: true,
             frame_pending: false,
@@ -2400,6 +2406,7 @@ impl WindowHandler for Kit {
             size = windowed;
         }
         s.fullscreen = fullscreen;
+        s.maximized = configure.is_maximized();
         if let (Some(w), Some(h)) = configure.new_size {
             size = (w.get(), h.get());
         }

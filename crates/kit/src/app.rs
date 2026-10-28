@@ -303,7 +303,10 @@ impl Cx {
     pub fn set_title(&mut self, window: WindowId, title: impl Into<String>) {
         self.requests.push(Request::SetTitle(window, title.into()));
     }
-    /// Ask app_server to resize the window's content area.
+    /// Ask app_server to resize the window's content area. A zoomed
+    /// window keeps the size it was zoomed to, and app_server holds a
+    /// tiled one to its tile and keeps any on its display (an app that
+    /// grows it past the screen is asked to fit, down to its minimum).
     pub fn resize(&mut self, window: WindowId, size: (u32, u32)) {
         self.requests.push(Request::Resize(window, size));
     }

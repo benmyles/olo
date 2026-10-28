@@ -546,6 +546,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         Self::zoomed_along(window).map(|z| z.axis)
     }
 
+    /// Which ways (width, height) Olo holds a window to the size it gave
+    /// it: both, zoomed or tiled; the one way, zoomed along one axis.
+    pub fn held_size(&self, window: &WindowElement) -> (bool, bool) {
+        if self.is_zoomed(window) || Self::tiled(window).is_some() {
+            return (true, true);
+        }
+        match Self::zoomed_axis(window) {
+            Some(Axis::Vertical) => (false, true),
+            Some(Axis::Horizontal) => (true, false),
+            None => (false, false),
+        }
+    }
+
     /// Zoom a window along `axis` (Zoom Vertically, Zoom Horizontally),
     /// or unzoom it that way, the other way left as it is. Zoomed along
     /// both, it is zoomed; a zoomed window zoomed along one is unzoomed

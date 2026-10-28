@@ -14,6 +14,7 @@ use smithay::{
     output::Output,
     reexports::{
         calloop::Interest,
+        wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{
             Client, Resource,
             protocol::{wl_buffer::WlBuffer, wl_output, wl_surface::WlSurface},
@@ -33,7 +34,7 @@ use smithay::{
                 Layer, LayerSurface as WlrLayerSurface, LayerSurfaceData, WlrLayerShellHandler,
                 WlrLayerShellState,
             },
-            xdg::XdgToplevelSurfaceData,
+            xdg::{SurfaceCachedState, XdgToplevelSurfaceData},
         },
     },
 };
@@ -216,7 +217,8 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
                         let current_loc = self.space.element_location(&window).unwrap();
                         self.space.relocate_element(&window, current_loc + buffer_offset);
                     }
-                    keep_on_screen(&mut self.space, surface, &window);
+                    let held = self.held_size(&window);
+                    keep_on_screen(&mut self.space, surface, &window, held);
                     self.tile_follower_drew(&window);
                 }
             }
@@ -347,7 +349,12 @@ pub struct SurfaceData {
 /// the user is resizing, ones put back where they were, and a size the
 /// window was asked to take (zoomed, tiled, unzoomed: Olo placed it) are
 /// left alone.
-fn keep_on_screen(space: &mut Space<WindowElement>, surface: &WlSurface, window: &WindowElement) {
+///
+/// An app doesn't make its window bigger than the screen, or change the
+/// size Olo holds it to (`held`, width and height: zoomed, tiled): it is
+/// asked back to the size it was given, or to fit the screen, unless its
+/// minimum size leaves no choice.
+fn keep_on_screen(space: &mut Space<WindowElement>, surface: &WlSurface, window: &WindowElement, held: (bool, bool)) {
     let Some(geo) = space.element_geometry(window) else { return };
     if geo.size.w <= 0 || geo.size.h <= 0 {
         return;
@@ -370,6 +377,26 @@ fn keep_on_screen(space: &mut Space<WindowElement>, surface: &WlSurface, window:
     if asked == Some(content) {
         return;
     }
+    let Some(toplevel) = window.0.toplevel() else { return };
+    // (Fullscreen: the display's size, whatever it draws.)
+    if toplevel.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Fullscreen)) {
+        return;
+    }
+    let least = with_states(surface, |states| states.cached_state.get::<SurfaceCachedState>().current().min_size);
+    let (hold_w, hold_h) = held;
+    if (hold_w || hold_h)
+        && let Some(given) = toplevel.with_pending_state(|s| s.size)
+    {
+        let back = (hold_w && content.w != given.w && given.w >= least.w) || (hold_h && content.h != given.h && given.h >= least.h);
+        if back {
+            if !grabs::awaiting_ack(toplevel) {
+                let size = Size::from((if hold_w { given.w } else { content.w }, if hold_h { given.h } else { content.h }));
+                toplevel.with_pending_state(|s| s.size = Some(size));
+                toplevel.send_configure();
+            }
+            return;
+        }
+    }
     let overlap = |o: &Output| space.output_geometry(o).and_then(|g| g.intersection(geo)).map_or(0, |r| r.size.w as i64 * r.size.h as i64);
     let middle = (geo.loc + geo.size.downscale(2).to_point()).to_f64();
     let Some(zone) = space
@@ -389,6 +416,16 @@ fn keep_on_screen(space: &mut Space<WindowElement>, surface: &WlSurface, window:
         return;
     }
     const MARGIN: i32 = 8;
+    // Too big for the screen: as big as fits (or as small as it can be).
+    let room = |span: i32, frame: i32, least: i32, now: i32| (span - 2 * MARGIN - frame).max(least).min(now);
+    let fitting = Size::from((
+        if hold_w { content.w } else { room(zone.size.w, geo.size.w - content.w, least.w, content.w) },
+        if hold_h { content.h } else { room(zone.size.h, geo.size.h - content.h, least.h, content.h) },
+    ));
+    if fitting != content {
+        toplevel.with_pending_state(|s| s.size = Some(fitting));
+        toplevel.send_configure();
+    }
     let fit = |pos: i32, len: i32, lo: i32, span: i32| {
         let hi = lo + span;
         if pos + len + MARGIN > hi { (hi - len - MARGIN).max(lo + MARGIN).min(pos) } else { pos }

@@ -272,13 +272,11 @@ impl TermWin {
         self.tabs.len() > 1 || self.group.is_some()
     }
 
-    /// Group or not, keeping the grid as the strip comes or goes.
+    /// Group or not. The window keeps its size as the strip comes or
+    /// goes (the grid gives up or gets back a row or so): it doesn't grow
+    /// past the screen, or out of the size it was zoomed or tiled to.
     fn set_group(&mut self, group: Option<Group>) {
-        let had = self.strip();
         self.group = group;
-        if had != self.strip() {
-            self.snap_to = Some(self.grid());
-        }
     }
 
     fn position(&self, shell: u64) -> Option<usize> {
@@ -303,7 +301,6 @@ impl TermWin {
     /// Take tab `i` out; the one after it (or else before) shows.
     fn take(&mut self, i: usize) -> Tab {
         let was_active = i == self.active;
-        let had = self.strip();
         let tab = self.tabs.remove(i);
         if self.active > i {
             self.active -= 1;
@@ -315,10 +312,7 @@ impl TermWin {
                 t.report_focus(true);
             }
         }
-        // The strip can go with the second tab: keep the grid.
-        if had != self.strip() {
-            self.snap_to = Some(self.grid());
-        }
+        // The strip can go with the second tab; the window stays as it is.
         tab
     }
 }
@@ -472,12 +466,8 @@ impl Terminal {
         let tab = self.start(cx, Size { cols, rows }, start);
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
         let at = t.active + 1;
-        let had = t.strip();
+        // The strip comes in the window as it is (see `set_group`).
         t.tabs.insert(at, tab);
-        if !had {
-            // Room for the strip, keeping the grid.
-            t.snap_to = Some((cols, rows));
-        }
         t.select(at);
         cx.redraw(win);
     }
