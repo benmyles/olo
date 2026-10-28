@@ -6,7 +6,8 @@
 //! chosen), and first of all the shortcuts in `Settings::shortcuts`
 //! (olo_protocol::shortcuts: tiling, workspaces, Find, lock,
 //! screenshots, …). Caps Lock is another Ctrl. Terminals keep physical
-//! Ctrl for the tty, so ⌘ reaches them as Ctrl+Shift.
+//! Ctrl for the tty, so ⌘ reaches them as Ctrl+Shift. Next / Previous
+//! Tab (⌥Tab, ⌥⇧Tab) reach the app as Ctrl+Tab / Ctrl+Shift+Tab.
 //!
 //! This sits between the input devices and the seat: physical evdev codes
 //! go in, the codes clients should see (plus app_server actions) come out.
@@ -149,7 +150,13 @@ pub struct Keymap {
     /// Control going down and up on its own, for a double press
     /// (keyboard hints).
     ctrl_presses: Option<CtrlPresses>,
+    /// Modifiers let go of for a key that stood for another chord (⌥ for
+    /// Next Tab's Ctrl+Tab), kept up until another key needs them.
+    lifted: Vec<u32>,
 }
+
+/// The modifier keys clients see.
+const MODIFIERS: [u32; 8] = [LEFTCTRL, RIGHTCTRL, LEFTSHIFT, RIGHTSHIFT, LEFTALT, RIGHTALT, LEFTMETA, RIGHTMETA];
 
 #[derive(Debug)]
 struct CtrlPresses {
@@ -258,6 +265,46 @@ impl Keymap {
         }
     }
 
+    /// `h`'s key stands for Ctrl+`to` (Ctrl+Shift+`to` with `shift`):
+    /// the modifiers clients see become just those. Ctrl and Shift go
+    /// down before the others are let go of, and those stay up until
+    /// another key needs them (`restore_lifted`), so ⌥Tab never looks
+    /// like a tap of ⌥ (Firefox shows its menu bar on one).
+    fn stand_for(&mut self, h: &mut Held, to: u32, shift: bool, out: &mut Vec<Out>) {
+        let down = |k: &Keymap, keys: [u32; 2]| keys.iter().any(|x| k.down.contains_key(x));
+        let mut pressed = Vec::new();
+        if !down(self, [LEFTCTRL, RIGHTCTRL]) {
+            pressed.push(LEFTCTRL);
+        }
+        if shift && !down(self, [LEFTSHIFT, RIGHTSHIFT]) {
+            pressed.push(LEFTSHIFT);
+        }
+        for &k in &pressed {
+            self.emit_press(k, out);
+        }
+        let keep = |k: u32| matches!(k, LEFTCTRL | RIGHTCTRL) || (shift && matches!(k, LEFTSHIFT | RIGHTSHIFT));
+        for k in MODIFIERS.into_iter().filter(|&k| !keep(k)) {
+            if self.down.remove(&k).is_some() {
+                out.push(Out::Key(k, false));
+                self.lifted.push(k);
+            }
+        }
+        self.emit_press(to, out);
+        h.release.push(to);
+        h.release.extend(pressed.into_iter().rev());
+    }
+
+    /// Put back the modifiers `stand_for` let go of that are still held.
+    fn restore_lifted(&mut self, out: &mut Vec<Out>) {
+        for k in std::mem::take(&mut self.lifted) {
+            let holders = self.held.values().filter(|h| h.release.contains(&k)).count() as u32;
+            if holders > 0 && !self.down.contains_key(&k) {
+                self.down.insert(k, holders);
+                out.push(Out::Key(k, true));
+            }
+        }
+    }
+
     /// Tap `key` (press and release), wrapped in Shift unless it's down.
     fn tap_shifted(&mut self, key: u32, out: &mut Vec<Out>) {
         let shift = !self.shift();
@@ -342,8 +389,18 @@ impl Keymap {
             }
         }
         let chord = self.chord(key);
-        if let Some(&(_, shortcut)) = self.bindings.iter().find(|(c, _)| *c == chord) {
-            out.push(Out::Action(Action::Shortcut(shortcut)));
+        let shortcut = self.bindings.iter().find(|(c, _)| *c == chord).map(|&(_, s)| s);
+        let tab = matches!(shortcut, Some(Shortcut::NextTab | Shortcut::PreviousTab));
+        if !tab && !olo_protocol::shortcuts::MODIFIER_KEYS.contains(&key) {
+            self.restore_lifted(out);
+        }
+        if let Some(shortcut) = shortcut {
+            if tab {
+                // What every toolkit takes for the next / previous tab.
+                self.stand_for(&mut h, TAB, shortcut == Shortcut::PreviousTab, out);
+            } else {
+                out.push(Out::Action(Action::Shortcut(shortcut)));
+            }
             self.held.insert(key, h);
             return;
         }
@@ -505,6 +562,53 @@ mod tests {
         assert_eq!(r.down(C), [Key(C, true)]);
         assert_eq!(r.up(C), [Key(C, false)]);
         assert_eq!(r.up(LEFTMETA), [Key(RIGHTCTRL, false)]);
+    }
+
+    #[test]
+    fn option_tab_is_ctrl_tab() {
+        let mut r = Rig::new();
+        assert_eq!(r.down(LEFTALT), [Key(LEFTALT, true)]);
+        // Ctrl goes down before ⌥ comes up, so ⌥ was never tapped alone.
+        assert_eq!(r.down(TAB), [Key(LEFTCTRL, true), Key(LEFTALT, false), Key(TAB, true)]);
+        assert_eq!(r.up(TAB), [Key(TAB, false), Key(LEFTCTRL, false)]);
+        // Again, ⌥ still held.
+        assert_eq!(r.down(TAB), [Key(LEFTCTRL, true), Key(TAB, true)]);
+        assert_eq!(r.up(TAB), [Key(TAB, false), Key(LEFTCTRL, false)]);
+        // ⇧ as well: the previous tab.
+        assert_eq!(r.down(LEFTSHIFT), [Key(LEFTSHIFT, true)]);
+        assert_eq!(r.down(TAB), [Key(LEFTCTRL, true), Key(TAB, true)]);
+        assert_eq!(r.up(TAB), [Key(TAB, false), Key(LEFTCTRL, false)]);
+        assert_eq!(r.up(LEFTSHIFT), [Key(LEFTSHIFT, false)]);
+        // ⌥ is already up for the app.
+        assert_eq!(r.up(LEFTALT), []);
+    }
+
+    #[test]
+    fn shift_option_tab_is_ctrl_shift_tab() {
+        let mut r = Rig::new();
+        r.down(LEFTSHIFT);
+        r.down(RIGHTALT);
+        assert_eq!(r.down(TAB), [Key(LEFTCTRL, true), Key(RIGHTALT, false), Key(TAB, true)]);
+        assert_eq!(r.up(TAB), [Key(TAB, false), Key(LEFTCTRL, false)]);
+    }
+
+    #[test]
+    fn option_comes_back_after_option_tab() {
+        const F: u32 = 33;
+        let mut r = Rig::new();
+        r.down(LEFTALT);
+        r.down(TAB);
+        r.up(TAB);
+        // ⌥F is still ⌥F.
+        assert_eq!(r.down(F), [Key(LEFTALT, true), Key(F, true)]);
+        assert_eq!(r.up(F), [Key(F, false)]);
+        assert_eq!(r.up(LEFTALT), [Key(LEFTALT, false)]);
+        // Let go of first: nothing comes back.
+        r.down(LEFTALT);
+        r.down(TAB);
+        r.up(TAB);
+        assert_eq!(r.up(LEFTALT), []);
+        assert_eq!(r.down(F), [Key(F, true)]);
     }
 
     #[test]

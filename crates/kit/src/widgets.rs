@@ -2171,6 +2171,13 @@ impl<'a> TabView<'a> {
     }
 
     pub fn show<R>(self, ui: &mut Ui, add: impl FnOnce(&mut Ui, usize) -> R) -> R {
+        // The tab keys, before anything is drawn: the first tab view in
+        // the window takes them.
+        let n = self.tabs.len() as i32;
+        let step = tab_keys(ui.ctx());
+        if step != 0 && n > 1 {
+            *self.selected = (*self.selected as i32 + step).rem_euclid(n) as usize;
+        }
         let p = style::palette(ui.ctx());
         let outer = ui.available_rect_before_wrap();
         let painter = ui.painter().clone();
@@ -2234,6 +2241,33 @@ impl<'a> TabView<'a> {
         ui.advance_cursor_after_rect(outer);
         r
     }
+}
+
+/// The tab keys pressed this frame, taken out of the input (releases
+/// too): +1 for each Ctrl+Tab or Ctrl+Page Down, −1 for each
+/// Ctrl+Shift+Tab or Ctrl+Page Up. Whatever has tabs steps through them
+/// with this ([`TabView`] does itself), so Next / Previous Tab (⌥Tab,
+/// which app_server types as Ctrl+Tab) work in every app.
+pub fn tab_keys(ctx: &egui::Context) -> i32 {
+    ctx.input_mut(|i| {
+        let mut step = 0;
+        i.events.retain(|e| match e {
+            egui::Event::Key { key: key @ (egui::Key::Tab | egui::Key::PageUp | egui::Key::PageDown), pressed, modifiers, .. }
+                if modifiers.ctrl && !modifiers.alt && (*key == egui::Key::Tab || !modifiers.shift) =>
+            {
+                if *pressed {
+                    step += match key {
+                        egui::Key::Tab if modifiers.shift => -1,
+                        egui::Key::PageUp => -1,
+                        _ => 1,
+                    };
+                }
+                false
+            }
+            _ => true,
+        });
+        step
+    })
 }
 
 // ---- TabStrip -----------------------------------------------------------

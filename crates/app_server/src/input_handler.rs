@@ -258,6 +258,21 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.toggle_rolled(&w);
                 }
             }
+            S::NextTab | S::PreviousTab => {
+                // From the palette or an agent: the keys the shortcut
+                // stands for (keymap.rs), typed into the window.
+                let Some(w) = focused else { return };
+                if self.focused_window().as_ref() != Some(&w) {
+                    self.focus_window(&w);
+                }
+                use crate::keymap::code::{LEFTCTRL, LEFTSHIFT, TAB};
+                let keys: &[u32] = if shortcut == S::PreviousTab { &[LEFTCTRL, LEFTSHIFT, TAB] } else { &[LEFTCTRL, TAB] };
+                let time = InputTime::now();
+                for (&k, pressed) in keys.iter().map(|k| (k, true)).chain(keys.iter().rev().map(|k| (k, false))) {
+                    let state = if pressed { KeyState::Pressed } else { KeyState::Released };
+                    self.client_key((k + 8).into(), state, time);
+                }
+            }
             S::Tile(_) | S::Zoom | S::ZoomVertical | S::ZoomHorizontal | S::Restore | S::Center | S::Hide | S::NextDisplay | S::PreviousDisplay => {
                 let Some(w) = focused else { return };
                 match shortcut {

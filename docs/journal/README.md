@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Keyboard: Option+Tab switches tabs
+
+*23:15* — Option+Tab and Option+Shift+Tab now move to the next and previous tab in any window that has tabs: Chrome, Terminal, Firefox, GTK and Qt apps and Olo's own tabbed windows. Like every shortcut, they can be changed in Keyboard. The new Zoom vertically and Zoom horizontally shortcuts are listed here too.
+
+![Keyboard: Option+Tab switches tabs](2026-10-27/231518-keyboard-option-tab-switches-tabs.png)
+
 ### Zoom Vertically and Zoom Horizontally
 
 *23:14* — A window's menu can now zoom it along one axis only: Zoom Vertically makes it as tall as the screen and keeps its width and place across; Zoom Horizontally does the same the other way. Here the Themes window has been zoomed vertically. Alt+Shift+Cmd+Up or Down and Alt+Shift+Cmd+Left or Right do the same, as does double-clicking the window's top or bottom (or left or right) edge.

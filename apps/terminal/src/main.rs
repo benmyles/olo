@@ -599,27 +599,10 @@ impl Terminal {
         if focused {
             t.tab_mut().attention = false;
         }
-        // Ctrl+Tab and Ctrl+Page Up/Down go through the tabs, as in other
-        // terminals; the shell never sees them (nor their releases).
-        let step = ui.input_mut(|i| {
-            let mut step = 0i32;
-            i.events.retain(|e| match e {
-                egui::Event::Key { key: key @ (Key::Tab | Key::PageUp | Key::PageDown), pressed, modifiers, .. }
-                    if modifiers.ctrl && !modifiers.alt && (*key == Key::Tab || !modifiers.shift) =>
-                {
-                    if *pressed {
-                        step += match key {
-                            Key::Tab if modifiers.shift => -1,
-                            Key::PageUp => -1,
-                            _ => 1,
-                        };
-                    }
-                    false
-                }
-                _ => true,
-            });
-            step
-        });
+        // Ctrl+Tab and Ctrl+Page Up/Down (and so ⌥Tab) go through the
+        // tabs, as in other terminals; the shell never sees them (nor
+        // their releases).
+        let step = olo_kit::widgets::tab_keys(ui.ctx());
         if step != 0 && t.tabs.len() > 1 {
             let n = t.tabs.len() as i32;
             t.select((t.active as i32 + step).rem_euclid(n) as usize);

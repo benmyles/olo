@@ -991,7 +991,7 @@ chooses it (`twitch_pick`). The keys reach it as keymap actions
 app_server's own shortcuts are one table, `olo_protocol::shortcuts::SHORTCUTS`:
 each a `Shortcut` (tile the focused window into a half, quarter or third,
 zoom, zoom along one axis, back to its own size, center, to the next
-display, tile or cascade all windows on the display,
+display, next / previous tab, tile or cascade all windows on the display,
 show the desktop, workspaces, Find, lock, caffeinated, screenshots), a group, a title and default keys written
 "Shift+Cmd+Left" (`Chord`; Cmd is ⌘). `Settings::shortcuts` keeps only
 changes (an empty list turns one off), so new shortcuts get their defaults.
@@ -1085,6 +1085,18 @@ display (`refit`, `move_to_output`, `rehome_windows`); any tiling,
 arranging or moving or sizing by hand forgets it (`set_tiled`). As with
 Zoom, a reload keeps the geometry only. Agents:
 `{"type":"run_shortcut","id":"zoom-vertical","window":ID}`.
+
+Next Tab / Previous Tab (⌥⇥ / ⌥⇧⇥) are keys, not actions: the keymap
+types Ctrl+Tab / Ctrl+Shift+Tab into the focused window (`stand_for`),
+which Chrome, Firefox, GTK, Qt and the kit all take for the next and
+previous tab. Ctrl goes down before ⌥ is let go of, and ⌥ stays up for
+the app until another key needs it (`restore_lifted`), so the app never
+sees a lone tap of ⌥ (Firefox would show its menu bar). From the palette
+or an agent (`{"type":"run_shortcut","id":"next-tab","window":ID}`),
+app_server focuses the window and types the same keys. In the kit,
+`widgets::tab_keys` takes them out of the input (+1 / −1, Ctrl+Page
+Down / Up too): `TabView` steps through its tabs with it, the first one
+in the window, and so does Terminal; anything else with tabs should too.
 
 Window groups (shell/groups.rs): an app's top-level, decorated,
 resizable windows on the same workspace share one frame, with a tab
