@@ -860,7 +860,9 @@ fn ctrl_byte(key: Key) -> Option<u8> {
 }
 
 /// The kitty keyboard protocol's code for a key: its Unicode codepoint
-/// (unshifted) or a functional-key number.
+/// (unshifted) or a functional-key number. None for the arrows (egui's
+/// symbols for them, ⏴ and friends, aren't what they type), which keep
+/// their legacy `CSI 1;mods D` form under the protocol too.
 fn kitty_code(key: Key) -> Option<u32> {
     Some(match key {
         Key::Escape => 27,
@@ -879,7 +881,8 @@ fn kitty_code(key: Key) -> Option<u32> {
             }
             match c {
                 '−' => '-' as u32,
-                c => c.to_ascii_lowercase() as u32,
+                c if c.is_ascii() => c.to_ascii_lowercase() as u32,
+                _ => return None,
             }
         }
     })
@@ -1265,9 +1268,19 @@ mod tests {
         let both = egui::Modifiers { alt: true, shift: true, ..Default::default() };
         assert_eq!(key_bytes(Key::ArrowLeft, both, TermMode::empty()).unwrap(), b"\x1b[1;4D");
         assert_eq!(key_bytes(Key::ArrowLeft, egui::Modifiers::NONE, TermMode::empty()).unwrap(), b"\x1b[D");
-        // Under the kitty keyboard protocol, the protocol's own form.
-        let kitty = TermMode::DISAMBIGUATE_ESC_CODES;
-        assert_eq!(key_bytes(Key::ArrowLeft, alt, kitty).unwrap(), b"\x1b[1;3D");
-        assert_eq!(key_bytes(Key::ArrowRight, alt, kitty).unwrap(), b"\x1b[1;3C");
+        // Under the kitty keyboard protocol (Claude Code turns it on), the
+        // protocol's own form, which it reads as Meta+← (a word back), as
+        // the keyboard sends it: the protocol's encoding first.
+        let sent = |key, m, mode| kitty_key(key, m, mode, 1).or_else(|| key_bytes(key, m, mode)).unwrap();
+        for kitty in [TermMode::DISAMBIGUATE_ESC_CODES, TermMode::DISAMBIGUATE_ESC_CODES | TermMode::REPORT_ALL_KEYS_AS_ESC] {
+            assert_eq!(sent(Key::ArrowLeft, alt, kitty), b"\x1b[1;3D");
+            assert_eq!(sent(Key::ArrowRight, alt, kitty), b"\x1b[1;3C");
+            let ctrl = egui::Modifiers { ctrl: true, ..Default::default() };
+            assert_eq!(sent(Key::ArrowLeft, ctrl, kitty), b"\x1b[1;5D");
+            // Text keys are still the protocol's CSI u.
+            assert_eq!(sent(Key::B, alt, kitty), b"\x1b[98;3u");
+            assert_eq!(sent(Key::Minus, ctrl, kitty), b"\x1b[45;5u");
+        }
+        assert_eq!(sent(Key::ArrowLeft, egui::Modifiers::NONE, TermMode::REPORT_ALL_KEYS_AS_ESC), b"\x1b[D");
     }
 }

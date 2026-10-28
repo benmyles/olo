@@ -1877,7 +1877,9 @@ Keys: physical Ctrl goes to the shell. ⌘ reaches Terminal as Ctrl+Shift
 other goes to the shell as Ctrl+key, so ⌘R searches history like Ctrl+R. ⌥←/⌥→ send ESC b / ESC f
 (a word back/forward in readline, zsh and fish), except to a program
 using the kitty keyboard protocol (Claude Code), which gets the
-protocol's `CSI 1;3 D` / `C` and reads ESC b as Escape then b.
+protocol's `CSI 1;3 D` / `C` and reads ESC b as Escape then b. (The
+arrows must stay legacy `CSI 1;mod X` keys there: egui names them
+⏴⏵⏶⏷, so `view::kitty_code` takes only ASCII names as codepoints.)
 
 **Colours** (`src/colors.rs`, Settings ▸ Colors). Match Appearance,
 Always Light or Always Dark picks which of two schemes shows; Light
