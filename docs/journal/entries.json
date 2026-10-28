@@ -1432,5 +1432,23 @@
   "title": "Desktop menu over windows",
   "caption": "The desktop's right-click menu opened over a window was drawn behind it, and clicks went to the window. app_server now draws the desktop layer's menus over the windows and the Deskbar (under only the Overlay layer) and finds them there for the pointer and keyboard.",
   "image": "2026-10-28/004935-desktop-menu-over-windows.png"
+ },
+ {
+  "time": "2026-10-28T01:07:30",
+  "title": "Terminal before the polish",
+  "caption": "Show All Tabs before: square tabs cut off mid-letter, pane titles in plain panel grey, the screen's text right against the frame.",
+  "image": "2026-10-28/010730-terminal-before-the-polish.png"
+ },
+ {
+  "time": "2026-10-28T01:07:30",
+  "title": "Terminal polished (dark)",
+  "caption": "Rounded strip tabs that share the row and end long titles with '\u2026', the group's name in a chip with a band of its colour on every tab, pane heads with icons, the pane being typed into marked in the group colour and the others dimmed, 8\u00d76 padding around the screen. label_fit (elide with \u2026) now used wherever a line can overflow: palette rows, Drive Setup, kit list messages.",
+  "image": "2026-10-28/010730-terminal-polished-dark.png"
+ },
+ {
+  "time": "2026-10-28T01:07:31",
+  "title": "Terminal polished (light)",
+  "caption": "The same strip and padding in the light theme: the selected tab opens into the screen's own background (TabStrip::opens_into).",
+  "image": "2026-10-28/010731-terminal-polished-light.png"
  }
 ]

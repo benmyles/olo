@@ -563,6 +563,35 @@ pub fn label(
     r
 }
 
+/// [`label`] in at most `max_width`: text that doesn't fit is cut short
+/// with "…" (never clipped mid-letter); agents read the whole of it.
+#[allow(clippy::too_many_arguments)]
+pub fn label_fit(
+    p: &Painter,
+    x: f32,
+    center_y: f32,
+    align: egui::Align,
+    text: &str,
+    font: FontId,
+    color: Color32,
+    max_width: f32,
+) -> Rect {
+    let size = font.size;
+    let mut job = egui::text::LayoutJob::simple_singleline(text.to_owned(), font, color);
+    job.wrap = egui::text::TextWrapping::truncate_at_width(max_width.max(0.0));
+    let galley = p.layout_job(job);
+    let x = match align {
+        egui::Align::Min => x,
+        egui::Align::Center => x - galley.size().x / 2.0,
+        egui::Align::Max => x - galley.size().x,
+    };
+    let pos = text_origin(p.ctx(), &galley, x, center_y, size);
+    let r = Rect::from_min_size(pos, galley.size());
+    describe_text(p.ctx(), egui::accesskit::Role::Label, text, r, None);
+    p.galley(pos, galley, color);
+    r
+}
+
 /// Text drawn with the painter, for the AccessKit tree agents read
 /// (`commands::tree`); nothing unless one is being made.
 pub fn describe_text(ctx: &Context, role: egui::accesskit::Role, text: &str, r: Rect, selected: Option<bool>) {

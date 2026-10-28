@@ -697,8 +697,7 @@ impl DriveSetup {
         }
         let (text, warn) = self.describe();
         let color = if warn { c(p.failure) } else { c(p.panel_text) };
-        let clip = ui.painter().with_clip_rect(row);
-        style::label(&clip, row.left(), row.center().y, Align::Min, text, style::plain_font(), color);
+        style::label_fit(ui.painter(), row.left(), row.center().y, Align::Min, &text, style::plain_font(), color, row.width());
     }
 
     /// The selection in words, and whether it is a warning.
@@ -768,7 +767,7 @@ impl DriveSetup {
         let mut menu_at = None;
         if let Some(disk) = self.sel().map(|s| s.disk.clone()) {
             let what = format!("{} ({}), {}, {}", disk.name(), disk.device, format_size(disk.size), table_name(&disk));
-            style::label(&ui.painter().with_clip_rect(head), head.left(), head.center().y, Align::Min, what, style::bold_font(), c(p.panel_text));
+            style::label_fit(ui.painter(), head.left(), head.center().y, Align::Min, &what, style::bold_font(), c(p.panel_text), head.width());
             let out = map::show(ui, map_r, &disk, self.selected.as_ref());
             if let Some(item) = out.clicked {
                 self.select(item);
@@ -1121,7 +1120,7 @@ impl DriveSetup {
             (None, _) => "Choose Start to measure.".into(),
         };
         let color = if b.error.is_some() { c(p.failure) } else { c(p.panel_text) };
-        style::label(&ui.painter().with_clip_rect(full), full.left(), y + result_h / 2.0, Align::Min, text, style::plain_font(), color);
+        style::label_fit(ui.painter(), full.left(), y + result_h / 2.0, Align::Min, &text, style::plain_font(), color, full.width());
 
         let running = b.stop.is_some();
         let bw = 80.0;

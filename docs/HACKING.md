@@ -387,7 +387,14 @@ items; `.empty_text("No lines match.")` says so in an empty list; a cell
 draws plain text with `text`/`text_with` or sections of their own colours
 with `text_job`), `TabView`, `TabStrip` (a row of document tabs under
 a menu or tool bar, `STRIP_HEIGHT` (30) tall, roomier than a window tab: `StripTab { label, icon, color,
-status }` each, the selected one open into the content, close boxes,
+status }` each; tabs share the row up to `STRIP_TAB_MAX` (220) wide,
+their titles cut short with "…", the others divided by a hairline; the
+selected one is a raised tab with rounded top corners that opens into
+the content (`.opens_into(fill, ink)` when the content isn't the panel,
+e.g. Terminal's screen, so the tab takes its colour) or, with
+`.closed()`, stands on the strip's edge (content that isn't that tab's
+alone); `.group(name, colour)` leads the row with the name in a chip of
+its colour and gives every tab a band of it along its top; close boxes,
 middle-click to close, a + button, drag along the row to reorder; it
 returns a `StripAction` (`Select`, `Close`, `New`, `Menu(i, pos)` for a
 right-click, `Move { from, to }`); each tab is a `Tab` in the
@@ -496,7 +503,11 @@ of the way down.
    there rather than a literal in your app.
 3. **Text**: draw single lines with `style::label(painter, x, center_y,
    align, text, font, color)`; it centres capitals optically and snaps to
-   device pixels. Fonts: `style::plain_font()`, `style::bold_font()`,
+   device pixels. Any line that can be longer than its room (a title, a
+   path, a name the person typed) goes through `style::label_fit(…,
+   max_width)` instead, which ends it with "…" rather than clipping a
+   letter in half or running into its neighbour (agents still read the
+   whole text). Fonts: `style::plain_font()`, `style::bold_font()`,
    `style::italic_font()`, `style::mono_font(size)`. Highlight selected
    text with `style::text_highlight(galley, origin, size, pad)` (cap height
    to baseline, so every label's highlight is the same height); drag-select
@@ -1716,8 +1727,14 @@ drops it. Show All Tabs (Tabs menu or the group's menu, ⌘⇧D) shows
 every tab of the window at once, each a live pane with its title over
 it (`tile` picks the columns that keep panes nearest a terminal's
 shape, the last row spread across), each pane's shell sized to its pane;
-clicking a pane makes it the one typed into, marked with the group's
+each pane has a head (`PANE_HEAD`, 22) with its icon and title, and the
+panes not typed into are dimmed so the one that is stands out; the strip
+is `.closed()` then, since no single tab owns the content.
+Clicking a pane makes it the one typed into, its head marked with the group's
 colour (or the focus blue) as the strip marks it, and the strip follows.
+The screen keeps `view::PAD` (8 × 6) between the text and the window's
+edges, in the screen's own background (`view::screen_colors`), so text
+never touches the frame or the strip.
 ⌘⇧D again goes back to one tab at a time. `save_state` keeps each
 window's group and whether it shows all tabs across an upgrade. A new
 ⌘⇧ shortcut must also go in `view::SHORTCUTS`, or the shell gets the

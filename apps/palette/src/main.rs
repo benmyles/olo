@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use sources::{Action, Found, Item, Kind, Workers};
 use olo_kit::{
     App, Cx, Keyboard, Layer, LayerOptions, WindowId, WindowKind, WindowOptions,
-    egui::{self, Color32, Key, Rect, Sense, pos2, vec2},
+    egui::{self, Align, Color32, Key, Rect, Sense, pos2, vec2},
     icons,
     instance::{self, Launch},
     metrics as m,
@@ -410,16 +410,10 @@ impl App for Palette {
                 // Title, and the subtitle after it in grey.
                 let x = icon_r.right() + 10.0;
                 let avail = (right - x).max(40.0);
-                let title = painter.layout(item.title.clone(), style::plain_font(), fg, avail);
-                let title_w = title.size().x.min(avail);
-                let title_pos = style::text_origin(ui.ctx(), &title, x, r.center().y, style::PLAIN_SIZE);
-                painter.with_clip_rect(Rect::from_min_max(pos2(x, r.top()), pos2(right, r.bottom()))).galley(title_pos, title, fg);
-                if !item.subtitle.is_empty() && avail - title_w > 40.0 {
-                    let sub = painter.layout_no_wrap(item.subtitle.clone(), style::small_font(), dim);
-                    let sx = x + title_w + 8.0;
-                    painter
-                        .with_clip_rect(Rect::from_min_max(pos2(sx, r.top()), pos2(right, r.bottom())))
-                        .galley(pos2(sx, r.center().y - sub.size().y / 2.0 + 1.0), sub, dim);
+                let title = style::label_fit(&painter, x, r.center().y, Align::Min, &item.title, style::plain_font(), fg, avail);
+                let sx = title.right() + 8.0;
+                if !item.subtitle.is_empty() && right - sx > 40.0 {
+                    style::label_fit(&painter, sx, r.center().y + 1.0, Align::Min, &item.subtitle, style::small_font(), dim, right - sx);
                 }
             }
             if let Some(i) = chosen {

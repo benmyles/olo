@@ -101,11 +101,11 @@ pub fn show(ui: &mut Ui, rect: Rect, disk: &Disk, selected: Option<&Item>) -> Ma
         }
         // Words when they fit.
         if r.width() >= 44.0 {
-            let clip = painter.with_clip_rect(r.shrink2(vec2(4.0, 2.0)));
             let color = if volume.is_some() { text_color(&p) } else { c(p.document_text) };
             let mid = r.center().y;
-            style::label(&clip, r.left() + 5.0, mid - 7.0, Align::Min, title, egui::FontId::new(style::PLAIN_SIZE - 1.0, style::bold()), color);
-            style::label(&clip, r.left() + 5.0, mid + 7.0, Align::Min, detail, style::small_font(), color);
+            let w = r.width() - 10.0;
+            style::label_fit(&painter, r.left() + 5.0, mid - 7.0, Align::Min, &title, egui::FontId::new(style::PLAIN_SIZE - 1.0, style::bold()), color, w);
+            style::label_fit(&painter, r.left() + 5.0, mid + 7.0, Align::Min, &detail, style::small_font(), color, w);
         }
         if selected == Some(item) || selected.is_some_and(|s| matches!((s, volume), (Item::Volume(p), Some(v)) if v.cleartext.as_ref().is_some_and(|c| &c.path == p))) {
             painter.rect_stroke(r.shrink(1.0), 0.0, egui::Stroke::new(2.0, c(p.keyboard_navigation)), egui::StrokeKind::Inside);

@@ -51,7 +51,7 @@ const DEFAULT_TEXT_SIZE: f32 = 12.0;
 /// The tab strip, shown once a window has more than one tab.
 const STRIP: f32 = widgets::STRIP_HEIGHT;
 /// The title bar over each pane in Show All Tabs.
-const PANE_HEAD: f32 = 20.0;
+const PANE_HEAD: f32 = 22.0;
 
 /// Show All Tabs' panes for `n` tabs in `area`: as many columns as keep
 /// each pane nearest a terminal's usual shape, the last row's spread
@@ -80,28 +80,34 @@ fn tile(area: egui::Rect, n: usize) -> Vec<egui::Rect> {
     out
 }
 
-/// A pane's title bar in Show All Tabs: its tab's title, and the one
-/// typed into marked with the group's colour (or the focus blue), as
-/// the strip marks it; a line around each pane keeps them apart.
-fn pane_head(ui: &egui::Ui, pane: egui::Rect, title: &str, active: bool, band: Option<egui::Color32>) {
+/// A pane's title bar in Show All Tabs: its tab's icon and title (cut
+/// short with "…"), the one typed into lit as the strip's selected tab
+/// is and underlined in the group's colour (or the focus blue); a line
+/// around each pane keeps them apart.
+fn pane_head(ui: &egui::Ui, pane: egui::Rect, title: &str, icon: &dyn Fn(&egui::Painter, egui::Rect), active: bool, band: Option<egui::Color32>) {
     let p = style::palette(ui.ctx());
     let painter = ui.painter();
     let bg = p.panel_background;
+    let well = style::shade(&p, bg, 1.07);
+    let edge = style::shade(&p, bg, 1.3);
     let head = egui::Rect::from_min_size(pane.min, egui::vec2(pane.width(), PANE_HEAD));
-    painter.rect_filled(head, 0.0, if active { style::c(bg) } else { style::shade(&p, bg, 1.07) });
-    style::hline(painter, head.left(), head.right(), head.bottom() - 1.0, style::shade(&p, bg, 1.3));
+    painter.rect_filled(head, 0.0, if active { style::c(bg) } else { well });
+    style::hline(painter, head.left(), head.right(), head.bottom() - 1.0, edge);
     // Lines between panes (the window's frame does the outer edges).
-    let edge = style::shade(&p, bg, 1.5);
     style::vline(painter, pane.right(), pane.top(), pane.bottom() + 1.0, edge);
     style::hline(painter, pane.left(), pane.right() + 1.0, pane.bottom(), edge);
     if active {
         let mark = band.unwrap_or(style::c(p.keyboard_navigation));
-        painter.rect_filled(egui::Rect::from_min_size(head.min, egui::vec2(head.width(), 3.0)), 0.0, mark);
+        painter.rect_filled(egui::Rect::from_min_max(egui::pos2(head.left(), head.bottom() - 2.0), head.max), 0.0, mark);
     }
+    let cy = ((head.top() + head.bottom() - 1.0) / 2.0).round();
+    let at = style::snap(ui.ctx(), egui::Rect::from_min_size(egui::pos2(head.left() + m::SPACING, cy - 8.0), egui::vec2(16.0, 16.0)));
+    icon(painter, at);
+    let x = at.right() + m::MARK_GAP;
     let font = if active { style::bold_font() } else { style::plain_font() };
-    let color = if active { style::c(p.panel_text) } else { style::shade(&p, p.panel_text, 0.8) };
-    let clip = head.shrink2(egui::vec2(m::SPACING, 0.0));
-    style::label(&painter.with_clip_rect(clip), clip.left(), (head.center().y + 1.0).round(), egui::Align::Min, title, font, color);
+    let text = style::c(p.panel_text);
+    let color = if active { text } else { text.lerp_to_gamma(well, 0.3) };
+    style::label_fit(painter, x, cy, egui::Align::Min, title, font, color, head.right() - m::SPACING - x);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
@@ -330,8 +336,8 @@ fn estimate(settings: &Settings, cols: usize, rows: usize, strip: bool) -> (u32,
     let cell_w = (s * 0.6 * 2.0).ceil() / 2.0;
     let cell_h = (s * 1.32 * 2.0).ceil() / 2.0;
     (
-        (cols as f32 * cell_w + 2.0 * view::PAD).ceil() as u32,
-        (rows as f32 * cell_h + 2.0 * view::PAD).ceil() as u32 + chrome(strip),
+        (cols as f32 * cell_w + 2.0 * view::PAD.x).ceil() as u32,
+        (rows as f32 * cell_h + 2.0 * view::PAD.y).ceil() as u32 + chrome(strip),
     )
 }
 
@@ -631,6 +637,14 @@ impl Terminal {
             if let (Some(g), Some(color)) = (&t.group, color) {
                 bar = bar.group(&g.name, color);
             }
+            if t.tiled && t.tabs.len() > 1 {
+                // Each pane has its own head.
+                bar = bar.closed();
+            } else {
+                // The selected tab opens into its screen.
+                let (back, fore) = view::screen_colors(&t.tab().session, &scheme);
+                bar = bar.opens_into(back, fore);
+            }
             action = bar.show(ui, strip);
         }
         t.tab().session.woke();
@@ -671,7 +685,8 @@ impl Terminal {
             let mut screen = rect;
             if several {
                 screen.min.y += PANE_HEAD;
-                pane_head(ui, rect, &tab.title, i == *active, band);
+                let icon = tab_icon(tab.rang, tab.agent, tab.attention);
+                pane_head(ui, rect, &tab.title, &icon, i == *active, band);
                 let pressed = ui.input(|inp| inp.pointer.any_pressed() && inp.pointer.interact_pos().is_some_and(|p| rect.contains(p)));
                 if pressed && i != *active {
                     picked = Some(i);
@@ -685,6 +700,11 @@ impl Terminal {
                 .inner;
             if several {
                 tab.session.resize(o.size, metrics.device_cell());
+                if i != *active {
+                    // The panes not typed into, dimmed a little.
+                    let (back, _) = view::screen_colors(&tab.session, &scheme);
+                    ui.painter().rect_filled(screen, 0.0, back.gamma_multiply(0.3));
+                }
             }
             match &mut out {
                 Some(first) => first.merge(o),

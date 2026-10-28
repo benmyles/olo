@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-28
 
+### Terminal polished (light)
+
+*01:07* — The same strip and padding in the light theme: the selected tab opens into the screen's own background (TabStrip::opens_into).
+
+![Terminal polished (light)](2026-10-28/010731-terminal-polished-light.png)
+
+### Terminal polished (dark)
+
+*01:07* — Rounded strip tabs that share the row and end long titles with '…', the group's name in a chip with a band of its colour on every tab, pane heads with icons, the pane being typed into marked in the group colour and the others dimmed, 8×6 padding around the screen. label_fit (elide with …) now used wherever a line can overflow: palette rows, Drive Setup, kit list messages.
+
+![Terminal polished (dark)](2026-10-28/010730-terminal-polished-dark.png)
+
+### Terminal before the polish
+
+*01:07* — Show All Tabs before: square tabs cut off mid-letter, pane titles in plain panel grey, the screen's text right against the frame.
+
+![Terminal before the polish](2026-10-28/010730-terminal-before-the-polish.png)
+
 ### Desktop menu over windows
 
 *00:49* — The desktop's right-click menu opened over a window was drawn behind it, and clicks went to the window. app_server now draws the desktop layer's menus over the windows and the Deskbar (under only the Overlay layer) and finds them there for the pointer and keyboard.

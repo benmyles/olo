@@ -27,8 +27,9 @@ use crate::{
     session::{Session, Size},
 };
 
-/// Space between the window edge and the text, in logical pixels.
-pub const PAD: f32 = 5.0;
+/// Space between the window edge and the text, in logical pixels: a
+/// little less down than across, as a cell's line box already has some.
+pub const PAD: egui::Vec2 = egui::vec2(8.0, 6.0);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Metrics {
@@ -63,18 +64,27 @@ impl Metrics {
     /// How many cells fit in `area`.
     pub fn grid_size(&self, area: egui::Vec2) -> Size {
         Size {
-            cols: (((area.x - 2.0 * PAD) / self.cell.x).floor() as usize).max(2),
-            rows: (((area.y - 2.0 * PAD) / self.cell.y).floor() as usize).max(1),
+            cols: (((area.x - 2.0 * PAD.x) / self.cell.x).floor() as usize).max(2),
+            rows: (((area.y - 2.0 * PAD.y) / self.cell.y).floor() as usize).max(1),
         }
     }
 
     /// Content size for a `cols`×`rows` window.
     pub fn content_size(&self, cols: usize, rows: usize) -> (u32, u32) {
         (
-            (cols as f32 * self.cell.x + 2.0 * PAD).ceil() as u32,
-            (rows as f32 * self.cell.y + 2.0 * PAD).ceil() as u32,
+            (cols as f32 * self.cell.x + 2.0 * PAD.x).ceil() as u32,
+            (rows as f32 * self.cell.y + 2.0 * PAD.y).ceil() as u32,
         )
     }
+}
+
+/// A screen's background and text colours as it draws them (a program
+/// may have changed them).
+pub fn screen_colors(s: &Session, scheme: &Scheme) -> (Color32, Color32) {
+    let term = s.term.lock();
+    let colors = term.colors();
+    let named = |n| c32(scheme.resolve(Color::Named(n), colors));
+    (named(NamedColor::Background), named(NamedColor::Foreground))
 }
 
 /// Mouse state between frames.
@@ -179,7 +189,7 @@ pub fn show(
     }
     pointer(ui, s, m, &resp, rect, mouse, &mut out);
     let painter = ui.painter_at(rect);
-    let origin = pos2(rect.min.x + PAD, rect.min.y + PAD);
+    let origin = rect.min + PAD;
 
     // ⌘ (Ctrl) held over a link: find it (once per cell the pointer is on).
     let link_mode = ui.input(|i| i.modifiers.ctrl) && resp.hovered() && !mouse.selecting;
@@ -438,7 +448,7 @@ pub fn show(
     // Scrollback position, shown only while scrolled back.
     if offset > 0 {
         let history = term.history_size().max(1) as f32;
-        let track = rect.shrink2(vec2(2.0, PAD));
+        let track = rect.shrink2(vec2(2.0, PAD.y));
         let visible = rows as f32 / (history + rows as f32);
         let h = (track.height() * visible).max(16.0);
         let t = 1.0 - offset as f32 / history;
@@ -1072,8 +1082,8 @@ pub fn paste(s: &Session, text: &str, mode: TermMode) {
 // ---- mouse ------------------------------------------------------------------
 
 fn cell_at(pos: Pos2, rect: Rect, m: &Metrics, size: Size, offset: usize) -> (Point, Side) {
-    let x = (pos.x - rect.min.x - PAD).max(0.0);
-    let y = (pos.y - rect.min.y - PAD).max(0.0);
+    let x = (pos.x - rect.min.x - PAD.x).max(0.0);
+    let y = (pos.y - rect.min.y - PAD.y).max(0.0);
     let col = ((x / m.cell.x) as usize).min(size.cols - 1);
     let row = ((y / m.cell.y) as usize).min(size.rows - 1);
     let side = if x - col as f32 * m.cell.x > m.cell.x / 2.0 { Side::Right } else { Side::Left };
