@@ -282,6 +282,18 @@ impl<BackendData: Backend> WlrLayerShellHandler for AnvilState<BackendData> {
         }) {
             map.unmap_layer(&layer);
         }
+        // It had the keyboard (the palette, Quick Look's overlay…): give
+        // it back to the window in front, or nothing would have it and
+        // the next palette would find no window to act on.
+        let keyboard = self.seat.get_keyboard().unwrap();
+        let had_focus = match keyboard.current_focus() {
+            Some(crate::focus::KeyboardFocusTarget::LayerSurface(l)) => l.layer_surface() == &surface,
+            Some(f) => !f.alive(),
+            None => true,
+        };
+        if had_focus && !self.lock.locked() {
+            self.focus_topmost();
+        }
     }
 }
 
