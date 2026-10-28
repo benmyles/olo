@@ -224,7 +224,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return;
         }
         let rolled = !window.decoration().rolled;
-        window.decoration().rolled = rolled;
+        // A group rolls up together (its tabs stay side by side).
+        let app = window.app_id();
+        let together: Vec<WindowElement> = if self.groups.has(window) { self.groups.members_of(&app) } else { vec![window.clone()] };
+        for w in &together {
+            w.decoration().rolled = rolled;
+        }
         tracing::info!(id = window.id(), rolled, "rolled");
     }
 

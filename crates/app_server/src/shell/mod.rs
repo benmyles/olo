@@ -46,6 +46,7 @@ use crate::{
 mod element;
 mod grabs;
 pub mod deco;
+pub mod groups;
 pub mod tiling;
 mod wm;
 mod xdg;

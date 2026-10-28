@@ -762,6 +762,7 @@ impl Tracker {
                     fs::new_window(app);
                 }
             }
+            "group-windows" => fs::toggle_grouping(f.selected_entries().first()),
             "terminal-selected" => {
                 for e in f.selected_entries().iter().filter(|e| e.is_dir) {
                     fs::open_in_terminal(&e.path);
@@ -1813,7 +1814,12 @@ fn main() {
         let proxy = cx.proxy();
         let watcher = watch::Watcher::new(move |changes| proxy.send(Msg::Changed(changes)));
         let proxy = cx.proxy();
-        olo_kit::settings::watch(move |s| proxy.send(Msg::Settings(s.tracker)));
+        olo_kit::settings::watch(move |s| {
+            if let Ok(mut u) = fs::UNGROUPED.lock() {
+                *u = s.tiling.ungrouped_apps.clone();
+            }
+            proxy.send(Msg::Settings(s.tracker))
+        });
         let mut t = Tracker {
             windows: HashMap::new(),
             clipboard: None,

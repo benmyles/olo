@@ -60,6 +60,10 @@ pub struct Decoration {
     pub last_tab_press: Option<(Instant, Point<f64, Logical>)>,
     /// Rolled up: only the tab shows (and takes the pointer).
     pub rolled: bool,
+    /// Its tab's width when the window is in a group (each window's tab
+    /// gets its place along the shared top, `groups`); else as wide as its
+    /// title wants.
+    pub tab_width: Option<i32>,
     title_width: Option<(String, i32)>,
     tab: Option<(TabKey, MemoryRenderBuffer)>,
     frame_ids: Vec<Id>,
@@ -101,6 +105,7 @@ impl Default for Decoration {
             pointer: Point::default(),
             last_tab_press: None,
             rolled: false,
+            tab_width: None,
             title_width: None,
             tab: None,
             frame_ids: (0..20).map(|_| Id::new()).collect(),
@@ -171,10 +176,18 @@ impl Decoration {
         }
     }
 
+    /// How wide a tab wants to be for `title`, with room for it all.
+    pub fn wanted_tab_width(&mut self, title: &str) -> i32 {
+        (2 * (BOX_INSET + BOX_SIZE + TITLE_GAP) + self.title_width(title)).max(MIN_TAB_WIDTH)
+    }
+
     pub fn tab_layout(&mut self, title: &str, content: Size<i32, Logical>) -> TabLayout {
         let frame_w = content.w + 2 * BORDER;
-        let wanted = 2 * (BOX_INSET + BOX_SIZE + TITLE_GAP) + self.title_width(title);
-        let width = wanted.max(MIN_TAB_WIDTH).min(frame_w).max(1);
+        let wanted = match self.tab_width {
+            Some(w) => w,
+            None => self.wanted_tab_width(title),
+        };
+        let width = wanted.min(frame_w).max(1);
         let x = self.tab_offset.clamp(0, (frame_w - width).max(0));
         TabLayout { x, width }
     }

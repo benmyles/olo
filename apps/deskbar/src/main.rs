@@ -67,8 +67,9 @@ enum Msg {
     Workspace(u32, u32),
     Status(status::Status),
     Power(olo_protocol::PowerStatus),
-    /// The clock's settings, and whether the Olo menu shows icons.
-    Settings(olo_protocol::ClockSettings, bool),
+    /// The clock's settings, whether the Olo menu shows icons, and the
+    /// apps whose windows aren't grouped.
+    Settings(olo_protocol::ClockSettings, bool, Vec<String>),
 }
 
 /// A team: the windows of one application.
@@ -99,6 +100,8 @@ struct Deskbar {
     /// The window that last had the focus: still "this window" for the
     /// Olo menu's commands while the menu holds the keyboard.
     last_focused: Option<u64>,
+    /// Apps whose windows aren't grouped (`TilingSettings::ungrouped_apps`).
+    ungrouped: Vec<String>,
     /// The Restart / Shut Down confirmation, while it is open.
     confirm: Option<(WindowId, Power)>,
     /// The "upgrade and reload?" alert, while it is open, with its message.
@@ -352,10 +355,15 @@ impl Deskbar {
         if team.windows.first().is_some_and(|w| new_window_app(&w.app_id)) {
             m = m.separator().item("New Window", "new-window", None);
         }
+        let app = team.windows.first().map(|w| w.app_id.clone()).unwrap_or_default();
         m.separator()
             .item("Hide All", "hide-all", None)
             .item("Show All", "show-all", None)
             .item("Close All", "close-all", None)
+            .separator()
+            .item("Group Windows", "group-windows", None)
+            .checked(!self.ungrouped.contains(&app))
+            .enabled(!app.is_empty())
     }
 
     /// Caffeinated mode: indefinitely or for a while, with the lid too.
@@ -537,6 +545,12 @@ impl Deskbar {
         let ids: Vec<u64> = self.windows.iter().filter(|w| team_key == team_key_of(w)).map(|w| w.id).collect();
         if let Some(id) = cmd.strip_prefix("win:").and_then(|s| s.parse().ok()) {
             request(Request::Activate { id });
+            return;
+        }
+        if cmd == "group-windows" {
+            if let Some(app) = self.windows.iter().find(|w| team_key == team_key_of(w)).map(|w| w.app_id.clone()) {
+                olo_kit::settings::set_groups_windows(&app, self.ungrouped.contains(&app));
+            }
             return;
         }
         if cmd == "new-window" {
@@ -981,9 +995,10 @@ impl App for Deskbar {
                     self.caffeinated_until = p.caffeinated_until;
                     self.caffeinated_lid = p.caffeinated_lid;
                 }
-                Msg::Settings(clock, icons) => {
+                Msg::Settings(clock, icons, ungrouped) => {
                     self.clock = clock;
                     self.menu_icons = icons;
+                    self.ungrouped = ungrouped;
                 }
             }
             cx.redraw(self.win);
@@ -1011,7 +1026,7 @@ fn watch_server(proxy: olo_kit::Proxy) {
                         proxy.send(Msg::Power(status));
                     }
                     if let Ok(Reply::Settings { settings }) = c.request(&Request::GetSettings) {
-                        proxy.send(Msg::Settings(settings.clock, settings.appearance.menu_icons));
+                        proxy.send(Msg::Settings(settings.clock, settings.appearance.menu_icons, settings.tiling.ungrouped_apps));
                     }
                     if let Ok(events) = c.into_events() {
                         for e in events.flatten() {
@@ -1020,7 +1035,7 @@ fn watch_server(proxy: olo_kit::Proxy) {
                                 Event::WorkspaceChanged { current, count } => proxy.send(Msg::Workspace(current, count)),
                                 Event::PowerChanged { status } => proxy.send(Msg::Power(status)),
                                 Event::SettingsChanged { settings } => {
-                                    proxy.send(Msg::Settings(settings.clock, settings.appearance.menu_icons))
+                                    proxy.send(Msg::Settings(settings.clock, settings.appearance.menu_icons, settings.tiling.ungrouped_apps))
                                 }
                                 _ => {}
                             }
@@ -1070,6 +1085,7 @@ fn main() {
             height: TILE_H + tray_height(1),
             scroll_acc: 0.0,
             last_focused: None,
+            ungrouped: Vec::new(),
             confirm: None,
             upgrade_ask: None,
         }

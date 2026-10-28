@@ -72,6 +72,24 @@ pub fn watch_power(f: impl Fn(PowerStatus) + Send + 'static) {
 /// Change the settings: `edit` is given the current ones and app_server
 /// gets the result (and tells every app that follows them). On a thread,
 /// so it never holds up the UI; false outside Olo.
+/// Whether `app_id`'s windows are grouped (share one frame, a tab each:
+/// the default) in `settings`.
+pub fn groups_windows(settings: &Settings, app_id: &str) -> bool {
+    !settings.tiling.ungrouped_apps.iter().any(|a| a == app_id)
+}
+
+/// Group `app_id`'s windows, or not (Deskbar's and Tracker's Group
+/// Windows), off the UI thread as `update`.
+pub fn set_groups_windows(app_id: &str, on: bool) -> bool {
+    let app = app_id.to_owned();
+    update(move |s| {
+        s.tiling.ungrouped_apps.retain(|a| *a != app);
+        if !on {
+            s.tiling.ungrouped_apps.push(app);
+        }
+    })
+}
+
 pub fn update(edit: impl FnOnce(&mut Settings) + Send + 'static) -> bool {
     if olo_protocol::socket_path().is_none() {
         return false;

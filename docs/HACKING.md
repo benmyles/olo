@@ -1032,6 +1032,22 @@ only the tab, and passes the pointer through everywhere else. It is in
 `WindowInfo::rolled` and kept across a reload (`layout::Placement`).
 Agents roll with `{"type":"run_shortcut","id":"roll-up","window":ID}`.
 
+Window groups (shell/groups.rs): an app's top-level, decorated,
+resizable windows on the same workspace share one frame, with a tab
+each laid side by side along the top (`tab_bar`: each tab as wide as its
+title wants, or all an equal share if they don't fit, so tabs never
+overlap; `Decoration::tab_width`, `tab_offset`). `sync_groups` runs every
+`tick`: the front-most member leads, newcomers take its frame
+(`join_group`), and the group is raised together so clicking a tab
+brings that window to the front of the frame. Moving, resizing, rolling
+up and tiling (one cell per group) act on the whole group;
+`behind_in_group` windows are skipped by the arranging commands. A
+window leaving a group gets its own tab back and steps out by `CASCADE`
+so it isn't hidden. Grouping is on for every app; the ones a person
+turns off are `TilingSettings::ungrouped_apps` (app ids), toggled by
+Group Windows in Deskbar's team menu and in Tracker's menu for an app
+(`olo_kit::settings::groups_windows` / `set_groups_windows`).
+
 Other programs arrange windows through two requests: `Arrangement`
 answers the active display's connector, its tiling area (global logical
 pixels) and its windows on this workspace, front first, with frames;

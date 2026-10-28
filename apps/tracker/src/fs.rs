@@ -66,6 +66,39 @@ pub fn running_app(e: &Entry) -> Option<String> {
     olo_kit::instance::running(&id).then_some(id)
 }
 
+/// Apps whose windows aren't grouped, as app_server's settings last said
+/// (kept by the settings watch, so menus never wait for app_server).
+pub static UNGROUPED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// The app id of the application `e` is: one of our programs (or a link
+/// to one), or a `.desktop` entry (its id, which Wayland apps use).
+pub fn app_id(e: &Entry) -> Option<String> {
+    if e.is_dir {
+        return None;
+    }
+    if e.app_icon.is_some() {
+        let target = if e.is_link { fs::read_link(&e.path).ok()? } else { e.path.clone() };
+        return olo_kit::apps::app_id_of(target.file_name()?.to_str()?);
+    }
+    e.name.strip_suffix(".desktop").filter(|s| !s.is_empty()).map(str::to_owned)
+}
+
+/// Group Windows for `e`'s app: shown when it is an application, checked
+/// while its windows are grouped.
+pub fn grouping_item(menu: olo_kit::Menu, e: Option<&Entry>) -> olo_kit::Menu {
+    let Some(app) = e.and_then(app_id) else { return menu };
+    let grouped = !UNGROUPED.lock().is_ok_and(|u| u.contains(&app));
+    menu.item("Group Windows", "group-windows", None).checked(grouped)
+}
+
+/// Group or ungroup `e`'s app's windows (saved in app_server's settings).
+pub fn toggle_grouping(e: Option<&Entry>) {
+    if let Some(app) = e.and_then(app_id) {
+        let grouped = !UNGROUPED.lock().is_ok_and(|u| u.contains(&app));
+        olo_kit::settings::set_groups_windows(&app, !grouped);
+    }
+}
+
 /// Ask the running app `app_id` for another window, off the UI thread.
 pub fn new_window(app_id: String) {
     std::thread::spawn(move || olo_kit::instance::forward(&app_id, &["--new-window".to_owned()]));

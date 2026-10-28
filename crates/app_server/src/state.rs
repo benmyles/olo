@@ -233,6 +233,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// How the windows were before the last arrangement (Tile All,
     /// Cascade, Fan Out, an app's Show All), for Undo Window Arrangement.
     pub arranged: Vec<crate::shell::tiling::Placed>,
+    /// Window groups as of the last loop iteration (`shell::groups`).
+    pub groups: crate::shell::groups::Groups,
     /// Counts shortcut recordings (a timer only ends its own).
     pub recording_shortcut: u64,
 }
@@ -1005,6 +1007,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             mirrors: Vec::new(),
             desktop_shown: Vec::new(),
             arranged: Vec::new(),
+            groups: Default::default(),
             recording_shortcut: 0,
         };
         if let Some(name) = state.socket_name.clone() {

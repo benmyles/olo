@@ -5,6 +5,10 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Group an app's windows~~ (Ben): an app's windows share one frame
+  with a proper tab bar (side by side, never overlapping); Group Windows
+  in Deskbar's team menu and Tracker's menu for an app turns it off or
+  on per app, saved in `ungrouped_apps`.
 - ~~⌘V doesn't paste in Terminal~~ (Ben): settings saved before the
   rename listed `tabula.terminal` as a terminal, so Olo's Terminal got
   ⌘V as Ctrl+V (bash's quoted-insert). Old app ids in saved settings are

@@ -1276,5 +1276,17 @@
   "title": "Fan Out Others from the menu",
   "caption": "Chosen from Deskbar with README.md focused: the other windows fan out along the top and README.md stays where it was, in front.",
   "image": "2026-10-27/194317-fan-out-others-from-the-menu.png"
+ },
+ {
+  "time": "2026-10-27T19:59:42",
+  "title": "Window groups",
+  "caption": "An app's windows share one frame, with a tab each side by side along the top; clicking a tab brings that window forward. Group Windows in Deskbar's team menu or Tracker turns it off per app.",
+  "image": "2026-10-27/195942-window-groups.png"
+ },
+ {
+  "time": "2026-10-27T19:59:43",
+  "title": "Window groups, dark",
+  "caption": "The same group's tab bar in dark mode.",
+  "image": "2026-10-27/195943-window-groups-dark.png"
  }
 ]

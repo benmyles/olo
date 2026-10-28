@@ -227,7 +227,7 @@ fn limit(links: &[Link], (mut dw, mut dh): (i32, i32)) -> (i32, i32) {
 }
 
 /// The diagonal step between cascaded windows, as when they open.
-const CASCADE: i32 = 24;
+pub(super) const CASCADE: i32 = 24;
 
 /// `area` less `margin` all round.
 fn inset(area: Rectangle<i32, Logical>, margin: i32) -> Rectangle<i32, Logical> {
@@ -305,7 +305,7 @@ pub fn fan_in(cell: Rectangle<i32, Logical>, tabs: &[i32], tab_h: i32) -> Vec<(R
 }
 
 /// Not a fixed-size window (an alert, a panel such as DeskCalc's).
-fn resizable(w: &WindowElement) -> bool {
+pub(super) fn resizable(w: &WindowElement) -> bool {
     use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
     w.wl_surface().is_none_or(|s| {
         with_states(&s, |st| {
@@ -680,10 +680,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
     }
 
-    /// Windows on a display on this workspace, back to front.
+    /// Windows on a display on this workspace, back to front; a group
+    /// counts as its front window (the rest follow it).
     fn windows_on(&self, output: &Output) -> Vec<WindowElement> {
         let all: Vec<WindowElement> = self.space.elements().cloned().collect();
-        all.into_iter().filter(|w| self.window_output(w).as_ref() == Some(output)).collect()
+        all.into_iter().filter(|w| self.window_output(w).as_ref() == Some(output) && !self.behind_in_group(w)).collect()
     }
 
     fn placed(&self, windows: &[WindowElement]) -> Vec<Placed> {
@@ -918,7 +919,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     pub fn tile_app(&mut self, app_id: &str) -> bool {
         let Some(output) = self.active_output() else { return false };
         let Some(area) = self.tile_area(&output) else { return false };
-        let mut windows: Vec<WindowElement> = self.space.elements().filter(|w| w.app_id() == app_id && resizable(w)).cloned().collect();
+        let mut windows: Vec<WindowElement> = self.space.elements().filter(|w| w.app_id() == app_id && resizable(w) && !self.behind_in_group(w)).cloned().collect();
         if windows.is_empty() {
             return false;
         }

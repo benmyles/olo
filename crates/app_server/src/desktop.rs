@@ -253,6 +253,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// subscribers (Deskbar) when the window list changed.
     pub fn tick(&mut self) {
         self.parked.0.borrow_mut().retain(|w| w.alive());
+        self.sync_groups();
         let infos = self.window_infos();
         if infos != self.last_window_infos {
             crate::twitcher::prewarm(infos.iter().map(|i| i.app_id.as_str()));

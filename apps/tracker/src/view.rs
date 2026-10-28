@@ -440,6 +440,10 @@ pub fn item_menu(f: &FolderWin) -> Menu {
     if one && f.selected_entries().first().and_then(fs::running_app).is_some() {
         menu = menu.item("New Window", "new-window", None);
     }
+    // An application's windows: grouped in one frame, or each its own.
+    if one {
+        menu = fs::grouping_item(menu, f.selected_entries().first());
+    }
     menu = menu
         .item("Get Info", "info", Some(Key::I))
         .item("Edit Name", "rename", Some(Key::E))

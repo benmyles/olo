@@ -430,11 +430,14 @@ pub struct TilingSettings {
     pub gap: u32,
     /// Between tiled windows and the edges of the display.
     pub margin: u32,
+    /// Apps whose windows aren't grouped (by app id): every other app's
+    /// windows share one frame with a tab each (app_server's `groups`).
+    pub ungrouped_apps: Vec<String>,
 }
 
 impl Default for TilingSettings {
     fn default() -> Self {
-        TilingSettings { gap: 8, margin: 8 }
+        TilingSettings { gap: 8, margin: 8, ungrouped_apps: Vec::new() }
     }
 }
 

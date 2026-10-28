@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-27
 
+### Window groups, dark
+
+*19:59* — The same group's tab bar in dark mode.
+
+![Window groups, dark](2026-10-27/195943-window-groups-dark.png)
+
+### Window groups
+
+*19:59* — An app's windows share one frame, with a tab each side by side along the top; clicking a tab brings that window forward. Group Windows in Deskbar's team menu or Tracker turns it off per app.
+
+![Window groups](2026-10-27/195942-window-groups.png)
+
 ### Fan Out Others from the menu
 
 *19:43* — Chosen from Deskbar with README.md focused: the other windows fan out along the top and README.md stays where it was, in front.

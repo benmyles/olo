@@ -408,6 +408,9 @@ impl Desktop {
                     if self.selected.len() <= 1 && self.item(i).and_then(|it| fs::running_app(&it.entry)).is_some() {
                         m = m.item("New Window", "new-window", None);
                     }
+                    if self.selected.len() <= 1 {
+                        m = fs::grouping_item(m, self.item(i).map(|it| &it.entry));
+                    }
                     m.item("Get Info", "info", None)
                     .separator()
                     .item("Move to Trash", "trash", None)
@@ -433,6 +436,7 @@ impl Desktop {
                         fs::new_window(app);
                     }
                 }
+                "group-windows" => fs::toggle_grouping(self.selected_entries().first()),
                 "trash" => {
                     // Only items that live in ~/Desktop can go to the Trash.
                     let keep: BTreeSet<usize> = self
