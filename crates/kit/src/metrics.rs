@@ -16,6 +16,9 @@ pub const BOX_INSET: f32 = 10.0;
 pub const LABEL_GAP: f32 = 8.0;
 /// Between a check box / radio mark and its label.
 pub const MARK_GAP: f32 = 6.0;
+/// A check box's mark: a note under its label lines up after it and
+/// `MARK_GAP`.
+pub const MARK_SIZE: f32 = 12.0;
 
 /// Push buttons, menu fields and text controls share one height so rows
 /// of mixed controls line up.

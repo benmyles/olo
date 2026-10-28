@@ -694,6 +694,9 @@ pub struct DisplaySettings {
     /// The main display's key (Deskbar and the desktop live there); None,
     /// or one that isn't connected, means the first.
     pub main: Option<String>,
+    /// A Deskbar on every display, each showing the applications with
+    /// windows on it (else one, on the main display, shows them all).
+    pub deskbar_on_every_display: bool,
     /// Per-display overrides, keyed by [`display_key`]: the monitor itself
     /// when its EDID names it, else the connector ("eDP-1"). Entries saved
     /// under a connector by older versions still apply, and move to the
@@ -715,7 +718,7 @@ pub fn display_key(connector: &str, make: &str, model: &str, serial: &str) -> St
 
 impl Default for DisplaySettings {
     fn default() -> Self {
-        DisplaySettings { scale: 2.0, main: None, outputs: Default::default() }
+        DisplaySettings { scale: 2.0, main: None, deskbar_on_every_display: false, outputs: Default::default() }
     }
 }
 

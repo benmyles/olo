@@ -169,7 +169,7 @@ impl Widget for CheckBox<'_> {
         let p = style::palette(ui.ctx());
         let color = text_color(ui, &p);
         let galley = layout(ui, self.label, plain_font(), color);
-        let size = vec2(12.0 + MARK_GAP + galley.size().x.ceil(), m::MARK_ROW);
+        let size = vec2(m::MARK_SIZE + MARK_GAP + galley.size().x.ceil(), m::MARK_ROW);
         let (rect, mut response) = ui.allocate_exact_size(size, Sense::click());
         lint::control(ui, || lint::quoted("check box", self.label), rect);
         if response.clicked() {
@@ -184,7 +184,7 @@ impl Widget for CheckBox<'_> {
         let painter = ui.painter();
         let pressed = response.is_pointer_button_down_on() && response.hovered();
         // Centred on the label's x-height rather than its line box.
-        let well = Rect::from_min_size(pos2(rect.left(), (rect.center().y - 6.5).round()), vec2(12.0, 12.0));
+        let well = Rect::from_min_size(pos2(rect.left(), (rect.center().y - 6.5).round()), vec2(m::MARK_SIZE, m::MARK_SIZE));
         mark_well(painter, well, &p, pressed, ui.is_enabled());
         if checked {
             let mark = if ui.is_enabled() { c(p.control_mark) } else { style::disabled_text(&p) };

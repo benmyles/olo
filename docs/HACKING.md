@@ -1049,6 +1049,13 @@ launcher lists them. The panel list Deskbar shows is
   (`DisplaySettings::main`, else the first) gets layer surfaces that name
   no output (Deskbar, the desktop): they carry `shell::AutoOutput` and
   move when the main display changes or their output is unplugged.
+  With more than one display, "Show Deskbar on every display"
+  (`DisplaySettings::deskbar_on_every_display`, off by default) gives
+  each its own Deskbar (one layer surface per output, `Bar` in
+  apps/deskbar), each listing only the applications with windows on its
+  display, and only those windows (`WindowInfo::output`; a window whose
+  display isn't known counts as the main one's). The map draws a
+  Deskbar strip on every display then.
   render.rs draws the layers itself, front to back: Overlay, the menus
   of the Background and Bottom layers (the desktop's right-click menu,
   `shell::lower_layer_menus`), Top (Deskbar), the windows, then the

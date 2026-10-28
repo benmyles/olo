@@ -174,8 +174,9 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
         let border = if chosen { c(p.keyboard_navigation) } else { c(p.frame_focused[0]) };
         let stroke_w = if chosen { 2.0 } else { 1.0 };
         ui.painter().rect_stroke(r, 0.0, (stroke_w, border), olo_kit::egui::StrokeKind::Inside);
-        // A menu bar strip on the main display, where Deskbar goes.
-        if o.main {
+        // A menu bar strip on the main display, where Deskbar goes (or on
+        // every display, each with its own).
+        if o.main || s.display.deskbar_on_every_display {
             let bar = Rect::from_min_size(r.min + vec2(stroke_w, stroke_w), vec2(r.width() - 2.0 * stroke_w, 4.0));
             ui.painter().rect_filled(bar, 0.0, Color32::from_white_alpha(200));
         }
@@ -193,6 +194,10 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
                 st.selected = Some(m.name.clone());
             }
         });
+    }
+
+    if outputs.len() > 1 {
+        ui.add(CheckBox::new(&mut s.display.deskbar_on_every_display, "Show Deskbar on every display, with the applications there"));
     }
 
     let outputs = all;
@@ -308,7 +313,8 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
             ui.horizontal(|ui| {
                 ui.add_space(label_w + m::LABEL_GAP);
                 if o.main {
-                    ui.add(StringView::new("Main display: Deskbar and the desktop are here.").dim(true));
+                    let here = if s.display.deskbar_on_every_display { "the desktop is here" } else { "Deskbar and the desktop are here" };
+                    ui.add(StringView::new(&format!("Main display: {here}.")).dim(true));
                 } else {
                     let mut main = false;
                     ui.add(CheckBox::new(&mut main, "Make this the main display"));

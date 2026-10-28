@@ -11,6 +11,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Window groups: ⌘-dragging a tab into another group](2026-10-28/105726-window-groups-dragging-a-tab-into-another-group.png)
 
+### Display preferences: Deskbar on every display
+
+*10:56* — The new check box under the display map, light and dark; the map draws a Deskbar on every display while it is on.
+
+![Display preferences: Deskbar on every display](2026-10-28/105657-display-preferences-deskbar-on-every-display.png)
+
+### Deskbar on every display
+
+*10:56* — Preferences ▸ Display ▸ Show Deskbar on every display: each display gets its own Deskbar listing just the applications with windows there (main display left, second right, its only window just moved over).
+
+![Deskbar on every display](2026-10-28/105657-deskbar-on-every-display.png)
+
 ### Terminal: Catppuccin colours
 
 *10:56* — Settings ▸ Colors offers Catppuccin Latte and Frappé for light mode, Macchiato and Mocha for dark; Frappé (left, light mode) and Macchiato (right, dark mode) are the defaults.

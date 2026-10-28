@@ -1494,6 +1494,18 @@
   "image": "2026-10-28/105656-terminal-catppuccin-colours.png"
  },
  {
+  "time": "2026-10-28T10:56:57",
+  "title": "Deskbar on every display",
+  "caption": "Preferences \u25b8 Display \u25b8 Show Deskbar on every display: each display gets its own Deskbar listing just the applications with windows there (main display left, second right, its only window just moved over).",
+  "image": "2026-10-28/105657-deskbar-on-every-display.png"
+ },
+ {
+  "time": "2026-10-28T10:56:57",
+  "title": "Display preferences: Deskbar on every display",
+  "caption": "The new check box under the display map, light and dark; the map draws a Deskbar on every display while it is on.",
+  "image": "2026-10-28/105657-display-preferences-deskbar-on-every-display.png"
+ },
+ {
   "time": "2026-10-28T10:57:26",
   "title": "Window groups: \u2318-dragging a tab into another group",
   "caption": "Any window can be grouped by hand: \u2318-drag its tab over another window's (here Tracker's over Terminal's); it folds into its tab where it would go and that group lights up in the focus blue (light, dark). Let go, and it joins. \u2318-dragging a tab away pops the window out; along the tabs, it reorders them.",

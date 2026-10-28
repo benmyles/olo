@@ -1,5 +1,8 @@
 //! Deskbar: the Olo menu, a status tray and the running applications,
-//! docked in the top-right corner of the screen as on BeOS.
+//! docked in the top-right corner of the screen as on BeOS. One, on the
+//! main display, shows every application; with Preferences ▸ Displays ▸
+//! Deskbar on every display, each display has its own, showing the
+//! applications with windows there (and only those windows).
 
 mod status;
 
@@ -16,7 +19,7 @@ use olo_kit::{
     widgets,
 };
 use olo_protocol::{
-    Client, Event, Reply, Request, WindowInfo,
+    Client, Event, OutputInfo, Reply, Request, WindowInfo,
     shortcuts::{self, ShortcutSettings},
 };
 
@@ -70,9 +73,52 @@ enum Msg {
     Workspace(u32, u32),
     Status(status::Status),
     Power(olo_protocol::PowerStatus),
-    /// The clock's settings, whether the Olo menu shows icons, the apps
-    /// whose windows aren't grouped and the person's shortcut keys.
-    Settings(olo_protocol::ClockSettings, bool, Vec<String>, ShortcutSettings),
+    Settings(Settings),
+    Outputs(Vec<OutputInfo>),
+}
+
+/// What Deskbar follows of app_server's settings.
+struct Settings {
+    clock: olo_protocol::ClockSettings,
+    /// Whether the Olo menu shows icons.
+    menu_icons: bool,
+    /// The apps whose windows aren't grouped.
+    ungrouped: Vec<String>,
+    /// The person's shortcut keys.
+    keys: ShortcutSettings,
+    /// A Deskbar on every display.
+    every_display: bool,
+}
+
+/// A Deskbar on a display.
+struct Bar {
+    win: WindowId,
+    /// The display it is on (a connector); None for the first, which
+    /// app_server puts on the main display, until the displays are known.
+    output: Option<String>,
+    height: f32,
+}
+
+impl Bar {
+    fn open(cx: &mut Cx, output: Option<String>) -> Bar {
+        let height = TILE_H + tray_height(1);
+        let win = cx.open_window(WindowOptions {
+            title: "Deskbar".into(),
+            size: (WIDTH as u32, height as u32),
+            kind: WindowKind::Layer(LayerOptions {
+                layer: Layer::Top,
+                anchor: (true, false, false, true),
+                exclusive_zone: 0,
+                margin: (0, 0, 0, 0),
+                keyboard: olo_kit::Keyboard::None,
+                namespace: "deskbar".into(),
+                output: output.clone(),
+            }),
+            panel: true,
+            ..Default::default()
+        });
+        Bar { win, output, height }
+    }
 }
 
 /// A team: the windows of one application.
@@ -84,7 +130,10 @@ struct Team {
 }
 
 struct Deskbar {
-    win: WindowId,
+    /// One on the main display, or one on each display.
+    bars: Vec<Bar>,
+    outputs: Vec<OutputInfo>,
+    every_display: bool,
     windows: Vec<WindowInfo>,
     /// Team keys in order of first appearance.
     order: Vec<String>,
@@ -98,7 +147,6 @@ struct Deskbar {
     /// Appearance ▸ Show icons in the Deskbar menu.
     menu_icons: bool,
     entries: HashMap<String, Option<DesktopEntry>>,
-    height: f32,
     scroll_acc: f32,
     /// The window that last had the focus: still "this window" for the
     /// Olo menu's commands while the menu holds the keyboard.
@@ -178,10 +226,57 @@ impl Deskbar {
         })
     }
 
-    fn teams(&mut self) -> Vec<Team> {
+    /// The display whose applications `bar` shows; None for all of them.
+    fn shown_on(&self, bar: &Bar) -> Option<String> {
+        if !self.every_display {
+            return None;
+        }
+        bar.output.clone().or_else(|| self.main_output())
+    }
+
+    fn main_output(&self) -> Option<String> {
+        self.outputs.iter().find(|o| o.main).map(|o| o.name.clone())
+    }
+
+    /// The windows on display `on` (a window whose display isn't known is
+    /// the main one's); all of them for None.
+    fn windows_on(&self, on: Option<&str>) -> impl Iterator<Item = &WindowInfo> {
+        let main = self.main_output();
+        self.windows.iter().filter(move |w| on.is_none_or(|on| w.output.as_deref().or(main.as_deref()) == Some(on)))
+    }
+
+    /// A Deskbar on each display, or one on the main display, as asked.
+    fn sync_bars(&mut self, cx: &mut Cx) {
+        let main = self.main_output();
+        let wanted: Vec<Option<String>> = if self.outputs.is_empty() {
+            vec![None]
+        } else if self.every_display {
+            self.outputs.iter().filter(|o| o.mirror_of.is_none()).map(|o| Some(o.name.clone())).collect()
+        } else {
+            vec![main.clone()]
+        };
+        // The first, on the main display from the start, is that one's.
+        if let Some(bar) = self.bars.iter_mut().find(|b| b.output.is_none())
+            && main.is_some()
+        {
+            bar.output = main;
+        }
+        let (keep, gone): (Vec<Bar>, Vec<Bar>) = std::mem::take(&mut self.bars).into_iter().partition(|b| wanted.contains(&b.output));
+        self.bars = keep;
+        for output in wanted {
+            if !self.bars.iter().any(|b| b.output == output) {
+                self.bars.push(Bar::open(cx, output));
+            }
+        }
+        for bar in gone {
+            cx.close_window(bar.win);
+        }
+    }
+
+    fn teams(&mut self, on: Option<&str>) -> Vec<Team> {
         let mut teams: Vec<Team> = Vec::new();
         for key in self.order.clone() {
-            let windows: Vec<WindowInfo> = self.windows.iter().filter(|w| team_key(w) == key).cloned().collect();
+            let windows: Vec<WindowInfo> = self.windows_on(on).filter(|w| team_key(w) == key).cloned().collect();
             if windows.is_empty() {
                 continue;
             }
@@ -469,7 +564,13 @@ impl Deskbar {
                 _ => {}
             },
         }
-        cx.redraw(self.win);
+        self.redraw(cx);
+    }
+
+    fn redraw(&self, cx: &mut Cx) {
+        for bar in &self.bars {
+            cx.redraw(bar.win);
+        }
     }
 
     /// Ask before restarting or shutting down, as BeOS did.
@@ -510,7 +611,7 @@ impl Deskbar {
         // (ones that came before olo-wlproxy, or without it) don't
         // survive.
         let closing: Vec<String> = if self.status.upgrade.iter().any(|p| p == "olo-app-server") {
-            self.teams().into_iter().filter(|t| t.windows.iter().any(|w| !w.kept && our_app(&w.app_id).is_none())).map(|t| t.name).collect()
+            self.teams(None).into_iter().filter(|t| t.windows.iter().any(|w| !w.kept && our_app(&w.app_id).is_none())).map(|t| t.name).collect()
         } else {
             Vec::new()
         };
@@ -537,8 +638,8 @@ impl Deskbar {
     /// Show an application's windows on this workspace (minimized ones
     /// too), the one it last had focused in front; with none here, go to
     /// its newest.
-    fn bring_forward(&self, team_key: &str) {
-        let team: Vec<&WindowInfo> = self.windows.iter().filter(|w| team_key == team_key_of(w)).collect();
+    fn bring_forward(&self, team_key: &str, on: Option<&str>) {
+        let team: Vec<&WindowInfo> = self.windows_on(on).filter(|w| team_key == team_key_of(w)).collect();
         let mut here: Vec<&WindowInfo> = team.iter().copied().filter(|w| w.workspace == self.workspace.0).collect();
         if here.is_empty() {
             here.extend(team.last());
@@ -550,8 +651,8 @@ impl Deskbar {
         }
     }
 
-    fn team_command(&mut self, team_key: &str, cmd: &str) {
-        let ids: Vec<u64> = self.windows.iter().filter(|w| team_key == team_key_of(w)).map(|w| w.id).collect();
+    fn team_command(&mut self, team_key: &str, cmd: &str, on: Option<&str>) {
+        let ids: Vec<u64> = self.windows_on(on).filter(|w| team_key == team_key_of(w)).map(|w| w.id).collect();
         if let Some(id) = cmd.strip_prefix("win:").and_then(|s| s.parse().ok()) {
             request(Request::Activate { id });
             return;
@@ -609,7 +710,13 @@ fn add_keys(menu: &mut Menu, changed: &ShortcutSettings) {
 }
 
 fn settings_msg(settings: olo_protocol::Settings) -> Msg {
-    Msg::Settings(settings.clock, settings.appearance.menu_icons, settings.tiling.ungrouped_apps, settings.shortcuts)
+    Msg::Settings(Settings {
+        clock: settings.clock,
+        menu_icons: settings.appearance.menu_icons,
+        ungrouped: settings.tiling.ungrouped_apps,
+        keys: settings.shortcuts,
+        every_display: settings.display.deskbar_on_every_display,
+    })
 }
 
 fn without_icons(mut menu: Menu) -> Menu {
@@ -707,7 +814,7 @@ impl App for Deskbar {
         if self.upgrade_ask.as_ref().is_some_and(|(w, _)| *w == window) {
             self.upgrade_ask = None;
         }
-        if window != self.win {
+        if !self.bars.iter().any(|b| b.win == window) {
             cx.close_window(window);
         }
     }
@@ -721,11 +828,13 @@ impl App for Deskbar {
             self.upgrade_ui(cx, w, ui);
             return;
         }
+        let Some(bar) = self.bars.iter().position(|b| b.win == w) else { return };
+        let display = self.shown_on(&self.bars[bar]);
         let pal = style::palette(ui.ctx());
         let full = ui.max_rect();
         let painter = ui.painter().clone();
         painter.rect_filled(full, 0.0, c(pal.panel_background));
-        let teams = self.teams();
+        let teams = self.teams(display.as_deref());
 
         // ---- the Olo tile
         let tile = Rect::from_min_size(full.min, vec2(full.width(), TILE_H));
@@ -939,7 +1048,7 @@ impl App for Deskbar {
             if resp.drag_started()
                 && let Some(data) = self.app_drag(ui.ctx(), team)
             {
-                cx.start_drag(self.win, data);
+                cx.start_drag(w, data);
             }
             let open = menu::is_open(ui.ctx(), id);
             // A click brings an application with one window forward; with
@@ -947,7 +1056,7 @@ impl App for Deskbar {
             // right button (or holding the left) always does.
             let several = team.windows.len() > 1;
             if resp.clicked() && !open && !several {
-                self.bring_forward(&team.key);
+                self.bring_forward(&team.key, display.as_deref());
             }
             if ((resp.clicked() && several) || resp.secondary_clicked() || resp.long_touched()) && !open {
                 menu::request_popup(
@@ -961,7 +1070,7 @@ impl App for Deskbar {
                 );
             }
             if let Some(cmd) = menu::take_chosen(ui.ctx(), id) {
-                self.team_command(&team.key, &cmd);
+                self.team_command(&team.key, &cmd, display.as_deref());
             }
             let focused = team.windows.iter().any(|w| w.focused);
             let hidden = team.windows.iter().all(|w| w.minimized);
@@ -1007,9 +1116,10 @@ impl App for Deskbar {
         hline(&painter, body.left(), body.right(), body.bottom() - 1.0, shade(&pal, pal.panel_background, 1.6));
 
         let want = (y - full.top()).ceil();
-        if (want - self.height).abs() > 0.5 {
-            self.height = want;
-            cx.resize(self.win, (WIDTH as u32, want as u32));
+        let bar = &mut self.bars[bar];
+        if (want - bar.height).abs() > 0.5 {
+            bar.height = want;
+            cx.resize(w, (WIDTH as u32, want as u32));
         }
         // Tick the clock on the minute (or second).
         ui.ctx().request_repaint_after(status::until_next_tick(self.clock.show_seconds));
@@ -1026,14 +1136,20 @@ impl App for Deskbar {
                     self.caffeinated_until = p.caffeinated_until;
                     self.caffeinated_lid = p.caffeinated_lid;
                 }
-                Msg::Settings(clock, icons, ungrouped, keys) => {
-                    self.clock = clock;
-                    self.menu_icons = icons;
-                    self.ungrouped = ungrouped;
-                    self.keys = keys;
+                Msg::Settings(s) => {
+                    self.clock = s.clock;
+                    self.menu_icons = s.menu_icons;
+                    self.ungrouped = s.ungrouped;
+                    self.keys = s.keys;
+                    self.every_display = s.every_display;
+                    self.sync_bars(cx);
+                }
+                Msg::Outputs(outputs) => {
+                    self.outputs = outputs;
+                    self.sync_bars(cx);
                 }
             }
-            cx.redraw(self.win);
+            self.redraw(cx);
         }
     }
 }
@@ -1060,6 +1176,9 @@ fn watch_server(proxy: olo_kit::Proxy) {
                     if let Ok(Reply::Settings { settings }) = c.request(&Request::GetSettings) {
                         proxy.send(settings_msg(settings));
                     }
+                    if let Ok(Reply::Outputs { outputs }) = c.request(&Request::Outputs) {
+                        proxy.send(Msg::Outputs(outputs));
+                    }
                     if let Ok(events) = c.into_events() {
                         for e in events.flatten() {
                             match e {
@@ -1069,6 +1188,7 @@ fn watch_server(proxy: olo_kit::Proxy) {
                                 Event::SettingsChanged { settings } => {
                                     proxy.send(settings_msg(settings))
                                 }
+                                Event::OutputsChanged { outputs } => proxy.send(Msg::Outputs(outputs)),
                                 _ => {}
                             }
                         }
@@ -1084,26 +1204,14 @@ fn main() {
     // A session or install from before the rename (Tabula) carries on.
     olo_kit::legacy::adopt();
     olo_kit::run("olo.deskbar", |cx| {
-        let win = cx.open_window(WindowOptions {
-            title: "Deskbar".into(),
-            size: (WIDTH as u32, (TILE_H + tray_height(1)) as u32),
-            kind: WindowKind::Layer(LayerOptions {
-                layer: Layer::Top,
-                anchor: (true, false, false, true),
-                exclusive_zone: 0,
-                margin: (0, 0, 0, 0),
-                keyboard: olo_kit::Keyboard::None,
-                namespace: "deskbar".into(),
-                output: None,
-            }),
-            panel: true,
-            ..Default::default()
-        });
+        let bar = Bar::open(cx, None);
         watch_server(cx.proxy());
         let proxy = cx.proxy();
         status::spawn(move |s| proxy.send(Msg::Status(s)));
         Deskbar {
-            win,
+            bars: vec![bar],
+            outputs: Vec::new(),
+            every_display: false,
             windows: Vec::new(),
             order: Vec::new(),
             workspace: (0, 1),
@@ -1114,7 +1222,6 @@ fn main() {
             clock: Default::default(),
             menu_icons: true,
             entries: HashMap::new(),
-            height: TILE_H + tray_height(1),
             scroll_acc: 0.0,
             last_focused: None,
             ungrouped: Vec::new(),
