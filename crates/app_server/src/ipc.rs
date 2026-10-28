@@ -285,10 +285,12 @@ impl<B: Backend + 'static> AnvilState<B> {
             Request::Place { id, frame } => match self.window_by_id(id) {
                 Some(w) if self.space.element_location(&w).is_some() => {
                     let size = (frame.width.max(1), frame.height.max(1));
-                    // As if moved and sized by hand: its own place now.
+                    // As if moved and sized by hand: its own place now,
+                    // where it can be taken hold of again.
+                    let to = self.reachable(smithay::utils::Rectangle::new((frame.x, frame.y).into(), size.into()));
                     self.front_of_group(&w);
                     self.forget_tile(&w);
-                    self.set_frame(&w, smithay::utils::Rectangle::new((frame.x, frame.y).into(), size.into()), false);
+                    self.set_frame(&w, to, false);
                     Reply::Ok
                 }
                 Some(_) => Reply::Error { message: format!("window {id} isn't showing") },

@@ -50,7 +50,9 @@ pub enum Request {
     /// Push a window behind all the others (BeOS's right-click on the tab).
     SendToBack { id: WindowId },
     /// Put a window's frame (tab and border included, as
-    /// [`WindowInfo::frame`]) here, at this size; no longer zoomed.
+    /// [`WindowInfo::frame`]) here, at this size; no longer zoomed. It
+    /// may hang off a display's edge, but no further than a person could
+    /// leave it: its top edge on the display, enough of it to take hold of.
     Place { id: WindowId, frame: Frame },
     Workspaces,
     SwitchWorkspace { index: u32 },
@@ -231,6 +233,10 @@ pub struct WindowInfo {
     /// Rolled up to just its tab.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rolled: bool,
+    /// Zoomed (its zoom box's state): filling the tiling area until it is
+    /// zoomed again or restored.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub zoomed: bool,
     /// Its program keeps it through a window server restart (an upgrade):
     /// Olo's own apps, and Wayland programs that came through
     /// olo-wlproxy.

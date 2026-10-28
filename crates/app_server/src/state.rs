@@ -238,6 +238,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// How the windows were before the last arrangement (Tile All,
     /// Cascade, Fan Out, an app's Show All), for Undo Window Arrangement.
     pub arranged: Vec<crate::shell::tiling::Placed>,
+    /// The displays (by name) when it was made.
+    pub arranged_among: Vec<(String, smithay::utils::Rectangle<i32, smithay::utils::Logical>)>,
     /// Window groups as of the last loop iteration (`shell::groups`).
     pub groups: crate::shell::groups::Groups,
     /// Counts shortcut recordings (a timer only ends its own).
@@ -1041,6 +1043,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             mirrors: Vec::new(),
             desktop_shown: Vec::new(),
             arranged: Vec::new(),
+            arranged_among: Vec::new(),
             groups: Default::default(),
             recording_shortcut: 0,
         };

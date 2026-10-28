@@ -48,9 +48,17 @@ pub struct WindowMeta {
     /// Put back where it was: left there at its first size, though it
     /// hangs off the screen, as long as its tab is on it.
     pub put_back: Cell<bool>,
-    /// The displays there were when it left the space: if they are just
-    /// the same when it comes back, so is it.
-    pub left_among: std::cell::RefCell<Vec<Rectangle<i32, Logical>>>,
+    /// The displays there were when it left the space (by name): if they
+    /// are just the same when it comes back, so is it; if its own moved,
+    /// it moves along.
+    pub left_among: std::cell::RefCell<Vec<(String, Rectangle<i32, Logical>)>>,
+    /// Back in the space this turn, at this frame: if it joins its app's
+    /// group now (`sync_groups`), that frame is its own to go back to.
+    pub arrived: Cell<Option<Rectangle<i32, Logical>>>,
+    /// The frame it had when it joined a group on arriving, and the
+    /// group's: back somewhere it isn't grouped, untouched (still at the
+    /// group's frame), it has its own again.
+    pub joined: Cell<Option<(Rectangle<i32, Logical>, Rectangle<i32, Logical>)>>,
 }
 
 impl WindowElement {
@@ -67,6 +75,8 @@ impl WindowElement {
             returning: std::cell::RefCell::new(None),
             put_back: Cell::new(false),
             left_among: Default::default(),
+            arrived: Cell::new(None),
+            joined: Cell::new(None),
         });
         self.user_data().get::<WindowMeta>().unwrap()
     }
@@ -219,6 +229,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     minimized: meta.minimized.get(),
                     focused: focused.is_some() && w.wl_surface().map(|s| s.into_owned()) == focused,
                     rolled: w.rolled(),
+                    zoomed: self.is_zoomed(&w),
                     kept,
                     frame: None,
                     content: None,
@@ -293,18 +304,43 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.parked.0.borrow_mut().push(window.clone());
     }
 
-    fn display_frames(&self) -> Vec<Rectangle<i32, Logical>> {
-        self.space.outputs().filter_map(|o| self.space.output_geometry(o)).collect()
+    pub fn display_frames(&self) -> Vec<(String, Rectangle<i32, Logical>)> {
+        self.space.outputs().filter_map(|o| Some((o.name(), self.space.output_geometry(o)?))).collect()
     }
 
     fn unpark(&mut self, window: &WindowElement) {
         self.parked.0.borrow_mut().retain(|w| w != window);
         window.meta().minimized.set(false);
         window.meta().workspace.set(Some(self.workspace));
-        let loc = window.meta().saved_location.get();
+        let mut loc = window.meta().saved_location.get();
+        let (left, now) = (window.meta().left_among.borrow().clone(), self.display_frames());
+        let changed = left != now;
+        if changed {
+            // Its display moved while it was away (as the windows on it
+            // did, `fixup_positions`): along with it.
+            let delta = self.display_moved(Rectangle::new(loc, window.geometry().size), &left);
+            loc += delta;
+            crate::shell::tiling::shift_remembered(window, delta);
+        }
         self.space.map_element(window.clone(), loc, false);
-        let changed = *window.meta().left_among.borrow() != self.display_frames();
         self.welcome_back(window, changed);
+        // Out of the group it joined when it last arrived, untouched: its
+        // own frame again (unless it joins one here too).
+        // (Others of its app coming back here too, a workspace being
+        // switched to, count: they are put back one by one.)
+        let app = window.app_id();
+        let alone = !self.space.elements().any(|o| o != window && o.app_id() == app)
+            && !self.parked.0.borrow().iter().any(|o| {
+                o != window && o.app_id() == app && o.meta().workspace.get() == Some(self.workspace) && !o.meta().minimized.get()
+            });
+        if let Some((own, group)) = window.meta().joined.get()
+            && alone
+            && self.space.element_geometry(window) == Some(group)
+        {
+            window.meta().joined.set(None);
+            self.set_frame(window, own, false);
+        }
+        window.meta().arrived.set(self.space.element_geometry(window));
     }
 
     pub fn minimize(&mut self, window: &WindowElement) {
@@ -799,18 +835,16 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
     }
 
-    /// `name` changed size from `old` to `new`: screens placed against its
-    /// right or bottom edge move with that edge, so the arrangement keeps
-    /// touching (a gap would trap the pointer).
+    /// `name` changed from `old` to `new`: if it changed size, screens
+    /// placed against its right or bottom edge move with that edge, so the
+    /// arrangement keeps touching (a gap would trap the pointer); the rest
+    /// keep their places.
     fn keep_neighbours(&mut self, name: &str, old: Rectangle<i32, Logical>, new: Rectangle<i32, Logical>) {
         let (dw, dh) = (new.size.w - old.size.w, new.size.h - old.size.h);
-        if (dw, dh) == (0, 0) {
-            return;
-        }
         let moves: Vec<(Output, (i32, i32))> = self
             .space
             .outputs()
-            .filter(|o| o.name() != name)
+            .filter(|o| o.name() != name && (dw, dh) != (0, 0))
             .filter_map(|o| {
                 let g = self.space.output_geometry(o)?;
                 let shift = (
@@ -821,9 +855,10 @@ impl<B: Backend + 'static> AnvilState<B> {
             })
             .collect();
         for (other, at) in moves {
-            // Pin everything that is placed, so the row fallback can't reshuffle.
             self.settings.display.config_mut(&display_key(&other), &other.name()).position = Some(at);
         }
+        // Pin everything that is placed, so the row fallback can't
+        // reshuffle (a display moved, not resized, too: the others stay).
         let placed: Vec<(Output, (i32, i32))> = self
             .space
             .outputs()
@@ -884,6 +919,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         let pointer = self.pointer.current_location();
         fixup_positions(&mut self.space, &self.settings.display, pointer);
+        // Tiled and zoomed windows fitted to its new size, the rest kept
+        // in reach on it.
+        self.rehome_windows();
         save_settings(&self.settings);
         self.lock_outputs_changed();
         self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
@@ -932,6 +970,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.lock_outputs_changed();
             if main_changed {
                 self.follow_main_output();
+            } else {
+                self.rehome_windows();
             }
             self.apply_mirroring();
             self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });

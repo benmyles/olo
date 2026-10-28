@@ -486,8 +486,13 @@ class Fuzz:
                 self.shortcut(how, w)
             mid = self.settle()
             self.check_sane(mid)
-            if _ == 0 and how in ("zoom", "ipc-zoom"):
+            # (Zoomed by the first toggle, unless it was zoomed already.)
+            if _ == 0 and how in ("zoom", "ipc-zoom") and not wins[w].get("zoomed"):
                 self.check_inside_area(how, w, mid)
+            # Each toggle flips it (`WindowInfo::zoomed`).
+            expected = bool(wins[w].get("zoomed")) != (_ == 0)
+            if how in ("zoom", "ipc-zoom") and w in mid and bool(mid[w].get("zoomed")) != expected:
+                self.fail(f"{how} on {w}: zoomed is {bool(mid[w].get('zoomed'))} after toggling {_ + 1} times")
         self.check_round_trip(f"{how} twice on {w}", wins, mid, self.mates(wins, w))
 
     def op_tile_trip(self, wins, shown):

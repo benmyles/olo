@@ -1177,16 +1177,19 @@ reach under the Deskbar but not below a quarter of the display (nor its
 app's minimum), and past that is pinned as far right as it fits with its
 tab slid along it (`tab_offset`, kept across a restart in the layout),
 so the tabs overlap only then. Zoom All (`zoom_all`, ⌃⌥⌘↩) zooms every resizable window on
-the display, or unzooms them all if they all are. Window to Workspace 1–9
+the display, or unzooms them all if they all are. Whether a window is
+zoomed is in `WindowInfo::zoomed`, for agents. Window to Workspace 1–9
 (⌃⇧⌘1–9) moves the focused window there and follows it. Cascade Others and Fan Out Others (⌃⇧⌘\,
 ⌃⇧⌘/: `keep`) arrange all but the focused window (or the one the
 palette or Deskbar's menu names), which stays where it is, in front and
 focused (`windows_to_arrange`, `bring_back`). Every
 arranging command (Tile All, Tile App, Cascade, Fan Out) first calls
 `remember_arrangement`, which keeps each window's frame, tab offset, tile
-and part (`Placed`, in `AnvilState::arranged`); Undo Window Arrangement
-(`undo_arrangement`, ⌃⌘Z) puts them back and remembers what it replaced,
-so undoing again redoes. Agents run both with
+and part, and whether it was zoomed (fully or along one axis, and what
+unzooming would put back) (`Placed`, in `AnvilState::arranged`); Undo
+Window Arrangement (`undo_arrangement`, ⌃⌘Z) puts them back, a zoomed
+window zoomed again, and remembers what it replaced, so undoing again
+redoes. Agents run both with
 `{"type":"run_shortcut","id":"fan-out"}` / `"undo-arrangement"`.
 
 Roll Up (`toggle_rolled`, ⌃⌘M, the tab's menu, the palette, or a
@@ -1205,21 +1208,35 @@ keeps where it came from (`Along`: a `ZoomedAlong` with its frame, its
 tile and part, and whether it had a `PreZoom` already), and the same
 command again unzooms that axis only (`unzoom_along`): back into its
 tile if it had one, else to its old height (width), keeping whatever was
-done across meanwhile. Zooming the other axis too is Zoom (and Zoom's
-unzoom goes back to the one-axis zoom, `ZoomedFrom`); unzooming one axis
-of a full zoom leaves the other zoomed. The zoomed axis follows its
-display (`refit`, `move_to_output`, `rehome_windows`); any tiling,
-arranging or moving or sizing by hand forgets it (`set_tiled`). As with
-Zoom, a reload keeps the geometry only. Agents:
+done across meanwhile; a window untouched since it zoomed gets its whole
+old frame back, even where fitting pulled it in (`unzoomed_along`).
+Zooming the other axis too is Zoom (and Zoom's unzoom goes back to the
+one-axis zoom, `ZoomedFrom`); unzooming one axis of a full zoom leaves
+the other zoomed. The zoomed axis follows its display (`refit`,
+`move_to_output`, `rehome_windows`). A window sent to another display
+takes its own frame and what unzooming puts back along, at the same
+relative places; sent straight back, untouched, it has exactly what it
+had again, however the two displays differ in size (`Travelled`: the
+frames it left and arrived with). Any tiling, arranging or moving or
+sizing by hand forgets it (`set_tiled`). As with Zoom, a reload keeps
+the geometry only. Agents:
 `{"type":"run_shortcut","id":"zoom-vertical","window":ID}`.
 
 A window that comes back (from another workspace, from being hidden) is
 left exactly where it was unless the displays changed while it was away
-(`welcome_back`: then it is rehomed); a tiled or zoomed one is only
-refitted to its room, in case the Deskbar moved. `refit` leaves a window
-alone when it fits and is in reach (`in_reach`: the top of its tab or
-frame inside the area, at least 48 px of it across), even hanging off
-an edge, as people leave windows.
+(`welcome_back`: then it is rehomed, having first moved as far as its
+own display did, `display_moved`); a tiled or zoomed one is only
+refitted to its room, in case the Deskbar moved. Whatever a window
+remembers (its own frame for Restore, what unzooming puts back) moves
+with its display too (`shift_remembered`, from `fixup_positions`), as
+does what Undo Window Arrangement puts back (`arranged_among`), and is
+put back in reach whatever happened meanwhile (`reachable`). A display
+moved in Preferences leaves the others where they are (`keep_neighbours`
+pins them). `place` (agents) puts a window where asked but in reach: its
+top edge on a display, enough of it to take hold of (`into_reach`).
+`refit` leaves a window alone when it fits and is in reach (`in_reach`:
+the top of its tab or frame inside the area, at least 48 px of it
+across), even hanging off an edge, as people leave windows.
 
 Next Tab / Previous Tab (⌥⇥ / ⌥⇧⇥) are keys, not actions: the keymap
 types Ctrl+Tab / Ctrl+Shift+Tab into the focused window (`stand_for`),
@@ -1246,7 +1263,11 @@ screen, then the front-most), at the size it was asked for if it hasn't
 drawn it yet, so a window that opens, comes back or arrives from
 another workspace joins the group where it is instead of pulling it
 along; the others take the leader's arrangement too (tile, zoom, the
-frames Restore and unzoom go back to: `share_arrangement`). Only the
+frames Restore and unzoom go back to: `share_arrangement`). A window
+that joined a group on arriving keeps the frame it came with
+(`WindowMeta::joined`): sent on to a workspace where it is on its own,
+untouched, it has that frame again, so a window taken to another
+workspace and back comes back as it was. Only the
 front window is drawn whole and takes input over its frame: the ones
 behind it show just their tabs (`mark_behind`, before every frame,
 `Decoration::behind`), so they never show around it while it is sized

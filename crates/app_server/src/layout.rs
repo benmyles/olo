@@ -233,6 +233,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         Self::set_tile_state(&window, p.tile, p.part);
         window.decoration().rolled = p.rolled;
         window.decoration().tab_offset = p.tab_offset;
+        // The displays may have changed since it was there: in its tile on
+        // the display it is on, or else onto one if it is out of reach.
+        self.refit(&window);
         meta.restored_focus.set(p.focused.then(std::time::Instant::now));
         if p.workspace != self.workspace {
             self.move_to_workspace(&window, p.workspace);

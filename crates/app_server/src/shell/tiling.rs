@@ -19,7 +19,7 @@
 //! draw it (`Follower`), so nothing queues up or jumps ahead of its
 //! picture.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 use smithay::{
     desktop::{WindowSurface, space::SpaceElement},
@@ -55,6 +55,11 @@ pub struct Placed {
     part: Option<Part>,
     /// Its own frame, if it was tiled or zoomed (for Restore).
     pre: Option<Rectangle<i32, Logical>>,
+    /// Zoomed, or zoomed along one axis, and where unzooming goes back
+    /// to: it is zoomed again, to unzoom as before.
+    zoomed: bool,
+    along: Option<ZoomedAlong>,
+    zoomed_from: Option<Rectangle<i32, Logical>>,
     tab_offset: i32,
 }
 
@@ -96,6 +101,34 @@ struct ZoomedAlong {
 #[derive(Default)]
 struct Along(Cell<Option<ZoomedAlong>>);
 
+/// What goes along when a window moves to another display: its frame,
+/// unless it follows the display (tiled or zoomed; zoomed along one axis,
+/// the other is its own), the frame Restore puts back, and the frames
+/// unzooming it puts back.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Carried {
+    frame: Option<Rectangle<i32, Logical>>,
+    pre: Option<Rectangle<i32, Logical>>,
+    along_from: Option<Rectangle<i32, Logical>>,
+    zoomed_from: Option<Rectangle<i32, Logical>>,
+}
+
+/// A window's last move to another display: the display it left and
+/// its room there, what it had there, and what it was given on arrival.
+/// Sent straight back, untouched, to that display as it was, it has what
+/// it had again, rather than placed afresh (which would keep it shrunk to
+/// a smaller display, and drift by rounding).
+#[derive(Debug, Clone, PartialEq)]
+struct Trip {
+    home: String,
+    home_area: Rectangle<i32, Logical>,
+    left: Carried,
+    arrived: Carried,
+}
+
+#[derive(Default)]
+struct Travelled(RefCell<Option<Trip>>);
+
 /// `frame` zoomed along `axis` of `area`: all of it that way, and as it
 /// is the other (moved in only as far as it must to be on it).
 pub fn zoom_along(frame: Rectangle<i32, Logical>, area: Rectangle<i32, Logical>, axis: Axis) -> Rectangle<i32, Logical> {
@@ -122,6 +155,14 @@ pub fn unzoom_along(frame: Rectangle<i32, Logical>, from: Rectangle<i32, Logical
         Axis::Vertical => Rectangle::new(Point::from((frame.loc.x, from.loc.y)), Size::from((frame.size.w, from.size.h))),
         Axis::Horizontal => Rectangle::new(Point::from((from.loc.x, frame.loc.y)), Size::from((from.size.w, frame.size.h))),
     }
+}
+
+/// A window zoomed along `axis` of `area` from `from`, now at `frame`,
+/// unzoomed: all of it as `from` was if zooming only moved it in or
+/// narrowed it the other way to fit (and it hasn't moved since), else
+/// that way as `from` was and the other as it is (`unzoom_along`).
+pub fn unzoomed_along(frame: Rectangle<i32, Logical>, from: Rectangle<i32, Logical>, area: Rectangle<i32, Logical>, axis: Axis) -> Rectangle<i32, Logical> {
+    if frame == zoom_along(from, area, axis) { from } else { unzoom_along(frame, from, axis) }
 }
 
 /// `frame` covers all of `area` along `axis`.
@@ -389,6 +430,36 @@ pub fn in_reach(frame: Rectangle<i32, Logical>, area: Rectangle<i32, Logical>) -
         && top.intersection(area).is_some_and(|r| r.size.w >= w.min(frame.size.w))
 }
 
+/// A window moved by `delta` along with its display: the frames it
+/// remembers (Restore's, and what unzooming puts back) move with it.
+pub fn shift_remembered(window: &WindowElement, delta: Point<i32, Logical>) {
+    if delta == Point::default() {
+        return;
+    }
+    let shift = |r: Rectangle<i32, Logical>| Rectangle::new(r.loc + delta, r.size);
+    if let Some(p) = window.user_data().get::<PreZoom>() {
+        let moved = p.0.borrow().map(shift);
+        *p.0.borrow_mut() = moved;
+    }
+    if let Some(f) = window.user_data().get::<ZoomedFrom>() {
+        let moved = f.0.borrow().map(shift);
+        *f.0.borrow_mut() = moved;
+    }
+    if let Some(a) = window.user_data().get::<Along>() {
+        a.0.set(a.0.get().map(|z| ZoomedAlong { from: shift(z.from), ..z }));
+    }
+}
+
+/// `frame` moved as little as it takes to be in reach in `area`: it may
+/// still hang off any edge but the top.
+pub fn into_reach(frame: Rectangle<i32, Logical>, area: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
+    let (w, h) = REACH;
+    let w = w.min(frame.size.w);
+    let x = frame.loc.x.clamp(area.loc.x + w - frame.size.w, area.loc.x + area.size.w - w);
+    let y = frame.loc.y.clamp(area.loc.y, (area.loc.y + area.size.h - h).max(area.loc.y));
+    Rectangle::new(Point::from((x, y)), frame.size)
+}
+
 /// Not a fixed-size window (an alert, a panel such as DeskCalc's).
 pub(super) fn resizable(w: &WindowElement) -> bool {
     use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
@@ -504,7 +575,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     Self::set_tile_state(window, Some(tile), part);
                     self.retile(window, tile);
                 }
-                None => self.set_frame(window, unzoom_along(here, z.from, axis), false),
+                None => self.set_frame(window, unzoomed_along(here, z.from, area, axis), false),
             }
             // (After: retiling keeps where it is.)
             if !z.kept
@@ -801,12 +872,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// Put a window on `to`, where it was on `from` (a display that may be
     /// gone: then just a free cascade spot).
     fn move_to_output(&mut self, window: &WindowElement, from: &Output, to: &Output) {
-        let Some(dest) = self.usable_area(to) else { return };
+        let (Some(dest), Some(zoom_dest)) = (self.usable_area(to), self.tile_area(to)) else { return };
         let zoomed = self.is_zoomed(window);
-        let own = self.own_frame(window);
+        let along = Self::zoomed_along(window);
         let src = self.usable_area(from);
-        // Its own frame, at the same relative place on the new display.
-        if let (Some(own), Some(src)) = (own, src) {
+        let trip = window.user_data().get::<Travelled>().and_then(|t| t.0.borrow_mut().take());
+        if let (Some(here), Some(src)) = (self.carried(window), src) {
+            // Each frame at the same relative place on the new display.
             let rel = |v: i32, origin: i32, len: i32, dlen: i32, size: i32| {
                 let f = (v - origin) as f32 / (len - size).max(1) as f32;
                 (f.clamp(0.0, 1.0) * (dlen - size).max(0) as f32).round() as i32
@@ -820,35 +892,100 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     ));
                 Rectangle::new(loc, size)
             };
-            let Rectangle { loc, size } = place(own);
-            if let Some(p) = window.user_data().get::<PreZoom>()
-                && p.0.borrow().is_some()
-            {
-                *p.0.borrow_mut() = Some(Rectangle::new(loc, size));
+            let back = trip.filter(|t| t.home == to.name() && t.home_area == dest && t.arrived == here);
+            let there = match &back {
+                Some(t) => t.left,
+                None => {
+                    // What unzooming it puts back goes along too.
+                    let along_from = here.along_from.map(place);
+                    let zoomed_from = here.zoomed_from.map(|r| match (along, along_from) {
+                        (Some(z), Some(f)) => zoom_along(f, zoom_dest, z.axis),
+                        _ => place(r),
+                    });
+                    // Zoomed along an axis: placed, then along it there.
+                    let frame = here.frame.map(place).map(|f| match along {
+                        Some(z) if !zoomed => zoom_along(f, zoom_dest, z.axis),
+                        _ => f,
+                    });
+                    Carried { frame, pre: here.pre.map(place), along_from, zoomed_from }
+                }
+            };
+            info!(window = window.id(), from = from.name(), to = to.name(), back = back.is_some(), ?here, ?there, zoomed, ?along, "to another display");
+            window.user_data().insert_if_missing(Travelled::default);
+            *window.user_data().get::<Travelled>().unwrap().0.borrow_mut() = Some(Trip { home: from.name(), home_area: src, left: here, arrived: there });
+            if let Some(p) = window.user_data().get::<PreZoom>() {
+                *p.0.borrow_mut() = there.pre;
             }
-            // What unzooming it puts back goes along too.
-            let along = Self::zoomed_along(window).map(|z| ZoomedAlong { from: place(z.from), ..z });
-            if let Some(z) = along {
-                Self::set_zoomed_along(window, Some(z));
+            if let (Some(z), Some(from)) = (along, there.along_from) {
+                Self::set_zoomed_along(window, Some(ZoomedAlong { from, ..z }));
             }
             if let Some(f) = window.user_data().get::<ZoomedFrom>() {
-                let moved = f.0.borrow().map(|r| along.map_or_else(|| place(r), |z| zoom_along(z.from, dest, z.axis)));
-                *f.0.borrow_mut() = moved;
+                *f.0.borrow_mut() = there.zoomed_from;
             }
-            if let Some(z) = along.filter(|_| !zoomed) {
-                // Re-zoomed along its axis there (by `refit`).
-                self.space.relocate_element(window, z.from.loc);
-            } else if !zoomed && Self::tiled(window).is_none() {
-                self.set_frame(window, Rectangle::new(loc, size), false);
-            } else {
-                // Somewhere on the new display first, so it is "on" it.
-                self.space.relocate_element(window, loc);
+            match there.frame {
+                Some(frame) => {
+                    self.set_frame(window, frame, false);
+                    if back.is_some() || along.is_some() {
+                        // As it was, on a display as it was, or zoomed
+                        // along its axis there already: nothing to fit.
+                        return;
+                    }
+                }
+                // Tiled or zoomed: somewhere on the new display first, so
+                // it is "on" it, for `refit` to put it in its place there.
+                None => self.space.relocate_element(window, there.along_from.map_or(dest.loc, |f| f.loc)),
             }
         } else {
             let slot = self.free_cascade_slot(to, window);
             self.space.relocate_element(window, slot);
         }
         self.refit(window);
+    }
+
+    /// What goes along with a window to another display (`Carried`).
+    fn carried(&self, window: &WindowElement) -> Option<Carried> {
+        let frame = self.space.element_geometry(window)?;
+        let along = Self::zoomed_along(window);
+        let follows = self.is_zoomed(window) || Self::tiled(window).is_some();
+        Some(Carried {
+            frame: (!follows).then_some(frame),
+            pre: window.user_data().get::<PreZoom>().and_then(|p| *p.0.borrow()),
+            along_from: along.map(|z| z.from),
+            zoomed_from: window.user_data().get::<ZoomedFrom>().and_then(|f| *f.0.borrow()),
+        })
+    }
+
+    /// How far the display `frame` was on, among `then` (by name), has
+    /// moved since: what was remembered there moves as much.
+    pub fn display_moved(&self, frame: Rectangle<i32, Logical>, then: &[(String, Rectangle<i32, Logical>)]) -> Point<i32, Logical> {
+        let middle = frame.loc + frame.size.downscale(2).to_point();
+        then.iter()
+            .find(|(_, r)| r.contains(middle))
+            .and_then(|(name, was)| {
+                let now = self.space.outputs().find(|o| o.name() == *name)?;
+                Some(self.space.output_geometry(now)?.loc - was.loc)
+            })
+            .unwrap_or_default()
+    }
+
+    /// `frame` as it is if it is in reach on any display; else brought
+    /// into reach on the one it is (mostly) on, or the nearest
+    /// (`into_reach`): where a window put somewhere by number goes.
+    pub fn reachable(&self, frame: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
+        let areas: Vec<(Rectangle<i32, Logical>, Rectangle<i32, Logical>)> =
+            self.space.outputs().filter_map(|o| Some((self.space.output_geometry(o)?, self.usable_area(o)?))).collect();
+        if areas.iter().any(|(_, area)| in_reach(frame, *area)) {
+            return frame;
+        }
+        let overlap = |g: &Rectangle<i32, Logical>| frame.intersection(*g).map_or(0, |r| r.size.w as i64 * r.size.h as i64);
+        let far = |g: &Rectangle<i32, Logical>| {
+            let c = frame.loc + frame.size.downscale(2).to_point();
+            let dx = (g.loc.x - c.x).max(c.x - (g.loc.x + g.size.w)).max(0) as i64;
+            let dy = (g.loc.y - c.y).max(c.y - (g.loc.y + g.size.h)).max(0) as i64;
+            dx * dx + dy * dy
+        };
+        let best = areas.iter().filter(|(g, _)| overlap(g) > 0).max_by_key(|(g, _)| overlap(g)).or_else(|| areas.iter().min_by_key(|(g, _)| far(g)));
+        best.map_or(frame, |(_, area)| into_reach(frame, *area))
     }
 
     /// The first diagonal slot on a display no other window sits on.
@@ -926,6 +1063,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     tile: Self::tiled(w),
                     part: Self::custom_part(w),
                     pre: w.user_data().get::<PreZoom>().and_then(|p| *p.0.borrow()),
+                    zoomed: self.is_zoomed(w),
+                    along: Self::zoomed_along(w),
+                    zoomed_from: w.user_data().get::<ZoomedFrom>().and_then(|f| *f.0.borrow()),
                     tab_offset: w.decoration().tab_offset,
                 })
             })
@@ -935,27 +1075,48 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// Keep how `windows` are now, for Undo Window Arrangement.
     fn remember_arrangement(&mut self, windows: &[WindowElement]) {
         self.arranged = self.placed(windows);
+        self.arranged_among = self.display_frames();
     }
 
     /// Every window the last arrangement moved back where and how big it
     /// was (those still open); again, as the arrangement had them.
     pub fn undo_arrangement(&mut self) {
         let before = std::mem::take(&mut self.arranged);
+        let among = std::mem::take(&mut self.arranged_among);
         let windows: Vec<WindowElement> = before.iter().map(|p| p.window.clone()).filter(|w| self.space.element_location(w).is_some()).collect();
         let now = self.placed(&windows);
         for p in &before {
             if !windows.contains(&p.window) {
                 continue;
             }
-            self.set_frame(&p.window, p.frame, false);
+            // Where its display is now, if that moved since.
+            let delta = self.display_moved(p.frame, &among);
+            let shift = |r: Rectangle<i32, Logical>| Rectangle::new(r.loc + delta, r.size);
+            let p = &Placed {
+                frame: shift(p.frame),
+                pre: p.pre.map(shift),
+                zoomed_from: p.zoomed_from.map(shift),
+                along: p.along.map(|z| ZoomedAlong { from: shift(z.from), ..z }),
+                ..p.clone()
+            };
+            if p.zoomed {
+                self.zoom_window(&p.window);
+            } else {
+                let frame = self.reachable(p.frame);
+                self.set_frame(&p.window, frame, false);
+            }
             Self::set_tiled(&p.window, p.tile);
             Self::set_part(&p.window, p.tile.and(p.part));
+            Self::set_zoomed_along(&p.window, p.along);
             p.window.user_data().insert_if_missing(PreZoom::default);
             p.window.user_data().get::<PreZoom>().unwrap().0.replace(p.pre);
+            p.window.user_data().insert_if_missing(ZoomedFrom::default);
+            p.window.user_data().get::<ZoomedFrom>().unwrap().0.replace(p.zoomed_from);
             p.window.decoration().tab_offset = p.tab_offset;
         }
         info!(windows = windows.len(), "undid an arrangement");
         self.arranged = now;
+        self.arranged_among = self.display_frames();
     }
 
     /// Every window on the active display at the top left of it, stacked
@@ -971,10 +1132,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let Some(output) = self.arranged_output(keep) else { return };
         let (Some(area), Some(screen)) = (self.tile_area(&output), self.space.output_geometry(&output)) else { return };
         let (windows, kept) = self.windows_to_arrange(&output, keep);
+        // (Remembered even if there is nothing to arrange: Undo then has
+        // nothing to undo, rather than redoing the arrangement before.)
+        self.remember_arrangement(&windows);
         if windows.is_empty() {
             return;
         }
-        self.remember_arrangement(&windows);
         let tab_x = |s: &Self, w: &WindowElement| {
             let at = s.space.element_location(w).unwrap_or_default();
             let (title, size) = (w.title(), w.geometry().size);
@@ -1088,10 +1251,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     pub fn zoom_all(&mut self) {
         let Some(output) = self.active_output() else { return };
         let windows: Vec<WindowElement> = self.windows_on(&output).into_iter().filter(resizable).collect();
+        self.remember_arrangement(&windows);
         if windows.is_empty() {
             return;
         }
-        self.remember_arrangement(&windows);
         let unzoom = windows.iter().all(|w| self.is_zoomed(w));
         for w in &windows {
             match (unzoom, self.is_zoomed(w)) {
@@ -1128,10 +1291,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 Some((w.clone(), (x, y, w2, h)))
             })
             .collect();
+        self.remember_arrangement(&windows);
         if placed.is_empty() {
             return 0;
         }
-        self.remember_arrangement(&windows);
         for (w, f) in &placed {
             let cell = part(area, *f, self.tile_gap());
             self.set_frame(w, cell, true);
@@ -1324,6 +1487,38 @@ mod tests {
         let moved = r(400, 30, 500, 770);
         assert_eq!(unzoom_along(moved, from, Axis::Vertical), r(400, 200, 500, 300));
         assert_eq!(unzoom_along(r(0, 50, 1280, 300), from, Axis::Horizontal), r(100, 50, 500, 300));
+    }
+
+    #[test]
+    fn into_reach_moves_as_little_as_it_takes() {
+        let area = r(1280, 0, 960, 540);
+        // Above the top: down to it, still hanging off the right.
+        assert_eq!(into_reach(r(1907, -32, 937, 434), area), r(1907, 0, 937, 434));
+        // Off the right: back to 48 px in.
+        assert_eq!(into_reach(r(2300, 100, 400, 300), area), r(2192, 100, 400, 300));
+        // Off the left, and below the bottom: its tab comes up.
+        assert_eq!(into_reach(r(500, 600, 400, 300), area), r(1280 + 48 - 400, 540 - olo_theme::deco::TAB_HEIGHT, 400, 300));
+        // Already in reach, hanging off: left alone.
+        let hanging = r(2000, 300, 900, 600);
+        assert!(in_reach(hanging, area));
+        assert_eq!(into_reach(hanging, area), hanging);
+        // Narrower than the reach: all of it across.
+        assert_eq!(into_reach(r(2230, 10, 30, 30), area), r(2210, 10, 30, 30));
+    }
+
+    #[test]
+    fn unzooming_along_puts_back_what_fitting_changed() {
+        let area = r(8, 8, 944, 524);
+        // Hanging off the left and wider than the area: zooming pulled it
+        // in and narrowed it; unzooming puts both back.
+        let from = r(-153, 81, 1061, 451);
+        let zoomed = zoom_along(from, area, Axis::Vertical);
+        assert_eq!(zoomed, r(8, 8, 944, 524));
+        assert_eq!(unzoomed_along(zoomed, from, area, Axis::Vertical), from);
+        let zoomed = zoom_along(from, area, Axis::Horizontal);
+        assert_eq!(unzoomed_along(zoomed, from, area, Axis::Horizontal), from);
+        // Moved across since: it stays where it was moved to.
+        assert_eq!(unzoomed_along(r(40, 8, 944, 524), from, area, Axis::Vertical), r(40, 81, 944, 451));
     }
 
     #[test]

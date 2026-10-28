@@ -14,7 +14,8 @@
 //! at the size it has been asked for, if it hasn't drawn that yet):
 //! a window that opens, comes back from being hidden or arrives from
 //! another workspace joins the group where it is, rather than pulling it
-//! to where the new window happened to open. Sizes follow only between
+//! to where the new window happened to open; one that arrived keeps the
+//! frame it came with, for when it is on its own again (`unpark`). Sizes follow only between
 //! pointer grabs, so a hidden window isn't asked for a new size on every
 //! step of a resize. Only the front window is drawn whole: the others
 //! show just their tabs (`mark_behind`), so they don't show around it
@@ -195,6 +196,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 frame.size = size;
             }
             for w in g.iter().filter(|w| **w != leader) {
+                if let Some(own) = w.meta().arrived.take()
+                    && own != frame
+                {
+                    w.meta().joined.set(Some((own, frame)));
+                }
                 self.join_group(w, frame, resizing);
                 self.share_arrangement(&leader, w);
             }
@@ -231,6 +237,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             .chain(before.away.iter().cloned())
             .filter(|(w, _)| w.alive() && self.space.element_location(w).is_none() && !w.meta().minimized.get())
             .collect();
+        // Only the turn it came back in counts as arriving.
+        for w in self.space.elements() {
+            w.meta().arrived.set(None);
+        }
         self.groups = Groups { seen, members, away };
         mark_behind(&self.space);
     }

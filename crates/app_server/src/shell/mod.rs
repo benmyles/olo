@@ -333,10 +333,12 @@ pub struct SurfaceData {
 }
 
 /// When a window first takes a size, or the app resizes it, slide it so
-/// all of it (tab included) is on screen where it can be: a window opened
-/// at the cascade position that is taller than the room below it moves up
-/// instead of hanging off the bottom. Windows the user is resizing, and
-/// ones put back where they were, are left alone.
+/// all of it (tab included) is on the screen it is mostly on, where it
+/// can be: a window opened at the cascade position that is taller than
+/// the room below it moves up instead of hanging off the bottom. Windows
+/// the user is resizing, ones put back where they were, and a size the
+/// window was asked to take (zoomed, tiled, unzoomed: Olo placed it) are
+/// left alone.
 fn keep_on_screen(space: &mut Space<WindowElement>, surface: &WlSurface, window: &WindowElement) {
     let Some(geo) = space.element_geometry(window) else { return };
     if geo.size.w <= 0 || geo.size.h <= 0 {
@@ -354,9 +356,18 @@ fn keep_on_screen(space: &mut Space<WindowElement>, surface: &WlSurface, window:
     if !changed {
         return;
     }
+    // (Worked out before taking the surface's lock again.)
+    let content = window.inner_size(geo.size);
+    let asked = window.0.toplevel().and_then(|t| t.with_committed_state(|s| s.and_then(|s| s.size)));
+    if asked == Some(content) {
+        return;
+    }
+    let overlap = |o: &Output| space.output_geometry(o).and_then(|g| g.intersection(geo)).map_or(0, |r| r.size.w as i64 * r.size.h as i64);
+    let middle = (geo.loc + geo.size.downscale(2).to_point()).to_f64();
     let Some(zone) = space
-        .outputs()
-        .find(|o| space.output_geometry(o).is_some_and(|g| g.overlaps(geo)))
+        .output_under(middle)
+        .next()
+        .or_else(|| space.outputs().filter(|o| overlap(o) > 0).max_by_key(|o| overlap(o)))
         .or_else(|| space.outputs().next())
         .and_then(|o| {
             let g = space.output_geometry(o)?;
@@ -682,7 +693,11 @@ pub fn fixup_positions(
     }
     for (w, o, offset) in on {
         if let Some(g) = space.output_geometry(&o) {
-            space.relocate_element(&w, g.loc + offset);
+            let to = g.loc + offset;
+            if let Some(from) = space.element_location(&w) {
+                tiling::shift_remembered(&w, to - from);
+            }
+            space.relocate_element(&w, to);
         }
     }
 

@@ -305,6 +305,7 @@ mod tests {
             minimized: false,
             focused: false,
             rolled: false,
+            zoomed: false,
             kept: false,
             frame: Some(Frame { x: 0, y: 0, width: 10, height: 10 }),
             content: None,
