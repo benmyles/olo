@@ -160,7 +160,10 @@ impl WindowOptions {
     /// over the app's focused window.
     pub fn alert(title: impl Into<String>, message: &str) -> Self {
         let (w, h) = (crate::widgets::ALERT_WIDTH, crate::widgets::alert_height(message));
-        WindowOptions { alert: true, ..WindowOptions::new(title, w, h).min_size(w, h) }
+        // Fixed, as BeOS alerts are: never resized, tiled or grouped with
+        // the app's other windows (also when no window of ours has the
+        // focus to be its parent, as when chosen from a popup menu).
+        WindowOptions { alert: true, ..WindowOptions::new(title, w, h).min_size(w, h).max_size(w, h) }
     }
     /// Open over `parent`, as its alert or sheet.
     pub fn parent(mut self, parent: WindowId) -> Self {
