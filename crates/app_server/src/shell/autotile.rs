@@ -737,6 +737,18 @@ impl AutoTiler {
 
 /// Good guesses for programs not built on the kit: portal dialogs
 /// (file choosers and the like) and picture-in-picture windows.
+/// One size only across or down (an alert, a calculator): a smallest
+/// size the same as the largest.
+fn one_size(min: i32, max: i32) -> bool {
+    max > 0 && min == max
+}
+
+/// A largest size a display could be bigger than (0 is none, and those
+/// past any display's mean none too).
+fn bounded(max: i32) -> bool {
+    max > 0 && max < 1 << 15
+}
+
 fn floating_kind(app_id: &str, title: &str) -> bool {
     app_id.starts_with("xdg-desktop-portal")
         || app_id.ends_with(".portal")
@@ -773,8 +785,9 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// Whether `w` floats over auto-tiled windows rather than being in a
     /// tile: floated by hand, or a dialog, an alert or other fixed-size
-    /// window, one with a largest size, one tagged `floating`, or a kind
-    /// that floats (`floating_kind`). Tiled by hand, it doesn't.
+    /// window, one whose largest size is less than its display's tiles,
+    /// one tagged `floating`, or a kind that floats (`floating_kind`).
+    /// Tiled by hand, it doesn't.
     pub fn floats(&self, w: &WindowElement) -> bool {
         if let Some(f) = Self::float_override(w) {
             return f;
@@ -790,20 +803,28 @@ impl<B: Backend + 'static> AnvilState<B> {
             shell::xdg::{SurfaceCachedState, XdgToplevelSurfaceData, dialog::ToplevelDialogHint},
             xdg_toplevel_tag::XdgToplevelTagSurfaceData,
         };
-        with_states(t.wl_surface(), |st| {
-            // A largest size (it can't fill a tile), or one size only.
-            let max = st.cached_state.get::<SurfaceCachedState>().current().max_size;
-            if max.w > 0 || max.h > 0 {
-                return true;
-            }
+        let (floats, min, max) = with_states(t.wl_surface(), |st| {
+            let size = *st.cached_state.get::<SurfaceCachedState>().current();
             let tagged = st.data_map.get::<XdgToplevelTagSurfaceData>().is_some_and(|d| d.tag().is_some_and(|t| t.split_whitespace().any(|t| t == "floating")));
-            tagged
+            let floats = tagged
                 || st.data_map.get::<XdgToplevelSurfaceData>().is_some_and(|d| {
                     let d = d.lock().unwrap();
                     d.dialog_hint != ToplevelDialogHint::Unknown
                         || floating_kind(d.app_id.as_deref().unwrap_or(""), d.title.as_deref().unwrap_or(""))
-                })
-        })
+                });
+            (floats, size.min_size, size.max_size)
+        });
+        if floats || one_size(min.w, max.w) || one_size(min.h, max.h) {
+            return true;
+        }
+        // A largest size it can't fill the whole of its display's tiles
+        // with. (Most have none: 0, or for Electron i32::MAX.)
+        if !(bounded(max.w) || bounded(max.h)) {
+            return false;
+        }
+        let Some(area) = self.window_output(w).and_then(|o| self.tile_area(&o)) else { return false };
+        let room = w.inner_size(area.size);
+        (bounded(max.w) && max.w < room.w) || (bounded(max.h) && max.h < room.h)
     }
 
     /// In an auto-tiled display's tiles.
@@ -1642,6 +1663,17 @@ mod tests {
 
     fn near(p: Part, q: Part) -> bool {
         (p.0 - q.0).abs() < 1e-4 && (p.1 - q.1).abs() < 1e-4 && (p.2 - q.2).abs() < 1e-4 && (p.3 - q.3).abs() < 1e-4
+    }
+
+    #[test]
+    fn sizes_that_float_a_window() {
+        // Electron's "no largest size" is i32::MAX (others' 0): they tile.
+        assert!(!bounded(i32::MAX) && !bounded(0) && !one_size(300, i32::MAX));
+        assert!(!one_size(0, 0) && !one_size(300, 0));
+        // One size only, across or down: an alert, a calculator.
+        assert!(one_size(420, 420));
+        // A real largest size goes by the display's tiles.
+        assert!(bounded(800));
     }
 
     #[test]

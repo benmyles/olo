@@ -5,6 +5,30 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### ⌥Tab keeps to this workspace, ⌘Tab goes everywhere, and Deskbar follows
+
+*01:10* — Reversing the earlier swap: ⌘Tab's Twitcher shows every workspace's applications, ⌥Tab only this one's. While it's up, Deskbar highlights the application Twitcher is on (style::selection_wash), here DeskCalc.
+
+![⌥Tab keeps to this workspace, ⌘Tab goes everywhere, and Deskbar follows](2026-10-29/011006-tab-keeps-to-this-workspace-tab-goes-everywhere-.png)
+
+### Clicking an application in Deskbar brings all its windows
+
+*01:10* — A left click on StyledEdit (left) brings both its windows forward, the minimized one too, with the last one used in front and focused (right), as the Dock does; a right click still lists the windows to choose one.
+
+![Clicking an application in Deskbar brings all its windows](2026-10-29/011005-clicking-an-application-in-deskbar-brings-all-it.png)
+
+### Deskbar lists every workspace in order, the one showing in a pill
+
+*01:10* — No more Other Workspaces: each workspace with windows gets a quiet caption over its applications, always in ascending order, and the one showing is marked by a pill in the selection's colours (style::selection_ink), so it follows every theme, light and dark. Soft Be, Toybox and Enamel, light and dark, at 2×.
+
+![Deskbar lists every workspace in order, the one showing in a pill](2026-10-29/011004-deskbar-lists-every-workspace-in-order-the-one-s.png)
+
+### Electron windows tile
+
+*00:40* — Slack, and every Electron app, floated over the tiles: Electron sends i32::MAX as its largest size, meaning none, and any largest size floated a window. Now a window floats when it has one size only, or a largest size its display's tiles are bigger than.
+
+![Electron windows tile](2026-10-29/004036-electron-windows-tile.png)
+
 ### Deskbar's wordmark follows the theme again
 
 *00:29* — Choosing a theme in Preferences drew everything in BeBox: the theme was looked up by its address in THEMES, a const since it moved to olo-theme, so another crate's copy never matched and BeBox (the first) was taken. Now by id; Deskbar's wordmark, every app's icons and Twitcher's follow the theme again (Toybox, Enamel, Halftone, Papercraft, Soft Be, BeBox).

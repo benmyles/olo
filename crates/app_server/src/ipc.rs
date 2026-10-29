@@ -258,6 +258,19 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 None => not_found(),
             },
+            Request::ActivateAll { ids } => {
+                let mut windows: Vec<_> = ids.into_iter().filter_map(|id| self.window_by_id(id)).collect();
+                // The one used last comes forward last, in front.
+                windows.sort_by_key(|w| std::cmp::Reverse(self.recency(w.id())));
+                for w in &windows {
+                    self.restore_window(w);
+                }
+                if windows.is_empty() {
+                    not_found()
+                } else {
+                    Reply::Ok
+                }
+            }
             Request::Minimize { id } => match self.window_by_id(id) {
                 Some(w) => {
                     self.minimize_window(&w);

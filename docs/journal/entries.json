@@ -1840,5 +1840,29 @@
   "title": "Deskbar's wordmark follows the theme again",
   "caption": "Choosing a theme in Preferences drew everything in BeBox: the theme was looked up by its address in THEMES, a const since it moved to olo-theme, so another crate's copy never matched and BeBox (the first) was taken. Now by id; Deskbar's wordmark, every app's icons and Twitcher's follow the theme again (Toybox, Enamel, Halftone, Papercraft, Soft Be, BeBox).",
   "image": "2026-10-29/002909-deskbar-s-wordmark-follows-the-theme-again.png"
+ },
+ {
+  "time": "2026-10-29T00:40:36",
+  "title": "Electron windows tile",
+  "caption": "Slack, and every Electron app, floated over the tiles: Electron sends i32::MAX as its largest size, meaning none, and any largest size floated a window. Now a window floats when it has one size only, or a largest size its display's tiles are bigger than.",
+  "image": "2026-10-29/004036-electron-windows-tile.png"
+ },
+ {
+  "time": "2026-10-29T01:10:04",
+  "title": "Deskbar lists every workspace in order, the one showing in a pill",
+  "caption": "No more Other Workspaces: each workspace with windows gets a quiet caption over its applications, always in ascending order, and the one showing is marked by a pill in the selection's colours (style::selection_ink), so it follows every theme, light and dark. Soft Be, Toybox and Enamel, light and dark, at 2\u00d7.",
+  "image": "2026-10-29/011004-deskbar-lists-every-workspace-in-order-the-one-s.png"
+ },
+ {
+  "time": "2026-10-29T01:10:05",
+  "title": "Clicking an application in Deskbar brings all its windows",
+  "caption": "A left click on StyledEdit (left) brings both its windows forward, the minimized one too, with the last one used in front and focused (right), as the Dock does; a right click still lists the windows to choose one.",
+  "image": "2026-10-29/011005-clicking-an-application-in-deskbar-brings-all-it.png"
+ },
+ {
+  "time": "2026-10-29T01:10:06",
+  "title": "\u2325Tab keeps to this workspace, \u2318Tab goes everywhere, and Deskbar follows",
+  "caption": "Reversing the earlier swap: \u2318Tab's Twitcher shows every workspace's applications, \u2325Tab only this one's. While it's up, Deskbar highlights the application Twitcher is on (style::selection_wash), here DeskCalc.",
+  "image": "2026-10-29/011006-tab-keeps-to-this-workspace-tab-goes-everywhere-.png"
  }
 ]

@@ -1,8 +1,8 @@
 //! The Mac keyboard, natively. ⌘ is the command key: apps see it as Ctrl
 //! (so ⌘C copies everywhere, GTK and Firefox included), while app_server
-//! keeps some ⌘ keys for itself: ⌘Tab / ⌘\` (Twitcher: this workspace's
-//! apps, the focused app's windows; ⌥Tab is Twitcher for every
-//! workspace), ⌘ arrows and ⌘⌫
+//! keeps some ⌘ keys for itself: ⌘Tab / ⌘\` (Twitcher: every workspace's
+//! apps, the focused app's windows; ⌥Tab is Twitcher for this
+//! workspace's), ⌘ arrows and ⌘⌫
 //! (line and document navigation), a tap of ⌘ alone (the command palette, if chosen in
 //! Preferences), Control pressed twice quickly (keyboard hints, if
 //! chosen), and first of all the shortcuts in `Settings::shortcuts`
@@ -97,8 +97,8 @@ const ALT: [u32; 2] = [LEFTALT, RIGHTALT];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
-    /// ⌘Tab (`back` with Shift): the next app in Twitcher, on this
-    /// workspace; ⌥Tab (`all`): on any.
+    /// ⌘Tab (`back` with Shift): the next app in Twitcher, on any
+    /// workspace (`all`); ⌥Tab: on this one.
     NextApp { back: bool, all: bool },
     /// ⌘\`: the next window of the focused app.
     NextWindow { back: bool },
@@ -493,12 +493,12 @@ impl Keymap {
         if !tab && translated.is_none() && !olo_protocol::shortcuts::MODIFIER_KEYS.contains(&key) {
             self.restore_lifted(out);
         }
-        // ⌥Tab, unless it is set to be a shortcut: Twitcher, every
+        // ⌥Tab, unless it is set to be a shortcut: Twitcher, this
         // workspace's apps, while ⌥ is held. The app keeps ⌥ down, as for
         // any switcher, and loses the focus to the window chosen.
         if shortcut.is_none() && key == TAB && self.alt() && self.cmd_keys == 0 && !self.ctrl() {
             self.switching = Some(Hold::Alt);
-            out.push(Out::Action(Action::NextApp { back: self.shift(), all: true }));
+            out.push(Out::Action(Action::NextApp { back: self.shift(), all: false }));
             self.held.insert(key, h);
             return;
         }
@@ -523,7 +523,7 @@ impl Keymap {
             let handled = match key {
                 TAB if !ctrl => {
                     self.switching = Some(Hold::Cmd);
-                    out.push(Out::Action(Action::NextApp { back: shift, all: false }));
+                    out.push(Out::Action(Action::NextApp { back: shift, all: true }));
                     true
                 }
                 GRAVE if !ctrl => {
@@ -870,10 +870,10 @@ mod tests {
     fn twitcher() {
         let mut r = Rig::new();
         r.down(LEFTMETA);
-        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: false, all: false })]);
+        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: false, all: true })]);
         assert_eq!(r.up(TAB), []);
         r.down(LEFTSHIFT);
-        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: true, all: false })]);
+        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: true, all: true })]);
         r.up(TAB);
         r.up(LEFTSHIFT);
         assert_eq!(r.down(GRAVE), [Out::Action(Action::NextWindow { back: false })]);
@@ -882,14 +882,14 @@ mod tests {
     }
 
     #[test]
-    fn option_tab_is_twitcher_for_every_workspace() {
+    fn option_tab_is_twitcher_for_this_workspace() {
         let mut r = Rig::new();
         assert_eq!(r.down(LEFTALT), [Key(LEFTALT, true)]);
         // The app keeps ⌥; the Tab is Twitcher's.
-        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: false, all: true })]);
+        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: false, all: false })]);
         assert_eq!(r.up(TAB), []);
         r.down(LEFTSHIFT);
-        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: true, all: true })]);
+        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: true, all: false })]);
         r.up(TAB);
         r.up(LEFTSHIFT);
         // While ⌥ is held: the arrows, Esc.
@@ -933,7 +933,7 @@ mod tests {
         // ⌘⌥Tab is ⌘Tab's, not ⌥Tab's.
         r.down(LEFTMETA);
         r.down(LEFTALT);
-        assert!(!r.down(TAB).contains(&Out::Action(Action::NextApp { back: false, all: true })));
+        assert!(r.down(TAB).contains(&Out::Action(Action::NextApp { back: false, all: true })));
     }
 
     #[test]

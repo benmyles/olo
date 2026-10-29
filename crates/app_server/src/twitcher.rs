@@ -1,5 +1,5 @@
 //! Twitcher: the strip of app icons shown while ⌘Tab, ⌥Tab or ⌘\` is
-//! held, as on BeOS: ⌘Tab's this workspace's apps, ⌥Tab's a row for each
+//! held, as on BeOS: ⌥Tab's this workspace's apps, ⌘Tab's a row for each
 //! workspace with windows on it (numbered at the left when there are more
 //! than one). With a Deskbar on every display,
 //! each display's windows are a column of their own, in an etched box

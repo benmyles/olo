@@ -304,6 +304,7 @@ mod tests {
             workspace: 0,
             minimized: false,
             focused: false,
+            chosen: false,
             rolled: false,
             zoomed: false,
             kept: false,

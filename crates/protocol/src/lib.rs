@@ -37,6 +37,12 @@ pub enum Request {
     Subscribe,
     ListWindows,
     Activate { id: WindowId },
+    /// Bring these windows forward together, as clicking an application
+    /// in Deskbar does: minimized ones come back, and if they are on
+    /// another workspace it goes there. Among themselves they keep the
+    /// order they were used in, so the one used last ends in front, with
+    /// the focus.
+    ActivateAll { ids: Vec<WindowId> },
     /// An xdg-activation token for a program about to be started (as
     /// `XDG_ACTIVATION_TOKEN`), so the window it opens, or the running
     /// instance it hands its work to (a link opening as a new tab in
@@ -330,6 +336,10 @@ pub struct WindowInfo {
     pub workspace: u32,
     pub minimized: bool,
     pub focused: bool,
+    /// Twitcher (⌘Tab, ⌥Tab, ⌘\`) is on it, while its keys are held:
+    /// Deskbar highlights its application.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub chosen: bool,
     /// Rolled up to just its tab.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rolled: bool,
@@ -1041,7 +1051,7 @@ pub struct KeyboardSettings {
     pub repeat_rate_hz: i32,
     /// ⌘ (the Super/Meta key) is the command key: apps see Ctrl, so ⌘C
     /// copies, and app_server takes ⌘Tab, ⌘`, ⌘Space and ⌘ arrows (and
-    /// ⌥Tab, ⌘'s Twitcher for every workspace).
+    /// ⌥Tab, Twitcher for this workspace only).
     pub command_key: bool,
     /// Caps Lock is another Ctrl.
     pub caps_lock_control: bool,
@@ -1320,6 +1330,8 @@ mod tests {
         assert_eq!(s, r#"{"type":"activate","id":7}"#);
         let back: Request = serde_json::from_str(&s).unwrap();
         assert_eq!(back, Request::Activate { id: 7 });
+        let s = serde_json::to_string(&Request::ActivateAll { ids: vec![7, 9] }).unwrap();
+        assert_eq!(s, r#"{"type":"activate_all","ids":[7,9]}"#);
     }
 
     #[test]

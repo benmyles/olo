@@ -104,7 +104,7 @@ impl WindowElement {
 #[derive(Debug)]
 pub struct Twitch {
     pub apps: bool,
-    /// Every workspace's (⌥Tab, ⌘\`), not just this one's (⌘Tab).
+    /// Every workspace's (⌘Tab, ⌘\`), not just this one's (⌥Tab).
     all: bool,
     /// (workspace, window ids), in workspace order, those on each display
     /// together when grouped by display.
@@ -114,8 +114,8 @@ pub struct Twitch {
     displays: Vec<crate::twitcher::Display>,
     on: HashMap<u64, usize>,
     /// Tab's order: every cell (row, index), the most recently used
-    /// first, so ⌘Tab goes back and forth between the last two apps here,
-    /// and ⌥Tab between the last two wherever they are.
+    /// first, so ⌘Tab goes back and forth between the last two apps
+    /// wherever they are, and ⌥Tab between the last two here.
     order: Vec<(usize, usize)>,
     pub row: usize,
     pub index: usize,
@@ -263,6 +263,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     workspace: meta.workspace.get().unwrap_or(self.workspace),
                     minimized: meta.minimized.get(),
                     focused: focused.is_some() && w.wl_surface().map(|s| s.into_owned()) == focused,
+                    chosen: self.twitch.as_ref().is_some_and(|t| t.rows.get(t.row).and_then(|r| r.1.get(t.index)) == Some(&meta.id)),
                     rolled: w.rolled(),
                     zoomed: self.is_zoomed(&w),
                     kept,
@@ -479,7 +480,7 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// How recently window `id` had the focus (0: most), never-focused
     /// ones after all the others.
-    fn recency(&self, id: u64) -> usize {
+    pub(crate) fn recency(&self, id: u64) -> usize {
         self.recent.iter().position(|r| *r == id).unwrap_or(usize::MAX)
     }
 
@@ -563,7 +564,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         (rows, displays, on)
     }
 
-    /// ⌘Tab (`apps`, this workspace's) or ⌥Tab (`apps` and `all`), or
+    /// ⌘Tab (`apps` and `all`) or ⌥Tab (`apps`, this workspace's), or
     /// ⌘\` (`all`): bring the next app, or the focused app's next window,
     /// to the front, on whichever workspace it is, the most recently used
     /// first. The order is fixed while the key is held, so repeated

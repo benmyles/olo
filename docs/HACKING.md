@@ -1408,62 +1408,73 @@ Each item shows the keys the person has for it (`add_keys`:
 settings change).
 
 With more than one workspace, Deskbar's applications are grouped as a
-BOutlineListView would group them: under a heading naming the workspace
-showing (`workspace_heading`, `HEADING_H`, bold in the small size on a
-shade of the panel, as the tray's date is set), only the applications
-with windows there, each row's menu only those windows (`teams(display,
-Some(ws))`); below, if any other workspace has windows, an Other
-Workspaces row with the kit's latch (`others_latch`, `style::latch`),
-folded at first, which unfolds the rest, each workspace under its own
-heading. Clicking a heading goes to that workspace (on the one showing,
-or with the right button on any, it opens the Workspaces menu). Whether
-Other Workspaces is unfolded survives an upgrade (`save_state`). One
-workspace: no headings, just the applications. Agents find the
-headings and the latch as `Button`s ("Workspace 2", "Other
-Workspaces", `selected` for the one showing and for unfolded).
+BOutlineListView would group them, every workspace with windows and the
+one showing (even if it has none), always in order: each under a heading
+naming it (`workspace_heading`, `HEADING_H`), with only the
+applications that have windows there, each row's menu only those
+windows (`teams(display, Some(ws))`). A heading is a quiet caption, bold
+in the small size and dimmed toward the panel, in line with its
+applications' icons and the tray's date (`ICON_INSET` = `TRAY_TEXT`).
+The workspace showing's caption is in a pill in the selection's colours
+(`style::selection_ink`, as the kit marks anything chosen), its edge in
+line with the tray's well (`TRAY_INSET`), so it follows every theme,
+light and dark.
+Clicking a heading goes to that workspace (on the one showing, or with
+the right button on any, it opens the Workspaces menu). One workspace:
+no headings, just the applications. Agents find the headings as
+`Button`s ("Workspace 2", `selected` for the one showing).
 Deskbar's tray has auto-tiling's toggle (`status::draw_tiles`) beside
 the Caffeinated cup: a click turns it on or off for the workspace (and
 the bar's display), a right-click opens Window Arrangement.
 
-Clicking an app's row in Deskbar lists its windows (`team_menu`), as
-BeOS's Deskbar did: the focused one checked, one on another workspace
-with that workspace's number, and a minimized one marked as a Mac's
-Window menu does, a hollow diamond and a lighter label (`.minimized(true)`,
-`Action::minimized`; agents read `minimized` on its `MenuItem`). Choosing
-one brings it back.
+Clicking an app's row in Deskbar brings it forward with every window it
+has there, as a Mac's Dock does (BeOS's brought one forward):
+`bring_forward` sends `Request::ActivateAll`, which brings them back
+(minimized ones too, going to their workspace) in the order they were
+used, so the one used last ends in front with the focus. The row's
+menu's Show All does the same. The right button (or a long touch) lists
+its windows (`team_menu`), as holding the button did in BeOS's Deskbar:
+the focused one checked, one on another workspace with that workspace's
+number, and a minimized one marked as a Mac's Window menu does, a hollow
+diamond and a lighter label (`.minimized(true)`, `Action::minimized`;
+agents read `minimized` on its `MenuItem`). Choosing one brings it back.
 
 Twitcher (⌘Tab, ⌥Tab, ⌘\`, `twitch_step`) shows each window it passes by
-bringing it forward (a minimized one unminimized), but keeps the stacking
-from when switching began (`Twitch::stacks`): passing on puts the last one
-back in its place (minimized again if it was), so when ⌘ is let go only
-the chosen window has moved. ⌘Tab has the apps on this workspace;
-⌥Tab (`Action::NextApp { all }`, `Twitch::all`) has a row for each
-workspace with windows on it (`twitch_rows`, numbered at the left when
-there are more than one), and so does ⌘\` for the focused app's
+bringing it forward (a minimized one unminimized), but keeps the
+stacking from when switching began (`Twitch::stacks`): passing on puts
+the last one back in its place (minimized again if it was), so when ⌘ is
+let go only the chosen window has moved. ⌥Tab has the apps on this
+workspace; ⌘Tab (`Action::NextApp { all }`, `Twitch::all`) has a row for
+each workspace with windows on it (`twitch_rows`, numbered at the left
+when there are more than one), and so does ⌘\` for the focused app's
 windows; each app's cell is its most recently used window. Tab walks
 every cell in order of use (`AnvilState::recent`, kept by `note_recent`
-in `tick`, not while switching), so ⌘Tab goes back and forth between
-the last two apps here and ⌥Tab between the last two wherever they
-are; ←/→ walk the chosen row and ↑/↓ go to the row above or below (its
-most recent first). The keymap keeps whichever of ⌘ and ⌥ began
-switching (`keymap::Hold`): letting go of that one chooses, and the
-other changes nothing meanwhile. Showing a window on another workspace goes there, each workspace's stacking kept as it was when first shown. Esc
-puts everything back, workspace and focus too (`twitch_cancel`). With
-keyboard hints on, every cell carries a hint badge
-(`hints::badge_pixmap`, letters running across the rows,
+in `tick`, not while switching), so ⌘Tab goes back and forth between the
+last two apps wherever they are and ⌥Tab between the last two here; ←/→
+walk the chosen row and ↑/↓ go to the row above or below (its most
+recent first). The keymap keeps whichever of ⌘ and ⌥ began switching
+(`keymap::Hold`): letting go of that one chooses, and the other changes
+nothing meanwhile. Deskbar highlights the application chosen in the
+selection's colours, as Twitcher marks it (`style::selection_wash`;
+`WindowInfo::chosen`, for its window; agents read `selected` on the
+row's `Button`). Showing a window on another
+workspace goes there, each workspace's stacking kept as it was when
+first shown. Esc puts everything back, workspace and focus too
+(`twitch_cancel`). With keyboard hints on, every cell carries a hint
+badge (`hints::badge_pixmap`, letters running across the rows,
 `twitcher::Shown::letter`) and typing its letter while ⌘ (or ⌥) is held
 chooses it (`twitch_pick`). The keys reach it as keymap actions
-(`SwitchMove`, `SwitchPick`, `SwitchCancel`) only while switching.
-With a Deskbar on every display (and more than one), the windows go by
-display as their Deskbars do (`twitch_displays`, left to right, the
-same names as Preferences ▸ Displays, numbered when two match): each
-display with windows is a column in an etched box, as a BeOS BBox
-(the kit's `BBox` lines, `Palette::shade`), named across its top edge
-beside a little screen that is lit on the display that copy of the
-panel is drawn on (`twitcher::Display`, `Shown::displays`,
-`Entry::display`; the panel is cached per display). Each app has a
-cell on every display it has windows on, and ↑/↓ keep to the column
-of the display the chosen window is on.
+(`SwitchMove`, `SwitchPick`, `SwitchCancel`) only while switching. With
+a Deskbar on every display (and more than one), the windows go by
+display as their Deskbars do (`twitch_displays`, left to right, the same
+names as Preferences ▸ Displays, numbered when two match): each display
+with windows is a column in an etched box, as a BeOS BBox (the kit's
+`BBox` lines, `Palette::shade`), named across its top edge beside a
+little screen that is lit on the display that copy of the panel is drawn
+on (`twitcher::Display`, `Shown::displays`, `Entry::display`; the panel
+is cached per display). Each app has a cell on every display it has
+windows on, and ↑/↓ keep to the column of the display the chosen window
+is on.
 
 ## Desktop shortcuts and tiling (olo_protocol::shortcuts, app_server keymap.rs, shell/tiling.rs)
 
@@ -1585,7 +1596,9 @@ eighth: `snap`). Zoom zooms over the tiles and
 unzooms back into its tile. ⌃⌘Z undoes the last change to a tree, or
 turning it on (`auto_undo`, before `undo_arrangement`). Windows that
 float instead (`floats`): those with a parent, dialogs and alerts, a
-window with a largest size (fixed-size ones), one tagged `floating`
+fixed-size window (one size only, across or down) or one whose largest
+size can't fill its display's tiles (Electron's i32::MAX, like
+others' 0, is no largest size: it tiles), one tagged `floating`
 (xdg-toplevel-tag; the kit's `WindowOptions::floating()`, which
 DeskCalc, Preferences, Tracker's Info and status windows and the like
 set), and for other programs portal dialogs and picture-in-picture
