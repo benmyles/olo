@@ -90,6 +90,11 @@ pub struct Placement {
     /// The process that showed it (0: not known, any may take it).
     #[serde(default)]
     pub pid: i32,
+    /// The display it was on: its name and place. Back on that display
+    /// unchanged, it is put back exactly; only after the displays changed
+    /// is it fitted to them again.
+    #[serde(default)]
+    pub screen: Option<(String, [i32; 4])>,
     /// Its connection then: a window on the same one isn't coming back.
     #[serde(skip)]
     pub client: Option<smithay::reexports::wayland_server::backend::ClientId>,
@@ -165,6 +170,8 @@ impl<B: Backend + 'static> AnvilState<B> {
         let loc = self.space.element_location(w).unwrap_or_else(|| meta.saved_location.get());
         let size = w.content_size();
         let (tile, part) = Self::tile_state(w);
+        // (Before the decoration is borrowed below: the geometry borrows it.)
+        let screen = self.screen_of(w);
         Some(Placement {
             tile,
             part,
@@ -187,7 +194,15 @@ impl<B: Backend + 'static> AnvilState<B> {
             at: now(),
             pid: meta.owner.borrow().as_ref().map_or(0, |(pid, _)| *pid),
             client: meta.owner.borrow().as_ref().map(|(_, c)| c.clone()),
+            screen,
         })
+    }
+
+    /// The display `w` is on: its name and place.
+    fn screen_of(&self, w: &WindowElement) -> Option<(String, [i32; 4])> {
+        let o = self.window_output(w)?;
+        let g = self.space.output_geometry(&o)?;
+        Some((o.name(), [g.loc.x, g.loc.y, g.size.w, g.size.h]))
     }
 
     /// Remember a window that is going away (it may come straight back, as
@@ -325,8 +340,13 @@ impl<B: Backend + 'static> AnvilState<B> {
             meta.tab_order.set(p.tab_order);
         }
         // The displays may have changed since it was there: in its tile on
-        // the display it is on, or else onto one if it is out of reach.
-        self.refit(&window);
+        // the display it is on, or else onto one if it is out of reach. A
+        // window of its own size back on the display it was on, as it was,
+        // is exactly as it was (one bigger than the room beside Deskbar,
+        // which may not be back yet, isn't squeezed into it).
+        if !self.own_size(&window) || p.screen.is_none() || p.screen != self.screen_of(&window) {
+            self.refit(&window);
+        }
         meta.restored_focus.set(p.focused.then(std::time::Instant::now));
         if p.workspace != self.workspace_of(&window) {
             self.move_to_workspace(&window, p.workspace);

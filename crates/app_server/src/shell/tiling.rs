@@ -1118,6 +1118,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         origin + Point::from((n * CASCADE, n * CASCADE))
     }
 
+    /// Neither in a tile nor zoomed (wholly or along an axis): a window of
+    /// its own size, where it was put.
+    pub(crate) fn own_size(&self, window: &WindowElement) -> bool {
+        Self::tiled(window).is_none() && !self.is_zoomed(window) && Self::zoomed_along(window).is_none()
+    }
+
     /// Fit a window to the display it is on now: re-tile or re-zoom it
     /// there (along its axis, if it is zoomed along one), else shrink it
     /// to fit and bring its tab into view. A window that fits and can be

@@ -1089,7 +1089,14 @@ hands both to app_server, so clients never see the sockets disappear.
   (`Grouping::With` becomes `Auto`): it is another window with the same
   title ("Untitled 2"), and would join another app's windows. The place is claimed at
   the window's first commit, so its first configure already has the old
-  size, and applied when it maps. A window stopped in between (claimed,
+  size, and applied when it maps. A window of its own size (not tiled
+  or zoomed) back on the display it was saved on, unchanged
+  (`Placement::screen`: its name and place), is put back exactly; only
+  after the displays changed is it fitted to them again (`refit`).
+  Fitting it anyway squeezed a window bigger than the room beside
+  Deskbar (which may not even be back yet) and moved it, as GTK's
+  windows on a small screen were; tiled and zoomed windows are always
+  refitted, into their tiles. A window stopped in between (claimed,
   not shown yet) is saved at the place it claimed, not the cascade slot
   it waits in (`placement_of`). Each display's workspace showing comes
   back too (`Placement::displays`, by display key, `layout::showing`;
