@@ -1,6 +1,8 @@
 //! Other toolkits' programs in a real session: what GTK 3, GTK 4,
 //! libadwaita and Chrome read for their look, published from Olo's
-//! palette (see `olo_theme::toolkit`).
+//! palette (see `olo_theme::toolkit`). Qt reads it too, through its GTK 3
+//! platform theme, which it takes because the session says it is GNOME
+//! as well as Olo (`olo_xdg::CURRENT_DESKTOP`).
 //!
 //! - GSettings `org.gnome.desktop.interface` (through dconf, which GTK and
 //!   the portals read): the colour scheme, the GTK theme (the look's,

@@ -264,6 +264,21 @@ fn action_of(a: DndAction) -> Option<crate::dnd::Action> {
     }
 }
 
+/// A tree question waiting for windows to draw.
+struct TreeAsk {
+    reply: std::sync::mpsc::Sender<Vec<crate::commands::WindowTree>>,
+    at: Instant,
+    /// The surfaces wanted (`wl_surface` protocol ids), only what can be
+    /// picked of them, for keyboard hints; None: every window, all of it.
+    hints: Option<Vec<u32>>,
+}
+
+impl TreeAsk {
+    fn wants(&self, s: &Surface) -> bool {
+        matches!(s.role, Role::Toplevel(_) | Role::Layer(_)) && self.hints.as_ref().is_none_or(|ids| ids.contains(&s.wl.id().protocol_id()))
+    }
+}
+
 pub struct KitData;
 pub struct ScaleData(WlSurface);
 
@@ -305,8 +320,9 @@ pub struct Kit {
     /// acts on).
     last_active: Option<WindowId>,
     /// Asked for the windows' trees (see `commands`): answered when every
-    /// window has drawn a frame with AccessKit on, or soon after.
-    trees: Vec<(std::sync::mpsc::Sender<Vec<crate::commands::WindowTree>>, Instant)>,
+    /// window asked about has drawn a frame with AccessKit on, or soon
+    /// after.
+    trees: Vec<TreeAsk>,
     /// Asked for the windows' layout reviews: answered when every window
     /// has drawn a frame since, or soon after.
     reviews: Vec<(std::sync::mpsc::Sender<Vec<crate::commands::WindowReview>>, Instant)>,
@@ -670,6 +686,7 @@ impl Binary {
         use std::os::unix::process::CommandExt;
         let mut cmd = std::process::Command::new(&self.path);
         cmd.args(std::env::args_os().skip(1));
+        olo_xdg::upgrade_env(&mut cmd);
         if let Some(state) = state {
             let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
             let file = dir.join(format!("olo-restore-{}.json", std::process::id()));
@@ -835,18 +852,8 @@ impl Kit {
                     s.ctx.request_repaint();
                 }
             }
-            Query::Tree(reply) => {
-                // Every window draws once with AccessKit on (off again
-                // after: building the tree costs every frame).
-                for s in self.surfaces.iter_mut().filter(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_))) {
-                    s.ctx.enable_accesskit();
-                    s.tree = None;
-                    s.dirty = true;
-                    s.ctx.request_repaint();
-                }
-                self.trees.push((reply, Instant::now()));
-                self.answer_trees();
-            }
+            Query::Tree(reply) => self.ask_trees(reply, None),
+            Query::Hints(surfaces, reply) => self.ask_trees(reply, Some(surfaces)),
             Query::Review(reply) => {
                 for s in self.surfaces.iter_mut().filter(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_))) {
                     s.review = None;
@@ -872,33 +879,57 @@ impl Kit {
         }
     }
 
-    /// Answer the waiting tree questions once every window has its tree
-    /// (or, after a while, with those that have: a hidden window may never
-    /// draw).
+    /// The windows asked about (`hints`: those surfaces; else every
+    /// one) draw once with AccessKit on, off again once answered:
+    /// building the tree costs every frame. Only those are waited for, so
+    /// a window nobody can see (whose frames come once a second) holds
+    /// up no question that isn't about it.
+    fn ask_trees(&mut self, reply: std::sync::mpsc::Sender<Vec<crate::commands::WindowTree>>, hints: Option<Vec<u32>>) {
+        let ask = TreeAsk { reply, at: Instant::now(), hints };
+        for s in self.surfaces.iter_mut().filter(|s| ask.wants(s)) {
+            s.ctx.enable_accesskit();
+            s.tree = None;
+            s.dirty = true;
+            s.ctx.request_repaint();
+        }
+        self.trees.push(ask);
+        self.answer_trees();
+    }
+
+    /// Answer each waiting tree question once the windows it asks about
+    /// have their trees (or, after a while, with those that have: a
+    /// hidden window may never draw).
     fn answer_trees(&mut self) {
         if self.trees.is_empty() {
             return;
         }
-        // Windows, and layer surfaces (Deskbar) marked with their namespace.
-        let toplevels = || self.surfaces.iter().filter(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_)));
-        let all = toplevels().all(|s| s.tree.is_some());
-        let late = self.trees.iter().any(|(_, at)| at.elapsed() > Duration::from_millis(1000));
-        if !all && !late {
-            return;
+        let mut i = 0;
+        while i < self.trees.len() {
+            let ask = &self.trees[i];
+            // Windows, and layer surfaces (Deskbar) marked with their namespace.
+            let asked = || self.surfaces.iter().filter(|s| ask.wants(s));
+            if !asked().all(|s| s.tree.is_some()) && ask.at.elapsed() < Duration::from_millis(1000) {
+                i += 1;
+                continue;
+            }
+            let trees: Vec<_> = asked()
+                .filter_map(|s| {
+                    let mut tree = s.tree.clone()?;
+                    tree.nodes.extend(self.popup_nodes(s.id));
+                    if ask.hints.is_some() {
+                        tree.surface = Some(s.wl.id().protocol_id());
+                        tree = tree.pickable();
+                    }
+                    Some(tree)
+                })
+                .collect();
+            let _ = self.trees.remove(i).reply.send(trees);
         }
-        let trees: Vec<_> = toplevels()
-            .filter_map(|s| {
-                let mut tree = s.tree.clone()?;
-                tree.nodes.extend(self.popup_nodes(s.id));
-                Some(tree)
-            })
-            .collect();
-        for (reply, _) in self.trees.drain(..) {
-            let _ = reply.send(trees.clone());
-        }
-        for s in self.surfaces.iter_mut() {
-            s.ctx.disable_accesskit();
-            s.tree = None;
+        if self.trees.is_empty() {
+            for s in self.surfaces.iter_mut() {
+                s.ctx.disable_accesskit();
+                s.tree = None;
+            }
         }
     }
 
@@ -1586,8 +1617,8 @@ impl Kit {
             }
         }
         // A tree question is answered within a second, drawn or not.
-        if let Some((_, at)) = self.trees.first() {
-            let d = (*at + Duration::from_millis(1000)).saturating_duration_since(now) + Duration::from_millis(5);
+        if let Some(at) = self.trees.iter().map(|a| a.at).min() {
+            let d = (at + Duration::from_millis(1000)).saturating_duration_since(now) + Duration::from_millis(5);
             t = Some(t.map_or(d, |t: Duration| t.min(d)));
         }
         t

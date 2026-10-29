@@ -746,6 +746,8 @@ mod tests {
             ("widgets::STRIP_TAB_MAX", w::STRIP_TAB_MAX),
             ("widgets::STRIP_HEIGHT", w::STRIP_HEIGHT),
             ("widgets::STRIP_ROW", w::STRIP_ROW),
+            ("widgets::STRIP_SIDE_TAB", w::STRIP_SIDE_TAB),
+            ("widgets::STRIP_SIDE_HEAD", w::STRIP_SIDE_HEAD),
             ("widgets::STRIP_SIDE_WIDTH", w::STRIP_SIDE_WIDTH),
             ("widgets::STRIP_SIDE_MIN", w::STRIP_SIDE_MIN),
             ("widgets::STRIP_SIDE_MAX", w::STRIP_SIDE_MAX),

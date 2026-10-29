@@ -2469,10 +2469,19 @@ const STRIP_TAB_TOP: f32 = STRIP_HEIGHT - STRIP_ROW;
 /// The rounding of a [`TabStrip`] tab's top corners.
 const STRIP_RADIUS: u8 = 5;
 
-/// How tall a tab is in a [`TabStrip::side`] strip (less, to fit, when
-/// there are many). A band beside the strip as tall (Terminal's pane
-/// heads) is level with its first tab.
+/// How tall a [`TabStrip`] tab is, standing in its strip; a band under
+/// the strip as tall (Terminal's pane heads) matches it.
 pub const STRIP_ROW: f32 = 26.0;
+
+/// How tall a tab is in a [`TabStrip::side`] strip (less, to fit, when
+/// there are many). [`m::TIGHT`] is round each: beside it, above the
+/// first and between one and the next.
+pub const STRIP_SIDE_TAB: f32 = 24.0;
+
+/// How tall a band beside a [`TabStrip::side`] strip is (Terminal's
+/// pane heads): its middle level with the first tab's, its foot with
+/// the second tab's top.
+pub const STRIP_SIDE_HEAD: f32 = STRIP_SIDE_TAB + 2.0 * m::TIGHT;
 
 /// How wide a [`TabStrip::side`] strip starts, and the narrowest and
 /// widest its edge can be dragged to.
@@ -2505,10 +2514,11 @@ impl<'a> TabStrip<'a> {
         TabStrip { id: Id::unique(id), tabs, active, max_width: STRIP_TAB_MAX, new_tab: true, group: None, content: None, closed: false, side: false }
     }
 
-    /// Down the content's left side rather than along its top: the same
-    /// folder tabs turned on their side, one under another, the selected
-    /// one opening to the right into the content; the group's chip heads
-    /// the column; New Tab
+    /// Down the content's left side rather than along its top: a column
+    /// of rounded rows with the same room ([`m::TIGHT`]) on every side
+    /// of each, the selected one raised in the content's colours (as
+    /// [`opens_into`](Self::opens_into) gives them); the group's chip
+    /// heads the column; New Tab
     /// is a row after the last; tabs drag up and down to reorder, and
     /// the strip's right edge drags to make it wider or narrower
     /// ([`StripAction::Resize`]). `show`'s `full` is then the strip
@@ -2542,7 +2552,8 @@ impl<'a> TabStrip<'a> {
 
     /// The selected tab stands on the strip's edge rather than opening
     /// into what is under it: for content that isn't the selected tab's
-    /// alone (Terminal's Show All Tabs, each pane with its own head).
+    /// alone (Terminal's Show All Tabs, each pane with its own head). A
+    /// [`side`](Self::side) strip's tabs stand clear of its edge anyway.
     pub fn closed(mut self) -> Self {
         self.closed = true;
         self
@@ -2701,8 +2712,9 @@ fn plus_mark(painter: &Painter, center: Pos2, color: Color32) {
 
 impl TabStrip<'_> {
     fn show_side(self, ui: &mut Ui, full: Rect) -> Option<StripAction> {
-        use egui::{CornerRadius, StrokeKind};
+        use egui::StrokeKind;
         let p = style::palette(ui.ctx());
+        let ctx = ui.ctx().clone();
         let painter = ui.painter_at(full);
         let bg = p.panel_background;
         let well = shade(&p, bg, 1.07);
@@ -2710,22 +2722,23 @@ impl TabStrip<'_> {
         let (fill, ink) = self.content.unwrap_or((c(bg), c(p.panel_text)));
         let dim = c(p.panel_text).lerp_to_gamma(well, 0.3);
         let hover_fill = well.lerp_to_gamma(c(bg), 0.55);
-        let left_corners = CornerRadius { nw: STRIP_RADIUS, sw: STRIP_RADIUS, ne: 0, se: 0 };
+        let radius = STRIP_RADIUS as f32;
+        let line = style::hairline(&ctx);
         painter.rect_filled(full, 0.0, well);
-        // The tabs stand in from the left as far as along the top, and
-        // run to the edge the content is beyond; the first is at the
-        // top, level with a band beside the strip as tall (a pane's
-        // head).
-        let left = full.left() + m::TIGHT;
-        let right = full.right();
-        let mut top = full.top();
+        // The same room round every tab: from the window's edge on the
+        // left, the strip's edge line on the right, what is above the
+        // strip (a menu bar) and the tab before.
+        let pad = m::TIGHT;
+        let left = full.left() + pad;
+        let right = full.right() - line - pad;
+        let mut top = full.top() + pad;
         let mut action = None;
         if let Some((name, color)) = self.group {
             // The chip has a row of its own.
             let chip_h = 20.0;
-            let room = right - m::SPACING - left - 2.0 * m::SPACING;
-            let text_w = style::label_width(ui.ctx(), name, bold_font()).min(room);
-            let chip = style::snap(ui.ctx(), Rect::from_min_size(pos2(left, top + ((STRIP_ROW - chip_h) / 2.0).round()), vec2((text_w + 2.0 * m::SPACING).round(), chip_h)));
+            let room = right - left - 2.0 * m::SPACING;
+            let text_w = style::label_width(&ctx, name, bold_font()).min(room);
+            let chip = style::snap(&ctx, Rect::from_min_size(pos2(left, top + (STRIP_SIDE_TAB - chip_h) / 2.0), vec2((text_w + 2.0 * m::SPACING).round(), chip_h)));
             let resp = ui.interact(chip, self.id.with("group"), Sense::click());
             resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Group {name}")));
             let tone = if resp.hovered() { color.lerp_to_gamma(Color32::WHITE, 0.12) } else { color };
@@ -2735,14 +2748,18 @@ impl TabStrip<'_> {
             if resp.clicked() || resp.secondary_clicked() {
                 action = resp.interact_pointer_pos().map(StripAction::Group);
             }
-            top += STRIP_ROW;
+            top += STRIP_SIDE_TAB + pad;
         }
         let n = self.tabs.len();
         let rows = n + usize::from(self.new_tab);
-        let row = ((full.bottom() - m::TIGHT - top) / rows.max(1) as f32).min(STRIP_ROW).floor().max(16.0);
-        let slot = |i: usize| Rect::from_min_size(pos2(left, top + i as f32 * row), vec2(right - left, row));
+        // A tab and the room under it, on the 2-point grid.
+        let pitch = (((full.bottom() - top) / rows.max(1) as f32).min(STRIP_SIDE_TAB + pad) / 2.0).floor().max(10.0) * 2.0;
+        let slot = |i: usize| {
+            let y = top + i as f32 * pitch;
+            style::snap(&ctx, Rect::from_min_max(pos2(left, y), pos2(right, y + pitch - pad)))
+        };
         let drag_id = self.id.with("dragging");
-        let close_box = |r: Rect| Rect::from_center_size(pos2(r.right() - m::TIGHT - 9.0, r.center().y.round()), vec2(16.0, 16.0));
+        let close_box = |r: Rect| style::snap_centred(&ctx, pos2(r.right() - m::TIGHT - 9.0, r.center().y.round()), vec2(16.0, 16.0));
         let responses: Vec<(Response, Response)> = (0..n)
             .map(|i| {
                 let r = slot(i);
@@ -2753,31 +2770,17 @@ impl TabStrip<'_> {
             .collect();
         // (No lines between them: a column of rows reads as a list.)
         for (i, (t, x)) in responses.iter().enumerate() {
-            let r = slot(i);
             if i != self.active && (t.hovered() || x.hovered()) {
-                let line = style::hairline(ui.ctx());
-                painter.rect_filled(Rect::from_min_max(r.min + vec2(2.0, line), r.max), left_corners, hover_fill);
+                painter.rect_filled(slot(i), radius, hover_fill);
             }
         }
-        // The edge beside the tabs, open beside the selected one (unless
-        // closed).
-        vline_left_of(&painter, right, full.top(), full.bottom(), edge);
+        vline_left_of(&painter, full.right(), full.top(), full.bottom(), edge);
         if self.active < n {
             let r = slot(self.active);
-            // The first, at the top, hangs from what is above the strip
-            // (a menu bar): its edge is the tab's (no second line under
-            // it), its corner square.
-            let flush = r.top() <= full.top();
-            let line = style::hairline(ui.ctx());
-            let corners = if flush { CornerRadius { nw: 0, ..left_corners } } else { left_corners };
-            let shape = Rect::from_min_max(pos2(r.left(), if flush { r.top() - line } else { r.top() }), pos2(right + 4.0, r.bottom()));
-            painter.rect(shape, corners, fill, Stroke::new(line, edge), StrokeKind::Inside);
+            painter.rect(r, radius, fill, Stroke::new(line, edge), StrokeKind::Inside);
             if self.content.is_none() {
                 // Lit from the top left, as BeOS's controls are.
-                hline(&painter, r.left() + STRIP_RADIUS as f32, right, r.top() + 1.0, c(p.shine));
-            }
-            if self.closed {
-                vline_left_of(&painter, right, r.top(), r.bottom(), edge);
+                hline(&painter, r.left() + radius, r.right() - radius, r.top() + line, c(p.shine));
             }
         }
         for (i, tab) in self.tabs.iter().enumerate() {
@@ -2794,24 +2797,25 @@ impl TabStrip<'_> {
                 action = Some(a);
             }
             if resp.drag_started() && n > 1 {
-                ui.ctx().data_mut(|d| d.insert_temp(drag_id, i));
+                ctx.data_mut(|d| d.insert_temp(drag_id, i));
             }
         }
-        // A tab being dragged: a mark where it would go.
-        if let Some(from) = ui.ctx().data(|d| d.get_temp::<usize>(drag_id)) {
-            let pointer = ui.ctx().pointer_latest_pos();
-            let to = pointer.map_or(from, |pos| (((pos.y - top) / row).round().max(0.0) as usize).min(n));
-            let y = slot(to).top().clamp(top + 1.0, full.bottom() - 2.0);
+        // A tab being dragged: a mark where it would go, in the room
+        // between two.
+        if let Some(from) = ctx.data(|d| d.get_temp::<usize>(drag_id)) {
+            let pointer = ctx.pointer_latest_pos();
+            let to = pointer.map_or(from, |pos| (((pos.y - top + pad / 2.0) / pitch).round().max(0.0) as usize).min(n));
+            let y = (top + to as f32 * pitch - pad / 2.0).clamp(full.top() + 1.0, full.bottom() - 1.0);
             let mark = c(p.keyboard_navigation);
-            painter.rect_filled(Rect::from_min_max(pos2(left, y - 1.0), pos2(right - 1.0, y + 1.0)), 0.0, mark);
+            painter.rect_filled(style::snap(&ctx, Rect::from_min_max(pos2(left, y - 1.0), pos2(right, y + 1.0))), 0.0, mark);
             if !ui.input(|i| i.pointer.any_down()) {
-                ui.ctx().data_mut(|d| d.remove::<usize>(drag_id));
+                ctx.data_mut(|d| d.remove::<usize>(drag_id));
                 let to = if to > from { to - 1 } else { to };
                 if to != from && from < n {
                     action = Some(StripAction::Move { from, to });
                 }
             } else {
-                ui.ctx().request_repaint();
+                ctx.request_repaint();
             }
         }
         if self.new_tab {
@@ -2819,8 +2823,7 @@ impl TabStrip<'_> {
             let resp = ui.interact(r, self.id.with("new"), Sense::click());
             resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, "New Tab"));
             let color = if resp.hovered() {
-                let line = style::hairline(ui.ctx());
-                painter.rect_filled(Rect::from_min_max(r.min + vec2(2.0, line), r.max - vec2(line, 0.0)), left_corners, hover_fill);
+                painter.rect_filled(r, radius, hover_fill);
                 c(p.panel_text)
             } else {
                 dim
@@ -2837,7 +2840,7 @@ impl TabStrip<'_> {
             }
         }
         // The edge drags to make the strip wider or narrower.
-        let grip = Rect::from_min_max(pos2(right - 4.0, full.top()), pos2(right, full.bottom()));
+        let grip = Rect::from_min_max(pos2(full.right() - 4.0, full.top()), pos2(full.right(), full.bottom()));
         let resp = ui.interact(grip, self.id.with("width"), Sense::drag());
         resp.widget_info(|| WidgetInfo::labeled(Role::Splitter, true, "Tab Width"));
         if resp.hovered() || resp.dragged() {
@@ -2846,7 +2849,8 @@ impl TabStrip<'_> {
         if (resp.dragged() || resp.drag_stopped())
             && let Some(x) = ui.ctx().pointer_latest_pos().map(|p| p.x)
         {
-            let width = (x - full.left()).round().clamp(STRIP_SIDE_MIN, STRIP_SIDE_MAX);
+            // On the 2-point grid, so the edge is on a device pixel at 1.5×.
+            let width = (((x - full.left()) / 2.0).round() * 2.0).clamp(STRIP_SIDE_MIN, STRIP_SIDE_MAX);
             action = Some(StripAction::Resize { width, done: resp.drag_stopped() });
         }
         action

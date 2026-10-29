@@ -37,9 +37,9 @@ use smithay::{
             },
         },
     },
-    desktop::layer_map_for_output,
+    desktop::{layer_map_for_output, utils::surface_primary_scanout_output},
     reexports::wayland_server::{Resource, protocol::wl_surface::WlSurface},
-    wayland::seat::WaylandFocus,
+    wayland::{compositor::with_states, seat::WaylandFocus},
     reexports::calloop::timer::{TimeoutAction, Timer},
     utils::{Buffer, Logical, Physical, Point, Rectangle, Size, Transform},
 };
@@ -180,6 +180,9 @@ pub struct WindowTree {
     pub height: f64,
     #[serde(default)]
     pub layer: Option<String>,
+    /// Its `wl_surface`'s protocol id, if the app said.
+    #[serde(default)]
+    pub surface: Option<u32>,
     pub nodes: Vec<UiNode>,
 }
 
@@ -196,11 +199,14 @@ pub fn build(tree: &WindowTree, origin: (f64, f64), pid: u32) -> Vec<Node> {
     let mut targets: Vec<bool> = nodes.iter().map(target).collect();
     // A nameless area behind others (a list's background) is not one, nor
     // is the outside of a control around its own inside (a menu field
-    // and its label, around the field).
-    let ids: Vec<usize> = (0..nodes.len()).filter(|&i| targets[i]).collect();
-    for &i in &ids {
+    // and its label, around the field). The targets by their middles'
+    // x, so each looks only at those between its sides.
+    let mut ids: Vec<(f64, usize)> = (0..nodes.len()).filter(|&i| targets[i]).map(|i| (rect(&nodes[i]).centre().0, i)).collect();
+    ids.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for &(_, i) in &ids {
         let (a, r) = (&nodes[i], rect(&nodes[i]));
-        let covers = ids.iter().any(|&j| {
+        let (from, to) = (ids.partition_point(|&(x, _)| x < r.x), ids.partition_point(|&(x, _)| x < r.x + r.w));
+        let covers = ids[from..to].iter().any(|&(_, j)| {
             let b = &nodes[j];
             let inside = r.contains_point(rect(b).centre()) && b.width * b.height < r.w * r.h;
             j != i && inside && (a.name.is_none() || a.name == b.name || a.role == b.role)
@@ -378,15 +384,27 @@ fn socket_path(pid: u32) -> PathBuf {
     rt.join(format!("olo-menus-{pid}.sock"))
 }
 
-/// Process `pid`'s trees (None if it isn't a kit app or is too slow).
+/// What process `pid` shows on `surfaces` (`wl_surface` protocol ids),
+/// only what can be picked (None if it isn't a kit app or is too slow).
 /// Blocks: call it off the event loop.
-fn ask(pid: u32) -> Option<Vec<WindowTree>> {
-    let s = UnixStream::connect(socket_path(pid)).ok()?;
-    s.set_read_timeout(Some(WAIT * 2)).ok()?;
-    s.set_write_timeout(Some(WAIT)).ok()?;
-    (&s).write_all(b"{\"tree\":true}\n").ok()?;
-    let mut line = String::new();
-    BufReader::new(&s).read_line(&mut line).ok()?;
+fn ask(pid: u32, surfaces: &[u32]) -> Option<Vec<WindowTree>> {
+    // The answer; empty if the app hung up without one.
+    let question = |q: &str| -> Option<String> {
+        let s = UnixStream::connect(socket_path(pid)).ok()?;
+        s.set_read_timeout(Some(WAIT * 2)).ok()?;
+        s.set_write_timeout(Some(WAIT)).ok()?;
+        (&s).write_all(q.as_bytes()).ok()?;
+        let mut line = String::new();
+        BufReader::new(&s).read_line(&mut line).ok()?;
+        Some(line)
+    };
+    let hints = format!("{{\"hints\":{}}}\n", serde_json::to_string(surfaces).ok()?);
+    // An app from before `hints` (not restarted since an upgrade) hangs
+    // up on it: then all its windows.
+    let line = match question(&hints)? {
+        line if line.is_empty() => question("{\"tree\":true}\n")?,
+        line => line,
+    };
     serde_json::from_str(&line).ok()
 }
 
@@ -400,19 +418,20 @@ fn focus(pid: u32, node: u64) {
     }
 }
 
-/// Where a tree is wanted from.
+/// Where a tree is wanted from: a window or layer surface of process
+/// `pid`, whose `wl_surface` has protocol id `id` (the app's own name
+/// for it).
 #[derive(Debug, Clone)]
-enum Place {
-    Window { id: u64, title: String, content: Rect, surface: Option<WlSurface> },
-    Layer { namespace: String, rect: Rect, surface: Option<WlSurface> },
+struct Place {
+    pid: u32,
+    id: Option<u32>,
+    what: What,
 }
 
-impl Place {
-    fn surface(&self) -> Option<&WlSurface> {
-        match self {
-            Place::Window { surface, .. } | Place::Layer { surface, .. } => surface.as_ref(),
-        }
-    }
+#[derive(Debug, Clone)]
+enum What {
+    Window { id: u64, title: String, content: Rect },
+    Layer { namespace: String, rect: Rect },
 }
 
 /// What the answers are for.
@@ -420,18 +439,27 @@ impl Place {
 enum Purpose {
     /// The first level.
     Start,
+    /// The first level, asked for ahead: Control was let go once on its
+    /// own, so a second time (and the letters) is likely.
+    Ahead,
     /// The content of a window just brought forward.
     Window(u64),
     /// After a click: a menu it opened, if any.
     Menu,
 }
 
-/// The tree in `trees` for `place`, matched as `olo-screen tree` does.
+/// The tree in `trees` for `place`: the one for its surface or, from a
+/// program that can't tell its surfaces apart (Chrome), matched as
+/// `olo-screen tree` does.
 fn find<'a>(trees: &'a [WindowTree], place: &Place) -> Option<&'a WindowTree> {
-    match place {
-        Place::Layer { namespace, .. } => trees.iter().find(|t| t.layer.as_deref() == Some(namespace)),
-        Place::Window { title, content, .. } => {
-            let windows = || trees.iter().filter(|t| t.layer.is_none());
+    if let Some(t) = trees.iter().find(|t| t.surface.is_some() && t.surface == place.id) {
+        return Some(t);
+    }
+    let trees = || trees.iter().filter(|t| t.surface.is_none());
+    match &place.what {
+        What::Layer { namespace, .. } => trees().find(|t| t.layer.as_deref() == Some(namespace)),
+        What::Window { title, content, .. } => {
+            let windows = || trees().filter(|t| t.layer.is_none());
             let sized = |t: &&WindowTree| t.width as i32 == content.w as i32 && t.height as i32 == content.h as i32;
             windows()
                 .find(|t| t.title == *title && sized(t))
@@ -443,9 +471,27 @@ fn find<'a>(trees: &'a [WindowTree], place: &Place) -> Option<&'a WindowTree> {
 }
 
 fn origin(place: &Place) -> (f64, f64) {
-    match place {
-        Place::Window { content, .. } | Place::Layer { rect: content, .. } => (content.x, content.y),
+    match &place.what {
+        What::Window { content, .. } | What::Layer { rect: content, .. } => (content.x, content.y),
     }
+}
+
+/// What one place shows, as hint nodes, and its tree's title.
+type Built = (Vec<Node>, String);
+
+/// Ask process `pid` about its `places` (indices into all of them) and
+/// make their nodes, all on a worker thread: reading and walking a big
+/// window's tree is no work for the event loop.
+fn ask_and_build(pid: u32, places: Vec<(usize, Place)>) -> HashMap<usize, Built> {
+    let ids: Vec<u32> = places.iter().filter_map(|(_, p)| p.id).collect();
+    let trees = ask(pid, &ids).unwrap_or_default();
+    places
+        .iter()
+        .filter_map(|(i, place)| {
+            let tree = find(&trees, place)?;
+            Some((*i, (build(tree, origin(place), pid), tree.title.clone())))
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -461,6 +507,11 @@ pub struct Hints {
     generation: u64,
     /// Keys pressed while hints showed, whose releases are ours too.
     swallowed: Vec<u32>,
+    /// The first level asked for ahead ([`Purpose::Ahead`]): when, and
+    /// the level once the answers are in.
+    ahead: Option<(Instant, Option<Vec<Node>>)>,
+    /// When Control was pressed twice (how long the letters take).
+    asked: Option<Instant>,
     overlay: Overlay,
 }
 
@@ -498,9 +549,21 @@ impl Hints {
     pub fn close(&mut self) {
         self.levels.clear();
         self.fetching = false;
+        self.ahead = None;
         self.generation += 1;
     }
+
+    /// Letters showing: say how long they took.
+    fn shown(&mut self) {
+        if let Some(at) = self.asked.take() {
+            tracing::debug!(ms = at.elapsed().as_secs_f64() * 1000.0, letters = self.showing().len(), "keyboard hints shown");
+        }
+    }
 }
+
+/// How long a level asked for ahead is good for: the second press comes
+/// within the double press time of the first, at most a second.
+const AHEAD: Duration = Duration::from_secs(1);
 
 impl<B: Backend + 'static> AnvilState<B> {
     /// Control pressed twice: show the hints, or put them away.
@@ -510,9 +573,36 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         if self.hints.active() {
             self.hints.close();
-        } else {
-            self.fetch_hints(Purpose::Start, None);
+            return;
         }
+        self.hints.asked = Some(Instant::now());
+        match self.hints.ahead.take() {
+            // Asked for when Control was let go the first time: shown now
+            // if it's in, else as soon as it is.
+            Some((at, level)) if at.elapsed() < AHEAD => match level {
+                Some(level) if level.is_empty() => tracing::debug!("nothing to hint"),
+                Some(level) => {
+                    self.hints.levels = vec![level];
+                    self.hints.shown();
+                }
+                None => {
+                    self.hints.ahead = Some((at, None));
+                    self.hints.fetching = true;
+                }
+            },
+            _ => self.fetch_hints(Purpose::Start, None),
+        }
+    }
+
+    /// Control let go once on its own: ask the apps now, so the letters
+    /// are ready if it is pressed again (the apps' answers take a frame
+    /// or two, and the second press takes longer).
+    pub fn hints_ahead(&mut self) {
+        if !self.settings.keyboard.hints || self.lock.locked() || self.hints.active() {
+            return;
+        }
+        self.hints.ahead = Some((Instant::now(), None));
+        self.fetch_hints(Purpose::Ahead, None);
     }
 
     /// A key, while hints may be showing: true if it was theirs.
@@ -612,9 +702,11 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
     }
 
-    /// The places to ask about, with their processes: the focused window
-    /// (or `window`) and the layer surfaces (Deskbar, the desktop).
-    fn hint_places(&self, window: Option<&WindowElement>) -> Vec<(u32, Place)> {
+    /// The places to ask about, and their surfaces: the focused window
+    /// (or `window`) and the layer surfaces showing (Deskbar, the
+    /// desktop; not one hidden behind windows, whose frames, and so its
+    /// answer, come once a second).
+    fn hint_places(&self, window: Option<&WindowElement>) -> Vec<(Place, Option<WlSurface>)> {
         let mut places = Vec::new();
         let infos = self.window_infos_with_frames();
         // The focused window, or (a menu has the keyboard) the front one.
@@ -626,7 +718,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             if let (Some(pid), Some(c)) = (i.pid, i.content) {
                 let content = Rect { x: c.x as f64, y: c.y as f64, w: c.width as f64, h: c.height as f64 };
                 let surface = self.window_by_id(i.id).and_then(|w| w.wl_surface().map(|s| s.into_owned()));
-                places.push((pid as u32, Place::Window { id: i.id, title: i.title.clone(), content, surface }));
+                let what = What::Window { id: i.id, title: i.title.clone(), content };
+                places.push((Place { pid: pid as u32, id: surface.as_ref().map(|s| s.id().protocol_id()), what }, surface));
             }
         }
         for output in self.space.outputs() {
@@ -635,11 +728,15 @@ impl<B: Backend + 'static> AnvilState<B> {
             // Deskbar, the desktop's icons, notifications…
             for l in map.layers() {
                 let Some(g) = map.layer_geometry(l) else { continue };
+                let shown = with_states(l.wl_surface(), |states| surface_primary_scanout_output(l.wl_surface(), states)).is_some();
+                if !shown {
+                    continue;
+                }
                 let Some(client) = self.display_handle.get_client(l.wl_surface().id()).ok() else { continue };
                 let Some(pid) = crate::state::client_pid(&client, &self.display_handle) else { continue };
                 let rect = Rect { x: (geo.loc.x + g.loc.x) as f64, y: (geo.loc.y + g.loc.y) as f64, w: g.size.w as f64, h: g.size.h as f64 };
-                let surface = Some(l.wl_surface().clone());
-                places.push((pid as u32, Place::Layer { namespace: l.namespace().to_owned(), rect, surface }));
+                let what = What::Layer { namespace: l.namespace().to_owned(), rect };
+                places.push((Place { pid: pid as u32, id: Some(l.wl_surface().id().protocol_id()), what }, Some(l.wl_surface().clone())));
             }
         }
         places
@@ -689,63 +786,71 @@ impl<B: Backend + 'static> AnvilState<B> {
         out
     }
 
-    /// Ask the apps what they show (on worker threads), then letter it.
+    /// Ask the apps what they show and make their nodes (on worker
+    /// threads, one an app), then letter it.
     fn fetch_hints(&mut self, purpose: Purpose, window: Option<WindowElement>) {
         self.hints.generation += 1;
         let generation = self.hints.generation;
-        // Looking for a menu after a click leaves the keys alone meanwhile
-        // (they may be for what was clicked).
-        self.hints.fetching = purpose != Purpose::Menu;
-        let places = self.hint_places(window.as_ref());
-        let mut pids: Vec<u32> = places.iter().map(|(p, _)| *p).collect();
-        pids.sort_unstable();
-        pids.dedup();
+        // Looking for a menu after a click, or ahead of a second press,
+        // leaves the keys alone meanwhile (they may be for what was
+        // clicked, or anything).
+        self.hints.fetching = !matches!(purpose, Purpose::Menu | Purpose::Ahead);
+        let (places, surfaces): (Vec<Place>, Vec<Option<WlSurface>>) = self.hint_places(window.as_ref()).into_iter().unzip();
+        let mut by_pid: HashMap<u32, Vec<(usize, Place)>> = HashMap::new();
+        for (i, p) in places.iter().enumerate() {
+            by_pid.entry(p.pid).or_default().push((i, p.clone()));
+        }
+        let asked = by_pid.len();
         let (tx, rx) = mpsc::channel();
-        for &pid in &pids {
+        for (pid, mine) in by_pid {
             let tx = tx.clone();
             // One that can't start is waited for until the deadline.
             let _ = std::thread::Builder::new().name("hints".into()).spawn(move || {
-                let _ = tx.send((pid, ask(pid).unwrap_or_default()));
+                let _ = tx.send(ask_and_build(pid, mine));
             });
         }
-        let deadline = Instant::now() + WAIT;
-        let mut answers: HashMap<u32, Vec<WindowTree>> = HashMap::new();
+        let start = Instant::now();
+        let deadline = start + WAIT;
+        let mut answers: HashMap<usize, Built> = HashMap::new();
+        let mut answered = 0;
         let _ = self.handle.insert_source(Timer::immediate(), move |_, _, state| {
             if state.hints.generation != generation {
                 return TimeoutAction::Drop;
             }
-            while let Ok((pid, trees)) = rx.try_recv() {
-                answers.insert(pid, trees);
+            while let Ok(built) = rx.try_recv() {
+                answers.extend(built);
+                answered += 1;
             }
-            if answers.len() < pids.len() && Instant::now() < deadline {
+            if answered < asked && Instant::now() < deadline {
                 return TimeoutAction::ToDuration(POLL);
             }
-            state.hints_arrived(purpose, &places, &answers);
+            tracing::debug!(?purpose, ms = start.elapsed().as_secs_f64() * 1000.0, answered, asked, "keyboard hints: the apps answered");
+            state.hints_arrived(purpose, &places, &surfaces, std::mem::take(&mut answers));
             TimeoutAction::Drop
         });
     }
 
-    fn hints_arrived(&mut self, purpose: Purpose, places: &[(u32, Place)], answers: &HashMap<u32, Vec<WindowTree>>) {
-        self.hints.fetching = false;
+    fn hints_arrived(&mut self, purpose: Purpose, places: &[Place], surfaces: &[Option<WlSurface>], mut answers: HashMap<usize, Built>) {
+        let start = Instant::now();
         let mut content = Vec::new();
         let mut layers = Vec::new();
-        for (pid, place) in places {
-            let Some(tree) = answers.get(pid).and_then(|t| find(t, place)) else { continue };
-            let nodes = prune(build(tree, origin(place), *pid), &|n| self.clicks_reach(place.surface(), n));
-            match place {
-                Place::Window { .. } => content.extend(nodes),
-                Place::Layer { namespace, .. } if !nodes.is_empty() => {
-                    let name = Some(tree.title.clone()).filter(|t| !t.is_empty()).unwrap_or_else(|| namespace.clone());
+        for (i, place) in places.iter().enumerate() {
+            let Some((nodes, title)) = answers.remove(&i) else { continue };
+            let nodes = prune(nodes, &|n| self.clicks_reach(surfaces[i].as_ref(), n));
+            match &place.what {
+                What::Window { .. } => content.extend(nodes),
+                What::Layer { namespace, .. } if !nodes.is_empty() => {
+                    let name = Some(title).filter(|t| !t.is_empty()).unwrap_or_else(|| namespace.clone());
                     layers.push(Node::layer(name, nodes));
                 }
-                Place::Layer { .. } => {}
+                What::Layer { .. } => {}
             }
         }
         let budget = LETTERS.len();
         let level = match purpose {
-            Purpose::Start => {
-                let focused = places.iter().find_map(|(_, p)| match p {
-                    Place::Window { id, .. } => Some(*id),
+            Purpose::Start | Purpose::Ahead => {
+                let focused = places.iter().find_map(|p| match p.what {
+                    What::Window { id, .. } => Some(id),
                     _ => None,
                 });
                 let mut others = self.hint_windows(focused);
@@ -761,6 +866,24 @@ impl<B: Backend + 'static> AnvilState<B> {
                 expand(items, budget)
             }
         };
+        tracing::debug!(?purpose, ms = start.elapsed().as_secs_f64() * 1000.0, letters = level.len(), "keyboard hints: lettered");
+        if purpose == Purpose::Ahead {
+            match &mut self.hints.ahead {
+                // Control pressed again meanwhile: they're wanted now.
+                Some(_) if self.hints.fetching => {
+                    self.hints.ahead = None;
+                    self.hints.fetching = false;
+                }
+                // Kept for a second press.
+                Some((_, ready)) => {
+                    *ready = Some(level);
+                    return;
+                }
+                None => return,
+            }
+        } else {
+            self.hints.fetching = false;
+        }
         if level.is_empty() {
             // (A click that opened no menu is the usual case.)
             if purpose != Purpose::Menu {
@@ -774,6 +897,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.hints.levels.clear();
         }
         self.hints.levels.push(level);
+        self.hints.shown();
     }
 }
 
@@ -899,7 +1023,7 @@ mod tests {
     }
 
     fn tree(nodes: Vec<UiNode>) -> WindowTree {
-        WindowTree { title: "Prefs".into(), width: 400.0, height: 300.0, layer: None, nodes }
+        WindowTree { title: "Prefs".into(), width: 400.0, height: 300.0, layer: None, surface: None, nodes }
     }
 
     fn names(level: &[Node]) -> Vec<String> {
@@ -1042,8 +1166,13 @@ mod tests {
             {"id":1,"role":"Button","name":"OK","x":1.5,"y":2,"width":30,"height":20,"enabled":true,"clickable":true,"checked":false}]}]"#;
         let trees: Vec<WindowTree> = serde_json::from_str(json).unwrap();
         assert_eq!(trees[0].layer.as_deref(), Some("deskbar"));
-        let place = Place::Layer { namespace: "deskbar".into(), rect: Rect::default(), surface: None };
+        let place = Place { pid: 1, id: Some(7), what: What::Layer { namespace: "deskbar".into(), rect: Rect::default() } };
         assert!(find(&trees, &place).is_some());
         assert_eq!(names(&build(&trees[0], (0.0, 0.0), 1)), ["OK"]);
+        // A surface the app named is found by it, not by its name.
+        let json = r#"[{"title":"Deskbar","width":480,"height":40,"layer":"deskbar","surface":9,"nodes":[]},
+            {"title":"Deskbar","width":480,"height":40,"layer":"deskbar","surface":7,"nodes":[]}]"#;
+        let trees: Vec<WindowTree> = serde_json::from_str(json).unwrap();
+        assert_eq!(find(&trees, &place).and_then(|t| t.surface), Some(7));
     }
 }

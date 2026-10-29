@@ -187,6 +187,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             A::Palette => self.shortcut(olo_protocol::Shortcut::Palette),
             A::Shortcut(s) => self.shortcut(s),
             A::Hints => self.toggle_hints(),
+            A::HintsAhead => self.hints_ahead(),
         }
     }
 

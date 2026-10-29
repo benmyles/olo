@@ -312,6 +312,15 @@ impl Session {
         if real {
             // This version's skills, for agents run from now on.
             skills::start();
+            // What the session says it is may have changed with the
+            // upgrade (olo_xdg::upgrade_env): for services started on
+            // demand from now on too.
+            std::thread::spawn(|| {
+                let desktop = [("XDG_CURRENT_DESKTOP", olo_xdg::CURRENT_DESKTOP)];
+                if let Err(e) = olo_system::env::update_activation_environment(&desktop) {
+                    log(format!("could not export the environment: {e}"));
+                }
+            });
         }
         // A service this version adds starts now, not at the next login (a
         // session with a shell has Deskbar in it; one without stays so).
@@ -587,7 +596,9 @@ impl Session {
         }
         log("olo-session was upgraded; re-executing");
         // The signal mask is inherited across exec, which is what we want.
-        let e = Command::new(exe()).env(RESUME_ENV, state).exec();
+        let mut cmd = Command::new(exe());
+        olo_xdg::upgrade_env(&mut cmd);
+        let e = cmd.env(RESUME_ENV, state).exec();
         log(format!("re-exec failed ({e}); carrying on"));
         for &fd in &fds {
             set_cloexec(fd, true);
@@ -849,7 +860,7 @@ fn set_session_env(display: &str, ipc: &Path) {
         ("OLO_SOCKET", ipc.display().to_string()),
         ("OLO_SESSION", "1".into()),
         ("OLO_SESSION_PID", std::process::id().to_string()),
-        ("XDG_CURRENT_DESKTOP", "Olo".into()),
+        ("XDG_CURRENT_DESKTOP", olo_xdg::CURRENT_DESKTOP.into()),
         ("XDG_SESSION_DESKTOP", "olo".into()),
         ("XDG_SESSION_TYPE", "wayland".into()),
         ("MOZ_ENABLE_WAYLAND", "1".into()),

@@ -663,7 +663,9 @@ fn upgrade(st: &St, binary: &Binary, listener: &UnixListener, lock: &File) {
         set_cloexec(fd, false);
     }
     log(format!("upgraded: re-executing with {} shells", carried.shells.len()));
-    let e = std::process::Command::new(&binary.path).env(RESTORE_ENV, &file).exec();
+    let mut cmd = std::process::Command::new(&binary.path);
+    olo_kit::upgrade_env(&mut cmd);
+    let e = cmd.env(RESTORE_ENV, &file).exec();
     log(format!("could not re-execute: {e}"));
     for &fd in &fds {
         set_cloexec(fd, true);

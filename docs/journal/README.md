@@ -5,6 +5,48 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-28
 
+### Qt apps follow Olo: light
+
+*21:51* — The same Ladybird switched back to light live, with no restart.
+
+![Qt apps follow Olo: light](2026-10-28/215134-qt-apps-follow-olo-light.png)
+
+### Qt apps follow Olo: dark
+
+*21:51* — The session now says Olo:GNOME, so Qt takes its GTK 3 theme: Ladybird (from a toolbox) follows Olo's palette, font and light/dark live. 2x shown; checked at 1x, 1.5x and 2x.
+
+![Qt apps follow Olo: dark](2026-10-28/215134-qt-apps-follow-olo-dark.png)
+
+### Qt apps before: generic theme
+
+*21:51* — Before: with XDG_CURRENT_DESKTOP=Olo, Qt didn't know the desktop and took its generic theme, so Ladybird stayed light in its own font while Olo was dark.
+
+![Qt apps before: generic theme](2026-10-28/215133-qt-apps-before-generic-theme.png)
+
+### Keyboard hints: instant on a busy screen
+
+*21:51* — Control twice now asks only the surfaces showing, for only what can be picked, on worker threads, starting when Control is first let go: the letters show in under a millisecond after the second press (was about half a second, seconds on complex screens).
+
+![Keyboard hints: instant on a busy screen](2026-10-28/215133-keyboard-hints-instant-on-a-busy-screen.png)
+
+### Terminal: side tabs beside Show All Tabs
+
+*21:51* — Pane heads beside a side strip are its first tab and the room round it tall (32), so the tab's middle is level with the heads'.
+
+![Terminal: side tabs beside Show All Tabs](2026-10-28/215132-terminal-side-tabs-beside-show-all-tabs.png)
+
+### Terminal: side tabs with even room
+
+*21:51* — Side tabs are rounded rows with the same 4-point room on every side: from the window edge, the strip's edge, the menu bar and each other; the selected one is raised in the content's colours. 2x shown; checked at 1x, 1.5x and 2x.
+
+![Terminal: side tabs with even room](2026-10-28/215132-terminal-side-tabs-with-even-room.png)
+
+### Terminal: side tabs before
+
+*21:51* — Before: the side strip's tabs ran into the content, the first hung from the menu bar with no room above it, and nothing balanced the left inset on the right.
+
+![Terminal: side tabs before](2026-10-28/215132-terminal-side-tabs-before.png)
+
 ### Frames and tabs even at fractional scales
 
 *20:48* — app_server draws the window frame out from where the content lands, in device pixels: outline a hairline, bevel light and shadow a point each rounded, the flat middle taking the rest, the same on all four sides (1, 2, 3, 2 pixels at 1.5x; it was 2, 1, 2, 1, 2 on one side and mirrored differently on the other). Tabs, the wallpaper, the switcher and other app_server pictures are drawn pixel for pixel instead of resampled a pixel off their size. 1.5x, 8x zoom.

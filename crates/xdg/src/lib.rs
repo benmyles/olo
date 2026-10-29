@@ -214,6 +214,24 @@ pub fn find_program(name: &str) -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// What an Olo session tells programs it is (`XDG_CURRENT_DESKTOP`): Olo,
+/// then GNOME, whose settings it serves (`org.gnome.desktop.interface` in
+/// dconf, the GTK portals, GTK themes in Olo's colours). Programs that
+/// only know the big desktops follow Olo's look by it: Qt takes its GTK
+/// theme for GNOME (Olo's palette and fonts, light or dark, live), but
+/// its plain one for a name it doesn't know.
+pub const CURRENT_DESKTOP: &str = "Olo:GNOME";
+
+/// For an Olo program re-executing in place after an upgrade: bring up to
+/// date what the environment kept from a session started on an older build
+/// (`XDG_CURRENT_DESKTOP` said only "Olo"), so the programs it starts
+/// from then on have [`CURRENT_DESKTOP`] without a new session.
+pub fn upgrade_env(cmd: &mut std::process::Command) {
+    if std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d == "Olo") {
+        cmd.env("XDG_CURRENT_DESKTOP", CURRENT_DESKTOP);
+    }
+}
+
 /// Run a shell command line detached from us (own session, no stdio).
 /// Our own programs are found beside us first, as `find_program` finds
 /// them: the login screen gives a session a bare PATH that needn't

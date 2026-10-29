@@ -4,4 +4,4 @@ Comment=A BeOS-inspired Wayland desktop
 Exec=olo-session
 TryExec=olo-session
 Type=Application
-DesktopNames=Olo
+DesktopNames=Olo;GNOME;

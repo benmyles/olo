@@ -111,6 +111,9 @@ pub enum Action {
     Palette,
     /// Control pressed twice quickly (if chosen): keyboard hints.
     Hints,
+    /// Control pressed and let go once on its own (keyboard hints
+    /// chosen): the second time may well follow.
+    HintsAhead,
     /// One of the shortcuts in the settings.
     Shortcut(Shortcut),
 }
@@ -602,6 +605,7 @@ impl Keymap {
             if p.done == 2 {
                 out.push(Out::Action(Action::Hints));
             } else {
+                out.push(Out::Action(Action::HintsAhead));
                 self.ctrl_presses = Some(p);
             }
         }
@@ -699,13 +703,15 @@ mod tests {
     #[test]
     fn caps_lock_is_ctrl_and_plain_keys_pass() {
         let mut r = Rig::new();
+        // (Let go on its own, it may be the first of two for hints.)
         assert_eq!(r.down(CAPSLOCK), [Key(LEFTCTRL, true)]);
-        assert_eq!(r.up(CAPSLOCK), [Key(LEFTCTRL, false)]);
+        assert_eq!(r.up(CAPSLOCK), [Key(LEFTCTRL, false), Out::Action(Action::HintsAhead)]);
         assert_eq!(r.down(C), [Key(C, true)]);
         assert_eq!(r.up(C), [Key(C, false)]);
         // Physical Ctrl is untouched.
+        r.t += Duration::from_secs(1);
         assert_eq!(r.down(LEFTCTRL), [Key(LEFTCTRL, true)]);
-        assert_eq!(r.up(LEFTCTRL), [Key(LEFTCTRL, false)]);
+        assert_eq!(r.up(LEFTCTRL), [Key(LEFTCTRL, false), Out::Action(Action::HintsAhead)]);
     }
 
     #[test]
@@ -734,7 +740,9 @@ mod tests {
         let hints = |outs: Vec<Out>| outs.contains(&Out::Action(Action::Hints));
         let mut r = Rig::new();
         r.down(LEFTCTRL);
-        assert!(!hints(r.up(LEFTCTRL)));
+        // The first time asks the apps ahead.
+        let first = r.up(LEFTCTRL);
+        assert!(first.contains(&Out::Action(Action::HintsAhead)) && !hints(first));
         r.down(LEFTCTRL);
         assert!(hints(r.up(LEFTCTRL)));
         // Either Control, or Caps Lock as one.

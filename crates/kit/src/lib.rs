@@ -37,4 +37,4 @@ pub use menu::{Action, Menu, MenuItem};
 pub use platform::run;
 pub use olo_theme as theme;
 
-pub use olo_xdg::{config_dir, find_program, spawn_detached, state_dir, user_dir};
+pub use olo_xdg::{config_dir, find_program, spawn_detached, state_dir, upgrade_env, user_dir};

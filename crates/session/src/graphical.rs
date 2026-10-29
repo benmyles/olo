@@ -5,8 +5,9 @@
 //! refuse to start without it. It can't be started by hand, only pulled in
 //! by a session's own target, as compositors' `<name>-session.target`s do.
 //! Which portal backends serve an Olo session is set in
-//! `olo-portals.conf` (xdg-desktop-portal picks the file by
-//! `XDG_CURRENT_DESKTOP`).
+//! `olo-portals.conf` (xdg-desktop-portal picks the file by the first
+//! name in `XDG_CURRENT_DESKTOP` that has one, so `Olo:GNOME` still
+//! finds Olo's).
 //!
 //! Only a real session does this: it changes the user's systemd manager.
 

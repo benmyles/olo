@@ -203,6 +203,13 @@ fn main() {
   another process with `commands::serve_trees(pid, app_id, trees)` (the
   Olo extension's host does it for Chrome). Layer surfaces (Deskbar,
   the desktop) answer too, marked with their namespace (`layer`).
+  `{"hints":[ID…]}` asks only about the surfaces named (their
+  `wl_surface` protocol ids, which app_server knows them by) and answers
+  as soon as those have drawn, each tree marked with its `surface` and
+  cut by `WindowTree::pickable` to what takes clicks and what holds it
+  (a window's text, thousands of nodes, goes): keyboard hints ask this
+  way, so they never wait on a window nobody can see. (`serve_trees`
+  can't tell its surfaces apart and answers it with all of them.)
   egui gives its own widgets roles and names; text
   painted by hand is only pixels, so `style::label` and `Cell` describe
   theirs with `style::describe_text(ctx, role, text, rect, selected)`.
@@ -474,12 +481,15 @@ middle-click to close, a + button, drag along the row to reorder; it
 returns a `StripAction` (`Select`, `Close`, `New`, `Menu(i, pos)` for a
 right-click, `Move { from, to }`); each tab is a `Tab` in the
 accessibility tree with its status in its name; `.side()` stands the tabs
-down the left of the content instead, as Tracker's list rows: one
-`STRIP_ROW` (26) tall each in a column `STRIP_SIDE_WIDTH` (180) wide by
-default, the first at the strip's top (selected, it hangs from the menu
-bar, whose line is its edge), the group's chip a row above it, the
-chip's name and the tabs' icons under the menu bar's first title, a New
-Tab row after the last, the selected tab opening right into the content, and a grip along the right edge (a `Splitter`, "Tab Width")
+down the left of the content instead: a column `STRIP_SIDE_WIDTH` (180)
+wide by default of rounded rows `STRIP_SIDE_TAB` (24) tall, with the same
+room (`metrics::TIGHT`, 4) on every side of each, from the window's
+edge, the strip's edge line, what is above the strip (a menu bar) and
+the row before (fewer points each, on the 2-point grid, when there are
+too many to fit); the selected tab raised in the content's colours
+(`opens_into`) with an edge all round, the group's chip a row above the
+first, the chip's name and the tabs' icons under the menu bar's first
+title, a New Tab row after the last, and a grip along the right edge (a `Splitter`, "Tab Width")
 that returns `Resize { width, done }` between `STRIP_SIDE_MIN` and
 `STRIP_SIDE_MAX` for the app to keep, `done` once the drag ends; drag
 up and down to reorder), `color_well`, `heading`,
@@ -1632,11 +1642,24 @@ Esc, a click or any other key (which then does what it does) puts them
 away; pressing Control twice again does too. Letters are by key position, as on a
 US keyboard, home row first (`LETTERS`).
 
-What can be picked comes from the kit's trees (`{"tree":true}`, asked on
-worker threads, 500 ms at most): the focused window's controls, the
-other windows (by their tabs; picking one brings it forward and letters
-its content next) and every layer surface (Deskbar, the desktop's icons,
-notifications). `build` turns a tree into `Node`s: what is clickable,
+They must show at once, however busy the screen. What can be picked
+comes from the kit's trees, asked for only the surfaces showing
+(`{"hints":[surface ids]}`, which answers once those have drawn, with
+only what can be picked: see the commands socket): the focused window's
+controls, the other windows (by their tabs, which app_server knows
+itself; picking one brings it forward and letters its content next)
+and every layer surface on screen (Deskbar, the desktop's icons,
+notifications; not one hidden behind windows, which draws once a second).
+Each app is asked on a worker thread of its own, which also reads and
+`build`s its answer (`ask_and_build`), 500 ms at most; the event loop
+only prunes and letters. The asking starts ahead: Control let go on its
+own is the keymap's `Action::HintsAhead` (`hints_ahead`), and the
+second press shows the level asked for then (`Hints::ahead`, good for
+`AHEAD`), or shows it the moment it is in; the gap between two presses
+is longer than the apps take to answer, so the letters are there as
+Control goes down. An app from before `hints` hangs up on it
+and is asked `{"tree":true}`. How long they took is logged at debug
+(`keyboard hints shown`). `build` turns a tree into `Node`s: what is clickable,
 enabled and shows in the window, less a nameless area behind others (a
 list's background) and the outside of a control around its own inside;
 boxes (egui's nesting) are `Group`s. With a menu open, only its items,
@@ -2203,8 +2226,10 @@ drops it. Show All Tabs (Tabs menu or the group's menu, ⌘⇧D) shows
 every tab of the window at once, each a live pane with its title over
 it (`tile` picks the columns that keep panes nearest a terminal's
 shape, the last row spread across), each pane's shell sized to its pane;
-each pane has a head (`PANE_HEAD`, a `STRIP_ROW` tall, so a side
-strip's first tab is level with the heads beside it) with its icon and
+each pane has a head (`pane_head_height`: a `STRIP_ROW` tall under a
+strip along the top; beside a side strip `STRIP_SIDE_HEAD`, its first
+tab and the room round it, so the tab's middle is level with the heads'
+and the next tab starts at their foot) with its icon and
 title, and the
 panes not typed into are dimmed so the one that is stands out, its head
 lit like a window's tab in front; the strip
@@ -2216,8 +2241,9 @@ the window's edges, in the screen's own background
 (`view::screen_colors`), so text never touches the frame or the strip.
 The chrome is on one grid: the menu bar's first title, the tabs' and
 pane heads' icons and the shell's text start on one column, 12 in from
-the content's edge; tabs (top or side) and pane heads are all one row,
-26, and the menu bar is one more of those rows (`menu::BAR_HEIGHT`, 26:
+the content's edge; tabs along the top and pane heads under them are
+all one row, 26 (a side strip's rows are 24 with 4 round them, a 32
+pitch its pane heads match), and the menu bar is one more of those rows (`menu::BAR_HEIGHT`, 26:
 at 21 it was 31.5 pixels at 1.5× and looked cramped). Panes are tiled in device
 pixels (`tile(area, n, ppp)`), a device line apart, so no seam opens
 between them at 1.5×. The screen marks itself `layout_review::own_grid`:
@@ -2659,6 +2685,33 @@ allows. `toolkits.rs` publishes the palette where GTK 3, GTK 4,
 libadwaita and Chrome read it (GSettings through dconf, the Olo and
 Olo-dark GTK themes, GTK 4's user stylesheet, BeOS's close-left,
 zoom-right title buttons); see its module comment.
+
+What an Olo session says it is (`XDG_CURRENT_DESKTOP`, set by
+olo-session, `olo_xdg::CURRENT_DESKTOP`) is `Olo:GNOME`: Olo, then the
+desktop whose settings it serves. Qt picks its platform theme by that
+name and knows only the big desktops; for a name it doesn't know (plain
+`Olo`) it takes its generic theme, light, in its own font, whatever Olo
+is. For GNOME it takes its GTK 3 theme, which reads Olo's GTK theme
+(the palette, light or dark), font and colour scheme and follows them
+live, so Qt programs, Ladybird among them, change with Olo. It is the
+one lever that reaches programs run in a toolbox or container too
+(`toolbox run` passes `XDG_CURRENT_DESKTOP` but not
+`QT_QPA_PLATFORMTHEME`); there the font is Olo's if the container has
+it, else fontconfig's stand-in (Liberation Sans for Nimbus Sans). What
+else reads the name: xdg-desktop-portal still takes `olo-portals.conf`
+(the first name with a file wins); `open.rs` reads
+`gnome-mimeapps.list` after Olo's apps and before `mimeapps.list`, as
+GNOME would; Chrome keeps its keys where it did (it treats GNOME and an
+unknown desktop alike, libsecret, and asks the secret portal first
+either way). A session started on an older build said only `Olo`, and
+re-execs keep their environment, so `olo_xdg::upgrade_env` corrects it
+when olo-session, the kit's apps (`Binary::exec`) and termd re-exec
+after an upgrade, and a resumed real session exports it to systemd and
+D-Bus activation again; programs already running keep what they had
+until they restart. Test Qt programs in a headless session with a
+throwaway HOME, `GSETTINGS_BACKEND=keyfile` and the colour scheme and
+GTK theme in `$XDG_CONFIG_HOME/glib-2.0/settings/keyfile` (edit it to
+switch live), and a bus that isn't there.
 
 Window chrome: app_server offers server-side decorations two ways.
 xdg-decoration (`zxdg_decoration_manager_v1`) is what Chrome, Qt and most

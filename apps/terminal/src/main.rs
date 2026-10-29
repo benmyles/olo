@@ -54,9 +54,12 @@ pub const TEXT_SIZES: [f32; 9] = [9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 16.0, 18.0,
 const DEFAULT_TEXT_SIZE: f32 = 12.0;
 /// The tab strip, shown once a window has more than one tab.
 const STRIP: f32 = widgets::STRIP_HEIGHT;
-/// The title bar over each pane in Show All Tabs: a side tab's height,
-/// so the first tab is level with the heads beside it.
-const PANE_HEAD: f32 = widgets::STRIP_ROW;
+/// How tall the title bar over each pane in Show All Tabs is: as the
+/// tabs over it, or beside a side strip as tall as its first tab with
+/// the room round it, so the tab is level with the heads.
+fn pane_head_height(side: bool) -> f32 {
+    if side { widgets::STRIP_SIDE_HEAD } else { widgets::STRIP_ROW }
+}
 
 /// Show All Tabs' panes for `n` tabs in `area`: as many columns as keep
 /// each pane nearest a terminal's usual shape, the last row's spread
@@ -94,13 +97,13 @@ fn tile(area: egui::Rect, n: usize, ppp: f32) -> Vec<egui::Rect> {
 /// A pane's title bar in Show All Tabs: its tab's icon and title (cut
 /// short with "…"), the one typed into lit as the strip's selected tab
 /// is, the others recessed; a line around each pane keeps them apart.
-fn pane_head(ui: &egui::Ui, pane: egui::Rect, title: &str, icon: &dyn Fn(&egui::Painter, egui::Rect), active: bool) {
+fn pane_head(ui: &egui::Ui, pane: egui::Rect, height: f32, title: &str, icon: &dyn Fn(&egui::Painter, egui::Rect), active: bool) {
     let p = style::palette(ui.ctx());
     let painter = ui.painter();
     let bg = p.panel_background;
     let well = style::shade(&p, bg, 1.07);
     let edge = style::shade(&p, bg, 1.3);
-    let head = egui::Rect::from_min_size(pane.min, egui::vec2(pane.width(), PANE_HEAD));
+    let head = egui::Rect::from_min_size(pane.min, egui::vec2(pane.width(), height));
     painter.rect_filled(head, 0.0, if active { style::c(bg) } else { well });
     if active {
         // Lit from the top left, as BeOS's controls are.
@@ -807,9 +810,9 @@ impl Terminal {
             let tab = &mut tabs[i];
             let mut screen = rect;
             if several {
-                screen.min.y += PANE_HEAD;
+                screen.min.y += pane_head_height(side);
                 let icon = tab_icon(tab.rang, tab.agent, tab.attention);
-                pane_head(ui, rect, &tab.title, &icon, i == *active);
+                pane_head(ui, rect, pane_head_height(side), &tab.title, &icon, i == *active);
                 let pressed = ui.input(|inp| inp.pointer.any_pressed() && inp.pointer.interact_pos().is_some_and(|p| rect.contains(p)));
                 if pressed && i != *active {
                     picked = Some(i);

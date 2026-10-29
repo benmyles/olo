@@ -1756,5 +1756,47 @@
   "title": "Frames and tabs even at fractional scales",
   "caption": "app_server draws the window frame out from where the content lands, in device pixels: outline a hairline, bevel light and shadow a point each rounded, the flat middle taking the rest, the same on all four sides (1, 2, 3, 2 pixels at 1.5x; it was 2, 1, 2, 1, 2 on one side and mirrored differently on the other). Tabs, the wallpaper, the switcher and other app_server pictures are drawn pixel for pixel instead of resampled a pixel off their size. 1.5x, 8x zoom.",
   "image": "2026-10-28/204818-frames-and-tabs-even-at-fractional-scales.png"
+ },
+ {
+  "time": "2026-10-28T21:51:32",
+  "title": "Terminal: side tabs before",
+  "caption": "Before: the side strip's tabs ran into the content, the first hung from the menu bar with no room above it, and nothing balanced the left inset on the right.",
+  "image": "2026-10-28/215132-terminal-side-tabs-before.png"
+ },
+ {
+  "time": "2026-10-28T21:51:32",
+  "title": "Terminal: side tabs with even room",
+  "caption": "Side tabs are rounded rows with the same 4-point room on every side: from the window edge, the strip's edge, the menu bar and each other; the selected one is raised in the content's colours. 2x shown; checked at 1x, 1.5x and 2x.",
+  "image": "2026-10-28/215132-terminal-side-tabs-with-even-room.png"
+ },
+ {
+  "time": "2026-10-28T21:51:32",
+  "title": "Terminal: side tabs beside Show All Tabs",
+  "caption": "Pane heads beside a side strip are its first tab and the room round it tall (32), so the tab's middle is level with the heads'.",
+  "image": "2026-10-28/215132-terminal-side-tabs-beside-show-all-tabs.png"
+ },
+ {
+  "time": "2026-10-28T21:51:33",
+  "title": "Keyboard hints: instant on a busy screen",
+  "caption": "Control twice now asks only the surfaces showing, for only what can be picked, on worker threads, starting when Control is first let go: the letters show in under a millisecond after the second press (was about half a second, seconds on complex screens).",
+  "image": "2026-10-28/215133-keyboard-hints-instant-on-a-busy-screen.png"
+ },
+ {
+  "time": "2026-10-28T21:51:33",
+  "title": "Qt apps before: generic theme",
+  "caption": "Before: with XDG_CURRENT_DESKTOP=Olo, Qt didn't know the desktop and took its generic theme, so Ladybird stayed light in its own font while Olo was dark.",
+  "image": "2026-10-28/215133-qt-apps-before-generic-theme.png"
+ },
+ {
+  "time": "2026-10-28T21:51:34",
+  "title": "Qt apps follow Olo: dark",
+  "caption": "The session now says Olo:GNOME, so Qt takes its GTK 3 theme: Ladybird (from a toolbox) follows Olo's palette, font and light/dark live. 2x shown; checked at 1x, 1.5x and 2x.",
+  "image": "2026-10-28/215134-qt-apps-follow-olo-dark.png"
+ },
+ {
+  "time": "2026-10-28T21:51:34",
+  "title": "Qt apps follow Olo: light",
+  "caption": "The same Ladybird switched back to light live, with no restart.",
+  "image": "2026-10-28/215134-qt-apps-follow-olo-light.png"
  }
 ]

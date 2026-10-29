@@ -9,6 +9,10 @@
 //! `{"tree":true}` → a [`WindowTree`] per window: what each shows, as
 //! egui's AccessKit tree, made for one frame on demand (so agents read
 //! the widgets, their text and places rather than pixels);
+//! `{"hints":[ID…]}` → a [`WindowTree`] for each of the surfaces named
+//! (their `wl_surface` ids), only what can be picked and what holds it,
+//! as soon as those have drawn (app_server's keyboard hints, which must
+//! not wait for windows nobody can see);
 //! `{"focus":ID}` → `{"ok":true}`: give the keyboard to the widget with
 //! that tree id (a slider or text field, which a click would change);
 //! `{"frames":true}` → a [`FrameTimes`] per window, since the last ask
@@ -102,6 +106,9 @@ pub struct WindowTree {
     /// A layer surface's namespace ("deskbar"); None for a window.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layer: Option<String>,
+    /// Its `wl_surface`'s protocol id, when asked for by it (`hints`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface: Option<u32>,
     /// In tree order, a node's children after it.
     pub nodes: Vec<UiNode>,
 }
@@ -165,15 +172,15 @@ impl WindowTree {
         // row, by its cells).
         let inside = |n: &UiNode, x: f32, y: f32| (n.x..n.x + n.width).contains(&x) && (n.y..n.y + n.height).contains(&y);
         let mut names: Vec<Vec<String>> = vec![Vec::new(); out.len()];
+        // (Few take clicks unnamed, and a window can have thousands of
+        // texts: each text looks through those few, not everything.)
+        let unnamed: Vec<usize> = (0..out.len()).filter(|&i| out[i].clickable && out[i].name.is_none()).collect();
         for t in out.iter().filter(|t| t.role == "Label" || t.role == "Cell") {
             let Some(text) = &t.name else { continue };
             let (x, y) = (t.x + t.width / 2.0, t.y + t.height / 2.0);
-            let smallest = out
-                .iter()
-                .enumerate()
-                .filter(|(_, n)| n.clickable && n.name.is_none() && inside(n, x, y))
-                .min_by(|(_, a), (_, b)| (a.width * a.height).total_cmp(&(b.width * b.height)));
-            if let Some((i, _)) = smallest {
+            let area = |i: &usize| out[*i].width * out[*i].height;
+            let smallest = unnamed.iter().filter(|&&i| inside(&out[i], x, y)).min_by(|a, b| area(a).total_cmp(&area(b)));
+            if let Some(&i) = smallest {
                 names[i].push(text.clone());
             }
         }
@@ -182,7 +189,27 @@ impl WindowTree {
                 n.name = Some(words.join(" "));
             }
         }
-        WindowTree { title: title.to_owned(), width: size.0, height: size.1, active, layer: None, nodes: out }
+        WindowTree { title: title.to_owned(), width: size.0, height: size.1, active, layer: None, surface: None, nodes: out }
+    }
+
+    /// Only what takes clicks, and what holds it (the boxes hints group
+    /// by): a window's text, which can be thousands of nodes, goes.
+    pub fn pickable(mut self) -> WindowTree {
+        use std::collections::HashMap;
+        let index: HashMap<u64, usize> = self.nodes.iter().enumerate().map(|(i, n)| (n.id, i)).collect();
+        let mut keep: Vec<bool> = self.nodes.iter().map(|n| n.clickable).collect();
+        // Children come after their parents: from the end, each kept one
+        // keeps its parent.
+        for i in (0..self.nodes.len()).rev() {
+            if keep[i]
+                && let Some(&p) = self.nodes[i].parent.and_then(|p| index.get(&p))
+            {
+                keep[p] = true;
+            }
+        }
+        let mut keep = keep.into_iter();
+        self.nodes.retain(|_| keep.next().unwrap_or(false));
+        self
     }
 }
 
@@ -222,6 +249,7 @@ enum Ask {
     Menus(bool),
     Invoke(String),
     Tree(bool),
+    Hints(Vec<u32>),
     Focus(u64),
     Frames(bool),
     Review(bool),
@@ -232,6 +260,8 @@ pub(crate) enum Query {
     Menus(mpsc::Sender<Menus>),
     Invoke(String, mpsc::Sender<bool>),
     Tree(mpsc::Sender<Vec<WindowTree>>),
+    /// The trees of the surfaces with these protocol ids, pickable only.
+    Hints(Vec<u32>, mpsc::Sender<Vec<WindowTree>>),
     Focus(u64),
     Frames(mpsc::Sender<Vec<FrameTimes>>),
     Review(mpsc::Sender<Vec<WindowReview>>),
@@ -350,6 +380,11 @@ pub(crate) fn listen(to: smithay_client_toolkit::reexports::calloop::channel::Se
                         let _ = to.send(Query::Tree(tx));
                         serde_json::to_string(&rx.recv_timeout(TREE_WAIT).unwrap_or_default())
                     }
+                    Ok(Ask::Hints(surfaces)) => {
+                        let (tx, rx) = mpsc::channel();
+                        let _ = to.send(Query::Hints(surfaces, tx));
+                        serde_json::to_string(&rx.recv_timeout(TREE_WAIT).unwrap_or_default())
+                    }
                     Ok(Ask::Frames(_)) => {
                         let (tx, rx) = mpsc::channel();
                         let _ = to.send(Query::Frames(tx));
@@ -394,7 +429,9 @@ pub fn serve_trees(pid: u32, app_id: &str, trees: impl Fn() -> Vec<WindowTree> +
                 Ok(Ask::Invoke(_) | Ask::Focus(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
                 Ok(Ask::Frames(_)) => serde_json::to_string(&Vec::<FrameTimes>::new()),
                 Ok(Ask::Review(_)) => serde_json::to_string(&Vec::<WindowReview>::new()),
-                Ok(Ask::Tree(_)) => serde_json::to_string(&trees()),
+                // It can't tell its surfaces apart: all of them, matched
+                // by title and size.
+                Ok(Ask::Tree(_) | Ask::Hints(_)) => serde_json::to_string(&trees()),
                 Err(_) => continue,
             };
             if let Ok(answer) = answer {
