@@ -1029,8 +1029,8 @@ hands both to app_server, so clients never see the sockets disappear.
   password managers (1Password: arboard → wl-clipboard-rs) need data
   control (`ext_data_control_v1`, `zwlr_data_control_manager_v1`), so
   they copy and paste even without a focused window. Without it (a
-  proxy from before, which an upgrade keeps: the proxy is only replaced
-  at the next login), wl-copy and wl-paste make a 1x1 window to get the
+  proxy from before data control, still serving programs started
+  before an upgrade), wl-copy and wl-paste make a 1x1 window to get the
   keyboard with; app_server keeps those (`shell::xdg`
   `CLIPBOARD_HELPERS`, `clipboard_helper`) out of the space: never
   drawn, tiled (auto-tiling gave them a tile, squeezing the window a
@@ -1046,6 +1046,26 @@ hands both to app_server, so clients never see the sockets disappear.
   the session (`tsession` passes it on) to log every replayed request. Set
   `OLO_NO_WAYLAND_PROXY=1` to have app_server take `wayland-N` itself.
   If the proxy keeps crashing, the session does that on its own.
+* **Upgrading the proxy** (`Session::renew_proxy`): restarting it would
+  close every outside program's windows, so it isn't. When an upgrade
+  brings a new `olo-wlproxy` (the session notes the program it started
+  the proxy from: inode and mtime), the session binds a fresh listening
+  socket and renames it over `wayland-N` (a program connecting meanwhile
+  finds one or the other), starts the new proxy on it and sends the old
+  one SIGWINCH. The old one stops accepting and serves the programs it
+  has until the last one closes, then exits; the session reaps it
+  quietly (`retired`, kept across its own re-execution). SIGWINCH is
+  ignored by default, so a proxy from before this neither dies nor
+  exits: it keeps its programs until the session ends, unreachable by
+  new ones. New programs get the new proxy, and its protocols, at once.
+  The same hand-over happens when the session makes `wayland-N` again
+  after something removed it (before, the proxy kept listening on the
+  removed socket). `tsession` follows a session whose Wayland socket
+  changed while its IPC socket and pid didn't. Test it with a sandbox
+  install (below): an old install, a new tree, an outside program open,
+  `kill -USR2` the session, then check the program kept its window and a
+  new one goes to the new proxy (its descriptors); upgrade the proxy
+  again and close the programs to see the retired one exit.
 * **Olo's own apps** connect straight to app_server on
   `$XDG_RUNTIME_DIR/olo-wayland-N-direct` (the kit's `connect_once`).
   They reconnect and re-execute by themselves, as below.

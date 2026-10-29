@@ -104,10 +104,25 @@ def load_env(name, check=True):
     e = {("OLO_" + k[len("TABULA_"):] if k.startswith("TABULA_") else k): v for k, v in e.items()}
     # The runtime directory is emptied at logout, and a later session (the
     # user's own!) may get the same wayland-N: never talk to that.
-    if check and "sockets" in e and [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["OLO_SOCKET"])] != e["sockets"]:
+    if check and not same_session(e):
         sys.exit(f"session {name!r} is gone (its sockets are missing or now another session's); "
                  f"start it again (tsession stop {name} only forgets it)")
     return e
+
+def same_session(e):
+    """Whether `e`'s session is still the one on its sockets."""
+    if "sockets" not in e:
+        return True
+    now = [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["OLO_SOCKET"])]
+    if now == e["sockets"]:
+        return True
+    # A session makes its Wayland socket again for a new proxy (after an
+    # upgrade): still ours while its IPC socket and pid are.
+    try:
+        pid = open(os.path.join(RUNTIME, f"olo-session-{e['WAYLAND_DISPLAY']}.pid")).read().strip()
+    except OSError:
+        pid = None
+    return now[0] is not None and now[1] == e["sockets"][1] and pid is not None and pid == e.get("OLO_SESSION_PID")
 
 def ipc(name, req):
     env = load_env(name)
@@ -223,7 +238,7 @@ def stop(name):
     d = sdir(name)
     try:
         e = json.load(open(os.path.join(d, "env.json")))
-        ours = "sockets" not in e or [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["OLO_SOCKET"])] == e["sockets"]
+        ours = same_session(e)
         if not ours:
             print(f"{name}: its sockets are gone or another session's; forgetting it without touching them")
         else:

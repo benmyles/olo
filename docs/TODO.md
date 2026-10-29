@@ -251,12 +251,16 @@ as they land (with the commit), add new ones as they come up.
   as its text size changes (app_server says which sides it holds, the
   kit keeps them); hidden windows no longer jump to a new text size
   when they come back, and covered ones take it at once.
-- **olo-wlproxy upgrades only at login**: an in-place upgrade keeps the
-  running proxy (restarting it would close every outside program's
-  windows), so a protocol added to it (data-control was) reaches
-  programs only after logging in again. Make it re-execute itself in
-  place, keeping its clients' connections and state, as olo-session
-  does.
+- ~~**olo-wlproxy upgrades only at login**~~ (done: HACKING, "Upgrading
+  the proxy"): an in-place upgrade kept the running proxy (restarting
+  it would close every outside program's windows), so a protocol added
+  to it (data-control was) reached programs only after logging in
+  again. Now an upgrade starts the new proxy on a fresh socket put in
+  the old one's place: new programs get it at once, and the old proxy
+  keeps the programs it has until they close (then exits, from this
+  version on). Carrying the running programs' state over into the new
+  proxy (re-executing with every object, buffer and descriptor) was
+  weighed and left: a mistake there closes every outside window.
 
 - ~~**Open in Tracker, everywhere it makes sense**~~ (Ben, 2026-10-29;
   done: HACKING, Open in Tracker): `olo_kit::tracker` and Tracker's

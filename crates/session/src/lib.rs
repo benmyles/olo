@@ -147,6 +147,13 @@ struct Proxy {
     direct_fd: RawFd,
     proxied_fd: RawFd,
     child: Child,
+    /// What it was started from (None: by a session from before this was
+    /// noted, so another version).
+    #[serde(default)]
+    binary: Option<(u64, i64, i64)>,
+    /// Older proxies still serving the programs they had (`renew_proxy`).
+    #[serde(default)]
+    retired: Vec<i32>,
 }
 
 struct Session {
@@ -173,6 +180,12 @@ struct Session {
     watchdog: watchdog::Watchdog,
     /// The direct and proxied listeners and the proxy, once started.
     proxy: Option<(UnixListener, UnixListener, Child)>,
+    /// The program the proxy was started from: when it's another, the
+    /// proxy is renewed (`renew_proxy`).
+    proxy_binary: Option<(u64, i64, i64)>,
+    /// Proxies that gave the socket to a newer one and serve the programs
+    /// they had until those close (those this version started then exit).
+    retired: Vec<i32>,
     /// The proxy kept crashing: app_server takes the socket itself.
     no_proxy: bool,
 }
@@ -230,6 +243,8 @@ impl Session {
             keyd_at: Instant::now(),
             files: Vec::new(),
             proxy: None,
+            proxy_binary: None,
+            retired: Vec::new(),
             no_proxy: std::env::var_os("OLO_NO_WAYLAND_PROXY").is_some(),
         };
         s.own_files();
@@ -280,6 +295,7 @@ impl Session {
         for fd in [r.wayland_fd, r.ipc_fd, r.lock_fd] {
             set_cloexec(fd, true);
         }
+        let (proxy_binary, retired) = r.proxy.as_ref().map_or((None, Vec::new()), |p| (p.binary, p.retired.clone()));
         // SAFETY: as above.
         let proxy = r.proxy.map(|p| unsafe {
             set_cloexec(p.direct_fd, true);
@@ -305,10 +321,14 @@ impl Session {
             keyd_at: Instant::now(),
             files: Vec::new(),
             proxy,
+            proxy_binary,
+            retired,
             no_proxy: std::env::var_os("OLO_NO_WAYLAND_PROXY").is_some(),
         };
         s.own_files();
         s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
+        // A new proxy (this upgrade's) takes new programs from now on.
+        s.renew_proxy_if_upgraded();
         if real {
             // This version's skills, for agents run from now on.
             skills::start();
@@ -444,7 +464,53 @@ impl Session {
         set_cloexec(fd, false);
         child.pid = spawn(&child.argv, &[("OLO_WAYLAND_FD", fd.to_string()), ("OLO_WAYLAND_UPSTREAM", upstream.display().to_string())]).unwrap_or(0);
         set_cloexec(fd, true);
+        self.proxy_binary = proxy_binary();
         log(format!("olo-wlproxy started (pid {})", child.pid));
+    }
+
+    /// Renew the proxy if its program was upgraded since it started.
+    fn renew_proxy_if_upgraded(&mut self) {
+        let running = self.proxy.as_ref().is_some_and(|p| p.2.pid > 0);
+        if running && proxy_binary().is_some() && proxy_binary() != self.proxy_binary {
+            self.renew_proxy("olo-wlproxy was upgraded");
+        }
+    }
+
+    /// Give new programs a new proxy, without taking any from the old
+    /// one: a new listening socket goes in the old one's place (renamed
+    /// over it, so a program connecting meanwhile finds one or the other),
+    /// the new proxy takes it, and the old one serves the programs it has
+    /// until they close (one this version started then exits: SIGWINCH;
+    /// an older one never notices, and stays until the session ends).
+    fn renew_proxy(&mut self, why: &str) {
+        let path = self.wayland_path();
+        let fresh = path.with_extension("new");
+        let _ = std::fs::remove_file(&fresh);
+        let listener = match UnixListener::bind(&fresh).and_then(|l| std::fs::rename(&fresh, &path).map(|()| l)) {
+            Ok(l) => l,
+            Err(e) => {
+                log(format!("{why}, but its new socket couldn't be made ({e}); keeping the old proxy"));
+                let _ = std::fs::remove_file(&fresh);
+                return;
+            }
+        };
+        self.wayland = listener;
+        self.hand_over_proxy(why);
+        self.own_files();
+    }
+
+    /// Start a new proxy on the session's socket (`self.wayland`, made
+    /// again), retiring the running one.
+    fn hand_over_proxy(&mut self, why: &str) {
+        let Some((_, _, child)) = &mut self.proxy else { return };
+        let old = std::mem::replace(&mut child.pid, 0);
+        if old > 0 {
+            // SAFETY: signalling our own child (ignored by one too old to know it).
+            unsafe { libc::kill(old, libc::SIGWINCH) };
+            self.retired.push(old);
+        }
+        log(format!("{why}: a new olo-wlproxy takes new programs; the old one (pid {old}) keeps those it has"));
+        self.start_proxy();
     }
 
     fn run(mut self) -> ! {
@@ -489,6 +555,8 @@ impl Session {
         } else if own_binary().is_some() && own_binary() != self.binary {
             self.exec_self(false, false);
         }
+        // (A new session does this as it resumes.)
+        self.renew_proxy_if_upgraded();
     }
 
     fn wayland_path(&self) -> PathBuf {
@@ -529,6 +597,8 @@ impl Session {
                 Ok(l) => {
                     self.wayland = l;
                     mended = true;
+                    // The proxy listens on the socket that went.
+                    self.hand_over_proxy("the Wayland socket was made again");
                 }
                 Err(e) => log(format!("could not make {} again: {e}", wayland.display())),
             }
@@ -574,7 +644,13 @@ impl Session {
     /// `nudge`).
     fn exec_self(&mut self, reloading: bool, nudge: bool) {
         let mut fds = vec![self.wayland.as_raw_fd(), self.ipc.as_raw_fd(), self.lock.as_raw_fd()];
-        let proxy = self.proxy.as_ref().map(|(direct, proxied, child)| Proxy { direct_fd: direct.as_raw_fd(), proxied_fd: proxied.as_raw_fd(), child: child.clone() });
+        let proxy = self.proxy.as_ref().map(|(direct, proxied, child)| Proxy {
+            direct_fd: direct.as_raw_fd(),
+            proxied_fd: proxied.as_raw_fd(),
+            child: child.clone(),
+            binary: self.proxy_binary,
+            retired: self.retired.clone(),
+        });
         if let Some(p) = &proxy {
             fds.extend([p.direct_fd, p.proxied_fd]);
         }
@@ -630,6 +706,9 @@ impl Session {
                     self.shutdown(1);
                 }
                 self.start_server();
+            } else if let Some(i) = self.retired.iter().position(|&p| p == pid) {
+                self.retired.remove(i);
+                log(format!("the old olo-wlproxy (pid {pid}) is done: its programs have all closed"));
             } else if let Some((_, _, c)) = self.proxy.as_mut().filter(|p| p.2.pid == pid) {
                 c.pid = 0;
                 if self.stopping {
@@ -663,7 +742,7 @@ impl Session {
         self.stopping = true;
         log("ending the session");
         let proxy = self.proxy.as_ref().map_or(0, |p| p.2.pid);
-        let pids: Vec<i32> = self.shell.iter().map(|c| c.pid).chain([self.server.pid, proxy]).filter(|&p| p > 0).collect();
+        let pids: Vec<i32> = self.shell.iter().map(|c| c.pid).chain([self.server.pid, proxy]).chain(self.retired.iter().copied()).filter(|&p| p > 0).collect();
         for &p in &pids {
             // SAFETY: signalling our own children.
             unsafe { libc::kill(p, libc::SIGTERM) };
@@ -772,6 +851,13 @@ fn wait_for(pid: i32, timeout: Duration) -> bool {
 fn exe() -> &'static Path {
     static EXE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
     EXE.get_or_init(|| std::env::current_exe().unwrap_or_else(|_| "olo-session".into()))
+}
+
+/// The proxy's program as installed beside us: (inode, mtime).
+fn proxy_binary() -> Option<(u64, i64, i64)> {
+    use std::os::unix::fs::MetadataExt;
+    let m = std::fs::metadata(exe().parent()?.join("olo-wlproxy")).ok()?;
+    Some((m.ino(), m.mtime(), m.mtime_nsec()))
 }
 
 fn own_binary() -> Option<(u64, SystemTime)> {

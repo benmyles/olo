@@ -8,6 +8,12 @@
 //! replayed on the new one and the program carries on: see `client`.
 //! Olo's own apps don't come through here; they reconnect by
 //! themselves.
+//!
+//! When the proxy itself is upgraded, olo-session puts a new listening
+//! socket in the old one's place and starts the new proxy on it, then
+//! sends this one SIGWINCH (ignored by default, so a proxy from before
+//! this carries on rather than dying): it stops accepting and serves the
+//! programs it has until the last one closes, then exits.
 
 mod client;
 mod interfaces;
@@ -16,6 +22,7 @@ mod wire;
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use client::{Client, Phase};
@@ -31,6 +38,13 @@ fn log(msg: impl AsRef<str>) {
     eprintln!("olo-wlproxy: {}", msg.as_ref());
 }
 
+/// A newer proxy has the socket now (SIGWINCH).
+static RETIRE: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn retire(_: libc::c_int) {
+    RETIRE.store(true, Ordering::Relaxed);
+}
+
 fn main() {
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
@@ -40,17 +54,33 @@ fn main() {
         std::process::exit(2);
     };
     // SAFETY: olo-session passes this listening socket to us alone.
-    let listener = unsafe { UnixListener::from_raw_fd(fd) };
+    let mut listener = Some(unsafe { UnixListener::from_raw_fd(fd) });
     // SAFETY: fcntl on our own descriptor.
     unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
-    listener.set_nonblocking(true).expect("non-blocking listener");
+    listener.as_ref().unwrap().set_nonblocking(true).expect("non-blocking listener");
     raise_fd_limit();
+    // SAFETY: the handler only stores to an atomic; no SA_RESTART, so it
+    // interrupts the poll.
+    unsafe {
+        let mut sa: libc::sigaction = std::mem::zeroed();
+        sa.sa_sigaction = retire as *const () as usize;
+        libc::sigemptyset(&mut sa.sa_mask);
+        libc::sigaction(libc::SIGWINCH, &sa, std::ptr::null_mut());
+    }
     let upstream = PathBuf::from(upstream);
     log(format!("listening; app_server at {}", upstream.display()));
 
     let mut clients: Vec<Client> = Vec::new();
     loop {
-        let mut fds = vec![libc::pollfd { fd: listener.as_raw_fd(), events: libc::POLLIN, revents: 0 }];
+        if RETIRE.load(Ordering::Relaxed) && listener.take().is_some() {
+            log(format!("a newer proxy has the socket; serving {} program(s) until they close", clients.len()));
+        }
+        if listener.is_none() && clients.is_empty() {
+            log("retired, and its last program has closed");
+            std::process::exit(0);
+        }
+        let listening = listener.as_ref().map_or(-1, |l| l.as_raw_fd());
+        let mut fds = vec![libc::pollfd { fd: listening, events: libc::POLLIN, revents: 0 }];
         for c in &clients {
             fds.push(libc::pollfd { fd: c.down.fd(), events: libc::POLLIN | if c.down.backlog() > 0 { libc::POLLOUT } else { 0 }, revents: 0 });
             let up = c.up.as_ref().map(|u| (u.fd(), u.backlog() > 0));
@@ -83,7 +113,9 @@ fn main() {
             !gone[i - 1]
         });
 
-        if fds[0].revents & libc::POLLIN != 0 {
+        if fds[0].revents & libc::POLLIN != 0
+            && let Some(listener) = &listener
+        {
             loop {
                 match listener.accept() {
                     Ok((stream, _)) => {
