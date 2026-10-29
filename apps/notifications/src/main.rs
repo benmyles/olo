@@ -152,6 +152,13 @@ impl Notifications {
         }
     }
 
+    /// How long a banner stays (set to Never, 0 seconds, errors still
+    /// show, for a while).
+    fn banner_time(&self) -> Duration {
+        let seconds = if self.settings.seconds == 0 { 10 } else { self.settings.seconds.clamp(2, 60) };
+        Duration::from_secs(seconds as u64)
+    }
+
     fn quiet(&self) -> bool {
         self.settings.quiet(now_secs(), local_minute())
     }
@@ -179,7 +186,8 @@ impl Notifications {
             .iter()
             .map(|e| {
                 let mut v = serde_json::to_value(e).unwrap_or_default();
-                v["strength"] = serde_json::json!((self.settings.strength(now.saturating_sub(e.time)) * 100.0).round() / 100.0);
+                let strength = if e.pinned { 1.0 } else { self.settings.strength(now.saturating_sub(e.time)) };
+                v["strength"] = serde_json::json!((strength * 100.0).round() / 100.0);
                 v
             })
             .collect();
@@ -195,16 +203,17 @@ impl Notifications {
         self.refresh_settings();
         let app = self.settings.app_via(&note.app_name, note.via.as_deref());
         let quiet = self.quiet();
-        // Banners set to Never (0 seconds) still show errors, for a while.
         let never = self.settings.seconds == 0;
         if note.timeout == Some(server::DEFAULT_TIMEOUT) {
-            let seconds = if never { 10 } else { self.settings.seconds.clamp(2, 60) };
-            note.timeout = Some(Duration::from_secs(seconds as u64));
+            note.timeout = Some(self.banner_time());
         }
-        // Do Not Disturb keeps all but errors off the screen and quiet.
-        let banner = app.banners && ((!quiet && !never) || note.kind == Kind::Error);
+        // Do Not Disturb keeps all but errors off the screen and quiet; a
+        // snoozed one's news waits with it.
+        let snoozed = self.history.get_mut(note.id).is_some_and(|e| e.snoozed());
+        let banner = app.banners && ((!quiet && !never) || note.kind == Kind::Error) && !snoozed;
         if app.sounds
             && !quiet
+            && !snoozed
             && !note.replaces
             && let Some(path) = note.sound.as_ref().and_then(|s| sound::for_note(s, note.kind))
         {
@@ -235,8 +244,10 @@ impl Notifications {
     }
 
     fn add_card(&mut self, cx: &mut Cx, note: Note) {
-        let until = note.timeout.map(|t| Instant::now() + t);
-        if let Some(t) = note.timeout {
+        // Pinned: on screen until closed.
+        let pinned = self.history.newest(note.id).is_some_and(|e| e.pinned);
+        let until = note.timeout.filter(|_| !pinned).map(|t| Instant::now() + t);
+        if let Some(t) = note.timeout.filter(|_| !pinned) {
             self.tick_after(t);
         }
         match self.cards.iter_mut().find(|c| c.note.id == note.id) {
@@ -517,19 +528,100 @@ impl Notifications {
             Control::DoNotDisturb(on, minutes) => self.set_quiet(on, minutes),
             Control::SetRead(id, read) => self.set_read(cx, id, read),
             Control::MarkAllRead => self.mark_all_read(cx),
+            Control::Pin(id, on) => self.set_pinned(cx, id, on),
+            Control::Snooze(id, minutes) => self.snooze(cx, id, now_secs() + minutes as u64 * 60),
         }
         if let Some(w) = self.history_win {
             cx.redraw(w);
         }
     }
 
-    /// Forget the history; what is still open at its app closes.
+    /// Pin a note (it stays put: no fading, no going with Clear All, and
+    /// on screen until closed), or unpin it.
+    fn set_pinned(&mut self, cx: &mut Cx, id: u32, on: bool) {
+        let Some(e) = self.history.newest_mut(id) else { return };
+        e.pinned = on;
+        let mut again = None;
+        if let Some(c) = self.cards.iter_mut().find(|c| c.note.id == id) {
+            c.until = if on { None } else { c.note.timeout.map(|t| Instant::now() + t) };
+            again = c.note.timeout.filter(|_| !on);
+        }
+        if let Some(t) = again {
+            self.tick_after(t);
+        }
+        self.publish(true);
+        self.redraw(cx);
+        if let Some(w) = self.history_win {
+            cx.redraw(w);
+        }
+    }
+
+    /// Put a note away until `until` (seconds since the epoch): out of
+    /// sight (off the screen too) and not counted, then back as new
+    /// (`wake_snoozed`).
+    fn snooze(&mut self, cx: &mut Cx, id: u32, until: u64) {
+        let Some(e) = self.history.newest_mut(id) else { return };
+        e.snoozed_until = Some(until);
+        e.shown = false;
+        self.take(cx, id);
+        if self.view.selected == Some(id) {
+            self.view.selected = None;
+        }
+        self.tick_after(Duration::from_secs(until.saturating_sub(now_secs())));
+        self.publish(true);
+        if let Some(w) = self.history_win {
+            cx.redraw(w);
+        }
+    }
+
+    /// `note_menu`'s command for the note `id`.
+    fn note_command(&mut self, cx: &mut Cx, id: u32, command: &str) {
+        if command == "pin" {
+            let on = !self.history.newest(id).is_some_and(|e| e.pinned);
+            self.set_pinned(cx, id, on);
+        } else if let Some((minutes, _)) = command.strip_prefix("snooze:").and_then(|i| i.parse::<usize>().ok()).and_then(|i| SNOOZES.get(i)) {
+            self.snooze(cx, id, minutes.map_or_else(tomorrow_morning, |m| now_secs() + m as u64 * 60));
+        }
+    }
+
+    /// Snoozed notes whose time has come: back as new, unread and (unless
+    /// banners are off or it is quiet) on screen again.
+    fn wake_snoozed(&mut self, cx: &mut Cx) {
+        let now = now_secs();
+        let due: Vec<u32> = self.history.entries.iter().filter(|e| e.snoozed_until.is_some_and(|t| t <= now)).map(|e| e.id).collect();
+        if due.is_empty() {
+            return;
+        }
+        self.refresh_settings();
+        let quiet = self.quiet();
+        let (never, time) = (self.settings.seconds == 0, self.banner_time());
+        for id in due {
+            let Some(e) = self.history.newest_mut(id) else { continue };
+            e.snoozed_until = None;
+            e.unread = true;
+            e.time = now;
+            let banner = self.settings.app_via(&e.app, e.via.as_deref()).banners && !quiet && !never;
+            e.shown = banner;
+            let note = e.to_note(Some(time));
+            if banner {
+                self.add_card(cx, note);
+            }
+        }
+        self.publish(true);
+        if let Some(w) = self.history_win {
+            cx.redraw(w);
+        }
+    }
+
+    /// Forget the history (but what is pinned or snoozed); what is still
+    /// open at its app closes.
     fn clear_history(&mut self, cx: &mut Cx) {
-        let live: Vec<u32> = self.history.entries.iter().filter(|e| e.live && !e.shown).map(|e| e.id).collect();
+        let kept = |e: &Entry| e.shown || e.pinned || e.snoozed();
+        let live: Vec<u32> = self.history.entries.iter().filter(|e| e.live && !kept(e)).map(|e| e.id).collect();
         for id in live {
             self.bus(|b| b.closed(id, Reason::Dismissed));
         }
-        self.history.retain(|e| e.shown);
+        self.history.retain(kept);
         self.publish(true);
         if let Some(w) = self.history_win {
             cx.redraw(w);
@@ -750,6 +842,8 @@ enum Did {
     Raise,
     Reply(String),
     Link(String),
+    /// Its menu's command (`note_menu`).
+    Command(String),
 }
 
 impl App for Notifications {
@@ -819,30 +913,43 @@ impl App for Notifications {
             // The group's title: the app's icon and name (and, for a
             // website, its address) and the close box, for all of them.
             let head = Rect::from_min_size(frame.min, vec2(WIDTH, HEADER));
+            // Its middle on a device pixel, so the icon (a whole number
+            // of pixels) and the text centre on the same line.
+            let ppp = ui.ctx().pixels_per_point();
+            let mid = (head.center().y * ppp).round() / ppp;
             let first = &self.cards[laid[0].i].note;
-            let small = Rect::from_min_size(pos2(head.left() + PAD, head.center().y - 8.0), vec2(16.0, 16.0));
+            let small = Rect::from_min_size(pos2(head.left() + PAD, mid - 8.0), vec2(16.0, 16.0));
             let mut names = app_icons(ui.ctx(), first.desktop_entry.as_deref(), &first.app_name);
             names.extend(named_icons(ui.ctx(), first.icon.as_deref(), first.desktop_entry.as_deref(), &first.app_name));
             paint_mark(&painter, small, &first.app_name, first.look.accent, first.via.is_some(), &names, "application");
             let name = if app.is_empty() { "Notification" } else { app.as_str() };
-            let close_room = 22.0;
+            let mut close_room = 22.0;
+            // Pinned (all of them): it says so, by the close box.
+            if laid.iter().all(|l| self.history.newest(self.cards[l.i].note.id).is_some_and(|e| e.pinned)) {
+                let r = style::label(&painter, head.right() - PAD - close_room, mid, Align::Max, "Pinned", style::small_font(), style::disabled_text(&p));
+                close_room += r.width() + 8.0;
+            }
             let name_x = small.right() + 6.0;
-            let n = style::label_fit(&painter, name_x, head.center().y, Align::Min, name, egui::FontId::new(style::small_font().size, style::bold()), c(p.panel_text), head.right() - PAD - close_room - name_x);
+            let n = style::label_fit(&painter, name_x, mid, Align::Min, name, egui::FontId::new(style::small_font().size, style::bold()), c(p.panel_text), head.right() - PAD - close_room - name_x);
             if let Some(src) = &first.look.source {
                 let x = n.right() + 5.0;
                 let room = head.right() - PAD - close_room - x;
                 if room > 24.0 {
-                    style::label_fit(&painter, x, head.center().y, Align::Min, src, style::small_font(), style::disabled_text(&p), room);
+                    style::label_fit(&painter, x, mid, Align::Min, src, style::small_font(), style::disabled_text(&p), room);
                 }
             }
             let single = laid.len() == 1;
-            let all = Rect::from_center_size(pos2(head.right() - PAD - 6.0, head.center().y), vec2(12.0, 12.0));
+            let all = Rect::from_center_size(pos2(head.right() - PAD - 6.0, mid), vec2(12.0, 12.0));
             let r = ui.interact(all.expand(3.0), ui.make_persistent_id(("close-all", &app)), Sense::click());
             r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, if single { "Close".to_owned() } else { format!("Close All from {name}") }));
             close_box(&painter, all, if r.hovered() { c(p.panel_text) } else { style::disabled_text(&p) });
             if r.clicked() {
+                // (Not those pinned: they stay put.)
                 for l in &laid {
-                    did.push((self.cards[l.i].note.id, Did::Dismiss));
+                    let id = self.cards[l.i].note.id;
+                    if single || !self.history.newest(id).is_some_and(|e| e.pinned) {
+                        did.push((id, Did::Dismiss));
+                    }
                 }
             }
             style::hline_above(&painter, frame.left() + 2.0, frame.right() - 2.0, head.bottom(), style::darken(p.panel_background, 1.25));
@@ -856,8 +963,17 @@ impl App for Notifications {
                 if hover.is_some_and(|h| rect.contains(h)) {
                     hovered = Some(id);
                 }
-                // The whole card is the default action.
+                // The whole card is the default action; its menu pins or
+                // snoozes it (kept while that is open).
                 let click = ui.interact(rect, ui.make_persistent_id(("card", id)), Sense::click());
+                if let Some(pinned) = self.history.newest(id).map(|e| e.pinned)
+                    && let Some(command) = olo_kit::widgets::context_menu(&click, || note_menu(olo_kit::Menu::new("Notification"), Some(pinned)))
+                {
+                    did.push((id, Did::Command(command)));
+                }
+                if olo_kit::menu::is_open(ui.ctx(), click.id.with("context")) {
+                    hovered = Some(id);
+                }
                 // One of several has its own close box too, while the
                 // pointer is over it (the header's closes them all).
                 let close = Rect::from_center_size(pos2(rect.right() - PAD - 6.0, rect.top() + PAD + 7.0), vec2(12.0, 12.0));
@@ -939,6 +1055,7 @@ impl App for Notifications {
                     self.bus(|b| b.replied(id, &text));
                     self.remove(cx, id, Reason::Dismissed);
                 }
+                Did::Command(command) => self.note_command(cx, id, &command),
                 Did::Link(url) => {
                     self.set_read(cx, id, true);
                     std::thread::spawn(move || {
@@ -987,6 +1104,7 @@ impl App for Notifications {
             }
             Msg::Tick => {
                 self.flush_pending();
+                self.wake_snoozed(cx);
                 // Do Not Disturb may have begun or ended.
                 self.refresh_settings();
                 self.fade_out(cx);
@@ -1022,6 +1140,7 @@ impl App for Notifications {
                 views = views.item(label, command, Some(key)).checked(view == v);
             }
             let selected = self.selected_unread();
+            let pinned = self.view.selected.and_then(|id| self.history.newest(id)).map(|e| e.pinned);
             let edit = olo_kit::Menu::new("Edit")
                 .item("Find", "find", Some(egui::Key::F))
                 .separator()
@@ -1029,8 +1148,8 @@ impl App for Notifications {
                 .enabled(selected.is_some())
                 .item("Mark All as Read", "read-all", None)
                 .enabled(self.history.unread() > 0)
-                .separator()
-                .item("Clear All", "clear", None);
+                .separator();
+            let edit = note_menu(edit, pinned).separator().item("Clear All", "clear", None).enabled(self.history.entries.iter().any(|e| !e.shown && !e.pinned && !e.snoozed()));
             vec![olo_kit::Menu::new("File").item("Close", "close", Some(egui::Key::W)), edit, views]
         })
     }
@@ -1047,6 +1166,12 @@ impl App for Notifications {
                 self.view.held.extend(self.history.entries.iter().filter(|e| e.unread).map(|e| e.id));
                 self.mark_all_read(cx);
             }
+            // The selected note's.
+            c if c == "pin" || c.starts_with("snooze:") => {
+                if let Some(id) = self.view.selected {
+                    self.note_command(cx, id, c);
+                }
+            }
             _ => {
                 if let Some((v, ..)) = VIEWS.iter().find(|(_, _, c, _)| *c == command) {
                     self.set_view(*v);
@@ -1062,6 +1187,32 @@ impl App for Notifications {
             serde_json::json!({ "history": true, "search": self.view.search, "folded": self.view.folded, "selected": self.view.selected }).to_string()
         })
     }
+}
+
+/// Snoozing for so many minutes (None: until nine tomorrow morning,
+/// `tomorrow_morning`).
+const SNOOZES: [(Option<u32>, &str); 4] = [(Some(15), "15 Minutes"), (Some(60), "1 Hour"), (Some(180), "3 Hours"), (None, "Tomorrow Morning")];
+
+/// Nine tomorrow morning, local time (seconds since the epoch).
+fn tomorrow_morning() -> u64 {
+    // SAFETY: localtime_r and mktime use only the struct we own.
+    unsafe {
+        let t = libc::time(std::ptr::null_mut());
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&t, &mut tm);
+        (tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_isdst) = (tm.tm_mday + 1, 9, 0, 0, -1);
+        libc::mktime(&mut tm).max(0) as u64
+    }
+}
+
+/// A note's Pin (or Unpin) and Snooze ▸ items, after `menu`'s (`pinned`:
+/// None with no note to act on).
+fn note_menu(menu: olo_kit::Menu, pinned: Option<bool>) -> olo_kit::Menu {
+    let mut snooze = olo_kit::Menu::new("Snooze");
+    for (i, (_, label)) in SNOOZES.iter().enumerate() {
+        snooze = snooze.item(*label, format!("snooze:{i}"), None).enabled(pinned.is_some());
+    }
+    menu.item(if pinned == Some(true) { "Unpin" } else { "Pin" }, "pin", None).enabled(pinned.is_some()).submenu(snooze)
 }
 
 /// The History window's views: View menu label, command and key.
@@ -1177,6 +1328,18 @@ fn main() -> std::process::ExitCode {
         };
         app.refresh_settings();
         app.fade_out(cx);
+        // Snoozed ones back on time (the clock's minutes catch them after
+        // a suspend).
+        app.wake_snoozed(cx);
+        // Pinned banners on screen before a restart (an upgrade) are again.
+        let pinned: Vec<Note> = app.history.entries.iter().filter(|e| e.shown).map(|e| e.to_note(Some(app.banner_time()))).collect();
+        for note in pinned {
+            app.add_card(cx, note);
+        }
+        let now = now_secs();
+        for until in app.history.entries.iter().filter_map(|e| e.snoozed_until) {
+            app.tick_after(Duration::from_secs(until.saturating_sub(now)));
+        }
         app.publish(false);
         // After an upgrade: the History window as it was.
         if let Some(state) = cx.restored_state().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())

@@ -31,6 +31,17 @@ pub enum KindName {
     Progress,
 }
 
+impl From<KindName> for Kind {
+    fn from(k: KindName) -> Self {
+        match k {
+            KindName::Information => Kind::Information,
+            KindName::Important => Kind::Important,
+            KindName::Error => Kind::Error,
+            KindName::Progress => Kind::Progress,
+        }
+    }
+}
+
 impl From<Kind> for KindName {
     fn from(k: Kind) -> Self {
         match k {
@@ -74,6 +85,12 @@ pub struct Entry {
     /// Its picture, kept small in `pictures/` (a PNG; it may take a moment
     /// to appear).
     pub picture: Option<String>,
+    /// Pinned: it stays put, never fading away nor going with Clear All
+    /// or a banner group's Close All, until unpinned.
+    pub pinned: bool,
+    /// Snoozed until then (seconds since the epoch): out of sight and
+    /// not counted, then back as new, as a banner and unread.
+    pub snoozed_until: Option<u64>,
 }
 
 impl Entry {
@@ -96,6 +113,40 @@ impl Entry {
             look: n.look.clone(),
             via: n.via.clone(),
             picture: None,
+            pinned: false,
+            snoozed_until: None,
+        }
+    }
+
+    /// Out of sight for now (snoozed).
+    pub fn snoozed(&self) -> bool {
+        self.snoozed_until.is_some()
+    }
+
+    /// It as a notification to show again (back from snoozing): its
+    /// actions only while still open at its app.
+    pub fn to_note(&self, timeout: Option<std::time::Duration>) -> Note {
+        Note {
+            id: self.id,
+            replaces: false,
+            app_name: self.app.clone(),
+            desktop_entry: self.desktop_entry.clone(),
+            icon: self.icon.clone(),
+            picture: None,
+            summary: self.summary.clone(),
+            body: self.body.clone(),
+            actions: if self.live { self.actions.clone() } else { Vec::new() },
+            kind: self.kind.into(),
+            progress: self.progress,
+            timeout,
+            resident: false,
+            transient: false,
+            sound: None,
+            category: None,
+            reply: None,
+            time: std::time::SystemTime::now(),
+            look: self.look.clone(),
+            via: self.via.clone(),
         }
     }
 }
@@ -118,14 +169,15 @@ impl History {
     }
 
     /// The history from `path` (None: in memory only, for tests). After a
-    /// restart nothing in it is still open at its app. Pictures nothing
-    /// names any more go, off the UI thread.
+    /// restart nothing in it is still open at its app, and only what is
+    /// pinned is still on screen. Pictures nothing names any more go, off
+    /// the UI thread.
     pub fn load(path: Option<PathBuf>) -> History {
         let mut entries: Vec<Entry> =
             path.as_ref().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         for e in &mut entries {
             e.live = false;
-            e.shown = false;
+            e.shown &= e.pinned;
         }
         if let Some(dir) = path.as_ref().and_then(|p| p.parent()).map(|d| d.join("pictures")) {
             let named: std::collections::HashSet<PathBuf> = entries.iter().filter_map(|e| e.picture.as_ref().map(PathBuf::from)).collect();
@@ -186,16 +238,23 @@ impl History {
     pub fn put(&mut self, e: Entry) {
         match self.entries.iter_mut().rev().find(|x| x.id == e.id && x.live) {
             Some(old) => {
-                let unread = old.unread || e.unread;
-                *old = Entry { unread, ..e };
+                // A replacement keeps being pinned, or snoozed.
+                let (unread, pinned, snoozed_until) = (old.unread || e.unread, old.pinned || e.pinned, old.snoozed_until.or(e.snoozed_until));
+                *old = Entry { unread, pinned, snoozed_until, ..e };
             }
             None => self.entries.push(e),
         }
-        if self.entries.len() > KEEP {
-            let extra = self.entries.len() - KEEP;
-            for e in self.entries.drain(..extra) {
-                Self::drop_picture(&e);
-            }
+        // The oldest go, but those pinned or snoozed.
+        let mut extra = self.entries.len().saturating_sub(KEEP);
+        if extra > 0 {
+            self.entries.retain(|e| {
+                let goes = extra > 0 && !e.pinned && !e.snoozed();
+                if goes {
+                    extra -= 1;
+                    Self::drop_picture(e);
+                }
+                !goes
+            });
         }
     }
 
@@ -203,8 +262,18 @@ impl History {
         self.entries.iter_mut().rev().find(|e| e.id == id && e.live)
     }
 
+    /// The newest entry with `id`, open at its app or not.
+    pub fn newest_mut(&mut self, id: u32) -> Option<&mut Entry> {
+        self.entries.iter_mut().rev().find(|e| e.id == id)
+    }
+
+    pub fn newest(&self, id: u32) -> Option<&Entry> {
+        self.entries.iter().rev().find(|e| e.id == id)
+    }
+
+    /// Unread and in sight (not snoozed).
     pub fn unread(&self) -> u32 {
-        self.entries.iter().filter(|e| e.unread).count() as u32
+        self.entries.iter().filter(|e| e.unread && !e.snoozed()).count() as u32
     }
 
     /// Mark them all read; whether any wasn't.
@@ -244,7 +313,7 @@ impl History {
     /// Forget what has faded away by `now` (not what is on screen); the
     /// ones forgotten that were still open at their apps, to tell them.
     pub fn fade_out(&mut self, settings: &olo_protocol::NotificationSettings, now: u64) -> Option<Vec<u32>> {
-        let faded = |e: &Entry| !e.shown && settings.faded(now.saturating_sub(e.time));
+        let faded = |e: &Entry| !e.shown && !e.pinned && !e.snoozed() && settings.faded(now.saturating_sub(e.time));
         if !self.entries.iter().any(faded) {
             return None;
         }
@@ -314,5 +383,34 @@ mod tests {
         assert_eq!(h.entries.iter().map(|e| e.id).collect::<Vec<_>>(), [2, 3]);
         let off = olo_protocol::NotificationSettings { fade: false, ..settings };
         assert_eq!(h.fade_out(&off, 100_000), None);
+    }
+
+    #[test]
+    fn pinned_and_snoozed_stay() {
+        let mut h = History::load(None);
+        h.put(Entry { time: 1000, pinned: true, ..entry(1, "pinned") });
+        h.put(Entry { time: 1000, snoozed_until: Some(9000), ..entry(2, "snoozed") });
+        h.put(Entry { time: 1000, ..entry(3, "neither") });
+        // Snoozed: not counted until it is back.
+        assert_eq!(h.unread(), 2);
+        let settings = olo_protocol::NotificationSettings { fade_minutes: 60, ..Default::default() };
+        assert_eq!(h.fade_out(&settings, 100_000), Some(vec![3]), "only the one neither pinned nor snoozed fades");
+        // A replacement keeps both.
+        h.put(Entry { summary: "pinned again".into(), ..entry(1, "") });
+        h.put(entry(2, "snoozed again"));
+        assert!(h.entries[0].pinned && h.entries[0].summary == "pinned again");
+        assert_eq!(h.entries[1].snoozed_until, Some(9000));
+        // Nor do they go when the history is full.
+        for i in 0..KEEP as u32 + 5 {
+            h.put(entry(100 + i, "many"));
+        }
+        assert_eq!(h.entries.len(), KEEP);
+        assert_eq!(h.entries[..2].iter().map(|e| e.id).collect::<Vec<_>>(), [1, 2]);
+        // Back to a note to show again: its actions only while open.
+        let mut e = Entry { actions: vec![("default".into(), "Open".into())], kind: KindName::Error, ..entry(4, "back") };
+        assert_eq!(e.to_note(None).actions.len(), 1);
+        assert_eq!(e.to_note(None).kind, Kind::Error);
+        e.live = false;
+        assert!(e.to_note(None).actions.is_empty());
     }
 }

@@ -260,6 +260,18 @@ enum Did {
     Clear,
     Quiet(bool),
     MarkAllRead,
+    /// The command chosen from the menu of the entry at the index.
+    Menu(usize, String),
+}
+
+/// An entry's menu (a right click on it).
+fn entry_menu(e: &store::Entry) -> olo_kit::Menu {
+    let menu = olo_kit::Menu::new("Notification")
+        .item("Open", "open", None)
+        .separator()
+        .item(if e.unread { "Mark as Read" } else { "Mark as Unread" }, "toggle-read", None)
+        .separator();
+    crate::note_menu(menu, Some(e.pinned)).separator().item("Forget", "forget", None)
 }
 
 /// The local date of `secs`: (a key that differs from day to day, its
@@ -386,7 +398,7 @@ impl Notifications {
         }
         let clear_w = m::BUTTON_MIN_WIDTH;
         let clear = Rect::from_min_size(pos2(full.right() - m::SPACING - clear_w, full.top() + m::SPACING), vec2(clear_w, m::CONTROL_HEIGHT));
-        let can_clear = self.history.entries.iter().any(|e| !e.shown);
+        let can_clear = self.history.entries.iter().any(|e| !e.shown && !e.pinned && !e.snoozed());
         if ui.add_enabled_ui(can_clear, |ui| ui.put(clear, Button::new("Clear All")).clicked()).inner {
             did = Some(Did::Clear);
         }
@@ -399,19 +411,20 @@ impl Notifications {
         }
         let typing = search.has_focus();
 
-        // What shows: unread (and what was read while the window is
-        // open) first, newest first in each.
+        // What shows (not what is snoozed): unread (and what was read
+        // while the window is open) first, newest first in each.
         let entries = &self.history.entries;
         let searching = !self.view.search.trim().is_empty();
         let held = &self.view.held;
         let first = |e: &store::Entry| e.unread || held.contains(&e.id);
-        let mut shown: Vec<usize> = (0..entries.len()).rev().filter(|&i| !searching || found(&entries[i], &self.view.search)).collect();
+        let mut shown: Vec<usize> = (0..entries.len()).rev().filter(|&i| !entries[i].snoozed() && (!searching || found(&entries[i], &self.view.search))).collect();
         shown.sort_by_key(|&i| !first(&entries[i]));
         let unread = shown.iter().take_while(|&&i| first(&entries[i])).count();
         let lines = items(entries, &shown, unread, view, &self.view.folded, searching);
         let now = now_secs();
         let settings = &self.settings;
-        let strength = |e: &store::Entry| settings.strength(now.saturating_sub(e.time));
+        // (Pinned, it doesn't fade.)
+        let strength = |e: &store::Entry| if e.pinned { 1.0 } else { settings.strength(now.saturating_sub(e.time)) };
         let order: Vec<usize> = lines.iter().filter_map(|l| if let Item::Note { i, .. } = l { Some(*i) } else { None }).collect();
         // (A selection stacked under a conversation's newest is that.)
         let in_thread = |id: u32| {
@@ -616,6 +629,7 @@ impl Notifications {
                                 HistoryView::Apps => crate::when(e.time),
                                 _ => format!("{} · {}", app_name(e), crate::when(e.time)),
                             };
+                            let meta = if e.pinned { format!("{meta} · Pinned") } else { meta };
                             let r = note_row(ui, &p, w, &RowArgs { i: *i, e, older, entries, meta, selected: is_sel, unread: e.unread, strength: strength(e), indent: *grouped, row, rows: order.len() }, &mut did);
                             if is_sel && reveal {
                                 ScrollView::reveal(ui.ctx(), SCROLL_ID, r.top() - top, r.bottom() - top);
@@ -630,11 +644,15 @@ impl Notifications {
 
         // The status line.
         let foot = Rect::from_min_max(pos2(full.left(), full.bottom() - FOOTER), full.max);
-        let total = self.history.entries.len();
+        let snoozed = self.history.entries.iter().filter(|e| e.snoozed()).count();
+        let total = self.history.entries.len() - snoozed;
         let mut status = if searching { format!("{} of {total}", shown.len()) } else if total == 1 { "1 notification".into() } else { format!("{total} notifications") };
         let unread_now = self.history.unread();
         if unread_now > 0 && !searching {
             status += &format!(", {unread_now} unread");
+        }
+        if snoozed > 0 && !searching {
+            status += &format!(", {snoozed} snoozed");
         }
         if self.quiet() {
             status += if self.settings.dnd { " · Do Not Disturb" } else { " · Quiet by schedule" };
@@ -662,22 +680,22 @@ impl Notifications {
                     self.view.folded.insert(app);
                 }
             }
-            Some(Did::Forget(mut at)) => {
-                // From the end, so the indices stay good.
-                at.sort_unstable();
-                let next = (at.len() == 1).then(|| order.iter().position(|&i| i == at[0])).flatten().and_then(|s| order.get(s + 1).or(s.checked_sub(1).and_then(|s| order.get(s)))).map(|&i| self.history.entries[i].id);
-                for &i in at.iter().rev() {
-                    let e = self.history.entries[i].clone();
-                    self.history.remove(i);
-                    if e.live {
-                        self.take(cx, e.id);
-                        self.bus(|b| b.closed(e.id, Reason::Dismissed));
+            Some(Did::Forget(at)) => self.forget(cx, at, &order),
+            Some(Did::Menu(i, command)) => {
+                let e = &self.history.entries[i];
+                let (id, unread) = (e.id, e.unread);
+                match command.as_str() {
+                    "open" => {
+                        self.view.selected = Some(id);
+                        self.open_entry(cx, window, i, None);
                     }
+                    "toggle-read" => {
+                        self.view.held.insert(id);
+                        self.set_read(cx, id, unread);
+                    }
+                    "forget" => self.forget(cx, vec![i], &order),
+                    c => self.note_command(cx, id, c),
                 }
-                if self.view.selected.is_some() {
-                    self.view.selected = next;
-                }
-                self.publish(true);
             }
             Some(Did::Open(i)) => {
                 self.view.selected = Some(self.history.entries[i].id);
@@ -686,6 +704,26 @@ impl Notifications {
             Some(Did::Action(i, key)) => self.open_entry(cx, window, i, Some(key)),
             None => {}
         }
+    }
+
+    /// Forget the entries at `at` (`order`: the list as shown, for what
+    /// is selected next); what is still open at its app closes.
+    fn forget(&mut self, cx: &mut Cx, mut at: Vec<usize>, order: &[usize]) {
+        // From the end, so the indices stay good.
+        at.sort_unstable();
+        let next = (at.len() == 1).then(|| order.iter().position(|&i| i == at[0])).flatten().and_then(|s| order.get(s + 1).or(s.checked_sub(1).and_then(|s| order.get(s)))).map(|&i| self.history.entries[i].id);
+        for &i in at.iter().rev() {
+            let e = self.history.entries[i].clone();
+            self.history.remove(i);
+            if e.live {
+                self.take(cx, e.id);
+                self.bus(|b| b.closed(e.id, Reason::Dismissed));
+            }
+        }
+        if self.view.selected.is_some() {
+            self.view.selected = next;
+        }
+        self.publish(true);
     }
 
     /// Run a history entry's action (`None`: its default). Still open at
@@ -785,7 +823,8 @@ fn group(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, w: f32, app: &str, coun
         clear.widget_info(|| WidgetInfo::labeled(egui::Role::Button, true, format!("Dismiss {name}")));
         style::label(ui.painter(), cr.right() - 4.0, r.center().y, Align::Max, "Dismiss", font, if clear.hovered() { text } else { dim });
         if clear.clicked() {
-            did = Some(Did::Forget(members.iter().copied().filter(|&i| !entries[i].shown).collect()));
+            // (Not those pinned: they stay put.)
+            did = Some(Did::Forget(members.iter().copied().filter(|&i| !entries[i].shown && !entries[i].pinned).collect()));
         }
     }
     if did.is_none() && resp.clicked() {
@@ -961,8 +1000,11 @@ fn note_row(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, w: f32, a: &RowArgs,
     if !a.selected {
         style::hline_above(ui.painter(), r.left() + text_x, r.right(), r.bottom(), style::darken(p.document_background, 1.07));
     }
+    let menu = olo_kit::widgets::context_menu(&resp, || entry_menu(e));
     if forget {
         *did = Some(Did::Forget(vec![a.i]));
+    } else if let Some(command) = menu {
+        *did = Some(Did::Menu(a.i, command));
     } else if resp.double_clicked() {
         *did = Some(Did::Open(a.i));
     } else if resp.clicked() && did.is_none() {
@@ -1106,7 +1148,7 @@ fn card(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, r: Rect, laid: CardLaid,
     let inner = r.shrink(m::CARD_INSET);
     let head = Rect::from_min_size(inner.min, vec2(inner.width(), CARD_HEAD));
     let forgettable = !e.shown && hovered;
-    let time = looks.when(e.time);
+    let time = if e.pinned { format!("Pinned · {}", looks.when(e.time)) } else { looks.when(e.time) };
     let paint = |painter: &egui::Painter| card_look(ui, p, painter, r, &laid, e, hovered, selected, forgettable, &time);
     if tree {
         paint(&painter);
@@ -1141,6 +1183,9 @@ fn card(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, r: Rect, laid: CardLaid,
         if cr.clicked() {
             did = Some(Did::Forget(vec![i]));
         }
+    }
+    if let Some(command) = olo_kit::widgets::context_menu(&resp, || entry_menu(e)) {
+        did = Some(Did::Menu(i, command));
     }
     if did.is_none() {
         if resp.double_clicked() {

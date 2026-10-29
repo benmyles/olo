@@ -3335,7 +3335,9 @@ notifications.
   default action while the note is open, else brings the app forward.
   Edit ▸ Mark as Read/Unread (⌘U, `toggle-read`) and Mark All as Read
   (`read-all`). × or Delete forgets one; Clear All forgets all but those
-  on screen. With fading on, each row and card is painted at its
+  on screen, pinned or snoozed. A right click on a row or card opens its
+  menu (`entry_menu`): Open, Mark as Read/Unread, Pin, Snooze ▸, Forget.
+  With fading on, each row and card is painted at its
   `strength` (`multiply_opacity`), the newest strongest, back to full
   while selected or under the pointer. *Cards* packs cards of different
   sizes with `olo_kit::masonry`: columns of at least 176 px; a card
@@ -3355,6 +3357,25 @@ notifications.
   note is a `ListItem` named by its title (with `row`/`rows`), its text
   as labels. The window, search and folds come back after an upgrade
   (`save_state`).
+- Pin and Snooze (`note_menu`: Edit ▸ Pin/Unpin and Snooze ▸ for the
+  selected note, and the menu of a right click on a banner, row or
+  card). A pinned note (`Entry::pinned`) stays put: it never fades
+  (`fade_out` passes it; the history draws it at full strength and says
+  "Pinned" after its time), Clear All, a banner group's close box and By
+  App's Dismiss leave it, the history keeps it beyond its 200, and its
+  banner stays on screen until closed (no `until`), back again after a
+  restart or an upgrade (`load` keeps `shown` only for pinned notes; the
+  header says "Pinned" when all of a group's are). Unpinned, a banner
+  times out as usual. Snoozing (`Entry::snoozed_until`, seconds since
+  the epoch: 15 minutes, an hour, three hours, or nine tomorrow morning
+  by `mktime`, so a change of clocks doesn't move it) takes the note off
+  the screen and out of the history and the unread count (the status
+  line counts it as snoozed) until then; `wake_snoozed` (each tick: a
+  timer for each, and the clock's minute, which catches one due during
+  a suspend) brings it back as new: unread, its time now, a banner
+  (unless quiet, or banners are off for its app), its actions only if
+  its app still has it open. A replacement from the app keeps it pinned
+  or snoozed (a snoozed one's update waits, silent).
 - Settings: `olo_protocol::NotificationSettings` in
   `notifications.json` (config dir): Do Not Disturb (`dnd`, `dnd_until`,
   a daily `schedule` in local minutes), banner `seconds`, the history's
@@ -3386,14 +3407,18 @@ notifications.
   `Notify` (no app name: we take the `desktop-entry` hint's) and runs the
   app's action itself when we signal `ActionInvoked`.
 - For agents: `com.olodesktop.Notifications1` at `/com/olodesktop/Notifications`
-  (`List` → JSON: `unread`, `quiet` and each note with its `look`, `via`
-  and `strength`; `Invoke`, `Dismiss`, `SetRead(id, read)`,
-  `MarkAllRead`, `ClearHistory`, `ShowHistory`, `SetDoNotDisturb`). Each
+  (`List` → JSON: `unread`, `quiet` and each note with its `look`, `via`,
+  `pinned`, `snoozed_until` and `strength`; `Invoke`, `Dismiss`,
+  `SetRead(id, read)`, `MarkAllRead`, `SetPinned(id, pinned)`,
+  `Snooze(id, minutes)`, `ClearHistory`, `ShowHistory`,
+  `SetDoNotDisturb`). Each
   returns once the UI has done it (it answers through a oneshot), so a
   `List` straight after sees the change. The same from the command line
   (cli.rs): `olo-notifications [--bus A] --list [--json] | --history |
   --invoke ID [ACTION] | --dismiss ID | --read ID|all | --unread ID |
-  --clear | --dnd on|off|MINUTES`.
+  --pin ID | --unpin ID | --snooze ID MINUTES | --clear | --dnd
+  on|off|MINUTES`; `--list` says which are pinned and until when each is
+  snoozed.
 
 Test it on a private bus: `busd -a unix:path=/tmp/olo-dev/NAME/bus.sock`
 (`cargo install busd`; Aurora's dbus-broker-launch needs systemd), then

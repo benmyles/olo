@@ -118,6 +118,10 @@ pub enum Control {
     /// Mark one read (true) or unread.
     SetRead(u32, bool),
     MarkAllRead,
+    /// Pin one (it stays put: no fading, no going with Clear All) or not.
+    Pin(u32, bool),
+    /// Out of sight for so many minutes, then back as new.
+    Snooze(u32, u32),
 }
 
 /// Why a notification went (the spec's reasons).
@@ -249,6 +253,16 @@ impl Controls {
     /// On for `minutes` (0: until turned off), or off.
     async fn set_do_not_disturb(&self, on: bool, minutes: u32) {
         self.ask(Control::DoNotDisturb(on, minutes)).await
+    }
+
+    /// Pin one (it stays put until unpinned), or unpin it.
+    async fn set_pinned(&self, id: u32, pinned: bool) {
+        self.ask(Control::Pin(id, pinned)).await
+    }
+
+    /// Put one away for `minutes`; then it comes back as new.
+    async fn snooze(&self, id: u32, minutes: u32) {
+        self.ask(Control::Snooze(id, minutes)).await
     }
 }
 

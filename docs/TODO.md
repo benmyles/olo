@@ -270,12 +270,15 @@ as they land (with the commit), add new ones as they come up.
 - **Quick Look: Markdown rendered nicely** (Ben, 2026-10-29, for later):
   Quick Look's preview of Markdown files should be much more polished
   than it is now.
-- **Notifications: pin a notification** (Ben, 2026-10-29, for later): a
-  pinned notification stays put: it doesn't fade out over time and isn't
-  dismissed by dismissing all.
-- **Notifications: snooze a notification** (Ben, 2026-10-29, for later):
-  snoozing puts it away and brings it back after a while (choose how
-  long).
+- ~~**Notifications: pin a notification**~~ (Ben, 2026-10-29; done:
+  HACKING, Notifications' Pin and Snooze): a pinned notification stays
+  put: it doesn't fade out over time and isn't dismissed by dismissing
+  all. Pinned, a banner stays on screen until closed (and after a
+  restart), and the history keeps it at full strength.
+- ~~**Notifications: snooze a notification**~~ (Ben, 2026-10-29; done:
+  HACKING, Notifications' Pin and Snooze): snoozing puts it away and
+  brings it back after a while (15 minutes, an hour, three hours or nine
+  tomorrow morning; `--snooze ID MINUTES` for any time), as new.
 - **Always show the tab bar, even with one tab** (Ben): ~~Terminal's
   `TabStrip`~~ shows with one tab now. Still to ask: whether window
   groups' frames (app_server's tab bar for an app's grouped windows)

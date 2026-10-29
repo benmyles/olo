@@ -2044,5 +2044,17 @@
   "title": "Menus in the profile's keys (Windows)",
   "caption": "Every app's menu keys come from the keyboard profile: with Windows' keys Tracker's File menu has Explorer's (Alt+\u2191, Alt+Enter, F2, Del, Ctrl+Shift+N); with a Mac's, Finder's (\u2318\u2191, \u2318I, \u21e7\u2318N, \u2318\u232b).",
   "image": "2026-10-29/151108-menus-in-the-profile-s-keys-windows.png"
+ },
+ {
+  "time": "2026-10-29T16:01:47",
+  "title": "Notifications: pin and snooze",
+  "caption": "A right click on a note (in the History, or on a banner) pins it or snoozes it; Edit has the same for the selected note. Pinned notes never fade, survive Clear All and Close All, and their banners stay on screen until closed, even across a restart. Snoozed ones go away and come back as new after 15 minutes, an hour, three hours or at nine tomorrow morning.",
+  "image": "2026-10-29/160147-notifications-pin-and-snooze.png"
+ },
+ {
+  "time": "2026-10-29T16:01:48",
+  "title": "A pinned banner says so",
+  "caption": "The header of a banner whose notes are all pinned reads Pinned beside its close box; the history adds Pinned after a note's time.",
+  "image": "2026-10-29/160148-a-pinned-banner-says-so.png"
  }
 ]

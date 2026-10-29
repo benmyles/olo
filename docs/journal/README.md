@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### A pinned banner says so
+
+*16:01* — The header of a banner whose notes are all pinned reads Pinned beside its close box; the history adds Pinned after a note's time.
+
+![A pinned banner says so](2026-10-29/160148-a-pinned-banner-says-so.png)
+
+### Notifications: pin and snooze
+
+*16:01* — A right click on a note (in the History, or on a banner) pins it or snoozes it; Edit has the same for the selected note. Pinned notes never fade, survive Clear All and Close All, and their banners stay on screen until closed, even across a restart. Snoozed ones go away and come back as new after 15 minutes, an hour, three hours or at nine tomorrow morning.
+
+![Notifications: pin and snooze](2026-10-29/160147-notifications-pin-and-snooze.png)
+
 ### Menus in the profile's keys (Windows)
 
 *15:11* — Every app's menu keys come from the keyboard profile: with Windows' keys Tracker's File menu has Explorer's (Alt+↑, Alt+Enter, F2, Del, Ctrl+Shift+N); with a Mac's, Finder's (⌘↑, ⌘I, ⇧⌘N, ⌘⌫).
