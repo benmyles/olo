@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 pub mod notifications;
 pub mod shortcuts;
 pub mod touchpad;
-pub use notifications::{AppNotifications, HistoryView, NotificationSettings, NotificationState};
+pub use notifications::{AppNotifications, CardSize, HistoryView, NoteLook, NoteStyle, NotificationSettings, NotificationState};
 pub use shortcuts::{Chord, Shortcut, ShortcutSettings, Tile, TilingSettings};
 
 pub const SOCKET_ENV: &str = "OLO_SOCKET";
@@ -80,6 +80,20 @@ pub enum Request {
     /// the profile that suits it) and mice.
     InputDevices,
     GetSettings,
+    /// Every theme and its colour sets, and the palette in use: what
+    /// Preferences ▸ Themes offers. Choose with `SetSettings`
+    /// (`appearance.icon_theme`, `appearance.colors`).
+    Looks,
+    /// One look's palette: every colour, `#rrggbb`. Each part left out is
+    /// the one in use.
+    Palette {
+        #[serde(default)]
+        theme: Option<String>,
+        #[serde(default)]
+        colors: Option<String>,
+        #[serde(default)]
+        mode: Option<olo_theme::ThemeMode>,
+    },
     /// The keyboard hints showing now (Preferences ▸ Keyboard): each
     /// letter, where it is and what it picks.
     Hints,
@@ -188,6 +202,10 @@ pub enum Reply {
     Outputs { outputs: Vec<OutputInfo> },
     InputDevices { devices: Vec<touchpad::InputDeviceInfo> },
     Settings { settings: Settings },
+    /// [`Request::Looks`]' answer: the themes in Preferences' order, and
+    /// the palette in use.
+    Looks { themes: Vec<LookInfo>, palette: olo_theme::Palette },
+    Palette { palette: olo_theme::Palette },
     /// The keyboard hints showing now (none when they're off).
     Hints { hints: Vec<HintInfo> },
     /// [`Request::Arrangement`]'s answer: the display's connector, the
@@ -768,8 +786,10 @@ impl DisplaySettings {
     }
 }
 
-/// Light/dark theme and night mode. app_server resolves `Auto` against the
-/// schedule and broadcasts the effective theme in [`Settings::effective_theme`].
+/// The look (theme, colour set, light or dark) and night mode. app_server
+/// resolves `Auto` against the schedule and broadcasts the effective
+/// theme in [`Appearance::effective_theme`]; [`Appearance::palette`] is
+/// what everything draws with then.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Appearance {
@@ -783,8 +803,19 @@ pub struct Appearance {
     /// commands.
     pub menu_icons: bool,
     /// The theme every icon and the wordmark are drawn in (an id from
-    /// `olo_xdg::themes::THEMES`; unknown ids draw the default).
+    /// `olo_theme::looks::THEMES`; unknown ids draw the default).
     pub icon_theme: String,
+    /// Which of the theme's colour sets everything is drawn in: `theme`
+    /// (its own), `beos` or `catppuccin` (`olo_theme::looks::ColorSet`;
+    /// unknown ids are the theme's own). [`Request::Looks`] lists them.
+    pub colors: String,
+}
+
+impl Appearance {
+    /// The palette everything draws with now.
+    pub fn palette(&self) -> olo_theme::Palette {
+        olo_theme::looks::palette(&self.icon_theme, &self.colors, self.effective_theme)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -825,8 +856,55 @@ impl Default for Appearance {
             effective_theme: olo_theme::ThemeMode::Light,
             night_light_active: false,
             menu_icons: true,
-            icon_theme: "bebox".into(),
+            icon_theme: olo_theme::looks::DEFAULT.into(),
+            colors: olo_theme::looks::ColorSet::Theme.id().into(),
         }
+    }
+}
+
+/// A theme, as [`Reply::Looks`] lists it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LookInfo {
+    /// What `Appearance::icon_theme` holds.
+    pub id: String,
+    pub name: String,
+    pub about: String,
+    pub colors: Vec<ColorSetInfo>,
+}
+
+/// One of a theme's colour sets.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ColorSetInfo {
+    /// What `Appearance::colors` holds.
+    pub id: String,
+    pub name: String,
+    pub about: String,
+    /// Its terminal colours' ids, light and dark (Terminal's settings).
+    pub terminal_light: String,
+    pub terminal_dark: String,
+}
+
+impl LookInfo {
+    pub fn all() -> Vec<LookInfo> {
+        use olo_theme::{ThemeMode, looks};
+        looks::THEMES
+            .iter()
+            .map(|t| LookInfo {
+                id: t.id.into(),
+                name: t.name.into(),
+                about: t.about.into(),
+                colors: looks::ColorSet::ALL
+                    .into_iter()
+                    .map(|c| ColorSetInfo {
+                        id: c.id().into(),
+                        name: c.name(t).into(),
+                        about: c.about(t),
+                        terminal_light: looks::palette(t.id, c.id(), ThemeMode::Light).terminal.id,
+                        terminal_dark: looks::palette(t.id, c.id(), ThemeMode::Dark).terminal.id,
+                    })
+                    .collect(),
+            })
+            .collect()
     }
 }
 
@@ -923,6 +1001,10 @@ pub struct KeyboardSettings {
     /// Apps that keep physical Ctrl for themselves (terminals): ⌘ reaches
     /// them as Ctrl+Shift, so Ctrl+C still interrupts. Matched on app_id.
     pub terminal_apps: Vec<String>,
+    /// Web browsers: ⌘[ / ⌘] reach them as Back / Forward (Alt+← / Alt+→),
+    /// ⌘⇧[ / ⌘⇧] and ⌘⌥← / ⌘⌥→ as the tab before / after
+    /// (Ctrl+PgUp / Ctrl+PgDn), as in Olo's own apps. Matched on app_id.
+    pub browser_apps: Vec<String>,
     /// Keyboard hints: pressing Control twice quickly puts a letter on
     /// everything that can be picked (windows, controls, menu items);
     /// typing one picks it, or letters what's inside it.
@@ -1032,6 +1114,19 @@ impl Default for KeyboardSettings {
                 "kitty",
                 "Alacritty",
                 "org.wezfurlong.wezterm",
+            ]
+            .map(String::from)
+            .to_vec(),
+            browser_apps: [
+                "google-chrome",
+                "google-chrome-beta",
+                "google-chrome-unstable",
+                "chromium",
+                "chromium-browser",
+                "brave-browser",
+                "microsoft-edge",
+                "firefox",
+                "org.mozilla.firefox",
             ]
             .map(String::from)
             .to_vec(),

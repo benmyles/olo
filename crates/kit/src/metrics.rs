@@ -8,6 +8,13 @@ pub const SPACING: f32 = 8.0;
 pub const DESKBAR_WIDTH: f32 = 172.0;
 /// Between closely related items (a stack of check boxes).
 pub const TIGHT: f32 = 4.0;
+/// A card's corners (`style::card`), and inside it, from its edge to
+/// what it holds.
+pub const CARD_RADIUS: f32 = 5.0;
+pub const CARD_INSET: f32 = 10.0;
+/// How far a selection plate (`style::selection_plate`) reaches beyond
+/// the picture or swatch on it.
+pub const SELECTION_PAD: f32 = 4.0;
 /// From a window (or tab panel) edge to its content.
 pub const WINDOW_INSET: f32 = 12.0;
 /// From a BBox's frame to its content.
@@ -36,5 +43,8 @@ pub const TEXT_INSET: f32 = 6.0;
 pub const LIST_ROW: f32 = 20.0;
 /// Cell text inset in list views.
 pub const CELL_INSET: f32 = 6.0;
-/// A toolbar under the menu bar: one row of controls.
-pub const TOOLBAR_HEIGHT: f32 = CONTROL_HEIGHT + 2.0 * TIGHT + 1.0;
+/// A toolbar under the menu bar: one row of controls, `TIGHT` above and
+/// below. Its line goes under it (`style::hline` at its bottom) and what
+/// follows starts a line lower (`style::hairline`): a line is a pixel at
+/// 1.5×, not a point and a half, so the controls stay centred.
+pub const TOOLBAR_HEIGHT: f32 = CONTROL_HEIGHT + 2.0 * TIGHT;

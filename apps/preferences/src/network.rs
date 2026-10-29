@@ -15,7 +15,7 @@ use std::{
 use olo_kit::{
     egui::{Color32, Context, Rect, Stroke, Ui, UiBuilder, pos2, vec2},
     metrics as m,
-    widgets::{self, Button, CheckBox, Column, ColumnListView, ListState, MenuField, StringView, TabView, TextControl},
+    widgets::{self, Button, CheckBox, Column, ColumnListView, EmptyState, ListState, MenuField, StringView, TabView, TextControl},
 };
 use olo_system::network::{self as nm, Device, Enterprise, Kind, Network, Status};
 
@@ -235,11 +235,11 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     };
     let status = match status {
         None => {
-            ui.add(StringView::new("Looking for network devices…").dim(true));
+            ui.add(EmptyState::new("Looking for network devices…").icon("network-prefs"));
             return;
         }
         Some(Err(_)) => {
-            ui.add(StringView::new("NetworkManager isn't running.").dim(true));
+            ui.add(EmptyState::new("NetworkManager isn't running.").icon("network-prefs"));
             return;
         }
         Some(Ok(s)) => s,
@@ -566,11 +566,14 @@ fn bars(p: &olo_kit::egui::Painter, r: Rect, strength: u8, color: Color32) {
         46..=70 => 3,
         _ => 4,
     };
-    let x0 = r.left() + m::CELL_INSET;
-    let bottom = r.center().y + 5.0;
+    // In whole device pixels, so they rise in even steps at every scale.
+    let ppp = p.ctx().pixels_per_point();
+    let px = |v: f32| (v * ppp).round();
+    let (width, pitch, base, step) = (px(3.0), px(5.0), px(3.0), px(2.5));
+    let (x0, bottom) = (px(r.left() + m::CELL_INSET), px(r.center().y + 5.0));
     for i in 0..4 {
-        let h = 3.0 + i as f32 * 2.5;
-        let bar = Rect::from_min_max(pos2(x0 + i as f32 * 5.0, bottom - h), pos2(x0 + i as f32 * 5.0 + 3.0, bottom));
+        let (x, h) = (x0 + i as f32 * pitch, base + i as f32 * step);
+        let bar = Rect::from_min_max(pos2(x, bottom - h) / ppp, pos2(x + width, bottom) / ppp);
         let fill = if i < lit { color } else { color.gamma_multiply(0.25) };
         p.rect_filled(bar, 0.0, fill);
     }

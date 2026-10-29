@@ -4,8 +4,10 @@ use smithay::{
         renderer::{
         Color32F, ExportMem, ImportAll, ImportMem, Offscreen, Renderer, TextureMapping,
         damage::{Error as OutputDamageTrackerError, OutputDamageTracker, RenderOutputResult},
+        utils::{CommitCounter, DamageSet, OpaqueRegions},
         element::{
-            AsRenderElements, Kind, RenderElement, Wrap,
+            AsRenderElements, Element, Id, Kind, RenderElement, UnderlyingStorage, Wrap,
+            memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
             surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
             utils::{
                 ConstrainAlign, ConstrainScaleBehavior, CropRenderElement, Relocate, RelocateRenderElement,
@@ -20,7 +22,7 @@ use smithay::{
     },
     output::Output,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
-    utils::{Buffer, Logical, Physical, Point, Rectangle, Size, Transform},
+    utils::{Buffer, Logical, Physical, Point, Rectangle, Scale, Size, Transform, user_data::UserDataMap},
     wayland::shell::wlr_layer::Layer,
 };
 
@@ -36,7 +38,7 @@ smithay::backend::renderer::element::render_elements! {
         R: ImportAll + ImportMem;
     Pointer=PointerRenderElement<R>,
     Surface=WaylandSurfaceRenderElement<R>,
-    Overlay=smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement<R>,
+    Overlay=Exact<MemoryRenderBufferRenderElement<R>>,
     #[cfg(feature = "debug")]
     // Note: We would like to borrow this element instead, but that would introduce
     // a feature-dependent lifetime, which introduces a lot more feature bounds
@@ -78,6 +80,111 @@ impl<R: Renderer + ImportAll + ImportMem, E: RenderElement<R> + std::fmt::Debug>
             Self::_GenericCatcher(arg0) => f.debug_tuple("_GenericCatcher").field(arg0).finish(),
         }
     }
+}
+
+// ---- pixel for pixel --------------------------------------------------------
+
+/// A picture drawn pixel for pixel: exactly `rect`, in device pixels.
+/// smithay sizes a memory element in whole logical points, so at a
+/// fractional scale a picture drawn at its device size `w` comes out at
+/// `round(round(w / scale) × scale)`, often a pixel off, and is resampled
+/// (soft); this keeps the rectangle it was drawn for.
+#[derive(Debug)]
+pub struct Exact<E> {
+    inner: E,
+    rect: Rectangle<i32, Physical>,
+}
+
+impl<E: Element> Element for Exact<E> {
+    fn id(&self) -> &Id {
+        self.inner.id()
+    }
+    fn current_commit(&self) -> CommitCounter {
+        self.inner.current_commit()
+    }
+    fn location(&self, _scale: Scale<f64>) -> Point<i32, Physical> {
+        self.rect.loc
+    }
+    fn src(&self) -> Rectangle<f64, Buffer> {
+        self.inner.src()
+    }
+    fn transform(&self) -> Transform {
+        self.inner.transform()
+    }
+    fn geometry(&self, _scale: Scale<f64>) -> Rectangle<i32, Physical> {
+        self.rect
+    }
+    // The inner element is built a point per device pixel (`exact`), so
+    // at scale 1 its damage and opaque regions are in device pixels.
+    fn damage_since(&self, _scale: Scale<f64>, commit: Option<CommitCounter>) -> DamageSet<i32, Physical> {
+        self.inner.damage_since(Scale::from(1.0), commit)
+    }
+    fn opaque_regions(&self, _scale: Scale<f64>) -> OpaqueRegions<i32, Physical> {
+        self.inner.opaque_regions(Scale::from(1.0))
+    }
+    fn alpha(&self) -> f32 {
+        self.inner.alpha()
+    }
+    fn kind(&self) -> Kind {
+        self.inner.kind()
+    }
+}
+
+impl<R: Renderer, E: RenderElement<R>> RenderElement<R> for Exact<E> {
+    fn draw(
+        &self,
+        frame: &mut R::Frame<'_, '_>,
+        src: Rectangle<f64, Buffer>,
+        dst: Rectangle<i32, Physical>,
+        damage: &[Rectangle<i32, Physical>],
+        opaque_regions: &[Rectangle<i32, Physical>],
+        cache: Option<&UserDataMap>,
+    ) -> Result<(), R::Error> {
+        self.inner.draw(frame, src, dst, damage, opaque_regions, cache)
+    }
+    fn underlying_storage(&self, renderer: &mut R) -> Option<UnderlyingStorage<'_>> {
+        self.inner.underlying_storage(renderer)
+    }
+}
+
+/// `buffer` (buffer scale 1) drawn into `rect` (device pixels): its
+/// `src` pixels, all of it for a picture drawn at that size, or one
+/// pixel stretched for a line.
+pub fn exact<R>(
+    renderer: &mut R,
+    rect: Rectangle<i32, Physical>,
+    buffer: &MemoryRenderBuffer,
+    src: (i32, i32),
+    alpha: Option<f32>,
+    kind: Kind,
+) -> Option<Exact<MemoryRenderBufferRenderElement<R>>>
+where
+    R: Renderer + ImportMem,
+    R::TextureId: Send + Clone + 'static,
+{
+    let from = Rectangle::from_size((src.0 as f64, src.1 as f64).into());
+    let size: Size<i32, Logical> = (rect.size.w, rect.size.h).into();
+    let inner =
+        MemoryRenderBufferRenderElement::from_buffer(renderer, rect.loc.to_f64(), buffer, alpha, Some(from), Some(size), kind)
+            .ok()?;
+    Some(Exact { inner, rect })
+}
+
+/// [`exact`] for a picture drawn at its own size, `size` device pixels,
+/// its top left at `at` (to the nearest device pixel).
+pub fn picture<R>(
+    renderer: &mut R,
+    at: Point<f64, Physical>,
+    buffer: &MemoryRenderBuffer,
+    size: (i32, i32),
+    alpha: Option<f32>,
+    kind: Kind,
+) -> Option<Exact<MemoryRenderBufferRenderElement<R>>>
+where
+    R: Renderer + ImportMem,
+    R::TextureId: Send + Clone + 'static,
+{
+    exact(renderer, Rectangle::new(at.to_i32_round(), size.into()), buffer, size, alpha, kind)
 }
 
 // ---- mirroring ------------------------------------------------------------

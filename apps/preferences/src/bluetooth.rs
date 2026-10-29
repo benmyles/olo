@@ -17,7 +17,7 @@ use std::{
 use olo_kit::{
     egui::{Context, Key, Rect, Ui, UiBuilder, vec2},
     metrics as m,
-    widgets::{BBox, Button, CheckBox, Column, ColumnListView, ListState, StringView, TextControl},
+    widgets::{BBox, Button, CheckBox, Column, ColumnListView, EmptyState, ListState, StringView, TextControl},
 };
 use olo_system::bluetooth::{self as bt, Agent, AgentEvent, Ask, Question, Status};
 
@@ -199,17 +199,17 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     };
     let status = match status {
         None => {
-            ui.add(StringView::new("Looking for Bluetooth…").dim(true));
+            ui.add(EmptyState::new("Looking for Bluetooth…").icon("bluetooth"));
             return;
         }
         Some(Err(_)) => {
-            ui.add(StringView::new("The Bluetooth service (bluetoothd) isn't running.").dim(true));
+            ui.add(EmptyState::new("The Bluetooth service (bluetoothd) isn't running.").icon("bluetooth"));
             return;
         }
         Some(Ok(s)) => s,
     };
     let Some(adapter) = &status.adapter else {
-        ui.add(StringView::new("There's no Bluetooth adapter.").dim(true));
+        ui.add(EmptyState::new("There's no Bluetooth adapter.").icon("bluetooth"));
         return;
     };
     if adapter.powered && !st.searched {

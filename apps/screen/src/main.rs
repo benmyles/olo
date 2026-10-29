@@ -41,6 +41,10 @@ usage: olo-screen                         open Agent Screens (watch, take contro
                                              the menus of a window's app (default: the focused one)
        olo-screen invoke NAME COMMAND [--window ID]
                                              choose a menu command (as `menus` lists it)
+       olo-screen review NAME [--window ID] [--json]
+                                             the layout review of Olo apps' windows as drawn
+                                             now: errors (blurry, seams), then what almost
+                                             lines up or sits off-centre, to look at closely
        olo-screen focus|close|minimize|zoom NAME [--window ID]
        olo-screen resize NAME WxH [--window ID]    its content's size
        olo-screen place NAME X Y [WxH] [--window ID]
@@ -203,6 +207,36 @@ fn cli(args: &[String]) -> Option<Result<(), String>> {
             let command = rest.get(1).filter(|a| !a.starts_with("--")).ok_or("invoke needs a menu command (see `menus`)")?;
             let w = app_window(&s, window_arg(rest)?)?;
             if commands::invoke(pid_of(&w)?, command) { Ok(()) } else { Err(format!("{} has no command {command:?} that can be chosen now", w.app_id)) }
+        }),
+        "review" => screen().and_then(|s| {
+            let only = window_arg(rest)?;
+            let windows: Vec<WindowInfo> = s.windows()?.into_iter().filter(|w| w.content.is_some() && only.is_none_or(|id| w.id == id)).collect();
+            if let Some(id) = only.filter(|_| windows.is_empty()) {
+                return Err(format!("no window {id}"));
+            }
+            // One question per app, all at once.
+            let mut pids: Vec<u32> = windows.iter().filter_map(|w| w.pid.map(|p| p as u32)).collect();
+            pids.sort_unstable();
+            pids.dedup();
+            let asked: Vec<_> = pids.into_iter().map(|pid| std::thread::spawn(move || commands::review(pid))).collect();
+            let reviews: Vec<commands::WindowReview> = asked
+                .into_iter()
+                .flat_map(|r| r.join().ok().flatten().unwrap_or_default())
+                .filter(|r| r.layer.is_none() && windows.iter().any(|w| w.title == r.title))
+                .collect();
+            if has(rest, "--json") {
+                println!("{}", serde_json::to_string_pretty(&reviews).unwrap_or_default());
+            } else if reviews.is_empty() {
+                println!("no Olo windows to review");
+            } else {
+                for r in &reviews {
+                    println!("{} ({}×{} at {}×): {} findings", r.title, r.width, r.height, r.scale, r.findings.len());
+                    for f in &r.findings {
+                        println!("  - {f}");
+                    }
+                }
+            }
+            Ok(())
         }),
         "click" => (|| {
             let s = screen()?;

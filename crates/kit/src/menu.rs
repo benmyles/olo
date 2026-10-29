@@ -35,7 +35,8 @@ pub struct Action {
     pub icon: Option<String>,
     /// Keys shown for it that aren't a ⌘ [`Shortcut`] of the window's own:
     /// a desktop shortcut or any chord ("⌃⌘H", "⌥⇧⇥"), as on a Mac. Only
-    /// shown: whoever the keys go to acts on them.
+    /// shown (in place of the shortcut's, if it has one): whoever the keys
+    /// go to acts on them.
     pub keys: Option<String>,
     /// It stands for a minimized window, in a list of windows: a hollow
     /// diamond where the check mark goes and a lighter label, as a Mac's
@@ -71,6 +72,12 @@ impl Shortcut {
             k => k.name().to_uppercase(),
         };
         if self.shift { format!("⇧{key}") } else { key }
+    }
+    /// Whether `key` (with Shift or not) presses it. ⇧= types + (and a
+    /// terminal's ⌘ always brings Shift), so one on = takes + too, as ⌘+
+    /// zooms in on a Mac.
+    pub fn pressed_by(&self, key: Key, shift: bool) -> bool {
+        (self.key == key && self.shift == shift) || (self.key == Key::Equals && key == Key::Plus)
     }
     /// All its keys as on a Mac: "⌘W", "⇧⌘T".
     pub fn keys(&self) -> String {
@@ -199,11 +206,29 @@ impl Menu {
         }
     }
 
+    /// For a terminal-style window (`WindowOptions::raw_keys`), where ⌘X
+    /// arrives as Ctrl+Shift+X: show each Ctrl+Shift shortcut as the ⌘
+    /// chord it is pressed with ("⌘T", not "⇧⌘T"). The kit does this to
+    /// such a window's menus when ⌘ is the command key.
+    pub fn ctrl_shift_as_command(&mut self) {
+        for item in &mut self.items {
+            match item {
+                MenuItem::Action(a) if a.keys.is_none() => {
+                    if let Some(s) = a.shortcut.filter(|s| s.shift) {
+                        a.keys = Some(Shortcut { shift: false, ..s }.keys());
+                    }
+                }
+                MenuItem::Submenu(m) => m.ctrl_shift_as_command(),
+                _ => {}
+            }
+        }
+    }
+
     /// Find the command bound to a shortcut, searching submenus too.
     pub fn find_shortcut(&self, key: Key, shift: bool) -> Option<&str> {
         self.items.iter().find_map(|item| match item {
             MenuItem::Action(a)
-                if a.enabled && a.shortcut.is_some_and(|s| s.key == key && s.shift == shift) =>
+                if a.enabled && a.shortcut.is_some_and(|s| s.pressed_by(key, shift)) =>
             {
                 Some(a.command.as_str())
             }
@@ -231,7 +256,7 @@ impl Action {
     }
     /// The keys shown beside it, as on a Mac ("⌘W", "⌃⌘H").
     pub fn key_label(&self) -> Option<String> {
-        self.shortcut.map(|s| s.keys()).or_else(|| self.keys.clone())
+        self.keys.clone().or_else(|| self.shortcut.map(|s| s.keys()))
     }
     pub fn key(mut self, key: Key) -> Self {
         self.shortcut = Some(Shortcut { key, shift: false });
@@ -350,8 +375,7 @@ pub fn take_chosen(ctx: &egui::Context, source: egui::Id) -> Option<String> {
 
 /// Vertical offset of item `n`'s top within a popup for `menu`.
 pub fn item_offset(menu: &Menu, n: usize) -> f32 {
-    POPUP_BORDER
-        + 2.0
+    POPUP_PAD
         + menu
             .items
             .iter()
@@ -362,17 +386,26 @@ pub fn item_offset(menu: &Menu, n: usize) -> f32 {
 
 // ---- metrics ------------------------------------------------------------
 
-pub const BAR_HEIGHT: f32 = 21.0;
+// Heights and widths are on the 2-point grid, so everything in a bar or
+// popup is on device pixels at 1×, 1.5× and 2×.
+
+/// As tall as a tab strip's row (`widgets::STRIP_ROW`) and a pane's
+/// head, so the chrome under it keeps one rhythm.
+pub const BAR_HEIGHT: f32 = 26.0;
 const BAR_PAD: f32 = 8.0;
 pub const ITEM_HEIGHT: f32 = 20.0;
-const SEPARATOR_HEIGHT: f32 = 9.0;
+/// Half an item.
+const SEPARATOR_HEIGHT: f32 = 10.0;
 const ITEM_LEFT: f32 = 20.0;
 const ITEM_RIGHT: f32 = 14.0;
 const SHORTCUT_GAP: f32 = 28.0;
 /// Item icons, and the room between one and its label.
 const ICON_SIZE: f32 = 16.0;
-const ICON_GAP: f32 = 5.0;
+const ICON_GAP: f32 = crate::metrics::MARK_GAP;
 pub const POPUP_BORDER: f32 = 1.0;
+/// From a popup's edge (its border in it) to its first item, and from its
+/// last item to its edge.
+const POPUP_PAD: f32 = 4.0;
 /// The bands with scroll arrows at the ends of a menu too tall for the
 /// screen.
 const SCROLLER_HEIGHT: f32 = 14.0;
@@ -406,9 +439,10 @@ pub fn menu_bar(ui: &mut Ui, menus: &[Menu], state: &mut BarState) -> Rect {
     // BeOS bevel: light top/left, dark bottom.
     style::hline(&painter, rect.left(), rect.right(), rect.top(), c(p.shine));
     style::vline(&painter, rect.left(), rect.top(), rect.bottom(), c(p.shine));
-    style::hline(&painter, rect.left(), rect.right(), rect.bottom() - 1.0, style::darken(p.menu_background, 1.4));
+    style::hline_above(&painter, rect.left(), rect.right(), rect.bottom(), style::darken(p.menu_background, 1.4));
 
-    let mut x = rect.left() + 3.0;
+    // The first title's text lines up with the window's content.
+    let mut x = rect.left() + crate::metrics::WINDOW_INSET - BAR_PAD;
     for (i, menu) in menus.iter().enumerate() {
         let galley = painter.layout_no_wrap(menu.title.clone(), font(), Color32::BLACK);
         let w = galley.size().x + 2.0 * BAR_PAD;
@@ -438,7 +472,10 @@ pub fn menu_bar(ui: &mut Ui, menus: &[Menu], state: &mut BarState) -> Rect {
         }
         let open_here = state.open.is_some_and(|(o, _)| o == i);
         let text_color = if open_here {
-            painter.rect_filled(item, 0.0, c(p.menu_selected_background));
+            // Between the bar's bevel lines, on device pixels.
+            let line = style::hairline(ui.ctx());
+            let face = style::snap(ui.ctx(), Rect::from_x_y_ranges(item.x_range(), rect.top() + line..=rect.bottom() - line));
+            painter.rect_filled(face, 0.0, c(p.menu_selected_background));
             c(p.menu_selected_item_text)
         } else {
             c(p.menu_item_text)
@@ -465,7 +502,7 @@ fn columns(menu: &Menu) -> (Option<f32>, f32) {
 /// Draw `name` in an item's icon column (the generic application's if
 /// there's no such icon).
 fn item_icon(painter: &egui::Painter, row: Rect, left: f32, name: &str, enabled: bool) {
-    let rect = Rect::from_min_size(pos2(row.left() + left, row.center().y - ICON_SIZE / 2.0), vec2(ICON_SIZE, ICON_SIZE));
+    let rect = style::snap(painter.ctx(), Rect::from_min_size(pos2(row.left() + left, row.center().y - ICON_SIZE / 2.0), vec2(ICON_SIZE, ICON_SIZE)));
     let tint = if enabled { Color32::WHITE } else { Color32::from_white_alpha(110) };
     if !crate::icons::paint_tinted(painter, rect, name, tint) {
         crate::icons::paint_tinted(painter, rect, "application", tint);
@@ -494,8 +531,8 @@ pub fn popup_size(ctx: &egui::Context, menu: &Menu) -> Vec2 {
         }
     }
     let gap = if key_w > 0.0 { SHORTCUT_GAP } else { 0.0 };
-    let w = (columns(menu).1 + label_w + gap + key_w + ITEM_RIGHT).max(120.0).ceil();
-    vec2(w + 2.0 * POPUP_BORDER, (h + 2.0 * POPUP_BORDER + 4.0).ceil())
+    let w = ((columns(menu).1 + label_w + gap + key_w + ITEM_RIGHT).max(120.0) / 2.0).ceil() * 2.0;
+    vec2(w + 2.0 * POPUP_BORDER, h + 2.0 * POPUP_PAD)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -534,7 +571,7 @@ impl PopupLayout {
     fn new(menu: &Menu, rect: Rect) -> PopupLayout {
         let inner = rect.shrink(POPUP_BORDER);
         let heights: Vec<f32> = menu.items.iter().map(|item| if matches!(item, MenuItem::Separator) { SEPARATOR_HEIGHT } else { ITEM_HEIGHT }).collect();
-        let content = heights.iter().sum::<f32>() + 4.0;
+        let content = heights.iter().sum::<f32>() + 2.0 * (POPUP_PAD - POPUP_BORDER);
         let scrolls = content > inner.height() + 0.5;
         let area = if scrolls { Rect::from_min_max(pos2(inner.left(), inner.top() + SCROLLER_HEIGHT), pos2(inner.right(), inner.bottom() - SCROLLER_HEIGHT)) } else { inner };
         PopupLayout { inner, area, max_scroll: (content - area.height()).max(0.0), heights, scrolls }
@@ -542,7 +579,7 @@ impl PopupLayout {
 
     /// Each item's row, scrolled by `scroll`.
     fn rows(&self, scroll: f32) -> Vec<Rect> {
-        let mut y = self.area.top() + 2.0 - scroll;
+        let mut y = self.area.top() + POPUP_PAD - POPUP_BORDER - scroll;
         self.heights
             .iter()
             .map(|h| {
@@ -615,8 +652,11 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
     // Outline, then a light inner bevel on top/left.
     style::frame_rect(&painter, rect, style::darken(p.menu_background, 1.55));
     let inner = rect.shrink(POPUP_BORDER);
-    style::hline(&painter, inner.left(), inner.right(), inner.top(), c(p.shine));
-    style::vline(&painter, inner.left(), inner.top(), inner.bottom(), c(p.shine));
+    // Inside the outline at any scale (a point in is a pixel and a half
+    // at 1.5×, where the outline is one).
+    let lined = style::inset(ui.ctx(), rect, 1.0);
+    style::hline(&painter, lined.left(), lined.right(), lined.top(), c(p.shine));
+    style::vline(&painter, lined.left(), lined.top(), lined.bottom(), c(p.shine));
 
     // A menu taller than the popup (the compositor shrank it to fit the
     // screen) scrolls, as on BeOS: arrows at the ends scroll while the
@@ -747,10 +787,11 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
     let (icon_left, label_left) = columns(menu);
     for (i, (item, row)) in menu.items.iter().zip(&rows).enumerate() {
         let selected = state.selected == Some(i) && selectable(i);
+        let face = Rect::from_x_y_ranges(lined.x_range(), row.y_range());
         match item {
             MenuItem::Separator => {
                 let y = row.center().y.floor();
-                style::hline(&painter, row.left() + 1.0, row.right() - 1.0, y - 1.0, style::shade(&p, p.menu_background, 1.16));
+                style::hline_above(&painter, row.left() + 1.0, row.right() - 1.0, y, style::shade(&p, p.menu_background, 1.16));
                 style::hline(&painter, row.left() + 1.0, row.right() - 1.0, y, c(p.shine));
             }
             MenuItem::Action(a) => {
@@ -764,7 +805,7 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
                     c(p.menu_item_text)
                 };
                 if selected {
-                    painter.rect_filled(*row, 0.0, c(p.menu_selected_background));
+                    painter.rect_filled(face, 0.0, c(p.menu_selected_background));
                 }
                 let mark = Rect::from_center_size(pos2(row.left() + 10.0, row.center().y), vec2(9.0, 9.0));
                 if a.checked {
@@ -787,7 +828,7 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
                 let open = state.open_sub.is_some_and(|(s, _)| s == i);
                 let hl = selected || open;
                 if hl {
-                    painter.rect_filled(*row, 0.0, c(p.menu_selected_background));
+                    painter.rect_filled(face, 0.0, c(p.menu_selected_background));
                 }
                 let text_color = if hl { c(p.menu_selected_item_text) } else { c(p.menu_item_text) };
                 if let (Some(left), Some(name)) = (icon_left, &m.icon) {
@@ -825,11 +866,11 @@ mod tests {
     fn popup_nodes_name_items_where_they_are() {
         let menu = Menu::new("Level").item("Everything", "all", None).separator().item("Errors Only", "errors", None).checked(true).enabled(false);
         let state = PopupState { selected: Some(0), ..Default::default() };
-        let nodes = popup_nodes(&menu, &state, (170, 55), 100);
+        let nodes = popup_nodes(&menu, &state, (170, 58), 100);
         let names: Vec<_> = nodes.iter().map(|n| (n.role.as_str(), n.name.as_deref())).collect();
         assert_eq!(names, [("Menu", Some("Level")), ("MenuItem", Some("Everything")), ("MenuItem", Some("Errors Only"))]);
         let (first, last) = (&nodes[1], &nodes[2]);
-        assert_eq!((first.x, first.y, first.height, first.selected), (POPUP_BORDER, POPUP_BORDER + 2.0, ITEM_HEIGHT, Some(true)));
+        assert_eq!((first.x, first.y, first.height, first.selected), (POPUP_BORDER, POPUP_PAD, ITEM_HEIGHT, Some(true)));
         assert_eq!(last.y, first.y + ITEM_HEIGHT + SEPARATOR_HEIGHT);
         assert!(last.checked == Some(true) && !last.enabled && last.parent == Some(100));
     }
@@ -869,6 +910,29 @@ mod tests {
             .collect();
         // Its own keys win; a command the bar doesn't have stays bare.
         assert_eq!(keys, [Some("⌘O".into()), Some("⌃⌘H".into()), None, Some("⌘C".into()), Some("⇧⌘T".into())]);
+    }
+
+    #[test]
+    fn terminals_show_command_not_shift_command() {
+        let mut bar = Menu::new("Terminal")
+            .item_shift("New Tab", "new-tab", Key::T)
+            .item("Plain", "plain", Some(Key::P))
+            .action(Action::new("Hide", "hide").shift_key(Key::H).keys("⌃⌘H"))
+            .submenu(Menu::new("View").item_shift("Smaller", "smaller", Key::Minus));
+        bar.ctrl_shift_as_command();
+        let label = |cmd: &str| bar.find_action(cmd).and_then(Action::key_label);
+        assert_eq!(label("new-tab").as_deref(), Some("⌘T"));
+        assert_eq!(label("plain").as_deref(), Some("⌘P"));
+        assert_eq!(label("hide").as_deref(), Some("⌃⌘H"));
+        assert_eq!(label("smaller").as_deref(), Some("⌘-"));
+        // Still found by the keys that arrive.
+        assert_eq!(bar.find_shortcut(Key::T, true), Some("new-tab"));
+        // ⌘= arrives as Ctrl+Shift++.
+        let bar = Menu::new("View").item_shift("Bigger", "bigger", Key::Equals);
+        assert_eq!(bar.find_shortcut(Key::Plus, true), Some("bigger"));
+        let bar = Menu::new("View").item("Bigger", "bigger", Some(Key::Equals));
+        assert_eq!(bar.find_shortcut(Key::Equals, false), Some("bigger"));
+        assert_eq!(bar.find_shortcut(Key::Plus, true), Some("bigger"));
     }
 
     #[test]
@@ -929,7 +993,7 @@ mod tests {
         popup_frame(&ctx, vec![key(Key::ArrowUp)], &mut state);
         assert_eq!(state.selected, Some(29));
         let bottom = 200.0 - POPUP_BORDER - SCROLLER_HEIGHT;
-        let last_bottom = POPUP_BORDER + SCROLLER_HEIGHT + 2.0 - state.scroll + 30.0 * ITEM_HEIGHT;
+        let last_bottom = POPUP_PAD + SCROLLER_HEIGHT - state.scroll + 30.0 * ITEM_HEIGHT;
         assert!(state.scroll > 0.0 && last_bottom <= bottom + 0.01, "scroll {}", state.scroll);
         // Choosing it from there.
         assert_eq!(popup_frame(&ctx, vec![key(Key::Enter)], &mut state), PopupResult::Chosen("item-29".into()));

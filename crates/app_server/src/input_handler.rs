@@ -138,11 +138,20 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return KeyAction::None;
         }
         let opts = crate::keymap::Options::from(&self.settings.keyboard);
-        let terminal = self.focused_window().is_some_and(|w| {
-            let id = w.app_id();
-            self.settings.keyboard.terminal_apps.contains(&id)
+        let focus = self.focused_window().map_or(crate::keymap::Focus::Olo, |w| {
+            use crate::keymap::Focus;
+            let (id, keyboard) = (w.app_id(), &self.settings.keyboard);
+            if keyboard.terminal_apps.contains(&id) {
+                Focus::Terminal
+            } else if keyboard.browser_apps.contains(&id) {
+                Focus::Browser
+            } else if id.starts_with("olo.") {
+                Focus::Olo
+            } else {
+                Focus::Other
+            }
         });
-        let outs = self.keymap.feed(key, pressed, std::time::Instant::now(), opts, terminal);
+        let outs = self.keymap.feed(key, pressed, std::time::Instant::now(), opts, focus);
         let mut action = KeyAction::None;
         for out in outs {
             match out {

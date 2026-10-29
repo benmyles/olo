@@ -9,6 +9,7 @@ use std::{
     time::Duration,
 };
 
+use olo_protocol::{CardSize, NoteLook, NoteStyle, notifications::hint};
 use zbus::zvariant::OwnedValue;
 
 use crate::markup::{self, Span};
@@ -85,6 +86,11 @@ pub struct Note {
     /// It can be answered in place: the field's placeholder.
     pub reply: Option<String>,
     pub time: std::time::SystemTime,
+    /// How it looks, beyond its kind (the `x-olo-*` hints; a website's
+    /// colours).
+    pub look: NoteLook,
+    /// A website's: the browser it came through (`app_name` is the site).
+    pub via: Option<String>,
 }
 
 /// What the bus asks of the UI.
@@ -92,8 +98,12 @@ pub struct Note {
 pub enum In {
     Show(Box<Note>),
     Close(u32),
-    Control(Control),
+    /// Told once it has been done (so `List` reflects it).
+    Control(Control, Option<Done>),
 }
+
+/// Sent once the UI has done what it was asked.
+pub type Done = futures_channel::oneshot::Sender<()>;
 
 /// Asked over `com.olodesktop.Notifications1` (the CLI, Deskbar, agents).
 #[derive(Debug, Clone, PartialEq)]
@@ -105,6 +115,9 @@ pub enum Control {
     ShowHistory,
     /// Do Not Disturb on (for so many minutes; 0: until turned off) or off.
     DoNotDisturb(bool, u32),
+    /// Mark one read (true) or unread.
+    SetRead(u32, bool),
+    MarkAllRead,
 }
 
 /// Why a notification went (the spec's reasons).
@@ -135,6 +148,7 @@ pub const CAPABILITIES: &[&str] = &[
     "sound",
     "x-canonical-private-synchronous",
     "x-olo-progress",
+    "x-olo-look",
 ];
 
 #[zbus::interface(name = "org.freedesktop.Notifications")]
@@ -197,31 +211,54 @@ struct Controls {
 impl Controls {
     /// JSON: `{"quiet": bool, "unread": n, "notifications": [...]}`, oldest
     /// first; each with its id, app, summary, text, actions, kind, time,
-    /// and whether it is `unread`, still `live` at its app (actions can run)
-    /// and `shown` on screen.
+    /// whether it is `unread`, still `live` at its app (actions can run)
+    /// and `shown` on screen, its `look` (the `x-olo-*` hints), `via` (a
+    /// website's browser) and `strength` (how faded: 1 new, 0 gone).
     fn list(&self) -> String {
         self.snapshot.lock().unwrap().clone()
     }
 
-    fn invoke(&self, id: u32, action: String) {
-        (self.to_ui)(In::Control(Control::Invoke(id, action)));
+    // Each returns once the UI has done it, so a `List` straight after
+    // shows the change.
+
+    async fn invoke(&self, id: u32, action: String) {
+        self.ask(Control::Invoke(id, action)).await
     }
 
-    fn dismiss(&self, id: u32) {
-        (self.to_ui)(In::Control(Control::Dismiss(id)));
+    async fn dismiss(&self, id: u32) {
+        self.ask(Control::Dismiss(id)).await
     }
 
-    fn clear_history(&self) {
-        (self.to_ui)(In::Control(Control::ClearHistory));
+    async fn clear_history(&self) {
+        self.ask(Control::ClearHistory).await
     }
 
-    fn show_history(&self) {
-        (self.to_ui)(In::Control(Control::ShowHistory));
+    async fn show_history(&self) {
+        self.ask(Control::ShowHistory).await
+    }
+
+    /// Mark one read (as a click on it does), or unread again.
+    async fn set_read(&self, id: u32, read: bool) {
+        self.ask(Control::SetRead(id, read)).await
+    }
+
+    async fn mark_all_read(&self) {
+        self.ask(Control::MarkAllRead).await
     }
 
     /// On for `minutes` (0: until turned off), or off.
-    fn set_do_not_disturb(&self, on: bool, minutes: u32) {
-        (self.to_ui)(In::Control(Control::DoNotDisturb(on, minutes)));
+    async fn set_do_not_disturb(&self, on: bool, minutes: u32) {
+        self.ask(Control::DoNotDisturb(on, minutes)).await
+    }
+}
+
+impl Controls {
+    /// Hand `c` to the UI and wait, without holding up the bus, until it
+    /// has been done (or the UI has gone).
+    async fn ask(&self, c: Control) {
+        let (done, applied) = futures_channel::oneshot::channel();
+        (self.to_ui)(In::Control(c, Some(done)));
+        let _ = applied.await;
     }
 }
 
@@ -244,6 +281,11 @@ pub fn note(
     let urgency = hint("urgency").and_then(|v| u8::try_from(v).ok()).unwrap_or(1);
     let picture = ["image-data", "image_data", "icon_data"].iter().find_map(|k| hint(k).and_then(picture));
     let path_hint = ["image-path", "image_path"].iter().find_map(|k| text(k));
+    // A picture given as a file: shown as one, like image-data (and not
+    // the icon too: that's an icon's name).
+    let file = path_hint.as_deref().and_then(picture_file);
+    let path_hint = path_hint.filter(|_| file.is_none());
+    let picture = picture.or(file);
     let desktop_entry = text("desktop-entry");
     let icon = [path_hint, Some(app_icon)]
         .into_iter()
@@ -285,13 +327,30 @@ pub fn note(
     } else {
         Some(Sound::Default)
     };
+    let image = text(hint::IMAGE).map(|p| p.strip_prefix("file://").map(str::to_owned).unwrap_or(p));
+    let look = NoteLook {
+        accent: text(hint::ACCENT).as_deref().and_then(olo_protocol::notifications::parse_color),
+        subtitle: text(hint::SUBTITLE),
+        badge: text(hint::BADGE),
+        fields: hint(hint::FIELDS).map(fields).unwrap_or_default(),
+        // (Its size from the file's header, here off the UI thread.)
+        image_size: image.as_deref().and_then(|p| image::image_dimensions(p).ok()),
+        image,
+        style: text(hint::STYLE).as_deref().and_then(NoteStyle::parse).unwrap_or(if kind == Kind::Important && category.as_deref().is_some_and(|c| c.starts_with("im.")) {
+            NoteStyle::Message
+        } else {
+            NoteStyle::Standard
+        }),
+        size: text(hint::SIZE).as_deref().and_then(CardSize::parse).unwrap_or_default(),
+        source: text(hint::SOURCE),
+    };
     let timeout = match expire_timeout {
         0 => None,
         _ if kind == Kind::Error || reply.is_some() => None,
         t if t < 0 => Some(DEFAULT_TIMEOUT),
         t => Some(Duration::from_millis(t as u64)),
     };
-    Note {
+    let mut note = Note {
         id,
         replaces,
         app_name,
@@ -310,8 +369,39 @@ pub fn note(
         category,
         reply,
         time: std::time::SystemTime::now(),
-    }
+        look,
+        via: None,
+    };
+    // A website's, through a browser: the site's own.
+    crate::web::adopt(&mut note);
+    note
 }
+
+/// `x-olo-fields`: `a(ss)` in order, or `a{ss}` (sorted by label).
+fn fields(v: &OwnedValue) -> Vec<(String, String)> {
+    let v = || v.try_clone().ok();
+    if let Some(list) = v().and_then(|v| Vec::<(String, String)>::try_from(v).ok()) {
+        return list;
+    }
+    let mut map: Vec<(String, String)> = v().and_then(|v| HashMap::<String, String>::try_from(v).ok()).unwrap_or_default().into_iter().collect();
+    map.sort();
+    map
+}
+
+/// The picture in an image file, no bigger than a card shows it (decoded
+/// here, on the bus's thread).
+fn picture_file(path: &str) -> Option<Picture> {
+    let path = path.strip_prefix("file://").unwrap_or(path);
+    if !path.starts_with('/') {
+        return None;
+    }
+    let img = image::open(path).ok()?.thumbnail(PICTURE_MAX, PICTURE_MAX).to_rgba8();
+    Some(Picture { width: img.width() as usize, height: img.height() as usize, rgba: img.into_raw() })
+}
+
+/// The most a picture keeps, in pixels on a side (a card's 40 points at 2×,
+/// with room).
+pub const PICTURE_MAX: u32 = 96;
 
 /// `image-data`: (width, height, rowstride, has alpha, bits, channels, data).
 fn picture(v: &OwnedValue) -> Option<Picture> {

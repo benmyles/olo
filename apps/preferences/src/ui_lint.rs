@@ -1,6 +1,6 @@
 //! The layout lint over every panel (`olo_kit::layout_lint`): each panel
-//! and each of its tabs at its window's size, light and dark, at 1× and
-//! 2×, showing the longest things it may have to (made-up devices,
+//! and each of its tabs at its window's size, light and dark, at 1×, 1.5×
+//! and 2×, showing the longest things it may have to (made-up devices,
 //! networks, displays). `cargo test ui_lint` runs it.
 
 use olo_kit::{egui::vec2, layout_lint};
@@ -20,13 +20,19 @@ use crate::{
 
 /// What `panel` gets wrong in `state` with `settings`, as "Panel (how):
 /// problem" lines.
-fn lint(panel: Panel, how: &str, mut state: State, mut settings: Settings) -> Vec<String> {
+fn lint(panel: Panel, how: &str, state: State, settings: Settings) -> Vec<String> {
+    run(panel, how, state, settings, |size, view| layout_lint::check(size, view))
+}
+
+/// `panel` in `state` with `settings` through `checker` (the lint, or the
+/// layout review), its lines as "Panel (how): line".
+fn run(panel: Panel, how: &str, mut state: State, mut settings: Settings, checker: impl FnOnce(olo_kit::egui::Vec2, &mut dyn FnMut(&mut olo_kit::egui::Ui)) -> Vec<String>) -> Vec<String> {
     let server = Server::detached();
     let opened = settings.clone();
     let outputs = outputs();
     let power = PowerStatus { brightness: Some(0.6), keyboard_backlight: Some(0.4), ..Default::default() };
     let (w, h) = panel.size();
-    layout_lint::check(vec2(w as f32, h as f32), |ui| {
+    checker(vec2(w as f32, h as f32), &mut |ui| {
         let ctx = Ctx { settings: &mut settings, outputs: &outputs, power: Some(&power), opened: &opened, server: &server };
         panel::ui(panel, &mut state, ui, ctx);
     })
@@ -92,9 +98,9 @@ fn ui_lint_touchpad() {
     assert_none(problems);
 }
 
-#[test]
-fn ui_lint_panels() {
-    let mut problems = Vec::new();
+/// Every panel and tab, as `ui_lint_panels` shows them.
+fn every_state() -> Vec<(Panel, String, State)> {
+    let mut out = Vec::new();
     for &panel in Panel::ALL {
         let states: Vec<(String, State)> = match panel {
             Panel::Touchpad => continue,
@@ -122,9 +128,32 @@ fn ui_lint_panels() {
             }
             _ => vec![("as it opens".into(), State::new(panel))],
         };
-        for (how, state) in states {
-            problems.extend(lint(panel, &how, state, Settings::default()));
-        }
+        out.extend(states.into_iter().map(|(how, state)| (panel, how, state)));
+    }
+    out
+}
+
+#[test]
+fn ui_lint_panels() {
+    let mut problems = Vec::new();
+    for (panel, how, state) in every_state() {
+        problems.extend(lint(panel, &how, state, Settings::default()));
     }
     assert_none(problems);
+}
+
+/// The layout review of every panel (errors fail `ui_lint`): what almost
+/// lines up, bands of nearly one height, text off-centre. Each is a place
+/// to look at closely; `cargo test -p olo-preferences ui_review --
+/// --nocapture` prints them.
+#[test]
+fn ui_review_panels() {
+    let mut lines = Vec::new();
+    for (panel, how, state) in every_state() {
+        lines.extend(run(panel, &how, state, Settings::default(), |size, view| layout_lint::review(size, view)));
+    }
+    println!("layout review, {} findings:", lines.len());
+    for l in &lines {
+        println!("  - {l}");
+    }
 }

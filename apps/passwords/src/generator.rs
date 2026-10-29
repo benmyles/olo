@@ -79,7 +79,7 @@ pub fn meter_color(p: &olo_theme::Palette, bits: f64) -> egui::Color32 {
     if bits < 36.0 {
         style::c(p.failure)
     } else if bits < 60.0 {
-        style::c(olo_theme::rgb(0xe8, 0xa8, 0x18))
+        style::c(p.warning)
     } else {
         style::c(p.success)
     }

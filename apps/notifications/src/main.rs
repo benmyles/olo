@@ -4,8 +4,8 @@
 //! grouped by app under its name as on Haiku: the app's icon or picture,
 //! the summary in bold, the body (bold, italics and links kept), a bar
 //! for progress, its actions as buttons and, when it can be answered, a
-//! reply field. Important ones wear a blue edge, errors a red one and
-//! stay. A click on a card is its default action (the app gets an
+//! reply field. An error's title starts with a stop sign, and it stays.
+//! A click on a card is its default action (the app gets an
 //! activation token first, so its window comes forward) or brings the
 //! app's window forward; the close box dismisses it; it goes by itself
 //! after a while, not while the pointer is over it, into the history.
@@ -16,7 +16,7 @@
 //! but errors off the screen and quiet. Per-app choices and Do Not
 //! Disturb live in `notifications.json` (Preferences ▸ Notifications).
 //! `com.olodesktop.Notifications1` and the command line (`--list`, `--invoke`,
-//! `--dismiss`, `--clear`, `--dnd`) give agents the same.
+//! `--dismiss`, `--read`, `--clear`, `--dnd`) give agents the same.
 //!
 //! Only the real session runs the service (a test or nested session must
 //! not take the user's notifications); `--bus ADDRESS` serves a private
@@ -25,10 +25,12 @@
 mod cli;
 mod gtk;
 mod history;
+mod look;
 mod markup;
 mod server;
 mod sound;
 mod store;
+mod web;
 
 use std::{
     collections::HashMap,
@@ -43,7 +45,7 @@ use olo_kit::{
     egui::{self, Align, Color32, ColorImage, Rect, Sense, TextureHandle, TextureOptions, pos2, vec2},
     icons, metrics as m,
     style::{self, c},
-    widgets::{Button, StatusBar, TextControl},
+    widgets::{Button, TextControl},
 };
 use olo_protocol::{HistoryView, NotificationSettings, NotificationState};
 
@@ -59,6 +61,8 @@ const ICON: f32 = 24.0;
 const GAP: f32 = 8.0;
 /// A group's title row: the app's icon and name.
 const HEADER: f32 = 22.0;
+/// Room kept clear above and below the cards on screen.
+const SCREEN_EDGE: f32 = 32.0;
 /// At most this many at once; the rest wait their turn.
 const SHOWN: usize = 4;
 const BODY_ROWS: usize = 5;
@@ -95,6 +99,8 @@ struct Notifications {
     win: Option<WindowId>,
     /// Oldest first.
     cards: Vec<Card>,
+    /// How many of them are on screen: up to SHOWN, as many as fit.
+    fits: usize,
     /// The window's height last asked for.
     height: u32,
     /// Whether the window takes the keyboard (a reply field shows).
@@ -165,17 +171,29 @@ impl Notifications {
             }
             self.told = Some(state.clone());
         }
+        // Each with how faded it is.
+        let now = now_secs();
+        let notes: Vec<serde_json::Value> = self
+            .history
+            .entries
+            .iter()
+            .map(|e| {
+                let mut v = serde_json::to_value(e).unwrap_or_default();
+                v["strength"] = serde_json::json!((self.settings.strength(now.saturating_sub(e.time)) * 100.0).round() / 100.0);
+                v
+            })
+            .collect();
         let list = serde_json::json!({
             "quiet": quiet,
             "unread": state.unread,
-            "notifications": self.history.entries,
+            "notifications": notes,
         });
         *self.snapshot.lock().unwrap() = list.to_string();
     }
 
     fn show(&mut self, cx: &mut Cx, mut note: Note) {
         self.refresh_settings();
-        let app = self.settings.app(&note.app_name);
+        let app = self.settings.app_via(&note.app_name, note.via.as_deref());
         let quiet = self.quiet();
         // Banners set to Never (0 seconds) still show errors, for a while.
         let never = self.settings.seconds == 0;
@@ -196,9 +214,10 @@ impl Notifications {
         if kept {
             let mut e = Entry::from_note(&note, true);
             e.shown = banner;
-            // The history window open: seen as it comes.
-            e.unread = self.history_win.is_none();
             self.history.put(e);
+            if let Some(p) = &note.picture {
+                self.history.keep_picture(note.id, p);
+            }
         }
         if banner {
             self.add_card(cx, note);
@@ -294,10 +313,53 @@ impl Notifications {
         if let Some(w) = self.history_win.filter(|_| was) {
             cx.redraw(w);
         }
-        // The ones waiting have their time from when they appear.
+        self.wake(0..self.fits);
+        if self.cards.is_empty() {
+            if let Some(w) = self.win.take() {
+                cx.close_window(w);
+            }
+        } else {
+            self.redraw(cx);
+        }
+        was
+    }
+
+    /// Lay out the cards in `groups`, each under its app's title, one
+    /// after another; with the height they take (and a GAP).
+    fn lay_cards(&self, ui: &egui::Ui, p: &olo_kit::theme::Palette, room: &look::Room, groups: &[(String, Vec<usize>)]) -> (Vec<Frame>, f32) {
+        let mut frames = Vec::new();
+        let mut y = 0.0;
+        for (app, members) in groups {
+            let top = y;
+            y += HEADER;
+            let mut laid = Vec::new();
+            for &i in members {
+                let card = &self.cards[i];
+                let ink = banner_ink(p, &card.note.look);
+                let face = look::lay(ui, &card_face(card), &ink, room);
+                let mut h = PAD + face.height + PAD;
+                if card.note.reply.is_some() {
+                    h += m::CONTROL_HEIGHT + PAD;
+                }
+                if card.note.actions.iter().any(|(k, l)| k != "default" && !l.is_empty() && !web::browser_action(card.note.via.as_deref(), k)) {
+                    h += m::CONTROL_HEIGHT + PAD;
+                }
+                let rect = Rect::from_min_size(pos2(0.0, y), vec2(WIDTH, h.ceil()));
+                y += rect.height();
+                laid.push(Laid { i, rect, face, ink });
+            }
+            frames.push((app.clone(), Rect::from_min_max(pos2(0.0, top), pos2(WIDTH, y)), laid));
+            y += GAP;
+        }
+        (frames, y)
+    }
+
+    /// The ones waiting have their time from when they appear (a little,
+    /// if theirs ran out while they waited).
+    fn wake(&mut self, cards: std::ops::Range<usize>) {
         let now = Instant::now();
         let mut later = Vec::new();
-        for c in self.cards.iter_mut().take(SHOWN) {
+        for c in self.cards.iter_mut().take(cards.end).skip(cards.start) {
             if let (Some(t), Some(until)) = (c.note.timeout, c.until)
                 && until < now + Duration::from_secs(1)
             {
@@ -308,14 +370,6 @@ impl Notifications {
         for t in later {
             self.tick_after(t.min(Duration::from_secs(3)));
         }
-        if self.cards.is_empty() {
-            if let Some(w) = self.win.take() {
-                cx.close_window(w);
-            }
-        } else {
-            self.redraw(cx);
-        }
-        was
     }
 
     fn redraw(&self, cx: &mut Cx) {
@@ -329,7 +383,7 @@ impl Notifications {
         let gone: Vec<u32> = self
             .cards
             .iter()
-            .take(SHOWN)
+            .take(self.fits)
             .filter(|c| c.until.is_some_and(|u| u <= now) && Some(c.note.id) != hovered)
             .map(|c| c.note.id)
             .collect();
@@ -395,14 +449,38 @@ impl Notifications {
     fn open_history(&mut self, cx: &mut Cx) {
         match self.history_win {
             Some(w) => cx.activate(w),
-            None => {
-                self.history_win = Some(cx.open_window(WindowOptions::new("Notifications", 400, 560).min_size(360, 240)));
-                // What came since it was last open keeps a dot a while.
-                self.view.fresh = self.history.entries.iter().filter(|e| e.unread).map(|e| e.id).collect();
+            None => self.history_win = Some(cx.open_window(WindowOptions::new("Notifications", 400, 560).min_size(360, 240))),
+        }
+    }
+
+    /// Mark notification `id` read (or unread again).
+    fn set_read(&mut self, cx: &mut Cx, id: u32, read: bool) {
+        if self.history.set_read(id, read) {
+            self.publish(true);
+            if let Some(w) = self.history_win {
+                cx.redraw(w);
             }
         }
+    }
+
+    fn mark_all_read(&mut self, cx: &mut Cx) {
         if self.history.mark_read() {
             self.publish(true);
+        }
+        if let Some(w) = self.history_win {
+            cx.redraw(w);
+        }
+    }
+
+    /// Forget what has faded away; tell the apps of those still open.
+    fn fade_out(&mut self, cx: &mut Cx) {
+        let Some(live) = self.history.fade_out(&self.settings, now_secs()) else { return };
+        for id in live {
+            self.bus(|b| b.closed(id, Reason::Expired));
+        }
+        self.publish(true);
+        if let Some(w) = self.history_win {
+            cx.redraw(w);
         }
     }
 
@@ -437,6 +515,8 @@ impl Notifications {
             Control::ClearHistory => self.clear_history(cx),
             Control::ShowHistory => self.open_history(cx),
             Control::DoNotDisturb(on, minutes) => self.set_quiet(on, minutes),
+            Control::SetRead(id, read) => self.set_read(cx, id, read),
+            Control::MarkAllRead => self.mark_all_read(cx),
         }
         if let Some(w) = self.history_win {
             cx.redraw(w);
@@ -449,7 +529,7 @@ impl Notifications {
         for id in live {
             self.bus(|b| b.closed(id, Reason::Dismissed));
         }
-        self.history.entries.retain(|e| e.shown);
+        self.history.retain(|e| e.shown);
         self.publish(true);
         if let Some(w) = self.history_win {
             cx.redraw(w);
@@ -485,15 +565,10 @@ fn raise_app(desktop_entry: Option<&str>, app_name: &str) {
     });
 }
 
-/// Icons to try for a card, best first: the one it names, ours for the
-/// common theme names, the sending app's, then info (or warning).
-fn icon_names(note: &Note) -> Vec<String> {
-    named_icons(note.icon.as_deref(), note.desktop_entry.as_deref(), &note.app_name, note.kind == Kind::Error)
-}
-
-/// The same for what a note names: its icon, its app's desktop entry and
-/// name, and whether it is an error.
-fn named_icons(icon: Option<&str>, desktop_entry: Option<&str>, app: &str, error: bool) -> Vec<String> {
+/// Icons to try for what a note names, best first: its icon, ours for
+/// the common theme names, then its app's (from its desktop entry and
+/// name).
+fn named_icons(icon: Option<&str>, desktop_entry: Option<&str>, app: &str) -> Vec<String> {
     let mut names: Vec<String> = icon.iter().map(|i| i.to_string()).collect();
     if let Some(icon) = icon {
         let ours = [
@@ -516,8 +591,21 @@ fn named_icons(icon: Option<&str>, desktop_entry: Option<&str>, app: &str, error
         names.extend(ours.iter().filter(|(theme, _)| icon.starts_with(theme)).map(|(_, o)| o.to_string()));
     }
     names.extend(app_icons(desktop_entry, app));
-    names.push(if error { "warning" } else { "info" }.into());
     names
+}
+
+/// The mark of who a note is from, filling `r`: a website's tile; else
+/// the first of `names` there is; else, for an app that gave its colour
+/// but has no icon, its initial on that colour; else `generic`.
+fn paint_mark(painter: &egui::Painter, r: Rect, app: &str, accent: Option<[u8; 3]>, via: bool, names: &[String], generic: &str) {
+    if !via && names.iter().any(|n| icons::paint(painter, r, n)) {
+        return;
+    }
+    if via || (accent.is_some() && !app.trim().is_empty()) {
+        let (letter, fill) = web::tile(app, accent);
+        return style::monogram(painter, r, &letter, fill);
+    }
+    let _ = icons::paint(painter, r, generic);
 }
 
 /// The sending app's own icon names.
@@ -541,27 +629,6 @@ fn galley(ui: &egui::Ui, text: &str, color: Color32, width: f32, rows: usize, fo
     ui.fonts_mut(|f| f.layout_job(job))
 }
 
-/// The body with its markup: bold, italics, underlines and links.
-fn body_galley(ui: &egui::Ui, body: &[markup::Span], p: &olo_kit::theme::Palette, width: f32) -> Arc<egui::Galley> {
-    let mut job = egui::text::LayoutJob::default();
-    for s in body {
-        let font = match (s.bold, s.italic) {
-            (true, _) => style::bold_font(),
-            (false, true) => style::italic_font(),
-            _ => style::plain_font(),
-        };
-        let mut f = egui::TextFormat::simple(font, if s.link.is_some() { c(p.keyboard_navigation) } else { c(p.panel_text) });
-        // (There is no bold italic face: slanted bold.)
-        f.italics = s.bold && s.italic;
-        if s.underline || s.link.is_some() {
-            f.underline = egui::Stroke::new(1.0, f.color);
-        }
-        job.append(&s.text, 0.0, f);
-    }
-    job.wrap = egui::text::TextWrapping { max_width: width, max_rows: BODY_ROWS, break_anywhere: false, overflow_character: Some('…') };
-    ui.fonts_mut(|f| f.layout_job(job))
-}
-
 /// The link under `pos` in a body drawn at `origin`.
 fn link_at(body: &[markup::Span], g: &egui::Galley, origin: egui::Pos2, pos: egui::Pos2) -> Option<String> {
     let local = pos - origin;
@@ -578,6 +645,43 @@ fn link_at(body: &[markup::Span], g: &egui::Galley, origin: egui::Pos2, pos: egu
         start += n;
     }
     None
+}
+
+/// A card on screen, laid out: its index in the cards, where it goes,
+/// its face and colours.
+struct Laid {
+    i: usize,
+    rect: Rect,
+    face: look::Laid,
+    ink: look::Ink,
+}
+
+/// A group of cards on screen: its app, frame and members.
+type Frame = (String, Rect, Vec<Laid>);
+
+/// What a card on screen shows.
+fn card_face(card: &Card) -> look::Face<'_> {
+    look::Face {
+        title: &card.note.summary,
+        body: &card.note.body,
+        look: &card.note.look,
+        progress: card.note.progress,
+        picture: card.picture.as_ref().map_or(look::Picture::None, look::Picture::Texture),
+        failed: card.note.kind == Kind::Error,
+    }
+}
+
+/// The colours of a card on screen (on the panel's grey).
+fn banner_ink(p: &olo_kit::theme::Palette, note_look: &olo_protocol::NoteLook) -> look::Ink {
+    look::Ink {
+        text: c(p.panel_text),
+        soft: c(p.panel_text),
+        dim: style::disabled_text(p),
+        link: c(p.keyboard_navigation),
+        balloon: c(p.document_background),
+        balloon_edge: style::darken(p.panel_background, 1.25),
+        accent: note_look.accent.map(|[r, g, b]| Color32::from_rgb(r, g, b)),
+    }
 }
 
 /// A time in the history: "14:05" today, else "Oct 26, 14:05".
@@ -616,62 +720,42 @@ impl App for Notifications {
             return self.history_ui(cx, window, ui);
         }
         let p = style::palette(ui.ctx());
-        let text_x = |card: &Card| if card.note.picture.is_some() { PAD + ICON + PAD } else { PAD + 4.0 };
         let hover = ui.input(|i| i.pointer.hover_pos());
-        // The shown ones, grouped by app (in the order the apps first
-        // show), oldest first in each.
-        let shown: Vec<usize> = (0..self.cards.len().min(SHOWN)).collect();
-        let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
-        for &i in &shown {
-            let app = self.cards[i].note.app_name.clone();
-            match groups.iter_mut().find(|(a, _)| *a == app) {
-                Some((_, members)) => members.push(i),
-                None => groups.push((app, vec![i])),
+        // Pictures sent, made textures before they're measured.
+        for card in self.cards.iter_mut().take(SHOWN) {
+            if card.picture.is_none()
+                && let Some(pic) = &card.note.picture
+            {
+                let img = ColorImage::from_rgba_unmultiplied([pic.width, pic.height], &pic.rgba);
+                card.picture = Some(ui.ctx().load_texture(format!("note-{}", card.note.id), img, TextureOptions::LINEAR));
             }
         }
-        // Lay them out.
-        struct Laid {
-            i: usize,
-            rect: Rect,
-            title: Arc<egui::Galley>,
-            body: Arc<egui::Galley>,
-        }
-        let mut frames = Vec::new();
-        let mut y = 0.0;
-        for (app, members) in &groups {
-            let top = y;
-            y += HEADER;
-            let mut laid = Vec::new();
-            for &i in members {
-                let card = &self.cards[i];
-                let text_w = WIDTH - text_x(card) - PAD;
-                let title = galley(ui, &card.note.summary, c(p.panel_text), text_w - 18.0, 2, style::bold_font());
-                let body = body_galley(ui, &card.note.body, &p, text_w);
-                let buttons = card.note.actions.iter().any(|(k, l)| k != "default" && !l.is_empty());
-                let mut h = PAD + title.size().y;
-                if !card.note.body.is_empty() {
-                    h += m::TIGHT + body.size().y;
+        let room = look::Room { width: WIDTH - 2.0 * PAD, title_rows: 2, body_rows: BODY_ROWS, title_reserve: 16.0, picture: ICON, image_max: 120.0, fields_max: 4 };
+        // As many as fit on the screen (one, at least), grouped by app (in
+        // the order the apps first show), oldest first in each; the rest
+        // wait their turn.
+        let most = cx.screen_size().map_or(f32::INFINITY, |(_, h)| h as f32 - 2.0 * SCREEN_EDGE);
+        let mut n = self.cards.len().min(SHOWN);
+        let (shown, frames, y) = loop {
+            let shown: Vec<usize> = (0..n).collect();
+            let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
+            for &i in &shown {
+                let app = self.cards[i].note.app_name.clone();
+                match groups.iter_mut().find(|(a, _)| *a == app) {
+                    Some((_, members)) => members.push(i),
+                    None => groups.push((app, vec![i])),
                 }
-                if card.note.progress.is_some() {
-                    h += m::TIGHT + 10.0;
-                }
-                if card.note.picture.is_some() {
-                    h = h.max(ICON + PAD);
-                }
-                h += PAD;
-                if card.note.reply.is_some() {
-                    h += m::CONTROL_HEIGHT + PAD;
-                }
-                if buttons {
-                    h += m::CONTROL_HEIGHT + PAD;
-                }
-                let rect = Rect::from_min_size(pos2(0.0, y), vec2(WIDTH, h.ceil()));
-                y += rect.height();
-                laid.push(Laid { i, rect, title, body });
             }
-            frames.push((app.clone(), Rect::from_min_max(pos2(0.0, top), pos2(WIDTH, y)), laid));
-            y += GAP;
+            let (frames, y) = self.lay_cards(ui, &p, &room, &groups);
+            if n <= 1 || y - GAP <= most {
+                break (shown, frames, y);
+            }
+            n -= 1;
+        };
+        if n > self.fits {
+            self.wake(self.fits..n);
         }
+        self.fits = n;
         let total = (y - GAP).max(1.0).ceil() as u32;
         if total != self.height {
             self.height = total;
@@ -694,29 +778,37 @@ impl App for Notifications {
             painter.rect_filled(frame, 0.0, c(p.panel_background));
             style::frame_rect(&painter, frame, style::darken(p.panel_background, 1.6));
             style::raised(&painter, frame.shrink(1.0), &p);
-            // The group's title: the app's icon and name, and a close box
-            // for all of them.
+            // The group's title: the app's icon and name (and, for a
+            // website, its address) and the close box, for all of them.
             let head = Rect::from_min_size(frame.min, vec2(WIDTH, HEADER));
             let first = &self.cards[laid[0].i].note;
             let small = Rect::from_min_size(pos2(head.left() + PAD, head.center().y - 8.0), vec2(16.0, 16.0));
             let mut names = app_icons(first.desktop_entry.as_deref(), &first.app_name);
-            names.extend(icon_names(first).into_iter().filter(|n| n != "info" && n != "warning"));
-            names.push("application".into());
-            let _ = names.iter().any(|n| icons::paint(&painter, small, n));
+            names.extend(named_icons(first.icon.as_deref(), first.desktop_entry.as_deref(), &first.app_name));
+            paint_mark(&painter, small, &first.app_name, first.look.accent, first.via.is_some(), &names, "application");
             let name = if app.is_empty() { "Notification" } else { app.as_str() };
-            style::label(&painter, small.right() + 6.0, head.center().y, Align::Min, name, egui::FontId::new(style::small_font().size, style::bold()), c(p.panel_text));
-            if laid.len() > 1 {
-                let all = Rect::from_center_size(pos2(head.right() - PAD - 6.0, head.center().y), vec2(12.0, 12.0));
-                let r = ui.interact(all.expand(3.0), ui.make_persistent_id(("close-all", &app)), Sense::click());
-                close_box(&painter, all, if r.hovered() { c(p.panel_text) } else { style::disabled_text(&p) });
-                if r.clicked() {
-                    for l in &laid {
-                        did.push((self.cards[l.i].note.id, Did::Dismiss));
-                    }
+            let close_room = 22.0;
+            let name_x = small.right() + 6.0;
+            let n = style::label_fit(&painter, name_x, head.center().y, Align::Min, name, egui::FontId::new(style::small_font().size, style::bold()), c(p.panel_text), head.right() - PAD - close_room - name_x);
+            if let Some(src) = &first.look.source {
+                let x = n.right() + 5.0;
+                let room = head.right() - PAD - close_room - x;
+                if room > 24.0 {
+                    style::label_fit(&painter, x, head.center().y, Align::Min, src, style::small_font(), style::disabled_text(&p), room);
                 }
             }
-            style::hline(&painter, frame.left() + 2.0, frame.right() - 2.0, head.bottom() - 1.0, style::darken(p.panel_background, 1.25));
-            for (n, Laid { i, rect, title, body }) in laid.into_iter().enumerate() {
+            let single = laid.len() == 1;
+            let all = Rect::from_center_size(pos2(head.right() - PAD - 6.0, head.center().y), vec2(12.0, 12.0));
+            let r = ui.interact(all.expand(3.0), ui.make_persistent_id(("close-all", &app)), Sense::click());
+            r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, if single { "Close".to_owned() } else { format!("Close All from {name}") }));
+            close_box(&painter, all, if r.hovered() { c(p.panel_text) } else { style::disabled_text(&p) });
+            if r.clicked() {
+                for l in &laid {
+                    did.push((self.cards[l.i].note.id, Did::Dismiss));
+                }
+            }
+            style::hline_above(&painter, frame.left() + 2.0, frame.right() - 2.0, head.bottom(), style::darken(p.panel_background, 1.25));
+            for (n, Laid { i, rect, face, ink }) in laid.into_iter().enumerate() {
                 if n > 0 {
                     style::hline(&painter, rect.left() + PAD, rect.right() - PAD, rect.top(), style::darken(p.panel_background, 1.18));
                     style::hline(&painter, rect.left() + PAD, rect.right() - PAD, rect.top() + 1.0, c(p.shine));
@@ -726,58 +818,32 @@ impl App for Notifications {
                 if hover.is_some_and(|h| rect.contains(h)) {
                     hovered = Some(id);
                 }
-                // Important and error ones wear a coloured edge.
-                let edge = match card.note.kind {
-                    Kind::Important => Some(c(p.keyboard_navigation)),
-                    Kind::Error => Some(c(p.failure)),
-                    _ => None,
-                };
-                if let Some(color) = edge {
-                    painter.rect_filled(Rect::from_min_size(rect.min + vec2(2.0, 2.0), vec2(3.0, rect.height() - 4.0)), 0.0, color);
-                }
                 // The whole card is the default action.
                 let click = ui.interact(rect, ui.make_persistent_id(("card", id)), Sense::click());
-                // The picture sent, if any.
-                let icon_r = Rect::from_min_size(rect.min + vec2(PAD, PAD), vec2(ICON, ICON));
-                if card.picture.is_none()
-                    && let Some(pic) = &card.note.picture
-                {
-                    let img = ColorImage::from_rgba_unmultiplied([pic.width, pic.height], &pic.rgba);
-                    card.picture = Some(ui.ctx().load_texture(format!("note-{id}"), img, TextureOptions::LINEAR));
-                }
-                if let Some(tex) = &card.picture {
-                    let r = icons::fit(ui.ctx(), tex, icon_r);
-                    painter.image(tex.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
-                }
-                // Its close box.
-                let x = rect.left() + text_x(card);
-                let text_w = WIDTH - text_x(card) - PAD;
+                // One of several has its own close box too, while the
+                // pointer is over it (the header's closes them all).
                 let close = Rect::from_center_size(pos2(rect.right() - PAD - 6.0, rect.top() + PAD + 7.0), vec2(12.0, 12.0));
-                let close_resp = ui.interact(close.expand(3.0), ui.make_persistent_id(("close", id)), Sense::click());
-                close_box(&painter, close, if close_resp.hovered() { c(p.panel_text) } else { style::disabled_text(&p) });
-                let mut ty = rect.top() + PAD;
-                painter.galley(pos2(x, ty), title.clone(), c(p.panel_text));
-                ty += title.size().y + m::TIGHT;
-                let mut link = None;
-                if !card.note.body.is_empty() {
-                    let origin = pos2(x, ty);
-                    painter.galley(origin, body.clone(), c(p.panel_text));
-                    if let Some(pos) = hover {
-                        link = link_at(&card.note.body, &body, origin, pos);
-                        if link.is_some() {
-                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                        }
+                let close_resp = (!single).then(|| ui.interact(close.expand(3.0), ui.make_persistent_id(("close", id)), Sense::click()));
+                if let Some(r) = &close_resp {
+                    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Close"));
+                    if hover.is_some_and(|h| rect.contains(h)) {
+                        close_box(&painter, close, if r.hovered() { c(p.panel_text) } else { style::disabled_text(&p) });
                     }
-                    ty += body.size().y + m::TIGHT;
                 }
-                if let Some(f) = card.note.progress {
-                    let r = Rect::from_min_size(pos2(x, ty), vec2(text_w, 10.0));
-                    ui.put(r, StatusBar::new(f).bar_height(10.0));
+                let painted = look::paint(ui, &painter, &card_face(card), &face, &ink, rect.min + vec2(PAD, PAD), room.width);
+                let mut link = None;
+                if let (Some(pos), Some((origin, g))) = (hover, &painted.body) {
+                    link = link_at(&card.note.body, g, *origin, pos);
+                    if link.is_some() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    }
                 }
                 let mut by = rect.bottom() - PAD - m::CONTROL_HEIGHT;
                 let mut pressed = None;
-                // Actions along the bottom, right to left as in an alert.
-                let buttons: Vec<(String, String)> = card.note.actions.iter().filter(|(k, l)| k != "default" && !l.is_empty()).cloned().collect();
+                // Actions along the bottom, right to left as in an alert
+                // (a browser's own Settings stays in the history).
+                let buttons: Vec<(String, String)> =
+                    card.note.actions.iter().filter(|(k, l)| k != "default" && !l.is_empty() && !web::browser_action(card.note.via.as_deref(), k)).cloned().collect();
                 if !buttons.is_empty() {
                     let mut bx = rect.right() - PAD;
                     // In the narrow column they share the width when they must.
@@ -795,6 +861,7 @@ impl App for Notifications {
                 }
                 // The reply field and its Send button.
                 if let Some(placeholder) = card.note.reply.clone() {
+                    let x = rect.left() + PAD;
                     let send_w = m::BUTTON_MIN_WIDTH;
                     let field = Rect::from_min_size(pos2(x, by), vec2(rect.right() - PAD - x - send_w - m::SPACING, m::CONTROL_HEIGHT));
                     let r = ui.put(field, TextControl::new(&mut card.reply).hint(&placeholder));
@@ -805,7 +872,7 @@ impl App for Notifications {
                         did.push((id, Did::Reply(card.reply.trim().to_owned())));
                     }
                 }
-                if close_resp.clicked() {
+                if close_resp.is_some_and(|r| r.clicked()) {
                     did.push((id, Did::Dismiss));
                 } else if let Some(key) = pressed {
                     did.push((id, Did::Action(key)));
@@ -835,6 +902,7 @@ impl App for Notifications {
                     self.remove(cx, id, Reason::Dismissed);
                 }
                 Did::Link(url) => {
+                    self.set_read(cx, id, true);
                     std::thread::spawn(move || {
                         if let Err(e) = olo_kit::open::open(&olo_kit::open::Target::parse(&url)) {
                             tracing::warn!("notifications: can't open {url}: {e}");
@@ -873,12 +941,22 @@ impl App for Notifications {
                     cx.redraw(w);
                 }
             }
-            Msg::In(In::Control(c)) => self.control(cx, c),
+            Msg::In(In::Control(c, done)) => {
+                self.control(cx, c);
+                if let Some(done) = done {
+                    let _ = done.send(());
+                }
+            }
             Msg::Tick => {
                 self.flush_pending();
                 // Do Not Disturb may have begun or ended.
                 self.refresh_settings();
+                self.fade_out(cx);
                 self.publish(false);
+                // The history fades on.
+                if let Some(w) = self.history_win {
+                    cx.redraw(w);
+                }
                 // Let the frame decide (it knows whether the pointer is
                 // over a card).
                 self.redraw(cx);
@@ -892,7 +970,7 @@ impl App for Notifications {
     fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
         if Some(window) == self.history_win {
             self.history_win = None;
-            self.view.fresh.clear();
+            self.view.held.clear();
             self.view.selected = None;
             cx.close_window(window);
         }
@@ -905,11 +983,17 @@ impl App for Notifications {
             for (v, label, command, key) in VIEWS {
                 views = views.item(label, command, Some(key)).checked(view == v);
             }
-            vec![
-                olo_kit::Menu::new("File").item("Close", "close", Some(egui::Key::W)),
-                olo_kit::Menu::new("Edit").item("Find", "find", Some(egui::Key::F)).separator().item("Clear All", "clear", None),
-                views,
-            ]
+            let selected = self.selected_unread();
+            let edit = olo_kit::Menu::new("Edit")
+                .item("Find", "find", Some(egui::Key::F))
+                .separator()
+                .item(if selected == Some(false) { "Mark as Unread" } else { "Mark as Read" }, "toggle-read", Some(egui::Key::U))
+                .enabled(selected.is_some())
+                .item("Mark All as Read", "read-all", None)
+                .enabled(self.history.unread() > 0)
+                .separator()
+                .item("Clear All", "clear", None);
+            vec![olo_kit::Menu::new("File").item("Close", "close", Some(egui::Key::W)), edit, views]
         })
     }
 
@@ -918,6 +1002,13 @@ impl App for Notifications {
             "close" => self.close_requested(cx, window),
             "clear" => self.clear_history(cx),
             "find" => self.view.focus_search = true,
+            "toggle-read" => {
+                self.toggle_read(cx);
+            }
+            "read-all" => {
+                self.view.held.extend(self.history.entries.iter().filter(|e| e.unread).map(|e| e.id));
+                self.mark_all_read(cx);
+            }
             _ => {
                 if let Some((v, ..)) = VIEWS.iter().find(|(_, _, c, _)| *c == command) {
                     self.set_view(*v);
@@ -1025,6 +1116,7 @@ fn main() -> std::process::ExitCode {
             bus,
             win: None,
             cards: Vec::new(),
+            fits: SHOWN,
             height: 0,
             keyboard: false,
             pending: HashMap::new(),
@@ -1039,6 +1131,7 @@ fn main() -> std::process::ExitCode {
             told: None,
         };
         app.refresh_settings();
+        app.fade_out(cx);
         app.publish(false);
         // After an upgrade: the History window as it was.
         if let Some(state) = cx.restored_state().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())

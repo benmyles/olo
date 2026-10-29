@@ -8,6 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::render::Exact;
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -86,7 +87,7 @@ pub fn show(output: &Output, title: &str, detail: &str) {
 }
 
 /// The badge for `output`, while it is up.
-pub fn element<R>(renderer: &mut R, output: &Output) -> Option<MemoryRenderBufferRenderElement<R>>
+pub fn element<R>(renderer: &mut R, output: &Output) -> Option<Exact<MemoryRenderBufferRenderElement<R>>>
 where
     R: Renderer + ImportMem,
     R::TextureId: Send + Clone + 'static,
@@ -98,15 +99,5 @@ where
     let (_, buffer, (w, h)) = slot.as_ref()?;
     let s = output.current_scale().fractional_scale();
     let at = (MARGIN as f64 * s).round();
-    let logical = ((*w as f64 / s).round() as i32, (*h as f64 / s).round() as i32);
-    MemoryRenderBufferRenderElement::from_buffer(
-        renderer,
-        (at, at),
-        buffer,
-        None,
-        Some(Rectangle::from_size((*w as f64, *h as f64).into())),
-        Some(logical.into()),
-        Kind::Unspecified,
-    )
-    .ok()
+    crate::render::picture(renderer, (at, at).into(), buffer, (*w, *h), None, Kind::Unspecified)
 }

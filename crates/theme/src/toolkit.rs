@@ -1,7 +1,8 @@
 //! The Olo look for other toolkits' programs, from the same palette.
 //!
 //! - **GTK 3** takes a theme by name (the GSettings key `gtk-theme`):
-//!   [`GTK_THEME`] and [`GTK_THEME_DARK`], whose `gtk-3.0/gtk.css` is
+//!   one per look and mode ([`gtk_theme_name`]: a new look is a new name,
+//!   which GTK programs reload on), whose `gtk-3.0/gtk.css` is
 //!   [`gtk3_css`]: GTK's own Adwaita with Olo's colours over it. GTK 4
 //!   programs without libadwaita take the same themes' `gtk-4.0/gtk.css`
 //!   ([`gtk4_theme_css`]).
@@ -13,8 +14,17 @@
 
 use crate::{Palette, Rgba, tint};
 
-pub const GTK_THEME: &str = "Olo";
-pub const GTK_THEME_DARK: &str = "Olo-dark";
+/// What every GTK theme Olo writes is called, then the look.
+pub const GTK_THEME_PREFIX: &str = "Olo-";
+
+/// The GTK theme for theme `theme` in colour set `colors`, in `mode`
+/// (ids as the settings hold them): `Olo-bebox-theme`,
+/// `Olo-bebox-theme-dark`.
+pub fn gtk_theme_name(theme: &str, colors: &str, mode: crate::ThemeMode) -> String {
+    let t = crate::looks::resolve(theme).id;
+    let c = crate::looks::ColorSet::resolve(colors).id();
+    format!("{GTK_THEME_PREFIX}{t}-{c}{}", if mode == crate::ThemeMode::Dark { "-dark" } else { "" })
+}
 
 fn hex(c: Rgba) -> String {
     if c[3] == 255 { format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2]) } else { format!("rgba({},{},{},{:.2})", c[0], c[1], c[2], c[3] as f32 / 255.0) }
@@ -35,10 +45,7 @@ fn accent_text(p: &Palette) -> Rgba {
 }
 
 fn warning(p: &Palette) -> Rgba {
-    match p.mode {
-        crate::ThemeMode::Light => p.tab_focused_shadow,
-        crate::ThemeMode::Dark => p.tab_focused_light,
-    }
+    p.warning
 }
 
 /// The sidebars of GTK's programs: a shade off the panel colour, as
@@ -50,7 +57,7 @@ fn sidebar(p: &Palette) -> Rgba {
     }
 }
 
-/// `gtk-3.0/gtk.css` for [`GTK_THEME`] (light) or [`GTK_THEME_DARK`].
+/// `gtk-3.0/gtk.css` for a look's GTK theme ([`gtk_theme_name`]).
 pub fn gtk3_css(p: &Palette) -> String {
     let dark = p.mode == crate::ThemeMode::Dark;
     theme_css(p, &format!("Adwaita/gtk-contained{}.css", if dark { "-dark" } else { "" }))
@@ -237,9 +244,13 @@ tooltip, tooltip.background {{ border-radius: 0; }}
     )
 }
 
+/// What every `index.theme` Olo writes says about itself (so Olo knows
+/// its own when it clears away the old ones).
+pub const GTK_INDEX_COMMENT: &str = "Olo's colours for GTK programs";
+
 /// The `index.theme` that names a GTK theme.
 pub fn gtk_index(name: &str) -> String {
-    format!("[Desktop Entry]\nType=X-GNOME-Metatheme\nName={name}\nComment=Olo's colours for GTK programs\nEncoding=UTF-8\n\n[X-GNOME-Metatheme]\nGtkTheme={name}\n")
+    format!("[Desktop Entry]\nType=X-GNOME-Metatheme\nName={name}\nComment={GTK_INDEX_COMMENT}\nEncoding=UTF-8\n\n[X-GNOME-Metatheme]\nGtkTheme={name}\n")
 }
 
 #[cfg(test)]
@@ -257,5 +268,13 @@ mod tests {
         assert_eq!(g3.matches('{').count(), g3.matches('}').count());
         assert!(!gtk3_css(&l).contains("-dark.css"));
         assert!(gtk4_theme_css(&d).contains("theme/Default/Default-dark.css"));
+    }
+
+    #[test]
+    fn a_name_per_look() {
+        use crate::ThemeMode::*;
+        assert_eq!(gtk_theme_name("toybox", "beos", Dark), "Olo-toybox-beos-dark");
+        assert_eq!(gtk_theme_name("nope", "", Light), "Olo-bebox-theme");
+        assert!(gtk_index("Olo-x").contains(GTK_INDEX_COMMENT));
     }
 }

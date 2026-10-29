@@ -29,7 +29,8 @@ What is checked, after every step once the windows have settled:
   * commands that shouldn't move other windows don't: activating one,
     Cmd+Tab and Cmd+` however far you cycle, sending to back, hiding or
     showing one, opening a new window (it may join its app's group, but
-    nothing else changes), going to another workspace and back;
+    nothing else changes, not even the group's size, also when it opens
+    with a button held down), going to another workspace and back;
   * round trips come back exactly: zoom and unzoom (also along one
     axis), a tile then Restore, an arrangement then Undo Window
     Arrangement, a window to another workspace and back, a window to the
@@ -550,7 +551,28 @@ class Fuzz:
     def op_open(self, wins, shown):
         app = self.rng.choice(APPS)
         args = self.rng.choice(LAUNCH[app])
-        self.log(f"open {' '.join([app, *args])}")
+        # Now and then with a button held down in a Terminal (selecting):
+        # the pointer is grabbed meanwhile, as it is after a menu until
+        # it next moves, and the new window must still take its group's
+        # size, not the group the new window's.
+        terms = [w for w in wins.values() if w["focused"] and w["app_id"] == "olo.terminal" and w.get("content")]
+        held = terms and self.rng.random() < 0.3
+        if held:
+            # Another Terminal, into a group sized by hand (not the size a
+            # new window opens at).
+            app, args = "olo-terminal", []
+            x, y, w, h = fr(terms[0])
+            w, h = (w - 37, h - 23) if w > 500 and h > 300 else (w + 37, h + 23)
+            self.req({"type": "place", "id": terms[0]["id"], "frame": {"x": x, "y": y, "width": w, "height": h}})
+            wins = self.settle()
+            terms = [t for t in wins.values() if t["id"] == terms[0]["id"] and t.get("content")]
+            held = bool(terms)
+        self.log(f"open {' '.join([app, *args])}" + (" (a button held down)" if held else ""))
+        if held:
+            c = rect(terms[0]["content"])
+            self.req({"type": "synthetic", "events": [
+                {"type": "move", "x": c[0] + c[2] / 2, "y": c[1] + c[3] / 2},
+                {"type": "button", "button": BTN_LEFT, "pressed": True}]})
         self.spawn(app, args)
         t0, seen = time.time(), []
         app_id = "olo." + app[4:]
@@ -561,6 +583,11 @@ class Fuzz:
             if set(now) - set(wins):
                 break
             time.sleep(0.004)
+        if held:
+            self.settle()
+            seen += self.trail
+            self.req({"type": "synthetic", "events": [{"type": "button", "button": BTN_LEFT, "pressed": False}]})
+            self.last_press = time.time()
         after = self.settle()
         self.trail = seen + self.trail
         self.check_sane(after)

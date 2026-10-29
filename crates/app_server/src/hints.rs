@@ -25,6 +25,7 @@ use std::{
 };
 
 use serde::Deserialize;
+use crate::render::Exact;
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -485,7 +486,7 @@ impl Hints {
 
     /// The letters showing, as elements for the output at `output`
     /// (global logical) drawn at `scale`.
-    pub fn elements<R>(&mut self, renderer: &mut R, output: Rectangle<i32, Logical>, scale: f64) -> Vec<MemoryRenderBufferRenderElement<R>>
+    pub fn elements<R>(&mut self, renderer: &mut R, output: Rectangle<i32, Logical>, scale: f64) -> Vec<Exact<MemoryRenderBufferRenderElement<R>>>
     where
         R: Renderer + ImportMem,
         R::TextureId: Send + Clone + 'static,
@@ -791,7 +792,7 @@ pub struct Overlay {
 
 impl Overlay {
     /// Badges in front of group outlines.
-    fn elements<R>(&mut self, renderer: &mut R, showing: &[Node], output: Rectangle<i32, Logical>, scale: f64) -> Vec<MemoryRenderBufferRenderElement<R>>
+    fn elements<R>(&mut self, renderer: &mut R, showing: &[Node], output: Rectangle<i32, Logical>, scale: f64) -> Vec<Exact<MemoryRenderBufferRenderElement<R>>>
     where
         R: Renderer + ImportMem,
         R::TextureId: Send + Clone + 'static,
@@ -829,23 +830,21 @@ impl Overlay {
             }
             bx = bx.clamp(out.x, out.x + out.w - bw);
             by = by.clamp(out.y, out.y + out.h - bh);
-            let logical = ((size.w as f64 / scale).round() as i32, (size.h as f64 / scale).round() as i32);
-            let src = Rectangle::from_size((size.w as f64, size.h as f64).into());
-            if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(renderer, phys(bx, by), buffer, None, Some(src), Some(logical.into()), Kind::Unspecified) {
-                badges.push(e);
-            }
+            badges.extend(crate::render::picture(renderer, phys(bx, by), buffer, (size.w, size.h), None, Kind::Unspecified));
             if let Node::Group { outline: true, .. } = node {
-                let (x0, y0, x1, y1) = (r.x - 2.0, r.y - 2.0, r.x + r.w + 2.0, r.y + r.h + 2.0);
-                // Top, bottom, left, right, a logical pixel thick.
-                for (x, y, w, h) in [(x0, y0, x1 - x0, 1.0), (x0, y1 - 1.0, x1 - x0, 1.0), (x0, y0, 1.0, y1 - y0), (x1 - 1.0, y0, 1.0, y1 - y0)] {
+                // Corners to the nearest device pixel, and hairlines
+                // between them (whole pixels, as thick on every side).
+                let a = phys(r.x - 2.0, r.y - 2.0).to_i32_round::<i32>();
+                let z = phys(r.x + r.w + 2.0, r.y + r.h + 2.0).to_i32_round::<i32>();
+                let t = (scale.floor() as i32).max(1);
+                let (w, h) = (z.x - a.x, z.y - a.y);
+                // Top, bottom, left, right.
+                for (x, y, w, h) in [(a.x, a.y, w, t), (a.x, z.y - t, w, t), (a.x, a.y, t, h), (z.x - t, a.y, t, h)] {
                     if self.lines.len() <= line {
                         self.lines.push(solid(palette.keyboard_navigation));
                     }
-                    let size: Size<i32, Logical> = ((w.round() as i32).max(1), (h.round() as i32).max(1)).into();
-                    let src = Rectangle::from_size((1.0, 1.0).into());
-                    if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(renderer, phys(x, y), &self.lines[line], None, Some(src), Some(size), Kind::Unspecified) {
-                        lines.push(e);
-                    }
+                    let rect = Rectangle::new((x, y).into(), (w.max(1), h.max(1)).into());
+                    lines.extend(crate::render::exact(renderer, rect, &self.lines[line], (1, 1), None, Kind::Unspecified));
                     line += 1;
                 }
             }

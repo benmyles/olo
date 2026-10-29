@@ -14,7 +14,7 @@ use std::{
 use olo_kit::{
     egui::{Context, Rect, Ui, UiBuilder, vec2},
     metrics as m,
-    widgets::{BBox, Button, Column, ColumnListView, ListState, MenuField, StatusBar, StringView},
+    widgets::{BBox, Button, Column, ColumnListView, EmptyState, ListState, MenuField, StatusBar, StringView},
 };
 use olo_system::fingerprint::{self as fp, EnrollEvent, FINGERS, Stop};
 
@@ -237,11 +237,11 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let sh = link.shared.lock().unwrap();
     let fingers = match &sh.fingers {
         None => {
-            ui.add(StringView::new("Looking for the fingerprint sensor…").dim(true));
+            ui.add(EmptyState::new("Looking for the fingerprint sensor…").icon("fingerprint"));
             return;
         }
         Some(Err(why)) => {
-            ui.add(StringView::new(why).dim(true));
+            ui.add(EmptyState::new(why).icon("fingerprint"));
             return;
         }
         Some(Ok(f)) => f.clone(),

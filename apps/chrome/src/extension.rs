@@ -82,9 +82,17 @@ fn key(root: &Path) -> std::io::Result<SigningKey> {
     Ok(key)
 }
 
-/// CSS custom properties for the popup from Olo's palette, light and
-/// dark.
-fn palette_css() -> String {
+/// CSS custom properties for the popup from the look in use, light and
+/// dark: packed into the extension as `palette.css`, and asked of the
+/// host (`host.rs`) each time the popup opens, so a look chosen since
+/// shows at once.
+pub fn palette_css() -> String {
+    let a = olo_kit::settings::current().map(|s| s.appearance).unwrap_or_default();
+    let [light, dark] = [olo_theme::ThemeMode::Light, olo_theme::ThemeMode::Dark].map(|m| olo_theme::looks::palette(&a.icon_theme, &a.colors, m));
+    css_of(&light, &dark)
+}
+
+fn css_of(light: &Palette, dark: &Palette) -> String {
     fn vars(p: &Palette) -> String {
         let hex = |c: Rgba| format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2]);
         format!(
@@ -100,9 +108,7 @@ fn palette_css() -> String {
             hex(p.failure),
         )
     }
-    let light = Palette::for_mode(olo_theme::ThemeMode::Light);
-    let dark = Palette::for_mode(olo_theme::ThemeMode::Dark);
-    format!(":root {{ {} }}\n@media (prefers-color-scheme: dark) {{ :root {{ {} }} }}\n", vars(&light), vars(&dark))
+    format!(":root {{ {} }}\n@media (prefers-color-scheme: dark) {{ :root {{ {} }} }}\n", vars(light), vars(dark))
 }
 
 /// The extension's files as a zip (stored, dated 1980, so the same files
@@ -232,7 +238,7 @@ mod tests {
         assert!(key.verifying_key().verify(&message, &sig).is_ok());
         let header = &a[12..12 + header_len];
         assert!(header.windows(sig.to_der().as_bytes().len()).any(|w| w == sig.to_der().as_bytes()));
-        assert_eq!(version(), "1.2.0");
+        assert_eq!(version(), "1.3.0");
     }
 
     #[test]
@@ -243,7 +249,7 @@ mod tests {
         let id = set_up(&root, &chrome, &data, Path::new("/usr/bin/olo-chrome")).unwrap();
         assert_eq!(id, set_up(&root, &chrome, &data, Path::new("/usr/bin/olo-chrome")).unwrap(), "the same key");
         let ext: serde_json::Value = serde_json::from_slice(&std::fs::read(chrome.join(format!("extensions/{id}.json"))).unwrap()).unwrap();
-        assert_eq!(ext["external_version"], "1.2.0");
+        assert_eq!(ext["external_version"], "1.3.0");
         let host: serde_json::Value = serde_json::from_slice(&std::fs::read(data.join("NativeMessagingHosts/com.olodesktop.passwords.json")).unwrap()).unwrap();
         assert_eq!(host["allowed_origins"][0], format!("chrome-extension://{id}/"));
         // The extension from before the rename finds its host too.

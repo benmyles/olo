@@ -16,8 +16,32 @@ rules are universal and non-negotiable:
 - **Never block the UI.** Anything that can take more than a frame runs on a
   worker thread, shows live progress, streams results and can be cancelled.
   See "The responsiveness rule" in HACKING.md.
-- **Pixel-perfect in light, dark and night modes at 2× and other scales.**
-  Colours from the palette, spacing from `metrics`, text via `style`.
+- **Pixel-perfect in light, dark and night modes at 1×, 1.5× and 2×.**
+  Every time you check visuals, check all three scales
+  (`tsession scale NAME 1`, `1.5`, `2`), not only 2×: it must look
+  perfect in every one. Colours from the palette, spacing from `metrics`,
+  text via `style`. Change the scale while the app runs, since that finds
+  caches made for another scale. Where drawing depends on the scale
+  (icons, cached sizes, app_server's decorator), look at 1.25× and 1.75×
+  too. Nothing drawn from a bitmap is resampled: one texture pixel to a
+  device pixel (`icons::paint`, `style::snap_centred`, app_server's
+  `render::exact`). Anything measured in pixels is keyed by the scale.
+  See "Fractional scaling" in HACKING.md.
+- **Measure, don't guess.** Run `tsession review` on each kit app at
+  every scale, and fix what it finds. A finding at only one scale is a
+  real bug until shown otherwise. The review doesn't see app_server's own
+  drawing (frames, tabs, overlays), so zoom in and measure that, with the
+  window at an odd x. Before changing something global (hinting, a kit
+  size), compare before and after to show it changes what you meant.
+  Before telling the person how something works (how to upgrade, what a
+  command does), read the code that does it.
+- **Leave the person's session alone.** Never reload, upgrade or install
+  into it unless asked. To get work ready, run
+  `cargo build --release --workspace`. The running session watches
+  `target/release` and offers the new build in Deskbar's tray, whose
+  Upgrade installs it and reloads in place. `tools/install-session.sh` is
+  only for a first install, or when the login-screen entry or udev rules
+  change.
 - **Wayland only, no X11.** Olo runs Wayland programs and nothing
   else: no Xwayland, no X11 window management, no `DISPLAY`, no code or
   dependencies for X11-only programs. Programs that can speak either
@@ -36,6 +60,8 @@ rules are universal and non-negotiable:
 - **Icons** follow [docs/ICONS.md](docs/ICONS.md) (sunburst at max quality,
   against the reference set).
 - **Test headless** with `tools/dev/tsession`; never open windows on the
-  user's display. Journal visible changes with `tools/journal.py`.
+  user's display. Journal visible changes with `tools/journal.py`. Run
+  both with `/usr/bin/python3`: the `python3` on PATH (linuxbrew) has no
+  PIL, so shots and journal entries fail under it.
 - **No forks or subagents.** Do all the work yourself, in this session:
   never spawn a fork, subagent or background agent for any part of a task.

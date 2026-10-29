@@ -14,7 +14,7 @@ use olo_kit::{
     egui::{self, Color32, Rect, Sense, pos2, vec2},
     icons,
     menu::{self, MenuAnchor, MenuItem, MenuRequest},
-    style::{self, c, hline, shade, vline},
+    style::{self, c, hline, hline_above, shade, vline},
     theme::Palette,
     widgets,
 };
@@ -789,7 +789,7 @@ fn listing(names: &[String]) -> String {
 fn section_bevel(p: &egui::Painter, r: Rect, pal: &Palette) {
     hline(p, r.left(), r.right(), r.top(), c(pal.shine));
     vline(p, r.left(), r.top(), r.bottom(), c(pal.shine));
-    hline(p, r.left(), r.right(), r.bottom() - 1.0, shade(pal, pal.panel_background, 1.3));
+    hline_above(p, r.left(), r.right(), r.bottom(), shade(pal, pal.panel_background, 1.3));
 }
 
 impl App for Deskbar {
@@ -861,7 +861,7 @@ impl App for Deskbar {
         // The wordmark alone, centred (beside the mark it read as "o olo").
         let dark = pal.mode == olo_kit::theme::ThemeMode::Dark;
         let word_h = 18.0;
-        let word_w = olo_kit::brand::wordmark_width(word_h);
+        let word_w = olo_kit::brand::wordmark_width(word_h, dark);
         let word = Rect::from_min_size(pos2(tile.center().x - word_w / 2.0, tile.center().y - word_h / 2.0), vec2(word_w, word_h));
         if olo_kit::brand::wordmark(&painter, word, dark).is_none() {
             style::label(&painter, tile.center().x, tile.center().y, egui::Align::Center, "Olo", egui::FontId::new(14.0, style::bold()), c(pal.panel_text));
@@ -1084,7 +1084,7 @@ impl App for Deskbar {
             } else if hover {
                 painter.rect_filled(row, 0.0, c(olo_theme_tint(pal.panel_background, 0.8)));
             }
-            hline(&painter, row.left(), row.right(), row.bottom() - 1.0, shade(&pal, pal.panel_background, 1.14));
+            hline_above(&painter, row.left(), row.right(), row.bottom(), shade(&pal, pal.panel_background, 1.14));
             let icon_r = Rect::from_center_size(pos2(row.left() + 6.0 + ICON / 2.0, row.center().y), vec2(ICON, ICON));
             let tint = if hidden { Color32::from_white_alpha(120) } else { Color32::WHITE };
             let drawn = team.icon.as_deref().is_some_and(|i| icons::paint_tinted(&painter, icon_r, i, tint));
@@ -1113,7 +1113,7 @@ impl App for Deskbar {
         // Deskbar meets the desktop.
         let body = Rect::from_min_max(full.min, pos2(full.right(), y));
         vline(&painter, body.left(), body.top(), body.bottom(), shade(&pal, pal.panel_background, 1.6));
-        hline(&painter, body.left(), body.right(), body.bottom() - 1.0, shade(&pal, pal.panel_background, 1.6));
+        hline_above(&painter, body.left(), body.right(), body.bottom(), shade(&pal, pal.panel_background, 1.6));
 
         let want = (y - full.top()).ceil();
         let bar = &mut self.bars[bar];

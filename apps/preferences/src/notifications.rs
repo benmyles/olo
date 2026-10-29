@@ -1,5 +1,6 @@
 //! Notifications: Do Not Disturb (now, and every day at set times), how
-//! long banners stay, and what each app's notifications may do. The
+//! long banners stay, how the history fades away, and what each app's
+//! notifications may do. The
 //! settings live in their own file (`notifications.json`), which
 //! olo-notifications and Deskbar's bell follow; a watcher thread keeps
 //! the panel current when they change it.
@@ -154,6 +155,33 @@ pub fn ui(ui: &mut Ui, clock: &ClockSettings, st: &mut State) {
         let note = if s.seconds == 0 { "Only errors show; the rest go to the history." } else { "Unless the app says; kept while the pointer is over it." };
         ui.add(StringView::new(note).dim(true));
     });
+    BBox::new("History").show(ui, |ui| {
+        let choices = [15, 30, 60, 120, 240, 480, 1440, 10080];
+        let names: Vec<String> = choices.iter().map(|&m| duration_text(m)).collect();
+        let mut names: Vec<&str> = names.iter().map(String::as_str).collect();
+        let custom = duration_text(s.fade_minutes);
+        let mut i = match choices.iter().position(|&c| c == s.fade_minutes) {
+            Some(i) => i,
+            None => {
+                names.push(&custom);
+                names.len() - 1
+            }
+        };
+        ui.horizontal(|ui| {
+            ui.add(CheckBox::new(&mut s.fade, "Fade notifications away over"));
+            ui.add_enabled_ui(s.fade, |ui| ui.add(MenuField::new("fade-minutes", &mut i, &names).width(110.0)));
+        });
+        if let Some(&c) = choices.get(i) {
+            s.fade_minutes = c;
+        }
+        fade_strip(ui, &s);
+        let note = if s.fade {
+            "The newest show strongest; each goes once it has faded away."
+        } else {
+            "Kept until you clear them (the last 200)."
+        };
+        ui.add(StringView::new(note).dim(true).wrap(true));
+    });
     apps_ui(ui, st, &mut s);
     if st.settings.as_ref() != Some(&s) {
         st.settings = Some(s.clone());
@@ -164,6 +192,47 @@ pub fn ui(ui: &mut Ui, clock: &ClockSettings, st: &mut State) {
             }
         });
     }
+}
+
+/// "15 minutes", "1 hour", "8 hours", "1 day", "1 week".
+fn duration_text(minutes: u32) -> String {
+    let unit = |n: u32, one: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {one}s") };
+    match minutes {
+        m if m > 0 && m % 10080 == 0 => unit(m / 10080, "week"),
+        m if m > 0 && m % 1440 == 0 => unit(m / 1440, "day"),
+        m if m > 0 && m % 60 == 0 => unit(m / 60, "hour"),
+        m => unit(m, "minute"),
+    }
+}
+
+/// How the history fades: a sunken strip lit in the yellow of a tab in
+/// front (as unread notifications are marked) where a notification is
+/// new, fading as it ages, with now at its left and the end at its right
+/// (with fading off, lit evenly and dimmed, as a disabled control is).
+fn fade_strip(ui: &mut Ui, s: &NotificationSettings) {
+    let p = style::palette(ui.ctx());
+    let font = style::small_font();
+    let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 10.0 + font.size + 4.0), Sense::hover());
+    let bar = style::snap(ui.ctx(), Rect::from_min_size(r.min, vec2(r.width(), 10.0)));
+    let mut painter = ui.painter().clone();
+    if !s.fade {
+        painter.multiply_opacity(0.4);
+    }
+    painter.rect_filled(bar, 0.0, c(p.document_background));
+    let span = s.fade_minutes.max(1) as u64 * 60;
+    let steps = (bar.width() / 2.0).ceil() as usize;
+    for k in 0..steps {
+        let x0 = bar.left() + k as f32 * 2.0;
+        let strength = s.strength(span * k as u64 / steps as u64);
+        let color = olo_kit::theme::mix(p.document_background, p.tab_focused, strength);
+        painter.rect_filled(Rect::from_min_max(pos2(x0, bar.top()), pos2((x0 + 2.0).min(bar.right()), bar.bottom())), 0.0, c(color));
+    }
+    style::sunken(&painter, bar, &p, false);
+    let dim = style::disabled_text(&p);
+    let y = bar.bottom() + 3.0 + font.size / 2.0;
+    let end = if s.fade { format!("{} later: gone", duration_text(s.fade_minutes)) } else { "Never fade".into() };
+    style::label(&painter, bar.left(), y, egui::Align::Min, "Now", font.clone(), dim);
+    style::label(&painter, bar.right(), y, egui::Align::Max, end, font, dim);
 }
 
 /// The apps, each with what its notifications may do.
@@ -178,10 +247,11 @@ fn apps_ui(ui: &mut Ui, st: &State, s: &mut NotificationSettings) {
     let head = Rect::from_min_size(rect.min, vec2(rect.width(), m::LIST_ROW));
     let font = style::small_font();
     let dim = style::disabled_text(&p);
-    style::label(ui.painter(), head.left(), head.center().y, egui::Align::Min, "Applications", style::bold_font(), c(p.panel_text));
+    let (_, baseline) = style::label_with_baseline(ui.painter(), head.left(), head.center().y, egui::Align::Min, "Applications", style::bold_font(), c(p.panel_text));
     let col_x = |k: usize| head.right() - 2.0 - 14.0 - (columns.len() - k) as f32 * COLUMN + COLUMN / 2.0;
+    // Smaller, on the heading's line.
     for (k, name) in columns.iter().enumerate() {
-        style::label(ui.painter(), col_x(k), head.center().y, egui::Align::Center, *name, font.clone(), dim);
+        style::label_on_baseline(ui.painter(), col_x(k), baseline, egui::Align::Center, *name, font.clone(), dim);
     }
     let list = Rect::from_min_max(pos2(rect.left(), head.bottom() + 2.0), rect.max);
     ui.scope_builder(UiBuilder::new().max_rect(list), |ui| {
@@ -231,6 +301,16 @@ fn apps_ui(ui: &mut Ui, st: &State, s: &mut NotificationSettings) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn durations() {
+        assert_eq!(duration_text(15), "15 minutes");
+        assert_eq!(duration_text(60), "1 hour");
+        assert_eq!(duration_text(480), "8 hours");
+        assert_eq!(duration_text(1440), "1 day");
+        assert_eq!(duration_text(10080), "1 week");
+        assert_eq!(duration_text(90), "90 minutes");
+    }
 
     #[test]
     fn times() {

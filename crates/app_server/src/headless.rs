@@ -343,7 +343,7 @@ fn twitcher_overlay(
     out.extend(
         state
             .twitcher
-            .element(&mut state.backend_data.renderer, &shown, geo.size, scale)
+            .element(&mut state.backend_data.renderer, &shown, &output.name(), geo.size, scale)
             .map(crate::render::CustomRenderElements::Overlay),
     );
     out

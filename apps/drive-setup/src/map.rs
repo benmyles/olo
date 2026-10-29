@@ -3,12 +3,12 @@
 //! by what is on it, as in Haiku's DriveSetup.
 
 use olo_kit::{
-    egui::{self, Align, Color32, Id, Pos2, Rect, Sense, Ui, pos2, vec2},
+    egui::{self, Align, Id, Pos2, Rect, Sense, Ui, pos2, vec2},
     files::format_size,
     style::{self, c},
 };
 use olo_system::disks::{Disk, Segment, Volume};
-use olo_theme::{Palette, ThemeMode, mix};
+use olo_theme::{Hue, Palette, mix};
 
 use crate::Item;
 
@@ -22,31 +22,23 @@ pub struct MapResponse {
     pub context: Option<(Item, Pos2)>,
 }
 
-/// The colour for content of `kind` (by family: Linux, Windows and
+/// The look's hue for content of `kind` (by family: Linux, Windows and
 /// everywhere, encrypted, swap, other, nothing).
-fn hue(content: &str) -> [u8; 4] {
+fn hue(content: &str) -> Hue {
     match content {
-        "ext2" | "ext3" | "ext4" | "btrfs" | "xfs" | "f2fs" | "nilfs2" => [120, 160, 222, 255],
-        "vfat" | "exfat" | "ntfs" => [236, 196, 104, 255],
-        "crypto_LUKS" => [176, 146, 214, 255],
-        "swap" => [222, 140, 128, 255],
-        "" => [196, 196, 196, 255],
-        _ => [128, 196, 180, 255],
+        "ext2" | "ext3" | "ext4" | "btrfs" | "xfs" | "f2fs" | "nilfs2" => Hue::Blue,
+        "vfat" | "exfat" | "ntfs" => Hue::Yellow,
+        "crypto_LUKS" => Hue::Purple,
+        "swap" => Hue::Red,
+        "" => Hue::Gray,
+        _ => Hue::Teal,
     }
 }
 
+/// A segment's fill: its hue, softened toward the document colour so
+/// the document's text reads on it in either mode.
 fn fill(p: &Palette, content: &str) -> [u8; 4] {
-    match p.mode {
-        ThemeMode::Light => hue(content),
-        ThemeMode::Dark => mix(hue(content), p.document_background, 0.45),
-    }
-}
-
-fn text_color(p: &Palette) -> Color32 {
-    match p.mode {
-        ThemeMode::Light => Color32::from_gray(24),
-        ThemeMode::Dark => Color32::from_gray(236),
-    }
+    mix(p.hue(hue(content)), p.document_background, 0.5)
 }
 
 /// The widths of `sizes` across `width`: each at least [`MIN_W`], the
@@ -99,16 +91,16 @@ pub fn show(ui: &mut Ui, rect: Rect, disk: &Disk, selected: Option<&Item>) -> Ma
         if i + 1 < n {
             style::vline(&painter, r.right() - 0.5, r.top(), r.bottom(), line);
         }
+        if selected == Some(item) || selected.is_some_and(|s| matches!((s, volume), (Item::Volume(p), Some(v)) if v.cleartext.as_ref().is_some_and(|c| &c.path == p))) {
+            style::selection_wash(&painter, r, &p);
+        }
         // Words when they fit.
         if r.width() >= 44.0 {
-            let color = if volume.is_some() { text_color(&p) } else { c(p.document_text) };
+            let color = c(p.document_text);
             let mid = r.center().y;
             let w = r.width() - 10.0;
             style::label_fit(&painter, r.left() + 5.0, mid - 7.0, Align::Min, &title, egui::FontId::new(style::PLAIN_SIZE - 1.0, style::bold()), color, w);
             style::label_fit(&painter, r.left() + 5.0, mid + 7.0, Align::Min, &detail, style::small_font(), color, w);
-        }
-        if selected == Some(item) || selected.is_some_and(|s| matches!((s, volume), (Item::Volume(p), Some(v)) if v.cleartext.as_ref().is_some_and(|c| &c.path == p))) {
-            painter.rect_stroke(r.shrink(1.0), 0.0, egui::Stroke::new(2.0, c(p.keyboard_navigation)), egui::StrokeKind::Inside);
         }
         let resp = ui.interact(r, Id::unique(("drive-map", disk.path.as_str(), i)), Sense::click());
         if resp.clicked() {
@@ -133,7 +125,7 @@ fn paint_volume(painter: &egui::Painter, p: &Palette, r: Rect, v: &Volume) -> (S
         painter.rect_filled(Rect::from_min_size(r.min, vec2(r.width(), BAND)), 0.0, c(fill(p, "crypto_LUKS")));
     }
     // A thin lighter edge along the top, as raised.
-    style::hline(painter, r.left(), r.right(), r.top() + 0.5, c(mix(fill(p, content), [255, 255, 255, 255], 0.35)));
+    style::hline(painter, r.left(), r.right(), r.top() + 0.5, c(p.gloss));
     (v.title(), format!("{} {}", format_size(v.size), shown.content_name()))
 }
 

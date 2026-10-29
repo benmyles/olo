@@ -3,6 +3,7 @@
 
 use std::{
     cell::{Cell, RefCell},
+    collections::HashMap,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -39,6 +40,9 @@ pub struct WindowMeta {
     /// It was the focused window before an in-place restart, put back at
     /// this time.
     pub restored_focus: Cell<Option<std::time::Instant>>,
+    /// Its place in the stacking before an in-place restart (bottom
+    /// first), put back at this time.
+    pub restored_depth: Cell<Option<(u32, std::time::Instant)>>,
     /// The process and connection that made it (Wayland windows).
     pub owner: std::cell::RefCell<Option<(i32, smithay::reexports::wayland_server::backend::ClientId)>>,
     /// The remembered place it is coming back to, claimed on its first
@@ -76,6 +80,7 @@ impl WindowElement {
             saved_location: Cell::new(Point::default()),
             placed: Cell::new(false),
             restored_focus: Cell::new(None),
+            restored_depth: Cell::new(None),
             owner: std::cell::RefCell::new(None),
             returning: std::cell::RefCell::new(None),
             put_back: Cell::new(false),
@@ -99,8 +104,13 @@ impl WindowElement {
 #[derive(Debug)]
 pub struct Twitch {
     pub apps: bool,
-    /// (workspace, window ids), in workspace order.
+    /// (workspace, window ids), in workspace order, those on each display
+    /// together when grouped by display.
     pub rows: Vec<(u32, Vec<u64>)>,
+    /// The displays it groups windows by, if any (`twitch_displays`), and
+    /// each window's place among them.
+    displays: Vec<crate::twitcher::Display>,
+    on: HashMap<u64, usize>,
     /// Tab's order: every cell (row, index), the most recently used
     /// first, whatever its workspace, so ⌘Tab goes back and forth between
     /// the last two apps wherever they are.
@@ -117,6 +127,10 @@ pub struct Twitch {
     /// The minimized window being shown now, hidden again when passed.
     unhidden: Option<WindowElement>,
 }
+
+/// Twitcher's candidates: its rows, the displays it groups them by and
+/// each window's display (`Twitch`'s fields of the same names).
+type TwitchRows = (Vec<(u32, Vec<u64>)>, Vec<crate::twitcher::Display>, HashMap<u64, usize>);
 
 /// Windows not currently in the space: minimized, or on another workspace.
 /// Kept in stacking order (bottom first).
@@ -473,35 +487,73 @@ impl<B: Backend + 'static> AnvilState<B> {
         v
     }
 
+    /// The displays Twitcher groups windows by, as they stand left to
+    /// right (then top to bottom), each with its name: with a Deskbar on
+    /// every display, as each Deskbar lists only its own display's. None
+    /// otherwise.
+    fn twitch_displays(&self) -> Vec<(Output, String)> {
+        let mut outputs: Vec<Output> = self.space.outputs().cloned().collect();
+        if !self.settings.display.deskbar_on_every_display || outputs.len() < 2 {
+            return Vec::new();
+        }
+        outputs.sort_by_key(|o| self.space.output_geometry(o).map(|g| (g.loc.x, g.loc.y)).unwrap_or_default());
+        let infos = self.output_infos();
+        let names: Vec<String> = outputs
+            .iter()
+            .map(|o| infos.iter().find(|i| i.name == o.name()).map_or_else(|| o.name(), |i| i.display_name()))
+            .collect();
+        // Displays called the same are numbered, left to right.
+        let numbered = |k: usize| {
+            let alike = |n: &&String| **n == names[k];
+            if names.iter().filter(alike).count() < 2 {
+                return names[k].clone();
+            }
+            format!("{} {}", names[k], names[..=k].iter().filter(alike).count())
+        };
+        outputs.into_iter().enumerate().map(|(k, o)| (o, numbered(k))).collect()
+    }
+
     /// Twitcher's rows: for each workspace with any, its apps (one window
     /// each, the one used last) or, for ⌘\`, the focused app's windows,
-    /// the most recently used first.
-    fn twitch_rows(&self, apps: bool) -> Vec<(u32, Vec<u64>)> {
+    /// the most recently used first. Grouped by display
+    /// (`twitch_displays`), each display's come together, in display
+    /// order, and an app is there once for each display it has windows on;
+    /// then also which displays have any, and each window's among them.
+    fn twitch_rows(&self, apps: bool) -> TwitchRows {
         let app = self.focused_window().map(|w| w.app_id());
+        let displays = self.twitch_displays();
+        let column = |w: &WindowElement| {
+            let o = self.display_of(w);
+            displays.iter().position(|(d, _)| Some(d) == o.as_ref()).unwrap_or(0)
+        };
         let count = self.settings.workspace_count.max(1).max(self.workspace + 1);
-        (0..count)
-            .filter_map(|ws| {
-                let mut windows = if ws == self.workspace { self.workspace_windows() } else { self.parked_windows(ws) };
-                windows.sort_by_key(|w| self.recency(w.id()));
-                let ids: Vec<u64> = if apps {
-                    let mut seen = Vec::new();
-                    windows
-                        .iter()
-                        .filter(|w| {
-                            let a = w.app_id();
-                            !seen.contains(&a) && {
-                                seen.push(a);
-                                true
-                            }
-                        })
-                        .map(|w| w.id())
-                        .collect()
-                } else {
-                    windows.iter().filter(|w| Some(w.app_id()) == app).map(|w| w.id()).collect()
-                };
-                (!ids.is_empty()).then_some((ws, ids))
-            })
-            .collect()
+        let (mut rows, mut on) = (Vec::new(), HashMap::new());
+        for ws in 0..count {
+            let windows = if ws == self.workspace { self.workspace_windows() } else { self.parked_windows(ws) };
+            let mut windows: Vec<(usize, WindowElement)> = windows.into_iter().map(|w| (column(&w), w)).collect();
+            windows.sort_by_key(|(c, w)| (*c, self.recency(w.id())));
+            let mut seen = Vec::new();
+            let mut ids = Vec::new();
+            for (c, w) in windows {
+                let a = w.app_id();
+                let wanted = if apps { !seen.contains(&(c, a.clone())) } else { Some(&a) == app.as_ref() };
+                if wanted {
+                    seen.push((c, a));
+                    on.insert(w.id(), c);
+                    ids.push(w.id());
+                }
+            }
+            if !ids.is_empty() {
+                rows.push((ws, ids));
+            }
+        }
+        // Only the displays with any, still in order.
+        let used: Vec<usize> = (0..displays.len()).filter(|d| on.values().any(|c| c == d)).collect();
+        for c in on.values_mut() {
+            *c = used.iter().position(|u| u == c).unwrap_or(0);
+        }
+        let displays = used.iter().map(|&d| crate::twitcher::Display { output: displays[d].0.name(), name: displays[d].1.clone() }).collect();
+        (rows, displays, on)
     }
 
     /// ⌘Tab (`apps`) or ⌘\`: bring the next app, or the focused app's next
@@ -511,7 +563,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// (`twitch_move`).
     pub fn twitch_step(&mut self, apps: bool, back: bool) {
         if self.twitch.as_ref().is_none_or(|t| t.apps != apps) {
-            let rows = self.twitch_rows(apps);
+            let (rows, displays, on) = self.twitch_rows(apps);
             let mut order: Vec<(usize, usize)> =
                 rows.iter().enumerate().flat_map(|(r, row)| (0..row.1.len()).map(move |i| (r, i))).collect();
             if order.len() < 2 {
@@ -535,7 +587,8 @@ impl<B: Backend + 'static> AnvilState<B> {
                 .unwrap_or(order.len() - 1);
             let (row, index) = order[start];
             let stacks = vec![(self.workspace, self.space.elements().cloned().collect())];
-            self.twitch = Some(Twitch { apps, rows, order, row, index, home: self.workspace, focus, stacks, unhidden: None });
+            self.twitch =
+                Some(Twitch { apps, rows, displays, on, order, row, index, home: self.workspace, focus, stacks, unhidden: None });
         }
         let Some(t) = self.twitch.as_mut() else { return };
         let n = t.order.len();
@@ -545,7 +598,8 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     /// ←/→ (`dx`) along the chosen row, ↑/↓ (`dy`) to the row of the
-    /// workspace above or below, starting at its front-most.
+    /// workspace above or below, starting at its front-most (on the same
+    /// display, grouped by display, if it has any there).
     pub fn twitch_move(&mut self, dx: i32, dy: i32) {
         let Some(t) = self.twitch.as_mut() else { return };
         if dy != 0 {
@@ -553,7 +607,9 @@ impl<B: Backend + 'static> AnvilState<B> {
             if row == t.row {
                 return;
             }
-            (t.row, t.index) = (row, 0);
+            let on = |id: &u64| t.on.get(id).copied().unwrap_or(0);
+            let here = on(&t.rows[t.row].1[t.index]);
+            (t.row, t.index) = (row, t.rows[row].1.iter().position(|id| on(id) == here).unwrap_or(0));
         } else {
             let n = t.rows[t.row].1.len() as i32;
             t.index = (t.index as i32 + dx).rem_euclid(n) as usize;
@@ -617,14 +673,19 @@ impl<B: Backend + 'static> AnvilState<B> {
             let entries: Vec<_> = ids
                 .iter()
                 .filter_map(|id| self.window_by_id(*id))
-                .map(|w| crate::twitcher::Entry { app_id: w.app_id(), title: (!t.apps).then(|| w.title()) })
+                .map(|w| crate::twitcher::Entry {
+                    app_id: w.app_id(),
+                    title: (!t.apps).then(|| w.title()),
+                    display: t.on.get(&w.id()).copied().unwrap_or(0),
+                })
                 .collect();
             if entries.len() != ids.len() {
                 return None;
             }
             rows.push(crate::twitcher::Row { workspace: *ws, entries });
         }
-        Some(crate::twitcher::Shown { rows, row: t.row, index: t.index, letters: self.settings.keyboard.hints })
+        let (displays, letters) = (t.displays.clone(), self.settings.keyboard.hints);
+        Some(crate::twitcher::Shown { rows, displays, row: t.row, index: t.index, letters })
     }
 
     /// ⌘ released: the chosen window stays in front, the rest where they
@@ -1049,8 +1110,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         let changed = theme != a.effective_theme || night != a.night_light_active;
         self.settings.appearance.effective_theme = theme;
         self.settings.appearance.night_light_active = night;
-        if (theme::set_mode(theme) || force) && B::IS_SESSION {
-            crate::toolkits::publish(theme);
+        let a = &self.settings.appearance;
+        if (theme::set(a.palette()) || force) && B::IS_SESSION {
+            crate::toolkits::publish(a.icon_theme.clone(), a.colors.clone(), theme);
         }
         let kelvin = night.then_some(self.settings.appearance.night_light.temperature);
         if kelvin != self.night_light || self.white_point.is_none() {

@@ -118,7 +118,8 @@ impl App for Picker {
         }
 
         // Dim everything but the selection.
-        let dim = Color32::from_black_alpha(90);
+        let p = style::palette(painter.ctx());
+        let dim = style::c(p.scrim);
         let sel = self.drag.filter(|(w, _, _)| *w == window).map(|(_, a, b)| Rect::from_two_pos(a, b));
         match sel {
             Some(s) => {
@@ -130,16 +131,17 @@ impl App for Picker {
                 ] {
                     painter.rect_filled(r, 0.0, dim);
                 }
-                painter.rect_stroke(s, 0.0, Stroke::new(1.0, Color32::WHITE), egui::StrokeKind::Outside);
+                painter.rect_stroke(s, 0.0, Stroke::new(1.0, style::c(p.desktop_text)), egui::StrokeKind::Outside);
                 // Its size in pixels, under the corner being dragged.
                 let k = screen.image.width() as f32 / rect.width();
                 let text = format!("{} × {}", (s.width() * k).round(), (s.height() * k).round());
                 let at = s.right_bottom() + vec2(6.0, 6.0);
-                let g = painter.layout_no_wrap(text, style::plain_font(), Color32::WHITE);
+                let g = painter.layout_no_wrap(text, style::plain_font(), style::c(p.tooltip_text));
                 let bg = Rect::from_min_size(at, g.size() + vec2(8.0, 4.0));
                 let bg = bg.translate(vec2((rect.right() - bg.right()).min(0.0), (rect.bottom() - bg.bottom()).min(0.0)));
-                painter.rect_filled(bg, 3.0, Color32::from_black_alpha(160));
-                painter.galley(bg.min + vec2(4.0, 2.0), g, Color32::WHITE);
+                painter.rect_filled(bg, 3.0, style::c(p.tooltip_background));
+                painter.rect_stroke(bg, 3.0, Stroke::new(1.0, style::c(p.control_border)), egui::StrokeKind::Inside);
+                painter.galley(bg.min + vec2(4.0, 2.0), g, style::c(p.tooltip_text));
             }
             None => {
                 painter.rect_filled(rect, 0.0, dim);

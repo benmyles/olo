@@ -215,6 +215,11 @@ fn parse<T: serde::de::DeserializeOwned>(value: &Value) -> Result<T, Value> {
     serde_json::from_value(value.clone()).map_err(|e| error("Internal", format!("invalid parameters: {e}")))
 }
 
+/// The core's refusal of an item it was sent.
+fn refused(e: crate::fields::Refused) -> Value {
+    error("Internal", e.to_string())
+}
+
 fn new_id() -> String {
     const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
     (0..26).map(|_| ALPHABET[crate::generate::below(ALPHABET.len())] as char).collect()
@@ -384,27 +389,39 @@ fn invoke_method(account: &mut FakeAccount, method: &str, params: &Value) -> Res
         }
         "ItemsCreate" => {
             let params: ItemCreateParams = parse(&params["params"])?;
+            crate::fields::check_params(&params).map_err(refused)?;
             let vault = vault_mut(account, &params.vault_id.clone())?;
             (value(&computed(create(vault, params)))?, true)
         }
         "ItemsCreateAll" => {
             let vault = vault_mut(account, arg(params, "vault_id")?)?;
             let list: Vec<ItemCreateParams> = parse(&params["params"])?;
-            let responses: Vec<Value> = list.into_iter().map(|p| json!({ "content": computed(create(vault, p)) })).collect();
+            let responses: Vec<Value> = list
+                .into_iter()
+                .map(|p| match crate::fields::check_params(&p) {
+                    Ok(()) => json!({ "content": computed(create(vault, p)) }),
+                    Err(e) => json!({ "error": { "type": "other", "message": e.to_string() } }),
+                })
+                .collect();
             (json!({ "individualResponses": responses }), true)
         }
         "ItemsPut" => {
             let mut item: Item = parse(&params["item"])?;
+            crate::fields::check_item(&item).map_err(refused)?;
             let vault = vault_mut(account, &item.vault_id.clone())?;
             let current = vault.items.iter_mut().find(|i| i.id == item.id).ok_or_else(|| error("Internal", "item not found"))?;
             if current.version != item.version {
-                return Err(error("Internal", "the item has changed since you opened it (incorrect item version)"));
+                return Err(error("Internal", "incorrect item version"));
             }
             item.version += 1;
             item.updated_at = Utc::now();
             item.created_at = current.created_at;
+            // The core works out one-time codes and key attributes; an
+            // address is made from its details.
             for field in &mut item.fields {
-                field.details = None;
+                if field.field_type != ItemFieldType::Address {
+                    field.details = None;
+                }
             }
             *current = item.clone();
             vault.vault.content_version += 1;
@@ -497,7 +514,7 @@ pub fn sample(account: &str) -> FakeAccount {
         ItemField::new("type", "type", ItemFieldType::CreditCardType, "Visa"),
         ItemField::new("ccnum", "number", ItemFieldType::CreditCardNumber, "4111 1111 1111 1111"),
         ItemField::new("cvv", "verification number", ItemFieldType::Concealed, "123"),
-        ItemField::new("expiry", "expiry date", ItemFieldType::MonthYear, "202908"),
+        ItemField::new("expiry", "expiry date", ItemFieldType::MonthYear, "08/2029"),
     ];
     let mut note = ItemCreateParams::new(ItemCategory::SecureNote, "", "Wi-Fi at the cabin");
     note.notes = Some("Network: Pinecone\nThe router is behind the bookshelf.".into());
@@ -513,6 +530,17 @@ pub fn sample(account: &str) -> FakeAccount {
         ItemField::new("lastname", "last name", ItemFieldType::Text, "Doe"),
         ItemField::new("email", "email", ItemFieldType::Email, "jane@example.com"),
         ItemField::new("phone", "phone", ItemFieldType::Phone, "+1 555 0100"),
+        ItemField::new("birthdate", "birth date", ItemFieldType::Date, "1990-04-12"),
+        ItemField {
+            details: Some(ItemFieldDetails::Address(Some(crate::AddressFieldDetails {
+                street: "12 Birch Lane".into(),
+                city: "Portland".into(),
+                state: "OR".into(),
+                zip: "97201".into(),
+                country: "us".into(),
+            }))),
+            ..ItemField::new("address", "address", ItemFieldType::Address, "12 Birch Lane, Portland, OR, 97201, us")
+        },
     ];
     // The local test site's login has a one-time code too (for filling
     // codes in Chrome).

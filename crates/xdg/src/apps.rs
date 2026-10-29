@@ -64,6 +64,8 @@ pub fn our_app(app_id: &str) -> Option<(&'static str, &'static str)> {
         .or(match short {
             "preferences" => Some(("Preferences", "preferences")),
             "notifications" => Some(("Notifications", "notifications")),
+            // Its windows are the password alerts polkit and the keyring ask for.
+            "polkit-agent" => Some(("Authentication", "authentication")),
             "kit-demo" => Some(("Kit Demo", "application")),
             _ => None,
         })

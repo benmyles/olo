@@ -4,7 +4,7 @@
 //! or asks again (a wrong password comes back with a warning).
 
 use olo_kit::{
-    Cx, WindowId, WindowOptions,
+    Cx, WindowId,
     egui::{self, Key, Rect, pos2, vec2},
     metrics as m,
     style::{self, c},
@@ -47,8 +47,13 @@ impl Drop for Ask {
     }
 }
 
+/// The window's height: the title, the description, the fields and the
+/// check box, the note under them, and the buttons.
 fn height(kind: Kind, props: &Props) -> u32 {
-    let mut h = widgets::alert_height(&props.description) as f32 + m::LABEL_ROW + m::TIGHT + m::LABEL_ROW + m::SPACING;
+    let mut h = 2.0 * m::WINDOW_INSET + m::LABEL_ROW + m::TIGHT + m::LABEL_ROW + m::SPACING + m::CONTROL_HEIGHT;
+    if !props.description.is_empty() {
+        h += style::plain_text_height(&props.description, super::COLUMN) + m::SPACING;
+    }
     if kind == Kind::Password {
         h += (m::CONTROL_HEIGHT + m::SPACING) * if props.password_new { 2.0 } else { 1.0 };
     }
@@ -65,7 +70,7 @@ fn title(props: &Props) -> &str {
 /// Open a window for a new prompt.
 pub fn open(cx: &mut Cx, id: u64, kind: Kind, props: Props) -> (WindowId, Ask) {
     let h = height(kind, &props);
-    let win = cx.open_window(WindowOptions::new(title(&props), super::WIDTH, h).min_size(super::WIDTH, h).max_size(super::WIDTH, h));
+    let win = cx.open_window(super::alert_options(title(&props), h));
     let choice = props.choice_chosen;
     (win, Ask { id, kind, props, password: String::new(), confirm: String::new(), choice, error: String::new(), checking: false, refocus: false })
 }

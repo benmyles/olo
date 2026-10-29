@@ -2,8 +2,8 @@
 
 Olo is a Wayland desktop environment in Rust that captures the look and
 feel of BeOS R5, with deliberate modern polish. **North star: everything is
-pixel-perfect and beautiful, in light, dark and night modes, at 2× (and any
-other) scale.** Every deviation from BeOS should be an intentional
+pixel-perfect and beautiful, in light, dark and night modes, at 1×, 1.5×
+and 2× (and any other scale).** Every deviation from BeOS should be an intentional
 improvement, never an accident.
 
 **Wayland only, no X11.** app_server is a Wayland compositor and nothing
@@ -92,6 +92,14 @@ compiler cache (`cargo install kache --locked`, then
 restored instead of rebuilt, in any target directory or worktree. It is
 ben's setup, so build as ben (as above); `kache doctor` checks it,
 `kache stats --last-build` shows the hits, `KACHE_DISABLED=1` bypasses it.
+Builds are kept lean on memory and disk. Dev builds keep only line tables (file and
+line in panics and backtraces), and dependencies keep no debuginfo, so debug binaries
+stay small and cheap to link. Full debuginfo made each one 600–850 MB, and twelve
+links at once ran a 30 GiB laptop out of memory. On ben's machine,
+`~/.cargo/config.toml` also caps `build.jobs` at 6 and links with lld
+(`-C link-arg=-fuse-ld=lld`). `~/.config/kache/config.toml` caps the cache at
+15 GiB and has kache prune units no build used for 3 days and target dirs idle
+for 14 days; otherwise a target dir only grows (olo's reached 439 GiB).
 
 ## Writing an app
 
@@ -182,8 +190,9 @@ fn main() {
   with the menu bar of its last active window, flattened
   (`commands::menus(pid)`: path, label, command, keys as shown, enabled,
   checked), and chooses an enabled one as if from the menu
-  (`commands::invoke(pid, command)`). Both block for at most a second;
-  call them off the UI thread.
+  (`commands::invoke(pid, command)`), logging the command and who asked
+  (`asked to choose a menu command`, the sender's name and pid). Both
+  block for at most a second; call them off the UI thread.
 * **What a window shows, for agents** (`commands::tree(pid)`, automatic):
   `{"tree":true}` on the same socket turns on egui's AccessKit output for
   one frame of every window and answers with a `WindowTree` per window
@@ -197,6 +206,12 @@ fn main() {
   egui gives its own widgets roles and names; text
   painted by hand is only pixels, so `style::label` and `Cell` describe
   theirs with `style::describe_text(ctx, role, text, rect, selected)`.
+* **What looks off, for agents** (`commands::review(pid)`, automatic):
+  `{"review":true}` on the same socket runs the layout review (see
+  "Layout review" under Testing) over the next frame of every window and
+  answers with a `WindowReview` per window (title, content size, scale,
+  findings: level, kind, what and where); `olo-screen review` and
+  `tsession review` print them.
 * **How a window keeps up** (automatic): `{"frames":true}` on the same
   socket answers, per window, the frames drawn since the last ask and
   the slowest and total time drawing them (`FrameTimes`, microseconds
@@ -233,7 +248,21 @@ fn main() {
 * **Raw keys** (`WindowOptions::raw_keys()`): for windows that consume the
   keyboard themselves (Terminal). ⌘-letter combinations reach the app as
   key events instead of menu shortcuts or clipboard events (⌘⇧C/X/V still
-  become Copy/Cut/Paste), and Alt+text is delivered as text.
+  become Copy/Cut/Paste), and Alt+text is delivered as text. With ⌘ the
+  command key (`KeyboardSettings::command_key`, followed live by
+  `theme_watch::command_key`), app_server sends ⌘ to a terminal as its
+  *right* Ctrl plus Shift and every physical Ctrl as the left one; the
+  kit watches Control_R, and only then is a key's
+  `egui::Modifiers::command` set, so `command` means ⌘ and `ctrl` any
+  Ctrl. Only `command` chords look for menu shortcuts, and the window's
+  menus show their Ctrl+Shift shortcuts as the ⌘ chord pressed ("⌘T",
+  not "⇧⌘T", `Menu::ctrl_shift_as_command`), in the bar, context menus
+  and the list agents read. Outside Olo, or with ⌘ off, `command` is
+  any Ctrl, as before. egui's keyboard navigation is off in them: Tab,
+  ⇧Tab and the arrows never move focus onto the window's controls (its
+  menu titles, a tab strip), where the next Return or Space would press
+  one and switch tabs under someone typing; a text field keeps focus it
+  is given (`platform.rs`, `keep_focus_off_controls`).
 * Background work goes on threads; post results with `Proxy::send` and
   handle them in `App::message` (then `cx.redraw(window)`).
 * Periodic refresh (clocks, graphs): `ui.ctx().request_repaint_after(duration)`.
@@ -374,8 +403,11 @@ app saying so twice; keep context menu commands the bar's. Keys that
 aren't a ⌘ shortcut of the window's own (a desktop shortcut from
 `olo_protocol::shortcuts`, a plain key such as Space for Quick Look)
 are named with `.keys("⌃⌘H")` after the item (`Action::keys`); they are
-only shown, whoever gets the keys acts on them. `Action::key_label()` is
-what's shown, and agents read it as the item's `value`.
+only shown, whoever gets the keys acts on them, and shown in place of
+the item's own shortcut if it has one. `Action::key_label()` is what's
+shown, and agents read it as the item's `value`. A shortcut on = is
+pressed with + too (`Shortcut::pressed_by`: ⇧= types +), as ⌘+ zooms in
+on a Mac.
 
 In a list of windows, `.minimized(true)` after an item marks a minimized
 one: a hollow diamond where the check mark goes and a lighter label
@@ -384,23 +416,29 @@ agents read `minimized` on its `MenuItem` node.
 
 ### Widgets (`olo_kit::widgets`)
 
-`StringView` (a label; `.dim(true)` for hints, `.wrap(true)` for a paragraph, `.color(c)`), `Button` (`.default(true)` for the Enter button), `CheckBox`, `RadioButton`,
-`Button::pushed(true)` for a toolbar toggle that stays down,
+`StringView` (a label; `.dim(true)` for hints, `.wrap(true)` for a paragraph, `.color(c)`; a wrapped one is `CONTROL_HEIGHT` tall plus a line's height, about `LABEL_ROW`, for each line after the first, so size a fixed area for it that way), `Button` (`.default(true)` for the Enter button; `.small()` is `SMALL_BUTTON_HEIGHT` tall in the small font, for actions inside something dense: a card, a list row), `CheckBox`, `RadioButton`,
+`Button::pushed(true)` for a toolbar toggle that stays down (shaded in,
+its label level with its row's; only a button held down by the pointer
+moves its label, a device pixel),
 `TextControl` (`.label("Name:").divider(x)`), `TextView` (`.highlight(&f)`
 colours it: `f(text, font, colour)` returns a `LayoutJob` in sections, a `widgets::Highlighter`,
-as Log Viewer's syntax highlighting does), `Slider`
+as Log Viewer's syntax highlighting does; `.empty_text("Select a line…")` says what goes
+there while it is empty, as a list's does), `EmptyState` (a whole view with nothing it can
+show: "No sound server is running." in the middle of the space left, under `.icon(name)`, the
+panel's or app's own; use it rather than a lone dim `StringView` in the corner of an empty
+window), `Slider`
 (`.label().value_text().limits()`), `MenuField` (pop-up choice), `BBox`
 (etched group box with label), `separator`, `StatusBar` (progress; `level_bar(painter, rect, fraction,
 fill)` paints just its bar, for list cells),
 `ThumbnailPicker` (a wrapping grid of `Thumbnail{texture, color, label}`
-to choose one from, ringed when chosen, arrow keys move; Backgrounds'
+to choose one from, the chosen one on a `style::selection_plate`, arrow keys move; Backgrounds'
 wallpapers), `CellGrid` (Pulse's LED meters: a heatmap of small lit cells in sunken
 wells, `GridCell{color, mark, name, selected}` each; `.rows(n)
 .cell_size(px)` fixes its height, and with more cells than fit they
 shrink so more rows and columns fit the same space; `.slots(n)` shows
 at least n wells, `.fill()` wells across the whole width; each cell is
 clickable, named for agents, its name a tooltip, the selected one
-ringed; `show(ui).clicked` is the cell clicked, by index),
+edged with the selection's hairline; `show(ui).clicked` is the cell clicked, by index),
 `ScrollView` (`show`, `show_rows` for virtualised content, `show_in(ui,
 rect, |ui, viewport|)` for content you lay out yourself, `reveal`,
 `ScrollView::scroll_to(ctx, id, offset)`, `.auto_hide(true)` to drop the
@@ -420,7 +458,9 @@ edges; on a draggable list the name column and selected rows drag the
 items; `.empty_text("No lines match.")` says so in an empty list; a cell
 draws plain text with `text`/`text_with` or sections of their own colours
 with `text_job`), `TabView`, `TabStrip` (a row of document tabs under
-a menu or tool bar, `STRIP_HEIGHT` (30) tall, roomier than a window tab: `StripTab { label, icon, color,
+a menu or tool bar, `STRIP_HEIGHT` (30) tall, roomier than a window tab,
+each tab `STRIP_ROW` (26) of it standing on the bottom edge, its icon
+under the menu bar's first title: `StripTab { label, icon,
 status }` each; tabs share the row up to `STRIP_TAB_MAX` (220) wide,
 their titles cut short with "…", the others divided by a hairline; the
 selected one is a raised tab with rounded top corners that opens into
@@ -428,17 +468,68 @@ the content (`.opens_into(fill, ink)` when the content isn't the panel,
 e.g. Terminal's screen, so the tab takes its colour) or, with
 `.closed()`, stands on the strip's edge (content that isn't that tab's
 alone); `.group(name, colour)` leads the row with the name in a chip of
-its colour and gives every tab a band of it along its top; close boxes,
+its colour (the chip alone says whose the tabs are: no band or line
+runs along them, nothing to clash with their icons); close boxes,
 middle-click to close, a + button, drag along the row to reorder; it
 returns a `StripAction` (`Select`, `Close`, `New`, `Menu(i, pos)` for a
 right-click, `Move { from, to }`); each tab is a `Tab` in the
-accessibility tree with its status in its name), `color_well`, `heading`,
+accessibility tree with its status in its name; `.side()` stands the tabs
+down the left of the content instead, as Tracker's list rows: one
+`STRIP_ROW` (26) tall each in a column `STRIP_SIDE_WIDTH` (180) wide by
+default, the first at the strip's top (selected, it hangs from the menu
+bar, whose line is its edge), the group's chip a row above it, the
+chip's name and the tabs' icons under the menu bar's first title, a New
+Tab row after the last, the selected tab opening right into the content, and a grip along the right edge (a `Splitter`, "Tab Width")
+that returns `Resize { width, done }` between `STRIP_SIDE_MIN` and
+`STRIP_SIDE_MAX` for the app to keep, `done` once the drag ends; drag
+up and down to reorder), `color_well`, `heading`,
 `form_label`, `window_content`, `button_row`, `context_menu`,
 `popup_menu_at` / `popup_result`, `InlineEdit` (Tracker-style rename in
 place: returns `Editing` / `Commit` / `Cancel`; pads by `INLINE_PAD`, which
 matches `style::text_highlight`), `alert(ui, icon, message, &buttons)` (a
 BAlert; open its window with `WindowOptions::alert(title, message)`; the
-last button is the default, Escape picks the first).
+last button is the default, Escape picks the first). A password alert
+that talks to PAM (the polkit agent, Terminal's sudo) keeps a
+`widgets::Conversation` (PAM's `prompt` and whether it echoes, the
+`answer`, PAM's latest `info`, an `error`, `checking` while an answer is
+with PAM; `ask`, `sent`, `ready`, `can_submit`, and `clear_answer`,
+which zeroes the answer's bytes) and shows it with
+`widgets::conversation(ui, &mut conv, divider, width)`: the answer field
+labelled with the prompt, focused while PAM waits, and under it
+Checking…, the error or PAM's message; true when entered with Return.
+
+Cards of different sizes (`olo_kit::masonry`, the history's Cards
+view): `masonry::columns(width, min, gap)` fits columns of at least
+`min`; each item gives (span, height at that width) and
+`masonry::arrange(cols, column, gap, &items)` places them in order, each
+where the columns are lowest, filling the hole a wide one would leave
+under its shorter column with the next small items that fit (looking
+four ahead, so the order hardly changes); it returns their rects and the
+height of the lot. `masonry::neighbour(&rects, i, Step::Down)` is where
+an arrow key goes from item `i`, by where things are. Each card is
+`style::card(painter, r, palette, hover, selected)`: rounded by
+`metrics::CARD_RADIUS`, a hairline edge and a soft shadow, its content
+`metrics::CARD_INSET` in; selected, it lies in the selection's colours
+on a deeper shadow (picked up, not outlined). Its colours are
+`style::card_ink(palette)` (`CardInk`: `gutter` between cards, `card`,
+`edge`, `hover`, `text`, `dim`, and `well` for something set into a
+card, a message's balloon; `dim` and `well` are the text colour,
+see-through, so they read on a selected card too) and
+`style::card_paper(palette)` the gutter and card as `Rgba` (a
+`ScrollView`'s background). On dark the card is a lift above the paper,
+not a darker hole in it. Don't head a card with a coloured band or a
+little yellow tab: a card is not a window, and a tab on every one
+repeats the window's own. Smaller pieces in
+`style`: `pill(painter, x, cy, text, font, fill,
+ink)` (a badge or count; `pill_width`, `pill_height`), `ink_on(fill)`
+(black or white, whichever reads on an app's own colour) and
+`monogram(painter, r, letter, fill)` (a lit, rounded letter tile: the
+icon of something with a colour but no icon, a website or a contact).
+`icons::paint_round(painter, r, tex, ring)` draws a person's picture in
+a circle with a hairline ring; `icons::paint_cover(painter, r, tex,
+radius)` a photo or artwork covering `r`, cropped about the middle,
+never stretched. Notifications: see `olo_kit::notify` under
+Notifications.
 
 Text fields behave the same everywhere: click places the caret,
 double-click selects a word, triple-click the line, and right-click opens
@@ -478,7 +569,10 @@ Name/Size/Modified list, "Save as:" field, Replace confirmation);
 selected one, or the one shown). Open it
 in its own window of `PANEL_SIZE`, call `panel.ui(ui)` each frame and act
 on the `PanelResult` (`Chosen(path)` / `Cancelled`). Toolbars are
-`metrics::TOOLBAR_HEIGHT` tall. `style::find_font(families, weight)`
+`metrics::TOOLBAR_HEIGHT` tall (a row of controls, `TIGHT` above and
+below), with their line under them (`style::hline` at the bottom); what
+follows starts a line lower (`style::hairline`), so at 1.5× it is a pixel
+down, not a point and a half, and the controls stay centred. `style::find_font(families, weight)`
 loads an installed font as `(bytes, face index)` (call it off the UI
 thread); `style::add_document_font(family, bytes, index)` makes it
 `FontFamily::Name(family)` in every window of the app, including ones
@@ -516,7 +610,13 @@ top, text)` writes wrapped text in it and `alert_buttons(ui, column,
 buttons, ready)` puts the buttons along its bottom, the default one
 disabled until `ready`, with Enter and Escape) in a window opened
 with `WindowOptions::alert(title, message)` (sized for the message);
-icons are BeOS's `warning`, `stop`, `info` and `idea`. The kit makes the
+an alert with fields is fixed at a height it works out before its first
+frame, with `style::plain_text_height(text, width)` for its wrapped
+text (the column is `ALERT_WIDTH`, or the window's own width, less
+`ALERT_TEXT_X` and `metrics::WINDOW_INSET`): the UI face's own advances
+and line height, wrapped as egui wraps, never a line short. A fixed
+window (min size = max size) is always the size it asks for: app_server
+doesn't give it a size remembered from before a restart. Icons are BeOS's `warning`, `stop`, `info` and `idea`. The kit makes the
 alert a child (`xdg_toplevel.set_parent`) of the app's focused window, or
 of `WindowOptions::parent(id)` (or `parent_opt(Option<id>)`) when given, and app_server opens any
 window with a parent over it as BAlert does: centred across, a quarter
@@ -542,25 +642,76 @@ of the way down.
    max_width)` instead, which ends it with "…" rather than clipping a
    letter in half or running into its neighbour (agents still read the
    whole text). Fonts: `style::plain_font()`, `style::bold_font()`,
-   `style::italic_font()`, `style::mono_font(size)`. Highlight selected
+   `style::italic_font()`, `style::mono_font(size)`. Glyphs the primary
+   face lacks (▸, →, ⌘) come from fallback faces the kit shifts onto the
+   primary's baseline, so they sit on the line with the letters;
+   `style::baseline_offset(galley)` is that baseline even when a line
+   starts with one. Highlight selected
    text with `style::text_highlight(galley, origin, size, pad)` (cap height
    to baseline, so every label's highlight is the same height); drag-select
    bands with `style::selection_band`. Keys as on a Mac menu ("⇧⌘←", each
    symbol on the text's baseline, though they come from a fallback font):
-   `style::key_combo(painter, right_center, keys, color)`.
-4. **Lines are one logical pixel** (`style::hline`, `vline`, `frame_rect`,
-   `bevel`, `sunken`, `raised`). Snap rects to the pixel grid
-   (`style::snap`). No blurry half-pixel lines. An outline's fold mark
+   `style::key_combo(painter, right_center, keys, color)`. A failure
+   beside text (an error's title, a failed row) leads with
+   `style::stop_mark(painter, rect, palette)`, a crisp vector stop sign
+   (12 px reads where an alert's icon would be mud); set it level with
+   the text's capitals with `style::cap_middle(galley, size)`. Say what
+   a thing is with its icon, a chip or a mark, not a coloured band or
+   edge along it: those clash with icons and look unfinished.
+4. **Selection looks the same everywhere**: the palette's list selection
+   (`list_selected_background`, `list_selected_item_text`, BeOS's
+   `B_LIST_SELECTED_*`), under or over the thing, never a thick coloured
+   outline. `style::selection_ink(palette)` gives its `SelectionInk`:
+   `fill`, `edge` (a hairline for a selected thing that stands on its
+   own, so its shape stays crisp), `text` and `dim` (`text`,
+   see-through, for captions on it). Pick by what is selected: a list
+   row or an icon's name sits on `fill`; a card is `style::card(…,
+   selected)`; a picture, swatch or preview stands on
+   `style::selection_plate(painter, r, palette)` (a rounded ground
+   `metrics::SELECTION_PAD` beyond it, painted first, as Tracker sets a
+   selected icon on its highlight); a part of something flush with its
+   neighbours (a bar's segment, a map's partition) takes
+   `style::selection_wash(painter, r, palette)` (the fill, see-through,
+   with its hairline inside); something round (a colour swatch) a ring
+   of `fill` with an `edge` stroke. `keyboard_navigation` is only where
+   the keys are (focus), never what is selected. The edge colour is
+   `Palette::selection_edge()`, so app_server's own drawing (Twitcher's
+   chosen app, on the same plate) matches the kit's.
+5. **Lines are one logical pixel** (`style::hline`, `vline`, `frame_rect`,
+   `bevel`, `sunken`, `raised`), made a whole number of device pixels:
+   `style::line_pixels(ppp)` (1 at 1× and 1.5×, 2 at 2×), so at every
+   scale all lines are one weight and crisp. A line ending at an edge
+   is `hline_above(…, bottom, …)` / `vline_left_of(…, right, …)`, not
+   `hline(…, bottom - 1.0, …)` (a pixel off at 1.5×); a stroke is
+   `Stroke::new(style::hairline(ctx), c)`, not 1.0 (it blurs at 1.5×);
+   what fills inside a frame of n lines is `style::inset(ctx, r, n)`,
+   not `r.shrink(n)` (a crack at 1.5×). Snap rects to the pixel grid
+   (`style::snap`; something of a set size centred on a point,
+   `style::snap_centred`, which keeps its size), and lay out things that
+   tile (panes, a bar's segments) in device pixels, so no seam opens
+   between them. No blurry half-pixel lines. Heights and widths are on
+   the 2-point grid (even numbers of points: `metrics`, `menu`, a
+   button's width), so they are whole device pixels at 1×, 1.5× and 2×
+   and nothing is left a pixel over (`kit_sizes_on_the_two_point_grid`
+   checks the kit's). Two fonts side by side on one line share a
+   baseline: `style::label_with_baseline` for the first gives it,
+   `style::label_on_baseline` puts the others on it (each centred on its
+   own lands a pixel apart at 1.5×). See "Fractional scaling". An outline's fold mark
    is `style::latch(painter, rect, open, color)` (BOutlineListView's
    triangle: right when folded, down when open).
-5. **Icons**: `olo_kit::icons::paint(painter, rect, "name")` with names
+6. **Icons**: `olo_kit::icons::paint(painter, rect, "name")` with names
    from `data/icons/manifest.txt` (or freedesktop names / absolute paths).
    Sizes 16 (lists, Deskbar), 32 (Tracker list), 48–64 (Tracker icon view),
-   128 (About boxes). Icons and the wordmark are drawn in the theme chosen
+   128 (About boxes). An icon is drawn at its texture's own size, a
+   texture pixel to a device pixel, centred in the rect; a size Olo has no
+   bitmap for (20 at 1.25×) is averaged down from the next one up when it
+   loads. Icons and the wordmark are drawn in the theme chosen
    in Preferences ▸ Themes, and redrawn when it changes; never keep an
    icon's texture yourself. Olo's wordmark is `olo_kit::brand::wordmark(painter,
    rect, dark)` (from `data/brand` or the theme's `brand/`, shrunk crisply to the height asked
-   for; `wordmark_width(h)` to lay it out); Deskbar's tile shows it alone,
+   for; `wordmark_width(h, dark)` to lay it out, as the light and dark
+   versions can differ in shape; `wordmark_centred_in` centres it across a
+   rect on device pixels, for a column of them); Deskbar's tile shows it alone,
 centred (beside the `olo` mark it read as "o olo"). Image previews: `icons::thumbnail(ctx, path, size)`
    decodes off-thread and returns `None` until ready (it repaints when
    done); place it with `icons::fit(ctx, &tex, bounds)` so it is never
@@ -568,7 +719,7 @@ centred (beside the `olo` mark it read as "o olo"). Image previews: `icons::thum
    style guide, subject template and required generation workflow
    (sunburst at max quality, against the reference set, candidates
    reviewed on a contact sheet).
-6. BeOS idioms to keep: yellow tab decorator (app_server's job), menu bar in
+7. BeOS idioms to keep: yellow tab decorator (app_server's job), menu bar in
    every document window, ⌘ shortcuts (Ctrl on the wire: app_server's
    `keymap` turns the Mac ⌘ key into Ctrl for clients, Caps Lock too, and
    keeps ⌘Tab / ⌘\` (Twitcher), ⌘ arrows and ⌘⌫ and the desktop shortcuts
@@ -580,8 +731,8 @@ centred (beside the `olo` mark it read as "o olo"). Image previews: `icons::thum
    client), keyboard focus shown as a navigation-blue underline/frame,
    Tracker-style spatial behaviour. Modernise freely where it helps
    (smooth scrolling, hi-dpi, search fields, sensible defaults).
-7. **Everything fits** at the window's size, light and dark, at 1× and
-   2×, with the longest things it may show: nothing runs past the area
+8. **Everything fits** at the window's size, light and dark, at 1×,
+   1.5× and 2×, with the longest things it may show: nothing runs past the area
    it was given or over a neighbour, and no fixed text is cut short. A
    fixed-size window (a preference panel, a dialog) proves it with a
    layout lint test (see "Layout lint" under Testing). Kit containers and
@@ -612,11 +763,27 @@ hands both to app_server, so clients never see the sockets disappear.
   ids, matches globals by interface and order, commits each window's
   role and acknowledges its configure, then commits the contents. The
   waiting requests go on after that. The program never notices, and the
-  window returns to its place (same pid, new client: `layout.rs`).
+  window returns to its place and depth (same pid, new client;
+  `Placement::depth` keeps the stacking whatever order programs
+  reconnect in: `layout.rs`).
 * The proxy shows programs only the globals it can decode
   (`wlproxy/src/interfaces.rs`); add a protocol there before an outside
-  program can use it. Set `OLO_WLPROXY_DEBUG=1` for the session
-  (`tsession` passes it on) to log every replayed request. Set
+  program can use it. That is every global app_server has for programs
+  except four it keeps from outside ones: the session lock, screen
+  capture (screen sharing will come through a portal), security contexts
+  (Flatpak's sandboxes come through the proxy instead) and explicit sync
+  (a restart can't keep a buffer's release points). Clipboard tools and
+  password managers (1Password: arboard → wl-clipboard-rs) need data
+  control (`ext_data_control_v1`, `zwlr_data_control_manager_v1`), so
+  they copy and paste even without a focused window. GTK asks for
+  server-side decorations through `org_kde_kwin_server_decoration`, input
+  methods use `zwp_input_method_v2`, and idle notifications track
+  app_server's own idle timer. Requests whose effect lasts (`slot()` in
+  `client.rs`: a dialog's modality, a surface's alpha or content type, a
+  virtual keyboard's keymap) are replayed after a restart. Objects the
+  restart ends get their end events (data sources are cancelled, drm
+  leases finish, tablets are removed). Set `OLO_WLPROXY_DEBUG=1` for
+  the session (`tsession` passes it on) to log every replayed request. Set
   `OLO_NO_WAYLAND_PROXY=1` to have app_server take `wayland-N` itself.
   If the proxy keeps crashing, the session does that on its own.
 * **Olo's own apps** connect straight to app_server on
@@ -771,8 +938,8 @@ places below.
 ## Testing: headless sessions
 
 Never open windows on the user's screen. `tools/dev/tsession` runs a
-headless app_server (GPU, offscreen, 2560×1600 device pixels at 2×, i.e.
-1280×800 logical) and drives it:
+headless app_server (GPU, offscreen, 2560×1600 device pixels at 2× by
+default, i.e. 1280×800 logical) and drives it:
 
 ```sh
 T=tools/dev/tsession
@@ -786,11 +953,13 @@ $T shot mine /tmp/x.png        # full screenshot (device pixels) of the pointer'
 $T shot two /tmp/y.png --output HEADLESS-2
 $T shot mine /tmp/p.png X Y W H --pointer   # with the pointer drawn in
 $T zoom mine /tmp/z.png X Y W H 4   # crop in logical px, magnified 4× (nearest)
-$T click mine X Y [right]      # logical coordinates (screenshot px / 2)
+$T click mine X Y [right]      # logical coordinates (screenshot px / the scale)
 $T tap mine X Y                # press and release in one go, as a touchpad tap
 $T drag mine X1 Y1 X2 Y2
 $T type mine "hello"           # $T key mine 29 30  → Ctrl+A (evdev codes)
 $T theme mine dark
+$T start mine --scale 1.5      # another scale from the start
+$T scale mine 1                # every screen to 1× (then 1.5, then 2: check all three)
 $T stop mine
 ```
 
@@ -828,7 +997,10 @@ windows don't, and round trips (zoom/unzoom, tile/Restore, Undo, a
 workspace or display and back) come back exactly. It ⌘-drags tabs along,
 out of and into groups, and uses GroupWindow / UngroupWindow / MoveTab,
 checking that groups hold together (one frame, tabs side by side in
-order, other apps' windows only by hand). It also has apps resize their
+order, other apps' windows only by hand). Now and then it opens a
+Terminal into a Terminal group sized by hand with a button held down
+(the pointer grabbed, as after a menu) and checks the group keeps its
+size. It also has apps resize their
 own windows (`op_app_resize`: a new Terminal tab, closing it, a bigger
 or smaller text size, on a window as it is, zoomed, tiled or as tall as
 its display) and checks that nothing grows past its display or out of
@@ -859,7 +1031,11 @@ the session's app_server.json, so test persistence with `--session` and
 `reload`.
 
 Look at your screenshots. Then zoom in to 4× and check edges, insets,
-alignment and text placement pixel by pixel, in **both** light and dark.
+alignment and text placement pixel by pixel, in **both** light and dark,
+and at **each of 1×, 1.5× and 2×** (`$T scale NAME 1`, `1.5`, `2`; a
+fractional scale is where a half-pixel line blurs, a rounded inset
+drifts or text sits a pixel off its neighbour). Every visual check covers
+all three; none is done at 2× alone.
 Compare against BeOS R5 / Haiku screenshots from memory. Fix anything that
 looks even slightly off before calling something done.
 
@@ -870,7 +1046,7 @@ what it is showing, so the lint runs the real UI code rather than reading
 it: `layout_lint::check(size, |ui| view(ui))` (or `assert_fits(name,
 size, view)`) runs a view headlessly in plain egui (no GPU, no Wayland,
 the kit's own fonts and style, as `platform.rs` makes a window's context)
-at the size its window gets, in light and dark at 1× and 2×, three passes
+at the size its window gets, in light and dark at 1×, 1.5× and 2×, three passes
 each, and returns one line per problem with the looks it shows in:
 
 - an area's content running past it (more than half a point): a tab
@@ -901,6 +1077,63 @@ under `cfg(test)` and their shared state starts filled
 (`touchpad::State::showing(tab, devices)`, `keyboard::State::showing(tab)`,
 `about::State::sample()`, `Server::detached()`, …). A new fixed-size
 window or dialog gets a lint test the same way.
+
+### Layout review (`olo_kit::layout_review`)
+
+Where the lint proves things fit, the review reads one frame's painted
+shapes (text with its baseline, filled bands, lines, icons) at the scale
+it was drawn at and flags what tends to look off: what you should look
+at closely before calling a view done.
+
+- **Errors** (tests fail on them):
+  - `blurry-icon`: an icon off device pixels, not a whole number of them,
+    or a pixel or two off its texture's own size (`Marks::textures`), so
+    it is resampled.
+  - `line-weights`: one-point lines of different weights.
+  - `blurry-outline`: a stroke not a whole number of device pixels.
+  - `seam`: a line and what it borders a device pixel apart.
+  - `off-pixel`: a fill with an edge between device pixels. egui rounds
+    each edge, so the fill comes out a pixel off what it lines up with:
+    rows of two heights, or a bar a pixel off the band beside it. A line
+    is judged only across its thickness, and edges a clip cuts or on the
+    window's own edges are skipped. The check runs only at scales where
+    the 2-point grid lands on pixels (1×, 1.5×, 2× and up), not at 1.25×
+    or 1.75×, where edges are still crisp but spacing may differ by a
+    pixel.
+- **Review** (most are mistakes, a few are meant): `near-height` (bands
+  stacked or side by side almost one height: a 21 bar over a 22 head),
+  `near-level` (text or icons in neighbouring columns a pixel or two off
+  level), `near-edge` (left edges almost lined up down a column),
+  `off-centre` (text or an icon off-centre in the band it sits in),
+  `uneven-rows` (rows down a column spaced unevenly).
+
+A view tells it two things it can't see. `layout_review::own_grid(ui,
+rect)`: text laid out on a grid of its own (Terminal's screen, a cell
+apart), not held level with the chrome beside it. `layout_review::band(
+ui, rect)`: what is in `rect` is centred across it though nothing fills
+it (a `TabStrip` tab, its top below the strip's), so centring is
+measured against it. Call either each frame.
+
+Run it:
+
+- in a test: `layout_lint::review(size, view)` gives every finding, in
+  light and dark at 1×, 1.5× and 2×, one line each with the looks it
+  shows in; `layout_lint::check` (and so every `ui_lint_*` test) fails
+  on its errors. `cargo test -p olo-preferences ui_review -- --nocapture`
+  prints every panel's findings; `kit_widgets_pass_the_review` fails
+  on any finding at all in the kit's own widgets, so they stay clean.
+  Those include popup menus with shortcuts, separators, checks,
+  submenus and icons. `kit_sizes_on_the_two_point_grid` fails on a kit
+  size that isn't an even number of points;
+- on a running app: every kit app answers `{"review":true}` on its
+  socket with a `commands::WindowReview` per window (`commands::review(
+  pid)`): `$T review NAME [--all]` on a headless session, `olo-screen
+  review NAME [--window ID] [--json]` on an agent screen. Switch the
+  scale (`$T scale NAME 1`, `1.5`, `2`) and theme and review each.
+
+Go through each finding: fix it in the kit or the view, or, when it is
+meant, tell the review why (`own_grid`, `band`) so the next run is
+quiet.
 
 Memory: measure release builds (`cargo build --release -p APP`, then
 `grep -E 'VmRSS|RssAnon|RssShmem' /proc/PID/status`; RssShmem is GPU
@@ -991,6 +1224,11 @@ launcher lists them. The panel list Deskbar shows is
   watcher thread reloads it, and the apps from the history, when either
   changes; edits save on a thread (echoes of older files are ignored for
   a moment after an edit). Times follow the clock's 12/24-hour choice.
+  Its History box: "Fade notifications away over" a `MenuField` of
+  durations (15 minutes to a week, and whatever the file says if it's
+  none of them), a strip painting the fade from Now to gone (dimmed,
+  not hidden, with fading off, so nothing moves) and a line saying what
+  happens to them.
 * Backup (`backup.rs`) exports every Olo setting and piece of saved
   state (`config_dir()` and `state_dir()`, as `config/…` and `state/…`)
   into one `.olo-backup` file: a zstd tar with `manifest.json` first
@@ -1054,14 +1292,18 @@ launcher lists them. The panel list Deskbar shows is
   clockwise (`desktop::rotation_transform`). The main display
   (`DisplaySettings::main`, else the first) gets layer surfaces that name
   no output (Deskbar, the desktop): they carry `shell::AutoOutput` and
-  move when the main display changes or their output is unplugged.
+  move when the main display changes or their output is unplugged. Those
+  called up from the keyboard to work where the person is
+  (`shell::OPEN_WHERE_IN_USE`: the palette) open on the display in use
+  instead, `active_output()`: the focused window's, else the pointer's.
   With more than one display, "Show Deskbar on every display"
   (`DisplaySettings::deskbar_on_every_display`, off by default) gives
   each its own Deskbar (one layer surface per output, `Bar` in
   apps/deskbar), each listing only the applications with windows on its
   display, and only those windows (`WindowInfo::output`; a window whose
   display isn't known counts as the main one's). The map draws a
-  Deskbar strip on every display then.
+  Deskbar strip on every display then, and Twitcher groups each row by
+  display.
   render.rs draws the layers itself, front to back: Overlay, the menus
   of the Background and Bottom layers (the desktop's right-click menu,
   `shell::lower_layer_menus`), Top (Deskbar), the windows, then the
@@ -1152,6 +1394,16 @@ keyboard hints on, every cell carries a hint badge
 `twitcher::Shown::letter`) and typing its letter while ⌘ is held
 chooses it (`twitch_pick`). The keys reach it as keymap actions
 (`SwitchMove`, `SwitchPick`, `SwitchCancel`) only while switching.
+With a Deskbar on every display (and more than one), the windows go by
+display as their Deskbars do (`twitch_displays`, left to right, the
+same names as Preferences ▸ Displays, numbered when two match): each
+display with windows is a column in an etched box, as a BeOS BBox
+(the kit's `BBox` lines, `Palette::shade`), named across its top edge
+beside a little screen that is lit on the display that copy of the
+panel is drawn on (`twitcher::Display`, `Shown::displays`,
+`Entry::display`; the panel is cached per display). Each app has a
+cell on every display it has windows on, and ↑/↓ keep to the column
+of the display the chosen window is on.
 
 ## Desktop shortcuts and tiling (olo_protocol::shortcuts, app_server keymap.rs, shell/tiling.rs)
 
@@ -1311,7 +1563,13 @@ screen, then the front-most), at the size it was asked for if it hasn't
 drawn it yet, so a window that opens, comes back or arrives from
 another workspace joins the group where it is instead of pulling it
 along; the others take the leader's arrangement too (tile, zoom, the
-frames Restore and unzoom go back to: `share_arrangement`). A window
+frames Restore and unzoom go back to: `share_arrangement`). Such a
+window, though in front, doesn't lead until it has drawn at the group's
+size (`Groups::settling`, up to two seconds; asked again if its app drew
+another size anyway, as Terminal fitting its grid can), so the size it
+opened at never becomes the group's. Sizes wait only while a window's
+edge is being dragged (a resize grab), not for any pointer grab: a
+menu's lasts until the pointer next moves, and a held button is one. A window
 that joined a group on arriving keeps the frame it came with
 (`WindowMeta::joined`): sent on to a workspace where it is on its own,
 untouched, it has that frame again, so a window taken to another
@@ -1509,6 +1767,79 @@ displays turning off ends it.
 
 Test headless: `tsession ipc NAME '{"type":"start_screen_saver"}'`, or set
 `screen_saver.module` with get/set_settings first.
+
+## Fractional scaling (app_server render.rs, shell/deco.rs; the kit)
+
+A screen can be at 1, 1.25, 1.5, 1.75, 2, 2.5 or 3 (Preferences ▸
+Displays; each is a whole number of 120ths, as wp-fractional-scale
+sends it). At every one of them, nothing Olo draws is resampled, and
+every line and edge is a whole device pixel. This is how modern
+compositors and toolkits do it (KWin's pixel-grid snapping, Mutter,
+Chrome, GTK 4.16 text), and how Olo does it:
+
+- **Clients draw at the device size.** The kit asks app_server for
+  wp-fractional-scale-v1 and wp-viewporter on every surface. It draws
+  into a buffer of `round(size × scale)` pixels, with egui at that
+  `pixels_per_point`, and sets the viewport's destination to the logical
+  size. app_server places each window on a whole device pixel
+  (`to_physical_precise_round`), so a buffer lands one to one. Programs
+  without fractional scale get the next whole scale and are scaled down.
+- **app_server's own pictures go pixel for pixel**
+  (`render::exact`, `render::picture`). smithay sizes a memory element in
+  whole logical points, so a picture drawn at its device size `w` came
+  out `round(round(w / s) × s)` wide: 2561 pixels for a 2560 wallpaper
+  at 1.5×, softly resampled. Wrapped in `render::Exact`, it fills exactly
+  the rectangle it was drawn for. Every app_server picture goes through
+  it: the wallpaper, tabs, the ⌘Tab switcher, the level indicator,
+  Identify and the keyboard hints' badges. Lines (the hints' group
+  outlines) are hairlines between corners rounded to the nearest pixel.
+- **The decorator works in device pixels.** The frame is drawn outward
+  from where the content lands: a border's width (`px(BORDER)`, the
+  content's own offset) on every side, the same on all four.
+  - *Its lines* are `deco::lines(scale)`. The outline is a hairline,
+    `floor(scale)` (as the kit's `style::line_pixels`). The bevel's light
+    and shadow are each `round(scale)`. The flat middle takes the rest.
+  - *At 1.5×* that gives 1, 2, 3 and 2 pixels. Rounding each logical line
+    from the window's corner gave 2, 1, 2, 1 and 2 on one side, and
+    mirrored it differently on the other.
+  - *Where the frame reaches:* it can end a pixel past `px` of its logical
+    right and bottom. A tab ending there ends on it.
+  - *The tab* is drawn the same way, its boxes inset equally from its own
+    two ends, so every tab looks the same wherever it sits.
+  - `frame_bands_at_every_scale` pins the bands at each scale.
+- **The kit snaps what it works out.**
+  - *Sizes* are on the 2-point grid (whole pixels at 1×, 1.5× and 2×).
+    Positions it works out go through `style::snap` or `snap_centred`.
+    Lines are `style::line_pixels`.
+  - *The text caret* is a hairline at each scale (`style::fit_scale`,
+    which the platform calls every frame).
+  - *An icon* is drawn at its texture's size from a whole pixel. A bitmap
+    with no size of its own (ours come at 16, 24, 32 …, so 20 at 1.25×)
+    is averaged down to exactly the device size once, when it loads
+    (`icons::fitted`, as Chrome scales its icons), instead of being
+    stretched by the GPU every frame.
+  - *Viewer's pages* are drawn pixel for pixel once rendered for the
+    current zoom and scale.
+  - *An app that caches anything measured in pixels* keys it by the scale,
+    as Terminal's cell metrics are (`Metrics::ppp`); a window can move to
+    a display at another scale.
+  - *At 1.25× and 1.75×* two points are 2.5 and 3.5 pixels. Edges are
+    still crisp there (each is rounded), but spacing may differ by a
+    pixel.
+- **Text** is drawn by egui at the device size, with each galley on a
+  whole pixel. It is hinted vertically only ("slight", as FreeType, GTK
+  4.16 and Chrome do it; `SmoothHinting { light: true }`) and positioned
+  across in subpixel steps, so stems and baselines sit on pixels while
+  shapes and spacing stay as designed. Tab titles (cosmic-text and swash)
+  are hinted, on a whole-pixel baseline.
+- **The pointer** is a vector drawn at each screen's exact scale (see the
+  next section).
+
+To check: the layout review flags fills, icons and outlines off the
+pixel grid (`off-pixel`, `blurry-icon` with an icon a pixel off its
+texture's size, `blurry-outline`). For the decorator, zoom into a
+corner at each scale (`$T zoom NAME OUT X Y W H 8`), with the window at
+an odd x so it sits between pixels.
 
 ## The pointer (crates/hvif, app_server cursor.rs)
 
@@ -1855,11 +2186,15 @@ Ctrl+Shift+Tab and Ctrl+Page Up / Page Down go through them (the shell
 never sees those). `olo-terminal --tab [-w DIR]` opens a tab in the
 Terminal window last in front (Tracker's Open in Terminal does), a window
 if there is none. `save_state` keeps each window's tabs in order and
-which one shows.
+which one shows. Settings ▸ Tabs puts the strip **Along the Top** (the
+default) or **Down the Side** (the strip's `.side()`; also the last item
+of a tab's context menu), in `terminal.json` as `side_tabs`, with the
+column's width (drag its edge) as `side_width`; switching keeps every
+window its size and gives the grid the difference.
 
 **Groups** (`src/groups.rs`). A window can be a named group with a colour
 (Tabs ▸ Group ▸ Name Group…, or click the group's name in the strip): the
-name leads the strip in its colour, every tab carries a band of it, the
+name leads the strip in its colour (its chip; the tabs stay plain), the
 window's title is "name — tab", and the strip shows even with one tab.
 Save Group keeps the group and each tab's folder in
 `terminal-groups.json` (config dir); Open Saved Group brings its window
@@ -1868,14 +2203,25 @@ drops it. Show All Tabs (Tabs menu or the group's menu, ⌘⇧D) shows
 every tab of the window at once, each a live pane with its title over
 it (`tile` picks the columns that keep panes nearest a terminal's
 shape, the last row spread across), each pane's shell sized to its pane;
-each pane has a head (`PANE_HEAD`, 22) with its icon and title, and the
-panes not typed into are dimmed so the one that is stands out; the strip
+each pane has a head (`PANE_HEAD`, a `STRIP_ROW` tall, so a side
+strip's first tab is level with the heads beside it) with its icon and
+title, and the
+panes not typed into are dimmed so the one that is stands out, its head
+lit like a window's tab in front; the strip
 is `.closed()` then, since no single tab owns the content.
 Clicking a pane makes it the one typed into, its head marked with the group's
 colour (or the focus blue) as the strip marks it, and the strip follows.
-The screen keeps `view::PAD` (8 × 6) between the text and the window's
-edges, in the screen's own background (`view::screen_colors`), so text
-never touches the frame or the strip.
+The screen keeps `view::PAD` (`WINDOW_INSET` × 6) between the text and
+the window's edges, in the screen's own background
+(`view::screen_colors`), so text never touches the frame or the strip.
+The chrome is on one grid: the menu bar's first title, the tabs' and
+pane heads' icons and the shell's text start on one column, 12 in from
+the content's edge; tabs (top or side) and pane heads are all one row,
+26, and the menu bar is one more of those rows (`menu::BAR_HEIGHT`, 26:
+at 21 it was 31.5 pixels at 1.5× and looked cramped). Panes are tiled in device
+pixels (`tile(area, n, ppp)`), a device line apart, so no seam opens
+between them at 1.5×. The screen marks itself `layout_review::own_grid`:
+its lines are a cell apart, not held level with the chrome.
 ⌘⇧D again goes back to one tab at a time. `save_state` keeps each
 window's group and whether it shows all tabs across an upgrade. A new
 ⌘⇧ shortcut must also go in `view::SHORTCUTS`, or the shell gets the
@@ -1914,9 +2260,13 @@ passing) and replays (scrollback, `clear`, the alternate screen, modes,
 images).
 
 Keys: physical Ctrl goes to the shell. ⌘ reaches Terminal as Ctrl+Shift
-(see keymap.rs); Ctrl+Shift with a menu shortcut's key
+(see keymap.rs) on the right Ctrl, which the kit marks as
+`Modifiers::command` (see "Raw keys"); ⌘ with a menu shortcut's key
 (`view::SHORTCUTS`, kept in step with the menus) is Terminal's, and any
-other goes to the shell as Ctrl+key, so ⌘R searches history like Ctrl+R. ⌥←/⌥→ send ESC b / ESC f
+other goes to the shell as Ctrl+key, so ⌘R searches history like Ctrl+R.
+A physical Ctrl+Shift chord isn't `command`, so it is always the
+shell's: Ctrl+_ (readline's undo, Ctrl+Shift+-), Ctrl+^ and Ctrl+@,
+while ⌘- is Smaller. The menus read ⌘N, ⌘T, ⌘+, as pressed. ⌥←/⌥→ send ESC b / ESC f
 (a word back/forward in readline, zsh and fish), except to a program
 using the kitty keyboard protocol (Claude Code), which gets the
 protocol's `CSI 1;3 D` / `C` and reads ESC b as Escape then b. (The
@@ -1932,6 +2282,41 @@ light default and Macchiato the dark one (`SchemeId::light` / `dark`).
 A Catppuccin scheme draws as its own ports do (`Scheme::catppuccin`:
 Text on Base, Rosewater cursor, its 16 ANSI colours); the choices are
 `Settings::light_colors` / `dark_colors`.
+
+**sudo in a window** (`src/sudo.rs`, `src/olo_sudo.rs`, `src/sudo_wire.rs`).
+A coding agent's commands have no terminal to type a password into
+(Claude Code runs each in a session of its own, reading /dev/null), so
+sudo alone can only fail there. Terminal links `sudo` to **olo-sudo** (a
+third binary of the package, beside it) in
+`$XDG_RUNTIME_DIR/olo-terminal-bin-<display>/`, puts that first on its
+shells' `PATH` and sets `OLO_TERMINAL_SUDO` to the socket it listens on,
+`olo-terminal-sudo-<display>.sock` (`sudo::shell_env`; only shells
+started since, so after an upgrade, new tabs). olo-sudo runs `sudo -n -v`
+first: with a credential cached or none needed, the command just runs.
+Otherwise it asks Terminal, which opens an alert over the window of the
+tab it came from (found by walking up from the pid to a shell it
+owns) naming who asks (a coding agent by name, `agent.rs`) and the
+command, and relays sudo's own PAM conversation from `sudo -S -v`:
+the fingerprint first where `/etc/pam.d/sudo` has pam_fprintd and a
+finger is enrolled, then the password, its errors ("Sorry, try again.")
+in the alert. Cancel, Escape or the close box say no (exit 1, "sudo:
+not run: cancelled in Terminal's password window"). Then the command runs on the credential sudo just
+cached: the terminal's, or with no terminal its parent's (olo-sudo stays
+the parent). Settings ▸ Ask for sudo Passwords in a Window
+(`sudo_window`, on) covers sudo typed at a prompt; with it off those ask
+on the terminal as ever, but a command with no terminal still gets the
+window. Whatever olo-sudo can't help with (`-n`, `-S`, `-A`, `-k`, `-K`,
+`-h`, `-V`, no Terminal) goes straight to sudo. Safety: the password goes
+only to a sudo that is root's and set-user-ID, the first on `PATH`
+(then /usr/bin, /bin) that isn't olo-sudo itself; Terminal answers only a peer of the same uid whose
+executable is olo-sudo (`SO_PEERCRED`, `/proc/PID/exe`). Limits: with
+the credential cache off (`timestamp_timeout=0` in sudoers) a command
+with no terminal fails after the window; with the fingerprint first,
+the password field waits until pam_fprintd gives up (as in the polkit
+agent); with a terminal, pam_fprintd's "Place your finger…" also prints
+there. Testing: debug builds take `OLO_SUDO_REAL` as the sudo to run, so
+a test stands in a script; never test against the real sudo or
+fingerprint reader. `cargo test -p olo-terminal sudo`.
 
 ## The polkit agent (apps/polkit-agent, olo_system::polkit)
 
@@ -2000,6 +2385,22 @@ A program without windows (a helper app_server starts) uses
 callback runs on the notifier's thread. Tracker's "Finished copying…" (jobs
 of 10 s or more; `OLO_TRACKER_NOTIFY_AFTER_MS` in debug builds) uses it.
 
+A note can say how it looks, so each app's cards are its own:
+`.accent([r, g, b])` (the app's colour: its badge, its monogram when
+it has no icon, its progress bar; never a band or edge), `.subtitle(…)` (a line
+under the title: from whom, a channel, an album), `.badge("PR #42")` (a
+pill beside the title), `.field(label, value)` (a little table),
+`.image(path)` (a picture shown large: a screenshot, a photo),
+`.style(NoteStyle::Message)` (the sender's picture round, the body in a
+balloon) or `Media` (the artwork large), and `.size(CardSize::Small |
+Medium | Large)` (how big its card is in the history; `Auto` lets it
+choose). Each is a `Notify` hint (`olo_protocol::notifications::hint`:
+`x-olo-accent` "#rrggbb", `x-olo-subtitle`, `x-olo-badge`, `x-olo-fields`
+as `a(ss)` or `a{ss}`, `x-olo-image`, `x-olo-style`, `x-olo-size`,
+`x-olo-source` for where in the app it came from, `x-olo-type`), so any
+program can send them (`notify-send -h string:x-olo-accent:#e5534b …`)
+and other services ignore them.
+
 `olo-notifications` serves `org.freedesktop.Notifications` (spec 1.2)
 on the session bus, so `notify-send`, browsers, chat and mail clients and
 anything else using libnotify reach the user. The real session starts it
@@ -2016,7 +2417,9 @@ notifications.
   `x-canonical-private-synchronous` (and `synchronous`,
   `x-dunst-stack-tag`: the same tag from the same app replaces the last
   one), KDE's `inline-reply` action and `x-kde-reply-placeholder-text`,
-  and our own `x-olo-type`. Each note has a `Kind` after Haiku's
+  and our own `x-olo-*`, into the note's `NoteLook` (an `im.*` note is a
+  `Message` unless it says otherwise; `x-olo-image`'s size is read on the
+  bus thread). Each note has a `Kind` after Haiku's
   BNotification: information, important (`im.*` and `call` categories),
   error (critical: stays) and progress. The timeout: -1 is 6 s, 0,
   errors and notes waiting for a reply stay until dismissed. The UI
@@ -2026,18 +2429,47 @@ notifications.
   name it waits and retries every 30 s rather than taking it. (zbus's
   `Builder::name` treats "taken" as success; `serve` checks the
   RequestName reply itself.)
+- web.rs: websites' notes, through Chrome or Chromium, made the site's
+  own (`web::adopt`, as each arrives). Chrome sends a site's as its own
+  (its name and desktop entry) with the site as a link heading the body,
+  the page's icon as the picture and critical urgency for
+  `requireInteraction`. Here the site becomes the app: the link comes
+  off the body into `look.source`; a site we know (`SITES`: Gmail,
+  Google Calendar, GitHub, WhatsApp, Slack, Spotify, …) gets its name,
+  its colour and its style (a chat site's are `Message`s, a music
+  player's `Media`); one we don't is
+  named by its host. `note.via` keeps the browser: Preferences falls back
+  to the browser's choices for a site with none of its own
+  (`NotificationSettings::app_via`), "stay until dismissed" stays rather
+  than being an error, Chrome's Settings button reads Site Settings and
+  is left off banners and cards (an open row in the history has it),
+  and with no icon of its
+  own the site's mark is a monogram tile (`web::tile`: the last word's
+  first letter on its colour, or on one its name picks).
+- look.rs: what a note shows, the same on screen and in the history's
+  cards: its picture (square; round for a `Message`; large for `Media`),
+  the title, a line with its badge and subtitle, the body (in a balloon
+  for a message), its fields as a little table, the large image under it
+  all and a progress bar. `look::lay` measures in a `Room` (width, title
+  and body rows, picture sizes) so a stack or a grid is arranged before
+  `look::paint` draws.
 - main.rs: one layer surface (Top layer, anchored bottom right, flush
   with the edge) opened for the first card and closed with the last,
   resized to the stack. Cards are `metrics::DESKBAR_WIDTH` wide, so they
   stack in the Deskbar's column, usually free space. Up
-  to four cards show, grouped by app under a title row with the app's
-  icon and name (and a close box for all of a group's), oldest first; the
-  rest wait. Important notes wear a blue edge, errors a red one; progress
+  to four cards show, as many as fit in the screen's height (at least
+  one), grouped by app under a title row with the app's mark and name
+  (and a close box for all of a group's), oldest first; the rest wait.
+  No bands, edges or rules: an app's accent shows only in its badge,
+  monogram and progress bar, and an error's title leads with a small
+  stop sign (`look::paint_stop`: `style::stop_mark` set level with the
+  capitals by `style::cap_middle`), as do its rows in the history; progress
   shows a `StatusBar`; links in the body open with `open::open`. A card
-  shows the picture sent (24 px) beside its text; without one the text
-  takes the width, the group's title row already showing the named icon
-  (ours for common theme names, `icon_names`), the app's desktop-entry
-  icon, or info/warning. Action buttons share the width when they must.
+  is laid out by look.rs; without a picture the text takes the width,
+  the group's title row already showing whose it is: `paint_mark` draws
+  the named icon (ours for common theme names, `named_icons`), the app's
+  desktop-entry icon, else a monogram for a site or an app with an accent,
+  else a generic one. Action buttons share the width when they must.
   Banner `seconds` 0 ("Never" in Preferences) shows only errors.
   A click on a card runs its `default` action: the card asks the kit
   for an activation token from that click (`Cx::activation_token`) and
@@ -2054,34 +2486,64 @@ notifications.
   `message-new-instant` for important notes and `dialog-warning` for
   errors, played on a thread through olo-preview's `audio::Player`.
 - store.rs: the history, `$XDG_STATE_HOME/olo/notifications/
-  history.json` (the newest 200; saved atomically off the UI thread).
-  Every note not `transient` goes in, unread unless the History window
-  is open; an expired card stays "open" there (its actions still work)
-  until the app closes it. After a restart nothing is open, and ids carry
-  on after the history's.
-- history.rs: the History window (`--history`, or Deskbar's bell), newest
-  first in one of four views (View menu, ⌘1–⌘4, `view` in
-  `notifications.json`): *List* under day headings, *By App* under
-  folding app headings (with Dismiss per app), *Cards* in a grid whose
-  rows are as tall as their tallest card, *Conversations* with the same
-  app and title stacked into one with a count. A row is two lines: a
-  16 px icon, the title in bold with the app and time on its line, one
-  line of body; a click selects (the row opens to its whole body, the
-  rest of its conversation and its actions as buttons, the default one
-  always Open, or Show APP once it closed, then Dismiss, which forgets it
-  and the rest of its conversation), a double click or Return runs the default action while
-  the note is open, else brings the app forward. × or Delete forgets
-  one; Clear All forgets all but those on screen. Opening the window
-  marks all read, but what was unread keeps a blue dot until the window
-  closes or it is selected. The search field (⌘F) takes every word
-  against app, title and body; Escape clears it. For agents each note
-  is a `ListItem` named by its title (with `row`/`rows`), its text as
-  labels. The window, search and folds come back after an upgrade
+  history.json` (the newest 200; saved atomically off the UI thread),
+  each note's picture beside it in `pictures/ID.png` (scaled to 96 px,
+  written off the UI thread; pictures nothing names go at start-up).
+  Every note not `transient` goes in, unread. Read means the person has
+  seen to it: clicked (on screen or in the history), acted on, or
+  dismissed; a card that just expires stays unread. An expired card
+  stays "open" there (its actions still work) until the app closes it.
+  After a restart nothing is open, and ids carry on after the
+  history's. With fading on, a note goes once it has faded away
+  (`History::fade_out`, checked every tick, never one still on screen;
+  its app hears it expired). The window draws a note at
+  `fade_opacity(strength)`, never fainter than 0.3, so the last of its
+  fade is still legible (full again selected or under the pointer).
+- history.rs: the History window (`--history`, or Deskbar's bell),
+  unread first under an *Unread* heading (with its count and Mark All
+  Read), then the rest, newest first in each, in one of four views
+  (View menu, ⌘1–⌘4, `view` in `notifications.json`): *List* under day
+  headings, *By App* under folding app headings (with Dismiss per app),
+  *Cards*, *Conversations* with the same app and title stacked into one
+  with a count. A row is two lines: a 16 px icon, the title with the app
+  and time on its line, one line of body. Unread wears a dot (in the
+  keyboard's blue) and a bold title; read, the title
+  goes regular and the dot goes. A click selects and reads it (the row
+  opens to its whole body, the rest of its conversation and its actions
+  as buttons, the default one always Open, or Show APP once it closed,
+  then Dismiss, which forgets it and the rest of its conversation); what
+  was read while the window is open keeps its place until it closes, so
+  nothing jumps under the pointer. A double click or Return runs the
+  default action while the note is open, else brings the app forward.
+  Edit ▸ Mark as Read/Unread (⌘U, `toggle-read`) and Mark All as Read
+  (`read-all`). × or Delete forgets one; Clear All forgets all but those
+  on screen. With fading on, each row and card is painted at its
+  `strength` (`multiply_opacity`), the newest strongest, back to full
+  while selected or under the pointer. *Cards* packs cards of different
+  sizes with `olo_kit::masonry`: columns of at least 176 px; a card
+  spans two when its app asks (`CardSize::Large`) or, left to choose,
+  for a large picture, three fields or more, or a long body, and so does
+  the newest unread one when there are three columns or more; `Small`
+  keeps to one line of body. Each card is a `style::card` (selected, in
+  the selection's colours): a quiet head of its app's mark and name with
+  the time on the right (an unread dot before it, in the keyboard's
+  blue, not the tab's yellow; a close box in their place under the
+  pointer), its face laid out by look.rs, its actions as
+  `Button::small`s; the arrow keys move by where
+  cards are (`masonry::neighbour`). The search field (⌘F) takes every
+  word against app, title and body; Escape clears it. For agents each
+  note is a `ListItem` named by its title (with `row`/`rows`), its text
+  as labels. The window, search and folds come back after an upgrade
   (`save_state`).
 - Settings: `olo_protocol::NotificationSettings` in
   `notifications.json` (config dir): Do Not Disturb (`dnd`, `dnd_until`,
-  a daily `schedule` in local minutes), banner `seconds`, and per-app
-  `banners` / `sounds` / `history` by app name. The service re-reads the
+  a daily `schedule` in local minutes), banner `seconds`, the history's
+  `fade` (on by default) over `fade_minutes` (60: `strength(age)` is
+  1 − t^1.6, slow at first, then faster, to nothing; `faded(age)` once
+  it's gone), and per-app
+  `banners` / `sounds` / `history` by app name (a site's falling back to
+  its browser's). Preferences' History box shows the fade as a strip from
+  Now to gone. The service re-reads the
   file within a second of a change (Preferences ▸ Notifications and
   Deskbar write it). While quiet nothing pops up or sounds but errors.
   It publishes `NotificationState` (`unread`, `quiet`) to
@@ -2104,10 +2566,14 @@ notifications.
   `Notify` (no app name: we take the `desktop-entry` hint's) and runs the
   app's action itself when we signal `ActionInvoked`.
 - For agents: `com.olodesktop.Notifications1` at `/com/olodesktop/Notifications`
-  (`List` → JSON, `Invoke`, `Dismiss`, `ClearHistory`, `ShowHistory`,
-  `SetDoNotDisturb`), and the same from the command line (cli.rs):
-  `olo-notifications [--bus A] --list [--json] | --history |
-  --invoke ID [ACTION] | --dismiss ID | --clear | --dnd on|off|MINUTES`.
+  (`List` → JSON: `unread`, `quiet` and each note with its `look`, `via`
+  and `strength`; `Invoke`, `Dismiss`, `SetRead(id, read)`,
+  `MarkAllRead`, `ClearHistory`, `ShowHistory`, `SetDoNotDisturb`). Each
+  returns once the UI has done it (it answers through a oneshot), so a
+  `List` straight after sees the change. The same from the command line
+  (cli.rs): `olo-notifications [--bus A] --list [--json] | --history |
+  --invoke ID [ACTION] | --dismiss ID | --read ID|all | --unread ID |
+  --clear | --dnd on|off|MINUTES`.
 
 Test it on a private bus: `busd -a unix:path=/tmp/olo-dev/NAME/bus.sock`
 (`cargo install busd`; Aurora's dbus-broker-launch needs systemd), then
@@ -2142,7 +2608,8 @@ chosen in Preferences ▸ Keyboard) has app_server start
 `olo-palette --toggle`; the running copy (it stays resident, found
 through `instance`) takes the toggle, so it opens at once from the second
 time on. It opens a full-screen transparent overlay layer that takes the
-keyboard, with the BeOS panel a fifth of the way down: a click outside
+keyboard, on the display in use (the focused window's, else the
+pointer's), with the BeOS panel a fifth of the way down: a click outside
 the panel, Escape or ⌘Space again
 put it away.
 
@@ -2382,7 +2849,14 @@ profile and a page served from 127.0.0.1.
 
 `olo-logs` shows every Olo program's log in one place: what they
 write to stderr goes to the user's journal (through the session's
-journal stream), and Log Viewer reads that journal natively.
+journal stream), and Log Viewer reads that journal natively. Kit apps
+log `warn,usvg=error,olo=info` unless `RUST_LOG` says otherwise
+(`olo_kit::run`; tsession starts clients with `RUST_LOG=warn`): Olo's
+own crates keep their info for what is rare and worth knowing after
+the fact (a reconnect, an upgrade, why a close was asked about: the
+Terminal's `asking before closing` names the program and where the
+close came from, app_server's `asked to close a window` and `close box
+clicked` the window and who), dependencies only their warnings.
 
 - journal.rs: systemd's journal file format (JOURNAL_FILE_FORMAT.md): the
   header, entries through the chain of entry arrays, fields in data

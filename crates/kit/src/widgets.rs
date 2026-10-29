@@ -17,7 +17,7 @@ use olo_theme::Palette;
 use crate::{
     layout_lint as lint,
     menu::{self, Menu, MenuAnchor, MenuRequest},
-    style::{self, bold_font, c, frame_rect, hline, plain_font, shade, vline},
+    style::{self, bold_font, c, frame_rect, hline, hline_above, plain_font, shade, vline, vline_left_of},
 };
 
 pub use crate::metrics::CONTROL_HEIGHT;
@@ -44,7 +44,7 @@ fn text_pos(ui: &Ui, x: f32, center_y: f32, galley: &Galley) -> Pos2 {
 /// BeOS marks keyboard focus by underlining the label in the navigation
 /// colour.
 fn focus_underline(painter: &Painter, text: Rect, p: &Palette) {
-    hline(painter, text.left(), text.right(), text.bottom() - 1.0, c(p.keyboard_navigation));
+    hline_above(painter, text.left(), text.right(), text.bottom(), c(p.keyboard_navigation));
 }
 
 // ---- Button -----------------------------------------------------------
@@ -56,11 +56,22 @@ pub struct Button<'a> {
     default: bool,
     min_width: f32,
     pushed: bool,
+    small: bool,
 }
+
+/// A [`Button::small`]'s height.
+pub const SMALL_BUTTON_HEIGHT: f32 = 20.0;
 
 impl<'a> Button<'a> {
     pub fn new(label: &'a str) -> Self {
-        Button { label, default: false, min_width: m::BUTTON_MIN_WIDTH, pushed: false }
+        Button { label, default: false, min_width: m::BUTTON_MIN_WIDTH, pushed: false, small: false }
+    }
+    /// Smaller: `SMALL_BUTTON_HEIGHT` tall, in the small font, for actions
+    /// inside something dense (a card, a list row).
+    pub fn small(mut self) -> Self {
+        self.small = true;
+        self.min_width = self.min_width.min(48.0);
+        self
     }
     /// Draw it held down: the chosen one of a set of tool buttons.
     pub fn pushed(mut self, on: bool) -> Self {
@@ -81,14 +92,16 @@ impl Widget for Button<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
         let p = style::palette(ui.ctx());
         let color = text_color(ui, &p);
-        let galley = layout(ui, self.label, plain_font(), color);
+        let galley = layout(ui, self.label, if self.small { style::small_font() } else { plain_font() }, color);
         // The default ring is drawn outside the button's own rect, so a
         // row of buttons stays aligned.
         let ring = if self.default { 3.0 } else { 0.0 };
-        let w = (galley.size().x + 2.0 * m::CONTROL_PAD).max(self.min_width).round();
-        let (r, mut response) = ui.allocate_exact_size(vec2(w, CONTROL_HEIGHT), Sense::click());
+        let pad = if self.small { m::CONTROL_PAD * 0.6 } else { m::CONTROL_PAD };
+        // On the 2-point grid, so what follows it is on device pixels.
+        let w = ((galley.size().x + 2.0 * pad).max(self.min_width) / 2.0).ceil() * 2.0;
+        let (r, mut response) = ui.allocate_exact_size(vec2(w, if self.small { SMALL_BUTTON_HEIGHT } else { CONTROL_HEIGHT }), Sense::click());
         lint::control(ui, || lint::quoted("button", self.label), r);
-        let outer = r.expand(ring);
+        let outer = style::snap(ui.ctx(), r.expand(ring));
         if self.default && ui.is_enabled() && ui.input(|i| i.key_pressed(Key::Enter)) && !ui.ctx().egui_wants_keyboard_input()
         {
             response.mark_changed();
@@ -116,15 +129,17 @@ impl Widget for Button<'_> {
             (c(olo_theme::tint(base, 0.85)), shade(&p, base, 1.06))
         };
         let border = if ui.is_enabled() { shade(&p, bg, 1.6) } else { shade(&p, bg, 1.3) };
-        style::vgradient(painter, r.shrink(1.0), top, bottom);
+        let inner = style::inset(ui.ctx(), r, 1.0);
+        style::vgradient(painter, inner, top, bottom);
         frame_rect(painter, r, border);
-        let inner = r.shrink(1.0);
         if pressed {
             style::bevel(painter, inner, shade(&p, base, 1.35), shade(&p, base, 1.1));
         } else {
             style::bevel(painter, inner, c(p.shine), shade(&p, base, 1.2));
         }
-        let off = if pressed { 1.0 } else { 0.0 };
+        // Held down by the pointer, the label gives a device pixel; one
+        // that stays down (a chosen tool) keeps it level with its row.
+        let off = if pressed && !self.pushed { style::hairline(ui.ctx()) } else { 0.0 };
         let pos = text_pos(ui, r.center().x - galley.size().x / 2.0 + off, r.center().y + off, &galley);
         let text_rect = Rect::from_min_size(pos, galley.size());
         painter.galley(pos, galley, color);
@@ -148,7 +163,7 @@ fn mark_well(painter: &Painter, r: Rect, p: &Palette, pressed: bool, enabled: bo
     };
     painter.rect_filled(r, 0.0, fill);
     style::bevel(painter, r, shade(p, p.panel_background, 1.18), c(p.shine));
-    let inner = r.shrink(1.0);
+    let inner = style::inset(painter.ctx(), r, 1.0);
     style::bevel(painter, inner, shade(p, p.panel_background, 1.6), shade(p, p.panel_background, 1.08));
 }
 
@@ -346,7 +361,7 @@ impl Widget for TextControl<'_> {
         let focused = ui.memory(|m| m.has_focus(id));
         let painter = ui.painter();
         let fill = if ui.is_enabled() { c(p.document_background) } else { c(p.panel_background) };
-        painter.rect_filled(well.shrink(2.0), 0.0, fill);
+        painter.rect_filled(style::inset(ui.ctx(), well, 2.0), 0.0, fill);
         style::sunken(painter, well, &p, focused);
         let font = if self.mono { style::mono_font(style::MONO_SIZE) } else { plain_font() };
         // Place the editor on exactly the line a label would use, so text
@@ -361,7 +376,17 @@ impl Widget for TextControl<'_> {
             let r = crate::text_drag::apply(&mut *self.text, &d);
             crate::text_drag::select(ui.ctx(), id, r);
         }
-        let mut edit = egui::TextEdit::singleline(&mut *self.text)
+        // The hint is drawn here, not by the editor (which places it by its
+        // own layout, a pixel off the label at 1× and 1.5×): on the label's
+        // line, cut short with "…", under the caret.
+        if let Some(hint) = self.hint.filter(|_| self.text.is_empty()) {
+            let mut job = egui::text::LayoutJob::simple_singleline(hint.to_owned(), font.clone(), style::disabled_text(&p));
+            job.wrap = egui::text::TextWrapping::truncate_at_width(line.width());
+            let galley = ui.painter().layout_job(job);
+            let pos = style::text_origin(ui.ctx(), &galley, line.left(), well.center().y, font.size);
+            ui.painter().with_clip_rect(well.shrink(2.0).intersect(ui.clip_rect())).galley(pos, galley, style::disabled_text(&p));
+        }
+        let edit = egui::TextEdit::singleline(&mut *self.text)
             .id(id)
             .frame(egui::Frame::NONE)
             .margin(egui::Margin::ZERO)
@@ -369,9 +394,6 @@ impl Widget for TextControl<'_> {
             .text_color(c(p.document_text))
             .password(self.password)
             .desired_width(line.width());
-        if let Some(hint) = self.hint {
-            edit = edit.hint_text(egui::RichText::new(hint).color(style::disabled_text(&p)));
-        }
         // The whole well focuses the editor, not just the text line (not a
         // Tab stop of its own: Tab goes from field to field). Made before
         // the editor so the editor is on top: double and triple clicks on
@@ -386,6 +408,9 @@ impl Widget for TextControl<'_> {
             // For agents (the widget tree): the field is named by its label.
             let label = label.trim_end_matches(':').to_owned();
             ui.ctx().accesskit_node_builder(r.id, |n| n.set_label(label));
+        }
+        if let Some(hint) = self.hint {
+            ui.ctx().accesskit_node_builder(r.id, |n| n.set_placeholder(hint));
         }
         if well_resp.clicked() {
             ui.memory_mut(|m| m.request_focus(id));
@@ -440,12 +465,15 @@ impl Widget for StringView<'_> {
         job.wrap = if self.wrap { egui::text::TextWrapping::wrap_at_width(width) } else { egui::text::TextWrapping::truncate_at_width(width) };
         let galley = ui.painter().layout_job(job);
         if self.wrap && galley.rows.len() > 1 {
-            // A paragraph: lines at the font's own spacing, the first
-            // where a single line's would be.
-            let pad = (CONTROL_HEIGHT - galley.rows[0].height()).max(0.0) / 2.0;
-            let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x.ceil(), galley.size().y + 2.0 * pad), Sense::hover());
+            // A paragraph: lines at the font's own spacing, the first on
+            // the baseline a single line's would be on.
+            let extra = (CONTROL_HEIGHT - galley.rows[0].height()).max(0.0);
+            // On the 2-point grid, so what follows is on device pixels.
+            let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x.ceil(), ((galley.size().y + extra) / 2.0).ceil() * 2.0), Sense::hover());
             lint::control(ui, || lint::quoted("text", self.text), rect);
-            ui.painter().galley(pos2(rect.left(), rect.top() + pad), galley, color);
+            style::describe_text(ui.ctx(), egui::accesskit::Role::Label, self.text, rect, None);
+            let pos = text_pos(ui, rect.left(), rect.top() + CONTROL_HEIGHT / 2.0, &galley);
+            ui.painter().galley(pos, galley, color);
             return resp;
         }
         let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x.ceil(), CONTROL_HEIGHT), Sense::hover());
@@ -455,6 +483,50 @@ impl Widget for StringView<'_> {
             lint::text(ui, || format!("{} (cut short with “…”)", lint::quoted("text", self.text)), whole, width);
         }
         let pos = text_pos(ui, rect.left(), rect.center().y, &galley);
+        style::describe_text(ui.ctx(), egui::accesskit::Role::Label, self.text, rect, None);
+        ui.painter().galley(pos, galley, color);
+        resp
+    }
+}
+
+/// A view with nothing it can show (no sound server, no Bluetooth
+/// adapter) or nothing yet ("Looking for…"): `text` in the middle of all
+/// the space left, dim, wrapped to a comfortable measure. The whole-view
+/// counterpart of [`ColumnListView::empty_text`]; better than a lone line
+/// in the corner of an empty window.
+pub struct EmptyState<'a> {
+    text: &'a str,
+    icon: Option<&'a str>,
+}
+
+impl<'a> EmptyState<'a> {
+    pub fn new(text: &'a str) -> Self {
+        EmptyState { text, icon: None }
+    }
+    /// The theme icon (32 × 32) of what is missing, over the text: the
+    /// panel's or app's own.
+    pub fn icon(mut self, name: &'a str) -> Self {
+        self.icon = Some(name);
+        self
+    }
+}
+
+impl Widget for EmptyState<'_> {
+    fn ui(self, ui: &mut Ui) -> Response {
+        const ICON: f32 = 32.0;
+        let p = style::palette(ui.ctx());
+        let color = style::disabled_text(&p);
+        let (rect, resp) = ui.allocate_exact_size(ui.available_size().max(vec2(0.0, CONTROL_HEIGHT)), Sense::hover());
+        let mut job = egui::text::LayoutJob::simple(self.text.to_owned(), plain_font(), color, (rect.width() - 2.0 * m::SPACING).clamp(0.0, 320.0));
+        job.halign = Align::Center;
+        let galley = ui.painter().layout_job(job);
+        let above = if self.icon.is_some() { ICON + m::SPACING } else { 0.0 };
+        let top = (rect.center().y - (above + galley.size().y) / 2.0).round();
+        if let Some(name) = self.icon {
+            crate::icons::paint(ui.painter(), Rect::from_min_size(pos2((rect.center().x - ICON / 2.0).round(), top), vec2(ICON, ICON)), name);
+        }
+        let pos = pos2(rect.center().x, top + above);
+        style::describe_text(ui.ctx(), egui::accesskit::Role::Label, self.text, Rect::from_min_size(pos2(rect.center().x - galley.size().x / 2.0, pos.y), galley.size()), None);
         ui.painter().galley(pos, galley, color);
         resp
     }
@@ -472,11 +544,19 @@ pub struct TextView<'a> {
     mono: bool,
     editable: bool,
     highlight: Option<&'a Highlighter<'a>>,
+    empty: Option<&'a str>,
 }
 
 impl<'a> TextView<'a> {
     pub fn new(id: impl std::hash::Hash + std::fmt::Debug, text: &'a mut String) -> Self {
-        TextView { id: Id::unique(id), text, mono: false, editable: true, highlight: None }
+        TextView { id: Id::unique(id), text, mono: false, editable: true, highlight: None, empty: None }
+    }
+    /// Say `text` in the middle of the view while it is empty and not
+    /// being typed in ("Select a line to read it whole."), as
+    /// [`ColumnListView::empty_text`].
+    pub fn empty_text(mut self, text: &'a str) -> Self {
+        self.empty = Some(text);
+        self
     }
     /// Colour the text: `highlight` lays it out (given the font and the
     /// plain text colour) in sections of their own colours. It runs when
@@ -502,6 +582,7 @@ impl<'a> TextView<'a> {
         let editable = self.editable;
         let text = self.text;
         let highlight = self.highlight;
+        let empty = self.empty.filter(|_| text.is_empty() && !focused);
         let mut drag = crate::text_drag::TextDrag::new(ui, edit_id, editable, false, true);
         if let Some(d) = drag.take_drop() {
             let r = crate::text_drag::apply(&mut *text, &d);
@@ -534,6 +615,11 @@ impl<'a> TextView<'a> {
                 }
                 let out = edit.show(ui);
                 drag.finish(ui, &out);
+                if let Some(note) = empty {
+                    let body = ui.clip_rect();
+                    let dim = c(olo_theme::mix(p.document_text, p.document_background, 0.5));
+                    style::label_fit(ui.painter(), body.center().x, body.center().y, Align::Center, note, plain_font(), dim, body.width() - 2.0 * m::SPACING);
+                }
                 out.response.response
             });
         edit_menu(ui, edit_id, &r, text, editable, false);
@@ -591,6 +677,9 @@ impl<'a> Slider<'a> {
 
 const THUMB_W: f32 = 11.0;
 const THUMB_H: f32 = 17.0;
+/// The thumb's row, room for its shadow under it: on the 2-point grid,
+/// so what comes after a slider is on device pixels.
+const THUMB_ROW: f32 = 20.0;
 const BAR_H: f32 = 6.0;
 
 impl Widget for Slider<'_> {
@@ -600,7 +689,7 @@ impl Widget for Slider<'_> {
         let width = self.width.unwrap_or_else(|| ui.available_width());
         let top = if self.label.is_some() || self.value_text.is_some() { m::LABEL_ROW + m::TIGHT } else { 0.0 };
         let bottom = if self.limits.is_some() { m::LABEL_ROW } else { 0.0 };
-        let height = top + THUMB_H + 2.0 + bottom;
+        let height = top + THUMB_ROW + bottom;
         let (rect, mut response) = ui.allocate_exact_size(vec2(width, height), Sense::click_and_drag());
         let name = || lint::quoted("slider", self.label.unwrap_or_default());
         lint::control(ui, name, rect);
@@ -679,15 +768,17 @@ impl Widget for Slider<'_> {
             vec2(rect.width(), BAR_H),
         );
         let t = if hi > lo { (v - lo) / (hi - lo) } else { 0.0 };
-        let thumb_x = (track.left() + t * track.width()).round();
+        let ppp = ui.ctx().pixels_per_point();
+        let thumb_x = ((track.left() + t * track.width()) * ppp).round() / ppp;
         let fill = self.fill.unwrap_or(c(p.control_highlight));
         let fill = if ui.is_enabled() { fill } else { fill.gamma_multiply(0.4) };
-        painter.rect_filled(bar.shrink(1.0), 0.0, shade(&p, p.panel_background, 1.08));
-        let filled = Rect::from_min_max(bar.min + vec2(1.0, 1.0), pos2(thumb_x, bar.bottom() - 1.0));
+        let in_bar = style::inset(ui.ctx(), bar, 1.0);
+        painter.rect_filled(in_bar, 0.0, shade(&p, p.panel_background, 1.08));
+        let filled = Rect::from_min_max(in_bar.min, pos2(thumb_x, in_bar.bottom()));
         style::vgradient(painter, filled, fill, fill.gamma_multiply(0.85).to_opaque());
         style::bevel(painter, bar, shade(&p, p.panel_background, 1.45), c(p.shine));
         // Thumb.
-        let thumb = Rect::from_center_size(pos2(thumb_x + 0.5, track.center().y), vec2(THUMB_W, THUMB_H)).round_ui();
+        let thumb = style::snap_centred(ui.ctx(), pos2(thumb_x + 0.5, track.center().y), vec2(THUMB_W, THUMB_H));
         let base = p.control_background;
         let pressed = response.is_pointer_button_down_on();
         let (tt, tb) = if pressed {
@@ -696,13 +787,15 @@ impl Widget for Slider<'_> {
             (c(olo_theme::tint(base, 0.8)), shade(&p, base, 1.06))
         };
         // A soft drop shadow lifts the thumb off the bar.
-        painter.rect_filled(thumb.translate(vec2(1.0, 1.0)), 1.0, Color32::from_black_alpha(40));
-        style::vgradient(painter, thumb.shrink(1.0), tt, tb);
+        let px = style::hairline(ui.ctx());
+        painter.rect_filled(thumb.translate(vec2(px, px)), 1.0, c(p.drop_shadow));
+        let in_thumb = style::inset(ui.ctx(), thumb, 1.0);
+        style::vgradient(painter, in_thumb, tt, tb);
         frame_rect(painter, thumb, shade(&p, p.panel_background, 1.6));
-        style::bevel(painter, thumb.shrink(1.0), c(p.shine), shade(&p, base, 1.2));
+        style::bevel(painter, in_thumb, c(p.shine), shade(&p, base, 1.2));
         // Grip line.
-        let gx = thumb.center().x.floor();
-        vline(painter, gx - 1.0, thumb.top() + 4.0, thumb.bottom() - 4.0, shade(&p, base, 1.35));
+        let gx = (thumb.center().x * ppp).floor() / ppp;
+        vline_left_of(painter, gx, thumb.top() + 4.0, thumb.bottom() - 4.0, shade(&p, base, 1.35));
         vline(painter, gx, thumb.top() + 4.0, thumb.bottom() - 4.0, c(p.shine));
         if let Some((min, max)) = self.limits {
             let small = FontId::proportional(style::SMALL_SIZE);
@@ -816,9 +909,10 @@ impl Widget for MenuField<'_> {
         }
         // Raised field with a drop-down mark.
         let base = p.menu_background;
-        style::vgradient(painter, field.shrink(1.0), c(olo_theme::tint(base, 0.82)), shade(&p, base, 1.05));
+        let in_field = style::inset(ui.ctx(), field, 1.0);
+        style::vgradient(painter, in_field, c(olo_theme::tint(base, 0.82)), shade(&p, base, 1.05));
         frame_rect(painter, field, shade(&p, p.panel_background, 1.55));
-        style::bevel(painter, field.shrink(1.0), c(p.shine), shade(&p, base, 1.2));
+        style::bevel(painter, in_field, c(p.shine), shade(&p, base, 1.2));
         let text = self.options.get(*self.selected).copied().unwrap_or("");
         // In a field of set width, a choice too long is cut short before
         // the drop-down mark (the menu shows it whole).
@@ -956,7 +1050,7 @@ pub fn separator(ui: &mut Ui) -> Response {
     let p = style::palette(ui.ctx());
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 6.0), Sense::hover());
     let y = rect.center().y.floor();
-    hline(ui.painter(), rect.left(), rect.right(), y - 1.0, shade(&p, p.panel_background, 1.2));
+    hline_above(ui.painter(), rect.left(), rect.right(), y, shade(&p, p.panel_background, 1.2));
     hline(ui.painter(), rect.left(), rect.right(), y, c(p.shine));
     response
 }
@@ -978,8 +1072,10 @@ impl<'a> BBox<'a> {
     pub fn show<R>(self, ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
         let p = style::palette(ui.ctx());
         let galley = self.label.map(|l| layout(ui, l, bold_font(), c(p.panel_text)));
-        // The frame's top line runs through the middle of the label.
-        let label_h = galley.as_ref().map_or(0.0, |g| g.size().y.round());
+        // The frame's top line runs through the middle of the label's
+        // row, one height at every scale (on the 2-point grid, so the
+        // content is on device pixels).
+        let label_h = if galley.is_some() { m::LABEL_ROW } else { 0.0 };
         let top = (label_h / 2.0).floor();
         let pad = m::BOX_INSET;
         let outer = ui.available_rect_before_wrap();
@@ -1014,14 +1110,16 @@ impl<'a> BBox<'a> {
             }
             None => hline(painter, frame.left(), frame.right(), y, col),
         };
-        etched_h(frame.top(), dark);
-        etched_h(frame.top() + 1.0, light);
-        hline(painter, frame.left(), frame.right(), frame.bottom() - 2.0, dark);
-        hline(painter, frame.left(), frame.right(), frame.bottom() - 1.0, light);
-        vline(painter, frame.left(), frame.top(), frame.bottom() - 1.0, dark);
-        vline(painter, frame.left() + 1.0, frame.top() + 1.0, frame.bottom() - 2.0, light);
-        vline(painter, frame.right() - 2.0, frame.top(), frame.bottom() - 1.0, dark);
-        vline(painter, frame.right() - 1.0, frame.top(), frame.bottom(), light);
+        // Dark then light, a line apart on device pixels at any scale.
+        let (f, i1, i2) = (style::inset(ui.ctx(), frame, 0.0), style::inset(ui.ctx(), frame, 1.0), style::inset(ui.ctx(), frame, 2.0));
+        etched_h(f.top(), dark);
+        etched_h(i1.top(), light);
+        hline_above(painter, f.left(), f.right(), i1.bottom(), dark);
+        hline_above(painter, f.left(), f.right(), f.bottom(), light);
+        vline(painter, f.left(), f.top(), i1.bottom(), dark);
+        vline(painter, i1.left(), i1.top(), i2.bottom(), light);
+        vline_left_of(painter, i1.right(), f.top(), i1.bottom(), dark);
+        vline_left_of(painter, f.right(), f.top(), f.bottom(), light);
         if let (Some(g), Some((a, _))) = (galley, gap) {
             let pos = text_pos(ui, a + 4.0, outer.top() + label_h / 2.0, &g);
             painter.galley(pos, g, c(p.panel_text));
@@ -1089,14 +1187,14 @@ impl Widget for StatusBar<'_> {
 /// palette's status bar colour).
 pub fn level_bar(painter: &Painter, bar: Rect, fraction: f32, fill: Option<Color32>) {
     let p = style::palette(painter.ctx());
-    painter.rect_filled(bar.shrink(1.0), 0.0, c(p.document_background));
+    let inner = style::inset(painter.ctx(), bar, 1.0);
+    painter.rect_filled(inner, 0.0, c(p.document_background));
     let fill = fill.unwrap_or(c(p.status_bar));
     let f = fraction.clamp(0.0, 1.0);
-    let inner = bar.shrink(1.0);
     let done = Rect::from_min_max(inner.min, pos2((inner.left() + inner.width() * f).round(), inner.bottom()));
     if done.width() > 0.0 {
         style::vgradient(painter, done, fill, fill.gamma_multiply(0.8).to_opaque());
-        hline(painter, done.left(), done.right(), done.top(), Color32::from_white_alpha(70));
+        hline(painter, done.left(), done.right(), done.top(), c(p.gloss));
     }
     style::bevel(painter, bar, shade(&p, p.panel_background, 1.45), c(p.shine));
 }
@@ -1113,8 +1211,9 @@ pub struct Thumbnail {
 }
 
 /// A wrapping grid of pictures to pick one from, labelled underneath (a
-/// wallpaper, say): each in a sunken frame, the chosen one ringed in the
-/// navigation colour. Arrow keys move the choice while it has focus.
+/// wallpaper, say): each in a sunken frame, the chosen one and its name
+/// on a selection plate (`style::selection_plate`). Arrow keys move the
+/// choice while it has focus.
 pub struct ThumbnailPicker<'a> {
     id: Id,
     items: &'a [Thumbnail],
@@ -1155,8 +1254,11 @@ impl<'a> ThumbnailPicker<'a> {
                 chosen = Some(i);
             }
             let painter = ui.painter();
+            if on {
+                style::selection_plate(painter, r, &p);
+            }
             let frame = style::snap(ui.ctx(), Rect::from_min_size(at, self.size + vec2(4.0, 4.0)));
-            let well = frame.shrink(2.0);
+            let well = style::inset(ui.ctx(), frame, 2.0);
             painter.rect_filled(well, 0.0, c(p.document_background));
             match &item.texture {
                 Some(t) => {
@@ -1168,15 +1270,11 @@ impl<'a> ThumbnailPicker<'a> {
                     }
                 }
             }
-            style::bevel(painter, frame.shrink(1.0), shade(&p, p.panel_background, 1.45), c(p.shine));
-            if on {
-                frame_rect(painter, frame, c(p.keyboard_navigation));
-                frame_rect(painter, frame.expand(1.0), c(p.keyboard_navigation));
-            }
+            style::bevel(painter, style::inset(ui.ctx(), frame, 1.0), shade(&p, p.panel_background, 1.45), c(p.shine));
             let label_y = frame.bottom() + m::TIGHT + m::LABEL_ROW / 2.0;
-            let font = if on { bold_font() } else { plain_font() };
+            let (font, ink) = if on { (bold_font(), style::selection_ink(&p).text) } else { (plain_font(), c(p.panel_text)) };
             let clip = painter.with_clip_rect(Rect::from_min_max(pos2(r.left(), frame.bottom()), r.max));
-            style::label(&clip, r.center().x, label_y, egui::Align::Center, item.label.clone(), font, c(p.panel_text));
+            style::label(&clip, r.center().x, label_y, egui::Align::Center, item.label.clone(), font, ink);
         }
         // Arrows move the choice (as radio buttons do).
         if focused && let Some(sel) = self.selected {
@@ -1304,23 +1402,25 @@ impl<'a> CellGrid<'a> {
             let resp = ui.interact(cell, self.id.with(i), Sense::click());
             let name = item.name.clone();
             resp.widget_info(|| WidgetInfo::selected(Role::Button, true, item.selected, &name));
-            let inner = cell.shrink(1.0);
+            let inner = style::inset(ui.ctx(), cell, 1.0);
             if let Some(color) = item.color {
                 let lit = if resp.hovered() { color.gamma_multiply(1.15) } else { color };
                 style::vgradient(painter, inner, lit, lit.gamma_multiply(0.8).to_opaque());
-                hline(painter, inner.left(), inner.right(), inner.top(), Color32::from_white_alpha(80));
+                hline(painter, inner.left(), inner.right(), inner.top(), c(p.gloss));
             }
             if let Some(mark) = item.mark.as_deref().filter(|_| size >= 11.0) {
                 // Centred on its capitals (not the line box, which sits
                 // it high), and kept inside the well.
                 let font = FontId::proportional((size * 0.64).round());
-                let ink = if item.color.is_some() { Color32::WHITE } else { c(p.panel_text) };
+                let ink = item.color.map_or(c(p.panel_text), |fill| c(p.ink_on(fill.to_array())));
                 let g = layout(ui, mark, font, ink);
                 let at = text_pos(ui, inner.center().x - g.size().x / 2.0, inner.center().y, &g);
                 painter.with_clip_rect(inner).galley(at, g, ink);
             }
+            // Too small for a plate, and flush with its neighbours: a
+            // hairline in the selection's edge colour round it.
             if item.selected {
-                style::frame_rect(painter, cell.expand(1.0), c(p.keyboard_navigation));
+                style::frame_rect(painter, cell.expand(1.0), style::selection_ink(&p).edge);
             }
             let resp = if item.name.is_empty() { resp } else { resp.on_hover_text(&item.name) };
             if resp.clicked() {
@@ -1465,8 +1565,8 @@ impl ScrollView {
         body: impl FnOnce(egui::ScrollArea, &mut Ui) -> (egui::scroll_area::State, Vec2, Id),
     ) {
         let p = style::palette(ui.ctx());
-        let b = if self.border { 2.0 } else { 0.0 };
-        let inner = rect.shrink(b);
+        // Inside the sunken border's two lines, on device pixels.
+        let inner = if self.border { style::inset(ui.ctx(), rect, 2.0) } else { rect };
         let mut content = inner;
         let size_id = self.id.with("content-size");
         let mut vertical_bar = self.vertical;
@@ -1682,24 +1782,25 @@ fn scroll_bar(ui: &mut Ui, id: Id, bar: Rect, vertical: bool, offset: &mut f32, 
             (c(olo_theme::tint(base, 0.85)), shade(p, base, 1.04))
         };
         let k = knob;
+        let in_k = style::inset(painter.ctx(), k, 1.0);
         if vertical {
             // Shade across the knob, as light falls on a vertical bar.
-            hgradient(&painter, k.shrink(1.0), t0, t1);
+            hgradient(&painter, in_k, t0, t1);
         } else {
-            style::vgradient(&painter, k.shrink(1.0), t0, t1);
+            style::vgradient(&painter, in_k, t0, t1);
         }
         frame_rect(&painter, k, shade(p, bg, 1.55));
-        style::bevel(&painter, k.shrink(1.0), c(p.shine), shade(p, base, 1.18));
+        style::bevel(&painter, in_k, c(p.shine), shade(p, base, 1.18));
         // Three grip lines in the middle.
         if knob_len > 20.0 {
             let ctr = k.center().round();
             for i in -1..=1 {
                 let o = i as f32 * 3.0;
                 if vertical {
-                    hline(&painter, k.left() + 4.0, k.right() - 4.0, ctr.y + o - 1.0, shade(p, base, 1.3));
+                    hline_above(&painter, k.left() + 4.0, k.right() - 4.0, ctr.y + o, shade(p, base, 1.3));
                     hline(&painter, k.left() + 4.0, k.right() - 4.0, ctr.y + o, c(p.shine));
                 } else {
-                    vline(&painter, ctr.x + o - 1.0, k.top() + 4.0, k.bottom() - 4.0, shade(p, base, 1.3));
+                    vline_left_of(&painter, ctr.x + o, k.top() + 4.0, k.bottom() - 4.0, shade(p, base, 1.3));
                     vline(&painter, ctr.x + o, k.top() + 4.0, k.bottom() - 4.0, c(p.shine));
                 }
             }
@@ -1724,12 +1825,13 @@ fn draw_arrow_button(painter: &Painter, r: Rect, dir: Arrow, down: bool, enabled
     let base = p.control_background;
     let bg = p.panel_background;
     let fill = if down { shade(p, base, 1.15) } else { c(olo_theme::tint(base, 0.9)) };
-    painter.rect_filled(r.shrink(1.0), 0.0, fill);
+    let inner = style::inset(painter.ctx(), r, 1.0);
+    painter.rect_filled(inner, 0.0, fill);
     frame_rect(painter, r, shade(p, bg, 1.55));
     if down {
-        style::bevel(painter, r.shrink(1.0), shade(p, base, 1.3), shade(p, base, 1.05));
+        style::bevel(painter, inner, shade(p, base, 1.3), shade(p, base, 1.05));
     } else {
-        style::bevel(painter, r.shrink(1.0), c(p.shine), shade(p, base, 1.18));
+        style::bevel(painter, inner, c(p.shine), shade(p, base, 1.18));
     }
     let color = if enabled { c(p.control_text) } else { shade(p, bg, 1.3) };
     let ctr = r.center() + if down { vec2(0.5, 0.5) } else { Vec2::ZERO };
@@ -1901,12 +2003,12 @@ impl<'a> ColumnListView<'a> {
             .unwrap_or_else(|| self.columns.iter().map(|c| c.width).collect());
 
         // Header.
-        let inner = outer.shrink(2.0);
+        let inner = style::inset(ui.ctx(), outer, 2.0);
         let header = Rect::from_min_size(inner.min, vec2(inner.width(), HEADER_HEIGHT));
         let painter = ui.painter().clone();
         let bg = p.panel_background;
         style::vgradient(&painter, header, c(olo_theme::tint(bg, 0.8)), shade(&p, bg, 1.04));
-        hline(&painter, header.left(), header.right(), header.bottom() - 1.0, shade(&p, bg, 1.45));
+        hline_above(&painter, header.left(), header.right(), header.bottom(), shade(&p, bg, 1.45));
         let mut x = header.left();
         let last = self.columns.len().saturating_sub(1);
         for (i, col) in self.columns.iter().enumerate() {
@@ -1924,7 +2026,7 @@ impl<'a> ColumnListView<'a> {
             }
             // Light leading edge, dark trailing edge.
             vline(&painter, r.left(), r.top(), r.bottom(), c(p.shine));
-            vline(&painter, r.right() - 1.0, r.top() + 2.0, r.bottom() - 2.0, shade(&p, bg, 1.3));
+            vline_left_of(&painter, r.right(), r.top() + 2.0, r.bottom() - 2.0, shade(&p, bg, 1.3));
             let font = if sorted.is_some() { bold_font() } else { plain_font() };
             let hc = Cell {
                 painter: &painter,
@@ -2223,8 +2325,10 @@ impl<'a> TabView<'a> {
         let panel = Rect::from_min_max(pos2(outer.left(), outer.top() + TAB_HEIGHT - 1.0), outer.max);
         // Content panel: raised.
         style::bevel(&painter, panel, c(p.shine), shade(&p, bg, 1.35));
-        vline(&painter, panel.right() - 2.0, panel.top() + 1.0, panel.bottom() - 1.0, shade(&p, bg, 1.12));
-        hline(&painter, panel.left() + 1.0, panel.right() - 1.0, panel.bottom() - 2.0, shade(&p, bg, 1.12));
+        // A softer second line inside the dark one.
+        let in_panel = style::inset(ui.ctx(), panel, 1.0);
+        vline_left_of(&painter, in_panel.right(), in_panel.top(), in_panel.bottom(), shade(&p, bg, 1.12));
+        hline_above(&painter, in_panel.left(), in_panel.right(), in_panel.bottom(), shade(&p, bg, 1.12));
 
         let slant = 6.0;
         let mut x = outer.left() + 6.0;
@@ -2264,7 +2368,10 @@ impl<'a> TabView<'a> {
                 // Open into the panel.
                 hline(&painter, pts[0].x + 1.0, pts[3].x - 1.0, panel.top(), c(bg));
             }
-            style::label(&painter, r.center().x, (top + bottom) / 2.0, Align::Center, label, font, c(p.panel_text));
+            // Every label on one line, the selected tab's too: centred in
+            // an unselected tab's face.
+            let cy = (r.top() + 2.0 + r.bottom() - 1.0) / 2.0;
+            style::label(&painter, r.center().x, cy, Align::Center, label, font, c(p.panel_text));
         };
         for (i, (r, font, label)) in rects.iter().enumerate().rev() {
             if i != *self.selected {
@@ -2275,7 +2382,9 @@ impl<'a> TabView<'a> {
             draw_tab(*r, true, label, font.clone());
         }
 
-        let content = panel.shrink(m::WINDOW_INSET);
+        // The inset from under the tabs (the panel's top line is under
+        // them), so the content is on the 2-point grid.
+        let content = Rect::from_min_max(pos2(panel.left(), outer.top() + TAB_HEIGHT), panel.max).shrink(m::WINDOW_INSET);
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(content).layout(egui::Layout::top_down(Align::Min)));
         let r = add(&mut child, *self.selected);
         let tab = self.tabs.get(*self.selected).copied().unwrap_or_default();
@@ -2322,8 +2431,6 @@ pub struct StripTab<'a> {
     pub label: &'a str,
     /// Paints the 16×16 icon left of the label.
     pub icon: Option<PaintIcon<'a>>,
-    /// A band along the tab's top edge: the colour of its group.
-    pub color: Option<Color32>,
     /// What the tab is doing, for screen readers and agents ("waiting
     /// for an answer"); the icon shows it.
     pub status: Option<&'a str>,
@@ -2342,6 +2449,9 @@ pub enum StripAction {
     Move { from: usize, to: usize },
     /// A click on the group's name, at the pointer.
     Group(Pos2),
+    /// A [`TabStrip::side`] strip's edge dragged: its width now, and
+    /// whether it was let go (time to save it).
+    Resize { width: f32, done: bool },
 }
 
 /// Widest a [`TabStrip`] tab grows.
@@ -2351,14 +2461,24 @@ pub const STRIP_TAB_MAX: f32 = 220.0;
 /// documents is something you aim at all day.
 pub const STRIP_HEIGHT: f32 = 30.0;
 
-/// The group band along a [`TabStrip`] tab's top edge.
-const STRIP_BAND: f32 = 3.0;
-
-/// How far a [`TabStrip`] tab's top is below the strip's.
-const STRIP_TAB_TOP: f32 = 5.0;
+/// How far a [`TabStrip`] tab's top is below the strip's: it is a side
+/// strip's row tall, so a band under the strip (Terminal's pane heads) is
+/// as tall as the tab standing on it.
+const STRIP_TAB_TOP: f32 = STRIP_HEIGHT - STRIP_ROW;
 
 /// The rounding of a [`TabStrip`] tab's top corners.
 const STRIP_RADIUS: u8 = 5;
+
+/// How tall a tab is in a [`TabStrip::side`] strip (less, to fit, when
+/// there are many). A band beside the strip as tall (Terminal's pane
+/// heads) is level with its first tab.
+pub const STRIP_ROW: f32 = 26.0;
+
+/// How wide a [`TabStrip::side`] strip starts, and the narrowest and
+/// widest its edge can be dragged to.
+pub const STRIP_SIDE_WIDTH: f32 = 180.0;
+pub const STRIP_SIDE_MIN: f32 = 120.0;
+pub const STRIP_SIDE_MAX: f32 = 400.0;
 
 /// A row of document tabs under a window's tool or menu bar
 /// (Terminal's shells): the selected one a folder tab open into the
@@ -2366,7 +2486,8 @@ const STRIP_RADIUS: u8 = 5;
 /// click closes too), a plus button after the last, and tabs dragged
 /// along the row to reorder them. Titles too long for their tab are cut
 /// short with "…". Each tab is a `Tab` in the accessibility tree, its
-/// whole title and its status in its name.
+/// whole title and its status in its name. Or, [`TabStrip::side`], a
+/// column of them down the content's left side.
 pub struct TabStrip<'a> {
     id: Id,
     tabs: &'a [StripTab<'a>],
@@ -2376,11 +2497,26 @@ pub struct TabStrip<'a> {
     group: Option<(&'a str, Color32)>,
     content: Option<(Color32, Color32)>,
     closed: bool,
+    side: bool,
 }
 
 impl<'a> TabStrip<'a> {
     pub fn new(id: impl std::hash::Hash + std::fmt::Debug, tabs: &'a [StripTab<'a>], active: usize) -> Self {
-        TabStrip { id: Id::unique(id), tabs, active, max_width: STRIP_TAB_MAX, new_tab: true, group: None, content: None, closed: false }
+        TabStrip { id: Id::unique(id), tabs, active, max_width: STRIP_TAB_MAX, new_tab: true, group: None, content: None, closed: false, side: false }
+    }
+
+    /// Down the content's left side rather than along its top: the same
+    /// folder tabs turned on their side, one under another, the selected
+    /// one opening to the right into the content; the group's chip heads
+    /// the column; New Tab
+    /// is a row after the last; tabs drag up and down to reorder, and
+    /// the strip's right edge drags to make it wider or narrower
+    /// ([`StripAction::Resize`]). `show`'s `full` is then the strip
+    /// itself: the app's width for it ([`STRIP_SIDE_WIDTH`] to start)
+    /// and the content's height.
+    pub fn side(mut self) -> Self {
+        self.side = true;
+        self
     }
 
     /// Without the + button.
@@ -2389,8 +2525,8 @@ impl<'a> TabStrip<'a> {
         self
     }
 
-    /// The tabs are a named group: its name leads the row in its colour
-    /// (clicking it gives [`StripAction::Group`]).
+    /// The tabs are a named group: its name leads the row on a chip of
+    /// its colour (clicking it gives [`StripAction::Group`]).
     pub fn group(mut self, name: &'a str, color: Color32) -> Self {
         self.group = Some((name, color));
         self
@@ -2412,8 +2548,12 @@ impl<'a> TabStrip<'a> {
         self
     }
 
-    /// `full` is [`STRIP_HEIGHT`] tall and the window's width.
+    /// `full` is [`STRIP_HEIGHT`] tall and the window's width (or, for
+    /// a [`TabStrip::side`] strip, the strip's own).
     pub fn show(self, ui: &mut Ui, full: Rect) -> Option<StripAction> {
+        if self.side {
+            return self.show_side(ui, full);
+        }
         use egui::{CornerRadius, StrokeKind};
         let p = style::palette(ui.ctx());
         let painter = ui.painter_at(full);
@@ -2431,16 +2571,15 @@ impl<'a> TabStrip<'a> {
         if let Some((name, color)) = self.group {
             let text_w = style::label_width(ui.ctx(), name, bold_font());
             let chip_h = 18.0;
-            let cy = (top + full.bottom()) / 2.0;
-            let chip = Rect::from_min_size(pos2(full.left() + m::SPACING, (cy - chip_h / 2.0).round()), vec2((text_w + 2.0 * 7.0).round(), chip_h));
+            // Level with the tabs' faces.
+            let cy = ((top + 1.0 + full.bottom()) / 2.0).round();
+            let chip = Rect::from_min_size(pos2(full.left() + m::TIGHT, cy - chip_h / 2.0), vec2(((text_w + 2.0 * m::SPACING) / 2.0).ceil() * 2.0, chip_h));
             let chip = style::snap(ui.ctx(), chip);
             let resp = ui.interact(chip, self.id.with("group"), Sense::click());
             resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Group {name}")));
             let tone = if resp.hovered() { color.lerp_to_gamma(Color32::WHITE, 0.12) } else { color };
             painter.rect_filled(chip, 4.0, tone);
-            let [r, g, b, _] = color.to_array();
-            let light = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32 > 150.0;
-            let chip_ink = if light { Color32::from_gray(24) } else { Color32::WHITE };
+            let chip_ink = c(p.ink_on(color.to_array()));
             style::label(&painter, chip.center().x, chip.center().y, Align::Center, name, bold_font(), chip_ink);
             if resp.clicked() || resp.secondary_clicked() {
                 action = resp.interact_pointer_pos().map(StripAction::Group);
@@ -2449,7 +2588,8 @@ impl<'a> TabStrip<'a> {
         }
         let n = self.tabs.len();
         let new_w = if self.new_tab { m::CONTROL_HEIGHT + m::TIGHT } else { 0.0 };
-        let width = ((strip.width() - 2.0 * m::TIGHT - new_w) / n.max(1) as f32).min(self.max_width).floor().max(1.0);
+        // On the 2-point grid, so every tab's edges are on device pixels.
+        let width = (((strip.width() - 2.0 * m::TIGHT - new_w) / n.max(1) as f32).min(self.max_width) / 2.0).floor().max(1.0) * 2.0;
         let slot = |i: usize| Rect::from_min_max(pos2(strip.left() + m::TIGHT + i as f32 * width, top), pos2(strip.left() + m::TIGHT + (i + 1) as f32 * width, full.bottom()));
         let drag_id = self.id.with("dragging");
         // Where everything is, and what the pointer is over, before
@@ -2467,25 +2607,26 @@ impl<'a> TabStrip<'a> {
         for i in 0..n {
             let r = slot(i);
             if i != self.active && lit(i) {
-                painter.rect_filled(Rect::from_min_max(r.min + vec2(1.0, 2.0), r.max), top_corners, hover_fill);
+                let line = style::hairline(ui.ctx());
+                painter.rect_filled(Rect::from_min_max(r.min + vec2(line, 2.0), r.max), top_corners, hover_fill);
             }
             if i + 1 < n && !lit(i) && !lit(i + 1) {
-                vline(&painter, r.right() - 1.0, r.top() + 6.0, r.bottom() - 5.0, edge);
+                vline_left_of(&painter, r.right(), r.top() + 6.0, r.bottom() - 5.0, edge);
             }
         }
         // The edge under the tabs, open under the selected one (unless
         // closed).
-        hline(&painter, full.left(), full.right(), full.bottom() - 1.0, edge);
+        hline_above(&painter, full.left(), full.right(), full.bottom(), edge);
         if self.active < n {
             let r = slot(self.active);
             let shape = Rect::from_min_max(r.min, pos2(r.right(), r.bottom() + 4.0));
-            painter.rect(shape, top_corners, fill, Stroke::new(1.0, edge), StrokeKind::Inside);
+            painter.rect(shape, top_corners, fill, Stroke::new(style::hairline(ui.ctx()), edge), StrokeKind::Inside);
             if self.content.is_none() {
                 // Lit from the top left, as BeOS's controls are.
                 hline(&painter, r.left() + STRIP_RADIUS as f32, r.right() - STRIP_RADIUS as f32, r.top() + 1.0, c(p.shine));
             }
             if self.closed {
-                hline(&painter, r.left(), r.right(), full.bottom() - 1.0, edge);
+                hline_above(&painter, r.left(), r.right(), full.bottom(), edge);
             }
         }
         for (i, tab) in self.tabs.iter().enumerate() {
@@ -2497,45 +2638,12 @@ impl<'a> TabStrip<'a> {
                 None => tab.label.to_owned(),
             };
             resp.widget_info(|| WidgetInfo { selected: Some(selected), ..WidgetInfo::labeled(Role::Tab, true, &name) });
-            // The group's band: along the top, following the corners.
-            if let Some(color) = tab.color {
-                let band = Rect::from_min_max(r.min, pos2(r.right(), r.top() + STRIP_BAND));
-                if selected {
-                    painter.with_clip_rect(band).rect_filled(Rect::from_min_max(r.min, pos2(r.right(), r.bottom() + 4.0)), top_corners, color);
-                } else {
-                    let band = Rect::from_min_max(pos2(r.left() + 3.0, r.top() + 1.0), pos2(r.right() - 4.0, r.top() + STRIP_BAND - 0.5));
-                    painter.rect_filled(band, 1.0, color.gamma_multiply(0.6));
-                }
-            }
             let cy = ((r.top() + 1.0 + r.bottom()) / 2.0).round();
-            let close = close_box(r);
-            close_resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Close {}", tab.label)));
-            let (text_color, mark) = if selected { (ink, ink.lerp_to_gamma(fill, 0.35)) } else { (dim, dim) };
-            if selected || resp.hovered() || close_resp.hovered() {
-                let mut color = mark;
-                if close_resp.hovered() {
-                    let back = if selected { fill } else { hover_fill };
-                    painter.rect_filled(close, 3.0, back.lerp_to_gamma(text_color, 0.15));
-                    color = text_color;
-                }
-                let k = close.shrink(4.5);
-                painter.line_segment([k.left_top(), k.right_bottom()], Stroke::new(1.5, color));
-                painter.line_segment([k.right_top(), k.left_bottom()], Stroke::new(1.5, color));
-            }
-            let mut left = r.left() + m::SPACING + 2.0;
-            if let Some(paint) = tab.icon.filter(|_| width >= 72.0) {
-                let icon = style::snap(ui.ctx(), Rect::from_min_size(pos2(left, cy - 8.0), vec2(16.0, 16.0)));
-                paint(&painter, icon);
-                left = icon.right() + m::MARK_GAP;
-            }
-            let font = if selected { bold_font() } else { plain_font() };
-            style::label_fit(&painter, left, cy, Align::Min, tab.label, font, text_color, close.left() - m::TIGHT - left);
-            if close_resp.clicked() || resp.middle_clicked() {
-                action = Some(StripAction::Close(i));
-            } else if resp.secondary_clicked() {
-                action = resp.interact_pointer_pos().map(|at| StripAction::Menu(i, at));
-            } else if resp.clicked() {
-                action = Some(StripAction::Select(i));
+            // Centred in the tab, under its top edge, not in the strip.
+            crate::layout_review::band(ui, Rect::from_min_max(pos2(r.left(), r.top() + 1.0), r.max));
+            let inks = FaceInks { fill, ink, dim, hover: hover_fill };
+            if let Some(a) = tab_face(ui, &painter, tab, i, selected, (resp, close_resp), (r, cy, close_box(r)), width >= 72.0, inks) {
+                action = Some(a);
             }
             if resp.drag_started() && n > 1 {
                 ui.ctx().data_mut(|d| d.insert_temp(drag_id, i));
@@ -2560,7 +2668,7 @@ impl<'a> TabStrip<'a> {
         }
         if self.new_tab {
             let cy = ((top + 1.0 + full.bottom()) / 2.0).round();
-            let plus = Rect::from_center_size(pos2(strip.left() + m::TIGHT + n as f32 * width + m::TIGHT + 11.0, cy), vec2(22.0, 22.0));
+            let plus = style::snap_centred(ui.ctx(), pos2(strip.left() + m::TIGHT + n as f32 * width + m::TIGHT + 11.0, cy), vec2(22.0, 22.0));
             let resp = ui.interact(plus, self.id.with("new"), Sense::click());
             resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, "New Tab"));
             let color = if resp.hovered() {
@@ -2569,14 +2677,239 @@ impl<'a> TabStrip<'a> {
             } else {
                 dim
             };
-            let k = style::snap(ui.ctx(), Rect::from_center_size(plus.center(), vec2(10.0, 10.0)));
-            painter.rect_filled(Rect::from_min_max(pos2(k.left(), k.center().y - 0.75), pos2(k.right(), k.center().y + 0.75)), 0.0, color);
-            painter.rect_filled(Rect::from_min_max(pos2(k.center().x - 0.75, k.top()), pos2(k.center().x + 0.75, k.bottom())), 0.0, color);
+            plus_mark(&painter, plus.center(), color);
             if resp.clicked() {
                 action = Some(StripAction::New);
             }
         }
         action
+    }
+}
+
+/// A strip's +, ten points across: arms a point and a half thick in
+/// whole device pixels, as long either side of the other at any scale.
+fn plus_mark(painter: &Painter, center: Pos2, color: Color32) {
+    let ppp = painter.ctx().pixels_per_point();
+    let thick = (1.5 * ppp).round();
+    let len = (10.0 * ppp).round();
+    let len = len + (len - thick).rem_euclid(2.0);
+    let k = style::snap_centred(painter.ctx(), center, vec2(len, len) / ppp);
+    let arm = (len - thick) / 2.0 / ppp;
+    painter.rect_filled(Rect::from_min_max(pos2(k.left(), k.top() + arm), pos2(k.right(), k.bottom() - arm)), 0.0, color);
+    painter.rect_filled(Rect::from_min_max(pos2(k.left() + arm, k.top()), pos2(k.right() - arm, k.bottom())), 0.0, color);
+}
+
+impl TabStrip<'_> {
+    fn show_side(self, ui: &mut Ui, full: Rect) -> Option<StripAction> {
+        use egui::{CornerRadius, StrokeKind};
+        let p = style::palette(ui.ctx());
+        let painter = ui.painter_at(full);
+        let bg = p.panel_background;
+        let well = shade(&p, bg, 1.07);
+        let edge = shade(&p, bg, 1.3);
+        let (fill, ink) = self.content.unwrap_or((c(bg), c(p.panel_text)));
+        let dim = c(p.panel_text).lerp_to_gamma(well, 0.3);
+        let hover_fill = well.lerp_to_gamma(c(bg), 0.55);
+        let left_corners = CornerRadius { nw: STRIP_RADIUS, sw: STRIP_RADIUS, ne: 0, se: 0 };
+        painter.rect_filled(full, 0.0, well);
+        // The tabs stand in from the left as far as along the top, and
+        // run to the edge the content is beyond; the first is at the
+        // top, level with a band beside the strip as tall (a pane's
+        // head).
+        let left = full.left() + m::TIGHT;
+        let right = full.right();
+        let mut top = full.top();
+        let mut action = None;
+        if let Some((name, color)) = self.group {
+            // The chip has a row of its own.
+            let chip_h = 20.0;
+            let room = right - m::SPACING - left - 2.0 * m::SPACING;
+            let text_w = style::label_width(ui.ctx(), name, bold_font()).min(room);
+            let chip = style::snap(ui.ctx(), Rect::from_min_size(pos2(left, top + ((STRIP_ROW - chip_h) / 2.0).round()), vec2((text_w + 2.0 * m::SPACING).round(), chip_h)));
+            let resp = ui.interact(chip, self.id.with("group"), Sense::click());
+            resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Group {name}")));
+            let tone = if resp.hovered() { color.lerp_to_gamma(Color32::WHITE, 0.12) } else { color };
+            painter.rect_filled(chip, 4.0, tone);
+            let chip_ink = c(p.ink_on(color.to_array()));
+            style::label_fit(&painter, chip.left() + m::SPACING, chip.center().y, Align::Min, name, bold_font(), chip_ink, text_w);
+            if resp.clicked() || resp.secondary_clicked() {
+                action = resp.interact_pointer_pos().map(StripAction::Group);
+            }
+            top += STRIP_ROW;
+        }
+        let n = self.tabs.len();
+        let rows = n + usize::from(self.new_tab);
+        let row = ((full.bottom() - m::TIGHT - top) / rows.max(1) as f32).min(STRIP_ROW).floor().max(16.0);
+        let slot = |i: usize| Rect::from_min_size(pos2(left, top + i as f32 * row), vec2(right - left, row));
+        let drag_id = self.id.with("dragging");
+        let close_box = |r: Rect| Rect::from_center_size(pos2(r.right() - m::TIGHT - 9.0, r.center().y.round()), vec2(16.0, 16.0));
+        let responses: Vec<(Response, Response)> = (0..n)
+            .map(|i| {
+                let r = slot(i);
+                let resp = ui.interact(r, self.id.with(("tab", i)), Sense::click_and_drag());
+                let close = ui.interact(close_box(r), self.id.with(("close", i)), Sense::click());
+                (resp, close)
+            })
+            .collect();
+        // (No lines between them: a column of rows reads as a list.)
+        for (i, (t, x)) in responses.iter().enumerate() {
+            let r = slot(i);
+            if i != self.active && (t.hovered() || x.hovered()) {
+                let line = style::hairline(ui.ctx());
+                painter.rect_filled(Rect::from_min_max(r.min + vec2(2.0, line), r.max), left_corners, hover_fill);
+            }
+        }
+        // The edge beside the tabs, open beside the selected one (unless
+        // closed).
+        vline_left_of(&painter, right, full.top(), full.bottom(), edge);
+        if self.active < n {
+            let r = slot(self.active);
+            // The first, at the top, hangs from what is above the strip
+            // (a menu bar): its edge is the tab's (no second line under
+            // it), its corner square.
+            let flush = r.top() <= full.top();
+            let line = style::hairline(ui.ctx());
+            let corners = if flush { CornerRadius { nw: 0, ..left_corners } } else { left_corners };
+            let shape = Rect::from_min_max(pos2(r.left(), if flush { r.top() - line } else { r.top() }), pos2(right + 4.0, r.bottom()));
+            painter.rect(shape, corners, fill, Stroke::new(line, edge), StrokeKind::Inside);
+            if self.content.is_none() {
+                // Lit from the top left, as BeOS's controls are.
+                hline(&painter, r.left() + STRIP_RADIUS as f32, right, r.top() + 1.0, c(p.shine));
+            }
+            if self.closed {
+                vline_left_of(&painter, right, r.top(), r.bottom(), edge);
+            }
+        }
+        for (i, tab) in self.tabs.iter().enumerate() {
+            let r = slot(i);
+            let selected = i == self.active;
+            let (resp, close_resp) = &responses[i];
+            let name = match tab.status {
+                Some(s) => format!("{}, {s}", tab.label),
+                None => tab.label.to_owned(),
+            };
+            resp.widget_info(|| WidgetInfo { selected: Some(selected), ..WidgetInfo::labeled(Role::Tab, true, &name) });
+            let inks = FaceInks { fill, ink, dim, hover: hover_fill };
+            if let Some(a) = tab_face(ui, &painter, tab, i, selected, (resp, close_resp), (r, r.center().y.round(), close_box(r)), r.width() >= 72.0, inks) {
+                action = Some(a);
+            }
+            if resp.drag_started() && n > 1 {
+                ui.ctx().data_mut(|d| d.insert_temp(drag_id, i));
+            }
+        }
+        // A tab being dragged: a mark where it would go.
+        if let Some(from) = ui.ctx().data(|d| d.get_temp::<usize>(drag_id)) {
+            let pointer = ui.ctx().pointer_latest_pos();
+            let to = pointer.map_or(from, |pos| (((pos.y - top) / row).round().max(0.0) as usize).min(n));
+            let y = slot(to).top().clamp(top + 1.0, full.bottom() - 2.0);
+            let mark = c(p.keyboard_navigation);
+            painter.rect_filled(Rect::from_min_max(pos2(left, y - 1.0), pos2(right - 1.0, y + 1.0)), 0.0, mark);
+            if !ui.input(|i| i.pointer.any_down()) {
+                ui.ctx().data_mut(|d| d.remove::<usize>(drag_id));
+                let to = if to > from { to - 1 } else { to };
+                if to != from && from < n {
+                    action = Some(StripAction::Move { from, to });
+                }
+            } else {
+                ui.ctx().request_repaint();
+            }
+        }
+        if self.new_tab {
+            let r = slot(n);
+            let resp = ui.interact(r, self.id.with("new"), Sense::click());
+            resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, "New Tab"));
+            let color = if resp.hovered() {
+                let line = style::hairline(ui.ctx());
+                painter.rect_filled(Rect::from_min_max(r.min + vec2(2.0, line), r.max - vec2(line, 0.0)), left_corners, hover_fill);
+                c(p.panel_text)
+            } else {
+                dim
+            };
+            // The + where the tabs' icons are, then what it does.
+            let cy = r.center().y.round();
+            plus_mark(&painter, pos2(r.left() + m::SPACING + 8.0, cy), color);
+            // (Where a tab's title is, not from the mark: snapped, it may
+            // be a pixel off the icons' column.)
+            let text = r.left() + m::SPACING + 16.0 + m::MARK_GAP;
+            style::label_fit(&painter, text, cy, Align::Min, "New Tab", plain_font(), color, r.right() - m::TIGHT - text);
+            if resp.clicked() {
+                action = Some(StripAction::New);
+            }
+        }
+        // The edge drags to make the strip wider or narrower.
+        let grip = Rect::from_min_max(pos2(right - 4.0, full.top()), pos2(right, full.bottom()));
+        let resp = ui.interact(grip, self.id.with("width"), Sense::drag());
+        resp.widget_info(|| WidgetInfo::labeled(Role::Splitter, true, "Tab Width"));
+        if resp.hovered() || resp.dragged() {
+            ui.ctx().set_cursor_icon(CursorIcon::ResizeColumn);
+        }
+        if (resp.dragged() || resp.drag_stopped())
+            && let Some(x) = ui.ctx().pointer_latest_pos().map(|p| p.x)
+        {
+            let width = (x - full.left()).round().clamp(STRIP_SIDE_MIN, STRIP_SIDE_MAX);
+            action = Some(StripAction::Resize { width, done: resp.drag_stopped() });
+        }
+        action
+    }
+}
+
+/// The colours a [`TabStrip`] tab's face is drawn in.
+#[derive(Clone, Copy)]
+struct FaceInks {
+    /// The selected tab's fill and text.
+    fill: Color32,
+    ink: Color32,
+    /// The others' text.
+    dim: Color32,
+    /// Under the pointer.
+    hover: Color32,
+}
+
+/// A [`TabStrip`] tab's face: its close box (while selected or under the
+/// pointer), its icon (if `icon` and it has one) and title, centred on
+/// `cy`; and what was done to it.
+#[allow(clippy::too_many_arguments)]
+fn tab_face(
+    ui: &Ui,
+    painter: &Painter,
+    tab: &StripTab,
+    i: usize,
+    selected: bool,
+    (resp, close_resp): (&Response, &Response),
+    (r, cy, close): (Rect, f32, Rect),
+    icon: bool,
+    inks: FaceInks,
+) -> Option<StripAction> {
+    close_resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Close {}", tab.label)));
+    let (text_color, mark) = if selected { (inks.ink, inks.ink.lerp_to_gamma(inks.fill, 0.35)) } else { (inks.dim, inks.dim) };
+    if selected || resp.hovered() || close_resp.hovered() {
+        let mut color = mark;
+        if close_resp.hovered() {
+            let back = if selected { inks.fill } else { inks.hover };
+            painter.rect_filled(close, 3.0, back.lerp_to_gamma(text_color, 0.15));
+            color = text_color;
+        }
+        let k = close.shrink(4.5);
+        painter.line_segment([k.left_top(), k.right_bottom()], Stroke::new(1.5, color));
+        painter.line_segment([k.right_top(), k.left_bottom()], Stroke::new(1.5, color));
+    }
+    // The first tab's icon is under the menu bar's first title.
+    let mut left = r.left() + m::SPACING;
+    if let Some(paint) = tab.icon.filter(|_| icon) {
+        let icon = style::snap(ui.ctx(), Rect::from_min_size(pos2(left, cy - 8.0), vec2(16.0, 16.0)));
+        paint(painter, icon);
+        left = icon.right() + m::MARK_GAP;
+    }
+    let font = if selected { bold_font() } else { plain_font() };
+    style::label_fit(painter, left, cy, Align::Min, tab.label, font, text_color, close.left() - m::TIGHT - left);
+    if close_resp.clicked() || resp.middle_clicked() {
+        Some(StripAction::Close(i))
+    } else if resp.secondary_clicked() {
+        resp.interact_pointer_pos().map(|at| StripAction::Menu(i, at))
+    } else if resp.clicked() {
+        Some(StripAction::Select(i))
+    } else {
+        None
     }
 }
 
@@ -2634,8 +2967,10 @@ impl Widget for ColorControl<'_> {
         let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
         let ramps = Rect::from_min_size(rect.min, vec2(self.width, height));
         let mut response = ui.interact(ramps, self.id, Sense::click_and_drag());
-        let inner = ramps.shrink(2.0);
-        let row = (inner.height() / 4.0).floor();
+        let inner = style::inset(ui.ctx(), ramps, 2.0);
+        // Four lanes whole device pixels tall, the last taking what's left.
+        let ppp = ui.ctx().pixels_per_point();
+        let row = (inner.height() * ppp / 4.0).floor() / ppp;
         let lanes: [Rect; 4] = std::array::from_fn(|i| {
             let top = inner.top() + i as f32 * row;
             let bottom = if i == 3 { inner.bottom() } else { top + row };
@@ -2689,8 +3024,10 @@ impl Widget for ColorControl<'_> {
                 l => Some(rgb[l - 1]),
             };
             if let Some(v) = v {
-                let x = (lane.left() + v as f32 / 255.0 * (lane.width() - 1.0)).floor();
-                let mark = Rect::from_min_max(pos2(x - 1.0, lane.top()), pos2(x + 2.0, lane.bottom()));
+                // A black line with a white one either side, on device pixels.
+                let line = style::hairline(ui.ctx());
+                let x = ((lane.left() + v as f32 / 255.0 * (lane.width() - line)) * ppp).floor() / ppp;
+                let mark = Rect::from_min_max(pos2(x - line, lane.top()), pos2(x + 2.0 * line, lane.bottom()));
                 painter.rect_filled(mark, 0.0, Color32::WHITE);
                 vline(painter, x, lane.top(), lane.bottom(), Color32::BLACK);
             }
@@ -2704,7 +3041,7 @@ impl Widget for ColorControl<'_> {
 pub fn color_well(ui: &mut Ui, color: Color32, size: Vec2) -> Response {
     let p = style::palette(ui.ctx());
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
-    ui.painter().rect_filled(rect.shrink(2.0), 0.0, color);
+    ui.painter().rect_filled(style::inset(ui.ctx(), rect, 2.0), 0.0, color);
     style::sunken(ui.painter(), rect, &p, response.has_focus());
     response
 }
@@ -2852,15 +3189,15 @@ impl<'a> InlineEdit<'a> {
 pub const ALERT_WIDTH: u32 = 380;
 const ALERT_STRIPE: f32 = 30.0;
 const ALERT_ICON: f32 = 32.0;
-/// Text column: from the stripe's edge, past the icon that overlaps it.
-const ALERT_TEXT_X: f32 = ALERT_STRIPE + ALERT_ICON / 2.0 + m::WINDOW_INSET;
+/// Text column: from the stripe's edge, past the icon that overlaps it
+/// (an alert with fields sizes its window from the column's width).
+pub const ALERT_TEXT_X: f32 = ALERT_STRIPE + ALERT_ICON / 2.0 + m::WINDOW_INSET;
 
-/// The window height an alert with `message` needs (for `open_window`).
-/// Estimated from the message length, since no context exists yet.
+/// The window height an alert with `message` needs (for `open_window`),
+/// measured from the font (`style::plain_text_height`), since no context
+/// exists yet.
 pub fn alert_height(message: &str) -> u32 {
-    let per_line = ((ALERT_WIDTH as f32 - ALERT_TEXT_X - m::WINDOW_INSET) / 6.2) as usize;
-    let lines = message.split('\n').map(|l| l.chars().count().div_ceil(per_line).max(1)).sum::<usize>();
-    let text = lines as f32 * (style::PLAIN_SIZE + 4.0);
+    let text = style::plain_text_height(message, ALERT_WIDTH as f32 - ALERT_TEXT_X - m::WINDOW_INSET);
     (m::WINDOW_INSET + text.max(ALERT_ICON) + m::WINDOW_INSET + m::CONTROL_HEIGHT + m::WINDOW_INSET).ceil() as u32
 }
 
@@ -2958,5 +3295,89 @@ pub fn alert(ui: &mut Ui, icon: &str, message: &str, buttons: &[&str]) -> Option
         }
     });
     chosen
+}
+
+/// Where a password alert's conversation with PAM is (polkit's helper,
+/// sudo): what it asks, what it last said, and the answer being typed.
+#[derive(Default)]
+pub struct Conversation {
+    /// PAM is waiting for an answer: (prompt, echo).
+    pub prompt: Option<(String, bool)>,
+    pub answer: String,
+    /// The latest message from PAM ("Place your finger on the reader").
+    pub info: String,
+    pub error: String,
+    /// An answer is with PAM.
+    pub checking: bool,
+}
+
+impl Conversation {
+    /// An answer can be typed.
+    pub fn ready(&self) -> bool {
+        self.prompt.is_some() && !self.checking
+    }
+
+    /// Authenticate can be chosen.
+    pub fn can_submit(&self) -> bool {
+        self.ready() && !self.answer.is_empty()
+    }
+
+    /// PAM asks (again).
+    pub fn ask(&mut self, prompt: String, echo: bool) {
+        self.checking = false;
+        self.prompt = Some((prompt, echo));
+    }
+
+    /// The answer has gone to PAM: Checking… until it says.
+    pub fn sent(&mut self) {
+        self.clear_answer();
+        self.prompt = None;
+        self.checking = true;
+        self.error.clear();
+        self.info.clear();
+    }
+
+    /// Forget the answer, leaving no copy in freed memory.
+    pub fn clear_answer(&mut self) {
+        // SAFETY: zero bytes keep the string valid UTF-8.
+        unsafe { self.answer.as_bytes_mut().fill(0) };
+        self.answer.clear();
+    }
+}
+
+/// A password alert's answer field, labelled with PAM's prompt and
+/// focused while PAM waits for it, with the note under it: Checking…,
+/// an error, or PAM's message ("Place your finger…"). In a top-down
+/// `ui`, `width` wide, the field's label `divider` wide. True when the
+/// answer was entered with Return.
+pub fn conversation(ui: &mut Ui, conv: &mut Conversation, divider: f32, width: f32) -> bool {
+    let p = style::palette(ui.ctx());
+    let label = conv.prompt.as_ref().map_or("Password:".to_owned(), |(t, _)| {
+        let t = t.trim();
+        if t.ends_with(':') { t.to_owned() } else { format!("{t}:") }
+    });
+    let ready = conv.ready();
+    let echo = conv.prompt.as_ref().is_some_and(|(_, e)| *e);
+    let r = ui
+        .add_enabled_ui(ready, |ui| ui.add(TextControl::new(&mut conv.answer).label(&label).divider(divider).password(!echo).autofocus(ready).width(width)))
+        .inner;
+    if ready && !r.has_focus() && !r.lost_focus() {
+        // Focus shows from the next frame on, so ask for one.
+        r.request_focus();
+        ui.ctx().request_repaint();
+    }
+    let entered = r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+    let (note, color) = if conv.checking {
+        ("Checking…".to_owned(), style::disabled_text(&p))
+    } else if !conv.error.is_empty() {
+        (conv.error.clone(), c(p.failure))
+    } else {
+        (conv.info.clone(), style::disabled_text(&p))
+    };
+    if !note.is_empty() {
+        let r = ui.allocate_exact_size(vec2(width, m::LABEL_ROW), Sense::hover()).0;
+        style::label_fit(ui.painter(), r.left(), r.center().y, Align::Min, &note, plain_font(), color, width);
+    }
+    entered
 }
 

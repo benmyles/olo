@@ -70,9 +70,10 @@ impl Writer {
 }
 
 fn hello() -> Frame {
-    let env: Vec<(String, String)> = std::env::vars()
+    let mut env: Vec<(String, String)> = std::env::vars()
         .filter(|(k, _)| !matches!(k.as_str(), "XDG_ACTIVATION_TOKEN" | "DESKTOP_STARTUP_ID" | "OLO_RESTORE"))
         .collect();
+    crate::sudo::shell_env(&mut env);
     Frame::json(wire::HELLO, 0, &wire::Hello { pid: std::process::id() as i32, env })
 }
 

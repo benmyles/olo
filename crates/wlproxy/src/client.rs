@@ -630,8 +630,14 @@ impl Client {
         let ev = |name: &str, args: Vec<Arg>| Msg::new(id, event(iface, name), args);
         let msg = match iface.name {
             "xdg_popup" => Some(ev("popup_done", vec![])),
-            "wl_data_source" | "zwp_primary_selection_source_v1" => Some(ev("cancelled", vec![])),
+            "wl_data_source" | "zwp_primary_selection_source_v1" | "ext_data_control_source_v1" | "zwlr_data_control_source_v1" => {
+                Some(ev("cancelled", vec![]))
+            }
             "zwp_locked_pointer_v1" => Some(ev("unlocked", vec![])),
+            // A lease is the old app_server's; tablets, tools and pads come
+            // again (announced anew) from the next.
+            "wp_drm_lease_v1" => Some(ev("finished", vec![])),
+            "zwp_tablet_v2" | "zwp_tablet_tool_v2" | "zwp_tablet_pad_v2" => Some(ev("removed", vec![])),
             "zwp_confined_pointer_v1" => Some(ev("unconfined", vec![])),
             "zxdg_imported_v2" => Some(ev("destroyed", vec![])),
             "xdg_activation_token_v1" if token_pending => Some(ev("done", vec![Arg::Str(Some(Vec::new()))])),
@@ -967,8 +973,9 @@ impl Client {
                         self.zombify(id);
                     }
                 }
-                "xdg_popup" | "xdg_positioner" | "wl_data_source" | "zwp_primary_selection_source_v1" | "zwp_locked_pointer_v1"
-                | "zwp_confined_pointer_v1" | "zxdg_exported_v2" | "zxdg_imported_v2" | "xdg_activation_token_v1" => self.zombify(id),
+                "xdg_popup" | "xdg_positioner" | "wl_data_source" | "zwp_primary_selection_source_v1" | "ext_data_control_source_v1"
+                | "zwlr_data_control_source_v1" | "zwp_locked_pointer_v1" | "zwp_confined_pointer_v1" | "zxdg_exported_v2" | "zxdg_imported_v2"
+                | "xdg_activation_token_v1" | "wp_drm_lease_v1" | "wp_drm_lease_request_v1" => self.zombify(id),
                 _ if id >= SERVER_START => self.zombify(id),
                 _ => {}
             }
@@ -1370,6 +1377,11 @@ fn slot(iface: &str, req: &'static str) -> Option<&'static str> {
         ("wl_subsurface", "set_sync" | "set_desync") => "sync",
         ("wl_shm_pool", "resize") => req,
         ("zwlr_layer_surface_v1", "set_size" | "set_anchor" | "set_exclusive_zone" | "set_margin" | "set_keyboard_interactivity" | "set_layer" | "set_exclusive_edge") => req,
+        ("org_kde_kwin_server_decoration", "request_mode") => req,
+        ("xdg_dialog_v1", "set_modal" | "unset_modal") => "modal",
+        ("wp_alpha_modifier_surface_v1", "set_multiplier") => req,
+        ("wp_content_type_v1", "set_content_type") => req,
+        ("zwp_virtual_keyboard_v1", "keymap") => req,
         _ => return None,
     })
 }

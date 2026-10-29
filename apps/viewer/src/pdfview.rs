@@ -581,7 +581,17 @@ impl PdfView {
                     painter.rect_filled(sr.translate(vec2(1.0, 1.0)).expand(1.0), 0.0, style::shade(&p, p.panel_background, 1.45));
                     painter.rect_filled(sr, 0.0, Color32::WHITE);
                     if let Some(t) = self.textures.get(&i) {
-                        painter.image(t.tex.id(), sr, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+                        // Rendered for this zoom and scale: a texture pixel
+                        // to a device pixel, from a whole one (scrolling
+                        // leaves the page between pixels, and resampled
+                        // text is soft). Until then, stretched to fit.
+                        let at = if (t.scale / want - 1.0).abs() < 1e-4 {
+                            let [w, h] = t.tex.size();
+                            Rect::from_min_size((sr.min.to_vec2() * ppp).round().to_pos2() / ppp, vec2(w as f32, h as f32) / ppp)
+                        } else {
+                            sr
+                        };
+                        painter.image(t.tex.id(), at, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
                     }
                 }
                 self.page_overlays(ui, &layout, origin, &family);
@@ -1099,7 +1109,10 @@ fn draw_field(ui: &Ui, field: &Field, w: &pdfdoc::Widget, r: Rect, zoom: f32, fa
         painter.rect_filled(r, 0.0, rgb(bg));
     }
     if editable && !field.read_only && !editing {
-        painter.rect_filled(r, 0.0, Color32::from_rgba_unmultiplied(70, 110, 230, 34));
+        // Fields to fill in, tinted in the focus colour (on the page,
+        // which is paper white whatever the look).
+        let [r_, g_, b_, _] = style::palette(ui.ctx()).keyboard_navigation;
+        painter.rect_filled(r, 0.0, Color32::from_rgba_unmultiplied(r_, g_, b_, 34));
     }
     if let Some(bc) = w.border {
         painter.rect_stroke(r.shrink(0.5 * zoom), 0.0, Stroke::new(zoom.max(1.0), rgb(bc)), egui::StrokeKind::Inside);
@@ -1221,9 +1234,9 @@ fn draw_mark(painter: &egui::Painter, mark: &Mark, r: Rect, zoom: f32, family: &
     }
 }
 
-/// A dotted frame with corner handles.
+/// A dotted frame with corner handles, in the focus colour.
 fn draw_selection(painter: &egui::Painter, r: Rect, handles: bool) {
-    let blue = Color32::from_rgb(52, 120, 246);
+    let blue = style::c(style::palette(painter.ctx()).keyboard_navigation);
     let r = r.expand(2.0);
     for (a, b) in [(r.left_top(), r.right_top()), (r.right_top(), r.right_bottom()), (r.right_bottom(), r.left_bottom()), (r.left_bottom(), r.left_top())] {
         painter.add(egui::Shape::dashed_line(&[a, b], Stroke::new(1.0, blue), 3.0, 2.0));

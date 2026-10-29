@@ -484,7 +484,7 @@ impl Preview {
                     for i in range.clone() {
                         let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), page_h + gap), Sense::hover());
                         let pr = style::snap(ui.ctx(), Rect::from_min_size(pos2(row.center().x - page_w / 2.0, row.top() + gap), vec2(page_w, page_h)));
-                        ui.painter().rect_filled(pr.translate(vec2(1.0, 2.0)), 0.0, Color32::from_black_alpha(40));
+                        ui.painter().rect_filled(pr.translate(vec2(1.0, 2.0)), 0.0, style::c(p.drop_shadow));
                         ui.painter().rect_filled(pr, 0.0, Color32::WHITE);
                         match &pages[i] {
                             Some(img) => {
@@ -495,7 +495,7 @@ impl Preview {
                                 if requested.insert(i) {
                                     let _ = want.send(i);
                                 }
-                                ui.put(Rect::from_center_size(pr.center(), vec2(20.0, 20.0)), egui::Spinner::new().size(18.0).color(Color32::GRAY));
+                                ui.put(Rect::from_center_size(pr.center(), vec2(20.0, 20.0)), egui::Spinner::new().size(18.0).color(style::disabled_text(&p)));
                             }
                         }
                     }
@@ -1059,7 +1059,7 @@ fn media_view(
         Some(img) => {
             let tex = texture(ui.ctx(), textures, 0, img);
             let ar = style::snap(ui.ctx(), ar);
-            ui.painter().rect_filled(ar.translate(vec2(1.0, 2.0)), 2.0, Color32::from_black_alpha(50));
+            ui.painter().rect_filled(ar.translate(vec2(1.0, 2.0)), 2.0, style::c(p.drop_shadow));
             ui.painter().image(tex.id(), ar, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         }
         None => {

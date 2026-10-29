@@ -6,7 +6,7 @@
 use std::time::Instant;
 
 use olo_kit::{
-    egui::{Align2, Color32, Rect, Sense, Shape, Stroke, Ui, UiBuilder, pos2, vec2},
+    egui::{Align, Color32, Rect, Sense, Shape, Stroke, Ui, UiBuilder, pos2, vec2},
     metrics as m,
     style::{self, c},
     widgets::{BBox, Button, CheckBox, MenuField, ScrollView, Slider, StringView, TabView, TextControl},
@@ -90,6 +90,7 @@ fn fade(ui: &mut Ui, s: &mut Settings, st: &mut State) {
             s.power.display_off_minutes = v;
         }
     });
+    let desktop = s.workspace_color(0);
     let ss = &mut s.screen_saver;
     ui.add_enabled_ui(enabled, |ui| {
         ui.add(CheckBox::new(&mut ss.lock, "Password lock"));
@@ -98,9 +99,9 @@ fn fade(ui: &mut Ui, s: &mut Settings, st: &mut State) {
     olo_kit::widgets::separator(ui);
     ui.horizontal(|ui| {
         ui.add_enabled_ui(enabled, |ui| {
-            corner_monitor(ui, "fade-now", &mut ss.fade_now, "Fade now when\nmouse is here");
+            corner_monitor(ui, "fade-now", &mut ss.fade_now, "Fade now when\nmouse is here", desktop);
             ui.add_space(m::SPACING * 3.0);
-            corner_monitor(ui, "never-fade", &mut ss.never_fade, "Don't fade when\nmouse is here");
+            corner_monitor(ui, "never-fade", &mut ss.never_fade, "Don't fade when\nmouse is here", desktop);
         });
     });
     if ss.fade_now.is_some() && ss.fade_now == ss.never_fade {
@@ -108,22 +109,26 @@ fn fade(ui: &mut Ui, s: &mut Settings, st: &mut State) {
     }
 }
 
-/// A small monitor: click a corner of its screen to choose it, the middle
-/// for none (shown, as on R5, by a "no" sign).
-fn corner_monitor(ui: &mut Ui, id: &str, corner: &mut Option<Corner>, label: &str) {
+/// A small monitor, its screen in the desktop's colour: click a corner of
+/// its screen to choose it, the middle for none (shown, as on R5, by a
+/// "no" sign).
+fn corner_monitor(ui: &mut Ui, id: &str, corner: &mut Option<Corner>, label: &str, desktop: [u8; 3]) {
     let p = style::palette(ui.ctx());
     let (rect, resp) = ui.allocate_exact_size(vec2(56.0, 50.0), Sense::click());
     let painter = ui.painter();
     let body = Rect::from_min_size(rect.min, vec2(56.0, 42.0));
-    painter.rect_filled(body, 2.0, Color32::from_gray(200));
-    style::bevel(painter, body, Color32::from_gray(240), Color32::from_gray(110));
-    style::frame_rect(painter, body.expand(1.0), Color32::from_gray(70));
-    let screen = body.shrink(5.0);
-    painter.rect_filled(screen, 0.0, Color32::from_rgb(51, 102, 152));
-    style::frame_rect(painter, screen, Color32::from_gray(60));
-    let stand = Rect::from_center_size(pos2(body.center().x, body.bottom() + 4.0), vec2(22.0, 4.0));
-    painter.rect_filled(stand, 1.0, Color32::from_gray(150));
-    style::frame_rect(painter, stand, Color32::from_gray(80));
+    // The case in the panel's colours, bevelled as a raised control.
+    painter.rect_filled(body, 2.0, c(p.control_background));
+    style::bevel(painter, body, c(p.shine), style::shade(&p, p.control_background, 1.45));
+    // The case's edge a line outside its bevel, on device pixels.
+    style::frame_rect(painter, style::inset(ui.ctx(), body, -1.0), c(p.control_border));
+    let screen = body.shrink(4.0);
+    let [r, g, b] = desktop;
+    painter.rect_filled(screen, 0.0, Color32::from_rgb(r, g, b));
+    style::frame_rect(painter, screen, c(p.frame_focused[0]));
+    let stand = Rect::from_center_size(pos2(body.center().x, body.bottom() + 4.0), vec2(24.0, 4.0));
+    painter.rect_filled(stand, 1.0, style::shade(&p, p.control_background, 1.2));
+    style::frame_rect(painter, stand, c(p.control_border));
     let enabled = ui.is_enabled();
     match corner {
         Some(k) => {
@@ -136,10 +141,10 @@ fn corner_monitor(ui: &mut Ui, id: &str, corner: &mut Option<Corner>, label: &st
             let dx = if x == screen.left() { 1.0 } else { -1.0 };
             let dy = if y == screen.top() { 1.0 } else { -1.0 };
             let pts = vec![pos2(x, y), pos2(x + 14.0 * dx, y), pos2(x, y + 14.0 * dy)];
-            painter.add(Shape::convex_polygon(pts, Color32::from_rgb(255, 203, 0), Stroke::new(1.0, Color32::BLACK)));
+            painter.add(Shape::convex_polygon(pts, c(p.tab_focused), Stroke::new(1.0, c(p.tab_focused_shadow))));
         }
         None => {
-            let red = if enabled { Color32::from_rgb(220, 30, 30) } else { Color32::from_rgb(170, 110, 110) };
+            let red = if enabled { c(p.failure) } else { c(olo_kit::theme::mix(p.failure, p.panel_background, 0.5)) };
             painter.circle_stroke(screen.center(), 8.0, Stroke::new(2.0, red));
             let d = 8.0 * std::f32::consts::FRAC_1_SQRT_2;
             painter.line_segment([screen.center() + vec2(-d, -d), screen.center() + vec2(d, d)], Stroke::new(2.0, red));
@@ -161,7 +166,8 @@ fn corner_monitor(ui: &mut Ui, id: &str, corner: &mut Option<Corner>, label: &st
     let _ = id;
     let text_color = if enabled { c(p.panel_text) } else { style::disabled_text(&p) };
     let galley = ui.painter().layout(label.to_owned(), style::plain_font(), text_color, 140.0);
-    let (r, _) = ui.allocate_exact_size(galley.size(), Sense::hover());
+    // On the 2-point grid, so what follows is on device pixels.
+    let (r, _) = ui.allocate_exact_size(vec2((galley.size().x / 2.0).ceil() * 2.0, galley.size().y), Sense::hover());
     ui.painter().galley(pos2(r.left(), rect.center().y - galley.size().y / 2.0), galley, text_color);
 }
 
@@ -179,14 +185,16 @@ fn modules(ui: &mut Ui, s: &mut Settings, server: &Server, st: &mut State) {
 
     // The preview monitor.
     let monitor = Rect::from_min_size(left.min, vec2(LIST_W, 110.0));
-    let screen = Rect::from_min_size(monitor.min + vec2(9.0, 8.0), vec2(LIST_W - 18.0, 80.0));
+    let screen = Rect::from_min_size(monitor.min + vec2(10.0, 8.0), vec2(LIST_W - 20.0, 80.0));
     let painter = ui.painter();
     let bezel = Rect::from_min_max(monitor.min, pos2(monitor.right(), screen.bottom() + 12.0));
-    painter.rect_filled(bezel, 4.0, Color32::from_gray(150));
-    style::bevel(painter, bezel, Color32::from_gray(205), Color32::from_gray(90));
-    style::frame_rect(painter, bezel.expand(1.0), Color32::from_gray(40));
+    let case = olo_kit::theme::tint(p.control_background, 1.25);
+    painter.rect_filled(bezel, 4.0, c(case));
+    style::bevel(painter, bezel, c(p.shine), style::shade(&p, case, 1.4));
+    style::frame_rect(painter, style::inset(ui.ctx(), bezel, -1.0), c(p.control_border));
+    // The screen itself: off, as a screen saver's starts.
     painter.rect_filled(screen, 0.0, Color32::BLACK);
-    for (i, col) in [Color32::from_rgb(60, 220, 60), Color32::from_gray(100)].iter().enumerate() {
+    for (i, col) in [c(p.success), style::shade(&p, case, 1.6)].iter().enumerate() {
         painter.circle_filled(pos2(bezel.right() - 22.0 + i as f32 * 7.0, bezel.bottom() - 6.0), 1.6, *col);
     }
     let stale = st.preview.as_ref().is_none_or(|(n, o, _, _)| n != info.name || *o != options);
@@ -219,7 +227,7 @@ fn modules(ui: &mut Ui, s: &mut Settings, server: &Server, st: &mut State) {
                     ui.painter().rect_filled(r, 0.0, c(p.list_selected_background));
                 }
                 let color = if i == chosen { c(p.list_selected_item_text) } else { c(p.document_text) };
-                ui.painter().text(pos2(r.left() + 6.0, r.center().y), Align2::LEFT_CENTER, MODULES[i].name, style::plain_font(), color);
+                style::label(ui.painter(), r.left() + m::CELL_INSET, r.center().y, Align::Min, MODULES[i].name, style::plain_font(), color);
                 if resp.clicked() {
                     chosen = i;
                 }

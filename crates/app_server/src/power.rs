@@ -359,6 +359,8 @@ impl<B: Backend> AnvilState<B> {
 
     /// Any input: the user is here.
     pub fn power_activity(&mut self) {
+        let seat = self.seat.clone();
+        self.idle_notifier_state.notify_activity(&seat);
         let p = &mut self.power;
         p.last_activity = Instant::now();
         p.slept = false;
@@ -395,9 +397,14 @@ impl<B: Backend> AnvilState<B> {
         }
         let settings = self.settings.power.clone();
         let p = &mut self.power;
-        if p.caffeinated || !p.inhibitors.is_empty() {
+        let awake = p.caffeinated || !p.inhibitors.is_empty();
+        if awake {
             p.last_activity = Instant::now();
         }
+        // Programs watching for idle (ext-idle-notify) aren't told while
+        // something keeps the machine awake.
+        self.idle_notifier_state.set_is_inhibited(awake);
+        let p = &mut self.power;
         let idle = p.last_activity.elapsed();
         let mut changed = pruned;
         let mut lock = false;

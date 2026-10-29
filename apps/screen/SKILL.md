@@ -126,6 +126,12 @@ olo-screen menus agent [--window 3]       # the menu bar: path, label, command, 
 olo-screen invoke agent save [--window 3] # choose it, as from the menu
 ```
 
+Checking how an Olo app looks (one you are changing): `olo-screen
+review agent [--window 3] [--json]` lists what its windows look to have
+wrong as drawn now: errors (a blurry icon or line, a seam), then what
+almost lines up, is almost one height, or sits off-centre, each with
+where. Look closely at each, at every scale the screen is set to.
+
 ## Working well
 
 - After each action, check the result (`tree`, or `look` for non-Olo

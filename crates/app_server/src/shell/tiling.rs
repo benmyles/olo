@@ -461,7 +461,7 @@ pub fn into_reach(frame: Rectangle<i32, Logical>, area: Rectangle<i32, Logical>)
 }
 
 /// Not a fixed-size window (an alert, a panel such as DeskCalc's).
-pub(super) fn resizable(w: &WindowElement) -> bool {
+pub(crate) fn resizable(w: &WindowElement) -> bool {
     use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
     w.wl_surface().is_none_or(|s| {
         with_states(&s, |st| {
@@ -485,7 +485,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// The display shortcuts act on: the focused window's, else the
     /// pointer's.
-    fn active_output(&self) -> Option<Output> {
+    pub fn active_output(&self) -> Option<Output> {
         if let Some(w) = self.focused_window() {
             return self.window_output(&w);
         }

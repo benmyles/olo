@@ -7,7 +7,9 @@
 //! Touch ID or the account password) and asks the person to allow each new
 //! integration; this crate is the native client for the app's SDK socket
 //! (`desktop`). The helpers that need no account (`reference` parsing and
-//! validation, `generate`, `totp`) are implemented here.
+//! validation, `generate`, `totp`, and `fields`: values in the SDK's forms
+//! and the checks its core makes on items it is sent) are implemented
+//! here.
 //!
 //! Calls block; run them off the UI thread.
 //!
@@ -23,6 +25,7 @@
 pub mod accounts;
 pub mod desktop;
 pub mod fake;
+pub mod fields;
 pub mod generate;
 pub mod reference;
 pub mod totp;

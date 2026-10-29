@@ -217,6 +217,9 @@ fn date_time(ui: &mut Ui, clock: &ClockSettings, st: &mut State, status: Option<
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = m::SPACING;
             face(ui, shown_time, !manual);
+            // The field at the foot of the calendar, level with its sixth
+            // week: the two columns end together.
+            ui.add_space(CALENDAR_H - FACE - m::SPACING - m::CONTROL_HEIGHT);
             ui.add_enabled_ui(manual, |ui| {
                 let mut text = match &st.edit {
                     Some((_, t)) => t.clone(),
@@ -273,6 +276,9 @@ fn date_time(ui: &mut Ui, clock: &ClockSettings, st: &mut State, status: Option<
 const CELL_W: f32 = 28.0;
 const CELL_H: f32 = 20.0;
 const FACE: f32 = 120.0;
+/// The month over the weekdays over six weeks.
+const CAL_HEADER: f32 = 22.0;
+const CALENDAR_H: f32 = CAL_HEADER + 18.0 + CELL_H * 6.0 + 6.0;
 
 /// R5's month calendar: the month and year with arrows to step through
 /// them over a grid of days. Returns the day clicked.
@@ -282,8 +288,8 @@ fn calendar(ui: &mut Ui, st: &mut State, date: Date, today: Date) -> Option<Date
     let ink = if enabled { c(p.panel_text) } else { style::disabled_text(&p) };
     let month = st.month.unwrap_or_else(|| date.first_of_month());
     let width = CELL_W * 7.0 + 4.0;
-    let header = 22.0;
-    let (rect, _) = ui.allocate_exact_size(vec2(width, header + 18.0 + CELL_H * 6.0 + 6.0), Sense::hover());
+    let header = CAL_HEADER;
+    let (rect, _) = ui.allocate_exact_size(vec2(width, CALENDAR_H), Sense::hover());
     let painter = ui.painter();
     let head = Rect::from_min_size(rect.min, vec2(width, header));
     let title = format!("{} {}", MONTHS[month.month() as usize - 1], month.year());
@@ -304,7 +310,7 @@ fn calendar(ui: &mut Ui, st: &mut State, date: Date, today: Date) -> Option<Date
 
     let well = Rect::from_min_max(pos2(rect.left(), head.bottom()), rect.max);
     let painter = ui.painter();
-    painter.rect_filled(well.shrink(2.0), 0.0, if enabled { c(p.document_background) } else { c(p.panel_background) });
+    painter.rect_filled(style::inset(ui.ctx(), well, 2.0), 0.0, if enabled { c(p.document_background) } else { c(p.panel_background) });
     style::sunken(painter, well, &p, false);
     let text = if enabled { c(p.document_text) } else { style::disabled_text(&p) };
     let grid = well.shrink(2.0);
@@ -327,7 +333,7 @@ fn calendar(ui: &mut Ui, st: &mut State, date: Date, today: Date) -> Option<Date
         let painter = ui.painter();
         let mut color = text;
         if selected {
-            painter.rect_filled(cell.shrink(1.0), 2.0, c(p.list_selected_background));
+            painter.rect_filled(style::inset(ui.ctx(), cell, 1.0), 2.0, c(p.list_selected_background));
             color = if enabled { c(p.list_selected_item_text) } else { text };
         }
         let font = if this == today { style::bold_font() } else { style::plain_font() };
@@ -368,7 +374,9 @@ fn face(ui: &mut Ui, time: Option<Time>, live: bool) {
     hand(((h % 12.0) + mi / 60.0) / 12.0, r * 0.5, 3.5, ink);
     hand((mi + s / 60.0) / 60.0, r * 0.75, 2.5, ink);
     if live || s != 0.0 {
-        hand(s / 60.0, r * 0.82, 1.0, c(p.failure));
+        // Whole device pixels, so it is crisp when it points straight up
+        // or down.
+        hand(s / 60.0, r * 0.82, style::hairline(ui.ctx()), c(p.failure));
     }
     painter.circle_filled(centre, 3.0, ink);
 }

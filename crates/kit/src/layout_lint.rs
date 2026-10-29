@@ -1,7 +1,7 @@
 //! Layout lint: finds views that don't fit. A test hands [`check`] a view
 //! and the size its window gets; it runs the view headlessly (plain egui,
 //! no GPU or Wayland, the kit's own fonts and style), light and dark, at
-//! 1× and 2×. While it runs, the kit's containers and controls note where
+//! 1×, 1.5× and 2×. While it runs, the kit's containers and controls note where
 //! they were put ([`area`], [`control`], [`text`]), and the notes are
 //! checked for:
 //!
@@ -9,7 +9,12 @@
 //!   box, a window's body),
 //! - a control outside the window, or over another control,
 //! - text that doesn't fit its room (a label running into its field, a
-//!   line cut short with "…", tabs wider than their view).
+//!   line cut short with "…", tabs wider than their view);
+//! - what the layout review ([`crate::layout_review`]) calls an error in
+//!   the frame drawn (icons and lines off device pixels).
+//!
+//! [`review`] gives the review's findings for a look as well: what
+//! almost lines up, bands of nearly one height, text off-centre.
 //!
 //! Outside a check nothing is noted: each note costs one atomic load.
 //! See "Layout lint" in docs/HACKING.md.
@@ -26,7 +31,10 @@ use std::{
 use egui::{Context, Id, LayerId, Pos2, Rect, Ui, Vec2, ViewportId};
 use olo_theme::Palette;
 
-use crate::style;
+use crate::{
+    layout_review::{Finding, Level},
+    style,
+};
 
 /// How far past its room something may be before it counts (rounding).
 const SLACK: f32 = 0.5;
@@ -90,22 +98,40 @@ pub(crate) fn quoted(kind: &str, label: &str) -> String {
     format!("{kind} “{label}”")
 }
 
-/// Run `view` as a window of content `size` would, light and dark, at 1×
-/// and 2×, and say what doesn't fit, one line per problem (with the
+/// Run `view` as a window of content `size` would, light and dark, at 1×,
+/// 1.5× and 2×, and say what doesn't fit, one line per problem (with the
 /// looks it shows in). Empty: it all fits.
-pub fn check(size: Vec2, mut view: impl FnMut(&mut Ui)) -> Vec<String> {
+pub fn check(size: Vec2, view: impl FnMut(&mut Ui)) -> Vec<String> {
+    every_look(size, view, |problems, findings| {
+        problems.into_iter().chain(findings.into_iter().filter(|f| f.level == Level::Error).map(|f| f.to_string())).collect()
+    })
+}
+
+/// The layout review of `view` (as [`check`] runs it): everything the
+/// review finds, errors first, one line each (with the looks it shows
+/// in). For a test to print, or to fail on what it shouldn't find.
+pub fn review(size: Vec2, view: impl FnMut(&mut Ui)) -> Vec<String> {
+    let mut lines = every_look(size, view, |_, findings| findings.into_iter().map(|f| f.to_string()).collect());
+    lines.sort_by_key(|l| !l.starts_with("error"));
+    lines
+}
+
+/// `view` light and dark at 1×, 1.5× and 2×, each frame's problems and
+/// findings made lines by `lines`, those alike merged with their looks.
+fn every_look(size: Vec2, mut view: impl FnMut(&mut Ui), lines: impl Fn(Vec<String>, Vec<Finding>) -> Vec<String>) -> Vec<String> {
     RUNNING.fetch_add(1, Ordering::Relaxed);
     let _done = Done;
     let mut found: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for palette in [Palette::light(), Palette::dark()] {
-        for scale in [1.0, 2.0] {
+        for scale in [1.0, 1.5, 2.0] {
             let look = format!("{} {scale}×", if palette.mode == olo_theme::ThemeMode::Dark { "dark" } else { "light" });
-            for problem in run(size, scale, &Arc::new(palette.clone()), &mut view) {
-                found.entry(problem).or_default().push(look.clone());
+            let (problems, findings) = run(size, scale, &Arc::new(palette.clone()), &mut view);
+            for line in lines(problems, findings) {
+                found.entry(line).or_default().push(look.clone());
             }
         }
     }
-    found.into_iter().map(|(problem, looks)| format!("{problem} ({})", looks.join(", "))).collect()
+    found.into_iter().map(|(line, looks)| format!("{line} ({})", looks.join(", "))).collect()
 }
 
 /// [`check`], panicking with every problem in `name`.
@@ -133,25 +159,29 @@ impl Drop for Done {
 /// pass and used in the next) by the third.
 const PASSES: usize = 3;
 
-fn run(size: Vec2, scale: f32, palette: &Arc<Palette>, view: &mut impl FnMut(&mut Ui)) -> Vec<String> {
+fn run(size: Vec2, scale: f32, palette: &Arc<Palette>, view: &mut impl FnMut(&mut Ui)) -> (Vec<String>, Vec<Finding>) {
     // As platform.rs makes a window's context.
     let ctx = Context::default();
     ctx.set_fonts(style::all_font_definitions());
     style::apply(&ctx, palette);
+    style::fit_scale(&ctx, scale);
     let notes = Notes::default();
     ctx.data_mut(|d| d.insert_temp(notes_id(), notes.clone()));
     let screen = Rect::from_min_size(Pos2::ZERO, size);
     let mut root_used = Rect::NOTHING;
+    let mut shapes = Vec::new();
     for pass in 0..PASSES {
         let mut raw = egui::RawInput { screen_rect: Some(screen), time: Some(pass as f64), focused: true, ..Default::default() };
         raw.viewports.entry(ViewportId::ROOT).or_default().native_pixels_per_point = Some(scale);
-        ctx.run_ui(raw, |ui| {
+        let mut out = ctx.run_ui(raw, |ui| {
             notes.lock().unwrap().clear();
             view(ui);
             root_used = ui.min_rect();
-        })
-        .drop_without_applying_deltas();
+        });
+        shapes = std::mem::take(&mut out.shapes);
+        out.drop_without_applying_deltas();
     }
+    let findings = crate::layout_review::review(&shapes, size, scale, &crate::layout_review::marks(&ctx));
     let notes = notes.lock().unwrap().clone();
     let mut problems = Vec::new();
     if root_used.is_positive() && !screen.expand(SLACK).contains_rect(root_used) {
@@ -191,7 +221,7 @@ fn run(size: Vec2, scale: f32, palette: &Arc<Palette>, view: &mut impl FnMut(&mu
             }
         }
     }
-    problems
+    (problems, findings)
 }
 
 /// Which way, and how far, `used` goes past `max`.

@@ -1,7 +1,10 @@
 //! Notification settings (`notifications.json` in Olo's config
-//! directory): Do Not Disturb and what each app may do. olo-notifications
-//! reads them (again whenever the file changes); Preferences ▸
-//! Notifications and Deskbar's menu write them.
+//! directory): Do Not Disturb, how the history fades, and what each app
+//! may do. olo-notifications reads them (again whenever the file
+//! changes); Preferences ▸ Notifications and Deskbar's menu write them.
+//!
+//! And [`NoteLook`]: what an app may say, beyond the spec, so its
+//! notification looks its part (the `x-olo-*` hints in [`hint`]).
 
 use std::collections::BTreeMap;
 
@@ -26,6 +29,11 @@ pub struct NotificationSettings {
     pub apps: BTreeMap<String, AppNotifications>,
     /// How the History window shows them.
     pub view: HistoryView,
+    /// The history fades as it ages, the newest strongest, and each
+    /// notification goes once it has faded away.
+    pub fade: bool,
+    /// Over how long (minutes).
+    pub fade_minutes: u32,
 }
 
 /// The History window's views (its View menu).
@@ -45,7 +53,16 @@ pub enum HistoryView {
 
 impl Default for NotificationSettings {
     fn default() -> Self {
-        NotificationSettings { dnd: false, dnd_until: None, schedule: None, seconds: 6, apps: BTreeMap::new(), view: HistoryView::List }
+        NotificationSettings {
+            dnd: false,
+            dnd_until: None,
+            schedule: None,
+            seconds: 6,
+            apps: BTreeMap::new(),
+            view: HistoryView::List,
+            fade: true,
+            fade_minutes: 60,
+        }
     }
 }
 
@@ -76,6 +93,32 @@ impl AppNotifications {
 impl NotificationSettings {
     pub fn app(&self, name: &str) -> AppNotifications {
         self.apps.get(name).copied().unwrap_or_default()
+    }
+
+    /// A website's (`name`) shown through its browser (`via`): its own
+    /// choices if it has any, else the browser's.
+    pub fn app_via(&self, name: &str, via: Option<&str>) -> AppNotifications {
+        match (self.apps.get(name), via) {
+            (Some(a), _) => *a,
+            (None, Some(v)) => self.app(v),
+            (None, None) => AppNotifications::default(),
+        }
+    }
+
+    /// How strongly a notification `age` seconds old shows in the
+    /// history: 1 new, falling slowly at first, then faster, to 0 when it
+    /// has faded away (always 1 with fading off).
+    pub fn strength(&self, age: u64) -> f32 {
+        if !self.fade {
+            return 1.0;
+        }
+        let t = (age as f32 / (self.fade_minutes.max(1) as f32 * 60.0)).clamp(0.0, 1.0);
+        1.0 - t.powf(1.6)
+    }
+
+    /// Whether a notification `age` seconds old has faded away.
+    pub fn faded(&self, age: u64) -> bool {
+        self.fade && age >= self.fade_minutes.max(1) as u64 * 60
     }
 
     /// Whether Do Not Disturb is on now: `now` in seconds since the epoch,
@@ -110,12 +153,142 @@ impl NotificationSettings {
     }
 }
 
+/// The hints an app may add to a notification (`Notify`'s hints) to say
+/// how it should look. All are optional; the service reads the standard
+/// ones too (`image-path`, `category`, …).
+pub mod hint {
+    /// "#rrggbb": the app's colour, for the card's band and badge.
+    pub const ACCENT: &str = "x-olo-accent";
+    /// A line under the title: who it's from, a channel, an album.
+    pub const SUBTITLE: &str = "x-olo-subtitle";
+    /// A short tag beside the title ("PR #42", "3 new").
+    pub const BADGE: &str = "x-olo-badge";
+    /// Label and value pairs shown as a little table (`a(ss)` or `a{ss}`).
+    pub const FIELDS: &str = "x-olo-fields";
+    /// A picture (a path) to show large: a screenshot, a photo.
+    pub const IMAGE: &str = "x-olo-image";
+    /// How it is laid out: [`NoteStyle`]'s names.
+    pub const STYLE: &str = "x-olo-style";
+    /// How big a card it wants in the history: [`CardSize`]'s names.
+    pub const SIZE: &str = "x-olo-size";
+    /// Where in the app it came from: a website, an account, a project.
+    pub const SOURCE: &str = "x-olo-source";
+    /// Haiku's notification types: information, important, error, progress.
+    pub const TYPE: &str = "x-olo-type";
+}
+
+/// How a notification is laid out.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NoteStyle {
+    /// Its picture square beside the text.
+    #[default]
+    Standard,
+    /// From someone: their picture round, the body in a balloon
+    /// (`im.*` categories, chat sites).
+    Message,
+    /// Something playing: the artwork large, the title and artist by it.
+    Media,
+}
+
+impl NoteStyle {
+    pub fn parse(s: &str) -> Option<NoteStyle> {
+        match s {
+            "standard" | "default" => Some(NoteStyle::Standard),
+            "message" | "chat" => Some(NoteStyle::Message),
+            "media" | "music" => Some(NoteStyle::Media),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            NoteStyle::Standard => "standard",
+            NoteStyle::Message => "message",
+            NoteStyle::Media => "media",
+        }
+    }
+}
+
+/// How big a card a notification wants in the history's Cards view
+/// (`Auto`: as big as what it holds).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CardSize {
+    #[default]
+    Auto,
+    /// Its title only, if it can.
+    Small,
+    /// One column.
+    Medium,
+    /// Two columns, with room for more of its body.
+    Large,
+}
+
+impl CardSize {
+    pub fn parse(s: &str) -> Option<CardSize> {
+        match s {
+            "auto" => Some(CardSize::Auto),
+            "small" => Some(CardSize::Small),
+            "medium" => Some(CardSize::Medium),
+            "large" | "wide" => Some(CardSize::Large),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            CardSize::Auto => "auto",
+            CardSize::Small => "small",
+            CardSize::Medium => "medium",
+            CardSize::Large => "large",
+        }
+    }
+}
+
+/// What a notification says about how it looks, from its hints (and,
+/// for a browser's, from the website it came from).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NoteLook {
+    /// The app's (or site's) colour.
+    pub accent: Option<[u8; 3]>,
+    pub subtitle: Option<String>,
+    pub badge: Option<String>,
+    pub fields: Vec<(String, String)>,
+    /// A picture to show large (a path), and its size in pixels.
+    pub image: Option<String>,
+    pub image_size: Option<(u32, u32)>,
+    pub style: NoteStyle,
+    pub size: CardSize,
+    /// Where in the app it came from (a website's address, an account).
+    pub source: Option<String>,
+}
+
+impl NoteLook {
+    /// Whether it says nothing beyond the standard.
+    pub fn is_plain(&self) -> bool {
+        *self == NoteLook::default()
+    }
+}
+
+/// "#rrggbb" (or "rrggbb", "#rgb") as a colour.
+pub fn parse_color(s: &str) -> Option<[u8; 3]> {
+    let h = s.trim().trim_start_matches('#');
+    let digits = |i: usize, n: usize| u8::from_str_radix(&h[i..i + n], 16).ok();
+    match h.len() {
+        6 if h.is_ascii() => Some([digits(0, 2)?, digits(2, 2)?, digits(4, 2)?]),
+        3 if h.is_ascii() => Some([digits(0, 1)? * 17, digits(1, 1)? * 17, digits(2, 1)? * 17]),
+        _ => None,
+    }
+}
+
 /// What olo-notifications tells Deskbar (a small JSON file in the
 /// runtime directory, rewritten on every change).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct NotificationState {
-    /// In the history and not yet seen.
+    /// In the history and not yet read (clicked, opened or acted on).
     pub unread: u32,
     /// Do Not Disturb is on now (by hand or by its schedule).
     pub quiet: bool,
@@ -165,5 +338,43 @@ mod tests {
         // Older files, fewer fields.
         let partial: NotificationSettings = serde_json::from_str(r#"{"dnd": true}"#).unwrap();
         assert!(partial.dnd && partial.seconds == 6);
+        assert!(partial.fade && partial.fade_minutes == 60, "fading on, over an hour, unless turned off");
+    }
+
+    #[test]
+    fn a_site_falls_back_to_its_browser() {
+        let mut s = NotificationSettings::default();
+        let quiet = AppNotifications { banners: false, sounds: false, history: true };
+        s.apps.insert("Google Chrome".into(), quiet);
+        assert_eq!(s.app_via("GitHub", Some("Google Chrome")), quiet);
+        s.apps.insert("GitHub".into(), AppNotifications::default());
+        assert_eq!(s.app_via("GitHub", Some("Google Chrome")), AppNotifications::default());
+        assert_eq!(s.app_via("Mail", None), AppNotifications::default());
+    }
+
+    #[test]
+    fn fading() {
+        let mut s = NotificationSettings { fade_minutes: 60, ..Default::default() };
+        assert_eq!(s.strength(0), 1.0);
+        // Slowly at first: still strong at a quarter of the way.
+        assert!(s.strength(15 * 60) > 0.85);
+        assert!(s.strength(30 * 60) < s.strength(15 * 60));
+        assert_eq!(s.strength(3600), 0.0);
+        assert!(!s.faded(3599) && s.faded(3600));
+        s.fade = false;
+        assert!(s.strength(100_000) == 1.0 && !s.faded(100_000));
+    }
+
+    #[test]
+    fn looks() {
+        assert_eq!(parse_color("#25D366"), Some([0x25, 0xd3, 0x66]));
+        assert_eq!(parse_color("f80"), Some([0xff, 0x88, 0x00]));
+        assert_eq!(parse_color("#12345"), None);
+        assert_eq!(NoteStyle::parse("chat"), Some(NoteStyle::Message));
+        assert_eq!(CardSize::parse("wide"), Some(CardSize::Large));
+        assert!(NoteLook::default().is_plain());
+        let look = NoteLook { badge: Some("PR #42".into()), fields: vec![("Branch".into(), "main".into())], ..Default::default() };
+        let back: NoteLook = serde_json::from_str(&serde_json::to_string(&look).unwrap()).unwrap();
+        assert_eq!(back, look);
     }
 }

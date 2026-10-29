@@ -330,10 +330,7 @@ impl Logs {
             Column::new("Message", (area.width() - 368.0).max(200.0)),
         ];
         let (warn, err) = (
-            c(match p.mode {
-                olo_theme::ThemeMode::Light => p.tab_focused_shadow,
-                olo_theme::ThemeMode::Dark => p.tab_focused_light,
-            }),
+            c(p.warning),
             c(p.failure),
         );
         let reveal = self.reveal.take();
@@ -408,7 +405,7 @@ impl Logs {
         }
         let highlight = |text: &str, font: egui::FontId, base: egui::Color32| highlighted(text, font, base, &p);
         ui.scope_builder(egui::UiBuilder::new().max_rect(detail_r), |ui| {
-            TextView::new("logs-detail", &mut self.detail).mono(true).editable(false).highlight(&highlight).show(ui);
+            TextView::new("logs-detail", &mut self.detail).mono(true).editable(false).empty_text("Select a line to read it whole.").highlight(&highlight).show(ui);
         });
 
         // The counts, and Live; Back after Show in Context.

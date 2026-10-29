@@ -15,6 +15,7 @@ olo-protocol.workspace = true
 olo-preview.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+futures-channel = "0.3"
 libc = "0.2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 tracing.workspace = true

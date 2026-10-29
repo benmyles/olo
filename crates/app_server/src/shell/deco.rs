@@ -3,7 +3,10 @@
 //!
 //! Everything is laid out in logical pixels relative to the element origin
 //! (the frame's top-left corner, tab row included) and drawn directly in
-//! physical pixels so lines stay crisp at any output scale.
+//! device pixels, so lines stay crisp at any output scale: the frame is
+//! drawn out from where the content lands, its lines whole pixels and the
+//! same on every side ([`lines`]), and the tab is a picture drawn pixel for
+//! pixel (`render::exact`).
 
 use std::{
     cell::{RefCell, RefMut},
@@ -32,7 +35,7 @@ use tiny_skia::{
 };
 
 use super::{ResizeEdge, WindowElement};
-use crate::{text, theme};
+use crate::{render::Exact, text, theme};
 
 /// What part of the decoration a point falls on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -136,7 +139,7 @@ impl Default for Decoration {
             target: false,
             title_width: None,
             tabs: Vec::new(),
-            frame_ids: (0..20).map(|_| Id::new()).collect(),
+            frame_ids: (0..16).map(|_| Id::new()).collect(),
             frame_commit: CommitCounter::default(),
             frame_key: None,
         }
@@ -305,7 +308,7 @@ impl Decoration {
         location: Point<i32, Physical>,
         scale: Scale<f64>,
         alpha: f32,
-    ) -> (Vec<MemoryRenderBufferRenderElement<R>>, Vec<SolidColorRenderElement>)
+    ) -> (Vec<Exact<MemoryRenderBufferRenderElement<R>>>, Vec<SolidColorRenderElement>)
     where
         R: Renderer + ImportMem,
         R::TextureId: Send + Clone + 'static,
@@ -316,8 +319,23 @@ impl Decoration {
         let px = |l: i32| (l as f64 * s).round() as i32;
         let tab = self.tab_layout(title, content);
 
-        // Tab: rendered to a pixmap at the exact physical size it covers.
-        let phys = (px(tab.x + tab.width) - px(tab.x), px(TAB_HEIGHT));
+        // Where things land, in device pixels from `location`. The content
+        // is where `client_render_offset` puts it, as big as its buffer;
+        // the frame is a border's width around it on every side (so it can
+        // reach a pixel past `px` of its logical right and bottom), and the
+        // tab sits on it.
+        let border = px(BORDER);
+        let content_at = Point::<i32, Physical>::from((border, px(TAB_HEIGHT + BORDER)));
+        let content_px = Size::<i32, Physical>::from(((content.w as f64 * s).round() as i32, (content.h as f64 * s).round() as i32));
+        let frame_top = content_at.y - border;
+        let frame_w = content.w + 2 * BORDER;
+        let frame_right = content_at.x + content_px.w + border;
+        // Along the top: past the frame's right edge, as far past where it
+        // is drawn, so a tab ending there ends on it.
+        let tx = |l: i32| if l >= frame_w { frame_right + px(l) - px(frame_w) } else { px(l) };
+
+        // Tab: rendered to a pixmap at the exact device size it covers.
+        let phys = (tx(tab.x + tab.width) - tx(tab.x), frame_top);
         let key = TabKey {
             title: cut(title).into_owned(),
             focused: self.focused,
@@ -347,21 +365,14 @@ impl Decoration {
         }
         let mut tabs = Vec::new();
         if let Some((key, buffer)) = self.tabs.first() {
-            let loc = location + Point::<i32, Physical>::from((px(tab.x), 0));
-            if let Ok(elem) = MemoryRenderBufferRenderElement::from_buffer(
-                renderer,
-                loc.to_f64(),
-                buffer,
-                Some(alpha),
-                Some(Rectangle::from_size((key.phys.0 as f64, key.phys.1 as f64).into())),
-                Some((tab.width, TAB_HEIGHT).into()),
-                Kind::Unspecified,
-            ) {
-                tabs.push(elem);
-            }
+            let at = location + Point::<i32, Physical>::from((tx(tab.x), 0));
+            let rect = Rectangle::new(at, key.phys.into());
+            tabs.extend(crate::render::exact(renderer, rect, buffer, key.phys, Some(alpha), Kind::Unspecified));
         }
 
-        // Frame: five concentric bevel lines, each drawn as four rects.
+        // Frame: concentric bands out from the content (an outline, the
+        // bevel's light, the flat middle and the bevel's shadow, BeOS's five
+        // lines), each drawn as four rects.
         let fkey = (self.focused, generation, self.target);
         if self.frame_key != Some(fkey) {
             self.frame_key = Some(fkey);
@@ -372,25 +383,21 @@ impl Decoration {
         // as its tabs' outlines are.
         let lit = [palette.keyboard_navigation, palette.keyboard_navigation, f[2], f[3], f[4], f[5]];
         let f = if self.target { &lit } else { f };
-        let (w, h) = (content.w + 2 * BORDER, content.h + TAB_HEIGHT + 2 * BORDER);
-        let (x0, y0) = (location.x, location.y);
-        let rect = |l: i32, t: i32, r: i32, b: i32| -> Rectangle<i32, Physical> {
-            Rectangle::new((x0 + px(l), y0 + px(t)).into(), (px(r) - px(l), px(b) - px(t)).into())
-        };
-        let mut frame = Vec::with_capacity(20);
-        for i in 0..BORDER {
-            let (tl, br) = match i {
-                0 => (f[0], f[0]),
-                1 => (f[1], f[4]),
-                4 => (f[4], f[1]),
-                _ => (f[2], f[2]),
-            };
-            let (l, t, r, b) = (i, TAB_HEIGHT + i, w - i, h - i);
+        let (outline, bevel) = lines(s);
+        let rings = [(outline, f[0], f[0]), (bevel, f[1], f[4]), (border - outline - 2 * bevel, f[2], f[2]), (bevel, f[4], f[1])];
+        let (x0, y0) = (location.x + content_at.x - border, location.y + frame_top);
+        let (mut l, mut t, mut r, mut b) = (x0, y0, x0 + content_px.w + 2 * border, y0 + content_px.h + 2 * border);
+        let rect = |l: i32, t: i32, r: i32, b: i32| -> Rectangle<i32, Physical> { Rectangle::new((l, t).into(), (r - l, b - t).into()) };
+        let mut frame = Vec::with_capacity(16);
+        for (i, (n, tl, br)) in rings.into_iter().enumerate() {
+            if n <= 0 {
+                continue;
+            }
             let sides = [
-                (rect(l, t, r, t + 1), tl),         // top
-                (rect(l, t + 1, l + 1, b), tl),     // left
-                (rect(r - 1, t + 1, r, b), br),     // right
-                (rect(l + 1, b - 1, r - 1, b), br), // bottom
+                (rect(l, t, r, t + n), tl),         // top
+                (rect(l, t + n, l + n, b), tl),     // left
+                (rect(r - n, t + n, r, b), br),     // right
+                (rect(l + n, b - n, r - n, b), br), // bottom
             ];
             for (j, (geo, color)) in sides.into_iter().enumerate() {
                 if geo.size.w <= 0 || geo.size.h <= 0 {
@@ -398,13 +405,14 @@ impl Decoration {
                 }
                 let c = theme::to_f32(color);
                 frame.push(SolidColorRenderElement::new(
-                    self.frame_ids[(i * 4) as usize + j].clone(),
+                    self.frame_ids[i * 4 + j].clone(),
                     geo,
                     self.frame_commit,
                     [c[0] * alpha, c[1] * alpha, c[2] * alpha, c[3] * alpha],
                     Kind::Unspecified,
                 ));
             }
+            (l, t, r, b) = (l + n, t + n, r - n, b - n);
         }
         (tabs, frame)
     }
@@ -446,13 +454,24 @@ fn blended_box(pixmap: &mut Pixmap, x: i32, y: i32, size: i32, u: i32, from: Rgb
     pixmap.fill_rect(r, &paint, SkTransform::identity(), None);
 }
 
+/// The decoration's lines in device pixels at scale `s`, the same on
+/// every side: an outline is a hairline, whole pixels and never more than
+/// a point (as the kit's, `style::line_pixels`), and a bevel's light or
+/// shadow is its point rounded. The frame's flat middle takes the rest of
+/// the border, so at 1.5× it is 1, 2, 3 and 2 pixels (not the 2, 1, 2, 1, 2
+/// that rounding each logical line from the window's corner gave, and
+/// mirrored differently on the far side).
+pub fn lines(s: f64) -> (i32, i32) {
+    ((s.floor() as i32).max(1), (s.round() as i32).max(1))
+}
+
 fn draw_tab(palette: &Palette, key: &TabKey, tab: &TabLayout, s: f64) -> Pixmap {
     let (w, h) = key.phys;
     let mut pixmap = Pixmap::new(w as u32, h as u32).expect("tab pixmap");
-    // Positions inside the tab, in physical pixels relative to its left edge.
-    let px = |l: i32| ((tab.x + l) as f64 * s).round() as i32 - (tab.x as f64 * s).round() as i32;
-    let py = |l: i32| (l as f64 * s).round() as i32;
-    let u = (s.round() as i32).max(1);
+    // Sizes and insets in device pixels, from the tab's own edges, so
+    // every tab looks the same wherever it is.
+    let px = |l: i32| (l as f64 * s).round() as i32;
+    let (hair, bevel) = lines(s);
 
     let (base, light, shadow, text_color) = if key.focused {
         (
@@ -472,20 +491,25 @@ fn draw_tab(palette: &Palette, key: &TabKey, tab: &TabLayout, s: f64) -> Pixmap 
     let outline = if key.focused { palette.frame_focused[0] } else { palette.frame_unfocused[0] };
     // Where a dragged tab would go: tinted, and outlined twice as thick
     // in the focus blue (`Decoration::target`).
+    // As thick as the frame's lit outline and light under it.
     let nav = palette.keyboard_navigation;
-    let (base, outline, line) = if key.target { (mix(base, nav, 0.18), nav, 2 * u) } else { (base, outline, u) };
+    let (base, outline, line) = if key.target { (mix(base, nav, 0.18), nav, hair + bevel) } else { (base, outline, hair) };
 
     fill(&mut pixmap, 0, 0, w, h, base);
     // Outline on three sides; the frame's top line closes the bottom.
     fill(&mut pixmap, 0, 0, w, line, outline);
     fill(&mut pixmap, 0, 0, line, h, outline);
     fill(&mut pixmap, w - line, 0, line, h, outline);
-    // Bevel.
-    fill(&mut pixmap, u, u, w - 2 * u, u, light);
-    fill(&mut pixmap, u, u, u, h - u, light);
-    fill(&mut pixmap, w - 2 * u, u, u, h - u, shadow);
+    // Bevel, inside it.
+    fill(&mut pixmap, line, line, w - 2 * line, bevel, light);
+    fill(&mut pixmap, line, line, bevel, h - line, light);
+    fill(&mut pixmap, w - line - bevel, line, bevel, h - line, shadow);
 
-    let local = |r: Rectangle<i32, Logical>| (px(r.loc.x - tab.x), py(r.loc.y), px(r.loc.x - tab.x + r.size.w) - px(r.loc.x - tab.x));
+    // The boxes: the close box from the left edge, the zoom box from the
+    // right, the same size and as far in.
+    let size = px(BOX_SIZE);
+    let top = px(tab.close_rect().loc.y);
+    let inset = px(BOX_INSET);
     let box_colors = |part: Part| {
         let (mut from, mut to) = (mix(light, [255, 255, 255, 255], 0.5), mix(base, shadow, 0.6));
         if key.pressed == part && key.hover == part {
@@ -499,17 +523,16 @@ fn draw_tab(palette: &Palette, key: &TabKey, tab: &TabLayout, s: f64) -> Pixmap 
     let box_outline = mix(shadow, [0, 0, 0, 255], 0.35);
 
     // Close box.
-    let (cx, cy, cs) = local(tab.close_rect());
     let (from, to) = box_colors(Part::Close);
-    blended_box(&mut pixmap, cx, cy, cs, u, from, to, box_outline);
+    blended_box(&mut pixmap, inset, top, size, hair, from, to, box_outline);
 
     // Zoom box: a small square overlapping a larger one behind it.
-    let (zx, zy, zs) = local(tab.zoom_rect());
+    let (zx, zy, zs) = (w - inset - size, top, size);
     let (from, to) = box_colors(Part::Zoom);
     let big = (zs as f64 * 0.69).round() as i32;
     let small = (zs as f64 * 0.54).round() as i32;
-    blended_box(&mut pixmap, zx + zs - big, zy + zs - big, big, u, from, to, box_outline);
-    blended_box(&mut pixmap, zx, zy, small, u, from, to, box_outline);
+    blended_box(&mut pixmap, zx + zs - big, zy + zs - big, big, hair, from, to, box_outline);
+    blended_box(&mut pixmap, zx, zy, small, hair, from, to, box_outline);
 
     // Title.
     let space = tab.title_space();
@@ -554,5 +577,30 @@ mod title_tests {
         assert_eq!(cut("abcdef"), "abcd…");
         assert_eq!(cut("ab  défg"), "ab…");
         set_title_chars(100);
+    }
+}
+
+#[cfg(test)]
+mod line_tests {
+    use super::*;
+
+    /// The frame's bands (outline, light, middle, shadow) in device pixels
+    /// at every scale Preferences offers: whole, the same on every side,
+    /// the middle never gone, and adding up to the border the content's
+    /// offset leaves.
+    #[test]
+    fn frame_bands_at_every_scale() {
+        let bands = |s: f64| {
+            let (outline, bevel) = lines(s);
+            let border = (BORDER as f64 * s).round() as i32;
+            [outline, bevel, border - outline - 2 * bevel, bevel]
+        };
+        assert_eq!(bands(1.0), [1, 1, 2, 1]);
+        assert_eq!(bands(1.25), [1, 1, 3, 1]);
+        assert_eq!(bands(1.5), [1, 2, 3, 2]);
+        assert_eq!(bands(1.75), [1, 2, 4, 2]);
+        assert_eq!(bands(2.0), [2, 2, 4, 2]);
+        assert_eq!(bands(2.5), [2, 3, 5, 3]);
+        assert_eq!(bands(3.0), [3, 3, 6, 3]);
     }
 }

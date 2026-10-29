@@ -25,7 +25,9 @@ pub fn key_from_keysym(sym: Keysym) -> Option<Key> {
         Keysym::period => Period,
         Keysym::slash => Slash,
         Keysym::backslash => Backslash,
-        Keysym::minus | Keysym::KP_Subtract => Minus,
+        // Shift's underscore too: ⌘- in a terminal (Ctrl+Shift+-), and
+        // the shell's Ctrl+_.
+        Keysym::minus | Keysym::KP_Subtract | Keysym::underscore => Minus,
         Keysym::plus | Keysym::KP_Add => Plus,
         Keysym::equal => Equals,
         Keysym::semicolon => Semicolon,

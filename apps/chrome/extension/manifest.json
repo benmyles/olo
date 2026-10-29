@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Olo Desktop",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Fills logins and one-time codes from Olo's Passwords, offers to save the ones you use, and shows agents what is on the page.",
   "minimum_chrome_version": "120",
   "permissions": ["contextMenus", "nativeMessaging", "notifications", "scripting", "storage"],

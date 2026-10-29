@@ -20,7 +20,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use onepassword::{Client, Item, ItemCreateParams, ItemListFilter, ItemListFilterByState, ItemState, individual_items};
+use onepassword::{Client, Item, ItemCreateParams, ItemListFilter, ItemListFilterByState, ItemState, fields, individual_items};
 
 use crate::{
     store::describe,
@@ -190,10 +190,7 @@ const BATCH: usize = 50;
 
 fn params(item: &Item, vault: &str) -> ItemCreateParams {
     let mut p = ItemCreateParams::new(item.category, vault, item.title.clone());
-    p.fields = item.fields.iter().cloned().map(|mut f| {
-        f.details = None;
-        f
-    }).collect();
+    p.fields = fields::for_core(&item.fields);
     p.sections = item.sections.clone();
     p.notes = (!item.notes.is_empty()).then(|| item.notes.clone());
     p.tags = item.tags.clone();
@@ -458,6 +455,13 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
             p.problems.push(Problem::error("", Some(&e.item.title), "It has no vault to go to in 1Password, so it wasn’t sent."));
             continue;
         };
+        // What 1Password would refuse isn't offered: the person hears why.
+        let out = fields::for_core(&e.item.fields);
+        if let Err(why) = fields::check(e.item.category, &out, &e.item.sections, &e.item.tags, &e.item.websites) {
+            let why = format!("1Password won’t take it, so it wasn’t sent. {} Change it here and sync again.", why.explain());
+            p.problems.push(Problem::error(&title_of(&vault), Some(&e.item.title), why));
+            continue;
+        }
         let archive = e.state == ItemState::Archived;
         // A synced item whose vault is gone goes to the default one, new.
         let seen = if known.contains(e.item.vault_id.as_str()) { e.remote.clone() } else { None };
@@ -490,7 +494,8 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
                     p.down.push(Change::Fetched { item: Box::new(there), state: seen.state });
                     continue;
                 }
-                let parts = differences(&there, &e.item);
+                // As it will be sent (an older store's 202908 is 08/2029).
+                let parts = differences(&there, &Item { fields: out, ..e.item.clone() });
                 if archive && seen.state != ItemState::Archived {
                     p.rows.push(row(false, What::Archive, &shown, changed(&parts)));
                 } else if !parts.is_empty() {
@@ -512,6 +517,13 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
         }
     }
     Ok(p)
+}
+
+/// Whether 1Password refused a change because the item changed there
+/// since the version it was put against.
+fn conflict(e: &onepassword::Error) -> bool {
+    let text = e.to_string().to_lowercase();
+    text.contains("incorrect item version") || text.contains("conflict")
 }
 
 /// Make the changes in `plan` (approved): returns what the store is to
@@ -542,12 +554,13 @@ pub fn apply(plan: Plan, socket: &str) -> Result<Report, String> {
                         Some(seen) => {
                             let mut item = (*item).clone();
                             item.version = seen.version;
+                            item.fields = fields::for_core(&item.fields);
                             c.items().put(&item)
                         }
                     };
                     let sent = match sent {
                         Ok(i) => i,
-                        Err(err) if seen.is_some() => {
+                        Err(err) if seen.is_some() && conflict(&err) => {
                             tracing::info!("sync: put refused: {err}");
                             r.problems.push(Problem::error(&title_of(&vault), Some(&item.title), "Changed in 1Password after you reviewed it, so yours wasn’t sent. Sync again to review it."));
                             continue;
@@ -724,6 +737,83 @@ mod tests {
         assert!(w.remote().contains(&("Ours (conflict)".into(), ItemState::Active)));
         assert_eq!(w.local_titles(), w.remote());
         assert_eq!(w.vault.pending(), 0);
+    }
+
+    /// Every kind of value goes there in the form 1Password takes (the
+    /// stand-in refuses others, as the real core does) and comes back
+    /// the same: a card's expiry, kept the old way (202908) or typed as
+    /// people write it, dates, addresses by their parts; what it would
+    /// refuse anyway isn't sent, and says why.
+    #[test]
+    fn every_kind_of_value_goes_over() {
+        use onepassword::{AddressFieldDetails, ItemField, ItemFieldDetails, ItemFieldType, fields};
+        let mut w = world("values");
+        w.sync();
+
+        // A card from 1Password: its expiry as 1Password has it.
+        let card = w.local("Travel Visa").unwrap();
+        assert_eq!(card.field("expiry").unwrap().value, "08/2029");
+        // Changed here as people write it, and one kept by an older
+        // Passwords as `op` writes it (straight into the store).
+        let mut changed = card.clone();
+        changed.field_mut("expiry").unwrap().value = "12/31".into();
+        changed.fields.push(ItemField::new("validFrom", "valid from", ItemFieldType::MonthYear, ""));
+        w.vault.put(&changed).unwrap();
+        assert_eq!(w.local("Travel Visa").unwrap().field("expiry").unwrap().value, "12/2031");
+        let mut p = onepassword::ItemCreateParams::new(ItemCategory::CreditCard, card.vault_id.clone(), "Old Card");
+        p.fields = vec![ItemField::new("expiry", "expiry date", ItemFieldType::MonthYear, "202908")];
+        let old = w.vault.create(&p).unwrap();
+        w.vault.data.entries.iter_mut().find(|e| e.item.id == old.id).unwrap().item.fields[0].value = "202908".into();
+
+        // An identity's date and address, changed by their parts.
+        let mut person = w.local("Jane Doe").unwrap();
+        person.field_mut("birthdate").unwrap().value = "1990/4/13".into();
+        let address = person.field_mut("address").unwrap();
+        let mut parts = fields::address(address);
+        parts.city = "Salem".into();
+        address.details = Some(ItemFieldDetails::Address(Some(parts)));
+        w.vault.put(&person).unwrap();
+
+        // A tag 1Password won't take: not sent, and said why.
+        let mut tagged = w.local("Build box").unwrap();
+        tagged.tags = vec!["café".into()];
+        w.vault.put(&tagged).unwrap();
+        let snap = w.vault.snapshot(ACCOUNT, true);
+        let plan = super::plan(&[snap], &w.socket).unwrap();
+        assert!(!plan.rows.iter().any(|r| r.title == "Build box"), "not offered");
+        assert!(
+            plan.problems.iter().any(|e| e.item.as_deref() == Some("Build box") && e.reason.contains("tags in plain letters")),
+            "{:?}",
+            plan.problems
+        );
+        let r = super::apply(plan, &w.socket).unwrap();
+        assert!(r.problems.iter().all(|e| e.item.as_deref() == Some("Build box")), "{:?}", r.problems);
+        w.vault.apply(r.changes).unwrap();
+        assert_eq!(w.vault.pending(), 1, "only the refused one waits");
+
+        let there = |title: &str| {
+            let local = w.local(title).unwrap();
+            w.client.items().get(&local.vault_id, &local.id).unwrap()
+        };
+        let card = there("Travel Visa");
+        assert_eq!(card.field("expiry").unwrap().value, "12/2031");
+        assert!(card.field("validFrom").is_none(), "an empty month isn't sent");
+        assert_eq!(there("Old Card").field("expiry").unwrap().value, "08/2029");
+        let person = there("Jane Doe");
+        assert_eq!(person.field("birthdate").unwrap().value, "1990-04-13");
+        assert_eq!(
+            person.field("address").unwrap().details,
+            Some(ItemFieldDetails::Address(Some(AddressFieldDetails {
+                street: "12 Birch Lane".into(),
+                city: "Salem".into(),
+                state: "OR".into(),
+                zip: "97201".into(),
+                country: "us".into(),
+            })))
+        );
+        // And here as there.
+        assert_eq!(w.local("Old Card").unwrap().field("expiry").unwrap().value, "08/2029");
+        assert_eq!(w.local("Jane Doe").unwrap().field("address").unwrap().details, person.field("address").unwrap().details);
     }
 
     #[test]

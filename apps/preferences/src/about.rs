@@ -166,7 +166,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         ui.vertical(|ui| {
             ui.add_space(6.0);
             let dark = style::palette(ui.ctx()).mode == olo_kit::theme::ThemeMode::Dark;
-            let (word, _) = ui.allocate_exact_size(vec2(olo_kit::brand::wordmark_width(30.0), 30.0), Sense::hover());
+            let (word, _) = ui.allocate_exact_size(vec2(olo_kit::brand::wordmark_width(30.0, dark), 30.0), Sense::hover());
             if olo_kit::brand::wordmark(ui.painter(), word, dark).is_none() {
                 heading(ui, "Olo Desktop");
             }

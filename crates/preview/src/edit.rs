@@ -413,7 +413,7 @@ impl CropTool {
         }
         // Dim what will go, outline what stays.
         let painter = ui.painter_at(view);
-        let shade = Color32::from_black_alpha(120);
+        let shade = c(p.scrim);
         match self.sel.map(to_screen) {
             Some(s) => {
                 let s = style::snap(ui.ctx(), s);
@@ -446,13 +446,15 @@ impl CropTool {
                 let r = self.sel.expect("some");
                 let text = format!("{} × {}", r.width().round(), r.height().round());
                 let font = style::small_font();
-                let g = painter.layout_no_wrap(text, font, Color32::WHITE);
+                let g = painter.layout_no_wrap(text, font, c(p.tooltip_text));
                 let at = pos2(s.center().x - g.size().x / 2.0, (s.bottom() + 6.0).min(view.bottom() - g.size().y - 6.0));
-                painter.rect_filled(Rect::from_min_size(at - vec2(5.0, 2.0), g.size() + vec2(10.0, 4.0)), 4.0, Color32::from_black_alpha(170));
-                painter.galley(at, g, Color32::WHITE);
+                let tip = Rect::from_min_size(at - vec2(5.0, 2.0), g.size() + vec2(10.0, 4.0));
+                painter.rect_filled(tip, 4.0, c(p.tooltip_background));
+                painter.rect_stroke(tip, 4.0, Stroke::new(1.0, c(p.control_border)), egui::StrokeKind::Inside);
+                painter.galley(at, g, c(p.tooltip_text));
             }
             None => {
-                painter.rect_filled(shown, 0.0, Color32::from_black_alpha(40));
+                painter.rect_filled(shown, 0.0, c(p.scrim).gamma_multiply(0.4));
             }
         }
         changed

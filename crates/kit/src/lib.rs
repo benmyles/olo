@@ -15,6 +15,8 @@ pub mod file_panel;
 pub mod files;
 pub mod icons;
 pub mod layout_lint;
+pub mod layout_review;
+pub mod masonry;
 /// Decoding pictures (see the `olo-images` crate).
 pub use olo_images as images;
 mod input;

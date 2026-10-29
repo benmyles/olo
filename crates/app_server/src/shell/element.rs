@@ -535,7 +535,7 @@ impl SpaceElement for WindowElement {
 render_elements!(
     pub WindowRenderElement<R> where R: ImportAll + ImportMem;
     Window=WaylandSurfaceRenderElement<R>,
-    Tab=MemoryRenderBufferRenderElement<R>,
+    Tab=crate::render::Exact<MemoryRenderBufferRenderElement<R>>,
     Decoration=SolidColorRenderElement,
 );
 

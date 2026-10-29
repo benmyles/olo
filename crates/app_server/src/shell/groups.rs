@@ -29,15 +29,22 @@
 //! a window that opens, comes back from being hidden or arrives from
 //! another workspace joins the group where it is, rather than pulling it
 //! to where the new window happened to open; one that arrived keeps the
-//! frame it came with, for when it is on its own again (`unpark`). Sizes follow only between
-//! pointer grabs, so a hidden window isn't asked for a new size on every
-//! step of a resize. Only the front window is drawn whole: the others
+//! frame it came with, for when it is on its own again (`unpark`). It
+//! doesn't lead the group, though in front, until it has drawn at the
+//! group's size (`Groups::settling`): the size it opened at, or an app's
+//! own resize just after (Terminal fitting its grid), isn't the
+//! group's. Sizes follow only while no window's edge is being dragged,
+//! so a hidden window isn't asked for a new size on every step of a
+//! resize. Only the front window is drawn whole: the others
 //! show just their tabs (`mark_behind`), so they don't show around it
 //! while it is sized smaller. Dialogs (windows with a parent, or that
 //! say they are one with xdg-dialog), fixed-size panels and fullscreen
 //! windows are never grouped.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::{
+    sync::atomic::{AtomicU64, Ordering},
+    time::{Duration, Instant},
+};
 
 use serde::{Deserialize, Serialize};
 use smithay::{
@@ -46,7 +53,7 @@ use smithay::{
 };
 
 use super::{
-    WindowElement,
+    PointerResizeSurfaceGrab, TouchResizeSurfaceGrab, WindowElement,
     tiling::{CASCADE, resizable},
 };
 use crate::state::{AnvilState, Backend};
@@ -118,6 +125,11 @@ pub struct Groups {
     /// Put in a group by hand since: not its leader, which keeps the
     /// group's frame and arrangement.
     pub joining: Vec<WindowElement>,
+    /// Joined a group by itself (opened, came back, arrived) and not yet
+    /// drawn at the group's size, with since when: not its leader
+    /// meanwhile, so the size it opened at isn't the group's (it is in
+    /// front, and would lead).
+    settling: Vec<(WindowElement, Instant)>,
 }
 
 impl Groups {
@@ -242,6 +254,20 @@ pub(super) fn size_on_the_way(w: &WindowElement) -> Option<Size<i32, Logical>> {
     (drawn != Some(asked)).then(|| w.outer_size(asked))
 }
 
+/// `w` at `frame` and drawn at its size.
+fn drawn_at(space: &Space<WindowElement>, w: &WindowElement, frame: Rectangle<i32, Logical>) -> bool {
+    space.element_geometry(w) == Some(frame) && size_on_the_way(w).is_none()
+}
+
+/// Ask `w` again for the size it was asked for and drew otherwise, once
+/// it has answered.
+fn ask_again(w: &WindowElement) {
+    let WindowSurface::Wayland(t) = w.0.underlying_surface();
+    if t.is_initial_configure_sent() && !super::grabs::awaiting_ack(t) {
+        t.send_configure();
+    }
+}
+
 /// The smallest frame `w` can be (its app's minimum, with the tab and
 /// border).
 fn least_frame(w: &WindowElement) -> Size<i32, Logical> {
@@ -252,7 +278,12 @@ fn least_frame(w: &WindowElement) -> Size<i32, Logical> {
 
 /// How long a window put in a group by hand shows only its tab, at most,
 /// while it draws at the group's size.
-const DOCKING: std::time::Duration = std::time::Duration::from_millis(400);
+const DOCKING: Duration = Duration::from_millis(400);
+
+/// How long a window that joined a group by itself is given to draw at
+/// the group's size before it may lead the group anyway (an app that
+/// won't).
+const SETTLING: Duration = Duration::from_secs(2);
 
 impl<BackendData: Backend> AnvilState<BackendData> {
     /// A window in a group but not its front one: arranging commands
@@ -371,20 +402,22 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
         let (seen, groups) = self.current_groups();
         let before = std::mem::take(&mut self.groups);
-        let resizing = self.pointer.is_grabbed();
+        let resizing = self.resizing();
         let dragged = self.tab_drag.as_ref().map(|d| d.window.clone());
         let was_member = |w: &WindowElement| before.list.iter().any(|(_, g)| g.contains(w)) || before.away.iter().any(|(a, m)| a == w && *m);
         let was_seen = |w: &WindowElement| before.seen.contains(w) || before.away.iter().any(|(a, _)| a == w);
+        let was_settling = |w: &WindowElement| before.settling.iter().find(|(s, _)| s == w).map(|(_, since)| *since);
         let mut numbers = before.numbers.clone();
         let mut list = Vec::new();
+        let mut settling = Vec::new();
         for (key, g) in &groups {
-            let joining = |w: &&WindowElement| before.joining.contains(w);
+            let leads = |w: &&WindowElement| !before.joining.contains(w) && was_settling(w).is_none();
             let leader = g
                 .iter()
                 .rev()
-                .filter(|w| !joining(w))
+                .filter(leads)
                 .find(|w| was_member(w))
-                .or_else(|| g.iter().rev().filter(|w| !joining(w)).find(|w| was_seen(w)))
+                .or_else(|| g.iter().rev().filter(leads).find(|w| was_seen(w)))
                 .unwrap_or(&g[g.len() - 1])
                 .clone();
             let Some(mut frame) = self.space.element_geometry(&leader) else { continue };
@@ -412,6 +445,21 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
                 self.join_group(w, frame, resizing);
                 self.share_arrangement(&leader, w);
+                // New to the group by itself: it settles (see `Groups`),
+                // asked again if its app drew another size anyway (its
+                // own resize crossing the group's).
+                let new = !was_member(w) && !before.joining.contains(w);
+                if let Some(since) = was_settling(w).or_else(|| new.then(Instant::now))
+                    && !drawn_at(&self.space, w, frame)
+                {
+                    let since = if resizing { Instant::now() } else { since };
+                    if since.elapsed() < SETTLING {
+                        settling.push((w.clone(), since));
+                    }
+                    if !resizing && size_on_the_way(w).is_none() && self.space.element_geometry(w).is_some_and(|g| g.size != frame.size) {
+                        ask_again(w);
+                    }
+                }
             }
             self.keep_together(g);
             let number = match key {
@@ -482,8 +530,17 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // A window put in a group by hand is one of it from now on, if it
         // made it in (else it may still: it is being placed).
         let joining = before.joining.into_iter().filter(|w| w.alive() && !list.iter().any(|(_, g)| g.contains(w))).collect();
-        self.groups = Groups { seen, list, away, known: all, numbers, joining };
+        self.groups = Groups { seen, list, away, known: all, numbers, joining, settling };
         mark_behind(&self.space);
+    }
+
+    /// A window's edge or corner being dragged: windows' sizes wait till
+    /// it is let go. (Not any grab: a menu's lasts until the pointer next
+    /// moves, and a button held down is one.)
+    fn resizing(&self) -> bool {
+        let pointer = self.pointer.with_grab(|_, g| g.is::<PointerResizeSurfaceGrab<BackendData>>());
+        let touch = self.seat.get_touch().and_then(|t| t.with_grab(|_, g| g.is::<TouchResizeSurfaceGrab<BackendData>>()));
+        pointer == Some(true) || touch == Some(true)
     }
 
     /// `w` at the group's frame: moved there now, and sized to it unless

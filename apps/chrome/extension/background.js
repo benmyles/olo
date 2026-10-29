@@ -240,6 +240,16 @@ chrome.runtime.onMessage.addListener((m, sender, reply) => {
       }
     });
     return true;
+  } else if (m.type === "popup-palette" && !sender.tab) {
+    // Olo's colours now, kept for the popup to show at once next time.
+    host({ palette: true }).then(
+      (r) => {
+        chrome.storage.local.set({ palette: r.css });
+        reply({ css: r.css });
+      },
+      () => reply({}),
+    );
+    return true;
   } else if (m.type === "popup-open" && !sender.tab) {
     host({ open: true }).then(() => reply({ ok: true }), (e) => reply({ error: e.message }));
     return true;

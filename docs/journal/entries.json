@@ -1510,5 +1510,251 @@
   "title": "Window groups: \u2318-dragging a tab into another group",
   "caption": "Any window can be grouped by hand: \u2318-drag its tab over another window's (here Tracker's over Terminal's); it folds into its tab where it would go and that group lights up in the focus blue (light, dark). Let go, and it joins. \u2318-dragging a tab away pops the window out; along the tabs, it reorders them.",
   "image": "2026-10-28/105726-window-groups-dragging-a-tab-into-another-group.png"
+ },
+ {
+  "time": "2026-10-28T14:05:50",
+  "title": "A new window joins its group at the group's size",
+  "caption": "A Terminal opened from its own menu (Terminal \u25b8 New Terminal) joined its group, then the whole group shrank to the new window's default size: the menu's pointer grab lasts until the pointer next moves, sizes waited for any grab, and the new window, in front, then led the group at its own size. Now sizes wait only for a resize grab, and a window that joins a group by itself doesn't lead it until it has drawn at the group's size (asked again if its app draws another size anyway).",
+  "image": "2026-10-28/140550-a-new-window-joins-its-group-at-the-group-s-size.png"
+ },
+ {
+  "time": "2026-10-28T14:09:22",
+  "title": "\u2318Space opens the palette on the display in use",
+  "caption": "With two displays, the palette now opens on the focused window's display (here the Terminal on the right-hand one), else the pointer's, rather than always on the main display.",
+  "image": "2026-10-28/140922-space-opens-the-palette-on-the-display-in-use.png"
+ },
+ {
+  "time": "2026-10-28T14:26:12",
+  "title": "\u2318Tab groups windows by display",
+  "caption": "With a Deskbar on every display, Twitcher's rows split into a column per display, each in an etched BBox named across its top with a little screen, lit on the display this copy of the panel is on, so it's clear which windows are where. \u2191/\u2193 keep to the chosen window's display.",
+  "image": "2026-10-28/142612-tab-groups-windows-by-display.png"
+ },
+ {
+  "time": "2026-10-28T14:34:01",
+  "title": "Terminal: tabs down the side",
+  "caption": "Settings \u25b8 Tabs \u25b8 Down the Side stands the kit's TabStrip as a column (TabStrip::side): rows like Tracker's, the group's chip at the top and its band down each tab, the selected tab opening into the screen, and an edge to drag wider. The window keeps its size; the grid makes room.",
+  "image": "2026-10-28/143401-terminal-tabs-down-the-side.png"
+ },
+ {
+  "time": "2026-10-28T15:14:27",
+  "title": "Notifications: banners specialised per app",
+  "caption": "Apps can say how a note looks (x-olo-* hints, olo_kit::notify's builders): an accent band, a badge and subtitle, a table of fields, a large picture, message or media styles. Websites through Chrome become their own apps (WhatsApp, Gmail) with their colours and monogram tiles; a message shows its sender round and the text in a balloon.",
+  "image": "2026-10-28/151427-notifications-banners-specialised-per-app.png"
+ },
+ {
+  "time": "2026-10-28T15:15:51",
+  "title": "Notifications: unread first, fading with age",
+  "caption": "The History window puts unread notes first under an Unread heading (lit dot, bold title, Mark All Read); clicking one reads it, and it keeps its place until the window closes. With fading on (Preferences, 1 hour by default) each row fades as it ages, the newest strongest, and goes once it has faded away; it shows at full strength while selected or under the pointer.",
+  "image": "2026-10-28/151551-notifications-unread-first-fading-with-age.png"
+ },
+ {
+  "time": "2026-10-28T15:30:47",
+  "title": "Terminal tabs without the lines",
+  "caption": "The group shows as its chip alone: no coloured band under the strip, no separators beside the chip. The current tab is a raised page joined to the terminal below.",
+  "image": "2026-10-28/153047-terminal-tabs-without-the-lines.png"
+ },
+ {
+  "time": "2026-10-28T15:30:47",
+  "title": "Terminal tabs down the side, Show All Tabs, dark",
+  "caption": "Side tabs with the group's chip at the top and no band. In Show All Tabs the active pane's head is lit instead of edged.",
+  "image": "2026-10-28/153047-terminal-tabs-down-the-side-show-all-tabs-dark.png"
+ },
+ {
+  "time": "2026-10-28T15:30:48",
+  "title": "Notification banners without the lines",
+  "caption": "No accent band, top line or coloured edge. The app's colour is in its badge, tile and progress bar only; an error's title starts with a small crisp stop sign, level with the capitals, and there is more room around the icon.",
+  "image": "2026-10-28/153048-notification-banners-without-the-lines.png"
+ },
+ {
+  "time": "2026-10-28T15:30:48",
+  "title": "Notification banners without the lines, dark",
+  "caption": "",
+  "image": "2026-10-28/153048-notification-banners-without-the-lines-dark.png"
+ },
+ {
+  "time": "2026-10-28T15:30:48",
+  "title": "Notification cards without the lines, dark",
+  "caption": "Cards are separated by space and an etched edge, not coloured bands; errors carry the stop sign.",
+  "image": "2026-10-28/153048-notification-cards-without-the-lines-dark.png"
+ },
+ {
+  "time": "2026-10-28T15:30:49",
+  "title": "Notification list: a stop sign for errors",
+  "caption": "Rows lose their coloured kind edge; a failed note's title starts with the stop sign instead.",
+  "image": "2026-10-28/153049-notification-list-a-stop-sign-for-errors.png"
+ },
+ {
+  "time": "2026-10-28T15:32:40",
+  "title": "Preferences: fade notifications away over an hour",
+  "caption": "History box: on by default, over 1 hour; the strip shows the fade from now to gone.",
+  "image": "2026-10-28/153240-preferences-fade-notifications-away-over-an-hour.png"
+ },
+ {
+  "time": "2026-10-28T15:32:41",
+  "title": "Preferences: notification fade, dark",
+  "caption": "The same box in the dark theme.",
+  "image": "2026-10-28/153241-preferences-notification-fade-dark.png"
+ },
+ {
+  "time": "2026-10-28T15:55:01",
+  "title": "Terminal: sudo asks for its password in a window",
+  "caption": "When anything in a Terminal tab runs sudo (you at the prompt, or an agent like Claude Code with no terminal at all), Terminal asks in an alert of its own: who wants it, the command as typed, the fingerprint reader first if PAM uses it, then the password.",
+  "image": "2026-10-28/155501-terminal-sudo-asks-for-its-password-in-a-window.png"
+ },
+ {
+  "time": "2026-10-28T15:55:01",
+  "title": "Terminal: the sudo window in dark mode",
+  "caption": "While the fingerprint reader waits, the password field waits too; the note under it is what PAM says.",
+  "image": "2026-10-28/155501-terminal-the-sudo-window-in-dark-mode.png"
+ },
+ {
+  "time": "2026-10-28T15:55:02",
+  "title": "Terminal: sudo cancelled, plainly",
+  "caption": "Cancel ends sudo with exit 1 and a line an agent can read: \u201csudo: not run: cancelled in Terminal's password window\u201d.",
+  "image": "2026-10-28/155502-terminal-sudo-cancelled-plainly.png"
+ },
+ {
+  "time": "2026-10-28T16:34:13",
+  "title": "Notifications: a selected card, not an outline",
+  "caption": "The selected card was drawn with a thick accent outline. Now it sits on a soft tint of the accent with a hairline edge, the way a selected row reads in a list; its text and buttons keep their contrast in light and dark.",
+  "image": "2026-10-28/163413-notifications-a-selected-card-not-an-outline.png"
+ },
+ {
+  "time": "2026-10-28T16:34:14",
+  "title": "Selected cards in every look and colour set",
+  "caption": "The selected Builds card in each of the seven looks, with the BeOS and Catppuccin colour sets in bebox and papercraft, light and dark. The tint comes from each look's own selection colour, so it never fights the yellow window tab.",
+  "image": "2026-10-28/163414-selected-cards-in-every-look-and-colour-set.png"
+ },
+ {
+  "time": "2026-10-28T16:34:14",
+  "title": "Themes: colour sets selected the same way",
+  "caption": "Preferences \u25b8 Themes marks the chosen colour set with the kit's selection plate, the same soft ground as a selected card, in place of a coloured ring.",
+  "image": "2026-10-28/163414-themes-colour-sets-selected-the-same-way.png"
+ },
+ {
+  "time": "2026-10-28T16:34:14",
+  "title": "Themes: colour sets selected, dark",
+  "caption": "The chosen colour set's plate in dark mode.",
+  "image": "2026-10-28/163414-themes-colour-sets-selected-dark.png"
+ },
+ {
+  "time": "2026-10-28T16:34:15",
+  "title": "Backgrounds: the chosen wallpaper on a plate",
+  "caption": "The wallpaper picker (the kit's ThumbnailPicker) shows the chosen picture on a rounded plate a few pixels larger than it, light and dark, rather than a thick border around the picture.",
+  "image": "2026-10-28/163415-backgrounds-the-chosen-wallpaper-on-a-plate.png"
+ },
+ {
+  "time": "2026-10-28T16:34:15",
+  "title": "Terminal: the group colour you picked",
+  "caption": "The chosen colour in Name Group is a soft ring around the swatch, in light and dark, instead of a heavy outline.",
+  "image": "2026-10-28/163415-terminal-the-group-colour-you-picked.png"
+ },
+ {
+  "time": "2026-10-28T16:34:15",
+  "title": "Notification banners: a quieter close box",
+  "caption": "One close box per banner, in its header beside the app's name, instead of one in the header and another on every notification. In a group of several, each notification shows its own only while the pointer is over it. Both are named buttons in the tree (Close, Close All from Builds), so agents can find them.",
+  "image": "2026-10-28/163415-notification-banners-a-quieter-close-box.png"
+ },
+ {
+  "time": "2026-10-28T16:34:16",
+  "title": "Notification banners: close box, dark",
+  "caption": "The same banners in dark mode.",
+  "image": "2026-10-28/163416-notification-banners-close-box-dark.png"
+ },
+ {
+  "time": "2026-10-28T16:50:43",
+  "title": "Terminal: \u2318 keys as you press them",
+  "caption": "The Terminal's menus showed \u21e7\u2318N, \u21e7\u2318T and so on, because \u2318 reaches a terminal as Ctrl+Shift; they now read \u2318N, \u2318T, as pressed, in the menu bar, context menus and the list agents get. \u2318- and \u2318= (Smaller, Bigger) work now; before, Shift turned - into _ and = into +, and neither matched. A physical Ctrl+Shift+- reaches the shell as Ctrl+_ (readline's undo) instead of being taken for \u2318-: app_server keeps the right Ctrl for \u2318, and the kit tells the two apart in terminal windows.",
+  "image": "2026-10-28/165043-terminal-keys-as-you-press-them.png"
+ },
+ {
+  "time": "2026-10-28T16:56:38",
+  "title": "Log Viewer: the detail pane says what it's for",
+  "caption": "Until you pick a line, the pane under the list was a blank white box. It now says \"Select a line to read it whole.\" in the list's dim empty-state text. This is TextView::empty_text in the kit, the TextView version of ColumnListView::empty_text.",
+  "image": "2026-10-28/165638-log-viewer-the-detail-pane-says-what-it-s-for.png"
+ },
+ {
+  "time": "2026-10-28T17:07:15",
+  "title": "Preferences: designed empty states",
+  "caption": "Before (top) and after, light and dark. A panel with nothing it can show (no sound server, NetworkManager or bluetoothd not running, no fingerprint sensor, no displays) said so in one dim line in the corner of an empty window. The kit's new EmptyState puts the panel's icon and the message in the middle of the space, as lists already do with empty_text.",
+  "image": "2026-10-28/170715-preferences-designed-empty-states.png"
+ },
+ {
+  "time": "2026-10-28T17:09:16",
+  "title": "Preferences: Security without the dead band",
+  "caption": "The Security panel ended in an empty band above Defaults and Revert; the window is now 336 tall (from 354), the least that fits its boxes, so the buttons sit a footer's gap under the last box as in every other panel. Before above, after below, light and dark.",
+  "image": "2026-10-28/170916-preferences-security-without-the-dead-band.png"
+ },
+ {
+  "time": "2026-10-28T17:12:02",
+  "title": "Palette: kinds on the line",
+  "caption": "In Palette results, the kind on the right (Application, File, Web) used to float a few pixels above the name and description beside it. It now sits on the same line, placed with the kit's label_fit, and agents can read it in the tree. Before above, after below.",
+  "image": "2026-10-28/171202-palette-kinds-on-the-line.png"
+ },
+ {
+  "time": "2026-10-28T17:22:54",
+  "title": "Symbols on the baseline",
+  "caption": "Symbols Nimbus Sans lacks (the menu-path triangle, arrows, the Command key) come from DejaVu Sans, which egui centred in its own taller line, so they sat a few pixels below the words around them (above: before; below: now). The kit now shifts each fallback face onto the primary face's baseline, so they line up everywhere: Passwords' setup text, Palette's App > Menu paths, shortcuts and prose.",
+  "image": "2026-10-28/172254-symbols-on-the-baseline.png"
+ },
+ {
+  "time": "2026-10-28T17:27:17",
+  "title": "History: legible to the last",
+  "caption": "Notifications in the History window still fade as they age, but never below 30% ink: the oldest note (here 58 minutes old, two minutes from going) is faint but readable, in cards and in lists, instead of nearly invisible while still counted and clickable. Full again when selected or under the pointer.",
+  "image": "2026-10-28/172717-history-legible-to-the-last.png"
+ },
+ {
+  "time": "2026-10-28T17:31:08",
+  "title": "Twitcher: the chosen app on a plate",
+  "caption": "The app Twitcher has chosen sits on the same rounded selection plate the kit gives a chosen picture (Themes, icon grids), in place of a hard square of menu blue. Its edge colour is now Palette::selection_edge, shared by the kit and app_server.",
+  "image": "2026-10-28/173108-twitcher-the-chosen-app-on-a-plate.png"
+ },
+ {
+  "time": "2026-10-28T17:46:43",
+  "title": "Password alerts sized to their text",
+  "caption": "The keyring and polkit password alerts are true fixed alerts now, named Authentication in Deskbar, and sized to their own text by the new style::plain_text_height (left: before, a window 18 points too tall; middle: after, dark; right: light, with the mismatch note in the row kept for it). app_server no longer gives a fixed-size window a remembered size from before, and the kit keeps a window within its maximum size.",
+  "image": "2026-10-28/174643-password-alerts-sized-to-their-text.png"
+ },
+ {
+  "time": "2026-10-28T19:36:51",
+  "title": "Terminal before: chrome on no common grid",
+  "caption": "Before: the menu's first title, the side tabs' icons, New Tab and the pane heads' icons each started at a different x; side tabs, top tabs and pane heads were three different heights; the side strip began with a gap under the menu bar, so its top line doubled the bar's.",
+  "image": "2026-10-28/193651-terminal-before-chrome-on-no-common-grid.png"
+ },
+ {
+  "time": "2026-10-28T19:36:52",
+  "title": "Terminal: chrome on one column and one row",
+  "caption": "One 12pt left column for the menu's first title, the tab icons, New Tab, the pane heads' icons and the terminal text; one 26pt row for side tabs, top tabs and pane heads, with the 21pt menu bar clearly its own thing; the first side tab hangs from the menu bar (its corner square, the bar's line its top edge). Tiles are laid out in device pixels, so no seams at 1.5x. Reviewed clean by layout_review in light and dark, tabs top and side, tiled and not, at 1x, 1.5x and 2x.",
+  "image": "2026-10-28/193652-terminal-chrome-on-one-column-and-one-row.png"
+ },
+ {
+  "time": "2026-10-28T19:37:05",
+  "title": "Terminal: tabs on top, light, at 1.5x",
+  "caption": "The same grid with the tabs on top: each tab a pane head's height, standing on the strip's bottom edge, so the selected tab and the pane head under it are one height; icons on the menu's first-title column; one-device-pixel lines and no seams at 1.5x.",
+  "image": "2026-10-28/193705-terminal-tabs-on-top-light-at-1-5x.png"
+ },
+ {
+  "time": "2026-10-28T19:50:40",
+  "title": "Date & Time: one baseline for the tabs, the Time field ends with the calendar",
+  "caption": "Found by the layout review. Every TabView label now sits on one line, the selected tab's too; the Time field sits level with the calendar's sixth week so the two columns end together; the second hand is a device-pixel hairline, so it stays crisp at 1.5x.",
+  "image": "2026-10-28/195040-date-time-one-baseline-for-the-tabs-the-time-fie.png"
+ },
+ {
+  "time": "2026-10-28T19:50:41",
+  "title": "Text fields: the hint on the label's baseline",
+  "caption": "Found by the layout review. A TextControl's hint is drawn with the kit's text placement, so it lines up with its label and with typed text at 1x, 1.5x and 2x; it is the field's placeholder for agents too.",
+  "image": "2026-10-28/195041-text-fields-the-hint-on-the-label-s-baseline.png"
+ },
+ {
+  "time": "2026-10-28T20:48:18",
+  "title": "Menu bar one row with the tabs",
+  "caption": "The kit's menu bar is 26 points tall, the same row as a tab strip and a pane head, instead of 21 (31.5 device pixels at 1.5x, cramped against the rest). Terminal at 1.5x, tabs down the side.",
+  "image": "2026-10-28/204818-menu-bar-one-row-with-the-tabs.png"
+ },
+ {
+  "time": "2026-10-28T20:48:18",
+  "title": "Frames and tabs even at fractional scales",
+  "caption": "app_server draws the window frame out from where the content lands, in device pixels: outline a hairline, bevel light and shadow a point each rounded, the flat middle taking the rest, the same on all four sides (1, 2, 3, 2 pixels at 1.5x; it was 2, 1, 2, 1, 2 on one side and mirrored differently on the other). Tabs, the wallpaper, the switcher and other app_server pictures are drawn pixel for pixel instead of resampled a pixel off their size. 1.5x, 8x zoom.",
+  "image": "2026-10-28/204818-frames-and-tabs-even-at-fractional-scales.png"
  }
 ]

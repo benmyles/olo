@@ -13,6 +13,11 @@
 //! notes.show(Some(id), Note::new("Copied 3 items").action("show", "Show"));
 //! // later, in App::message: NoteEvent::Action { id, key: "show", .. }
 //! ```
+//!
+//! A note can say how it should look (the `x-olo-*` hints of
+//! [`olo_protocol::notifications::hint`]): `.accent(rgb)`, `.subtitle()`,
+//! `.badge()`, `.field(label, value)`, `.image(path)` (a picture shown
+//! large), `.style(NoteStyle::Message)` and `.size(CardSize::Large)`.
 
 use std::{
     collections::HashMap,
@@ -22,6 +27,8 @@ use std::{
         mpsc,
     },
 };
+
+use olo_protocol::{CardSize, NoteLook, NoteStyle, notifications::hint};
 
 use crate::Proxy;
 
@@ -64,6 +71,8 @@ pub struct Note {
     pub transient: bool,
     /// No sound.
     pub silent: bool,
+    /// How it looks, beyond its kind.
+    pub look: NoteLook,
 }
 
 impl Note {
@@ -100,6 +109,47 @@ impl Note {
         self.sticky = on;
         self
     }
+
+    /// The app's colour, for the card's band and badge.
+    pub fn accent(mut self, rgb: [u8; 3]) -> Note {
+        self.look.accent = Some(rgb);
+        self
+    }
+
+    /// A line under the title.
+    pub fn subtitle(mut self, text: impl Into<String>) -> Note {
+        self.look.subtitle = Some(text.into());
+        self
+    }
+
+    /// A short tag beside the title.
+    pub fn badge(mut self, text: impl Into<String>) -> Note {
+        self.look.badge = Some(text.into());
+        self
+    }
+
+    /// A row of its little table of facts.
+    pub fn field(mut self, label: impl Into<String>, value: impl Into<String>) -> Note {
+        self.look.fields.push((label.into(), value.into()));
+        self
+    }
+
+    /// A picture to show large (a screenshot, a photo).
+    pub fn image(mut self, path: impl AsRef<std::path::Path>) -> Note {
+        self.look.image = Some(path.as_ref().to_string_lossy().into_owned());
+        self
+    }
+
+    pub fn style(mut self, style: NoteStyle) -> Note {
+        self.look.style = style;
+        self
+    }
+
+    /// How big a card it wants in the history.
+    pub fn size(mut self, size: CardSize) -> Note {
+        self.look.size = size;
+        self
+    }
 }
 
 /// What came back, as an app message.
@@ -113,7 +163,7 @@ pub enum NoteEvent {
 }
 
 enum Ask {
-    Show(NoteId, Note),
+    Show(NoteId, Box<Note>),
     Close(NoteId),
 }
 
@@ -145,7 +195,7 @@ impl Notifier {
     /// Show `note`, or update the one `id` names; its id.
     pub fn show(&self, id: Option<NoteId>, note: Note) -> NoteId {
         let id = id.unwrap_or_else(|| NoteId(self.next.fetch_add(1, Ordering::Relaxed)));
-        let _ = self.to.send(Ask::Show(id, note));
+        let _ = self.to.send(Ask::Show(id, Box::new(note)));
         id
     }
 
@@ -178,7 +228,7 @@ fn args(note: &Note, entry: &str) -> (String, Vec<String>, HashMap<&'static str,
         NoteKind::Error => ("error", 2),
         NoteKind::Progress => ("progress", 1),
     };
-    hints.insert("x-olo-type", Value::from(kind));
+    hints.insert(hint::TYPE, Value::from(kind));
     hints.insert("urgency", Value::from(urgency));
     if let Some(p) = note.progress {
         hints.insert("value", Value::from((p.clamp(0.0, 1.0) * 100.0).round() as i32));
@@ -188,6 +238,24 @@ fn args(note: &Note, entry: &str) -> (String, Vec<String>, HashMap<&'static str,
     }
     if note.silent {
         hints.insert("suppress-sound", Value::from(true));
+    }
+    let look = &note.look;
+    if let Some([r, g, b]) = look.accent {
+        hints.insert(hint::ACCENT, Value::from(format!("#{r:02x}{g:02x}{b:02x}")));
+    }
+    for (key, text) in [(hint::SUBTITLE, &look.subtitle), (hint::BADGE, &look.badge), (hint::IMAGE, &look.image), (hint::SOURCE, &look.source)] {
+        if let Some(t) = text {
+            hints.insert(key, Value::from(t.clone()));
+        }
+    }
+    if !look.fields.is_empty() {
+        hints.insert(hint::FIELDS, Value::from(look.fields.clone()));
+    }
+    if look.style != NoteStyle::Standard {
+        hints.insert(hint::STYLE, Value::from(look.style.name()));
+    }
+    if look.size != CardSize::Auto {
+        hints.insert(hint::SIZE, Value::from(look.size.name()));
     }
     let actions = note.actions.iter().flat_map(|(k, l)| [k.clone(), l.clone()]).collect();
     (escape(&note.body), actions, hints, if note.sticky || note.kind == NoteKind::Error { 0 } else { -1 })
@@ -290,5 +358,12 @@ mod tests {
         assert_eq!(body, "a &lt; b");
         assert_eq!(actions, vec!["default".to_owned(), "Show".to_owned()]);
         assert_eq!((hints["urgency"].clone(), timeout), (zbus::zvariant::Value::from(2u8), 0));
+        assert!(!hints.contains_key(hint::ACCENT), "no look unless asked");
+        let shot = Note::new("Screenshot").accent([0x25, 0xd3, 0x66]).badge("PNG").field("Size", "1.2 MB").image("/tmp/a.png").size(CardSize::Large);
+        let (_, _, hints, _) = args(&shot, "olo-screenshot");
+        assert_eq!(hints[hint::ACCENT], zbus::zvariant::Value::from("#25d366"));
+        assert_eq!(hints[hint::IMAGE], zbus::zvariant::Value::from("/tmp/a.png"));
+        assert_eq!(hints[hint::SIZE], zbus::zvariant::Value::from("large"));
+        assert_eq!(hints[hint::FIELDS], zbus::zvariant::Value::from(vec![("Size".to_owned(), "1.2 MB".to_owned())]));
     }
 }

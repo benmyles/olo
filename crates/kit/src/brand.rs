@@ -7,11 +7,13 @@ use std::{collections::HashMap, sync::Arc};
 use egui::{Color32, ColorImage, Painter, Rect, TextureHandle, TextureOptions, pos2, vec2};
 
 type Source = Arc<(Vec<[u8; 4]>, usize, usize)>;
+/// Trimmed wordmarks by theme and light or dark (None: not found).
+type Sources = HashMap<(&'static str, bool), Option<Source>>;
 
 /// Theme `theme`'s wordmark, trimmed to what it draws: its pixels, width
 /// and height.
 fn source(theme: &'static str, dark: bool) -> Option<Source> {
-    static CACHE: std::sync::Mutex<Option<HashMap<(&'static str, bool), Option<Source>>>> = std::sync::Mutex::new(None);
+    static CACHE: std::sync::Mutex<Option<Sources>> = std::sync::Mutex::new(None);
     let mut cache = CACHE.lock().unwrap();
     cache
         .get_or_insert_default()
@@ -31,14 +33,15 @@ fn source(theme: &'static str, dark: bool) -> Option<Source> {
         .clone()
 }
 
-/// How wide the wordmark is when `height` tall (0 if it can't be found).
-pub fn wordmark_width(height: f32) -> f32 {
-    wordmark_width_in(olo_xdg::themes::current().id, height)
+/// How wide the wordmark is when `height` tall (0 if it can't be found),
+/// in its light or dark version: they needn't be one shape.
+pub fn wordmark_width(height: f32, dark: bool) -> f32 {
+    wordmark_width_in(olo_xdg::themes::current().id, height, dark)
 }
 
 /// As [`wordmark_width`], for theme `theme`'s wordmark.
-pub fn wordmark_width_in(theme: &str, height: f32) -> f32 {
-    source(olo_xdg::themes::resolve(theme).id, false).map_or(0.0, |s| height * s.1 as f32 / s.2 as f32)
+pub fn wordmark_width_in(theme: &str, height: f32, dark: bool) -> f32 {
+    source(olo_xdg::themes::resolve(theme).id, dark).map_or(0.0, |s| height * s.1 as f32 / s.2 as f32)
 }
 
 /// Draw the wordmark `rect.height()` tall at `rect`'s left, centred
@@ -57,6 +60,17 @@ struct Textures {
 
 /// As [`wordmark`], theme `theme`'s.
 pub fn wordmark_in(painter: &Painter, rect: Rect, dark: bool, theme: &str) -> Option<Rect> {
+    draw(painter, rect, dark, theme, false)
+}
+
+/// As [`wordmark_in`], centred across `rect` once its width is whole
+/// device pixels, so wordmarks of different widths in a column share
+/// one centre at every scale.
+pub fn wordmark_centred_in(painter: &Painter, rect: Rect, dark: bool, theme: &str) -> Option<Rect> {
+    draw(painter, rect, dark, theme, true)
+}
+
+fn draw(painter: &Painter, rect: Rect, dark: bool, theme: &str, centred: bool) -> Option<Rect> {
     let ctx = painter.ctx();
     let ppp = ctx.pixels_per_point();
     let theme = olo_xdg::themes::resolve(theme).id;
@@ -79,7 +93,7 @@ pub fn wordmark_in(painter: &Painter, rect: Rect, dark: bool, theme: &str) -> Op
     drop(cache);
     let size = vec2(tw as f32, th as f32) / ppp;
     let top = ((rect.center().y - size.y / 2.0) * ppp).round() / ppp;
-    let left = (rect.left() * ppp).round() / ppp;
+    let left = if centred { (rect.center().x * ppp - tw as f32 / 2.0).round() / ppp } else { (rect.left() * ppp).round() / ppp };
     let at = Rect::from_min_size(pos2(left, top), size);
     painter.image(tex.id(), at, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
     Some(at)
@@ -87,7 +101,7 @@ pub fn wordmark_in(painter: &Painter, rect: Rect, dark: bool, theme: &str) -> Op
 
 /// `px` (w×h, straight alpha) averaged down to tw×th, each output pixel
 /// the alpha-weighted mean of the source area it covers.
-fn shrink(px: &[[u8; 4]], w: usize, h: usize, tw: usize, th: usize) -> ColorImage {
+pub(crate) fn shrink(px: &[[u8; 4]], w: usize, h: usize, tw: usize, th: usize) -> ColorImage {
     let (sx, sy) = (w as f32 / tw as f32, h as f32 / th as f32);
     let mut out = Vec::with_capacity(tw * th);
     for oy in 0..th {

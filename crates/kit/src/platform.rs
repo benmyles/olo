@@ -173,6 +173,8 @@ struct Surface {
     swallow: bool,
     /// This window's tree, from its frame since one was asked for.
     tree: Option<crate::commands::WindowTree>,
+    /// Its layout review, likewise.
+    review: Option<crate::commands::WindowReview>,
     /// Its frames since `{"frames":true}` was last answered, and whether
     /// the draw under way got as far as the GPU.
     times: crate::commands::FrameTimes,
@@ -305,7 +307,13 @@ pub struct Kit {
     /// Asked for the windows' trees (see `commands`): answered when every
     /// window has drawn a frame with AccessKit on, or soon after.
     trees: Vec<(std::sync::mpsc::Sender<Vec<crate::commands::WindowTree>>, Instant)>,
+    /// Asked for the windows' layout reviews: answered when every window
+    /// has drawn a frame since, or soon after.
+    reviews: Vec<(std::sync::mpsc::Sender<Vec<crate::commands::WindowReview>>, Instant)>,
     modifiers: egui::Modifiers,
+    /// The right Ctrl is down: app_server's, standing for ⌘ (see
+    /// `theme_watch::command_key`).
+    cmd_ctrl: bool,
     last_serial: u32,
     /// What we put on the clipboard: the source and its data by type.
     clipboard: Option<(CopyPasteSource, Clip)>,
@@ -346,8 +354,11 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 // usvg warns about every SVG feature it skips (a marker
-                // on each icon drawn); that's noise in the journal.
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,usvg=error")),
+                // on each icon drawn); that's noise in the journal. Olo's
+                // own crates (olo_kit, olo_terminal, …) also say what
+                // rarely happens and is worth knowing after: a reconnect,
+                // an upgrade, why a close was asked about.
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,usvg=error,olo=info")),
         )
         .try_init();
     // A client handed its connection (WAYLAND_SOCKET, as app_server starts
@@ -464,12 +475,25 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
     let mut build = Some(build);
     let mut carried: Option<Carried> = None;
     let mut palette = palette;
+    // Handshakes lost to an app_server going away again while we
+    // reconnect (one stuck under memory pressure is killed and restarted).
+    let mut lost_handshakes = 0;
     loop {
         let Some(conn) = connect(in_session) else {
             warn!("could not reconnect to app_server; exiting");
             return;
         };
-        let (globals, mut event_queue) = registry_queue_init::<Kit>(&conn).expect("wayland registry");
+        let (globals, mut event_queue) = match registry_queue_init::<Kit>(&conn) {
+            Ok(r) => r,
+            Err(e) if carried.is_some() && lost_handshakes < 100 => {
+                lost_handshakes += 1;
+                warn!(?e, "app_server went away while we reconnected; trying again");
+                std::thread::sleep(Duration::from_millis(200));
+                continue;
+            }
+            Err(e) => panic!("wayland registry: {e:?}"),
+        };
+        lost_handshakes = 0;
         let qh = event_queue.handle();
         let mut kit = Kit::new(&globals, conn.clone(), qh, loop_handle.clone(), palette.clone());
         // Learn the outputs (wl_output, then xdg-output) before the app
@@ -705,7 +729,9 @@ impl Kit {
             keyboard_focus: None,
             last_active: None,
             trees: Vec::new(),
+            reviews: Vec::new(),
             modifiers: egui::Modifiers::NONE,
+            cmd_ctrl: false,
             last_serial: 0,
             drag_out: None,
             drag_in: None,
@@ -779,7 +805,11 @@ impl Kit {
         match q {
             Query::Menus(reply) => {
                 let app_id = self.cx.as_ref().map(|c| c.app_id.clone()).unwrap_or_default();
-                let bar = win.and_then(|w| self.app.as_mut().and_then(|a| a.menu_bar(w))).unwrap_or_default();
+                let mut bar = win.and_then(|w| self.app.as_mut().and_then(|a| a.menu_bar(w))).unwrap_or_default();
+                let raw = win.and_then(|w| self.surfaces.iter().find(|s| s.id == w)).is_some_and(|s| s.options.raw_keys);
+                if raw && crate::theme_watch::command_key() {
+                    bar.iter_mut().for_each(Menu::ctrl_shift_as_command);
+                }
                 let _ = reply.send(crate::commands::flatten(&app_id, &bar));
             }
             Query::Invoke(cmd, reply) => {
@@ -816,6 +846,15 @@ impl Kit {
                 }
                 self.trees.push((reply, Instant::now()));
                 self.answer_trees();
+            }
+            Query::Review(reply) => {
+                for s in self.surfaces.iter_mut().filter(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_))) {
+                    s.review = None;
+                    s.dirty = true;
+                    s.ctx.request_repaint();
+                }
+                self.reviews.push((reply, Instant::now()));
+                self.answer_reviews();
             }
             Query::Frames(reply) => {
                 let adapter = self.gpu.as_ref().map_or_else(String::new, |g| {
@@ -860,6 +899,24 @@ impl Kit {
         for s in self.surfaces.iter_mut() {
             s.ctx.disable_accesskit();
             s.tree = None;
+        }
+    }
+
+    fn answer_reviews(&mut self) {
+        if self.reviews.is_empty() {
+            return;
+        }
+        let toplevels = || self.surfaces.iter().filter(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_)));
+        let late = self.reviews.iter().any(|(_, at)| at.elapsed() > Duration::from_millis(1000));
+        if !toplevels().all(|s| s.review.is_some()) && !late {
+            return;
+        }
+        let reviews: Vec<_> = toplevels().filter_map(|s| s.review.clone()).collect();
+        for (reply, _) in self.reviews.drain(..) {
+            let _ = reply.send(reviews.clone());
+        }
+        for s in self.surfaces.iter_mut() {
+            s.review = None;
         }
     }
 
@@ -1142,6 +1199,7 @@ impl Kit {
             buttons: Vec::new(),
             swallow: false,
             tree: None,
+            review: None,
             configure_due: None,
             reconfigure: false,
             times: Default::default(),
@@ -1625,6 +1683,7 @@ impl Kit {
             .or_default()
             .native_pixels_per_point = Some(s.scale as f32);
         let ctx = s.ctx.clone();
+        style::fit_scale(&ctx, s.scale as f32);
         crate::dnd::begin_frame(&ctx, hover.clone());
         // Document fonts added since this window last looked.
         let fonts = style::fonts_generation();
@@ -1672,17 +1731,26 @@ impl Kit {
             let s = &mut self.surfaces[i];
             let mut bar = s.bar.clone();
             let mut drawn_bar = None;
-            let menus = app.as_mut().and_then(|a| a.menu_bar(id));
+            let raw_keys = s.options.raw_keys;
+            let terminal_keys = raw_keys && crate::theme_watch::command_key();
+            let menus = app.as_mut().and_then(|a| a.menu_bar(id)).map(|mut m| {
+                if terminal_keys {
+                    m.iter_mut().for_each(Menu::ctrl_shift_as_command);
+                }
+                m
+            });
             let panel = s.options.panel;
             let palette = self.palette.clone();
             let toplevel = matches!(s.role, Role::Toplevel(_));
-            let raw_keys = s.options.raw_keys;
             let mut close_key = false;
             let out = ctx.run_ui(raw, |ui| {
                 // ⌘ is Ctrl, so ⌘H/⌘K/⌘U/⌘W are command shortcuts here,
                 // never egui's emacs deletions in a focused text field: keep
                 // them from the app's ui and give them back for the menus.
                 let held = if raw_keys { Vec::new() } else { hold_emacs_keys(ui) };
+                if raw_keys {
+                    keep_focus_off_controls(ui);
+                }
                 if panel {
                     ui.painter().rect_filled(ui.max_rect(), 0.0, style::c(palette.panel_background));
                 }
@@ -1707,8 +1775,10 @@ impl Kit {
                                 // ⌘A in a text field selects all of it,
                                 // not whatever the menu's Select All means.
                                 egui::Event::Key { key: egui::Key::A, .. } if text_focus => None,
+                                // `command`: in a terminal, only ⌘ (see
+                                // `key_modifiers`), not the tty's Ctrl.
                                 egui::Event::Key { key, pressed: true, modifiers, .. }
-                                    if modifiers.ctrl && !modifiers.alt =>
+                                    if modifiers.command && !modifiers.alt =>
                                 {
                                     Some((*key, modifiers.shift))
                                 }
@@ -1754,6 +1824,9 @@ impl Kit {
                 if let Some(bar) = &s.menus {
                     request.menu.keys_from(bar);
                 }
+                if terminal_keys {
+                    request.menu.ctrl_shift_as_command();
+                }
                 menu_events.push(MenuEvent::Context(id, request));
             }
             // A context menu's choice no widget asked for is a command.
@@ -1795,6 +1868,21 @@ impl Kit {
                 s.tree = Some(tree);
             }
             self.answer_trees();
+        }
+        if !self.reviews.is_empty() {
+            let s = &mut self.surfaces[i];
+            if matches!(s.role, Role::Toplevel(_) | Role::Layer(_)) {
+                let size = egui::vec2(s.size.0 as f32, s.size.1 as f32);
+                s.review = Some(crate::commands::WindowReview {
+                    title: s.options.title.clone(),
+                    width: s.size.0,
+                    height: s.size.1,
+                    scale: output.pixels_per_point,
+                    layer: if let WindowKind::Layer(lo) = &s.options.kind { Some(lo.namespace.clone()) } else { None },
+                    findings: crate::layout_review::review(&output.shapes, size, output.pixels_per_point, &crate::layout_review::marks(&s.ctx)),
+                });
+            }
+            self.answer_reviews();
         }
         // Platform output: clipboard, cursor, links.
         for cmd in &output.platform_output.commands {
@@ -2228,11 +2316,26 @@ impl Kit {
         }
     }
 
+    /// The modifiers a key event carries. In a terminal-style window, with
+    /// ⌘ the command key, only ⌘ is `command`: physical Ctrl is the
+    /// tty's, so Ctrl+Shift+- is the shell's Ctrl+_ while ⌘- is Smaller.
+    fn key_modifiers(&self, raw: bool) -> egui::Modifiers {
+        let m = self.modifiers;
+        if raw && crate::theme_watch::command_key() {
+            egui::Modifiers { command: m.ctrl && self.cmd_ctrl, ..m }
+        } else {
+            m
+        }
+    }
+
     fn key_event(&mut self, event: &KeyEvent, pressed: bool, repeat: bool) {
+        if event.keysym == Keysym::Control_R {
+            self.cmd_ctrl = pressed;
+        }
         let Some(wl) = self.keyboard_focus.clone() else { return };
         let key = input::key_from_keysym(event.keysym);
-        let m = self.modifiers;
         let raw = self.index_of_wl(&wl).is_some_and(|i| self.surfaces[i].options.raw_keys);
+        let m = self.key_modifiers(raw);
         // Terminal-style windows: Ctrl alone is for the program inside;
         // the clipboard is on Ctrl+Shift.
         if pressed && m.ctrl && raw == m.shift {
@@ -2409,6 +2512,11 @@ impl WindowHandler for Kit {
         s.maximized = configure.is_maximized();
         if let (Some(w), Some(h)) = configure.new_size {
             size = (w.get(), h.get());
+        }
+        // Within its limits, as the compositor should have sent it (which
+        // a window coming back at a remembered size may not be).
+        if !fullscreen && let Some((mw, mh)) = s.options.max_size {
+            size = (size.0.min(mw), size.1.min(mh));
         }
         if let Some((mw, mh)) = s.options.min_size {
             size = (size.0.max(mw), size.1.max(mh));
@@ -2604,7 +2712,8 @@ impl SeatHandler for Kit {
 }
 
 impl KeyboardHandler for Kit {
-    fn enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlKeyboard, surface: &WlSurface, serial: u32, _: &[u32], _: &[Keysym]) {
+    fn enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlKeyboard, surface: &WlSurface, serial: u32, _: &[u32], keysyms: &[Keysym]) {
+        self.cmd_ctrl = keysyms.contains(&Keysym::Control_R);
         self.keyboard_focus = Some(surface.clone());
         if let Some(s) = self.surfaces.iter().find(|s| s.wl == *surface && matches!(s.role, Role::Toplevel(_))) {
             self.last_active = Some(s.id);
@@ -2906,6 +3015,21 @@ impl ProvidesRegistryState for Kit {
 
 smithay_client_toolkit::delegate_dispatch2!(Kit);
 
+/// A raw-keys window's keyboard is its program's: Tab, ⇧Tab and the
+/// arrows never walk egui's focus onto the window's controls (its menu
+/// titles, a tab strip), where the next Return or Space would press one,
+/// switching tabs under someone typing in a shell. A text field keeps
+/// focus it was given.
+fn keep_focus_off_controls(ui: &egui::Ui) {
+    let text = ui.ctx().text_edit_focused();
+    ui.memory_mut(|m| {
+        m.move_focus(egui::FocusDirection::None);
+        if !text && let Some(id) = m.focused() {
+            m.surrender_focus(id);
+        }
+    });
+}
+
 /// Take ⌘H/⌘K/⌘U/⌘W out of this frame's input (see the caller).
 fn hold_emacs_keys(ui: &egui::Ui) -> Vec<egui::Event> {
     ui.input_mut(|inp| {
@@ -2916,4 +3040,37 @@ fn hold_emacs_keys(ui: &egui::Ui) -> Vec<egui::Event> {
         inp.events = rest;
         held
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Tab (or ⇧Tab) then Return, as in a shell: egui presses the control
+    /// Tab gave focus to, except in a raw-keys window.
+    #[test]
+    fn raw_keys_never_press_controls() {
+        let key = |key, shift| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: if shift { egui::Modifiers::SHIFT } else { egui::Modifiers::NONE } };
+        let pressed = |raw: bool, frames: &[Vec<egui::Event>]| {
+            let ctx = egui::Context::default();
+            let mut any = false;
+            for events in frames {
+                let mut out = ctx.run_ui(egui::RawInput { events: events.clone(), ..Default::default() }, |ui| {
+                    if raw {
+                        keep_focus_off_controls(ui);
+                    }
+                    any |= ui.button("New Tab").clicked();
+                });
+                out.textures_delta.clear();
+            }
+            any
+        };
+        for shift in [false, true] {
+            // (A frame drawn already, as a window has.)
+            let apart = [vec![], vec![key(egui::Key::Tab, shift)], vec![], vec![key(egui::Key::Enter, false)]];
+            assert!(pressed(false, &apart), "egui's own way, to show the test sees it (shift: {shift})");
+            assert!(!pressed(true, &apart));
+            assert!(!pressed(true, &[vec![], vec![key(egui::Key::Tab, shift), key(egui::Key::Space, false)]]));
+        }
+    }
 }

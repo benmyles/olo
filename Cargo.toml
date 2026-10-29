@@ -49,6 +49,10 @@ debug = "line-tables-only"
 
 [profile.dev]
 opt-level = 1
+# File and line in backtraces, without full debuginfo: it made debug
+# binaries 600-850 MB each and linking them took gigabytes apiece.
+debug = "line-tables-only"
 
 [profile.dev.package."*"]
 opt-level = 3
+debug = false

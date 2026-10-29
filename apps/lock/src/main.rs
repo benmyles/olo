@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use olo_kit::{
     App, Cx, SessionLock, WindowId,
-    egui::{self, Align2, Color32, FontId, Key, Rect, Sense, pos2, vec2},
+    egui::{self, Align2, FontId, Key, Rect, Sense, pos2, vec2},
     icons, metrics as m,
     style::{self, c},
     widgets::TextControl,
@@ -47,6 +47,8 @@ struct Lock {
     unlocking: bool,
     /// Wrong attempts in a row (the field shakes on each).
     shake: Option<std::time::Instant>,
+    /// The first workspace's desktop colour (as the settings had it).
+    desktop: [u8; 3],
 }
 
 fn clock_text() -> (String, String) {
@@ -180,7 +182,7 @@ impl Lock {
     fn draw_clock(&self, ui: &egui::Ui, full: Rect) {
         let (time, date) = clock_text();
         let painter = ui.painter();
-        let white = Color32::from_white_alpha(235);
+        let white = c(style::palette(ui.ctx()).desktop_text);
         let y = full.top() + full.height() * 0.22;
         painter.text(pos2(full.center().x, y), Align2::CENTER_CENTER, time, FontId::new(72.0, style::bold()), white);
         painter.text(pos2(full.center().x, y + 56.0), Align2::CENTER_CENTER, date, FontId::new(20.0, style::bold()), white);
@@ -269,9 +271,12 @@ impl Lock {
 impl App for Lock {
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
         let full = ui.max_rect();
-        // The desktop colour, dimmed: the screen is clearly locked but
-        // still Olo's.
-        ui.painter().rect_filled(full, 0.0, Color32::from_rgb(24, 46, 70));
+        // The desktop colour under the look's scrim: the screen is
+        // clearly locked but still the person's.
+        let [r, g, b] = self.desktop;
+        let scrim = style::palette(ui.ctx()).scrim;
+        let dimmed = olo_kit::theme::mix([r, g, b, 255], [scrim[0], scrim[1], scrim[2], 255], 0.55);
+        ui.painter().rect_filled(full, 0.0, c(dimmed));
         let _ = ui.interact(full, ui.make_persistent_id("lock-bg"), Sense::click());
         self.draw_clock(ui, full);
         if self.windows.first() == Some(&window) {
@@ -344,6 +349,7 @@ fn main() {
             proxy: cx.proxy(),
             unlocking: false,
             shake: None,
+            desktop: olo_kit::settings::current().unwrap_or_default().workspace_color(0),
         }
     });
 }

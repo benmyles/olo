@@ -5,6 +5,11 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~Terminal: ⌘- / ⌘= and Ctrl+_~~: ⌘- and ⌘= (Smaller, Bigger) did
+  nothing, the shell's Ctrl+_ was out of reach, and the menus read ⇧⌘N
+  for ⌘N. ⌘ now reaches terminals on the right Ctrl, which the kit marks
+  as `command` ("Raw keys" in HACKING), and the menus read as pressed.
+
 - ~~DiskUsage~~ (Ben): a new app for finding and reclaiming disk space,
   Haiku's ring chart beside a list by size, with DaisyDisk's Collector
   (drag in, then Move to Trash or Delete); volumes from mountinfo, a
@@ -188,6 +193,28 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Always show the tab bar, even with one tab** (Ben): the tab bar is
+  hidden until a second tab opens; show it always (Terminal's
+  `TabStrip`; ask whether window groups' frames mean the same).
+- **Terminal: git repos, worktrees and GitHub** (Ben), native (no `git`
+  or `gh` subprocesses):
+  - a tab in a git repo goes into a group named after the repo on its
+    own;
+  - the group's context menu manages the repo: its worktrees (every one
+    found, a click opens it in a new tab in the group) and New
+    Worktree…, which asks for a name, makes it and opens it in a new
+    tab;
+  - Preferences ▸ Terminal gets a worktrees location for new ones,
+    `~/worktrees/[repo-name]/[worktree-name]` by default;
+  - a tab in a worktree has Rename Worktree… and Remove Worktree… in
+    its context menu;
+  - GitHub: with an open PR for the branch, the tab's menu has an item
+    to go to it, and the tab shows the PR's status with an icon.
+- **Terminal restores itself after Quit** (Ben): the state is saved as
+  it changes, so quitting and starting Terminal again brings back every
+  window, group, tab and working directory. If olo-termd is running
+  with the sessions, reattach them; if not, still restore the tabs,
+  their directories and their scrollback.
 - ~~**Terminal tabs, tab groups and coding agents**~~ (Ben; done
   2026-10-27): tabs (the kit's `TabStrip`; HACKING, Terminal "Tabs"),
   tab groups that can be saved and reopened (a window is a named,
@@ -401,6 +428,39 @@ as they land (with the commit), add new ones as they come up.
   hand); windows placed automatically or by hand are never pushed. It
   should work as you'd expect: shared edges move together, nothing
   overlaps or leaves a gap, neighbours keep a sensible minimum size.
+- **Chrome's tree: inside iframes** (Ben): an iframe is opaque to the
+  tree agents get (`tree.js` runs in the top frame only, `frameIds:
+  [0]` in `background.js`), so embedded logins, payment forms, consent
+  dialogs and the like can't be read or driven by name. Run it in every
+  frame (`allFrames`, cross-origin ones too), tell which iframe element
+  each child frame is (the parent posts a token into each
+  `contentWindow`; the child's content script keeps it and `tree.js`
+  reports it), then stitch each frame's nodes under an `Iframe` node at
+  the element's content box (its rect plus border and padding, the
+  child's own scroll and zoom), clipped to it, nested frames in turn.
+  `click`, `set` and `wait` then work inside them as they do on the
+  page. HACKING, "Chrome's widget tree, for agents".
+- **Agent Screens: each screen's history, replays, videos and stats**
+  (Ben): Agent Screens keeps, for each screen, what was done on it:
+  every action (`click`, `type`, `key`, `invoke`, `drag`, `run`, … with
+  what it matched and where, timed, from the requests app_server already
+  gets) beside the frames the screen drew, only where they changed.
+  1. *History:* a screen's actions as a list in the app (filter, search,
+     select one to see the screen as it was then).
+  2. *Replay:* plays it back, the frames in time with the actions, the
+     pointer, clicks and keys shown; play/pause, speed, scrubbing,
+     stepping action by action.
+  3. *Export as MP4:* encoded in process in Rust (no ffmpeg), on a
+     worker with progress and Cancel. Stretches where nothing happened
+     are cut, and a card in the video says how long each was ("4 min
+     12 s with nothing happening").
+  4. *Stats:* per screen, when it was started and last used, how long
+     it has run and been active, actions of each kind, the programs run
+     in it, the windows open now; the screens list can sort by last use.
+  Agents can read all of it too (`olo-screen history NAME [--json]`,
+  `olo-screen stats [NAME]`). The history is kept within limits on
+  size and age (Preferences), and outlives the screen until it is
+  cleared.
 - **Google Chrome works great in Olo** (Ben; Olo's web browser):
   many sites really need Chrome. When stock Google Chrome is downloaded and run, Olo
   recognises it: Olo window chrome (server-side decorations, or
@@ -676,6 +736,58 @@ as they land (with the commit), add new ones as they come up.
   Workspace ▸, the displays, Send to Back and Close, the shortcuts' own
   commands. Not yet: Always on Top (app_server has no such state) and
   "tile with…" (tiling beside a chosen window).
+- **Auto-tiling mode** (Ben, 2026-10-28): a command, a shortcut and a
+  Deskbar icon (a toggle beside the Caffeinated cup) that turn
+  auto-tiling on and off. While it is on, every window is tiled; a new one
+  takes its share and the others re-tile, and a closed one's space goes to
+  its neighbours.
+  - *Scope:* the Deskbar's. It is per workspace, and also per display when
+    "Show Deskbar on every display" is on; otherwise a workspace's
+    setting covers all its displays. It is remembered, and in the IPC so
+    agents can read and set it.
+  - *Zoom:* a tiled window can still be zoomed. It grows to fill the
+    screen, and when unzoomed it goes back to its tile; the others stay put
+    underneath.
+  - *Zoom along one axis:* Zoom Vertically makes the window a column the
+    full height of the display, and the others re-tile in what is left
+    beside it. Zoom Horizontally does the same with a full-width row.
+  - *Tile commands:* these set the window's tile, and the rest re-tile
+    around it. Tile Left gives the window the left half and tiles the
+    others in the right half; quarters and thirds work the same way.
+  - *Resizing by hand:* the edge snaps to a quarter-screen grid, and the
+    neighbours across the edge follow (as command-tiled windows already
+    do).
+  - *Dialogs and floating windows are never tiled* (Ben). They stay
+    floating over the tiles, centred over their parent where they have
+    one, and the tiles don't make room for them. Floating windows include
+    alerts, Open and Save panels, Quick Look, inspectors and palettes,
+    About boxes, fixed-size windows, and other programs' dialogs.
+    - *What Olo knows already:* `WindowOptions::dialog`, `alert` and
+      `parent` (xdg-dialog-v1 and `xdg_toplevel.set_parent`); app_server's
+      `groups::is_dialog`; minimum and maximum sizes that are equal.
+    - *What to add:* whatever is still missing so the kit and apps can say
+      a window floats. That could be a `WindowOptions` hint carried over
+      the kit's protocol, apps that set it, and good guesses for
+      programs not built on the kit (a parent, xdg-dialog, a fixed size,
+      a small utility window). Implement it in whatever way works best,
+      but it has to work properly.
+    - *Overrides:* a person can float or tile any window by hand (the
+      window menu, a shortcut), and an agent can too over the IPC.
+  - *Prior art:* study the leading tiling window managers and take what
+    makes it fast and intuitive:
+    - binary splits along the longer side, as bspwm and Hyprland's
+      dwindle do, with ratios kept as windows come and go;
+    - a master and stack, as in dwm, xmonad and Amethyst;
+    - COSMIC's and Pop Shell's per-workspace toggle, with dialogs and
+      fixed-size windows left floating;
+    - i3's and Sway's tabbed containers (a window group counts as one
+      tile), and their transactions (every window resized in one
+      commit, so nothing flashes through in-between sizes);
+    - yabai's drag to swap and balance;
+    - snap layouts in KWin, Windows 11 and macOS.
+  - *Performance:* layout is O(windows) on the tree, worked out only when
+    something changes; nothing waits on a client. Minimum sizes are
+    respected, ⌃⌘Z undoes, and it survives an in-place reload.
 - **Multiple monitors, managed like macOS Displays.** Hotplug of external
   displays (USB-C/Thunderbolt on the M2), each with its own resolution,
   refresh rate, scale factor (2× default on HiDPI, 1×/1.5× etc. on
@@ -694,6 +806,12 @@ as they land (with the commit), add new ones as they come up.
   unplug) and Identify done too. ~~Settings keyed by EDID~~ (make,
   model, serial; connector entries migrate), ~~mirroring~~ (fit and centred,
   "Use as" in Preferences).
+
+- **Flicker, still, now and then** (Ben): most of all on Quick Look
+  (Space on an image in Tracker): the window flashes as it opens. Find
+  which frame shows before the picture is ready (a configure before the
+  first commit with content? the size changing after the first frame?)
+  and hold the window back until it has something to show.
 
 - ~~**Windows while rearranging displays**~~ (Ben): each window stays on
   its screen at the same place as screens are dragged around
@@ -719,6 +837,15 @@ as they land (with the commit), add new ones as they come up.
 - ~~**Caffeinated mode**~~: Deskbar cup (click; right-click or Olo ▸
   Stay Awake for 1–8 hours or with the lid closed), Ctrl+⌘A, timed end,
   shown in the cup's tip and menu.
+- **Auto-approve for a while** (Ben): a Deskbar tray icon that, for a
+  chosen time (5 minutes up to a day at most), grants sudo requests
+  (Terminal's sudo window, from people and agents alike) and password
+  unlock requests without asking. Like the caffeinated cup: click or
+  menu for the length, the time left in its tip and menu, a timed end,
+  off from the same menu. Turning it on asks for the password or Touch
+  ID once. Each request it grants is still logged and shown (a quiet
+  notification) so nothing passes unseen. Ask whether locking the
+  screen or sleeping should end it.
 
 ## Other
 

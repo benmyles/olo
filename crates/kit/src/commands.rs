@@ -13,7 +13,9 @@
 //! that tree id (a slider or text field, which a click would change);
 //! `{"frames":true}` → a [`FrameTimes`] per window, since the last ask
 //! (answered by the UI thread, so how long the answer takes is how long
-//! the app keeps people waiting; tools/dev/perf-fuzz).
+//! the app keeps people waiting; tools/dev/perf-fuzz);
+//! `{"review":true}` → a [`WindowReview`] per window: the layout review
+//! (`layout_review`) of the frame each draws for it, at its scale.
 
 use std::{
     io::{BufRead, BufReader, Write},
@@ -199,6 +201,21 @@ pub struct FrameTimes {
     pub adapter: String,
 }
 
+/// What the layout review ([`crate::layout_review`]) found in one
+/// window's frame.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WindowReview {
+    pub title: String,
+    /// The content's logical size, and the scale it was drawn at.
+    pub width: u32,
+    pub height: u32,
+    pub scale: f32,
+    /// A layer surface's namespace ("deskbar"); None for a window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer: Option<String>,
+    pub findings: Vec<crate::layout_review::Finding>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum Ask {
@@ -207,6 +224,7 @@ enum Ask {
     Tree(bool),
     Focus(u64),
     Frames(bool),
+    Review(bool),
 }
 
 /// A question for the UI thread, answered through `reply`.
@@ -216,6 +234,7 @@ pub(crate) enum Query {
     Tree(mpsc::Sender<Vec<WindowTree>>),
     Focus(u64),
     Frames(mpsc::Sender<Vec<FrameTimes>>),
+    Review(mpsc::Sender<Vec<WindowReview>>),
 }
 
 /// How long a tree may take: every window draws a frame for it.
@@ -265,6 +284,21 @@ impl Drop for Listening {
     }
 }
 
+/// The program at the other end of `s`, as "name (pid)".
+fn peer(s: &UnixStream) -> String {
+    use std::os::fd::AsRawFd;
+    // SAFETY: an all-zero ucred is valid, and getsockopt writes at most
+    // `len` bytes into it.
+    let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
+    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    let got = unsafe { libc::getsockopt(s.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&raw mut cred).cast(), &mut len) };
+    if got != 0 {
+        return "unknown".into();
+    }
+    let name = std::fs::read_to_string(format!("/proc/{}/comm", cred.pid)).unwrap_or_default();
+    format!("{} ({})", name.trim(), cred.pid)
+}
+
 /// Remove the sockets of apps that died without cleaning up.
 fn sweep(ours: &std::path::Path) {
     let Some(dir) = ours.parent() else { return };
@@ -301,6 +335,8 @@ pub(crate) fn listen(to: smithay_client_toolkit::reexports::calloop::channel::Se
                         serde_json::to_string(&rx.recv_timeout(WAIT).unwrap_or_default())
                     }
                     Ok(Ask::Invoke(cmd)) => {
+                        // It acts as if chosen from the menu: say who chose it.
+                        tracing::info!(command = %cmd, by = %peer(&s), "asked to choose a menu command");
                         let (tx, rx) = mpsc::channel();
                         let _ = to.send(Query::Invoke(cmd, tx));
                         serde_json::to_string(&serde_json::json!({ "ok": rx.recv_timeout(WAIT).unwrap_or(false) }))
@@ -317,6 +353,11 @@ pub(crate) fn listen(to: smithay_client_toolkit::reexports::calloop::channel::Se
                     Ok(Ask::Frames(_)) => {
                         let (tx, rx) = mpsc::channel();
                         let _ = to.send(Query::Frames(tx));
+                        serde_json::to_string(&rx.recv_timeout(TREE_WAIT).unwrap_or_default())
+                    }
+                    Ok(Ask::Review(_)) => {
+                        let (tx, rx) = mpsc::channel();
+                        let _ = to.send(Query::Review(tx));
                         serde_json::to_string(&rx.recv_timeout(TREE_WAIT).unwrap_or_default())
                     }
                     Err(_) => continue,
@@ -352,6 +393,7 @@ pub fn serve_trees(pid: u32, app_id: &str, trees: impl Fn() -> Vec<WindowTree> +
                 Ok(Ask::Menus(_)) => serde_json::to_string(&Menus { app_id: app_id.clone(), entries: Vec::new() }),
                 Ok(Ask::Invoke(_) | Ask::Focus(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
                 Ok(Ask::Frames(_)) => serde_json::to_string(&Vec::<FrameTimes>::new()),
+                Ok(Ask::Review(_)) => serde_json::to_string(&Vec::<WindowReview>::new()),
                 Ok(Ask::Tree(_)) => serde_json::to_string(&trees()),
                 Err(_) => continue,
             };
@@ -369,7 +411,7 @@ pub const TREE_WAIT_FOR: Duration = TREE_WAIT;
 
 fn ask(pid: u32, ask: &Ask) -> Option<String> {
     let s = UnixStream::connect(socket_path(pid)).ok()?;
-    s.set_read_timeout(Some(if matches!(ask, Ask::Tree(_)) { TREE_WAIT + WAIT } else { WAIT * 2 })).ok()?;
+    s.set_read_timeout(Some(if matches!(ask, Ask::Tree(_) | Ask::Review(_)) { TREE_WAIT + WAIT } else { WAIT * 2 })).ok()?;
     s.set_write_timeout(Some(WAIT)).ok()?;
     let mut line = serde_json::to_string(ask).ok()?;
     line.push('\n');
@@ -406,6 +448,13 @@ pub fn focus(pid: u32, node: u64) -> bool {
 /// seconds: call it off the UI thread.
 pub fn tree(pid: u32) -> Option<Vec<WindowTree>> {
     serde_json::from_str(&ask(pid, &Ask::Tree(true))?).ok()
+}
+
+/// The layout review of each window of the kit app with process id
+/// `pid` (None if it isn't one, or doesn't answer in time). Blocks for
+/// up to two seconds: call it off the UI thread.
+pub fn review(pid: u32) -> Option<Vec<WindowReview>> {
+    serde_json::from_str(&ask(pid, &Ask::Review(true))?).ok()
 }
 
 #[cfg(test)]

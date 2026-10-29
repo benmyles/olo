@@ -8,6 +8,9 @@
 //! screenshots, …). Caps Lock is another Ctrl. Terminals keep physical
 //! Ctrl for the tty, so ⌘ reaches them as Ctrl+Shift. Next / Previous
 //! Tab (⌥Tab, ⌥⇧Tab) reach the app as Ctrl+Tab / Ctrl+Shift+Tab.
+//! Programs that aren't Olo's get the rest of the Mac's keys in their
+//! own terms ([`Focus`]): ⌥ moves and deletes by word (Ctrl there), and
+//! in browsers ⌘[ / ⌘] go back and forward and ⌘⇧[ / ⌘⇧] change tabs.
 //!
 //! This sits between the input devices and the seat: physical evdev codes
 //! go in, the codes clients should see (plus app_server actions) come out.
@@ -29,6 +32,8 @@ pub mod code {
     pub const BACKSPACE: u32 = 14;
     pub const TAB: u32 = 15;
     pub const Q: u32 = 16;
+    pub const LEFTBRACE: u32 = 26;
+    pub const RIGHTBRACE: u32 = 27;
     pub const A: u32 = 30;
     pub const U: u32 = 22;
     pub const O: u32 = 24;
@@ -44,10 +49,12 @@ pub mod code {
     pub const RIGHTALT: u32 = 100;
     pub const HOME: u32 = 102;
     pub const UP: u32 = 103;
+    pub const PAGEUP: u32 = 104;
     pub const LEFT: u32 = 105;
     pub const RIGHT: u32 = 106;
     pub const END: u32 = 107;
     pub const DOWN: u32 = 108;
+    pub const PAGEDOWN: u32 = 109;
     pub const DELETE: u32 = 111;
     pub const LEFTMETA: u32 = 125;
     pub const RIGHTMETA: u32 = 126;
@@ -58,9 +65,32 @@ use code::*;
 /// tap (the command palette).
 pub const TAP: Duration = Duration::from_millis(350);
 
-/// The virtual Ctrl that stands for ⌘. Physical Ctrl and Caps Lock use the
-/// left one; keys are reference-counted, so sharing is harmless.
+/// The virtual Ctrl that stands for ⌘. Physical Ctrl (either) and Caps
+/// Lock use the left one, so a client that cares (a terminal) can tell
+/// them apart; keys are reference-counted, so sharing is harmless.
 const CMD_CTRL: u32 = RIGHTCTRL;
+
+/// What has the keyboard, as far as the keys it should see go.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Focus {
+    /// Olo's own apps (and Deskbar, the desktop), which know the Mac
+    /// keyboard themselves: ⌥← is a word back there already.
+    #[default]
+    Olo,
+    /// A terminal (`terminal_apps`): ⌘ reaches it as Ctrl+Shift.
+    Terminal,
+    /// A web browser (`browser_apps`): as `Other`, and ⌘[ / ⌘] are Back /
+    /// Forward, ⌘⇧[ / ⌘⇧] and ⌘⌥← / ⌘⌥→ the tab before / after.
+    Browser,
+    /// Any other program (GTK, Qt, Electron): ⌥←/⌥→ and ⌥⌫/⌥⌦ move and
+    /// delete by word, which is Ctrl there (Alt+← is Back in a browser).
+    Other,
+}
+
+/// Modifier pairs, the one pressed for a chord first.
+const CTRL: [u32; 2] = [LEFTCTRL, RIGHTCTRL];
+const SHIFT: [u32; 2] = [LEFTSHIFT, RIGHTSHIFT];
+const ALT: [u32; 2] = [LEFTALT, RIGHTALT];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
@@ -174,12 +204,11 @@ fn ctrl_key(key: u32, opts: Options) -> bool {
 }
 
 impl Keymap {
-    /// Feed one physical key. `terminal` says the focused window keeps
-    /// physical Ctrl for itself.
-    pub fn feed(&mut self, key: u32, pressed: bool, now: Instant, opts: Options, terminal: bool) -> Vec<Out> {
+    /// Feed one physical key, for `focus`.
+    pub fn feed(&mut self, key: u32, pressed: bool, now: Instant, opts: Options, focus: Focus) -> Vec<Out> {
         let mut out = Vec::new();
         if pressed {
-            self.press(key, now, opts, terminal, &mut out);
+            self.press(key, now, opts, focus, &mut out);
         } else {
             self.release(key, now, opts, &mut out);
         }
@@ -278,25 +307,27 @@ impl Keymap {
         }
     }
 
-    /// `h`'s key stands for Ctrl+`to` (Ctrl+Shift+`to` with `shift`):
-    /// the modifiers clients see become just those. Ctrl and Shift go
-    /// down before the others are let go of, and those stay up until
-    /// another key needs them (`restore_lifted`), so ⌥Tab never looks
-    /// like a tap of ⌥ (Firefox shows its menu bar on one).
-    fn stand_for(&mut self, h: &mut Held, to: u32, shift: bool, out: &mut Vec<Out>) {
-        let down = |k: &Keymap, keys: [u32; 2]| keys.iter().any(|x| k.down.contains_key(x));
-        let mut pressed = Vec::new();
-        if !down(self, [LEFTCTRL, RIGHTCTRL]) {
-            pressed.push(LEFTCTRL);
+    /// `h`'s key stands for `to` with the modifiers in `with` (Ctrl+Tab,
+    /// Alt+←): the modifiers clients see become just those. They go down
+    /// before the others are let go of, and those stay up until another
+    /// key needs them (`restore_lifted`), so ⌥Tab never looks like a tap
+    /// of ⌥ (Firefox shows its menu bar on one). ⌘'s Ctrl, when it isn't
+    /// wanted, comes back as this key is let go of.
+    fn stand_for(&mut self, h: &mut Held, with: &[[u32; 2]], to: u32, out: &mut Vec<Out>) {
+        let wanted = |k: u32| with.iter().any(|pair| pair.contains(&k));
+        if !wanted(CMD_CTRL) {
+            self.lift_ctrl(h, out);
         }
-        if shift && !down(self, [LEFTSHIFT, RIGHTSHIFT]) {
-            pressed.push(LEFTSHIFT);
+        let mut pressed = Vec::new();
+        for pair in with {
+            if !pair.iter().any(|k| self.down.contains_key(k)) {
+                pressed.push(pair[0]);
+            }
         }
         for &k in &pressed {
             self.emit_press(k, out);
         }
-        let keep = |k: u32| matches!(k, LEFTCTRL | RIGHTCTRL) || (shift && matches!(k, LEFTSHIFT | RIGHTSHIFT));
-        for k in MODIFIERS.into_iter().filter(|&k| !keep(k)) {
+        for k in MODIFIERS.into_iter().filter(|&k| !wanted(k)) {
             if self.down.remove(&k).is_some() {
                 out.push(Out::Key(k, false));
                 self.lifted.push(k);
@@ -331,7 +362,30 @@ impl Keymap {
         }
     }
 
-    fn press(&mut self, key: u32, now: Instant, opts: Options, terminal: bool, out: &mut Vec<Out>) {
+    /// The chord a key is in `focus`'s terms, if it isn't itself there:
+    /// the modifiers wanted and the key.
+    fn translate(&self, key: u32, focus: Focus) -> Option<(&'static [[u32; 2]], u32)> {
+        let (cmd, ctrl, alt, shift) = (self.cmd_keys > 0, self.ctrl(), self.alt(), self.shift());
+        let word = matches!(focus, Focus::Browser | Focus::Other) && alt && !cmd && !ctrl;
+        let browser = focus == Focus::Browser && cmd && !ctrl;
+        Some(match key {
+            // A word back or on (selecting with ⇧), or deleted.
+            LEFT | RIGHT if word && shift => (&[CTRL, SHIFT], key),
+            LEFT | RIGHT | BACKSPACE | DELETE if word => (&[CTRL], key),
+            // Back and Forward.
+            LEFTBRACE if browser && !alt && !shift => (&[ALT], LEFT),
+            RIGHTBRACE if browser && !alt && !shift => (&[ALT], RIGHT),
+            // The tab before and after.
+            LEFTBRACE if browser && !alt => (&[CTRL], PAGEUP),
+            RIGHTBRACE if browser && !alt => (&[CTRL], PAGEDOWN),
+            LEFT if browser && alt && !shift => (&[CTRL], PAGEUP),
+            RIGHT if browser && alt && !shift => (&[CTRL], PAGEDOWN),
+            _ => return None,
+        })
+    }
+
+    fn press(&mut self, key: u32, now: Instant, opts: Options, focus: Focus, out: &mut Vec<Out>) {
+        let terminal = focus == Focus::Terminal;
         if self.held.contains_key(&key) {
             // A duplicate press (two devices, or a stuck state): ignore.
             return;
@@ -361,6 +415,15 @@ impl Keymap {
             return;
         }
         if opts.caps_lock_control && key == CAPSLOCK {
+            self.emit_press(LEFTCTRL, out);
+            h.release.push(LEFTCTRL);
+            self.held.insert(key, h);
+            return;
+        }
+        if opts.command_key && key == RIGHTCTRL {
+            // The right Ctrl clients see is ⌘'s alone, so a terminal can
+            // tell ⌘- (Smaller) from the shell's Ctrl+_ (the kit's
+            // `theme_watch::command_key`).
             self.emit_press(LEFTCTRL, out);
             h.release.push(LEFTCTRL);
             self.held.insert(key, h);
@@ -404,13 +467,21 @@ impl Keymap {
         let chord = self.chord(key);
         let shortcut = self.bindings.iter().find(|(c, _)| *c == chord).map(|&(_, s)| s);
         let tab = matches!(shortcut, Some(Shortcut::NextTab | Shortcut::PreviousTab));
-        if !tab && !olo_protocol::shortcuts::MODIFIER_KEYS.contains(&key) {
+        let translated = if shortcut.is_none() { self.translate(key, focus) } else { None };
+        // (⌥ stays up through a run of ⌥← words, as through ⌥Tabs.)
+        if !tab && translated.is_none() && !olo_protocol::shortcuts::MODIFIER_KEYS.contains(&key) {
             self.restore_lifted(out);
+        }
+        if let Some((with, to)) = translated {
+            self.stand_for(&mut h, with, to, out);
+            self.held.insert(key, h);
+            return;
         }
         if let Some(shortcut) = shortcut {
             if tab {
                 // What every toolkit takes for the next / previous tab.
-                self.stand_for(&mut h, TAB, shortcut == Shortcut::PreviousTab, out);
+                let with: &[[u32; 2]] = if shortcut == Shortcut::PreviousTab { &[CTRL, SHIFT] } else { &[CTRL] };
+                self.stand_for(&mut h, with, TAB, out);
             } else {
                 out.push(Out::Action(Action::Shortcut(shortcut)));
             }
@@ -543,26 +614,27 @@ mod tests {
 
     const OPTS: Options = Options { command_key: true, caps_lock_control: true, tap_command_find: true, hints: true, double_press: Duration::from_millis(400) };
     const C: u32 = 46;
+    const MINUS: u32 = 12;
 
     struct Rig {
         k: Keymap,
         t: Instant,
-        terminal: bool,
+        focus: Focus,
     }
 
     impl Rig {
         fn new() -> Self {
             let mut k = Keymap::default();
             k.set_bindings(olo_protocol::shortcuts::bindings(&Default::default()));
-            Rig { k, t: Instant::now(), terminal: false }
+            Rig { k, t: Instant::now(), focus: Focus::Olo }
         }
         fn down(&mut self, key: u32) -> Vec<Out> {
             self.t += Duration::from_millis(10);
-            self.k.feed(key, true, self.t, OPTS, self.terminal)
+            self.k.feed(key, true, self.t, OPTS, self.focus)
         }
         fn up(&mut self, key: u32) -> Vec<Out> {
             self.t += Duration::from_millis(10);
-            self.k.feed(key, false, self.t, OPTS, self.terminal)
+            self.k.feed(key, false, self.t, OPTS, self.focus)
         }
     }
 
@@ -715,16 +787,16 @@ mod tests {
         let slow = Options { double_press: Duration::from_millis(800), ..OPTS };
         let mut k = Keymap::default();
         let t = Instant::now();
-        k.feed(LEFTCTRL, true, t, slow, false);
-        k.feed(LEFTCTRL, false, t + Duration::from_millis(100), slow, false);
-        k.feed(LEFTCTRL, true, t + Duration::from_millis(600), slow, false);
-        assert!(hints(k.feed(LEFTCTRL, false, t + Duration::from_millis(700), slow, false)));
+        k.feed(LEFTCTRL, true, t, slow, Focus::Olo);
+        k.feed(LEFTCTRL, false, t + Duration::from_millis(100), slow, Focus::Olo);
+        k.feed(LEFTCTRL, true, t + Duration::from_millis(600), slow, Focus::Olo);
+        assert!(hints(k.feed(LEFTCTRL, false, t + Duration::from_millis(700), slow, Focus::Olo)));
         // Off in the settings: nothing.
         let off = Options { hints: false, ..OPTS };
         let mut k = Keymap::default();
         for _ in 0..2 {
-            k.feed(LEFTCTRL, true, t, off, false);
-            assert!(!hints(k.feed(LEFTCTRL, false, t, off, false)));
+            k.feed(LEFTCTRL, true, t, off, Focus::Olo);
+            assert!(!hints(k.feed(LEFTCTRL, false, t, off, Focus::Olo)));
         }
     }
 
@@ -758,8 +830,8 @@ mod tests {
         r.up(LEFT);
         // Letters only with hints on.
         let off = Options { hints: false, ..OPTS };
-        assert!(!r.k.feed(A, true, r.t, off, false).iter().any(|o| matches!(o, Out::Action(_))));
-        r.k.feed(A, false, r.t, off, false);
+        assert!(!r.k.feed(A, true, r.t, off, Focus::Olo).iter().any(|o| matches!(o, Out::Action(_))));
+        r.k.feed(A, false, r.t, off, Focus::Olo);
         assert_eq!(r.down(A), [Out::Action(Action::SwitchPick('a'))]);
         r.up(A);
         assert_eq!(r.down(ESC), [Out::Action(Action::SwitchCancel)]);
@@ -799,9 +871,67 @@ mod tests {
     }
 
     #[test]
+    fn other_apps_move_by_word_with_option() {
+        let mut r = Rig::new();
+        // Olo's apps take ⌥← as it is.
+        r.down(LEFTALT);
+        assert_eq!(r.down(LEFT), [Key(LEFT, true)]);
+        r.up(LEFT);
+        r.up(LEFTALT);
+        r.focus = Focus::Other;
+        assert_eq!(r.down(LEFTALT), [Key(LEFTALT, true)]);
+        // Elsewhere it's Ctrl+←, without the Alt (Back, in a browser)…
+        assert_eq!(r.down(LEFT), [Key(LEFTCTRL, true), Key(LEFTALT, false), Key(LEFT, true)]);
+        assert_eq!(r.up(LEFT), [Key(LEFT, false), Key(LEFTCTRL, false)]);
+        // …which stays up for the next word.
+        assert_eq!(r.down(LEFT), [Key(LEFTCTRL, true), Key(LEFT, true)]);
+        r.up(LEFT);
+        // ⌥⇧→ selects a word on; ⌥⌫ deletes one.
+        r.down(LEFTSHIFT);
+        assert_eq!(r.down(RIGHT), [Key(LEFTCTRL, true), Key(RIGHT, true)]);
+        r.up(RIGHT);
+        r.up(LEFTSHIFT);
+        assert_eq!(r.down(BACKSPACE), [Key(LEFTCTRL, true), Key(BACKSPACE, true)]);
+        r.up(BACKSPACE);
+        assert_eq!(r.up(LEFTALT), []);
+        assert_eq!(r.down(C), [Key(C, true)]);
+        r.up(C);
+        assert!(r.k.down.is_empty());
+    }
+
+    #[test]
+    fn browsers_go_back_and_change_tabs() {
+        let mut r = Rig::new();
+        r.focus = Focus::Browser;
+        r.down(LEFTMETA);
+        // ⌘[ is Alt+← (Back), with ⌘'s Ctrl let go of meanwhile.
+        assert_eq!(r.down(LEFTBRACE), [Key(RIGHTCTRL, false), Key(LEFTALT, true), Key(LEFT, true)]);
+        assert_eq!(r.up(LEFTBRACE), [Key(LEFT, false), Key(LEFTALT, false), Key(RIGHTCTRL, true)]);
+        // ⌘⇧] is Ctrl+PgDn (the next tab), without the Shift (that moves the tab).
+        r.down(LEFTSHIFT);
+        assert_eq!(r.down(RIGHTBRACE), [Key(LEFTSHIFT, false), Key(PAGEDOWN, true)]);
+        assert_eq!(r.up(RIGHTBRACE), [Key(PAGEDOWN, false)]);
+        assert_eq!(r.up(LEFTSHIFT), []);
+        // ⌘⌥← is Ctrl+PgUp.
+        r.down(LEFTALT);
+        assert_eq!(r.down(LEFT), [Key(LEFTALT, false), Key(PAGEUP, true)]);
+        r.up(LEFT);
+        r.up(LEFTALT);
+        // ⌘C still copies.
+        assert_eq!(r.down(C), [Key(C, true)]);
+        r.up(C);
+        r.up(LEFTMETA);
+        assert!(r.k.down.is_empty());
+        // Elsewhere ⌘[ is the app's own Ctrl+[.
+        r.focus = Focus::Other;
+        r.down(LEFTMETA);
+        assert_eq!(r.down(LEFTBRACE), [Key(LEFTBRACE, true)]);
+    }
+
+    #[test]
     fn terminals_keep_ctrl() {
         let mut r = Rig::new();
-        r.terminal = true;
+        r.focus = Focus::Terminal;
         r.down(LEFTMETA);
         assert_eq!(r.down(C), [Key(LEFTSHIFT, true), Key(C, true)]);
         assert_eq!(r.up(C), [Key(C, false), Key(LEFTSHIFT, false)]);
@@ -811,6 +941,18 @@ mod tests {
         // Physical Ctrl+C is ^C.
         assert_eq!(r.down(LEFTCTRL), [Key(LEFTCTRL, true)]);
         assert_eq!(r.down(C), [Key(C, true)]);
+        r.up(C);
+        r.up(LEFTCTRL);
+        // Either physical Ctrl is the left one, so Ctrl+Shift+- (Ctrl+_)
+        // isn't taken for ⌘-, which is the right one.
+        assert_eq!(r.down(RIGHTCTRL), [Key(LEFTCTRL, true)]);
+        assert_eq!(r.down(LEFTSHIFT), [Key(LEFTSHIFT, true)]);
+        assert_eq!(r.down(MINUS), [Key(MINUS, true)]);
+        r.up(MINUS);
+        r.up(LEFTSHIFT);
+        assert_eq!(r.up(RIGHTCTRL), [Key(LEFTCTRL, false)]);
+        r.down(LEFTMETA);
+        assert_eq!(r.down(MINUS), [Key(LEFTSHIFT, true), Key(MINUS, true)]);
     }
 
     #[test]
@@ -875,7 +1017,7 @@ mod tests {
         r.down(LEFTMETA);
         let off = Options { tap_command_find: false, ..OPTS };
         r.t += Duration::from_millis(10);
-        assert_eq!(r.k.feed(LEFTMETA, false, r.t, off, false), [Key(RIGHTCTRL, false)]);
+        assert_eq!(r.k.feed(LEFTMETA, false, r.t, off, Focus::Olo), [Key(RIGHTCTRL, false)]);
     }
 
     #[test]
@@ -905,9 +1047,9 @@ mod tests {
         let mut k = Keymap::default();
         let off = Options { command_key: false, caps_lock_control: false, tap_command_find: false, hints: false, double_press: Duration::from_millis(400) };
         let t = Instant::now();
-        assert_eq!(k.feed(LEFTMETA, true, t, off, false), [Key(LEFTMETA, true)]);
-        assert_eq!(k.feed(TAB, true, t, off, false), [Key(TAB, true)]);
-        assert_eq!(k.feed(CAPSLOCK, true, t, off, false), [Key(CAPSLOCK, true)]);
+        assert_eq!(k.feed(LEFTMETA, true, t, off, Focus::Olo), [Key(LEFTMETA, true)]);
+        assert_eq!(k.feed(TAB, true, t, off, Focus::Olo), [Key(TAB, true)]);
+        assert_eq!(k.feed(CAPSLOCK, true, t, off, Focus::Olo), [Key(CAPSLOCK, true)]);
     }
 
     #[test]

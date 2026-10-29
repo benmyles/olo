@@ -27,9 +27,10 @@ use crate::{
     session::{Session, Size},
 };
 
-/// Space between the window edge and the text, in logical pixels: a
-/// little less down than across, as a cell's line box already has some.
-pub const PAD: egui::Vec2 = egui::vec2(8.0, 6.0);
+/// Space between the window edge and the text, in logical pixels: across,
+/// a window's inset, so the text is under the menu bar's first title and
+/// the tabs' icons; less down, as a cell's line box already has some.
+pub const PAD: egui::Vec2 = egui::vec2(olo_kit::metrics::WINDOW_INSET, 6.0);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Metrics {
@@ -41,7 +42,7 @@ pub struct Metrics {
     /// Galley top to baseline within a cell.
     ascent: f32,
     row: f32,
-    ppp: f32,
+    pub ppp: f32,
 }
 
 impl Metrics {
@@ -190,6 +191,8 @@ pub fn show(
     pointer(ui, s, m, &resp, rect, mouse, &mut out);
     let painter = ui.painter_at(rect);
     let origin = rect.min + PAD;
+    // Its lines are a cell apart, not on the window's grid.
+    olo_kit::layout_review::own_grid(ui, rect);
 
     // ⌘ (Ctrl) held over a link: find it (once per cell the pointer is on).
     let link_mode = ui.input(|i| i.modifiers.ctrl) && resp.hovered() && !mouse.selecting;
@@ -958,9 +961,9 @@ fn legacy_with_event(key: Key, m: egui::Modifiers, event: u8) -> Option<Vec<u8>>
     }
 }
 
-/// The keys of the menu shortcuts (Ctrl+Shift+key, whether or not the
-/// item is enabled just now; ⇧= arrives as Plus). Keep in step with
-/// `menu_bar` in main.rs.
+/// The keys of the menu shortcuts (⌘key, which arrives as Ctrl+Shift+key,
+/// whether or not the item is enabled just now; ⇧= arrives as Plus). Keep
+/// in step with `menu_bar` in main.rs.
 pub const SHORTCUTS: &[Key] = &[
     Key::N,
     Key::T,
@@ -991,6 +994,11 @@ pub const SHORTCUTS: &[Key] = &[
     Key::Num9,
 ];
 
+/// A menu shortcut's chord, the app's rather than the shell's.
+fn is_shortcut(key: Key, m: egui::Modifiers) -> bool {
+    m.command && m.shift && SHORTCUTS.contains(&key)
+}
+
 fn keyboard(ui: &Ui, s: &Session, out: &mut Output) {
     let mode = *s.term.lock().mode();
     let kitty = mode.intersects(TermMode::KITTY_KEYBOARD_PROTOCOL);
@@ -1002,10 +1010,12 @@ fn keyboard(ui: &Ui, s: &Session, out: &mut Output) {
     for e in events {
         match e {
             egui::Event::Key { key, pressed, repeat, modifiers, .. } => {
-                // Ctrl+Shift with a menu shortcut's key is the app's (⌘C
-                // arrives as Ctrl+Shift+C); any other goes to the shell
-                // as Ctrl+key, so ⌘R searches history like Ctrl+R.
-                if modifiers.ctrl && modifiers.shift && pressed && SHORTCUTS.contains(&key) {
+                // ⌘ with a menu shortcut's key is the app's (⌘C arrives
+                // as Ctrl+Shift+C); any other goes to the shell as
+                // Ctrl+key, so ⌘R searches history like Ctrl+R. Physical
+                // Ctrl isn't `command` (the kit's `key_modifiers`), so
+                // Ctrl+Shift+- is the shell's Ctrl+_ (undo), not Smaller.
+                if is_shortcut(key, modifiers) && pressed {
                     continue;
                 }
                 if pressed && modifiers.shift && !mode.contains(TermMode::ALT_SCREEN) {
@@ -1282,5 +1292,21 @@ mod tests {
             assert_eq!(sent(Key::Minus, ctrl, kitty), b"\x1b[45;5u");
         }
         assert_eq!(sent(Key::ArrowLeft, egui::Modifiers::NONE, TermMode::REPORT_ALL_KEYS_AS_ESC), b"\x1b[D");
+    }
+
+    #[test]
+    fn ctrl_underscore_is_the_shells_and_command_minus_is_smaller() {
+        // ⌘- arrives as Ctrl+Shift+- with `command`; a physical
+        // Ctrl+Shift+- (Ctrl+_, readline's undo) without it.
+        let cmd = egui::Modifiers { ctrl: true, shift: true, command: true, ..Default::default() };
+        let ctrl = egui::Modifiers { ctrl: true, shift: true, ..Default::default() };
+        assert!(is_shortcut(Key::Minus, cmd));
+        assert!(!is_shortcut(Key::Minus, ctrl));
+        assert_eq!(key_bytes(Key::Minus, ctrl, TermMode::empty()).unwrap(), [0x1f]);
+        // Ctrl+^ and Ctrl+@ too (Ctrl+Shift+6, Ctrl+Shift+2).
+        assert_eq!(key_bytes(Key::Num6, ctrl, TermMode::empty()).unwrap(), [0x1e]);
+        assert_eq!(key_bytes(Key::Num2, ctrl, TermMode::empty()).unwrap(), [0]);
+        // ⌘R isn't a menu's: the shell's Ctrl+R.
+        assert!(!is_shortcut(Key::R, cmd));
     }
 }

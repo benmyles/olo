@@ -112,7 +112,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             let was = std::mem::take(&mut window.decoration().pressed);
             if was == hover {
                 match was {
-                    Part::Close => self.close_window(window),
+                    Part::Close => {
+                        tracing::info!(id = window.id(), "close box clicked");
+                        self.close_window(window);
+                    }
                     Part::Zoom => self.toggle_zoom(window),
                     _ => {}
                 }

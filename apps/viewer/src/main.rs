@@ -17,7 +17,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use olo_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
-    egui::{self, Align, Color32, Key, Rect, Ui, pos2, vec2},
+    egui::{self, Align, Key, Rect, Ui, pos2, vec2},
     file_panel::{FilePanel, PANEL_SIZE, PanelResult},
     files::{self, Kind},
     instance::{self, Launch},
@@ -677,7 +677,7 @@ impl Viewer {
                         let crop_r = Rect::from_min_size(pos2(x + m::SPACING / 2.0, y), vec2(bw, m::CONTROL_HEIGHT));
                         let cancel_r = Rect::from_min_size(pos2(x - m::SPACING / 2.0 - bw, y), vec2(bw, m::CONTROL_HEIGHT));
                         let back = cancel_r.union(crop_r).expand(6.0);
-                        ui.painter().rect_filled(back, 6.0, Color32::from_black_alpha(120));
+                        ui.painter().rect_filled(back, 6.0, style::c(style::palette(ui.ctx()).scrim));
                         if ui.put(cancel_r, Button::new("Cancel")).clicked() {
                             command = Some("crop-cancel".into());
                         }
@@ -716,7 +716,7 @@ impl Viewer {
             }
             Content::Pdf(v) => {
                 let bar = Rect::from_min_size(full.min, vec2(full.width(), m::TOOLBAR_HEIGHT));
-                let body = Rect::from_min_max(pos2(full.left(), bar.bottom()), full.max);
+                let body = Rect::from_min_max(pos2(full.left(), bar.bottom() + style::hairline(ui.ctx())), full.max);
                 command = toolbar(ui, bar, v, sign_menu);
                 if v.loaded() {
                     v.ui(ui, body);
@@ -767,7 +767,7 @@ fn toolbar(ui: &mut Ui, bar: Rect, v: &mut PdfView, sign_menu: Menu) -> Option<S
     let p = style::palette(ui.ctx());
     let painter = ui.painter().clone();
     painter.rect_filled(bar, 0.0, c(p.panel_background));
-    style::hline(&painter, bar.left(), bar.right(), bar.bottom() - 1.0, style::shade(&p, p.panel_background, 1.3));
+    style::hline(&painter, bar.left(), bar.right(), bar.bottom(), style::shade(&p, p.panel_background, 1.3));
     let y = bar.top() + m::TIGHT;
     let mut x = bar.left() + m::SPACING;
     let mut command = None;
@@ -1060,7 +1060,7 @@ impl App for Viewer {
                     let opened = v.event(ev);
                     if opened && !d.sized {
                         d.sized = true;
-                        let size = v.ideal_size(screen, m::TOOLBAR_HEIGHT + 24.0);
+                        let size = v.ideal_size(screen, olo_kit::menu::BAR_HEIGHT + m::TOOLBAR_HEIGHT + 1.0);
                         cx.resize(win, size);
                     }
                     if let (Some(e), false) = (&error, v.loaded()) {

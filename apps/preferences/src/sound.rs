@@ -13,7 +13,7 @@ use std::{
 
 use olo_kit::{
     egui::{Context, Ui},
-    widgets::{BBox, CheckBox, MenuField, Slider, StringView},
+    widgets::{BBox, CheckBox, EmptyState, MenuField, Slider, StringView},
 };
 use olo_system::audio::{self, Devices, Kind};
 
@@ -127,11 +127,11 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let devices = link.devices.lock().unwrap().clone();
     let devices = match devices {
         None => {
-            ui.add(StringView::new("Looking for sound devices…").dim(true));
+            ui.add(EmptyState::new("Looking for sound devices…").icon("sound"));
             return;
         }
         Some(None) => {
-            ui.add(StringView::new("No sound server is running.").dim(true));
+            ui.add(EmptyState::new("No sound server is running.").icon("sound"));
             return;
         }
         Some(Some(d)) => d,

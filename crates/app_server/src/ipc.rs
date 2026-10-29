@@ -42,6 +42,29 @@ impl Conn {
     pub fn is_dead(&self) -> bool {
         *self.dead.borrow()
     }
+
+    /// The process at the other end, as "name (pid)", for the log.
+    pub fn peer(&self) -> String {
+        use std::os::fd::AsRawFd;
+        // SAFETY: an all-zero ucred is valid, and getsockopt writes at
+        // most `len` bytes into it.
+        let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
+        let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+        let got = unsafe {
+            libc::getsockopt(
+                self.stream.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_PEERCRED,
+                (&raw mut cred).cast(),
+                &mut len,
+            )
+        };
+        if got != 0 {
+            return "unknown".into();
+        }
+        let name = std::fs::read_to_string(format!("/proc/{}/comm", cred.pid)).unwrap_or_default();
+        format!("{} ({})", name.trim(), cred.pid)
+    }
 }
 
 #[derive(Default)]
@@ -244,6 +267,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             },
             Request::Close { id } => match self.window_by_id(id) {
                 Some(w) => {
+                    // Apps may ask before closing; this says who wanted it.
+                    info!(id, title = %w.title(), by = %conn.peer(), "asked to close a window");
                     self.close_window(&w);
                     Reply::Ok
                 }
@@ -387,6 +412,16 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Err(message) => Reply::Error { message },
             },
             Request::GetSettings => Reply::Settings { settings: self.settings.clone() },
+            Request::Looks => Reply::Looks { themes: olo_protocol::LookInfo::all(), palette: (*crate::theme::palette()).clone() },
+            Request::Palette { theme, colors, mode } => {
+                let a = &self.settings.appearance;
+                let palette = olo_theme::looks::palette(
+                    theme.as_deref().unwrap_or(&a.icon_theme),
+                    colors.as_deref().unwrap_or(&a.colors),
+                    mode.unwrap_or(a.effective_theme),
+                );
+                Reply::Palette { palette }
+            }
             Request::Hints => Reply::Hints { hints: self.hints.infos() },
             Request::SetSettings { settings } => {
                 self.set_settings(settings);

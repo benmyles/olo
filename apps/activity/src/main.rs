@@ -18,7 +18,7 @@ use sample::{Group, Proc, Sample, Source};
 use serde::{Deserialize, Serialize};
 use olo_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
-    egui::{self, Align, Color32, Id, Key, Rect, Sense, Shape, Stroke, Ui, pos2, vec2},
+    egui::{self, Align, Id, Key, Rect, Sense, Shape, Stroke, Ui, pos2, vec2},
     files::format_size,
     instance::{self, Launch},
     metrics as m,
@@ -293,7 +293,7 @@ impl Activity {
             let h = &self.history[si];
             let visible = h.iter().rev().take(samples);
             let max = s.max.unwrap_or_else(|| nice_ceiling(visible.clone().copied().filter(|v| v.is_finite()).fold(0.0, f64::max)));
-            let color = Color32::from_rgb(s.color[0], s.color[1], s.color[2]);
+            let color = c(p.hue(s.color));
             let mut line: Vec<egui::Pos2> = Vec::new();
             for (i, &val) in visible.enumerate() {
                 if !val.is_finite() {
@@ -324,7 +324,7 @@ impl Activity {
             let y = rect.top() + (i / 2) as f32 * LEGEND_ROW;
             let mid = y + LEGEND_ROW / 2.0;
             let swatch = Rect::from_center_size(pos2(x + 5.0, mid), vec2(9.0, 9.0));
-            painter.rect_filled(swatch, 0.0, Color32::from_rgb(s.color[0], s.color[1], s.color[2]));
+            painter.rect_filled(swatch, 0.0, c(p.hue(s.color)));
             style::frame_rect(painter, swatch, c(mix(p.panel_text, p.panel_background, 0.4)));
             let font = egui::FontId::proportional(style::SMALL_SIZE);
             style::label(painter, x + 15.0, mid, Align::Min, &s.name, font.clone(), c(p.panel_text));

@@ -279,6 +279,9 @@ impl<BackendData: Backend> WlrLayerShellHandler for AnvilState<BackendData> {
         namespace: String,
     ) {
         let asked = wl_output.as_ref().and_then(Output::from_resource);
+        // The palette opens on the display in use (the focused window's,
+        // else the pointer's), as shortcuts act there, not on the main one.
+        let asked = asked.or_else(|| OPEN_WHERE_IN_USE.contains(&namespace.as_str()).then(|| self.active_output()).flatten());
         let auto = asked.is_none();
         let Some(output) = asked.or_else(|| self.main_output()) else {
             surface.send_close();
@@ -701,6 +704,11 @@ fn close_gaps(rects: &mut [Rectangle<i32, Logical>]) {
         }
     }
 }
+
+/// Layer surfaces (by namespace) that, naming no output, open on the
+/// display in use rather than the main one: called up from the keyboard
+/// to work there.
+const OPEN_WHERE_IN_USE: &[&str] = &["palette"];
 
 /// Marks a layer surface placed on the main display because it didn't
 /// name an output.

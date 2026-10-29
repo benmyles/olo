@@ -4,24 +4,18 @@
 
 use std::path::PathBuf;
 
-use olo_kit::egui::Color32;
+use olo_kit::{
+    egui::Color32,
+    style,
+    theme::{Hue, Palette},
+};
 
-/// The colours a group can have: (name, light mode, dark mode).
-pub const COLORS: [(&str, [u8; 3], [u8; 3]); 8] = [
-    ("Red", [214, 59, 50], [232, 92, 82]),
-    ("Orange", [232, 128, 24], [240, 152, 64]),
-    ("Yellow", [222, 176, 20], [236, 196, 64]),
-    ("Green", [52, 160, 72], [84, 186, 98]),
-    ("Teal", [24, 150, 160], [58, 180, 190]),
-    ("Blue", [44, 108, 214], [84, 140, 236]),
-    ("Purple", [146, 80, 196], [174, 112, 222]),
-    ("Grey", [122, 124, 130], [150, 152, 158]),
-];
+/// The colours a group can have: the look's hues (the saved index into
+/// this stays the same colour from look to look).
+pub const COLORS: [Hue; 8] = [Hue::Red, Hue::Orange, Hue::Yellow, Hue::Green, Hue::Teal, Hue::Blue, Hue::Purple, Hue::Gray];
 
-pub fn color(i: usize, dark: bool) -> Color32 {
-    let (_, light, night) = COLORS[i % COLORS.len()];
-    let [r, g, b] = if dark { night } else { light };
-    Color32::from_rgb(r, g, b)
+pub fn color(i: usize, p: &Palette) -> Color32 {
+    style::c(p.hue(COLORS[i % COLORS.len()]))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

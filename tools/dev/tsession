@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Headless Olo sessions for development and automated UI checks.
 
-  tsession start NAME [WxH[,WxH…]] [--light|--dark] [--session [--shell]] [--home DIR]
+  tsession start NAME [WxH[,WxH…]] [--light|--dark] [--scale N] [--session [--shell]] [--home DIR]
                                                start a headless app_server (--session:
                                                under olo-session, so `reload` works;
                                                --shell also starts Deskbar and the desktop;
                                                --home: HOME for the session and its apps,
-                                               so tests that save files stay out of yours)
+                                               so tests that save files stay out of yours;
+                                               --scale: the screens' scale, 2 by default)
   tsession reload NAME                         restart app_server in place (session only)
   tsession run NAME [VAR=VAL...] CMD [ARGS...] start a client in it (log: DIR/<cmd>.log);
                                                VAR=VAL set after sudo (e.g. HOME=/tmp/fixture)
@@ -23,12 +24,19 @@
   tsession scroll NAME DX DY                  (0 0: the fingers lift)
   tsession flick NAME DY                       a fast two-finger scroll that glides on
   tsession theme NAME light|dark
+  tsession scale NAME N                        every screen at scale N (1, 1.5, 2: check all three)
+  tsession review NAME [--all]                 the layout review of every Olo window (kit
+                                               apps): errors, then what to look at closely;
+                                               --all: Deskbar and other layer surfaces too
   tsession ipc NAME JSON                       raw IPC request
   tsession env NAME                            print env to source
   tsession stop NAME | list
 
-Sessions live in /tmp/olo-dev/NAME. Output is 2× scale by default, so
-screenshots are in device pixels and coordinates are logical (pixels / 2).
+Sessions live in /tmp/olo-dev/NAME. Output is 2× scale by default.
+Screenshots are in device pixels; coordinates, crops included, are
+logical (device pixels / the screen's scale, so / 2 at 2×).
+Shells in a session keep their history in its bash_history, not yours,
+and `stop` ends its olo-termd and the shells in it.
 Runs as the repo owner when invoked as root.
 """
 import glob, json, os, pwd, re, signal, socket, subprocess, sys, time
@@ -110,6 +118,7 @@ def synth(name, events):
 def start(name, args):
     size = next((a for a in args if re.fullmatch(r"\d+x\d+(,\d+x\d+)*", a)), "2560x1600")
     theme = "dark" if "--dark" in args else "light"
+    scale = float(args[args.index("--scale") + 1]) if "--scale" in args else 2.0
     d = sdir(name)
     if os.path.exists(os.path.join(d, "env.json")):
         stop(name)
@@ -119,7 +128,8 @@ def start(name, args):
     # passwords with the real PAM, and keystrokes meant for apps would go there.
     cfg = {"appearance": {"theme": theme},
            "power": {"display_off_minutes": 0, "sleep_minutes": 0, "lock_on_display_off": False},
-           "screen_saver": {"enabled": False, "lock": False}}
+           "screen_saver": {"enabled": False, "lock": False},
+           "display": {"scale": scale}}
     # TSESSION_SETTINGS: a JSON file whose top-level keys go over these
     # (a display layout to test, say).
     if os.environ.get("TSESSION_SETTINGS"):
@@ -177,18 +187,39 @@ def start(name, args):
                 e["OLO_SESSION_PID"] = open(pidfile).read().strip()
             e["sockets"] = [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["OLO_SOCKET"])]
             json.dump(e, open(os.path.join(d, "env.json"), "w"))
-            print(f"{name}: {e['WAYLAND_DISPLAY']} ({size}, {theme})")
+            print(f"{name}: {e['WAYLAND_DISPLAY']} ({size}, {theme}, {scale:g}×)")
             return
         if p.poll() is not None:
             break
     sys.exit(f"app_server failed to start; see {d}/app_server.log")
 
+def termd_pids(display):
+    """olo-termd for `display` (one per display, started by Terminal in a
+    session of its own, so killing the session's group misses it)."""
+    pids = []
+    for proc in glob.glob("/proc/[0-9]*"):
+        try:
+            # (" (deleted)": a binary rebuilt since it started.)
+            if os.path.basename(os.readlink(os.path.join(proc, "exe"))).removesuffix(" (deleted)") != "olo-termd":
+                continue
+            env = dict(v.split("=", 1) for v in open(os.path.join(proc, "environ")).read().split("\0") if "=" in v)
+        except OSError:
+            continue
+        if env.get("WAYLAND_DISPLAY") == display and env.get("XDG_RUNTIME_DIR", RUNTIME) == RUNTIME:
+            pids.append(int(os.path.basename(proc)))
+    return pids
+
 def stop(name):
     d = sdir(name)
     try:
         e = json.load(open(os.path.join(d, "env.json")))
-        if "sockets" in e and [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["OLO_SOCKET"])] != e["sockets"]:
+        ours = "sockets" not in e or [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["OLO_SOCKET"])] == e["sockets"]
+        if not ours:
             print(f"{name}: its sockets are gone or another session's; forgetting it without touching them")
+        else:
+            # Its shells (and whatever runs in them) go with it.
+            for pid in termd_pids(e["WAYLAND_DISPLAY"]):
+                os.kill(pid, signal.SIGTERM)
         os.killpg(e["pid"], signal.SIGTERM)
     except (FileNotFoundError, ProcessLookupError, PermissionError, KeyError):
         pass
@@ -212,6 +243,10 @@ def run(name, cmd):
         assigns.append(f"HOME={e['HOME']}")
     if not any(a.startswith("OLO_PASSWORDS_KEYFILE=") for a in assigns):
         assigns.append(f"OLO_PASSWORDS_KEYFILE={os.path.join(sdir(name), 'passwords.key')}")
+    # Shells in the session (Terminal's, through olo-termd) keep their
+    # history here, not in the person's ~/.bash_history.
+    if not any(a.startswith("HISTFILE=") for a in assigns):
+        assigns.append(f"HISTFILE={os.path.join(sdir(name), 'bash_history')}")
     env = dict(os.environ, **{k: v for k, v in e.items() if k not in ("pid", "sockets")}, RUST_LOG=os.environ.get("RUST_LOG", "warn"))
     # Headless sessions are silent: point the sound server at a plain file
     # (connecting fails) rather than the user's real speakers.
@@ -232,6 +267,48 @@ def run(name, cmd):
     open(os.path.join(sdir(name), f"{base}.{p.pid}.pid"), "w").write(str(p.pid))
     print(f"started {base} pid {p.pid}")
 
+def review(name, layers=False):
+    """Ask each kit app with a window in the session for its windows'
+    layout review (`{"review":true}` on its socket; see
+    crates/kit/src/layout_review.rs) and print the findings."""
+    windows = ipc(name, {"type": "list_windows"}).get("windows", [])
+    pids = sorted({w["pid"] for w in windows if w.get("pid")})
+    found = 0
+    for pid in pids:
+        path = os.path.join(RUNTIME, f"olo-menus-{pid}.sock")
+        if not os.path.exists(path):
+            continue
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(4)
+        try:
+            s.connect(path)
+            s.sendall(b'{"review":true}\n')
+            answer = json.loads(s.makefile().readline() or "[]")
+        except (OSError, ValueError):
+            continue
+        finally:
+            s.close()
+        for w in answer:
+            if w.get("layer") and not layers:
+                continue
+            name_ = w.get("layer") or w["title"]
+            print(f"{name_} ({w['width']}×{w['height']} at {w['scale']:g}×): {len(w['findings'])} findings")
+            for f in w["findings"]:
+                found += 1
+                print(f"  - {f['level']} {f['kind']}: {f['text']} (at {f['x']:.0f},{f['y']:.0f} {f['width']:.0f}×{f['height']:.0f})")
+    if not found:
+        print("nothing found")
+
+def output_scale(name, output, size):
+    """The scale of the screen a screenshot is of: `output`, or the one
+    whose mode is the picture's size."""
+    outs = (ipc(name, {"type": "outputs"}) or {}).get("outputs", [])
+    for o in outs:
+        mode = o.get("current_mode") or {}
+        if o["name"] == output or (output is None and (mode.get("width"), mode.get("height")) == size):
+            return o["scale"]
+    return outs[0]["scale"] if outs else 2.0
+
 def shot(name, out, crop=None, zoom=1, output=None, pointer=False):
     out = os.path.abspath(out)
     tmp = os.path.join(sdir(name), "shot.png")
@@ -246,7 +323,8 @@ def shot(name, out, crop=None, zoom=1, output=None, pointer=False):
     from PIL import Image
     im = Image.open(tmp)
     if crop:
-        x, y, w, h = (int(float(v) * 2) for v in crop)
+        k = output_scale(name, output, im.size)
+        x, y, w, h = (round(float(v) * k) for v in crop)
         im = im.crop((x, y, x + w, y + h))
     if zoom > 1:
         im = im.resize((im.width * zoom, im.height * zoom), Image.NEAREST)
@@ -359,6 +437,16 @@ def main():
         st["appearance"]["theme"] = a[0]
         print(ipc(name, {"type": "set_settings", "settings": st}))
         time.sleep(0.4)
+    elif cmd == "scale":
+        st = ipc(name, {"type": "get_settings"})["settings"]
+        st["display"]["scale"] = float(a[0])
+        # Screens with a scale of their own take it too.
+        for o in st["display"].get("outputs", {}).values():
+            o.pop("scale", None)
+        print(ipc(name, {"type": "set_settings", "settings": st}))
+        time.sleep(0.6)
+    elif cmd == "review":
+        review(name, "--all" in a)
     elif cmd == "ipc":
         print(json.dumps(ipc(name, json.loads(a[0]))))
     else:

@@ -160,8 +160,15 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub output_manager_state: OutputManagerState,
     pub primary_selection_state: PrimarySelectionState,
     pub data_control_state: DataControlState,
+    /// The same as `data_control_state`, in its newer, standard form
+    /// (`ext_data_control_v1`): what clipboard tools such as
+    /// wl-clipboard-rs (1Password's) use to copy and paste without a window.
+    pub ext_data_control_state: smithay::wayland::selection::ext_data_control::DataControlState,
     pub seat_state: SeatState<AnvilState<BackendData>>,
     pub keyboard_shortcuts_inhibit_state: KeyboardShortcutsInhibitState,
+    /// ext-idle-notify: programs told when the person goes idle and comes
+    /// back (Chrome's and Electron apps' presence, idle detection).
+    pub idle_notifier_state: smithay::wayland::idle_notify::IdleNotifierState<AnvilState<BackendData>>,
     pub shm_state: ShmState,
     pub viewporter_state: ViewporterState,
     pub xdg_activation_state: XdgActivationState,
@@ -338,6 +345,12 @@ impl<BackendData: Backend> DataControlHandler for AnvilState<BackendData> {
     }
 }
 
+impl<BackendData: Backend> smithay::wayland::selection::ext_data_control::DataControlHandler for AnvilState<BackendData> {
+    fn data_control_state(&mut self) -> &mut smithay::wayland::selection::ext_data_control::DataControlState {
+        &mut self.ext_data_control_state
+    }
+}
+
 impl<BackendData: Backend> ShmHandler for AnvilState<BackendData> {
     fn shm_state(&self) -> &ShmState {
         &self.shm_state
@@ -400,6 +413,26 @@ impl<BackendData: Backend> InputMethodHandler for AnvilState<BackendData> {
             .elements()
             .find_map(|window| (window.wl_surface().as_deref() == Some(parent)).then(|| window.geometry()))
             .unwrap_or_default()
+    }
+}
+
+impl<BackendData: Backend> smithay::wayland::idle_notify::IdleNotifierHandler for AnvilState<BackendData> {
+    fn idle_notifier_state(&mut self) -> &mut smithay::wayland::idle_notify::IdleNotifierState<Self> {
+        &mut self.idle_notifier_state
+    }
+}
+
+/// xdg-toplevel-icon: a window's own icon (Qt, SDL and Firefox set one),
+/// kept with its surface (`ToplevelIconCachedState`).
+impl<BackendData: Backend> smithay::wayland::xdg_toplevel_icon::XdgToplevelIconHandler for AnvilState<BackendData> {}
+
+/// xdg-system-bell (GTK's `gdk_surface_beep`). Olo has no system sound,
+/// and a window may not take the person's attention unasked (see
+/// `request_activation`), so the bell is heard by no one; taking it keeps
+/// toolkits from falling back to something worse.
+impl<BackendData: Backend> smithay::wayland::xdg_system_bell::XdgSystemBellHandler for AnvilState<BackendData> {
+    fn ring(&mut self, surface: Option<WlSurface>) {
+        tracing::debug!(client = ?surface.and_then(|s| s.client()).map(|c| c.id()), "system bell");
     }
 }
 
@@ -917,6 +950,11 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let primary_selection_state = PrimarySelectionState::new::<Self>(&dh);
         let data_control_state =
             DataControlState::new::<Self, _>(&dh, Some(&primary_selection_state), |_| true);
+        let ext_data_control_state = smithay::wayland::selection::ext_data_control::DataControlState::new::<Self, _>(
+            &dh,
+            Some(&primary_selection_state),
+            |_| true,
+        );
         let mut seat_state = SeatState::new();
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let viewporter_state = ViewporterState::new::<Self>(&dh);
@@ -969,6 +1007,16 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             .expect("Failed to initialize the keyboard");
 
         let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
+        let idle_notifier_state = smithay::wayland::idle_notify::IdleNotifierState::new(&dh, handle.clone());
+        // Toolkits' small extras: a window's opacity (SDL), what its
+        // content is (games, video), its own icon, the bell.
+        smithay::wayland::alpha_modifier::AlphaModifierState::new::<Self>(&dh);
+        smithay::wayland::content_type::ContentTypeState::new::<Self>(&dh);
+        let mut toplevel_icons = smithay::wayland::xdg_toplevel_icon::XdgToplevelIconManager::new::<Self>(&dh);
+        for size in [16, 32, 48, 64, 128] {
+            toplevel_icons.add_icon_size(size);
+        }
+        smithay::wayland::xdg_system_bell::XdgSystemBellState::new::<Self>(&dh);
         IdleInhibitManagerState::new::<Self>(&dh);
         let lock = crate::lock::Lock::new::<BackendData>(&dh);
 
@@ -990,8 +1038,10 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             output_manager_state,
             primary_selection_state,
             data_control_state,
+            ext_data_control_state,
             seat_state,
             keyboard_shortcuts_inhibit_state,
+            idle_notifier_state,
             shm_state,
             viewporter_state,
             xdg_activation_state,

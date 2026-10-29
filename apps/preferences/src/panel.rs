@@ -158,29 +158,30 @@ impl Panel {
         }
     }
 
-    /// Content size (logical).
+    /// Content size (logical), on the 2-point grid (whole device pixels
+    /// at 1×, 1.5× and 2×).
     pub fn size(self) -> (u32, u32) {
         match self {
             Panel::Ai => (440, 300),
-            Panel::Appearance => (420, 385),
+            Panel::Appearance => (420, 386),
             Panel::Backgrounds => (640, 530),
             Panel::Backup => (420, 400),
             Panel::Bluetooth => (440, 340),
             Panel::DateTime => (460, 370),
             Panel::Display => (480, 490),
-            Panel::Keyboard => (480, 727),
+            Panel::Keyboard => (480, 732),
             Panel::Network => (460, 360),
-            Panel::Notifications => (440, 420),
-            Panel::Power => (460, 363),
+            Panel::Notifications => (440, 540),
+            Panel::Power => (460, 366),
             Panel::ScreenSaver => (500, 400),
-            Panel::Security => (420, 354),
-            Panel::Sound => (440, 272),
-            Panel::Themes => (560, 476),
+            Panel::Security => (420, 340),
+            Panel::Sound => (440, 276),
+            Panel::Themes => (560, 616),
             Panel::TouchId => (420, 330),
             // Tall enough for Touch with both of its notes (a pad with no
             // pressure and the Apple driver's click thresholds).
-            Panel::Touchpad => (460, 576),
-            Panel::Tracker => (300, 181),
+            Panel::Touchpad => (460, 584),
+            Panel::Tracker => (300, 182),
             Panel::Windows => (400, 440),
             Panel::Workspaces => (360, 164),
             Panel::About => (440, 290),
@@ -232,6 +233,7 @@ impl Panel {
             Panel::Ai => settings.ai = from.ai.clone(),
             Panel::Themes => {
                 settings.appearance.icon_theme = from.appearance.icon_theme.clone();
+                settings.appearance.colors = from.appearance.colors.clone();
                 settings.wallpaper = from.wallpaper.clone();
             }
             Panel::Display | Panel::Backup | Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications => {}

@@ -15,6 +15,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use olo_theme::Hue;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Unit {
     Percent,
@@ -58,7 +60,8 @@ pub struct Source {
     pub key: String,
     pub name: String,
     pub unit: Unit,
-    pub color: [u8; 3],
+    /// Its line and swatch: one of the look's hues.
+    pub color: Hue,
     /// A fixed top of the scale; None scales to what the graph shows.
     pub max: Option<f64>,
     pub group: Group,
@@ -99,18 +102,8 @@ fn num(s: &str) -> u64 {
     s.trim().parse().unwrap_or(0)
 }
 
-// Colours for the sources: the reference hues, readable on light and dark.
-const BLUE: [u8; 3] = [40, 110, 230];
-const RED: [u8; 3] = [220, 50, 40];
-const GREEN: [u8; 3] = [40, 160, 60];
-const ORANGE: [u8; 3] = [235, 130, 20];
-const PURPLE: [u8; 3] = [150, 70, 200];
-const TEAL: [u8; 3] = [20, 160, 170];
-const BROWN: [u8; 3] = [160, 100, 50];
-const PINK: [u8; 3] = [220, 70, 150];
-const OLIVE: [u8; 3] = [130, 140, 30];
-const GREY: [u8; 3] = [128, 128, 128];
-const SPREAD: [[u8; 3]; 10] = [BLUE, RED, GREEN, ORANGE, PURPLE, TEAL, BROWN, PINK, OLIVE, GREY];
+/// Colours for many sources of a kind (CPUs, sensors), in turn.
+const SPREAD: [Hue; 10] = [Hue::Blue, Hue::Red, Hue::Green, Hue::Orange, Hue::Purple, Hue::Teal, Hue::Brown, Hue::Pink, Hue::Yellow, Hue::Gray];
 
 /// A sensor in /sys/class/hwmon.
 struct Sensor {
@@ -131,30 +124,30 @@ struct Probe {
 
 fn probe() -> Probe {
     let mut sources = Vec::new();
-    let mut add = |key: &str, name: &str, unit: Unit, color: [u8; 3], max: Option<f64>, group: Group| {
+    let mut add = |key: &str, name: &str, unit: Unit, color: Hue, max: Option<f64>, group: Group| {
         sources.push(Source { key: key.into(), name: name.into(), unit, color, max, group });
     };
     let mem_total = mem_kb(&read("/proc/meminfo"), "MemTotal:") as f64 * 1024.0;
     let swap_total = mem_kb(&read("/proc/meminfo"), "SwapTotal:") as f64 * 1024.0;
-    add("cpu", "CPU usage", Unit::Percent, BLUE, Some(100.0), Group::Main);
-    add("memory", "Used memory", Unit::Bytes, RED, Some(mem_total), Group::Main);
-    add("cached", "Cached memory", Unit::Bytes, GREEN, Some(mem_total), Group::Main);
-    add("swap", "Swap space", Unit::Bytes, ORANGE, Some(swap_total.max(1.0)), Group::Main);
-    add("net-rx", "Network receive", Unit::Rate, TEAL, None, Group::Main);
-    add("net-tx", "Network send", Unit::Rate, PURPLE, None, Group::Main);
-    add("disk-read", "Disk read", Unit::Rate, BROWN, None, Group::Main);
-    add("disk-write", "Disk write", Unit::Rate, PINK, None, Group::Main);
-    add("faults", "Page faults", Unit::PerSecond, OLIVE, None, Group::Main);
-    add("switches", "Context switches", Unit::PerSecond, GREY, None, Group::Main);
-    add("processes", "Processes", Unit::Count, RED, None, Group::Main);
-    add("threads", "Threads", Unit::Count, BLUE, None, Group::Main);
+    add("cpu", "CPU usage", Unit::Percent, Hue::Blue, Some(100.0), Group::Main);
+    add("memory", "Used memory", Unit::Bytes, Hue::Red, Some(mem_total), Group::Main);
+    add("cached", "Cached memory", Unit::Bytes, Hue::Green, Some(mem_total), Group::Main);
+    add("swap", "Swap space", Unit::Bytes, Hue::Orange, Some(swap_total.max(1.0)), Group::Main);
+    add("net-rx", "Network receive", Unit::Rate, Hue::Teal, None, Group::Main);
+    add("net-tx", "Network send", Unit::Rate, Hue::Purple, None, Group::Main);
+    add("disk-read", "Disk read", Unit::Rate, Hue::Brown, None, Group::Main);
+    add("disk-write", "Disk write", Unit::Rate, Hue::Pink, None, Group::Main);
+    add("faults", "Page faults", Unit::PerSecond, Hue::Yellow, None, Group::Main);
+    add("switches", "Context switches", Unit::PerSecond, Hue::Gray, None, Group::Main);
+    add("processes", "Processes", Unit::Count, Hue::Red, None, Group::Main);
+    add("threads", "Threads", Unit::Count, Hue::Blue, None, Group::Main);
 
     let freq: Vec<PathBuf> = (0..1024)
         .map(|i| PathBuf::from(format!("/sys/devices/system/cpu/cpu{i}/cpufreq/scaling_cur_freq")))
         .take_while(|p| p.exists())
         .collect();
     if !freq.is_empty() {
-        add("cpu-freq", "CPU frequency", Unit::Megahertz, ORANGE, None, Group::Main);
+        add("cpu-freq", "CPU frequency", Unit::Megahertz, Hue::Orange, None, Group::Main);
     }
     let battery = std::fs::read_dir("/sys/class/power_supply")
         .into_iter()
@@ -163,7 +156,7 @@ fn probe() -> Probe {
         .map(|e| e.path())
         .find(|p| read(p.join("type")).trim() == "Battery" && p.join("capacity").exists());
     if battery.is_some() {
-        add("battery", "Battery charge", Unit::Percent, GREEN, Some(100.0), Group::Main);
+        add("battery", "Battery charge", Unit::Percent, Hue::Green, Some(100.0), Group::Main);
     }
 
     let cpus = read("/proc/stat").lines().filter(|l| l.starts_with("cpu") && !l.starts_with("cpu ")).count();

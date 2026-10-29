@@ -35,6 +35,21 @@ fn to_color_image(img: olo_xdg::Image) -> ColorImage {
     ColorImage::new([img.width as usize, img.height as usize], px)
 }
 
+/// `img` for drawing at `px` device pixels: a bitmap bigger than that
+/// (the next size up: ours come at 16, 24, 32, …, so 20 at 1.25× and 28
+/// at 1.75× have none of their own) averaged down to exactly it once, so
+/// it is drawn a texture pixel to a device pixel rather than resampled by
+/// the GPU every frame (soft), as Chrome scales its icons.
+fn fitted(img: olo_xdg::Image, px: u32) -> ColorImage {
+    let (w, h) = (img.width, img.height);
+    let side = w.max(h);
+    if img.premultiplied || side <= px || px == 0 {
+        return to_color_image(img);
+    }
+    let fit = |v: u32| ((v as f32 * px as f32 / side as f32).round() as usize).max(1);
+    crate::brand::shrink(img.rgba.as_chunks::<4>().0, w as usize, h as usize, fit(w), fit(h))
+}
+
 /// The name shown with a drag picture, and where.
 #[derive(Clone, Copy)]
 pub enum DragLabel<'a> {
@@ -166,7 +181,7 @@ pub fn texture_in(ctx: &Context, theme: &str, name: &str, logical: f32) -> Optio
     if let Some(hit) = cache.map.get(&key) {
         return hit.clone();
     }
-    let image = olo_xdg::load_icon_in(theme, name, px).map(to_color_image);
+    let image = olo_xdg::load_icon_in(theme, name, px).map(|img| fitted(img, px));
     let tex = image.map(|img| ctx.load_texture(format!("icon:{theme}/{name}@{px}"), img, TextureOptions::LINEAR));
     cache.map.insert(key, tex.clone());
     tex
@@ -197,12 +212,66 @@ pub fn paint_tinted(painter: &Painter, rect: Rect, name: &str, tint: Color32) ->
     true
 }
 
+/// `tex` in `rect`: at its own size when it was made for it (within a
+/// device pixel), a texture pixel to a device pixel, centred from a whole
+/// one. Snapping `rect`'s corners instead can make it a pixel narrower or
+/// wider than the texture when its size isn't whole device pixels (15
+/// points at 1.5×), and the icon is resampled (soft). A bitmap smaller
+/// than the rect (no bigger size to shrink) is stretched to it.
 fn paint_texture(painter: &Painter, rect: Rect, tex: &TextureHandle, tint: Color32) {
     let ctx = painter.ctx();
     let ppp = ctx.pixels_per_point();
-    let snap = |v: f32| (v * ppp).round() / ppp;
-    let r = Rect::from_min_max(pos2(snap(rect.min.x), snap(rect.min.y)), pos2(snap(rect.max.x), snap(rect.max.y)));
+    let [w, h] = tex.size();
+    let (tw, th) = ((rect.width() * ppp).round(), (rect.height() * ppp).round());
+    let r = if (w as f32 - tw).abs() <= 1.0 && (h as f32 - th).abs() <= 1.0 {
+        crate::style::snap_centred(ctx, rect.center(), egui::vec2(w as f32, h as f32) / ppp)
+    } else {
+        crate::style::snap(ctx, rect)
+    };
     painter.image(tex.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), tint);
+}
+
+/// `tex` filling the circle inscribed in `rect` (the middle square of it,
+/// if it isn't square): a person's picture. A hairline `ring` (when not
+/// transparent) keeps its edge clean.
+pub fn paint_round(painter: &Painter, rect: Rect, tex: &TextureHandle, ring: Color32) {
+    let size = tex.size_vec2();
+    // The middle square, in texture coordinates.
+    let (kx, ky) = if size.x > size.y { (size.y / size.x, 1.0) } else { (1.0, size.x / size.y.max(1.0)) };
+    let uv = |dx: f32, dy: f32| pos2(0.5 + dx * kx / 2.0, 0.5 + dy * ky / 2.0);
+    let center = rect.center();
+    let radius = rect.width().min(rect.height()) / 2.0;
+    let mut mesh = egui::Mesh::with_texture(tex.id());
+    mesh.vertices.push(egui::epaint::Vertex { pos: center, uv: uv(0.0, 0.0), color: Color32::WHITE });
+    // Enough sides that it's round at any scale.
+    let n = 64u32;
+    for i in 0..n {
+        let (dy, dx) = (i as f32 / n as f32 * std::f32::consts::TAU).sin_cos();
+        mesh.vertices.push(egui::epaint::Vertex { pos: center + egui::vec2(dx, dy) * radius, uv: uv(dx, dy), color: Color32::WHITE });
+    }
+    for i in 0..n {
+        mesh.add_triangle(0, 1 + i, 1 + (i + 1) % n);
+    }
+    painter.add(mesh);
+    if ring.a() > 0 {
+        painter.circle_stroke(center, radius - 0.25, egui::Stroke::new(0.75, ring));
+    }
+}
+
+/// `tex` covering `rect` (cropped to its shape about the middle, never
+/// stretched), its corners rounded by `radius`: a photo or artwork.
+pub fn paint_cover(painter: &Painter, rect: Rect, tex: &TextureHandle, radius: f32) {
+    let size = tex.size_vec2();
+    let k = (rect.width() / rect.height().max(1.0)) / (size.x / size.y.max(1.0));
+    let uv = if k > 1.0 {
+        // Wider than the picture: crop its top and bottom.
+        let h = 1.0 / k;
+        Rect::from_min_max(pos2(0.0, (1.0 - h) / 2.0), pos2(1.0, (1.0 + h) / 2.0))
+    } else {
+        Rect::from_min_max(pos2((1.0 - k) / 2.0, 0.0), pos2((1.0 + k) / 2.0, 1.0))
+    };
+    let r = crate::style::snap(painter.ctx(), rect);
+    painter.add(egui::epaint::RectShape::filled(r, radius, Color32::WHITE).with_texture(tex.id(), uv));
 }
 
 // ---- thumbnails ----------------------------------------------------------

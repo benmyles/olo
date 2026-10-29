@@ -71,6 +71,11 @@ pub struct Placement {
     pub grouping: crate::shell::groups::Grouping,
     #[serde(default)]
     pub tab_order: u64,
+    /// Its place in the stacking when saved, bottom first from 1 (0: not
+    /// known), so windows back in whatever order their clients reconnect
+    /// still stack as they did.
+    #[serde(default)]
+    pub depth: u32,
     /// Seconds since the epoch when it was recorded.
     pub at: u64,
     /// The process that showed it (0: not known, any may take it).
@@ -132,6 +137,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             tab_offset: w.decoration().tab_offset,
             grouping: meta.grouping.borrow().clone(),
             tab_order: meta.tab_order.get(),
+            depth: 0,
             at: now(),
             pid: meta.owner.borrow().as_ref().map_or(0, |(pid, _)| *pid),
             client: meta.owner.borrow().as_ref().map(|(_, c)| c.clone()),
@@ -156,7 +162,16 @@ impl<B: Backend + 'static> AnvilState<B> {
         let Some(path) = path() else { return };
         let focused = self.seat.get_keyboard().and_then(|k| k.current_focus()).and_then(|f| f.wl_surface().map(|s| s.into_owned()));
         // Bottom-most first, so restoring in order rebuilds the stacking.
-        let mut list: Vec<Placement> = self.all_windows().iter().filter_map(|w| self.placement_of(w, focused.as_ref())).collect();
+        let shown = self.space.elements().count();
+        let mut list: Vec<Placement> = self
+            .all_windows()
+            .iter()
+            .enumerate()
+            .filter_map(|(i, w)| {
+                let p = self.placement_of(w, focused.as_ref())?;
+                Some(Placement { depth: if i < shown { i as u32 + 1 } else { 0 }, ..p })
+            })
+            .collect();
         list.extend(self.layout.iter().cloned());
         match serde_json::to_string(&list) {
             Ok(text) => {
@@ -214,8 +229,11 @@ impl<B: Backend + 'static> AnvilState<B> {
             return;
         }
         let Some(p) = self.take_placement(&window) else { return };
+        // A fixed-size window (an alert) is the size it asks for now: its
+        // text, or the version drawing it, may have changed since.
         if p.width > 0
             && p.height > 0
+            && crate::shell::tiling::resizable(&window)
             && let Some(toplevel) = window.0.toplevel()
         {
             toplevel.with_pending_state(|state| state.size = Some((p.width, p.height).into()));
@@ -265,7 +283,29 @@ impl<B: Backend + 'static> AnvilState<B> {
             let front = self.space.elements().rev().find(coming_back).cloned().unwrap_or_else(|| window.clone());
             self.focus_window(&front);
         }
+        if p.depth > 0 && self.space.element_location(&window).is_some() {
+            meta.restored_depth.set(Some((p.depth, std::time::Instant::now())));
+            self.restack_returning(&window, p.depth);
+        }
         false
+    }
+
+    /// Put the windows back before `window` (at `depth`) that were over it
+    /// just over it again, highest first, so the stacking comes back
+    /// whatever order their clients reconnected in. Windows opened since
+    /// stay where they are.
+    fn restack_returning(&mut self, window: &WindowElement, depth: u32) {
+        let mut over: Vec<(u32, WindowElement)> = self
+            .space
+            .elements()
+            .filter(|w| *w != window)
+            .filter_map(|w| w.meta().restored_depth.get().filter(|(d, t)| *d > depth && t.elapsed() < KEEP).map(|(d, _)| (d, w.clone())))
+            .collect();
+        over.sort_by_key(|(d, _)| std::cmp::Reverse(*d));
+        for (_, w) in &over {
+            self.space.raise_element_above(w, window, false);
+        }
+        self.keep_children_above();
     }
 
     /// Open a window that names a parent (an alert, a dialog) over it, as

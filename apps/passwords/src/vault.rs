@@ -3,7 +3,9 @@
 //! 1Password. Items keep 1Password's shapes (`Item`, `ItemOverview`,
 //! `VaultOverview`) plus what syncing needs: what 1Password last had of
 //! each item, whether it changed here since, and the deletions still to
-//! send (`sync.rs` does the talking).
+//! send (`sync.rs` does the talking). Field values are kept in the forms
+//! 1Password's SDK has them (`onepassword::fields`: a card's expiry is
+//! 08/2029), whoever made or changed the item.
 //!
 //! The file is `passwords.vault` in the config directory: "TABV", a
 //! format byte, a 24-byte nonce, then the JSON sealed with
@@ -324,13 +326,15 @@ impl Vault {
         if !self.data.vaults.iter().any(|v| v.id == params.vault_id) {
             return Err(fail("That vault isn’t there any more."));
         }
+        let mut fields = params.fields.clone();
+        onepassword::fields::normalize(&mut fields).map_err(fail)?;
         let now = Utc::now();
         let item = Item {
             id: new_id(),
             title: params.title.clone(),
             category: params.category,
             vault_id: params.vault_id.clone(),
-            fields: params.fields.clone(),
+            fields,
             sections: params.sections.clone(),
             notes: params.notes.clone().unwrap_or_default(),
             tags: params.tags.clone(),
@@ -349,6 +353,9 @@ impl Vault {
 
     /// Change an item (moving it if its vault changed).
     pub fn put(&mut self, item: &Item) -> Result<Item> {
+        let mut item = item.clone();
+        onepassword::fields::normalize(&mut item.fields).map_err(fail)?;
+        let item = &item;
         let rev = self.rev();
         let entry = self.entry_mut(&item.id).ok_or_else(|| fail("The item isn’t there any more."))?;
         let mut moved = None;

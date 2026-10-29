@@ -525,7 +525,7 @@ impl DiskUsage {
         let list_r = Rect::from_min_max(pos2(chart_r.right() + m::SPACING, body.top()), body.max);
 
         let geometry = chart::Geometry::fit(chart_r.center(), side / 2.0 - 2.0);
-        let slices = chart::layout(&tree.read().unwrap(), self.folder);
+        let slices = chart::layout(&tree.read().unwrap(), self.folder, &p);
         let resp = ui.interact(chart_r, Id::unique("disk-usage-chart"), Sense::click_and_drag());
         let hover = resp.hover_pos().and_then(|pos| chart::hit(&slices, &geometry, pos));
         let on_hub = resp.hover_pos().is_some_and(|pos| geometry.at(pos).is_some_and(|(ring, _)| ring == 0));

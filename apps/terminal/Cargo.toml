@@ -13,9 +13,15 @@ path = "src/main.rs"
 name = "olo-termd"
 path = "src/termd.rs"
 
+# sudo in Terminal's shells: asks for its password in a window (src/olo_sudo.rs).
+[[bin]]
+name = "olo-sudo"
+path = "src/olo_sudo.rs"
+
 [dependencies]
 olo-kit.workspace = true
 olo-protocol.workspace = true
+olo-system.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

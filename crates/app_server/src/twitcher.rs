@@ -1,7 +1,11 @@
 //! Twitcher: the strip of app icons shown while ⌘Tab / ⌘\` is held, as on
 //! BeOS, a row for each workspace with windows on it (numbered at the
-//! left when there are more than one). `desktop::twitch_step` decides what
-//! is chosen; this draws it.
+//! left when there are more than one). With a Deskbar on every display,
+//! each display's windows are a column of their own, in an etched box
+//! named across its top edge as a BeOS BBox is, the displays in the order
+//! they stand on the desk; the box of the display a copy of the panel is
+//! on has its little screen lit. `desktop::twitch_step` decides what is
+//! chosen; this draws it.
 //!
 //! App names and icons come from .desktop entries and icon themes, which
 //! means file system work, so they are looked up on a worker thread the
@@ -14,6 +18,7 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
+use crate::render::Exact;
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -28,7 +33,7 @@ use smithay::{
     utils::{Buffer, Physical, Point, Rectangle, Size, Transform},
 };
 use olo_theme::Palette;
-use tiny_skia::{FilterQuality, Pixmap, PixmapPaint, Transform as SkTransform};
+use tiny_skia::{FillRule, FilterQuality, Paint, PathBuilder, Pixmap, PixmapPaint, Transform as SkTransform};
 
 use crate::{shell::fill, text, theme};
 
@@ -42,6 +47,20 @@ const FONT: f32 = 12.0;
 /// The workspace numbers' column, and the gap between rows.
 const GUTTER: i32 = 24;
 const ROW_GAP: i32 = 6;
+/// Grouped by display: the line the boxes' names sit across, the padding
+/// inside a box, the gap between boxes, and how far in a box's name
+/// starts (after a little screen, `SCREEN`).
+const CAPTION: i32 = 20;
+const BOX_PAD: i32 = 10;
+const BOX_GAP: i32 = 10;
+const NAME_IN: i32 = 10;
+const NAME_FONT: f32 = 11.0;
+const SCREEN: (i32, i32) = (13, 10);
+const SCREEN_GAP: i32 = 4;
+/// The chosen app's plate: how far it reaches beyond the icon, and its
+/// corners (the kit's `metrics::SELECTION_PAD` and `CARD_RADIUS`).
+const PLATE_PAD: i32 = 4;
+const PLATE_RADIUS: f64 = 5.0;
 
 /// Device sizes icons are decoded at; others are scaled from the next one up.
 const ICON_PX: [u32; 2] = [48, 96];
@@ -149,6 +168,18 @@ pub struct Entry {
     pub app_id: String,
     /// The window title for ⌘\`; the app's name is used for ⌘Tab.
     pub title: Option<String>,
+    /// Its display's place in [`Shown::displays`] (0 when not grouped).
+    pub display: usize,
+}
+
+/// A display whose windows are grouped together.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Display {
+    /// Its connector, to know which display a copy of the panel is on.
+    pub output: String,
+    /// What it is called (`OutputInfo::display_name`, numbered when two
+    /// are called the same).
+    pub name: String,
 }
 
 /// A workspace's cells.
@@ -162,7 +193,11 @@ pub struct Row {
 /// and whether the cells are lettered (keyboard hints are on).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Shown {
+    /// Each row's cells, those of each display together, in display order.
     pub rows: Vec<Row>,
+    /// With a Deskbar on every display, the displays with windows, as they
+    /// stand left to right: the cells are grouped by them. Empty otherwise.
+    pub displays: Vec<Display>,
     pub row: usize,
     pub index: usize,
     pub letters: bool,
@@ -204,13 +239,16 @@ impl Shown {
 #[derive(Debug, Clone, PartialEq)]
 struct Key {
     shown: Shown,
+    /// The display this copy is on, among `shown.displays`.
+    here: Option<usize>,
     /// Lookups so far (so a late one, or a new theme's, redraws).
     looked_up: u64,
     scale_milli: i64,
     generation: u64,
 }
 
-/// How many looks of the panel are kept drawn while it is up.
+/// How many looks of the panel are kept drawn while it is up, for each
+/// display it is drawn differently on.
 const LOOKS: usize = 8;
 
 /// The panel as drawn for its last few looks (each selection), the
@@ -234,15 +272,16 @@ impl Overlay {
         self.cached.clear();
     }
 
-    /// The Twitcher panel centred in an output of `output_size` (logical)
-    /// at `scale`, or None if there is nothing to show.
+    /// The Twitcher panel centred in output `output` of `output_size`
+    /// (logical) at `scale`, or None if there is nothing to show.
     pub fn element<R>(
         &mut self,
         renderer: &mut R,
         shown: &Shown,
+        output: &str,
         output_size: Size<i32, smithay::utils::Logical>,
         scale: f64,
-    ) -> Option<MemoryRenderBufferRenderElement<R>>
+    ) -> Option<Exact<MemoryRenderBufferRenderElement<R>>>
     where
         R: Renderer + ImportMem,
         R::TextureId: Send + Clone + 'static,
@@ -250,8 +289,10 @@ impl Overlay {
         if shown.cells() < 2 {
             return None;
         }
+        let here = shown.displays.iter().position(|d| d.output == output);
         let key = Key {
             shown: shown.clone(),
+            here,
             looked_up: LOOKED_UP.load(std::sync::atomic::Ordering::Relaxed),
             scale_milli: (scale * 1000.0).round() as i64,
             generation: theme::generation(),
@@ -260,7 +301,7 @@ impl Overlay {
             let looked = self.cached.remove(i);
             self.cached.insert(0, looked);
         } else {
-            let pixmap = draw(&theme::palette(), shown, scale);
+            let pixmap = draw(&theme::palette(), shown, here, scale);
             let size: Size<i32, Buffer> = (pixmap.width() as i32, pixmap.height() as i32).into();
             let buffer = MemoryRenderBuffer::from_slice(
                 pixmap.data(),
@@ -271,38 +312,66 @@ impl Overlay {
                 Some(vec![Rectangle::from_size(size)]),
             );
             self.cached.insert(0, (key, buffer, (size.w, size.h).into()));
-            self.cached.truncate(LOOKS);
+            self.cached.truncate(LOOKS * shown.displays.len().max(1));
         }
         let (_, buffer, phys) = self.cached.first()?;
         let out = output_size.to_f64().to_physical(scale);
         let loc: Point<f64, Physical> =
             (((out.w - phys.w as f64) / 2.0).round(), ((out.h - phys.h as f64) / 2.0).round()).into();
-        let logical = (phys.w as f64 / scale).round() as i32;
-        let logical_h = (phys.h as f64 / scale).round() as i32;
-        MemoryRenderBufferRenderElement::from_buffer(
-            renderer,
-            loc,
-            buffer,
-            None,
-            Some(Rectangle::from_size((phys.w as f64, phys.h as f64).into())),
-            Some((logical, logical_h).into()),
-            Kind::Unspecified,
-        )
-        .ok()
+        crate::render::picture(renderer, loc, buffer, (phys.w, phys.h), None, Kind::Unspecified)
     }
 }
 
-/// Panel size in logical pixels for rows of `lens` cells.
-pub fn panel_size(lens: &[usize]) -> (i32, i32) {
-    let gutter = if lens.len() > 1 { GUTTER } else { 0 };
-    let widest = lens.iter().copied().max().unwrap_or(0) as i32;
-    let rows = lens.len().max(1) as i32;
-    ((2 * PAD + gutter + widest * CELL).max(MIN_WIDTH), PAD + rows * CELL + (rows - 1) * ROW_GAP + LABEL + PAD)
+/// Where things go in the panel, in logical pixels.
+#[derive(Debug, PartialEq)]
+struct Layout {
+    size: (i32, i32),
+    /// Each column's left edge and width: one across the panel, or a box
+    /// for each display.
+    columns: Vec<(i32, i32)>,
+    /// The first row's top.
+    top: i32,
+    /// Each display's name, cut to fit its box.
+    names: Vec<String>,
 }
 
-fn draw(p: &Palette, shown: &Shown, s: f64) -> Pixmap {
-    let lens: Vec<usize> = shown.rows.iter().map(|r| r.entries.len()).collect();
-    let (lw, lh) = panel_size(&lens);
+fn layout(shown: &Shown) -> Layout {
+    let rows = shown.rows.len().max(1) as i32;
+    let cells_h = rows * CELL + (rows - 1) * ROW_GAP;
+    let gutter = if shown.rows.len() > 1 { GUTTER } else { 0 };
+    if shown.displays.is_empty() {
+        let widest = shown.rows.iter().map(|r| r.entries.len()).max().unwrap_or(0) as i32;
+        let w = (2 * PAD + gutter + widest * CELL).max(MIN_WIDTH);
+        let columns = vec![(PAD + gutter, w - 2 * PAD - gutter)];
+        return Layout { size: (w, PAD + cells_h + LABEL + PAD), columns, top: PAD, names: Vec::new() };
+    }
+    let (mut columns, mut names, mut x) = (Vec::new(), Vec::new(), 0);
+    let label = NAME_IN + SCREEN.0 + SCREEN_GAP;
+    for (d, display) in shown.displays.iter().enumerate() {
+        let most = shown.rows.iter().map(|r| r.entries.iter().filter(|e| e.display == d).count()).max().unwrap_or(0);
+        let cells = most as i32 * CELL + 2 * BOX_PAD;
+        // A name may make a box wider, up to three cells' worth.
+        let room = cells.max(3 * CELL + 2 * BOX_PAD) - label - NAME_IN;
+        let name = text::ellipsize(&display.name, NAME_FONT, true, room as f32);
+        let w = cells.max(label + text::measure(&name, NAME_FONT, true).ceil() as i32 + NAME_IN);
+        columns.push((x, w));
+        names.push(name);
+        x += w + BOX_GAP;
+    }
+    let boxes = x - BOX_GAP;
+    let w = (2 * PAD + gutter + boxes).max(MIN_WIDTH);
+    let left = PAD + gutter + (w - 2 * PAD - gutter - boxes) / 2;
+    for c in &mut columns {
+        c.0 += left;
+    }
+    Layout { size: (w, PAD + CAPTION + cells_h + BOX_PAD + LABEL + PAD), columns, top: PAD + CAPTION, names }
+}
+
+/// Twitcher at `s` device pixels per logical one, on display `here` of
+/// `shown.displays`.
+fn draw(p: &Palette, shown: &Shown, here: Option<usize>, s: f64) -> Pixmap {
+    let lay = layout(shown);
+    let (lw, lh) = lay.size;
     let px = |l: i32| (l as f64 * s).round() as i32;
     let u = px(1).max(1);
     let (w, h) = (px(lw), px(lh));
@@ -315,17 +384,34 @@ fn draw(p: &Palette, shown: &Shown, s: f64) -> Pixmap {
     fill(&mut pm, u, h - 2 * u, w - 2 * u, u, p.shadow);
     fill(&mut pm, w - 2 * u, u, u, h - 2 * u, p.shadow);
 
+    let grouped = !shown.displays.is_empty();
+    let rows = shown.rows.len().max(1) as i32;
+    let bottom = lay.top + rows * CELL + (rows - 1) * ROW_GAP;
+    if grouped {
+        for (d, &(x, cw)) in lay.columns.iter().enumerate() {
+            display_box(&mut pm, p, (x, cw), (PAD + CAPTION / 2, bottom + BOX_PAD), &lay.names[d], here == Some(d), s);
+        }
+    }
+
     let numbered = shown.rows.len() > 1;
-    let gutter = if numbered { GUTTER } else { 0 };
     let icon_px = px(ICON) as u32;
     let size = FONT * s as f32;
     for (r, row) in shown.rows.iter().enumerate() {
-        let top = PAD + r as i32 * (CELL + ROW_GAP);
+        let top = lay.top + r as i32 * (CELL + ROW_GAP);
         if r > 0 {
-            // An etched line between workspaces.
+            // An etched line between workspaces, across each box when
+            // grouped.
             let y = px(top - ROW_GAP / 2);
-            fill(&mut pm, px(PAD), y - u, w - 2 * px(PAD), u, p.shadow);
-            fill(&mut pm, px(PAD), y, w - 2 * px(PAD), u, p.shine);
+            let etch = p.shade(p.panel_background, 1.22);
+            let spans: Vec<(i32, i32)> = if grouped {
+                lay.columns.iter().map(|&(x, cw)| (x + BOX_PAD, cw - 2 * BOX_PAD)).collect()
+            } else {
+                vec![(PAD, lw - 2 * PAD)]
+            };
+            for (x, sw) in spans {
+                fill(&mut pm, px(x), y - u, px(x + sw) - px(x), u, etch);
+                fill(&mut pm, px(x), y, px(x + sw) - px(x), u, p.shine);
+            }
         }
         if numbered {
             let n = (row.workspace + 1).to_string();
@@ -334,31 +420,11 @@ fn draw(p: &Palette, shown: &Shown, s: f64) -> Pixmap {
             let y = px(top) as f32 + (px(CELL) as f32 - size * 1.25) / 2.0;
             text::draw(&mut pm, &n, (px(PAD) as f32 + (px(GUTTER) as f32 - tw) / 2.0).round(), y.round(), size, true, color);
         }
-        let x0 = PAD + gutter + (lw - 2 * PAD - gutter - row.entries.len() as i32 * CELL) / 2;
-        for (i, e) in row.entries.iter().enumerate() {
-            let cx = x0 + i as i32 * CELL;
-            if r == shown.row && i == shown.index {
-                let (x, y, cw) = (px(cx), px(top), px(cx + CELL) - px(cx));
-                let ch = px(top + CELL) - y;
-                fill(&mut pm, x, y, cw, ch, p.menu_selected_border);
-                fill(&mut pm, x + u, y + u, cw - 2 * u, ch - 2 * u, p.menu_selected_background);
-            }
-            if let Some(info) = info(&e.app_id) {
-                // The smallest decoded size at least as large as needed.
-                if let Some((_, icon)) = info.icons.iter().find(|(s, _)| *s >= icon_px).or(info.icons.last()) {
-                    let k = icon_px as f32 / icon.width() as f32;
-                    let off = (CELL - ICON) / 2;
-                    let paint = PixmapPaint { quality: FilterQuality::Bicubic, ..Default::default() };
-                    let t = SkTransform::from_row(k, 0.0, 0.0, k, px(cx + off) as f32, px(top + off) as f32);
-                    pm.draw_pixmap(0, 0, icon.as_ref().as_ref(), &paint, t, None);
-                }
-            }
-            if let Some(c) = shown.letter(r, i) {
-                // Its hint, on the cell's lower right.
-                let b = crate::hints::badge_pixmap(p, c, s);
-                let bx = px(cx + CELL) - u - b.width() as i32;
-                let by = px(top + CELL) - u - b.height() as i32;
-                pm.draw_pixmap(bx, by, b.as_ref(), &PixmapPaint::default(), SkTransform::identity(), None);
+        for (d, &(x, cw)) in lay.columns.iter().enumerate() {
+            let cells: Vec<usize> = (0..row.entries.len()).filter(|&i| row.entries[i].display == d || !grouped).collect();
+            let x0 = x + (cw - cells.len() as i32 * CELL) / 2;
+            for (k, &i) in cells.iter().enumerate() {
+                draw_cell(&mut pm, p, shown, (r, i), (x0 + k as i32 * CELL, top), icon_px, s);
             }
         }
     }
@@ -378,6 +444,111 @@ fn draw(p: &Palette, shown: &Shown, s: f64) -> Pixmap {
     pm
 }
 
+/// Cell `(r, i)` of `shown` with its top left at `at` (logical): the
+/// selection behind it, its icon and its letter.
+fn draw_cell(pm: &mut Pixmap, p: &Palette, shown: &Shown, (r, i): (usize, usize), (cx, top): (i32, i32), icon_px: u32, s: f64) {
+    let px = |l: i32| (l as f64 * s).round() as i32;
+    let u = px(1).max(1);
+    if r == shown.row && i == shown.index {
+        // On a selection plate, as the kit sets a chosen picture
+        // (`style::selection_plate`): a rounded ground in the list
+        // selection's colour with a hairline edge.
+        let inset = (CELL - ICON) / 2 - PLATE_PAD;
+        let (x, y) = (px(cx + inset), px(top + inset));
+        let side = px(cx + CELL - inset) - x;
+        let radius = (PLATE_RADIUS * s) as f32;
+        rounded(pm, (x, y, side, side), radius, p.selection_edge());
+        rounded(pm, (x + u, y + u, side - 2 * u, side - 2 * u), radius - u as f32, p.list_selected_background);
+    }
+    if let Some(info) = info(&shown.rows[r].entries[i].app_id) {
+        // The smallest decoded size at least as large as needed.
+        if let Some((_, icon)) = info.icons.iter().find(|(s, _)| *s >= icon_px).or(info.icons.last()) {
+            let k = icon_px as f32 / icon.width() as f32;
+            let off = (CELL - ICON) / 2;
+            let paint = PixmapPaint { quality: FilterQuality::Bicubic, ..Default::default() };
+            let t = SkTransform::from_row(k, 0.0, 0.0, k, px(cx + off) as f32, px(top + off) as f32);
+            pm.draw_pixmap(0, 0, icon.as_ref().as_ref(), &paint, t, None);
+        }
+    }
+    if let Some(c) = shown.letter(r, i) {
+        // Its hint, on the cell's lower right.
+        let b = crate::hints::badge_pixmap(p, c, s);
+        let bx = px(cx + CELL) - u - b.width() as i32;
+        let by = px(top + CELL) - u - b.height() as i32;
+        pm.draw_pixmap(bx, by, b.as_ref(), &PixmapPaint::default(), SkTransform::identity(), None);
+    }
+}
+
+/// Fill `(x, y, w, h)` (device px) with corners of `radius`, antialiased.
+fn rounded(pm: &mut Pixmap, (x, y, w, h): (i32, i32, i32, i32), radius: f32, rgba: [u8; 4]) {
+    let (x, y, w, h) = (x as f32, y as f32, w as f32, h as f32);
+    let r = radius.clamp(0.0, w.min(h) / 2.0);
+    // How far a cubic's handles reach to bend a quarter circle.
+    let k = r * 0.552_284_8;
+    let mut pb = PathBuilder::new();
+    pb.move_to(x + r, y);
+    pb.line_to(x + w - r, y);
+    pb.cubic_to(x + w - r + k, y, x + w, y + r - k, x + w, y + r);
+    pb.line_to(x + w, y + h - r);
+    pb.cubic_to(x + w, y + h - r + k, x + w - r + k, y + h, x + w - r, y + h);
+    pb.line_to(x + r, y + h);
+    pb.cubic_to(x + r - k, y + h, x, y + h - r + k, x, y + h - r);
+    pb.line_to(x, y + r);
+    pb.cubic_to(x, y + r - k, x + r - k, y, x + r, y);
+    pb.close();
+    let Some(path) = pb.finish() else { return };
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(rgba[0], rgba[1], rgba[2], rgba[3]);
+    paint.anti_alias = true;
+    pm.fill_path(&path, &paint, FillRule::Winding, SkTransform::identity(), None);
+}
+
+/// A display's box, as a BeOS BBox: an etched frame over `(x, width)`
+/// from `top` to `bottom` (logical), its name across the top edge after a
+/// little screen, lit when the panel is on that display (`here`).
+fn display_box(pm: &mut Pixmap, p: &Palette, (x, bw): (i32, i32), (top, bottom): (i32, i32), name: &str, here: bool, s: f64) {
+    let px = |l: i32| (l as f64 * s).round() as i32;
+    let u = px(1).max(1);
+    let (x0, x1, y0, y1) = (px(x), px(x + bw), px(top), px(bottom));
+    // The name's size and where it breaks the top edge.
+    let size = NAME_FONT * s as f32;
+    let tw = text::measure(name, size, true).ceil() as i32;
+    let (gap0, gap1) = (px(x + NAME_IN - 4), px(x + NAME_IN + SCREEN.0 + SCREEN_GAP) + tw + px(4));
+    // A groove, as the kit's BBox: a dark line, then a shine one, all
+    // round (so shine ends the bottom and right edges, lit from the top
+    // left).
+    let dark = p.shade(p.panel_background, 1.22);
+    let edge = |pm: &mut Pixmap, x: i32, y: i32, ew: i32, eh: i32, color| fill(pm, x, y, ew.max(0), eh.max(0), color);
+    edge(pm, x0, y0, gap0 - x0, u, dark);
+    edge(pm, gap1, y0, x1 - u - gap1, u, dark);
+    edge(pm, x0, y0, u, y1 - y0 - u, dark);
+    edge(pm, x0, y1 - 2 * u, x1 - x0 - u, u, dark);
+    edge(pm, x1 - 2 * u, y0, u, y1 - y0 - u, dark);
+    edge(pm, x0 + u, y0 + u, gap0 - x0 - u, u, p.shine);
+    edge(pm, gap1, y0 + u, x1 - 2 * u - gap1, u, p.shine);
+    edge(pm, x0 + u, y0 + u, u, y1 - y0 - 3 * u, p.shine);
+    edge(pm, x0, y1 - u, x1 - x0, u, p.shine);
+    edge(pm, x1 - u, y0, u, y1 - y0, p.shine);
+    // A little screen on a stand, its glass lit on this display.
+    let ink = if here { p.panel_text } else { p.tab_text_unfocused };
+    let (sx, sw) = (px(x + NAME_IN), px(SCREEN.0));
+    let sh = px(SCREEN.1 - 2);
+    let sy = y0 - px(SCREEN.1) / 2;
+    fill(pm, sx, sy, sw, sh, ink);
+    fill(pm, sx + u, sy + u, sw - 2 * u, sh - 2 * u, if here { p.control_highlight } else { p.panel_background });
+    if here {
+        // A glint on the glass.
+        fill(pm, sx + 2 * u, sy + 2 * u, px(3), u, p.shine);
+    }
+    let neck = px(3);
+    fill(pm, sx + (sw - neck) / 2, sy + sh, neck, u, ink);
+    let foot = px(7);
+    fill(pm, sx + (sw - foot) / 2, sy + sh + u, foot, u, ink);
+    let ty = y0 as f32 - size * 1.25 / 2.0;
+    let color = if here { p.panel_text } else { p.tab_text_unfocused };
+    text::draw(pm, name, (sx + sw + px(SCREEN_GAP)) as f32, ty.round(), size, true, color);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -386,16 +557,28 @@ mod tests {
     fn names_and_sizes() {
         assert_eq!(fallback_name("olo.tracker"), "Tracker");
         assert_eq!(fallback_name("foot"), "Foot");
-        assert_eq!(panel_size(&[2]), (MIN_WIDTH, PAD + CELL + LABEL + PAD));
-        assert_eq!(panel_size(&[10]).0, 2 * PAD + 10 * CELL);
+        let e = |a: &str, display| Entry { app_id: a.into(), title: None, display };
+        let row = |workspace, entries| Row { workspace, entries };
+        let shown = |rows, displays| Shown { rows, displays, row: 0, index: 0, letters: false };
+        assert_eq!(layout(&shown(vec![row(0, vec![e("a", 0); 2])], vec![])).size, (MIN_WIDTH, PAD + CELL + LABEL + PAD));
+        assert_eq!(layout(&shown(vec![row(0, vec![e("a", 0); 10])], vec![])).size.0, 2 * PAD + 10 * CELL);
         // More than one workspace: numbered rows.
-        assert_eq!(panel_size(&[10, 3]), (2 * PAD + GUTTER + 10 * CELL, PAD + 2 * CELL + ROW_GAP + LABEL + PAD));
+        let two = vec![row(0, vec![e("a", 0); 10]), row(1, vec![e("a", 0); 3])];
+        assert_eq!(layout(&shown(two, vec![])).size, (2 * PAD + GUTTER + 10 * CELL, PAD + 2 * CELL + ROW_GAP + LABEL + PAD));
+        // By display: a box each, as wide as its most cells in a row.
+        let d = |n: &str| Display { output: n.into(), name: "D".into() };
+        let rows = vec![row(0, vec![e("a", 0), e("b", 0), e("c", 0), e("d", 0), e("e", 1)]), row(1, vec![e("a", 1), e("b", 1), e("c", 1), e("f", 1)])];
+        let lay = layout(&shown(rows, vec![d("A"), d("B")]));
+        let boxed = 4 * CELL + 2 * BOX_PAD;
+        assert_eq!(lay.columns, vec![(PAD + GUTTER, boxed), (PAD + GUTTER + boxed + BOX_GAP, boxed)]);
+        assert_eq!(lay.size, (2 * PAD + GUTTER + 2 * boxed + BOX_GAP, PAD + CAPTION + 2 * CELL + ROW_GAP + BOX_PAD + LABEL + PAD));
     }
 
     #[test]
     fn letters_run_across_rows() {
-        let e = |a: &str| Entry { app_id: a.into(), title: None };
-        let mut shown = Shown { rows: vec![Row { workspace: 0, entries: vec![e("a"), e("b")] }, Row { workspace: 2, entries: vec![e("c")] }], row: 0, index: 0, letters: true };
+        let e = |a: &str| Entry { app_id: a.into(), title: None, display: 0 };
+        let rows = vec![Row { workspace: 0, entries: vec![e("a"), e("b")] }, Row { workspace: 2, entries: vec![e("c")] }];
+        let mut shown = Shown { rows, displays: Vec::new(), row: 0, index: 0, letters: true };
         assert_eq!(shown.letter(1, 0), Some('d'));
         assert_eq!(shown.find('d'), Some((1, 0)));
         assert_eq!(shown.find('f'), None);

@@ -292,9 +292,10 @@ impl App for Palette {
 
         let painter = ui.painter().clone();
         // A soft shadow, then the BeOS panel.
+        let [r, g, b, a] = p.drop_shadow;
         for i in 1..=6 {
-            let a = (26 - i * 4) as u8;
-            painter.rect_filled(panel.expand(i as f32).translate(vec2(0.0, i as f32 * 0.5)), 4.0 + i as f32, Color32::from_black_alpha(a));
+            let a = (a as u32 * (26 - i * 4) / 40) as u8;
+            painter.rect_filled(panel.expand(i as f32).translate(vec2(0.0, i as f32 * 0.5)), 4.0 + i as f32, Color32::from_rgba_unmultiplied(r, g, b, a));
         }
         painter.rect_filled(panel, 0.0, c(p.panel_background));
         style::frame_rect(&painter, panel, style::darken(p.panel_background, 1.6));
@@ -397,11 +398,10 @@ impl App for Palette {
                 if !drew {
                     icons::paint(&painter, icon_r, "application");
                 }
-                // Right side: the kind, and keys before it.
-                let kind = painter.layout_no_wrap(item.kind.label().to_owned(), style::small_font(), dim);
-                let kind_x = r.right() - 8.0 - kind.size().x;
-                painter.galley(pos2(kind_x, r.center().y - kind.size().y / 2.0), kind, dim);
-                let mut right = kind_x - m::SPACING;
+                // Right side: the kind (on the subtitle's line), and keys
+                // before it.
+                let kind = style::label_fit(&painter, r.right() - 8.0, r.center().y + 1.0, Align::Max, item.kind.label(), style::small_font(), dim, f32::INFINITY);
+                let mut right = kind.left() - m::SPACING;
                 if let Some(keys) = &item.keys {
                     let w = style::key_combo_width(ui.ctx(), keys);
                     style::key_combo(&painter, pos2(right, r.center().y), keys, fg);

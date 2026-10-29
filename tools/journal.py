@@ -66,7 +66,8 @@ def add(source, title, caption, crop):
             im = im.crop((x, y, x + w, y + h))
         im.save(dest, optimize=True)
     else:
-        args = [TSESSION, "shot", source, dest] + (list(crop) if crop else [])
+        # The same Python as ours, which has PIL; the one on PATH may not.
+        args = [sys.executable, TSESSION, "shot", source, dest] + (list(crop) if crop else [])
         subprocess.run(args, check=True, stdout=subprocess.DEVNULL)
     entries = load()
     entries.append({"time": now.isoformat(timespec="seconds"), "title": title, "caption": caption, "image": rel})

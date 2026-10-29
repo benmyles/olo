@@ -6,48 +6,15 @@
 //!
 //! Each process draws in one theme at a time, [`current`]: the kit and
 //! app_server [`set`] it from the settings and drop what they drew in the
-//! old one.
+//! old one. The themes themselves, and their colours, are
+//! `olo_theme::looks`.
 
 use std::{
     path::PathBuf,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-/// A theme: its id (its directory, and what the setting holds), its
-/// name, and a line about it for Preferences.
-#[derive(Debug, PartialEq, Eq)]
-pub struct Theme {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub about: &'static str,
-}
-
-/// Every theme, in the order Preferences shows them.
-pub const THEMES: &[Theme] = &[
-    Theme { id: "bebox", name: "BeBox", about: "Graphite and blinking lights." },
-    Theme { id: "soft-be", name: "Soft Be", about: "Soft matte clay on the Be desk." },
-    Theme { id: "toybox", name: "Toybox", about: "Painted wooden toys." },
-    Theme { id: "papercraft", name: "Papercraft", about: "Folded card, one tone a face." },
-    Theme { id: "enamel", name: "Enamel", about: "Enamel pins in polished gold." },
-    Theme { id: "halftone", name: "Halftone", about: "Flat ink and halftone dots." },
-    Theme { id: CLASSIC, name: "Classic", about: "Olo's first set: glossy, bright." },
-];
-
-/// The theme a new user gets (and an unknown setting falls back to).
-pub const DEFAULT: &str = "bebox";
-
-/// The set in `<data>/icons` and `<data>/brand` itself, with no overlay.
-pub const CLASSIC: &str = "classic";
-
-/// Theme `id`, if there is one.
-pub fn get(id: &str) -> Option<&'static Theme> {
-    THEMES.iter().find(|t| t.id == id)
-}
-
-/// Theme `id`, or the default if there is none by that name.
-pub fn resolve(id: &str) -> &'static Theme {
-    get(id).or_else(|| get(DEFAULT)).expect("the default theme")
-}
+pub use olo_theme::looks::{CLASSIC, DEFAULT, THEMES, Theme, get, resolve};
 
 const UNSET: usize = usize::MAX;
 static CURRENT: AtomicUsize = AtomicUsize::new(UNSET);
@@ -128,15 +95,6 @@ mod tests {
             .filter(|l| !l.is_empty() && !l.starts_with('#'))
             .map(|l| l.split('|').next().unwrap().to_owned())
             .collect()
-    }
-
-    #[test]
-    fn ids_are_unique_and_known() {
-        for (i, t) in THEMES.iter().enumerate() {
-            assert!(THEMES[..i].iter().all(|u| u.id != t.id), "{} twice", t.id);
-        }
-        assert!(get(DEFAULT).is_some() && get(CLASSIC).is_some());
-        assert_eq!(resolve("no-such-theme").id, DEFAULT);
     }
 
     #[test]

@@ -8,6 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::render::Exact;
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -284,7 +285,7 @@ pub fn show<'a>(outputs: impl Iterator<Item = &'a Output>, on: &Output, ind: &In
 }
 
 /// The indicator on `output`, while it is up: centred, low down.
-pub fn element<R>(renderer: &mut R, output: &Output, screen: Size<i32, smithay::utils::Logical>) -> Option<MemoryRenderBufferRenderElement<R>>
+pub fn element<R>(renderer: &mut R, output: &Output, screen: Size<i32, smithay::utils::Logical>) -> Option<Exact<MemoryRenderBufferRenderElement<R>>>
 where
     R: Renderer + ImportMem,
     R::TextureId: Send + Clone + 'static,
@@ -298,17 +299,7 @@ where
     let screen = screen.to_f64().to_physical(s);
     let x = ((screen.w - *w as f64) / 2.0).round();
     let y = (screen.h * (1.0 - LOW) - *h as f64).round();
-    let logical = ((*w as f64 / s).round() as i32, (*h as f64 / s).round() as i32);
-    MemoryRenderBufferRenderElement::from_buffer(
-        renderer,
-        (x, y),
-        buffer,
-        None,
-        Some(Rectangle::from_size((*w as f64, *h as f64).into())),
-        Some(logical.into()),
-        Kind::Unspecified,
-    )
-    .ok()
+    crate::render::picture(renderer, (x, y).into(), buffer, (*w, *h), None, Kind::Unspecified)
 }
 
 impl<B: Backend> AnvilState<B> {
@@ -347,7 +338,7 @@ mod tests {
         ];
         let mut rows = Vec::new();
         for mode in [olo_theme::ThemeMode::Light, olo_theme::ThemeMode::Dark] {
-            theme::set_mode(mode);
+            theme::set(olo_theme::looks::palette(olo_theme::looks::DEFAULT, "", mode));
             rows.push(inds.iter().map(|i| draw(i, 2.0)).collect::<Vec<_>>());
         }
         let (w, h) = (rows[0][0].width() + 16, rows[0][0].height() + 16);

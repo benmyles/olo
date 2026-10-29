@@ -10,7 +10,7 @@ use olo_kit::{
     egui::{Align2, Color32, Rect, Sense, Ui, Vec2, vec2},
     metrics as m,
     style::{self, c},
-    widgets::{BBox, Button, CheckBox, MenuField, Slider, StringView},
+    widgets::{BBox, Button, CheckBox, EmptyState, MenuField, Slider, StringView},
 };
 use olo_protocol::{Mode, OutputConfig, OutputInfo, PowerStatus, Settings};
 
@@ -109,7 +109,7 @@ fn display_name(o: &OutputInfo) -> String {
 pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&PowerStatus>, server: &Server, st: &mut State) {
     let p = style::palette(ui.ctx());
     if outputs.is_empty() {
-        ui.add(StringView::new("No displays reported by app_server.").dim(true));
+        ui.add(EmptyState::new("No displays reported by app_server.").icon("display"));
         return;
     }
     if st.selected.as_ref().is_none_or(|n| !outputs.iter().any(|o| &o.name == n)) {
@@ -150,7 +150,8 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
     let mut order: Vec<&OutputInfo> = outputs.iter().collect();
     order.sort_by_key(|o| st.drag.as_ref().is_some_and(|(n, _)| *n == o.name));
     for o in order {
-        let mut r = rect_of(o);
+        // To scale, then on device pixels.
+        let mut r = style::snap(ui.ctx(), rect_of(o));
         let chosen = st.selected.as_deref() == Some(&o.name);
         let sense = if outputs.len() > 1 { Sense::click_and_drag() } else { Sense::click() };
         let resp = ui.interact(r, ui.make_persistent_id(("display", &o.name)), sense);
@@ -164,7 +165,7 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
         if let Some((n, d)) = &st.drag
             && *n == o.name
         {
-            r = r.translate(*d).intersect(map.shrink(2.0));
+            r = style::snap(ui.ctx(), r.translate(*d).intersect(map.shrink(2.0)));
             if resp.drag_stopped() {
                 dropped = Some((o.name.clone(), *d));
             }
@@ -172,15 +173,15 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
         let [rr, gg, bb] = s.workspace_color(0);
         ui.painter().rect_filled(r, 0.0, Color32::from_rgb(rr, gg, bb));
         let border = if chosen { c(p.keyboard_navigation) } else { c(p.frame_focused[0]) };
-        let stroke_w = if chosen { 2.0 } else { 1.0 };
+        let stroke_w = style::hairline(ui.ctx()) * if chosen { 2.0 } else { 1.0 };
         ui.painter().rect_stroke(r, 0.0, (stroke_w, border), olo_kit::egui::StrokeKind::Inside);
         // A menu bar strip on the main display, where Deskbar goes (or on
         // every display, each with its own).
         if o.main || s.display.deskbar_on_every_display {
             let bar = Rect::from_min_size(r.min + vec2(stroke_w, stroke_w), vec2(r.width() - 2.0 * stroke_w, 4.0));
-            ui.painter().rect_filled(bar, 0.0, Color32::from_white_alpha(200));
+            ui.painter().rect_filled(bar, 0.0, c(p.panel_background));
         }
-        ui.painter().text(r.center(), Align2::CENTER_CENTER, display_name(o), style::plain_font(), Color32::WHITE);
+        ui.painter().text(r.center(), Align2::CENTER_CENTER, display_name(o), style::plain_font(), c(p.desktop_text));
     }
     if let Some((name, d)) = dropped {
         st.drag = None;
@@ -304,15 +305,19 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
         if o.mirror_of.is_none() {
             let (cw, ch) = if o.rotation % 180 == 90 { (chosen.height, chosen.width) } else { (chosen.width, chosen.height) };
             let (lw, lh) = (cw as f64 / SCALES[si], ch as f64 / SCALES[si]);
+            // Under the fields' text.
             ui.horizontal(|ui| {
-                ui.add_space(label_w + m::LABEL_GAP);
+                ui.add_space(label_w + m::TEXT_INSET);
                 ui.add(StringView::new(&format!("Looks like {lw:.0} × {lh:.0}")).dim(true));
             });
         }
         if outputs.len() > 1 && o.mirror_of.is_none() {
             ui.horizontal(|ui| {
-                ui.add_space(label_w + m::LABEL_GAP);
+                // The note under the fields' text, the check box under
+                // the fields.
+                ui.add_space(label_w);
                 if o.main {
+                    ui.add_space(m::TEXT_INSET);
                     let here = if s.display.deskbar_on_every_display { "the desktop is here" } else { "Deskbar and the desktop are here" };
                     ui.add(StringView::new(&format!("Main display: {here}.")).dim(true));
                 } else {

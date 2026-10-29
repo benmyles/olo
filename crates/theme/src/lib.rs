@@ -1,11 +1,17 @@
-//! The Olo look: BeOS R5 colours and metrics, in light and dark variants.
+//! The Olo look: every colour the desktop draws with ([`Palette`]), in
+//! whole looks ([`looks`]: each theme's own colours, BeOS's and
+//! Catppuccin's, light and dark), BeOS's tint helpers and metrics.
 //!
 //! Both app_server (window tabs and frames) and the Interface Kit (every
-//! widget) draw from [`Palette`], so a theme switch changes everything in
-//! lock-step. Colours are sRGB `[r, g, b, a]` bytes.
+//! widget) draw from [`Palette`], so a change of look changes everything
+//! in lock-step; GTK, libadwaita and Chrome take it too ([`toolkit`]).
+//! Colours are sRGB `[r, g, b, a]` bytes, written `#rrggbb` (or
+//! `#rrggbbaa`) when a palette goes to agents as JSON.
 
 use serde::{Deserialize, Serialize};
 
+pub mod catppuccin;
+pub mod looks;
 pub mod toolkit;
 
 pub type Rgba = [u8; 4];
@@ -14,7 +20,15 @@ pub const fn rgb(r: u8, g: u8, b: u8) -> Rgba {
     [r, g, b, 255]
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// `0xrrggbb` as an opaque colour.
+pub const fn hex(h: u32) -> Rgba {
+    [(h >> 16) as u8, (h >> 8) as u8, h as u8, 255]
+}
+
+pub const WHITE: Rgba = [255, 255, 255, 255];
+pub const BLACK: Rgba = [0, 0, 0, 255];
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ThemeMode {
     #[default]
@@ -22,69 +36,296 @@ pub enum ThemeMode {
     Dark,
 }
 
-/// Every colour the desktop draws with. Names follow the Haiku/BeOS
-/// `color_which` constants where one exists.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Palette {
-    pub mode: ThemeMode,
-    // Interface Kit (B_PANEL_BACKGROUND_COLOR and friends)
-    pub panel_background: Rgba,
-    pub panel_text: Rgba,
-    pub document_background: Rgba,
-    pub document_text: Rgba,
-    pub control_background: Rgba,
-    pub control_text: Rgba,
-    pub control_border: Rgba,
-    pub control_highlight: Rgba,
-    pub control_mark: Rgba,
-    pub navigation_base: Rgba,
-    pub navigation_pulse: Rgba,
-    pub shine: Rgba,
-    pub shadow: Rgba,
-    pub menu_background: Rgba,
-    pub menu_selected_background: Rgba,
-    pub menu_item_text: Rgba,
-    pub menu_selected_item_text: Rgba,
-    pub menu_selected_border: Rgba,
-    pub tooltip_background: Rgba,
-    pub tooltip_text: Rgba,
-    pub list_background: Rgba,
-    pub list_selected_background: Rgba,
-    pub list_item_text: Rgba,
-    pub list_selected_item_text: Rgba,
-    pub success: Rgba,
-    pub failure: Rgba,
-    pub keyboard_navigation: Rgba,
-    // Desktop
-    pub desktop_text: Rgba,
-    pub desktop_text_shadow: Rgba,
-    pub status_bar: Rgba,
-    // Window decorator (app_server)
-    pub tab_focused: Rgba,
-    pub tab_focused_light: Rgba,
-    pub tab_focused_shadow: Rgba,
-    pub tab_unfocused: Rgba,
-    pub tab_unfocused_light: Rgba,
-    pub tab_unfocused_shadow: Rgba,
-    pub tab_text_focused: Rgba,
-    pub tab_text_unfocused: Rgba,
-    /// Frame bevel, outermost line first. Index 0..5.
-    pub frame_focused: [Rgba; 6],
-    pub frame_unfocused: [Rgba; 6],
+/// The named colours of a look, for telling things apart: graph lines,
+/// chart slices, tab groups, file systems, syntax. Vivid enough to fill
+/// with; as text, take [`Palette::hue_text`], which keeps them readable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Hue {
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Teal,
+    Blue,
+    Purple,
+    Pink,
+    Brown,
+    Gray,
 }
 
-impl Palette {
-    pub fn for_mode(mode: ThemeMode) -> Palette {
-        match mode {
-            ThemeMode::Light => Palette::light(),
-            ThemeMode::Dark => Palette::dark(),
+impl Hue {
+    pub const ALL: [Hue; 10] =
+        [Hue::Red, Hue::Orange, Hue::Yellow, Hue::Green, Hue::Teal, Hue::Blue, Hue::Purple, Hue::Pink, Hue::Brown, Hue::Gray];
+
+    /// Its name in menus ("Red").
+    pub fn name(self) -> &'static str {
+        match self {
+            Hue::Red => "Red",
+            Hue::Orange => "Orange",
+            Hue::Yellow => "Yellow",
+            Hue::Green => "Green",
+            Hue::Teal => "Teal",
+            Hue::Blue => "Blue",
+            Hue::Purple => "Purple",
+            Hue::Pink => "Pink",
+            Hue::Brown => "Brown",
+            Hue::Gray => "Gray",
         }
     }
+}
 
-    /// BeOS R5 as shipped.
+/// A look's [`Hue`]s.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Hues {
+    #[serde(with = "hex_color")]
+    pub red: Rgba,
+    #[serde(with = "hex_color")]
+    pub orange: Rgba,
+    #[serde(with = "hex_color")]
+    pub yellow: Rgba,
+    #[serde(with = "hex_color")]
+    pub green: Rgba,
+    #[serde(with = "hex_color")]
+    pub teal: Rgba,
+    #[serde(with = "hex_color")]
+    pub blue: Rgba,
+    #[serde(with = "hex_color")]
+    pub purple: Rgba,
+    #[serde(with = "hex_color")]
+    pub pink: Rgba,
+    #[serde(with = "hex_color")]
+    pub brown: Rgba,
+    #[serde(with = "hex_color")]
+    pub gray: Rgba,
+}
+
+impl Hues {
+    pub fn get(&self, hue: Hue) -> Rgba {
+        match hue {
+            Hue::Red => self.red,
+            Hue::Orange => self.orange,
+            Hue::Yellow => self.yellow,
+            Hue::Green => self.green,
+            Hue::Teal => self.teal,
+            Hue::Blue => self.blue,
+            Hue::Purple => self.purple,
+            Hue::Pink => self.pink,
+            Hue::Brown => self.brown,
+            Hue::Gray => self.gray,
+        }
+    }
+}
+
+/// A terminal's colours: a look's own (`Palette::terminal`), or one of
+/// the others Terminal offers ([`looks::terminals`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Terminal {
+    /// What Terminal's settings keep (`bebox-light`, `beos-dark`,
+    /// `latte`, …; see [`looks::terminal`]).
+    pub id: String,
+    /// Its name in menus ("BeBox Light", "Catppuccin Latte").
+    pub name: String,
+    /// The mode it is made for.
+    pub mode: ThemeMode,
+    #[serde(with = "hex_color")]
+    pub foreground: Rgba,
+    #[serde(with = "hex_color")]
+    pub background: Rgba,
+    #[serde(with = "hex_color")]
+    pub cursor: Rgba,
+    #[serde(with = "hex_color")]
+    pub selection: Rgba,
+    /// Black, red, green, yellow, blue, magenta, cyan, white; then bright.
+    #[serde(with = "hex_colors")]
+    pub ansi: [Rgba; 16],
+}
+
+/// Every colour the desktop draws with. Names follow the Haiku/BeOS
+/// `color_which` constants where one exists. A palette is one look in
+/// one mode: [`looks::palette`] makes them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Palette {
+    pub mode: ThemeMode,
+    /// The look it is: a theme's id ([`looks::THEMES`]) and its colour
+    /// set's ([`looks::ColorSet::id`]).
+    pub theme: String,
+    pub colors: String,
+    // Interface Kit (B_PANEL_BACKGROUND_COLOR and friends)
+    #[serde(with = "hex_color")]
+    pub panel_background: Rgba,
+    #[serde(with = "hex_color")]
+    pub panel_text: Rgba,
+    #[serde(with = "hex_color")]
+    pub document_background: Rgba,
+    #[serde(with = "hex_color")]
+    pub document_text: Rgba,
+    #[serde(with = "hex_color")]
+    pub control_background: Rgba,
+    #[serde(with = "hex_color")]
+    pub control_text: Rgba,
+    #[serde(with = "hex_color")]
+    pub control_border: Rgba,
+    #[serde(with = "hex_color")]
+    pub control_highlight: Rgba,
+    #[serde(with = "hex_color")]
+    pub control_mark: Rgba,
+    #[serde(with = "hex_color")]
+    pub navigation_base: Rgba,
+    #[serde(with = "hex_color")]
+    pub navigation_pulse: Rgba,
+    #[serde(with = "hex_color")]
+    pub shine: Rgba,
+    #[serde(with = "hex_color")]
+    pub shadow: Rgba,
+    #[serde(with = "hex_color")]
+    pub menu_background: Rgba,
+    #[serde(with = "hex_color")]
+    pub menu_selected_background: Rgba,
+    #[serde(with = "hex_color")]
+    pub menu_item_text: Rgba,
+    #[serde(with = "hex_color")]
+    pub menu_selected_item_text: Rgba,
+    #[serde(with = "hex_color")]
+    pub menu_selected_border: Rgba,
+    #[serde(with = "hex_color")]
+    pub tooltip_background: Rgba,
+    #[serde(with = "hex_color")]
+    pub tooltip_text: Rgba,
+    #[serde(with = "hex_color")]
+    pub list_background: Rgba,
+    #[serde(with = "hex_color")]
+    pub list_selected_background: Rgba,
+    #[serde(with = "hex_color")]
+    pub list_item_text: Rgba,
+    #[serde(with = "hex_color")]
+    pub list_selected_item_text: Rgba,
+    #[serde(with = "hex_color")]
+    pub success: Rgba,
+    #[serde(with = "hex_color")]
+    pub failure: Rgba,
+    /// Cautions (Logs' warnings, a weak password): readable on documents.
+    #[serde(with = "hex_color")]
+    pub warning: Rgba,
+    #[serde(with = "hex_color")]
+    pub keyboard_navigation: Rgba,
+    // Desktop
+    #[serde(with = "hex_color")]
+    pub desktop_text: Rgba,
+    #[serde(with = "hex_color")]
+    pub desktop_text_shadow: Rgba,
+    #[serde(with = "hex_color")]
+    pub status_bar: Rgba,
+    // Depth and overlays
+    /// Laid over a picture or the screen to set something on it (a
+    /// screenshot's region, a viewer's controls); translucent.
+    #[serde(with = "hex_color")]
+    pub scrim: Rgba,
+    /// A soft shadow under something lifted (a slider's thumb, a popup);
+    /// translucent.
+    #[serde(with = "hex_color")]
+    pub drop_shadow: Rgba,
+    /// The light along the top of a coloured fill (a progress bar, a
+    /// colour well); translucent, and clear in flat looks.
+    #[serde(with = "hex_color")]
+    pub gloss: Rgba,
+    // Window decorator (app_server)
+    #[serde(with = "hex_color")]
+    pub tab_focused: Rgba,
+    #[serde(with = "hex_color")]
+    pub tab_focused_light: Rgba,
+    #[serde(with = "hex_color")]
+    pub tab_focused_shadow: Rgba,
+    #[serde(with = "hex_color")]
+    pub tab_unfocused: Rgba,
+    #[serde(with = "hex_color")]
+    pub tab_unfocused_light: Rgba,
+    #[serde(with = "hex_color")]
+    pub tab_unfocused_shadow: Rgba,
+    #[serde(with = "hex_color")]
+    pub tab_text_focused: Rgba,
+    #[serde(with = "hex_color")]
+    pub tab_text_unfocused: Rgba,
+    /// Frame bevel, outermost line first. Index 0..5.
+    #[serde(with = "hex_colors")]
+    pub frame_focused: [Rgba; 6],
+    #[serde(with = "hex_colors")]
+    pub frame_unfocused: [Rgba; 6],
+    /// Colours for telling things apart.
+    pub hues: Hues,
+    /// Terminal's colours in this look.
+    pub terminal: Terminal,
+}
+
+/// Olo's hues on light grounds: vivid enough for fills and lines.
+pub const HUES_LIGHT: Hues = Hues {
+    red: hex(0xd63b32),
+    orange: hex(0xe88018),
+    yellow: hex(0xdeb014),
+    green: hex(0x34a048),
+    teal: hex(0x1896a0),
+    blue: hex(0x2c6cd6),
+    purple: hex(0x9250c4),
+    pink: hex(0xd64a96),
+    brown: hex(0xa0643a),
+    gray: hex(0x7a7c82),
+};
+
+/// Olo's hues on dark grounds.
+pub const HUES_DARK: Hues = Hues {
+    red: hex(0xe85c52),
+    orange: hex(0xf09840),
+    yellow: hex(0xecc440),
+    green: hex(0x54ba62),
+    teal: hex(0x3ab4be),
+    blue: hex(0x548cec),
+    purple: hex(0xae70de),
+    pink: hex(0xe670b0),
+    brown: hex(0xc08454),
+    gray: hex(0x96989e),
+};
+
+/// Olo's ANSI colours for terminals on light grounds: every one of the
+/// 16 reads clearly on a paper white (no neon green on black).
+pub const ANSI_LIGHT: [Rgba; 16] = [
+    hex(0x3b3f45), hex(0xc4314b), hex(0x2f8a3e), hex(0x9a6a00),
+    hex(0x2f6fdb), hex(0x9d3fb5), hex(0x0f8494), hex(0x9a9ca2),
+    hex(0x6a6e75), hex(0xe0475f), hex(0x3aa34d), hex(0xb98400),
+    hex(0x4b8af0), hex(0xb85bd0), hex(0x13939f), hex(0xd4d5d8),
+];
+
+/// Olo's ANSI colours on dark grounds.
+pub const ANSI_DARK: [Rgba; 16] = [
+    hex(0x2c3037), hex(0xec6a78), hex(0x8fcf7d), hex(0xe8c17a),
+    hex(0x6aaef5), hex(0xc98ae6), hex(0x5cc4cf), hex(0xb4b8bf),
+    hex(0x5f6570), hex(0xff8592), hex(0xa9e395), hex(0xf7d595),
+    hex(0x8cc2ff), hex(0xdca5f2), hex(0x7ad6df), hex(0xeceef1),
+];
+
+impl Palette {
+    /// `rgba` tinted as `tint_color` does, darkening further in dark mode
+    /// (where a tint's step shows less): how the kit draws its etched
+    /// lines, `shade(panel_background, 1.22)`.
+    pub fn shade(&self, rgba: Rgba, tint: f32) -> Rgba {
+        let t = if self.mode == ThemeMode::Dark && tint > 1.0 { 1.0 + (tint - 1.0) * 1.9 } else { tint };
+        self::tint(rgba, t)
+    }
+
+    /// The hairline round a selection plate (the kit's
+    /// `style::selection_plate`, Twitcher's chosen app): the list
+    /// selection's ground taken towards the highlight colour, so the
+    /// plate's shape stays crisp on any panel.
+    pub fn selection_edge(&self) -> Rgba {
+        mix(self.list_selected_background, self.control_highlight, 0.6)
+    }
+
+    /// BeOS R5 as shipped (the BeOS colours of every theme, in light
+    /// mode), with a paper-white terminal.
     pub fn light() -> Palette {
         Palette {
             mode: ThemeMode::Light,
+            theme: looks::DEFAULT.into(),
+            colors: looks::ColorSet::Beos.id().into(),
             panel_background: rgb(216, 216, 216),
             panel_text: rgb(0, 0, 0),
             document_background: rgb(255, 255, 255),
@@ -111,10 +352,14 @@ impl Palette {
             list_selected_item_text: rgb(0, 0, 0),
             success: rgb(0, 160, 0),
             failure: rgb(220, 0, 0),
+            warning: rgb(150, 100, 0),
             keyboard_navigation: rgb(0, 0, 229),
             desktop_text: rgb(255, 255, 255),
             desktop_text_shadow: [0, 0, 0, 160],
             status_bar: rgb(50, 150, 255),
+            scrim: [0, 0, 0, 100],
+            drop_shadow: [0, 0, 0, 40],
+            gloss: [255, 255, 255, 70],
             tab_focused: rgb(255, 203, 0),
             tab_focused_light: rgb(255, 230, 128),
             tab_focused_shadow: rgb(176, 136, 0),
@@ -139,6 +384,17 @@ impl Palette {
                 rgb(168, 168, 168),
                 rgb(136, 136, 136),
             ],
+            hues: HUES_LIGHT,
+            terminal: Terminal {
+                id: "beos-light".into(),
+                name: "BeOS Light".into(),
+                mode: ThemeMode::Light,
+                foreground: hex(0x26292e),
+                background: hex(0xfbfaf6),
+                cursor: hex(0x2f6fdb),
+                selection: hex(0xc9dcf7),
+                ansi: ANSI_LIGHT,
+            },
         }
     }
 
@@ -147,6 +403,8 @@ impl Palette {
     pub fn dark() -> Palette {
         Palette {
             mode: ThemeMode::Dark,
+            theme: looks::DEFAULT.into(),
+            colors: looks::ColorSet::Beos.id().into(),
             panel_background: rgb(43, 43, 43),
             panel_text: rgb(224, 224, 224),
             document_background: rgb(28, 28, 28),
@@ -173,10 +431,14 @@ impl Palette {
             list_selected_item_text: rgb(255, 255, 255),
             success: rgb(80, 200, 80),
             failure: rgb(255, 90, 80),
+            warning: rgb(250, 208, 70),
             keyboard_navigation: rgb(96, 144, 255),
             desktop_text: rgb(240, 240, 240),
             desktop_text_shadow: [0, 0, 0, 200],
             status_bar: rgb(60, 140, 230),
+            scrim: [0, 0, 0, 140],
+            drop_shadow: [0, 0, 0, 90],
+            gloss: [255, 255, 255, 40],
             tab_focused: rgb(232, 180, 0),
             tab_focused_light: rgb(250, 208, 70),
             tab_focused_shadow: rgb(140, 104, 0),
@@ -201,8 +463,117 @@ impl Palette {
                 rgb(32, 32, 32),
                 rgb(16, 16, 16),
             ],
+            hues: HUES_DARK,
+            terminal: Terminal {
+                id: "beos-dark".into(),
+                name: "BeOS Dark".into(),
+                mode: ThemeMode::Dark,
+                foreground: hex(0xd9dce1),
+                background: hex(0x1d2025),
+                cursor: hex(0x7cb4ff),
+                selection: hex(0x2f405a),
+                ansi: ANSI_DARK,
+            },
         }
     }
+
+    pub fn is_dark(&self) -> bool {
+        self.mode == ThemeMode::Dark
+    }
+
+    pub fn hue(&self, hue: Hue) -> Rgba {
+        self.hues.get(hue)
+    }
+
+    /// `hue` as text on documents: as given where it reads (4.5:1),
+    /// else darkened (light mode) or lightened (dark) until it does.
+    pub fn hue_text(&self, hue: Hue) -> Rgba {
+        readable(self.hue(hue), self.document_background, 4.5)
+    }
+
+    /// Text set on `fill` (a hue, a chip): the look's dark ink or a
+    /// white, whichever reads better.
+    pub fn ink_on(&self, fill: Rgba) -> Rgba {
+        let dark_ink = if self.is_dark() { self.document_background } else { self.document_text };
+        let light_ink = if self.is_dark() { self.document_text } else { self.document_background };
+        let (dark_ink, light_ink) = (mix(dark_ink, BLACK, 0.5), mix(light_ink, WHITE, 0.5));
+        if contrast(dark_ink, fill) >= contrast(light_ink, fill) { dark_ink } else { light_ink }
+    }
+}
+
+/// `#rrggbb`, or `#rrggbbaa` if not opaque.
+pub fn to_hex(c: Rgba) -> String {
+    if c[3] == 255 { format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2]) } else { format!("#{:02x}{:02x}{:02x}{:02x}", c[0], c[1], c[2], c[3]) }
+}
+
+/// `#rgb`, `#rrggbb` or `#rrggbbaa` (the `#` optional).
+pub fn parse_hex(s: &str) -> Option<Rgba> {
+    let s = s.trim().trim_start_matches('#');
+    let n = |i: usize, w: usize| u8::from_str_radix(s.get(i..i + w)?, 16).ok();
+    match s.len() {
+        3 => Some([n(0, 1)? * 17, n(1, 1)? * 17, n(2, 1)? * 17, 255]),
+        6 => Some([n(0, 2)?, n(2, 2)?, n(4, 2)?, 255]),
+        8 => Some([n(0, 2)?, n(2, 2)?, n(4, 2)?, n(6, 2)?]),
+        _ => None,
+    }
+}
+
+/// Serde for a colour as `#rrggbb`.
+pub mod hex_color {
+    use serde::{Deserialize, Deserializer, Serializer, de::Error};
+
+    pub fn serialize<S: Serializer>(c: &super::Rgba, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&super::to_hex(*c))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<super::Rgba, D::Error> {
+        let t = String::deserialize(d)?;
+        super::parse_hex(&t).ok_or_else(|| D::Error::custom(format!("not a colour: {t:?}")))
+    }
+}
+
+/// Serde for a fixed row of colours, each `#rrggbb`.
+pub mod hex_colors {
+    use serde::{Deserialize, Deserializer, Serializer, de::Error, ser::SerializeSeq};
+
+    pub fn serialize<S: Serializer, const N: usize>(cs: &[super::Rgba; N], s: S) -> Result<S::Ok, S::Error> {
+        let mut seq = s.serialize_seq(Some(N))?;
+        for c in cs {
+            seq.serialize_element(&super::to_hex(*c))?;
+        }
+        seq.end()
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>, const N: usize>(d: D) -> Result<[super::Rgba; N], D::Error> {
+        let ts = Vec::<String>::deserialize(d)?;
+        let cs = ts.iter().map(|t| super::parse_hex(t).ok_or_else(|| D::Error::custom(format!("not a colour: {t:?}")))).collect::<Result<Vec<_>, _>>()?;
+        cs.try_into().map_err(|v: Vec<_>| D::Error::custom(format!("{} colours, not {N}", v.len())))
+    }
+}
+
+/// WCAG relative luminance, 0 (black) to 1 (white).
+pub fn luminance(c: Rgba) -> f32 {
+    let f = |v: u8| {
+        let v = v as f32 / 255.0;
+        if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+    };
+    0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2])
+}
+
+/// WCAG contrast ratio, 1 to 21.
+pub fn contrast(a: Rgba, b: Rgba) -> f32 {
+    let (x, y) = (luminance(a), luminance(b));
+    (x.max(y) + 0.05) / (x.min(y) + 0.05)
+}
+
+/// `fg`, or the least darkening (on light `bg`) or lightening (on dark)
+/// of it that reaches `ratio` against `bg`.
+pub fn readable(fg: Rgba, bg: Rgba, ratio: f32) -> Rgba {
+    if contrast(fg, bg) >= ratio {
+        return fg;
+    }
+    let toward = if luminance(bg) > 0.18 { BLACK } else { WHITE };
+    (1..=20).map(|i| mix(fg, toward, i as f32 / 20.0)).find(|c| contrast(*c, bg) >= ratio).unwrap_or(toward)
 }
 
 /// Linear blend, BeOS `tint_color`-style helpers.

@@ -20,11 +20,13 @@ mod groups;
 mod io;
 mod links;
 mod session;
+mod sudo;
+mod sudo_wire;
 mod view;
 #[allow(dead_code)]
 mod wire;
 
-use std::{collections::HashMap, path::PathBuf, time::Instant};
+use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Instant};
 
 use alacritty_terminal::grid::Dimensions;
 use olo_kit::{
@@ -38,7 +40,8 @@ use olo_kit::{
 };
 
 use agent::{Agent, State};
-use colors::{Scheme, SchemeId};
+use colors::Scheme;
+use olo_kit::theme::{Palette, ThemeMode, looks};
 use groups::Group;
 use olo_kit::notify::{Note, NoteEvent, NoteId, NoteKind, Notifier};
 use session::{Message, Session, Size, Start, TermEvent};
@@ -51,13 +54,16 @@ pub const TEXT_SIZES: [f32; 9] = [9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 16.0, 18.0,
 const DEFAULT_TEXT_SIZE: f32 = 12.0;
 /// The tab strip, shown once a window has more than one tab.
 const STRIP: f32 = widgets::STRIP_HEIGHT;
-/// The title bar over each pane in Show All Tabs.
-const PANE_HEAD: f32 = 22.0;
+/// The title bar over each pane in Show All Tabs: a side tab's height,
+/// so the first tab is level with the heads beside it.
+const PANE_HEAD: f32 = widgets::STRIP_ROW;
 
 /// Show All Tabs' panes for `n` tabs in `area`: as many columns as keep
 /// each pane nearest a terminal's usual shape, the last row's spread
-/// across the width; a line apart.
-fn tile(area: egui::Rect, n: usize) -> Vec<egui::Rect> {
+/// across the width; a line apart. Their edges are on device pixels at
+/// `ppp`, a line's width (`style::line_pixels`) apart, so the line
+/// between two panes meets both.
+fn tile(area: egui::Rect, n: usize, ppp: f32) -> Vec<egui::Rect> {
     let shape = |cols: usize| {
         let rows = n.div_ceil(cols);
         let aspect = (area.width() / cols as f32) / (area.height() / rows as f32);
@@ -65,17 +71,21 @@ fn tile(area: egui::Rect, n: usize) -> Vec<egui::Rect> {
     };
     let cols = (1..=n).min_by(|&a, &b| shape(a).total_cmp(&shape(b))).unwrap_or(1);
     let rows = n.div_ceil(cols);
-    let h = ((area.height() + 1.0) / rows as f32).floor();
+    // In device pixels.
+    let line = style::line_pixels(ppp);
+    let d = |v: f32| (v * ppp).round();
+    let (left, top, right, bottom) = (d(area.left()), d(area.top()), d(area.right()), d(area.bottom()));
+    let h = ((bottom - top + line) / rows as f32).floor();
     let mut out = Vec::with_capacity(n);
     for r in 0..rows {
         let in_row = if r + 1 == rows { n - cols * (rows - 1) } else { cols };
-        let w = ((area.width() + 1.0) / in_row as f32).floor();
+        let w = ((right - left + line) / in_row as f32).floor();
         for c in 0..in_row {
-            let x0 = area.left() + c as f32 * w;
-            let y0 = area.top() + r as f32 * h;
-            let x1 = if c + 1 == in_row { area.right() } else { x0 + w - 1.0 };
-            let y1 = if r + 1 == rows { area.bottom() } else { y0 + h - 1.0 };
-            out.push(egui::Rect::from_min_max(egui::pos2(x0, y0), egui::pos2(x1, y1)));
+            let x0 = left + c as f32 * w;
+            let y0 = top + r as f32 * h;
+            let x1 = if c + 1 == in_row { right } else { x0 + w - line };
+            let y1 = if r + 1 == rows { bottom } else { y0 + h - line };
+            out.push(egui::Rect::from_min_max(egui::pos2(x0 / ppp, y0 / ppp), egui::pos2(x1 / ppp, y1 / ppp)));
         }
     }
     out
@@ -83,9 +93,8 @@ fn tile(area: egui::Rect, n: usize) -> Vec<egui::Rect> {
 
 /// A pane's title bar in Show All Tabs: its tab's icon and title (cut
 /// short with "…"), the one typed into lit as the strip's selected tab
-/// is and underlined in the group's colour (or the focus blue); a line
-/// around each pane keeps them apart.
-fn pane_head(ui: &egui::Ui, pane: egui::Rect, title: &str, icon: &dyn Fn(&egui::Painter, egui::Rect), active: bool, band: Option<egui::Color32>) {
+/// is, the others recessed; a line around each pane keeps them apart.
+fn pane_head(ui: &egui::Ui, pane: egui::Rect, title: &str, icon: &dyn Fn(&egui::Painter, egui::Rect), active: bool) {
     let p = style::palette(ui.ctx());
     let painter = ui.painter();
     let bg = p.panel_background;
@@ -93,16 +102,19 @@ fn pane_head(ui: &egui::Ui, pane: egui::Rect, title: &str, icon: &dyn Fn(&egui::
     let edge = style::shade(&p, bg, 1.3);
     let head = egui::Rect::from_min_size(pane.min, egui::vec2(pane.width(), PANE_HEAD));
     painter.rect_filled(head, 0.0, if active { style::c(bg) } else { well });
-    style::hline(painter, head.left(), head.right(), head.bottom() - 1.0, edge);
-    // Lines between panes (the window's frame does the outer edges).
-    style::vline(painter, pane.right(), pane.top(), pane.bottom() + 1.0, edge);
-    style::hline(painter, pane.left(), pane.right() + 1.0, pane.bottom(), edge);
     if active {
-        let mark = band.unwrap_or(style::c(p.keyboard_navigation));
-        painter.rect_filled(egui::Rect::from_min_max(egui::pos2(head.left(), head.bottom() - 2.0), head.max), 0.0, mark);
+        // Lit from the top left, as BeOS's controls are.
+        style::hline(painter, head.left(), head.right(), head.top(), style::c(p.shine));
     }
+    style::hline_above(painter, head.left(), head.right(), head.bottom(), edge);
+    // Lines between panes (the window's frame does the outer edges).
+    let line = style::hairline(ui.ctx());
+    style::vline(painter, pane.right(), pane.top(), pane.bottom() + line, edge);
+    style::hline(painter, pane.left(), pane.right() + line, pane.bottom(), edge);
     let cy = ((head.top() + head.bottom() - 1.0) / 2.0).round();
-    let at = style::snap(ui.ctx(), egui::Rect::from_min_size(egui::pos2(head.left() + m::SPACING, cy - 8.0), egui::vec2(16.0, 16.0)));
+    // The icon over the pane's text, as a tab's is over the menu bar's
+    // first title.
+    let at = style::snap(ui.ctx(), egui::Rect::from_min_size(egui::pos2(head.left() + view::PAD.x, cy - 8.0), egui::vec2(16.0, 16.0)));
     icon(painter, at);
     let x = at.right() + m::MARK_GAP;
     let font = if active { style::bold_font() } else { style::plain_font() };
@@ -130,11 +142,34 @@ struct Settings {
     scheme: SchemeChoice,
     cols: usize,
     rows: usize,
-    /// The colours in light mode, and in dark mode.
-    #[serde(default = "SchemeId::light")]
-    light_colors: SchemeId,
-    #[serde(default = "SchemeId::dark")]
-    dark_colors: SchemeId,
+    /// The colours in light mode, and in dark mode: a terminal's id
+    /// (`looks::terminal`), or none for the look's own. Choosing another
+    /// look in Preferences puts both back to its own.
+    #[serde(default)]
+    light_colors: Option<String>,
+    #[serde(default)]
+    dark_colors: Option<String>,
+    /// The look (theme, colour set) they last followed.
+    #[serde(default)]
+    look: Option<(String, String)>,
+    /// Tabs down the left side rather than along the top, and how wide
+    /// that strip is.
+    #[serde(default)]
+    side_tabs: bool,
+    #[serde(default = "side_width")]
+    side_width: f32,
+    /// sudo typed at a shell asks for its password in a window too (a
+    /// command with no terminal, as an agent's, always does).
+    #[serde(default = "yes")]
+    sudo_window: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn side_width() -> f32 {
+    widgets::STRIP_SIDE_WIDTH
 }
 
 impl Default for Settings {
@@ -144,8 +179,12 @@ impl Default for Settings {
             scheme: SchemeChoice::Auto,
             cols: DEFAULT_SIZE.0,
             rows: DEFAULT_SIZE.1,
-            light_colors: SchemeId::light(),
-            dark_colors: SchemeId::dark(),
+            light_colors: None,
+            dark_colors: None,
+            look: None,
+            side_tabs: false,
+            side_width: side_width(),
+            sudo_window: true,
         }
     }
 }
@@ -162,14 +201,21 @@ impl Settings {
     fn parse(text: &str) -> Settings {
         let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else { return Settings::default() };
         // From before there was a choice for each appearance, Light and
-        // Dark were Olo Light and Olo Dark, always: still so.
+        // Dark were Olo Light and Olo Dark (now BeOS's), always: still so.
         let before = value.get("light_colors").is_none() && value.get("dark_colors").is_none();
         let mut s: Settings = serde_json::from_value(value).unwrap_or_default();
         if before {
             match s.scheme {
-                SchemeChoice::Light => s.light_colors = SchemeId::OloLight,
-                SchemeChoice::Dark => s.dark_colors = SchemeId::OloDark,
+                SchemeChoice::Light => s.light_colors = Some("beos-light".into()),
+                SchemeChoice::Dark => s.dark_colors = Some("beos-dark".into()),
                 SchemeChoice::Auto => {}
+            }
+        }
+        for c in [&mut s.light_colors, &mut s.dark_colors] {
+            if let Some(id) = c.as_mut()
+                && let Some(mode) = id.strip_prefix("olo-")
+            {
+                *id = format!("beos-{mode}");
             }
         }
         s
@@ -329,6 +375,8 @@ enum Win {
     ConfirmStartOver { target: WindowId },
     /// Name (or rename) a window's group and choose its colour.
     NameGroup { target: WindowId, name: String, color: usize },
+    /// sudo asks for its password (sudo.rs).
+    Sudo(Box<sudo::Request>),
 }
 
 struct Terminal {
@@ -336,7 +384,8 @@ struct Terminal {
     windows: HashMap<WindowId, Win>,
     settings: Settings,
     metrics: Option<Metrics>,
-    dark: bool,
+    /// The desktop's palette now (its look, its mode).
+    look: Arc<Palette>,
     search: find::Search,
     /// olo-termd was started over: when its shells' windows have all
     /// closed, open a new one rather than quitting.
@@ -351,9 +400,14 @@ struct Terminal {
     notes: HashMap<u64, NoteId>,
 }
 
-/// Room above the grid: the menu bar, and the tab strip if shown.
-fn chrome(strip: bool) -> u32 {
-    menu::BAR_HEIGHT as u32 + if strip { STRIP as u32 } else { 0 }
+/// Room beside and above the grid: the menu bar, and the tab strip if
+/// shown (down the side or along the top).
+fn chrome(settings: &Settings, strip: bool) -> (u32, u32) {
+    match (strip, settings.side_tabs) {
+        (true, true) => (settings.side_width as u32, menu::BAR_HEIGHT as u32),
+        (true, false) => (0, (menu::BAR_HEIGHT + STRIP) as u32),
+        (false, _) => (0, menu::BAR_HEIGHT as u32),
+    }
 }
 
 /// Estimated content size for `cols`×`rows` before fonts are loaded
@@ -362,9 +416,10 @@ fn estimate(settings: &Settings, cols: usize, rows: usize, strip: bool) -> (u32,
     let s = settings.text_size;
     let cell_w = (s * 0.6 * 2.0).ceil() / 2.0;
     let cell_h = (s * 1.32 * 2.0).ceil() / 2.0;
+    let (w, h) = chrome(settings, strip);
     (
-        (cols as f32 * cell_w + 2.0 * view::PAD.x).ceil() as u32,
-        (rows as f32 * cell_h + 2.0 * view::PAD.y).ceil() as u32 + chrome(strip),
+        (cols as f32 * cell_w + 2.0 * view::PAD.x).ceil() as u32 + w,
+        (rows as f32 * cell_h + 2.0 * view::PAD.y).ceil() as u32 + h,
     )
 }
 
@@ -411,13 +466,39 @@ struct LegacyWindow {
 
 impl Terminal {
     fn scheme(&self) -> Scheme {
-        let s = &self.settings;
-        let dark = match s.scheme {
-            SchemeChoice::Auto => self.dark,
-            SchemeChoice::Light => false,
-            SchemeChoice::Dark => true,
+        let mode = match self.settings.scheme {
+            SchemeChoice::Auto => self.look.mode,
+            SchemeChoice::Light => ThemeMode::Light,
+            SchemeChoice::Dark => ThemeMode::Dark,
         };
-        if dark { s.dark_colors.scheme() } else { s.light_colors.scheme() }
+        Scheme::from(&self.colors_for(mode))
+    }
+
+    /// The colours for `mode`: the ones chosen, else the look's own.
+    fn colors_for(&self, mode: ThemeMode) -> olo_kit::theme::Terminal {
+        let chosen = match mode {
+            ThemeMode::Light => &self.settings.light_colors,
+            ThemeMode::Dark => &self.settings.dark_colors,
+        };
+        chosen.as_deref().and_then(looks::terminal).unwrap_or_else(|| looks::palette(&self.look.theme, &self.look.colors, mode).terminal)
+    }
+
+    /// Follow the desktop's look: when it is a new one (another theme or
+    /// colour set; not just light or dark), its colours replace any
+    /// chosen here.
+    fn follow(&mut self, palette: &Arc<Palette>) {
+        let look = (palette.theme.clone(), palette.colors.clone());
+        if self.settings.look.as_ref() != Some(&look) {
+            // The first look seen (as on the first run of this version)
+            // keeps what was chosen before.
+            if self.settings.look.is_some() {
+                self.settings.light_colors = None;
+                self.settings.dark_colors = None;
+            }
+            self.settings.look = Some(look);
+            self.settings.save();
+        }
+        self.look = palette.clone();
     }
 
     fn open(&mut self, cx: &mut Cx, cwd: Option<PathBuf>, command: Option<Vec<String>>) {
@@ -476,7 +557,8 @@ impl Terminal {
         let (w, h) = match self.metrics {
             Some(m) => {
                 let (w, h) = m.content_size(cols, rows);
-                (w, h + chrome(strip))
+                let (cw, ch) = chrome(&self.settings, strip);
+                (w + cw, h + ch)
             }
             None => estimate(&self.settings, cols, rows, strip),
         };
@@ -601,7 +683,10 @@ impl Terminal {
         let ppp = ui.ctx().pixels_per_point();
         let size = self.settings.text_size;
         let metrics = match self.metrics {
-            Some(m) if m.size == size && (m.cell.x * ppp).fract() == 0.0 => m,
+            // Made at this scale: cells snapped to another scale's pixels
+            // can still be whole ones here (8 points at 1× and 1.25×) and
+            // put the rows between pixels.
+            Some(m) if m.size == size && m.ppp == ppp => m,
             _ => {
                 let m = Metrics::new(ui.ctx(), size);
                 self.metrics = Some(m);
@@ -641,24 +726,37 @@ impl Terminal {
         let full = ui.max_rect();
         let mut area = full;
         let mut action = None;
+        let side = self.settings.side_tabs;
         if t.strip() {
-            let strip = egui::Rect::from_min_size(full.min, egui::vec2(full.width(), STRIP));
-            area.min.y = strip.max.y;
+            let strip = if side {
+                // As wide as chosen, leaving the screen some room.
+                let width = self.settings.side_width.min((full.width() / 2.0).floor());
+                let strip = egui::Rect::from_min_size(full.min, egui::vec2(width, full.height()));
+                area.min.x = strip.max.x;
+                strip
+            } else {
+                let strip = egui::Rect::from_min_size(full.min, egui::vec2(full.width(), STRIP));
+                area.min.y = strip.max.y;
+                strip
+            };
             let icons: Vec<_> = t.tabs.iter().map(|tab| tab_icon(tab.rang, tab.agent, tab.attention)).collect();
             let statuses: Vec<Option<String>> = t.tabs.iter().map(Tab::status).collect();
             if t.tabs.iter().any(|x| matches!(x.agent, Some((_, State::Working)))) {
                 // The spinner turns.
                 ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
             }
-            let color = t.group.as_ref().map(|g| groups::color(g.color, self.dark));
+            let color = t.group.as_ref().map(|g| groups::color(g.color, &self.look));
             let items: Vec<StripTab> = t
                 .tabs
                 .iter()
                 .zip(&icons)
                 .zip(&statuses)
-                .map(|((tab, icon), status)| StripTab { label: &tab.title, icon: Some(icon), color, status: status.as_deref() })
+                .map(|((tab, icon), status)| StripTab { label: &tab.title, icon: Some(icon), status: status.as_deref() })
                 .collect();
             let mut bar = TabStrip::new(("terminal-tabs", win), &items, t.active);
+            if side {
+                bar = bar.side();
+            }
             if let (Some(g), Some(color)) = (&t.group, color) {
                 bar = bar.group(&g.name, color);
             }
@@ -681,12 +779,13 @@ impl Terminal {
         }
         if let Some((cols, rows)) = t.snap_to.take().filter(|_| !(t.tiled && t.tabs.len() > 1)) {
             let (w, h) = metrics.content_size(cols, rows);
-            let want = (w, h + chrome(t.strip()));
+            let (cw, ch) = chrome(&self.settings, t.strip());
+            let want = (w + cw, h + ch);
             if cx.window_size(win) != Some(want) {
                 cx.resize(win, want);
             }
         }
-        let TermWin { tabs, active, glyphs, group, tiled, .. } = &mut **t;
+        let TermWin { tabs, active, glyphs, tiled, .. } = &mut **t;
         let session_cwd = |tab: &Tab| {
             let shared = tab.session.shared.clone();
             move || {
@@ -697,12 +796,11 @@ impl Terminal {
         // Show All Tabs: every tab in a pane of its own, the one typed
         // into marked; else only the one showing.
         let panes: Vec<(usize, egui::Rect)> = if *tiled && tabs.len() > 1 {
-            tile(area, tabs.len()).into_iter().enumerate().collect()
+            tile(area, tabs.len(), ui.ctx().pixels_per_point()).into_iter().enumerate().collect()
         } else {
             vec![(*active, area)]
         };
         let several = panes.len() > 1;
-        let band = group.as_ref().map(|g| groups::color(g.color, self.dark));
         let mut out: Option<view::Output> = None;
         let mut picked = None;
         for &(i, rect) in &panes {
@@ -711,7 +809,7 @@ impl Terminal {
             if several {
                 screen.min.y += PANE_HEAD;
                 let icon = tab_icon(tab.rang, tab.agent, tab.attention);
-                pane_head(ui, rect, &tab.title, &icon, i == *active, band);
+                pane_head(ui, rect, &tab.title, &icon, i == *active);
                 let pressed = ui.input(|inp| inp.pointer.any_pressed() && inp.pointer.interact_pos().is_some_and(|p| rect.contains(p)));
                 if pressed && i != *active {
                     picked = Some(i);
@@ -764,7 +862,8 @@ impl Terminal {
             let age = at.elapsed().as_secs_f32();
             if age < 0.15 {
                 let a = ((1.0 - age / 0.15) * 60.0) as u8;
-                ui.painter().rect_filled(area, 0.0, egui::Color32::from_rgba_unmultiplied(128, 128, 128, a));
+                let [r, g, b, _] = self.look.panel_text;
+                ui.painter().rect_filled(area, 0.0, egui::Color32::from_rgba_unmultiplied(r, g, b, a / 2));
                 ui.ctx().request_repaint();
             } else {
                 tab.bell = None;
@@ -804,7 +903,7 @@ impl Terminal {
             }
             Some(StripAction::Close(i)) => {
                 let shell = t.tabs[i].session.id;
-                self.close_tab_requested(cx, win, shell);
+                self.close_tab_requested(cx, win, shell, "the tab's close box or a middle-click");
             }
             Some(StripAction::New) => self.command(cx, win, "new-tab"),
             Some(StripAction::Move { from, to }) => {
@@ -827,15 +926,26 @@ impl Terminal {
                     MenuRequest { menu, source: ui.make_persistent_id("group-menu"), anchor: MenuAnchor::At(pos), selected: None },
                 );
             }
+            Some(StripAction::Resize { width, done }) => {
+                // Every window's: it's a setting.
+                self.settings.side_width = width;
+                if done {
+                    self.settings.save();
+                }
+                cx.redraw_all();
+            }
             Some(StripAction::Menu(i, pos)) => {
                 let shell = t.tabs[i].session.id;
+                let (place, label) = if side { ("tabs-top", "Tabs Along the Top") } else { ("tabs-side", "Tabs Down the Side") };
                 let menu = Menu::new("")
                     .item("New Tab", "new-tab", None)
                     .separator()
                     .item("Move to New Window", format!("tab-detach:{shell}"), None)
                     .separator()
                     .item("Close Other Tabs", format!("tab-close-others:{shell}"), None)
-                    .item_shift("Close Tab", format!("tab-close:{shell}"), Key::W);
+                    .item_shift("Close Tab", format!("tab-close:{shell}"), Key::W)
+                    .separator()
+                    .item(label, place, None);
                 menu::request_popup(
                     ui.ctx(),
                     MenuRequest { menu, source: ui.make_persistent_id("tab-menu"), anchor: MenuAnchor::At(pos), selected: None },
@@ -883,8 +993,9 @@ impl Terminal {
         cx.redraw(win);
     }
 
-    /// Close a tab, asking first if something is running in it.
-    fn close_tab_requested(&mut self, cx: &mut Cx, win: WindowId, shell: u64) {
+    /// Close a tab, asking first if something is running in it. `why`
+    /// (what asked for it) goes in the log with the question.
+    fn close_tab_requested(&mut self, cx: &mut Cx, win: WindowId, shell: u64, why: &str) {
         let Some(Win::Term(t)) = self.windows.get(&win) else { return };
         let Some(i) = t.position(shell) else { return };
         let session = &t.tabs[i].session;
@@ -892,10 +1003,52 @@ impl Terminal {
             Some(program) => {
                 let place = if t.tabs.len() > 1 { "tab" } else { "window" };
                 let message = format!("“{program}” is still running in this {place}. Close it anyway?");
-                let id = cx.open_window(WindowOptions::alert("Terminal", &message));
-                self.windows.insert(id, Win::ConfirmClose { target: win, shell: Some(shell), message });
+                self.confirm_close(cx, win, Some(shell), message, why);
             }
             None => self.close_tab(cx, win, shell),
+        }
+    }
+
+    /// Ask "Close it anyway?" about tab `shell` of `win` (None: the whole
+    /// window), unless that's already being asked: then the question
+    /// comes to the front again rather than another one over it.
+    fn confirm_close(&mut self, cx: &mut Cx, win: WindowId, shell: Option<u64>, message: String, why: &str) {
+        let asking = self.windows.iter().find_map(|(&id, w)| match w {
+            Win::ConfirmClose { target, shell: s, .. } if *target == win && *s == shell => Some(id),
+            _ => None,
+        });
+        if let Some(id) = asking {
+            // Nobody asks twice on purpose: say where it came from.
+            tracing::warn!(?shell, why, "asked again to close while asking already");
+            return cx.activate(id);
+        }
+        tracing::info!(?shell, why, ask = %message, "asking before closing");
+        let id = cx.open_window(WindowOptions::alert("Terminal", &message));
+        self.windows.insert(id, Win::ConfirmClose { target: win, shell, message });
+    }
+
+    /// Close `window`, asking first if something is running in it.
+    fn close_window_requested(&mut self, cx: &mut Cx, window: WindowId, why: &str) {
+        match self.windows.get(&window) {
+            Some(Win::Term(t)) => {
+                let busy: Vec<String> = t.tabs.iter().filter(|x| x.session.busy()).filter_map(|x| x.session.foreground()).collect();
+                let message = match busy.as_slice() {
+                    [] => return self.close(cx, window),
+                    [one] => format!("“{one}” is still running in this window. Close it anyway?"),
+                    [first, rest @ ..] => format!(
+                        "“{first}” and {} other program{} are still running in this window. Close it anyway?",
+                        rest.len(),
+                        if rest.len() == 1 { "" } else { "s" }
+                    ),
+                };
+                self.confirm_close(cx, window, None, message, why);
+            }
+            Some(Win::ConfirmClose { .. } | Win::Find { .. } | Win::Daemon(_) | Win::ConfirmStartOver { .. } | Win::NameGroup { .. }) => {
+                self.windows.remove(&window);
+                cx.close_window(window);
+            }
+            Some(Win::Sudo(_)) => self.sudo_done(cx, window, Some(sudo_wire::Reply::Cancel)),
+            None => cx.close_window(window),
         }
     }
 
@@ -921,7 +1074,6 @@ fn tab_icon(rang: bool, agent: Option<(Agent, State)>, attention: bool) -> impl 
     move |painter, r| {
         icons::paint(painter, r, "terminal");
         let p = style::palette(painter.ctx());
-        let dark = p.mode == olo_kit::theme::ThemeMode::Dark;
         let at = egui::pos2(r.right() - 1.5, r.top() + 3.5);
         let back = style::c(p.panel_background);
         match agent {
@@ -938,8 +1090,9 @@ fn tab_icon(rang: bool, agent: Option<(Agent, State)>, attention: bool) -> impl 
             }
             Some((_, State::Blocked)) => {
                 painter.circle_filled(at, 5.5, back);
-                painter.circle_filled(at, 4.5, groups::color(1, dark));
-                let white = egui::Color32::WHITE;
+                let orange = p.hue(olo_kit::theme::Hue::Orange);
+                painter.circle_filled(at, 4.5, style::c(orange));
+                let white = style::c(p.ink_on(orange));
                 painter.rect_filled(egui::Rect::from_center_size(at - egui::vec2(0.0, 1.0), egui::vec2(1.5, 4.0)), 0.0, white);
                 painter.rect_filled(egui::Rect::from_center_size(at + egui::vec2(0.0, 2.25), egui::vec2(1.5, 1.5)), 0.0, white);
             }
@@ -1089,21 +1242,22 @@ impl Terminal {
         ui.scope_builder(egui::UiBuilder::new().max_rect(full).layout(egui::Layout::top_down(egui::Align::Min)), |ui| {
             ui.add(TextControl::new(name).label("Name:").divider(50.0).autofocus(true));
         });
-        // The colours, as swatches; the chosen one ringed.
+        // The colours, as swatches; the chosen one on the selection.
         let p = style::palette(ui.ctx());
         let top = full.top() + m::CONTROL_HEIGHT + 2.0 * m::SPACING;
         style::label(ui.painter(), full.left(), top + SWATCH / 2.0, egui::Align::Min, "Color:", style::plain_font(), style::c(p.panel_text));
         for i in 0..groups::COLORS.len() {
             let r = egui::Rect::from_min_size(egui::pos2(full.left() + 50.0 + i as f32 * (SWATCH + m::SPACING), top), egui::vec2(SWATCH, SWATCH));
             let resp = ui.interact(r, ui.make_persistent_id(("swatch", i)), egui::Sense::click());
-            resp.widget_info(|| egui::WidgetInfo { selected: Some(*color == i), ..egui::WidgetInfo::labeled(egui::Role::RadioButton, true, groups::COLORS[i].0) });
+            resp.widget_info(|| egui::WidgetInfo { selected: Some(*color == i), ..egui::WidgetInfo::labeled(egui::Role::RadioButton, true, groups::COLORS[i].name()) });
             if resp.clicked() {
                 *color = i;
             }
             if *color == i {
-                ui.painter().circle_stroke(r.center(), SWATCH / 2.0, egui::Stroke::new(2.0, style::c(p.keyboard_navigation)));
+                let sel = style::selection_ink(&p);
+                ui.painter().circle(r.center(), SWATCH / 2.0 + 1.0, sel.fill, egui::Stroke::new(1.0, sel.edge));
             }
-            ui.painter().circle_filled(r.center(), SWATCH / 2.0 - 3.0, groups::color(i, self.dark));
+            ui.painter().circle_filled(r.center(), SWATCH / 2.0 - 3.0, groups::color(i, &self.look));
         }
         let bw = m::BUTTON_MIN_WIDTH;
         let y = full.bottom() - m::CONTROL_HEIGHT;
@@ -1131,6 +1285,88 @@ impl Terminal {
             cx.redraw(target);
             cx.activate(target);
         }
+    }
+}
+
+// ---- sudo's password (sudo.rs) ---------------------------------------------
+
+impl Terminal {
+    /// The tab process `pid` runs in (its shell is an ancestor), and the
+    /// coding agent that started it, if one did.
+    fn requester(&self, pid: i32) -> (Option<(WindowId, usize)>, Option<Agent>) {
+        let mut agent = None;
+        for p in sudo::ancestors(pid) {
+            let tab = self.windows.iter().find_map(|(&id, w)| match w {
+                Win::Term(t) => t.tabs.iter().position(|x| x.session.shared.shell() == Some(p)).map(|i| (id, i)),
+                _ => None,
+            });
+            if tab.is_some() {
+                return (tab, agent);
+            }
+            agent = agent.or_else(|| agent::which(p));
+        }
+        (None, agent)
+    }
+
+    fn sudo_window(&self, conn: u64) -> Option<WindowId> {
+        self.windows.iter().find_map(|(&id, w)| matches!(w, Win::Sudo(r) if r.conn == conn).then_some(id))
+    }
+
+    fn sudo_event(&mut self, cx: &mut Cx, e: sudo::Event) {
+        match e {
+            sudo::Event::Begin { conn, pid, stream, args, tty } => {
+                let (tab, who) = self.requester(pid);
+                let title = tab.and_then(|(id, i)| match self.windows.get(&id) {
+                    Some(Win::Term(t)) => Some(t.tabs[i].current_title()),
+                    _ => None,
+                });
+                let mut r = sudo::Request::new(conn, stream, &args, who, title);
+                // Typed at a shell, with the window turned off: there.
+                if tty && !self.settings.sudo_window {
+                    return r.reply(&sudo_wire::Reply::Pass);
+                }
+                r.reply(&sudo_wire::Reply::Go);
+                tracing::info!(command = ?args, agent = ?who.map(Agent::name), "sudo asks for a password");
+                let size = (sudo::WIDTH, r.height());
+                let options = WindowOptions { size, min_size: Some(size), max_size: Some(size), ..WindowOptions::alert("sudo", "") };
+                let id = cx.open_window(options.parent_opt(tab.map(|(id, _)| id).or(self.front)));
+                self.windows.insert(id, Win::Sudo(Box::new(r)));
+                cx.activate(id);
+            }
+            sudo::Event::Said(conn, said) => {
+                let Some(id) = self.sudo_window(conn) else { return };
+                let Some(Win::Sudo(r)) = self.windows.get_mut(&id) else { return };
+                if r.said(said) {
+                    self.sudo_done(cx, id, None);
+                } else {
+                    cx.redraw(id);
+                }
+            }
+            sudo::Event::Touch(conn) => {
+                if let Some(id) = self.sudo_window(conn)
+                    && let Some(Win::Sudo(r)) = self.windows.get_mut(&id)
+                {
+                    r.touch();
+                    cx.redraw(id);
+                }
+            }
+            sudo::Event::Gone(conn) => {
+                if let Some(id) = self.sudo_window(conn) {
+                    self.sudo_done(cx, id, None);
+                }
+            }
+        }
+    }
+
+    /// Close a sudo window, telling sudo `reply` first.
+    fn sudo_done(&mut self, cx: &mut Cx, window: WindowId, reply: Option<sudo_wire::Reply>) {
+        if let Some(Win::Sudo(mut r)) = self.windows.remove(&window) {
+            if let Some(reply) = reply {
+                r.reply(&reply);
+            }
+            r.conv.clear_answer();
+        }
+        cx.close_window(window);
     }
 }
 
@@ -1173,6 +1409,14 @@ impl App for Terminal {
                             self.reopen(cx, &[&shell], None, 0, None);
                         }
                     },
+                    None => {}
+                }
+            }
+            Some(Win::Sudo(_)) => {
+                let Some(Win::Sudo(r)) = self.windows.get_mut(&window) else { return };
+                match r.ui(ui) {
+                    Some(sudo::Choice::Authenticate) => r.answer(),
+                    Some(sudo::Choice::Cancel) => self.sudo_done(cx, window, Some(sudo_wire::Reply::Cancel)),
                     None => {}
                 }
             }
@@ -1224,8 +1468,16 @@ impl App for Terminal {
         for s in TEXT_SIZES {
             text = text.item(format!("{s}"), format!("size-{s}"), None).checked(self.settings.text_size == s);
         }
-        let pick = |title: &str, ids: [SchemeId; 3], chosen: SchemeId| {
-            ids.iter().fold(Menu::new(title), |m, &id| m.item(id.name(), id.command(), None).checked(id == chosen))
+        // The look's own colours, BeOS's and Catppuccin's for each mode
+        // (and the one chosen, if it is none of those).
+        let pick = |title: &str, mode: ThemeMode| {
+            let chosen = self.colors_for(mode);
+            let mut offered = looks::terminals(&self.look.theme, mode);
+            if !offered.contains(&chosen) {
+                offered.push(chosen.clone());
+            }
+            let slot = if mode == ThemeMode::Dark { "dark" } else { "light" };
+            offered.iter().fold(Menu::new(title), |m, t| m.item(&t.name, format!("colors-{slot}:{}", t.id), None).checked(t.id == chosen.id))
         };
         let scheme = Menu::new("Colors")
             .item("Match Appearance", "scheme-auto", None)
@@ -1235,8 +1487,8 @@ impl App for Terminal {
             .item("Always Dark", "scheme-dark", None)
             .checked(self.settings.scheme == SchemeChoice::Dark)
             .separator()
-            .submenu(pick("Light Colors", SchemeId::LIGHT, self.settings.light_colors))
-            .submenu(pick("Dark Colors", SchemeId::DARK, self.settings.dark_colors));
+            .submenu(pick("Light Colors", ThemeMode::Light))
+            .submenu(pick("Dark Colors", ThemeMode::Dark));
         const NUMBERS: [Key; 9] = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9];
         let grouped = t.group.is_some();
         let mut open_group = Menu::new("Open Saved Group");
@@ -1313,7 +1565,16 @@ impl App for Terminal {
                 .separator()
                 .item_shift("Clear Scrollback", "clear", Key::K),
             tabs,
-            Menu::new("Settings").submenu(window_size).submenu(text).submenu(scheme),
+            Menu::new("Settings").submenu(window_size).submenu(text).submenu(scheme).submenu(
+                Menu::new("Tabs")
+                    .item("Along the Top", "tabs-top", None)
+                    .checked(!self.settings.side_tabs)
+                    .item("Down the Side", "tabs-side", None)
+                    .checked(self.settings.side_tabs),
+            )
+            .separator()
+            .item("Ask for sudo Passwords in a Window", "sudo-window", None)
+            .checked(self.settings.sudo_window),
         ])
     }
 
@@ -1330,9 +1591,9 @@ impl App for Terminal {
             }
             "close" => {
                 let shell = t.tab().session.id;
-                self.close_tab_requested(cx, window, shell);
+                self.close_tab_requested(cx, window, shell, "Terminal ▸ Close Tab (⌘W)");
             }
-            "close-window" => self.close_requested(cx, window),
+            "close-window" => self.close_window_requested(cx, window, "Terminal ▸ Close Window"),
             "next-tab" | "prev-tab" => {
                 let n = t.tabs.len();
                 let i = if command == "next-tab" { (t.active + 1) % n } else { (t.active + n - 1) % n };
@@ -1459,6 +1720,16 @@ impl App for Terminal {
                     self.set_grid(cx, window, cols, rows);
                 }
             }
+            "sudo-window" => {
+                self.settings.sudo_window = !self.settings.sudo_window;
+                self.settings.save();
+            }
+            "tabs-top" | "tabs-side" => {
+                // The windows keep their sizes; their grids make room.
+                self.settings.side_tabs = command == "tabs-side";
+                self.settings.save();
+                cx.redraw_all();
+            }
             "scheme-auto" | "scheme-light" | "scheme-dark" => {
                 self.settings.scheme = match command {
                     "scheme-light" => SchemeChoice::Light,
@@ -1468,8 +1739,11 @@ impl App for Terminal {
                 self.settings.save();
                 cx.redraw_all();
             }
-            c if let Some(id) = SchemeId::from_command(c) => {
-                if SchemeId::DARK.contains(&id) {
+            c if let Some((slot, id)) = c.strip_prefix("colors-").and_then(|c| c.split_once(':'))
+                && looks::terminal(id).is_some() =>
+            {
+                let id = Some(id.to_owned());
+                if slot == "dark" {
                     self.settings.dark_colors = id;
                 } else {
                     self.settings.light_colors = id;
@@ -1482,7 +1756,7 @@ impl App for Terminal {
                     t.select(i);
                     cx.redraw(window);
                 } else if let Some(shell) = c.strip_prefix("tab-close:").and_then(|n| n.parse().ok()) {
-                    self.close_tab_requested(cx, window, shell);
+                    self.close_tab_requested(cx, window, shell, "the tab's menu ▸ Close Tab");
                 } else if let Some(shell) = c.strip_prefix("tab-detach:").and_then(|n| n.parse().ok()) {
                     self.detach(cx, window, shell);
                 } else if let Some(i) = c.strip_prefix("open-group:").and_then(|n| n.parse::<usize>().ok()) {
@@ -1495,7 +1769,7 @@ impl App for Terminal {
                 } else if let Some(keep) = c.strip_prefix("tab-close-others:").and_then(|n| n.parse::<u64>().ok()) {
                     let others: Vec<u64> = t.tabs.iter().map(|x| x.session.id).filter(|&s| s != keep).collect();
                     for shell in others {
-                        self.close_tab_requested(cx, window, shell);
+                        self.close_tab_requested(cx, window, shell, "the tab's menu ▸ Close Other Tabs");
                     }
                 }
             }
@@ -1503,27 +1777,8 @@ impl App for Terminal {
     }
 
     fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
-        match self.windows.get(&window) {
-            Some(Win::Term(t)) => {
-                let busy: Vec<String> = t.tabs.iter().filter(|x| x.session.busy()).filter_map(|x| x.session.foreground()).collect();
-                let message = match busy.as_slice() {
-                    [] => return self.close(cx, window),
-                    [one] => format!("“{one}” is still running in this window. Close it anyway?"),
-                    [first, rest @ ..] => format!(
-                        "“{first}” and {} other program{} are still running in this window. Close it anyway?",
-                        rest.len(),
-                        if rest.len() == 1 { "" } else { "s" }
-                    ),
-                };
-                let id = cx.open_window(WindowOptions::alert("Terminal", &message));
-                self.windows.insert(id, Win::ConfirmClose { target: window, shell: None, message });
-            }
-            Some(Win::ConfirmClose { .. } | Win::Find { .. } | Win::Daemon(_) | Win::ConfirmStartOver { .. } | Win::NameGroup { .. }) => {
-                self.windows.remove(&window);
-                cx.close_window(window);
-            }
-            None => cx.close_window(window),
-        }
+        // The window's close box, or another program (app_server logs which).
+        self.close_window_requested(cx, window, "app_server");
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
@@ -1542,6 +1797,10 @@ impl App for Terminal {
                 cx.redraw_all();
                 return;
             }
+            Err(m) => m,
+        };
+        let message = match message.downcast::<sudo::Event>() {
+            Ok(event) => return self.sudo_event(cx, *event),
             Err(m) => m,
         };
         let message = match message.downcast::<agent::Report>() {
@@ -1598,8 +1857,8 @@ impl App for Terminal {
         }
     }
 
-    fn theme_changed(&mut self, cx: &mut Cx, palette: &olo_kit::theme::Palette) {
-        self.dark = palette.mode == olo_kit::theme::ThemeMode::Dark;
+    fn theme_changed(&mut self, cx: &mut Cx, palette: &Palette) {
+        self.follow(&Arc::new(palette.clone()));
         cx.redraw_all();
     }
 
@@ -1645,12 +1904,13 @@ fn main() {
     };
     olo_kit::run(APP_ID, move |cx| {
         instance::listen(APP_ID, cx.proxy());
+        sudo::listen(cx.proxy());
         let mut t = Terminal {
             link,
             windows: HashMap::new(),
             settings: Settings::load(),
             metrics: None,
-            dark: cx.palette().mode == olo_kit::theme::ThemeMode::Dark,
+            look: cx.palette().clone(),
             search: find::Search::default(),
             respawn: false,
             front: None,
@@ -1659,6 +1919,7 @@ fn main() {
             notifier: Notifier::new(cx.proxy(), "Terminal", "olo-terminal"),
             notes: HashMap::new(),
         };
+        t.follow(&cx.palette().clone());
         let state = cx.restored_state();
         let saved = state.as_deref().and_then(|s| serde_json::from_str::<Saved>(s).ok());
         let legacy = state.as_deref().filter(|_| saved.is_none()).and_then(|s| serde_json::from_str::<Legacy>(s).ok());
@@ -1693,26 +1954,31 @@ mod drop_tests {
 
 #[cfg(test)]
 mod settings_tests {
-    use super::{SchemeChoice, SchemeId, Settings};
+    use super::{SchemeChoice, Settings};
+
+    fn colors(s: &Settings) -> (Option<&str>, Option<&str>) {
+        (s.light_colors.as_deref(), s.dark_colors.as_deref())
+    }
 
     #[test]
     fn colours_for_each_appearance() {
-        // New: Catppuccin Frappé in light mode, Macchiato in dark.
+        // New: the look's own, light and dark.
         let s = Settings::parse("{}");
-        assert_eq!((s.light_colors, s.dark_colors), (SchemeId::Frappe, SchemeId::Macchiato));
+        assert_eq!(colors(&s), (None, None));
         let old = r#"{"text_size":12.0,"cols":120,"rows":25,"scheme":"#;
-        // Saved before the choice: matching the appearance takes the new
-        // defaults, while one who picked Olo Light (or Dark) keeps it.
+        // Saved before the choice: matching the appearance takes the
+        // look's, while one who picked Olo Light (or Dark) keeps it, now
+        // BeOS's.
         let s = Settings::parse(&format!("{old}\"Auto\"}}"));
-        assert_eq!((s.scheme, s.light_colors, s.dark_colors), (SchemeChoice::Auto, SchemeId::Frappe, SchemeId::Macchiato));
+        assert_eq!((s.scheme, colors(&s)), (SchemeChoice::Auto, (None, None)));
         let s = Settings::parse(&format!("{old}\"Light\"}}"));
-        assert_eq!((s.scheme, s.light_colors), (SchemeChoice::Light, SchemeId::OloLight));
+        assert_eq!((s.scheme, colors(&s)), (SchemeChoice::Light, (Some("beos-light"), None)));
         let s = Settings::parse(&format!("{old}\"Dark\"}}"));
-        assert_eq!((s.scheme, s.dark_colors), (SchemeChoice::Dark, SchemeId::OloDark));
-        // Saved since: as saved.
-        let s = Settings::parse(&format!("{old}\"Light\",\"light_colors\":\"latte\",\"dark_colors\":\"mocha\"}}"));
-        assert_eq!((s.light_colors, s.dark_colors), (SchemeId::Latte, SchemeId::Mocha));
+        assert_eq!((s.scheme, colors(&s)), (SchemeChoice::Dark, (None, Some("beos-dark"))));
+        // Saved since: as saved (Olo's own now BeOS's).
+        let s = Settings::parse(&format!("{old}\"Light\",\"light_colors\":\"frappe\",\"dark_colors\":\"olo-dark\"}}"));
+        assert_eq!(colors(&s), (Some("frappe"), Some("beos-dark")));
         let round = Settings::parse(&serde_json::to_string(&s).unwrap());
-        assert_eq!((round.scheme, round.light_colors, round.dark_colors), (s.scheme, s.light_colors, s.dark_colors));
+        assert_eq!((round.scheme, colors(&round)), (s.scheme, colors(&s)));
     }
 }

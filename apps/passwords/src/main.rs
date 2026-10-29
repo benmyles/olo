@@ -787,11 +787,19 @@ impl Passwords {
     }
 
     fn save_editor(&mut self, cx: &mut Cx) {
-        let Some(editor) = &self.editor else { return };
+        let Some(editor) = &mut self.editor else { return };
+        if editor.base.is_some() && !editor.changed() {
+            self.editor = None;
+            self.redraw(cx);
+            return;
+        }
+        // What 1Password wouldn't take is said here, not found at sync.
+        if !editor.ready() {
+            self.redraw(cx);
+            return;
+        }
         if editor.base.is_some() {
-            if !editor.changed() {
-                self.editor = None;
-            } else if let Some(item) = editor.to_item() {
+            if let Some(item) = editor.to_item() {
                 self.store.send(Job::Put(Box::new(item)));
                 self.flash("Saving…");
             }

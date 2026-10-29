@@ -1,12 +1,13 @@
-//! The palette app_server currently draws with. Changing it bumps a
-//! generation counter so cached decorations know to redraw.
+//! The palette app_server currently draws with (the look in the
+//! settings, `Appearance::palette`). Changing it bumps a generation
+//! counter so cached decorations know to redraw.
 
 use std::sync::{
     Arc, RwLock,
     atomic::{AtomicU64, Ordering},
 };
 
-use olo_theme::{Palette, ThemeMode};
+use olo_theme::{Palette, ThemeMode, looks};
 
 static PALETTE: RwLock<Option<Arc<Palette>>> = RwLock::new(None);
 static GENERATION: AtomicU64 = AtomicU64::new(1);
@@ -16,19 +17,19 @@ pub fn palette() -> Arc<Palette> {
         return p.clone();
     }
     let mut slot = PALETTE.write().unwrap();
-    slot.get_or_insert_with(|| Arc::new(Palette::light())).clone()
+    slot.get_or_insert_with(|| Arc::new(looks::palette(looks::DEFAULT, "", ThemeMode::Light))).clone()
 }
 
 pub fn mode() -> ThemeMode {
     palette().mode
 }
 
-/// Switch light/dark. Returns true if anything changed.
-pub fn set_mode(mode: ThemeMode) -> bool {
-    if palette().mode == mode {
+/// Draw with `palette` from now on. Returns true if anything changed.
+pub fn set(palette: Palette) -> bool {
+    if *self::palette() == palette {
         return false;
     }
-    *PALETTE.write().unwrap() = Some(Arc::new(Palette::for_mode(mode)));
+    *PALETTE.write().unwrap() = Some(Arc::new(palette));
     GENERATION.fetch_add(1, Ordering::Relaxed);
     true
 }

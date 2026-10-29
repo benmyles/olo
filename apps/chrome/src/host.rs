@@ -121,6 +121,10 @@ fn open_passwords() -> Result<(), String> {
 
 fn answer(m: &Value) -> Value {
     let id = m.get("id").cloned().unwrap_or(Value::Null);
+    // The popup's colours: the look in use now.
+    if m.get("palette").and_then(Value::as_bool) == Some(true) {
+        return json!({ "id": id, "response": { "type": "palette", "css": crate::extension::palette_css() } });
+    }
     if m.get("open").and_then(Value::as_bool) == Some(true) {
         return match open_passwords() {
             Ok(()) => json!({ "id": id, "response": { "type": "shown" } }),

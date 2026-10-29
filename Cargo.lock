@@ -4224,6 +4224,7 @@ dependencies = [
  "resvg",
  "serde",
  "serde_json",
+ "skrifa 0.44.0",
  "smithay-client-toolkit",
  "tracing",
  "tracing-subscriber",
@@ -4261,6 +4262,7 @@ dependencies = [
 name = "olo-notifications"
 version = "0.1.0"
 dependencies = [
+ "futures-channel",
  "image",
  "libc",
  "olo-kit",
@@ -4529,6 +4531,7 @@ dependencies = [
  "libc",
  "olo-kit",
  "olo-protocol",
+ "olo-system",
  "regex",
  "serde",
  "serde_json",
@@ -4540,6 +4543,7 @@ name = "olo-theme"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -4605,6 +4609,7 @@ dependencies = [
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
+ "wayland-protocols-misc",
  "wayland-protocols-wlr",
 ]
 
@@ -4613,6 +4618,7 @@ name = "olo-xdg"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "olo-theme",
  "png 0.18.1",
  "resvg",
 ]

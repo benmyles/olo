@@ -2,6 +2,17 @@
 
 const list = document.getElementById("list");
 
+// Olo's colours over the ones packed in palette.css: the last ones known
+// at once, then the look in use now (asked of olo-chrome).
+const look = document.createElement("style");
+document.head.append(look);
+chrome.storage.local.get("palette").then((s) => {
+  if (s.palette && !look.textContent) look.textContent = s.palette;
+});
+chrome.runtime.sendMessage({ type: "popup-palette" }).then((r) => {
+  if (r?.css) look.textContent = r.css;
+});
+
 function note(text, fail) {
   list.replaceChildren();
   const n = document.createElement("div");

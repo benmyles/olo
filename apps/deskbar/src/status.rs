@@ -309,7 +309,7 @@ pub fn draw_battery(painter: &Painter, r: Rect, p: &Palette, percent: u32, charg
     } else if percent <= 10 {
         c(p.failure)
     } else if percent <= 20 {
-        Color32::from_rgb(230, 160, 0)
+        c(p.warning)
     } else {
         ink(p)
     };
@@ -325,7 +325,7 @@ pub fn draw_battery(painter: &Painter, r: Rect, p: &Palette, percent: u32, charg
             pos2(cx - 1.0, cy + 5.0),
             pos2(cx + 2.5, cy - 0.5),
             pos2(cx + 0.2, cy - 0.5)];
-        painter.add(Shape::convex_polygon(bolt[..3].to_vec(), Color32::from_rgb(255, 214, 0), Stroke::NONE));
+        painter.add(Shape::convex_polygon(bolt[..3].to_vec(), c(p.hue(olo_kit::theme::Hue::Yellow)), Stroke::NONE));
         painter.add(Shape::line(bolt.iter().copied().chain([bolt[0]]).collect(), Stroke::new(0.8, ink(p))));
     }
 }
@@ -480,7 +480,7 @@ pub fn draw_cup(painter: &Painter, r: Rect, p: &Palette, on: bool) {
     let cup = Rect::from_min_size(pos2(r.left() + 1.5, r.top() + 6.5), vec2(9.0, 8.0));
     if on {
         let coffee = Rect::from_min_max(pos2(cup.left(), cup.top() + 1.5), cup.max);
-        painter.rect_filled(coffee, egui::CornerRadius { nw: 0, ne: 0, sw: 3, se: 3 }, Color32::from_rgb(130, 82, 45));
+        painter.rect_filled(coffee, egui::CornerRadius { nw: 0, ne: 0, sw: 3, se: 3 }, c(p.hue(olo_kit::theme::Hue::Brown)));
     }
     painter.rect_stroke(cup, egui::CornerRadius { nw: 0, ne: 0, sw: 3, se: 3 }, s, egui::StrokeKind::Middle);
     // The handle.

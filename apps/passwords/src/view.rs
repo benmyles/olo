@@ -319,10 +319,10 @@ fn browser(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
     }
     let toolbar = Rect::from_min_size(full.min, vec2(full.width(), m::TOOLBAR_HEIGHT));
     let status = Rect::from_min_max(pos2(full.left(), full.bottom() - STATUS_HEIGHT), full.max);
-    let body = Rect::from_min_max(pos2(full.left(), toolbar.bottom()), pos2(full.right(), status.top()));
+    let body = Rect::from_min_max(pos2(full.left(), toolbar.bottom() + style::hairline(ui.ctx())), pos2(full.right(), status.top()));
 
     // Toolbar: New Item, Generator, and the search field on the right.
-    style::hline(ui.painter(), full.left(), full.right(), toolbar.bottom() - 1.0, style::shade(&p, p.panel_background, 1.3));
+    style::hline(ui.painter(), full.left(), full.right(), toolbar.bottom(), style::shade(&p, p.panel_background, 1.3));
     let mut bar = ui.new_child(
         UiBuilder::new()
             .max_rect(toolbar.shrink2(vec2(m::SPACING, m::TIGHT)))
@@ -779,10 +779,22 @@ fn detail_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
             style::label(ui.painter(), r.left() + m::WINDOW_INSET, r.center().y, Align::Min, item.tags.join(", "), style::plain_font(), style::c(p.document_text));
         }
         ui.add_space(m::SPACING);
-        let (r, _) = ui.allocate_exact_size(vec2(width, 34.0), Sense::hover());
+        // One line when it fits, else Modified and Created a line each.
+        let modified = format!("Modified {}", date(item.updated_at));
+        let created = format!("Created {}", date(item.created_at));
+        let both = format!("{modified}   ·   {created}");
+        let lines = if style::label_width(ui.ctx(), &both, style::small_font()) <= width - 2.0 * m::WINDOW_INSET {
+            vec![both]
+        } else {
+            vec![modified, created]
+        };
+        let line = style::small_font().size + m::TIGHT * 2.0;
+        let (r, _) = ui.allocate_exact_size(vec2(width, 34.0 + line * (lines.len() - 1) as f32), Sense::hover());
         style::hline(ui.painter(), r.left() + m::WINDOW_INSET, r.right() - m::WINDOW_INSET, r.top(), style::shade(&p, p.document_background, 1.15));
-        let when = format!("Modified {}   ·   Created {}", date(item.updated_at), date(item.created_at));
-        style::label(ui.painter(), r.left() + m::WINDOW_INSET, r.center().y, Align::Min, when, style::small_font(), dim(&p));
+        for (i, text) in lines.into_iter().enumerate() {
+            let y = r.top() + 17.0 + line * i as f32;
+            style::label(ui.painter(), r.left() + m::WINDOW_INSET, y, Align::Min, text, style::small_font(), dim(&p));
+        }
     });
 
     if edit {
@@ -831,7 +843,7 @@ fn header(ui: &mut Ui, title: &str, category: ItemCategory, vault: &str) -> Rect
     ui.painter().galley(pos, g, style::c(p.document_text));
     let sub = if vault.is_empty() { category.label().to_string() } else { format!("{}  ·  {vault}", category.label()) };
     style::label(ui.painter(), x, r.top() + m::WINDOW_INSET + 38.0, Align::Min, sub, style::plain_font(), dim(&p));
-    style::hline(ui.painter(), r.left() + m::WINDOW_INSET, r.right() - m::WINDOW_INSET, r.bottom() - 1.0, style::shade(&p, p.document_background, 1.15));
+    style::hline_above(ui.painter(), r.left() + m::WINDOW_INSET, r.right() - m::WINDOW_INSET, r.bottom(), style::shade(&p, p.document_background, 1.15));
     r
 }
 
@@ -871,21 +883,14 @@ fn shown(f: &ItemField, revealed: bool) -> (String, bool) {
             let digits: Vec<char> = f.value.chars().filter(|c| c.is_ascii_digit()).collect();
             (digits.chunks(4).map(|c| c.iter().collect::<String>()).collect::<Vec<_>>().join(" "), true)
         }
-        ItemFieldType::MonthYear if f.value.len() == 6 && f.value.chars().all(|c| c.is_ascii_digit()) => {
-            (format!("{}/{}", &f.value[4..], &f.value[..4]), false)
-        }
-        ItemFieldType::Address => match &f.details {
-            Some(onepassword::ItemFieldDetails::Address(Some(a))) => (
-                [a.street.as_str(), a.city.as_str(), a.state.as_str(), a.zip.as_str(), a.country.as_str()]
-                    .iter()
-                    .filter(|s| !s.is_empty())
-                    .copied()
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                false,
-            ),
-            _ => (f.value.clone(), false),
+        // 08/2029, as 1Password shows it (and one kept by an older
+        // Passwords as 202908).
+        ItemFieldType::MonthYear => (onepassword::fields::month_year(&f.value).unwrap_or_else(|| f.value.clone()), false),
+        ItemFieldType::Date => match chrono::NaiveDate::parse_from_str(&f.value, "%Y-%m-%d") {
+            Ok(d) => (d.format("%-d %B %Y").to_string(), false),
+            Err(_) => (f.value.clone(), false),
         },
+        ItemFieldType::Address => (onepassword::fields::address_text(&onepassword::fields::address(f)), false),
         _ => (f.value.clone(), matches!(f.field_type, ItemFieldType::Concealed | ItemFieldType::SshKey)),
     }
 }

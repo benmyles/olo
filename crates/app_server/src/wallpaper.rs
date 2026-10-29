@@ -19,6 +19,7 @@ use fast_image_resize::{
     images::{Image, ImageRef},
 };
 use image::{DynamicImage, RgbaImage};
+use crate::render::Exact;
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -220,26 +221,16 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 }
 
-/// The wallpaper element for `output`, covering it, if one is ready.
-pub fn element<R>(renderer: &mut R, output: &Output) -> Option<MemoryRenderBufferRenderElement<R>>
+/// The wallpaper element for `output`, covering it pixel for pixel (it
+/// is drawn at the screen's size), if one is ready.
+pub fn element<R>(renderer: &mut R, output: &Output) -> Option<Exact<MemoryRenderBufferRenderElement<R>>>
 where
     R: Renderer + ImportMem,
     R::TextureId: Send + Clone + 'static,
 {
     let buffer = slot(output).lock().unwrap().shown.clone()?;
     let (w, h) = physical_size(output)?;
-    let scale = output.current_scale().fractional_scale();
-    let logical = ((w as f64 / scale).round() as i32, (h as f64 / scale).round() as i32);
-    MemoryRenderBufferRenderElement::from_buffer(
-        renderer,
-        (0.0, 0.0),
-        &buffer,
-        None,
-        Some(Rectangle::from_size((w as f64, h as f64).into())),
-        Some(logical.into()),
-        Kind::Unspecified,
-    )
-    .ok()
+    crate::render::picture(renderer, (0.0, 0.0).into(), &buffer, (w as i32, h as i32), None, Kind::Unspecified)
 }
 
 #[cfg(test)]

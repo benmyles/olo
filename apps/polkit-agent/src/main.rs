@@ -30,7 +30,7 @@ use olo_kit::{
     instance::{self, Launch},
     metrics as m,
     style::{self, c},
-    widgets::{self, Button, MenuField, TextControl},
+    widgets::{self, Button, MenuField},
 };
 use olo_system::{
     keyring_prompt::{self, Prompter},
@@ -42,6 +42,23 @@ mod keyring;
 const APP_ID: &str = "olo.polkit-agent";
 pub const WIDTH: u32 = 420;
 const ICON: &str = "authentication";
+/// Text column: the alert's width less its stripe, icon and margins.
+pub const COLUMN: f32 = WIDTH as f32 - widgets::ALERT_TEXT_X - m::WINDOW_INSET;
+
+/// A fixed alert window of `height` (never resized, tiled or grouped).
+pub fn alert_options(title: &str, height: u32) -> WindowOptions {
+    let size = (WIDTH, height);
+    WindowOptions { size, min_size: Some(size), max_size: Some(size), ..WindowOptions::alert(title, "") }
+}
+
+/// The window's height: the title, `message`, an Identity menu when
+/// more than one user may answer, the password and the note under it,
+/// and the buttons.
+fn height(message: &str, identities: bool) -> u32 {
+    let fixed = 2.0 * m::WINDOW_INSET + m::LABEL_ROW + m::TIGHT + 3.0 * m::SPACING + 2.0 * m::CONTROL_HEIGHT + m::LABEL_ROW;
+    let menu = if identities { m::CONTROL_HEIGHT + m::SPACING } else { 0.0 };
+    (fixed + menu + style::plain_text_height(message, COLUMN)).ceil() as u32
+}
 
 enum Msg {
     Polkit(Event),
@@ -62,23 +79,7 @@ struct Auth {
     /// Which run of the helper is current; events from older runs are
     /// ignored.
     run: u64,
-    /// PAM is waiting for an answer: (prompt, echo).
-    prompt: Option<(String, bool)>,
-    answer: String,
-    /// The latest message from PAM ("Place your finger on the reader").
-    info: String,
-    error: String,
-    /// An answer is with PAM.
-    checking: bool,
-}
-
-impl Auth {
-    fn clear_answer(&mut self) {
-        // Don't leave the password lying in freed memory.
-        // SAFETY: zero bytes keep the string valid UTF-8.
-        unsafe { self.answer.as_bytes_mut().fill(0) };
-        self.answer.clear();
-    }
+    conv: widgets::Conversation,
 }
 
 struct AgentApp {
@@ -92,8 +93,7 @@ struct AgentApp {
 
 impl AgentApp {
     fn begin(&mut self, cx: &mut Cx, request: Request) {
-        let h = widgets::alert_height(&request.message) + 70;
-        let id = cx.open_window(WindowOptions::new("Authenticate", WIDTH, h).min_size(WIDTH, h).max_size(WIDTH, h));
+        let id = cx.open_window(alert_options("Authenticate", height(&request.message, request.users.len() > 1)));
         let mut auth = Auth {
             cookie: request.cookie.clone(),
             message: request.message.clone(),
@@ -103,14 +103,10 @@ impl AgentApp {
             request: Some(request),
             helper: None,
             run: 0,
-            prompt: None,
-            answer: String::new(),
-            info: String::new(),
-            error: String::new(),
-            checking: false,
+            conv: widgets::Conversation::default(),
         };
         if auth.users.is_empty() {
-            auth.error = "Nobody is allowed to authorize this.".into();
+            auth.conv.error = "Nobody is allowed to authorize this.".into();
         }
         self.windows.insert(id, auth);
         self.start_helper(cx, id);
@@ -121,9 +117,9 @@ impl AgentApp {
     fn start_helper(&mut self, cx: &mut Cx, id: WindowId) {
         let Some(a) = self.windows.get_mut(&id) else { return };
         a.helper = None;
-        a.prompt = None;
-        a.checking = false;
-        a.info.clear();
+        a.conv.prompt = None;
+        a.conv.checking = false;
+        a.conv.info.clear();
         a.run += 1;
         let Some(user) = a.users.get(a.user) else { return };
         let (proxy, run) = (cx.proxy(), a.run);
@@ -131,7 +127,7 @@ impl AgentApp {
             Ok(h) => a.helper = Some(h),
             Err(e) => {
                 tracing::warn!("polkit helper: {e}");
-                a.error = "The authentication helper couldn't be started.".into();
+                a.conv.error = "The authentication helper couldn't be started.".into();
             }
         }
     }
@@ -142,12 +138,9 @@ impl AgentApp {
             return;
         }
         match e {
-            HelperEvent::Prompt { text, echo } => {
-                a.checking = false;
-                a.prompt = Some((text, echo));
-            }
-            HelperEvent::Info(t) => a.info = t,
-            HelperEvent::Error(t) => a.error = t,
+            HelperEvent::Prompt { text, echo } => a.conv.ask(text, echo),
+            HelperEvent::Info(t) => a.conv.info = t,
+            HelperEvent::Error(t) => a.conv.error = t,
             HelperEvent::Done(true) => {
                 if let Some(r) = a.request.take() {
                     r.finish(true);
@@ -155,9 +148,9 @@ impl AgentApp {
                 self.close(cx, id);
             }
             HelperEvent::Done(false) => {
-                a.clear_answer();
-                if a.error.is_empty() || a.checking {
-                    a.error = "Sorry, that didn't work. Please try again.".into();
+                a.conv.clear_answer();
+                if a.conv.error.is_empty() || a.conv.checking {
+                    a.conv.error = "Sorry, that didn't work. Please try again.".into();
                 }
                 // Another go, as GNOME and KDE allow.
                 self.start_helper(cx, id);
@@ -168,26 +161,21 @@ impl AgentApp {
 
     fn submit(&mut self, id: WindowId) {
         let Some(a) = self.windows.get_mut(&id) else { return };
-        if a.prompt.is_none() || a.checking {
+        if !a.conv.ready() {
             return;
         }
-        let r = a.helper.as_mut().map(|h| h.respond(&a.answer));
-        a.clear_answer();
-        a.prompt = None;
-        match r {
-            Some(Ok(())) => {
-                a.checking = true;
-                a.error.clear();
-                a.info.clear();
-            }
-            _ => a.error = "The authentication helper stopped.".into(),
+        let r = a.helper.as_mut().map(|h| h.respond(&a.conv.answer));
+        a.conv.sent();
+        if !matches!(r, Some(Ok(()))) {
+            a.conv.checking = false;
+            a.conv.error = "The authentication helper stopped.".into();
         }
     }
 
     /// Close a window; an unanswered request is cancelled.
     fn close(&mut self, cx: &mut Cx, id: WindowId) {
         if let Some(mut a) = self.windows.remove(&id) {
-            a.clear_answer();
+            a.conv.clear_answer();
         }
         cx.close_window(id);
         if self.self_test && self.windows.is_empty() {
@@ -264,41 +252,14 @@ impl App for AgentApp {
                 ui.add(MenuField::new(("identity", win), &mut a.user, &names).label("Identity:").divider(divider).width(form.width()));
                 user_changed = a.user != before;
             }
-            let label = a.prompt.as_ref().map_or("Password:".to_owned(), |(t, _)| {
-                let t = t.trim();
-                if t.ends_with(':') { t.to_owned() } else { format!("{t}:") }
-            });
-            let ready = a.prompt.is_some() && !a.checking;
-            let echo = a.prompt.as_ref().is_some_and(|(_, e)| *e);
-            let r = ui
-                .add_enabled_ui(ready, |ui| {
-                    ui.add(TextControl::new(&mut a.answer).label(&label).divider(divider).password(!echo).autofocus(ready).width(form.width()))
-                })
-                .inner;
-            if ready && !r.has_focus() && !r.lost_focus() {
-                r.request_focus();
-            }
-            if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-                submit = true;
-            }
-            let (note, color) = if a.checking {
-                ("Checking…".to_owned(), style::disabled_text(&p))
-            } else if !a.error.is_empty() {
-                (a.error.clone(), c(p.failure))
-            } else {
-                (a.info.clone(), style::disabled_text(&p))
-            };
-            if !note.is_empty() {
-                let r = ui.allocate_exact_size(vec2(form.width(), m::LABEL_ROW), egui::Sense::hover()).0;
-                style::label(ui.painter(), r.left(), r.center().y, egui::Align::Min, note, style::plain_font(), color);
-            }
+            submit = widgets::conversation(ui, &mut a.conv, divider, form.width());
         });
 
         let row = Rect::from_min_max(pos2(col.left(), col.bottom() - m::CONTROL_HEIGHT), pos2(full.right() - m::WINDOW_INSET, col.bottom()));
         let mut cancel = ui.input(|i| i.key_pressed(Key::Escape));
         ui.scope_builder(egui::UiBuilder::new().max_rect(row), |ui| {
             widgets::button_row(ui, |ui| {
-                let can = a.prompt.is_some() && !a.checking && !a.answer.is_empty();
+                let can = a.conv.can_submit();
                 if ui.add_enabled_ui(can, |ui| ui.add(Button::new("Authenticate").default(true))).inner.clicked() {
                     submit = true;
                 }
@@ -313,7 +274,7 @@ impl App for AgentApp {
         }
         if user_changed {
             if let Some(a) = self.windows.get_mut(&win) {
-                a.error.clear();
+                a.conv.error.clear();
             }
             self.start_helper(cx, win);
         }

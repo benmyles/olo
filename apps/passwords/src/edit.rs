@@ -1,9 +1,13 @@
 //! Editing an item (or making one): title, fields, websites, notes and
 //! tags. New items start from their category's usual fields, with
-//! 1Password's ids for the built-in ones.
+//! 1Password's ids for the built-in ones. Values are taken as people
+//! write them and saved in 1Password's forms (`onepassword::fields`: an
+//! expiry of 8/29 is saved as 08/2029); an address is edited as its
+//! parts. Saving what 1Password would refuse says why instead.
 
 use onepassword::{
-    AutofillBehavior, Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, ItemSection, VaultOverview, Website,
+    AddressFieldDetails, AutofillBehavior, Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldDetails, ItemFieldType, ItemSection,
+    VaultOverview, Website, fields,
 };
 use olo_kit::{
     Menu, egui::{self, Id, Ui, vec2},
@@ -18,6 +22,8 @@ pub struct EditField {
     pub label: String,
     pub kind: ItemFieldType,
     pub value: String,
+    /// An address field's parts (its value is made from them).
+    pub address: AddressFieldDetails,
     pub reveal: bool,
 }
 
@@ -32,6 +38,10 @@ pub struct Editor {
     pub websites: Vec<(String, String, AutofillBehavior)>,
     pub notes: String,
     pub tags: String,
+    /// Why the last Save didn't (what 1Password wouldn't take).
+    pub error: Option<String>,
+    /// Scroll the error into view (it's below the fold on a long item).
+    reveal_error: bool,
     focus_title: bool,
 }
 
@@ -49,7 +59,7 @@ pub fn new_id() -> String {
 }
 
 fn field(id: &str, label: &str, kind: ItemFieldType) -> EditField {
-    EditField { id: id.into(), section: None, label: label.into(), kind, value: String::new(), reveal: false }
+    EditField { id: id.into(), section: None, label: label.into(), kind, value: String::new(), address: AddressFieldDetails::default(), reveal: false }
 }
 
 /// The fields a new item of `category` starts with.
@@ -125,7 +135,7 @@ pub fn kind_label(kind: ItemFieldType) -> &'static str {
     }
 }
 
-const ADDABLE: [ItemFieldType; 8] = [
+const ADDABLE: [ItemFieldType; 9] = [
     ItemFieldType::Text,
     ItemFieldType::Concealed,
     ItemFieldType::Email,
@@ -134,6 +144,7 @@ const ADDABLE: [ItemFieldType; 8] = [
     ItemFieldType::Totp,
     ItemFieldType::Date,
     ItemFieldType::MonthYear,
+    ItemFieldType::Address,
 ];
 
 /// Whether a field's value is hidden until shown.
@@ -164,6 +175,8 @@ impl Editor {
             websites,
             notes: String::new(),
             tags: String::new(),
+            error: None,
+            reveal_error: false,
             focus_title: true,
         }
     }
@@ -182,7 +195,10 @@ impl Editor {
                     section: f.section_id.clone(),
                     label: f.title.clone(),
                     kind: f.field_type,
-                    value: f.value.clone(),
+                    // In 1Password's form (one kept by an older Passwords
+                    // as 202908 shows as 08/2029).
+                    value: fields::normalized(f.field_type, &f.value).unwrap_or_else(|_| f.value.clone()),
+                    address: fields::address(f),
                     reveal: false,
                 })
                 .collect(),
@@ -190,6 +206,8 @@ impl Editor {
             websites: item.websites.iter().map(|w| (w.url.clone(), w.label.clone(), w.autofill_behavior)).collect(),
             notes: item.notes.clone(),
             tags: item.tags.join(", "),
+            error: None,
+            reveal_error: false,
             focus_title: false,
         }
     }
@@ -202,17 +220,39 @@ impl Editor {
         let base_field = |id: &str| self.base.as_ref().and_then(|b| b.field(id));
         self.fields
             .iter()
-            .filter(|f| !(f.value.is_empty() && f.label.is_empty()))
-            .map(|f| ItemField {
-                id: f.id.clone(),
-                title: f.label.trim().to_string(),
-                section_id: f.section.clone(),
-                field_type: f.kind,
-                value: f.value.clone(),
-                // Keep what 1Password computed unless the value changed.
-                details: base_field(&f.id).filter(|b| b.value == f.value).and_then(|b| b.details.clone()),
+            .filter(|f| !(f.value.is_empty() && f.label.is_empty() && fields::address_text(&f.address).is_empty()))
+            .map(|f| {
+                let base = base_field(&f.id);
+                let (value, details) = if f.kind == ItemFieldType::Address {
+                    // Its text as 1Password wrote it while the parts are the same.
+                    let value = base.filter(|b| fields::address(b) == f.address).map_or_else(|| fields::address_text(&f.address), |b| b.value.clone());
+                    (value, Some(ItemFieldDetails::Address(Some(f.address.clone()))))
+                } else {
+                    // Keep what 1Password computed unless the value changed.
+                    (f.value.clone(), base.filter(|b| b.value == f.value).and_then(|b| b.details.clone()))
+                };
+                ItemField { id: f.id.clone(), title: f.label.trim().to_string(), section_id: f.section.clone(), field_type: f.kind, value, details }
             })
             .collect()
+    }
+
+    /// Whether it can be saved; if not, says why under the form and
+    /// scrolls there.
+    pub fn ready(&mut self) -> bool {
+        self.error = self.problem();
+        self.reveal_error = self.error.is_some();
+        self.error.is_none()
+    }
+
+    /// Why saving would fail, for the person: a value that isn't what its
+    /// field holds, or anything 1Password wouldn't take.
+    pub fn problem(&self) -> Option<String> {
+        let mut out = self.out_fields();
+        if let Err(why) = fields::normalize(&mut out) {
+            return Some(why);
+        }
+        let websites = self.out_websites();
+        fields::check(self.category, &fields::for_core(&out), &self.sections, &self.out_tags(), &websites).err().map(|why| why.explain())
     }
 
     fn out_websites(&self) -> Vec<Website> {
@@ -228,7 +268,13 @@ impl Editor {
     }
 
     fn out_tags(&self) -> Vec<String> {
-        self.tags.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()
+        let mut out: Vec<String> = Vec::new();
+        for t in self.tags.split(',').map(str::trim).filter(|t| !t.is_empty()) {
+            if !out.iter().any(|o| o == t) {
+                out.push(t.to_string());
+            }
+        }
+        out
     }
 
     /// The title, or one made up from what there is.
@@ -275,12 +321,17 @@ impl Editor {
                     || !self.notes.is_empty()
             }
             Some(base) => self.to_item().is_some_and(|i| {
+                // Values compared as 1Password has them, addresses by their parts.
+                let value = |f: &ItemField| match f.field_type {
+                    ItemFieldType::Address => fields::address_text(&fields::address(f)),
+                    kind => fields::normalized(kind, &f.value).unwrap_or_else(|_| f.value.clone()),
+                };
                 i.title != base.title
                     || i.notes != base.notes
                     || i.tags != base.tags
                     || i.websites != base.websites
                     || i.fields.len() != base.fields.len()
-                    || i.fields.iter().zip(&base.fields).any(|(a, b)| a.title != b.title || a.value != b.value || a.id != b.id)
+                    || i.fields.iter().zip(&base.fields).any(|(a, b)| a.title != b.title || value(a) != value(b) || a.id != b.id)
             }),
         }
     }
@@ -313,28 +364,68 @@ impl Editor {
                 }
                 last_section = Some(f.section.clone());
             }
+            // A secret's Show and New sit beside it, or under it when they
+            // would leave too little of the value column to type in.
+            let secret_buttons = |ui: &mut Ui, f: &mut EditField, action: &mut Option<EditAction>| {
+                if f.kind == ItemFieldType::Concealed && ui.add(Button::new("New").min_width(56.0)).on_hover_text("Generate a password").clicked() {
+                    *action = Some(EditAction::Generate(f.id.clone()));
+                }
+                if concealed(f.kind) && ui.add(Button::new(if f.reveal { "Hide" } else { "Show" }).min_width(56.0)).clicked() {
+                    f.reveal = !f.reveal;
+                }
+            };
+            let minus = m::CONTROL_HEIGHT + 8.0;
+            let buttons = [concealed(f.kind), f.kind == ItemFieldType::Concealed].iter().filter(|b| **b).count() as f32 * (56.0 + m::TIGHT);
+            let below = buttons > 0.0 && ui.available_width() - (divider + 40.0) - minus - 2.0 * m::TIGHT - buttons < 96.0;
             row(ui, |ui| {
-                ui.add(TextControl::new(&mut f.label).width(divider + 40.0).hint(kind_label(f.kind)));
+                // 1Password knows an SSH key by its label.
+                ui.add_enabled(f.kind != ItemFieldType::SshKey, TextControl::new(&mut f.label).width(divider + 40.0).hint(kind_label(f.kind)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(Button::new("−").min_width(m::CONTROL_HEIGHT + 8.0)).on_hover_text("Remove this field").clicked() {
+                    if ui.add(Button::new("−").min_width(minus)).on_hover_text("Remove this field").clicked() {
                         remove = Some(i);
                     }
-                    if f.kind == ItemFieldType::Concealed && ui.add(Button::new("New").min_width(56.0)).on_hover_text("Generate a password").clicked() {
-                        action = Some(EditAction::Generate(f.id.clone()));
-                    }
-                    if concealed(f.kind) && ui.add(Button::new(if f.reveal { "Hide" } else { "Show" }).min_width(56.0)).clicked() {
-                        f.reveal = !f.reveal;
+                    if !below {
+                        secret_buttons(ui, f, &mut action);
                     }
                     let hint = match f.kind {
                         ItemFieldType::Totp => "otpauth:// URI or secret",
-                        ItemFieldType::MonthYear => "YYYYMM",
+                        ItemFieldType::MonthYear => "MM/YYYY",
+                        ItemFieldType::Date => "YYYY-MM-DD",
+                        ItemFieldType::Address => "street",
                         ItemFieldType::Url => "https://",
                         _ => "",
                     };
                     let width = ui.available_width();
-                    ui.add(TextControl::new(&mut f.value).width(width).password(concealed(f.kind) && !f.reveal).mono(concealed(f.kind)).hint(hint));
+                    let value = if f.kind == ItemFieldType::Address { &mut f.address.street } else { &mut f.value };
+                    ui.add(TextControl::new(value).width(width).password(concealed(f.kind) && !f.reveal).mono(concealed(f.kind)).hint(hint));
                 });
             });
+            if below {
+                row(ui, |ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_space(minus + m::TIGHT);
+                        secret_buttons(ui, f, &mut action);
+                    });
+                });
+            }
+            if f.kind == ItemFieldType::Address {
+                // The rest of the address under its street, on the label
+                // and value columns: the city under the label and the rest
+                // across the value, or two by two if the value is narrow.
+                let a = &mut f.address;
+                let mut parts = [(&mut a.city, "city"), (&mut a.state, "state"), (&mut a.zip, "ZIP code"), (&mut a.country, "country")];
+                let label = divider + 40.0;
+                let value = ui.available_width() - label - 2.0 * m::TIGHT - m::CONTROL_HEIGHT - 8.0;
+                let per_row = if (value - 2.0 * m::TIGHT) / 3.0 >= 72.0 { 4 } else { 2 };
+                let rest = ((value - (per_row - 2) as f32 * m::TIGHT) / (per_row - 1) as f32).floor();
+                for line in parts.chunks_mut(per_row) {
+                    row(ui, |ui| {
+                        for (i, (part, hint)) in line.iter_mut().enumerate() {
+                            ui.add(TextControl::new(part).width(if i == 0 { label } else { rest }).hint(hint));
+                        }
+                    });
+                }
+            }
         }
         if let Some(i) = remove {
             self.fields.remove(i);
@@ -358,11 +449,20 @@ impl Editor {
                 ItemFieldType::Url => "website",
                 ItemFieldType::Phone => "phone",
                 ItemFieldType::Date => "date",
+                ItemFieldType::Address => "address",
                 _ => "",
             };
             // Custom fields go in a section of their own, as 1Password's apps put them.
             let section = self.custom_section();
-            self.fields.push(EditField { id: new_id(), section, label: label.into(), kind: *kind, value: String::new(), reveal: true });
+            self.fields.push(EditField {
+                id: new_id(),
+                section,
+                label: label.into(),
+                kind: *kind,
+                value: String::new(),
+                address: AddressFieldDetails::default(),
+                reveal: true,
+            });
         }
 
         if self.category == ItemCategory::Login || !self.websites.is_empty() {
@@ -394,6 +494,13 @@ impl Editor {
             TextView::new("edit-notes", &mut self.notes).editable(true).show(ui);
         });
         ui.add(TextControl::new(&mut self.tags).label("Tags:").divider(divider).hint("work, family"));
+        if let Some(e) = &self.error {
+            ui.add_space(m::TIGHT);
+            let shown = ui.label(egui::RichText::new(e).color(style::c(p.failure)));
+            if std::mem::take(&mut self.reveal_error) {
+                shown.scroll_to_me(Some(egui::Align::Center));
+            }
+        }
 
         ui.add_space(m::SPACING);
         ui.allocate_ui(vec2(ui.available_width(), m::CONTROL_HEIGHT + 4.0), |ui| {
@@ -407,7 +514,6 @@ impl Editor {
                 }
             });
         });
-        let _ = &p;
         if action.is_none() && ui.input(|i| i.key_pressed(egui::Key::Escape)) && !olo_kit::menu::is_open(ui.ctx(), add_id) {
             action = Some(EditAction::Cancel);
         }
