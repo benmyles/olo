@@ -176,6 +176,7 @@ pub fn load_settings() -> Settings {
     };
     adopt_old_app_ids(&mut settings);
     settings.tiling.upgrade();
+    settings.migrate();
     settings
 }
 
@@ -1336,6 +1337,8 @@ impl<B: Backend + 'static> AnvilState<B> {
     // ---- settings ------------------------------------------------------
 
     pub fn set_settings(&mut self, mut settings: Settings) {
+        // A backup restored from before keyboard profiles.
+        settings.migrate();
         // Brightness is kept as it's set (SetOutputBrightness, the keys),
         // not from a client's possibly older copy.
         for c in settings.display.outputs.values_mut() {
@@ -1378,7 +1381,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         if !regrouped.is_empty() {
             self.regroup_apps(&regrouped);
         }
-        self.keymap.set_bindings(olo_protocol::shortcuts::bindings(&self.settings.shortcuts));
+        self.keymap.set_bindings(olo_protocol::shortcuts::bindings(&self.settings.keyboard.profile));
         // Fewer workspaces: the windows on those gone join the last, and
         // a display showing one goes to it (with its windows).
         let last = self.settings.workspace_count.max(1) - 1;

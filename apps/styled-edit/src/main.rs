@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use olo_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
     editor::{self, Editor},
-    egui::{self, Color32, Key, Modifiers, Rect, Ui, pos2, text::LayoutJob, vec2},
+    egui::{self, Color32, Key, Rect, Ui, pos2, text::LayoutJob, vec2},
     file_panel::{FilePanel, PANEL_SIZE, PanelResult},
     instance::{self, Launch},
     metrics as m,
@@ -626,11 +626,12 @@ impl StyledEdit {
         let status = Rect::from_min_max(pos2(full.left(), full.bottom() - STATUS_H), full.max);
         let area = Rect::from_min_max(full.min, pos2(full.right(), status.top()));
 
-        // ⌘Z / ⌘⇧Z are our undo, not the field's.
+        // Undo and Redo (⌘Z / ⇧⌘Z on a Mac, Ctrl+Z / Ctrl+Y on Windows)
+        // are ours, not the field's.
         let editable = !d.read_only && !d.loading;
         let (redo, undo) = ui.input_mut(|i| {
-            let redo = i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) | i.consume_key(Modifiers::COMMAND, Key::Y);
-            (redo, i.consume_key(Modifiers::COMMAND, Key::Z))
+            let redo = olo_kit::keyboard::consume(i, "redo");
+            (redo, olo_kit::keyboard::consume(i, "undo"))
         });
         if editable && (undo || redo) {
             let sel = d.bytes();

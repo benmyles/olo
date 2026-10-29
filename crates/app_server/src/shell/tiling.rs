@@ -925,6 +925,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         self.auto_drag_ended(&window);
     }
 
+    /// In a tile or zoomed (Restore would change it).
+    pub fn arranged(&self, window: &WindowElement) -> bool {
+        Self::tiled(window).is_some() || self.is_zoomed(window) || self.auto_tiled(window)
+    }
+
     /// Back to how it was before it was tiled or zoomed.
     pub fn restore_frame(&mut self, window: &WindowElement) {
         self.forget_tile(window);

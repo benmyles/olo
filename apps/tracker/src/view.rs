@@ -644,6 +644,10 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
         ui.input(|i| {
             for e in &i.events {
                 let egui::Event::Key { key, pressed: true, modifiers, .. } = e else { continue };
+                // Alt's are the menus' (Windows' Alt+↑, Alt+Enter).
+                if modifiers.alt {
+                    continue;
+                }
                 if modifiers.ctrl {
                     if *key == Key::ArrowDown {
                         actions.push(Action::Command("open".into()));
@@ -658,8 +662,8 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
                     Key::Home => moved = Some(0),
                     Key::End => moved = Some(n as usize - 1),
                     Key::Enter => actions.push(Action::Command("open".into())),
-                    Key::Delete => actions.push(Action::Command("trash".into())),
-                    Key::F2 => actions.push(Action::Command("rename".into())),
+                    Key::Delete if plain_extra("trash", Key::Delete) => actions.push(Action::Command("trash".into())),
+                    Key::F2 if plain_extra("rename", Key::F2) => actions.push(Action::Command("rename".into())),
                     _ => {}
                 }
             }
@@ -930,4 +934,11 @@ pub fn info_view(ui: &mut Ui, e: &Entry, size: Option<(u64, u64)>) -> Option<Dra
         y += m::LABEL_ROW + m::TIGHT;
     }
     drag
+}
+
+/// Delete and F2 trash and rename in a view as well as the menus' keys,
+/// unless they are the menus' keys for it already (Windows'), which would
+/// do it twice.
+pub fn plain_extra(command: &str, key: Key) -> bool {
+    olo_kit::keyboard::shortcut(command).is_none_or(|s| !(s.key == key && !s.command && !s.alt && !s.shift))
 }

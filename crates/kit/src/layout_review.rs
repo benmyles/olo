@@ -506,10 +506,11 @@ fn near_level(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
             let (a, b) = if *ta && *tb { (*la, *lb) } else { (*ma, *mb) };
             let d = (a - b).abs();
             let most = if *ta && *tb { 0.5 * ra.height().min(rb.height()) } else { NEAR_EDGE };
-            // A symbol set by its ink (`style::key_combo`) may be a device
-            // pixel off its face's baseline, and that a fraction of one
-            // off the letters'.
-            let same = if *sa || *sb { SAME.max(1.5 / ppp + 0.01) } else { SAME };
+            // A symbol set by its ink (`style::key_combo`) may be off its
+            // face's baseline by up to two device pixels (↵ stands that
+            // far above its own, and is set down onto the capitals'), and
+            // a small one beside it (⌃) a fraction of one off the letters'.
+            let same = if *sa || *sb { SAME.max(2.0 / ppp + 0.01) } else { SAME };
             if d > same && d <= most {
                 let text = format!("{na} and {nb} beside it are almost level, {:.0} px apart: line them up", d.max(1.0));
                 push(out, finding(Level::Review, "near-level", text, ra.union(*rb)));

@@ -1119,16 +1119,8 @@ impl Tracker {
                 // The menu's keys, as there is no menu bar to take them
                 // (the Find field keeps its own).
                 ui.input_mut(|i| {
-                    let key = |i: &mut egui::InputState, k| !typing && i.consume_key(egui::Modifiers::COMMAND, k);
-                    if key(i, Key::ArrowUp) {
-                        Some("parent")
-                    } else if key(i, Key::O) {
-                        Some("open")
-                    } else if key(i, Key::Y) {
-                        Some("quick-look")
-                    } else {
-                        None
-                    }
+                    let key = |i: &mut egui::InputState, command| !typing && olo_kit::keyboard::consume(i, command);
+                    ["parent", "open", "quick-look"].into_iter().find(|c| key(i, c))
                 })
                 .map(str::to_owned)
             });

@@ -1,8 +1,10 @@
-//! Keyboard ▸ Shortcuts: app_server's own shortcuts (tiling, workspaces,
-//! Find, screenshots, …); the space they leave around windows is in
-//! Windows. Click a shortcut's keys, then type new ones: app_server
-//! records them (only it can tell ⌘ from Ctrl) and they replace the old,
-//! taken from any other shortcut that had them.
+//! Keyboard ▸ Shortcuts: every shortcut of the keyboard profile:
+//! app_server's (tiling, workspaces, Twitcher, Find, screenshots, …),
+//! then every app's (Copy, Close, …) and each app's own (Tracker's Move to
+//! Trash), as the profile's platform writes keys. Click a shortcut's keys,
+//! then type new ones: app_server records them (only it can tell ⌘ from
+//! Ctrl) and they replace the old, taken from any other shortcut that
+//! had them. Any change makes a platform's profile "… (Customized)".
 
 use olo_kit::{
     egui::{Align2, Rect, Sense, Ui, UiBuilder, pos2, vec2},
@@ -11,8 +13,8 @@ use olo_kit::{
     widgets::{Button, ScrollView, StringView},
 };
 use olo_protocol::{
-    Chord, Settings,
-    shortcuts::{self, FIXED, GROUPS, SHORTCUTS, ShortcutInfo},
+    Chord, Settings, app_keys,
+    shortcuts::{self, Entry, GROUPS, SHORTCUTS},
 };
 
 use crate::server::Server;
@@ -23,30 +25,37 @@ pub struct State {
     recording: Option<&'static str>,
     /// What the last change did, to say under the list.
     note: Option<String>,
+    /// The name being typed for the profile's Save As.
+    saving: Option<String>,
 }
 
 enum Row {
     Group(&'static str),
-    Shortcut(&'static ShortcutInfo),
-    Fixed(&'static str, &'static str),
+    Shortcut(Entry),
 }
 
 fn rows() -> Vec<Row> {
     let mut rows = Vec::new();
     for g in GROUPS {
         rows.push(Row::Group(g));
-        rows.extend(SHORTCUTS.iter().filter(|i| i.group == *g).map(Row::Shortcut));
-        if *g == shortcuts::WINDOWS {
-            rows.extend(FIXED.iter().map(|(t, k)| Row::Fixed(t, k)));
+        rows.extend(SHORTCUTS.iter().filter(|i| i.group == *g).filter_map(|i| shortcuts::entry(i.id)).map(Row::Shortcut));
+    }
+    let apps = std::iter::once(None).chain(app_keys::APPS.iter().map(|(a, _)| Some(*a)));
+    for app in apps {
+        let keys: Vec<Entry> = shortcuts::entries().filter(|e| e.scope == Some(app)).collect();
+        if !keys.is_empty() {
+            rows.push(Row::Group(app_keys::app_title(app)));
+            rows.extend(keys.into_iter().map(Row::Shortcut));
         }
     }
     rows
 }
 
 /// How a shortcut's keys read: "⇧⌘←", several joined, or "None".
-fn keys_text(info: &ShortcutInfo, s: &Settings) -> String {
-    let keys = shortcuts::keys_for(info, &s.shortcuts);
-    if keys.is_empty() { "None".to_owned() } else { keys.iter().map(Chord::symbols).collect::<Vec<_>>().join("  ") }
+fn keys_text(e: &Entry, s: &Settings) -> String {
+    let p = &s.keyboard.profile;
+    let keys = e.keys(p);
+    if keys.is_empty() { "None".to_owned() } else { keys.iter().map(|c| c.label(p.platform)).collect::<Vec<_>>().join("  ") }
 }
 
 pub fn ui(ui: &mut Ui, s: &mut Settings, server: &Server, st: &mut State) {
@@ -59,11 +68,15 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, server: &Server, st: &mut State) {
             None => None,
             Some(keys) => {
                 let chord = if keys.is_empty() { None } else { keys.parse::<Chord>().ok() };
-                let taken = shortcuts::assign(&mut s.shortcuts, id, chord);
-                (!taken.is_empty()).then(|| format!("{} was taken from “{}”.", chord.map(|c| c.symbols()).unwrap_or_default(), taken.join("”, “")))
+                let taken = shortcuts::assign(&mut s.keyboard.profile, id, chord);
+                s.keyboard.profile_changed();
+                let platform = s.keyboard.profile.platform;
+                (!taken.is_empty()).then(|| format!("{} was taken from “{}”.", chord.map(|c| c.label(platform)).unwrap_or_default(), taken.join("”, “")))
             }
         };
     }
+
+    crate::keyboard::profile(ui, s, &mut st.saving);
 
     let p = style::palette(ui.ctx());
     let rows = rows();
@@ -81,11 +94,6 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, server: &Server, st: &mut State) {
                 match &rows[i] {
                     Row::Group(g) => {
                         painter.text(pos2(r.left() + 6.0, r.center().y), Align2::LEFT_CENTER, *g, style::bold_font(), text);
-                    }
-                    Row::Fixed(title, keys) => {
-                        let dim = style::disabled_text(&p);
-                        painter.text(pos2(r.left() + 18.0, r.center().y), Align2::LEFT_CENTER, *title, style::plain_font(), dim);
-                        style::key_combo(painter, pos2(r.right() - 8.0, r.center().y), keys, dim);
                     }
                     Row::Shortcut(info) => {
                         let recording = st.recording == Some(info.id);
@@ -133,8 +141,9 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, server: &Server, st: &mut State) {
         ui.horizontal(|ui| {
             ui.add(StringView::new(&text).dim(st.note.is_none() || st.recording.is_some()));
             ui.with_layout(olo_kit::egui::Layout::right_to_left(olo_kit::egui::Align::Center), |ui| {
-                if ui.add_enabled(!s.shortcuts.is_empty(), Button::new("Default Keys")).clicked() {
-                    s.shortcuts.clear();
+                if ui.add_enabled(!s.keyboard.profile.shortcuts.is_empty(), Button::new("Default Keys")).clicked() {
+                    s.keyboard.profile.shortcuts.clear();
+                    s.keyboard.profile_changed();
                     st.note = None;
                 }
             });

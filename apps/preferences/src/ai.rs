@@ -12,9 +12,9 @@ pub fn ui(ui: &mut Ui, s: &mut Settings) {
     BBox::new("Models").show(ui, |ui| {
         ui.add(StringView::new("AI features use OpenAI’s models through the Token Pool’s Codex accounts, spent in its order.").dim(true).wrap(true));
     });
-    let keys = shortcuts::by_id("smart-tile").map(|i| shortcuts::keys_for(i, &s.shortcuts)).unwrap_or_default();
+    let keys = shortcuts::by_id("smart-tile").map(|i| shortcuts::keys_for(i, &s.keyboard.profile)).unwrap_or_default();
     let how = match keys.first() {
-        Some(k) => format!("{} looks at the screen and what each window shows, and tiles them: what you’re working on bigger, what you glance at to the side.", k.symbols()),
+        Some(k) => format!("{} looks at the screen and what each window shows, and tiles them: what you’re working on bigger, what you glance at to the side.", k.label(s.keyboard.profile.platform)),
         None => "Smart Tile (in the command palette) looks at the screen and what each window shows, and tiles them.".into(),
     };
     BBox::new("Smart Tiling").show(ui, |ui| {

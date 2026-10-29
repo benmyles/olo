@@ -13,7 +13,7 @@ use olo_kit::{
     apps::{OUR_APPS, PREFERENCE_PANELS, our_app},
     commands, desktop_entry,
 };
-use olo_protocol::{Client, Reply, Request, ShortcutSettings, WindowInfo, shortcuts};
+use olo_protocol::{Client, Reply, Request, WindowInfo, shortcuts};
 
 /// What a result is (shown at its right, and how it ranks among equals).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -189,18 +189,18 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
         Ok(Reply::Windows { windows }) => windows,
         _ => Vec::new(),
     };
-    let changed: ShortcutSettings = match client.request(&Request::GetSettings) {
-        Ok(Reply::Settings { settings }) => settings.shortcuts,
+    let profile = match client.request(&Request::GetSettings) {
+        Ok(Reply::Settings { settings }) => settings.keyboard.profile,
         _ => Default::default(),
     };
     let front = windows.iter().find(|w| w.focused).cloned();
     for info in shortcuts::SHORTCUTS.iter().filter(|i| i.action != olo_protocol::Shortcut::Palette) {
-        let keys = shortcuts::keys_for(info, &changed);
+        let keys = shortcuts::keys_for(info, &profile);
         let mut item = Item::new(Kind::Shortcut, info.title, Action::Shortcut(info.id.into()))
             .subtitle(info.group)
             .icon(shortcut_icon(info.group))
             .keywords(format!("{} {}{}", info.id.replace('-', " "), info.group, if info.action == olo_protocol::Shortcut::Hide { " minimize minimise" } else { "" }));
-        item.keys = keys.first().map(|c| c.symbols());
+        item.keys = keys.first().map(|c| c.label(profile.platform));
         // Window shortcuts need a window to act on.
         item.enabled = front.is_some() || info.group != shortcuts::WINDOWS;
         items.push(item);

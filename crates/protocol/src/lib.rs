@@ -14,10 +14,11 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 pub mod notifications;
+pub mod app_keys;
 pub mod shortcuts;
 pub mod touchpad;
 pub use notifications::{AppNotifications, CardSize, HistoryView, NoteLook, NoteStyle, NotificationSettings, NotificationState};
-pub use shortcuts::{AutoTiling, Chord, ModeChoice, Shortcut, ShortcutSettings, Tile, TilingSettings, WindowingMode};
+pub use shortcuts::{AutoTiling, Chord, CommandKey, KeyboardProfile, ModeChoice, Platform, Shortcut, ShortcutSettings, Tile, TilingSettings, WindowingMode};
 
 pub const SOCKET_ENV: &str = "OLO_SOCKET";
 
@@ -705,8 +706,10 @@ pub struct Settings {
     pub power: PowerSettings,
     pub screen_saver: ScreenSaverSettings,
     pub clock: ClockSettings,
-    /// app_server's keyboard shortcuts changed from their defaults.
-    pub shortcuts: ShortcutSettings,
+    /// Before keyboard profiles: app_server's shortcuts changed from
+    /// their defaults (read once, into `keyboard.profile`: [`Settings::migrate`]).
+    #[serde(skip_serializing)]
+    pub shortcuts: Option<ShortcutSettings>,
     pub tiling: TilingSettings,
     pub tracker: TrackerSettings,
     pub security: SecuritySettings,
@@ -1200,19 +1203,24 @@ pub struct KeyboardSettings {
     pub options: String,
     pub repeat_delay_ms: i32,
     pub repeat_rate_hz: i32,
-    /// ⌘ (the Super/Meta key) is the command key: apps see Ctrl, so ⌘C
-    /// copies, and app_server takes ⌘Tab, ⌘`, ⌘Space and ⌘ arrows (and
-    /// ⌥Tab, Twitcher for this workspace only).
-    pub command_key: bool,
-    /// Caps Lock is another Ctrl.
-    pub caps_lock_control: bool,
+    /// The keyboard profile in use (Mac, Windows, BeOS, or one changed or
+    /// saved from them): the command key, how keys behave, and every
+    /// shortcut.
+    pub profile: KeyboardProfile,
+    /// Profiles saved under their own names, and a platform's once changed
+    /// ("Mac (Customized)"), to pick again.
+    pub profiles: Vec<KeyboardProfile>,
     /// Num Lock is on when Olo starts (and is set so when this
     /// changes); the Num Lock key still toggles it.
     pub num_lock: bool,
-    /// Tapping ⌘ on its own opens Find (off: only ⌘Space does). Renamed
-    /// from `tap_command_find` when it stopped being on by default, so the
-    /// old default saved in settings files doesn't keep it on.
-    pub find_on_command_tap: bool,
+    /// Before keyboard profiles (read once, into `profile`): ⌘ was the
+    /// command key, Caps Lock a Ctrl, a tap of ⌘ the palette.
+    #[serde(skip_serializing)]
+    pub command_key: Option<bool>,
+    #[serde(skip_serializing)]
+    pub caps_lock_control: Option<bool>,
+    #[serde(skip_serializing)]
+    pub find_on_command_tap: Option<bool>,
     /// Apps that keep physical Ctrl for themselves (terminals): ⌘ reaches
     /// them as Ctrl+Shift, so Ctrl+C still interrupts. Matched on app_id.
     pub terminal_apps: Vec<String>,
@@ -1302,7 +1310,7 @@ impl Default for Settings {
             power: PowerSettings::default(),
             screen_saver: ScreenSaverSettings::default(),
             clock: ClockSettings::default(),
-            shortcuts: ShortcutSettings::default(),
+            shortcuts: None,
             tiling: TilingSettings::default(),
             tracker: TrackerSettings::default(),
             security: SecuritySettings::default(),
@@ -1349,10 +1357,12 @@ impl Default for KeyboardSettings {
             options: String::new(),
             repeat_delay_ms: 300,
             repeat_rate_hz: 35,
-            command_key: true,
-            caps_lock_control: true,
+            profile: KeyboardProfile::default(),
+            profiles: Vec::new(),
             num_lock: true,
-            find_on_command_tap: false,
+            command_key: None,
+            caps_lock_control: None,
+            find_on_command_tap: None,
             hints: false,
             double_press_ms: 400,
             terminal_apps: [
@@ -1392,6 +1402,69 @@ impl Settings {
             .or_else(|| self.workspace_colors.first())
             .copied()
             .unwrap_or([51, 102, 152])
+    }
+
+    /// Settings saved before keyboard profiles: their command key, Caps
+    /// Lock, tap and shortcuts become the profile's, a Mac's (named
+    /// "Mac (Customized)" if they aren't as a Mac's come). Done on load
+    /// and on every change given (a backup restored from then).
+    pub fn migrate(&mut self) {
+        let k = &mut self.keyboard;
+        let old = self.shortcuts.take();
+        if k.command_key.is_none() && k.caps_lock_control.is_none() && k.find_on_command_tap.is_none() && old.is_none() {
+            return;
+        }
+        let p = &mut k.profile;
+        if let Some(on) = k.command_key.take() {
+            p.command_key = if on { CommandKey::Command } else { CommandKey::Control };
+        }
+        if let Some(on) = k.caps_lock_control.take() {
+            p.caps_lock_control = on;
+        }
+        if let Some(on) = k.find_on_command_tap.take() {
+            p.palette_on_tap = on;
+        }
+        p.shortcuts.extend(old.unwrap_or_default());
+        k.profile_changed();
+    }
+}
+
+impl KeyboardSettings {
+    /// The profiles to pick from: Mac, Windows and BeOS as they come, then
+    /// those saved.
+    pub fn choices(&self) -> Vec<KeyboardProfile> {
+        let mut all: Vec<KeyboardProfile> = Platform::ALL.into_iter().map(KeyboardProfile::builtin).collect();
+        all.extend(self.profiles.iter().filter(|p| !Platform::ALL.iter().any(|b| b.name() == p.name)).cloned());
+        all
+    }
+
+    /// The profile in use was changed by hand: renamed if it was a
+    /// platform's ("Mac (Customized)"), and kept among the saved ones so
+    /// picking another doesn't lose it.
+    pub fn profile_changed(&mut self) {
+        self.profile.changed();
+        if !Platform::ALL.iter().any(|b| b.name() == self.profile.name) {
+            self.save_profile();
+        }
+    }
+
+    /// Keep the profile in use among the saved ones, under its name.
+    pub fn save_profile(&mut self) {
+        match self.profiles.iter_mut().find(|p| p.name == self.profile.name) {
+            Some(p) => *p = self.profile.clone(),
+            None => self.profiles.push(self.profile.clone()),
+        }
+    }
+
+    /// Use the profile named `name` (from [`Self::choices`]).
+    pub fn pick_profile(&mut self, name: &str) -> bool {
+        match self.choices().into_iter().find(|p| p.name == name) {
+            Some(p) => {
+                self.profile = p;
+                true
+            }
+            None => false,
+        }
     }
 }
 
@@ -1494,6 +1567,38 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn settings_before_profiles_become_one() {
+        // As saved before: nothing changed but Caps Lock.
+        let old = r#"{"keyboard":{"command_key":true,"caps_lock_control":false,"find_on_command_tap":false,"hints":true},"shortcuts":{}}"#;
+        let mut s: Settings = serde_json::from_str(old).unwrap();
+        s.migrate();
+        let k = &s.keyboard;
+        assert_eq!((k.profile.name.as_str(), k.profile.caps_lock_control, k.hints), ("Mac (Customized)", false, true));
+        assert_eq!(k.profiles.len(), 1);
+        let saved = serde_json::to_value(&s).unwrap();
+        assert!(saved.get("shortcuts").is_none() && saved["keyboard"].get("command_key").is_none(), "{saved}");
+        // As a Mac's come, with a shortcut of its own.
+        let old = r#"{"keyboard":{"command_key":true,"caps_lock_control":true},"shortcuts":{"lock":["Ctrl+Cmd+L"]}}"#;
+        let mut s: Settings = serde_json::from_str(old).unwrap();
+        s.migrate();
+        assert_eq!(s.keyboard.profile.shortcuts["lock"], ["Ctrl+Cmd+L"]);
+        assert_eq!(s.keyboard.profile.name, "Mac (Customized)");
+        // Nothing changed: a Mac's.
+        let mut s: Settings = serde_json::from_str(r#"{"keyboard":{"command_key":true},"shortcuts":{}}"#).unwrap();
+        s.migrate();
+        assert_eq!(s.keyboard.profile, KeyboardProfile::default());
+        assert!(s.keyboard.profiles.is_empty());
+        // Picking another keeps the changed one to come back to.
+        let mut k = KeyboardSettings::default();
+        k.profile.palette_on_tap = true;
+        k.profile_changed();
+        assert!(k.pick_profile("BeOS"));
+        assert_eq!(k.profile.command_key, CommandKey::Alt);
+        assert!(k.pick_profile("Mac (Customized)") && k.profile.palette_on_tap);
+        assert_eq!(k.choices().iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["Mac", "Windows", "BeOS", "Mac (Customized)"]);
+    }
 
     #[test]
     fn displays_numbered_left_to_right() {

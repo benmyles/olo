@@ -169,7 +169,7 @@ impl Panel {
             Panel::Bluetooth => (440, 340),
             Panel::DateTime => (460, 370),
             Panel::Display => (500, 490),
-            Panel::Keyboard => (480, 736),
+            Panel::Keyboard => (520, 736),
             Panel::Network => (460, 360),
             Panel::Notifications => (440, 540),
             Panel::Power => (460, 366),
@@ -212,8 +212,11 @@ impl Panel {
                 settings.wallpaper = from.wallpaper.clone();
             }
             Panel::Keyboard => {
+                // Profiles saved by name stay (Defaults doesn't lose them).
+                let mut saved = std::mem::take(&mut settings.keyboard.profiles);
+                saved.retain(|p| !from.keyboard.profiles.iter().any(|f| f.name == p.name));
                 settings.keyboard = from.keyboard.clone();
-                settings.shortcuts = from.shortcuts.clone();
+                settings.keyboard.profiles.extend(saved);
             }
             Panel::Windows => {
                 settings.tiling.gap = from.tiling.gap;

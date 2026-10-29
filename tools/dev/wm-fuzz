@@ -89,16 +89,17 @@ TEAR, TEAR_SIDE, NEAR = 24, 48, 12
 # hit area around them): there it can be taken hold of without closing or
 # zooming the window.
 TAB_GRIP = 2 * (BOX_INSET + BOX_SIZE + 2) + 8
+# A Mac's keys (the default keyboard profile, olo_protocol::shortcuts).
 KEYS = {
-    "tile-left": [SHIFT, CMD, 105], "tile-right": [SHIFT, CMD, 106], "tile-top": [SHIFT, CMD, 103],
-    "tile-bottom": [SHIFT, CMD, 108], "tile-top-left": [CTRL, CMD, 22], "tile-bottom-right": [CTRL, CMD, 37],
-    "tile-left-third": [CTRL, CMD, 32], "tile-center-third": [CTRL, CMD, 33], "zoom": [SHIFT, CMD, 28],
-    "zoom-vertical": [ALT, SHIFT, CMD, 103], "zoom-horizontal": [ALT, SHIFT, CMD, 105],
-    "restore": [SHIFT, CMD, 14], "center": [CTRL, CMD, 46], "hide-window": [CMD, 50],
-    "roll-up": [CTRL, CMD, 50], "next-tab": [ALT, 15], "tile-all": [CTRL, CMD, 28],
+    "tile-left": [CTRL, ALT, 105], "tile-right": [CTRL, ALT, 106], "tile-top": [CTRL, ALT, 103],
+    "tile-bottom": [CTRL, ALT, 108], "tile-top-left": [CTRL, ALT, 22], "tile-bottom-right": [CTRL, ALT, 37],
+    "tile-left-third": [CTRL, ALT, 32], "tile-center-third": [CTRL, ALT, 33], "zoom": [CTRL, ALT, 28],
+    "zoom-vertical": [CTRL, ALT, SHIFT, 103], "zoom-horizontal": [CTRL, ALT, SHIFT, 105],
+    "restore": [CTRL, ALT, 14], "center": [CTRL, ALT, 46], "hide-window": [CMD, 50],
+    "roll-up": [CTRL, CMD, 50], "next-tab": [CTRL, 15], "tile-all": [CTRL, CMD, 28],
     "zoom-all": [CTRL, ALT, CMD, 28], "cascade-all": [CTRL, CMD, 43], "fan-out": [CTRL, CMD, 53],
-    "undo-arrangement": [CTRL, CMD, 44], "next-workspace": [CTRL, CMD, 106],
-    "previous-workspace": [CTRL, CMD, 105], "window-to-next-workspace": [CTRL, SHIFT, CMD, 106],
+    "undo-arrangement": [CTRL, CMD, 44], "next-workspace": [CTRL, 106],
+    "previous-workspace": [CTRL, 105], "window-to-next-workspace": [CTRL, SHIFT, 106],
 }
 
 

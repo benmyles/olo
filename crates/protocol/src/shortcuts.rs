@@ -1,8 +1,10 @@
 //! Keyboard shortcuts app_server handles itself (window tiling, workspaces,
-//! Find, screenshots, …): what each does, its default keys, and the
-//! changes kept in `Settings::shortcuts` (Preferences ▸ Keyboard ▸
-//! Shortcuts). Keys are written "Ctrl+Cmd+Shift+Left": Cmd is ⌘ (the
-//! Super key when it is the command key), Alt is ⌥.
+//! Find, screenshots, …): what each does, its keys on each platform a
+//! keyboard profile follows ([`Platform`]: Mac, Windows, BeOS), and the
+//! profile ([`KeyboardProfile`], Preferences ▸ Keyboard) with the changes
+//! made to them. Keys are written "Ctrl+Cmd+Shift+Left" and are the
+//! physical ones: Cmd is the Super key (⌘ on a Mac, the Windows key,
+//! BeOS's Option), Alt is ⌥ (BeOS's command key).
 
 use std::{collections::BTreeMap, fmt, str::FromStr};
 
@@ -97,6 +99,24 @@ const KEYS: &[(u32, &str, &str)] = &[
     (111, "Delete", "⌦"),
 ];
 
+/// A key's name as a PC keyboard writes it (Windows, BeOS): "Enter",
+/// "Backspace", "Del", arrows as arrows.
+pub fn key_word(key: u32) -> String {
+    match key {
+        1 => "Esc".into(),
+        14 => "Backspace".into(),
+        15 => "Tab".into(),
+        28 | 96 => "Enter".into(),
+        99 => "PrtSc".into(),
+        102 => "Home".into(),
+        104 => "PgUp".into(),
+        107 => "End".into(),
+        109 => "PgDn".into(),
+        111 => "Del".into(),
+        k => KEYS.iter().find(|(c, ..)| *c == k).map_or_else(|| format!("Key{k}"), |(_, _, sym)| (*sym).to_owned()),
+    }
+}
+
 /// evdev codes of the modifier keys (never a chord's key).
 pub const MODIFIER_KEYS: &[u32] = &[29, 97, 42, 54, 56, 100, 125, 126, 58];
 
@@ -108,6 +128,26 @@ impl Chord {
     /// Whether `key` can be part of a shortcut.
     pub fn known_key(key: u32) -> bool {
         KEYS.iter().any(|(k, ..)| *k == key)
+    }
+
+    /// As `platform` writes it: on a Mac "⌃⌥⇧⌘←"; on Windows
+    /// "Win+Ctrl+Alt+Shift+←" (the Super key is the Windows key); on BeOS
+    /// "Ctrl+Alt+Opt+Shift+←" (Haiku's names; the Super key is Option).
+    pub fn label(&self, platform: Platform) -> String {
+        let mods: &[(bool, &str)] = match platform {
+            Platform::Mac => return self.symbols(),
+            Platform::Windows => &[(self.cmd, "Win"), (self.ctrl, "Ctrl"), (self.alt, "Alt"), (self.shift, "Shift")],
+            Platform::Beos => &[(self.ctrl, "Ctrl"), (self.alt, "Alt"), (self.cmd, "Opt"), (self.shift, "Shift")],
+        };
+        let mut s = String::new();
+        for (on, name) in mods {
+            if *on {
+                s.push_str(name);
+                s.push('+');
+            }
+        }
+        s.push_str(&key_word(self.key));
+        s
     }
 
     /// As on a Mac menu: "⌃⌥⇧⌘←".
@@ -157,7 +197,7 @@ impl FromStr for Chord {
                 "ctrl" | "control" => c.ctrl = true,
                 "alt" | "option" | "opt" => c.alt = true,
                 "shift" => c.shift = true,
-                "cmd" | "command" | "super" | "meta" => c.cmd = true,
+                "cmd" | "command" | "super" | "meta" | "win" | "windows" => c.cmd = true,
                 _ => return Err(format!("unknown modifier {m:?} in {s:?}")),
             }
         }
@@ -249,6 +289,29 @@ pub enum Shortcut {
     ScreenshotRegion,
     ScreenshotWindow,
     ScreenshotApp,
+    /// Twitcher, held: every workspace's applications (Mac ⌘Tab,
+    /// Windows Alt+Tab, BeOS Ctrl+Tab), back with Shift, chosen when the
+    /// keys held are let go.
+    SwitchApps,
+    /// Twitcher for the workspaces showing (Mac ⌥Tab).
+    SwitchAppsHere,
+    /// Twitcher for the focused application's windows (⌘\`).
+    SwitchWindows,
+    /// Every shortcut of the profile, and the front app's, on a sheet
+    /// (Mac ⇧⌘/, as Help is ⌘?).
+    ShortcutHelp,
+    /// Hide every window of the focused application (Mac ⌘H).
+    HideApp,
+    /// Activity Monitor, to see what runs and end what hangs (Mac ⌥⌘⎋,
+    /// Windows' Task Manager Ctrl+Shift+Esc, BeOS's Team Monitor
+    /// Ctrl+Alt+Del).
+    ActivityMonitor,
+    /// The focused window behind every other (BeOS Ctrl+Alt+B).
+    SendToBack,
+    /// Zoomed or tiled: back to its own size; else hidden (Windows ⊞↓).
+    RestoreOrHide,
+    /// Close the focused window, whatever the app (Windows' Alt+F4).
+    CloseWindow,
 }
 
 /// A part of a display a window can be tiled into.
@@ -296,96 +359,254 @@ impl Tile {
     }
 }
 
+/// The platform a keyboard profile follows, so its keys are as there:
+/// Mac, Windows or BeOS (as Haiku keeps it).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Platform {
+    #[default]
+    Mac,
+    Windows,
+    Beos,
+}
+
+impl Platform {
+    pub const ALL: [Platform; 3] = [Platform::Mac, Platform::Windows, Platform::Beos];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Platform::Mac => "Mac",
+            Platform::Windows => "Windows",
+            Platform::Beos => "BeOS",
+        }
+    }
+
+    fn index(self) -> usize {
+        self as usize
+    }
+}
+
+/// The key apps take as the command key (Copy is it and C): on a Mac ⌘
+/// (the Super key), on Windows Ctrl, on BeOS Alt (the key beside the
+/// space bar, as a Mac's ⌘ is). Whichever it is, apps see Ctrl; with Alt
+/// as it, the Super key is Option (as on BeOS).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CommandKey {
+    #[default]
+    Command,
+    Control,
+    Alt,
+}
+
+impl CommandKey {
+    pub const ALL: [CommandKey; 3] = [CommandKey::Command, CommandKey::Control, CommandKey::Alt];
+
+    /// As Preferences offers it.
+    pub fn title(self) -> &'static str {
+        match self {
+            CommandKey::Command => "⌘ Command (the Super key)",
+            CommandKey::Control => "Control",
+            CommandKey::Alt => "Alt",
+        }
+    }
+}
+
+/// A keyboard profile: how keys behave and what every shortcut is, as on
+/// one platform (Preferences ▸ Keyboard). Mac, Windows and BeOS come as
+/// they are on those; a profile changed by hand is "Mac (Customized)"
+/// (or keeps the name it was saved under).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct KeyboardProfile {
+    pub name: String,
+    /// Whose keys it starts from (its shortcuts' defaults).
+    pub platform: Platform,
+    pub command_key: CommandKey,
+    /// Caps Lock is another Ctrl.
+    pub caps_lock_control: bool,
+    /// Tapping the Super key alone (⌘ on a Mac, the Windows key) opens
+    /// the command palette, as the Windows key opens Start.
+    pub palette_on_tap: bool,
+    /// Shortcuts changed from the platform's, by id (app_server's, in
+    /// [`SHORTCUTS`], and apps', in [`crate::app_keys::APP_KEYS`]); an empty
+    /// list turns one off.
+    pub shortcuts: ShortcutSettings,
+}
+
+impl Default for KeyboardProfile {
+    fn default() -> Self {
+        KeyboardProfile::builtin(Platform::Mac)
+    }
+}
+
+impl KeyboardProfile {
+    /// A platform's own, as it comes.
+    pub fn builtin(platform: Platform) -> KeyboardProfile {
+        let (command_key, caps_lock_control, palette_on_tap) = match platform {
+            Platform::Mac => (CommandKey::Command, true, false),
+            Platform::Windows => (CommandKey::Control, false, true),
+            Platform::Beos => (CommandKey::Alt, false, false),
+        };
+        KeyboardProfile {
+            name: platform.name().into(),
+            platform,
+            command_key,
+            caps_lock_control,
+            palette_on_tap,
+            shortcuts: ShortcutSettings::new(),
+        }
+    }
+
+    /// Its platform's, just as it comes (whatever its name).
+    pub fn is_builtin(&self) -> bool {
+        KeyboardProfile { name: self.platform.name().into(), ..self.clone() } == KeyboardProfile::builtin(self.platform)
+    }
+
+    /// The name a platform's profile has once changed: "Mac (Customized)".
+    pub fn customized_name(platform: Platform) -> String {
+        format!("{} (Customized)", platform.name())
+    }
+
+    /// Changed by hand: a platform's own becomes "Mac (Customized)", and
+    /// back to "Mac" when it is as it comes again; one saved under a name
+    /// of its own keeps it.
+    pub fn changed(&mut self) {
+        let named_for = |p: Platform| self.name == p.name() || self.name == KeyboardProfile::customized_name(p);
+        if Platform::ALL.into_iter().any(named_for) {
+            self.name = if self.is_builtin() { self.platform.name().into() } else { KeyboardProfile::customized_name(self.platform) };
+        }
+    }
+
+    /// The Super key is Option (the command key being Alt, as on BeOS).
+    pub fn super_is_option(&self) -> bool {
+        self.command_key == CommandKey::Alt
+    }
+}
+
 /// One shortcut as Preferences lists it.
 pub struct ShortcutInfo {
     pub action: Shortcut,
-    /// Its name in `Settings::shortcuts`.
+    /// Its name in a profile's `shortcuts`.
     pub id: &'static str,
     pub group: &'static str,
     pub title: &'static str,
-    /// Default keys.
-    pub keys: &'static [&'static str],
+    /// Its keys on each platform: Mac, Windows, BeOS. "Cmd" is the
+    /// Super key (⌘ on a Mac, the Windows key, BeOS's Option); keys are
+    /// the physical ones.
+    pub keys: [&'static [&'static str]; 3],
 }
 
-const fn s(action: Shortcut, id: &'static str, group: &'static str, title: &'static str, keys: &'static [&'static str]) -> ShortcutInfo {
-    ShortcutInfo { action, id, group, title, keys }
+impl ShortcutInfo {
+    /// Its keys on `platform`, as it comes.
+    pub fn default_keys(&self, platform: Platform) -> Vec<Chord> {
+        self.keys[platform.index()].iter().filter_map(|k| k.parse().ok()).collect()
+    }
+}
+
+const fn s(
+    action: Shortcut,
+    id: &'static str,
+    group: &'static str,
+    title: &'static str,
+    mac: &'static [&'static str],
+    windows: &'static [&'static str],
+    beos: &'static [&'static str],
+) -> ShortcutInfo {
+    ShortcutInfo { action, id, group, title, keys: [mac, windows, beos] }
 }
 
 pub const WINDOWS: &str = "Windows";
 pub const ARRANGE: &str = "Arranging";
 pub const WORKSPACES: &str = "Workspaces";
+pub const SWITCHING: &str = "Switching";
 pub const DESKTOP: &str = "Desktop";
 pub const SCREENSHOTS: &str = "Screenshots";
 
-/// Every shortcut, in the order Preferences shows them.
+/// Every shortcut app_server handles, in the order Preferences shows them,
+/// with its keys on each platform. Mac's tiling is Rectangle's (⌃⌥), so
+/// ⇧⌘-arrows select text as on any Mac; its spaces are Mission
+/// Control's (⌃←/→, ⌃1…). Windows' is Snap and Task View's (the Windows
+/// key with the arrows, ⊞Tab), Olo's extras beside them on ⊞⌥. BeOS's is
+/// Haiku's (Ctrl+Alt for windows, Alt+F1… workspaces, Ctrl+Tab
+/// Twitcher, Opt+Tab a window's tabs), Olo's extras on Ctrl+Opt.
 pub const SHORTCUTS: &[ShortcutInfo] = &[
-    s(Shortcut::Tile(Tile::Left), "tile-left", WINDOWS, "Left half", &["Shift+Cmd+Left"]),
-    s(Shortcut::Tile(Tile::Right), "tile-right", WINDOWS, "Right half", &["Shift+Cmd+Right"]),
-    s(Shortcut::Tile(Tile::Top), "tile-top", WINDOWS, "Top half", &["Shift+Cmd+Up"]),
-    s(Shortcut::Tile(Tile::Bottom), "tile-bottom", WINDOWS, "Bottom half", &["Shift+Cmd+Down"]),
-    s(Shortcut::Tile(Tile::TopLeft), "tile-top-left", WINDOWS, "Top left quarter", &["Ctrl+Cmd+U"]),
-    s(Shortcut::Tile(Tile::TopRight), "tile-top-right", WINDOWS, "Top right quarter", &["Ctrl+Cmd+I"]),
-    s(Shortcut::Tile(Tile::BottomLeft), "tile-bottom-left", WINDOWS, "Bottom left quarter", &["Ctrl+Cmd+J"]),
-    s(Shortcut::Tile(Tile::BottomRight), "tile-bottom-right", WINDOWS, "Bottom right quarter", &["Ctrl+Cmd+K"]),
-    s(Shortcut::Tile(Tile::LeftThird), "tile-left-third", WINDOWS, "Left third", &["Ctrl+Cmd+D"]),
-    s(Shortcut::Tile(Tile::CenterThird), "tile-center-third", WINDOWS, "Center third", &["Ctrl+Cmd+F"]),
-    s(Shortcut::Tile(Tile::RightThird), "tile-right-third", WINDOWS, "Right third", &["Ctrl+Cmd+G"]),
-    s(Shortcut::Tile(Tile::LeftTwoThirds), "tile-left-two-thirds", WINDOWS, "Left two thirds", &["Ctrl+Cmd+E"]),
-    s(Shortcut::Tile(Tile::RightTwoThirds), "tile-right-two-thirds", WINDOWS, "Right two thirds", &["Ctrl+Cmd+T"]),
-    s(Shortcut::Zoom, "zoom", WINDOWS, "Zoom or unzoom", &["Shift+Cmd+Return"]),
-    s(Shortcut::ZoomVertical, "zoom-vertical", WINDOWS, "Zoom vertically", &["Alt+Shift+Cmd+Up", "Alt+Shift+Cmd+Down"]),
-    s(Shortcut::ZoomHorizontal, "zoom-horizontal", WINDOWS, "Zoom horizontally", &["Alt+Shift+Cmd+Left", "Alt+Shift+Cmd+Right"]),
-    s(Shortcut::Restore, "restore", WINDOWS, "Back to its own size", &["Shift+Cmd+Backspace"]),
-    s(Shortcut::Center, "center", WINDOWS, "Center", &["Ctrl+Cmd+C"]),
-    s(Shortcut::Float, "float-window", WINDOWS, "Float over the tiles, or tile", &["Ctrl+Alt+Cmd+F"]),
-    s(Shortcut::Hide, "hide-window", WINDOWS, "Hide window", &["Cmd+M"]),
-    s(Shortcut::RollUp, "roll-up", WINDOWS, "Roll up or down", &["Ctrl+Cmd+M"]),
-    s(Shortcut::NextTab, "next-tab", WINDOWS, "Next tab in the window", &["Ctrl+Tab"]),
-    s(Shortcut::PreviousTab, "previous-tab", WINDOWS, "Previous tab in the window", &["Ctrl+Shift+Tab"]),
-    s(Shortcut::NextDisplay, "next-display", WINDOWS, "To the next display", &["Ctrl+Alt+Cmd+Right"]),
-    s(Shortcut::PreviousDisplay, "previous-display", WINDOWS, "To the previous display", &["Ctrl+Alt+Cmd+Left"]),
-    s(Shortcut::TileAll, "tile-all", ARRANGE, "Tile all windows on the display", &["Ctrl+Cmd+Return"]),
-    s(Shortcut::AutoTile, "auto-tiling", ARRANGE, "Auto-tiling on or off", &["Ctrl+Alt+Cmd+T"]),
-    s(Shortcut::FocusMode, "focus-mode", ARRANGE, "Focus mode on or off", &["Ctrl+Alt+Cmd+O"]),
-    s(Shortcut::SmartTile, "smart-tile", ARRANGE, "Smart tile all windows on the display", &["Ctrl+Shift+Cmd+Return"]),
-    s(Shortcut::ZoomAll, "zoom-all", ARRANGE, "Zoom or unzoom all windows on the display", &["Ctrl+Alt+Cmd+Return"]),
-    s(Shortcut::CascadeAll, "cascade-all", ARRANGE, "Cascade all windows on the display", &["Ctrl+Cmd+Backslash"]),
-    s(Shortcut::FanOut, "fan-out", ARRANGE, "Fan out all windows, tabs side by side", &["Ctrl+Cmd+Slash"]),
-    s(Shortcut::CascadeOthers, "cascade-others", ARRANGE, "Cascade the other windows, leaving this one", &["Ctrl+Shift+Cmd+Backslash"]),
-    s(Shortcut::FanOutOthers, "fan-out-others", ARRANGE, "Fan out the other windows, leaving this one", &["Ctrl+Shift+Cmd+Slash"]),
-    s(Shortcut::UndoArrangement, "undo-arrangement", ARRANGE, "Undo window arrangement", &["Ctrl+Cmd+Z"]),
-    s(Shortcut::ShowDesktop, "show-desktop", ARRANGE, "Show the desktop", &["Ctrl+Cmd+H"]),
-    s(Shortcut::NextWorkspace, "next-workspace", WORKSPACES, "Next workspace", &["Ctrl+Cmd+Right"]),
-    s(Shortcut::PreviousWorkspace, "previous-workspace", WORKSPACES, "Previous workspace", &["Ctrl+Cmd+Left"]),
-    s(Shortcut::WindowToNextWorkspace, "window-to-next-workspace", WORKSPACES, "Window to the next workspace", &["Ctrl+Shift+Cmd+Right"]),
-    s(Shortcut::WindowToPreviousWorkspace, "window-to-previous-workspace", WORKSPACES, "Window to the previous workspace", &["Ctrl+Shift+Cmd+Left"]),
-    s(Shortcut::Workspace(0), "workspace-1", WORKSPACES, "Workspace 1", &["Ctrl+Cmd+1"]),
-    s(Shortcut::Workspace(1), "workspace-2", WORKSPACES, "Workspace 2", &["Ctrl+Cmd+2"]),
-    s(Shortcut::Workspace(2), "workspace-3", WORKSPACES, "Workspace 3", &["Ctrl+Cmd+3"]),
-    s(Shortcut::Workspace(3), "workspace-4", WORKSPACES, "Workspace 4", &["Ctrl+Cmd+4"]),
-    s(Shortcut::Workspace(4), "workspace-5", WORKSPACES, "Workspace 5", &["Ctrl+Cmd+5"]),
-    s(Shortcut::Workspace(5), "workspace-6", WORKSPACES, "Workspace 6", &["Ctrl+Cmd+6"]),
-    s(Shortcut::Workspace(6), "workspace-7", WORKSPACES, "Workspace 7", &["Ctrl+Cmd+7"]),
-    s(Shortcut::Workspace(7), "workspace-8", WORKSPACES, "Workspace 8", &["Ctrl+Cmd+8"]),
-    s(Shortcut::Workspace(8), "workspace-9", WORKSPACES, "Workspace 9", &["Ctrl+Cmd+9"]),
-    s(Shortcut::WindowToWorkspace(0), "window-to-workspace-1", WORKSPACES, "Window to workspace 1", &["Ctrl+Shift+Cmd+1"]),
-    s(Shortcut::WindowToWorkspace(1), "window-to-workspace-2", WORKSPACES, "Window to workspace 2", &["Ctrl+Shift+Cmd+2"]),
-    s(Shortcut::WindowToWorkspace(2), "window-to-workspace-3", WORKSPACES, "Window to workspace 3", &["Ctrl+Shift+Cmd+3"]),
-    s(Shortcut::WindowToWorkspace(3), "window-to-workspace-4", WORKSPACES, "Window to workspace 4", &["Ctrl+Shift+Cmd+4"]),
-    s(Shortcut::WindowToWorkspace(4), "window-to-workspace-5", WORKSPACES, "Window to workspace 5", &["Ctrl+Shift+Cmd+5"]),
-    s(Shortcut::WindowToWorkspace(5), "window-to-workspace-6", WORKSPACES, "Window to workspace 6", &["Ctrl+Shift+Cmd+6"]),
-    s(Shortcut::WindowToWorkspace(6), "window-to-workspace-7", WORKSPACES, "Window to workspace 7", &["Ctrl+Shift+Cmd+7"]),
-    s(Shortcut::WindowToWorkspace(7), "window-to-workspace-8", WORKSPACES, "Window to workspace 8", &["Ctrl+Shift+Cmd+8"]),
-    s(Shortcut::WindowToWorkspace(8), "window-to-workspace-9", WORKSPACES, "Window to workspace 9", &["Ctrl+Shift+Cmd+9"]),
-    s(Shortcut::Palette, "palette", DESKTOP, "Command palette", &["Cmd+Space"]),
-    s(Shortcut::Overview, "overview", DESKTOP, "Overview of every window", &["Ctrl+Space"]),
-    s(Shortcut::Find, "find", DESKTOP, "Find", &["Alt+Cmd+Space"]),
-    s(Shortcut::Lock, "lock", DESKTOP, "Lock the screen", &["Ctrl+Cmd+Q"]),
-    s(Shortcut::Caffeinate, "caffeinate", DESKTOP, "Stay awake, or not", &["Ctrl+Cmd+A"]),
-    s(Shortcut::ScreenshotScreen, "screenshot-screen", SCREENSHOTS, "Screenshot of the screen", &["Shift+Cmd+3", "Print"]),
-    s(Shortcut::ScreenshotRegion, "screenshot-region", SCREENSHOTS, "Screenshot of an area", &["Shift+Cmd+4"]),
-    s(Shortcut::ScreenshotWindow, "screenshot-window", SCREENSHOTS, "Screenshot of the window", &["Alt+Print"]),
-    s(Shortcut::ScreenshotApp, "screenshot-app", SCREENSHOTS, "Screenshot app", &["Shift+Cmd+5"]),
+    s(Shortcut::Tile(Tile::Left), "tile-left", WINDOWS, "Left half", &["Ctrl+Alt+Left"], &["Cmd+Left"], &["Ctrl+Cmd+Left"]),
+    s(Shortcut::Tile(Tile::Right), "tile-right", WINDOWS, "Right half", &["Ctrl+Alt+Right"], &["Cmd+Right"], &["Ctrl+Cmd+Right"]),
+    s(Shortcut::Tile(Tile::Top), "tile-top", WINDOWS, "Top half", &["Ctrl+Alt+Up"], &["Alt+Cmd+Up"], &["Ctrl+Cmd+Up"]),
+    s(Shortcut::Tile(Tile::Bottom), "tile-bottom", WINDOWS, "Bottom half", &["Ctrl+Alt+Down"], &["Alt+Cmd+Down"], &["Ctrl+Cmd+Down"]),
+    s(Shortcut::Tile(Tile::TopLeft), "tile-top-left", WINDOWS, "Top left quarter", &["Ctrl+Alt+U"], &["Alt+Cmd+U"], &["Ctrl+Cmd+U"]),
+    s(Shortcut::Tile(Tile::TopRight), "tile-top-right", WINDOWS, "Top right quarter", &["Ctrl+Alt+I"], &["Alt+Cmd+I"], &["Ctrl+Cmd+I"]),
+    s(Shortcut::Tile(Tile::BottomLeft), "tile-bottom-left", WINDOWS, "Bottom left quarter", &["Ctrl+Alt+J"], &["Alt+Cmd+J"], &["Ctrl+Cmd+J"]),
+    s(Shortcut::Tile(Tile::BottomRight), "tile-bottom-right", WINDOWS, "Bottom right quarter", &["Ctrl+Alt+K"], &["Alt+Cmd+K"], &["Ctrl+Cmd+K"]),
+    s(Shortcut::Tile(Tile::LeftThird), "tile-left-third", WINDOWS, "Left third", &["Ctrl+Alt+D"], &["Alt+Cmd+D"], &["Ctrl+Cmd+D"]),
+    s(Shortcut::Tile(Tile::CenterThird), "tile-center-third", WINDOWS, "Center third", &["Ctrl+Alt+F"], &["Alt+Cmd+F"], &["Ctrl+Cmd+F"]),
+    s(Shortcut::Tile(Tile::RightThird), "tile-right-third", WINDOWS, "Right third", &["Ctrl+Alt+G"], &["Alt+Cmd+G"], &["Ctrl+Cmd+G"]),
+    s(Shortcut::Tile(Tile::LeftTwoThirds), "tile-left-two-thirds", WINDOWS, "Left two thirds", &["Ctrl+Alt+E"], &["Alt+Cmd+E"], &["Ctrl+Cmd+E"]),
+    s(Shortcut::Tile(Tile::RightTwoThirds), "tile-right-two-thirds", WINDOWS, "Right two thirds", &["Ctrl+Alt+T"], &["Alt+Cmd+R"], &["Ctrl+Cmd+T"]),
+    s(Shortcut::Zoom, "zoom", WINDOWS, "Zoom or unzoom", &["Ctrl+Alt+Return"], &["Cmd+Up"], &["Ctrl+Alt+Z"]),
+    s(Shortcut::ZoomVertical, "zoom-vertical", WINDOWS, "Zoom vertically", &["Ctrl+Alt+Shift+Up", "Ctrl+Alt+Shift+Down"], &["Shift+Cmd+Up"], &["Ctrl+Shift+Cmd+Up", "Ctrl+Shift+Cmd+Down"]),
+    s(Shortcut::ZoomHorizontal, "zoom-horizontal", WINDOWS, "Zoom horizontally", &["Ctrl+Alt+Shift+Left", "Ctrl+Alt+Shift+Right"], &[], &["Ctrl+Shift+Cmd+Left", "Ctrl+Shift+Cmd+Right"]),
+    s(Shortcut::Restore, "restore", WINDOWS, "Back to its own size", &["Ctrl+Alt+Backspace"], &[], &["Ctrl+Cmd+Backspace"]),
+    s(Shortcut::RestoreOrHide, "restore-or-hide", WINDOWS, "Back to its own size, or hide", &[], &["Cmd+Down"], &[]),
+    s(Shortcut::Center, "center", WINDOWS, "Center", &["Ctrl+Alt+C"], &["Alt+Cmd+C"], &["Ctrl+Cmd+C"]),
+    s(Shortcut::Float, "float-window", WINDOWS, "Float over the tiles, or tile", &["Ctrl+Alt+Cmd+F"], &["Ctrl+Alt+Cmd+F"], &["Ctrl+Alt+Cmd+F"]),
+    s(Shortcut::Hide, "hide-window", WINDOWS, "Hide window", &["Cmd+M"], &[], &["Ctrl+Alt+M"]),
+    s(Shortcut::HideApp, "hide-app", WINDOWS, "Hide the application", &["Cmd+H"], &[], &["Ctrl+Alt+H"]),
+    s(Shortcut::RollUp, "roll-up", WINDOWS, "Roll up or down", &["Ctrl+Cmd+M"], &["Alt+Cmd+M"], &["Ctrl+Alt+R"]),
+    s(Shortcut::SendToBack, "send-to-back", WINDOWS, "Send to back", &[], &[], &["Ctrl+Alt+B"]),
+    s(Shortcut::CloseWindow, "close-window", WINDOWS, "Close the window", &[], &["Alt+F4"], &[]),
+    s(Shortcut::NextTab, "next-tab", WINDOWS, "Next tab in the window", &["Ctrl+Tab"], &["Ctrl+Tab"], &["Cmd+Tab"]),
+    s(Shortcut::PreviousTab, "previous-tab", WINDOWS, "Previous tab in the window", &["Ctrl+Shift+Tab"], &["Ctrl+Shift+Tab"], &["Shift+Cmd+Tab"]),
+    s(Shortcut::NextDisplay, "next-display", WINDOWS, "To the next display", &["Ctrl+Alt+Cmd+Right"], &["Shift+Cmd+Right"], &["Ctrl+Alt+Cmd+Right"]),
+    s(Shortcut::PreviousDisplay, "previous-display", WINDOWS, "To the previous display", &["Ctrl+Alt+Cmd+Left"], &["Shift+Cmd+Left"], &["Ctrl+Alt+Cmd+Left"]),
+    s(Shortcut::TileAll, "tile-all", ARRANGE, "Tile all windows on the display", &["Ctrl+Cmd+Return"], &["Alt+Cmd+Return"], &["Ctrl+Cmd+Return"]),
+    s(Shortcut::AutoTile, "auto-tiling", ARRANGE, "Auto-tiling on or off", &["Ctrl+Alt+Cmd+T"], &["Alt+Cmd+T"], &["Ctrl+Alt+Cmd+T"]),
+    s(Shortcut::FocusMode, "focus-mode", ARRANGE, "Focus mode on or off", &["Ctrl+Alt+Cmd+O"], &["Alt+Cmd+O"], &["Ctrl+Alt+Cmd+O"]),
+    s(Shortcut::SmartTile, "smart-tile", ARRANGE, "Smart tile all windows on the display", &["Ctrl+Shift+Cmd+Return"], &["Alt+Shift+Cmd+Return"], &["Ctrl+Shift+Cmd+Return"]),
+    s(Shortcut::ZoomAll, "zoom-all", ARRANGE, "Zoom or unzoom all windows on the display", &["Ctrl+Alt+Cmd+Return"], &["Ctrl+Alt+Cmd+Return"], &["Ctrl+Alt+Cmd+Return"]),
+    s(Shortcut::CascadeAll, "cascade-all", ARRANGE, "Cascade all windows on the display", &["Ctrl+Cmd+Backslash"], &["Alt+Cmd+Backslash"], &["Ctrl+Cmd+Backslash"]),
+    s(Shortcut::FanOut, "fan-out", ARRANGE, "Fan out all windows, tabs side by side", &["Ctrl+Cmd+Slash"], &["Alt+Cmd+Slash"], &["Ctrl+Cmd+Slash"]),
+    s(Shortcut::CascadeOthers, "cascade-others", ARRANGE, "Cascade the other windows, leaving this one", &["Ctrl+Shift+Cmd+Backslash"], &["Alt+Shift+Cmd+Backslash"], &["Ctrl+Shift+Cmd+Backslash"]),
+    s(Shortcut::FanOutOthers, "fan-out-others", ARRANGE, "Fan out the other windows, leaving this one", &["Ctrl+Shift+Cmd+Slash"], &["Alt+Shift+Cmd+Slash"], &["Ctrl+Shift+Cmd+Slash"]),
+    s(Shortcut::UndoArrangement, "undo-arrangement", ARRANGE, "Undo window arrangement", &["Ctrl+Cmd+Z"], &["Alt+Cmd+Z"], &["Ctrl+Cmd+Z"]),
+    s(Shortcut::ShowDesktop, "show-desktop", ARRANGE, "Show the desktop", &["Cmd+F3"], &["Cmd+D"], &["Ctrl+Alt+D"]),
+    s(Shortcut::NextWorkspace, "next-workspace", WORKSPACES, "Next workspace", &["Ctrl+Right"], &["Ctrl+Cmd+Right"], &["Ctrl+Alt+Right"]),
+    s(Shortcut::PreviousWorkspace, "previous-workspace", WORKSPACES, "Previous workspace", &["Ctrl+Left"], &["Ctrl+Cmd+Left"], &["Ctrl+Alt+Left"]),
+    s(Shortcut::WindowToNextWorkspace, "window-to-next-workspace", WORKSPACES, "Window to the next workspace", &["Ctrl+Shift+Right"], &["Ctrl+Shift+Cmd+Right"], &["Ctrl+Alt+Shift+Right"]),
+    s(Shortcut::WindowToPreviousWorkspace, "window-to-previous-workspace", WORKSPACES, "Window to the previous workspace", &["Ctrl+Shift+Left"], &["Ctrl+Shift+Cmd+Left"], &["Ctrl+Alt+Shift+Left"]),
+    s(Shortcut::Workspace(0), "workspace-1", WORKSPACES, "Workspace 1", &["Ctrl+1"], &["Ctrl+Cmd+1"], &["Alt+F1"]),
+    s(Shortcut::Workspace(1), "workspace-2", WORKSPACES, "Workspace 2", &["Ctrl+2"], &["Ctrl+Cmd+2"], &["Alt+F2"]),
+    s(Shortcut::Workspace(2), "workspace-3", WORKSPACES, "Workspace 3", &["Ctrl+3"], &["Ctrl+Cmd+3"], &["Alt+F3"]),
+    s(Shortcut::Workspace(3), "workspace-4", WORKSPACES, "Workspace 4", &["Ctrl+4"], &["Ctrl+Cmd+4"], &["Alt+F4"]),
+    s(Shortcut::Workspace(4), "workspace-5", WORKSPACES, "Workspace 5", &["Ctrl+5"], &["Ctrl+Cmd+5"], &["Alt+F5"]),
+    s(Shortcut::Workspace(5), "workspace-6", WORKSPACES, "Workspace 6", &["Ctrl+6"], &["Ctrl+Cmd+6"], &["Alt+F6"]),
+    s(Shortcut::Workspace(6), "workspace-7", WORKSPACES, "Workspace 7", &["Ctrl+7"], &["Ctrl+Cmd+7"], &["Alt+F7"]),
+    s(Shortcut::Workspace(7), "workspace-8", WORKSPACES, "Workspace 8", &["Ctrl+8"], &["Ctrl+Cmd+8"], &["Alt+F8"]),
+    s(Shortcut::Workspace(8), "workspace-9", WORKSPACES, "Workspace 9", &["Ctrl+9"], &["Ctrl+Cmd+9"], &["Alt+F9"]),
+    s(Shortcut::WindowToWorkspace(0), "window-to-workspace-1", WORKSPACES, "Window to workspace 1", &["Ctrl+Shift+1"], &["Ctrl+Shift+Cmd+1"], &["Alt+Shift+F1"]),
+    s(Shortcut::WindowToWorkspace(1), "window-to-workspace-2", WORKSPACES, "Window to workspace 2", &["Ctrl+Shift+2"], &["Ctrl+Shift+Cmd+2"], &["Alt+Shift+F2"]),
+    s(Shortcut::WindowToWorkspace(2), "window-to-workspace-3", WORKSPACES, "Window to workspace 3", &["Ctrl+Shift+3"], &["Ctrl+Shift+Cmd+3"], &["Alt+Shift+F3"]),
+    s(Shortcut::WindowToWorkspace(3), "window-to-workspace-4", WORKSPACES, "Window to workspace 4", &["Ctrl+Shift+4"], &["Ctrl+Shift+Cmd+4"], &["Alt+Shift+F4"]),
+    s(Shortcut::WindowToWorkspace(4), "window-to-workspace-5", WORKSPACES, "Window to workspace 5", &["Ctrl+Shift+5"], &["Ctrl+Shift+Cmd+5"], &["Alt+Shift+F5"]),
+    s(Shortcut::WindowToWorkspace(5), "window-to-workspace-6", WORKSPACES, "Window to workspace 6", &["Ctrl+Shift+6"], &["Ctrl+Shift+Cmd+6"], &["Alt+Shift+F6"]),
+    s(Shortcut::WindowToWorkspace(6), "window-to-workspace-7", WORKSPACES, "Window to workspace 7", &["Ctrl+Shift+7"], &["Ctrl+Shift+Cmd+7"], &["Alt+Shift+F7"]),
+    s(Shortcut::WindowToWorkspace(7), "window-to-workspace-8", WORKSPACES, "Window to workspace 8", &["Ctrl+Shift+8"], &["Ctrl+Shift+Cmd+8"], &["Alt+Shift+F8"]),
+    s(Shortcut::WindowToWorkspace(8), "window-to-workspace-9", WORKSPACES, "Window to workspace 9", &["Ctrl+Shift+9"], &["Ctrl+Shift+Cmd+9"], &["Alt+Shift+F9"]),
+    s(Shortcut::SwitchApps, "switch-apps", SWITCHING, "Switch applications (Twitcher)", &["Cmd+Tab"], &["Alt+Tab"], &["Ctrl+Tab"]),
+    s(Shortcut::SwitchAppsHere, "switch-apps-here", SWITCHING, "Switch applications on the workspaces showing", &["Alt+Tab"], &[], &[]),
+    s(Shortcut::SwitchWindows, "switch-windows", SWITCHING, "Switch windows of the application", &["Cmd+Grave"], &["Alt+Grave"], &["Ctrl+Grave"]),
+    s(Shortcut::Overview, "overview", SWITCHING, "Overview of every window", &["Ctrl+Up"], &["Cmd+Tab"], &["Cmd+Space"]),
+    s(Shortcut::Palette, "palette", DESKTOP, "Command palette", &["Cmd+Space"], &["Cmd+S"], &["Alt+Space"]),
+    s(Shortcut::Find, "find", DESKTOP, "Find", &["Alt+Cmd+Space"], &["Cmd+F"], &["Ctrl+Alt+F"]),
+    s(Shortcut::ShortcutHelp, "shortcut-help", DESKTOP, "Keyboard shortcuts", &["Shift+Cmd+Slash"], &["Shift+Cmd+Slash"], &["Alt+Shift+Slash"]),
+    s(Shortcut::ActivityMonitor, "activity-monitor", DESKTOP, "Activity Monitor", &["Alt+Cmd+Escape"], &["Ctrl+Shift+Escape"], &["Ctrl+Alt+Delete"]),
+    s(Shortcut::Lock, "lock", DESKTOP, "Lock the screen", &["Ctrl+Cmd+Q"], &["Cmd+L"], &["Ctrl+Alt+L"]),
+    s(Shortcut::Caffeinate, "caffeinate", DESKTOP, "Stay awake, or not", &["Ctrl+Cmd+A"], &["Alt+Cmd+A"], &["Ctrl+Alt+A"]),
+    s(Shortcut::ScreenshotScreen, "screenshot-screen", SCREENSHOTS, "Screenshot of the screen", &["Shift+Cmd+3", "Print"], &["Cmd+Print"], &["Shift+Print"]),
+    s(Shortcut::ScreenshotRegion, "screenshot-region", SCREENSHOTS, "Screenshot of an area", &["Shift+Cmd+4"], &["Shift+Cmd+S", "Print"], &["Ctrl+Print"]),
+    s(Shortcut::ScreenshotWindow, "screenshot-window", SCREENSHOTS, "Screenshot of the window", &["Alt+Print"], &["Alt+Print"], &["Alt+Print"]),
+    s(Shortcut::ScreenshotApp, "screenshot-app", SCREENSHOTS, "Screenshot app", &["Shift+Cmd+5"], &["Shift+Cmd+R"], &["Print"]),
 ];
 
 /// The shortcut with this id.
@@ -394,31 +615,26 @@ pub fn by_id(id: &str) -> Option<&'static ShortcutInfo> {
 }
 
 /// The groups, in order.
-pub const GROUPS: &[&str] = &[WINDOWS, ARRANGE, WORKSPACES, DESKTOP, SCREENSHOTS];
+pub const GROUPS: &[&str] = &[WINDOWS, ARRANGE, WORKSPACES, SWITCHING, DESKTOP, SCREENSHOTS];
 
-/// Keys app_server keeps whatever the shortcuts say (shown, not editable).
-pub const FIXED: &[(&str, &str)] = &[
-    ("Switch applications (Twitcher)", "⌘⇥"),
-    ("Switch windows of the application", "⌘`"),
-];
-
-/// Keys changed from the defaults, by shortcut id; an empty list turns a
-/// shortcut off. Ids not listed keep their default keys.
+/// Keys changed from a platform's, by shortcut id; an empty list turns a
+/// shortcut off. Ids not listed keep their platform's keys.
 pub type ShortcutSettings = BTreeMap<String, Vec<String>>;
 
-/// The keys of a shortcut, given the changes.
-pub fn keys_for(info: &ShortcutInfo, changed: &ShortcutSettings) -> Vec<Chord> {
-    match changed.get(info.id) {
+/// The keys of a shortcut in `profile`.
+pub fn keys_for(info: &ShortcutInfo, profile: &KeyboardProfile) -> Vec<Chord> {
+    match profile.shortcuts.get(info.id) {
         Some(keys) => keys.iter().filter_map(|k| k.parse().ok()).collect(),
-        None => info.keys.iter().filter_map(|k| k.parse().ok()).collect(),
+        None => info.default_keys(profile.platform),
     }
 }
 
-/// Every chord and what it does (the first shortcut wins a clash).
-pub fn bindings(changed: &ShortcutSettings) -> Vec<(Chord, Shortcut)> {
+/// Every chord and what it does in `profile` (the first shortcut wins a
+/// clash).
+pub fn bindings(profile: &KeyboardProfile) -> Vec<(Chord, Shortcut)> {
     let mut out: Vec<(Chord, Shortcut)> = Vec::new();
     for info in SHORTCUTS {
-        for c in keys_for(info, changed) {
+        for c in keys_for(info, profile) {
             if !out.iter().any(|(o, _)| *o == c) {
                 out.push((c, info.action));
             }
@@ -427,26 +643,76 @@ pub fn bindings(changed: &ShortcutSettings) -> Vec<(Chord, Shortcut)> {
     out
 }
 
-/// Give shortcut `id` just `chord` (None: no keys), taking it from any
-/// other shortcut that had it. Returns the shortcuts it was taken from.
-pub fn assign(changed: &mut ShortcutSettings, id: &str, chord: Option<Chord>) -> Vec<&'static str> {
+/// Any shortcut, app_server's or an app's, as Preferences and the
+/// shortcuts sheet list them.
+#[derive(Clone, Copy)]
+pub struct Entry {
+    pub id: &'static str,
+    pub title: &'static str,
+    /// None: app_server's (taken first, whatever has the keyboard).
+    /// `Some(None)`: every app's. `Some(Some(app))`: one app's.
+    pub scope: Option<Option<&'static str>>,
+    defaults: [&'static [&'static str]; 3],
+}
+
+impl Entry {
+    pub fn default_keys(&self, platform: Platform) -> Vec<Chord> {
+        self.defaults[platform.index()].iter().filter_map(|k| k.parse().ok()).collect()
+    }
+
+    /// Its keys in `profile`.
+    pub fn keys(&self, profile: &KeyboardProfile) -> Vec<Chord> {
+        match profile.shortcuts.get(self.id) {
+            Some(keys) => keys.iter().filter_map(|k| k.parse().ok()).collect(),
+            None => self.default_keys(profile.platform),
+        }
+    }
+
+    /// Two can't have the same keys: app_server's take them from every
+    /// app; an app's clash with the same app's (every app's with each
+    /// other). An app's own may have a key every app's has: it is that
+    /// app's choice (Passwords' ⌘C copies the username).
+    fn clashes_with(&self, other: &Entry) -> bool {
+        match (self.scope, other.scope) {
+            (None, _) | (_, None) => true,
+            (Some(a), Some(b)) => a == b,
+        }
+    }
+}
+
+/// Every shortcut: app_server's, then the apps'.
+pub fn entries() -> impl Iterator<Item = Entry> {
+    let system = SHORTCUTS.iter().map(|i| Entry { id: i.id, title: i.title, scope: None, defaults: i.keys });
+    let apps = crate::app_keys::APP_KEYS.iter().map(|k| Entry { id: k.id, title: k.title, scope: Some(k.app), defaults: k.keys });
+    system.chain(apps)
+}
+
+pub fn entry(id: &str) -> Option<Entry> {
+    entries().find(|e| e.id == id)
+}
+
+/// Give shortcut `id` (app_server's or an app's) just `chord` (None: no
+/// keys) in `profile`, taking it from any other it would clash with.
+/// Returns the titles of those it was taken from.
+pub fn assign(profile: &mut KeyboardProfile, id: &str, chord: Option<Chord>) -> Vec<&'static str> {
     let mut taken = Vec::new();
+    let Some(this) = entry(id) else { return taken };
     if let Some(c) = chord {
-        for info in SHORTCUTS.iter().filter(|i| i.id != id) {
-            let keys = keys_for(info, changed);
+        for other in entries().filter(|e| e.id != id && e.clashes_with(&this)) {
+            let keys = other.keys(profile);
             if keys.contains(&c) {
                 let rest: Vec<String> = keys.iter().filter(|k| **k != c).map(|k| k.to_string()).collect();
-                changed.insert(info.id.to_owned(), rest);
-                taken.push(info.title);
+                profile.shortcuts.insert(other.id.to_owned(), rest);
+                taken.push(other.title);
             }
         }
     }
-    changed.insert(id.to_owned(), chord.into_iter().map(|c| c.to_string()).collect());
-    // Back to the default: nothing to keep.
-    if let Some(info) = SHORTCUTS.iter().find(|i| i.id == id)
-        && keys_for(info, changed) == info.keys.iter().filter_map(|k| k.parse().ok()).collect::<Vec<Chord>>()
-    {
-        changed.remove(id);
+    profile.shortcuts.insert(id.to_owned(), chord.into_iter().map(|c| c.to_string()).collect());
+    // Back to the platform's: nothing to keep.
+    for e in entries() {
+        if profile.shortcuts.get(e.id).is_some_and(|_| e.keys(profile) == e.default_keys(profile.platform)) {
+            profile.shortcuts.remove(e.id);
+        }
     }
     taken
 }
@@ -610,7 +876,7 @@ mod tests {
     #[test]
     fn chords_round_trip() {
         for info in SHORTCUTS {
-            for k in info.keys {
+            for k in info.keys.iter().copied().flatten() {
                 let c: Chord = k.parse().unwrap_or_else(|e| panic!("{}: {e}", info.id));
                 assert_eq!(c.to_string(), *k, "{}", info.id);
             }
@@ -620,13 +886,22 @@ mod tests {
         assert_eq!(c.symbols(), "⌃⌥⌘←");
         assert_eq!("Alt+Print".parse::<Chord>().unwrap().symbols(), "⌥ Print Screen");
         assert!("Cmd+Nope".parse::<Chord>().is_err() && "Hyper+A".parse::<Chord>().is_err());
+        // As each platform writes it.
+        let c: Chord = "Ctrl+Shift+Cmd+Left".parse().unwrap();
+        assert_eq!(c.label(Platform::Windows), "Win+Ctrl+Shift+←");
+        assert_eq!(c.label(Platform::Beos), "Ctrl+Opt+Shift+←");
+        assert_eq!("Ctrl+Alt+Delete".parse::<Chord>().unwrap().label(Platform::Beos), "Ctrl+Alt+Del");
+        assert_eq!("win+s".parse::<Chord>().unwrap().label(Platform::Windows), "Win+S");
     }
 
     #[test]
     fn defaults_never_clash() {
-        let all: Vec<Chord> = SHORTCUTS.iter().flat_map(|i| keys_for(i, &Default::default())).collect();
-        for (i, c) in all.iter().enumerate() {
-            assert!(!all[i + 1..].contains(c), "{c} is used twice");
+        for platform in Platform::ALL {
+            let all: Vec<Chord> = SHORTCUTS.iter().flat_map(|i| i.default_keys(platform)).collect();
+            assert_eq!(all.len(), SHORTCUTS.iter().map(|i| i.keys[platform.index()].len()).sum::<usize>(), "{platform:?}: a key doesn't parse");
+            for (i, c) in all.iter().enumerate() {
+                assert!(!all[i + 1..].contains(c), "{platform:?}: {c} is used twice");
+            }
         }
         let ids: std::collections::HashSet<&str> = SHORTCUTS.iter().map(|i| i.id).collect();
         assert_eq!(ids.len(), SHORTCUTS.len());
@@ -677,18 +952,68 @@ mod tests {
 
     #[test]
     fn assigning_takes_keys_from_others() {
-        let mut changed = ShortcutSettings::new();
-        let c: Chord = "Shift+Cmd+Left".parse().unwrap();
-        assert_eq!(assign(&mut changed, "center", Some(c)), ["Left half"]);
-        assert_eq!(changed["tile-left"], Vec::<String>::new());
-        assert_eq!(changed["center"], ["Shift+Cmd+Left"]);
-        let b = bindings(&changed);
+        let mut p = KeyboardProfile::default();
+        let c: Chord = "Ctrl+Alt+Left".parse().unwrap();
+        assert_eq!(assign(&mut p, "center", Some(c)), ["Left half"]);
+        assert_eq!(p.shortcuts["tile-left"], Vec::<String>::new());
+        assert_eq!(p.shortcuts["center"], ["Ctrl+Alt+Left"]);
+        let b = bindings(&p);
         assert!(b.contains(&(c, Shortcut::Center)));
         // Back to its default: forgotten.
-        assign(&mut changed, "center", "Ctrl+Cmd+C".parse().ok());
-        assert!(!changed.contains_key("center"));
+        assign(&mut p, "center", "Ctrl+Alt+C".parse().ok());
+        assert!(!p.shortcuts.contains_key("center"));
         // Off.
-        assign(&mut changed, "find", None);
-        assert!(!bindings(&changed).iter().any(|(_, s)| *s == Shortcut::Find));
+        assign(&mut p, "find", None);
+        assert!(!bindings(&p).iter().any(|(_, s)| *s == Shortcut::Find));
+        // The platform's keys are the profile's own.
+        let w = KeyboardProfile::builtin(Platform::Windows);
+        assert!(bindings(&w).contains(&("Cmd+Left".parse().unwrap(), Shortcut::Tile(Tile::Left))));
+        assert!(bindings(&w).contains(&("Alt+Tab".parse().unwrap(), Shortcut::SwitchApps)));
+    }
+
+    #[test]
+    fn app_keys_never_clash() {
+        for platform in Platform::ALL {
+            let all: Vec<(Entry, Chord)> = entries().flat_map(|e| e.default_keys(platform).into_iter().map(move |c| (e, c))).collect();
+            let written: usize = entries().map(|e| e.defaults[platform.index()].len()).sum();
+            assert_eq!(all.len(), written, "{platform:?}: a key doesn't parse");
+            for (i, (a, c)) in all.iter().enumerate() {
+                for (b, d) in &all[i + 1..] {
+                    assert!(!(c == d && a.clashes_with(b)), "{platform:?}: {c} is both {} and {}", a.id, b.id);
+                }
+            }
+        }
+        let ids: std::collections::HashSet<&str> = entries().map(|e| e.id).collect();
+        assert_eq!(ids.len(), entries().count());
+        // Taking an app's keys for app_server's.
+        let mut p = KeyboardProfile::default();
+        assert_eq!(assign(&mut p, "lock", "Cmd+C".parse().ok()), ["Copy", "Copy", "Copy Username"]);
+        assert!(crate::app_keys::by_id("app.copy").is_some());
+        assert!(entry("app.copy").unwrap().keys(&p).is_empty());
+        // An app's own clash with each other, not with another app's
+        // (Logs' Live), nor every app's (an app's own is its choice).
+        let mut p = KeyboardProfile::default();
+        assert_eq!(assign(&mut p, "viewer.crop", "Cmd+L".parse().ok()), ["Rotate Left"]);
+        assert_eq!(entry("logs.live").unwrap().keys(&p), ["Cmd+L".parse::<Chord>().unwrap()]);
+        assert!(assign(&mut p, "viewer.crop", "Cmd+T".parse().ok()).is_empty());
+    }
+
+    #[test]
+    fn profiles_say_when_they_are_changed() {
+        let mut p = KeyboardProfile::default();
+        assert_eq!(p.name, "Mac");
+        assert!(p.is_builtin());
+        assign(&mut p, "lock", "Ctrl+Cmd+L".parse().ok());
+        p.changed();
+        assert_eq!(p.name, "Mac (Customized)");
+        // As it came again: its own name back.
+        assign(&mut p, "lock", "Ctrl+Cmd+Q".parse().ok());
+        p.changed();
+        assert_eq!(p.name, "Mac");
+        // One saved under a name of its own keeps it.
+        p.name = "Mine".into();
+        p.caps_lock_control = false;
+        p.changed();
+        assert_eq!(p.name, "Mine");
     }
 }

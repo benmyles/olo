@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Menus in the profile's keys (Windows)
+
+*15:11* — Every app's menu keys come from the keyboard profile: with Windows' keys Tracker's File menu has Explorer's (Alt+↑, Alt+Enter, F2, Del, Ctrl+Shift+N); with a Mac's, Finder's (⌘↑, ⌘I, ⇧⌘N, ⌘⌫).
+
+![Menus in the profile's keys (Windows)](2026-10-29/151108-menus-in-the-profile-s-keys-windows.png)
+
+### Keyboard profiles in Preferences
+
+*15:11* — Preferences ▸ Keyboard ▸ Shortcuts picks a keyboard profile (Mac, Windows, BeOS, or one saved) with its command key and key behaviour, then lists every shortcut in the platform's own key names (here Windows': Win+← snaps left); a change makes it “Windows (Customized)”.
+
+![Keyboard profiles in Preferences](2026-10-29/151101-keyboard-profiles-in-preferences.png)
+
+### Keyboard Shortcuts sheet (⇧⌘/)
+
+*15:10* — Every shortcut of the keyboard profile on one sheet: the front app's menu keys first (Tracker's here), then text editing's and the desktop's, as cards in columns; ⇧⌘/ on a Mac, Win+Shift+/ on Windows, Alt+Shift+/ on BeOS.
+
+![Keyboard Shortcuts sheet (⇧⌘/)](2026-10-29/151050-keyboard-shortcuts-sheet.png)
+
 ### Preferences: workspaces are per display
 
 *13:43* — The Workspaces panel says each display has its own; Displays has no Deskbar-on-every-display setting any more.

@@ -437,7 +437,8 @@ fn keyboard(ui: &Ui, f: &mut FolderWin, actions: &mut Vec<Action>) {
         i.events
             .iter()
             .filter_map(|e| match e {
-                egui::Event::Key { key, pressed: true, modifiers, .. } => Some((*key, modifiers.ctrl)),
+                // Alt's are the menus' (Windows' Alt+↑, Alt+Enter).
+                egui::Event::Key { key, pressed: true, modifiers, .. } if !modifiers.alt => Some((*key, modifiers.ctrl)),
                 _ => None,
             })
             .collect()
@@ -471,8 +472,8 @@ fn keyboard(ui: &Ui, f: &mut FolderWin, actions: &mut Vec<Action>) {
                 f.active = k - 1;
             }
             (Key::Enter, false) | (Key::ArrowDown, true) => actions.push(Action::Command("open".into())),
-            (Key::Delete, false) => actions.push(Action::Command("trash".into())),
-            (Key::F2, false) => actions.push(Action::Command("rename".into())),
+            (Key::Delete, false) if crate::view::plain_extra("trash", Key::Delete) => actions.push(Action::Command("trash".into())),
+            (Key::F2, false) if crate::view::plain_extra("rename", Key::F2) => actions.push(Action::Command("rename".into())),
             _ => {}
         }
     }

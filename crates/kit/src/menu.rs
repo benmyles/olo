@@ -44,48 +44,40 @@ pub struct Action {
     pub minimized: bool,
 }
 
-/// A command-key shortcut. The command key is Ctrl (which app_server's
-/// keymap produces for the Mac's ⌘), optionally with Shift.
+/// A menu item's keys, as the app sees them: the command key is Ctrl
+/// (whatever app_server's keyboard profile makes it: ⌘, Ctrl, BeOS's Alt),
+/// with Shift or Alt, or a key of its own (Windows' F3, Delete). Apps
+/// give the Mac's; the kit gives each item the keys its command has in
+/// the profile ([`crate::keyboard::resolve`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Shortcut {
     pub key: Key,
     pub shift: bool,
+    /// With the command key.
+    pub command: bool,
+    /// With Alt (as the app sees it: ⌥ on a Mac, Option on BeOS).
+    pub alt: bool,
 }
 
 impl Shortcut {
-    pub fn label(&self) -> String {
-        let key = match self.key {
-            Key::Comma => ",".into(),
-            Key::Period => ".".into(),
-            Key::Slash => "/".into(),
-            Key::Plus | Key::Equals => "+".into(),
-            Key::Minus => "-".into(),
-            Key::OpenBracket => "[".into(),
-            Key::CloseBracket => "]".into(),
-            Key::Backspace => "⌫".into(),
-            Key::Enter => "↵".into(),
-            Key::ArrowUp => "↑".into(),
-            Key::ArrowDown => "↓".into(),
-            Key::ArrowLeft => "←".into(),
-            Key::ArrowRight => "→".into(),
-            Key::Delete => "⌦".into(),
-            k => k.name().to_uppercase(),
-        };
-        if self.shift { format!("⇧{key}") } else { key }
+    /// The command key and `key`: ⌘W.
+    pub const fn command(key: Key) -> Shortcut {
+        Shortcut { key, shift: false, command: true, alt: false }
     }
-    /// Whether `key` (with Shift or not) presses it. ⇧= types + (and a
+    pub const fn shifted(self) -> Shortcut {
+        Shortcut { shift: true, ..self }
+    }
+    /// Whether `key` with `modifiers` presses it. ⇧= types + (and a
     /// terminal's ⌘ always brings Shift), so one on = takes + too, as ⌘+
     /// zooms in on a Mac.
-    pub fn pressed_by(&self, key: Key, shift: bool) -> bool {
-        (self.key == key && self.shift == shift) || (self.key == Key::Equals && key == Key::Plus)
+    pub fn pressed_by(&self, key: Key, modifiers: egui::Modifiers) -> bool {
+        let plus = self.key == Key::Equals && key == Key::Plus;
+        (self.key == key || plus) && (self.shift == modifiers.shift || plus) && self.command == modifiers.command && self.alt == modifiers.alt
     }
-    /// All its keys as on a Mac: "⌘W", "⇧⌘T".
+    /// All its keys as the keyboard profile's platform writes them: "⌘W",
+    /// "Ctrl+W", "Alt+W".
     pub fn keys(&self) -> String {
-        let key = self.label();
-        match key.strip_prefix('⇧') {
-            Some(k) => format!("⇧⌘{k}"),
-            None => format!("⌘{key}"),
-        }
+        crate::keyboard::label(self)
     }
 }
 
@@ -98,7 +90,7 @@ impl Menu {
         self.items.push(MenuItem::Action(Action {
             label: label.into(),
             command: command.into(),
-            shortcut: key.map(|key| Shortcut { key, shift: false }),
+            shortcut: key.map(Shortcut::command),
             enabled: true,
             checked: false,
             icon: None,
@@ -111,7 +103,7 @@ impl Menu {
         self.items.push(MenuItem::Action(Action {
             label: label.into(),
             command: command.into(),
-            shortcut: Some(Shortcut { key, shift: true }),
+            shortcut: Some(Shortcut::command(key).shifted()),
             enabled: true,
             checked: false,
             icon: None,
@@ -250,14 +242,14 @@ impl Menu {
     }
 
     /// Find the command bound to a shortcut, searching submenus too.
-    pub fn find_shortcut(&self, key: Key, shift: bool) -> Option<&str> {
+    pub fn find_shortcut(&self, key: Key, modifiers: egui::Modifiers) -> Option<&str> {
         self.items.iter().find_map(|item| match item {
             MenuItem::Action(a)
-                if a.enabled && a.shortcut.is_some_and(|s| s.pressed_by(key, shift)) =>
+                if a.enabled && a.shortcut.is_some_and(|s| s.pressed_by(key, modifiers)) =>
             {
                 Some(a.command.as_str())
             }
-            MenuItem::Submenu(m) => m.find_shortcut(key, shift),
+            MenuItem::Submenu(m) => m.find_shortcut(key, modifiers),
             _ => None,
         })
     }
@@ -279,16 +271,22 @@ impl Action {
     pub fn new(label: impl Into<String>, command: impl Into<String>) -> Self {
         Action { label: label.into(), command: command.into(), shortcut: None, enabled: true, checked: false, icon: None, keys: None, minimized: false }
     }
-    /// The keys shown beside it, as on a Mac ("⌘W", "⌃⌘H").
+    /// The keys shown beside it, as the keyboard profile's platform writes
+    /// them ("⌘W", "Ctrl+W", "Alt+W").
     pub fn key_label(&self) -> Option<String> {
         self.keys.clone().or_else(|| self.shortcut.map(|s| s.keys()))
     }
     pub fn key(mut self, key: Key) -> Self {
-        self.shortcut = Some(Shortcut { key, shift: false });
+        self.shortcut = Some(Shortcut::command(key));
         self
     }
     pub fn shift_key(mut self, key: Key) -> Self {
-        self.shortcut = Some(Shortcut { key, shift: true });
+        self.shortcut = Some(Shortcut::command(key).shifted());
+        self
+    }
+    /// Any chord: with Alt, or a key of its own.
+    pub fn shortcut(mut self, shortcut: Shortcut) -> Self {
+        self.shortcut = Some(shortcut);
         self
     }
     pub fn enabled(mut self, on: bool) -> Self {
@@ -313,8 +311,8 @@ impl Action {
     }
 }
 
-pub fn find_shortcut(menus: &[Menu], key: Key, shift: bool) -> Option<String> {
-    menus.iter().find_map(|m| m.find_shortcut(key, shift)).map(str::to_owned)
+pub fn find_shortcut(menus: &[Menu], key: Key, modifiers: egui::Modifiers) -> Option<String> {
+    menus.iter().find_map(|m| m.find_shortcut(key, modifiers)).map(str::to_owned)
 }
 
 // ---- in-window popups ----
@@ -962,13 +960,19 @@ mod tests {
         assert_eq!(label("hide").as_deref(), Some("⌃⌘H"));
         assert_eq!(label("smaller").as_deref(), Some("⌘-"));
         // Still found by the keys that arrive.
-        assert_eq!(bar.find_shortcut(Key::T, true), Some("new-tab"));
+        let cmd = |shift| egui::Modifiers { ctrl: true, command: true, shift, ..Default::default() };
+        assert_eq!(bar.find_shortcut(Key::T, cmd(true)), Some("new-tab"));
+        assert_eq!(bar.find_shortcut(Key::T, cmd(false)), None);
         // ⌘= arrives as Ctrl+Shift++.
         let bar = Menu::new("View").item_shift("Bigger", "bigger", Key::Equals);
-        assert_eq!(bar.find_shortcut(Key::Plus, true), Some("bigger"));
+        assert_eq!(bar.find_shortcut(Key::Plus, cmd(true)), Some("bigger"));
         let bar = Menu::new("View").item("Bigger", "bigger", Some(Key::Equals));
-        assert_eq!(bar.find_shortcut(Key::Equals, false), Some("bigger"));
-        assert_eq!(bar.find_shortcut(Key::Plus, true), Some("bigger"));
+        assert_eq!(bar.find_shortcut(Key::Equals, cmd(false)), Some("bigger"));
+        assert_eq!(bar.find_shortcut(Key::Plus, cmd(true)), Some("bigger"));
+        // With Alt too, or not: a chord of its own.
+        let bar = Menu::new("Edit").action(Action::new("Replace", "replace").shortcut(Shortcut { alt: true, ..Shortcut::command(Key::F) }));
+        assert_eq!(bar.find_shortcut(Key::F, egui::Modifiers { alt: true, ..cmd(false) }), Some("replace"));
+        assert_eq!(bar.find_shortcut(Key::F, cmd(false)), None);
     }
 
     #[test]

@@ -984,7 +984,23 @@ fn reap_inherited() {
 /// it reconnects and recreates its windows, keeping all its state, or, if
 /// its own binary was upgraded meanwhile, re-executes the new one with the
 /// state from [`App::save_state`].
+/// A window's menus as shown and pressed: each item's keys from the
+/// keyboard profile; a terminal-style window's (`raw`) Ctrl+Shift ones
+/// shown as the command-key chords they are pressed with.
+fn prepare_menus(menus: &mut [Menu], raw: bool) {
+    crate::keyboard::resolve(menus, raw);
+    if raw && crate::keyboard::command_key() {
+        menus.iter_mut().for_each(Menu::ctrl_shift_as_command);
+    }
+}
+
+fn is_function_key(key: egui::Key) -> bool {
+    use egui::Key::*;
+    matches!(key, F1 | F2 | F3 | F4 | F5 | F6 | F7 | F8 | F9 | F10 | F11 | F12)
+}
+
 pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
+    crate::keyboard::set_app_id(app_id);
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -1476,9 +1492,7 @@ impl Kit {
                 let app_id = self.cx.as_ref().map(|c| c.app_id.clone()).unwrap_or_default();
                 let mut bar = win.and_then(|w| self.app.as_mut().and_then(|a| a.menu_bar(w))).unwrap_or_default();
                 let raw = win.and_then(|w| self.surfaces.iter().find(|s| s.id == w)).is_some_and(|s| s.options.raw_keys);
-                if raw && crate::theme_watch::command_key() {
-                    bar.iter_mut().for_each(Menu::ctrl_shift_as_command);
-                }
+                prepare_menus(&mut bar, raw);
                 let _ = reply.send(crate::commands::flatten(&app_id, &bar));
             }
             Query::Invoke(cmd, reply) => {
@@ -2611,11 +2625,8 @@ impl Kit {
             let mut bar = s.bar.clone();
             let mut drawn_bar = None;
             let raw_keys = s.options.raw_keys;
-            let terminal_keys = raw_keys && crate::theme_watch::command_key();
             let menus = app.as_mut().and_then(|a| a.menu_bar(id)).map(|mut m| {
-                if terminal_keys {
-                    m.iter_mut().for_each(Menu::ctrl_shift_as_command);
-                }
+                prepare_menus(&mut m, raw_keys);
                 m
             });
             let panel = s.options.panel;
@@ -2626,6 +2637,9 @@ impl Kit {
                 // ⌘ is Ctrl, so ⌘H/⌘K/⌘U/⌘W are command shortcuts here,
                 // never egui's emacs deletions in a focused text field: keep
                 // them from the app's ui and give them back for the menus.
+                if !raw_keys {
+                    mac_text_keys(ui);
+                }
                 let held = if raw_keys { Vec::new() } else { hold_emacs_keys(ui) };
                 if raw_keys {
                     keep_focus_off_controls(ui);
@@ -2647,7 +2661,8 @@ impl Kit {
                     // ⌘C/⌘X/⌘V arrive as clipboard events; when no text
                     // field takes them they go to the menu's Copy/Cut/Paste.
                     let text_focus = ui.ctx().text_edit_focused();
-                    let pressed: Vec<(egui::Key, bool)> = ui.input(|inp| {
+                    let command = egui::Modifiers { ctrl: true, command: true, ..Default::default() };
+                    let pressed: Vec<(egui::Key, egui::Modifiers)> = ui.input(|inp| {
                         inp.events
                             .iter()
                             .filter_map(|e| match e {
@@ -2656,20 +2671,26 @@ impl Kit {
                                 egui::Event::Key { key: egui::Key::A, .. } if text_focus => None,
                                 // `command`: in a terminal, only ⌘ (see
                                 // `key_modifiers`), not the tty's Ctrl.
-                                egui::Event::Key { key, pressed: true, modifiers, .. }
-                                    if modifiers.command && !modifiers.alt =>
-                                {
-                                    Some((*key, modifiers.shift))
+                                egui::Event::Key { key, pressed: true, modifiers, .. } if modifiers.command || modifiers.alt => {
+                                    Some((*key, *modifiers))
                                 }
-                                egui::Event::Copy if !text_focus => Some((egui::Key::C, false)),
-                                egui::Event::Cut if !text_focus => Some((egui::Key::X, false)),
-                                egui::Event::Paste(_) if !text_focus => Some((egui::Key::V, false)),
+                                // A key of its own (Windows' F3, Delete):
+                                // a text field's, if one has the keyboard
+                                // (but F3 finds again from a Find field).
+                                egui::Event::Key { key, pressed: true, modifiers, .. }
+                                    if is_function_key(*key) || (!text_focus && matches!(key, egui::Key::Delete | egui::Key::F2)) =>
+                                {
+                                    Some((*key, *modifiers))
+                                }
+                                egui::Event::Copy if !text_focus => Some((egui::Key::C, command)),
+                                egui::Event::Cut if !text_focus => Some((egui::Key::X, command)),
+                                egui::Event::Paste(_) if !text_focus => Some((egui::Key::V, command)),
                                 _ => None,
                             })
                             .collect()
                     });
-                    for (key, shift) in pressed {
-                        if let Some(cmd) = menu::find_shortcut(menus, key, shift) {
+                    for (key, modifiers) in pressed {
+                        if let Some(cmd) = menu::find_shortcut(menus, key, modifiers) {
                             menu_events.push(MenuEvent::Command(id, cmd));
                         }
                     }
@@ -2677,14 +2698,8 @@ impl Kit {
                     app.ui(cx, id, ui);
                     ui.input_mut(|inp| inp.events.extend(held));
                     // Windows without a menu bar (Get Info, Find, alerts)
-                    // still close with ⌘W, as on BeOS.
-                    close_key = toplevel
-                        && ui.input(|inp| {
-                            inp.events.iter().any(|e| {
-                                matches!(e, egui::Event::Key { key: egui::Key::W, pressed: true, modifiers, .. }
-                                    if modifiers.ctrl && !modifiers.alt && !modifiers.shift)
-                            })
-                        });
+                    // still close with ⌘W (the profile's Close), as on BeOS.
+                    close_key = toplevel && ui.input(|inp| crate::keyboard::pressed(inp, "close"));
                 }
             });
             self.app = app;
@@ -2700,11 +2715,9 @@ impl Kit {
             s.bar = bar;
             s.menus = menus;
             if let Some(mut request) = menu::take_request(&ctx) {
+                prepare_menus(std::slice::from_mut(&mut request.menu), raw_keys);
                 if let Some(bar) = &s.menus {
                     request.menu.keys_from(bar);
-                }
-                if terminal_keys {
-                    request.menu.ctrl_shift_as_command();
                 }
                 menu_events.push(MenuEvent::Context(id, request));
             }
@@ -4234,6 +4247,51 @@ fn keep_focus_off_controls(ui: &egui::Ui) {
 }
 
 /// Take ⌘H/⌘K/⌘U/⌘W out of this frame's input (see the caller).
+/// With a Mac's keys, ⌘ arrows and ⌘⌫ in a text field are the line's
+/// start and end, the document's, and deleting to the line's start (as
+/// app_server makes them for programs that aren't Olo's); egui's would be
+/// a word. Elsewhere they stay ⌘ chords (Tracker's ⌘↑ Open Parent, ⌘⌫
+/// Move to Trash).
+fn mac_text_keys(ui: &egui::Ui) {
+    if crate::keyboard::platform() != olo_protocol::Platform::Mac || !crate::keyboard::command_key() || !ui.ctx().text_edit_focused() {
+        return;
+    }
+    ui.input_mut(|inp| mac_text_events(&mut inp.events));
+}
+
+fn mac_text_events(events: &mut Vec<egui::Event>) {
+    use egui::Key::*;
+    let mut out = Vec::with_capacity(events.len());
+    for e in std::mem::take(events) {
+        let egui::Event::Key { key, physical_key, pressed, repeat, modifiers } = e else {
+            out.push(e);
+            continue;
+        };
+        if !modifiers.command || modifiers.alt {
+            out.push(e);
+            continue;
+        }
+        let shift = egui::Modifiers { shift: modifiers.shift, ..Default::default() };
+        let ev = |key, modifiers| egui::Event::Key { key, physical_key, pressed, repeat, modifiers };
+        match key {
+            ArrowLeft => out.push(ev(Home, shift)),
+            ArrowRight => out.push(ev(End, shift)),
+            // Ctrl+Home / Ctrl+End: the document's.
+            ArrowUp => out.push(ev(Home, modifiers)),
+            ArrowDown => out.push(ev(End, modifiers)),
+            // Select to the line's start, and delete that.
+            Backspace if pressed => {
+                out.push(ev(Home, egui::Modifiers::SHIFT));
+                out.push(egui::Event::Key { key: Home, physical_key, pressed: false, repeat: false, modifiers: egui::Modifiers::SHIFT });
+                out.push(ev(Backspace, egui::Modifiers::NONE));
+            }
+            Backspace => out.push(ev(Backspace, egui::Modifiers::NONE)),
+            _ => out.push(e),
+        }
+    }
+    *events = out;
+}
+
 fn hold_emacs_keys(ui: &egui::Ui) -> Vec<egui::Event> {
     ui.input_mut(|inp| {
         let (held, rest): (Vec<_>, Vec<_>) = std::mem::take(&mut inp.events).into_iter().partition(|e| {
@@ -4248,6 +4306,23 @@ fn hold_emacs_keys(ui: &egui::Ui) -> Vec<egui::Event> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mac_command_arrows_in_text() {
+        let key = |key, modifiers| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
+        let cmd = egui::Modifiers::COMMAND | egui::Modifiers::CTRL;
+        let mut events = vec![key(egui::Key::ArrowLeft, cmd | egui::Modifiers::SHIFT), key(egui::Key::ArrowDown, cmd), key(egui::Key::C, cmd)];
+        mac_text_events(&mut events);
+        assert_eq!(events, [key(egui::Key::Home, egui::Modifiers::SHIFT), key(egui::Key::End, cmd), key(egui::Key::C, cmd)]);
+        let mut events = vec![key(egui::Key::Backspace, cmd)];
+        mac_text_events(&mut events);
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[2], key(egui::Key::Backspace, egui::Modifiers::NONE));
+        // ⌥ arrows are left as they are (a word).
+        let mut events = vec![key(egui::Key::ArrowLeft, egui::Modifiers::ALT)];
+        mac_text_events(&mut events);
+        assert_eq!(events, [key(egui::Key::ArrowLeft, egui::Modifiers::ALT)]);
+    }
 
     /// Tab (or ⇧Tab) then Return, as in a shell: egui presses the control
     /// Tab gave focus to, except in a raw-keys window.

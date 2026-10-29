@@ -370,9 +370,9 @@ fn main() {
 * **Raw keys** (`WindowOptions::raw_keys()`): for windows that consume the
   keyboard themselves (Terminal). ⌘-letter combinations reach the app as
   key events instead of menu shortcuts or clipboard events (⌘⇧C/X/V still
-  become Copy/Cut/Paste), and Alt+text is delivered as text. With ⌘ the
-  command key (`KeyboardSettings::command_key`, followed live by
-  `theme_watch::command_key`), app_server sends ⌘ to a terminal as its
+  become Copy/Cut/Paste), and Alt+text is delivered as text. With a
+  command key app_server turns into Ctrl (⌘, or BeOS's Alt: the keyboard
+  profile's, followed live by `keyboard::command_key`), app_server sends it to a terminal as its
   *right* Ctrl plus Shift and every physical Ctrl as the left one; the
   kit watches Control_R, and only then is a key's
   `egui::Modifiers::command` set, so `command` means ⌘ and `ctrl` any
@@ -534,8 +534,13 @@ widget takes it in the next frame it goes to `App::command`, as a menu
 bar item's would, so an app's own context menus just use its command
 names.
 
-Every item with keys shows them, right-aligned and in Mac order ("⌘O",
-"⇧⌘T", "⌃⌘H"), in context menus as in the bar. `request_popup` gives
+Every item with keys shows them, right-aligned, as the keyboard
+profile's platform writes them (on a Mac in Mac order, "⌘O", "⇧⌘T",
+"⌃⌘H"; on Windows "Ctrl+O"; on BeOS "Alt+O"), in context menus as in the
+bar. Which keys an item has comes from the profile, by its command (see
+"Keyboard profiles"): an app gives the Mac's (`Menu::item(…, Some(Key::O))`,
+`item_shift`), and the kit gives each item the keys its command has in
+`olo_protocol::app_keys` for the profile (`keyboard::resolve`). `request_popup` gives
 each item without keys the keys its command has in the window's menu
 bar (`Menu::keys_from`), so a context menu's Open shows ⌘O without the
 app saying so twice; keep context menu commands the bar's. Keys that
@@ -948,15 +953,17 @@ centred (beside the `olo` mark it read as "o olo"). Image previews: `icons::thum
    (sunburst at max quality, against the reference set, candidates
    reviewed on a contact sheet).
 7. BeOS idioms to keep: yellow tab decorator (app_server's job), menu bar in
-   every document window, ⌘ shortcuts (Ctrl on the wire: app_server's
-   `keymap` turns the Mac ⌘ key into Ctrl for clients, Caps Lock too, and
-   keeps ⌘Tab / ⌥Tab / ⌘\` (Twitcher), ⌘ arrows and ⌘⌫ and the desktop shortcuts
-   (see "Desktop shortcuts and tiling") for itself; terminals listed in
-   `KeyboardSettings::terminal_apps` get ⌘ as Ctrl+Shift so physical Ctrl
-   reaches the tty; programs that aren't Olo's get ⌥ arrows as Ctrl
-   (words) and ⌘[ / ⌘] as Alt+← / Alt+→ (Back / Forward, in Chrome and
-   Slack alike), while ⌘← / ⌘→ are the line's start and end everywhere and
-   never navigate; `KeyboardSettings::num_lock` turns Num Lock on at start
+   every document window, command-key shortcuts (Ctrl on the wire: see
+   "Keyboard profiles": app_server's `keymap` turns the profile's command
+   key, ⌘ on a Mac or Alt on BeOS, into Ctrl for clients, Caps Lock too
+   if chosen, and keeps Twitcher's keys and the desktop shortcuts for
+   itself; terminals listed in
+   `KeyboardSettings::terminal_apps` get the command key as Ctrl+Shift so physical Ctrl
+   reaches the tty; with a Mac's keys, programs that aren't Olo's get ⌥ arrows as Ctrl
+   (words), ⌘[ / ⌘] as Alt+← / Alt+→ (Back / Forward, in Chrome and
+   Slack alike) and ⌘ arrows and ⌘⌫ as the line's and document's keys
+   (Olo's apps get those as they are and the kit makes them so in text
+   fields); `KeyboardSettings::num_lock` turns Num Lock on at start
    and when changed, and `apply_input_settings` keeps the Num Lock key's
    state across keymap changes, re-advertising modifiers to the focused
    client), keyboard focus shown as a navigation-blue underline/frame,
@@ -1708,8 +1715,8 @@ To, Workspaces preferences) and Show or Hide All Windows. Each is
 window that last had the focus (`last_focused`: opening the menu takes
 the keyboard, so app_server sees no focused window by then).
 Each item shows the keys the person has for it (`add_keys`:
-`shortcuts::keys_for` with `Settings::shortcuts`, sent on every
-settings change).
+`shortcuts::keys_for` with the keyboard profile, as its platform writes
+them, sent on every settings change).
 
 Every display has workspaces of its own (see "Workspaces, one set per
 display" below), and each display's Deskbar groups its applications as a
@@ -1783,9 +1790,13 @@ in `tick`, not while switching), so ⌘Tab goes back and forth between the
 last two apps wherever they are and ⌥Tab between the last two here (the
 apps on the workspaces showing, every display's); ←/→
 walk the chosen row and ↑/↓ go to the row above or below (its most
-recent first). The keymap keeps whichever of ⌘ and ⌥ began switching
-(`keymap::Hold`): letting go of that one chooses, and the other changes
-nothing meanwhile. Deskbar highlights the application chosen in the
+recent first). Twitcher's keys are shortcuts of the profile (Switch
+Applications ⌘Tab, Alt+Tab on Windows, Ctrl+Tab on BeOS; Switch
+Applications Here ⌥Tab; Switch Windows ⌘\`), and the keymap keeps the
+modifiers of whichever began switching (`keymap::Switching`): letting go
+of one of them chooses, its key again steps on (with Shift, back), and
+other modifiers change nothing meanwhile. From the palette or an agent
+(`run_shortcut`) one is a quick press and release. Deskbar highlights the application chosen in the
 selection's colours, as Twitcher marks it (`style::selection_wash`; in
 the lit workspace showing, the menu's selection, so it stands out on
 it; `WindowInfo::chosen`, for its window; agents read `selected` on the
@@ -1853,7 +1864,7 @@ the last, and a display showing one goes to it.
 
 ## The overview (app_server overview.rs)
 
-⌃Space (`Shortcut::Overview`, the palette, `{"type":"overview",
+⌃↑ on a Mac, ⊞Tab on Windows (`Shortcut::Overview`, the palette, `{"type":"overview",
 "show":true}`) shows every display's workspaces at once, macOS's Mission
 Control with every workspace out together, where BeOS's Workspaces
 applet has outlines too small to tell apart. Each display's usable area
@@ -1875,8 +1886,8 @@ first the focused one) is ringed in the focus colour with its title on a
 tooltip's plate at its foot.
 
 A click on a window, its letter or Return makes it the active window on
-its workspace (`close_overview(Some)`, which `restore`s it); Esc, ⌃Space
-or a click on nothing leaves everything as it was. Keys go to it before
+its workspace (`close_overview(Some)`, which `restore`s it); Esc, its
+shortcut again or a click on nothing leaves everything as it was. Keys go to it before
 the keymap (`overview_key`, swallowing their releases too), except its
 own shortcut and modifiers; clicks on Deskbar and other layers over it
 go through, and anything else that chooses a window or a workspace
@@ -1890,22 +1901,112 @@ dim over the desktop (Deskbar and other top layers stay above).
 window's frame, workspace, letter and whether it is chosen. The bench
 (`tools/dev/bench`) times its frames opening, walked and leaving.
 
+## Keyboard profiles (olo_protocol::shortcuts and app_keys, app_server keymap.rs, kit keyboard.rs)
+
+Every shortcut, app_server's and the apps', and how keys behave, are one
+keyboard profile (`KeyboardProfile`, in `KeyboardSettings::profile`),
+chosen in Preferences ▸ Keyboard ▸ Shortcuts: Mac (the default), Windows
+or BeOS, each as true to its platform as it goes, with Olo's extras set
+the way that platform sets keys:
+
+* **Mac**: ⌘ is the command key; Rectangle's tiling (⌃⌥ arrows halves,
+  ⌃⌥U/I/J/K quarters, ⌃⌥D/F/G thirds, ⌃⌥E/T two thirds, ⌃⌥↩ zoom, ⌃⌥⌫
+  back to its size, ⌃⌥C center, ⌃⌥⌘←/→ displays), so ⇧⌘ arrows select
+  text; Mission Control's spaces (⌃←/→, ⌃1…9, ⌃↑ the overview); ⌘Tab,
+  ⌥Tab, ⌘\`; ⌘M hides a window, ⌘H the app; ⌘Space the palette, ⌥⌘Space
+  Find, ⌃⌘Q lock, ⇧⌘3/4/5 screenshots, ⌥⌘⎋ Activity Monitor, ⇧⌘/ the
+  shortcuts sheet; Finder's ⌘↑, ⌘⌫, ⇧⌘N in Tracker.
+* **Windows**: Ctrl is the command key and nothing is translated; Snap
+  (⊞←/→, ⊞↑ zoom, ⊞↓ back or hide, ⊞⇧←/→ displays), Olo's extra tiles on
+  ⊞Alt letters; Task View's desktops (⊞Ctrl←/→, ⊞Tab the overview);
+  Alt+Tab, ⊞D, ⊞L, ⊞S and a tap of ⊞ for the palette, ⊞⇧S / Print
+  screenshots, Ctrl+Shift+Esc Activity Monitor, Alt+F4 closes any window;
+  Explorer's F2, Delete, Alt+Enter, Alt+↑; Ctrl+Y redo, F3 find again.
+* **BeOS** (as Haiku keeps it): the left Alt is the command key, the
+  Super key is Option (Alt for apps), Ctrl stays Ctrl; Ctrl+Alt for
+  windows (Z zoom, M minimize, H hide the app, B send to back), Ctrl+Opt
+  for Olo's tiles, Alt+F1… workspaces (with Shift, taking the window),
+  Ctrl+Alt+←/→, Ctrl+Tab Twitcher, Opt+Tab a window's tabs, Ctrl+Alt+Del
+  Team Monitor (Activity Monitor), Print the Screenshot app; Alt arrows
+  are Ctrl arrows (a word, the document), as on BeOS.
+
+Keys are written "Ctrl+Alt+Shift+Cmd+Left" (`Chord`) and are always the
+physical ones: Cmd is the Super key (⌘, ⊞, BeOS's Option), Alt is Alt.
+`Chord::label(platform)` writes one as the platform does ("⌃⌥←",
+"Win+Ctrl+←", "Ctrl+Opt+←"). Two tables give every shortcut its keys on
+each platform: `shortcuts::SHORTCUTS` app_server's (`ShortcutInfo::keys`,
+Mac, Windows, BeOS), `app_keys::APP_KEYS` the apps' menu commands, by
+command (every app's: `app.copy`, `app.redo`…; one app's: `tracker.trash`,
+`terminal.new-tab`…, which come first). A profile keeps only changes
+(`KeyboardProfile::shortcuts`, by id; an empty list turns one off).
+`shortcuts::entries` is both tables; `shortcuts::assign` gives one a
+chord and takes it from any other it clashes with (app_server's from
+every app, an app's from its own and every app's among themselves), and
+the `defaults_never_clash` and `app_keys_never_clash` tests keep the
+tables clean on every platform. The profile also has the command key
+(`CommandKey`: Command, Control, Alt), Caps Lock as Ctrl, and a tap of
+the Super key for the palette (`palette_on_tap`); keyboard hints and the
+double-press speed are everyone's, in `KeyboardSettings`.
+
+A platform's profile changed by hand becomes "Mac (Customized)"
+(`KeyboardProfile::changed`, back to "Mac" when it's as it comes again)
+and is kept among the saved ones (`KeyboardSettings::profiles`,
+`profile_changed`), so picking another loses nothing; Save As… keeps one
+under a name of its own, Delete forgets one (`choices`, `pick_profile`).
+It all lives in app_server's settings, so Backup takes it along. Settings
+from before profiles (`command_key`, `caps_lock_control`,
+`find_on_command_tap` and `Settings::shortcuts`) are read once into a
+Mac profile (`Settings::migrate`, on load and on every `set_settings`, a
+restored backup included).
+
+app_server (`keymap.rs`) takes the profile's command key (`Options`,
+`command_key`): Super on a Mac, the left Alt on BeOS, which reach apps as
+the right Ctrl; with Windows' keys nothing is changed. It looks up the
+profile's bindings first; Twitcher's keep the switcher up while their
+modifiers are held. A Mac's ⌘ arrows and ⌘⌫ are the line's and the
+document's keys for programs that aren't Olo's; Olo's apps get them as
+they are, so Tracker's ⌘↑ and ⌘⌫ are Open Parent and Move to Trash, and
+the kit makes them the line's keys in a focused text field
+(`mac_text_keys`).
+
+The kit (`keyboard.rs`) follows the profile from app_server's settings
+(`keyboard::profile`, `platform`, `command_key`). Every menu bar and
+context menu gets its keys from it (`keyboard::resolve`, in
+`prepare_menus`): an item whose command the app has keys for in
+`app_keys` gets them, every app's only where the app gave the item keys
+(so a bare item doesn't pick up another's), and shows them as the
+platform writes them; the app-side chord (`menu::Shortcut`: the command
+key, Alt, Shift, or a key of its own such as F3 or Delete) is what is
+matched (`keyboard::app_side`). A debug build warns once about a menu
+item with keys the table doesn't list ("menu keys not in
+olo_protocol::app_keys"): add it there. Keys an app takes outside its
+menus ask the profile too (`keyboard::pressed` / `consume` by command:
+StyledEdit's Undo and Redo, Tracker's desktop and Find results, Disk
+Usage), and Terminal's own are `keyboard::is_own_shortcut`.
+
+The shortcuts sheet (`Shortcut::ShortcutHelp`: ⇧⌘/, Win+Shift+/,
+Alt+Shift+/) is the palette's (`olo-palette --shortcuts`, sheet.rs): the
+front app's menu keys (`commands::menus`, as it shows them), text
+editing's for the platform, then app_server's by group, as cards in
+columns (`masonry`), in a scroll view when they don't all fit; Esc, a
+click outside or the keys again put it away. Its text is in the
+AccessKit tree (`style::key_combo` describes keys as labels do).
+
 ## Desktop shortcuts and tiling (olo_protocol::shortcuts, app_server keymap.rs, shell/tiling.rs)
 
-app_server's own shortcuts are one table, `olo_protocol::shortcuts::SHORTCUTS`:
-each a `Shortcut` (tile the focused window into a half, quarter or third,
-zoom, zoom along one axis, back to its own size, center, to the next
-display, next / previous tab, tile or cascade all windows on the display,
-show the desktop, workspaces, Find, lock, caffeinated, screenshots), a group, a title and default keys written
-"Shift+Cmd+Left" (`Chord`; Cmd is ⌘). `Settings::shortcuts` keeps only
-changes (an empty list turns one off), so new shortcuts get their defaults.
-`shortcuts::assign` gives one shortcut a chord and takes it from any other;
-the `defaults_never_clash` test keeps the table clean. The keymap looks
-shortcuts up before its own ⌘ translations; Twitcher's ⌘Tab / ⌥Tab / ⌘\` stay
-fixed. To add one: a `Shortcut` variant, a row in `SHORTCUTS`, its case in
-input_handler's `shortcut`.
+app_server's own shortcuts are one table, `olo_protocol::shortcuts::SHORTCUTS`
+(see "Keyboard profiles" for their keys on each platform): each a
+`Shortcut` (tile the focused window into a half, quarter or third, zoom,
+zoom along one axis, back to its own size, center, to the next display,
+next / previous tab, hide it or its app, send it to back, tile or cascade
+all windows on the display, show the desktop, workspaces, Twitcher, the
+overview, the palette, Find, the shortcuts sheet, Activity Monitor,
+lock, caffeinated, screenshots), a group, a title and its keys on each
+platform. To add one: a `Shortcut` variant, a row in `SHORTCUTS` with
+keys natural to each platform, its case in input_handler's
+`run_shortcut`.
 
-Preferences ▸ Keyboard ▸ Shortcuts lists them; clicking one sends
+Preferences ▸ Keyboard ▸ Shortcuts lists them and every app's; clicking one sends
 `Request::RecordShortcut`, and app_server takes the next key with its
 physical modifiers (only it can tell ⌘ from Ctrl) and answers with
 `Event::ShortcutRecorded` (Esc cancels, ⌫ clears; it gives up after 30 s).
@@ -2071,8 +2172,8 @@ only the tab, and passes the pointer through everywhere else. It is in
 `WindowInfo::rolled` and kept across a reload (`layout::Placement`).
 Agents roll with `{"type":"run_shortcut","id":"roll-up","window":ID}`.
 
-Zoom Vertically / Zoom Horizontally (`toggle_zoom_along`, ⌥⇧⌘↑ or ↓ /
-⌥⇧⌘← or →, the window menu, or a double-click on the frame's top or
+Zoom Vertically / Zoom Horizontally (`toggle_zoom_along`, ⌃⌥⇧↑ or ↓ /
+⌃⌥⇧← or → on a Mac, the window menu, or a double-click on the frame's top or
 bottom edge / left or right edge) zoom the window along one axis only:
 the whole height (width) of the tiling area, the other axis as it is,
 pulled in and narrowed only if it doesn't fit (`zoom_along`). The window
@@ -2945,9 +3046,12 @@ images).
 
 Keys: physical Ctrl goes to the shell. ⌘ reaches Terminal as Ctrl+Shift
 (see keymap.rs) on the right Ctrl, which the kit marks as
-`Modifiers::command` (see "Raw keys"); ⌘ with a menu shortcut's key
-(`view::SHORTCUTS`, kept in step with the menus) is Terminal's, and any
+`Modifiers::command` (see "Raw keys"); ⌘ with one of Terminal's own
+shortcuts in the keyboard profile (`keyboard::is_own_shortcut`, its
+`terminal.*` keys in `olo_protocol::app_keys`) is Terminal's, and any
 other goes to the shell as Ctrl+key, so ⌘R searches history like Ctrl+R.
+With Windows' keys Ctrl is the command key itself: Terminal's are
+Ctrl+Shift ones (Ctrl+Shift+C copies), as in Windows Terminal.
 A physical Ctrl+Shift chord isn't `command`, so it is always the
 shell's: Ctrl+_ (readline's undo, Ctrl+Shift+-), Ctrl+^ and Ctrl+@,
 while ⌘- is Smaller. Bigger and Smaller keep each showing window's
@@ -3296,14 +3400,17 @@ its bell's click reaches your own notification service. Unit tests:
 
 ## The command palette (apps/palette)
 
-⌘Space (`Shortcut::Palette`; Find moved to ⌥⌘Space) or a tap of ⌘ (if
-chosen in Preferences ▸ Keyboard) has app_server start
+⌘Space (`Shortcut::Palette`, the profile's: ⊞S on Windows, Alt+Space
+on BeOS; Find moved to ⌥⌘Space) or a tap of the Super key (if chosen in
+the keyboard profile; Windows' does) has app_server start
 `olo-palette --toggle`; the running copy (it stays resident, found
 through `instance`) takes the toggle, so it opens at once from the second
 time on. It opens a full-screen transparent overlay layer that takes the
 keyboard, on the display in use (the focused window's, else the
-pointer's), with the BeOS panel a fifth of the way down: a click outside
-the panel, Escape or ⌘Space again
+pointer's), with the BeOS panel a fifth of the way down (over a soft
+shadow on device pixels, `style::soft_shadow`, as the shortcuts sheet's;
+the query's capitals on the field's middle, `style::text_origin`): a
+click outside the panel, Escape or ⌘Space again
 put it away.
 
 * **Before opening**, a worker asks app_server for the windows and the

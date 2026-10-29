@@ -453,28 +453,28 @@ impl Desktop {
         }
 
         // Keyboard (when the desktop has focus and no name is being
-        // edited): Enter / ⌘O opens, ⌘T trashes, ⌘I gets info, ⌘E / F2
-        // edits a name.
+        // edited): the menus' keys in the keyboard profile (⌘O opens, ⌘⌫
+        // trashes, ⌘I gets info, ⌘E edits a name, on a Mac), and Enter,
+        // ⌘↓, Delete and F2 as well.
         let typing = self.editing.is_some() || ui.ctx().egui_wants_keyboard_input();
         let mut edit = false;
         ui.input(|i| {
             if typing {
                 return;
             }
-            for e in &i.events {
-                if let egui::Event::Key { key, pressed: true, modifiers, .. } = e {
-                    match (key, modifiers.ctrl) {
-                        (Key::Enter, false) | (Key::ArrowDown | Key::O, true) => {
-                            actions.extend(self.selected_entries().into_iter().map(Action::Open))
-                        }
-                        (Key::T, true) | (Key::Delete, false) if !self.movable().is_empty() => {
-                            actions.push(Action::Command("trash".into()))
-                        }
-                        (Key::I, true) => actions.push(Action::Command("info".into())),
-                        (Key::E, true) | (Key::F2, false) => edit = true,
-                        _ => {}
-                    }
-                }
+            let key = |k: Key, ctrl: bool| i.events.iter().any(|e| matches!(e, egui::Event::Key { key, pressed: true, modifiers, .. } if *key == k && modifiers.ctrl == ctrl));
+            let profile = olo_kit::keyboard::pressed;
+            if profile(i, "open") || key(Key::Enter, false) || key(Key::ArrowDown, true) {
+                actions.extend(self.selected_entries().into_iter().map(Action::Open))
+            }
+            if (profile(i, "trash") || key(Key::Delete, false)) && !self.movable().is_empty() {
+                actions.push(Action::Command("trash".into()))
+            }
+            if profile(i, "info") {
+                actions.push(Action::Command("info".into()));
+            }
+            if profile(i, "rename") || key(Key::F2, false) {
+                edit = true;
             }
         });
 

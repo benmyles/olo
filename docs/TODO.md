@@ -5,6 +5,11 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~**Keyboard profiles**~~ (Ben, 2026-10-29; done: HACKING, "Keyboard
+  profiles"): Mac, Windows or BeOS keys for everything, true to each
+  platform; every app's menu keys come from the profile; the shortcuts
+  sheet (⇧⌘/); Tracker's ⌘↑ and ⌘⌫ work (they arrived as Ctrl+Home and
+  a line deletion before).
 - ~~**Every display has its own workspaces**~~ (Ben, 2026-10-29; done:
   HACKING, "Workspaces, one set per display"): each display switches
   among its own 1–4 (or however many) on its own; Deskbar is on every
@@ -209,17 +214,28 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
-- **Keyboard shortcut profiles** (Ben, 2026-10-29): every shortcut in
-  Olo (app_server's, the keymap's tweaks, every app's menus and keys,
-  text editing) in one place, configured as a profile in Preferences ▸
-  Keyboard: Mac (the default), Windows and BeOS, each as true to its
-  platform as it can be (extended where Olo does more, the way that
-  platform would). A change saves it as "Mac (Customized)"; profiles can
-  be saved and loaded by name, and go in Backup's export and import. A
-  profile holds the keyboard behaviour that belongs to it too (which key
-  is the command key, and the like). ⇧⌘-arrows go back to selecting
-  text (window tiling moves off them). ⇧⌘/ (or the platform's own) shows
-  a cheat sheet of every shortcut.
+- **Instant updates when files change** (Ben, 2026-10-29, bug): "currently
+  when something changes on the desktop it doesn't reflect immediately,
+  e.g. if i empty the trash we don't see the icon change for a few
+  seconds. we should use event based notifications with optimized linux
+  file watching or whatever so that this happens instantly. and that same
+  principle should apply to everything in tracker and everywhere in olo:
+  we want event based instant updates to any file changes so that olo
+  always reflects the latest state. and it must all be done super
+  efficiently so that it uses minimal resources." Every view of files
+  (Tracker's windows and desktop, the Trash icon, Disk Usage, file
+  panels, Viewer and StyledEdit's open documents, the palette's index)
+  follows the kernel's change events (inotify / fanotify), at once,
+  with no polling and little memory.
+- ~~**Keyboard shortcut profiles**~~ (Ben, 2026-10-29; done: HACKING,
+  "Keyboard profiles"): Mac (the default), Windows and BeOS profiles in
+  Preferences ▸ Keyboard ▸ Shortcuts. Each has every shortcut,
+  app_server's and the apps' menu keys, with the command key and its
+  key behaviour. A change makes "Mac (Customized)", Save As… and Delete
+  keep or drop named ones, and they go in Backup with the settings.
+  ⇧⌘-arrows select text again (Mac tiling is Rectangle's ⌃⌥), and the
+  shortcuts sheet comes up on ⇧⌘/ (Win+Shift+/, Alt+Shift+/).
+  Not yet: keys for apps that aren't Olo's (Chrome's own).
 - ~~**Twitcher: choose with the pointer**~~ (Ben, 2026-10-29; done:
   HACKING, Twitcher): while ⌘ (or ⌥) is still held, the pointer over a
   cell chooses it and a click there ends the switching on it.
@@ -795,6 +811,12 @@ as they land (with the commit), add new ones as they come up.
 
 ## app_server
 
+- **Auto-tiling follows the sizes I give** (Ben, 2026-10-29): "auto-tiling
+  should let me resize windows however i want and then adapt around how i
+  have sized them, instead of locking me to some sort of hidden grid like
+  it does right now". A resize by hand keeps the size it was let go at
+  (no snapping to quarters and thirds), and the neighbours take up the
+  rest around it; new and closed windows keep the sizes given.
 - ~~**Window menu on the title tab**~~ (Ben; done: HACKING, "The command
   palette", window menu): right-clicking a window's yellow tab opens a
   kit menu of Hide, Zoom, Back to Its Own Size, Center, Tile ▸, Move to

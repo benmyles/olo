@@ -9,10 +9,12 @@
 //! It stays running between uses so it opens at once: app_server starts
 //! `olo-palette --toggle`, which hands the toggle to the running copy.
 //! It shows a window's menu (a right-click on its tab) the same way, from
-//! `--window-menu` (window_menu.rs).
+//! `--window-menu` (window_menu.rs), and the shortcuts sheet (⇧⌘/) from
+//! `--shortcuts` (sheet.rs).
 
 mod calc;
 mod rank;
+mod sheet;
 mod sources;
 mod window_menu;
 
@@ -118,6 +120,8 @@ struct Palette {
     workers: Workers,
     /// A window's menu, while it shows.
     window_menu: Option<window_menu::Shown>,
+    /// The shortcuts sheet, while it shows.
+    sheet: Option<sheet::Shown>,
 }
 
 impl Palette {
@@ -247,6 +251,18 @@ impl Palette {
         }
     }
 
+    /// The shortcuts sheet, or away with it if it shows.
+    fn toggle_sheet(&mut self, cx: &mut Cx) {
+        if let Some(old) = self.sheet.take() {
+            cx.close_window(old.win);
+            return;
+        }
+        if self.win.is_some() {
+            self.hide(cx);
+        }
+        sheet::learn(cx.proxy());
+    }
+
     /// A right-click on a window's tab: put the palette away and learn
     /// what the menu needs.
     fn ask_window_menu(&mut self, cx: &mut Cx, ask: window_menu::Ask) {
@@ -282,6 +298,13 @@ impl Palette {
 
 impl App for Palette {
     fn ui(&mut self, cx: &mut Cx, window: olo_kit::WindowId, ui: &mut egui::Ui) {
+        if let Some(shown) = self.sheet.as_mut().filter(|s| s.win == window) {
+            if sheet::ui(shown, ui) {
+                cx.close_window(window);
+                self.sheet = None;
+            }
+            return;
+        }
         if let Some(shown) = self.window_menu.as_mut().filter(|s| s.win == window) {
             if window_menu::ui(shown, ui) {
                 cx.close_window(window);
@@ -307,11 +330,7 @@ impl App for Palette {
 
         let painter = ui.painter().clone();
         // A soft shadow, then the BeOS panel.
-        let [r, g, b, a] = p.drop_shadow;
-        for i in 1..=6 {
-            let a = (a as u32 * (26 - i * 4) / 40) as u8;
-            painter.rect_filled(panel.expand(i as f32).translate(vec2(0.0, i as f32 * 0.5)), 4.0 + i as f32, Color32::from_rgba_unmultiplied(r, g, b, a));
-        }
+        style::soft_shadow(&painter, panel, &p);
         painter.rect_filled(panel, 0.0, c(p.panel_background));
         style::frame_rect(&painter, panel, style::darken(p.panel_background, 1.6));
         style::raised(&painter, panel.shrink(1.0), &p);
@@ -323,17 +342,19 @@ impl App for Palette {
         let glass = Rect::from_center_size(pos2(field.left() + 8.0 + 12.0, field.center().y), vec2(24.0, 24.0));
         icons::paint(&painter, glass, "query");
         let line = ui.fonts_mut(|f| f.row_height(&egui::FontId::proportional(QUERY_SIZE)));
-        // The row leaves room below for descenders: sit the letters on the
-        // field's middle, as the glass is.
-        let mid = field.center().y + (line * 0.12).round();
-        let text_rect = Rect::from_min_max(pos2(glass.right() + 8.0, mid - line / 2.0), pos2(field.right() - 8.0, mid + line / 2.0));
+        // The capitals on the field's middle, as the glass is, on device
+        // pixels (`style::text_origin`, from where a row of the type puts
+        // them).
+        let probe = painter.layout_no_wrap("H".into(), egui::FontId::proportional(QUERY_SIZE), Color32::WHITE);
+        let top = style::text_origin(ui.ctx(), &probe, 0.0, field.center().y, QUERY_SIZE).y;
+        let text_rect = Rect::from_min_max(pos2(glass.right() + 8.0, top), pos2(field.right() - 8.0, top + line));
         // Arrows and Return belong to the list, not the text.
         let (up, down, enter, reveal, escape, page_up, page_down) = ui.input_mut(|i| {
             (
                 i.consume_key(egui::Modifiers::NONE, Key::ArrowUp),
                 i.consume_key(egui::Modifiers::NONE, Key::ArrowDown),
                 i.consume_key(egui::Modifiers::NONE, Key::Enter),
-                i.consume_key(egui::Modifiers::COMMAND, Key::Enter),
+                olo_kit::keyboard::consume(i, "alternate"),
                 i.consume_key(egui::Modifiers::NONE, Key::Escape),
                 i.consume_key(egui::Modifiers::NONE, Key::PageUp),
                 i.consume_key(egui::Modifiers::NONE, Key::PageDown),
@@ -450,10 +471,21 @@ impl App for Palette {
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
         let message = match message.downcast::<Launch>() {
             Ok(launch) if launch.args.iter().any(|a| a == "--toggle") => return self.toggle(cx),
+            Ok(launch) if launch.args.iter().any(|a| a == "--shortcuts") => return self.toggle_sheet(cx),
             Ok(launch) => {
                 if let Some(ask) = window_menu::Ask::parse(&launch.args) {
                     self.ask_window_menu(cx, ask);
                 }
+                return;
+            }
+            Err(m) => m,
+        };
+        let message = match message.downcast::<sheet::Learned>() {
+            Ok(learned) => {
+                if let Some(old) = self.sheet.take() {
+                    cx.close_window(old.win);
+                }
+                self.sheet = Some(sheet::open(cx, *learned));
                 return;
             }
             Err(m) => m,
@@ -507,6 +539,7 @@ fn main() {
         return;
     }
     let toggle = args.iter().any(|a| a == "--toggle");
+    let shortcuts = args.iter().any(|a| a == "--shortcuts");
     let ask = window_menu::Ask::parse(&args);
     olo_kit::run(APP_ID, move |cx| {
         cx.stay_resident();
@@ -531,12 +564,16 @@ fn main() {
             recents: Recents::load(),
             workers: sources::workers(cx.proxy()),
             window_menu: None,
+            sheet: None,
         };
         if let Some(ask) = ask {
             palette.ask_window_menu(cx, ask);
         }
         if toggle {
             palette.toggle(cx);
+        }
+        if shortcuts {
+            palette.toggle_sheet(cx);
         }
         palette
     });

@@ -1,13 +1,16 @@
-//! Keyboard: layout, key repeat, the Mac keys (⌘ as the command key,
-//! Caps Lock as Ctrl, tap ⌘ for Find), the backlight; and the Shortcuts
-//! tab (shortcuts.rs).
+//! Keyboard: layout, the keyboard profile (Mac, Windows or BeOS keys:
+//! the command key, Caps Lock as Ctrl, a tap of the Super key for the
+//! palette, and every shortcut, in the Shortcuts tab, shortcuts.rs), key
+//! repeat, hints, the backlight. A platform's profile changed becomes
+//! "Mac (Customized)" by itself; Save As keeps one under a name of its
+//! own, to pick again.
 
 use olo_kit::{
-    egui::Ui,
+    egui::{self, Ui},
     metrics as m,
-    widgets::{BBox, CheckBox, MenuField, Slider, StringView, TabView, TextControl},
+    widgets::{BBox, Button, CheckBox, MenuField, Slider, StringView, TabView, TextControl},
 };
-use olo_protocol::{PowerStatus, Settings};
+use olo_protocol::{CommandKey, KeyboardProfile, Platform, PowerStatus, Settings};
 
 use crate::server::Server;
 
@@ -109,12 +112,6 @@ fn keyboard(ui: &mut Ui, s: &mut Settings, power: Option<&PowerStatus>, server: 
 
     ui.add(CheckBox::new(&mut k.num_lock, "Num Lock on when Olo starts"));
 
-    BBox::new("Mac Keys").show(ui, |ui| {
-        ui.add(CheckBox::new(&mut k.command_key, "Use Command as the shortcut key (Command-C copies)"));
-        ui.add(CheckBox::new(&mut k.caps_lock_control, "Caps Lock is another Control key"));
-        ui.add_enabled(k.command_key, CheckBox::new(&mut k.find_on_command_tap, "Tap Command on its own for the command palette"));
-    });
-
     BBox::new("Keyboard Hints").show(ui, |ui| {
         ui.add(CheckBox::new(&mut k.hints, "Press Control twice for keyboard hints"));
         let mut speed = k.double_press_ms as f32;
@@ -154,3 +151,82 @@ fn keyboard(ui: &mut Ui, s: &mut Settings, power: Option<&PowerStatus>, server: 
         }
     });
 }
+
+/// The profile, at the top of Shortcuts: which (Save As… keeps it under
+/// a name of its own), its command key and its keys' ways. `saving` is
+/// the name being typed for Save As.
+pub fn profile(ui: &mut Ui, s: &mut Settings, saving: &mut Option<String>) {
+    let k = &mut s.keyboard;
+    BBox::new("Keyboard Profile").show(ui, |ui| {
+        let saved = !Platform::ALL.iter().any(|p| p.name() == k.profile.name);
+        match saving {
+            None => {
+                let choices = k.choices();
+                let names: Vec<&str> = choices.iter().map(|p| p.name.as_str()).collect();
+                let mut i = names.iter().position(|n| *n == k.profile.name).unwrap_or(0);
+                ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), m::CONTROL_HEIGHT), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.add_enabled(saved, Button::new("Delete")).clicked() {
+                        let name = k.profile.name.clone();
+                        k.profiles.retain(|p| p.name != name);
+                        // Back to its platform's, as it comes.
+                        k.profile = KeyboardProfile::builtin(k.profile.platform);
+                    }
+                    if ui.add(Button::new("Save As…")).clicked() {
+                        *saving = Some(if saved && !k.profile.name.ends_with("(Customized)") { k.profile.name.clone() } else { String::new() });
+                    }
+                    let w = ui.available_width();
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        ui.add(MenuField::new("profile", &mut i, &names).label("Profile:").divider(DIVIDER).width(w));
+                    });
+                });
+                if let Some(name) = names.get(i)
+                    && *name != k.profile.name
+                {
+                    k.pick_profile(name);
+                }
+            }
+            Some(name) => {
+                let mut done = false;
+                ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), m::CONTROL_HEIGHT), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.add(Button::new("Cancel")).clicked() {
+                        done = true;
+                    }
+                    let taken = Platform::ALL.iter().any(|p| p.name() == name.trim() || KeyboardProfile::customized_name(*p) == name.trim());
+                    let ok = !name.trim().is_empty() && !taken;
+                    let save = ui.add_enabled(ok, Button::new("Save").default(true)).clicked();
+                    let w = ui.available_width();
+                    let enter = ui
+                        .with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            let r = ui.add(TextControl::new(name).label("Name:").divider(DIVIDER).width(w).hint("My keys").autofocus(true));
+                            r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                        })
+                        .inner;
+                    if ok && (save || enter) {
+                        k.profile.name = name.trim().to_owned();
+                        k.save_profile();
+                        done = true;
+                    }
+                });
+                if done {
+                    *saving = None;
+                }
+            }
+        }
+        let before = k.profile.clone();
+        let p = &mut k.profile;
+        let titles: Vec<&str> = CommandKey::ALL.iter().map(|c| c.title()).collect();
+        let mut c = CommandKey::ALL.iter().position(|c| *c == p.command_key).unwrap_or(0);
+        let w = ui.available_width();
+        ui.add(MenuField::new("command-key", &mut c, &titles).label("Command key:").divider(DIVIDER).width(w));
+        p.command_key = CommandKey::ALL[c];
+        ui.add(CheckBox::new(&mut p.caps_lock_control, "Caps Lock is another Control key"));
+        let super_key = if p.platform == Platform::Windows { "the Windows key" } else { "⌘ (the Super key)" };
+        ui.add(CheckBox::new(&mut p.palette_on_tap, &format!("Tap {super_key} on its own for the command palette")));
+        if k.profile != before {
+            k.profile_changed();
+        }
+    });
+}
+
+/// Where the profile box's fields begin.
+const DIVIDER: f32 = 96.0;

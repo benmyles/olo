@@ -2,13 +2,10 @@
 //! dark) and the theme icons are drawn in. Outside Olo (no
 //! `$OLO_SOCKET`) apps draw in the default look, or the one
 //! `$OLO_ICON_THEME`, `$OLO_COLORS` and `$OLO_THEME` (`light`, `dark`)
-//! name. Also whether ⌘ is the command key, for terminal-style windows
-//! ([`command_key`]), and where the app's windows are (`workspaces`).
+//! name. Also the keyboard profile (`crate::keyboard`), and where the
+//! app's windows are (`workspaces`).
 
-use std::{
-    sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
-};
+use std::time::Duration;
 
 use smithay_client_toolkit::reexports::calloop::channel::Sender;
 use olo_protocol::{Appearance, Client, Event, Reply, Request, Settings};
@@ -26,21 +23,13 @@ impl Look {
     }
 }
 
-static COMMAND_KEY: AtomicBool = AtomicBool::new(false);
-
-/// ⌘ is the command key (`KeyboardSettings::command_key`), so app_server
-/// sends it to terminals as its right Ctrl with Shift and keeps the left
-/// Ctrl for the physical key: in a terminal-style window only the right
-/// one is the command key. False outside Olo, where Ctrl is.
-pub fn command_key() -> bool {
-    COMMAND_KEY.load(Ordering::Relaxed)
-}
+pub use crate::keyboard::command_key;
 
 fn current() -> Option<Settings> {
     let mut client = Client::connect().ok()?;
     match client.request(&Request::GetSettings).ok()? {
         Reply::Settings { settings } => {
-            COMMAND_KEY.store(settings.keyboard.command_key, Ordering::Relaxed);
+            crate::keyboard::set(&settings.keyboard.profile);
             Some(settings)
         }
         _ => None,
@@ -88,7 +77,7 @@ pub fn spawn(tx: Sender<Look>) {
                     for event in events {
                         match event {
                             Ok(Event::SettingsChanged { settings }) => {
-                                COMMAND_KEY.store(settings.keyboard.command_key, Ordering::Relaxed);
+                                crate::keyboard::set(&settings.keyboard.profile);
                                 if tx.send(Look::of(&settings.appearance)).is_err() {
                                     return;
                                 }

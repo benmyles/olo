@@ -32,10 +32,7 @@ use olo_kit::{
     tip::Tip,
     widgets,
 };
-use olo_protocol::{
-    Client, DisplayWorkspace, Event, OutputInfo, Reply, Request, WindowInfo, WindowingMode,
-    shortcuts::{self, ShortcutSettings},
-};
+use olo_protocol::{Client, DisplayWorkspace, Event, KeyboardProfile, OutputInfo, Reply, Request, WindowInfo, WindowingMode, shortcuts};
 
 /// Logical width of the vertical Deskbar.
 const WIDTH: f32 = olo_kit::metrics::DESKBAR_WIDTH;
@@ -130,7 +127,7 @@ struct Settings {
     /// Grouping, and each workspace's windowing mode.
     tiling: olo_protocol::TilingSettings,
     /// The person's shortcut keys.
-    keys: ShortcutSettings,
+    keys: KeyboardProfile,
 }
 
 /// A Deskbar on a display.
@@ -216,7 +213,7 @@ struct Deskbar {
     menu_workspace: Option<u32>,
     /// The person's changes to app_server's shortcuts, for the keys the
     /// Olo menu shows.
-    keys: ShortcutSettings,
+    keys: KeyboardProfile,
     /// The Restart / Shut Down confirmation, while it is open.
     confirm: Option<(WindowId, Power)>,
     /// The "upgrade and reload?" alert, while it is open, with its message.
@@ -547,7 +544,7 @@ impl Deskbar {
         let mut m = Menu::new("Workspaces");
         for i in 0..count {
             m = m.item(self.workspace_name(display, i), format!("workspace:{i}"), None).checked(i == current);
-            if let Some(keys) = shortcuts::by_id(&format!("workspace-{}", i + 1)).and_then(|info| shortcuts::keys_for(info, &self.keys).first().map(|c| c.symbols())) {
+            if let Some(keys) = shortcuts::by_id(&format!("workspace-{}", i + 1)).and_then(|info| shortcuts::keys_for(info, &self.keys).first().map(|c| c.label(self.keys.platform))) {
                 m = m.keys(keys);
             }
         }
@@ -1086,7 +1083,7 @@ fn team_key_of(w: &WindowInfo) -> String {
 /// Show beside each of the Olo menu's commands that app_server also has
 /// as a shortcut (`find`, `lock`, `arrange:` and a shortcut id) the keys
 /// the person has for it.
-fn add_keys(menu: &mut Menu, changed: &ShortcutSettings) {
+fn add_keys(menu: &mut Menu, profile: &KeyboardProfile) {
     for item in &mut menu.items {
         match item {
             MenuItem::Action(a) => {
@@ -1097,10 +1094,10 @@ fn add_keys(menu: &mut Menu, changed: &ShortcutSettings) {
                     c => c.strip_prefix("arrange:").unwrap_or(c),
                 };
                 if let Some(info) = shortcuts::by_id(id) {
-                    a.keys = shortcuts::keys_for(info, changed).first().map(|c| c.symbols());
+                    a.keys = shortcuts::keys_for(info, profile).first().map(|c| c.label(profile.platform));
                 }
             }
-            MenuItem::Submenu(m) => add_keys(m, changed),
+            MenuItem::Submenu(m) => add_keys(m, profile),
             MenuItem::Separator => {}
         }
     }
@@ -1111,7 +1108,7 @@ fn settings_msg(settings: olo_protocol::Settings) -> Msg {
         clock: settings.clock,
         menu_icons: settings.appearance.menu_icons,
         tiling: settings.tiling,
-        keys: settings.shortcuts,
+        keys: settings.keyboard.profile,
     })
 }
 
@@ -1654,7 +1651,7 @@ fn main() {
             tiling: Default::default(),
             menu_output: None,
             menu_workspace: None,
-            keys: ShortcutSettings::new(),
+            keys: KeyboardProfile::default(),
             confirm: None,
             upgrade_ask: None,
             approve_until: None,

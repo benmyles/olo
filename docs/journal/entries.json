@@ -2026,5 +2026,23 @@
   "title": "Preferences: workspaces are per display",
   "caption": "The Workspaces panel says each display has its own; Displays has no Deskbar-on-every-display setting any more.",
   "image": "2026-10-29/134336-preferences-workspaces-are-per-display.png"
+ },
+ {
+  "time": "2026-10-29T15:10:50",
+  "title": "Keyboard Shortcuts sheet (\u21e7\u2318/)",
+  "caption": "Every shortcut of the keyboard profile on one sheet: the front app's menu keys first (Tracker's here), then text editing's and the desktop's, as cards in columns; \u21e7\u2318/ on a Mac, Win+Shift+/ on Windows, Alt+Shift+/ on BeOS.",
+  "image": "2026-10-29/151050-keyboard-shortcuts-sheet.png"
+ },
+ {
+  "time": "2026-10-29T15:11:01",
+  "title": "Keyboard profiles in Preferences",
+  "caption": "Preferences \u25b8 Keyboard \u25b8 Shortcuts picks a keyboard profile (Mac, Windows, BeOS, or one saved) with its command key and key behaviour, then lists every shortcut in the platform's own key names (here Windows': Win+\u2190 snaps left); a change makes it \u201cWindows (Customized)\u201d.",
+  "image": "2026-10-29/151101-keyboard-profiles-in-preferences.png"
+ },
+ {
+  "time": "2026-10-29T15:11:08",
+  "title": "Menus in the profile's keys (Windows)",
+  "caption": "Every app's menu keys come from the keyboard profile: with Windows' keys Tracker's File menu has Explorer's (Alt+\u2191, Alt+Enter, F2, Del, Ctrl+Shift+N); with a Mac's, Finder's (\u2318\u2191, \u2318I, \u21e7\u2318N, \u2318\u232b).",
+  "image": "2026-10-29/151108-menus-in-the-profile-s-keys-windows.png"
  }
 ]

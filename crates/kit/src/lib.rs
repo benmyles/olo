@@ -24,6 +24,7 @@ pub mod masonry;
 pub use olo_images as images;
 mod input;
 pub mod instance;
+pub mod keyboard;
 pub mod menu;
 pub mod metrics;
 pub mod notify;

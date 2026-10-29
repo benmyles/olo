@@ -13,10 +13,7 @@ use olo_kit::{
     menu::{self, Menu},
     tracker, widgets,
 };
-use olo_protocol::{
-    Client, Reply, Request,
-    shortcuts::{self, ShortcutSettings},
-};
+use olo_protocol::{Client, KeyboardProfile, Reply, Request, shortcuts};
 
 /// What `--window-menu` asked for.
 #[derive(Debug, Clone, PartialEq)]
@@ -58,7 +55,7 @@ pub struct Facts {
     pub auto: bool,
     pub floating: bool,
     /// Shortcut keys changed from the defaults, to show the ones in use.
-    pub keys: ShortcutSettings,
+    pub keys: KeyboardProfile,
     /// The file or folder it shows, if its program says
     /// (`Cx::set_path`): Open in Tracker. (Not Tracker's own windows.)
     pub path: Option<PathBuf>,
@@ -81,7 +78,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
         let displays = outputs.iter().filter(|o| o.mirror_of.is_none()).count().max(1);
         let display = w.output.as_deref().and_then(|o| olo_protocol::display_number(&outputs, o));
         let keys = match c.request(&Request::GetSettings) {
-            Ok(Reply::Settings { settings }) => settings.shortcuts,
+            Ok(Reply::Settings { settings }) => settings.keyboard.profile,
             _ => Default::default(),
         };
         let auto = match c.request(&Request::AutoTiling { workspace: Some(w.workspace) }) {
@@ -97,11 +94,12 @@ pub fn learn(ask: Ask, proxy: Proxy) {
     });
 }
 
-/// The keys shortcut `id` has now, as on a Mac ("⌃⌘H").
+/// The keys shortcut `id` has now, as the profile's platform writes them
+/// ("⌃⌘H", "Win+D").
 fn keys(f: &Facts, id: &str) -> Option<String> {
     let info = shortcuts::by_id(id);
     debug_assert!(info.is_some(), "{id}");
-    shortcuts::keys_for(info?, &f.keys).first().map(|c| c.symbols())
+    shortcuts::keys_for(info?, &f.keys).first().map(|c| c.label(f.keys.platform))
 }
 
 pub fn build(f: &Facts) -> Menu {
@@ -266,9 +264,9 @@ mod tests {
         assert_eq!(ask, Ask { window: 7, at: pos2(120.0, 40.5), output: Some("HEADLESS-1".into()) });
         assert_eq!(Ask::parse(&args[..4]).unwrap().output, None);
         // Every item is a shortcut app_server knows, or one of ours.
-        let mut changed = ShortcutSettings::new();
-        changed.insert("zoom".into(), vec!["Ctrl+Cmd+Z".into()]);
-        changed.insert("center".into(), vec![]);
+        let mut changed = KeyboardProfile::default();
+        changed.shortcuts.insert("zoom".into(), vec!["Ctrl+Cmd+Z".into()]);
+        changed.shortcuts.insert("center".into(), vec![]);
         let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false, grouped: true, auto: false, floating: false, keys: changed, path: None, display: Some(1) };
         fn commands(m: &Menu, out: &mut Vec<String>) {
             for item in &m.items {
@@ -316,7 +314,7 @@ mod tests {
         assert_eq!(keys_of("Center"), Some(None));
         let Some(menu::MenuItem::Submenu(spaces)) = menu.items.iter().find(|i| matches!(i, menu::MenuItem::Submenu(s) if s.title == "Move to Workspace")) else { panic!() };
         let menu::MenuItem::Action(first) = &spaces.items[0] else { panic!() };
-        assert_eq!(first.key_label().as_deref(), Some("⌃⇧⌘1"));
+        assert_eq!(first.key_label().as_deref(), Some("⌃⇧1"));
         // Its display's workspaces, named for it among several.
         assert_eq!(first.label, "D1 Workspace 1");
     }

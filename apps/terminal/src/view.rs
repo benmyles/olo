@@ -991,42 +991,12 @@ fn legacy_with_event(key: Key, m: egui::Modifiers, event: u8) -> Option<Vec<u8>>
     }
 }
 
-/// The keys of the menu shortcuts (⌘key, which arrives as Ctrl+Shift+key,
-/// whether or not the item is enabled just now; ⇧= arrives as Plus). Keep
-/// in step with `menu_bar` in main.rs.
-pub const SHORTCUTS: &[Key] = &[
-    Key::N,
-    Key::T,
-    Key::W,
-    Key::Q,
-    Key::C,
-    Key::V,
-    Key::A,
-    Key::F,
-    Key::G,
-    Key::E,
-    Key::K,
-    Key::D,
-    Key::Equals,
-    Key::Plus,
-    Key::Minus,
-    Key::Num0,
-    Key::OpenBracket,
-    Key::CloseBracket,
-    Key::Num1,
-    Key::Num2,
-    Key::Num3,
-    Key::Num4,
-    Key::Num5,
-    Key::Num6,
-    Key::Num7,
-    Key::Num8,
-    Key::Num9,
-];
-
-/// A menu shortcut's chord, the app's rather than the shell's.
+/// A menu shortcut's chord, the app's rather than the shell's: one of
+/// Terminal's in the keyboard profile (⌘key, which arrives as
+/// Ctrl+Shift+key, whether or not the item is enabled just now; ⇧= arrives
+/// as Plus).
 fn is_shortcut(key: Key, m: egui::Modifiers) -> bool {
-    m.command && m.shift && SHORTCUTS.contains(&key)
+    m.command && olo_kit::keyboard::is_own_shortcut(crate::APP_ID, key, m, true)
 }
 
 fn keyboard(ui: &Ui, s: &Session, out: &mut Output) {

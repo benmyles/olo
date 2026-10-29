@@ -204,6 +204,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 | S::ZoomVertical
                 | S::ZoomHorizontal
                 | S::Restore
+                | S::RestoreOrHide
                 | S::Center
                 | S::TileAll
                 | S::SmartTile
@@ -228,6 +229,37 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
             S::Lock => self.lock_screen(),
             S::Overview => self.toggle_overview(),
+            // From the palette or an agent, with no keys to hold: a quick
+            // press and release, to the app (or window) before.
+            S::SwitchApps | S::SwitchAppsHere | S::SwitchWindows => {
+                self.twitch_step(shortcut != S::SwitchWindows, shortcut != S::SwitchAppsHere, false);
+                self.twitch_done();
+            }
+            S::ShortcutHelp => self.spawn_program("olo-palette", &["--shortcuts"]),
+            S::ActivityMonitor => {
+                let open = self.all_windows().into_iter().find(|w| w.app_id() == "olo.activity");
+                match open {
+                    Some(w) => self.restore(&w),
+                    None => self.spawn_program("olo-activity", &[]),
+                }
+            }
+            S::HideApp => {
+                let Some(app) = focused.as_ref().map(|w| w.app_id()) else { return };
+                let windows: Vec<_> = self.all_windows().into_iter().filter(|w| w.app_id() == app && self.shows(w)).collect();
+                for w in &windows {
+                    self.minimize_window(w);
+                }
+            }
+            S::SendToBack => {
+                if let Some(w) = focused {
+                    self.send_to_back(&w);
+                }
+            }
+            S::CloseWindow => {
+                if let Some(w) = focused {
+                    self.close_window(&w);
+                }
+            }
             S::Caffeinate => {
                 let on = !self.power.caffeinated();
                 self.set_caffeinated(on, None, false);
@@ -331,8 +363,24 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let floats = self.floats(&w);
                 self.set_floating(&w, Some(!floats));
             }
-            S::Tile(_) | S::Zoom | S::ZoomVertical | S::ZoomHorizontal | S::Restore | S::Center | S::Hide | S::NextDisplay | S::PreviousDisplay => {
+            S::Tile(_)
+            | S::Zoom
+            | S::ZoomVertical
+            | S::ZoomHorizontal
+            | S::Restore
+            | S::RestoreOrHide
+            | S::Center
+            | S::Hide
+            | S::NextDisplay
+            | S::PreviousDisplay => {
                 let Some(w) = focused else { return };
+                // Windows' ⊞↓: a window arranged goes back to its own
+                // size, one at its own size hides.
+                let shortcut = match shortcut {
+                    S::RestoreOrHide if self.arranged(&w) => S::Restore,
+                    S::RestoreOrHide => S::Hide,
+                    s => s,
+                };
                 if shortcut != S::Hide {
                     self.front_of_group(&w);
                 }

@@ -815,6 +815,18 @@ pub fn snap(ctx: &Context, r: Rect) -> Rect {
     Rect::from_min_max(pos2(s(r.min.x), s(r.min.y)), pos2(s(r.max.x), s(r.max.y)))
 }
 
+/// A soft shadow under a panel floating over everything (the command
+/// palette, the shortcuts sheet): rings growing out and a little down,
+/// each on device pixels.
+pub fn soft_shadow(p: &Painter, r: Rect, palette: &Palette) {
+    let [red, green, blue, alpha] = palette.drop_shadow;
+    for i in 1..=6u32 {
+        let a = (alpha as u32 * (26 - i * 4) / 40) as u8;
+        let ring = snap(p.ctx(), r.expand(i as f32).translate(vec2(0.0, i as f32 * 0.5)));
+        p.rect_filled(ring, 4.0 + i as f32, Color32::from_rgba_unmultiplied(red, green, blue, a));
+    }
+}
+
 /// A rect of `size` centred on `center` as nearly as device pixels
 /// allow, its size whole device pixels too: one size wherever it goes (a
 /// slider's thumb as it moves), where `snap` can make it a pixel wider in
@@ -880,8 +892,9 @@ pub fn latch(p: &Painter, r: Rect, open: bool, color: Color32) {
     p.add(egui::Shape::convex_polygon(pts, color, Stroke::NONE));
 }
 
-/// Right-aligned keys with any modifiers, as on a Mac ("⌃⌥⇧⌘←"), each
-/// symbol on the text's baseline.
+/// Right-aligned keys with any modifiers, as on a Mac ("⌃⌥⇧⌘←", or
+/// "Ctrl+Shift+←" as Windows writes them), each symbol on the text's
+/// baseline; for agents too (the AccessKit tree).
 pub fn key_combo(p: &Painter, right_center: Pos2, keys: &str, color: Color32) {
     let parts = combo_parts(keys);
     let font = FontId::proportional(PLAIN_SIZE);
@@ -911,6 +924,8 @@ pub fn key_combo(p: &Painter, right_center: Pos2, keys: &str, color: Color32) {
             x += SHORTCUT_KERN;
         }
     }
+    let r = Rect::from_min_max(pos2(x, right_center.y - PLAIN_SIZE / 2.0), pos2(right_center.x, right_center.y + PLAIN_SIZE / 2.0));
+    describe_text(p.ctx(), egui::accesskit::Role::Label, keys, r, None);
 }
 
 /// ⌘ and ⇧ sit this much closer to what follows than their advance width.

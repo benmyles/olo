@@ -1,21 +1,27 @@
-//! The Mac keyboard, natively. ⌘ is the command key: apps see it as Ctrl
-//! (so ⌘C copies everywhere, GTK and Firefox included), while app_server
-//! keeps some ⌘ keys for itself: ⌘Tab / ⌘\` (Twitcher: every workspace's
-//! apps, the focused app's windows; ⌥Tab is Twitcher for this
-//! workspace's), ⌘ arrows and ⌘⌫
-//! (line and document navigation), a tap of ⌘ alone (the command palette, if chosen in
-//! Preferences), Control pressed twice quickly (keyboard hints, if
-//! chosen), and first of all the shortcuts in `Settings::shortcuts`
-//! (olo_protocol::shortcuts: tiling, workspaces, Find, lock,
-//! screenshots, …). Caps Lock is another Ctrl. Terminals keep physical
-//! Ctrl for the tty, so ⌘ reaches them as Ctrl+Shift. Next / Previous
-//! Tab (⌃Tab, ⌃⇧Tab, or whatever they are set to) reach the app as
-//! Ctrl+Tab / Ctrl+Shift+Tab.
-//! Programs that aren't Olo's get the rest of the Mac's keys in their
-//! own terms ([`Focus`]): ⌥ moves and deletes by word (Ctrl there), ⌘[ /
-//! ⌘] go back and forward (Alt+← / Alt+→: Chrome, Slack, GTK's Files),
-//! and in browsers ⌘⇧[ / ⌘⇧] change tabs. ⌘← / ⌘→ never navigate: they
-//! are the line's start and end everywhere.
+//! The keyboard as the profile has it (olo_protocol::shortcuts::KeyboardProfile:
+//! Mac, Windows or BeOS). The command key (⌘ on a Mac, Alt on BeOS) reaches
+//! apps as Ctrl, so ⌘C copies everywhere, GTK and Firefox included; on
+//! Windows the command key is Ctrl itself and nothing is changed. First of
+//! all app_server takes the profile's shortcuts (olo_protocol::shortcuts:
+//! tiling, workspaces, Twitcher, Find, lock, screenshots, …): Twitcher's
+//! (⌘Tab, Alt+Tab, Ctrl+Tab) stay up while their modifiers are held, Shift
+//! going back. A tap of the Super key alone opens the command palette, if
+//! the profile says so (the Windows key), and Control pressed twice
+//! quickly shows keyboard hints, if chosen. Caps Lock is another Ctrl if
+//! chosen. Terminals keep physical Ctrl for the tty, so the command key
+//! reaches them as Ctrl+Shift. Next / Previous Tab (⌃Tab, ⌃⇧Tab, or
+//! whatever they are set to) reach the app as Ctrl+Tab / Ctrl+Shift+Tab.
+//!
+//! With ⌘ as the command key (Mac), the rest of the Mac: ⌘ arrows and
+//! ⌘⌫ are line and document navigation (Olo's apps get them as they are,
+//! and the kit does that in text fields), and programs that aren't Olo's
+//! get the Mac's keys in their own terms ([`Focus`]): ⌥ moves and deletes
+//! by word (Ctrl there), ⌘[ / ⌘] go back and forward (Alt+← / Alt+→:
+//! Chrome, Slack, GTK's Files), and in browsers ⌘⇧[ / ⌘⇧] change tabs.
+//! ⌘← / ⌘→ never navigate: they are the line's start and end everywhere.
+//! With Alt (BeOS), Alt arrows are Ctrl arrows already (a word, the
+//! document, as on BeOS), the Super key is Option (Alt for apps), and
+//! the left Alt alone is the command key (the right one stays AltGr).
 //!
 //! This sits between the input devices and the seat: physical evdev codes
 //! go in, the codes clients should see (plus app_server actions) come out.
@@ -26,7 +32,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_protocol::{Chord, Shortcut};
+use olo_protocol::{Chord, Shortcut, shortcuts::CommandKey};
 
 /// evdev key codes used here.
 pub mod code {
@@ -66,12 +72,12 @@ pub mod code {
 }
 use code::*;
 
-/// A ⌘ press and release with nothing in between, shorter than this, is a
-/// tap (the command palette).
+/// A Super press and release with nothing in between, shorter than this,
+/// is a tap (the command palette).
 pub const TAP: Duration = Duration::from_millis(350);
 
-/// The virtual Ctrl that stands for ⌘. Physical Ctrl (either) and Caps
-/// Lock use the left one, so a client that cares (a terminal) can tell
+/// The virtual Ctrl that stands for the command key. Physical Ctrl
+/// (either) and Caps Lock use the left one, so a client that cares (a terminal) can tell
 /// them apart; keys are reference-counted, so sharing is harmless.
 const CMD_CTRL: u32 = RIGHTCTRL;
 
@@ -100,12 +106,13 @@ const ALT: [u32; 2] = [LEFTALT, RIGHTALT];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
-    /// ⌘Tab (`back` with Shift): the next app in Twitcher, on any
-    /// workspace (`all`); ⌥Tab: on this one.
+    /// Switch Applications (⌘Tab; `back` with Shift): the next app in
+    /// Twitcher, on any workspace (`all`); Switch Applications Here
+    /// (⌥Tab): on those showing.
     NextApp { back: bool, all: bool },
-    /// ⌘\`: the next window of the focused app.
+    /// Switch Windows (⌘\`): the next window of the focused app.
     NextWindow { back: bool },
-    /// ⌘ (or ⌥) released after switching: commit Twitcher's choice.
+    /// The switcher's modifiers released: commit Twitcher's choice.
     SwitchDone,
     /// An arrow while switching: along the row (←/→) or to another
     /// workspace's row (↑/↓).
@@ -114,7 +121,7 @@ pub enum Action {
     SwitchPick(char),
     /// Esc while switching: everything back as it was.
     SwitchCancel,
-    /// A tap of ⌘ (if chosen), or keyd's spelling of one.
+    /// A tap of the Super key (if chosen), or keyd's spelling of one.
     Palette,
     /// Control pressed twice quickly (if chosen): keyboard hints.
     Hints,
@@ -137,9 +144,11 @@ pub enum Out {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Options {
-    pub command_key: bool,
+    /// The key apps take as the command key (they see Ctrl).
+    pub command: CommandKey,
     pub caps_lock_control: bool,
-    pub tap_command_find: bool,
+    /// A tap of the Super key on its own opens the command palette.
+    pub palette_on_tap: bool,
     pub hints: bool,
     /// How quickly a double press must come: the second press within this
     /// of the first, each press shorter than it.
@@ -149,13 +158,33 @@ pub struct Options {
 impl From<&olo_protocol::KeyboardSettings> for Options {
     fn from(k: &olo_protocol::KeyboardSettings) -> Self {
         Options {
-            command_key: k.command_key,
-            caps_lock_control: k.caps_lock_control,
-            tap_command_find: k.find_on_command_tap,
+            command: k.profile.command_key,
+            caps_lock_control: k.profile.caps_lock_control,
+            palette_on_tap: k.profile.palette_on_tap,
             hints: k.hints,
             double_press: Duration::from_millis(k.double_press_ms.clamp(100, 1000) as u64),
         }
     }
+}
+
+impl Options {
+    /// The Mac's keys: ⌘ is the command key.
+    fn mac(self) -> bool {
+        self.command == CommandKey::Command
+    }
+}
+
+/// The physical command key.
+fn command_key(key: u32, opts: Options) -> bool {
+    match opts.command {
+        CommandKey::Command => matches!(key, LEFTMETA | RIGHTMETA),
+        CommandKey::Alt => key == LEFTALT,
+        CommandKey::Control => false,
+    }
+}
+
+fn super_key(key: u32) -> bool {
+    matches!(key, LEFTMETA | RIGHTMETA)
 }
 
 /// What a physical key that is down produced, so its release undoes exactly
@@ -164,8 +193,10 @@ impl From<&olo_protocol::KeyboardSettings> for Options {
 struct Held {
     /// Emitted keys to release, in order.
     release: Vec<u32>,
-    /// It is a ⌘ key.
+    /// It is a command key.
     cmd: bool,
+    /// It is a Super key.
+    sup: bool,
     /// It lifted ⌘'s Ctrl (⌘← is Home, not Ctrl+Home): put it back after.
     restore_ctrl: bool,
 }
@@ -175,15 +206,17 @@ pub struct Keymap {
     held: HashMap<u32, Held>,
     /// How many holders each emitted key has.
     down: HashMap<u32, u32>,
-    /// ⌘ keys physically down.
+    /// Command keys physically down.
     cmd_keys: u32,
-    /// ⌘'s Ctrl is currently pressed.
+    /// The command key's Ctrl is currently pressed.
     cmd_ctrl: bool,
-    /// Something was typed with ⌘ (so releasing it is not a tap).
-    cmd_used: bool,
-    cmd_since: Option<Instant>,
-    /// Twitcher is up, while this is held.
-    switching: Option<Hold>,
+    /// Super keys physically down, for a tap.
+    super_keys: u32,
+    /// Something was typed with Super (so releasing it is not a tap).
+    super_used: bool,
+    super_since: Option<Instant>,
+    /// Twitcher is up, while its modifiers are held.
+    switching: Option<Switching>,
     /// The shortcuts (from the settings).
     bindings: Vec<(Chord, Shortcut)>,
     /// The next key is a shortcut being recorded.
@@ -197,11 +230,28 @@ pub struct Keymap {
     lifted: Vec<u32>,
 }
 
+/// Modifiers physically held (Shift aside).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct Mods {
+    ctrl: bool,
+    alt: bool,
+    cmd: bool,
+}
+
 /// What Twitcher was brought up with, and is held for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Hold {
-    Cmd,
-    Alt,
+struct Switching {
+    /// The modifiers of the shortcut (⌘ for ⌘Tab): letting go of one
+    /// commits.
+    hold: Mods,
+    /// Its key (Tab): again for the next, with Shift the one before.
+    key: u32,
+    action: Shortcut,
+}
+
+/// One of Twitcher's shortcuts.
+fn switcher(s: Shortcut) -> bool {
+    matches!(s, Shortcut::SwitchApps | Shortcut::SwitchAppsHere | Shortcut::SwitchWindows)
 }
 
 /// The modifier keys clients see.
@@ -259,16 +309,16 @@ impl Keymap {
         self.recording = on;
     }
 
-    /// A ⌘ key is held (one standing for the command key).
+    /// A command key is held.
     pub fn command_held(&self) -> bool {
         self.cmd_keys > 0
     }
 
-    /// Something was done with ⌘ held other than typing (a click, a
-    /// ⌘-drag of a tab): letting go of it is no tap.
+    /// Something was done with a modifier held other than typing (a
+    /// click, a ⌘-drag of a tab): letting go of Super is no tap.
     pub fn command_used(&mut self) {
-        if self.cmd_keys > 0 {
-            self.cmd_used = true;
+        if self.super_keys > 0 {
+            self.super_used = true;
         }
     }
 
@@ -282,9 +332,30 @@ impl Keymap {
         self.bindings.iter().find(|(c, _)| *c == chord).map(|&(_, s)| s)
     }
 
-    /// The key with the modifiers held now.
+    /// The key with the modifiers held now (physically: Cmd is Super, Alt
+    /// is Alt, whichever is the command key).
     fn chord(&self, key: u32) -> Chord {
-        Chord { ctrl: self.ctrl(), alt: self.alt(), shift: self.shift(), cmd: self.cmd_keys > 0, key }
+        Chord { ctrl: self.ctrl(), alt: self.alt(), shift: self.shift(), cmd: self.is_held(&[LEFTMETA, RIGHTMETA]), key }
+    }
+
+    fn mods(&self) -> Mods {
+        let c = self.chord(0);
+        Mods { ctrl: c.ctrl, alt: c.alt, cmd: c.cmd }
+    }
+
+    /// Every modifier of `hold` is still down.
+    fn holding(&self, hold: Mods) -> bool {
+        let now = self.mods();
+        (!hold.ctrl || now.ctrl) && (!hold.alt || now.alt) && (!hold.cmd || now.cmd)
+    }
+
+    /// Option: ⌥ on a Mac, the Super key on BeOS.
+    fn option(&self, opts: Options) -> bool {
+        match opts.command {
+            CommandKey::Command => self.alt(),
+            CommandKey::Alt => self.is_held(&[LEFTMETA, RIGHTMETA]),
+            CommandKey::Control => false,
+        }
     }
 
     fn emit_press(&mut self, key: u32, out: &mut Vec<Out>) {
@@ -388,13 +459,17 @@ impl Keymap {
     }
 
     /// The chord a key is in `focus`'s terms, if it isn't itself there:
-    /// the modifiers wanted and the key.
-    fn translate(&self, key: u32, focus: Focus) -> Option<(&'static [[u32; 2]], u32)> {
-        let (cmd, ctrl, alt, shift) = (self.cmd_keys > 0, self.ctrl(), self.alt(), self.shift());
+    /// the modifiers wanted and the key. (Only with a command key that
+    /// isn't Ctrl: on Windows, every program has the same keys already.)
+    fn translate(&self, key: u32, focus: Focus, opts: Options) -> Option<(&'static [[u32; 2]], u32)> {
+        if opts.command == CommandKey::Control {
+            return None;
+        }
+        let (cmd, ctrl, opt, shift) = (self.cmd_keys > 0, self.ctrl(), self.option(opts), self.shift());
         let foreign = matches!(focus, Focus::Browser | Focus::Other);
-        let word = foreign && alt && !cmd && !ctrl;
+        let word = opts.mac() && foreign && opt && !cmd && !ctrl;
         let browser = focus == Focus::Browser && cmd && !ctrl;
-        let history = foreign && cmd && !ctrl && !alt && !shift;
+        let history = foreign && cmd && !ctrl && !opt && !shift;
         Some(match key {
             // A word back or on (selecting with ⇧), or deleted.
             LEFT | RIGHT if word && shift => (&[CTRL, SHIFT], key),
@@ -403,10 +478,10 @@ impl Keymap {
             LEFTBRACE if history => (&[ALT], LEFT),
             RIGHTBRACE if history => (&[ALT], RIGHT),
             // The tab before and after.
-            LEFTBRACE if browser && !alt => (&[CTRL], PAGEUP),
-            RIGHTBRACE if browser && !alt => (&[CTRL], PAGEDOWN),
-            LEFT if browser && alt && !shift => (&[CTRL], PAGEUP),
-            RIGHT if browser && alt && !shift => (&[CTRL], PAGEDOWN),
+            LEFTBRACE if browser && !opt => (&[CTRL], PAGEUP),
+            RIGHTBRACE if browser && !opt => (&[CTRL], PAGEDOWN),
+            LEFT if browser && opt && !shift => (&[CTRL], PAGEUP),
+            RIGHT if browser && opt && !shift => (&[CTRL], PAGEDOWN),
             _ => return None,
         })
     }
@@ -426,18 +501,30 @@ impl Keymap {
                 _ => Some(CtrlPresses { since: now, down: now, done: 0 }),
             };
         }
-        let mut h = Held::default();
-        if opts.command_key && (key == LEFTMETA || key == RIGHTMETA) {
-            self.cmd_keys += 1;
-            if self.cmd_keys == 1 {
-                self.cmd_used = false;
-                self.cmd_since = Some(now);
+        if super_key(key) {
+            self.super_keys += 1;
+            if self.super_keys == 1 {
+                self.super_used = false;
+                self.super_since = Some(now);
             }
+        } else if self.super_keys > 0 {
+            self.super_used = true;
+        }
+        let mut h = Held { sup: super_key(key), ..Held::default() };
+        if command_key(key, opts) {
+            self.cmd_keys += 1;
             if !self.cmd_ctrl {
                 self.cmd_ctrl = true;
                 self.emit_press(CMD_CTRL, out);
             }
             h.cmd = true;
+            self.held.insert(key, h);
+            return;
+        }
+        if super_key(key) && opts.command == CommandKey::Alt {
+            // BeOS's Option, Alt for apps.
+            self.emit_press(LEFTALT, out);
+            h.release.push(LEFTALT);
             self.held.insert(key, h);
             return;
         }
@@ -447,10 +534,10 @@ impl Keymap {
             self.held.insert(key, h);
             return;
         }
-        if opts.command_key && key == RIGHTCTRL {
-            // The right Ctrl clients see is ⌘'s alone, so a terminal can
-            // tell ⌘- (Smaller) from the shell's Ctrl+_ (the kit's
-            // `theme_watch::command_key`).
+        if opts.command != CommandKey::Control && key == RIGHTCTRL {
+            // The right Ctrl clients see is the command key's alone, so a
+            // terminal can tell ⌘- (Smaller) from the shell's Ctrl+_ (the
+            // kit's `theme_watch::command_key`).
             self.emit_press(LEFTCTRL, out);
             h.release.push(LEFTCTRL);
             self.held.insert(key, h);
@@ -469,25 +556,22 @@ impl Keymap {
             self.held.insert(key, h);
             return;
         }
-        if self.cmd_keys > 0 {
-            self.cmd_used = true;
-        }
-        let held = match self.switching {
-            Some(Hold::Cmd) => self.cmd_keys > 0 && !self.alt(),
-            Some(Hold::Alt) => self.alt() && self.cmd_keys == 0,
-            None => false,
-        };
-        if held && !self.ctrl() {
+        let chord = self.chord(key);
+        if let Some(sw) = self.switching.filter(|sw| self.holding(sw.hold)) {
+            // Twitcher is up: its key again (with Shift, back), and with
+            // just its modifiers the arrows, Esc and the hints' letters.
+            let alone = self.mods() == sw.hold;
             let action = match key {
-                LEFT => Some(Action::SwitchMove { dx: -1, dy: 0 }),
-                RIGHT => Some(Action::SwitchMove { dx: 1, dy: 0 }),
-                UP => Some(Action::SwitchMove { dx: 0, dy: -1 }),
-                DOWN => Some(Action::SwitchMove { dx: 0, dy: 1 }),
-                ESC => {
+                _ if key == sw.key => Some(self.switch_step(sw.action, chord.shift)),
+                LEFT if alone => Some(Action::SwitchMove { dx: -1, dy: 0 }),
+                RIGHT if alone => Some(Action::SwitchMove { dx: 1, dy: 0 }),
+                UP if alone => Some(Action::SwitchMove { dx: 0, dy: -1 }),
+                DOWN if alone => Some(Action::SwitchMove { dx: 0, dy: 1 }),
+                ESC if alone => {
                     self.switching = None;
                     Some(Action::SwitchCancel)
                 }
-                _ if opts.hints && !self.shift() => crate::hints::letter(key).map(Action::SwitchPick),
+                _ if alone && opts.hints && !chord.shift => crate::hints::letter(key).map(Action::SwitchPick),
                 _ => None,
             };
             if let Some(action) = action {
@@ -496,22 +580,34 @@ impl Keymap {
                 return;
             }
         }
-        let chord = self.chord(key);
-        let shortcut = self.bindings.iter().find(|(c, _)| *c == chord).map(|&(_, s)| s);
+        let mut shortcut = self.bindings.iter().find(|(c, _)| *c == chord).map(|&(_, s)| s);
+        let mut back = false;
+        if shortcut.is_none() && chord.shift {
+            // A switcher's keys with Shift: the one before.
+            let plain = Chord { shift: false, ..chord };
+            if let Some(&(_, s)) = self.bindings.iter().find(|(c, s)| *c == plain && switcher(*s)) {
+                (shortcut, back) = (Some(s), true);
+            }
+        }
+        if let Some(s) = shortcut.filter(|s| switcher(*s)) {
+            // Up while its modifiers are held; the app keeps them down, as
+            // for any switcher, and loses the focus to the window chosen.
+            let hold = Mods { ctrl: chord.ctrl, alt: chord.alt, cmd: chord.cmd };
+            out.push(Out::Action(self.switch_step(s, back)));
+            if hold == Mods::default() {
+                // Nothing to hold: just the one step.
+                out.push(Out::Action(Action::SwitchDone));
+            } else {
+                self.switching = Some(Switching { hold, key, action: s });
+            }
+            self.held.insert(key, h);
+            return;
+        }
         let tab = matches!(shortcut, Some(Shortcut::NextTab | Shortcut::PreviousTab));
-        let translated = if shortcut.is_none() { self.translate(key, focus) } else { None };
+        let translated = if shortcut.is_none() { self.translate(key, focus, opts) } else { None };
         // (⌥ stays up through a run of ⌥← words, as through Next Tabs.)
         if !tab && translated.is_none() && !olo_protocol::shortcuts::MODIFIER_KEYS.contains(&key) {
             self.restore_lifted(out);
-        }
-        // ⌥Tab, unless it is set to be a shortcut: Twitcher, this
-        // workspace's apps, while ⌥ is held. The app keeps ⌥ down, as for
-        // any switcher, and loses the focus to the window chosen.
-        if shortcut.is_none() && key == TAB && self.alt() && self.cmd_keys == 0 && !self.ctrl() {
-            self.switching = Some(Hold::Alt);
-            out.push(Out::Action(Action::NextApp { back: self.shift(), all: false }));
-            self.held.insert(key, h);
-            return;
         }
         if let Some((with, to)) = translated {
             self.stand_for(&mut h, with, to, out);
@@ -531,24 +627,18 @@ impl Keymap {
         }
         if self.cmd_keys > 0 {
             let (shift, ctrl) = (self.shift(), self.ctrl());
+            // Olo's apps take ⌘ arrows and ⌘⌫ as ⌘ chords (Open Parent,
+            // Move to Trash), and as the line's keys in a text field (the
+            // kit's `mac_text_keys`).
+            let mac = opts.mac() && focus != Focus::Olo;
             let handled = match key {
-                TAB if !ctrl => {
-                    self.switching = Some(Hold::Cmd);
-                    out.push(Out::Action(Action::NextApp { back: shift, all: true }));
-                    true
-                }
-                GRAVE if !ctrl => {
-                    self.switching = Some(Hold::Cmd);
-                    out.push(Out::Action(Action::NextWindow { back: shift }));
-                    true
-                }
                 // keyd's spelling of a ⌘ tap (Ctrl+Alt+Super+O), in case it
                 // is still running underneath.
-                O if ctrl && self.alt() => {
+                O if opts.mac() && ctrl && self.alt() => {
                     out.push(Out::Action(Action::Palette));
                     true
                 }
-                LEFT | RIGHT if !ctrl => {
+                LEFT | RIGHT if mac && !ctrl => {
                     // Start and end of the line.
                     self.lift_ctrl(&mut h, out);
                     let to = if key == LEFT { HOME } else { END };
@@ -556,7 +646,7 @@ impl Keymap {
                     h.release.push(to);
                     true
                 }
-                UP | DOWN if !ctrl => {
+                UP | DOWN if mac && !ctrl => {
                     let to = if key == UP { HOME } else { END };
                     if terminal {
                         // Shift+Home/End: the top and bottom of the
@@ -570,7 +660,7 @@ impl Keymap {
                     }
                     true
                 }
-                BACKSPACE if !ctrl => {
+                BACKSPACE if mac && !ctrl => {
                     if terminal {
                         // Ctrl+U: the shell's "delete to start of line".
                         self.emit_press(U, out);
@@ -584,6 +674,9 @@ impl Keymap {
                     }
                     true
                 }
+                // (BeOS: the command key's arrows and ⌫ are Ctrl's, a word
+                // in the shell too.)
+                LEFT | RIGHT | UP | DOWN | HOME | END | PAGEUP | PAGEDOWN | BACKSPACE | DELETE if !opts.mac() => false,
                 _ if terminal && !shift && !ctrl => {
                     // ⌘C in a terminal is Ctrl+Shift+C (copy), not ^C.
                     self.emit_press(LEFTSHIFT, out);
@@ -603,6 +696,15 @@ impl Keymap {
         self.held.insert(key, h);
     }
 
+    /// Twitcher's step for one of its shortcuts.
+    fn switch_step(&self, s: Shortcut, back: bool) -> Action {
+        match s {
+            Shortcut::SwitchWindows => Action::NextWindow { back },
+            Shortcut::SwitchAppsHere => Action::NextApp { back, all: false },
+            _ => Action::NextApp { back, all: true },
+        }
+    }
+
     fn release(&mut self, key: u32, now: Instant, opts: Options, out: &mut Vec<Out>) {
         let Some(h) = self.held.remove(&key) else {
             // Pressed before we were watching: pass it through.
@@ -614,28 +716,29 @@ impl Keymap {
         }
         if h.cmd {
             self.cmd_keys = self.cmd_keys.saturating_sub(1);
-            if self.cmd_keys == 0 {
-                if self.cmd_ctrl {
-                    self.cmd_ctrl = false;
-                    self.emit_release(CMD_CTRL, out);
-                }
-                if self.switching == Some(Hold::Cmd) {
-                    self.switching = None;
-                    out.push(Out::Action(Action::SwitchDone));
-                }
-                let tap = !self.cmd_used && self.cmd_since.is_some_and(|t| now.duration_since(t) < TAP);
-                if tap && opts.tap_command_find {
-                    out.push(Out::Action(Action::Palette));
-                }
-                self.cmd_since = None;
+            if self.cmd_keys == 0 && self.cmd_ctrl {
+                self.cmd_ctrl = false;
+                self.emit_release(CMD_CTRL, out);
             }
         } else if h.restore_ctrl && self.cmd_keys > 0 && !self.cmd_ctrl {
             self.cmd_ctrl = true;
             self.emit_press(CMD_CTRL, out);
         }
-        if self.switching == Some(Hold::Alt) && !self.alt() {
+        if let Some(sw) = self.switching
+            && !self.holding(sw.hold)
+        {
             self.switching = None;
             out.push(Out::Action(Action::SwitchDone));
+        }
+        if h.sup {
+            self.super_keys = self.super_keys.saturating_sub(1);
+            if self.super_keys == 0 {
+                let tap = !self.super_used && self.super_since.is_some_and(|t| now.duration_since(t) < TAP);
+                if tap && opts.palette_on_tap {
+                    out.push(Out::Action(Action::Palette));
+                }
+                self.super_since = None;
+            }
         }
         // Control let go, quickly and with nothing else pressed: the
         // second time, that's a double press.
@@ -659,7 +762,9 @@ impl Keymap {
 mod tests {
     use super::*;
 
-    const OPTS: Options = Options { command_key: true, caps_lock_control: true, tap_command_find: true, hints: true, double_press: Duration::from_millis(400) };
+    use olo_protocol::shortcuts::{KeyboardProfile, Platform};
+
+    const OPTS: Options = Options { command: CommandKey::Command, caps_lock_control: true, palette_on_tap: true, hints: true, double_press: Duration::from_millis(400) };
     const C: u32 = 46;
     const MINUS: u32 = 12;
 
@@ -667,21 +772,27 @@ mod tests {
         k: Keymap,
         t: Instant,
         focus: Focus,
+        opts: Options,
     }
 
     impl Rig {
         fn new() -> Self {
+            Rig::with(&KeyboardProfile::default())
+        }
+        /// With a profile's keys and command key (the Mac's otherwise).
+        fn with(profile: &KeyboardProfile) -> Self {
             let mut k = Keymap::default();
-            k.set_bindings(olo_protocol::shortcuts::bindings(&Default::default()));
-            Rig { k, t: Instant::now(), focus: Focus::Olo }
+            k.set_bindings(olo_protocol::shortcuts::bindings(profile));
+            let opts = Options { command: profile.command_key, palette_on_tap: true, ..OPTS };
+            Rig { k, t: Instant::now(), focus: Focus::Olo, opts }
         }
         fn down(&mut self, key: u32) -> Vec<Out> {
             self.t += Duration::from_millis(10);
-            self.k.feed(key, true, self.t, OPTS, self.focus)
+            self.k.feed(key, true, self.t, self.opts, self.focus)
         }
         fn up(&mut self, key: u32) -> Vec<Out> {
             self.t += Duration::from_millis(10);
-            self.k.feed(key, false, self.t, OPTS, self.focus)
+            self.k.feed(key, false, self.t, self.opts, self.focus)
         }
     }
 
@@ -698,12 +809,10 @@ mod tests {
 
     /// Next / Previous Tab set to ⌥Tab / ⌥⇧Tab, as they once were.
     fn option_tab_for_tabs() -> Rig {
-        let mut changed = olo_protocol::ShortcutSettings::default();
-        olo_protocol::shortcuts::assign(&mut changed, "next-tab", "Alt+Tab".parse().ok());
-        olo_protocol::shortcuts::assign(&mut changed, "previous-tab", "Alt+Shift+Tab".parse().ok());
-        let mut r = Rig::new();
-        r.k.set_bindings(olo_protocol::shortcuts::bindings(&changed));
-        r
+        let mut p = KeyboardProfile::default();
+        olo_protocol::shortcuts::assign(&mut p, "next-tab", "Alt+Tab".parse().ok());
+        olo_protocol::shortcuts::assign(&mut p, "previous-tab", "Alt+Shift+Tab".parse().ok());
+        Rig::with(&p)
     }
 
     #[test]
@@ -941,10 +1050,12 @@ mod tests {
         r.down(LEFTALT);
         assert!(!r.up(LEFTALT).contains(&Out::Action(Action::SwitchDone)));
         assert!(r.up(LEFTMETA).contains(&Out::Action(Action::SwitchDone)));
-        // ⌘⌥Tab is ⌘Tab's, not ⌥Tab's.
+        // ⌥ down while ⌘Tab is up: Tab is still ⌘Tab's, not ⌥Tab's.
         r.down(LEFTMETA);
+        r.down(TAB);
+        r.up(TAB);
         r.down(LEFTALT);
-        assert!(r.down(TAB).contains(&Out::Action(Action::NextApp { back: false, all: true })));
+        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: false, all: true })]);
     }
 
     #[test]
@@ -975,6 +1086,7 @@ mod tests {
     #[test]
     fn arrows_navigate() {
         let mut r = Rig::new();
+        r.focus = Focus::Other;
         r.down(LEFTMETA);
         // ⌘← is Home without Ctrl; Ctrl comes back afterwards.
         assert_eq!(r.down(LEFT), [Key(RIGHTCTRL, false), Key(HOME, true)]);
@@ -1000,6 +1112,13 @@ mod tests {
         assert_eq!(r.up(LEFTMETA), []);
         assert_eq!(r.up(RIGHT), [Key(END, false)]);
         assert!(r.k.down.is_empty());
+        // Olo's apps get ⌘↑ and ⌘⌫ as they are (Open Parent, Move to
+        // Trash; the kit makes them the line's keys in a text field).
+        r.focus = Focus::Olo;
+        r.down(LEFTMETA);
+        assert_eq!(r.down(UP), [Key(UP, true)]);
+        r.up(UP);
+        assert_eq!(r.down(BACKSPACE), [Key(BACKSPACE, true)]);
     }
 
     #[test]
@@ -1141,12 +1260,20 @@ mod tests {
     fn tiling_and_find() {
         use olo_protocol::Tile;
         let mut r = Rig::new();
-        r.down(LEFTMETA);
-        r.down(LEFTSHIFT);
+        r.focus = Focus::Other;
+        // ⌃⌥ arrows tile (as Rectangle's); ⇧⌘ arrows select text.
+        r.down(LEFTCTRL);
+        r.down(LEFTALT);
         assert_eq!(r.down(LEFT), [Out::Action(Action::Shortcut(Shortcut::Tile(Tile::Left)))]);
         assert_eq!(r.up(LEFT), []);
         assert_eq!(r.down(RIGHT), [Out::Action(Action::Shortcut(Shortcut::Tile(Tile::Right)))]);
         r.up(RIGHT);
+        r.up(LEFTALT);
+        r.up(LEFTCTRL);
+        r.down(LEFTMETA);
+        r.down(LEFTSHIFT);
+        assert_eq!(r.down(LEFT), [Key(RIGHTCTRL, false), Key(HOME, true)]);
+        r.up(LEFT);
         r.up(LEFTSHIFT);
         assert_eq!(r.down(SPACE), [Out::Action(Action::Shortcut(Shortcut::Palette))]);
         r.up(SPACE);
@@ -1159,7 +1286,7 @@ mod tests {
         // A tap of ⌘ alone is nothing unless chosen.
         r.up(LEFTMETA);
         r.down(LEFTMETA);
-        let off = Options { tap_command_find: false, ..OPTS };
+        let off = Options { palette_on_tap: false, ..OPTS };
         r.t += Duration::from_millis(10);
         assert_eq!(r.k.feed(LEFTMETA, false, r.t, off, Focus::Olo), [Key(RIGHTCTRL, false)]);
     }
@@ -1189,11 +1316,91 @@ mod tests {
     #[test]
     fn disabled_passes_through() {
         let mut k = Keymap::default();
-        let off = Options { command_key: false, caps_lock_control: false, tap_command_find: false, hints: false, double_press: Duration::from_millis(400) };
+        let off = Options { command: CommandKey::Control, caps_lock_control: false, palette_on_tap: false, hints: false, double_press: Duration::from_millis(400) };
         let t = Instant::now();
         assert_eq!(k.feed(LEFTMETA, true, t, off, Focus::Olo), [Key(LEFTMETA, true)]);
         assert_eq!(k.feed(TAB, true, t, off, Focus::Olo), [Key(TAB, true)]);
         assert_eq!(k.feed(CAPSLOCK, true, t, off, Focus::Olo), [Key(CAPSLOCK, true)]);
+    }
+
+    #[test]
+    fn windows_keys() {
+        use olo_protocol::Tile;
+        let mut r = Rig::with(&KeyboardProfile::builtin(Platform::Windows));
+        // Ctrl is Ctrl, the command key itself.
+        assert_eq!(r.down(LEFTCTRL), [Key(LEFTCTRL, true)]);
+        assert_eq!(r.down(C), [Key(C, true)]);
+        r.up(C);
+        r.up(LEFTCTRL);
+        // The Windows key: Snap, and a tap alone is the palette (Start).
+        assert_eq!(r.down(LEFTMETA), [Key(LEFTMETA, true)]);
+        assert_eq!(r.down(LEFT), [Out::Action(Action::Shortcut(Shortcut::Tile(Tile::Left)))]);
+        r.up(LEFT);
+        assert_eq!(r.up(LEFTMETA), [Key(LEFTMETA, false)]);
+        r.down(LEFTMETA);
+        assert_eq!(r.up(LEFTMETA), [Key(LEFTMETA, false), Out::Action(Action::Palette)]);
+        // Alt+Tab is Twitcher while Alt is held; Alt+Shift+Tab goes back.
+        r.down(LEFTALT);
+        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: false, all: true })]);
+        r.up(TAB);
+        r.down(LEFTSHIFT);
+        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: true, all: true })]);
+        r.up(TAB);
+        r.up(LEFTSHIFT);
+        assert_eq!(r.down(RIGHT), [Out::Action(Action::SwitchMove { dx: 1, dy: 0 })]);
+        r.up(RIGHT);
+        assert_eq!(r.up(LEFTALT), [Key(LEFTALT, false), Out::Action(Action::SwitchDone)]);
+        // Home is Home: nothing is translated, for any program.
+        r.focus = Focus::Other;
+        r.down(LEFTALT);
+        assert_eq!(r.down(LEFT), [Key(LEFT, true)]);
+        r.up(LEFT);
+        r.up(LEFTALT);
+        // Ctrl+Shift+Esc: Task Manager, Activity Monitor here.
+        r.down(LEFTCTRL);
+        r.down(LEFTSHIFT);
+        assert_eq!(r.down(ESC), [Out::Action(Action::Shortcut(Shortcut::ActivityMonitor))]);
+    }
+
+    #[test]
+    fn beos_keys() {
+        const F1: u32 = 59;
+        let mut r = Rig::with(&KeyboardProfile::builtin(Platform::Beos));
+        // The left Alt is the command key: Ctrl for apps.
+        assert_eq!(r.down(LEFTALT), [Key(RIGHTCTRL, true)]);
+        assert_eq!(r.down(C), [Key(C, true)]);
+        r.up(C);
+        // Alt+← is Ctrl+←, a word back, as it is on BeOS.
+        assert_eq!(r.down(LEFT), [Key(LEFT, true)]);
+        r.up(LEFT);
+        // Alt+F1: workspace 1.
+        assert_eq!(r.down(F1), [Out::Action(Action::Shortcut(Shortcut::Workspace(0)))]);
+        r.up(F1);
+        assert_eq!(r.up(LEFTALT), [Key(RIGHTCTRL, false)]);
+        // The Super key is Option: Alt for apps.
+        assert_eq!(r.down(LEFTMETA), [Key(LEFTALT, true)]);
+        assert_eq!(r.up(LEFTMETA), [Key(LEFTALT, false), Out::Action(Action::Palette)]);
+        // Ctrl+Tab is Twitcher while Ctrl is held.
+        r.down(LEFTCTRL);
+        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: false, all: true })]);
+        r.up(TAB);
+        assert_eq!(r.up(LEFTCTRL), [Key(LEFTCTRL, false), Out::Action(Action::SwitchDone)]);
+        // Ctrl+Alt+Z zooms, Ctrl+Alt+Del is Team Monitor (Activity Monitor).
+        r.t += Duration::from_secs(1);
+        r.down(LEFTCTRL);
+        r.down(LEFTALT);
+        assert_eq!(r.down(44), [Out::Action(Action::Shortcut(Shortcut::Zoom))]);
+        r.up(44);
+        assert_eq!(r.down(DELETE), [Out::Action(Action::Shortcut(Shortcut::ActivityMonitor))]);
+        r.up(DELETE);
+        r.up(LEFTALT);
+        r.up(LEFTCTRL);
+        // A terminal: Alt+C is Ctrl+Shift+C (copy); Alt+⌫ a word.
+        r.focus = Focus::Terminal;
+        r.down(LEFTALT);
+        assert_eq!(r.down(C), [Key(LEFTSHIFT, true), Key(C, true)]);
+        r.up(C);
+        assert_eq!(r.down(BACKSPACE), [Key(BACKSPACE, true)]);
     }
 
     #[test]

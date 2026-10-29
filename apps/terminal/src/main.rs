@@ -47,7 +47,7 @@ use olo_kit::notify::{Note, NoteEvent, NoteId, NoteKind, Notifier};
 use session::{Message, Session, Size, Start, TermEvent};
 use view::{GlyphCache, Metrics, Mouse};
 
-const APP_ID: &str = "olo.terminal";
+pub(crate) const APP_ID: &str = "olo.terminal";
 /// BeOS Terminal opened at 80×25; wider is more useful on today's screens.
 const DEFAULT_SIZE: (usize, usize) = (120, 25);
 pub const TEXT_SIZES: [f32; 9] = [9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 16.0, 18.0, 22.0];
@@ -1649,8 +1649,8 @@ impl App for Terminal {
             }
             .checked(i == t.active);
         }
-        // (Their keys are view::SHORTCUTS: Ctrl+Shift with any other key
-        // goes to the shell.)
+        // (Their keys are Terminal's in the keyboard profile, olo_protocol's
+        // app_keys: Ctrl+Shift with any other key goes to the shell.)
         Some(vec![
             Menu::new("Terminal")
                 .item_shift("New Terminal", "new", Key::N)

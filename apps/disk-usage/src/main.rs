@@ -792,8 +792,8 @@ impl DiskUsage {
         // Keys the list doesn't take.
         let (back, collect) = ui.input_mut(|i| {
             (
-                i.consume_key(egui::Modifiers::COMMAND, Key::ArrowUp) || i.consume_key(egui::Modifiers::NONE, Key::Backspace),
-                i.consume_key(egui::Modifiers::COMMAND, Key::D),
+                olo_kit::keyboard::consume(i, "up") || i.consume_key(egui::Modifiers::NONE, Key::Backspace),
+                olo_kit::keyboard::consume(i, "collect"),
             )
         });
         if back {
