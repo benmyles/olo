@@ -45,11 +45,25 @@ like pixel alignment is.
    rather than importing it on the loop. Measure with
    `tools/dev/perf-fuzz` (`{"type":"timings"}` names what held the loop).
 7. **Stay current without polling.** What is on screen reflects the system
-   as it changes: watch files with inotify (Tracker's `watch.rs`: one thread,
-   changed items stat'ed off the UI thread, bursts gathered for ~30 ms,
-   a full relist on queue overflow) and the mount table with `POLLPRI` on
+   as it changes: follow files and folders with `olo_kit::watch` (inotify:
+   one thread per app, asleep until the kernel has an event; a burst
+   gathered for 25 ms and read whole at its end; a path followed whether
+   it is a file or a folder, exists yet or not, is replaced by a rename or
+   swapped for another folder; the items that changed in a folder come
+   with it, so a caller passes over what isn't its business), Tracker's
+   own `watch.rs` (changed items stat'ed off the UI thread, a full relist
+   on queue overflow, a folder renamed or swapped away watched again at
+   its path), and the mount table with `POLLPRI` on
    `/proc/self/mountinfo`. No timers that re-read the disk to look for
-   changes.
+   changes; keep busy files (frames, caches) out of a folder others
+   follow. What follows them: Tracker's windows, desktop, Trash, Get Info
+   and Find results; the file panels; StyledEdit's and Viewer's open
+   files (another program's change is shown at once unless there are
+   unsaved changes; told from our own save by its time and length) and
+   Viewer's Previous / Next; the palette's file index and applications;
+   Deskbar's applications, notification count, agent screens and
+   upgrade; Agent Screens' list; Preferences ▸ Notifications; Logs' Live
+   journal (journald touches the file for readers after each write).
 8. **app_server never deadlocks.** A hang there freezes the whole desktop.
    Smithay's per-surface lock isn't re-entrant: inside a closure given to
    `with_pending_state`, `with_states`, `with_committed_state` or
@@ -731,7 +745,8 @@ being AGPL. `OLO_SAMPLES=dir cargo test -p olo-images -- --ignored`
 decodes example.avif and example.heic from `dir`. Thumbnails and Quick Look use
 it. File panels (`olo_kit::file_panel`): `FilePanel::open(dir)` /
 `FilePanel::save(dir, name)` give a BFilePanel (path popup, Home, sortable
-Name/Size/Modified list, "Save as:" field, Replace confirmation);
+Name/Size/Modified list that follows the folder as it changes, "Save
+as:" field, Replace confirmation);
 `FilePanel::folder(dir)` picks a folder (folders only; Select takes the
 selected one, or the one shown). Open it
 in its own window of `PANEL_SIZE`, call `panel.ui(ui)` each frame and act
@@ -1109,8 +1124,8 @@ Every 3 s the session compares the `olo-*` programs there with its
 own. It skips this while cargo holds one of its locks in the tree
 (`.cargo-lock`, or `.cargo-build-lock`/`.cargo-artifact-lock` in newer
 cargo) or a program is under 3 s old. It lists newer ones in
-`$XDG_RUNTIME_DIR/olo-upgrade-<display>.json`; Deskbar polls that file
-and shows a green arrow in its tray. Clicking it asks first. Accepting,
+`$XDG_RUNTIME_DIR/olo-upgrade-<display>.json`; Deskbar follows that file
+(`olo_kit::watch`) and shows a green arrow in its tray. Clicking it asks first. Accepting,
 or `olo-session upgrade` (SIGUSR2), installs them beside the session:
 a btrfs/XFS clone (`FICLONE`) or a copy, under a temporary name and then
 renamed. Only a new `olo-app-server` needs a reload. Other programs
@@ -2885,7 +2900,12 @@ The freedesktop Trash helpers Tracker and DiskUsage share are
 `olo_kit::trash` (olo_xdg): `trash_slot` reserves a name and writes the
 .trashinfo, `trash_origin` reads it back, `move_to_trash` renames into
 the Trash when on the same volume (Tracker copies across volumes with
-progress instead).
+progress instead). Tracker's Empty Trash is instant to see: the Trash's
+`files` and `info` are swapped for empty folders (`renameat2`
+`RENAME_EXCHANGE`, so the paths always exist and the Trash icon and any
+Trash window change at once), and what was in them is deleted in
+`Trash/.emptying…` with progress; cancelled or failed, what is left goes
+back (`ops::put_back`); one cut short is finished by the next.
 
 ## Terminal (apps/terminal)
 
@@ -3425,9 +3445,13 @@ put it away.
   commands with their keys (`olo_kit::commands`, asked of the process
   that owns the front window; disabled items are shown dimmed), Passwords'
   items (`olo_keychain::Request::Search` while unlocked; choosing one
-  is `Request::Show`), files under home by name (indexed by an `ignore`
-  walk on start and every five minutes, at most 400,000; matched on their
-  own thread for the newest query only), sums (`calc.rs`; Return copies)
+  is `Request::Show`), files under home by name (`sources::Index`: an
+  `ignore` walk on start, at most 400,000, then each folder followed,
+  `olo_kit::watch`, and only one that changed listed again, so a new file
+  is found at once; past an eighth of the kernel's inotify watches it is
+  walked again when asked and five minutes old instead; matched on their
+  own thread for the newest query only, which sleeps until a query or a
+  change), sums (`calc.rs`; Return copies)
   and, last, a web search (Google) in the web browser.
 * **Ranking** (`rank.rs`): every word typed must match the title (start,
   word start, anywhere) or the item's keywords, or as initials ("nw");
@@ -3579,7 +3603,10 @@ Screen… ends one after asking. A viewer running on an agent screen
 leaves that screen out of its list. While any screen runs (other than
 the one a Deskbar is on), Deskbar's tray shows a monitor with a pointer,
 and their count when there are several (`status::agent_screens` reads
-the same listing every second, judging entries as `Screen::alive` does);
+the same listing as a screen's file comes or goes, `olo_kit::watch`, and
+every 30 s while there are any for one killed without a word, judging
+entries as `Screen::alive` does; a viewer's frames go in `views/` beside
+them, so they don't wake whoever follows the listing);
 clicking it runs `olo-screen watch`. Test it in a sandbox: a private
 `XDG_RUNTIME_DIR`, a fixture HOME and XDG dirs (the screen runs the real
 programs), and a second screen to run the viewer on.
@@ -3709,8 +3736,10 @@ clicked` the window and who), dependencies only their warnings.
   one opened). `user_files(uid)` finds `user-UID.journal` and its
   archives in /var/log/journal (or /run/log/journal), oldest first.
 - reader.rs: on a worker thread, every file in batches, then the active
-  one polled every ½ s; `Update::Lines` carries new lines and more text
-  for lines sent before.
+  one read on as it changes (`olo_kit::watch`: journald truncates the
+  file to its own length after each write so that readers hear of it;
+  every 30 s anyway, every ½ s without inotify); `Update::Lines` carries
+  new lines and more text for lines sent before.
 - model.rs: an entry as a line: the program (`_EXE`'s name, else
   `_COMM` made whole from a longer name seen, else the identifier;
   Chrome's lines, which Google's launcher passes through `cat`, as

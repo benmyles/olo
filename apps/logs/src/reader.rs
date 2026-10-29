@@ -1,6 +1,8 @@
 //! Reading this user's journal on a worker thread: every file, oldest
 //! first, sent on in batches as lines, then the file being written,
-//! followed as it grows and across journald rotating it.
+//! followed as it grows (woken by its changes, `olo_kit::watch`: journald
+//! touches the file for readers after each write) and across journald
+//! rotating it.
 
 use std::time::Duration;
 
@@ -18,7 +20,10 @@ pub enum Update {
 }
 
 const BATCH: usize = 4000;
+/// How often to look anyway: without inotify, or for a write that
+/// slipped by.
 const POLL: Duration = Duration::from_millis(500);
+const LOOK: Duration = Duration::from_secs(30);
 
 /// Read the journal, giving `on` each update; with `follow`, keep going
 /// as it is written. Stops when `on` returns false.
@@ -63,8 +68,14 @@ pub fn run(follow: bool, on: &mut dyn FnMut(Update) -> bool) {
         return;
     }
     let Some(mut j) = active else { return };
+    let (tx, woken) = std::sync::mpsc::channel();
+    let watch = olo_kit::watch::watch([j.path.clone()], move |_| {
+        let _ = tx.send(());
+    });
+    let wait = if watch.is_some() { LOOK } else { POLL };
     loop {
-        std::thread::sleep(POLL);
+        let _ = woken.recv_timeout(wait);
+        while woken.try_recv().is_ok() {}
         loop {
             entries.clear();
             if j.read_new(BATCH, &mut entries).is_err() || entries.is_empty() {

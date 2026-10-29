@@ -238,18 +238,43 @@ impl Worker<'_> {
                 }
             }
             Kind::EmptyTrash => {
-                let files = fs::trash_files();
-                let items: Vec<PathBuf> = sfs::read_dir(&files)?.flatten().map(|e| e.path()).collect();
-                for i in &items {
-                    self.count_items(i)?;
+                // Empty at once, as far as anyone looking can tell: the
+                // Trash's files and info are swapped for empty folders (one
+                // atomic rename each), so its icon and any Trash window
+                // change now; what was in them is deleted where it went,
+                // with progress. Cancelled or failed, what's left goes back.
+                let trash = fs::trash_dir();
+                let (files, info) = (fs::trash_files(), trash.join("info"));
+                sfs::create_dir_all(&files)?;
+                sfs::create_dir_all(&info)?;
+                let stage = fs::unique(&trash, EMPTYING);
+                let (old_files, old_info) = (stage.join("files"), stage.join("info"));
+                sfs::create_dir_all(&old_files)?;
+                sfs::create_dir_all(&old_info)?;
+                if exchange(&files, &old_files).is_err() {
+                    // (A file system that can't swap: emptied in place.)
+                    let _ = sfs::remove_dir_all(&stage);
+                    return self.empty_in(&files, &info);
                 }
-                self.p.counting.store(false, Ordering::Relaxed);
-                for i in &items {
-                    self.remove(i).map_err(|e| context(e, i))?;
-                    if let Some(name) = i.file_name() {
-                        let mut info = name.to_os_string();
-                        info.push(".trashinfo");
-                        let _ = sfs::remove_file(fs::trash_dir().join("info").join(info));
+                let _ = exchange(&info, &old_info);
+                // Left by an emptying that was cut short: going too.
+                let earlier: Vec<PathBuf> = sfs::read_dir(&trash)?
+                    .flatten()
+                    .filter(|e| e.file_name().to_string_lossy().starts_with(EMPTYING) && e.path() != stage)
+                    .map(|e| e.path())
+                    .collect();
+                let r = self.empty_in(&old_files, &old_info).and_then(|()| {
+                    for e in &earlier {
+                        self.remove(e).map_err(|err| context(err, e))?;
+                    }
+                    Ok(())
+                });
+                match r {
+                    Ok(()) => sfs::remove_dir_all(&stage)?,
+                    Err(e) => {
+                        put_back(&old_files, &old_info, &files, &info);
+                        let _ = sfs::remove_dir_all(&stage);
+                        return Err(e);
                     }
                 }
             }
@@ -391,8 +416,56 @@ impl Worker<'_> {
         Ok(())
     }
 
+    /// Delete everything in a Trash's `files` and the `info` beside it.
+    fn empty_in(&self, files: &Path, info: &Path) -> io::Result<()> {
+        let items: Vec<PathBuf> = sfs::read_dir(files)?.flatten().map(|e| e.path()).collect();
+        for i in &items {
+            self.count_items(i)?;
+        }
+        self.p.counting.store(false, Ordering::Relaxed);
+        for i in &items {
+            self.remove(i).map_err(|e| context(e, i))?;
+            if let Some(name) = i.file_name() {
+                let mut record = name.to_os_string();
+                record.push(".trashinfo");
+                let _ = sfs::remove_file(info.join(record));
+            }
+        }
+        Ok(())
+    }
+
     fn remove_quietly(&self, p: &Path) -> io::Result<()> {
         if sfs::symlink_metadata(p)?.is_dir() { sfs::remove_dir_all(p) } else { sfs::remove_file(p) }
+    }
+}
+
+/// What an emptying's folder in the Trash is called (".emptying 2", …).
+const EMPTYING: &str = ".emptying";
+
+/// Swap two paths, atomically (both stay there throughout).
+fn exchange(a: &Path, b: &Path) -> io::Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+    let (ca, cb) = (std::ffi::CString::new(a.as_os_str().as_bytes())?, std::ffi::CString::new(b.as_os_str().as_bytes())?);
+    // SAFETY: two NUL-terminated paths, relative to nothing.
+    let r = unsafe { libc::renameat2(libc::AT_FDCWD, ca.as_ptr(), libc::AT_FDCWD, cb.as_ptr(), libc::RENAME_EXCHANGE) };
+    if r == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
+}
+
+/// An emptying cut short: what is left in `old_files` (and its records in
+/// `old_info`) back in the Trash, under names free there.
+fn put_back(old_files: &Path, old_info: &Path, files: &Path, info: &Path) {
+    let Ok(left) = sfs::read_dir(old_files) else { return };
+    for e in left.flatten() {
+        let name = e.file_name();
+        let target = fs::unique(files, &name.to_string_lossy());
+        if sfs::rename(e.path(), &target).is_err() {
+            continue;
+        }
+        let mut record = name.clone();
+        record.push(".trashinfo");
+        let mut to = target.file_name().unwrap_or_default().to_os_string();
+        to.push(".trashinfo");
+        let _ = sfs::rename(old_info.join(record), info.join(to));
     }
 }
 
@@ -468,6 +541,28 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         start(1, kind, sources, dest, move |o| tx.send(o).unwrap());
         rx.recv().unwrap()
+    }
+
+    #[test]
+    fn an_emptying_swaps_and_puts_back_what_is_left() {
+        let dir = std::env::temp_dir().join(format!("olo-empty-{}", std::process::id()));
+        let _ = sfs::remove_dir_all(&dir);
+        let (files, info, old_files, old_info) = (dir.join("files"), dir.join("info"), dir.join("s/files"), dir.join("s/info"));
+        for d in [&files, &info, &old_files, &old_info] {
+            sfs::create_dir_all(d).unwrap();
+        }
+        // Swapped at once: the Trash's folder is empty, what was in it aside.
+        sfs::write(files.join("a.txt"), "a").unwrap();
+        exchange(&files, &old_files).unwrap();
+        assert!(sfs::read_dir(&files).unwrap().next().is_none());
+        assert!(old_files.join("a.txt").exists());
+        // Cancelled: it goes back, beside one trashed meanwhile.
+        sfs::write(old_info.join("a.txt.trashinfo"), "[Trash Info]").unwrap();
+        sfs::write(files.join("a.txt"), "new").unwrap();
+        put_back(&old_files, &old_info, &files, &info);
+        assert_eq!(sfs::read_to_string(files.join("a 2.txt")).unwrap(), "a");
+        assert!(info.join("a 2.txt.trashinfo").exists() && sfs::read_dir(&old_files).unwrap().next().is_none());
+        let _ = sfs::remove_dir_all(&dir);
     }
 
     #[test]

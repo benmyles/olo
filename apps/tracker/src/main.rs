@@ -139,9 +139,20 @@ struct FindWin {
     stopped: bool,
     started: Instant,
     took: Duration,
+    /// The results' folders to follow, as of so many results (worked out
+    /// again only when they change: watches are synced every frame).
+    follow: (usize, Vec<PathBuf>),
 }
 
 impl FindWin {
+    fn followed(&mut self) -> &[PathBuf] {
+        if self.follow.0 != self.results.len() {
+            let dirs: BTreeSet<PathBuf> = self.results.iter().filter_map(|h| h.entry.path.parent().map(Path::to_owned)).collect();
+            self.follow = (self.results.len(), dirs.into_iter().take(FIND_FOLLOWS).collect());
+        }
+        &self.follow.1
+    }
+
     /// Move the selection by `d` results (Quick Look's arrow keys).
     fn step_selection(&mut self, d: isize) -> Option<Entry> {
         let n = self.results.len();
@@ -238,6 +249,8 @@ const STATUS_WIDTH: u32 = 420;
 const STATUS_DELAY: Duration = Duration::from_millis(400);
 /// Jobs that ran this long notify when they finish.
 const NOTIFY_AFTER: Duration = Duration::from_secs(10);
+/// A Find window's results are followed in at most this many folders.
+const FIND_FOLLOWS: usize = 256;
 
 /// [`NOTIFY_AFTER`]; debug builds take `OLO_TRACKER_NOTIFY_AFTER_MS`
 /// (tests have no ten-second copies).
@@ -670,6 +683,7 @@ impl Tracker {
                 stopped: false,
                 started: Instant::now(),
                 took: Duration::ZERO,
+                follow: (0, Vec::new()),
             }),
         );
     }
@@ -1222,10 +1236,14 @@ impl Tracker {
     fn sync_watches(&mut self) {
         let Some(w) = &mut self.watcher else { return };
         let mut want = BTreeSet::new();
-        for win in self.windows.values() {
+        for win in self.windows.values_mut() {
             match win {
                 Win::Folder(f) => want.extend(f.watched().map(Path::to_owned)),
                 Win::Desktop(_) => want.extend(desktop::watched()),
+                // An item's Info follows it; Find's results theirs (as many
+                // folders as is reasonable).
+                Win::Info(i) => want.extend(i.entry.path.parent().map(Path::to_owned)),
+                Win::Find(fw) => want.extend(fw.followed().iter().cloned()),
                 _ => {}
             }
         }
@@ -1550,6 +1568,53 @@ impl App for Tracker {
             }
             Msg::JobDone(id, outcome) => self.job_done(cx, id, outcome),
             Msg::Changed(changes) => {
+                // An item's new state on disk (None: gone), by its folder's
+                // changes.
+                let now = |path: &Path| {
+                    changes.iter().find_map(|c| match c {
+                        watch::Change::Item { path: p, entry, .. } if p == path => Some(entry.clone()),
+                        watch::Change::Rescan(d) if path.parent() == Some(d.as_path()) => Some(fs::entry(path)),
+                        _ => None,
+                    })
+                };
+                let mut gone = Vec::new();
+                for (&id, w) in self.windows.iter_mut() {
+                    match w {
+                        Win::Info(i) => match now(&i.entry.path) {
+                            // Gone: its Info goes too, as on BeOS.
+                            Some(None) => gone.push(id),
+                            Some(Some(e)) => {
+                                i.entry = e;
+                                cx.redraw(id);
+                            }
+                            None => {}
+                        },
+                        Win::Find(fw) => {
+                            let before = fw.results.len();
+                            let mut changed = false;
+                            fw.results.retain_mut(|h| match now(&h.entry.path) {
+                                Some(None) => false,
+                                Some(Some(e)) => {
+                                    changed = true;
+                                    h.entry = e;
+                                    true
+                                }
+                                None => true,
+                            });
+                            if fw.results.len() != before {
+                                fw.list.selected.clear();
+                            }
+                            if changed || fw.results.len() != before {
+                                cx.redraw(id);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                for id in gone {
+                    self.windows.remove(&id);
+                    cx.close_window(id);
+                }
                 for (&id, w) in self.windows.iter_mut() {
                     let touched = |dirs: &mut dyn Iterator<Item = &Path>| {
                         let dirs: Vec<&Path> = dirs.collect();

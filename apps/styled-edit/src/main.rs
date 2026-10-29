@@ -47,6 +47,8 @@ enum Msg {
     Loaded(WindowId, PathBuf, Result<doc::Loaded, String>),
     /// Saved the document as it was at generation `.1` to `.2`.
     Saved(WindowId, u64, PathBuf, Result<(), String>),
+    /// Open documents' files changed on disk (another program wrote one).
+    OnDisk(Vec<PathBuf>),
 }
 
 /// What to do once the document is saved (or its changes discarded).
@@ -74,6 +76,9 @@ struct DocWin {
     /// The selection and view to come back to once loaded (after a
     /// reload).
     restore: Option<(Range<usize>, (usize, f32))>,
+    /// The file as last loaded or saved here (when it was written, how
+    /// long), to tell another program's change from our own save.
+    on_disk: Option<(std::time::SystemTime, u64)>,
 }
 
 /// The document as the editor sees it: its text, styles in the fonts
@@ -117,6 +122,7 @@ impl DocWin {
             latin1: false,
             read_only: false,
             restore: None,
+            on_disk: None,
         }
     }
 
@@ -190,6 +196,10 @@ struct StyledEdit {
     fonts: fonts::Fonts,
     search: Search,
     untitled: usize,
+    /// The open documents' files, followed as they change
+    /// (`olo_kit::watch`): one changed by another program is read again
+    /// if it has no unsaved changes here.
+    watch: Option<olo_kit::watch::Watch>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -204,6 +214,11 @@ struct SavedDoc {
     /// The editor's view ([`Editor::view`]).
     #[serde(default)]
     view: (usize, f32),
+}
+
+/// When a file was last written and how long it is.
+fn stamp(path: &Path) -> Option<(std::time::SystemTime, u64)> {
+    std::fs::metadata(path).ok().map(|m| (m.modified().unwrap_or(std::time::UNIX_EPOCH), m.len()))
 }
 
 fn file_name(path: &Path) -> String {
@@ -225,6 +240,18 @@ impl StyledEdit {
         let id = cx.open_window(WindowOptions::new(d.title(), 560, 440).min_size(280, 180).path(d.path.clone()));
         self.windows.insert(id, Win::Doc(Box::new(d)));
         id
+    }
+
+    /// Follow the open documents' files (as they are now).
+    fn follow_files(&mut self, cx: &mut Cx) {
+        let paths: Vec<PathBuf> = self.windows.values().filter_map(|w| if let Win::Doc(d) = w { d.path.clone() } else { None }).collect();
+        match &self.watch {
+            Some(w) => w.set(paths),
+            None => {
+                let proxy = cx.proxy();
+                self.watch = olo_kit::watch::watch(paths, move |changed| proxy.send(Msg::OnDisk(changed.to_vec())));
+            }
+        }
     }
 
     fn open_file(&mut self, cx: &mut Cx, path: PathBuf) {
@@ -269,6 +296,7 @@ impl StyledEdit {
         if !self.windows.values().any(|w| matches!(w, Win::Doc(_) | Win::Panel { .. })) {
             cx.quit();
         }
+        self.follow_files(cx);
     }
 
     fn dialog(&mut self, cx: &mut Cx, win: Win, message: &str) {
@@ -953,6 +981,7 @@ impl App for StyledEdit {
                         d.editor.set_view(d.doc.text(), view);
                         d.latin1 = l.latin1;
                         d.read_only = l.read_only;
+                        d.on_disk = stamp(&path);
                     }
                     // A new file: it's made on the first save.
                     Err(_) if !path.exists() => {}
@@ -964,6 +993,7 @@ impl App for StyledEdit {
                     }
                 }
                 cx.redraw(win);
+                self.follow_files(cx);
             }
             Msg::Saved(win, generation, path, result) => {
                 let Some(Win::Doc(d)) = self.windows.get_mut(&win) else { return };
@@ -971,6 +1001,7 @@ impl App for StyledEdit {
                 let after = std::mem::replace(&mut d.after_save, After::Nothing);
                 match result {
                     Ok(()) => {
+                        d.on_disk = stamp(&path);
                         if d.path.as_ref() != Some(&path) {
                             d.path = Some(path);
                             d.read_only = false;
@@ -979,6 +1010,7 @@ impl App for StyledEdit {
                         }
                         d.latin1 = false;
                         d.doc.saved_generation = generation;
+                        self.follow_files(cx);
                         self.finish(cx, win, after);
                     }
                     Err(e) => {
@@ -987,6 +1019,28 @@ impl App for StyledEdit {
                     }
                 }
                 cx.redraw(win);
+            }
+            Msg::OnDisk(paths) => {
+                // Written by another program (not our own save): read again
+                // where nothing here is unsaved, keeping the place in it.
+                let reload: Vec<(WindowId, PathBuf)> = self
+                    .windows
+                    .iter_mut()
+                    .filter_map(|(&id, w)| {
+                        let Win::Doc(d) = w else { return None };
+                        let path = d.path.clone().filter(|p| paths.contains(p))?;
+                        let now = stamp(&path);
+                        if now.is_none() || now == d.on_disk || d.doc.edited() || d.saving || d.loading {
+                            return None;
+                        }
+                        d.on_disk = now;
+                        d.restore = Some((d.editor.selection(), d.editor.view()));
+                        Some((id, path))
+                    })
+                    .collect();
+                for (id, path) in reload {
+                    self.load(cx, id, path);
+                }
             }
         }
     }
@@ -1053,7 +1107,7 @@ fn main() {
         instance::listen(APP_ID, cx.proxy());
         let proxy = cx.proxy();
         let fonts = fonts::Fonts::start(move |e| proxy.send(Msg::Fonts(e)));
-        let mut app = StyledEdit { windows: HashMap::new(), fonts, search: Search { wrap: true, ..Search::default() }, untitled: 0 };
+        let mut app = StyledEdit { windows: HashMap::new(), fonts, search: Search { wrap: true, ..Search::default() }, untitled: 0, watch: None };
         match cx.restored_state().and_then(|s| serde_json::from_str::<Vec<SavedDoc>>(&s).ok()) {
             Some(docs) if !docs.is_empty() => app.restore(cx, docs),
             _ => app.handle_args(cx, &args, None),

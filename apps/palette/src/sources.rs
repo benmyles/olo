@@ -254,30 +254,111 @@ pub fn menus(front: &WindowInfo) -> Vec<Item> {
 
 /// At most this many files are indexed.
 const MAX_FILES: usize = 400_000;
+/// How deep under home the index goes.
+const MAX_DEPTH: usize = 12;
 
-/// Files under home, for finding by name: walked on start and every few
-/// minutes (hidden files and what .gitignore files exclude are left out).
-pub fn index_files(home: &Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    for entry in ignore::WalkBuilder::new(home).hidden(true).git_global(false).follow_links(false).max_depth(Some(12)).build().flatten() {
-        if entry.depth() == 0 {
-            continue;
-        }
-        out.push(entry.into_path());
-        if out.len() >= MAX_FILES {
-            break;
+/// Files under home, for finding by name (hidden files and what
+/// .gitignore files exclude are left out): walked once, then each folder
+/// is followed (`olo_kit::watch`) and only a folder that changed is
+/// listed again, so a new download is found at once and nothing is
+/// walked on a timer. The kernel's watches are shared by every program:
+/// past a share of them the index is walked again instead, when asked
+/// and a few minutes old.
+#[derive(Default)]
+pub struct Index {
+    pub files: std::collections::BTreeSet<PathBuf>,
+    dirs: std::collections::BTreeSet<PathBuf>,
+}
+
+impl Index {
+    fn depth(home: &Path, p: &Path) -> usize {
+        p.strip_prefix(home).map_or(0, |r| r.components().count())
+    }
+
+    /// Add `root`'s items, and everything under them.
+    pub fn walk(&mut self, home: &Path, root: &Path) {
+        let left = MAX_DEPTH.saturating_sub(Self::depth(home, root));
+        for entry in ignore::WalkBuilder::new(root).hidden(true).git_global(false).follow_links(false).max_depth(Some(left)).build().flatten() {
+            if entry.depth() == 0 {
+                continue;
+            }
+            if self.files.len() >= MAX_FILES {
+                break;
+            }
+            if entry.file_type().is_some_and(|t| t.is_dir()) {
+                self.dirs.insert(entry.path().to_owned());
+            }
+            self.files.insert(entry.into_path());
         }
     }
-    out
+
+    /// Forget `p` and everything under it.
+    fn forget(&mut self, p: &Path) {
+        for set in [&mut self.files, &mut self.dirs] {
+            let gone: Vec<PathBuf> = set.range(p.to_owned()..).take_while(|q| q.starts_with(p)).cloned().collect();
+            for g in gone {
+                set.remove(&g);
+            }
+        }
+    }
+
+    /// Folder `dir` changed (or went): list it again, walking what is new
+    /// in it.
+    pub fn changed(&mut self, home: &Path, dir: &Path) {
+        // (An item in a folder followed: its folder is listed again.)
+        if dir != home && !self.dirs.contains(dir) {
+            return;
+        }
+        if !dir.is_dir() {
+            self.forget(dir);
+            return;
+        }
+        let now: std::collections::BTreeSet<PathBuf> = ignore::WalkBuilder::new(dir)
+            .hidden(true)
+            .git_global(false)
+            .follow_links(false)
+            .max_depth(Some(1))
+            .build()
+            .flatten()
+            .filter(|e| e.depth() == 1)
+            .map(|e| e.into_path())
+            .collect();
+        let had: Vec<PathBuf> = self.files.range(dir.to_owned()..).take_while(|q| q.starts_with(dir)).filter(|q| q.parent() == Some(dir)).cloned().collect();
+        for gone in had.iter().filter(|p| !now.contains(*p)) {
+            self.forget(gone);
+        }
+        let new: Vec<PathBuf> = now.into_iter().filter(|p| !self.files.contains(p)).collect();
+        for new in new {
+            if self.files.len() >= MAX_FILES {
+                break;
+            }
+            if new.is_dir() && Self::depth(home, &new) < MAX_DEPTH {
+                self.dirs.insert(new.clone());
+                self.walk(home, &new);
+            }
+            self.files.insert(new);
+        }
+    }
+
+    /// The folders to follow: home and every folder in the index.
+    pub fn folders(&self, home: &Path) -> Vec<PathBuf> {
+        std::iter::once(home.to_owned()).chain(self.dirs.iter().cloned()).collect()
+    }
+}
+
+/// How many folders the index may follow: a share of the kernel's watches.
+fn watch_budget() -> usize {
+    let max = std::fs::read_to_string("/proc/sys/fs/inotify/max_user_watches").ok().and_then(|s| s.trim().parse::<usize>().ok()).unwrap_or(8192);
+    max / 8
 }
 
 /// The best files for `words`, by file name.
-pub fn find_files(paths: &[PathBuf], words: &[String], home: &Path) -> Vec<Item> {
+pub fn find_files<'a>(paths: impl IntoIterator<Item = &'a PathBuf>, words: &[String], home: &Path) -> Vec<Item> {
     if words.iter().map(|w| w.chars().count()).sum::<usize>() < 2 {
         return Vec::new();
     }
     let mut hits: Vec<(i32, &PathBuf)> = paths
-        .iter()
+        .into_iter()
         .filter_map(|p| {
             let name = p.file_name()?.to_str()?;
             let lower = name.to_lowercase();
@@ -448,41 +529,101 @@ pub struct Workers {
 pub fn workers(proxy: Proxy) -> Workers {
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| "/".into());
     let (files, file_rx) = mpsc::channel::<(u64, Vec<String>)>();
-    let to_ui = proxy.clone();
-    let _ = std::thread::Builder::new().name("palette-files".into()).spawn(move || {
-        let mut paths: Arc<Vec<PathBuf>> = Arc::new(Vec::new());
-        let (fresh_tx, fresh_rx) = mpsc::channel();
-        let walk_home = home.clone();
-        let _ = std::thread::Builder::new().name("palette-index".into()).spawn(move || {
-            loop {
-                let found = index_files(&walk_home);
-                if fresh_tx.send(found).is_err() {
-                    return;
-                }
-                std::thread::sleep(Duration::from_secs(300));
+    let index = Arc::new(std::sync::RwLock::new(Index::default()));
+    // What wakes the search: a query, or the index changed under the last.
+    enum Wake {
+        Query(u64, Vec<String>),
+        Index,
+    }
+    let (wake_tx, wake_rx) = mpsc::channel::<Wake>();
+    let queries = wake_tx.clone();
+    let _ = std::thread::Builder::new().name("palette-queries".into()).spawn(move || {
+        while let Ok((n, words)) = file_rx.recv() {
+            if queries.send(Wake::Query(n, words)).is_err() {
+                return;
             }
-        });
+        }
+    });
+    // The index: walked once, then kept as folders change.
+    let (changed_tx, changed_rx) = mpsc::channel::<Vec<PathBuf>>();
+    let rewalk = changed_tx.clone();
+    let following = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (walk_home, walked, follows) = (home.clone(), index.clone(), following.clone());
+    let _ = std::thread::Builder::new().name("palette-index".into()).spawn(move || {
+        walked.write().unwrap_or_else(|e| e.into_inner()).walk(&walk_home, &walk_home);
+        let _ = wake_tx.send(Wake::Index);
+        let budget = watch_budget();
+        let folders = walked.read().unwrap_or_else(|e| e.into_inner()).folders(&walk_home);
+        let follow = folders.len() <= budget;
+        let watch = if follow {
+            let tx = changed_tx.clone();
+            olo_kit::watch::watch(folders.clone(), move |dirs| {
+                let _ = tx.send(dirs.to_vec());
+            })
+        } else {
+            None
+        };
+        follows.store(watch.is_some(), std::sync::atomic::Ordering::Relaxed);
+        if watch.is_none() {
+            tracing::info!(folders = folders.len(), budget, "not following the file index's folders: it is walked again when asked");
+        }
+        let mut followed = folders.len();
+        while let Ok(mut dirs) = changed_rx.recv() {
+            // A burst (a copy, a checkout): every folder in it at once.
+            while let Ok(more) = changed_rx.try_recv() {
+                dirs.extend(more);
+            }
+            let mut ix = walked.write().unwrap_or_else(|e| e.into_inner());
+            if dirs.is_empty() {
+                // Asked again, not followed: walked whole.
+                *ix = Index::default();
+                ix.walk(&walk_home, &walk_home);
+            }
+            dirs.sort();
+            dirs.dedup();
+            for d in &dirs {
+                ix.changed(&walk_home, d);
+            }
+            if let Some(w) = &watch {
+                let folders = ix.folders(&walk_home);
+                if folders.len() != followed {
+                    followed = folders.len();
+                    w.set(folders);
+                }
+            }
+            drop(ix);
+            let _ = wake_tx.send(Wake::Index);
+        }
+    });
+    let (to_ui, search_index) = (proxy.clone(), index);
+    let _ = std::thread::Builder::new().name("palette-files".into()).spawn(move || {
         let mut last: Option<(u64, Vec<String>)> = None;
-        loop {
-            // The newest query, or a fresh index for the last one.
-            match file_rx.recv_timeout(Duration::from_millis(500)) {
-                Ok(mut q) => {
-                    while let Ok(newer) = file_rx.try_recv() {
-                        q = newer;
+        let mut walked_at = std::time::Instant::now();
+        while let Ok(wake) = wake_rx.recv() {
+            match wake {
+                Wake::Query(n, words) => {
+                    // Typing: only the newest matters.
+                    let mut q = (n, words);
+                    while let Ok(next) = wake_rx.try_recv() {
+                        if let Wake::Query(n, w) = next {
+                            q = (n, w);
+                        }
                     }
                     last = Some(q);
+                    // Not followed (too many folders): a fresh walk now and
+                    // then, when asked.
+                    if !following.load(std::sync::atomic::Ordering::Relaxed) && walked_at.elapsed() > Duration::from_secs(300) {
+                        walked_at = std::time::Instant::now();
+                        let _ = rewalk.send(Vec::new());
+                    }
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => match fresh_rx.try_recv() {
-                    Ok(found) => paths = Arc::new(found),
-                    Err(_) => continue,
-                },
-                Err(mpsc::RecvTimeoutError::Disconnected) => return,
-            }
-            if let Ok(found) = fresh_rx.try_recv() {
-                paths = Arc::new(found);
+                Wake::Index => {}
             }
             if let Some((n, words)) = &last {
-                to_ui.send(Found::Files(*n, find_files(&paths, words, &home)));
+                let ix = search_index.read().unwrap_or_else(|e| e.into_inner());
+                let found = find_files(&ix.files, words, &home);
+                drop(ix);
+                to_ui.send(Found::Files(*n, found));
             }
         }
     });
@@ -503,6 +644,32 @@ pub fn workers(proxy: Proxy) -> Workers {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_index_follows_folders_that_change() {
+        let home = std::env::temp_dir().join(format!("olo-palette-index-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join("Documents/old")).unwrap();
+        std::fs::write(home.join("Documents/old/a.txt"), "a").unwrap();
+        std::fs::write(home.join("Documents/b.txt"), "b").unwrap();
+        let mut ix = Index::default();
+        ix.walk(&home, &home);
+        assert!(ix.files.contains(&home.join("Documents/old/a.txt")));
+        // A folder gone and one new (with things in it), seen as their
+        // parent changing: only that one is listed again.
+        std::fs::remove_dir_all(home.join("Documents/old")).unwrap();
+        std::fs::create_dir_all(home.join("Documents/new/deep")).unwrap();
+        std::fs::write(home.join("Documents/new/deep/c.txt"), "c").unwrap();
+        ix.changed(&home, &home.join("Documents"));
+        assert!(!ix.files.iter().any(|p| p.starts_with(home.join("Documents/old"))));
+        assert!(ix.files.contains(&home.join("Documents/new/deep/c.txt")) && ix.files.contains(&home.join("Documents/b.txt")));
+        assert!(ix.folders(&home).contains(&home.join("Documents/new/deep")));
+        // A folder that went, reported itself: forgotten with all inside.
+        std::fs::remove_dir_all(home.join("Documents")).unwrap();
+        ix.changed(&home, &home.join("Documents"));
+        assert!(ix.files.is_empty(), "{:?}", ix.files);
+        let _ = std::fs::remove_dir_all(&home);
+    }
 
     #[test]
     fn open_windows_before_their_app() {

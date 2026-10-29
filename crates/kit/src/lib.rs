@@ -36,6 +36,7 @@ pub mod textures;
 pub mod text_drag;
 pub mod tip;
 pub mod tracker;
+pub mod watch;
 mod theme_watch;
 pub mod widgets;
 mod workspaces;

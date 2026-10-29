@@ -1251,8 +1251,6 @@ impl App for Deskbar {
                 ui.ctx(),
                 MenuRequest { menu: self.olo_menu(mode), source: tile_id, anchor: MenuAnchor::Below(tile), selected: None },
             );
-            // What's installed now, for the next time.
-            self.rescan();
         }
         if let Some(cmd) = menu::take_chosen(ui.ctx(), tile_id) {
             self.run_command(cx, &cmd);
@@ -1624,6 +1622,11 @@ fn main() {
         watch_server(cx.proxy());
         let proxy = cx.proxy();
         scan_installed(proxy.clone());
+        // Applications installed or removed: listed again at once.
+        let rescan = proxy.clone();
+        if let Some(w) = olo_kit::watch::watch(desktop_entry::app_dirs(), move |_| scan_installed(rescan.clone())) {
+            std::mem::forget(w);
+        }
         status::spawn({
             let proxy = proxy.clone();
             move |s| proxy.send(Msg::Status(s))

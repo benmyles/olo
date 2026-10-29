@@ -78,17 +78,38 @@ fn listed() -> Vec<Screen> {
     screens::list().into_iter().filter(|s| Some(&s.name) != own.as_ref()).collect()
 }
 
-/// Watch the list of screens (every second).
+/// Follow the list of screens as their files come and go
+/// (`olo_kit::watch`), and now and then for one whose session was killed
+/// without a word (its file left behind).
 fn watch_list(proxy: Proxy) {
+    let last = Arc::new(Mutex::new(None::<Vec<Screen>>));
+    let look = move || {
+        let now = listed();
+        let mut last = last.lock().unwrap_or_else(|e| e.into_inner());
+        if last.as_ref() != Some(&now) {
+            proxy.send(Msg::Screens(now.clone()));
+            *last = Some(now);
+        }
+    };
+    look();
+    let look = Arc::new(look);
+    let on_change = look.clone();
+    let dir = screens::dir();
+    let followed = dir.clone();
+    if let Some(w) = olo_kit::watch::watch([dir], move |changed| {
+        // A screen's own file, not a viewer's frame passing through.
+        let items: Vec<&std::path::PathBuf> = changed.iter().filter(|p| p.parent() == Some(followed.as_path())).collect();
+        if items.is_empty() || items.iter().any(|p| p.extension().is_some_and(|e| e == "json")) {
+            on_change();
+        }
+    }) {
+        // For as long as the app runs.
+        std::mem::forget(w);
+    }
     std::thread::spawn(move || {
-        let mut last = Vec::new();
         loop {
-            let now = listed();
-            if now != last {
-                proxy.send(Msg::Screens(now.clone()));
-                last = now;
-            }
-            std::thread::sleep(Duration::from_secs(1));
+            std::thread::sleep(Duration::from_secs(30));
+            look();
         }
     });
 }
@@ -96,8 +117,11 @@ fn watch_list(proxy: Proxy) {
 /// Fetch frames of whichever screen is being watched.
 fn watch_frames(proxy: Proxy, watching: Arc<Mutex<Option<String>>>) {
     std::thread::spawn(move || {
-        let path = screens::dir().join(format!("view-{}.rgba", std::process::id()));
-        let _ = std::fs::create_dir_all(screens::dir());
+        // In a folder of their own: the screens' folder is followed for
+        // screens coming and going, not for frames.
+        let views = screens::dir().join("views");
+        let path = views.join(format!("view-{}.rgba", std::process::id()));
+        let _ = std::fs::create_dir_all(&views);
         loop {
             let began = Instant::now();
             let name = watching.lock().unwrap_or_else(|e| e.into_inner()).clone();

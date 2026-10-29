@@ -3,6 +3,7 @@
 //! glyphs that show them.
 
 use std::{
+    path::PathBuf,
     sync::{
         Arc, Mutex, OnceLock,
         mpsc::{Sender, channel},
@@ -52,10 +53,14 @@ pub struct Status {
 }
 
 /// What olo-session offers to upgrade (see its upgrade.rs).
-fn upgrade() -> Vec<String> {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+fn upgrade_path() -> PathBuf {
+    let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
     let display = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
-    let Ok(text) = std::fs::read_to_string(dir.join(format!("olo-upgrade-{display}.json"))) else { return Vec::new() };
+    dir.join(format!("olo-upgrade-{display}.json"))
+}
+
+fn upgrade() -> Vec<String> {
+    let Ok(text) = std::fs::read_to_string(upgrade_path()) else { return Vec::new() };
     let v: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
     v["programs"].as_array().map(|a| a.iter().filter_map(|p| p.as_str().map(str::to_owned)).collect()).unwrap_or_default()
 }
@@ -63,10 +68,20 @@ fn upgrade() -> Vec<String> {
 /// The agent screens running: those `olo-screen` lists in
 /// `$XDG_RUNTIME_DIR/olo-screens` whose session is still alive (as its
 /// `Screen::alive` judges), leaving out the screen this Deskbar is on.
+fn screens_dir() -> PathBuf {
+    let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    olo_kit::legacy::runtime_file(&dir, "olo-screens")
+}
+
+/// A screen's own file in the screens' folder (not a viewer's frame).
+fn screen_file(p: &std::path::Path) -> bool {
+    let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    name.ends_with(".json") && !name.ends_with("-settings.json")
+}
+
 fn agent_screens() -> usize {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
     let own = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
-    let Ok(read) = std::fs::read_dir(olo_kit::legacy::runtime_file(&dir, "olo-screens")) else { return 0 };
+    let Ok(read) = std::fs::read_dir(screens_dir()) else { return 0 };
     read.flatten()
         .filter(|e| {
             let name = e.file_name().to_string_lossy().into_owned();
@@ -162,9 +177,11 @@ fn publish<F: Fn(Status)>(shared: &Shared<F>, update: impl FnOnce(&mut Status)) 
     }
 }
 
-/// Watch the machine; `send` is called whenever something changed. Battery
-/// and Wi-Fi are polled every few seconds; volume changes arrive as events
-/// from the sound server.
+/// Watch the machine; `send` is called whenever something changed.
+/// What other programs write to files (the bell's count, the agent
+/// screens, a new build to upgrade to) follows those files as they change
+/// (`olo_kit::watch`); battery and Wi-Fi are read every few seconds;
+/// volume changes arrive as events from the sound server.
 pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     let shared = Arc::new(Mutex::new((Status::default(), None::<Status>, send)));
     let polled = shared.clone();
@@ -172,37 +189,60 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
         .name("deskbar-status".into())
         .spawn(move || {
             loop {
-                let (battery, wifi, upgrade) = (battery(), wifi(), upgrade());
+                let (battery, wifi) = (battery(), wifi());
                 publish(&polled, |s| {
                     s.battery = battery;
                     s.wifi = wifi.clone();
-                    s.upgrade = upgrade.clone();
                 });
                 std::thread::sleep(Duration::from_secs(4));
             }
         })
         .expect("thread");
-    // The bell's count follows each notification as it comes.
-    let notes = shared.clone();
-    std::thread::Builder::new()
-        .name("deskbar-notifications".into())
-        .spawn(move || {
-            loop {
-                let state = NotificationState::load();
-                publish(&notes, |s| s.notifications = state);
-                std::thread::sleep(Duration::from_millis(500));
-            }
-        })
-        .expect("thread");
-    // Agent screens come and go at an agent's pace: look every second.
-    let screens = shared.clone();
+    let (notes, screens, upgrades) = (NotificationState::path(), screens_dir(), upgrade_path());
+    let read = {
+        let (notes, screens, upgrades, shared) = (notes.clone(), screens.clone(), upgrades.clone(), shared.clone());
+        move |changed: &[PathBuf]| {
+            let all = changed.is_empty();
+            // The screens' folder also has viewers' frames going through
+            // it, several a second: only a screen's own file counts.
+            let in_screens: Vec<&PathBuf> = changed.iter().filter(|p| p.parent() == Some(screens.as_path())).collect();
+            let screens_changed = in_screens.iter().any(|p| screen_file(p)) || (in_screens.is_empty() && changed.contains(&screens));
+            let (state, n, up) = (
+                (all || changed.contains(&notes)).then(NotificationState::load),
+                (all || screens_changed).then(agent_screens),
+                (all || changed.contains(&upgrades)).then(upgrade),
+            );
+            publish(&shared, |s| {
+                if let Some(state) = state {
+                    s.notifications = state;
+                }
+                if let Some(n) = n {
+                    s.agent_screens = n;
+                }
+                if let Some(up) = up {
+                    s.upgrade = up;
+                }
+            });
+        }
+    };
+    read(&[]);
+    let read = Arc::new(read);
+    let on_change = read.clone();
+    if let Some(w) = olo_kit::watch::watch([notes, screens, upgrades], move |changed| on_change(changed)) {
+        // Deskbar's for as long as it runs.
+        std::mem::forget(w);
+    }
+    // A screen whose session ended without a word (killed) leaves its
+    // file behind: looked at now and then while there are any.
+    let counted = shared.clone();
     std::thread::Builder::new()
         .name("deskbar-screens".into())
         .spawn(move || {
             loop {
-                let n = agent_screens();
-                publish(&screens, |s| s.agent_screens = n);
-                std::thread::sleep(Duration::from_secs(1));
+                std::thread::sleep(Duration::from_secs(30));
+                if counted.lock().unwrap().0.agent_screens > 0 {
+                    read(&[]);
+                }
             }
         })
         .expect("thread");

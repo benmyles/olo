@@ -545,7 +545,13 @@ fn main() {
         cx.stay_resident();
         instance::listen(APP_ID, cx.proxy());
         let proxy = cx.proxy();
-        let _ = std::thread::Builder::new().name("palette-fixed".into()).spawn(move || proxy.send(Found::Fixed(sources::fixed())));
+        let _ = std::thread::Builder::new().name("palette-fixed".into()).spawn(move || {
+            proxy.send(Found::Fixed(sources::fixed()));
+            // Applications installed or removed: listed again at once.
+            if let Some(w) = olo_kit::watch::watch(olo_kit::desktop_entry::app_dirs(), move |_| proxy.send(Found::Fixed(sources::fixed()))) {
+                std::mem::forget(w);
+            }
+        });
         let mut palette = Palette {
             win: None,
             opening: false,

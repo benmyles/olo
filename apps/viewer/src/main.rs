@@ -44,6 +44,8 @@ enum Msg {
     Edit(WindowId, EditEvent),
     /// The forms font is installed (see `style::add_document_font`).
     FontReady,
+    /// Open files, or the folders they are in, changed on disk.
+    OnDisk(Vec<PathBuf>),
 }
 
 enum Content {
@@ -74,6 +76,9 @@ struct DocWin {
     awake: bool,
     /// A picture being edited.
     edit: Option<Box<ImageEdit>>,
+    /// The file as last opened or saved here (when it was written, how
+    /// long), to tell another program's change from our own save.
+    on_disk: Option<(std::time::SystemTime, u64)>,
 }
 
 /// Editing a picture: its steps, and the frame while cropping.
@@ -104,6 +109,10 @@ struct Viewer {
     signatures: Vec<Signature>,
     next_id: u64,
     generation: u64,
+    /// The open files and their folders, followed as they change
+    /// (`olo_kit::watch`): a file another program changed is shown again
+    /// unless it has changes here, and Previous / Next know new files.
+    watch: Option<olo_kit::watch::Watch>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -113,6 +122,11 @@ struct Saved {
 
 fn is_pdf(path: &Path) -> bool {
     path.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
+}
+
+/// When a file was last written and how long it is.
+fn stamp(path: &Path) -> Option<(std::time::SystemTime, u64)> {
+    std::fs::metadata(path).ok().map(|m| (m.modified().unwrap_or(std::time::UNIX_EPOCH), m.len()))
 }
 
 fn file_name(path: &Path) -> String {
@@ -145,14 +159,40 @@ impl Viewer {
         let title = file_name(&path);
         let min_w = if is_pdf(&path) { pdfview::MIN_WIDTH as u32 } else { 360 };
         let id = cx.open_window(WindowOptions::new(title.clone(), 720, 560).min_size(min_w, 240));
-        let doc = DocWin { path: path.clone(), content: Content::Loading, siblings: Vec::new(), title, sized: false, after_save: After::Nothing, awake: false, edit: None };
+        let doc = DocWin { path: path.clone(), content: Content::Loading, siblings: Vec::new(), title, sized: false, after_save: After::Nothing, awake: false, edit: None, on_disk: None };
         self.windows.insert(id, Win::Doc(Box::new(doc)));
         self.load(cx, id, path);
     }
 
+    /// Follow the open files and their folders (as they are now).
+    fn follow_files(&mut self, cx: &mut Cx) {
+        let mut paths: Vec<PathBuf> = Vec::new();
+        for w in self.windows.values() {
+            if let Win::Doc(d) = w {
+                paths.push(d.path.clone());
+                paths.extend(d.path.parent().map(Path::to_path_buf));
+            }
+        }
+        paths.sort();
+        paths.dedup();
+        match &self.watch {
+            Some(w) => w.set(paths),
+            None => {
+                let proxy = cx.proxy();
+                self.watch = olo_kit::watch::watch(paths, move |changed| proxy.send(Msg::OnDisk(changed.to_vec())));
+            }
+        }
+    }
+
     /// (Re)load `path` into document window `id`.
     fn load(&mut self, cx: &mut Cx, id: WindowId, path: PathBuf) {
+        self.load_in(cx, id, path);
+        self.follow_files(cx);
+    }
+
+    fn load_in(&mut self, cx: &mut Cx, id: WindowId, path: PathBuf) {
         let Some(Win::Doc(d)) = self.windows.get_mut(&id) else { return };
+        d.on_disk = stamp(&path);
         d.path = path.clone();
         d.sized = false;
         d.edit = None;
@@ -198,6 +238,7 @@ impl Viewer {
             self.windows.remove(&o);
             cx.close_window(o);
         }
+        self.follow_files(cx);
         if !self.windows.values().any(|w| matches!(w, Win::Doc(_) | Win::Panel { .. })) {
             cx.quit();
         }
@@ -966,6 +1007,37 @@ impl App for Viewer {
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
             Msg::FontReady => cx.redraw_all(),
+            Msg::OnDisk(paths) => {
+                let mut reload = Vec::new();
+                for (&id, w) in &mut self.windows {
+                    let Win::Doc(d) = w else { continue };
+                    // A file beside it came or went: Previous / Next know.
+                    if d.path.parent().is_some_and(|dir| paths.iter().any(|p| p == dir)) {
+                        let (proxy, path) = (cx.proxy(), d.path.clone());
+                        std::thread::spawn(move || {
+                            let s = list_siblings(&path);
+                            proxy.send(Msg::Siblings(id, path, s));
+                        });
+                    }
+                    // Written by another program (not our own save), and
+                    // nothing here unsaved: shown again as it is now.
+                    if !paths.contains(&d.path) {
+                        continue;
+                    }
+                    let now = stamp(&d.path);
+                    let busy = matches!(&d.content, Content::Pdf(v) if v.dirty() || v.saving) || d.edit.as_ref().is_some_and(|e| e.editor.dirty() || e.editor.saving);
+                    if now.is_some() && now != d.on_disk && !busy {
+                        reload.push((id, d.path.clone()));
+                    }
+                }
+                for (id, path) in reload {
+                    self.load_in(cx, id, path);
+                    // (Its window keeps the size it has.)
+                    if let Some(Win::Doc(d)) = self.windows.get_mut(&id) {
+                        d.sized = true;
+                    }
+                }
+            }
             Msg::Edit(win, ev) => {
                 let mut error = None;
                 let mut next = None;
@@ -982,6 +1054,9 @@ impl App for Viewer {
                             }
                         }
                         EditEvent::Saved(to) => {
+                            if to == d.path {
+                                d.on_disk = stamp(&to);
+                            }
                             let after = std::mem::replace(&mut d.after_save, After::Nothing);
                             next = Some((to != d.path).then_some(to.clone()).map_or(after, After::Open));
                         }
@@ -1050,6 +1125,9 @@ impl App for Viewer {
                             d.after_save = After::Nothing;
                         }
                         Event::Saved { to, adopted } => {
+                            if adopted.is_some() || *to == d.path {
+                                d.on_disk = stamp(&to);
+                            }
                             if adopted.is_some() {
                                 d.path = to.clone();
                                 cx.set_path(win, Some(to.clone()));
@@ -1142,6 +1220,7 @@ fn main() {
             signatures: signature::load(),
             next_id: 0,
             generation: 0,
+            watch: None,
         };
         match cx.restored_state().and_then(|s| serde_json::from_str::<Saved>(&s).ok()) {
             Some(saved) if !saved.files.is_empty() => {

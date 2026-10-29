@@ -1,7 +1,8 @@
 //! BFilePanel: the Open, Save and folder panels every app shares. Show one in its
 //! own window (`PANEL_SIZE`) and call [`FilePanel::ui`] from that window's
 //! `App::ui`; it returns the choice once. Folders are listed on a worker
-//! thread, so a slow disk never stalls the window.
+//! thread, so a slow disk never stalls the window, and listed again the
+//! moment they change on disk (`crate::watch`), the selection kept.
 
 use std::{
     path::{Path, PathBuf},
@@ -62,6 +63,10 @@ pub struct FilePanel {
     /// Asking whether to replace this existing file.
     confirm: Option<PathBuf>,
     started: bool,
+    /// The folder shown, followed as it changes (`crate::watch`): `stale`
+    /// says to list it again.
+    watch: Option<crate::watch::Watch>,
+    stale: Arc<std::sync::atomic::AtomicBool>,
 }
 
 fn home() -> PathBuf {
@@ -97,6 +102,8 @@ impl FilePanel {
             list: ListState::default(),
             confirm: None,
             started: false,
+            watch: None,
+            stale: Arc::default(),
         }
     }
 
@@ -124,6 +131,22 @@ impl FilePanel {
         self.dir = dir.clone();
         self.list = ListState::default();
         self.loading = true;
+        match &self.watch {
+            Some(w) => w.set([dir.clone()]),
+            None => {
+                let (stale, ctx) = (self.stale.clone(), ctx.clone());
+                self.watch = crate::watch::watch([dir.clone()], move |_| {
+                    stale.store(true, std::sync::atomic::Ordering::Relaxed);
+                    ctx.request_repaint();
+                });
+            }
+        }
+        self.list_again(ctx);
+    }
+
+    /// List the folder shown (again), off the UI thread.
+    fn list_again(&mut self, ctx: &egui::Context) {
+        let dir = self.dir.clone();
         let listing = self.listing.clone();
         let ctx = ctx.clone();
         std::thread::spawn(move || {
@@ -138,13 +161,22 @@ impl FilePanel {
             self.started = true;
             self.go(ui.ctx(), self.dir.clone());
         }
+        if self.stale.swap(false, std::sync::atomic::Ordering::Relaxed) {
+            // Changed on disk: listed again, the selection kept by name.
+            self.list_again(ui.ctx());
+        }
         if let Some((dir, result)) = self.listing.lock().unwrap().take()
             && dir == self.dir
         {
             self.loading = false;
             match result {
                 Ok(items) => {
+                    let chosen = self.list.single().and_then(|i| self.items.get(i)).map(|it| it.name.clone());
                     self.items = items.into_iter().filter(|i| self.matches(i)).collect();
+                    self.list.selected.clear();
+                    if let Some(i) = chosen.and_then(|n| self.items.iter().position(|it| it.name == n)) {
+                        self.list.select(i);
+                    }
                     self.error = None;
                 }
                 Err(e) => {
@@ -210,11 +242,9 @@ impl FilePanel {
                     let ir = Rect::from_center_size(pos2(cell.rect.left() + m::CELL_INSET + 8.0, cell.rect.center().y), vec2(16.0, 16.0));
                     icons::paint(cell.painter, ir, if it.is_dir { "folder" } else { it.kind.icon() });
                     let r = Rect::from_min_max(pos2(ir.right() + 2.0, cell.rect.top()), cell.rect.max);
-                    let mut job = egui::text::LayoutJob::simple_singleline(it.name.clone(), style::plain_font(), cell.text_color);
-                    job.wrap = egui::text::TextWrapping::truncate_at_width((r.width() - m::CELL_INSET).max(0.0));
-                    let g = cell.painter.layout_job(job);
-                    let pos = style::text_origin(cell.painter.ctx(), &g, r.left() + m::TIGHT, r.center().y, style::PLAIN_SIZE);
-                    cell.painter.galley(pos, g, cell.text_color);
+                    // (Read by agents too, whole, as the row's name.)
+                    let width = (r.width() - m::CELL_INSET).max(0.0);
+                    style::label_fit(cell.painter, r.left() + m::TIGHT, r.center().y, Align::Min, &it.name, style::plain_font(), cell.text_color, width);
                 }
                 1 if !it.is_dir => cell.text(&files::format_size(it.size)),
                 1 => cell.text("—"),

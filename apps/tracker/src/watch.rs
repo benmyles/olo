@@ -91,6 +91,8 @@ const MASK: u32 = libc::IN_CREATE
 
 struct State {
     fd: OwnedFd,
+    /// The folders wanted watched, whether or not they are now.
+    want: BTreeSet<PathBuf>,
     by_wd: HashMap<i32, PathBuf>,
     by_path: HashMap<PathBuf, i32>,
     /// Items touched since the batch started, by folder.
@@ -114,6 +116,7 @@ impl State {
     }
 
     fn reconcile(&mut self, want: &BTreeSet<PathBuf>) {
+        self.want = want.clone();
         let gone: Vec<PathBuf> = self.by_path.keys().filter(|p| !want.contains(*p)).cloned().collect();
         for p in gone {
             if let Some(wd) = self.by_path.remove(&p) {
@@ -167,16 +170,33 @@ impl State {
             return;
         }
         if mask & libc::IN_IGNORED != 0 {
-            // The watch is gone (folder deleted, or we removed it).
+            // The watch is gone (folder deleted, or we removed it): one
+            // made again in its place is watched again.
             if let Some(p) = self.by_wd.remove(&wd) {
                 self.by_path.retain(|_, w| *w != wd);
+                if self.want.contains(&p) {
+                    self.add(&p);
+                }
                 self.rescan.insert(p);
                 self.touch();
             }
             return;
         }
         let Some(dir) = self.by_wd.get(&wd).cloned() else { return };
-        if mask & (libc::IN_DELETE_SELF | libc::IN_MOVE_SELF) != 0 {
+        if mask & libc::IN_MOVE_SELF != 0 {
+            // Moved away (renamed, or swapped for an empty one as Empty
+            // Trash does): the watch went with it; watch what has the
+            // path now.
+            let paths: Vec<PathBuf> = self.by_path.iter().filter(|(_, w)| **w == wd).map(|(p, _)| p.clone()).collect();
+            // SAFETY: valid fd; its IN_IGNORED then finds no folder.
+            unsafe { libc::inotify_rm_watch(self.fd.as_raw_fd(), wd) };
+            self.by_wd.remove(&wd);
+            self.by_path.retain(|_, w| *w != wd);
+            for p in paths {
+                self.add(&p);
+                self.rescan.insert(p);
+            }
+        } else if mask & libc::IN_DELETE_SELF != 0 {
             self.rescan.insert(dir);
         } else if !name.is_empty() {
             // Every path naming this folder (a symlinked folder and its
@@ -215,6 +235,7 @@ impl State {
 fn run(fd: OwnedFd, wake: OwnedFd, rx: mpsc::Receiver<BTreeSet<PathBuf>>, send: impl Fn(Vec<Change>)) {
     let mut s = State {
         fd,
+        want: BTreeSet::new(),
         by_wd: HashMap::new(),
         by_path: HashMap::new(),
         items: BTreeSet::new(),
@@ -300,6 +321,32 @@ mod tests {
             }
         }
         panic!("no matching change");
+    }
+
+    #[test]
+    fn a_folder_swapped_for_another_is_still_followed() {
+        let root = std::env::temp_dir().join(format!("tracker-watch-swap-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (dir, empty) = (root.join("files"), root.join("empty"));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&empty).unwrap();
+        std::fs::write(dir.join("old.txt"), "x").unwrap();
+        let (tx, rx) = mpsc::channel();
+        let mut w = Watcher::new(move |b| {
+            let _ = tx.send(b);
+        })
+        .unwrap();
+        w.set(BTreeSet::from([dir.clone()]));
+        std::thread::sleep(Duration::from_millis(50));
+        // Swapped at once for an empty one, as Empty Trash does.
+        std::fs::rename(&dir, root.join("gone")).unwrap();
+        std::fs::rename(&empty, &dir).unwrap();
+        wait(&rx, |c| matches!(c, Change::Rescan(d) if *d == dir));
+        // What goes into the new one is seen.
+        let new = dir.join("new.txt");
+        std::fs::write(&new, "y").unwrap();
+        wait(&rx, |c| matches!(c, Change::Item { path, entry: Some(_), .. } if *path == new));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

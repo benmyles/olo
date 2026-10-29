@@ -214,7 +214,11 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
-- **Instant updates when files change** (Ben, 2026-10-29, bug): "currently
+- **Notifications: one click on a card acts** (Ben, 2026-10-29): "in
+  notifications app card view, i should only need a single click of a
+  notification card to activate / go to the action".
+- ~~**Instant updates when files change**~~ (Ben, 2026-10-29, bug; done:
+  HACKING, rule 7 "Stay current without polling", `olo_kit::watch`): "currently
   when something changes on the desktop it doesn't reflect immediately,
   e.g. if i empty the trash we don't see the icon change for a few
   seconds. we should use event based notifications with optimized linux

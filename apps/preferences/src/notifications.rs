@@ -6,7 +6,10 @@
 //! the panel current when they change it.
 
 use std::{
-    sync::mpsc::{Receiver, channel},
+    sync::{
+        Arc, Mutex,
+        mpsc::{Receiver, channel},
+    },
     time::{Duration, Instant, SystemTime},
 };
 
@@ -29,32 +32,31 @@ pub struct State {
     /// Our own last change: the watcher's echoes of older files are
     /// ignored for a moment after it.
     edited: Option<Instant>,
+    /// The settings and the history, followed as they change while the
+    /// panel is open (`olo_kit::watch`); the context to wake with them.
+    _watch: Option<olo_kit::watch::Watch>,
+    ctx: Arc<Mutex<Option<egui::Context>>>,
 }
 
 impl Default for State {
     fn default() -> Self {
         let (tx, rx) = channel();
-        std::thread::Builder::new()
-            .name("notifications-watch".into())
-            .spawn(move || {
+        let ctx: Arc<Mutex<Option<egui::Context>>> = Arc::default();
+        let read = {
+            let ctx = ctx.clone();
+            Arc::new(move || {
                 // The settings, and the history (for apps new to it).
-                let history = olo_kit::state_dir().join("notifications").join("history.json");
-                let mtime = |p: &std::path::Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
-                let modified = || (mtime(&NotificationSettings::path()), mtime(&history));
-                let mut seen: Option<(Option<SystemTime>, Option<SystemTime>)> = None;
-                loop {
-                    let m = modified();
-                    if seen != Some(m) {
-                        seen = Some(m);
-                        if tx.send((NotificationSettings::load(), known_apps())).is_err() {
-                            return;
-                        }
-                    }
-                    std::thread::sleep(Duration::from_secs(1));
+                let _ = tx.send((NotificationSettings::load(), known_apps()));
+                if let Some(c) = ctx.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+                    c.request_repaint();
                 }
             })
-            .expect("thread");
-        State { settings: None, apps: Vec::new(), rx, edited: None }
+        };
+        let now = read.clone();
+        std::thread::Builder::new().name("notifications-read".into()).spawn(move || now()).expect("thread");
+        let history = olo_kit::state_dir().join("notifications").join("history.json");
+        let watch = olo_kit::watch::watch([NotificationSettings::path(), history], move |_| read());
+        State { settings: None, apps: Vec::new(), rx, edited: None, _watch: watch, ctx }
     }
 }
 
@@ -64,7 +66,7 @@ impl State {
     /// no watcher (for the layout lint).
     pub fn sample() -> State {
         let apps = ["Google Chrome", "Terminal", "olo.some-very-long-application-identifier"].map(str::to_owned).to_vec();
-        State { settings: Some(NotificationSettings::default()), apps, rx: channel().1, edited: None }
+        State { settings: Some(NotificationSettings::default()), apps, rx: channel().1, edited: None, _watch: None, ctx: Arc::default() }
     }
 }
 
@@ -99,13 +101,13 @@ fn time_menu(ui: &mut Ui, id: &str, label: &str, clock: &ClockSettings, value: &
 }
 
 pub fn ui(ui: &mut Ui, clock: &ClockSettings, st: &mut State) {
+    st.ctx.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(|| ui.ctx().clone());
     while let Ok((settings, apps)) = st.rx.try_recv() {
         if st.edited.is_none_or(|t| t.elapsed() > Duration::from_millis(1500)) {
             st.settings = Some(settings);
         }
         st.apps = apps;
     }
-    ui.ctx().request_repaint_after(Duration::from_secs(1));
     let Some(mut s) = st.settings.clone() else {
         ui.add(StringView::new("Reading…").dim(true));
         return;
@@ -115,7 +117,11 @@ pub fn ui(ui: &mut Ui, clock: &ClockSettings, st: &mut State) {
         ui.add(StringView::new("No banners and no sounds (errors still show).").dim(true));
         let mut on = s.dnd && s.dnd_until.is_none_or(|t| now < t);
         let label = match s.dnd_until {
-            Some(t) if on => format!("Do Not Disturb (for {} more minutes)", t.saturating_sub(now).div_ceil(60)),
+            Some(t) if on => {
+                // Counting down: shown again as the next minute goes.
+                ui.ctx().request_repaint_after(Duration::from_secs(t.saturating_sub(now) % 60 + 1));
+                format!("Do Not Disturb (for {} more minutes)", t.saturating_sub(now).div_ceil(60))
+            }
             _ => "Do Not Disturb".into(),
         };
         if ui.add(CheckBox::new(&mut on, &label)).changed() {

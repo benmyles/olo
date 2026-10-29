@@ -24,7 +24,8 @@ pub struct DesktopEntry {
     pub mime_types: Vec<String>,
 }
 
-pub(crate) fn app_dirs() -> Vec<PathBuf> {
+/// Where applications' desktop entries are, most personal first.
+pub fn app_dirs() -> Vec<PathBuf> {
     let mut v = Vec::new();
     if let Some(home) = std::env::var_os("HOME") {
         v.push(Path::new(&home).join(".local/share/applications"));
