@@ -24,7 +24,8 @@
 //! around it; Zoom Vertically and Horizontally make it a full column or
 //! row; Tile All balances the tree; dragging a tile onto another swaps
 //! them, or onto one's edge puts it beside it; dragging an edge moves the
-//! split, snapped to a quarter of the display (else an eighth). Zoom
+//! split to just where it is let go (no grid: the windows are as sized,
+//! and the rest go on fitting around them as windows come and go). Zoom
 //! still zooms a window over the tiles, and unzooming puts it back. ⌃⌘Z
 //! undoes the last change to a tree (and turning auto-tiling on).
 //!
@@ -73,8 +74,6 @@ const LOOK: Duration = Duration::from_millis(500);
 /// How long a closed window's place waits for it to come back (an app
 /// re-executing itself after an upgrade).
 const CLOSED_KEEP: Duration = Duration::from_secs(20);
-/// Snapped to a quarter (or a third) of the area when let go this near.
-const SNAP: f32 = 1.0 / 12.0;
 
 /// How a split divides its room.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -539,20 +538,8 @@ fn take_nearest(rest: Option<Node>, to: (f32, f32), centre: &dyn Fn(u64) -> (f32
     (Node::Window(near), big)
 }
 
-/// `e` (a cut along a node from `start` to `end`) on the grid it snaps
-/// to: a quarter or third of the area when near one, else the nearest
-/// eighth inside the node (as it is, if the node is narrower).
-fn snap(e: f32, start: f32, end: f32) -> f32 {
-    let inside = |v: &f32| *v > start + TOL && *v < end - TOL;
-    let nearest = |lines: Vec<f32>| lines.into_iter().filter(inside).min_by(|a, b| (a - e).abs().total_cmp(&(b - e).abs()));
-    if let Some(v) = nearest(vec![0.25, 0.5, 0.75, 1.0 / 3.0, 2.0 / 3.0]).filter(|v| (v - e).abs() <= SNAP) {
-        return v;
-    }
-    nearest((1..8).map(|k| k as f32 / 8.0).collect()).unwrap_or(e)
-}
-
 /// Each split's ratio as the windows' parts (`part_of`) have it, after
-/// their edges were dragged; a split that moved snapped (`snap`).
+/// their edges were dragged: where they were let go.
 pub fn take_ratios(node: &mut Node, part_of: &dyn Fn(u64) -> Option<Part>) {
     let mut boxes = Vec::new();
     bounds(node, part_of, &mut boxes);
@@ -604,7 +591,6 @@ fn set_ratios(node: &mut Node, r: Part, boxes: &[(Option<Part>, usize)], i: &mut
     if let Some(e) = e {
         let was = start + len * *ratio;
         if (e - was).abs() > 0.003 {
-            let e = snap(e, start, start + len);
             *ratio = ((e - start) / len).clamp(0.05, 0.95);
         }
     }
@@ -1671,7 +1657,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     /// An edge drag of a tile ended (its neighbours have their parts):
-    /// the splits moved to where they now are, snapped.
+    /// the splits moved to where they now are.
     pub fn auto_drag_ended(&mut self, w: &WindowElement) {
         let Some(key) = self.tree_of(w) else { return };
         let Some(mut tree) = self.auto.trees.remove(&key) else { return };
@@ -1791,13 +1777,13 @@ mod tests {
     }
 
     #[test]
-    fn dragged_edges_snap_to_quarters() {
+    fn dragged_edges_stay_where_let_go() {
+        // Dragged to 0.71: there, not on a quarter or an eighth.
         let mut t = Node::split(Cut::Columns, 0.5, w(1), w(2));
-        // Dragged to 0.71: a quarter is near.
         take_ratios(&mut t, &|i| Some(if i == 1 { (0.0, 0.0, 0.71, 1.0) } else { (0.71, 0.0, 0.29, 1.0) }));
-        assert_eq!(t, Node::split(Cut::Columns, 0.75, w(1), w(2)));
-        // Within the right half, where only one quarter is inside: an
-        // eighth when that's nearer.
+        assert!(near(parts(&t)[0].1, (0.0, 0.0, 0.71, 1.0)), "{t:?}");
+        // Within the right half: just there too, and the splits that
+        // didn't move stay as they are.
         let mut t = Node::split(Cut::Columns, 0.5, w(1), Node::split(Cut::Columns, 0.5, w(2), w(3)));
         take_ratios(&mut t, &|i| Some(match i {
             1 => (0.0, 0.0, 0.5, 1.0),
@@ -1805,9 +1791,14 @@ mod tests {
             _ => (0.58, 0.0, 0.42, 1.0),
         }));
         let p = parts(&t);
-        assert!(near(p[1].1, (0.5, 0.0, 0.125, 1.0)), "{p:?}");
-        // Splits that didn't move stay as they are.
+        assert!(near(p[1].1, (0.5, 0.0, 0.08, 1.0)), "{p:?}");
         assert!(near(p[0].1, (0.0, 0.0, 0.5, 1.0)));
+        // A window coming in halves the one it goes beside; the others keep
+        // the sizes they were given.
+        assert!(t.split_leaf(3, w(4), Cut::Rows, false));
+        let p = parts(&t);
+        assert!(near(p[0].1, (0.0, 0.0, 0.5, 1.0)) && near(p[1].1, (0.5, 0.0, 0.08, 1.0)), "{p:?}");
+        assert!(near(p[2].1, (0.58, 0.0, 0.42, 0.5)) && near(p[3].1, (0.58, 0.5, 0.42, 0.5)), "{p:?}");
     }
 
     #[test]

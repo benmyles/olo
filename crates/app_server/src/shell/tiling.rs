@@ -921,7 +921,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         for (w, r) in frames {
             Self::set_part(&w, Some(fraction_of(area, r, gap)));
         }
-        // Auto-tiled: the splits move there, snapped.
+        // Auto-tiled: the splits move just there.
         self.auto_drag_ended(&window);
     }
 

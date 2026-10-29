@@ -2140,9 +2140,10 @@ jumps ahead of its picture. The tiling commands work on the tree
 tile in what is left), as do Zoom Vertically / Horizontally (`along`: a
 full column or row beside the rest, and back), Tile All (`balanced`),
 dragging a tile by its tab (`drop_at`: onto the middle of another swaps
-them, onto its edge puts it beside) and dragging an edge (`take_ratios`,
-snapped to a quarter or third of the display when near one, else an
-eighth: `snap`). Zoom zooms over the tiles and
+them, onto its edge puts it beside) and dragging an edge (`take_ratios`:
+the split stays just where it is let go, with no grid to snap to, and
+the other windows keep the sizes given them as windows come and go, a
+new one halving only the tile it goes beside). Zoom zooms over the tiles and
 unzooms back into its tile. ⌃⌘Z undoes the last change to a tree, or
 turning it on (`auto_undo`, before `undo_arrangement`). Windows that
 float instead (`floats`): those with a parent, dialogs and alerts, a

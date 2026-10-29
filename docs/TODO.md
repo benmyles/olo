@@ -811,7 +811,8 @@ as they land (with the commit), add new ones as they come up.
 
 ## app_server
 
-- **Auto-tiling follows the sizes I give** (Ben, 2026-10-29): "auto-tiling
+- ~~**Auto-tiling follows the sizes I give**~~ (Ben, 2026-10-29; done:
+  HACKING, auto-tiling; edges no longer snap when let go): "auto-tiling
   should let me resize windows however i want and then adapt around how i
   have sized them, instead of locking me to some sort of hidden grid like
   it does right now". A resize by hand keeps the size it was let go at
@@ -831,7 +832,7 @@ as they land (with the commit), add new ones as they come up.
   side, a closed one's room goes to its neighbour, a window group is one
   tile); Zoom over the tiles and back, Zoom Vertically / Horizontally a
   full column or row, the tile commands set a window's part with the rest
-  around it, edges snap to quarters and thirds, tabs drag to swap or go
+  around it, edges dragged (snapped to quarters and thirds then; now they stay where let go), tabs drag to swap or go
   beside. Dialogs, alerts, fixed-size windows, the kit's
   `WindowOptions::floating()` (xdg-toplevel-tag) and portal and
   picture-in-picture windows float; Float Over the Tiles (window menu,

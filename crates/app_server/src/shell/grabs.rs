@@ -507,7 +507,7 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerResiz
                 end_resize(data, &self.window, self.edges, (self.initial_window_location, self.initial_window_size), self.last_window_size, event.serial);
             }
             // After its last size went: the neighbours keep their parts,
-            // and an auto-tiled split moves there, snapped, asking the
+            // and an auto-tiled split moves just there, asking the
             // window for the size that gives it.
             data.tile_drag_end();
         }
