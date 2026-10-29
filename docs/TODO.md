@@ -783,16 +783,18 @@ as they land (with the commit), add new ones as they come up.
   the active workspace, so the app has windows on both. An app's window
   group belongs to its workspace: each workspace has its own group of
   the app's windows.
-- **Windowing modes** (Ben, 2026-10-29): auto-tiling becomes one of
-  several windowing modes. Deskbar's tray icon chooses the mode (not
-  just tiling on or off), per display-workspace as tiling is now, and
-  Preferences ▸ Windows sets the default one. Modes:
-  - none (the default): windows stay where they are put;
-  - Auto Tiling, as now;
-  - Focus: only the active window shows, zoomed. Dialogs, alerts and
-    floating windows still show over it. Choosing another window makes
-    that one the focused one. An app's windows are always grouped in
-    this mode, except its dialogs and floating windows.
+- ~~**Windowing modes**~~ (Ben, 2026-10-29; done: HACKING, "Desktop
+  shortcuts and tiling", shell/modes.rs): auto-tiling is one of three
+  modes, per workspace (and per display with a Deskbar on each). Deskbar's
+  tray icon shows the mode and opens Window Arrangement, which chooses
+  it; Preferences ▸ Windows sets the default; ⌃⌥⌘T and ⌃⌥⌘O, the palette
+  and `set_windowing_mode` too, each with its OSD. Standard (the default)
+  leaves windows where they are put; Auto-Tiling as before; Focus shows
+  only the active window, zoomed, its app's others grouped behind it as
+  tabs, dialogs, alerts and floating windows over it. Activating another
+  shows that one; the rest are covered (not drawn, no input, ready to
+  show at once). Leaving Focus puts each window back; arranging commands
+  leave it for Standard. Old auto-tiling settings are read as modes.
 - ~~**Spotlight the chosen app while switching**~~ (Ben, 2026-10-28;
   done: HACKING, "Twitcher", spotlight.rs): while ⌘Tab (or ⌘\`) is
   held a moment, everything but the chosen app's windows (and their

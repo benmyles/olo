@@ -161,6 +161,10 @@ impl WindowElement {
         location: Point<f64, Logical>,
         window_type: WindowSurfaceType,
     ) -> Option<(PointerFocusTarget, Point<i32, Logical>)> {
+        // Behind the window Focus shows (`shell::modes`).
+        if self.meta().covered.get() {
+            return None;
+        }
         if self.on_decoration(location) {
             return Some((PointerFocusTarget::SSD(SSD(self.clone())), Point::default()));
         }
@@ -522,8 +526,10 @@ impl SpaceElement for WindowElement {
         }
     }
     fn is_in_input_region(&self, point: &Point<f64, Logical>) -> bool {
-        self.on_decoration(*point)
-            || !self.tab_only() && SpaceElement::is_in_input_region(&self.0, &(*point - self.client_render_offset().to_f64()))
+        // (Behind the window Focus shows: nothing, `shell::modes`.)
+        !self.meta().covered.get()
+            && (self.on_decoration(*point)
+                || !self.tab_only() && SpaceElement::is_in_input_region(&self.0, &(*point - self.client_render_offset().to_f64())))
     }
     fn z_index(&self) -> u8 {
         SpaceElement::z_index(&self.0)

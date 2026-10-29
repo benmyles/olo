@@ -1,5 +1,5 @@
-//! Auto-tiling (Deskbar's tiles toggle, ⌃⌥⌘T, `Request::SetAutoTiling`):
-//! while it is on for a display of a workspace (`TilingSettings::auto`),
+//! Auto-tiling (a windowing mode, `modes`: Deskbar's tray, ⌃⌥⌘T,
+//! `Request::SetAutoTiling`): while it is a display's mode on a workspace,
 //! every window there is in a tile. A new one takes half of the window
 //! that had the focus (split along its longer side, as bspwm and
 //! Hyprland's dwindle do); a closed one's room goes to what was beside
@@ -667,11 +667,12 @@ struct Known {
     group: Option<u64>,
 }
 
-/// What ⌃⌘Z puts back: a tree as it was, or auto-tiling off again.
+/// What ⌃⌘Z puts back: a tree as it was, or the windowing mode there was
+/// before auto-tiling.
 #[derive(Debug, Clone)]
 enum Undo {
     Tree((u32, String), Option<Node>),
-    TurnedOn(u32, Vec<String>),
+    TurnedOn(u32, Vec<String>, olo_protocol::WindowingMode),
 }
 
 /// app_server's auto-tiling: a tree per workspace and display (by
@@ -763,7 +764,7 @@ fn fit(r: Rectangle<i32, Logical>, min: smithay::utils::Size<i32, Logical>, area
     Rectangle::new(Point::from((x, y)), smithay::utils::Size::from((w, h)))
 }
 
-fn fullscreen(w: &WindowElement) -> bool {
+pub(super) fn fullscreen(w: &WindowElement) -> bool {
     let WindowSurface::Wayland(t) = w.0.underlying_surface();
     t.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Fullscreen))
 }
@@ -775,7 +776,7 @@ fn area_part(area: Rectangle<i32, Logical>, p: Point<f64, Logical>) -> (f32, f32
 impl<B: Backend + 'static> AnvilState<B> {
     /// Whether auto-tiling is on for `output` on `workspace`.
     pub fn auto_on(&self, output: &Output, workspace: u32) -> bool {
-        self.settings.tiling.auto_tiling(workspace, &crate::desktop::display_key(output), self.settings.display.deskbar_on_every_display)
+        self.mode_of(output, workspace) == olo_protocol::WindowingMode::AutoTiling
     }
 
     /// Floated or tiled by hand, if it was.
@@ -899,7 +900,9 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// command changed its tree, or a kept place is due to go; trees of
     /// displays turned off are dropped.
     pub fn auto_tick(&mut self) {
-        if self.settings.tiling.auto.is_empty() && self.auto.trees.is_empty() {
+        let t = &self.settings.tiling;
+        let auto = olo_protocol::WindowingMode::AutoTiling;
+        if self.auto.trees.is_empty() && t.default_mode != auto && !t.modes.iter().any(|m| m.mode == auto) {
             return;
         }
         let now = Instant::now();
@@ -1302,34 +1305,29 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     // ---- turning it on and off -------------------------------------------
 
-    /// Auto-tiling on, off or (`on` left out) the other way: for
-    /// `workspace` (the one showing unless given) and, with a Deskbar on
-    /// every display, `output` (the active display unless given), else
-    /// all its displays. Whether it is on now.
+    /// Auto-tiling on, off (Standard) or (`on` left out) the other way, as
+    /// ⌃⌥⌘T: for `workspace` (the one showing unless given) and, with a
+    /// Deskbar on every display, `output` (the active display unless
+    /// given), else all its displays (`set_windowing_mode`). Whether it is
+    /// on now.
     pub fn set_auto_tiling(&mut self, on: Option<bool>, workspace: Option<u32>, output: Option<Output>) -> bool {
-        let ws = workspace.unwrap_or(self.workspace).min(self.settings.workspace_count.max(1) - 1);
+        use olo_protocol::WindowingMode as M;
+        let ws = workspace.unwrap_or(self.workspace);
         let Some(output) = output.or_else(|| self.active_output()) else { return false };
-        let each = self.settings.display.deskbar_on_every_display;
-        let was = self.auto_on(&output, ws);
-        let on = on.unwrap_or(!was);
-        let outputs: Vec<String> = if each { vec![output.name()] } else { self.space.outputs().map(|o| o.name()).collect() };
-        if on != was {
-            if ws == self.workspace && on {
-                let shown: Vec<Output> = self.space.outputs().filter(|o| outputs.contains(&o.name())).cloned().collect();
-                let windows: Vec<WindowElement> = shown.iter().flat_map(|o| self.windows_on(o)).collect();
-                self.remember_arrangement(&windows);
-                self.auto.undo = Some(Undo::TurnedOn(ws, outputs.clone()));
-            }
-            self.settings.tiling.set_auto_tiling(ws, &crate::desktop::display_key(&output), each, on);
-            if !on {
-                self.auto.forget(ws, &outputs);
-            }
-            crate::desktop::save_settings(&self.settings);
-            self.ipc.broadcast(olo_protocol::Event::SettingsChanged { settings: self.settings.clone() });
-            info!(workspace = ws, output = output.name(), on, "auto-tiling");
-        }
-        self.auto.dirty = true;
-        on
+        let on = on.unwrap_or(!self.auto_on(&output, ws));
+        self.set_windowing_mode(if on { M::AutoTiling } else { M::Standard }, Some(ws), Some(output)) == M::AutoTiling
+    }
+
+    /// Auto-tiling just turned on for these displays of `workspace`, from
+    /// `was`: ⌃⌘Z goes back to that.
+    pub(super) fn auto_turned_on(&mut self, workspace: u32, outputs: Vec<String>, was: olo_protocol::WindowingMode) {
+        self.auto.undo = Some(Undo::TurnedOn(workspace, outputs, was));
+    }
+
+    /// Auto-tiling turned off for these: their trees go (the windows stay
+    /// where they are, still tiled, so their edges still move together).
+    pub(super) fn auto_forget(&mut self, workspace: u32, outputs: &[String]) {
+        self.auto.forget(workspace, outputs);
     }
 
     /// Each display's auto-tiling on `workspace`, as the IPC tells it.
@@ -1507,8 +1505,8 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     /// ⌃⌘Z after a change to the tiles: the tree as it was (again, as it
-    /// is now); after turning auto-tiling on, off again with the windows
-    /// as they were. False if the last arrangement wasn't auto-tiling's.
+    /// is now); after turning auto-tiling on, the mode there was, with the
+    /// windows as they were. False if the last arrangement wasn't auto-tiling's.
     pub fn auto_undo(&mut self) -> bool {
         match self.auto.undo.take() {
             None => false,
@@ -1523,17 +1521,17 @@ impl<B: Backend + 'static> AnvilState<B> {
                 info!("undid an auto-tiling change");
                 true
             }
-            Some(Undo::TurnedOn(ws, outputs)) => {
+            Some(Undo::TurnedOn(ws, outputs, was)) => {
                 let each = self.settings.display.deskbar_on_every_display;
                 for o in self.space.outputs().filter(|o| outputs.contains(&o.name())).cloned().collect::<Vec<_>>() {
-                    self.settings.tiling.set_auto_tiling(ws, &crate::desktop::display_key(&o), each, false);
+                    self.settings.tiling.set_mode(ws, &crate::desktop::display_key(&o), each, was);
                 }
                 self.auto.forget(ws, &outputs);
                 crate::desktop::save_settings(&self.settings);
                 self.ipc.broadcast(olo_protocol::Event::SettingsChanged { settings: self.settings.clone() });
                 self.undo_arrangement();
-                self.show_indicator(crate::osd::Indicator::AutoTiling { on: false });
-                info!("undid turning auto-tiling on");
+                self.show_indicator(crate::osd::Indicator::Mode(was));
+                info!(?was, "undid turning auto-tiling on");
                 true
             }
         }

@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Default windowing mode in Preferences
+
+*11:05* — Preferences ▸ Windows chooses the mode a workspace starts in; Deskbar's tray chooses each workspace's own.
+
+![Default windowing mode in Preferences](2026-10-29/110558-default-windowing-mode-in-preferences.png)
+
+### Choose the windowing mode from the tray
+
+*11:05* — Deskbar's tray icon is now the windowing mode (Standard, Auto-Tiling or Focus) of this workspace on this display: either click opens the modes, then the arranging commands. ⌃⌥⌘T and ⌃⌥⌘O toggle Auto-Tiling and Focus.
+
+![Choose the windowing mode from the tray](2026-10-29/110558-choose-the-windowing-mode-from-the-tray.png)
+
+### Focus mode
+
+*11:05* — A new windowing mode: only the active window shows, zoomed, with its app's other windows as tabs along the top and its dialogs and panels over it. Activating another window (Deskbar, ⌘Tab, the overview) shows that one instead.
+
+![Focus mode](2026-10-29/110557-focus-mode.png)
+
 ### Terminal's sudo window shows the whole command
 
 *10:30* — A command too long for the window is elided in the field; resting on it shows the whole command in a kit tip that extends past the window (egui's own was cut at its edge).

@@ -204,6 +204,8 @@ pub enum Shortcut {
     /// Auto-tiling on or off, for the workspace showing (and the active
     /// display, with a Deskbar on every display).
     AutoTile,
+    /// Focus mode on or off (`WindowingMode::Focus`), as `AutoTile`.
+    FocusMode,
     /// Every window on the active display, arranged by a model for what
     /// each shows (Smart Tiling, Preferences ▸ AI).
     SmartTile,
@@ -343,6 +345,7 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::PreviousDisplay, "previous-display", WINDOWS, "To the previous display", &["Ctrl+Alt+Cmd+Left"]),
     s(Shortcut::TileAll, "tile-all", ARRANGE, "Tile all windows on the display", &["Ctrl+Cmd+Return"]),
     s(Shortcut::AutoTile, "auto-tiling", ARRANGE, "Auto-tiling on or off", &["Ctrl+Alt+Cmd+T"]),
+    s(Shortcut::FocusMode, "focus-mode", ARRANGE, "Focus mode on or off", &["Ctrl+Alt+Cmd+O"]),
     s(Shortcut::SmartTile, "smart-tile", ARRANGE, "Smart tile all windows on the display", &["Ctrl+Shift+Cmd+Return"]),
     s(Shortcut::ZoomAll, "zoom-all", ARRANGE, "Zoom or unzoom all windows on the display", &["Ctrl+Alt+Cmd+Return"]),
     s(Shortcut::CascadeAll, "cascade-all", ARRANGE, "Cascade all windows on the display", &["Ctrl+Cmd+Backslash"]),
@@ -447,7 +450,61 @@ pub fn assign(changed: &mut ShortcutSettings, id: &str, chord: Option<Chord>) ->
     taken
 }
 
-/// Space around arranged windows (Preferences ▸ Windows), and grouping.
+/// How a display of a workspace arranges its windows (Deskbar's tray,
+/// `Request::SetWindowingMode`; Preferences ▸ Windows for where none is
+/// chosen).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum WindowingMode {
+    /// Windows stay where they are put.
+    #[default]
+    Standard,
+    /// Every window in a tile: a new one takes its share, a closed one's
+    /// room goes to its neighbours.
+    AutoTiling,
+    /// Only the active window shows, zoomed (with its app's other windows
+    /// grouped behind it, and dialogs and floating windows over it).
+    Focus,
+}
+
+impl WindowingMode {
+    pub const ALL: [WindowingMode; 3] = [WindowingMode::Standard, WindowingMode::AutoTiling, WindowingMode::Focus];
+
+    /// Its name in menus.
+    pub fn title(self) -> &'static str {
+        match self {
+            WindowingMode::Standard => "Standard",
+            WindowingMode::AutoTiling => "Auto-Tiling",
+            WindowingMode::Focus => "Focus",
+        }
+    }
+
+    /// What it does, in a few words.
+    pub fn detail(self) -> &'static str {
+        match self {
+            WindowingMode::Standard => "Windows stay put",
+            WindowingMode::AutoTiling => "New windows take a tile",
+            WindowingMode::Focus => "One window at a time",
+        }
+    }
+
+    /// Its name in commands and the IPC: `standard`, `auto_tiling`,
+    /// `focus`.
+    pub fn id(self) -> &'static str {
+        match self {
+            WindowingMode::Standard => "standard",
+            WindowingMode::AutoTiling => "auto_tiling",
+            WindowingMode::Focus => "focus",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<WindowingMode> {
+        WindowingMode::ALL.into_iter().find(|m| m.id() == id)
+    }
+}
+
+/// Space around arranged windows (Preferences ▸ Windows), grouping, and
+/// windowing modes.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct TilingSettings {
@@ -457,23 +514,48 @@ pub struct TilingSettings {
     pub margin: u32,
     /// Apps whose windows aren't grouped (by app id): every other app's
     /// windows share one frame with a tab each (app_server's `groups`).
+    /// In Focus mode an app's windows are grouped whatever this says.
     pub ungrouped_apps: Vec<String>,
-    /// Where auto-tiling is on (see [`TilingSettings::auto_tiling`]).
-    /// app_server keeps it as it is turned on and off
-    /// (`Request::SetAutoTiling`): a copy sent back with the rest of the
-    /// settings is ignored.
+    /// The windowing mode of every workspace (and display) that hasn't
+    /// one of its own (Preferences ▸ Windows).
+    pub default_mode: WindowingMode,
+    /// The workspaces (and displays of them) whose mode isn't the
+    /// default (see [`TilingSettings::mode`]). app_server keeps it as
+    /// modes are chosen (`Request::SetWindowingMode`): a copy sent back
+    /// with the rest of the settings is ignored.
+    pub modes: Vec<ModeChoice>,
+    /// Where auto-tiling was on, as settings kept it before windowing
+    /// modes: read into `modes` (`TilingSettings::upgrade`), never
+    /// written.
+    #[serde(skip_serializing)]
     pub auto: Vec<AutoTiling>,
 }
 
 impl Default for TilingSettings {
     fn default() -> Self {
-        TilingSettings { gap: 8, margin: 8, ungrouped_apps: Vec::new(), auto: Vec::new() }
+        TilingSettings {
+            gap: 8,
+            margin: 8,
+            ungrouped_apps: Vec::new(),
+            default_mode: WindowingMode::Standard,
+            modes: Vec::new(),
+            auto: Vec::new(),
+        }
     }
 }
 
-/// Auto-tiling on or off for a workspace (counting from 0), or for one of
-/// its displays (`display`, its `display_key`) while there is a Deskbar on
+/// A workspace's (counting from 0) windowing mode, or one of its
+/// displays' (`display`, its `display_key`) while there is a Deskbar on
 /// every display.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ModeChoice {
+    pub workspace: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display: Option<String>,
+    pub mode: WindowingMode,
+}
+
+/// Auto-tiling on or off, as settings kept it before windowing modes.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AutoTiling {
     pub workspace: u32,
@@ -483,28 +565,46 @@ pub struct AutoTiling {
 }
 
 impl TilingSettings {
-    /// Whether auto-tiling is on for the display `display` (its key) of
-    /// `workspace`. With a Deskbar on every display (`each`), each display
-    /// has its own, as its Deskbar shows; one not set yet has the
-    /// workspace's. Otherwise the workspace's covers all its displays.
-    pub fn auto_tiling(&self, workspace: u32, display: &str, each: bool) -> bool {
-        let find = |d: Option<&str>| self.auto.iter().find(|a| a.workspace == workspace && a.display.as_deref() == d).map(|a| a.on);
-        each.then(|| find(Some(display))).flatten().or_else(|| find(None)).unwrap_or(false)
+    /// Settings from before windowing modes: auto-tiling's ons and offs
+    /// as modes.
+    pub fn upgrade(&mut self) {
+        for a in std::mem::take(&mut self.auto) {
+            let mode = if a.on { WindowingMode::AutoTiling } else { WindowingMode::Standard };
+            if !self.modes.iter().any(|m| m.workspace == a.workspace && m.display == a.display) {
+                self.modes.push(ModeChoice { workspace: a.workspace, display: a.display, mode });
+            }
+        }
     }
 
-    /// Turn auto-tiling on or off for `display` of `workspace` (with
-    /// `each`, as `auto_tiling` reads it), or for the whole workspace,
-    /// whose displays then have none of their own.
-    pub fn set_auto_tiling(&mut self, workspace: u32, display: &str, each: bool, on: bool) {
+    /// The windowing mode of the display `display` (its key) of
+    /// `workspace`. With a Deskbar on every display (`each`), each display
+    /// has its own, as its Deskbar shows; one not chosen yet has the
+    /// workspace's. Otherwise the workspace's covers all its displays.
+    /// Not chosen at all: the default.
+    pub fn mode(&self, workspace: u32, display: &str, each: bool) -> WindowingMode {
+        let find = |d: Option<&str>| self.modes.iter().find(|a| a.workspace == workspace && a.display.as_deref() == d).map(|a| a.mode);
+        each.then(|| find(Some(display))).flatten().or_else(|| find(None)).unwrap_or(self.default_mode)
+    }
+
+    /// Whether auto-tiling is the mode there (as `mode` reads it).
+    pub fn auto_tiling(&self, workspace: u32, display: &str, each: bool) -> bool {
+        self.mode(workspace, display, each) == WindowingMode::AutoTiling
+    }
+
+    /// Choose the mode of `display` of `workspace` (with `each`, as
+    /// `mode` reads it), or of the whole workspace, whose displays then
+    /// have none of their own. Only what differs from what it would have
+    /// anyway is kept, so a workspace never chosen follows the default.
+    pub fn set_mode(&mut self, workspace: u32, display: &str, each: bool, mode: WindowingMode) {
         if each {
-            self.auto.retain(|a| !(a.workspace == workspace && a.display.as_deref() == Some(display)));
-            if self.auto_tiling(workspace, display, false) != on {
-                self.auto.push(AutoTiling { workspace, display: Some(display.to_owned()), on });
+            self.modes.retain(|a| !(a.workspace == workspace && a.display.as_deref() == Some(display)));
+            if self.mode(workspace, display, false) != mode {
+                self.modes.push(ModeChoice { workspace, display: Some(display.to_owned()), mode });
             }
         } else {
-            self.auto.retain(|a| a.workspace != workspace);
-            if on {
-                self.auto.push(AutoTiling { workspace, display: None, on });
+            self.modes.retain(|a| a.workspace != workspace);
+            if mode != self.default_mode {
+                self.modes.push(ModeChoice { workspace, display: None, mode });
             }
         }
     }
@@ -541,22 +641,40 @@ mod tests {
     }
 
     #[test]
-    fn auto_tiling_by_workspace_and_display() {
+    fn modes_by_workspace_and_display() {
+        use WindowingMode::*;
         let mut t = TilingSettings::default();
-        assert!(!t.auto_tiling(0, "eDP-1", false));
-        t.set_auto_tiling(1, "eDP-1", false, true);
+        assert_eq!(t.mode(0, "eDP-1", false), Standard);
+        t.set_mode(1, "eDP-1", false, AutoTiling);
         assert!(t.auto_tiling(1, "eDP-1", false) && t.auto_tiling(1, "DP-2", false) && !t.auto_tiling(0, "eDP-1", false));
         // A Deskbar on every display: each starts with the workspace's.
         assert!(t.auto_tiling(1, "DP-2", true));
-        t.set_auto_tiling(1, "DP-2", true, false);
-        assert!(!t.auto_tiling(1, "DP-2", true) && t.auto_tiling(1, "eDP-1", true));
+        t.set_mode(1, "DP-2", true, Focus);
+        assert_eq!((t.mode(1, "DP-2", true), t.mode(1, "eDP-1", true)), (Focus, AutoTiling));
         // One Deskbar again: the workspace's covers them all.
         assert!(t.auto_tiling(1, "DP-2", false));
-        t.set_auto_tiling(1, "eDP-1", false, false);
-        assert!(t.auto.is_empty(), "{:?}", t.auto);
+        t.set_mode(1, "eDP-1", false, Standard);
+        assert!(t.modes.is_empty(), "{:?}", t.modes);
         // Set to what it would be anyway: nothing kept.
-        t.set_auto_tiling(0, "eDP-1", true, false);
-        assert!(t.auto.is_empty());
+        t.set_mode(0, "eDP-1", true, Standard);
+        assert!(t.modes.is_empty());
+        // Those never chosen follow the default.
+        t.set_mode(2, "eDP-1", false, Standard);
+        t.default_mode = Focus;
+        assert_eq!((t.mode(0, "eDP-1", false), t.mode(2, "eDP-1", false)), (Focus, Focus));
+        t.set_mode(2, "eDP-1", false, Standard);
+        assert_eq!((t.mode(0, "eDP-1", false), t.mode(2, "eDP-1", false)), (Focus, Standard));
+    }
+
+    #[test]
+    fn auto_tiling_settings_become_modes() {
+        let old = r#"{"gap":8,"margin":8,"auto":[{"workspace":1,"on":true},{"workspace":2,"display":"DP-2","on":false}]}"#;
+        let mut t: TilingSettings = serde_json::from_str(old).unwrap();
+        t.upgrade();
+        assert_eq!(t.mode(1, "eDP-1", false), WindowingMode::AutoTiling);
+        assert_eq!(t.mode(2, "DP-2", true), WindowingMode::Standard);
+        let saved = serde_json::to_string(&t).unwrap();
+        assert!(!saved.contains("\"auto\"") && saved.contains("auto_tiling"), "{saved}");
     }
 
     #[test]

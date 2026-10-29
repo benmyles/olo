@@ -39,8 +39,8 @@ pub enum Indicator {
     Volume { level: f32, muted: bool },
     /// On or off, with a line saying for how long.
     Caffeinated { on: bool, detail: String },
-    /// Auto-tiling on or off.
-    AutoTiling { on: bool },
+    /// A windowing mode chosen (⌃⌥⌘T, ⌃⌥⌘O).
+    Mode(olo_protocol::WindowingMode),
 }
 
 /// How long the panel stays up after the last change.
@@ -75,8 +75,7 @@ impl Indicator {
             Indicator::Volume { .. } => "Volume",
             Indicator::Caffeinated { on: true, .. } => "Caffeinated",
             Indicator::Caffeinated { on: false, .. } => "Sleep allowed",
-            Indicator::AutoTiling { on: true } => "Auto-Tiling",
-            Indicator::AutoTiling { on: false } => "Auto-Tiling Off",
+            Indicator::Mode(m) => m.title(),
         }
     }
 
@@ -84,7 +83,7 @@ impl Indicator {
         match self {
             Indicator::Brightness(l) | Indicator::KeyboardBacklight(l) => Some(*l),
             Indicator::Volume { level, muted } => Some(if *muted { 0.0 } else { *level }),
-            Indicator::Caffeinated { .. } | Indicator::AutoTiling { .. } => None,
+            Indicator::Caffeinated { .. } | Indicator::Mode(_) => None,
         }
     }
 }
@@ -137,8 +136,7 @@ fn draw(ind: &Indicator, s: f64) -> Pixmap {
         None => {
             let detail = match ind {
                 Indicator::Caffeinated { detail, .. } => Some(detail.as_str()),
-                Indicator::AutoTiling { on: true } => Some("New windows take a tile"),
-                Indicator::AutoTiling { on: false } => Some("Windows stay where they are"),
+                Indicator::Mode(m) => Some(m.detail()),
                 _ => None,
             };
             if let Some(detail) = detail {
@@ -243,18 +241,41 @@ fn draw_icon(pm: &mut Pixmap, ind: &Indicator, (x, y, size): (f32, f32, f32), rg
                 pm.stroke_path(&marks, &paint, &stroke(2.2), id, None);
             }
         }
-        Indicator::AutoTiling { on } => {
-            // A screen in tiles, as dwindle splits it: a half, then a
-            // quarter and two eighths. Filled while on.
-            let tiles = [(3.0, 5.0, 12.0, 22.0), (17.0, 5.0, 12.0, 10.0), (17.0, 17.0, 5.0, 10.0), (24.0, 17.0, 5.0, 10.0)];
-            for (tx, ty, tw, th) in tiles {
-                let (a, b) = at(tx, ty);
-                let Some(r) = tiny_skia::Rect::from_xywh(a, b, tw * k, th * k) else { continue };
-                if *on {
+        Indicator::Mode(mode) => {
+            use olo_protocol::WindowingMode as M;
+            // Auto-Tiling: a screen in tiles, as dwindle splits it (a
+            // half, then a quarter and two eighths). Focus: one window in
+            // a viewfinder's corners. Standard: two windows, one over the
+            // other.
+            let (filled, outlined): (&[(f32, f32, f32, f32)], &[(f32, f32, f32, f32)]) = match mode {
+                M::AutoTiling => (&[(3.0, 5.0, 12.0, 22.0), (17.0, 5.0, 12.0, 10.0), (17.0, 17.0, 5.0, 10.0), (24.0, 17.0, 5.0, 10.0)], &[]),
+                M::Focus => (&[(9.0, 11.0, 14.0, 10.0)], &[]),
+                M::Standard => (&[(11.0, 12.0, 18.0, 15.0)], &[(3.0, 5.0, 18.0, 15.0)]),
+            };
+            for (tx, ty, tw, th) in outlined {
+                let (a, b) = at(*tx, *ty);
+                if let Some(r) = tiny_skia::Rect::from_xywh(a, b, tw * k, th * k) {
+                    pm.stroke_path(&PathBuilder::from_rect(r), &paint, &stroke(1.6), id, None);
+                }
+            }
+            for (tx, ty, tw, th) in filled {
+                let (a, b) = at(*tx, *ty);
+                if let Some(r) = tiny_skia::Rect::from_xywh(a, b, tw * k, th * k) {
                     pm.fill_rect(r, &paint, id, None);
-                } else {
-                    let path = PathBuilder::from_rect(r);
-                    pm.stroke_path(&path, &paint, &stroke(1.6), id, None);
+                }
+            }
+            if *mode == M::Focus {
+                let mut pb = PathBuilder::new();
+                for (cx, cy, dx, dy) in [(3.0, 5.0, 1.0, 1.0), (29.0, 5.0, -1.0, 1.0), (3.0, 27.0, 1.0, -1.0), (29.0, 27.0, -1.0, -1.0)] {
+                    let (a, b) = at(cx, cy + dy * 6.0);
+                    pb.move_to(a, b);
+                    let (a, b) = at(cx, cy);
+                    pb.line_to(a, b);
+                    let (a, b) = at(cx + dx * 7.0, cy);
+                    pb.line_to(a, b);
+                }
+                if let Some(path) = pb.finish() {
+                    pm.stroke_path(&path, &paint, &stroke(2.0), id, None);
                 }
             }
         }
@@ -349,7 +370,7 @@ mod tests {
         assert_eq!(lit(1.5), 16);
     }
 
-    /// `OLO_OSD_SHEET=/tmp/osd.png cargo test -p app_server osd_sheet`
+    /// `OLO_OSD_SHEET=/var/tmp/osd.png cargo test -p app_server osd_sheet`
     #[test]
     fn osd_sheet() {
         let Some(out) = std::env::var_os("OLO_OSD_SHEET") else { return };
@@ -360,21 +381,30 @@ mod tests {
             Indicator::Volume { level: 0.4, muted: true },
             Indicator::Caffeinated { on: true, detail: "For 1 hour, until 15:30".into() },
             Indicator::Caffeinated { on: false, detail: "Sleeps when idle".into() },
-            Indicator::AutoTiling { on: true },
-            Indicator::AutoTiling { on: false },
+            Indicator::Mode(olo_protocol::WindowingMode::Standard),
+            Indicator::Mode(olo_protocol::WindowingMode::AutoTiling),
+            Indicator::Mode(olo_protocol::WindowingMode::Focus),
         ];
+        // A row for each look at each scale, 1× to 2×.
         let mut rows = Vec::new();
-        for mode in [olo_theme::ThemeMode::Light, olo_theme::ThemeMode::Dark] {
-            theme::set(olo_theme::looks::palette(olo_theme::looks::DEFAULT, "", mode));
-            rows.push(inds.iter().map(|i| draw(i, 2.0)).collect::<Vec<_>>());
-        }
-        let (w, h) = (rows[0][0].width() + 16, rows[0][0].height() + 16);
-        let mut sheet = Pixmap::new(w * inds.len() as u32, h * 2).unwrap();
-        sheet.fill(tiny_skia::Color::from_rgba8(51, 102, 152, 255));
-        for (r, row) in rows.iter().enumerate() {
-            for (c, pm) in row.iter().enumerate() {
-                sheet.draw_pixmap((c as u32 * w + 8) as i32, (r as u32 * h + 8) as i32, pm.as_ref(), &Default::default(), tiny_skia::Transform::identity(), None);
+        for scale in [1.0, 1.25, 1.5, 1.75, 2.0] {
+            for mode in [olo_theme::ThemeMode::Light, olo_theme::ThemeMode::Dark] {
+                theme::set(olo_theme::looks::palette(olo_theme::looks::DEFAULT, "", mode));
+                rows.push(inds.iter().map(|i| draw(i, scale)).collect::<Vec<_>>());
             }
+        }
+        let w = rows.iter().map(|r| r.iter().map(|pm| pm.width() + 16).sum::<u32>()).max().unwrap();
+        let h = rows.iter().map(|r| r[0].height() + 16).sum::<u32>();
+        let mut sheet = Pixmap::new(w, h).unwrap();
+        sheet.fill(tiny_skia::Color::from_rgba8(51, 102, 152, 255));
+        let mut y = 8;
+        for row in &rows {
+            let mut x = 8;
+            for pm in row {
+                sheet.draw_pixmap(x, y, pm.as_ref(), &Default::default(), tiny_skia::Transform::identity(), None);
+                x += pm.width() as i32 + 16;
+            }
+            y += row[0].height() as i32 + 16;
         }
         sheet.save_png(out).unwrap();
     }

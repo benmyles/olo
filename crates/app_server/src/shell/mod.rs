@@ -49,6 +49,7 @@ mod element;
 mod grabs;
 pub mod deco;
 pub mod groups;
+pub mod modes;
 pub mod tabdrag;
 pub mod tiling;
 mod wm;

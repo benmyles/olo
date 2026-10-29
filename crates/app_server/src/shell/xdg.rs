@@ -68,8 +68,9 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
             // A window coming back asks for its old size in its first
             // configure (sent just below).
             state.claim_placement(surface);
-            // Auto-tiled: a new window opens in its tile.
+            // Auto-tiled: a new window opens in its tile; in Focus, zoomed.
             state.auto_claim(surface);
+            state.focus_claim(surface);
             handle_toplevel_commit(&mut state.space, surface);
         });
     }

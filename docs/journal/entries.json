@@ -1978,5 +1978,23 @@
   "title": "Terminal's sudo window shows the whole command",
   "caption": "A command too long for the window is elided in the field; resting on it shows the whole command in a kit tip that extends past the window (egui's own was cut at its edge).",
   "image": "2026-10-29/103033-terminal-s-sudo-window-shows-the-whole-command.png"
+ },
+ {
+  "time": "2026-10-29T11:05:57",
+  "title": "Focus mode",
+  "caption": "A new windowing mode: only the active window shows, zoomed, with its app's other windows as tabs along the top and its dialogs and panels over it. Activating another window (Deskbar, \u2318Tab, the overview) shows that one instead.",
+  "image": "2026-10-29/110557-focus-mode.png"
+ },
+ {
+  "time": "2026-10-29T11:05:58",
+  "title": "Choose the windowing mode from the tray",
+  "caption": "Deskbar's tray icon is now the windowing mode (Standard, Auto-Tiling or Focus) of this workspace on this display: either click opens the modes, then the arranging commands. \u2303\u2325\u2318T and \u2303\u2325\u2318O toggle Auto-Tiling and Focus.",
+  "image": "2026-10-29/110558-choose-the-windowing-mode-from-the-tray.png"
+ },
+ {
+  "time": "2026-10-29T11:05:58",
+  "title": "Default windowing mode in Preferences",
+  "caption": "Preferences \u25b8 Windows chooses the mode a workspace starts in; Deskbar's tray chooses each workspace's own.",
+  "image": "2026-10-29/110558-default-windowing-mode-in-preferences.png"
  }
 ]

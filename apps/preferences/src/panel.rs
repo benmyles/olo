@@ -75,7 +75,7 @@ impl Panel {
             "passwords" | "privacy" => Some(Panel::Security),
             "smart-tiling" | "models" => Some(Panel::Ai),
             "theme" | "icons" | "icon-theme" => Some(Panel::Themes),
-            "window" | "tiling" | "margins" | "gaps" => Some(Panel::Windows),
+            "window" | "tiling" | "margins" | "gaps" | "windowing" | "windowing-mode" | "focus-mode" => Some(Panel::Windows),
             _ => None,
         })
     }
@@ -182,7 +182,7 @@ impl Panel {
             // pressure and the Apple driver's click thresholds).
             Panel::Touchpad => (460, 586),
             Panel::Tracker => (300, 182),
-            Panel::Windows => (400, 440),
+            Panel::Windows => (400, 548),
             Panel::Workspaces => (360, 164),
             Panel::About => (444, 290),
         }
@@ -218,6 +218,7 @@ impl Panel {
             Panel::Windows => {
                 settings.tiling.gap = from.tiling.gap;
                 settings.tiling.margin = from.tiling.margin;
+                settings.tiling.default_mode = from.tiling.default_mode;
             }
             Panel::Touchpad => {
                 settings.touchpad = from.touchpad.clone();

@@ -68,6 +68,13 @@ pub struct WindowMeta {
     pub grouping: RefCell<crate::shell::groups::Grouping>,
     /// Where its tab goes among its group's (lowest first).
     pub tab_order: Cell<u64>,
+    /// It would be a tile on a display in Focus mode (`shell::modes`):
+    /// that display's number this turn.
+    pub focus_on: Cell<Option<u32>>,
+    /// Behind the window Focus shows: not drawn, not under the pointer.
+    pub covered: Cell<bool>,
+    /// Zoomed by Focus, and unzoomed when it leaves it.
+    pub focus_zoomed: Cell<bool>,
 }
 
 impl WindowElement {
@@ -89,6 +96,9 @@ impl WindowElement {
             joined: Cell::new(None),
             grouping: Default::default(),
             tab_order: Cell::new(crate::shell::groups::next_tab_order()),
+            focus_on: Cell::new(None),
+            covered: Cell::new(false),
+            focus_zoomed: Cell::new(false),
         });
         self.user_data().get::<WindowMeta>().unwrap()
     }
@@ -160,6 +170,7 @@ pub fn load_settings() -> Settings {
         Err(_) => Settings::default(),
     };
     adopt_old_app_ids(&mut settings);
+    settings.tiling.upgrade();
     settings
 }
 
@@ -265,6 +276,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     focused: focused.is_some() && w.wl_surface().map(|s| s.into_owned()) == focused,
                     chosen: self.twitch.as_ref().is_some_and(|t| t.rows.get(t.row).and_then(|r| r.1.get(t.index)) == Some(&meta.id)),
                     rolled: w.rolled(),
+                    covered: meta.covered.get(),
                     zoomed: self.is_zoomed(&w),
                     kept,
                     group: place.map(|(g, _)| g),
@@ -330,6 +342,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.sync_groups();
         self.auto_tick();
         self.keep_children_above();
+        self.focus_tick();
         self.note_recent();
         let infos = self.window_infos();
         if infos != self.last_window_infos {
@@ -349,6 +362,9 @@ impl<B: Backend + 'static> AnvilState<B> {
             window.meta().workspace.set(Some(self.workspace));
         }
         window.set_activate(false);
+        // Back, it is whatever Focus makes it then.
+        window.meta().focus_on.set(None);
+        window.meta().covered.set(false);
         *window.meta().left_among.borrow_mut() = self.display_frames();
         self.space.unmap_elem(window);
         self.parked.0.borrow_mut().push(window.clone());
@@ -1120,14 +1136,17 @@ impl<B: Backend + 'static> AnvilState<B> {
         if olo_xdg::themes::set(&settings.appearance.icon_theme) {
             crate::twitcher::theme_changed();
         }
-        // Group Windows on again for an app: its windows taken out by hand
-        // go back in too.
-        // Auto-tiling is kept as it is turned on and off, not from a
-        // client's copy (which may be older).
-        settings.tiling.auto = self.settings.tiling.auto.clone();
-        if settings.display.deskbar_on_every_display != self.settings.display.deskbar_on_every_display {
+        // Windowing modes are kept as they are chosen, not from a client's
+        // copy (which may be older).
+        settings.tiling.modes = self.settings.tiling.modes.clone();
+        settings.tiling.auto.clear();
+        if settings.display.deskbar_on_every_display != self.settings.display.deskbar_on_every_display
+            || settings.tiling.default_mode != self.settings.tiling.default_mode
+        {
             self.auto.changed();
         }
+        // Group Windows on again for an app: its windows taken out by hand
+        // go back in too.
         let regrouped: Vec<String> =
             self.settings.tiling.ungrouped_apps.iter().filter(|a| !settings.tiling.ungrouped_apps.contains(a)).cloned().collect();
         self.settings = settings;

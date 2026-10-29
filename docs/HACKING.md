@@ -1627,8 +1627,9 @@ icon on every item (`OUR_APPS` and `PREFERENCE_PANELS` icons, each
 them all when it's off.
 
 The Olo menu also has the desktop-wide commands app_server's shortcuts
-do: Window Arrangement (Tile All, Smart Tile, Zoom All, Cascade All, Fan
-Out, Cascade / Fan Out Others, Undo), Workspaces (go to one, Move Window
+do: Window Arrangement (the windowing modes, `mode:` and its id; Tile
+All, Smart Tile, Zoom All, Cascade All, Fan Out, Cascade / Fan Out
+Others, Undo), Workspaces (go to one, Move Window
 To, Workspaces preferences) and Show or Hide All Windows. Each is
 `arrange:` and a shortcut id, sent as `Request::RunShortcut` naming the
 window that last had the focus (`last_focused`: opening the menu takes
@@ -1658,9 +1659,12 @@ Clicking a heading goes to that workspace (on the one showing, or with
 the right button on any, it opens the Workspaces menu). One workspace:
 no headings, just the applications. Agents find the headings as
 `Button`s ("Workspace 2", `selected` for the one showing).
-Deskbar's tray has auto-tiling's toggle (`status::draw_tiles`) beside
-the Caffeinated cup: a click turns it on or off for the workspace (and
-the bar's display), a right-click opens Window Arrangement.
+Deskbar's tray has the windowing mode's icon (`status::draw_mode`:
+two windows one over the other for Standard, tiles for Auto-Tiling, a
+viewfinder for Focus, lit while it isn't Standard) beside the
+Caffeinated cup: either button opens Window Arrangement
+(`arrange_menu`), whose first items choose the mode for the workspace
+(and the bar's display), the one it has checked.
 Beside them is the approval key (`status::draw_key`, `approve.rs`):
 see "Approving without asking".
 
@@ -1851,14 +1855,47 @@ window zoomed again, and remembers what it replaced, so undoing again
 redoes. Agents run both with
 `{"type":"run_shortcut","id":"fan-out"}` / `"undo-arrangement"`.
 
-Auto-tiling (`shell/autotile.rs`; its module doc is the design): turned
-on and off by Deskbar's tiles beside the Caffeinated cup (and Auto-Tiling
-in its Olo menu), ⌃⌥⌘T (`auto-tiling`), the palette, or
-`{"type":"set_auto_tiling","on":true}` (`workspace`, `output` optional;
-`{"type":"auto_tiling"}` reads it, a display at a time). It is per
+Windowing modes (`shell/modes.rs`): each display of each workspace is
+Standard (windows stay where they are put; the default), Auto-Tiling or
+Focus. The mode is chosen from Deskbar's tray (or the Olo menu's Window
+Arrangement), ⌃⌥⌘T (`auto-tiling`) and ⌃⌥⌘O (`focus-mode`), which turn
+theirs on or back to Standard, the palette, or
+`{"type":"set_windowing_mode","mode":"focus"}` (`standard`,
+`auto_tiling`; `workspace` and `output` optional;
+`{"type":"windowing_mode"}` reads it, a display at a time). It is per
 workspace, and per display too while there is a Deskbar on every display
-(`TilingSettings::auto`, `auto_tiling` / `set_auto_tiling`, which keep
-only what differs). While it is on, each display of the workspace has a
+(`TilingSettings::modes`, `mode` / `set_mode`, which keep only what
+differs from `default_mode`, Preferences ▸ Windows' Default mode).
+Settings from before modes kept auto-tiling's ons and offs
+(`TilingSettings::auto`), which `upgrade` reads into `modes` on load.
+Each change shows its OSD (`osd::Indicator::Mode`: the mode's icon, name
+and `WindowingMode::detail`; `OLO_OSD_SHEET=/var/tmp/osd.png cargo test
+-p app_server osd_sheet` draws every indicator at every scale to look
+at). The arranging commands (tiling, Tile All, Cascade, Fan Out, Smart
+Tile) leave Focus for Standard first (`arranging`), saying so.
+
+Focus shows one window at a time on its display, zoomed: the front one
+of those that would be tiles (not floating, placed, not rolled up). Activating another (Deskbar, ⌘Tab,
+Twitcher, the overview, a click on a tab) raises it, so it is the one
+that shows. Every one of them is zoomed (`zoom_window`, so leaving Focus
+puts each back where it was; `focus_tick`), a new one opens zoomed
+(`focus_claim`, at its first commit), and one moved or sized by hand
+zooms again where it is let go. An app's windows are always one group
+there (`group_key`), so its others are tabs along the top. The rest are
+covered (`WindowMeta::covered`, `mark_covered`, from the stacking order
+just before drawing): not drawn and not under the pointer, but still in
+the space at the same place and size, so showing one is only raising it,
+and Deskbar, Twitcher and the overview have them as ever. Windows that
+float (`floats`, as for auto-tiling) show over the one in front
+(`keep_floating_over_focus`); a dialog (a window with a parent) is
+covered with its parent, and an app's own panel (no parent: StyledEdit's
+Find) while all its app's windows are, as BeOS's floating app feel did;
+an app of only panels (DeskCalc) always shows. `WindowInfo::covered`
+says which are covered, for agents.
+
+Auto-tiling (`shell/autotile.rs`; its module doc is the design) is the
+Auto-Tiling mode; `{"type":"set_auto_tiling","on":true}` and
+`{"type":"auto_tiling"}` still work, as the mode. While it is on, each display of the workspace has a
 tree of splits (`autotile::Node`, in `AutoTiler::trees` by workspace and
 connector), and every window there is a leaf of it, a window group one
 leaf. A new window fills an empty place if there is one, else splits

@@ -197,6 +197,24 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         use olo_protocol::Shortcut as S;
         let focused = target.or_else(|| self.focused_window());
         let workspaces = self.settings.workspace_count.max(1);
+        // Arranging leaves Focus mode (which zooms every window) first.
+        if matches!(
+            shortcut,
+            S::Tile(_)
+                | S::ZoomVertical
+                | S::ZoomHorizontal
+                | S::Restore
+                | S::Center
+                | S::TileAll
+                | S::SmartTile
+                | S::ZoomAll
+                | S::CascadeAll
+                | S::FanOut
+                | S::CascadeOthers
+                | S::FanOutOthers
+        ) {
+            self.arranging(focused.as_ref().and_then(|w| self.window_output(w)));
+        }
         match shortcut {
             // Resident: a second start hands --toggle to the running one.
             S::Palette => self.spawn_program("olo-palette", &["--toggle"]),
@@ -235,9 +253,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.tile_all();
                 }
             }
-            S::AutoTile => {
-                let on = self.set_auto_tiling(None, None, None);
-                self.show_indicator(crate::osd::Indicator::AutoTiling { on });
+            S::AutoTile | S::FocusMode => {
+                use olo_protocol::WindowingMode as M;
+                let mode = if shortcut == S::AutoTile { M::AutoTiling } else { M::Focus };
+                let Some(o) = self.active_output() else { return };
+                let to = if self.mode_of(&o, self.workspace) == mode { M::Standard } else { mode };
+                let now = self.set_windowing_mode(to, None, Some(o));
+                self.show_indicator(crate::osd::Indicator::Mode(now));
             }
             // Slow (a model looks at the screen): its own process, which
             // shows progress and sends Arrange when it has an answer.
@@ -249,7 +271,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let output = keep.as_ref().and_then(|w| self.window_output(w)).or_else(|| self.active_output());
                 if let Some(o) = output.filter(|o| self.auto_on(o, self.workspace)) {
                     self.set_auto_tiling(Some(false), None, Some(o));
-                    self.show_indicator(crate::osd::Indicator::AutoTiling { on: false });
+                    self.show_indicator(crate::osd::Indicator::Mode(olo_protocol::WindowingMode::Standard));
                 }
                 match shortcut {
                     S::CascadeAll | S::CascadeOthers => self.cascade_all(keep.as_ref()),

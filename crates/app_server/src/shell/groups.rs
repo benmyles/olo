@@ -324,10 +324,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         w.meta().placed.get() && w.decorated() && !is_dialog(t) && resizable(w)
     }
 
-    /// What `w` groups by, if anything.
+    /// What `w` groups by, if anything. In Focus mode (`modes`) an app's
+    /// windows are always grouped.
     pub fn group_key(&self, w: &WindowElement) -> Option<GroupKey> {
         let grouping = w.meta().grouping.borrow().clone();
         match grouping {
+            Grouping::Auto | Grouping::Alone if self.in_focus_mode(w) && !w.app_id().is_empty() => Some(GroupKey::App(w.app_id())),
             Grouping::Auto => {
                 let app = w.app_id();
                 self.groups_app(&app).then_some(GroupKey::App(app))

@@ -493,17 +493,42 @@ pub fn draw_screens(painter: &Painter, r: Rect, p: &Palette, count: usize) {
     }
 }
 
-/// Auto-tiling: a screen in tiles, a half beside two quarters, filled in
-/// the status-bar blue while it is on.
-pub fn draw_tiles(painter: &Painter, r: Rect, p: &Palette, on: bool) {
+/// The windowing mode: Standard, two windows one over the other, in
+/// outline; Auto-Tiling, a screen in tiles (a half beside two quarters);
+/// Focus, one window in a viewfinder's corners. The tiles are filled in the
+/// status-bar blue (the mode isn't Standard).
+pub fn draw_mode(painter: &Painter, r: Rect, p: &Palette, mode: olo_protocol::WindowingMode) {
+    use olo_protocol::WindowingMode as M;
     let ctx = painter.ctx();
+    let on = mode != M::Standard;
     let line = if on { ink(p) } else { dim(p) };
     let (l, t) = (r.left() + 1.0, r.top() + 2.0);
-    let tiles = [
-        Rect::from_min_max(pos2(l, t), pos2(l + 6.0, t + 12.0)),
-        Rect::from_min_max(pos2(l + 7.0, t), pos2(l + 14.0, t + 5.5)),
-        Rect::from_min_max(pos2(l + 7.0, t + 6.5), pos2(l + 14.0, t + 12.0)),
-    ];
+    let rect = |x0: f32, y0: f32, x1: f32, y1: f32| Rect::from_min_max(pos2(l + x0, t + y0), pos2(l + x1, t + y1));
+    let tiles = match mode {
+        M::Standard => {
+            // The window behind, as far as the one in front lets it show.
+            let (back, front) = (olo_kit::style::snap(ctx, rect(0.0, 0.0, 9.0, 8.0)), olo_kit::style::snap(ctx, rect(5.0, 4.0, 14.0, 12.0)));
+            olo_kit::style::hline(painter, back.left(), back.right(), back.top(), line);
+            olo_kit::style::vline(painter, back.left(), back.top(), back.bottom(), line);
+            olo_kit::style::vline_left_of(painter, back.right(), back.top(), front.top(), line);
+            olo_kit::style::hline_above(painter, back.left(), front.left(), back.bottom(), line);
+            vec![front]
+        }
+        M::AutoTiling => vec![rect(0.0, 0.0, 6.0, 12.0), rect(7.0, 0.0, 14.0, 5.5), rect(7.0, 6.5, 14.0, 12.0)],
+        M::Focus => {
+            let f = olo_kit::style::snap(ctx, rect(0.0, 0.0, 14.0, 12.0));
+            let (ax, ay) = (whole(painter, 4.0), whole(painter, 3.0));
+            olo_kit::style::hline(painter, f.left(), f.left() + ax, f.top(), line);
+            olo_kit::style::vline(painter, f.left(), f.top(), f.top() + ay, line);
+            olo_kit::style::hline(painter, f.right() - ax, f.right(), f.top(), line);
+            olo_kit::style::vline_left_of(painter, f.right(), f.top(), f.top() + ay, line);
+            olo_kit::style::hline_above(painter, f.left(), f.left() + ax, f.bottom(), line);
+            olo_kit::style::vline(painter, f.left(), f.bottom() - ay, f.bottom(), line);
+            olo_kit::style::hline_above(painter, f.right() - ax, f.right(), f.bottom(), line);
+            olo_kit::style::vline_left_of(painter, f.right(), f.bottom() - ay, f.bottom(), line);
+            vec![rect(3.0, 3.0, 11.0, 9.0)]
+        }
+    };
     for tile in tiles {
         let tile = olo_kit::style::snap(ctx, tile);
         if on {

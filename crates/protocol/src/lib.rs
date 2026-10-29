@@ -17,7 +17,7 @@ pub mod notifications;
 pub mod shortcuts;
 pub mod touchpad;
 pub use notifications::{AppNotifications, CardSize, HistoryView, NoteLook, NoteStyle, NotificationSettings, NotificationState};
-pub use shortcuts::{AutoTiling, Chord, Shortcut, ShortcutSettings, Tile, TilingSettings};
+pub use shortcuts::{AutoTiling, Chord, ModeChoice, Shortcut, ShortcutSettings, Tile, TilingSettings, WindowingMode};
 
 pub const SOCKET_ENV: &str = "OLO_SOCKET";
 
@@ -191,20 +191,44 @@ pub enum Request {
     /// tiled there (dragging an edge resizes the neighbours) and undoable
     /// with Undo Window Arrangement. Windows not listed stay as they are.
     Arrange { windows: Vec<Placement> },
+    /// Each display's windowing mode on a workspace (the one showing
+    /// unless given).
+    WindowingMode {
+        #[serde(default)]
+        workspace: Option<u32>,
+    },
+    /// Choose a windowing mode (Deskbar's tray): for a workspace (the one
+    /// showing unless given) and, with a Deskbar on every display, one
+    /// display of it (`output`, a connector; else the active display),
+    /// otherwise all its displays. Standard leaves windows where they
+    /// are put. Auto-Tiling tiles every window (see `SetAutoTiling`).
+    /// Focus shows only the active window, zoomed, with its app's other
+    /// windows grouped behind it and dialogs and floating windows over
+    /// it; activating another window (Deskbar, ⌘Tab, a click on a tab)
+    /// shows that one instead. Remembered (`TilingSettings::modes`); where
+    /// none is chosen, `TilingSettings::default_mode`.
+    SetWindowingMode {
+        mode: WindowingMode,
+        #[serde(default)]
+        workspace: Option<u32>,
+        #[serde(default)]
+        output: Option<String>,
+    },
     /// Whether auto-tiling is on for each display of a workspace (the
     /// one showing unless given).
     AutoTiling {
         #[serde(default)]
         workspace: Option<u32>,
     },
-    /// Auto-tiling on (`on`), off, or (left out) the other way, as
-    /// Deskbar's tiles toggle and ⌃⌥⌘T do. It is for a workspace (the one
+    /// Auto-tiling on (`on`), off (the Standard windowing mode), or
+    /// (left out) the other way, as ⌃⌥⌘T does. It is for a workspace (the one
     /// showing unless given) and, with a Deskbar on every display, one
     /// display of it (`output`, a connector; else the active display),
     /// otherwise all its displays. While it is on, every window there is
     /// tiled: a new one takes its share, a closed one's room goes to its
     /// neighbours, and dialogs and fixed-size windows float over the
-    /// tiles. Remembered (`TilingSettings::auto`).
+    /// tiles. Remembered (`TilingSettings::modes`); `SetWindowingMode` says
+    the rest.
     SetAutoTiling {
         #[serde(default)]
         on: Option<bool>,
@@ -276,6 +300,8 @@ pub enum Reply {
     Arrangement { output: String, area: Frame, windows: Vec<WindowInfo> },
     /// [`Request::AutoTiling`]'s answer: each display of the workspace.
     AutoTiling { workspace: u32, displays: Vec<AutoTilingInfo> },
+    /// [`Request::WindowingMode`]'s answer: each display of the workspace.
+    WindowingMode { workspace: u32, displays: Vec<WindowingModeInfo> },
     Power { status: PowerStatus },
     /// [`Request::AutoApproveSecret`]'s answer.
     Secret { password: String },
@@ -374,6 +400,10 @@ pub struct WindowInfo {
     /// Rolled up to just its tab.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rolled: bool,
+    /// Behind the window Focus mode shows on its display
+    /// ([`WindowingMode::Focus`]): not drawn until it is activated.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub covered: bool,
     /// Zoomed (its zoom box's state): filling the tiling area until it is
     /// zoomed again or restored.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -447,6 +477,13 @@ pub struct Frame {
 pub struct AutoTilingInfo {
     pub output: String,
     pub on: bool,
+}
+
+/// A display's (its connector) windowing mode.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WindowingModeInfo {
+    pub output: String,
+    pub mode: WindowingMode,
 }
 
 /// Where [`Request::Arrange`] puts a window: fractions (0–1) of the

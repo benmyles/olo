@@ -357,7 +357,10 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 None => Reply::Error { message: "no display to arrange".into() },
             },
-            Request::Arrange { windows } => match self.arrange(&windows) {
+            Request::Arrange { windows } => match {
+                self.arranging(None);
+                self.arrange(&windows)
+            } {
                 0 => Reply::Error { message: "none of those windows are on the active display".into() },
                 _ => {
                     self.readopt_active();
@@ -365,6 +368,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
             },
             Request::TileApp { app_id } => {
+                self.arranging(None);
                 if self.tile_app(&app_id) {
                     self.readopt_active();
                     Reply::Ok
@@ -390,6 +394,22 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Some(_) => Reply::Error { message: format!("window {id} isn't showing") },
                 None => not_found(),
             },
+            Request::WindowingMode { workspace } => {
+                let ws = workspace.unwrap_or(self.workspace);
+                Reply::WindowingMode { workspace: ws, displays: self.windowing_mode_infos(ws) }
+            }
+            Request::SetWindowingMode { mode, workspace, output } => {
+                let o = match output {
+                    Some(name) => match self.space.outputs().find(|o| o.name() == name).cloned() {
+                        Some(o) => Some(o),
+                        None => return Some(Reply::Error { message: format!("no display {name:?}") }),
+                    },
+                    None => None,
+                };
+                let ws = workspace.unwrap_or(self.workspace);
+                self.set_windowing_mode(mode, Some(ws), o);
+                Reply::WindowingMode { workspace: ws, displays: self.windowing_mode_infos(ws) }
+            }
             Request::AutoTiling { workspace } => {
                 let ws = workspace.unwrap_or(self.workspace);
                 Reply::AutoTiling { workspace: ws, displays: self.auto_tiling_infos(ws) }

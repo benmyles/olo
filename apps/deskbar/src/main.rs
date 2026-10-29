@@ -30,7 +30,7 @@ use olo_kit::{
     widgets,
 };
 use olo_protocol::{
-    Client, Event, OutputInfo, Reply, Request, WindowInfo,
+    Client, Event, OutputInfo, Reply, Request, WindowInfo, WindowingMode,
     shortcuts::{self, ShortcutSettings},
 };
 
@@ -122,7 +122,7 @@ struct Settings {
     clock: olo_protocol::ClockSettings,
     /// Whether the Olo menu shows icons.
     menu_icons: bool,
-    /// Grouping, and where auto-tiling is on.
+    /// Grouping, and each workspace's windowing mode.
     tiling: olo_protocol::TilingSettings,
     /// The person's shortcut keys.
     keys: ShortcutSettings,
@@ -198,10 +198,10 @@ struct Deskbar {
     /// Olo menu's commands while the menu holds the keyboard.
     last_focused: Option<u64>,
     /// Apps whose windows aren't grouped (`TilingSettings::ungrouped_apps`),
-    /// and where auto-tiling is on.
+    /// and each workspace's windowing mode.
     tiling: olo_protocol::TilingSettings,
-    /// The display of the Deskbar whose Olo menu is open (its Auto-Tiling
-    /// is that display's).
+    /// The display of the Deskbar whose Olo menu is open (its windowing
+    /// mode is that display's).
     menu_output: Option<String>,
     /// The person's changes to app_server's shortcuts, for the keys the
     /// Olo menu shows.
@@ -303,21 +303,20 @@ impl Deskbar {
         bar.output.clone().or_else(|| self.main_output())
     }
 
-    /// Whether auto-tiling is on for the workspace showing on `bar`'s
-    /// display.
-    fn auto_tiling(&self, bar: &Bar) -> bool {
+    /// The windowing mode of the workspace showing on `bar`'s display.
+    fn mode(&self, bar: &Bar) -> WindowingMode {
         let output = bar.output.clone().or_else(|| self.main_output());
         let key = self.outputs.iter().find(|o| Some(&o.name) == output.as_ref()).map(|o| o.key.clone()).unwrap_or_default();
-        self.tiling.auto_tiling(self.workspace.0, &key, self.every_display)
+        self.tiling.mode(self.workspace.0, &key, self.every_display)
     }
 
-    /// Auto-tiling on or off on `output`'s display (the active one for
-    /// None), for the workspace showing; at once here too, so the tray
-    /// shows it before app_server's answer.
-    fn set_auto_tiling(&mut self, output: Option<String>, on: bool) {
+    /// Choose the windowing mode of `output`'s display (the active one
+    /// for None), for the workspace showing; at once here too, so the
+    /// tray shows it before app_server's answer.
+    fn set_mode(&mut self, output: Option<String>, mode: WindowingMode) {
         let key = self.outputs.iter().find(|o| Some(&o.name) == output.as_ref()).map(|o| o.key.clone()).unwrap_or_default();
-        self.tiling.set_auto_tiling(self.workspace.0, &key, self.every_display, on);
-        request(Request::SetAutoTiling { on: Some(on), workspace: None, output });
+        self.tiling.set_mode(self.workspace.0, &key, self.every_display, mode);
+        request(Request::SetWindowingMode { mode, workspace: None, output });
     }
 
     fn main_output(&self) -> Option<String> {
@@ -401,13 +400,13 @@ impl Deskbar {
         self.windows = windows;
     }
 
-    fn olo_menu(&self, auto_tiling: bool) -> Menu {
-        let mut menu = self.olo_menu_with_icons(auto_tiling);
+    fn olo_menu(&self, mode: WindowingMode) -> Menu {
+        let mut menu = self.olo_menu_with_icons(mode);
         add_keys(&mut menu, &self.keys);
         if self.menu_icons { menu } else { without_icons(menu) }
     }
 
-    fn olo_menu_with_icons(&self, auto_tiling: bool) -> Menu {
+    fn olo_menu_with_icons(&self, mode: WindowingMode) -> Menu {
         let mut apps = Menu::new("Applications");
         // Only the ones that are installed (the suite is still growing).
         for (bin, name, icon) in OUR_APPS.iter().filter(|(bin, _, _)| self.installed.ours.contains(bin)) {
@@ -460,7 +459,7 @@ impl Deskbar {
             .item("Find…", "find", None)
             .icon("query")
             .separator()
-            .submenu(self.arrange_menu(auto_tiling))
+            .submenu(self.arrange_menu(mode))
             .icon("display")
             .submenu(self.workspaces_menu())
             .icon("workspaces")
@@ -495,14 +494,16 @@ impl Deskbar {
         self.last_focused.filter(|id| self.windows.iter().any(|w| w.id == *id && w.workspace == self.workspace.0))
     }
 
-    /// The arranging commands app_server's shortcuts do (`arrange:` and a
+    /// The windowing modes (`mode:` and its id), `mode` checked, and the
+    /// arranging commands app_server's shortcuts do (`arrange:` and a
     /// shortcut id), for the active display.
-    fn arrange_menu(&self, auto_tiling: bool) -> Menu {
+    fn arrange_menu(&self, mode: WindowingMode) -> Menu {
         let focused = self.focused_window().is_some();
-        Menu::new("Window Arrangement")
-            .item("Auto-Tiling", "arrange:auto-tiling", None)
-            .checked(auto_tiling)
-            .separator()
+        let mut menu = Menu::new("Window Arrangement");
+        for m in WindowingMode::ALL {
+            menu = menu.item(m.title(), format!("mode:{}", m.id()), None).checked(m == mode);
+        }
+        menu.separator()
             .item("Tile All", "arrange:tile-all", None)
             .item("Smart Tile", "arrange:smart-tile", None)
             .item("Zoom All", "arrange:zoom-all", None)
@@ -662,10 +663,10 @@ impl Deskbar {
             Some(("caff", arg)) => self.caffeine_command(arg),
             Some(("approve", arg)) => self.approve_command(cx, arg),
             // For the display of the Deskbar it was chosen on.
-            Some(("arrange", "auto-tiling")) => {
-                let output = self.menu_output.clone();
-                let on = self.bars.iter().find(|b| b.output == output || (output.is_none() && b.output.is_none())).map(|b| self.auto_tiling(b)).unwrap_or(false);
-                self.set_auto_tiling(output, !on);
+            Some(("mode", id)) => {
+                if let Some(mode) = WindowingMode::from_id(id) {
+                    self.set_mode(self.menu_output.clone(), mode);
+                }
             }
             Some(("arrange", id)) => request(Request::RunShortcut { id: id.into(), window: self.focused_window() }),
             Some(("notif", "history")) => spawn("olo-notifications --history"),
@@ -966,7 +967,12 @@ fn add_keys(menu: &mut Menu, changed: &ShortcutSettings) {
     for item in &mut menu.items {
         match item {
             MenuItem::Action(a) => {
-                let id = a.command.strip_prefix("arrange:").unwrap_or(&a.command);
+                // A mode's item shows the keys that turn it on or off.
+                let id = match a.command.as_str() {
+                    "mode:auto_tiling" => "auto-tiling",
+                    "mode:focus" => "focus-mode",
+                    c => c.strip_prefix("arrange:").unwrap_or(c),
+                };
                 if let Some(info) = shortcuts::by_id(id) {
                     a.keys = shortcuts::keys_for(info, changed).first().map(|c| c.symbols());
                 }
@@ -1118,12 +1124,12 @@ impl App for Deskbar {
         let tile_id = egui::Id::unique("olo-tile");
         let tile_resp = ui.interact(tile, tile_id, Sense::click());
         let tile_open = menu::is_open(ui.ctx(), tile_id);
-        let auto_tiling = self.auto_tiling(&self.bars[bar]);
+        let mode = self.mode(&self.bars[bar]);
         if tile_resp.clicked() && !tile_open {
             self.menu_output = self.bars[bar].output.clone();
             menu::request_popup(
                 ui.ctx(),
-                MenuRequest { menu: self.olo_menu(auto_tiling), source: tile_id, anchor: MenuAnchor::Below(tile), selected: None },
+                MenuRequest { menu: self.olo_menu(mode), source: tile_id, anchor: MenuAnchor::Below(tile), selected: None },
             );
             // What's installed now, for the next time.
             self.rescan();
@@ -1341,27 +1347,24 @@ impl App for Deskbar {
             self.run_command(cx, &cmd);
         }
 
-        // Auto-tiling, beside it: tiles, filled while every window on this
-        // display (of this workspace) takes a tile. Right-click for the
-        // Window Arrangement menu.
-        let tip = if auto_tiling {
-            "Auto-tiling: every window here takes a tile. Click to stop.".to_string()
-        } else {
-            "Click to tile every window here automatically (auto-tiling)".to_string()
+        // The windowing mode of this display (of this workspace), beside
+        // it: windows as they lie, tiles, or one window filling it, lit
+        // while it isn't Standard. Either button opens the Window
+        // Arrangement menu, the modes first.
+        let tip = match mode {
+            WindowingMode::Standard => "Windows stay where you put them. Click to choose a windowing mode.",
+            WindowingMode::AutoTiling => "Auto-Tiling: every window here takes a tile. Click to choose a windowing mode.",
+            WindowingMode::Focus => "Focus: only the active window shows here, zoomed. Click to choose a windowing mode.",
         };
-        let tiles = tray_item(ui, "auto-tiling", &|p, r| status::draw_tiles(p, r, &pal, auto_tiling), tip);
-        let tiles_id = egui::Id::unique("auto-tiling-menu");
-        if tiles.clicked() {
-            let output = self.bars[bar].output.clone();
-            self.set_auto_tiling(output, !auto_tiling);
-        }
-        if tiles.secondary_clicked() && !menu::is_open(ui.ctx(), tiles_id) {
+        let modes = tray_item(ui, "windowing-mode", &|p, r| status::draw_mode(p, r, &pal, mode), tip.into());
+        let modes_id = egui::Id::unique("windowing-mode-menu");
+        if (modes.clicked() || modes.secondary_clicked()) && !menu::is_open(ui.ctx(), modes_id) {
             self.menu_output = self.bars[bar].output.clone();
-            let mut m = self.arrange_menu(auto_tiling);
+            let mut m = self.arrange_menu(mode);
             add_keys(&mut m, &self.keys);
-            menu::request_popup(ui.ctx(), MenuRequest { menu: m, source: tiles_id, anchor: MenuAnchor::Below(tiles.rect), selected: None });
+            menu::request_popup(ui.ctx(), MenuRequest { menu: m, source: modes_id, anchor: MenuAnchor::Below(modes.rect), selected: None });
         }
-        if let Some(cmd) = menu::take_chosen(ui.ctx(), tiles_id) {
+        if let Some(cmd) = menu::take_chosen(ui.ctx(), modes_id) {
             self.run_command(cx, &cmd);
         }
 

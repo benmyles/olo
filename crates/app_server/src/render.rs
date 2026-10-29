@@ -336,7 +336,8 @@ where
         let mut dim = crate::spotlight::dim(&output.name(), area);
         for w in space.elements().rev() {
             let (Some(bbox), Some(at)) = (space.element_bbox(w), space.element_location(w)) else { continue };
-            if !region.overlaps(bbox) {
+            // Behind the window Focus shows (`shell::modes`).
+            if !region.overlaps(bbox) || w.meta().covered.get() {
                 continue;
             }
             if dim.as_ref().is_some_and(|(bright, _)| !bright.contains(&w.id())) {
@@ -416,6 +417,7 @@ where
         add_indicator(&mut output_render_elements, indicator);
 
         crate::shell::groups::mark_behind(space);
+        crate::shell::modes::mark_covered(space);
         output_render_elements.extend(space_elements(renderer, space, output, overview));
         // The wallpaper goes under everything, over the workspace colour.
         output_render_elements.extend(

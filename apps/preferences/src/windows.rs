@@ -1,17 +1,18 @@
-//! Windows: the space Olo leaves around the windows it arranges
-//! (`Settings::tiling`): a margin at the display's edges and a gap between
-//! windows, kept by tiling, zooming, Tile All, Smart Tile, cascading and
-//! fanning out. app_server fits tiled and zoomed windows to it as it
-//! changes, so the sliders move them live; the miniature shows the main
-//! display with three windows tiled.
+//! Windows: the windowing mode a workspace has until one is chosen for it
+//! in Deskbar's tray (`TilingSettings::default_mode`), and the space Olo
+//! leaves around the windows it arranges (`Settings::tiling`): a margin at
+//! the display's edges and a gap between windows, kept by tiling, zooming,
+//! Tile All, Smart Tile, cascading and fanning out. app_server fits tiled
+//! and zoomed windows to it as it changes, so the sliders move them live;
+//! the miniature shows the main display with three windows tiled.
 
 use olo_kit::{
     egui::{Color32, Rect, Sense, Ui, vec2},
     metrics::DESKBAR_WIDTH,
     style::{self, c},
-    widgets::{BBox, Slider, StringView},
+    widgets::{BBox, MenuField, Slider, StringView},
 };
-use olo_protocol::{OutputInfo, Settings};
+use olo_protocol::{OutputInfo, Settings, WindowingMode};
 
 /// The miniature's height; its width follows the display's shape.
 const MINIATURE_H: f32 = 180.0;
@@ -25,6 +26,20 @@ const TAB_H: f32 = 22.0;
 const MIN_TAB_H: f32 = 7.0;
 
 pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo]) {
+    BBox::new("Windowing Mode").show(ui, |ui| {
+        let names: Vec<&str> = WindowingMode::ALL.iter().map(|m| m.title()).collect();
+        let mut i = WindowingMode::ALL.iter().position(|m| *m == s.tiling.default_mode).unwrap_or(0);
+        ui.add(MenuField::new("default-mode", &mut i, &names).label("Default mode:"));
+        s.tiling.default_mode = WindowingMode::ALL[i];
+        let what = match s.tiling.default_mode {
+            WindowingMode::Standard => "Windows stay where you put them.",
+            WindowingMode::AutoTiling => "Each new window takes a tile, and the others make room.",
+            WindowingMode::Focus => "Only the active window shows, zoomed, with its dialogs over it.",
+        };
+        // Two lines for each mode, so nothing below moves as it changes.
+        let text = format!("{what} Choose a workspace's own from Deskbar's tray.");
+        ui.add(StringView::new(&text).dim(true).wrap(true));
+    });
     BBox::new("Space Around Arranged Windows").show(ui, |ui| {
         let t = &mut s.tiling;
         let mut margin = t.margin as f32;
