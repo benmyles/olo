@@ -311,8 +311,16 @@ impl<B: Backend + 'static> AnvilState<B> {
         Self::set_tile_state(&window, p.tile, p.part);
         window.decoration().rolled = p.rolled;
         window.decoration().tab_offset = p.tab_offset;
-        crate::shell::groups::note_restored(&p.grouping, p.tab_order);
-        *meta.grouping.borrow_mut() = p.grouping.clone();
+        // A window of an app started again is another window that only
+        // has the same title ("Untitled 2"): its place, not a group it
+        // was put in by hand (it would join another app's windows).
+        let restarted = p.pid > 0 && meta.owner.borrow().as_ref().is_some_and(|(pid, _)| *pid != p.pid);
+        let grouping = match &p.grouping {
+            crate::shell::groups::Grouping::With(_) if restarted => crate::shell::groups::Grouping::Auto,
+            g => g.clone(),
+        };
+        crate::shell::groups::note_restored(&grouping, p.tab_order);
+        *meta.grouping.borrow_mut() = grouping;
         if p.tab_order > 0 {
             meta.tab_order.set(p.tab_order);
         }

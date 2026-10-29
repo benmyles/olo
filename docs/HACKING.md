@@ -1042,7 +1042,10 @@ hands both to app_server, so clients never see the sockets disappear.
   connection (title, else app id, within a minute), or an app started
   again after its old process ended, with the very same app id and title
   within 15 minutes (Chrome restarting restores its windows; closed
-  windows are remembered in memory, up to 200). The place is claimed at
+  windows are remembered in memory, up to 200). An app started again
+  gets the place back but not a group the window was put in by hand
+  (`Grouping::With` becomes `Auto`): it is another window with the same
+  title ("Untitled 2"), and would join another app's windows. The place is claimed at
   the window's first commit, so its first configure already has the old
   size, and applied when it maps. A window stopped in between (claimed,
   not shown yet) is saved at the place it claimed, not the cascade slot

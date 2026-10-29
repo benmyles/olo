@@ -1737,6 +1737,11 @@ impl Kit {
                             // Zoomed or tiled to the size it was given: it
                             // keeps it (the app adapts, as to a hand resize).
                         } else if let want = (if s.held.0 { s.size.0 } else { size.0 }, if s.held.1 { s.size.1 } else { size.1 })
+                            // Within its own limits, as a compositor's size
+                            // is kept to them (Terminal keeping its columns
+                            // in smaller text would go under its minimum).
+                            && let want = s.options.max_size.map_or(want, |(mw, mh)| (want.0.min(mw), want.1.min(mh)))
+                            && let want = s.options.min_size.map_or(want, |(mw, mh)| (want.0.max(mw), want.1.max(mh)))
                             && s.size != want
                         {
                             // Zoomed along one axis: that way it keeps.

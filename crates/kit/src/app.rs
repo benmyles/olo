@@ -358,7 +358,8 @@ impl Cx {
     /// Ask app_server to resize the window's content area. A zoomed
     /// window keeps the size it was zoomed to, a tiled one its tile's,
     /// one zoomed along an axis its size that way (app_server says which
-    /// sides it holds with xdg's tiled states), and app_server keeps any
+    /// sides it holds with xdg's tiled states), the size is kept within
+    /// the window's own min and max, and app_server keeps any
     /// on its display (an app that grows it past the screen is asked to
     /// fit, down to its minimum). A covered window's new size lands at
     /// once all the same; a hidden one's when it is back (see
