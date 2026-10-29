@@ -510,11 +510,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         Some(inset(self.usable_area(output)?, self.settings.tiling.margin.min(400) as i32))
     }
 
-    /// The display shortcuts act on: the focused window's, else the
-    /// pointer's.
+    /// The display shortcuts act on: the focused window's, else the one a
+    /// workspace was last switched on or the pointer last pressed on,
+    /// else the pointer's.
     pub fn active_output(&self) -> Option<Output> {
         if let Some(w) = self.focused_window() {
             return self.window_output(&w);
+        }
+        // Where a workspace was last switched, or a press last landed.
+        if let Some(o) = self.last_display.as_ref().and_then(|name| self.space.outputs().find(|o| o.name() == *name)) {
+            return Some(o.clone());
         }
         let pointer = self.pointer.current_location();
         self.space.output_under(pointer).next().cloned().or_else(|| self.main_output())
@@ -950,7 +955,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// Put a window on `to`, where it was on `from` (a display that may be
     /// gone: then just a free cascade spot).
-    fn move_to_output(&mut self, window: &WindowElement, from: &Output, to: &Output) {
+    pub(crate) fn move_to_output(&mut self, window: &WindowElement, from: &Output, to: &Output) {
         let (Some(dest), Some(zoom_dest)) = (self.usable_area(to), self.tile_area(to)) else { return };
         let zoomed = self.is_zoomed(window);
         let along = Self::zoomed_along(window);

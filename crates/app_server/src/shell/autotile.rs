@@ -700,7 +700,7 @@ pub struct AutoTiler {
     /// how big) and the displays' room, and when everything was last
     /// looked at closely: while these stay the same, a turn of the loop
     /// costs next to nothing.
-    glance: (u32, Vec<(u64, Rectangle<i32, Logical>)>, Vec<Rectangle<i32, Logical>>),
+    glance: (Vec<olo_protocol::DisplayWorkspace>, Vec<(u64, Rectangle<i32, Logical>)>, Vec<Rectangle<i32, Logical>>),
     looked: Option<Instant>,
 }
 
@@ -832,17 +832,18 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// In an auto-tiled display's tiles.
     pub fn auto_tiled(&self, w: &WindowElement) -> bool {
-        self.auto.trees.iter().any(|((ws, _), t)| *ws == self.workspace && t.contains(w.id()))
+        self.auto.trees.iter().any(|((ws, o), t)| *ws == self.showing_named(o) && t.contains(w.id()))
     }
 
-    /// Every window in this workspace's trees, and its tree's display.
+    /// Every window in the trees of the workspaces showing, and its
+    /// tree's display.
     fn auto_leaves(&self) -> HashMap<u64, String> {
-        self.auto.trees.iter().filter(|((ws, _), _)| *ws == self.workspace).flat_map(|((_, o), t)| t.windows().into_iter().map(move |id| (id, o.clone()))).collect()
+        self.auto.trees.iter().filter(|((ws, o), _)| *ws == self.showing_named(o)).flat_map(|((_, o), t)| t.windows().into_iter().map(move |id| (id, o.clone()))).collect()
     }
 
-    /// The tree `w` is in on this workspace, by key.
+    /// The tree `w` is in on the workspace its display shows, by key.
     pub(super) fn tree_of(&self, w: &WindowElement) -> Option<(u32, String)> {
-        self.auto.trees.iter().find(|((ws, _), t)| *ws == self.workspace && t.contains(w.id())).map(|(k, _)| k.clone())
+        self.auto.trees.iter().find(|((ws, o), t)| *ws == self.showing_named(o) && t.contains(w.id())).map(|(k, _)| k.clone())
     }
 
     /// The windows on `output` that are tiles: not floating, and shown
@@ -912,7 +913,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         // Nothing moved, came, went or restacked, and nothing asked: no
         // more to do this turn (the common case, as the pointer moves).
         let glance = (
-            self.workspace,
+            self.display_workspaces(),
             self.space.elements().filter_map(|w| Some((w.id(), self.space.element_geometry(w)?))).collect::<Vec<_>>(),
             self.space.outputs().filter_map(|o| self.tile_area(o)).collect::<Vec<_>>(),
         );
@@ -927,9 +928,9 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.auto.next = None;
         }
         let outputs: Vec<Output> = self.space.outputs().cloned().collect();
-        let on: Vec<&Output> = outputs.iter().filter(|o| self.auto_on(o, self.workspace)).collect();
+        let on: Vec<&Output> = outputs.iter().filter(|o| self.auto_on(o, self.showing(o))).collect();
         for o in outputs.iter().filter(|o| !on.contains(o)) {
-            if self.auto.trees.remove(&(self.workspace, o.name())).is_some() {
+            if self.auto.trees.remove(&(self.showing(o), o.name())).is_some() {
                 self.auto.seen.remove(&o.name());
             }
         }
@@ -938,7 +939,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             // there is now: only a change lays them out again.
             let mut units = self.auto_units_all(&self.auto_leaves());
             for o in on {
-                let key = (self.workspace, o.name());
+                let key = (self.showing(o), o.name());
                 let Some(area) = self.tile_area(o) else { continue };
                 let ids: Vec<(u64, smithay::utils::Size<i32, Logical>)> = units.remove(&o.name()).unwrap_or_default().iter().map(|w| (w.id(), self.min_frame(w))).collect();
                 if dirty || self.auto.seen.get(&o.name()).is_none_or(|(a, i)| *a != area || *i != ids) || !self.auto.trees.contains_key(&key) {
@@ -986,7 +987,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// One display's tree brought up to date with its windows, and laid
     /// out.
     fn auto_output(&mut self, output: &Output) {
-        let key = (self.workspace, output.name());
+        let key = (self.showing(&output), output.name());
         let Some(area) = self.tile_area(output) else { return };
         let now = Instant::now();
         let mut tree = self.auto.trees.remove(&key);
@@ -1095,7 +1096,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             let out_geo = self.space.output_geometry(output);
             let here = |p: &crate::layout::Placement| {
                 let middle = Point::from((p.x + p.width / 2, p.y + p.height / 2));
-                p.workspace == self.workspace && !p.minimized && out_geo.is_some_and(|g| g.contains(middle))
+                p.workspace == self.showing(output) && !p.minimized && out_geo.is_some_and(|g| g.contains(middle))
             };
             // Back already, on their way to their places (claimed, not
             // shown yet): room for each, by window.
@@ -1283,10 +1284,10 @@ impl<B: Backend + 'static> AnvilState<B> {
             return;
         }
         let Some(output) = self.window_output(&w) else { return };
-        if !self.auto_on(&output, self.workspace) || self.joins_a_group(&w) {
+        if !self.auto_on(&output, self.showing(&output)) || self.joins_a_group(&w) {
             return;
         }
-        let key = (self.workspace, output.name());
+        let key = (self.showing(&output), output.name());
         if self.auto.trees.get(&key).is_some_and(|t| t.contains(w.id())) {
             return;
         }
@@ -1303,19 +1304,24 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.auto_output(&output);
     }
 
-    /// `w` (not shown yet) will join a group of its app's on screen.
+    /// `w` (not shown yet) will join a group of its app's on screen, on
+    /// its display.
     fn joins_a_group(&self, w: &WindowElement) -> bool {
         let WindowSurface::Wayland(t) = w.0.underlying_surface();
         let Some(key) = self.group_key(w) else { return false };
+        let display = self.window_output(w);
         // (Not `decorated`: that is false until it answers its first
         // configure, and this is before it.)
-        w.will_be_decorated() && !super::groups::is_dialog(t) && resizable(w) && self.space.elements().any(|o| o != w && self.groupable(o) && self.group_key(o).as_ref() == Some(&key))
+        w.will_be_decorated()
+            && !super::groups::is_dialog(t)
+            && resizable(w)
+            && self.space.elements().any(|o| o != w && self.groupable(o) && self.group_key(o).as_ref() == Some(&key) && self.window_output(o) == display)
     }
 
     /// Floating windows over the tiles of auto-tiled displays, in the
     /// order they were.
     fn keep_floating_above(&mut self) {
-        if !self.auto.trees.keys().any(|(ws, _)| *ws == self.workspace) {
+        if !self.auto.trees.keys().any(|(ws, o)| *ws == self.showing_named(o)) {
             return;
         }
         let leaves = self.auto_leaves();
@@ -1330,14 +1336,13 @@ impl<B: Backend + 'static> AnvilState<B> {
     // ---- turning it on and off -------------------------------------------
 
     /// Auto-tiling on, off (Standard) or (`on` left out) the other way, as
-    /// ⌃⌥⌘T: for `workspace` (the one showing unless given) and, with a
-    /// Deskbar on every display, `output` (the active display unless
-    /// given), else all its displays (`set_windowing_mode`). Whether it is
-    /// on now.
+    /// ⌃⌥⌘T: for `output` (the active display unless given) on its
+    /// workspace `workspace` (the one showing unless given)
+    /// (`set_windowing_mode`). Whether it is on now.
     pub fn set_auto_tiling(&mut self, on: Option<bool>, workspace: Option<u32>, output: Option<Output>) -> bool {
         use olo_protocol::WindowingMode as M;
-        let ws = workspace.unwrap_or(self.workspace);
         let Some(output) = output.or_else(|| self.active_output()) else { return false };
+        let ws = workspace.unwrap_or_else(|| self.showing(&output));
         let on = on.unwrap_or(!self.auto_on(&output, ws));
         self.set_windowing_mode(if on { M::AutoTiling } else { M::Standard }, Some(ws), Some(output)) == M::AutoTiling
     }
@@ -1354,9 +1359,16 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.auto.forget(workspace, outputs);
     }
 
-    /// Each display's auto-tiling on `workspace`, as the IPC tells it.
-    pub fn auto_tiling_infos(&self, workspace: u32) -> Vec<olo_protocol::AutoTilingInfo> {
-        self.space.outputs().map(|o| olo_protocol::AutoTilingInfo { output: o.name(), on: self.auto_on(o, workspace) }).collect()
+    /// Each display's auto-tiling on its workspace `workspace` (the one
+    /// it shows unless given), as the IPC tells it.
+    pub fn auto_tiling_infos(&self, workspace: Option<u32>) -> Vec<olo_protocol::AutoTilingInfo> {
+        self.space
+            .outputs()
+            .map(|o| {
+                let ws = workspace.unwrap_or_else(|| self.showing(o));
+                olo_protocol::AutoTilingInfo { output: o.name(), on: self.auto_on(o, ws), workspace: ws }
+            })
+            .collect()
     }
 
     /// Float `w` over the tiles (`Some(true)`), tile it (`Some(false)`), or
@@ -1412,7 +1424,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// A tiling command for a tile: its part, the rest tiled around it.
     /// False if `w` isn't a tile (the command does as it always does).
     pub fn auto_tile_window(&mut self, w: &WindowElement, tile: Tile) -> bool {
-        if self.floats(w) && self.window_output(w).is_some_and(|o| self.auto_on(&o, self.workspace)) {
+        if self.floats(w) && self.window_output(w).is_some_and(|o| self.auto_on(&o, self.showing(&o))) {
             // A floating window tiled by hand is a tile from now on.
             self.set_floating(w, Some(false));
             self.auto_tick();
@@ -1485,7 +1497,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Tile All on an auto-tiled display: its tiles as even as can be.
     pub fn auto_balance(&mut self) -> bool {
         let Some(output) = self.active_output() else { return false };
-        let key = (self.workspace, output.name());
+        let key = (self.showing(&output), output.name());
         let Some(tree) = self.auto.trees.remove(&key) else { return false };
         let Some(area) = self.tile_area(&output) else {
             self.auto.trees.insert(key, tree);
@@ -1512,7 +1524,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Smart Tiling, Tile App and the like put windows where they chose
     /// on an auto-tiled display: the tree made again from where they are.
     pub fn auto_readopt(&mut self, output: &Output) {
-        let key = (self.workspace, output.name());
+        let key = (self.showing(&output), output.name());
         if let Some(tree) = self.auto.trees.remove(&key) {
             self.auto.undo = Some(Undo::Tree(key, Some(tree)));
         }
@@ -1523,7 +1535,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// display's windows where it chose: if that display is auto-tiled,
     /// its tree from there.
     pub fn readopt_active(&mut self) {
-        if let Some(o) = self.active_output().filter(|o| self.auto_on(o, self.workspace)) {
+        if let Some(o) = self.active_output().filter(|o| self.auto_on(o, self.showing(o))) {
             self.auto_readopt(&o);
         }
     }
@@ -1546,9 +1558,8 @@ impl<B: Backend + 'static> AnvilState<B> {
                 true
             }
             Some(Undo::TurnedOn(ws, outputs, was)) => {
-                let each = self.settings.display.deskbar_on_every_display;
                 for o in self.space.outputs().filter(|o| outputs.contains(&o.name())).cloned().collect::<Vec<_>>() {
-                    self.settings.tiling.set_mode(ws, &crate::desktop::display_key(&o), each, was);
+                    self.settings.tiling.set_mode(ws, &crate::desktop::display_key(&o), was);
                 }
                 self.auto.forget(ws, &outputs);
                 crate::desktop::save_settings(&self.settings);
@@ -1594,7 +1605,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.auto.dirty = true;
             return;
         };
-        let to = (self.workspace, output.name());
+        let to = (self.showing(&output), output.name());
         let (Some(area), true) = (self.tile_area(&output), self.auto.trees.contains_key(&to)) else {
             self.auto.dirty = true;
             return;

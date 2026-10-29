@@ -1,9 +1,11 @@
 //! Twitcher: the strip of app icons shown while ⌘Tab, ⌥Tab or ⌘\` is
-//! held, as on BeOS: ⌥Tab's this workspace's apps, ⌘Tab's a row for each
-//! workspace with windows on it (numbered at the left when there are more
-//! than one). With a Deskbar on every display,
-//! each display's windows are a column of their own, in an etched box
-//! named across its top edge as a BeOS BBox is, the displays in the order
+//! held, as on BeOS: ⌥Tab's the apps on the workspaces showing, ⌘Tab's a
+//! row for each workspace number with windows on it (numbered at the left
+//! when there are more than one). With more than one display (each has
+//! its own workspaces), each display's windows are a column of their own,
+//! in an etched box named across its top edge as a BeOS BBox is ("D1
+//! Studio Display", so a cell is that display's workspace of its row's
+//! number), the displays in the order
 //! they stand on the desk; the box of the display a copy of the panel is
 //! on has its little screen lit. `desktop::twitch_step` decides what is
 //! chosen; this draws it.
@@ -196,8 +198,8 @@ pub struct Row {
 pub struct Shown {
     /// Each row's cells, those of each display together, in display order.
     pub rows: Vec<Row>,
-    /// With a Deskbar on every display, the displays with windows, as they
-    /// stand left to right: the cells are grouped by them. Empty otherwise.
+    /// With more than one display, those with windows, as they stand left
+    /// to right: the cells are grouped by them. Empty otherwise.
     pub displays: Vec<Display>,
     pub row: usize,
     pub index: usize,

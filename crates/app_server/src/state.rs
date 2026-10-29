@@ -242,7 +242,15 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// The overview (⌃Space), while it is out or leaving.
     pub overview: Option<crate::overview::Overview>,
     pub parked: crate::desktop::Parked,
-    pub workspace: u32,
+    /// The workspace each display shows, by its `display_key` (so a
+    /// display unplugged and back shows the one it did): every display
+    /// has workspaces of its own. One not here shows its first.
+    pub showing: HashMap<String, u32>,
+    /// The display a workspace was last switched on (its connector): the
+    /// active one while no window has the focus.
+    pub last_display: Option<String>,
+    /// The active display subscribers were last told of.
+    pub told_active: Option<String>,
     pub settings: olo_protocol::Settings,
     pub ipc: crate::ipc::IpcState,
     /// Frame times and event-loop lateness, while watched (`timings`).
@@ -1111,7 +1119,9 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             renderdoc: renderdoc::RenderDoc::new().ok(),
             overview: None,
             parked: Default::default(),
-            workspace: 0,
+            showing: HashMap::new(),
+            last_display: None,
+            told_active: None,
             settings: {
                 let settings = crate::desktop::load_settings();
                 // `op` is there (or not) as Preferences ▸ Security says.
@@ -1134,8 +1144,9 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             groups: Default::default(),
             recording_shortcut: 0,
         };
-        // Back on the workspace that was showing, after an in-place restart.
-        state.workspace = crate::layout::showing(&state.layout, state.settings.workspace_count);
+        // Each display back on the workspace it showed, after an in-place
+        // restart.
+        state.showing = crate::layout::showing(&state.layout, state.settings.workspace_count);
         if let Some(name) = state.socket_name.clone() {
             match crate::ipc::init(&state.handle, &name) {
                 Ok(ipc) => state.ipc = ipc,

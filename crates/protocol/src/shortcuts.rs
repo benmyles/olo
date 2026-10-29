@@ -201,8 +201,7 @@ pub enum Shortcut {
     PreviousDisplay,
     /// Every window on the active display, in a grid.
     TileAll,
-    /// Auto-tiling on or off, for the workspace showing (and the active
-    /// display, with a Deskbar on every display).
+    /// Auto-tiling on or off, for the active display's workspace showing.
     AutoTile,
     /// Focus mode on or off (`WindowingMode::Focus`), as `AutoTile`.
     FocusMode,
@@ -225,9 +224,11 @@ pub enum Shortcut {
     UndoArrangement,
     /// Hide every window on this workspace, or bring them back.
     ShowDesktop,
+    /// The next / previous of the active display's workspaces (each
+    /// display has its own; the others stay as they are).
     NextWorkspace,
     PreviousWorkspace,
-    /// Workspace 1–9 (counting from 0 here).
+    /// The active display's workspace 1–9 (counting from 0 here).
     Workspace(u8),
     /// The focused window to the next / previous workspace (and along
     /// with it).
@@ -544,9 +545,10 @@ impl Default for TilingSettings {
     }
 }
 
-/// A workspace's (counting from 0) windowing mode, or one of its
-/// displays' (`display`, its `display_key`) while there is a Deskbar on
-/// every display.
+/// The windowing mode of a display's (`display`, its `display_key`)
+/// workspace (counting from 0); without a display (as older versions
+/// kept them), every display's workspace of that number that has none
+/// of its own.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModeChoice {
     pub workspace: u32,
@@ -576,36 +578,27 @@ impl TilingSettings {
         }
     }
 
-    /// The windowing mode of the display `display` (its key) of
-    /// `workspace`. With a Deskbar on every display (`each`), each display
-    /// has its own, as its Deskbar shows; one not chosen yet has the
-    /// workspace's. Otherwise the workspace's covers all its displays.
-    /// Not chosen at all: the default.
-    pub fn mode(&self, workspace: u32, display: &str, each: bool) -> WindowingMode {
+    /// The windowing mode of the display `display` (its key) on its
+    /// workspace `workspace`: its own, else one chosen for that
+    /// workspace on every display (as older versions kept them), else
+    /// the default.
+    pub fn mode(&self, workspace: u32, display: &str) -> WindowingMode {
         let find = |d: Option<&str>| self.modes.iter().find(|a| a.workspace == workspace && a.display.as_deref() == d).map(|a| a.mode);
-        each.then(|| find(Some(display))).flatten().or_else(|| find(None)).unwrap_or(self.default_mode)
+        find(Some(display)).or_else(|| find(None)).unwrap_or(self.default_mode)
     }
 
     /// Whether auto-tiling is the mode there (as `mode` reads it).
-    pub fn auto_tiling(&self, workspace: u32, display: &str, each: bool) -> bool {
-        self.mode(workspace, display, each) == WindowingMode::AutoTiling
+    pub fn auto_tiling(&self, workspace: u32, display: &str) -> bool {
+        self.mode(workspace, display) == WindowingMode::AutoTiling
     }
 
-    /// Choose the mode of `display` of `workspace` (with `each`, as
-    /// `mode` reads it), or of the whole workspace, whose displays then
-    /// have none of their own. Only what differs from what it would have
-    /// anyway is kept, so a workspace never chosen follows the default.
-    pub fn set_mode(&mut self, workspace: u32, display: &str, each: bool, mode: WindowingMode) {
-        if each {
-            self.modes.retain(|a| !(a.workspace == workspace && a.display.as_deref() == Some(display)));
-            if self.mode(workspace, display, false) != mode {
-                self.modes.push(ModeChoice { workspace, display: Some(display.to_owned()), mode });
-            }
-        } else {
-            self.modes.retain(|a| a.workspace != workspace);
-            if mode != self.default_mode {
-                self.modes.push(ModeChoice { workspace, display: None, mode });
-            }
+    /// Choose the mode of `display` on its workspace `workspace`. Only
+    /// what differs from what it would have anyway is kept, so a
+    /// workspace never chosen follows the default.
+    pub fn set_mode(&mut self, workspace: u32, display: &str, mode: WindowingMode) {
+        self.modes.retain(|a| !(a.workspace == workspace && a.display.as_deref() == Some(display)));
+        if self.mode(workspace, display) != mode {
+            self.modes.push(ModeChoice { workspace, display: Some(display.to_owned()), mode });
         }
     }
 }
@@ -644,26 +637,31 @@ mod tests {
     fn modes_by_workspace_and_display() {
         use WindowingMode::*;
         let mut t = TilingSettings::default();
-        assert_eq!(t.mode(0, "eDP-1", false), Standard);
-        t.set_mode(1, "eDP-1", false, AutoTiling);
-        assert!(t.auto_tiling(1, "eDP-1", false) && t.auto_tiling(1, "DP-2", false) && !t.auto_tiling(0, "eDP-1", false));
-        // A Deskbar on every display: each starts with the workspace's.
-        assert!(t.auto_tiling(1, "DP-2", true));
-        t.set_mode(1, "DP-2", true, Focus);
-        assert_eq!((t.mode(1, "DP-2", true), t.mode(1, "eDP-1", true)), (Focus, AutoTiling));
-        // One Deskbar again: the workspace's covers them all.
-        assert!(t.auto_tiling(1, "DP-2", false));
-        t.set_mode(1, "eDP-1", false, Standard);
+        assert_eq!(t.mode(0, "eDP-1"), Standard);
+        // Each display's workspaces have their own.
+        t.set_mode(1, "eDP-1", AutoTiling);
+        assert!(t.auto_tiling(1, "eDP-1") && !t.auto_tiling(1, "DP-2") && !t.auto_tiling(0, "eDP-1"));
+        t.set_mode(1, "DP-2", Focus);
+        assert_eq!((t.mode(1, "DP-2"), t.mode(1, "eDP-1")), (Focus, AutoTiling));
+        // A workspace's choice for every display, as kept before: a
+        // display without its own follows it.
+        t.modes.push(ModeChoice { workspace: 3, display: None, mode: AutoTiling });
+        assert!(t.auto_tiling(3, "HDMI-A-1"));
+        t.set_mode(3, "HDMI-A-1", Standard);
+        assert_eq!((t.mode(3, "HDMI-A-1"), t.mode(3, "eDP-1")), (Standard, AutoTiling));
+        t.modes.retain(|m| m.workspace != 3);
+        // Back to what it would be anyway: nothing kept.
+        t.set_mode(1, "eDP-1", Standard);
+        t.set_mode(1, "DP-2", Standard);
         assert!(t.modes.is_empty(), "{:?}", t.modes);
-        // Set to what it would be anyway: nothing kept.
-        t.set_mode(0, "eDP-1", true, Standard);
+        t.set_mode(0, "eDP-1", Standard);
         assert!(t.modes.is_empty());
         // Those never chosen follow the default.
-        t.set_mode(2, "eDP-1", false, Standard);
+        t.set_mode(2, "eDP-1", Standard);
         t.default_mode = Focus;
-        assert_eq!((t.mode(0, "eDP-1", false), t.mode(2, "eDP-1", false)), (Focus, Focus));
-        t.set_mode(2, "eDP-1", false, Standard);
-        assert_eq!((t.mode(0, "eDP-1", false), t.mode(2, "eDP-1", false)), (Focus, Standard));
+        assert_eq!((t.mode(0, "eDP-1"), t.mode(2, "eDP-1")), (Focus, Focus));
+        t.set_mode(2, "eDP-1", Standard);
+        assert_eq!((t.mode(0, "eDP-1"), t.mode(2, "eDP-1")), (Focus, Standard));
     }
 
     #[test]
@@ -671,8 +669,8 @@ mod tests {
         let old = r#"{"gap":8,"margin":8,"auto":[{"workspace":1,"on":true},{"workspace":2,"display":"DP-2","on":false}]}"#;
         let mut t: TilingSettings = serde_json::from_str(old).unwrap();
         t.upgrade();
-        assert_eq!(t.mode(1, "eDP-1", false), WindowingMode::AutoTiling);
-        assert_eq!(t.mode(2, "DP-2", true), WindowingMode::Standard);
+        assert_eq!(t.mode(1, "eDP-1"), WindowingMode::AutoTiling);
+        assert_eq!(t.mode(2, "DP-2"), WindowingMode::Standard);
         let saved = serde_json::to_string(&t).unwrap();
         assert!(!saved.contains("\"auto\"") && saved.contains("auto_tiling"), "{saved}");
     }

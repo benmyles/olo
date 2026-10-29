@@ -4,7 +4,8 @@
 //! one showing. Clicking a tab brings that window forward; moving or
 //! sizing the front one takes the others along.
 //!
-//! An app's windows group by themselves (`Grouping::Auto`), unless
+//! An app's windows group by themselves (`Grouping::Auto`), on each
+//! display (each display's workspace has its own groups), unless
 //! `TilingSettings::ungrouped_apps` lists it (Tracker's and Deskbar's
 //! Group Windows). By hand, as in Haiku's Stack & Tile (with ⌘ for its
 //! Option key; `tabdrag`), any window can be taken out of its group
@@ -120,8 +121,9 @@ pub struct Groups {
     away: Vec<(WindowElement, bool)>,
     /// Every window there was, to notice one closing.
     known: Vec<WindowElement>,
-    /// Each app group's number, kept while app_server runs.
-    numbers: Vec<(String, u64)>,
+    /// Each app group's number (an app's on each display), kept while
+    /// app_server runs.
+    numbers: Vec<((String, String), u64)>,
     /// Put in a group by hand since: not its leader, which keeps the
     /// group's frame and arrangement.
     pub joining: Vec<WindowElement>,
@@ -339,15 +341,18 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
     }
 
-    /// The groups on screen now, each back to front, with their keys.
-    fn current_groups(&self) -> (Vec<WindowElement>, Vec<(GroupKey, Vec<WindowElement>)>) {
+    /// The groups on screen now, each back to front, with their keys and
+    /// displays: each display's workspace has its own (an app's windows
+    /// on two displays are two groups, not pulled onto one).
+    fn current_groups(&self) -> (Vec<WindowElement>, Vec<((GroupKey, String), Vec<WindowElement>)>) {
         let loose = self.tab_drag.as_ref().and_then(|d| d.loose().then(|| d.window.clone()));
         let seen: Vec<WindowElement> = self.space.elements().filter(|w| self.groupable(w)).cloned().collect();
-        let mut by_key: Vec<(GroupKey, Vec<WindowElement>)> = Vec::new();
+        let mut by_key: Vec<((GroupKey, String), Vec<WindowElement>)> = Vec::new();
         // (Not the window being dragged on its own: it is in no group
         // until it is let go.)
         for w in seen.iter().filter(|w| Some(*w) != loose.as_ref()) {
             let Some(key) = self.group_key(w) else { continue };
+            let key = (key, self.window_output(w).map(|o| o.name()).unwrap_or_default());
             match by_key.iter_mut().find(|(k, _)| *k == key) {
                 Some((_, g)) => g.push(w.clone()),
                 None => by_key.push((key, vec![w.clone()])),
@@ -417,7 +422,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let mut numbers = before.numbers.clone();
         let mut list = Vec::new();
         let mut settling = Vec::new();
-        for (key, g) in &groups {
+        for ((key, display), g) in &groups {
             let leads = |w: &&WindowElement| !before.joining.contains(w) && was_settling(w).is_none();
             // Auto-tiled, its tile says where the group is: the window in
             // it leads (one just back from a restart too, settling or not);
@@ -477,11 +482,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             self.keep_together(g);
             let number = match key {
                 GroupKey::Id(n) => *n,
-                GroupKey::App(app) => match numbers.iter().find(|(a, _)| a == app) {
+                GroupKey::App(app) => match numbers.iter().find(|((a, d), _)| a == app && d == display) {
                     Some((_, n)) => *n,
                     None => {
                         let n = new_group_id();
-                        numbers.push((app.clone(), n));
+                        numbers.push(((app.clone(), display.clone()), n));
                         n
                     }
                 },

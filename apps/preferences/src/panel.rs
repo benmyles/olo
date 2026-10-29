@@ -183,7 +183,7 @@ impl Panel {
             Panel::Touchpad => (460, 586),
             Panel::Tracker => (300, 182),
             Panel::Windows => (400, 548),
-            Panel::Workspaces => (360, 164),
+            Panel::Workspaces => (360, 188),
             Panel::About => (444, 290),
         }
     }

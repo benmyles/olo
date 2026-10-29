@@ -210,8 +210,8 @@ fn main() {
   `activate` (bring a window forward and focus it, restoring it if it is
   minimized or on another workspace — via xdg-activation; use it when a
   forwarded launch asks for a window that is already open),
-  `on_this_workspace(id)` (the window is on the workspace showing, as
-  app_server last said; see Single instance), `set_path(id, path)` (the
+  `on_this_workspace(id)` (the window is on the workspace the active
+  display shows, as app_server last said; see Single instance), `set_path(id, path)` (the
   file or folder the window shows, also `WindowOptions::path`: its tab's
   menu then offers Open in Tracker, and its tree carries it as `path`),
   `copy` (text
@@ -257,12 +257,14 @@ fn main() {
   `apps::NEW_WINDOW`: Tracker then offers **New Window** on its program
   (or a link to it) while it runs, and Deskbar in its menu, forwarding `--new-window` to the
   running copy (`apps::app_id_of` maps `olo-x` to `olo.x`). Agents
-  do the same with `olo-x --new-window`. Each workspace has its own
+  do the same with `olo-x --new-window`. Each workspace (of each
+  display) has its own
   windows of an app (and so its own group of them): a launch, or opening
   a folder or document the app has a window for, brings forward only a
-  window on the workspace showing (`cx.on_this_workspace(id)`) and
-  otherwise opens a new one here, rather than activate one elsewhere,
-  which would go to its workspace. (Tracker's folders and StyledEdit's
+  window on this workspace, the one the active display shows
+  (`cx.on_this_workspace(id)`; one on another display is elsewhere),
+  and otherwise opens a new one here, rather than activate one
+  elsewhere, which would go to its workspace or display. (Tracker's folders and StyledEdit's
   bare launch do so, and Terminal's `--tab` goes to a window here; a
   document already open elsewhere is still brought forward there, as two
   windows on one file would disagree.) The kit knows where its windows
@@ -1037,8 +1039,10 @@ hands both to app_server, so clients never see the sockets disappear.
   the window's first commit, so its first configure already has the old
   size, and applied when it maps. A window stopped in between (claimed,
   not shown yet) is saved at the place it claimed, not the cascade slot
-  it waits in (`placement_of`). The workspace showing comes back too
-  (`Placement::showing`, `layout::showing`). Everything else is a new window and
+  it waits in (`placement_of`). Each display's workspace showing comes
+  back too (`Placement::displays`, by display key, `layout::showing`;
+  a layout saved before each display had its own has one for them all,
+  `Placement::showing`, kept under `layout::EVERY`). Everything else is a new window and
   opens on the display in use (`new_window_near`: beside the app's
   focused window, else under the pointer), including a running app
   opening a window again.
@@ -1263,8 +1267,10 @@ the shell (`$T start fz 2560x1600,1920x1080 --session --shell`) it opens
 and closes Terminal, StyledEdit and Tracker windows and drives random
 combinations of every arranging command, shortcut, switcher, workspace
 and display change, checking after each step that app_server answers,
-every shown window is on a display with its tab in reach, exactly one
-shown window has the keyboard, commands that shouldn't move other
+every shown window (on the workspace its display shows) is on a display
+with its tab in reach, one shown window at most has the keyboard (none
+only with several displays, the active one showing none), commands that
+shouldn't move other
 windows don't, and round trips (zoom/unzoom, tile/Restore, Undo, a
 workspace or display and back) come back exactly. It ⌘-drags tabs along,
 out of and into groups, and uses GroupWindow / UngroupWindow / MoveTab,
@@ -1613,19 +1619,22 @@ launcher lists them. The panel list Deskbar shows is
   `KEEP_SECS` unless Keep is clicked. Rotation is the picture turned
   clockwise (`desktop::rotation_transform`). The main display
   (`DisplaySettings::main`, else the first) gets layer surfaces that name
-  no output (Deskbar, the desktop): they carry `shell::AutoOutput` and
-  move when the main display changes or their output is unplugged. Those
-  called up from the keyboard to work where the person is
+  no output (the desktop): they carry `shell::AutoOutput` and move when
+  the main display changes or their output is unplugged. Those called up
+  from the keyboard to work where the person is
   (`shell::OPEN_WHERE_IN_USE`: the palette) open on the display in use
-  instead, `active_output()`: the focused window's, else the pointer's.
-  With more than one display, "Show Deskbar on every display"
-  (`DisplaySettings::deskbar_on_every_display`, off by default) gives
-  each its own Deskbar (one layer surface per output, `Bar` in
-  apps/deskbar), each listing only the applications with windows on its
+  instead, `active_output()`: the focused window's, else the display a
+  workspace was last switched on or the pointer last pressed on
+  (`AnvilState::last_display`), else the pointer's. Every display has
+  its own Deskbar (one layer surface per output, `Bar` in apps/deskbar,
+  each naming its output: one that named none would follow the main
+  display about), each listing only the applications with windows on its
   display, and only those windows (`WindowInfo::output`; a window whose
-  display isn't known counts as the main one's). The map draws a
-  Deskbar strip on every display then, and Twitcher groups each row by
-  display.
+  display isn't known counts as the main one's), and the map draws a
+  Deskbar strip on each. With more than one, each display goes by a
+  number, left to right from D0 (`olo_protocol::display_number`; the
+  map's and the settings box's names, "D1 Studio Display"), which names
+  its workspaces (`workspace_name`: "D1 Workspace 2").
   render.rs draws the layers itself, front to back: Overlay, the menus
   of the Background and Bottom layers (the desktop's right-click menu,
   `shell::lower_layer_menus`), Top (Deskbar), the windows, then the
@@ -1692,12 +1701,14 @@ Each item shows the keys the person has for it (`add_keys`:
 `shortcuts::keys_for` with `Settings::shortcuts`, sent on every
 settings change).
 
-With more than one workspace, Deskbar's applications are grouped as a
-BOutlineListView would group them, every workspace with windows and the
-one showing (even if it has none), always in order: each under a heading
-naming it (`workspace_heading`, `HEADING_H`), with only the
-applications that have windows there, each row's menu only those
-windows (`teams(display, Some(ws))`). A heading is a quiet caption, bold
+Every display has workspaces of its own (see "Workspaces, one set per
+display" below), and each display's Deskbar groups its applications as a
+BOutlineListView would group them, every workspace of that display with
+windows and the one it shows (even if it has none), always in order:
+each under a heading naming it (`workspace_heading`, `HEADING_H`; "D1
+Workspace 2" with more than one display, `Deskbar::workspace_name`),
+with only the applications that have windows there, each row's menu
+only those windows (`teams(display, Some(ws))`). A heading is a quiet caption, bold
 in the small size and dimmed toward the panel, in line with its
 applications' icons and the tray's date (`ICON_INSET` = `TRAY_TEXT`).
 The workspace showing is lit as a whole, heading and applications, as a
@@ -1709,18 +1720,28 @@ rows in it shade that ground for their focus, hover and separators
 (`Deskbar::ground`) as the others shade the panel's, so it follows every
 theme and colour set, light, dark and night; the other workspaces stay
 on the plain panel.
-Clicking a heading goes to that workspace (on the one showing, or with
-the right button on any, it opens the Workspaces menu). One workspace:
-no headings, just the applications. Agents find the headings as
-`Button`s ("Workspace 2", `selected` for the one showing).
-Deskbar's tray has the windowing mode's icon (`status::draw_mode`:
-two windows one over the other for Standard, tiles for Auto-Tiling, a
-viewfinder for Focus, lit while it isn't Standard) beside the
-Caffeinated cup: either button opens Window Arrangement
-(`arrange_menu`), whose first items choose the mode for the workspace
-(and the bar's display), the one it has checked.
-Beside them is the approval key (`status::draw_key`, `approve.rs`):
-see "Approving without asking".
+Clicking a heading goes to that workspace on its display
+(`SwitchWorkspace` with `output`); on the one showing it opens the
+Workspaces menu (that display's workspaces, and Move Window To). The
+right button opens the heading's menu (`heading_menu`,
+`heading_command`): Show All, Hide All and Close All for its windows
+(`ActivateAll`, `Minimize`, `Close`), Move to the same workspace of each
+other display, and Move All Windows To any workspace of any display
+(`Request::MoveWorkspace`). At its right end is that workspace's
+windowing mode (`status::draw_mode`: two windows one over the other for
+Standard, tiles for Auto-Tiling, a viewfinder for Focus, lit while it
+isn't Standard), there rather than in the tray so it reads as the
+workspace's: a click opens the modes for that display's workspace
+(`modes_menu`; for the one showing, all of Window Arrangement,
+`arrange_menu`), `menu_output` and `menu_workspace` saying which. Agents
+find the headings as `Button`s ("D1 Workspace 2", `selected` for the
+one showing).
+The tray's status icons (upgrade, agent screens, battery, Wi-Fi,
+volume, notifications, the Caffeinated cup and the approval key,
+`status::draw_key`, `approve.rs`: see "Approving without asking") sit on
+a 22 px grid in a recessed well, in as many rows as they need, shared
+out evenly among them and each row centred (eight are two rows of
+four).
 
 Clicking an app's row in Deskbar brings it forward with every window it
 has there, as a Mac's Dock does (BeOS's brought one forward):
@@ -1745,7 +1766,8 @@ when there are more than one), and so does ⌘\` for the focused app's
 windows; each app's cell is its most recently used window. Tab walks
 every cell in order of use (`AnvilState::recent`, kept by `note_recent`
 in `tick`, not while switching), so ⌘Tab goes back and forth between the
-last two apps wherever they are and ⌥Tab between the last two here; ←/→
+last two apps wherever they are and ⌥Tab between the last two here (the
+apps on the workspaces showing, every display's); ←/→
 walk the chosen row and ↑/↓ go to the row above or below (its most
 recent first). The keymap keeps whichever of ⌘ and ⌥ began switching
 (`keymap::Hold`): letting go of that one chooses, and the other changes
@@ -1754,16 +1776,17 @@ selection's colours, as Twitcher marks it (`style::selection_wash`; in
 the lit workspace showing, the menu's selection, so it stands out on
 it; `WindowInfo::chosen`, for its window; agents read `selected` on the
 row's `Button`). Showing a window on another
-workspace goes there, each workspace's stacking kept as it was when
-first shown. Esc puts everything back, workspace and focus too
-(`twitch_cancel`). With keyboard hints on, every cell carries a hint
+workspace takes its display there, each workspace's stacking kept as it
+was when first shown. Esc puts everything back, every display's
+workspace and the focus too (`twitch_cancel`, `Twitch::home`). With keyboard hints on, every cell carries a hint
 badge (`hints::badge_pixmap`, letters running across the rows,
 `twitcher::Shown::letter`) and typing its letter while ⌘ (or ⌥) is held
 chooses it (`twitch_pick`). The keys reach it as keymap actions
 (`SwitchMove`, `SwitchPick`, `SwitchCancel`) only while switching. With
-a Deskbar on every display (and more than one), the windows go by
-display as their Deskbars do (`twitch_displays`, left to right, the same
-names as Preferences ▸ Displays, numbered when two match): each display
+more than one display, the windows go by display as their Deskbars do
+(`twitch_displays`, left to right, named as Preferences ▸ Displays names
+them, "D1 Studio Display", so a cell is that display's workspace of its
+row's number): each display
 with windows is a column in an etched box, as a BeOS BBox (the kit's
 `BBox` lines, `Palette::shade`), named across its top edge beside a
 little screen that is lit on the display that copy of the panel is drawn
@@ -1784,16 +1807,47 @@ below the first window not named, so Deskbar, menus and Twitcher stay
 above it. Choosing fades it out (`spotlight::end(true)`); Esc and the
 lock end it at once.
 
+## Workspaces, one set per display (app_server desktop.rs)
+
+Every display has its own workspaces, `Settings::workspace_count` of
+them, and switches between them on its own: `AnvilState::showing` keeps
+each display's (by `display_key`, so a monitor unplugged and back shows
+the one it did). A window belongs to a workspace of a display: while it
+shows, the one its display shows (`workspace_of`, `shows`); hidden
+(another workspace, minimized), the one it was left on
+(`WindowMeta::workspace`) of the display it left (`WindowMeta::parked_on`,
+which `display_of` reads; a display gone, the main one's).
+`switch_workspace_on(output, n)` parks that display's windows and brings
+back the ones left on its workspace `n`, the keyboard going to the front
+one there (none if it has none, not another display's); the shortcuts,
+`switch_workspace`, act on the active display (`active_output`).
+`move_to_workspace` keeps a window on its display; `move_workspace(from,
+n, to, m)` (Deskbar's heading menu, `Request::MoveWorkspace`) moves
+every window of one display's workspace to another's, across displays
+as ⌃⌥⌘→ moves one (`move_to_output`, tiled or zoomed as it was, hidden
+ones staying hidden). Each display's desktop colour is its workspace's
+(`desktop_color(output)`); auto-tiling's trees are per display and
+workspace already (`(workspace, output)`), and every tick works on each
+display's showing. The IPC: `{"type":"workspaces"}` answers the active
+display's (`current`), the count, and each display's (`displays`:
+output, current, and which is `active`); `WorkspaceChanged` says the
+same, and is sent when another display becomes the active one too;
+`{"type":"switch_workspace","index":n,"output":"DP-1"}` (output left
+out: the active display); a window's `WindowInfo::workspace` is its
+display's. Fewer workspaces asked for: the windows on those gone join
+the last, and a display showing one goes to it.
+
 ## The overview (app_server overview.rs)
 
 ⌃Space (`Shortcut::Overview`, the palette, `{"type":"overview",
 "show":true}`) shows every display's workspaces at once, macOS's Mission
 Control with every workspace out together, where BeOS's Workspaces
 applet has outlines too small to tell apart. Each display's usable area
-(Deskbar left out, inside `MARGIN`) holds a pane per workspace with
-windows on it and the one showing (`panes`: the grid that makes them
-biggest, the last row centred), named above it as the desktop's icons
-are (bold for the one showing, whose edge is the focus colour). In each
+(Deskbar left out, inside `MARGIN`) holds a pane per workspace of that
+display with windows on it and the one it shows (`panes`: the grid that
+makes them biggest, the last row centred), named above it as the
+desktop's icons are ("D1 Workspace 2", `Pane::name`; bold for the one
+showing, whose edge is the focus colour). In each
 pane its windows are spread at one scale, no bigger than the pane's, in
 rows in the order they stand (`spread`, a binary search for the biggest
 scale that fits), lettered in reading order from `hints::LETTERS` with
@@ -1909,17 +1963,19 @@ window zoomed again, and remembers what it replaced, so undoing again
 redoes. Agents run both with
 `{"type":"run_shortcut","id":"fan-out"}` / `"undo-arrangement"`.
 
-Windowing modes (`shell/modes.rs`): each display of each workspace is
+Windowing modes (`shell/modes.rs`): each workspace of each display is
 Standard (windows stay where they are put; the default), Auto-Tiling or
-Focus. The mode is chosen from Deskbar's tray (or the Olo menu's Window
+Focus. The mode is chosen from its Deskbar heading (or the Olo menu's Window
 Arrangement), ⌃⌥⌘T (`auto-tiling`) and ⌃⌥⌘O (`focus-mode`), which turn
 theirs on or back to Standard, the palette, or
 `{"type":"set_windowing_mode","mode":"focus"}` (`standard`,
 `auto_tiling`; `workspace` and `output` optional;
-`{"type":"windowing_mode"}` reads it, a display at a time). It is per
-workspace, and per display too while there is a Deskbar on every display
+`{"type":"windowing_mode"}` reads it, each display's on the workspace it
+shows unless one is given). It is per workspace of each display
 (`TilingSettings::modes`, `mode` / `set_mode`, which keep only what
-differs from `default_mode`, Preferences ▸ Windows' Default mode).
+differs from `default_mode`, Preferences ▸ Windows' Default mode; a
+choice kept for a workspace on every display, as older versions kept
+them, still applies to each display without its own).
 Settings from before modes kept auto-tiling's ons and offs
 (`TilingSettings::auto`), which `upgrade` reads into `modes` on load.
 Each change shows its OSD (`osd::Indicator::Mode`: the mode's icon, name
@@ -2056,7 +2112,8 @@ Down / Up too): `TabView` steps through its tabs with it, the first one
 in the window, and so does Terminal; anything else with tabs should too.
 
 Window groups (shell/groups.rs): an app's top-level, decorated,
-resizable windows on the same workspace share one frame, with a tab
+resizable windows on the same workspace of the same display share one
+frame (`current_groups` keys them by app and display), with a tab
 each laid side by side along the top (`tab_bar`: each tab as wide as its
 title wants, or all an equal share if they don't fit, so tabs never
 overlap; `Decoration::tab_width`, `tab_offset`). `sync_groups` runs every

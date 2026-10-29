@@ -1,14 +1,17 @@
 //! Deskbar: the Olo menu, a status tray and the running applications,
-//! docked in the top-right corner of the screen as on BeOS. One, on the
-//! main display, shows every application; with Preferences ▸ Displays ▸
-//! Deskbar on every display, each display has its own, showing the
-//! applications with windows there (and only those windows).
+//! docked in the top-right corner of the screen as on BeOS. Every display
+//! has its own, showing the applications with windows there (and only
+//! those windows).
 //!
-//! With more than one workspace, the applications are grouped by
+//! Each display has its own workspaces. The applications are grouped by
 //! workspace, in order, each under its workspace's heading (as a
-//! BOutlineListView groups them): every workspace with windows, and the
-//! one showing, whose heading is in the focused tab's colour. Clicking a
-//! heading goes to that workspace.
+//! BOutlineListView groups them): every workspace of this display with
+//! windows, and the one showing, whose heading is in the focused tab's
+//! colour. With more than one display, a heading says whose ("D1
+//! Workspace 2"). Clicking a heading goes to that workspace; its right end
+//! is the workspace's windowing mode, to choose another; its menu (the
+//! right button) shows, hides, closes or moves all its windows, to any
+//! workspace of any display.
 //!
 //! Clicking an application brings it forward, every window of it there;
 //! the right button opens the menu of its windows, to choose one.
@@ -30,7 +33,7 @@ use olo_kit::{
     widgets,
 };
 use olo_protocol::{
-    Client, Event, OutputInfo, Reply, Request, WindowInfo, WindowingMode,
+    Client, DisplayWorkspace, Event, OutputInfo, Reply, Request, WindowInfo, WindowingMode,
     shortcuts::{self, ShortcutSettings},
 };
 
@@ -46,8 +49,8 @@ const ICON: f32 = 16.0;
 const ICON_INSET: f32 = TRAY_TEXT;
 /// The tray: the date and time on a row of their own, then a recessed
 /// well of status icons, each a 16 px glyph on a 22 px grid (so 6 px
-/// between neighbours, and 3 px from the well's edges), centred in rows
-/// of as many as fit.
+/// between neighbours, and 3 px from the well's edges), centred in as
+/// many rows as it takes, shared out evenly among them.
 const CLOCK_H: f32 = 20.0;
 /// Inset of the tray's well from the Deskbar's edges.
 const TRAY_INSET: f32 = 4.0;
@@ -89,7 +92,9 @@ impl Power {
 
 enum Msg {
     Windows(Vec<WindowInfo>),
-    Workspace(u32, u32),
+    /// The active display's workspace showing, how many each display
+    /// has, and each display's showing.
+    Workspace(u32, u32, Vec<DisplayWorkspace>),
     Status(status::Status),
     Power(olo_protocol::PowerStatus),
     Settings(Settings),
@@ -126,15 +131,14 @@ struct Settings {
     tiling: olo_protocol::TilingSettings,
     /// The person's shortcut keys.
     keys: ShortcutSettings,
-    /// A Deskbar on every display.
-    every_display: bool,
 }
 
 /// A Deskbar on a display.
 struct Bar {
     win: WindowId,
-    /// The display it is on (a connector); None for the first, which
-    /// app_server puts on the main display, until the displays are known.
+    /// The display it is on (a connector); None for one opened before the
+    /// displays were known (app_server keeps it on the main display), put
+    /// away for named ones once they are.
     output: Option<String>,
     height: f32,
 }
@@ -171,14 +175,17 @@ struct Team {
 
 struct Deskbar {
     proxy: olo_kit::Proxy,
-    /// One on the main display, or one on each display.
+    /// One on each display.
     bars: Vec<Bar>,
     outputs: Vec<OutputInfo>,
-    every_display: bool,
     windows: Vec<WindowInfo>,
     /// Team keys in order of first appearance.
     order: Vec<String>,
+    /// The active display's workspace showing, and how many each display
+    /// has.
     workspace: (u32, u32),
+    /// Each display's workspace showing.
+    showing: Vec<DisplayWorkspace>,
     status: status::Status,
     caffeinated: bool,
     /// A timed caffeinated stretch's end (seconds since the epoch).
@@ -200,9 +207,13 @@ struct Deskbar {
     /// Apps whose windows aren't grouped (`TilingSettings::ungrouped_apps`),
     /// and each workspace's windowing mode.
     tiling: olo_protocol::TilingSettings,
-    /// The display of the Deskbar whose Olo menu is open (its windowing
-    /// mode is that display's).
+    /// The display of the Deskbar whose Olo menu (or windowing mode menu)
+    /// is open: its windowing mode is that display's, and its workspaces
+    /// are switched.
     menu_output: Option<String>,
+    /// The workspace of that display whose windowing mode menu is open
+    /// (a heading's); None for the one showing.
+    menu_workspace: Option<u32>,
     /// The person's changes to app_server's shortcuts, for the keys the
     /// Olo menu shows.
     keys: ShortcutSettings,
@@ -295,28 +306,37 @@ impl Deskbar {
         })
     }
 
-    /// The display whose applications `bar` shows; None for all of them.
+    /// The display whose applications `bar` shows.
     fn shown_on(&self, bar: &Bar) -> Option<String> {
-        if !self.every_display {
-            return None;
-        }
         bar.output.clone().or_else(|| self.main_output())
     }
 
-    /// The windowing mode of the workspace showing on `bar`'s display.
-    fn mode(&self, bar: &Bar) -> WindowingMode {
-        let output = bar.output.clone().or_else(|| self.main_output());
-        let key = self.outputs.iter().find(|o| Some(&o.name) == output.as_ref()).map(|o| o.key.clone()).unwrap_or_default();
-        self.tiling.mode(self.workspace.0, &key, self.every_display)
+    /// The workspace display `display` shows (the active one's, if it
+    /// isn't known).
+    fn showing(&self, display: Option<&str>) -> u32 {
+        self.showing.iter().find(|d| Some(d.output.as_str()) == display).map_or(self.workspace.0, |d| d.current)
+    }
+
+    /// What `display`'s workspace `ws` is called: "Workspace 2", or with
+    /// several displays, "D1 Workspace 2".
+    fn workspace_name(&self, display: Option<&str>, ws: u32) -> String {
+        olo_protocol::workspace_name(display.and_then(|d| olo_protocol::display_number(&self.outputs, d)), ws)
+    }
+
+    /// The windowing mode of `display`'s workspace `ws`.
+    fn mode(&self, display: Option<&str>, ws: u32) -> WindowingMode {
+        let key = self.outputs.iter().find(|o| Some(o.name.as_str()) == display).map(|o| o.key.clone()).unwrap_or_default();
+        self.tiling.mode(ws, &key)
     }
 
     /// Choose the windowing mode of `output`'s display (the active one
-    /// for None), for the workspace showing; at once here too, so the
-    /// tray shows it before app_server's answer.
-    fn set_mode(&mut self, output: Option<String>, mode: WindowingMode) {
+    /// for None), on its workspace `ws` (the one showing for None); at
+    /// once here too, so its heading shows it before app_server's answer.
+    fn set_mode(&mut self, output: Option<String>, ws: Option<u32>, mode: WindowingMode) {
         let key = self.outputs.iter().find(|o| Some(&o.name) == output.as_ref()).map(|o| o.key.clone()).unwrap_or_default();
-        self.tiling.set_mode(self.workspace.0, &key, self.every_display, mode);
-        request(Request::SetWindowingMode { mode, workspace: None, output });
+        let at = ws.unwrap_or_else(|| self.showing(output.as_deref()));
+        self.tiling.set_mode(at, &key, mode);
+        request(Request::SetWindowingMode { mode, workspace: ws, output });
     }
 
     fn main_output(&self) -> Option<String> {
@@ -330,22 +350,15 @@ impl Deskbar {
         self.windows.iter().filter(move |w| on.is_none_or(|on| w.output.as_deref().or(main.as_deref()) == Some(on)))
     }
 
-    /// A Deskbar on each display, or one on the main display, as asked.
+    /// A Deskbar on each display (but those mirroring another), each
+    /// asking for its display by name: one that didn't (opened before the
+    /// displays were known) would follow the main display about, and its
+    /// own would be left without.
     fn sync_bars(&mut self, cx: &mut Cx) {
-        let main = self.main_output();
-        let wanted: Vec<Option<String>> = if self.outputs.is_empty() {
-            vec![None]
-        } else if self.every_display {
-            self.outputs.iter().filter(|o| o.mirror_of.is_none()).map(|o| Some(o.name.clone())).collect()
-        } else {
-            vec![main.clone()]
-        };
-        // The first, on the main display from the start, is that one's.
-        if let Some(bar) = self.bars.iter_mut().find(|b| b.output.is_none())
-            && main.is_some()
-        {
-            bar.output = main;
+        if self.outputs.is_empty() {
+            return;
         }
+        let wanted: Vec<Option<String>> = self.outputs.iter().filter(|o| o.mirror_of.is_none()).map(|o| Some(o.name.clone())).collect();
         let (keep, gone): (Vec<Bar>, Vec<Bar>) = std::mem::take(&mut self.bars).into_iter().partition(|b| wanted.contains(&b.output));
         self.bars = keep;
         for output in wanted {
@@ -461,7 +474,7 @@ impl Deskbar {
             .separator()
             .submenu(self.arrange_menu(mode))
             .icon("display")
-            .submenu(self.workspaces_menu())
+            .submenu(self.workspaces_menu(self.menu_output.as_deref()))
             .icon("workspaces")
             .item("Show or Hide All Windows", "arrange:show-desktop", None)
             .icon("desktop")
@@ -491,7 +504,7 @@ impl Deskbar {
     /// moved from), if any: the last one, as opening this menu takes the
     /// focus.
     fn focused_window(&self) -> Option<u64> {
-        self.last_focused.filter(|id| self.windows.iter().any(|w| w.id == *id && w.workspace == self.workspace.0))
+        self.last_focused.filter(|id| self.windows.iter().any(|w| w.id == *id && w.workspace == self.showing(w.output.as_deref())))
     }
 
     /// The windowing modes (`mode:` and its id), `mode` checked, and the
@@ -499,10 +512,8 @@ impl Deskbar {
     /// shortcut id), for the active display.
     fn arrange_menu(&self, mode: WindowingMode) -> Menu {
         let focused = self.focused_window().is_some();
-        let mut menu = Menu::new("Window Arrangement");
-        for m in WindowingMode::ALL {
-            menu = menu.item(m.title(), format!("mode:{}", m.id()), None).checked(m == mode);
-        }
+        let mut menu = self.modes_menu(mode);
+        menu.title = "Window Arrangement".into();
         menu.separator()
             .item("Tile All", "arrange:tile-all", None)
             .item("Smart Tile", "arrange:smart-tile", None)
@@ -520,28 +531,95 @@ impl Deskbar {
             .item("Windows Preferences…", "pref:windows", None)
     }
 
-    /// Go to a workspace, or move the focused window to one.
-    fn workspaces_menu(&self) -> Menu {
-        let (current, count) = (self.workspace.0, self.workspace.1.clamp(1, 9));
+    /// The windowing modes (`mode:` and its id), `mode` checked.
+    fn modes_menu(&self, mode: WindowingMode) -> Menu {
+        let mut menu = Menu::new("Windowing Mode");
+        for m in WindowingMode::ALL {
+            menu = menu.item(m.title(), format!("mode:{}", m.id()), None).checked(m == mode);
+        }
+        menu
+    }
+
+    /// Go to one of `display`'s workspaces, or move the focused window to
+    /// one of its display's.
+    fn workspaces_menu(&self, display: Option<&str>) -> Menu {
+        let (current, count) = (self.showing(display), self.workspace.1.clamp(1, 9));
         let mut m = Menu::new("Workspaces");
         for i in 0..count {
-            m = m.item(format!("Workspace {}", i + 1), format!("arrange:workspace-{}", i + 1), None).checked(i == current);
+            m = m.item(self.workspace_name(display, i), format!("workspace:{i}"), None).checked(i == current);
+            if let Some(keys) = shortcuts::by_id(&format!("workspace-{}", i + 1)).and_then(|info| shortcuts::keys_for(info, &self.keys).first().map(|c| c.symbols())) {
+                m = m.keys(keys);
+            }
         }
-        if count > 1 && self.focused_window().is_some() {
+        if let Some(w) = self.focused_window().and_then(|id| self.windows.iter().find(|w| w.id == id))
+            && count > 1
+        {
             let mut to = Menu::new("Move Window To");
             for i in 0..count {
-                to = to.item(format!("Workspace {}", i + 1), format!("arrange:window-to-workspace-{}", i + 1), None).enabled(i != current);
+                let name = self.workspace_name(w.output.as_deref(), i);
+                to = to.item(name, format!("arrange:window-to-workspace-{}", i + 1), None).enabled(i != w.workspace);
             }
             m = m.separator().submenu(to);
         }
         m.separator().item("Workspaces Preferences…", "pref:workspaces", None)
     }
 
+    /// A workspace heading's menu, for `display`'s workspace `ws`: all its
+    /// windows shown, hidden, closed, or moved to the same workspace of
+    /// another display, or to any workspace of any display.
+    fn heading_menu(&self, display: Option<&str>, ws: u32) -> Menu {
+        let any = self.windows_on(display).any(|w| w.workspace == ws);
+        let mut m = Menu::new(self.workspace_name(display, ws))
+            .item("Show All", format!("ws-show:{ws}"), None)
+            .enabled(any)
+            .item("Hide All", format!("ws-hide:{ws}"), None)
+            .enabled(any)
+            .item("Close All", format!("ws-close:{ws}"), None)
+            .enabled(any)
+            .separator();
+        let mut displays: Vec<&OutputInfo> = self.outputs.iter().filter(|o| o.mirror_of.is_none()).collect();
+        displays.sort_by_key(|o| o.position);
+        for d in displays.iter().filter(|d| Some(d.name.as_str()) != display) {
+            m = m.item(format!("Move to {}", self.workspace_name(Some(&d.name), ws)), format!("ws-move:{ws}:{ws}:{}", d.name), None).enabled(any);
+        }
+        let mut to = Menu::new("Move All Windows To");
+        for (k, d) in displays.iter().enumerate() {
+            if k > 0 {
+                to = to.separator();
+            }
+            for i in 0..self.workspace.1.clamp(1, 9) {
+                let here = Some(d.name.as_str()) == display && i == ws;
+                to = to.item(self.workspace_name(Some(&d.name), i), format!("ws-move:{ws}:{i}:{}", d.name), None).enabled(any && !here);
+            }
+        }
+        m.submenu(to).separator().item("Workspaces Preferences…", "pref:workspaces", None)
+    }
+
+    /// A command from `display`'s workspace heading's menu
+    /// (`heading_menu`); false if it isn't one.
+    fn heading_command(&mut self, display: Option<&str>, cmd: &str) -> bool {
+        let Some((what, rest)) = cmd.split_once(':') else { return false };
+        let mut parts = rest.splitn(3, ':');
+        let Some(ws) = parts.next().and_then(|n| n.parse::<u32>().ok()) else { return false };
+        let ids: Vec<u64> = self.windows_on(display).filter(|w| w.workspace == ws).map(|w| w.id).collect();
+        match what {
+            "ws-show" if !ids.is_empty() => request(Request::ActivateAll { ids }),
+            "ws-hide" => ids.into_iter().for_each(|id| request(Request::Minimize { id })),
+            "ws-close" => ids.into_iter().for_each(|id| request(Request::Close { id })),
+            "ws-move" => {
+                let (Some(to_index), Some(to), Some(output)) = (parts.next().and_then(|n| n.parse().ok()), parts.next(), display) else { return true };
+                request(Request::MoveWorkspace { output: output.to_owned(), index: ws, to: to.to_owned(), to_index: Some(to_index) });
+            }
+            _ => return what == "ws-show",
+        }
+        true
+    }
+
     fn team_menu(&self, team: &Team) -> Menu {
         let mut m = Menu::new(&team.name);
         for w in &team.windows {
             let title = if w.title.is_empty() { team.name.clone() } else { w.title.clone() };
-            let label = if w.workspace != self.workspace.0 {
+            let label = if w.workspace != self.showing(w.output.as_deref()) {
                 format!("{title}  ({})", w.workspace + 1)
             } else {
                 title
@@ -662,10 +740,16 @@ impl Deskbar {
             Some(("pref", panel)) => spawn(&format!("olo-preferences {panel}")),
             Some(("caff", arg)) => self.caffeine_command(arg),
             Some(("approve", arg)) => self.approve_command(cx, arg),
-            // For the display of the Deskbar it was chosen on.
+            // For the display of the Deskbar it was chosen on, and the
+            // workspace whose heading it was chosen from.
             Some(("mode", id)) => {
                 if let Some(mode) = WindowingMode::from_id(id) {
-                    self.set_mode(self.menu_output.clone(), mode);
+                    self.set_mode(self.menu_output.clone(), self.menu_workspace, mode);
+                }
+            }
+            Some(("workspace", n)) => {
+                if let Ok(index) = n.parse() {
+                    request(Request::SwitchWorkspace { index, output: self.menu_output.clone() });
                 }
             }
             Some(("arrange", id)) => request(Request::RunShortcut { id: id.into(), window: self.focused_window() }),
@@ -801,8 +885,8 @@ impl Deskbar {
         let chosen = team.windows.iter().any(|w| w.chosen);
         resp.widget_info(|| egui::WidgetInfo { selected: Some(chosen), ..egui::WidgetInfo::labeled(egui::Role::Button, true, team.name.clone()) });
         // In the workspace showing, the row is on its lit ground.
-        let lit = self.lit(ws);
-        let ground = self.ground(&pal, ws);
+        let lit = self.lit(display, ws);
+        let ground = self.ground(&pal, display, ws);
         if open || drop_here || (chosen && lit) {
             // (Twitcher's choice in the workspace showing takes the menu's
             // selection, as the list's would be lost on its lit ground.)
@@ -845,34 +929,65 @@ impl Deskbar {
         painter.galley(pos, g, text_color);
     }
 
-    /// Workspace `ws`'s heading at `r`, its applications under it: its
-    /// name as a quiet caption over their icons, the one showing's in
-    /// the selection's text on its lit ground (`ui` lights the whole
-    /// workspace, `style::lit_ground`). A click goes there; on the
-    /// workspace showing (and a right-click on any), the Workspaces menu.
-    fn workspace_heading(&mut self, cx: &mut Cx, ui: &mut egui::Ui, r: Rect, ws: u32) {
+    /// Workspace `ws`'s heading at `r`, on `display`'s Deskbar, its
+    /// applications under it: its name as a quiet caption over their
+    /// icons, the one showing's in the selection's text on its lit ground
+    /// (`ui` lights the whole workspace, `style::lit_ground`), and at its
+    /// right end the workspace's windowing mode (click: the modes, and on
+    /// the one showing, the arranging commands). A click goes there; on
+    /// the workspace showing, the Workspaces menu; the right button, the
+    /// heading's menu (`heading_menu`).
+    fn workspace_heading(&mut self, cx: &mut Cx, ui: &mut egui::Ui, r: Rect, display: Option<&str>, ws: u32) {
         let pal = style::palette(ui.ctx());
         let painter = ui.painter().clone();
         let id = egui::Id::unique(("workspace", ws));
-        let name = format!("Workspace {}", ws + 1);
-        let here = ws == self.workspace.0;
+        let name = self.workspace_name(display, ws);
+        let here = ws == self.showing(display);
+        // The windowing mode, square at the right end, as far in as the
+        // caption is from the left.
+        let mode = self.mode(display, ws);
+        let mode_r = Rect::from_center_size(pos2(r.right() - ICON_INSET - ICON / 2.0, r.center().y), vec2(ICON, ICON));
+        let mode_id = egui::Id::unique(("workspace-mode", ws));
         let resp = ui.interact(r, id, Sense::click());
         resp.widget_info(|| egui::WidgetInfo { selected: Some(here), ..egui::WidgetInfo::labeled(egui::Role::Button, true, name.clone()) });
+        let tip = match mode {
+            WindowingMode::Standard => format!("{name}: windows stay where you put them. Click to choose a windowing mode."),
+            WindowingMode::AutoTiling => format!("{name}: Auto-Tiling, every window takes a tile. Click to choose a windowing mode."),
+            WindowingMode::Focus => format!("{name}: Focus, only the active window shows, zoomed. Click to choose a windowing mode."),
+        };
+        let mode_resp = ui.interact(mode_r.expand(2.0), mode_id, Sense::click()).tip(tip);
+        let mode_open = menu::is_open(ui.ctx(), mode_id);
         let open = menu::is_open(ui.ctx(), id);
-        if !open && (resp.secondary_clicked() || (resp.clicked() && here)) {
-            menu::request_popup(ui.ctx(), MenuRequest { menu: self.workspaces_menu(), source: id, anchor: MenuAnchor::Below(r), selected: None });
-        } else if resp.clicked() && !open {
-            request(Request::SwitchWorkspace { index: ws });
+        if (mode_resp.clicked() || mode_resp.secondary_clicked()) && !mode_open {
+            self.menu_output = display.map(str::to_owned);
+            self.menu_workspace = Some(ws);
+            let mut m = if here { self.arrange_menu(mode) } else { self.modes_menu(mode) };
+            add_keys(&mut m, &self.keys);
+            menu::request_popup(ui.ctx(), MenuRequest { menu: m, source: mode_id, anchor: MenuAnchor::Below(r), selected: None });
+        } else if !open && !mode_resp.hovered() && (resp.secondary_clicked() || resp.long_touched()) {
+            menu::request_popup(ui.ctx(), MenuRequest { menu: self.heading_menu(display, ws), source: id, anchor: MenuAnchor::Below(r), selected: None });
+        } else if !open && !mode_resp.hovered() && resp.clicked() {
+            if here {
+                self.menu_output = display.map(str::to_owned);
+                menu::request_popup(ui.ctx(), MenuRequest { menu: self.workspaces_menu(display), source: id, anchor: MenuAnchor::Below(r), selected: None });
+            } else {
+                request(Request::SwitchWorkspace { index: ws, output: display.map(str::to_owned) });
+            }
         }
-        if let Some(cmd) = menu::take_chosen(ui.ctx(), id) {
+        if let Some(cmd) = menu::take_chosen(ui.ctx(), id)
+            && !self.heading_command(display, &cmd)
+        {
             self.run_command(cx, &cmd);
         }
-        if open {
+        if let Some(cmd) = menu::take_chosen(ui.ctx(), mode_id) {
+            self.run_command(cx, &cmd);
+        }
+        if open || mode_open {
             painter.rect_filled(r, 0.0, c(pal.menu_selected_background));
         } else if resp.hovered() {
-            painter.rect_filled(r, 0.0, c(olo_theme_tint(self.ground(&pal, Some(ws)), 0.8)));
+            painter.rect_filled(r, 0.0, c(olo_theme_tint(self.ground(&pal, display, Some(ws)), 0.8)));
         }
-        let ink = if open {
+        let ink = if open || mode_open {
             c(pal.menu_selected_item_text)
         } else if here {
             style::selection_ink(&pal).text
@@ -882,20 +997,28 @@ impl Deskbar {
             c(olo_kit::theme::mix(pal.panel_text, pal.panel_background, 0.45))
         };
         let font = egui::FontId::new(style::SMALL_SIZE, style::bold());
-        style::label(&painter, r.left() + ICON_INSET, r.center().y, egui::Align::Min, name, font, ink);
+        let room = mode_r.left() - 4.0 - (r.left() + ICON_INSET);
+        let mut job = egui::text::LayoutJob::simple_singleline(name, font, ink);
+        job.wrap = egui::text::TextWrapping::truncate_at_width(room);
+        let g = painter.layout_job(job);
+        let pos = style::text_origin(ui.ctx(), &g, r.left() + ICON_INSET, r.center().y, style::SMALL_SIZE);
+        painter.galley(pos, g, ink);
+        if mode_resp.hovered() && !mode_open {
+            painter.rect_filled(mode_r.expand(2.0), 2.0, c(olo_theme_tint(self.ground(&pal, display, Some(ws)), 0.7)));
+        }
+        status::draw_mode(&painter, mode_r, &pal, mode);
     }
 
-    /// Whether the applications under workspace `ws`'s heading are the
-    /// workspace showing's, which is lit (`None`: no headings, one
-    /// workspace).
-    fn lit(&self, ws: Option<u32>) -> bool {
-        ws == Some(self.workspace.0)
+    /// Whether the applications under `display`'s workspace `ws`'s
+    /// heading are the workspace showing's, which is lit.
+    fn lit(&self, display: Option<&str>, ws: Option<u32>) -> bool {
+        ws == Some(self.showing(display))
     }
 
     /// The ground of the rows under workspace `ws`'s heading: the panel,
     /// or the workspace showing's lit ground (`style::lit_ground`).
-    fn ground(&self, pal: &Palette, ws: Option<u32>) -> olo_kit::theme::Rgba {
-        if self.lit(ws) { style::lit_ground(pal, pal.panel_background) } else { pal.panel_background }
+    fn ground(&self, pal: &Palette, display: Option<&str>, ws: Option<u32>) -> olo_kit::theme::Rgba {
+        if self.lit(display, ws) { style::lit_ground(pal, pal.panel_background) } else { pal.panel_background }
     }
 
     /// Show an application's windows on this workspace together
@@ -905,7 +1028,7 @@ impl Deskbar {
         let team: Vec<&WindowInfo> = self.windows_on(on).filter(|w| team_key == team_key_of(w) && ws.is_none_or(|ws| w.workspace == ws)).collect();
         // Under another workspace's heading: its windows there (and so
         // to that workspace).
-        let at = ws.unwrap_or(self.workspace.0);
+        let at = ws.unwrap_or_else(|| self.showing(on));
         let mut ids: Vec<u64> = team.iter().filter(|w| w.workspace == at).map(|w| w.id).collect();
         if ids.is_empty() {
             ids.extend(team.last().map(|w| w.id));
@@ -989,7 +1112,6 @@ fn settings_msg(settings: olo_protocol::Settings) -> Msg {
         menu_icons: settings.appearance.menu_icons,
         tiling: settings.tiling,
         keys: settings.shortcuts,
-        every_display: settings.display.deskbar_on_every_display,
     })
 }
 
@@ -1124,9 +1246,10 @@ impl App for Deskbar {
         let tile_id = egui::Id::unique("olo-tile");
         let tile_resp = ui.interact(tile, tile_id, Sense::click());
         let tile_open = menu::is_open(ui.ctx(), tile_id);
-        let mode = self.mode(&self.bars[bar]);
+        let mode = self.mode(display.as_deref(), self.showing(display.as_deref()));
         if tile_resp.clicked() && !tile_open {
-            self.menu_output = self.bars[bar].output.clone();
+            self.menu_output = display.clone();
+            self.menu_workspace = None;
             menu::request_popup(
                 ui.ctx(),
                 MenuRequest { menu: self.olo_menu(mode), source: tile_id, anchor: MenuAnchor::Below(tile), selected: None },
@@ -1156,13 +1279,16 @@ impl App for Deskbar {
 
         // ---- tray: the date and time, then the status icons
         let st = self.status.clone();
-        let items = [!st.upgrade.is_empty(), st.agent_screens > 0, st.battery.is_some(), st.wifi.is_some(), st.volume.is_some(), st.notifications.is_some(), true, true, true]
+        let items = [!st.upgrade.is_empty(), st.agent_screens > 0, st.battery.is_some(), st.wifi.is_some(), st.volume.is_some(), st.notifications.is_some(), true, true]
             .iter()
             .filter(|on| **on)
             .count();
         let well_w = full.width() - 2.0 * TRAY_INSET;
-        let per_row = ((well_w / TRAY_PITCH).floor() as usize).max(1);
-        let rows = items.div_ceil(per_row);
+        // As many rows as it takes, the icons shared out evenly among them
+        // (eight are two rows of four, not seven and one left over).
+        let fit = ((well_w / TRAY_PITCH).floor() as usize).max(1);
+        let rows = items.div_ceil(fit);
+        let per_row = items.div_ceil(rows.max(1)).max(1);
         let tray = Rect::from_min_size(pos2(full.left(), tile.bottom()), vec2(full.width(), tray_height(rows)));
         painter.rect_filled(tray, 0.0, shade(&pal, pal.panel_background, 1.03));
         let clock_row = Rect::from_min_size(tray.min, vec2(tray.width(), CLOCK_H));
@@ -1347,62 +1473,33 @@ impl App for Deskbar {
             self.run_command(cx, &cmd);
         }
 
-        // The windowing mode of this display (of this workspace), beside
-        // it: windows as they lie, tiles, or one window filling it, lit
-        // while it isn't Standard. Either button opens the Window
-        // Arrangement menu, the modes first.
-        let tip = match mode {
-            WindowingMode::Standard => "Windows stay where you put them. Click to choose a windowing mode.",
-            WindowingMode::AutoTiling => "Auto-Tiling: every window here takes a tile. Click to choose a windowing mode.",
-            WindowingMode::Focus => "Focus: only the active window shows here, zoomed. Click to choose a windowing mode.",
-        };
-        let modes = tray_item(ui, "windowing-mode", &|p, r| status::draw_mode(p, r, &pal, mode), tip.into());
-        let modes_id = egui::Id::unique("windowing-mode-menu");
-        if (modes.clicked() || modes.secondary_clicked()) && !menu::is_open(ui.ctx(), modes_id) {
-            self.menu_output = self.bars[bar].output.clone();
-            let mut m = self.arrange_menu(mode);
-            add_keys(&mut m, &self.keys);
-            menu::request_popup(ui.ctx(), MenuRequest { menu: m, source: modes_id, anchor: MenuAnchor::Below(modes.rect), selected: None });
-        }
-        if let Some(cmd) = menu::take_chosen(ui.ctx(), modes_id) {
-            self.run_command(cx, &cmd);
-        }
-
         // ---- the applications: by workspace, in order, each under its
-        // heading (one workspace: just the applications)
+        // heading (this display's workspaces with windows, and the one
+        // showing)
         let mut y = tray.bottom();
-        let (current, count) = self.workspace;
-        if count <= 1 {
-            for team in self.teams(display.as_deref(), None) {
+        let current = self.showing(display.as_deref());
+        let mut workspaces: Vec<u32> = self.windows_on(display.as_deref()).map(|w| w.workspace).chain([current]).collect();
+        workspaces.sort();
+        workspaces.dedup();
+        for ws in workspaces {
+            let teams = self.teams(display.as_deref(), Some(ws));
+            // The workspace showing is lit, its heading and applications
+            // together, as one selection: on its own ground, edged above
+            // and below.
+            let group = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), HEADING_H + teams.len() as f32 * ROW_H));
+            let lit = self.lit(display.as_deref(), Some(ws));
+            if lit {
+                painter.rect_filled(style::snap(ui.ctx(), group), 0.0, c(self.ground(&pal, display.as_deref(), Some(ws))));
+            }
+            self.workspace_heading(cx, ui, Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), HEADING_H)), display.as_deref(), ws);
+            y += HEADING_H;
+            for team in teams {
                 let row = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), ROW_H));
-                self.team_row(cx, w, ui, row, &team, display.as_deref(), None);
+                self.team_row(cx, w, ui, row, &team, display.as_deref(), Some(ws));
                 y += ROW_H;
             }
-        } else {
-            // Every workspace with windows here, and the one showing.
-            let mut workspaces: Vec<u32> = self.windows_on(display.as_deref()).map(|w| w.workspace).chain([current]).collect();
-            workspaces.sort();
-            workspaces.dedup();
-            for ws in workspaces {
-                let teams = self.teams(display.as_deref(), Some(ws));
-                // The workspace showing is lit, its heading and
-                // applications together, as one selection: on its own
-                // ground, edged above and below.
-                let group = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), HEADING_H + teams.len() as f32 * ROW_H));
-                let lit = self.lit(Some(ws));
-                if lit {
-                    painter.rect_filled(style::snap(ui.ctx(), group), 0.0, c(self.ground(&pal, Some(ws))));
-                }
-                self.workspace_heading(cx, ui, Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), HEADING_H)), ws);
-                y += HEADING_H;
-                for team in teams {
-                    let row = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), ROW_H));
-                    self.team_row(cx, w, ui, row, &team, display.as_deref(), Some(ws));
-                    y += ROW_H;
-                }
-                if lit {
-                    style::lit_edges(&painter, group, &pal);
-                }
+            if lit {
+                style::lit_edges(&painter, group, &pal);
             }
         }
 
@@ -1440,7 +1537,10 @@ impl App for Deskbar {
         if let Ok(m) = message.downcast::<Msg>() {
             match *m {
                 Msg::Windows(w) => self.set_windows(w),
-                Msg::Workspace(cur, count) => self.workspace = (cur, count),
+                Msg::Workspace(cur, count, showing) => {
+                    self.workspace = (cur, count);
+                    self.showing = showing;
+                }
                 Msg::Status(s) => self.status = s,
                 Msg::Power(p) => {
                     self.caffeinated = p.caffeinated;
@@ -1453,8 +1553,6 @@ impl App for Deskbar {
                     self.menu_icons = s.menu_icons;
                     self.tiling = s.tiling;
                     self.keys = s.keys;
-                    self.every_display = s.every_display;
-                    self.sync_bars(cx);
                 }
                 Msg::Outputs(outputs) => {
                     self.outputs = outputs;
@@ -1484,8 +1582,8 @@ fn watch_server(proxy: olo_kit::Proxy) {
                     if let Ok(Reply::Windows { windows }) = c.request(&Request::ListWindows) {
                         proxy.send(Msg::Windows(windows));
                     }
-                    if let Ok(Reply::Workspaces { current, count }) = c.request(&Request::Workspaces) {
-                        proxy.send(Msg::Workspace(current, count));
+                    if let Ok(Reply::Workspaces { current, count, displays }) = c.request(&Request::Workspaces) {
+                        proxy.send(Msg::Workspace(current, count, displays));
                     }
                     if let Ok(Reply::Power { status }) = c.request(&Request::PowerStatus) {
                         proxy.send(Msg::Power(status));
@@ -1500,7 +1598,7 @@ fn watch_server(proxy: olo_kit::Proxy) {
                         for e in events.flatten() {
                             match e {
                                 Event::WindowsChanged { windows } => proxy.send(Msg::Windows(windows)),
-                                Event::WorkspaceChanged { current, count } => proxy.send(Msg::Workspace(current, count)),
+                                Event::WorkspaceChanged { current, count, displays } => proxy.send(Msg::Workspace(current, count, displays)),
                                 Event::PowerChanged { status } => proxy.send(Msg::Power(status)),
                                 Event::SettingsChanged { settings } => {
                                     proxy.send(settings_msg(settings))
@@ -1521,7 +1619,11 @@ fn main() {
     // A session or install from before the rename (Tabula) carries on.
     olo_kit::legacy::adopt();
     olo_kit::run("olo.deskbar", |cx| {
-        let bar = Bar::open(cx, None);
+        // One on each display, by name (mirrors are known later, and put
+        // away then); with none known yet, one app_server puts on the main
+        // display, until they are.
+        let outputs: Vec<Option<String>> = cx.outputs().iter().cloned().map(Some).collect();
+        let bars: Vec<Bar> = if outputs.is_empty() { vec![Bar::open(cx, None)] } else { outputs.into_iter().map(|o| Bar::open(cx, o)).collect() };
         watch_server(cx.proxy());
         let proxy = cx.proxy();
         scan_installed(proxy.clone());
@@ -1531,12 +1633,12 @@ fn main() {
         });
         Deskbar {
             proxy,
-            bars: vec![bar],
+            bars,
             outputs: Vec::new(),
-            every_display: false,
             windows: Vec::new(),
             order: Vec::new(),
             workspace: (0, 1),
+            showing: Vec::new(),
             status: status::Status::default(),
             caffeinated: false,
             caffeinated_until: None,
@@ -1551,6 +1653,7 @@ fn main() {
             last_focused: None,
             tiling: Default::default(),
             menu_output: None,
+            menu_workspace: None,
             keys: ShortcutSettings::new(),
             confirm: None,
             upgrade_ask: None,

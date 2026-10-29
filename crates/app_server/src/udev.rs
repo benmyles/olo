@@ -1930,7 +1930,7 @@ impl AnvilState<UdevData> {
         let output = source.unwrap_or(screen);
 
         self.pre_repaint(&output, frame_target);
-        let desktop_color = self.desktop_color();
+        let desktop_color = self.desktop_color(&output);
         let twitcher = self.twitcher_entries();
         let output_geo = self.space.output_geometry(&output).unwrap_or_default();
         let output_size = output_geo.size;

@@ -94,7 +94,7 @@ pub fn spawn(tx: Sender<Look>) {
                                 }
                             }
                             Ok(Event::WindowsChanged { windows }) => crate::workspaces::windows_changed(&windows),
-                            Ok(Event::WorkspaceChanged { current, .. }) => crate::workspaces::workspace_changed(current),
+                            Ok(Event::WorkspaceChanged { current, displays, .. }) => crate::workspaces::workspace_changed(current, displays),
                             _ => {}
                         }
                     }

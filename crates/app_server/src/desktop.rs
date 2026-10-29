@@ -30,8 +30,12 @@ use crate::{
 /// Per-window bookkeeping that isn't decoration.
 pub struct WindowMeta {
     pub id: u64,
-    /// `None` until first parked; then the workspace it lives on.
+    /// `None` until first parked; then the workspace it lives on (of its
+    /// display's: while it shows, the one its display shows).
     pub workspace: Cell<Option<u32>>,
+    /// The display it was on when it left the space (its connector): it
+    /// belongs to that display's workspace, and comes back there.
+    pub parked_on: RefCell<Option<String>>,
     pub minimized: Cell<bool>,
     /// Where it was when it left the space (minimize / workspace switch).
     pub saved_location: Cell<Point<i32, Logical>>,
@@ -83,6 +87,7 @@ impl WindowElement {
         self.user_data().insert_if_missing(|| WindowMeta {
             id: NEXT.fetch_add(1, Ordering::Relaxed),
             workspace: Cell::new(None),
+            parked_on: RefCell::new(None),
             minimized: Cell::new(false),
             saved_location: Cell::new(Point::default()),
             placed: Cell::new(false),
@@ -129,13 +134,13 @@ pub struct Twitch {
     order: Vec<(usize, usize)>,
     pub row: usize,
     pub index: usize,
-    /// Where switching began, for Esc.
-    home: u32,
+    /// Where switching began, for Esc: each display's workspace showing.
+    home: Vec<(Output, u32)>,
     focus: Option<WindowElement>,
-    /// Each workspace's stacking when Twitcher first showed it (back
-    /// first): each window passed over goes back into it, so only the one
-    /// chosen ends up raised.
-    stacks: Vec<(u32, Vec<WindowElement>)>,
+    /// The stacking when Twitcher first showed each display's workspace
+    /// (back first): each window passed over goes back into it, so only
+    /// the one chosen ends up raised.
+    stacks: Vec<((String, u32), Vec<WindowElement>)>,
     /// The minimized window being shown now, hidden again when passed.
     unhidden: Option<WindowElement>,
 }
@@ -241,6 +246,10 @@ impl<B: Backend + 'static> AnvilState<B> {
         if self.space.element_location(w).is_some() {
             return self.window_output(w);
         }
+        let parked_on = w.meta().parked_on.borrow().clone();
+        if let Some(o) = parked_on.and_then(|name| self.space.outputs().find(|o| o.name() == name).cloned()) {
+            return Some(o);
+        }
         let size = smithay::desktop::space::SpaceElement::geometry(w).size;
         let middle = (w.meta().saved_location.get() + size.downscale(2).to_point()).to_f64();
         self.space.output_under(middle).next().cloned().or_else(|| self.main_output())
@@ -271,7 +280,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     app_id: w.app_id(),
                     title: w.title(),
                     pid,
-                    workspace: meta.workspace.get().unwrap_or(self.workspace),
+                    workspace: self.workspace_of(&w),
                     minimized: meta.minimized.get(),
                     focused: focused.is_some() && w.wl_surface().map(|s| s.into_owned()) == focused,
                     chosen: self.twitch.as_ref().is_some_and(|t| t.rows.get(t.row).and_then(|r| r.1.get(t.index)) == Some(&meta.id)),
@@ -345,6 +354,13 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.keep_children_above();
         self.focus_tick();
         self.note_recent();
+        // Another display active (a window there focused, a press there):
+        // "this workspace" is another, for apps opening windows.
+        let active = self.active_output().map(|o| o.name());
+        if active != self.told_active {
+            self.told_active = active;
+            self.tell_workspaces();
+        }
         let infos = self.window_infos();
         if infos != self.last_window_infos {
             crate::twitcher::prewarm(infos.iter().map(|i| i.app_id.as_str()));
@@ -355,12 +371,67 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     // ---- workspaces ----------------------------------------------------
 
+    /// The workspace `output` shows (each display has its own).
+    pub fn showing(&self, output: &Output) -> u32 {
+        let last = self.settings.workspace_count.max(1) - 1;
+        self.showing_raw(output).min(last)
+    }
+
+    /// As kept (one past the last, just after fewer were asked for).
+    fn showing_raw(&self, output: &Output) -> u32 {
+        let every = || self.showing.get(crate::layout::EVERY).copied();
+        self.showing.get(&display_key(output)).copied().or_else(every).unwrap_or(0)
+    }
+
+    /// The workspace the display with connector `name` shows.
+    pub fn showing_named(&self, name: &str) -> u32 {
+        self.space.outputs().find(|o| o.name() == name).map_or(0, |o| self.showing(o))
+    }
+
+    /// The workspace the active display shows: the one shortcuts switch
+    /// from, and windows opened from the keyboard land on.
+    pub fn workspace(&self) -> u32 {
+        self.active_output().map_or(0, |o| self.showing(&o))
+    }
+
+    /// The workspace `w` is on: while it shows, the one its display
+    /// shows; else the one it was left on.
+    pub fn workspace_of(&self, w: &WindowElement) -> u32 {
+        let display = || self.display_of(w).map_or(0, |o| self.showing(&o));
+        if self.space.element_location(w).is_some() {
+            return display();
+        }
+        w.meta().workspace.get().unwrap_or_else(display)
+    }
+
+    /// `w` is on the workspace its display shows (if hidden, there).
+    pub fn shows(&self, w: &WindowElement) -> bool {
+        self.space.element_location(w).is_some() || self.display_of(w).is_some_and(|o| w.meta().workspace.get().is_none_or(|ws| ws == self.showing(&o)))
+    }
+
+    /// Each display's workspace showing, and which is the active one, as
+    /// the IPC tells it.
+    pub fn display_workspaces(&self) -> Vec<olo_protocol::DisplayWorkspace> {
+        let active = self.active_output();
+        self.space
+            .outputs()
+            .map(|o| olo_protocol::DisplayWorkspace { output: o.name(), current: self.showing(o), active: active.as_ref() == Some(o) })
+            .collect()
+    }
+
+    /// The number display `output` goes by ("D1"), with more than one.
+    pub fn display_number(&self, output: &str) -> Option<u32> {
+        olo_protocol::display_number(&self.output_infos(), output)
+    }
+
     fn park(&mut self, window: &WindowElement) {
+        if self.space.element_location(window).is_some() {
+            // The workspace its display shows, which it is on.
+            window.meta().workspace.set(Some(self.workspace_of(window)));
+            *window.meta().parked_on.borrow_mut() = self.window_output(window).map(|o| o.name());
+        }
         if let Some(loc) = self.space.element_location(window) {
             window.meta().saved_location.set(loc);
-        }
-        if window.meta().workspace.get().is_none() {
-            window.meta().workspace.set(Some(self.workspace));
         }
         window.set_activate(false);
         // Back, it is whatever Focus makes it then.
@@ -376,9 +447,10 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     fn unpark(&mut self, window: &WindowElement) {
+        let ws = self.workspace_of(window);
         self.parked.0.borrow_mut().retain(|w| w != window);
         window.meta().minimized.set(false);
-        window.meta().workspace.set(Some(self.workspace));
+        window.meta().workspace.set(Some(ws));
         let mut loc = window.meta().saved_location.get();
         let (left, now) = (window.meta().left_among.borrow().clone(), self.display_frames());
         let changed = left != now;
@@ -395,10 +467,10 @@ impl<B: Backend + 'static> AnvilState<B> {
         // own frame again (unless it joins one here too).
         // (Others of its group coming back here too, a workspace being
         // switched to, count: they are put back one by one.)
-        let key = self.group_key(window);
-        let mate = |o: &WindowElement| o != window && key.is_some() && self.group_key(o) == key;
+        let (key, display) = (self.group_key(window), self.display_of(window));
+        let mate = |o: &WindowElement| o != window && key.is_some() && self.group_key(o) == key && self.display_of(o) == display;
         let alone = !self.space.elements().any(mate)
-            && !self.parked.0.borrow().iter().any(|o| mate(o) && o.meta().workspace.get() == Some(self.workspace) && !o.meta().minimized.get());
+            && !self.parked.0.borrow().iter().any(|o| mate(o) && self.shows(o) && !o.meta().minimized.get());
         if let Some((own, group)) = window.meta().joined.get()
             && alone
             && self.space.element_geometry(window) == Some(group)
@@ -420,9 +492,11 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     pub fn restore(&mut self, window: &WindowElement) {
         self.overview_interrupted();
-        let ws = window.meta().workspace.get().unwrap_or(self.workspace);
-        if ws != self.workspace {
-            self.switch_workspace(ws);
+        // On another of its display's workspaces: the display goes there.
+        if !self.shows(window)
+            && let Some(o) = self.display_of(window)
+        {
+            self.switch_workspace_on(&o, self.workspace_of(window));
         }
         if self.parked.0.borrow().contains(window) {
             self.unpark(window);
@@ -466,18 +540,11 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.space.elements().find(|w| w.wl_surface().is_some_and(|s| *s == surface)).cloned()
     }
 
-    /// Windows on this workspace, front first, minimized ones last.
+    /// Windows on the workspaces showing (each display's), front first,
+    /// minimized ones last.
     fn workspace_windows(&self) -> Vec<WindowElement> {
         let mut v: Vec<WindowElement> = self.space.elements().rev().cloned().collect();
-        v.extend(
-            self.parked
-                .0
-                .borrow()
-                .iter()
-                .rev()
-                .filter(|w| w.meta().minimized.get() && w.meta().workspace.get().is_none_or(|ws| ws == self.workspace))
-                .cloned(),
-        );
+        v.extend(self.parked.0.borrow().iter().rev().filter(|w| w.meta().minimized.get() && self.shows(w)).cloned());
         v
     }
 
@@ -502,45 +569,47 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.recent.iter().position(|r| *r == id).unwrap_or(usize::MAX)
     }
 
-    /// Windows on workspace `ws` (another one), front first, minimized
-    /// ones last.
-    fn parked_windows(&self, ws: u32) -> Vec<WindowElement> {
+    /// Windows on workspace `ws` of any display, those showing first
+    /// (front first), then those away, minimized ones last.
+    fn windows_on_workspace(&self, ws: u32) -> Vec<WindowElement> {
+        let mut v: Vec<WindowElement> = self.space.elements().rev().filter(|w| self.workspace_of(w) == ws).cloned().collect();
         let parked = self.parked.0.borrow();
-        let on = |w: &&WindowElement| w.meta().workspace.get() == Some(ws);
-        let mut v: Vec<WindowElement> = parked.iter().rev().filter(on).filter(|w| !w.meta().minimized.get()).cloned().collect();
+        let on = |w: &&WindowElement| self.workspace_of(w) == ws;
+        v.extend(parked.iter().rev().filter(on).filter(|w| !w.meta().minimized.get()).cloned());
         v.extend(parked.iter().rev().filter(on).filter(|w| w.meta().minimized.get()).cloned());
         v
     }
 
     /// The displays Twitcher groups windows by, as they stand left to
-    /// right (then top to bottom), each with its name: with a Deskbar on
-    /// every display, as each Deskbar lists only its own display's. None
-    /// otherwise.
+    /// right (then top to bottom), each with its name and the number it
+    /// goes by ("D1 Studio Display"): each display has its own
+    /// workspaces, as each Deskbar lists only its own display's. None
+    /// with only one.
     fn twitch_displays(&self) -> Vec<(Output, String)> {
         let mut outputs: Vec<Output> = self.space.outputs().cloned().collect();
-        if !self.settings.display.deskbar_on_every_display || outputs.len() < 2 {
+        if outputs.len() < 2 {
             return Vec::new();
         }
         outputs.sort_by_key(|o| self.space.output_geometry(o).map(|g| (g.loc.x, g.loc.y)).unwrap_or_default());
         let infos = self.output_infos();
-        let names: Vec<String> = outputs
-            .iter()
-            .map(|o| infos.iter().find(|i| i.name == o.name()).map_or_else(|| o.name(), |i| i.display_name()))
-            .collect();
-        // Displays called the same are numbered, left to right.
-        let numbered = |k: usize| {
-            let alike = |n: &&String| **n == names[k];
-            if names.iter().filter(alike).count() < 2 {
-                return names[k].clone();
-            }
-            format!("{} {}", names[k], names[..=k].iter().filter(alike).count())
-        };
-        outputs.into_iter().enumerate().map(|(k, o)| (o, numbered(k))).collect()
+        outputs
+            .into_iter()
+            .map(|o| {
+                let info = infos.iter().find(|i| i.name == o.name());
+                let name = info.map_or_else(|| o.name(), |i| i.display_name());
+                let name = match olo_protocol::display_number(&infos, &o.name()) {
+                    Some(n) => format!("D{n} {name}"),
+                    None => name,
+                };
+                (o, name)
+            })
+            .collect()
     }
 
-    /// Twitcher's rows: for each workspace with any (`all`, else just
-    /// this one), its apps (one window each, the one used last) or, for
-    /// ⌘\`, the focused app's windows, the most recently used first.
+    /// Twitcher's rows: for each workspace number with any (`all`, else
+    /// just those showing), its apps (one window each, the one used
+    /// last) or, for ⌘\`, the focused app's windows, the most recently
+    /// used first.
     /// Grouped by display
     /// (`twitch_displays`), each display's come together, in display
     /// order, and an app is there once for each display it has windows on;
@@ -552,10 +621,15 @@ impl<B: Backend + 'static> AnvilState<B> {
             let o = self.display_of(w);
             displays.iter().position(|(d, _)| Some(d) == o.as_ref()).unwrap_or(0)
         };
-        let count = self.settings.workspace_count.max(1).max(self.workspace + 1);
+        let count = self.settings.workspace_count.max(1);
+        let showing: Vec<WindowElement> = if all { Vec::new() } else { self.workspace_windows() };
         let (mut rows, mut on) = (Vec::new(), HashMap::new());
-        for ws in (0..count).filter(|&ws| all || ws == self.workspace) {
-            let windows = if ws == self.workspace { self.workspace_windows() } else { self.parked_windows(ws) };
+        for ws in 0..count {
+            let windows: Vec<WindowElement> = if all {
+                self.windows_on_workspace(ws)
+            } else {
+                showing.iter().filter(|w| self.workspace_of(w) == ws).cloned().collect()
+            };
             let mut windows: Vec<(usize, WindowElement)> = windows.into_iter().map(|w| (column(&w), w)).collect();
             windows.sort_by_key(|(c, w)| (*c, self.recency(w.id())));
             let mut seen = Vec::new();
@@ -605,16 +679,16 @@ impl<B: Backend + 'static> AnvilState<B> {
                 .iter()
                 .position(|&(r, i)| {
                     let id = rows[r].1[i];
-                    rows[r].0 == self.workspace
-                        && focused.as_ref().is_some_and(|(fid, fapp)| {
-                            id == *fid || (apps && self.window_by_id(id).is_some_and(|w| w.app_id() == *fapp))
-                        })
+                    self.window_by_id(id).is_some_and(|w| {
+                        self.shows(&w) && focused.as_ref().is_some_and(|(fid, fapp)| id == *fid || (apps && w.app_id() == *fapp))
+                    })
                 })
                 .unwrap_or(order.len() - 1);
             let (row, index) = order[start];
-            let stacks = vec![(self.workspace, self.space.elements().cloned().collect())];
-            self.twitch =
-                Some(Twitch { apps, all, rows, displays, on, order, row, index, home: self.workspace, focus, stacks, unhidden: None });
+            let stack: Vec<WindowElement> = self.space.elements().cloned().collect();
+            let home: Vec<(Output, u32)> = self.space.outputs().map(|o| (o.clone(), self.showing(o))).collect();
+            let stacks = home.iter().map(|(o, ws)| ((o.name(), *ws), stack.clone())).collect();
+            self.twitch = Some(Twitch { apps, all, rows, displays, on, order, row, index, home, focus, stacks, unhidden: None });
         }
         let Some(t) = self.twitch.as_mut() else { return };
         let n = t.order.len();
@@ -653,18 +727,23 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.twitch_done();
     }
 
-    /// Put this workspace's windows back as they were stacked when
-    /// Twitcher first showed it, and hide again a minimized one shown.
+    /// Put the windows of the workspaces showing back as they were
+    /// stacked when Twitcher first showed them, and hide again a
+    /// minimized one shown.
     fn twitch_restack(&mut self) {
         let Some(t) = self.twitch.as_mut() else { return };
         let unhidden = t.unhidden.take();
-        let stack = t.stacks.iter().find(|s| s.0 == self.workspace).map(|s| s.1.clone()).unwrap_or_default();
+        let showing: Vec<(String, u32)> = self.space.outputs().map(|o| (o.name(), self.showing(o))).collect();
+        let Some(t) = self.twitch.as_ref() else { return };
+        let stacks: Vec<Vec<WindowElement>> = t.stacks.iter().filter(|s| showing.contains(&s.0)).map(|s| s.1.clone()).collect();
         if let Some(u) = unhidden {
             self.minimize(&u);
         }
-        for s in &stack {
-            if self.space.element_location(s).is_some() {
-                self.space.raise_element(s, false);
+        for stack in &stacks {
+            for s in stack {
+                if self.space.element_location(s).is_some() {
+                    self.space.raise_element(s, false);
+                }
             }
         }
     }
@@ -676,11 +755,14 @@ impl<B: Backend + 'static> AnvilState<B> {
         let (ws, id) = (t.rows[t.row].0, t.rows[t.row].1[t.index]);
         let Some(w) = self.window_by_id(id) else { return };
         self.twitch_restack();
-        if ws != self.workspace {
-            self.switch_workspace(ws);
+        if !self.shows(&w)
+            && let Some(o) = self.display_of(&w)
+        {
+            self.switch_workspace_on(&o, ws);
             let stack = self.space.elements().cloned().collect();
-            if let Some(t) = self.twitch.as_mut().filter(|t| !t.stacks.iter().any(|s| s.0 == ws)) {
-                t.stacks.push((ws, stack));
+            let key = (o.name(), ws);
+            if let Some(t) = self.twitch.as_mut().filter(|t| !t.stacks.iter().any(|s| s.0 == key)) {
+                t.stacks.push((key, stack));
             }
             self.twitch_restack();
         }
@@ -755,11 +837,14 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Esc while switching: back to the workspace and window switching
     /// began on, everything as it was.
     pub fn twitch_cancel(&mut self) {
-        let Some(home) = self.twitch.as_ref().map(|t| t.home) else { return };
+        let Some(home) = self.twitch.as_ref().map(|t| t.home.clone()) else { return };
         crate::spotlight::end(false);
         self.twitch_restack();
-        if self.workspace != home {
-            self.switch_workspace(home);
+        let away: Vec<(Output, u32)> = home.into_iter().filter(|(o, ws)| self.space.output_geometry(o).is_some() && self.showing(o) != *ws).collect();
+        for (o, ws) in &away {
+            self.switch_workspace_on(o, *ws);
+        }
+        if !away.is_empty() {
             self.twitch_restack();
         }
         if let Some(f) = self.twitch.take().and_then(|t| t.focus).filter(|f| self.space.element_location(f).is_some()) {
@@ -790,38 +875,80 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
     }
 
+    /// Show workspace `index` on the active display.
     pub fn switch_workspace(&mut self, index: u32) {
+        if let Some(o) = self.active_output() {
+            self.switch_workspace_on(&o, index);
+        }
+    }
+
+    /// Show workspace `index` on `output`: its windows there go, that
+    /// workspace's come; the other displays stay as they are.
+    pub fn switch_workspace_on(&mut self, output: &Output, index: u32) {
         let count = self.settings.workspace_count.max(1);
         let index = index.min(count - 1);
-        if index == self.workspace {
+        self.last_display = Some(output.name());
+        // (As kept: after fewer workspaces were asked for, one past the
+        // last, which `showing` reads as the last.)
+        if self.showing_raw(output) == index {
             return;
         }
         self.overview_interrupted();
-        // Park everything visible, bottom-most first to keep stacking order.
-        let visible: Vec<WindowElement> = self.space.elements().cloned().collect();
-        for w in &visible {
+        // Park everything on it, bottom-most first to keep stacking order.
+        let leaving: Vec<WindowElement> = self.space.elements().filter(|w| self.window_output(w).as_ref() == Some(output)).cloned().collect();
+        let had_focus = self.focused_window().is_none_or(|f| leaving.contains(&f));
+        for w in &leaving {
             self.park(w);
         }
-        self.workspace = index;
+        self.showing.insert(display_key(output), index);
         let coming: Vec<WindowElement> = self
             .parked
             .0
             .borrow()
             .iter()
-            .filter(|w| w.meta().workspace.get() == Some(index) && !w.meta().minimized.get())
+            .filter(|w| w.meta().workspace.get() == Some(index) && !w.meta().minimized.get() && self.display_of(w).as_ref() == Some(output))
             .cloned()
             .collect();
         for w in &coming {
             self.unpark(w);
         }
-        self.focus_topmost();
-        self.ipc.broadcast(Event::WorkspaceChanged { current: index, count });
-        info!(workspace = index, "switched workspace");
+        // The keyboard goes to the front window there (none if it has
+        // none), not to another display's.
+        if had_focus {
+            self.focus_topmost_on(output);
+        }
+        self.tell_workspaces();
+        info!(workspace = index, output = output.name(), "switched workspace");
     }
 
+    /// Tell subscribers each display's workspace showing, and which is
+    /// active.
+    pub fn tell_workspaces(&mut self) {
+        self.told_active = self.active_output().map(|o| o.name());
+        let (current, count, displays) = (self.workspace(), self.settings.workspace_count.max(1), self.display_workspaces());
+        self.ipc.broadcast(Event::WorkspaceChanged { current, count, displays });
+    }
+
+    /// The front window on `output` takes the keyboard; with none there,
+    /// nothing has it.
+    fn focus_topmost_on(&mut self, output: &Output) {
+        let front = self.space.elements().rev().find(|w| self.window_output(w).as_ref() == Some(output)).cloned();
+        match front {
+            Some(front) => self.focus_window(&front),
+            None => {
+                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                if let Some(keyboard) = self.seat.get_keyboard() {
+                    keyboard.set_focus(self, None, serial);
+                }
+            }
+        }
+    }
+
+    /// Move `window` to workspace `index` of its display.
     pub fn move_to_workspace(&mut self, window: &WindowElement, index: u32) {
         let index = index.min(self.settings.workspace_count.max(1) - 1);
-        if index == self.workspace {
+        let output = self.display_of(window);
+        if output.as_ref().is_some_and(|o| index == self.showing(o)) {
             // One on another workspace comes here, to the front (a
             // minimized one stays so, here).
             let away = self.parked.0.borrow().contains(window) && !window.meta().minimized.get();
@@ -833,15 +960,74 @@ impl<B: Backend + 'static> AnvilState<B> {
             return;
         }
         if self.space.element_location(window).is_some() {
+            let had_focus = self.focused_window().as_ref() == Some(window);
             self.park(window);
-            self.focus_topmost();
+            if let (true, Some(o)) = (had_focus, &output) {
+                self.focus_topmost_on(o);
+            }
         }
         window.meta().workspace.set(Some(index));
     }
 
-    /// The current workspace's desktop colour.
-    pub fn desktop_color(&self) -> Color32F {
-        let [r, g, b] = self.settings.workspace_color(self.workspace);
+    /// Move every window on `from`'s workspace `index` to `to`'s workspace
+    /// `to_index` (Deskbar's workspace headings): on another display, each
+    /// to the same place on it relatively, tiled or zoomed as it was (as
+    /// ⌃⌥⌘→ moves one). Hidden ones stay hidden; the rest show if `to`
+    /// shows that workspace.
+    pub fn move_workspace(&mut self, from: &Output, index: u32, to: &Output, to_index: u32) {
+        let to_index = to_index.min(self.settings.workspace_count.max(1) - 1);
+        if from == to && index == to_index {
+            return;
+        }
+        let windows: Vec<WindowElement> =
+            self.all_windows().into_iter().filter(|w| self.display_of(w).as_ref() == Some(from) && self.workspace_of(w) == index).collect();
+        if windows.is_empty() {
+            return;
+        }
+        self.overview_interrupted();
+        let shown_there = self.showing(to) == to_index;
+        let focused = self.focused_window();
+        let mut front = None;
+        // Bottom first (the space's, then the parked), so they stack there
+        // as they did.
+        for w in &windows {
+            let minimized = w.meta().minimized.get();
+            if from != to {
+                if self.parked.0.borrow().contains(w) {
+                    // Into the space where it was, to go as a window
+                    // showing goes (nothing is drawn before it is put
+                    // away again).
+                    self.parked.0.borrow_mut().retain(|p| p != w);
+                    self.space.map_element(w.clone(), w.meta().saved_location.get(), false);
+                }
+                self.move_to_output(w, from, to);
+            }
+            let mapped = self.space.element_location(w).is_some();
+            w.meta().workspace.set(Some(to_index));
+            if shown_there && !minimized {
+                if !mapped {
+                    self.unpark(w);
+                }
+                front = Some(w.clone());
+            } else {
+                if mapped {
+                    self.park(w);
+                    w.meta().workspace.set(Some(to_index));
+                }
+                w.meta().minimized.set(minimized);
+            }
+        }
+        match front {
+            Some(w) if focused.as_ref().is_none_or(|f| windows.contains(f)) => self.focus_window(&w),
+            None if focused.as_ref().is_some_and(|f| windows.contains(f)) => self.focus_topmost_on(from),
+            _ => {}
+        }
+        info!(workspace = index, from = from.name(), to = to.name(), to_index, windows = windows.len(), "moved a workspace's windows");
+    }
+
+    /// `output`'s desktop colour: that of the workspace it shows.
+    pub fn desktop_color(&self, output: &Output) -> Color32F {
+        let [r, g, b] = self.settings.workspace_color(self.showing(output));
         Color32F::new(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0)
     }
 
@@ -1141,9 +1327,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         // copy (which may be older).
         settings.tiling.modes = self.settings.tiling.modes.clone();
         settings.tiling.auto.clear();
-        if settings.display.deskbar_on_every_display != self.settings.display.deskbar_on_every_display
-            || settings.tiling.default_mode != self.settings.tiling.default_mode
-        {
+        if settings.tiling.default_mode != self.settings.tiling.default_mode {
             self.auto.changed();
         }
         // Group Windows on again for an app: its windows taken out by hand
@@ -1155,8 +1339,15 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.regroup_apps(&regrouped);
         }
         self.keymap.set_bindings(olo_protocol::shortcuts::bindings(&self.settings.shortcuts));
-        if self.workspace >= self.settings.workspace_count.max(1) {
-            self.switch_workspace(self.settings.workspace_count.max(1) - 1);
+        // Fewer workspaces: the windows on those gone join the last, and
+        // a display showing one goes to it (with its windows).
+        let last = self.settings.workspace_count.max(1) - 1;
+        for w in self.parked.0.borrow().iter().filter(|w| w.meta().workspace.get().is_some_and(|ws| ws > last)) {
+            w.meta().workspace.set(Some(last));
+        }
+        let past: Vec<Output> = self.space.outputs().filter(|o| self.showing_raw(o) > last).cloned().collect();
+        for o in &past {
+            self.switch_workspace_on(o, last);
         }
         if scale_changed {
             for o in self.space.outputs().cloned().collect::<Vec<_>>() {

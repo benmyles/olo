@@ -300,14 +300,24 @@ impl Cx {
         self.sizes.contains_key(&window)
     }
 
-    /// Whether `window` is on the workspace showing (minimized there or
-    /// not), as app_server last said; true if it hasn't (outside Olo, or
-    /// the window has only just opened). Opening the app, or a folder or
-    /// document it has a window for, brings forward a window that is
-    /// here, and opens a new one here rather than activate one on another
-    /// workspace (which would go there): each workspace has its own.
+    /// Whether `window` is on this workspace, the one the active display
+    /// shows (minimized there or not; every display has its own
+    /// workspaces, so one showing on another display is elsewhere), as
+    /// app_server last said; true if it hasn't (outside Olo, or the window has only
+    /// just opened). Opening the app, or a folder or document it has a
+    /// window for, brings forward a window that is here, and opens a new
+    /// one here rather than activate one on another workspace (which
+    /// would go there): each workspace has its own.
     pub fn on_this_workspace(&self, window: WindowId) -> bool {
         self.surfaces.get(&window).and_then(|s| crate::workspaces::here(*s)).unwrap_or(true)
+    }
+
+    /// Whether `window` shows: on the workspace its display shows, not
+    /// hidden (it may be covered), as app_server last said; true if it
+    /// hasn't. One that doesn't draws nothing until it comes back, so a
+    /// size it asks for now only lands then.
+    pub fn is_shown(&self, window: WindowId) -> bool {
+        self.surfaces.get(&window).and_then(|s| crate::workspaces::shown(*s)).unwrap_or(true)
     }
 
     /// The logical content size of one of the app's toplevel windows.

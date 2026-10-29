@@ -6,7 +6,7 @@ use olo_kit::{
     metrics as m, style,
     icons,
     wallpapers::{self, Wallpaper},
-    widgets::{BBox, Button, ColorControl, MenuField, Slider, TextControl, Thumbnail, ThumbnailPicker, color_well},
+    widgets::{BBox, Button, ColorControl, MenuField, Slider, StringView, TextControl, Thumbnail, ThumbnailPicker, color_well},
 };
 use olo_protocol::Settings;
 
@@ -35,6 +35,8 @@ pub fn ui(ui: &mut Ui, s: &mut Settings) {
             style::sunken(ui.painter(), rect, &style::palette(ui.ctx()), false);
         }
     });
+    ui.add_space(m::TIGHT);
+    ui.add(StringView::new("Each display has workspaces of its own.").dim(true));
 }
 
 #[derive(Default)]

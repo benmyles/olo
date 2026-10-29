@@ -43,9 +43,11 @@ impl Ask {
 pub struct Facts {
     pub ask: Ask,
     pub title: String,
-    /// The window's workspace, and how many there are.
+    /// The window's workspace, and how many there are (each display has
+    /// its own), and the number its display goes by among several ("D1").
     pub workspace: u32,
     pub workspaces: u32,
+    pub display: Option<u32>,
     pub displays: usize,
     /// Rolled up to its tab.
     pub rolled: bool,
@@ -72,10 +74,12 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             Ok(Reply::Workspaces { count, .. }) => count,
             _ => 1,
         };
-        let displays = match c.request(&Request::Outputs) {
-            Ok(Reply::Outputs { outputs }) => outputs.iter().filter(|o| o.mirror_of.is_none()).count(),
-            _ => 1,
+        let outputs = match c.request(&Request::Outputs) {
+            Ok(Reply::Outputs { outputs }) => outputs,
+            _ => Vec::new(),
         };
+        let displays = outputs.iter().filter(|o| o.mirror_of.is_none()).count().max(1);
+        let display = w.output.as_deref().and_then(|o| olo_protocol::display_number(&outputs, o));
         let keys = match c.request(&Request::GetSettings) {
             Ok(Reply::Settings { settings }) => settings.shortcuts,
             _ => Default::default(),
@@ -89,7 +93,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             _ => None,
         };
         let (rolled, grouped, floating) = (w.rolled, w.group.is_some(), w.floating);
-        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, displays, rolled, grouped, auto, floating, keys, path });
+        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, display, displays, rolled, grouped, auto, floating, keys, path });
     });
 }
 
@@ -130,7 +134,7 @@ pub fn build(f: &Facts) -> Menu {
     .fold(Menu::new("Tile"), |m, (id, label)| if id.is_empty() { m.separator() } else { shortcut(m, id, label) });
     let mut spaces = Menu::new("Move to Workspace");
     for n in 0..f.workspaces.max(1) {
-        spaces = spaces.item(format!("Workspace {}", n + 1), format!("workspace:{n}"), None);
+        spaces = spaces.item(olo_protocol::workspace_name(f.display, n), format!("workspace:{n}"), None);
         if let Some(k) = keys(f, &format!("window-to-workspace-{}", n + 1)) {
             spaces = spaces.keys(k);
         }
@@ -265,7 +269,7 @@ mod tests {
         let mut changed = ShortcutSettings::new();
         changed.insert("zoom".into(), vec!["Ctrl+Cmd+Z".into()]);
         changed.insert("center".into(), vec![]);
-        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false, grouped: true, auto: false, floating: false, keys: changed, path: None };
+        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false, grouped: true, auto: false, floating: false, keys: changed, path: None, display: Some(1) };
         fn commands(m: &Menu, out: &mut Vec<String>) {
             for item in &m.items {
                 match item {
@@ -313,5 +317,7 @@ mod tests {
         let Some(menu::MenuItem::Submenu(spaces)) = menu.items.iter().find(|i| matches!(i, menu::MenuItem::Submenu(s) if s.title == "Move to Workspace")) else { panic!() };
         let menu::MenuItem::Action(first) = &spaces.items[0] else { panic!() };
         assert_eq!(first.key_label().as_deref(), Some("⌃⇧⌘1"));
+        // Its display's workspaces, named for it among several.
+        assert_eq!(first.label, "D1 Workspace 1");
     }
 }

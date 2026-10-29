@@ -764,13 +764,14 @@ impl<B: Backend + 'static> AnvilState<B> {
         owner == Some(&s)
     }
 
-    /// The other windows showing on this workspace, by their tabs.
+    /// The other windows showing (on the workspaces showing), by their
+    /// tabs.
     fn hint_windows(&self, except: Option<u64>) -> Vec<Node> {
         let mut out = Vec::new();
         // Front first.
         for w in self.space.elements().rev() {
             let meta = w.meta();
-            if Some(meta.id) == except || meta.minimized.get() || meta.workspace.get().is_some_and(|ws| ws != self.workspace) {
+            if Some(meta.id) == except || meta.minimized.get() {
                 continue;
             }
             let Some(at) = self.space.element_location(w) else { continue };

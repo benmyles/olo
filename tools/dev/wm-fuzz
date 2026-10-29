@@ -166,7 +166,20 @@ class Fuzz:
         return {w["id"]: w for w in self.req({"type": "list_windows"})["windows"]}
 
     def workspace(self):
+        """The active display's workspace showing."""
         return self.req({"type": "workspaces"}).get("current", 0)
+
+    def showing(self):
+        """Each display's workspace showing (every display has its own):
+        the active one's, and by connector."""
+        r = self.req({"type": "workspaces"})
+        return r.get("current", 0), {d["output"]: d["current"] for d in r.get("displays", [])}
+
+    @staticmethod
+    def here(w, cur):
+        """`w` is on the workspace its display shows (hidden there or not)."""
+        current, by = cur
+        return w["workspace"] == by.get(w.get("output"), current)
 
     def settle(self, timeout=3.0):
         """The windows once they stop changing (clients answer configures
@@ -231,9 +244,9 @@ class Fuzz:
         self.req({"type": "ping"}, timeout=1.0)
         if time.time() - t > 1.0:
             self.fail("ping took over a second")
-        ws = self.workspace()
+        cur = self.showing()
         outs = self.output_rects()
-        shown = [w for w in wins.values() if w["workspace"] == ws and not w["minimized"]]
+        shown = [w for w in wins.values() if self.here(w, cur) and not w["minimized"]]
         for w in shown:
             if fr(w) is None:
                 self.fail(f"shown window {w['id']} ({w['app_id']}) has no frame")
@@ -247,19 +260,21 @@ class Fuzz:
             if not any(overlap(top, o) >= min(cw, 32) * min(ch, 20) and o[1] <= y for o in outs):
                 self.fail(f"window {w['id']} ({w['app_id']}) is off the displays: {fr(w)}; displays {outs}")
         focused = [w for w in wins.values() if w["focused"]]
-        if shown and len(focused) != 1:
+        # With several displays, none has it when the display in use shows
+        # none (the keyboard doesn't go to another display's).
+        if len(focused) > 1 or (shown and not focused and len(cur[1]) < 2):
             self.fail(f"{len(focused)} windows have the keyboard with {len(shown)} shown: {[w['id'] for w in focused]}")
         for w in focused:
-            if w["minimized"] or w["workspace"] != ws:
+            if w["minimized"] or not self.here(w, cur):
                 self.fail(f"window {w['id']} has the keyboard but is {'hidden' if w['minimized'] else 'on workspace %d' % w['workspace']}")
-        self.check_groups(wins, ws)
-        self.check_zoomed(wins, ws)
+        self.check_groups(wins, cur)
+        self.check_zoomed(wins, cur)
         self.check_log()
 
-    def check_zoomed(self, wins, ws):
+    def check_zoomed(self, wins, cur):
         """A zoomed window on the active display fills (at most) its tiling
         area, whatever happened since it was zoomed."""
-        zoomed = [w for w in wins.values() if w.get("zoomed") and w["workspace"] == ws and not w["minimized"] and fr(w)]
+        zoomed = [w for w in wins.values() if w.get("zoomed") and self.here(w, cur) and not w["minimized"] and fr(w)]
         if not zoomed:
             return
         out, area = self.area()
@@ -283,7 +298,7 @@ class Fuzz:
             if "panicked" in line:
                 self.fail(f"app_server panicked: {line.strip()}")
 
-    def check_groups(self, wins, ws):
+    def check_groups(self, wins, cur):
         groups = {}
         for i, w in wins.items():
             g = w.get("group")
@@ -291,7 +306,7 @@ class Fuzz:
                 if w.get("tab") is not None:
                     self.fail(f"window {i} has tab place {w['tab']} but no group")
                 continue
-            if w["minimized"] or w["workspace"] != ws:
+            if w["minimized"] or not self.here(w, cur):
                 self.fail(f"window {i} is {'hidden' if w['minimized'] else 'away'} but in group {g}")
             groups.setdefault(g, []).append(i)
         for g, m in groups.items():
@@ -392,8 +407,8 @@ class Fuzz:
         return out
 
     def shown(self, wins):
-        ws = self.workspace()
-        return [i for i, w in wins.items() if w["workspace"] == ws and not w["minimized"]]
+        cur = self.showing()
+        return [i for i, w in wins.items() if self.here(w, cur) and not w["minimized"]]
 
     def pick(self, ids):
         return self.rng.choice(sorted(ids)) if ids else None
@@ -459,11 +474,11 @@ class Fuzz:
         if w is None:
             return
         self.log(f"activate {w} ({wins[w]['app_id']}{', hidden' if wins[w]['minimized'] else ''}, ws {wins[w]['workspace']})")
-        ws = self.workspace()
+        cur = self.showing()
         self.req({"type": "activate", "id": w})
         after = self.settle()
         self.check_sane(after)
-        if wins[w]["workspace"] == ws:
+        if self.here(wins[w], cur):
             self.check_unchanged(f"activating {w}", wins, after, skip={w})
         if not after[w]["focused"]:
             self.fail(f"activated window {w} doesn't have the keyboard")
@@ -707,17 +722,20 @@ class Fuzz:
         w = self.pick(shown)
         if w is None:
             return
-        ws = self.workspace()
+        # Along its own display's workspaces.
+        current, by = self.showing()
+        out = wins[w].get("output")
+        ws = by.get(out, current)
         to = self.rng.choice([i for i in range(4) if i != ws])
         self.log(f"window {w} to workspace {to} and back")
         self.req({"type": "move_to_workspace", "id": w, "index": to})
         mid = self.settle()
         self.check_sane(mid)
         self.check_unchanged(f"moving {w} away", wins, mid, skip=self.mates(wins, w))
-        self.req({"type": "switch_workspace", "index": to})
+        self.req({"type": "switch_workspace", "index": to, "output": out})
         self.settle()
         self.req({"type": "move_to_workspace", "id": w, "index": ws})
-        self.req({"type": "switch_workspace", "index": ws})
+        self.req({"type": "switch_workspace", "index": ws, "output": out})
         after = self.settle()
         self.check_sane(after)
         self.check_unchanged(f"moving {w} away and back", wins, after, skip=self.mates(wins, w))
@@ -912,10 +930,10 @@ class Fuzz:
     def bands(self, wins, but):
         """Each shown window's tab bar, and as near to it as a held tab
         goes in there (`NEAR`), but `but`'s."""
-        ws = self.workspace()
+        cur = self.showing()
         out = []
         for i, w in wins.items():
-            if i in but or w["minimized"] or w["workspace"] != ws or not fr(w):
+            if i in but or w["minimized"] or not self.here(w, cur) or not fr(w):
                 continue
             x, y, cw, _ = fr(w)
             out.append((x, y - NEAR, cw, TAB_H + 2 * NEAR))

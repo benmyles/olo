@@ -77,9 +77,30 @@ pub enum Request {
     /// may hang off a display's edge, but no further than a person could
     /// leave it: its top edge on the display, enough of it to take hold of.
     Place { id: WindowId, frame: Frame },
+    /// The workspaces: how many each display has, and which each shows.
     Workspaces,
-    SwitchWorkspace { index: u32 },
+    /// Show workspace `index` on a display (`output`, a connector; else
+    /// the active one). Every display has its own workspaces, and
+    /// switching one leaves the others as they are.
+    SwitchWorkspace {
+        index: u32,
+        #[serde(default)]
+        output: Option<String>,
+    },
+    /// Move a window to workspace `index` of the display it is on.
     MoveToWorkspace { id: WindowId, index: u32 },
+    /// Move every window on workspace `index` of display `output` to
+    /// workspace `to_index` (else the same number) of display `to` (both
+    /// connectors), each to the same place on it relatively, tiled or
+    /// zoomed as it was; hidden ones stay hidden. As Deskbar's workspace
+    /// headings offer.
+    MoveWorkspace {
+        output: String,
+        index: u32,
+        to: String,
+        #[serde(default)]
+        to_index: Option<u32>,
+    },
     Outputs,
     ConfigureOutput { name: String, config: OutputConfig },
     /// The pointing devices plugged in: touchpads (with the kind of pad and
@@ -191,16 +212,15 @@ pub enum Request {
     /// tiled there (dragging an edge resizes the neighbours) and undoable
     /// with Undo Window Arrangement. Windows not listed stay as they are.
     Arrange { windows: Vec<Placement> },
-    /// Each display's windowing mode on a workspace (the one showing
-    /// unless given).
+    /// Each display's windowing mode on a workspace (each display's
+    /// showing unless given).
     WindowingMode {
         #[serde(default)]
         workspace: Option<u32>,
     },
-    /// Choose a windowing mode (Deskbar's tray): for a workspace (the one
-    /// showing unless given) and, with a Deskbar on every display, one
-    /// display of it (`output`, a connector; else the active display),
-    /// otherwise all its displays. Standard leaves windows where they
+    /// Choose a windowing mode (Deskbar's tray) for one display
+    /// (`output`, a connector; else the active display), on one of its
+    /// workspaces (the one showing unless given). Standard leaves windows where they
     /// are put. Auto-Tiling tiles every window (see `SetAutoTiling`).
     /// Focus shows only the active window, zoomed, with its app's other
     /// windows grouped behind it and dialogs and floating windows over
@@ -214,17 +234,16 @@ pub enum Request {
         #[serde(default)]
         output: Option<String>,
     },
-    /// Whether auto-tiling is on for each display of a workspace (the
-    /// one showing unless given).
+    /// Whether auto-tiling is on for each display on a workspace (each
+    /// display's showing unless given).
     AutoTiling {
         #[serde(default)]
         workspace: Option<u32>,
     },
     /// Auto-tiling on (`on`), off (the Standard windowing mode), or
-    /// (left out) the other way, as ⌃⌥⌘T does. It is for a workspace (the
-    /// one showing unless given) and, with a Deskbar on every display, one
-    /// display of it (`output`, a connector; else the active display),
-    /// otherwise all its displays. While it is on, every window there is
+    /// (left out) the other way, as ⌃⌥⌘T does, for one display (`output`,
+    /// a connector; else the active display) on one of its workspaces
+    /// (the one showing unless given). While it is on, every window there is
     /// tiled: a new one takes its share, a closed one's room goes to its
     /// neighbours, and dialogs and fixed-size windows float over the
     /// tiles. Remembered (`TilingSettings::modes`); `SetWindowingMode`
@@ -282,7 +301,14 @@ pub enum Reply {
     Error { message: String },
     ActivationToken { token: String },
     Windows { windows: Vec<WindowInfo> },
-    Workspaces { current: u32, count: u32 },
+    /// How many workspaces each display has, the one showing on the
+    /// active display (`current`), and each display's (`displays`).
+    Workspaces {
+        current: u32,
+        count: u32,
+        #[serde(default)]
+        displays: Vec<DisplayWorkspace>,
+    },
     Outputs { outputs: Vec<OutputInfo> },
     InputDevices { devices: Vec<touchpad::InputDeviceInfo> },
     Settings { settings: Settings },
@@ -298,9 +324,10 @@ pub enum Reply {
     /// area tiling uses (global logical pixels: the display less Deskbar
     /// and the margins), and its windows on this workspace, front first.
     Arrangement { output: String, area: Frame, windows: Vec<WindowInfo> },
-    /// [`Request::AutoTiling`]'s answer: each display of the workspace.
+    /// [`Request::AutoTiling`]'s answer: each display, on the workspace
+    /// asked about (`workspace`: the active display's showing if none was).
     AutoTiling { workspace: u32, displays: Vec<AutoTilingInfo> },
-    /// [`Request::WindowingMode`]'s answer: each display of the workspace.
+    /// [`Request::WindowingMode`]'s answer: each display, as AutoTiling's.
     WindowingMode { workspace: u32, displays: Vec<WindowingModeInfo> },
     Power { status: PowerStatus },
     /// [`Request::AutoApproveSecret`]'s answer.
@@ -342,7 +369,14 @@ pub struct FrameTimings {
 #[allow(clippy::large_enum_variant)]
 pub enum Event {
     WindowsChanged { windows: Vec<WindowInfo> },
-    WorkspaceChanged { current: u32, count: u32 },
+    /// A display switched workspace, another display became the active
+    /// one, or the count changed: as [`Reply::Workspaces`].
+    WorkspaceChanged {
+        current: u32,
+        count: u32,
+        #[serde(default)]
+        displays: Vec<DisplayWorkspace>,
+    },
     SettingsChanged { settings: Settings },
     OutputsChanged { outputs: Vec<OutputInfo> },
     /// Caffeinated, display asleep, brightness or app inhibitors changed.
@@ -484,6 +518,9 @@ pub struct Frame {
 pub struct AutoTilingInfo {
     pub output: String,
     pub on: bool,
+    /// The workspace it is about (the display's showing, unless asked).
+    #[serde(default)]
+    pub workspace: u32,
 }
 
 /// A display's (its connector) windowing mode.
@@ -491,6 +528,23 @@ pub struct AutoTilingInfo {
 pub struct WindowingModeInfo {
     pub output: String,
     pub mode: WindowingMode,
+    /// The workspace it is about (the display's showing, unless asked).
+    #[serde(default)]
+    pub workspace: u32,
+}
+
+/// The workspace a display (its connector) shows. Each display has its
+/// own workspaces, as many as `Settings::workspace_count`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DisplayWorkspace {
+    pub output: String,
+    pub current: u32,
+    /// The active display (the focused window's, else the one last
+    /// used): its workspace showing is "this workspace", where a window
+    /// opened or launched goes. `WorkspaceChanged` is sent when it
+    /// changes too.
+    #[serde(default)]
+    pub active: bool,
 }
 
 /// Where [`Request::Arrange`] puts a window: fractions (0–1) of the
@@ -541,7 +595,7 @@ pub struct OutputInfo {
     /// Clockwise rotation in degrees: 0, 90, 180 or 270.
     #[serde(default)]
     pub rotation: u16,
-    /// The main display: Deskbar and the desktop live here.
+    /// The main display: the desktop lives here.
     #[serde(default)]
     pub main: bool,
     /// The display this one mirrors (its connector), if it does.
@@ -550,6 +604,29 @@ pub struct OutputInfo {
     /// Its brightness, 0–1, when it can be set from here.
     #[serde(default)]
     pub brightness: Option<f32>,
+}
+
+/// The number display `output` (a connector) goes by, "D0", "D1", …:
+/// the displays left to right (then top to bottom), from 0. None with
+/// only one display, which needs no number, and for a mirror (it shows
+/// another's picture).
+pub fn display_number(outputs: &[OutputInfo], output: &str) -> Option<u32> {
+    let mut shown: Vec<&OutputInfo> = outputs.iter().filter(|o| o.mirror_of.is_none()).collect();
+    if shown.len() < 2 {
+        return None;
+    }
+    shown.sort_by_key(|o| o.position);
+    shown.iter().position(|o| o.name == output).map(|i| i as u32)
+}
+
+/// Workspace `index`'s name (from 0): "Workspace 2", or on display
+/// `display` of several (`display_number`), "D1 Workspace 2", as Deskbar,
+/// Twitcher and the overview call it.
+pub fn workspace_name(display: Option<u32>, index: u32) -> String {
+    match display {
+        Some(d) => format!("D{d} Workspace {}", index + 1),
+        None => format!("Workspace {}", index + 1),
+    }
 }
 
 impl OutputInfo {
@@ -847,12 +924,11 @@ impl Default for PowerSettings {
 pub struct DisplaySettings {
     /// Scale for outputs without their own entry in `outputs`.
     pub scale: f64,
-    /// The main display's key (Deskbar and the desktop live there); None,
-    /// or one that isn't connected, means the first.
+    /// The main display's key (the desktop lives there); None, or one
+    /// that isn't connected, means the first. Every display has a
+    /// Deskbar, showing the applications with windows on it, and
+    /// workspaces of its own.
     pub main: Option<String>,
-    /// A Deskbar on every display, each showing the applications with
-    /// windows on it (else one, on the main display, shows them all).
-    pub deskbar_on_every_display: bool,
     /// Per-display overrides, keyed by [`display_key`]: the monitor itself
     /// when its EDID names it, else the connector ("eDP-1"). Entries saved
     /// under a connector by older versions still apply, and move to the
@@ -874,7 +950,7 @@ pub fn display_key(connector: &str, make: &str, model: &str, serial: &str) -> St
 
 impl Default for DisplaySettings {
     fn default() -> Self {
-        DisplaySettings { scale: 2.0, main: None, deskbar_on_every_display: false, outputs: Default::default() }
+        DisplaySettings { scale: 2.0, main: None, outputs: Default::default() }
     }
 }
 
@@ -1418,6 +1494,32 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn displays_numbered_left_to_right() {
+        let out = |name: &str, x: i32, mirror: Option<&str>| OutputInfo {
+            name: name.into(),
+            key: name.into(),
+            make: String::new(),
+            model: String::new(),
+            physical_size_mm: (0, 0),
+            modes: Vec::new(),
+            current_mode: None,
+            scale: 1.0,
+            position: (x, 0),
+            rotation: 0,
+            main: false,
+            mirror_of: mirror.map(Into::into),
+            brightness: None,
+        };
+        let one = [out("eDP-1", 0, None), out("HDMI-A-1", 0, Some("eDP-1"))];
+        assert_eq!(display_number(&one, "eDP-1"), None);
+        assert_eq!(workspace_name(display_number(&one, "eDP-1"), 0), "Workspace 1");
+        let three = [out("eDP-1", 4480, None), out("DP-1", 1920, None), out("DP-2", 0, None), out("HDMI-A-1", 0, Some("DP-2"))];
+        let numbers: Vec<Option<u32>> = ["DP-2", "DP-1", "eDP-1", "HDMI-A-1"].iter().map(|o| display_number(&three, o)).collect();
+        assert_eq!(numbers, [Some(0), Some(1), Some(2), None]);
+        assert_eq!(workspace_name(Some(2), 3), "D2 Workspace 4");
+    }
     use super::*;
 
     #[test]

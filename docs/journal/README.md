@@ -5,6 +5,36 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Preferences: workspaces are per display
+
+*13:43* — The Workspaces panel says each display has its own; Displays has no Deskbar-on-every-display setting any more.
+
+![Preferences: workspaces are per display](2026-10-29/134336-preferences-workspaces-are-per-display.png)
+
+### Deskbar: tray icons in even rows
+
+*13:43* — More icons than fit go into as many rows as needed, shared out evenly (eight are two rows of four), at 1x, 1.5x and 2x, light and dark.
+
+![Deskbar: tray icons in even rows](2026-10-29/134336-deskbar-tray-icons-in-even-rows.png)
+
+### Twitcher: displays numbered
+
+*13:43* — Columns are displays (D0, D1, D2 and their names), rows workspace numbers: a cell is that display's workspace.
+
+![Twitcher: displays numbered](2026-10-29/134335-twitcher-displays-numbered.png)
+
+### Deskbar: a workspace heading's menu
+
+*13:43* — Right-clicking a heading: Show, Hide or Close All of its windows, move them to the same workspace of another display, or to any workspace of any display.
+
+![Deskbar: a workspace heading's menu](2026-10-29/134335-deskbar-a-workspace-heading-s-menu.png)
+
+### Deskbar: every display's own workspaces
+
+*13:43* — Each display has its own workspaces and its own Deskbar, listing only its workspaces, headed D0/D1/D2 Workspace N; the windowing mode moved from the tray to each heading's right end (D2's is Auto-Tiling here).
+
+![Deskbar: every display's own workspaces](2026-10-29/134334-deskbar-every-display-s-own-workspaces.png)
+
 ### Default windowing mode in Preferences
 
 *11:05* — Preferences ▸ Windows chooses the mode a workspace starts in; Deskbar's tray chooses each workspace's own.

@@ -305,7 +305,7 @@ pub fn run_headless(size_arg: Option<&str>) {
         state.timings.handled(|| "tick".into(), start);
         for output in &outputs {
             for shot in state.ipc.shots_for(output) {
-                let color = state.desktop_color();
+                let color = state.desktop_color(output);
                 let mut overlays = twitcher_overlay(&mut state, output);
                 let locked = state.lock.locked();
                 let pointer = state.pointer.current_location();
@@ -379,7 +379,7 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
     let frame = frame_time(output);
     let frame_target = now + frame;
     state.pre_repaint(output, frame_target);
-    let desktop_color = state.desktop_color();
+    let desktop_color = state.desktop_color(output);
     let overlay = twitcher_overlay(state, output);
     let locked = state.lock.locked();
     let data = &mut state.backend_data;

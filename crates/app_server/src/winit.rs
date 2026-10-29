@@ -245,7 +245,7 @@ pub fn run_winit() {
                     .unwrap_or_default();
             state.pre_repaint(&output, frame_target);
 
-            let desktop_color = state.desktop_color();
+            let desktop_color = state.desktop_color(&output);
             let backend = &mut state.backend_data.backend;
 
             // draw the cursor as relevant
@@ -463,7 +463,7 @@ pub fn run_winit() {
             state.popups.cleanup();
             state.tick();
             for shot in state.ipc.shots_for(&output) {
-                let color = state.desktop_color();
+                let color = state.desktop_color(&output);
                 let locked = state.lock.locked();
                 let pointer = state.pointer.current_location();
                 crate::screenshot::take::<_, smithay::backend::renderer::gles::GlesTexture>(

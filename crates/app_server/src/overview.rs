@@ -79,8 +79,11 @@ pub type Rect = Rectangle<f64, Logical>;
 pub struct Pane {
     pub output: String,
     pub workspace: u32,
+    /// What it is called: "Workspace 2", or with several displays,
+    /// which one's ("D1 Workspace 2").
+    pub name: String,
     pub rect: Rect,
-    /// The workspace showing.
+    /// The workspace its display shows.
     pub current: bool,
 }
 
@@ -128,7 +131,7 @@ pub struct Overview {
 struct Drawn {
     key: (i64, u64),
     badges: HashMap<char, (MemoryRenderBuffer, (i32, i32))>,
-    names: HashMap<(u32, bool), (MemoryRenderBuffer, (i32, i32))>,
+    names: HashMap<(String, bool), (MemoryRenderBuffer, (i32, i32))>,
     title: Option<((u64, String, i32), (MemoryRenderBuffer, (i32, i32)))>,
     /// Single pixels stretched into lines and fills, each used once a
     /// frame (an element's id is its buffer's).
@@ -406,9 +409,10 @@ impl Overview {
         // The panes: named above, a light fill, a line round (the
         // workspace showing in the focus colour).
         for pane in self.panes.iter().filter(|p| p.output == name) {
-            let (buffer, (w, h)) = drawn.names.entry((pane.workspace, pane.current)).or_insert_with(|| {
-                picture(&name_pixmap(&palette, &format!("Workspace {}", pane.workspace + 1), pane.current, scale), false)
-            });
+            let (buffer, (w, h)) = drawn
+                .names
+                .entry((pane.name.clone(), pane.current))
+                .or_insert_with(|| picture(&name_pixmap(&palette, &pane.name, pane.current, scale), false));
             let at = phys(pane.rect.loc.x, pane.rect.loc.y - (LABEL + *h as f64 / scale) / 2.0);
             back.extend(
                 crate::render::picture(renderer, at, buffer, (*w, *h), Some(fade), Kind::Unspecified)
@@ -497,8 +501,8 @@ impl<B: Backend + 'static> AnvilState<B> {
         if self.hints.active() {
             self.hints.close();
         }
-        let current = self.workspace;
         let windows = self.all_windows();
+        let infos = self.output_infos();
         let stacking: Vec<WindowElement> = self.space.elements().cloned().collect();
         let mut outputs: Vec<Output> = self.space.outputs().cloned().collect();
         outputs.sort_by_key(|o| self.space.output_geometry(o).map(|g| (g.loc.x, g.loc.y)));
@@ -506,6 +510,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         let mut cells = Vec::new();
         for output in &outputs {
             let (Some(geo), Some(area)) = (self.space.output_geometry(output), self.usable_area(output)) else { continue };
+            // Each display has its own workspaces.
+            let current = self.showing(output);
+            let number = olo_protocol::display_number(&infos, &output.name());
             let area = area.to_f64();
             let area = Rectangle::new(
                 (area.loc.x + MARGIN, area.loc.y + MARGIN).into(),
@@ -517,7 +524,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 .filter(|w| w.alive() && !w.meta().minimized.get() && !(w.decorated() && w.decoration().behind))
                 .filter(|w| self.display_of(w).as_ref() == Some(output))
                 .map(|w| {
-                    let ws = w.meta().workspace.get().unwrap_or(current);
+                    let ws = self.workspace_of(w);
                     let shown = self.space.element_bbox(w).map(|b| b.to_f64());
                     let frame = shown.unwrap_or_else(|| {
                         let b = SpaceElement::bbox(w);
@@ -548,7 +555,8 @@ impl<B: Backend + 'static> AnvilState<B> {
                     let z = stacking.iter().position(|s| s == &m.0).map_or(0, |i| i + 1);
                     cells.push(Cell { window: m.0.clone(), output: output.name(), workspace: *ws, from: m.3, to, letter: None, z });
                 }
-                panes_out.push(Pane { output: output.name(), workspace: *ws, rect, current: *ws == current });
+                let name = olo_protocol::workspace_name(number, *ws);
+                panes_out.push(Pane { output: output.name(), workspace: *ws, name, rect, current: *ws == current });
             }
         }
         for (cell, c) in cells.iter_mut().zip(crate::hints::LETTERS.chars()) {

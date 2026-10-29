@@ -395,8 +395,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 None => not_found(),
             },
             Request::WindowingMode { workspace } => {
-                let ws = workspace.unwrap_or(self.workspace);
-                Reply::WindowingMode { workspace: ws, displays: self.windowing_mode_infos(ws) }
+                Reply::WindowingMode { workspace: workspace.unwrap_or_else(|| self.workspace()), displays: self.windowing_mode_infos(workspace) }
             }
             Request::SetWindowingMode { mode, workspace, output } => {
                 let o = match output {
@@ -406,13 +405,12 @@ impl<B: Backend + 'static> AnvilState<B> {
                     },
                     None => None,
                 };
-                let ws = workspace.unwrap_or(self.workspace);
-                self.set_windowing_mode(mode, Some(ws), o);
-                Reply::WindowingMode { workspace: ws, displays: self.windowing_mode_infos(ws) }
+                let ws = workspace.or_else(|| o.clone().or_else(|| self.active_output()).map(|o| self.showing(&o))).unwrap_or(0);
+                self.set_windowing_mode(mode, workspace, o);
+                Reply::WindowingMode { workspace: ws, displays: self.windowing_mode_infos(workspace) }
             }
             Request::AutoTiling { workspace } => {
-                let ws = workspace.unwrap_or(self.workspace);
-                Reply::AutoTiling { workspace: ws, displays: self.auto_tiling_infos(ws) }
+                Reply::AutoTiling { workspace: workspace.unwrap_or_else(|| self.workspace()), displays: self.auto_tiling_infos(workspace) }
             }
             Request::SetAutoTiling { on, workspace, output } => {
                 let o = match output {
@@ -422,9 +420,9 @@ impl<B: Backend + 'static> AnvilState<B> {
                     },
                     None => None,
                 };
-                let ws = workspace.unwrap_or(self.workspace);
-                self.set_auto_tiling(on, Some(ws), o);
-                Reply::AutoTiling { workspace: ws, displays: self.auto_tiling_infos(ws) }
+                let ws = workspace.or_else(|| o.clone().or_else(|| self.active_output()).map(|o| self.showing(&o))).unwrap_or(0);
+                self.set_auto_tiling(on, workspace, o);
+                Reply::AutoTiling { workspace: ws, displays: self.auto_tiling_infos(workspace) }
             }
             Request::SetFloating { id, floating } => match self.window_by_id(id) {
                 Some(w) => {
@@ -434,12 +432,34 @@ impl<B: Backend + 'static> AnvilState<B> {
                 None => not_found(),
             },
             Request::Workspaces => Reply::Workspaces {
-                current: self.workspace,
+                current: self.workspace(),
                 count: self.settings.workspace_count,
+                displays: self.display_workspaces(),
             },
-            Request::SwitchWorkspace { index } => {
+            Request::SwitchWorkspace { index, output: None } => {
                 self.switch_workspace(index);
                 Reply::Ok
+            }
+            Request::SwitchWorkspace { index, output: Some(name) } => {
+                let output = self.space.outputs().find(|o| o.name() == name).cloned();
+                match output {
+                    Some(o) => {
+                        self.switch_workspace_on(&o, index);
+                        Reply::Ok
+                    }
+                    None => Reply::Error { message: format!("no display {name:?}") },
+                }
+            }
+            Request::MoveWorkspace { output, index, to, to_index } => {
+                let find = |name: &str| self.space.outputs().find(|o| o.name() == name).cloned();
+                match (find(&output), find(&to)) {
+                    (Some(from), Some(to)) => {
+                        self.move_workspace(&from, index, &to, to_index.unwrap_or(index));
+                        Reply::Ok
+                    }
+                    (None, _) => Reply::Error { message: format!("no display {output:?}") },
+                    (_, None) => Reply::Error { message: format!("no display {to:?}") },
+                }
             }
             Request::MoveToWorkspace { id, index } => match self.window_by_id(id) {
                 Some(w) => {

@@ -257,7 +257,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 use olo_protocol::WindowingMode as M;
                 let mode = if shortcut == S::AutoTile { M::AutoTiling } else { M::Focus };
                 let Some(o) = self.active_output() else { return };
-                let to = if self.mode_of(&o, self.workspace) == mode { M::Standard } else { mode };
+                let to = if self.mode_now(&o) == mode { M::Standard } else { mode };
                 let now = self.set_windowing_mode(to, None, Some(o));
                 self.show_indicator(crate::osd::Indicator::Mode(now));
             }
@@ -269,7 +269,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             S::CascadeAll | S::FanOut | S::CascadeOthers | S::FanOutOthers => {
                 let keep = matches!(shortcut, S::CascadeOthers | S::FanOutOthers).then_some(focused).flatten();
                 let output = keep.as_ref().and_then(|w| self.window_output(w)).or_else(|| self.active_output());
-                if let Some(o) = output.filter(|o| self.auto_on(o, self.workspace)) {
+                if let Some(o) = output.filter(|o| self.auto_on(o, self.showing(o))) {
                     self.set_auto_tiling(Some(false), None, Some(o));
                     self.show_indicator(crate::osd::Indicator::Mode(olo_protocol::WindowingMode::Standard));
                 }
@@ -284,13 +284,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
             }
             S::ShowDesktop => self.show_desktop(),
-            S::NextWorkspace => self.switch_workspace((self.workspace + 1).min(workspaces - 1)),
-            S::PreviousWorkspace => self.switch_workspace(self.workspace.saturating_sub(1)),
+            // The active display's workspaces; the others stay as they are.
+            S::NextWorkspace => self.switch_workspace((self.workspace() + 1).min(workspaces - 1)),
+            S::PreviousWorkspace => self.switch_workspace(self.workspace().saturating_sub(1)),
             S::Workspace(i) => self.switch_workspace(u32::from(i)),
+            // Along its display's workspaces.
             S::WindowToNextWorkspace | S::WindowToPreviousWorkspace => {
                 let Some(w) = focused else { return };
-                let to = if shortcut == S::WindowToNextWorkspace { (self.workspace + 1).min(workspaces - 1) } else { self.workspace.saturating_sub(1) };
-                if to != self.workspace {
+                let here = self.workspace_of(&w);
+                let to = if shortcut == S::WindowToNextWorkspace { (here + 1).min(workspaces - 1) } else { here.saturating_sub(1) };
+                if to != here {
                     self.move_to_workspace(&w, to);
                     self.restore(&w);
                 }
@@ -298,7 +301,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             S::WindowToWorkspace(i) => {
                 let Some(w) = focused else { return };
                 let to = u32::from(i);
-                if to < workspaces && to != self.workspace {
+                if to < workspaces && to != self.workspace_of(&w) {
                     self.move_to_workspace(&w, to);
                     self.restore(&w);
                 }
@@ -602,6 +605,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn update_keyboard_focus(&mut self, location: Point<f64, Logical>, serial: Serial) {
+        // A press on a display makes it the active one (while no window
+        // has the keyboard: a workspace switched from there).
+        if let Some(o) = self.space.output_under(location).next() {
+            self.last_display = Some(o.name());
+        }
         if self.lock.locked() {
             self.lock_guard_focus();
             return;
@@ -678,7 +686,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                             WindowSurfaceType::ALL,
                         ) {
                             keyboard.set_focus(self, Some(layer.clone().into()), serial);
+                            return;
                         }
+                drop(layers);
+                // Nothing there takes it: the bare desktop of another
+                // display than the focused window's is the one in use now
+                // (as the main display's desktop takes the keyboard), so
+                // no window keeps it, and that display is the active one.
+                if self.focused_window().is_some_and(|w| self.window_output(&w).as_ref() != Some(output)) {
+                    keyboard.set_focus(self, None, serial);
+                }
             };
         }
     }

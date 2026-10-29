@@ -3,7 +3,7 @@
 //! re-executes itself after an upgrade.
 //!
 //! On exit app_server writes every window's place, and the workspace
-//! showing, to `$XDG_RUNTIME_DIR/olo-layout-$WAYLAND_DISPLAY.json`; a
+//! each display shows, to `$XDG_RUNTIME_DIR/olo-layout-$WAYLAND_DISPLAY.json`; a
 //! closing window is remembered in memory too. A new window that is one of those coming
 //! back takes its place and size instead of the next cascade slot:
 //!
@@ -76,10 +76,15 @@ pub struct Placement {
     /// still stack as they did.
     #[serde(default)]
     pub depth: u32,
-    /// The workspace showing when it was saved (the same in every place
-    /// saved together), so a restart comes back to it.
+    /// The active display's workspace showing when it was saved (the
+    /// same in every place saved together); before each display had its
+    /// own, the one every display showed.
     #[serde(default)]
     pub showing: Option<u32>,
+    /// Each display's (by its `display_key`) workspace showing when it was
+    /// saved, so a restart comes back to them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub displays: Vec<(String, u32)>,
     /// Seconds since the epoch when it was recorded.
     pub at: u64,
     /// The process that showed it (0: not known, any may take it).
@@ -115,11 +120,25 @@ pub fn load() -> Vec<Placement> {
     fresh
 }
 
-/// The workspace that was showing when `list` was saved (of `count`), to
-/// start on; 0 if none was.
-pub fn showing(list: &[Placement], count: u32) -> u32 {
-    list.iter().find_map(|p| p.showing).unwrap_or(0).min(count.max(1) - 1)
+/// The workspace each display showed when `list` was saved (of
+/// `count`), to start on, by `display_key`; saved before each display had
+/// its own, the one they all showed (under [`EVERY`]).
+pub fn showing(list: &[Placement], count: u32) -> std::collections::HashMap<String, u32> {
+    let last = count.max(1) - 1;
+    let mut map: std::collections::HashMap<String, u32> =
+        list.iter().find(|p| !p.displays.is_empty()).map(|p| p.displays.iter().map(|(k, ws)| (k.clone(), (*ws).min(last))).collect()).unwrap_or_default();
+    if map.is_empty()
+        && let Some(ws) = list.iter().find_map(|p| p.showing)
+    {
+        map.insert(EVERY.to_owned(), ws.min(last));
+    }
+    map
 }
+
+/// The key in `AnvilState::showing` for every display without one of its
+/// own (as a layout saved before each display had its own workspaces
+/// says).
+pub const EVERY: &str = "*";
 
 impl<B: Backend + 'static> AnvilState<B> {
     fn placement_of(&self, w: &WindowElement, focused: Option<&WlSurface>) -> Option<Placement> {
@@ -155,7 +174,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             y: loc.y,
             width: size.w,
             height: size.h,
-            workspace: meta.workspace.get().unwrap_or(self.workspace),
+            workspace: self.workspace_of(w),
             minimized: meta.minimized.get(),
             focused: focused.is_some() && w.wl_surface().as_deref() == focused,
             rolled: w.rolled(),
@@ -164,6 +183,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             tab_order: meta.tab_order.get(),
             depth: 0,
             showing: None,
+            displays: Vec::new(),
             at: now(),
             pid: meta.owner.borrow().as_ref().map_or(0, |(pid, _)| *pid),
             client: meta.owner.borrow().as_ref().map(|(_, c)| c.clone()),
@@ -200,8 +220,10 @@ impl<B: Backend + 'static> AnvilState<B> {
             })
             .collect();
         list.extend(self.layout.iter().cloned());
+        let (active, displays) = (self.workspace(), self.showing.iter().map(|(k, ws)| (k.clone(), *ws)).collect::<Vec<_>>());
         for p in &mut list {
-            p.showing = Some(self.workspace);
+            p.showing = Some(active);
+            p.displays = displays.clone();
         }
         match serde_json::to_string(&list) {
             Ok(text) => {
@@ -298,7 +320,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         // the display it is on, or else onto one if it is out of reach.
         self.refit(&window);
         meta.restored_focus.set(p.focused.then(std::time::Instant::now));
-        if p.workspace != self.workspace {
+        if p.workspace != self.workspace_of(&window) {
             self.move_to_workspace(&window, p.workspace);
         } else if p.minimized {
             self.minimize(&window);
@@ -371,16 +393,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_workspace_showing_comes_back() {
+    fn the_workspaces_showing_come_back() {
         // As an app_server from before `showing` saved it: none to go back to.
         let old = r#"[{"app_id":"olo.tracker","title":"Home","x":200,"y":600,"workspace":2,"minimized":false,"focused":true,"at":1}]"#;
         let list: Vec<Placement> = serde_json::from_str(old).unwrap();
-        assert_eq!((list[0].showing, showing(&list, 4)), (None, 0));
+        assert!(list[0].showing.is_none() && showing(&list, 4).is_empty());
+        // From before each display had its own: the one for them all.
         let saved = serde_json::to_string(&[Placement { showing: Some(2), ..list[0].clone() }]).unwrap();
         let list: Vec<Placement> = serde_json::from_str(&saved).unwrap();
-        assert_eq!(showing(&list, 4), 2);
+        assert_eq!(showing(&list, 4).get(EVERY), Some(&2));
         // Fewer workspaces now: the last.
-        assert_eq!(showing(&list, 2), 1);
-        assert_eq!(showing(&[], 4), 0);
+        assert_eq!(showing(&list, 2).get(EVERY), Some(&1));
+        assert!(showing(&[], 4).is_empty());
+        // Each display's.
+        let displays = vec![("eDP-1".to_owned(), 1), ("Dell Inc. DELL S2425HS 8K08534".to_owned(), 3)];
+        let saved = serde_json::to_string(&[Placement { showing: Some(1), displays, ..list[0].clone() }]).unwrap();
+        let map = showing(&serde_json::from_slice::<Vec<Placement>>(saved.as_bytes()).unwrap(), 4);
+        assert_eq!((map.get("eDP-1"), map.get("Dell Inc. DELL S2425HS 8K08534"), map.get(EVERY)), (Some(&1), Some(&3), None));
     }
 }

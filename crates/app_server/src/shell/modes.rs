@@ -1,6 +1,6 @@
 //! Windowing modes (Deskbar's tray, `Request::SetWindowingMode`, ⌃⌥⌘T and
-//! ⌃⌥⌘O; Preferences ▸ Windows for the default): each display of each
-//! workspace is Standard (windows stay where they are put), Auto-Tiling
+//! ⌃⌥⌘O; Preferences ▸ Windows for the default): each workspace of each
+//! display is Standard (windows stay where they are put), Auto-Tiling
 //! (`autotile`) or Focus.
 //!
 //! Focus shows one window at a time on its display, zoomed: the front one
@@ -33,9 +33,14 @@ use super::WindowElement;
 use crate::state::{AnvilState, Backend};
 
 impl<B: Backend + 'static> AnvilState<B> {
-    /// The windowing mode of `output` on `workspace`.
+    /// The windowing mode of `output` on its workspace `workspace`.
     pub fn mode_of(&self, output: &Output, workspace: u32) -> WindowingMode {
-        self.settings.tiling.mode(workspace, &crate::desktop::display_key(output), self.settings.display.deskbar_on_every_display)
+        self.settings.tiling.mode(workspace, &crate::desktop::display_key(output))
+    }
+
+    /// The windowing mode of `output` now, on the workspace it shows.
+    pub fn mode_now(&self, output: &Output) -> WindowingMode {
+        self.mode_of(output, self.showing(output))
     }
 
     /// Whether Focus is the mode anywhere (else nothing here has work).
@@ -44,35 +49,35 @@ impl<B: Backend + 'static> AnvilState<B> {
         t.default_mode == WindowingMode::Focus || t.modes.iter().any(|m| m.mode == WindowingMode::Focus)
     }
 
-    /// Whether `w` is on a display in Focus mode, on this workspace.
+    /// Whether `w` is on a display in Focus mode, on the workspace it
+    /// shows.
     pub fn in_focus_mode(&self, w: &WindowElement) -> bool {
-        self.any_focus() && self.window_output(w).is_some_and(|o| self.mode_of(&o, self.workspace) == WindowingMode::Focus)
+        self.any_focus() && self.window_output(w).is_some_and(|o| self.mode_now(&o) == WindowingMode::Focus)
     }
 
-    /// Choose the windowing mode of `workspace` (the one showing unless
-    /// given) and, with a Deskbar on every display, of `output` (the
-    /// active display unless given), else of all its displays. The mode
-    /// it has now.
+    /// Choose the windowing mode of `output` (the active display unless
+    /// given) on its workspace `workspace` (the one showing unless
+    /// given). The mode it has now.
     pub fn set_windowing_mode(&mut self, mode: WindowingMode, workspace: Option<u32>, output: Option<Output>) -> WindowingMode {
-        let ws = workspace.unwrap_or(self.workspace).min(self.settings.workspace_count.max(1) - 1);
         let Some(output) = output.or_else(|| self.active_output()) else { return WindowingMode::Standard };
-        let each = self.settings.display.deskbar_on_every_display;
+        let showing = self.showing(&output);
+        let ws = workspace.unwrap_or(showing).min(self.settings.workspace_count.max(1) - 1);
         let was = self.mode_of(&output, ws);
         if mode == was {
             return mode;
         }
-        let outputs: Vec<String> = if each { vec![output.name()] } else { self.space.outputs().map(|o| o.name()).collect() };
-        let shown: Vec<Output> = self.space.outputs().filter(|o| outputs.contains(&o.name())).cloned().collect();
-        if ws == self.workspace && mode == WindowingMode::AutoTiling {
+        let outputs = vec![output.name()];
+        let shown = vec![output.clone()];
+        if ws == showing && mode == WindowingMode::AutoTiling {
             let windows: Vec<WindowElement> = shown.iter().flat_map(|o| self.windows_on(o)).collect();
             self.remember_arrangement(&windows);
             self.auto_turned_on(ws, outputs.clone(), was);
         }
-        self.settings.tiling.set_mode(ws, &crate::desktop::display_key(&output), each, mode);
+        self.settings.tiling.set_mode(ws, &crate::desktop::display_key(&output), mode);
         if was == WindowingMode::AutoTiling {
             self.auto_forget(ws, &outputs);
         }
-        if was == WindowingMode::Focus && ws == self.workspace {
+        if was == WindowingMode::Focus && ws == showing {
             self.leave_focus(&shown, mode);
         }
         crate::desktop::save_settings(&self.settings);
@@ -82,16 +87,23 @@ impl<B: Backend + 'static> AnvilState<B> {
         mode
     }
 
-    /// Each display's windowing mode on `workspace`, as the IPC tells it.
-    pub fn windowing_mode_infos(&self, workspace: u32) -> Vec<olo_protocol::WindowingModeInfo> {
-        self.space.outputs().map(|o| olo_protocol::WindowingModeInfo { output: o.name(), mode: self.mode_of(o, workspace) }).collect()
+    /// Each display's windowing mode on its workspace `workspace` (the
+    /// one it shows unless given), as the IPC tells it.
+    pub fn windowing_mode_infos(&self, workspace: Option<u32>) -> Vec<olo_protocol::WindowingModeInfo> {
+        self.space
+            .outputs()
+            .map(|o| {
+                let ws = workspace.unwrap_or_else(|| self.showing(o));
+                olo_protocol::WindowingModeInfo { output: o.name(), mode: self.mode_of(o, ws), workspace: ws }
+            })
+            .collect()
     }
 
     /// An arranging command for `output` (the active display unless
     /// given): Focus gives way to Standard first, saying so.
     pub fn arranging(&mut self, output: Option<Output>) {
         let Some(o) = output.or_else(|| self.active_output()) else { return };
-        if self.mode_of(&o, self.workspace) == WindowingMode::Focus {
+        if self.mode_now(&o) == WindowingMode::Focus {
             self.set_windowing_mode(WindowingMode::Standard, None, Some(o));
             self.show_indicator(crate::osd::Indicator::Mode(WindowingMode::Standard));
         }
@@ -123,7 +135,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Once a turn (`tick`): which windows Focus shows, covers and zooms.
     pub fn focus_tick(&mut self) {
         let focus: Vec<Output> = if self.any_focus() {
-            self.space.outputs().filter(|o| self.mode_of(o, self.workspace) == WindowingMode::Focus).cloned().collect()
+            self.space.outputs().filter(|o| self.mode_now(o) == WindowingMode::Focus).cloned().collect()
         } else {
             Vec::new()
         };
@@ -203,7 +215,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         if t.is_initial_configure_sent() || w.meta().placed.get() || w.meta().returning.borrow().is_some() || self.floats(&w) {
             return;
         }
-        let Some(output) = self.window_output(&w).filter(|o| self.mode_of(o, self.workspace) == WindowingMode::Focus) else { return };
+        let Some(output) = self.window_output(&w).filter(|o| self.mode_now(o) == WindowingMode::Focus) else { return };
         let Some(area) = self.tile_area(&output) else { return };
         let content = w.inner_size(area.size);
         t.with_pending_state(|s| {

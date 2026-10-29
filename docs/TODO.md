@@ -5,6 +5,20 @@ as they land (with the commit), add new ones as they come up.
 
 ## Done recently
 
+- ~~**Every display has its own workspaces**~~ (Ben, 2026-10-29; done:
+  HACKING, "Workspaces, one set per display"): each display switches
+  among its own 1–4 (or however many) on its own; Deskbar is on every
+  display (the setting is gone), each listing only its display's
+  workspaces, headed "D0 Workspace 1" with more than one display, with
+  the workspace's windowing mode at the heading's right (no longer in
+  the tray) and a menu to show, hide, close or move all its windows to
+  any workspace of any display; Twitcher's columns and the overview's
+  panes are named the same way. Also fixed: with the external displays
+  plugged in, the laptop's screen had no Deskbar (the first bar, opened
+  before the displays were known, named none and followed the main
+  display to the Studio Display, while Deskbar took it for the
+  laptop's). The tray's icons share their rows evenly.
+
 - ~~Terminal: ⌘- / ⌘= and Ctrl+_~~: ⌘- and ⌘= (Smaller, Bigger) did
   nothing, the shell's Ctrl+_ was out of reach, and the menus read ⇧⌘N
   for ⌘N. ⌘ now reaches terminals on the right Ctrl, which the kit marks
@@ -195,6 +209,22 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Keyboard shortcut profiles** (Ben, 2026-10-29): every shortcut in
+  Olo (app_server's, the keymap's tweaks, every app's menus and keys,
+  text editing) in one place, configured as a profile in Preferences ▸
+  Keyboard: Mac (the default), Windows and BeOS, each as true to its
+  platform as it can be (extended where Olo does more, the way that
+  platform would). A change saves it as "Mac (Customized)"; profiles can
+  be saved and loaded by name, and go in Backup's export and import. A
+  profile holds the keyboard behaviour that belongs to it too (which key
+  is the command key, and the like). ⇧⌘-arrows go back to selecting
+  text (window tiling moves off them). ⇧⌘/ (or the platform's own) shows
+  a cheat sheet of every shortcut.
+- **Terminal resizing itself** (Ben, 2026-10-29): wm-fuzz finds a
+  Terminal window zoomed vertically not keeping its size when its text
+  gets bigger or smaller, and closing a new tab in one Terminal window
+  resizing another.
+
 - ~~**Open in Tracker, everywhere it makes sense**~~ (Ben, 2026-10-29;
   done: HACKING, Open in Tracker): `olo_kit::tracker` and Tracker's
   `--reveal`; Terminal's tabs and menus, StyledEdit, the Viewer,
@@ -207,6 +237,12 @@ as they land (with the commit), add new ones as they come up.
 - **Quick Look: Markdown rendered nicely** (Ben, 2026-10-29, for later):
   Quick Look's preview of Markdown files should be much more polished
   than it is now.
+- **Notifications: pin a notification** (Ben, 2026-10-29, for later): a
+  pinned notification stays put: it doesn't fade out over time and isn't
+  dismissed by dismissing all.
+- **Notifications: snooze a notification** (Ben, 2026-10-29, for later):
+  snoozing puts it away and brings it back after a while (choose how
+  long).
 - **Always show the tab bar, even with one tab** (Ben): ~~Terminal's
   `TabStrip`~~ shows with one tab now. Still to ask: whether window
   groups' frames (app_server's tab bar for an app's grouped windows)

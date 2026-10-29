@@ -97,8 +97,15 @@ const ROTATION_NAMES: [&str; 4] = ["Standard", "90°", "180°", "270°"];
 
 /// The name shown for `o`, with its connector when another screen would
 /// have the same name.
+/// A display's name, with the number it goes by among several ("D1
+/// Studio Display", as Deskbar's workspace headings say "D1 Workspace
+/// 2"); a mirror, which has none, with its connector if another is called
+/// the same.
 fn shown_name(o: &OutputInfo, all: &[OutputInfo]) -> String {
     let name = display_name(o);
+    if let Some(n) = olo_protocol::display_number(all, &o.name) {
+        return format!("D{n} {name}");
+    }
     if all.iter().filter(|x| display_name(x) == name).count() > 1 { format!("{name} ({})", o.name) } else { name }
 }
 
@@ -175,13 +182,12 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
         let border = if chosen { c(p.keyboard_navigation) } else { c(p.frame_focused[0]) };
         let stroke_w = style::hairline(ui.ctx()) * if chosen { 2.0 } else { 1.0 };
         ui.painter().rect_stroke(r, 0.0, (stroke_w, border), olo_kit::egui::StrokeKind::Inside);
-        // A menu bar strip on the main display, where Deskbar goes (or on
-        // every display, each with its own).
-        if o.main || s.display.deskbar_on_every_display {
+        // A strip along the top for Deskbar: every display has its own.
+        {
             let bar = Rect::from_min_size(r.min + vec2(stroke_w, stroke_w), vec2(r.width() - 2.0 * stroke_w, 4.0));
             ui.painter().rect_filled(bar, 0.0, c(p.panel_background));
         }
-        ui.painter().text(r.center(), Align2::CENTER_CENTER, display_name(o), style::plain_font(), c(p.desktop_text));
+        ui.painter().text(r.center(), Align2::CENTER_CENTER, shown_name(o, all), style::plain_font(), c(p.desktop_text));
     }
     if let Some((name, d)) = dropped {
         st.drag = None;
@@ -195,10 +201,6 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
                 st.selected = Some(m.name.clone());
             }
         });
-    }
-
-    if outputs.len() > 1 {
-        ui.add(CheckBox::new(&mut s.display.deskbar_on_every_display, "Show Deskbar on every display, with the applications there"));
     }
 
     let outputs = all;
@@ -318,8 +320,7 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
                 ui.add_space(label_w);
                 if o.main {
                     ui.add_space(m::TEXT_INSET);
-                    let here = if s.display.deskbar_on_every_display { "the desktop is here" } else { "Deskbar and the desktop are here" };
-                    ui.add(StringView::new(&format!("Main display: {here}.")).dim(true));
+                    ui.add(StringView::new("Main display: the desktop is here.").dim(true));
                 } else {
                     let mut main = false;
                     ui.add(CheckBox::new(&mut main, "Make this the main display"));
