@@ -1096,9 +1096,10 @@ pub struct KeyboardSettings {
     /// Apps that keep physical Ctrl for themselves (terminals): ⌘ reaches
     /// them as Ctrl+Shift, so Ctrl+C still interrupts. Matched on app_id.
     pub terminal_apps: Vec<String>,
-    /// Web browsers: ⌘[ / ⌘] reach them as Back / Forward (Alt+← / Alt+→),
-    /// ⌘⇧[ / ⌘⇧] and ⌘⌥← / ⌘⌥→ as the tab before / after
-    /// (Ctrl+PgUp / Ctrl+PgDn), as in Olo's own apps. Matched on app_id.
+    /// Web browsers: ⌘⇧[ / ⌘⇧] and ⌘⌥← / ⌘⌥→ reach them as the tab
+    /// before / after (Ctrl+PgUp / Ctrl+PgDn), as in Olo's own apps.
+    /// (⌘[ / ⌘] are Back / Forward, Alt+← / Alt+→, in every program that
+    /// isn't Olo's.) Matched on app_id.
     pub browser_apps: Vec<String>,
     /// Keyboard hints: pressing Control twice quickly puts a letter on
     /// everything that can be picked (windows, controls, menu items);

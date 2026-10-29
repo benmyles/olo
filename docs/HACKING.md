@@ -896,7 +896,10 @@ centred (beside the `olo` mark it read as "o olo"). Image previews: `icons::thum
    keeps ⌘Tab / ⌥Tab / ⌘\` (Twitcher), ⌘ arrows and ⌘⌫ and the desktop shortcuts
    (see "Desktop shortcuts and tiling") for itself; terminals listed in
    `KeyboardSettings::terminal_apps` get ⌘ as Ctrl+Shift so physical Ctrl
-   reaches the tty; `KeyboardSettings::num_lock` turns Num Lock on at start
+   reaches the tty; programs that aren't Olo's get ⌥ arrows as Ctrl
+   (words) and ⌘[ / ⌘] as Alt+← / Alt+→ (Back / Forward, in Chrome and
+   Slack alike), while ⌘← / ⌘→ are the line's start and end everywhere and
+   never navigate; `KeyboardSettings::num_lock` turns Num Lock on at start
    and when changed, and `apply_input_settings` keeps the Num Lock key's
    state across keymap changes, re-advertising modifiers to the focused
    client), keyboard focus shown as a navigation-blue underline/frame,

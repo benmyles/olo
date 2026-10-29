@@ -195,6 +195,18 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Open in Tracker, everywhere it makes sense** (Ben, 2026-10-29):
+  right-clicking a Terminal tab offers Open in Tracker, which opens that
+  tab's working folder. Make it one pattern throughout Olo: wherever
+  something has a folder or file behind it (a document window's title
+  tab, a recent item, a download, a search result, …), its context menu
+  has Open in Tracker.
+- **Screenshots: the saved file's path on the clipboard** (Ben,
+  2026-10-29): once a screenshot is saved, its path is copied to the
+  clipboard.
+- **Quick Look: Markdown rendered nicely** (Ben, 2026-10-29, for later):
+  Quick Look's preview of Markdown files should be much more polished
+  than it is now.
 - **Always show the tab bar, even with one tab** (Ben): ~~Terminal's
   `TabStrip`~~ shows with one tab now. Still to ask: whether window
   groups' frames (app_server's tab bar for an app's grouped windows)
@@ -757,6 +769,30 @@ as they land (with the commit), add new ones as they come up.
   window opening at its tile's size, minimum sizes kept, ⌃⌘Z, through an
   in-place reload. Not yet: a master-and-stack layout (dwm, Amethyst),
   resizing every tile in one transaction (Sway), a snap-layout picker.
+- ~~**⌘[ / ⌘] are Back / Forward everywhere**~~ (Ben, 2026-10-29; done:
+  HACKING, BeOS idioms, keymap.rs): in every program that isn't Olo's
+  (Slack too, not only browsers) they reach it as Alt+← / Alt+→. ⌘← / ⌘→
+  never navigate: they are the line's start and end everywhere.
+- **Auto-tiling: a neighbour spills past Deskbar after a resize** (Ben,
+  2026-10-29): making Terminal wider resized Tracker beside it, but
+  Tracker then reached past Deskbar's edge for a while, until something
+  set it right. Find the root cause and fix it.
+- **Opening an app makes a new window on this workspace** (Ben,
+  2026-10-29): opening an app (Tracker, say) whose windows are all on
+  another workspace switches there now. It should open a new window on
+  the active workspace, so the app has windows on both. An app's window
+  group belongs to its workspace: each workspace has its own group of
+  the app's windows.
+- **Windowing modes** (Ben, 2026-10-29): auto-tiling becomes one of
+  several windowing modes. Deskbar's tray icon chooses the mode (not
+  just tiling on or off), per display-workspace as tiling is now, and
+  Preferences ▸ Windows sets the default one. Modes:
+  - none (the default): windows stay where they are put;
+  - Auto Tiling, as now;
+  - Focus: only the active window shows, zoomed. Dialogs, alerts and
+    floating windows still show over it. Choosing another window makes
+    that one the focused one. An app's windows are always grouped in
+    this mode, except its dialogs and floating windows.
 - ~~**Spotlight the chosen app while switching**~~ (Ben, 2026-10-28;
   done: HACKING, "Twitcher", spotlight.rs): while ⌘Tab (or ⌘\`) is
   held a moment, everything but the chosen app's windows (and their

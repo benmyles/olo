@@ -12,8 +12,10 @@
 //! Tab (⌃Tab, ⌃⇧Tab, or whatever they are set to) reach the app as
 //! Ctrl+Tab / Ctrl+Shift+Tab.
 //! Programs that aren't Olo's get the rest of the Mac's keys in their
-//! own terms ([`Focus`]): ⌥ moves and deletes by word (Ctrl there), and
-//! in browsers ⌘[ / ⌘] go back and forward and ⌘⇧[ / ⌘⇧] change tabs.
+//! own terms ([`Focus`]): ⌥ moves and deletes by word (Ctrl there), ⌘[ /
+//! ⌘] go back and forward (Alt+← / Alt+→: Chrome, Slack, GTK's Files),
+//! and in browsers ⌘⇧[ / ⌘⇧] change tabs. ⌘← / ⌘→ never navigate: they
+//! are the line's start and end everywhere.
 //!
 //! This sits between the input devices and the seat: physical evdev codes
 //! go in, the codes clients should see (plus app_server actions) come out.
@@ -82,11 +84,12 @@ pub enum Focus {
     Olo,
     /// A terminal (`terminal_apps`): ⌘ reaches it as Ctrl+Shift.
     Terminal,
-    /// A web browser (`browser_apps`): as `Other`, and ⌘[ / ⌘] are Back /
-    /// Forward, ⌘⇧[ / ⌘⇧] and ⌘⌥← / ⌘⌥→ the tab before / after.
+    /// A web browser (`browser_apps`): as `Other`, and ⌘⇧[ / ⌘⇧] and
+    /// ⌘⌥← / ⌘⌥→ are the tab before / after.
     Browser,
     /// Any other program (GTK, Qt, Electron): ⌥←/⌥→ and ⌥⌫/⌥⌦ move and
-    /// delete by word, which is Ctrl there (Alt+← is Back in a browser).
+    /// delete by word, which is Ctrl there (Alt+← is Back), and ⌘[ / ⌘]
+    /// are Back / Forward, which is Alt+← / Alt+→ there.
     Other,
 }
 
@@ -388,15 +391,17 @@ impl Keymap {
     /// the modifiers wanted and the key.
     fn translate(&self, key: u32, focus: Focus) -> Option<(&'static [[u32; 2]], u32)> {
         let (cmd, ctrl, alt, shift) = (self.cmd_keys > 0, self.ctrl(), self.alt(), self.shift());
-        let word = matches!(focus, Focus::Browser | Focus::Other) && alt && !cmd && !ctrl;
+        let foreign = matches!(focus, Focus::Browser | Focus::Other);
+        let word = foreign && alt && !cmd && !ctrl;
         let browser = focus == Focus::Browser && cmd && !ctrl;
+        let history = foreign && cmd && !ctrl && !alt && !shift;
         Some(match key {
             // A word back or on (selecting with ⇧), or deleted.
             LEFT | RIGHT if word && shift => (&[CTRL, SHIFT], key),
             LEFT | RIGHT | BACKSPACE | DELETE if word => (&[CTRL], key),
             // Back and Forward.
-            LEFTBRACE if browser && !alt && !shift => (&[ALT], LEFT),
-            RIGHTBRACE if browser && !alt && !shift => (&[ALT], RIGHT),
+            LEFTBRACE if history => (&[ALT], LEFT),
+            RIGHTBRACE if history => (&[ALT], RIGHT),
             // The tab before and after.
             LEFTBRACE if browser && !alt => (&[CTRL], PAGEUP),
             RIGHTBRACE if browser && !alt => (&[CTRL], PAGEDOWN),
@@ -1049,8 +1054,20 @@ mod tests {
         r.up(C);
         r.up(LEFTMETA);
         assert!(r.k.down.is_empty());
-        // Elsewhere ⌘[ is the app's own Ctrl+[.
+        // Any other program's Back and Forward are Alt+← / Alt+→ too
+        // (Slack's); ⌘← is still the line's start.
         r.focus = Focus::Other;
+        r.down(LEFTMETA);
+        assert_eq!(r.down(LEFTBRACE), [Key(RIGHTCTRL, false), Key(LEFTALT, true), Key(LEFT, true)]);
+        r.up(LEFTBRACE);
+        assert_eq!(r.down(RIGHTBRACE), [Key(RIGHTCTRL, false), Key(LEFTALT, true), Key(RIGHT, true)]);
+        r.up(RIGHTBRACE);
+        assert_eq!(r.down(LEFT), [Key(RIGHTCTRL, false), Key(HOME, true)]);
+        r.up(LEFT);
+        r.up(LEFTMETA);
+        assert!(r.k.down.is_empty());
+        // Olo's apps take ⌘[ as it is.
+        r.focus = Focus::Olo;
         r.down(LEFTMETA);
         assert_eq!(r.down(LEFTBRACE), [Key(LEFTBRACE, true)]);
     }
