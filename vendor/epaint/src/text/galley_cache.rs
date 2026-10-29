@@ -4,7 +4,9 @@ use emath::OrderedFloat;
 use nohash_hasher::IntMap;
 
 use crate::text::{
-    ByteIndex, Galley, LayoutJob, LayoutSection, fonts::FontsImpl, text_layout::layout,
+    ByteIndex, Galley, LayoutJob, LayoutSection,
+    fonts::FontsImpl,
+    text_layout::{ShapedCache, layout_shaped},
 };
 
 /// A laid-out [`Galley`], and what we need to know to evict it.
@@ -28,6 +30,8 @@ pub(super) struct GalleyCache {
     /// Frame counter used to do garbage collection on the cache
     generation: u32,
     cache: IntMap<u64, CachedGalley>,
+    /// Olo: see [`ShapedCache`].
+    shaped: ShapedCache,
 }
 
 impl GalleyCache {
@@ -109,7 +113,7 @@ impl GalleyCache {
                     );
                     galley
                 } else {
-                    let galley = layout(fonts, pixels_per_point, job);
+                    let galley = layout_shaped(fonts, pixels_per_point, job, Some(&mut self.shaped));
                     let galley = Arc::new(galley);
                     entry.insert(CachedGalley {
                         last_used: self.generation,
@@ -253,6 +257,7 @@ impl GalleyCache {
             cached.last_used == current_generation // only keep those that were used this frame
         });
         self.generation = self.generation.wrapping_add(1);
+        self.shaped.flush();
     }
 }
 
@@ -273,7 +278,7 @@ mod tests {
 
     use super::*;
     use crate::text::{FontDefinitions, FontFamily, FontId, TextOptions, TextWrapping};
-    use crate::{Stroke, text::TextFormat};
+    use crate::{Stroke, text::TextFormat, text::text_layout::layout};
     use ecolor::Color32;
     use emath::Align;
 

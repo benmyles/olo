@@ -344,6 +344,9 @@ pub struct FontFace {
     /// Variable fonts can vary advance widths per axis (HVAR table), so this
     /// must be re-keyed per resolved [`skrifa::instance::Location`].
     advance_width_cache: HashMap<(char, LocationHash), OrderedFloat<f32>>,
+
+    /// Olo: shape plans made for this face (`shape_plan`).
+    shape_plans: std::sync::Mutex<Vec<alloc::sync::Arc<harfrust::ShapePlan>>>,
 }
 
 impl FontFace {
@@ -419,6 +422,7 @@ impl FontFace {
             shaper_data,
             glyph_id_cache: Default::default(),
             advance_width_cache: Default::default(),
+            shape_plans: Default::default(),
         })
     }
 
@@ -637,6 +641,28 @@ impl FontFace {
 
     pub(crate) fn shaper_data(&self) -> &harfrust::ShaperData {
         &self.shaper_data
+    }
+
+    /// Olo: the plan for shaping text matching `key` with `shaper`, made
+    /// once: harfrust makes one for each run it shapes without (finding
+    /// the font's features and lookups again), which was nearly all the
+    /// time a line highlighted in many runs took (Logs: 20 ms for a
+    /// screenful of new lines).
+    pub(crate) fn shape_plan(
+        &self,
+        shaper: &harfrust::Shaper<'_>,
+        key: &harfrust::ShapePlanKey<'_>,
+        script: harfrust::Script,
+        direction: harfrust::Direction,
+        language: Option<&harfrust::Language>,
+    ) -> alloc::sync::Arc<harfrust::ShapePlan> {
+        let mut plans = self.shape_plans.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(plan) = plans.iter().find(|p| key.matches(p)) {
+            return alloc::sync::Arc::clone(plan);
+        }
+        let plan = alloc::sync::Arc::new(harfrust::ShapePlan::new(shaper, direction, Some(script), language, &[]));
+        plans.push(alloc::sync::Arc::clone(&plan));
+        plan
     }
 
     /// Whether to render this face at up to four sub-pixel offsets.

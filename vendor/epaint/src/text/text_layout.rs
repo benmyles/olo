@@ -59,7 +59,7 @@ impl PointScale {
 
 /// Temporary storage before line-wrapping.
 #[derive(Clone)]
-struct Paragraph {
+pub(crate) struct Paragraph {
     /// Start of the next glyph to be added. In screen-space / physical pixels.
     pub cursor_x_px: f32,
 
@@ -88,6 +88,126 @@ impl Paragraph {
 /// In most cases you should use [`crate::FontsView::layout_job`] instead
 /// since that memoizes the input, making subsequent layouting of the same text much faster.
 pub(crate) fn layout(fonts: &mut FontsImpl, pixels_per_point: f32, job: Arc<LayoutJob>) -> Galley {
+    layout_shaped(fonts, pixels_per_point, job, None)
+}
+
+/// Olo: text shaped (its glyphs found and placed in a line) as it was
+/// before, by what shapes it: the text, its fonts and spacing, the
+/// scale. Not the width it wraps at or its colours, so laying it out
+/// again at a new width (a window resized live) or in new colours (the
+/// theme switched) only breaks it into rows again: shaping was most of
+/// the work (Notifications' cards took 30 ms a frame of a resize).
+/// Entries go when unused for [`ShapedCache::KEEP`] passes, the oldest
+/// first beyond [`ShapedCache::GLYPHS`] glyphs.
+#[derive(Default)]
+pub(crate) struct ShapedCache {
+    generation: u32,
+    glyphs: usize,
+    cache: nohash_hasher::IntMap<u64, (u32, Vec<Paragraph>)>,
+}
+
+impl ShapedCache {
+    const KEEP: u32 = 120;
+    const GLYPHS: usize = 100_000;
+
+    fn get_or_shape(&mut self, fonts: &mut FontsImpl, pixels_per_point: f32, job: &LayoutJob) -> Vec<Paragraph> {
+        let key = crate::util::hash(ShapingKey(job, pixels_per_point));
+        if let Some((used, paragraphs)) = self.cache.get_mut(&key) {
+            *used = self.generation;
+            return paragraphs.clone();
+        }
+        let paragraphs = shape(fonts, pixels_per_point, job);
+        self.glyphs += paragraphs.iter().map(|p| p.glyphs.len()).sum::<usize>();
+        self.cache.insert(key, (self.generation, paragraphs.clone()));
+        paragraphs
+    }
+
+    /// A pass is over.
+    pub(crate) fn flush(&mut self) {
+        let now = self.generation;
+        let mut glyphs = 0;
+        self.cache.retain(|_, (used, paragraphs)| {
+            let keep = now.wrapping_sub(*used) < Self::KEEP;
+            if keep {
+                glyphs += paragraphs.iter().map(|p| p.glyphs.len()).sum::<usize>();
+            }
+            keep
+        });
+        if glyphs > Self::GLYPHS {
+            let mut by_age: Vec<(u32, u64, usize)> =
+                self.cache.iter().map(|(k, (used, p))| (now.wrapping_sub(*used), *k, p.iter().map(|p| p.glyphs.len()).sum())).collect();
+            by_age.sort_unstable_by_key(|&(age, ..)| core::cmp::Reverse(age));
+            for (_, key, n) in by_age {
+                if glyphs <= Self::GLYPHS {
+                    break;
+                }
+                self.cache.remove(&key);
+                glyphs -= n;
+            }
+        }
+        self.glyphs = glyphs;
+        self.generation = self.generation.wrapping_add(1);
+    }
+}
+
+/// What shaping a job depends on (`ShapedCache`): its text and how its
+/// sections cut it, their fonts and spacing, and the scale.
+struct ShapingKey<'a>(&'a LayoutJob, f32);
+
+impl core::hash::Hash for ShapingKey<'_> {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        let Self(job, pixels_per_point) = self;
+        job.text.hash(state);
+        job.break_on_newline.hash(state);
+        emath::OrderedFloat(*pixels_per_point).hash(state);
+        for section in &job.sections {
+            emath::OrderedFloat(section.leading_space).hash(state);
+            section.byte_range.hash(state);
+            let f = &section.format;
+            f.font_id.hash(state);
+            emath::OrderedFloat(f.extra_letter_spacing).hash(state);
+            f.line_height.map(emath::OrderedFloat).hash(state);
+            f.coords.hash(state);
+        }
+    }
+}
+
+
+/// `job`'s paragraphs, shaped.
+fn shape(fonts: &mut FontsImpl, pixels_per_point: f32, job: &LayoutJob) -> Vec<Paragraph> {
+    // Olo: sections that differ only in how they are painted (a line
+    // highlighted in colours) are shaped as one, as they would be in one
+    // section: each section shaped alone cost a shaping call apiece.
+    let together = |a: &LayoutSection, b: &LayoutSection| {
+        a.byte_range.end == b.byte_range.start
+            && b.leading_space == 0.0
+            && a.format.font_id == b.format.font_id
+            && a.format.coords == b.format.coords
+            && a.format.line_height == b.format.line_height
+            && a.format.extra_letter_spacing == 0.0
+            && b.format.extra_letter_spacing == 0.0
+    };
+    let mut paragraphs = vec![Paragraph::from_section_index(0)];
+    let mut shape_buffer = fonts.take_shape_buffer();
+    let mut start = 0;
+    while start < job.sections.len() {
+        let mut end = start + 1;
+        while end < job.sections.len() && together(&job.sections[end - 1], &job.sections[end]) {
+            end += 1;
+        }
+        shape_buffer = layout_section(fonts, shape_buffer, pixels_per_point, job, start..end, &mut paragraphs);
+        start = end;
+    }
+    fonts.return_shape_buffer(shape_buffer);
+    paragraphs
+}
+
+pub(crate) fn layout_shaped(
+    fonts: &mut FontsImpl,
+    pixels_per_point: f32,
+    job: Arc<LayoutJob>,
+    shaped: Option<&mut ShapedCache>,
+) -> Galley {
     profiling::function_scope!();
 
     job.debug_sanity_check();
@@ -109,22 +229,10 @@ pub(crate) fn layout(fonts: &mut FontsImpl, pixels_per_point: f32, job: Arc<Layo
 
     // For most of this we ignore the y coordinate:
 
-    let mut paragraphs = vec![Paragraph::from_section_index(0)];
-    {
-        let mut shape_buffer = fonts.take_shape_buffer();
-        for (section_index, section) in job.sections.iter().enumerate() {
-            shape_buffer = layout_section(
-                fonts,
-                shape_buffer,
-                pixels_per_point,
-                &job,
-                section_index as u32,
-                section,
-                &mut paragraphs,
-            );
-        }
-        fonts.return_shape_buffer(shape_buffer);
-    }
+    let paragraphs = match shaped {
+        Some(cache) => cache.get_or_shape(fonts, pixels_per_point, &job),
+        None => shape(fonts, pixels_per_point, &job),
+    };
 
     let point_scale = PointScale::new(pixels_per_point);
 
@@ -187,9 +295,20 @@ struct ShapingContext {
     font_metrics: StyledMetrics,
     is_first_glyph_in_section: bool,
     prev_cluster: Option<u32>,
+    /// Olo: sections shaped together (`shape`): where in the job's text
+    /// each after the first starts, so each glyph gets its own.
+    section_starts: Vec<usize>,
+    first_section: u32,
+    /// Where the run being laid out starts in the job's text.
+    run_base: usize,
 }
 
 impl ShapingContext {
+    /// The section of the job's text at `byte`.
+    fn section_at(&self, byte: usize) -> u32 {
+        self.first_section + self.section_starts.partition_point(|&s| s <= byte) as u32
+    }
+
     fn glyph(
         &self,
         chr: char,
@@ -295,6 +414,9 @@ fn layout_shaped_run(
         // never between glyphs within the same cluster (e.g. base + mark).
         let is_new_cluster = ctx.prev_cluster.is_none_or(|pc| pc != cluster);
         if is_new_cluster {
+            if !ctx.section_starts.is_empty() {
+                ctx.section_index = ctx.section_at(ctx.run_base + cluster as usize);
+            }
             if ctx.prev_cluster.is_some() {
                 emit_continuation_glyphs(
                     ctx,
@@ -471,6 +593,9 @@ fn layout_raster_run(
     let Some(chr) = run_text.chars().next() else {
         return;
     };
+    if !ctx.section_starts.is_empty() {
+        ctx.section_index = ctx.section_at(ctx.run_base);
+    }
     if !ctx.is_first_glyph_in_section {
         paragraph.cursor_x_px += ctx.extra_letter_spacing * ctx.pixels_per_point;
     }
@@ -531,15 +656,19 @@ fn layout_section(
     mut shape_buffer: harfrust::UnicodeBuffer,
     pixels_per_point: f32,
     job: &LayoutJob,
-    section_index: u32,
-    section: &LayoutSection,
+    sections: core::ops::Range<usize>,
     out_paragraphs: &mut Vec<Paragraph>,
 ) -> harfrust::UnicodeBuffer {
+    let section_index = sections.start as u32;
+    let section = &job.sections[sections.start];
     let LayoutSection {
         leading_space,
         byte_range,
         format,
     } = section;
+    // Olo: the sections after the first, shaped with it (`shape`).
+    let text_end = job.sections[sections.end - 1].byte_range.end;
+    let section_starts: Vec<usize> = job.sections[sections.start + 1..sections.end].iter().map(|s| s.byte_range.start.0).collect();
 
     let family = fonts.family_key(&format.font_id.family);
     let font_size = format.font_id.size;
@@ -556,7 +685,8 @@ fn layout_section(
     }
     paragraph.cursor_x_px += leading_space * pixels_per_point;
 
-    let section_text = &job.text[byte_range.as_usize()];
+    let text_start = byte_range.start.0;
+    let section_text = &job.text[text_start..text_end.0];
     let mut ctx = ShapingContext {
         family,
         pixels_per_point,
@@ -567,13 +697,17 @@ fn layout_section(
         font_metrics,
         is_first_glyph_in_section: paragraph.glyphs.is_empty(),
         prev_cluster: None,
+        section_starts,
+        first_section: section_index,
+        run_base: text_start,
     };
     let mut runs = Vec::new();
 
     // Process each paragraph segment (split on newlines — the shaper can't handle them).
     for (seg_idx, segment) in SplitOrWhole::new(section_text, job.break_on_newline).enumerate() {
+        let segment_start = text_start + (segment.as_ptr() as usize - section_text.as_ptr() as usize);
         if 0 < seg_idx {
-            paragraph = out_paragraphs.push_mut(Paragraph::from_section_index(section_index));
+            paragraph = out_paragraphs.push_mut(Paragraph::from_section_index(ctx.section_at(segment_start)));
             paragraph.empty_paragraph_height = line_height;
             ctx.is_first_glyph_in_section = true;
         }
@@ -587,6 +721,7 @@ fn layout_section(
         let num_runs = runs.len();
         for (run_idx, run) in runs.iter().enumerate() {
             let run_text = &segment[run.byte_range.as_usize()];
+            ctx.run_base = segment_start + run.byte_range.start.0;
             if let Some(raster) = &run.raster {
                 layout_raster_run(&mut ctx, paragraph, run_text, raster);
                 continue;
@@ -1675,7 +1810,14 @@ fn shape_text(
     buffer.push_str(text);
     buffer.guess_segment_properties();
 
-    shaper.shape(buffer, harfrust::ShapeOptions::new())
+    // Olo: with the face's plan for this script, direction and language
+    // (`FontFace::shape_plan`).
+    let (script, direction, language) = (buffer.script(), buffer.direction(), buffer.language());
+    let key = harfrust::ShapePlanKey::new(Some(script), direction)
+        .language(language.as_ref())
+        .instance(instance.as_ref());
+    let plan = font_face.shape_plan(&shaper, &key, script, direction, language.as_ref());
+    shaper.shape(buffer, harfrust::ShapeOptions::new().plan(Some(&plan)))
 }
 
 // ----------------------------------------------------------------------------

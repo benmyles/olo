@@ -3,6 +3,7 @@
 //! output; ours carries its own sayings, or your text.)
 
 use olo_kit::{
+    big_text,
     egui::{Align2, Color32, FontId, Rect, pos2, vec2},
     style,
 };
@@ -117,11 +118,16 @@ impl Module for Message {
         let hue = self.page.hue;
         f.painter.rect_filled(f.rect, 0.0, hsv(hue, 1.0, 0.44));
         let k = f.k();
+        // The words, hundreds of pixels high: each shows once a worker
+        // has made it (`big_text`).
+        let painter = f.painter.with_clip_rect(f.rect);
         for (word, at, size, value) in &self.page.words {
             let size = (size * k).round().max(2.0);
             let pos = pos2(f.rect.left() + at.0 * f.rect.width(), f.rect.top() + at.1 * f.rect.height());
             let color = hsv(hue, 1.0, *value).gamma_multiply(0.45);
-            f.painter.with_clip_rect(f.rect).text(pos, Align2::LEFT_CENTER, word, FontId::new(size, style::bold()), color);
+            if let Some(text) = big_text::get(f.painter.ctx(), word, &FontId::new(size, style::bold())) {
+                text.paint(&painter, Align2::LEFT_CENTER.anchor_size(pos, text.size()).min, color);
+            }
         }
         // The message itself, in a dark box near the bottom.
         let font = style::mono_font((24.0 * k).round().max(2.0));

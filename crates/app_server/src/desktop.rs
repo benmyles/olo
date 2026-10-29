@@ -836,6 +836,28 @@ impl<B: Backend + 'static> AnvilState<B> {
         let scale = self.settings.display.scale_for(&key, &name);
         let transform = rotation_transform(self.settings.display.rotation_for(&key, &name));
         output.change_current_state(None, Some(transform), Some(Scale::Fractional(scale)), None);
+        self.tell_scale(output);
+    }
+
+    /// Tells the windows on `output` its scale, now. Drawing a surface
+    /// tells it, so a covered window (none of it drawn) went on drawing
+    /// at the old scale, and its first frame uncovered was resampled.
+    fn tell_scale(&self, output: &Output) {
+        use smithay::desktop::utils::surface_primary_scanout_output;
+        use smithay::wayland::fractional_scale::with_fractional_scale;
+        let scale = output.current_scale().fractional_scale();
+        let tell = |surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+                    states: &smithay::wayland::compositor::SurfaceData| {
+            if surface_primary_scanout_output(surface, states).is_none_or(|o| o == *output) {
+                with_fractional_scale(states, |f| f.set_preferred_scale(scale));
+            }
+        };
+        for window in self.space.elements().filter(|w| self.space.outputs_for_element(w).first() == Some(output)) {
+            window.with_surfaces(tell);
+        }
+        for layer in layer_map_for_output(output).layers() {
+            layer.with_surfaces(tell);
+        }
     }
 
     /// The main display: the chosen one while it is connected, else the first.

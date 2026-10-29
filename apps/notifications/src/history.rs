@@ -11,12 +11,13 @@
 //! by the time while unread. A search field filters, and the keyboard
 //! works the list (arrows, Return to open, Delete to forget, Escape).
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use olo_kit::{
     Cx, WindowId,
     egui::{self, Align, Color32, Key, Rect, Sense, WidgetInfo, pos2, vec2},
     icons, masonry, metrics as m,
+    recorded::Recorded,
     style::{self, c},
     theme::mix,
     widgets::{Button, CheckBox, ScrollView, TextControl},
@@ -81,6 +82,162 @@ pub struct HistoryState {
     /// Bring the selection into view, for this many frames (a new view
     /// takes two: the first is clamped to the old view's height).
     reveal: u8,
+    laid: LaidCards,
+}
+
+/// Cards measured in earlier frames, by note and columns spanned, with
+/// the note as it was then (a note that changed is measured again):
+/// measuring every card again each frame took 5 ms of a scroll's frame.
+/// Kept a while unseen, so a search cleared shows them all again at once.
+/// At a new width (a live resize) each frame measures what it has time
+/// for, `RELAY`; the rest show as they were a frame or two ago (all 200
+/// took 4 ms a frame). And each card's look as last painted, shown
+/// again while it stays the same (`olo_kit::recorded`): painting 200
+/// again took 1.6 ms of each frame of a scroll.
+#[derive(Default)]
+struct LaidCards {
+    /// The look, scale and galley generation they were measured in.
+    look: Option<(olo_kit::theme::Palette, f32, u64)>,
+    cards: HashMap<(u32, usize), LaidCard>,
+    /// Each card's look as last painted: recorded once it has looked
+    /// the same two frames running (a card resized live changes every
+    /// frame, and recording costs more than painting).
+    looks: HashMap<u32, (store::Entry, CardLook, Option<Recorded>, u64)>,
+    /// Frames drawn, and when this one's measuring at a new width stops.
+    frame: u64,
+    until: Option<std::time::Instant>,
+    /// A card shown at a width it wasn't measured at this frame.
+    behind: bool,
+    /// When each note came, as its card says it (`crate::when`), this
+    /// minute.
+    whens: HashMap<u64, String>,
+    minute: u64,
+    /// Cards placed in columns (`masonry::arrange`): by columns, their
+    /// width and the cards' spans and heights.
+    arranged: Vec<Arranged>,
+}
+
+struct LaidCard {
+    entry: store::Entry,
+    laid: CardLaid,
+    /// The last frame it showed in.
+    used: u64,
+}
+
+/// How long a frame spends measuring cards again at a new width.
+const RELAY: std::time::Duration = std::time::Duration::from_millis(1);
+/// How many frames a card no longer shown is kept (5 s at 120 Hz).
+const KEEP_LAID: u64 = 600;
+
+struct Arranged {
+    cols: usize,
+    width: f32,
+    sizes: Vec<(usize, f32)>,
+    rects: Vec<Rect>,
+    height: f32,
+    used: bool,
+}
+
+/// What a card's look depends on beyond its note.
+#[derive(Clone, Copy, PartialEq)]
+struct CardLook {
+    hovered: bool,
+    selected: bool,
+    /// Its fade, in 1024ths.
+    opacity: u16,
+    size: (u32, u32),
+    /// Icons loaded by then (`icons::loaded`): one still loading shows
+    /// once it has.
+    icons: u64,
+    /// The width its text was measured at.
+    laid: u32,
+}
+
+impl LaidCards {
+    /// From this frame on, in `palette` at `ppp`, with text laid out
+    /// in `generation` (`Fonts::galley_generation`: galleys from before
+    /// it paint the wrong glyphs).
+    fn begin(&mut self, palette: &olo_kit::theme::Palette, ppp: f32, generation: u64) {
+        if self.look.as_ref().is_none_or(|(p, s, g)| p != palette || *s != ppp || *g != generation) {
+            self.cards.clear();
+            self.looks.clear();
+            self.look = Some((palette.clone(), ppp, generation));
+        }
+        self.frame += 1;
+        let frame = self.frame;
+        self.until = Some(std::time::Instant::now() + RELAY);
+        self.behind = false;
+        self.cards.retain(|_, c| c.used + KEEP_LAID > frame);
+        self.looks.retain(|_, (.., used)| *used + KEEP_LAID > frame);
+        // Arrangements not used in a frame go.
+        self.arranged.retain_mut(|a| std::mem::take(&mut a.used));
+        let minute = now_secs() / 60;
+        if minute != self.minute {
+            self.whens.clear();
+            self.minute = minute;
+        }
+    }
+
+    /// Cards of `sizes` placed in `cols` columns `width` wide, and how
+    /// tall they are together; as they were last frame, if they were.
+    fn arrange(&mut self, cols: usize, width: f32, sizes: Vec<(usize, f32)>) -> (Vec<Rect>, f32) {
+        if let Some(a) = self.arranged.iter_mut().find(|a| a.cols == cols && a.width == width && a.sizes == sizes) {
+            a.used = true;
+            return (a.rects.clone(), a.height);
+        }
+        let (rects, height) = masonry::arrange(cols, width, m::SPACING, &sizes);
+        self.arranged.push(Arranged { cols, width, sizes, rects: rects.clone(), height, used: true });
+        (rects, height)
+    }
+
+    fn when(&mut self, secs: u64) -> String {
+        self.whens.entry(secs).or_insert_with(|| crate::when(secs)).clone()
+    }
+
+    /// `e`'s card looking as `look` says, painted by `paint` from `at`
+    /// on `painter`, or as it was when it last looked so.
+    fn paint(&mut self, e: &store::Entry, look: CardLook, painter: &egui::Painter, at: egui::Pos2, paint: impl FnOnce(&egui::Painter)) {
+        let frame = self.frame;
+        match self.looks.get_mut(&e.id) {
+            Some((was, had, recorded, used)) if was == e && *had == look => {
+                *used = frame;
+                match recorded {
+                    Some(r) => r.replay(painter, at),
+                    None => *recorded = Some(Recorded::record(painter, at, paint)),
+                }
+            }
+            // Changing: painted, and recorded if it stays so.
+            Some((was, had, recorded, used)) if was == e && had.size != look.size => {
+                (*had, *recorded, *used) = (look, None, frame);
+                paint(painter);
+            }
+            _ => {
+                let recorded = Recorded::record(painter, at, paint);
+                self.looks.insert(e.id, (e.clone(), look, Some(recorded), frame));
+            }
+        }
+    }
+
+    /// `e`'s card spanning `span` columns `width` wide; measured at
+    /// another width if this frame has no time left to measure it again.
+    fn get(&mut self, ui: &egui::Ui, p: &olo_kit::theme::Palette, e: &store::Entry, span: usize, width: f32) -> CardLaid {
+        let frame = self.frame;
+        if let Some(c) = self.cards.get_mut(&(e.id, span))
+            && c.entry == *e
+        {
+            c.used = frame;
+            if c.laid.width == width {
+                return c.laid.clone();
+            }
+            if self.until.is_some_and(|t| std::time::Instant::now() > t) {
+                self.behind = true;
+                return c.laid.clone();
+            }
+        }
+        let laid = card_lay(ui, p, e, span, width);
+        self.cards.insert((e.id, span), LaidCard { entry: e.clone(), laid: laid.clone(), used: frame });
+        laid
+    }
 }
 
 /// One line of the list.
@@ -344,6 +501,7 @@ impl Notifications {
                 ui.ctx().request_repaint();
             }
             let sel_id = self.view.selected;
+            self.view.laid.begin(&p, ui.ctx().pixels_per_point(), ui.ctx().fonts(|f| f.galley_generation()));
             let mut drawn = Vec::new();
             let background = if cards { style::card_paper(&p).0 } else { p.document_background };
             ScrollView::new(SCROLL_ID).background(background).show(&mut child, |ui| {
@@ -366,14 +524,17 @@ impl Notifications {
                     let mut laid: Vec<CardLaid> = Vec::new();
                     let (mut rects, mut height);
                     loop {
+                        // A few more at a time (twice as many at once laid
+                        // out 60 cards in a frame of a scroll); each step's
+                        // arrangement is kept (`LaidCards::arrange`).
                         let upto = (laid.len() + 12).max(must + masonry::AHEAD).min(order.len());
                         for (k, &i) in order.iter().enumerate().take(upto).skip(laid.len()) {
                             let e = &entries[i];
                             let span = card_span(e, cols, k == 0 && e.unread);
-                            laid.push(card_lay(ui, &p, e, span, masonry::span_width(span, col_w, m::SPACING)));
+                            laid.push(self.view.laid.get(ui, &p, e, span, masonry::span_width(span, col_w, m::SPACING)));
                         }
                         let sizes: Vec<(usize, f32)> = laid.iter().map(|l| (l.span, l.height)).collect();
-                        (rects, height) = masonry::arrange(cols, col_w, m::SPACING, &sizes);
+                        (rects, height) = self.view.laid.arrange(cols, col_w, sizes);
                         let shown = laid.len().saturating_sub(masonry::AHEAD);
                         if laid.len() == order.len() || (laid.len() >= must + masonry::AHEAD && masonry::lowest(cols, col_w, m::SPACING, &rects[..shown]) > want) {
                             break;
@@ -402,9 +563,14 @@ impl Notifications {
                         if !cr.intersects(ui.clip_rect()) {
                             continue;
                         }
-                        if let Some(d) = card(ui, &p, cr, laid, i, e, is_sel, strength(e), k, order.len()) {
+                        if let Some(d) = card(ui, &p, cr, laid, i, e, is_sel, strength(e), k, order.len(), &mut self.view.laid) {
                             did = Some(d);
                         }
+                    }
+                    // Cards shown as they were at another width are
+                    // measured again next frame.
+                    if self.view.laid.behind {
+                        ui.ctx().request_repaint();
                     }
                     return;
                 }
@@ -803,8 +969,11 @@ fn note_row(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, w: f32, a: &RowArgs,
 }
 
 /// A card measured: how many columns it spans, how tall it is, its face.
+#[derive(Clone)]
 struct CardLaid {
     span: usize,
+    /// The width it was measured at.
+    width: f32,
     height: f32,
     face: look::Laid,
     ink: look::Ink,
@@ -877,46 +1046,71 @@ fn card_lay(ui: &egui::Ui, p: &olo_kit::theme::Palette, e: &store::Entry, span: 
     if !buttons.is_empty() {
         height += m::SPACING + CARD_BUTTON;
     }
-    CardLaid { span, height: height.ceil(), face, ink, buttons }
+    CardLaid { span, width, height: height.ceil(), face, ink, buttons }
+}
+
+/// What of a card doesn't answer the pointer (`card`): its paper, whose
+/// it is and when, and its face.
+#[allow(clippy::too_many_arguments)]
+fn card_look(ui: &egui::Ui, p: &olo_kit::theme::Palette, painter: &egui::Painter, r: Rect, laid: &CardLaid, e: &store::Entry, hovered: bool, selected: bool, forgettable: bool, time: &str) {
+    let ink = style::card_ink(p);
+    style::card(painter, r, p, hovered, selected);
+    let inner = r.shrink(m::CARD_INSET);
+    // Whose and when: the app's mark and name, the time at the right.
+    let head = Rect::from_min_size(inner.min, vec2(inner.width(), CARD_HEAD));
+    let icon = Rect::from_min_size(pos2(head.left(), head.center().y - CARD_MARK / 2.0), vec2(CARD_MARK, CARD_MARK));
+    paint_icon(painter, icon, e, false);
+    let time_w = style::label_width(ui.ctx(), time, style::small_font());
+    let name_x = icon.right() + 5.0;
+    let name_room = head.right() - time_w - CARD_DOT - 8.0 - name_x;
+    let (_, baseline) = style::label_fit_with_baseline(painter, name_x, head.center().y, Align::Min, app_name(e), egui::FontId::new(style::SMALL_SIZE, style::bold()), ink.dim, name_room);
+    if !forgettable {
+        style::label_on_baseline(painter, head.right(), baseline, Align::Max, time, style::small_font(), ink.dim);
+        if e.unread {
+            unread_dot(painter, pos2(head.right() - time_w - CARD_DOT / 2.0 - 1.0, head.center().y), p);
+        }
+    }
+    look::paint(ui, painter, &entry_face(e), &laid.face, &laid.ink, pos2(inner.left(), head.bottom() + CARD_HEAD_GAP), inner.width());
 }
 
 /// One note as a card in `r` (`style::card`): a quiet line of whose it
 /// is and when (a lit dot while unread; a close box in their place under
 /// the pointer), then its face; fading as it ages.
 #[allow(clippy::too_many_arguments)]
-fn card(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, r: Rect, laid: CardLaid, i: usize, e: &store::Entry, selected: bool, strength: f32, row: usize, rows: usize) -> Option<Did> {
+fn card(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, r: Rect, laid: CardLaid, i: usize, e: &store::Entry, selected: bool, strength: f32, row: usize, rows: usize, looks: &mut LaidCards) -> Option<Did> {
     let resp = ui.interact(r, ui.make_persistent_id(("card", i, e.id)), Sense::click());
     let title_text = if e.summary.is_empty() { app_name(e) } else { &e.summary };
     resp.widget_info(|| WidgetInfo { selected: Some(selected), ..WidgetInfo::labeled(egui::Role::ListItem, true, title_text) });
-    ui.ctx().accesskit_node_builder(resp.id, |n| {
-        n.set_row_index(row);
-        n.set_row_count(rows);
-    });
+    // With AccessKit on, painting describes the text it paints.
+    let tree = ui
+        .ctx()
+        .accesskit_node_builder(resp.id, |n| {
+            n.set_row_index(row);
+            n.set_row_count(rows);
+        })
+        .is_some();
+    // Staggered in its column: level with a card beside it only by
+    // chance.
+    olo_kit::layout_review::own_grid(ui, r);
     let hovered = resp.hovered() || ui.rect_contains_pointer(r);
+    let opacity = if !selected && !hovered { (fade_opacity(strength) * 1024.0).round() / 1024.0 } else { 1.0 };
     let mut painter = ui.painter().clone();
-    if !selected && !hovered {
-        painter.multiply_opacity(fade_opacity(strength));
+    painter.multiply_opacity(opacity);
+    if laid.width != r.width() {
+        // Measured at another width (`LaidCards::get`): kept within it.
+        painter.set_clip_rect(painter.clip_rect().intersect(r));
     }
-    let ink = style::card_ink(p);
-    style::card(&painter, r, p, hovered, selected);
     let inner = r.shrink(m::CARD_INSET);
-    // Whose and when: the app's mark and name, the time at the right.
     let head = Rect::from_min_size(inner.min, vec2(inner.width(), CARD_HEAD));
-    let icon = Rect::from_min_size(pos2(head.left(), head.center().y - CARD_MARK / 2.0), vec2(CARD_MARK, CARD_MARK));
-    paint_icon(&painter, icon, e, false);
-    let time = crate::when(e.time);
-    let time_w = style::label_width(ui.ctx(), &time, style::small_font());
-    let name_x = icon.right() + 5.0;
-    let name_room = head.right() - time_w - CARD_DOT - 8.0 - name_x;
-    let (_, baseline) = style::label_fit_with_baseline(&painter, name_x, head.center().y, Align::Min, app_name(e), egui::FontId::new(style::SMALL_SIZE, style::bold()), ink.dim, name_room);
     let forgettable = !e.shown && hovered;
-    if !forgettable {
-        style::label_on_baseline(&painter, head.right(), baseline, Align::Max, time, style::small_font(), ink.dim);
-        if e.unread {
-            unread_dot(&painter, pos2(head.right() - time_w - CARD_DOT / 2.0 - 1.0, head.center().y), p);
-        }
+    let time = looks.when(e.time);
+    let paint = |painter: &egui::Painter| card_look(ui, p, painter, r, &laid, e, hovered, selected, forgettable, &time);
+    if tree {
+        paint(&painter);
+    } else {
+        let look = CardLook { hovered, selected, opacity: (opacity * 1024.0) as u16, size: (r.width().to_bits(), r.height().to_bits()), icons: icons::loaded(), laid: laid.width.to_bits() };
+        looks.paint(e, look, &painter, r.min, paint);
     }
-    look::paint(ui, &painter, &entry_face(e), &laid.face, &laid.ink, pos2(inner.left(), head.bottom() + CARD_HEAD_GAP), inner.width());
     let mut did = None;
     // Its app's actions, small, at the bottom right as in an alert.
     if !laid.buttons.is_empty() {
@@ -936,6 +1130,7 @@ fn card(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, r: Rect, laid: CardLaid,
     }
     // Forget it: a × where the time was, while the pointer is over it.
     if forgettable {
+        let ink = style::card_ink(p);
         let close = Rect::from_center_size(pos2(head.right() - 6.0, head.center().y), vec2(12.0, 12.0));
         let cr = ui.interact(close.expand(3.0), ui.make_persistent_id(("forget", i, e.id)), Sense::click());
         cr.widget_info(|| WidgetInfo::labeled(egui::Role::Button, true, "Forget"));

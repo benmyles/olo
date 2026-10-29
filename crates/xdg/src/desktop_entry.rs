@@ -117,15 +117,28 @@ pub fn find(app_id: &str) -> Option<DesktopEntry> {
             return Some(e);
         }
     }
+    find_by_class(&all(), app_id).cloned()
+}
+
+/// As [`find`], among `entries` (from [`all`], kept: reading them all
+/// takes milliseconds) rather than on disk.
+pub fn find_among<'a>(entries: &'a [DesktopEntry], app_id: &str) -> Option<&'a DesktopEntry> {
+    if app_id.is_empty() {
+        return None;
+    }
+    entries.iter().find(|e| e.id == app_id).or_else(|| find_by_class(entries, app_id))
+}
+
+/// The entry for `app_id` by StartupWMClass, then case-insensitively by
+/// the id's last component.
+fn find_by_class<'a>(entries: &'a [DesktopEntry], app_id: &str) -> Option<&'a DesktopEntry> {
     let lower = app_id.to_lowercase();
     let last = lower.rsplit('.').next().unwrap_or(&lower).to_owned();
-    let entries = all();
     entries
         .iter()
         .find(|e| e.startup_wm_class.as_deref().is_some_and(|c| c.eq_ignore_ascii_case(app_id)))
         .or_else(|| entries.iter().find(|e| e.id.to_lowercase() == lower))
         .or_else(|| entries.iter().find(|e| e.id.to_lowercase().rsplit('.').next() == Some(last.as_str())))
-        .cloned()
 }
 
 impl DesktopEntry {

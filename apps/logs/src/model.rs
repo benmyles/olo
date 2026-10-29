@@ -343,6 +343,7 @@ impl Default for Query {
 }
 
 /// What a query needs to know about now.
+#[derive(Clone, Copy)]
 pub struct Now {
     /// Microseconds since the epoch.
     pub time: u64,
@@ -368,6 +369,31 @@ pub fn current_boot() -> Option<[u8; 16]> {
     Some(out)
 }
 
+/// Local time at the start of `minute` (since the epoch), as the last
+/// asked for is kept: a screenful of lines is of a few minutes, and
+/// `localtime_r` for every one took 2 ms a frame.
+fn local_minute(minute: u64) -> libc::tm {
+    thread_local! {
+        static LAST: std::cell::Cell<Option<(u64, libc::tm)>> = const { std::cell::Cell::new(None) };
+    }
+    LAST.with(|last| {
+        if let Some((m, tm)) = last.get()
+            && m == minute
+        {
+            return tm;
+        }
+        let t = (minute * 60) as libc::time_t;
+        // SAFETY: localtime_r writes into the zeroed tm we own.
+        let tm = unsafe {
+            let mut tm: libc::tm = std::mem::zeroed();
+            libc::localtime_r(&t, &mut tm);
+            tm
+        };
+        last.set(Some((minute, tm)));
+        tm
+    })
+}
+
 fn local_midnight(micros: u64) -> u64 {
     let t = (micros / 1_000_000) as libc::time_t;
     // SAFETY: localtime_r and mktime work on the zeroed tm we own.
@@ -382,10 +408,36 @@ fn local_midnight(micros: u64) -> u64 {
     }
 }
 
+/// What Find looks for, lowercased once: a line has it when its message
+/// or program does, in any case. Plain ASCII (nearly every search) is
+/// found in place, without lowercasing each line (which took 20 ms a
+/// keystroke over a day's journal).
+pub struct Needle {
+    lower: String,
+    ascii: bool,
+}
+
+impl Needle {
+    /// Whether `hay` has it.
+    pub fn in_text(&self, hay: &str) -> bool {
+        let n = self.lower.as_bytes();
+        if n.is_empty() {
+            return true;
+        }
+        if !self.ascii {
+            return hay.to_lowercase().contains(&self.lower);
+        }
+        let hay = hay.as_bytes();
+        let Some(last) = hay.len().checked_sub(n.len()) else { return false };
+        memchr::memchr2_iter(n[0], n[0].to_ascii_uppercase(), &hay[..=last]).any(|i| hay[i + 1..i + n.len()].eq_ignore_ascii_case(&n[1..]))
+    }
+}
+
 impl Query {
     /// `text` lowercased once, for [`Query::matches`].
-    pub fn needle(&self) -> String {
-        self.text.trim().to_lowercase()
+    pub fn needle(&self) -> Needle {
+        let lower = self.text.trim().to_lowercase();
+        Needle { ascii: lower.is_ascii(), lower }
     }
 
     /// Whether `l` is in the time the query looks at.
@@ -398,7 +450,7 @@ impl Query {
         }
     }
 
-    pub fn matches(&self, l: &Line, now: &Now, needle: &str) -> bool {
+    pub fn matches(&self, l: &Line, now: &Now, needle: &Needle) -> bool {
         if l.level < self.level || !self.in_time(l, now) {
             return false;
         }
@@ -407,22 +459,17 @@ impl Query {
             None if !self.all_programs && !l.olo => return false,
             _ => {}
         }
-        needle.is_empty() || l.message.to_lowercase().contains(needle) || l.program.to_lowercase().contains(needle)
+        needle.in_text(&l.message) || needle.in_text(&l.program)
     }
 }
 
 /// `micros` as local time: `HH:MM:SS.mmm`, with the date in front unless
 /// it is today.
 pub fn format_time(micros: u64, midnight: u64) -> String {
-    let t = (micros / 1_000_000) as libc::time_t;
-    // SAFETY: localtime_r writes into the zeroed tm we own.
-    let tm = unsafe {
-        let mut tm: libc::tm = std::mem::zeroed();
-        libc::localtime_r(&t, &mut tm);
-        tm
-    };
+    let secs = micros / 1_000_000;
+    let tm = local_minute(secs / 60);
     let ms = (micros / 1000) % 1000;
-    let clock = format!("{:02}:{:02}:{:02}.{ms:03}", tm.tm_hour, tm.tm_min, tm.tm_sec);
+    let clock = format!("{:02}:{:02}:{:02}.{ms:03}", tm.tm_hour, tm.tm_min, secs % 60);
     if micros >= midnight && micros < midnight + 86_400_000_000 {
         clock
     } else {
@@ -476,14 +523,19 @@ mod tests {
         let now = Now { time: 100 * 60_000_000, midnight: 0, boot: Some([1; 16]) };
         let line = |level, program: &str, olo, time, boot| Line { time, program: program.into(), pid: 1, level, message: "Hello World".into(), olo, boot };
         let q = Query::default();
-        assert!(q.matches(&line(Level::Info, "olo-tracker", true, 0, [1; 16]), &now, ""));
-        assert!(!q.matches(&line(Level::Info, "chrome", false, 0, [1; 16]), &now, ""));
-        assert!(!q.matches(&line(Level::Info, "olo-tracker", true, 0, [2; 16]), &now, ""));
+        let find = |text: &str| Query { text: text.into(), ..Query::default() }.needle();
+        let any = find("");
+        assert!(q.matches(&line(Level::Info, "olo-tracker", true, 0, [1; 16]), &now, &any));
+        assert!(!q.matches(&line(Level::Info, "chrome", false, 0, [1; 16]), &now, &any));
+        assert!(!q.matches(&line(Level::Info, "olo-tracker", true, 0, [2; 16]), &now, &any));
         let q = Query { since: Since::Minutes(10), level: Level::Warning, all_programs: true, ..Query::default() };
-        assert!(!q.matches(&line(Level::Info, "chrome", false, 99 * 60_000_000, [1; 16]), &now, ""));
-        assert!(q.matches(&line(Level::Error, "chrome", false, 99 * 60_000_000, [1; 16]), &now, "world"));
-        assert!(!q.matches(&line(Level::Error, "chrome", false, 80 * 60_000_000, [1; 16]), &now, ""));
-        assert!(!q.matches(&line(Level::Error, "chrome", false, 99 * 60_000_000, [1; 16]), &now, "nope"));
+        assert!(!q.matches(&line(Level::Info, "chrome", false, 99 * 60_000_000, [1; 16]), &now, &any));
+        assert!(q.matches(&line(Level::Error, "chrome", false, 99 * 60_000_000, [1; 16]), &now, &find("World ")));
+        assert!(!q.matches(&line(Level::Error, "chrome", false, 80 * 60_000_000, [1; 16]), &now, &any));
+        assert!(!q.matches(&line(Level::Error, "chrome", false, 99 * 60_000_000, [1; 16]), &now, &find("nope")));
+        assert!(find("WORLD").in_text("Hello World") && find("o w").in_text("hello world") && find("tracker").in_text("olo-Tracker"));
+        assert!(!find("worlds").in_text("Hello World") && !find("x").in_text(""));
+        assert!(find("größe").in_text("Die GRÖSSE ist GRÖßE") && !find("größe").in_text("gross"));
         assert_eq!(Since::parse("10m"), Some(Since::Minutes(10)));
         assert_eq!(Since::parse("2h"), Some(Since::Minutes(120)));
         assert_eq!(Since::parse("boot"), Some(Since::Boot));

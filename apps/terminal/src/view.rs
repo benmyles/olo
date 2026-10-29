@@ -82,8 +82,10 @@ impl Metrics {
 /// A screen's background and text colours as it draws them (a program
 /// may have changed them).
 pub fn screen_colors(s: &Session, scheme: &Scheme) -> (Color32, Color32) {
-    let term = s.term.lock();
-    let colors = term.colors();
+    // (Its own while being reflowed, the scheme's.)
+    let term = if s.reflowing() { s.term.try_lock_unfair() } else { Some(s.term.lock()) };
+    let scheme_only = alacritty_terminal::term::color::Colors::default();
+    let colors = term.as_ref().map_or(&scheme_only, |t| t.colors());
     let named = |n| c32(scheme.resolve(Color::Named(n), colors));
     (named(NamedColor::Background), named(NamedColor::Foreground))
 }
@@ -137,6 +139,14 @@ impl GlyphCache {
             ui.fonts_mut(|f| (f.glyph_width(&font, c) - m.advance).abs() < 0.01)
         })
     }
+}
+
+/// A frame of the screen as drawn: its background and shapes, for the
+/// frames while the screen is reflowed to a new width on a worker
+/// (`Session::resize`).
+pub struct Frame {
+    background: Color32,
+    shapes: Vec<egui::Shape>,
 }
 
 pub struct Output {
@@ -215,7 +225,20 @@ pub fn show(
         ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
     }
 
-    let term = s.term.lock();
+    // Being reflowed to a new width: the last frame again, while that
+    // takes (the new width shows the next frame).
+    let term = if s.reflowing() { s.term.try_lock_unfair() } else { Some(s.term.lock()) };
+    let Some(term) = term else {
+        if let Some(f) = &s.last_frame {
+            painter.rect_filled(rect, 0.0, f.background);
+            painter.extend(f.shapes.iter().cloned());
+        }
+        return out;
+    };
+    // A frame drawn as the window changes size is kept for that.
+    let keep = size != s.size || s.reflowing();
+    let layer = painter.layer_id();
+    let first = if keep { ui.ctx().graphics(|g| g.get(layer).map_or(0, |l| l.all_entries().len())) } else { 0 };
     let content = term.renderable_content();
     let colors = content.colors;
     let bg_default = scheme.resolve(Color::Named(NamedColor::Background), colors);
@@ -462,6 +485,11 @@ pub fn show(
         let fg = scheme.resolve(Color::Named(NamedColor::Foreground), colors);
         painter.rect_filled(thumb, 2.0, c32(mix(fg, bg_default, 0.35)));
     }
+    drop(term);
+    s.last_frame = keep.then(|| Frame {
+        background: c32(bg_default),
+        shapes: ui.ctx().graphics(|g| g.get(layer).map(|l| l.all_entries().skip(first).map(|c| c.shape.clone()).collect()).unwrap_or_default()),
+    });
     out
 }
 
@@ -1002,9 +1030,12 @@ fn is_shortcut(key: Key, m: egui::Modifiers) -> bool {
 }
 
 fn keyboard(ui: &Ui, s: &Session, out: &mut Output) {
+    let events = ui.input(|i| i.events.clone());
+    if events.is_empty() {
+        return;
+    }
     let mode = *s.term.lock().mode();
     let kitty = mode.intersects(TermMode::KITTY_KEYBOARD_PROTOCOL);
-    let events = ui.input(|i| i.events.clone());
     let mut wrote = false;
     // A key we already reported as an escape sequence also produces a
     // text event; skip that.

@@ -79,6 +79,9 @@ pub enum MissingGlyphPolicy {
 /// [`Self::font_image_delta`] once every frame.
 pub struct Fonts {
     fonts: FontsImpl,
+    /// Olo: how many times the galleys laid out so far went stale
+    /// ([`Self::galley_generation`]).
+    generation: u64,
     // `GalleyCache::flush_cache` assumes consecutive calls are consecutive passes
     // of the same UI. Viewports are independently scheduled, so sharing one cache
     // would advance its eviction generation once per *viewport* pass. Alternating
@@ -94,6 +97,7 @@ impl Fonts {
     pub fn new(options: TextOptions, definitions: FontDefinitions) -> Self {
         Self {
             fonts: FontsImpl::new(options, definitions),
+            generation: 0,
             galley_caches: Default::default(),
         }
     }
@@ -119,6 +123,7 @@ impl Fonts {
         let changed = self.fonts.add_glyph_rasterizer(glyph_rasterizer);
         if changed {
             self.galley_caches.clear();
+            self.generation += 1;
         }
         changed
     }
@@ -129,6 +134,7 @@ impl Fonts {
     pub fn set_glyph_rasterizers(&mut self, glyph_rasterizers: Vec<GlyphRasterizer>) {
         self.fonts.set_glyph_rasterizers(glyph_rasterizers);
         self.galley_caches.clear();
+        self.generation += 1;
     }
 
     /// Ask these for fonts, after the [`FontDefinitions`].
@@ -159,6 +165,7 @@ impl Fonts {
         if self.fonts.missing_glyph_policy != policy {
             self.fonts.missing_glyph_policy = policy;
             self.galley_caches.clear(); // Cached galleys may contain tofu.
+            self.generation += 1;
         }
     }
 
@@ -178,10 +185,12 @@ impl Fonts {
         if self.fonts.options() != &options {
             self.fonts.set_options(options);
             self.galley_caches.clear(); // Galleys point into the old atlas.
+            self.generation += 1;
         } else if 0.8 < self.fonts.glyphs.fill_ratio() {
             // The parsed faces are still fine; only the bitmaps need to go.
             self.fonts.glyphs.clear();
             self.galley_caches.clear(); // Galleys point into the old atlas.
+            self.generation += 1;
         }
 
         let viewport_cache = self.galley_caches.entry(viewport_key).or_default();
@@ -261,6 +270,14 @@ impl Fonts {
             .retain(|&viewport_key, _| keep(viewport_key));
     }
 
+    /// Olo: changes whenever galleys laid out before no longer paint
+    /// right: the atlas their glyphs point into was emptied (it filled
+    /// up), or the fonts or their options changed. One kept across
+    /// frames (a list's rows, a card's look) is laid out again then.
+    pub fn galley_generation(&self) -> u64 {
+        self.generation
+    }
+
     /// How full is the font atlas?
     ///
     /// This increases as new fonts and/or glyphs are used,
@@ -312,6 +329,7 @@ impl Fonts {
             galley_cache: &mut viewport_cache.cache,
             pixels_per_point,
             used_since_begin_pass: &mut viewport_cache.used_since_begin_pass,
+            generation: self.generation,
         }
     }
 }
@@ -324,12 +342,25 @@ pub struct FontsView<'a> {
     galley_cache: &'a mut GalleyCache,
     pixels_per_point: f32,
     used_since_begin_pass: &'a mut bool,
+    generation: u64,
 }
 
 impl FontsView<'_> {
     #[inline]
     pub fn options(&self) -> &TextOptions {
         self.fonts.options()
+    }
+
+    /// The font atlas.
+    /// Pass this to [`crate::Tessellator`] (Olo: to tessellate a frame's
+    /// shapes on several threads, which `Context::tessellate` can't).
+    pub fn texture_atlas(&self) -> &TextureAtlas {
+        self.fonts.glyphs.atlas()
+    }
+
+    /// Olo: [`Fonts::galley_generation`].
+    pub fn galley_generation(&self) -> u64 {
+        self.generation
     }
 
     #[inline]

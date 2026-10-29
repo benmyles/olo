@@ -243,15 +243,10 @@ impl Screenshot {
             (None, Some(s)) => format!("{} × {} pixels", s.image.width(), s.image.height()),
             (None, None) => String::new(),
         };
-        style::label(
-            ui.painter(),
-            area.center().x,
-            frame.bottom() + m::TIGHT + m::LABEL_ROW / 2.0,
-            egui::Align::Center,
-            &caption,
-            style::plain_font(),
-            style::disabled_text(&p),
-        );
+        // Under the picture, so where it falls follows the picture's
+        // shape: painted once the form beside it is laid out.
+        let caption_y = frame.bottom() + m::TIGHT + m::LABEL_ROW / 2.0;
+        let mut rows = Vec::new();
 
         // The form.
         let form = Rect::from_min_max(pos2(area.right() + m::WINDOW_INSET + m::SPACING, top.top()), top.max);
@@ -276,16 +271,19 @@ impl Screenshot {
                     }
                 }
                 ui.add(StringView::new("seconds"));
+                rows.push(r.rect.center().y);
             });
             ui.add_space(m::SPACING);
             widgets::separator(ui);
             ui.add_space(m::SPACING);
             let width = form.width();
-            ui.add(TextControl::new(&mut self.name).label("Name:").divider(DIVIDER).width(width));
+            rows.push(ui.add(TextControl::new(&mut self.name).label("Name:").divider(DIVIDER).width(width)).rect.center().y);
 
             let labels: Vec<&str> = Format::ALL.iter().map(|f| f.label()).collect();
             let mut fi = Format::ALL.iter().position(|f| *f == self.settings.format).unwrap_or(0);
-            if ui.add(MenuField::new("format", &mut fi, &labels).label("Save as:").divider(DIVIDER).width(width)).changed() {
+            let r = ui.add(MenuField::new("format", &mut fi, &labels).label("Save as:").divider(DIVIDER).width(width));
+            rows.push(r.rect.center().y);
+            if r.changed() {
                 self.settings.format = Format::ALL[fi];
                 changed = true;
             }
@@ -301,7 +299,9 @@ impl Screenshot {
             names.push("Choose folder…".into());
             let names: Vec<&str> = names.iter().map(String::as_str).collect();
             let mut di = folders.iter().position(|f| *f == current).unwrap_or(0);
-            if ui.add(MenuField::new("folder", &mut di, &names).label("Save in:").divider(DIVIDER).width(width)).changed() {
+            let r = ui.add(MenuField::new("folder", &mut di, &names).label("Save in:").divider(DIVIDER).width(width));
+            rows.push(r.rect.center().y);
+            if r.changed() {
                 match folders.get(di) {
                     Some(f) => {
                         self.settings.folder = Some(f.clone());
@@ -311,6 +311,12 @@ impl Screenshot {
                 }
             }
         });
+        // Almost level with a row of the form, it's lined up with it (a
+        // little further from the picture); else it's on a grid of its
+        // own, level with the form only at some shapes.
+        let y = rows.iter().copied().find(|r| (0.0..=m::LABEL_ROW / 2.0).contains(&(r - caption_y))).unwrap_or(caption_y);
+        olo_kit::layout_review::own_grid(ui, Rect::from_center_size(pos2(area.center().x, y), vec2(area.width(), m::LABEL_ROW)));
+        style::label(ui.painter(), area.center().x, y, egui::Align::Center, &caption, style::plain_font(), style::disabled_text(&p));
         if changed {
             self.settings_changed();
             // Keep a proposed name current; a typed one stays.

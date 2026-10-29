@@ -17,7 +17,7 @@ mod reader;
 
 use std::{collections::BTreeSet, sync::Arc, time::Instant};
 
-use model::{Level, Line, Now, Query, Since};
+use model::{Level, Line, Needle, Now, Query, Since};
 use reader::Update;
 use serde::{Deserialize, Serialize};
 use olo_kit::{
@@ -71,6 +71,10 @@ struct Logs {
     warnings: usize,
     errors: usize,
     programs: BTreeSet<Arc<str>>,
+    /// The time `programs` are of (Find and the level don't change them).
+    programs_since: Option<Since>,
+    /// Lines being chosen again, a slice a frame (`refilter`).
+    filter: Option<Filter>,
     now: Now,
     filtered_at: Instant,
     /// The query from before Show in Context, to go back to.
@@ -81,10 +85,41 @@ struct Logs {
     reveal: Option<usize>,
     /// Whether the list showed its last row (live lines keep it there).
     at_end: bool,
+    /// The first row the list showed, and how many.
+    shown: Option<(usize, usize)>,
     loaded: bool,
     failed: Option<String>,
     detail: String,
 }
+
+/// The lines being chosen again for a new query (`Logs::refilter`), a
+/// slice of them at a time: a day's journal is hundreds of thousands of
+/// lines, and a keystroke in Find must not hold a frame up. The lines
+/// shown change once it has been through them all.
+struct Filter {
+    query: Query,
+    needle: Needle,
+    now: Now,
+    /// The next line to look at.
+    next: usize,
+    view: Vec<usize>,
+    warnings: usize,
+    errors: usize,
+    /// The programs in the query's time, when they are found again.
+    programs: Option<BTreeSet<Arc<str>>>,
+    /// The line to select and show when done (Show in Context), else
+    /// the selected one stays selected if it's still there.
+    select: Option<usize>,
+    /// Once through them all: the rows (of `view`) that will show, and
+    /// the next of them to shape. Shaping a screen of new lines took 10
+    /// ms of the frame that showed them; shaped here, a slice at a time,
+    /// that frame only breaks them into rows (epaint keeps shaped text a
+    /// while, by its words and fonts).
+    warm: Option<(std::ops::Range<usize>, usize)>,
+}
+
+/// How long a frame goes through lines for (`Filter`).
+const FILTER_SLICE: std::time::Duration = std::time::Duration::from_millis(2);
 
 /// `text` highlighted in the palette's colours (highlight.rs), on `base`.
 fn highlighted(text: &str, font: egui::FontId, base: egui::Color32, p: &olo_theme::Palette) -> egui::text::LayoutJob {
@@ -108,6 +143,14 @@ fn highlighted(text: &str, font: egui::FontId, base: egui::Color32, p: &olo_them
         job.append(&text[r], 0.0, egui::TextFormat { font_id: font.clone(), color: color(k), ..Default::default() });
     }
     job
+}
+
+
+/// A line's message as its row shows it: its first line, and an
+/// ellipsis if there is more.
+fn message_text(l: &Line) -> String {
+    let first = l.first_line();
+    if l.message.len() > first.len() { format!("{first} …") } else { first.to_owned() }
 }
 
 fn line_text(l: &Line, midnight: u64) -> String {
@@ -142,29 +185,110 @@ impl Logs {
         }
     }
 
-    /// Choose the lines shown again (the query changed, or time moved on).
-    fn refilter(&mut self) {
+    /// Choose the lines shown again (the query changed, or time moved
+    /// on), from this frame on (`Filter`); then select line `select`.
+    fn refilter(&mut self, select: Option<usize>) {
         self.now = Now::get();
         self.filtered_at = Instant::now();
-        let needle = self.settings.query.needle();
-        self.view = (0..self.lines.len()).filter(|&i| self.settings.query.matches(&self.lines[i], &self.now, &needle)).collect();
-        self.programs = self.lines.iter().filter(|l| self.settings.query.in_time(l, &self.now)).map(|l| l.program.clone()).collect();
-        (self.warnings, self.errors) = (0, 0);
-        for k in 0..self.view.len() {
-            self.count(self.view[k]);
+        let since = self.settings.query.since;
+        let programs = (self.programs_since != Some(since) || matches!(since, Since::Minutes(_))).then(BTreeSet::new);
+        self.programs_since = Some(since);
+        self.filter = Some(Filter {
+            query: self.settings.query.clone(),
+            needle: self.settings.query.needle(),
+            now: self.now,
+            next: 0,
+            view: Vec::new(),
+            warnings: 0,
+            errors: 0,
+            programs,
+            select,
+            warm: None,
+        });
+    }
+
+    /// Go through lines for the filter under way, for a slice of a frame;
+    /// whether it's done.
+    fn filter_on(&mut self, ctx: &egui::Context) -> bool {
+        let Some(f) = self.filter.as_mut() else { return true };
+        let start = Instant::now();
+        while f.next < self.lines.len() {
+            let end = (f.next + 4096).min(self.lines.len());
+            for (i, l) in self.lines[f.next..end].iter().enumerate() {
+                if let Some(programs) = &mut f.programs
+                    && f.query.in_time(l, &f.now)
+                    && !programs.contains(&l.program)
+                {
+                    programs.insert(l.program.clone());
+                }
+                if f.query.matches(l, &f.now, &f.needle) {
+                    f.view.push(f.next + i);
+                    match l.level {
+                        Level::Warning => f.warnings += 1,
+                        Level::Error => f.errors += 1,
+                        _ => {}
+                    }
+                }
+            }
+            f.next = end;
+            if start.elapsed() > FILTER_SLICE {
+                return false;
+            }
+        }
+        // The rows that will show: where the list is, at its end if it
+        // was there, or around the line to be shown.
+        let (rows, (first, shown)) = (f.view.len(), self.shown.unwrap_or((0, 60)));
+        let (range, next) = f.warm.get_or_insert_with(|| {
+            let n = shown + 2;
+            let at = f.select.and_then(|line| f.view.binary_search(&line).ok()).map(|row| row.saturating_sub(n / 2));
+            let from = at.unwrap_or(if self.at_end { rows.saturating_sub(n) } else { first.min(rows.saturating_sub(n)) });
+            let range = from..(from + n).min(rows);
+            (range.clone(), range.start)
+        });
+        let (p, font) = (style::palette(ctx), style::plain_font());
+        while *next < range.end {
+            let l = &self.lines[f.view[*next]];
+            *next += 1;
+            // As the cells lay them out (`Cell::text_job`), but for the
+            // width they're cut to and the colours, which shaping doesn't
+            // depend on.
+            let mut message = highlighted(&message_text(l), font.clone(), egui::Color32::WHITE, &p);
+            let mut time = egui::text::LayoutJob::simple_singleline(model::format_time(l.time, f.now.midnight), font.clone(), egui::Color32::WHITE);
+            message.break_on_newline = false;
+            time.break_on_newline = false;
+            ctx.fonts_mut(|fonts| {
+                fonts.layout_job(message);
+                fonts.layout_job(time);
+            });
+            if start.elapsed() > FILTER_SLICE {
+                return false;
+            }
+        }
+        let f = self.filter.take().expect("a filter");
+        (self.view, self.warnings, self.errors) = (f.view, f.warnings, f.errors);
+        if let Some(programs) = f.programs {
+            self.programs = programs;
+        }
+        if let Some(line) = f.select {
+            self.select(Some(line));
         }
         if let Some(sel) = self.selected
-            && !self.view.contains(&sel)
+            && self.view.binary_search(&sel).is_err()
         {
             self.selected = None;
             self.detail.clear();
         }
-        self.reveal = self.selected.and_then(|s| self.view.binary_search(&s).ok()).or(if self.at_end { self.view.len().checked_sub(1) } else { None });
+        // The rows were of the lines shown before.
+        let row = self.selected.and_then(|s| self.view.binary_search(&s).ok());
+        self.list.selected = row.into_iter().collect();
+        self.list.anchor = row;
+        self.reveal = row.or(if self.at_end { self.view.len().checked_sub(1) } else { None });
+        true
     }
 
     fn query_changed(&mut self) {
         self.before_context = None;
-        self.refilter();
+        self.refilter(None);
         self.store();
     }
 
@@ -219,19 +343,13 @@ impl Logs {
         let saved = self.settings.query.clone();
         self.settings.query = Query { since: Since::All, level: Level::Debug, program: None, all_programs: true, text: String::new() };
         self.before_context = Some(saved);
-        self.refilter();
-        self.list.selected.clear();
-        if let Ok(row) = self.view.binary_search(&sel) {
-            self.list.select(row);
-            self.reveal = Some(row);
-        }
+        self.refilter(Some(sel));
     }
 
     fn back_from_context(&mut self) {
         if let Some(q) = self.before_context.take() {
             self.settings.query = q;
-            self.refilter();
-            self.list.selected = self.selected.and_then(|s| self.view.binary_search(&s).ok()).into_iter().collect();
+            self.refilter(None);
         }
     }
 
@@ -347,25 +465,24 @@ impl Logs {
                         _ => cell.text_color,
                     };
                     let font = style::plain_font();
+                    let plain = |text: String, color| egui::text::LayoutJob::simple_singleline(text, font.clone(), color);
+                    // Each cell kept while its line is the same (a line
+                    // grows when more of its message comes).
+                    let line = view[cell.row] as u64;
                     match cell.column {
-                        0 => cell.text_with(&model::format_time(l.time, midnight), font, cell.text_color),
-                        1 => cell.text(&l.program),
-                        2 => cell.text_with(l.level.name(), font, color),
-                        _ => {
-                            let first = l.first_line();
-                            let more = l.message.len() > first.len();
-                            let text = if more { format!("{first} …") } else { first.to_owned() };
-                            if cell.selected {
-                                cell.text_with(&text, font, cell.text_color);
-                            } else {
-                                cell.text_job(highlighted(&text, font, cell.text_color, &p));
-                            }
-                        }
+                        0 => cell.text_cached(line ^ midnight.rotate_left(32), || plain(model::format_time(l.time, midnight), cell.text_color)),
+                        1 => cell.text_cached(line, || plain(l.program.to_string(), cell.text_color)),
+                        2 => cell.text_cached(line, || plain(l.level.name().to_owned(), color)),
+                        _ => cell.text_cached(line ^ (l.message.len() as u64).rotate_left(40), || {
+                            let text = message_text(l);
+                            if cell.selected { plain(text, cell.text_color) } else { highlighted(&text, font.clone(), cell.text_color, &p) }
+                        }),
                     }
                 })
             })
             .inner;
         self.at_end = self.view.is_empty() || out.visible.iter().any(|(row, _)| *row + 1 == self.view.len());
+        self.shown = out.visible.first().map(|(row, _)| (*row, out.visible.len()));
         if out.selection_changed || out.context.is_some() {
             let line = self.list.single().and_then(|r| self.view.get(r).copied());
             self.select(line);
@@ -388,8 +505,8 @@ impl Logs {
 
     fn main_ui(&mut self, cx: &mut Cx, ui: &mut Ui) {
         // A sliding window of time moves on by itself.
-        if matches!(self.settings.query.since, Since::Minutes(_)) && self.filtered_at.elapsed().as_secs() >= 5 {
-            self.refilter();
+        if matches!(self.settings.query.since, Since::Minutes(_)) && self.filtered_at.elapsed().as_secs() >= 5 && self.filter.is_none() {
+            self.refilter(None);
         }
         let area = ui.max_rect().shrink(m::WINDOW_INSET);
         let top = Rect::from_min_size(area.min, vec2(area.width(), m::CONTROL_HEIGHT));
@@ -419,6 +536,8 @@ impl Logs {
         }
         if !self.loaded && self.failed.is_none() {
             status += " (reading the journal…)";
+        } else if self.filter.is_some() {
+            status += " (finding…)";
         }
         let mut x = bottom.left();
         if self.before_context.is_some() {
@@ -434,6 +553,13 @@ impl Logs {
         let mut live = self.settings.live;
         if ui.put(live_r, CheckBox::new(&mut live, "Live")).changed() {
             self.command(cx, "live");
+        }
+        // Lines chosen again for a changed query, a slice of the frame
+        // (last, so a keystroke's starts in its own frame); shown the
+        // next.
+        if self.filter.is_some() {
+            self.filter_on(ui.ctx());
+            ui.ctx().request_repaint();
         }
     }
 }
@@ -651,6 +777,8 @@ fn main() {
             warnings: 0,
             errors: 0,
             programs: BTreeSet::new(),
+            programs_since: None,
+            filter: None,
             now: Now::get(),
             filtered_at: Instant::now(),
             before_context: None,
@@ -658,6 +786,7 @@ fn main() {
             selected: None,
             reveal: None,
             at_end: true,
+            shown: None,
             loaded: false,
             failed: None,
             detail: String::new(),

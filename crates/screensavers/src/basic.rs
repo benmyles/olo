@@ -1,6 +1,7 @@
 //! Blackness, BuyNow, Icons and Spots.
 
 use olo_kit::{
+    big_text,
     egui::{Align2, Color32, FontId, Rect, pos2, vec2},
     icons, style,
 };
@@ -45,13 +46,17 @@ impl Module for BuyNow {
         if self.flash && self.t % 1.2 > 0.8 {
             return;
         }
-        // Whole points, so the glyph atlas holds one size.
+        // Whole points; hundreds of pixels high, so made on a worker
+        // (`big_text`) and shown once they are.
         let size = (f.rect.height() * 0.27).round().max(4.0);
         let font = FontId::new(size, style::bold());
         let c = f.rect.center();
         let gap = size * 0.55;
-        f.painter.text(pos2(c.x, c.y - gap), Align2::CENTER_CENTER, "BUY", font.clone(), Color32::WHITE);
-        f.painter.text(pos2(c.x, c.y + gap), Align2::CENTER_CENTER, "NOW", font, Color32::WHITE);
+        for (word, y) in [("BUY", c.y - gap), ("NOW", c.y + gap)] {
+            if let Some(text) = big_text::get(f.painter.ctx(), word, &font) {
+                text.paint(f.painter, Align2::CENTER_CENTER.anchor_size(pos2(c.x, y), text.size()).min, Color32::WHITE);
+            }
+        }
     }
 }
 

@@ -2016,7 +2016,7 @@ impl AnvilState<UdevData> {
         let reschedule = match result {
             Ok((has_rendered, states)) => {
                 let dmabuf_feedback = surface.dmabuf_feedback.clone();
-                self.post_repaint(&output, frame_target, dmabuf_feedback, &states);
+                self.post_repaint(&output, dmabuf_feedback, &states);
                 !has_rendered
             }
             Err(err) => {

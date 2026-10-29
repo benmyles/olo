@@ -74,12 +74,63 @@ like pixel alignment is.
    waits for the GPU to go idle (3 ms, 30 with a busy GPU), and a new
    egui context lays out its glyphs and uploads its font atlas (6 ms).
    So the kit gives a window being resized a swapchain with room to
-   grow, showing only its part (`wp_viewport`), and a menu takes on the
+   grow, showing only its part (`wp_viewport`), made to fit 1.5 s
+   after only if it has a quarter more room than it shows (`roomier`:
+   a theme switch that changes a window's size a little sets no
+   swapchain up), and a menu takes on the
    last closed menu's surface, swapchain, context and renderer
    (`SpareMenu`, two kept); the first menus' are made ahead, the
    contexts laid out on a worker as a window first draws, and so no
-   menu waits, the first included. `tools/dev/bench` checks every app
-   (see Testing).
+   menu waits, the first included. Nor does a frame wait on another
+   thread holding a lock for long: wgpu's queue lock is held through
+   `queue.write_texture`'s copy, and its allocator's lock while the
+   driver allocates (17 ms for 100 MB), so a worker uploads through a
+   buffer of its own a band of rows at a time (`upload_texture`), and
+   wgpu-hal is patched to give big textures their memory outside the
+   lock (vendor/README.md). A texture of 4 MB and up is uploaded on a
+   worker (`olo_kit::textures`: `uploading(ctx, id)` says it isn't in
+   yet; show something smaller meanwhile, as olo-preview shows the
+   image's next smaller level). A frame's shapes are tessellated on
+   several threads when there are many (`tessellate`), and text keeps
+   its shaping across wrap widths and colours (vendored epaint's
+   `ShapedCache`; sections differing only in colour are shaped
+   together, with a shape plan made once per face), so a live resize
+   or a theme switch only breaks lines again. `tools/dev/bench` checks
+   every app (see Testing).
+
+   A frame's budget is the frame less what the GPU then takes to draw
+   it: app_server shows a commit once its GPU work is done (the dmabuf
+   blocker), so a window drawing in 6 ms whose GPU took 2 more missed
+   every other frame. app_server tells clients to draw as it starts
+   drawing the screen, not once it has (`send_frames` in `pre_repaint`),
+   so they have the whole frame. On Honeykrisp new GPU memory costs
+   about 0.35 ms a MB, so egui's vertex and index buffers grow on a
+   worker before they fill (vendored egui-wgpu, `SlicedBuffer::reserve`)
+   and wgpu-hal gives big buffers their memory outside its lock.
+
+   What looks the same frame after frame isn't made again:
+   * `olo_kit::recorded::Recorded` keeps the shapes a painting added
+     and adds them again moved (History's cards, scrolled: 200 painted
+     again took 1.6 ms a frame). The caller says when it's stale (its
+     look, `icons::loaded()` for an icon that was loading) and paints
+     afresh while AccessKit is on (only painting describes its text).
+   * `Cell::text_cached(key, || job)` keeps a list cell's galley while
+     its key (what the text is made from), width, colour and selection
+     stay the same (Logs' rows: 2 ms a frame).
+   * Anything that keeps galleys across frames checks
+     `ctx.fonts(|f| f.galley_generation())`: when it changes, epaint
+     emptied its glyph atlas (it filled up) and old galleys paint the
+     wrong glyphs.
+   * Work a frame can't do in its budget is spread over frames: History
+     measures cards again at a new width for 1 ms a frame (the rest
+     show as they were a frame or two longer); Logs shapes the rows a
+     new filter will show while it finishes (epaint keeps shaped text a
+     while), so the frame that shows them only breaks them into rows.
+   * Text hundreds of pixels high (a screen saver's words) goes through
+     `olo_kit::big_text`: a worker with fonts of its own rasterises it,
+     each glyph a texture of its own, and it shows a frame or two later;
+     in egui's atlas each glyph was rasterised on the UI thread and the
+     atlas sent to the GPU again whole as it grew.
 
 ## Layout
 
@@ -487,8 +538,9 @@ at least n wells, `.fill()` wells across the whole width; each cell is
 clickable, named for agents, its name a tooltip, the selected one
 edged with the selection's hairline; `show(ui).clicked` is the cell clicked, by index),
 `ScrollView` (`show`, `show_rows` for virtualised content, `show_in(ui,
-rect, |ui, viewport|)` for content you lay out yourself, `reveal`,
-`ScrollView::scroll_to(ctx, id, offset)`, `.auto_hide(true)` to drop the
+rect, |ui, viewport|)` for content you lay out yourself, `reveal`
+(asked for before the view shows, it shows there that frame; from
+within its content, the next), `ScrollView::scroll_to(ctx, id, offset)`, `.auto_hide(true)` to drop the
 bar when content fits; a drag held within 24 px of an edge scrolls it on; `SCROLL_BAR` is its width;
 `ScrollView::edge_scroll(ctx, past)` is how far to scroll this frame for a selection dragged `past` a
 view's edge, faster the further out, the same at any frame rate), `ScrollBar`
@@ -506,7 +558,8 @@ list view: ⇧ or ⌘ adds to the selection, and it scrolls on near the
 edges; on a draggable list the name column and selected rows drag the
 items; `.empty_text("No lines match.")` says so in an empty list; a cell
 draws plain text with `text`/`text_with` or sections of their own colours
-with `text_job`), `TabView`, `TabStrip` (a row of document tabs under
+with `text_job`; `text_cached(key, || job)` keeps the galley from frame to
+frame while `key`, what the text is made from, stays the same), `TabView`, `TabStrip` (a row of document tabs under
 a menu or tool bar, `STRIP_HEIGHT` (30) tall, roomier than a window tab,
 each tab `STRIP_ROW` (26) of it standing on the bottom edge, its icon
 under the menu bar's first title: `StripTab { label, icon,
@@ -1105,17 +1158,21 @@ last ask, the last 1200 (`FrameMark`): when it began (CLOCK_MONOTONIC
 surface made or a swapchain configured; `ui_us`, egui and the app's
 code; `tessellate_us`; `acquire_us`, waiting for a buffer to draw in;
 `submit_us`, uploads, recording, submitting and presenting), and where
-each scroll view showed its content from.
+each scroll view showed its content from and how far it scrolls
+(`[x, y, max x, max y]`: past either end, it's pulled past its edge).
 
 `tools/dev/scroll-check NAME --app NAME` measures scrolling with them: on
 a long list under the pointer it drives a steady two-finger scroll (at a
 touchpad's rate, `--rate 90`), a flick and its glide, and three wheel
 notches, and prints for each how regularly frames came (hitches: a frame
-later than 1.5× the usual), how evenly it moved (each frame's step
-against the fingers' speed; the glide's against its neighbours, as it
-slows evenly; each notch easing out with no step bigger than the one
-before), frames that drew without moving, how long the first move took
-to show and the slowest frame; `--trace` prints every frame. Smooth is
+later than 1.5× the usual while the content moved), how evenly it moved
+(each frame's step against the fingers' speed; the glide's against its
+neighbours, as it slows evenly; each notch easing out with no step
+bigger than the one before; both only until the content reaches its end,
+whose rubber band and bounce aren't the fingers'), frames that drew
+without moving, how long the first move took to show and the slowest
+frame; `--trace` prints every frame with its parts and whether the
+content was at or past its end. Smooth is
 every step within a few percent, no hitches and no still frames, at 60
 and 120 Hz and every scale. Run it after changing anything about input,
 frame timing or a scroll view.
@@ -1292,15 +1349,21 @@ at closely before calling a view done.
   stacked or side by side almost one height: a 21 bar over a 22 head),
   `near-level` (text or icons in neighbouring columns a pixel or two off
   level), `near-edge` (left edges almost lined up down a column),
-  `off-centre` (text or an icon off-centre in the band it sits in),
-  `uneven-rows` (rows down a column spaced unevenly).
+  `off-centre` (text or an icon off-centre in the band it sits in; only
+  bands no clip cuts, since a card at the foot of a scroll view is
+  centred in the whole of it, not in what shows), `uneven-rows` (rows
+  down a column spaced unevenly). Right edges count as lined up a
+  device pixel apart: text set from its right starts on a pixel.
 
 A view tells it two things it can't see. `layout_review::own_grid(ui,
 rect)`: text laid out on a grid of its own (Terminal's screen, a cell
-apart), not held level with the chrome beside it. `layout_review::band(
-ui, rect)`: what is in `rect` is centred across it though nothing fills
-it (a `TabStrip` tab, its top below the strip's), so centring is
-measured against it. Call either each frame.
+apart; a card in Notifications' history masonry, staggered in its
+column), not held level with what is beside it, nor in a row with
+what is above it. A scrolled `ScrollView` marks its content so itself:
+a list's heading is a row apart from its first row only at whole-row
+offsets. `layout_review::band(ui, rect)`: what is in `rect` is centred
+across it though nothing fills it (a `TabStrip` tab, its top below the
+strip's), so centring is measured against it. Call either each frame.
 
 Run it:
 
@@ -2490,10 +2553,9 @@ olo-termd and in Terminal), so a full scrollback costs about twice
 what it used to.
 
 **Tabs.** A window holds one or more shells (`TermWin::tabs`, each a
-`Tab` with its own `Session`); its strip (the kit's `TabStrip`) shows
-once there are two, in the window as it is: the grid gives up a row or
-so rather than the window growing (which took a window filling the
-screen, or zoomed, past the bottom). Every tab has the window's grid,
+`Tab` with its own `Session`); its strip (the kit's `TabStrip`) always
+shows, one tab or many, so a window doesn't change shape as tabs come
+and go. Every tab has the window's grid,
 so a program in a hidden tab lays itself out right; a hidden tab isn't
 drawn (its Wakeup
 waits until it shows), and its bell marks it with a dot. Messages from
@@ -2514,7 +2576,7 @@ window its size and gives the grid the difference.
 **Groups** (`src/groups.rs`). A window can be a named group with a colour
 (Tabs ▸ Group ▸ Name Group…, or click the group's name in the strip): the
 name leads the strip in its colour (its chip; the tabs stay plain), the
-window's title is "name — tab", and the strip shows even with one tab.
+window's title is "name — tab".
 Save Group keeps the group and each tab's folder in
 `terminal-groups.json` (config dir); Open Saved Group brings its window
 forward, or opens one with a shell in each folder; Forget Saved Group

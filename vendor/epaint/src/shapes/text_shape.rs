@@ -121,6 +121,13 @@ impl TextShape {
         *pos = transform * *pos;
         underline.width *= transform.scaling;
 
+        // Olo: moved, the galley (laid out from `pos`) is as it was; made
+        // anew it was copied, every row and glyph of it, for each text
+        // a scrolled list showed again (`olo_kit::recorded`).
+        if transform.scaling == 1.0 {
+            return;
+        }
+
         let Galley {
             job: _,
             rows,

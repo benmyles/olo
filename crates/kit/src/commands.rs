@@ -264,8 +264,10 @@ pub struct FrameMark {
     #[serde(default)]
     pub submit_us: u32,
     /// The offset each scroll view in it showed (content x, y at its
-    /// top left), in the order they were drawn.
-    pub scrolls: Vec<[f32; 2]>,
+    /// top left) and the furthest it scrolls to (x, y), in the order
+    /// they were drawn: an offset past either end is the content pulled
+    /// past its edge.
+    pub scrolls: Vec<[f32; 4]>,
 }
 
 /// What the layout review ([`crate::layout_review`]) found in one

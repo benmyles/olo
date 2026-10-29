@@ -2074,7 +2074,7 @@ impl Tessellator {
                     //
                     // This is so that a user can tile rectangles with `StrokeKind::Inside`,
                     // and get no pixel overlap between them.
-                    rect = rect.round_to_pixels(self.pixels_per_point);
+                    rect = round_rect_to_pixels(rect, self.pixels_per_point);
                 }
                 StrokeKind::Middle => {
                     // On this path we optimize for crisp and symmetric strokes.
@@ -2088,7 +2088,7 @@ impl Tessellator {
                     // Will make each stroke asymmetric if not an even multiple of physical pixels,
                     // but the left stroke will always be the mirror image of the right stroke,
                     // and the top stroke will always be the mirror image of the bottom stroke.
-                    rect = rect.round_to_pixels(self.pixels_per_point);
+                    rect = round_rect_to_pixels(rect, self.pixels_per_point);
                 }
             }
         }
@@ -2257,7 +2257,7 @@ impl Tessellator {
         // The contents of the galley are already snapped to pixel coordinates,
         // but we need to make sure the galley ends up on the start of a physical pixel:
         let galley_pos = if self.options.round_text_to_pixels {
-            galley_pos.round_to_pixels(self.pixels_per_point)
+            round_pos_to_pixels(*galley_pos, self.pixels_per_point)
         } else {
             *galley_pos
         };
@@ -2717,6 +2717,24 @@ fn path_bounding_box() {
             &mut mesh,
         );
     }
+}
+
+
+/// Olo: to the nearest physical pixel, a half always up. A text or rect
+/// on a half pixel (a third of a point at 1.5×) went up or down by the
+/// last bit of the sum that put it there, so a card shown again moved
+/// (`olo_kit::recorded`) could have its title a pixel off the same card
+/// painted there, and a card scrolled could have it hop a pixel.
+fn round_to_pixels(x: f32, pixels_per_point: f32) -> f32 {
+    (x * pixels_per_point + 1.0 / 256.0).round() / pixels_per_point
+}
+
+fn round_pos_to_pixels(p: Pos2, pixels_per_point: f32) -> Pos2 {
+    pos2(round_to_pixels(p.x, pixels_per_point), round_to_pixels(p.y, pixels_per_point))
+}
+
+fn round_rect_to_pixels(r: Rect, pixels_per_point: f32) -> Rect {
+    Rect::from_min_max(round_pos_to_pixels(r.min, pixels_per_point), round_pos_to_pixels(r.max, pixels_per_point))
 }
 
 #[cfg(test)]

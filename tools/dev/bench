@@ -340,7 +340,11 @@ class Bench:
         slowest = max((o["slowest_us"] for o in tm.get("outputs", [])), default=0)
         st.server = {"frame_max_ms": round(slowest / 1000, 2), "loop_late_ms": round(tm.get("latest_beat_us", 0) / 1000, 1),
                      "slowest": tm.get("slowest")}
-        if not st.transition:
+        if st.transition:
+            worst = max(st.frames, key=lambda m: m["us"], default=None)
+            if worst and worst["us"] > self.budget_us:
+                st.notes.append(f"slowest {worst['us'] / 1000:.1f} ms: {parts(worst)}")
+        else:
             over = [m for m in st.frames if m["us"] > self.budget_us]
             if over:
                 worst = max(over, key=lambda m: m["us"])
@@ -410,47 +414,58 @@ def scroll_targets(tree, content):
 
 def scroll_at(s, st, at, pid):
     """Two fingers, a flick and wheel notches at `at`, judged as
-    tools/dev/scroll-check does."""
+    tools/dev/scroll-check does: down, or up when it can't go down (a
+    list that starts at its end, as Logs' does)."""
     s.move(*at)
     time.sleep(0.2)
     period = 1 / 90
     results = {}
-    for kind in ("drag", "flick", "wheel"):
+    sign = 1
+    kinds = ["drag", "flick", "wheel"]
+    while kinds:
+        kind = kinds.pop(0)
         s.marks(pid)
         start = now_us()
         t0 = time.monotonic()
         if kind == "drag":
             for i in range(1, 55):
                 scroll_check.sleep_until(t0 + i * period)
-                s.synth([{"type": "scroll", "dx": 0.0, "dy": 900 * period}])
+                s.synth([{"type": "scroll", "dx": 0.0, "dy": sign * 900 * period}])
             scroll_check.sleep_until(t0 + 54 * period + 0.15)
             s.synth([{"type": "scroll", "dx": 0.0, "dy": 0.0}])
             time.sleep(0.3)
         elif kind == "flick":
             for i in range(1, 14):
                 scroll_check.sleep_until(t0 + i * period)
-                s.synth([{"type": "scroll", "dx": 0.0, "dy": 2400 * period}])
+                s.synth([{"type": "scroll", "dx": 0.0, "dy": sign * 2400 * period}])
             s.synth([{"type": "scroll", "dx": 0.0, "dy": 0.0}])
             time.sleep(2.5)
         else:
             for i in range(3):
                 scroll_check.sleep_until(t0 + i * 0.25)
-                s.synth([{"type": "wheel", "dx": 0, "dy": -1}])
+                s.synth([{"type": "wheel", "dx": 0, "dy": -sign}])
             time.sleep(0.7)
         marks = [m for m in s.marks(pid) if m["at_us"] >= start]
-        st.frames += marks
         # The scroll view that moved most, first, for the analysis.
         moved = {}
         for a, b in zip(marks, marks[1:]):
             if len(a["scrolls"]) == len(b["scrolls"]):
                 for i, (p, q) in enumerate(zip(a["scrolls"], b["scrolls"])):
                     moved[i] = moved.get(i, 0) + abs(q[1] - p[1])
-        if not moved or max(moved.values()) < 1:
+        stuck = not moved or max(moved.values()) < 1
+        if kind == "drag" and sign == 1 and (stuck or max(moved.values()) < 0.25 * 900 * 54 * period):
+            # At its end already (moved no more than its edge gives): the
+            # other way.
+            sign = -1
+            kinds.insert(0, "drag")
+            continue
+        st.frames += marks
+        if stuck:
             results[kind] = "didn't scroll"
             continue
         k = max(moved, key=moved.get)
         n = len(marks[0]["scrolls"])
-        ms = [dict(m, scrolls=[m["scrolls"][k]]) for m in marks if len(m["scrolls"]) == n]
+        ms = [dict(m, scrolls=[[q[0], sign * q[1], *([q[2], sign * q[3]] if len(q) >= 4 else [])] for q in [m["scrolls"][k]]]) for m in marks if len(m["scrolls"]) == n]
         r = scroll_check.analyse(kind, ms, start, 900 if kind == "drag" else None,
                                  flick_lift=start + 13 * period * 1e6 if kind == "flick" else None)
         results[kind] = r

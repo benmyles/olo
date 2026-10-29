@@ -198,8 +198,12 @@ impl Widget for CheckBox<'_> {
         }
         let painter = ui.painter();
         let pressed = response.is_pointer_button_down_on() && response.hovered();
-        // Centred on the label's x-height rather than its line box.
-        let well = Rect::from_min_size(pos2(rect.left(), (rect.center().y - 6.5).round()), vec2(m::MARK_SIZE, m::MARK_SIZE));
+        // Centred on the label's x-height rather than its line box; on
+        // the device grid wherever it's put (centred in a rect, `put`
+        // can leave it half a point over).
+        let ppp = ui.ctx().pixels_per_point();
+        let grid = |v: f32| (v * ppp).round() / ppp;
+        let well = Rect::from_min_size(pos2(grid(rect.left()), grid((rect.center().y - 6.5).round())), vec2(m::MARK_SIZE, m::MARK_SIZE));
         mark_well(painter, well, &p, pressed, ui.is_enabled());
         if checked {
             let mark = if ui.is_enabled() { c(p.control_mark) } else { style::disabled_text(&p) };
@@ -1574,7 +1578,8 @@ impl ScrollView {
     }
 
     /// Ask the scroll view `id` to bring `top..bottom` (content
-    /// coordinates) into view on its next frame.
+    /// coordinates) into view: this frame if it hasn't been shown yet,
+    /// else the next.
     pub fn reveal(ctx: &egui::Context, id: impl std::hash::Hash + std::fmt::Debug, top: f32, bottom: f32) {
         ctx.data_mut(|d| d.insert_temp(Id::unique(id).with("reveal"), (top, bottom)));
         ctx.request_repaint();
@@ -1634,17 +1639,38 @@ impl ScrollView {
             .stick_to_bottom(self.stick_to_bottom)
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
         // Offsets our scroll bars set last frame (State has no setter).
-        if let Some(off) = ui.ctx().data_mut(|d| {
+        let offset_id = self.id.with("offset");
+        let mut set = ui.ctx().data_mut(|d| {
             let v = d.get_temp::<Vec2>(pending_id);
             d.remove::<Vec2>(pending_id);
             v
-        }) {
+        });
+        // What to bring into view, asked for before this frame showed it:
+        // shown so this frame, not the next (a list filtered again and
+        // asked for its end drew a frame of the rows where it was).
+        if let Some((top, bottom)) = ui.ctx().data_mut(|d| d.remove_temp::<(f32, f32)>(self.id.with("reveal"))) {
+            let mut off = set.or_else(|| ui.ctx().data(|d| d.get_temp::<Vec2>(offset_id))).unwrap_or_default();
+            let view = content.height();
+            if top < off.y {
+                off.y = top;
+            } else if bottom > off.y + view {
+                off.y = bottom - view;
+            }
+            set = Some(off);
+        }
+        if let Some(off) = set {
             area = area.scroll_offset(off);
         }
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(content).layout(egui::Layout::top_down(Align::Min)));
         child.set_clip_rect(content.intersect(ui.clip_rect()));
         let (state, full, shown) = body(area, &mut child);
-        crate::platform::trace_scroll(ui.ctx(), shown);
+        ui.ctx().data_mut(|d| d.insert_temp(offset_id, shown));
+        // Scrolled, what's in it is level with what's outside (a list's
+        // heading) only at some offsets.
+        if shown != Vec2::ZERO {
+            crate::layout_review::own_grid(ui, content);
+        }
+        crate::platform::trace_scroll(ui.ctx(), shown, (full - content.size()).max(Vec2::ZERO));
         if self.auto_hide {
             ui.ctx().data_mut(|d| d.insert_temp(size_id, full.y));
             if (full.y > content.height()) != vertical_bar {
@@ -1655,6 +1681,7 @@ impl ScrollView {
         ui.advance_cursor_after_rect(rect);
 
         let mut changed = false;
+        // Asked for while it was being shown: next frame.
         if let Some((top, bottom)) = ui.ctx().data_mut(|d| d.remove_temp::<(f32, f32)>(self.id.with("reveal"))) {
             let view = content.height();
             if top < offset.y {
@@ -1978,11 +2005,50 @@ impl Cell<'_> {
     }
     /// Draw text laid out in sections of their own colours and fonts (a
     /// highlighted line), on one line, ellipsized to the cell.
-    pub fn text_job(&self, mut job: egui::text::LayoutJob) {
+    pub fn text_job(&self, job: egui::text::LayoutJob) {
+        self.galley(self.lay(job));
+    }
+
+    /// Draw [`Self::text_job`]'s `job`, kept from an earlier frame while
+    /// `key` (what the text is made from: which line, and its length if
+    /// it can grow), the cell's width and colour and the selection stay
+    /// the same, so `job` is only made then. A screen of highlighted log
+    /// lines took 2 ms a frame to make and look up again.
+    pub fn text_cached(&self, key: u64, job: impl FnOnce() -> egui::text::LayoutJob) {
+        let ctx = self.painter.ctx();
+        let (Some(list), Some(cache)) = (ctx.data(|d| d.get_temp::<Id>(showing_list())), ctx.data(|d| d.get_temp::<CellGalleys>(cell_galleys()))) else {
+            return self.text_job(job());
+        };
+        let width = self.rect.width().to_bits();
+        let pass = ctx.cumulative_pass_nr();
+        let mut map = cache.lock().unwrap();
+        let k = (list, key, self.column);
+        let galley = match map.cells.get_mut(&k) {
+            Some(c) if c.width == width && c.selected == self.selected && c.color == self.text_color => {
+                c.used = pass;
+                c.galley.clone()
+            }
+            _ => {
+                drop(map);
+                let galley = self.lay(job());
+                map = cache.lock().unwrap();
+                map.cells.insert(k, CachedCell { width, selected: self.selected, color: self.text_color, galley: galley.clone(), used: pass });
+                galley
+            }
+        };
+        drop(map);
+        self.galley(galley);
+    }
+
+    fn lay(&self, mut job: egui::text::LayoutJob) -> std::sync::Arc<egui::Galley> {
         let r = self.rect.shrink2(vec2(m::CELL_INSET, 0.0));
         job.wrap = egui::text::TextWrapping::truncate_at_width(r.width().max(0.0));
         job.break_on_newline = false;
-        let g = self.painter.layout_job(job);
+        self.painter.layout_job(job)
+    }
+
+    fn galley(&self, g: std::sync::Arc<egui::Galley>) {
+        let r = self.rect.shrink2(vec2(m::CELL_INSET, 0.0));
         let x = match self.align {
             Align::Max => r.right() - g.size().x,
             Align::Center => r.center().x - g.size().x / 2.0,
@@ -1993,6 +2059,54 @@ impl Cell<'_> {
         style::describe_text(self.painter.ctx(), egui::accesskit::Role::Cell, g.text(), Rect::from_min_size(pos, g.size()).intersect(r).intersect(self.painter.clip_rect()), Some(self.selected));
         self.painter.galley(pos, g, self.text_color);
     }
+}
+
+/// The galleys lists' cells kept (`Cell::text_cached`), by list, key
+/// and column; with the look and scale they were laid out in.
+type CellGalleys = std::sync::Arc<std::sync::Mutex<CellCache>>;
+
+#[derive(Default)]
+struct CellCache {
+    look: Option<(olo_theme::Palette, f32, u64)>,
+    pass: u64,
+    cells: std::collections::HashMap<(Id, u64, usize), CachedCell>,
+}
+
+struct CachedCell {
+    width: u32,
+    selected: bool,
+    color: Color32,
+    galley: std::sync::Arc<egui::Galley>,
+    used: u64,
+}
+
+/// The list whose cells are being drawn (`ColumnListView::show`).
+fn showing_list() -> Id {
+    Id::unique("olo-showing-list")
+}
+
+fn cell_galleys() -> Id {
+    Id::unique("olo-cell-galleys")
+}
+
+/// The cells' galleys for this pass: those of another look, scale or
+/// galley generation (`Fonts::galley_generation`) go, and those unused
+/// for a while (5 s at 120 Hz).
+fn cell_galleys_for(ctx: &egui::Context, palette: &olo_theme::Palette) -> CellGalleys {
+    let cache = ctx.data_mut(|d| d.get_temp_mut_or_default::<CellGalleys>(cell_galleys()).clone());
+    let look = (palette.clone(), ctx.pixels_per_point(), ctx.fonts(|f| f.galley_generation()));
+    let pass = ctx.cumulative_pass_nr();
+    let mut c = cache.lock().unwrap();
+    if c.look.as_ref() != Some(&look) {
+        c.cells.clear();
+        c.look = Some(look);
+    }
+    if c.pass != pass {
+        c.pass = pass;
+        c.cells.retain(|_, cell| cell.used + 600 > pass);
+    }
+    drop(c);
+    cache
 }
 
 /// BColumnListView: resizable, sortable column headers over a virtualised
@@ -2037,6 +2151,19 @@ impl<'a> ColumnListView<'a> {
     }
 
     pub fn show(self, ui: &mut Ui, mut cell: impl FnMut(&Cell)) -> ListResponse {
+        let p = style::palette(ui.ctx());
+        // For `Cell::text_cached`, while this list's cells are drawn.
+        let galleys = cell_galleys_for(ui.ctx(), &p);
+        ui.ctx().data_mut(|d| {
+            d.insert_temp(showing_list(), self.id);
+            d.insert_temp(cell_galleys(), galleys);
+        });
+        let out = self.show_cells(ui, &mut cell);
+        ui.ctx().data_mut(|d| d.remove::<Id>(showing_list()));
+        out
+    }
+
+    fn show_cells(self, ui: &mut Ui, cell: &mut impl FnMut(&Cell)) -> ListResponse {
         let p = style::palette(ui.ctx());
         let mut out = ListResponse::default();
         let outer = ui.available_rect_before_wrap();

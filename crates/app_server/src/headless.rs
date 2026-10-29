@@ -418,7 +418,7 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
                     wp_presentation_feedback::Kind::empty(),
                 );
             }
-            state.post_repaint(output, frame_target, None, &states);
+            state.post_repaint(output, None, &states);
         }
         Err(e) => warn!("headless render: {e:?}"),
     }

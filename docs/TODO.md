@@ -195,9 +195,10 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
-- **Always show the tab bar, even with one tab** (Ben): the tab bar is
-  hidden until a second tab opens; show it always (Terminal's
-  `TabStrip`; ask whether window groups' frames mean the same).
+- **Always show the tab bar, even with one tab** (Ben): ~~Terminal's
+  `TabStrip`~~ shows with one tab now. Still to ask: whether window
+  groups' frames (app_server's tab bar for an app's grouped windows)
+  mean the same.
 - **Terminal: git repos, worktrees and GitHub** (Ben), native (no `git`
   or `gh` subprocesses):
   - a tab in a git repo goes into a group named after the repo on its

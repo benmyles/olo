@@ -25,7 +25,8 @@ show after the first event. Prints a line each; --json prints them all;
 Drag and flick go down, the wheel back up: give it a list a few
 screens long, scrolled to the top.
 """
-import json, os, socket, statistics, sys, time
+import json
+import math, os, socket, statistics, sys, time
 
 BASE = "/tmp/olo-dev"
 TRACE = "--trace" in sys.argv
@@ -132,14 +133,23 @@ class Check:
 
 
 def analyse(kind, marks, start, speed, flick_lift=None):
-    ys = [(m["at_us"], m["scrolls"][0][1], m["us"]) for m in marks]
+    # (when, offset, draw µs, lowest, highest): the first scroll view's
+    # offset and how far it goes ([x, y, max x, max y] in a FrameMark;
+    # an offset past either end is the content pulled past its edge).
+    def bounds(sc):
+        return (min(0.0, sc[3]), max(0.0, sc[3])) if len(sc) >= 4 else (-math.inf, math.inf)
+    ys = [(m["at_us"], m["scrolls"][0][1], m["us"], *bounds(m["scrolls"][0])) for m in marks]
+    parts = {m["at_us"]: m for m in marks}
     moved = [i for i in range(1, len(ys)) if abs(ys[i][1] - ys[i - 1][1]) > 1e-3]
     r = {"kind": kind, "frames": len(ys)}
     if TRACE:
         prev = None
-        for t, y, us in ys:
+        for t, y, us, lo, hi in ys:
             if prev:
-                print(f"  {kind} +{(t - start) / 1000:8.2f} ms  dt {(t - prev[0]) / 1000:6.2f}  step {y - prev[1]:8.3f}  draw {us / 1000:5.2f}")
+                m = parts[t]
+                edge = "" if lo + 0.5 < y < hi - 0.5 else "  at its end" if lo - 0.5 <= y <= hi + 0.5 else "  past its end"
+                print(f"  {kind} +{(t - start) / 1000:8.2f} ms  dt {(t - prev[0]) / 1000:6.2f}  step {y - prev[1]:8.3f}  draw {us / 1000:5.2f}"
+                      f"  (ui {m.get('ui_us', 0) / 1000:.2f} tess {m.get('tessellate_us', 0) / 1000:.2f} submit {m.get('submit_us', 0) / 1000:.2f}){edge}")
             prev = (t, y)
     if not moved:
         r["error"] = "nothing moved"
@@ -148,28 +158,43 @@ def analyse(kind, marks, start, speed, flick_lift=None):
     seg = ys[a:b + 1]
     dts = [(seg[i][0] - seg[i - 1][0]) / 1000 for i in range(1, len(seg))]
     steps = [seg[i][1] - seg[i - 1][1] for i in range(1, len(seg))]
+    # A step made within the content's ends, not stopped by one (whose
+    # length is the edge's, not the fingers').
+    free = [seg[i - 1][3] - 0.5 <= seg[i - 1][1] <= seg[i - 1][4] + 0.5 and seg[i][3] + 0.5 < seg[i][1] < seg[i][4] - 0.5 for i in range(1, len(seg))]
     usual = statistics.median(dts)
     r.update({
         "moving_frames": len(steps),
         "frame_ms": round(usual, 2),
-        "hitches": sum(1 for d in dts if d > 1.5 * usual),
+        # A frame later than it should be while the content moved, on
+        # both sides of it (at rest, there is nothing to draw till it
+        # moves again).
+        "hitches": sum(1 for i in range(1, len(dts)) if dts[i] > 1.5 * usual and abs(steps[i - 1]) > 1e-3 and abs(steps[i]) > 1e-3),
         "still": sum(1 for s in steps if abs(s) <= 1e-3),
         "first_move_ms": round((seg[1][0] - start) / 1000, 1),
         "slowest_draw_ms": round(max(m[2] for m in ys) / 1000, 2),
         "distance": round(seg[-1][1] - seg[0][1], 1),
+        "reached_end": not all(free),
     })
     if kind == "drag":
         # Steady speed: each frame should move speed × the frame time
-        # (the screen's: when the app drew within it doesn't matter).
-        ratios = [abs(s) / (speed * usual / 1000) for s in steps[2:-2]]
+        # (the screen's: when the app drew within it doesn't matter),
+        # until the content reaches its end.
+        ratios = [abs(s) / (speed * usual / 1000) for s, f in list(zip(steps, free))[2:-2] if f]
         if ratios:
             r["step_vs_speed"] = {"mean": round(statistics.mean(ratios), 3), "sd": round(statistics.pstdev(ratios), 3),
                                   "min": round(min(ratios), 3), "max": round(max(ratios), 3),
-                                  "off_25pct": sum(1 for x in ratios if abs(x - 1) > 0.25)}
+                                  "off_25pct": sum(1 for x in ratios if abs(x - 1) > 0.25), "frames": len(ratios)}
     elif kind == "flick":
-        # The glide, after the lift: each step against its neighbours'
-        # geometric mean (an even slowing is 1 everywhere).
-        g = [abs(s) for (t, _, _), s in zip(seg[1:], steps) if flick_lift and t > flick_lift + 20000 and abs(s) > 0.05]
+        # The glide, after the lift, until the content reaches its end:
+        # each step against its neighbours' geometric mean (an even
+        # slowing is 1 everywhere).
+        g = []
+        for (t, *_), st, f in zip(seg[1:], steps, free):
+            if not flick_lift or t <= flick_lift + 20000 or abs(st) <= 0.05:
+                continue
+            if not f:
+                break
+            g.append(abs(st))
         jerk = [b / (a * c) ** 0.5 - 1 for a, b, c in zip(g, g[1:], g[2:]) if a > 0 and c > 0]
         if jerk:
             r["glide"] = {"frames": len(g), "sd": round(statistics.pstdev(jerk), 3), "worst": round(max(jerk, key=abs), 3),

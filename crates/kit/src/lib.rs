@@ -6,6 +6,7 @@
 //! the desktop's light/dark theme.
 
 mod app;
+pub mod big_text;
 pub mod brand;
 pub mod commands;
 pub mod dnd;
@@ -26,8 +27,10 @@ pub mod menu;
 pub mod metrics;
 pub mod notify;
 mod platform;
+pub mod recorded;
 pub mod settings;
 pub mod style;
+pub mod textures;
 pub mod text_drag;
 mod theme_watch;
 pub mod widgets;

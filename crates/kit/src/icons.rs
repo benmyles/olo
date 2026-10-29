@@ -193,6 +193,15 @@ fn decode(theme: &str, name: &str, px: u32) -> Option<Arc<ColorImage>> {
     olo_xdg::load_icon_in(theme, name, px).map(|img| Arc::new(fitted(img, px)))
 }
 
+static LOADED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// How many icons and thumbnails have finished loading so far: a
+/// painting kept while one loaded ([`crate::recorded`]) is stale once
+/// this has moved on.
+pub fn loaded() -> u64 {
+    LOADED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Decode `key` on the icon worker, then repaint `ctx`.
 fn decode_later(key: Key, ctx: &Context) {
     static WORKER: OnceLock<Mutex<std::sync::mpsc::Sender<Key>>> = OnceLock::new();
@@ -221,6 +230,7 @@ fn decode_later(key: Key, ctx: &Context) {
                         d.map.insert(key.clone(), image);
                         d.waiting.remove(&key).unwrap_or_default()
                     };
+                    LOADED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     for ctx in waiting {
                         ctx.request_repaint();
                     }
@@ -423,6 +433,7 @@ pub fn thumbnail(ctx: &Context, path: &Path, logical: f32) -> Option<TextureHand
             ctx2.load_texture(format!("thumb:{}@{px}", key.0.display()), ci, TextureOptions::LINEAR)
         });
         cache2.lock().unwrap().insert(key, Thumb::Ready(tex));
+        LOADED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         ctx2.request_repaint();
     }));
     None

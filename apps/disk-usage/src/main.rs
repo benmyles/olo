@@ -617,7 +617,10 @@ impl DiskUsage {
                                 // The share of the folder, as a bar.
                                 let r = Rect::from_min_size(pos2(cell.rect.left() + 4.0, cell.rect.center().y - 4.0), vec2(cell.rect.width() - 8.0, 8.0));
                                 cell.painter.rect_filled(r, 0.0, bar_back);
-                                let w = (r.width() * (*size as f32 / total as f32)).max(if *size > 0 { 1.0 } else { 0.0 });
+                                // Whole device pixels long, at least one for
+                                // anything at all.
+                                let ppp = cell.painter.ctx().pixels_per_point();
+                                let w = ((r.width() * (*size as f32 / total as f32) * ppp).round().max(if *size > 0 { 1.0 } else { 0.0 })) / ppp;
                                 cell.painter.rect_filled(Rect::from_min_size(r.min, vec2(w, r.height())), 0.0, bar_fills[cell.row]);
                             }
                             _ => cell.text(&if *dir { count(*files) } else { String::new() }),

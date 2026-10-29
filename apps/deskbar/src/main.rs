@@ -92,6 +92,27 @@ enum Msg {
     Power(olo_protocol::PowerStatus),
     Settings(Settings),
     Outputs(Vec<OutputInfo>),
+    Installed(Installed),
+}
+
+/// What is installed, found on a worker (`scan_installed`): reading every
+/// application's .desktop file and searching PATH for each of Olo's apps
+/// took 16 ms, and a frame has 8.3.
+#[derive(Default)]
+struct Installed {
+    entries: Vec<DesktopEntry>,
+    /// Which of `OUR_APPS` are installed.
+    ours: Vec<&'static str>,
+    preferences: bool,
+}
+
+/// Look for what is installed on a worker, and tell the app.
+fn scan_installed(proxy: olo_kit::Proxy) {
+    std::thread::spawn(move || {
+        let ours = OUR_APPS.iter().map(|(bin, _, _)| *bin).filter(|bin| olo_kit::find_program(bin).is_some()).collect();
+        let preferences = olo_kit::find_program("olo-preferences").is_some();
+        proxy.send(Msg::Installed(Installed { entries: desktop_entry::all(), ours, preferences }));
+    });
 }
 
 /// What Deskbar follows of app_server's settings.
@@ -147,6 +168,7 @@ struct Team {
 }
 
 struct Deskbar {
+    proxy: olo_kit::Proxy,
     /// One on the main display, or one on each display.
     bars: Vec<Bar>,
     outputs: Vec<OutputInfo>,
@@ -163,6 +185,11 @@ struct Deskbar {
     clock: olo_protocol::ClockSettings,
     /// Appearance ▸ Show icons in the Deskbar menu.
     menu_icons: bool,
+    installed: Installed,
+    /// A look for what is installed under way (`scan_installed`), and
+    /// when the last one started.
+    scanning: bool,
+    scanned_at: Option<std::time::Instant>,
     entries: HashMap<String, Option<DesktopEntry>>,
     scroll_acc: f32,
     /// The window that last had the focus: still "this window" for the
@@ -203,8 +230,22 @@ fn request(req: Request) {
 }
 
 impl Deskbar {
+    /// The installed application `app_id` is, from what was found
+    /// installed; one not found starts a new look (an app just installed).
     fn entry(&mut self, app_id: &str) -> Option<DesktopEntry> {
-        self.entries.entry(app_id.to_owned()).or_insert_with(|| desktop_entry::find(app_id)).clone()
+        let found = self.entries.entry(app_id.to_owned()).or_insert_with(|| desktop_entry::find_among(&self.installed.entries, app_id).cloned()).clone();
+        if found.is_none() && !app_id.is_empty() && self.scanned_at.is_none_or(|t| t.elapsed().as_secs() >= 10) {
+            self.rescan();
+        }
+        found
+    }
+
+    /// Look for what is installed again, on a worker.
+    fn rescan(&mut self) {
+        if !std::mem::replace(&mut self.scanning, true) {
+            self.scanned_at = Some(std::time::Instant::now());
+            scan_installed(self.proxy.clone());
+        }
     }
 
     /// Who opens files dropped on the team `key`: the app itself.
@@ -362,10 +403,10 @@ impl Deskbar {
     fn olo_menu_with_icons(&self, auto_tiling: bool) -> Menu {
         let mut apps = Menu::new("Applications");
         // Only the ones that are installed (the suite is still growing).
-        for (bin, name, icon) in OUR_APPS.iter().filter(|(bin, _, _)| olo_kit::find_program(bin).is_some()) {
+        for (bin, name, icon) in OUR_APPS.iter().filter(|(bin, _, _)| self.installed.ours.contains(bin)) {
             apps = apps.item(*name, format!("run:{bin}"), None).icon(*icon);
         }
-        let have_prefs = olo_kit::find_program("olo-preferences").is_some();
+        let have_prefs = self.installed.preferences;
         let mut prefs = Menu::new("Preferences");
         for (arg, name, icon) in PREFERENCE_PANELS {
             prefs = prefs.item(*name, format!("pref:{arg}"), None).enabled(have_prefs).icon(*icon);
@@ -383,7 +424,7 @@ impl Deskbar {
         ];
         let entry_icon = |e: &DesktopEntry| e.icon.clone().filter(|i| !i.is_empty()).unwrap_or_else(|| "application".into());
         let mut other = Menu::new("Other Applications");
-        let all: Vec<DesktopEntry> = desktop_entry::all().into_iter().filter(|e| !e.no_display).collect();
+        let all: Vec<&DesktopEntry> = self.installed.entries.iter().filter(|e| !e.no_display).collect();
         let mut used = vec![false; all.len()];
         for (title, icon, cats) in groups {
             let mut m = Menu::new(*title);
@@ -599,7 +640,7 @@ impl Deskbar {
             Some(("notif", "history")) => spawn("olo-notifications --history"),
             Some(("notif", arg)) => self.do_not_disturb(arg),
             Some(("desktop", id)) => {
-                if let Some(e) = desktop_entry::all().into_iter().find(|e| e.id == id) {
+                if let Some(e) = self.installed.entries.iter().find(|e| e.id == id) {
                     let _ = e.launch();
                 }
             }
@@ -1043,6 +1084,8 @@ impl App for Deskbar {
                 ui.ctx(),
                 MenuRequest { menu: self.olo_menu(auto_tiling), source: tile_id, anchor: MenuAnchor::Below(tile), selected: None },
             );
+            // What's installed now, for the next time.
+            self.rescan();
         }
         if let Some(cmd) = menu::take_chosen(ui.ctx(), tile_id) {
             self.run_command(cx, &cmd);
@@ -1330,6 +1373,11 @@ impl App for Deskbar {
                     self.outputs = outputs;
                     self.sync_bars(cx);
                 }
+                Msg::Installed(installed) => {
+                    self.installed = installed;
+                    self.scanning = false;
+                    self.entries.clear();
+                }
             }
             self.redraw(cx);
         }
@@ -1389,8 +1437,13 @@ fn main() {
         let bar = Bar::open(cx, None);
         watch_server(cx.proxy());
         let proxy = cx.proxy();
-        status::spawn(move |s| proxy.send(Msg::Status(s)));
+        scan_installed(proxy.clone());
+        status::spawn({
+            let proxy = proxy.clone();
+            move |s| proxy.send(Msg::Status(s))
+        });
         Deskbar {
+            proxy,
             bars: vec![bar],
             outputs: Vec::new(),
             every_display: false,
@@ -1403,6 +1456,9 @@ fn main() {
             caffeinated_lid: false,
             clock: Default::default(),
             menu_icons: true,
+            installed: Installed::default(),
+            scanning: true,
+            scanned_at: Some(std::time::Instant::now()),
             entries: HashMap::new(),
             scroll_acc: 0.0,
             last_focused: None,

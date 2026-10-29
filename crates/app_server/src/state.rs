@@ -1244,18 +1244,38 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         for client in clients.into_values() {
             self.client_compositor_state(&client).blocker_cleared(self, &dh);
         }
+        self.send_frames(output, frame_target);
+    }
+
+    /// Tells the clients on `output` it's time to draw their next frame:
+    /// as this one starts to be drawn, not once it has been (as Smithay's
+    /// anvil does), so a client has the whole of a frame to draw in and
+    /// not what drawing the screen leaves of it. A window whose frame and
+    /// its GPU work took 6 ms (and 2 ms to draw the screen) missed every
+    /// other frame at 120 Hz.
+    fn send_frames(&mut self, output: &Output, frame_target: Time<Monotonic>) {
+        let time: Duration = frame_target.into();
+        let throttle = Some(Duration::from_secs(1));
+        self.space.elements().for_each(|window| {
+            if self.space.outputs_for_element(window).contains(output) {
+                window.send_frame(output, time, throttle, surface_primary_scanout_output);
+            }
+        });
+        let map = smithay::desktop::layer_map_for_output(output);
+        for layer_surface in map.layers() {
+            layer_surface.send_frame(output, time, throttle, surface_primary_scanout_output);
+        }
+        if let Some(surface) = self.lock.surface_for(output) {
+            smithay::desktop::utils::send_frames_surface_tree(surface, output, time, throttle, |_, _| Some(output.clone()));
+        }
     }
 
     pub fn post_repaint(
         &mut self,
         output: &Output,
-        time: impl Into<Duration>,
         dmabuf_feedback: Option<SurfaceDmabufFeedback>,
         render_element_states: &RenderElementStates,
     ) {
-        let time = time.into();
-        let throttle = Some(Duration::from_secs(1));
-
         #[allow(clippy::mutable_key_type)]
         let mut clients: HashMap<ClientId, Client> = HashMap::new();
 
@@ -1290,7 +1310,6 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             });
 
             if self.space.outputs_for_element(window).contains(output) {
-                window.send_frame(output, time, throttle, surface_primary_scanout_output);
                 if let Some(dmabuf_feedback) = dmabuf_feedback.as_ref() {
                     window.send_dmabuf_feedback(output, surface_primary_scanout_output, |surface, _| {
                         select_dmabuf_feedback(
@@ -1334,7 +1353,6 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 }
             });
 
-            layer_surface.send_frame(output, time, throttle, surface_primary_scanout_output);
             if let Some(dmabuf_feedback) = dmabuf_feedback.as_ref() {
                 layer_surface.send_dmabuf_feedback(output, surface_primary_scanout_output, |surface, _| {
                     select_dmabuf_feedback(
@@ -1345,9 +1363,6 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                     )
                 });
             }
-        }
-        if let Some(surface) = self.lock.surface_for(output) {
-            smithay::desktop::utils::send_frames_surface_tree(surface, output, time, throttle, |_, _| Some(output.clone()));
         }
         // Drop the lock to the layer map before calling blocker_cleared, which might end up
         // calling the commit handler which in turn again could access the layer map.

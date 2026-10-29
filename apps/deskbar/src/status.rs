@@ -462,7 +462,9 @@ fn badge(painter: &Painter, r: Rect, p: &Palette, n: usize, fill: Color32) {
     let galley = painter.layout_no_wrap(text, font, Color32::WHITE);
     let w = (galley.size().x + 4.0).max(10.0);
     let badge = style::snap(painter.ctx(), Rect::from_min_size(pos2(r.right() + 3.0 - w, r.top() - 1.5), vec2(w, 10.0)));
-    painter.rect_filled(badge.expand(1.0), 6.0, c(p.panel_background));
+    // Ringed in the panel's colour, a line wide (whole device pixels).
+    let ring = style::hairline(painter.ctx());
+    painter.rect_filled(badge.expand(ring), 5.0 + ring, c(p.panel_background));
     painter.rect_filled(badge, 5.0, fill);
     painter.galley(badge.center() - galley.size() / 2.0, galley, Color32::WHITE);
 }

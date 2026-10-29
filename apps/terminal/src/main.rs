@@ -316,18 +316,6 @@ impl TermWin {
         (s.cols, s.rows)
     }
 
-    /// The tab strip shows: several tabs, or a group (its name leads it).
-    fn strip(&self) -> bool {
-        self.tabs.len() > 1 || self.group.is_some()
-    }
-
-    /// Group or not. The window keeps its size as the strip comes or
-    /// goes (the grid gives up or gets back a row or so): it doesn't grow
-    /// past the screen, or out of the size it was zoomed or tiled to.
-    fn set_group(&mut self, group: Option<Group>) {
-        self.group = group;
-    }
-
     fn position(&self, shell: u64) -> Option<usize> {
         self.tabs.iter().position(|t| t.session.id == shell)
     }
@@ -403,23 +391,23 @@ struct Terminal {
     notes: HashMap<u64, NoteId>,
 }
 
-/// Room beside and above the grid: the menu bar, and the tab strip if
-/// shown (down the side or along the top).
-fn chrome(settings: &Settings, strip: bool) -> (u32, u32) {
-    match (strip, settings.side_tabs) {
-        (true, true) => (settings.side_width as u32, menu::BAR_HEIGHT as u32),
-        (true, false) => (0, (menu::BAR_HEIGHT + STRIP) as u32),
-        (false, _) => (0, menu::BAR_HEIGHT as u32),
+/// Room beside and above the grid: the menu bar, and the tab strip (down
+/// the side or along the top), which shows with one tab too.
+fn chrome(settings: &Settings) -> (u32, u32) {
+    if settings.side_tabs {
+        (settings.side_width as u32, menu::BAR_HEIGHT as u32)
+    } else {
+        (0, (menu::BAR_HEIGHT + STRIP) as u32)
     }
 }
 
 /// Estimated content size for `cols`×`rows` before fonts are loaded
 /// (corrected after the first frame).
-fn estimate(settings: &Settings, cols: usize, rows: usize, strip: bool) -> (u32, u32) {
+fn estimate(settings: &Settings, cols: usize, rows: usize) -> (u32, u32) {
     let s = settings.text_size;
     let cell_w = (s * 0.6 * 2.0).ceil() / 2.0;
     let cell_h = (s * 1.32 * 2.0).ceil() / 2.0;
-    let (w, h) = chrome(settings, strip);
+    let (w, h) = chrome(settings);
     (
         (cols as f32 * cell_w + 2.0 * view::PAD.x).ceil() as u32 + w,
         (rows as f32 * cell_h + 2.0 * view::PAD.y).ceil() as u32 + h,
@@ -506,7 +494,7 @@ impl Terminal {
 
     fn open(&mut self, cx: &mut Cx, cwd: Option<PathBuf>, command: Option<Vec<String>>) {
         let (cols, rows) = (self.settings.cols, self.settings.rows);
-        let options = self.window_options(cols, rows, false);
+        let options = self.window_options(cols, rows);
         self.add(cx, options, Size { cols, rows }, Some((cols, rows)), vec![Start::Spawn { command, cwd }], 0, None);
     }
 
@@ -516,7 +504,7 @@ impl Terminal {
         let active = active.min(shells.len() - 1);
         let shown = shells[active];
         let (cols, rows) = (shown.grid.cols.max(1) as usize, shown.grid.rows.max(1) as usize);
-        let mut options = self.window_options(cols, rows, shells.len() > 1 || group.is_some());
+        let mut options = self.window_options(cols, rows);
         if let Some(size) = size {
             options.size = size;
         }
@@ -550,20 +538,19 @@ impl Terminal {
         let tab = self.start(cx, Size { cols, rows }, start);
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
         let at = t.active + 1;
-        // The strip comes in the window as it is (see `set_group`).
         t.tabs.insert(at, tab);
         t.select(at);
         cx.redraw(win);
     }
 
-    fn window_options(&self, cols: usize, rows: usize, strip: bool) -> WindowOptions {
+    fn window_options(&self, cols: usize, rows: usize) -> WindowOptions {
         let (w, h) = match self.metrics {
             Some(m) => {
                 let (w, h) = m.content_size(cols, rows);
-                let (cw, ch) = chrome(&self.settings, strip);
+                let (cw, ch) = chrome(&self.settings);
                 (w + cw, h + ch)
             }
-            None => estimate(&self.settings, cols, rows, strip),
+            None => estimate(&self.settings, cols, rows),
         };
         let mut o = WindowOptions::new("Terminal", w, h).min_size(200, 120).raw_keys();
         o.panel = false;
@@ -642,7 +629,7 @@ impl Terminal {
             }
             // SAFETY: as above; it's ours now.
             let pty = unsafe { std::os::fd::FromRawFd::from_raw_fd(w.fd) };
-            let mut options = self.window_options(w.cols, w.rows, false);
+            let mut options = self.window_options(w.cols, w.rows);
             options.size = w.size;
             let size = Size { cols: w.cols.max(1), rows: w.rows.max(1) };
             self.add(cx, options, size, None, vec![Start::Adopt { pty, pid: w.pid, title: w.title, replay: w.contents }], 0, None);
@@ -728,51 +715,48 @@ impl Terminal {
         }
         let full = ui.max_rect();
         let mut area = full;
-        let mut action = None;
         let side = self.settings.side_tabs;
-        if t.strip() {
-            let strip = if side {
-                // As wide as chosen, leaving the screen some room.
-                let width = self.settings.side_width.min((full.width() / 2.0).floor());
-                let strip = egui::Rect::from_min_size(full.min, egui::vec2(width, full.height()));
-                area.min.x = strip.max.x;
-                strip
-            } else {
-                let strip = egui::Rect::from_min_size(full.min, egui::vec2(full.width(), STRIP));
-                area.min.y = strip.max.y;
-                strip
-            };
-            let icons: Vec<_> = t.tabs.iter().map(|tab| tab_icon(tab.rang, tab.agent, tab.attention)).collect();
-            let statuses: Vec<Option<String>> = t.tabs.iter().map(Tab::status).collect();
-            if t.tabs.iter().any(|x| matches!(x.agent, Some((_, State::Working)))) {
-                // The spinner turns.
-                ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
-            }
-            let color = t.group.as_ref().map(|g| groups::color(g.color, &self.look));
-            let items: Vec<StripTab> = t
-                .tabs
-                .iter()
-                .zip(&icons)
-                .zip(&statuses)
-                .map(|((tab, icon), status)| StripTab { label: &tab.title, icon: Some(icon), status: status.as_deref() })
-                .collect();
-            let mut bar = TabStrip::new(("terminal-tabs", win), &items, t.active);
-            if side {
-                bar = bar.side();
-            }
-            if let (Some(g), Some(color)) = (&t.group, color) {
-                bar = bar.group(&g.name, color);
-            }
-            if t.tiled && t.tabs.len() > 1 {
-                // Each pane has its own head.
-                bar = bar.closed();
-            } else {
-                // The selected tab opens into its screen.
-                let (back, fore) = view::screen_colors(&t.tab().session, &scheme);
-                bar = bar.opens_into(back, fore);
-            }
-            action = bar.show(ui, strip);
+        let strip = if side {
+            // As wide as chosen, leaving the screen some room.
+            let width = self.settings.side_width.min((full.width() / 2.0).floor());
+            let strip = egui::Rect::from_min_size(full.min, egui::vec2(width, full.height()));
+            area.min.x = strip.max.x;
+            strip
+        } else {
+            let strip = egui::Rect::from_min_size(full.min, egui::vec2(full.width(), STRIP));
+            area.min.y = strip.max.y;
+            strip
+        };
+        let icons: Vec<_> = t.tabs.iter().map(|tab| tab_icon(tab.rang, tab.agent, tab.attention)).collect();
+        let statuses: Vec<Option<String>> = t.tabs.iter().map(Tab::status).collect();
+        if t.tabs.iter().any(|x| matches!(x.agent, Some((_, State::Working)))) {
+            // The spinner turns.
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
         }
+        let color = t.group.as_ref().map(|g| groups::color(g.color, &self.look));
+        let items: Vec<StripTab> = t
+            .tabs
+            .iter()
+            .zip(&icons)
+            .zip(&statuses)
+            .map(|((tab, icon), status)| StripTab { label: &tab.title, icon: Some(icon), status: status.as_deref() })
+            .collect();
+        let mut bar = TabStrip::new(("terminal-tabs", win), &items, t.active);
+        if side {
+            bar = bar.side();
+        }
+        if let (Some(g), Some(color)) = (&t.group, color) {
+            bar = bar.group(&g.name, color);
+        }
+        if t.tiled && t.tabs.len() > 1 {
+            // Each pane has its own head.
+            bar = bar.closed();
+        } else {
+            // The selected tab opens into its screen.
+            let (back, fore) = view::screen_colors(&t.tab().session, &scheme);
+            bar = bar.opens_into(back, fore);
+        }
+        let action = bar.show(ui, strip);
         t.tab().session.woke();
         {
             let mut current = t.tab().session.shared.scheme.lock().unwrap();
@@ -782,7 +766,7 @@ impl Terminal {
         }
         if let Some((cols, rows)) = t.snap_to.take().filter(|_| !(t.tiled && t.tabs.len() > 1)) {
             let (w, h) = metrics.content_size(cols, rows);
-            let (cw, ch) = chrome(&self.settings, t.strip());
+            let (cw, ch) = chrome(&self.settings);
             let want = (w + cw, h + ch);
             if cx.window_size(win) != Some(want) {
                 cx.resize(win, want);
@@ -886,7 +870,7 @@ impl Terminal {
             cx.set_title(win, title);
         }
         if let Some(pos) = out.context_menu {
-            let has_selection = t.tab().session.term.lock().selection.as_ref().is_some_and(|s| !s.is_empty());
+            let has_selection = t.tab().session.has_selection();
             let menu = Menu::new("")
                 .item("Copy", "copy", None)
                 .enabled(has_selection)
@@ -1062,7 +1046,7 @@ impl Terminal {
         let mut tab = t.take(i);
         cx.redraw(win);
         let (cols, rows) = (tab.session.size.cols, tab.session.size.rows);
-        let mut options = self.window_options(cols, rows, false);
+        let mut options = self.window_options(cols, rows);
         options.title = tab.title.clone();
         tab.rang = false;
         let id = cx.open_window(options);
@@ -1229,7 +1213,7 @@ impl Terminal {
             return cx.activate(id);
         }
         let (cols, rows) = (self.settings.cols, self.settings.rows);
-        let options = self.window_options(cols, rows, true);
+        let options = self.window_options(cols, rows);
         let mut starts: Vec<Start> = saved.tabs.iter().map(|t| Start::Spawn { command: None, cwd: t.cwd.clone().filter(|d| d.is_dir()) }).collect();
         if starts.is_empty() {
             starts.push(Start::Spawn { command: None, cwd: None });
@@ -1284,7 +1268,7 @@ impl Terminal {
                 s.group = group.clone();
                 groups::store(&self.saved_groups);
             }
-            t.set_group(Some(group));
+            t.group = Some(group);
             cx.redraw(target);
             cx.activate(target);
         }
@@ -1456,7 +1440,7 @@ impl App for Terminal {
 
     fn menu_bar(&mut self, window: WindowId) -> Option<Vec<Menu>> {
         let Some(Win::Term(t)) = self.windows.get(&window) else { return None };
-        let has_selection = t.tab().session.term.lock().selection.as_ref().is_some_and(|s| !s.is_empty());
+        let has_selection = t.tab().session.has_selection();
         let size = t.grid();
         let several = t.tabs.len() > 1;
         let mut window_size = Menu::new("Window Size");
@@ -1625,7 +1609,7 @@ impl App for Terminal {
                 }
             }
             "ungroup" => {
-                t.set_group(None);
+                t.group = None;
                 cx.redraw(window);
             }
             "save-group" => {

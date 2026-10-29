@@ -427,7 +427,7 @@ pub fn run_winit() {
                     }
 
                     // Send frame events so that client start drawing their next frame
-                    state.post_repaint(&output, frame_target, None, &states);
+                    state.post_repaint(&output, None, &states);
                 }
                 Err(SwapBuffersError::ContextLost(err)) => {
                     #[cfg(feature = "debug")]

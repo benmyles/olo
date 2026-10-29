@@ -51,6 +51,7 @@ pub struct Face<'a> {
 }
 
 /// Colours for a face on its background.
+#[derive(Clone)]
 pub struct Ink {
     pub text: Color32,
     /// The body.
@@ -80,6 +81,7 @@ pub struct Room {
 }
 
 /// A face measured for its room.
+#[derive(Clone)]
 pub struct Laid {
     picture: f32,
     round: bool,
@@ -99,6 +101,16 @@ pub struct Painted {
     pub body: Option<(Pos2, Arc<Galley>)>,
 }
 
+/// Text wraps at a width rounded down to a multiple of this: as a window
+/// is resized live, text then breaks into lines again (laid out anew)
+/// every few points rather than every frame (all 200 cards took 6 ms a
+/// frame). It is left-aligned, so where its letters go doesn't change.
+const WRAP_STEP: f32 = 8.0;
+
+fn wrap_width(width: f32) -> f32 {
+    ((width / WRAP_STEP).floor() * WRAP_STEP).max(10.0)
+}
+
 /// Text in `font`, wrapped to `width` and at most `rows` lines.
 fn text(ui: &egui::Ui, s: &str, font: egui::FontId, color: Color32, width: f32, rows: usize) -> Arc<Galley> {
     led(ui, s, 0.0, font, color, width, rows)
@@ -108,7 +120,7 @@ fn text(ui: &egui::Ui, s: &str, font: egui::FontId, color: Color32, width: f32, 
 pub fn led(ui: &egui::Ui, s: &str, lead: f32, font: egui::FontId, color: Color32, width: f32, rows: usize) -> Arc<Galley> {
     let mut job = egui::text::LayoutJob::default();
     job.append(s, lead, egui::TextFormat::simple(font, color));
-    job.wrap = egui::text::TextWrapping { max_width: width.max(10.0), max_rows: rows.max(1), break_anywhere: false, overflow_character: Some('…') };
+    job.wrap = egui::text::TextWrapping { max_width: wrap_width(width), max_rows: rows.max(1), break_anywhere: false, overflow_character: Some('…') };
     ui.fonts_mut(|f| f.layout_job(job))
 }
 
@@ -129,7 +141,7 @@ pub fn body(ui: &egui::Ui, spans: &[Span], ink: &Ink, width: f32, rows: usize) -
         }
         job.append(&s.text, 0.0, f);
     }
-    job.wrap = egui::text::TextWrapping { max_width: width.max(10.0), max_rows: rows.max(1), break_anywhere: false, overflow_character: Some('…') };
+    job.wrap = egui::text::TextWrapping { max_width: wrap_width(width), max_rows: rows.max(1), break_anywhere: false, overflow_character: Some('…') };
     ui.fonts_mut(|f| f.layout_job(job))
 }
 

@@ -109,12 +109,27 @@ pub struct Session {
     pub term: Arc<FairMutex<Term<Listener>>>,
     link: Link,
     pending: Arc<AtomicBool>,
+    proxy: Proxy,
+    reflow: Arc<Reflow>,
+    /// The last frame drawn (view.rs), for the frames while the screen
+    /// is being reflowed.
+    pub last_frame: Option<crate::view::Frame>,
     pub shared: Arc<io::Shared>,
     pub size: Size,
     cell: (u16, u16),
     /// Title set by the program (OSC 0/2), if any.
     pub title: Option<String>,
     pub exited: Option<Option<i32>>,
+}
+
+/// A new size for the screen, made on a worker: a new width reflows the
+/// whole scrollback (15 ms for 10,000 lines 400 wide), so while a window
+/// is resized live the screen draws its last frame until it's done.
+#[derive(Default)]
+struct Reflow {
+    /// The size to make next, and its grid for olo-termd.
+    want: std::sync::Mutex<Option<(Size, wire::Grid)>>,
+    busy: AtomicBool,
 }
 
 fn grid(size: Size, cell: (u16, u16)) -> wire::Grid {
@@ -143,7 +158,10 @@ impl Session {
                 }
             }
         };
-        let exited = move |code| proxy.send(Message(id, TermEvent::Exited(code)));
+        let exited = {
+            let proxy = proxy.clone();
+            move |code| proxy.send(Message(id, TermEvent::Exited(code)))
+        };
         let (tx, rx) = mpsc::channel();
         spawn_feeder(rx, term.clone(), shared.clone(), wake, writer, exited);
         match start {
@@ -159,7 +177,7 @@ impl Session {
                 });
             }
         }
-        Session { id, term, link: link.clone(), pending, shared, size, cell, title: None, exited: None }
+        Session { id, term, link: link.clone(), pending, proxy, reflow: Arc::default(), last_frame: None, shared, size, cell, title: None, exited: None }
     }
 
     /// Call when handling a Wakeup, before drawing.
@@ -187,12 +205,55 @@ impl Session {
             return;
         }
         self.shared.set_sizes(size, cell);
-        if size != self.size {
-            self.term.lock().resize(size);
-        }
+        let changed = size != self.size;
         self.size = size;
         self.cell = cell;
-        self.link.resize(self.id, grid(size, cell));
+        if !changed {
+            return self.link.resize(self.id, grid(size, cell));
+        }
+        // On the worker, which tells olo-termd once the screen has it, so
+        // what the shell writes for the new size meets a screen of it.
+        let mut want = self.reflow.want.lock().unwrap();
+        *want = Some((size, grid(size, cell)));
+        if self.reflow.busy.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        drop(want);
+        let (term, link, reflow, pending, proxy, id) = (self.term.clone(), self.link.clone(), self.reflow.clone(), self.pending.clone(), self.proxy.clone(), self.id);
+        std::thread::Builder::new()
+            .name("reflow".into())
+            .spawn(move || {
+                loop {
+                    let next = {
+                        let mut want = reflow.want.lock().unwrap();
+                        let next = want.take();
+                        if next.is_none() {
+                            reflow.busy.store(false, Ordering::Release);
+                        }
+                        next
+                    };
+                    let Some((size, grid)) = next else { break };
+                    term.lock().resize(size);
+                    link.resize(id, grid);
+                }
+                // Draw it.
+                if !pending.swap(true, Ordering::AcqRel) {
+                    proxy.send(Message(id, TermEvent::Wakeup));
+                }
+            })
+            .expect("thread");
+    }
+
+    /// Whether the screen is being reflowed to a new size on the worker:
+    /// its lock may be held for milliseconds.
+    pub fn reflowing(&self) -> bool {
+        self.reflow.busy.load(Ordering::Acquire)
+    }
+
+    /// Whether some text is selected (false while it's being reflowed).
+    pub fn has_selection(&self) -> bool {
+        let term = if self.reflowing() { self.term.try_lock_unfair() } else { Some(self.term.lock()) };
+        term.is_some_and(|t| t.selection.as_ref().is_some_and(|s| !s.is_empty()))
     }
 
     /// Forget the scrollback, here and in olo-termd.

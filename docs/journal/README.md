@@ -5,6 +5,30 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Deskbar's badge ring is one device pixel
+
+*08:25* — The panel-coloured ring that cuts the unread badge out of the bell is a whole device pixel wide at 1.5× too, rather than a blurred pixel and a half.
+
+![Deskbar's badge ring is one device pixel](2026-10-29/082532-deskbar-s-badge-ring-is-one-device-pixel.png)
+
+### Disk Usage: crisp hairlines and bars at 1.5×
+
+*08:25* — The lines between slices, round each ring and round the hub are one device pixel at every scale (style::hairline), and the bars' widths land on whole device pixels, so at 1.5× nothing is blurred across two.
+
+![Disk Usage: crisp hairlines and bars at 1.5×](2026-10-29/082530-disk-usage-crisp-hairlines-and-bars-at-1-5.png)
+
+### Screenshot's caption lines up with Save as
+
+*08:25* — The caption under the preview sits level with the Save as: row beside it at 1×, 1.5× and 2×, in light, dark and night.
+
+![Screenshot's caption lines up with Save as](2026-10-29/082530-screenshot-s-caption-lines-up-with-save-as.png)
+
+### Terminal shows its tab strip with one tab
+
+*08:25* — The tab strip no longer waits for a second tab: one tab shows with its icon, title, close box and +, so a new tab is always a click away (light and dark at 1×, 1.5× and 2×).
+
+![Terminal shows its tab strip with one tab](2026-10-29/082529-terminal-shows-its-tab-strip-with-one-tab.png)
+
 ### Menu shortcuts: ⇧ stands with the capitals
 
 *04:37* — Noto Sans Symbols puts ⇧ a device pixel below the capitals at every scale. key_combo now places a symbol about as tall as the capitals by its ink, so the feet of ⇧⌘Z line up at 1x, 1.25x, 1.5x, 1.75x and 2x.

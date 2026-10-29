@@ -7,7 +7,7 @@
 use std::f32::consts::TAU;
 
 use olo_kit::egui::{Color32, Mesh, Painter, Pos2, Shape, Stroke, vec2};
-use olo_kit::style::c;
+use olo_kit::style::{c, hairline};
 use olo_theme::{Hue, Palette, Rgba, mix};
 
 use crate::scan::{NodeId, Tree};
@@ -150,8 +150,9 @@ pub fn paint(painter: &Painter, g: &Geometry, slices: &[Slice], hover: Option<us
         }
     }
     painter.add(Shape::mesh(mesh));
-    // Hairlines between slices and round each ring's outer edge.
-    let stroke = Stroke::new(1.0, line);
+    // Hairlines between slices and round each ring's outer edge, whole
+    // device pixels (one at 12 o'clock is straight up).
+    let stroke = Stroke::new(hairline(painter.ctx()), line);
     for s in slices {
         let (r0, r1) = (g.inner(s.ring), g.inner(s.ring) + g.ring);
         // Slices thinner than a few pixels share one edge, or a run of
@@ -170,7 +171,8 @@ pub fn paint(painter: &Painter, g: &Geometry, slices: &[Slice], hover: Option<us
 
 /// The middle: the folder itself.
 pub fn paint_hub(painter: &Painter, g: &Geometry, fill: Color32, line: Color32) {
-    painter.circle(g.center, g.hub - 0.5, fill, Stroke::new(1.0, line));
+    let w = hairline(painter.ctx());
+    painter.circle(g.center, g.hub - w / 2.0, fill, Stroke::new(w, line));
 }
 
 #[allow(dead_code)]

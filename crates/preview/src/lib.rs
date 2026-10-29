@@ -454,10 +454,20 @@ impl Preview {
                 // The smallest level still at least as big as it is shown.
                 let shown_px = ir.width() * ui.ctx().pixels_per_point();
                 let level = smaller.iter().rposition(|l| l.size[0] as f32 >= shown_px);
-                let tex = match level {
-                    Some(j) => texture(ui.ctx(), &mut self.textures, usize::MAX - j, &smaller[j]),
-                    None => texture(ui.ctx(), &mut self.textures, 0, image),
-                };
+                let levels: Vec<(usize, &load::Image)> =
+                    std::iter::once((0, &*image)).chain(smaller.iter().enumerate().map(|(j, l)| (usize::MAX - j, l))).collect();
+                let (key, img) = levels[level.map_or(0, |j| j + 1)];
+                let mut tex = texture(ui.ctx(), &mut self.textures, key, img).id();
+                // A big level is uploaded on a worker: meanwhile the
+                // sharpest that is in, else one small enough to go at once.
+                if olo_kit::textures::uploading(ui.ctx(), tex) {
+                    let ctx = ui.ctx();
+                    let ready = levels.iter().find(|(k, _)| self.textures.get(k).is_some_and(|t| !olo_kit::textures::uploading(ctx, t.id())));
+                    let small = || levels.iter().find(|(_, l)| l.size[0] * l.size[1] * 4 < olo_kit::textures::STAGE_BYTES);
+                    if let Some(&(k, l)) = ready.or_else(small) {
+                        tex = texture(ctx, &mut self.textures, k, l).id();
+                    }
+                }
                 v.rect = Some((ir, r));
                 if !self.zoomable {
                     drag = ui.interact(ir.intersect(r), ui.make_persistent_id((id, "image-drag")), Sense::drag()).drag_started();
@@ -467,7 +477,7 @@ impl Preview {
                     self.drag_out = true;
                 }
                 checker(ui.painter(), ir.intersect(r), &p);
-                ui.painter().image(tex.id(), ir, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+                ui.painter().image(tex, ir, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
             }
             Body::Pages { pages, page_size, want, .. } => {
                 let (pw, ph) = (page_size.0.max(1.0), page_size.1.max(1.0));

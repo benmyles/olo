@@ -1918,5 +1918,29 @@
   "title": "Menu shortcuts: \u21e7 stands with the capitals",
   "caption": "Noto Sans Symbols puts \u21e7 a device pixel below the capitals at every scale. key_combo now places a symbol about as tall as the capitals by its ink, so the feet of \u21e7\u2318Z line up at 1x, 1.25x, 1.5x, 1.75x and 2x.",
   "image": "2026-10-29/043741-menu-shortcuts-stands-with-the-capitals.png"
+ },
+ {
+  "time": "2026-10-29T08:25:29",
+  "title": "Terminal shows its tab strip with one tab",
+  "caption": "The tab strip no longer waits for a second tab: one tab shows with its icon, title, close box and +, so a new tab is always a click away (light and dark at 1\u00d7, 1.5\u00d7 and 2\u00d7).",
+  "image": "2026-10-29/082529-terminal-shows-its-tab-strip-with-one-tab.png"
+ },
+ {
+  "time": "2026-10-29T08:25:30",
+  "title": "Screenshot's caption lines up with Save as",
+  "caption": "The caption under the preview sits level with the Save as: row beside it at 1\u00d7, 1.5\u00d7 and 2\u00d7, in light, dark and night.",
+  "image": "2026-10-29/082530-screenshot-s-caption-lines-up-with-save-as.png"
+ },
+ {
+  "time": "2026-10-29T08:25:30",
+  "title": "Disk Usage: crisp hairlines and bars at 1.5\u00d7",
+  "caption": "The lines between slices, round each ring and round the hub are one device pixel at every scale (style::hairline), and the bars' widths land on whole device pixels, so at 1.5\u00d7 nothing is blurred across two.",
+  "image": "2026-10-29/082530-disk-usage-crisp-hairlines-and-bars-at-1-5.png"
+ },
+ {
+  "time": "2026-10-29T08:25:32",
+  "title": "Deskbar's badge ring is one device pixel",
+  "caption": "The panel-coloured ring that cuts the unread badge out of the bell is a whole device pixel wide at 1.5\u00d7 too, rather than a blurred pixel and a half.",
+  "image": "2026-10-29/082532-deskbar-s-badge-ring-is-one-device-pixel.png"
  }
 ]

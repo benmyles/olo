@@ -4,6 +4,7 @@
 
 use std::{
     any::Any,
+    collections::HashMap,
     io::{Read, Write},
     ptr::NonNull,
     sync::{Arc, Mutex},
@@ -127,6 +128,7 @@ struct SpareMenu {
     generation: u64,
     format: wgpu::TextureFormat,
     renderer: egui_wgpu::Renderer,
+    bound: Bound,
     ctx: egui::Context,
     fonts: u64,
     /// The context's clock, which only goes forward.
@@ -228,8 +230,10 @@ struct Surface {
     /// draw (once for a burst of sizes, not for each).
     reconfigure: bool,
     /// The swapchain's size (device pixels): the window's, or more while
-    /// it is being resized (`configure_gpu_surface`).
+    /// it is being resized (`configure_gpu_surface`); and the scale it
+    /// was made at.
     alloc: (u32, u32),
+    alloc_scale: f64,
     /// When to make the swapchain fit the window again, once its size
     /// has rested.
     snug_at: Option<Instant>,
@@ -274,6 +278,10 @@ struct Surface {
     /// The time the last frame was drawn for (egui's, seconds from
     /// `start`).
     frame_time: f64,
+    /// Textures being uploaded on the worker (`crate::textures`): the
+    /// last upload asked for each, which is the one that counts.
+    uploads: HashMap<egui::TextureId, u64>,
+    bound: Bound,
 }
 
 impl Surface {
@@ -294,9 +302,16 @@ impl Surface {
     }
 }
 
-/// User data for our own protocol objects.
-/// How long a window's size rests before its swapchain is made to fit.
+/// How long a window's size rests before its swapchain is made to fit,
+/// if it is much too big (`roomier`).
 const SNUG_AFTER: Duration = Duration::from_millis(1500);
+
+/// Whether a swapchain of `alloc` holds over a quarter more than `need`:
+/// worth making fit, though that waits for the GPU (30 ms for a whole
+/// screen's; less than that isn't worth the wait).
+fn roomier(alloc: (u32, u32), need: (u32, u32)) -> bool {
+    alloc.0 as u64 * alloc.1 as u64 * 4 > need.0 as u64 * need.1 as u64 * 5
+}
 
 /// Wheel notches being eased in: what is left to scroll of them.
 struct Wheel {
@@ -374,6 +389,7 @@ fn reuse_spare(s: &mut Surface, spare: SpareMenu, kept: Option<KeptSurface>) {
     repaint_to(&spare.ctx, s.id);
     s.ctx = spare.ctx;
     s.renderer = Some(spare.renderer);
+    s.bound = spare.bound;
     s.format = spare.format;
     s.fonts = spare.fonts;
     s.start = spare.start;
@@ -383,6 +399,7 @@ fn reuse_spare(s: &mut Surface, spare: SpareMenu, kept: Option<KeptSurface>) {
     if let Some(k) = kept {
         s.gpu_surface = Some(k.gpu_surface);
         s.alloc = k.alloc;
+        s.alloc_scale = k.scale;
         s.scale = k.scale;
         s.output = k.output;
     }
@@ -404,6 +421,57 @@ fn new_ctx(palette: &Arc<Palette>) -> egui::Context {
         o.zoom_with_keyboard = false;
     });
     ctx
+}
+
+/// A frame's `shapes` made into meshes, as `Context::tessellate` does, but
+/// shared out between threads when there are many: a window full of text
+/// (Notifications' cards, Logs filling a screen) took 5 ms on one.
+fn tessellate(ctx: &egui::Context, shapes: Vec<egui::epaint::ClippedShape>, ppp: f32) -> Vec<egui::ClippedPrimitive> {
+    use egui::epaint::{Shape, Tessellator};
+    /// About how many vertices a thread is worth starting for: a full
+    /// screen of text cards (160,000) took 3.3 ms on one, 1.0 on four
+    /// and 0.74 on eight.
+    const SHARE: usize = 20_000;
+    fn cost(shape: &Shape) -> usize {
+        match shape {
+            Shape::Text(t) => t.galley.num_vertices + 1,
+            Shape::Vec(shapes) => shapes.iter().map(cost).sum(),
+            Shape::Mesh(m) => m.vertices.len() + 1,
+            Shape::Path(p) => 4 * p.points.len() + 1,
+            _ => 8,
+        }
+    }
+    let options = ctx.options(|o| o.tessellation_options);
+    let (size, discs) = ctx.fonts(|f| (f.texture_atlas().size(), f.texture_atlas().prepared_discs()));
+    let costs: Vec<usize> = shapes.iter().map(|s| cost(&s.shape)).collect();
+    let total: usize = costs.iter().sum();
+    let threads = (total / SHARE).clamp(1, std::thread::available_parallelism().map_or(1, |n| n.get()).min(8));
+    if threads == 1 {
+        return Tessellator::new(ppp, options, size, discs).tessellate_shapes(shapes);
+    }
+    // Runs of shapes of about equal cost, in order, so the meshes go
+    // together again as they were painted.
+    let mut runs: Vec<Vec<egui::epaint::ClippedShape>> = Vec::with_capacity(threads);
+    let mut run = Vec::new();
+    let mut so_far = 0;
+    for (shape, c) in shapes.into_iter().zip(costs) {
+        run.push(shape);
+        so_far += c;
+        if so_far * threads >= total * (runs.len() + 1) && runs.len() + 1 < threads {
+            runs.push(std::mem::take(&mut run));
+        }
+    }
+    runs.push(run);
+    std::thread::scope(|scope| {
+        let jobs: Vec<_> = runs
+            .into_iter()
+            .map(|run| {
+                let discs = discs.clone();
+                scope.spawn(move || Tessellator::new(ppp, options, size, discs).tessellate_shapes(run))
+            })
+            .collect();
+        jobs.into_iter().flat_map(|j| j.join().unwrap_or_else(|e| std::panic::resume_unwind(e))).collect()
+    })
 }
 
 /// Repaints `ctx` asks for, from any thread, go to window `id`.
@@ -469,6 +537,7 @@ fn warm_menus(device: wgpu::Device, queue: wgpu::Queue, generation: u64, format:
     for _ in 0..count {
         let ctx = new_ctx(&palette);
         let mut renderer = new_renderer(&device, format);
+        let mut bound = Bound::new();
         let start = Instant::now();
         let mut frame_time = 0.0;
         let mut frame = |size: egui::Vec2, draw: &mut dyn FnMut(&mut egui::Ui)| {
@@ -482,10 +551,17 @@ fn warm_menus(device: wgpu::Device, queue: wgpu::Queue, generation: u64, format:
             let out = ctx.run_ui(raw, |ui| draw(ui));
             for (id, deltas) in &out.textures_delta.set {
                 for delta in deltas {
-                    renderer.update_texture(&device, &queue, *id, delta);
+                    match &delta.image {
+                        egui::ImageData::Color(image) if delta.pos.is_none() => {
+                            let texture = upload_texture(&device, &queue, image);
+                            bind_texture(&device, &queue, &mut renderer, &mut bound, *id, texture, delta.options);
+                        }
+                        _ => set_texture(&device, &queue, &mut renderer, &mut bound, *id, delta),
+                    }
                 }
             }
             for id in &out.textures_delta.free {
+                bound.remove(id);
                 renderer.free_texture(id);
             }
             frame_time += 1.0 / 120.0;
@@ -516,7 +592,7 @@ fn warm_menus(device: wgpu::Device, queue: wgpu::Queue, generation: u64, format:
                 menu::popup_ui(ui, menu, &mut PopupState::default());
             });
         }
-        let spare = SpareMenu { generation, format, renderer, ctx, fonts: style::fonts_generation(), start, frame_time, surface: None };
+        let spare = SpareMenu { generation, format, renderer, bound, ctx, fonts: style::fonts_generation(), start, frame_time, surface: None };
         if let Some(tx) = WARMED.get() {
             let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send(spare);
         }
@@ -527,10 +603,10 @@ fn trace_id() -> egui::Id {
     egui::Id::unique("olo-scroll-trace")
 }
 
-/// A scroll view showed its content from `offset` this frame (its
-/// window's [`crate::commands::FrameMark`]).
-pub(crate) fn trace_scroll(ctx: &egui::Context, offset: egui::Vec2) {
-    ctx.data_mut(|d| d.get_temp_mut_or_default::<Vec<[f32; 2]>>(trace_id()).push([offset.x, offset.y]));
+/// A scroll view showed its content from `offset` this frame, which
+/// goes from zero to `max` (its window's [`crate::commands::FrameMark`]).
+pub(crate) fn trace_scroll(ctx: &egui::Context, offset: egui::Vec2, max: egui::Vec2) {
+    ctx.data_mut(|d| d.get_temp_mut_or_default::<Vec<[f32; 4]>>(trace_id()).push([offset.x, offset.y, max.x, max.y]));
 }
 
 /// Where egui's repaint callbacks send (window, delay).
@@ -540,6 +616,203 @@ static PASTED: std::sync::OnceLock<Mutex<channel::Sender<(WlSurface, String)>>> 
 /// Dropped data read on a helper thread: the window, the drop, and the
 /// offer to finish once the app has it.
 static DROPPED: std::sync::OnceLock<Mutex<channel::Sender<(WindowId, crate::dnd::Drop, DragOffer)>>> = std::sync::OnceLock::new();
+
+/// A texture's pixels to upload on the worker (`crate::textures`).
+struct Upload {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    generation: u64,
+    window: WindowId,
+    tid: egui::TextureId,
+    seq: u64,
+    image: Arc<egui::ColorImage>,
+    options: egui::TextureOptions,
+}
+
+/// An upload done: the texture holding the pixels.
+struct Uploaded {
+    generation: u64,
+    window: WindowId,
+    tid: egui::TextureId,
+    seq: u64,
+    options: egui::TextureOptions,
+    texture: wgpu::Texture,
+}
+
+/// Uploads waiting for the worker; one asked for again replaces the one
+/// waiting, so a texture set every frame uploads only its latest.
+static UPLOADS: std::sync::OnceLock<(Mutex<Vec<Upload>>, std::sync::Condvar)> = std::sync::OnceLock::new();
+/// Uploads done come back here.
+static UPLOADED: std::sync::OnceLock<Mutex<channel::Sender<Uploaded>>> = std::sync::OnceLock::new();
+static UPLOAD_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Upload `job` on the worker (started the first time).
+fn stage_upload(job: Upload) {
+    let mut started = false;
+    let (queue, ready) = UPLOADS.get_or_init(|| {
+        started = true;
+        (Mutex::new(Vec::new()), std::sync::Condvar::new())
+    });
+    if started {
+        let _ = std::thread::Builder::new().name("texture uploads".into()).spawn(upload_worker);
+    }
+    let mut q = queue.lock().unwrap_or_else(|e| e.into_inner());
+    q.retain(|u| (u.window, u.tid) != (job.window, job.tid));
+    q.push(job);
+    ready.notify_one();
+}
+
+fn upload_worker() {
+    let Some((queue, ready)) = UPLOADS.get() else { return };
+    loop {
+        let job = {
+            let mut q = queue.lock().unwrap_or_else(|e| e.into_inner());
+            while q.is_empty() {
+                q = ready.wait(q).unwrap_or_else(|e| e.into_inner());
+            }
+            q.remove(0)
+        };
+        let texture = upload_texture(&job.device, &job.queue, &job.image);
+        if let Some(tx) = UPLOADED.get() {
+            let done = Uploaded { generation: job.generation, window: job.window, tid: job.tid, seq: job.seq, options: job.options, texture };
+            let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send(done);
+        }
+    }
+}
+
+/// `image` as a new texture, made as egui_wgpu makes its own (so its
+/// shader samples it the same), its pixels copied on this thread into
+/// buffers of its own and sent with submits of their own:
+/// `queue.write_texture` holds the queue's lock through the copy, and a
+/// window drawing meanwhile on another thread waited for it to write
+/// its vertices (18 ms, as a worker uploaded a 6000 × 4000 photo). A
+/// band of rows at a time, each in a buffer the allocator's blocks have
+/// room for: a bigger one gets memory of its own, which the driver takes
+/// milliseconds to allocate, holding the allocator's lock against every
+/// other thread.
+fn upload_texture(device: &wgpu::Device, queue: &wgpu::Queue, image: &egui::ColorImage) -> wgpu::Texture {
+    const BAND_BYTES: usize = 4 << 20;
+    let [w, h] = image.size;
+    let size = wgpu::Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 };
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("olo texture"),
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
+    });
+    // Rows as the GPU copies them.
+    let row = 4 * w;
+    let pitch = row.next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as usize);
+    let band = (BAND_BYTES / pitch.max(1)).max(1);
+    let pixels = image.as_raw();
+    let mut top = 0;
+    while top < h && w > 0 {
+        let rows = band.min(h - top);
+        let staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("olo texture upload"),
+            size: (pitch * rows) as u64,
+            usage: wgpu::BufferUsages::MAP_WRITE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: true,
+        });
+        if let Ok(mut map) = staging.slice(..).get_mapped_range_mut() {
+            let from = &pixels[top * row..(top + rows) * row];
+            if pitch == row {
+                map.copy_from_slice(from);
+            } else {
+                for (y, line) in from.chunks_exact(row).enumerate() {
+                    map.slice(y * pitch..y * pitch + row).copy_from_slice(line);
+                }
+            }
+        }
+        staging.unmap();
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("olo texture upload") });
+        encoder.copy_buffer_to_texture(
+            wgpu::TexelCopyBufferInfo {
+                buffer: &staging,
+                layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(pitch as u32), rows_per_image: Some(rows as u32) },
+            },
+            wgpu::TexelCopyTextureInfo { texture: &texture, mip_level: 0, origin: wgpu::Origin3d { x: 0, y: top as u32, z: 0 }, aspect: wgpu::TextureAspect::All },
+            wgpu::Extent3d { width: w as u32, height: rows as u32, depth_or_array_layers: 1 },
+        );
+        queue.submit([encoder.finish()]);
+        top += rows;
+        if top < h {
+            // The band copied, so the next one takes its buffer's room.
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        }
+    }
+    texture
+}
+
+/// Textures the kit made itself (`upload_texture`) and bound in
+/// egui_wgpu's stead, with their options: updates to part of one go to
+/// it (`set_texture`), not to the placeholder egui_wgpu holds.
+type Bound = HashMap<egui::TextureId, (wgpu::Texture, egui::TextureOptions)>;
+
+/// Show `texture` for texture `tid` in `renderer`: a clear pixel with
+/// `options` in place of what was there (so it goes), then `texture`
+/// bound in its stead.
+fn bind_texture(device: &wgpu::Device, queue: &wgpu::Queue, renderer: &mut egui_wgpu::Renderer, bound: &mut Bound, tid: egui::TextureId, texture: wgpu::Texture, options: egui::TextureOptions) {
+    renderer.update_texture(device, queue, tid, &placeholder(options));
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    renderer.update_egui_texture_from_wgpu_texture_with_sampler_options(device, &view, sampler_for(options), tid);
+    bound.insert(tid, (texture, options));
+}
+
+/// Apply `delta` to texture `tid`, as `Renderer::update_texture` does,
+/// also to the textures the kit bound (`Bound`).
+fn set_texture(device: &wgpu::Device, queue: &wgpu::Queue, renderer: &mut egui_wgpu::Renderer, bound: &mut Bound, tid: egui::TextureId, delta: &egui::epaint::ImageDelta) {
+    let Some(pos) = delta.pos else {
+        bound.remove(&tid);
+        return renderer.update_texture(device, queue, tid, delta);
+    };
+    let Some((texture, options)) = bound.get_mut(&tid) else {
+        return renderer.update_texture(device, queue, tid, delta);
+    };
+    let egui::ImageData::Color(image) = &delta.image;
+    let [w, h] = image.size;
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo { texture, mip_level: 0, origin: wgpu::Origin3d { x: pos[0] as u32, y: pos[1] as u32, z: 0 }, aspect: wgpu::TextureAspect::All },
+        image.as_raw(),
+        wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(4 * w as u32), rows_per_image: Some(h as u32) },
+        wgpu::Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 },
+    );
+    if *options != delta.options {
+        *options = delta.options;
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        renderer.update_egui_texture_from_wgpu_texture_with_sampler_options(device, &view, sampler_for(delta.options), tid);
+    }
+}
+
+/// The sampler egui_wgpu makes for `options`.
+fn sampler_for(options: egui::TextureOptions) -> wgpu::SamplerDescriptor<'static> {
+    let filter = |f| match f {
+        egui::TextureFilter::Nearest => wgpu::FilterMode::Nearest,
+        egui::TextureFilter::Linear => wgpu::FilterMode::Linear,
+    };
+    let address_mode = match options.wrap_mode {
+        egui::TextureWrapMode::ClampToEdge => wgpu::AddressMode::ClampToEdge,
+        egui::TextureWrapMode::Repeat => wgpu::AddressMode::Repeat,
+        egui::TextureWrapMode::MirroredRepeat => wgpu::AddressMode::MirrorRepeat,
+    };
+    wgpu::SamplerDescriptor {
+        label: Some("olo staged texture"),
+        mag_filter: filter(options.magnification),
+        min_filter: filter(options.minification),
+        address_mode_u: address_mode,
+        address_mode_v: address_mode,
+        ..Default::default()
+    }
+}
+
+/// A texture of one clear pixel, standing in for one being uploaded.
+fn placeholder(options: egui::TextureOptions) -> egui::epaint::ImageDelta {
+    egui::epaint::ImageDelta::full(egui::ColorImage::new([1, 1], vec![egui::Color32::TRANSPARENT]), options)
+}
 
 /// Our drag, while it lasts.
 struct OutDrag {
@@ -607,6 +880,7 @@ impl TreeAsk {
     }
 }
 
+/// User data for our own protocol objects.
 pub struct KitData;
 pub struct ScaleData(WlSurface);
 
@@ -788,6 +1062,16 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
             }
         })
         .expect("warmed channel");
+
+    let (uploaded_tx, uploaded_rx) = channel::channel::<Uploaded>();
+    let _ = UPLOADED.set(Mutex::new(uploaded_tx));
+    loop_handle
+        .insert_source(uploaded_rx, |event, _, kit: &mut Kit| {
+            if let channel::Event::Msg(done) = event {
+                kit.uploaded(done);
+            }
+        })
+        .expect("uploaded channel");
 
     let (pasted_tx, pasted_rx) = channel::channel::<(WlSurface, String)>();
     let _ = PASTED.set(Mutex::new(pasted_tx));
@@ -1599,6 +1883,7 @@ impl Kit {
             configure_due: None,
             reconfigure: false,
             alloc: (0, 0),
+            alloc_scale: 0.0,
             snug_at: None,
             resizing: false,
             times: Default::default(),
@@ -1615,6 +1900,8 @@ impl Kit {
             output: None,
             shown: None,
             frame_time: 0.0,
+            uploads: HashMap::new(),
+            bound: HashMap::new(),
         }
     }
 
@@ -1785,6 +2072,7 @@ impl Kit {
                         generation: gpu.generation,
                         format: s.format,
                         renderer,
+                        bound: std::mem::take(&mut s.bound),
                         ctx: s.ctx.clone(),
                         fonts: s.fonts,
                         start: s.start,
@@ -2016,9 +2304,15 @@ impl Kit {
         let roomy = s.alloc.0 >= room.0 && s.alloc.1 >= room.1;
         if !fits || (s.resizing && !roomy) {
             self.configure_gpu_surface_at(i, room);
+        } else if s.alloc_scale != s.scale && !s.resizing && roomier(s.alloc, need) {
+            // A new scale (a window's first frames come before its
+            // fractional scale does): made to fit now, not a second and
+            // a half on, when an animation would stall for it (30 ms for
+            // a whole screen's).
+            self.configure_gpu_surface_at(i, need);
         }
         let s = &mut self.surfaces[i];
-        s.snug_at = (!s.resizing && s.alloc != need).then(|| Instant::now() + SNUG_AFTER);
+        s.snug_at = (!s.resizing && roomier(s.alloc, need)).then(|| Instant::now() + SNUG_AFTER);
     }
 
     /// Configure the swapchain at `size` (at least the window's).
@@ -2058,9 +2352,11 @@ impl Kit {
         let Some(config) = swapchain(caps, translucent, (w, h)) else { return };
         let format = config.format;
         s.alloc = (w, h);
+        s.alloc_scale = s.scale;
         gs.configure(&gpu.device, &config);
         if s.renderer.is_none() || s.format != format {
             s.renderer = Some(new_renderer(&gpu.device, format));
+            s.bound.clear();
             s.format = format;
         }
         if s.viewport.is_none() {
@@ -2141,7 +2437,7 @@ impl Kit {
             s.times.frames += 1;
             s.times.slowest_us = s.times.slowest_us.max(us);
             s.times.total_us += us;
-            let scrolls = s.ctx.data_mut(|d| d.remove_temp::<Vec<[f32; 2]>>(trace_id())).unwrap_or_default();
+            let scrolls = s.ctx.data_mut(|d| d.remove_temp::<Vec<[f32; 4]>>(trace_id())).unwrap_or_default();
             let marks = &mut s.times.marks;
             if marks.len() >= crate::commands::MARKS {
                 marks.drain(..marks.len() + 1 - crate::commands::MARKS);
@@ -2164,7 +2460,7 @@ impl Kit {
         if self.surfaces[i].snug_at.is_some_and(|at| at <= Instant::now()) {
             self.surfaces[i].snug_at = None;
             let need = self.surfaces[i].physical_size();
-            if self.surfaces[i].alloc != need && self.surfaces[i].gpu_surface.is_some() {
+            if roomier(self.surfaces[i].alloc, need) && self.surfaces[i].gpu_surface.is_some() {
                 self.configure_gpu_surface_at(i, need);
             }
         }
@@ -2467,7 +2763,7 @@ impl Kit {
         let gpu = self.gpu.as_ref().unwrap();
         let ppp = output.pixels_per_point;
         let t = Instant::now();
-        let prims = s.ctx.tessellate(output.shapes, ppp);
+        let prims = tessellate(&s.ctx, output.shapes, ppp);
         s.parts.tessellate_us = t.elapsed().as_micros() as u32;
         let t = Instant::now();
         let (w, h) = s.physical_size();
@@ -2476,10 +2772,42 @@ impl Kit {
         let mut deltas = output.textures_delta;
         for (tid, ds) in &deltas.set {
             for delta in ds {
-                renderer.update_texture(&gpu.device, &gpu.queue, *tid, delta);
+                // Big ones on the worker (`crate::textures`): a new one
+                // shows nothing until it's in, one set again its old
+                // pixels.
+                if crate::textures::staged(*tid, delta)
+                    && let egui::ImageData::Color(image) = &delta.image
+                {
+                    if renderer.texture(tid).is_none() {
+                        renderer.update_texture(&gpu.device, &gpu.queue, *tid, &placeholder(delta.options));
+                    }
+                    let seq = UPLOAD_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    s.uploads.insert(*tid, seq);
+                    stage_upload(Upload {
+                        device: gpu.device.clone(),
+                        queue: gpu.queue.clone(),
+                        generation: gpu.generation,
+                        window: s.id,
+                        tid: *tid,
+                        seq,
+                        image: image.clone(),
+                        options: delta.options,
+                    });
+                    continue;
+                }
+                // Set again while uploading: this is newer.
+                if delta.pos.is_none() {
+                    s.uploads.remove(tid);
+                }
+                set_texture(&gpu.device, &gpu.queue, renderer, &mut s.bound, *tid, delta);
             }
         }
         let freed = std::mem::take(&mut deltas.free);
+        for tid in &freed {
+            s.uploads.remove(tid);
+            s.bound.remove(tid);
+            crate::textures::set_uploaded(&s.ctx, *tid, false);
+        }
         deltas.clear();
         let gs = s.gpu_surface.as_ref().unwrap();
         let uploads = t.elapsed();
@@ -2670,6 +2998,21 @@ impl Kit {
         let _ = std::thread::Builder::new()
             .name("warm menus".into())
             .spawn(move || warm_menus(device, queue, generation, format, palette, menus, scale, count));
+    }
+
+    /// An upload done on the worker (`crate::textures`): the texture
+    /// shows from the next frame, unless it was set again or freed.
+    fn uploaded(&mut self, done: Uploaded) {
+        let Some(gpu) = &self.gpu else { return };
+        let Some(s) = self.surfaces.iter_mut().find(|s| s.id == done.window) else { return };
+        if gpu.generation != done.generation || s.uploads.get(&done.tid) != Some(&done.seq) {
+            return;
+        }
+        s.uploads.remove(&done.tid);
+        let Some(renderer) = s.renderer.as_mut() else { return };
+        bind_texture(&gpu.device, &gpu.queue, renderer, &mut s.bound, done.tid, done.texture, done.options);
+        crate::textures::set_uploaded(&s.ctx, done.tid, true);
+        s.dirty = true;
     }
 
     /// A surface for the first menu, its swapchain set up ahead as a
@@ -3784,3 +4127,4 @@ mod tests {
         }
     }
 }
+

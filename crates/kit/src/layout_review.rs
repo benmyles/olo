@@ -135,8 +135,9 @@ fn mark(ui: &Ui, add: impl FnOnce(&mut Marks)) {
 
 /// The text in `rect` is laid out on a grid of its own, not the
 /// window's (a terminal's screen: its lines are a cell apart at any text
-/// size): the review doesn't hold it level with the chrome beside it,
-/// which it can only be at some sizes. Call it each frame.
+/// size; a card in a masonry, staggered in its column): the review
+/// doesn't hold it level with what's beside it, which it can only be at
+/// some sizes. Call it each frame.
 pub fn own_grid(ui: &Ui, rect: Rect) {
     mark(ui, |m| m.grids.push(rect));
 }
@@ -166,6 +167,9 @@ struct Parts {
     /// Everything opaque painted over an area (fills and gradients): what
     /// a crack between two of them might be covered by.
     covers: Vec<Rect>,
+    /// Those of them no clip cut: what's centred in a band is centred
+    /// in the whole of it, not in what of it a scroll view shows.
+    whole_covers: Vec<Rect>,
     icons: Vec<Icon>,
     /// Outlines' widths and where (rect strokes, straight segments).
     strokes: Vec<(f32, Rect)>,
@@ -196,6 +200,9 @@ fn collect(shape: &Shape, clip: Rect, out: &mut Parts) {
                 let cut = [r.rect.min.y < seen.min.y, r.rect.max.y > seen.max.y, r.rect.min.x < seen.min.x, r.rect.max.x > seen.max.x];
                 out.fills.push(Fill { rect: seen, cut });
                 out.covers.push(seen);
+                if seen == r.rect {
+                    out.whole_covers.push(seen);
+                }
             }
             if r.stroke.width > 0.0 && r.stroke.color.a() > 0 {
                 out.strokes.push((r.stroke.width, seen));
@@ -245,6 +252,9 @@ fn collect(shape: &Shape, clip: Rect, out: &mut Parts) {
             }
             if m.vertices.iter().all(|v| v.color.a() == 255) {
                 out.covers.push(r.intersect(clip));
+                if clip.contains_rect(r) {
+                    out.whole_covers.push(r);
+                }
             }
         }
         _ => {}
@@ -268,7 +278,7 @@ pub fn review(shapes: &[ClippedShape], size: egui::Vec2, ppp: f32, marks: &Marks
     off_pixels(&parts, screen, ppp, &mut out);
     near_heights(&parts, screen, &mut out);
     near_level(&parts, ppp, &mut out);
-    near_edges(&parts, &mut out);
+    near_edges(&parts, ppp, &mut out);
     off_centre(&parts, &mut out);
     uneven_rows(&parts, ppp, &mut out);
     out.sort_by_key(|f| f.level);
@@ -478,7 +488,7 @@ fn near_level(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
     let mut items: Vec<(Rect, f32, f32, String, bool, bool)> =
         p.texts.iter().map(|t| (t.rect, t.baseline, t.middle, quote(t), true, lone_symbol(t))).collect();
     items.extend(p.icons.iter().map(|i| i.rect).map(|r| (r, r.center().y, r.center().y, "an icon".to_owned(), false, false)));
-    let grid = |r: &Rect| p.marks.grids.iter().position(|g| g.contains(r.center()));
+    let grid = |r: &Rect| grid_of(p, r);
     for (ra, la, ma, na, ta, sa) in &items {
         // Its nearest neighbour to the right, in the same row (and on
         // the same grid).
@@ -515,7 +525,7 @@ fn lone_symbol(t: &Text) -> bool {
 }
 
 /// Left edges down a column: almost lined up.
-fn near_edges(p: &Parts, out: &mut Vec<Finding>) {
+fn near_edges(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
     // (A label of a character or three is centred in a cell: a date, a key.)
     let mut items: Vec<(Rect, f32, String)> =
         p.texts.iter().filter(|t| t.label.chars().count() > 3 && !centred(p, t)).map(|t| (t.rect, t.left, quote(t))).collect();
@@ -525,8 +535,11 @@ fn near_edges(p: &Parts, out: &mut Vec<Finding>) {
             let below = rb.min.y - ra.max.y;
             let d = xb - xa;
             // Lined up on the right (a column of labels before their
-            // fields), or centred over each other (icons of two sizes).
-            let other_way = (ra.max.x - rb.max.x).abs() <= SAME || (ra.center().x - rb.center().x).abs() <= SAME;
+            // fields, of sizes), or centred over each other (icons of two
+            // sizes). Text set from its right starts on a device pixel,
+            // so its right edge is up to one off another's.
+            let right = SAME.max(1.0 / ppp + 0.01);
+            let other_way = (ra.max.x - rb.max.x).abs() <= right || (ra.center().x - rb.center().x).abs() <= SAME;
             if (-2.0..=48.0).contains(&below) && d > SAME && d <= NEAR_EDGE && !other_way {
                 let text = format!("{na} (x {xa:.0}) and {nb} under it (x {xb:.0}) almost line up on the left: line them up");
                 push(out, finding(Level::Review, "near-edge", text, ra.union(*rb)));
@@ -535,10 +548,17 @@ fn near_edges(p: &Parts, out: &mut Vec<Finding>) {
     }
 }
 
+/// The grid ([`own_grid`]) `r` is laid out on, if not the window's: the
+/// innermost one marked around it (a card in a scrolled list).
+fn grid_of(p: &Parts, r: &Rect) -> Option<usize> {
+    let grids = p.marks.grids.iter().enumerate();
+    grids.filter(|(_, g)| g.contains(r.center())).min_by(|(_, a), (_, b)| a.area().total_cmp(&b.area())).map(|(i, _)| i)
+}
+
 /// The band (a fill or gradient no more than a few times as tall) `r`
 /// sits in, if any.
 fn band_of(p: &Parts, r: Rect) -> Option<Rect> {
-    p.covers
+    p.whole_covers
         .iter()
         .chain(&p.marks.bands)
         .copied()
@@ -580,9 +600,11 @@ fn off_centre(p: &Parts, out: &mut Vec<Finding>) {
 fn uneven_rows(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
     let mut texts: Vec<&Text> = p.texts.iter().collect();
     texts.sort_by(|a, b| a.left.total_cmp(&b.left).then(a.baseline.total_cmp(&b.baseline)));
+    // A column on one grid: a list's heading is a row apart from its
+    // first row only when the list is scrolled to a whole row.
     let mut columns: Vec<Vec<&Text>> = Vec::new();
     for t in texts {
-        match columns.iter_mut().find(|c| (c[0].left - t.left).abs() <= SAME && c[0].size == t.size) {
+        match columns.iter_mut().find(|c| (c[0].left - t.left).abs() <= SAME && c[0].size == t.size && grid_of(p, &c[0].rect) == grid_of(p, &t.rect)) {
             Some(c) => c.push(t),
             None => columns.push(vec![t]),
         }
@@ -620,6 +642,11 @@ mod tests {
 
     /// What the review finds in a frame painted by `paint` at `scale`.
     fn frame(scale: f32, paint: impl Fn(&Painter)) -> Vec<Finding> {
+        frame_ui(scale, |ui| paint(ui.painter()))
+    }
+
+    /// The same of a frame `show` makes, marks and all.
+    fn frame_ui(scale: f32, show: impl Fn(&mut Ui)) -> Vec<Finding> {
         let ctx = Context::default();
         ctx.set_fonts(style::all_font_definitions());
         let size = vec2(400.0, 300.0);
@@ -627,11 +654,13 @@ mod tests {
         raw.viewports.entry(ViewportId::ROOT).or_default().native_pixels_per_point = Some(scale);
         let mut shapes = Vec::new();
         for _ in 0..2 {
-            let out = ctx.run_ui(raw.clone(), |ui| paint(ui.painter()));
+            let out = ctx.run_ui(raw.clone(), &show);
             shapes = out.shapes.clone();
             out.drop_without_applying_deltas();
         }
-        review(&shapes, size, scale, &Marks { textures: [(TextureId::User(7), [23, 23])].into(), ..Default::default() })
+        let mut marks = marks(&ctx);
+        marks.textures = [(TextureId::User(7), [23, 23])].into();
+        review(&shapes, size, scale, &marks)
     }
 
     fn kinds(found: &[Finding]) -> Vec<&str> {
@@ -689,6 +718,32 @@ mod tests {
         };
         assert!(!kinds(&frame(2.0, band(21.0))).contains(&"off-centre"));
         assert!(kinds(&frame(2.0, band(24.0))).contains(&"off-centre"));
+        // A band a clip cuts (a card at the foot of a list) is centred on
+        // in the whole of it, not in what shows.
+        let cut = frame(2.0, |p| {
+            let p = p.with_clip_rect(Rect::from_min_max(pos2(0.0, 0.0), pos2(400.0, 36.0)));
+            p.rect_filled(Rect::from_min_size(pos2(0.0, 10.0), vec2(400.0, 30.0)), 0.0, Color32::GRAY);
+            text(&p, 8.0, 25.0, "Header");
+        });
+        assert!(!kinds(&cut).contains(&"off-centre"), "{cut:?}");
+    }
+
+    /// Text set from its right (sizes in a column) starts on a device
+    /// pixel: its right edges a pixel apart at 1× aren't a near miss.
+    #[test]
+    fn right_aligned_text_lines_up_on_the_right() {
+        let right = |p: &Painter, cy: f32, s: &str| {
+            let g = p.layout_no_wrap(s.to_owned(), style::plain_font(), Color32::BLACK);
+            let x = 200.0 - g.size().x;
+            style::label(p, x, cy, Align::Min, s, style::plain_font(), Color32::BLACK);
+        };
+        for words in [["1.3 MB", "4.0 KB"], ["12.4 GB", "980 KB"], ["1.2 MB", "4.0 KB"]] {
+            let found = frame(1.0, |p| {
+                right(p, 20.0, words[0]);
+                right(p, 40.0, words[1]);
+            });
+            assert!(!kinds(&found).contains(&"near-edge"), "{words:?}: {found:?}");
+        }
     }
 
     #[test]
@@ -707,6 +762,14 @@ mod tests {
         // Runs of rows far apart, one a device pixel off: the long gaps
         // don't make the step 20.5.
         assert!(!kinds(&frame(2.0, rows(&[10.0, 30.0, 70.0, 130.0, 190.0, 210.5, 230.0, 250.0, 270.0]))).contains(&"uneven-rows"));
+        // A list's heading over its rows scrolled a little: the rows are
+        // on a grid of their own.
+        let scrolled = |ui: &mut Ui| {
+            text(ui.painter(), 10.0, 10.0, "Heading");
+            own_grid(ui, Rect::from_min_max(pos2(0.0, 20.0), pos2(400.0, 300.0)));
+            rows(&[27.0, 47.0, 67.0, 87.0])(ui.painter());
+        };
+        assert!(!kinds(&frame_ui(2.0, scrolled)).contains(&"uneven-rows"), "{:?}", frame_ui(2.0, scrolled));
     }
 
     #[test]
