@@ -118,7 +118,7 @@ impl Prefs {
         let rows = Panel::ALL.len().div_ceil(LAUNCHER_COLUMNS) as f32;
         let w = 2.0 * m::WINDOW_INSET + LAUNCHER_COLUMNS as f32 * LAUNCHER_CELL.x;
         let h = 2.0 * m::WINDOW_INSET + rows * LAUNCHER_CELL.y;
-        let id = cx.open_window(WindowOptions::new("Preferences", w as u32, h as u32).min_size(w as u32, h as u32));
+        let id = cx.open_window(WindowOptions::new("Preferences", w as u32, h as u32).min_size(w as u32, h as u32).floating());
         self.windows.insert(id, Win::Launcher);
     }
 

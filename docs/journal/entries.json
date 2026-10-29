@@ -1810,5 +1810,35 @@
   "title": "Screen saver hides the pointer",
   "caption": "app_server hides the pointer while the screen saver runs, from its first frame; the pointer comes back with the first move, which ends it.",
   "image": "2026-10-28/223118-screen-saver-hides-the-pointer.png"
+ },
+ {
+  "time": "2026-10-29T00:19:55",
+  "title": "Noto fonts, shipped with Olo",
+  "caption": "Before (Nimbus Sans, DejaVu for symbols) above, after (Noto Sans and Noto Sans Mono, with Noto Sans Symbols, Symbols 2 and Math for \u2318 \u2325 arrows and marks) below: one family everywhere, the same on every machine, open and clear at small sizes. app_server's tab titles, Twitcher and hint badges centre their capitals from the face's own metrics.",
+  "image": "2026-10-29/001955-noto-fonts-shipped-with-olo.png"
+ },
+ {
+  "time": "2026-10-29T00:19:56",
+  "title": "Auto-tiling",
+  "caption": "Deskbar's tiles beside the cup (or \u2303\u2325\u2318T) tile every window on the workspace: a new one halves the focused tile along its longer side, a closed one's room goes to its neighbour. Zoom still zooms and comes back; Zoom Vertically makes a column; dialogs and small utility windows such as DeskCalc float; \u2303\u2318Z undoes.",
+  "image": "2026-10-29/001956-auto-tiling.png"
+ },
+ {
+  "time": "2026-10-29T00:19:57",
+  "title": "Deskbar groups applications by workspace",
+  "caption": "With more than one workspace, Deskbar lists the applications on the workspace showing under its name, and folds the rest under Other Workspaces (BOutlineListView's latch); unfolded, each workspace's under its own heading. Clicking a heading goes there.",
+  "image": "2026-10-29/001957-deskbar-groups-applications-by-workspace.png"
+ },
+ {
+  "time": "2026-10-29T00:19:57",
+  "title": "\u2318Tab keeps to this workspace, \u2325Tab goes everywhere",
+  "caption": "\u2318Tab (left) switches among this workspace's applications only; \u2325Tab (right) has a numbered row for every workspace with windows, as \u2318Tab had. \u2303Tab is Next Tab in the window.",
+  "image": "2026-10-29/001957-tab-keeps-to-this-workspace-tab-goes-everywhere.png"
+ },
+ {
+  "time": "2026-10-29T00:29:09",
+  "title": "Deskbar's wordmark follows the theme again",
+  "caption": "Choosing a theme in Preferences drew everything in BeBox: the theme was looked up by its address in THEMES, a const since it moved to olo-theme, so another crate's copy never matched and BeBox (the first) was taken. Now by id; Deskbar's wordmark, every app's icons and Twitcher's follow the theme again (Toybox, Enamel, Halftone, Papercraft, Soft Be, BeBox).",
+  "image": "2026-10-29/002909-deskbar-s-wordmark-follows-the-theme-again.png"
  }
 ]

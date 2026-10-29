@@ -193,14 +193,13 @@ def start(name, args):
             break
     sys.exit(f"app_server failed to start; see {d}/app_server.log")
 
-def termd_pids(display):
-    """olo-termd for `display` (one per display, started by Terminal in a
-    session of its own, so killing the session's group misses it)."""
+def display_pids(display, exe=None):
+    """The processes on `display` (and only those named `exe`)."""
     pids = []
     for proc in glob.glob("/proc/[0-9]*"):
         try:
             # (" (deleted)": a binary rebuilt since it started.)
-            if os.path.basename(os.readlink(os.path.join(proc, "exe"))).removesuffix(" (deleted)") != "olo-termd":
+            if exe and os.path.basename(os.readlink(os.path.join(proc, "exe"))).removesuffix(" (deleted)") != exe:
                 continue
             env = dict(v.split("=", 1) for v in open(os.path.join(proc, "environ")).read().split("\0") if "=" in v)
         except OSError:
@@ -208,6 +207,11 @@ def termd_pids(display):
         if env.get("WAYLAND_DISPLAY") == display and env.get("XDG_RUNTIME_DIR", RUNTIME) == RUNTIME:
             pids.append(int(os.path.basename(proc)))
     return pids
+
+def termd_pids(display):
+    """olo-termd for `display` (one per display, started by Terminal in a
+    session of its own, so killing the session's group misses it)."""
+    return display_pids(display, "olo-termd")
 
 def stop(name):
     d = sdir(name)
@@ -272,7 +276,11 @@ def review(name, layers=False):
     layout review (`{"review":true}` on its socket; see
     crates/kit/src/layout_review.rs) and print the findings."""
     windows = ipc(name, {"type": "list_windows"}).get("windows", [])
-    pids = sorted({w["pid"] for w in windows if w.get("pid")})
+    pids = {w["pid"] for w in windows if w.get("pid")}
+    if layers:
+        # Deskbar and the like have no window to find them by.
+        pids |= set(display_pids(load_env(name)["WAYLAND_DISPLAY"]))
+    pids = sorted(pids)
     found = 0
     for pid in pids:
         path = os.path.join(RUNTIME, f"olo-menus-{pid}.sock")

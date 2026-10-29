@@ -1,13 +1,16 @@
 //! The Mac keyboard, natively. ⌘ is the command key: apps see it as Ctrl
 //! (so ⌘C copies everywhere, GTK and Firefox included), while app_server
-//! keeps some ⌘ keys for itself: ⌘Tab / ⌘\` (Twitcher), ⌘ arrows and ⌘⌫
+//! keeps some ⌘ keys for itself: ⌘Tab / ⌘\` (Twitcher: this workspace's
+//! apps, the focused app's windows; ⌥Tab is Twitcher for every
+//! workspace), ⌘ arrows and ⌘⌫
 //! (line and document navigation), a tap of ⌘ alone (the command palette, if chosen in
 //! Preferences), Control pressed twice quickly (keyboard hints, if
 //! chosen), and first of all the shortcuts in `Settings::shortcuts`
 //! (olo_protocol::shortcuts: tiling, workspaces, Find, lock,
 //! screenshots, …). Caps Lock is another Ctrl. Terminals keep physical
 //! Ctrl for the tty, so ⌘ reaches them as Ctrl+Shift. Next / Previous
-//! Tab (⌥Tab, ⌥⇧Tab) reach the app as Ctrl+Tab / Ctrl+Shift+Tab.
+//! Tab (⌃Tab, ⌃⇧Tab, or whatever they are set to) reach the app as
+//! Ctrl+Tab / Ctrl+Shift+Tab.
 //! Programs that aren't Olo's get the rest of the Mac's keys in their
 //! own terms ([`Focus`]): ⌥ moves and deletes by word (Ctrl there), and
 //! in browsers ⌘[ / ⌘] go back and forward and ⌘⇧[ / ⌘⇧] change tabs.
@@ -94,11 +97,12 @@ const ALT: [u32; 2] = [LEFTALT, RIGHTALT];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
-    /// ⌘Tab (`back` with Shift): the next app in Twitcher.
-    NextApp { back: bool },
+    /// ⌘Tab (`back` with Shift): the next app in Twitcher, on this
+    /// workspace; ⌥Tab (`all`): on any.
+    NextApp { back: bool, all: bool },
     /// ⌘\`: the next window of the focused app.
     NextWindow { back: bool },
-    /// ⌘ released after switching: commit Twitcher's choice.
+    /// ⌘ (or ⌥) released after switching: commit Twitcher's choice.
     SwitchDone,
     /// An arrow while switching: along the row (←/→) or to another
     /// workspace's row (↑/↓).
@@ -175,7 +179,8 @@ pub struct Keymap {
     /// Something was typed with ⌘ (so releasing it is not a tap).
     cmd_used: bool,
     cmd_since: Option<Instant>,
-    switching: bool,
+    /// Twitcher is up, while this is held.
+    switching: Option<Hold>,
     /// The shortcuts (from the settings).
     bindings: Vec<(Chord, Shortcut)>,
     /// The next key is a shortcut being recorded.
@@ -184,8 +189,16 @@ pub struct Keymap {
     /// (keyboard hints).
     ctrl_presses: Option<CtrlPresses>,
     /// Modifiers let go of for a key that stood for another chord (⌥ for
-    /// Next Tab's Ctrl+Tab), kept up until another key needs them.
+    /// Next Tab set to ⌥Tab, which is Ctrl+Tab), kept up until another
+    /// key needs them.
     lifted: Vec<u32>,
+}
+
+/// What Twitcher was brought up with, and is held for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Hold {
+    Cmd,
+    Alt,
 }
 
 /// The modifier keys clients see.
@@ -226,7 +239,7 @@ impl Keymap {
             Out::Key(k, _) => *k,
             Out::Action(_) | Out::Recorded(_) => 0,
         });
-        if self.switching {
+        if self.switching.is_some() {
             out.push(Out::Action(Action::SwitchDone));
         }
         let (bindings, recording) = (std::mem::take(&mut self.bindings), self.recording);
@@ -313,8 +326,8 @@ impl Keymap {
     /// `h`'s key stands for `to` with the modifiers in `with` (Ctrl+Tab,
     /// Alt+←): the modifiers clients see become just those. They go down
     /// before the others are let go of, and those stay up until another
-    /// key needs them (`restore_lifted`), so ⌥Tab never looks like a tap
-    /// of ⌥ (Firefox shows its menu bar on one). ⌘'s Ctrl, when it isn't
+    /// key needs them (`restore_lifted`), so a ⌥ chord never looks like a
+    /// tap of ⌥ (Firefox shows its menu bar on one). ⌘'s Ctrl, when it isn't
     /// wanted, comes back as this key is let go of.
     fn stand_for(&mut self, h: &mut Held, with: &[[u32; 2]], to: u32, out: &mut Vec<Out>) {
         let wanted = |k: u32| with.iter().any(|pair| pair.contains(&k));
@@ -448,14 +461,19 @@ impl Keymap {
         if self.cmd_keys > 0 {
             self.cmd_used = true;
         }
-        if self.switching && self.cmd_keys > 0 && !self.ctrl() && !self.alt() {
+        let held = match self.switching {
+            Some(Hold::Cmd) => self.cmd_keys > 0 && !self.alt(),
+            Some(Hold::Alt) => self.alt() && self.cmd_keys == 0,
+            None => false,
+        };
+        if held && !self.ctrl() {
             let action = match key {
                 LEFT => Some(Action::SwitchMove { dx: -1, dy: 0 }),
                 RIGHT => Some(Action::SwitchMove { dx: 1, dy: 0 }),
                 UP => Some(Action::SwitchMove { dx: 0, dy: -1 }),
                 DOWN => Some(Action::SwitchMove { dx: 0, dy: 1 }),
                 ESC => {
-                    self.switching = false;
+                    self.switching = None;
                     Some(Action::SwitchCancel)
                 }
                 _ if opts.hints && !self.shift() => crate::hints::letter(key).map(Action::SwitchPick),
@@ -471,9 +489,18 @@ impl Keymap {
         let shortcut = self.bindings.iter().find(|(c, _)| *c == chord).map(|&(_, s)| s);
         let tab = matches!(shortcut, Some(Shortcut::NextTab | Shortcut::PreviousTab));
         let translated = if shortcut.is_none() { self.translate(key, focus) } else { None };
-        // (⌥ stays up through a run of ⌥← words, as through ⌥Tabs.)
+        // (⌥ stays up through a run of ⌥← words, as through Next Tabs.)
         if !tab && translated.is_none() && !olo_protocol::shortcuts::MODIFIER_KEYS.contains(&key) {
             self.restore_lifted(out);
+        }
+        // ⌥Tab, unless it is set to be a shortcut: Twitcher, every
+        // workspace's apps, while ⌥ is held. The app keeps ⌥ down, as for
+        // any switcher, and loses the focus to the window chosen.
+        if shortcut.is_none() && key == TAB && self.alt() && self.cmd_keys == 0 && !self.ctrl() {
+            self.switching = Some(Hold::Alt);
+            out.push(Out::Action(Action::NextApp { back: self.shift(), all: true }));
+            self.held.insert(key, h);
+            return;
         }
         if let Some((with, to)) = translated {
             self.stand_for(&mut h, with, to, out);
@@ -495,12 +522,12 @@ impl Keymap {
             let (shift, ctrl) = (self.shift(), self.ctrl());
             let handled = match key {
                 TAB if !ctrl => {
-                    self.switching = true;
-                    out.push(Out::Action(Action::NextApp { back: shift }));
+                    self.switching = Some(Hold::Cmd);
+                    out.push(Out::Action(Action::NextApp { back: shift, all: false }));
                     true
                 }
                 GRAVE if !ctrl => {
-                    self.switching = true;
+                    self.switching = Some(Hold::Cmd);
                     out.push(Out::Action(Action::NextWindow { back: shift }));
                     true
                 }
@@ -581,7 +608,8 @@ impl Keymap {
                     self.cmd_ctrl = false;
                     self.emit_release(CMD_CTRL, out);
                 }
-                if std::mem::take(&mut self.switching) {
+                if self.switching == Some(Hold::Cmd) {
+                    self.switching = None;
                     out.push(Out::Action(Action::SwitchDone));
                 }
                 let tap = !self.cmd_used && self.cmd_since.is_some_and(|t| now.duration_since(t) < TAP);
@@ -593,6 +621,10 @@ impl Keymap {
         } else if h.restore_ctrl && self.cmd_keys > 0 && !self.cmd_ctrl {
             self.cmd_ctrl = true;
             self.emit_press(CMD_CTRL, out);
+        }
+        if self.switching == Some(Hold::Alt) && !self.alt() {
+            self.switching = None;
+            out.push(Out::Action(Action::SwitchDone));
         }
         // Control let go, quickly and with nothing else pressed: the
         // second time, that's a double press.
@@ -653,9 +685,35 @@ mod tests {
         assert_eq!(r.up(LEFTMETA), [Key(RIGHTCTRL, false)]);
     }
 
+    /// Next / Previous Tab set to ⌥Tab / ⌥⇧Tab, as they once were.
+    fn option_tab_for_tabs() -> Rig {
+        let mut changed = olo_protocol::ShortcutSettings::default();
+        olo_protocol::shortcuts::assign(&mut changed, "next-tab", "Alt+Tab".parse().ok());
+        olo_protocol::shortcuts::assign(&mut changed, "previous-tab", "Alt+Shift+Tab".parse().ok());
+        let mut r = Rig::new();
+        r.k.set_bindings(olo_protocol::shortcuts::bindings(&changed));
+        r
+    }
+
+    #[test]
+    fn control_tab_is_the_next_tab() {
+        let mut r = Rig::new();
+        r.down(LEFTCTRL);
+        assert_eq!(r.down(TAB), [Key(TAB, true)]);
+        assert_eq!(r.up(TAB), [Key(TAB, false)]);
+        r.down(LEFTSHIFT);
+        assert_eq!(r.down(TAB), [Key(TAB, true)]);
+        r.up(TAB);
+        r.up(LEFTSHIFT);
+        // Caps Lock as Ctrl too.
+        r.up(LEFTCTRL);
+        r.down(CAPSLOCK);
+        assert_eq!(r.down(TAB), [Key(TAB, true)]);
+    }
+
     #[test]
     fn option_tab_is_ctrl_tab() {
-        let mut r = Rig::new();
+        let mut r = option_tab_for_tabs();
         assert_eq!(r.down(LEFTALT), [Key(LEFTALT, true)]);
         // Ctrl goes down before ⌥ comes up, so ⌥ was never tapped alone.
         assert_eq!(r.down(TAB), [Key(LEFTCTRL, true), Key(LEFTALT, false), Key(TAB, true)]);
@@ -674,7 +732,7 @@ mod tests {
 
     #[test]
     fn shift_option_tab_is_ctrl_shift_tab() {
-        let mut r = Rig::new();
+        let mut r = option_tab_for_tabs();
         r.down(LEFTSHIFT);
         r.down(RIGHTALT);
         assert_eq!(r.down(TAB), [Key(LEFTCTRL, true), Key(RIGHTALT, false), Key(TAB, true)]);
@@ -684,7 +742,7 @@ mod tests {
     #[test]
     fn option_comes_back_after_option_tab() {
         const F: u32 = 33;
-        let mut r = Rig::new();
+        let mut r = option_tab_for_tabs();
         r.down(LEFTALT);
         r.down(TAB);
         r.up(TAB);
@@ -812,15 +870,70 @@ mod tests {
     fn twitcher() {
         let mut r = Rig::new();
         r.down(LEFTMETA);
-        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: false })]);
+        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: false, all: false })]);
         assert_eq!(r.up(TAB), []);
         r.down(LEFTSHIFT);
-        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: true })]);
+        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: true, all: false })]);
         r.up(TAB);
         r.up(LEFTSHIFT);
         assert_eq!(r.down(GRAVE), [Out::Action(Action::NextWindow { back: false })]);
         r.up(GRAVE);
         assert_eq!(r.up(LEFTMETA), [Key(RIGHTCTRL, false), Out::Action(Action::SwitchDone)]);
+    }
+
+    #[test]
+    fn option_tab_is_twitcher_for_every_workspace() {
+        let mut r = Rig::new();
+        assert_eq!(r.down(LEFTALT), [Key(LEFTALT, true)]);
+        // The app keeps ⌥; the Tab is Twitcher's.
+        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: false, all: true })]);
+        assert_eq!(r.up(TAB), []);
+        r.down(LEFTSHIFT);
+        assert_eq!(r.down(TAB), [Out::Action(Action::NextApp { back: true, all: true })]);
+        r.up(TAB);
+        r.up(LEFTSHIFT);
+        // While ⌥ is held: the arrows, Esc.
+        assert_eq!(r.down(DOWN), [Out::Action(Action::SwitchMove { dx: 0, dy: 1 })]);
+        r.up(DOWN);
+        // Letting go of ⌥ commits.
+        assert_eq!(r.up(LEFTALT), [Key(LEFTALT, false), Out::Action(Action::SwitchDone)]);
+        // ⌥ again, without Tab: just ⌥.
+        r.down(RIGHTALT);
+        assert_eq!(r.down(DOWN), [Key(DOWN, true)]);
+        r.up(DOWN);
+        assert_eq!(r.up(RIGHTALT), [Key(RIGHTALT, false)]);
+        // Both ⌥ keys: done when the last is let go of.
+        r.down(LEFTALT);
+        r.down(RIGHTALT);
+        r.down(TAB);
+        r.up(TAB);
+        assert_eq!(r.up(LEFTALT), [Key(LEFTALT, false)]);
+        assert_eq!(r.up(RIGHTALT), [Key(RIGHTALT, false), Out::Action(Action::SwitchDone)]);
+        // Esc: cancelled, nothing to commit.
+        r.down(LEFTALT);
+        r.down(TAB);
+        r.up(TAB);
+        assert_eq!(r.down(ESC), [Out::Action(Action::SwitchCancel)]);
+        r.up(ESC);
+        assert_eq!(r.up(LEFTALT), [Key(LEFTALT, false)]);
+    }
+
+    #[test]
+    fn command_and_option_keep_their_own_switching() {
+        let mut r = Rig::new();
+        // ⌘Tab: ⌥ going up meanwhile commits nothing.
+        r.down(LEFTALT);
+        r.up(LEFTALT);
+        r.down(LEFTMETA);
+        r.down(TAB);
+        r.up(TAB);
+        r.down(LEFTALT);
+        assert!(!r.up(LEFTALT).contains(&Out::Action(Action::SwitchDone)));
+        assert!(r.up(LEFTMETA).contains(&Out::Action(Action::SwitchDone)));
+        // ⌘⌥Tab is ⌘Tab's, not ⌥Tab's.
+        r.down(LEFTMETA);
+        r.down(LEFTALT);
+        assert!(!r.down(TAB).contains(&Out::Action(Action::NextApp { back: false, all: true })));
     }
 
     #[test]

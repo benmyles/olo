@@ -323,7 +323,7 @@ impl Activity {
             let x = rect.left() + (i % 2) as f32 * (col_w + m::SPACING / 2.0);
             let y = rect.top() + (i / 2) as f32 * LEGEND_ROW;
             let mid = y + LEGEND_ROW / 2.0;
-            let swatch = Rect::from_center_size(pos2(x + 5.0, mid), vec2(9.0, 9.0));
+            let swatch = style::snap_centred(ui.ctx(), pos2(x + 5.0, mid), vec2(9.0, 9.0));
             painter.rect_filled(swatch, 0.0, c(p.hue(s.color)));
             style::frame_rect(painter, swatch, c(mix(p.panel_text, p.panel_background, 0.4)));
             let font = egui::FontId::proportional(style::SMALL_SIZE);

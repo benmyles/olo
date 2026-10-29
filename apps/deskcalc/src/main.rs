@@ -123,7 +123,7 @@ impl DeskCalc {
         }
         let (w, h) = self.settings.keypad.size();
         let min = Keypad::Compact.size();
-        self.window = Some(cx.open_window(WindowOptions::new("DeskCalc", w, h).min_size(min.0 - 50, min.1)));
+        self.window = Some(cx.open_window(WindowOptions::new("DeskCalc", w, h).min_size(min.0 - 50, min.1).floating()));
     }
 
     fn evaluate(&mut self) {

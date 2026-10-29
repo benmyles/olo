@@ -2397,8 +2397,9 @@ impl<'a> TabView<'a> {
 /// The tab keys pressed this frame, taken out of the input (releases
 /// too): +1 for each Ctrl+Tab or Ctrl+Page Down, −1 for each
 /// Ctrl+Shift+Tab or Ctrl+Page Up. Whatever has tabs steps through them
-/// with this ([`TabView`] does itself), so Next / Previous Tab (⌥Tab,
-/// which app_server types as Ctrl+Tab) work in every app.
+/// with this ([`TabView`] does itself), so Next / Previous Tab (⌃Tab
+/// unless set otherwise, which app_server types as Ctrl+Tab) work in
+/// every app.
 pub fn tab_keys(ctx: &egui::Context) -> i32 {
     ctx.input_mut(|i| {
         let mut step = 0;

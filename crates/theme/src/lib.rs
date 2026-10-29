@@ -617,12 +617,17 @@ pub mod deco {
 }
 
 pub mod fonts {
-    /// Closest freely available face to BeOS's Swiss 721 (a Helvetica).
-    pub const UI: &[&str] = &["Nimbus Sans", "Liberation Sans", "DejaVu Sans"];
+    /// Noto Sans, shipped with Olo (data/fonts): a humanist sans as plain
+    /// as BeOS's Swiss 721, open, clear at small sizes and covering most
+    /// of the world's scripts. The rest are for a tree without it.
+    pub const UI: &[&str] = &["Noto Sans", "Nimbus Sans", "Liberation Sans", "DejaVu Sans"];
     pub const UI_BOLD_WEIGHT: u16 = 700;
-    /// A deliberate modernisation: BeOS used a Courier; JetBrains Mono is
-    /// far more legible on HiDPI screens.
-    pub const MONO: &[&str] = &["JetBrains Mono", "DejaVu Sans Mono", "Noto Sans Mono", "Liberation Mono"];
+    /// Noto Sans Mono, shipped with Olo too: Noto Sans's monospaced
+    /// sibling (BeOS used a Courier), with box drawing for Terminal.
+    pub const MONO: &[&str] = &["Noto Sans Mono", "JetBrains Mono", "DejaVu Sans Mono", "Liberation Mono"];
+    /// Olo's faces for symbols Noto Sans doesn't have (arrows, ⌘ ⌥ ⇧ ⌃,
+    /// ▸ and ✓), in the order they are tried.
+    pub const SYMBOLS: &[&str] = &["Noto Sans Symbols", "Noto Sans Symbols 2", "Noto Sans Math"];
     /// Points; BeOS's be_plain_font was 10pt.
     pub const PLAIN_SIZE: f32 = 12.0;
     pub const TAB_SIZE: f32 = 12.0;

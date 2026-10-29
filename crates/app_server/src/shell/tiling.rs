@@ -238,6 +238,12 @@ pub struct TileDrag {
     applied: (i32, i32),
 }
 
+impl TileDrag {
+    pub fn window(&self) -> WindowElement {
+        self.window.clone()
+    }
+}
+
 /// How far `side` of the dragged window moves when its size grows by
 /// (dw, dh).
 fn moved(side: Side, (dw, dh): (i32, i32)) -> i32 {
@@ -473,7 +479,7 @@ pub(crate) fn resizable(w: &WindowElement) -> bool {
 }
 
 impl<BackendData: Backend> AnvilState<BackendData> {
-    fn tile_gap(&self) -> i32 {
+    pub(super) fn tile_gap(&self) -> i32 {
         self.settings.tiling.gap.min(200) as i32
     }
 
@@ -624,7 +630,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         window.user_data().get::<TilePart>().unwrap().0.set(part);
     }
 
-    fn custom_part(window: &WindowElement) -> Option<Part> {
+    pub(super) fn custom_part(window: &WindowElement) -> Option<Part> {
         window.user_data().get::<TilePart>().and_then(|p| p.0.get())
     }
 
@@ -718,7 +724,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 l.min = self.min_frame(&l.window);
             }
         }
-        if links.is_empty() {
+        // (An auto-tiled window stays a tile: its edges at the side of the
+        // display just don't move.)
+        if links.is_empty() && !self.auto_tiled(window) {
             self.forget_tile(window);
         }
         self.tile_drag = Some(TileDrag { window: window.clone(), start, sides: sides.to_vec(), links, applied: (0, 0) });
@@ -727,7 +735,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// The smallest frame a window takes: its app's minimum content size
     /// (if it gives one) with the tab and border, and never under
     /// `MIN_TILE`.
-    fn min_frame(&self, window: &WindowElement) -> Size<i32, Logical> {
+    pub(super) fn min_frame(&self, window: &WindowElement) -> Size<i32, Logical> {
         use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
         let content = window.wl_surface().map(|s| with_states(&s, |st| st.cached_state.get::<SurfaceCachedState>().current().min_size)).unwrap_or_default();
         let frame = self.space.element_geometry(window).map(|g| g.size).unwrap_or_default();
@@ -737,7 +745,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// The size change the drag may make (neighbours keep a minimum).
     pub fn tile_drag_limit(&self, d: (i32, i32)) -> (i32, i32) {
-        self.tile_drag.as_ref().map_or(d, |t| limit(&t.links, d))
+        let Some(t) = self.tile_drag.as_ref() else { return d };
+        let (mut dw, mut dh) = limit(&t.links, d);
+        // An auto-tiled window's sides at the edge of the display stay.
+        if self.auto_tiled(&t.window) {
+            let moves = |s: &Side| self.auto_side_moves(&t.window, *s);
+            if !t.sides.iter().filter(|s| matches!(s, Side::Left | Side::Right)).any(moves) {
+                dw = 0;
+            }
+            if !t.sides.iter().filter(|s| matches!(s, Side::Top | Side::Bottom)).any(moves) {
+                dh = 0;
+            }
+        }
+        (dw, dh)
     }
 
     /// The dragged window's size changed by `d` from where it began: move
@@ -756,7 +776,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// Ask a neighbour that began at `start` for the frame `target`: now
     /// if it has answered the last size asked, else when it does. It moves
     /// when it draws it (`tile_follower_drew`).
-    fn follow(&mut self, window: &WindowElement, start: Rectangle<i32, Logical>, target: Rectangle<i32, Logical>) {
+    pub(super) fn follow(&mut self, window: &WindowElement, start: Rectangle<i32, Logical>, target: Rectangle<i32, Logical>) {
         match self.tile_followers.iter_mut().find(|f| f.window == *window) {
             Some(f) => (f.start, f.target) = (start, target),
             None => self.tile_followers.push(Follower { window: window.clone(), start, target }),
@@ -810,6 +830,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if t.links.is_empty() {
             return;
         }
+        let window = t.window.clone();
         let gap = self.tile_gap();
         let Some(area) = self.window_output(&t.window).and_then(|o| self.tile_area(&o)) else { return };
         self.tile_followers.retain(|f| f.window.alive());
@@ -821,6 +842,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         for (w, r) in frames {
             Self::set_part(&w, Some(fraction_of(area, r, gap)));
         }
+        // Auto-tiled: the splits move there, snapped.
+        self.auto_drag_ended(&window);
     }
 
     /// Back to how it was before it was tiled or zoomed.
@@ -1061,7 +1084,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// Windows on a display on this workspace, back to front; a group
     /// counts as its front window (the rest follow it).
-    fn windows_on(&self, output: &Output) -> Vec<WindowElement> {
+    pub(super) fn windows_on(&self, output: &Output) -> Vec<WindowElement> {
         let all: Vec<WindowElement> = self.space.elements().cloned().collect();
         all.into_iter().filter(|w| self.window_output(w).as_ref() == Some(output) && !self.behind_in_group(w)).collect()
     }
@@ -1086,7 +1109,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     /// Keep how `windows` are now, for Undo Window Arrangement.
-    fn remember_arrangement(&mut self, windows: &[WindowElement]) {
+    pub(super) fn remember_arrangement(&mut self, windows: &[WindowElement]) {
+        self.auto_forget_undo();
         self.arranged = self.placed(windows);
         self.arranged_among = self.display_frames();
     }
@@ -1428,6 +1452,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// tiled and zoomed windows on this workspace take their places again
     /// with it, at once; the rest when they come back (`welcome_back`).
     pub fn tiling_space_changed(&mut self) {
+        self.auto.changed();
         let all: Vec<WindowElement> = self.space.elements().filter(|w| !self.behind_in_group(w)).cloned().collect();
         for w in &all {
             self.welcome_back(w, false);

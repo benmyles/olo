@@ -87,6 +87,11 @@ pub struct WindowOptions {
     /// so it keeps the size it asks for, bigger than its parent if it
     /// likes; with a `parent`, it opens over it and stays in front of it.
     pub dialog: bool,
+    /// A utility window (a palette, a small tool such as DeskCalc) that
+    /// floats over auto-tiled windows rather than taking a tile, though it
+    /// can be any size. Dialogs and alerts float anyway. (The
+    /// xdg-toplevel-tag `floating`.)
+    pub floating: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -142,6 +147,7 @@ impl Default for WindowOptions {
             parent: None,
             alert: false,
             dialog: false,
+            floating: false,
         }
     }
 }
@@ -184,6 +190,12 @@ impl WindowOptions {
     /// A dialog or panel, not a document window (see [`Self::dialog`]).
     pub fn dialog(mut self) -> Self {
         self.dialog = true;
+        self
+    }
+    /// A utility window that floats over auto-tiled ones (see
+    /// [`Self::floating`]).
+    pub fn floating(mut self) -> Self {
+        self.floating = true;
         self
     }
 }

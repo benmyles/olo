@@ -375,7 +375,7 @@ impl Passwords {
         let Some(review) = &mut self.review else { return };
         match review.window {
             Some(w) => cx.activate(w),
-            None => review.window = Some(cx.open_window(WindowOptions::new("Review Sync", 560, 440).min_size(420, 300))),
+            None => review.window = Some(cx.open_window(WindowOptions::new("Review Sync", 560, 440).min_size(420, 300).floating())),
         }
     }
 

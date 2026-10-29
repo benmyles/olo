@@ -3,6 +3,38 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-10-29
+
+### Deskbar's wordmark follows the theme again
+
+*00:29* — Choosing a theme in Preferences drew everything in BeBox: the theme was looked up by its address in THEMES, a const since it moved to olo-theme, so another crate's copy never matched and BeBox (the first) was taken. Now by id; Deskbar's wordmark, every app's icons and Twitcher's follow the theme again (Toybox, Enamel, Halftone, Papercraft, Soft Be, BeBox).
+
+![Deskbar's wordmark follows the theme again](2026-10-29/002909-deskbar-s-wordmark-follows-the-theme-again.png)
+
+### ⌘Tab keeps to this workspace, ⌥Tab goes everywhere
+
+*00:19* — ⌘Tab (left) switches among this workspace's applications only; ⌥Tab (right) has a numbered row for every workspace with windows, as ⌘Tab had. ⌃Tab is Next Tab in the window.
+
+![⌘Tab keeps to this workspace, ⌥Tab goes everywhere](2026-10-29/001957-tab-keeps-to-this-workspace-tab-goes-everywhere.png)
+
+### Deskbar groups applications by workspace
+
+*00:19* — With more than one workspace, Deskbar lists the applications on the workspace showing under its name, and folds the rest under Other Workspaces (BOutlineListView's latch); unfolded, each workspace's under its own heading. Clicking a heading goes there.
+
+![Deskbar groups applications by workspace](2026-10-29/001957-deskbar-groups-applications-by-workspace.png)
+
+### Auto-tiling
+
+*00:19* — Deskbar's tiles beside the cup (or ⌃⌥⌘T) tile every window on the workspace: a new one halves the focused tile along its longer side, a closed one's room goes to its neighbour. Zoom still zooms and comes back; Zoom Vertically makes a column; dialogs and small utility windows such as DeskCalc float; ⌃⌘Z undoes.
+
+![Auto-tiling](2026-10-29/001956-auto-tiling.png)
+
+### Noto fonts, shipped with Olo
+
+*00:19* — Before (Nimbus Sans, DejaVu for symbols) above, after (Noto Sans and Noto Sans Mono, with Noto Sans Symbols, Symbols 2 and Math for ⌘ ⌥ arrows and marks) below: one family everywhere, the same on every machine, open and clear at small sizes. app_server's tab titles, Twitcher and hint badges centre their capitals from the face's own metrics.
+
+![Noto fonts, shipped with Olo](2026-10-29/001955-noto-fonts-shipped-with-olo.png)
+
 ## 2026-10-28
 
 ### Screen saver hides the pointer

@@ -111,6 +111,11 @@ impl Watcher {
                 Ok(n) => crate::log(format!("installed {n} new or changed brand pictures")),
                 Err(e) => crate::log(format!("could not install the brand pictures: {e}")),
             }
+            match sync_fonts(&self.from, &prefix.join("share/olo/fonts")) {
+                Ok(0) => {}
+                Ok(n) => crate::log(format!("installed {n} new or changed fonts")),
+                Err(e) => crate::log(format!("could not install the fonts: {e}")),
+            }
             match sync_themes(&self.from, &prefix.join("share/olo/themes")) {
                 Ok(0) => {}
                 Ok(n) => crate::log(format!("installed {n} new or changed theme pictures")),
@@ -302,6 +307,25 @@ fn sync_brand(from: &Path, to: &Path) -> std::io::Result<usize> {
     sync_pngs(&src, to)
 }
 
+/// Copy the build tree's fonts (`data/fonts`: the faces and their
+/// licence) into `to` where new or newer; how many files.
+fn sync_fonts(from: &Path, to: &Path) -> std::io::Result<usize> {
+    let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/fonts")).find(|d| d.is_dir()) else {
+        return Ok(0);
+    };
+    let mut n = 0;
+    std::fs::create_dir_all(to)?;
+    for e in std::fs::read_dir(&src)?.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if [".ttf", ".otf", ".txt", ".md"].iter().any(|x| name.ends_with(x)) && is_newer(&e.path(), &to.join(&name)) {
+            install(&e.path(), to, &name)?;
+            std::fs::set_permissions(to.join(&name), std::fs::Permissions::from_mode(0o644))?;
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
 /// Copy the build tree's themes (`data/themes/<id>`: each one's sizes and
 /// wordmark, not its sources or references) into `to` where new or
 /// newer; how many.
@@ -376,6 +400,25 @@ mod tests {
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
         let t = SystemTime::now() - Duration::from_secs(age);
         std::fs::File::options().write(true).open(&p).unwrap().set_modified(t).unwrap();
+    }
+
+    #[test]
+    fn fonts_come_along() {
+        let base = std::env::temp_dir().join(format!("olo-fonts-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let build = base.join("repo/target/release");
+        std::fs::create_dir_all(&build).unwrap();
+        std::fs::create_dir_all(base.join("repo/data/fonts")).unwrap();
+        for name in ["NotoSans[wght].ttf", "OFL.txt", ".DS_Store"] {
+            std::fs::write(base.join("repo/data/fonts").join(name), name).unwrap();
+        }
+        let to = base.join("prefix/share/olo/fonts");
+        assert_eq!(sync_fonts(&build, &to).unwrap(), 2);
+        assert!(to.join("NotoSans[wght].ttf").is_file() && to.join("OFL.txt").is_file() && !to.join(".DS_Store").exists());
+        assert_eq!(std::fs::metadata(to.join("OFL.txt")).unwrap().permissions().mode() & 0o777, 0o644);
+        // Nothing new: nothing copied.
+        assert_eq!(sync_fonts(&build, &to).unwrap(), 0);
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

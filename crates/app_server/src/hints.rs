@@ -1009,8 +1009,8 @@ pub fn badge_pixmap(p: &olo_theme::Palette, c: char, s: f64) -> Pixmap {
     fill(&mut pm, u, u, u, h - 2 * u, p.tab_focused_light);
     fill(&mut pm, u, h - 2 * u, w - 2 * u, u, p.tab_focused_shadow);
     fill(&mut pm, w - 2 * u, u, u, h - 2 * u, p.tab_focused_shadow);
-    let y = (h as f32 - size * 1.25) / 2.0;
-    text::draw(&mut pm, &label, ((w - tw) as f32 / 2.0).round(), y.round(), size, true, p.tab_text_focused);
+    let y = text::top_for_centre(h as f32 / 2.0, size, true);
+    text::draw(&mut pm, &label, ((w - tw) as f32 / 2.0).round(), y, size, true, p.tab_text_focused);
     pm
 }
 

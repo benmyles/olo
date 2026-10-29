@@ -39,6 +39,8 @@ pub enum Indicator {
     Volume { level: f32, muted: bool },
     /// On or off, with a line saying for how long.
     Caffeinated { on: bool, detail: String },
+    /// Auto-tiling on or off.
+    AutoTiling { on: bool },
 }
 
 /// How long the panel stays up after the last change.
@@ -73,6 +75,8 @@ impl Indicator {
             Indicator::Volume { .. } => "Volume",
             Indicator::Caffeinated { on: true, .. } => "Caffeinated",
             Indicator::Caffeinated { on: false, .. } => "Sleep allowed",
+            Indicator::AutoTiling { on: true } => "Auto-Tiling",
+            Indicator::AutoTiling { on: false } => "Auto-Tiling Off",
         }
     }
 
@@ -80,7 +84,7 @@ impl Indicator {
         match self {
             Indicator::Brightness(l) | Indicator::KeyboardBacklight(l) => Some(*l),
             Indicator::Volume { level, muted } => Some(if *muted { 0.0 } else { *level }),
-            Indicator::Caffeinated { .. } => None,
+            Indicator::Caffeinated { .. } | Indicator::AutoTiling { .. } => None,
         }
     }
 }
@@ -131,7 +135,13 @@ fn draw(ind: &Indicator, s: f64) -> Pixmap {
             }
         }
         None => {
-            if let Indicator::Caffeinated { detail, .. } = ind {
+            let detail = match ind {
+                Indicator::Caffeinated { detail, .. } => Some(detail.as_str()),
+                Indicator::AutoTiling { on: true } => Some("New windows take a tile"),
+                Indicator::AutoTiling { on: false } => Some("Windows stay where they are"),
+                _ => None,
+            };
+            if let Some(detail) = detail {
                 let size = title_size * 11.0 / 12.0;
                 let detail = text::ellipsize(detail, size, false, bar_w as f32);
                 text::draw(&mut pm, &detail, x as f32, (y - px(2.0)) as f32, size, false, p.panel_text);
@@ -231,6 +241,21 @@ fn draw_icon(pm: &mut Pixmap, ind: &Indicator, (x, y, size): (f32, f32, f32), rg
             }
             if let Some(marks) = pb.finish() {
                 pm.stroke_path(&marks, &paint, &stroke(2.2), id, None);
+            }
+        }
+        Indicator::AutoTiling { on } => {
+            // A screen in tiles, as dwindle splits it: a half, then a
+            // quarter and two eighths. Filled while on.
+            let tiles = [(3.0, 5.0, 12.0, 22.0), (17.0, 5.0, 12.0, 10.0), (17.0, 17.0, 5.0, 10.0), (24.0, 17.0, 5.0, 10.0)];
+            for (tx, ty, tw, th) in tiles {
+                let (a, b) = at(tx, ty);
+                let Some(r) = tiny_skia::Rect::from_xywh(a, b, tw * k, th * k) else { continue };
+                if *on {
+                    pm.fill_rect(r, &paint, id, None);
+                } else {
+                    let path = PathBuilder::from_rect(r);
+                    pm.stroke_path(&path, &paint, &stroke(1.6), id, None);
+                }
             }
         }
         Indicator::Caffeinated { on, .. } => {
@@ -335,6 +360,8 @@ mod tests {
             Indicator::Volume { level: 0.4, muted: true },
             Indicator::Caffeinated { on: true, detail: "For 1 hour, until 15:30".into() },
             Indicator::Caffeinated { on: false, detail: "Sleeps when idle".into() },
+            Indicator::AutoTiling { on: true },
+            Indicator::AutoTiling { on: false },
         ];
         let mut rows = Vec::new();
         for mode in [olo_theme::ThemeMode::Light, olo_theme::ThemeMode::Dark] {

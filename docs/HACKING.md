@@ -218,7 +218,9 @@ fn main() {
   "Layout review" under Testing) over the next frame of every window and
   answers with a `WindowReview` per window (title, content size, scale,
   findings: level, kind, what and where); `olo-screen review` and
-  `tsession review` print them.
+  `tsession review` print them (`--all`: Deskbar and the other layer
+  surfaces too, found by the processes on the session's display, since
+  they have no window to find them by).
 * **How a window keeps up** (automatic): `{"frames":true}` on the same
   socket answers, per window, the frames drawn since the last ask and
   the slowest and total time drawing them (`FrameTimes`, microseconds
@@ -652,7 +654,18 @@ of the way down.
    max_width)` instead, which ends it with "…" rather than clipping a
    letter in half or running into its neighbour (agents still read the
    whole text). Fonts: `style::plain_font()`, `style::bold_font()`,
-   `style::italic_font()`, `style::mono_font(size)`. Glyphs the primary
+   `style::italic_font()`, `style::mono_font(size)`. The faces are Noto,
+   shipped with Olo in `data/fonts` (see its README: Noto Sans and Noto
+   Sans Mono, variable, with Symbols, Symbols 2 and Math for what they
+   lack; OFL) and installed to `share/olo/fonts` (`install-session.sh`,
+   and an upgrade's `sync_fonts`); `olo_xdg::fonts_dir()` finds them,
+   and the kit (`style::font_definitions`) and app_server (`text.rs`) both
+   use them ahead of the system's, so Olo looks the same on any system.
+   `olo_theme::fonts` lists the faces in the order they are tried (`UI`,
+   `MONO`, `SYMBOLS`; the system's DejaVu Sans, CJK and emoji after).
+   `style::CAP_HEIGHT` is Noto Sans's; app_server centres its own text
+   (tab titles, Twitcher, hint badges) with `text::top_for_centre`, from
+   the face's own metrics. Glyphs the primary
    face lacks (▸, →, ⌘) come from fallback faces the kit shifts onto the
    primary's baseline, so they sit on the line with the letters;
    `style::baseline_offset(galley)` is that baseline even when a line
@@ -732,7 +745,7 @@ centred (beside the `olo` mark it read as "o olo"). Image previews: `icons::thum
 7. BeOS idioms to keep: yellow tab decorator (app_server's job), menu bar in
    every document window, ⌘ shortcuts (Ctrl on the wire: app_server's
    `keymap` turns the Mac ⌘ key into Ctrl for clients, Caps Lock too, and
-   keeps ⌘Tab / ⌘\` (Twitcher), ⌘ arrows and ⌘⌫ and the desktop shortcuts
+   keeps ⌘Tab / ⌥Tab / ⌘\` (Twitcher), ⌘ arrows and ⌘⌫ and the desktop shortcuts
    (see "Desktop shortcuts and tiling") for itself; terminals listed in
    `KeyboardSettings::terminal_apps` get ⌘ as Ctrl+Shift so physical Ctrl
    reaches the tty; `KeyboardSettings::num_lock` turns Num Lock on at start
@@ -1394,6 +1407,24 @@ Each item shows the keys the person has for it (`add_keys`:
 `shortcuts::keys_for` with `Settings::shortcuts`, sent on every
 settings change).
 
+With more than one workspace, Deskbar's applications are grouped as a
+BOutlineListView would group them: under a heading naming the workspace
+showing (`workspace_heading`, `HEADING_H`, bold in the small size on a
+shade of the panel, as the tray's date is set), only the applications
+with windows there, each row's menu only those windows (`teams(display,
+Some(ws))`); below, if any other workspace has windows, an Other
+Workspaces row with the kit's latch (`others_latch`, `style::latch`),
+folded at first, which unfolds the rest, each workspace under its own
+heading. Clicking a heading goes to that workspace (on the one showing,
+or with the right button on any, it opens the Workspaces menu). Whether
+Other Workspaces is unfolded survives an upgrade (`save_state`). One
+workspace: no headings, just the applications. Agents find the
+headings and the latch as `Button`s ("Workspace 2", "Other
+Workspaces", `selected` for the one showing and for unfolded).
+Deskbar's tray has auto-tiling's toggle (`status::draw_tiles`) beside
+the Caffeinated cup: a click turns it on or off for the workspace (and
+the bar's display), a right-click opens Window Arrangement.
+
 Clicking an app's row in Deskbar lists its windows (`team_menu`), as
 BeOS's Deskbar did: the focused one checked, one on another workspace
 with that workspace's number, and a minimized one marked as a Mac's
@@ -1401,22 +1432,26 @@ Window menu does, a hollow diamond and a lighter label (`.minimized(true)`,
 `Action::minimized`; agents read `minimized` on its `MenuItem`). Choosing
 one brings it back.
 
-Twitcher (⌘Tab, ⌘\`, `twitch_step`) shows each window it passes by
+Twitcher (⌘Tab, ⌥Tab, ⌘\`, `twitch_step`) shows each window it passes by
 bringing it forward (a minimized one unminimized), but keeps the stacking
 from when switching began (`Twitch::stacks`): passing on puts the last one
 back in its place (minimized again if it was), so when ⌘ is let go only
-the chosen window has moved. It has a row for each workspace with
-windows on it (`twitch_rows`, numbered at the left when there are more
-than one), each app's cell its most recently used window. Tab walks
+the chosen window has moved. ⌘Tab has the apps on this workspace;
+⌥Tab (`Action::NextApp { all }`, `Twitch::all`) has a row for each
+workspace with windows on it (`twitch_rows`, numbered at the left when
+there are more than one), and so does ⌘\` for the focused app's
+windows; each app's cell is its most recently used window. Tab walks
 every cell in order of use (`AnvilState::recent`, kept by `note_recent`
-in `tick`, not while switching), whatever its workspace, so ⌘Tab goes
-back and forth between the last two apps wherever they are; ←/→ walk
-the chosen row and ↑/↓ go to the row above or below (its most recent
-first). Showing a window on another workspace goes there, each workspace's stacking kept as it was when first shown. Esc
+in `tick`, not while switching), so ⌘Tab goes back and forth between
+the last two apps here and ⌥Tab between the last two wherever they
+are; ←/→ walk the chosen row and ↑/↓ go to the row above or below (its
+most recent first). The keymap keeps whichever of ⌘ and ⌥ began
+switching (`keymap::Hold`): letting go of that one chooses, and the
+other changes nothing meanwhile. Showing a window on another workspace goes there, each workspace's stacking kept as it was when first shown. Esc
 puts everything back, workspace and focus too (`twitch_cancel`). With
 keyboard hints on, every cell carries a hint badge
 (`hints::badge_pixmap`, letters running across the rows,
-`twitcher::Shown::letter`) and typing its letter while ⌘ is held
+`twitcher::Shown::letter`) and typing its letter while ⌘ (or ⌥) is held
 chooses it (`twitch_pick`). The keys reach it as keymap actions
 (`SwitchMove`, `SwitchPick`, `SwitchCancel`) only while switching.
 With a Deskbar on every display (and more than one), the windows go by
@@ -1441,7 +1476,7 @@ show the desktop, workspaces, Find, lock, caffeinated, screenshots), a group, a 
 changes (an empty list turns one off), so new shortcuts get their defaults.
 `shortcuts::assign` gives one shortcut a chord and takes it from any other;
 the `defaults_never_clash` test keeps the table clean. The keymap looks
-shortcuts up before its own ⌘ translations; Twitcher's ⌘Tab / ⌘\` stay
+shortcuts up before its own ⌘ translations; Twitcher's ⌘Tab / ⌥Tab / ⌘\` stay
 fixed. To add one: a `Shortcut` variant, a row in `SHORTCUTS`, its case in
 input_handler's `shortcut`.
 
@@ -1517,6 +1552,56 @@ window zoomed again, and remembers what it replaced, so undoing again
 redoes. Agents run both with
 `{"type":"run_shortcut","id":"fan-out"}` / `"undo-arrangement"`.
 
+Auto-tiling (`shell/autotile.rs`; its module doc is the design): turned
+on and off by Deskbar's tiles beside the Caffeinated cup (and Auto-Tiling
+in its Olo menu), ⌃⌥⌘T (`auto-tiling`), the palette, or
+`{"type":"set_auto_tiling","on":true}` (`workspace`, `output` optional;
+`{"type":"auto_tiling"}` reads it, a display at a time). It is per
+workspace, and per display too while there is a Deskbar on every display
+(`TilingSettings::auto`, `auto_tiling` / `set_auto_tiling`, which keep
+only what differs). While it is on, each display of the workspace has a
+tree of splits (`autotile::Node`, in `AutoTiler::trees` by workspace and
+connector), and every window there is a leaf of it, a window group one
+leaf. A new window fills an empty place if there is one, else splits
+the tile that last had the focus (if both fit; else the biggest) along
+its longer side (`auto_insert`, `cut_for`, as bspwm and Hyprland's
+dwindle do) and gets its tile at its
+first commit (`auto_claim`), so it opens at that size rather than
+drawing another first; a closed one's room goes to its sibling. `layout`
+is O(windows), keeps each app's minimum size and runs only when
+something changes: `auto_tick` compares a glance at the windows and the
+displays' room (`AutoTiler::glance`) with the last, so a turn of the
+loop with nothing new (the pointer moving) costs next to nothing. Moving
+the windows goes through `set_frame` and, for a window already drawn,
+the tile-drag `follow` path, so nothing waits on a client and nothing
+jumps ahead of its picture. The tiling commands work on the tree
+(`tiled_into`: the window takes its half, quarter or third and the rest
+tile in what is left), as do Zoom Vertically / Horizontally (`along`: a
+full column or row beside the rest, and back), Tile All (`balanced`),
+dragging a tile by its tab (`drop_at`: onto the middle of another swaps
+them, onto its edge puts it beside) and dragging an edge (`take_ratios`,
+snapped to a quarter or third of the display when near one, else an
+eighth: `snap`). Zoom zooms over the tiles and
+unzooms back into its tile. ⌃⌘Z undoes the last change to a tree, or
+turning it on (`auto_undo`, before `undo_arrangement`). Windows that
+float instead (`floats`): those with a parent, dialogs and alerts, a
+window with a largest size (fixed-size ones), one tagged `floating`
+(xdg-toplevel-tag; the kit's `WindowOptions::floating()`, which
+DeskCalc, Preferences, Tracker's Info and status windows and the like
+set), and for other programs portal dialogs and picture-in-picture
+(`floating_kind`). Floating windows stay in front of the tiles
+(`keep_floating_above`). Anyone can float or tile a window by hand: the
+window menu's Float Over the Tiles (only where auto-tiling is on),
+⌃⌥⌘F (`float-window`), or `{"type":"set_floating","id":ID,"floating":true}`
+(`null` leaves it to app_server again); `WindowInfo` says `tiled`,
+`floating` and `float` (the hand's choice). A window that leaves for a
+while (hidden, to another workspace) leaves a `Kept` place that takes no
+room and is its again when it comes back; a closed one leaves one for
+20 s (`CLOSED_KEEP`), which a window of the same app takes, so an app
+re-executing after an upgrade gets its tiles back. After an in-place restart the trees are rebuilt
+from where the windows are (`from_parts`, from their saved tiles), so
+reload keeps the tiles.
+
 Roll Up (`toggle_rolled`, ⌃⌘M, the tab's menu, the palette, or a
 double-click on the tab, which used to hide the window) leaves just the
 window's tab: `Decoration::rolled` makes the element's bbox the tab, draws
@@ -1563,12 +1648,15 @@ top edge on a display, enough of it to take hold of (`into_reach`).
 the top of its tab or frame inside the area, at least 48 px of it
 across), even hanging off an edge, as people leave windows.
 
-Next Tab / Previous Tab (⌥⇥ / ⌥⇧⇥) are keys, not actions: the keymap
-types Ctrl+Tab / Ctrl+Shift+Tab into the focused window (`stand_for`),
-which Chrome, Firefox, GTK, Qt and the kit all take for the next and
-previous tab. Ctrl goes down before ⌥ is let go of, and ⌥ stays up for
-the app until another key needs it (`restore_lifted`), so the app never
-sees a lone tap of ⌥ (Firefox would show its menu bar). From the palette
+Next Tab / Previous Tab (⌃⇥ / ⌃⇧⇥ by default) are keys, not actions:
+the keymap types Ctrl+Tab / Ctrl+Shift+Tab into the focused window
+(`stand_for`), which Chrome, Firefox, GTK, Qt and the kit all take for
+the next and previous tab, and so does a terminal (whose ⌘ is
+Ctrl+Shift, but physical Ctrl stays Ctrl). Set to other keys, with ⌥
+say, Ctrl goes down before ⌥ is let go of, and ⌥ stays up for the app
+until another key needs it (`restore_lifted`), so the app never sees a
+lone tap of ⌥ (Firefox would show its menu bar). A Next Tab set to ⌥Tab
+takes it from Twitcher. From the palette
 or an agent (`{"type":"run_shortcut","id":"next-tab","window":ID}`),
 app_server focuses the window and types the same keys. In the kit,
 `widgets::tab_keys` takes them out of the input (+1 / −1, Ctrl+Page
@@ -1822,7 +1910,10 @@ Chrome, GTK 4.16 text), and how Olo does it:
   wp-fractional-scale-v1 and wp-viewporter on every surface. It draws
   into a buffer of `round(size × scale)` pixels, with egui at that
   `pixels_per_point`, and sets the viewport's destination to the logical
-  size. app_server places each window on a whole device pixel
+  size. egui's screen is that buffer's size in points (`Surface::screen`),
+  not the logical size, so what lines up with the right or bottom edge
+  lands on a pixel whatever size the window is given (1153 points at
+  1.5× is a 1730-pixel buffer, 1153⅓ points). app_server places each window on a whole device pixel
   (`to_physical_precise_round`), so a buffer lands one to one. Programs
   without fractional scale get the next whole scale and are scaled down.
 - **app_server's own pictures go pixel for pixel**

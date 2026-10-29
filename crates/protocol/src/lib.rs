@@ -17,7 +17,7 @@ pub mod notifications;
 pub mod shortcuts;
 pub mod touchpad;
 pub use notifications::{AppNotifications, CardSize, HistoryView, NoteLook, NoteStyle, NotificationSettings, NotificationState};
-pub use shortcuts::{Chord, Shortcut, ShortcutSettings, Tile, TilingSettings};
+pub use shortcuts::{AutoTiling, Chord, Shortcut, ShortcutSettings, Tile, TilingSettings};
 
 pub const SOCKET_ENV: &str = "OLO_SOCKET";
 
@@ -162,6 +162,37 @@ pub enum Request {
     /// tiled there (dragging an edge resizes the neighbours) and undoable
     /// with Undo Window Arrangement. Windows not listed stay as they are.
     Arrange { windows: Vec<Placement> },
+    /// Whether auto-tiling is on for each display of a workspace (the
+    /// one showing unless given).
+    AutoTiling {
+        #[serde(default)]
+        workspace: Option<u32>,
+    },
+    /// Auto-tiling on (`on`), off, or (left out) the other way, as
+    /// Deskbar's tiles toggle and ⌃⌥⌘T do. It is for a workspace (the one
+    /// showing unless given) and, with a Deskbar on every display, one
+    /// display of it (`output`, a connector; else the active display),
+    /// otherwise all its displays. While it is on, every window there is
+    /// tiled: a new one takes its share, a closed one's room goes to its
+    /// neighbours, and dialogs and fixed-size windows float over the
+    /// tiles. Remembered (`TilingSettings::auto`).
+    SetAutoTiling {
+        #[serde(default)]
+        on: Option<bool>,
+        #[serde(default)]
+        workspace: Option<u32>,
+        #[serde(default)]
+        output: Option<String>,
+    },
+    /// Float a window over auto-tiled ones (`floating: true`), tile it
+    /// (`false`), or (left out) leave it to app_server, which floats
+    /// dialogs, alerts, fixed-size windows and windows tagged `floating`
+    /// ([`WindowInfo::floating`]).
+    SetFloating {
+        id: WindowId,
+        #[serde(default)]
+        floating: Option<bool>,
+    },
     /// Inject input as if from a device (for automated UI tests).
     Synthetic { events: Vec<SyntheticEvent> },
     /// How app_server has kept up since the last ask ([`Timings`]), and
@@ -212,6 +243,8 @@ pub enum Reply {
     /// area tiling uses (global logical pixels: the display less Deskbar
     /// and the margins), and its windows on this workspace, front first.
     Arrangement { output: String, area: Frame, windows: Vec<WindowInfo> },
+    /// [`Request::AutoTiling`]'s answer: each display of the workspace.
+    AutoTiling { workspace: u32, displays: Vec<AutoTilingInfo> },
     Power { status: PowerStatus },
     Timings { timings: Timings },
     Event { event: Event },
@@ -320,6 +353,19 @@ pub struct WindowInfo {
     /// fixed-size panel or fullscreen.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub groupable: bool,
+    /// In a tile: auto-tiled, or tiled by a command or Tile All (dragging
+    /// its edges drags its neighbours').
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub tiled: bool,
+    /// It floats over auto-tiled windows rather than being tiled: a
+    /// dialog, an alert, a fixed-size window, one tagged `floating`
+    /// (xdg-toplevel-tag), or one floated by hand.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub floating: bool,
+    /// Floated (true) or tiled (false) by hand
+    /// ([`Request::SetFloating`]), over what app_server would judge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub float: Option<bool>,
     /// The display it is on (its connector), or was on while hidden or
     /// on another workspace.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -353,6 +399,13 @@ pub struct Frame {
     pub y: i32,
     pub width: i32,
     pub height: i32,
+}
+
+/// Whether auto-tiling is on for a display (its connector).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AutoTilingInfo {
+    pub output: String,
+    pub on: bool,
 }
 
 /// Where [`Request::Arrange`] puts a window: fractions (0–1) of the
@@ -987,7 +1040,8 @@ pub struct KeyboardSettings {
     pub repeat_delay_ms: i32,
     pub repeat_rate_hz: i32,
     /// ⌘ (the Super/Meta key) is the command key: apps see Ctrl, so ⌘C
-    /// copies, and app_server takes ⌘Tab, ⌘`, ⌘Space and ⌘ arrows.
+    /// copies, and app_server takes ⌘Tab, ⌘`, ⌘Space and ⌘ arrows (and
+    /// ⌥Tab, ⌘'s Twitcher for every workspace).
     pub command_key: bool,
     /// Caps Lock is another Ctrl.
     pub caps_lock_control: bool,

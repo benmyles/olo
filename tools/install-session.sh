@@ -76,7 +76,7 @@ done
 # ours from before the rename is made new.
 [ "$(readlink "$PREFIX/bin/op" 2>/dev/null)" = tabula-op ] && as_user ln -sfn olo-op "$PREFIX/bin/op"
 [ -e "$PREFIX/bin/op" ] || [ -L "$PREFIX/bin/op" ] || as_user ln -s olo-op "$PREFIX/bin/op"
-as_user cp -r data/icons data/brand "$PREFIX/share/olo/"
+as_user cp -r data/icons data/brand data/fonts "$PREFIX/share/olo/"
 # The themes (Preferences ▸ Themes): each one's icons and wordmark, not
 # its sources.
 for theme in data/themes/*/; do

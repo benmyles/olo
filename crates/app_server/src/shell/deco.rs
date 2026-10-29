@@ -539,9 +539,9 @@ fn draw_tab(palette: &Palette, key: &TabKey, tab: &TabLayout, s: f64) -> Pixmap 
     if space > 4 {
         let title = text::ellipsize(&key.title, fonts::TAB_SIZE, true, space as f32);
         let size = fonts::TAB_SIZE * s as f32;
-        let line = size * 1.25;
         let tx = px(BOX_INSET + BOX_SIZE + TITLE_GAP) as f32;
-        let ty = ((h as f32 - line) / 2.0).round() + (s as f32 * 0.5).round();
+        // Level with the boxes.
+        let ty = text::top_for_centre(top as f32 + px(BOX_SIZE) as f32 / 2.0, size, true);
         text::draw(&mut pixmap, &title, tx, ty, size, true, text_color);
     }
     pixmap

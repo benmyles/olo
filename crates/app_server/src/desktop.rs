@@ -104,6 +104,8 @@ impl WindowElement {
 #[derive(Debug)]
 pub struct Twitch {
     pub apps: bool,
+    /// Every workspace's (⌥Tab, ⌘\`), not just this one's (⌘Tab).
+    all: bool,
     /// (workspace, window ids), in workspace order, those on each display
     /// together when grouped by display.
     pub rows: Vec<(u32, Vec<u64>)>,
@@ -112,8 +114,8 @@ pub struct Twitch {
     displays: Vec<crate::twitcher::Display>,
     on: HashMap<u64, usize>,
     /// Tab's order: every cell (row, index), the most recently used
-    /// first, whatever its workspace, so ⌘Tab goes back and forth between
-    /// the last two apps wherever they are.
+    /// first, so ⌘Tab goes back and forth between the last two apps here,
+    /// and ⌥Tab between the last two wherever they are.
     order: Vec<(usize, usize)>,
     pub row: usize,
     pub index: usize,
@@ -266,6 +268,9 @@ impl<B: Backend + 'static> AnvilState<B> {
                     kept,
                     group: place.map(|(g, _)| g),
                     groupable: self.groupable(&w),
+                    tiled: Self::tile_state(&w).0.is_some(),
+                    floating: self.floats(&w),
+                    float: Self::float_override(&w),
                     output: self.display_of(&w).map(|o| o.name()),
                     tab: place.map(|(_, t)| t),
                     frame: None,
@@ -322,6 +327,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn tick(&mut self) {
         self.parked.0.borrow_mut().retain(|w| w.alive());
         self.sync_groups();
+        self.auto_tick();
         self.keep_children_above();
         self.note_recent();
         let infos = self.window_infos();
@@ -513,13 +519,14 @@ impl<B: Backend + 'static> AnvilState<B> {
         outputs.into_iter().enumerate().map(|(k, o)| (o, numbered(k))).collect()
     }
 
-    /// Twitcher's rows: for each workspace with any, its apps (one window
-    /// each, the one used last) or, for ⌘\`, the focused app's windows,
-    /// the most recently used first. Grouped by display
+    /// Twitcher's rows: for each workspace with any (`all`, else just
+    /// this one), its apps (one window each, the one used last) or, for
+    /// ⌘\`, the focused app's windows, the most recently used first.
+    /// Grouped by display
     /// (`twitch_displays`), each display's come together, in display
     /// order, and an app is there once for each display it has windows on;
     /// then also which displays have any, and each window's among them.
-    fn twitch_rows(&self, apps: bool) -> TwitchRows {
+    fn twitch_rows(&self, apps: bool, all: bool) -> TwitchRows {
         let app = self.focused_window().map(|w| w.app_id());
         let displays = self.twitch_displays();
         let column = |w: &WindowElement| {
@@ -528,7 +535,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         };
         let count = self.settings.workspace_count.max(1).max(self.workspace + 1);
         let (mut rows, mut on) = (Vec::new(), HashMap::new());
-        for ws in 0..count {
+        for ws in (0..count).filter(|&ws| all || ws == self.workspace) {
             let windows = if ws == self.workspace { self.workspace_windows() } else { self.parked_windows(ws) };
             let mut windows: Vec<(usize, WindowElement)> = windows.into_iter().map(|w| (column(&w), w)).collect();
             windows.sort_by_key(|(c, w)| (*c, self.recency(w.id())));
@@ -556,14 +563,14 @@ impl<B: Backend + 'static> AnvilState<B> {
         (rows, displays, on)
     }
 
-    /// ⌘Tab (`apps`) or ⌘\`: bring the next app, or the focused app's next
-    /// window, to the front, on whichever workspace it is, the most
-    /// recently used first. The order is fixed while ⌘ is held, so
-    /// repeated presses walk it; the arrows move about the rows
-    /// (`twitch_move`).
-    pub fn twitch_step(&mut self, apps: bool, back: bool) {
-        if self.twitch.as_ref().is_none_or(|t| t.apps != apps) {
-            let (rows, displays, on) = self.twitch_rows(apps);
+    /// ⌘Tab (`apps`, this workspace's) or ⌥Tab (`apps` and `all`), or
+    /// ⌘\` (`all`): bring the next app, or the focused app's next window,
+    /// to the front, on whichever workspace it is, the most recently used
+    /// first. The order is fixed while the key is held, so repeated
+    /// presses walk it; the arrows move about the rows (`twitch_move`).
+    pub fn twitch_step(&mut self, apps: bool, all: bool, back: bool) {
+        if self.twitch.as_ref().is_none_or(|t| (t.apps, t.all) != (apps, all)) {
+            let (rows, displays, on) = self.twitch_rows(apps, all);
             let mut order: Vec<(usize, usize)> =
                 rows.iter().enumerate().flat_map(|(r, row)| (0..row.1.len()).map(move |i| (r, i))).collect();
             if order.len() < 2 {
@@ -588,7 +595,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             let (row, index) = order[start];
             let stacks = vec![(self.workspace, self.space.elements().cloned().collect())];
             self.twitch =
-                Some(Twitch { apps, rows, displays, on, order, row, index, home: self.workspace, focus, stacks, unhidden: None });
+                Some(Twitch { apps, all, rows, displays, on, order, row, index, home: self.workspace, focus, stacks, unhidden: None });
         }
         let Some(t) = self.twitch.as_mut() else { return };
         let n = t.order.len();
@@ -1058,6 +1065,12 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         // Group Windows on again for an app: its windows taken out by hand
         // go back in too.
+        // Auto-tiling is kept as it is turned on and off, not from a
+        // client's copy (which may be older).
+        settings.tiling.auto = self.settings.tiling.auto.clone();
+        if settings.display.deskbar_on_every_display != self.settings.display.deskbar_on_every_display {
+            self.auto.changed();
+        }
         let regrouped: Vec<String> =
             self.settings.tiling.ungrouped_apps.iter().filter(|a| !settings.tiling.ungrouped_apps.contains(a)).cloned().collect();
         self.settings = settings;

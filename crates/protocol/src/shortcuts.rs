@@ -185,6 +185,8 @@ pub enum Shortcut {
     Restore,
     /// The focused window to the middle of its display.
     Center,
+    /// Float the focused window over auto-tiled ones, or tile it again.
+    Float,
     /// Hide the focused window (minimize it to Deskbar).
     Hide,
     /// Roll the focused window up to just its tab, or back down.
@@ -199,6 +201,9 @@ pub enum Shortcut {
     PreviousDisplay,
     /// Every window on the active display, in a grid.
     TileAll,
+    /// Auto-tiling on or off, for the workspace showing (and the active
+    /// display, with a Deskbar on every display).
+    AutoTile,
     /// Every window on the active display, arranged by a model for what
     /// each shows (Smart Tiling, Preferences ▸ AI).
     SmartTile,
@@ -326,13 +331,15 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::ZoomHorizontal, "zoom-horizontal", WINDOWS, "Zoom horizontally", &["Alt+Shift+Cmd+Left", "Alt+Shift+Cmd+Right"]),
     s(Shortcut::Restore, "restore", WINDOWS, "Back to its own size", &["Shift+Cmd+Backspace"]),
     s(Shortcut::Center, "center", WINDOWS, "Center", &["Ctrl+Cmd+C"]),
+    s(Shortcut::Float, "float-window", WINDOWS, "Float over the tiles, or tile", &["Ctrl+Alt+Cmd+F"]),
     s(Shortcut::Hide, "hide-window", WINDOWS, "Hide window", &["Cmd+M"]),
     s(Shortcut::RollUp, "roll-up", WINDOWS, "Roll up or down", &["Ctrl+Cmd+M"]),
-    s(Shortcut::NextTab, "next-tab", WINDOWS, "Next tab in the window", &["Alt+Tab"]),
-    s(Shortcut::PreviousTab, "previous-tab", WINDOWS, "Previous tab in the window", &["Alt+Shift+Tab"]),
+    s(Shortcut::NextTab, "next-tab", WINDOWS, "Next tab in the window", &["Ctrl+Tab"]),
+    s(Shortcut::PreviousTab, "previous-tab", WINDOWS, "Previous tab in the window", &["Ctrl+Shift+Tab"]),
     s(Shortcut::NextDisplay, "next-display", WINDOWS, "To the next display", &["Ctrl+Alt+Cmd+Right"]),
     s(Shortcut::PreviousDisplay, "previous-display", WINDOWS, "To the previous display", &["Ctrl+Alt+Cmd+Left"]),
     s(Shortcut::TileAll, "tile-all", ARRANGE, "Tile all windows on the display", &["Ctrl+Cmd+Return"]),
+    s(Shortcut::AutoTile, "auto-tiling", ARRANGE, "Auto-tiling on or off", &["Ctrl+Alt+Cmd+T"]),
     s(Shortcut::SmartTile, "smart-tile", ARRANGE, "Smart tile all windows on the display", &["Ctrl+Shift+Cmd+Return"]),
     s(Shortcut::ZoomAll, "zoom-all", ARRANGE, "Zoom or unzoom all windows on the display", &["Ctrl+Alt+Cmd+Return"]),
     s(Shortcut::CascadeAll, "cascade-all", ARRANGE, "Cascade all windows on the display", &["Ctrl+Cmd+Backslash"]),
@@ -447,11 +454,55 @@ pub struct TilingSettings {
     /// Apps whose windows aren't grouped (by app id): every other app's
     /// windows share one frame with a tab each (app_server's `groups`).
     pub ungrouped_apps: Vec<String>,
+    /// Where auto-tiling is on (see [`TilingSettings::auto_tiling`]).
+    /// app_server keeps it as it is turned on and off
+    /// (`Request::SetAutoTiling`): a copy sent back with the rest of the
+    /// settings is ignored.
+    pub auto: Vec<AutoTiling>,
 }
 
 impl Default for TilingSettings {
     fn default() -> Self {
-        TilingSettings { gap: 8, margin: 8, ungrouped_apps: Vec::new() }
+        TilingSettings { gap: 8, margin: 8, ungrouped_apps: Vec::new(), auto: Vec::new() }
+    }
+}
+
+/// Auto-tiling on or off for a workspace (counting from 0), or for one of
+/// its displays (`display`, its `display_key`) while there is a Deskbar on
+/// every display.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AutoTiling {
+    pub workspace: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display: Option<String>,
+    pub on: bool,
+}
+
+impl TilingSettings {
+    /// Whether auto-tiling is on for the display `display` (its key) of
+    /// `workspace`. With a Deskbar on every display (`each`), each display
+    /// has its own, as its Deskbar shows; one not set yet has the
+    /// workspace's. Otherwise the workspace's covers all its displays.
+    pub fn auto_tiling(&self, workspace: u32, display: &str, each: bool) -> bool {
+        let find = |d: Option<&str>| self.auto.iter().find(|a| a.workspace == workspace && a.display.as_deref() == d).map(|a| a.on);
+        each.then(|| find(Some(display))).flatten().or_else(|| find(None)).unwrap_or(false)
+    }
+
+    /// Turn auto-tiling on or off for `display` of `workspace` (with
+    /// `each`, as `auto_tiling` reads it), or for the whole workspace,
+    /// whose displays then have none of their own.
+    pub fn set_auto_tiling(&mut self, workspace: u32, display: &str, each: bool, on: bool) {
+        if each {
+            self.auto.retain(|a| !(a.workspace == workspace && a.display.as_deref() == Some(display)));
+            if self.auto_tiling(workspace, display, false) != on {
+                self.auto.push(AutoTiling { workspace, display: Some(display.to_owned()), on });
+            }
+        } else {
+            self.auto.retain(|a| a.workspace != workspace);
+            if on {
+                self.auto.push(AutoTiling { workspace, display: None, on });
+            }
+        }
     }
 }
 
@@ -483,6 +534,25 @@ mod tests {
         let ids: std::collections::HashSet<&str> = SHORTCUTS.iter().map(|i| i.id).collect();
         assert_eq!(ids.len(), SHORTCUTS.len());
         assert!(SHORTCUTS.iter().all(|i| GROUPS.contains(&i.group)));
+    }
+
+    #[test]
+    fn auto_tiling_by_workspace_and_display() {
+        let mut t = TilingSettings::default();
+        assert!(!t.auto_tiling(0, "eDP-1", false));
+        t.set_auto_tiling(1, "eDP-1", false, true);
+        assert!(t.auto_tiling(1, "eDP-1", false) && t.auto_tiling(1, "DP-2", false) && !t.auto_tiling(0, "eDP-1", false));
+        // A Deskbar on every display: each starts with the workspace's.
+        assert!(t.auto_tiling(1, "DP-2", true));
+        t.set_auto_tiling(1, "DP-2", true, false);
+        assert!(!t.auto_tiling(1, "DP-2", true) && t.auto_tiling(1, "eDP-1", true));
+        // One Deskbar again: the workspace's covers them all.
+        assert!(t.auto_tiling(1, "DP-2", false));
+        t.set_auto_tiling(1, "eDP-1", false, false);
+        assert!(t.auto.is_empty(), "{:?}", t.auto);
+        // Set to what it would be anyway: nothing kept.
+        t.set_auto_tiling(0, "eDP-1", true, false);
+        assert!(t.auto.is_empty());
     }
 
     #[test]

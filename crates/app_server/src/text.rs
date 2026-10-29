@@ -15,7 +15,7 @@ struct Fonts {
 fn fonts() -> &'static Mutex<Fonts> {
     static FONTS: OnceLock<Mutex<Fonts>> = OnceLock::new();
     FONTS.get_or_init(|| {
-        let system = FontSystem::new();
+        let system = font_system();
         let ui_family = olo_theme::fonts::UI
             .iter()
             .find(|name| {
@@ -29,6 +29,24 @@ fn fonts() -> &'static Mutex<Fonts> {
         tracing::info!(font = ui_family, "tab font");
         Mutex::new(Fonts { system, cache: SwashCache::new(), ui_family })
     })
+}
+
+/// The system's fonts, with Olo's own (data/fonts) in place of the
+/// system's copies of the same families: tabs in the faces the kit draws
+/// in, whatever the system has.
+fn font_system() -> FontSystem {
+    let (locale, mut db) = FontSystem::new().into_locale_and_db();
+    if let Some(dir) = olo_xdg::fonts_dir() {
+        let mut own = cosmic_text::fontdb::Database::new();
+        own.load_fonts_dir(&dir);
+        let ours: std::collections::HashSet<&str> = own.faces().flat_map(|f| f.families.iter().map(|(name, _)| name.as_str())).collect();
+        let theirs: Vec<_> = db.faces().filter(|f| f.families.iter().any(|(name, _)| ours.contains(name.as_str()))).map(|f| f.id).collect();
+        for id in theirs {
+            db.remove_face(id);
+        }
+        db.load_fonts_dir(&dir);
+    }
+    FontSystem::new_with_locale_and_db(locale, db)
 }
 
 /// Load fonts on a background thread so the first window doesn't stall.
@@ -57,6 +75,29 @@ pub fn measure(text: &str, size: f32, bold: bool) -> f32 {
     let mut fonts = fonts().lock().unwrap();
     let buffer = shaped(&mut fonts, text, size, bold);
     buffer.layout_runs().map(|r| r.line_w).fold(0.0, f32::max)
+}
+
+/// Where to `draw` text at `size` pixels so its capitals are centred on
+/// `centre` (pixels down the pixmap), its baseline on a whole pixel: from
+/// the face's own ascent and cap height, so whichever font the UI is in
+/// sits in the middle of a tab or badge.
+pub fn top_for_centre(centre: f32, size: f32, bold: bool) -> f32 {
+    let mut fonts = fonts().lock().unwrap();
+    let buffer = shaped(&mut fonts, "H", size, bold);
+    let Some(run) = buffer.layout_runs().next() else {
+        return (centre - size * 0.625).round();
+    };
+    let cap = run
+        .glyphs
+        .first()
+        .and_then(|g| fonts.system.get_font(g.font_id, g.font_weight))
+        .map(|f| {
+            let m = f.as_swash().metrics(&[]);
+            m.cap_height / f32::from(m.units_per_em)
+        })
+        .unwrap_or(0.7);
+    // `draw` puts the baseline at the top plus `line_y`, cut to a pixel.
+    (centre + cap * size / 2.0).round() - run.line_y.trunc()
 }
 
 /// Truncate with an ellipsis so the text fits in `max_width` pixels.
@@ -110,4 +151,32 @@ pub fn draw(pixmap: &mut Pixmap, text: &str, x: f32, y: f32, size: f32, bold: bo
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A capital drawn at `top_for_centre` has its middle there, give or
+    /// take the half pixel the baseline is rounded to, at every scale.
+    #[test]
+    fn capitals_centre_where_asked() {
+        for s in [1.0f32, 1.25, 1.5, 1.75, 2.0] {
+            let size = olo_theme::fonts::TAB_SIZE * s;
+            let (w, h) = (40u32, (21.0 * s).round() as u32);
+            let centre = h as f32 / 2.0;
+            let mut pm = Pixmap::new(w, h).unwrap();
+            draw(&mut pm, "H", 2.0, top_for_centre(centre, size, true), size, true, [0, 0, 0, 255]);
+            // The stem: the column with the most ink, weighed by coverage.
+            let alpha = |x: u32, y: u32| f32::from(pm.data()[((y * w + x) * 4 + 3) as usize]) / 255.0;
+            let stem = (0..w).max_by(|&a, &b| {
+                let sum = |x| (0..h).map(|y| alpha(x, y)).sum::<f32>();
+                sum(a).total_cmp(&sum(b))
+            });
+            let x = stem.unwrap();
+            let ink: f32 = (0..h).map(|y| alpha(x, y)).sum();
+            let middle = (0..h).map(|y| (y as f32 + 0.5) * alpha(x, y)).sum::<f32>() / ink;
+            assert!((middle - centre).abs() <= 0.5, "at {s}×, the H's middle is {middle}, asked {centre}");
+        }
+    }
 }

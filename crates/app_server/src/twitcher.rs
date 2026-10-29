@@ -1,6 +1,7 @@
-//! Twitcher: the strip of app icons shown while ⌘Tab / ⌘\` is held, as on
-//! BeOS, a row for each workspace with windows on it (numbered at the
-//! left when there are more than one). With a Deskbar on every display,
+//! Twitcher: the strip of app icons shown while ⌘Tab, ⌥Tab or ⌘\` is
+//! held, as on BeOS: ⌘Tab's this workspace's apps, ⌥Tab's a row for each
+//! workspace with windows on it (numbered at the left when there are more
+//! than one). With a Deskbar on every display,
 //! each display's windows are a column of their own, in an etched box
 //! named across its top edge as a BeOS BBox is, the displays in the order
 //! they stand on the desk; the box of the display a copy of the panel is
@@ -162,11 +163,11 @@ fn info(app_id: &str) -> Option<AppInfo> {
     cache().lock().unwrap().get(app_id).cloned().flatten()
 }
 
-/// One cell: an app (⌘Tab) or a window (⌘\`).
+/// One cell: an app (⌘Tab, ⌥Tab) or a window (⌘\`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
     pub app_id: String,
-    /// The window title for ⌘\`; the app's name is used for ⌘Tab.
+    /// The window title for ⌘\`; the app's name is used for ⌘Tab and ⌥Tab.
     pub title: Option<String>,
     /// Its display's place in [`Shown::displays`] (0 when not grouped).
     pub display: usize,
@@ -417,8 +418,8 @@ fn draw(p: &Palette, shown: &Shown, here: Option<usize>, s: f64) -> Pixmap {
             let n = (row.workspace + 1).to_string();
             let tw = text::measure(&n, size, true);
             let color = if r == shown.row { p.panel_text } else { p.tab_text_unfocused };
-            let y = px(top) as f32 + (px(CELL) as f32 - size * 1.25) / 2.0;
-            text::draw(&mut pm, &n, (px(PAD) as f32 + (px(GUTTER) as f32 - tw) / 2.0).round(), y.round(), size, true, color);
+            let y = text::top_for_centre(px(top) as f32 + px(CELL) as f32 / 2.0, size, true);
+            text::draw(&mut pm, &n, (px(PAD) as f32 + (px(GUTTER) as f32 - tw) / 2.0).round(), y, size, true, color);
         }
         for (d, &(x, cw)) in lay.columns.iter().enumerate() {
             let cells: Vec<usize> = (0..row.entries.len()).filter(|&i| row.entries[i].display == d || !grouped).collect();
@@ -438,8 +439,8 @@ fn draw(p: &Palette, shown: &Shown, here: Option<usize>, s: f64) -> Pixmap {
             .unwrap_or_else(|| fallback_name(&e.app_id));
         let label = text::ellipsize(&label, size, true, (px(lw - 2 * PAD)) as f32);
         let tw = text::measure(&label, size, true);
-        let y = px(lh - PAD - LABEL) as f32 + (px(LABEL) as f32 - size * 1.25) / 2.0;
-        text::draw(&mut pm, &label, ((w as f32 - tw) / 2.0).round(), y.round(), size, true, p.panel_text);
+        let y = text::top_for_centre(px(lh - PAD - LABEL) as f32 + px(LABEL) as f32 / 2.0, size, true);
+        text::draw(&mut pm, &label, ((w as f32 - tw) / 2.0).round(), y, size, true, p.panel_text);
     }
     pm
 }
@@ -544,9 +545,9 @@ fn display_box(pm: &mut Pixmap, p: &Palette, (x, bw): (i32, i32), (top, bottom):
     fill(pm, sx + (sw - neck) / 2, sy + sh, neck, u, ink);
     let foot = px(7);
     fill(pm, sx + (sw - foot) / 2, sy + sh + u, foot, u, ink);
-    let ty = y0 as f32 - size * 1.25 / 2.0;
+    let ty = text::top_for_centre(y0 as f32, size, true);
     let color = if here { p.panel_text } else { p.tab_text_unfocused };
-    text::draw(pm, name, (sx + sw + px(SCREEN_GAP)) as f32, ty.round(), size, true, color);
+    text::draw(pm, name, (sx + sw + px(SCREEN_GAP)) as f32, ty, size, true, color);
 }
 
 #[cfg(test)]

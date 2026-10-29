@@ -319,7 +319,7 @@ impl Screenshot {
             }
         }
         if choose_folder {
-            let id = cx.open_window(WindowOptions::new("Choose a Folder", PANEL_SIZE.0, PANEL_SIZE.1).min_size(400, 300));
+            let id = cx.open_window(WindowOptions::new("Choose a Folder", PANEL_SIZE.0, PANEL_SIZE.1).min_size(400, 300).floating());
             self.windows.insert(id, Win::Folder(FilePanel::folder(self.settings.folder())));
         }
 

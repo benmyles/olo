@@ -145,14 +145,25 @@ pub(crate) fn mapped(path: &Path) -> Option<&'static [u8]> {
     Some(data)
 }
 
-/// System fonts, loaded once per process and shared by every window.
+/// Olo's fonts (data/fonts), then the system's for what they lack,
+/// loaded once per process and shared by every window.
 pub fn font_definitions() -> FontDefinitions {
     static DEFS: OnceLock<FontDefinitions> = OnceLock::new();
     DEFS.get_or_init(|| {
+        // Olo's own faces first, so it looks the same whatever the system
+        // has; the system's for scripts and emoji they don't cover, or in
+        // a tree without them.
+        let mut own = fontdb::Database::new();
+        if let Some(dir) = olo_xdg::fonts_dir() {
+            own.load_fonts_dir(dir);
+        }
         let mut db = fontdb::Database::new();
         db.load_system_fonts();
+        let face = |families: &[&str], weight: u16, style: fontdb::Style| {
+            system_face(&own, families, weight, style).or_else(|| system_face(&db, families, weight, style))
+        };
         let mut defs = FontDefinitions::default();
-        let mut add = |key: &str, face: Option<(Cow<'static, [u8]>, u32)>| -> bool {
+        let mut add = |key: &str, face: Option<(Cow<'static, [u8]>, u32)>, weight: u16| -> bool {
             let Some((data, index)) = face else {
                 return false;
             };
@@ -161,49 +172,61 @@ pub fn font_definitions() -> FontDefinitions {
                 Cow::Owned(d) => FontData::from_owned(d),
             };
             fd.index = index;
+            // Noto's faces are variable: one file, every weight on its
+            // axis (a face without one ignores this).
+            fd.tweak.coords = egui::epaint::text::VariationCoords::new([(b"wght", f32::from(weight))]);
             // Hinted vertically only ("slight", as FreeType, GTK 4.16 and
             // Chrome do it), with egui's subpixel positioning across: stems
             // and the baseline on device pixels at any scale, and shapes and
-            // spacing as designed. Nimbus Sans (CFF) and JetBrains Mono (its
-            // own instructions) hint that way anyway; this keeps fallback
-            // fonts the autohinter does (symbols, CJK) the same.
+            // spacing as designed. Noto ships unhinted, so this is the
+            // autohinter's, the same for every face.
             fd.tweak.hinting = Some(true);
             fd.tweak.hinting_target = egui::epaint::text::HintingTarget::Smooth(egui::epaint::text::SmoothHinting { light: true, ..Default::default() });
             defs.font_data.insert(key.to_owned(), Arc::new(fd));
             true
         };
-        let ui = add("ui", system_face(&db, olo_theme::fonts::UI, 400, fontdb::Style::Normal));
-        let ui_bold = add("ui-bold", system_face(&db, olo_theme::fonts::UI, 700, fontdb::Style::Normal));
-        let ui_italic = add("ui-italic", system_face(&db, olo_theme::fonts::UI, 400, fontdb::Style::Italic));
-        let mono = add("mono", system_face(&db, olo_theme::fonts::MONO, 400, fontdb::Style::Normal));
-        let mono_bold = add("mono-bold", system_face(&db, olo_theme::fonts::MONO, 700, fontdb::Style::Normal));
-        let mono_italic = add("mono-italic", system_face(&db, olo_theme::fonts::MONO, 400, fontdb::Style::Italic));
-        // Wide Unicode coverage (arrows, ⌘, box drawing, ...).
-        let fallback = add("fallback", system_face(&db, &["DejaVu Sans", "Noto Sans"], 400, fontdb::Style::Normal));
-        let symbols = add("symbols", system_face(&db, &["Noto Sans Symbols 2", "Noto Sans Symbols"], 400, fontdb::Style::Normal));
+        let (upright, slanted) = (fontdb::Style::Normal, fontdb::Style::Italic);
+        let ui = add("ui", face(olo_theme::fonts::UI, 400, upright), 400);
+        let ui_bold = add("ui-bold", face(olo_theme::fonts::UI, 700, upright), 700);
+        let ui_italic = add("ui-italic", face(olo_theme::fonts::UI, 400, slanted), 400);
+        let mono = add("mono", face(olo_theme::fonts::MONO, 400, upright), 400);
+        let mono_bold = add("mono-bold", face(olo_theme::fonts::MONO, 700, upright), 700);
+        let mono_italic = add("mono-italic", face(olo_theme::fonts::MONO, 400, slanted), 400);
+        // Symbols Noto Sans lacks (arrows, ⌘ ⌥ ⇧ ⌃, ▸, ✓), each face in
+        // turn; then DejaVu Sans, if the system has it, for anything else.
+        let symbols: Vec<String> = olo_theme::fonts::SYMBOLS
+            .iter()
+            .enumerate()
+            .filter_map(|(i, name)| {
+                let key = format!("symbols-{i}");
+                add(&key, face(&[name], 400, upright), 400).then_some(key)
+            })
+            .collect();
+        let fallback = add("fallback", system_face(&db, &["DejaVu Sans"], 400, upright), 400);
         // Chinese, Japanese and Korean, then emoji (monochrome: egui can't
         // draw colour glyphs; see `emoji` for those).
-        let cjk = add("cjk", system_face(&db, &["Noto Sans Mono CJK JP", "Noto Sans CJK JP"], 400, fontdb::Style::Normal));
-        let emoji = add("emoji", system_face(&db, &["Noto Emoji"], 400, fontdb::Style::Normal));
+        let cjk = add("cjk", system_face(&db, &["Noto Sans Mono CJK JP", "Noto Sans CJK JP"], 400, upright), 400);
+        let emoji = add("emoji", system_face(&db, &["Noto Emoji"], 400, upright), 400);
         crate::emoji::locate(&db);
 
+        // After the primary face: the symbols, the other one of ui and
+        // mono (Noto Sans Mono has the box drawing Noto Sans lacks), then
+        // the system's.
+        let rest = |other: (bool, &str)| {
+            let mut v = symbols.clone();
+            for (have, key) in [other, (fallback, "fallback"), (cjk, "cjk"), (emoji, "emoji")] {
+                if have {
+                    v.push(key.to_owned());
+                }
+            }
+            v
+        };
         let prop = defs.families.entry(FontFamily::Proportional).or_default();
         let mut front = Vec::new();
         if ui {
             front.push("ui".to_owned());
         }
-        if fallback {
-            front.push("fallback".to_owned());
-        }
-        if symbols {
-            front.push("symbols".to_owned());
-        }
-        if cjk {
-            front.push("cjk".to_owned());
-        }
-        if emoji {
-            front.push("emoji".to_owned());
-        }
+        front.extend(rest((mono, "mono")));
         prop.splice(0..0, front.clone());
 
         let monos = defs.families.entry(FontFamily::Monospace).or_default();
@@ -211,11 +234,7 @@ pub fn font_definitions() -> FontDefinitions {
         if mono {
             mfront.push("mono".to_owned());
         }
-        for (have, key) in [(fallback, "fallback"), (symbols, "symbols"), (cjk, "cjk"), (emoji, "emoji")] {
-            if have {
-                mfront.push(key.to_owned());
-            }
-        }
+        mfront.extend(rest((false, "")));
         monos.splice(0..0, mfront);
         for family in [FontFamily::Proportional, FontFamily::Monospace] {
             let chain = defs.families.remove(&family).unwrap_or_default();
@@ -256,14 +275,17 @@ pub fn font_definitions() -> FontDefinitions {
     .clone()
 }
 
-/// The faces we load that [`on_baseline`] moves.
-const ON_BASELINE: [&str; 5] = ["ui", "fallback", "symbols", "cjk", "emoji"];
+/// Whether `face` is one we load that [`on_baseline`] moves.
+fn on_baseline_face(face: &str) -> bool {
+    matches!(face, "ui" | "mono" | "fallback" | "cjk" | "emoji") || face.starts_with("symbols-")
+}
 
 /// `chain` (a family's faces, primary first) with each of our fallback
 /// faces swapped for a copy shifted onto the primary's baseline. egui
-/// centres a fallback face's line in the primary's instead, so DejaVu's
-/// taller line put ▸, ⌘ and → a few pixels below the Nimbus Sans text
-/// around them. The copies share the font bytes.
+/// centres a fallback face's line in the primary's instead, so a face
+/// with a taller or shorter line (DejaVu's, Noto Sans Math's) put ▸, ⌘
+/// and → a few pixels off the text around them. The copies share the
+/// font bytes.
 fn on_baseline(defs: &mut FontDefinitions, chain: Vec<String>) -> Vec<String> {
     let Some(primary) = chain.first().cloned() else {
         return chain;
@@ -274,7 +296,7 @@ fn on_baseline(defs: &mut FontDefinitions, chain: Vec<String>) -> Vec<String> {
     let mut out = vec![primary.clone()];
     for key in chain.into_iter().skip(1) {
         let face = key.split('@').next().unwrap_or(&key).to_owned();
-        let data = defs.font_data.get(&face).filter(|_| ON_BASELINE.contains(&face.as_str())).cloned();
+        let data = defs.font_data.get(&face).filter(|_| on_baseline_face(&face)).cloned();
         let Some((data, (a, h))) = data.and_then(|d| em_metrics(&d).map(|m| (d, m))) else {
             out.push(key);
             continue;
@@ -899,8 +921,9 @@ pub fn vgradient(p: &Painter, r: Rect, top: Color32, bottom: Color32) {
 
 // ---- text placement -------------------------------------------------------
 
-/// Cap height as a fraction of the font size (Helvetica / Nimbus Sans).
-pub(crate) const CAP_HEIGHT: f32 = 0.718;
+/// Cap height as a fraction of the font size (Noto Sans's: 714 of its
+/// 1000 units).
+pub(crate) const CAP_HEIGHT: f32 = 0.714;
 
 /// Distance from a galley's top to its first baseline: the primary
 /// face's, even when the line starts with a glyph from a fallback face
@@ -1133,7 +1156,7 @@ mod tests {
         assert_eq!(ink_on(Color32::from_rgb(0x61, 0x1f, 0x69)), Color32::WHITE);
     }
 
-    /// "▸ Developer ▸ Integrate", at 2x.
+    /// `text` laid out in the plain font, at 2x.
     fn menu_path(text: &str) -> Option<Arc<egui::Galley>> {
         let ctx = Context::default();
         ctx.set_fonts(all_font_definitions());
@@ -1145,19 +1168,20 @@ mod tests {
             galley = Some(ui.fonts_mut(|f| f.layout_no_wrap(text.to_owned(), font, Color32::BLACK)));
         })
         .drop_without_applying_deltas();
-        // Without the system fonts (DejaVu Sans) there is nothing to check.
-        font_definitions().font_data.contains_key("fallback@ui").then_some(galley?)
+        // Without Olo's fonts (Noto Sans Symbols 2) there is nothing to check.
+        font_definitions().font_data.contains_key("symbols-1@ui").then_some(galley?)
     }
 
     #[test]
     fn fallback_glyphs_sit_on_the_baseline() {
-        let Some(galley) = menu_path("Settings ▸ Developer") else { return };
+        let Some(galley) = menu_path("Settings ⌘ Developer") else { return };
         let glyphs = &galley.rows[0].row.glyphs;
         let letter = glyphs.iter().find(|g| g.chr == 'S').unwrap();
-        let arrow = glyphs.iter().find(|g| g.chr == '▸').unwrap();
-        // DejaVu's ▸ stands on the baseline, as the letters do.
-        let bottom = arrow.pos.y + arrow.uv_rect.offset.y + arrow.uv_rect.size.y;
-        assert!((bottom - letter.pos.y).abs() <= 0.5, "▸ ends at {bottom}, the baseline is {}", letter.pos.y);
+        let command = glyphs.iter().find(|g| g.chr == '⌘').unwrap();
+        // Noto Sans Symbols 2's ⌘ stands on the baseline, as the letters
+        // do (its ▸ is centred on the x-height, by design).
+        let bottom = command.pos.y + command.uv_rect.offset.y + command.uv_rect.size.y;
+        assert!((bottom - letter.pos.y).abs() <= 0.5, "⌘ ends at {bottom}, the baseline is {}", letter.pos.y);
     }
 
     #[test]

@@ -3,6 +3,12 @@
 //! main display, shows every application; with Preferences ▸ Displays ▸
 //! Deskbar on every display, each display has its own, showing the
 //! applications with windows there (and only those windows).
+//!
+//! With more than one workspace, the applications are under the heading
+//! of the workspace showing, those with windows there; the rest are under
+//! Other Workspaces, folded (as BOutlineListView folds), each under its
+//! own workspace's heading when unfolded. Clicking a heading goes to that
+//! workspace.
 
 mod status;
 
@@ -27,6 +33,8 @@ use olo_protocol::{
 const WIDTH: f32 = olo_kit::metrics::DESKBAR_WIDTH;
 const TILE_H: f32 = 30.0;
 const ROW_H: f32 = 24.0;
+/// A workspace's heading, and Other Workspaces' latch row.
+const HEADING_H: f32 = 20.0;
 const ICON: f32 = 16.0;
 /// The tray: the date and time on a row of their own, then a recessed
 /// well of status icons, each a 16 px glyph on a 22 px grid (so 6 px
@@ -36,8 +44,9 @@ const CLOCK_H: f32 = 20.0;
 /// Inset of the tray's text and well from the Deskbar's edges.
 const TRAY_INSET: f32 = 4.0;
 const TRAY_PITCH: f32 = 22.0;
-/// Below the well, before the applications.
-const TRAY_FOOT: f32 = 3.0;
+/// Below the well, before the applications (on the 2-point grid, so
+/// the rows below land on pixels at 1.5×).
+const TRAY_FOOT: f32 = 4.0;
 /// The tray's height with `rows` rows of icons.
 fn tray_height(rows: usize) -> f32 {
     CLOCK_H + rows as f32 * TRAY_PITCH + TRAY_FOOT
@@ -82,8 +91,8 @@ struct Settings {
     clock: olo_protocol::ClockSettings,
     /// Whether the Olo menu shows icons.
     menu_icons: bool,
-    /// The apps whose windows aren't grouped.
-    ungrouped: Vec<String>,
+    /// Grouping, and where auto-tiling is on.
+    tiling: olo_protocol::TilingSettings,
     /// The person's shortcut keys.
     keys: ShortcutSettings,
     /// A Deskbar on every display.
@@ -151,8 +160,14 @@ struct Deskbar {
     /// The window that last had the focus: still "this window" for the
     /// Olo menu's commands while the menu holds the keyboard.
     last_focused: Option<u64>,
-    /// Apps whose windows aren't grouped (`TilingSettings::ungrouped_apps`).
-    ungrouped: Vec<String>,
+    /// Apps whose windows aren't grouped (`TilingSettings::ungrouped_apps`),
+    /// and where auto-tiling is on.
+    tiling: olo_protocol::TilingSettings,
+    /// Other Workspaces unfolded.
+    others_open: bool,
+    /// The display of the Deskbar whose Olo menu is open (its Auto-Tiling
+    /// is that display's).
+    menu_output: Option<String>,
     /// The person's changes to app_server's shortcuts, for the keys the
     /// Olo menu shows.
     keys: ShortcutSettings,
@@ -234,6 +249,23 @@ impl Deskbar {
         bar.output.clone().or_else(|| self.main_output())
     }
 
+    /// Whether auto-tiling is on for the workspace showing on `bar`'s
+    /// display.
+    fn auto_tiling(&self, bar: &Bar) -> bool {
+        let output = bar.output.clone().or_else(|| self.main_output());
+        let key = self.outputs.iter().find(|o| Some(&o.name) == output.as_ref()).map(|o| o.key.clone()).unwrap_or_default();
+        self.tiling.auto_tiling(self.workspace.0, &key, self.every_display)
+    }
+
+    /// Auto-tiling on or off on `output`'s display (the active one for
+    /// None), for the workspace showing; at once here too, so the tray
+    /// shows it before app_server's answer.
+    fn set_auto_tiling(&mut self, output: Option<String>, on: bool) {
+        let key = self.outputs.iter().find(|o| Some(&o.name) == output.as_ref()).map(|o| o.key.clone()).unwrap_or_default();
+        self.tiling.set_auto_tiling(self.workspace.0, &key, self.every_display, on);
+        request(Request::SetAutoTiling { on: Some(on), workspace: None, output });
+    }
+
     fn main_output(&self) -> Option<String> {
         self.outputs.iter().find(|o| o.main).map(|o| o.name.clone())
     }
@@ -273,10 +305,12 @@ impl Deskbar {
         }
     }
 
-    fn teams(&mut self, on: Option<&str>) -> Vec<Team> {
+    /// The applications with windows on display `on` (all for None), and
+    /// on workspace `ws` (any for None), each with those windows.
+    fn teams(&mut self, on: Option<&str>, ws: Option<u32>) -> Vec<Team> {
         let mut teams: Vec<Team> = Vec::new();
         for key in self.order.clone() {
-            let windows: Vec<WindowInfo> = self.windows_on(on).filter(|w| team_key(w) == key).cloned().collect();
+            let windows: Vec<WindowInfo> = self.windows_on(on).filter(|w| team_key(w) == key && ws.is_none_or(|ws| w.workspace == ws)).cloned().collect();
             if windows.is_empty() {
                 continue;
             }
@@ -313,13 +347,13 @@ impl Deskbar {
         self.windows = windows;
     }
 
-    fn olo_menu(&self) -> Menu {
-        let mut menu = self.olo_menu_with_icons();
+    fn olo_menu(&self, auto_tiling: bool) -> Menu {
+        let mut menu = self.olo_menu_with_icons(auto_tiling);
         add_keys(&mut menu, &self.keys);
         if self.menu_icons { menu } else { without_icons(menu) }
     }
 
-    fn olo_menu_with_icons(&self) -> Menu {
+    fn olo_menu_with_icons(&self, auto_tiling: bool) -> Menu {
         let mut apps = Menu::new("Applications");
         // Only the ones that are installed (the suite is still growing).
         for (bin, name, icon) in OUR_APPS.iter().filter(|(bin, _, _)| olo_kit::find_program(bin).is_some()) {
@@ -372,7 +406,7 @@ impl Deskbar {
             .item("Find…", "find", None)
             .icon("query")
             .separator()
-            .submenu(self.arrange_menu())
+            .submenu(self.arrange_menu(auto_tiling))
             .icon("display")
             .submenu(self.workspaces_menu())
             .icon("workspaces")
@@ -407,9 +441,12 @@ impl Deskbar {
 
     /// The arranging commands app_server's shortcuts do (`arrange:` and a
     /// shortcut id), for the active display.
-    fn arrange_menu(&self) -> Menu {
+    fn arrange_menu(&self, auto_tiling: bool) -> Menu {
         let focused = self.focused_window().is_some();
         Menu::new("Window Arrangement")
+            .item("Auto-Tiling", "arrange:auto-tiling", None)
+            .checked(auto_tiling)
+            .separator()
             .item("Tile All", "arrange:tile-all", None)
             .item("Smart Tile", "arrange:smart-tile", None)
             .item("Zoom All", "arrange:zoom-all", None)
@@ -466,7 +503,7 @@ impl Deskbar {
             .item("Close All", "close-all", None)
             .separator()
             .item("Group Windows", "group-windows", None)
-            .checked(!self.ungrouped.contains(&app))
+            .checked(!self.tiling.ungrouped_apps.contains(&app))
             .enabled(!app.is_empty())
     }
 
@@ -546,6 +583,12 @@ impl Deskbar {
             Some(("run", bin)) => spawn(bin),
             Some(("pref", panel)) => spawn(&format!("olo-preferences {panel}")),
             Some(("caff", arg)) => self.caffeine_command(arg),
+            // For the display of the Deskbar it was chosen on.
+            Some(("arrange", "auto-tiling")) => {
+                let output = self.menu_output.clone();
+                let on = self.bars.iter().find(|b| b.output == output || (output.is_none() && b.output.is_none())).map(|b| self.auto_tiling(b)).unwrap_or(false);
+                self.set_auto_tiling(output, !on);
+            }
             Some(("arrange", id)) => request(Request::RunShortcut { id: id.into(), window: self.focused_window() }),
             Some(("notif", "history")) => spawn("olo-notifications --history"),
             Some(("notif", arg)) => self.do_not_disturb(arg),
@@ -611,7 +654,7 @@ impl Deskbar {
         // (ones that came before olo-wlproxy, or without it) don't
         // survive.
         let closing: Vec<String> = if self.status.upgrade.iter().any(|p| p == "olo-app-server") {
-            self.teams(None).into_iter().filter(|t| t.windows.iter().any(|w| !w.kept && our_app(&w.app_id).is_none())).map(|t| t.name).collect()
+            self.teams(None, None).into_iter().filter(|t| t.windows.iter().any(|w| !w.kept && our_app(&w.app_id).is_none())).map(|t| t.name).collect()
         } else {
             Vec::new()
         };
@@ -635,12 +678,143 @@ impl Deskbar {
         }
     }
 
+    /// An application's row at `row`: its icon and name, recessed while
+    /// it has the focus. A click brings it forward (with several windows,
+    /// opens the menu of them); files dropped on it open with it; dragged
+    /// out, it is a link to the program. Under workspace `ws`'s heading,
+    /// it is its windows there.
+    #[allow(clippy::too_many_arguments)]
+    fn team_row(&mut self, cx: &mut Cx, w: WindowId, ui: &mut egui::Ui, row: Rect, team: &Team, display: Option<&str>, ws: Option<u32>) {
+        let pal = style::palette(ui.ctx());
+        let painter = ui.painter().clone();
+        let pointer = ui.input(|i| i.pointer.hover_pos());
+        let hover = olo_kit::dnd::hover(ui.ctx()).filter(|h| h.has_files() && h.actions.copy && !h.has(olo_kit::dnd::LINK_TYPE));
+        // Files dragged onto an application open with it.
+        let drop_here = hover.as_ref().is_some_and(|h| row.contains(h.pos)) && self.handler(&team.key).is_some();
+        if drop_here {
+            olo_kit::dnd::accept(ui.ctx(), format!("team:{}", team.key), "text/uri-list", olo_kit::dnd::Action::Copy);
+        }
+        let id = egui::Id::unique(("team", ws, &team.key));
+        let resp = ui.interact(row, id, Sense::click_and_drag());
+        if resp.drag_started()
+            && let Some(data) = self.app_drag(ui.ctx(), team)
+        {
+            cx.start_drag(w, data);
+        }
+        let open = menu::is_open(ui.ctx(), id);
+        // A click brings an application with one window forward; with
+        // more it opens the menu of its windows to choose from, as the
+        // right button (or holding the left) always does.
+        let several = team.windows.len() > 1;
+        if resp.clicked() && !open && !several {
+            self.bring_forward(&team.key, display, ws);
+        }
+        if ((resp.clicked() && several) || resp.secondary_clicked() || resp.long_touched()) && !open {
+            menu::request_popup(ui.ctx(), MenuRequest { menu: self.team_menu(team), source: id, anchor: MenuAnchor::Below(row), selected: None });
+        }
+        if let Some(cmd) = menu::take_chosen(ui.ctx(), id) {
+            self.team_command(&team.key, &cmd, display, ws);
+        }
+        let focused = team.windows.iter().any(|w| w.focused);
+        let hidden = team.windows.iter().all(|w| w.minimized);
+        let hover = pointer.is_some_and(|p| row.contains(p));
+        if open || drop_here {
+            painter.rect_filled(row, 0.0, c(pal.menu_selected_background));
+        } else if focused {
+            // The active application sits slightly recessed.
+            painter.rect_filled(row, 0.0, shade(&pal, pal.panel_background, 1.1));
+            hline(&painter, row.left(), row.right(), row.top(), shade(&pal, pal.panel_background, 1.25));
+        } else if hover {
+            painter.rect_filled(row, 0.0, c(olo_theme_tint(pal.panel_background, 0.8)));
+        }
+        hline_above(&painter, row.left(), row.right(), row.bottom(), shade(&pal, pal.panel_background, 1.14));
+        let icon_r = Rect::from_center_size(pos2(row.left() + 6.0 + ICON / 2.0, row.center().y), vec2(ICON, ICON));
+        let tint = if hidden { Color32::from_white_alpha(120) } else { Color32::WHITE };
+        let drawn = team.icon.as_deref().is_some_and(|i| icons::paint_tinted(&painter, icon_r, i, tint));
+        if !drawn {
+            icons::paint_tinted(&painter, icon_r, "application", tint);
+        }
+        let text_color = if open || drop_here {
+            c(pal.menu_selected_item_text)
+        } else if hidden {
+            style::disabled_text(&pal)
+        } else {
+            c(pal.panel_text)
+        };
+        let font = if focused { egui::FontId::new(style::PLAIN_SIZE, style::bold()) } else { style::plain_font() };
+        let max_w = row.right() - (icon_r.right() + 8.0) - 6.0;
+        let mut job = egui::text::LayoutJob::simple_singleline(team.name.clone(), font, text_color);
+        job.wrap = egui::text::TextWrapping::truncate_at_width(max_w);
+        let g = painter.layout_job(job);
+        let pos = style::text_origin(ui.ctx(), &g, icon_r.right() + 8.0, row.center().y, style::PLAIN_SIZE);
+        painter.galley(pos, g, text_color);
+    }
+
+    /// Workspace `ws`'s heading at `r`, its applications under it: its
+    /// name, set in the tray's tone as the date above is. A click goes
+    /// there; on the workspace showing (and a right-click on any), the
+    /// Workspaces menu.
+    fn workspace_heading(&mut self, cx: &mut Cx, ui: &mut egui::Ui, r: Rect, ws: u32) {
+        let pal = style::palette(ui.ctx());
+        let painter = ui.painter().clone();
+        let id = egui::Id::unique(("workspace", ws));
+        let name = format!("Workspace {}", ws + 1);
+        let here = ws == self.workspace.0;
+        let resp = ui.interact(r, id, Sense::click());
+        resp.widget_info(|| egui::WidgetInfo { selected: Some(here), ..egui::WidgetInfo::labeled(egui::Role::Button, true, name.clone()) });
+        let open = menu::is_open(ui.ctx(), id);
+        if !open && (resp.secondary_clicked() || (resp.clicked() && here)) {
+            menu::request_popup(ui.ctx(), MenuRequest { menu: self.workspaces_menu(), source: id, anchor: MenuAnchor::Below(r), selected: None });
+        } else if resp.clicked() && !open {
+            request(Request::SwitchWorkspace { index: ws });
+        }
+        if let Some(cmd) = menu::take_chosen(ui.ctx(), id) {
+            self.run_command(cx, &cmd);
+        }
+        let fill = if open {
+            c(pal.menu_selected_background)
+        } else if resp.hovered() && !here {
+            c(olo_theme_tint(pal.panel_background, 0.8))
+        } else {
+            shade(&pal, pal.panel_background, 1.03)
+        };
+        painter.rect_filled(r, 0.0, fill);
+        hline_above(&painter, r.left(), r.right(), r.bottom(), shade(&pal, pal.panel_background, 1.14));
+        let ink = if open { c(pal.menu_selected_item_text) } else { c(pal.panel_text) };
+        style::label(&painter, r.left() + TRAY_INSET + 5.0, r.center().y, egui::Align::Min, name, egui::FontId::new(style::SMALL_SIZE, style::bold()), ink);
+    }
+
+    /// Other Workspaces at `r`: a latch (BOutlineListView's) that unfolds
+    /// the applications on the other workspaces, under their headings.
+    fn others_latch(&mut self, ui: &mut egui::Ui, r: Rect) {
+        let pal = style::palette(ui.ctx());
+        let painter = ui.painter().clone();
+        let open = self.others_open;
+        let resp = ui.interact(r, egui::Id::unique("other-workspaces"), Sense::click());
+        resp.widget_info(|| egui::WidgetInfo { selected: Some(open), ..egui::WidgetInfo::labeled(egui::Role::Button, true, "Other Workspaces") });
+        if resp.clicked() {
+            self.others_open = !open;
+            ui.ctx().request_repaint();
+        }
+        if resp.hovered() {
+            painter.rect_filled(r, 0.0, c(olo_theme_tint(pal.panel_background, 0.8)));
+        }
+        hline_above(&painter, r.left(), r.right(), r.bottom(), shade(&pal, pal.panel_background, 1.14));
+        let ink = c(pal.panel_text);
+        let dim = style::disabled_text(&pal);
+        style::latch(&painter, Rect::from_center_size(pos2(r.left() + 6.0 + ICON / 2.0, r.center().y), vec2(10.0, 10.0)), open, if resp.hovered() { ink } else { dim });
+        style::label(&painter, r.left() + 6.0 + ICON + 8.0, r.center().y, egui::Align::Min, "Other Workspaces", style::small_font(), ink);
+    }
+
     /// Show an application's windows on this workspace (minimized ones
     /// too), the one it last had focused in front; with none here, go to
     /// its newest.
-    fn bring_forward(&self, team_key: &str, on: Option<&str>) {
-        let team: Vec<&WindowInfo> = self.windows_on(on).filter(|w| team_key == team_key_of(w)).collect();
-        let mut here: Vec<&WindowInfo> = team.iter().copied().filter(|w| w.workspace == self.workspace.0).collect();
+    fn bring_forward(&self, team_key: &str, on: Option<&str>, ws: Option<u32>) {
+        let team: Vec<&WindowInfo> = self.windows_on(on).filter(|w| team_key == team_key_of(w) && ws.is_none_or(|ws| w.workspace == ws)).collect();
+        // Under another workspace's heading: its windows there (and so
+        // to that workspace).
+        let at = ws.unwrap_or(self.workspace.0);
+        let mut here: Vec<&WindowInfo> = team.iter().copied().filter(|w| w.workspace == at).collect();
         if here.is_empty() {
             here.extend(team.last());
         }
@@ -651,15 +825,15 @@ impl Deskbar {
         }
     }
 
-    fn team_command(&mut self, team_key: &str, cmd: &str, on: Option<&str>) {
-        let ids: Vec<u64> = self.windows_on(on).filter(|w| team_key == team_key_of(w)).map(|w| w.id).collect();
+    fn team_command(&mut self, team_key: &str, cmd: &str, on: Option<&str>, ws: Option<u32>) {
+        let ids: Vec<u64> = self.windows_on(on).filter(|w| team_key == team_key_of(w) && ws.is_none_or(|ws| w.workspace == ws)).map(|w| w.id).collect();
         if let Some(id) = cmd.strip_prefix("win:").and_then(|s| s.parse().ok()) {
             request(Request::Activate { id });
             return;
         }
         if cmd == "group-windows" {
             if let Some(app) = self.windows.iter().find(|w| team_key == team_key_of(w)).map(|w| w.app_id.clone()) {
-                olo_kit::settings::set_groups_windows(&app, self.ungrouped.contains(&app));
+                olo_kit::settings::set_groups_windows(&app, self.tiling.ungrouped_apps.contains(&app));
             }
             return;
         }
@@ -713,7 +887,7 @@ fn settings_msg(settings: olo_protocol::Settings) -> Msg {
     Msg::Settings(Settings {
         clock: settings.clock,
         menu_icons: settings.appearance.menu_icons,
-        ungrouped: settings.tiling.ungrouped_apps,
+        tiling: settings.tiling,
         keys: settings.shortcuts,
         every_display: settings.display.deskbar_on_every_display,
     })
@@ -793,6 +967,10 @@ fn section_bevel(p: &egui::Painter, r: Rect, pal: &Palette) {
 }
 
 impl App for Deskbar {
+    fn save_state(&mut self, _cx: &Cx) -> Option<String> {
+        Some(if self.others_open { "others-open" } else { "" }.into())
+    }
+
     fn dropped(&mut self, _cx: &mut Cx, _window: WindowId, drop: olo_kit::dnd::Drop) {
         let Some(key) = drop.target.strip_prefix("team:") else { return };
         let paths = drop.paths();
@@ -834,17 +1012,18 @@ impl App for Deskbar {
         let full = ui.max_rect();
         let painter = ui.painter().clone();
         painter.rect_filled(full, 0.0, c(pal.panel_background));
-        let teams = self.teams(display.as_deref());
 
         // ---- the Olo tile
         let tile = Rect::from_min_size(full.min, vec2(full.width(), TILE_H));
         let tile_id = egui::Id::unique("olo-tile");
         let tile_resp = ui.interact(tile, tile_id, Sense::click());
         let tile_open = menu::is_open(ui.ctx(), tile_id);
+        let auto_tiling = self.auto_tiling(&self.bars[bar]);
         if tile_resp.clicked() && !tile_open {
+            self.menu_output = self.bars[bar].output.clone();
             menu::request_popup(
                 ui.ctx(),
-                MenuRequest { menu: self.olo_menu(), source: tile_id, anchor: MenuAnchor::Below(tile), selected: None },
+                MenuRequest { menu: self.olo_menu(auto_tiling), source: tile_id, anchor: MenuAnchor::Below(tile), selected: None },
             );
         }
         if let Some(cmd) = menu::take_chosen(ui.ctx(), tile_id) {
@@ -869,7 +1048,7 @@ impl App for Deskbar {
 
         // ---- tray: the date and time, then the status icons
         let st = self.status.clone();
-        let items = [!st.upgrade.is_empty(), st.agent_screens > 0, st.battery.is_some(), st.wifi.is_some(), st.volume.is_some(), st.notifications.is_some(), true]
+        let items = [!st.upgrade.is_empty(), st.agent_screens > 0, st.battery.is_some(), st.wifi.is_some(), st.volume.is_some(), st.notifications.is_some(), true, true]
             .iter()
             .filter(|on| **on)
             .count();
@@ -1032,81 +1211,67 @@ impl App for Deskbar {
             self.run_command(cx, &cmd);
         }
 
-        // ---- teams
+        // Auto-tiling, beside it: tiles, filled while every window on this
+        // display (of this workspace) takes a tile. Right-click for the
+        // Window Arrangement menu.
+        let tip = if auto_tiling {
+            "Auto-tiling: every window here takes a tile. Click to stop.".to_string()
+        } else {
+            "Click to tile every window here automatically (auto-tiling)".to_string()
+        };
+        let tiles = tray_item(ui, "auto-tiling", &|p, r| status::draw_tiles(p, r, &pal, auto_tiling), tip);
+        let tiles_id = egui::Id::unique("auto-tiling-menu");
+        if tiles.clicked() {
+            let output = self.bars[bar].output.clone();
+            self.set_auto_tiling(output, !auto_tiling);
+        }
+        if tiles.secondary_clicked() && !menu::is_open(ui.ctx(), tiles_id) {
+            self.menu_output = self.bars[bar].output.clone();
+            let mut m = self.arrange_menu(auto_tiling);
+            add_keys(&mut m, &self.keys);
+            menu::request_popup(ui.ctx(), MenuRequest { menu: m, source: tiles_id, anchor: MenuAnchor::Below(tiles.rect), selected: None });
+        }
+        if let Some(cmd) = menu::take_chosen(ui.ctx(), tiles_id) {
+            self.run_command(cx, &cmd);
+        }
+
+        // ---- the applications: the workspace showing's, then the rest
+        // under Other Workspaces (one workspace: just the applications)
         let mut y = tray.bottom();
-        let pointer = ui.input(|i| i.pointer.hover_pos());
-        let hover = olo_kit::dnd::hover(ui.ctx()).filter(|h| h.has_files() && h.actions.copy && !h.has(olo_kit::dnd::LINK_TYPE));
-        for team in &teams {
-            let row = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), ROW_H));
-            // Files dragged onto an application open with it.
-            let drop_here = hover.as_ref().is_some_and(|h| row.contains(h.pos)) && self.handler(&team.key).is_some();
-            if drop_here {
-                olo_kit::dnd::accept(ui.ctx(), format!("team:{}", team.key), "text/uri-list", olo_kit::dnd::Action::Copy);
+        let (current, count) = self.workspace;
+        if count <= 1 {
+            for team in self.teams(display.as_deref(), None) {
+                let row = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), ROW_H));
+                self.team_row(cx, w, ui, row, &team, display.as_deref(), None);
+                y += ROW_H;
             }
-            let id = egui::Id::unique(("team", &team.key));
-            let resp = ui.interact(row, id, Sense::click_and_drag());
-            if resp.drag_started()
-                && let Some(data) = self.app_drag(ui.ctx(), team)
-            {
-                cx.start_drag(w, data);
+        } else {
+            let mut elsewhere: Vec<u32> = self.windows_on(display.as_deref()).map(|w| w.workspace).filter(|ws| *ws != current).collect();
+            elsewhere.sort();
+            elsewhere.dedup();
+            let heading = |y: f32| Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), HEADING_H));
+            self.workspace_heading(cx, ui, heading(y), current);
+            y += HEADING_H;
+            for team in self.teams(display.as_deref(), Some(current)) {
+                let row = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), ROW_H));
+                self.team_row(cx, w, ui, row, &team, display.as_deref(), Some(current));
+                y += ROW_H;
             }
-            let open = menu::is_open(ui.ctx(), id);
-            // A click brings an application with one window forward; with
-            // more it opens the menu of its windows to choose from, as the
-            // right button (or holding the left) always does.
-            let several = team.windows.len() > 1;
-            if resp.clicked() && !open && !several {
-                self.bring_forward(&team.key, display.as_deref());
+            if !elsewhere.is_empty() {
+                self.others_latch(ui, heading(y));
+                y += HEADING_H;
+                if self.others_open {
+                    for ws in elsewhere {
+                        self.workspace_heading(cx, ui, heading(y), ws);
+                        y += HEADING_H;
+                        for team in self.teams(display.as_deref(), Some(ws)) {
+                            let row = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), ROW_H));
+                            self.team_row(cx, w, ui, row, &team, display.as_deref(), Some(ws));
+                            y += ROW_H;
+                        }
+                    }
+                }
             }
-            if ((resp.clicked() && several) || resp.secondary_clicked() || resp.long_touched()) && !open {
-                menu::request_popup(
-                    ui.ctx(),
-                    MenuRequest {
-                        menu: self.team_menu(team),
-                        source: id,
-                        anchor: MenuAnchor::Below(Rect::from_min_max(pos2(row.left(), row.top()), pos2(row.right(), row.bottom()))),
-                        selected: None,
-                    },
-                );
-            }
-            if let Some(cmd) = menu::take_chosen(ui.ctx(), id) {
-                self.team_command(&team.key, &cmd, display.as_deref());
-            }
-            let focused = team.windows.iter().any(|w| w.focused);
-            let hidden = team.windows.iter().all(|w| w.minimized);
-            let hover = pointer.is_some_and(|p| row.contains(p));
-            if open || drop_here {
-                painter.rect_filled(row, 0.0, c(pal.menu_selected_background));
-            } else if focused {
-                // The active application sits slightly recessed.
-                painter.rect_filled(row, 0.0, shade(&pal, pal.panel_background, 1.1));
-                hline(&painter, row.left(), row.right(), row.top(), shade(&pal, pal.panel_background, 1.25));
-            } else if hover {
-                painter.rect_filled(row, 0.0, c(olo_theme_tint(pal.panel_background, 0.8)));
-            }
-            hline_above(&painter, row.left(), row.right(), row.bottom(), shade(&pal, pal.panel_background, 1.14));
-            let icon_r = Rect::from_center_size(pos2(row.left() + 6.0 + ICON / 2.0, row.center().y), vec2(ICON, ICON));
-            let tint = if hidden { Color32::from_white_alpha(120) } else { Color32::WHITE };
-            let drawn = team.icon.as_deref().is_some_and(|i| icons::paint_tinted(&painter, icon_r, i, tint));
-            if !drawn {
-                icons::paint_tinted(&painter, icon_r, "application", tint);
-            }
-            let text_color = if open || drop_here {
-                c(pal.menu_selected_item_text)
-            } else if hidden {
-                style::disabled_text(&pal)
-            } else {
-                c(pal.panel_text)
-            };
-            let font = if focused { egui::FontId::new(style::PLAIN_SIZE, style::bold()) } else { style::plain_font() };
-            let max_w = row.right() - (icon_r.right() + 8.0) - 6.0;
-            let mut job = egui::text::LayoutJob::simple_singleline(team.name.clone(), font, text_color);
-            job.wrap = egui::text::TextWrapping::truncate_at_width(max_w);
-            let g = painter.layout_job(job);
-            let size = style::PLAIN_SIZE;
-            let pos = style::text_origin(ui.ctx(), &g, icon_r.right() + 8.0, row.center().y, size);
-            painter.galley(pos, g, text_color);
-            y += ROW_H;
         }
 
         // Outer frame: a dark line on the left and bottom, where the
@@ -1139,7 +1304,7 @@ impl App for Deskbar {
                 Msg::Settings(s) => {
                     self.clock = s.clock;
                     self.menu_icons = s.menu_icons;
-                    self.ungrouped = s.ungrouped;
+                    self.tiling = s.tiling;
                     self.keys = s.keys;
                     self.every_display = s.every_display;
                     self.sync_bars(cx);
@@ -1204,6 +1369,8 @@ fn main() {
     // A session or install from before the rename (Tabula) carries on.
     olo_kit::legacy::adopt();
     olo_kit::run("olo.deskbar", |cx| {
+        // Other Workspaces stays unfolded through an upgrade.
+        let others_open = cx.restored_state().is_some_and(|s| s.contains("others-open"));
         let bar = Bar::open(cx, None);
         watch_server(cx.proxy());
         let proxy = cx.proxy();
@@ -1224,7 +1391,9 @@ fn main() {
             entries: HashMap::new(),
             scroll_acc: 0.0,
             last_focused: None,
-            ungrouped: Vec::new(),
+            tiling: Default::default(),
+            others_open,
+            menu_output: None,
             keys: ShortcutSettings::new(),
             confirm: None,
             upgrade_ask: None,

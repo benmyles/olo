@@ -72,6 +72,7 @@ use wayland_protocols::{
     xdg::{
         dialog::v1::client::{xdg_dialog_v1::XdgDialogV1, xdg_wm_dialog_v1::XdgWmDialogV1},
         shell::client::xdg_positioner,
+        toplevel_tag::v1::client::xdg_toplevel_tag_manager_v1::XdgToplevelTagManagerV1,
     },
 };
 
@@ -202,6 +203,15 @@ impl Surface {
             ((self.size.1 as f64) * self.scale).round().max(1.0) as u32,
         )
     }
+
+    /// egui's screen, in points: the buffer's whole pixels at the scale,
+    /// so whatever lines up with the right or bottom edge lands on a
+    /// pixel whatever size the window is given (1153 points at 1.5× is a
+    /// buffer of 1730 pixels, so 1153⅓ points, not 1153).
+    fn screen(&self) -> egui::Vec2 {
+        let (w, h) = self.physical_size();
+        egui::vec2((w as f64 / self.scale) as f32, (h as f64 / self.scale) as f32)
+    }
 }
 
 /// User data for our own protocol objects.
@@ -303,6 +313,7 @@ pub struct Kit {
     viewporter: Option<WpViewporter>,
     idle_inhibit: Option<ZwpIdleInhibitManagerV1>,
     dialogs: Option<XdgWmDialogV1>,
+    tags: Option<XdgToplevelTagManagerV1>,
 
     gpu: Option<Gpu>,
     surfaces: Vec<Surface>,
@@ -713,6 +724,7 @@ impl Kit {
         let compositor = CompositorState::bind(globals, &qh).expect("wl_compositor");
         let idle_inhibit = globals.bind::<ZwpIdleInhibitManagerV1, _, _>(&qh, 1..=1, KitData).ok();
         let dialogs = globals.bind::<XdgWmDialogV1, _, _>(&qh, 1..=1, KitData).ok();
+        let tags = globals.bind::<XdgToplevelTagManagerV1, _, _>(&qh, 1..=1, KitData).ok();
         Kit {
             registry_state: RegistryState::new(globals),
             seat_state: SeatState::new(globals, &qh),
@@ -730,6 +742,7 @@ impl Kit {
             viewporter,
             idle_inhibit,
             dialogs,
+            tags,
             conn,
             qh,
             loop_handle,
@@ -1273,6 +1286,12 @@ impl Kit {
                         d.set_modal();
                     }
                 }
+                // A utility window: floats over auto-tiled windows.
+                if options.floating
+                    && let Some(t) = &self.tags
+                {
+                    t.set_toplevel_tag(window.xdg_toplevel(), "floating".into());
+                }
                 window.commit();
                 Role::Toplevel(window)
             }
@@ -1710,7 +1729,7 @@ impl Kit {
         let mut raw = egui::RawInput {
             // egui assumes 2048 unless told.
             max_texture_side,
-            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(s.size.0 as f32, s.size.1 as f32))),
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, s.screen())),
             time: Some(s.start.elapsed().as_secs_f64()),
             focused: self.keyboard_focus.as_ref() == Some(&s.wl)
                 || matches!(s.role, Role::Popup { .. }),
@@ -1911,7 +1930,7 @@ impl Kit {
         if !self.reviews.is_empty() {
             let s = &mut self.surfaces[i];
             if matches!(s.role, Role::Toplevel(_) | Role::Layer(_)) {
-                let size = egui::vec2(s.size.0 as f32, s.size.1 as f32);
+                let size = s.screen();
                 s.review = Some(crate::commands::WindowReview {
                     title: s.options.title.clone(),
                     width: s.size.0,
@@ -2483,6 +2502,9 @@ impl Dispatch2<ZwpIdleInhibitManagerV1, Kit> for KitData {
 }
 impl Dispatch2<XdgWmDialogV1, Kit> for KitData {
     fn event(&self, _: &mut Kit, _: &XdgWmDialogV1, _: <XdgWmDialogV1 as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<Kit>) {}
+}
+impl Dispatch2<XdgToplevelTagManagerV1, Kit> for KitData {
+    fn event(&self, _: &mut Kit, _: &XdgToplevelTagManagerV1, _: <XdgToplevelTagManagerV1 as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<Kit>) {}
 }
 impl Dispatch2<XdgDialogV1, Kit> for KitData {
     fn event(&self, _: &mut Kit, _: &XdgDialogV1, _: <XdgDialogV1 as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<Kit>) {}

@@ -110,9 +110,22 @@ impl WindowElement {
         if self.decorated() { content + deco::extra_size() } else { content }
     }
 
-    /// Client size for a given element size.
+    /// Whether it has Olo's frame once it answers the configure it is
+    /// about to get: it asked for server-side decorations (xdg-decoration
+    /// or KDE's) and isn't to be fullscreen. `decorated` only changes when
+    /// it answers, so it is false until a new window's first answer.
+    pub fn will_be_decorated(&self) -> bool {
+        use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
+        let WindowSurface::Wayland(t) = self.0.underlying_surface();
+        let (server, fullscreen) =
+            t.with_pending_state(|s| (s.decoration_mode == Some(Mode::ServerSide), s.states.contains(xdg_toplevel::State::Fullscreen)));
+        (server || crate::state::kde_server_side(t.wl_surface())) && !fullscreen
+    }
+
+    /// Client size for a given element size, as the next configure asks
+    /// for it.
     pub fn inner_size(&self, outer: Size<i32, Logical>) -> Size<i32, Logical> {
-        if self.decorated() {
+        if self.will_be_decorated() {
             let extra = deco::extra_size();
             ((outer.w - extra.w).max(1), (outer.h - extra.h).max(1)).into()
         } else {

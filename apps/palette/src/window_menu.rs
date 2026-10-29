@@ -49,6 +49,10 @@ pub struct Facts {
     pub rolled: bool,
     /// In a group with other windows (their tabs side by side).
     pub grouped: bool,
+    /// Auto-tiling is on for its display, and whether it floats over the
+    /// tiles there.
+    pub auto: bool,
+    pub floating: bool,
     /// Shortcut keys changed from the defaults, to show the ones in use.
     pub keys: ShortcutSettings,
 }
@@ -71,7 +75,12 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             Ok(Reply::Settings { settings }) => settings.shortcuts,
             _ => Default::default(),
         };
-        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, displays, rolled: w.rolled, grouped: w.group.is_some(), keys });
+        let auto = match c.request(&Request::AutoTiling { workspace: Some(w.workspace) }) {
+            Ok(Reply::AutoTiling { displays, .. }) => displays.iter().any(|d| d.on && Some(&d.output) == w.output.as_ref()),
+            _ => false,
+        };
+        let (rolled, grouped, floating) = (w.rolled, w.group.is_some(), w.floating);
+        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, displays, rolled, grouped, auto, floating, keys });
     });
 }
 
@@ -128,6 +137,10 @@ pub fn build(f: &Facts) -> Menu {
     m = shortcut(m, "zoom-horizontal", "Zoom Horizontally");
     m = shortcut(m, "restore", "Back to Its Own Size");
     m = shortcut(m, "center", "Center");
+    if f.auto {
+        // Auto-tiled: out of the tiles (or back in).
+        m = shortcut(m, "float-window", "Float Over the Tiles").checked(f.floating);
+    }
     m = m.separator().submenu(tile).submenu(spaces);
     if f.displays > 1 {
         m = shortcut(m, "next-display", "To the Next Display");
@@ -232,7 +245,7 @@ mod tests {
         let mut changed = ShortcutSettings::new();
         changed.insert("zoom".into(), vec!["Ctrl+Cmd+Z".into()]);
         changed.insert("center".into(), vec![]);
-        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false, grouped: true, keys: changed };
+        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false, grouped: true, auto: false, floating: false, keys: changed };
         fn commands(m: &Menu, out: &mut Vec<String>) {
             for item in &m.items {
                 match item {
@@ -255,6 +268,11 @@ mod tests {
         let mut alone = Vec::new();
         commands(&build(&Facts { grouped: false, ..facts.clone() }), &mut alone);
         assert!(!alone.contains(&"ungroup".to_owned()));
+        // Float Over the Tiles only where auto-tiling is on.
+        assert!(!all.contains(&"shortcut:float-window".to_owned()));
+        let mut auto = Vec::new();
+        commands(&build(&Facts { auto: true, ..facts.clone() }), &mut auto);
+        assert!(auto.contains(&"shortcut:float-window".to_owned()));
         assert!(all.contains(&"shortcut:next-display".to_owned()) && all.contains(&"workspace:2".to_owned()));
         // Each shows the keys it has now: changed, default, or none.
         let menu = build(&facts);

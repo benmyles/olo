@@ -322,10 +322,14 @@ impl<B: Backend + 'static> AnvilState<B> {
             },
             Request::Arrange { windows } => match self.arrange(&windows) {
                 0 => Reply::Error { message: "none of those windows are on the active display".into() },
-                _ => Reply::Ok,
+                _ => {
+                    self.readopt_active();
+                    Reply::Ok
+                }
             },
             Request::TileApp { app_id } => {
                 if self.tile_app(&app_id) {
+                    self.readopt_active();
                     Reply::Ok
                 } else {
                     Reply::Error { message: format!("no windows of {app_id} to tile") }
@@ -338,11 +342,38 @@ impl<B: Backend + 'static> AnvilState<B> {
                     // where it can be taken hold of again.
                     let to = self.reachable(smithay::utils::Rectangle::new((frame.x, frame.y).into(), size.into()));
                     self.front_of_group(&w);
+                    // Auto-tiled: it floats where it is put.
+                    if self.auto_tiled(&w) {
+                        self.set_floating(&w, Some(true));
+                    }
                     self.forget_tile(&w);
                     self.set_frame(&w, to, false);
                     Reply::Ok
                 }
                 Some(_) => Reply::Error { message: format!("window {id} isn't showing") },
+                None => not_found(),
+            },
+            Request::AutoTiling { workspace } => {
+                let ws = workspace.unwrap_or(self.workspace);
+                Reply::AutoTiling { workspace: ws, displays: self.auto_tiling_infos(ws) }
+            }
+            Request::SetAutoTiling { on, workspace, output } => {
+                let o = match output {
+                    Some(name) => match self.space.outputs().find(|o| o.name() == name).cloned() {
+                        Some(o) => Some(o),
+                        None => return Some(Reply::Error { message: format!("no display {name:?}") }),
+                    },
+                    None => None,
+                };
+                let ws = workspace.unwrap_or(self.workspace);
+                self.set_auto_tiling(on, Some(ws), o);
+                Reply::AutoTiling { workspace: ws, displays: self.auto_tiling_infos(ws) }
+            }
+            Request::SetFloating { id, floating } => match self.window_by_id(id) {
+                Some(w) => {
+                    self.set_floating(&w, floating);
+                    Reply::Ok
+                }
                 None => not_found(),
             },
             Request::Workspaces => Reply::Workspaces {

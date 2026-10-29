@@ -227,7 +227,7 @@ impl Viewer {
             Purpose::SaveAs => ("Save As", FilePanel::save(dir, format!("{stem} copy.pdf")).types(&["pdf"])),
             Purpose::Export => ("Export Flattened PDF", FilePanel::save(dir, format!("{stem} (flattened).pdf")).types(&["pdf"])),
         };
-        let id = cx.open_window(WindowOptions::new(title, PANEL_SIZE.0, PANEL_SIZE.1).min_size(420, 300));
+        let id = cx.open_window(WindowOptions::new(title, PANEL_SIZE.0, PANEL_SIZE.1).min_size(420, 300).floating());
         self.windows.insert(id, Win::Panel { doc, purpose, panel });
     }
 
@@ -462,7 +462,7 @@ impl Viewer {
             "prev-file" => return self.step(cx, win, -1),
             "next-file" => return self.step(cx, win, 1),
             "new-signature" => {
-                let id = cx.open_window(WindowOptions::new("New Signature", signature::PAD_SIZE.0, signature::PAD_SIZE.1).min_size(360, 200));
+                let id = cx.open_window(WindowOptions::new("New Signature", signature::PAD_SIZE.0, signature::PAD_SIZE.1).min_size(360, 200).floating());
                 self.windows.insert(id, Win::Pad { doc: win, pad: Pad::default() });
                 return;
             }
@@ -572,7 +572,7 @@ impl Viewer {
             }
             "resize" => {
                 let size = e.editor.size();
-                let id = cx.open_window(WindowOptions::new("Adjust Size", 300, 168).min_size(300, 168));
+                let id = cx.open_window(WindowOptions::new("Adjust Size", 300, 168).min_size(300, 168).floating());
                 self.windows.insert(id, Win::Resize { doc: win, w: size.0.to_string(), h: size.1.to_string(), keep: true, size });
                 return;
             }

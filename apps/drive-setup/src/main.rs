@@ -600,7 +600,7 @@ impl DriveSetup {
             }
             "benchmark" if can.bench => {
                 let bench = Bench { path: disk.path.clone(), title: dname.clone(), size: disk.size, samples: Vec::new(), result: None, error: None, stop: None };
-                let id = cx.open_window(WindowOptions::new(format!("Benchmark: {dname}"), 480, 320).min_size(400, 260));
+                let id = cx.open_window(WindowOptions::new(format!("Benchmark: {dname}"), 480, 320).min_size(400, 260).floating());
                 self.windows.insert(id, Win::Bench(Box::new(bench)));
             }
             "check-health" if can.health => {

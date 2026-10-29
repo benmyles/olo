@@ -744,7 +744,8 @@ impl StyledEdit {
         style::label(
             painter,
             status.left() + m::TIGHT + 2.0,
-            status.center().y + 1.0,
+            // Centred under the line along the top.
+            status.center().y + style::hairline(ui.ctx()) / 2.0,
             egui::Align::Min,
             &info,
             egui::FontId::proportional(style::SMALL_SIZE),

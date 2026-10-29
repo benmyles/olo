@@ -41,7 +41,8 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveS
 
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
-        if new_location.to_i32_round() != self.initial_window_location {
+        // (An auto-tiled window keeps its tile till let go.)
+        if new_location.to_i32_round() != self.initial_window_location && !data.auto_moving(&self.window) {
             data.forget_tile(&self.window);
         }
 
@@ -165,7 +166,11 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveS
         &self.start_data
     }
 
-    fn unset(&mut self, _data: &mut AnvilState<BackendData>) {}
+    fn unset(&mut self, data: &mut AnvilState<BackendData>) {
+        // Where the pointer (or finger) let go of it.
+        let moved = data.space.element_location(&self.window).map(|at| at - self.initial_window_location).unwrap_or_default();
+        data.auto_dropped(&self.window, self.start_data.location + moved.to_f64());
+    }
 }
 
 pub struct TouchMoveSurfaceGrab<BackendData: Backend + 'static> {
@@ -217,7 +222,8 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchMoveSurfa
 
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
-        if new_location.to_i32_round() != self.initial_window_location {
+        // (An auto-tiled window keeps its tile till let go.)
+        if new_location.to_i32_round() != self.initial_window_location && !data.auto_moving(&self.window) {
             data.forget_tile(&self.window);
         }
         data.space
@@ -262,7 +268,11 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchMoveSurfa
         &self.start_data
     }
 
-    fn unset(&mut self, _data: &mut AnvilState<BackendData>) {}
+    fn unset(&mut self, data: &mut AnvilState<BackendData>) {
+        // Where the pointer (or finger) let go of it.
+        let moved = data.space.element_location(&self.window).map(|at| at - self.initial_window_location).unwrap_or_default();
+        data.auto_dropped(&self.window, self.start_data.location + moved.to_f64());
+    }
 }
 
 bitflags::bitflags! {

@@ -622,7 +622,7 @@ impl Tracker {
 
     fn open_info(&mut self, cx: &mut Cx, e: Entry) {
         let h = view::info_height(view::info_rows(&e)).ceil() as u32;
-        let id = cx.open_window(WindowOptions::new(format!("{} info", e.name), 360, h).min_size(300, h));
+        let id = cx.open_window(WindowOptions::new(format!("{} info", e.name), 360, h).min_size(300, h).floating());
         if e.is_dir {
             let proxy = cx.proxy();
             let path = e.path.clone();
@@ -1475,7 +1475,7 @@ impl App for Tracker {
             Msg::JobSlow(id) => {
                 if self.jobs.iter().any(|(j, _)| j.id == id) && self.status_win.is_none() {
                     let id = cx.open_window(
-                        WindowOptions::new("Tracker Status", STATUS_WIDTH, 82).min_size(300, 60),
+                        WindowOptions::new("Tracker Status", STATUS_WIDTH, 82).min_size(300, 60).floating(),
                     );
                     self.windows.insert(id, Win::Status);
                     self.status_win = Some(id);

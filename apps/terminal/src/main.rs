@@ -718,7 +718,7 @@ impl Terminal {
         if focused {
             t.tab_mut().attention = false;
         }
-        // Ctrl+Tab and Ctrl+Page Up/Down (and so ⌥Tab) go through the
+        // Ctrl+Tab and Ctrl+Page Up/Down (and so Next Tab) go through the
         // tabs, as in other terminals; the shell never sees them (nor
         // their releases).
         let step = olo_kit::widgets::tab_keys(ui.ctx());

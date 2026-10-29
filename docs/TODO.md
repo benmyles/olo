@@ -24,8 +24,9 @@ as they land (with the commit), add new ones as they come up.
   three-finger drag, drag lock, button maps, acceleration, typing
   timeouts. The driver-side fix is written up, not done (Ben's call).
 
-- ~~⌘Tab across workspaces~~ (Ben): in order of use whatever the
-  workspace, so ⌘Tab flips between the last two apps; a row of apps per workspace;
+- ~~⌘Tab across workspaces~~ (Ben): now ⌥Tab (⌘Tab keeps to this
+  workspace's apps, ⌃Tab is Next Tab): in order of use whatever the
+  workspace, so ⌥Tab flips between the last two apps; a row of apps per workspace;
   ↑/↓ change rows (and workspaces), ←/→ walk a row, Esc puts everything
   back, and with keyboard hints on each cell has a letter to pick it by.
 - ~~⌘Space finds an app's open windows first~~ (Ben): typing an app's
@@ -183,7 +184,7 @@ as they land (with the commit), add new ones as they come up.
   feed, logind, dconf, activation environment).
 
 - ~~Keyboard mapping in app_server, replacing keyd~~: ⌘ as command,
-  Caps Lock as Ctrl, ⌘Tab / ⌘\` switching, ⌘ arrows / ⌘⌫, tap ⌘ /
+  Caps Lock as Ctrl, ⌘Tab / ⌥Tab / ⌘\` switching, ⌘ arrows / ⌘⌫, tap ⌘ /
   ⌘Space for Find, terminals keep physical Ctrl (`keymap.rs`), Ctrl+⌘Q
   locks. keyd can now be disabled system-wide; while
   it runs it grabs the keyboards and app_server sees its output (handled:
@@ -736,58 +737,35 @@ as they land (with the commit), add new ones as they come up.
   Workspace ▸, the displays, Send to Back and Close, the shortcuts' own
   commands. Not yet: Always on Top (app_server has no such state) and
   "tile with…" (tiling beside a chosen window).
-- **Auto-tiling mode** (Ben, 2026-10-28): a command, a shortcut and a
-  Deskbar icon (a toggle beside the Caffeinated cup) that turn
-  auto-tiling on and off. While it is on, every window is tiled; a new one
-  takes its share and the others re-tile, and a closed one's space goes to
-  its neighbours.
-  - *Scope:* the Deskbar's. It is per workspace, and also per display when
-    "Show Deskbar on every display" is on; otherwise a workspace's
-    setting covers all its displays. It is remembered, and in the IPC so
-    agents can read and set it.
-  - *Zoom:* a tiled window can still be zoomed. It grows to fill the
-    screen, and when unzoomed it goes back to its tile; the others stay put
-    underneath.
-  - *Zoom along one axis:* Zoom Vertically makes the window a column the
-    full height of the display, and the others re-tile in what is left
-    beside it. Zoom Horizontally does the same with a full-width row.
-  - *Tile commands:* these set the window's tile, and the rest re-tile
-    around it. Tile Left gives the window the left half and tiles the
-    others in the right half; quarters and thirds work the same way.
-  - *Resizing by hand:* the edge snaps to a quarter-screen grid, and the
-    neighbours across the edge follow (as command-tiled windows already
-    do).
-  - *Dialogs and floating windows are never tiled* (Ben). They stay
-    floating over the tiles, centred over their parent where they have
-    one, and the tiles don't make room for them. Floating windows include
-    alerts, Open and Save panels, Quick Look, inspectors and palettes,
-    About boxes, fixed-size windows, and other programs' dialogs.
-    - *What Olo knows already:* `WindowOptions::dialog`, `alert` and
-      `parent` (xdg-dialog-v1 and `xdg_toplevel.set_parent`); app_server's
-      `groups::is_dialog`; minimum and maximum sizes that are equal.
-    - *What to add:* whatever is still missing so the kit and apps can say
-      a window floats. That could be a `WindowOptions` hint carried over
-      the kit's protocol, apps that set it, and good guesses for
-      programs not built on the kit (a parent, xdg-dialog, a fixed size,
-      a small utility window). Implement it in whatever way works best,
-      but it has to work properly.
-    - *Overrides:* a person can float or tile any window by hand (the
-      window menu, a shortcut), and an agent can too over the IPC.
-  - *Prior art:* study the leading tiling window managers and take what
-    makes it fast and intuitive:
-    - binary splits along the longer side, as bspwm and Hyprland's
-      dwindle do, with ratios kept as windows come and go;
-    - a master and stack, as in dwm, xmonad and Amethyst;
-    - COSMIC's and Pop Shell's per-workspace toggle, with dialogs and
-      fixed-size windows left floating;
-    - i3's and Sway's tabbed containers (a window group counts as one
-      tile), and their transactions (every window resized in one
-      commit, so nothing flashes through in-between sizes);
-    - yabai's drag to swap and balance;
-    - snap layouts in KWin, Windows 11 and macOS.
-  - *Performance:* layout is O(windows) on the tree, worked out only when
-    something changes; nothing waits on a client. Minimum sizes are
-    respected, ⌃⌘Z undoes, and it survives an in-place reload.
+- ~~**Auto-tiling mode**~~ (Ben, 2026-10-28; done: HACKING, "Desktop
+  shortcuts and tiling", shell/autotile.rs): Deskbar's tiles beside the
+  cup, ⌃⌥⌘T, the palette and `set_auto_tiling`, per workspace (and per
+  display with a Deskbar on each), remembered. A tree of splits per
+  display (dwindle: a new window halves the focused tile along its longer
+  side, a closed one's room goes to its neighbour, a window group is one
+  tile); Zoom over the tiles and back, Zoom Vertically / Horizontally a
+  full column or row, the tile commands set a window's part with the rest
+  around it, edges snap to quarters and thirds, tabs drag to swap or go
+  beside. Dialogs, alerts, fixed-size windows, the kit's
+  `WindowOptions::floating()` (xdg-toplevel-tag) and portal and
+  picture-in-picture windows float; Float Over the Tiles (window menu,
+  ⌃⌥⌘F, `set_floating`) by hand. O(windows), only on a change, a new
+  window opening at its tile's size, minimum sizes kept, ⌃⌘Z, through an
+  in-place reload. Not yet: a master-and-stack layout (dwm, Amethyst),
+  resizing every tile in one transaction (Sway), a snap-layout picker.
+- **Spotlight the chosen app while switching** (Ben, 2026-10-28): while
+  ⌘Tab is held, every window but the chosen app's is dimmed, so the eye
+  goes to that app's windows until ⌘ is let go (then everything is
+  undimmed as the choice is made). The same for ⌘\` among one app's
+  windows: the others dimmed while the chosen window stands out. Dimming
+  follows the choice as it moves, and Esc undims as it puts everything
+  back.
+- **An overview of everything, on ⌃Space** (Ben, 2026-10-28): every
+  display, workspace and window zoomed out together, each window still
+  showing its live contents and updating as usual. Clicking one makes it
+  the active window (switching to its workspace) and leaves the
+  overview. Each window has a letter on it there, so pressing the letter
+  does the same as clicking. Esc (or ⌃Space again) leaves it as it was.
 - **Multiple monitors, managed like macOS Displays.** Hotplug of external
   displays (USB-C/Thunderbolt on the M2), each with its own resolution,
   refresh rate, scale factor (2× default on HiDPI, 1×/1.5× etc. on

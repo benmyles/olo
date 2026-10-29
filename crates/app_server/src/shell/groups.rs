@@ -138,6 +138,11 @@ impl Groups {
         self.list.iter().any(|(_, g)| g.contains(w))
     }
 
+    /// The number of `w`'s group, if it is in one.
+    pub fn number_of(&self, w: &WindowElement) -> Option<u64> {
+        self.list.iter().find(|(_, g)| g.contains(w)).map(|(n, _)| *n)
+    }
+
     /// The windows in `w`'s group, back to front (none if it is in none).
     pub fn mates(&self, w: &WindowElement) -> Vec<WindowElement> {
         self.list.iter().find(|(_, g)| g.contains(w)).map(|(_, g)| g.clone()).unwrap_or_default()
@@ -237,7 +242,7 @@ pub fn mark_behind(space: &Space<WindowElement>) {
 
 /// A dialog or panel, not a document window: it names a parent, or says
 /// so with xdg-dialog (the kit's `WindowOptions::dialog`, Quick Look).
-fn is_dialog(t: &smithay::wayland::shell::xdg::ToplevelSurface) -> bool {
+pub(super) fn is_dialog(t: &smithay::wayland::shell::xdg::ToplevelSurface) -> bool {
     use smithay::wayland::{compositor, shell::xdg::{XdgToplevelSurfaceData, dialog::ToplevelDialogHint}};
     t.parent().is_some()
         || compositor::with_states(t.wl_surface(), |s| {

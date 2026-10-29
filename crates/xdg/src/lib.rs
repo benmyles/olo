@@ -53,6 +53,12 @@ pub fn data_dirs() -> &'static [PathBuf] {
     })
 }
 
+/// Olo's own fonts (`data/fonts`: Noto Sans and the faces that fill in
+/// its symbols), from the first data directory that has them.
+pub fn fonts_dir() -> Option<PathBuf> {
+    data_dirs().iter().map(|d| d.join("fonts")).find(|d| d.is_dir())
+}
+
 /// The freedesktop data directories, most important first ($HOME first).
 pub fn xdg_data_dirs() -> Vec<PathBuf> {
     let mut v = Vec::new();

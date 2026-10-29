@@ -499,7 +499,7 @@ fn count_bar(ui: &Ui, rect: Rect, f: &FolderWin, p: &Palette) {
     let painter = ui.painter();
     painter.rect_filled(rect, 0.0, c(p.panel_background));
     style::hline(painter, rect.left(), rect.right(), rect.top(), style::shade(p, p.panel_background, 1.3));
-    style::hline(painter, rect.left(), rect.right(), rect.top() + 1.0, c(p.shine));
+    style::hline(painter, rect.left(), rect.right(), rect.top() + style::hairline(ui.ctx()), c(p.shine));
     let (entries, list) = f.current();
     let n = entries.len();
     let loading = f.loading && f.entries.is_empty() && f.error.is_none();
@@ -514,7 +514,7 @@ fn count_bar(ui: &Ui, rect: Rect, f: &FolderWin, p: &Palette) {
         (n, s) => format!("{s} of {n} selected"),
     };
     let small = FontId::proportional(style::SMALL_SIZE);
-    let cy = rect.center().y + 1.0; // below the 2 px etched edge
+    let cy = rect.center().y + style::hairline(ui.ctx()); // below the two-line etched edge
     style::label(painter, rect.left() + m::SPACING, cy, Align::Min, &count, small.clone(), c(p.panel_text));
     if let Some((free, _)) = fs::fs_space(&f.current_dir()) {
         let text = format!("{} free", fs::format_size(free));

@@ -200,12 +200,14 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub saver: crate::saver::Saver,
     /// The lock screen (see `lock`).
     pub lock: crate::lock::Lock,
-    /// Twitcher, while ⌘Tab / ⌘\` is held.
+    /// Twitcher, while ⌘Tab, ⌥Tab or ⌘\` is held.
     pub twitch: Option<crate::desktop::Twitch>,
     /// Window ids, the most recently focused first (Twitcher's order).
     pub recent: Vec<u64>,
     /// A tiled window's edges being dragged (see `shell::tiling`).
     pub tile_drag: Option<crate::shell::tiling::TileDrag>,
+    /// Auto-tiling's trees (`shell::autotile`).
+    pub auto: crate::shell::autotile::AutoTiler,
     /// A tab ⌘-dragged along its group's, out of it or into another
     /// (`shell::tabdrag`).
     pub tab_drag: Option<crate::shell::tabdrag::TabDrag>,
@@ -425,6 +427,15 @@ impl<BackendData: Backend> smithay::wayland::idle_notify::IdleNotifierHandler fo
 /// xdg-toplevel-icon: a window's own icon (Qt, SDL and Firefox set one),
 /// kept with its surface (`ToplevelIconCachedState`).
 impl<BackendData: Backend> smithay::wayland::xdg_toplevel_icon::XdgToplevelIconHandler for AnvilState<BackendData> {}
+
+/// xdg-toplevel-tag: what a window is to its app; one tagged `floating`
+/// (the kit's `WindowOptions::floating`) floats over auto-tiled windows
+/// (`AnvilState::floats`). Kept with its surface.
+impl<BackendData: Backend> smithay::wayland::xdg_toplevel_tag::XdgToplevelTagHandler for AnvilState<BackendData> {
+    fn set_tag(&mut self, _toplevel: smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::XdgToplevel, _tag: String) {
+        self.auto.changed();
+    }
+}
 
 /// xdg-system-bell (GTK's `gdk_surface_beep`). Olo has no system sound,
 /// and a window may not take the person's attention unasked (see
@@ -1017,6 +1028,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             toplevel_icons.add_icon_size(size);
         }
         smithay::wayland::xdg_system_bell::XdgSystemBellState::new::<Self>(&dh);
+        smithay::wayland::xdg_toplevel_tag::XdgToplevelTagManager::new::<Self>(&dh);
         IdleInhibitManagerState::new::<Self>(&dh);
         let lock = crate::lock::Lock::new::<BackendData>(&dh);
 
@@ -1067,6 +1079,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             twitch: None,
             recent: Vec::new(),
             tile_drag: None,
+            auto: Default::default(),
             tab_drag: None,
             tile_followers: Vec::new(),
             twitcher: Default::default(),

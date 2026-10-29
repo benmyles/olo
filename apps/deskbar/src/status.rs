@@ -15,7 +15,7 @@ use olo_system::audio;
 
 use olo_kit::{
     egui::{self, Color32, Painter, Rect, Shape, Stroke, pos2, vec2},
-    style::c,
+    style::{self, c},
     theme::Palette,
 };
 
@@ -299,10 +299,21 @@ fn dim(p: &Palette) -> Color32 {
     ink(p).lerp_to_gamma(c(p.panel_background), 0.6)
 }
 
+/// `v` points as whole device pixels.
+fn whole(painter: &Painter, v: f32) -> f32 {
+    let ppp = painter.pixels_per_point();
+    (v * ppp).round() / ppp
+}
+
 pub fn draw_battery(painter: &Painter, r: Rect, p: &Palette, percent: u32, charging: bool) {
-    let body = Rect::from_min_size(pos2(r.left() + 0.5, r.top() + 4.5), vec2(13.0, 8.0));
-    painter.rect_stroke(body, 1.5, Stroke::new(1.0, ink(p)), egui::StrokeKind::Middle);
-    painter.rect_filled(Rect::from_min_size(pos2(body.right() + 0.5, body.center().y - 2.0), vec2(1.5, 4.0)), 0.5, ink(p));
+    // On device pixels at any scale: the body's outline a hairline, the
+    // nub as far from its top as its bottom, the charge a line inside.
+    let ctx = painter.ctx();
+    let body = style::snap(ctx, Rect::from_min_size(pos2(r.left(), r.top() + 3.0), vec2(14.0, 10.0)));
+    painter.rect_stroke(body, 1.5, Stroke::new(style::hairline(ctx), ink(p)), egui::StrokeKind::Inside);
+    let gap = whole(painter, 3.0);
+    let nub = Rect::from_min_max(pos2(body.right(), body.top() + gap), pos2(body.right() + whole(painter, 1.5), body.bottom() - gap));
+    painter.rect_filled(nub, 0.5, ink(p));
     let level = (percent.min(100) as f32) / 100.0;
     let fill = if charging {
         c(p.success)
@@ -313,8 +324,8 @@ pub fn draw_battery(painter: &Painter, r: Rect, p: &Palette, percent: u32, charg
     } else {
         ink(p)
     };
-    let inner = body.shrink(1.5);
-    let w = (inner.width() * level).max(1.0);
+    let inner = style::inset(ctx, body, 2.0);
+    let w = whole(painter, inner.width() * level).max(style::hairline(ctx));
     painter.rect_filled(Rect::from_min_size(inner.min, vec2(w, inner.height())), 0.5, fill);
     if charging {
         let cx = body.center().x;
@@ -408,8 +419,11 @@ pub fn draw_upgrade(painter: &Painter, r: Rect, p: &Palette) {
     ];
     painter.add(Shape::line(edge, outline));
     // The tray it rises from.
-    let y = r.bottom() - 1.5;
-    painter.add(Shape::line(vec![pos2(r.left() + 1.5, y - 3.0), pos2(r.left() + 1.5, y), pos2(r.right() - 1.5, y), pos2(r.right() - 1.5, y - 3.0)], Stroke::new(1.2, ink(p))));
+    let (l, rt, b) = (whole(painter, r.left() + 1.0), whole(painter, r.right() - 1.0), whole(painter, r.bottom() - 1.0));
+    let post = b - whole(painter, 4.0);
+    style::hline_above(painter, l, rt, b, ink(p));
+    style::vline(painter, l, post, b, ink(p));
+    style::vline_left_of(painter, rt, post, b, ink(p));
 }
 
 /// A bell, with a count of unread notifications; struck through and dim
@@ -428,7 +442,7 @@ pub fn draw_bell(painter: &Painter, r: Rect, p: &Palette, unread: u32, quiet: bo
     }
     outline.extend([pos2(cx + 4.4, lip - 1.5), pos2(cx - 4.4, lip - 1.5)]);
     painter.add(Shape::convex_polygon(outline, color, Stroke::NONE));
-    painter.rect_filled(Rect::from_min_max(pos2(cx - 6.0, lip - 2.0), pos2(cx + 6.0, lip)), 1.0, color);
+    painter.rect_filled(style::snap(painter.ctx(), Rect::from_min_max(pos2(cx - 6.0, lip - 2.0), pos2(cx + 6.0, lip))), 1.0, color);
     // The clapper.
     painter.circle_filled(pos2(cx, lip + 1.6), 1.6, color);
     if quiet {
@@ -447,7 +461,7 @@ fn badge(painter: &Painter, r: Rect, p: &Palette, n: usize, fill: Color32) {
     let font = egui::FontId::new(8.5, olo_kit::style::bold());
     let galley = painter.layout_no_wrap(text, font, Color32::WHITE);
     let w = (galley.size().x + 4.0).max(10.0);
-    let badge = Rect::from_min_size(pos2(r.right() + 3.0 - w, r.top() - 1.5), vec2(w, 10.0));
+    let badge = style::snap(painter.ctx(), Rect::from_min_size(pos2(r.right() + 3.0 - w, r.top() - 1.5), vec2(w, 10.0)));
     painter.rect_filled(badge.expand(1.0), 6.0, c(p.panel_background));
     painter.rect_filled(badge, 5.0, fill);
     painter.galley(badge.center() - galley.size() / 2.0, galley, Color32::WHITE);
@@ -456,14 +470,18 @@ fn badge(painter: &Painter, r: Rect, p: &Palette, n: usize, fill: Color32) {
 /// Agent screens are running: a monitor with a pointer on it, and their
 /// count when there is more than one.
 pub fn draw_screens(painter: &Painter, r: Rect, p: &Palette, count: usize) {
-    let s = Stroke::new(1.2, ink(p));
-    let screen = Rect::from_min_size(pos2(r.left() + 1.5, r.top() + 2.5), vec2(13.0, 9.0));
+    // Lines are hairlines on device pixels; the screen is an odd number
+    // of points wide, so its stand can stand in the middle.
+    let hair = style::hairline(painter.ctx());
+    let screen = style::snap(painter.ctx(), Rect::from_min_size(pos2(r.left() + 0.5, r.top() + 2.0), vec2(15.0, 10.0)));
     painter.rect_filled(screen, 1.5, c(p.keyboard_navigation).gamma_multiply(0.35));
-    painter.rect_stroke(screen, 1.5, s, egui::StrokeKind::Middle);
+    painter.rect_stroke(screen, 1.5, Stroke::new(hair, ink(p)), egui::StrokeKind::Inside);
     // The stand.
     let cx = screen.center().x;
-    painter.line_segment([pos2(cx, screen.bottom() + 0.5), pos2(cx, r.bottom() - 2.0)], s);
-    painter.line_segment([pos2(cx - 3.5, r.bottom() - 1.5), pos2(cx + 3.5, r.bottom() - 1.5)], s);
+    let stand = whole(painter, cx - hair / 2.0);
+    let foot = whole(painter, r.bottom() - 1.0);
+    style::vline(painter, stand, screen.bottom(), foot, ink(p));
+    style::hline_above(painter, whole(painter, cx - 4.0), whole(painter, cx + 4.0), foot, ink(p));
     // The agent's pointer, in the middle of the screen.
     let (x, y) = (cx - 2.5, screen.top() + 1.5);
     painter.add(Shape::convex_polygon(vec![pos2(x, y), pos2(x, y + 5.5), pos2(x + 4.2, y + 4.2)], ink(p), Stroke::NONE));
@@ -473,18 +491,44 @@ pub fn draw_screens(painter: &Painter, r: Rect, p: &Palette, count: usize) {
     }
 }
 
-/// A coffee cup; full and steaming when `on` (caffeinated).
+/// Auto-tiling: a screen in tiles, a half beside two quarters, filled in
+/// the status-bar blue while it is on.
+pub fn draw_tiles(painter: &Painter, r: Rect, p: &Palette, on: bool) {
+    let ctx = painter.ctx();
+    let line = if on { ink(p) } else { dim(p) };
+    let (l, t) = (r.left() + 1.0, r.top() + 2.0);
+    let tiles = [
+        Rect::from_min_max(pos2(l, t), pos2(l + 6.0, t + 12.0)),
+        Rect::from_min_max(pos2(l + 7.0, t), pos2(l + 14.0, t + 5.5)),
+        Rect::from_min_max(pos2(l + 7.0, t + 6.5), pos2(l + 14.0, t + 12.0)),
+    ];
+    for tile in tiles {
+        let tile = olo_kit::style::snap(ctx, tile);
+        if on {
+            painter.rect_filled(tile, 0.0, c(p.status_bar));
+        }
+        olo_kit::style::hline(painter, tile.left(), tile.right(), tile.top(), line);
+        olo_kit::style::hline_above(painter, tile.left(), tile.right(), tile.bottom(), line);
+        olo_kit::style::vline(painter, tile.left(), tile.top(), tile.bottom(), line);
+        olo_kit::style::vline_left_of(painter, tile.right(), tile.top(), tile.bottom(), line);
+    }
+}
+
+/// A coffee cup; full and steaming when `on` (caffeinated). Its lines are
+/// hairlines, the cup's sides on device pixels.
 pub fn draw_cup(painter: &Painter, r: Rect, p: &Palette, on: bool) {
     let color = if on { ink(p) } else { dim(p) };
-    let s = Stroke::new(1.2, color);
-    let cup = Rect::from_min_size(pos2(r.left() + 1.5, r.top() + 6.5), vec2(9.0, 8.0));
+    let hair = style::hairline(painter.ctx());
+    let s = Stroke::new(hair, color);
+    let bowl = egui::CornerRadius { nw: 0, ne: 0, sw: 3, se: 3 };
+    let cup = style::snap(painter.ctx(), Rect::from_min_size(pos2(r.left() + 1.0, r.top() + 6.0), vec2(10.0, 9.0)));
     if on {
-        let coffee = Rect::from_min_max(pos2(cup.left(), cup.top() + 1.5), cup.max);
-        painter.rect_filled(coffee, egui::CornerRadius { nw: 0, ne: 0, sw: 3, se: 3 }, c(p.hue(olo_kit::theme::Hue::Brown)));
+        let coffee = Rect::from_min_max(pos2(cup.left(), cup.top() + whole(painter, 2.0)), cup.max);
+        painter.rect_filled(coffee, bowl, c(p.hue(olo_kit::theme::Hue::Brown)));
     }
-    painter.rect_stroke(cup, egui::CornerRadius { nw: 0, ne: 0, sw: 3, se: 3 }, s, egui::StrokeKind::Middle);
-    // The handle.
-    let c0 = pos2(cup.right() + 0.5, cup.top() + 3.5);
+    painter.rect_stroke(cup, bowl, s, egui::StrokeKind::Inside);
+    // The handle, from the middle of the cup's side.
+    let c0 = pos2(cup.right() - hair / 2.0, cup.top() + 4.0);
     let handle: Vec<_> = (0..=8)
         .map(|k| {
             let a = -std::f32::consts::FRAC_PI_2 + std::f32::consts::PI * k as f32 / 8.0;
@@ -501,7 +545,7 @@ pub fn draw_cup(painter: &Painter, r: Rect, p: &Palette, on: bool) {
                     pos2(x + (t * std::f32::consts::TAU).sin() * 0.9, cup.top() - 1.5 - t * 4.5)
                 })
                 .collect();
-            painter.add(Shape::line(steam, Stroke::new(1.0, color)));
+            painter.add(Shape::line(steam, s));
         }
     }
 }

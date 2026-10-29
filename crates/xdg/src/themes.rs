@@ -19,9 +19,11 @@ pub use olo_theme::looks::{CLASSIC, DEFAULT, THEMES, Theme, get, resolve};
 const UNSET: usize = usize::MAX;
 static CURRENT: AtomicUsize = AtomicUsize::new(UNSET);
 
+/// Theme `id`'s place in `THEMES`, by id: `THEMES` is a const, so the
+/// theme `resolve` returns needn't be at the address of this crate's copy.
 fn index(id: &str) -> usize {
-    let t = resolve(id);
-    THEMES.iter().position(|x| std::ptr::eq(x, t)).unwrap_or(0)
+    let id = resolve(id).id;
+    THEMES.iter().position(|x| x.id == id).unwrap_or(0)
 }
 
 /// The theme this process draws in: the last [`set`], else
@@ -43,10 +45,10 @@ pub fn current() -> &'static Theme {
 /// Draw in theme `id` (the default if unknown) from now on. True if that
 /// changed it: the caller then drops what it drew in the old one.
 pub fn set(id: &str) -> bool {
-    let before = current();
+    let before = current().id;
     let i = index(id);
     CURRENT.store(i, Ordering::Relaxed);
-    !std::ptr::eq(before, &THEMES[i])
+    before != THEMES[i].id
 }
 
 /// Theme `id`'s own wallpaper, as the wallpaper setting names it: the
@@ -113,6 +115,16 @@ mod tests {
             assert!(missing.is_empty(), "{} lacks {missing:?}", t.id);
             let img = crate::decode_png(&dir.join("brand/olo-wordmark.png")).unwrap_or_else(|| panic!("{}'s wordmark", t.id));
             assert!(img.width > img.height && img.height >= 128);
+        }
+    }
+
+    #[test]
+    fn setting_a_theme_draws_in_it() {
+        // Each in turn, whichever came before (see `index`).
+        for t in THEMES.iter().chain(THEMES.iter().rev()) {
+            set(t.id);
+            assert_eq!(current().id, t.id);
+            assert!(!set(t.id), "{} again changed it", t.id);
         }
     }
 

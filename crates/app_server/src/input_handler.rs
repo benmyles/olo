@@ -178,8 +178,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         use crate::keymap::Action as A;
         debug!(?action, "keymap action");
         match action {
-            A::NextApp { back } => self.twitch_step(true, back),
-            A::NextWindow { back } => self.twitch_step(false, back),
+            A::NextApp { back, all } => self.twitch_step(true, all, back),
+            A::NextWindow { back } => self.twitch_step(false, true, back),
             A::SwitchDone => self.twitch_done(),
             A::SwitchMove { dx, dy } => self.twitch_move(dx, dy),
             A::SwitchPick(c) => self.twitch_pick(c),
@@ -233,16 +233,37 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     None => self.spawn_program("olo-screenshot", &[]),
                 }
             }
-            S::TileAll => self.tile_all(),
+            S::TileAll => {
+                if !self.auto_balance() {
+                    self.tile_all();
+                }
+            }
+            S::AutoTile => {
+                let on = self.set_auto_tiling(None, None, None);
+                self.show_indicator(crate::osd::Indicator::AutoTiling { on });
+            }
             // Slow (a model looks at the screen): its own process, which
             // shows progress and sends Arrange when it has an answer.
             S::SmartTile => self.spawn_program("olo-smart-tile", &[]),
             S::ZoomAll => self.zoom_all(),
-            S::CascadeAll => self.cascade_all(None),
-            S::FanOut => self.fan_out(None),
-            S::CascadeOthers => self.cascade_all(focused.as_ref()),
-            S::FanOutOthers => self.fan_out(focused.as_ref()),
-            S::UndoArrangement => self.undo_arrangement(),
+            // Arrangements that aren't tiles: auto-tiling off there first.
+            S::CascadeAll | S::FanOut | S::CascadeOthers | S::FanOutOthers => {
+                let keep = matches!(shortcut, S::CascadeOthers | S::FanOutOthers).then_some(focused).flatten();
+                let output = keep.as_ref().and_then(|w| self.window_output(w)).or_else(|| self.active_output());
+                if let Some(o) = output.filter(|o| self.auto_on(o, self.workspace)) {
+                    self.set_auto_tiling(Some(false), None, Some(o));
+                    self.show_indicator(crate::osd::Indicator::AutoTiling { on: false });
+                }
+                match shortcut {
+                    S::CascadeAll | S::CascadeOthers => self.cascade_all(keep.as_ref()),
+                    _ => self.fan_out(keep.as_ref()),
+                }
+            }
+            S::UndoArrangement => {
+                if !self.auto_undo() {
+                    self.undo_arrangement();
+                }
+            }
             S::ShowDesktop => self.show_desktop(),
             S::NextWorkspace => self.switch_workspace((self.workspace + 1).min(workspaces - 1)),
             S::PreviousWorkspace => self.switch_workspace(self.workspace.saturating_sub(1)),
@@ -283,13 +304,22 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.client_key((k + 8).into(), state, time);
                 }
             }
+            S::Float => {
+                let Some(w) = focused else { return };
+                let floats = self.floats(&w);
+                self.set_floating(&w, Some(!floats));
+            }
             S::Tile(_) | S::Zoom | S::ZoomVertical | S::ZoomHorizontal | S::Restore | S::Center | S::Hide | S::NextDisplay | S::PreviousDisplay => {
                 let Some(w) = focused else { return };
                 if shortcut != S::Hide {
                     self.front_of_group(&w);
                 }
                 match shortcut {
-                    S::Tile(tile) => self.tile_window(&w, tile),
+                    S::Tile(tile) => {
+                        if !self.auto_tile_window(&w, tile) {
+                            self.tile_window(&w, tile);
+                        }
+                    }
                     S::Zoom => {
                         // Unzooming puts it back in its tile, if it was
                         // tiled (Restore goes back to its own frame).
@@ -299,10 +329,23 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                             self.zoom_window(&w);
                         }
                     }
-                    S::ZoomVertical => self.toggle_zoom_along(&w, crate::shell::tiling::Axis::Vertical),
-                    S::ZoomHorizontal => self.toggle_zoom_along(&w, crate::shell::tiling::Axis::Horizontal),
-                    S::Restore => self.restore_frame(&w),
-                    S::Center => self.center_window(&w),
+                    S::ZoomVertical | S::ZoomHorizontal => {
+                        let axis = if shortcut == S::ZoomVertical { crate::shell::tiling::Axis::Vertical } else { crate::shell::tiling::Axis::Horizontal };
+                        if !self.auto_zoom_along(&w, axis) {
+                            self.toggle_zoom_along(&w, axis);
+                        }
+                    }
+                    // A tile given its own frame floats over the tiles.
+                    S::Restore | S::Center => {
+                        if self.auto_tiled(&w) {
+                            self.set_floating(&w, Some(true));
+                        }
+                        if shortcut == S::Restore {
+                            self.restore_frame(&w);
+                        } else {
+                            self.center_window(&w);
+                        }
+                    }
                     S::Hide => self.minimize_window(&w),
                     S::NextDisplay => self.window_to_next_output(&w, false),
                     S::PreviousDisplay => self.window_to_next_output(&w, true),
