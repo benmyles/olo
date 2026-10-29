@@ -681,8 +681,10 @@ enum Undo {
 pub struct AutoTiler {
     trees: HashMap<(u32, String), Node>,
     known: HashMap<u64, Known>,
-    /// What each display's tiles were laid out for: its room and windows.
-    seen: HashMap<String, (Rectangle<i32, Logical>, Vec<u64>)>,
+    /// What each display's tiles were laid out for: its room, and its
+    /// windows with their least frames (most learnt only as one first
+    /// draws, after its tile was given it).
+    seen: HashMap<String, (Rectangle<i32, Logical>, Vec<(u64, smithay::utils::Size<i32, Logical>)>)>,
     /// Lay out again on the next tick, whatever changed.
     pub dirty: bool,
     undo: Option<Undo>,
@@ -839,7 +841,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     /// The tree `w` is in on this workspace, by key.
-    fn tree_of(&self, w: &WindowElement) -> Option<(u32, String)> {
+    pub(super) fn tree_of(&self, w: &WindowElement) -> Option<(u32, String)> {
         self.auto.trees.iter().find(|((ws, _), t)| *ws == self.workspace && t.contains(w.id())).map(|(k, _)| k.clone())
     }
 
@@ -938,11 +940,11 @@ impl<B: Backend + 'static> AnvilState<B> {
             for o in on {
                 let key = (self.workspace, o.name());
                 let Some(area) = self.tile_area(o) else { continue };
-                let ids: Vec<u64> = units.remove(&o.name()).unwrap_or_default().iter().map(|w| w.id()).collect();
+                let ids: Vec<(u64, smithay::utils::Size<i32, Logical>)> = units.remove(&o.name()).unwrap_or_default().iter().map(|w| (w.id(), self.min_frame(w))).collect();
                 if dirty || self.auto.seen.get(&o.name()).is_none_or(|(a, i)| *a != area || *i != ids) || !self.auto.trees.contains_key(&key) {
                     self.auto_output(o);
                     let leaves: HashMap<u64, String> = self.auto.trees.get(&key).map(|t| t.windows().into_iter().map(|id| (id, o.name())).collect()).unwrap_or_default();
-                    let now = self.auto_units_all(&leaves).remove(&o.name()).unwrap_or_default().iter().map(|w| w.id()).collect();
+                    let now = self.auto_units_all(&leaves).remove(&o.name()).unwrap_or_default().iter().map(|w| (w.id(), self.min_frame(w))).collect();
                     self.auto.seen.insert(o.name(), (area, now));
                 }
             }
@@ -1009,10 +1011,20 @@ impl<B: Backend + 'static> AnvilState<B> {
             let in_tree: Vec<u64> = t.windows();
             for id in gone {
                 let known = self.auto.known.get(&id).cloned();
-                let heir = known.as_ref().and_then(|k| k.group).and_then(|g| {
-                    units.iter().find(|u| !in_tree.contains(&u.id()) && self.groups.place(u).map(|(n, _)| n) == Some(g)).map(|u| u.id())
-                });
                 let alive = self.window_by_id(id);
+                // Its group: the one it is behind in now, else the one it
+                // was in (closed, minimized).
+                let group = alive.as_ref().and_then(|w| self.groups.place(w)).map(|(n, _)| n).or(known.as_ref().and_then(|k| k.group));
+                let heir = group.and_then(|g| units.iter().find(|u| self.groups.place(u).map(|(n, _)| n) == Some(g)).map(|u| u.id()));
+                // The front came from a tile of its own here (it opened
+                // beside this one, or was put in the group by its tab):
+                // the group stays here, and that tile closes.
+                if let Some(h) = heir
+                    && in_tree.contains(&h)
+                {
+                    let rest = std::mem::replace(t, Node::gap());
+                    *t = rest.without(&|n| *n == Node::Window(h)).unwrap_or_else(Node::gap);
+                }
                 let with = match (heir, alive, known) {
                     (Some(h), ..) => Node::Window(h),
                     (None, Some(_), _) => Node::Kept(Kept { who: Who::Window(id), holds: false, until: None }),
@@ -1227,14 +1239,23 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// `w` (now at `geo`) to `rect`: moved at once if that's all; sized
     /// now if it has yet to show; else asked for the size and moved when
     /// it draws it, as a neighbour follows an edge drag.
+    ///
+    /// What it has drawn is only all there is to it once nothing else is
+    /// on its way: a size asked for a moment ago (another layout, an edge
+    /// drag's last step) would land after this, wherever it put the
+    /// window, and stay there (a tile too wide, out past the display's
+    /// edge). So it is asked for this one instead, from where it began.
     fn auto_place(&mut self, w: &WindowElement, geo: Rectangle<i32, Logical>, rect: Rectangle<i32, Logical>) {
-        if geo == rect {
-            return;
-        }
         let WindowSurface::Wayland(t) = w.0.underlying_surface();
-        if geo.size == rect.size {
-            let Some(loc) = self.space.element_location(w) else { return };
-            self.space.relocate_element(w, loc + (rect.loc - geo.loc));
+        if geo.size == rect.size && super::groups::size_on_the_way(w).is_none() {
+            // Drawn at its tile's size, and asked for no other: there now.
+            // (Following, it is where it was going: it would move nowhere
+            // else, and no commit may come to move it.)
+            if geo != rect {
+                let Some(loc) = self.space.element_location(w) else { return };
+                self.space.relocate_element(w, loc + (rect.loc - geo.loc));
+            }
+            self.unfollow(w);
         } else if !t.is_initial_configure_sent() {
             // Its frame comes with the answer to this first configure: its
             // content is the tile less the frame it will have.
@@ -1247,7 +1268,8 @@ impl<B: Backend + 'static> AnvilState<B> {
         } else if !w.meta().placed.get() {
             self.set_frame(w, rect, false);
         } else {
-            self.follow(w, geo, rect);
+            let began = self.following_from(w);
+            self.follow(w, began.unwrap_or(geo), rect);
         }
     }
 
@@ -1285,7 +1307,9 @@ impl<B: Backend + 'static> AnvilState<B> {
     fn joins_a_group(&self, w: &WindowElement) -> bool {
         let WindowSurface::Wayland(t) = w.0.underlying_surface();
         let Some(key) = self.group_key(w) else { return false };
-        w.decorated() && !super::groups::is_dialog(t) && resizable(w) && self.space.elements().any(|o| o != w && self.groupable(o) && self.group_key(o).as_ref() == Some(&key))
+        // (Not `decorated`: that is false until it answers its first
+        // configure, and this is before it.)
+        w.will_be_decorated() && !super::groups::is_dialog(t) && resizable(w) && self.space.elements().any(|o| o != w && self.groupable(o) && self.group_key(o).as_ref() == Some(&key))
     }
 
     /// Floating windows over the tiles of auto-tiled displays, in the

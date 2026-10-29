@@ -440,6 +440,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 });
                 surface.send_pending_configure();
 
+                // Taken in hand: no longer on its way to a tile it was asked into.
+                self.unfollow(&window);
                 let grab = TouchResizeSurfaceGrab {
                     start_data,
                     window,
@@ -501,6 +503,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         });
         surface.send_pending_configure();
 
+        // Taken in hand: no longer on its way to a tile it was asked into.
+        self.unfollow(&window);
         let grab = PointerResizeSurfaceGrab {
             start_data,
             window,
@@ -564,6 +568,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     initial_window_location = start_data.location.to_i32_round();
                 }
 
+                // Taken in hand: no longer on its way to a tile it was asked into.
+                self.unfollow(&window);
                 let grab = TouchMoveSurfaceGrab {
                     start_data,
                     window,
@@ -630,6 +636,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             initial_window_location = (pos.x as i32, pos.y as i32).into();
         }
 
+        // Taken in hand: no longer on its way to a tile it was asked into.
+        self.unfollow(&window);
         let grab = PointerMoveSurfaceGrab {
             start_data,
             window,

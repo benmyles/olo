@@ -419,13 +419,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let mut settling = Vec::new();
         for (key, g) in &groups {
             let leads = |w: &&WindowElement| !before.joining.contains(w) && was_settling(w).is_none();
-            let leader = g
+            // Auto-tiled, its tile says where the group is: the window in
+            // it leads (one just back from a restart too, settling or not);
+            // if two are (one put in by its tab from a tile of its own),
+            // the one that was there first.
+            let tiled: Vec<WindowElement> = g.iter().filter(|w| self.tree_of(w).is_some()).cloned().collect();
+            let pool = if tiled.is_empty() { g } else { &tiled };
+            let leader = pool
                 .iter()
                 .rev()
                 .filter(leads)
                 .find(|w| was_member(w))
-                .or_else(|| g.iter().rev().filter(leads).find(|w| was_seen(w)))
-                .unwrap_or(&g[g.len() - 1])
+                .or_else(|| pool.iter().rev().filter(leads).find(|w| was_seen(w)))
+                .unwrap_or(&pool[pool.len() - 1])
                 .clone();
             let Some(mut frame) = self.space.element_geometry(&leader) else { continue };
             // Where it is going, not the size it is leaving: a window that

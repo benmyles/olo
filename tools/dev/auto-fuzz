@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""Auto-tiling fuzzer: drive app_server's auto-tiling with random edge
+drags, windows opening, closing and grouping, tabs, workspaces and
+in-place restarts, on real apps, and check after each step that the
+tiles are still where they belong.
+
+  auto-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going] [--quiet] [--reloads]
+
+NAME is a tsession with the shell, e.g.
+
+  tsession start af 3024x1890 --scale 1.75 --session --shell
+  tools/dev/auto-fuzz af --steps 300
+
+(--reloads restarts app_server in place now and then, as an upgrade
+does: the session must be under olo-session, `--session`.)
+
+It turns auto-tiling on for every workspace, and opens and closes
+windows of olo-terminal, olo-styled-edit and olo-tracker itself (an
+app's windows group by themselves). Edges between tiles are dragged as a
+person drags them: slowly or in a flick, past where they are let go and
+back, held still a moment before letting go. A run is reproducible from
+its seed (printed first) as long as the session starts the same way;
+--only drag,open runs just those steps (the `op_` methods).
+
+What is checked, after every step once the windows have settled:
+
+  * every tile (a shown window in a tile, not zoomed, floating or rolled
+    up; a group counts once) is inside its display's tiling area;
+  * no two tiles overlap;
+  * nothing moves a moment later: a size asked for earlier doesn't land
+    late, putting a tile somewhere else (a Tracker beside a Terminal
+    dragged wider, out past Deskbar);
+  * wm-fuzz's sanity checks: app_server answers, one shown window has the
+    keyboard, groups hold together, app_server never panics.
+
+Tiles whose apps' least sizes don't all fit may overlap; the windows
+these apps open are small enough that they always fit here.
+"""
+import importlib.machinery, os, subprocess, sys, time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+wm = importlib.machinery.SourceFileLoader("wm_fuzz", os.path.join(HERE, "wm-fuzz")).load_module()
+fr, contains, overlap, Failure = wm.fr, wm.contains, wm.overlap, wm.Failure
+
+# How long after settling a tile must still be where it settled.
+STILL = 0.4
+# More windows than this on a workspace and their least sizes may not fit.
+MOST = 5
+
+
+class AutoFuzz(wm.Fuzz):
+    def __init__(self, name, seed, quiet, reloads):
+        super().__init__(name, seed, quiet)
+        self.reloads = reloads
+        for ws in range(4):
+            self.req({"type": "set_auto_tiling", "on": True, "workspace": ws})
+
+    def log(self, what):
+        # With the time (UTC, as app_server's log has it), to find a
+        # failure's step there.
+        now = time.time()
+        super().log(f"{time.strftime('%H:%M:%S', time.gmtime(now))}.{int(now % 1 * 1000):03d} {what}")
+
+    # ---- checks ----
+
+    def tiles(self, wins):
+        """The tiles shown now: one window for each (a group's front)."""
+        ws = self.workspace()
+        out, groups = [], set()
+        for i in sorted(wins):
+            w = wins[i]
+            if w["workspace"] != ws or w["minimized"] or not fr(w) or not w.get("tiled"):
+                continue
+            if w.get("zoomed") or w.get("floating") or w.get("rolled"):
+                continue
+            g = w.get("group")
+            if g is not None:
+                if g in groups:
+                    continue
+                groups.add(g)
+            out.append(i)
+        return out
+
+    def check_tiles(self, what, wins):
+        _, area = self.area()
+        if not area:
+            return
+        tiles = self.tiles(wins)
+        for i in tiles:
+            if not contains(area, fr(wins[i])):
+                self.fail(f"{what}: tile {i} ({wins[i]['app_id']}) {fr(wins[i])} sticks out of the tiling area {area}\n  {wm.state(wins)}")
+        for n, a in enumerate(tiles):
+            for b in tiles[n + 1:]:
+                if overlap(fr(wins[a]), fr(wins[b])):
+                    self.fail(f"{what}: tiles {a} ({wins[a]['app_id']}) {fr(wins[a])} and {b} ({wins[b]['app_id']}) {fr(wins[b])} overlap\n  {wm.state(wins)}")
+
+    def check_still(self, what, wins):
+        """Nothing moves after settling: a late size landing would."""
+        t0 = time.time()
+        while time.time() - t0 < STILL:
+            now = self.windows()
+            moved = {i: (fr(wins[i]), fr(w)) for i, w in now.items() if i in wins and fr(wins[i]) != fr(w) and wins[i]["workspace"] == w["workspace"]}
+            if moved:
+                self.fail(f"{what}: settled, then moved: " + ", ".join(f"{i} ({now[i]['app_id']}) {a} -> {b}" for i, (a, b) in moved.items()))
+                return
+            time.sleep(0.01)
+
+    def after(self, what, timeout=3.0):
+        """Settle, and check everything."""
+        wins = self.settle(timeout)
+        self.check_sane(wins)
+        self.check_tiles(what, wins)
+        self.check_still(what, wins)
+        return wins
+
+    # ---- steps ----
+
+    def run_step(self):
+        self.step += 1
+        wins = self.windows()
+        shown = self.shown(wins)
+        ops = [(10, self.op_drag), (3, self.op_open), (2, self.op_close), (2, self.op_workspace_trip),
+               (2, self.op_group), (2, self.op_ungroup), (2, self.op_tab)]
+        if self.reloads:
+            ops.append((1, self.op_reload))
+        if self.only:
+            ops = [(w, op) for w, op in ops if op.__name__[3:] in self.only]
+        if len(self.tiles(wins)) < 2:
+            ops = [(1, self.op_open)]
+        total = sum(w for w, _ in ops)
+        n = self.rng.uniform(0, total)
+        for weight, op in ops:
+            n -= weight
+            if n <= 0:
+                break
+        op(wins, shown)
+
+    def seams(self, wins):
+        """Each edge between two tiles side by side (with the gap between
+        them): (the tile whose edge it is, its side, where along it they
+        meet)."""
+        tiles = self.tiles(wins)
+        out = []
+        for a in tiles:
+            ax, ay, aw, ah = fr(wins[a])
+            for b in tiles:
+                if a == b:
+                    continue
+                bx, by, bw, bh = fr(wins[b])
+                along_y = (max(ay, by), min(ay + ah, by + bh))
+                along_x = (max(ax, bx), min(ax + aw, bx + bw))
+                if 0 <= bx - (ax + aw) <= 16 and along_y[1] - along_y[0] > 40:
+                    out.append((a, "right", along_y))
+                if 0 <= by - (ay + ah) <= 16 and along_x[1] - along_x[0] > 40:
+                    out.append((a, "bottom", along_x))
+        return out
+
+    def op_drag(self, wins, shown):
+        seams = self.seams(wins)
+        if not seams:
+            return
+        _, area = self.area()
+        a, side, (lo, hi) = self.rng.choice(seams)
+        x, y, w, h = fr(wins[a])
+        along = self.rng.uniform(lo + 20, hi - 20)
+        if side == "right":
+            start = (x + w - 1.0, along)
+            to = self.rng.uniform(area[0] + 60, area[0] + area[2] - 60)
+            end = (to, along)
+        else:
+            start = (along, y + h - 1.0)
+            to = self.rng.uniform(area[1] + 60, area[1] + area[3] - 60)
+            end = (along, to)
+        # Past where it is let go, and back, now and then.
+        over = None
+        if self.rng.random() < 0.35:
+            d = self.rng.uniform(-160, 160)
+            over = (end[0] + d, end[1]) if side == "right" else (end[0], end[1] + d)
+        steps = self.rng.choice([3, 8, 20, 40, 80])
+        step_s = self.rng.choice([0.001, 0.004, 0.008, 0.016])
+        hold = self.rng.choice([0, 0, 0.03, 0.15, 0.4])
+        self.log(f"drag {a}'s {side} edge from {wm.fmt(start)} to {wm.fmt(end)}" + (f" by way of {wm.fmt(over)}" if over else "")
+                 + f" in {steps} steps {step_s * 1000:.0f} ms apart, held {hold:.2f} s")
+        ev = lambda e: self.req({"type": "synthetic", "events": [e]})
+        ev({"type": "move", "x": start[0], "y": start[1]})
+        time.sleep(0.03)
+        ev({"type": "button", "button": wm.BTN_LEFT, "pressed": True})
+        path = [over, end] if over else [end]
+        at = start
+        for p in path:
+            for i in range(1, steps + 1):
+                time.sleep(step_s)
+                ev({"type": "move", "x": at[0] + (p[0] - at[0]) * i / steps, "y": at[1] + (p[1] - at[1]) * i / steps})
+            at = p
+        time.sleep(hold)
+        ev({"type": "button", "button": wm.BTN_LEFT, "pressed": False})
+        self.last_press = time.time()
+        self.after(f"dragging {a}'s {side} edge")
+
+    def op_open(self, wins, shown):
+        if len(self.tiles(wins)) >= MOST:
+            return self.op_close(wins, shown)
+        app = self.rng.choice(wm.APPS)
+        args = self.rng.choice(wm.LAUNCH[app])
+        self.log(f"open {' '.join([app, *args])}")
+        self.spawn(app, args)
+        t0 = time.time()
+        while time.time() - t0 < 4 and not set(self.windows()) - set(wins):
+            time.sleep(0.01)
+        self.after(f"opening {app}")
+
+    def op_close(self, wins, shown):
+        if len(shown) <= 2:
+            return
+        w = self.pick(shown)
+        self.log(f"close {w} ({wins[w]['app_id']})")
+        self.req({"type": "close", "id": w})
+        self.after(f"closing {w}")
+
+    def op_workspace_trip(self, wins, shown):
+        ws = self.workspace()
+        to = self.rng.choice([i for i in range(4) if i != ws])
+        self.log(f"workspace {ws} -> {to} -> {ws}")
+        self.req({"type": "switch_workspace", "index": to})
+        self.after(f"going to workspace {to}")
+        self.req({"type": "switch_workspace", "index": ws})
+        self.after(f"coming back from workspace {to}")
+
+    def op_group(self, wins, shown):
+        tiles = self.tiles(wins)
+        if len(tiles) < 2:
+            return
+        w = self.pick(tiles)
+        t = self.pick([i for i in tiles if i != w])
+        if not (wins[w].get("groupable") and wins[t].get("groupable")):
+            return
+        self.log(f"group_window {w} ({wins[w]['app_id']}) with {t} ({wins[t]['app_id']})")
+        if self.try_req({"type": "group_window", "id": w, "with": t}).get("type") != "error":
+            self.by_hand |= {w, t}
+            self.alone -= {w, t}
+        self.after(f"grouping {w} with {t}")
+
+    def op_ungroup(self, wins, shown):
+        groups = [g for g in self.groups(wins).values() if g[0] in shown]
+        if not groups:
+            return
+        w = self.rng.choice(self.rng.choice(groups))
+        self.log(f"ungroup_window {w} (group {wins[w]['group']} {self.group_of(wins, w)})")
+        self.req({"type": "ungroup_window", "id": w})
+        self.alone.add(w)
+        self.by_hand.discard(w)
+        self.after(f"ungrouping {w}")
+
+    def op_tab(self, wins, shown):
+        """Bring a window behind in its group to the front (its tab)."""
+        behind = [i for g in self.groups(wins).values() if g[0] in shown for i in g if not wins[i]["focused"]]
+        if not behind:
+            return
+        w = self.pick(behind)
+        self.log(f"activate {w} (behind in group {wins[w]['group']})")
+        self.req({"type": "activate", "id": w})
+        self.after(f"bringing {w} to the front of its group")
+
+    def op_reload(self, wins, shown):
+        self.log("reload app_server in place")
+        subprocess.run([wm.TSESSION, "reload", self.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        t0 = time.time()
+        while time.time() - t0 < 15:
+            try:
+                if len(self.windows()) >= len(wins):
+                    break
+            except Failure:
+                pass
+            time.sleep(0.1)
+        # The windows come back with new ids: which were put in groups or
+        # taken out by hand is no longer known (as when wm-fuzz starts).
+        self.by_hand, self.alone = set(self.windows()), set()
+        self.after("reloading", timeout=6.0)
+
+    def run(self, steps, keep_going):
+        self.keep_going = keep_going
+        print(f"auto-fuzz {self.name}: seed {self.seed}, {steps} steps", flush=True)
+        try:
+            for _ in range(steps):
+                self.run_step()
+        except Failure as e:
+            print(f"FAIL {e}", flush=True)
+            return 1
+        if self.failures:
+            print(f"\n{len(self.failures)} failures (seed {self.seed})")
+            return 1
+        print(f"ok: {steps} steps (seed {self.seed})")
+        return 0
+
+
+def main():
+    a = sys.argv[1:]
+    if not a or a[0].startswith("-"):
+        sys.exit(__doc__)
+    seed = int(a[a.index("--seed") + 1]) if "--seed" in a else wm.random.randrange(1 << 30)
+    steps = int(a[a.index("--steps") + 1]) if "--steps" in a else 200
+    fuzz = AutoFuzz(a[0], seed, "--quiet" in a, "--reloads" in a)
+    if "--only" in a:
+        fuzz.only = set(a[a.index("--only") + 1].split(","))
+        unknown = fuzz.only - {m[3:] for m in dir(fuzz) if m.startswith("op_")}
+        if unknown:
+            sys.exit(f"auto-fuzz: no such step: {', '.join(sorted(unknown))}")
+    sys.exit(fuzz.run(steps, "--keep-going" in a))
+
+
+if __name__ == "__main__":
+    main()

@@ -20,6 +20,7 @@
 //! picture.
 
 use std::cell::{Cell, RefCell};
+use std::time::{Duration, Instant};
 
 use smithay::{
     desktop::{WindowSurface, space::SpaceElement},
@@ -199,12 +200,32 @@ struct Link {
 }
 
 /// A tiled neighbour following a drag (and catching up after it): its
-/// frame when the drag began and the one asked of it now.
+/// frame when the drag began and the one asked of it now (`asked` then).
 #[derive(Debug)]
 pub struct Follower {
     window: WindowElement,
     start: Rectangle<i32, Logical>,
     target: Rectangle<i32, Logical>,
+    asked: Instant,
+}
+
+/// The longest a window is followed, waiting for it to draw the size it
+/// was asked for, after it last was: an app that never does is left where
+/// it is.
+const FOLLOW_LIMIT: Duration = Duration::from_secs(2);
+
+/// Whether `window`'s app lets it be `frame` big: within its least and
+/// most sizes.
+fn can_be(window: &WindowElement, frame: Size<i32, Logical>) -> bool {
+    use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
+    let content = window.inner_size(frame);
+    let Some(surface) = window.wl_surface() else { return true };
+    let (min, max) = with_states(&surface, |st| {
+        let s = *st.cached_state.get::<SurfaceCachedState>().current();
+        (s.min_size, s.max_size)
+    });
+    let fits = |n: i32, lo: i32, hi: i32| n >= lo && (hi <= 0 || n <= hi);
+    fits(content.w, min.w, max.w) && fits(content.h, min.h, max.h)
 }
 
 /// Each linked neighbour once, with its frame when the drag began and the
@@ -734,10 +755,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// The smallest frame a window takes: its app's minimum content size
     /// (if it gives one) with the tab and border, and never under
-    /// `MIN_TILE`.
+    /// `MIN_TILE`. In a group, the group's: they share one frame, as big
+    /// as the biggest least size among them (windows of different apps
+    /// put together by hand).
     pub(super) fn min_frame(&self, window: &WindowElement) -> Size<i32, Logical> {
         use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
-        let content = window.wl_surface().map(|s| with_states(&s, |st| st.cached_state.get::<SurfaceCachedState>().current().min_size)).unwrap_or_default();
+        let least = |w: &WindowElement| w.wl_surface().map(|s| with_states(&s, |st| st.cached_state.get::<SurfaceCachedState>().current().min_size)).unwrap_or_default();
+        let content = self.groups.mates(window).iter().map(least).fold(least(window), |a, b| Size::from((a.w.max(b.w), a.h.max(b.h))));
         let frame = self.space.element_geometry(window).map(|g| g.size).unwrap_or_default();
         let extra = frame - window.content_size();
         Size::from(((content.w + extra.w).max(MIN_TILE), (content.h + extra.h).max(MIN_TILE)))
@@ -777,9 +801,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// if it has answered the last size asked, else when it does. It moves
     /// when it draws it (`tile_follower_drew`).
     pub(super) fn follow(&mut self, window: &WindowElement, start: Rectangle<i32, Logical>, target: Rectangle<i32, Logical>) {
+        let asked = Instant::now();
         match self.tile_followers.iter_mut().find(|f| f.window == *window) {
-            Some(f) => (f.start, f.target) = (start, target),
-            None => self.tile_followers.push(Follower { window: window.clone(), start, target }),
+            Some(f) => (f.start, f.target, f.asked) = (start, target, asked),
+            None => self.tile_followers.push(Follower { window: window.clone(), start, target, asked }),
         }
         let content = window.inner_size(target.size);
         match window.0.underlying_surface() {
@@ -795,13 +820,28 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
     }
 
+    /// Where `window` began, if it is still on its way to a frame it was
+    /// asked for (`follow`).
+    pub(super) fn following_from(&self, window: &WindowElement) -> Option<Rectangle<i32, Logical>> {
+        self.tile_followers.iter().find(|f| f.window == *window).map(|f| f.start)
+    }
+
+    /// `window` is where it was going (put there by other means): it
+    /// follows no more.
+    pub(super) fn unfollow(&mut self, window: &WindowElement) {
+        self.tile_followers.retain(|f| f.window != *window);
+    }
+
     /// A window committed: if it is following a drag, put it where the
     /// size it drew belongs (the sides that don't move where they were)
     /// and ask for the frame the drag has got to since. Once it has
-    /// caught up with a drag that's over, it's done.
+    /// caught up with a drag that's over, it's done: it has drawn the
+    /// last size asked (or one it can't be). Having answered isn't
+    /// enough: an app may answer a size and draw it a frame later, and
+    /// that frame would land unplaced, its far side out past its tile.
     pub fn tile_follower_drew(&mut self, window: &WindowElement) {
         let Some(i) = self.tile_followers.iter().position(|f| f.window == *window) else { return };
-        let (start, target) = (self.tile_followers[i].start, self.tile_followers[i].target);
+        let (start, target, asked) = (self.tile_followers[i].start, self.tile_followers[i].target, self.tile_followers[i].asked);
         let (Some(loc), Some(geo)) = (self.space.element_location(window), self.space.element_geometry(window)) else {
             self.tile_followers.remove(i);
             return;
@@ -816,7 +856,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             WindowSurface::Wayland(t) => {
                 if t.has_pending_changes() {
                     super::grabs::send_when_caught_up(t);
-                } else if self.tile_drag.is_none() && !super::grabs::awaiting_ack(t) {
+                } else if self.tile_drag.is_none()
+                    && !super::grabs::awaiting_ack(t)
+                    && (geo.size == target.size || !can_be(window, target.size) || asked.elapsed() > FOLLOW_LIMIT)
+                {
                     self.tile_followers.remove(i);
                 }
             }

@@ -331,6 +331,44 @@ pub fn resize_caught_up(xdg: &smithay::wayland::shell::xdg::ToplevelSurface) {
     }
 }
 
+/// A resize let go (`serial`): the window asked for its last size
+/// (`last`), no longer resizing, and its left and top sides where the drag
+/// left them, if it was by those. `initial`: where it began, and its size.
+fn end_resize<BackendData: Backend>(
+    data: &mut AnvilState<BackendData>,
+    window: &WindowElement,
+    edges: ResizeEdge,
+    initial: (Point<i32, Logical>, Size<i32, Logical>),
+    last: Size<i32, Logical>,
+    serial: Serial,
+) {
+    let WindowSurface::Wayland(xdg) = window.0.underlying_surface();
+    xdg.with_pending_state(|state| {
+        state.states.unset(xdg_toplevel::State::Resizing);
+        state.size = Some(last);
+    });
+    xdg.send_pending_configure();
+    if edges.intersects(ResizeEdge::TOP_LEFT) {
+        let geometry = window.0.geometry();
+        let mut location = data.space.element_location(window).unwrap();
+        if edges.intersects(ResizeEdge::LEFT) {
+            location.x = initial.0.x + (initial.1.w - geometry.size.w);
+        }
+        if edges.intersects(ResizeEdge::TOP) {
+            location.y = initial.0.y + (initial.1.h - geometry.size.h);
+        }
+        data.space.map_element(window.clone(), location, true);
+    }
+    with_states(&window.wl_surface().unwrap(), |states| {
+        let mut data = states.data_map.get::<RefCell<SurfaceData>>().unwrap().borrow_mut();
+        if let ResizeState::Resizing(resize_data) = data.resize_state {
+            data.resize_state = ResizeState::WaitingForFinalAck(resize_data, serial);
+        } else {
+            panic!("invalid resize state: {:?}", data.resize_state);
+        }
+    });
+}
+
 /// Information about the resize operation.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct ResizeData {
@@ -464,50 +502,14 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerResiz
         if handle.current_pressed().is_empty() {
             // No more buttons are pressed, release the grab.
             handle.unset_grab(self, data, event.serial, event.time, true);
+            // If toplevel is dead, we can't resize it.
+            if self.window.alive() {
+                end_resize(data, &self.window, self.edges, (self.initial_window_location, self.initial_window_size), self.last_window_size, event.serial);
+            }
+            // After its last size went: the neighbours keep their parts,
+            // and an auto-tiled split moves there, snapped, asking the
+            // window for the size that gives it.
             data.tile_drag_end();
-
-            // If toplevel is dead, we can't resize it, so we return early.
-            if !self.window.alive() {
-                return;
-            }
-
-            match &self.window.0.underlying_surface() {
-                WindowSurface::Wayland(xdg) => {
-                    xdg.with_pending_state(|state| {
-                        state.states.unset(xdg_toplevel::State::Resizing);
-                        state.size = Some(self.last_window_size);
-                    });
-                    xdg.send_pending_configure();
-                    if self.edges.intersects(ResizeEdge::TOP_LEFT) {
-                        let geometry = self.window.0.geometry();
-                        let mut location = data.space.element_location(&self.window).unwrap();
-
-                        if self.edges.intersects(ResizeEdge::LEFT) {
-                            location.x = self.initial_window_location.x
-                                + (self.initial_window_size.w - geometry.size.w);
-                        }
-                        if self.edges.intersects(ResizeEdge::TOP) {
-                            location.y = self.initial_window_location.y
-                                + (self.initial_window_size.h - geometry.size.h);
-                        }
-
-                        data.space.map_element(self.window.clone(), location, true);
-                    }
-
-                    with_states(&self.window.wl_surface().unwrap(), |states| {
-                        let mut data = states
-                            .data_map
-                            .get::<RefCell<SurfaceData>>()
-                            .unwrap()
-                            .borrow_mut();
-                        if let ResizeState::Resizing(resize_data) = data.resize_state {
-                            data.resize_state = ResizeState::WaitingForFinalAck(resize_data, event.serial);
-                        } else {
-                            panic!("invalid resize state: {:?}", data.resize_state);
-                        }
-                    });
-                }
-            }
         }
     }
 
@@ -639,50 +641,12 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchResizeSur
             return;
         }
         handle.unset_grab(self, data);
+        // If toplevel is dead, we can't resize it.
+        if self.window.alive() {
+            end_resize(data, &self.window, self.edges, (self.initial_window_location, self.initial_window_size), self.last_window_size, event.serial);
+        }
+        // (As a pointer's, `PointerResizeSurfaceGrab::button`.)
         data.tile_drag_end();
-
-        // If toplevel is dead, we can't resize it, so we return early.
-        if !self.window.alive() {
-            return;
-        }
-
-        match self.window.0.underlying_surface() {
-            WindowSurface::Wayland(xdg) => {
-                xdg.with_pending_state(|state| {
-                    state.states.unset(xdg_toplevel::State::Resizing);
-                    state.size = Some(self.last_window_size);
-                });
-                xdg.send_pending_configure();
-                if self.edges.intersects(ResizeEdge::TOP_LEFT) {
-                    let geometry = self.window.0.geometry();
-                    let mut location = data.space.element_location(&self.window).unwrap();
-
-                    if self.edges.intersects(ResizeEdge::LEFT) {
-                        location.x =
-                            self.initial_window_location.x + (self.initial_window_size.w - geometry.size.w);
-                    }
-                    if self.edges.intersects(ResizeEdge::TOP) {
-                        location.y =
-                            self.initial_window_location.y + (self.initial_window_size.h - geometry.size.h);
-                    }
-
-                    data.space.map_element(self.window.clone(), location, true);
-                }
-
-                with_states(&self.window.wl_surface().unwrap(), |states| {
-                    let mut data = states
-                        .data_map
-                        .get::<RefCell<SurfaceData>>()
-                        .unwrap()
-                        .borrow_mut();
-                    if let ResizeState::Resizing(resize_data) = data.resize_state {
-                        data.resize_state = ResizeState::WaitingForFinalAck(resize_data, event.serial);
-                    } else {
-                        panic!("invalid resize state: {:?}", data.resize_state);
-                    }
-                });
-            }
-        }
     }
 
     fn motion(

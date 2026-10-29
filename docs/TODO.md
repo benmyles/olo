@@ -773,10 +773,16 @@ as they land (with the commit), add new ones as they come up.
   HACKING, BeOS idioms, keymap.rs): in every program that isn't Olo's
   (Slack too, not only browsers) they reach it as Alt+← / Alt+→. ⌘← / ⌘→
   never navigate: they are the line's start and end everywhere.
-- **Auto-tiling: a neighbour spills past Deskbar after a resize** (Ben,
-  2026-10-29): making Terminal wider resized Tracker beside it, but
-  Tracker then reached past Deskbar's edge for a while, until something
-  set it right. Find the root cause and fix it.
+- ~~**Auto-tiling: a neighbour spills past Deskbar after a resize**~~
+  (Ben, 2026-10-29; done: autotile.rs, tiling.rs, grabs.rs, tested by
+  `tools/dev/auto-fuzz`): making Terminal wider resized Tracker beside
+  it, but Tracker then reached past Deskbar's edge until the next layout.
+  The edge drag's last size went to Terminal after the tiles were laid
+  out for the one before it; a tile laid out while a size it was asked
+  for was still on its way took that size late, unplaced; a neighbour
+  stopped being followed once it answered, before it drew; and a new
+  window's least size, learnt as it first drew, waited for the next
+  layout.
 - **Opening an app makes a new window on this workspace** (Ben,
   2026-10-29): opening an app (Tracker, say) whose windows are all on
   another workspace switches there now. It should open a new window on

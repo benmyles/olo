@@ -1247,6 +1247,19 @@ workspace spam, arranging, opening and closing many windows, flipping
 the theme and a display's scale, flooding a terminal, scrolling, typing,
 keyboard hints) and checks each one against budgets: app_server's event
 loop never stalls for more than two frames (`{"type":"timings"}`: a
+`tools/dev/auto-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going] [--reloads]`
+is its auto-tiling counterpart (built on it, on the same kind of session):
+it turns Auto-Tiling on for the first four workspaces and, mostly, drags
+the seams between tiles the way people do (fast and slow, a few steps or
+many, past where it stops and back, held still before letting go), with
+windows opening, closing, grouping, ungrouping and changing tabs and
+workspace trips between; `--reloads` restarts app_server now and then.
+After each step, once the windows settle, every tile (one per group) must
+be inside the tiling area with no two overlapping, and stay put for a
+moment after (nothing still on its way to land somewhere else). Each
+step's line has the time, to find it in the session's log. Run it after
+changing anything in `autotile.rs`, `tiling.rs` or the resize grabs.
+
 heartbeat that runs while anyone asks, whose lateness is whatever held
 the loop, with the slowest request, input event, clients' requests or
 tick named; and a ping every few milliseconds all through the burst), no
