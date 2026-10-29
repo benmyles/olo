@@ -456,7 +456,9 @@ agents read `minimized` on its `MenuItem` node.
 `Button::pushed(true)` for a toolbar toggle that stays down (shaded in,
 its label level with its row's; only a button held down by the pointer
 moves its label, a device pixel),
-`TextControl` (`.label("Name:").divider(x)`), `TextView` (`.highlight(&f)`
+`TextControl` (`.label("Name:").divider(x)`; for a column of them, or
+of `MenuField`s, `widgets::divider_for(ui, &["Name:", …])` is the widest
+label and the gap after it, so the wells line up and every label fits), `TextView` (`.highlight(&f)`
 colours it: `f(text, font, colour)` returns a `LayoutJob` in sections, a `widgets::Highlighter`,
 as Log Viewer's syntax highlighting does; `.empty_text("Select a line…")` says what goes
 there while it is empty, as a list's does), `EmptyState` (a whole view with nothing it can
@@ -744,7 +746,9 @@ see vendor/README.md).
    text with `style::text_highlight(galley, origin, size, pad)` (cap height
    to baseline, so every label's highlight is the same height); drag-select
    bands with `style::selection_band`. Keys as on a Mac menu ("⇧⌘←", each
-   symbol on the text's baseline, though they come from a fallback font):
+   symbol on the text's baseline, though they come from a fallback font;
+   one about as tall as the capitals, ⇧ ⌘ ↵, stands by its ink where they
+   do, whatever its face's metrics say):
    `style::key_combo(painter, right_center, keys, color)`. A failure
    beside text (an error's title, a failed row) leads with
    `style::stop_mark(painter, rect, palette)`, a crisp vector stop sign

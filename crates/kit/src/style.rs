@@ -880,12 +880,28 @@ pub fn latch(p: &Painter, r: Rect, open: bool, color: Color32) {
 pub fn key_combo(p: &Painter, right_center: Pos2, keys: &str, color: Color32) {
     let parts = combo_parts(keys);
     let font = FontId::proportional(PLAIN_SIZE);
+    let ppp = p.ctx().pixels_per_point();
+    let snap = |v: f32| (v * ppp).round() / ppp;
+    // One baseline for them all, on a device pixel as the letters' is:
+    // each symbol's face sits a fraction of a pixel differently, so
+    // rounding each from an unsnapped baseline could part them by one.
+    let baseline = snap(right_center.y + PLAIN_SIZE * CAP_HEIGHT / 2.0);
+    let h = p.layout_no_wrap("H".into(), font.clone(), color);
+    let caps = ink(&h).map(|(top, bottom)| (bottom - top, bottom - baseline_offset(&h)));
     let mut x = right_center.x;
     for (i, part) in parts.iter().enumerate().rev() {
         let g = p.layout_no_wrap(part.clone(), font.clone(), color);
         x -= g.size().x;
-        let pos = text_origin(p.ctx(), &g, x, right_center.y, PLAIN_SIZE);
-        p.galley(pos, g, color);
+        let mut y = snap(baseline - baseline_offset(&g));
+        // A symbol about as tall as the capitals (⇧ ⌘ ↵ ⌫ ⏏) stands where
+        // they do, by its ink: its face may set it a pixel off (Noto's ⇧
+        // is one low). Smaller ones (← ⌥ ⌃ ⇥) sit as their face has them.
+        if let (Some((height, foot)), Some((top, bottom))) = (caps, ink(&g).filter(|_| !part.is_ascii()))
+            && (bottom - top - height).abs() <= 2.0
+        {
+            y = snap(baseline + foot - bottom);
+        }
+        p.galley(pos2(snap(x), y), g, color);
         if i > 0 {
             x += SHORTCUT_KERN;
         }
@@ -894,6 +910,15 @@ pub fn key_combo(p: &Painter, right_center: Pos2, keys: &str, color: Color32) {
 
 /// ⌘ and ⇧ sit this much closer to what follows than their advance width.
 const SHORTCUT_KERN: f32 = 1.0;
+
+/// The top and bottom of the ink of a galley's first glyph, from the
+/// galley's top.
+fn ink(galley: &egui::Galley) -> Option<(f32, f32)> {
+    let row = galley.rows.first()?;
+    let g = row.row.glyphs.first()?;
+    let top = row.pos.y + g.pos.y + g.uv_rect.offset.y;
+    (g.uv_rect.size.y > 0.0).then_some((top, top + g.uv_rect.size.y))
+}
 
 /// The keys split so each symbol (⌘ ⇧ ↑ ⌫ …) is laid out on its own, to
 /// be set [`SHORTCUT_KERN`] closer to what follows.
@@ -1227,6 +1252,38 @@ mod tests {
     }
 
     #[test]
+    fn shortcut_symbols_stand_with_the_capitals() {
+        if !font_definitions().font_data.contains_key("symbols-1@ui") {
+            return;
+        }
+        let ctx = Context::default();
+        ctx.set_fonts(all_font_definitions());
+        for scale in [1.0, 1.25, 1.5, 1.75, 2.0] {
+            let mut raw = egui::RawInput::default();
+            raw.viewports.entry(egui::ViewportId::ROOT).or_default().native_pixels_per_point = Some(scale);
+            for _ in 0..2 {
+                let out = ctx.run_ui(raw.clone(), |ui| key_combo(ui.painter(), pos2(100.0, 50.3), "⇧⌘Z", Color32::BLACK));
+                // Where each key's ink ends, in device pixels, as drawn
+                // (glyph quads land on whole pixels).
+                let feet: Vec<(String, f32)> = out
+                    .shapes
+                    .iter()
+                    .filter_map(|s| match &s.shape {
+                        egui::Shape::Text(t) => {
+                            let (top, bottom) = ink(&t.galley)?;
+                            Some((t.galley.text().to_owned(), ((t.pos.y + top) * scale).round() + (bottom - top) * scale))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                out.drop_without_applying_deltas();
+                assert_eq!(feet.len(), 3);
+                assert!(feet.iter().all(|f| (f.1 - feet[0].1).abs() < 0.01), "at {scale}x: {feet:?}");
+            }
+        }
+    }
+
+    #[test]
     fn baseline_is_the_letters_when_a_symbol_leads() {
         let Some(led) = menu_path("▸ Developer") else { return };
         let Some(plain) = menu_path("Developer") else { return };
@@ -1263,3 +1320,4 @@ mod tests {
         }
     }
 }
+

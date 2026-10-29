@@ -267,7 +267,7 @@ pub fn review(shapes: &[ClippedShape], size: egui::Vec2, ppp: f32, marks: &Marks
     seams(&parts, ppp, &mut out);
     off_pixels(&parts, screen, ppp, &mut out);
     near_heights(&parts, screen, &mut out);
-    near_level(&parts, &mut out);
+    near_level(&parts, ppp, &mut out);
     near_edges(&parts, &mut out);
     off_centre(&parts, &mut out);
     uneven_rows(&parts, ppp, &mut out);
@@ -473,12 +473,13 @@ fn near_heights(p: &Parts, screen: Rect, out: &mut Vec<Finding>) {
 }
 
 /// Text and icons in neighbouring columns: almost level.
-fn near_level(p: &Parts, out: &mut Vec<Finding>) {
-    // (rect, baseline, middle, name, is text)
-    let mut items: Vec<(Rect, f32, f32, String, bool)> = p.texts.iter().map(|t| (t.rect, t.baseline, t.middle, quote(t), true)).collect();
-    items.extend(p.icons.iter().map(|i| i.rect).map(|r| (r, r.center().y, r.center().y, "an icon".to_owned(), false)));
+fn near_level(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
+    // (rect, baseline, middle, name, is text, is a lone symbol)
+    let mut items: Vec<(Rect, f32, f32, String, bool, bool)> =
+        p.texts.iter().map(|t| (t.rect, t.baseline, t.middle, quote(t), true, lone_symbol(t))).collect();
+    items.extend(p.icons.iter().map(|i| i.rect).map(|r| (r, r.center().y, r.center().y, "an icon".to_owned(), false, false)));
     let grid = |r: &Rect| p.marks.grids.iter().position(|g| g.contains(r.center()));
-    for (ra, la, ma, na, ta) in &items {
+    for (ra, la, ma, na, ta, sa) in &items {
         // Its nearest neighbour to the right, in the same row (and on
         // the same grid).
         let beside = items
@@ -489,18 +490,28 @@ fn near_level(p: &Parts, out: &mut Vec<Finding>) {
                 (0.0..=160.0).contains(&gap) && overlap >= 0.4 * ra.height().min(rb.height()) && grid(ra) == grid(rb)
             })
             .min_by(|a, b| a.0.min.x.total_cmp(&b.0.min.x));
-        if let Some((rb, lb, mb, nb, tb)) = beside {
+        if let Some((rb, lb, mb, nb, tb, sb)) = beside {
             // Text against text by baseline; an icon by its middle against
             // the text's capitals' (as `style::label` centres them).
             let (a, b) = if *ta && *tb { (*la, *lb) } else { (*ma, *mb) };
             let d = (a - b).abs();
             let most = if *ta && *tb { 0.5 * ra.height().min(rb.height()) } else { NEAR_EDGE };
-            if d > SAME && d <= most {
+            // A symbol set by its ink (`style::key_combo`) may be a device
+            // pixel off its face's baseline, and that a fraction of one
+            // off the letters'.
+            let same = if *sa || *sb { SAME.max(1.5 / ppp + 0.01) } else { SAME };
+            if d > same && d <= most {
                 let text = format!("{na} and {nb} beside it are almost level, {:.0} px apart: line them up", d.max(1.0));
                 push(out, finding(Level::Review, "near-level", text, ra.union(*rb)));
             }
         }
     }
+}
+
+/// A single symbol (⇧ ⌘ ←), not a letter or a word.
+fn lone_symbol(t: &Text) -> bool {
+    let mut chars = t.label.chars();
+    matches!((chars.next(), chars.next()), (Some(c), None) if !c.is_ascii() && !c.is_alphanumeric())
 }
 
 /// Left edges down a column: almost lined up.
@@ -583,10 +594,11 @@ fn uneven_rows(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
         if gaps.len() < 3 {
             continue;
         }
-        let mut sorted = gaps.clone();
-        sorted.sort_by(f32::total_cmp);
-        let usual = sorted[sorted.len() / 2];
-        let even = gaps.iter().filter(|g| (*g - usual).abs() <= rounding).count();
+        // The step: the gap most others are within rounding of (a median
+        // would lean towards the long gaps between rows further apart).
+        let near = |s: f32| gaps.iter().filter(|g| (*g - s).abs() <= rounding).count();
+        let usual = gaps.iter().copied().max_by(|a, b| near(*a).cmp(&near(*b)).then(b.total_cmp(a))).unwrap_or(0.0);
+        let even = near(usual);
         if even < 2 || even * 2 < gaps.len() {
             continue;
         }
@@ -692,6 +704,9 @@ mod tests {
         assert!(kinds(&frame(2.0, rows(&[10.0, 30.0, 52.0, 72.0]))).contains(&"uneven-rows"));
         // No two gaps alike: no rhythm to break.
         assert!(!kinds(&frame(2.0, rows(&[10.0, 29.0, 88.0, 151.0, 217.0]))).contains(&"uneven-rows"));
+        // Runs of rows far apart, one a device pixel off: the long gaps
+        // don't make the step 20.5.
+        assert!(!kinds(&frame(2.0, rows(&[10.0, 30.0, 70.0, 130.0, 190.0, 210.5, 230.0, 250.0, 270.0]))).contains(&"uneven-rows"));
     }
 
     #[test]

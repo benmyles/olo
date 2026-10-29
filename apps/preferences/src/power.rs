@@ -9,7 +9,7 @@ use std::{
 
 use olo_kit::{
     egui::Ui,
-    widgets::{BBox, CheckBox, MenuField, StringView},
+    widgets::{BBox, CheckBox, MenuField, StringView, divider_for},
 };
 use olo_protocol::{PowerStatus, Settings};
 use olo_system::battery::{self, Battery, State as Charge};
@@ -101,7 +101,7 @@ pub fn summary(b: &Battery) -> String {
     if detail.is_empty() { format!("{}%", b.percent) } else { format!("{}% — {detail}", b.percent) }
 }
 
-pub fn minutes_menu(ui: &mut Ui, id: &str, label: &str, choices: &[u32], value: &mut u32) {
+pub fn minutes_menu(ui: &mut Ui, id: &str, label: &str, divider: f32, choices: &[u32], value: &mut u32) {
     let names: Vec<String> = choices.iter().map(|&m| minutes_text(m)).collect();
     let mut names: Vec<&str> = names.iter().map(String::as_str).collect();
     let custom = minutes_text(*value);
@@ -112,7 +112,7 @@ pub fn minutes_menu(ui: &mut Ui, id: &str, label: &str, choices: &[u32], value: 
             names.len() - 1
         }
     };
-    ui.add(MenuField::new(id, &mut i, &names).label(label).divider(176.0));
+    ui.add(MenuField::new(id, &mut i, &names).label(label).divider(divider));
     if let Some(&m) = choices.get(i) {
         *value = m;
     }
@@ -144,8 +144,11 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, power: Option<&PowerStatus>, server: &S
 
     let p = &mut s.power;
     BBox::new("When Idle").show(ui, |ui| {
-        minutes_menu(ui, "display-off", "Turn the display off after:", DISPLAY_OFF, &mut p.display_off_minutes);
-        minutes_menu(ui, "sleep", "Put the computer to sleep after:", SLEEP, &mut p.sleep_minutes);
+        const OFF: &str = "Turn the display off after:";
+        const SLEEP_AFTER: &str = "Put the computer to sleep after:";
+        let divider = divider_for(ui, &[OFF, SLEEP_AFTER]);
+        minutes_menu(ui, "display-off", OFF, divider, DISPLAY_OFF, &mut p.display_off_minutes);
+        minutes_menu(ui, "sleep", SLEEP_AFTER, divider, SLEEP, &mut p.sleep_minutes);
         ui.add_enabled(p.sleep_minutes > 0, CheckBox::new(&mut p.sleep_on_battery_only, "Only on battery power"));
         ui.add_enabled(
             p.display_off_minutes > 0,

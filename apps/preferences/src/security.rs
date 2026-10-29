@@ -3,7 +3,7 @@
 
 use olo_kit::{
     egui::Ui,
-    widgets::{BBox, CheckBox, MenuField, RadioButton},
+    widgets::{BBox, CheckBox, MenuField, RadioButton, divider_for},
 };
 use olo_protocol::Settings;
 
@@ -20,7 +20,8 @@ pub fn ui(ui: &mut Ui, s: &mut Settings) {
         }
     });
     BBox::new("Passwords: Locking").show(ui, |ui| {
-        minutes_menu(ui, "pw-lock", "Lock after idle for:", &[1, 5, 10, 30, 60, 0], &mut p.lock_minutes);
+        let label = "Lock after idle for:";
+        minutes_menu(ui, "pw-lock", label, divider_for(ui, &[label]), &[1, 5, 10, 30, 60, 0], &mut p.lock_minutes);
         ui.add(CheckBox::new(&mut p.lock_with_screen, "Lock when the screen locks"));
     });
     BBox::new("Passwords: Command line").show(ui, |ui| {

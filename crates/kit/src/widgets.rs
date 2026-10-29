@@ -819,6 +819,13 @@ impl RoundUi for Rect {
     }
 }
 
+/// The divider for a column of labelled fields (`MenuField`s,
+/// `TextControl`s): the widest of `labels` and the gap after it, so their
+/// wells line up and every label fits, whatever the font.
+pub fn divider_for(ui: &Ui, labels: &[&str]) -> f32 {
+    labels.iter().map(|l| layout(ui, l, plain_font(), Color32::WHITE).size().x.ceil()).fold(0.0, f32::max) + m::LABEL_GAP
+}
+
 // ---- MenuField / PopUpButton --------------------------------------------
 
 /// BMenuField: an optional label and a pop-up menu showing the current

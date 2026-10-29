@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Menu shortcuts: ⇧ stands with the capitals
+
+*04:37* — Noto Sans Symbols puts ⇧ a device pixel below the capitals at every scale. key_combo now places a symbol about as tall as the capitals by its ink, so the feet of ⇧⌘Z line up at 1x, 1.25x, 1.5x, 1.75x and 2x.
+
+![Menu shortcuts: ⇧ stands with the capitals](2026-10-29/043741-menu-shortcuts-stands-with-the-capitals.png)
+
+### Themes: after, every card fits
+
+*04:37* — Preferences panels are sized for their tallest content (Themes 560x634, Display 500x490, Keyboard 480x736, Touchpad 460x586, About 444x290), checked at 1x, 1.5x and 2x, light and dark. Power and Security's menus share widgets::divider_for, the widest label and the gap after it, so the wells line up and every label fits.
+
+![Themes: after, every card fits](2026-10-29/043740-themes-after-every-card-fits.png)
+
+### Themes: before, the colour schemes ran into the buttons
+
+*04:37* — At 1x the panel's fixed height was too short for the colour-scheme cards: BeOS's description ran onto three lines and pushed under Defaults and Revert.
+
+![Themes: before, the colour schemes ran into the buttons](2026-10-29/043740-themes-before-the-colour-schemes-ran-into-the-bu.png)
+
 ### Tracker's item count lines up with its list
 
 *04:12* — The count bar's text starts in line with the list's icons above it (here at 1× and 2×), and the free space keeps the same inset from the right.

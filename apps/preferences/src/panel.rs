@@ -168,23 +168,23 @@ impl Panel {
             Panel::Backup => (420, 400),
             Panel::Bluetooth => (440, 340),
             Panel::DateTime => (460, 370),
-            Panel::Display => (480, 490),
-            Panel::Keyboard => (480, 732),
+            Panel::Display => (500, 490),
+            Panel::Keyboard => (480, 736),
             Panel::Network => (460, 360),
             Panel::Notifications => (440, 540),
             Panel::Power => (460, 366),
             Panel::ScreenSaver => (500, 400),
             Panel::Security => (420, 340),
             Panel::Sound => (440, 276),
-            Panel::Themes => (560, 616),
+            Panel::Themes => (560, 634),
             Panel::TouchId => (420, 330),
             // Tall enough for Touch with both of its notes (a pad with no
             // pressure and the Apple driver's click thresholds).
-            Panel::Touchpad => (460, 584),
+            Panel::Touchpad => (460, 586),
             Panel::Tracker => (300, 182),
             Panel::Windows => (400, 440),
             Panel::Workspaces => (360, 164),
-            Panel::About => (440, 290),
+            Panel::About => (444, 290),
         }
     }
 
