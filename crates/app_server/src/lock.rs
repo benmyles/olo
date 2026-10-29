@@ -150,6 +150,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.twitch = None;
             self.twitcher.forget();
             crate::spotlight::end(false);
+            self.end_auto_approve("the screen locked");
             let keyboard = self.seat.get_keyboard().unwrap();
             self.lock.focus_before = keyboard.current_focus();
             keyboard.set_focus(self, None::<KeyboardFocusTarget>, SERIAL_COUNTER.next_serial());

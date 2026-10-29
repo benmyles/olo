@@ -144,6 +144,23 @@ pub enum Request {
         #[serde(default)]
         lid: bool,
     },
+    /// Approve requests without asking (sudo in Terminal, unlocking
+    /// Passwords) for `minutes` (5 to a day), or stop (None). Turning it
+    /// on takes the account password, checked through PAM before the
+    /// answer (`Reply::Ok`, or an error saying why); while it is on,
+    /// another length needs none. It ends at the time, when the screen
+    /// locks (sleeping locks first) and when app_server restarts. Not
+    /// persisted.
+    SetAutoApprove {
+        minutes: Option<u32>,
+        #[serde(default)]
+        password: Option<String>,
+    },
+    /// The password auto-approval was turned on with
+    /// ([`Reply::Secret`]), for Terminal to answer sudo with; only
+    /// Olo's Terminal (by its executable, beside app_server's) is
+    /// answered, and only while it is on.
+    AutoApproveSecret,
     /// Built-in display brightness, 0.0–1.0 (perceptual).
     SetBrightness { level: f32 },
     /// A display's brightness (`name` its connector), kept for it.
@@ -260,6 +277,8 @@ pub enum Reply {
     /// [`Request::AutoTiling`]'s answer: each display of the workspace.
     AutoTiling { workspace: u32, displays: Vec<AutoTilingInfo> },
     Power { status: PowerStatus },
+    /// [`Request::AutoApproveSecret`]'s answer.
+    Secret { password: String },
     Timings { timings: Timings },
     Event { event: Event },
 }
@@ -333,6 +352,10 @@ pub struct PowerStatus {
     /// The screen is locked.
     #[serde(default)]
     pub locked: bool,
+    /// Requests are approved without asking until then (seconds since
+    /// the epoch; [`Request::SetAutoApprove`]).
+    #[serde(default)]
+    pub auto_approve_until: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

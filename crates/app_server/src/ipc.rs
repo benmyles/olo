@@ -43,6 +43,30 @@ impl Conn {
         *self.dead.borrow()
     }
 
+    /// Whether the process at the other end is ours, running Olo's
+    /// program `name` from beside app_server (the same user, by
+    /// `SO_PEERCRED`, and its executable).
+    pub fn peer_is_ours(&self, name: &str) -> bool {
+        use std::os::fd::AsRawFd;
+        // SAFETY: as in `peer`.
+        let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
+        let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+        let got = unsafe {
+            libc::getsockopt(self.stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&raw mut cred).cast(), &mut len)
+        };
+        // SAFETY: getuid can't fail.
+        if got != 0 || cred.uid != unsafe { libc::getuid() } {
+            return false;
+        }
+        let dir = |p: std::path::PathBuf| {
+            let s = p.to_string_lossy().into_owned();
+            std::path::PathBuf::from(s.strip_suffix(" (deleted)").unwrap_or(&s))
+        };
+        let (Ok(theirs), Ok(mine)) = (std::fs::read_link(format!("/proc/{}/exe", cred.pid)), std::env::current_exe()) else { return false };
+        let (theirs, mine) = (dir(theirs), dir(mine));
+        theirs.file_name().is_some_and(|n| n == name) && theirs.parent().is_some() && theirs.parent() == mine.parent()
+    }
+
     /// The process at the other end, as "name (pid)", for the log.
     pub fn peer(&self) -> String {
         use std::os::fd::AsRawFd;
@@ -415,6 +439,11 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.set_caffeinated(on, minutes, lid);
                 Reply::Ok
             }
+            Request::SetAutoApprove { minutes, password } => match self.set_auto_approve(minutes, password, conn.clone()) {
+                Some(reply) => reply,
+                None => return None,
+            },
+            Request::AutoApproveSecret => self.auto_approve_secret(&conn),
             Request::SetBrightness { level } => {
                 self.set_brightness(level);
                 Reply::Ok

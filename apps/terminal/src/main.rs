@@ -389,6 +389,28 @@ struct Terminal {
     notifier: Notifier,
     /// The notification each shell's agent last put up.
     notes: HashMap<u64, NoteId>,
+    /// The windows as last kept on disk (`remember`).
+    remembered: Option<String>,
+    /// sudo requests approved without asking, by connection, with the
+    /// window they came from (a window asks if the password doesn't do).
+    sudo_approved: HashMap<u64, (Box<sudo::Request>, Option<WindowId>)>,
+}
+
+/// Now and then, keep the windows as they are (`Terminal::remember`).
+struct Remember;
+
+/// How often the windows are kept, besides when Terminal quits.
+const REMEMBER_EVERY: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Where Terminal keeps its windows for the next time it starts, beside
+/// the shells olo-termd keeps (only for us: folders say what you work on).
+fn layout_path() -> PathBuf {
+    olo_kit::state_dir().join("terminal").join("windows.json")
+}
+
+/// The windows as Terminal last kept them.
+fn remembered() -> Option<Saved> {
+    serde_json::from_str(&std::fs::read_to_string(layout_path()).ok()?).ok()
 }
 
 /// Room beside and above the grid: the menu bar, and the tab strip (down
@@ -414,8 +436,10 @@ fn estimate(settings: &Settings, cols: usize, rows: usize) -> (u32, u32) {
     )
 }
 
-/// What an upgraded Terminal gets from its previous self: which shells
-/// were in each window (olo-termd has the rest).
+/// What an upgraded Terminal gets from its previous self, and what the
+/// next Terminal starts with (`layout_path`): which shells were in each
+/// window, and where (olo-termd has the rest, or keeps it when the
+/// session ends).
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Saved {
     windows: Vec<SavedWindow>,
@@ -435,6 +459,9 @@ struct SavedWindow {
     group: Option<Group>,
     #[serde(default)]
     tiled: bool,
+    /// Each tab's folder, for a shell in its place if it has gone.
+    #[serde(default)]
+    cwds: Vec<Option<PathBuf>>,
 }
 
 /// What a Terminal from before olo-termd handed on: the shells
@@ -500,19 +527,27 @@ impl Terminal {
 
     /// A window on shells olo-termd already has (sized as it was, if
     /// we know), one tab each.
-    fn reopen(&mut self, cx: &mut Cx, shells: &[&wire::ShellInfo], size: Option<(u32, u32)>, active: usize, group: Option<Group>) -> WindowId {
-        let active = active.min(shells.len() - 1);
-        let shown = shells[active];
-        let (cols, rows) = (shown.grid.cols.max(1) as usize, shown.grid.rows.max(1) as usize);
+    /// A window of `starts`, at the grid of `like` (a shell olo-termd
+    /// has; else the usual one).
+    fn reopen(
+        &mut self,
+        cx: &mut Cx,
+        starts: Vec<Start>,
+        like: Option<&wire::ShellInfo>,
+        size: Option<(u32, u32)>,
+        active: usize,
+        group: Option<Group>,
+    ) -> WindowId {
+        let active = active.min(starts.len().saturating_sub(1));
+        let (cols, rows) = like.map_or((self.settings.cols, self.settings.rows), |s| (s.grid.cols.max(1) as usize, s.grid.rows.max(1) as usize));
         let mut options = self.window_options(cols, rows);
         if let Some(size) = size {
             options.size = size;
         }
-        if let Some(t) = &shown.title {
+        if let Some(t) = like.and_then(|s| s.title.as_ref()) {
             options.title = t.clone();
         }
         let snap = size.is_none().then_some((cols, rows));
-        let starts = shells.iter().map(|s| Start::Attach(s.id)).collect();
         self.add(cx, options, Size { cols, rows }, snap, starts, active, group)
     }
 
@@ -591,31 +626,54 @@ impl Terminal {
     /// Open windows on the shells left in olo-termd: those this
     /// Terminal had before it upgraded (`saved`, with their tabs as they
     /// were), and any no other Terminal is showing. True if there were any.
-    fn reattach(&mut self, cx: &mut Cx, shells: Vec<wire::ShellInfo>, saved: Option<&Saved>) -> bool {
+    /// Open windows on olo-termd's `shells` as `saved` had them (the rest
+    /// a window each). `restore`: a shell that has gone (the session it
+    /// ran in ended) gets a new one in its place, in its folder, with what
+    /// it showed (olo-termd kept it).
+    fn reattach(&mut self, cx: &mut Cx, shells: Vec<wire::ShellInfo>, saved: Option<&Saved>, restore: bool) -> bool {
         let ours = std::process::id() as i32;
         // SAFETY: signal 0 only checks the process exists.
         let free = |s: &wire::ShellInfo| s.client.is_none_or(|p| p == ours || unsafe { libc::kill(p, 0) } != 0);
         let free: Vec<&wire::ShellInfo> = shells.iter().filter(|s| free(s)).collect();
         let mut used = std::collections::HashSet::new();
+        let mut any = false;
         for w in saved.map(|s| s.windows.as_slice()).unwrap_or_default() {
             let ids = if w.tabs.is_empty() { vec![w.shell] } else { w.tabs.clone() };
             let shown = ids.get(w.active).copied();
-            let mine: Vec<&wire::ShellInfo> = ids.iter().filter_map(|id| free.iter().find(|s| s.id == *id && !used.contains(id)).copied()).collect();
-            if mine.is_empty() {
+            let (mut starts, mut active, mut grid) = (Vec::new(), 0, None);
+            for (i, &id) in ids.iter().enumerate() {
+                let start = match free.iter().find(|s| s.id == id && !used.contains(&id)) {
+                    Some(s) => {
+                        used.insert(id);
+                        if grid.is_none() || Some(id) == shown {
+                            grid = Some(*s);
+                        }
+                        Start::Attach(id)
+                    }
+                    None if restore && !shells.iter().any(|s| s.id == id) => {
+                        Start::Restore { cwd: w.cwds.get(i).cloned().flatten(), from: id }
+                    }
+                    None => continue,
+                };
+                if Some(id) == shown {
+                    active = starts.len();
+                }
+                starts.push(start);
+            }
+            if starts.is_empty() {
                 continue;
             }
-            used.extend(mine.iter().map(|s| s.id));
-            let active = mine.iter().position(|s| Some(s.id) == shown).unwrap_or(0);
-            let id = self.reopen(cx, &mine, Some(w.size), active, w.group.clone());
+            any = true;
+            let id = self.reopen(cx, starts, grid, Some(w.size), active, w.group.clone());
             if let Some(Win::Term(t)) = self.windows.get_mut(&id) {
                 t.tiled = w.tiled;
             }
         }
         let rest: Vec<&wire::ShellInfo> = free.iter().filter(|s| !used.contains(&s.id)).copied().collect();
         for shell in &rest {
-            self.reopen(cx, &[shell], None, 0, None);
+            self.reopen(cx, vec![Start::Attach(shell.id)], Some(shell), None, 0, None);
         }
-        !used.is_empty() || !rest.is_empty()
+        any || !rest.is_empty()
     }
 
     /// Hand the shells a Terminal from before olo-termd left us over
@@ -963,6 +1021,8 @@ impl Terminal {
                 self.open(cx, None, None);
                 return;
             }
+            // Nothing to come back to.
+            self.remember(cx, true);
             self.link.bye();
             cx.quit();
         }
@@ -1301,7 +1361,7 @@ impl Terminal {
 
     fn sudo_event(&mut self, cx: &mut Cx, e: sudo::Event) {
         match e {
-            sudo::Event::Begin { conn, pid, stream, args, tty } => {
+            sudo::Event::Begin { conn, pid, stream, args, tty, approval } => {
                 let (tab, who) = self.requester(pid);
                 let title = tab.and_then(|(id, i)| match self.windows.get(&id) {
                     Some(Win::Term(t)) => Some(t.tabs[i].current_title()),
@@ -1313,12 +1373,37 @@ impl Terminal {
                     return r.reply(&sudo_wire::Reply::Pass);
                 }
                 r.reply(&sudo_wire::Reply::Go);
+                // Approved without asking: sudo gets the password when
+                // it asks for it.
+                if approval.is_some() {
+                    r.approval = approval;
+                    tracing::info!(command = ?args, agent = ?who.map(Agent::name), "sudo approved without asking");
+                    self.sudo_approved.insert(conn, (Box::new(r), tab.map(|(id, _)| id)));
+                    return;
+                }
                 tracing::info!(command = ?args, agent = ?who.map(Agent::name), "sudo asks for a password");
-                let size = (sudo::WIDTH, r.height());
-                let options = WindowOptions { size, min_size: Some(size), max_size: Some(size), ..WindowOptions::alert("sudo", "") };
-                let id = cx.open_window(options.parent_opt(tab.map(|(id, _)| id).or(self.front)));
-                self.windows.insert(id, Win::Sudo(Box::new(r)));
-                cx.activate(id);
+                self.sudo_ask(cx, r, tab.map(|(id, _)| id));
+            }
+            sudo::Event::Said(conn, said) if self.sudo_approved.contains_key(&conn) => {
+                let Some((mut r, over)) = self.sudo_approved.remove(&conn) else { return };
+                match r.approved(said) {
+                    sudo::Approved::Waiting => {
+                        self.sudo_approved.insert(conn, (r, over));
+                    }
+                    sudo::Approved::Done(ok) => {
+                        let what = r.summary();
+                        tracing::info!(ok, what, "sudo approved without asking: done");
+                        // Quietly, so it doesn't pass unseen.
+                        let title = if ok { "Approved without asking" } else { "sudo said no" };
+                        let mut note = Note::new(title).body(what);
+                        note.silent = true;
+                        self.notifier.show(None, note);
+                    }
+                    sudo::Approved::AskPerson => {
+                        tracing::warn!(what = r.summary(), "sudo approved without asking: the password didn't do; asking");
+                        self.sudo_ask(cx, *r, over);
+                    }
+                }
             }
             sudo::Event::Said(conn, said) => {
                 let Some(id) = self.sudo_window(conn) else { return };
@@ -1338,11 +1423,22 @@ impl Terminal {
                 }
             }
             sudo::Event::Gone(conn) => {
+                self.sudo_approved.remove(&conn);
                 if let Some(id) = self.sudo_window(conn) {
                     self.sudo_done(cx, id, None);
                 }
             }
         }
+    }
+
+    /// Ask the person for sudo's password, in an alert over `over` (else
+    /// the front window).
+    fn sudo_ask(&mut self, cx: &mut Cx, r: sudo::Request, over: Option<WindowId>) {
+        let size = (sudo::WIDTH, r.height());
+        let options = WindowOptions { size, min_size: Some(size), max_size: Some(size), ..WindowOptions::alert("sudo", "") };
+        let id = cx.open_window(options.parent_opt(over.or(self.front)));
+        self.windows.insert(id, Win::Sudo(Box::new(r)));
+        cx.activate(id);
     }
 
     /// Close a sudo window, telling sudo `reply` first.
@@ -1393,7 +1489,7 @@ impl App for Terminal {
                             cx.redraw(id);
                         }
                         None => {
-                            self.reopen(cx, &[&shell], None, 0, None);
+                            self.reopen(cx, vec![Start::Attach(shell.id)], Some(&shell), None, 0, None);
                         }
                     },
                     None => {}
@@ -1417,6 +1513,8 @@ impl App for Terminal {
                     && let Some(Win::Daemon(d)) = self.windows.get_mut(&target)
                 {
                     self.respawn = true;
+                    // Its shells go for good: not kept for next time.
+                    self.link.starting_over();
                     d.start_over(cx.proxy());
                 }
             }
@@ -1635,7 +1733,9 @@ impl App for Terminal {
                 }
             }
             "quit" => {
-                // The shells stay in olo-termd for next time.
+                // The shells stay in olo-termd for next time, and the
+                // windows on disk.
+                self.remember(cx, true);
                 self.link.bye();
                 for id in self.windows.keys().copied().collect::<Vec<_>>() {
                     cx.close_window(id);
@@ -1709,6 +1809,7 @@ impl App for Terminal {
             }
             "sudo-window" => {
                 self.settings.sudo_window = !self.settings.sudo_window;
+                sudo::WINDOW_FOR_TYPED.store(self.settings.sudo_window, std::sync::atomic::Ordering::Relaxed);
                 self.settings.save();
             }
             "tabs-top" | "tabs-side" => {
@@ -1771,6 +1872,10 @@ impl App for Terminal {
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
         let message = match message.downcast::<Launch>() {
             Ok(launch) => return self.handle_launch(cx, *launch),
+            Err(m) => m,
+        };
+        let message = match message.downcast::<Remember>() {
+            Ok(_) => return self.remember(cx, false),
             Err(m) => m,
         };
         let message = match message.downcast::<daemon::Report>() {
@@ -1850,13 +1955,21 @@ impl App for Terminal {
     }
 
     fn save_state(&mut self, cx: &Cx) -> Option<String> {
+        serde_json::to_string(&self.layout(cx)).ok()
+    }
+}
+
+impl Terminal {
+    /// Each window's shells, in order, and where they are.
+    fn layout(&self, cx: &Cx) -> Saved {
         let mut ids: Vec<WindowId> = self.windows.keys().copied().collect();
         ids.sort();
         let windows = ids
             .into_iter()
             .filter_map(|id| match self.windows.get(&id) {
                 Some(Win::Term(t)) => {
-                    let tabs: Vec<u64> = t.tabs.iter().filter(|x| x.session.exited.is_none()).map(|x| x.session.id).collect();
+                    let live: Vec<&Tab> = t.tabs.iter().filter(|x| x.session.exited.is_none()).collect();
+                    let tabs: Vec<u64> = live.iter().map(|x| x.session.id).collect();
                     let shell = t.tab().session.id;
                     let active = tabs.iter().position(|&s| s == shell).unwrap_or(0);
                     (!tabs.is_empty()).then(|| SavedWindow {
@@ -1866,12 +1979,46 @@ impl App for Terminal {
                         size: cx.window_size(id).unwrap_or((640, 400)),
                         group: t.group.clone(),
                         tiled: t.tiled,
+                        cwds: live.iter().map(|x| x.session.cwd()).collect(),
                     })
                 }
                 _ => None,
             })
             .collect();
-        serde_json::to_string(&Saved { windows }).ok()
+        Saved { windows }
+    }
+
+    /// Keep the windows as they are on disk, so that the next Terminal
+    /// (after Quit, a crash, or in the next session) comes back with every
+    /// window, group, tab and folder. `now`: before quitting, rather than
+    /// on a thread of its own. Not once the session is ending: they're
+    /// kept as they were, while their shells go.
+    fn remember(&mut self, cx: &Cx, now: bool) {
+        if self.link.ended() {
+            return;
+        }
+        let Ok(text) = serde_json::to_string(&self.layout(cx)) else { return };
+        if self.remembered.as_deref() == Some(text.as_str()) {
+            return;
+        }
+        self.remembered = Some(text.clone());
+        let write = move || {
+            use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+            let path = layout_path();
+            if let Some(dir) = path.parent() {
+                let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir);
+            }
+            let new = path.with_extension("json.new");
+            let file = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&new);
+            if file.and_then(|mut f| std::io::Write::write_all(&mut f, text.as_bytes())).is_ok() {
+                let _ = std::fs::rename(&new, &path);
+            }
+        };
+        if now {
+            write();
+        } else {
+            std::thread::spawn(write);
+        }
     }
 }
 
@@ -1905,13 +2052,30 @@ fn main() {
             agents: agent::Watcher::start(cx.proxy()),
             notifier: Notifier::new(cx.proxy(), "Terminal", "olo-terminal"),
             notes: HashMap::new(),
+            remembered: None,
+            sudo_approved: HashMap::new(),
         };
         t.follow(&cx.palette().clone());
+        sudo::WINDOW_FOR_TYPED.store(t.settings.sudo_window, std::sync::atomic::Ordering::Relaxed);
         let state = cx.restored_state();
         let saved = state.as_deref().and_then(|s| serde_json::from_str::<Saved>(s).ok());
         let legacy = state.as_deref().filter(|_| saved.is_none()).and_then(|s| serde_json::from_str::<Legacy>(s).ok());
         let adopted = legacy.is_some_and(|l| t.adopt(cx, l));
-        let reattached = t.reattach(cx, shells, saved.as_ref()) || adopted;
+        // Not an upgrade: the windows as they were when Terminal last
+        // quit (or the session ended), shells that have gone restored.
+        let fresh = state.is_none();
+        let saved = saved.or_else(|| fresh.then(remembered).flatten());
+        let reattached = t.reattach(cx, shells, saved.as_ref(), fresh) || adopted;
+        let proxy = cx.proxy();
+        std::thread::Builder::new()
+            .name("remember".into())
+            .spawn(move || {
+                loop {
+                    std::thread::sleep(REMEMBER_EVERY);
+                    proxy.send(Remember);
+                }
+            })
+            .expect("remember thread");
         // Asked for a new window (or there's nothing to show): open one.
         if !reattached || (state.is_none() && !args.is_empty()) {
             t.handle_launch(cx, Launch { args, cwd: std::env::current_dir().ok() });

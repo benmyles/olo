@@ -208,6 +208,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub saver: crate::saver::Saver,
     /// The lock screen (see `lock`).
     pub lock: crate::lock::Lock,
+    /// Approving requests without asking, for a while (see `approve`).
+    pub auto_approve: Option<crate::approve::AutoApprove>,
     /// Twitcher, while ⌘Tab, ⌥Tab or ⌘\` is held.
     pub twitch: Option<crate::desktop::Twitch>,
     /// Window ids, the most recently focused first (Twitcher's order).
@@ -1088,6 +1090,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             power: crate::power::Power::new(BackendData::IS_SESSION),
             saver: Default::default(),
             lock,
+            auto_approve: None,
             twitch: None,
             recent: Vec::new(),
             tile_drag: None,

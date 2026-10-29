@@ -267,6 +267,40 @@ pub fn snapshot<T: EventListener>(term: &mut Term<T>, title: Option<&str>, store
     out.into_bytes()
 }
 
+/// What a shell showed, for a new shell in its place once it has gone
+/// (olo-termd keeps it when the session ends): the normal screen and
+/// its scrollback, down to the last line with anything on it, leaving
+/// the cursor at the start of the next line. What programs set (modes,
+/// the alternate screen and what's on it) doesn't come with it.
+pub fn archive<T: EventListener>(term: &mut Term<T>, store: &Store) -> Vec<u8> {
+    let mut images = Images { store, sent: HashSet::new() };
+    let alt = term.mode().contains(TermMode::ALT_SCREEN).then(|| term.grid().clone());
+    if alt.is_some() {
+        term.swap_alt();
+    }
+    let mut out = String::new();
+    let grid = term.grid();
+    let top = -(grid.history_size() as i32);
+    let bottom = grid.screen_lines() as i32 - 1;
+    if let Some(last) = (top..=bottom).rev().find(|&l| end(grid, l, &images).is_some()) {
+        let mut sgr = None;
+        for line in top..=last {
+            row(&mut out, grid, line, end(grid, line, &images), &mut sgr, &mut images);
+            let wrapped = grid[Line(line)][Column(grid.columns() - 1)].flags.contains(Flags::WRAPLINE);
+            if line == last || !wrapped {
+                out.push_str("\r\n");
+            }
+        }
+        out.push_str("\x1b[0m");
+    }
+    if let Some(alt) = alt {
+        // As `snapshot` does: going back clears it, so put it back.
+        term.swap_alt();
+        *term.grid_mut() = alt;
+    }
+    out.into_bytes()
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
@@ -341,6 +375,30 @@ use alacritty_terminal::{event::VoidListener, term::Config};
         feed(&mut b, b"\x1b[?1049l");
         same(&a, &b);
         assert_eq!(text(b.grid())[0], "before");
+    }
+
+    #[test]
+    fn archives_the_shells_lines_not_a_programs_screen() {
+        let mut a = term(20, 5);
+        for i in 0..8 {
+            feed(&mut a, format!("line {i}\r\n").as_bytes());
+        }
+        feed(&mut a, b"a line long enough to wrap\r\n$ vim\r\n\x1b[?1049h\x1b[?2004h\x1b[2;3Hin vim");
+        let kept = archive(&mut a, &Store::default());
+        // Reading it left vim's screen as it was.
+        assert!(a.mode().contains(TermMode::ALT_SCREEN));
+        assert_eq!(text(a.grid())[1].trim(), "in vim");
+        // A new shell's screen, wider: the long line unwraps, and its
+        // prompt goes on the line after.
+        let mut b = term(30, 5);
+        feed(&mut b, &kept);
+        feed(&mut b, b"$ ");
+        let lines = text(b.grid());
+        let at = lines.iter().position(|l| l == "line 0").unwrap();
+        assert_eq!(lines[at + 8], "a line long enough to wrap");
+        assert_eq!(lines[at + 9..], ["$ vim", "$"]);
+        assert!(!b.mode().contains(TermMode::ALT_SCREEN) && !b.mode().contains(TermMode::BRACKETED_PASTE));
+        assert!(archive(&mut term(20, 5), &Store::default()).is_empty());
     }
 
     #[test]

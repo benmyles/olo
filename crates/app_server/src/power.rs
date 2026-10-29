@@ -198,6 +198,7 @@ impl Power {
             caffeinated_lid: self.caffeinated_lid,
             keyboard_backlight: self.keyboard_level,
             locked: false,
+            auto_approve_until: None,
         }
     }
 
@@ -349,7 +350,12 @@ fn run(job: Job, w: &mut Worker) {
 
 impl<B: Backend> AnvilState<B> {
     pub fn power_status(&self) -> olo_protocol::PowerStatus {
-        olo_protocol::PowerStatus { screen_saver: self.saver.running(), locked: self.lock.locked(), ..self.power.status() }
+        olo_protocol::PowerStatus {
+            screen_saver: self.saver.running(),
+            locked: self.lock.locked(),
+            auto_approve_until: self.auto_approve_until(),
+            ..self.power.status()
+        }
     }
 
     pub fn power_changed(&mut self) {
@@ -391,6 +397,7 @@ impl<B: Backend> AnvilState<B> {
         let before = self.power.inhibitors.len();
         self.power.inhibitors.retain(|s| s.is_alive());
         let pruned = self.power.inhibitors.len() != before;
+        self.auto_approve_tick();
         if self.power.caffeinated_until.is_some_and(|t| SystemTime::now() >= t) {
             info!("caffeinated time is up");
             self.set_caffeinated(false, None, false);

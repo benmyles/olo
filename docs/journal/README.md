@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Terminal comes back after the session ends
+
+*09:28* — When the session ends, olo-termd keeps each shell's lines. Terminal remembers its windows and tabs, so the next login puts each tab back in its folder, with what it showed and a dim "Restored from" line.
+
+![Terminal comes back after the session ends](2026-10-29/092808-terminal-comes-back-after-the-session-ends.png)
+
 ### Spotlight while switching
 
 *09:01* — While ⌘Tab is held, every window but the chosen app's dims, so the one you're about to switch to stands out; it follows each step and fades back when you let go or cancel.

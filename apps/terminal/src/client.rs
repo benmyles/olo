@@ -49,6 +49,10 @@ struct Inner {
     stream: Mutex<Option<UnixStream>>,
     reconnected: Condvar,
     leaving: AtomicBool,
+    /// olo-termd said the session is ending (`wire::ENDING`).
+    ended: AtomicBool,
+    /// …but we stopped it ourselves, to start over.
+    starting_over: AtomicBool,
     next: AtomicU64,
 }
 
@@ -125,6 +129,8 @@ pub fn connect() -> io::Result<(Link, Vec<wire::ShellInfo>)> {
         stream: Mutex::new(Some(stream)),
         reconnected: Condvar::new(),
         leaving: AtomicBool::new(false),
+        ended: AtomicBool::new(false),
+        starting_over: AtomicBool::new(false),
         next: AtomicU64::new(seed),
     }));
     {
@@ -203,6 +209,17 @@ impl Link {
         self.0.shells.lock().unwrap().remove(&id);
     }
 
+    /// The session is ending: the windows stay as they were for next
+    /// time, their shells going with it.
+    pub fn ended(&self) -> bool {
+        self.0.ended.load(Ordering::Acquire)
+    }
+
+    /// Ending olo-termd to start it afresh: that isn't the session ending.
+    pub fn starting_over(&self) {
+        self.0.starting_over.store(true, Ordering::Release);
+    }
+
     /// Quitting: leave the shells running, and say so, so olo-termd
     /// doesn't start Terminal again. Waits (briefly) for what's queued to
     /// go out first.
@@ -249,6 +266,16 @@ impl Link {
             while let Ok(Some(f)) = reader.next() {
                 self.dispatch(f);
             }
+            if self.ended() {
+                // Not connecting again (that would start olo-termd anew
+                // as the session goes): the shells have gone.
+                self.0.leaving.store(true, Ordering::Release);
+                self.0.reconnected.notify_all();
+                for (_, e) in self.0.shells.lock().unwrap().drain() {
+                    let _ = e.tx.send(Chunk::Exited(None));
+                }
+                return;
+            }
             if self.0.leaving.load(Ordering::Acquire) {
                 return;
             }
@@ -284,6 +311,12 @@ impl Link {
     }
 
     fn dispatch(&self, mut f: Frame) {
+        if f.kind == wire::ENDING {
+            if !self.0.starting_over.swap(false, Ordering::AcqRel) {
+                self.0.ended.store(true, Ordering::Release);
+            }
+            return;
+        }
         let chunk = match f.kind {
             wire::ATTACHED if f.data.len() >= 4 => {
                 let pid = i32::from_le_bytes(f.data[0..4].try_into().unwrap());
@@ -348,6 +381,15 @@ pub fn start() -> Result<(), String> {
 
 /// End olo-termd, however it is (and with it, the shells). Its pid
 /// is in its lock file (or, from its last status, `known`).
+/// Forget the shells olo-termd kept (when it was stopped to start over).
+pub fn forget_kept() {
+    if let Ok(dir) = std::fs::read_dir(wire::kept_dir()) {
+        for e in dir.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("shell-")) {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
 pub fn stop(known: Option<i32>) -> Result<(), String> {
     // (`tabula-termd` if it started before the rename and hasn't upgraded.)
     let ours = |pid: &i32| std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| matches!(c.trim(), "olo-termd" | "tabula-termd"));

@@ -213,7 +213,8 @@ as they land (with the commit), add new ones as they come up.
     its context menu;
   - GitHub: with an open PR for the branch, the tab's menu has an item
     to go to it, and the tab shows the PR's status with an icon.
-- **Terminal restores itself after Quit** (Ben): the state is saved as
+- ~~**Terminal restores itself after Quit**~~ (Ben; done: HACKING,
+  Terminal "Restoring"): the state is saved as
   it changes, so quitting and starting Terminal again brings back every
   window, group, tab and working directory. If olo-termd is running
   with the sessions, reattach them; if not, still restore the tabs,

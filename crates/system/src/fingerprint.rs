@@ -201,6 +201,24 @@ pub fn describe(result: &str) -> &'static str {
     }
 }
 
+/// The sensor, claimed and not listening, until this is dropped: so a
+/// PAM stack with pam_fprintd first (sudo's) can't have it and goes
+/// straight on to the password.
+pub struct Held(Proxy<'static>);
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        let _ = self.0.call_method("Release", &());
+    }
+}
+
+/// Claim the sensor for `user` (see [`Held`]).
+pub fn hold(user: &str) -> Result<Held> {
+    let dev = device()?;
+    dev.call_method("Claim", &(user,))?;
+    Ok(Held(dev))
+}
+
 /// Listen for an enrolled finger of `user` until it matches (Ok(true)),
 /// `stop` is used (Ok(false)) or the sensor fails.
 pub fn verify(user: &str, stop: &Stop, mut on: impl FnMut(Event)) -> Result<bool> {

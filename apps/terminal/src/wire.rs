@@ -60,6 +60,20 @@ pub const EXITED: u8 = 67;
 pub const DETACHED: u8 = 68;
 /// `Status`.
 pub const REPORT: u8 = 69;
+/// The session is ending: the shells are about to be hung up, each kept
+/// to be restored (`Spawn::restore`) next time.
+pub const ENDING: u8 = 70;
+
+/// Where olo-termd keeps shells between sessions (only for us:
+/// scrollback can hold anything).
+pub fn kept_dir() -> PathBuf {
+    olo_kit::state_dir().join("terminal")
+}
+
+/// Shell `id`'s lines, kept (zlib).
+pub fn kept_path(id: u64) -> PathBuf {
+    kept_dir().join(format!("shell-{id:016x}.z"))
+}
 
 /// Length (u32, of what follows it), kind (u8; bit 7 set when the frame
 /// carries a file descriptor), shell id (u64).
@@ -89,6 +103,10 @@ pub struct Spawn {
     pub command: Option<Vec<String>>,
     pub cwd: Option<PathBuf>,
     pub grid: Grid,
+    /// In place of this shell from an earlier session: what it showed
+    /// (kept when that session ended) comes first.
+    #[serde(default)]
+    pub restore: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

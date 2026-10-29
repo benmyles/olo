@@ -25,6 +25,7 @@ pub mod headless;
 #[cfg(feature = "winit")]
 pub mod winit;
 
+pub mod approve;
 pub mod desktop;
 pub mod dmabuf_check;
 pub mod identify;

@@ -6,6 +6,7 @@
 //! has it, then the password. Cancel, Escape or the close box says no.
 
 use std::{
+    sync::atomic::{AtomicBool, Ordering},
     io::{BufRead, BufReader, Write},
     os::{
         fd::AsRawFd,
@@ -21,6 +22,8 @@ use olo_kit::{
     style::{self, c},
     widgets::{self, Conversation},
 };
+
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
     agent::Agent,
@@ -76,8 +79,9 @@ pub fn shell_env(env: &mut Vec<(String, String)>) {
 
 /// What the listener hears, for the app.
 pub enum Event {
-    /// A sudo wants a password: from process `pid`, answered on `stream`.
-    Begin { conn: u64, pid: i32, stream: UnixStream, args: Vec<String>, tty: bool },
+    /// A sudo wants a password: from process `pid`, answered on `stream`;
+    /// `approval` while requests are approved without asking.
+    Begin { conn: u64, pid: i32, stream: UnixStream, args: Vec<String>, tty: bool, approval: Option<Approval> },
     Said(u64, Ask),
     /// It went (done, or stopped).
     Gone(u64),
@@ -129,7 +133,8 @@ fn serve(proxy: Proxy, conn: u64, pid: i32, s: UnixStream) {
     let Ok(stream) = s.try_clone() else { return };
     let mut lines = BufReader::new(s).lines();
     let Some(Ok(Ask::Begin { args, tty, .. })) = lines.next().map(|l| l.map(|l| serde_json::from_str(&l))).and_then(Result::ok) else { return };
-    proxy.send(Event::Begin { conn, pid, stream, args, tty });
+    let approval = if tty && !WINDOW_FOR_TYPED.load(Ordering::Relaxed) { None } else { approval() };
+    proxy.send(Event::Begin { conn, pid, stream, args, tty, approval });
     let p = proxy.clone();
     std::thread::spawn(move || {
         if touch_first() {
@@ -142,6 +147,28 @@ fn serve(proxy: Proxy, conn: u64, pid: i32, s: UnixStream) {
         }
     }
     proxy.send(Event::Gone(conn));
+}
+
+/// Settings ▸ Ask for sudo Passwords in a Window, for the listener.
+pub static WINDOW_FOR_TYPED: AtomicBool = AtomicBool::new(true);
+
+/// While requests are approved without asking (app_server's
+/// approve.rs): the password it was turned on with, and the fingerprint
+/// sensor, held meanwhile when sudo's PAM would wait on it first, so it
+/// goes straight to the password.
+pub struct Approval {
+    pub secret: Zeroizing<String>,
+    _held: Option<olo_system::fingerprint::Held>,
+}
+
+/// The approval, if requests are approved without asking now (app_server
+/// tells only Olo's Terminal). Blocks: call it off the UI thread.
+fn approval() -> Option<Approval> {
+    let reply = olo_protocol::Client::connect().ok()?.request(&olo_protocol::Request::AutoApproveSecret).ok()?;
+    let olo_protocol::Reply::Secret { password } = reply else { return None };
+    let secret = Zeroizing::new(password);
+    let held = touch_first().then(|| olo_system::auth::current_user().and_then(|u| olo_system::fingerprint::hold(&u).ok())).flatten();
+    Some(Approval { secret, _held: held })
 }
 
 /// Whether sudo's PAM asks for a fingerprint first, and there are some.
@@ -191,6 +218,19 @@ pub struct Request {
     /// As typed: `sudo …`.
     command: String,
     pub conv: Conversation,
+    /// Approved without asking: the password is given at sudo's prompt
+    /// (once: should it be asked again, a window asks the person).
+    pub approval: Option<Approval>,
+    answered: bool,
+}
+
+/// How a request approved without asking goes.
+pub enum Approved {
+    Waiting,
+    /// sudo is done: it said yes, or no.
+    Done(bool),
+    /// It wants the password again: ask the person, in a window.
+    AskPerson,
 }
 
 pub enum Choice {
@@ -201,7 +241,38 @@ pub enum Choice {
 impl Request {
     pub fn new(conn: u64, stream: UnixStream, args: &[String], who: Option<Agent>, tab: Option<String>) -> Request {
         let command = std::iter::once("sudo".to_owned()).chain(args.iter().map(|a| crate::shell_quote(a))).collect::<Vec<_>>().join(" ");
-        Request { conn, stream, who, tab, command, conv: Conversation::default() }
+        Request { conn, stream, who, tab, command, conv: Conversation::default(), approval: None, answered: false }
+    }
+
+    /// Who asked for what, for the log and the notification.
+    pub fn summary(&self) -> String {
+        let who = self.who.map_or("sudo", |a| a.name());
+        let tab = self.tab.as_ref().map(|t| format!(" (in “{t}”)")).unwrap_or_default();
+        format!("{who}{tab}: {}", self.command)
+    }
+
+    /// Approved without asking, what sudo said, and what comes of it.
+    pub fn approved(&mut self, a: Ask) -> Approved {
+        match a {
+            Ask::Prompt(_) if !self.answered => {
+                let secret = self.approval.as_ref().map(|a| a.secret.to_string()).unwrap_or_default();
+                let mut r = Reply::Answer(secret);
+                self.reply(&r);
+                if let Reply::Answer(a) = &mut r {
+                    a.zeroize();
+                }
+                self.answered = true;
+                Approved::Waiting
+            }
+            Ask::Info(_) | Ask::Begin { .. } => Approved::Waiting,
+            Ask::Done(ok) => Approved::Done(ok),
+            // Asked again, or an error: not the password it should be.
+            said @ (Ask::Prompt(_) | Ask::Error(_)) => {
+                self.approval = None;
+                self.said(said);
+                Approved::AskPerson
+            }
+        }
     }
 
     pub fn message(&self) -> String {

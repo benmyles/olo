@@ -2592,8 +2592,9 @@ program's questions (device attributes) only while no Terminal is
 attached.
 
 So: **Quit** (and closing the last window) says goodbye and leaves the
-shells running; the next Terminal opens a window on each one not shown
-elsewhere (a launch with arguments opens a new one as well). Closing a
+shells running; the next Terminal opens its windows as they were
+(Restoring, below) and a window on each other shell not shown elsewhere
+(a launch with arguments opens a new one as well). Closing a
 window hangs up its shell. If Terminal **crashes**, olo-termd starts
 it again after 2 s (up to 3 times a minute, only while the session and
 its Wayland socket are there). An **upgrade** re-executes both in place:
@@ -2610,6 +2611,26 @@ Terminal can always find its shells); it only removes the socket while
 the file there is still its own. Each screen is kept twice (in
 olo-termd and in Terminal), so a full scrollback costs about twice
 what it used to.
+
+**Restoring.** Terminal keeps its windows on disk as they change
+(`remember`: every 2 s if anything differs, and before it quits), in
+`$XDG_STATE_HOME/olo/terminal/windows.json`: each window's tabs in
+order, which one shows, its size, group, Show All Tabs, and each tab's
+folder. A Terminal that starts afresh (not an upgrade, which has
+`save_state`) opens those windows again: a shell olo-termd still has is
+attached where it was, and one that has gone (the session ended, or the
+machine was off) gets a new shell in its place (`Start::Restore`,
+`Spawn::restore`), in its folder, showing first what the old one showed
+and then a dim "Restored from DATE". olo-termd keeps each shell's
+normal screen and scrollback for that (`replay::archive`: not the
+alternate screen or modes), zlib'd in `shell-ID.z` beside
+`windows.json`: every minute for shells that printed since, and all
+of them when the session ends. The directory and files are the
+person's alone (0700, 0600); a shell that exits forgets its file, Start
+Over forgets them all, and unclaimed ones go after 30 days. As the
+session ends olo-termd tells each Terminal (`ENDING`) before hanging
+up, so it doesn't remember the tabs closing or start a new olo-termd;
+Start Over says it isn't that (`Link::starting_over`).
 
 **Tabs.** A window holds one or more shells (`TermWin::tabs`, each a
 `Tab` with its own `Session`); its strip (the kit's `TabStrip`) always

@@ -88,7 +88,12 @@ impl DaemonWin {
             Some(Ok(s)) => Some(s.pid),
             _ => None,
         };
-        run(proxy, move || Report::Done(client::stop(known).and_then(|()| client::start())));
+        run(proxy, move || {
+            Report::Done(client::stop(known).and_then(|()| {
+                client::forget_kept();
+                client::start()
+            }))
+        });
     }
 
     pub fn ui(&mut self, cx: &mut Cx, ui: &mut egui::Ui) -> Option<Action> {

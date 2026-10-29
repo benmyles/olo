@@ -9,7 +9,10 @@
 //! again. When the desktop session ends, so do the shells; when the last
 //! shell has gone and no Terminal is attached, so does olo-termd. An
 //! upgrade (SIGURG from olo-session) re-executes it in place, handing
-//! the PTYs and screens to its new self.
+//! the PTYs and screens to its new self. What each shell shows is kept
+//! on disk (now and then, and when the session ends), so the next
+//! session's Terminal can start a shell in its place with it
+//! (`Spawn::restore`).
 
 #[allow(dead_code)]
 mod colors;
@@ -36,10 +39,10 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
         mpsc,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 use alacritty_terminal::{
@@ -50,7 +53,7 @@ use alacritty_terminal::{
 use serde::{Deserialize, Serialize};
 
 use io::Size;
-use wire::{Frame, Grid};
+use wire::{Frame, Grid, kept_dir, kept_path};
 
 /// Where an upgraded olo-termd finds what its previous self handed on.
 const RESTORE_ENV: &str = "OLO_TERMD_RESTORE";
@@ -63,6 +66,11 @@ const RELAUNCH_AFTER: Duration = Duration::from_secs(2);
 const RELAUNCHES: usize = 3;
 /// How long to stay with nothing to do.
 const LINGER: Duration = Duration::from_secs(3);
+/// How often a shell that has printed since is kept on disk, so a
+/// session that ends with no warning (the battery ran out) still has it.
+const KEEP_EVERY: Duration = Duration::from_secs(60);
+/// Kept shells no Terminal took back are forgotten after this.
+const KEPT_FOR: Duration = Duration::from_secs(30 * 24 * 3600);
 
 fn log(message: impl std::fmt::Display) {
     eprintln!("olo-termd: {message}");
@@ -124,6 +132,10 @@ struct Shell {
     writer: mpsc::Sender<Vec<u8>>,
     attached: Attached,
     title: Arc<Mutex<Option<String>>>,
+    /// Bumped by each read of the shell's output…
+    output: Arc<AtomicU64>,
+    /// …and what it was when the shell was last kept on disk.
+    kept: u64,
 }
 
 impl Shell {
@@ -143,6 +155,46 @@ impl Shell {
         unsafe {
             libc::kill(-self.pid, libc::SIGHUP);
             libc::kill(self.pid, libc::SIGHUP);
+        }
+    }
+}
+
+/// Keep what shell `id` shows on disk, for `Spawn::restore`.
+fn keep(id: u64, term: &FairMutex<Term<Listener>>, shared: &io::Shared) {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    let lines = replay::archive(&mut term.lock(), &shared.images.lock().unwrap());
+    let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+    let Ok(packed) = z.write_all(&lines).and_then(|_| z.finish()) else { return };
+    let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(kept_dir());
+    let path = kept_path(id);
+    let new = path.with_extension("z.new");
+    let wrote = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&new).and_then(|mut f| f.write_all(&packed));
+    match wrote.and_then(|_| std::fs::rename(&new, &path)) {
+        Ok(()) => {}
+        Err(e) => log(format!("can't keep shell {id}: {e}")),
+    }
+}
+
+/// What shell `id` of an earlier session showed, if it was kept, and
+/// when (it's forgotten: it belongs to the new shell now).
+fn take_kept(id: u64) -> Option<(Vec<u8>, SystemTime)> {
+    let path = kept_path(id);
+    let when = std::fs::metadata(&path).and_then(|m| m.modified()).ok()?;
+    let packed = std::fs::read(&path).ok()?;
+    let _ = std::fs::remove_file(&path);
+    let mut lines = Vec::new();
+    flate2::read::ZlibDecoder::new(&packed[..]).read_to_end(&mut lines).ok()?;
+    Some((lines, when))
+}
+
+/// Forget kept shells older than `KEPT_FOR`, and any half written.
+fn forget_old_kept() {
+    let Ok(dir) = std::fs::read_dir(kept_dir()) else { return };
+    let now = SystemTime::now();
+    for e in dir.flatten() {
+        let old = e.metadata().and_then(|m| m.modified()).is_ok_and(|t| now.duration_since(t).unwrap_or_default() > KEPT_FOR);
+        if old || e.path().extension().is_some_and(|x| x == "new") {
+            let _ = std::fs::remove_file(e.path());
         }
     }
 }
@@ -208,6 +260,7 @@ fn new_shell(st: &mut State, id: u64, pty: pty::Pty, grid: Grid, replay: Option<
     let attached: Attached = Arc::new(Mutex::new(None));
     let title = Arc::new(Mutex::new(title));
     let writer = spawn_writer(&master);
+    let output = Arc::new(AtomicU64::new(0));
     let listener = Listener { title: title.clone(), attached: attached.clone(), writer: writer.clone() };
     let size = Size { cols: grid.cols.max(1) as usize, rows: grid.rows.max(1) as usize };
     let config = Config { scrolling_history: wire::SCROLLBACK, kitty_keyboard: true, ..Config::default() };
@@ -222,11 +275,11 @@ fn new_shell(st: &mut State, id: u64, pty: pty::Pty, grid: Grid, replay: Option<
     shared.pid.store(pid, Ordering::Relaxed);
     pty::resize(master.as_raw_fd(), window_size(grid));
     match master.try_clone() {
-        Ok(fd) => spawn_reader(id, File::from(fd), pid, term.clone(), shared.clone(), attached.clone(), writer.clone(), st.events.clone()),
+        Ok(fd) => spawn_reader(id, File::from(fd), pid, term.clone(), shared.clone(), attached.clone(), writer.clone(), output.clone(), st.events.clone()),
         Err(e) => log(format!("shell {id}: {e}")),
     }
     st.seq += 1;
-    st.shells.insert(id, Shell { seq: st.seq, term, shared, master, pid, grid, writer, attached, title });
+    st.shells.insert(id, Shell { seq: st.seq, term, shared, master, pid, grid, writer, attached, title, output, kept: 0 });
 }
 
 /// Read a shell's output into its emulator, and on to the Terminal
@@ -240,6 +293,7 @@ fn spawn_reader(
     shared: Arc<io::Shared>,
     attached: Attached,
     writer: mpsc::Sender<Vec<u8>>,
+    output: Arc<AtomicU64>,
     events: mpsc::Sender<Ev>,
 ) {
     std::thread::Builder::new()
@@ -289,6 +343,7 @@ fn spawn_reader(
                         }
                     }
                 };
+                output.fetch_add(1, Ordering::Relaxed);
                 // Images are kept only to send on, so compressed (not
                 // holding the screen up meanwhile).
                 shared.images.lock().unwrap().pack();
@@ -435,9 +490,15 @@ fn handle(st: &St, conn: u64, f: Frame) {
             }
             let home = s.env.iter().find(|(k, _)| k == "HOME").map(|(_, v)| PathBuf::from(v));
             let cwd = spawn.cwd.filter(|d| d.is_dir()).or(home);
+            // The shell it stands in for: its lines, then when they're from.
+            let before = spawn.restore.and_then(take_kept).map(|(mut lines, when)| {
+                let when = olo_kit::files::format_time(Some(when));
+                lines.extend_from_slice(format!("\x1b[2mRestored from {when}\x1b[0m\r\n").as_bytes());
+                lines
+            });
             match pty::Pty::spawn(spawn.command.as_deref(), cwd.as_deref(), window_size(spawn.grid), &s.env) {
                 Ok(p) => {
-                    new_shell(&mut s, f.id, p, spawn.grid, None, None);
+                    new_shell(&mut s, f.id, p, spawn.grid, before.as_deref(), None);
                     attach(&mut s, conn, f.id, spawn.grid);
                 }
                 Err(e) => {
@@ -697,6 +758,39 @@ fn session_alive() -> bool {
     alive && wire::wayland_socket().exists()
 }
 
+/// Keep the shells that have printed since they last were, on a thread
+/// of its own (`busy` while it does).
+fn keep_changed(st: &St, busy: &Arc<AtomicBool>) {
+    let mut s = st.lock().unwrap();
+    let changed: Vec<_> = s
+        .shells
+        .iter_mut()
+        .filter_map(|(&id, sh)| {
+            let now = sh.output.load(Ordering::Relaxed);
+            (now != std::mem::replace(&mut sh.kept, now)).then(|| (id, sh.term.clone(), sh.shared.clone()))
+        })
+        .collect();
+    if changed.is_empty() {
+        return;
+    }
+    busy.store(true, Ordering::Release);
+    drop(s);
+    let (st, busy) = (st.clone(), busy.clone());
+    std::thread::Builder::new()
+        .name("keep".into())
+        .spawn(move || {
+            for (id, term, shared) in changed {
+                keep(id, &term, &shared);
+                // It ended meanwhile.
+                if !st.lock().unwrap().shells.contains_key(&id) {
+                    let _ = std::fs::remove_file(kept_path(id));
+                }
+            }
+            busy.store(false, Ordering::Release);
+        })
+        .expect("keep thread");
+}
+
 /// Take Terminals' connections on `listener`.
 fn accept(st: St, listener: &UnixListener) {
     static CONN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -723,10 +817,19 @@ fn run(st: St, events: mpsc::Receiver<Ev>, mut listener: UnixListener, lock: Fil
     let mut relaunch_at: Option<Instant> = None;
     let mut relaunched: VecDeque<Instant> = VecDeque::new();
     let mut idle_since: Option<Instant> = None;
+    let mut kept_at = Instant::now();
+    let keeping = Arc::new(AtomicBool::new(false));
+    forget_old_kept();
     loop {
+        if kept_at.elapsed() >= KEEP_EVERY && !keeping.load(Ordering::Acquire) {
+            kept_at = Instant::now();
+            keep_changed(&st, &keeping);
+        }
         match events.recv_timeout(Duration::from_millis(500)) {
             Ok(Ev::Exited(id)) => {
                 st.lock().unwrap().shells.remove(&id);
+                // It ended on its own: nothing to bring back.
+                let _ = std::fs::remove_file(kept_path(id));
             }
             Ok(Ev::Gone { bye }) => {
                 if !bye {
@@ -740,7 +843,27 @@ fn run(st: St, events: mpsc::Receiver<Ev>, mut listener: UnixListener, lock: Fil
             }
             Ok(Ev::Restart) => upgrade(&st, &binary, &listener, &lock),
             Ok(Ev::End) => {
+                let deadline = Instant::now() + Duration::from_secs(1);
+                while keeping.load(Ordering::Acquire) && Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
                 let s = st.lock().unwrap();
+                // Terminals keep their windows as they are for next time,
+                // and each shell is kept to come back in them.
+                for c in s.clients.values() {
+                    // (A body, so the backlog says when it has gone out.)
+                    c.outbox.send(Frame::new(wire::ENDING, 0, b"end".to_vec()));
+                }
+                std::thread::scope(|scope| {
+                    for (&id, sh) in &s.shells {
+                        let (term, shared) = (&sh.term, &sh.shared);
+                        scope.spawn(move || keep(id, term, shared));
+                    }
+                });
+                let deadline = Instant::now() + Duration::from_millis(200);
+                while s.clients.values().any(|c| c.outbox.backlog.load(Ordering::Acquire) > 0) && Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
                 for sh in s.shells.values() {
                     sh.hang_up();
                 }

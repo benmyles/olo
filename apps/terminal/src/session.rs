@@ -98,6 +98,9 @@ pub use crate::io::Size;
 /// How a window gets its shell.
 pub enum Start {
     Spawn { command: Option<Vec<String>>, cwd: Option<PathBuf> },
+    /// A new shell in place of `from`, gone with the session it ran in:
+    /// what it showed first (olo-termd kept it).
+    Restore { cwd: Option<PathBuf>, from: u64 },
     /// One olo-termd already has.
     Attach(u64),
     /// One this process ran itself, before olo-termd: hand it over.
@@ -141,7 +144,7 @@ impl Session {
     /// later: output, or `Exited`.
     pub fn start(proxy: Proxy, link: &Link, size: Size, cell: (u16, u16), scheme: crate::colors::Scheme, start: Start) -> Session {
         let id = match &start {
-            Start::Spawn { .. } | Start::Adopt { .. } => link.new_id(),
+            Start::Spawn { .. } | Start::Restore { .. } | Start::Adopt { .. } => link.new_id(),
             Start::Attach(id) => *id,
         };
         let shared = Arc::new(io::Shared::new(cell, size, scheme));
@@ -165,7 +168,10 @@ impl Session {
         let (tx, rx) = mpsc::channel();
         spawn_feeder(rx, term.clone(), shared.clone(), wake, writer, exited);
         match start {
-            Start::Spawn { command, cwd } => link.spawn(id, tx, wire::Spawn { command, cwd, grid: grid(size, cell) }),
+            Start::Spawn { command, cwd } => link.spawn(id, tx, wire::Spawn { command, cwd, grid: grid(size, cell), restore: None }),
+            Start::Restore { cwd, from } => {
+                link.spawn(id, tx, wire::Spawn { command: None, cwd: cwd.filter(|d| d.is_dir()), grid: grid(size, cell), restore: Some(from) })
+            }
             Start::Attach(id) => link.attach(id, tx, grid(size, cell)),
             Start::Adopt { pty, pid, title, replay } => {
                 link.adopt(id, tx, wire::Adopt { pid, grid: grid(size, cell), title, replay }, pty);
