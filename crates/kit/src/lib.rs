@@ -32,6 +32,7 @@ pub mod settings;
 pub mod style;
 pub mod textures;
 pub mod text_drag;
+pub mod tip;
 mod theme_watch;
 pub mod widgets;
 

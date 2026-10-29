@@ -4122,6 +4122,7 @@ dependencies = [
  "olo-system",
  "serde_json",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]

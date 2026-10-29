@@ -145,6 +145,12 @@ impl Lock {
         false
     }
 
+    /// Unlocked while app_server approves without asking; true if it was
+    /// locked.
+    pub fn approved(&mut self) -> bool {
+        self.unlock()
+    }
+
     fn unlock(&mut self) -> bool {
         if !self.locked {
             return false;

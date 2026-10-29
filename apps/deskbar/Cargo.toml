@@ -16,3 +16,4 @@ olo-system.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 libc = "0.2"
+zeroize = "1"

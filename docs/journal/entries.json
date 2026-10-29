@@ -1960,5 +1960,23 @@
   "title": "Terminal comes back after the session ends",
   "caption": "When the session ends, olo-termd keeps each shell's lines. Terminal remembers its windows and tabs, so the next login puts each tab back in its folder, with what it showed and a dim \"Restored from\" line.",
   "image": "2026-10-29/092808-terminal-comes-back-after-the-session-ends.png"
+ },
+ {
+  "time": "2026-10-29T10:30:31",
+  "title": "Approve Without Asking",
+  "caption": "Deskbar's new key in the tray turns on approving without asking for a while: sudo in Terminal and Passwords' unlock and op go ahead without a window, each in a quiet notification. It takes the account password and ends at its time or when the screen locks.",
+  "image": "2026-10-29/103031-approve-without-asking.png"
+ },
+ {
+  "time": "2026-10-29T10:30:33",
+  "title": "The key's tip, past Deskbar's edge",
+  "caption": "While on, the key is gold and its tip says how long is left. Tray tips now show in a popup of their own (olo_kit::tip), so they reach past Deskbar's narrow window instead of being cut.",
+  "image": "2026-10-29/103033-the-key-s-tip-past-deskbar-s-edge.png"
+ },
+ {
+  "time": "2026-10-29T10:30:33",
+  "title": "Terminal's sudo window shows the whole command",
+  "caption": "A command too long for the window is elided in the field; resting on it shows the whole command in a kit tip that extends past the window (egui's own was cut at its edge).",
+  "image": "2026-10-29/103033-terminal-s-sudo-window-shows-the-whole-command.png"
  }
 ]

@@ -20,6 +20,7 @@ use olo_kit::{
     egui::{self, Align, Rect, pos2, vec2},
     metrics as m,
     style::{self, c},
+    tip::Tip,
     widgets::{self, Conversation},
 };
 
@@ -173,6 +174,11 @@ fn approval() -> Option<Approval> {
 
 /// Whether sudo's PAM asks for a fingerprint first, and there are some.
 fn touch_first() -> bool {
+    // Tests leave fprintd alone: no sensor wanted, or a stand-in sudo
+    // (not the PAM read here).
+    if std::env::var_os("OLO_NO_FINGERPRINT").is_some() || cfg!(debug_assertions) && std::env::var_os("OLO_SUDO_REAL").is_some() {
+        return false;
+    }
     pam_fprintd("sudo", 0) && olo_system::auth::current_user().is_some_and(|u| olo_system::fingerprint::enrolled(&u).unwrap_or(false))
 }
 
@@ -368,7 +374,9 @@ impl Request {
         painter.galley(field.min + vec2(PAD, PAD), g, c(p.document_text));
         style::describe_text(ui.ctx(), egui::accesskit::Role::Label, &self.command, field, None);
         if cut {
-            ui.interact(field, ui.scope_id().with("command"), egui::Sense::hover()).on_hover_text(&self.command);
+            // In a popup of its own: the whole command is wider than the
+            // window, and egui's tip would be cut at its edge.
+            ui.interact(field, ui.scope_id().with("command"), egui::Sense::hover()).tip(&self.command);
         }
         y = field.bottom() + m::SPACING;
 

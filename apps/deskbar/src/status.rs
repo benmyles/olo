@@ -552,6 +552,25 @@ pub fn draw_cup(painter: &Painter, r: Rect, p: &Palette, on: bool) {
     }
 }
 
+/// A key, its bow gold while requests are approved without asking. Its
+/// lines are hairlines, the shaft and teeth on device pixels.
+pub fn draw_key(painter: &Painter, r: Rect, p: &Palette, on: bool) {
+    let color = if on { ink(p) } else { dim(p) };
+    let hair = style::hairline(painter.ctx());
+    let y = whole(painter, r.center().y);
+    let bow = pos2(r.left() + 4.5, y + hair / 2.0);
+    if on {
+        painter.circle_filled(bow, 3.8, c(p.hue(olo_kit::theme::Hue::Yellow)));
+    }
+    painter.circle_stroke(bow, 3.8 - hair / 2.0, Stroke::new(hair, color));
+    painter.circle_filled(bow, 1.1, color);
+    // The shaft from the bow, its teeth hanging from the end.
+    let end = whole(painter, r.right() - 0.5);
+    style::hline(painter, whole(painter, bow.x + 3.8), end, y, color);
+    style::vline(painter, end - hair, y, y + whole(painter, 4.0), color);
+    style::vline(painter, end - whole(painter, 3.0), y, y + whole(painter, 3.0), color);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

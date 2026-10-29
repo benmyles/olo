@@ -13,6 +13,7 @@
 //! Clicking an application brings it forward, every window of it there;
 //! the right button opens the menu of its windows, to choose one.
 
+mod approve;
 mod status;
 
 use std::collections::HashMap;
@@ -25,6 +26,7 @@ use olo_kit::{
     menu::{self, MenuAnchor, MenuItem, MenuRequest},
     style::{self, c, hline, hline_above, shade, vline},
     theme::Palette,
+    tip::Tip,
     widgets,
 };
 use olo_protocol::{
@@ -208,6 +210,11 @@ struct Deskbar {
     confirm: Option<(WindowId, Power)>,
     /// The "upgrade and reload?" alert, while it is open, with its message.
     upgrade_ask: Option<(WindowId, String)>,
+    /// Approving requests without asking until then (seconds since the
+    /// epoch; app_server's approve.rs).
+    approve_until: Option<u64>,
+    /// The window turning it on, while it is open.
+    approve: Option<approve::Ask>,
 }
 
 fn team_key(w: &WindowInfo) -> String {
@@ -462,6 +469,8 @@ impl Deskbar {
             .separator()
             .submenu(self.caffeine_menu())
             .icon("stay-awake")
+            .submenu(approve::menu(self.approve_until, &self.clock))
+            .icon("key")
             .item("Lock Screen", "lock", None)
             .icon("lock-screen")
             .item("Log Out", "logout", None)
@@ -593,6 +602,27 @@ impl Deskbar {
         request(Request::SetCaffeinated { on, minutes, lid });
     }
 
+    /// An approve-without-asking command (after `approve:`): `off`, or
+    /// minutes. Turning it on takes the password (the window); on
+    /// already, only the length changes.
+    fn approve_command(&mut self, cx: &mut Cx, arg: &str) {
+        if arg == "off" {
+            self.approve_until = None;
+            request(Request::SetAutoApprove { minutes: None, password: None });
+            return;
+        }
+        let Ok(minutes) = arg.parse::<u32>() else { return };
+        if self.approve_until.is_some() {
+            request(Request::SetAutoApprove { minutes: Some(minutes), password: None });
+        } else if let Some(a) = &mut self.approve {
+            a.choose(minutes);
+            cx.activate(a.win);
+            cx.redraw(a.win);
+        } else {
+            self.approve = Some(approve::Ask::open(cx, minutes));
+        }
+    }
+
     /// A Do Not Disturb command (after `notif:`): `on`, `off`, `tomorrow`
     /// or minutes. Written to the notification settings, which the service
     /// follows.
@@ -630,6 +660,7 @@ impl Deskbar {
             Some(("run", bin)) => spawn(bin),
             Some(("pref", panel)) => spawn(&format!("olo-preferences {panel}")),
             Some(("caff", arg)) => self.caffeine_command(arg),
+            Some(("approve", arg)) => self.approve_command(cx, arg),
             // For the display of the Deskbar it was chosen on.
             Some(("arrange", "auto-tiling")) => {
                 let output = self.menu_output.clone();
@@ -1051,6 +1082,9 @@ impl App for Deskbar {
         if self.upgrade_ask.as_ref().is_some_and(|(w, _)| *w == window) {
             self.upgrade_ask = None;
         }
+        if self.approve.as_ref().is_some_and(|a| a.win == window) {
+            self.approve = None;
+        }
         if !self.bars.iter().any(|b| b.win == window) {
             cx.close_window(window);
         }
@@ -1063,6 +1097,13 @@ impl App for Deskbar {
         }
         if self.upgrade_ask.as_ref().is_some_and(|(win, _)| *win == w) {
             self.upgrade_ui(cx, w, ui);
+            return;
+        }
+        if let Some(a) = self.approve.as_mut().filter(|a| a.win == w) {
+            if a.ui(ui, &self.proxy) {
+                self.approve = None;
+                cx.close_window(w);
+            }
             return;
         }
         let Some(bar) = self.bars.iter().position(|b| b.win == w) else { return };
@@ -1109,7 +1150,7 @@ impl App for Deskbar {
 
         // ---- tray: the date and time, then the status icons
         let st = self.status.clone();
-        let items = [!st.upgrade.is_empty(), st.agent_screens > 0, st.battery.is_some(), st.wifi.is_some(), st.volume.is_some(), st.notifications.is_some(), true, true]
+        let items = [!st.upgrade.is_empty(), st.agent_screens > 0, st.battery.is_some(), st.wifi.is_some(), st.volume.is_some(), st.notifications.is_some(), true, true, true]
             .iter()
             .filter(|on| **on)
             .count();
@@ -1125,7 +1166,7 @@ impl App for Deskbar {
         let text_right = clock_row.right() - TRAY_TEXT;
         style::label(&painter, text_left, clock_row.center().y, egui::Align::Min, date, font.clone(), c(pal.panel_text));
         style::label(&painter, text_right, clock_row.center().y, egui::Align::Max, time, font, c(pal.panel_text));
-        if ui.interact(clock_row, egui::Id::unique("clock"), Sense::click()).on_hover_text("Date & Time preferences").clicked() {
+        if ui.interact(clock_row, egui::Id::unique("clock"), Sense::click()).tip("Date & Time preferences").clicked() {
             self.run_command(cx, "pref:datetime");
         }
         let well = Rect::from_min_size(pos2(tray.left() + TRAY_INSET, clock_row.bottom()), vec2(well_w, rows as f32 * TRAY_PITCH));
@@ -1144,7 +1185,7 @@ impl App for Deskbar {
         let mut tray_item = |ui: &mut egui::Ui, id: &str, draw: &dyn Fn(&egui::Painter, Rect), tip: String| {
             let r = *slot.next().expect("a slot for each tray item");
             draw(&painter, r);
-            ui.interact(r.expand(3.0), egui::Id::unique(("tray", id)), Sense::click()).on_hover_text(tip)
+            ui.interact(r.expand(3.0), egui::Id::unique(("tray", id)), Sense::click()).tip(tip)
         };
         if !st.upgrade.is_empty() {
             let n = st.upgrade.len();
@@ -1272,6 +1313,34 @@ impl App for Deskbar {
             self.run_command(cx, &cmd);
         }
 
+        // Approving without asking: a key, gold while requests go ahead
+        // without asking. Click to turn it on (it takes the password) or
+        // off; right-click for how long.
+        let tip = match self.approve_until {
+            Some(t) => format!(
+                "Approving without asking: {} left (until {}). Click to ask again.",
+                approve::left(t),
+                status::time_of_day(t, &self.clock)
+            ),
+            None => "Click to approve requests without asking for a while; right-click for how long".into(),
+        };
+        let on = self.approve_until.is_some();
+        let key = tray_item(ui, "approve", &|p, r| status::draw_key(p, r, &pal, on), tip);
+        let key_id = egui::Id::unique("approve-menu");
+        if key.clicked() {
+            let cmd = if on { "approve:off".to_owned() } else { format!("approve:{}", approve::USUAL) };
+            self.run_command(cx, &cmd);
+        }
+        if key.secondary_clicked() && !menu::is_open(ui.ctx(), key_id) {
+            menu::request_popup(
+                ui.ctx(),
+                MenuRequest { menu: approve::menu(self.approve_until, &self.clock), source: key_id, anchor: MenuAnchor::Below(key.rect), selected: None },
+            );
+        }
+        if let Some(cmd) = menu::take_chosen(ui.ctx(), key_id) {
+            self.run_command(cx, &cmd);
+        }
+
         // Auto-tiling, beside it: tiles, filled while every window on this
         // display (of this workspace) takes a tile. Right-click for the
         // Window Arrangement menu.
@@ -1351,6 +1420,20 @@ impl App for Deskbar {
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
+        let message = match message.downcast::<approve::Answer>() {
+            Ok(answer) => {
+                if let Some(a) = &mut self.approve {
+                    if a.answer(*answer) {
+                        cx.close_window(a.win);
+                        self.approve = None;
+                    } else {
+                        cx.redraw(a.win);
+                    }
+                }
+                return;
+            }
+            Err(m) => m,
+        };
         if let Ok(m) = message.downcast::<Msg>() {
             match *m {
                 Msg::Windows(w) => self.set_windows(w),
@@ -1360,6 +1443,7 @@ impl App for Deskbar {
                     self.caffeinated = p.caffeinated;
                     self.caffeinated_until = p.caffeinated_until;
                     self.caffeinated_lid = p.caffeinated_lid;
+                    self.approve_until = p.auto_approve_until;
                 }
                 Msg::Settings(s) => {
                     self.clock = s.clock;
@@ -1467,6 +1551,8 @@ fn main() {
             keys: ShortcutSettings::new(),
             confirm: None,
             upgrade_ask: None,
+            approve_until: None,
+            approve: None,
         }
     });
 }

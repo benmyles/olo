@@ -79,7 +79,7 @@ mod tests {
         let mut recorded = None;
         let mut fresh = Vec::new();
         let mut replayed = Vec::new();
-        let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
             let view = Rect::from_min_size(Pos2::ZERO, egui::vec2(100.0, 100.0));
             let p = egui::Painter::new(ui.ctx().clone(), layer, view);
             recorded = Some(Recorded::record(&p, Pos2::new(10.0, 10.0), |p| paint(p, Pos2::new(10.0, 10.0))));
@@ -93,6 +93,8 @@ mod tests {
                 replayed = all[m..].to_vec();
             });
         });
+        // The font atlas: nothing here uploads it.
+        out.textures_delta.clear();
         assert_eq!(fresh.len(), 2);
         assert_eq!(fresh, replayed);
     }

@@ -70,7 +70,10 @@ impl<B: Backend + 'static> AnvilState<B> {
         std::thread::Builder::new()
             .name("approve check".into())
             .spawn(move || {
-                let checked = olo_system::auth::check_password(&user, &password).map(|()| password).map_err(|e| e.to_string());
+                let checked = olo_system::auth::check_password(&user, &password).map(|()| password).map_err(|e| match e {
+                    olo_system::auth::AuthError::Denied(_) => "That password isn’t right.".to_owned(),
+                    e => e.to_string(),
+                });
                 let _ = tx.send(checked);
             })
             .ok()?;

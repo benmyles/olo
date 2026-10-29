@@ -482,13 +482,18 @@ pub fn line_pixels(ppp: f32) -> f32 {
 }
 
 /// What in the style depends on the scale, set for `ppp` device pixels a
-/// point: the text caret is a hairline (a one-point stroke is a pixel and
-/// a half at 1.5×, and smears over two). The platform calls it before
+/// point: the text caret and egui's popup and tooltip outlines are
+/// hairlines (a one-point stroke is a pixel and a half at 1.5×, and
+/// smears over two). The platform calls it before
 /// every frame; it writes only when the scale has changed.
 pub fn fit_scale(ctx: &Context, ppp: f32) {
     let width = line_pixels(ppp) / ppp;
     if (ctx.global_style().visuals.text_cursor.stroke.width - width).abs() > 1e-4 {
-        ctx.all_styles_mut(|s| s.visuals.text_cursor.stroke.width = width);
+        ctx.all_styles_mut(|s| {
+            s.visuals.text_cursor.stroke.width = width;
+            // egui's popups' and tooltips' outline (`Frame::popup`).
+            s.visuals.window_stroke.width = width;
+        });
     }
 }
 

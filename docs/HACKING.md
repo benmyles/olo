@@ -510,6 +510,20 @@ one: a hollow diamond where the check mark goes and a lighter label
 (`style::diamond`), still enabled (choosing it brings the window back);
 agents read `minimized` on its `MenuItem` node.
 
+### Tips past the window's edge (`olo_kit::tip`)
+
+egui's tooltip (`on_hover_text`) is drawn inside the window, so in a
+window smaller than what it says it is cut at the edge. `use
+olo_kit::tip::Tip;` then `response.tip(text)` shows it in a popup of its
+own instead (an xdg_popup with no grab and an empty input region, so it
+takes no clicks), below the widget or else above it, slid to stay on the
+screen. It comes and goes as egui's does (after `tooltip_delay` at
+rest, at once if another showed a moment ago, not after a click), looks
+the same (`Frame::popup`'s plate, `tooltip_width`), and the text is the
+widget's description for agents. Use it where the tip can be wider or
+taller than the window: Deskbar's tray, Terminal's sudo window's
+command. Elsewhere `on_hover_text` is fine.
+
 ### Widgets (`olo_kit::widgets`)
 
 `StringView` (a label; `.dim(true)` for hints, `.wrap(true)` for a paragraph, `.color(c)`; a wrapped one is `CONTROL_HEIGHT` tall plus a line's height, about `LABEL_ROW`, for each line after the first, so size a fixed area for it that way), `Button` (`.default(true)` for the Enter button; `.small()` is `SMALL_BUTTON_HEIGHT` tall in the small font, for actions inside something dense: a card, a list row), `CheckBox`, `RadioButton`,
@@ -1647,6 +1661,8 @@ no headings, just the applications. Agents find the headings as
 Deskbar's tray has auto-tiling's toggle (`status::draw_tiles`) beside
 the Caffeinated cup: a click turns it on or off for the workspace (and
 the bar's display), a right-click opens Window Arrangement.
+Beside them is the approval key (`status::draw_key`, `approve.rs`):
+see "Approving without asking".
 
 Clicking an app's row in Deskbar brings it forward with every window it
 has there, as a Mac's Dock does (BeOS's brought one forward):
@@ -2228,8 +2244,10 @@ Chrome, GTK 4.16 text), and how Olo does it:
   - *Sizes* are on the 2-point grid (whole pixels at 1×, 1.5× and 2×).
     Positions it works out go through `style::snap` or `snap_centred`.
     Lines are `style::line_pixels`.
-  - *The text caret* is a hairline at each scale (`style::fit_scale`,
-    which the platform calls every frame).
+  - *The text caret* and egui's popup and tooltip outlines
+    (`window_stroke`) are hairlines at each scale (`style::fit_scale`,
+    which the platform calls every frame): a one-point stroke would be a
+    pixel and a half at 1.5× and smear over two.
   - *An icon* is drawn at its texture's size from a whole pixel. A bitmap
     with no size of its own (ours come at 16, 24, 32 …, so 20 at 1.25×)
     is averaged down to exactly the device size once, when it loads
@@ -2294,6 +2312,32 @@ panel low on the screen under the pointer for 1.6 s (in a real session
 the worker reports the volume it set; headless simulates a volume).
 `OLO_OSD_SHEET=/tmp/o.png cargo test -p app_server osd_sheet` draws
 every state.
+
+## Approving without asking (app_server approve.rs, Deskbar approve.rs)
+
+For a while (5 minutes to a day), requests that would ask for the
+account password are approved without asking: sudo in Terminal's window
+and Passwords' unlock and `op` access. Deskbar's key in the tray turns
+it on (a click: for 15 minutes, `approve::USUAL`; right-click or Olo ▸
+Approve Without Asking: the lengths) in a small window that takes the
+password; the key is gold while it is on, its tip saying until when,
+and a click (or Ask Again) turns it off.
+`Request::SetAutoApprove { minutes, password }` (`minutes: None` turns it
+off; while on, a new length needs no password) checks the password
+through PAM on a thread and replies once it has ("That password isn’t
+right."). app_server keeps the password (`Zeroizing`) only while it is
+on: the power tick ends it at its time, the lock ends it (sleeping locks
+first), and app_server's restart ends it; `PowerStatus` carries
+`auto_approve_until`. Terminal's sudo window, before showing, asks
+`Request::AutoApproveSecret` (answered only to a peer that is Olo's
+olo-terminal, `Conn::peer_is_ours`) and gives sudo that password;
+Passwords asks `PowerStatus` (on a thread) and unlocks, or lets a
+terminal's `op` in, without its window. Each says so in a quiet
+notification ("Approved without asking", "Passwords unlocked without
+asking"). Never test with the real PAM: debug builds take
+`OLO_PAM_CONFDIR`/`OLO_PAM_SERVICE` (a stand-in `pam_exec` check),
+Terminal's sudo `OLO_SUDO_REAL`, and `OLO_NO_FINGERPRINT=1` leaves
+fprintd alone.
 
 ## The touchpad (app_server udev.rs, momentum.rs, touch_filter.rs)
 

@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Terminal's sudo window shows the whole command
+
+*10:30* — A command too long for the window is elided in the field; resting on it shows the whole command in a kit tip that extends past the window (egui's own was cut at its edge).
+
+![Terminal's sudo window shows the whole command](2026-10-29/103033-terminal-s-sudo-window-shows-the-whole-command.png)
+
+### The key's tip, past Deskbar's edge
+
+*10:30* — While on, the key is gold and its tip says how long is left. Tray tips now show in a popup of their own (olo_kit::tip), so they reach past Deskbar's narrow window instead of being cut.
+
+![The key's tip, past Deskbar's edge](2026-10-29/103033-the-key-s-tip-past-deskbar-s-edge.png)
+
+### Approve Without Asking
+
+*10:30* — Deskbar's new key in the tray turns on approving without asking for a while: sudo in Terminal and Passwords' unlock and op go ahead without a window, each in a quiet notification. It takes the account password and ends at its time or when the screen locks.
+
+![Approve Without Asking](2026-10-29/103031-approve-without-asking.png)
+
 ### Terminal comes back after the session ends
 
 *09:28* — When the session ends, olo-termd keeps each shell's lines. Terminal remembers its windows and tabs, so the next login puts each tab back in its folder, with what it showed and a dim "Restored from" line.

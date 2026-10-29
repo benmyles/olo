@@ -14,7 +14,7 @@ use std::{
 use egui::{Pos2, Rect, ViewportId, pos2, vec2};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle};
 use smithay_client_toolkit::{
-    compositor::{CompositorHandler, CompositorState, FrameCallbackData},
+    compositor::{CompositorHandler, CompositorState, FrameCallbackData, Region},
     data_device_manager::{
         DataDeviceManagerState, WritePipe,
         data_device::{DataDevice, DataDeviceHandler},
@@ -87,6 +87,8 @@ use crate::{
 
 /// Popup path root meaning "the surface's ad-hoc menu", not a bar menu.
 const CONTEXT: usize = usize::MAX;
+/// A tip's popup (`crate::tip`), not a menu: its path.
+const TIP: usize = usize::MAX - 1;
 
 /// The longest a configure waits for the frame on its way to be shown
 /// (`Kit::draw_configured`): about a frame.
@@ -266,6 +268,8 @@ struct Surface {
     popups: Vec<WindowId>,
     /// The ad-hoc popup menu (context menu, menu field) last requested.
     context: Option<MenuRequest>,
+    /// The tip showing (`crate::tip`): its popup and what it says.
+    tip: Option<(WindowId, crate::tip::TipRequest)>,
     /// What was chosen from it, until a frame has passed: if no widget
     /// took it (`menu::take_chosen`), it goes to `App::command`.
     chosen: Option<(egui::Id, String)>,
@@ -548,7 +552,7 @@ fn warm_menus(device: wgpu::Device, queue: wgpu::Queue, generation: u64, format:
             };
             raw.viewports.entry(ViewportId::ROOT).or_default().native_pixels_per_point = Some(scale);
             style::fit_scale(&ctx, scale);
-            let out = ctx.run_ui(raw, |ui| draw(ui));
+            let mut out = ctx.run_ui(raw, |ui| draw(ui));
             for (id, deltas) in &out.textures_delta.set {
                 for delta in deltas {
                     match &delta.image {
@@ -564,6 +568,7 @@ fn warm_menus(device: wgpu::Device, queue: wgpu::Queue, generation: u64, format:
                 bound.remove(id);
                 renderer.free_texture(id);
             }
+            out.textures_delta.clear();
             frame_time += 1.0 / 120.0;
         };
         // The glyphs any menu is likely to show (first: a context has
@@ -1895,6 +1900,7 @@ impl Kit {
             bar: BarState::default(),
             popups: Vec::new(),
             context: None,
+            tip: None,
             chosen: None,
             start: Instant::now(),
             output: None,
@@ -1995,6 +2001,7 @@ impl Kit {
 
     fn close(&mut self, id: WindowId) {
         // Close popups owned by this window first.
+        self.close_tip(id);
         let popups: Vec<WindowId> = self.surface_mut(id).map(|s| s.popups.clone()).unwrap_or_default();
         for p in popups.into_iter().rev() {
             self.drop_surface(p);
@@ -2046,7 +2053,9 @@ impl Kit {
                 let keep = room && s.renderer.is_some() && s.gpu_surface.is_some() && s.viewport.is_some();
                 if keep {
                     // Unmapped, with no buffer, so that another menu's
-                    // xdg_surface may take it on (as GTK reuses its own).
+                    // xdg_surface may take it on (as GTK reuses its own);
+                    // a tip's took no input, a menu's does.
+                    s.wl.set_input_region(None);
                     s.wl.attach(None, 0, 0);
                     s.wl.commit();
                 }
@@ -2533,7 +2542,20 @@ impl Kit {
 
         let mut menu_events: Vec<MenuEvent> = Vec::new();
         let ui_start = Instant::now();
-        let output = if kind == 2 {
+        // The tip a widget asked for this frame (windows' frames only).
+        let mut tip = None;
+        let tip_of = match &s.role {
+            Role::Popup { owner, path, .. } if path[0] == TIP => Some(*owner),
+            _ => None,
+        };
+        let output = if let Some(owner) = tip_of {
+            let tip = self.surfaces.iter().find(|o| o.id == owner).and_then(|o| o.tip.as_ref()).filter(|t| t.0 == id);
+            let Some(text) = tip.map(|t| t.1.text.clone()) else {
+                self.drop_surface(id);
+                return;
+            };
+            ctx.run_ui(raw, |ui| crate::tip::ui(ui, &text))
+        } else if kind == 2 {
             // Popup menus are drawn entirely by the kit.
             let (owner, path, mut state) = match &s.role {
                 Role::Popup { owner, path, state, .. } => (*owner, path.clone(), state.clone()),
@@ -2662,6 +2684,7 @@ impl Kit {
                 }
                 menu_events.push(MenuEvent::Context(id, request));
             }
+            tip = Some(crate::tip::take(&ctx));
             // A context menu's choice no widget asked for is a command.
             if let Some((source, cmd)) = s.chosen.take()
                 && menu::take_chosen(&ctx, source).is_some()
@@ -2688,6 +2711,9 @@ impl Kit {
             self.paste(&wl);
         }
         self.handle_menu_events(menu_events);
+        if let Some(tip) = tip {
+            self.show_tip(id, tip);
+        }
         self.process_requests();
     }
 
@@ -3177,6 +3203,98 @@ impl Kit {
         }
     }
 
+    /// Window `owner`'s frame asked for `tip` (None: for none): open,
+    /// change or close its tip's popup. Never over its menus.
+    fn show_tip(&mut self, owner: WindowId, tip: Option<crate::tip::TipRequest>) {
+        let Some(o) = self.surfaces.iter().find(|s| s.id == owner) else { return };
+        let tip = tip.filter(|_| o.popups.is_empty());
+        let same_size = |a: &crate::tip::TipRequest, b: &crate::tip::TipRequest| {
+            a.anchor == b.anchor && crate::tip::size(&o.ctx, &a.text) == crate::tip::size(&o.ctx, &b.text)
+        };
+        match (o.tip.clone(), tip) {
+            (None, None) => {}
+            (Some((_, now)), Some(t)) if now == t => {}
+            // Only what it says, at the same size: the same popup.
+            (Some((popup, now)), Some(t)) if same_size(&now, &t) => {
+                if let Some(o) = self.surface_mut(owner) {
+                    o.tip = Some((popup, t));
+                }
+                if let Some(p) = self.surface_mut(popup) {
+                    p.dirty = true;
+                }
+            }
+            (_, t) => {
+                self.close_tip(owner);
+                if let Some(t) = t {
+                    self.open_tip(owner, t);
+                }
+            }
+        }
+    }
+
+    fn close_tip(&mut self, owner: WindowId) {
+        if let Some((popup, _)) = self.surface_mut(owner).and_then(|o| o.tip.take()) {
+            self.drop_surface(popup);
+        }
+    }
+
+    /// A tip's popup: below its widget, else above, slid to stay on the
+    /// screen; no grab, and no input (the pointer stays with the widget).
+    fn open_tip(&mut self, owner: WindowId, tip: crate::tip::TipRequest) {
+        let Some(o) = self.surfaces.iter().find(|s| s.id == owner) else { return };
+        let size = crate::tip::size(&o.ctx, &tip.text);
+        let parent_xdg = match &o.role {
+            Role::Toplevel(w) => Some(w.xdg_surface()),
+            Role::Layer(_) => None,
+            Role::Popup { .. } | Role::Lock(..) => return,
+        };
+        let Ok(positioner) = XdgPositioner::new(&self.xdg) else { return };
+        positioner.set_size(size.0 as i32, size.1 as i32);
+        let r = tip.anchor.expand2(vec2(0.0, crate::tip::GAP));
+        let a = |v: f32| v.round() as i32;
+        positioner.set_anchor_rect(a(r.left()), a(r.top()), a(r.width()).max(1), a(r.height()).max(1));
+        positioner.set_anchor(xdg_positioner::Anchor::BottomLeft);
+        positioner.set_gravity(xdg_positioner::Gravity::BottomRight);
+        positioner.set_constraint_adjustment(
+            xdg_positioner::ConstraintAdjustment::FlipY | xdg_positioner::ConstraintAdjustment::SlideX | xdg_positioner::ConstraintAdjustment::SlideY,
+        );
+        let format = o.format;
+        let mut spare = self.take_spare(format);
+        let kept = spare.as_mut().and_then(|sp| sp.surface.take());
+        let wl = kept.as_ref().map_or_else(|| self.compositor.create_surface(&self.qh), |k| k.wl.clone());
+        if let Ok(region) = Region::new(&self.compositor) {
+            wl.set_input_region(Some(region.wl_region()));
+        }
+        let wm = self.xdg.xdg_wm_base();
+        let xdg_surface = wm.get_xdg_surface(&wl, &self.qh, MenuData(wl.clone()));
+        let xdg_popup = xdg_surface.get_popup(parent_xdg, &positioner, &self.qh, MenuData(wl.clone()));
+        if let Role::Layer(l) = &o.role {
+            l.get_popup(&xdg_popup);
+        }
+        wl.commit();
+
+        let id = {
+            let cx = self.cx.as_mut().unwrap();
+            let id = WindowId(cx.next_id);
+            cx.next_id += 1;
+            id
+        };
+        let options = WindowOptions { panel: false, ..Default::default() };
+        let shell = MenuShell { xdg_surface, xdg_popup };
+        let role = Role::Popup { shell, placed: None, owner, path: vec![TIP], state: PopupState::default(), parent: None, at: (0, 0) };
+        let mut s = match &kept {
+            Some(k) => self.make_surface_scaled(id, role, wl, options, size, (k.fractional.clone(), Some(k.viewport.clone()))),
+            None => self.make_surface(id, role, wl, options, size),
+        };
+        if let Some(spare) = spare {
+            reuse_spare(&mut s, spare, kept);
+        }
+        self.surfaces.push(s);
+        if let Some(o) = self.surface_mut(owner) {
+            o.tip = Some((id, tip));
+        }
+    }
+
     // ---- drag and drop ---------------------------------------------------
 
     /// What is dragged over surface `i`, for its frame.
@@ -3643,11 +3761,13 @@ impl Dispatch2<xdg_popup::XdgPopup, Kit> for MenuData {
             }
             xdg_popup::Event::PopupDone => {
                 let owner = kit.index_of_wl(&self.0).and_then(|i| match &kit.surfaces[i].role {
-                    Role::Popup { owner, .. } => Some(*owner),
+                    Role::Popup { owner, path, .. } => Some((*owner, path[0] == TIP)),
                     _ => None,
                 });
-                if let Some(owner) = owner {
-                    kit.handle_menu_events(vec![MenuEvent::CloseAll(owner)]);
+                match owner {
+                    Some((owner, true)) => kit.close_tip(owner),
+                    Some((owner, false)) => kit.handle_menu_events(vec![MenuEvent::CloseAll(owner)]),
+                    None => {}
                 }
             }
             _ => {}

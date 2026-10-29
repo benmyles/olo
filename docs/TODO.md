@@ -856,15 +856,14 @@ as they land (with the commit), add new ones as they come up.
 - ~~**Caffeinated mode**~~: Deskbar cup (click; right-click or Olo ▸
   Stay Awake for 1–8 hours or with the lid closed), Ctrl+⌘A, timed end,
   shown in the cup's tip and menu.
-- **Auto-approve for a while** (Ben): a Deskbar tray icon that, for a
-  chosen time (5 minutes up to a day at most), grants sudo requests
-  (Terminal's sudo window, from people and agents alike) and password
-  unlock requests without asking. Like the caffeinated cup: click or
-  menu for the length, the time left in its tip and menu, a timed end,
-  off from the same menu. Turning it on asks for the password or Touch
-  ID once. Each request it grants is still logged and shown (a quiet
-  notification) so nothing passes unseen. Ask whether locking the
-  screen or sleeping should end it.
+- ~~**Auto-approve for a while**~~ (Ben): Deskbar's key in the tray
+  (click: 15 minutes; right-click or Olo ▸ Approve Without Asking: 5
+  minutes to a day, Ask Again) turns it on with the account password
+  (not Touch ID: Terminal answers sudo with it). While on, Terminal's
+  sudo window and Passwords' unlock and `op` access go ahead without
+  asking, each in a quiet notification and the log; the time left is in
+  the key's tip and menu. It ends at its time, when the screen locks
+  (sleeping locks first) and with app_server, and the password is wiped.
 
 ## Other
 

@@ -24,6 +24,7 @@ use olo_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
     egui::{self, Key},
     instance::{self, Launch},
+    notify::{Note, Notifier},
 };
 
 use crate::{
@@ -131,6 +132,20 @@ fn remove_message(removed: &[Linked]) -> String {
     format!("Stop syncing with {names}? {its} items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.")
 }
 
+/// Whether app_server approves requests without asking (Deskbar's key),
+/// for `ask_approval`.
+struct Approval {
+    about: Option<cli::Session>,
+    on: bool,
+}
+
+/// Asked of app_server, off the UI thread.
+fn approving_without_asking() -> bool {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let status = olo_protocol::Client::connect().ok().and_then(|mut c| c.request(&olo_protocol::Request::PowerStatus).ok());
+    matches!(status, Some(olo_protocol::Reply::Power { status }) if status.auto_approve_until.is_some_and(|t| t > now))
+}
+
 /// The question for letting `op` use the passwords.
 fn allow_message(a: &cli::Asker) -> String {
     let mut m = format!("Allow “{}” to use your passwords?", a.command);
@@ -223,6 +238,10 @@ pub struct Passwords {
     cli_waiting: Vec<(cli::Session, Incoming)>,
     /// The terminal sessions allowed to use `op`.
     grants: cli::Grants,
+    /// Asking app_server whether it approves without asking, for the
+    /// unlock (None) or for a session's `op`.
+    asking: HashSet<Option<cli::Session>>,
+    notifier: Notifier,
     /// Syncing with 1Password: how the last one went.
     pub sync: Option<SyncState>,
     /// When the last sync was asked for, and when the next is due early.
@@ -537,9 +556,10 @@ impl Passwords {
             if !waits {
                 return incoming.reply(Response::Locked);
             }
-            // Come forward to be unlocked; the answer follows.
-            self.open_main(cx);
+            // Unlocked for it while approving without asking (Deskbar's
+            // key); else come forward to be unlocked. The answer follows.
             self.waiting.push(incoming);
+            self.ask_approval(cx, None);
             return;
         }
         if let Conn::Failed(message) = &self.conn {
@@ -558,14 +578,9 @@ impl Passwords {
                 };
                 if !self.grants.check(session) {
                     // Ask once per session, however many are waiting.
-                    let asking = self.alerts.values().any(|a| matches!(a, Alert::AllowCli { session: s, .. } if *s == session));
-                    if !asking {
-                        let asker = cli::asker(incoming.pid);
-                        let w = cx.open_window(WindowOptions::alert("Passwords", &allow_message(&asker)));
-                        cx.activate(w);
-                        self.alerts.insert(w, Alert::AllowCli { session, asker });
-                    }
+                    // Allowed while approving without asking; else asked.
                     self.cli_waiting.push((session, incoming));
+                    self.ask_approval(cx, Some(session));
                     return;
                 }
                 if matches!(query, olo_keychain::CliQuery::Signin) {
@@ -647,6 +662,71 @@ impl Passwords {
                 incoming.reply(Response::Error { message: "Passwords: not allowed".into() });
             }
         }
+    }
+
+    /// Ask app_server (on a thread) whether it approves requests without
+    /// asking now, for the unlock (None) or `op` in `session`; `approval`
+    /// goes on from the answer.
+    fn ask_approval(&mut self, cx: &mut Cx, about: Option<cli::Session>) {
+        let shown = self.alerts.values().any(|a| matches!(a, Alert::AllowCli { session, .. } if Some(*session) == about));
+        if shown || !self.asking.insert(about) {
+            return;
+        }
+        let proxy = cx.proxy();
+        std::thread::spawn(move || proxy.send(Approval { about, on: approving_without_asking() }));
+    }
+
+    /// Unlocked or allowed without asking, said in a quiet notification;
+    /// else asked as usual.
+    fn approval(&mut self, cx: &mut Cx, Approval { about, on }: Approval) {
+        self.asking.remove(&about);
+        let quietly = |n: &Notifier, title: &str, body: String| {
+            let mut note = Note::new(title).body(body);
+            note.silent = true;
+            n.show(None, note);
+        };
+        match about {
+            None if !self.lock.locked => self.serve_waiting(cx),
+            None if self.waiting.is_empty() => {}
+            None if on => {
+                let mut from: Vec<&str> = self.waiting.iter().map(|i| i.from.as_str()).collect();
+                from.dedup();
+                let from = from.join(", ");
+                tracing::info!(%from, "unlocked without asking");
+                quietly(&self.notifier, "Passwords unlocked without asking", format!("For {from}."));
+                if self.lock.approved() {
+                    self.now_unlocked(cx);
+                }
+            }
+            None => self.open_main(cx),
+            Some(session) => {
+                let Some(pid) = self.cli_waiting.iter().find(|(s, _)| *s == session).map(|(_, i)| i.pid) else { return };
+                let asker = cli::asker(pid);
+                if on {
+                    tracing::info!(command = asker.command, "op allowed without asking");
+                    quietly(&self.notifier, "op allowed without asking", asker.command.clone());
+                    self.answer_cli(cx, session, true);
+                } else {
+                    let w = cx.open_window(WindowOptions::alert("Passwords", &allow_message(&asker)));
+                    cx.activate(w);
+                    self.alerts.insert(w, Alert::AllowCli { session, asker });
+                }
+            }
+        }
+    }
+
+    /// Just unlocked (Touch ID, the password, or approved): the store
+    /// opens and what waited is answered.
+    fn now_unlocked(&mut self, cx: &mut Cx) {
+        self.last_use = Instant::now();
+        self.unlocked = true;
+        // The store opens (again) now its secrets are wanted.
+        self.connect(cx);
+        if self.selected.is_none() {
+            self.selected = self.visible().first().map(|i| i.id.clone());
+        }
+        self.fetch_selected();
+        self.serve_waiting(cx);
     }
 
     /// Answer what waited for an unlock or for the items.
@@ -1377,15 +1457,7 @@ impl App for Passwords {
         let msg = match msg.downcast::<LockMsg>() {
             Ok(m) => {
                 if self.lock.message(*m) {
-                    self.last_use = Instant::now();
-                    self.unlocked = true;
-                    // The store opens (again) now its secrets are wanted.
-                    self.connect(cx);
-                    if self.selected.is_none() {
-                        self.selected = self.visible().first().map(|i| i.id.clone());
-                    }
-                    self.fetch_selected();
-                    self.serve_waiting(cx);
+                    self.now_unlocked(cx);
                 }
                 self.redraw(cx);
                 return;
@@ -1436,6 +1508,13 @@ impl App for Passwords {
         };
         let msg = match msg.downcast::<Incoming>() {
             Ok(incoming) => return self.keychain(cx, *incoming),
+            Err(m) => m,
+        };
+        let msg = match msg.downcast::<Approval>() {
+            Ok(a) => {
+                self.approval(cx, *a);
+                return self.redraw(cx);
+            }
             Err(m) => m,
         };
         if msg.downcast::<Launch>().is_ok() {
@@ -1541,6 +1620,8 @@ fn main() {
             waiting: Vec::new(),
             cli_waiting: Vec::new(),
             grants: cli::Grants::default(),
+            asking: HashSet::new(),
+            notifier: Notifier::new(cx.proxy(), "Passwords", "olo-passwords"),
             sync: None,
             sync_asked: None,
             sync_due: None,
