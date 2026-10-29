@@ -2146,19 +2146,13 @@ impl Kit {
     // ---- clipboard ----------------------------------------------------
 
     fn set_clipboard(&mut self, text: String) {
-        let text: Arc<[u8]> = text.into_bytes().into();
-        let types = ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING", "STRING", "TEXT"];
-        self.set_clipboard_data(types.iter().map(|t| (t.to_string(), text.clone())).collect());
+        self.set_clipboard_data(crate::clipboard::text(&text));
     }
 
     /// Text plus the hint KDE's and other clipboard managers honour, then
     /// a timer that withdraws it if it is still ours.
     fn set_secret_clipboard(&mut self, text: String, after: Duration) {
-        let text: Arc<[u8]> = text.into_bytes().into();
-        let mut clip: Clip = ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING", "STRING", "TEXT"]
-            .iter()
-            .map(|t| (t.to_string(), text.clone()))
-            .collect();
+        let mut clip = crate::clipboard::text(&text);
         clip.push(("x-kde-passwordManagerHint".into(), Arc::from(&b"secret"[..])));
         self.set_clipboard_data(clip);
         let Some(source) = self.clipboard.as_ref().map(|(s, _)| s.inner().clone()) else { return };

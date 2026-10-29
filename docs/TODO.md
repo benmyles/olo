@@ -201,9 +201,9 @@ as they land (with the commit), add new ones as they come up.
   something has a folder or file behind it (a document window's title
   tab, a recent item, a download, a search result, …), its context menu
   has Open in Tracker.
-- **Screenshots: the saved file's path on the clipboard** (Ben,
-  2026-10-29): once a screenshot is saved, its path is copied to the
-  clipboard.
+- ~~**Screenshots: the saved file's path on the clipboard**~~ (Ben,
+  2026-10-29; done: HACKING, Screenshot and `olo_kit::clipboard`): Save,
+  ⌘⇧3, Print Screen and ⌘⇧4 all put the file's path on the clipboard.
 - **Quick Look: Markdown rendered nicely** (Ben, 2026-10-29, for later):
   Quick Look's preview of Markdown files should be much more polished
   than it is now.

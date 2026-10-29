@@ -234,6 +234,13 @@ fn main() {
   Its windows are gone then: a later launch (forwarded to it) must open
   a new one, so check `cx.is_open(id)` before activating a window you
   kept.
+* **`olo_kit::clipboard`**: the clipboard for a program with no window
+  and no kit loop (a shortcut's screenshot). `hold(clip)` puts it on the
+  clipboard and serves it until something else is copied, then returns
+  (so the program stays running until then); `text(s)` is a `Clip` in the
+  forms text pastes as (what `Cx::copy` offers). It goes through
+  `ext_data_control_v1`: `wl_data_device` only lets the client with the
+  keyboard set the clipboard, and a windowless one never has it.
 * **Single instance** (`olo_kit::instance`): call `instance::forward(app_id,
   &args)` first in `main` (returns true if a running copy took the
   arguments; exit then), and `instance::listen(app_id, cx.proxy())` in the
@@ -1240,13 +1247,6 @@ tiling area after every step. A run is reproducible from its seed;
 `--only app_resize,tab_in` runs just those steps (the `op_` methods). Run
 it after changing anything in shell/.
 
-`tools/dev/perf-fuzz NAME [--seed N] [--steps N] [--keep-going]` is its
-counterpart for speed: on the same kind of session it hammers the
-desktop with random bursts (dragging and resizing windows, Cmd+Tab and
-workspace spam, arranging, opening and closing many windows, flipping
-the theme and a display's scale, flooding a terminal, scrolling, typing,
-keyboard hints) and checks each one against budgets: app_server's event
-loop never stalls for more than two frames (`{"type":"timings"}`: a
 `tools/dev/auto-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going] [--reloads]`
 is its auto-tiling counterpart (built on it, on the same kind of session):
 it turns Auto-Tiling on for the first four workspaces and, mostly, drags
@@ -1260,6 +1260,13 @@ moment after (nothing still on its way to land somewhere else). Each
 step's line has the time, to find it in the session's log. Run it after
 changing anything in `autotile.rs`, `tiling.rs` or the resize grabs.
 
+`tools/dev/perf-fuzz NAME [--seed N] [--steps N] [--keep-going]` is its
+counterpart for speed: on the same kind of session it hammers the
+desktop with random bursts (dragging and resizing windows, Cmd+Tab and
+workspace spam, arranging, opening and closing many windows, flipping
+the theme and a display's scale, flooding a terminal, scrolling, typing,
+keyboard hints) and checks each one against budgets: app_server's event
+loop never stalls for more than two frames (`{"type":"timings"}`: a
 heartbeat that runs while anyone asks, whose lateness is whatever held
 the loop, with the slowest request, input event, clients' requests or
 tick named; and a ping every few milliseconds all through the burst), no
@@ -2503,8 +2510,8 @@ window border / Include mouse pointer / Delay, and Name / Save as (PNG,
 JPEG, BMP, TIFF, WebP) / Save in (Home, Desktop, Pictures, Choose
 folder…). New screenshot minimizes its own window first (so it isn't in
 the picture and the active window is the one behind it) and brings it
-back; Save writes `screenshotN` and quits; Copy to clipboard offers
-`image/png`. Settings are in `screenshot.json`. `--silent [--window [ID]]`
+back; Save writes `screenshotN` and quits, with the file's path on the
+clipboard; Copy to clipboard offers `image/png`. Settings are in `screenshot.json`. `--silent [--window [ID]]`
 saves straight into the folder with no window: app_server runs it for ⌘⇧3
 and Print Screen (the screen) and Alt+Print Screen (the shortcut's target
 window by id: the active one, or the one the palette was opened over,
@@ -2512,7 +2519,9 @@ since the palette is active by the time it runs).
 `--region` (⌘⇧4, region.rs) captures every output, covers each with an
 exclusive overlay showing its picture dimmed, and saves the rectangle you
 drag (its size in pixels follows the corner); Escape or a click cancels.
-⌘⇧5 opens the app.
+Saved with no window (`--silent`, `--region`), it prints the file's path
+and puts it on the clipboard (`olo_kit::clipboard::hold`), staying until
+something else is copied. ⌘⇧5 opens the app.
 
 ## DeskCalc (apps/deskcalc)
 

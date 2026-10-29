@@ -6,7 +6,8 @@
 //!
 //! `--silent [--window [ID]]` (⌘⇧3, Print Screen, Alt+Print Screen) saves one
 //! straight into the folder, as `screenshotN`, with no window; `--region`
-//! (⌘⇧4) lets you drag out part of the screen first (region.rs).
+//! (⌘⇧4) lets you drag out part of the screen first (region.rs). However
+//! it is saved, the file's path goes on the clipboard.
 
 mod capture;
 mod region;
@@ -425,8 +426,12 @@ impl App for Screenshot {
             Msg::Saved(r) => {
                 self.busy = None;
                 match r {
-                    // Done, as in Haiku.
-                    Ok(_) => cx.quit(),
+                    // Done, as in Haiku, with where it went on the
+                    // clipboard (the kit stays on to hand it out).
+                    Ok(path) => {
+                        cx.copy(path.display().to_string());
+                        cx.quit();
+                    }
                     Err(e) => self.show_error(cx, format!("Couldn't save the screenshot.\n\n{e}")),
                 }
             }
@@ -469,15 +474,23 @@ fn silent(window: bool, window_id: Option<olo_protocol::WindowId>) -> std::proce
         r
     });
     match result {
-        Ok(path) => {
-            println!("{}", path.display());
-            std::process::ExitCode::SUCCESS
-        }
+        Ok(path) => saved(&path),
         Err(e) => {
             eprintln!("olo-screenshot: {e}");
             std::process::ExitCode::FAILURE
         }
     }
+}
+
+/// Saved with no window: say where, and put that on the clipboard, held
+/// until something else is copied.
+fn saved(path: &Path) -> std::process::ExitCode {
+    let path = path.display().to_string();
+    println!("{path}");
+    if let Err(e) = olo_kit::clipboard::hold(olo_kit::clipboard::text(&path)) {
+        eprintln!("olo-screenshot: couldn't copy where it went: {e}");
+    }
+    std::process::ExitCode::SUCCESS
 }
 
 fn main() -> std::process::ExitCode {
@@ -486,10 +499,7 @@ fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--region") {
         return match region::run() {
-            Ok(Some(path)) => {
-                println!("{}", path.display());
-                std::process::ExitCode::SUCCESS
-            }
+            Ok(Some(path)) => saved(&path),
             Ok(None) => std::process::ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("olo-screenshot: {e}");

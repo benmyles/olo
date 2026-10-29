@@ -8,6 +8,7 @@
 mod app;
 pub mod big_text;
 pub mod brand;
+pub mod clipboard;
 pub mod commands;
 pub mod dnd;
 pub mod editor;
