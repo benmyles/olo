@@ -3,7 +3,7 @@
 //! `$OLO_SOCKET`) apps draw in the default look, or the one
 //! `$OLO_ICON_THEME`, `$OLO_COLORS` and `$OLO_THEME` (`light`, `dark`)
 //! name. Also whether ⌘ is the command key, for terminal-style windows
-//! ([`command_key`]).
+//! ([`command_key`]), and where the app's windows are (`workspaces`).
 
 use std::{
     sync::atomic::{AtomicBool, Ordering},
@@ -83,14 +83,22 @@ pub fn spawn(tx: Sender<Look>) {
                 if let Ok(client) = Client::connect()
                     && let Ok(events) = client.into_events()
                 {
+                    // Where our windows are, then as it changes.
+                    crate::workspaces::catch_up();
                     for event in events {
-                        if let Ok(Event::SettingsChanged { settings }) = event {
-                            COMMAND_KEY.store(settings.keyboard.command_key, Ordering::Relaxed);
-                            if tx.send(Look::of(&settings.appearance)).is_err() {
-                                return;
+                        match event {
+                            Ok(Event::SettingsChanged { settings }) => {
+                                COMMAND_KEY.store(settings.keyboard.command_key, Ordering::Relaxed);
+                                if tx.send(Look::of(&settings.appearance)).is_err() {
+                                    return;
+                                }
                             }
+                            Ok(Event::WindowsChanged { windows }) => crate::workspaces::windows_changed(&windows),
+                            Ok(Event::WorkspaceChanged { current, .. }) => crate::workspaces::workspace_changed(current),
+                            _ => {}
                         }
                     }
+                    crate::workspaces::forget();
                 }
                 std::thread::sleep(Duration::from_millis(500));
             }

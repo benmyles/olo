@@ -92,6 +92,10 @@ pub struct WindowOptions {
     /// can be any size. Dialogs and alerts float anyway. (The
     /// xdg-toplevel-tag `floating`.)
     pub floating: bool,
+    /// The file or folder it shows (a document, a folder, a shell's
+    /// working folder), if any: its tab's menu offers Open in Tracker for
+    /// it, and agents read it in its tree. [`Cx::set_path`] changes it.
+    pub path: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -148,6 +152,7 @@ impl Default for WindowOptions {
             alert: false,
             dialog: false,
             floating: false,
+            path: None,
         }
     }
 }
@@ -198,6 +203,11 @@ impl WindowOptions {
         self.floating = true;
         self
     }
+    /// The file or folder it shows, if any (see [`Self::path`]).
+    pub fn path(mut self, path: Option<std::path::PathBuf>) -> Self {
+        self.path = path;
+        self
+    }
 }
 
 /// Clipboard contents: (MIME type, bytes), in order of preference.
@@ -207,6 +217,7 @@ pub(crate) enum Request {
     Open(WindowId, WindowOptions),
     Close(WindowId),
     SetTitle(WindowId, String),
+    SetPath(WindowId, Option<std::path::PathBuf>),
     Resize(WindowId, (u32, u32)),
     Fullscreen(WindowId, bool),
     KeepAwake(WindowId, bool),
@@ -256,6 +267,9 @@ pub struct Cx {
     pub(crate) sizes: std::collections::HashMap<WindowId, (u32, u32)>,
     /// Toplevels filling their screen ([`Cx::set_fullscreen`]).
     pub(crate) fullscreen: std::collections::HashSet<WindowId>,
+    /// Toplevels' surfaces (`wl_surface` object ids), as app_server knows
+    /// them ([`Cx::on_this_workspace`]).
+    pub(crate) surfaces: std::collections::HashMap<WindowId, u32>,
     /// Logical size of the (first) screen, once known.
     pub(crate) screen: Option<(u32, u32)>,
     pub(crate) outputs: Vec<String>,
@@ -286,6 +300,16 @@ impl Cx {
         self.sizes.contains_key(&window)
     }
 
+    /// Whether `window` is on the workspace showing (minimized there or
+    /// not), as app_server last said; true if it hasn't (outside Olo, or
+    /// the window has only just opened). Opening the app, or a folder or
+    /// document it has a window for, brings forward a window that is
+    /// here, and opens a new one here rather than activate one on another
+    /// workspace (which would go there): each workspace has its own.
+    pub fn on_this_workspace(&self, window: WindowId) -> bool {
+        self.surfaces.get(&window).and_then(|s| crate::workspaces::here(*s)).unwrap_or(true)
+    }
+
     /// The logical content size of one of the app's toplevel windows.
     pub fn window_size(&self, window: WindowId) -> Option<(u32, u32)> {
         self.sizes.get(&window).copied()
@@ -314,6 +338,12 @@ impl Cx {
     }
     pub fn set_title(&mut self, window: WindowId, title: impl Into<String>) {
         self.requests.push(Request::SetTitle(window, title.into()));
+    }
+    /// Say which file or folder the window shows now
+    /// ([`WindowOptions::path`]): a document once saved or opened,
+    /// None when it has none.
+    pub fn set_path(&mut self, window: WindowId, path: Option<std::path::PathBuf>) {
+        self.requests.push(Request::SetPath(window, path));
     }
     /// Ask app_server to resize the window's content area. A zoomed
     /// window keeps the size it was zoomed to, and app_server holds a

@@ -5,11 +5,13 @@
 //! (over a clear full-screen layer that takes the click outside it), so
 //! agents read and choose from it as from any menu.
 
+use std::path::PathBuf;
+
 use olo_kit::{
     Cx, Keyboard, Layer, LayerOptions, Proxy, WindowId, WindowKind, WindowOptions,
     egui::{self, Pos2, pos2},
     menu::{self, Menu},
-    widgets,
+    tracker, widgets,
 };
 use olo_protocol::{
     Client, Reply, Request,
@@ -55,6 +57,9 @@ pub struct Facts {
     pub floating: bool,
     /// Shortcut keys changed from the defaults, to show the ones in use.
     pub keys: ShortcutSettings,
+    /// The file or folder it shows, if its program says
+    /// (`Cx::set_path`): Open in Tracker. (Not Tracker's own windows.)
+    pub path: Option<PathBuf>,
 }
 
 /// Ask app_server about the window, then hand the answer to the app.
@@ -79,8 +84,12 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             Ok(Reply::AutoTiling { displays, .. }) => displays.iter().any(|d| d.on && Some(&d.output) == w.output.as_ref()),
             _ => false,
         };
+        let path = match (w.pid, w.surface) {
+            (Some(pid), Some(surface)) if w.app_id != "olo.tracker" => olo_kit::commands::path(pid as u32, surface),
+            _ => None,
+        };
         let (rolled, grouped, floating) = (w.rolled, w.group.is_some(), w.floating);
-        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, displays, rolled, grouped, auto, floating, keys });
+        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, displays, rolled, grouped, auto, floating, keys, path });
     });
 }
 
@@ -147,6 +156,9 @@ pub fn build(f: &Facts) -> Menu {
         m = shortcut(m, "previous-display", "To the Previous Display");
     }
     m = m.separator();
+    if f.path.is_some() {
+        m = m.item(tracker::LABEL, tracker::COMMAND, None).separator();
+    }
     if f.grouped {
         // As ⌘-dragging its tab out of the group does.
         m = m.item("Remove from Group", "ungroup", None);
@@ -179,6 +191,7 @@ pub fn perform(window: u64, command: &str) {
 pub struct Shown {
     pub win: WindowId,
     pub window: u64,
+    pub path: Option<PathBuf>,
     pub at: Pos2,
     pub menu: Menu,
     /// The popup has been asked for, and has been seen open.
@@ -202,7 +215,7 @@ pub fn open(cx: &mut Cx, facts: Facts) -> Shown {
         panel: false,
         ..Default::default()
     });
-    Shown { win, window: facts.ask.window, at: facts.ask.at, menu: build(&facts), asked: false, seen: false }
+    Shown { win, window: facts.ask.window, at: facts.ask.at, menu: build(&facts), path: facts.path, asked: false, seen: false }
 }
 
 /// Draw the layer: pop the menu, and say when it's done (chosen or not).
@@ -216,7 +229,14 @@ pub fn ui(shown: &mut Shown, ui: &mut egui::Ui) -> bool {
         return false;
     }
     if let Some(cmd) = widgets::popup_result(&ctx, source) {
-        perform(shown.window, &cmd);
+        match &shown.path {
+            Some(path) if cmd == tracker::COMMAND => {
+                if let Err(e) = tracker::open(path) {
+                    tracing::warn!("couldn't show {} in Tracker: {e}", path.display());
+                }
+            }
+            _ => perform(shown.window, &cmd),
+        }
         return true;
     }
     if menu::is_open(&ctx, source) {
@@ -245,7 +265,7 @@ mod tests {
         let mut changed = ShortcutSettings::new();
         changed.insert("zoom".into(), vec!["Ctrl+Cmd+Z".into()]);
         changed.insert("center".into(), vec![]);
-        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false, grouped: true, auto: false, floating: false, keys: changed };
+        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false, grouped: true, auto: false, floating: false, keys: changed, path: None };
         fn commands(m: &Menu, out: &mut Vec<String>) {
             for item in &m.items {
                 match item {
@@ -260,7 +280,7 @@ mod tests {
         for c in &all {
             let known = c.strip_prefix("shortcut:").is_some_and(|id| shortcuts::SHORTCUTS.iter().any(|s| s.id == id))
                 || c.starts_with("workspace:")
-                || ["send-to-back", "close", "ungroup"].contains(&c.as_str());
+                || ["send-to-back", "close", "ungroup", tracker::COMMAND].contains(&c.as_str());
             assert!(known, "{c}");
         }
         // Remove from Group only for a window in one.
@@ -268,6 +288,11 @@ mod tests {
         let mut alone = Vec::new();
         commands(&build(&Facts { grouped: false, ..facts.clone() }), &mut alone);
         assert!(!alone.contains(&"ungroup".to_owned()));
+        // Open in Tracker only for a window that shows a file or folder.
+        assert!(!all.contains(&tracker::COMMAND.to_owned()));
+        let mut doc = Vec::new();
+        commands(&build(&Facts { path: Some("/home/me/notes.txt".into()), ..facts.clone() }), &mut doc);
+        assert!(doc.contains(&tracker::COMMAND.to_owned()));
         // Float Over the Tiles only where auto-tiling is on.
         assert!(!all.contains(&"shortcut:float-window".to_owned()));
         let mut auto = Vec::new();

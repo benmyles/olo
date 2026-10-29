@@ -20,7 +20,10 @@
 //! (answered by the UI thread, so how long the answer takes is how long
 //! the app keeps people waiting; tools/dev/perf-fuzz);
 //! `{"review":true}` → a [`WindowReview`] per window: the layout review
-//! (`layout_review`) of the frame each draws for it, at its scale.
+//! (`layout_review`) of the frame each draws for it, at its scale;
+//! `{"path":ID}` → `{"path":"/…"}` (or null): the file or folder the
+//! window with that surface shows ([`crate::Cx::set_path`]), for its
+//! tab's menu (Open in Tracker).
 
 use std::{
     io::{BufRead, BufReader, Write},
@@ -110,6 +113,9 @@ pub struct WindowTree {
     /// Its `wl_surface`'s protocol id, when asked for by it (`hints`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub surface: Option<u32>,
+    /// The file or folder it shows ([`crate::Cx::set_path`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<PathBuf>,
     /// In tree order, a node's children after it.
     pub nodes: Vec<UiNode>,
 }
@@ -190,7 +196,7 @@ impl WindowTree {
                 n.name = Some(words.join(" "));
             }
         }
-        WindowTree { title: title.to_owned(), width: size.0, height: size.1, active, layer: None, surface: None, nodes: out }
+        WindowTree { title: title.to_owned(), width: size.0, height: size.1, active, layer: None, surface: None, path: None, nodes: out }
     }
 
     /// Only what takes clicks, and what holds it (the boxes hints group
@@ -295,6 +301,7 @@ enum Ask {
     Focus(u64),
     Frames(bool),
     Review(bool),
+    Path(u32),
 }
 
 /// A question for the UI thread, answered through `reply`.
@@ -307,6 +314,8 @@ pub(crate) enum Query {
     Focus(u64),
     Frames(mpsc::Sender<Vec<FrameTimes>>),
     Review(mpsc::Sender<Vec<WindowReview>>),
+    /// The path of the window with the surface with this protocol id.
+    Path(u32, mpsc::Sender<Option<PathBuf>>),
 }
 
 /// How long a tree may take: every window draws a frame for it.
@@ -437,6 +446,11 @@ pub(crate) fn listen(to: smithay_client_toolkit::reexports::calloop::channel::Se
                         let _ = to.send(Query::Review(tx));
                         serde_json::to_string(&rx.recv_timeout(TREE_WAIT).unwrap_or_default())
                     }
+                    Ok(Ask::Path(surface)) => {
+                        let (tx, rx) = mpsc::channel();
+                        let _ = to.send(Query::Path(surface, tx));
+                        serde_json::to_string(&serde_json::json!({ "path": rx.recv_timeout(WAIT).ok().flatten() }))
+                    }
                     Err(_) => continue,
                 };
                 if let Ok(answer) = answer {
@@ -471,6 +485,7 @@ pub fn serve_trees(pid: u32, app_id: &str, trees: impl Fn() -> Vec<WindowTree> +
                 Ok(Ask::Invoke(_) | Ask::Focus(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
                 Ok(Ask::Frames(_)) => serde_json::to_string(&Vec::<FrameTimes>::new()),
                 Ok(Ask::Review(_)) => serde_json::to_string(&Vec::<WindowReview>::new()),
+                Ok(Ask::Path(_)) => serde_json::to_string(&serde_json::json!({ "path": null })),
                 // It can't tell its surfaces apart: all of them, matched
                 // by title and size.
                 Ok(Ask::Tree(_) | Ask::Hints(_)) => serde_json::to_string(&trees()),
@@ -527,6 +542,15 @@ pub fn focus(pid: u32, node: u64) -> bool {
 /// seconds: call it off the UI thread.
 pub fn tree(pid: u32) -> Option<Vec<WindowTree>> {
     serde_json::from_str(&ask(pid, &Ask::Tree(true))?).ok()
+}
+
+/// The file or folder the window with surface `surface` (its protocol
+/// id, [`olo_protocol::WindowInfo::surface`]) of the kit app with process
+/// id `pid` shows, if it says ([`crate::Cx::set_path`]). Blocks briefly:
+/// call it off the UI thread.
+pub fn path(pid: u32, surface: u32) -> Option<PathBuf> {
+    let answer: serde_json::Value = serde_json::from_str(&ask(pid, &Ask::Path(surface))?).ok()?;
+    answer["path"].as_str().map(PathBuf::from)
 }
 
 /// The layout review of each window of the kit app with process id

@@ -195,12 +195,12 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
-- **Open in Tracker, everywhere it makes sense** (Ben, 2026-10-29):
-  right-clicking a Terminal tab offers Open in Tracker, which opens that
-  tab's working folder. Make it one pattern throughout Olo: wherever
-  something has a folder or file behind it (a document window's title
-  tab, a recent item, a download, a search result, …), its context menu
-  has Open in Tracker.
+- ~~**Open in Tracker, everywhere it makes sense**~~ (Ben, 2026-10-29;
+  done: HACKING, Open in Tracker): `olo_kit::tracker` and Tracker's
+  `--reveal`; Terminal's tabs and menus, StyledEdit, the Viewer,
+  DiskUsage, DriveSetup, Preferences' backups, the palette (⌘↩ on a
+  file), every window's yellow tab (`Cx::set_path`) and Tracker's Find
+  results (Open Parent).
 - ~~**Screenshots: the saved file's path on the clipboard**~~ (Ben,
   2026-10-29; done: HACKING, Screenshot and `olo_kit::clipboard`): Save,
   ⌘⇧3, Print Screen and ⌘⇧4 all put the file's path on the clipboard.
@@ -783,12 +783,13 @@ as they land (with the commit), add new ones as they come up.
   stopped being followed once it answered, before it drew; and a new
   window's least size, learnt as it first drew, waited for the next
   layout.
-- **Opening an app makes a new window on this workspace** (Ben,
-  2026-10-29): opening an app (Tracker, say) whose windows are all on
-  another workspace switches there now. It should open a new window on
-  the active workspace, so the app has windows on both. An app's window
-  group belongs to its workspace: each workspace has its own group of
-  the app's windows.
+- ~~**Opening an app makes a new window on this workspace**~~ (Ben,
+  2026-10-29; done: HACKING, "Single instance", `Cx::on_this_workspace`):
+  opening Tracker (or a folder), StyledEdit or a Terminal tab when the
+  app's windows are all on another workspace opens a new window here
+  instead of going there; each workspace has its own group of the app's
+  windows. Single-window apps (Preferences, Activity, …) still go to
+  their window's workspace.
 - ~~**Windowing modes**~~ (Ben, 2026-10-29; done: HACKING, "Desktop
   shortcuts and tiling", shell/modes.rs): auto-tiling is one of three
   modes, per workspace (and per display with a Deskbar on each). Deskbar's

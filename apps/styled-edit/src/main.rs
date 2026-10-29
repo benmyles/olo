@@ -222,7 +222,7 @@ impl StyledEdit {
     }
 
     fn add_window(&mut self, cx: &mut Cx, d: DocWin) -> WindowId {
-        let id = cx.open_window(WindowOptions::new(d.title(), 560, 440).min_size(280, 180));
+        let id = cx.open_window(WindowOptions::new(d.title(), 560, 440).min_size(280, 180).path(d.path.clone()));
         self.windows.insert(id, Win::Doc(Box::new(d)));
         id
     }
@@ -402,6 +402,9 @@ impl StyledEdit {
             .item("Revert to Saved…", "revert", None)
             .enabled(d.path.is_some() && d.doc.edited() && !d.saving)
             .separator()
+            .item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND, None)
+            .enabled(d.path.is_some())
+            .separator()
             .item("Close", "close", Some(Key::W))
             .item("Quit", "quit", Some(Key::Q));
         let edit = Menu::new("Edit")
@@ -508,6 +511,15 @@ impl StyledEdit {
                 let docs: Vec<WindowId> = self.windows.iter().filter(|(_, w)| matches!(w, Win::Doc(_))).map(|(id, _)| *id).collect();
                 for d in docs {
                     self.leave(cx, d, After::Close);
+                }
+                return;
+            }
+            olo_kit::tracker::COMMAND => {
+                if let Some(Win::Doc(d)) = self.windows.get(&win)
+                    && let Some(path) = &d.path
+                    && let Err(e) = olo_kit::tracker::open(path)
+                {
+                    self.show_error(cx, format!("“{}” couldn't be shown in Tracker. {e}", file_name(path)));
                 }
                 return;
             }
@@ -758,7 +770,9 @@ impl StyledEdit {
         if !opened && args.iter().any(|a| a == "--new-window") {
             self.new_doc(cx);
         } else if !opened {
-            match self.windows.iter().find(|(_, w)| matches!(w, Win::Doc(_))) {
+            // A document here, else a new one here (each workspace has
+            // its own).
+            match self.windows.iter().find(|(id, w)| matches!(w, Win::Doc(_)) && cx.on_this_workspace(**id)) {
                 Some((&id, _)) => cx.activate(id),
                 None => {
                     self.new_doc(cx);
@@ -960,6 +974,7 @@ impl App for StyledEdit {
                             d.path = Some(path);
                             d.read_only = false;
                             cx.set_title(win, d.title());
+                            cx.set_path(win, d.path.clone());
                         }
                         d.latin1 = false;
                         d.doc.saved_generation = generation;

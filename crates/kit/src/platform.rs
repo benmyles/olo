@@ -1175,6 +1175,7 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                     app_id: app_id.to_owned(),
                     sizes: Default::default(),
                     fullscreen: Default::default(),
+                    surfaces: Default::default(),
                     screen: kit.screen_size(),
                     outputs: kit.output_names(),
                     resident: false,
@@ -1501,6 +1502,10 @@ impl Kit {
             }
             Query::Tree(reply) => self.ask_trees(reply, None),
             Query::Hints(surfaces, reply) => self.ask_trees(reply, Some(surfaces)),
+            Query::Path(surface, reply) => {
+                let s = self.surfaces.iter().find(|s| matches!(s.role, Role::Toplevel(_)) && s.wl.id().protocol_id() == surface);
+                let _ = reply.send(s.and_then(|s| s.options.path.clone()));
+            }
             Query::Review(reply) => {
                 for s in self.surfaces.iter_mut().filter(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_))) {
                     s.review = None;
@@ -1637,6 +1642,8 @@ impl Kit {
         cx.sizes.extend(self.surfaces.iter().filter(|s| matches!(s.role, Role::Toplevel(_))).map(|s| (s.id, s.size)));
         cx.fullscreen.clear();
         cx.fullscreen.extend(self.surfaces.iter().filter(|s| s.fullscreen).map(|s| s.id));
+        cx.surfaces.clear();
+        cx.surfaces.extend(self.surfaces.iter().filter(|s| matches!(s.role, Role::Toplevel(_))).map(|s| (s.id, s.wl.id().protocol_id())));
         cx.screen = self.screen_size();
         cx.outputs = self.output_names();
     }
@@ -1678,6 +1685,11 @@ impl Kit {
                                 (false, Some(i), _) => i.destroy(),
                                 _ => {}
                             }
+                        }
+                    }
+                    Request::SetPath(id, path) => {
+                        if let Some(s) = self.surface_mut(id) {
+                            s.options.path = path;
                         }
                     }
                     Request::SetTitle(id, title) => {
@@ -2721,6 +2733,7 @@ impl Kit {
                 if let WindowKind::Layer(lo) = &s.options.kind {
                     tree.layer = Some(lo.namespace.clone());
                 }
+                tree.path = s.options.path.clone();
                 s.tree = Some(tree);
             }
             self.answer_trees();

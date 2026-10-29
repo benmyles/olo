@@ -578,11 +578,9 @@ impl DriveSetup {
                 let name = if v.mountable { v.label.clone() } else { v.name.clone() };
                 self.form(cx, "Rename", 150, Win::Rename { path: v.path.clone(), title: v.title(), fs: v.mountable, name });
             }
-            "show-in-tracker" if can.tracker => {
+            olo_kit::tracker::COMMAND if can.tracker => {
                 let dir = volume.unwrap().mount_points[0].clone();
-                if let Some(tracker) = olo_kit::find_program("olo-tracker")
-                    && let Err(e) = olo_kit::open::spawn(&[tracker.into_os_string(), dir.into()])
-                {
+                if let Err(e) = olo_kit::tracker::open(std::path::Path::new(&dir)) {
                     tracing::warn!("couldn't open Tracker: {e}");
                 }
             }
@@ -622,7 +620,7 @@ impl DriveSetup {
                 .enabled(can.mount)
                 .item("Unmount", "unmount", None)
                 .enabled(can.unmount)
-                .item("Show in Tracker", "show-in-tracker", None)
+                .item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND, None)
                 .enabled(can.tracker)
                 .separator()
                 .item("Unlock…", "unlock", None)
@@ -840,7 +838,7 @@ impl DriveSetup {
             self.select(r.item.clone());
             let can = self.can();
             let cmd = if can.tracker {
-                "show-in-tracker"
+                olo_kit::tracker::COMMAND
             } else if can.mount {
                 "mount"
             } else if can.unlock {
@@ -1193,7 +1191,7 @@ impl App for DriveSetup {
                 .enabled(can.mount)
                 .item("Unmount", "unmount", None)
                 .enabled(can.unmount)
-                .item("Show in Tracker", "show-in-tracker", None)
+                .item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND, None)
                 .enabled(can.tracker)
                 .separator()
                 .item("Unlock…", "unlock", None)

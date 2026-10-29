@@ -34,8 +34,10 @@ pub mod style;
 pub mod textures;
 pub mod text_drag;
 pub mod tip;
+pub mod tracker;
 mod theme_watch;
 pub mod widgets;
+mod workspaces;
 
 pub use app::{App, Clip, Command, Cx, Keyboard, Layer, LayerOptions, ActivationToken, Proxy, SessionLock, WindowId, WindowKind, WindowOptions};
 pub use egui;

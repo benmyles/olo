@@ -209,7 +209,12 @@ fn main() {
 * **`Cx`**: `open_window`, `close_window`, `set_title`, `resize`, `redraw`,
   `activate` (bring a window forward and focus it, restoring it if it is
   minimized or on another workspace — via xdg-activation; use it when a
-  forwarded launch asks for a window that is already open), `copy` (text
+  forwarded launch asks for a window that is already open),
+  `on_this_workspace(id)` (the window is on the workspace showing, as
+  app_server last said; see Single instance), `set_path(id, path)` (the
+  file or folder the window shows, also `WindowOptions::path`: its tab's
+  menu then offers Open in Tracker, and its tree carries it as `path`),
+  `copy` (text
   to the clipboard), `copy_secret(text, clear_after)` (marks the offer
   `x-kde-passwordManagerHint: secret` so clipboard histories skip it, and
   withdraws it after `clear_after` if it is still ours), `copy_data` (any
@@ -252,7 +257,34 @@ fn main() {
   `apps::NEW_WINDOW`: Tracker then offers **New Window** on its program
   (or a link to it) while it runs, and Deskbar in its menu, forwarding `--new-window` to the
   running copy (`apps::app_id_of` maps `olo-x` to `olo.x`). Agents
-  do the same with `olo-x --new-window`.
+  do the same with `olo-x --new-window`. Each workspace has its own
+  windows of an app (and so its own group of them): a launch, or opening
+  a folder or document the app has a window for, brings forward only a
+  window on the workspace showing (`cx.on_this_workspace(id)`) and
+  otherwise opens a new one here, rather than activate one elsewhere,
+  which would go to its workspace. (Tracker's folders and StyledEdit's
+  bare launch do so, and Terminal's `--tab` goes to a window here; a
+  document already open elsewhere is still brought forward there, as two
+  windows on one file would disagree.) The kit knows where its windows
+  are from app_server's events: `WindowInfo::surface` names each window's
+  `wl_surface` as its program knows it.
+* **Open in Tracker** (`olo_kit::tracker`): wherever something has a
+  folder or file behind it, offer `tracker::LABEL` ("Open in Tracker",
+  command `tracker::COMMAND`) in its context menu, and its File menu where
+  it has one, and call `tracker::open(path)`: a folder shows in its
+  Tracker window, a file selected in its folder's, on the workspace
+  showing (`olo-tracker --reveal PATH`, forwarded to the running Tracker
+  or starting one). Terminal (a tab's working folder: the tab's context
+  menu, the terminal's, Terminal ▸), StyledEdit (File ▸, the saved
+  document), the Viewer, DiskUsage, DriveSetup (a mounted volume), the
+  backup panel in Preferences and the palette (⌘↩ on a file) use it.
+  A window's yellow tab offers it too, for a window that says what it
+  shows (`cx.set_path`: StyledEdit's document, the Viewer's file,
+  Terminal's working folder; Tracker's own windows don't need it).
+  Tracker's Find results have it as Open Parent (⌘↑, also in their
+  context menu, with Open and Quick Look). Don't write another; the
+  label and the command are the same everywhere, so agents find it by
+  either.
 * **Following a setting** (`olo_kit::settings`): `current()` reads
   app_server's `Settings` once (a quick local round trip; fine at
   startup), `watch(f)` calls `f` on a thread now, after every
@@ -287,6 +319,8 @@ fn main() {
   (a window's text, thousands of nodes, goes): keyboard hints ask this
   way, so they never wait on a window nobody can see. (`serve_trees`
   can't tell its surfaces apart and answers it with all of them.)
+  `{"path":ID}` (`commands::path(pid, surface)`) answers with the file
+  or folder that surface's window shows (`Cx::set_path`), or null.
   egui gives its own widgets roles and names; text
   painted by hand is only pixels, so `style::label` and `Cell` describe
   theirs with `style::describe_text(ctx, role, text, rect, selected)`.
@@ -2751,8 +2785,11 @@ the emulator carry the shell's id, not the window's, so a tab can move:
 the lot (asking if anything is running). ⌘[ / ⌘], ⌘1…⌘9, Ctrl+Tab /
 Ctrl+Shift+Tab and Ctrl+Page Up / Page Down go through them (the shell
 never sees those). `olo-terminal --tab [-w DIR]` opens a tab in the
-Terminal window last in front (Tracker's Open in Terminal does), a window
-if there is none. `save_state` keeps each window's tabs in order and
+Terminal window last in front on the workspace showing (Tracker's Open in
+Terminal does), a new window if there is none. **Open in Tracker** (in
+the tab's context menu, the terminal's and Terminal ▸) shows the tab's
+working folder (its foreground program's, else the shell's, read from
+`/proc/PID/cwd`) in Tracker. `save_state` keeps each window's tabs in order and
 which one shows. Settings ▸ Tabs puts the strip **Along the Top** (the
 default) or **Down the Side** (the strip's `.side()`; also the last item
 of a tab's context menu), in `terminal.json` as `side_tabs`, with the
@@ -3210,7 +3247,9 @@ put it away.
   (switching beats opening another), the one in front last. Nothing
   typed lists what was chosen lately.
 * **Keys**: ↑/↓ and Page Up/Down move, Return chooses, the pointer
-  hovers and clicks. Actions run on a worker thread.
+  hovers and clicks. ⌘Return (or ⌘-click) on a file opens it in Tracker
+  instead (selected in its folder); while ⌘ is held the selected file's
+  row says so. Actions run on a worker thread.
 * **The window menu** (`window_menu.rs`): a right-click on a window's
   yellow tab has app_server (`wm.rs` `window_menu`) start
   `olo-palette --window-menu ID X Y OUTPUT`, the point on that output.
@@ -3219,7 +3258,9 @@ put it away.
   full-screen overlay on that output and pops an ordinary kit menu at
   the point: Hide, Zoom, Back to Its Own Size, Center, Tile ▸ (halves,
   quarters, thirds), Move to Workspace ▸, the next/previous display
-  (with more than one), Send to Back (BeOS's right-click on the tab,
+  (with more than one), Open in Tracker (when the window's program says
+  what it shows: `commands::path`, asked of its pid with its
+  `WindowInfo::surface`), Send to Back (BeOS's right-click on the tab,
   `Request::SendToBack`) and Close. Its items are the shortcuts', done
   through `RunShortcut { id, window }`, so the menu, the keys and the
   palette always agree, and each shows the person's own keys for it

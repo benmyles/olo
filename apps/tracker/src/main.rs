@@ -26,7 +26,6 @@ use olo_kit::{
     metrics as m,
     widgets::{self, Button, Column, ColumnListView, ListState, TextControl},
 };
-use olo_protocol::{Client, Reply, Request};
 
 pub use fs::Entry;
 
@@ -585,31 +584,48 @@ struct SavedFolder {
 }
 
 fn folder_options(path: &Path) -> WindowOptions {
-    WindowOptions::new(fs::display_name(path), 560, 380).min_size(240, 160)
-}
-
-/// Bring an existing Tracker window for `title` forward via app_server.
-fn activate_existing(title: &str) -> bool {
-    let Ok(mut c) = Client::connect() else { return false };
-    if let Ok(Reply::Windows { windows }) = c.request(&Request::ListWindows)
-        && let Some(w) = windows.iter().find(|w| w.app_id == "olo.tracker" && w.title == title) {
-            let _ = c.request(&Request::Activate { id: w.id });
-            return true;
-        }
-    false
+    WindowOptions::new(fs::display_name(path), 560, 380).min_size(240, 160).path(Some(path.to_owned()))
 }
 
 impl Tracker {
-    fn open_folder(&mut self, cx: &mut Cx, path: &Path) {
+    /// The folder's window, brought forward, if it has one on this
+    /// workspace; else a new one here (each workspace has its own).
+    fn open_folder(&mut self, cx: &mut Cx, path: &Path) -> WindowId {
         let path = path.canonicalize().unwrap_or_else(|_| path.to_owned());
-        let open = self.windows.iter().find(|(_, w)| matches!(w, Win::Folder(f) if f.path == path)).map(|(id, _)| *id);
-        if open.is_some() {
-            activate_existing(&fs::display_name(&path));
-            return;
+        if let Some(id) = self.folder_window(cx, &path) {
+            cx.activate(id);
+            return id;
         }
         let id = cx.open_window(folder_options(&path));
         let loader = Loader { win: id, proxy: cx.proxy() };
         self.windows.insert(id, Win::Folder(FolderWin::new(path, self.default_view, self.hidden, loader)));
+        id
+    }
+
+    /// Show `path`: a folder opens; anything else is selected in its
+    /// folder's window.
+    fn reveal(&mut self, cx: &mut Cx, path: &Path) {
+        if path.is_dir() {
+            self.open_folder(cx, path);
+        } else {
+            self.show_in_parent(cx, path);
+        }
+    }
+
+    /// Open `path`'s folder with it selected.
+    fn show_in_parent(&mut self, cx: &mut Cx, path: &Path) {
+        let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else { return };
+        let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_owned());
+        let id = self.open_folder(cx, &dir);
+        if let Some(Win::Folder(f)) = self.windows.get_mut(&id) {
+            f.select_paths(&[dir.join(name)]);
+            cx.redraw(id);
+        }
+    }
+
+    /// `path`'s window on this workspace, if there is one.
+    fn folder_window(&self, cx: &Cx, path: &Path) -> Option<WindowId> {
+        self.windows.iter().find(|(id, w)| matches!(w, Win::Folder(f) if f.path == path) && cx.on_this_workspace(**id)).map(|(id, _)| *id)
     }
 
     fn open_entry(&mut self, cx: &mut Cx, e: &Entry) {
@@ -705,10 +721,18 @@ impl Tracker {
 
     fn handle_args(&mut self, cx: &mut Cx, args: &[String]) {
         let mut opened = false;
-        for a in args {
+        let mut args_left = args.iter();
+        while let Some(a) = args_left.next() {
             match a.as_str() {
                 "--find" => {
                     self.open_find(cx);
+                    opened = true;
+                }
+                // Any app's Open in Tracker (`olo_kit::tracker`).
+                "--reveal" => {
+                    if let Some(p) = args_left.next() {
+                        self.reveal(cx, Path::new(p));
+                    }
                     opened = true;
                 }
                 "--desktop" => {}
@@ -857,9 +881,15 @@ impl Tracker {
                 f.sort = (key, if f.sort.0 == key { !f.sort.1 } else { true });
                 f.resort();
             }
-            "go-home" => self.open_folder(cx, &fs::home()),
-            "go-desktop" => self.open_folder(cx, &fs::home().join("Desktop")),
-            "go-root" => self.open_folder(cx, Path::new("/")),
+            "go-home" => {
+                self.open_folder(cx, &fs::home());
+            }
+            "go-desktop" => {
+                self.open_folder(cx, &fs::home().join("Desktop"));
+            }
+            "go-root" => {
+                self.open_folder(cx, Path::new("/"));
+            }
             "go-trash" => {
                 let t = fs::trash_files();
                 let _ = std::fs::create_dir_all(&t);
@@ -1029,6 +1059,7 @@ impl Tracker {
         let Some(Win::Find(fw)) = self.windows.get_mut(&win) else { return };
         let mut start = false;
         let mut open = None;
+        let (mut parent, mut quick_look) = (None, false);
         widgets::window_content(ui, |ui| {
             ui.horizontal(|ui| {
                 let w = ui.available_width() - 80.0 - m::SPACING;
@@ -1074,6 +1105,41 @@ impl Tracker {
             })).inner;
             if let Some(i) = r.activated {
                 open = results.get(i).map(|h| h.entry.clone());
+            }
+            let menu_id = egui::Id::unique(("find-menu", win));
+            if let Some((_, pos)) = r.context {
+                let menu = Menu::new("")
+                    .item("Open", "open", Some(Key::O))
+                    .item("Open Parent", "parent", Some(Key::ArrowUp))
+                    .item("Quick Look", "quick-look", Some(Key::Y));
+                widgets::popup_menu_at(ui.ctx(), menu_id, pos, menu);
+            }
+            let typing = ui.ctx().text_edit_focused();
+            let chosen = widgets::popup_result(ui.ctx(), menu_id).or_else(|| {
+                // The menu's keys, as there is no menu bar to take them
+                // (the Find field keeps its own).
+                ui.input_mut(|i| {
+                    let key = |i: &mut egui::InputState, k| !typing && i.consume_key(egui::Modifiers::COMMAND, k);
+                    if key(i, Key::ArrowUp) {
+                        Some("parent")
+                    } else if key(i, Key::O) {
+                        Some("open")
+                    } else if key(i, Key::Y) {
+                        Some("quick-look")
+                    } else {
+                        None
+                    }
+                })
+                .map(str::to_owned)
+            });
+            if let Some(cmd) = chosen
+                && let Some(e) = fw.list.single().and_then(|i| results.get(i)).map(|h| h.entry.clone())
+            {
+                match cmd.as_str() {
+                    "open" => open = Some(e),
+                    "parent" => parent = Some(e.path),
+                    _ => quick_look = true,
+                }
             }
             let status = if fw.running {
                 // Progress comes from the workers' counters; poll it while
@@ -1131,6 +1197,12 @@ impl Tracker {
         self.follow_selection(cx, win);
         if let Some(e) = open {
             self.open_entry(cx, &e);
+        }
+        if let Some(path) = parent {
+            self.show_in_parent(cx, &path);
+        }
+        if quick_look {
+            self.toggle_quick_look(cx, win);
         }
     }
 
@@ -1449,9 +1521,11 @@ impl App for Tracker {
                     olo_kit::notify::NoteEvent::Action { id, token, .. } => {
                         if let Some(dir) = self.note_dirs.remove(&id) {
                             let path = dir.canonicalize().unwrap_or(dir);
-                            match self.windows.iter().find(|(_, w)| matches!(w, Win::Folder(f) if f.path == path)).map(|(id, _)| *id) {
+                            match self.folder_window(cx, &path) {
                                 Some(win) => cx.activate_with(win, token),
-                                None => self.open_folder(cx, &path),
+                                None => {
+                                    self.open_folder(cx, &path);
+                                }
                             }
                         }
                     }

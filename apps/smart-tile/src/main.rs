@@ -320,6 +320,7 @@ mod tests {
             content: None,
             tab_frame: None,
             popups: vec![],
+            surface: None,
         }
     }
 

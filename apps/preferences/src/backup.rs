@@ -518,13 +518,10 @@ pub fn ui(ui: &mut Ui, settings: &mut Settings, st: &mut State) {
                 ui.add(StringView::new(text).wrap(true).color(color));
                 if *ok
                     && let Some(before) = &st.before
-                    && ui.add(Button::new("Show in Tracker")).clicked()
-                    && let Some(tracker) = olo_kit::find_program("olo-tracker")
+                    && ui.add(Button::new(olo_kit::tracker::LABEL)).clicked()
+                    && let Err(e) = olo_kit::tracker::open(before)
                 {
-                    let dir = before.parent().unwrap_or(before).as_os_str().to_owned();
-                    if let Err(e) = olo_kit::open::spawn(&[tracker.into_os_string(), dir]) {
-                        tracing::warn!("couldn't open Tracker: {e}");
-                    }
+                    tracing::warn!("couldn't open Tracker: {e}");
                 }
             }
         }

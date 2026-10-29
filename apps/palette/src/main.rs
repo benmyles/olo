@@ -232,6 +232,21 @@ impl Palette {
         sources::perform(item.action, front);
     }
 
+    /// ⌘↩ or ⌘-click: a file or folder found shown in Tracker rather than
+    /// opened; anything else chosen as usual.
+    fn reveal(&mut self, cx: &mut Cx, index: usize) {
+        let Some(Item { action: Action::Open(path), enabled: true, .. }) = self.results.get(index).cloned() else {
+            return self.choose(cx, index);
+        };
+        if let Some(k) = Action::Open(path.clone()).key() {
+            self.recents.note(k);
+        }
+        self.hide(cx);
+        if let Err(e) = olo_kit::tracker::open(&path) {
+            tracing::warn!("couldn't show {} in Tracker: {e}", path.display());
+        }
+    }
+
     /// A right-click on a window's tab: put the palette away and learn
     /// what the menu needs.
     fn ask_window_menu(&mut self, cx: &mut Cx, ask: window_menu::Ask) {
@@ -313,11 +328,12 @@ impl App for Palette {
         let mid = field.center().y + (line * 0.12).round();
         let text_rect = Rect::from_min_max(pos2(glass.right() + 8.0, mid - line / 2.0), pos2(field.right() - 8.0, mid + line / 2.0));
         // Arrows and Return belong to the list, not the text.
-        let (up, down, enter, escape, page_up, page_down) = ui.input_mut(|i| {
+        let (up, down, enter, reveal, escape, page_up, page_down) = ui.input_mut(|i| {
             (
                 i.consume_key(egui::Modifiers::NONE, Key::ArrowUp),
                 i.consume_key(egui::Modifiers::NONE, Key::ArrowDown),
                 i.consume_key(egui::Modifiers::NONE, Key::Enter),
+                i.consume_key(egui::Modifiers::COMMAND, Key::Enter),
                 i.consume_key(egui::Modifiers::NONE, Key::Escape),
                 i.consume_key(egui::Modifiers::NONE, Key::PageUp),
                 i.consume_key(egui::Modifiers::NONE, Key::PageDown),
@@ -342,6 +358,11 @@ impl App for Palette {
         if enter {
             let i = self.selected;
             self.choose(cx, i);
+            return;
+        }
+        if reveal {
+            let i = self.selected;
+            self.reveal(cx, i);
             return;
         }
         let edit_id = ui.make_persistent_id("query");
@@ -375,6 +396,9 @@ impl App for Palette {
                 }
             }
             let mut chosen = None;
+            // ⌘ held: a file's ⌘↩ (or ⌘-click) shows it in Tracker, and
+            // its row says so.
+            let command = ui.input(|i| i.modifiers.command);
             for (row, index) in (self.top..self.results.len()).take(ROWS).enumerate() {
                 let item = &self.results[index];
                 let r = Rect::from_min_size(pos2(list.left(), list.top() + m::TIGHT + row as f32 * ROW), vec2(list.width(), ROW));
@@ -400,7 +424,8 @@ impl App for Palette {
                 }
                 // Right side: the kind (on the subtitle's line), and keys
                 // before it.
-                let kind = style::label_fit(&painter, r.right() - 8.0, r.center().y + 1.0, Align::Max, item.kind.label(), style::small_font(), dim, f32::INFINITY);
+                let label = if selected && command && matches!(item.action, Action::Open(_)) { olo_kit::tracker::LABEL } else { item.kind.label() };
+                let kind = style::label_fit(&painter, r.right() - 8.0, r.center().y + 1.0, Align::Max, label, style::small_font(), dim, f32::INFINITY);
                 let mut right = kind.left() - m::SPACING;
                 if let Some(keys) = &item.keys {
                     let w = style::key_combo_width(ui.ctx(), keys);
@@ -417,7 +442,7 @@ impl App for Palette {
                 }
             }
             if let Some(i) = chosen {
-                self.choose(cx, i);
+                if command { self.reveal(cx, i) } else { self.choose(cx, i) }
             }
         }
     }

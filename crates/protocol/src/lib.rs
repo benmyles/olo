@@ -461,6 +461,13 @@ pub struct WindowInfo {
     /// menus they open from, likewise.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub popups: Vec<Frame>,
+    /// Its surface as its program knows it (the `wl_surface`'s object id
+    /// on the program's own connection), for a program to tell which of
+    /// its windows this is: Olo's kit knows so which of an app's windows
+    /// are on the workspace showing. (A program behind olo-wlproxy knows
+    /// its surface by another id.)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface: Option<u32>,
 }
 
 /// A rectangle in global logical pixels.

@@ -158,6 +158,7 @@ impl Viewer {
         d.edit = None;
         d.title = file_name(&path);
         cx.set_title(id, d.title.clone());
+        cx.set_path(id, Some(path.clone()));
         let proxy = cx.proxy();
         if is_pdf(&path) {
             self.next_id += 1;
@@ -305,7 +306,7 @@ impl Viewer {
             .item("Export Flattened PDF…", "export", None)
             .enabled(editable)
             .separator()
-            .item("Show in Tracker", "show-in-tracker", None)
+            .item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND, None)
             .separator()
             .item("Close", "close", Some(Key::W))
             .item("Quit", "quit", Some(Key::Q));
@@ -323,7 +324,7 @@ impl Viewer {
                     .enabled(dirty)
                     .separator();
             }
-            file = file.item("Show in Tracker", "show-in-tracker", None).separator().item("Close", "close", Some(Key::W)).item("Quit", "quit", Some(Key::Q));
+            file = file.item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND, None).separator().item("Close", "close", Some(Key::W)).item("Quit", "quit", Some(Key::Q));
         }
         let mut menus = vec![file];
         if picture {
@@ -477,10 +478,9 @@ impl Viewer {
         }
         let sig = command.strip_prefix("sign:").and_then(|k| k.parse::<usize>().ok()).and_then(|k| self.signatures.get(k)).cloned();
         let Some(Win::Doc(d)) = self.windows.get_mut(&win) else { return };
-        if command == "show-in-tracker" {
-            let q = format!("'{}'", d.path.parent().unwrap_or(Path::new("/")).display().to_string().replace('\'', "'\\''"));
-            if let Err(e) = olo_kit::spawn_detached(&format!("olo-tracker {q}")) {
-                tracing::warn!("tracker: {e}");
+        if command == olo_kit::tracker::COMMAND {
+            if let Err(e) = olo_kit::tracker::open(&d.path) {
+                tracing::warn!("couldn't show {} in Tracker: {e}", d.path.display());
             }
             return;
         }
@@ -1052,6 +1052,7 @@ impl App for Viewer {
                         Event::Saved { to, adopted } => {
                             if adopted.is_some() {
                                 d.path = to.clone();
+                                cx.set_path(win, Some(to.clone()));
                             }
                             after = Some(std::mem::replace(&mut d.after_save, After::Nothing));
                         }

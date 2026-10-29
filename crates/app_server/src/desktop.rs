@@ -290,6 +290,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     content: None,
                     tab_frame: None,
                     popups: Vec::new(),
+                    surface: w.wl_surface().map(|s| s.id().protocol_id()),
                 }
             })
             .collect();

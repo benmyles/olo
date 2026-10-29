@@ -226,12 +226,10 @@ impl DiskUsage {
         }
     }
 
+    /// A folder in its window, a file selected in its folder's.
     fn show_in_tracker(&self, id: NodeId) {
-        let Some((path, dir, _, _)) = self.item(id) else { return };
-        let folder = if dir { path } else { path.parent().map_or_else(home, Path::to_path_buf) };
-        if let Some(tracker) = olo_kit::find_program("olo-tracker")
-            && let Err(e) = olo_kit::open::spawn(&[tracker.into_os_string(), folder.into()])
-        {
+        let Some((path, _, _, _)) = self.item(id) else { return };
+        if let Err(e) = olo_kit::tracker::open(&path) {
             tracing::warn!("couldn't open Tracker: {e}");
         }
     }
@@ -349,7 +347,7 @@ impl DiskUsage {
                     self.open_item(id);
                 }
             }
-            "show-in-tracker" => {
+            olo_kit::tracker::COMMAND => {
                 if let Some(id) = target {
                     self.show_in_tracker(id);
                 }
@@ -395,7 +393,7 @@ impl DiskUsage {
         };
         Menu::new("")
             .item(if dir { "Open Folder" } else { "Open" }, "open", None)
-            .item("Show in Tracker", "show-in-tracker", None)
+            .item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND, None)
             .item("Copy Path", "copy-path", None)
             .separator()
             .item("Add to Collector", "collect", None)
@@ -893,7 +891,7 @@ impl App for DiskUsage {
             Menu::new("Item")
                 .item("Open", "open", None)
                 .enabled(item)
-                .item("Show in Tracker", "show-in-tracker", None)
+                .item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND, None)
                 .enabled(item)
                 .item("Copy Path", "copy-path", None)
                 .enabled(item)

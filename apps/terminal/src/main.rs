@@ -61,6 +61,22 @@ fn pane_head_height(side: bool) -> f32 {
     if side { widgets::STRIP_SIDE_HEAD } else { widgets::STRIP_ROW }
 }
 
+/// The tab's folder (what its program, else its shell, is in, as its
+/// title shows) in Tracker.
+/// The folder a tab works in: its foreground program's, else its shell's.
+fn tab_folder(tab: &Tab) -> Option<PathBuf> {
+    let shared = &tab.session.shared;
+    shared.foreground().or(shared.shell()).and_then(|pid| std::fs::read_link(format!("/proc/{pid}/cwd")).ok())
+}
+
+fn open_in_tracker(tab: &Tab) {
+    if let Some(folder) = tab_folder(tab)
+        && let Err(e) = olo_kit::tracker::open(&folder)
+    {
+        tracing::warn!("couldn't open {} in Tracker: {e}", folder.display());
+    }
+}
+
 /// Show All Tabs' panes for `n` tabs in `area`: as many columns as keep
 /// each pane nearest a terminal's usual shape, the last row's spread
 /// across the width; a line apart. Their edges are on device pixels at
@@ -608,9 +624,11 @@ impl Terminal {
             }
         }
         let command = command.filter(|c: &Vec<String>| !c.is_empty());
-        // `--tab`: in the window last in front, if there is one.
-        let front = self.front.filter(|w| matches!(self.windows.get(w), Some(Win::Term(_)))).or_else(|| {
-            let mut terms: Vec<WindowId> = self.windows.iter().filter(|(_, w)| matches!(w, Win::Term(_))).map(|(&id, _)| id).collect();
+        // `--tab`: in the window last in front on this workspace, if
+        // there is one (else a new window here).
+        let here = |w: &WindowId| matches!(self.windows.get(w), Some(Win::Term(_))) && cx.on_this_workspace(*w);
+        let front = self.front.filter(here).or_else(|| {
+            let mut terms: Vec<WindowId> = self.windows.keys().copied().filter(here).collect();
             terms.sort();
             terms.last().copied()
         });
@@ -926,6 +944,8 @@ impl Terminal {
         if title != t.shown_title {
             t.shown_title = title.clone();
             cx.set_title(win, title);
+            // Shells retitle at each prompt, so after a `cd` too.
+            cx.set_path(win, tab_folder(t.tab()));
         }
         if let Some(pos) = out.context_menu {
             let has_selection = t.tab().session.has_selection();
@@ -935,7 +955,9 @@ impl Terminal {
                 .item("Paste", "paste", None)
                 .separator()
                 .item("Select All", "select-all", None)
-                .item("Clear Scrollback", "clear", None);
+                .item("Clear Scrollback", "clear", None)
+                .separator()
+                .item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND, None);
             menu::request_popup(
                 ui.ctx(),
                 MenuRequest { menu, source: ui.make_persistent_id("context"), anchor: MenuAnchor::At(pos), selected: None },
@@ -984,6 +1006,8 @@ impl Terminal {
                 let (place, label) = if side { ("tabs-top", "Tabs Along the Top") } else { ("tabs-side", "Tabs Down the Side") };
                 let menu = Menu::new("")
                     .item("New Tab", "new-tab", None)
+                    .separator()
+                    .item(olo_kit::tracker::LABEL, format!("{}:{shell}", olo_kit::tracker::COMMAND), None)
                     .separator()
                     .item("Move to New Window", format!("tab-detach:{shell}"), None)
                     .separator()
@@ -1629,6 +1653,8 @@ impl App for Terminal {
                 .item_shift("New Terminal", "new", Key::N)
                 .item_shift("New Tab", "new-tab", Key::T)
                 .separator()
+                .item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND, None)
+                .separator()
                 .item("Terminal Daemon…", "daemon", None)
                 .separator()
                 .item_shift(if several { "Close Tab" } else { "Close" }, "close", Key::W)
@@ -1786,6 +1812,7 @@ impl App for Terminal {
                 t.tab().session.clear_history();
                 cx.redraw(window);
             }
+            olo_kit::tracker::COMMAND => open_in_tracker(t.tab()),
             "bigger" | "smaller" | "default-size" => {
                 let cur = self.settings.text_size;
                 let next = match command {
@@ -1847,6 +1874,10 @@ impl App for Terminal {
                     self.close_tab_requested(cx, window, shell, "the tab's menu ▸ Close Tab");
                 } else if let Some(shell) = c.strip_prefix("tab-detach:").and_then(|n| n.parse().ok()) {
                     self.detach(cx, window, shell);
+                } else if let Some(shell) = c.strip_prefix(olo_kit::tracker::COMMAND).and_then(|n| n.strip_prefix(':')?.parse::<u64>().ok()) {
+                    if let Some(tab) = t.position(shell).map(|i| &t.tabs[i]) {
+                        open_in_tracker(tab);
+                    }
                 } else if let Some(i) = c.strip_prefix("open-group:").and_then(|n| n.parse::<usize>().ok()) {
                     self.open_group(cx, i);
                 } else if let Some(i) = c.strip_prefix("forget-group:").and_then(|n| n.parse::<usize>().ok()) {
