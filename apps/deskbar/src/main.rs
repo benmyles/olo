@@ -47,8 +47,7 @@ const ICON_INSET: f32 = TRAY_TEXT;
 /// between neighbours, and 3 px from the well's edges), centred in rows
 /// of as many as fit.
 const CLOCK_H: f32 = 20.0;
-/// Inset of the tray's well from the Deskbar's edges, and of the
-/// workspace showing's pill (`workspace_heading`).
+/// Inset of the tray's well from the Deskbar's edges.
 const TRAY_INSET: f32 = 4.0;
 /// Inset of the tray's date and time.
 const TRAY_TEXT: f32 = TRAY_INSET + 5.0;
@@ -728,21 +727,26 @@ impl Deskbar {
         // Twitcher's choice, while ⌘Tab (or ⌥Tab, ⌘`) is held.
         let chosen = team.windows.iter().any(|w| w.chosen);
         resp.widget_info(|| egui::WidgetInfo { selected: Some(chosen), ..egui::WidgetInfo::labeled(egui::Role::Button, true, team.name.clone()) });
-        if open || drop_here {
+        // In the workspace showing, the row is on its lit ground.
+        let lit = self.lit(ws);
+        let ground = self.ground(&pal, ws);
+        if open || drop_here || (chosen && lit) {
+            // (Twitcher's choice in the workspace showing takes the menu's
+            // selection, as the list's would be lost on its lit ground.)
             painter.rect_filled(row, 0.0, c(pal.menu_selected_background));
         } else if chosen {
             // As Twitcher marks it, in the selection's colours.
             style::selection_wash(&painter, row, &pal);
         } else if focused {
             // The active application sits slightly recessed.
-            painter.rect_filled(row, 0.0, shade(&pal, pal.panel_background, 1.1));
-            hline(&painter, row.left(), row.right(), row.top(), shade(&pal, pal.panel_background, 1.25));
+            painter.rect_filled(row, 0.0, shade(&pal, ground, 1.1));
+            hline(&painter, row.left(), row.right(), row.top(), shade(&pal, ground, 1.25));
         } else if hover {
-            painter.rect_filled(row, 0.0, c(olo_theme_tint(pal.panel_background, 0.8)));
+            painter.rect_filled(row, 0.0, c(olo_theme_tint(ground, 0.8)));
         }
         // (The wash's own edge is the chosen row's.)
         if !chosen {
-            hline_above(&painter, row.left(), row.right(), row.bottom(), shade(&pal, pal.panel_background, 1.14));
+            hline_above(&painter, row.left(), row.right(), row.bottom(), shade(&pal, ground, 1.14));
         }
         let icon_r = Rect::from_center_size(pos2(row.left() + ICON_INSET + ICON / 2.0, row.center().y), vec2(ICON, ICON));
         let tint = if hidden { Color32::from_white_alpha(120) } else { Color32::WHITE };
@@ -750,7 +754,7 @@ impl Deskbar {
         if !drawn {
             icons::paint_tinted(&painter, icon_r, "application", tint);
         }
-        let text_color = if open || drop_here {
+        let text_color = if open || drop_here || (chosen && lit) {
             c(pal.menu_selected_item_text)
         } else if chosen {
             style::selection_ink(&pal).text
@@ -769,11 +773,10 @@ impl Deskbar {
     }
 
     /// Workspace `ws`'s heading at `r`, its applications under it: its
-    /// name as a quiet caption over their icons, the one showing's in a
-    /// pill in the selection's colours (`style::selection_ink`), the
-    /// pill's edge in line with the tray's well. A click goes there; on
-    /// the workspace showing (and a right-click on any), the Workspaces
-    /// menu.
+    /// name as a quiet caption over their icons, the one showing's in
+    /// the selection's text on its lit ground (`ui` lights the whole
+    /// workspace, `style::lit_ground`). A click goes there; on the
+    /// workspace showing (and a right-click on any), the Workspaces menu.
     fn workspace_heading(&mut self, cx: &mut Cx, ui: &mut egui::Ui, r: Rect, ws: u32) {
         let pal = style::palette(ui.ctx());
         let painter = ui.painter().clone();
@@ -794,24 +797,32 @@ impl Deskbar {
         if open {
             painter.rect_filled(r, 0.0, c(pal.menu_selected_background));
         } else if resp.hovered() {
-            painter.rect_filled(r, 0.0, c(olo_theme_tint(pal.panel_background, 0.8)));
+            painter.rect_filled(r, 0.0, c(olo_theme_tint(self.ground(&pal, Some(ws)), 0.8)));
         }
-        let font = egui::FontId::new(style::SMALL_SIZE, style::bold());
-        let pad = ICON_INSET - TRAY_INSET;
-        let (w, h) = (style::label_width(ui.ctx(), &name, font.clone()) + 2.0 * pad, style::pill_height(&font));
-        let pill = style::snap(ui.ctx(), Rect::from_min_size(pos2(r.left() + TRAY_INSET, r.center().y - h / 2.0), vec2(w, h)));
         let ink = if open {
             c(pal.menu_selected_item_text)
         } else if here {
-            let sel = style::selection_ink(&pal);
-            painter.rect(pill, h / 2.0, sel.fill, egui::Stroke::new(style::hairline(ui.ctx()), sel.edge), egui::StrokeKind::Inside);
-            sel.text
+            style::selection_ink(&pal).text
         } else if resp.hovered() {
             c(pal.panel_text)
         } else {
             c(olo_kit::theme::mix(pal.panel_text, pal.panel_background, 0.45))
         };
-        style::label(&painter, r.left() + ICON_INSET, pill.center().y, egui::Align::Min, name, font, ink);
+        let font = egui::FontId::new(style::SMALL_SIZE, style::bold());
+        style::label(&painter, r.left() + ICON_INSET, r.center().y, egui::Align::Min, name, font, ink);
+    }
+
+    /// Whether the applications under workspace `ws`'s heading are the
+    /// workspace showing's, which is lit (`None`: no headings, one
+    /// workspace).
+    fn lit(&self, ws: Option<u32>) -> bool {
+        ws == Some(self.workspace.0)
+    }
+
+    /// The ground of the rows under workspace `ws`'s heading: the panel,
+    /// or the workspace showing's lit ground (`style::lit_ground`).
+    fn ground(&self, pal: &Palette, ws: Option<u32>) -> olo_kit::theme::Rgba {
+        if self.lit(ws) { style::lit_ground(pal, pal.panel_background) } else { pal.panel_background }
     }
 
     /// Show an application's windows on this workspace together
@@ -1258,12 +1269,24 @@ impl App for Deskbar {
             workspaces.sort();
             workspaces.dedup();
             for ws in workspaces {
+                let teams = self.teams(display.as_deref(), Some(ws));
+                // The workspace showing is lit, its heading and
+                // applications together, as one selection: on its own
+                // ground, edged above and below.
+                let group = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), HEADING_H + teams.len() as f32 * ROW_H));
+                let lit = self.lit(Some(ws));
+                if lit {
+                    painter.rect_filled(style::snap(ui.ctx(), group), 0.0, c(self.ground(&pal, Some(ws))));
+                }
                 self.workspace_heading(cx, ui, Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), HEADING_H)), ws);
                 y += HEADING_H;
-                for team in self.teams(display.as_deref(), Some(ws)) {
+                for team in teams {
                     let row = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), ROW_H));
                     self.team_row(cx, w, ui, row, &team, display.as_deref(), Some(ws));
                     y += ROW_H;
+                }
+                if lit {
+                    style::lit_edges(&painter, group, &pal);
                 }
             }
         }

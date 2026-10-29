@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Deskbar lights the workspace showing
+
+*01:48* — The whole workspace showing, its heading and its applications, is washed in the selection's colour across the bar with a hairline of the selection's edge above and below, like a BListView selection as big as the group; the other workspaces stay on the plain panel. Its heading takes the selection's text colour, and its rows shade that ground for focus, hover and separators, so it follows every theme and colour set, light, dark and night. Twitcher's choice inside it takes the menu's stronger selection so it still stands out. Light and dark at 2×.
+
+![Deskbar lights the workspace showing](2026-10-29/014818-deskbar-lights-the-workspace-showing.png)
+
 ### ⌥Tab keeps to this workspace, ⌘Tab goes everywhere, and Deskbar follows
 
 *01:10* — Reversing the earlier swap: ⌘Tab's Twitcher shows every workspace's applications, ⌥Tab only this one's. While it's up, Deskbar highlights the application Twitcher is on (style::selection_wash), here DeskCalc.

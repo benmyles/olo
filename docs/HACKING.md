@@ -696,8 +696,14 @@ of the way down.
    neighbours (a bar's segment, a map's partition) takes
    `style::selection_wash(painter, r, palette)` (the fill, see-through,
    with its hairline inside); something round (a colour swatch) a ring
-   of `fill` with an `edge` stroke. `keyboard_navigation` is only where
-   the keys are (focus), never what is selected. The edge colour is
+   of `fill` with an `edge` stroke. A group that is current as a whole
+   (Deskbar's workspace showing) is lit: `style::lit_ground(palette,
+   under)` behind all of it, `style::lit_edges` above and below, its
+   rows shading that ground as they would `under`; a row chosen inside
+   it takes the menu's selection (`menu_selected_background`), which
+   stands out on it where the list's would not. `keyboard_navigation`
+   is only where the keys are (focus), never what is selected. The edge
+   colour is
    `Palette::selection_edge()`, so app_server's own drawing (Twitcher's
    chosen app, on the same plate) matches the kit's.
 5. **Lines are one logical pixel** (`style::hline`, `vline`, `frame_rect`,
@@ -1415,10 +1421,15 @@ applications that have windows there, each row's menu only those
 windows (`teams(display, Some(ws))`). A heading is a quiet caption, bold
 in the small size and dimmed toward the panel, in line with its
 applications' icons and the tray's date (`ICON_INSET` = `TRAY_TEXT`).
-The workspace showing's caption is in a pill in the selection's colours
-(`style::selection_ink`, as the kit marks anything chosen), its edge in
-line with the tray's well (`TRAY_INSET`), so it follows every theme,
-light and dark.
+The workspace showing is lit as a whole, heading and applications, as a
+BListView selection as big as the group: its ground is
+`style::lit_ground(palette, panel_background)` across the bar, a
+hairline of the selection's edge above and below (`style::lit_edges`,
+painted after the rows), its heading in the selection's `text`. The
+rows in it shade that ground for their focus, hover and separators
+(`Deskbar::ground`) as the others shade the panel's, so it follows every
+theme and colour set, light, dark and night; the other workspaces stay
+on the plain panel.
 Clicking a heading goes to that workspace (on the one showing, or with
 the right button on any, it opens the Workspaces menu). One workspace:
 no headings, just the applications. Agents find the headings as
@@ -1455,8 +1466,9 @@ walk the chosen row and ↑/↓ go to the row above or below (its most
 recent first). The keymap keeps whichever of ⌘ and ⌥ began switching
 (`keymap::Hold`): letting go of that one chooses, and the other changes
 nothing meanwhile. Deskbar highlights the application chosen in the
-selection's colours, as Twitcher marks it (`style::selection_wash`;
-`WindowInfo::chosen`, for its window; agents read `selected` on the
+selection's colours, as Twitcher marks it (`style::selection_wash`; in
+the lit workspace showing, the menu's selection, so it stands out on
+it; `WindowInfo::chosen`, for its window; agents read `selected` on the
 row's `Button`). Showing a window on another
 workspace goes there, each workspace's stacking kept as it was when
 first shown. Esc puts everything back, workspace and focus too

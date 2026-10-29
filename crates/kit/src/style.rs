@@ -737,6 +737,28 @@ pub fn selection_wash(p: &Painter, r: Rect, palette: &Palette) {
     p.rect(snap(p.ctx(), r), 0.0, ink.fill.gamma_multiply(0.7), Stroke::new(hairline(p.ctx()), ink.edge), egui::StrokeKind::Inside);
 }
 
+/// The ground of a group that is current as a whole (Deskbar's workspace
+/// showing): a BListView selection as big as the group, its heading and
+/// rows together. It is `under`, the ground it sits on, taken most of the
+/// way to the selection's, so the rows in it still mark their own focus,
+/// hover and separators (shading this ground as they would `under`); a
+/// row chosen inside it takes the menu's selection, which stands out on
+/// it where the list's would not. Its heading is in `selection_ink`'s
+/// `text`, its rows in the panel's. Edge it with [`lit_edges`].
+pub fn lit_ground(palette: &Palette, under: Rgba) -> Rgba {
+    mix(under, palette.list_selected_background, 0.7)
+}
+
+/// A lit group's edges (see [`lit_ground`]): a hairline in the
+/// selection's edge colour across the top and bottom of `r`, its sides
+/// running off the panel's. Paint them after its rows, whose fills and
+/// separators would cover the bottom one.
+pub fn lit_edges(p: &Painter, r: Rect, palette: &Palette) {
+    let edge = c(palette.selection_edge());
+    hline(p, r.left(), r.right(), r.top(), edge);
+    hline_above(p, r.left(), r.right(), r.bottom(), edge);
+}
+
 /// A short tag in a pill (a badge, a count, a group's name), its left
 /// edge at `x` and centred on `cy`. Returns its rect.
 pub fn pill(p: &Painter, x: f32, cy: f32, text: &str, font: FontId, fill: Color32, ink: Color32) -> Rect {
