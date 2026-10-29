@@ -568,7 +568,7 @@ fn raise_app(desktop_entry: Option<&str>, app_name: &str) {
 /// Icons to try for what a note names, best first: its icon, ours for
 /// the common theme names, then its app's (from its desktop entry and
 /// name).
-fn named_icons(icon: Option<&str>, desktop_entry: Option<&str>, app: &str) -> Vec<String> {
+fn named_icons(ctx: &egui::Context, icon: Option<&str>, desktop_entry: Option<&str>, app: &str) -> Vec<String> {
     let mut names: Vec<String> = icon.iter().map(|i| i.to_string()).collect();
     if let Some(icon) = icon {
         let ours = [
@@ -590,7 +590,7 @@ fn named_icons(icon: Option<&str>, desktop_entry: Option<&str>, app: &str) -> Ve
         ];
         names.extend(ours.iter().filter(|(theme, _)| icon.starts_with(theme)).map(|(_, o)| o.to_string()));
     }
-    names.extend(app_icons(desktop_entry, app));
+    names.extend(app_icons(ctx, desktop_entry, app));
     names
 }
 
@@ -608,8 +608,46 @@ fn paint_mark(painter: &egui::Painter, r: Rect, app: &str, accent: Option<[u8; 3
     let _ = icons::paint(painter, r, generic);
 }
 
-/// The sending app's own icon names.
-fn app_icons(desktop_entry: Option<&str>, app: &str) -> Vec<String> {
+/// An app as notes name it: (its desktop entry, its name).
+type AppKey = (Option<String>, String);
+
+/// Each app's own icon names, once looked up (None: being looked up).
+static APP_ICONS: Mutex<Option<HashMap<AppKey, Option<Vec<String>>>>> = Mutex::new(None);
+
+/// The sending app's own icon names. Finding them can read every desktop
+/// entry on the system, milliseconds a time, so a worker looks each app
+/// up once ([`warm_app_icons`]) and they are kept; until then there are
+/// none, and `ctx` repaints when they come.
+fn app_icons(ctx: &egui::Context, desktop_entry: Option<&str>, app: &str) -> Vec<String> {
+    let key = (desktop_entry.map(str::to_owned), app.to_owned());
+    if let Some(known) = APP_ICONS.lock().unwrap().get_or_insert_with(HashMap::new).get(&key) {
+        return known.clone().unwrap_or_default();
+    }
+    let ctx = ctx.clone();
+    warm_app_icons(vec![key], move || ctx.request_repaint());
+    Vec::new()
+}
+
+/// Look up the icons of `apps` not yet known, on a worker; then `done`.
+fn warm_app_icons(apps: Vec<AppKey>, done: impl FnOnce() + Send + 'static) {
+    let apps: Vec<AppKey> = {
+        let mut known = APP_ICONS.lock().unwrap();
+        let known = known.get_or_insert_with(HashMap::new);
+        apps.into_iter().filter(|k| known.insert(k.clone(), None).is_none()).collect()
+    };
+    if apps.is_empty() {
+        return;
+    }
+    std::thread::spawn(move || {
+        for key in apps {
+            let names = look_up_app_icons(key.0.as_deref(), &key.1);
+            APP_ICONS.lock().unwrap().get_or_insert_with(HashMap::new).insert(key, Some(names));
+        }
+        done();
+    });
+}
+
+fn look_up_app_icons(desktop_entry: Option<&str>, app: &str) -> Vec<String> {
     let mut names = Vec::new();
     if let Some(e) = desktop_entry {
         names.extend(olo_xdg::icon_for_app(e.trim_end_matches(".desktop")));
@@ -783,8 +821,8 @@ impl App for Notifications {
             let head = Rect::from_min_size(frame.min, vec2(WIDTH, HEADER));
             let first = &self.cards[laid[0].i].note;
             let small = Rect::from_min_size(pos2(head.left() + PAD, head.center().y - 8.0), vec2(16.0, 16.0));
-            let mut names = app_icons(first.desktop_entry.as_deref(), &first.app_name);
-            names.extend(named_icons(first.icon.as_deref(), first.desktop_entry.as_deref(), &first.app_name));
+            let mut names = app_icons(ui.ctx(), first.desktop_entry.as_deref(), &first.app_name);
+            names.extend(named_icons(ui.ctx(), first.icon.as_deref(), first.desktop_entry.as_deref(), &first.app_name));
             paint_mark(&painter, small, &first.app_name, first.look.accent, first.via.is_some(), &names, "application");
             let name = if app.is_empty() { "Notification" } else { app.as_str() };
             let close_room = 22.0;
@@ -1072,6 +1110,7 @@ fn main() -> std::process::ExitCode {
         // started before ours): wait for it to go rather than take it.
         let history = History::load(Some(History::path()));
         let first = history.entries.iter().map(|e| e.id).max().unwrap_or(0).wrapping_add(1);
+        warm_app_icons(history.entries.iter().map(|e| (e.desktop_entry.clone(), e.app.clone())).collect(), || {});
         let (slot, to_ui, shared) = (bus.clone(), proxy.clone(), snapshot.clone());
         std::thread::Builder::new()
             .name("notifications-bus".into())
@@ -1079,7 +1118,13 @@ fn main() -> std::process::ExitCode {
                 let mut said = false;
                 loop {
                     let to_ui = to_ui.clone();
-                    match Bus::serve(address.as_deref(), first, shared.clone(), move |m| to_ui.send(Msg::In(m))) {
+                    match Bus::serve(address.as_deref(), first, shared.clone(), move |m| {
+                        // Its app's icons, by the time it shows.
+                        if let In::Show(n) = &m {
+                            warm_app_icons(vec![(n.desktop_entry.clone(), n.app_name.clone())], || {});
+                        }
+                        to_ui.send(Msg::In(m))
+                    }) {
                         Ok(b) => {
                             *slot.lock().unwrap() = Some(b);
                             return;

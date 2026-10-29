@@ -301,9 +301,26 @@ fn main() {
   the app's resizable windows on this workspace in a grid on the active
   display, in front (alerts and other fixed-size panels stay put).
 * Taps: a touchpad tap brings a press and its release together; the kit
-  holds such a release over to the next frame (`input::split_taps`), so
+  holds such a release over to the next frame (`input::split_frame`), so
   egui sees the button down for a frame and press-and-hold controls
-  (menus, scroll arrows, drags) work from taps too.
+  (menus, scroll arrows, drags) work from taps too. The end of a scroll
+  that moved in the same frame waits likewise (egui would drop the move).
+* Frame time: egui's time is when a frame will be shown, not when it is
+  drawn: the compositor's next frame after now, on a grid locked to its
+  frame callbacks (smoothed, a frame of the output's refresh rate apart;
+  `predicted_dt` is that frame). A frame drawn at once after a rest and
+  the next drawn when the compositor asks are a whole frame apart on the
+  screen, so animations starting from rest don't lurch.
+* Scrolling: a touchpad scroll reaches egui as a phase of its own, from
+  the first move to the stop (`TouchPhase::Start`…`End`, egui then moves
+  exactly as far, with no smoothing), and the glide after it as another
+  (`MouseWheelSource::Momentum`, from app_server's `continuous` scrolls).
+  Wheel notches are eased in by the kit (`ease_wheel`): what is left
+  shrinks by the time shown, 90% in a tenth of a second, and ends in a
+  step of under a tenth of a point (egui's own ease ends with a jump of
+  up to a point). Widgets that read raw `MouseWheel` events (Terminal,
+  menus) get the eased steps; keep any rounding to lines or notches as a
+  running remainder.
 * The menu bar opens a menu on press, as on BeOS, reading the press from
   the frame's events (a touchpad tap brings press and release in one
   frame); pressing the open menu's title again closes it, but a menu that
@@ -1004,8 +1021,30 @@ $T type mine "hello"           # $T key mine 29 30  → Ctrl+A (evdev codes)
 $T theme mine dark
 $T start mine --scale 1.5      # another scale from the start
 $T scale mine 1                # every screen to 1× (then 1.5, then 2: check all three)
+$T hz mine 120                 # every screen at 120 Hz (60 to start)
 $T stop mine
 ```
+
+Each headless screen draws at its mode's rate (60 or 120 Hz), on time:
+check anything that moves at 120 Hz too. Every kit app's `{"frames":true}`
+(on its `olo-menus-PID.sock`) answers with each frame it drew since the
+last ask, the last 1200 (`FrameMark`): when it began (CLOCK_MONOTONIC
+µs, app_server's clock), how long it took and how much of that was egui
+and the app's code (`ui_us`; the rest is tessellating and the GPU), and
+where each scroll view showed its content from.
+
+`tools/dev/scroll-check NAME --app NAME` measures scrolling with them: on
+a long list under the pointer it drives a steady two-finger scroll (at a
+touchpad's rate, `--rate 90`), a flick and its glide, and three wheel
+notches, and prints for each how regularly frames came (hitches: a frame
+later than 1.5× the usual), how evenly it moved (each frame's step
+against the fingers' speed; the glide's against its neighbours, as it
+slows evenly; each notch easing out with no step bigger than the one
+before), frames that drew without moving, how long the first move took
+to show and the slowest frame; `--trace` prints every frame. Smooth is
+every step within a few percent, no hitches and no still frames, at 60
+and 120 Hz and every scale. Run it after changing anything about input,
+frame timing or a scroll view.
 
 Every session gets its own D-Bus session bus (busd, at
 `/tmp/olo-dev/NAME/bus`, in `DBUS_SESSION_BUS_ADDRESS` for `run`): the
@@ -2062,16 +2101,31 @@ Preferences ▸ Touchpad goes into libinput (`configure_pointer`), with the
 rest set as a Mac trackpad behaves: a two-finger tap is the secondary
 click, no drag lock, no middle-click emulation. Scrolling has momentum, as
 on a Mac (`momentum.rs`): when the fingers lift (libinput's scroll of 0)
-while moving faster than 0.3 px/ms over the last 80 ms, app_server holds
-the stop back and keeps sending finger scrolls every 8 ms, slowing by
-0.997 a millisecond (`glide` stretches that: 2.0 glides twice as far;
-`scroll_speed` scales finger scrolls before momentum samples them),
-then sends the stop; fingers resting again (a hold
-gesture), pointer motion, a click, a swipe or pinch, or a wheel stop it.
-Clients thus see one continuous finger scroll (GTK adds no kinetic scroll
-of its own). Kit scroll views have egui's own smoothing. Test with
-`tsession flick NAME DY` (ten scroll steps, then the lift);
-`tsession scroll NAME 0 0` is a lift on its own.
+while moving faster than 0.3 px/ms over the last 80 ms, the scroll glides
+on, slowing by 0.997 a millisecond (`glide` stretches that: 2.0 glides
+twice as far; `scroll_speed` scales finger scrolls before momentum
+samples them); fingers resting again (a hold gesture), pointer motion, a
+click, a swipe or pinch, or a wheel stop it.
+
+**Scrolls go on the frame clock** (`pace.rs`). A touchpad reports at its
+own rate, which beats against the display's: passed on as they came, one
+frame got one report and the next two, and the content juddered though
+the fingers moved evenly. So finger scrolls are held back and, once a
+frame of the screen under the pointer (`pre_repaint`, before clients are
+told to draw), app_server sends where the fingers were a report's time
+ago (the interval it measures, 4–16 ms, plus 1.5 ms), interpolated
+between the reports either side, as Android resamples touches. The glide
+goes out the same way, from where the fingers left off, so every frame
+gets exactly one scroll of one frame's worth and the hand-over into the
+glide is seamless. The lift's stop goes once the fingers' scroll is all
+out. Olo's apps (`scroll::Toolkit::Olo`: a process with an
+`olo-menus-PID.sock`) get the glide as a scroll of its own, source
+`continuous` (`Pacer::sending_glide`, focus.rs), which the kit hands egui
+as momentum, so it bounces off an edge as on a Mac; everything else sees
+one finger scroll whose stop is held back until the glide ends (GTK adds
+no kinetic scroll of its own). Test with `tsession flick NAME DY` (ten
+scroll steps, then the lift); `tsession scroll NAME 0 0` is a lift on its
+own; `tools/dev/scroll-check` measures it frame by frame (Testing).
 
 **Scrolling** goes the same distance in every program (`scroll.rs`, at
 the one place app_server hands a scroll to a client): Olo's apps
@@ -2629,7 +2683,11 @@ notifications.
   the group's title row already showing whose it is: `paint_mark` draws
   the named icon (ours for common theme names, `named_icons`), the app's
   desktop-entry icon, else a monogram for a site or an app with an accent,
-  else a generic one. Action buttons share the width when they must.
+  else a generic one. Finding an app's desktop entry can read every one
+  on the system (milliseconds each time; it held the History's Cards to
+  30 fps), so `app_icons` looks each app up once, on a worker
+  (`warm_app_icons`: the history's apps at start, a note's as it comes),
+  and keeps the answer. Action buttons share the width when they must.
   Banner `seconds` 0 ("Never" in Preferences) shows only errors.
   A click on a card runs its `default` action: the card asks the kit
   for an activation token from that click (`Cx::activation_token`) and

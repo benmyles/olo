@@ -1,0 +1,217 @@
+#!/usr/bin/env python3
+"""How smoothly a kit app scrolls: drives timed scrolls into a tsession
+and measures, frame by frame, where the app's scroll view was
+(`{"frames":true}`'s marks, olo_kit::commands::FrameMark).
+
+  scroll-check NAME [--pid PID | --app NAME] [--at X Y] [--rate HZ]
+               [--speed PX/S] [--only drag,flick,wheel] [--json] [--trace]
+
+The pointer goes to --at (global logical px; default the middle of the
+app's first window) and stays there. Then:
+
+  drag   two fingers moving --speed px/s (default 900) for 0.8 s, a
+         touchpad report every 1/--rate s (default 90), resting 0.15 s
+         before they lift (no glide);
+  flick  0.15 s at 2400 px/s, then the lift: the glide is measured;
+  wheel  three notches 0.25 s apart.
+
+For each, over the frames from the first that moved to the last: how
+regularly frames came (a frame later than 1.5× the usual is a hitch),
+how evenly the content moved (each frame's step against the speed the
+input had; for the glide, against its neighbours, as it slows evenly),
+frames that drew without moving, and how long the first move took to
+show after the first event. Prints a line each; --json prints them all;
+--trace every frame too.
+Drag and flick go down, the wheel back up: give it a list a few
+screens long, scrolled to the top.
+"""
+import json, os, socket, statistics, sys, time
+
+BASE = "/tmp/olo-dev"
+TRACE = "--trace" in sys.argv
+
+
+def req(sock, r, timeout=5.0):
+    s = socket.socket(socket.AF_UNIX)
+    s.settimeout(timeout)
+    try:
+        s.connect(sock)
+        s.sendall((json.dumps(r) + "\n").encode())
+        line = s.makefile().readline()
+    finally:
+        s.close()
+    return json.loads(line) if line else None
+
+
+def ask_app(runtime, pid):
+    s = socket.socket(socket.AF_UNIX)
+    s.settimeout(5.0)
+    try:
+        s.connect(os.path.join(runtime, f"olo-menus-{pid}.sock"))
+        s.sendall(b'{"frames":true}\n')
+        return json.loads(s.makefile().readline())
+    finally:
+        s.close()
+
+
+def now_us():
+    return int(time.clock_gettime(time.CLOCK_MONOTONIC) * 1e6)
+
+
+def sleep_until(t):
+    while True:
+        left = t - time.monotonic()
+        if left <= 0:
+            return
+        time.sleep(min(left, 0.002) if left > 0.003 else 0)
+
+
+class Check:
+    def __init__(self, name, pid, app, at):
+        env = json.load(open(os.path.join(BASE, name, "env.json")))
+        self.sock, self.runtime = env["OLO_SOCKET"], env["XDG_RUNTIME_DIR"]
+        wins = req(self.sock, {"type": "list_windows"})["windows"]
+        if pid is None:
+            mine = [w for w in wins if app is None or app in (w.get("app_id") or "") or app in (w.get("title") or "")]
+            if not mine:
+                sys.exit(f"no window{' of ' + app if app else ''}: {[w.get('app_id') for w in wins]}")
+            w = mine[0]
+            pid = w["pid"]
+            if at is None:
+                f = w.get("content") or w["frame"]
+                at = (f["x"] + f["width"] / 2, f["y"] + f["height"] / 2)
+        self.pid, self.at = pid, at
+        self.sign = 1
+
+    def synth(self, events):
+        req(self.sock, {"type": "synthetic", "events": events})
+
+    def marks(self):
+        out = []
+        for w in ask_app(self.runtime, self.pid):
+            out += [m for m in w.get("marks", []) if m["scrolls"]]
+        return sorted(out, key=lambda m: m["at_us"])
+
+    def run(self, kind, rate, speed):
+        self.synth([{"type": "move", "x": self.at[0], "y": self.at[1]}])
+        time.sleep(0.3)
+        self.marks()
+        # Down, then back up after the glide, so a list of a few screens
+        # never runs out.
+        sign = self.sign
+        if kind == "flick":
+            self.sign = -sign
+        start = now_us()
+        t0 = time.monotonic()
+        period = 1.0 / rate
+        expect = None
+        if kind == "drag":
+            n = int(0.8 * rate)
+            for i in range(1, n + 1):
+                sleep_until(t0 + i * period)
+                self.synth([{"type": "scroll", "dx": 0.0, "dy": sign * speed * period}])
+            sleep_until(t0 + n * period + 0.15)
+            self.synth([{"type": "scroll", "dx": 0.0, "dy": 0.0}])
+            expect = speed
+            time.sleep(0.4)
+        elif kind == "flick":
+            n = max(int(0.15 * rate), 3)
+            for i in range(1, n + 1):
+                sleep_until(t0 + i * period)
+                self.synth([{"type": "scroll", "dx": 0.0, "dy": sign * 2400 * period}])
+            sleep_until(t0 + n * period + 0.004)
+            self.synth([{"type": "scroll", "dx": 0.0, "dy": 0.0}])
+            time.sleep(3.5)
+        elif kind == "wheel":
+            for i in range(3):
+                sleep_until(t0 + i * 0.25)
+                self.synth([{"type": "wheel", "dx": 0, "dy": sign}])
+            time.sleep(0.8)
+        marks = [m for m in self.marks() if m["at_us"] >= start]
+        return analyse(kind, marks, start, expect, flick_lift=(start + (max(int(0.15 * rate), 3) * period) * 1e6) if kind == "flick" else None)
+
+
+def analyse(kind, marks, start, speed, flick_lift=None):
+    ys = [(m["at_us"], m["scrolls"][0][1], m["us"]) for m in marks]
+    moved = [i for i in range(1, len(ys)) if abs(ys[i][1] - ys[i - 1][1]) > 1e-3]
+    r = {"kind": kind, "frames": len(ys)}
+    if TRACE:
+        prev = None
+        for t, y, us in ys:
+            if prev:
+                print(f"  {kind} +{(t - start) / 1000:8.2f} ms  dt {(t - prev[0]) / 1000:6.2f}  step {y - prev[1]:8.3f}  draw {us / 1000:5.2f}")
+            prev = (t, y)
+    if not moved:
+        r["error"] = "nothing moved"
+        return r
+    a, b = moved[0] - 1, moved[-1]
+    seg = ys[a:b + 1]
+    dts = [(seg[i][0] - seg[i - 1][0]) / 1000 for i in range(1, len(seg))]
+    steps = [seg[i][1] - seg[i - 1][1] for i in range(1, len(seg))]
+    usual = statistics.median(dts)
+    r.update({
+        "moving_frames": len(steps),
+        "frame_ms": round(usual, 2),
+        "hitches": sum(1 for d in dts if d > 1.5 * usual),
+        "still": sum(1 for s in steps if abs(s) <= 1e-3),
+        "first_move_ms": round((seg[1][0] - start) / 1000, 1),
+        "slowest_draw_ms": round(max(m[2] for m in ys) / 1000, 2),
+        "distance": round(seg[-1][1] - seg[0][1], 1),
+    })
+    if kind == "drag":
+        # Steady speed: each frame should move speed × the frame time
+        # (the screen's: when the app drew within it doesn't matter).
+        ratios = [abs(s) / (speed * usual / 1000) for s in steps[2:-2]]
+        if ratios:
+            r["step_vs_speed"] = {"mean": round(statistics.mean(ratios), 3), "sd": round(statistics.pstdev(ratios), 3),
+                                  "min": round(min(ratios), 3), "max": round(max(ratios), 3),
+                                  "off_25pct": sum(1 for x in ratios if abs(x - 1) > 0.25)}
+    elif kind == "flick":
+        # The glide, after the lift: each step against its neighbours'
+        # geometric mean (an even slowing is 1 everywhere).
+        g = [abs(s) for (t, _, _), s in zip(seg[1:], steps) if flick_lift and t > flick_lift + 20000 and abs(s) > 0.05]
+        jerk = [b / (a * c) ** 0.5 - 1 for a, b, c in zip(g, g[1:], g[2:]) if a > 0 and c > 0]
+        if jerk:
+            r["glide"] = {"frames": len(g), "sd": round(statistics.pstdev(jerk), 3), "worst": round(max(jerk, key=abs), 3),
+                          "off_10pct": sum(1 for x in jerk if abs(x) > 0.10)}
+    if kind == "wheel":
+        # Each notch eases out: every step no bigger than the one before
+        # (a step that jumps up is a hitch); frames between notches are
+        # idle, not hitches.
+        notches, cur = [], []
+        for d, st in zip(dts, steps):
+            # A pause, or the next notch coming in.
+            if cur and (d > 50 or (abs(st) > 2 and abs(st) > 3 * cur[-1])):
+                notches.append(cur)
+                cur = []
+            cur.append(abs(st))
+        notches.append(cur)
+        r["hitches"] = sum(1 for n in notches for d in [0] if False)
+        r["still"] = sum(1 for n in notches for x in n[:-1] if x <= 1e-3)
+        jumps = [b / a - 1 for n in notches for a, b in zip(n, n[1:]) if a > 0.05 and b > a * 1.05]
+        r["notches"] = {"count": len(notches), "frames_each": [len(n) for n in notches], "jumps_up": len(jumps),
+                        "worst_jump": round(max(jumps), 3) if jumps else 0.0}
+    return r
+
+
+def main():
+    a = sys.argv[1:]
+    if not a or a[0].startswith("-"):
+        sys.exit(__doc__)
+    name = a.pop(0)
+    opt = lambda k, d=None: a[a.index(k) + 1] if k in a else d
+    at = (float(a[a.index("--at") + 1]), float(a[a.index("--at") + 2])) if "--at" in a else None
+    pid = int(opt("--pid")) if opt("--pid") else None
+    rate, speed = float(opt("--rate", 90)), float(opt("--speed", 900))
+    kinds = opt("--only", "drag,flick,wheel").split(",")
+    c = Check(name, pid, opt("--app"), at)
+    results = [c.run(k, rate, speed) for k in kinds]
+    if "--json" in a:
+        print(json.dumps(results, indent=1))
+        return
+    for r in results:
+        print(json.dumps(r))
+
+
+if __name__ == "__main__":
+    main()

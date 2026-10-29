@@ -759,76 +759,75 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
             }
             if evt.source() == AxisSource::Finger {
+                // Sent on the frame clock (`pace.rs`), the stop too.
                 let now = std::time::Instant::now();
                 let (h, v) = (evt.amount(Axis::Horizontal), evt.amount(Axis::Vertical));
                 if h.unwrap_or(0.0) == 0.0 && v.unwrap_or(0.0) == 0.0 {
-                    // The fingers lifted: glide on if they were moving,
-                    // and hold the stop back until the glide ends.
-                    if self.momentum.lifted(now) {
-                        self.start_glide();
-                        return;
-                    }
+                    self.pacer.lifted(now);
                 } else {
-                    self.momentum.scrolled(now, horizontal_amount, vertical_amount);
+                    self.scroll_direction = (evt.relative_direction(Axis::Horizontal), evt.relative_direction(Axis::Vertical));
+                    let out = self.pacer.fingers(now, horizontal_amount, vertical_amount);
+                    self.send_paced(out);
                 }
-                if h == Some(0.0) {
-                    frame = frame.stop(Axis::Horizontal);
-                }
-                if v == Some(0.0) {
-                    frame = frame.stop(Axis::Vertical);
-                }
-            } else {
-                self.stop_glide();
+                return;
             }
+            self.stop_glide();
             let pointer = self.pointer.clone();
             pointer.axis(self, frame);
             pointer.frame(self);
         }
-    }
-
-    /// Move the glide every few milliseconds until it ends or is stopped.
-    fn start_glide(&mut self) {
-        use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
-        let generation = self.momentum.generation;
-        let _ = self.handle.insert_source(Timer::from_duration(crate::momentum::STEP), move |_, _, state| {
-            if state.momentum.generation != generation || !state.momentum.gliding() {
-                return TimeoutAction::Drop;
-            }
-            let time = InputTime::now();
-            let pointer = state.pointer.clone();
-            match state.momentum.step(std::time::Instant::now()) {
-                Some((dx, dy)) => {
-                    let mut frame = AxisFrame::new(time).source(AxisSource::Finger);
-                    if dx != 0.0 {
-                        frame = frame.value(Axis::Horizontal, dx);
-                    }
-                    if dy != 0.0 {
-                        frame = frame.value(Axis::Vertical, dy);
-                    }
-                    pointer.axis(state, frame);
-                    pointer.frame(state);
-                    TimeoutAction::ToDuration(crate::momentum::STEP)
-                }
-                None => {
-                    let frame = AxisFrame::new(time).source(AxisSource::Finger).stop(Axis::Horizontal).stop(Axis::Vertical);
-                    pointer.axis(state, frame);
-                    pointer.frame(state);
-                    TimeoutAction::Drop
-                }
-            }
-        });
     }
 
     /// Fingers back on the touchpad, a click or another scroll: a glide
-    /// stops where it is.
+    /// stops where it is (what the fingers scrolled is sent first).
     pub fn stop_glide(&mut self) {
-        if self.momentum.cancel() {
-            let time = InputTime::now();
-            let frame = AxisFrame::new(time).source(AxisSource::Finger).stop(Axis::Horizontal).stop(Axis::Vertical);
-            let pointer = self.pointer.clone();
+        let out = self.pacer.stop();
+        self.send_paced(out);
+    }
+
+    /// A frame of `output`: if the pointer is on it, the scroll that
+    /// goes with it (`pace.rs`), before clients are told to draw.
+    pub fn pace_scroll(&mut self, output: &smithay::output::Output) {
+        let pointer = self.pointer.current_location();
+        let ours = match self.space.output_under(pointer).next() {
+            Some(o) => o == output,
+            None => self.space.outputs().next() == Some(output),
+        };
+        if ours {
+            let out = self.pacer.tick(std::time::Instant::now());
+            self.send_paced(out);
+        }
+    }
+
+    fn send_paced(&mut self, out: Vec<crate::pace::Out>) {
+        if out.is_empty() {
+            return;
+        }
+        // Stamped with when the fingers were where it says.
+        let time = InputTime::from_micros(InputTime::now().micros().saturating_sub(self.pacer.delay().as_micros() as u64));
+        let pointer = self.pointer.clone();
+        let (h_dir, v_dir) = self.scroll_direction;
+        for o in out {
+            let mut frame = AxisFrame::new(time).source(AxisSource::Finger);
+            match o {
+                crate::pace::Out::Move { dx, dy, glide } => {
+                    self.pacer.sending_glide = glide;
+                    if dx != 0.0 {
+                        frame = frame.relative_direction(Axis::Horizontal, h_dir).value(Axis::Horizontal, dx);
+                    }
+                    if dy != 0.0 {
+                        frame = frame.relative_direction(Axis::Vertical, v_dir).value(Axis::Vertical, dy);
+                    }
+                }
+                crate::pace::Out::Stop { glide } => {
+                    self.pacer.sending_glide = glide;
+                    frame = frame.stop(Axis::Horizontal).stop(Axis::Vertical);
+                }
+            }
             pointer.axis(self, frame);
             pointer.frame(self);
         }
+        self.pacer.sending_glide = false;
     }
 
     fn touch_location_transformed<B: InputBackend, E: AbsolutePositionEvent<B>>(
@@ -1157,24 +1156,14 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
             S::Scroll { dx, dy } => {
                 // As from the touchpad: 0, 0 is the fingers lifting.
+                let _ = (pointer, time);
                 let now = std::time::Instant::now();
-                let mut frame = AxisFrame::new(time).source(AxisSource::Finger);
                 if dx == 0.0 && dy == 0.0 {
-                    if self.momentum.lifted(now) {
-                        return self.start_glide();
-                    }
-                    frame = frame.stop(Axis::Horizontal).stop(Axis::Vertical);
+                    self.pacer.lifted(now);
                 } else {
-                    self.momentum.scrolled(now, dx, dy);
+                    let out = self.pacer.fingers(now, dx, dy);
+                    self.send_paced(out);
                 }
-                if dx != 0.0 {
-                    frame = frame.value(Axis::Horizontal, dx);
-                }
-                if dy != 0.0 {
-                    frame = frame.value(Axis::Vertical, dy);
-                }
-                pointer.axis(self, frame);
-                pointer.frame(self);
             }
         }
     }

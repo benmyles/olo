@@ -226,6 +226,31 @@ pub struct FrameTimes {
     pub total_us: u64,
     #[serde(default)]
     pub adapter: String,
+    /// Each frame drawn, the last [`MARKS`] of them: when, and where its
+    /// scroll views were, so a scroll's smoothness can be measured
+    /// (tools/dev/scroll-check).
+    #[serde(default)]
+    pub marks: Vec<FrameMark>,
+}
+
+/// How many [`FrameMark`]s a window keeps between asks.
+pub const MARKS: usize = 1200;
+
+/// One frame a window drew.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct FrameMark {
+    /// When it took its input, in CLOCK_MONOTONIC microseconds (the
+    /// clock app_server and input events go by).
+    pub at_us: u64,
+    /// How long it took to draw, to handing it to the GPU.
+    pub us: u32,
+    /// Of that, egui and the app's own code (the rest is tessellating
+    /// and the GPU).
+    #[serde(default)]
+    pub ui_us: u32,
+    /// The offset each scroll view in it showed (content x, y at its
+    /// top left), in the order they were drawn.
+    pub scrolls: Vec<[f32; 2]>,
 }
 
 /// What the layout review ([`crate::layout_review`]) found in one

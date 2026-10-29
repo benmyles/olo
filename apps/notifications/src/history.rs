@@ -552,7 +552,7 @@ fn paint_icon(painter: &egui::Painter, r: Rect, e: &store::Entry, person: bool) 
         icons::paint_round(painter, r, &tex, Color32::TRANSPARENT);
         return;
     }
-    let names = named_icons(e.icon.as_deref(), e.desktop_entry.as_deref(), &e.app);
+    let names = named_icons(painter.ctx(), e.icon.as_deref(), e.desktop_entry.as_deref(), &e.app);
     let generic = if e.kind == store::KindName::Error { "warning" } else { "info" };
     paint_mark(painter, r, &e.app, e.look.accent, e.via.is_some(), &names, generic);
 }

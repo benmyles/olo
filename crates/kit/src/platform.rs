@@ -180,6 +180,8 @@ struct Surface {
     /// the draw under way got as far as the GPU.
     times: crate::commands::FrameTimes,
     presented: bool,
+    /// How long the frame under way took in egui and the app's own code.
+    ui_us: u32,
     /// The menu bar, in window coordinates, from the last draw.
     bar_rect: Option<Rect>,
     cursor: egui::CursorIcon,
@@ -194,6 +196,14 @@ struct Surface {
     /// took it (`menu::take_chosen`), it goes to `App::command`.
     chosen: Option<(egui::Id, String)>,
     start: Instant,
+    /// The screen it was last shown on (its refresh rate times frames).
+    output: Option<wl_output::WlOutput>,
+    /// When the compositor shows frames: one of them (its frame callbacks,
+    /// smoothed), the others a frame's time apart from it.
+    shown: Option<Instant>,
+    /// The time the last frame was drawn for (egui's, seconds from
+    /// `start`).
+    frame_time: f64,
 }
 
 impl Surface {
@@ -215,6 +225,86 @@ impl Surface {
 }
 
 /// User data for our own protocol objects.
+/// Wheel notches being eased in: what is left to scroll of them.
+struct Wheel {
+    wl: WlSurface,
+    left: egui::Vec2,
+    modifiers: egui::Modifiers,
+    /// Begun (egui has had its start).
+    going: bool,
+}
+
+/// The time it takes a wheel's notch to ease most of the way in: 90% in
+/// a tenth of a second, as egui's own (a third of it each 60 Hz frame).
+const WHEEL_EASE: f64 = 0.1 / std::f64::consts::LN_10;
+
+/// This frame's share of the wheel's notches on `wl`, `since` seconds of
+/// screen time after its last frame (`interval` long): what is left
+/// shrinks evenly by the time shown, not the time drawn, and the last of
+/// it is a tiny step rather than egui's jump of up to a point. Sent as a
+/// scroll of its own (egui then moves by exactly that).
+fn ease_wheel(wheel: &mut Option<Wheel>, wl: &WlSurface, since: f64, interval: Duration) -> Vec<egui::Event> {
+    let Some(w) = wheel.as_mut().filter(|w| &w.wl == wl) else { return Vec::new() };
+    let event = |phase, delta| egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        source: egui::MouseWheelSource::Wheel,
+        delta,
+        phase,
+        modifiers: w.modifiers,
+    };
+    if w.left == egui::Vec2::ZERO {
+        // In a frame after the last step (egui drops a step that ends in
+        // its own frame).
+        let end = event(egui::TouchPhase::End, egui::Vec2::ZERO);
+        *wheel = None;
+        return vec![end];
+    }
+    let mut out = Vec::new();
+    // From a rest, a frame's worth.
+    let dt = if w.going { since.min(4.0 * interval.as_secs_f64()) } else { interval.as_secs_f64() };
+    if !w.going {
+        out.push(event(egui::TouchPhase::Start, egui::Vec2::ZERO));
+        w.going = true;
+    }
+    let mut step = w.left * (1.0 - (-dt / WHEEL_EASE).exp()) as f32;
+    if (w.left - step).length() < 0.1 {
+        step = w.left;
+    }
+    w.left -= step;
+    out.push(event(egui::TouchPhase::Move, step));
+    out
+}
+
+/// How long a frame of `output` lasts, at its refresh rate (60 Hz
+/// until it says).
+fn frame_interval(outputs: &OutputState, output: Option<&wl_output::WlOutput>) -> Duration {
+    let mhz = output
+        .and_then(|o| outputs.info(o))
+        .and_then(|i| i.modes.iter().find(|m| m.current).map(|m| m.refresh_rate))
+        .filter(|&r| r >= 10_000)
+        .unwrap_or(60_000);
+    Duration::from_nanos(1_000_000_000_000 / mhz as u64)
+}
+
+/// CLOCK_MONOTONIC in microseconds: the clock app_server's frames and
+/// input events go by.
+fn monotonic_us() -> u64 {
+    let mut t = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    // SAFETY: a valid timespec to fill.
+    unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut t) };
+    t.tv_sec as u64 * 1_000_000 + t.tv_nsec as u64 / 1000
+}
+
+fn trace_id() -> egui::Id {
+    egui::Id::unique("olo-scroll-trace")
+}
+
+/// A scroll view showed its content from `offset` this frame (its
+/// window's [`crate::commands::FrameMark`]).
+pub(crate) fn trace_scroll(ctx: &egui::Context, offset: egui::Vec2) {
+    ctx.data_mut(|d| d.get_temp_mut_or_default::<Vec<[f32; 2]>>(trace_id()).push([offset.x, offset.y]));
+}
+
 /// Where egui's repaint callbacks send (window, delay).
 static REPAINT: std::sync::OnceLock<Mutex<channel::Sender<(WindowId, Duration)>>> = std::sync::OnceLock::new();
 /// Clipboard text read on a helper thread, for the surface that pasted.
@@ -338,6 +428,11 @@ pub struct Kit {
     /// has drawn a frame since, or soon after.
     reviews: Vec<(std::sync::mpsc::Sender<Vec<crate::commands::WindowReview>>, Instant)>,
     modifiers: egui::Modifiers,
+    /// The touchpad scroll under way: the fingers' (`Trackpad`) or the
+    /// glide after them (`Momentum`).
+    scroll_phase: Option<egui::MouseWheelSource>,
+    /// Wheel notches still being eased in.
+    wheel: Option<Wheel>,
     /// The right Ctrl is down: app_server's, standing for ⌘ (see
     /// `theme_watch::command_key`).
     cmd_ctrl: bool,
@@ -761,6 +856,8 @@ impl Kit {
             trees: Vec::new(),
             reviews: Vec::new(),
             modifiers: egui::Modifiers::NONE,
+            scroll_phase: None,
+            wheel: None,
             cmd_ctrl: false,
             last_serial: 0,
             drag_out: None,
@@ -1247,6 +1344,7 @@ impl Kit {
             configure_due: None,
             reconfigure: false,
             times: Default::default(),
+            ui_us: 0,
             presented: false,
             bar_rect: None,
             cursor: egui::CursorIcon::Default,
@@ -1256,6 +1354,9 @@ impl Kit {
             context: None,
             chosen: None,
             start: Instant::now(),
+            output: None,
+            shown: None,
+            frame_time: 0.0,
         }
     }
 
@@ -1692,7 +1793,7 @@ impl Kit {
     }
 
     fn draw(&mut self, id: WindowId) {
-        let start = Instant::now();
+        let (start, at_us) = (Instant::now(), monotonic_us());
         self.draw_frame(id);
         if let Some(s) = self.surface_mut(id)
             && std::mem::take(&mut s.presented)
@@ -1701,6 +1802,12 @@ impl Kit {
             s.times.frames += 1;
             s.times.slowest_us = s.times.slowest_us.max(us);
             s.times.total_us += us;
+            let scrolls = s.ctx.data_mut(|d| d.remove_temp::<Vec<[f32; 2]>>(trace_id())).unwrap_or_default();
+            let marks = &mut s.times.marks;
+            if marks.len() >= crate::commands::MARKS {
+                marks.drain(..marks.len() + 1 - crate::commands::MARKS);
+            }
+            marks.push(crate::commands::FrameMark { at_us, us: us as u32, ui_us: std::mem::take(&mut s.ui_us), scrolls });
         }
     }
 
@@ -1720,22 +1827,41 @@ impl Kit {
         let hover = self.drag_hover(i);
         let s = &mut self.surfaces[i];
         s.dirty = false;
-        // A tap's release waits for the next frame (see input::split_taps).
-        let (events, later) = input::split_taps(std::mem::take(&mut s.events));
+        // A tap's release, or a scroll's end, waits for the next frame
+        // (see input::split_frame).
+        let (events, later) = input::split_frame(std::mem::take(&mut s.events));
         if !later.is_empty() {
             s.events = later;
             s.dirty = true;
         }
+        // Animations go by when the frame will be shown, not when it is
+        // drawn: at the compositor's next frame after now, a whole frame
+        // after the last (a frame drawn at once after a rest, and the
+        // next drawn when the compositor asks, are a frame apart on the
+        // screen though not in the drawing).
+        let interval = frame_interval(&self.output_state, s.output.as_ref());
+        let now = Instant::now();
+        let shown = s.shown.map_or(now + interval, |at| {
+            // (A quarter frame's grace: drawn as the compositor asks, a
+            // little early or late, is for its next frame.)
+            let frames = (now.saturating_duration_since(at).as_secs_f64() / interval.as_secs_f64() + 0.25).floor() + 1.0;
+            at + interval.mul_f64(frames)
+        });
+        let since = shown.saturating_duration_since(s.start).as_secs_f64().max(s.frame_time + 0.0005) - s.frame_time;
+        s.frame_time += since;
+        let wheel = ease_wheel(&mut self.wheel, &s.wl, since, interval);
         let mut raw = egui::RawInput {
             // egui assumes 2048 unless told.
             max_texture_side,
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, s.screen())),
-            time: Some(s.start.elapsed().as_secs_f64()),
+            time: Some(s.frame_time),
+            predicted_dt: interval.as_secs_f32(),
             focused: self.keyboard_focus.as_ref() == Some(&s.wl)
                 || matches!(s.role, Role::Popup { .. }),
             events,
             ..Default::default()
         };
+        raw.events.extend(wheel);
         raw.viewports
             .entry(ViewportId::ROOT)
             .or_default()
@@ -1758,6 +1884,7 @@ impl Kit {
         };
 
         let mut menu_events: Vec<MenuEvent> = Vec::new();
+        let ui_start = Instant::now();
         let output = if kind == 2 {
             // Popup menus are drawn entirely by the kit.
             let (owner, path, mut state) = match &s.role {
@@ -1902,6 +2029,9 @@ impl Kit {
         }
         if let Some(data) = crate::dnd::take_start(&ctx) {
             self.start_drag(id, data);
+        }
+        if let Some(s) = self.surface_mut(id) {
+            s.ui_us = ui_start.elapsed().as_micros() as u32;
         }
         self.present(id, output);
         if menu::take_paste(&ctx)
@@ -2463,10 +2593,33 @@ impl CompositorHandler for Kit {
     fn transform_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlSurface, _: wl_output::Transform) {}
     fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, surface: &WlSurface, _: u32) {
         if let Some(i) = self.index_of_wl(surface) {
-            self.surfaces[i].frame_pending = false;
+            let s = &mut self.surfaces[i];
+            s.frame_pending = false;
+            // Locked onto the compositor's frames, which come a frame
+            // apart give or take a little: the time they are told by
+            // comes with how long the compositor took to draw.
+            let now = Instant::now();
+            let interval = frame_interval(&self.output_state, s.output.as_ref());
+            s.shown = Some(match s.shown {
+                Some(was) if now > was => {
+                    let since = now.duration_since(was).as_secs_f64() / interval.as_secs_f64();
+                    let expected = was + interval.mul_f64(since.round());
+                    let off = now.duration_since(expected.min(now)).as_secs_f64() - expected.duration_since(now.min(expected)).as_secs_f64();
+                    if off.abs() < interval.as_secs_f64() / 4.0 {
+                        if off >= 0.0 { expected + Duration::from_secs_f64(off / 5.0) } else { expected - Duration::from_secs_f64(-off / 5.0) }
+                    } else {
+                        now
+                    }
+                }
+                _ => now,
+            });
         }
     }
-    fn surface_enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlSurface, _: &wl_output::WlOutput) {}
+    fn surface_enter(&mut self, _: &Connection, _: &QueueHandle<Self>, surface: &WlSurface, output: &wl_output::WlOutput) {
+        if let Some(i) = self.index_of_wl(surface) {
+            self.surfaces[i].output = Some(output.clone());
+        }
+    }
     fn surface_leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlSurface, _: &wl_output::WlOutput) {}
 }
 
@@ -2914,17 +3067,55 @@ impl PointerHandler for Kit {
                     } else {
                         (-horizontal.absolute as f32, -vertical.absolute as f32)
                     };
+                    let modifiers = self.modifiers;
+                    let wheel_event = |source, phase, delta| egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Point,
+                        source,
+                        delta,
+                        phase,
+                        modifiers,
+                    };
+                    if wheel {
+                        // Eased over the frames to come (`ease_wheel`).
+                        if dx != 0.0 || dy != 0.0 {
+                            match &mut self.wheel {
+                                Some(w) if w.wl == wl => w.left += vec2(dx, dy),
+                                _ => self.wheel = Some(Wheel { wl: wl.clone(), left: vec2(dx, dy), modifiers, going: false }),
+                            }
+                            if let Some(i) = self.index_of_wl(&wl) {
+                                self.surfaces[i].dirty = true;
+                            }
+                        }
+                        continue;
+                    }
+                    // Fingers on the touchpad, then (app_server's
+                    // `pace.rs`, as `Continuous`) the glide after them:
+                    // each a phase of its own, from its first move to its
+                    // stop, so egui follows the fingers exactly and
+                    // bounces a glide off an edge, as on a Mac.
+                    let source = if matches!(source, Some(AxisSource::Continuous)) {
+                        egui::MouseWheelSource::Momentum
+                    } else {
+                        egui::MouseWheelSource::Trackpad
+                    };
+                    let mut out = Vec::new();
+                    if (dx != 0.0 || dy != 0.0) && self.scroll_phase != Some(source) {
+                        // The glide takes over from the fingers with no
+                        // end between (egui would drop the fingers' last
+                        // move, or hold the glide a frame).
+                        out.push(wheel_event(source, egui::TouchPhase::Start, egui::Vec2::ZERO));
+                        self.scroll_phase = Some(source);
+                    }
                     if dx != 0.0 || dy != 0.0 {
-                        self.push_event(
-                            &wl,
-                            egui::Event::MouseWheel {
-                                unit: egui::MouseWheelUnit::Point,
-                                source: if wheel { egui::MouseWheelSource::Wheel } else { egui::MouseWheelSource::Trackpad },
-                                delta: vec2(dx, dy),
-                                phase: egui::TouchPhase::Move,
-                                modifiers: self.modifiers,
-                            },
-                        );
+                        out.push(wheel_event(source, egui::TouchPhase::Move, vec2(dx, dy)));
+                    }
+                    if (horizontal.stop || vertical.stop)
+                        && let Some(was) = self.scroll_phase.take()
+                    {
+                        out.push(wheel_event(was, egui::TouchPhase::End, egui::Vec2::ZERO));
+                    }
+                    for e in out {
+                        self.push_event(&wl, e);
                     }
                 }
             }

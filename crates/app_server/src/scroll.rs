@@ -13,8 +13,10 @@ use smithay::{backend::input::AxisSource, input::pointer::AxisFrame};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Toolkit {
-    /// Scrolls the values as given (Olo's kit, and the default).
+    /// Scrolls the values as given (the default).
     AsGiven,
+    /// Olo's kit: as given, and it takes a glide as one (`pace.rs`).
+    Olo,
     Chromium,
     Gtk4,
 }
@@ -31,11 +33,18 @@ pub fn toolkit(pid: i32) -> Toolkit {
     *seen.entry(pid).or_insert_with(|| {
         let exe = std::fs::read_link(format!("/proc/{pid}/exe")).ok();
         match exe.as_deref().and_then(Path::parent) {
+            // Every kit app answers on a socket named after its pid
+            // (olo_kit::commands).
+            _ if runtime_dir().join(format!("olo-menus-{pid}.sock")).exists() => Toolkit::Olo,
             Some(dir) if is_chromium(dir) => Toolkit::Chromium,
             _ if maps(pid, "/libgtk-4.so") => Toolkit::Gtk4,
             _ => Toolkit::AsGiven,
         }
     })
+}
+
+fn runtime_dir() -> std::path::PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR").map_or_else(|| format!("/run/user/{}", unsafe { libc::getuid() }).into(), Into::into)
 }
 
 /// Chromium's builds keep these beside the program (Chrome, Chromium,
@@ -52,7 +61,7 @@ fn maps(pid: i32, lib: &str) -> bool {
 /// `frame` as `toolkit` should get it.
 pub fn adjust(mut frame: AxisFrame, toolkit: Toolkit) -> AxisFrame {
     let scale = match (toolkit, frame.source) {
-        (Toolkit::AsGiven, _) => return frame,
+        (Toolkit::AsGiven | Toolkit::Olo, _) => return frame,
         (Toolkit::Chromium, Some(AxisSource::Wheel | AxisSource::WheelTilt)) => 48.0 / 120.0,
         (Toolkit::Chromium, _) => 1.0 / 12.0,
         (Toolkit::Gtk4, Some(AxisSource::Wheel | AxisSource::WheelTilt)) => return frame,

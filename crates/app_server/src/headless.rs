@@ -55,6 +55,14 @@ struct Screen {
     output: Output,
     target: GlesTexture,
     damage_tracker: OutputDamageTracker,
+    /// When its next frame is due.
+    due: std::time::Instant,
+}
+
+/// How long a frame of `output` lasts, at its mode's rate (60 or 120 Hz).
+fn frame_time(output: &Output) -> Duration {
+    let mhz = output.current_mode().map_or(60_000, |m| m.refresh).max(1_000);
+    Duration::from_nanos(1_000_000_000_000 / mhz as u64)
 }
 
 pub struct HeadlessData {
@@ -213,7 +221,7 @@ pub fn run_headless(size_arg: Option<&str>) {
         let buffer_size: Size<i32, Buffer> = size.into();
         let target: GlesTexture = renderer.create_buffer(Fourcc::Abgr8888, buffer_size).expect("offscreen buffer");
         let damage_tracker = OutputDamageTracker::from_output(&output);
-        screens.push(Screen { output, target, damage_tracker });
+        screens.push(Screen { output, target, damage_tracker, due: std::time::Instant::now() });
     }
 
     // Feedback naming the render node: Mesa's EGL finds the GPU through it
@@ -263,14 +271,24 @@ pub fn run_headless(size_arg: Option<&str>) {
     state.apply_mirroring();
 
 
-    let frame = Duration::from_micros(16_667);
+    // Each screen draws at its mode's rate, on time: the timer wakes for
+    // whichever is due next.
     event_loop
         .handle()
-        .insert_source(Timer::from_duration(frame), move |_, _, state| {
+        .insert_source(Timer::immediate(), move |_, _, state| {
+            let now = std::time::Instant::now();
             for i in 0..state.backend_data.screens.len() {
+                let screen = &mut state.backend_data.screens[i];
+                if screen.due > now + Duration::from_micros(500) {
+                    continue;
+                }
+                let frame = frame_time(&screen.output);
+                // Late by more than a frame (a stall): start afresh.
+                screen.due = if screen.due + frame < now { now + frame } else { screen.due + frame };
                 render_frame(state, i);
             }
-            TimeoutAction::ToDuration(frame)
+            let next = state.backend_data.screens.iter().map(|s| s.due).min().unwrap_or(now + Duration::from_millis(16));
+            TimeoutAction::ToInstant(next)
         })
         .expect("frame timer");
 
@@ -357,7 +375,8 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
     let output = source.as_ref().unwrap_or(&screen);
     let (start, name) = (std::time::Instant::now(), output.name());
     let now = state.clock.now();
-    let frame_target = now + Duration::from_micros(16_667);
+    let frame = frame_time(output);
+    let frame_target = now + frame;
     state.pre_repaint(output, frame_target);
     let desktop_color = state.desktop_color();
     let overlay = twitcher_overlay(state, output);
@@ -394,7 +413,7 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
                 let mut feedback = take_presentation_feedback(output, &state.space, &states);
                 feedback.presented(
                     frame_target,
-                    Refresh::fixed(Duration::from_micros(16_667)),
+                    Refresh::fixed(frame),
                     0,
                     wp_presentation_feedback::Kind::empty(),
                 );

@@ -132,16 +132,29 @@ pub fn cursor_icon(icon: egui::CursorIcon) -> smithay_client_toolkit::seat::poin
 /// release and what follows in the next frame. A touchpad tap delivers
 /// both at once, and egui would then never see the button down (no
 /// press-and-hold state for menus, scroll arrows or drags to begin).
-pub fn split_taps(mut events: Vec<egui::Event>) -> (Vec<egui::Event>, Vec<egui::Event>) {
+/// Likewise the end of a scroll after a move of it: egui drops a move
+/// not yet applied when the scroll ends.
+pub fn split_frame(mut events: Vec<egui::Event>) -> (Vec<egui::Event>, Vec<egui::Event>) {
     let mut pressed: Vec<egui::PointerButton> = Vec::new();
+    let mut scrolled = false;
     for (i, e) in events.iter().enumerate() {
-        if let egui::Event::PointerButton { button, pressed: down, .. } = e {
-            if *down {
-                pressed.push(*button);
-            } else if pressed.contains(button) {
-                let later = events.split_off(i);
-                return (events, later);
+        let later = match e {
+            egui::Event::PointerButton { button, pressed: down, .. } => {
+                if *down {
+                    pressed.push(*button);
+                }
+                !*down && pressed.contains(button)
             }
+            egui::Event::MouseWheel { phase: egui::TouchPhase::Move, delta, .. } => {
+                scrolled |= *delta != egui::Vec2::ZERO;
+                false
+            }
+            egui::Event::MouseWheel { phase: egui::TouchPhase::End | egui::TouchPhase::Cancel, .. } => scrolled,
+            _ => false,
+        };
+        if later {
+            let later = events.split_off(i);
+            return (events, later);
         }
     }
     (events, Vec::new())
@@ -150,7 +163,7 @@ pub fn split_taps(mut events: Vec<egui::Event>) -> (Vec<egui::Event>, Vec<egui::
 #[cfg(test)]
 mod tests {
     use super::*;
-    use egui::{Event, PointerButton, pos2};
+    use egui::{Event, PointerButton, TouchPhase, pos2};
 
     fn button(pressed: bool) -> Event {
         Event::PointerButton { pos: pos2(1.0, 1.0), button: PointerButton::Primary, pressed, modifiers: Default::default() }
@@ -159,17 +172,34 @@ mod tests {
     #[test]
     fn taps_take_two_frames() {
         let moved = Event::PointerMoved(pos2(1.0, 1.0));
-        let (now, later) = split_taps(vec![moved.clone(), button(true), button(false), moved.clone()]);
+        let (now, later) = split_frame(vec![moved.clone(), button(true), button(false), moved.clone()]);
         assert_eq!(now, vec![moved.clone(), button(true)]);
         assert_eq!(later, vec![button(false), moved.clone()]);
         // A release on its own (the press came in an earlier frame) stays.
-        let (now, later) = split_taps(vec![button(false), moved.clone()]);
+        let (now, later) = split_frame(vec![button(false), moved.clone()]);
         assert_eq!(now.len(), 2);
         assert!(later.is_empty());
         // Two taps in one frame: the second waits for the frame after.
-        let (_, later) = split_taps(vec![button(true), button(false), button(true), button(false)]);
-        let (now, rest) = split_taps(later);
+        let (_, later) = split_frame(vec![button(true), button(false), button(true), button(false)]);
+        let (now, rest) = split_frame(later);
         assert_eq!(now, vec![button(false), button(true)]);
         assert_eq!(rest, vec![button(false)]);
+    }
+
+    #[test]
+    fn a_scroll_ends_the_frame_after_it_moves() {
+        let wheel = |phase, dy| Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, dy),
+            phase,
+            modifiers: Default::default(),
+            source: egui::MouseWheelSource::Trackpad,
+        };
+        let (now, later) = split_frame(vec![wheel(TouchPhase::Start, 0.0), wheel(TouchPhase::Move, 5.0), wheel(TouchPhase::End, 0.0)]);
+        assert_eq!(now.len(), 2);
+        assert_eq!(later, vec![wheel(TouchPhase::End, 0.0)]);
+        // Ended in a frame of its own: at once.
+        let (now, later) = split_frame(vec![wheel(TouchPhase::End, 0.0)]);
+        assert_eq!((now.len(), later.len()), (1, 0));
     }
 }

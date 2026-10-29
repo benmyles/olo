@@ -6,7 +6,7 @@
 //! libinput reports the lift as a scroll of 0 ("axis stop"). That stop is
 //! held back until the glide ends, so clients see one continuous finger
 //! scroll and toolkits with kinetic scrolling of their own (GTK) don't
-//! add theirs on top.
+//! add theirs on top. `pace.rs` sends it, a frame's worth a frame.
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
@@ -21,7 +21,8 @@ const MIN_START: f64 = 0.3;
 const MIN_SPEED: f64 = 0.015;
 /// Speed kept per millisecond (macOS's "normal" deceleration).
 const DECAY: f64 = 0.997;
-/// How often the glide moves.
+/// A touchpad's usual report interval: the shortest time a flick's speed
+/// is measured over.
 pub const STEP: Duration = Duration::from_millis(8);
 
 #[derive(Debug)]
@@ -70,10 +71,17 @@ impl Momentum {
         if now.duration_since(last) > RESTED {
             return false;
         }
-        let recent = samples.iter().filter(|s| s.0 >= first);
-        let (sx, sy) = recent.fold((0.0, 0.0), |(x, y), s| (x + s.1, y + s.2));
-        // Over the time the moves took, at least one step's worth.
-        let ms = (now.duration_since(first).as_secs_f64() * 1000.0).max(STEP.as_secs_f64() * 1000.0);
+        // Each move is how far the fingers went since the report before
+        // it: the first in the window went before it began, so the speed
+        // is the rest over the time from it to the last. One move alone
+        // is taken to have taken a usual report's time.
+        let recent: Vec<_> = samples.iter().filter(|s| s.0 >= first).collect();
+        let (sx, sy, ms) = if recent.len() > 1 {
+            let (x, y) = recent[1..].iter().fold((0.0, 0.0), |(x, y), s| (x + s.1, y + s.2));
+            (x, y, (last.duration_since(first).as_secs_f64() * 1000.0).max(1.0))
+        } else {
+            (recent[0].1, recent[0].2, STEP.as_secs_f64() * 1000.0)
+        };
         let (vx, vy) = (sx / ms, sy / ms);
         if vx.hypot(vy) < MIN_START {
             return false;
@@ -81,6 +89,15 @@ impl Momentum {
         self.generation += 1;
         self.glide = Some(Glide { vx, vy, last: now });
         true
+    }
+
+    /// Glide from `t`, where the fingers left off, rather than from the
+    /// lift (`pace.rs` sends the fingers' scroll a little late, and the
+    /// glide goes on from the end of it).
+    pub fn glide_from(&mut self, t: Instant) {
+        if let Some(g) = &mut self.glide {
+            g.last = t;
+        }
     }
 
     /// The glide's move since the last step, or None when it has ended

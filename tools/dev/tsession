@@ -25,6 +25,7 @@
   tsession flick NAME DY                       a fast two-finger scroll that glides on
   tsession theme NAME light|dark
   tsession scale NAME N                        every screen at scale N (1, 1.5, 2: check all three)
+  tsession hz NAME N                           every screen at N Hz (60 or 120; 60 to start)
   tsession review NAME [--all]                 the layout review of every Olo window (kit
                                                apps): errors, then what to look at closely;
                                                --all: Deskbar and other layer surfaces too
@@ -453,6 +454,11 @@ def main():
             o.pop("scale", None)
         print(ipc(name, {"type": "set_settings", "settings": st}))
         time.sleep(0.6)
+    elif cmd == "hz":
+        for o in ipc(name, {"type": "outputs"})["outputs"]:
+            mode = dict(o["current_mode"], refresh=int(float(a[0]) * 1000))
+            print(ipc(name, {"type": "configure_output", "name": o["name"], "config": {"mode": mode}}))
+        time.sleep(0.3)
     elif cmd == "review":
         review(name, "--all" in a)
     elif cmd == "ipc":

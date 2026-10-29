@@ -156,10 +156,18 @@ impl<BackendData: Backend> PointerTarget<AnvilState<BackendData>> for PointerFoc
         data: &mut AnvilState<BackendData>,
         frame: AxisFrame,
     ) {
-        // Scrolled as far as in Olo's own apps, whatever draws it.
+        // Scrolled as far as in Olo's own apps, whatever draws it; a
+        // glide, to Olo's apps, as one (`pace.rs`).
         let frame = match self {
             Self::WlSurface(w) => match w.client().and_then(|c| crate::state::client_pid(&c, &data.display_handle)) {
-                Some(pid) => crate::scroll::adjust(frame, crate::scroll::toolkit(pid)),
+                Some(pid) => {
+                    let toolkit = crate::scroll::toolkit(pid);
+                    let mut frame = crate::scroll::adjust(frame, toolkit);
+                    if toolkit == crate::scroll::Toolkit::Olo && data.pacer.sending_glide {
+                        frame.source = Some(smithay::backend::input::AxisSource::Continuous);
+                    }
+                    frame
+                }
                 None => frame,
             },
             _ => frame,

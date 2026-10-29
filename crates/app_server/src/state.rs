@@ -151,7 +151,10 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub space: Space<WindowElement>,
     pub popups: PopupManager,
     /// Touchpad scrolls gliding on after the fingers lift.
-    pub momentum: crate::momentum::Momentum,
+    /// Finger scrolls and glides, sent on the frame clock (`pace.rs`).
+    pub pacer: crate::pace::Pacer,
+    /// Which way the fingers' scroll goes (natural or not), for clients.
+    pub scroll_direction: (smithay::backend::input::AxisRelativeDirection, smithay::backend::input::AxisRelativeDirection),
 
     // smithay state
     pub compositor_state: CompositorState,
@@ -1043,7 +1046,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             handle,
             space: Space::default(),
             popups: PopupManager::default(),
-            momentum: Default::default(),
+            pacer: Default::default(),
+            scroll_direction: (smithay::backend::input::AxisRelativeDirection::Identical, smithay::backend::input::AxisRelativeDirection::Identical),
             compositor_state,
             data_device_state,
             layer_shell_state,
@@ -1171,6 +1175,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
 impl<BackendData: Backend + 'static> AnvilState<BackendData> {
     pub fn pre_repaint(&mut self, output: &Output, frame_target: impl Into<Time<Monotonic>>) {
         let frame_target = frame_target.into();
+        self.pace_scroll(output);
         self.update_wallpaper(output);
 
         #[allow(clippy::mutable_key_type)]

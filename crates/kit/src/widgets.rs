@@ -1528,8 +1528,26 @@ impl ScrollView {
         let rect = ui.available_rect_before_wrap();
         let mut out = None;
         self.show_area(ui, rect, |area, ui| {
-            let o = area.show_rows(ui, row_height, total, |ui, range| out = Some(add(ui, range)));
-            (o.state, o.content_size, o.id)
+            // egui's `show_rows`, keeping the viewport for the frame trace.
+            let mut shown = Vec2::ZERO;
+            let o = area.show_viewport(ui, |ui, vp| {
+                shown = vp.min.to_vec2();
+                let step = row_height + ui.spacing().item_spacing.y;
+                ui.set_height((step * total as f32 - ui.spacing().item_spacing.y).max(0.0));
+                let mut first = (vp.min.y / step).floor() as usize;
+                let mut end = (vp.max.y / step).ceil() as usize + 1;
+                if end > total {
+                    first = total.saturating_sub(end.saturating_sub(first));
+                    end = total;
+                }
+                let top = ui.max_rect().top();
+                let rect = Rect::from_x_y_ranges(ui.max_rect().x_range(), top + first as f32 * step..=top + end as f32 * step);
+                ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                    ui.skip_ahead_auto_ids(first);
+                    out = Some(add(ui, first..end));
+                });
+            });
+            (o.state, o.content_size, shown)
         });
         out.unwrap()
     }
@@ -1538,8 +1556,12 @@ impl ScrollView {
     pub fn show_in<R>(self, ui: &mut Ui, rect: Rect, add: impl FnOnce(&mut Ui, Rect) -> R) -> R {
         let mut out = None;
         self.show_area(ui, rect, |area, ui| {
-            let o = area.show_viewport(ui, |ui, vp| out = Some(add(ui, vp)));
-            (o.state, o.content_size, o.id)
+            let mut shown = Vec2::ZERO;
+            let o = area.show_viewport(ui, |ui, vp| {
+                shown = vp.min.to_vec2();
+                out = Some(add(ui, vp));
+            });
+            (o.state, o.content_size, shown)
         });
         out.unwrap()
     }
@@ -1562,7 +1584,7 @@ impl ScrollView {
         self,
         ui: &mut Ui,
         rect: Rect,
-        body: impl FnOnce(egui::ScrollArea, &mut Ui) -> (egui::scroll_area::State, Vec2, Id),
+        body: impl FnOnce(egui::ScrollArea, &mut Ui) -> (egui::scroll_area::State, Vec2, Vec2),
     ) {
         let p = style::palette(ui.ctx());
         // Inside the sunken border's two lines, on device pixels.
@@ -1599,7 +1621,8 @@ impl ScrollView {
         }
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(content).layout(egui::Layout::top_down(Align::Min)));
         child.set_clip_rect(content.intersect(ui.clip_rect()));
-        let (state, full, _area_id) = body(area, &mut child);
+        let (state, full, shown) = body(area, &mut child);
+        crate::platform::trace_scroll(ui.ctx(), shown);
         if self.auto_hide {
             ui.ctx().data_mut(|d| d.insert_temp(size_id, full.y));
             if (full.y > content.height()) != vertical_bar {
