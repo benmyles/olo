@@ -5,6 +5,36 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Tracker's item count lines up with its list
+
+*04:12* — The count bar's text starts in line with the list's icons above it (here at 1× and 2×), and the free space keeps the same inset from the right.
+
+![Tracker's item count lines up with its list](2026-10-29/041208-tracker-s-item-count-lines-up-with-its-list.png)
+
+### Notifications: times sit on the title's baseline
+
+*04:12* — The app and time line up with the title's baseline rather than its box, and rows land on whole device pixels at 1.5× too.
+
+![Notifications: times sit on the title's baseline](2026-10-29/041208-notifications-times-sit-on-the-title-s-baseline.png)
+
+### Read-only documents grey out their Font menu
+
+*04:12* — A file you can't write opens read-only: Font and Document's commands are disabled, and so are their submenus, rather than doing nothing when chosen.
+
+![Read-only documents grey out their Font menu](2026-10-29/041208-read-only-documents-grey-out-their-font-menu.png)
+
+### StyledEdit keeps its place through an upgrade
+
+*04:12* — After an in-place reload StyledEdit comes back scrolled where it was, with its caret, its selection and any unsaved edits (here line 614, edited).
+
+![StyledEdit keeps its place through an upgrade](2026-10-29/041207-stylededit-keeps-its-place-through-an-upgrade.png)
+
+### StyledEdit on the kit's text editor
+
+*04:12* — StyledEdit now draws with olo_kit::editor, one laid-out paragraph each, so a long document types and scrolls inside a frame. Left, centred, right and justified text keep their edges on the margin, trailing spaces and all.
+
+![StyledEdit on the kit's text editor](2026-10-29/041207-stylededit-on-the-kit-s-text-editor.png)
+
 ### Deskbar lights the workspace showing
 
 *01:48* — The whole workspace showing, its heading and its applications, is washed in the selection's colour across the bar with a hairline of the selection's edge above and below, like a BListView selection as big as the group; the other workspaces stay on the plain panel. Its heading takes the selection's text colour, and its rows shade that ground for focus, hover and separators, so it follows every theme and colour set, light, dark and night. Twitcher's choice inside it takes the menu's stronger selection so it still stands out. Light and dark at 2×.

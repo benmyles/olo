@@ -1573,6 +1573,21 @@ impl ScrollView {
         ctx.request_repaint();
     }
 
+    /// How far to scroll this frame with a selection dragged `past` the
+    /// view's edge (logical pixels beyond it, negative above or left):
+    /// as the arrows scroll just past it, faster the further out, at
+    /// the same speed whatever the frame rate. Asks for the next frame
+    /// while it scrolls.
+    pub fn edge_scroll(ctx: &egui::Context, past: Vec2) -> Vec2 {
+        if past == Vec2::ZERO {
+            return Vec2::ZERO;
+        }
+        ctx.request_repaint();
+        let dt = ctx.input(|i| i.stable_dt).clamp(0.001, 0.05);
+        let speed = |d: f32| if d == 0.0 { 0.0 } else { d.signum() * (320.0 + 12.0 * d.abs()).min(4000.0) };
+        vec2(speed(past.x), speed(past.y)) * dt
+    }
+
     /// Scroll the view `id` so content point `offset` is at its top-left,
     /// on its next frame.
     pub fn scroll_to(ctx: &egui::Context, id: impl std::hash::Hash + std::fmt::Debug, offset: Vec2) {

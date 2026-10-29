@@ -9,6 +9,7 @@ mod app;
 pub mod brand;
 pub mod commands;
 pub mod dnd;
+pub mod editor;
 pub mod emoji;
 pub use olo_xdg::{apps, desktop_entry, legacy, mime, open, themes, trash, wallpapers};
 pub mod file_panel;

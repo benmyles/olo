@@ -515,10 +515,11 @@ fn count_bar(ui: &Ui, rect: Rect, f: &FolderWin, p: &Palette) {
     };
     let small = FontId::proportional(style::SMALL_SIZE);
     let cy = rect.center().y + style::hairline(ui.ctx()); // below the two-line etched edge
-    style::label(painter, rect.left() + m::SPACING, cy, Align::Min, &count, small.clone(), c(p.panel_text));
+    // In line with the list's first column (its icons) above.
+    style::label(painter, rect.left() + m::CELL_INSET, cy, Align::Min, &count, small.clone(), c(p.panel_text));
     if let Some((free, _)) = fs::fs_space(&f.current_dir()) {
         let text = format!("{} free", fs::format_size(free));
-        style::label(painter, rect.right() - m::SPACING, cy, Align::Max, &text, small, style::disabled_text(p));
+        style::label(painter, rect.right() - m::CELL_INSET, cy, Align::Max, &text, small, style::disabled_text(p));
     }
 }
 

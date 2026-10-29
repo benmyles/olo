@@ -1,11 +1,15 @@
 use std::cell::RefCell;
 
 use smithay::{
+    backend::input::InputTime,
     desktop::{
         PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, Space, Window,
         WindowSurfaceType, find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
     },
-    input::{Seat, pointer::Focus},
+    input::{
+        Seat,
+        pointer::{Focus, MotionEvent},
+    },
     output::Output,
     reexports::{
         wayland_protocols::xdg::{decoration as xdg_decoration, shell::server::xdg_toplevel},
@@ -295,13 +299,36 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         // window on the next key press, so a menu's window would show no
         // caret (and a text field no selection) until then. Give it back as
         // soon as the last popup of the grab is gone.
-        let Some(root) = self.popup_root_focus(&PopupKind::Xdg(surface)) else { return };
+        let root = self.popup_root_focus(&PopupKind::Xdg(surface));
         self.handle.insert_idle(move |state| {
-            let Some(keyboard) = state.seat.get_keyboard() else { return };
-            // While a parent menu is still open, its grab ignores this.
-            if keyboard.is_grabbed() {
+            if let Some(root) = root
+                && let Some(keyboard) = state.seat.get_keyboard()
+                // While a parent menu is still open, its grab ignores this.
+                && keyboard.is_grabbed()
+            {
                 keyboard.set_focus(state, Some(root), smithay::utils::SERIAL_COUNTER.next_serial());
             }
+            // The pointer's popup grab likewise ends only on the next motion,
+            // and then enters the window where the pointer was before that
+            // motion (on the chosen item), dropping the motion itself: a
+            // click on a menu title right after choosing an item would land
+            // on the text under the item instead. Move the pointer where it
+            // is now, which ends the grab and enters whatever is under it
+            // (once the popup manager has seen the popup go).
+            state.popups.cleanup();
+            let pointer = state.pointer.clone();
+            let location = pointer.current_location();
+            let under = state.surface_under(location);
+            pointer.motion(
+                state,
+                under,
+                &MotionEvent {
+                    location,
+                    serial: smithay::utils::SERIAL_COUNTER.next_serial(),
+                    time: InputTime::now(),
+                },
+            );
+            pointer.frame(state);
         });
     }
 
@@ -407,6 +434,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     });
                 });
 
+                surface.with_pending_state(|state| {
+                    state.states.set(xdg_toplevel::State::Resizing);
+                });
+                surface.send_pending_configure();
+
                 let grab = TouchResizeSurfaceGrab {
                     start_data,
                     window,
@@ -459,6 +491,14 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 initial_window_size,
             });
         });
+
+        // Resizing from the press, before it moves: a client can get
+        // ready (the kit makes room in its swapchain, which costs a frame,
+        // while nothing moves yet).
+        surface.with_pending_state(|state| {
+            state.states.set(xdg_toplevel::State::Resizing);
+        });
+        surface.send_pending_configure();
 
         let grab = PointerResizeSurfaceGrab {
             start_data,

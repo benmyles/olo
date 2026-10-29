@@ -1,6 +1,6 @@
 //! A styled document: the text and runs of styles over it (byte lengths
-//! that add up to the text's), kept in step with edits made by the text
-//! field by diffing (see [`Doc::sync`]), plus undo.
+//! that add up to the text's), edited through [`Doc::edit`] (the editor's
+//! typing), plus undo. Positions and selections are bytes.
 //!
 //! On disk it is plain UTF-8 text; the styles, alignment and wrapping go in
 //! extended attributes beside it, as BeOS kept them in BFS attributes, so
@@ -63,13 +63,25 @@ pub enum Align {
     Justify,
 }
 
-/// A snapshot for undo.
+/// A step to undo: bytes `at..at + now` of the text were `was`, and the
+/// runs were `runs`. (Only what changed: a long document isn't copied
+/// for every word typed.)
 #[derive(Clone)]
 struct State {
-    text: String,
+    at: usize,
+    now: usize,
+    was: String,
     runs: Vec<Run>,
-    /// Selection to restore, in characters.
+    /// Selection to restore.
     selection: Range<usize>,
+}
+
+/// What an edit did to the text: bytes `removed` became `inserted` bytes
+/// (for the editor to lay out again).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Change {
+    pub removed: Range<usize>,
+    pub inserted: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -80,9 +92,10 @@ enum EditKind {
 }
 
 pub struct Doc {
-    /// The text as of the last sync (the text field holds the live copy).
     text: String,
     runs: Vec<Run>,
+    /// Where each run starts (to find one without walking them all).
+    starts: Vec<usize>,
     pub align: Align,
     pub wrap: bool,
     /// Style for text typed next at `typing.0` (bytes), set by a style
@@ -134,24 +147,6 @@ fn split_at(runs: &mut Vec<Run>, at: usize) -> usize {
     runs.len()
 }
 
-/// Back `i` off to a char boundary of `s`.
-fn floor_boundary(s: &str, mut i: usize) -> usize {
-    while i > 0 && !s.is_char_boundary(i) {
-        i -= 1;
-    }
-    i
-}
-
-/// Byte offset of char index `c` in `s`.
-pub fn byte_of(s: &str, c: usize) -> usize {
-    s.char_indices().nth(c).map_or(s.len(), |(b, _)| b)
-}
-
-/// Char index of byte offset `b` in `s`.
-pub fn char_of(s: &str, b: usize) -> usize {
-    s[..b.min(s.len())].chars().count()
-}
-
 impl Doc {
     pub fn new(text: String, runs: Option<Vec<Run>>) -> Doc {
         let mut runs = runs.unwrap_or_default();
@@ -167,9 +162,10 @@ impl Doc {
             runs = vec![Run { len: text.len(), style: Style::default() }];
         }
         normalize(&mut runs);
-        Doc {
+        let mut d = Doc {
             text,
             runs,
+            starts: Vec::new(),
             align: Align::Left,
             wrap: true,
             typing: None,
@@ -179,6 +175,17 @@ impl Doc {
             last_edit: None,
             generation: 1,
             saved_generation: 1,
+        };
+        d.index_runs();
+        d
+    }
+
+    fn index_runs(&mut self) {
+        self.starts.clear();
+        let mut pos = 0;
+        for r in &self.runs {
+            self.starts.push(pos);
+            pos += r.len;
         }
     }
 
@@ -202,55 +209,47 @@ impl Doc {
         {
             return style.clone();
         }
-        let mut pos = 0;
-        let mut last = None;
-        for r in &self.runs {
-            if at > pos && at <= pos + r.len {
-                return r.style.clone();
-            }
-            if at == 0 && r.len > 0 {
-                return r.style.clone();
-            }
-            pos += r.len;
-            last = Some(&r.style);
-        }
-        last.cloned().unwrap_or_default()
+        // The run with the character before `at` (the first, at 0).
+        let i = if at == 0 { 0 } else { self.starts.partition_point(|&s| s < at).saturating_sub(1) };
+        self.runs.get(i).or(self.runs.last()).map(|r| r.style.clone()).unwrap_or_default()
     }
 
-    /// The text field changed it to `new`: work out what was replaced and
-    /// move the styles to match. `selection` is the selection before the
-    /// change, for undo.
+    /// The text became `new` (a test's way of typing): what was replaced
+    /// goes through [`edit`](Self::edit).
+    #[cfg(test)]
     pub fn sync(&mut self, new: &str, selection: Range<usize>) {
-        if new == self.text {
+        let (removed, inserted) = olo_kit::editor::difference(&self.text, new);
+        let inserted = new[removed.start..removed.start + inserted].to_owned();
+        self.edit(removed, &inserted, selection);
+    }
+
+    /// Replace bytes `removed` with `inserted`, as typed: the styles move
+    /// to match, and typing (or deleting) runs together into one step to
+    /// undo. `selection` is the selection before the change, for undo.
+    pub fn edit(&mut self, removed: Range<usize>, inserted: &str, selection: Range<usize>) {
+        if removed.is_empty() && inserted.is_empty() {
             return;
         }
-        let old = &self.text;
-        let mut p = old.bytes().zip(new.bytes()).take_while(|(a, b)| a == b).count();
-        p = floor_boundary(old, p.min(old.len())).min(floor_boundary(new, p.min(new.len())));
-        let max_s = (old.len() - p).min(new.len() - p);
-        let mut s = old.bytes().rev().zip(new.bytes().rev()).take(max_s).take_while(|(a, b)| a == b).count();
-        while s > 0 && (!old.is_char_boundary(old.len() - s) || !new.is_char_boundary(new.len() - s)) {
-            s -= 1;
-        }
-        let removed = p..old.len() - s;
-        let inserted = &new[p..new.len() - s];
-
-        // Undo: typing runs together into one step, as do deletions.
+        let p = removed.start;
+        // Typing over a selection starts a step that what's typed next
+        // joins, so one undo brings the selection back.
         let kind = match (removed.is_empty(), inserted.chars().count()) {
-            (true, 1) if !inserted.contains(char::is_whitespace) => EditKind::Typing,
+            (_, 1) if !inserted.contains(char::is_whitespace) => EditKind::Typing,
             (false, 0) if removed.len() <= 4 => EditKind::Deleting,
             _ => EditKind::Other,
         };
         let joins = matches!(self.last_edit, Some((k, t, at)) if k == kind && kind != EditKind::Other
             && t.elapsed() < Duration::from_secs(2)
-            && (at == p || at == removed.end));
-        if !joins {
-            self.push_undo(selection);
+            && (at == p || at == removed.end))
+            && (kind != EditKind::Typing || removed.is_empty())
+            && !self.undo.is_empty();
+        if joins {
+            self.extend_undo(removed.clone(), inserted.len());
+        } else {
+            self.push_undo(removed.clone(), inserted.len(), selection);
         }
-        let caret = p + inserted.len();
-        self.last_edit = Some((kind, Instant::now(), caret));
-        let inserted = inserted.to_owned();
-        self.splice(removed, &inserted);
+        self.last_edit = Some((kind, Instant::now(), p + inserted.len()));
+        self.splice(removed, inserted);
         self.redo.clear();
         self.generation += 1;
     }
@@ -280,6 +279,7 @@ impl Doc {
         if self.runs.is_empty() && !self.text.is_empty() {
             self.runs.push(Run { len: self.text.len(), style: Style::default() });
         }
+        self.index_runs();
         debug_assert_eq!(self.runs.iter().map(|r| r.len).sum::<usize>(), self.text.len());
         // Typing at the remembered spot used the pending style; it moves on.
         self.typing = self.typing.take().filter(|(pos, _)| *pos == p && inserted.is_empty());
@@ -287,11 +287,11 @@ impl Doc {
 
     /// Replace every range (bytes, in order, not overlapping) with `with`,
     /// as one undoable step.
-    pub fn replace_all(&mut self, ranges: &[Range<usize>], with: &str, selection: Range<usize>) {
-        if ranges.is_empty() {
-            return;
-        }
-        self.push_undo(selection);
+    pub fn replace_all(&mut self, ranges: &[Range<usize>], with: &str, selection: Range<usize>) -> Option<Change> {
+        let (first, last) = (ranges.first()?, ranges.last()?);
+        let removed = first.start..last.end;
+        let inserted = removed.len() + ranges.len() * with.len() - ranges.iter().map(|r| r.len()).sum::<usize>();
+        self.push_undo(removed.clone(), inserted, selection);
         self.last_edit = None;
         self.typing = None;
         for r in ranges.iter().rev() {
@@ -299,14 +299,31 @@ impl Doc {
         }
         self.redo.clear();
         self.generation += 1;
+        Some(Change { removed, inserted })
     }
 
-    fn push_undo(&mut self, selection: Range<usize>) {
-        self.undo.push(State { text: self.text.clone(), runs: self.runs.clone(), selection });
+    /// Before bytes `removed` become `inserted` bytes: a step to undo it.
+    fn push_undo(&mut self, removed: Range<usize>, inserted: usize, selection: Range<usize>) {
+        self.undo.push(State { at: removed.start, now: inserted, was: self.text[removed].to_owned(), runs: self.runs.clone(), selection });
         // Plenty, without keeping every keystroke of a long session.
         if self.undo.len() > 500 {
             self.undo.remove(0);
         }
+    }
+
+    /// Before bytes `removed` become `inserted` bytes, next to (or in) what
+    /// the last step changed: that step takes this in too.
+    fn extend_undo(&mut self, removed: Range<usize>, inserted: usize) {
+        let text = &self.text;
+        let Some(top) = self.undo.last_mut() else { return };
+        let (lo, hi) = (removed.start.min(top.at), removed.end.max(top.at + top.now));
+        let mut was = String::with_capacity(hi - lo);
+        was.push_str(&text[lo..top.at]);
+        was.push_str(&top.was);
+        was.push_str(&text[(top.at + top.now).min(hi)..hi]);
+        top.was = was;
+        top.now = hi - lo - removed.len() + inserted;
+        top.at = lo;
     }
 
     /// Change the style over `range` (bytes) with `f`. With nothing
@@ -318,7 +335,7 @@ impl Doc {
             self.typing = Some((range.start, style));
             return;
         }
-        self.push_undo(selection);
+        self.push_undo(range.start..range.start, 0, selection);
         self.last_edit = None;
         let start = split_at(&mut self.runs, range.start);
         let end = split_at(&mut self.runs, range.end);
@@ -326,6 +343,7 @@ impl Doc {
             f(&mut r.style);
         }
         normalize(&mut self.runs);
+        self.index_runs();
         self.redo.clear();
         self.generation += 1;
     }
@@ -340,7 +358,8 @@ impl Doc {
         let text = self.text[from.clone()].to_owned();
         let clip = self.clip.take();
         self.copied(from.clone());
-        self.push_undo(selection);
+        let region = from.start.min(to)..from.end.max(to);
+        self.push_undo(region.clone(), region.len(), selection);
         self.last_edit = None;
         self.typing = None;
         self.splice(from.clone(), "");
@@ -369,62 +388,53 @@ impl Doc {
         !self.redo.is_empty()
     }
 
-    /// Step back; returns the selection to show (characters).
-    pub fn undo(&mut self, selection: Range<usize>) -> Option<Range<usize>> {
+    /// Step back; returns the selection to show and what changed.
+    pub fn undo(&mut self, selection: Range<usize>) -> Option<(Range<usize>, Change)> {
         let prev = self.undo.pop()?;
-        self.redo.push(State { text: std::mem::replace(&mut self.text, prev.text), runs: std::mem::replace(&mut self.runs, prev.runs), selection });
-        self.last_edit = None;
-        self.typing = None;
-        self.generation += 1;
-        Some(prev.selection)
+        let (to, change) = self.restore(prev, selection, false);
+        Some((to, change))
     }
 
-    pub fn redo(&mut self, selection: Range<usize>) -> Option<Range<usize>> {
+    pub fn redo(&mut self, selection: Range<usize>) -> Option<(Range<usize>, Change)> {
         let next = self.redo.pop()?;
-        self.undo.push(State { text: std::mem::replace(&mut self.text, next.text), runs: std::mem::replace(&mut self.runs, next.runs), selection });
+        Some(self.restore(next, selection, true))
+    }
+
+    /// Put `s` back, keeping what it replaces on the other stack.
+    fn restore(&mut self, s: State, selection: Range<usize>, redoing: bool) -> (Range<usize>, Change) {
+        let removed = s.at..s.at + s.now;
+        let back = State { at: s.at, now: s.was.len(), was: self.text[removed.clone()].to_owned(), runs: std::mem::replace(&mut self.runs, s.runs), selection };
+        self.text.replace_range(removed.clone(), &s.was);
+        self.index_runs();
+        if redoing { self.undo.push(back) } else { self.redo.push(back) }
         self.last_edit = None;
         self.typing = None;
         self.generation += 1;
-        Some(next.selection)
+        (s.selection, Change { removed, inserted: s.was.len() })
     }
 
     /// Replace `range` (bytes) with `with`, as one undoable step (Replace).
-    pub fn replace(&mut self, range: Range<usize>, with: &str, selection: Range<usize>) {
-        self.replace_all(&[range], with, selection);
+    pub fn replace(&mut self, range: Range<usize>, with: &str, selection: Range<usize>) -> Change {
+        self.replace_all(&[range.clone()], with, selection).unwrap_or(Change { removed: range.start..range.start, inserted: 0 })
     }
 
-    /// The text laid out with its styles. `family` maps a style to the
-    /// egui family to draw it with (fonts load lazily).
-    pub fn layout(&self, text: &str, wrap: f32, base: Color32, family: &mut dyn FnMut(&Style) -> FontFamily) -> LayoutJob {
-        let mut job = LayoutJob { text: text.to_owned(), ..Default::default() };
-        job.wrap.max_width = if self.wrap { wrap } else { f32::INFINITY };
-        job.halign = match self.align {
-            Align::Left | Align::Justify => egui::Align::Min,
-            Align::Center => egui::Align::Center,
-            Align::Right => egui::Align::Max,
-        };
-        job.justify = self.align == Align::Justify;
-        let mut pos = 0;
-        // The runs fit the synced text; text the field has but we haven't
-        // synced yet (mid-frame) uses the last style.
-        for r in &self.runs {
-            let end = (pos + r.len).min(text.len());
-            if end > pos && text.is_char_boundary(pos) && text.is_char_boundary(end) {
-                job.sections.push(section(pos..end, &r.style, base, family));
+    /// The styles of bytes `range` (one paragraph) as sections of `job`,
+    /// whose text is that paragraph. `family` maps a style to the egui
+    /// family to draw it with (fonts load lazily).
+    pub fn sections(&self, range: Range<usize>, base: Color32, family: &mut dyn FnMut(&Style) -> FontFamily, job: &mut LayoutJob) {
+        if range.is_empty() {
+            // An empty line still needs a height (for the caret).
+            job.sections.push(section(0..0, &self.style_at(range.start), base, family));
+            return;
+        }
+        let mut i = self.starts.partition_point(|&s| s <= range.start).saturating_sub(1);
+        while i < self.runs.len() && self.starts[i] < range.end {
+            let (a, b) = (self.starts[i].max(range.start), (self.starts[i] + self.runs[i].len).min(range.end));
+            if b > a {
+                job.sections.push(section(a - range.start..b - range.start, &self.runs[i].style, base, family));
             }
-            pos += r.len;
+            i += 1;
         }
-        if pos < text.len() {
-            let start = floor_boundary(text, pos.min(text.len()));
-            let style = self.runs.last().map(|r| r.style.clone()).unwrap_or_default();
-            job.sections.push(section(start..text.len(), &style, base, family));
-        }
-        if job.sections.is_empty() {
-            // An empty document still needs a line height for the caret.
-            let style = self.typing.as_ref().map(|(_, s)| s.clone()).unwrap_or_default();
-            job.sections.push(section(0..0, &style, base, family));
-        }
-        job
     }
 }
 
@@ -663,6 +673,37 @@ mod tests {
         assert_eq!(lens(&d), [(5, false)]);
         d.redo(0..5);
         assert_eq!(lens(&d), [(5, true)]);
+    }
+
+    #[test]
+    fn undo_keeps_just_what_changed() {
+        let mut d = Doc::new("one two".into(), None);
+        d.edit(7..7, "s", 7..7);
+        d.edit(8..8, "x", 8..8);
+        // Backspacing over both: a step of its own.
+        d.edit(8..9, "", 9..9);
+        d.edit(7..8, "", 8..8);
+        assert_eq!(d.text(), "one two");
+        d.undo(7..7);
+        assert_eq!(d.text(), "one twosx");
+        d.undo(9..9);
+        assert_eq!(d.text(), "one two");
+        d.redo(7..7);
+        assert_eq!(d.text(), "one twosx");
+        // Forward deletes run together too, and say what they put back.
+        let mut d = Doc::new("abcdef".into(), None);
+        d.edit(2..3, "", 2..2);
+        d.edit(2..3, "", 2..2);
+        assert_eq!(d.text(), "abef");
+        let (sel, change) = d.undo(2..2).unwrap();
+        assert_eq!((d.text(), sel, change), ("abcdef", 2..2, Change { removed: 2..2, inserted: 2 }));
+        // Typing over a selection undoes in one step, selection and all.
+        let mut d = Doc::new("one two".into(), None);
+        d.edit(4..7, "a", 4..7);
+        d.edit(5..5, "b", 5..5);
+        assert_eq!(d.text(), "one ab");
+        let (sel, _) = d.undo(6..6).unwrap();
+        assert_eq!((d.text(), sel), ("one two", 4..7));
     }
 
     #[test]

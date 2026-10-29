@@ -38,7 +38,9 @@ Screenshots are in device pixels; coordinates, crops included, are
 logical (device pixels / the screen's scale, so / 2 at 2×).
 Shells in a session keep their history in its bash_history, not yours,
 and `stop` ends its olo-termd and the shells in it.
-Runs as the repo owner when invoked as root.
+Runs as the repo owner when invoked as root. Programs come from
+target/debug; TSESSION_PROFILE=release runs target/release's (measuring
+speed: tools/dev/bench).
 """
 import glob, json, os, pwd, re, signal, socket, subprocess, sys, time
 
@@ -50,6 +52,9 @@ OLD_BASE = "/tmp/tabula-dev"
 OWNER = pwd.getpwuid(os.stat(ROOT).st_uid)
 RUNTIME = f"/run/user/{OWNER.pw_uid}"
 TARGET = os.environ.get("CARGO_TARGET_DIR", os.path.join(ROOT, "target"))
+# Which build sessions and `run` use: debug, or release to measure speed
+# (tools/dev/bench).
+PROFILE = os.environ.get("TSESSION_PROFILE", "debug")
 # A D-Bus daemon for each session's own session bus (busd, `cargo install
 # busd`): without one, programs fall back to $XDG_RUNTIME_DIR/bus, the
 # user's real session bus (their notifications, keyring, portals).
@@ -155,9 +160,9 @@ def start(name, args):
         subprocess.run(["chown", f"{OWNER.pw_uid}:{OWNER.pw_gid}", home]) if os.getuid() == 0 else None
     if session:
         # TSESSION_SESSION_EXE: an installed olo-session instead (upgrade tests).
-        exe = [os.environ.get("TSESSION_SESSION_EXE", os.path.join(TARGET, "debug", "olo-session")), "--headless", size] + ([] if "--shell" in args else ["--no-shell"])
+        exe = [os.environ.get("TSESSION_SESSION_EXE", os.path.join(TARGET, PROFILE, "olo-session")), "--headless", size] + ([] if "--shell" in args else ["--no-shell"])
     else:
-        exe = [os.path.join(TARGET, "debug", "olo-app-server"), "--headless", size]
+        exe = [os.path.join(TARGET, PROFILE, "olo-app-server"), "--headless", size]
     if home:
         exe = ["env", f"HOME={os.path.abspath(home)}"] + exe
     if os.environ.get("OLO_UPGRADE_FROM"):
@@ -260,11 +265,11 @@ def run(name, cmd):
     env["PULSE_SERVER"] = "unix:" + mute
     exe = cmd[0]
     if "/" not in exe:
-        for cand in (os.path.join(TARGET, "debug", exe), os.path.join(TARGET, "debug", "examples", exe)):
+        for cand in (os.path.join(TARGET, PROFILE, exe), os.path.join(TARGET, PROFILE, "examples", exe)):
             if os.path.exists(cand):
                 exe = cand
                 break
-    env["PATH"] = os.path.join(TARGET, "debug") + ":" + env.get("PATH", "")
+    env["PATH"] = os.path.join(TARGET, PROFILE) + ":" + env.get("PATH", "")
     base = os.path.basename(exe)
     log = open(os.path.join(sdir(name), base + ".log"), "w")
     argv = (["env"] + assigns if assigns else []) + [exe] + cmd[1:]

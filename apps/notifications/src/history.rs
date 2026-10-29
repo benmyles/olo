@@ -354,22 +354,46 @@ impl Notifications {
                 if cards {
                     // Each card as big as what it holds (or its app asks),
                     // the newest unread one featured, packed in columns.
+                    // Laying a card out at a new width is laying out its
+                    // text (all 200 took 27 ms a frame of a resize): only
+                    // those down to a screen below what shows are, and to
+                    // the selection when it is to be shown; the height of
+                    // the rest is reckoned from theirs.
                     let (cols, col_w) = masonry::columns(w, CARD_W, m::SPACING);
-                    let laid: Vec<CardLaid> = order
-                        .iter()
-                        .enumerate()
-                        .map(|(k, &i)| {
+                    let clip = ui.clip_rect();
+                    let want = clip.bottom() - top + clip.height();
+                    let must = if reveal { sel_id.and_then(|id| order.iter().position(|&i| entries[i].id == id)).map_or(0, |s| s + 1) } else { 0 };
+                    let mut laid: Vec<CardLaid> = Vec::new();
+                    let (mut rects, mut height);
+                    loop {
+                        let upto = (laid.len() + 12).max(must + masonry::AHEAD).min(order.len());
+                        for (k, &i) in order.iter().enumerate().take(upto).skip(laid.len()) {
                             let e = &entries[i];
                             let span = card_span(e, cols, k == 0 && e.unread);
-                            card_lay(ui, &p, e, span, masonry::span_width(span, col_w, m::SPACING))
-                        })
-                        .collect();
-                    let sizes: Vec<(usize, f32)> = laid.iter().map(|l| (l.span, l.height)).collect();
-                    let (rects, height) = masonry::arrange(cols, col_w, m::SPACING, &sizes);
+                            laid.push(card_lay(ui, &p, e, span, masonry::span_width(span, col_w, m::SPACING)));
+                        }
+                        let sizes: Vec<(usize, f32)> = laid.iter().map(|l| (l.span, l.height)).collect();
+                        (rects, height) = masonry::arrange(cols, col_w, m::SPACING, &sizes);
+                        let shown = laid.len().saturating_sub(masonry::AHEAD);
+                        if laid.len() == order.len() || (laid.len() >= must + masonry::AHEAD && masonry::lowest(cols, col_w, m::SPACING, &rects[..shown]) > want) {
+                            break;
+                        }
+                    }
+                    // The cards laid out only to place the others right
+                    // wait for a later frame.
+                    if laid.len() < order.len() {
+                        let keep = laid.len() - masonry::AHEAD;
+                        let each = laid.iter().map(|l| l.height + m::SPACING).sum::<f32>() / laid.len() as f32;
+                        height = masonry::lowest(cols, col_w, m::SPACING, &rects[..keep]).max(height) + (order.len() - keep) as f32 * each / cols as f32;
+                        laid.truncate(keep);
+                        rects.truncate(keep);
+                    }
                     let (area, _) = ui.allocate_exact_size(vec2(w, height), Sense::hover());
                     for (k, (&i, (laid, r))) in order.iter().zip(laid.into_iter().zip(rects)).enumerate() {
                         let e = &entries[i];
-                        let cr = r.translate(area.min.to_vec2());
+                        // On the device grid: a whole point is half a
+                        // pixel at 1.5×.
+                        let cr = style::snap(ui.ctx(), r.translate(area.min.to_vec2()));
                         drawn.push((e.id, r));
                         let is_sel = sel_id == Some(e.id);
                         if is_sel && reveal {
@@ -390,11 +414,11 @@ impl Notifications {
                             let (r, _) = ui.allocate_exact_size(vec2(w, HEADING), Sense::hover());
                             heading_fill(ui, &p, r);
                             let font = egui::FontId::new(style::SMALL_SIZE, style::bold());
-                            let t = style::label(ui.painter(), r.left() + ICON_X, r.center().y, Align::Min, "Unread", font, style::disabled_text(&p));
+                            let (t, baseline) = style::label_with_baseline(ui.painter(), r.left() + ICON_X, r.center().y, Align::Min, "Unread", font, style::disabled_text(&p));
                             if *n == 0 {
                                 continue;
                             }
-                            style::label(ui.painter(), t.right() + 5.0, r.center().y, Align::Min, n.to_string(), style::small_font(), style::disabled_text(&p));
+                            style::label_on_baseline(ui.painter(), t.right() + 5.0, baseline, Align::Min, n.to_string(), style::small_font(), style::disabled_text(&p));
                             // Read them all, here where they are.
                             let all = "Mark All Read";
                             let tw = style::label_width(ui.ctx(), all, style::small_font());
@@ -581,8 +605,8 @@ fn group(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, w: f32, app: &str, coun
     let dim = style::disabled_text(p);
     style::latch(ui.painter(), Rect::from_center_size(pos2(r.left() + 7.0, r.center().y), vec2(10.0, 10.0)), open, if resp.hovered() { text } else { dim });
     paint_icon(ui.painter(), Rect::from_center_size(pos2(r.left() + ICON_X + SMALL_ICON / 2.0, r.center().y), vec2(SMALL_ICON, SMALL_ICON)), &entries[members[0]], false);
-    let n = style::label(ui.painter(), r.left() + TEXT_X, r.center().y, Align::Min, name, style::bold_font(), text);
-    style::label(ui.painter(), n.right() + 6.0, r.center().y, Align::Min, count.to_string(), style::small_font(), dim);
+    let (n, baseline) = style::label_with_baseline(ui.painter(), r.left() + TEXT_X, r.center().y, Align::Min, name, style::bold_font(), text);
+    style::label_on_baseline(ui.painter(), n.right() + 6.0, baseline, Align::Min, count.to_string(), style::small_font(), dim);
     let mut did = None;
     if resp.hovered() || ui.rect_contains_pointer(r) {
         let font = style::small_font();
@@ -667,7 +691,9 @@ fn note_row(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, w: f32, a: &RowArgs,
     if a.selected {
         h += m::TIGHT + m::CONTROL_HEIGHT + 2.0;
     }
-    let h = (h + ROW_PAD).max(ROW_PAD * 2.0 + SMALL_ICON + 4.0).ceil();
+    // On the 2-point grid (whole device pixels at 1.5×), so the rows under
+    // it start on one too.
+    let h = ((h + ROW_PAD).max(ROW_PAD * 2.0 + SMALL_ICON + 4.0) / 2.0).ceil() * 2.0;
     let (r, resp) = ui.allocate_exact_size(vec2(w, h), Sense::click());
     // For agents: a list item named by its title, which of how many.
     resp.widget_info(|| WidgetInfo { selected: Some(a.selected), ..WidgetInfo::labeled(egui::Role::ListItem, true, title_text) });
@@ -690,23 +716,24 @@ fn note_row(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, w: f32, a: &RowArgs,
         painter.multiply_opacity(fade_opacity(a.strength));
     }
     // The title's first line, the app and time, the dot and the icon all
-    // centre on one line.
+    // centre on one line: where the title came out on device pixels (the
+    // app and time, smaller, on its baseline).
     let first_h = title.rows.first().map_or(title.size().y, |row| row.rect().height());
-    let line1 = r.top() + ROW_PAD + first_h / 2.0;
+    let x = r.left() + text_x;
+    let title_r = Rect::from_min_size(style::text_origin(ui.ctx(), &title, x, r.top() + ROW_PAD + first_h / 2.0, style::PLAIN_SIZE), title.size());
+    let baseline = title_r.top() + style::baseline_offset(&title);
+    let line1 = title_r.top() + style::cap_middle(&title, style::PLAIN_SIZE);
     if a.unread {
         unread_dot(&painter, pos2(r.left() + x0 + 9.0, line1), p);
     }
     paint_icon(&painter, Rect::from_center_size(pos2(r.left() + x0 + ICON_X + SMALL_ICON / 2.0, line1), vec2(SMALL_ICON, SMALL_ICON)), e, true);
-    let x = r.left() + text_x;
-    let title_r = Rect::from_min_size(style::text_origin(ui.ctx(), &title, x, line1, style::PLAIN_SIZE), title.size());
     let mut y = title_r.top();
     style::describe_text(ui.ctx(), egui::accesskit::Role::Label, title_text, title_r, None);
     painter.galley(title_r.min, title.clone(), c(fg));
     if failed(e) {
         look::paint_stop(&painter, &title, title_r.min);
     }
-    let meta_x = r.right() - CLOSE_W;
-    style::label(&painter, meta_x, line1, Align::Max, a.meta.clone(), meta_font, dim);
+    style::label_on_baseline(&painter, r.right() - CLOSE_W, baseline, Align::Max, a.meta.clone(), meta_font, dim);
     if !a.older.is_empty() && !a.selected {
         // How many in the conversation.
         let n = (a.older.len() + 1).to_string();
@@ -881,10 +908,10 @@ fn card(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, r: Rect, laid: CardLaid,
     let time_w = style::label_width(ui.ctx(), &time, style::small_font());
     let name_x = icon.right() + 5.0;
     let name_room = head.right() - time_w - CARD_DOT - 8.0 - name_x;
-    style::label_fit(&painter, name_x, head.center().y, Align::Min, app_name(e), egui::FontId::new(style::SMALL_SIZE, style::bold()), ink.dim, name_room);
+    let (_, baseline) = style::label_fit_with_baseline(&painter, name_x, head.center().y, Align::Min, app_name(e), egui::FontId::new(style::SMALL_SIZE, style::bold()), ink.dim, name_room);
     let forgettable = !e.shown && hovered;
     if !forgettable {
-        style::label(&painter, head.right(), head.center().y, Align::Max, time, style::small_font(), ink.dim);
+        style::label_on_baseline(&painter, head.right(), baseline, Align::Max, time, style::small_font(), ink.dim);
         if e.unread {
             unread_dot(&painter, pos2(head.right() - time_w - CARD_DOT / 2.0 - 1.0, head.center().y), p);
         }

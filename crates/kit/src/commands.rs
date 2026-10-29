@@ -15,7 +15,8 @@
 //! not wait for windows nobody can see);
 //! `{"focus":ID}` → `{"ok":true}`: give the keyboard to the widget with
 //! that tree id (a slider or text field, which a click would change);
-//! `{"frames":true}` → a [`FrameTimes`] per window, since the last ask
+//! `{"frames":true}` → a [`FrameTimes`] per window (and open menu; a
+//! closed menu's go to its window), since the last ask
 //! (answered by the UI thread, so how long the answer takes is how long
 //! the app keeps people waiting; tools/dev/perf-fuzz);
 //! `{"review":true}` → a [`WindowReview`] per window: the layout review

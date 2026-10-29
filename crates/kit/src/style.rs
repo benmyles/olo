@@ -676,7 +676,10 @@ pub fn card(p: &Painter, r: Rect, palette: &Palette, hover: bool, selected: bool
     } else {
         Shadow { offset: [0, 1], blur: 4, spread: 0, color: Color32::from_black_alpha(if dark { 70 } else { 22 }) }
     };
-    p.add(shadow.as_shape(r, radius));
+    // Dropped by whole device pixels too (a point is 1.5 at 1.5×).
+    let mut drop = shadow.as_shape(r, radius);
+    drop.rect = snap(p.ctx(), drop.rect);
+    p.add(drop);
     let (fill, edge) = if selected {
         let sel = selection_ink(palette);
         (sel.fill, sel.edge)
@@ -1056,6 +1059,22 @@ pub fn label_fit(
     color: Color32,
     max_width: f32,
 ) -> Rect {
+    label_fit_with_baseline(p, x, center_y, align, text, font, color, max_width).0
+}
+
+/// [`label_fit`], and the baseline it was drawn on (for smaller text
+/// beside it: [`label_on_baseline`]).
+#[allow(clippy::too_many_arguments)]
+pub fn label_fit_with_baseline(
+    p: &Painter,
+    x: f32,
+    center_y: f32,
+    align: egui::Align,
+    text: &str,
+    font: FontId,
+    color: Color32,
+    max_width: f32,
+) -> (Rect, f32) {
     let size = font.size;
     let mut job = egui::text::LayoutJob::simple_singleline(text.to_owned(), font, color);
     job.wrap = egui::text::TextWrapping::truncate_at_width(max_width.max(0.0));
@@ -1067,9 +1086,10 @@ pub fn label_fit(
     };
     let pos = text_origin(p.ctx(), &galley, x, center_y, size);
     let r = Rect::from_min_size(pos, galley.size());
+    let baseline = pos.y + baseline_offset(&galley);
     describe_text(p.ctx(), egui::accesskit::Role::Label, text, r, None);
     p.galley(pos, galley, color);
-    r
+    (r, baseline)
 }
 
 /// Text drawn with the painter, for the AccessKit tree agents read

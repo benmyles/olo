@@ -10,24 +10,19 @@ use std::{
     collections::HashMap,
     ops::Range,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 
-use doc::{Align, Doc, Run, Style, byte_of, char_of};
+use doc::{Align, Change, Doc, Run, Style};
 use serde::{Deserialize, Serialize};
 use olo_kit::{
-    text_drag::{TextDrag, TextDrop},
     App, Cx, Menu, WindowId, WindowOptions,
-    egui::{
-        self, Color32, Galley, Id, Key, Modifiers, Rect, Ui, pos2,
-        text::{CCursor, CCursorRange},
-        vec2,
-    },
+    editor::{self, Editor},
+    egui::{self, Color32, Key, Modifiers, Rect, Ui, pos2, text::LayoutJob, vec2},
     file_panel::{FilePanel, PANEL_SIZE, PanelResult},
     instance::{self, Launch},
     metrics as m,
     style::{self, c},
-    widgets::{self, Button, CheckBox, ScrollView, TextControl},
+    widgets::{self, Button, CheckBox, TextControl},
 };
 
 const APP_ID: &str = "olo.styled-edit";
@@ -68,20 +63,45 @@ struct DocWin {
     /// "Untitled N" for a new document.
     untitled: usize,
     doc: Doc,
-    /// The live text the field edits (synced into `doc` as it changes).
-    buffer: String,
+    /// Shows and edits `doc` (a paragraph at a time: documents of any
+    /// length stay quick).
+    editor: Editor,
     loading: bool,
     saving: bool,
     after_save: After,
     latin1: bool,
     read_only: bool,
-    /// The selection, in characters, as of the last frame.
-    selection: Range<usize>,
-    /// A selection to set (and scroll to) next frame.
-    select: Option<Range<usize>>,
-    /// The field lost the keyboard (to a menu, say), which collapses its
-    /// selection: put it back when it returns, as BeOS keeps it.
-    blurred: bool,
+    /// The selection and view to come back to once loaded (after a
+    /// reload).
+    restore: Option<(Range<usize>, (usize, f32))>,
+}
+
+/// The document as the editor sees it: its text, styles in the fonts
+/// they use, and edits that keep both (and undo) in step.
+struct Styled<'a> {
+    doc: &'a mut Doc,
+    fonts: &'a mut fonts::Fonts,
+    ctx: &'a egui::Context,
+    base: Color32,
+}
+
+impl editor::Document for Styled<'_> {
+    fn text(&self) -> &str {
+        self.doc.text()
+    }
+    fn sections(&mut self, range: Range<usize>, job: &mut LayoutJob) {
+        let (fonts, ctx) = (&mut *self.fonts, self.ctx);
+        self.doc.sections(range, self.base, &mut |s| fonts.family(ctx, s), job);
+    }
+    fn replace(&mut self, range: Range<usize>, text: &str, selection: Range<usize>) {
+        self.doc.edit(range, text, selection);
+    }
+    fn copied(&mut self, range: Range<usize>) {
+        self.doc.copied(range);
+    }
+    fn move_text(&mut self, from: Range<usize>, to: usize, selection: Range<usize>) -> Range<usize> {
+        self.doc.move_text(from, to, selection)
+    }
 }
 
 impl DocWin {
@@ -90,15 +110,13 @@ impl DocWin {
             path,
             untitled,
             doc: Doc::new(String::new(), None),
-            buffer: String::new(),
+            editor: Editor::new(("styled-edit", EDITORS.fetch_add(1, std::sync::atomic::Ordering::Relaxed))),
             loading: false,
             saving: false,
             after_save: After::Nothing,
             latin1: false,
             read_only: false,
-            selection: 0..0,
-            select: Some(0..0),
-            blurred: false,
+            restore: None,
         }
     }
 
@@ -109,28 +127,37 @@ impl DocWin {
         }
     }
 
-    /// The selection in bytes of the text.
+    /// The selection (bytes of the text).
     fn bytes(&self) -> Range<usize> {
-        let t = self.doc.text();
-        byte_of(t, self.selection.start)..byte_of(t, self.selection.end)
+        self.editor.selection()
     }
 
     fn selected_text(&self) -> &str {
         &self.doc.text()[self.bytes()]
     }
 
-    /// The doc changed under the field (undo, replace): show it.
-    fn reset_buffer(&mut self, select: Range<usize>) {
-        self.buffer = self.doc.text().to_owned();
-        self.select = Some(select);
+    /// The document changed under the editor (undo, Replace): show it,
+    /// selecting `select`.
+    fn changed(&mut self, change: Change, select: Range<usize>) {
+        self.editor.replaced(self.doc.text(), change.removed, change.inserted);
+        self.editor.select(self.doc.text(), select);
+    }
+
+    /// A new document (loaded, restored), selecting `select`.
+    fn reset(&mut self, doc: Doc, select: Range<usize>) {
+        self.doc = doc;
+        self.editor.reset(self.doc.text());
+        self.editor.select(self.doc.text(), select);
     }
 
     /// Select bytes `r` of the text.
     fn select_bytes(&mut self, r: Range<usize>) {
-        let t = self.doc.text();
-        self.select = Some(char_of(t, r.start)..char_of(t, r.end));
+        self.editor.select(self.doc.text(), r);
     }
 }
+
+/// Tells documents' editors apart.
+static EDITORS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Purpose {
@@ -174,6 +201,9 @@ struct SavedDoc {
     align: Align,
     wrap: bool,
     selection: (usize, usize),
+    /// The editor's view ([`Editor::view`]).
+    #[serde(default)]
+    view: (usize, f32),
 }
 
 fn file_name(path: &Path) -> String {
@@ -182,11 +212,6 @@ fn file_name(path: &Path) -> String {
 
 fn home() -> PathBuf {
     std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from)
-}
-
-fn sorted(r: CCursorRange) -> Range<usize> {
-    let (a, b) = (r.primary.index.0, r.secondary.index.0);
-    a.min(b)..a.max(b)
 }
 
 impl StyledEdit {
@@ -347,24 +372,24 @@ impl StyledEdit {
         if d.read_only || s.find.is_empty() {
             return;
         }
-        let selection = d.selection.clone();
+        let selection = d.bytes();
         if s.all {
             let ranges = doc::find_all(d.doc.text(), &s.find, s.case);
-            d.doc.replace_all(&ranges, &s.replace, selection.clone());
-            d.reset_buffer(selection.start..selection.start);
+            if let Some(change) = d.doc.replace_all(&ranges, &s.replace, selection.clone()) {
+                let at = selection.start.min(d.doc.text().len());
+                d.changed(change, at..at);
+            }
             return;
         }
         // The selection itself if it's a match, else the next one.
-        let sel = d.bytes();
-        let from = if s.backwards { sel.end } else { sel.start };
+        let from = if s.backwards { selection.end } else { selection.start };
         let Some(r) = doc::find(d.doc.text(), &s.find, from, s.backwards, s.case, s.wrap) else { return };
-        d.doc.replace(r.clone(), &s.replace, selection);
-        let start = char_of(d.doc.text(), r.start);
-        d.reset_buffer(start..start + s.replace.chars().count());
+        let change = d.doc.replace(r.clone(), &s.replace, selection);
+        d.changed(change, r.start..r.start + s.replace.len());
     }
 
     fn doc_menus(&self, d: &DocWin) -> Vec<Menu> {
-        let has_sel = !d.selection.is_empty();
+        let has_sel = !d.bytes().is_empty();
         let editable = !d.read_only && !d.loading;
         let file = Menu::new("File")
             .item("New", "new", Some(Key::N))
@@ -407,7 +432,7 @@ impl StyledEdit {
             .enabled(editable && !self.search.find.is_empty());
 
         // The style where the selection starts (or what typing will use).
-        let cur = d.doc.style_at(byte_of(d.doc.text(), d.selection.start));
+        let cur = d.doc.style_at(d.bytes().start);
         let mut size = Menu::new("Size");
         for s in doc::SIZES {
             size = size.item(format!("{s}"), format!("size:{s}"), None).checked(cur.size == s);
@@ -464,7 +489,9 @@ impl StyledEdit {
             .separator()
             .item("Wrap Lines", "wrap", None)
             .checked(d.doc.wrap);
-        vec![file, edit, font, document]
+        // Styles and layout are saved with the file, so a read-only one
+        // keeps its own (as Haiku's StyledEdit has it).
+        vec![file, edit, font.all_enabled(editable), document.all_enabled(editable)]
     }
 
     fn doc_command(&mut self, cx: &mut Cx, win: WindowId, command: &str) {
@@ -507,29 +534,35 @@ impl StyledEdit {
             _ => {}
         }
         let Some(Win::Doc(d)) = self.windows.get_mut(&win) else { return };
-        let selection = d.selection.clone();
-        let bytes = d.bytes();
-        let restyle = |d: &mut DocWin, f: &dyn Fn(&mut Style)| d.doc.restyle(bytes.clone(), selection.clone(), f);
+        let selection = d.bytes();
+        let bytes = selection.clone();
+        let restyle = |d: &mut DocWin, f: &dyn Fn(&mut Style)| {
+            d.doc.restyle(bytes.clone(), selection.clone(), f);
+            d.editor.restyled(bytes.clone());
+        };
         match command {
             "undo" | "redo" => {
                 let to = if command == "undo" { d.doc.undo(selection) } else { d.doc.redo(selection) };
-                if let Some(to) = to {
-                    d.reset_buffer(to);
+                if let Some((to, change)) = to {
+                    d.changed(change, to);
                 }
             }
             "copy" | "cut" => {
                 d.doc.copied(bytes.clone());
                 cx.copy(d.selected_text().to_owned());
                 if command == "cut" && !d.read_only {
-                    d.doc.replace(bytes, "", selection.clone());
-                    d.reset_buffer(selection.start..selection.start);
+                    let change = d.doc.replace(bytes, "", selection.clone());
+                    d.changed(change, selection.start..selection.start);
                 }
             }
             "clear" if !d.read_only => {
-                d.doc.replace(bytes, "", selection.clone());
-                d.reset_buffer(selection.start..selection.start);
+                let change = d.doc.replace(bytes, "", selection.clone());
+                d.changed(change, selection.start..selection.start);
             }
-            "select-all" => d.select = Some(0..d.doc.text().chars().count()),
+            "select-all" => {
+                let all = 0..d.doc.text().len();
+                d.editor.select(d.doc.text(), all);
+            }
             "bold" => {
                 let on = !d.doc.style_at(bytes.start).bold;
                 restyle(d, &|s| s.bold = on);
@@ -577,7 +610,6 @@ impl StyledEdit {
     fn doc_ui(&mut self, window: WindowId, ui: &mut Ui) -> Option<String> {
         let p = style::palette(ui.ctx());
         let Some(Win::Doc(d)) = self.windows.get_mut(&window) else { return None };
-        let fonts = &mut self.fonts;
         let full = ui.max_rect();
         let status = Rect::from_min_max(pos2(full.left(), full.bottom() - STATUS_H), full.max);
         let area = Rect::from_min_max(full.min, pos2(full.right(), status.top()));
@@ -589,122 +621,33 @@ impl StyledEdit {
             (redo, i.consume_key(Modifiers::COMMAND, Key::Z))
         });
         if editable && (undo || redo) {
-            let sel = d.selection.clone();
+            let sel = d.bytes();
             let to = if undo { d.doc.undo(sel) } else { d.doc.redo(sel) };
-            if let Some(to) = to {
-                d.reset_buffer(to);
+            if let Some((to, change)) = to {
+                d.changed(change, to);
             }
         }
-        // Copies from the field remember their styles, to paste them back.
-        if ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Copy | egui::Event::Cut))) && !d.selection.is_empty() {
-            d.doc.copied(d.bytes());
-        }
-
-        let edit_id = Id::unique(("styled-edit", window));
         if !ui.memory(|mem| mem.focused().is_some()) {
-            ui.memory_mut(|mem| mem.request_focus(edit_id));
+            ui.memory_mut(|mem| mem.request_focus(d.editor.id()));
         }
-        let focused = ui.memory(|mem| mem.has_focus(edit_id));
-        // While a menu is open the window hasn't the keyboard, and the
-        // field's selection can't be trusted.
-        let active = focused && ui.input(|i| i.focused);
-        // Text dropped on the document (moved within it, styles and all).
-        let mut drag = TextDrag::new(ui, edit_id, editable, false, true);
-        if let Some(drop) = drag.take_drop() {
-            let t = d.doc.text();
-            let r = match drop {
-                TextDrop::Insert { at, text } => {
-                    let b = byte_of(t, at);
-                    d.doc.replace(b..b, &text, d.selection.clone());
-                    b..b + text.len()
-                }
-                TextDrop::Move { from, to, .. } => {
-                    let from = byte_of(t, from.start)..byte_of(t, from.end);
-                    let to = byte_of(t, to);
-                    d.doc.move_text(from, to, d.selection.clone())
-                }
-            };
-            let t = d.doc.text();
-            d.reset_buffer(char_of(t, r.start)..char_of(t, r.end));
-        }
-        let reveal = d.select.take();
-        if let Some(r) = &reveal {
-            d.selection = r.clone();
-        }
-        let restore = match (&reveal, active && d.blurred) {
-            (Some(r), _) => Some(r.clone()),
-            (None, true) => Some(d.selection.clone()),
-            (None, false) => None,
+        let options = editor::Options {
+            editable,
+            wrap: d.doc.wrap,
+            align: match d.doc.align {
+                Align::Left | Align::Justify => egui::Align::Min,
+                Align::Center => egui::Align::Center,
+                Align::Right => egui::Align::Max,
+            },
+            justify: d.doc.align == Align::Justify,
+            margin: vec2(m::TEXT_INSET, 4.0),
+            background: Some(p.document_background),
         };
-        d.blurred = !active;
-        if let Some(r) = restore {
-            let mut state = egui::text_edit::TextEditState::load(ui.ctx(), edit_id).unwrap_or_default();
-            state.cursor.set_char_range(Some(CCursorRange::two(CCursor::new(r.start), CCursor::new(r.end))));
-            state.store(ui.ctx(), edit_id);
-        }
-        let base = c(p.document_text);
-        let wrap = d.doc.wrap;
-        let before = d.selection.clone();
-        let DocWin { doc, buffer, .. } = &mut **d;
-        // The galley as laid out, before egui paints the selection into it.
-        let latest: std::cell::RefCell<Option<Arc<Galley>>> = Default::default();
-        let mut layouter = |ui: &Ui, text: &dyn egui::TextBuffer, width: f32| -> Arc<Galley> {
-            let text = text.as_str();
-            if editable {
-                doc.sync(text, before.clone());
-            }
-            // egui caches laid-out paragraphs itself (and drops them
-            // when the font atlas is rebuilt, as after a reconnect).
-            let job = doc.layout(text, width, base, &mut |s| fonts.family(ui.ctx(), s));
-            let g = ui.fonts_mut(|f| f.layout_job(job));
-            *latest.borrow_mut() = Some(g.clone());
-            g
-        };
-        // A read-only file is shown through a `&str`: selectable, not editable.
-        let mut read_only: &str;
-        let target: &mut dyn egui::TextBuffer = if editable {
-            &mut *buffer
-        } else {
-            read_only = buffer.as_str();
-            &mut read_only
-        };
-        let out = ScrollView::new(("styled-edit-scroll", window))
-            .horizontal(!wrap)
-            .focused(focused)
-            .background(p.document_background)
-            .show_in(ui, area, |ui, _| {
-                let size = ui.available_size();
-                // egui paints selected text in one colour; it's drawn again
-                // over the highlight below, in its own colours.
-                ui.visuals_mut().selection.stroke.color = Color32::TRANSPARENT;
-                let out = egui::TextEdit::multiline(target)
-                    .id(edit_id)
-                    .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(m::TEXT_INSET as i8, 4)))
-                    .desired_width(if wrap { size.x } else { f32::INFINITY })
-                    .min_size(size)
-                    .lock_focus(true)
-                    .interactive(drag.interactive())
-                    .layouter(&mut layouter)
-                    .show(ui);
-                drag.finish(ui, &out);
-                if let Some(range) = out.state.cursor.char_range()
-                    && !range.is_empty()
-                    && let Some(laid) = latest.borrow().clone()
-                    && let Some(g) = selected_glyphs(&laid, range)
-                {
-                    let pos = out.galley_pos - vec2(out.galley.rect.left(), 0.0);
-                    ui.painter().with_clip_rect(out.text_clip_rect).galley(pos, Arc::new(g), base);
-                }
-                out
-            });
-        if let Some(r) = out.cursor_range
-            && active
-        {
-            d.selection = sorted(r);
-        }
+        let DocWin { doc, editor, .. } = &mut **d;
+        let mut styled = Styled { doc, fonts: &mut self.fonts, ctx: &ui.ctx().clone(), base: c(p.document_text) };
+        let out = editor.show(ui, area, &mut styled, &options);
         // Right-click: the Edit menu's own commands, so styles go along.
         let chosen = widgets::context_menu(&out.response, || {
-            let selected = !d.selection.is_empty();
+            let selected = !d.bytes().is_empty();
             Menu::new("Edit")
                 .item("Cut", "cut", Some(Key::X))
                 .enabled(editable && selected)
@@ -715,19 +658,12 @@ impl StyledEdit {
                 .separator()
                 .item("Select All", "select-all", Some(Key::A))
         });
-        if let Some(r) = reveal {
-            let rect = out.galley.pos_from_cursor(CCursor::new(r.end));
-            ui.scroll_to_rect(rect.translate(out.galley_pos.to_vec2()).expand(8.0), Some(egui::Align::Center));
-        }
 
         // The status line: where the caret is and what the file is.
         let painter = ui.painter();
         painter.rect_filled(status, 0.0, c(p.panel_background));
         style::hline(painter, status.left(), status.right(), status.top(), style::shade(&p, p.panel_background, 1.3));
-        let text = d.doc.text();
-        let caret = byte_of(text, d.selection.end);
-        let line = text[..caret].matches('\n').count() + 1;
-        let col = text[..caret].rsplit('\n').next().map_or(0, |l| l.chars().count()) + 1;
+        let (line, col) = d.editor.line_col(d.doc.text(), d.editor.caret());
         let mut info = format!("Line {line}, Column {col}");
         if d.loading {
             info = "Loading…".into();
@@ -830,28 +766,6 @@ impl StyledEdit {
             }
         }
     }
-}
-
-/// Just the selected glyphs of `galley` (its selected rows, with
-/// everything else in them transparent), to draw over the selection.
-fn selected_glyphs(galley: &Galley, range: CCursorRange) -> Option<Galley> {
-    let [min, max] = range.sorted_cursors();
-    let (min, max) = (galley.layout_from_cursor(min), galley.layout_from_cursor(max));
-    let mut g = galley.clone();
-    g.rows = galley.rows.get(min.row..=max.row)?.to_vec();
-    for (k, placed) in g.rows.iter_mut().enumerate() {
-        let ri = min.row + k;
-        let row = Arc::make_mut(&mut placed.row);
-        let vertex = |i: usize| row.glyphs.get(i).map_or(row.visuals.glyph_vertex_range.end, |g| g.first_vertex as usize);
-        let first = if ri == min.row { vertex(min.column.0) } else { vertex(0) };
-        let last = if ri == max.row { vertex(max.column.0) } else { row.visuals.glyph_vertex_range.end };
-        for (vi, v) in row.visuals.mesh.vertices.iter_mut().enumerate() {
-            if !(first..last).contains(&vi) {
-                v.color = Color32::TRANSPARENT;
-            }
-        }
-    }
-    Some(g)
 }
 
 /// Titles for alphabetical groups of names, like a dictionary's guide
@@ -999,7 +913,15 @@ impl App for StyledEdit {
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
             Msg::Fonts(fonts::Event::Families(f)) => self.fonts.families = f,
-            Msg::Fonts(fonts::Event::Loaded) => cx.redraw_all(),
+            Msg::Fonts(fonts::Event::Loaded) => {
+                // Text in a font that has come laid out with it now.
+                for w in self.windows.values_mut() {
+                    if let Win::Doc(d) = w {
+                        d.editor.relayout();
+                    }
+                }
+                cx.redraw_all();
+            }
             Msg::Loaded(win, path, result) => {
                 let Some(Win::Doc(d)) = self.windows.get_mut(&win) else { return };
                 if d.path.as_ref() != Some(&path) {
@@ -1011,10 +933,11 @@ impl App for StyledEdit {
                         let mut doc = Doc::new(l.text, l.runs);
                         doc.align = l.align;
                         doc.wrap = l.wrap;
-                        d.doc = doc;
+                        let (select, view) = d.restore.take().unwrap_or_default();
+                        d.reset(doc, select);
+                        d.editor.set_view(d.doc.text(), view);
                         d.latin1 = l.latin1;
                         d.read_only = l.read_only;
-                        d.reset_buffer(0..0);
                     }
                     // A new file: it's made on the first save.
                     Err(_) if !path.exists() => {}
@@ -1063,7 +986,8 @@ impl App for StyledEdit {
                     edited: (d.doc.edited() || d.path.is_none()).then(|| (d.doc.text().to_owned(), d.doc.runs().to_vec())),
                     align: d.doc.align,
                     wrap: d.doc.wrap,
-                    selection: (d.selection.start, d.selection.end),
+                    selection: (d.bytes().start, d.bytes().end),
+                    view: d.editor.view(),
                 }),
                 _ => None,
             })
@@ -1086,13 +1010,14 @@ impl StyledEdit {
                     if !(doc.text().is_empty() && s.path.is_none()) {
                         doc.saved_generation = 0;
                     }
-                    d.doc = doc;
-                    d.reset_buffer(s.selection.0..s.selection.1);
+                    d.reset(doc, s.selection.0..s.selection.1);
+                    d.editor.set_view(d.doc.text(), s.view);
                     self.add_window(cx, d);
                 }
                 None => {
                     let Some(path) = s.path else { continue };
                     d.loading = true;
+                    d.restore = Some((s.selection.0..s.selection.1, s.view));
                     let id = self.add_window(cx, d);
                     self.load(cx, id, path);
                 }

@@ -99,6 +99,8 @@ pub struct Mouse {
     last_cell: Option<Point>,
     /// Scroll that hasn't added up to a whole line yet.
     scroll: f32,
+    /// The same for a selection dragged past the top or bottom.
+    edge: f32,
     /// The link under the pointer while ⌘ is held: its cells and target.
     hover: Option<Hover>,
     /// Image textures by image id, with the generation they were made from.
@@ -1242,11 +1244,16 @@ fn pointer(ui: &Ui, s: &mut Session, m: &Metrics, resp: &egui::Response, rect: R
         if let Some(sel) = t.selection.as_mut() {
             sel.update(point, side);
         }
-        // Drag past the edge to scroll.
-        if pos.y < rect.min.y {
-            t.scroll_display(Scroll::Delta(1));
-        } else if pos.y > rect.max.y {
-            t.scroll_display(Scroll::Delta(-1));
+        // Drag past the edge to scroll, faster the further out.
+        let past = if pos.y < rect.min.y { pos.y - rect.min.y } else { (pos.y - rect.max.y).max(0.0) };
+        if past == 0.0 {
+            mouse.edge = 0.0;
+        }
+        mouse.edge += olo_kit::widgets::ScrollView::edge_scroll(ui.ctx(), egui::vec2(0.0, past)).y / m.cell.y;
+        let lines = mouse.edge.trunc() as i32;
+        mouse.edge -= lines as f32;
+        if lines != 0 {
+            t.scroll_display(Scroll::Delta(-lines));
         }
     }
     if mouse.selecting && ui.input(|i| i.pointer.primary_released()) {

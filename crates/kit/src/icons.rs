@@ -6,12 +6,15 @@
 //! Textures are cached per window context and keyed by theme and device
 //! size, so every icon is drawn 1:1 from a source made for that size.
 //! When the theme changes the kit repaints every window and the old
-//! theme's textures go.
+//! theme's textures go. Icons are decoded once for the whole process; a
+//! frame decodes what it can in its budget and a worker the rest
+//! (`icon`).
 
 use std::{
     collections::HashMap,
     path::Path,
-    sync::Arc,
+    sync::{Arc, Mutex, OnceLock},
+    time::{Duration, Instant},
 };
 
 use egui::{Color32, ColorImage, Context, Painter, Rect, TextureHandle, TextureOptions, pos2};
@@ -155,11 +158,131 @@ pub fn drag_icon(ctx: &Context, name: &str, logical: f32, count: usize, hotspot:
 #[derive(Default)]
 struct Cache {
     current: &'static str,
-    map: HashMap<(&'static str, String, u32), Option<TextureHandle>>,
+    map: HashMap<Key, Option<TextureHandle>>,
+}
+
+/// An icon: its theme, name and device size.
+type Key = (&'static str, String, u32);
+
+/// Icons decoded, for every window of the process (None: there is no such
+/// icon), and the windows waiting for one being decoded.
+#[derive(Default)]
+struct Decoded {
+    map: HashMap<Key, Option<Arc<ColorImage>>>,
+    waiting: HashMap<Key, Vec<Context>>,
+}
+
+static DECODED: Mutex<Option<Decoded>> = Mutex::new(None);
+
+/// How long a frame may spend finding and decoding icons itself (more
+/// than one icon's worth: a frame shows what it can at once); the rest
+/// are decoded by a worker and drawn a frame or two later. Finding one
+/// searches folders and decoding one can take milliseconds, and a frame
+/// has 8.3 (HACKING.md, the responsiveness rule).
+const DECODE_BUDGET: Duration = Duration::from_micros(1500);
+
+/// How an icon stands.
+enum Icon {
+    Ready(TextureHandle),
+    /// Being decoded: its place is kept and nothing drawn yet.
+    Loading,
+    Missing,
+}
+
+fn decode(theme: &str, name: &str, px: u32) -> Option<Arc<ColorImage>> {
+    olo_xdg::load_icon_in(theme, name, px).map(|img| Arc::new(fitted(img, px)))
+}
+
+/// Decode `key` on the icon worker, then repaint `ctx`.
+fn decode_later(key: Key, ctx: &Context) {
+    static WORKER: OnceLock<Mutex<std::sync::mpsc::Sender<Key>>> = OnceLock::new();
+    let first = {
+        let mut d = DECODED.lock().unwrap();
+        let waiting = d.get_or_insert_with(Decoded::default).waiting.entry(key.clone()).or_default();
+        let first = waiting.is_empty();
+        if !waiting.iter().any(|c| c == ctx) {
+            waiting.push(ctx.clone());
+        }
+        first
+    };
+    if !first {
+        return;
+    }
+    let tx = WORKER.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<Key>();
+        std::thread::Builder::new()
+            .name("olo-icons".into())
+            .spawn(move || {
+                for key in rx {
+                    let image = decode(key.0, &key.1, key.2);
+                    let waiting = {
+                        let mut d = DECODED.lock().unwrap();
+                        let d = d.get_or_insert_with(Decoded::default);
+                        d.map.insert(key.clone(), image);
+                        d.waiting.remove(&key).unwrap_or_default()
+                    };
+                    for ctx in waiting {
+                        ctx.request_repaint();
+                    }
+                }
+            })
+            .expect("icon worker");
+        Mutex::new(tx)
+    });
+    let _ = tx.lock().unwrap().send(key);
+}
+
+/// Icon `name` for drawing at `px` device pixels on `ctx`, in `theme`:
+/// from this window's textures, else decoded already (by any window),
+/// else decoded now while this frame's budget lasts (and always in a
+/// window's first frame, which shows everything at once), else by the
+/// worker.
+fn icon(ctx: &Context, theme: &str, name: &str, logical: f32) -> Icon {
+    let theme = olo_xdg::themes::resolve(theme).id;
+    let px = (logical * ctx.pixels_per_point()).round().max(1.0) as u32;
+    let key = (theme, name.to_owned(), px);
+    let cache_id = egui::Id::unique("olo-icon-cache");
+    let cache = ctx.data_mut(|d| d.get_temp_mut_or_default::<Arc<Mutex<Cache>>>(cache_id).clone());
+    let mut cache = cache.lock().unwrap();
+    let now = olo_xdg::themes::current().id;
+    if cache.current != now {
+        cache.current = now;
+        cache.map.retain(|k, _| k.0 == now);
+        if let Some(d) = DECODED.lock().unwrap().as_mut() {
+            d.map.retain(|k, _| k.0 == now);
+        }
+    }
+    if let Some(hit) = cache.map.get(&key) {
+        return hit.clone().map_or(Icon::Missing, Icon::Ready);
+    }
+    let decoded = DECODED.lock().unwrap().get_or_insert_with(Decoded::default).map.get(&key).cloned();
+    let image = match decoded {
+        Some(image) => image,
+        None => {
+            // This frame's time spent decoding, by its pass.
+            let spent_id = egui::Id::unique("olo-icon-decode-time");
+            let pass = ctx.cumulative_pass_nr();
+            let (at, spent) = ctx.data(|d| d.get_temp::<(u64, Duration)>(spent_id)).unwrap_or((pass, Duration::ZERO));
+            let spent = if at == pass { spent } else { Duration::ZERO };
+            if pass > 0 && spent >= DECODE_BUDGET {
+                decode_later(key, ctx);
+                return Icon::Loading;
+            }
+            let t = Instant::now();
+            let image = decode(theme, name, px);
+            ctx.data_mut(|d| d.insert_temp(spent_id, (pass, spent + t.elapsed())));
+            DECODED.lock().unwrap().get_or_insert_with(Decoded::default).map.insert(key.clone(), image.clone());
+            image
+        }
+    };
+    let tex = image.map(|img| ctx.load_texture(format!("icon:{theme}/{name}@{px}"), (*img).clone(), TextureOptions::LINEAR));
+    cache.map.insert(key, tex.clone());
+    tex.map_or(Icon::Missing, Icon::Ready)
 }
 
 /// The icon `name` (ours, a theme icon name, or an absolute path) as a
-/// texture for drawing at `logical` points on `ctx`, in the current theme.
+/// texture for drawing at `logical` points on `ctx`, in the current theme
+/// (None: there is no such icon, or it is still being decoded).
 pub fn texture(ctx: &Context, name: &str, logical: f32) -> Option<TextureHandle> {
     texture_in(ctx, olo_xdg::themes::current().id, name, logical)
 }
@@ -167,49 +290,39 @@ pub fn texture(ctx: &Context, name: &str, logical: f32) -> Option<TextureHandle>
 /// As [`texture`], in theme `theme` (e.g. to show a theme before it is
 /// chosen).
 pub fn texture_in(ctx: &Context, theme: &str, name: &str, logical: f32) -> Option<TextureHandle> {
-    let theme = olo_xdg::themes::resolve(theme).id;
-    let px = (logical * ctx.pixels_per_point()).round().max(1.0) as u32;
-    let key = (theme, name.to_owned(), px);
-    let cache_id = egui::Id::unique("olo-icon-cache");
-    let cache = ctx.data_mut(|d| d.get_temp_mut_or_default::<Arc<std::sync::Mutex<Cache>>>(cache_id).clone());
-    let mut cache = cache.lock().unwrap();
-    let now = olo_xdg::themes::current().id;
-    if cache.current != now {
-        cache.current = now;
-        cache.map.retain(|k, _| k.0 == now);
+    match icon(ctx, theme, name, logical) {
+        Icon::Ready(tex) => Some(tex),
+        Icon::Loading | Icon::Missing => None,
     }
-    if let Some(hit) = cache.map.get(&key) {
-        return hit.clone();
-    }
-    let image = olo_xdg::load_icon_in(theme, name, px).map(|img| fitted(img, px));
-    let tex = image.map(|img| ctx.load_texture(format!("icon:{theme}/{name}@{px}"), img, TextureOptions::LINEAR));
-    cache.map.insert(key, tex.clone());
-    tex
 }
 
 /// Draw icon `name` filling `rect` (snapped to device pixels). Returns
-/// false if no such icon exists.
+/// false if no such icon exists (true while it is being decoded: its
+/// place is kept, and it shows a frame or two later).
 pub fn paint(painter: &Painter, rect: Rect, name: &str) -> bool {
     paint_tinted(painter, rect, name, Color32::WHITE)
 }
 
 /// As [`paint`], in theme `theme`.
 pub fn paint_in(painter: &Painter, rect: Rect, theme: &str, name: &str) -> bool {
-    let Some(tex) = texture_in(painter.ctx(), theme, name, rect.width().max(rect.height())) else {
-        return false;
-    };
-    paint_texture(painter, rect, &tex, Color32::WHITE);
-    true
+    paint_icon(painter, rect, icon(painter.ctx(), theme, name, rect.width().max(rect.height())), Color32::WHITE)
 }
 
 /// As [`paint`], multiplied by `tint` (e.g. half alpha for a dragged or
 /// cut item, or the selection darkening Tracker applies).
 pub fn paint_tinted(painter: &Painter, rect: Rect, name: &str, tint: Color32) -> bool {
-    let Some(tex) = texture(painter.ctx(), name, rect.width().max(rect.height())) else {
-        return false;
-    };
-    paint_texture(painter, rect, &tex, tint);
-    true
+    paint_icon(painter, rect, icon(painter.ctx(), olo_xdg::themes::current().id, name, rect.width().max(rect.height())), tint)
+}
+
+fn paint_icon(painter: &Painter, rect: Rect, icon: Icon, tint: Color32) -> bool {
+    match icon {
+        Icon::Ready(tex) => {
+            paint_texture(painter, rect, &tex, tint);
+            true
+        }
+        Icon::Loading => true,
+        Icon::Missing => false,
+    }
 }
 
 /// `tex` in `rect`: at its own size when it was made for it (within a

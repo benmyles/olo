@@ -61,6 +61,16 @@ like pixel alignment is.
    operation on several screens and fails on the first hang. Use
    `std::sync::Mutex` only with nothing else locked and never across a
    call back into app_server.
+9. **Every frame within 8.3 ms: 120 frames a second, always.** Olo's
+   displays run at 120 Hz, and a frame that takes longer than one
+   skips. That covers a whole frame (egui, the app's code, tessellating
+   and the GPU) on release builds, filling a 16" MacBook Pro's screen,
+   at 1×, 1.5× and 2×. Nothing per frame touches the disk or waits on
+   anyone (an icon is loaded off the thread; a desktop entry looked up
+   once, on a worker); what a frame lays out is what shows, not all
+   there is (History's cards, lists' rows); text laid out once is
+   egui's cache's, so don't make new strings every frame for what
+   didn't change. `tools/dev/bench` checks every app (see Testing).
 
 ## Layout
 
@@ -468,7 +478,9 @@ edged with the selection's hairline; `show(ui).clicked` is the cell clicked, by 
 `ScrollView` (`show`, `show_rows` for virtualised content, `show_in(ui,
 rect, |ui, viewport|)` for content you lay out yourself, `reveal`,
 `ScrollView::scroll_to(ctx, id, offset)`, `.auto_hide(true)` to drop the
-bar when content fits; a drag held within 24 px of an edge scrolls it on; `SCROLL_BAR` is its width), `ScrollBar`
+bar when content fits; a drag held within 24 px of an edge scrolls it on; `SCROLL_BAR` is its width;
+`ScrollView::edge_scroll(ctx, past)` is how far to scroll this frame for a selection dragged `past` a
+view's edge, faster the further out, the same at any frame rate), `ScrollBar`
 (`::vertical(id).show(ui, rect, &mut offset, content, view)`, a lone bar
 for content the kit doesn't scroll, such as a web page), `ColorControl`
 (BColorControl: grey/red/green/blue ramps and number fields for an
@@ -617,7 +629,11 @@ being gathered) go in `olo_xdg::scratch_file()`: a nameless file under
 Menus: `Menu::new("File").item(label, command, Some(Key::N))`,
 `.item_shift(…)`, `.separator()`, `.submenu(Menu)`, `.checked(bool)`,
 `.enabled(bool)`, `.icon(name)` (the last item's icon, any name
-`icons::paint` takes; the generic application's if it can't be found).
+`icons::paint` takes; the generic application's if it can't be found),
+`.all_enabled(bool)` (every item, submenus' too: a Font menu on a
+read-only document). A submenu with nothing enabled in it is drawn
+disabled and doesn't open, as a BMenu disabled whole
+(`Menu::any_enabled`); its shortcuts and agents' `invoke` do nothing.
 A popup with any icons gives them a 16 px column, after the check marks
 when it has both. Popups are real `xdg_popup`s drawn by the kit. One
 taller than the screen is shortened by the compositor (the positioner
@@ -650,6 +666,44 @@ alert a child (`xdg_toplevel.set_parent`) of the app's focused window, or
 of `WindowOptions::parent(id)` (or `parent_opt(Option<id>)`) when given, and app_server opens any
 window with a parent over it as BAlert does: centred across, a quarter
 of the way down.
+
+### The text editor (`olo_kit::editor`)
+
+For documents (StyledEdit's window; anything a person writes at length)
+use `editor::Editor`, BTextView, not egui's `TextEdit`: that lays out,
+copies and hashes the whole text every frame, which a long document
+can't do at 120 frames a second. The editor keeps a galley per
+paragraph, laid out only while it shows; the rest have estimated
+heights, those within a screen of the view are measured before they come
+into it (a millisecond's worth a frame), and the view holds on the
+paragraph at its top while heights above it settle, so nothing jumps.
+`TextControl` and `TextView` stay for fields and short text.
+
+The app's text and styles are an `editor::Document`: `text()`,
+`sections(range, job)` (one paragraph's styles as `LayoutJob` sections)
+and `replace(range, text, selection)`, through which every edit goes
+(typing, pasting, a drop), so undo and styles follow; `copied` and
+`move_text` are optional. Each frame, `editor.show(ui, rect, &mut doc,
+&Options { editable, wrap, align, justify, margin, background })` gives
+`Output { response, changed }`. What the app changes itself it reports:
+`reset(text)` for new text (loaded), `changed(old, new)` or
+`replaced(text, removed, inserted)` for an edit (undo, Replace All),
+`restyled(range)` for new styles, `relayout()` for new fonts or
+alignment. `selection()`, `caret()`, `select(text, range)` (and show
+it), `line_col(text, at)` for a status line. `view()` is where the view
+is (a paragraph's first byte and how far into it), and `set_view(text,
+view)` puts it back, for `save_state` through a reload. Positions are
+bytes.
+
+Keys are a Mac's (⌥ or ⌘ with arrows by word or to either end; Home/End
+along the row; Page Up/Down; Shift extends). A double click selects a
+word, a triple click the paragraph. A press on the selection drags its
+text (`text_drag`); text dropped on it goes in where it lands, and moves
+within the editor. Dragging a selection past an edge scrolls
+(`ScrollView::edge_scroll`). Agents read it as a `MultilineTextInput`
+with the whole text and where it shows (read-only when it isn't editable). Justified and
+centred rows that end in spaces use a patch to epaint (vendor/epaint,
+see vendor/README.md).
 
 ### Look and feel rules
 
@@ -740,9 +794,14 @@ of the way down.
    button's width), so they are whole device pixels at 1×, 1.5× and 2×
    and nothing is left a pixel over (`kit_sizes_on_the_two_point_grid`
    checks the kit's). Two fonts side by side on one line share a
-   baseline: `style::label_with_baseline` for the first gives it,
-   `style::label_on_baseline` puts the others on it (each centred on its
-   own lands a pixel apart at 1.5×). See "Fractional scaling". An outline's fold mark
+   baseline: `style::label_with_baseline` (or `label_fit_with_baseline`)
+   for the first gives it, `style::label_on_baseline` puts the others on
+   it (each centred on its own lands a pixel apart at 1.5×); a mark
+   beside a galley you placed centres on `style::cap_middle`. A row whose
+   height is worked out (from its text) is rounded up to the 2-point
+   grid, not to device pixels: egui keeps sizes in 32nds of a point, so a
+   row of whole device pixels at 1.5× is a hair off one, and a list of
+   them drifts a pixel. See "Fractional scaling". An outline's fold mark
    is `style::latch(painter, rect, open, color)` (BOutlineListView's
    triangle: right when folded, down when open).
 6. **Icons**: `olo_kit::icons::paint(painter, rect, "name")` with names
@@ -1107,6 +1166,35 @@ draws each frame within 50 ms, on the GPU, and answers within 250 ms
 (`{"frames":true}`), and no file descriptors, threads or memory leak. It
 ends with the worst numbers per kind of burst. Run it after changing
 anything that runs per frame or per event.
+
+`tools/dev/bench` is the speed benchmark, every app against the 120 Hz
+budget (rule 9). On release builds (`cargo build --release --workspace
+--examples`; `TSESSION_PROFILE=release` makes tsession run them) it
+starts a session of its own ("bench": a 3456×2234 screen, a 16" MacBook
+Pro's, at 120 Hz, with the shell) and a sandbox home under
+/var/tmp/olo-bench filled with what makes apps work (a 20,000-line
+document, a folder of 3,000 files, photos, 200 notifications, a
+terminal's worth of output), and at 1×, 1.5× and 2× runs each app
+(the kit's demo, Tracker twice, StyledEdit, Terminal, Viewer,
+Notifications, Activity Monitor, DeskCalc, DiskUsage, Logs,
+Preferences, the palette, Passwords, Screenshot) through what people
+do: launched and zoomed to fill the screen, left to load, idle for a
+second (it should draw nothing), the pointer swept over it, each scroll
+view scrolled (fingers, a flick and its glide, wheel notches, judged as
+scroll-check does), its tabs clicked, its menus opened and walked, a
+field typed in, the window resized live, the theme flipped; then
+Deskbar and every screen saver module. Every frame each draws comes
+from its `{"frames":true}` marks (menus' too), app_server's from
+`{"type":"timings"}`. A step fails on any frame over the budget
+(`--budget`, a frame at `--hz`), a skipped frame while scrolling, or
+app_server over budget or stalled; switching the theme or scale, an
+app's first frames and the start of a live resize (a new swapchain)
+are transitions, listed with their slowest frame. `--apps a,b`,
+`--scales 2`, `--json FILE`, `--list`. It only looks at Preferences
+(its sidebar and tabs), never presses Return in a menu, and leaves out
+what needs the real system or other sessions. Run it after changing
+the kit, or anything an app does per frame, and before calling
+anything fast.
 
 Clicks are global logical coordinates: on a screen that isn't at (0, 0),
 add its position (`$T ipc NAME '{"type":"outputs"}'`). `start` rewrites
@@ -2212,16 +2300,18 @@ so); unwritable files are read-only (selectable, not editable). Saving
 writes `.NAME.saving` beside the file, copies its permissions and renames
 it over the original, on a thread.
 
-`doc.rs` is the model and is unit-tested. The `TextEdit` edits a plain
-`String`; its layouter calls `Doc::sync`, which diffs the new text against
-the old (common prefix and suffix on char boundaries) and moves the runs:
-inserted text takes the pending typing style, the style of what it
-replaced, or the style before it, and pasting what was copied here brings
-its styles back. Undo is our own (snapshots, typing and deleting coalesced
-within 2 s); ⌘Z/⌘⇧Z/⌘Y are consumed before the field sees them. Replace
-All splices each match so the styles between them survive. egui paints
-selected text in one colour, so the selected glyphs are drawn again over
-the highlight in their own colours (`selected_glyphs`).
+`doc.rs` is the model and is unit-tested. The window is the kit's
+`editor::Editor` (so a document of any length scrolls and types at full
+speed), and the `Doc` is its `Document` (`Styled` in main.rs, which also
+names each style's font): every edit is `Doc::edit`, which moves the
+runs: inserted text takes the pending typing style, the style of what it
+replaced, or the style before it, and pasting what was copied here
+brings its styles back. Undo is our own (snapshots, typing and deleting
+coalesced within 2 s); ⌘Z/⌘⇧Z/⌘Y are consumed before the editor sees
+them, and what they change goes to the editor with `replaced`. Replace
+All splices each match so the styles between them survive. A read-only
+document's Font and Document menus are disabled (`Menu::all_enabled`):
+its styles are saved with it.
 
 `fonts.rs` owns a font database on a worker thread: it lists families for
 the Font menu (in submenus titled like a dictionary's guide words) and
@@ -2230,7 +2320,8 @@ loads a face the first time a style names it, registering it as
 font stands in. Find and Replace are Haiku's windows (case, wrap-around,
 backwards, replace all), shared by every document; ⌘G finds again, ⌘H
 finds the selection, ⌘T replaces the same. `save_state` keeps every
-window, with unsaved text and styles, through a reload.
+window, with unsaved text and styles, its selection and where it was
+scrolled to (`Editor::view`), through a reload.
 
 ## Activity Monitor (apps/activity)
 

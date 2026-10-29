@@ -146,6 +146,21 @@ impl Menu {
         }
         self
     }
+    /// Enable / disable every item, submenus' too (a Font menu on a
+    /// read-only document).
+    pub fn all_enabled(mut self, on: bool) -> Self {
+        fn set(items: &mut [MenuItem], on: bool) {
+            for item in items {
+                match item {
+                    MenuItem::Action(a) => a.enabled &= on,
+                    MenuItem::Submenu(m) => set(&mut m.items, on),
+                    MenuItem::Separator => {}
+                }
+            }
+        }
+        set(&mut self.items, on);
+        self
+    }
     /// Show `keys` beside the last item (see [`Action::keys`]).
     pub fn keys(mut self, keys: impl Into<String>) -> Self {
         if let Some(MenuItem::Action(a)) = self.items.last_mut() {
@@ -174,6 +189,16 @@ impl Menu {
         self.items.iter().any(|item| match item {
             MenuItem::Action(a) => a.icon.is_some(),
             MenuItem::Submenu(m) => m.icon.is_some(),
+            MenuItem::Separator => false,
+        })
+    }
+
+    /// Something in it can be chosen. A submenu with nothing is drawn
+    /// disabled and doesn't open, as a BMenu disabled whole.
+    pub fn any_enabled(&self) -> bool {
+        self.items.iter().any(|item| match item {
+            MenuItem::Action(a) => a.enabled,
+            MenuItem::Submenu(m) => m.any_enabled(),
             MenuItem::Separator => false,
         })
     }
@@ -635,7 +660,10 @@ pub(crate) fn popup_nodes(menu: &Menu, state: &PopupState, size: (u32, u32), fir
                 n.checked = a.checked.then_some(true);
                 n.minimized = a.minimized;
             }
-            MenuItem::Submenu(m) => n.name = Some(format!("{} ▸", m.title)),
+            MenuItem::Submenu(m) => {
+                n.name = Some(format!("{} ▸", m.title));
+                n.enabled = m.any_enabled();
+            }
         }
         nodes.push(n);
     }
@@ -707,7 +735,7 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
     // Keyboard.
     let selectable = |i: usize| match &menu.items[i] {
         MenuItem::Action(a) => a.enabled,
-        MenuItem::Submenu(_) => true,
+        MenuItem::Submenu(m) => m.any_enabled(),
         MenuItem::Separator => false,
     };
     let step = |from: Option<usize>, dir: isize| -> Option<usize> {
@@ -733,6 +761,7 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
                     Key::ArrowRight => {
                         if let Some(i) = state.selected
                             && matches!(menu.items[i], MenuItem::Submenu(_))
+                            && selectable(i)
                         {
                             open_by_key = Some(i);
                         }
@@ -742,7 +771,7 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
                         if let Some(i) = state.selected {
                             match &menu.items[i] {
                                 MenuItem::Action(a) if a.enabled => result = PopupResult::Chosen(a.command.clone()),
-                                MenuItem::Submenu(_) => open_by_key = Some(i),
+                                MenuItem::Submenu(_) if selectable(i) => open_by_key = Some(i),
                                 _ => {}
                             }
                         }
@@ -830,9 +859,16 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
                 if hl {
                     painter.rect_filled(face, 0.0, c(p.menu_selected_background));
                 }
-                let text_color = if hl { c(p.menu_selected_item_text) } else { c(p.menu_item_text) };
+                let enabled = selectable(i);
+                let text_color = if !enabled {
+                    style::disabled_text(&p)
+                } else if hl {
+                    c(p.menu_selected_item_text)
+                } else {
+                    c(p.menu_item_text)
+                };
                 if let (Some(left), Some(name)) = (icon_left, &m.icon) {
-                    item_icon(&painter, *row, left, name, true);
+                    item_icon(&painter, *row, left, name, enabled);
                 }
                 style::label(&painter, row.left() + label_left, row.center().y, egui::Align::Min, &m.title, font(), text_color);
                 // Right-pointing triangle.
@@ -843,7 +879,7 @@ pub fn popup_ui(ui: &mut Ui, menu: &Menu, state: &mut PopupState) -> PopupResult
                     text_color,
                     Stroke::NONE,
                 ));
-                if hovered == Some(i) && !open && result == PopupResult::None {
+                if enabled && hovered == Some(i) && !open && result == PopupResult::None {
                     result = PopupResult::OpenSubmenu(i, *row);
                 }
             }

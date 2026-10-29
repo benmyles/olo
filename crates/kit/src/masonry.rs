@@ -65,6 +65,26 @@ pub fn arrange(cols: usize, column: f32, gap: f32, items: &[(usize, f32)]) -> (V
     (out, height)
 }
 
+/// How far down every column of an arrangement reaches (`rects` from
+/// [`arrange`]): below this, all are still to come. For laying out only
+/// as many items as show.
+pub fn lowest(cols: usize, column: f32, gap: f32, rects: &[Rect]) -> f32 {
+    let cols = cols.max(1);
+    let mut bottoms = vec![0.0f32; cols];
+    for r in rects.iter().filter(|r| r.is_positive()) {
+        let c = (((r.min.x - gap) / (column + gap)).round().max(0.0) as usize).min(cols - 1);
+        let span = (((r.width() + gap) / (column + gap)).round().max(1.0) as usize).min(cols - c);
+        for b in &mut bottoms[c..c + span] {
+            *b = b.max(r.max.y);
+        }
+    }
+    bottoms.into_iter().fold(f32::MAX, f32::min)
+}
+
+/// How many items past the last that shows to lay out too, so that
+/// [`arrange`] places those that show as it would with them all.
+pub const AHEAD: usize = LOOK_AHEAD;
+
 /// A direction to move in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Step {

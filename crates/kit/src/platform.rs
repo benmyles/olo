@@ -106,6 +106,12 @@ struct Gpu {
     adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
+    /// What surfaces on this compositor take (asking is a round trip to
+    /// it, a millisecond or two): asked once.
+    caps: std::cell::OnceCell<wgpu::SurfaceCapabilities>,
+    /// Closed menus' renderers, for the next (making one builds its
+    /// pipelines, 4 ms and more).
+    spare: std::cell::RefCell<Vec<(wgpu::TextureFormat, egui_wgpu::Renderer)>>,
 }
 
 // ---- surfaces -----------------------------------------------------------
@@ -165,6 +171,14 @@ struct Surface {
     /// Its size changed: the GPU surface is set up again before the next
     /// draw (once for a burst of sizes, not for each).
     reconfigure: bool,
+    /// The swapchain's size (device pixels): the window's, or more while
+    /// it is being resized (`configure_gpu_surface`).
+    alloc: (u32, u32),
+    /// When to make the swapchain fit the window again, once its size
+    /// has rested.
+    snug_at: Option<Instant>,
+    /// Being resized by hand (xdg's Resizing state, from the press).
+    resizing: bool,
     events: Vec<egui::Event>,
     pointer: Option<Pos2>,
     /// Buttons pressed on this surface and not yet released here.
@@ -225,6 +239,9 @@ impl Surface {
 }
 
 /// User data for our own protocol objects.
+/// How long a window's size rests before its swapchain is made to fit.
+const SNUG_AFTER: Duration = Duration::from_millis(1500);
+
 /// Wheel notches being eased in: what is left to scroll of them.
 struct Wheel {
     wl: WlSurface,
@@ -978,11 +995,15 @@ impl Kit {
                     let i = g.adapter.get_info();
                     format!("{} ({:?}, {:?})", i.name, i.backend, i.device_type)
                 });
+                // Menus open now as well (a closed one's frames are its
+                // window's).
                 let times = self
                     .surfaces
                     .iter_mut()
-                    .filter(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_)))
-                    .map(|s| crate::commands::FrameTimes { title: s.options.title.clone(), adapter: adapter.clone(), ..std::mem::take(&mut s.times) })
+                    .map(|s| {
+                        let title = if matches!(s.role, Role::Popup { .. }) { "(menu)".to_owned() } else { s.options.title.clone() };
+                        crate::commands::FrameTimes { title, adapter: adapter.clone(), ..std::mem::take(&mut s.times) }
+                    })
                     .collect();
                 let _ = reply.send(times);
             }
@@ -1343,6 +1364,9 @@ impl Kit {
             review: None,
             configure_due: None,
             reconfigure: false,
+            alloc: (0, 0),
+            snug_at: None,
+            resizing: false,
             times: Default::default(),
             ui_us: 0,
             presented: false,
@@ -1482,6 +1506,27 @@ impl Kit {
     fn drop_surface(&mut self, id: WindowId) {
         if let Some(i) = self.surfaces.iter().position(|s| s.id == id) {
             let mut s = self.surfaces.remove(i);
+            // A menu's frames count as its window's (`{"frames":true}`).
+            if let Role::Popup { owner, .. } = &s.role
+                && let Some(o) = self.surface_mut(*owner)
+            {
+                let (t, mine) = (&mut o.times, std::mem::take(&mut s.times));
+                t.frames += mine.frames;
+                t.slowest_us = t.slowest_us.max(mine.slowest_us);
+                t.total_us += mine.total_us;
+                t.marks.extend(mine.marks);
+                t.marks.sort_by_key(|m| m.at_us);
+                let over = t.marks.len().saturating_sub(crate::commands::MARKS);
+                t.marks.drain(..over);
+            }
+            // A menu's renderer, for the next menu (its textures are
+            // the new menu's to replace: they go by the same ids).
+            if matches!(s.role, Role::Popup { .. })
+                && let (Some(gpu), Some(r)) = (&self.gpu, s.renderer.take())
+                && gpu.spare.borrow().len() < 2
+            {
+                gpu.spare.borrow_mut().push((s.format, r));
+            }
             s.gpu_surface = None;
             if let Some(f) = s.fractional.take() {
                 f.destroy();
@@ -1641,7 +1686,7 @@ impl Kit {
             // moment while app_server restarts in place (an upgrade), and
             // the reconnect makes the window anew: no app may die of it.
             device.on_uncaptured_error(std::sync::Arc::new(|e| tracing::error!("wgpu: {e}")));
-            self.gpu = Some(Gpu { instance, adapter, device, queue });
+            self.gpu = Some(Gpu { instance, adapter, device, queue, caps: Default::default(), spare: Default::default() });
             return Some(surface);
         }
         let gpu = self.gpu.as_ref()?;
@@ -1655,7 +1700,43 @@ impl Kit {
         }
     }
 
+    /// Set the GPU surface up for the window's size. Configuring a
+    /// swapchain stalls the GPU (10 ms and more on Apple's): a window
+    /// being resized gets a buffer with room to grow, and shows only its
+    /// part of it (`wp_viewport`'s source, one buffer pixel to a device
+    /// pixel, set as each frame is presented), so most sizes cost
+    /// nothing; once the size has rested, the buffer is made to fit.
+    /// Resized by hand, the room is made on the press, before anything
+    /// moves, and kept until the button is let go.
     fn configure_gpu_surface(&mut self, i: usize) {
+        let s = &self.surfaces[i];
+        let need = s.physical_size();
+        if s.gpu_surface.is_none() || s.viewport.is_none() || s.alloc == (0, 0) {
+            self.configure_gpu_surface_at(i, need);
+            return;
+        }
+        // Room for as big as its screen (or a quarter more than now), so
+        // the rest of the resize costs nothing.
+        let max = self.gpu.as_ref().map_or(8192, |g| g.device.limits().max_texture_dimension_2d);
+        let screen = s
+            .output
+            .as_ref()
+            .and_then(|o| self.output_state.info(o))
+            .and_then(|i| i.modes.iter().find(|m| m.current).map(|m| (m.dimensions.0.max(0) as u32, m.dimensions.1.max(0) as u32)))
+            .unwrap_or((0, 0));
+        let up = |n: u32, screen: u32| if screen > 0 { n.max(screen) } else { (n as f64 * 1.25 / 64.0).ceil() as u32 * 64 }.min(max).max(n);
+        let room = (up(need.0, screen.0), up(need.1, screen.1));
+        let fits = s.alloc.0 >= need.0 && s.alloc.1 >= need.1;
+        let roomy = s.alloc.0 >= room.0 && s.alloc.1 >= room.1;
+        if !fits || (s.resizing && !roomy) {
+            self.configure_gpu_surface_at(i, room);
+        }
+        let s = &mut self.surfaces[i];
+        s.snug_at = (!s.resizing && s.alloc != need).then(|| Instant::now() + SNUG_AFTER);
+    }
+
+    /// Configure the swapchain at `size` (at least the window's).
+    fn configure_gpu_surface_at(&mut self, i: usize, size: (u32, u32)) {
         if self.surfaces[i].gpu_surface.is_none() {
             let wl = self.surfaces[i].wl.clone();
             let Some(gs) = self.ensure_gpu(&wl) else {
@@ -1668,16 +1749,24 @@ impl Kit {
         let s = &mut self.surfaces[i];
         let gs = s.gpu_surface.as_ref().unwrap();
         // Lost, or no formats, while the compositor is away (it restarts
-        // in place): the reconnect configures it again.
-        if !gpu.adapter.is_surface_supported(gs) {
+        // in place): the reconnect configures it again. (Asked as a
+        // surface is first set up; a resize keeps what it had.)
+        if s.alloc == (0, 0) && !gpu.adapter.is_surface_supported(gs) {
             warn!("GPU surface lost (compositor gone?)");
             return;
         }
-        let caps = gs.get_capabilities(&gpu.adapter);
-        let Some(&first) = caps.formats.first() else {
-            warn!("GPU surface has no formats (compositor gone?)");
-            return;
+        let caps = match gpu.caps.get() {
+            Some(caps) => caps,
+            None => {
+                let caps = gs.get_capabilities(&gpu.adapter);
+                if caps.formats.is_empty() {
+                    warn!("GPU surface has no formats (compositor gone?)");
+                    return;
+                }
+                gpu.caps.get_or_init(|| caps)
+            }
         };
+        let Some(&first) = caps.formats.first() else { return };
         // egui blends in gamma space: use a non-sRGB target.
         let format = caps
             .formats
@@ -1701,7 +1790,8 @@ impl Kit {
         } else {
             wgpu::PresentMode::Fifo
         };
-        let (w, h) = s.physical_size();
+        let (w, h) = if s.viewport.is_some() { size } else { s.physical_size() };
+        s.alloc = (w, h);
         gs.configure(
             &gpu.device,
             &wgpu::SurfaceConfiguration {
@@ -1717,17 +1807,19 @@ impl Kit {
             },
         );
         if s.renderer.is_none() || s.format != format {
-            s.renderer = Some(egui_wgpu::Renderer::new(&gpu.device, format, egui_wgpu::RendererOptions {
-                msaa_samples: 1,
-                depth_stencil_format: None,
-                dithering: false,
-                predictable_texture_filtering: false,
+            let mut spare = gpu.spare.borrow_mut();
+            let kept = spare.iter().position(|(f, _)| *f == format).map(|k| spare.swap_remove(k).1);
+            s.renderer = Some(kept.unwrap_or_else(|| {
+                egui_wgpu::Renderer::new(&gpu.device, format, egui_wgpu::RendererOptions {
+                    msaa_samples: 1,
+                    depth_stencil_format: None,
+                    dithering: false,
+                    predictable_texture_filtering: false,
+                })
             }));
             s.format = format;
         }
-        if let Some(vp) = &s.viewport {
-            vp.set_destination(s.size.0 as i32, s.size.1 as i32);
-        } else {
+        if s.viewport.is_none() {
             s.wl.set_buffer_scale(s.scale.round().max(1.0) as i32);
         }
     }
@@ -1739,7 +1831,7 @@ impl Kit {
             if s.dirty && !s.frame_pending && s.configured {
                 return Some(Duration::ZERO);
             }
-            for at in [s.repaint_at, s.configure_due].into_iter().flatten() {
+            for at in [s.repaint_at, s.configure_due, s.snug_at].into_iter().flatten() {
                 let d = at.saturating_duration_since(now);
                 t = Some(t.map_or(d, |t: Duration| t.min(d)));
             }
@@ -1761,6 +1853,9 @@ impl Kit {
             let s = &mut self.surfaces[i];
             if s.repaint_at.is_some_and(|at| at <= now) {
                 s.repaint_at = None;
+                s.dirty = true;
+            }
+            if s.snug_at.is_some_and(|at| at <= now) {
                 s.dirty = true;
             }
             // Configured, and the frame on its way never shown (a hidden
@@ -1816,6 +1911,14 @@ impl Kit {
         let resized = std::mem::take(&mut self.surfaces[i].reconfigure);
         if self.surfaces[i].gpu_surface.is_none() || resized {
             self.configure_gpu_surface(i);
+        }
+        // Its size has rested: a buffer that fits.
+        if self.surfaces[i].snug_at.is_some_and(|at| at <= Instant::now()) {
+            self.surfaces[i].snug_at = None;
+            let need = self.surfaces[i].physical_size();
+            if self.surfaces[i].alloc != need && self.surfaces[i].gpu_surface.is_some() {
+                self.configure_gpu_surface_at(i, need);
+            }
         }
         self.surfaces[i].configure_due = None;
         if self.surfaces[i].gpu_surface.is_none() {
@@ -2134,7 +2237,8 @@ impl Kit {
                 for tid in &freed {
                     s.renderer.as_mut().unwrap().free_texture(tid);
                 }
-                self.configure_gpu_surface(i);
+                let size = s.alloc;
+                self.configure_gpu_surface_at(i, size);
                 self.surfaces[i].dirty = true;
                 return;
             }
@@ -2168,6 +2272,12 @@ impl Kit {
         gpu.queue.submit(cmds);
         for tid in &freed {
             renderer.free_texture(tid);
+        }
+        // The window's part of the buffer, at its size: set with the
+        // commit that brings this buffer, so the two always agree.
+        if let Some(vp) = &s.viewport {
+            vp.set_source(0.0, 0.0, w as f64, h as f64);
+            vp.set_destination(s.size.0 as i32, s.size.1 as i32);
         }
         // Throttle to the compositor's frame clock.
         s.wl.frame(&self.qh, FrameCallbackData(s.wl.clone()));
@@ -2742,7 +2852,9 @@ impl WindowHandler for Kit {
         if let Some((mw, mh)) = s.options.min_size {
             size = (size.0.max(mw), size.1.max(mh));
         }
-        let changed = size != s.size || !s.configured;
+        let resizing = configure.is_resizing();
+        let changed = size != s.size || !s.configured || resizing != s.resizing;
+        s.resizing = resizing;
         s.size = size;
         s.configured = true;
         s.dirty = true;

@@ -72,9 +72,9 @@ struct Armed {
 /// The field a drag of text started in, and what it took (so a drop back
 /// in it moves the text).
 #[derive(Clone)]
-struct Source {
-    id: Id,
-    range: Range<usize>,
+pub(crate) struct Source {
+    pub(crate) id: Id,
+    pub(crate) range: Range<usize>,
 }
 
 /// What a drop does to the field's text, in characters.
@@ -102,16 +102,16 @@ fn armed_id(id: Id) -> Id {
     id.with("olo-text-drag-armed")
 }
 
-fn source_id() -> Id {
+pub(crate) fn source_id() -> Id {
     Id::unique("olo-text-drag-source")
 }
 
-fn target(id: Id) -> String {
+pub(crate) fn target(id: Id) -> String {
     format!("{}text:{:016x}", dnd::WIDGET, id.value())
 }
 
 /// How far the pointer goes before a press on the selection is a drag.
-const SLOP: f32 = 4.0;
+pub(crate) const SLOP: f32 = 4.0;
 
 impl TextDrag {
     /// Before the field's `TextEdit` is shown: takes a drop made on it and
@@ -188,7 +188,7 @@ impl TextDrag {
                     d.insert_temp(source_id(), Some(Source { id: self.id, range: a.range.clone() }));
                 });
                 let dragged: String = out.galley.text().chars().skip(a.range.start).take(a.range.len()).collect();
-                dnd::start(ctx, text_drag_data(ctx, &dragged));
+                dnd::start(ctx, drag_data(ctx, &dragged));
             }
             ctx.request_repaint();
         }
@@ -214,7 +214,7 @@ impl TextDrag {
 
 /// The drag of `text`: the text itself, with a clipping's icon and its
 /// first words beside it.
-fn text_drag_data(ctx: &egui::Context, text: &str) -> dnd::DragData {
+pub(crate) fn drag_data(ctx: &egui::Context, text: &str) -> dnd::DragData {
     let data = dnd::DragData::text(text);
     let first: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut label: String = first.chars().take(30).collect();
