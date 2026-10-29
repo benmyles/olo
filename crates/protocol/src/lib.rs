@@ -221,14 +221,14 @@ pub enum Request {
         workspace: Option<u32>,
     },
     /// Auto-tiling on (`on`), off (the Standard windowing mode), or
-    /// (left out) the other way, as ⌃⌥⌘T does. It is for a workspace (the one
-    /// showing unless given) and, with a Deskbar on every display, one
+    /// (left out) the other way, as ⌃⌥⌘T does. It is for a workspace (the
+    /// one showing unless given) and, with a Deskbar on every display, one
     /// display of it (`output`, a connector; else the active display),
     /// otherwise all its displays. While it is on, every window there is
     /// tiled: a new one takes its share, a closed one's room goes to its
     /// neighbours, and dialogs and fixed-size windows float over the
-    /// tiles. Remembered (`TilingSettings::modes`); `SetWindowingMode` says
-    the rest.
+    /// tiles. Remembered (`TilingSettings::modes`); `SetWindowingMode`
+    /// says the rest.
     SetAutoTiling {
         #[serde(default)]
         on: Option<bool>,
