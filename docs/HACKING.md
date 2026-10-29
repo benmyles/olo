@@ -3347,7 +3347,9 @@ notifications.
   the time on the right (an unread dot before it, in the keyboard's
   blue, not the tab's yellow; a close box in their place under the
   pointer), its face laid out by look.rs, its actions as
-  `Button::small`s; the arrow keys move by where
+  `Button::small`s; one click on a card runs its default action (or
+  brings the app forward), as a banner does, and selects it; ⌘- or
+  Shift-click only selects it; the arrow keys move by where
   cards are (`masonry::neighbour`). The search field (⌘F) takes every
   word against app, title and body; Escape clears it. For agents each
   note is a `ListItem` named by its title (with `row`/`rows`), its text

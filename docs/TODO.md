@@ -214,7 +214,8 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
-- **Notifications: one click on a card acts** (Ben, 2026-10-29): "in
+- ~~**Notifications: one click on a card acts**~~ (Ben, 2026-10-29; done:
+  HACKING, Notifications' Cards): "in
   notifications app card view, i should only need a single click of a
   notification card to activate / go to the action".
 - ~~**Instant updates when files change**~~ (Ben, 2026-10-29, bug; done:

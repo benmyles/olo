@@ -679,7 +679,10 @@ impl Notifications {
                 }
                 self.publish(true);
             }
-            Some(Did::Open(i)) => self.open_entry(cx, window, i, None),
+            Some(Did::Open(i)) => {
+                self.view.selected = Some(self.history.entries[i].id);
+                self.open_entry(cx, window, i, None);
+            }
             Some(Did::Action(i, key)) => self.open_entry(cx, window, i, Some(key)),
             None => {}
         }
@@ -1141,9 +1144,11 @@ fn card(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, r: Rect, laid: CardLaid,
     }
     if did.is_none() {
         if resp.double_clicked() {
-            did = Some(Did::Open(i));
+            // (Its first click did it.)
         } else if resp.clicked() {
-            did = Some(Did::Select(e.id));
+            // One click acts, as on a banner; ⌘ or Shift only selects it.
+            let select = ui.input(|i| i.modifiers.command || i.modifiers.shift);
+            did = Some(if select { Did::Select(e.id) } else { Did::Open(i) });
         }
     }
     did
