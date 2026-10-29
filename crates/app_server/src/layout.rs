@@ -2,9 +2,9 @@
 //! app_server restarts in place (`olo-session reload`) or an app
 //! re-executes itself after an upgrade.
 //!
-//! On exit app_server writes every window's place to
-//! `$XDG_RUNTIME_DIR/olo-layout-$WAYLAND_DISPLAY.json`; a closing window
-//! is remembered in memory too. A new window that is one of those coming
+//! On exit app_server writes every window's place, and the workspace
+//! showing, to `$XDG_RUNTIME_DIR/olo-layout-$WAYLAND_DISPLAY.json`; a
+//! closing window is remembered in memory too. A new window that is one of those coming
 //! back takes its place and size instead of the next cascade slot:
 //!
 //! - the same process on a new connection (it reconnected, or re-executed
@@ -76,6 +76,10 @@ pub struct Placement {
     /// still stack as they did.
     #[serde(default)]
     pub depth: u32,
+    /// The workspace showing when it was saved (the same in every place
+    /// saved together), so a restart comes back to it.
+    #[serde(default)]
+    pub showing: Option<u32>,
     /// Seconds since the epoch when it was recorded.
     pub at: u64,
     /// The process that showed it (0: not known, any may take it).
@@ -111,14 +115,35 @@ pub fn load() -> Vec<Placement> {
     fresh
 }
 
+/// The workspace that was showing when `list` was saved (of `count`), to
+/// start on; 0 if none was.
+pub fn showing(list: &[Placement], count: u32) -> u32 {
+    list.iter().find_map(|p| p.showing).unwrap_or(0).min(count.max(1) - 1)
+}
+
 impl<B: Backend + 'static> AnvilState<B> {
     fn placement_of(&self, w: &WindowElement, focused: Option<&WlSurface>) -> Option<Placement> {
         let meta = w.meta();
-        let loc = self.space.element_location(w).unwrap_or_else(|| meta.saved_location.get());
         let app_id = w.app_id();
         if app_id.is_empty() {
             return None;
         }
+        // Not shown yet, it is only waiting in a cascade slot: if it is
+        // one coming back, its place is the one it claimed (app_server
+        // restarting just as an upgraded app reconnects mustn't lose it);
+        // else it has none.
+        if !meta.placed.get() {
+            let p = meta.returning.borrow().clone()?;
+            info!(app_id = %p.app_id, x = p.x, y = p.y, "a window coming back, not shown yet: keeping its place");
+            let owner = meta.owner.borrow().clone();
+            return Some(Placement {
+                at: now(),
+                pid: owner.as_ref().map_or(p.pid, |(pid, _)| *pid),
+                client: owner.map(|(_, c)| c).or(p.client.clone()),
+                ..p
+            });
+        }
+        let loc = self.space.element_location(w).unwrap_or_else(|| meta.saved_location.get());
         let size = w.content_size();
         let (tile, part) = Self::tile_state(w);
         Some(Placement {
@@ -138,6 +163,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             grouping: meta.grouping.borrow().clone(),
             tab_order: meta.tab_order.get(),
             depth: 0,
+            showing: None,
             at: now(),
             pid: meta.owner.borrow().as_ref().map_or(0, |(pid, _)| *pid),
             client: meta.owner.borrow().as_ref().map(|(_, c)| c.clone()),
@@ -161,7 +187,8 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn save_layout(&mut self) {
         let Some(path) = path() else { return };
         let focused = self.seat.get_keyboard().and_then(|k| k.current_focus()).and_then(|f| f.wl_surface().map(|s| s.into_owned()));
-        // Bottom-most first, so restoring in order rebuilds the stacking.
+        // Bottom-most first, so restoring in order rebuilds the stacking
+        // (one not shown yet keeps the depth it is coming back to).
         let shown = self.space.elements().count();
         let mut list: Vec<Placement> = self
             .all_windows()
@@ -169,10 +196,13 @@ impl<B: Backend + 'static> AnvilState<B> {
             .enumerate()
             .filter_map(|(i, w)| {
                 let p = self.placement_of(w, focused.as_ref())?;
-                Some(Placement { depth: if i < shown { i as u32 + 1 } else { 0 }, ..p })
+                Some(Placement { depth: if i < shown && w.meta().placed.get() { i as u32 + 1 } else { p.depth }, ..p })
             })
             .collect();
         list.extend(self.layout.iter().cloned());
+        for p in &mut list {
+            p.showing = Some(self.workspace);
+        }
         match serde_json::to_string(&list) {
             Ok(text) => {
                 if let Err(e) = std::fs::write(&path, text) {
@@ -333,5 +363,24 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         let loc = self.space.element_location(&window).unwrap_or_default();
         self.space.map_element(window, loc + Point::from((x - g.loc.x, y - g.loc.y)), true);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_workspace_showing_comes_back() {
+        // As an app_server from before `showing` saved it: none to go back to.
+        let old = r#"[{"app_id":"olo.tracker","title":"Home","x":200,"y":600,"workspace":2,"minimized":false,"focused":true,"at":1}]"#;
+        let list: Vec<Placement> = serde_json::from_str(old).unwrap();
+        assert_eq!((list[0].showing, showing(&list, 4)), (None, 0));
+        let saved = serde_json::to_string(&[Placement { showing: Some(2), ..list[0].clone() }]).unwrap();
+        let list: Vec<Placement> = serde_json::from_str(&saved).unwrap();
+        assert_eq!(showing(&list, 4), 2);
+        // Fewer workspaces now: the last.
+        assert_eq!(showing(&list, 2), 1);
+        assert_eq!(showing(&[], 4), 0);
     }
 }

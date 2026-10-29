@@ -14,6 +14,7 @@ use std::{
 };
 
 use smithay::{
+    input::pointer::CursorImageStatus,
     reexports::wayland_server::backend::{ClientId, DisconnectReason},
     utils::{Logical, Point},
 };
@@ -50,6 +51,14 @@ fn desktop_picture() -> Option<std::path::PathBuf> {
     let dir = std::env::var_os("XDG_RUNTIME_DIR")?;
     let display = std::env::var("WAYLAND_DISPLAY").ok()?;
     Some(std::path::PathBuf::from(dir).join(format!("olo-saver-desktop-{display}.png")))
+}
+
+/// The pointer as it is shown, for `status` (`AnvilState::cursor_status`):
+/// hidden while the screen saver runs. (The saver hides it too, but only
+/// once the pointer is on its surface, which takes a move, and a move
+/// ends it.)
+pub fn shown_cursor(saver: &Saver, status: &CursorImageStatus) -> CursorImageStatus {
+    if saver.running() { CursorImageStatus::Hidden } else { status.clone() }
 }
 
 impl<B: Backend + 'static> AnvilState<B> {

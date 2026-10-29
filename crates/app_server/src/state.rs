@@ -1106,6 +1106,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             groups: Default::default(),
             recording_shortcut: 0,
         };
+        // Back on the workspace that was showing, after an in-place restart.
+        state.workspace = crate::layout::showing(&state.layout, state.settings.workspace_count);
         if let Some(name) = state.socket_name.clone() {
             match crate::ipc::init(&state.handle, &name) {
                 Ok(ipc) => state.ipc = ipc,

@@ -816,7 +816,10 @@ hands both to app_server, so clients never see the sockets disappear.
   within 15 minutes (Chrome restarting restores its windows; closed
   windows are remembered in memory, up to 200). The place is claimed at
   the window's first commit, so its first configure already has the old
-  size, and applied when it maps. Everything else is a new window and
+  size, and applied when it maps. A window stopped in between (claimed,
+  not shown yet) is saved at the place it claimed, not the cascade slot
+  it waits in (`placement_of`). The workspace showing comes back too
+  (`Placement::showing`, `layout::showing`). Everything else is a new window and
   opens on the display in use (`new_window_near`: beside the app's
   focused window, else under the pointer), including a running app
   opening a window again.
@@ -826,7 +829,11 @@ hands both to app_server, so clients never see the sockets disappear.
   too, since apps like Deskbar only resize when their height changes).
   One whose binary changed calls `App::save_state`,
   re-executes itself (same pid and arguments), and reads the result with
-  `cx.restored_state()` at start-up. **Every app with windows the user
+  `cx.restored_state()` at start-up. A GPU surface lost while app_server
+  is away waits for the reconnect (`configure_gpu_surface` checks
+  `is_surface_supported`; `present` skips a surface with nothing to draw
+  with), and wgpu's errors are logged, not fatal (`on_uncaptured_error`):
+  no app may die of an upgrade. **Every app with windows the user
   arranged must implement both**: save which windows are open (with
   `cx.window_size`), their documents/folders, view settings and
   selection, and reopen them in the same order. Tracker's `Saved` is the
@@ -874,10 +881,18 @@ install directory was just replaced (`/proc/PID/exe` ends in
 " (deleted)"). The kit catches it (a self-pipe in `platform.rs`), saves
 state and re-executes, as after a reload, and app_server puts its windows
 back where they were. A new olo-session re-executes itself without a
-reload. Test it with
+reload. When app_server is new too, the nudge comes just before the
+reload, so apps re-execute while app_server restarts: that race is why
+a window not shown yet keeps the place it claimed, and why the kit
+survives a lost surface (above). Test it with
 `TSESSION_SESSION_EXE=<install>/bin/olo-session
 OLO_UPGRADE_FROM=<tree> tsession start NAME --session --shell` and
-`touch` a program in the tree.
+`touch` a program in the tree. Make the install and the tree under
+`/var/tmp` (`cp --reflink=always` the release programs into
+`<install>/bin`, then again into `<tree>`), not `/tmp`, which is RAM.
+For the race: touch an app's program, send the app SIGURG, then send
+the session SIGHUP 30–120 ms later, and check the window kept its
+place.
 
 **The login keyring** (`crates/session/src/keyring.rs`): PAM starts
 gnome-keyring-daemon with the login keyring unlocked, and the daemon
@@ -1786,7 +1801,10 @@ lock screen); the "Don't fade" corner and caffeinated mode hold it off. Any
 input disconnects it (after 1.5 s grace for a deliberate start). With
 `screen_saver.lock` it locks underneath after `lock_minutes`, and keeps
 drawing over the lock screen (`Lock::over`) until the first input. The
-displays turning off ends it.
+displays turning off ends it. app_server hides the pointer while it runs
+(`saver::shown_cursor`, in every backend and in screenshots): the
+saver's own `CursorIcon::None` only counts once the pointer is on its
+surface, which takes a move, and a move ends it.
 
 Test headless: `tsession ipc NAME '{"type":"start_screen_saver"}'`, or set
 `screen_saver.module` with get/set_settings first.

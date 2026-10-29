@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-28
 
+### Screen saver hides the pointer
+
+*22:31* — app_server hides the pointer while the screen saver runs, from its first frame; the pointer comes back with the first move, which ends it.
+
+![Screen saver hides the pointer](2026-10-28/223118-screen-saver-hides-the-pointer.png)
+
+### Screen saver: pointer before
+
+*22:31* — Before: started under a still pointer, the screen saver showed the pointer of the window underneath (here a text I-beam) until a move, and a move ends it.
+
+![Screen saver: pointer before](2026-10-28/223117-screen-saver-pointer-before.png)
+
 ### Qt apps follow Olo: light
 
 *21:51* — The same Ladybird switched back to light live, with no restart.

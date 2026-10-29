@@ -311,7 +311,7 @@ pub fn run_headless(size_arg: Option<&str>) {
                     overlays,
                     color,
                     locked,
-                    (pointer, crate::cursor::pictured(&state.cursor_status)),
+                    (pointer, crate::cursor::pictured(&crate::saver::shown_cursor(&state.saver, &state.cursor_status))),
                 );
             }
         }

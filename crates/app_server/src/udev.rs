@@ -1973,7 +1973,7 @@ impl AnvilState<UdevData> {
                 overlays,
                 desktop_color,
                 locked,
-                (self.pointer.current_location(), crate::cursor::pictured(&self.cursor_status)),
+                (self.pointer.current_location(), crate::cursor::pictured(&crate::saver::shown_cursor(&self.saver, &self.cursor_status))),
             );
         }
         let overlays: Vec<CustomRenderElements<_>> = if locked {
@@ -2005,6 +2005,7 @@ impl AnvilState<UdevData> {
             &mut self.backend_data.pointer_element,
             &self.dnd_icon,
             &mut self.cursor_status,
+            self.saver.running(),
             self.show_window_preview,
             desktop_color,
             overlays,
@@ -2093,6 +2094,8 @@ fn render_surface<'a>(
     pointer_element: &mut PointerElement,
     dnd_icon: &Option<DndIcon>,
     cursor_status: &mut CursorImageStatus,
+    // While the screen saver runs (`saver::shown_cursor`).
+    pointer_hidden: bool,
     show_window_preview: bool,
     desktop_color: smithay::backend::renderer::Color32F,
     overlays: Vec<CustomRenderElements<UdevRenderer<'a>>>,
@@ -2122,7 +2125,7 @@ fn render_surface<'a>(
                 *cursor_status = CursorImageStatus::default_named();
             }
 
-            pointer_element.set_status(cursor_status.clone());
+            pointer_element.set_status(if pointer_hidden { CursorImageStatus::Hidden } else { cursor_status.clone() });
         }
 
         custom_elements.extend(

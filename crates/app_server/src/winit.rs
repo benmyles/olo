@@ -259,7 +259,7 @@ pub fn run_winit() {
             }
             let cursor_visible = !matches!(state.cursor_status, CursorImageStatus::Surface(_));
 
-            pointer_element.set_status(state.cursor_status.clone());
+            pointer_element.set_status(crate::saver::shown_cursor(&state.saver, &state.cursor_status));
 
             #[cfg(feature = "debug")]
             let fps = state.backend_data.fps.avg().round() as u32;
@@ -475,7 +475,7 @@ pub fn run_winit() {
                     Vec::new(),
                     color,
                     locked,
-                    (pointer, crate::cursor::pictured(&state.cursor_status)),
+                    (pointer, crate::cursor::pictured(&crate::saver::shown_cursor(&state.saver, &state.cursor_status))),
                 );
             }
             display_handle.flush_clients().unwrap();

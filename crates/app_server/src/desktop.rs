@@ -763,7 +763,14 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn move_to_workspace(&mut self, window: &WindowElement, index: u32) {
         let index = index.min(self.settings.workspace_count.max(1) - 1);
         if index == self.workspace {
+            // One on another workspace comes here, to the front (a
+            // minimized one stays so, here).
+            let away = self.parked.0.borrow().contains(window) && !window.meta().minimized.get();
             window.meta().workspace.set(Some(index));
+            if away {
+                self.unpark(window);
+                self.focus_window(window);
+            }
             return;
         }
         if self.space.element_location(window).is_some() {

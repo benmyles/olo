@@ -1798,5 +1798,17 @@
   "title": "Qt apps follow Olo: light",
   "caption": "The same Ladybird switched back to light live, with no restart.",
   "image": "2026-10-28/215134-qt-apps-follow-olo-light.png"
+ },
+ {
+  "time": "2026-10-28T22:31:17",
+  "title": "Screen saver: pointer before",
+  "caption": "Before: started under a still pointer, the screen saver showed the pointer of the window underneath (here a text I-beam) until a move, and a move ends it.",
+  "image": "2026-10-28/223117-screen-saver-pointer-before.png"
+ },
+ {
+  "time": "2026-10-28T22:31:18",
+  "title": "Screen saver hides the pointer",
+  "caption": "app_server hides the pointer while the screen saver runs, from its first frame; the pointer comes back with the first move, which ends it.",
+  "image": "2026-10-28/223118-screen-saver-hides-the-pointer.png"
  }
 ]

@@ -1517,6 +1517,10 @@ impl Kit {
                 ..Default::default()
             }))
             .ok()?;
+            // wgpu's default is to panic. A surface can be lost at any
+            // moment while app_server restarts in place (an upgrade), and
+            // the reconnect makes the window anew: no app may die of it.
+            device.on_uncaptured_error(std::sync::Arc::new(|e| tracing::error!("wgpu: {e}")));
             self.gpu = Some(Gpu { instance, adapter, device, queue });
             return Some(surface);
         }
@@ -1543,9 +1547,13 @@ impl Kit {
         let gpu = self.gpu.as_ref().unwrap();
         let s = &mut self.surfaces[i];
         let gs = s.gpu_surface.as_ref().unwrap();
+        // Lost, or no formats, while the compositor is away (it restarts
+        // in place): the reconnect configures it again.
+        if !gpu.adapter.is_surface_supported(gs) {
+            warn!("GPU surface lost (compositor gone?)");
+            return;
+        }
         let caps = gs.get_capabilities(&gpu.adapter);
-        // None while the compositor is away (it restarts in place): the
-        // reconnect configures it again.
         let Some(&first) = caps.formats.first() else {
             warn!("GPU surface has no formats (compositor gone?)");
             return;
@@ -1948,6 +1956,13 @@ impl Kit {
             }
         }
 
+        // Nothing to draw with while app_server is away (it restarts in
+        // place, as an upgrade does, and `configure_gpu_surface` found no
+        // formats): the reconnect makes the window anew and draws it.
+        if self.gpu.is_none() || s.renderer.is_none() || s.gpu_surface.is_none() {
+            debug!("no GPU surface to draw on (app_server gone?)");
+            return;
+        }
         let gpu = self.gpu.as_ref().unwrap();
         let ppp = output.pixels_per_point;
         let prims = s.ctx.tessellate(output.shapes, ppp);

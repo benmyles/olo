@@ -62,6 +62,15 @@ rules are universal and non-negotiable:
 - **Test headless** with `tools/dev/tsession`; never open windows on the
   user's display. Journal visible changes with `tools/journal.py`. Run
   both with `/usr/bin/python3`: the `python3` on PATH (linuxbrew) has no
-  PIL, so shots and journal entries fail under it.
+  PIL, so shots and journal entries fail under it. Your shell has the
+  person's `WAYLAND_DISPLAY`, so a GUI program you run from it opens on
+  their screen: `olo-logs` prints only with `--print` as its first
+  argument (else, even with `--help`, Logs opens).
+- **Scratch on disk, in `/var/tmp`, never `/tmp`.** `/tmp` is RAM
+  (tmpfs), so whatever goes there fills the person's memory: sandbox
+  HOMEs, a `CARGO_TARGET_DIR`, copies of builds (a release binary is
+  hundreds of MB), screenshots. Use a directory of your own under
+  `/var/tmp` (copy builds with `cp --reflink=always`, free there) and
+  remove it when you're done.
 - **No forks or subagents.** Do all the work yourself, in this session:
   never spawn a fork, subagent or background agent for any part of a task.
