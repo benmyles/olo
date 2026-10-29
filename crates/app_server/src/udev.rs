@@ -1971,6 +1971,7 @@ impl AnvilState<UdevData> {
                 &output,
                 &self.space,
                 overlays,
+                self.overview.as_ref(),
                 desktop_color,
                 locked,
                 (self.pointer.current_location(), crate::cursor::pictured(&crate::saver::shown_cursor(&self.saver, &self.cursor_status))),
@@ -2006,7 +2007,7 @@ impl AnvilState<UdevData> {
             &self.dnd_icon,
             &mut self.cursor_status,
             self.saver.running(),
-            self.show_window_preview,
+            self.overview.as_ref(),
             desktop_color,
             overlays,
             locked,
@@ -2096,7 +2097,7 @@ fn render_surface<'a>(
     cursor_status: &mut CursorImageStatus,
     // While the screen saver runs (`saver::shown_cursor`).
     pointer_hidden: bool,
-    show_window_preview: bool,
+    overview: Option<&crate::overview::Overview>,
     desktop_color: smithay::backend::renderer::Color32F,
     overlays: Vec<CustomRenderElements<UdevRenderer<'a>>>,
     locked: bool,
@@ -2169,7 +2170,7 @@ fn render_surface<'a>(
     }
 
     let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, show_window_preview, desktop_color, locked);
+        output_elements(output, space, custom_elements, renderer, overview, desktop_color, locked);
     let elements = crate::render::frame(elements, fit);
 
     let frame_mode = if surface.disable_direct_scanout {

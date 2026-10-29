@@ -1695,6 +1695,56 @@ is cached per display). Each app has a cell on every display it has
 windows on, and ↑/↓ keep to the column of the display the chosen window
 is on.
 
+While switching, the chosen app's windows are spotlit (spotlight.rs, as
+macOS doesn't and Windows' Alt+Tab peek does): once ⌘ has been held a
+moment (`WAIT`, so a quick ⌘Tab flips without it) everything else fades
+to black at 40%, the desktop too, under the chosen app's windows and
+their dialogs (`AnvilState::spotlit`: children by `xdg_toplevel`
+parent); ⌘\` spotlights the one window. `twitch_show` names them
+(`spotlight::show`), `render::space_elements` draws the dim
+(`spotlight::dim`, a solid redrawn only as its level changes) just
+below the first window not named, so Deskbar, menus and Twitcher stay
+above it. Choosing fades it out (`spotlight::end(true)`); Esc and the
+lock end it at once.
+
+## The overview (app_server overview.rs)
+
+⌃Space (`Shortcut::Overview`, the palette, `{"type":"overview",
+"show":true}`) shows every display's workspaces at once, macOS's Mission
+Control with every workspace out together, where BeOS's Workspaces
+applet has outlines too small to tell apart. Each display's usable area
+(Deskbar left out, inside `MARGIN`) holds a pane per workspace with
+windows on it and the one showing (`panes`: the grid that makes them
+biggest, the last row centred), named above it as the desktop's icons
+are (bold for the one showing, whose edge is the focus colour). In each
+pane its windows are spread at one scale, no bigger than the pane's, in
+rows in the order they stand (`spread`, a binary search for the biggest
+scale that fits), lettered in reading order from `hints::LETTERS` with
+the hints' badges. They are the windows themselves, scaled
+(`constrain_as_render_elements`), so they go on drawing: those on other
+workspaces are unmapped, and get frame callbacks from
+`overview_frames`. Windows showing glide from where they are (`Cell::from`,
+eased) and back on leaving; the rest, the panes and the letters fade.
+The window chosen (under the pointer, else picked with the arrows, at
+first the focused one) is ringed in the focus colour with its title on a
+tooltip's plate at its foot.
+
+A click on a window, its letter or Return makes it the active window on
+its workspace (`close_overview(Some)`, which `restore`s it); Esc, ⌃Space
+or a click on nothing leaves everything as it was. Keys go to it before
+the keymap (`overview_key`, swallowing their releases too), except its
+own shortcut and modifiers; clicks on Deskbar and other layers over it
+go through, and anything else that chooses a window or a workspace
+meanwhile (Deskbar, an agent) makes it step aside next frame
+(`overview_interrupted`), gliding back to the desktop as it is then.
+While it is out, `render::space_elements` draws its elements in place of
+the windows of the displays it shows, front first: letters, the chosen
+one's ring and title, windows, pane names, edges and fills, then the
+dim over the desktop (Deskbar and other top layers stay above).
+`{"type":"overview"}` tells agents what it shows: each pane, and each
+window's frame, workspace, letter and whether it is chosen. The bench
+(`tools/dev/bench`) times its frames opening, walked and leaving.
+
 ## Desktop shortcuts and tiling (olo_protocol::shortcuts, app_server keymap.rs, shell/tiling.rs)
 
 app_server's own shortcuts are one table, `olo_protocol::shortcuts::SHORTCUTS`:

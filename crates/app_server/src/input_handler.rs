@@ -85,10 +85,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
             }
 
-            KeyAction::TogglePreview => {
-                self.show_window_preview = !self.show_window_preview;
-            }
-
             KeyAction::ToggleDecorations => {
                 for element in self.space.elements() {
                     #[allow(irrefutable_let_patterns)]
@@ -134,7 +130,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if self.media_key(key, pressed) {
             return KeyAction::None;
         }
-        if self.hints_key(key, pressed) {
+        if self.hints_key(key, pressed) || self.overview_key(key, pressed) {
             return KeyAction::None;
         }
         let opts = crate::keymap::Options::from(&self.settings.keyboard);
@@ -213,6 +209,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
             }
             S::Lock => self.lock_screen(),
+            S::Overview => self.toggle_overview(),
             S::Caffeinate => {
                 let on = !self.power.caffeinated();
                 self.set_caffeinated(on, None, false);
@@ -450,6 +447,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let button = evt.button_code();
 
         let state = wl_pointer::ButtonState::from(evt.state());
+        if self.overview_button(button, state == wl_pointer::ButtonState::Pressed) {
+            return;
+        }
 
         if wl_pointer::ButtonState::Pressed == state {
             // Clicking puts keyboard hints away.
@@ -685,6 +685,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             })
         };
 
+        // The overview out: only what is over it (Deskbar) takes the
+        // pointer; windows and the desktop under it don't.
+        if self.overview.as_ref().is_some_and(|o| !o.leaving()) {
+            return layer_under(WlrLayer::Overlay).or_else(|| layer_under(WlrLayer::Top)).map(|(s, l)| (s, l.to_f64()));
+        }
         let mut under = None;
         if let Some((surface, loc)) = output
             .user_data()
@@ -724,6 +729,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn on_pointer_axis<B: InputBackend>(&mut self, evt: B::PointerAxisEvent) {
+        // Nothing under the overview scrolls.
+        if self.overview.as_ref().is_some_and(|o| !o.leaving()) {
+            return;
+        }
         let horizontal_amount = evt
             .amount(input::Axis::Horizontal)
             .unwrap_or_else(|| evt.amount_v120(input::Axis::Horizontal).unwrap_or(0.0) * 15.0 / 120.);
@@ -1018,7 +1027,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     KeyAction::None
                     | KeyAction::Quit
                     | KeyAction::Run(_)
-                    | KeyAction::TogglePreview
                     | KeyAction::ToggleDecorations => self.process_common_key_action(action),
 
                     _ => tracing::warn!(
@@ -1083,6 +1091,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             },
         );
         pointer.frame(self);
+        self.overview_pointer();
     }
 
     /// Input injected over IPC by UI tests.
@@ -1125,8 +1134,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let under = self.surface_under(pos);
                 pointer.motion(self, under, &MotionEvent { location: pos, serial, time });
                 pointer.frame(self);
+                self.overview_pointer();
             }
             S::Button { button, pressed } => {
+                if self.overview_button(button, pressed) {
+                    return;
+                }
                 if pressed {
                     self.update_keyboard_focus(pointer.current_location(), serial);
                 }
@@ -1350,7 +1363,6 @@ impl AnvilState<UdevData> {
                     KeyAction::None
                     | KeyAction::Quit
                     | KeyAction::Run(_)
-                    | KeyAction::TogglePreview
                     | KeyAction::ToggleDecorations => self.process_common_key_action(action),
 
                     _ => unreachable!(),
@@ -1485,6 +1497,7 @@ impl AnvilState<UdevData> {
             },
         );
         pointer.frame(self);
+        self.overview_pointer();
 
         // If pointer is now in a constraint region, activate it
         // TODO Anywhere else pointer is moved needs to do this
@@ -1533,6 +1546,7 @@ impl AnvilState<UdevData> {
             },
         );
         pointer.frame(self);
+        self.overview_pointer();
     }
 
     fn on_tablet_tool_axis<B: InputBackend>(&mut self, evt: B::TabletToolAxisEvent) {
@@ -1773,7 +1787,6 @@ enum KeyAction {
     Screen(usize),
     ScaleUp,
     ScaleDown,
-    TogglePreview,
     RotateOutput,
     ToggleTint,
     ToggleDecorations,
@@ -1816,7 +1829,6 @@ impl<BackendData: Backend> VirtualKeyboardHandler for AnvilState<BackendData> {
                     action @ (KeyAction::None
                     | KeyAction::Quit
                     | KeyAction::Run(_)
-                    | KeyAction::TogglePreview
                     | KeyAction::ToggleDecorations) => self.process_common_key_action(action),
                     // VT switching and output changes are out-of-scope for virtual keyboards.
                     action => debug!(?action, "ignoring key action from a virtual keyboard"),

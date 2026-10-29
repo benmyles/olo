@@ -99,6 +99,7 @@ pub fn take<R, T>(
     output: &Output,
     space: &Space<WindowElement>,
     overlays: Vec<CustomRenderElements<R>>,
+    overview: Option<&crate::overview::Overview>,
     clear_color: Color32F,
     locked: bool,
     (pointer, shape): (Point<f64, Logical>, Option<crate::cursor::Shape>),
@@ -111,7 +112,7 @@ pub fn take<R, T>(
     let captured = match shot.window {
         _ if shot.window.is_some() && locked => Err("the screen is locked".to_owned()),
         Some(id) => capture_window(renderer, space, id, scale, shot.border),
-        None => crate::render::capture(renderer, output, space, overlays, clear_color, locked)
+        None => crate::render::capture(renderer, output, space, overlays, overview, clear_color, locked)
             .map(|img| (img, space.output_geometry(output).unwrap_or_default())),
     };
     let captured = captured.map(|(img, rect)| {

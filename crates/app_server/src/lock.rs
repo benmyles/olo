@@ -149,6 +149,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.lock.locked = true;
             self.twitch = None;
             self.twitcher.forget();
+            crate::spotlight::end(false);
             let keyboard = self.seat.get_keyboard().unwrap();
             self.lock.focus_before = keyboard.current_focus();
             keyboard.set_focus(self, None::<KeyboardFocusTarget>, SERIAL_COUNTER.next_serial());

@@ -270,7 +270,7 @@ pub fn run_winit() {
             *full_redraw = full_redraw.saturating_sub(1);
             let space = &mut state.space;
             let damage_tracker = &mut state.backend_data.damage_tracker;
-            let show_window_preview = state.show_window_preview;
+            let overview = state.overview.as_ref();
             let locked = state.lock.locked();
             let lock = &state.lock;
 
@@ -361,7 +361,7 @@ pub fn run_winit() {
                     &mut fb,
                     damage_tracker,
                     age,
-                    show_window_preview,
+                    overview,
                     desktop_color,
                     locked,
                     None,
@@ -473,6 +473,7 @@ pub fn run_winit() {
                     &output,
                     &state.space,
                     Vec::new(),
+                    state.overview.as_ref(),
                     color,
                     locked,
                     (pointer, crate::cursor::pictured(&crate::saver::shown_cursor(&state.saver, &state.cursor_status))),

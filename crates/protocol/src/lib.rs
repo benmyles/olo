@@ -103,6 +103,12 @@ pub enum Request {
     /// The keyboard hints showing now (Preferences ▸ Keyboard): each
     /// letter, where it is and what it picks.
     Hints,
+    /// The overview (⌃Space): with `show`, open it (true) or leave it
+    /// (false, everything as it was); answers what it shows.
+    Overview {
+        #[serde(default)]
+        show: Option<bool>,
+    },
     SetSettings { settings: Settings },
     /// Save a PNG of one screen (`output`, or the one the pointer is on)
     /// or of one window, answering once the file is complete.
@@ -245,6 +251,8 @@ pub enum Reply {
     Palette { palette: olo_theme::Palette },
     /// The keyboard hints showing now (none when they're off).
     Hints { hints: Vec<HintInfo> },
+    /// [`Request::Overview`]'s answer.
+    Overview { overview: OverviewInfo },
     /// [`Request::Arrangement`]'s answer: the display's connector, the
     /// area tiling uses (global logical pixels: the display less Deskbar
     /// and the margins), and its windows on this workspace, front first.
@@ -1076,6 +1084,41 @@ pub struct KeyboardSettings {
     /// How quickly a double press (Control twice, for hints) must come,
     /// in milliseconds: the second press within this of the first.
     pub double_press_ms: u32,
+}
+
+/// [`Request::Overview`]'s answer: what the overview shows.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct OverviewInfo {
+    /// It is out (not leaving).
+    pub shown: bool,
+    /// Each display's workspaces, global logical pixels.
+    pub panes: Vec<OverviewPane>,
+    /// Each window, where it shows in its pane and the letter that picks
+    /// it (a click there does the same).
+    pub windows: Vec<OverviewWindow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OverviewPane {
+    pub output: String,
+    pub workspace: u32,
+    /// The workspace showing.
+    pub current: bool,
+    pub frame: Frame,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OverviewWindow {
+    pub id: WindowId,
+    pub title: String,
+    pub app_id: String,
+    pub output: String,
+    pub workspace: u32,
+    pub frame: Frame,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub letter: Option<String>,
+    /// Ringed: under the pointer, or the arrows' choice.
+    pub chosen: bool,
 }
 
 /// One keyboard hint: the letters that pick it, where it is (global

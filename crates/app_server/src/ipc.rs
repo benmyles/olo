@@ -467,6 +467,14 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Reply::Palette { palette }
             }
             Request::Hints => Reply::Hints { hints: self.hints.infos() },
+            Request::Overview { show } => {
+                match show {
+                    Some(true) => self.open_overview(),
+                    Some(false) => self.close_overview(None),
+                    None => {}
+                }
+                Reply::Overview { overview: self.overview_info() }
+            }
             Request::SetSettings { settings } => {
                 self.set_settings(settings);
                 Reply::Ok

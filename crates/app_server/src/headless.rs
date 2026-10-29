@@ -327,6 +327,7 @@ pub fn run_headless(size_arg: Option<&str>) {
                     output,
                     &state.space,
                     overlays,
+                    state.overview.as_ref(),
                     color,
                     locked,
                     (pointer, crate::cursor::pictured(&crate::saver::shown_cursor(&state.saver, &state.cursor_status))),
@@ -397,7 +398,7 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
             &mut screen.damage_tracker,
             // The single offscreen buffer always holds the last frame.
             1,
-            false,
+            state.overview.as_ref(),
             desktop_color,
             locked,
             fit,

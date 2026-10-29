@@ -24,7 +24,9 @@ notifications, a terminal's worth of output), one 3456×2234 screen (a
   tabs clicked, its menus opened and walked, a field typed in, the
   window resized live, the theme flipped; then closed.
   Deskbar: swept and its menu walked. The command palette: shown, typed
-  in, its results walked. The screen savers: each module run.
+  in, its results walked. The overview (⌃Space): four windows on two
+  workspaces, opened, its windows walked with the arrows, left. The
+  screen savers: each module run.
 
 Every frame an app draws is in its `{"frames":true}` marks
 (olo_kit::commands::FrameMark); app_server's own frames and event loop
@@ -690,6 +692,43 @@ def run_palette(b):
     b.measure("palette", "hide", [pid], lambda st: (s.key(ESC), time.sleep(0.4)), transition=True)
 
 
+def run_overview(b):
+    """The overview: app_server's own frames as it opens (windows gliding,
+    the other workspace's fading in), is walked and leaves, with four
+    live windows on two workspaces."""
+    s = b.s
+    before = {w["id"] for w in s.windows()}
+    pids = []
+    for i, cmd in enumerate([[os.path.join(RELEASE, "examples", "demo")], ["olo-activity"], ["olo-deskcalc"], ["olo-logs"]]):
+        if i == 2:
+            s.req({"type": "switch_workspace", "index": 1})
+        out = tsession("run", NAME, *cmd)
+        pids += [int(w) for w in out.split() if w.isdigit()][:1]
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < 10 and len({w["id"] for w in s.windows()} - before) <= i:
+            time.sleep(0.02)
+    s.req({"type": "switch_workspace", "index": 0})
+    time.sleep(1.5)
+
+    def out_and_back(st):
+        for _ in range(2):
+            s.key(CTRL, 57)
+            time.sleep(0.4)
+            for k in (106, 106, 108, 105, 103):
+                s.key(k)
+                time.sleep(0.08)
+            s.key(ESC)
+            time.sleep(0.4)
+    st = b.measure("overview", "open, walk, leave", [], out_and_back)
+    if (s.req({"type": "overview"}) or {}).get("overview", {}).get("shown") is not False:
+        st.failures.append("still out after Esc")
+    for p in pids:
+        if s.ours(p):
+            os.kill(p, 15)
+    time.sleep(0.5)
+    s.req({"type": "switch_workspace", "index": 0})
+
+
 def run_savers(b):
     s = b.s
     for module in SAVERS:
@@ -712,7 +751,7 @@ def main():
     a = sys.argv[1:]
     opt = lambda k, d=None: a[a.index(k) + 1] if k in a else d
     if "--list" in a:
-        print(" ".join(x.key for x in APPS) + " deskbar palette savers")
+        print(" ".join(x.key for x in APPS) + " deskbar palette overview savers")
         return
     if "-h" in a or "--help" in a:
         print(__doc__)
@@ -750,6 +789,8 @@ def main():
                 run_app(b, app, scale)
             if not only or "palette" in only:
                 run_palette(b)
+            if not only or "overview" in only:
+                run_overview(b)
             if not only or "savers" in only:
                 run_savers(b)
     finally:

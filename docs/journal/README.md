@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Spotlight while switching
+
+*09:01* — While ⌘Tab is held, every window but the chosen app's dims, so the one you're about to switch to stands out; it follows each step and fades back when you let go or cancel.
+
+![Spotlight while switching](2026-10-29/090100-spotlight-while-switching.png)
+
+### The overview, on ⌃Space
+
+*08:59* — Every workspace at once, a pane each, its windows spread out live and lettered: click one or type its letter to go to it, the arrows and Return walk them, Esc leaves. Windows showing glide into place and back; the rest fade in.
+
+![The overview, on ⌃Space](2026-10-29/085950-the-overview-on-space.png)
+
 ### Deskbar's badge ring is one device pixel
 
 *08:25* — The panel-coloured ring that cuts the unread badge out of the bell is a whole device pixel wide at 1.5× too, rather than a blurred pixel and a half.

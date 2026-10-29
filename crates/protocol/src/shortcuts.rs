@@ -234,6 +234,9 @@ pub enum Shortcut {
     /// The focused window to workspace 1–9 (counting from 0), following
     /// it there.
     WindowToWorkspace(u8),
+    /// The overview: every display's workspaces and windows at once
+    /// (app_server's overview.rs).
+    Overview,
     /// The command palette (apps/palette).
     Palette,
     Find,
@@ -371,6 +374,7 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::WindowToWorkspace(7), "window-to-workspace-8", WORKSPACES, "Window to workspace 8", &["Ctrl+Shift+Cmd+8"]),
     s(Shortcut::WindowToWorkspace(8), "window-to-workspace-9", WORKSPACES, "Window to workspace 9", &["Ctrl+Shift+Cmd+9"]),
     s(Shortcut::Palette, "palette", DESKTOP, "Command palette", &["Cmd+Space"]),
+    s(Shortcut::Overview, "overview", DESKTOP, "Overview of every window", &["Ctrl+Space"]),
     s(Shortcut::Find, "find", DESKTOP, "Find", &["Alt+Cmd+Space"]),
     s(Shortcut::Lock, "lock", DESKTOP, "Lock the screen", &["Ctrl+Cmd+Q"]),
     s(Shortcut::Caffeinate, "caffeinate", DESKTOP, "Stay awake, or not", &["Ctrl+Cmd+A"]),

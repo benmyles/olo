@@ -755,19 +755,20 @@ as they land (with the commit), add new ones as they come up.
   window opening at its tile's size, minimum sizes kept, ⌃⌘Z, through an
   in-place reload. Not yet: a master-and-stack layout (dwm, Amethyst),
   resizing every tile in one transaction (Sway), a snap-layout picker.
-- **Spotlight the chosen app while switching** (Ben, 2026-10-28): while
-  ⌘Tab is held, every window but the chosen app's is dimmed, so the eye
-  goes to that app's windows until ⌘ is let go (then everything is
-  undimmed as the choice is made). The same for ⌘\` among one app's
-  windows: the others dimmed while the chosen window stands out. Dimming
-  follows the choice as it moves, and Esc undims as it puts everything
-  back.
-- **An overview of everything, on ⌃Space** (Ben, 2026-10-28): every
-  display, workspace and window zoomed out together, each window still
-  showing its live contents and updating as usual. Clicking one makes it
-  the active window (switching to its workspace) and leaves the
-  overview. Each window has a letter on it there, so pressing the letter
-  does the same as clicking. Esc (or ⌃Space again) leaves it as it was.
+- ~~**Spotlight the chosen app while switching**~~ (Ben, 2026-10-28;
+  done: HACKING, "Twitcher", spotlight.rs): while ⌘Tab (or ⌘\`) is
+  held a moment, everything but the chosen app's windows (and their
+  dialogs) dims, following the choice; it fades out as ⌘ is let go, and
+  Esc or the lock takes it away at once. A quick ⌘Tab flips without it.
+- ~~**An overview of everything, on ⌃Space**~~ (Ben, 2026-10-28; done:
+  HACKING, "The overview", overview.rs): every display's workspaces as
+  panes, their windows spread so none covers another, live (those on
+  other workspaces too), lettered; a click or a letter makes one the
+  active window on its workspace, the arrows and Return walk them, Esc,
+  ⌃Space or a click on nothing leaves. Windows showing glide into place
+  and back; the rest fade. Agents: `{"type":"overview"}`. Not yet:
+  dragging a window to another workspace's pane, adding a workspace.
+
 - **Multiple monitors, managed like macOS Displays.** Hotplug of external
   displays (USB-C/Thunderbolt on the M2), each with its own resolution,
   refresh rate, scale factor (2× default on HiDPI, 1×/1.5× etc. on

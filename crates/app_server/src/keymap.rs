@@ -273,6 +273,12 @@ impl Keymap {
         self.recording
     }
 
+    /// The shortcut `key` makes with the modifiers held now, if any.
+    pub fn shortcut_for(&self, key: u32) -> Option<Shortcut> {
+        let chord = self.chord(key);
+        self.bindings.iter().find(|(c, _)| *c == chord).map(|&(_, s)| s)
+    }
+
     /// The key with the modifiers held now.
     fn chord(&self, key: u32) -> Chord {
         Chord { ctrl: self.ctrl(), alt: self.alt(), shift: self.shift(), cmd: self.cmd_keys > 0, key }

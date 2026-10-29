@@ -232,7 +232,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     #[cfg(feature = "debug")]
     pub renderdoc: Option<renderdoc::RenderDoc<renderdoc::V141>>,
 
-    pub show_window_preview: bool,
+    /// The overview (⌃Space), while it is out or leaving.
+    pub overview: Option<crate::overview::Overview>,
     pub parked: crate::desktop::Parked,
     pub workspace: u32,
     pub settings: olo_protocol::Settings,
@@ -1098,7 +1099,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
 
             #[cfg(feature = "debug")]
             renderdoc: renderdoc::RenderDoc::new().ok(),
-            show_window_preview: false,
+            overview: None,
             parked: Default::default(),
             workspace: 0,
             settings: {
@@ -1175,6 +1176,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
 impl<BackendData: Backend + 'static> AnvilState<BackendData> {
     pub fn pre_repaint(&mut self, output: &Output, frame_target: impl Into<Time<Monotonic>>) {
         let frame_target = frame_target.into();
+        self.overview_tick();
         self.pace_scroll(output);
         self.update_wallpaper(output);
 
@@ -1268,6 +1270,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         if let Some(surface) = self.lock.surface_for(output) {
             smithay::desktop::utils::send_frames_surface_tree(surface, output, time, throttle, |_, _| Some(output.clone()));
         }
+        self.overview_frames(output, time);
     }
 
     pub fn post_repaint(

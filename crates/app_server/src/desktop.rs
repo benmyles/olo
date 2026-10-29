@@ -226,7 +226,7 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// The display `w` is on, or was on while hidden or on another
     /// workspace (where it comes back).
-    fn display_of(&self, w: &WindowElement) -> Option<Output> {
+    pub(crate) fn display_of(&self, w: &WindowElement) -> Option<Output> {
         if self.space.element_location(w).is_some() {
             return self.window_output(w);
         }
@@ -402,6 +402,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     pub fn restore(&mut self, window: &WindowElement) {
+        self.overview_interrupted();
         let ws = window.meta().workspace.get().unwrap_or(self.workspace);
         if ws != self.workspace {
             self.switch_workspace(ws);
@@ -667,9 +668,39 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.twitch_restack();
         }
         let was_hidden = w.meta().minimized.get();
+        // An app comes forward with all its windows here, in their order,
+        // as BeOS's roster activates an app; the chosen one in front.
+        let app = (self.twitch.as_ref().is_some_and(|t| t.apps)).then(|| w.app_id());
+        let mates: Vec<WindowElement> =
+            self.space.elements().filter(|x| app.as_ref().is_some_and(|a| x.app_id() == *a)).cloned().collect();
+        for m in &mates {
+            self.space.raise_element(m, false);
+        }
         self.restore(&w);
+        crate::spotlight::show(self.spotlit(&w, app.is_some()));
         if let Some(t) = self.twitch.as_mut() {
             t.unhidden = was_hidden.then_some(w);
+        }
+    }
+
+    /// What the spotlight keeps bright while `chosen` is chosen: its app's
+    /// windows here (`app`) or it alone, and whatever they hold in front
+    /// of them (dialogs, Quick Look).
+    fn spotlit(&self, chosen: &WindowElement, app: bool) -> std::collections::HashSet<u64> {
+        let windows: Vec<&WindowElement> = self.space.elements().collect();
+        let mut bright: std::collections::HashSet<u64> =
+            windows.iter().filter(|w| w.id() == chosen.id() || (app && w.app_id() == chosen.app_id())).map(|w| w.id()).collect();
+        loop {
+            let parents: Vec<_> = windows.iter().filter(|w| bright.contains(&w.id())).filter_map(|w| w.wl_surface()).collect();
+            let children = windows.iter().filter(|w| {
+                !bright.contains(&w.id())
+                    && w.0.toplevel().and_then(|t| t.parent()).is_some_and(|p| parents.iter().any(|s| **s == p))
+            });
+            let more: Vec<u64> = children.map(|w| w.id()).collect();
+            if more.is_empty() {
+                return bright;
+            }
+            bright.extend(more);
         }
     }
 
@@ -701,12 +732,14 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn twitch_done(&mut self) {
         self.twitch = None;
         self.twitcher.forget();
+        crate::spotlight::end(true);
     }
 
     /// Esc while switching: back to the workspace and window switching
     /// began on, everything as it was.
     pub fn twitch_cancel(&mut self) {
         let Some(home) = self.twitch.as_ref().map(|t| t.home) else { return };
+        crate::spotlight::end(false);
         self.twitch_restack();
         if self.workspace != home {
             self.switch_workspace(home);
@@ -746,6 +779,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         if index == self.workspace {
             return;
         }
+        self.overview_interrupted();
         // Park everything visible, bottom-most first to keep stacking order.
         let visible: Vec<WindowElement> = self.space.elements().cloned().collect();
         for w in &visible {

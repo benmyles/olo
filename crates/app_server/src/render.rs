@@ -10,7 +10,7 @@ use smithay::{
             memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
             surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
             utils::{
-                ConstrainAlign, ConstrainScaleBehavior, CropRenderElement, Relocate, RelocateRenderElement,
+                CropRenderElement, Relocate, RelocateRenderElement,
                 RescaleRenderElement,
             },
         },
@@ -18,7 +18,7 @@ use smithay::{
     },
     desktop::{
         LayerSurface, layer_map_for_output,
-        space::{ConstrainBehavior, ConstrainReference, Space, SpaceRenderElements, constrain_space_element},
+        space::{Space, SpaceElement, SpaceRenderElements},
     },
     output::Output,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
@@ -267,69 +267,6 @@ where
     }
 }
 
-pub fn space_preview_elements<'a, R, C>(
-    renderer: &'a mut R,
-    space: &'a Space<WindowElement>,
-    output: &'a Output,
-) -> impl Iterator<Item = C> + 'a
-where
-    R: Renderer + ImportAll + ImportMem,
-    R::TextureId: Clone + Send + 'static,
-    C: From<CropRenderElement<RelocateRenderElement<RescaleRenderElement<WindowRenderElement<R>>>>> + 'a,
-{
-    let constrain_behavior = ConstrainBehavior {
-        reference: ConstrainReference::BoundingBox,
-        behavior: ConstrainScaleBehavior::Fit,
-        align: ConstrainAlign::CENTER,
-    };
-
-    let preview_padding = 10;
-
-    let elements_on_space = space.elements_for_output(output).count();
-    let output_scale = output.current_scale().fractional_scale();
-    let output_transform = output.current_transform();
-    let output_size = output
-        .current_mode()
-        .map(|mode| {
-            output_transform
-                .transform_size(mode.size)
-                .to_f64()
-                .to_logical(output_scale)
-        })
-        .unwrap_or_default();
-
-    let max_elements_per_row = 4;
-    let elements_per_row = usize::min(elements_on_space, max_elements_per_row);
-    let rows = f64::ceil(elements_on_space as f64 / elements_per_row as f64);
-
-    let preview_size = Size::from((
-        f64::round(output_size.w / elements_per_row as f64) as i32 - preview_padding * 2,
-        f64::round(output_size.h / rows) as i32 - preview_padding * 2,
-    ));
-
-    space
-        .elements_for_output(output)
-        .enumerate()
-        .flat_map(move |(element_index, window)| {
-            let column = element_index % elements_per_row;
-            let row = element_index / elements_per_row;
-            let preview_location = Point::from((
-                preview_padding + (preview_padding + preview_size.w) * column as i32,
-                preview_padding + (preview_padding + preview_size.h) * row as i32,
-            ));
-            let constrain = Rectangle::new(preview_location, preview_size);
-            constrain_space_element(
-                renderer,
-                window,
-                preview_location,
-                1.0,
-                output_scale,
-                constrain,
-                constrain_behavior,
-            )
-        })
-}
-
 #[profiling::function]
 /// Put the level indicator just under the pointer, which comes first.
 fn add_indicator<R, E>(elements: &mut Vec<OutputRenderElements<R, E>>, indicator: Option<OutputRenderElements<R, E>>)
@@ -346,12 +283,14 @@ where
 /// The layer surfaces and windows, front first, as smithay's
 /// `space_render_elements` draws them but for the menus of the Background
 /// and Bottom layers (`shell::lower_layer_menus`): over the windows and
-/// the Top layer rather than under the windows with their surface.
+/// the Top layer rather than under the windows with their surface. With
+/// the overview out on `output`, it stands in for the windows.
 fn space_elements<R>(
     renderer: &mut R,
     space: &Space<WindowElement>,
     output: &Output,
-) -> Vec<SpaceRenderElements<R, WindowRenderElement<R>>>
+    overview: Option<&crate::overview::Overview>,
+) -> Vec<OutputRenderElements<R, WindowRenderElement<R>>>
 where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Send + 'static,
@@ -367,7 +306,7 @@ where
         for (l, at) in layers.iter().filter(|(l, _)| l.layer() == layer) {
             let elements: Vec<WaylandSurfaceRenderElement<R>> =
                 AsRenderElements::<R>::render_elements(l, renderer, at.to_physical_precise_round(scale), scale.into(), 1.0);
-            out.extend(elements.into_iter().map(SpaceRenderElements::Surface));
+            out.extend(elements.into_iter().map(|e| OutputRenderElements::Space(SpaceRenderElements::Surface(e))));
         }
     };
     let tree = |renderer: &mut R, out: &mut Vec<_>, surface: &WlSurface, at: Point<i32, Logical>| {
@@ -379,20 +318,37 @@ where
             1.0,
             Kind::Unspecified,
         );
-        out.extend(elements.into_iter().map(SpaceRenderElements::Surface));
+        out.extend(elements.into_iter().map(|e| OutputRenderElements::Space(SpaceRenderElements::Surface(e))));
     };
     whole(renderer, &mut out, Layer::Overlay);
     for (menu, at) in crate::shell::lower_layer_menus(output) {
         tree(renderer, &mut out, &menu, at);
     }
     whole(renderer, &mut out, Layer::Top);
-    if let Some(region) = space.output_geometry(output) {
-        out.extend(
-            space
-                .render_elements_for_region(renderer, &region, scale, 1.0)
-                .into_iter()
-                .map(|e| SpaceRenderElements::Element(Wrap::from(e))),
-        );
+    let window = |e| OutputRenderElements::Space(SpaceRenderElements::Element(Wrap::from(e)));
+    if let (Some(region), Some(overview)) = (space.output_geometry(output), overview.filter(|o| o.shows(&output.name()))) {
+        out.extend(overview.elements(renderer, output, region.loc, region.size));
+    } else if let Some(region) = space.output_geometry(output) {
+        // As `Space::render_elements_for_region` draws them, but for the
+        // spotlight while switching: its dim under the windows it keeps
+        // bright (the front ones), over the rest.
+        let area = Rectangle::from_size(region.size.to_f64().to_physical(scale).to_i32_ceil());
+        let mut dim = crate::spotlight::dim(&output.name(), area);
+        for w in space.elements().rev() {
+            let (Some(bbox), Some(at)) = (space.element_bbox(w), space.element_location(w)) else { continue };
+            if !region.overlaps(bbox) {
+                continue;
+            }
+            if dim.as_ref().is_some_and(|(bright, _)| !bright.contains(&w.id())) {
+                out.push(window(WindowRenderElement::Decoration(dim.take().unwrap().1)));
+            }
+            let location = (at - SpaceElement::geometry(w).loc - region.loc).to_physical_precise_round(scale);
+            let elements: Vec<WindowRenderElement<R>> = w.render_elements(renderer, location, scale.into(), 1.0);
+            out.extend(elements.into_iter().map(window));
+        }
+        if let Some((_, d)) = dim {
+            out.push(window(WindowRenderElement::Decoration(d)));
+        }
     }
     // The lower layers themselves, without their menus.
     for (l, at) in layers.iter().filter(|(l, _)| matches!(l.layer(), Layer::Bottom | Layer::Background)) {
@@ -406,7 +362,7 @@ pub fn output_elements<R>(
     space: &Space<WindowElement>,
     custom_elements: impl IntoIterator<Item = CustomRenderElements<R>>,
     renderer: &mut R,
-    show_window_preview: bool,
+    overview: Option<&crate::overview::Overview>,
     desktop_color: Color32F,
     locked: bool,
 ) -> (Vec<OutputRenderElements<R, WindowRenderElement<R>>>, Color32F)
@@ -459,13 +415,8 @@ where
         );
         add_indicator(&mut output_render_elements, indicator);
 
-        if show_window_preview && space.elements_for_output(output).count() > 0 {
-            output_render_elements.extend(space_preview_elements(renderer, space, output));
-        }
-
         crate::shell::groups::mark_behind(space);
-        let space_elements = space_elements(renderer, space, output);
-        output_render_elements.extend(space_elements.into_iter().map(OutputRenderElements::Space));
+        output_render_elements.extend(space_elements(renderer, space, output, overview));
         // The wallpaper goes under everything, over the workspace colour.
         output_render_elements.extend(
             crate::wallpaper::element(renderer, output)
@@ -485,7 +436,7 @@ pub fn render_output<'a, 'd, R>(
     framebuffer: &'a mut R::Framebuffer<'_>,
     damage_tracker: &'d mut OutputDamageTracker,
     age: usize,
-    show_window_preview: bool,
+    overview: Option<&crate::overview::Overview>,
     desktop_color: Color32F,
     locked: bool,
     fit: Option<Fit>,
@@ -495,7 +446,7 @@ where
     R::TextureId: Clone + Send + 'static,
 {
     let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, show_window_preview, desktop_color, locked);
+        output_elements(output, space, custom_elements, renderer, overview, desktop_color, locked);
     let elements = frame(elements, fit);
     damage_tracker.render_output(renderer, framebuffer, age, &elements, clear_color)
 }
@@ -506,6 +457,7 @@ pub fn capture<R, T>(
     output: &Output,
     space: &Space<WindowElement>,
     overlays: Vec<CustomRenderElements<R>>,
+    overview: Option<&crate::overview::Overview>,
     clear_color: Color32F,
     locked: bool,
 ) -> Result<image::RgbaImage, String>
@@ -521,7 +473,7 @@ where
     let source = mirror_source(output);
     let fit = source.as_ref().map(|s| fit_outputs(output, s, space));
     let from = source.as_ref().unwrap_or(output);
-    let (elements, clear_color) = output_elements::<R>(from, space, overlays, renderer, false, clear_color, locked);
+    let (elements, clear_color) = output_elements::<R>(from, space, overlays, renderer, overview, clear_color, locked);
     let elements = frame(elements, fit);
     offscreen(renderer, size, scale, &elements, clear_color)
 }
