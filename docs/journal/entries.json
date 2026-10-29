@@ -2056,5 +2056,17 @@
   "title": "A pinned banner says so",
   "caption": "The header of a banner whose notes are all pinned reads Pinned beside its close box; the history adds Pinned after a note's time.",
   "image": "2026-10-29/160148-a-pinned-banner-says-so.png"
+ },
+ {
+  "time": "2026-10-29T16:20:20",
+  "title": "Quick Look: Markdown as a set page",
+  "caption": "Markdown in Quick Look reads like a well-set page: a measure of at most 680 points, a 20-point line, headings with room above and rules under the first two, hanging indents with lined-up numbers and real task boxes, GitHub's alerts, and code coloured by its language.",
+  "image": "2026-10-29/162020-quick-look-markdown-as-a-set-page.png"
+ },
+ {
+  "time": "2026-10-29T16:20:21",
+  "title": "Quick Look: tables, pictures and links",
+  "caption": "Tables are as wide as what they hold and line up as the Markdown says; the document's own pictures show, crisp; links open, and a #heading link scrolls to it. Long documents lay out a few milliseconds a frame, so nothing waits.",
+  "image": "2026-10-29/162021-quick-look-tables-pictures-and-links.png"
  }
 ]

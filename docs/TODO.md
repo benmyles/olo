@@ -267,9 +267,14 @@ as they land (with the commit), add new ones as they come up.
 - ~~**Screenshots: the saved file's path on the clipboard**~~ (Ben,
   2026-10-29; done: HACKING, Screenshot and `olo_kit::clipboard`): Save,
   ⌘⇧3, Print Screen and ⌘⇧4 all put the file's path on the clipboard.
-- **Quick Look: Markdown rendered nicely** (Ben, 2026-10-29, for later):
-  Quick Look's preview of Markdown files should be much more polished
-  than it is now.
+- ~~**Quick Look: Markdown rendered nicely**~~ (Ben, 2026-10-29; done:
+  HACKING, `crates/preview`'s formatted documents, `rich.rs`): Quick
+  Look's preview of Markdown files should be much more polished than it
+  is now. Now a set page: a measure, a 20-point line, headings with room
+  and rules, hanging indents, task boxes, alerts, code coloured by its
+  language, tables lined up as written, the document's own pictures,
+  links that open (and `#anchors` that scroll), laid out once and drawn
+  only where seen.
 - ~~**Notifications: pin a notification**~~ (Ben, 2026-10-29; done:
   HACKING, Notifications' Pin and Snooze): a pinned notification stays
   put: it doesn't fade out over time and isn't dismissed by dismissing

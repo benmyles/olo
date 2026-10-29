@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Quick Look: tables, pictures and links
+
+*16:20* — Tables are as wide as what they hold and line up as the Markdown says; the document's own pictures show, crisp; links open, and a #heading link scrolls to it. Long documents lay out a few milliseconds a frame, so nothing waits.
+
+![Quick Look: tables, pictures and links](2026-10-29/162021-quick-look-tables-pictures-and-links.png)
+
+### Quick Look: Markdown as a set page
+
+*16:20* — Markdown in Quick Look reads like a well-set page: a measure of at most 680 points, a 20-point line, headings with room above and rules under the first two, hanging indents with lined-up numbers and real task boxes, GitHub's alerts, and code coloured by its language.
+
+![Quick Look: Markdown as a set page](2026-10-29/162020-quick-look-markdown-as-a-set-page.png)
+
 ### A pinned banner says so
 
 *16:01* — The header of a banner whose notes are all pinned reads Pinned beside its close box; the history adds Pinned after a note's time.

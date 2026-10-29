@@ -167,6 +167,16 @@ fn mark_well(painter: &Painter, r: Rect, p: &Palette, pressed: bool, enabled: bo
     style::bevel(painter, inner, shade(p, p.panel_background, 1.6), shade(p, p.panel_background, 1.08));
 }
 
+/// A check box drawn, not one to click (a document's task, done or not):
+/// `CheckBox`'s well at `well` (`metrics::MARK_SIZE` square, on the
+/// device grid: `style::snap_centred`), marked if `checked`.
+pub fn check_box_look(painter: &Painter, well: Rect, p: &Palette, checked: bool) {
+    mark_well(painter, well, p, false, true);
+    if checked {
+        style::check_mark(painter, Rect::from_min_max(well.min + vec2(3.0, 3.5), well.max - vec2(2.5, 3.5)), c(p.control_mark));
+    }
+}
+
 /// BCheckBox.
 pub struct CheckBox<'a> {
     value: &'a mut bool,

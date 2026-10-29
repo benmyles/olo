@@ -205,7 +205,8 @@ impl QuickLook {
         style::hline(painter, r.left(), r.right(), r.top(), style::shade(&p, p.panel_background, 1.2));
         style::hline(painter, r.left(), r.right(), r.top() + 1.0, c(p.shine));
         let inner = r.shrink2(vec2(m::SPACING, m::TIGHT));
-        let icon = Rect::from_center_size(pos2(inner.left() + 8.0, inner.center().y + 1.0), vec2(16.0, 16.0));
+        // Level with the note's capitals, on the device grid.
+        let icon = style::snap_centred(ui.ctx(), pos2(inner.left() + 8.0, inner.center().y), vec2(16.0, 16.0));
         icons::paint(painter, icon, view::icon_of(&self.entry));
         // The icon is the item: drag it out, as a document's proxy icon.
         let mut action = None;
@@ -268,7 +269,7 @@ impl QuickLook {
 /// A three-quarter circle with an arrowhead, turning left or right.
 fn rotate_glyph(painter: &egui::Painter, r: Rect, right: bool, p: &olo_kit::theme::Palette) {
     let ink = c(p.control_text);
-    let s = egui::Stroke::new(1.0, ink);
+    let s = egui::Stroke::new(style::hairline(painter.ctx()), ink);
     let o = r.center() + vec2(0.0, 0.5);
     let flip = if right { 1.0 } else { -1.0 };
     // From the top, round the far side and back up to the near one.
@@ -291,16 +292,19 @@ fn rotate_glyph(painter: &egui::Painter, r: Rect, right: bool, p: &olo_kit::them
 /// A small window frame with an arrow leaving its top-right corner.
 fn pop_out_glyph(painter: &egui::Painter, r: Rect, p: &olo_kit::theme::Palette) {
     let ink = c(p.control_text);
-    let s = egui::Stroke::new(1.0, ink);
-    let o = r.center() + vec2(-6.0, -5.0);
-    let px = |x: f32, y: f32| pos2((o.x + x).round() + 0.5, (o.y + y).round() + 0.5);
+    let ppp = painter.pixels_per_point();
+    let o = ((r.center() + vec2(-6.0, -5.0)).to_vec2() * ppp).round() / ppp;
+    // One-point lines on whole device pixels (`style::hline`), so the
+    // glyph is crisp at every scale.
+    let (h, v) = (|x0: f32, x1: f32, y: f32| style::hline(painter, o.x + x0, o.x + x1, o.y + y, ink), |x: f32, y0: f32, y1: f32| style::vline(painter, o.x + x, o.y + y0, o.y + y1, ink));
     // The frame, open at the top-right where the arrow leaves.
-    painter.line_segment([px(0.0, 3.0), px(0.0, 11.0)], s);
-    painter.line_segment([px(0.0, 11.0), px(8.0, 11.0)], s);
-    painter.line_segment([px(8.0, 11.0), px(8.0, 7.0)], s);
-    painter.line_segment([px(0.0, 3.0), px(4.0, 3.0)], s);
+    v(0.0, 3.0, 12.0);
+    h(0.0, 9.0, 11.0);
+    v(8.0, 7.0, 12.0);
+    h(0.0, 5.0, 3.0);
     // The arrow.
-    painter.line_segment([px(4.0, 7.0), px(11.0, 0.0)], s);
-    painter.line_segment([px(7.0, 0.0), px(11.0, 0.0)], s);
-    painter.line_segment([px(11.0, 0.0), px(11.0, 4.0)], s);
+    h(7.0, 12.0, 0.0);
+    v(11.0, 0.0, 5.0);
+    let w = style::hairline(painter.ctx());
+    painter.line_segment([pos2(o.x + 4.0 + w / 2.0, o.y + 7.0 + w / 2.0), pos2(o.x + 11.0 + w / 2.0, o.y + w / 2.0)], egui::Stroke::new(w, ink));
 }

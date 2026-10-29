@@ -14,6 +14,7 @@ pub mod load;
 pub mod media;
 pub mod opus;
 pub mod pdf;
+pub mod rich;
 pub mod text;
 pub mod video;
 
@@ -99,6 +100,8 @@ pub struct Preview {
     /// A drag started on the picture while there was nothing to pan: it
     /// is a drag of the file out (see [`Preview::take_drag_out`]).
     drag_out: bool,
+    /// A formatted document's page, as laid out.
+    rich: rich::RichView,
 }
 
 /// Zoom and pan of an image: `zoom` is points per image pixel (None fits
@@ -151,6 +154,7 @@ impl Preview {
             view: ImageView::default(),
             still: false,
             drag_out: false,
+            rich: rich::RichView::default(),
         };
         q.spawn(send);
         q
@@ -259,7 +263,7 @@ impl Preview {
                     let w = (longest.clamp(40, 110) as f32 * 7.3 + 60.0).min(max_w);
                     (w, (t.lines.len() as f32 * TEXT_ROW + 2.0 * m::SPACING).clamp(200.0, max_h))
                 }
-                Body::Rich { .. } => (720.0f32.min(max_w), max_h),
+                Body::Rich { .. } => (744.0f32.min(max_w), max_h),
                 Body::Table { sheets, .. } => {
                     let rows = sheets.first().map_or(0, |s| s.1.len());
                     let tabs = if sheets.len() > 1 { 26.0 } else { 0.0 };
@@ -521,7 +525,7 @@ impl Preview {
                 });
             }
             Body::Text(t) => text_view(ui, r, t, id),
-            Body::Rich { blocks, .. } => rich_view(ui, r, blocks, id),
+            Body::Rich { blocks, .. } => self.rich.show(ui, r, blocks, id, self.item.path.parent()),
             Body::Table { sheets, .. } => {
                 let names: Vec<&str> = sheets.iter().map(|s| s.0.as_str()).collect();
                 let mut area = r;
@@ -743,122 +747,6 @@ fn text_view(ui: &mut Ui, r: Rect, t: &text::Text, id: u64) {
             }
         },
     );
-}
-
-fn rich_view(ui: &mut Ui, r: Rect, blocks: &[doc::Block], id: u64) {
-    use doc::Block;
-    let p = style::palette(ui.ctx());
-    let mut ui = ui.new_child(egui::UiBuilder::new().max_rect(r));
-    ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-    ScrollView::new(("ql-rich", id)).border(false).background(p.document_background).show(&mut ui, |ui| {
-        let inset = 2.0 * m::SPACING + 4.0;
-        let width = (ui.available_width() - 2.0 * inset).max(100.0);
-        ui.add_space(inset);
-        let ink = c(p.document_text);
-        let size_of = |level: u8| match level {
-            1 => 22.0,
-            2 => 18.0,
-            3 => 15.0,
-            _ => 13.0,
-        };
-        for b in blocks.iter().take(5000) {
-            let (indent, job, after) = match b {
-                Block::Heading(level, spans) => {
-                    ui.add_space(if *level <= 2 { 10.0 } else { 6.0 });
-                    let size = size_of(*level);
-                    (0.0, spans_job(spans, size, true, &p, ink), 6.0)
-                }
-                Block::Para(spans) => (0.0, spans_job(spans, 13.0, false, &p, ink), 8.0),
-                Block::Quote(spans) => (14.0, spans_job(spans, 13.0, false, &p, style::disabled_text(&p)), 8.0),
-                Block::Item(depth, mark, spans) => {
-                    let indent = 18.0 * (*depth as f32 + 1.0);
-                    let mut job = egui::text::LayoutJob::default();
-                    job.append(&format!("{mark}\u{2002}"), 0.0, egui::TextFormat::simple(FontId::proportional(13.0), ink));
-                    for sec in spans_job(spans, 13.0, false, &p, ink).sections_text() {
-                        job.append(&sec.0, 0.0, sec.1);
-                    }
-                    (indent - 12.0, job, 3.0)
-                }
-                Block::Code(lines) => {
-                    let mut job = egui::text::LayoutJob::default();
-                    let text = lines.join("\n");
-                    job.append(&text, 0.0, egui::TextFormat::simple(style::mono_font(12.0), ink));
-                    job.wrap.max_width = width - 16.0;
-                    let g = ui.painter().layout_job(job);
-                    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), g.size().y + 16.0), Sense::hover());
-                    let box_r = Rect::from_min_size(pos2(rect.left() + inset, rect.top()), vec2(width, rect.height()));
-                    ui.painter().rect_filled(box_r, 3.0, style::shade(&p, p.document_background, 1.05));
-                    ui.painter().galley(box_r.min + vec2(8.0, 8.0), g, ink);
-                    ui.add_space(10.0);
-                    continue;
-                }
-                Block::Table(rows) => {
-                    let cols = rows.iter().map(Vec::len).max().unwrap_or(0).max(1);
-                    let cw = width / cols as f32;
-                    let line = style::shade(&p, p.document_background, 1.15);
-                    for (ri, row) in rows.iter().enumerate() {
-                        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::hover());
-                        let rr = Rect::from_min_size(pos2(rect.left() + inset, rect.top()), vec2(width, 22.0));
-                        if ri == 0 {
-                            ui.painter().rect_filled(rr, 0.0, style::shade(&p, p.document_background, 1.05));
-                        }
-                        style::hline(ui.painter(), rr.left(), rr.right(), rr.bottom() - 0.5, line);
-                        for (ci, cell) in row.iter().enumerate() {
-                            let font = if ri == 0 { style::bold_font() } else { style::plain_font() };
-                            let mut job = egui::text::LayoutJob::simple_singleline(cell.clone(), font, ink);
-                            job.wrap = egui::text::TextWrapping::truncate_at_width(cw - 10.0);
-                            let g = ui.painter().layout_job(job);
-                            let pos = style::text_origin(ui.ctx(), &g, rr.left() + ci as f32 * cw + 5.0, rr.center().y, style::PLAIN_SIZE);
-                            ui.painter().galley(pos, g, ink);
-                        }
-                    }
-                    ui.add_space(10.0);
-                    continue;
-                }
-                Block::Rule => {
-                    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 17.0), Sense::hover());
-                    style::hline(ui.painter(), rect.left() + inset, rect.left() + inset + width, rect.center().y, style::shade(&p, p.document_background, 1.2));
-                    continue;
-                }
-            };
-            let mut job = job;
-            job.wrap.max_width = width - indent;
-            let g = ui.painter().layout_job(job);
-            let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), g.size().y), Sense::hover());
-            let origin = pos2(rect.left() + inset + indent, rect.top());
-            if let Block::Quote(_) = b {
-                ui.painter().rect_filled(Rect::from_min_size(pos2(origin.x - 10.0, rect.top()), vec2(3.0, rect.height())), 1.0, style::shade(&p, p.document_background, 1.2));
-            }
-            ui.painter().galley(origin, g, ink);
-            ui.add_space(after);
-        }
-        ui.add_space(inset);
-    });
-}
-
-fn spans_job(spans: &[doc::Span], size: f32, heading: bool, p: &olo_kit::theme::Palette, ink: Color32) -> egui::text::LayoutJob {
-    let mut job = egui::text::LayoutJob::default();
-    for s in spans {
-        let family = match (s.bold || heading, s.italic, s.code) {
-            (_, _, true) => FontFamily::Monospace,
-            (true, _, _) => style::bold(),
-            (false, true, _) => style::italic(),
-            _ => FontFamily::Proportional,
-        };
-        let size = if s.code { size - 1.0 } else { size };
-        let mut f = egui::TextFormat::simple(FontId::new(size, family), if s.link { style::syntax_color(p, Syntax::Link) } else { ink });
-        if s.code {
-            f.background = style::shade(p, p.document_background, 1.06);
-        }
-        if s.strike {
-            f.strikethrough = egui::Stroke::new(1.0, ink);
-        }
-        if s.link {
-            f.underline = egui::Stroke::new(1.0, style::syntax_color(p, Syntax::Link));
-        }
-        job.append(&s.text, 0.0, f);
-    }
-    job
 }
 
 fn table_view(ui: &mut Ui, r: Rect, rows: &[Vec<String>], list: &mut ListState, id: (u64, usize)) {
@@ -1142,17 +1030,6 @@ fn font_view(ui: &mut Ui, r: Rect, family: FontFamily) {
     });
 }
 
-
-trait SectionsText {
-    fn sections_text(&self) -> Vec<(String, egui::TextFormat)>;
-}
-
-impl SectionsText for egui::text::LayoutJob {
-    /// Each section's text and format (to splice one job into another).
-    fn sections_text(&self) -> Vec<(String, egui::TextFormat)> {
-        self.sections.iter().map(|s| (self.text[s.byte_range.start.0..s.byte_range.end.0].to_owned(), s.format.clone())).collect()
-    }
-}
 
 #[cfg(test)]
 mod tests {

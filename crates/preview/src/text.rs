@@ -62,12 +62,38 @@ pub fn load(path: &Path, cancel: &Arc<AtomicBool>, send: Send) {
     send(Update::Body(Body::Text(text.clone())));
 
     let Some(syntax) = syntax.filter(|s| s.name != "Plain Text") else { return };
+    let Some(spans) = colour(syntax, &text.lines, cancel) else { return };
+    text.spans = spans;
+    send(Update::Highlighted(text));
+}
+
+/// Token classes for `lines` of code in `lang` (a Markdown fence's word:
+/// "rust", "py", "sh", …), or none if no grammar knows it.
+pub fn highlight(lang: &str, lines: &[String]) -> Vec<Vec<(u32, u32, Tok)>> {
+    let ss = syntaxes();
+    let lang = lang.trim().to_lowercase();
+    let alias = match lang.as_str() {
+        "toml" | "ini" | "conf" => "ini",
+        "ts" | "tsx" | "typescript" | "jsx" | "mjs" => "js",
+        "zsh" | "fish" | "shell" | "console" | "bash" => "sh",
+        "kotlin" | "kt" => "java",
+        "jsonc" | "json5" => "json",
+        "yml" => "yaml",
+        other => other,
+    };
+    let syntax = ss.find_syntax_by_token(&lang).or_else(|| ss.find_syntax_by_token(alias)).filter(|s| s.name != "Plain Text");
+    syntax.and_then(|s| colour(s, lines, &Arc::new(AtomicBool::new(false)))).unwrap_or_default()
+}
+
+/// Each line's token classes, in `syntax` (None if cancelled).
+fn colour(syntax: &SyntaxReference, lines: &[String], cancel: &AtomicBool) -> Option<Vec<Vec<(u32, u32, Tok)>>> {
+    let ss = syntaxes();
     let mut state = ParseState::new(syntax);
     let mut stack = ScopeStack::new();
-    let mut spans = Vec::with_capacity(text.lines.len().min(MAX_HIGHLIGHT));
-    for line in text.lines.iter().take(MAX_HIGHLIGHT) {
+    let mut spans = Vec::with_capacity(lines.len().min(MAX_HIGHLIGHT));
+    for line in lines.iter().take(MAX_HIGHLIGHT) {
         if cancel.load(Ordering::Relaxed) {
-            return;
+            return None;
         }
         // Grammars expect the newline.
         let with_nl = format!("{line}\n");
@@ -87,8 +113,7 @@ pub fn load(path: &Path, cancel: &Arc<AtomicBool>, send: Send) {
         }
         spans.push(out);
     }
-    text.spans = spans;
-    send(Update::Highlighted(text));
+    Some(spans)
 }
 
 fn push(out: &mut Vec<(u32, u32, Tok)>, a: usize, b: usize, t: Tok) {

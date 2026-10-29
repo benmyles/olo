@@ -5,7 +5,9 @@
 
 use std::{io::Read, path::Path};
 
-use super::load::{Body, Update};
+use olo_kit::style::Syntax;
+
+use super::load::{Body, Image, Update};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Span {
@@ -15,29 +17,86 @@ pub struct Span {
     pub code: bool,
     pub strike: bool,
     pub link: bool,
+    /// Where a link goes (Markdown's; office documents' links have none).
+    pub url: Option<String>,
+}
+
+/// How a table's column lines up its cells.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub enum Align {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+/// A GitHub alert: a quote that starts `[!NOTE]` and the like.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Callout {
+    Note,
+    Tip,
+    Important,
+    Warning,
+    Caution,
+}
+
+impl Callout {
+    pub fn title(self) -> &'static str {
+        match self {
+            Callout::Note => "Note",
+            Callout::Tip => "Tip",
+            Callout::Important => "Important",
+            Callout::Warning => "Warning",
+            Callout::Caution => "Caution",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
     Heading(u8, Vec<Span>),
     Para(Vec<Span>),
-    /// A list item: nesting depth and its bullet or number.
+    /// A list item: nesting depth and its bullet, number or task box
+    /// ("☐", "☑"); "" for a further paragraph of the item above.
     Item(u8, String, Vec<Span>),
-    Quote(Vec<Span>),
-    Code(Vec<String>),
-    Table(Vec<Vec<String>>),
+    /// A block quote begins (a callout's, if it is one): what comes
+    /// before its `QuoteEnd` is quoted. They nest.
+    QuoteStart(Option<Callout>),
+    QuoteEnd,
+    /// Code: its lines, each line's token classes (byte ranges; none when
+    /// its language is unknown), indented `depth` list levels.
+    Code { lines: Vec<String>, tokens: Vec<Vec<(u32, u32, Syntax)>>, depth: u8 },
+    /// Rows of cells, the first the header; each column's alignment.
+    Table { align: Vec<Align>, rows: Vec<Row> },
+    /// A picture on its own (Markdown's, from beside the document), at
+    /// most `MAX_PICTURE` wide, and halved again and again.
+    Picture { image: Image, smaller: Vec<Image>, alt: String },
     Rule,
 }
+
+impl Block {
+    /// A table of plain cells, lined up left.
+    pub fn plain_table(rows: Vec<Vec<String>>) -> Block {
+        let rows = rows.into_iter().map(|r| r.into_iter().map(|text| vec![Span { text, ..Default::default() }]).collect()).collect();
+        Block::Table { align: Vec::new(), rows }
+    }
+}
+
+/// A table's row: its cells, each its text.
+pub type Row = Vec<Vec<Span>>;
 
 /// Rows shown per sheet.
 const MAX_ROWS: usize = 5000;
 const MAX_COLS: usize = 200;
+/// A Markdown document's pictures: at most this many, this wide (pixels).
+const MAX_PICTURES: usize = 64;
+const MAX_PICTURE: u32 = 2400;
 
 // ---- Markdown -------------------------------------------------------------
 
 pub fn markdown(path: &Path) -> Result<Update, String> {
     let text = read_text(path)?;
-    let blocks = parse_markdown(&text);
+    let blocks = parse_markdown_in(&text, path.parent());
     Ok(Update::Body(Body::Rich { blocks, note: "Markdown document".into() }))
 }
 
@@ -48,107 +107,337 @@ fn read_text(path: &Path) -> Result<String, String> {
 }
 
 pub fn parse_markdown(text: &str) -> Vec<Block> {
-    use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
-    let mut blocks = Vec::new();
-    let mut spans: Vec<Span> = Vec::new();
-    let mut style = Span::default();
-    // Open lists: the next number, if ordered.
-    let mut lists: Vec<Option<u64>> = Vec::new();
-    let mut item: Option<String> = None;
-    let mut quote = 0;
-    let mut code: Option<String> = None;
-    let mut table: Option<Vec<Vec<String>>> = None;
-    let mut cell = String::new();
+    parse_markdown_in(text, None)
+}
 
-    let flush = |spans: &mut Vec<Span>, blocks: &mut Vec<Block>, item: &mut Option<String>, depth: usize, quote: i32| {
-        if spans.iter().all(|s| s.text.trim().is_empty()) {
-            spans.clear();
+/// What a Markdown parse is in the middle of.
+#[derive(Default)]
+struct Md<'a> {
+    blocks: Vec<Block>,
+    spans: Vec<Span>,
+    style: Span,
+    /// Open lists: the next number, if ordered.
+    lists: Vec<Option<u64>>,
+    /// The open item's mark, until its first paragraph takes it.
+    mark: Option<String>,
+    quotes: usize,
+    code: Option<(String, String)>,
+    table: Option<(Vec<Align>, Vec<Row>)>,
+    cell: Vec<Span>,
+    /// An image's address and its alt text so far.
+    image: Option<(String, String)>,
+    /// Inside an HTML comment (it may run over several events).
+    comment: bool,
+    /// Where the document is: its pictures are found from here.
+    dir: Option<&'a Path>,
+    pictures: usize,
+}
+
+impl Md<'_> {
+    /// The text so far as a paragraph (or a list item's, or the rest of
+    /// one).
+    fn flush(&mut self) {
+        if self.spans.iter().all(|s| s.text.trim().is_empty()) {
+            self.spans.clear();
             return;
         }
-        let s = std::mem::take(spans);
-        blocks.push(match item.take() {
-            Some(mark) => Block::Item(depth.saturating_sub(1) as u8, mark, s),
-            None if quote > 0 => Block::Quote(s),
-            None => Block::Para(s),
+        // No break or space at either end.
+        while self.spans.last().is_some_and(|s| s.text.trim().is_empty()) {
+            self.spans.pop();
+        }
+        let mut s = std::mem::take(&mut self.spans);
+        if let Some(first) = s.first_mut() {
+            first.text = first.text.trim_start().to_owned();
+        }
+        if let Some(last) = s.last_mut() {
+            last.text = last.text.trim_end().to_owned();
+        }
+        self.blocks.push(match self.lists.len() {
+            0 => Block::Para(s),
+            n => Block::Item(n as u8 - 1, self.mark.take().unwrap_or_default(), s),
         });
-    };
+    }
 
-    for ev in Parser::new_ext(text, Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS) {
-        let is_code = matches!(ev, Event::Code(_));
+    fn push(&mut self, text: &str) {
+        if let Some((_, alt)) = &mut self.image {
+            alt.push_str(text);
+        } else if self.table.is_some() {
+            self.cell.push(Span { text: text.to_owned(), ..self.style.clone() });
+        } else {
+            self.spans.push(Span { text: text.to_owned(), ..self.style.clone() });
+        }
+    }
+
+    /// An image ends: a picture of its own if it is beside the document
+    /// and can be read, else its alt text, quietly.
+    fn image(&mut self, url: &str, alt: String) {
+        if let Some(path) = self.dir.and_then(|d| local(d, url))
+            && self.pictures < MAX_PICTURES
+            && self.table.is_none()
+            && let Some((image, smaller)) = picture(&path)
+        {
+            self.pictures += 1;
+            self.flush();
+            self.blocks.push(Block::Picture { image, smaller, alt });
+            return;
+        }
+        if !alt.trim().is_empty() {
+            let span = Span { text: alt, italic: true, ..self.style.clone() };
+            if self.table.is_some() { self.cell.push(span) } else { self.spans.push(span) }
+        }
+    }
+
+    /// Raw HTML: its text kept, tags and comments dropped; `<br>` breaks
+    /// the line and `<img>` is an image.
+    fn html(&mut self, html: &str) {
+        let mut rest = html;
+        while !rest.is_empty() {
+            if self.comment {
+                match rest.find("-->") {
+                    Some(i) => {
+                        self.comment = false;
+                        rest = &rest[i + 3..];
+                    }
+                    None => return,
+                }
+                continue;
+            }
+            match rest.find('<') {
+                Some(i) => {
+                    let text = &rest[..i];
+                    if !text.trim().is_empty() {
+                        self.push(&entities(text));
+                    }
+                    rest = &rest[i..];
+                    if rest.starts_with("<!--") {
+                        self.comment = true;
+                        rest = &rest[4..];
+                        continue;
+                    }
+                    let end = rest.find('>').map_or(rest.len(), |e| e + 1);
+                    let tag = &rest[..end];
+                    let name: String = tag.trim_start_matches(['<', '/']).chars().take_while(|c| c.is_ascii_alphanumeric()).collect::<String>().to_lowercase();
+                    match name.as_str() {
+                        "br" => self.push("\n"),
+                        "img" => {
+                            let url = attribute(tag, "src").unwrap_or_default();
+                            self.image(&url, attribute(tag, "alt").unwrap_or_default());
+                        }
+                        "p" | "div" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "details" | "summary" if tag.starts_with("</") => self.flush(),
+                        _ => {}
+                    }
+                    rest = &rest[end..];
+                }
+                None => {
+                    if !rest.trim().is_empty() {
+                        self.push(&entities(rest));
+                    }
+                    return;
+                }
+            }
+        }
+    }
+}
+
+/// `url` as a file beside `dir`, if it is one (never a web address).
+fn local(dir: &Path, url: &str) -> Option<std::path::PathBuf> {
+    let url = url.trim();
+    if url.is_empty() || url.contains("://") && !url.starts_with("file://") || url.starts_with("data:") {
+        return None;
+    }
+    let url = url.trim_start_matches("file://");
+    let url = url.split(['?', '#']).next().unwrap_or(url);
+    let path = Path::new(url);
+    let path = if path.is_absolute() { path.to_owned() } else { dir.join(path) };
+    path.is_file().then_some(path)
+}
+
+/// A picture from `path`, at most `MAX_PICTURE` wide, and its halvings.
+fn picture(path: &Path) -> Option<(Image, Vec<Image>)> {
+    let (img, _) = olo_kit::images::open(path).ok()?;
+    let img = if img.width() > MAX_PICTURE {
+        let h = (img.height() as u64 * MAX_PICTURE as u64 / img.width() as u64).max(1) as u32;
+        img.resize_exact(MAX_PICTURE, h, image::imageops::FilterType::Lanczos3)
+    } else {
+        img
+    };
+    let image = super::load::color_image(img.to_rgba8());
+    let smaller = super::load::halvings(&image);
+    Some((image, smaller))
+}
+
+/// An HTML tag's attribute (quoted either way, or bare).
+fn attribute(tag: &str, name: &str) -> Option<String> {
+    let lower = tag.to_lowercase();
+    let mut from = 0;
+    while let Some(i) = lower[from..].find(name) {
+        let at = from + i;
+        from = at + name.len();
+        let before = lower[..at].chars().last();
+        if !before.is_some_and(char::is_whitespace) {
+            continue;
+        }
+        let after = tag[from..].trim_start();
+        let Some(value) = after.strip_prefix('=') else { continue };
+        let value = value.trim_start();
+        let v = match value.chars().next() {
+            Some(q @ ('"' | '\'')) => value[1..].split(q).next().unwrap_or(""),
+            _ => value.split(|c: char| c.is_whitespace() || c == '>').next().unwrap_or(""),
+        };
+        return Some(entities(v));
+    }
+    None
+}
+
+/// HTML's common entities, decoded.
+fn entities(s: &str) -> String {
+    if !s.contains('&') {
+        return s.to_owned();
+    }
+    s.replace("&nbsp;", "\u{a0}").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&apos;", "'").replace("&amp;", "&")
+}
+
+/// Markdown (CommonMark with GitHub's tables, task lists, strikethrough
+/// and alerts, and typographer's quotes and dashes) as blocks; pictures
+/// are read from `dir`, the document's folder.
+pub fn parse_markdown_in(text: &str, dir: Option<&Path>) -> Vec<Block> {
+    use pulldown_cmark::{BlockQuoteKind, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
+    let mut md = Md { dir, ..Default::default() };
+    let options = Options::ENABLE_TABLES
+        | Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS
+        | Options::ENABLE_SMART_PUNCTUATION
+        | Options::ENABLE_GFM;
+    for ev in Parser::new_ext(text, options) {
         match ev {
-            Event::Start(Tag::Heading { .. }) => spans.clear(),
-            Event::End(TagEnd::Heading(level)) => blocks.push(Block::Heading(level as u8, std::mem::take(&mut spans))),
+            Event::Start(Tag::Heading { .. }) => md.flush(),
+            Event::End(TagEnd::Heading(level)) => {
+                let s = std::mem::take(&mut md.spans);
+                md.blocks.push(Block::Heading(level as u8, s));
+            }
             Event::Start(Tag::List(start)) => {
-                flush(&mut spans, &mut blocks, &mut item, lists.len(), quote);
-                lists.push(start);
+                md.flush();
+                md.lists.push(start);
             }
             Event::End(TagEnd::List(_)) => {
-                flush(&mut spans, &mut blocks, &mut item, lists.len(), quote);
-                lists.pop();
+                md.flush();
+                md.lists.pop();
             }
             Event::Start(Tag::Item) => {
-                flush(&mut spans, &mut blocks, &mut item, lists.len(), quote);
-                item = Some(match lists.last_mut() {
+                md.flush();
+                md.mark = Some(match md.lists.last_mut() {
                     Some(Some(n)) => {
                         *n += 1;
                         format!("{}.", *n - 1)
                     }
-                    _ => if lists.len() > 1 { "◦" } else { "•" }.into(),
+                    _ => ["•", "◦", "▪"][(md.lists.len().max(1) - 1) % 3].into(),
                 });
             }
-            Event::End(TagEnd::Item) | Event::End(TagEnd::Paragraph) => {
-                flush(&mut spans, &mut blocks, &mut item, lists.len(), quote)
+            Event::End(TagEnd::Item | TagEnd::Paragraph | TagEnd::HtmlBlock) => md.flush(),
+            Event::TaskListMarker(done) => md.mark = Some(if done { "☑" } else { "☐" }.into()),
+            Event::Start(Tag::BlockQuote(kind)) => {
+                md.flush();
+                md.quotes += 1;
+                md.blocks.push(Block::QuoteStart(kind.map(|k| match k {
+                    BlockQuoteKind::Note => Callout::Note,
+                    BlockQuoteKind::Tip => Callout::Tip,
+                    BlockQuoteKind::Important => Callout::Important,
+                    BlockQuoteKind::Warning => Callout::Warning,
+                    BlockQuoteKind::Caution => Callout::Caution,
+                })));
             }
-            Event::TaskListMarker(done) => item = Some(if done { "☑" } else { "☐" }.into()),
-            Event::Start(Tag::BlockQuote(_)) => quote += 1,
-            Event::End(TagEnd::BlockQuote(_)) => quote -= 1,
-            Event::Start(Tag::CodeBlock(_)) => code = Some(String::new()),
+            Event::End(TagEnd::BlockQuote(_)) => {
+                md.flush();
+                md.quotes = md.quotes.saturating_sub(1);
+                md.blocks.push(Block::QuoteEnd);
+            }
+            Event::Start(Tag::CodeBlock(kind)) => {
+                md.flush();
+                let lang = match kind {
+                    CodeBlockKind::Fenced(info) => info.split([' ', ',', '{']).next().unwrap_or("").to_owned(),
+                    CodeBlockKind::Indented => String::new(),
+                };
+                md.code = Some((lang, String::new()));
+            }
             Event::End(TagEnd::CodeBlock) => {
-                if let Some(c) = code.take() {
-                    blocks.push(Block::Code(c.trim_end_matches('\n').lines().map(|l| l.replace('\t', "    ")).collect()));
+                if let Some((lang, c)) = md.code.take() {
+                    let lines: Vec<String> = c.trim_end_matches('\n').lines().map(|l| l.replace('\t', "    ")).collect();
+                    let tokens = if lang.is_empty() { Vec::new() } else { super::text::highlight(&lang, &lines) };
+                    md.blocks.push(Block::Code { lines, tokens, depth: md.lists.len() as u8 });
                 }
             }
-            Event::Start(Tag::Table(_)) => table = Some(Vec::new()),
+            Event::Start(Tag::Table(align)) => {
+                md.flush();
+                let align = align
+                    .iter()
+                    .map(|a| match a {
+                        pulldown_cmark::Alignment::Center => Align::Center,
+                        pulldown_cmark::Alignment::Right => Align::Right,
+                        _ => Align::Left,
+                    })
+                    .collect();
+                md.table = Some((align, Vec::new()));
+            }
             Event::End(TagEnd::Table) => {
-                if let Some(t) = table.take() {
-                    blocks.push(Block::Table(t));
+                if let Some((align, rows)) = md.table.take() {
+                    md.blocks.push(Block::Table { align, rows });
                 }
             }
-            Event::Start(Tag::TableHead) | Event::Start(Tag::TableRow) => {
-                if let Some(t) = &mut table {
-                    t.push(Vec::new());
+            Event::Start(Tag::TableHead | Tag::TableRow) => {
+                if let Some((_, rows)) = &mut md.table {
+                    rows.push(Vec::new());
                 }
             }
             Event::End(TagEnd::TableCell) => {
-                if let Some(row) = table.as_mut().and_then(|t| t.last_mut()) {
-                    row.push(std::mem::take(&mut cell));
+                let cell = std::mem::take(&mut md.cell);
+                if let Some(row) = md.table.as_mut().and_then(|t| t.1.last_mut()) {
+                    row.push(cell);
                 }
             }
-            Event::Start(Tag::Emphasis) => style.italic = true,
-            Event::End(TagEnd::Emphasis) => style.italic = false,
-            Event::Start(Tag::Strong) => style.bold = true,
-            Event::End(TagEnd::Strong) => style.bold = false,
-            Event::Start(Tag::Strikethrough) => style.strike = true,
-            Event::End(TagEnd::Strikethrough) => style.strike = false,
-            Event::Start(Tag::Link { .. }) => style.link = true,
-            Event::End(TagEnd::Link) => style.link = false,
-            Event::Text(t) | Event::Code(t) | Event::InlineHtml(t) | Event::Html(t) => {
-                if let Some(c) = &mut code {
-                    c.push_str(&t);
-                } else if table.is_some() {
-                    cell.push_str(&t);
+            Event::Start(Tag::Emphasis) => md.style.italic = true,
+            Event::End(TagEnd::Emphasis) => md.style.italic = false,
+            Event::Start(Tag::Strong) => md.style.bold = true,
+            Event::End(TagEnd::Strong) => md.style.bold = false,
+            Event::Start(Tag::Strikethrough) => md.style.strike = true,
+            Event::End(TagEnd::Strikethrough) => md.style.strike = false,
+            Event::Start(Tag::Link { dest_url, .. }) => {
+                md.style.link = true;
+                md.style.url = Some(dest_url.to_string());
+            }
+            Event::End(TagEnd::Link) => {
+                md.style.link = false;
+                md.style.url = None;
+            }
+            Event::Start(Tag::Image { dest_url, .. }) => md.image = Some((dest_url.to_string(), String::new())),
+            Event::End(TagEnd::Image) => {
+                if let Some((url, alt)) = md.image.take() {
+                    md.image(&url, alt);
+                }
+            }
+            Event::Text(t) => match &mut md.code {
+                Some((_, c)) => c.push_str(&t),
+                None => md.push(&t),
+            },
+            Event::Code(t) => {
+                if let Some((_, alt)) = &mut md.image {
+                    alt.push_str(&t);
                 } else {
-                    spans.push(Span { text: t.to_string(), code: is_code, ..style.clone() });
+                    let span = Span { text: t.to_string(), code: true, ..md.style.clone() };
+                    if md.table.is_some() { md.cell.push(span) } else { md.spans.push(span) }
                 }
             }
-            Event::SoftBreak => spans.push(Span { text: " ".into(), ..style.clone() }),
-            Event::HardBreak => spans.push(Span { text: "\n".into(), ..style.clone() }),
-            Event::Rule => blocks.push(Block::Rule),
+            Event::InlineHtml(t) | Event::Html(t) => md.html(&t),
+            Event::SoftBreak => md.push(" "),
+            Event::HardBreak => md.push("\n"),
+            Event::Rule => {
+                md.flush();
+                md.blocks.push(Block::Rule);
+            }
             _ => {}
         }
     }
-    flush(&mut spans, &mut blocks, &mut item, lists.len(), quote);
-    blocks
+    md.flush();
+    md.blocks
 }
 
 // ---- Office documents -----------------------------------------------------
@@ -321,7 +610,7 @@ fn docx(xml: &str) -> Vec<Block> {
                 }
                 "tbl" => {
                     if let Some(t) = table.take() {
-                        blocks.push(Block::Table(t));
+                        blocks.push(Block::plain_table(t));
                     }
                 }
                 _ => {}
@@ -429,7 +718,7 @@ fn odf(xml: &str, slides: bool) -> Vec<Block> {
                 }
                 "table" => {
                     if let Some(t) = table.take() {
-                        blocks.push(Block::Table(t));
+                        blocks.push(Block::plain_table(t));
                     }
                 }
                 _ => {}
@@ -517,8 +806,46 @@ mod tests {
         assert!(matches!(&b[1], Block::Para(s) if s.iter().any(|s| s.bold && s.text == "bold")));
         assert!(matches!(&b[2], Block::Item(0, m, s) if m == "•" && plain(s) == "one"));
         assert!(b.iter().any(|x| matches!(x, Block::Item(1, m, s) if m == "1." && plain(s) == "nested")));
-        assert!(b.iter().any(|x| matches!(x, Block::Code(l) if l == &vec!["code".to_string()])));
-        assert!(b.iter().any(|x| matches!(x, Block::Table(t) if t.len() == 2 && t[1] == vec!["1", "2"])));
+        assert!(b.iter().any(|x| matches!(x, Block::Code { lines, .. } if lines == &vec!["code".to_string()])));
+        assert!(b.iter().any(|x| matches!(x, Block::Table { rows, .. } if rows.len() == 2 && plain(&rows[1][1]) == "2")));
+    }
+
+    #[test]
+    fn markdown_details() {
+        let b = parse_markdown(
+            "1. First\n\n   More of it.\n\n   ```rust\n   fn x() {}\n   ```\n\n> [!WARNING]\n> Careful\n\n| l | c | r |\n|:--|:-:|--:|\n| *a* | `b` | [c](https://c.example) |\n\n<!-- hidden\nstill -->\n<p>Hi<br>there &amp; you</p>\n\n- [x] done\n\n![Logo](https://example.com/logo.png)\n",
+        );
+        assert!(matches!(&b[0], Block::Item(0, m, s) if m == "1." && plain(s) == "First"));
+        // A further paragraph of the item, and its code, stay in it.
+        assert!(matches!(&b[1], Block::Item(0, m, s) if m.is_empty() && plain(s) == "More of it."));
+        assert!(matches!(&b[2], Block::Code { depth: 1, tokens, .. } if !tokens.is_empty()));
+        assert!(matches!(b[3], Block::QuoteStart(Some(Callout::Warning))));
+        assert!(matches!(&b[4], Block::Para(s) if plain(s) == "Careful"));
+        assert!(matches!(b[5], Block::QuoteEnd));
+        let Block::Table { align, rows } = &b[6] else { panic!("{:?}", b[6]) };
+        assert_eq!(align, &[Align::Left, Align::Center, Align::Right]);
+        assert!(rows[1][0][0].italic && rows[1][1][0].code);
+        assert_eq!(rows[1][2][0].url.as_deref(), Some("https://c.example"));
+        // The comment goes; the paragraph's text stays, broken where it said.
+        assert!(matches!(&b[7], Block::Para(s) if plain(s) == "Hi\nthere & you"), "{:?}", b[7]);
+        assert!(matches!(&b[8], Block::Item(0, m, s) if m == "☑" && plain(s) == "done"));
+        // A picture from the web isn't fetched: its alt text shows.
+        assert!(matches!(&b[9], Block::Para(s) if s[0].italic && plain(s) == "Logo"));
+        // Typographer's quotes.
+        assert!(matches!(&parse_markdown("\"Quoted\" -- it's")[0], Block::Para(s) if plain(s) == "“Quoted” – it’s"));
+    }
+
+    #[test]
+    fn markdown_pictures() {
+        let dir = std::env::temp_dir().join(format!("olo-md-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        image::RgbaImage::from_pixel(4, 3, image::Rgba([200, 10, 10, 255])).save(dir.join("a.png")).unwrap();
+        let b = parse_markdown_in("Before ![A](a.png) after\n\n<img src=\"./a.png\" alt='B'>\n", Some(&dir));
+        assert!(matches!(&b[0], Block::Para(s) if plain(s) == "Before"));
+        assert!(matches!(&b[1], Block::Picture { image, alt, .. } if image.size == [4, 3] && alt == "A"));
+        assert!(matches!(&b[2], Block::Para(s) if plain(s) == "after"));
+        assert!(matches!(&b[3], Block::Picture { alt, .. } if alt == "B"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
