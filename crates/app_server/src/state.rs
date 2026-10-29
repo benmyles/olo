@@ -155,6 +155,11 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub pacer: crate::pace::Pacer,
     /// Which way the fingers' scroll goes (natural or not), for clients.
     pub scroll_direction: (smithay::backend::input::AxisRelativeDirection, smithay::backend::input::AxisRelativeDirection),
+    /// A finger scroll's stop held back from a Chromium window, and when
+    /// it is due (input_handler.rs, `hold_stop`).
+    pub held_stop: Option<(WlSurface, std::time::Instant)>,
+    /// When the pacer last sent a move.
+    pub last_paced_move: Option<std::time::Instant>,
 
     // smithay state
     pub compositor_state: CompositorState,
@@ -1049,6 +1054,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             popups: PopupManager::default(),
             pacer: Default::default(),
             scroll_direction: (smithay::backend::input::AxisRelativeDirection::Identical, smithay::backend::input::AxisRelativeDirection::Identical),
+            held_stop: None,
+            last_paced_move: None,
             compositor_state,
             data_device_state,
             layer_shell_state,

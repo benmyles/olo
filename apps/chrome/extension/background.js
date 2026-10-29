@@ -327,8 +327,7 @@ async function windowTrees() {
       let zoom = 1;
       try {
         zoom = await chrome.tabs.getZoom(tab.id);
-        const [r] = await chrome.scripting.executeScript({ target: { tabId: tab.id, frameIds: [0] }, files: ["tree.js"] });
-        page = r?.result;
+        page = stitch(await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ["tree.js"] }));
       } catch {}
       // The page fills the bottom of the window, full width.
       const ph = page ? page.height * zoom : 0;
@@ -348,6 +347,41 @@ async function windowTrees() {
       return out;
     }),
   );
+}
+
+// A page's frames' trees (tree.js in each) as one: each frame's nodes
+// under its iframe's, placed in the iframe's content box and clipped to
+// it (and to the iframes around it), in the top frame's CSS pixels.
+function stitch(results) {
+  const top = results.find((r) => r.frameId === 0)?.result;
+  if (!top) return null;
+  const frames = new Map();
+  for (const r of results) if (r.frameId !== 0 && r.result?.frame) frames.set(r.result.frame, r.result);
+  const cut = (a, b) => {
+    const x = Math.max(a.x, b.x), y = Math.max(a.y, b.y);
+    const right = Math.max(x, Math.min(a.x + a.width, b.x + b.width)), bottom = Math.max(y, Math.min(a.y + a.height, b.y + b.height));
+    return { x: Math.min(x, b.x + b.width), y: Math.min(y, b.y + b.height), width: right - x, height: bottom - y };
+  };
+  const nodes = [];
+  let next = 1;
+  const add = (page, at, clip, parent, depth) => {
+    const ids = new Map();
+    for (const { frame, inner, ...n } of page.nodes) {
+      const id = next++;
+      ids.set(n.id, id);
+      let box = { x: at.x + n.x, y: at.y + n.y, width: n.width, height: n.height };
+      if (clip) box = cut(box, clip);
+      nodes.push({ ...n, ...box, id, parent: n.parent ? ids.get(n.parent) : parent });
+      const child = frame && frames.get(frame);
+      if (child && inner && depth < 8) {
+        frames.delete(frame);
+        const view = { x: at.x + inner.x, y: at.y + inner.y, width: inner.width, height: inner.height };
+        add(child, view, clip ? cut(view, clip) : view, id, depth + 1);
+      }
+    }
+  };
+  add(top, { x: 0, y: 0 }, null, 0, 0);
+  return { ...top, nodes, truncated: results.some((r) => r.result?.truncated) };
 }
 
 // The host serves the trees only while it runs: keep it running.

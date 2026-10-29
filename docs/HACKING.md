@@ -2355,10 +2355,19 @@ Chromium (Chrome, Chromium, Electron apps: found by `icudtl.dat` and a V8
 snapshot beside the program) scrolls finger values 12× as far and a notch
 120 px, so gets them ×1/12 and ×0.4 (value and value120); GTK 4 (a
 process with `libgtk-4.so` mapped) scrolls finger values 2.5× as far (a
-notch the same 48), so gets them ×0.4. Measured headless: a page whose
+notch the same 48), so gets them ×0.4. Chromium is recognised before
+the kit's socket, since olo-chrome answers on one named after Chrome's
+pid for its page trees. Chromium also flings on its own when a finger
+scroll stops within 200 ms of its last move, however long the fingers
+rested, where Olo's apps don't glide after a 50 ms rest; so a stop with
+no glide waits 250 ms after the last move before it goes to a Chromium
+window (`hold_stop`, input_handler.rs), or goes at once ahead of whatever
+comes next (more scrolling, a click). Measured headless: a page whose
 title shows `scrollY` with rows every 10 px (Chrome), and a numbered
 file in gnome-text-editor (24 px lines); `tsession scroll NAME 0 N` (no
-lift) and `tsession wheel NAME 1`. Re-measure after a toolkit update.
+lift) and `tsession wheel NAME 1`. Against StyledEdit's `scroll-check`
+(a 540 px drag, resting 150 ms before the lift: 540 px; a 347 px flick:
+1140), Chrome goes 539 and 1137. Re-measure after a toolkit update.
 
 ## Night light (app_server night.rs)
 
@@ -3289,8 +3298,18 @@ its host when its worker starts and stays connected (reconnecting after
 `tree` socket for its parent, Chrome's browser process (the Wayland
 client app_server names in `WindowInfo::pid`), with
 `commands::serve_trees`: each question goes to the extension as
-`{tree: n}`, which injects `tree.js` into each window's active tab (top
-frame) and answers `{tree: n, windows}` within `TREE_WAIT`. `tree.js`
+`{tree: n}`, which injects `tree.js` into every frame of each window's
+active tab and answers `{tree: n, windows}` within `TREE_WAIT`.
+**Iframes**: in each frame, `tree.js` tells every iframe element a token
+of its own (kept per element in the extension's isolated world, posted
+to the iframe's window each time, since it may have navigated); the
+frame inside keeps it (`content.js` listens; a frame not told yet waits
+up to 150 ms) and reports it with its nodes. An iframe's node carries
+its token and content box (its rect less border and padding), and
+`stitch` (background.js) puts the frame's nodes under it, offset to that
+box and clipped to it (and to every iframe around it), cross-origin
+frames and nested ones alike, so `click`, `set` and `wait` work inside
+embedded sign-ins, payment forms and consent dialogs as on the page. `tree.js`
 walks the page (shadow roots too, at most 4000 nodes) as assistive
 technology sees it: ARIA roles, else the element's (Link, Button,
 TextInput, PasswordInput, CheckBox, ComboBox, Heading, Image, List, Row,

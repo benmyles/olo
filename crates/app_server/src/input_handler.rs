@@ -5,7 +5,7 @@ use crate::{AnvilState, focus::PointerFocusTarget, shell::FullscreenSurface};
 #[cfg(feature = "udev")]
 use crate::udev::UdevData;
 #[cfg(feature = "udev")]
-use smithay::{backend::renderer::DebugFlags, input::tablet};
+use smithay::{backend::renderer::DebugFlags, input::tablet, reexports::wayland_server::Resource};
 
 use smithay::{
     backend::input::{
@@ -790,8 +790,49 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// Fingers back on the touchpad, a click or another scroll: a glide
     /// stops where it is (what the fingers scrolled is sent first).
     pub fn stop_glide(&mut self) {
+        self.send_held_stop();
         let out = self.pacer.stop();
         self.send_paced(out);
+    }
+
+    /// Chromium flings on its own when a finger scroll stops within
+    /// 200 ms of its last move, however long the fingers rested, where
+    /// Olo's apps don't glide (`momentum.rs`, RESTED): so its stop waits
+    /// until then (or until whatever comes next). Whether it was held.
+    fn hold_stop(&mut self) -> bool {
+        let Some(PointerFocusTarget::WlSurface(surface)) = self.pointer.current_focus() else {
+            return false;
+        };
+        let now = std::time::Instant::now();
+        let due = match self.last_paced_move {
+            Some(t) if t + crate::scroll::CHROMIUM_FLINGS_WITHIN > now => t + crate::scroll::CHROMIUM_FLINGS_WITHIN,
+            _ => return false,
+        };
+        let chromium = surface.client().and_then(|c| crate::state::client_pid(&c, &self.display_handle));
+        if chromium.map(crate::scroll::toolkit) != Some(crate::scroll::Toolkit::Chromium) {
+            return false;
+        }
+        self.held_stop = Some((surface, due));
+        let timer = smithay::reexports::calloop::timer::Timer::from_deadline(due);
+        let _ = self.handle.insert_source(timer, |_, _, state| {
+            if state.held_stop.as_ref().is_some_and(|(_, due)| *due <= std::time::Instant::now()) {
+                state.send_held_stop();
+            }
+            smithay::reexports::calloop::timer::TimeoutAction::Drop
+        });
+        true
+    }
+
+    /// The held stop, now, if the pointer is still on its window.
+    fn send_held_stop(&mut self) {
+        let Some((surface, _)) = self.held_stop.take() else { return };
+        if !matches!(self.pointer.current_focus(), Some(PointerFocusTarget::WlSurface(s)) if s == surface) {
+            return;
+        }
+        let frame = AxisFrame::new(InputTime::now()).source(AxisSource::Finger).stop(Axis::Horizontal).stop(Axis::Vertical);
+        let pointer = self.pointer.clone();
+        pointer.axis(self, frame);
+        pointer.frame(self);
     }
 
     /// A frame of `output`: if the pointer is on it, the scroll that
@@ -812,6 +853,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if out.is_empty() {
             return;
         }
+        // A held stop goes before what comes after it.
+        self.send_held_stop();
         // Stamped with when the fingers were where it says.
         let time = InputTime::from_micros(InputTime::now().micros().saturating_sub(self.pacer.delay().as_micros() as u64));
         let pointer = self.pointer.clone();
@@ -827,9 +870,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     if dy != 0.0 {
                         frame = frame.relative_direction(Axis::Vertical, v_dir).value(Axis::Vertical, dy);
                     }
+                    self.last_paced_move = Some(std::time::Instant::now());
                 }
                 crate::pace::Out::Stop { glide } => {
                     self.pacer.sending_glide = glide;
+                    if !glide && self.hold_stop() {
+                        continue;
+                    }
                     frame = frame.stop(Axis::Horizontal).stop(Axis::Vertical);
                 }
             }

@@ -1,10 +1,19 @@
 // In every frame: tells the extension when a text field gets the focus
 // (so the context menu holds this page's logins), fills what Passwords
-// gives, and reports a login sent with a form (to offer saving it).
+// gives, reports a login sent with a form (to offer saving it), and
+// keeps which iframe the frame is (for tree.js).
 
 (() => {
   if (window.__oloPasswords) return;
   window.__oloPasswords = true;
+
+  // Which iframe of its parent this frame is, for the widget tree
+  // (tree.js tells each iframe a token of its own).
+  if (window !== window.top) {
+    addEventListener("message", (e) => {
+      if (e.source === window.parent && typeof e.data?.__oloFrame === "string") window.__oloFrame = e.data.__oloFrame;
+    });
+  }
 
   const TEXT = "input:not([type]),input[type=text],input[type=email],input[type=tel]";
 

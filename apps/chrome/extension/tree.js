@@ -1,14 +1,62 @@
 // The page as a widget tree, for agents (Agent Screens' `tree`): what a
 // person can see and use on it, named as assistive technology names it,
-// with its place in the page's viewport (CSS pixels). Injected into a
-// tab's top frame on demand (background.js); its value is the result.
-// Passwords' values are never read.
+// with its place in the page's viewport (CSS pixels). Injected into every
+// frame of a tab on demand (background.js); its value is the result.
+// Each iframe is told a token of its own (by postMessage, kept per
+// element), which its frame reports, so background.js can put the
+// frame's nodes inside the iframe's. Passwords' values are never read.
 
-(() => {
+(async () => {
   const MAX = 4000;
   const TEXT_MAX = 300;
+  // How long a frame waits to be told which iframe it is.
+  const TOLD_WAIT = 150;
   const nodes = [];
   let next = 1;
+
+  // Which iframe this frame is (content.js listens too, so it's usually
+  // known already).
+  if (window !== window.top && !window.__oloFrame) {
+    await new Promise((done) => {
+      const told = (e) => {
+        if (e.source === window.parent && typeof e.data?.__oloFrame === "string") {
+          window.__oloFrame = e.data.__oloFrame;
+          done();
+        }
+      };
+      addEventListener("message", told);
+      setTimeout(done, TOLD_WAIT);
+    });
+  }
+
+  // The token of each iframe in this frame, the same each time; told to
+  // its frame again each time (it may have navigated since).
+  const frames = (window.__oloFrames ||= { next: 0, tokens: new WeakMap() });
+  function frameToken(e) {
+    let t = frames.tokens.get(e);
+    if (!t) {
+      t = `${Math.random().toString(36).slice(2)}.${++frames.next}`;
+      frames.tokens.set(e, t);
+    }
+    try {
+      e.contentWindow?.postMessage({ __oloFrame: t }, "*");
+    } catch {}
+    return t;
+  }
+
+  // An iframe's content box (its frame's viewport), in this frame's.
+  function inside(e, r) {
+    const st = getComputedStyle(e);
+    const px = (p) => parseFloat(st[p]) || 0;
+    const left = px("borderLeftWidth") + px("paddingLeft");
+    const top = px("borderTopWidth") + px("paddingTop");
+    return {
+      x: r.left + left,
+      y: r.top + top,
+      width: Math.max(0, r.width - left - px("borderRightWidth") - px("paddingRight")),
+      height: Math.max(0, r.height - top - px("borderBottomWidth") - px("paddingBottom")),
+    };
+  }
 
   const INPUT_ROLES = {
     checkbox: "CheckBox", radio: "RadioButton", range: "Slider", button: "Button", submit: "Button",
@@ -64,7 +112,7 @@
       case "label": return "Label";
       case "progress": return "ProgressIndicator";
       case "video": case "audio": return "Video";
-      case "iframe": return "Iframe";
+      case "iframe": case "frame": return "Iframe";
     }
     if (e.isContentEditable && (!e.parentElement || !e.parentElement.isContentEditable)) return "MultilineTextInput";
     return null;
@@ -92,6 +140,7 @@
     if (e.localName === "input" && e.type === "image") return clip(e.alt || e.title);
     if (/Input|ComboBox|ListBox|Slider|SpinButton/.test(role)) return clip(e.placeholder || e.title);
     if (LANDMARKS.has(role) && role !== "Row") return clip(e.title);
+    if (role === "Iframe") return clip(e.title || e.name);
     return clip(e.innerText || e.textContent || e.title);
   }
 
@@ -167,11 +216,15 @@
       else if (e.localName === "option") extra.selected = e.selected;
       const value = valueOf(e, role);
       if (value) extra.value = value;
+      if (role === "Iframe") {
+        extra.frame = frameToken(e);
+        extra.inner = inside(e, r);
+      }
       const leaf = !LANDMARKS.has(role) && role !== "ListItem" && role !== "Cell" && role !== "ColumnHeader";
       mine = push(e, r, role, nameOf(e, role), parent, extra);
       // Inside a named control its words are its name already.
       if (leaf) named = true;
-      if (role === "TextInput" || role === "PasswordInput" || role === "MultilineTextInput" || role === "ComboBox" || role === "Slider" || role === "Image") return;
+      if (role === "TextInput" || role === "PasswordInput" || role === "MultilineTextInput" || role === "ComboBox" || role === "Slider" || role === "Image" || role === "Iframe") return;
     } else if (!named && shown(e, r)) {
       const t = directText(e);
       if (t) push(e, r, "Label", t, parent, {});
@@ -188,5 +241,6 @@
     height: innerHeight,
     nodes,
     truncated: nodes.length >= MAX,
+    frame: window.__oloFrame || null,
   };
 })();

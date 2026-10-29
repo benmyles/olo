@@ -7,9 +7,14 @@
 //! the same 48). Their scrolls are scaled here so they match (measured
 //! with a ruler page and a numbered file; see HACKING.md, "Scrolling").
 
-use std::{collections::HashMap, path::Path, sync::Mutex};
+use std::{collections::HashMap, path::Path, sync::Mutex, time::Duration};
 
 use smithay::{backend::input::AxisSource, input::pointer::AxisFrame};
+
+/// Chromium starts a fling of its own when a finger scroll stops within
+/// 200 ms of its last move (`kFlingStartTimeoutMs`); this, with room for
+/// it to read them late.
+pub const CHROMIUM_FLINGS_WITHIN: Duration = Duration::from_millis(250);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Toolkit {
@@ -33,10 +38,12 @@ pub fn toolkit(pid: i32) -> Toolkit {
     *seen.entry(pid).or_insert_with(|| {
         let exe = std::fs::read_link(format!("/proc/{pid}/exe")).ok();
         match exe.as_deref().and_then(Path::parent) {
+            // Before the socket: olo-chrome answers on one named after
+            // Chrome's pid too (its page trees).
+            Some(dir) if is_chromium(dir) => Toolkit::Chromium,
             // Every kit app answers on a socket named after its pid
             // (olo_kit::commands).
             _ if runtime_dir().join(format!("olo-menus-{pid}.sock")).exists() => Toolkit::Olo,
-            Some(dir) if is_chromium(dir) => Toolkit::Chromium,
             _ if maps(pid, "/libgtk-4.so") => Toolkit::Gtk4,
             _ => Toolkit::AsGiven,
         }

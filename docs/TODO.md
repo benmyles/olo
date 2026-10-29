@@ -431,7 +431,8 @@ as they land (with the commit), add new ones as they come up.
   hand); windows placed automatically or by hand are never pushed. It
   should work as you'd expect: shared edges move together, nothing
   overlaps or leaves a gap, neighbours keep a sensible minimum size.
-- **Chrome's tree: inside iframes** (Ben): an iframe is opaque to the
+- ~~**Chrome's tree: inside iframes**~~ (Ben; done: HACKING, "Chrome's
+  widget tree, for agents", Iframes): an iframe is opaque to the
   tree agents get (`tree.js` runs in the top frame only, `frameIds:
   [0]` in `background.js`), so embedded logins, payment forms, consent
   dialogs and the like can't be read or driven by name. Run it in every
