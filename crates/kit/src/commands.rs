@@ -245,10 +245,24 @@ pub struct FrameMark {
     pub at_us: u64,
     /// How long it took to draw, to handing it to the GPU.
     pub us: u32,
-    /// Of that, egui and the app's own code (the rest is tessellating
-    /// and the GPU).
+    /// Of that, egui and the app's own code.
     #[serde(default)]
     pub ui_us: u32,
+    /// Setting the GPU surface up (made, or its swapchain configured
+    /// for a new size).
+    #[serde(default)]
+    pub setup_us: u32,
+    /// Turning egui's shapes into triangles.
+    #[serde(default)]
+    pub tessellate_us: u32,
+    /// Waiting for a buffer to draw in (the compositor still showing
+    /// the others).
+    #[serde(default)]
+    pub acquire_us: u32,
+    /// Uploading textures and triangles, recording, submitting and
+    /// presenting.
+    #[serde(default)]
+    pub submit_us: u32,
     /// The offset each scroll view in it showed (content x, y at its
     /// top left), in the order they were drawn.
     pub scrolls: Vec<[f32; 2]>,

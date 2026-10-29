@@ -7,8 +7,9 @@ below 120 frames a second.
   bench [--apps a,b,...] [--scales 1,1.5,2] [--hz 120] [--budget MS]
         [--size WxH] [--json FILE] [--keep] [--list]
 
-Build first: `cargo build --release --workspace` and
-`cargo build --release -p olo-kit --example demo` (the kit's gallery).
+Build first: `cargo build --release --workspace --bins --examples` (the
+apps and the kit's gallery; `--examples` alone leaves the apps as they
+were). A build older than the sources is named before anything runs.
 It starts a session of its own ("bench", the shell's Deskbar and
 desktop, a sandbox home under /var/tmp/olo-bench filled with what makes
 apps work: a 20,000-line document, a folder of 3,000 files, photos, 200
@@ -22,7 +23,8 @@ notifications, a terminal's worth of output), one 3456×2234 screen (a
   glide, wheel notches: how evenly too, as tools/dev/scroll-check), its
   tabs clicked, its menus opened and walked, a field typed in, the
   window resized live, the theme flipped; then closed.
-  Deskbar: swept and its menu walked. The screen savers: each module run.
+  Deskbar: swept and its menu walked. The command palette: shown, typed
+  in, its results walked. The screen savers: each module run.
 
 Every frame an app draws is in its `{"frames":true}` marks
 (olo_kit::commands::FrameMark); app_server's own frames and event loop
@@ -59,6 +61,26 @@ SHIFTED = {"+": "=", "*": "8", "(": "9", ")": "0"}
 scroll_check = importlib.machinery.SourceFileLoader("scroll_check", os.path.join(ROOT, "tools", "dev", "scroll-check")).load_module()
 
 
+def stale_builds():
+    """The release binaries older than a source they are built from (from
+    cargo's dep-info, `target/release/EXE.d`): what is measured would not
+    be what is in the tree."""
+    exes = {"olo-app-server", "olo-session", "olo-deskbar", "olo-palette", os.path.join("examples", "demo")}
+    exes.update(a.cmd[0] for a in APPS if not os.path.isabs(a.cmd[0]))
+    stale = []
+    for exe in sorted(exes):
+        path = os.path.join(RELEASE, exe)
+        try:
+            built = os.path.getmtime(path)
+            with open(path + ".d") as f:
+                deps = f.read().split(":", 1)[1].replace("\\\n", " ").split()
+        except (OSError, IndexError):
+            continue
+        if any(os.path.exists(d) and os.path.getmtime(d) > built for d in deps):
+            stale.append(exe)
+    return stale
+
+
 class App:
     def __init__(self, key, cmd, env=(), type_text="benchmark 123 hello", look_only=False, settle=2.0, rows=False):
         self.key, self.cmd, self.env = key, cmd, list(env)
@@ -78,7 +100,6 @@ APPS = [
     App("disk-usage", ["olo-disk-usage", HOME], settle=3.0),
     App("logs", ["olo-logs"], settle=3.0),
     App("preferences", ["olo-preferences"], look_only=True, rows=True),
-    App("palette", ["olo-palette"], type_text="term"),
     App("passwords", ["olo-passwords"], env=[f"OLO_1PASSWORD_SOCKET={SCRATCH}/no-such-1p.sock"]),
     App("screenshot", ["olo-screenshot"]),
 ]
@@ -266,6 +287,14 @@ def fixtures():
 
 # ---- measuring ----
 
+PARTS = (("setup_us", "setup"), ("ui_us", "ui"), ("tessellate_us", "tessellate"), ("acquire_us", "acquire"), ("submit_us", "submit"))
+
+
+def parts(m):
+    """Where a frame's time went (its FrameMark's parts)."""
+    return ", ".join(f"{name} {m.get(k, 0) / 1000:.1f}" for k, name in PARTS)
+
+
 class Step:
     """One thing done to an app, and the frames it drew meanwhile."""
 
@@ -314,7 +343,8 @@ class Bench:
         if not st.transition:
             over = [m for m in st.frames if m["us"] > self.budget_us]
             if over:
-                st.failures.append(f"{len(over)} of {len(st.frames)} frames over {self.budget_us / 1000:.1f} ms (slowest {max(m['us'] for m in over) / 1000:.1f} ms)")
+                worst = max(over, key=lambda m: m["us"])
+                st.failures.append(f"{len(over)} of {len(st.frames)} frames over {self.budget_us / 1000:.1f} ms (slowest {worst['us'] / 1000:.1f} ms: {parts(worst)})")
             if slowest > self.budget_us:
                 st.failures.append(f"app_server took {slowest / 1000:.1f} ms for a frame")
             if tm.get("latest_beat_us", 0) > 2 * 1e6 / self.hz:
@@ -607,6 +637,44 @@ def run_deskbar(b):
     s.move(sx + 40, sy + sh - 40)
 
 
+def run_palette(b):
+    """The command palette: a layer over the screen, not a window, so
+    found by its process; shown, typed in, its results walked, hidden."""
+    s = b.s
+    t0 = time.monotonic()
+    tsession("run", NAME, "olo-palette", "--toggle")
+    pid = None
+    while not pid and time.monotonic() - t0 < 10:
+        pid = s.pid_of("olo-palette")
+        time.sleep(0.02)
+    if not pid:
+        st = Step("palette", "launch")
+        st.failures.append("no process in 10 s")
+        b.results.append(st)
+        b.report(st)
+        return
+    b.measure("palette", "launch and show", [pid], lambda st: time.sleep(1.5), transition=True)
+
+    def typing(st):
+        s.type("term")
+        time.sleep(0.3)
+        for _ in "term":
+            s.key(BKSP)
+        s.type("tra")
+        time.sleep(0.3)
+    b.measure("palette", "typing", [pid], typing)
+
+    def walk(st):
+        for _ in range(6):
+            s.key(DOWN)
+            time.sleep(0.06)
+        for _ in range(6):
+            s.key(UP)
+            time.sleep(0.06)
+    b.measure("palette", "results walked", [pid], walk)
+    b.measure("palette", "hide", [pid], lambda st: (s.key(ESC), time.sleep(0.4)), transition=True)
+
+
 def run_savers(b):
     s = b.s
     for module in SAVERS:
@@ -629,7 +697,7 @@ def main():
     a = sys.argv[1:]
     opt = lambda k, d=None: a[a.index(k) + 1] if k in a else d
     if "--list" in a:
-        print(" ".join(x.key for x in APPS) + " deskbar savers")
+        print(" ".join(x.key for x in APPS) + " deskbar palette savers")
         return
     if "-h" in a or "--help" in a:
         print(__doc__)
@@ -641,7 +709,10 @@ def main():
     only = set(only.split(",")) if only else None
     for exe in ("olo-app-server", "olo-session", "olo-deskbar", os.path.join("examples", "demo")):
         if not os.path.exists(os.path.join(RELEASE, exe)):
-            sys.exit(f"no target/release/{exe}: cargo build --release --workspace, and cargo build --release -p olo-kit --example demo")
+            sys.exit(f"no target/release/{exe}: cargo build --release --workspace --bins --examples")
+    stale = stale_builds()
+    if stale:
+        print(f"warning: older than the sources (cargo build --release --workspace --bins --examples): {', '.join(stale)}", flush=True)
     os.makedirs(SCRATCH, exist_ok=True)
     print("fixtures…", flush=True)
     fixtures()
@@ -662,6 +733,8 @@ def main():
                 if only and app.key not in only:
                     continue
                 run_app(b, app, scale)
+            if not only or "palette" in only:
+                run_palette(b)
             if not only or "savers" in only:
                 run_savers(b)
     finally:

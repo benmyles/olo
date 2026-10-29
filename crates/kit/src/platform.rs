@@ -52,7 +52,6 @@ use smithay_client_toolkit::{
         wlr_layer::{Anchor, KeyboardInteractivity, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
         xdg::{
             XdgPositioner, XdgShell, XdgSurface,
-            popup::{Popup, PopupConfigure, PopupHandler},
             window::{Window, WindowConfigure, WindowDecorations, WindowHandler},
         },
     },
@@ -71,7 +70,7 @@ use wayland_protocols::{
     },
     xdg::{
         dialog::v1::client::{xdg_dialog_v1::XdgDialogV1, xdg_wm_dialog_v1::XdgWmDialogV1},
-        shell::client::xdg_positioner,
+        shell::client::{xdg_popup, xdg_positioner, xdg_surface},
         toplevel_tag::v1::client::xdg_toplevel_tag_manager_v1::XdgToplevelTagManagerV1,
     },
 };
@@ -109,10 +108,52 @@ struct Gpu {
     /// What surfaces on this compositor take (asking is a round trip to
     /// it, a millisecond or two): asked once.
     caps: std::cell::OnceCell<wgpu::SurfaceCapabilities>,
-    /// Closed menus' renderers, for the next (making one builds its
-    /// pipelines, 4 ms and more).
-    spare: std::cell::RefCell<Vec<(wgpu::TextureFormat, egui_wgpu::Renderer)>>,
+    /// Menus' drawing ready for the next menu (`SpareMenu`).
+    spare: std::cell::RefCell<Vec<SpareMenu>>,
+    /// Which GPU this is (a reconnect makes another): what a worker made
+    /// for an earlier one is dropped.
+    generation: u64,
 }
+
+static GPU_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// A menu's drawing, ready for the next menu to open: an egui context
+/// with its fonts laid out and the renderer holding its textures. A new
+/// context lays its glyphs out and uploads its font atlas on its first
+/// frame, and a new renderer builds its pipelines: together 6 ms and
+/// more before a menu could show. A closed menu leaves its own here, and
+/// one is made ahead on a worker (`Kit::warm_menus`) for the first.
+struct SpareMenu {
+    generation: u64,
+    format: wgpu::TextureFormat,
+    renderer: egui_wgpu::Renderer,
+    ctx: egui::Context,
+    fonts: u64,
+    /// The context's clock, which only goes forward.
+    start: Instant,
+    frame_time: f64,
+    /// A closed menu's surface, unmapped, its swapchain still set up
+    /// (configuring one waits for the GPU to go idle: 3 ms and more, 30
+    /// with a busy GPU). The next menu takes it on, a size within its
+    /// swapchain costing nothing (a menu's has room, `menu_room`).
+    surface: Option<KeptSurface>,
+}
+
+struct KeptSurface {
+    wl: WlSurface,
+    fractional: Option<WpFractionalScaleV1>,
+    viewport: WpViewport,
+    gpu_surface: wgpu::Surface<'static>,
+    alloc: (u32, u32),
+    scale: f64,
+    output: Option<wl_output::WlOutput>,
+}
+
+/// What a worker made ahead comes back here (`Kit::warm_menus`).
+static WARMED: std::sync::OnceLock<Mutex<channel::Sender<SpareMenu>>> = std::sync::OnceLock::new();
+
+/// How many menus' drawing are kept ready: a menu and its submenu.
+const SPARE_MENUS: usize = 2;
 
 // ---- surfaces -----------------------------------------------------------
 
@@ -124,7 +165,10 @@ enum Role {
     /// The output it covers (dropped with it if the output goes).
     Lock(#[allow(dead_code)] smithay_client_toolkit::session_lock::SessionLockSurface, wl_output::WlOutput),
     Popup {
-        popup: Popup,
+        shell: MenuShell,
+        /// Where the compositor last placed it and how big, until the
+        /// configure that applies it.
+        placed: Option<((i32, i32), (u32, u32))>,
         /// The window whose menu bar (or context menu) this belongs to.
         owner: WindowId,
         /// Menu index in the owner's bar, then submenu indices.
@@ -136,6 +180,18 @@ enum Role {
         at: (i32, i32),
     },
 }
+
+/// A menu's xdg objects. The kit makes them itself, not with SCTK's
+/// `Popup` (whose surface goes with it), so that a menu's surface can
+/// outlive it for the next menu (`SpareMenu`).
+struct MenuShell {
+    xdg_surface: xdg_surface::XdgSurface,
+    xdg_popup: xdg_popup::XdgPopup,
+}
+
+/// User data of a menu's xdg objects: its surface.
+#[derive(Clone)]
+struct MenuData(WlSurface);
 
 struct Surface {
     id: WindowId,
@@ -194,8 +250,8 @@ struct Surface {
     /// the draw under way got as far as the GPU.
     times: crate::commands::FrameTimes,
     presented: bool,
-    /// How long the frame under way took in egui and the app's own code.
-    ui_us: u32,
+    /// Where the frame under way's time went (its `FrameMark`).
+    parts: crate::commands::FrameMark,
     /// The menu bar, in window coordinates, from the last draw.
     bar_rect: Option<Rect>,
     cursor: egui::CursorIcon,
@@ -310,6 +366,161 @@ fn monotonic_us() -> u64 {
     // SAFETY: a valid timespec to fill.
     unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut t) };
     t.tv_sec as u64 * 1_000_000 + t.tv_nsec as u64 / 1000
+}
+
+/// A new menu takes on drawing made ready for it (`SpareMenu`), and the
+/// surface kept with it, if any.
+fn reuse_spare(s: &mut Surface, spare: SpareMenu, kept: Option<KeptSurface>) {
+    repaint_to(&spare.ctx, s.id);
+    s.ctx = spare.ctx;
+    s.renderer = Some(spare.renderer);
+    s.format = spare.format;
+    s.fonts = spare.fonts;
+    s.start = spare.start;
+    s.frame_time = spare.frame_time;
+    // Where the pointer was over the last menu means nothing here.
+    s.events.push(egui::Event::PointerGone);
+    if let Some(k) = kept {
+        s.gpu_surface = Some(k.gpu_surface);
+        s.alloc = k.alloc;
+        s.scale = k.scale;
+        s.output = k.output;
+    }
+}
+
+/// The swapchain a menu of `need` device pixels gets: room for most
+/// menus after it, which take on its surface (`KeptSurface`).
+fn menu_room(need: (u32, u32), scale: f64) -> (u32, u32) {
+    let at_least = |n: u32, points: f64| ((n.max((points * scale) as u32) as f64 * 1.25 / 64.0).ceil() as u32) * 64;
+    (at_least(need.0, 280.0), at_least(need.1, 420.0))
+}
+
+/// A context for a window, its fonts and style set.
+fn new_ctx(palette: &Arc<Palette>) -> egui::Context {
+    let ctx = egui::Context::default();
+    ctx.set_fonts(style::all_font_definitions());
+    style::apply(&ctx, palette);
+    ctx.options_mut(|o| {
+        o.zoom_with_keyboard = false;
+    });
+    ctx
+}
+
+/// Repaints `ctx` asks for, from any thread, go to window `id`.
+fn repaint_to(ctx: &egui::Context, id: WindowId) {
+    ctx.set_request_repaint_callback(move |info| {
+        if let Some(tx) = REPAINT.get() {
+            let _ = tx.lock().unwrap().send((id, info.delay));
+        }
+    });
+}
+
+fn new_renderer(device: &wgpu::Device, format: wgpu::TextureFormat) -> egui_wgpu::Renderer {
+    egui_wgpu::Renderer::new(device, format, egui_wgpu::RendererOptions {
+        msaa_samples: 1,
+        depth_stencil_format: None,
+        dithering: false,
+        predictable_texture_filtering: false,
+    })
+}
+
+/// A swapchain of `size` for a surface on this compositor (`caps`):
+/// popups and surfaces without a panel background (the Tracker
+/// desktop) are `translucent`.
+fn swapchain(caps: &wgpu::SurfaceCapabilities, translucent: bool, (width, height): (u32, u32)) -> Option<wgpu::SurfaceConfiguration> {
+    let &first = caps.formats.first()?;
+    // egui blends in gamma space: use a non-sRGB target.
+    let format = caps
+        .formats
+        .iter()
+        .copied()
+        .find(|f| matches!(f, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Rgba8Unorm))
+        .unwrap_or(first);
+    let alpha_mode = if translucent && caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PreMultiplied) {
+        wgpu::CompositeAlphaMode::PreMultiplied
+    } else if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
+        wgpu::CompositeAlphaMode::Opaque
+    } else {
+        caps.alpha_modes[0]
+    };
+    let present_mode = if caps.present_modes.contains(&wgpu::PresentMode::Mailbox) {
+        wgpu::PresentMode::Mailbox
+    } else {
+        wgpu::PresentMode::Fifo
+    };
+    Some(wgpu::SurfaceConfiguration {
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        format,
+        width,
+        height,
+        present_mode,
+        desired_maximum_frame_latency: 1,
+        alpha_mode,
+        view_formats: vec![],
+        color_space: wgpu::SurfaceColorSpace::Auto,
+    })
+}
+
+/// Make menus' drawing ahead (`SpareMenu`), on this worker: a context
+/// and renderer for each of `count`, the context laid out as a popup of
+/// each of `menus` (or, with none, the menus' fonts and symbols), at
+/// `scale`, and its textures uploaded.
+fn warm_menus(device: wgpu::Device, queue: wgpu::Queue, generation: u64, format: wgpu::TextureFormat, palette: Arc<Palette>, menus: Vec<Menu>, scale: f32, count: usize) {
+    for _ in 0..count {
+        let ctx = new_ctx(&palette);
+        let mut renderer = new_renderer(&device, format);
+        let start = Instant::now();
+        let mut frame_time = 0.0;
+        let mut frame = |size: egui::Vec2, draw: &mut dyn FnMut(&mut egui::Ui)| {
+            let mut raw = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
+                time: Some(frame_time),
+                ..Default::default()
+            };
+            raw.viewports.entry(ViewportId::ROOT).or_default().native_pixels_per_point = Some(scale);
+            style::fit_scale(&ctx, scale);
+            let out = ctx.run_ui(raw, |ui| draw(ui));
+            for (id, deltas) in &out.textures_delta.set {
+                for delta in deltas {
+                    renderer.update_texture(&device, &queue, *id, delta);
+                }
+            }
+            for id in &out.textures_delta.free {
+                renderer.free_texture(id);
+            }
+            frame_time += 1.0 / 120.0;
+        };
+        // The glyphs any menu is likely to show (first: a context has
+        // no fonts until it has run).
+        frame(egui::vec2(800.0, 200.0), &mut |ui| {
+            let sample = "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789 …,.:;!?'\"()[]-+=/&%#@ ⌘⇧⌥⌃↵⌫⇥←→↑↓▸✓";
+            for font in [style::plain_font(), style::bold_font()] {
+                ui.painter().text(Pos2::ZERO, egui::Align2::LEFT_TOP, sample, font, egui::Color32::WHITE);
+            }
+        });
+        fn with_submenus<'a>(m: &'a Menu, all: &mut Vec<&'a Menu>) {
+            all.push(m);
+            for item in &m.items {
+                if let crate::menu::MenuItem::Submenu(sub) = item {
+                    with_submenus(sub, all);
+                }
+            }
+        }
+        let mut all = Vec::new();
+        for m in &menus {
+            with_submenus(m, &mut all);
+        }
+        for menu in all {
+            let size = menu::popup_size(&ctx, menu);
+            frame(size, &mut |ui| {
+                menu::popup_ui(ui, menu, &mut PopupState::default());
+            });
+        }
+        let spare = SpareMenu { generation, format, renderer, ctx, fonts: style::fonts_generation(), start, frame_time, surface: None };
+        if let Some(tx) = WARMED.get() {
+            let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send(spare);
+        }
+    }
 }
 
 fn trace_id() -> egui::Id {
@@ -463,6 +674,8 @@ pub struct Kit {
     upgrading: bool,
     /// Windows all closed, but still serving the clipboard (see `finish`).
     linger: bool,
+    /// Menus' drawing has been asked of a worker (`warm_menus`).
+    warmed: bool,
 }
 
 /// Wait for the children this process already has as it starts: those an
@@ -558,6 +771,23 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
             }
         })
         .expect("drop channel");
+
+    let (warmed_tx, warmed_rx) = channel::channel::<SpareMenu>();
+    let _ = WARMED.set(Mutex::new(warmed_tx));
+    loop_handle
+        .insert_source(warmed_rx, |event, _, kit: &mut Kit| {
+            if let channel::Event::Msg(spare) = event
+                && let Some(gpu) = &kit.gpu
+                && gpu.generation == spare.generation
+                && gpu.spare.borrow().len() < SPARE_MENUS
+            {
+                // Made with the theme of when it was asked for.
+                style::apply(&spare.ctx, &kit.palette);
+                gpu.spare.borrow_mut().push(spare);
+                kit.make_menu_surface();
+            }
+        })
+        .expect("warmed channel");
 
     let (pasted_tx, pasted_rx) = channel::channel::<(WlSurface, String)>();
     let _ = PASTED.set(Mutex::new(pasted_tx));
@@ -883,6 +1113,7 @@ impl Kit {
             exit: false,
             upgrading: false,
             linger: false,
+            warmed: false,
         }
     }
 
@@ -1297,13 +1528,7 @@ impl Kit {
     }
 
     fn new_ctx(&self) -> egui::Context {
-        let ctx = egui::Context::default();
-        ctx.set_fonts(style::all_font_definitions());
-        style::apply(&ctx, &self.palette);
-        ctx.options_mut(|o| {
-            o.zoom_with_keyboard = false;
-        });
-        ctx
+        new_ctx(&self.palette)
     }
 
     fn attach_scale(&self, wl: &WlSurface) -> (Option<WpFractionalScaleV1>, Option<WpViewport>) {
@@ -1317,7 +1542,20 @@ impl Kit {
     }
 
     fn make_surface(&self, id: WindowId, role: Role, wl: WlSurface, options: WindowOptions, size: (u32, u32)) -> Surface {
-        let (fractional, viewport) = self.attach_scale(&wl);
+        let scaled = self.attach_scale(&wl);
+        self.make_surface_scaled(id, role, wl, options, size, scaled)
+    }
+
+    /// `make_surface`, on a surface whose scale objects are made already.
+    fn make_surface_scaled(
+        &self,
+        id: WindowId,
+        role: Role,
+        wl: WlSurface,
+        options: WindowOptions,
+        size: (u32, u32),
+        (fractional, viewport): (Option<WpFractionalScaleV1>, Option<WpViewport>),
+    ) -> Surface {
         // Until the compositor tells us, assume the output scale.
         let scale = self
             .output_state
@@ -1336,11 +1574,7 @@ impl Kit {
             renderer: None,
             ctx: {
                 let ctx = self.new_ctx();
-                ctx.set_request_repaint_callback(move |info| {
-                    if let Some(tx) = REPAINT.get() {
-                        let _ = tx.lock().unwrap().send((id, info.delay));
-                    }
-                });
+                repaint_to(&ctx, id);
                 ctx
             },
             fonts: style::fonts_generation(),
@@ -1368,7 +1602,7 @@ impl Kit {
             snug_at: None,
             resizing: false,
             times: Default::default(),
-            ui_us: 0,
+            parts: Default::default(),
             presented: false,
             bar_rect: None,
             cursor: egui::CursorIcon::Default,
@@ -1519,13 +1753,48 @@ impl Kit {
                 let over = t.marks.len().saturating_sub(crate::commands::MARKS);
                 t.marks.drain(..over);
             }
-            // A menu's renderer, for the next menu (its textures are
-            // the new menu's to replace: they go by the same ids).
-            if matches!(s.role, Role::Popup { .. })
-                && let (Some(gpu), Some(r)) = (&self.gpu, s.renderer.take())
-                && gpu.spare.borrow().len() < 2
-            {
-                gpu.spare.borrow_mut().push((s.format, r));
+            // A menu's drawing, and its surface, for the next menu.
+            if let Role::Popup { shell, .. } = &s.role {
+                let room = self.gpu.as_ref().is_some_and(|g| g.spare.borrow().len() < SPARE_MENUS);
+                let keep = room && s.renderer.is_some() && s.gpu_surface.is_some() && s.viewport.is_some();
+                if keep {
+                    // Unmapped, with no buffer, so that another menu's
+                    // xdg_surface may take it on (as GTK reuses its own).
+                    s.wl.attach(None, 0, 0);
+                    s.wl.commit();
+                }
+                shell.xdg_popup.destroy();
+                shell.xdg_surface.destroy();
+                if room
+                    && let (Some(gpu), Some(renderer)) = (&self.gpu, s.renderer.take())
+                {
+                    let surface = match (keep, s.gpu_surface.take(), s.viewport.take()) {
+                        (true, Some(gpu_surface), Some(viewport)) => Some(KeptSurface {
+                            wl: s.wl.clone(),
+                            fractional: s.fractional.take(),
+                            viewport,
+                            gpu_surface,
+                            alloc: s.alloc,
+                            scale: s.scale,
+                            output: s.output.clone(),
+                        }),
+                        _ => None,
+                    };
+                    let kept = surface.is_some();
+                    gpu.spare.borrow_mut().push(SpareMenu {
+                        generation: gpu.generation,
+                        format: s.format,
+                        renderer,
+                        ctx: s.ctx.clone(),
+                        fonts: s.fonts,
+                        start: s.start,
+                        frame_time: s.frame_time,
+                        surface,
+                    });
+                    if kept {
+                        return;
+                    }
+                }
             }
             s.gpu_surface = None;
             if let Some(f) = s.fractional.take() {
@@ -1537,7 +1806,11 @@ impl Kit {
             if let Some(i) = s.inhibitor.take() {
                 i.destroy();
             }
-            // Dropping the role destroys the xdg/layer objects.
+            // Dropping a window's or layer's role destroys its objects
+            // and surface; a menu's are the kit's own.
+            if matches!(s.role, Role::Popup { .. }) {
+                s.wl.destroy();
+            }
         }
     }
 
@@ -1564,6 +1837,11 @@ impl Kit {
         for s in &mut self.surfaces {
             style::apply(&s.ctx, &p);
             s.dirty = true;
+        }
+        if let Some(gpu) = &self.gpu {
+            for spare in gpu.spare.borrow().iter() {
+                style::apply(&spare.ctx, &p);
+            }
         }
         self.with_app(|app, cx| app.theme_changed(cx, &p));
     }
@@ -1686,7 +1964,8 @@ impl Kit {
             // moment while app_server restarts in place (an upgrade), and
             // the reconnect makes the window anew: no app may die of it.
             device.on_uncaptured_error(std::sync::Arc::new(|e| tracing::error!("wgpu: {e}")));
-            self.gpu = Some(Gpu { instance, adapter, device, queue, caps: Default::default(), spare: Default::default() });
+            let generation = GPU_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.gpu = Some(Gpu { instance, adapter, device, queue, caps: Default::default(), spare: Default::default(), generation });
             return Some(surface);
         }
         let gpu = self.gpu.as_ref()?;
@@ -1707,10 +1986,17 @@ impl Kit {
     /// pixel, set as each frame is presented), so most sizes cost
     /// nothing; once the size has rested, the buffer is made to fit.
     /// Resized by hand, the room is made on the press, before anything
-    /// moves, and kept until the button is let go.
+    /// moves, and kept until the button is let go. A menu's has room for
+    /// the menus after it (`menu_room`), and keeps it.
     fn configure_gpu_surface(&mut self, i: usize) {
         let s = &self.surfaces[i];
         let need = s.physical_size();
+        if matches!(s.role, Role::Popup { .. }) && s.viewport.is_some() {
+            if s.gpu_surface.is_none() || s.alloc.0 < need.0 || s.alloc.1 < need.1 {
+                self.configure_gpu_surface_at(i, menu_room(need, s.scale));
+            }
+            return;
+        }
         if s.gpu_surface.is_none() || s.viewport.is_none() || s.alloc == (0, 0) {
             self.configure_gpu_surface_at(i, need);
             return;
@@ -1750,8 +2036,9 @@ impl Kit {
         let gs = s.gpu_surface.as_ref().unwrap();
         // Lost, or no formats, while the compositor is away (it restarts
         // in place): the reconnect configures it again. (Asked as a
-        // surface is first set up; a resize keeps what it had.)
-        if s.alloc == (0, 0) && !gpu.adapter.is_surface_supported(gs) {
+        // surface is first set up; a resize keeps what it had, and a
+        // menu's window has just drawn, so the compositor is there.)
+        if s.alloc == (0, 0) && !matches!(s.role, Role::Popup { .. }) && !gpu.adapter.is_surface_supported(gs) {
             warn!("GPU surface lost (compositor gone?)");
             return;
         }
@@ -1766,57 +2053,14 @@ impl Kit {
                 gpu.caps.get_or_init(|| caps)
             }
         };
-        let Some(&first) = caps.formats.first() else { return };
-        // egui blends in gamma space: use a non-sRGB target.
-        let format = caps
-            .formats
-            .iter()
-            .copied()
-            .find(|f| matches!(f, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Rgba8Unorm))
-            .unwrap_or(first);
-        // Popups and surfaces without a panel background (the Tracker
-        // desktop) are translucent.
-        let alpha_mode = if (matches!(s.role, Role::Popup { .. }) || !s.options.panel)
-            && caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PreMultiplied)
-        {
-            wgpu::CompositeAlphaMode::PreMultiplied
-        } else if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
-            wgpu::CompositeAlphaMode::Opaque
-        } else {
-            caps.alpha_modes[0]
-        };
-        let present_mode = if caps.present_modes.contains(&wgpu::PresentMode::Mailbox) {
-            wgpu::PresentMode::Mailbox
-        } else {
-            wgpu::PresentMode::Fifo
-        };
+        let translucent = matches!(s.role, Role::Popup { .. }) || !s.options.panel;
         let (w, h) = if s.viewport.is_some() { size } else { s.physical_size() };
+        let Some(config) = swapchain(caps, translucent, (w, h)) else { return };
+        let format = config.format;
         s.alloc = (w, h);
-        gs.configure(
-            &gpu.device,
-            &wgpu::SurfaceConfiguration {
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                format,
-                width: w,
-                height: h,
-                present_mode,
-                desired_maximum_frame_latency: 1,
-                alpha_mode,
-                view_formats: vec![],
-                color_space: wgpu::SurfaceColorSpace::Auto,
-            },
-        );
+        gs.configure(&gpu.device, &config);
         if s.renderer.is_none() || s.format != format {
-            let mut spare = gpu.spare.borrow_mut();
-            let kept = spare.iter().position(|(f, _)| *f == format).map(|k| spare.swap_remove(k).1);
-            s.renderer = Some(kept.unwrap_or_else(|| {
-                egui_wgpu::Renderer::new(&gpu.device, format, egui_wgpu::RendererOptions {
-                    msaa_samples: 1,
-                    depth_stencil_format: None,
-                    dithering: false,
-                    predictable_texture_filtering: false,
-                })
-            }));
+            s.renderer = Some(new_renderer(&gpu.device, format));
             s.format = format;
         }
         if s.viewport.is_none() {
@@ -1902,12 +2146,16 @@ impl Kit {
             if marks.len() >= crate::commands::MARKS {
                 marks.drain(..marks.len() + 1 - crate::commands::MARKS);
             }
-            marks.push(crate::commands::FrameMark { at_us, us: us as u32, ui_us: std::mem::take(&mut s.ui_us), scrolls });
+            marks.push(crate::commands::FrameMark { at_us, us: us as u32, scrolls, ..std::mem::take(&mut s.parts) });
+            if !self.warmed {
+                self.warm_menus(id);
+            }
         }
     }
 
     fn draw_frame(&mut self, id: WindowId) {
         let Some(i) = self.surfaces.iter().position(|s| s.id == id) else { return };
+        let setup = Instant::now();
         let resized = std::mem::take(&mut self.surfaces[i].reconfigure);
         if self.surfaces[i].gpu_surface.is_none() || resized {
             self.configure_gpu_surface(i);
@@ -1920,6 +2168,7 @@ impl Kit {
                 self.configure_gpu_surface_at(i, need);
             }
         }
+        self.surfaces[i].parts.setup_us = setup.elapsed().as_micros() as u32;
         self.surfaces[i].configure_due = None;
         if self.surfaces[i].gpu_surface.is_none() {
             return;
@@ -2134,7 +2383,7 @@ impl Kit {
             self.start_drag(id, data);
         }
         if let Some(s) = self.surface_mut(id) {
-            s.ui_us = ui_start.elapsed().as_micros() as u32;
+            s.parts.ui_us = ui_start.elapsed().as_micros() as u32;
         }
         self.present(id, output);
         if menu::take_paste(&ctx)
@@ -2217,7 +2466,10 @@ impl Kit {
         }
         let gpu = self.gpu.as_ref().unwrap();
         let ppp = output.pixels_per_point;
+        let t = Instant::now();
         let prims = s.ctx.tessellate(output.shapes, ppp);
+        s.parts.tessellate_us = t.elapsed().as_micros() as u32;
+        let t = Instant::now();
         let (w, h) = s.physical_size();
         // Textures first: they must be applied even if this frame is skipped.
         let renderer = s.renderer.as_mut().unwrap();
@@ -2230,7 +2482,12 @@ impl Kit {
         let freed = std::mem::take(&mut deltas.free);
         deltas.clear();
         let gs = s.gpu_surface.as_ref().unwrap();
-        let frame = match gs.get_current_texture() {
+        let uploads = t.elapsed();
+        let t = Instant::now();
+        let acquired = gs.get_current_texture();
+        s.parts.acquire_us = t.elapsed().as_micros() as u32;
+        let t = Instant::now() - uploads;
+        let frame = match acquired {
             wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
             other => {
                 debug!(?other, "surface lost; reconfiguring");
@@ -2284,6 +2541,7 @@ impl Kit {
         s.frame_pending = true;
         s.presented = true;
         gpu.queue.present(frame);
+        s.parts.submit_us = t.elapsed().as_micros() as u32;
     }
 
     // ---- menus ----------------------------------------------------------
@@ -2385,6 +2643,69 @@ impl Kit {
         }
     }
 
+    /// Drawing made ready for a new menu (`SpareMenu`), if there is
+    /// some: one with a surface kept, if any.
+    fn take_spare(&self, format: wgpu::TextureFormat) -> Option<SpareMenu> {
+        let gpu = self.gpu.as_ref()?;
+        let mut spares = gpu.spare.borrow_mut();
+        let k = spares
+            .iter()
+            .position(|sp| sp.format == format && sp.surface.is_some())
+            .or_else(|| spares.iter().position(|sp| sp.format == format))?;
+        Some(spares.swap_remove(k))
+    }
+
+    /// Once a window has drawn, make the first menus' drawing ahead on a
+    /// worker (`SpareMenu`), from its menu bar's menus.
+    fn warm_menus(&mut self, id: WindowId) {
+        let Some(gpu) = &self.gpu else { return };
+        let Some(s) = self.surfaces.iter().find(|s| s.id == id) else { return };
+        if self.warmed || !matches!(s.role, Role::Toplevel(_) | Role::Layer(_)) || s.renderer.is_none() {
+            return;
+        }
+        self.warmed = true;
+        let count = SPARE_MENUS.saturating_sub(gpu.spare.borrow().len());
+        let (device, queue, generation, format) = (gpu.device.clone(), gpu.queue.clone(), gpu.generation, s.format);
+        let (palette, menus, scale) = (self.palette.clone(), s.menus.clone().unwrap_or_default(), s.scale as f32);
+        let _ = std::thread::Builder::new()
+            .name("warm menus".into())
+            .spawn(move || warm_menus(device, queue, generation, format, palette, menus, scale, count));
+    }
+
+    /// A surface for the first menu, its swapchain set up ahead as a
+    /// closed menu leaves its own (`KeptSurface`), for a spare without
+    /// one: else the first menu would wait for the GPU to go idle.
+    fn make_menu_surface(&mut self) {
+        let Some(gpu) = &self.gpu else { return };
+        if gpu.spare.borrow().iter().any(|sp| sp.surface.is_some()) {
+            return;
+        }
+        let Some(window) = self.surfaces.iter().find(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_)) && s.gpu_surface.is_some()) else {
+            return;
+        };
+        let (scale, output) = (window.scale, window.output.clone());
+        let alloc = menu_room((0, 0), scale);
+        let Some(config) = gpu.caps.get().and_then(|caps| swapchain(caps, true, alloc)) else { return };
+        let wl = self.compositor.create_surface(&self.qh);
+        let (fractional, viewport) = self.attach_scale(&wl);
+        let gpu_surface = viewport.as_ref().and_then(|_| self.ensure_gpu(&wl));
+        let (Some(gpu), Some(viewport), Some(gpu_surface)) = (&self.gpu, viewport.clone(), gpu_surface) else {
+            fractional.inspect(|f| f.destroy());
+            viewport.inspect(|v| v.destroy());
+            wl.destroy();
+            return;
+        };
+        gpu_surface.configure(&gpu.device, &config);
+        if let Some(spare) = gpu.spare.borrow_mut().iter_mut().find(|sp| sp.format == config.format && sp.surface.is_none()) {
+            spare.surface = Some(KeptSurface { wl, fractional, viewport, gpu_surface, alloc, scale, output });
+            return;
+        }
+        drop(gpu_surface);
+        fractional.inspect(|f| f.destroy());
+        viewport.destroy();
+        wl.destroy();
+    }
+
     /// Close the owner's popups from `depth` outward.
     fn close_popups_of(&mut self, owner: WindowId, depth: usize) {
         let Some(s) = self.surface_mut(owner) else { return };
@@ -2465,33 +2786,29 @@ impl Kit {
                 | xdg_positioner::ConstraintAdjustment::ResizeY,
         );
 
-        let wl = self.compositor.create_surface(&self.qh);
-        let popup = match &parent_surface.role {
-            Role::Toplevel(w) => {
-                Popup::from_surface(Some(w.xdg_surface()), &positioner, &self.qh, wl.clone(), &self.xdg)
-            }
-            Role::Popup { popup, .. } => {
-                Popup::from_surface(Some(popup.xdg_surface()), &positioner, &self.qh, wl.clone(), &self.xdg)
-            }
-            Role::Layer(l) => {
-                let p = Popup::from_surface(None, &positioner, &self.qh, wl.clone(), &self.xdg);
-                if let Ok(p) = &p {
-                    l.get_popup(p.xdg_popup());
-                }
-                p
-            }
+        let parent_xdg = match &parent_surface.role {
+            Role::Toplevel(w) => Some(w.xdg_surface()),
+            Role::Popup { shell, .. } => Some(&shell.xdg_surface),
+            Role::Layer(_) => None,
             Role::Lock(..) => {
                 // Nothing may sit over the lock screen.
                 warn!("no popups on lock surfaces");
                 return;
             }
         };
-        let Ok(popup) = popup else {
-            warn!("could not create popup");
-            return;
-        };
+        // A closed menu's drawing, and its surface if it kept one.
+        let format = owner_s.format;
+        let mut spare = self.take_spare(format);
+        let kept = spare.as_mut().and_then(|sp| sp.surface.take());
+        let wl = kept.as_ref().map_or_else(|| self.compositor.create_surface(&self.qh), |k| k.wl.clone());
+        let wm = self.xdg.xdg_wm_base();
+        let xdg_surface = wm.get_xdg_surface(&wl, &self.qh, MenuData(wl.clone()));
+        let xdg_popup = xdg_surface.get_popup(parent_xdg, &positioner, &self.qh, MenuData(wl.clone()));
+        if let Role::Layer(l) = &parent_surface.role {
+            l.get_popup(&xdg_popup);
+        }
         if let Some(seat) = &self.seat {
-            popup.xdg_popup().grab(seat, self.last_serial);
+            xdg_popup.grab(seat, self.last_serial);
         }
         wl.commit();
 
@@ -2502,8 +2819,15 @@ impl Kit {
             id
         };
         let options = WindowOptions { panel: false, ..Default::default() };
-        let role = Role::Popup { popup, owner, path, state: PopupState::default(), parent: parent_popup, at: (0, 0) };
-        let s = self.make_surface(id, role, wl, options, size);
+        let shell = MenuShell { xdg_surface, xdg_popup };
+        let role = Role::Popup { shell, placed: None, owner, path, state: PopupState::default(), parent: parent_popup, at: (0, 0) };
+        let mut s = match &kept {
+            Some(k) => self.make_surface_scaled(id, role, wl, options, size, (k.fractional.clone(), Some(k.viewport.clone()))),
+            None => self.make_surface(id, role, wl, options, size),
+        };
+        if let Some(spare) = spare {
+            reuse_spare(&mut s, spare, kept);
+        }
         self.surfaces.push(s);
         if let Some(o) = self.surface_mut(owner) {
             o.popups.push(id);
@@ -2963,38 +3287,53 @@ impl LayerShellHandler for Kit {
     }
 }
 
-impl PopupHandler for Kit {
-    fn configure(&mut self, _: &Connection, _: &QueueHandle<Self>, popup: &Popup, config: PopupConfigure) {
-        let Some(i) = self
-            .surfaces
-            .iter()
-            .position(|s| matches!(&s.role, Role::Popup { popup: p, .. } if p == popup))
-        else {
-            return;
-        };
-        let s = &mut self.surfaces[i];
-        if let Role::Popup { at, .. } = &mut s.role {
-            *at = config.position;
+impl Dispatch2<xdg_popup::XdgPopup, Kit> for MenuData {
+    fn event(&self, kit: &mut Kit, _: &xdg_popup::XdgPopup, event: xdg_popup::Event, _: &Connection, _: &QueueHandle<Kit>) {
+        match event {
+            // Applied with the xdg_surface's configure that follows.
+            xdg_popup::Event::Configure { x, y, width, height } => {
+                if let Some(i) = kit.index_of_wl(&self.0)
+                    && let Role::Popup { placed, .. } = &mut kit.surfaces[i].role
+                {
+                    *placed = Some(((x, y), (width.max(1) as u32, height.max(1) as u32)));
+                }
+            }
+            xdg_popup::Event::PopupDone => {
+                let owner = kit.index_of_wl(&self.0).and_then(|i| match &kit.surfaces[i].role {
+                    Role::Popup { owner, .. } => Some(*owner),
+                    _ => None,
+                });
+                if let Some(owner) = owner {
+                    kit.handle_menu_events(vec![MenuEvent::CloseAll(owner)]);
+                }
+            }
+            _ => {}
         }
-        let size = (config.width.max(1) as u32, config.height.max(1) as u32);
+    }
+}
+
+impl Dispatch2<xdg_surface::XdgSurface, Kit> for MenuData {
+    fn event(&self, kit: &mut Kit, xdg_surface: &xdg_surface::XdgSurface, event: xdg_surface::Event, _: &Connection, _: &QueueHandle<Kit>) {
+        let xdg_surface::Event::Configure { serial } = event else { return };
+        xdg_surface.ack_configure(serial);
+        let Some(i) = kit.index_of_wl(&self.0) else { return };
+        let s = &mut kit.surfaces[i];
+        let Role::Popup { at, placed, .. } = &mut s.role else { return };
+        let size = match placed.take() {
+            Some((position, size)) => {
+                *at = position;
+                size
+            }
+            None => s.size,
+        };
         let changed = size != s.size || !s.configured;
         s.size = size;
         s.configured = true;
         s.dirty = true;
         if changed {
-            self.surfaces[i].reconfigure = true;
+            s.reconfigure = true;
         }
-        self.draw_configured(i);
-    }
-
-    fn done(&mut self, _: &Connection, _: &QueueHandle<Self>, popup: &Popup) {
-        let owner = self.surfaces.iter().find_map(|s| match &s.role {
-            Role::Popup { popup: p, owner, .. } if p == popup => Some(*owner),
-            _ => None,
-        });
-        if let Some(owner) = owner {
-            self.handle_menu_events(vec![MenuEvent::CloseAll(owner)]);
-        }
+        kit.draw_configured(i);
     }
 }
 

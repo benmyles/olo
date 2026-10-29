@@ -70,7 +70,16 @@ like pixel alignment is.
    once, on a worker); what a frame lays out is what shows, not all
    there is (History's cards, lists' rows); text laid out once is
    egui's cache's, so don't make new strings every frame for what
-   didn't change. `tools/dev/bench` checks every app (see Testing).
+   didn't change. Nor does it set the GPU up: configuring a swapchain
+   waits for the GPU to go idle (3 ms, 30 with a busy GPU), and a new
+   egui context lays out its glyphs and uploads its font atlas (6 ms).
+   So the kit gives a window being resized a swapchain with room to
+   grow, showing only its part (`wp_viewport`), and a menu takes on the
+   last closed menu's surface, swapchain, context and renderer
+   (`SpareMenu`, two kept); the first menus' are made ahead, the
+   contexts laid out on a worker as a window first draws, and so no
+   menu waits, the first included. `tools/dev/bench` checks every app
+   (see Testing).
 
 ## Layout
 
@@ -1092,9 +1101,11 @@ Each headless screen draws at its mode's rate (60 or 120 Hz), on time:
 check anything that moves at 120 Hz too. Every kit app's `{"frames":true}`
 (on its `olo-menus-PID.sock`) answers with each frame it drew since the
 last ask, the last 1200 (`FrameMark`): when it began (CLOCK_MONOTONIC
-µs, app_server's clock), how long it took and how much of that was egui
-and the app's code (`ui_us`; the rest is tessellating and the GPU), and
-where each scroll view showed its content from.
+µs, app_server's clock), how long it took, its parts (`setup_us`, a
+surface made or a swapchain configured; `ui_us`, egui and the app's
+code; `tessellate_us`; `acquire_us`, waiting for a buffer to draw in;
+`submit_us`, uploads, recording, submitting and presenting), and where
+each scroll view showed its content from.
 
 `tools/dev/scroll-check NAME --app NAME` measures scrolling with them: on
 a long list under the pointer it drives a steady two-finger scroll (at a
@@ -1173,7 +1184,8 @@ anything that runs per frame or per event.
 
 `tools/dev/bench` is the speed benchmark, every app against the 120 Hz
 budget (rule 9). On release builds (`cargo build --release --workspace
---examples`; `TSESSION_PROFILE=release` makes tsession run them) it
+--bins --examples`: `--examples` alone builds only the kit's demo;
+`TSESSION_PROFILE=release` makes tsession run them) it
 starts a session of its own ("bench": a 3456×2234 screen, a 16" MacBook
 Pro's, at 120 Hz, with the shell) and a sandbox home under
 /var/tmp/olo-bench filled with what makes apps work (a 20,000-line
@@ -1190,8 +1202,9 @@ field typed in, the window resized live, the theme flipped; then
 Deskbar and every screen saver module. Every frame each draws comes
 from its `{"frames":true}` marks (menus' too), app_server's from
 `{"type":"timings"}`. A step fails on any frame over the budget
-(`--budget`, a frame at `--hz`), a skipped frame while scrolling, or
-app_server over budget or stalled; switching the theme or scale, an
+(`--budget`, a frame at `--hz`; the slowest frame's parts are printed
+with it, so the fix starts in the right place), a skipped frame while
+scrolling, or app_server over budget or stalled; switching the theme or scale, an
 app's first frames and the start of a live resize (a new swapchain)
 are transitions, listed with their slowest frame. `--apps a,b`,
 `--scales 2`, `--json FILE`, `--list`. It only looks at Preferences

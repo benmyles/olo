@@ -655,24 +655,31 @@ fn texture<'a>(ctx: &egui::Context, cache: &'a mut HashMap<usize, TextureHandle>
     })
 }
 
-/// A light checkerboard behind images, so transparency reads as such.
+/// A light checkerboard behind images, so transparency reads as such:
+/// one quad of a repeating texture made at the scale, a texel to a
+/// device pixel (as rects, a full screen of cells took 8 ms a frame).
 fn checker(painter: &egui::Painter, r: Rect, p: &olo_kit::theme::Palette) {
     // Always light, in either mode: dark artwork must stay visible.
     let _ = p;
-    let a = Color32::from_gray(255);
-    let b = Color32::from_gray(232);
-    painter.rect_filled(r, 0.0, a);
-    let s = 8.0;
-    let (nx, ny) = ((r.width() / s).ceil() as usize, (r.height() / s).ceil() as usize);
-    if nx * ny > 40_000 {
-        return;
-    }
-    for y in 0..ny {
-        for x in (y % 2..nx).step_by(2) {
-            let cell = Rect::from_min_size(pos2(r.left() + x as f32 * s, r.top() + y as f32 * s), vec2(s, s)).intersect(r);
-            painter.rect_filled(cell, 0.0, b);
-        }
-    }
+    let ctx = painter.ctx();
+    let ppp = ctx.pixels_per_point();
+    let cell = (8.0 * ppp).round().max(1.0) as usize;
+    let id = egui::Id::unique(("preview-checker", cell));
+    let tex = ctx.data(|d| d.get_temp::<TextureHandle>(id)).unwrap_or_else(|| {
+        let n = 2 * cell;
+        let pixels = (0..n * n)
+            .map(|i| if ((i % n) / cell + (i / n) / cell) % 2 == 0 { Color32::from_gray(255) } else { Color32::from_gray(232) })
+            .collect();
+        let image = egui::ColorImage::new([n, n], pixels);
+        let tex = ctx.load_texture("preview-checker", image, TextureOptions::NEAREST_REPEAT);
+        ctx.data_mut(|d| d.insert_temp(id, tex.clone()));
+        tex
+    });
+    // On whole device pixels, so the texels land on them.
+    let r = style::snap(ctx, r);
+    let n = (2 * cell) as f32;
+    let uv = Rect::from_min_size(pos2(0.0, 0.0), r.size() * ppp / n);
+    painter.image(tex.id(), r, uv, Color32::WHITE);
 }
 
 fn text_view(ui: &mut Ui, r: Rect, t: &text::Text, id: u64) {
