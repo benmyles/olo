@@ -356,9 +356,13 @@ impl Cx {
         self.requests.push(Request::SetPath(window, path));
     }
     /// Ask app_server to resize the window's content area. A zoomed
-    /// window keeps the size it was zoomed to, and app_server holds a
-    /// tiled one to its tile and keeps any on its display (an app that
-    /// grows it past the screen is asked to fit, down to its minimum).
+    /// window keeps the size it was zoomed to, a tiled one its tile's,
+    /// one zoomed along an axis its size that way (app_server says which
+    /// sides it holds with xdg's tiled states), and app_server keeps any
+    /// on its display (an app that grows it past the screen is asked to
+    /// fit, down to its minimum). A covered window's new size lands at
+    /// once all the same; a hidden one's when it is back (see
+    /// [`Cx::is_shown`]).
     pub fn resize(&mut self, window: WindowId, size: (u32, u32)) {
         self.requests.push(Request::Resize(window, size));
     }

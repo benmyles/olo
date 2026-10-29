@@ -718,10 +718,13 @@ impl Terminal {
         self.settings.text_size = size;
         self.settings.save();
         self.metrics = None;
-        // Keep each window's grid size: resize the windows to fit.
+        // Keep each window's grid size: resize the windows to fit. Not
+        // those away (another workspace, hidden): they draw nothing till
+        // they are back, and would jump then; they keep their size, and
+        // their grid fits it.
         for (id, w) in &mut self.windows {
             if let Win::Term(t) = w {
-                t.snap_to = Some(t.grid());
+                t.snap_to = cx.is_shown(*id).then(|| t.grid());
                 cx.redraw(*id);
             }
         }

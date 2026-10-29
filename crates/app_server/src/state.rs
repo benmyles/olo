@@ -251,6 +251,13 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub last_display: Option<String>,
     /// The active display subscribers were last told of.
     pub told_active: Option<String>,
+    /// Clipboard tools' windows, out of sight while they set the
+    /// clipboard, with the window that had the keyboard before
+    /// (`clipboard_helper`).
+    pub clipboard_helpers: Vec<(crate::shell::WindowElement, Option<crate::shell::WindowElement>)>,
+    /// Buttons pressed on a Twitcher cell (choosing it), whose releases
+    /// go nowhere.
+    pub twitch_buttons: Vec<u32>,
     pub settings: olo_protocol::Settings,
     pub ipc: crate::ipc::IpcState,
     /// Frame times and event-loop lateness, while watched (`timings`).
@@ -1122,6 +1129,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             showing: HashMap::new(),
             last_display: None,
             told_active: None,
+            clipboard_helpers: Vec::new(),
+            twitch_buttons: Vec::new(),
             settings: {
                 let settings = crate::desktop::load_settings();
                 // `op` is there (or not) as Preferences ▸ Security says.

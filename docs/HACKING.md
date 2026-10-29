@@ -1006,7 +1006,14 @@ hands both to app_server, so clients never see the sockets disappear.
   (a restart can't keep a buffer's release points). Clipboard tools and
   password managers (1Password: arboard → wl-clipboard-rs) need data
   control (`ext_data_control_v1`, `zwlr_data_control_manager_v1`), so
-  they copy and paste even without a focused window. GTK asks for
+  they copy and paste even without a focused window. Without it (a
+  proxy from before, which an upgrade keeps: the proxy is only replaced
+  at the next login), wl-copy and wl-paste make a 1x1 window to get the
+  keyboard with; app_server keeps those (`shell::xdg`
+  `CLIPBOARD_HELPERS`, `clipboard_helper`) out of the space: never
+  drawn, tiled (auto-tiling gave them a tile, squeezing the window a
+  selection was being copied from), decorated or listed, with the
+  keyboard for their moment and handing it back. GTK asks for
   server-side decorations through `org_kde_kwin_server_decoration`, input
   methods use `zwp_input_method_v2`, and idle notifications track
   app_server's own idle timer. Requests whose effect lasts (`slot()` in
@@ -1755,7 +1762,11 @@ number, and a minimized one marked as a Mac's Window menu does, a hollow
 diamond and a lighter label (`.minimized(true)`, `Action::minimized`;
 agents read `minimized` on its `MenuItem`). Choosing one brings it back.
 
-Twitcher (⌘Tab, ⌥Tab, ⌘\`, `twitch_step`) shows each window it passes by
+Twitcher (⌘Tab, ⌥Tab, ⌘\`, `twitch_step`; while ⌘ or ⌥ is held the
+pointer chooses too: over a cell it is the one chosen, a click on it
+chooses it and ends the switching, its release going nowhere:
+`twitch_pointer`, `twitch_button`, `twitcher::cell_at`, the panel's
+`cell_places` shared with drawing) shows each window it passes by
 bringing it forward (a minimized one unminimized), but keeps the
 stacking from when switching began (`Twitch::stacks`): passing on puts
 the last one back in its place (minimized again if it was), so when ⌘ is
@@ -2078,7 +2089,13 @@ had again, however the two displays differ in size (`Travelled`: the
 frames it left and arrived with). Any tiling, arranging or moving or
 sizing by hand forgets it (`set_tiled`). As with Zoom, a reload keeps
 the geometry only. Agents:
-`{"type":"run_shortcut","id":"zoom-vertical","window":ID}`.
+`{"type":"run_shortcut","id":"zoom-vertical","window":ID}`. Every turn
+`sync_held_sides` tells each window which sides app_server holds, as
+xdg's tiled states (all four for a tile, auto-tiling's too; top and
+bottom zoomed vertically; left and right horizontally; `held_size`), so
+an app sizing itself (Terminal keeping its columns as its text size
+changes) asks only for what it may have: the kit keeps the held size
+(`Kit` `held`) rather than flicker to one that is put back.
 
 A window that comes back (from another workspace, from being hidden) is
 left exactly where it was unless the displays changed while it was away
@@ -2930,7 +2947,12 @@ Keys: physical Ctrl goes to the shell. ⌘ reaches Terminal as Ctrl+Shift
 other goes to the shell as Ctrl+key, so ⌘R searches history like Ctrl+R.
 A physical Ctrl+Shift chord isn't `command`, so it is always the
 shell's: Ctrl+_ (readline's undo, Ctrl+Shift+-), Ctrl+^ and Ctrl+@,
-while ⌘- is Smaller. The menus read ⌘N, ⌘T, ⌘+, as pressed. ⌥←/⌥→ send ESC b / ESC f
+while ⌘- is Smaller. Bigger and Smaller keep each showing window's
+columns and rows, resizing it as far as app_server lets it (held by a
+tile or a zoom, it keeps its size that way); one away on another
+workspace or hidden keeps its size and fits its grid to the new text
+when it is back (`set_text_size`, `Cx::is_shown`), rather than jump
+then. The menus read ⌘N, ⌘T, ⌘+, as pressed. ⌥←/⌥→ send ESC b / ESC f
 (a word back/forward in readline, zsh and fish), except to a program
 using the kitty keyboard protocol (Claude Code), which gets the
 protocol's `CSI 1;3 D` / `C` and reads ESC b as Escape then b. (The

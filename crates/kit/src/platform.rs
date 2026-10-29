@@ -221,6 +221,10 @@ struct Surface {
     windowed: Option<(u32, u32)>,
     /// Zoomed: the compositor chooses its size, not the app.
     maximized: bool,
+    /// The compositor holds its width and its height (tiled on both
+    /// sides that way: a tile, or zoomed along one axis): a size it asks
+    /// for itself keeps those.
+    held: (bool, bool),
     configured: bool,
     dirty: bool,
     frame_pending: bool,
@@ -1729,12 +1733,20 @@ impl Kit {
                         } else if s.fullscreen {
                             // The size to come back to.
                             s.windowed = Some(size);
-                        } else if s.maximized {
-                            // Zoomed to the size it was given: it keeps it
-                            // (the app adapts, as to a hand resize).
-                        } else if s.size != size {
-                            s.size = size;
+                        } else if s.maximized || s.held == (true, true) {
+                            // Zoomed or tiled to the size it was given: it
+                            // keeps it (the app adapts, as to a hand resize).
+                        } else if let want = (if s.held.0 { s.size.0 } else { size.0 }, if s.held.1 { s.size.1 } else { size.1 })
+                            && s.size != want
+                        {
+                            // Zoomed along one axis: that way it keeps.
+                            s.size = want;
                             s.dirty = true;
+                            // Shown promptly, even covered (its frames come
+                            // slowly then): it is the app's own doing.
+                            if s.frame_pending {
+                                s.configure_due.get_or_insert(Instant::now() + CONFIGURED_WAIT);
+                            }
                             if s.gpu_surface.is_some() {
                                 self.configure_gpu_surface(i);
                             }
@@ -1887,6 +1899,7 @@ impl Kit {
             fullscreen: false,
             windowed: None,
             maximized: false,
+            held: (false, false),
             configured: false,
             dirty: true,
             frame_pending: false,
@@ -3633,6 +3646,11 @@ impl WindowHandler for Kit {
         }
         s.fullscreen = fullscreen;
         s.maximized = configure.is_maximized();
+        {
+            use smithay_client_toolkit::reexports::csd_frame::WindowState as St;
+            let st = configure.state;
+            s.held = (st.contains(St::TILED_LEFT) && st.contains(St::TILED_RIGHT), st.contains(St::TILED_TOP) && st.contains(St::TILED_BOTTOM));
+        }
         if let (Some(w), Some(h)) = configure.new_size {
             size = (w.get(), h.get());
         }

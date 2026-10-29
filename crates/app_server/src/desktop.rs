@@ -351,6 +351,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.parked.0.borrow_mut().retain(|w| w.alive());
         self.sync_groups();
         self.auto_tick();
+        self.sync_held_sides();
         self.keep_children_above();
         self.focus_tick();
         self.note_recent();
@@ -824,6 +825,45 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         let (displays, letters) = (t.displays.clone(), self.settings.keyboard.hints);
         Some(crate::twitcher::Shown { rows, displays, row: t.row, index: t.index, letters })
+    }
+
+    /// The Twitcher cell under `pos` (global logical), in the copy of the
+    /// panel on the display there.
+    fn twitch_cell_at(&self, pos: Point<f64, Logical>) -> Option<(usize, usize)> {
+        let shown = self.twitcher_entries()?;
+        let output = self.space.output_under(pos).next()?;
+        let geo = self.space.output_geometry(output)?;
+        crate::twitcher::cell_at(&shown, (geo.size.w, geo.size.h), (pos.x - geo.loc.x as f64, pos.y - geo.loc.y as f64))
+    }
+
+    /// The pointer over a Twitcher cell while ⌘ (or ⌥) is held: that one
+    /// is chosen, as ⇥ and the arrows choose.
+    pub fn twitch_pointer(&mut self) {
+        let Some(cell) = self.twitch_cell_at(self.pointer.current_location()) else { return };
+        let Some(t) = self.twitch.as_mut() else { return };
+        if (t.row, t.index) != cell {
+            (t.row, t.index) = cell;
+            self.twitch_show();
+        }
+    }
+
+    /// A click while switching: on a cell, that one is chosen, as
+    /// letting go of ⌘ chooses (and the click's release goes nowhere).
+    /// True if it took the button.
+    pub fn twitch_button(&mut self, button: u32, pressed: bool) -> bool {
+        if !pressed {
+            let Some(i) = self.twitch_buttons.iter().position(|b| *b == button) else { return false };
+            self.twitch_buttons.swap_remove(i);
+            return true;
+        }
+        let Some(cell) = self.twitch.as_ref().and_then(|_| self.twitch_cell_at(self.pointer.current_location())) else { return false };
+        if let Some(t) = self.twitch.as_mut() {
+            (t.row, t.index) = cell;
+        }
+        self.twitch_show();
+        self.twitch_done();
+        self.twitch_buttons.push(button);
+        true
     }
 
     /// ⌘ released: the chosen window stays in front, the rest where they

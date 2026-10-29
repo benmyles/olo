@@ -362,8 +362,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     /// Hand-made groups down to one window, and guests of an app with no
-    /// windows grouping by themselves any more: those windows on their
-    /// own (they don't fall into another group by surprise).
+    /// windows grouping by themselves any more on their display (each
+    /// display's are its own groups): those windows on their own (they
+    /// don't fall into another group by surprise).
     pub(super) fn dissolve_lone(&self) {
         let all = self.all_windows();
         let groupings: Vec<Grouping> = all.iter().map(|w| w.meta().grouping.borrow().clone()).collect();
@@ -371,7 +372,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             let lone = match g {
                 Grouping::With(GroupKey::Id(_)) => groupings.iter().filter(|o| *o == g).count() < 2,
                 Grouping::With(GroupKey::App(a)) => {
-                    !all.iter().zip(&groupings).any(|(o, og)| *og == Grouping::Auto && o.app_id() == *a)
+                    let here = self.display_of(w);
+                    !all.iter().zip(&groupings).any(|(o, og)| *og == Grouping::Auto && o.app_id() == *a && self.display_of(o) == here)
                 }
                 _ => false,
             };

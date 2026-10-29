@@ -825,7 +825,10 @@ class Fuzz:
         self.check_sane(before)
         if w not in before or not before[w]["focused"] or fr(before[w]) is None:
             return
-        held = how in ("zoom", "zoom-vertical", "tile-left", "tile-top") or before[w].get("zoomed")
+        # Zoomed or tiled, it keeps its size; zoomed vertically, its
+        # height (its width is its own: a Terminal keeps its columns).
+        held = how in ("zoom", "tile-left", "tile-top") or before[w].get("zoomed")
+        tall = how == "zoom-vertical" and not held
         if what.startswith("new tab"):
             self.keys([CMD, SHIFT, 20])
             mid = self.settle()
@@ -860,6 +863,9 @@ class Fuzz:
                 self.fail(f"{what}: zoomed Terminal window {i} changed size: {fr(before[i])} -> {fr(after[i])}")
         if held and fr(after.get(w, {})) != fr(before[w]):
             self.fail(f"{what}: Terminal window {w} ({how}) didn't keep its size: {fr(before[w])} -> {fr(after.get(w, {}))}")
+        a, b = fr(before[w]), fr(after.get(w, {}))
+        if tall and b and (a[1], a[3]) != (b[1], b[3]):
+            self.fail(f"{what}: Terminal window {w} ({how}) didn't keep its height: {a} -> {b}")
         # A zoomed one keeps it all along (no flicker).
         for i in terms:
             if before[i].get("zoomed"):

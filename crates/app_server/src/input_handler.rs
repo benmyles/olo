@@ -472,7 +472,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let button = evt.button_code();
 
         let state = wl_pointer::ButtonState::from(evt.state());
-        if self.overview_button(button, state == wl_pointer::ButtonState::Pressed) {
+        if self.overview_button(button, state == wl_pointer::ButtonState::Pressed) || self.twitch_button(button, state == wl_pointer::ButtonState::Pressed) {
             return;
         }
 
@@ -1178,6 +1178,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         );
         pointer.frame(self);
         self.overview_pointer();
+        self.twitch_pointer();
     }
 
     /// Input injected over IPC by UI tests.
@@ -1221,9 +1222,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 pointer.motion(self, under, &MotionEvent { location: pos, serial, time });
                 pointer.frame(self);
                 self.overview_pointer();
+                self.twitch_pointer();
             }
             S::Button { button, pressed } => {
-                if self.overview_button(button, pressed) {
+                if self.overview_button(button, pressed) || self.twitch_button(button, pressed) {
                     return;
                 }
                 if pressed {
@@ -1584,6 +1586,7 @@ impl AnvilState<UdevData> {
         );
         pointer.frame(self);
         self.overview_pointer();
+        self.twitch_pointer();
 
         // If pointer is now in a constraint region, activate it
         // TODO Anywhere else pointer is moved needs to do this
@@ -1633,6 +1636,7 @@ impl AnvilState<UdevData> {
         );
         pointer.frame(self);
         self.overview_pointer();
+        self.twitch_pointer();
     }
 
     fn on_tablet_tool_axis<B: InputBackend>(&mut self, evt: B::TabletToolAxisEvent) {

@@ -220,10 +220,22 @@ as they land (with the commit), add new ones as they come up.
   is the command key, and the like). ⇧⌘-arrows go back to selecting
   text (window tiling moves off them). ⇧⌘/ (or the platform's own) shows
   a cheat sheet of every shortcut.
-- **Terminal resizing itself** (Ben, 2026-10-29): wm-fuzz finds a
-  Terminal window zoomed vertically not keeping its size when its text
-  gets bigger or smaller, and closing a new tab in one Terminal window
-  resizing another.
+- ~~**Twitcher: choose with the pointer**~~ (Ben, 2026-10-29; done:
+  HACKING, Twitcher): while ⌘ (or ⌥) is still held, the pointer over a
+  cell chooses it and a click there ends the switching on it.
+- ~~**Terminal resizing itself**~~ (Ben, 2026-10-29; done): selecting
+  text with Auto-Tiling on squeezed the Terminal (wl-copy's 1x1 window,
+  made because the session's proxy predates data-control, took a tile;
+  now kept out of sight); a window zoomed vertically keeps its height
+  as its text size changes (app_server says which sides it holds, the
+  kit keeps them); hidden windows no longer jump to a new text size
+  when they come back, and covered ones take it at once.
+- **olo-wlproxy upgrades only at login**: an in-place upgrade keeps the
+  running proxy (restarting it would close every outside program's
+  windows), so a protocol added to it (data-control was) reaches
+  programs only after logging in again. Make it re-execute itself in
+  place, keeping its clients' connections and state, as olo-session
+  does.
 
 - ~~**Open in Tracker, everywhere it makes sense**~~ (Ben, 2026-10-29;
   done: HACKING, Open in Tracker): `olo_kit::tracker` and Tracker's

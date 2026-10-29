@@ -30,6 +30,9 @@ use smithay::{
 };
 use tracing::{trace, warn};
 
+/// The app ids of clipboard tools' windows (`clipboard_helper`).
+const CLIPBOARD_HELPERS: &[&str] = &["io.github.bugaevc.wl-clipboard"];
+
 use crate::{
     focus::KeyboardFocusTarget,
     shell::{TouchMoveSurfaceGrab, TouchResizeSurfaceGrab},
@@ -62,6 +65,9 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         self.focus_window(&window);
 
         compositor::add_post_commit_hook(surface.wl_surface(), |state: &mut Self, _, surface| {
+            if state.clipboard_helper(surface) {
+                return;
+            }
             if surface_initial_mapped(surface) && state.restore_placement(surface) {
                 state.place_over_parent(surface);
             }
@@ -76,6 +82,15 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        // A clipboard tool's window, done: the keyboard back where it was.
+        if let Some(i) = self.clipboard_helpers.iter().position(|(w, _)| w.0.toplevel().is_some_and(|t| t == &surface)) {
+            let (_, before) = self.clipboard_helpers.remove(i);
+            match before.filter(|w| self.space.element_location(w).is_some()) {
+                Some(w) => self.focus_window(&w),
+                None => self.focus_topmost(),
+            }
+            return;
+        }
         // When the focused window goes, the next one down takes focus (an
         // alert closing hands the keyboard back to its document).
         let Some(window) = self.all_windows().into_iter().find(|w| w.0.toplevel().is_some_and(|t| t == &surface)) else {
@@ -367,6 +382,36 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
 }
 
 impl<BackendData: Backend> AnvilState<BackendData> {
+    /// A window clipboard tools make only to set the clipboard (wl-copy,
+    /// wl-paste: a 1x1 surface to get the keyboard with, as Wayland
+    /// asks, when a program can't use data-control): never shown, tiled,
+    /// decorated or listed; it has the keyboard for its moment, and gives
+    /// it back when it goes (`toplevel_destroyed`). True for one (on any
+    /// commit), so it is left out of the rest.
+    fn clipboard_helper(&mut self, surface: &WlSurface) -> bool {
+        if self.clipboard_helpers.iter().any(|(w, _)| w.wl_surface().as_deref() == Some(surface)) {
+            return true;
+        }
+        let Some(window) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface)).cloned() else { return false };
+        if !CLIPBOARD_HELPERS.contains(&window.app_id().as_str()) {
+            return false;
+        }
+        let before = self.focused_window().filter(|w| *w != window);
+        self.space.unmap_elem(&window);
+        if let Some(t) = window.0.toplevel()
+            && !t.is_initial_configure_sent()
+        {
+            t.send_configure();
+        }
+        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            keyboard.set_focus(self, Some(KeyboardFocusTarget::from(window.clone())), serial);
+        }
+        tracing::info!(app_id = window.app_id(), "a clipboard tool's window, kept out of sight");
+        self.clipboard_helpers.push((window, before));
+        true
+    }
+
     /// The window (or layer surface) a popup belongs to, as a keyboard focus.
     fn popup_root_focus(&self, popup: &PopupKind) -> Option<KeyboardFocusTarget> {
         let root = find_popup_root_surface(popup).ok()?;

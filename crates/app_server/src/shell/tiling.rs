@@ -591,6 +591,37 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
     }
 
+    /// Tell each window which of its sides are held (xdg's tiled states):
+    /// all four in a tile (tiling's or auto-tiling's), top and bottom
+    /// zoomed vertically, left and right horizontally; so an app sizing
+    /// itself (Terminal keeping its columns) asks only for what it can
+    /// have, and doesn't flicker to a size that is put back.
+    pub fn sync_held_sides(&mut self) {
+        use xdg_toplevel::State;
+        let windows: Vec<WindowElement> = self.space.elements().cloned().collect();
+        for w in windows {
+            let (across, down) = if self.auto_tiled(&w) { (true, true) } else { self.held_size(&w) };
+            let WindowSurface::Wayland(t) = w.0.underlying_surface();
+            let changed = t.with_pending_state(|s| {
+                let mut changed = false;
+                for (state, on) in [(State::TiledLeft, across), (State::TiledRight, across), (State::TiledTop, down), (State::TiledBottom, down)] {
+                    if s.states.contains(state) != on {
+                        changed = true;
+                        if on {
+                            s.states.set(state);
+                        } else {
+                            s.states.unset(state);
+                        }
+                    }
+                }
+                changed
+            });
+            if changed && t.is_initial_configure_sent() {
+                t.send_pending_configure();
+            }
+        }
+    }
+
     /// Zoom a window along `axis` (Zoom Vertically, Zoom Horizontally),
     /// or unzoom it that way, the other way left as it is. Zoomed along
     /// both, it is zoomed; a zoomed window zoomed along one is unzoomed

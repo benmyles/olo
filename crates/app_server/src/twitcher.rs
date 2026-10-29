@@ -370,6 +370,36 @@ fn layout(shown: &Shown) -> Layout {
     Layout { size: (w, PAD + CAPTION + cells_h + BOX_PAD + LABEL + PAD), columns, top: PAD + CAPTION, names }
 }
 
+/// Each cell (row, index) and its top left in the panel (logical): each
+/// row's cells of each column centred in it.
+fn cell_places(shown: &Shown, lay: &Layout) -> Vec<((usize, usize), (i32, i32))> {
+    let grouped = !shown.displays.is_empty();
+    let mut out = Vec::new();
+    for (r, row) in shown.rows.iter().enumerate() {
+        let top = lay.top + r as i32 * (CELL + ROW_GAP);
+        for (d, &(x, cw)) in lay.columns.iter().enumerate() {
+            let cells: Vec<usize> = (0..row.entries.len()).filter(|&i| row.entries[i].display == d || !grouped).collect();
+            let x0 = x + (cw - cells.len() as i32 * CELL) / 2;
+            out.extend(cells.iter().enumerate().map(|(k, &i)| ((r, i), (x0 + k as i32 * CELL, top))));
+        }
+    }
+    out
+}
+
+/// The cell (row, index) at `at` (logical, from the display's top left)
+/// of the panel as `Overlay::element` centres it on a display of
+/// `output_size`: the pointer choosing while ⌘ is held.
+pub fn cell_at(shown: &Shown, output_size: (i32, i32), at: (f64, f64)) -> Option<(usize, usize)> {
+    if shown.cells() < 2 {
+        return None;
+    }
+    let lay = layout(shown);
+    let (x, y) = (at.0 - (output_size.0 - lay.size.0) as f64 / 2.0, at.1 - (output_size.1 - lay.size.1) as f64 / 2.0);
+    cell_places(shown, &lay).into_iter().find_map(|(cell, (cx, cy))| {
+        ((cx as f64..(cx + CELL) as f64).contains(&x) && (cy as f64..(cy + CELL) as f64).contains(&y)).then_some(cell)
+    })
+}
+
 /// Twitcher at `s` device pixels per logical one, on display `here` of
 /// `shown.displays`.
 fn draw(p: &Palette, shown: &Shown, here: Option<usize>, s: f64) -> Pixmap {
@@ -423,13 +453,9 @@ fn draw(p: &Palette, shown: &Shown, here: Option<usize>, s: f64) -> Pixmap {
             let y = text::top_for_centre(px(top) as f32 + px(CELL) as f32 / 2.0, size, true);
             text::draw(&mut pm, &n, (px(PAD) as f32 + (px(GUTTER) as f32 - tw) / 2.0).round(), y, size, true, color);
         }
-        for (d, &(x, cw)) in lay.columns.iter().enumerate() {
-            let cells: Vec<usize> = (0..row.entries.len()).filter(|&i| row.entries[i].display == d || !grouped).collect();
-            let x0 = x + (cw - cells.len() as i32 * CELL) / 2;
-            for (k, &i) in cells.iter().enumerate() {
-                draw_cell(&mut pm, p, shown, (r, i), (x0 + k as i32 * CELL, top), icon_px, s);
-            }
-        }
+    }
+    for (cell, at) in cell_places(shown, &lay) {
+        draw_cell(&mut pm, p, shown, cell, at, icon_px, s);
     }
 
     // The chosen app's name (or window's title) beneath.
@@ -575,6 +601,29 @@ mod tests {
         let boxed = 4 * CELL + 2 * BOX_PAD;
         assert_eq!(lay.columns, vec![(PAD + GUTTER, boxed), (PAD + GUTTER + boxed + BOX_GAP, boxed)]);
         assert_eq!(lay.size, (2 * PAD + GUTTER + 2 * boxed + BOX_GAP, PAD + CAPTION + 2 * CELL + ROW_GAP + BOX_PAD + LABEL + PAD));
+    }
+
+    #[test]
+    fn cells_under_the_pointer() {
+        let entry = |display| Entry { app_id: "olo.terminal".into(), title: None, display };
+        let shown = Shown {
+            rows: vec![Row { workspace: 0, entries: vec![entry(0), entry(0)] }, Row { workspace: 2, entries: vec![entry(0)] }],
+            displays: Vec::new(),
+            row: 0,
+            index: 0,
+            letters: false,
+        };
+        let lay = layout(&shown);
+        let out = (1600, 1000);
+        let origin = ((out.0 - lay.size.0) as f64 / 2.0, (out.1 - lay.size.1) as f64 / 2.0);
+        // The middle of each cell is that cell; between them and outside, none.
+        for (cell, (x, y)) in cell_places(&shown, &lay) {
+            let mid = (origin.0 + x as f64 + CELL as f64 / 2.0, origin.1 + y as f64 + CELL as f64 / 2.0);
+            assert_eq!(cell_at(&shown, out, mid), Some(cell));
+        }
+        assert_eq!(cell_at(&shown, out, (origin.0 + 1.0, origin.1 + 1.0)), None);
+        assert_eq!(cell_at(&shown, out, (5.0, 5.0)), None);
+        assert_eq!(cell_places(&shown, &lay).len(), 3);
     }
 
     #[test]
