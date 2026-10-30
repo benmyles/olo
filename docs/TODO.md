@@ -1003,6 +1003,12 @@ as they land (with the commit), add new ones as they come up.
   `olo-screen stats [NAME]`). The history is kept within limits on
   size and age (Preferences), and outlives the screen until it is
   cleared.
+  So far (2026-10-30): the actions' history and the stats, for agents
+  (`olo-screen history` with `--kind`, `--search`, `--last`, `--clear`;
+  `olo-screen stats`; HACKING, "Agent Screens"), kept under 8 MB. Still
+  to do: the frames beside them, the History list and Replay in the
+  window, MP4 export, the stats there and the list's sort by last use,
+  and the limits in Preferences.
 - **Other programs feel like Olo's own: every integration point**
   (Ben, 2026-10-29): "is there a way where we can make chrome (and any
   gtk / qt apps) better integrate with olo, e.g. replacing their file
@@ -1476,8 +1482,14 @@ as they land (with the commit), add new ones as they come up.
     changed what `move_to_output`'s trip compares (`arrived == here`)
     and the round trip isn't seen. Coming back should put back what it
     left with when only an automatic join changed it.
-  - seed 5 step 246: placing window 11 moves hidden window 8 to the
-    same frame (8 was in a group with 3; 11 joined 14's at step 243).
+  - seed 5 step 246, and seed 3 step 268 the same: placing a window
+    moves another to its new frame (seed 5: hidden 8, once in a group
+    with 3, follows 11; seed 3: 18 follows 17).
+  - seed 3 step 271: putting 20 in 12's group widens 12 from 250 to
+    290. A group shares one frame and can't be smaller than its biggest
+    member's least size: if 20 can't be under 290 the group must grow,
+    so the checker may want too much here (it would need the windows'
+    least sizes, which `list_windows` doesn't give).
   - seed 3 step 243, now and then (one run in three): `group_window 15
     with 10 at 2` leaves 15 in Tracker 6's group: 10 is alone and
     Tracker groups by app, so 15 takes Tracker's app key, which 6's

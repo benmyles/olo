@@ -132,6 +132,20 @@ wrong as drawn now: errors (a blurry icon or line, a seam), then what
 almost lines up, is almost one height, or sits off-centre, each with
 where. Look closely at each, at every scale the screen is set to.
 
+## What was done on a screen
+
+Every action (`start`, `run`, `click`, `type`, `key`, `invoke`, `drag`,
+…) is kept in the screen's history, with what it matched, how it went and
+how long it took; it outlives the screen until cleared.
+
+```sh
+olo-screen history agent                      # one line each, oldest first
+olo-screen history agent --kind click --last 5
+olo-screen history agent --search Save --json
+olo-screen stats [agent] [--json]             # started, last used, time running and in use, actions, programs
+olo-screen history agent --clear
+```
+
 ## Working well
 
 - After each action, check the result (`tree`, or `look` for non-Olo

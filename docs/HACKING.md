@@ -4010,7 +4010,19 @@ and choosing from it, `commands::menus`/`invoke`), `click`, `move`,
 them: `Cmd+S`, `Enter`, `Esc`; parsed by `olo_protocol::Chord` with
 aliases) and `type` (US keyboard), all as `Request::Synthetic`, in the
 screen's logical pixels. `stop` ends the session, and with it the
-programs on it. `olo-screen --help` lists it all.
+programs on it. `olo-screen --help` lists it all. Each action on a screen
+(`history::ACTIONS`: `start`, `stop`, `run` and every input, find and
+window command; not the reads) goes in its history,
+`$XDG_STATE_HOME/olo/screens/NAME/actions.jsonl`, a JSON object a line
+as each ends: when, how long, its arguments, its answer (what `print_json`
+printed: what it matched, where it clicked, the focus after) and its
+error, kept under 8 MB by dropping the oldest half and outliving the
+screen until `history NAME --clear`. `history NAME` lists it (`--kind`,
+`--search`, `--last N`, `--json`); `stats [NAME]` sums it
+(`history::stats`: first start and last use, time running from each start
+to its stop or now, time in use as the actions and the gaps under a
+minute between them, actions by kind, failures, programs run) with
+whether each screen runs now and its windows.
 
 Input that plays out over time is paced, a batch per IPC request with
 waits between (`Screen::input_paced`): `drag` presses, moves in steps

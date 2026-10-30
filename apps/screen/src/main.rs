@@ -4,6 +4,7 @@
 //! See `screens.rs` for what a screen is and HACKING.md, "Agent Screens".
 
 mod find;
+mod history;
 mod screens;
 mod viewer;
 
@@ -24,6 +25,10 @@ usage: olo-screen                         open Agent Screens (watch, take contro
                                              prints it as JSON
        olo-screen list                    the screens, as JSON
        olo-screen stop NAME               end a screen and everything on it
+       olo-screen history NAME [--json] [--kind KIND] [--search TEXT] [--last N] [--clear]
+                                             what was done on it: each action, what it matched, how it went
+       olo-screen stats [NAME] [--json]   when each screen was started and last used, how long it
+                                             ran and was in use, its actions by kind, its programs
        olo-screen env NAME                its environment, for a shell (eval \"$(…)\")
        olo-screen run NAME PROGRAM [ARGS…]
                                              start a program on it; prints its pid
@@ -107,8 +112,40 @@ fn button(args: &[String]) -> u32 {
     }
 }
 
-/// Run a command; its exit code, or None for the window.
+thread_local! {
+    /// What the command printed last (its answer), for its history.
+    static ANSWER: std::cell::RefCell<Option<serde_json::Value>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Run a command; its exit code, or None for the window. An action on a
+/// screen goes in that screen's history (`history`), with what it
+/// answered and how it went.
 fn cli(args: &[String]) -> Option<Result<(), String>> {
+    let command = args.first()?.clone();
+    let at = history::now_ms();
+    ANSWER.with(|a| a.borrow_mut().take());
+    let result = run_command(args)?;
+    if history::ACTIONS.contains(&command.as_str()) {
+        let rest = &args[1..];
+        let answer = ANSWER.with(|a| a.borrow_mut().take());
+        // The screen: as named, or the one `start` chose.
+        let named = rest.first().filter(|a| !a.starts_with("--")).cloned();
+        let name = if command == "start" { answer.as_ref().and_then(|v| v["name"].as_str().map(str::to_owned)).or(named.clone()) } else { named.clone() };
+        if let Some(name) = name {
+            let args = if named.is_some() { rest[1..].to_vec() } else { rest.to_vec() };
+            let action = history::Action { at, ms: history::now_ms().saturating_sub(at), kind: command, args, result: answer, error: result.as_ref().err().cloned() };
+            history::record(&name, &action);
+        }
+    }
+    Some(result)
+}
+
+/// Keep `v` as the command's answer, for its history.
+fn answered(v: serde_json::Value) {
+    ANSWER.with(|a| *a.borrow_mut() = Some(v));
+}
+
+fn run_command(args: &[String]) -> Option<Result<(), String>> {
     let command = args.first()?.as_str();
     let rest = &args[1..];
     let name = || rest.first().cloned().ok_or_else(|| format!("{command} needs a screen's name"));
@@ -133,7 +170,7 @@ fn cli(args: &[String]) -> Option<Result<(), String>> {
             opts.sound = has(rest, "--sound");
             let given = rest.first().filter(|a| !a.starts_with("--")).cloned();
             let screen = screens::start(&given.unwrap_or_else(screens::free_name), &opts)?;
-            println!("{}", serde_json::to_string_pretty(&screen).unwrap_or_default());
+            print_json(&json!(screen));
             Ok(())
         })(),
         "list" => {
@@ -149,8 +186,68 @@ fn cli(args: &[String]) -> Option<Result<(), String>> {
         "run" => screen().and_then(|s| {
             let pid = s.run(&rest[1..])?;
             println!("{pid}");
+            answered(json!({ "pid": pid }));
             Ok(())
         }),
+        "history" => (|| {
+            let n = name()?;
+            if has(rest, "--clear") {
+                return history::clear(&n);
+            }
+            let kind = option(rest, "--kind");
+            let search = option(rest, "--search");
+            let mut actions: Vec<history::Action> = history::read(&n).into_iter().filter(|a| kind.is_none_or(|k| &a.kind == k) && search.is_none_or(|t| a.mentions(t))).collect();
+            if let Some(last) = option(rest, "--last") {
+                let last: usize = last.parse().map_err(|_| "--last is a number")?;
+                actions.drain(..actions.len().saturating_sub(last));
+            }
+            if has(rest, "--json") {
+                print_json(&json!(actions));
+            } else if actions.is_empty() {
+                println!("Nothing done on {n} yet.");
+            } else {
+                for a in &actions {
+                    println!("{}", a.line());
+                }
+            }
+            Ok(())
+        })(),
+        "stats" => {
+            let running = screens::list();
+            let mut names = history::names();
+            for s in &running {
+                if !names.contains(&s.name) {
+                    names.push(s.name.clone());
+                }
+            }
+            if let Some(n) = rest.first().filter(|a| !a.starts_with("--")) {
+                names.retain(|x| x == n);
+                if names.is_empty() {
+                    names.push(n.clone());
+                }
+            }
+            let now = history::now_ms();
+            let all: Vec<serde_json::Value> = names
+                .iter()
+                .map(|n| {
+                    let up = running.iter().find(|s| &s.name == n);
+                    let st = history::stats(n, &history::read(n), up.is_some(), now);
+                    let windows = up.and_then(|s| s.windows().ok()).map(|w| w.len());
+                    let mut v = json!(st);
+                    v["running"] = json!(up.is_some());
+                    v["windows"] = json!(windows);
+                    v
+                })
+                .collect();
+            if has(rest, "--json") {
+                print_json(&json!(all));
+            } else {
+                for v in &all {
+                    println!("{}", stats_text(v));
+                }
+            }
+            Ok(())
+        }
         "look" => screen().and_then(|s| {
             // Where to: as given, or a new file beside the screen's logs.
             let out = match positionals(rest).get(1) {
@@ -431,6 +528,31 @@ fn positionals(args: &[String]) -> Vec<String> {
 
 fn print_json(v: &serde_json::Value) {
     println!("{}", serde_json::to_string_pretty(v).unwrap_or_default());
+    answered(v.clone());
+}
+
+/// A screen's stats (`history::Stats` and whether it runs) for people.
+fn stats_text(v: &serde_json::Value) -> String {
+    let ms = |k: &str| v[k].as_u64().unwrap_or(0);
+    let dur = |ms: u64| {
+        let s = ms / 1000;
+        if s >= 3600 { format!("{} h {} min", s / 3600, s / 60 % 60) } else if s >= 60 { format!("{} min {} s", s / 60, s % 60) } else { format!("{s} s") }
+    };
+    let when = |k: &str| v[k].as_u64().map(history::clock).unwrap_or_else(|| "never".into());
+    let kinds: Vec<String> = v["actions"].as_object().map(|o| o.iter().map(|(k, n)| format!("{k} {n}")).collect()).unwrap_or_default();
+    let programs: Vec<String> = v["programs"].as_object().map(|o| o.keys().cloned().collect()).unwrap_or_default();
+    let state = if v["running"].as_bool().unwrap_or(false) { format!("running, {} windows", v["windows"].as_u64().unwrap_or(0)) } else { "stopped".into() };
+    format!(
+        "{}: {state}\n  started {}, last used {}\n  ran {}, in use {}\n  actions: {}{}\n  programs: {}",
+        v["name"].as_str().unwrap_or("?"),
+        when("started"),
+        when("last_used"),
+        dur(ms("ran_ms")),
+        dur(ms("active_ms")),
+        if kinds.is_empty() { "none".into() } else { kinds.join(", ") },
+        match v["failed"].as_u64() { Some(n) if n > 0 => format!(" ({n} failed)"), _ => String::new() },
+        if programs.is_empty() { "none".into() } else { programs.join(", ") },
+    )
 }
 
 fn ok(reply: Reply) -> Result<(), String> {
