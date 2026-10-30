@@ -13,6 +13,7 @@ pub mod legacy;
 pub mod desktop_entry;
 pub mod mime;
 pub mod open;
+pub mod scope;
 pub mod themes;
 pub mod trash;
 pub mod wallpapers;
@@ -274,6 +275,21 @@ pub fn upgrade_env(cmd: &mut std::process::Command) {
 /// them: the login screen gives a session a bare PATH that needn't
 /// include where Olo is installed (~/.local/bin).
 pub fn spawn_detached(cmd: &str) -> std::io::Result<()> {
+    spawn_detached_pid(cmd).map(drop)
+}
+
+/// `spawn_detached` for desktop entry `app_id`, in a scope of its own
+/// (`scope`; not Olo's own programs). The shell runs a lone command in
+/// its own place, so the scope holds the program.
+pub fn spawn_detached_app(cmd: &str, app_id: &str) -> std::io::Result<()> {
+    let pid = spawn_detached_pid(cmd)?;
+    if cmd.split_whitespace().next().is_some_and(|p| !scope::ours(p.as_ref())) {
+        scope::place(pid, app_id);
+    }
+    Ok(())
+}
+
+fn spawn_detached_pid(cmd: &str) -> std::io::Result<u32> {
     use std::os::unix::process::CommandExt;
     let mut c = std::process::Command::new("/bin/sh");
     c.arg("-c").arg(cmd);
@@ -292,8 +308,9 @@ pub fn spawn_detached(cmd: &str) -> std::io::Result<()> {
         });
     }
     let mut child = c.spawn()?;
+    let pid = child.id();
     std::thread::spawn(move || child.wait());
-    Ok(())
+    Ok(pid)
 }
 
 /// Olo's settings directory (`$XDG_CONFIG_HOME/olo`); apps keep their

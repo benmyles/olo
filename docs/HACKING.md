@@ -158,7 +158,7 @@ like pixel alignment is.
 | `crates/protocol` | JSON-lines IPC between app_server and our apps (`Client`, `Request`, `Reply`, `Event`, `Settings`). |
 | `crates/theme` | `Palette` (light/dark), BeOS tint helpers, decorator metrics, font lists. |
 | `crates/kit` | The Interface Kit: Wayland client platform, GPU rendering (egui on wgpu/Vulkan), menus, BeOS widgets, icons, `.desktop` entries. **All apps are built on it.** |
-| `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit (re-exported there): data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; Olo's apps first, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached`. No egui. |
+| `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit (re-exported there): data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; Olo's apps first, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`). No egui. |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `crates/pool` | `olo-token-pool`: token pooling for Claude Code and Codex (see "Token Pool"): the accounts, their sealed store, the drain order, the loopback gateway and the clients' proxy (its own certificate authority, and which program is connecting, from /proc). |
 | `crates/ai` | `olo-ai`: how AI features reach their models (see "AI features"): `ask(&settings.ai, &feature, &Ask)` → the answer's JSON. Blocking; call off the UI thread. |
@@ -1249,6 +1249,25 @@ their `OnlyShowIn` names Olo: Olo says it is GNOME too, and GNOME's
 settings daemons, keyring components and applets would otherwise start
 and fight Olo over power, keys and displays (none of Fedora's name
 Olo). A session resumed after an upgrade doesn't start them again.
+
+App scopes (`xdg/src/scope.rs`): a program started from a desktop entry
+(Deskbar, the palette, opening a file, Open With, login items) goes in a
+systemd scope of its own, `app-olo-<entry id>-<pid>.scope` (the id
+escaped as systemd does, `google\x2dchrome`), asked of the person's
+systemd over D-Bus (`StartTransientUnit` with its pid,
+`CollectMode=inactive-or-failed`, so it goes when the program does)
+just after it starts, on a thread. xdg-desktop-portal reads an
+unsandboxed program's app id from that name, so the portals (screen
+sharing, Inhibit, GlobalShortcuts, notifications, Account) know which
+program asks. Use `open::spawn_app(argv, id)` or
+`spawn_detached_app(cmd, id)` for a desktop entry's program; Olo's own
+programs (`olo-*`) and programs run in Terminal stay in the session.
+Chromium and Electron programs (Chrome, Slack) move themselves into a
+scope of their own as they start (`app-com.google.Chrome-<pid>.scope`,
+`app-slack-<pid>.scope`), which wins. Where there's no systemd (a test
+session's bus) the call fails quietly and the program stays where it
+was. `cargo test -p olo-xdg scope -- --ignored` makes one real scope,
+for a 3-second `sleep`.
 
 * **Other programs** (Chrome, GTK and Qt apps, terminals) connect to
   `wayland-N`, which belongs to `olo-wlproxy` (`crates/wlproxy`).

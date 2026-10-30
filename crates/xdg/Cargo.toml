@@ -10,3 +10,8 @@ olo-theme.workspace = true
 png = "0.18"
 resvg = { version = "0.45", default-features = false }
 libc = "0.2"
+tracing.workspace = true
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
+
+[dev-dependencies]
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io", "p2p"] }

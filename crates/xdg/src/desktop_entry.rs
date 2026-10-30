@@ -167,13 +167,16 @@ impl DesktopEntry {
         Some(out.join(" "))
     }
 
-    /// Start the application detached from us.
+    /// Start the application detached from us, in a scope of its own
+    /// (`scope`), unless it runs in Terminal.
     pub fn launch(&self) -> std::io::Result<()> {
         let Some(cmd) = self.command() else {
             return Err(std::io::Error::other("no Exec line"));
         };
-        let cmd = if self.terminal { format!("olo-terminal -e {cmd}") } else { cmd };
-        crate::spawn_detached(&cmd)
+        if self.terminal {
+            return crate::spawn_detached(&format!("olo-terminal -e {cmd}"));
+        }
+        crate::spawn_detached_app(&cmd, &self.id)
     }
 }
 

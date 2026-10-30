@@ -65,8 +65,8 @@ impl Kind {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Action {
-    /// A desktop entry's command line.
-    Launch(String),
+    /// A desktop entry's command line, and its id.
+    Launch(String, String),
     /// One of our programs, with arguments.
     Spawn(Vec<String>),
     /// An app_server shortcut by id, done to the window that was in front.
@@ -87,7 +87,7 @@ impl Action {
     /// Names it among the recently chosen (stable across runs).
     pub fn key(&self) -> Option<String> {
         Some(match self {
-            Action::Launch(c) => format!("launch:{c}"),
+            Action::Launch(c, _) => format!("launch:{c}"),
             Action::Spawn(a) => format!("spawn:{}", a.join(" ")),
             Action::Shortcut(id) => format!("shortcut:{id}"),
             Action::Open(p) => format!("open:{}", p.display()),
@@ -162,7 +162,8 @@ pub fn fixed() -> Vec<Item> {
             continue;
         }
         let keywords = format!("{} {}", e.generic_name.clone().unwrap_or_default(), e.id.replace(['.', '-'], " "));
-        let mut item = Item::new(Kind::Application, e.name.clone(), Action::Launch(if e.terminal { format!("olo-terminal -e {cmd}") } else { cmd }))
+        let action = if e.terminal { Action::Launch(format!("olo-terminal -e {cmd}"), String::new()) } else { Action::Launch(cmd, e.id.clone()) };
+        let mut item = Item::new(Kind::Application, e.name.clone(), action)
             .keywords(keywords)
             .subtitle(e.comment.clone().unwrap_or_default());
         item.icon = e.icon.clone();
@@ -449,7 +450,7 @@ pub fn perform(action: Action, front: Option<u64>) {
             }
         };
         let result = match action {
-            Action::Launch(cmd) => olo_kit::spawn_detached(&cmd).map_err(|e| e.to_string()),
+            Action::Launch(cmd, id) => olo_kit::spawn_detached_app(&cmd, &id).map_err(|e| e.to_string()),
             Action::Spawn(argv) => match olo_kit::find_program(&argv[0]) {
                 Some(path) => std::process::Command::new(path).args(&argv[1..]).spawn().map(|mut c| {
                     std::thread::spawn(move || c.wait());

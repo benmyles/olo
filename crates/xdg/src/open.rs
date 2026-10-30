@@ -465,7 +465,8 @@ pub fn open(target: &Target) -> io::Result<()> {
             vec![find_program(bin).map(PathBuf::into_os_string).unwrap_or_else(|| bin.into()), arg]
         }
         Some(Handler::Entry(e)) => {
-            command_line(&e, target).ok_or_else(|| io::Error::other(format!("{} has no Exec line", e.name)))?
+            let argv = command_line(&e, target).ok_or_else(|| io::Error::other(format!("{} has no Exec line", e.name)))?;
+            return spawn_app(&argv, &e.id);
         }
         None => return Err(io::Error::new(io::ErrorKind::NotFound, format!("no application opens {mime}"))),
     };
@@ -492,11 +493,11 @@ pub fn open_with(handler: &Handler, paths: &[PathBuf]) -> io::Result<()> {
                 let as_url = exec.contains("%U");
                 let rest: Vec<OsString> = paths[1..].iter().map(|p| if as_url { url(p) } else { p.clone().into_os_string() }).collect();
                 argv.splice(at..at, rest);
-                spawn(&argv)
+                spawn_app(&argv, &e.id)
             } else {
                 for p in paths {
                     let argv = command_line(e, &Target::Path(p.clone())).ok_or_else(|| io::Error::other(format!("{} has no Exec line", e.name)))?;
-                    spawn(&argv)?;
+                    spawn_app(&argv, &e.id)?;
                 }
                 Ok(())
             }
@@ -506,6 +507,21 @@ pub fn open_with(handler: &Handler, paths: &[PathBuf]) -> io::Result<()> {
 
 /// Run `argv` detached (own session, no stdio), reaping it when it exits.
 pub fn spawn(argv: &[OsString]) -> io::Result<()> {
+    spawn_pid(argv).map(drop)
+}
+
+/// Run `argv` for desktop entry `app_id`, detached, in a scope of its own
+/// (`scope`; not Olo's own programs).
+pub fn spawn_app(argv: &[OsString], app_id: &str) -> io::Result<()> {
+    let pid = spawn_pid(argv)?;
+    if argv.first().is_some_and(|p| !crate::scope::ours(p)) {
+        crate::scope::place(pid, app_id);
+    }
+    Ok(())
+}
+
+/// `spawn`, giving the process's id.
+fn spawn_pid(argv: &[OsString]) -> io::Result<u32> {
     let (program, args) = argv.split_first().ok_or_else(|| io::Error::other("empty command"))?;
     let mut c = std::process::Command::new(program);
     c.args(args)
@@ -520,8 +536,9 @@ pub fn spawn(argv: &[OsString]) -> io::Result<()> {
         });
     }
     let mut child = c.spawn()?;
+    let pid = child.id();
     std::thread::spawn(move || child.wait());
-    Ok(())
+    Ok(pid)
 }
 
 #[cfg(test)]

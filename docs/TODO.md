@@ -505,9 +505,11 @@ as they land (with the commit), add new ones as they come up.
     sharing ends the stream. Deskbar's tray shows what is shared, with
     Stop Sharing (the app is told it closed). Windows as sources
     (2026-10-30): the picker's Windows, window frames at the client's
-    size, renegotiated as it resizes, ended when it closes. **Next**:
-    dmabufs passed
-    through to apps that take them; app scopes (which app is asking).
+    size, renegotiated as it resizes, ended when it closes. App scopes
+    (2026-10-30): programs started from desktop entries run in
+    `app-olo-<id>-<pid>.scope`, so the portal knows which program asks
+    (Chrome and Slack already put themselves in scopes of their own).
+    **Next**: dmabufs passed through to apps that take them.
   - **Build** our own backend, `olo-portal`, started and supervised by
     olo-session: it owns `org.freedesktop.impl.portal.desktop.olo` over
     zbus (which we already use), shows the picker as a kit window,
@@ -544,12 +546,13 @@ as they land (with the commit), add new ones as they come up.
       pickers; Hyprland users use a wrapper script): answer a repeat
       request from the same app, a few seconds after a choice, with that
       choice;
-    - which app is asking: the portal leaves the app id empty for
-      unsandboxed apps unless they run in an `app-<id>-….scope` systemd
-      unit, and Olo doesn't start apps in scopes, so it can't tell
-      Chrome from Slack; start apps in transient scopes
-      (`StartTransientUnit` over D-Bus), which also fixes app ids for
-      the Inhibit, GlobalShortcuts and Notification portals;
+    - which app is asking (done): the portal leaves the app id empty
+      for unsandboxed apps unless they run in an `app-<id>-….scope`
+      systemd unit. Chromium and Electron put themselves in one
+      (`app-com.google.Chrome-<pid>.scope`, `app-slack-<pid>.scope`);
+      Olo starts other programs from desktop entries in transient
+      scopes (`StartTransientUnit` over D-Bus), which also gives the
+      Inhibit, GlobalShortcuts and Notification portals their app ids;
     - restore tokens: save a choice for next time (portal interface
       version 4); OBS uses it, and Chrome the kind that lasts while the
       app runs;

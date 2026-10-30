@@ -92,7 +92,7 @@ pub fn start() {
     for path in chosen(&config.join("autostart"), &system) {
         let Some(entry) = olo_xdg::desktop_entry::parse_file(&path) else { continue };
         match olo_xdg::open::launch_line(&entry) {
-            Some(argv) => match olo_xdg::open::spawn(&argv) {
+            Some(argv) => match olo_xdg::open::spawn_app(&argv, &entry.id) {
                 Ok(()) => crate::log(format!("started login item {}", path.display())),
                 Err(e) => crate::log(format!("could not start login item {}: {e}", path.display())),
             },
