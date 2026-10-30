@@ -451,6 +451,39 @@ as they land (with the commit), add new ones as they come up.
     [Using portals with unsandboxed apps](https://blogs.gnome.org/ignapk/2025/06/04/using-portals-with-unsandboxed-apps/);
     [xdg-desktop-portal-wlr FAQ (Zoom)](https://github.com/emersion/xdg-desktop-portal-wlr/wiki/FAQ),
     [Zoom community thread](https://community.zoom.com/t5/Zoom-Meetings/Do-not-check-if-XDG-CURRENT-DESKTOP-is-gnome-for-wayland/m-p/108716).
+- **Token Pool: requests fail through it; make it truly transparent**
+  (Ben, 2026-10-29): "please take a look at token pooler logs and figure
+  out why requests started failing- i turned off token pooler for claude
+  and then those same accounts worked fine going directly so something is
+  broken with token pooler. please make sure that the proxy is truly
+  transparent and acts exactly the same to claude code. actually what
+  would be even better is if we can change it so that it doesn't put
+  claude code into api mode with a custom endpoint but instead just makes
+  the network data go through our local transparent proxy in a way where
+  claude code just thinks it's using the normal subscription requests not
+  a custom endpoint. same for codex." First the failures: the pool's
+  logs (`olo-logs --print --program olo-pool`) against the same accounts
+  used directly, request by request (headers, body, streaming, retries,
+  token refresh), until the pool's requests are byte-for-byte what Claude
+  Code and Codex send themselves. Then: no custom endpoint or API mode;
+  Claude Code and Codex run as on a subscription, and their traffic to
+  Anthropic's and OpenAI's hosts goes through a local transparent proxy
+  (an `HTTPS_PROXY` they honour, or Olo's own network layer), which
+  picks the account and passes everything else through untouched, with
+  the logs and heatmap as now.
+- **Deskbar: a dot for apps with notifications** (Ben, 2026-10-29): "in
+  the deskbar we should show a notification badge for each app that has
+  active notifications. we don't need a count, just a dot on the right
+  and it should be themed and not red/alert/problem colored but more
+  notification colored i.e. not in your face but just letting you know
+  it's there. and when a new notification arrives for that app have the
+  dot bounce side to side subtly to indicate a new one arrived". A small
+  dot at the right of the app's Deskbar entry while it has notifications
+  in the history unread, in the palette's quiet accent (not failure red);
+  a new one arriving shakes it gently side to side (a few frames, eased,
+  at 120 Hz; not while Do Not Disturb hides banners, or quieter);
+  agent-readable (the entry's status says "has notifications"), every
+  scale and look.
 - **Windows never move in an upgrade** (Ben, 2026-10-29: "can you make
   sure when i do an olo upgrade my windows don't change positions or
   sizes or workspaces or displays or anything even if auto tiling is
