@@ -341,6 +341,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     least: None,
                     tab_frame: None,
                     popups: Vec::new(),
+                    settling: false,
                     surface: w.wl_surface().map(|s| s.id().protocol_id()),
                 }
             })
@@ -361,6 +362,9 @@ impl<B: Backend + 'static> AnvilState<B> {
             info.frame = Some(frame(smithay::utils::Rectangle::new(at, geo.size)));
             let least = crate::shell::groups::least_frame(w);
             info.least = Some([least.w, least.h]);
+            info.settling = match w.0.underlying_surface() {
+                smithay::desktop::WindowSurface::Wayland(t) => crate::shell::settling(t),
+            };
             // As screenshots find it: where the element draws from, then
             // past the tab and border.
             info.content = Some(if w.decorated() {

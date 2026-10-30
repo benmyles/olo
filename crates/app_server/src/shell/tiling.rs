@@ -29,7 +29,7 @@ use smithay::{
     utils::{IsAlive, Logical, Point, Rectangle, Size},
 };
 use olo_protocol::Tile;
-use tracing::info;
+use tracing::{debug, info};
 
 use super::{
     WindowElement,
@@ -557,6 +557,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// zoomed. `remember`: keep where it was, for Restore.
     pub fn set_frame(&mut self, window: &WindowElement, frame: Rectangle<i32, Logical>, remember: bool) {
         let Some(location) = self.space.element_location(window) else { return };
+        debug!(window = window.id(), ?frame, remember, "set frame");
         if remember {
             window.user_data().insert_if_missing(PreZoom::default);
             let pre = window.user_data().get::<PreZoom>().unwrap();

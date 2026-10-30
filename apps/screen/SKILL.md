@@ -93,7 +93,7 @@ olo-screen click agent --match "Row:panicked" --double
 olo-screen set agent --name Find "PAM"                # click in, replace the text
 olo-screen select agent --role ComboBox --index 1 "Errors Only"
 olo-screen wait agent --text "61 lines"               # until it shows (--gone: until it goes)
-olo-screen wait agent --idle                          # until the windows stop changing
+olo-screen wait agent --idle                          # until the windows stop changing (and have drawn their sizes)
 olo-screen scroll-to agent --match "Row:12:04:31"     # scroll the list until it shows
 ```
 

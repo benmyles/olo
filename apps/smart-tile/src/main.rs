@@ -320,8 +320,10 @@ mod tests {
             behind: false,
             frame: Some(Frame { x: 0, y: 0, width: 10, height: 10 }),
             content: None,
+            least: None,
             tab_frame: None,
             popups: vec![],
+            settling: false,
             surface: None,
         }
     }

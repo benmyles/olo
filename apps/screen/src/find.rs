@@ -175,11 +175,14 @@ pub fn wait_for(s: &Screen, q: &Query, gone: bool, timeout: Duration) -> Result<
 pub fn wait_idle(s: &Screen, window: Option<u64>, timeout: Duration) -> Result<(), String> {
     let until = Instant::now() + timeout;
     let snapshot = || -> Result<String, String> { Ok(crate::outline(&trees(s, window)?, &crate::Filter::default())) };
+    // A window still to draw what it was asked (a size) isn't idle yet,
+    // however long it takes.
+    let settling = || -> Result<bool, String> { Ok(s.windows()?.iter().any(|w| w.settling && window.is_none_or(|id| w.id == id))) };
     let mut last = snapshot()?;
     loop {
         std::thread::sleep(Duration::from_millis(250));
         let now = snapshot()?;
-        if now == last {
+        if now == last && !settling()? {
             return Ok(());
         }
         if Instant::now() >= until {

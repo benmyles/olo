@@ -372,14 +372,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         (seen, by_key.into_iter().filter(|(_, g)| g.len() > 1).collect())
     }
 
-    /// The display `w` groups on: the one under the middle of its frame;
+    /// The display `w` groups on: the one under the middle of its frame
+    /// (the one it is on its way to, `heading_frame`);
     /// with that off every display (straddling two), the one the first of
     /// it, its group and the window it was put with (by window id) is on,
     /// the same for all of them, so a group's windows aren't split by
     /// their sizes' few points (Terminal's grid).
     fn group_display(&self, w: &WindowElement) -> String {
         let under = |o: &WindowElement| {
-            self.space.element_geometry(o).and_then(|f| self.space.output_under((f.loc + f.size.downscale(2).to_point()).to_f64()).next().cloned())
+            self.heading_frame(o).and_then(|f| self.space.output_under((f.loc + f.size.downscale(2).to_point()).to_f64()).next().cloned())
         };
         if let Some(o) = under(w) {
             return o.name();

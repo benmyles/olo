@@ -297,10 +297,25 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         self.tile_area(&self.window_output(window)?)
     }
 
-    /// The display a window is on: the one under the middle of its frame,
-    /// else the one it overlaps most, else the main one.
+    /// Where `window` is, or is on its way to: its frame, but at the size
+    /// it was asked while its app hasn't drawn that yet. (Moved and sized
+    /// at once, it is at its new place straight away and at its new size
+    /// only when its app draws it, a frame or more later: in between, its
+    /// old size at the new place can be mostly on another display.)
+    pub fn heading_frame(&self, window: &WindowElement) -> Option<Rectangle<i32, Logical>> {
+        let frame = self.space.element_geometry(window)?;
+        let WindowSurface::Wayland(t) = window.0.underlying_surface();
+        Some(match super::heading_size(t) {
+            Some(size) => Rectangle::new(frame.loc, window.outer_size(size)),
+            None => frame,
+        })
+    }
+
+    /// The display a window is on (or on its way to, `heading_frame`):
+    /// the one under the middle of its frame, else the one it overlaps
+    /// most, else the main one.
     pub fn window_output(&self, window: &WindowElement) -> Option<smithay::output::Output> {
-        let frame = self.space.element_geometry(window);
+        let frame = self.heading_frame(window);
         if let Some(f) = frame {
             let middle = (f.loc + f.size.downscale(2).to_point()).to_f64();
             if let Some(o) = self.space.output_under(middle).next() {

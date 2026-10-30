@@ -1072,8 +1072,10 @@ as they land (with the commit), add new ones as they come up.
     Olo's Open With window, so OpenURI's "which app?" is Olo's; olo-session
     writes desktop entries and `olo-mimeapps.list` defaults so GIO,
     xdg-open and OpenURI open files in Olo's apps as Olo does, links
-    staying with the default browser. Left: Olo offering Chrome as the
-    default browser): the
+    staying with the default browser; Olo's Chrome, once installed, is
+    offered as the default browser by `~/.local/share/applications/
+    olo-mimeapps.list`, behind any browser the person chose and ahead
+    of the system's): the
     OpenURI portal and `xdg-open`'s MIME
     defaults resolved by Olo's own (`olo_kit::open`), so links from any
     app open in Olo's choice, files in Olo's apps; Olo as the default

@@ -187,23 +187,47 @@ class Fuzz:
         current, by = cur
         return w["workspace"] == by.get(w.get("output"), current)
 
-    def settle(self, timeout=3.0):
-        """The windows once they stop changing (clients answer configures
-        in their own time). Every state seen on the way, a few
-        milliseconds apart, is kept in `trail`, so a window that jumps
-        and comes back (a flicker) is caught too."""
+    def settle(self, timeout=5.0):
+        """The windows once they stop changing: none settling (its
+        program still to draw what it was asked, `WindowInfo::settling`)
+        and nothing changing for a quarter of a second. Every state seen
+        on the way, a few milliseconds apart, is kept in `trail` (and
+        when, in `trail_at`), so a window that jumps and comes back (a
+        flicker) is caught too."""
         t0 = time.time()
-        self.trail = []
+        self.trail, self.trail_at = [], []
         last, since = None, time.time()
         while True:
             now = self.windows()
-            key = {i: (fr(w), w["minimized"], w["workspace"], w["focused"]) for i, w in now.items()}
+            key = {i: (fr(w), w["minimized"], w["workspace"], w["focused"], w.get("settling", False)) for i, w in now.items()}
             if key != last:
                 self.trail.append(now)
+                self.trail_at.append(time.time() - t0)
+                if hasattr(self, "step_trail"):
+                    self.step_trail.append((time.time() - self.step_t0, now))
                 last, since = key, time.time()
-            elif time.time() - since > 0.25 or time.time() - t0 > timeout:
+            elif time.time() - since > 0.25 and not any(w.get("settling") for w in now.values()):
+                return now
+            elif time.time() - t0 > timeout:
+                self.history.append(f"{self.step}: (still settling after {timeout} s: {sorted(i for i, w in now.items() if w.get('settling'))})")
                 return now
             time.sleep(0.004)
+
+    def trail_report(self):
+        """The step's states so far, each window as it changed: for a
+        failure's report."""
+        lines, seen = [], {}
+        for at, state in getattr(self, "step_trail", []):
+            changed = []
+            for i, w in sorted(state.items()):
+                k = (fr(w), w.get("settling", False), w.get("zoomed"), w.get("tiled"), w.get("group"), w["workspace"], w.get("output"))
+                if seen.get(i) != k:
+                    seen[i] = k
+                    changed.append(f"{i} {fr(w)}{' settling' if k[1] else ''}{' zoomed' if k[2] else ''}{' tiled' if k[3] else ''}"
+                                   f"{f' g{k[4]}' if k[4] is not None else ''} ws{k[5]} {k[6]}")
+            if changed:
+                lines.append(f"{at * 1000:7.1f} ms: " + "; ".join(changed))
+        return "\n        ".join(lines[-30:])
 
     def keys(self, codes):
         ev = [{"type": "key", "key": k, "pressed": True} for k in codes]
@@ -239,6 +263,7 @@ class Fuzz:
 
     def fail(self, what):
         msg = f"step {self.step} (seed {self.seed}): {what}\n  last: " + "\n        ".join(self.history[-12:])
+        msg += "\n  seen: " + self.trail_report()
         if self.keep_going:
             self.failures.append(msg)
             print("FAIL " + msg, flush=True)
@@ -458,6 +483,7 @@ class Fuzz:
 
     def run_step(self):
         self.step += 1
+        self.step_trail, self.step_t0 = [], time.time()
         wins = self.windows()
         shown = self.shown(wins)
         ops = [

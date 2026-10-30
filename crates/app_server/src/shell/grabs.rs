@@ -339,6 +339,40 @@ pub(super) fn awaiting_ack(xdg: &smithay::wayland::shell::xdg::ToplevelSurface) 
     })
 }
 
+/// The size it was last asked and hasn't drawn yet, if any: one waiting
+/// to go, sent and not answered, or answered and not yet committed
+/// (`Some(None)`: asked to choose its own). Only the size: a configure
+/// that changes just a state, activated say, needn't be drawn again, and
+/// a kit app doesn't.
+fn undrawn_ask(xdg: &smithay::wayland::shell::xdg::ToplevelSurface) -> Option<Option<Size<i32, Logical>>> {
+    use smithay::wayland::shell::xdg::{ToplevelCachedState, XdgToplevelSurfaceData};
+    with_states(xdg.wl_surface(), |states| {
+        let data = states.data_map.get::<XdgToplevelSurfaceData>()?.lock().unwrap();
+        // The size of the configure its last commit drew (none: not yet
+        // mapped, nothing on screen to settle).
+        let drawn = states.cached_state.get::<ToplevelCachedState>().current().last_acked.as_ref().map(|c| c.state.size)?;
+        let asked = data
+            .server_pending
+            .as_ref()
+            .filter(|_| data.has_pending_changes())
+            .map(|s| s.size)
+            .or_else(|| data.pending_configures().last().map(|c| c.state.size))
+            .or_else(|| data.last_acked.as_ref().map(|c| c.state.size))?;
+        (data.initial_configure_sent && asked != drawn).then_some(asked)
+    })
+}
+
+/// It hasn't yet drawn the size it was last asked (`WindowInfo::settling`).
+pub fn settling(xdg: &smithay::wayland::shell::xdg::ToplevelSurface) -> bool {
+    undrawn_ask(xdg).is_some()
+}
+
+/// The content size it was asked and is on its way to, while it hasn't
+/// drawn it yet.
+pub fn heading_size(xdg: &smithay::wayland::shell::xdg::ToplevelSurface) -> Option<Size<i32, Logical>> {
+    undrawn_ask(xdg).flatten().filter(|s| s.w > 0 && s.h > 0)
+}
+
 /// The client committed: send the size the drag got to meanwhile.
 pub fn resize_caught_up(xdg: &smithay::wayland::shell::xdg::ToplevelSurface) {
     if xdg.has_pending_changes() {

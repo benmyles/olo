@@ -540,6 +540,11 @@ pub struct WindowInfo {
     /// menus they open from, likewise.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub popups: Vec<Frame>,
+    /// Its program hasn't yet drawn what it was last asked (a size, a
+    /// state): it is on its way to another frame. Likewise only while it
+    /// is on screen; a window is settled once no window is settling.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub settling: bool,
     /// Its surface as its program knows it (the `wl_surface`'s object id
     /// on the program's own connection), for a program to tell which of
     /// its windows this is: Olo's kit knows so which of an app's windows

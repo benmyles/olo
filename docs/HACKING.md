@@ -158,7 +158,7 @@ like pixel alignment is.
 | `crates/protocol` | JSON-lines IPC between app_server and our apps (`Client`, `Request`, `Reply`, `Event`, `Settings`). |
 | `crates/theme` | `Palette` (light/dark), BeOS tint helpers, decorator metrics, font lists. |
 | `crates/kit` | The Interface Kit: Wayland client platform, GPU rendering (egui on wgpu/Vulkan), menus, BeOS widgets, icons, `.desktop` entries. **All apps are built on it.** |
-| `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit (re-exported there): data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; Olo's apps first, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`), `find_program`, `spawn_detached`. No egui. |
+| `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit (re-exported there): data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; Olo's apps first, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached`. No egui. |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `crates/pool` | `olo-token-pool`: token pooling for Claude Code and Codex (see "Token Pool"): the accounts, their sealed store, the drain order, the loopback gateway and the clients' proxy (its own certificate authority, and which program is connecting, from /proc). |
 | `crates/ai` | `olo-ai`: how AI features reach their models (see "AI features"): `ask(&settings.ai, &feature, &Ask)` → the answer's JSON. Blocking; call off the UI thread. |
@@ -1625,9 +1625,14 @@ is checked against its tile's part (`WindowInfo::part`), reported once
 each, failing with `--tiles` (a frame and tile that part ways jump when
 the tiles are next laid out); `--trace-tiles` prints each window's part,
 frame, workspace, group and hidden state whenever they change, to find
-the step where something went wrong. A run is reproducible from its seed;
-`--only app_resize,tab_in` runs just those steps (the `op_` methods). Run
-it after changing anything in shell/.
+the step where something went wrong. After each command it waits until
+no window is settling (`WindowInfo::settling`: its program still to draw
+a size or state it was asked, a configure unanswered or answered and not
+yet committed) and nothing has changed for a quarter-second, so a slow
+client isn't taken for a wrong frame; a failure prints, under `seen`,
+every window's frame as it changed during the step, with when. A run is
+reproducible from its seed; `--only app_resize,tab_in` runs just those
+steps (the `op_` methods). Run it after changing anything in shell/.
 
 `tools/dev/auto-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going] [--reloads]`
 is its auto-tiling counterpart (built on it, on the same kind of session):
@@ -4452,7 +4457,7 @@ counting; `--role`; `--match ROLE:TEXT`; `--text`; `--index`;
 `--window`) for `click`, `set` (click in, checking it took the focus,
 then ⌘A, Delete and the text), `select` (open the dropdown, wait for the
 `MenuItem`, click it), `wait` (until it shows or `--gone`; `--idle`: two
-outlines a quarter-second apart the same) and `scroll-to` (wheel to the
+outlines a quarter-second apart the same, and no window settling) and `scroll-to` (wheel to the
 top, then down, until it shows whole); actions print JSON with `after`,
 the focused window and element. Popups are in the trees: the kit paints
 its menus (no AccessKit), so `Kit::popup_nodes` adds each open popup's
