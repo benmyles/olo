@@ -1176,6 +1176,23 @@ For the race: touch an app's program, send the app SIGURG, then send
 the session SIGHUP 30–120 ms later, and check the window kept its
 place.
 
+**Finding flicker** (headless): screenshots take about 50 ms, too slow
+for a flash a frame long. `tsession ipc NAME
+'{"type":"record","path":"/var/tmp/DIR","frames":150}'` makes
+app_server draw what the screen shows after each of its next 150 turns
+(every client request handled, not only each frame) and save each
+picture unlike the one before as `NNNN-MS.png` (milliseconds from the
+start), on a thread; then do the thing (`tsession key NAME 57`) and look
+at the pictures in order. That is how Quick Look's flash showed: a frame
+of it in its cascade slot before it was over Tracker. Windows are
+placed (back where they were, or over their parent) in the commit
+handler once their first buffer is in (`place_on_content`), not in a
+post-commit hook: smithay runs those before the commit handler takes
+the buffer in, so the window had no content yet, was placed a commit
+late, and showed a frame elsewhere first. A tiled or zoomed window its
+app keeps bigger than its tile (its least size) gives way inwards on
+commit, staying in the tiling area (`keep_in_tile_area`).
+
 **The login keyring** (`crates/session/src/keyring.rs`): PAM starts
 gnome-keyring-daemon with the login keyring unlocked, and the daemon
 quits after two minutes unless the desktop finishes starting it. GNOME

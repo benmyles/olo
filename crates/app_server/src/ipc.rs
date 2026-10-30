@@ -99,6 +99,8 @@ pub struct IpcState {
     subscribers: Vec<Rc<Conn>>,
     /// Pictures to take with the next frame (see screenshot.rs).
     pub pending_screenshots: Vec<crate::screenshot::Shot>,
+    /// Frames being recorded (`Request::Record`, headless).
+    pub recording: Option<crate::screenshot::Recording>,
     /// Screenshots being written on threads, by number, and who to tell.
     saving: std::collections::HashMap<u64, Rc<Conn>>,
     next_save: u64,
@@ -190,6 +192,7 @@ pub fn init<B: Backend + 'static>(
         _file: file,
         subscribers: Vec::new(),
         pending_screenshots: Vec::new(),
+        recording: None,
         saving: Default::default(),
         next_save: 0,
         saved: Some(saved),
@@ -572,6 +575,10 @@ impl<B: Backend + 'static> AnvilState<B> {
                     Ok(()) => return None,
                     Err(message) => Reply::Error { message },
                 }
+            }
+            Request::Record { path, frames, output } => {
+                self.ipc.recording = Some(crate::screenshot::Recording::start(PathBuf::from(path), frames, output));
+                Reply::Ok
             }
             Request::Timings => Reply::Timings { timings: self.take_timings() },
             Request::Quit => {

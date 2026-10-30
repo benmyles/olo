@@ -150,6 +150,16 @@ pub enum Request {
         #[serde(default)]
         format: ImageFormat,
     },
+    /// Headless only, for finding flicker: save what `output` (or the
+    /// first screen) shows after each of app_server's next `frames` turns
+    /// as PNGs in `path` (`NNNN-MS.png`, milliseconds from the start;
+    /// one the same as the one before is skipped), on a thread.
+    Record {
+        path: String,
+        frames: u32,
+        #[serde(default)]
+        output: Option<String>,
+    },
     /// Lock the screen now.
     Lock,
     /// Start the screen saver now (Preferences' Test).

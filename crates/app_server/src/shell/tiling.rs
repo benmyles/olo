@@ -1118,6 +1118,26 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         origin + Point::from((n * CASCADE, n * CASCADE))
     }
 
+    /// A tiled or zoomed window its app keeps bigger than its tile (it
+    /// won't be smaller than its least size: a third of a narrow display
+    /// is less than StyledEdit's) gives way inwards, so it stays in the
+    /// tiling area rather than hanging out past its edge.
+    pub fn keep_in_tile_area(&mut self, window: &WindowElement) {
+        // (Zoomed along one axis, it keeps its own place along the other.)
+        let held = Self::tiled(window).is_some() || self.is_zoomed(window);
+        if !held || self.tile_drag.as_ref().is_some_and(|t| t.window == *window) {
+            return;
+        }
+        let (Some(loc), Some(geo)) = (self.space.element_location(window), self.space.element_geometry(window)) else { return };
+        let Some(area) = self.window_output(window).and_then(|o| self.tile_area(&o)) else { return };
+        let inside = |pos: i32, len: i32, lo: i32, span: i32| if len <= span { pos.clamp(lo, lo + span - len) } else { lo };
+        let x = inside(geo.loc.x, geo.size.w, area.loc.x, area.size.w);
+        let y = inside(geo.loc.y, geo.size.h, area.loc.y, area.size.h);
+        if (x, y) != (geo.loc.x, geo.loc.y) {
+            self.space.relocate_element(window, loc + Point::from((x - geo.loc.x, y - geo.loc.y)));
+        }
+    }
+
     /// Neither in a tile nor zoomed (wholly or along an axis): a window of
     /// its own size, where it was put.
     pub(crate) fn own_size(&self, window: &WindowElement) -> bool {

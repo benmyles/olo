@@ -205,6 +205,48 @@ fn save(ipc: &mut IpcState, shot: Shot, captured: Result<Captured, String>) {
         .expect("thread");
 }
 
+/// Frames being recorded (`Request::Record`): a worker saves each one
+/// unlike the one before.
+pub struct Recording {
+    pub output: Option<String>,
+    left: u32,
+    started: std::time::Instant,
+    tx: std::sync::mpsc::Sender<(u32, u128, image::RgbaImage)>,
+    n: u32,
+}
+
+impl Recording {
+    pub fn start(path: PathBuf, frames: u32, output: Option<String>) -> Recording {
+        let (tx, rx) = std::sync::mpsc::channel::<(u32, u128, image::RgbaImage)>();
+        let _ = std::fs::create_dir_all(&path);
+        std::thread::Builder::new()
+            .name("recording".into())
+            .spawn(move || {
+                let mut last: Option<image::RgbaImage> = None;
+                for (n, ms, mut img) in rx {
+                    if last.as_ref() == Some(&img) {
+                        continue;
+                    }
+                    last = Some(img.clone());
+                    unpremultiply(&mut img);
+                    if let Err(e) = img.save(path.join(format!("{n:04}-{ms}.png"))) {
+                        warn!(%e, "recording: can't save a frame");
+                    }
+                }
+            })
+            .expect("thread");
+        Recording { output, left: frames, started: std::time::Instant::now(), tx, n: 0 }
+    }
+
+    /// Record `img`; false once the last is in.
+    pub fn add(&mut self, img: image::RgbaImage) -> bool {
+        let _ = self.tx.send((self.n, self.started.elapsed().as_millis(), img));
+        self.n += 1;
+        self.left = self.left.saturating_sub(1);
+        self.left > 0
+    }
+}
+
 /// GL hands back premultiplied pixels; PNG wants them straight.
 fn unpremultiply(img: &mut image::RgbaImage) {
     for p in img.pixels_mut() {

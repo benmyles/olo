@@ -334,6 +334,26 @@ pub fn run_headless(size_arg: Option<&str>) {
                 );
             }
         }
+        // Recording (finding flicker): what this turn left on screen.
+        if let Some(name) = state.ipc.recording.as_ref().map(|r| r.output.clone()) {
+            let output = outputs.iter().find(|o| name.as_ref().is_none_or(|n| *n == o.name())).cloned();
+            if let Some(output) = output {
+                let color = state.desktop_color(&output);
+                let overlays = twitcher_overlay(&mut state, &output);
+                let locked = state.lock.locked();
+                let shot = crate::render::capture::<_, GlesTexture>(&mut state.backend_data.renderer, &output, &state.space, overlays, state.overview.as_ref(), color, locked);
+                let more = match shot {
+                    Ok(img) => state.ipc.recording.as_mut().is_some_and(|r| r.add(img)),
+                    Err(e) => {
+                        warn!(%e, "recording failed");
+                        false
+                    }
+                };
+                if !more {
+                    state.ipc.recording = None;
+                }
+            }
+        }
         let start = std::time::Instant::now();
         let _ = state.display_handle.flush_clients();
         state.timings.handled(|| "flushing to clients".into(), start);

@@ -206,6 +206,7 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
                 window.0.on_commit();
 
                 if &root == surface {
+                    self.place_on_content(surface);
                     let buffer_offset = with_states(surface, |states| {
                         states
                             .cached_state
@@ -222,6 +223,7 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
                     let held = self.held_size(&window);
                     keep_on_screen(&mut self.space, surface, &window, held);
                     self.tile_follower_drew(&window);
+                    self.keep_in_tile_area(&window);
                 }
             }
         }

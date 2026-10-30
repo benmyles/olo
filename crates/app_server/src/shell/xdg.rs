@@ -68,9 +68,7 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
             if state.clipboard_helper(surface) {
                 return;
             }
-            if surface_initial_mapped(surface) && state.restore_placement(surface) {
-                state.place_over_parent(surface);
-            }
+            // (Where it goes once it has content: `place_on_content`.)
             // A window coming back asks for its old size in its first
             // configure (sent just below).
             state.claim_placement(surface);
@@ -809,4 +807,19 @@ fn handle_toplevel_commit(space: &mut Space<WindowElement>, surface: &WlSurface)
 /// app id and title have been set.
 fn surface_initial_mapped(surface: &WlSurface) -> bool {
     smithay::backend::renderer::utils::with_renderer_surface_state(surface, |s| s.buffer().is_some()).unwrap_or(false)
+}
+
+impl<BackendData: Backend> AnvilState<BackendData> {
+    /// A window's first commit with content: put it where it goes (back
+    /// where it was, or over its parent) before it is drawn. From the
+    /// compositor's commit handler, once it has taken the buffer in and the
+    /// window knows its size: post-commit hooks run before that, and a
+    /// window placed there was placed a commit late (a frame of it in its
+    /// cascade slot first: Quick Look's flash) or, placed by a size not
+    /// known yet, in the wrong place.
+    pub(crate) fn place_on_content(&mut self, surface: &WlSurface) {
+        if surface_initial_mapped(surface) && self.restore_placement(surface) {
+            self.place_over_parent(surface);
+        }
+    }
 }

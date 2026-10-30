@@ -288,10 +288,19 @@ as they land (with the commit), add new ones as they come up.
   HACKING, Notifications' Pin and Snooze): snoozing puts it away and
   brings it back after a while (15 minutes, an hour, three hours or nine
   tomorrow morning; `--snooze ID MINUTES` for any time), as new.
-- **Always show the tab bar, even with one tab** (Ben): ~~Terminal's
-  `TabStrip`~~ shows with one tab now. Still to ask: whether window
-  groups' frames (app_server's tab bar for an app's grouped windows)
-  mean the same.
+- ~~**Always show the tab bar, even with one tab**~~ (Ben; done):
+  Terminal's `TabStrip` shows with one tab. Window groups needed nothing:
+  every window shows its yellow tab, as in BeOS, and a lone window's tab
+  is its group's bar with one tab in it (decided rather than asked:
+  another strip over a single window would be a second title).
+- **Quick Look: scroll, filter, search and sort tables** (Ben,
+  2026-10-29): "in quick look it shows a csv with rows and cols which is
+  great but it doesn't let me scroll horizontally to see all the cols we
+  need to support horizontal scroll and also add the ability to
+  filter/search/sort in there too". CSV, TSV and spreadsheets: scroll
+  sideways to every column; search across the cells; filter rows; sort
+  by a column (header click, again to reverse), on a worker for big
+  files.
 - **Terminal: git repos, worktrees and GitHub** (Ben), native (no `git`
   or `gh` subprocesses):
   - a tab in a git repo goes into a group named after the repo on its
@@ -923,11 +932,22 @@ as they land (with the commit), add new ones as they come up.
   model, serial; connector entries migrate), ~~mirroring~~ (fit and centred,
   "Use as" in Preferences).
 
-- **Flicker, still, now and then** (Ben): most of all on Quick Look
-  (Space on an image in Tracker): the window flashes as it opens. Find
-  which frame shows before the picture is ready (a configure before the
-  first commit with content? the size changing after the first frame?)
-  and hold the window back until it has something to show.
+- ~~**Flicker, still, now and then**~~ (Ben; done: HACKING, "Finding
+  flicker"): most of all on Quick Look (Space on an image in Tracker):
+  the window flashed as it opened. Recorded frame by frame (the new
+  `record` request): its first frame was in its cascade slot, the next
+  over Tracker. Windows were placed in a post-commit hook, which runs
+  before the buffer is taken in, so placement waited a commit; now it
+  happens in the commit handler once the window knows its size, before
+  it is drawn (every dialog and every returning window had the same
+  frame elsewhere first).
+- **wm-fuzz seed 2, step 192** (found 2026-10-29, also before today's
+  changes): a tiled Tracker window drawn as the bottom-right quarter is
+  refitted to the whole bottom half when its workspace is shown again
+  (`tools/dev/wm-fuzz NAME --steps 192 --seed 2` on a fresh
+  `2560x1600,1920x1080 --session --shell` session with a fresh home):
+  its tile state and its frame part ways somewhere earlier (grouping,
+  arranging, a display moved); find where.
 
 - ~~**Windows while rearranging displays**~~ (Ben): each window stays on
   its screen at the same place as screens are dragged around
