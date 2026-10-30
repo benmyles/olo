@@ -16,8 +16,10 @@
 //!   `memory_stall` of the time, or swapping), more so as these agree;
 //!   urgent at half that free, or twice the stalls (or all tasks
 //!   stalling).
-//! - **Zombies**: a parent leaving exited children unreaped for
-//!   `zombie_minutes`; urgent past `zombie_count` of them.
+//! - **Zombies**: a parent leaving at least `zombie_least` exited
+//!   children unreaped for `zombie_minutes` (fewer: one that reaps
+//!   lazily, left alone), surer the more and the longer; urgent past
+//!   `zombie_count` of them.
 //!
 //! Pure functions of samples, for tests; `sample.rs` gathers them.
 
@@ -250,10 +252,14 @@ pub fn memory(memory: u64, growing: bool, system: &System, th: &Thresholds) -> O
 /// seconds.
 pub fn zombies(count: usize, oldest: f64, th: &Thresholds) -> Option<Judged> {
     let wait = f64::from(th.zombie_minutes.max(0.5)) * 60.0;
-    if count == 0 || oldest < wait {
+    let least = (th.zombie_least as usize).max(1);
+    if count < least || oldest < wait {
         return None;
     }
-    let confidence = 0.6 + if count >= 5 { 0.2 } else { 0.0 } + if oldest >= 3.0 * wait { 0.2 } else { 0.0 };
+    // Surer the more of them past the least, and the longer.
+    let more = ((count - least) as f64 / least as f64).min(1.0);
+    let longer = ((oldest - wait) / (2.0 * wait)).min(1.0);
+    let confidence = (0.55 + 0.25 * more + 0.15 * longer).min(0.95);
     Some(Judged {
         kind: FindingKind::Zombies,
         confidence: confidence as f32,
@@ -325,5 +331,10 @@ mod tests {
         assert!(zombies(3, 60.0, &th).is_none());
         assert!(!zombies(3, 600.0, &th).unwrap().urgent);
         assert!(zombies(25, 600.0, &th).unwrap().urgent);
+        // One or two, however long: a parent reaping lazily (Chrome's).
+        assert!(zombies(1, 3600.0, &th).is_none() && zombies(2, 3600.0, &th).is_none());
+        // Surer the more and the longer.
+        let (few, many) = (zombies(3, 301.0, &th).unwrap(), zombies(8, 1800.0, &th).unwrap());
+        assert!(few.confidence < 0.6 && many.confidence > 0.9, "{few:?} {many:?}");
     }
 }

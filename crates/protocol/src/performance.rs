@@ -41,6 +41,9 @@ pub struct Thresholds {
     pub memory_stall: f32,
     /// Zombies: left unreaped this long (minutes) …
     pub zombie_minutes: f32,
+    /// … by a parent leaving at least this many (fewer are a parent that
+    /// reaps lazily, as Chrome's does: one process slot each) …
+    pub zombie_least: u32,
     /// … and urgent when a parent leaves this many.
     pub zombie_count: u32,
 }
@@ -60,6 +63,7 @@ impl Default for Thresholds {
             memory_available: 10.0,
             memory_stall: 10.0,
             zombie_minutes: 5.0,
+            zombie_least: 3,
             zombie_count: 20,
         }
     }

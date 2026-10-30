@@ -139,9 +139,11 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 let stall = th.memory_stall;
                 pair(ui, ("Or stalls over", &mut th.memory_stall, 1.0..=80.0, 1.0, format!("{stall:.0}% of the time")), None);
                 heading(ui, "Leaving zombies");
-                let (zm, mut zc) = (th.zombie_minutes, th.zombie_count as f32);
-                let zc_text = format!("{zc:.0} of them");
-                pair(ui, ("Unreaped for", &mut th.zombie_minutes, 0.5..=60.0, 0.5, format!("{zm:.1} min")), Some(("Urgent at", &mut zc, 5.0..=500.0, 5.0, zc_text)));
+                let (zm, mut zl, mut zc) = (th.zombie_minutes, th.zombie_least as f32, th.zombie_count as f32);
+                let (zl_text, zc_text) = (format!("{zl:.0} of them"), format!("{zc:.0} of them"));
+                pair(ui, ("Unreaped for", &mut th.zombie_minutes, 0.5..=60.0, 0.5, format!("{zm:.1} min")), Some(("By a parent leaving", &mut zl, 1.0..=20.0, 1.0, zl_text)));
+                pair(ui, ("Urgent at", &mut zc, 5.0..=500.0, 5.0, zc_text), None);
+                th.zombie_least = zl as u32;
                 th.zombie_count = zc as u32;
                 ui.add_space(m::TIGHT);
                 let changed = *th != Thresholds::default();
