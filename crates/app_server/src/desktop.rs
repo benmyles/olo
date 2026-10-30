@@ -128,6 +128,10 @@ pub struct WindowMeta {
     pub glow: Cell<Option<(std::time::Instant, std::time::Duration)>>,
     /// Its glow's pieces, as drawn for its size and look.
     pub glow_pieces: RefCell<crate::shell::glow::Glow>,
+    /// Moved, sized or sent elsewhere on purpose (by hand, a shortcut, an
+    /// agent) since it was put back after a restart: not put back again
+    /// (`layout::check_restored`).
+    pub moved_on_purpose: Cell<bool>,
 }
 
 impl WindowMeta {
@@ -175,6 +179,7 @@ impl WindowElement {
             focus_zoomed: Cell::new(false),
             glow: Cell::new(None),
             glow_pieces: Default::default(),
+            moved_on_purpose: Cell::new(false),
         });
         self.user_data().get::<WindowMeta>().unwrap()
     }

@@ -280,7 +280,7 @@ as they land (with the commit), add new ones as they come up.
   choosing one moves the pointer and focus there (its front window, else
   its desktop). Agents read the display's number and choose through the
   menu.
-- **Bug: upgrades still move windows; restore an exact snapshot**
+- ~~**Bug: upgrades still move windows; restore an exact snapshot**~~
   (Ben, 2026-10-30): "when I upgrade it is still messing up my windows
   and moving them around on the displays and the sizes and everything. i
   think we need a more reliable approach to ensuring that windows stay
@@ -300,7 +300,17 @@ as they land (with the commit), add new ones as they come up.
   they're back is set from the snapshot again, and the result is
   compared with the snapshot and any difference logged (and checked by
   `tools/dev/upgrade-check` with several displays, every windowing
-  mode, groups and auto-tiling).
+  mode, groups and auto-tiling). Done (HACKING, upgrade-check): the log
+  of Ben's 09:18 upgrade showed the windows reconnecting before DRM had
+  found the displays (0.4–0.9 s later); reproduced headless
+  (`OLO_HEADLESS_LATE_MS`): windows on a display not found yet were put
+  on another, and auto-tiled ones swapped tiles (the trees of displays
+  not found yet were dropped and made afresh). Now a returning window
+  waits for its display, those displays' trees are kept, and what came
+  back is checked against what was saved and put back where it differs
+  (logged). Two displays, both auto-tiled, a floating window and one on
+  another workspace: 6 upgrades and 2 reloads unchanged (they swapped
+  in 1 of 2 before), and an ordinary session's 3 unchanged.
 - **Move to Workspace: every display's workspaces, from a window's tab
   and from Deskbar's apps** (Ben, 2026-10-30): "when right clicking a
   window title bar, under move to workspace it only shows the current

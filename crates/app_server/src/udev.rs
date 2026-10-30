@@ -1663,6 +1663,8 @@ impl AnvilState<UdevData> {
         // Screens set to mirror, or whose source just left.
         self.apply_mirroring();
         self.follow_main_output();
+        // Windows back before their display was found go to it now.
+        self.displays_changed();
     }
 
     fn device_removed(&mut self, node: DrmNode) {
@@ -1701,6 +1703,7 @@ impl AnvilState<UdevData> {
 
         crate::shell::fixup_positions(&mut self.space, &self.settings.display, self.pointer.current_location());
         self.follow_main_output();
+        self.displays_changed();
     }
 
     fn frame_finish(&mut self, dev_id: DrmNode, crtc: crtc::Handle, metadata: &mut Option<DrmEventMetadata>) {

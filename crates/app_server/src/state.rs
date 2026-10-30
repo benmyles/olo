@@ -280,6 +280,16 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// The stacking (window ids, bottom first) as a client's windows began
     /// to go, its id and when (`layout::remember_placement`).
     pub closing_stack: Option<(Vec<u64>, smithay::reexports::wayland_server::backend::ClientId, std::time::Instant)>,
+    /// Windows back after a restart before the display they were on was
+    /// found (DRM finds displays a second or so after the clients
+    /// reconnect): out of sight, their places kept, until it is or the
+    /// wait ends (`layout::displays_changed`).
+    pub waiting_for_display: Vec<crate::shell::WindowElement>,
+    /// Until when windows coming back wait for their displays.
+    pub display_wait_until: Option<std::time::Instant>,
+    /// Where each window coming back was put, to check once they're all
+    /// back (`layout::check_restored`).
+    pub restored: Vec<(crate::shell::WindowElement, crate::layout::Placement)>,
     /// Night-light colour temperature in effect, if any.
     pub night_light: Option<u32>,
     /// The screens' gamma gains now (none until first set), and the fade
@@ -1208,6 +1218,9 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             last_window_infos: Vec::new(),
             layout: crate::layout::load(),
             closing_stack: None,
+            waiting_for_display: Vec::new(),
+            display_wait_until: None,
+            restored: Vec::new(),
             night_light: None,
             white_point: None,
             night_fade: None,
@@ -1224,6 +1237,18 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let trees = crate::layout::load_trees();
         if !state.layout.is_empty() {
             state.auto.restore(trees);
+            // Windows coming back wait a while for their displays; then
+            // what came back is checked against what was saved.
+            let until = std::time::Instant::now() + crate::layout::DISPLAY_WAIT;
+            state.display_wait_until = Some(until);
+            let _ = state.handle.insert_source(smithay::reexports::calloop::timer::Timer::from_deadline(until), |_, _, state| {
+                state.displays_changed();
+                smithay::reexports::calloop::timer::TimeoutAction::Drop
+            });
+            let _ = state.handle.insert_source(smithay::reexports::calloop::timer::Timer::from_deadline(until + crate::layout::CHECK_AFTER), |_, _, state| {
+                state.check_restored();
+                smithay::reexports::calloop::timer::TimeoutAction::Drop
+            });
         }
         if let Some(name) = state.socket_name.clone() {
             match crate::ipc::init(&state.handle, &name) {

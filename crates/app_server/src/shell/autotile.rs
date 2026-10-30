@@ -1111,9 +1111,12 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
         }
         // Gone displays' trees go too, and what was known of windows in
-        // none of them.
+        // none of them; but not just after a restart, while displays are
+        // still being found (DRM finds them after the clients are back):
+        // theirs are kept for their windows to come back into.
         let names: Vec<String> = outputs.iter().map(|o| o.name()).collect();
-        self.auto.trees.retain(|(_, o), _| names.contains(o));
+        let finding = self.display_wait_until.is_some_and(|t| Instant::now() < t);
+        self.auto.trees.retain(|(_, o), _| finding || names.contains(o));
         let trees: Vec<(u32, String)> = self.auto.trees.keys().cloned().collect();
         self.auto.laid.retain(|k, _| trees.contains(k));
         let mut kept: Vec<u64> = self.all_windows().iter().map(|w| w.id()).collect();
@@ -1141,7 +1144,11 @@ impl<B: Backend + 'static> AnvilState<B> {
                 if t.contains(id) {
                     continue;
                 }
-                changed |= t.replace(&|n| matches!(n, Node::Kept(Kept { who: Who::Returning(s), .. }) if s.contains(&slot)), Node::Window(id));
+                let took = t.replace(&|n| matches!(n, Node::Kept(Kept { who: Who::Returning(s), .. }) if s.contains(&slot)), Node::Window(id));
+                if took {
+                    info!(window = id, slot, "back in its tile");
+                }
+                changed |= took;
             }
         }
         if changed {
@@ -1174,6 +1181,11 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// One display's tree brought up to date with its windows, and laid
     /// out.
     fn auto_output(&mut self, output: &Output) {
+        // Windows back from a restart into the tiles kept for them first
+        // (laid out from elsewhere, as when their display is found, they
+        // would otherwise be new to it, and fill those tiles in the order
+        // they came).
+        self.auto_returned();
         let key = (self.showing(&output), output.name());
         let Some(area) = self.tile_area(output) else { return };
         let now = Instant::now();

@@ -492,6 +492,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
                 // Taken in hand: no longer on its way to a tile it was asked into.
                 self.unfollow(&window);
+                window.meta().moved_on_purpose.set(true);
                 let grab = TouchResizeSurfaceGrab {
                     start_data,
                     window,
@@ -555,6 +556,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
         // Taken in hand: no longer on its way to a tile it was asked into.
         self.unfollow(&window);
+        window.meta().moved_on_purpose.set(true);
         let grab = PointerResizeSurfaceGrab {
             start_data,
             window,
@@ -620,6 +622,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
                 // Taken in hand: no longer on its way to a tile it was asked into.
                 self.unfollow(&window);
+                window.meta().moved_on_purpose.set(true);
                 let grab = TouchMoveSurfaceGrab {
                     start_data,
                     window,
@@ -708,6 +711,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
         // Taken in hand: no longer on its way to a tile it was asked into.
         self.unfollow(&window);
+        window.meta().moved_on_purpose.set(true);
         let grab = PointerMoveSurfaceGrab {
             start_data,
             window,

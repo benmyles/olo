@@ -199,6 +199,10 @@ pub fn run_headless(size_arg: Option<&str>) {
     let mut renderer = unsafe { GlesRenderer::new(context) }.expect("GLES renderer");
     info!(?node, "headless renderer ready");
 
+    // The displays come this long after the start, one after another (a
+    // test of what a real one sees: windows reconnecting before DRM has
+    // found the displays).
+    let late = std::env::var("OLO_HEADLESS_LATE_MS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|&ms| ms > 0).map(Duration::from_millis);
     let mut screens = Vec::new();
     for (i, &size) in sizes.iter().enumerate() {
         let modes = modes_for(size);
@@ -212,7 +216,10 @@ pub fn run_headless(size_arg: Option<&str>) {
                 serial_number: i.to_string(),
             },
         );
-        let _global = output.create_global::<AnvilState<HeadlessData>>(&display_handle);
+        // (Late, as DRM's come, for tests: `OLO_HEADLESS_LATE_MS`.)
+        if late.is_none() {
+            let _global = output.create_global::<AnvilState<HeadlessData>>(&display_handle);
+        }
         for &m in &modes {
             output.add_mode(m);
         }
@@ -258,22 +265,26 @@ pub fn run_headless(size_arg: Option<&str>) {
     state.captures.dma = capture_dma;
     let shm_formats = state.backend_data.renderer.shm_formats();
     state.shm_state.update_formats(shm_formats);
-    for output in &outputs {
-        // A resolution chosen in Preferences, as DRM outputs do.
-        let saved = state.settings.display.config(&crate::desktop::display_key(output), &output.name()).and_then(|c| c.mode.clone());
-        if let Some(m) = saved {
-            let mode = Mode { size: (m.width, m.height).into(), refresh: m.refresh };
-            if output.current_mode() != Some(mode)
-                && let Err(e) = state.backend_data.set_mode(output, mode)
-            {
-                warn!(output = output.name(), "can't restore the saved mode: {e}");
+    match late {
+        None => {
+            for output in &outputs {
+                add_output(&mut state, output);
+            }
+            state.displays_changed();
+        }
+        Some(after) => {
+            for (i, output) in outputs.iter().enumerate() {
+                let output = output.clone();
+                let _ = event_loop.handle().insert_source(Timer::from_duration(after * (i as u32 + 1)), move |_, _, state| {
+                    let _global = output.create_global::<AnvilState<HeadlessData>>(&state.display_handle);
+                    info!(output = output.name(), "headless display added late");
+                    add_output(state, &output);
+                    state.displays_changed();
+                    TimeoutAction::Drop
+                });
             }
         }
-        state.apply_output_settings(output);
-        state.space.map_output(output, (0, 0));
     }
-    crate::shell::fixup_positions(&mut state.space, &state.settings.display, state.pointer.current_location());
-    state.apply_mirroring();
 
 
     // Each screen draws at its mode's rate, on time: the timer wakes for
@@ -411,8 +422,30 @@ fn twitcher_overlay(
     out
 }
 
+/// Put `output` in the layout, as a DRM display is once found: its
+/// resolution chosen in Preferences, its settings, its place.
+fn add_output(state: &mut AnvilState<HeadlessData>, output: &Output) {
+    let saved = state.settings.display.config(&crate::desktop::display_key(output), &output.name()).and_then(|c| c.mode.clone());
+    if let Some(m) = saved {
+        let mode = Mode { size: (m.width, m.height).into(), refresh: m.refresh };
+        if output.current_mode() != Some(mode)
+            && let Err(e) = state.backend_data.set_mode(output, mode)
+        {
+            warn!(output = output.name(), "can't restore the saved mode: {e}");
+        }
+    }
+    state.apply_output_settings(output);
+    state.space.map_output(output, (0, 0));
+    crate::shell::fixup_positions(&mut state.space, &state.settings.display, state.pointer.current_location());
+    state.apply_mirroring();
+}
+
 fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
     let screen = state.backend_data.screens[index].output.clone();
+    // (Not found yet: `OLO_HEADLESS_LATE_MS`.)
+    if state.space.output_geometry(&screen).is_none() {
+        return;
+    }
     // A mirror draws its source's frame, fitted.
     let source = crate::render::mirror_source(&screen);
     let fit = source.as_ref().map(|s| crate::render::fit_outputs(&screen, s, &state.space));

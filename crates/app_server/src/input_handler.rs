@@ -198,6 +198,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     pub fn run_shortcut(&mut self, shortcut: olo_protocol::Shortcut, target: Option<crate::shell::WindowElement>) {
         use olo_protocol::Shortcut as S;
         let focused = target.or_else(|| self.focused_window());
+        if let Some(w) = &focused {
+            w.meta().moved_on_purpose.set(true);
+        }
         let workspaces = self.settings.workspace_count.max(1);
         // Arranging leaves Focus mode (which zooms every window) first.
         if matches!(

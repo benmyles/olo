@@ -387,6 +387,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
             Request::Place { id, frame } => match self.window_by_id(id) {
                 Some(w) if self.space.element_location(&w).is_some() => {
+                    w.meta().moved_on_purpose.set(true);
                     let size = (frame.width.max(1), frame.height.max(1));
                     // As if moved and sized by hand: its own place now,
                     // where it can be taken hold of again.
@@ -476,6 +477,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
             Request::MoveToWorkspace { id, index } => match self.window_by_id(id) {
                 Some(w) => {
+                    w.meta().moved_on_purpose.set(true);
                     self.move_to_workspace(&w, index);
                     Reply::Ok
                 }

@@ -195,8 +195,10 @@ mod tests {
         let half = strength(Duration::from_millis(4500), total);
         assert!(half > 0.3 && half < 0.7, "{half}");
         assert_eq!(strength(total, total), 0.0);
-        // Shorter than its fade: fading from the start.
-        assert!(strength(Duration::ZERO, Duration::from_millis(500)) < 1.0);
+        // Shorter than its fade: fading all its time.
+        let short = Duration::from_millis(500);
+        assert_eq!(strength(Duration::ZERO, short), 1.0);
+        assert!(strength(Duration::from_millis(250), short) < 1.0);
     }
 
     #[test]

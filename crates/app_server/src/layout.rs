@@ -178,6 +178,13 @@ pub fn showing(list: &[Placement], count: u32) -> std::collections::HashMap<Stri
 /// says).
 pub const EVERY: &str = "*";
 
+/// How long after a restart windows coming back wait for the display they
+/// were on (DRM finds displays a second or so after the clients
+/// reconnect; a display gone for good is waited for this long at most).
+pub const DISPLAY_WAIT: std::time::Duration = std::time::Duration::from_secs(8);
+/// How long after that what came back is checked against what was saved.
+pub const CHECK_AFTER: std::time::Duration = std::time::Duration::from_secs(3);
+
 impl<B: Backend + 'static> AnvilState<B> {
     fn placement_of(&self, w: &WindowElement, focused: Option<&WlSurface>) -> Option<Placement> {
         let meta = w.meta();
@@ -435,7 +442,25 @@ impl<B: Backend + 'static> AnvilState<B> {
         // Claimed at its first commit, or (its title came later) now.
         let claimed = meta.returning.borrow_mut().take();
         let Some(p) = claimed.or_else(|| self.take_placement(&window)) else { return true };
+        // Its display not found yet (just after a restart: DRM finds them
+        // after the clients are back): it waits out of sight, its place
+        // kept, rather than be fitted onto another (`displays_changed`).
+        if let Some((name, _)) = &p.screen
+            && self.display_wait_until.is_some_and(|t| std::time::Instant::now() < t)
+            && !self.space.outputs().any(|o| o.name() == *name)
+        {
+            info!(window = window.id(), app_id = window.app_id(), display = %name, "back before its display: waiting for it");
+            meta.placed.set(false);
+            *meta.returning.borrow_mut() = Some(p);
+            self.space.unmap_elem(&window);
+            if !self.waiting_for_display.contains(&window) {
+                self.waiting_for_display.push(window.clone());
+            }
+            return false;
+        }
         self.space.map_element(window.clone(), Point::from((p.x, p.y)), p.focused);
+        info!(window = window.id(), app_id = window.app_id(), slot = p.slot, x = p.x, y = p.y, "put back where it was");
+        self.restored.push((window.clone(), p.clone()));
         meta.put_back.set(true);
         meta.slot.set(p.slot);
         meta.was.set(p.id);
@@ -643,6 +668,91 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         let loc = self.space.element_location(&window).unwrap_or_default();
         self.space.map_element(window, loc + Point::from((x - g.loc.x, y - g.loc.y)), true);
+    }
+}
+
+impl<B: Backend + 'static> AnvilState<B> {
+    /// The displays changed (one found, one gone), or the wait for them
+    /// ended: windows waiting for theirs that are here now (or all, once
+    /// the wait is over) are put back.
+    pub fn displays_changed(&mut self) {
+        let over = self.display_wait_until.is_none_or(|t| std::time::Instant::now() >= t);
+        let waiting = std::mem::take(&mut self.waiting_for_display);
+        for window in waiting {
+            if !smithay::utils::IsAlive::alive(&window) {
+                continue;
+            }
+            let wanted = window.meta().returning.borrow().as_ref().and_then(|p| p.screen.as_ref().map(|(n, _)| n.clone()));
+            let here = wanted.as_ref().is_none_or(|n| self.space.outputs().any(|o| o.name() == *n));
+            if !here && !over {
+                self.waiting_for_display.push(window);
+                continue;
+            }
+            if !here {
+                info!(window = window.id(), app_id = window.app_id(), display = ?wanted, "its display didn't come back: placing it on another");
+            }
+            let Some(surface) = window.wl_surface().map(|s| s.into_owned()) else { continue };
+            // (Mapped where it was for now; restoring it puts it exactly.)
+            if let Some(p) = window.meta().returning.borrow().as_ref() {
+                self.space.map_element(window.clone(), Point::from((p.x, p.y)), false);
+            }
+            self.restore_placement(&surface);
+        }
+        if over {
+            self.display_wait_until = None;
+        }
+    }
+
+    /// Once the windows that came back after a restart have settled: each
+    /// compared with what was saved (display, workspace, place, minimized),
+    /// and any that ended up elsewhere (put there by something after it was
+    /// put back: a display's fitting, a group's placing) put back as saved
+    /// again, and said in the log. Auto-tiled windows are their tiles' (the
+    /// tiling trees came back as they were), so only said; one moved on
+    /// purpose since (by hand, a shortcut, an agent) is left as it is.
+    pub fn check_restored(&mut self) {
+        let restored = std::mem::take(&mut self.restored);
+        let (mut same, mut fixed) = (0, 0);
+        for (window, p) in restored {
+            // (Gone, or moved since on purpose: as it is now.)
+            if !smithay::utils::IsAlive::alive(&window) || window.meta().moved_on_purpose.get() {
+                continue;
+            }
+            let shown = self.space.element_location(&window);
+            let workspace = self.workspace_of(&window);
+            let minimized = window.meta().minimized.get();
+            let on = self.screen_of(&window).map(|(n, _)| n);
+            let wanted_display = p.screen.as_ref().map(|(n, _)| n.clone());
+            let place_ok = minimized || shown.is_none() || shown == Some(Point::from((p.x, p.y)));
+            let ok = place_ok && workspace == p.workspace && minimized == p.minimized && (shown.is_none() || wanted_display.is_none() || on == wanted_display);
+            if ok {
+                same += 1;
+                continue;
+            }
+            let tiled = self.auto_tiled(&window);
+            warn!(
+                window = window.id(), app_id = window.app_id(), title = %window.title(),
+                was = ?(p.x, p.y, p.workspace, p.minimized, &wanted_display),
+                now = ?(shown.map(|l| (l.x, l.y)), workspace, minimized, &on),
+                tiled,
+                "came back from the restart other than it was"
+            );
+            if tiled {
+                continue;
+            }
+            // Put back as saved.
+            if p.workspace != workspace {
+                self.move_to_workspace(&window, p.workspace);
+            }
+            if !p.minimized && !minimized && self.space.element_location(&window).is_some() {
+                self.space.map_element(window.clone(), Point::from((p.x, p.y)), false);
+                self.keep_children_above();
+            }
+            fixed += 1;
+        }
+        if same + fixed > 0 {
+            info!(same, fixed, "windows back after the restart, checked against what was saved");
+        }
     }
 }
 

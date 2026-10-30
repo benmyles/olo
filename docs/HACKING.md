@@ -1708,7 +1708,29 @@ upgrades as olo-session does (every Olo binary touched, every Olo
 program of that session sent SIGURG to re-execute, app_server restarted
 at once, so windows close and return while it goes) and compares. Run it
 after changing `layout.rs`, `autotile.rs`, the kit's reconnecting or
-anything an upgrade goes through, at 1×, 1.5× and 2×.
+anything an upgrade goes through, at 1×, 1.5× and 2×, and with
+`OLO_HEADLESS_LATE_MS=600` in the environment the session starts with:
+the headless displays then come that long after app_server starts, one
+after another, as DRM's do on real hardware, after the clients have
+reconnected (a headless session otherwise has its displays at once, and
+can't show what follows).
+
+What follows, on a real computer: windows come back before their
+displays. A returning window whose display (its `Placement::screen`)
+isn't found yet waits out of sight, its place kept, until it is
+(`AnvilState::waiting_for_display`, released by `displays_changed`,
+which the backends call as displays come and go) or `DISPLAY_WAIT`
+(8 s) is over, when it is fitted onto another as before; meanwhile the
+auto-tiling trees of displays not found yet are kept, not dropped as a
+gone display's are (they were, and a display's tiles were then made
+afresh as its windows came back, in whatever order they came: windows
+swapped tiles). `CHECK_AFTER` (3 s) later, every window put back is
+compared with what was saved (display, workspace, place, minimized):
+any that ended up elsewhere is put back as saved (unless auto-tiled, or
+moved since on purpose: by hand, a shortcut or an agent,
+`WindowMeta::moved_on_purpose`), and each difference is logged
+("came back from the restart other than it was"), with a summary
+("windows back after the restart, checked against what was saved").
 
 `tools/dev/perf-fuzz NAME [--seed N] [--steps N] [--keep-going]` is its
 counterpart for speed: on the same kind of session it hammers the
