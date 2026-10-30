@@ -904,11 +904,15 @@ pub struct TerminalSettings {
     /// Where New Worktree… makes a repository's worktrees:
     /// `<this>/<repository>/<worktree>` (`~` for the home folder).
     pub worktrees: String,
+    /// Claude Code and Codex in a tab of a group are told the group's
+    /// name and the repositories its tabs are in (Terminal's
+    /// agent_context.rs; off by default).
+    pub agent_context: bool,
 }
 
 impl Default for TerminalSettings {
     fn default() -> Self {
-        TerminalSettings { worktrees: "~/worktrees".into() }
+        TerminalSettings { worktrees: "~/worktrees".into(), agent_context: false }
     }
 }
 

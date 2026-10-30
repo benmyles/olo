@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Preferences ▸ Terminal: Coding Agents
+
+*13:11* — Tell coding agents about the repositories in their tab group (off by default): Claude Code and Codex in a tab of a group spanning repositories are told the group's name and its repositories and worktrees, through their own hooks.
+
+![Preferences ▸ Terminal: Coding Agents](2026-10-30/131141-preferences-terminal-coding-agents.png)
+
 ### Terminal: Tile All Tabs, a row per group
 
 *12:57* — Tile All Tabs (was Show All Tabs) gives each group a row, its tabs side by side, and the ungrouped tabs a row of their own; clicking groups' chips chooses which tile (lit as Deskbar's workspace showing): here alpha and beta of three, a row each; one alone fills a grid; the right button gives the group's menu.

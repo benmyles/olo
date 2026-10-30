@@ -188,7 +188,7 @@ impl Panel {
             Panel::ScreenSaver => (500, 400),
             Panel::Security => (420, 340),
             Panel::Sound => (440, 276),
-            Panel::Terminal => (420, 170),
+            Panel::Terminal => (420, 300),
             Panel::Themes => (560, 634),
             Panel::TouchId => (420, 330),
             // Tall enough for Touch with both of its notes (a pad with no

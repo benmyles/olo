@@ -11,6 +11,7 @@
 //! window on each shell as it was, scrollback and all.
 
 mod agent;
+mod agent_context;
 mod client;
 mod colors;
 mod daemon;
@@ -590,6 +591,11 @@ struct Terminal {
     notes: HashMap<u64, NoteId>,
     /// The windows as last kept on disk (`remember`).
     remembered: Option<String>,
+    /// Preferences ▸ Terminal: coding agents told about their tab's group
+    /// (agent_context.rs; None: not heard yet), and what was last kept
+    /// for its hook.
+    agent_context: Option<bool>,
+    agent_snapshot: Option<agent_context::Snapshot>,
     /// sudo requests approved without asking, by connection, with the
     /// window they came from (a window asks if the password doesn't do).
     sudo_approved: HashMap<u64, (Box<sudo::Request>, Option<WindowId>)>,
@@ -597,6 +603,10 @@ struct Terminal {
 
 /// Now and then, keep the windows as they are (`Terminal::remember`).
 struct Remember;
+
+/// Preferences ▸ Terminal's "Tell coding agents about the repositories in
+/// their tab group", as it changes.
+struct AgentContext(bool);
 
 /// How often the windows are kept, besides when Terminal quits.
 const REMEMBER_EVERY: std::time::Duration = std::time::Duration::from_secs(2);
@@ -2544,7 +2554,14 @@ impl App for Terminal {
             Err(m) => m,
         };
         let message = match message.downcast::<Remember>() {
-            Ok(_) => return self.remember(cx, false),
+            Ok(_) => {
+                self.keep_agent_snapshot();
+                return self.remember(cx, false);
+            }
+            Err(m) => m,
+        };
+        let message = match message.downcast::<AgentContext>() {
+            Ok(on) => return self.set_agent_context(on.0),
             Err(m) => m,
         };
         let message = match message.downcast::<daemon::Report>() {
@@ -2679,6 +2696,64 @@ impl Terminal {
     /// window, group, tab and folder. `now`: before quitting, rather than
     /// on a thread of its own. Not once the session is ending: they're
     /// kept as they were, while their shells go.
+    /// Preferences ▸ Terminal's agent setting: the agents' hook put in or
+    /// taken out (off the UI thread), and its file kept or not.
+    fn set_agent_context(&mut self, on: bool) {
+        if self.agent_context == Some(on) {
+            return;
+        }
+        self.agent_context = Some(on);
+        self.agent_snapshot = None;
+        let exe = std::env::current_exe().ok().map(|e| e.to_str().and_then(|s| s.strip_suffix(" (deleted)")).map(PathBuf::from).unwrap_or(e));
+        std::thread::spawn(move || {
+            if !on {
+                agent_context::clear();
+            }
+            if let Some(exe) = exe
+                && let Err(e) = agent_context::set_hooks(on, &exe)
+            {
+                tracing::warn!("coding agents' hook: {e}");
+            }
+        });
+        if on {
+            self.keep_agent_snapshot();
+        }
+    }
+
+    /// While coding agents are told about their groups: each tab's shell,
+    /// group, folder and agent, kept for the hook when they change.
+    fn keep_agent_snapshot(&mut self) {
+        if self.agent_context != Some(true) {
+            return;
+        }
+        let tabs = self
+            .windows
+            .values()
+            .filter_map(|w| match w {
+                Win::Term(t) => Some(t),
+                _ => None,
+            })
+            .flat_map(|t| {
+                t.tabs.iter().map(|tab| agent_context::TabInfo {
+                    shell: tab.session.shared.shell(),
+                    group: tab.group.and_then(|g| t.groups.get(g)).map(|g| g.name.clone()),
+                    cwd: tab.session.cwd(),
+                    agent: tab.agent.map(|(a, _)| a.name().to_owned()),
+                })
+            })
+            .collect();
+        let snapshot = agent_context::Snapshot { tabs };
+        if self.agent_snapshot.as_ref() == Some(&snapshot) {
+            return;
+        }
+        self.agent_snapshot = Some(snapshot.clone());
+        std::thread::spawn(move || {
+            if let Err(e) = agent_context::write(&snapshot) {
+                tracing::warn!("coding agents' tab groups: {e}");
+            }
+        });
+    }
+
     fn remember(&mut self, cx: &Cx, now: bool) {
         if self.link.ended() {
             return;
@@ -2712,6 +2787,13 @@ fn main() {
     // A session or install from before the rename (Tabula) carries on.
     olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // A coding agent's hook (Preferences ▸ Terminal): what it's told.
+    if args.first().map(String::as_str) == Some(agent_context::FLAG) {
+        std::process::exit(match agent_context::run() {
+            c if c == std::process::ExitCode::SUCCESS => 0,
+            _ => 1,
+        });
+    }
     if instance::forward(APP_ID, &args) {
         return;
     }
@@ -2744,6 +2826,8 @@ fn main() {
             notifier: Notifier::new(cx.proxy(), "Terminal", "olo-terminal"),
             notes: HashMap::new(),
             remembered: None,
+            agent_context: None,
+            agent_snapshot: None,
             sudo_approved: HashMap::new(),
         };
         t.follow(&cx.palette().clone());
@@ -2758,7 +2842,10 @@ fn main() {
         let saved = saved.or_else(|| fresh.then(remembered).flatten());
         let reattached = t.reattach(cx, shells, saved.as_ref(), fresh) || adopted;
         let proxy = cx.proxy();
-        olo_kit::settings::watch(move |s| proxy.send(repos::WorktreesAt(s.terminal.worktrees)));
+        olo_kit::settings::watch(move |s| {
+            proxy.send(AgentContext(s.terminal.agent_context));
+            proxy.send(repos::WorktreesAt(s.terminal.worktrees));
+        });
         let proxy = cx.proxy();
         std::thread::Builder::new()
             .name("remember".into())

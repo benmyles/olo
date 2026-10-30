@@ -1,9 +1,10 @@
 //! Terminal: where New Worktree… (a repository group's menu) makes a
-//! repository's worktrees. Terminal follows it live.
+//! repository's worktrees, and whether coding agents are told about the
+//! repositories in their tab's group. Terminal follows them live.
 
 use olo_kit::{
     egui::Ui,
-    widgets::{BBox, StringView, TextControl},
+    widgets::{BBox, CheckBox, StringView, TextControl},
 };
 use olo_protocol::Settings;
 
@@ -15,5 +16,15 @@ pub fn ui(ui: &mut Ui, s: &mut Settings) {
         let base = if base.is_empty() { "~/worktrees" } else { base };
         let example = format!("Each repository gets a folder in there: olo’s worktree fix-tabs goes in {base}/olo/fix-tabs.");
         ui.add(StringView::new(&example).dim(true).wrap(true));
+    });
+    BBox::new("Coding Agents").show(ui, |ui| {
+        ui.add(CheckBox::new(&mut t.agent_context, "Tell coding agents about the repositories in their tab group"));
+        ui.add(
+            StringView::new(
+                "Claude Code and Codex started in a tab of a group whose tabs are in more than one repository are told the group’s name and those repositories and worktrees, theirs marked. Codex asks you once to trust Terminal’s hook (/hooks).",
+            )
+            .dim(true)
+            .wrap(true),
+        );
     });
 }

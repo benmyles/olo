@@ -1969,8 +1969,10 @@ launcher lists them. The panel list Deskbar shows is
   windows open in); its icon is Tracker's own, as in Haiku.
 * Terminal (`terminal.rs`) sets `Settings::terminal`: where New
   Worktree… makes a repository's worktrees (`worktrees`, `~/worktrees` to
-  start, each repository a folder of its name in there). Terminal
-  follows it live (`settings::watch`).
+  start, each repository a folder of its name in there), and Coding
+  Agents' "Tell coding agents about the repositories in their tab group"
+  (`agent_context`, off; see Terminal's **Coding agents' context**).
+  Terminal follows them live (`settings::watch`).
 * Windows (`windows.rs`) sets the space Olo leaves around the windows it
   arranges (`Settings::tiling`: margin at the display's edges, gap
   between windows), with a miniature of the main display tiled three
@@ -3981,6 +3983,33 @@ agent the person isn't looking at starts asking, or finishes, Terminal
 posts a notification (important for a question) whose Show brings that
 tab and window forward. The badge and the notification go once the tab
 is seen.
+
+**Coding agents' context** (`src/agent_context.rs`; Preferences ▸
+Terminal ▸ Coding Agents, off by default). A Claude Code or Codex in a
+tab of a group whose tabs are in more than one place (a group per
+feature, the feature spanning repositories) is told the group's name and
+those repositories and worktrees (each one's path, which repository, its
+branch), its own marked, nothing assumed about what they are for; a
+group in one place, or no group, tells nothing. Through the agents' own
+hooks, both of which take a hook's output as context: on, Terminal puts
+`<its program> --agent-context` on `SessionStart` and `UserPromptSubmit`
+in Claude Code's `settings.json` (`CLAUDE_CONFIG_DIR` or ~/.claude) and
+Codex's `hooks.json` (`CODEX_HOME` or ~/.codex), each only where that
+agent is set up, every other key as it was (`set_hook`); off, it takes
+them out. Codex skips a hook until the person trusts it once
+(`/hooks`; it says so at its start). While on, Terminal keeps its tabs
+for the hook in `$XDG_RUNTIME_DIR/olo-terminal-groups-<display>.json`
+(each tab's shell pid, group, folder and agent; every two seconds when
+they change, with `remember`); off, it's removed. The hook
+(`olo-terminal --agent-context`, before anything else in `main`) reads
+the session on stdin (`session_id`, `cwd`, `hook_event_name`) and every
+Terminal's file (tabs whose shells are gone left out), finds the tab:
+Claude Code runs it under the tab's shell (an ancestor's pid), Codex in
+its daemon (by the session's folder, a tab running an agent first, with
+2.5 s for a tab just opened to be written), and prints the block; on
+`UserPromptSubmit` only if it changed since it last told that session
+(`$XDG_RUNTIME_DIR/olo-agent-context/<session>`), so a tab joining or
+leaving the group is known from the next turn.
 
 **Repositories** (`src/git.rs`, `src/repos.rs`), in process through
 libgit2 (git2, vendored; no `git` or `gh`). A thread (`git::Watcher`)

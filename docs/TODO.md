@@ -246,8 +246,8 @@ as they land (with the commit), add new ones as they come up.
   menu its left button opens now. Agents read which are selected and
   choose through the headers. Done (the kit's `TabStrip::group_selection`,
   for the side strip too; the chosen groups kept with the window).
-- **Terminal: tell coding agents about the other repos in their tab
-  group** (Ben, 2026-10-30): "add a preferences -> terminal setting for
+- ~~**Terminal: tell coding agents about the other repos in their tab
+  group**~~ (Ben, 2026-10-30): "add a preferences -> terminal setting for
   injecting context to claude code and codex coding agents to tell them
   about worktrees/repos that are in the same terminal group. useful when
   using a group per feature and a feature spans repos b/c that way the
@@ -266,7 +266,16 @@ as they land (with the commit), add new ones as they come up.
   layer of Olo's; Codex: its `-c` instructions or developer message),
   kept current as tabs join or leave the group (on the agent's next
   turn where it can, else its next start), and readable by agents
-  (Terminal's widget tree says it's on).
+  (Terminal's widget tree says it's on). Done (HACKING, Terminal ▸
+  Coding agents' context) through the agents' hooks, which both take a
+  hook's output as context (`SessionStart`, and `UserPromptSubmit` when
+  the group changed): the one place it can't avoid the person's files,
+  so the hook is put in Claude Code's `settings.json` and Codex's
+  `hooks.json` only while the setting is on, everything else in them
+  left as it was, and taken out when it's off. Codex asks once to trust
+  it (`/hooks`). Told only when the group's tabs are in more than one
+  place. (Tested with a sandboxed Codex 0.166, which ran it and passed
+  the session's folder, and with Terminal's own groups.)
 - ~~**Deskbar: every display's workspaces on every Deskbar; the display
   in the tray**~~ (Ben, 2026-10-30): "the deskbar on all displays should
   show the display-workspaces for all displays not just the current
