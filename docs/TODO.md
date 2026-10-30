@@ -339,6 +339,17 @@ as they land (with the commit), add new ones as they come up.
   its clear layer outlived it, taking that click; it now takes the
   pointer from the press, and a menu's window gets a frame as the menu
   goes (it draws on frames, which a still screen doesn't make).
+- **Notifications: one of the same, not several** (Ben, 2026-10-30):
+  "add a preferences -> notifications setting, enabled by default, that
+  dedupes notifications so that if we get >1 active notification from
+  the same app with the same text/content then we just show the latest
+  one and drop the earlier one". Preferences ▸ Notifications, on by
+  default: a notification from an app arriving while one of the same app
+  with the same title and body is still active (a banner showing, or
+  unread in the history) replaces it: the new one shown (and kept), the
+  earlier one taken away, as if it had been updated in place (its count
+  in Deskbar's dot unchanged, its fade starting anew). Off: each kept,
+  as now.
 - **Preferences ▸ Performance: a supervisor that keeps the desktop
   responsive** (Ben, 2026-10-30): "a new preferences -> performance app,
   and the first setting should be one to do smart process prioritization
