@@ -5,7 +5,7 @@
 //! milliseconds so a big copy redraws a handful of times, not per file.
 
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     ffi::{CString, OsStr},
     os::{
         fd::{AsRawFd, FromRawFd, OwnedFd},
@@ -95,6 +95,13 @@ struct State {
     want: BTreeSet<PathBuf>,
     by_wd: HashMap<i32, PathBuf>,
     by_path: HashMap<PathBuf, i32>,
+    /// For each wanted folder that isn't there (moved away, deleted), the
+    /// nearest folder above it that is, watched for it to come back.
+    waiting: HashMap<PathBuf, i32>,
+    /// The folders above the wanted ones, watched for being moved or
+    /// deleted (which takes a wanted folder from its path without a word
+    /// to its own watch).
+    above: HashMap<PathBuf, i32>,
     /// Items touched since the batch started, by folder.
     items: BTreeSet<(PathBuf, PathBuf)>,
     rescan: BTreeSet<PathBuf>,
@@ -121,8 +128,9 @@ impl State {
         for p in gone {
             if let Some(wd) = self.by_path.remove(&p) {
                 // Two paths can name one folder (and so one watch): only
-                // drop it when no other wanted path uses it.
-                if !self.by_path.values().any(|&w| w == wd) {
+                // drop it when no other wanted path uses it (nor waits on
+                // it, below).
+                if !self.by_path.values().any(|&w| w == wd) && !self.waiting.values().any(|&w| w == wd) && !self.above.values().any(|&w| w == wd) {
                     // SAFETY: valid fd; a stale wd just fails.
                     unsafe { libc::inotify_rm_watch(self.fd.as_raw_fd(), wd) };
                     self.by_wd.remove(&wd);
@@ -134,6 +142,104 @@ impl State {
                 self.add(p);
             }
         }
+    }
+
+    /// Watch again the wanted folders that came back (and rescan them:
+    /// they're other folders now), and watch above those still missing
+    /// for them to.
+    fn follow_missing(&mut self) {
+        let missing: Vec<PathBuf> = self.want.iter().filter(|p| !self.by_path.contains_key(*p)).cloned().collect();
+        let mut above = BTreeSet::new();
+        for p in missing {
+            // Watched above before looking, so its coming back in between
+            // isn't missed.
+            let a = p.ancestors().skip(1).find(|a| a.is_dir()).map(Path::to_owned);
+            if let Some(a) = &a {
+                self.wait_on(a);
+            }
+            if p.is_dir() {
+                self.add(&p);
+                if self.by_path.contains_key(&p) {
+                    self.rescan.insert(p);
+                    self.touch();
+                    continue;
+                }
+            }
+            above.extend(a);
+        }
+        let done: Vec<PathBuf> = self.waiting.keys().filter(|a| !above.contains(*a)).cloned().collect();
+        for a in done {
+            if let Some(wd) = self.waiting.remove(&a)
+                && !self.by_wd.contains_key(&wd)
+                && !self.above.values().any(|&w| w == wd)
+            {
+                // SAFETY: valid fd; a stale wd just fails.
+                unsafe { libc::inotify_rm_watch(self.fd.as_raw_fd(), wd) };
+            }
+        }
+    }
+
+    /// Watch folder `a` for a folder made or moved into it.
+    fn wait_on(&mut self, a: &Path) {
+        if !self.waiting.contains_key(a)
+            && let Some(wd) = self.watch_also(a, libc::IN_CREATE | libc::IN_MOVED_TO)
+        {
+            self.waiting.insert(a.to_owned(), wd);
+        }
+    }
+
+    /// Watch folder `a` for `events` too (added to what another watch on
+    /// it asks for, if any).
+    fn watch_also(&self, a: &Path, events: u32) -> Option<i32> {
+        let c = CString::new(a.as_os_str().as_bytes()).ok()?;
+        // SAFETY: valid fd and NUL-terminated path.
+        let wd = unsafe { libc::inotify_add_watch(self.fd.as_raw_fd(), c.as_ptr(), events | libc::IN_ONLYDIR | libc::IN_MASK_ADD) };
+        (wd >= 0).then_some(wd)
+    }
+
+    /// Watch the folders above each wanted one that is there, and only
+    /// those.
+    fn follow_above(&mut self) {
+        let mut want = BTreeSet::new();
+        for p in self.by_path.keys() {
+            want.extend(p.ancestors().skip(1).filter(|a| a.parent().is_some()).map(Path::to_owned));
+        }
+        for a in &want {
+            if !self.above.contains_key(a)
+                && let Some(wd) = self.watch_also(a, libc::IN_MOVE_SELF | libc::IN_DELETE_SELF)
+            {
+                self.above.insert(a.clone(), wd);
+            }
+        }
+        let done: Vec<PathBuf> = self.above.keys().filter(|a| !want.contains(*a)).cloned().collect();
+        for a in done {
+            if let Some(wd) = self.above.remove(&a)
+                && !self.by_wd.contains_key(&wd)
+                && !self.waiting.values().any(|&w| w == wd)
+            {
+                // SAFETY: valid fd; a stale wd just fails.
+                unsafe { libc::inotify_rm_watch(self.fd.as_raw_fd(), wd) };
+            }
+        }
+    }
+
+    /// A folder above wanted ones (`wd`) moved or went: they aren't at
+    /// their paths any more. Let their watches go and look again.
+    fn above_moved(&mut self, wd: i32) {
+        let Some(a) = self.above.iter().find(|(_, w)| **w == wd).map(|(a, _)| a.clone()) else { return };
+        let under: Vec<PathBuf> = self.by_path.keys().filter(|p| p.starts_with(&a) && **p != a).cloned().collect();
+        for p in under {
+            if let Some(w) = self.by_path.remove(&p) {
+                if !self.by_path.values().any(|&o| o == w) {
+                    // SAFETY: valid fd; a stale wd just fails.
+                    unsafe { libc::inotify_rm_watch(self.fd.as_raw_fd(), w) };
+                    self.by_wd.remove(&w);
+                }
+                self.rescan.insert(p);
+            }
+        }
+        self.above.retain(|_, w| *w != wd);
+        self.touch();
     }
 
     fn touch(&mut self) {
@@ -169,9 +275,14 @@ impl State {
             self.touch();
             return;
         }
+        if mask & (libc::IN_MOVE_SELF | libc::IN_DELETE_SELF) != 0 {
+            self.above_moved(wd);
+        }
         if mask & libc::IN_IGNORED != 0 {
             // The watch is gone (folder deleted, or we removed it): one
             // made again in its place is watched again.
+            self.waiting.retain(|_, w| *w != wd);
+            self.above.retain(|_, w| *w != wd);
             if let Some(p) = self.by_wd.remove(&wd) {
                 self.by_path.retain(|_, w| *w != wd);
                 if self.want.contains(&p) {
@@ -238,6 +349,8 @@ fn run(fd: OwnedFd, wake: OwnedFd, rx: mpsc::Receiver<BTreeSet<PathBuf>>, send: 
         want: BTreeSet::new(),
         by_wd: HashMap::new(),
         by_path: HashMap::new(),
+        waiting: HashMap::new(),
+        above: HashMap::new(),
         items: BTreeSet::new(),
         rescan: BTreeSet::new(),
         mounts: false,
@@ -245,7 +358,6 @@ fn run(fd: OwnedFd, wake: OwnedFd, rx: mpsc::Receiver<BTreeSet<PathBuf>>, send: 
     };
     // The mount table polls "priority" whenever something is (un)mounted.
     let mounts = std::fs::File::open("/proc/self/mountinfo").ok();
-    let mut wanted: HashSet<PathBuf> = HashSet::new();
     loop {
         let timeout = match s.since {
             Some(t) => GATHER.saturating_sub(t.elapsed()).as_millis() as i32,
@@ -278,21 +390,17 @@ fn run(fd: OwnedFd, wake: OwnedFd, rx: mpsc::Receiver<BTreeSet<PathBuf>>, send: 
             }
             if let Some(set) = latest {
                 s.reconcile(&set);
-                // A folder whose watch died (deleted) and was asked for
-                // again gets re-added above.
-                wanted = set.into_iter().collect();
+                s.follow_missing();
+                s.follow_above();
             }
         }
         if fds[0].revents != 0 {
             s.read_events();
             // Folders that vanished and came back (a `git checkout`, an
-            // editor's save-by-rename of a folder) are watched again.
-            let missing: Vec<PathBuf> = wanted.iter().filter(|p| !s.by_path.contains_key(*p)).cloned().collect();
-            for p in missing {
-                if p.is_dir() {
-                    s.add(&p);
-                }
-            }
+            // editor's save-by-rename of a folder, Empty Trash's empty
+            // one put in its place a moment later) are watched again.
+            s.follow_missing();
+            s.follow_above();
         }
         if fds[2].revents != 0 {
             if let Some(f) = &mounts {
@@ -346,6 +454,61 @@ mod tests {
         let new = dir.join("new.txt");
         std::fs::write(&new, "y").unwrap();
         wait(&rx, |c| matches!(c, Change::Item { path, entry: Some(_), .. } if *path == new));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_folder_put_back_later_is_followed() {
+        let root = std::env::temp_dir().join(format!("tracker-watch-back-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = root.join("a").join("files");
+        std::fs::create_dir_all(&dir).unwrap();
+        let (tx, rx) = mpsc::channel();
+        let mut w = Watcher::new(move |b| {
+            let _ = tx.send(b);
+        })
+        .unwrap();
+        w.set(BTreeSet::from([dir.clone()]));
+        std::thread::sleep(Duration::from_millis(50));
+        // Gone with the folder above it, and made again a while after.
+        std::fs::remove_dir_all(root.join("a")).unwrap();
+        wait(&rx, |c| matches!(c, Change::Rescan(d) if *d == dir));
+        std::thread::sleep(Duration::from_millis(300));
+        std::fs::create_dir(root.join("a")).unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        std::fs::create_dir(&dir).unwrap();
+        wait(&rx, |c| matches!(c, Change::Rescan(d) if *d == dir));
+        let new = dir.join("new.txt");
+        std::fs::write(&new, "y").unwrap();
+        wait(&rx, |c| matches!(c, Change::Item { path, entry: Some(_), .. } if *path == new));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_folder_whose_parent_is_renamed_is_let_go() {
+        let root = std::env::temp_dir().join(format!("tracker-watch-above-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = root.join("a").join("files");
+        std::fs::create_dir_all(&dir).unwrap();
+        let (tx, rx) = mpsc::channel();
+        let mut w = Watcher::new(move |b| {
+            let _ = tx.send(b);
+        })
+        .unwrap();
+        w.set(BTreeSet::from([dir.clone()]));
+        std::thread::sleep(Duration::from_millis(50));
+        // The folder above renamed: nothing is at the path now.
+        std::fs::rename(root.join("a"), root.join("b")).unwrap();
+        wait(&rx, |c| matches!(c, Change::Rescan(d) if *d == dir));
+        // What goes into the folder it was isn't this path's.
+        std::fs::write(root.join("b/files/moved.txt"), "x").unwrap();
+        // Another folder there later is followed.
+        std::fs::create_dir_all(&dir).unwrap();
+        wait(&rx, |c| matches!(c, Change::Rescan(d) if *d == dir));
+        let new = dir.join("new.txt");
+        std::fs::write(&new, "y").unwrap();
+        let c = wait(&rx, |c| matches!(c, Change::Item { entry: Some(_), .. }));
+        assert!(matches!(c, Change::Item { path, .. } if path == new));
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -1948,11 +1948,20 @@ impl Column {
     }
 }
 
-/// Selection and sort state the app keeps for a list.
+/// Selection and sort state the app keeps for a list (or a grid of
+/// icons: rows are items in their order). Its methods are the selection
+/// every file manager has: [`click`](Self::click),
+/// [`move_to`](Self::move_to) for the keyboard, [`band`](Self::band) for
+/// a selection band, [`select_all`](Self::select_all) and
+/// [`invert`](Self::invert).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ListState {
     pub selected: BTreeSet<usize>,
+    /// Where a ⇧ range starts: the row last clicked alone or with ⌘.
     pub anchor: Option<usize>,
+    /// Where the keyboard is: the row last clicked or moved to, the far
+    /// end of a ⇧ range ([`cursor`](Self::cursor)).
+    pub cursor: Option<usize>,
     /// Sort column and ascending flag.
     pub sort: Option<(usize, bool)>,
     /// Whether more than one row may be selected.
@@ -1963,12 +1972,179 @@ impl ListState {
     pub fn single(&self) -> Option<usize> {
         self.selected.iter().next().copied()
     }
+
+    /// `row` alone.
     pub fn select(&mut self, row: usize) {
         self.selected.clear();
         self.selected.insert(row);
         self.anchor = Some(row);
+        self.cursor = Some(row);
+    }
+
+    /// The row the keyboard moves on from: the last clicked or moved to,
+    /// else the anchor (when the selection was set some other way).
+    pub fn cursor(&self) -> Option<usize> {
+        self.cursor.filter(|c| self.selected.contains(c)).or(self.anchor)
+    }
+
+    /// A click on `row`: it alone; with ⌘ it added or taken away; with ⇧
+    /// everything from the anchor to it (the anchor stays, so another ⇧
+    /// click makes the range again from there); with ⌘⇧ that range added
+    /// to what's selected.
+    pub fn click(&mut self, row: usize, mods: egui::Modifiers) {
+        if !self.multiple || !(mods.command || mods.shift) {
+            self.select(row);
+        } else if mods.shift {
+            let a = self.anchor.unwrap_or(row);
+            let range = a.min(row)..=a.max(row);
+            if mods.command {
+                self.selected.extend(range);
+            } else {
+                self.selected = range.collect();
+            }
+            self.anchor = Some(a);
+            self.cursor = Some(row);
+        } else {
+            if !self.selected.remove(&row) {
+                self.selected.insert(row);
+            }
+            self.anchor = Some(row);
+            self.cursor = Some(row);
+        }
+    }
+
+    /// The keyboard moved to `row`: it alone, or with ⇧ (`extend`)
+    /// everything from the anchor to it, so ⇧↓ grows a range and ⇧↑
+    /// takes it back.
+    pub fn move_to(&mut self, row: usize, extend: bool) {
+        if extend && self.multiple {
+            let a = self.anchor.or(self.cursor).unwrap_or(row);
+            self.selected = (a.min(row)..=a.max(row)).collect();
+            self.anchor = Some(a);
+            self.cursor = Some(row);
+        } else {
+            self.select(row);
+        }
+    }
+
+    /// The row `d` on from the cursor among `rows`, kept to them; with no
+    /// cursor, the first going forward and the last going back.
+    pub fn step(&self, d: isize, rows: usize) -> Option<usize> {
+        let last = rows.checked_sub(1)?;
+        Some(match self.cursor() {
+            Some(c) => (c as isize + d).clamp(0, last as isize) as usize,
+            None if d < 0 => last,
+            None => 0,
+        })
+    }
+
+    /// Every one of `rows`.
+    pub fn select_all(&mut self, rows: usize) {
+        if self.multiple {
+            self.selected = (0..rows).collect();
+        }
+    }
+
+    /// Every one of `rows` that wasn't selected, and none that was.
+    pub fn invert(&mut self, rows: usize) {
+        if self.multiple {
+            self.selected = (0..rows).filter(|r| !self.selected.contains(r)).collect();
+        }
+    }
+
+    /// A selection band starting with `mods` held: only what it covers;
+    /// with ⇧ that added to what's selected now; with ⌘ what it covers
+    /// flipped, as in Finder.
+    pub fn band(&self, mods: egui::Modifiers) -> SelectionBand {
+        let keep = self.multiple && (mods.command || mods.shift);
+        SelectionBand { base: if keep { self.selected.clone() } else { BTreeSet::new() }, flip: self.multiple && mods.command }
     }
 }
+
+/// What was selected when a selection band started, and how what it
+/// covers changes that ([`ListState::band`]).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SelectionBand {
+    pub base: BTreeSet<usize>,
+    pub flip: bool,
+}
+
+impl SelectionBand {
+    /// The selection with the band over `rows`.
+    pub fn over(&self, rows: impl IntoIterator<Item = usize>) -> BTreeSet<usize> {
+        let mut out = self.base.clone();
+        for r in rows {
+            if !(self.flip && out.remove(&r)) {
+                out.insert(r);
+            }
+        }
+        out
+    }
+}
+
+/// Type to select, as in a file manager: letters typed within a moment
+/// of each other are the start of a name, and the first item whose name
+/// starts so is the one (else the first after it in name order, as
+/// Finder does). The same letter again and again, when no name starts
+/// so, steps through the names starting with it. `name(i)` is item `i`'s of `rows`; `from` is the
+/// row the keyboard is on. Returns the row to move to, when something
+/// was typed; the typing is kept under `id`. Text with ⌘ held is a
+/// shortcut's, not typing.
+pub fn type_select<'n>(ui: &Ui, id: Id, rows: usize, from: Option<usize>, name: impl Fn(usize) -> &'n str) -> Option<usize> {
+    let typed: String = ui.input(|i| {
+        if i.modifiers.command {
+            return String::new();
+        }
+        i.events.iter().filter_map(|e| if let egui::Event::Text(t) = e { Some(t.as_str()) } else { None }).collect()
+    });
+    let now = ui.input(|i| i.time);
+    let key = id.with("type-select");
+    let (mut prefix, at) = ui.ctx().data(|d| d.get_temp::<(String, f64)>(key)).unwrap_or_default();
+    if now - at > TYPE_SELECT_PAUSE {
+        prefix.clear();
+    }
+    // A space starts nothing (it's Quick Look's, a button's), but goes
+    // into a name being typed.
+    let typed = if prefix.is_empty() { typed.trim_start() } else { &typed };
+    if typed.is_empty() || rows == 0 {
+        return None;
+    }
+    prefix.push_str(&typed.to_lowercase());
+    ui.ctx().data_mut(|d| {
+        d.insert_temp(key, (prefix.clone(), now));
+        d.insert_temp(Id::unique("olo-typing-to-select"), now);
+    });
+    type_match(&prefix, rows, from, name)
+}
+
+/// Whether a name is being typed to select ([`type_select`]) in this
+/// window: a space then is part of the name, not Quick Look.
+pub fn typing_to_select(ctx: &egui::Context) -> bool {
+    let at = ctx.data(|d| d.get_temp::<f64>(Id::unique("olo-typing-to-select")));
+    at.is_some_and(|at| ctx.input(|i| i.time) - at <= TYPE_SELECT_PAUSE)
+}
+
+/// The row [`type_select`] goes to for `prefix` (lower case).
+fn type_match<'n>(prefix: &str, rows: usize, from: Option<usize>, name: impl Fn(usize) -> &'n str) -> Option<usize> {
+    let lower = |i: usize| name(i).to_lowercase();
+    let mut chars = prefix.chars();
+    let first = chars.next()?;
+    let repeated = prefix.chars().count() > 1 && chars.all(|c| c == first);
+    if let Some(i) = (0..rows).find(|&i| lower(i).starts_with(prefix)) {
+        return Some(i);
+    }
+    if repeated {
+        let starts: Vec<usize> = (0..rows).filter(|&i| lower(i).starts_with(first)).collect();
+        if !starts.is_empty() {
+            let next = from.and_then(|f| starts.iter().find(|&&i| i > f)).unwrap_or(&starts[0]);
+            return Some(*next);
+        }
+    }
+    (0..rows).filter(|&i| lower(i).as_str() > prefix).min_by_key(|&i| lower(i))
+}
+
+/// How long a pause ends what's typed to select (seconds).
+pub const TYPE_SELECT_PAUSE: f64 = 0.9;
 
 #[derive(Debug, Default)]
 pub struct ListResponse {
@@ -2130,13 +2306,14 @@ pub struct ColumnListView<'a> {
     reveal: Option<usize>,
     draggable: bool,
     empty: Option<&'a str>,
+    names: Option<&'a dyn Fn(usize) -> &'a str>,
 }
 
 pub const HEADER_HEIGHT: f32 = 18.0;
 
 impl<'a> ColumnListView<'a> {
     pub fn new(id: impl std::hash::Hash + std::fmt::Debug, columns: &'a [Column], rows: usize, state: &'a mut ListState) -> Self {
-        ColumnListView { id: Id::unique(id), columns, rows, state, row_height: m::LIST_ROW, reveal: None, draggable: false, empty: None }
+        ColumnListView { id: Id::unique(id), columns, rows, state, row_height: m::LIST_ROW, reveal: None, draggable: false, empty: None, names: None }
     }
     pub fn row_height(mut self, h: f32) -> Self {
         self.row_height = h;
@@ -2157,6 +2334,12 @@ impl<'a> ColumnListView<'a> {
     /// Rows can be dragged (see [`ListResponse::drag_started`]).
     pub fn draggable(mut self) -> Self {
         self.draggable = true;
+        self
+    }
+    /// Typing selects the row whose name (`name(row)`) starts so
+    /// ([`type_select`]).
+    pub fn type_select(mut self, name: &'a dyn Fn(usize) -> &'a str) -> Self {
+        self.names = Some(name);
         self
     }
 
@@ -2212,7 +2395,7 @@ impl<'a> ColumnListView<'a> {
         // A selection band: where it started (y in content coordinates)
         // and what was selected before it (⇧ or ⌘ adds to that).
         let band_id = id.with("band");
-        let mut band = ui.ctx().data(|d| d.get_temp::<(Pos2, BTreeSet<usize>)>(band_id));
+        let mut band = ui.ctx().data(|d| d.get_temp::<(Pos2, SelectionBand)>(band_id));
         let mut band_from = None;
         let mut content_top = body.top();
         let mut content_left = body.left();
@@ -2260,18 +2443,13 @@ impl<'a> ColumnListView<'a> {
                     if resp.clicked() || resp.secondary_clicked() || resp.double_clicked() {
                         ui.memory_mut(|m| m.request_focus(focus_id));
                         let mods = ui.input(|i| i.modifiers);
-                        if resp.secondary_clicked() && state.selected.contains(&row) {
+                        if resp.secondary_clicked() {
                             // Keep a multi-selection for the context menu.
-                        } else if state.multiple && mods.command {
-                            if !state.selected.remove(&row) {
-                                state.selected.insert(row);
+                            if !state.selected.contains(&row) {
+                                state.select(row);
                             }
-                            state.anchor = Some(row);
-                        } else if state.multiple && mods.shift {
-                            let a = state.anchor.unwrap_or(row);
-                            state.selected = (a.min(row)..=a.max(row)).collect();
                         } else {
-                            state.select(row);
+                            state.click(row, mods);
                         }
                         selection_changed = true;
                     }
@@ -2409,8 +2587,7 @@ impl<'a> ColumnListView<'a> {
         }
         if let Some(from) = band_from {
             let mods = ui.input(|i| i.modifiers);
-            let base = if mods.command || mods.shift { state.selected.clone() } else { BTreeSet::new() };
-            band = Some((pos2(from.x, from.y - content_top), base));
+            band = Some((pos2(from.x, from.y - content_top), state.band(mods)));
         }
         let (down, pointer) = ui.input(|i| (i.pointer.primary_down(), i.pointer.latest_pos()));
         match (&band, down, pointer) {
@@ -2418,10 +2595,15 @@ impl<'a> ColumnListView<'a> {
                 let (top, bottom) = (from.y.min(now.y - content_top), from.y.max(now.y - content_top));
                 let first = (top / row_h).floor().max(0.0) as usize;
                 let end = ((bottom / row_h).ceil().max(0.0) as usize).min(rows);
-                let mut selected = base.clone();
-                selected.extend(first..end.max(first));
+                let selected = base.over(first..end.max(first));
                 if selected != state.selected {
-                    state.anchor = (first < end).then_some(first).or(state.anchor);
+                    // From the row it started on to the one it's at, for ⇧
+                    // and the arrows after.
+                    if first < end {
+                        let (a, b) = if now.y - content_top >= from.y { (first, end - 1) } else { (end - 1, first) };
+                        state.anchor = Some(a);
+                        state.cursor = Some(b);
+                    }
                     state.selected = selected;
                     selection_changed = true;
                 }
@@ -2444,7 +2626,7 @@ impl<'a> ColumnListView<'a> {
                 let kept = (*from, base.clone());
                 ui.ctx().data_mut(|d| d.insert_temp(band_id, kept));
             }
-            _ => ui.ctx().data_mut(|d| d.remove::<(Pos2, BTreeSet<usize>)>(band_id)),
+            _ => ui.ctx().data_mut(|d| d.remove::<(Pos2, SelectionBand)>(band_id)),
         }
         out.selection_changed |= selection_changed;
         out.activated = out.activated.or(activated);
@@ -2452,37 +2634,44 @@ impl<'a> ColumnListView<'a> {
         style::sunken(ui.painter(), outer, &p, focused);
         ui.advance_cursor_after_rect(outer);
 
-        // Keyboard navigation.
+        // Keyboard navigation: the arrows, Page Up and Down, Home and End
+        // move (with ⇧, grow or shrink the selection from the anchor),
+        // typing goes to the row whose name starts so, Enter opens.
         if focused && rows > 0 {
             let page = ((body.height() - 4.0) / row_h).floor().max(1.0) as isize;
-            let cur = state.anchor.map(|a| a as isize);
             let mut next = None;
             ui.input(|i| {
-                if i.key_pressed(Key::ArrowDown) {
-                    next = Some(cur.map_or(0, |c| c + 1));
-                }
-                if i.key_pressed(Key::ArrowUp) {
-                    next = Some(cur.map_or(0, |c| c - 1));
-                }
-                if i.key_pressed(Key::PageDown) {
-                    next = Some(cur.map_or(0, |c| c + page));
-                }
-                if i.key_pressed(Key::PageUp) {
-                    next = Some(cur.map_or(0, |c| c - page));
-                }
-                if i.key_pressed(Key::Home) {
-                    next = Some(0);
-                }
-                if i.key_pressed(Key::End) {
-                    next = Some(rows as isize - 1);
-                }
-                if i.key_pressed(Key::Enter) {
-                    out.activated = state.anchor;
+                for e in &i.events {
+                    let egui::Event::Key { key, pressed: true, modifiers, .. } = e else { continue };
+                    // (⌘ and Alt with them are the menus'.)
+                    if modifiers.command || modifiers.alt {
+                        continue;
+                    }
+                    let to = match key {
+                        Key::ArrowDown => state.step(1, rows),
+                        Key::ArrowUp => state.step(-1, rows),
+                        Key::PageDown => state.step(page, rows),
+                        Key::PageUp => state.step(-page, rows),
+                        Key::Home => Some(0),
+                        Key::End => Some(rows - 1),
+                        Key::Enter => {
+                            out.activated = state.cursor();
+                            None
+                        }
+                        _ => None,
+                    };
+                    if let Some(to) = to {
+                        next = Some((to, modifiers.shift));
+                    }
                 }
             });
-            if let Some(n) = next {
-                let n = n.clamp(0, rows as isize - 1) as usize;
-                state.select(n);
+            if let Some(names) = self.names
+                && let Some(to) = type_select(ui, id, rows, state.cursor(), names)
+            {
+                next = Some((to, false));
+            }
+            if let Some((n, extend)) = next {
+                state.move_to(n, extend);
                 out.selection_changed = true;
                 ScrollView::reveal(ui.ctx(), id.with("scroll"), n as f32 * row_h, (n + 1) as f32 * row_h);
             }
@@ -3856,6 +4045,98 @@ pub fn conversation(ui: &mut Ui, conv: &mut Conversation, divider: f32, width: f
 
 #[cfg(test)]
 mod tests {
+    use super::{ListState, type_match};
+    use std::collections::BTreeSet;
+
+    fn list(selected: &[usize]) -> ListState {
+        let mut l = ListState { multiple: true, ..Default::default() };
+        l.selected = selected.iter().copied().collect();
+        l
+    }
+
+    fn set(rows: &[usize]) -> BTreeSet<usize> {
+        rows.iter().copied().collect()
+    }
+
+    const SHIFT: egui::Modifiers = egui::Modifiers::SHIFT;
+    const CMD: egui::Modifiers = egui::Modifiers::COMMAND;
+
+    #[test]
+    fn selection_clicks() {
+        let mut l = list(&[]);
+        l.click(3, egui::Modifiers::NONE);
+        assert_eq!(l.selected, set(&[3]));
+        // ⇧: from the anchor, again from the same anchor.
+        l.click(6, SHIFT);
+        assert_eq!(l.selected, set(&[3, 4, 5, 6]));
+        l.click(1, SHIFT);
+        assert_eq!(l.selected, set(&[1, 2, 3]));
+        assert_eq!((l.anchor, l.cursor()), (Some(3), Some(1)));
+        // ⌘ adds one, and is the anchor for the next ⌘⇧ range, added.
+        l.click(8, CMD);
+        assert_eq!(l.selected, set(&[1, 2, 3, 8]));
+        l.click(10, SHIFT | CMD);
+        assert_eq!(l.selected, set(&[1, 2, 3, 8, 9, 10]));
+        // ⌘ takes one away.
+        l.click(2, CMD);
+        assert_eq!(l.selected, set(&[1, 3, 8, 9, 10]));
+        // One row only: modifiers don't add.
+        let mut one = ListState::default();
+        one.click(2, egui::Modifiers::NONE);
+        one.click(5, SHIFT);
+        assert_eq!(one.selected, set(&[5]));
+    }
+
+    #[test]
+    fn selection_keys() {
+        let mut l = list(&[]);
+        // Nothing selected: down to the first, up to the last.
+        assert_eq!((l.step(1, 10), l.step(-1, 10), l.step(1, 0)), (Some(0), Some(9), None));
+        l.select(4);
+        // ⇧↓ grows from the anchor, ⇧↑ takes it back and past.
+        l.move_to(l.step(1, 10).unwrap(), true);
+        l.move_to(l.step(1, 10).unwrap(), true);
+        assert_eq!(l.selected, set(&[4, 5, 6]));
+        for _ in 0..3 {
+            l.move_to(l.step(-1, 10).unwrap(), true);
+        }
+        assert_eq!(l.selected, set(&[3, 4]));
+        // A plain arrow: one, from where the keyboard was.
+        l.move_to(l.step(-1, 10).unwrap(), false);
+        assert_eq!(l.selected, set(&[2]));
+        // Set in code (the anchor alone): moves on from that.
+        l.selected = set(&[7]);
+        l.anchor = Some(7);
+        assert_eq!(l.step(1, 10), Some(8));
+        l.select_all(10);
+        assert_eq!(l.selected.len(), 10);
+        l.selected = set(&[0, 2]);
+        l.invert(4);
+        assert_eq!(l.selected, set(&[1, 3]));
+    }
+
+    #[test]
+    fn selection_bands() {
+        let l = list(&[1, 2]);
+        assert_eq!(l.band(egui::Modifiers::NONE).over([2, 3]), set(&[2, 3]));
+        assert_eq!(l.band(SHIFT).over([2, 3]), set(&[1, 2, 3]));
+        assert_eq!(l.band(CMD).over([2, 3]), set(&[1, 3]));
+    }
+
+    #[test]
+    fn typing_selects() {
+        let names = ["Apple", "apricot", "Banana", "berry", "Cherry", "Date"];
+        let m = |p: &str, from: Option<usize>| type_match(p, names.len(), from, |i| names[i]);
+        assert_eq!(m("ap", None), Some(0));
+        assert_eq!(m("apr", None), Some(1));
+        assert_eq!(m("be", None), Some(3));
+        // None starts so: the first after it.
+        assert_eq!(m("bz", None), Some(4));
+        assert_eq!(m("zz", None), None);
+        // One letter again and again: through the names starting with it.
+        assert_eq!(m("bb", Some(2)), Some(3));
+        assert_eq!(m("bbb", Some(3)), Some(2));
+    }
     use super::{dropped_into, group_place};
 
     #[test]

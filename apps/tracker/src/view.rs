@@ -569,7 +569,8 @@ fn list_view(ui: &mut Ui, f: &mut FolderWin, actions: &mut Vec<Action>) {
     let entries = &f.entries;
     let editing_row = f.editing.as_ref().and_then(|(p, _)| entries.iter().position(|e| &e.path == p));
     let mut edit_cell = None;
-    let r = ColumnListView::new(("list", &f.path), &cols, entries.len(), &mut f.list).draggable().show(ui, |cell| {
+    let name = |i: usize| entries[i].name.as_str();
+    let r = ColumnListView::new(("list", &f.path), &cols, entries.len(), &mut f.list).draggable().type_select(&name).show(ui, |cell| {
         let e = &entries[cell.row];
         match cell.column {
             0 if Some(cell.row) == editing_row => {
@@ -611,10 +612,11 @@ fn list_view(ui: &mut Ui, f: &mut FolderWin, actions: &mut Vec<Action>) {
             actions.push(Action::Command(cmd.into()));
         }
     }
+    // Enter or a double-click: what's selected, if it's one of them.
     if let Some(i) = r.activated
         && let Some(e) = f.entries.get(i)
     {
-        actions.push(Action::Open(e.clone()));
+        actions.push(if f.list.selected.contains(&i) { Action::Command("open".into()) } else { Action::Open(e.clone()) });
     }
     list_drag(ui, &r, &f.entries, &f.list, Some(&f.current_dir()), actions);
     if let Some((_, pos)) = r.context {
@@ -635,12 +637,14 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
     let can_paste = true;
     let focused = ui.ctx().memory(|mm| mm.focused().is_none());
 
-    // Keyboard: arrows move, Enter opens, Delete trashes, typing selects.
+    // Keyboard: the arrows, Page Up and Down, Home and End move (with ⇧,
+    // grow or shrink the selection from the anchor), Enter opens, Delete
+    // trashes, typing selects.
     if focused && !f.entries.is_empty() {
+        let n = f.entries.len();
+        let page = (((rect.height() - 2.0 * inset) / cell.y).floor().max(1.0) as isize) * cols as isize;
         let mut moved = None;
-        let cur = f.list.anchor.unwrap_or(0) as isize;
-        let n = f.entries.len() as isize;
-        let step = |d: isize| (cur + d).clamp(0, n - 1) as usize;
+        let list = &f.list;
         ui.input(|i| {
             for e in &i.events {
                 let egui::Event::Key { key, pressed: true, modifiers, .. } = e else { continue };
@@ -654,42 +658,40 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
                     }
                     continue;
                 }
-                match key {
-                    Key::ArrowLeft => moved = Some(step(-1)),
-                    Key::ArrowRight => moved = Some(step(1)),
-                    Key::ArrowUp => moved = Some(step(-(cols as isize))),
-                    Key::ArrowDown => moved = Some(step(cols as isize)),
-                    Key::Home => moved = Some(0),
-                    Key::End => moved = Some(n as usize - 1),
-                    Key::Enter => actions.push(Action::Command("open".into())),
-                    Key::Delete if plain_extra("trash", Key::Delete) => actions.push(Action::Command("trash".into())),
-                    Key::F2 if plain_extra("rename", Key::F2) => actions.push(Action::Command("rename".into())),
-                    _ => {}
-                }
-            }
-            for e in &i.events {
-                if let egui::Event::Text(t) = e
-                    && !i.modifiers.ctrl
-                {
-                    if f.typed.1.elapsed() > Duration::from_millis(900) {
-                        f.typed.0.clear();
+                let to = match key {
+                    Key::ArrowLeft => list.step(-1, n),
+                    Key::ArrowRight => list.step(1, n),
+                    Key::ArrowUp => list.step(-(cols as isize), n),
+                    Key::ArrowDown => list.step(cols as isize, n),
+                    Key::PageUp => list.step(-page, n),
+                    Key::PageDown => list.step(page, n),
+                    Key::Home => Some(0),
+                    Key::End => Some(n - 1),
+                    Key::Enter => {
+                        actions.push(Action::Command("open".into()));
+                        None
                     }
-                    f.typed.0.push_str(&t.to_lowercase());
-                    f.typed.1 = Instant::now();
-                    let typed = f.typed.0.clone();
-                    if let Some(k) = f.entries.iter().position(|e| e.name.to_lowercase().starts_with(&typed)) {
-                        moved = Some(k);
+                    Key::Delete if plain_extra("trash", Key::Delete) => {
+                        actions.push(Action::Command("trash".into()));
+                        None
                     }
+                    Key::F2 if plain_extra("rename", Key::F2) => {
+                        actions.push(Action::Command("rename".into()));
+                        None
+                    }
+                    _ => None,
+                };
+                if let Some(to) = to {
+                    moved = Some((to, modifiers.shift));
                 }
             }
         });
-        if let Some(k) = moved {
-            if ui.input(|i| i.modifiers.shift) {
-                f.list.selected.insert(k);
-                f.list.anchor = Some(k);
-            } else {
-                f.list.select(k);
-            }
+        let entries = &f.entries;
+        if let Some(k) = widgets::type_select(ui, id, n, f.list.cursor(), |i| entries[i].name.as_str()) {
+            moved = Some((k, false));
+        }
+        if let Some((k, extend)) = moved {
+            f.list.move_to(k, extend);
             let top = inset + (k / cols) as f32 * cell.y;
             ScrollView::reveal(ui.ctx(), ("icons", &f.path), top - inset, top + cell.y + inset);
         }
@@ -732,25 +734,26 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
                 };
             }
             match hit(pos) {
-                // ⇧: everything from the last item clicked to this one (in
-                // the folder's order), as everywhere else.
-                Some(i) if mods.shift && !mods.ctrl && response.clicked() => {
-                    let a = f.list.anchor.filter(|&a| a < f.entries.len()).unwrap_or(i);
-                    f.list.selected = (a.min(i)..=a.max(i)).collect();
-                }
-                Some(i) if mods.ctrl || mods.shift => {
-                    if response.clicked() || response.drag_started() {
-                        if !f.list.selected.remove(&i) {
-                            f.list.selected.insert(i);
-                        }
-                        f.list.anchor = Some(i);
-                    }
-                }
-                Some(i) => {
+                // Kept for the menu, if it's one of them.
+                Some(i) if response.secondary_clicked() => {
                     if !f.list.selected.contains(&i) {
                         f.list.select(i);
                     }
-                    f.list.anchor = Some(i);
+                }
+                // Alone; ⌘ adds or takes away; ⇧ everything from the
+                // anchor to it (in the folder's order), as everywhere else.
+                Some(i) if response.clicked() => f.list.click(i, mods),
+                // A drag takes what's selected, it too (with ⌘ or ⇧, added
+                // to them).
+                Some(i) => {
+                    if !f.list.selected.contains(&i) {
+                        if mods.ctrl || mods.shift {
+                            f.list.selected.insert(i);
+                            f.list.cursor = Some(i);
+                        } else {
+                            f.list.select(i);
+                        }
+                    }
                     if response.drag_started()
                         && let Some((_, l)) = layouts.iter().find(|(j, _)| *j == i)
                     {
@@ -767,11 +770,13 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
                     }
                 }
                 None => {
+                    // A band: with ⇧ adding to what's selected, with ⌘
+                    // flipping what it covers.
+                    if response.drag_started() {
+                        f.band = Some((pos - origin.to_vec2(), f.list.band(mods)));
+                    }
                     if !(mods.ctrl || mods.shift) {
                         f.list.selected.clear();
-                    }
-                    if response.drag_started() {
-                        f.band = Some(pos - origin.to_vec2());
                     }
                 }
             }
@@ -800,13 +805,30 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
             let menu = if hit(pos).is_some() { item_menu(f) } else { background_menu(f, can_paste) };
             widgets::popup_menu_at(ui.ctx(), id, pos, menu);
         }
-        let band = match (f.band, response.dragged(), response.interact_pointer_pos()) {
-            (Some(start), true, Some(now)) => {
+        let band = match (f.band.clone(), response.dragged(), response.interact_pointer_pos()) {
+            (Some((start, base)), true, Some(now)) => {
                 let r = Rect::from_two_pos(start + origin.to_vec2(), now);
-                // Band selection considers every item, not just visible ones.
-                f.list.selected = (0..f.entries.len())
-                    .filter(|&i| layout_item(ui, cell_rect(i), &f.entries[i].name, look, false, f.entries[i].is_link).hit().intersects(r))
-                    .collect();
+                // Every item it covers, not just those showing: those in the
+                // rows it crosses.
+                let row = |y: f32| ((y - origin.y - inset) / cell.y).floor().max(0.0) as usize;
+                let items = (row(r.top()) * cols).min(f.entries.len())..((row(r.bottom()) + 1) * cols).min(f.entries.len());
+                f.list.selected = base.over(
+                    items.filter(|&i| layout_item(ui, cell_rect(i), &f.entries[i].name, look, false, f.entries[i].is_link).hit().intersects(r)),
+                );
+                // Near or past the top or bottom: scroll on.
+                let edge = cell.y / 4.0;
+                let step = if now.y > clip.bottom() - edge {
+                    ((now.y - clip.bottom() + edge) / 2.0).clamp(2.0, cell.y)
+                } else if now.y < clip.top() + edge {
+                    -((clip.top() + edge - now.y) / 2.0).clamp(2.0, cell.y)
+                } else {
+                    0.0
+                };
+                if step != 0.0 {
+                    let y = if step > 0.0 { clip.bottom() - origin.y + step } else { clip.top() - origin.y + step };
+                    ScrollView::reveal(ui.ctx(), ("icons", &f.path), (y - 1.0).max(0.0), (y + 1.0).min(height));
+                    ui.ctx().request_repaint();
+                }
                 Some(r)
             }
             _ => {

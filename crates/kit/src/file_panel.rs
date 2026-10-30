@@ -235,7 +235,8 @@ impl FilePanel {
         let columns = [Column::new("Name", list_r.width() * 0.55), Column::new("Size", 80.0).right(), Column::new("Modified", 140.0)];
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(list_r));
         let items = &self.items;
-        let resp = ColumnListView::new(("file-panel", &self.dir), &columns, items.len(), &mut self.list).show(&mut child, |cell| {
+        let name = |i: usize| items[i].name.as_str();
+        let resp = ColumnListView::new(("file-panel", &self.dir), &columns, items.len(), &mut self.list).type_select(&name).show(&mut child, |cell| {
             let Some(it) = items.get(cell.row) else { return };
             match cell.column {
                 0 => {

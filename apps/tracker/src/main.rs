@@ -46,7 +46,7 @@ pub struct Pane {
 
 impl Pane {
     fn new(path: PathBuf) -> Self {
-        Pane { path, entries: Vec::new(), list: ListState::default(), dirty: false, generation: 0, loading: true }
+        Pane { path, entries: Vec::new(), list: ListState { multiple: true, ..Default::default() }, dirty: false, generation: 0, loading: true }
     }
 }
 
@@ -64,9 +64,15 @@ pub struct Loader {
 fn replace_entries(entries: &mut Vec<Entry>, list: &mut ListState, mut v: Vec<Entry>, sort: (SortKey, bool), extra: &mut Vec<PathBuf>) {
     let mut keep: Vec<PathBuf> = list.selected.iter().filter_map(|&i| entries.get(i)).map(|e| e.path.clone()).collect();
     keep.append(extra);
+    // Where a ⇧ range starts and the keyboard is, by item too.
+    let path = |row: Option<usize>| row.and_then(|i| entries.get(i)).map(|e| e.path.clone());
+    let (anchor, cursor) = (path(list.anchor), path(list.cursor));
     sort_entries(&mut v, sort.0, sort.1);
     *entries = v;
     list.selected = entries.iter().enumerate().filter(|(_, e)| keep.contains(&e.path)).map(|(i, _)| i).collect();
+    let row = |p: Option<PathBuf>| p.and_then(|p| entries.iter().position(|e| e.path == p));
+    list.anchor = row(anchor);
+    list.cursor = row(cursor);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -86,10 +92,9 @@ pub struct FolderWin {
     /// Changed on disk while being listed: list again when it lands.
     dirty: bool,
     pub error: Option<String>,
-    /// Rubber-band selection start, in content coordinates.
-    pub band: Option<egui::Pos2>,
-    /// Type-ahead buffer and when it was last typed into.
-    pub typed: (String, Instant),
+    /// Rubber-band selection start, in content coordinates, and what it
+    /// adds to.
+    pub band: Option<(egui::Pos2, widgets::SelectionBand)>,
     /// The item whose name is being edited in place, and the new name.
     pub editing: Option<(PathBuf, String)>,
     /// A click on an already-selected item's name starts editing it after
@@ -288,7 +293,6 @@ impl FolderWin {
             dirty: false,
             error: None,
             band: None,
-            typed: (String::new(), Instant::now()),
             editing: None,
             pending_edit: None,
             panes: Vec::new(),
@@ -415,7 +419,7 @@ impl FolderWin {
         if n == 0 {
             return None;
         }
-        let k = list.selected.iter().next().copied().map_or(0, |k| (k as isize + d).clamp(0, n as isize - 1) as usize);
+        let k = list.step(d, n)?;
         list.select(k);
         entries.get(k).cloned()
     }
@@ -781,12 +785,8 @@ impl Tracker {
                     self.open_entry(cx, &e);
                 }
             }
-            "parent" => {
-                if let Some(p) = dir.parent() {
-                    let p = p.to_owned();
-                    self.open_folder(cx, &p);
-                }
-            }
+            // The folder it's in, with this one selected (to go on from).
+            "parent" => self.show_in_parent(cx, &dir),
             "new-folder" => match fs::new_folder(&dir) {
                 Ok(p) => {
                     f.add_entry(&p);
@@ -868,11 +868,11 @@ impl Tracker {
             }
             "select-all" => {
                 let (entries, list) = f.current_mut();
-                list.selected = (0..entries.len()).collect();
+                list.select_all(entries.len());
             }
             "invert" => {
                 let (entries, list) = f.current_mut();
-                list.selected = (0..entries.len()).filter(|i| !list.selected.contains(i)).collect();
+                list.invert(entries.len());
             }
             "view-icons" => f.view = ViewMode::Icons,
             "view-mini" => f.view = ViewMode::MiniIcons,
@@ -1003,7 +1003,7 @@ impl Tracker {
 
         // Space is Quick Look, unless it continues a type-ahead name or
         // goes into a name being edited.
-        let typing = !f.typed.0.is_empty() && f.typed.1.elapsed() < Duration::from_millis(900);
+        let typing = widgets::typing_to_select(ui.ctx());
         if f.editing.is_none() && !typing && take_space(ui) {
             self.toggle_quick_look(cx, win);
         }
@@ -1105,7 +1105,8 @@ impl Tracker {
             let results = &fw.results;
             // Leave a row under the list for the status line.
             let list_size = egui::vec2(ui.available_width(), ui.available_height() - m::CONTROL_HEIGHT);
-            let r = ui.allocate_ui(list_size, |ui| ColumnListView::new(("find-results", win), &cols, results.len(), &mut fw.list).show(ui, |cell| {
+            let name = |i: usize| results[i].entry.name.as_str();
+            let r = ui.allocate_ui(list_size, |ui| ColumnListView::new(("find-results", win), &cols, results.len(), &mut fw.list).type_select(&name).show(ui, |cell| {
                 let h = &results[cell.row];
                 let e = &h.entry;
                 match (cell.column, contents) {

@@ -400,6 +400,13 @@ as they land (with the commit), add new ones as they come up.
   managers". Shift-click ranges, ⌘-click to add or take one away,
   ⇧-arrows to extend, ⌘A, a rubber band in every view, type to select,
   and the rest Finder and Nautilus do.
+  Done so: `ListState` has the selection every view shares (click,
+  ⌘/⇧/⌘⇧-click, ⇧ with the arrows, Page keys, Home and End growing and
+  shrinking from the anchor, bands that add with ⇧ and flip with ⌘ and
+  scroll on), `widgets::type_select` for typing (Find, the file panel
+  and every Tracker view); a plain click on one of several leaves it
+  alone; Enter on several opens them all; Open Parent selects the folder
+  it came from. Checked by driving each view in a test session.
 - **StyledEdit, much more featureful** (Ben, 2026-10-29, after
   everything else): "please improve StyledEdit to be much more featureful
   -- it doesn't need all the bells and whistles of, say, modern Word or

@@ -36,7 +36,7 @@ pub struct Desktop {
     /// The Trash, pinned to the bottom-right corner.
     trash: Item,
     selected: BTreeSet<usize>,
-    band: Option<Pos2>,
+    band: Option<(Pos2, widgets::SelectionBand)>,
     /// A ~/Desktop item whose name is being edited in place.
     editing: Option<(PathBuf, String)>,
     /// Where icons were put by hand (the rest fill the grid around them).
@@ -350,14 +350,29 @@ impl Desktop {
             let pos = if response.drag_started() { ui.input(|i| i.pointer.press_origin()) } else { None };
             let pos = pos.or(response.interact_pointer_pos()).unwrap_or_default();
             match hit(pos) {
-                Some(i) if mods.ctrl || mods.shift => {
-                    if !response.secondary_clicked() && !self.selected.remove(&i) {
+                // Kept for the menu, if it's one of them.
+                Some(i) if response.secondary_clicked() => {
+                    if !self.selected.contains(&i) {
+                        self.selected = BTreeSet::from([i]);
+                    }
+                }
+                // ⌘ or ⇧ adds it or takes it away (icons placed anywhere
+                // have no order for a range); else it alone.
+                Some(i) if response.clicked() => {
+                    if !(mods.ctrl || mods.shift) {
+                        self.selected = BTreeSet::from([i]);
+                    } else if !self.selected.remove(&i) {
                         self.selected.insert(i);
                     }
                 }
+                // A drag takes what's selected, it too (with ⌘ or ⇧, added
+                // to them).
                 Some(i) => {
                     if !self.selected.contains(&i) {
-                        self.selected = BTreeSet::from([i]);
+                        if !(mods.ctrl || mods.shift) {
+                            self.selected.clear();
+                        }
+                        self.selected.insert(i);
                     }
                     if response.drag_started() {
                         // Every icon can be moved about the desktop.
@@ -380,11 +395,15 @@ impl Desktop {
                     }
                 }
                 None => {
+                    // A band: with ⇧ adding to what's selected, with ⌘
+                    // flipping what it covers.
+                    if response.drag_started() {
+                        let keep = mods.ctrl || mods.shift;
+                        let base = if keep { self.selected.clone() } else { BTreeSet::new() };
+                        self.band = Some((pos, widgets::SelectionBand { base, flip: mods.ctrl }));
+                    }
                     if !(mods.ctrl || mods.shift) {
                         self.selected.clear();
-                    }
-                    if response.drag_started() {
-                        self.band = Some(pos);
                     }
                 }
             }
@@ -483,10 +502,10 @@ impl Desktop {
             self.edit_name(&p);
         }
 
-        let band = match (self.band, response.dragged(), response.interact_pointer_pos()) {
-            (Some(start), true, Some(now)) => {
+        let band = match (self.band.clone(), response.dragged(), response.interact_pointer_pos()) {
+            (Some((start, base)), true, Some(now)) => {
                 let r = Rect::from_two_pos(start, now);
-                self.selected = layouts.iter().enumerate().filter(|(_, l)| l.hit().intersects(r)).map(|(i, _)| i).collect();
+                self.selected = base.over(layouts.iter().enumerate().filter(|(_, l)| l.hit().intersects(r)).map(|(i, _)| i));
                 Some(r)
             }
             _ => {

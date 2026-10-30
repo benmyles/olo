@@ -53,7 +53,10 @@ like pixel alignment is.
    with it, so a caller passes over what isn't its business), Tracker's
    own `watch.rs` (changed items stat'ed off the UI thread, a full relist
    on queue overflow, a folder renamed or swapped away watched again at
-   its path), and the mount table with `POLLPRI` on
+   its path, the nearest folder above watched for it to come back if
+   nothing is there yet, and the folders above each one watched for
+   being moved or deleted, which takes it from its path without a word
+   to its own watch), and the mount table with `POLLPRI` on
    `/proc/self/mountinfo`. No timers that re-read the disk to look for
    changes; keep busy files (frames, caches) out of a folder others
    follow. What follows them: Tracker's windows, desktop, Trash, Get Info
@@ -524,6 +527,20 @@ and offers actions; where it is dropped picks the type and the action.
   drop). Headless screenshots show the drag picture; `tsession down X Y
   [right]`, several `move`s, then `up [right]` drives one.
 
+Tracker selects as file managers do, in every view (`ListState`'s
+methods, above): click, ⌘-click, ⇧-click and ⌘⇧-click; a plain click on
+one of several selected leaves it alone (a drag from it takes them
+all, and a ⌘ or ⇧ drag from one not selected adds it first); the
+arrows (in the icon views, across and a row of icons up and down),
+Page Up and Down, Home and End, each with ⇧ to extend; typing selects;
+⌘A and Invert Selection (Edit menu); a band from empty space in every
+view, with ⇧ adding and ⌘ flipping, scrolling on past the edges (the
+icon views lay out only the rows it crosses); Enter or a double-click
+on one of several opens them all; Open Parent (⌘↑) comes back with the
+folder it was in selected. The desktop, whose icons are anywhere and
+have no order, takes ⌘ and ⇧ alike as add or take away. A listing
+that changes keeps the selection, anchor and cursor by path.
+
 Tracker (`view.rs`: `Drag`, `DropTarget`, `take_drop`, `item_drop`):
 files drag from every view and the desktop and drop onto folders (in a
 view or on the desktop), into a folder window (anywhere in it; in the
@@ -636,9 +653,25 @@ into view; `.draggable()` reports `ListResponse::drag_started` and the
 rows on screen, `visible` / `row_at(pos)`, for drop targets; in a
 multi-select list, dragging from below the rows, or from a row's other
 columns when it isn't selected, draws a selection band, as in Tracker's
-list view: ⇧ or ⌘ adds to the selection, and it scrolls on near the
-edges; on a draggable list the name column and selected rows drag the
-items; `.empty_text("No lines match.")` says so in an empty list; a cell
+list view: ⇧ adds what it covers to the selection, ⌘ flips it, and it
+scrolls on near the edges; on a draggable list the name column and
+selected rows drag the items. Selecting is a file manager's, in
+`ListState`'s methods, which Tracker's icon and column views use too:
+`click(row, mods)` (alone; ⌘ adds or takes away; ⇧ everything from the
+`anchor`, which stays, so another ⇧-click makes the range again from
+there; ⌘⇧ that range added), `move_to(row, extend)` for the keyboard
+(⇧ grows or shrinks the range from the anchor; `cursor` is where the
+keyboard is, `step(d, rows)` the row `d` on from it), `select_all`,
+`invert`, and `band(mods)`, a `SelectionBand` whose `over(rows)` is the
+selection with a band over them. The list's keys: the arrows, Page Up
+and Down, Home and End (⇧ extends), Enter activates; ⌘ and Alt with them
+are left to the menus. `.type_select(&|row| name)` makes typing go to
+the row whose name starts with what's typed (`widgets::type_select`,
+for other views: within `TYPE_SELECT_PAUSE`, 0.9 s; else the first name
+after it; one letter again and again steps through the names starting
+with it; a space continues a name but starts nothing, and
+`typing_to_select(ctx)` says a name is being typed, so Space isn't
+Quick Look then); `.empty_text("No lines match.")` says so in an empty list; a cell
 draws plain text with `text`/`text_with` or sections of their own colours
 with `text_job`; `text_cached(key, || job)` keeps the galley from frame to
 frame while `key`, what the text is made from, stays the same), `TabView`, `TabStrip` (a row of document tabs under

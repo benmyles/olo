@@ -31,16 +31,16 @@ const DISCLOSURE_ROOM: f32 = m::CELL_INSET + 4.0 + m::MARK_GAP;
 
 /// What happened in a column this frame (applied once drawing is done).
 enum Event {
-    /// `toggle`: ⌘ (add or take away one); `range`: ⇧ (from the last one
-    /// clicked to this).
-    Click { col: usize, row: Option<usize>, toggle: bool, range: bool },
+    /// With ⌘ or ⇧ held (`mods`), adding to the selection
+    /// (`ListState::click`).
+    Click { col: usize, row: Option<usize>, mods: egui::Modifiers },
     Double { col: usize, row: usize },
     Context { col: usize, row: Option<usize>, pos: Pos2 },
     /// A drag started on a row; where on its icon the pointer is.
     Drag { col: usize, row: usize, hotspot: egui::Vec2, ask: bool },
     /// A selection band (drawn from below a column's items) now selects
-    /// these.
-    Band { col: usize, selected: std::collections::BTreeSet<usize> },
+    /// these; the rows it started and is at.
+    Band { col: usize, selected: std::collections::BTreeSet<usize>, ends: Option<(usize, usize)> },
 }
 
 fn column(f: &FolderWin, k: usize) -> (&std::path::Path, &[Entry], &widgets::ListState) {
@@ -166,19 +166,8 @@ pub fn columns_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, actions: &mut 
 
     for ev in events {
         match ev {
-            Event::Click { col, row: Some(row), range: true, toggle: false } => {
-                let (_, list) = column_mut(f, col);
-                let a = list.anchor.unwrap_or(row);
-                list.selected = (a.min(row)..=a.max(row)).collect();
-                f.active = col;
-                f.panes.truncate(col);
-            }
-            Event::Click { col, row: Some(row), toggle: true, .. } => {
-                let (_, list) = column_mut(f, col);
-                if !list.selected.remove(&row) {
-                    list.selected.insert(row);
-                }
-                list.anchor = Some(row);
+            Event::Click { col, row: Some(row), mods } if mods.ctrl || mods.shift => {
+                column_mut(f, col).1.click(row, mods);
                 f.active = col;
                 f.panes.truncate(col);
             }
@@ -204,10 +193,13 @@ pub fn columns_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, actions: &mut 
                     actions.push(Action::Drag(view::Drag { paths, icon: view::icon_of(e), size: view::MINI, hotspot, ask, name: e.name.clone(), below: false }));
                 }
             }
-            Event::Band { col, selected } => {
+            Event::Band { col, selected, ends } => {
                 let (_, list) = column_mut(f, col);
                 if list.selected != selected {
-                    list.anchor = selected.first().copied().or(list.anchor);
+                    if let Some((a, b)) = ends {
+                        list.anchor = Some(a);
+                        list.cursor = Some(b);
+                    }
                     list.selected = selected;
                     f.panes.truncate(col);
                 }
@@ -315,24 +307,23 @@ fn draw_column(
         }
         let mods = ui.input(|i| i.modifiers);
         // A selection band, from below the items (where it started, in
-        // content coordinates, and what ⇧ or Ctrl kept selected).
+        // content coordinates, and what it adds to: ⇧ adds, ⌘ flips).
         let band_id = egui::Id::unique(("col-band", path));
         let origin = ui.min_rect().top();
         if resp.drag_started() && resp.dragged_by(egui::PointerButton::Primary)
             && let Some(at) = ui.input(|i| i.pointer.press_origin()).filter(|&at| row_at(at).is_none())
         {
-            let base = if mods.ctrl || mods.shift { list.selected.clone() } else { Default::default() };
-            ui.ctx().data_mut(|d| d.insert_temp(band_id, (pos2(at.x, at.y - origin), base)));
+            ui.ctx().data_mut(|d| d.insert_temp(band_id, (pos2(at.x, at.y - origin), list.band(mods))));
         }
-        let band = ui.ctx().data(|d| d.get_temp::<(Pos2, std::collections::BTreeSet<usize>)>(band_id));
+        let band = ui.ctx().data(|d| d.get_temp::<(Pos2, widgets::SelectionBand)>(band_id));
         match (band, resp.dragged(), ui.input(|i| i.pointer.latest_pos())) {
             (Some((from, base)), true, Some(now)) => {
                 let (y0, y1) = (from.y.min(now.y - origin) + origin - top, from.y.max(now.y - origin) + origin - top);
                 let first = (y0 / m::LIST_ROW).floor().max(0.0) as usize;
                 let end = ((y1 / m::LIST_ROW).ceil().max(0.0) as usize).min(rows);
-                let mut selected = base;
-                selected.extend(first..end.max(first));
-                events.push(Event::Band { col: k, selected });
+                let selected = base.over(first..end.max(first));
+                let ends = (first < end).then(|| if now.y - origin >= from.y { (first, end - 1) } else { (end - 1, first) });
+                events.push(Event::Band { col: k, selected, ends });
                 let r = Rect::from_two_pos(pos2(from.x, from.y + origin), now);
                 style::selection_band(&ui.painter().with_clip_rect(clip), r.intersect(clip), p);
                 // Near or past the column's top or bottom: scroll on.
@@ -349,7 +340,7 @@ fn draw_column(
                     ScrollView::reveal(ui.ctx(), ("col", path), (y - 1.0).max(0.0), (y + 1.0).min(content.height()));
                 }
             }
-            (Some(_), _, _) => ui.ctx().data_mut(|d| d.remove::<(Pos2, std::collections::BTreeSet<usize>)>(band_id)),
+            (Some(_), _, _) => ui.ctx().data_mut(|d| d.remove::<(Pos2, widgets::SelectionBand)>(band_id)),
             _ => {}
         }
         if let Some(pos) = resp.interact_pointer_pos() {
@@ -366,7 +357,7 @@ fn draw_column(
                     events.push(Event::Double { col: k, row });
                 }
             } else if resp.clicked() {
-                events.push(Event::Click { col: k, row: row_at(pos), toggle: mods.ctrl, range: mods.shift });
+                events.push(Event::Click { col: k, row: row_at(pos), mods });
             } else if resp.secondary_clicked() {
                 events.push(Event::Context { col: k, row: row_at(pos), pos });
             }
@@ -433,30 +424,43 @@ fn keyboard(ui: &Ui, f: &mut FolderWin, actions: &mut Vec<Action>) {
     if ui.ctx().egui_wants_keyboard_input() || f.editing.is_some() {
         return;
     }
-    let keys: Vec<(Key, bool)> = ui.input(|i| {
+    let keys: Vec<(Key, bool, bool)> = ui.input(|i| {
         i.events
             .iter()
             .filter_map(|e| match e {
                 // Alt's are the menus' (Windows' Alt+↑, Alt+Enter).
-                egui::Event::Key { key, pressed: true, modifiers, .. } if !modifiers.alt => Some((*key, modifiers.ctrl)),
+                egui::Event::Key { key, pressed: true, modifiers, .. } if !modifiers.alt => Some((*key, modifiers.ctrl, modifiers.shift)),
                 _ => None,
             })
             .collect()
     });
-    for (key, cmd) in keys {
+    for (key, cmd, shift) in keys {
         let k = f.active;
         let (_, entries, list) = column(f, k);
         let n = entries.len();
-        let cur = list.anchor.filter(|&a| list.selected.contains(&a)).or_else(|| list.selected.iter().next().copied());
+        let cur = list.cursor().filter(|c| list.selected.contains(c)).or_else(|| list.selected.iter().next().copied());
+        let to = match key {
+            Key::ArrowDown => list.step(1, n),
+            Key::ArrowUp => list.step(-1, n),
+            Key::Home => (n > 0).then_some(0),
+            Key::End => n.checked_sub(1),
+            _ => None,
+        };
         match (key, cmd) {
-            (Key::ArrowDown, false) | (Key::ArrowUp, false) if n > 0 => {
-                let next = match (cur, key) {
-                    (None, _) => 0,
-                    (Some(c), Key::ArrowDown) => (c + 1).min(n - 1),
-                    (Some(c), _) => c.saturating_sub(1),
-                };
-                choose(f, k, next);
-                reveal(ui, f, k, next);
+            // ⇧ grows or shrinks the selection from the anchor (no column
+            // follows a selection of several).
+            (Key::ArrowDown | Key::ArrowUp | Key::Home | Key::End, false) if shift => {
+                if let Some(next) = to {
+                    column_mut(f, k).1.move_to(next, true);
+                    f.panes.truncate(k);
+                    reveal(ui, f, k, next);
+                }
+            }
+            (Key::ArrowDown | Key::ArrowUp | Key::Home | Key::End, false) => {
+                if let Some(next) = to {
+                    choose(f, k, next);
+                    reveal(ui, f, k, next);
+                }
             }
             (Key::ArrowRight, false) => {
                 if cur.is_some_and(|c| entries[c].is_dir) && f.panes.len() > k {
@@ -477,25 +481,13 @@ fn keyboard(ui: &Ui, f: &mut FolderWin, actions: &mut Vec<Action>) {
             _ => {}
         }
     }
-    // Type-ahead within the active column.
-    let typed: String = ui.input(|i| {
-        if i.modifiers.ctrl {
-            return String::new();
-        }
-        i.events.iter().filter_map(|e| if let egui::Event::Text(t) = e { Some(t.clone()) } else { None }).collect()
-    });
-    if !typed.is_empty() {
-        if f.typed.1.elapsed() > std::time::Duration::from_millis(900) {
-            f.typed.0.clear();
-        }
-        f.typed.0.push_str(&typed.to_lowercase());
-        f.typed.1 = std::time::Instant::now();
-        let k = f.active;
-        let prefix = f.typed.0.clone();
-        if let Some(row) = column(f, k).1.iter().position(|e| e.name.to_lowercase().starts_with(&prefix)) {
-            choose(f, k, row);
-            reveal(ui, f, k, row);
-        }
+    // Typing selects within the active column.
+    let k = f.active;
+    let (path, entries, list) = column(f, k);
+    let id = egui::Id::unique(("col", path));
+    if let Some(row) = widgets::type_select(ui, id, entries.len(), list.cursor(), |i| entries[i].name.as_str()) {
+        choose(f, k, row);
+        reveal(ui, f, k, row);
     }
 }
 
