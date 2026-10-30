@@ -302,12 +302,17 @@ as they land (with the commit), add new ones as they come up.
   sideways to every column; search across the cells; filter rows; sort
   by a column (header click, again to reverse), on a worker for big
   files.
-- **Window tabs: titles of unfocused windows update late** (Ben,
-  2026-10-29, bug): "yellow tabs that are not focused don't have their
+- ~~**Window tabs: titles of unfocused windows update late**~~ (Ben,
+  2026-10-29, bug; done: HACKING, `Cx::set_title`): "yellow tabs that are not focused don't have their
   titles (specifically i'm looking at agent status icons) updated very
   frequently it seems like they do update but not very often". A window's
   title (a Terminal's agent status icon in it) must show in its tab the
-  moment it changes, focused or not.
+  moment it changes, focused or not. Cause: app_server lets a window
+  whose content isn't shown (behind another in its tab group, covered)
+  draw once a second, and Terminal set its window's title only while
+  drawing. Now it sets it the moment a tab is retitled: a window behind
+  another in its group showed 4 of 30 titles in 3 s, now all 30 (1×,
+  1.5×, 2×).
 - **Terminal: ⌘-click opens any URL or file, reliably** (Ben,
   2026-10-29, bug): "in terminal we should be able to super+click any
   url and it should open in the default browser, or any local file and

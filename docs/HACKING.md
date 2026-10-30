@@ -220,7 +220,10 @@ fn main() {
   threads via `cx.proxy().send(msg)`), `theme_changed`, `dropped` and
   `drag_ended` (see "Drag and drop"), `save_state` (see "In-place
   reload").
-* **`Cx`**: `open_window`, `close_window`, `set_title`, `resize`, `redraw`,
+* **`Cx`**: `open_window`, `close_window`, `set_title` (call it as the
+  title changes, not only while drawing: a window whose content isn't
+  shown, behind another in its tab group or covered, is let draw once a
+  second, yet its tab may show; Terminal's `retitle`), `resize`, `redraw`,
   `activate` (bring a window forward and focus it, restoring it if it is
   minimized or on another workspace — via xdg-activation; use it when a
   forwarded launch asks for a window that is already open),
@@ -3125,7 +3128,8 @@ window its size and gives the grid the difference.
 **Groups** (`src/groups.rs`). A window can be a named group with a colour
 (Tabs ▸ Group ▸ Name Group…, or click the group's name in the strip): the
 name leads the strip in its colour (its chip; the tabs stay plain), the
-window's title is "name — tab".
+window's title is "name — tab", set the moment a program retitles its tab
+(`retitle`: Claude Code's status glyph in it), not at the next frame.
 Save Group keeps the group and each tab's folder in
 `terminal-groups.json` (config dir); Open Saved Group brings its window
 forward, or opens one with a shell in each folder; Forget Saved Group
