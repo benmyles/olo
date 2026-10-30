@@ -1072,8 +1072,9 @@ as they land (with the commit), add new ones as they come up.
     Discord's tray icons) in Deskbar's tray with their menus; the
     Unity LauncherEntry count (unread badges) on Deskbar's entries;
     progress on Deskbar (LauncherEntry progress).
-  - **The rest of the portals**: Inhibit (no sleep during a call or a
-    video), Background, Print (to Olo's print dialog, once there is
+  - **The rest of the portals**: ~~Inhibit~~ (done 2026-10-30: the
+    Inhibit portal and `org.freedesktop.ScreenSaver` in olo-portal, held
+    by app_server's `KeepAwake`), Background, Print (to Olo's print dialog, once there is
     one), Email, Account, Wallpaper, Screenshot (with screen sharing),
     Camera/Location as Olo asks permission, Secret (Passwords as the
     Secret Service, so Chrome's and Electron's stored secrets live in

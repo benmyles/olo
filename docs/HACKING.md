@@ -2762,8 +2762,12 @@ fake model:
 app_server owns idleness: any input (or a synthetic event) is activity; a
 5 s tick turns the displays off (`settings.power.display_off_minutes`) and
 then asks logind to suspend (`sleep_minutes`). Caffeinated mode
-(`Request::SetCaffeinated`, the Deskbar cup) and apps holding a
-zwp_idle_inhibit inhibitor count as activity. `Request::PowerStatus` and
+(`Request::SetCaffeinated`, the Deskbar cup), apps holding a
+zwp_idle_inhibit inhibitor, and IPC connections that asked
+`Request::KeepAwake` (for as long as they stay open: olo-portal holds one
+for each app's wake lock, through the Inhibit portal or
+`org.freedesktop.ScreenSaver`, `apps/portal/src/inhibit.rs`, released
+when the app lets go or leaves the bus) count as activity. `Request::PowerStatus` and
 `Event::PowerChanged` report it all, with the built-in display's brightness
 (`Request::SetBrightness`, perceptual 0–1). Brightness and volume keys are
 taken by app_server; the brightness keys act on the display under the
@@ -3168,6 +3172,11 @@ it shares (`App::busy`).
   them). A window share reconnects after a reload by its id, or one with
   the same app id and title (windows come back with new ids).
 
+- **Keeping awake** (`inhibit.rs`): olo-portal also answers the Inhibit
+  portal (an inhibition of idle or suspend lasts until the portal closes
+  its request) and serves `org.freedesktop.ScreenSaver` (Inhibit gives a
+  cookie, held until UnInhibit or the caller leaves the bus), each held
+  by an app_server connection that asked `KeepAwake` (see "Power").
 - **While sharing** olo-portal writes what is shared
   (`olo_protocol::SharingState`: its pid, and each session's app,
   screens and start, in `$XDG_RUNTIME_DIR/olo-sharing-<display>.json`,

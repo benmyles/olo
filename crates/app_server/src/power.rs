@@ -81,6 +81,9 @@ pub struct Power {
     /// Sleep was asked for in this idle stretch (don't ask again).
     slept: bool,
     inhibitors: Vec<WlSurface>,
+    /// IPC connections keeping the screens awake while they stay open
+    /// (`Request::KeepAwake`), and why.
+    pub keep_awake: Vec<(std::rc::Rc<crate::ipc::Conn>, String)>,
     /// The real backlight (session only).
     backlight: Option<olo_system::backlight::Backlight>,
     /// Perceived brightness, 0–1 (simulated when there is no backlight to drive).
@@ -142,6 +145,7 @@ impl Power {
             display_asleep: false,
             slept: false,
             inhibitors: Vec::new(),
+            keep_awake: Vec::new(),
             backlight,
             brightness,
             keyboard,
@@ -191,7 +195,7 @@ impl Power {
             caffeinated: self.caffeinated,
             idle_seconds: self.last_activity.elapsed().as_secs(),
             display_asleep: self.display_asleep,
-            app_inhibitors: self.inhibitors.len() as u32,
+            app_inhibitors: (self.inhibitors.len() + self.keep_awake.len()) as u32,
             brightness: self.brightness,
             screen_saver: false,
             caffeinated_until: self.caffeinated_until.and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()),
@@ -394,9 +398,10 @@ impl<B: Backend> AnvilState<B> {
         if saver.never_fade.is_some() && self.pointer_corner() == saver.never_fade {
             self.power.last_activity = Instant::now();
         }
-        let before = self.power.inhibitors.len();
+        let before = self.power.inhibitors.len() + self.power.keep_awake.len();
         self.power.inhibitors.retain(|s| s.is_alive());
-        let pruned = self.power.inhibitors.len() != before;
+        self.power.keep_awake.retain(|(c, _)| !c.is_dead());
+        let pruned = self.power.inhibitors.len() + self.power.keep_awake.len() != before;
         self.auto_approve_tick();
         if self.power.caffeinated_until.is_some_and(|t| SystemTime::now() >= t) {
             info!("caffeinated time is up");
@@ -404,7 +409,7 @@ impl<B: Backend> AnvilState<B> {
         }
         let settings = self.settings.power.clone();
         let p = &mut self.power;
-        let awake = p.caffeinated || !p.inhibitors.is_empty();
+        let awake = p.caffeinated || !p.inhibitors.is_empty() || !p.keep_awake.is_empty();
         if awake {
             p.last_activity = Instant::now();
         }
@@ -579,6 +584,23 @@ impl<B: Backend> AnvilState<B> {
         }
         if changed {
             self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
+        }
+    }
+
+    /// Keep the screens awake while `conn` stays open (`KeepAwake`).
+    pub fn keep_awake(&mut self, conn: &std::rc::Rc<crate::ipc::Conn>, why: String) {
+        info!(why, "kept awake by a program");
+        self.power.keep_awake.push((conn.clone(), why));
+        self.power_activity();
+        self.power_changed();
+    }
+
+    /// An IPC connection closed: what it kept awake isn't.
+    pub fn ipc_closed(&mut self, conn: &std::rc::Rc<crate::ipc::Conn>) {
+        let before = self.power.keep_awake.len();
+        self.power.keep_awake.retain(|(c, _)| !std::rc::Rc::ptr_eq(c, conn));
+        if self.power.keep_awake.len() != before {
+            self.power_changed();
         }
     }
 

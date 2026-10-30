@@ -1,6 +1,6 @@
 //! The portal backend on D-Bus: `org.freedesktop.impl.portal.desktop.olo`,
 //! which xdg-desktop-portal calls for `org.freedesktop.portal.ScreenCast`
-//! when `olo-portals.conf` names us for it. An app's share is a session:
+//! (and Inhibit: `inhibit.rs`) when `olo-portals.conf` names us for it. An app's share is a session:
 //! CreateSession makes it (an `impl.portal.Session` object at the handle
 //! the portal chose, closed by it or by us), SelectSources says what the
 //! app wants, and Start asks the person (the picker, `picker.rs`, unless a
@@ -320,12 +320,17 @@ pub fn serve(address: Option<&str>, to_ui: impl Fn(ToUi) + Send + Sync + 'static
     let cast = ScreenCast { sessions: Arc::default(), to_ui: Arc::new(to_ui), last: Arc::default() };
     // Nothing is shared yet (a file a crashed portal left goes).
     publish(&HashMap::new());
-    let conn = builder.serve_at(PATH, cast)?.build()?;
+    let conn = builder.serve_at(PATH, cast)?.serve_at(PATH, crate::inhibit::Inhibit)?.build()?;
     let flags = zbus::fdo::RequestNameFlags::DoNotQueue.into();
     match conn.request_name_with_flags(NAME, flags)? {
-        zbus::fdo::RequestNameReply::PrimaryOwner | zbus::fdo::RequestNameReply::AlreadyOwner => Ok(conn),
-        _ => Err(zbus::Error::NameTaken),
+        zbus::fdo::RequestNameReply::PrimaryOwner | zbus::fdo::RequestNameReply::AlreadyOwner => {}
+        _ => return Err(zbus::Error::NameTaken),
     }
+    // Wake locks the older way, unless something else has it.
+    if let Err(e) = crate::inhibit::serve_screensaver(&conn) {
+        tracing::info!("portal: not serving org.freedesktop.ScreenSaver: {e}");
+    }
+    Ok(conn)
 }
 
 /// End `session` from our side (Stop in Deskbar, or its stream died):

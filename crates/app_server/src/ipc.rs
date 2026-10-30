@@ -230,12 +230,14 @@ fn accept<B: Backend + 'static>(state: &mut AnvilState<B>, stream: UnixStream) {
                 match s.read(&mut chunk) {
                     Ok(0) => {
                         *conn.dead.borrow_mut() = true;
+                        state.ipc_closed(&conn);
                         return Ok(PostAction::Remove);
                     }
                     Ok(n) => buf.extend_from_slice(&chunk[..n]),
                     Err(e) if e.kind() == ErrorKind::WouldBlock => break,
                     Err(_) => {
                         *conn.dead.borrow_mut() = true;
+                        state.ipc_closed(&conn);
                         return Ok(PostAction::Remove);
                     }
                 }
@@ -476,6 +478,10 @@ impl<B: Backend + 'static> AnvilState<B> {
             Request::PowerStatus => Reply::Power { status: self.power_status() },
             Request::Lock => {
                 self.lock_screen();
+                Reply::Ok
+            }
+            Request::KeepAwake { why } => {
+                self.keep_awake(conn, why);
                 Reply::Ok
             }
             Request::SetCaffeinated { on, minutes, lid } => {

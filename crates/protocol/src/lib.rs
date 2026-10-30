@@ -178,6 +178,11 @@ pub enum Request {
         #[serde(default)]
         lid: bool,
     },
+    /// Keep the screens awake (no dimming, display or system sleep, screen
+    /// saver or lock) for as long as this connection stays open, for
+    /// `why` (an app's call or video: the Inhibit portal, the
+    /// ScreenSaver service). Counted among the app inhibitors.
+    KeepAwake { why: String },
     /// Approve requests without asking (sudo in Terminal, unlocking
     /// Passwords) for `minutes` (5 to a day), or stop (None). Turning it
     /// on takes the account password, checked through PAM before the

@@ -23,6 +23,7 @@ use olo_kit::{App, Cx, WindowId, egui, instance};
 
 mod capture;
 mod client;
+mod inhibit;
 mod picker;
 mod portal;
 mod stream;
