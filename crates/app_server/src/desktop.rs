@@ -401,6 +401,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let infos = self.window_infos();
         if infos != self.last_window_infos {
             crate::twitcher::prewarm(infos.iter().map(|i| i.app_id.as_str()));
+            self.sync_toplevel_handles(&infos);
             self.last_window_infos = infos.clone();
             self.ipc.broadcast(Event::WindowsChanged { windows: infos });
         }

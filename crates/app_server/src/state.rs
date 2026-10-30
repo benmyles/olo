@@ -54,9 +54,11 @@ use smithay::{
         fifo::{FifoBarrierCachedState, FifoManagerState},
         fixes::FixesState,
         fractional_scale::{FractionalScaleHandler, FractionalScaleManagerState, with_fractional_scale},
+        foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListHandler, ForeignToplevelListState},
         image_capture_source::{
             ImageCaptureSource, ImageCaptureSourceHandler, ImageCaptureSourceState,
-            OutputCaptureSourceHandler, OutputCaptureSourceState,
+            OutputCaptureSourceHandler, OutputCaptureSourceState, ToplevelCaptureSourceHandler,
+            ToplevelCaptureSourceState,
         },
         image_copy_capture::{
             BufferConstraints, Frame, ImageCopyCaptureHandler, ImageCopyCaptureState, Session, SessionRef,
@@ -199,6 +201,13 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// Programs' capture sessions and the frames they asked for of the
     /// screens (`capture`).
     pub captures: crate::capture::Captures,
+    /// Windows as capture sources: each has a handle in the foreign-toplevel
+    /// list (identified by its id, `capture::toplevel_identifier`), from
+    /// which Olo's portal makes a source. (Both are hidden from outside
+    /// programs: wlproxy doesn't pass them.)
+    pub toplevel_capture_source_state: ToplevelCaptureSourceState,
+    pub foreign_toplevel_list_state: ForeignToplevelListState,
+    pub toplevel_handles: HashMap<u64, ForeignToplevelHandle>,
 
     pub dnd_icon: Option<DndIcon>,
 
@@ -857,12 +866,66 @@ impl<BackendData: Backend> OutputCaptureSourceHandler for AnvilState<BackendData
     }
 }
 
+impl<BackendData: Backend> ToplevelCaptureSourceHandler for AnvilState<BackendData> {
+    fn toplevel_capture_source_state(&mut self) -> &mut ToplevelCaptureSourceState {
+        &mut self.toplevel_capture_source_state
+    }
+
+    fn toplevel_source_created(&mut self, source: ImageCaptureSource, toplevel: ForeignToplevelHandle) {
+        if let Some(id) = crate::capture::window_of_identifier(&toplevel.identifier()) {
+            source.user_data().insert_if_missing(|| crate::capture::WindowSource(id));
+        }
+    }
+}
+
+impl<BackendData: Backend> ForeignToplevelListHandler for AnvilState<BackendData> {
+    fn foreign_toplevel_list_state(&mut self) -> &mut ForeignToplevelListState {
+        &mut self.foreign_toplevel_list_state
+    }
+}
+
+impl<BackendData: Backend> AnvilState<BackendData> {
+    /// Keep the foreign-toplevel list (windows as capture sources) as the
+    /// window list is: a handle for each window, its title and app id
+    /// kept current, and a window's shares stopped when it goes.
+    pub fn sync_toplevel_handles(&mut self, windows: &[olo_protocol::WindowInfo]) {
+        let gone: Vec<u64> = self.toplevel_handles.keys().filter(|id| !windows.iter().any(|w| w.id == **id)).copied().collect();
+        for id in gone {
+            if let Some(h) = self.toplevel_handles.remove(&id) {
+                self.foreign_toplevel_list_state.remove_toplevel(&h);
+            }
+            self.captures.window_gone(id);
+        }
+        for w in windows {
+            match self.toplevel_handles.get(&w.id) {
+                Some(h) => {
+                    if h.title() != w.title || h.app_id() != w.app_id {
+                        h.send_title(&w.title);
+                        h.send_app_id(&w.app_id);
+                        h.send_done();
+                    }
+                }
+                None => {
+                    let h = self.foreign_toplevel_list_state.new_toplevel_with_identifier::<Self>(w.title.clone(), w.app_id.clone(), crate::capture::toplevel_identifier(w.id));
+                    self.toplevel_handles.insert(w.id, h);
+                }
+            }
+        }
+    }
+}
+
 impl<BackendData: Backend> ImageCopyCaptureHandler for AnvilState<BackendData> {
     fn image_copy_capture_state(&mut self) -> &mut ImageCopyCaptureState {
         &mut self.image_copy_capture_state
     }
 
     fn capture_constraints(&mut self, source: &ImageCaptureSource) -> Option<BufferConstraints> {
+        if let Some(crate::capture::WindowSource(id)) = source.user_data().get::<crate::capture::WindowSource>() {
+            let window = self.space.elements().find(|w| w.id() == *id)?;
+            let scale = self.space.outputs_for_element(window).first().map_or(1.0, |o| o.current_scale().fractional_scale());
+            let size = window.content_size().to_f64().to_physical(scale).to_i32_round();
+            return Some(crate::capture::constraints_of(size, self.captures.dma.clone()));
+        }
         let output = source.user_data().get::<smithay::output::WeakOutput>()?.upgrade()?;
         crate::capture::constraints(&output, self.captures.dma.clone())
     }
@@ -1029,6 +1092,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let image_capture_source_state = ImageCaptureSourceState::new();
         let output_capture_source_state = OutputCaptureSourceState::new::<Self>(&dh);
         let image_copy_capture_state = ImageCopyCaptureState::new::<Self>(&dh);
+        let toplevel_capture_source_state = ToplevelCaptureSourceState::new::<Self>(&dh);
+        let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
 
         // init input
         let seat_name = backend_data.seat_name();
@@ -1095,6 +1160,9 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             output_capture_source_state,
             image_copy_capture_state,
             captures: Default::default(),
+            toplevel_capture_source_state,
+            foreign_toplevel_list_state,
+            toplevel_handles: HashMap::new(),
             dnd_icon: None,
             suppressed_keys: Vec::new(),
             keymap: Default::default(),

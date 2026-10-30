@@ -1982,13 +1982,15 @@ impl AnvilState<UdevData> {
         }
         // Frames programs asked for (screen sharing).
         self.captures.finish();
-        if self.captures.wanted(&output) {
+        let here = crate::capture::windows_on(&self.space, &output, locked);
+        let on_output = |id| here.contains(&id);
+        if self.captures.wanted(&output, &on_output) {
             let pointer = (self.pointer.current_location(), crate::saver::shown_cursor(&self.saver, &self.cursor_status));
             let now = self.clock.now().into();
             let (space, overview, lock) = (&self.space, self.overview.as_ref(), &self.lock);
-            self.captures.take(&mut renderer, &output, now, |renderer, cursor| {
-                let overlays = if locked { crate::lock::elements(lock, renderer, &output) } else { Vec::new() };
-                crate::render::capture_elements(renderer, &output, space, overlays, overview, desktop_color, locked, cursor.then_some((pointer.0, &pointer.1)))
+            self.captures.take(&mut renderer, &output, now, on_output, |renderer, what, cursor| {
+                let overlays = if locked && what == crate::capture::Target::Output { crate::lock::elements(lock, renderer, &output) } else { Vec::new() };
+                crate::capture::picture(renderer, &output, space, what, locked, || (overlays, overview, desktop_color, cursor.then_some((pointer.0, &pointer.1))))
             });
         }
         let overlays: Vec<CustomRenderElements<_>> = if locked {

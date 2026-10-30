@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Share Screen: screens and windows
+
+*04:15* — The screen-sharing picker offers windows too (what the app asked for): Screens and Windows, each a live thumbnail; a window is shared as only what its client draws, at its own size.
+
+![Share Screen: screens and windows](2026-10-30/041521-share-screen-screens-and-windows.png)
+
 ### Deskbar: what is being shared, with Stop Sharing
 
 *03:55* — While an app shares a screen, Deskbar's tray shows a screen with a recording's red dot; its menu says what is shared with whom and stops it (the app is told the share closed).

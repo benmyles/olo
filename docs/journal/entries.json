@@ -2224,5 +2224,11 @@
   "title": "Deskbar: what is being shared, with Stop Sharing",
   "caption": "While an app shares a screen, Deskbar's tray shows a screen with a recording's red dot; its menu says what is shared with whom and stops it (the app is told the share closed).",
   "image": "2026-10-30/035525-deskbar-what-is-being-shared-with-stop-sharing.png"
+ },
+ {
+  "time": "2026-10-30T04:15:21",
+  "title": "Share Screen: screens and windows",
+  "caption": "The screen-sharing picker offers windows too (what the app asked for): Screens and Windows, each a live thumbnail; a window is shared as only what its client draws, at its own size.",
+  "image": "2026-10-30/041521-share-screen-screens-and-windows.png"
  }
 ]

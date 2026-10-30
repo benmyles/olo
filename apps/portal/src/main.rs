@@ -10,7 +10,7 @@
 //! olo-portal capture-test OUT.png [OUTPUT]   write a frame of an output
 //! olo-portal stream-test [OUTPUT|-] [SECONDS] share one as a PipeWire
 //!                                 video source for that long
-//! olo-portal share-test OUT.png [--bus ADDRESS] [--hold SECS]  ask
+//! olo-portal share-test OUT.png [--bus ADDRESS] [--hold SECS] [--types 1|2|3]  ask
 //!                                 xdg-desktop-portal for a screen, as an
 //!                                 app does, write the first frame that
 //!                                 comes, and keep sharing that long
@@ -59,6 +59,46 @@ pub fn screens() -> Vec<ScreenInfo> {
             ScreenInfo { output: o.name.clone(), label, size, position: o.position, logical: ((size.0 as f64 / scale).round() as i32, (size.1 as f64 / scale).round() as i32) }
         })
         .collect()
+}
+
+/// Something that can be shared: a screen or a window.
+pub struct Shareable {
+    /// How a choice names it: a screen's connector, `window:ID`.
+    pub key: String,
+    pub label: String,
+    pub window: bool,
+    pub source: capture::Source,
+    /// Its size, in pixels for a screen (logical for a window: only its
+    /// shape counts, for its thumbnail).
+    pub size: (u32, u32),
+    /// Where it is and how big, in the desktop's logical coordinates.
+    pub position: (i32, i32),
+    pub logical: (i32, i32),
+}
+
+/// The screens, then the windows (not minimized, nor our own), as
+/// app_server lists them.
+pub fn shareables() -> Vec<Shareable> {
+    use olo_protocol::{Client, Reply, Request};
+    let mut all: Vec<Shareable> = screens()
+        .into_iter()
+        .map(|s| Shareable { key: s.output.clone(), label: s.label, window: false, source: capture::Source::Output(Some(s.output)), size: s.size, position: s.position, logical: s.logical })
+        .collect();
+    let Ok(Reply::Windows { windows }) = Client::connect().and_then(|mut c| c.request(&Request::ListWindows)) else { return all };
+    for w in windows.into_iter().filter(|w| !w.minimized && w.app_id != APP_ID) {
+        let (cw, ch) = w.content.as_ref().map_or((0, 0), |r| (r.width.max(0), r.height.max(0)));
+        let label = if w.title.is_empty() { app_name(&w.app_id) } else { w.title.clone() };
+        all.push(Shareable {
+            key: format!("window:{}", w.id),
+            label,
+            window: true,
+            source: capture::Source::Window { id: w.id, app_id: w.app_id, title: w.title },
+            size: (cw as u32, ch as u32),
+            position: w.content.as_ref().map_or((0, 0), |r| (r.x, r.y)),
+            logical: (cw, ch),
+        });
+    }
+    all
 }
 
 /// What people call the app `app_id` ("" if unknown).
@@ -141,8 +181,12 @@ impl App for Portal {
         let Ok(m) = message.downcast::<portal::ToUi>() else { return };
         match *m {
             portal::ToUi::Pick(ask) => {
-                let screens = screens().into_iter().map(|s| picker::Screen { output: s.output, label: s.label, size: s.size }).collect();
-                let (win, p) = picker::Picker::open(cx, ask, screens);
+                let (mut screens, mut windows) = (Vec::new(), Vec::new());
+                for s in shareables() {
+                    let item = picker::Item { key: s.key, label: s.label, size: s.size, source: s.source };
+                    if s.window { windows.push(item) } else { screens.push(item) }
+                }
+                let (win, p) = picker::Picker::open(cx, ask, screens, windows);
                 self.pickers.insert(win, p);
             }
             portal::ToUi::Ended => {}
@@ -158,7 +202,7 @@ impl App for Portal {
 }
 
 fn usage() -> std::process::ExitCode {
-    eprintln!("usage: olo-portal --service | --bus ADDRESS | capture-test OUT.png [OUTPUT] | stream-test [OUTPUT|-] [SECONDS] | share-test OUT.png [--bus ADDRESS] [--hold SECS] | --stop SESSION");
+    eprintln!("usage: olo-portal --service | --bus ADDRESS | capture-test OUT.png [OUTPUT] | stream-test [OUTPUT|-] [SECONDS] | share-test OUT.png [--bus ADDRESS] [--hold SECS] [--types 1|2|3] | --stop SESSION");
     std::process::ExitCode::FAILURE
 }
 
@@ -180,7 +224,7 @@ fn main() -> std::process::ExitCode {
         Some("capture-test") => return capture_test(args.get(1).map(String::as_str), args.get(2).map(String::as_str)).map_or_else(fail, |()| std::process::ExitCode::SUCCESS),
         Some("stream-test") => {
             let secs: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(5);
-            return match stream::run(args.get(1).cloned().filter(|o| o != "-"), true, || {}) {
+            return match stream::run(capture::Source::Output(args.get(1).cloned().filter(|o| o != "-")), true, || {}) {
                 Ok(share) => {
                     println!("node {} ({}×{})", share.node, share.size.0, share.size.1);
                     std::thread::sleep(std::time::Duration::from_secs(secs));
@@ -195,7 +239,9 @@ fn main() -> std::process::ExitCode {
             let Some(out) = args.get(1) else { return usage() };
             let value = |flag: &str| args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).map(String::as_str);
             let hold = value("--hold").and_then(|s| s.parse().ok()).unwrap_or(0);
-            return client::share_test(out, value("--bus"), hold).map_or_else(fail, |()| std::process::ExitCode::SUCCESS);
+            // What it asks for: 1 screens, 2 windows, 3 either.
+            let types = value("--types").and_then(|s| s.parse().ok()).unwrap_or(1);
+            return client::share_test(out, value("--bus"), hold, types).map_or_else(fail, |()| std::process::ExitCode::SUCCESS);
         }
         Some("--service") => None,
         // Deskbar's Stop Sharing, to the running service.
@@ -255,13 +301,29 @@ fn main() -> std::process::ExitCode {
 
 fn capture_test(out: Option<&str>, output: Option<&str>) -> Result<(), String> {
     let out = out.ok_or("capture-test needs a file to write")?;
-    let mut c = capture::Capture::output(output, true)?;
+    // (`window:ID` for a window.)
+    let source = match output.and_then(|o| o.strip_prefix("window:")).and_then(|id| id.parse().ok()) {
+        Some(id) => capture::Source::Window { id, app_id: String::new(), title: String::new() },
+        None => capture::Source::Output(output.map(str::to_owned)),
+    };
+    let mut c = capture::Capture::new(&source, true)?;
     let started = std::time::Instant::now();
     let p = c.frame()?;
     let first = started.elapsed();
-    // A second, as a stream would.
+    client::write_png(out, p.width, p.height, p.stride as usize, &p.data)?;
+    // A second, as a stream would: it comes once the picture changes.
     let again = std::time::Instant::now();
-    c.frame()?;
-    eprintln!("{}×{} {:?} ({}): first frame in {first:?}, the next in {:?}", p.width, p.height, p.format, if c.on_gpu() { "dmabuf" } else { "shared memory" }, again.elapsed());
-    client::write_png(out, p.width, p.height, p.stride as usize, &p.data)
+    c.request()?;
+    let next = loop {
+        if let Some(done) = c.poll()? {
+            done?;
+            break format!("the next in {:?}", again.elapsed());
+        }
+        if again.elapsed() > std::time::Duration::from_secs(3) {
+            break "no change in 3 s".to_owned();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    };
+    eprintln!("{}×{} {:?} ({}): first frame in {first:?}, {next}", p.width, p.height, p.format, if c.on_gpu() { "dmabuf" } else { "shared memory" });
+    Ok(())
 }

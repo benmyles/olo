@@ -502,6 +502,32 @@ where
     (frame(elements, fit), clear_color)
 }
 
+/// A picture of window `id` alone, for a screen share of it: only what
+/// its client draws (no tab or border), whole even when it is behind
+/// another of its group's tabs, at the scale of the screen it is mostly
+/// on; the elements, and its size in pixels and that scale.
+pub fn window_picture<R>(renderer: &mut R, space: &Space<WindowElement>, id: u64) -> Option<(Vec<FrameElements<R, WindowRenderElement<R>>>, Size<i32, Physical>, f64)>
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: smithay::backend::renderer::Texture + Clone + Send + 'static,
+{
+    let window = space.elements().find(|w| w.id() == id)?;
+    let at = space.element_location(window)?;
+    let scale = space.outputs_for_element(window).first().map_or(1.0, |o| o.current_scale().fractional_scale());
+    let geo = SpaceElement::geometry(window);
+    // Where the element draws from, as Space does it.
+    let origin = at - geo.loc;
+    let rect = Rectangle::new(origin + window.content_offset(), window.content_size());
+    let location = (origin - rect.loc).to_f64().to_physical(scale).to_i32_round();
+    // Whole, though it is behind others in its group (marked so again
+    // before the next frame).
+    window.decoration().behind = false;
+    let elements: Vec<WindowRenderElement<R>> = window.render_elements(renderer, location, scale.into(), 1.0);
+    let size = rect.size.to_f64().to_physical(scale).to_i32_round();
+    let elements = elements.into_iter().map(|e| FrameElements::Normal(OutputRenderElements::Window(Wrap::from(e)))).collect();
+    (size.w > 0 && size.h > 0).then_some((elements, size, scale))
+}
+
 /// The pointer as drawn on `output`, if it is over it: the built-in
 /// cursor for a named shape, or the client's surface.
 pub fn pointer_elements<R>(

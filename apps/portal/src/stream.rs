@@ -22,7 +22,7 @@ use std::{
 use pipewire as pw;
 use pw::{properties::properties, spa};
 
-use crate::capture::Capture;
+use crate::capture::{Capture, Source};
 
 /// A running share: setting `stop`, or dropping it, ends it.
 pub struct Share {
@@ -45,10 +45,10 @@ pub fn live() -> usize {
     LIVE.load(Ordering::Relaxed)
 }
 
-/// Start sharing the screen named `output` (the first if None), with the
+/// Start sharing `source` (a screen, or a window), with the
 /// pointer drawn in if `cursor`. `lost` is called if the share ends
 /// by itself, not stopped (app_server never came back).
-pub fn run(output: Option<String>, cursor: bool, lost: impl FnOnce() + Send + 'static) -> Result<Share, String> {
+pub fn run(source: Source, cursor: bool, lost: impl FnOnce() + Send + 'static) -> Result<Share, String> {
     let stop = Arc::new(AtomicBool::new(false));
     let (tx, rx) = mpsc::channel::<Result<(u32, (u32, u32)), String>>();
     {
@@ -56,7 +56,7 @@ pub fn run(output: Option<String>, cursor: bool, lost: impl FnOnce() + Send + 's
         std::thread::Builder::new()
             .name("portal-stream".into())
             .spawn(move || {
-                let ended = stream(output, cursor, stop.clone(), &tx);
+                let ended = stream(source, cursor, stop.clone(), &tx);
                 if let Err(e) = &ended {
                     tracing::warn!("portal: the share ended: {e}");
                     let _ = tx.send(Err(e.clone()));
@@ -103,21 +103,21 @@ fn offer(stream: &pw::stream::Stream, (w, h): (u32, u32)) {
     }
 }
 
-/// A capture of the screen `name` again, once app_server is back: tried
-/// every quarter second for half a minute (or until the share stops).
-fn reconnect(name: &str, cursor: bool, stop: &AtomicBool) -> Option<Capture> {
+/// A capture of `source` again, once app_server is back: tried every
+/// quarter second for half a minute (or until the share stops).
+fn reconnect(source: &Source, cursor: bool, stop: &AtomicBool) -> Option<Capture> {
     let until = std::time::Instant::now() + Duration::from_secs(30);
     while std::time::Instant::now() < until && !stop.load(Ordering::Relaxed) {
         std::thread::sleep(Duration::from_millis(250));
-        match Capture::output(Some(name), cursor) {
+        match Capture::new(source, cursor) {
             Ok(c) => {
-                tracing::info!("portal: sharing {name} again");
+                tracing::info!("portal: sharing {} again", c.name());
                 return Some(c);
             }
             Err(e) => tracing::debug!("portal: not yet: {e}"),
         }
     }
-    tracing::warn!("portal: app_server didn't come back; the share of {name} ends");
+    tracing::warn!("portal: app_server didn't come back; the share of {source:?} ends");
     None
 }
 
@@ -168,8 +168,13 @@ fn buffers(w: u32, h: u32) -> Option<Vec<u8>> {
     pw::spa::pod::serialize::PodSerializer::serialize(std::io::Cursor::new(Vec::new()), &Value::Object(object)).map(|r| r.0.into_inner()).ok()
 }
 
-fn stream(output: Option<String>, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc::Sender<Result<(u32, (u32, u32)), String>>) -> Result<(), String> {
-    let capture = Capture::output(output.as_deref(), cursor)?;
+fn stream(source: Source, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc::Sender<Result<(u32, (u32, u32)), String>>) -> Result<(), String> {
+    let capture = Capture::new(&source, cursor)?;
+    // A screen by its name from now on (the first, if none was named).
+    let source = match source {
+        Source::Output(_) => Source::Output(Some(capture.name().to_owned())),
+        window => window,
+    };
     let size = capture.size().ok_or("app_server gave no size")?;
     let fd = capture.fd()?;
     pw::init();
@@ -231,6 +236,11 @@ fn stream(output: Option<String>, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc
                 if !std::mem::take(&mut shared.fresh) {
                     return;
                 }
+                // (A frame of another size than the stream's, while it is
+                // offered anew, isn't given.)
+                if shared.capture.frame_size() != Some(shared.size) {
+                    return;
+                }
                 let Some(mut buffer) = s.dequeue_buffer() else { return };
                 let (w, h) = shared.size;
                 let datas = buffer.datas_mut();
@@ -288,7 +298,6 @@ fn stream(output: Option<String>, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc
         }
     });
     let _ = timer.update_timer(Some(Duration::from_millis(1)), Some(Duration::from_millis(4)));
-    let name = shared.borrow().capture.name().to_owned();
     let mut fd = Some(fd);
     loop {
         // What app_server says: a frame has come (the stream is given it),
@@ -316,6 +325,13 @@ fn stream(output: Option<String>, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc
                             tracing::debug!("portal: {e}");
                         }
                     }
+                    // What it showed went (a window closed): the share ends.
+                    Err(_) if shared.borrow().capture.stopped() => {
+                        tracing::info!("portal: what was shared is gone");
+                        if let Some(l) = weak.upgrade() {
+                            l.quit();
+                        }
+                    }
                     // app_server went (a reload): the share waits for it.
                     Err(e) => {
                         tracing::info!("portal: lost app_server ({e}); reconnecting");
@@ -334,7 +350,7 @@ fn stream(output: Option<String>, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc
         }
         // Back as it was once app_server is (a reload takes a second or
         // two), at its new size if that changed; the app sees a pause.
-        let Some(capture) = reconnect(&name, cursor, &stop) else { break };
+        let Some(capture) = reconnect(&source, cursor, &stop) else { break };
         let new = capture.size();
         fd = capture.fd().ok();
         let mut sh = shared.borrow_mut();

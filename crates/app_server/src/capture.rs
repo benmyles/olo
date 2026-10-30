@@ -11,7 +11,7 @@
 //! programs never see the protocol (wlproxy hides it); Olo's portal reaches
 //! it on the direct socket.
 
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use smithay::{
     backend::{
@@ -33,6 +33,89 @@ use smithay::{
         shm::{BufferData, with_buffer_contents, with_buffer_contents_mut},
     },
 };
+
+/// What a capture source shows: a screen, or one window (by its id; the
+/// source was made from its handle in the foreign-toplevel list).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Target {
+    Output,
+    Window(u64),
+}
+
+/// In a window source's user data: which window.
+pub struct WindowSource(pub u64);
+
+/// The windows mostly on `output`, whose frames are taken with its frame;
+/// none while the screen is locked (a window's share pauses on its last
+/// frame: nothing but the lock screen is shown then).
+pub fn windows_on(space: &smithay::desktop::Space<crate::shell::WindowElement>, output: &Output, locked: bool) -> Vec<u64> {
+    if locked {
+        return Vec::new();
+    }
+    space.elements().filter(|w| space.outputs_for_element(w).first() == Some(output)).map(|w| w.id()).collect()
+}
+
+/// What a session shows this frame: the screen (its own elements, made by
+/// `screen`: the overlays, overview, background and pointer) or a window
+/// alone (None: it went).
+pub fn picture<'a, R>(
+    renderer: &mut R,
+    output: &Output,
+    space: &smithay::desktop::Space<crate::shell::WindowElement>,
+    what: Target,
+    locked: bool,
+    screen: impl FnOnce() -> (
+        Vec<crate::render::CustomRenderElements<R>>,
+        Option<&'a crate::overview::Overview>,
+        Color32F,
+        Option<(smithay::utils::Point<f64, smithay::utils::Logical>, &'a smithay::input::pointer::CursorImageStatus)>,
+    ),
+) -> Option<Picture<crate::render::FrameElements<R, crate::shell::WindowRenderElement<R>>>>
+where
+    R: Renderer + smithay::backend::renderer::ImportAll + smithay::backend::renderer::ImportMem,
+    R::TextureId: Texture + Clone + Send + 'static,
+{
+    match what {
+        Target::Output => {
+            let (overlays, overview, color, pointer) = screen();
+            let (elements, clear) = crate::render::capture_elements(renderer, output, space, overlays, overview, color, locked, pointer);
+            Some(Picture { elements, clear, size: size(output)?, scale: output.current_scale().fractional_scale() })
+        }
+        Target::Window(id) => {
+            let (elements, size, scale) = crate::render::window_picture(renderer, space, id)?;
+            Some(Picture { elements, clear: Color32F::TRANSPARENT, size, scale })
+        }
+    }
+}
+
+/// What a session's source shows.
+pub fn target(session: &SessionRef) -> Option<(Target, Option<Output>)> {
+    let source = session.source();
+    if let Some(WindowSource(id)) = source.user_data().get::<WindowSource>() {
+        return Some((Target::Window(*id), None));
+    }
+    let output = source.user_data().get::<WeakOutput>()?.upgrade()?;
+    Some((Target::Output, Some(output)))
+}
+
+/// The identifier window `id` has in the foreign-toplevel list (how the
+/// portal finds a window Olo's IPC named).
+pub fn toplevel_identifier(id: u64) -> String {
+    format!("olo-{id}")
+}
+
+pub fn window_of_identifier(identifier: &str) -> Option<u64> {
+    identifier.strip_prefix("olo-")?.parse().ok()
+}
+
+/// What a session is drawn from this frame: its elements and background,
+/// and the picture's size and scale.
+pub struct Picture<E> {
+    pub elements: Vec<E>,
+    pub clear: Color32F,
+    pub size: Size<i32, Physical>,
+    pub scale: f64,
+}
 
 /// A client's capture session, and what it last saw.
 struct Cast {
@@ -83,12 +166,12 @@ pub fn size(output: &Output) -> Option<Size<i32, Physical>> {
 
 /// What a client's buffers for `output` must be.
 pub fn constraints(output: &Output, dma: Option<DmabufConstraints>) -> Option<BufferConstraints> {
-    let size = size(output)?;
-    Some(BufferConstraints {
-        size: (size.w, size.h).into(),
-        shm: vec![wl_shm::Format::Xrgb8888, wl_shm::Format::Argb8888],
-        dma,
-    })
+    size(output).map(|size| constraints_of(size, dma))
+}
+
+/// What a client's buffers for a picture of `size` must be.
+pub fn constraints_of(size: Size<i32, Physical>, dma: Option<DmabufConstraints>) -> BufferConstraints {
+    BufferConstraints { size: (size.w, size.h).into(), shm: vec![wl_shm::Format::Xrgb8888, wl_shm::Format::Argb8888], dma }
 }
 
 /// The formats app_server can draw captures into, from what its renderer
@@ -114,13 +197,25 @@ impl Captures {
         self.pending.retain(|(s, _)| s != session);
     }
 
-    /// A frame `session` asked for, drawn with its output's next frame.
+    /// A frame `session` asked for, drawn with its output's next frame
+    /// (a window's: that of the output it is mostly on).
     pub fn queue(&mut self, session: &SessionRef, frame: Frame) {
-        if session.source().user_data().get::<WeakOutput>().is_none() {
+        if target(session).is_none() {
             frame.fail(CaptureFailureReason::Unknown);
             return;
         }
         self.pending.push((session.clone(), frame));
+    }
+
+    /// Stop the sessions of window `id` (it went).
+    pub fn window_gone(&mut self, id: u64) {
+        let gone = |s: &SessionRef| matches!(target(s), Some((Target::Window(w), _)) if w == id);
+        self.pending.retain(|(s, _)| !gone(s));
+        let (stopped, kept): (Vec<Cast>, Vec<Cast>) = std::mem::take(&mut self.casts).into_iter().partition(|c| gone(&c.session.as_ref()));
+        self.casts = kept;
+        for c in stopped {
+            c.session.stop();
+        }
     }
 
     /// Tell the frames whose drawing the GPU has finished.
@@ -132,43 +227,61 @@ impl Captures {
         }
     }
 
-    /// Whether a frame of `output` is waiting (so the caller can skip
-    /// building what it draws).
-    pub fn wanted(&self, output: &Output) -> bool {
-        self.pending.iter().any(|(s, _)| s.source().user_data().get::<WeakOutput>().and_then(|o| o.upgrade()).is_none_or(|o| o == *output))
+    /// Whether a frame for `output`'s frame is waiting (so the caller can
+    /// skip building what it draws): of it, or of a window `on_output`
+    /// says is mostly on it.
+    pub fn wanted(&self, output: &Output, on_output: impl Fn(u64) -> bool) -> bool {
+        self.pending.iter().any(|(s, _)| match target(s) {
+            Some((Target::Output, o)) => o.is_none_or(|o| o == *output),
+            Some((Target::Window(id), _)) => on_output(id),
+            None => true,
+        })
     }
 
-    /// Draw the frames waiting for `output` whose picture changed since
-    /// their session's last. `elements(renderer, cursor)` is what a picture
-    /// of it shows, with the pointer if `cursor`, and its background.
-    pub fn take<R, E>(&mut self, renderer: &mut R, output: &Output, presented: Duration, mut elements: impl FnMut(&mut R, bool) -> (Vec<E>, Color32F))
-    where
+    /// Draw the frames waiting for `output`'s frame (of it, or of a window
+    /// `on_output` says is mostly on it) whose picture changed since their
+    /// session's last. `picture(renderer, target, cursor)` is what one
+    /// shows (with the pointer if `cursor`); None: it's gone.
+    pub fn take<R, E>(
+        &mut self,
+        renderer: &mut R,
+        output: &Output,
+        presented: Duration,
+        on_output: impl Fn(u64) -> bool,
+        mut picture: impl FnMut(&mut R, Target, bool) -> Option<Picture<E>>,
+    ) where
         R: Renderer + Bind<Dmabuf> + Offscreen<GlesTexture> + ExportMem,
         R::Error: std::fmt::Debug,
         R::TextureId: Texture,
         E: RenderElement<R>,
     {
         self.finish();
-        if !self.wanted(output) {
+        if !self.wanted(output, &on_output) {
             return;
         }
-        let Some(size) = size(output) else { return };
-        let scale = output.current_scale().fractional_scale();
-        let mut built: [Option<(Vec<E>, Color32F)>; 2] = [None, None];
+        let mut built: HashMap<(Target, bool), Option<Picture<E>>> = HashMap::new();
+        let mut gone = Vec::new();
         let pending = std::mem::take(&mut self.pending);
         for (session, frame) in pending {
-            let Some(target) = session.source().user_data().get::<WeakOutput>().cloned() else { continue };
-            match target.upgrade() {
+            let mine = match target(&session) {
                 None => {
                     frame.fail(CaptureFailureReason::Unknown);
                     continue;
                 }
-                Some(o) if o != *output => {
-                    self.pending.push((session, frame));
-                    continue;
-                }
-                Some(_) => {}
-            }
+                Some((Target::Output, o)) => match o {
+                    None => {
+                        frame.fail(CaptureFailureReason::Unknown);
+                        continue;
+                    }
+                    Some(o) if o == *output => Some(Target::Output),
+                    Some(_) => None,
+                },
+                Some((Target::Window(id), _)) => on_output(id).then_some(Target::Window(id)),
+            };
+            let Some(what) = mine else {
+                self.pending.push((session, frame));
+                continue;
+            };
             if frame.has_failed() {
                 continue;
             }
@@ -176,22 +289,28 @@ impl Captures {
                 frame.fail(CaptureFailureReason::Stopped);
                 continue;
             };
-            // The screen changed size: the client must allocate again.
-            if session.current_constraints().is_some_and(|c| c.size != (size.w, size.h).into()) {
-                if let Some(c) = constraints(output, self.dma.clone()) {
-                    session.update_constraints(c);
+            let cursor = session.draw_cursor();
+            let Some(pic) = built.entry((what, cursor)).or_insert_with(|| picture(renderer, what, cursor)) else {
+                if let Target::Window(id) = what {
+                    gone.push(id);
                 }
+                frame.fail(CaptureFailureReason::Stopped);
+                continue;
+            };
+            let (size, scale) = (pic.size, pic.scale);
+            // The picture changed size (the screen's mode, the window): the
+            // client must allocate again.
+            if session.current_constraints().is_some_and(|c| c.size != (size.w, size.h).into()) {
+                session.update_constraints(constraints_of(size, self.dma.clone()));
                 frame.fail(CaptureFailureReason::BufferConstraints);
                 continue;
             }
-            let cursor = session.draw_cursor();
-            let (els, clear) = built[cursor as usize].get_or_insert_with(|| elements(renderer, cursor));
             // Only when something changed since its last frame.
             if cast.damage.as_ref().is_none_or(|(_, s, sc)| *s != size || *sc != scale) {
                 cast.damage = Some((OutputDamageTracker::new(size, scale, Transform::Normal), size, scale));
             }
             let tracker = &mut cast.damage.as_mut().unwrap().0;
-            let damage = match tracker.damage_output(1, els) {
+            let damage = match tracker.damage_output(1, &pic.elements) {
                 Ok((d, _)) => d.map(|d| d.iter().map(|r| Rectangle::new((r.loc.x, r.loc.y).into(), (r.size.w, r.size.h).into())).collect::<Vec<_>>()),
                 Err(_) => {
                     frame.fail(CaptureFailureReason::Unknown);
@@ -204,14 +323,17 @@ impl Captures {
             }
             let damage = if cast.shown { damage } else { None };
             cast.shown = true;
-            match draw(renderer, cast, &frame, els, *clear, size, scale) {
+            match draw(renderer, cast, &frame, &pic.elements, pic.clear, size, scale) {
                 Ok(Some(sync)) => self.drawn.push(Drawn { frame, sync, damage, presented }),
                 Ok(None) => frame.success(Transform::Normal, damage, presented),
                 Err(e) => {
-                    tracing::warn!("capture of {}: {e}", output.name());
+                    tracing::warn!("capture for {}: {e}", output.name());
                     frame.fail(e.reason());
                 }
             }
+        }
+        for id in gone {
+            self.window_gone(id);
         }
     }
 }

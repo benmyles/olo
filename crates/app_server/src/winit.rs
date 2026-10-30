@@ -481,14 +481,16 @@ pub fn run_winit() {
             }
             // Frames programs asked for (screen sharing).
             state.captures.finish();
-            if state.captures.wanted(&output) {
+            let here = crate::capture::windows_on(&state.space, &output, state.lock.locked());
+            let on_output = |id| here.contains(&id);
+            if state.captures.wanted(&output, &on_output) {
                 let color = state.desktop_color(&output);
                 let locked = state.lock.locked();
                 let pointer = (state.pointer.current_location(), crate::saver::shown_cursor(&state.saver, &state.cursor_status));
                 let now = state.clock.now().into();
                 let (space, overview) = (&state.space, state.overview.as_ref());
-                state.captures.take(state.backend_data.backend.renderer(), &output, now, |renderer, cursor| {
-                    crate::render::capture_elements(renderer, &output, space, Vec::new(), overview, color, locked, cursor.then_some((pointer.0, &pointer.1)))
+                state.captures.take(state.backend_data.backend.renderer(), &output, now, on_output, |renderer, what, cursor| {
+                    crate::capture::picture(renderer, &output, space, what, locked, || (Vec::new(), overview, color, cursor.then_some((pointer.0, &pointer.1))))
                 });
             }
             display_handle.flush_clients().unwrap();

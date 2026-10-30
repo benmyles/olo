@@ -3104,17 +3104,23 @@ it shares (`App::busy`).
   request's handle lets the app cancel it. (Chrome opens a session for
   its own dialog's preview and another once its Share is pressed,
   passing the first's restore token: so one picker.) It answers with each stream's
-  PipeWire node, position, size and connector (`id`). Screens only, for
-  now (`AvailableSourceTypes` 1).
+  PipeWire node, size, connector or `window:ID` (`id`) and, for a
+  screen, its position. Screens and windows (`AvailableSourceTypes` 3);
+  the picker offers what the app asked for (`types`).
 - **The picker** (`picker.rs`): a fixed kit dialog over the asking
   window (`foreign_parent`): who asks (from the app id; "An app" when the
-  portal can't tell, as for unsandboxed apps), the screens as a
-  `ThumbnailPicker` (radio buttons to agents) of live thumbnails, and
-  Cancel / Share (Enter, Escape, or a double click). Its wells take the
-  first screen's shape at whole device pixels at every quarter scale
-  (192×108 for 16:9); a worker keeps a capture of each screen, asks for a
-  frame twice a second (app_server answers when it changed), and shrinks
-  it to the well's size in device pixels for the scale it is drawn at.
+  portal can't tell, as for unsandboxed apps), the screens and the
+  windows (not minimized; under Screens and Windows headings when both
+  are offered, the windows scrolling past two rows) as `ThumbnailPicker`s
+  (radio buttons to agents) of live thumbnails, and Cancel / Share
+  (Enter, Escape, or a double click). Screens' wells take the first
+  screen's shape (192×108 for 16:9), windows' are 160×100, all whole
+  device pixels at every quarter scale; a worker keeps a capture of each,
+  asks for a frame now and then (a screen twice a second, a window every
+  two; app_server answers when it changed), and shrinks it to the well's
+  size in device pixels for the scale it is drawn at, only ever from a
+  whole frame (`Capture::frame_size`: not a buffer allocated for a new
+  size that waits for its first, which is uninitialised memory).
 - **The stream** (`stream.rs`): one thread per share runs PipeWire's
   loop with app_server's connection as one of its sources. The node is
   its own driver offering BGRx at the screen's size, up to 60 frames a
@@ -3141,6 +3147,20 @@ it shares (`App::busy`).
   back as BGRA rows (a few ms at 5K: the fallback). Constraints follow the
   screen's rotation and are sent again when it changes size; the pointer
   is drawn in when the session asks (`paint_cursors`).
+- **Windows** (`capture::Target::Window`): each window has a handle in
+  the foreign-toplevel list whose identifier is `olo-ID`
+  (`AnvilState::sync_toplevel_handles`, as the window list changes), so
+  the portal finds a window Olo's IPC named and makes a capture source of
+  it. Its frames are taken with the frame of the output it is mostly on:
+  only what its client draws (no tab or border, `render::window_picture`),
+  whole even behind another tab of its group, at that screen's scale;
+  its size is the client's, and the stream is offered again when it
+  resizes. Closing it stops its sessions, and the share ends at once
+  (`Capture::stopped`, where app_server going away is waited for). While
+  the screen is locked a window's share pauses on its last frame. Both
+  protocols are kept from outside programs (wlproxy's list doesn't have
+  them). A window share reconnects after a reload by its id, or one with
+  the same app id and title (windows come back with new ids).
 
 - **While sharing** olo-portal writes what is shared
   (`olo_protocol::SharingState`: its pid, and each session's app,
@@ -3155,11 +3175,11 @@ it shares (`App::busy`).
 
 To try it: `olo-portal capture-test OUT.png` (a frame, saying whether it
 came as a dmabuf), `olo-portal stream-test - 10` (a PipeWire node for
-ten seconds), and `olo-portal share-test OUT.png [--hold SECS]` (asks
+ten seconds; `capture-test OUT.png window:ID` a window), and `olo-portal share-test OUT.png [--hold SECS] [--types 1|2|3]` (asks
 xdg-desktop-portal for a screen as an app does: the picker comes up,
 then it writes the first frame of the stream, read through the PipeWire
-connection the portal gave, and keeps sharing that long or until the
-portal closes the session). In tests keep all of it private: a PipeWire
+connection the portal gave, and keeps reading frames that long or until
+the portal closes the session, saying when the format changes). In tests keep all of it private: a PipeWire
 and WirePlumber of their own (`PIPEWIRE_RUNTIME_DIR` in /var/tmp,
 WirePlumber's device monitors turned off), and xdg-desktop-portal,
 xdg-permission-store and `olo-portal --bus ADDRESS` on the test

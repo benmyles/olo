@@ -53,7 +53,7 @@ fn opts(pairs: &[(&str, Value<'static>)]) -> HashMap<String, OwnedValue> {
     pairs.iter().map(|(k, v)| ((*k).to_owned(), OwnedValue::try_from(v.clone()).unwrap())).collect()
 }
 
-pub fn share_test(out: &str, bus: Option<&str>, hold: u64) -> Result<(), String> {
+pub fn share_test(out: &str, bus: Option<&str>, hold: u64, types: u32) -> Result<(), String> {
     let conn = match bus {
         Some(a) => zbus::blocking::connection::Builder::address(a).and_then(|b| b.build()),
         None => zbus::blocking::Connection::session(),
@@ -63,7 +63,7 @@ pub fn share_test(out: &str, bus: Option<&str>, hold: u64) -> Result<(), String>
     let session: String = results.get("session_handle").and_then(|v| String::try_from(v.try_clone().ok()?).ok()).ok_or("no session")?;
     let session = OwnedObjectPath::try_from(session).map_err(|e| e.to_string())?;
     println!("session {}", session.as_str());
-    call(&conn, "SelectSources", "olo2", &(&session, opts(&[("handle_token", "olo2".into()), ("types", 1u32.into()), ("cursor_mode", 2u32.into())])))?;
+    call(&conn, "SelectSources", "olo2", &(&session, opts(&[("handle_token", "olo2".into()), ("types", types.into()), ("cursor_mode", 2u32.into())])))?;
     let results = call(&conn, "Start", "olo3", &(&session, "", opts(&[("handle_token", "olo3".into())])))?;
     let streams = results.get("streams").ok_or("no streams")?;
     let streams: Vec<(u32, HashMap<String, OwnedValue>)> = streams.try_clone().map_err(|e| e.to_string())?.try_into().map_err(|e: zbus::zvariant::Error| e.to_string())?;
@@ -71,30 +71,36 @@ pub fn share_test(out: &str, bus: Option<&str>, hold: u64) -> Result<(), String>
     println!("stream: node {node}, {props:?}");
     let portal = zbus::blocking::Proxy::new(&conn, DESKTOP, PATH, SCREENCAST).map_err(|e| e.to_string())?;
     let fd: zbus::zvariant::OwnedFd = portal.call("OpenPipeWireRemote", &(&session, HashMap::<String, OwnedValue>::new())).map_err(|e| format!("OpenPipeWireRemote: {e}"))?;
-    let frame = read_frame(OwnedFd::from(fd), *node)?;
+    // Kept open (as an app sharing is) for `hold` seconds after the first
+    // frame, or until the portal closes it (Stop Sharing).
+    let closed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    if hold > 0 {
+        let sess = zbus::blocking::Proxy::new(&conn, DESKTOP, session.as_str(), "org.freedesktop.portal.Session").map_err(|e| e.to_string())?;
+        let mut signals = sess.receive_signal("Closed").map_err(|e| e.to_string())?;
+        let closed = closed.clone();
+        std::thread::spawn(move || {
+            if signals.next().is_some() {
+                closed.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        });
+    }
+    let frame = read_frames(OwnedFd::from(fd), *node, std::time::Duration::from_secs(hold), closed.clone())?;
     write_png(out, frame.0, frame.1, frame.2, &frame.3)?;
     println!("wrote {out} ({}×{})", frame.0, frame.1);
     if hold > 0 {
-        // Kept open (as an app sharing is) until then, or until the portal
-        // closes it (Stop Sharing).
-        let sess = zbus::blocking::Proxy::new(&conn, DESKTOP, session.as_str(), "org.freedesktop.portal.Session").map_err(|e| e.to_string())?;
-        let mut closed = sess.receive_signal("Closed").map_err(|e| e.to_string())?;
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            if closed.next().is_some() {
-                let _ = tx.send(());
-            }
-        });
-        match rx.recv_timeout(std::time::Duration::from_secs(hold)) {
-            Ok(()) => println!("the portal closed the session"),
-            Err(_) => println!("held for {hold} s"),
+        if closed.load(std::sync::atomic::Ordering::Relaxed) {
+            println!("the portal closed the session");
+        } else {
+            println!("held for {hold} s");
         }
     }
     Ok(())
 }
 
-/// The first frame of `node`, through the PipeWire connection `fd`.
-fn read_frame(fd: OwnedFd, node: u32) -> Result<(u32, u32, usize, Vec<u8>), String> {
+/// The first frame of `node`, through the PipeWire connection `fd`; then
+/// frames go on being read for `hold` (or until `closed`), saying when
+/// the format changes and how many came each second.
+fn read_frames(fd: OwnedFd, node: u32, hold: std::time::Duration, closed: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Result<(u32, u32, usize, Vec<u8>), String> {
     use pw::spa::{param::format::FormatProperties as P, pod, utils};
     pw::init();
     let mainloop = pw::main_loop::MainLoopRc::new(None).map_err(|e| e.to_string())?;
@@ -107,6 +113,7 @@ fn read_frame(fd: OwnedFd, node: u32) -> Result<(u32, u32, usize, Vec<u8>), Stri
     )
     .map_err(|e| e.to_string())?;
     let size = std::rc::Rc::new(std::cell::Cell::new((0u32, 0u32)));
+    let frames = std::rc::Rc::new(std::cell::Cell::new(0u32));
     let got: std::rc::Rc<std::cell::RefCell<Option<(u32, u32, usize, Vec<u8>)>>> = Default::default();
     let weak = mainloop.downgrade();
     let _listener = stream
@@ -118,23 +125,30 @@ fn read_frame(fd: OwnedFd, node: u32) -> Result<(u32, u32, usize, Vec<u8>), Stri
                 let mut info = pw::spa::param::video::VideoInfoRaw::new();
                 if info.parse(param).is_ok() {
                     size.set((info.size().width, info.size().height));
+                    println!("format {}×{}", info.size().width, info.size().height);
                 }
             }
         })
         .process({
-            let (size, got) = (size.clone(), got.clone());
+            let (size, got, frames) = (size.clone(), got.clone(), frames.clone());
             move |s, _| {
                 let Some(mut buffer) = s.dequeue_buffer() else { return };
                 let datas = buffer.datas_mut();
                 let Some(d) = datas.first_mut() else { return };
                 let (stride, len) = (d.chunk().stride().max(0) as usize, d.chunk().size() as usize);
-                if len == 0 || got.borrow().is_some() {
+                if len == 0 {
+                    return;
+                }
+                frames.set(frames.get() + 1);
+                if got.borrow().is_some() {
                     return;
                 }
                 if let Some(bytes) = d.data() {
                     let (w, h) = size.get();
                     *got.borrow_mut() = Some((w, h, stride, bytes[..len.min(bytes.len())].to_vec()));
-                    if let Some(l) = weak.upgrade() {
+                    if hold.is_zero()
+                        && let Some(l) = weak.upgrade()
+                    {
                         l.quit();
                     }
                 }
@@ -156,16 +170,31 @@ fn read_frame(fd: OwnedFd, node: u32) -> Result<(u32, u32, usize, Vec<u8>), Stri
     stream
         .connect(pw::spa::utils::Direction::Input, Some(node), pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS, &mut params)
         .map_err(|e| e.to_string())?;
-    // Give up after a while.
+    // Each second: how many came; the end once held long enough (or
+    // closed), or given up on after 20 s with nothing.
+    let started = std::time::Instant::now();
+    let first: std::rc::Rc<std::cell::Cell<Option<std::time::Instant>>> = Default::default();
     let timer = mainloop.loop_().add_timer({
         let weak = mainloop.downgrade();
+        let (got, frames, size, first) = (got.clone(), frames.clone(), size.clone(), first.clone());
         move |_| {
-            if let Some(l) = weak.upgrade() {
+            if got.borrow().is_some() && first.get().is_none() {
+                first.set(Some(std::time::Instant::now()));
+            }
+            let n = frames.replace(0);
+            if n > 0 && !hold.is_zero() {
+                println!("{n} frames ({}×{})", size.get().0, size.get().1);
+            }
+            let done = match first.get() {
+                Some(t) => t.elapsed() >= hold || closed.load(std::sync::atomic::Ordering::Relaxed),
+                None => started.elapsed() > std::time::Duration::from_secs(20),
+            };
+            if done && let Some(l) = weak.upgrade() {
                 l.quit();
             }
         }
     });
-    let _ = timer.update_timer(Some(std::time::Duration::from_secs(20)), None);
+    let _ = timer.update_timer(Some(std::time::Duration::from_secs(1)), Some(std::time::Duration::from_secs(1)));
     mainloop.run();
     let _ = stream.disconnect();
     got.borrow_mut().take().ok_or_else(|| "no frame came".into())

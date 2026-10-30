@@ -15,7 +15,8 @@ use wayland_client::{
 };
 use wayland_protocols::{
     ext::{
-        image_capture_source::v1::client::{ext_image_capture_source_v1, ext_output_image_capture_source_manager_v1},
+        foreign_toplevel_list::v1::client::{ext_foreign_toplevel_handle_v1, ext_foreign_toplevel_list_v1},
+        image_capture_source::v1::client::{ext_foreign_toplevel_image_capture_source_manager_v1, ext_image_capture_source_v1, ext_output_image_capture_source_manager_v1},
         image_copy_capture::v1::client::{ext_image_copy_capture_frame_v1 as frame_v1, ext_image_copy_capture_manager_v1, ext_image_copy_capture_session_v1 as session_v1},
     },
     wp::linux_dmabuf::zv1::client::{zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1},
@@ -30,9 +31,18 @@ pub struct Picture {
     pub data: Vec<u8>,
 }
 
+/// A window in the foreign-toplevel list, as its events say.
+struct Toplevel {
+    handle: ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
+    identifier: String,
+    app_id: String,
+    title: String,
+}
+
 #[derive(Default)]
 struct State {
     outputs: Vec<(wl_output::WlOutput, String)>,
+    toplevels: Vec<Toplevel>,
     size: Option<(u32, u32)>,
     formats: Vec<wl_shm::Format>,
     /// The GPU app_server draws dmabufs on, and the formats (with their
@@ -65,35 +75,72 @@ pub struct Capture {
     buffer: Option<(wl_buffer::WlBuffer, Target, (u32, u32, u32, wl_shm::Format))>,
     /// The buffer is new: what it holds is unknown to app_server.
     fresh: bool,
+    /// The buffer holds a whole frame (not while a new one, allocated for
+    /// another size, waits for its first).
+    filled: bool,
     /// The frame asked for, until it comes.
     frame: Option<frame_v1::ExtImageCopyCaptureFrameV1>,
 }
 
+/// What to capture.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Source {
+    /// The output with this name (the first one if None).
+    Output(Option<String>),
+    /// A window, by its id in Olo (its handle's identifier in the
+    /// foreign-toplevel list is `olo-ID`); if it is gone, one with the
+    /// same app id and title (after an app_server reload, as windows are
+    /// put back with new ids).
+    Window { id: u64, app_id: String, title: String },
+}
+
 impl Capture {
-    /// Capture the output named `name` (the first one if None) of the
-    /// compositor at `WAYLAND_DISPLAY`.
-    /// With `cursor`, the pointer is drawn in.
-    pub fn output(name: Option<&str>, cursor: bool) -> Result<Capture, String> {
+    /// Capture `source` on the compositor at `WAYLAND_DISPLAY`, with the
+    /// pointer drawn in if `cursor`.
+    pub fn new(source: &Source, cursor: bool) -> Result<Capture, String> {
         let conn = connect().map_err(|e| format!("can't reach app_server: {e}"))?;
         let (globals, mut queue) = registry_queue_init::<State>(&conn).map_err(|e| e.to_string())?;
         let qh = queue.handle();
         let mut state = State::default();
         let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).map_err(|_| "no wl_shm".to_owned())?;
         let dmabuf: Option<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1> = globals.bind(&qh, 3..=3, ()).ok();
-        let sources: ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1 = globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server offers no output capture (ext-image-capture-source)".to_owned())?;
         let copier: ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1 = globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server offers no ext-image-copy-capture".to_owned())?;
-        for g in globals.contents().clone_list().iter().filter(|g| g.interface == "wl_output") {
-            let o: wl_output::WlOutput = globals.registry().bind(g.name, g.version.min(4), &qh, ());
-            state.outputs.push((o, String::new()));
-        }
-        // The outputs' names come with their first events.
-        queue.roundtrip(&mut state).map_err(|e| e.to_string())?;
-        let (output, name) = match name {
-            Some(n) => state.outputs.iter().find(|(_, o)| o == n).cloned().ok_or_else(|| format!("no output {n}"))?,
-            None => state.outputs.first().cloned().ok_or("no outputs")?,
+        let (image_source, name) = match source {
+            Source::Output(name) => {
+                let sources: ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1 = globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server offers no output capture (ext-image-capture-source)".to_owned())?;
+                for g in globals.contents().clone_list().iter().filter(|g| g.interface == "wl_output") {
+                    let o: wl_output::WlOutput = globals.registry().bind(g.name, g.version.min(4), &qh, ());
+                    state.outputs.push((o, String::new()));
+                }
+                // The outputs' names come with their first events.
+                queue.roundtrip(&mut state).map_err(|e| e.to_string())?;
+                let (output, name) = match name {
+                    Some(n) => state.outputs.iter().find(|(_, o)| o == n).cloned().ok_or_else(|| format!("no output {n}"))?,
+                    None => state.outputs.first().cloned().ok_or("no outputs")?,
+                };
+                (sources.create_source(&output, &qh, ()), name)
+            }
+            Source::Window { id, app_id, title } => {
+                let list: ext_foreign_toplevel_list_v1::ExtForeignToplevelListV1 = globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server lists no windows (ext-foreign-toplevel-list)".to_owned())?;
+                let sources: ext_foreign_toplevel_image_capture_source_manager_v1::ExtForeignToplevelImageCaptureSourceManagerV1 =
+                    globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server offers no window capture".to_owned())?;
+                // The windows come at once, each finished by `done`.
+                queue.roundtrip(&mut state).map_err(|e| e.to_string())?;
+                queue.roundtrip(&mut state).map_err(|e| e.to_string())?;
+                let wanted = format!("olo-{id}");
+                let found = state
+                    .toplevels
+                    .iter()
+                    .find(|t| t.identifier == wanted)
+                    .or_else(|| state.toplevels.iter().find(|t| t.app_id == *app_id && t.title == *title))
+                    .ok_or_else(|| format!("no window {id}"))?;
+                let made = sources.create_source(&found.handle, &qh, ());
+                let name = found.identifier.clone();
+                list.stop();
+                (made, name)
+            }
         };
-        let source = sources.create_source(&output, &qh, ());
-        let session = copier.create_session(&source, if cursor { ext_image_copy_capture_manager_v1::Options::PaintCursors } else { ext_image_copy_capture_manager_v1::Options::empty() }, &qh, ());
+        let session = copier.create_session(&image_source, if cursor { ext_image_copy_capture_manager_v1::Options::PaintCursors } else { ext_image_copy_capture_manager_v1::Options::empty() }, &qh, ());
         while !state.constraints_done && !state.stopped {
             queue.blocking_dispatch(&mut state).map_err(|e| e.to_string())?;
         }
@@ -111,7 +158,7 @@ impl Capture {
                 }
             })
         };
-        Ok(Capture { queue, state, shm, dmabuf, gbm, conn, name, session, buffer: None, fresh: true, frame: None })
+        Ok(Capture { queue, state, shm, dmabuf, gbm, conn, name, session, buffer: None, fresh: true, filled: false, frame: None })
     }
 
     /// Whether frames come through the GPU (dmabufs).
@@ -218,6 +265,7 @@ impl Capture {
                 }
             });
             self.fresh = true;
+            self.filled = false;
         }
         let qh = self.queue.handle();
         let (buffer, _, _) = self.buffer.as_ref().unwrap();
@@ -252,10 +300,17 @@ impl Capture {
         if let Some(frame) = self.frame.take() {
             frame.destroy();
         }
-        if done.is_err() {
-            self.fresh = true;
+        match done {
+            Ok(()) => self.filled = true,
+            Err(_) => self.fresh = true,
         }
         Ok(Some(done))
+    }
+
+    /// Whether app_server ended the session (what it showed went: a
+    /// window closed), rather than going away itself.
+    pub fn stopped(&self) -> bool {
+        self.state.stopped
     }
 
     /// Whether a frame asked for hasn't come yet.
@@ -263,10 +318,17 @@ impl Capture {
         self.frame.is_some()
     }
 
+    /// The size of the last frame that came (which `copy_into` copies):
+    /// None before one has, or while a buffer of another size waits for
+    /// its first. (`size` is the size the next will be.)
+    pub fn frame_size(&self) -> Option<(u32, u32)> {
+        self.buffer.as_ref().filter(|_| self.filled).map(|(_, _, (w, h, _, _))| (*w, *h))
+    }
+
     /// Copy the last frame into `out`, `stride` bytes a row (as wide as the
     /// frame, or wider).
     pub fn copy_into(&self, out: &mut [u8], stride: usize) -> Result<(), String> {
-        let Some((_, target, (w, h, _, _))) = self.buffer.as_ref() else { return Err("no frame yet".into()) };
+        let Some((_, target, (w, h, _, _))) = self.buffer.as_ref().filter(|_| self.filled) else { return Err("no frame yet".into()) };
         let row = *w as usize * 4;
         if stride < row || out.len() < stride * (*h as usize - 1) + row {
             return Err("the buffer is too small for the frame".into());
@@ -344,6 +406,31 @@ impl Dispatch<wl_output::WlOutput, ()> for State {
     }
 }
 
+impl Dispatch<ext_foreign_toplevel_list_v1::ExtForeignToplevelListV1, ()> for State {
+    fn event(state: &mut Self, _: &ext_foreign_toplevel_list_v1::ExtForeignToplevelListV1, event: ext_foreign_toplevel_list_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let ext_foreign_toplevel_list_v1::Event::Toplevel { toplevel } = event {
+            state.toplevels.push(Toplevel { handle: toplevel, identifier: String::new(), app_id: String::new(), title: String::new() });
+        }
+    }
+
+    wayland_client::event_created_child!(State, ext_foreign_toplevel_list_v1::ExtForeignToplevelListV1, [
+        ext_foreign_toplevel_list_v1::EVT_TOPLEVEL_OPCODE => (ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1, ()),
+    ]);
+}
+
+impl Dispatch<ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1, ()> for State {
+    fn event(state: &mut Self, handle: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1, event: ext_foreign_toplevel_handle_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        let Some(t) = state.toplevels.iter_mut().find(|t| t.handle == *handle) else { return };
+        match event {
+            ext_foreign_toplevel_handle_v1::Event::Identifier { identifier } => t.identifier = identifier,
+            ext_foreign_toplevel_handle_v1::Event::AppId { app_id } => t.app_id = app_id,
+            ext_foreign_toplevel_handle_v1::Event::Title { title } => t.title = title,
+            ext_foreign_toplevel_handle_v1::Event::Closed => state.toplevels.retain(|t| t.handle != *handle),
+            _ => {}
+        }
+    }
+}
+
 impl Dispatch<session_v1::ExtImageCopyCaptureSessionV1, ()> for State {
     fn event(state: &mut Self, _: &session_v1::ExtImageCopyCaptureSessionV1, event: session_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
         match event {
@@ -396,6 +483,7 @@ ignore!(
     zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1,
     zwp_linux_buffer_params_v1::ZwpLinuxBufferParamsV1,
     ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1,
+    ext_foreign_toplevel_image_capture_source_manager_v1::ExtForeignToplevelImageCaptureSourceManagerV1,
     ext_image_capture_source_v1::ExtImageCaptureSourceV1,
     ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1
 );

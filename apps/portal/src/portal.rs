@@ -24,8 +24,9 @@ use crate::{picker, stream};
 pub const NAME: &str = "org.freedesktop.impl.portal.desktop.olo";
 pub const PATH: &str = "/org/freedesktop/portal/desktop";
 
-/// Source types (bits): screens; windows come later.
+/// Source types (bits): screens, windows.
 const MONITOR: u32 = 1;
+const WINDOW: u32 = 2;
 /// Cursor modes (bits): hidden, drawn into the picture.
 const HIDDEN: u32 = 1;
 const EMBEDDED: u32 = 2;
@@ -53,6 +54,8 @@ pub enum ToUi {
 #[derive(Default)]
 struct Session {
     app: String,
+    /// What it may share (`MONITOR`, `WINDOW`, both).
+    types: u32,
     /// What people call the app and the screens shared, and since when
     /// (for Deskbar: `olo_protocol::SharingState`).
     app_name: String,
@@ -118,6 +121,10 @@ impl ScreenCast {
         let Some(s) = sessions.get_mut(&session_handle) else { return (FAILED, Results::new()) };
         let get_u32 = |k: &str| options.get(k).and_then(|v| u32::try_from(v).ok());
         s.cursor = get_u32("cursor_mode").unwrap_or(HIDDEN);
+        s.types = match get_u32("types").unwrap_or(MONITOR) & (MONITOR | WINDOW) {
+            0 => MONITOR,
+            t => t,
+        };
         s.persist = get_u32("persist_mode").unwrap_or(0);
         s.restore = options.get("restore_data").and_then(restored);
         tracing::info!(app = s.app, cursor = s.cursor, persist = s.persist, restore = ?s.restore, "portal: sources selected");
@@ -133,13 +140,14 @@ impl ScreenCast {
         _options: HashMap<String, OwnedValue>,
         #[zbus(object_server)] server: &zbus::ObjectServer,
     ) -> (u32, Results) {
-        let (app, restore, cursor, persist) = {
+        let (app, restore, cursor, persist, types) = {
             let sessions = self.sessions.lock().unwrap();
             let Some(s) = sessions.get(&session_handle) else { return (FAILED, Results::new()) };
-            (s.app.clone(), s.restore.clone(), s.cursor, s.persist)
+            (s.app.clone(), s.restore.clone(), s.cursor, s.persist, if s.types == 0 { MONITOR } else { s.types })
         };
-        let screens = crate::screens();
-        let known = |o: &String| screens.iter().any(|s| &s.output == o);
+        let all = crate::shareables();
+        let kind = |window: bool| if window { WINDOW } else { MONITOR };
+        let known = |k: &String| all.iter().any(|s| &s.key == k && (types & kind(s.window)) != 0);
         // Without asking: a screen this app chose before (still there), or
         // the one it chose moments ago in another session.
         let repeat = self.last.lock().unwrap().as_ref().filter(|(a, at, _)| *a == app && at.elapsed() < REPEAT).map(|(_, _, c)| c.clone());
@@ -149,25 +157,27 @@ impl ScreenCast {
                 let (tx, rx) = async_channel::bounded(1);
                 let request = RequestObject { handle: handle.to_string(), to_ui: self.to_ui.clone() };
                 let _ = server.at(handle.as_ref(), request).await;
-                (self.to_ui)(ToUi::Pick(picker::Ask { request: handle.to_string(), app: crate::app_name(&app), parent: parent_window, reply: tx }));
+                (self.to_ui)(ToUi::Pick(picker::Ask { request: handle.to_string(), app: crate::app_name(&app), parent: parent_window, types, reply: tx }));
                 let answer = rx.recv().await.ok().flatten();
                 let _ = server.remove::<RequestObject, _>(handle.as_ref()).await;
                 answer
             }
         };
         let Some(chosen) = chosen.filter(|c| !c.is_empty()) else { return (CANCELLED, Results::new()) };
+        // What each is (gone since it was chosen: the share fails).
+        let Some(picked) = chosen.iter().map(|k| all.iter().find(|s| &s.key == k)).collect::<Option<Vec<_>>>() else { return (FAILED, Results::new()) };
         *self.last.lock().unwrap() = Some((app, Instant::now(), chosen.clone()));
         // The streams, each on its own thread (PipeWire's start can take a
         // moment: off the bus's executor).
         let draw_cursor = cursor & EMBEDDED != 0;
-        let outputs = chosen.clone();
+        let sources: Vec<crate::capture::Source> = picked.iter().map(|s| s.source.clone()).collect();
         let (to_ui, path) = (self.to_ui.clone(), session_handle.to_string());
         let started = blocking::unblock(move || {
-            outputs
+            sources
                 .into_iter()
-                .map(|o| {
+                .map(|source| {
                     let (to_ui, path) = (to_ui.clone(), path.clone());
-                    stream::run(Some(o), draw_cursor, move || to_ui(ToUi::Lost(path)))
+                    stream::run(source, draw_cursor, move || to_ui(ToUi::Lost(path)))
                 })
                 .collect::<Result<Vec<_>, String>>()
         })
@@ -181,17 +191,17 @@ impl ScreenCast {
         };
         let streams: Vec<(u32, HashMap<String, OwnedValue>)> = shares
             .iter()
-            .zip(&chosen)
-            .map(|(share, output)| {
-                let screen = screens.iter().find(|s| &s.output == output);
-                let (x, y) = screen.map(|s| s.position).unwrap_or_default();
-                let (w, h) = screen.map(|s| s.logical).unwrap_or((share.size.0 as i32, share.size.1 as i32));
-                let props = HashMap::from([
-                    ("source_type".to_owned(), value(MONITOR)),
-                    ("position".to_owned(), value((x, y))),
-                    ("size".to_owned(), value((w, h))),
-                    ("id".to_owned(), value(output.clone())),
+            .zip(&picked)
+            .map(|(share, what)| {
+                let mut props = HashMap::from([
+                    ("source_type".to_owned(), value(if what.window { WINDOW } else { MONITOR })),
+                    ("size".to_owned(), value(what.logical)),
+                    ("id".to_owned(), value(what.key.clone())),
                 ]);
+                // (A screen's place on the desktop; a window has none to give.)
+                if !what.window {
+                    props.insert("position".to_owned(), value(what.position));
+                }
                 (share.node, props)
             })
             .collect();
@@ -207,7 +217,7 @@ impl ScreenCast {
             Some(s) => {
                 s.shares = shares;
                 s.app_name = crate::app_name(&s.app);
-                s.labels = chosen.iter().map(|o| screens.iter().find(|s| &s.output == o).map_or_else(|| o.clone(), |s| s.label.clone())).collect();
+                s.labels = picked.iter().map(|p| p.label.clone()).collect();
                 s.since = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
             }
             // Closed while the picker was up: the shares stop as they drop.
@@ -219,7 +229,7 @@ impl ScreenCast {
 
     #[zbus(property, name = "AvailableSourceTypes")]
     fn available_source_types(&self) -> u32 {
-        MONITOR
+        MONITOR | WINDOW
     }
 
     #[zbus(property, name = "AvailableCursorModes")]
