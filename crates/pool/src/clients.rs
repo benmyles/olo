@@ -7,8 +7,12 @@
 //! starts) gets `HTTPS_PROXY` and `SSL_CERT_FILE` (the system's roots and
 //! the pool's, as Codex's setting replaces the roots). Their files are
 //! edited in place (other settings untouched), and what was there before
-//! is kept in `pool-clients.json`, so turning it off puts it back
-//! exactly. A client pointed at the pool the old way (Claude Code's
+//! is kept in `pool-clients.json`, so putting it back (`put_back`)
+//! restores it exactly. Turning a client off in the pool only pauses it:
+//! still pointed at the proxy, its requests pass straight through on its
+//! own sign-in (`Shared::routes`, request by request), so turning it off
+//! and on again needs no restart of it (nor of Codex's service), and cuts
+//! nothing under way. A client pointed at the pool the old way (Claude Code's
 //! `ANTHROPIC_BASE_URL`, Codex's `olo_pool` provider: an API endpoint of
 //! its own) is put back first, and `migrate` moves it over.
 
@@ -55,6 +59,23 @@ struct Manifest {
     claude: Option<BTreeMap<String, Option<String>>>,
     #[serde(default)]
     codex: Option<BTreeMap<String, Option<String>>>,
+    /// The clients turned off: still pointed at the proxy, passed
+    /// through.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    paused: std::collections::BTreeSet<String>,
+}
+
+fn key(provider: Provider) -> &'static str {
+    match provider {
+        Provider::Claude => "claude",
+        Provider::Codex => "codex",
+    }
+}
+
+/// Whether `provider`'s client is turned off in the pool (still pointed at
+/// its proxy, its requests passed through).
+pub fn paused(provider: Provider) -> bool {
+    read_manifest().paused.contains(key(provider))
 }
 
 fn read_manifest() -> Manifest {
@@ -105,9 +126,15 @@ fn write_file(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
 }
 
 /// Whether `provider`'s client goes through the pool now (the proxy on
-/// `port`, or the old way).
+/// `port` and not turned off, or the old way).
 pub fn enabled(provider: Provider, port: u16) -> bool {
-    through_proxy(provider, port) || the_old_way(provider)
+    (through_proxy(provider, port) && !paused(provider)) || the_old_way(provider)
+}
+
+/// Whether `provider`'s client is pointed at the pool's proxy on `port`
+/// (turned off or not).
+pub fn pointed(provider: Provider, port: u16) -> bool {
+    through_proxy(provider, port)
 }
 
 fn through_proxy(provider: Provider, port: u16) -> bool {
@@ -130,30 +157,65 @@ fn the_old_way(provider: Provider) -> bool {
     }
 }
 
-/// Point `provider`'s client at the pool (`on`), or put back what it used
-/// before. Blocks on the disk.
+/// Turn `provider`'s client on in the pool (pointing it at the proxy if it
+/// isn't), or off (paused: its settings stay, its requests pass straight
+/// through). Blocks on the disk.
 pub fn set(provider: Provider, on: bool, port: u16) -> Result<(), String> {
     let mut manifest = read_manifest();
-    // Whatever turning it on did before (the old way too) undone first.
+    if !on || (through_proxy(provider, port) && !the_old_way(provider)) {
+        if on {
+            manifest.paused.remove(key(provider));
+        } else if through_proxy(provider, port) || manifest.paused.contains(key(provider)) {
+            manifest.paused.insert(key(provider).to_owned());
+        } else {
+            // Not ours (or the old way): nothing to pause, so put back.
+            drop(manifest);
+            return put_back(provider);
+        }
+        return write_manifest(&manifest);
+    }
+    manifest.paused.remove(key(provider));
+    point(provider, &mut manifest, port)?;
+    write_manifest(&manifest)
+}
+
+/// Put `provider`'s client back as it was before the pool (its settings
+/// off the proxy): it reaches its host itself, once restarted.
+pub fn put_back(provider: Provider) -> Result<(), String> {
+    let mut manifest = read_manifest();
+    manifest.paused.remove(key(provider));
     match provider {
         Provider::Claude => {
             if manifest.claude.is_some() || the_old_way(provider) {
                 claude_off(&mut manifest)?;
-            }
-            if on {
-                claude_on(&mut manifest, port)?;
             }
         }
         Provider::Codex => {
             if manifest.codex.is_some() || the_old_way(provider) {
                 codex_off(&mut manifest)?;
             }
-            if on {
-                codex_on(&mut manifest, port)?;
-            }
         }
     }
     write_manifest(&manifest)
+}
+
+/// Point `provider`'s client at the proxy on `port`, what it had before
+/// (the old way too) undone first.
+fn point(provider: Provider, manifest: &mut Manifest, port: u16) -> Result<(), String> {
+    match provider {
+        Provider::Claude => {
+            if manifest.claude.is_some() || the_old_way(provider) {
+                claude_off(manifest)?;
+            }
+            claude_on(manifest, port)
+        }
+        Provider::Codex => {
+            if manifest.codex.is_some() || the_old_way(provider) {
+                codex_off(manifest)?;
+            }
+            codex_on(manifest, port)
+        }
+    }
 }
 
 /// Clients still pointed at the pool the old way, moved over to the
@@ -368,11 +430,24 @@ mod tests {
         assert_eq!((&v["env"]["ANTHROPIC_BASE_URL"], &v["env"]["OTHER"], &v["model"]), (&json!("http://example.invalid"), &json!("1"), &json!("opus")));
         let t = std::fs::read_to_string(codex.join(".env")).unwrap();
         assert!(t.starts_with("# mine\nFOO=1\nNO_PROXY=localhost") && t.contains("HTTPS_PROXY=http://127.0.0.1:4000\n") && t.contains("SSL_CERT_FILE="), "{t}");
+        // Off: paused, its settings left as they are (no restart of it).
+        let (s1, e1) = (std::fs::read(claude.join("settings.json")).unwrap(), std::fs::read(codex.join(".env")).unwrap());
         for p in [Provider::Claude, Provider::Codex] {
             set(p, false, 4000).unwrap();
-            assert!(!enabled(p, 4000));
+            assert!(!enabled(p, 4000) && paused(p) && pointed(p, 4000));
         }
-        // Exactly as it was, key order and all.
+        assert_eq!((std::fs::read(claude.join("settings.json")).unwrap(), std::fs::read(codex.join(".env")).unwrap()), (s1.clone(), e1.clone()));
+        // And on again: the same.
+        for p in [Provider::Claude, Provider::Codex] {
+            set(p, true, 4000).unwrap();
+            assert!(enabled(p, 4000) && !paused(p));
+        }
+        assert_eq!((std::fs::read(claude.join("settings.json")).unwrap(), std::fs::read(codex.join(".env")).unwrap()), (s1, e1));
+        // Put back: exactly as it was, key order and all.
+        for p in [Provider::Claude, Provider::Codex] {
+            put_back(p).unwrap();
+            assert!(!enabled(p, 4000) && !pointed(p, 4000));
+        }
         assert_eq!(std::fs::read_to_string(claude.join("settings.json")).unwrap(), settings);
         assert_eq!(std::fs::read_to_string(codex.join(".env")).unwrap(), "# mine\nFOO=1\nNO_PROXY=corp.example\n");
 
@@ -387,6 +462,7 @@ mod tests {
         write_manifest(&Manifest {
             claude: before(&[("ANTHROPIC_BASE_URL", Some("http://example.invalid")), ("ANTHROPIC_AUTH_TOKEN", None), ("ANTHROPIC_API_KEY", None), ("CLAUDE_CODE_MAX_RETRIES", None)]),
             codex: before(&[("model_provider", Some("openai"))]),
+            paused: Default::default(),
         })
         .unwrap();
         assert!(enabled(Provider::Claude, 4000) && enabled(Provider::Codex, 4000));
@@ -398,11 +474,11 @@ mod tests {
         let t = std::fs::read_to_string(codex.join("config.toml")).unwrap();
         assert!(t.contains("# mine") && t.contains("model_provider = \"openai\"") && t.contains("[model_providers.other]") && !t.contains("olo_pool"), "{t}");
         assert!(std::fs::read_to_string(codex.join(".env")).unwrap().contains("HTTPS_PROXY=http://127.0.0.1:4000"));
-        // Off: back to before the old way too.
-        set(Provider::Claude, false, 4000).unwrap();
+        // Put back: to before the old way too.
+        put_back(Provider::Claude).unwrap();
         let v: Value = serde_json::from_slice(&std::fs::read(claude.join("settings.json")).unwrap()).unwrap();
         assert_eq!(v["env"], json!({"ANTHROPIC_BASE_URL": "http://example.invalid", "OTHER": "1"}));
-        set(Provider::Codex, false, 4000).unwrap();
+        put_back(Provider::Codex).unwrap();
         assert!(!codex.join(".env").exists());
     }
 }

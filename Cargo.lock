@@ -4837,6 +4837,7 @@ dependencies = [
  "flate2",
  "futures-util",
  "getrandom 0.3.4",
+ "http-body",
  "http-body-util",
  "hyper",
  "hyper-util",

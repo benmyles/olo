@@ -1413,7 +1413,9 @@ for a 3-second `sleep`.
   `cx.restored_state()` at start-up, unless `App::busy` says it is doing
   something re-executing would cut short (olo-portal sharing a screen):
   then it reconnects as the old version and becomes the new one once
-  `busy` turns false. In an upgrade olo-session
+  `busy` turns false. `App::upgrade_due` says a new version is waiting
+  (once, before `busy` is asked), for an app to stop taking new work
+  and finish what it has (olo-pool's drain). In an upgrade olo-session
   signals every program it replaced (SIGURG) and restarts app_server at
   once, so an app re-executes while the old app_server goes: one may
   start against the old one and lose it in its handshake (it tries again
@@ -5463,8 +5465,18 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   `SSL_CERT_FILE` (`pool-ca-bundle.pem`: the system's roots and the
   authority's, since Codex's setting replaces the roots) and `NO_PROXY`
   in Codex's `~/.codex/.env` (`CODEX_HOME`), which Codex reads as it
-  starts. What was there before is kept in `pool-clients.json` and put
-  back when unchecked. A client set up the old way (an endpoint of the
+  starts. What was there before is kept in `pool-clients.json`.
+  Unchecked, a client is only paused (`pool-clients.json`'s `paused`,
+  mirrored in `Shared::paused`): its settings stay pointed at the proxy,
+  which decides for each request (`Shared::routes`: not paused, and an
+  account to serve it) whether the pool serves it or passes it through
+  on the client's own sign-in (`intercept::through`; a new connection
+  for it is only tunnelled). So checking and unchecking takes effect
+  from the client's next request, with nothing restarted (Codex's
+  service neither) and nothing under way cut. `olo-pool --put-back
+  claude|codex` (`clients::put_back`) takes a client off the proxy
+  altogether, its settings exactly as before the pool (from its next
+  start). A client set up the old way (an endpoint of the
   gateway's own: `ANTHROPIC_BASE_URL` and the rest, or an `olo_pool`
   model provider in `config.toml`) is moved over as the pool starts
   (`clients::migrate`).
@@ -5488,6 +5500,28 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   another. Its conversations, and whether each is in a turn, are asked
   over its control socket (the app-server's JSON-RPC over a WebSocket:
   `initialize`, `thread/loaded/list`, `thread/read`: `threads()`).
+  Since unchecking only pauses, a restart is needed only when `.env`
+  first points Codex at the proxy (or `--put-back` takes it off).
+- **Upgrades of the pool itself** (`drain.rs`): the kit tells the app a
+  new olo-pool is installed (`App::upgrade_due`) and becomes it once
+  `App::busy` is false. Meanwhile the pool takes no new connections
+  (the proxy's accept loop and the gateway's axum server stop, the
+  sockets left listening, so a new connection waits in the kernel's
+  queue as if the pool were only slow), each request under way runs to
+  its end (`Underway`, held by its answer's body until that has gone:
+  `Counted`), each connection closes once its request has (hyper's
+  graceful shutdown; a client opens another for its next, which waits
+  too), and a tunnel counts as under way while bytes cross it (10 s
+  idle and it doesn't). Then the listening sockets (copies kept at bind,
+  `Drain::keep`) lose their close-on-exec and are named in
+  `OLO_POOL_LISTENERS` (`PORT=FD`), and the new version takes them over
+  (`drain::listen`) and answers what waited. Waiting gives up after 10
+  minutes; an upgrade that still hasn't come a minute later (the new
+  binary wouldn't start) ends the drain and connections are taken again
+  (`Drain::end`). `/pool/status` says so (`drain`). Tested against a
+  fake provider (`tests/drain.rs`) and end to end: a stream under way
+  finished whole, and a client that connected mid-drain was answered by
+  the new version on the same pid.
 - **The Clients window** (Pool ▸ Clients, ⌘L, or the Clients button;
   `apps/pool/src/clients_window.rs`): the pool's activity over time, a
   line each for Claude Code and Codex in requests a minute over the last

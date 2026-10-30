@@ -14,7 +14,10 @@
 //! shows the pool's activity over time and what of Claude Code's and
 //! Codex's is running, with Codex's service and its Restart;
 //! `--clients` (`--json`) and `--restart-codex-service` are the same for
-//! agents.
+//! agents. A client turned off is paused, still pointed at the proxy,
+//! which passes its requests through (`--put-back` takes it off). A new
+//! olo-pool installed waits for what is under way, holding new
+//! connections for it (`olo_token_pool::drain`).
 
 mod clients_window;
 
@@ -59,7 +62,10 @@ enum Msg {
     Clients([bool; 2]),
     /// A client was pointed at the pool or back (and, for Codex, whether
     /// its daemon was restarted onto the new settings).
-    ClientSet(Provider, Result<(), String>, bool),
+    /// A client turned on or off: how it went, and whether that pointed
+    /// it at the proxy (Some: and restarted Codex's service onto it) or
+    /// only paused or resumed it (None: its next request).
+    ClientSet(Provider, Result<(), String>, Option<bool>),
     /// What's running, for the Clients window.
     Running(Box<Running>),
     /// Codex's service restarted from the Clients window (its new pid).
@@ -184,12 +190,17 @@ impl PoolApp {
         if let Some(c) = self.clients.as_mut() {
             c[client_index(p)] = on;
         }
+        // The proxy routes its requests so from the next on: the client
+        // turned off passes through, with nothing restarted or cut.
+        self.shared.set_paused(p, !on);
         let (proxy, port) = (self.proxy.clone(), self.proxy_port);
         std::thread::spawn(move || {
+            let pointed = clients::pointed(p, port);
             let r = clients::set(p, on, port);
-            // Codex's daemon restarted onto them now.
+            // Pointed at the proxy only now: Codex's daemon restarted onto
+            // it (its windows' requests from then on).
             let restarted = p == Provider::Codex && r.is_ok() && matches!(codex_daemon::follow(), Ok(Followed::Restarted(_)));
-            proxy.send(Msg::ClientSet(p, r, restarted))
+            proxy.send(Msg::ClientSet(p, r, if pointed { None } else { Some(restarted) }))
         });
     }
 
@@ -772,10 +783,11 @@ impl App for PoolApp {
                         let on = self.clients.is_some_and(|c| c[client_index(prov)]);
                         // Codex's sessions run in its daemon, restarted onto
                         // the settings.
-                        let when = match prov {
-                            Provider::Codex if restarted => "from now (its service restarted)",
-                            Provider::Codex => "from now",
-                            Provider::Claude => "from its next start",
+                        let when = match (prov, restarted) {
+                            (_, None) => "from its next request",
+                            (Provider::Codex, Some(true)) => "from now (its service restarted)",
+                            (Provider::Codex, Some(false)) => "from now",
+                            (Provider::Claude, Some(_)) => "from its next start",
                         };
                         let verb = if on { "uses the pool" } else { "is back to its own sign-in" };
                         (format!("{} {verb} {when}.", prov.client()), false)
@@ -806,6 +818,41 @@ impl App for PoolApp {
     fn save_state(&mut self, _cx: &Cx) -> Option<String> {
         Some(json!({"open": self.win.is_some(), "clients": self.clients_win.is_some()}).to_string())
     }
+
+    /// A new olo-pool installed: take no more connections (they wait for
+    /// it) and let what is under way finish (`drain`).
+    fn upgrade_due(&mut self, _cx: &mut Cx) {
+        self.shared.drain.begin();
+        // Look again now and then (a tunnel falls idle with nothing to
+        // say so).
+        let weak = Arc::downgrade(&self.shared);
+        let _ = std::thread::Builder::new().name("pool-drain".into()).spawn(move || {
+            while let Some(s) = weak.upgrade() {
+                if !s.drain.draining() {
+                    break;
+                }
+                // Long past when the new version should have started: it
+                // won't (the kit carried on); take connections again.
+                if s.drain.overdue() {
+                    s.drain.end();
+                    break;
+                }
+                s.nudge();
+                drop(s);
+                std::thread::sleep(Duration::from_millis(500));
+            }
+        });
+    }
+
+    /// Requests or tunnels under way: the upgrade waits. Once not, the
+    /// listening sockets are readied for the new version.
+    fn busy(&self) -> bool {
+        let busy = self.shared.drain.busy();
+        if !busy && self.shared.drain.draining() {
+            self.shared.drain.hand_over();
+        }
+        busy
+    }
 }
 
 impl PoolApp {
@@ -821,7 +868,7 @@ impl PoolApp {
 
 // ---- the command line -------------------------------------------------
 
-const USAGE: &str = "usage: olo-pool [--service | --status [--json] | --clients [--json] | --restart-codex-service]
+const USAGE: &str = "usage: olo-pool [--service | --status [--json] | --clients [--json] | --restart-codex-service | --put-back claude|codex]
   (none)            open Token Pool (starting the gateway if it isn't running)
   --service         run the gateway in the background (the session does)
   --status [--json] the pool's accounts, quota and state (no sign-ins), and
@@ -831,7 +878,11 @@ const USAGE: &str = "usage: olo-pool [--service | --status [--json] | --clients 
                     connections go, and Codex's service (its daemon)
   --restart-codex-service
                     restart Codex's service onto its settings now (a turn
-                    going on ends; Codex's windows reconnect)";
+                    going on ends; Codex's windows reconnect)
+  --put-back claude|codex
+                    take the client off the pool's proxy altogether, its
+                    settings as before the pool (turned off in Token Pool,
+                    it only passes through, needing no restart)";
 
 /// The running gateway's status, over loopback.
 fn fetch_status(port: u16) -> Result<Value, String> {
@@ -949,6 +1000,22 @@ fn main() -> std::process::ExitCode {
     }
     if has("--clients") {
         return clients_now(has("--json"));
+    }
+    if let Some(i) = args.iter().position(|a| a == "--put-back") {
+        let Some(p) = args.get(i + 1).and_then(|a| Provider::parse(a)) else {
+            eprintln!("olo-pool: --put-back takes claude or codex");
+            return std::process::ExitCode::FAILURE;
+        };
+        return match clients::put_back(p) {
+            Ok(()) => {
+                println!("{} is off the pool’s proxy (from its next start).", p.client());
+                std::process::ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("olo-pool: {e}");
+                std::process::ExitCode::FAILURE
+            }
+        };
     }
     if has("--restart-codex-service") {
         return match codex_daemon::restart_now() {

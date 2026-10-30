@@ -1006,8 +1006,9 @@ as they land (with the commit), add new ones as they come up.
   conversations) with Restart, and each Claude Code and Codex running
   and where its connections go; `olo-pool --clients [--json]` and
   `--restart-codex-service` for agents.
-- **Token Pool: restart Codex's service seamlessly, holding new requests**
-  (Ben, 2026-10-30): "when token pool daemon thing restarts we recently
+- ~~**Token Pool: restart Codex's service seamlessly, holding new requests**~~
+  (Ben, 2026-10-30; done: HACKING, "Token Pool" ▸ Clients and Upgrades of
+  the pool itself): "when token pool daemon thing restarts we recently
   changed it so that it doesn't wait for a quiet period in codex/claude.
   instead, let's do it smarter: make it so that when a restart is
   happening we still accept new requests but then we just have them wait
@@ -1030,6 +1031,19 @@ as they land (with the commit), add new ones as they come up.
   pool already, are held the same way while the pool itself restarts
   (an upgrade). Shown in Clients (Restarting: n under way, n waiting),
   for agents too.
+  Done differently where that is better: a Codex service holds its
+  turns' state, so restarting it in the middle of one can't be made
+  seamless (the turn goes with it). Instead it no longer needs
+  restarting: unchecking a client only pauses it, still pointed at the
+  pool's proxy, which decides request by request whether the pool
+  serves it or passes it through on the client's own sign-in, so
+  turning the pool off or on for Claude Code or Codex takes effect from
+  its next request with nothing restarted or cut (a restart remains
+  only when Codex is first pointed at the proxy, or taken off it with
+  `olo-pool --put-back`). And the pool's own restarts (an upgrade) are
+  now exactly as asked: new connections wait in the queue, what is
+  under way finishes, the new version takes the listening sockets over
+  and answers what waited (`drain.rs`; `/pool/status`'s `drain`).
 - ~~**Quick Look: TOML highlighted**~~ (Ben, 2026-10-30): "add support for
   toml syntax highlighting to quick look". The bundled grammars (syntect's
   defaults) have no TOML (or INI, which `.toml`, `.conf`, `.desktop` and

@@ -87,12 +87,26 @@ pub enum Who {
 /// listens.
 pub async fn serve(shared: Arc<Shared>, authority: Arc<Authority>, port: u16, serving: Serving, who: Who) -> Result<SocketAddr, String> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let listener = TcpListener::bind(addr).await.map_err(|e| format!("Can’t listen on {addr}: {e}"))?;
+    // (The one the version before handed over, if it did.)
+    let listener = crate::drain::listen(port).and_then(TcpListener::from_std).map_err(|e| format!("Can’t listen on {addr}: {e}"))?;
     let bound = listener.local_addr().map_err(|e| e.to_string())?;
+    shared.drain.keep(bound.port(), &listener);
     let tls = tokio_rustls::TlsAcceptor::from(authority.server_config()?);
     tokio::spawn(async move {
+        let mut stop = shared.drain.watch();
         loop {
-            let Ok((stream, peer)) = listener.accept().await else { continue };
+            // An upgrade waiting: no more connections taken (they wait in
+            // the queue for the new version, which takes this socket over).
+            if *stop.borrow() {
+                // (Until the upgrade, or its end if it doesn't come.)
+                let _ = stop.wait_for(|s| !*s).await;
+                continue;
+            }
+            let accepted = tokio::select! {
+                a = listener.accept() => a,
+                _ = stop.changed() => continue,
+            };
+            let Ok((stream, peer)) = accepted else { continue };
             let (shared, tls, serving) = (shared.clone(), tls.clone(), serving.clone());
             tokio::spawn(async move {
                 if let Err(e) = connection(stream, peer, shared, tls, serving, who).await {
@@ -147,23 +161,34 @@ async fn connection(mut client: TcpStream, peer: SocketAddr, shared: Arc<Shared>
         if !rest.is_empty() {
             upstream.write_all(&rest).await.map_err(|e| e.to_string())?;
         }
-        let _ = tokio::io::copy_bidirectional(&mut client, &mut upstream).await;
+        crate::drain::tunnel(&shared.drain, client, upstream).await;
         return Ok(());
     }
     client.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await.map_err(|e| e.to_string())?;
     // (What came after the head, if the client didn't wait for the
     // answer, is the start of its TLS.)
     let stream = tls.accept(Prefixed { first: rest, at: 0, inner: client }).await.map_err(|e| format!("TLS with the client for {host}: {e}"))?;
+    let mut stop = shared.drain.watch();
     let service = hyper::service::service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
         let (shared, host) = (shared.clone(), host.clone());
         async move { Ok::<_, std::convert::Infallible>(request(shared, &host, req).await) }
     });
-    hyper::server::conn::http1::Builder::new()
-        .keep_alive(true)
-        .serve_connection(hyper_util::rt::TokioIo::new(stream), service)
-        .with_upgrades()
-        .await
-        .map_err(|e| e.to_string())
+    let conn = hyper::server::conn::http1::Builder::new().keep_alive(true).serve_connection(hyper_util::rt::TokioIo::new(stream), service).with_upgrades();
+    tokio::pin!(conn);
+    // An upgrade waiting: the request under way finishes, and then the
+    // connection closes (the client opens another for its next, which
+    // waits for the new version).
+    let mut closing = false;
+    loop {
+        if !closing && *stop.borrow() {
+            closing = true;
+            conn.as_mut().graceful_shutdown();
+        }
+        tokio::select! {
+            r = conn.as_mut() => return r.map_err(|e| e.to_string()),
+            _ = stop.changed(), if !closing => {}
+        }
+    }
 }
 
 /// A connection with bytes already read from it put back in front.
@@ -229,7 +254,7 @@ async fn request(shared: Arc<Shared>, host: &str, req: hyper::Request<hyper::bod
     let path = parts.uri.path().to_owned();
     let query = parts.uri.query().map(str::to_owned);
     if upgrading(&parts.headers) {
-        if pooled(host, &path).is_some() {
+        if pooled(host, &path).is_some_and(|(p, _)| shared.routes(p)) {
             return (StatusCode::UPGRADE_REQUIRED, "The pool answers this over HTTPS.").into_response();
         }
         let Some(on) = parts.extensions.remove::<hyper::upgrade::OnUpgrade>() else {
@@ -237,14 +262,21 @@ async fn request(shared: Arc<Shared>, host: &str, req: hyper::Request<hyper::bod
         };
         return upgrade_through(&shared, host, &path, query.as_deref(), parts.method, parts.headers, on).await;
     }
+    // Under way until its answer has gone (an upgrade waits for it).
+    let underway = crate::drain::Underway::new(&shared);
     let body = match body.collect().await {
         Ok(b) => b.to_bytes(),
         Err(e) => return (StatusCode::BAD_REQUEST, format!("The request didn’t arrive whole: {e}")).into_response(),
     };
-    match pooled(host, &path) {
-        Some((provider, rest)) => crate::gateway::serve(shared, provider, rest, query, parts.method, parts.headers, body).await,
-        None => through(&shared, host, &path, query.as_deref(), parts.method, parts.headers, body).await,
-    }
+    // The pool's, unless its client is turned off (or it has no account
+    // for it): then the client's own, passed through. Decided for each
+    // request, so turning a client off or on needs no restart of it.
+    let answer = match pooled(host, &path) {
+        Some((provider, rest)) if shared.routes(provider) => crate::gateway::serve(shared, provider, rest, query, parts.method, parts.headers, body).await,
+        _ => through(&shared, host, &path, query.as_deref(), parts.method, parts.headers, body).await,
+    };
+    let (parts, body) = answer.into_parts();
+    Response::from_parts(parts, Body::new(crate::drain::Counted { inner: body, underway }))
 }
 
 /// Hop-by-hop headers, which belong to one connection, not the request.
@@ -286,7 +318,7 @@ fn upgrading(h: &HeaderMap) -> bool {
 /// on as it came (its `connection` and `upgrade` too), and once the host
 /// agrees (101), the two connections joined byte for byte until either
 /// ends.
-async fn upgrade_through(shared: &Shared, host: &str, path: &str, query: Option<&str>, method: Method, headers: HeaderMap, on: hyper::upgrade::OnUpgrade) -> Response {
+async fn upgrade_through(shared: &Arc<Shared>, host: &str, path: &str, query: Option<&str>, method: Method, headers: HeaderMap, on: hyper::upgrade::OnUpgrade) -> Response {
     // HTTP/1.1 (HTTP/2 has no 101), and no read timeout: a socket may be
     // quiet for long.
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
@@ -308,10 +340,12 @@ async fn upgrade_through(shared: &Shared, host: &str, path: &str, query: Option<
     for (k, v) in r.headers() {
         out.headers_mut().append(k.clone(), v.clone());
     }
+    let shared = shared.clone();
     tokio::spawn(async move {
         match tokio::join!(on, r.upgrade()) {
-            (Ok(theirs), Ok(mut host)) => {
-                let _ = tokio::io::copy_bidirectional(&mut hyper_util::rt::TokioIo::new(theirs), &mut host).await;
+            (Ok(theirs), Ok(host)) => {
+                // (A tunnel: an upgrade waits while it carries anything.)
+                crate::drain::tunnel(&shared.drain, hyper_util::rt::TokioIo::new(theirs), host).await;
             }
             (a, b) => tracing::debug!("pool proxy: switching protocols failed: {:?} {:?}", a.err(), b.err()),
         }

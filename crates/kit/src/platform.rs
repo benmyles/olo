@@ -1223,8 +1223,9 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                 let mut buf = [0u8; 64];
                 // SAFETY: reading into our buffer from our pipe.
                 while unsafe { libc::read(std::os::fd::AsRawFd::as_raw_fd(&**fd), buf.as_mut_ptr().cast(), buf.len()) } > 0 {}
-                if ours.changed() {
+                if ours.changed() && !kit.upgrade_due {
                     kit.upgrade_due = true;
+                    kit.with_app(|app, cx| app.upgrade_due(cx));
                 }
                 Ok(PostAction::Continue)
             })
@@ -1351,6 +1352,9 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         // reconnect with everything as it was (and a new GPU device).
         let Some(mut c) = c else { return };
         // (Busy: the new version once it isn't, after this reconnect.)
+        if binary.changed() && !deferred {
+            c.app.upgrade_due(&mut c.cx);
+        }
         deferred = binary.changed() && c.app.busy();
         if binary.changed() && !deferred {
             c.cx.sizes = c.windows.iter().map(|(id, o)| (*id, o.size)).collect();

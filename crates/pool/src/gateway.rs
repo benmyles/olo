@@ -119,6 +119,13 @@ impl Pool {
     }
 }
 
+fn provider_index(p: Provider) -> usize {
+    match p {
+        Provider::Claude => 0,
+        Provider::Codex => 1,
+    }
+}
+
 /// The gateway's state, shared with the app.
 pub struct Shared {
     pub pool: Mutex<Pool>,
@@ -137,6 +144,11 @@ pub struct Shared {
     due: Mutex<HashMap<String, (i64, i64)>>,
     /// When each account's reset credits are next read.
     credits_due: Mutex<HashMap<String, i64>>,
+    /// What is under way, for an upgrade to wait for (`drain`).
+    pub drain: crate::drain::Drain,
+    /// The clients the person turned the pool off for, still pointed at
+    /// its proxy (`clients::set`): their requests pass straight through.
+    paused: [std::sync::atomic::AtomicBool; 2],
 }
 
 /// How often an account's quota is read while nothing asks for it (its
@@ -160,6 +172,10 @@ impl Shared {
     pub fn launch(port: u16, changed: impl Fn() + Send + Sync + 'static) -> Arc<Shared> {
         let shared = Shared::make(Saved::default(), None, Upstreams::from_env(), true, changed);
         shared.pool.lock().unwrap().loaded = false;
+        // The clients turned off, before the proxy takes a request.
+        for p in [Provider::Claude, Provider::Codex] {
+            shared.set_paused(p, crate::clients::paused(p));
+        }
         // The day's activity, kept a minute at a time.
         let weak = Arc::downgrade(&shared);
         let _ = std::thread::Builder::new().name("pool-activity".into()).spawn(move || {
@@ -248,6 +264,8 @@ impl Shared {
             lazy,
             due: Mutex::new(HashMap::new()),
             credits_due: Mutex::new(HashMap::new()),
+            drain: Default::default(),
+            paused: Default::default(),
         });
         // Saving off every async and UI thread, a batch at a time.
         let weak = Arc::downgrade(&shared);
@@ -293,6 +311,11 @@ impl Shared {
         (self.changed)();
     }
 
+    /// Tell the app to look again (nothing to save).
+    pub fn nudge(&self) {
+        (self.changed)();
+    }
+
     /// The HTTP client requests go out with.
     pub fn client(&self) -> &reqwest::Client {
         &self.client
@@ -301,6 +324,23 @@ impl Shared {
     /// Where a request to `host` the proxy passes through goes.
     pub fn upstream_origin(&self, host: &str) -> String {
         self.up.origin.clone().unwrap_or_else(|| format!("https://{host}"))
+    }
+
+    /// Whether `provider`'s client is turned off, its requests passed
+    /// straight through though it is pointed at the proxy.
+    pub fn paused(&self, provider: Provider) -> bool {
+        self.paused[provider_index(provider)].load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    pub fn set_paused(&self, provider: Provider, paused: bool) {
+        self.paused[provider_index(provider)].store(paused, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Whether `provider`'s requests are the pool's to serve now (else
+    /// passed through on the client's own sign-in): it serves them, and
+    /// the client isn't turned off.
+    pub fn routes(&self, provider: Provider) -> bool {
+        !self.paused(provider) && self.serves(provider)
     }
 
     /// Whether the pool serves `provider`'s requests now: it has an
@@ -660,8 +700,12 @@ pub fn start(shared: Arc<Shared>, port: u16) -> Result<(), String> {
         .spawn(move || {
             runtime.block_on(async move {
                 let addr = SocketAddr::from(([127, 0, 0, 1], port));
-                let listener = match tokio::net::TcpListener::bind(addr).await {
-                    Ok(l) => l,
+                // (The one the version before handed over, if it did.)
+                let listener = match crate::drain::listen(port).and_then(tokio::net::TcpListener::from_std) {
+                    Ok(l) => {
+                        shared.drain.keep(port, &l);
+                        l
+                    }
                     Err(e) => {
                         let msg = format!("Can’t listen on {addr}: {e}");
                         shared.pool.lock().unwrap().error = Some(msg.clone());
@@ -675,7 +719,7 @@ pub fn start(shared: Arc<Shared>, port: u16) -> Result<(), String> {
                 let s = shared.clone();
                 let proxy = match crate::authority::Authority::open() {
                     Ok(a) => {
-                        let serving: crate::intercept::Serving = Arc::new(move |p| s.serves(p));
+                        let serving: crate::intercept::Serving = Arc::new(move |p| s.routes(p));
                         crate::intercept::serve(shared.clone(), Arc::new(a), crate::intercept::port(), serving, crate::intercept::Who::Clients).await.map(|_| ())
                     }
                     Err(e) => Err(format!("The pool’s certificate: {e}")),
@@ -694,11 +738,27 @@ pub fn start(shared: Arc<Shared>, port: u16) -> Result<(), String> {
                         tokio::time::sleep(Duration::from_secs(60)).await;
                     }
                 });
-                let app = router(shared.clone(), port);
-                if let Err(e) = axum::serve(listener, app).await {
-                    shared.pool.lock().unwrap().error = Some(format!("The gateway stopped: {e}"));
-                    shared.touch();
+                let mut listener = Some(listener);
+                loop {
+                    let Some(l) = listener.take().or_else(|| shared.drain.listener(port).and_then(|l| tokio::net::TcpListener::from_std(l).ok())) else { break };
+                    // An upgrade waiting: no more connections (they wait
+                    // for the new version), the open ones finishing.
+                    let mut stop = shared.drain.watch();
+                    let stopped = async move {
+                        let _ = stop.wait_for(|s| *s).await;
+                    };
+                    if let Err(e) = axum::serve(l, router(shared.clone(), port)).with_graceful_shutdown(stopped).await {
+                        shared.pool.lock().unwrap().error = Some(format!("The gateway stopped: {e}"));
+                        shared.touch();
+                        break;
+                    }
+                    // Stopped for an upgrade: the proxy's requests run on
+                    // (on this runtime) until the new version takes over,
+                    // or, if it never does, connections are taken again.
+                    let mut stop = shared.drain.watch();
+                    let _ = stop.wait_for(|s| !*s).await;
                 }
+                std::future::pending::<()>().await;
             })
         })
         .map_err(|e| e.to_string())?;
@@ -734,7 +794,9 @@ async fn status(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
     if let Err(r) = local_only(&headers, ctx.port) {
         return *r;
     }
-    axum::Json(status_json(&ctx.shared.snapshot())).into_response()
+    let mut v = status_json(&ctx.shared.snapshot());
+    v["drain"] = ctx.shared.drain.status();
+    axum::Json(v).into_response()
 }
 
 /// The pool for agents and the command line: no sign-ins.

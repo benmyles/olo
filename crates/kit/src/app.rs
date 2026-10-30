@@ -69,6 +69,11 @@ pub trait App: 'static {
         false
     }
 
+    /// A new version of the app's binary is installed and the kit will
+    /// become it once [`App::busy`] is false: finish what is under way
+    /// and take on nothing new (a server stops accepting).
+    fn upgrade_due(&mut self, _cx: &mut Cx) {}
+
     /// The person moved `window` (by its tab) and let it go over `onto`,
     /// another of the app's windows: `place`, if over `onto`'s tab strip,
     /// is where among its tabs ([`crate::widgets::strip_place`]), for the
