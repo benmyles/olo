@@ -214,6 +214,11 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Bug: Empty Trash from the desktop's Trash icon didn't empty it**
+  (Ben, 2026-10-30): "right clicking on trash on desktop and choosing
+  empty trash didn't seem to work so i opened trash (still saw the
+  folder in there to delete) then did empty trash again from the
+  tracker menu and it worked".
 - **Deskbar: an app's notification dot fades with its notifications**
   (Ben, 2026-10-30): "the blue notifications dot for an app in the
   deskbar should fade like the notifications in notifications app as
