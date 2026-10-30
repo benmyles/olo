@@ -5320,17 +5320,41 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   still talks through a daemon from before it. Every 10 s, and right
   after the checkbox changes, the pool looks for a daemon that started
   before `.env` last changed (its start in ticks from `/proc`, which the
-  pid file records too, so a reused pid isn't taken for it), asks it
+  pid file records too, so a reused pid isn't taken for it) and
+  restarts it at once, even in the middle of a turn (an agent's turn can
+  go on for hours, all of it straight to OpenAI; waiting for one to end
+  once meant never), with Codex's own `codex app-server daemon restart`
+  (its start, pid file, locks and updater are Codex's), run from the
+  daemon's directory with its environment (its sessions' commands get
+  theirs from it) less the pool's settings, which the new one reads
+  from `.env` as it is now. Codex's windows reconnect to the new daemon
+  by themselves and carry on with the conversation; a daemon merely
+  stopped leaves them "Reconnecting to server…", since nothing starts
+  another. Its conversations, and whether each is in a turn, are asked
   over its control socket (the app-server's JSON-RPC over a WebSocket:
-  `initialize`, `thread/loaded/list`, `thread/read`) whether any session
-  is in the middle of a turn, and when none is, restarts it with Codex's
-  own `codex app-server daemon restart` (its start, pid file, locks and
-  updater are Codex's), run from the daemon's directory with its
-  environment (its sessions' commands get theirs from it) less the
-  pool's settings, which the new one reads from `.env` as it is now.
-  Codex's windows reconnect to the new daemon by themselves; a daemon
-  merely stopped leaves them "Reconnecting to server…", since nothing
-  starts another.
+  `initialize`, `thread/loaded/list`, `thread/read`: `threads()`).
+- **The Clients window** (Pool ▸ Clients, ⌘L, or the Clients button;
+  `apps/pool/src/clients_window.rs`): the pool's activity over time, a
+  line each for Claude Code and Codex in requests a minute over the last
+  hour, six hours or day (the kit's `Graph`, stepped a minute or a few
+  at a time, hovering says each one's rate; totals, failures and tokens
+  in the legend), from `activity.rs`: each minute's requests by client,
+  counted as each request ends and kept for a day in a plain file of its
+  own (`state_dir()/pool-activity.json`, only counts, so not in the
+  sealed vault), written at most once a minute. Below it, Codex's
+  service (`running::scan`): its version, since when, whether it is on
+  the current settings, where its connections go, its conversations
+  (title, folder, working or waiting for you), and **Restart**
+  (`codex_daemon::restart_now`, on a worker thread); then each Claude
+  Code and Codex running (from /proc: `peer::Program::is_client`), its
+  folder, since when, and where its connections go: to the pool's
+  proxy, straight out to port 443 elsewhere, or none open (a Claude
+  Code going only straight out while it should use the pool shows red;
+  one with an MCP server can have both). What's running is read every
+  two seconds while the window is open, off the UI thread. For agents:
+  `olo-pool --clients [--json]` (the same, without the window),
+  `olo-pool --restart-codex-service`, and the activity in
+  `--status --json` (`activity`: the day's minutes).
 - **Reset credits** (some subscriptions get a few, to reset their quota
   early): read with each sync (Claude's `cedar_ember` grants in the
   usage report, `?cedar_ember=1`; ChatGPT's

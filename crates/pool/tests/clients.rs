@@ -346,8 +346,8 @@ async fn codex_daemon_follows_the_pool() {
     assert!(!codex_daemon::stale(&old));
     assert_eq!(codex_daemon::follow().unwrap(), Followed::Current);
 
-    // The pool turned on: its settings are newer than the daemon, which,
-    // between turns, is restarted.
+    // The pool turned on: its settings are newer than the daemon, which
+    // is restarted.
     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     write(&home.join(".env"), &dotenv(&intercept::url(proxy.port())));
     assert!(codex_daemon::stale(&old));
@@ -366,12 +366,20 @@ async fn codex_daemon_follows_the_pool() {
         c.call("turn/start", json!({"threadId": id, "input": [{"type": "text", "text": "Say hello."}]})).unwrap();
         std::thread::sleep(std::time::Duration::from_secs(2));
         assert!(codex_daemon::busy().unwrap(), "a turn going isn't busy");
+        let threads = codex_daemon::threads().unwrap();
+        assert!(threads.iter().any(|t| t.id == id && t.working && !t.waiting && t.cwd.as_deref() == Some(work2.as_path()) && t.title == "Say hello."), "{threads:?}");
         let done = c.wait_for("turn/completed", std::time::Duration::from_secs(60)).unwrap();
         println!("turn: {done}");
         assert!(!codex_daemon::busy().unwrap());
     })
     .await
     .unwrap();
+    // What the Clients window shows of it, and its Restart.
+    let shown = olo_token_pool::running::scan(proxy.port()).daemon.expect("the daemon, shown");
+    assert_eq!(shown.pid, new.pid);
+    assert!(!shown.stale && shown.version.as_deref().is_some_and(|v| v.starts_with("0.")), "{shown:?}");
+    let again = tokio::task::spawn_blocking(codex_daemon::restart_now).await.unwrap().unwrap();
+    assert_ne!(again, new.pid);
     let seen = seen.lock().unwrap().clone();
     assert!(!seen.is_empty() && seen.iter().all(|a| a == "Bearer pool-account-token"), "{seen:?}");
 }

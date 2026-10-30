@@ -905,6 +905,27 @@ as they land (with the commit), add new ones as they come up.
   the two hosts (from /proc), serves the model requests from the pool
   and passes everything else through byte for byte; tested with the real
   clients (`tests/clients.rs`).
+- ~~**Token Pool: Codex still not through the pool; its service's
+  details and Restart; activity over time**~~ (Ben, 2026-10-30): "codex
+  still doesn't seem to be going through token pooler, only claude is.
+  you can look at the codex session i ahve running now and it's not going
+  through the token pool. pls fix." · "you can just update the daemon it
+  doesn't need to wait for non busy" · "also add a way to restart the
+  daemons and see details about them in the token pool app itself too" ·
+  "add a slick chart or something too that shows activity over time".
+  The cause: the pool found Codex's daemon (started the day before, on
+  the settings from before) but waited for it to be between turns, and
+  Ben's Codex was in one agent turn for hours, all of it straight to
+  OpenAI. Restarted his daemon then (Codex's own `daemon restart`, as
+  the pool does; his window reconnected and carried on, now through the
+  pool), and the pool now restarts a stale daemon at once. Done
+  (HACKING, "Token Pool" ▸ The Clients window): Pool ▸ Clients (⌘L, or
+  the Clients button) shows the activity over time (requests a minute
+  by client over the last hour, six hours or day, kept a day), Codex's
+  service (version, since, settings, where its connections go, its
+  conversations) with Restart, and each Claude Code and Codex running
+  and where its connections go; `olo-pool --clients [--json]` and
+  `--restart-codex-service` for agents.
 - ~~**Quick Look: TOML highlighted**~~ (Ben, 2026-10-30): "add support for
   toml syntax highlighting to quick look". The bundled grammars (syntect's
   defaults) have no TOML (or INI, which `.toml`, `.conf`, `.desktop` and

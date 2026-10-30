@@ -5,13 +5,16 @@
 //! pool edits (`clients`) only as it starts: a daemon from before the pool
 //! was turned on goes straight to OpenAI, and one from before it was
 //! turned off still goes through the pool. So a daemon started before
-//! `.env` last changed is restarted, once none of its sessions is in the
-//! middle of a turn (asked over its control socket, the app-server's
-//! JSON-RPC over a WebSocket), with Codex's own `codex app-server daemon
-//! restart` (the daemon's start is Codex's to make: its pid file, locks
-//! and updater), run as the daemon was (its directory and environment,
-//! which its sessions' commands get theirs from). Codex's windows
-//! reconnect to the new one by themselves, as after an update of Codex's.
+//! `.env` last changed is restarted at once, even in the middle of a turn
+//! (an agent's turn can go on for hours, all of it straight to OpenAI;
+//! Codex carries on with the conversation), with Codex's own `codex
+//! app-server daemon restart` (the daemon's start is Codex's to make: its
+//! pid file, locks and updater), run as the daemon was (its directory and
+//! environment, which its sessions' commands get theirs from). Codex's
+//! windows reconnect to the new one by themselves, as after an update of
+//! Codex's. Its conversations, and whether each is in a turn, are asked
+//! over its control socket (the app-server's JSON-RPC over a WebSocket),
+//! for the Clients window.
 
 use std::{
     ffi::OsStr,
@@ -83,6 +86,22 @@ fn daemon_in(pid_file: &std::path::Path) -> Option<Daemon> {
     let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
     let codex = cmdline.split(|b| *b == 0).any(|a| a == b"app-server");
     (now_ticks == ticks && codex).then_some(Daemon { pid, ticks, started })
+}
+
+/// When process `pid` started, if it's running.
+pub fn started(pid: i32) -> Option<SystemTime> {
+    start_of(pid).map(|(_, t)| t)
+}
+
+/// The version of Codex process `pid` runs ("0.166.0"), from where
+/// Codex keeps its program (`…/releases/0.166.0-aarch64-…/bin/codex`).
+pub fn version(pid: i32) -> Option<String> {
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe")).ok()?;
+    let mut parts = exe.iter().map(|p| p.to_string_lossy().into_owned());
+    parts.find(|p| p == "releases")?;
+    let release = parts.next()?;
+    let v = release.split('-').next()?;
+    v.chars().next().is_some_and(|c| c.is_ascii_digit()).then(|| v.to_owned())
 }
 
 /// Whether `d` is still running (its pid not taken by another since).
@@ -177,23 +196,53 @@ impl Drop for Control {
     }
 }
 
-/// Whether any of the daemon's sessions is in the middle of a turn.
-pub fn busy() -> io::Result<bool> {
+/// One of the daemon's conversations.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Thread {
+    pub id: String,
+    /// Its name, else the start of its first message.
+    pub title: String,
+    pub cwd: Option<PathBuf>,
+    /// In the middle of a turn.
+    pub working: bool,
+    /// Waiting on the person (an approval, an answer).
+    pub waiting: bool,
+}
+
+/// The daemon's conversations open now.
+pub fn threads() -> io::Result<Vec<Thread>> {
     let mut c = Control::open()?;
     let mut cursor: Option<String> = None;
+    let mut out = Vec::new();
     loop {
         let page = c.call("thread/loaded/list", json!({"cursor": cursor}))?;
         for id in page["data"].as_array().into_iter().flatten().filter_map(Value::as_str) {
             let read = c.call("thread/read", json!({"threadId": id, "includeTurns": false}))?;
-            if read["thread"]["status"]["type"] == "active" {
-                return Ok(true);
-            }
+            let t = &read["thread"];
+            let title = [&t["name"], &t["preview"]].into_iter().filter_map(Value::as_str).map(|s| s.lines().next().unwrap_or("").trim()).find(|s| !s.is_empty()).unwrap_or("");
+            let title = match title.char_indices().nth(60) {
+                Some((i, _)) => format!("{}…", &title[..i]),
+                None => title.to_owned(),
+            };
+            let status = &t["status"];
+            out.push(Thread {
+                id: id.to_owned(),
+                title,
+                cwd: t["cwd"].as_str().map(PathBuf::from),
+                working: status["type"] == "active",
+                waiting: status["activeFlags"].as_array().is_some_and(|f| !f.is_empty()),
+            });
         }
         match page["nextCursor"].as_str() {
             Some(next) => cursor = Some(next.to_owned()),
-            None => return Ok(false),
+            None => return Ok(out),
         }
     }
+}
+
+/// Whether any of the daemon's sessions is in the middle of a turn.
+pub fn busy() -> io::Result<bool> {
+    Ok(threads()?.iter().any(|t| t.working))
 }
 
 /// Stop `d` (still the same process), and wait for it to go.
@@ -280,42 +329,43 @@ pub fn restart(d: &Daemon) -> io::Result<()> {
 pub enum Followed {
     /// No daemon, or one on the current settings.
     Current,
-    /// A daemon from before them, in the middle of a turn: later.
-    Waiting,
     /// A daemon from before them (this pid), restarted.
     Restarted(i32),
 }
 
-/// Restart Codex's daemon if it started before its settings last changed
-/// and isn't in the middle of a turn. Blocks (on the daemon's answer, at
-/// most a few seconds).
+/// Restart Codex's daemon if it started before its settings last
+/// changed. Blocks (on Codex's restart, a few seconds).
 pub fn follow() -> io::Result<Followed> {
     let Some(d) = running().filter(stale) else { return Ok(Followed::Current) };
-    if busy()? {
-        return Ok(Followed::Waiting);
-    }
     restart(&d)?;
     Ok(Followed::Restarted(d.pid))
+}
+
+/// Restart Codex's daemon, whatever its settings (the Clients window's
+/// Restart): the new one's pid.
+pub fn restart_now() -> io::Result<i32> {
+    let d = running().ok_or_else(|| io::Error::other("Codex’s daemon isn’t running"))?;
+    restart(&d)?;
+    running().map(|n| n.pid).ok_or_else(|| io::Error::other("Codex’s daemon didn’t come back"))
 }
 
 /// Keep Codex's daemon on the pool's settings, checking every `every`
 /// (on a thread of its own).
 pub fn keep_following(every: Duration) {
     std::thread::spawn(move || {
-        let mut said = None;
+        let mut said = false;
         loop {
             match follow() {
-                Ok(Followed::Restarted(pid)) => tracing::info!("pool: restarted Codex’s daemon ({pid}), which started before its settings for the pool"),
-                Ok(Followed::Waiting) if said != Some(true) => {
-                    tracing::info!("pool: Codex’s daemon started before its settings for the pool; restarting it when it’s between turns");
-                    said = Some(true);
+                Ok(Followed::Restarted(pid)) => {
+                    tracing::info!("pool: restarted Codex’s daemon ({pid}), which started before its settings for the pool");
+                    said = false;
                 }
-                Err(e) if said != Some(false) => {
+                Err(e) if !said => {
                     tracing::warn!("pool: Codex’s daemon started before its settings for the pool, and couldn’t be restarted: {e}");
-                    said = Some(false);
+                    said = true;
                 }
-                Ok(Followed::Current) => said = None,
-                _ => {}
+                Ok(Followed::Current) => said = false,
+                Err(_) => {}
             }
             std::thread::sleep(every);
         }

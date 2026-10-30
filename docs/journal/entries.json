@@ -2338,5 +2338,11 @@
   "title": "New windows glow a moment (Preferences \u25b8 Appearance)",
   "caption": "With Glow new windows for N seconds on (off by default, 5 s), a new window has a soft halo in the look's focus blue round its frame and tab as one shape, fading out over its last second; left: just opened, right: after (at 1\u00d7, enlarged 2\u00d7).",
   "image": "2026-10-30/110649-new-windows-glow-a-moment-preferences-appearance.png"
+ },
+ {
+  "time": "2026-10-30T12:09:03",
+  "title": "Token Pool: the Clients window",
+  "caption": "Pool \u25b8 Clients: the pool's activity over time (requests a minute by client, over the last hour, six hours or day, with totals), Codex's service with its version, settings, connections, conversations and Restart, and each Claude Code and Codex running and where its connections go (here a sandbox with a made-up day of activity).",
+  "image": "2026-10-30/120903-token-pool-the-clients-window.png"
  }
 ]

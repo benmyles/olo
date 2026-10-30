@@ -31,6 +31,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::{
+    activity::Activity,
     model::{Account, Credential, Outcome, Provider, Request, Usage, model_family, now, today},
     schedule,
     store::{Saved, Store},
@@ -99,6 +100,8 @@ pub struct Pool {
     /// Why the gateway isn't listening (or the accounts can't be
     /// opened), if so.
     pub error: Option<String>,
+    /// Each minute's requests by client, over the last day.
+    pub activity: Activity,
     /// The saved accounts have been read (until then nothing is saved,
     /// so a keyring that isn't open yet can't cost them).
     pub loaded: bool,
@@ -157,6 +160,40 @@ impl Shared {
     pub fn launch(port: u16, changed: impl Fn() + Send + Sync + 'static) -> Arc<Shared> {
         let shared = Shared::make(Saved::default(), None, Upstreams::from_env(), true, changed);
         shared.pool.lock().unwrap().loaded = false;
+        // The day's activity, kept a minute at a time.
+        let weak = Arc::downgrade(&shared);
+        let _ = std::thread::Builder::new().name("pool-activity".into()).spawn(move || {
+            let loaded = Activity::load();
+            match weak.upgrade() {
+                Some(s) => {
+                    let mut p = s.pool.lock().unwrap();
+                    // (Any counted meanwhile go in with it.)
+                    let since = std::mem::replace(&mut p.activity, loaded);
+                    for m in since.minutes {
+                        let at = p.activity.minutes.partition_point(|k| k.minute <= m.minute);
+                        p.activity.minutes.insert(at, m);
+                    }
+                }
+                None => return,
+            }
+            loop {
+                std::thread::sleep(Duration::from_secs(60));
+                let Some(s) = weak.upgrade() else { break };
+                let mut activity = {
+                    let mut p = s.pool.lock().unwrap();
+                    p.activity.prune(now());
+                    if !p.activity.dirty {
+                        continue;
+                    }
+                    p.activity.dirty = false;
+                    p.activity.clone()
+                };
+                activity.dirty = true;
+                if let Err(e) = activity.save() {
+                    tracing::warn!("pool: couldn’t keep its activity: {e}");
+                }
+            }
+        });
         let s = shared.clone();
         let _ = std::thread::Builder::new().name("pool-open".into()).spawn(move || {
             loop {
@@ -280,7 +317,23 @@ impl Shared {
 
     pub fn snapshot(&self) -> Pool {
         let p = self.pool.lock().unwrap();
-        Pool { saved: p.saved.clone(), sticky: HashMap::new(), in_flight: p.in_flight.clone(), served: p.served.clone(), open: p.open.clone(), next_open: 0, error: p.error.clone(), loaded: p.loaded }
+        // (Its activity read apart, with `activity`.)
+        Pool {
+            saved: p.saved.clone(),
+            sticky: HashMap::new(),
+            in_flight: p.in_flight.clone(),
+            served: p.served.clone(),
+            open: p.open.clone(),
+            next_open: 0,
+            error: p.error.clone(),
+            loaded: p.loaded,
+            activity: Activity::default(),
+        }
+    }
+
+    /// Read the pool's activity.
+    pub fn activity<T>(&self, f: impl FnOnce(&Activity) -> T) -> T {
+        f(&self.pool.lock().unwrap().activity)
     }
 
     /// Add an account with its sign-in (and read its quota at once).
@@ -703,7 +756,7 @@ pub fn status_json(p: &Pool) -> Value {
             })
         })
         .collect();
-    json!({"accounts": accounts, "error": p.error, "loaded": p.loaded, "served": p.served, "open": p.open})
+    json!({"accounts": accounts, "error": p.error, "loaded": p.loaded, "served": p.served, "open": p.open, "activity": p.activity.minutes})
 }
 
 async fn claude(State(ctx): State<Ctx>, Path(rest): Path<String>, RawQuery(q): RawQuery, method: Method, headers: HeaderMap, body: Bytes) -> Response {
@@ -1016,6 +1069,7 @@ impl Drop for Finish {
                 }
                 a.finished(request.clone());
             }
+            p.activity.record(&request);
             p.served.push_back(Served { account: self.name.clone(), account_id: self.id.clone(), provider: self.provider, request });
             while p.served.len() > 50 {
                 p.served.pop_front();

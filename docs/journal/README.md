@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Token Pool: the Clients window
+
+*12:09* — Pool ▸ Clients: the pool's activity over time (requests a minute by client, over the last hour, six hours or day, with totals), Codex's service with its version, settings, connections, conversations and Restart, and each Claude Code and Codex running and where its connections go (here a sandbox with a made-up day of activity).
+
+![Token Pool: the Clients window](2026-10-30/120903-token-pool-the-clients-window.png)
+
 ### New windows glow a moment (Preferences ▸ Appearance)
 
 *11:06* — With Glow new windows for N seconds on (off by default, 5 s), a new window has a soft halo in the look's focus blue round its frame and tab as one shape, fading out over its last second; left: just opened, right: after (at 1×, enlarged 2×).

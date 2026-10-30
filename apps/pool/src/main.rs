@@ -10,7 +10,13 @@
 //! and state, live, and adds accounts: this computer's own sign-in, or a
 //! separate one made in Terminal by the client's own sign-in. Sign-ins
 //! are kept sealed in `pool.vault`. `--status` (`--json`) tells agents
-//! the same, without the sign-ins.
+//! the same, without the sign-ins. Its Clients window (`clients_window`)
+//! shows the pool's activity over time and what of Claude Code's and
+//! Codex's is running, with Codex's service and its Restart;
+//! `--clients` (`--json`) and `--restart-codex-service` are the same for
+//! agents.
+
+mod clients_window;
 
 use std::{
     io::{Read, Write},
@@ -30,10 +36,12 @@ use olo_kit::{
     style::{self, c},
     widgets::{self, BBox, Button, CellGrid, CheckBox, GridCell, ScrollView, StatusBar, StringView, TextControl},
 };
+use clients_window::ClientsWindow;
 use olo_token_pool::{
     clients,
     codex_daemon::{self, Followed},
     gateway::{self, Pool, Shared},
+    running::{self, Running},
     import::{self, Found},
     model::{Account, Outcome, Provider, RECENT, Request, Window, now},
     schedule, store,
@@ -50,8 +58,12 @@ enum Msg {
     /// Which clients use the pool.
     Clients([bool; 2]),
     /// A client was pointed at the pool or back (and, for Codex, whether
-    /// its daemon is on the new settings yet).
+    /// its daemon was restarted onto the new settings).
     ClientSet(Provider, Result<(), String>, bool),
+    /// What's running, for the Clients window.
+    Running(Box<Running>),
+    /// Codex's service restarted from the Clients window (its new pid).
+    Restarted(Result<i32, String>),
     /// A sign-in was read (for this account, when signing in again).
     SignedIn(Result<Found, String>, Option<String>),
     /// Something done in the background: what to say.
@@ -72,6 +84,8 @@ struct PoolApp {
     proxy_port: u16,
     proxy: Proxy,
     win: Option<WindowId>,
+    /// The Clients window, while it's open.
+    clients_win: Option<ClientsWindow>,
     /// Which clients use the pool (None: not read yet).
     clients: Option<[bool; 2]>,
     /// The last thing done or gone wrong (error?).
@@ -146,6 +160,19 @@ impl PoolApp {
         self.read_clients();
     }
 
+    /// Open the Clients window (or bring it to the front).
+    fn open_clients(&mut self, cx: &mut Cx) {
+        if let Some(w) = &self.clients_win {
+            cx.activate(w.win);
+            return;
+        }
+        let proxy = self.proxy.clone();
+        self.clients_win = Some(ClientsWindow::open(cx, self.proxy_port, move |r| proxy.send(Msg::Running(Box::new(r)))));
+        if self.clients.is_none() {
+            self.read_clients();
+        }
+    }
+
     /// Read which clients use the pool (their settings files) off the UI
     /// thread.
     fn read_clients(&self) {
@@ -160,9 +187,9 @@ impl PoolApp {
         let (proxy, port) = (self.proxy.clone(), self.proxy_port);
         std::thread::spawn(move || {
             let r = clients::set(p, on, port);
-            // Codex's daemon, between turns, restarted onto them now.
-            let waiting = p == Provider::Codex && r.is_ok() && matches!(codex_daemon::follow(), Ok(Followed::Waiting));
-            proxy.send(Msg::ClientSet(p, r, waiting))
+            // Codex's daemon restarted onto them now.
+            let restarted = p == Provider::Codex && r.is_ok() && matches!(codex_daemon::follow(), Ok(Followed::Restarted(_)));
+            proxy.send(Msg::ClientSet(p, r, restarted))
         });
     }
 
@@ -252,6 +279,7 @@ impl PoolApp {
     fn command_for(&mut self, cx: &mut Cx, command: &str) {
         match command {
             "refresh" => self.shared.sync_soon(None),
+            "clients" => self.open_clients(cx),
             "close" => {
                 if let Some(w) = self.win.take() {
                     cx.close_window(w);
@@ -594,7 +622,17 @@ fn window_bar(ui: &mut egui::Ui, w: &Window, t: i64) {
 }
 
 impl App for PoolApp {
-    fn ui(&mut self, _cx: &mut Cx, _window: WindowId, ui: &mut egui::Ui) {
+    fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
+        if let Some(w) = self.clients_win.as_mut().filter(|w| w.win == window) {
+            // Its chart steps on a minute at a time; what's running comes
+            // every two seconds (`Msg::Running`).
+            ui.ctx().request_repaint_after(Duration::from_secs(30));
+            if let Some(clients_window::Action::Restart) = w.ui(ui, &self.shared, self.clients) {
+                let proxy = self.proxy.clone();
+                std::thread::spawn(move || proxy.send(Msg::Restarted(codex_daemon::restart_now().map_err(|e| e.to_string()))));
+            }
+            return;
+        }
         let pool = self.shared.snapshot();
         // Times count down (running requests' by the second).
         ui.ctx().request_repaint_after(Duration::from_secs(if pool.open.is_empty() { 20 } else { 1 }));
@@ -645,7 +683,11 @@ impl App for PoolApp {
             };
             ui.horizontal(|ui| {
                 let mut add = None;
+                let mut show_clients = false;
                 widgets::button_row(ui, |ui| {
+                    if ui.add(Button::new("Clients")).clicked() {
+                        show_clients = true;
+                    }
                     let r = ui.add(Button::new("Add Account"));
                     let source = r.id.with("add-menu");
                     if r.clicked() {
@@ -668,13 +710,16 @@ impl App for PoolApp {
                 if let Some(cmd) = add {
                     self.add_command(&cmd);
                 }
+                if show_clients {
+                    self.open_clients(cx);
+                }
             });
         });
     }
 
     fn menu_bar(&mut self, _window: WindowId) -> Option<Vec<Menu>> {
         Some(vec![
-            Menu::new("Pool").item("Read Quota Now", "refresh", Some(Key::R)).separator().item("Close", "close", Some(Key::W)),
+            Menu::new("Pool").item("Read Quota Now", "refresh", Some(Key::R)).item("Clients", "clients", Some(Key::L)).separator().item("Close", "close", Some(Key::W)),
             self.add_menu(),
         ])
     }
@@ -684,6 +729,11 @@ impl App for PoolApp {
     }
 
     fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
+        if let Some(w) = self.clients_win.take_if(|w| w.win == window) {
+            w.close();
+            cx.close_window(window);
+            return;
+        }
         // The gateway keeps serving.
         cx.close_window(window);
         self.win = None;
@@ -702,15 +752,29 @@ impl App for PoolApp {
         match *msg {
             Msg::Changed => {}
             Msg::Clients(on) => self.clients = Some(on),
-            Msg::ClientSet(prov, r, waiting) => {
+            Msg::Running(r) => {
+                if let Some(w) = self.clients_win.as_mut() {
+                    w.found(*r);
+                    cx.redraw(w.win);
+                }
+                return;
+            }
+            Msg::Restarted(r) => {
+                if let Some(w) = self.clients_win.as_mut() {
+                    w.restarted(r);
+                    cx.redraw(w.win);
+                }
+                return;
+            }
+            Msg::ClientSet(prov, r, restarted) => {
                 self.note = Some(match r {
                     Ok(()) => {
                         let on = self.clients.is_some_and(|c| c[client_index(prov)]);
                         // Codex's sessions run in its daemon, restarted onto
-                        // the settings between turns.
+                        // the settings.
                         let when = match prov {
-                            Provider::Codex if waiting => "once it finishes the turn it’s on",
-                            Provider::Codex => "from its next turn",
+                            Provider::Codex if restarted => "from now (its service restarted)",
+                            Provider::Codex => "from now",
                             Provider::Claude => "from its next start",
                         };
                         let verb = if on { "uses the pool" } else { "is back to its own sign-in" };
@@ -740,7 +804,7 @@ impl App for PoolApp {
     }
 
     fn save_state(&mut self, _cx: &Cx) -> Option<String> {
-        Some(json!({"open": self.win.is_some()}).to_string())
+        Some(json!({"open": self.win.is_some(), "clients": self.clients_win.is_some()}).to_string())
     }
 }
 
@@ -757,10 +821,17 @@ impl PoolApp {
 
 // ---- the command line -------------------------------------------------
 
-const USAGE: &str = "usage: olo-pool [--service | --status [--json]]
+const USAGE: &str = "usage: olo-pool [--service | --status [--json] | --clients [--json] | --restart-codex-service]
   (none)            open Token Pool (starting the gateway if it isn't running)
   --service         run the gateway in the background (the session does)
-  --status [--json] the pool's accounts, quota and state (no sign-ins)";
+  --status [--json] the pool's accounts, quota and state (no sign-ins), and
+                    each minute's requests by client over the last day
+  --clients [--json]
+                    the Claude Code and Codex running, where each one's
+                    connections go, and Codex's service (its daemon)
+  --restart-codex-service
+                    restart Codex's service onto its settings now (a turn
+                    going on ends; Codex's windows reconnect)";
 
 /// The running gateway's status, over loopback.
 fn fetch_status(port: u16) -> Result<Value, String> {
@@ -823,6 +894,46 @@ fn status(port: u16, as_json: bool) -> std::process::ExitCode {
     std::process::ExitCode::SUCCESS
 }
 
+/// What's running of the clients', as the Clients window shows it.
+fn clients_now(as_json: bool) -> std::process::ExitCode {
+    let port = olo_token_pool::intercept::port();
+    let r = running::scan(port);
+    if as_json {
+        println!("{}", serde_json::to_string_pretty(&r).unwrap_or_default());
+        return std::process::ExitCode::SUCCESS;
+    }
+    let t = now();
+    match &r.daemon {
+        Some(d) => {
+            let version = d.version.as_deref().unwrap_or("?");
+            let state = if d.stale { "started before the pool’s settings last changed".to_owned() } else { d.connections.describe(Provider::Codex) };
+            println!("Codex’s service: Codex {version}, pid {}, since {} ({}): {state}", d.pid, clock(d.started), span(t - d.started));
+            match &d.threads {
+                Ok(threads) => {
+                    for th in threads {
+                        let state = match (th.working, th.waiting) {
+                            (true, true) => "waiting for you",
+                            (true, false) => "working",
+                            _ => "idle",
+                        };
+                        println!("  {} {state}{}: {}", th.id, th.cwd.as_deref().map(|c| format!(" in {}", c.display())).unwrap_or_default(), th.title);
+                    }
+                }
+                Err(e) => println!("  its conversations: it didn’t say ({e})"),
+            }
+        }
+        None => println!("Codex’s service: not running"),
+    }
+    for (prov, list) in [(Provider::Claude, &r.claude), (Provider::Codex, &r.codex)] {
+        println!("{} ({}):", prov.client(), list.len());
+        for p in list {
+            let place = p.cwd.as_deref().map(|c| c.display().to_string()).unwrap_or_default();
+            println!("  pid {} in {place}, since {} ({}): {}", p.pid, clock(p.started), span(t - p.started), p.connections.describe(prov));
+        }
+    }
+    std::process::ExitCode::SUCCESS
+}
+
 fn main() -> std::process::ExitCode {
     // A session or install from before the rename (Tabula) carries on.
     olo_kit::legacy::adopt();
@@ -835,6 +946,21 @@ fn main() -> std::process::ExitCode {
     }
     if has("--status") {
         return status(port, has("--json"));
+    }
+    if has("--clients") {
+        return clients_now(has("--json"));
+    }
+    if has("--restart-codex-service") {
+        return match codex_daemon::restart_now() {
+            Ok(pid) => {
+                println!("Codex’s service restarted (pid {pid}).");
+                std::process::ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("olo-pool: {e}");
+                std::process::ExitCode::FAILURE
+            }
+        };
     }
     let service = has("--service");
     // One gateway per computer: a test or nested session runs its own
@@ -864,6 +990,7 @@ fn main() -> std::process::ExitCode {
             proxy_port,
             proxy,
             win: None,
+            clients_win: None,
             clients: None,
             note: None,
             waiting: None,
@@ -878,6 +1005,9 @@ fn main() -> std::process::ExitCode {
         };
         if open {
             app.open(cx);
+        }
+        if restored.as_ref().is_some_and(|r| r["clients"] == true) {
+            app.open_clients(cx);
         }
         app
     });
