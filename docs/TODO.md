@@ -1097,7 +1097,13 @@ as they land (with the commit), add new ones as they come up.
     one), ~~Email~~, Account, ~~Wallpaper~~ (done 2026-10-30), Screenshot (with screen sharing),
     Camera/Location as Olo asks permission, Secret (Passwords as the
     Secret Service, so Chrome's and Electron's stored secrets live in
-    Olo's keychain), and ~~Trash~~ (xdg-desktop-portal trashes through
+    Olo's keychain; **held for Ben's go-ahead**, 2026-10-30: Chrome keeps
+    its "Chrome Safe Storage" key in gnome-keyring through libsecret, so
+    taking over `org.freedesktop.secrets` without first moving every
+    existing item across would lose every saved cookie and password in
+    Chrome and Slack. It needs a migration that reads the real keyring,
+    as an explicit step in Preferences ▸ Security, tried on a copy
+    first), and ~~Trash~~ (xdg-desktop-portal trashes through
     GIO, in the freedesktop layout Tracker's Trash uses: nothing to add). Done 2026-10-30:
     Screenshot (Olo's Screenshot app, region when interactive; PickColor
     with a loupe) and Access (the permission dialog, as Olo's BAlert).
