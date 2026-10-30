@@ -141,7 +141,7 @@ pub struct UdevData {
     fps_texture: Option<MultiTexture>,
     debug_flags: DebugFlags,
     keyboards: Vec<smithay::reexports::input::Device>,
-    /// Touchpads and mice, configured from Preferences ▸ Touchpad.
+    /// Touchpads and mice, configured from Preferences ▸ Touchpad & Mouse.
     pointers: Vec<smithay::reexports::input::Device>,
     /// The settings last applied, for devices plugged in later.
     input_settings: Option<olo_protocol::Settings>,
@@ -522,7 +522,7 @@ struct Ctm {
     pending: Option<[f64; 3]>,
 }
 
-/// Preferences ▸ Touchpad into libinput: tapping, dragging, clicking,
+/// Preferences ▸ Touchpad & Mouse into libinput: tapping, dragging, clicking,
 /// scrolling, palm rejection while typing and speed for touchpads; speed
 /// and acceleration for mice. Options a device lacks are skipped.
 /// (Momentum and scrolling distance are app_server's own: `momentum.rs`,

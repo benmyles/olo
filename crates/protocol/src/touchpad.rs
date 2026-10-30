@@ -1,5 +1,5 @@
 //! Touchpads: what kind of pad is connected, the profiles that suit each
-//! kind, and the settings a profile sets (Preferences ▸ Touchpad).
+//! kind, and the settings a profile sets (Preferences ▸ Touchpad & Mouse).
 //!
 //! A profile is a starting point for how a pad *feels* (palm and hover
 //! filtering, click pressure, acceleration, scrolling, momentum);

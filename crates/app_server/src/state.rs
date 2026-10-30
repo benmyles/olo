@@ -1581,7 +1581,7 @@ pub trait Backend {
     fn seat_name(&self) -> String;
     /// Push touchpad/mouse settings to input devices.
     fn apply_input_settings(&mut self, _settings: &olo_protocol::Settings) {}
-    /// The pointing devices plugged in (Preferences ▸ Touchpad).
+    /// The pointing devices plugged in (Preferences ▸ Touchpad & Mouse).
     fn input_devices(&self) -> Vec<olo_protocol::touchpad::InputDeviceInfo> {
         Vec::new()
     }

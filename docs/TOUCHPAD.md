@@ -2,7 +2,7 @@
 
 Why MacBook touchpads misbehaved under Olo, what Olo does about it
 without touching the kernel, what a driver fix would look like, and
-where the numbers in Preferences ▸ Touchpad come from.
+where the numbers in Preferences ▸ Touchpad & Mouse come from.
 
 ## The symptoms (Ben, 16" M2 Max, October 2026)
 
@@ -150,7 +150,7 @@ didn't, hence the click rule above. Ben's session has had the filter on
 since 27 October 2026, 21:55, with `touch_on` 1 and the driver's own
 click (`palm_proof_click` off) until a build with that rule is in.
 
-## Preferences ▸ Touchpad
+## Preferences ▸ Touchpad & Mouse
 
 - **Touchpad:** the pad app_server found (`Request::InputDevices`:
   kind, size, whether it reports pressure, the driver's click

@@ -1,4 +1,4 @@
-//! Olo's touch filter (Preferences ▸ Touchpad): a libinput plugin,
+//! Olo's touch filter (Preferences ▸ Touchpad & Mouse): a libinput plugin,
 //! `touchpad.lua`, that app_server writes with the settings filled in and
 //! loads into its own libinput, so that on MacBook pads a hovering finger
 //! is not a touch, palms are left out, and a palm can't click. libinput

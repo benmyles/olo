@@ -48,7 +48,7 @@ pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
     ("sound", "Sound", "sound"),
     ("themes", "Themes", "themes"),
     ("touchid", "Touch ID", "fingerprint"),
-    ("touchpad", "Touchpad", "touchpad"),
+    ("touchpad", "Touchpad & Mouse", "touchpad"),
     ("tracker", "Tracker", "tracker"),
     ("windows", "Windows", "windows"),
     ("workspaces", "Workspaces", "workspaces"),

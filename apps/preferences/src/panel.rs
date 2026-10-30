@@ -124,7 +124,7 @@ impl Panel {
             Panel::Sound => "Sound",
             Panel::Themes => "Themes",
             Panel::TouchId => "Touch ID",
-            Panel::Touchpad => "Touchpad",
+            Panel::Touchpad => "Touchpad & Mouse",
             Panel::Tracker => "Tracker",
             Panel::Windows => "Windows",
             Panel::Workspaces => "Workspaces",

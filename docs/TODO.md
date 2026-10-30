@@ -316,6 +316,24 @@ as they land (with the commit), add new ones as they come up.
   other apps -- use it as an opportunity to enhance the kit too": rulers,
   style menus, tables, page views and the like are kit widgets,
   documented in HACKING.
+- **Activity Monitor, revamped** (Ben, 2026-10-29, at the end):
+  "revamp activity monitor to include everything a nerd could ever want
+  to know, with live views, drill downs, tuning settings and ability to
+  take actions etc. it should look really slick / aesthetically
+  pleasing, be extremely fast/performant/buttery smooth and extremely
+  powerful. if needed it should just ask for elevated perms on startup to
+  be able to show everything." Processes (tree, threads, open files and
+  sockets, memory maps, environment, cgroups, I/O, priorities; signal,
+  renice, pin to cores, limits), CPU (per core, frequencies, C-states,
+  governors), memory and swap (zram, pressure, page cache), disks (per
+  device and process I/O, latency, SMART), network (per interface and
+  connection, per process), GPU, power and thermals (sensors, fans,
+  battery), the kernel's pressure stall information and tunables; live
+  graphs at 120 Hz, history, drill-down from any graph to who causes
+  it. Read natively from /proc, /sys, netlink and the like (no ps, top
+  or lsof); elevated access through Olo's polkit agent, asked once at
+  start, for what needs it. Reusable graphs and inspectors go in the
+  kit.
 - **Terminal: git repos, worktrees and GitHub** (Ben), native (no `git`
   or `gh` subprocesses):
   - a tab in a git repo goes into a group named after the repo on its

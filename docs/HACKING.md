@@ -2674,7 +2674,7 @@ fprintd alone.
 ## The touchpad (app_server udev.rs, momentum.rs, touch_filter.rs)
 
 [TOUCHPAD.md](TOUCHPAD.md) has the measurements and the reasoning.
-Preferences ▸ Touchpad has four tabs (Touchpad, Touch, Gestures, Mouse)
+Preferences ▸ Touchpad & Mouse has four tabs (Touchpad, Touch, Gestures, Mouse)
 and a tuning profile (protocol `touchpad.rs`: `PROFILES`,
 `apply_profile`; changing any tuning by hand makes it "custom"); the
 pad and the profile it suits come from `Request::InputDevices`
@@ -2694,7 +2694,7 @@ context when the filter's settings change.
 scripted frames; `examples/touch_filter_probe.rs` runs it on a real
 device (root, read-only).
 
-Preferences ▸ Touchpad goes into libinput (`configure_pointer`), with the
+Preferences ▸ Touchpad & Mouse goes into libinput (`configure_pointer`), with the
 rest set as a Mac trackpad behaves: a two-finger tap is the secondary
 click, no drag lock, no middle-click emulation. Scrolling has momentum, as
 on a Mac (`momentum.rs`): when the fingers lift (libinput's scroll of 0)
