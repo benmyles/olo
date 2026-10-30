@@ -73,7 +73,7 @@ pub fn get(ctx: &Context, text: &str, font: &FontId) -> Option<Arc<BigText>> {
         }
         Some(Word::Waiting) => None,
         None => {
-            let options = ctx.fonts(|f| f.options().clone());
+            let options = ctx.fonts(|f| *f.options());
             let job = Job { key: key.clone(), options, ctx: ctx.clone(), reply: s.reply.clone() };
             if s.jobs.send(job).is_ok() {
                 s.words.insert(key, Word::Waiting);
@@ -161,8 +161,8 @@ struct Reply {
 fn work(jobs: mpsc::Receiver<Job>) {
     let mut fonts: Option<egui::epaint::text::Fonts> = None;
     for job in jobs {
-        let fonts = fonts.get_or_insert_with(|| egui::epaint::text::Fonts::new(job.options.clone(), crate::style::all_font_definitions()));
-        fonts.begin_pass(job.options.clone(), Default::default());
+        let fonts = fonts.get_or_insert_with(|| egui::epaint::text::Fonts::new(job.options, crate::style::all_font_definitions()));
+        fonts.begin_pass(job.options, Default::default());
         let (text, font, ppp) = (&job.key.0, FontId::new(f32::from_bits(job.key.1), job.key.2.clone()), f32::from_bits(job.key.3));
         let galley = fonts.with_pixels_per_point(ppp).layout_job(egui::text::LayoutJob::simple_singleline(text.clone(), font, Color32::WHITE));
         let generation = fonts.galley_generation();

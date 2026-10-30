@@ -94,7 +94,10 @@ like pixel alignment is.
    grow, showing only its part (`wp_viewport`), made to fit 1.5 s
    after only if it has a quarter more room than it shows (`roomier`:
    a theme switch that changes a window's size a little sets no
-   swapchain up), and a menu takes on the
+   swapchain up; made to fit at its next frame, so a window that isn't
+   showing, whose frame callbacks don't come, never wakes its app's
+   loop for it: one did, at once and again, and kept Passwords at a
+   whole core after an upgrade put it back on a hidden workspace), and a menu takes on the
    last closed menu's surface, swapchain, context and renderer
    (`SpareMenu`, two kept); the first menus' are made ahead, the
    contexts laid out on a worker as a window first draws, and so no

@@ -2702,7 +2702,14 @@ impl Kit {
             if s.dirty && !s.frame_pending && s.configured {
                 return Some(Duration::ZERO);
             }
-            for at in [s.repaint_at, s.configure_due, s.snug_at].into_iter().flatten() {
+            // A frame on its way can't be followed by another until it is
+            // shown (its callback wakes the loop): its buffer made snug
+            // waits for that too. Woken for it now, the loop would find
+            // nothing it could do and come straight back: a window that
+            // isn't showing (another workspace; its callback never comes)
+            // kept its app at a whole core.
+            let snug = s.snug_at.filter(|_| !s.frame_pending);
+            for at in [s.repaint_at, s.configure_due, snug].into_iter().flatten() {
                 let d = at.saturating_duration_since(now);
                 t = Some(t.map_or(d, |t: Duration| t.min(d)));
             }
@@ -2812,6 +2819,9 @@ impl Kit {
         self.surfaces[i].parts.setup_us = setup.elapsed().as_micros() as u32;
         self.surfaces[i].configure_due = None;
         if self.surfaces[i].gpu_surface.is_none() {
+            // Nothing to draw into (yet): not asked again at once, or the
+            // loop would spin on it; its next configure or event asks.
+            self.surfaces[i].dirty = false;
             return;
         }
 

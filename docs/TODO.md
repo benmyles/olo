@@ -214,6 +214,35 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Bug: after an upgrade, an auto-tiled window under Deskbar** (Ben,
+  2026-10-30): "after an olo hot upgrade i sometimes see windows, e.g.
+  terminal, in auto tile mode opens back up such that it extends further
+  horizontally beyond the deskbar and is under it. if i click to another
+  window then back it adjust it to fit properly." Coming back from an
+  upgrade, an auto-tiled window must take its tile at once (the tile
+  stopping beside Deskbar, as before the upgrade), not its old frame
+  until something re-lays the display out. Find what puts it back wider
+  (the saved frame from before Deskbar was back, or the tile laid out
+  before Deskbar's own size is known) and check with `tsession reload`
+  on a two-display auto-tiled session at every scale.
+- **Bug: after an upgrade, ⌘Space's palette opens on the first display**
+  (Ben, 2026-10-30): "every time after a hot upgrade the cmd+space
+  pallette seems to open on d0". The palette opens on the display the
+  person is at (the pointer's, else the active window's), upgrade or
+  not. Find what the palette goes by after a re-exec (an output it
+  remembers by an id the new app_server gives out anew, or no output
+  known yet when it first opens) and check after `tsession reload` on a
+  two-display session.
+- ~~**Bug: an app at a whole core after an upgrade**~~ (Ben, 2026-10-30; fixed):
+  "the olo supervisor has detected that olo-passwords looks stuck using
+  98% of a core for over 5mins". Its window was back on a hidden
+  workspace at another size: the kit's swapchain was to be made to fit
+  1.5 s on, but only at a frame, and a hidden window's frame callback
+  never came, so the loop was woken for it at once, again and again.
+  Now that waits for the frame (`next_timeout`), and a window with
+  nothing to draw into isn't asked again at once either. Reproduced
+  headless (a window shrunk, then sent to another workspace: 99% before,
+  0% after).
 - ~~**Bug: scrolling a window that isn't active**~~ (Ben, 2026-10-30; fixed, to try after the upgrade):
   "some/most apps don't let me scroll their scrollable areas unless
   they're active. all scrollable areas should be scrollable even if
