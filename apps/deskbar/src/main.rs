@@ -2059,7 +2059,7 @@ mod tests {
     use super::*;
 
     fn note(desktop_entry: Option<&str>, name: &str) -> NoteApp {
-        NoteApp { desktop_entry: desktop_entry.map(str::to_owned), name: name.into(), newest: (1, 1) }
+        NoteApp { desktop_entry: desktop_entry.map(str::to_owned), name: name.into(), newest: (1, 1), ..Default::default() }
     }
 
     #[test]

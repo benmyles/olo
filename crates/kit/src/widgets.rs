@@ -181,11 +181,20 @@ pub fn check_box_look(painter: &Painter, well: Rect, p: &Palette, checked: bool)
 pub struct CheckBox<'a> {
     value: &'a mut bool,
     label: &'a str,
+    mixed: bool,
 }
 
 impl<'a> CheckBox<'a> {
     pub fn new(value: &'a mut bool, label: &'a str) -> Self {
-        CheckBox { value, label }
+        CheckBox { value, label, mixed: false }
+    }
+
+    /// Mixed (a dash, not a check): what it stands for is on for some
+    /// and off for others, as an "All" row over a list's checkboxes. A
+    /// click turns it on (`value` true; the caller sets them all).
+    pub fn mixed(mut self, mixed: bool) -> Self {
+        self.mixed = mixed;
+        self
     }
 }
 
@@ -198,11 +207,17 @@ impl Widget for CheckBox<'_> {
         let (rect, mut response) = ui.allocate_exact_size(size, Sense::click());
         lint::control(ui, || lint::quoted("check box", self.label), rect);
         if response.clicked() {
-            *self.value = !*self.value;
+            *self.value = self.mixed || !*self.value;
             response.mark_changed();
         }
-        let checked = *self.value;
-        response.widget_info(|| WidgetInfo::selected(Role::CheckBox, ui.is_enabled(), checked, self.label));
+        let (checked, mixed) = (*self.value, self.mixed && !response.clicked());
+        response.widget_info(|| {
+            let mut info = WidgetInfo::selected(Role::CheckBox, ui.is_enabled(), checked && !mixed, self.label);
+            if mixed {
+                info.current_text_value = Some("mixed".to_owned());
+            }
+            info
+        });
         if !ui.is_rect_visible(rect) {
             return response;
         }
@@ -215,8 +230,12 @@ impl Widget for CheckBox<'_> {
         let grid = |v: f32| (v * ppp).round() / ppp;
         let well = Rect::from_min_size(pos2(grid(rect.left()), grid((rect.center().y - 6.5).round())), vec2(m::MARK_SIZE, m::MARK_SIZE));
         mark_well(painter, well, &p, pressed, ui.is_enabled());
-        if checked {
-            let mark = if ui.is_enabled() { c(p.control_mark) } else { style::disabled_text(&p) };
+        let mark = if ui.is_enabled() { c(p.control_mark) } else { style::disabled_text(&p) };
+        if mixed {
+            // A dash across the middle, on the device grid.
+            let y = grid(well.center().y - 0.75);
+            painter.rect_filled(Rect::from_min_max(pos2(grid(well.left() + 3.5), y), pos2(grid(well.right() - 3.5), y + grid(1.5).max(1.0 / ppp))), 0.0, mark);
+        } else if checked {
             style::check_mark(painter, Rect::from_min_max(well.min + vec2(3.0, 3.5), well.max - vec2(2.5, 3.5)), mark);
         }
         let pos = text_pos(ui, well.right() + MARK_GAP, rect.center().y, &galley);
@@ -1828,7 +1847,7 @@ fn scroll_bar(ui: &mut Ui, id: Id, bar: Rect, vertical: bool, offset: &mut f32, 
     // Knob.
     let track_len = along(track);
     if enabled && track_len > 8.0 {
-        let knob_len = (track_len * view / content).clamp(SCROLL_BAR + 4.0, track_len);
+        let knob_len = (track_len * view / content).clamp((SCROLL_BAR + 4.0).min(track_len), track_len);
         let travel = track_len - knob_len;
         let pos = (*offset / max_offset).clamp(0.0, 1.0) * travel;
         let knob = if vertical {

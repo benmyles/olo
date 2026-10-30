@@ -271,8 +271,8 @@ as they land (with the commit), add new ones as they come up.
   than the fill can show a change), and the fraction in the entry's
   status for agents. Done (HACKING, Deskbar): floor 0.3, the well at
   28% of the dot's colour; checked at 1×, 1.5× and 2×, light and dark.
-- **Notifications preferences: banners, sounds and history for all apps
-  at once** (Ben, 2026-10-30): "the notifications preferences already
+- ~~**Notifications preferences: banners, sounds and history for all apps
+  at once**~~ (Ben, 2026-10-30): "the notifications preferences already
   have the ability to turn on/off banners/sounds/history for each app
   but there should also be an option to do it for all apps". Above the
   apps table in Preferences ▸ Notifications, an "All Apps" row with the
@@ -280,7 +280,10 @@ as they land (with the commit), add new ones as they come up.
   every app; each shows mixed (–) while the apps differ. Applies to apps
   seen later too only if the person asks for it (the default for new
   apps stays as now). Readable and settable by agents through the
-  panel's widget tree.
+  panel's widget tree. Done (HACKING, Notifications; the kit's
+  `CheckBox::mixed`); the panel is taller for it (and the Deskbar box).
+  Also fixed: a scroll view squeezed below 18 points crashed its app
+  (the knob's least length passed the track's).
 - ~~**Deskbar: the notification count beside the dot, as an option**~~
   (Ben, 2026-10-30): "a preferences option in notifications to also
   include the notification count next to the blue dot. off by default

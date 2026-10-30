@@ -658,7 +658,7 @@ command. Elsewhere `on_hover_text` is fine.
 
 ### Widgets (`olo_kit::widgets`)
 
-`StringView` (a label; `.dim(true)` for hints, `.wrap(true)` for a paragraph, `.color(c)`; a wrapped one is `CONTROL_HEIGHT` tall plus a line's height, about `LABEL_ROW`, for each line after the first, so size a fixed area for it that way), `Button` (`.default(true)` for the Enter button; `.small()` is `SMALL_BUTTON_HEIGHT` tall in the small font, for actions inside something dense: a card, a list row), `CheckBox` (`check_box_look` draws one that isn't a control: a document's task, done or not), `RadioButton`,
+`StringView` (a label; `.dim(true)` for hints, `.wrap(true)` for a paragraph, `.color(c)`; a wrapped one is `CONTROL_HEIGHT` tall plus a line's height, about `LABEL_ROW`, for each line after the first, so size a fixed area for it that way), `Button` (`.default(true)` for the Enter button; `.small()` is `SMALL_BUTTON_HEIGHT` tall in the small font, for actions inside something dense: a card, a list row), `CheckBox` (`.mixed(true)` shows a dash for an "All" box over boxes that differ, and a click turns it on; agents read the value "mixed"; `check_box_look` draws one that isn't a control: a document's task, done or not), `RadioButton`,
 `Button::pushed(true)` for a toolbar toggle that stays down (shaded in,
 its label level with its row's; only a button held down by the pointer
 moves its label, a device pixel),
@@ -4288,7 +4288,10 @@ notifications.
   1 − t^1.6, slow at first, then faster, to nothing; `faded(age)` once
   it's gone), and per-app
   `banners` / `sounds` / `history` by app name (a site's falling back to
-  its browser's). Preferences' History box shows the fade as a strip from
+  its browser's): Preferences' Applications table, its All Apps row over
+  the list setting a column for every app at once (checked when every
+  app's is, mixed while they differ: `CheckBox::mixed`). Preferences'
+  History box shows the fade as a strip from
   Now to gone. The service re-reads the
   file within a second of a change (Preferences ▸ Notifications and
   Deskbar write it). While quiet nothing pops up or sounds but errors.

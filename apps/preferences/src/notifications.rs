@@ -285,6 +285,31 @@ fn apps_ui(ui: &mut Ui, st: &State, s: &mut NotificationSettings) {
             return;
         }
         ui.spacing_mut().item_spacing.y = 0.0;
+        // All of them at once: each column checked if every app's is,
+        // mixed if some are; a click sets the column for every app.
+        let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), m::LIST_ROW), Sense::hover());
+        let name = ui.painter().layout_no_wrap("All Apps".to_owned(), style::bold_font(), c(p.panel_text));
+        ui.painter().galley(pos2(r.left() + 6.0, r.center().y - name.size().y / 2.0), name, c(p.panel_text));
+        let all: Vec<AppNotifications> = apps.iter().map(|a| s.app(a)).collect();
+        let column = |k: usize, a: &AppNotifications| [a.banners, a.sounds, a.history][k];
+        for k in 0..columns.len() {
+            let on = all.iter().filter(|a| column(k, a)).count();
+            let mut v = on == all.len();
+            let x = r.right() - 2.0 - 14.0 - (columns.len() - k) as f32 * COLUMN + COLUMN / 2.0;
+            let cell = Rect::from_center_size(pos2(x, r.center().y), vec2(14.0, m::LIST_ROW));
+            if ui.put(cell, CheckBox::new(&mut v, "").mixed(on > 0 && on < all.len())).changed() {
+                for app in &apps {
+                    let mut a = s.app(app);
+                    *[&mut a.banners, &mut a.sounds, &mut a.history][k] = v;
+                    if a == AppNotifications::default() {
+                        s.apps.remove(app);
+                    } else {
+                        s.apps.insert(app.clone(), a);
+                    }
+                }
+            }
+        }
+        ui.add_space(2.0);
         ScrollView::new("notification-apps").background(p.document_background).show_rows(ui, m::LIST_ROW, apps.len(), |ui, range| {
             for i in range {
                 let app = &apps[i];

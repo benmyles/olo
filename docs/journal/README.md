@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Notifications: All Apps, mixed while they differ
+
+*10:52* — Preferences ▸ Notifications' Applications table has an All Apps row over the list: each column checked when every app's is, a dash while they differ (the kit's CheckBox::mixed); a click sets it for every app. With the Deskbar box above it, the panel is taller.
+
+![Notifications: All Apps, mixed while they differ](2026-10-30/105255-notifications-all-apps-mixed-while-they-differ.png)
+
 ### Deskbar's notification dot drains as they fade
 
 *10:46* — An app's dot in Deskbar is filled from the left to how fresh its notifications are together (each 1/n, as the history fades them), never below a third, the rest a faint well of its colour; with Preferences ▸ Notifications ▸ Show how many beside each app's dot, the count beside it (here 2, partway through a 2-minute fade, at 2×).

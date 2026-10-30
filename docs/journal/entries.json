@@ -2326,5 +2326,11 @@
   "title": "Deskbar's notification dot drains as they fade",
   "caption": "An app's dot in Deskbar is filled from the left to how fresh its notifications are together (each 1/n, as the history fades them), never below a third, the rest a faint well of its colour; with Preferences \u25b8 Notifications \u25b8 Show how many beside each app's dot, the count beside it (here 2, partway through a 2-minute fade, at 2\u00d7).",
   "image": "2026-10-30/104645-deskbar-s-notification-dot-drains-as-they-fade.png"
+ },
+ {
+  "time": "2026-10-30T10:52:55",
+  "title": "Notifications: All Apps, mixed while they differ",
+  "caption": "Preferences \u25b8 Notifications' Applications table has an All Apps row over the list: each column checked when every app's is, a dash while they differ (the kit's CheckBox::mixed); a click sets it for every app. With the Deskbar box above it, the panel is taller.",
+  "image": "2026-10-30/105255-notifications-all-apps-mixed-while-they-differ.png"
  }
 ]
