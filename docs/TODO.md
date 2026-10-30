@@ -376,6 +376,23 @@ as they land (with the commit), add new ones as they come up.
   where it would go; let go there, its tabs (and groups) go in, and it
   closes. Checked in a test session: a tab out and back, a lone window
   dropped by its tab, a group out and back after another group.
+- **Terminal's tabs and groups look like Deskbar's list** (Ben,
+  2026-10-29): "can you make the terminal tabs styled more like the olo
+  deskpad tabs that style looks much nicer than the almost childish look
+  of the tabs/groups in terminal right now." Down the side: groups as
+  Deskbar's workspace headings (bold, a band, no pill), tabs as its rows
+  (icon, title, the one showing in its band), quiet; along the top, the
+  same restraint.
+- **Show All Tabs: each pane's head in its group's colour** (Ben,
+  2026-10-29): "can you make the tile headers follow their groups color
+  scheme so we can visually see whats what".
+- **Tracker: selection as in modern file managers** (Ben, 2026-10-29):
+  "in tracker i should be able to click a file/item, hold down shift then
+  click above/below it to select all of them and any other common
+  selection/movement/action behaviors and patterns in modern file
+  managers". Shift-click ranges, ⌘-click to add or take one away,
+  ⇧-arrows to extend, ⌘A, a rubber band in every view, type to select,
+  and the rest Finder and Nautilus do.
 - **StyledEdit, much more featureful** (Ben, 2026-10-29, after
   everything else): "please improve StyledEdit to be much more featureful
   -- it doesn't need all the bells and whistles of, say, modern Word or
