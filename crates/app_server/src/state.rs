@@ -152,6 +152,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     // desktop
     pub space: Space<WindowElement>,
     pub popups: PopupManager,
+    /// What had the keyboard as a menu's popup grab began, for when the
+    /// menu goes (the grab itself remembers only the menu's parent).
+    pub keyboard_before_popup: Option<crate::focus::KeyboardFocusTarget>,
     /// Touchpad scrolls gliding on after the fingers lift.
     /// Finger scrolls and glides, sent on the frame clock (`pace.rs`).
     pub pacer: crate::pace::Pacer,
@@ -1139,6 +1142,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             handle,
             space: Space::default(),
             popups: PopupManager::default(),
+            keyboard_before_popup: None,
             pacer: Default::default(),
             scroll_direction: (smithay::backend::input::AxisRelativeDirection::Identical, smithay::backend::input::AxisRelativeDirection::Identical),
             held_stop: None,

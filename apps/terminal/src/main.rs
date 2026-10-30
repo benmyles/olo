@@ -64,6 +64,24 @@ fn pane_head_height(side: bool) -> f32 {
     if side { widgets::STRIP_SIDE_HEAD } else { widgets::STRIP_ROW }
 }
 
+/// A group's menu (its chip's, in the strip, and its row's divider in
+/// Tile All Tabs).
+fn group_menu(g: usize, t: &TermWin) -> Menu {
+    Menu::new("")
+        .item("Rename Group…", format!("group-rename:{g}"), None)
+        .item("New Tab in Group", format!("group-new-tab:{g}"), None)
+        .separator()
+        .item("Save Group", format!("group-save:{g}"), None)
+        .item("Move Group to New Window", format!("group-window:{g}"), None)
+        .enabled(t.tabs.iter().any(|x| x.group != Some(g)))
+        .separator()
+        .item("Ungroup", format!("group-ungroup:{g}"), None)
+        .item("Close Group", format!("group-close:{g}"), None)
+        .separator()
+        .item("Tile All Tabs", "tile-tabs", None)
+        .checked(t.tiled)
+}
+
 /// Show `t`'s title on its window, and its folder, if it changed.
 fn retitle(cx: &mut Cx, win: WindowId, t: &mut TermWin) {
     if let Some(title) = t.retitle() {
@@ -122,27 +140,67 @@ fn tile(area: egui::Rect, n: usize, ppp: f32) -> Vec<egui::Rect> {
     out
 }
 
-/// Tile All Tabs' panes in rows, `counts[r]` side by side in row `r`,
-/// the rows sharing `area`'s height (row by row, left to right); as
-/// `tile`, a line apart, their edges on device pixels at `ppp`.
-fn tile_in_rows(area: egui::Rect, counts: &[usize], ppp: f32) -> Vec<egui::Rect> {
+/// Tile All Tabs' rows in `area`: each row's top and bottom, a line
+/// apart, on device pixels at `ppp`. Each row has `least` (when they all
+/// fit), and what is left is shared by `weights` (as the person dragged
+/// them: 1 each at first).
+fn row_spans(area: egui::Rect, weights: &[f32], least: f32, ppp: f32) -> Vec<(f32, f32)> {
     let line = style::line_pixels(ppp);
     let d = |v: f32| (v * ppp).round();
-    let (left, top, right, bottom) = (d(area.left()), d(area.top()), d(area.right()), d(area.bottom()));
-    let rows = counts.len().max(1);
-    let h = ((bottom - top + line) / rows as f32).floor();
+    let (top, bottom) = (d(area.top()), d(area.bottom()));
+    let rows = weights.len().max(1);
+    let all = bottom - top + line;
+    let least = if d(least) * rows as f32 <= all { d(least) } else { 0.0 };
+    let spare = all - least * rows as f32;
+    let total: f32 = weights.iter().map(|w| w.max(0.01)).sum::<f32>().max(0.01);
+    let mut out = Vec::with_capacity(rows);
+    let mut y = top;
+    for (r, w) in weights.iter().enumerate() {
+        let h = if r + 1 == rows { top + all - y } else { least + (spare * w.max(0.01) / total).floor() };
+        let y1 = if r + 1 == rows { bottom } else { y + h - line };
+        out.push((y / ppp, y1 / ppp));
+        y += h;
+    }
+    out
+}
+
+/// Tile All Tabs' panes in rows, `counts[r]` side by side in row `r`,
+/// the rows as `row_spans` lays them out (row by row, left to right); as
+/// `tile`, a line apart, their edges on device pixels at `ppp`.
+fn tile_in_rows(area: egui::Rect, counts: &[usize], weights: &[f32], least: f32, ppp: f32) -> Vec<egui::Rect> {
+    let line = style::line_pixels(ppp);
+    let d = |v: f32| (v * ppp).round();
+    let (left, right) = (d(area.left()), d(area.right()));
     let mut out = Vec::with_capacity(counts.iter().sum());
-    for (r, &n) in counts.iter().enumerate() {
+    for (&n, (y0, y1)) in counts.iter().zip(row_spans(area, weights, least, ppp)) {
         let n = n.max(1);
         let w = ((right - left + line) / n as f32).floor();
         for c in 0..n {
             let x0 = left + c as f32 * w;
-            let y0 = top + r as f32 * h;
             let x1 = if c + 1 == n { right } else { x0 + w - line };
-            let y1 = if r + 1 == rows { bottom } else { y0 + h - line };
-            out.push(egui::Rect::from_min_max(egui::pos2(x0 / ppp, y0 / ppp), egui::pos2(x1 / ppp, y1 / ppp)));
+            out.push(egui::Rect::from_min_max(egui::pos2(x0 / ppp, y0), egui::pos2(x1 / ppp, y1)));
         }
     }
+    out
+}
+
+/// The rows' weights after the divider over row `r` moved `dy` (logical
+/// pixels): rows `r - 1` and `r` grow and shrink, each keeping `least`,
+/// the others as they were. `spans` are the rows as shown.
+fn drag_rows(weights: &[f32], spans: &[(f32, f32)], r: usize, dy: f32, least: f32) -> Vec<f32> {
+    let mut out = weights.to_vec();
+    if r == 0 || r >= weights.len() || spans.len() != weights.len() {
+        return out;
+    }
+    let h = |i: usize| spans[i].1 - spans[i].0;
+    let (a, b) = (h(r - 1) - least, h(r) - least);
+    if a + b <= 0.0 {
+        return out;
+    }
+    let a2 = (a + dy).clamp(0.0, a + b);
+    let pair = weights[r - 1] + weights[r];
+    out[r - 1] = pair * a2 / (a + b);
+    out[r] = pair - out[r - 1];
     out
 }
 
@@ -380,13 +438,16 @@ struct TermWin {
     /// The groups chosen in Tile All Tabs (by name: groups renumber),
     /// the only ones tiled; none (or all): every tab.
     tile_groups: Vec<String>,
+    /// Each row's share of the height in Tile All Tabs, as the person
+    /// dragged it, by its group's name ("" for tabs in none); 1 if not.
+    tile_heights: std::collections::BTreeMap<String, f32>,
 }
 
 impl TermWin {
     /// A window of `tabs` (each saying its group in `groups`).
     fn new(tabs: Vec<Tab>, active: usize, snap_to: Option<(usize, usize)>, groups: Vec<Group>) -> TermWin {
         let active = active.min(tabs.len().saturating_sub(1));
-        let mut t = TermWin { active, tabs, glyphs: GlyphCache::default(), snap_to, shown_title: String::new(), focused: true, groups, tiled: false, tile_groups: Vec::new() };
+        let mut t = TermWin { active, tabs, glyphs: GlyphCache::default(), snap_to, shown_title: String::new(), focused: true, groups, tiled: false, tile_groups: Vec::new(), tile_heights: Default::default() };
         t.tidy();
         t
     }
@@ -450,6 +511,17 @@ impl TermWin {
             rows.retain(|(g, _)| g.is_some_and(|g| chosen.contains(&g)));
         }
         rows.into_iter().map(|(_, row)| row).collect()
+    }
+
+    /// A Tile All Tabs row's name for its share of the height: its
+    /// group's, or "" for the tabs in none.
+    fn row_key(&self, row: &[usize]) -> String {
+        row.first().and_then(|&i| self.tabs.get(i)).and_then(|t| t.group).and_then(|g| self.groups.get(g)).map(|g| g.name.clone()).unwrap_or_default()
+    }
+
+    /// Whether the rows' heights were dragged from even.
+    fn heights_changed(&self) -> bool {
+        self.tile_heights.values().any(|w| (w - 1.0).abs() > 0.01)
     }
 
     /// Choose group `g` in Tile All Tabs, or not; all chosen is none.
@@ -673,6 +745,9 @@ struct SavedWindow {
     /// The groups chosen in Tile All Tabs (`TermWin::tile_groups`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tile_groups: Vec<String>,
+    /// Its rows' shares of the height (`TermWin::tile_heights`).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    tile_heights: std::collections::BTreeMap<String, f32>,
     /// Each tab's folder, for a shell in its place if it has gone.
     #[serde(default)]
     cwds: Vec<Option<PathBuf>>,
@@ -942,6 +1017,7 @@ impl Terminal {
             if let Some(Win::Term(t)) = self.windows.get_mut(&id) {
                 t.tiled = w.tiled;
                 t.tile_groups = w.tile_groups.clone();
+                t.tile_heights = w.tile_heights.clone();
             }
         }
         let rest: Vec<&wire::ShellInfo> = free.iter().filter(|s| !used.contains(&s.id)).copied().collect();
@@ -1129,6 +1205,18 @@ impl Terminal {
         }
         let group_colors: Vec<egui::Color32> = t.groups.iter().map(|g| groups::color(g.color, &self.look)).collect();
         let rows = t.tile_rows();
+        let ppp = ui.ctx().pixels_per_point();
+        // The rows' shares of the height, and the least each keeps (its
+        // panes' heads and two lines).
+        let row_keys: Vec<String> = rows.iter().map(|r| t.row_key(r)).collect();
+        let weights: Vec<f32> = row_keys.iter().map(|k| t.tile_heights.get(k).copied().unwrap_or(1.0)).collect();
+        let least = pane_head_height(side) + metrics.content_size(1, 2).1 as f32;
+        let tiling_rows = t.tiled && t.tabs.len() > 1 && rows.len() > 1;
+        let spans = if tiling_rows { row_spans(area, &weights, least, ppp) } else { Vec::new() };
+        // Between rows, the divider and the head of the row under it drag
+        // the rows' heights.
+        let dividers: Vec<egui::Rect> = spans.iter().skip(1).map(|&(top, _)| egui::Rect::from_min_max(egui::pos2(area.left(), top - 4.0), egui::pos2(area.right(), top + pane_head_height(side)))).collect();
+        let changed_heights = t.heights_changed();
         let TermWin { tabs, active, glyphs, tiled, .. } = &mut **t;
         let session_cwd = |tab: &Tab| {
             let shared = tab.session.shared.clone();
@@ -1141,10 +1229,9 @@ impl Terminal {
         // its own, a row for each group, a group alone in a grid; the one
         // typed into marked. Else only the one showing.
         let panes: Vec<(usize, egui::Rect)> = if *tiled && tabs.len() > 1 {
-            let ppp = ui.ctx().pixels_per_point();
             match rows.as_slice() {
                 [one] => one.iter().copied().zip(tile(area, one.len(), ppp)).collect(),
-                rows => rows.concat().into_iter().zip(tile_in_rows(area, &rows.iter().map(Vec::len).collect::<Vec<_>>(), ppp)).collect(),
+                rows => rows.concat().into_iter().zip(tile_in_rows(area, &rows.iter().map(Vec::len).collect::<Vec<_>>(), &weights, least, ppp)).collect(),
             }
         } else {
             vec![(*active, area)]
@@ -1165,7 +1252,8 @@ impl Terminal {
                 if rect.min != area.min {
                     olo_kit::layout_review::own_grid(ui, rect);
                 }
-                let pressed = ui.input(|inp| inp.pointer.any_pressed() && inp.pointer.interact_pos().is_some_and(|p| rect.contains(p)));
+                // (A divider's press is its own: a click there picks.)
+                let pressed = ui.input(|inp| inp.pointer.any_pressed() && inp.pointer.interact_pos().is_some_and(|p| rect.contains(p) && !dividers.iter().any(|d| d.contains(p))));
                 if pressed && i != *active {
                     picked = Some(i);
                 }
@@ -1190,6 +1278,37 @@ impl Terminal {
             }
         }
         let out = out.expect("a pane");
+        // The dividers, over the panes: dragged, the rows either side
+        // grow and shrink; clicked, the pane there is picked; the right
+        // button, the row's menu.
+        let mut dragged_rows = None;
+        let mut divider_menu = None;
+        let mut divider_popup = None;
+        for (k, d) in dividers.iter().enumerate() {
+            let r = k + 1;
+            let resp = ui.interact(*d, ui.make_persistent_id(("tile-divider", r)), egui::Sense::click_and_drag());
+            let share = (spans[r].1 - spans[r].0) / area.height().max(1.0);
+            let name = if row_keys[r].is_empty() { "Tabs in No Group".to_owned() } else { row_keys[r].clone() };
+            resp.widget_info(|| egui::WidgetInfo { current_text_value: Some(format!("{:.0}%", share * 100.0)), ..egui::WidgetInfo::labeled(egui::Role::Splitter, true, format!("Row Height: {name}")) });
+            let near = resp.hover_pos().is_some_and(|p| (p.y - spans[r].0).abs() <= 4.0);
+            if near || resp.dragged() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeRow);
+            }
+            if resp.dragged() && resp.drag_delta().y != 0.0 {
+                dragged_rows = Some((r, resp.drag_delta().y));
+            }
+            if resp.clicked()
+                && let Some(pos) = resp.interact_pointer_pos()
+                && let Some(&(i, _)) = panes.iter().find(|(_, p)| p.contains(pos))
+                && i != *active
+            {
+                picked = Some(i);
+            }
+            if resp.secondary_clicked() {
+                let group = rows[r].first().and_then(|&i| tabs[i].group);
+                divider_menu = resp.interact_pointer_pos().map(|pos| (group, pos));
+            }
+        }
         if !several {
             // Every tab has the window's grid, so a program in one that
             // isn't showing still lays itself out right.
@@ -1200,6 +1319,24 @@ impl Terminal {
         if let Some(i) = picked {
             t.select(i);
             cx.redraw(win);
+        }
+        if let Some((r, dy)) = dragged_rows {
+            let w = drag_rows(&weights, &spans, r, dy, least);
+            for (key, w) in row_keys.iter().zip(w) {
+                t.tile_heights.insert(key.clone(), w);
+            }
+            cx.redraw(win);
+        }
+        if let Some((group, pos)) = divider_menu {
+            // The row's group's menu, as its chip has it, and Reset Row
+            // Heights.
+            let menu = match group {
+                Some(g) => group_menu(g, t),
+                None => Menu::new("").item("Tile All Tabs", "tile-tabs", None).checked(t.tiled),
+            };
+            let menu = menu.item("Reset Row Heights", "tile-reset-heights", None).enabled(changed_heights);
+            // (With the group's worktrees once the window is let go.)
+            divider_popup = Some((menu, group.is_some(), pos));
         }
         let TermWin { tabs, active, .. } = &mut **t;
         if let Some(target) = &out.open {
@@ -1279,19 +1416,10 @@ impl Terminal {
                 cx.redraw(win);
             }
             Some(StripAction::Group(g, pos)) => {
-                let menu = Menu::new("")
-                    .item("Rename Group…", format!("group-rename:{g}"), None)
-                    .item("New Tab in Group", format!("group-new-tab:{g}"), None)
-                    .separator()
-                    .item("Save Group", format!("group-save:{g}"), None)
-                    .item("Move Group to New Window", format!("group-window:{g}"), None)
-                    .enabled(t.tabs.iter().any(|x| x.group != Some(g)))
-                    .separator()
-                    .item("Ungroup", format!("group-ungroup:{g}"), None)
-                    .item("Close Group", format!("group-close:{g}"), None)
-                    .separator()
-                    .item("Tile All Tabs", "tile-tabs", None)
-                    .checked(t.tiled);
+                let mut menu = group_menu(g, t);
+                if tiling_rows {
+                    menu = menu.item("Reset Row Heights", "tile-reset-heights", None).enabled(changed_heights);
+                }
                 let menu = self.worktrees_menu(win, menu);
                 menu::request_popup(
                     ui.ctx(),
@@ -1348,6 +1476,10 @@ impl Terminal {
                 );
             }
             None => {}
+        }
+        if let Some((menu, grouped, pos)) = divider_popup {
+            let menu = if grouped { self.worktrees_menu(win, menu) } else { menu };
+            menu::request_popup(ui.ctx(), MenuRequest { menu, source: ui.make_persistent_id("tile-divider-menu"), anchor: MenuAnchor::At(pos), selected: None });
         }
         // Foreground program changes don't produce output: look again now
         // and then for the title.
@@ -2396,6 +2528,12 @@ impl App for Terminal {
                 let shell = t.tab().session.id;
                 self.detach(cx, window, shell, false);
             }
+            "tile-reset-heights" => {
+                if let Some(Win::Term(t)) = self.windows.get_mut(&window) {
+                    t.tile_heights.clear();
+                    cx.redraw(window);
+                }
+            }
             "tile-tabs" => {
                 if let Some(Win::Term(t)) = self.windows.get_mut(&window) {
                     t.tiled = !t.tiled;
@@ -2678,6 +2816,7 @@ impl Terminal {
                         group: None,
                         tiled: t.tiled,
                         tile_groups: t.tile_groups.clone(),
+                        tile_heights: t.tile_heights.clone(),
                         cwds: live.iter().map(|x| x.session.cwd()).collect(),
                         own_grouping: false,
                         groups: t.groups.clone(),
@@ -2923,7 +3062,7 @@ mod tile_tests {
         // Two rows (three tabs, then two) in 300 × 201 at 1×: rows a line
         // apart sharing the height, each row's panes its width.
         let area = Rect::from_min_max(pos2(0.0, 0.0), pos2(300.0, 201.0));
-        let panes = super::tile_in_rows(area, &[3, 2], 1.0);
+        let panes = super::tile_in_rows(area, &[3, 2], &[1.0, 1.0], 0.0, 1.0);
         assert_eq!(panes.len(), 5);
         assert!(panes[..3].iter().all(|p| p.top() == 0.0 && p.bottom() == panes[0].bottom()));
         assert!(panes[3..].iter().all(|p| p.bottom() == 201.0 && p.top() > panes[0].bottom()));
@@ -2931,10 +3070,37 @@ mod tile_tests {
         // Panes side by side don't overlap, a line between them.
         assert!(panes[0].right() < panes[1].left() && panes[3].right() < panes[4].left());
         // Every edge on a device pixel at 1.5×.
-        for p in super::tile_in_rows(area, &[3, 2, 1], 1.5) {
+        for p in super::tile_in_rows(area, &[3, 2, 1], &[1.0, 2.5, 0.7], 30.0, 1.5) {
             for v in [p.left(), p.top(), p.right(), p.bottom()] {
                 assert!((v * 1.5 - (v * 1.5).round()).abs() < 1e-3, "{v}");
             }
         }
+    }
+
+    #[test]
+    fn rows_dragged() {
+        let area = Rect::from_min_max(pos2(0.0, 0.0), pos2(300.0, 401.0));
+        let h = |s: &[(f32, f32)], i: usize| s[i].1 - s[i].0;
+        // Even at first: a line between rows.
+        let even = super::row_spans(area, &[1.0, 1.0], 40.0, 1.0);
+        assert_eq!(even, vec![(0.0, 200.0), (201.0, 401.0)]);
+        // The divider dragged down 50: the first row 50 taller.
+        let w = super::drag_rows(&[1.0, 1.0], &even, 1, 50.0, 40.0);
+        let spans = super::row_spans(area, &w, 40.0, 1.0);
+        assert!((h(&spans, 0) - 250.0).abs() <= 1.0, "{spans:?}");
+        assert_eq!(spans[1].1, 401.0);
+        // Dragged right down: the second keeps its least.
+        let w = super::drag_rows(&w, &spans, 1, 1000.0, 40.0);
+        let spans = super::row_spans(area, &w, 40.0, 1.0);
+        assert!((h(&spans, 1) - 40.0).abs() <= 1.0, "{spans:?}");
+        // Three rows: dragging between the last two leaves the first.
+        let three = super::row_spans(area, &[1.0, 1.0, 1.0], 40.0, 1.0);
+        let w = super::drag_rows(&[1.0, 1.0, 1.0], &three, 2, -30.0, 40.0);
+        let after = super::row_spans(area, &w, 40.0, 1.0);
+        assert_eq!(after[0], three[0]);
+        assert!(h(&after, 1) < h(&three, 1) && h(&after, 2) > h(&three, 2));
+        // Too small for every row's least: shared by weight alone.
+        let tiny = super::row_spans(Rect::from_min_max(pos2(0.0, 0.0), pos2(300.0, 60.0)), &[1.0, 1.0], 40.0, 1.0);
+        assert_eq!(tiny.len(), 2);
     }
 }

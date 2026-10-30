@@ -324,23 +324,39 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         // the keyboard back but stays, and refuses the next menu of any
         // other program, as Deskbar's right after a window's tab menu
         // put away with Escape).
+        let gone = surface.wl_surface().clone();
         let root = self.popup_root_focus(&PopupKind::Xdg(surface));
         self.handle.insert_idle(move |state| {
             state.popups.cleanup();
+            // A parent menu still open keeps its grab (and the keyboard).
+            let open = root.as_ref().and_then(|r| r.wl_surface()).is_some_and(|w| smithay::desktop::PopupManager::popups_for_surface(&w).any(|(p, _)| p.alive() && *p.wl_surface() != gone));
             if let Some(keyboard) = state.seat.get_keyboard()
-                // While a parent menu is still open, its grab ignores this.
                 && keyboard.is_grabbed()
+                && !open
             {
-                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-                match root.clone() {
-                    Some(root) if root.alive() => keyboard.set_focus(state, Some(root), serial),
-                    // Its window gone with it (the tab menu's layer):
-                    // the grab ends, the keyboard staying where it went.
-                    _ => {
-                        if keyboard.with_grab(|_, grab| grab.is::<PopupKeyboardGrab<Self>>()).unwrap_or(false) {
-                            keyboard.unset_grab(state);
-                        }
-                    }
+                // Back to what had the keyboard as the menu opened (the
+                // window clicked for it; for Deskbar's, which never takes
+                // the keyboard, the window typed into), else the menu's
+                // window (a popup gone can't always say whose it was: then
+                // the grab's parent); not if its window went with it (the
+                // tab menu's layer: the keyboard stays where its choice put
+                // it).
+                let before = state.keyboard_before_popup.take();
+                let start = keyboard.with_grab(|_, grab| grab.start_data().focus.clone()).flatten();
+                let takes = |f: &KeyboardFocusTarget| f.alive() && !matches!(f, KeyboardFocusTarget::LayerSurface(l) if !l.can_receive_keyboard_focus());
+                let back = match &root {
+                    Some(r) if !r.alive() => None,
+                    _ => before.filter(takes).or(root.clone().filter(takes)).or(start.filter(takes)),
+                };
+                // The grab first: it ignores focus changes until it thinks
+                // itself over, which is only once the popup's surface has
+                // gone too (a kit app keeps it a while), so the window
+                // never got the keyboard back.
+                if keyboard.with_grab(|_, grab| grab.is::<PopupKeyboardGrab<Self>>()).unwrap_or(false) {
+                    keyboard.unset_grab(state);
+                }
+                if let Some(back) = back.filter(|r| r.alive()) {
+                    keyboard.set_focus(state, Some(back), smithay::utils::SERIAL_COUNTER.next_serial());
                 }
             }
             // Its window draws itself without the menu (a menu bar's title
@@ -399,6 +415,11 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
                     {
                         grab.ungrab(PopupUngrabStrategy::All);
                         return;
+                    }
+                    // A menu's first popup (not a submenu): what has the
+                    // keyboard now gets it back when the menu goes.
+                    if !keyboard.with_grab(|_, g| g.is::<PopupKeyboardGrab<Self>>()).unwrap_or(false) {
+                        self.keyboard_before_popup = keyboard.current_focus();
                     }
                     keyboard.set_focus(self, grab.current_grab(), serial);
                     keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);

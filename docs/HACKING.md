@@ -440,7 +440,11 @@ fn main() {
   them; the screen saver opens one per output). `LayerOptions::keyboard`
   is `Keyboard::None`, `OnDemand` (focus on click: the desktop) or
   `Exclusive` (every key while it is up: pickers such as Screenshot's
-  region overlay).
+  region overlay). A click on a top or overlay layer that is `None`
+  (Deskbar) leaves the keyboard where it was, never going through to
+  what is under it (the desktop took it, so a click on Deskbar left
+  the window being typed into without it); a menu of its closing hands
+  the keyboard back to what had it as the menu opened.
 * `ui.ctx().set_cursor_icon(CursorIcon::None)` hides the pointer over a
   window (screen savers). Other `CursorIcon`s go to app_server by name
   over cursor-shape-v1 (sctk does it), and app_server draws its own
@@ -949,7 +953,10 @@ deletions: the kit holds them back from `ui` and hands them to the menus
 window hasn't the keyboard and egui collapses a text field's selection;
 keep your own copy if a menu command acts on it (StyledEdit's `blurred`).
 app_server hands the keyboard back to the window as soon as its last
-popup is destroyed.
+popup is destroyed (ending smithay's popup grab first, which ignores a
+focus change until the popup's surface has gone too; and, the popup
+gone, its window found from what had the keyboard when the grab began),
+so Escape or an item chosen leaves the window typing again at once.
 
 Alerts: `widgets::alert(ui, icon, message, buttons)` (or
 `widgets::alert_frame(ui, icon)` for an alert with fields, which draws the
@@ -3949,7 +3956,19 @@ alone in a full grid, several a row each; clicking it again unchooses
 it, and choosing every group is the same as none (every tab). The
 right button gives the group's menu, as a click does outside Tile All
 Tabs. The chosen groups go by name (`tile_groups`, kept with the
-window across restarts), and the tab typed into stays one that shows;
+window across restarts), and the tab typed into stays one that shows.
+With several rows, the line between two rows and the heads of the row
+under it drag the rows' heights (the pointer a row-resize one near the
+line; a click there still picks the pane): the two rows grow and
+shrink, each keeping its heads and two lines (`row_spans` gives each
+row that least and shares the rest by weight; `drag_rows` moves weight
+between the two), the others as they were. The weights go by the
+row's group's name ("" for the tabs in none; `tile_heights`, kept with
+the window), so a row keeps its share as others come and go. The right
+button there gives the row's group's menu with Reset Row Heights
+(`tile-reset-heights`, enabled once dragged), as the chip's has in Tile
+All Tabs; agents find each divider as a `Splitter` named "Row Height:
+GROUP" with its share as its value, and drag it;
 each pane has a head (`pane_head_height`: a `STRIP_ROW` tall under a
 strip along the top; beside a side strip `STRIP_SIDE_HEAD`, the same,
 the strip's first row centred on it) with its icon and title, in its

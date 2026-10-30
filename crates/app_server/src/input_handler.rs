@@ -701,16 +701,22 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 if let Some(layer) = layers
                     .layer_under(WlrLayer::Overlay, location - output_geo.loc.to_f64())
                     .or_else(|| layers.layer_under(WlrLayer::Top, location - output_geo.loc.to_f64()))
-                    && layer.can_receive_keyboard_focus()
-                        && let Some((_, _)) = layer.surface_under(
-                            location
-                                - output_geo.loc.to_f64()
-                                - layers.layer_geometry(layer).unwrap().loc.to_f64(),
-                            WindowSurfaceType::ALL,
-                        ) {
-                            keyboard.set_focus(self, Some(layer.clone().into()), serial);
-                            return;
-                        }
+                    && let Some((_, _)) = layer.surface_under(
+                        location
+                            - output_geo.loc.to_f64()
+                            - layers.layer_geometry(layer).unwrap().loc.to_f64(),
+                        WindowSurfaceType::ALL,
+                    )
+                {
+                    // One that takes the keyboard gets it; one that never
+                    // does (Deskbar) leaves it where it is: a click on
+                    // Deskbar went through to the desktop under it, which
+                    // took the keyboard from the window being typed into.
+                    if layer.can_receive_keyboard_focus() {
+                        keyboard.set_focus(self, Some(layer.clone().into()), serial);
+                    }
+                    return;
+                }
                 drop(layers);
                 // A desktop menu, over the windows: not the window under it.
                 if self.lower_layer_menu_under(output, location).is_some() {

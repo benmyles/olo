@@ -246,7 +246,7 @@ as they land (with the commit), add new ones as they come up.
   menu its left button opens now. Agents read which are selected and
   choose through the headers. Done (the kit's `TabStrip::group_selection`,
   for the side strip too; the chosen groups kept with the window).
-- **Terminal: Tile All Tabs, rows' heights dragged** (Ben, 2026-10-30):
+- ~~**Terminal: Tile All Tabs, rows' heights dragged**~~ (Ben, 2026-10-30; done: HACKING, Terminal ▸ Tile All Tabs):
   "in terminal tile mode with multiple groups let me drag the group
   divider/header up and down to give a group more or less vertical space
   relative to the other groups. if i right click the divider/group
@@ -260,7 +260,14 @@ as they land (with the commit), add new ones as they come up.
   after a reload. The header's context menu gets Reset Row Heights
   (enabled once they've been changed) to share the height evenly again.
   Agents can read the shares and set them (the strip's info, and a
-  command).
+  command). Done: each divider is a `Splitter` ("Row Height: GROUP",
+  its share as its value) agents drag; Reset Row Heights is a command
+  (`tile-reset-heights`). Found on the way and fixed: after any popup
+  menu closed (Escape or an item chosen), the window didn't get the
+  keyboard back (app_server couldn't find a gone popup's window, and
+  smithay's grab ignored the focus change); and a click on Deskbar went
+  through to the desktop under it, which took the keyboard from the
+  window being typed into (Deskbar's menus too).
 - ~~**Terminal: tell coding agents about the other repos in their tab
   group**~~ (Ben, 2026-10-30): "add a preferences -> terminal setting for
   injecting context to claude code and codex coding agents to tell them
@@ -999,6 +1006,30 @@ as they land (with the commit), add new ones as they come up.
   conversations) with Restart, and each Claude Code and Codex running
   and where its connections go; `olo-pool --clients [--json]` and
   `--restart-codex-service` for agents.
+- **Token Pool: restart Codex's service seamlessly, holding new requests**
+  (Ben, 2026-10-30): "when token pool daemon thing restarts we recently
+  changed it so that it doesn't wait for a quiet period in codex/claude.
+  instead, let's do it smarter: make it so that when a restart is
+  happening we still accept new requests but then we just have them wait
+  as if they're waiting on the server and let the ones already in-flight
+  finish, then seamlessly do the restart and then process the new ones
+  that came in for real." A restart (the pool's settings changed under a
+  running Codex service, or Restart in Clients) drains rather than cuts:
+  - Requests already under way run to their end (their streams too).
+  - Requests that come meanwhile are taken and held, the client seeing
+    a request still being answered (no error, no retry storm), up to a
+    limit of time after which they go ahead as before.
+  - Once nothing is under way, the service restarts onto the pool's
+    settings, and what was held goes on, in order, as if it had just
+    been slow.
+  Codex's windows talk to its service over its socket, and the service's
+  own requests go out to OpenAI: holding at both ends (the pool's proxy
+  for what reaches it; between Codex's windows and its service, a
+  stand-in on its socket for the moment of the restart) so a turn going
+  on is never cut and none is lost. Claude Code's requests, through the
+  pool already, are held the same way while the pool itself restarts
+  (an upgrade). Shown in Clients (Restarting: n under way, n waiting),
+  for agents too.
 - ~~**Quick Look: TOML highlighted**~~ (Ben, 2026-10-30): "add support for
   toml syntax highlighting to quick look". The bundled grammars (syntect's
   defaults) have no TOML (or INI, which `.toml`, `.conf`, `.desktop` and

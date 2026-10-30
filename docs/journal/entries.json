@@ -2398,5 +2398,11 @@
   "title": "Agent Screens: Stats",
   "caption": "Stats as dashboard cards (dark, 1.5\u00d7): use, actions by kind, actions a minute over the last hour, programs run.",
   "image": "2026-10-30/135147-agent-screens-stats.png"
+ },
+ {
+  "time": "2026-10-30T14:03:55",
+  "title": "Terminal: Tile All Tabs rows' heights dragged",
+  "caption": "In Tile All Tabs, the line between two groups' rows (and the heads under it) drags their heights; the shares go by group and are kept with the window. The right button there gives the group's menu with Reset Row Heights.",
+  "image": "2026-10-30/140355-terminal-tile-all-tabs-rows-heights-dragged.png"
  }
 ]

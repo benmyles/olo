@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Terminal: Tile All Tabs rows' heights dragged
+
+*14:03* — In Tile All Tabs, the line between two groups' rows (and the heads under it) drags their heights; the shares go by group and are kept with the window. The right button there gives the group's menu with Reset Row Heights.
+
+![Terminal: Tile All Tabs rows' heights dragged](2026-10-30/140355-terminal-tile-all-tabs-rows-heights-dragged.png)
+
 ### Agent Screens: Stats
 
 *13:51* — Stats as dashboard cards (dark, 1.5×): use, actions by kind, actions a minute over the last hour, programs run.
