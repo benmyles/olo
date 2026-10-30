@@ -225,6 +225,24 @@ as they land (with the commit), add new ones as they come up.
   ungrouped tabs a row of their own; rows share the height and each
   row's columns its width, every pane live and typed into as before,
   and the same command (or picking a pane) goes back to one tab.
+- **Terminal: Tile All Tabs, choosing which groups by their headers**
+  (Ben, 2026-10-30): "make it so that in terminal in tile all mode, if i
+  left click on a specific group header it actually makes that group
+  selected (similar visual style to a selected workspace in deskbar) and
+  then when it is selected it only tiles the tabs for that group (using
+  a full grid not just one row). if i left click it again then it should
+  go back to showing all the groups. and if i left click another group it
+  should add that group too as a second row and so then e.g. each group
+  gets half of it (and if you were to select all groups then basically
+  it'd just be like none were selected and you'd see them all). and if i
+  right click on a group header then i should get the context menu that i
+  currently get with a left click." In Tile All Tabs, a click on a group's
+  header selects it (lit as Deskbar's showing workspace is, in the
+  group's colour) and toggles it: with one selected only its tabs tile,
+  as a full grid; with several, a row each, sharing the height; none (or
+  all) selected, every group shows. The header's right button opens the
+  menu its left button opens now. Agents read which are selected and
+  choose through the headers.
 - **Terminal: tell coding agents about the other repos in their tab
   group** (Ben, 2026-10-30): "add a preferences -> terminal setting for
   injecting context to claude code and codex coding agents to tell them
