@@ -348,6 +348,93 @@ as they land (with the commit), add new ones as they come up.
   in Olo's keychain. Fast with thousands of chats (cached, streamed,
   never blocking), and Olo-looking: kit widgets, light, dark and night,
   every scale; agent-readable like every Olo app.
+- **Screen sharing: an Olo portal backend** (Ben, 2026-10-29; the
+  design researched by another agent and pasted in, kept here; a few of
+  its lines came through cut off, marked […]). Apps never capture the
+  screen themselves on Wayland: Chrome, Slack, Discord, Firefox and OBS
+  all call the xdg-desktop-portal ScreenCast API; a portal backend shows
+  a picker, the compositor sends frames as a PipeWire stream, and the
+  app reads it. Chrome and Electron apps share WebRTC's capture code, so
+  this is a good portal backend and a good PipeWire stream, plus a few
+  app quirks.
+  - **Today** sharing fails for everyone: app_server still has Anvil's
+    stub for ext-image-copy-capture and fails every frame
+    (`crates/app_server/src/state.rs`); wlproxy hides that protocol from
+    outside programs on purpose; `olo-portals.conf` sends every portal
+    to the GTK backend, which has no ScreenCast.
+  - **Build** our own backend, `olo-portal`, started and supervised by
+    olo-session: it owns `org.freedesktop.impl.portal.desktop.olo` over
+    zbus, shows the picker as a kit window, produces the PipeWire
+    streams, and gets frames from app_server over ext-image-copy-capture
+    with dmabufs (no CPU copy), on the direct socket so the protocol
+    stays hidden from outside programs. Not inside the compositor
+    (niri's, KWin's, Mutter's way): a stream in app_server drops every
+    share at each upgrade; out of process it outlives app_server (the
+    portal reconnects and frames carry on), and libpipewire stays out of
+    the compositor, which never waits on a client. COSMIC is the
+    precedent (Smithay, Rust, pipewire-rs, gbm, ext-image-copy-capture).
+    Not xdg-desktop-portal-wlr/-hyprland (not native, generic pickers),
+    nor imitating Mutter's private D-Bus API for
+    xdg-desktop-portal-gnome (as niri does). pipewire-rs links
+    libpipewire in process (as Smithay links libinput: not shelling
+    out); the pure-Rust pipewire-native can't stream video yet, so move
+    to it later.
+  - **For Chrome and Slack** (from WebRTC's capture code): offer BGRx
+    and BGRA first (WebRTC swaps RGB formats' bytes on the CPU); offer
+    dmabuf with modifiers, and shared-memory (MemFd) buffers as a
+    fallback (Chrome showed black screens on niri until it added that),
+    and handle WebRTC renegotiating when a modifier fails. Stream
+    metadata: the frame header […]; send frames only when something
+    changed; all three cursor modes (hidden, drawn in, metadata).
+    Window shares: renegotiate the stream size when a […] window
+    whole even when it's behind another tab in a group (app_server does
+    this already for agent captures). Slack's repeated pickers: Chromium
+    opens several portal sessions per share (three, by one count), so
+    answer a repeat request from the same app a few seconds after a
+    choice with that choice. Which app asks: the portal leaves the app
+    id empty for unsandboxed apps unless they run in an
+    `app-<id>-….scope` systemd unit; start apps in transient scopes
+    (`StartTransientUnit` over D-Bus), which also fixes app ids for the
+    Inhibit, GlobalShortcuts and Notification portals. Restore tokens:
+    remember a choice for next time (OBS uses it; Chrome uses the kind
+    that lasts while the app runs). Slack must run as a native Wayland
+    client (no Xwayland; Electron 38 and later do by default); its
+    drawing overlay will still misbehave, but sharing works. Zoom's
+    native app offers Wayland sharing only under GNOME/KDE […], so it
+    needs a launcher quirk; Zoom in Chrome just works. Sharing a Chrome
+    tab never comes through here; Chrome shares a tab's audio itself, so
+    system audio is out of scope.
+  - **The Olo touches**: the picker a kit dialog with Screens and
+    Windows […], opened over the window that asked (agents read and
+    drive it through the widget tree); while sharing, Deskbar shows what
+    is shared and by which app, with Stop; a shared window gets an
+    outline; Do Not Disturb turns on (the Notifications item); Passwords,
+    the lock screen and the polkit prompt are kept out of shares. Agent
+    Screens as sources: the portal can connect to an agent screen's own
+    app_server, to share an agent's screen into a call; a working
+    capture path also lets the Agent Screens viewer stop pulling
+    raw-pixel screenshots eight times a second.
+  - **Order**: 1. real capture in app_server, screens then windows
+    (tested headless with a small client); 2. olo-portal with ScreenCast
+    and the picker; 3. app scopes and answering repeat requests; 4. the
+    Screenshot portal (cheap reuse); 5. RemoteDesktop over libei […].
+  - Sources: the ScreenCast backend interface (v6),
+    flatpak.github.io/xdg-desktop-portal; WebRTC's
+    `screencast_portal.cc` and `shared_screencast_stream.cc`
+    (chromium.googlesource.com/external/webrtc,
+    modules/desktop_capture/linux/wayland); niri's Screencasting wiki;
+    github.com/hamolicious/slack-on-wayland; Slack's Linux release notes;
+    Electron's desktopCapturer and PR #54550 (restore tokens);
+    github.com/pop-os/xdg-desktop-portal-cosmic; the pipewire-native
+    crate; Collabora's 2025 PipeWire workshop notes; "Using portals with
+    unsandboxed apps" (blogs.gnome.org/ignapk, 2025-06-04);
+    xdg-desktop-portal-wlr's FAQ (Zoom).
+- **Windows never move in an upgrade** (Ben, 2026-10-29: "can you make
+  sure when i do an olo upgrade my windows don't change positions or
+  sizes or workspaces or displays or anything even if auto tiling is
+  enabled? right now they still sometimes change"). In progress: a
+  check that snapshots every window on every workspace and display,
+  upgrades in place (every binary replaced) and compares.
 - **Passwords: passkeys, and filling the right account in Chrome**
   (Ben, 2026-10-29; next, after Terminal's git work: "this is really
   really important"): "olo passwords needs to support passkeys with a
