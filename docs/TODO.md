@@ -659,6 +659,13 @@ as they land (with the commit), add new ones as they come up.
     one-time-code inputs reliably (autocomplete attributes, labels,
     names, types, forms split over steps, shadow DOM and iframes), and
     fill them as typing does, so sites' scripts see it.
+  Done so far: the right account, the menu and the fields (HACKING,
+  "Passwords in Chrome"): ranked by what the page shows, what was used
+  there before in this profile (an autofill or a sign-in by hand), the
+  profile's own account, then the site; Chrome puts the two items under
+  Olo ▸ (an extension can't have two at the top). Checked in a test
+  Chrome: the menu, a two-step sign-in filled through, a sign-in by
+  hand as another account remembered for the profile.
 - ~~**Terminal: git repos, worktrees and GitHub**~~ (Ben; done: HACKING,
   Terminal "Repositories"; Preferences ▸ Terminal), native (no `git`
   or `gh` subprocesses):

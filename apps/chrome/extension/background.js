@@ -1,6 +1,11 @@
-// Olo Passwords in Chrome: the page's logins in a text field's context
-// menu (its username, password or one-time code, or the whole login), in
-// the toolbar button's list, and an offer to save a login just used.
+// Olo Passwords in Chrome: "Autofill with Passwords (the best login)"
+// and the page's other logins in a text field's context menu (each's
+// username, password or one-time code, or the whole login), in the
+// toolbar button's list, and an offer to save a login just used. The
+// best login is the one whose username the page shows, else the one
+// chosen there before in this Chrome profile, else the profile's own
+// account, else the nearest site's; a sign-in in steps gets its password
+// and one-time code as it comes to them.
 // Everything goes to Passwords through olo-chrome's native messaging
 // host, which speaks Olo's keychain protocol (crates/keychain).
 //
@@ -101,6 +106,97 @@ async function logins(url, start = false) {
   return entry;
 }
 
+// ---- Which login: this profile's, the page's, the one chosen before ----
+
+// The Chrome profile this is (its own copy of the extension's storage,
+// so a token kept there names it to the host, profile.rs) and who is
+// signed in to Chrome there.
+let profile = null;
+
+async function profileInfo() {
+  // (Not found, it's asked again soon: a token just made may not be on
+  // disk yet.)
+  if (profile && Date.now() - profile.at < (profile.dir ? 10 * 60 * 1000 : 5 * 1000)) return profile;
+  let { profileToken } = await chrome.storage.local.get("profileToken");
+  if (!profileToken) {
+    profileToken = crypto.randomUUID().replace(/-/g, "");
+    await chrome.storage.local.set({ profileToken });
+  }
+  try {
+    const r = await host({ profile: profileToken });
+    profile = { dir: r.dir || "", email: r.email || "", name: r.name || "", at: Date.now() };
+  } catch {
+    profile = { dir: "", email: "", name: "", at: Date.now() };
+  }
+  return profile;
+}
+
+// A site, for the login chosen there: its registrable domain, roughly
+// (mail.google.com and accounts.google.com are one; bbc.co.uk keeps three).
+function siteOf(url) {
+  const parts = hostOf(url).replace(/^www\./, "").split(".");
+  if (parts.length <= 2) return parts.join(".");
+  const [sld, tld] = parts.slice(-2);
+  return parts.slice(tld.length === 2 && sld.length <= 3 ? -3 : -2).join(".");
+}
+
+async function chosenFor(url) {
+  const { chosen = {} } = await chrome.storage.local.get("chosen");
+  return chosen[siteOf(url)] || null;
+}
+
+// The login used on this site in this profile, for next time.
+async function remember(url, vault, id) {
+  const { chosen = {} } = await chrome.storage.local.get("chosen");
+  chosen[siteOf(url)] = { vault, id };
+  await chrome.storage.local.set({ chosen });
+}
+
+// A login signed in with by hand: the one used on this site in this
+// profile from now on. By its username, else the one account the page
+// shows (a sign-in in steps).
+async function rememberUsed(url, tabId, frameId, username) {
+  const entry = known.get(originOf(url));
+  if (!entry || entry.state !== "logins") return;
+  const lower = username.toLowerCase();
+  let used = lower && entry.logins.find((l) => (l.username || "").toLowerCase() === lower);
+  if (!used && !lower) {
+    const seen = await seenOn(tabId, frameId, entry.logins);
+    const shown = entry.logins.filter((l) => seen.has((l.username || "").toLowerCase()));
+    if (shown.length === 1) used = shown[0];
+  }
+  if (used) remember(url, used.vault, used.id);
+}
+
+// Which of the logins' usernames the page shows, in the field's frame or
+// the top one (an account chooser, "signed in as", the account a
+// two-step sign-in asked for).
+async function seenOn(tabId, frameId, logins) {
+  const names = logins.map((l) => l.username).filter(Boolean);
+  if (!names.length || tabId === undefined) return new Set();
+  const ask = (frame) => chrome.tabs.sendMessage(tabId, { type: "seen", names }, { frameId: frame }).then((r) => r?.seen || [], () => []);
+  const lists = await Promise.all([...new Set([frameId || 0, 0])].map(ask));
+  return new Set(lists.flat().map((n) => n.toLowerCase()));
+}
+
+// The logins best first: one whose username the page shows; then the
+// one chosen here before in this profile; then the profile's own
+// account (who is signed in to Chrome); then Passwords' order (this
+// host, its parent domains, the site's others).
+function rank(list, { seen, chosen, email }) {
+  const lower = (s) => (s || "").toLowerCase();
+  const mail = lower(email);
+  const score = (l) => {
+    const u = lower(l.username);
+    let s = 0;
+    if (u && seen.has(u)) s += 4;
+    if (chosen && chosen.vault === l.vault && chosen.id === l.id) s += 2;
+    if (u && mail && (u === mail || u === mail.split("@")[0])) s += 1;
+    return s;
+  };
+  return list.map((l, i) => [score(l), i, l]).sort((a, b) => b[0] - a[0] || a[1] - b[1]).map(([, , l]) => l);
+}
+
 // ---- The context menu ----
 
 // Each item's id says what it does: [kind, origin, vault, id].
@@ -113,16 +209,28 @@ function create(props) {
   return new Promise((resolve) => chrome.contextMenus.create(props, () => resolve(chrome.runtime.lastError)));
 }
 
-// The menu for a field in a frame at `url`.
-function buildMenu(url) {
+// The menu for a field in a frame at `url` (of tab `tabId`, frame
+// `frameId`): "Autofill with Passwords (best)" and "Passwords ▸" with
+// every login. (Chrome puts an extension's two items under its name.)
+function buildMenu(url, tabId, frameId) {
   building = building.then(async () => {
     const entry = web(url) ? await logins(url) : null;
-    const key = url + JSON.stringify(entry && [entry.state, entry.logins]);
+    let ranked = entry?.logins || [];
+    if (entry?.state === "logins" && ranked.length > 1) {
+      const [seen, chosen, p] = await Promise.all([seenOn(tabId, frameId, ranked), chosenFor(url), profileInfo()]);
+      ranked = rank(ranked, { seen, chosen, email: p.email });
+    }
+    const key = url + JSON.stringify(entry && [entry.state, ranked.map((l) => [l.vault, l.id, l.username, l.otp])]);
     if (menuFor === key) return;
     menuFor = key;
     await chrome.contextMenus.removeAll();
-    await create({ id: "passwords", title: "Passwords", contexts: ["editable"] });
     const origin = originOf(url);
+    const best = ranked[0];
+    if (entry?.state === "logins" && best) {
+      const who = best.username || best.title;
+      await create({ id: itemId("autofill", origin, best.vault, best.id), title: `Autofill with Passwords (${who})`, contexts: ["editable"] });
+    }
+    await create({ id: "passwords", title: "Passwords", contexts: ["editable"] });
     const add = (id, title, parentId = "passwords", enabled = true) => create({ id, title, parentId, contexts: ["editable"], enabled });
     if (!entry) {
       await add("none", "Not on this page", "passwords", false);
@@ -136,15 +244,15 @@ function buildMenu(url) {
       await add(itemId("open", origin), "Open Passwords");
       return;
     }
-    if (entry.logins.length === 0) await add("none", "No logins for this site", "passwords", false);
-    for (const l of entry.logins.slice(0, MENU_LOGINS)) {
+    if (ranked.length === 0) await add("none", "No logins for this site", "passwords", false);
+    for (const l of ranked.slice(0, MENU_LOGINS)) {
       const parent = itemId("login-menu", origin, l.vault, l.id);
       await add(parent, l.username ? `${l.title} (${l.username})` : l.title);
+      await add(itemId("login", origin, l.vault, l.id), "Autofill", parent);
+      await create({ id: parent + "-sep", type: "separator", parentId: parent, contexts: ["editable"] });
       await add(itemId("username", origin, l.vault, l.id), "Username", parent);
       await add(itemId("password", origin, l.vault, l.id), "Password", parent);
       if (l.otp) await add(itemId("otp", origin, l.vault, l.id), "One-Time Code", parent);
-      await create({ id: parent + "-sep", type: "separator", parentId: parent, contexts: ["editable"] });
-      await add(itemId("login", origin, l.vault, l.id), "Fill Login", parent);
     }
     await create({ id: "sep", type: "separator", parentId: "passwords", contexts: ["editable"] });
     await add(itemId("open", origin), "Open Passwords");
@@ -165,11 +273,11 @@ chrome.runtime.onInstalled.addListener(async () => {
   }
 });
 // Another tab: its page's menu (a field there may already have the focus).
-chrome.tabs.onActivated.addListener(({ tabId }) => chrome.tabs.get(tabId).then((t) => buildMenu(t.url || ""), () => {}));
+chrome.tabs.onActivated.addListener(({ tabId }) => chrome.tabs.get(tabId).then((t) => buildMenu(t.url || "", tabId, 0), () => {}));
 
 // Put `message` into the frame the menu was for, if it is still at `origin`.
 function send(tabId, frameId, message) {
-  return chrome.tabs.sendMessage(tabId, message, { frameId }).catch(() => {});
+  return chrome.tabs.sendMessage(tabId, message, { frameId }).catch(() => null);
 }
 
 async function credentials(url, vault, id) {
@@ -177,6 +285,50 @@ async function credentials(url, vault, id) {
   if (r.type !== "credentials") throw new Error(r.message || "Passwords didn't give the login.");
   return r;
 }
+
+// ---- A sign-in over several steps ----
+
+// tab → {site, vault, id, until}: the login autofilled there, while the
+// sign-in goes on to its password or one-time code (on the same page or
+// the next, on the same site).
+const steps = new Map();
+const STEP_FOR = 3 * 60 * 1000;
+
+function stepOf(tabId, url) {
+  const s = steps.get(tabId);
+  if (!s || Date.now() > s.until || s.site !== siteOf(url)) return null;
+  return s;
+}
+
+// Autofill login `vault`/`id` into the field's frame: what that step
+// asks for; if not all of it (an account first, then the password), the
+// rest as the sign-in comes to it.
+async function autofill(tab, frameId, url, vault, id) {
+  const origin = originOf(url);
+  const c = await credentials(url, vault, id);
+  const did = (await send(tab.id, frameId, { type: "fill", origin, username: c.username, password: c.password, otp: c.otp })) || {};
+  remember(url, vault, id);
+  if (!did.password || c.otp) {
+    steps.set(tab.id, { site: siteOf(url), vault, id, until: Date.now() + STEP_FOR, otpDone: !!did.otp });
+    chrome.tabs.sendMessage(tab.id, { type: "watch" }).catch(() => {});
+  } else steps.delete(tab.id);
+}
+
+// A password or code field turned up in a sign-in under way: filled.
+async function nextStep(tabId, frameId, url) {
+  const s = stepOf(tabId, url);
+  if (!s) return;
+  try {
+    const c = await credentials(url, s.vault, s.id);
+    const did = (await send(tabId, frameId, { type: "next-step", origin: originOf(url), password: c.password, otp: s.otpDone ? null : c.otp })) || {};
+    if (did.otp) s.otpDone = true;
+    if (did.otp || (did.password && !c.otp)) steps.delete(tabId);
+  } catch (e) {
+    notify("Passwords", e.message);
+  }
+}
+
+chrome.tabs.onRemoved.addListener((tabId) => steps.delete(tabId));
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   let kind, origin, vault, id;
@@ -187,7 +339,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
   const url = info.frameUrl || info.pageUrl;
   // The menu was made for another page: make it again, do nothing.
-  if (originOf(url) !== origin) return buildMenu(url);
+  if (originOf(url) !== origin) return buildMenu(url, tab?.id, info.frameId);
   try {
     if (kind === "open") {
       await host({ open: true });
@@ -196,15 +348,17 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       await ask({ type: "unlock" }, true);
       known.delete(origin);
       menuFor = null;
-      await buildMenu(url);
-    } else if (kind === "login") {
-      const c = await credentials(url, vault, id);
-      await send(tab.id, info.frameId, { type: "fill", origin, username: c.username, password: c.password });
+      await buildMenu(url, tab.id, info.frameId);
+    } else if (kind === "autofill" || kind === "login") {
+      await autofill(tab, info.frameId, url, vault, id);
+      menuFor = null;
     } else if (kind === "username" || kind === "password" || kind === "otp") {
       const c = await credentials(url, vault, id);
       const value = kind === "username" ? c.username : kind === "password" ? c.password : c.otp;
       if (!value) throw new Error(kind === "otp" ? "This login has no one-time code." : `This login has no ${kind}.`);
       await send(tab.id, info.frameId, { type: "set", origin, value });
+      remember(url, vault, id);
+      menuFor = null;
     }
   } catch (e) {
     notify("Passwords", e.message);
@@ -216,24 +370,33 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 chrome.runtime.onMessage.addListener((m, sender, reply) => {
   const fromPage = sender.tab && sender.url;
   if (m.type === "focus" && fromPage) {
-    buildMenu(sender.url);
+    buildMenu(sender.url, sender.tab.id, sender.frameId);
   } else if (m.type === "page" && fromPage && web(sender.url)) {
-    // A page with fields: have its logins ready for the menu.
-    logins(sender.url).then(() => buildMenu(sender.url));
+    // A page with fields: have its logins ready for the menu; and say
+    // whether a sign-in begun before goes on here.
+    logins(sender.url).then(() => buildMenu(sender.url, sender.tab.id, sender.frameId));
+    reply({ watch: !!stepOf(sender.tab.id, sender.url) });
+  } else if (m.type === "step" && fromPage && web(sender.url)) {
+    nextStep(sender.tab.id, sender.frameId, sender.url);
   } else if (m.type === "submitted" && fromPage && web(sender.url)) {
     offer(sender.url, m.username || "", m.password || "");
+    rememberUsed(sender.url, sender.tab.id, sender.frameId, m.username || "");
   } else if (m.type === "popup-logins" && !sender.tab) {
     tabNow().then(async (tab) => {
       if (!tab || !web(tab.url)) return reply({ state: "not-web" });
-      reply(await logins(tab.url, m.start));
+      const entry = await logins(tab.url, m.start);
+      if (entry.state === "logins" && entry.logins.length > 1) {
+        const [seen, chosen, p] = await Promise.all([seenOn(tab.id, 0, entry.logins), chosenFor(tab.url), profileInfo()]);
+        return reply({ ...entry, logins: rank(entry.logins, { seen, chosen, email: p.email }) });
+      }
+      reply(entry);
     });
     return true;
   } else if (m.type === "popup-fill" && !sender.tab) {
     tabNow().then(async (tab) => {
       try {
         if (!tab || originOf(tab.url) !== m.origin) throw new Error("The page has moved on.");
-        const c = await credentials(tab.url, m.vault, m.id);
-        await send(tab.id, 0, { type: "fill", origin: m.origin, username: c.username, password: c.password });
+        await autofill(tab, 0, tab.url, m.vault, m.id);
         reply({ ok: true });
       } catch (e) {
         reply({ error: e.message });

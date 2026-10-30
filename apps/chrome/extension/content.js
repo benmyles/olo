@@ -1,7 +1,10 @@
 // In every frame: tells the extension when a text field gets the focus
-// (so the context menu holds this page's logins), fills what Passwords
-// gives, reports a login sent with a form (to offer saving it), and
-// keeps which iframe the frame is (for tree.js).
+// (so the context menu holds this page's logins), says which of a
+// login's usernames the page shows (an account chooser, "signed in as"),
+// fills what Passwords gives as typing does, carries a sign-in split over
+// steps on to its password and one-time code fields as they come, reports
+// a login sent with a form (to offer saving it), and keeps which iframe
+// the frame is (for tree.js).
 
 (() => {
   if (window.__oloPasswords) return;
@@ -15,7 +18,7 @@
     });
   }
 
-  const TEXT = "input:not([type]),input[type=text],input[type=email],input[type=tel]";
+  const TEXT = "input:not([type]),input[type=text],input[type=email],input[type=tel],input[type=number]";
 
   // Shown and editable: not the hidden decoys some sign-ins keep (tiny,
   // off the page, transparent or hidden from assistive technology).
@@ -24,7 +27,7 @@
     const st = getComputedStyle(e);
     return (
       r.width >= 4 && r.height >= 4 && r.right > 0 && r.bottom > 0 &&
-      st.visibility !== "hidden" && st.opacity !== "0" &&
+      st.visibility !== "hidden" && st.display !== "none" && st.opacity !== "0" &&
       e.getAttribute("aria-hidden") !== "true" && !e.disabled && !e.readOnly
     );
   }
@@ -32,105 +35,267 @@
   // To the extension (which, after an update, may be gone from this copy).
   function tell(m) {
     try {
-      chrome.runtime.sendMessage(m).catch(() => {});
-    } catch {}
+      return chrome.runtime.sendMessage(m).catch(() => null);
+    } catch {
+      return Promise.resolve(null);
+    }
   }
 
-  const all = (scope, sel) => Array.prototype.filter.call(scope.querySelectorAll(sel), usable);
+  // Every element matching `sel` in `root` and the open shadow roots in
+  // it (web components keep sign-in fields there).
+  function deep(root, sel, out = []) {
+    out.push(...root.querySelectorAll(sel));
+    const walk = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+    for (let n = walk.currentNode; n; n = walk.nextNode()) if (n.shadowRoot) deep(n.shadowRoot, sel, out);
+    return out;
+  }
+
+  const all = (sel) => deep(document, sel).filter(usable);
+
+  // The active element, inside shadow roots too.
+  function active() {
+    let a = document.activeElement;
+    while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+    return a;
+  }
 
   function editable(e) {
     return e && (e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement || e.isContentEditable);
   }
 
-  // Set a field's value as typing would (frameworks listen for input).
-  function set(e, v) {
-    const proto = e instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-    if (e.isContentEditable) {
-      e.focus();
-      document.execCommand("insertText", false, v);
-      return;
-    }
-    try {
-      Object.getOwnPropertyDescriptor(proto, "value").set.call(e, v);
-    } catch {
-      e.value = v;
-    }
-    e.dispatchEvent(new Event("input", { bubbles: true }));
-    e.dispatchEvent(new Event("change", { bubbles: true }));
+  // What a field says it is for: its autocomplete, name, id, label,
+  // placeholder and accessible name.
+  function says(e) {
+    const label = e.labels && e.labels[0] ? e.labels[0].textContent : "";
+    const by = (e.getAttribute("aria-labelledby") || "").split(/\s+/).map((id) => document.getElementById(id)?.textContent || "").join(" ");
+    return [e.getAttribute("autocomplete"), e.name, e.id, label, by, e.placeholder, e.getAttribute("aria-label")].join(" ").toLowerCase();
   }
 
-  // The username field for `pass`, or, with no password field (sign-ins
-  // that ask for the account first), the field with the focus if it takes
-  // text, else one that says it is for the account, else an email field,
-  // else the only one.
+  function isOtp(e) {
+    if (!(e instanceof HTMLInputElement) || e.type === "password" && !/one-time-code/.test(e.getAttribute("autocomplete") || "")) return false;
+    if (/one-time-code/.test(e.getAttribute("autocomplete") || "")) return true;
+    // (Not "security code": a card's is that.)
+    return /\b(otp|totp|2fa|mfa|one.?time|verification|auth(entication|enticator)?)\b.*\bcode\b|\b(otp|totp|2fa|mfa|passcode)\b/.test(says(e));
+  }
+
+  // The password field to fill: the focused one, else the current
+  // password (not a new one being set), else the first.
+  function passwordField() {
+    const a = active();
+    if (a && a.type === "password" && usable(a) && !isOtp(a)) return a;
+    const pw = all("input[type=password]").filter((e) => !isOtp(e));
+    return pw.find((e) => /current-password/.test(e.getAttribute("autocomplete") || "")) || pw.find((e) => !/new-password/.test(e.getAttribute("autocomplete") || "")) || pw[0] || null;
+  }
+
+  // The username field for `pass`: the text field just before it (in its
+  // form, else the page); with no password field (sign-ins that ask for
+  // the account first), the focused text field, else one that says it is
+  // for the account, else an email field, else the only one.
   function userField(pass) {
-    const a = document.activeElement;
+    const texts = all(TEXT).filter((e) => !isOtp(e));
+    const named = (e) => /username|email|e-mail|login|account|ident|user|phone/.test(says(e));
     if (pass) {
-      let user = null;
-      for (const t of all(pass.form || document, TEXT)) if (t.compareDocumentPosition(pass) & Node.DOCUMENT_POSITION_FOLLOWING) user = t;
-      return user;
+      const scope = pass.form ? texts.filter((t) => t.form === pass.form) : texts;
+      const before = scope.filter((t) => t.compareDocumentPosition(pass) & Node.DOCUMENT_POSITION_FOLLOWING);
+      return before.reverse().find(named) || before[0] || null;
     }
-    const texts = all(document, TEXT);
-    const named = (e) => /user|mail|login|account|ident|phone/i.test(
-      [e.getAttribute("autocomplete"), e.name, e.id, e.getAttribute("aria-label")].join(" "));
+    const a = active();
     return (
       (a && texts.includes(a) ? a : null) ||
-      texts.find((e) => /username/i.test(e.getAttribute("autocomplete") || "")) ||
+      texts.find((e) => /username|email/.test(e.getAttribute("autocomplete") || "")) ||
       texts.find(named) ||
       texts.find((e) => e.type === "email") ||
       (texts.length === 1 ? texts[0] : null)
     );
   }
 
-  function fill(username, password) {
-    const a = document.activeElement;
-    const pass = a && a.type === "password" && usable(a) ? a : all(document, "input[type=password]")[0] || null;
-    const user = userField(pass);
-    if (user && username) set(user, username);
-    if (pass && password) set(pass, password);
-    (pass || user)?.focus();
+  function otpField() {
+    const a = active();
+    if (a && isOtp(a) && usable(a)) return a;
+    return all("input").find(isOtp) || null;
   }
 
-  chrome.runtime.onMessage.addListener((m) => {
-    if (m.origin !== location.origin) return;
-    if (m.type === "set") {
-      const e = document.activeElement;
+  // Set a field's value as typing would: focused, each frameworks'
+  // events (React and the like listen for input; some for keys).
+  function set(e, v) {
+    e.focus();
+    if (e.isContentEditable) {
+      document.execCommand("selectAll", false);
+      document.execCommand("insertText", false, v);
+      return;
+    }
+    const proto = e instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    e.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: v.slice(-1) || "" }));
+    try {
+      Object.getOwnPropertyDescriptor(proto, "value").set.call(e, v);
+    } catch {
+      e.value = v;
+    }
+    e.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: v }));
+    e.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: v.slice(-1) || "" }));
+    e.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  // A one-time code into a field each digit (some sites split it).
+  function setOtp(field, code) {
+    const group = field.maxLength === 1 ? all("input").filter((e) => e.maxLength === 1 && e.form === field.form) : [];
+    if (group.length >= code.length) group.slice(0, code.length).forEach((e, i) => set(e, code[i]));
+    else set(field, code);
+  }
+
+  // The login, as far as this step of the sign-in asks: the one-time code
+  // if that is what has the focus, else the username and password (what
+  // fields there are). Says what it filled.
+  function fill({ username, password, otp }) {
+    const a = active();
+    if (otp && a && isOtp(a)) {
+      setOtp(a, otp);
+      return { otp: true };
+    }
+    const pass = passwordField();
+    const user = userField(pass);
+    let did = {};
+    if (user && username) {
+      set(user, username);
+      did.username = true;
+    }
+    if (pass && password) {
+      set(pass, password);
+      did.password = true;
+    }
+    if (!did.username && !did.password && otp) {
+      const o = otpField();
+      if (o) {
+        setOtp(o, otp);
+        return { otp: true };
+      }
+    }
+    (pass || user)?.focus();
+    return did;
+  }
+
+  // Which of `names` (a login's usernames) the page shows: in its text,
+  // or in a field's value (the account a two-step sign-in asked for).
+  function seen(names) {
+    const text = ((document.body && document.body.innerText) || "").slice(0, 200000).toLowerCase();
+    const values = all("input").map((e) => (e.value || "").toLowerCase()).join("\n");
+    return names.filter((n) => {
+      const k = (n || "").toLowerCase();
+      return k.length >= 3 && (text.includes(k) || values.includes(k));
+    });
+  }
+
+  chrome.runtime.onMessage.addListener((m, sender, reply) => {
+    if (m.origin && m.origin !== location.origin) return;
+    if (m.type === "seen") {
+      reply({ seen: seen(m.names || []) });
+    } else if (m.type === "set") {
+      const e = active();
       if (editable(e) && !e.disabled && !e.readOnly) set(e, m.value);
     } else if (m.type === "fill") {
-      fill(m.username, m.password);
+      reply(fill(m));
+    } else if (m.type === "next-step") {
+      // A sign-in carried on from its first step: what comes now.
+      reply(nextStep(m));
+    } else if (m.type === "watch") {
+      watch();
     }
   });
 
-  // The context menu follows the field.
+  // A password or one-time code field shown since the sign-in started
+  // here (it asked for the account first): filled from the login chosen.
+  function nextStep(m) {
+    const pass = passwordField();
+    if (pass && m.password && !pass.value) {
+      set(pass, m.password);
+      pass.focus();
+      return { password: true };
+    }
+    const o = otpField();
+    if (o && m.otp && !o.value) {
+      setOtp(o, m.otp);
+      return { otp: true };
+    }
+    return {};
+  }
+
+  // While a sign-in is under way: tell the extension when a password or
+  // code field turns up (a page that shows the next step in place).
+  let watching = null;
+  function watch() {
+    if (watching) return;
+    let seenBefore = !!(passwordField() || otpField());
+    const check = () => {
+      const now = !!(passwordField() || otpField());
+      if (now && !seenBefore) tell({ type: "step" });
+      seenBefore = now;
+    };
+    let timer = 0;
+    watching = new MutationObserver(() => {
+      clearTimeout(timer);
+      timer = setTimeout(check, 250);
+    });
+    watching.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["type", "style", "class", "hidden"] });
+    setTimeout(() => {
+      watching?.disconnect();
+      watching = null;
+    }, 3 * 60 * 1000);
+  }
+
+  // The context menu follows the field: made again when one gets the
+  // focus or the pointer comes over it (Chrome shows the menu as it is
+  // when the button goes down, so it must be ready before; the page may
+  // show another account by now).
+  let lastOver = null, lastAt = 0;
   const focused = (e) => {
-    if (editable(e.target)) tell({ type: "focus" });
+    const t = e.composedPath ? e.composedPath()[0] : e.target;
+    if (!editable(t)) return;
+    if (e.type === "pointerover" && t === lastOver && Date.now() - lastAt < 2000) return;
+    lastOver = t;
+    lastAt = Date.now();
+    tell({ type: "focus" });
   };
   document.addEventListener("focusin", focused, true);
+  document.addEventListener("pointerover", focused, true);
   document.addEventListener("mousedown", (e) => e.button === 2 && focused(e), true);
 
-  // A page with fields: its logins are fetched ahead.
-  if (document.querySelector("input")) tell({ type: "page" });
+  // A page with fields: its logins are fetched ahead, and a sign-in begun
+  // on the page before goes on here.
+  if (document.querySelector("input") || deep(document, "input").length) {
+    tell({ type: "page" }).then((r) => {
+      if (r && r.watch) {
+        watch();
+        if (passwordField() || otpField()) tell({ type: "step" });
+      }
+    });
+  }
 
   // A login sent: the username and password of a form with a filled
   // password field, when it is submitted, a submit button is pressed or
   // Enter is pressed in it. Reported once per value.
   let reported = "";
-  function report(scope) {
-    const pass = all(scope, "input[type=password]").find((p) => p.value);
+  function report() {
+    const pass = all("input[type=password]").find((p) => p.value && !isOtp(p));
     if (!pass) return;
     const user = userField(pass);
-    const username = user ? user.value : "";
+    // (A sign-in in steps keeps the account in a hidden field for
+    // password managers.)
+    const hidden = deep(pass.form || document, "input[type=hidden],input[hidden],input[aria-hidden=true]").find(
+      (e) => e.value && /username|email|identifier|login|user/.test(says(e)),
+    );
+    const username = user?.value || hidden?.value || "";
     const key = username + "\n" + pass.value;
     if (key === reported) return;
     reported = key;
     tell({ type: "submitted", username, password: pass.value });
   }
-  document.addEventListener("submit", (e) => report(e.target), true);
+  document.addEventListener("submit", () => report(), true);
   document.addEventListener("click", (e) => {
-    const b = e.target.closest && e.target.closest("button,input[type=submit],input[type=image],[role=button]");
-    if (b) report(b.form || document);
+    const t = e.composedPath ? e.composedPath()[0] : e.target;
+    const b = t.closest && t.closest("button,input[type=submit],input[type=image],[role=button]");
+    if (b) report();
   }, true);
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && e.target instanceof HTMLInputElement) report(e.target.form || document);
+    if (e.key === "Enter" && e.target instanceof HTMLInputElement) report();
   }, true);
 })();

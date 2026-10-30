@@ -6,7 +6,9 @@
 //! open: true}` (start Passwords or bring it forward); each is answered
 //! with `{id, response}` or `{id, error}`, on a thread of its own, so a
 //! Fill waiting for an unlock holds up nothing else. Only what a browser
-//! needs passes: logins, fill, check, save, unlock and show.
+//! needs passes: logins, fill, check, save, unlock and show. `{id,
+//! profile: TOKEN}` says which Chrome profile the extension is in, and
+//! who is signed in to it (profile.rs).
 //!
 //! It also answers agents' questions about Chrome's windows (a kit app's
 //! `tree` socket, for Chrome's process): `{tree: n}` goes to the
@@ -26,6 +28,8 @@ use std::{
 use serde_json::{Value, json};
 use olo_keychain::{CallError, Request, Response};
 use olo_kit::commands::{self, WindowTree};
+
+use crate::profile;
 use zeroize::Zeroize;
 
 /// The largest message taken from Chrome.
@@ -124,6 +128,12 @@ fn answer(m: &Value) -> Value {
     // The popup's colours: the look in use now.
     if m.get("palette").and_then(Value::as_bool) == Some(true) {
         return json!({ "id": id, "response": { "type": "palette", "css": crate::extension::palette_css() } });
+    }
+    // Which profile the extension is in, by the token it keeps
+    // (profile.rs): who is signed in to Chrome there.
+    if let Some(token) = m.get("profile").and_then(Value::as_str) {
+        let p = profile::this_one(token).unwrap_or_default();
+        return json!({ "id": id, "response": { "type": "profile", "dir": p.dir, "email": p.email, "name": p.name } });
     }
     if m.get("open").and_then(Value::as_bool) == Some(true) {
         return match open_passwords() {

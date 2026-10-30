@@ -4,6 +4,7 @@
 //! (which can be cancelled) and starts Chrome once it's in. New profiles
 //! get Olo's title bar and the system's colours (prefs.rs).
 
+mod profile;
 mod extension;
 mod host;
 mod install;

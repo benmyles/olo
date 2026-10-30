@@ -3999,11 +3999,38 @@ native messaging host (length-prefixed JSON on stdin/stdout), passing
 only `logins`, `fill`, `check`, `save`, `unlock` and `show` on to
 Passwords over the keychain socket (`{id, request, start}`; `start`
 starts Passwords and waits out its unlock) and `{open: true}`. The
-extension: a field's context menu has Passwords ▸ each login ▸ Username,
-Password, One-Time Code (when it has one), Fill Login, and Open
-Passwords (Unlock Passwords… while locked); the menu is rebuilt for the
-frame a field gets the focus in, and a fill goes only to that frame and
-only while it is still at the origin the login was asked for. The
+extension: a field's context menu has "Autofill with Passwords (the best
+login)" and Passwords ▸ each login ▸ Autofill, Username, Password,
+One-Time Code (when it has one), and Open Passwords (Unlock Passwords…
+while locked); Chrome puts an extension's items under its name when it
+has more than one, so they show under Olo ▸. The best login is, in
+order: one whose username the page shows (`seen` in content.js: its
+text and fields' values, an account chooser, "signed in as"), the one
+used on this site (its registrable domain, roughly) before in this
+Chrome profile (`chosen` in `storage.local`, which is the profile's:
+set by an autofill, or by a login signed in with by hand, found by its
+username, a hidden username field or the one account the page shows),
+the profile's own account (who is signed in to Chrome there), then
+Passwords' order; the popup lists them so too. Which profile: the
+extension keeps a random token in its storage, and the host finds the
+profile whose `Local Extension Settings/<id>` holds it (`profile.rs`;
+among those whose storage Chrome, its parent, has open, since Chrome
+rewrites its command line into one string, else every profile of the
+user data folder) and reads who is signed in from `Local State`. The
+menu is rebuilt when a field gets the focus or the pointer comes over
+one (Chrome shows it as it is when the button goes down). Fields are
+found in open shadow roots too; the password is the focused one, else
+`current-password`, never a `new-password`; the username the text field
+before it (one that says it's for the account first); one-time codes by
+`one-time-code` or what the field says (never a card's "security
+code"), split over one-digit boxes when the site does; each filled as
+typing does (keys, `input`, `change`). A sign-in in steps (the account,
+then the password, then a code) gets the rest as it comes: after an
+autofill that didn't fill everything, the tab is watched (a
+`MutationObserver`, and the next page on the same site, for 3 minutes)
+and a password or code field that turns up is filled from the same
+login. A fill goes only to the frame it was asked from and only while
+it is still at the origin the login was asked for. The
 toolbar button lists the page's logins (Enter or a click fills one). A
 password sent with a form (submit, a button, Enter) is checked, and a
 new or changed one offered in a notification (Save/Update, Not Now; the
