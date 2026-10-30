@@ -320,9 +320,16 @@ fn team_key(w: &WindowInfo) -> String {
 
 /// Send `req` to app_server off the UI thread.
 fn request(req: Request) {
+    requests(vec![req]);
+}
+
+/// Ask app_server for each of `reqs`, in turn.
+fn requests(reqs: Vec<Request>) {
     std::thread::spawn(move || {
         if let Ok(mut c) = Client::connect() {
-            let _ = c.request(&req);
+            for req in &reqs {
+                let _ = c.request(req);
+            }
         }
     });
 }
@@ -730,11 +737,29 @@ impl Deskbar {
             m = m.separator().item("New Window", "new-window", None);
         }
         let app = team.windows.first().map(|w| w.app_id.clone()).unwrap_or_default();
+        m = m.separator().item("Hide All", "hide-all", None).item("Show All", "show-all", None).item("Close All", "close-all", None).separator();
+        // Its windows to any workspace of any display, as their tabs'
+        // menus move one.
+        let several = team.windows.len() > 1;
+        let mut displays: Vec<&OutputInfo> = self.outputs.iter().filter(|o| o.mirror_of.is_none()).collect();
+        displays.sort_by_key(|o| o.position);
+        let mut to = Menu::new(if several { "Move All to Workspace" } else { "Move to Workspace" });
+        for (k, d) in displays.iter().enumerate() {
+            if k > 0 {
+                to = to.separator();
+            }
+            for i in 0..self.workspace.1.clamp(1, 9) {
+                let there = team.windows.iter().all(|w| w.output.as_deref() == Some(d.name.as_str()) && w.workspace == i);
+                to = to.item(self.workspace_name(Some(&d.name), i), format!("move:{i}:{}", d.name), None).checked(there).enabled(!there);
+            }
+        }
+        m = m.submenu(to);
+        if displays.len() > 1 {
+            m = m
+                .item(if several { "All to the Next Display" } else { "To the Next Display" }, "shortcut:next-display", None)
+                .item(if several { "All to the Previous Display" } else { "To the Previous Display" }, "shortcut:previous-display", None);
+        }
         m.separator()
-            .item("Hide All", "hide-all", None)
-            .item("Show All", "show-all", None)
-            .item("Close All", "close-all", None)
-            .separator()
             .item("Group Windows", "group-windows", None)
             .checked(!self.tiling.ungrouped_apps.contains(&app))
             .enabled(!app.is_empty())
@@ -1294,6 +1319,15 @@ impl Deskbar {
             if !ids.is_empty() {
                 request(Request::ActivateAll { ids });
             }
+            return;
+        }
+        if let Some((index, output)) = cmd.strip_prefix("move:").and_then(|r| r.split_once(':')) {
+            let Ok(index) = index.parse::<u32>() else { return };
+            requests(ids.into_iter().map(|id| Request::MoveToWorkspace { id, index, output: Some(output.to_owned()) }).collect());
+            return;
+        }
+        if let Some(shortcut) = cmd.strip_prefix("shortcut:") {
+            requests(ids.into_iter().map(|id| Request::RunShortcut { id: shortcut.to_owned(), window: Some(id) }).collect());
             return;
         }
         for id in ids {

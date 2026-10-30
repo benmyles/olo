@@ -475,13 +475,24 @@ impl<B: Backend + 'static> AnvilState<B> {
                     (_, None) => Reply::Error { message: format!("no display {to:?}") },
                 }
             }
-            Request::MoveToWorkspace { id, index } => match self.window_by_id(id) {
-                Some(w) => {
+            Request::MoveToWorkspace { id, index, output } => match (self.window_by_id(id), output) {
+                (Some(w), None) => {
                     w.meta().moved_on_purpose.set(true);
                     self.move_to_workspace(&w, index);
                     Reply::Ok
                 }
-                None => not_found(),
+                (Some(w), Some(name)) => {
+                    let to = self.space.outputs().find(|o| o.name() == name).cloned();
+                    match to {
+                        Some(to) => {
+                            w.meta().moved_on_purpose.set(true);
+                            self.move_to_display_workspace(&w, &to, index);
+                            Reply::Ok
+                        }
+                        None => Reply::Error { message: format!("no display {name:?}") },
+                    }
+                }
+                (None, _) => not_found(),
             },
             Request::Outputs => Reply::Outputs { outputs: self.output_infos() },
             Request::InputDevices => Reply::InputDevices { devices: self.backend_data.input_devices() },

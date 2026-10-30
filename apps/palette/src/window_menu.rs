@@ -46,6 +46,9 @@ pub struct Facts {
     pub workspaces: u32,
     pub display: Option<u32>,
     pub displays: usize,
+    /// The other displays, by connector and number, to move it to one of
+    /// their workspaces.
+    pub others: Vec<(String, u32)>,
     /// Rolled up to its tab.
     pub rolled: bool,
     /// In a group with other windows (their tabs side by side).
@@ -77,6 +80,11 @@ pub fn learn(ask: Ask, proxy: Proxy) {
         };
         let displays = outputs.iter().filter(|o| o.mirror_of.is_none()).count().max(1);
         let display = w.output.as_deref().and_then(|o| olo_protocol::display_number(&outputs, o));
+        let others = outputs
+            .iter()
+            .filter(|o| o.mirror_of.is_none() && Some(&o.name) != w.output.as_ref())
+            .filter_map(|o| Some((o.name.clone(), olo_protocol::display_number(&outputs, &o.name)?)))
+            .collect();
         let keys = match c.request(&Request::GetSettings) {
             Ok(Reply::Settings { settings }) => settings.keyboard.profile,
             _ => Default::default(),
@@ -90,7 +98,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             _ => None,
         };
         let (rolled, grouped, floating) = (w.rolled, w.group.is_some(), w.floating);
-        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, display, displays, rolled, grouped, auto, floating, keys, path });
+        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, display, displays, others, rolled, grouped, auto, floating, keys, path });
     });
 }
 
@@ -130,14 +138,31 @@ pub fn build(f: &Facts) -> Menu {
     ]
     .iter()
     .fold(Menu::new("Tile"), |m, (id, label)| if id.is_empty() { m.separator() } else { shortcut(m, id, label) });
+    // Every display's workspaces, left to right as Deskbar's heading
+    // menus list them; its own display's with their keys.
+    let mut displays: Vec<(Option<&str>, Option<u32>)> = f.others.iter().map(|(o, n)| (Some(o.as_str()), Some(*n))).collect();
+    displays.push((None, f.display));
+    displays.sort_by_key(|(_, n)| *n);
     let mut spaces = Menu::new("Move to Workspace");
-    for n in 0..f.workspaces.max(1) {
-        spaces = spaces.item(olo_protocol::workspace_name(f.display, n), format!("workspace:{n}"), None);
-        if let Some(k) = keys(f, &format!("window-to-workspace-{}", n + 1)) {
-            spaces = spaces.keys(k);
+    for (k, (output, number)) in displays.into_iter().enumerate() {
+        if k > 0 {
+            spaces = spaces.separator();
         }
-        if n == f.workspace {
-            spaces = spaces.checked(true).enabled(false);
+        for n in 0..f.workspaces.max(1) {
+            let command = match output {
+                Some(o) => format!("workspace:{n}:{o}"),
+                None => format!("workspace:{n}"),
+            };
+            spaces = spaces.item(olo_protocol::workspace_name(number, n), command, None);
+            if output.is_some() {
+                continue;
+            }
+            if let Some(k) = keys(f, &format!("window-to-workspace-{}", n + 1)) {
+                spaces = spaces.keys(k);
+            }
+            if n == f.workspace {
+                spaces = spaces.checked(true).enabled(false);
+            }
         }
     }
     let mut m = Menu::new(f.title.clone());
@@ -172,8 +197,13 @@ pub fn build(f: &Facts) -> Menu {
 pub fn perform(window: u64, command: &str) {
     let req = if let Some(id) = command.strip_prefix("shortcut:") {
         Request::RunShortcut { id: id.to_owned(), window: Some(window) }
-    } else if let Some(n) = command.strip_prefix("workspace:").and_then(|n| n.parse().ok()) {
-        Request::MoveToWorkspace { id: window, index: n }
+    } else if let Some(rest) = command.strip_prefix("workspace:") {
+        let (n, output) = match rest.split_once(':') {
+            Some((n, o)) => (n, Some(o.to_owned())),
+            None => (rest, None),
+        };
+        let Ok(index) = n.parse() else { return };
+        Request::MoveToWorkspace { id: window, index, output }
     } else {
         match command {
             "send-to-back" => Request::SendToBack { id: window },
@@ -267,7 +297,7 @@ mod tests {
         let mut changed = KeyboardProfile::default();
         changed.shortcuts.insert("zoom".into(), vec!["Ctrl+Cmd+Z".into()]);
         changed.shortcuts.insert("center".into(), vec![]);
-        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false, grouped: true, auto: false, floating: false, keys: changed, path: None, display: Some(1) };
+        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false, grouped: true, auto: false, floating: false, keys: changed, path: None, display: Some(1), others: vec![("HDMI-A-1".into(), 0)] };
         fn commands(m: &Menu, out: &mut Vec<String>) {
             for item in &m.items {
                 match item {
@@ -314,8 +344,14 @@ mod tests {
         assert_eq!(keys_of("Center"), Some(None));
         let Some(menu::MenuItem::Submenu(spaces)) = menu.items.iter().find(|i| matches!(i, menu::MenuItem::Submenu(s) if s.title == "Move to Workspace")) else { panic!() };
         let menu::MenuItem::Action(first) = &spaces.items[0] else { panic!() };
-        assert_eq!(first.key_label().as_deref(), Some("⌃⇧1"));
-        // Its display's workspaces, named for it among several.
-        assert_eq!(first.label, "D1 Workspace 1");
+        // Every display's workspaces, named for theirs, left to right: its
+        // own with keys and a check, another's moving it there.
+        assert_eq!(first.label, "D0 Workspace 1");
+        assert_eq!(first.command, "workspace:0:HDMI-A-1");
+        assert_eq!(first.key_label(), None);
+        let own: Vec<&menu::Action> = spaces.items.iter().filter_map(|i| if let menu::MenuItem::Action(a) = i { Some(a) } else { None }).filter(|a| a.label.starts_with("D1")).collect();
+        assert_eq!(own.len(), 3);
+        assert_eq!((own[0].command.as_str(), own[0].key_label().as_deref()), ("workspace:0", Some("⌃⇧1")));
+        assert!(own[1].checked && !own[0].checked);
     }
 }

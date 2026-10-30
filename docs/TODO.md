@@ -311,8 +311,8 @@ as they land (with the commit), add new ones as they come up.
   (logged). Two displays, both auto-tiled, a floating window and one on
   another workspace: 6 upgrades and 2 reloads unchanged (they swapped
   in 1 of 2 before), and an ordinary session's 3 unchanged.
-- **Move to Workspace: every display's workspaces, from a window's tab
-  and from Deskbar's apps** (Ben, 2026-10-30): "when right clicking a
+- ~~**Move to Workspace: every display's workspaces, from a window's tab
+  and from Deskbar's apps**~~ (Ben, 2026-10-30): "when right clicking a
   window title bar, under move to workspace it only shows the current
   display's workspaces. it should show all the workspaces for all the
   displays as targets to move to just like in the deskbar when you right
@@ -325,7 +325,20 @@ as they land (with the commit), add new ones as they come up.
   workspace; an app's menu in Deskbar gets the same moves for all its
   windows (Move to Workspace ▸ every display's, Move to Display, and the
   window moves the tab's menu has), done with `MoveToWorkspace` and the
-  display moves app_server already has.
+  display moves app_server already has. Done so (HACKING, "The window
+  menu" and Workspaces): the tab's Move to Workspace lists every
+  display's, left to right as Deskbar's heading menus do, its own
+  display's with their keys and a check; `MoveToWorkspace` takes an
+  `output` (to the same place there, tiled or zoomed as it was, hidden
+  if that workspace isn't showing); an app's Deskbar menu has Move (All)
+  to Workspace ▸ every display's and (All) to the Next / Previous
+  Display. And a bug found doing it: after the tab's menu was put away
+  with Escape, the next click (Deskbar's, say) went nowhere. The menu
+  asked for its grab while the right button was still down, with no
+  press of its own to name, and was refused, so it ran without one and
+  its clear layer outlived it, taking that click; it now takes the
+  pointer from the press, and a menu's window gets a frame as the menu
+  goes (it draws on frames, which a still screen doesn't make).
 - **Preferences ▸ Performance: a supervisor that keeps the desktop
   responsive** (Ben, 2026-10-30): "a new preferences -> performance app,
   and the first setting should be one to do smart process prioritization

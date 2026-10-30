@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Deskbar: an app's windows to any workspace
+
+*12:24* — An app's Deskbar menu moves its windows as a tab's menu moves one: Move to Workspace ▸ every display's workspaces (the one they're on checked), and To the Next / Previous Display.
+
+![Deskbar: an app's windows to any workspace](2026-10-30/122417-deskbar-an-app-s-windows-to-any-workspace.png)
+
+### Window menu: every display's workspaces
+
+*12:24* — A window's tab menu ▸ Move to Workspace lists every display's workspaces, left to right as Deskbar names them, its own display's with their keys and a check; another display's moves it there, to the same place, tiled or zoomed as it was.
+
+![Window menu: every display's workspaces](2026-10-30/122416-window-menu-every-display-s-workspaces.png)
+
 ### Token Pool: the Clients window
 
 *12:09* — Pool ▸ Clients: the pool's activity over time (requests a minute by client, over the last hour, six hours or day, with totals), Codex's service with its version, settings, connections, conversations and Restart, and each Claude Code and Codex running and where its connections go (here a sandbox with a made-up day of activity).

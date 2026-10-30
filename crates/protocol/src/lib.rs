@@ -99,8 +99,15 @@ pub enum Request {
         #[serde(default)]
         output: Option<String>,
     },
-    /// Move a window to workspace `index` of the display it is on.
-    MoveToWorkspace { id: WindowId, index: u32 },
+    /// Move a window to workspace `index` of the display it is on, or of
+    /// display `output` (a connector): there, to the same place on it
+    /// relatively, tiled or zoomed as it was.
+    MoveToWorkspace {
+        id: WindowId,
+        index: u32,
+        #[serde(default)]
+        output: Option<String>,
+    },
     /// Move every window on workspace `index` of display `output` to
     /// workspace `to_index` (else the same number) of display `to` (both
     /// connectors), each to the same place on it relatively, tiled or

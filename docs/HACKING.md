@@ -2278,6 +2278,13 @@ the focused one checked, one on another workspace with that workspace's
 number, and a minimized one marked as a Mac's Window menu does, a hollow
 diamond and a lighter label (`.minimized(true)`, `Action::minimized`;
 agents read `minimized` on its `MenuItem`). Choosing one brings it back.
+Below Hide All, Show All and Close All it moves the app's windows (those
+the row stands for) as a window's tab menu moves one: Move to Workspace ▸
+(Move All to Workspace with several), every display's workspaces left
+to right, the one they're all on checked (`move:N:OUTPUT`, a
+`MoveToWorkspace { output }` each, in turn on one connection,
+`requests`), and with several displays (All) to the Next / Previous
+Display (the `next-display` shortcuts for each window).
 
 Twitcher (⌘Tab, ⌥Tab, ⌘\`, `twitch_step`; while ⌘ or ⌥ is held the
 pointer chooses too: over a cell it is the one chosen, a click on it
@@ -2377,11 +2384,14 @@ which `display_of` reads; a display gone, the main one's).
 back the ones left on its workspace `n`, the keyboard going to the front
 one there (none if it has none, not another display's); the shortcuts,
 `switch_workspace`, act on the active display (`active_output`).
-`move_to_workspace` keeps a window on its display; `move_workspace(from,
-n, to, m)` (Deskbar's heading menu, `Request::MoveWorkspace`) moves
-every window of one display's workspace to another's, across displays
-as ⌃⌥⌘→ moves one (`move_to_output`, tiled or zoomed as it was, hidden
-ones staying hidden). Each display's desktop colour is its workspace's
+`move_to_workspace` keeps a window on its display;
+`move_to_display_workspace(w, to, n)` (`Request::MoveToWorkspace` with an
+`output`: the window menu's and Deskbar's app menus' moves to another
+display's workspace) and `move_workspace(from, n, to, m)` (Deskbar's
+heading menu, `Request::MoveWorkspace`), both through `move_windows`,
+move across displays as ⌃⌥⌘→ moves one (`move_to_output`, tiled or
+zoomed as it was, hidden ones staying hidden, in front if that
+workspace is showing there). Each display's desktop colour is its workspace's
 (`desktop_color(output)`); auto-tiling's trees are per display and
 workspace already (`(workspace, output)`), and every tick works on each
 display's showing. The IPC: `{"type":"workspaces"}` answers the active
@@ -4460,8 +4470,11 @@ put it away.
   workspace count and the displays; the palette then opens a clear
   full-screen overlay on that output and pops an ordinary kit menu at
   the point: Hide, Zoom, Back to Its Own Size, Center, Tile ▸ (halves,
-  quarters, thirds), Move to Workspace ▸, the next/previous display
-  (with more than one), Open in Tracker (when the window's program says
+  quarters, thirds), Move to Workspace ▸ (every display's workspaces,
+  left to right as Deskbar's heading menus list them, named as Deskbar
+  names them, "D1 Workspace 2"; its own display's with their keys and a
+  check; another's is `MoveToWorkspace { id, index, output }`), the
+  next/previous display (with more than one), Open in Tracker (when the window's program says
   what it shows: `commands::path`, asked of its pid with its
   `WindowInfo::surface`), Send to Back (BeOS's right-click on the tab,
   `Request::SendToBack`) and Close. Its items are the shortcuts', done
@@ -4469,6 +4482,16 @@ put it away.
   palette always agree, and each shows the person's own keys for it
   (`shortcuts::keys_for` with their `ShortcutSettings`); agents read and
   choose from it as from any popup. Choosing, a click outside or Escape puts the overlay away.
+  Its popup asks for its grab with no press of its own (the press was
+  app_server's, on the tab) and often while the button is still down,
+  so app_server lets a popup whose root is the `window-menu` layer take
+  the pointer from that press (`XdgShellHandler::grab`): refused, it ran
+  without a grab and its clear layer outlived it when put away with
+  Escape, taking the next click. And when a popup goes, its root (the
+  window, or a layer) is sent a frame callback at once
+  (`popup_destroyed`): the kit draws on frames, and a still screen
+  makes none, so a menu's window otherwise showed the menu gone only at
+  the next change on screen.
 
 ## Other toolkits' programs (app_server toolkits.rs, state.rs; olo_theme::toolkit)
 

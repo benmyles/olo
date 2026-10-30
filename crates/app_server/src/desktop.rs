@@ -1119,13 +1119,36 @@ impl<B: Backend + 'static> AnvilState<B> {
         if windows.is_empty() {
             return;
         }
+        self.move_windows(&windows, from, to, to_index);
+        info!(workspace = index, from = from.name(), to = to.name(), to_index, windows = windows.len(), "moved a workspace's windows");
+    }
+
+    /// Move `window` to workspace `index` of display `to` (the window tab
+    /// menu's, and Deskbar's app menus): on its own display as
+    /// `move_to_workspace`; on another, to the same place there
+    /// relatively, tiled or zoomed as it was, hidden if it was, in front
+    /// if `to` shows that workspace.
+    pub fn move_to_display_workspace(&mut self, window: &WindowElement, to: &Output, index: u32) {
+        let Some(from) = self.display_of(window) else { return };
+        if &from == to {
+            self.move_to_workspace(window, index);
+            return;
+        }
+        let index = index.min(self.settings.workspace_count.max(1) - 1);
+        self.move_windows(std::slice::from_ref(window), &from, to, index);
+        info!(window = window.id(), from = from.name(), to = to.name(), index, "moved to another display's workspace");
+    }
+
+    /// Move `windows`, all on display `from`, to `to`'s workspace
+    /// `to_index`, bottom first so they stack there as they did.
+    fn move_windows(&mut self, windows: &[WindowElement], from: &Output, to: &Output, to_index: u32) {
         self.overview_interrupted();
         let shown_there = self.showing(to) == to_index;
         let focused = self.focused_window();
         let mut front = None;
         // Bottom first (the space's, then the parked), so they stack there
         // as they did.
-        for w in &windows {
+        for w in windows {
             let minimized = w.meta().minimized.get();
             if from != to {
                 if self.parked.0.borrow().contains(w) {
@@ -1157,7 +1180,6 @@ impl<B: Backend + 'static> AnvilState<B> {
             None if focused.as_ref().is_some_and(|f| windows.contains(f)) => self.focus_topmost_on(from),
             _ => {}
         }
-        info!(workspace = index, from = from.name(), to = to.name(), to_index, windows = windows.len(), "moved a workspace's windows");
     }
 
     /// `output`'s desktop colour: that of the workspace it shows.

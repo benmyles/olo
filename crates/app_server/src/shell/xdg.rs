@@ -18,7 +18,7 @@ use smithay::{
             protocol::{wl_output, wl_seat, wl_surface::WlSurface},
         },
     },
-    utils::{Logical, Point, Serial},
+    utils::{IsAlive, Logical, Point, Serial},
     wayland::{
         compositor::{self, with_states},
         seat::WaylandFocus,
@@ -318,25 +318,49 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
     fn popup_destroyed(&mut self, surface: PopupSurface) {
         // Smithay's popup keyboard grab only hands the keyboard back to the
         // window on the next key press, so a menu's window would show no
-        // caret (and a text field no selection) until then. Give it back as
-        // soon as the last popup of the grab is gone.
+        // caret (and a text field no selection) until then. Give it back,
+        // ending the grab, as soon as the last popup of the grab is gone
+        // (once the popup manager has seen it go: before, the grab hands
+        // the keyboard back but stays, and refuses the next menu of any
+        // other program, as Deskbar's right after a window's tab menu
+        // put away with Escape).
         let root = self.popup_root_focus(&PopupKind::Xdg(surface));
         self.handle.insert_idle(move |state| {
-            if let Some(root) = root
-                && let Some(keyboard) = state.seat.get_keyboard()
+            state.popups.cleanup();
+            if let Some(keyboard) = state.seat.get_keyboard()
                 // While a parent menu is still open, its grab ignores this.
                 && keyboard.is_grabbed()
             {
-                keyboard.set_focus(state, Some(root), smithay::utils::SERIAL_COUNTER.next_serial());
+                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                match root.clone() {
+                    Some(root) if root.alive() => keyboard.set_focus(state, Some(root), serial),
+                    // Its window gone with it (the tab menu's layer):
+                    // the grab ends, the keyboard staying where it went.
+                    _ => {
+                        if keyboard.with_grab(|_, grab| grab.is::<PopupKeyboardGrab<Self>>()).unwrap_or(false) {
+                            keyboard.unset_grab(state);
+                        }
+                    }
+                }
+            }
+            // Its window draws itself without the menu (a menu bar's title
+            // let go; the window menu's clear layer closing) on its next
+            // frame, which Olo's apps wait for: one now, not at whatever
+            // next changes on screen, which may be a while (a click
+            // meanwhile went to the window menu's layer, still there).
+            if let Some(root) = root.as_ref().filter(|r| r.alive())
+                && let Some(surface) = root.wl_surface()
+                && let Some(output) = state.space.outputs().next().cloned()
+            {
+                let time: std::time::Duration = state.clock.now().into();
+                smithay::desktop::utils::send_frames_surface_tree(&surface, &output, time, None, |_, _| Some(output.clone()));
             }
             // The pointer's popup grab likewise ends only on the next motion,
             // and then enters the window where the pointer was before that
             // motion (on the chosen item), dropping the motion itself: a
             // click on a menu title right after choosing an item would land
             // on the text under the item instead. Move the pointer where it
-            // is now, which ends the grab and enters whatever is under it
-            // (once the popup manager has seen the popup go).
-            state.popups.cleanup();
+            // is now, which ends the grab and enters whatever is under it.
             let pointer = state.pointer.clone();
             let location = pointer.current_location();
             let under = state.surface_under(location);
@@ -357,11 +381,19 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         let seat: Seat<AnvilState<BackendData>> = Seat::from_resource(&seat).unwrap();
         let kind = PopupKind::Xdg(surface);
         if let Some(root) = self.popup_root_focus(&kind) {
+            // A window's menu (its tab right-clicked: `window_menu`) asks
+            // as the button may still be down, with no press of its own to
+            // name (the press was app_server's, on the tab); refused, it
+            // showed with no grab, and its clear layer outlived it when put
+            // away with Escape, taking the next click (Deskbar's). It takes
+            // the pointer from that press instead.
+            let window_menu = matches!(&root, crate::focus::KeyboardFocusTarget::LayerSurface(l) if l.namespace() == "window-menu");
             let ret = self.popups.grab_popup(root, kind, &seat, serial);
 
             if let Ok(mut grab) = ret {
                 if let Some(keyboard) = seat.get_keyboard() {
                     if keyboard.is_grabbed()
+                        && !window_menu
                         && !(keyboard.has_grab(serial)
                             || keyboard.has_grab(grab.previous_serial().unwrap_or(serial)))
                     {
@@ -373,6 +405,7 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
                 }
                 if let Some(pointer) = seat.get_pointer() {
                     if pointer.is_grabbed()
+                        && !window_menu
                         && !(pointer.has_grab(serial)
                             || pointer.has_grab(grab.previous_serial().unwrap_or_else(|| grab.serial())))
                     {
