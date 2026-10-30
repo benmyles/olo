@@ -214,8 +214,20 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
-- **Terminal: coding agents keep their tab's title current** (Ben,
-  2026-10-30): "terminal app should also make available to claude code
+- **Bug: Quick Look's full screen spans displays** (Ben, 2026-10-30):
+  "there's a bug with quick look when i have multiple displays i hit
+  space and correctly see the quick look preview then i hit f and it
+  went to a different display well actually it kinda spanned displays
+  -- it should fullscreen it on only the one active display". With
+  several displays, Quick Look (Space) shows on the right one, but F
+  (full screen) moves it to another or stretches it across displays.
+  It must fill only the display it's on (the active one, where the
+  person is looking), and come back from full screen to where it was.
+  Find the cause (what Quick Look asks for, and how app_server takes a
+  full-screen or zoom request with more than one display) and test it
+  with a headless two-display session at every scale.
+- ~~**Terminal: coding agents keep their tab's title current**~~ (Ben,
+  2026-10-30; done: HACKING, Terminal ▸ Coding agents' tab titles): "terminal app should also make available to claude code
   and codex coding agents a tool to update the terminal title and inject
   instructions for them to keep the terminal title updated at all times
   to ensure it reflects the active work". A Claude Code or Codex started
@@ -229,6 +241,15 @@ as they land (with the commit), add new ones as they come up.
   rename wins until they clear it); readable and settable by agents
   outside the tab too (Terminal's widget tree and commands). A setting
   in Preferences ▸ Terminal, beside the group context's.
+  Done so: `set_tab_title` from an MCP server of Terminal's
+  (`olo-terminal --mcp`), named in Claude Code's `.claude.json` (and
+  allowed in its settings) and Codex's `config.toml` while the setting
+  is on; the instructions come from the same hook as the group context
+  (at the start, and a reminder line with each prompt). There is no
+  person's rename of a single tab to lose to it (the person names
+  groups); outside the tab, `olo-terminal --set-tab-title SHELL TITLE`.
+  Tested with Claude Code 2.1.314 (`claude mcp list`: connected) and
+  Codex 0.166 (`codex mcp list`), and the tool driven from a tab.
 - ~~**Terminal: "Tile All Tabs", a row per group**~~ (Ben, 2026-10-30):
   "change how the show all tabs option in terminal works. first, rename
   it to "Tile All Tabs" and then i want you to make it so that each group

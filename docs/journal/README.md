@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Preferences ▸ Terminal: Let coding agents keep their tab's title current
+
+*15:27* — Off by default; the panel is taller for it.
+
+![Preferences ▸ Terminal: Let coding agents keep their tab's title current](2026-10-30/152752-preferences-terminal-let-coding-agents-keep-thei.png)
+
+### Terminal: a coding agent's title for its tab
+
+*15:27* — With Preferences ▸ Terminal's new setting, Claude Code and Codex get a set_tab_title tool (an MCP server of Terminal's) and are asked to keep their tab titled with what they're working on; here the tool was called from the tab.
+
+![Terminal: a coding agent's title for its tab](2026-10-30/152751-terminal-a-coding-agent-s-title-for-its-tab.png)
+
 ### Deskbar: the supervisor's gauge at 1×, 1.25×, 1.5×, 1.75×, 2×
 
 *15:08* — On (dial tinted, needle up, the findings counted, red if urgent) and off (dim, needle resting). A click turns it on or off; its menu lists the findings, Show in Activity Monitor and Performance Settings…

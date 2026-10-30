@@ -909,11 +909,15 @@ pub struct TerminalSettings {
     /// name and the repositories its tabs are in (Terminal's
     /// agent_context.rs; off by default).
     pub agent_context: bool,
+    /// Claude Code and Codex in a tab get a tool to set its title and
+    /// are told to keep it saying what they're working on (Terminal's
+    /// agent_title.rs; off by default).
+    pub agent_titles: bool,
 }
 
 impl Default for TerminalSettings {
     fn default() -> Self {
-        TerminalSettings { worktrees: "~/worktrees".into(), agent_context: false }
+        TerminalSettings { worktrees: "~/worktrees".into(), agent_context: false, agent_titles: false }
     }
 }
 

@@ -18,6 +18,10 @@
 //! which the hook reads: Claude Code runs it under the tab's shell (its
 //! pid is an ancestor), Codex in its daemon, so there the tab is found
 //! by the session's folder (one running Codex first).
+//!
+//! The same hook tells them to keep their tab's title current when that
+//! setting is on (agent_title.rs: at the start, then a line with each
+//! prompt); the file is kept while either is on, and says which.
 
 use std::{
     io::Read,
@@ -44,11 +48,25 @@ pub struct TabInfo {
     pub cwd: Option<PathBuf>,
     /// The coding agent running in it ("Claude Code", "Codex").
     pub agent: Option<String>,
+    /// Its Terminal's display (`wayland-1`), to reach it there.
+    #[serde(default)]
+    pub display: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Snapshot {
     pub tabs: Vec<TabInfo>,
+    /// Agents are told about their groups (from before the titles: on).
+    pub groups: bool,
+    /// Agents keep their tabs' titles current (agent_title.rs).
+    pub titles: bool,
+}
+
+impl Default for Snapshot {
+    fn default() -> Self {
+        Snapshot { tabs: Vec::new(), groups: true, titles: false }
+    }
 }
 
 fn runtime_dir() -> PathBuf {
@@ -58,17 +76,17 @@ fn runtime_dir() -> PathBuf {
 /// This Terminal's (one for each Olo session, by its display: Agent
 /// Screens run Terminals of their own).
 fn snapshot_path() -> PathBuf {
-    let display = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
-    let display: String = display.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+    let display: String = olo_kit::display_name().chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
     runtime_dir().join(format!("{SNAPSHOT}-{display}.json"))
 }
 
 const SNAPSHOT: &str = "olo-terminal-groups";
 
-/// Every Terminal's tabs (each session's).
-fn read_all() -> Option<Snapshot> {
+/// Every Terminal's tabs (each session's), and what agents are told (any
+/// Terminal's settings: they're the person's, one for all).
+pub fn read_all() -> Option<Snapshot> {
     let mut tabs = Vec::new();
-    let mut any = false;
+    let (mut any, mut groups, mut titles) = (false, false, false);
     for e in std::fs::read_dir(runtime_dir()).ok()?.flatten() {
         let name = e.file_name();
         let name = name.to_string_lossy();
@@ -77,11 +95,13 @@ fn read_all() -> Option<Snapshot> {
         }
         if let Some(s) = std::fs::read(e.path()).ok().and_then(|b| serde_json::from_slice::<Snapshot>(&b).ok()) {
             any = true;
+            groups |= s.groups;
+            titles |= s.titles;
             // (Not a Terminal's that has gone: its shells have.)
             tabs.extend(s.tabs.into_iter().filter(|t| t.shell.is_none_or(|p| Path::new(&format!("/proc/{p}")).exists())));
         }
     }
-    any.then_some(Snapshot { tabs })
+    any.then_some(Snapshot { tabs, groups, titles })
 }
 
 /// Keep `s` for the hook (a new file put in place of the old, for this
@@ -167,6 +187,17 @@ pub fn set_hooks(on: bool, exe: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// This process's ancestors, its parent first.
+pub fn ancestors() -> Vec<i32> {
+    let mut all = Vec::new();
+    let mut pid = std::process::id() as i32;
+    while let Some(p) = parent(pid).filter(|&p| p > 1 && all.len() < 64) {
+        all.push(p);
+        pid = p;
+    }
+    all
+}
+
 /// Process `pid`'s parent.
 fn parent(pid: i32) -> Option<i32> {
     let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
@@ -176,7 +207,7 @@ fn parent(pid: i32) -> Option<i32> {
 /// The tab the agent is in: the one whose shell is an ancestor of this
 /// process (`ancestors`), else one in the session's folder (`cwd`), one
 /// running an agent first.
-fn tab_of<'a>(s: &'a Snapshot, ancestors: &[i32], cwd: Option<&Path>) -> Option<&'a TabInfo> {
+pub fn tab_of<'a>(s: &'a Snapshot, ancestors: &[i32], cwd: Option<&Path>) -> Option<&'a TabInfo> {
     if let Some(t) = s.tabs.iter().find(|t| t.shell.is_some_and(|p| ancestors.contains(&p))) {
         return Some(t);
     }
@@ -254,12 +285,7 @@ pub fn run() -> std::process::ExitCode {
     let cwd = v["cwd"].as_str().map(PathBuf::from);
     let event = v["hook_event_name"].as_str().unwrap_or("SessionStart");
     let session = v["session_id"].as_str().unwrap_or("");
-    let mut ancestors = Vec::new();
-    let mut pid = std::process::id() as i32;
-    while let Some(p) = parent(pid).filter(|&p| p > 1 && ancestors.len() < 64) {
-        ancestors.push(p);
-        pid = p;
-    }
+    let ancestors = ancestors();
     let read = read_all;
     // A tab just opened may not be in it yet (it's kept every two
     // seconds): a moment's grace, at the start only.
@@ -275,17 +301,26 @@ pub fn run() -> std::process::ExitCode {
     }
     let Some(s) = snapshot else { return std::process::ExitCode::SUCCESS };
     let Some(tab) = tab_of(&s, &ancestors, cwd.as_deref()) else { return std::process::ExitCode::SUCCESS };
-    let text = block(&s, tab, &place_of).unwrap_or_default();
+    let mut said = Vec::new();
+    // Its title: how at the start, a reminder with each prompt.
+    if s.titles {
+        said.push(if event == "UserPromptSubmit" { crate::agent_title::REMINDER } else { crate::agent_title::INSTRUCTIONS }.to_owned());
+    }
+    // Its group: again only when it changed.
+    let text = if s.groups { block(&s, tab, &place_of).unwrap_or_default() } else { String::new() };
     let told = (!session.is_empty()).then(|| told_path(session));
-    if event == "UserPromptSubmit" && told.as_ref().and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default() == text {
-        return std::process::ExitCode::SUCCESS;
+    let same = event == "UserPromptSubmit" && told.as_ref().and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default() == text;
+    if !same {
+        if let Some(p) = told {
+            let _ = p.parent().map(std::fs::create_dir_all);
+            let _ = std::fs::write(p, &text);
+        }
+        if !text.is_empty() {
+            said.push(text);
+        }
     }
-    if let Some(p) = told {
-        let _ = p.parent().map(std::fs::create_dir_all);
-        let _ = std::fs::write(p, &text);
-    }
-    if !text.is_empty() {
-        println!("{text}");
+    if !said.is_empty() {
+        println!("{}", said.join("\n\n"));
     }
     std::process::ExitCode::SUCCESS
 }
@@ -295,7 +330,7 @@ mod tests {
     use super::*;
 
     fn tab(shell: i32, group: Option<&str>, cwd: &str, agent: Option<&str>) -> TabInfo {
-        TabInfo { shell: Some(shell), group: group.map(String::from), cwd: Some(cwd.into()), agent: agent.map(String::from) }
+        TabInfo { shell: Some(shell), group: group.map(String::from), cwd: Some(cwd.into()), agent: agent.map(String::from), display: None }
     }
 
     fn place(p: &Path) -> Place {
@@ -312,6 +347,7 @@ mod tests {
                 tab(13, None, "/src/other", Some("Codex")),
                 tab(14, Some("docs"), "/src/docs", None),
             ],
+            ..Default::default()
         };
         // Under shell 11's tab: its group, each place once, its own marked.
         let t = tab_of(&s, &[999, 11, 1], None).unwrap();

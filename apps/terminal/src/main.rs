@@ -12,6 +12,7 @@
 
 mod agent;
 mod agent_context;
+mod agent_title;
 mod client;
 mod colors;
 mod daemon;
@@ -371,6 +372,12 @@ struct Tab {
     rang: bool,
     /// The coding agent running in it, and what it's doing.
     agent: Option<(Agent, State)>,
+    /// What its agent says it's working on (agent_title.rs): its title,
+    /// ahead of the program's own, until the agent leaves.
+    agent_title: Option<String>,
+    /// A title back from before Terminal restarted: kept if its agent is
+    /// seen by then, else let go.
+    agent_title_until: Option<Instant>,
     /// Its agent stopped (done, or asking) while no one was looking.
     attention: bool,
     /// The git repository its folder is in (repos.rs).
@@ -391,6 +398,8 @@ impl Tab {
             bell: None,
             rang: false,
             agent: None,
+            agent_title: None,
+            agent_title_until: None,
             attention: false,
             repo: None,
             group: None,
@@ -407,7 +416,11 @@ impl Tab {
     }
 
     fn current_title(&self) -> String {
-        self.session.title.clone().filter(|s| !s.trim().is_empty()).or_else(|| self.session.foreground()).unwrap_or_else(|| "Terminal".into())
+        self.agent_title
+            .clone()
+            .or_else(|| self.session.title.clone().filter(|s| !s.trim().is_empty()))
+            .or_else(|| self.session.foreground())
+            .unwrap_or_else(|| "Terminal".into())
     }
 
     /// Tell the program whether it has the keyboard, if it asked to know.
@@ -664,9 +677,9 @@ struct Terminal {
     /// The windows as last kept on disk (`remember`).
     remembered: Option<String>,
     /// Preferences ▸ Terminal: coding agents told about their tab's group
-    /// (agent_context.rs; None: not heard yet), and what was last kept
-    /// for its hook.
-    agent_context: Option<bool>,
+    /// (agent_context.rs) and keeping its title (agent_title.rs; None:
+    /// not heard yet), and what was last kept for their hook and tool.
+    agent_context: Option<(bool, bool)>,
     agent_snapshot: Option<agent_context::Snapshot>,
     /// sudo requests approved without asking, by connection, with the
     /// window they came from (a window asks if the password doesn't do).
@@ -676,9 +689,17 @@ struct Terminal {
 /// Now and then, keep the windows as they are (`Terminal::remember`).
 struct Remember;
 
-/// Preferences ▸ Terminal's "Tell coding agents about the repositories in
-/// their tab group", as it changes.
-struct AgentContext(bool);
+/// Preferences ▸ Terminal's coding agent settings, as they change: told
+/// about their tab's group (agent_context.rs), and keeping their tab's
+/// title current (agent_title.rs).
+struct AgentContext {
+    groups: bool,
+    titles: bool,
+}
+
+/// How soon a tab's agent must be seen again after a restart to keep
+/// its title.
+const AGENT_SEEN_WITHIN: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// How often the windows are kept, besides when Terminal quits.
 const REMEMBER_EVERY: std::time::Duration = std::time::Duration::from_secs(2);
@@ -762,6 +783,9 @@ struct SavedWindow {
     tab_groups: Vec<Option<usize>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     own: Vec<bool>,
+    /// Each tab's coding agent's title (`Tab::agent_title`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    agent_titles: Vec<Option<String>>,
 }
 
 impl SavedWindow {
@@ -929,6 +953,13 @@ impl Terminal {
     }
 
     fn handle_launch(&mut self, cx: &mut Cx, launch: Launch) {
+        // A coding agent's tab title (agent_title.rs), not a window.
+        if launch.args.first().map(String::as_str) == Some(agent_title::SET_FLAG) {
+            if let Some(pid) = launch.args.get(1).and_then(|p| p.parse().ok()) {
+                self.set_agent_title(cx, pid, launch.args.get(2).map_or("", String::as_str));
+            }
+            return;
+        }
         let mut cwd = launch.cwd;
         let mut command = None;
         let mut tab = false;
@@ -1018,6 +1049,14 @@ impl Terminal {
                 t.tiled = w.tiled;
                 t.tile_groups = w.tile_groups.clone();
                 t.tile_heights = w.tile_heights.clone();
+                // Agents' titles, back with their shells (each let go if
+                // its agent isn't seen there soon: `expire_agent_titles`).
+                for tab in t.tabs.iter_mut() {
+                    let i = ids.iter().position(|&s| s == tab.session.id);
+                    tab.agent_title = i.and_then(|i| w.agent_titles.get(i).cloned().flatten());
+                    tab.agent_title_until = tab.agent_title.as_ref().map(|_| Instant::now() + AGENT_SEEN_WITHIN);
+                }
+                retitle(cx, id, t);
             }
         }
         let rest: Vec<&wire::ShellInfo> = free.iter().filter(|s| !used.contains(&s.id)).copied().collect();
@@ -1959,6 +1998,12 @@ impl Terminal {
         let tab = &mut t.tabs[i];
         let before = tab.agent;
         tab.agent = now;
+        if now.is_some() {
+            tab.agent_title_until = None;
+        } else if tab.agent_title.take().is_some() {
+            retitle(cx, win, t);
+        }
+        let tab = &mut t.tabs[i];
         cx.redraw(win);
         let wants = match (before, now) {
             (_, Some((agent, State::Blocked))) => Some((agent, State::Blocked)),
@@ -2693,13 +2738,14 @@ impl App for Terminal {
         };
         let message = match message.downcast::<Remember>() {
             Ok(_) => {
+                self.expire_agent_titles(cx);
                 self.keep_agent_snapshot();
                 return self.remember(cx, false);
             }
             Err(m) => m,
         };
         let message = match message.downcast::<AgentContext>() {
-            Ok(on) => return self.set_agent_context(on.0),
+            Ok(on) => return self.set_agent_context(on.groups, on.titles),
             Err(m) => m,
         };
         let message = match message.downcast::<daemon::Report>() {
@@ -2822,6 +2868,7 @@ impl Terminal {
                         groups: t.groups.clone(),
                         tab_groups: live.iter().map(|x| x.group).collect(),
                         own: live.iter().map(|x| x.own_grouping).collect(),
+                        agent_titles: if live.iter().any(|x| x.agent_title.is_some()) { live.iter().map(|x| x.agent_title.clone()).collect() } else { Vec::new() },
                     })
                 }
                 _ => None,
@@ -2835,23 +2882,30 @@ impl Terminal {
     /// window, group, tab and folder. `now`: before quitting, rather than
     /// on a thread of its own. Not once the session is ending: they're
     /// kept as they were, while their shells go.
-    /// Preferences ▸ Terminal's agent setting: the agents' hook put in or
-    /// taken out (off the UI thread), and its file kept or not.
-    fn set_agent_context(&mut self, on: bool) {
-        if self.agent_context == Some(on) {
+    /// Preferences ▸ Terminal's agent settings: the agents' hook (either)
+    /// and title tool (`titles`) put in or taken out, off the UI thread,
+    /// and their file kept or not.
+    fn set_agent_context(&mut self, groups: bool, titles: bool) {
+        let was = self.agent_context;
+        if was == Some((groups, titles)) {
             return;
         }
-        self.agent_context = Some(on);
+        self.agent_context = Some((groups, titles));
         self.agent_snapshot = None;
+        let on = groups || titles;
+        let hooks = was.is_none_or(|(g, t)| (g || t) != on);
+        let tool = was.is_none_or(|(_, t)| t != titles);
         let exe = std::env::current_exe().ok().map(|e| e.to_str().and_then(|s| s.strip_suffix(" (deleted)")).map(PathBuf::from).unwrap_or(e));
         std::thread::spawn(move || {
             if !on {
                 agent_context::clear();
             }
-            if let Some(exe) = exe
-                && let Err(e) = agent_context::set_hooks(on, &exe)
-            {
+            let Some(exe) = exe else { return };
+            if hooks && let Err(e) = agent_context::set_hooks(on, &exe) {
                 tracing::warn!("coding agents' hook: {e}");
+            }
+            if tool && let Err(e) = agent_title::register(titles, &exe) {
+                tracing::warn!("coding agents' tab title tool: {e}");
             }
         });
         if on {
@@ -2859,12 +2913,44 @@ impl Terminal {
         }
     }
 
+    /// Titles back from before a restart whose agents weren't seen again.
+    fn expire_agent_titles(&mut self, cx: &mut Cx) {
+        let now = Instant::now();
+        for (&win, w) in self.windows.iter_mut() {
+            let Win::Term(t) = w else { continue };
+            let mut changed = false;
+            for tab in t.tabs.iter_mut().filter(|tab| tab.agent_title_until.is_some_and(|u| u <= now)) {
+                tab.agent_title_until = None;
+                if tab.agent.is_none() {
+                    changed |= tab.agent_title.take().is_some();
+                }
+            }
+            if changed {
+                retitle(cx, win, t);
+                cx.redraw(win);
+            }
+        }
+    }
+
+    /// A coding agent's title for the tab whose shell is `pid`
+    /// (agent_title.rs; empty: the tab's own again).
+    fn set_agent_title(&mut self, cx: &mut Cx, pid: i32, title: &str) {
+        let title = agent_title::tidy(title);
+        for (&win, w) in self.windows.iter_mut() {
+            let Win::Term(t) = w else { continue };
+            let Some(tab) = t.tabs.iter_mut().find(|tab| tab.session.shared.shell() == Some(pid)) else { continue };
+            tab.agent_title = (!title.is_empty()).then_some(title);
+            retitle(cx, win, t);
+            cx.redraw(win);
+            return;
+        }
+    }
+
     /// While coding agents are told about their groups: each tab's shell,
     /// group, folder and agent, kept for the hook when they change.
     fn keep_agent_snapshot(&mut self) {
-        if self.agent_context != Some(true) {
-            return;
-        }
+        let Some((groups, titles)) = self.agent_context.filter(|(g, t)| *g || *t) else { return };
+        let display = olo_kit::display_name();
         let tabs = self
             .windows
             .values()
@@ -2878,10 +2964,11 @@ impl Terminal {
                     group: tab.group.and_then(|g| t.groups.get(g)).map(|g| g.name.clone()),
                     cwd: tab.session.cwd(),
                     agent: tab.agent.map(|(a, _)| a.name().to_owned()),
+                    display: Some(display.clone()),
                 })
             })
             .collect();
-        let snapshot = agent_context::Snapshot { tabs };
+        let snapshot = agent_context::Snapshot { tabs, groups, titles };
         if self.agent_snapshot.as_ref() == Some(&snapshot) {
             return;
         }
@@ -2933,8 +3020,19 @@ fn main() {
             _ => 1,
         });
     }
+    // A coding agent's tab title tool (Preferences ▸ Terminal).
+    if args.first().map(String::as_str) == Some(agent_title::MCP_FLAG) {
+        std::process::exit(match agent_title::serve() {
+            c if c == std::process::ExitCode::SUCCESS => 0,
+            _ => 1,
+        });
+    }
     if instance::forward(APP_ID, &args) {
         return;
+    }
+    if args.first().map(String::as_str) == Some(agent_title::SET_FLAG) {
+        eprintln!("olo-terminal: Terminal isn't running");
+        std::process::exit(1);
     }
     let (link, shells) = match client::connect() {
         Ok(c) => c,
@@ -2982,7 +3080,7 @@ fn main() {
         let reattached = t.reattach(cx, shells, saved.as_ref(), fresh) || adopted;
         let proxy = cx.proxy();
         olo_kit::settings::watch(move |s| {
-            proxy.send(AgentContext(s.terminal.agent_context));
+            proxy.send(AgentContext { groups: s.terminal.agent_context, titles: s.terminal.agent_titles });
             proxy.send(repos::WorktreesAt(s.terminal.worktrees));
         });
         let proxy = cx.proxy();

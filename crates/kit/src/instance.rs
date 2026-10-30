@@ -19,14 +19,29 @@ pub struct Launch {
 }
 
 fn socket_path(app_id: &str) -> PathBuf {
+    socket_on(app_id, &olo_xdg::display_name())
+}
+
+fn socket_on(app_id: &str, display: &str) -> PathBuf {
     let rt = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    let display = Some(olo_xdg::display_name()).filter(|d| !d.is_empty()).unwrap_or_else(|| "wayland-0".into());
+    let display = if display.is_empty() { "wayland-0" } else { display };
     rt.join(format!("{app_id}-{display}.sock"))
 }
 
 /// If `app_id` is already running, hand it `args` and return true.
 pub fn forward(app_id: &str, args: &[String]) -> bool {
-    let Ok(mut s) = UnixStream::connect(socket_path(app_id)) else { return false };
+    send(socket_path(app_id), args)
+}
+
+/// [`forward`] to the copy running on `display` (its name, `wayland-1`),
+/// from a program that may have no display of its own (one a coding
+/// agent's daemon started).
+pub fn forward_on(app_id: &str, display: &str, args: &[String]) -> bool {
+    send(socket_on(app_id, display), args)
+}
+
+fn send(path: PathBuf, args: &[String]) -> bool {
+    let Ok(mut s) = UnixStream::connect(path) else { return false };
     let launch = Launch { args: args.to_vec(), cwd: std::env::current_dir().ok() };
     let line = serde_json::to_string(&launch).unwrap_or_default();
     s.write_all(line.as_bytes()).is_ok() && s.write_all(b"\n").is_ok()

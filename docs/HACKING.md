@@ -1999,7 +1999,9 @@ launcher lists them. The panel list Deskbar shows is
   Worktree… makes a repository's worktrees (`worktrees`, `~/worktrees` to
   start, each repository a folder of its name in there), and Coding
   Agents' "Tell coding agents about the repositories in their tab group"
-  (`agent_context`, off; see Terminal's **Coding agents' context**).
+  (`agent_context`, off; see Terminal's **Coding agents' context**) and
+  "Let coding agents keep their tab's title current" (`agent_titles`,
+  off; Terminal's **Coding agents' tab titles**).
   Terminal follows them live (`settings::watch`).
 * Windows (`windows.rs`) sets the space Olo leaves around the windows it
   arranges (`Settings::tiling`: margin at the display's edges, gap
@@ -4120,6 +4122,34 @@ its daemon (by the session's folder, a tab running an agent first, with
 `UserPromptSubmit` only if it changed since it last told that session
 (`$XDG_RUNTIME_DIR/olo-agent-context/<session>`), so a tab joining or
 leaving the group is known from the next turn.
+
+**Coding agents' tab titles** (`src/agent_title.rs`; Preferences ▸
+Terminal ▸ Coding Agents, off by default). A Claude Code or Codex in a
+tab gets a tool, `set_tab_title`, and is asked to keep the tab titled
+with what it is working on: the hook above (installed while either
+setting is on; the file says which, `Snapshot::groups`/`titles`) prints
+the instructions at `SessionStart` and a one-line reminder with each
+prompt. The tool is an MCP server, `olo-terminal --mcp` (JSON-RPC 2.0, a
+line each way on stdin and stdout: `initialize`, `tools/list`,
+`tools/call`), which both agents run outside their sandboxes (Codex's
+sandboxed shell can't reach Terminal's socket). On, Terminal names it in
+Claude Code's global `.claude.json` (`mcpServers.olo-terminal`, in
+`CLAUDE_CONFIG_DIR` else the home folder; Claude Code rewrites that file
+now and then, so it is read just before and checked after), allows the
+tool in its `settings.json` (`mcp__olo-terminal__set_tab_title`, so it
+isn't asked each time), and in Codex's `config.toml`
+(`[mcp_servers.olo-terminal]`, through `toml_edit`, the rest of the
+file as it was); off, it takes them out. Agents see it from their next
+start (`claude mcp list` and `codex mcp list` show it). The server finds
+its tab as the hook does (Claude Code starts it under the tab's shell;
+Codex's daemon by the folder the agent passes as `cwd`, else its own)
+and hands the title to that tab's Terminal on the tab's display
+(`olo-terminal --set-tab-title SHELL TITLE` through the single-instance
+socket, `instance::forward_on`). The tab shows it (`Tab::agent_title`,
+one line, at most 60 characters) ahead of the program's own title until
+the agent leaves the tab or sets an empty one; it is saved with the
+window, and after a restart kept only if the tab's agent is seen again
+within 5 s.
 
 **Repositories** (`src/git.rs`, `src/repos.rs`), in process through
 libgit2 (git2, vendored; no `git` or `gh`). A thread (`git::Watcher`)

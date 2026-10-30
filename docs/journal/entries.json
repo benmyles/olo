@@ -2434,5 +2434,17 @@
   "title": "Deskbar: the supervisor's gauge at 1\u00d7, 1.25\u00d7, 1.5\u00d7, 1.75\u00d7, 2\u00d7",
   "caption": "On (dial tinted, needle up, the findings counted, red if urgent) and off (dim, needle resting). A click turns it on or off; its menu lists the findings, Show in Activity Monitor and Performance Settings\u2026",
   "image": "2026-10-30/150853-deskbar-the-supervisor-s-gauge-at-1-1-25-1-5-1-7.png"
+ },
+ {
+  "time": "2026-10-30T15:27:51",
+  "title": "Terminal: a coding agent's title for its tab",
+  "caption": "With Preferences \u25b8 Terminal's new setting, Claude Code and Codex get a set_tab_title tool (an MCP server of Terminal's) and are asked to keep their tab titled with what they're working on; here the tool was called from the tab.",
+  "image": "2026-10-30/152751-terminal-a-coding-agent-s-title-for-its-tab.png"
+ },
+ {
+  "time": "2026-10-30T15:27:52",
+  "title": "Preferences \u25b8 Terminal: Let coding agents keep their tab's title current",
+  "caption": "Off by default; the panel is taller for it.",
+  "image": "2026-10-30/152752-preferences-terminal-let-coding-agents-keep-thei.png"
  }
 ]
