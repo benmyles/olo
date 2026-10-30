@@ -2218,5 +2218,11 @@
   "title": "Share Screen: the screen-sharing picker",
   "caption": "olo-portal's picker when an app asks to share the screen (xdg-desktop-portal ScreenCast): who asks, the screens as live thumbnails shaped like them, Cancel / Share. A fixed kit dialog opened over the asking window.",
   "image": "2026-10-30/033635-share-screen-the-screen-sharing-picker.png"
+ },
+ {
+  "time": "2026-10-30T03:55:25",
+  "title": "Deskbar: what is being shared, with Stop Sharing",
+  "caption": "While an app shares a screen, Deskbar's tray shows a screen with a recording's red dot; its menu says what is shared with whom and stops it (the app is told the share closed).",
+  "image": "2026-10-30/035525-deskbar-what-is-being-shared-with-stop-sharing.png"
  }
 ]

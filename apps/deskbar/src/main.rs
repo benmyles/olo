@@ -791,6 +791,13 @@ impl Deskbar {
             Some(("run", bin)) => spawn(bin),
             Some(("pref", panel)) => spawn(&format!("olo-preferences {panel}")),
             Some(("caff", arg)) => self.caffeine_command(arg),
+            // Stop Sharing: olo-portal ends the session (and tells the app).
+            Some(("share", "all")) => {
+                for s in &self.status.sharing {
+                    spawn(&format!("olo-portal --stop {}", s.session));
+                }
+            }
+            Some(("share", session)) => spawn(&format!("olo-portal --stop {session}")),
             Some(("approve", arg)) => self.approve_command(cx, arg),
             // For the display of the Deskbar it was chosen on, and the
             // workspace whose heading it was chosen from.
@@ -1235,6 +1242,21 @@ fn without_icons(mut menu: Menu) -> Menu {
 }
 
 /// The bell's menu.
+/// Each share, said, with Stop Sharing under it.
+fn sharing_menu(shares: &[olo_protocol::sharing::Share]) -> Menu {
+    let mut m = Menu::new("Sharing");
+    for (i, s) in shares.iter().enumerate() {
+        if i > 0 {
+            m = m.separator();
+        }
+        m = m.item(format!("Sharing {}", olo_protocol::SharingState::describe(s)), "", None).enabled(false).item("Stop Sharing", format!("share:{}", s.session), None);
+    }
+    if shares.len() > 1 {
+        m = m.separator().item("Stop All", "share:all", None);
+    }
+    m
+}
+
 fn notifications_menu(quiet: bool) -> Menu {
     Menu::new("Notifications")
         .item("Show History", "notif:history", None)
@@ -1385,7 +1407,7 @@ impl App for Deskbar {
 
         // ---- tray: the date and time, then the status icons
         let st = self.status.clone();
-        let items = [!st.upgrade.is_empty(), st.agent_screens > 0, st.battery.is_some(), st.wifi.is_some(), st.volume.is_some(), st.notifications.is_some(), true, true]
+        let items = [!st.upgrade.is_empty(), !st.sharing.is_empty(), st.agent_screens > 0, st.battery.is_some(), st.wifi.is_some(), st.volume.is_some(), st.notifications.is_some(), true, true]
             .iter()
             .filter(|on| **on)
             .count();
@@ -1430,6 +1452,21 @@ impl App for Deskbar {
             let tip = format!("A new build of Olo is ready ({n} program{}). Click to upgrade.", if n == 1 { "" } else { "s" });
             if tray_item(ui, "upgrade", &|p, r| status::draw_upgrade(p, r, &pal), tip).clicked() {
                 self.ask_upgrade(cx);
+            }
+        }
+        // A screen being shared: what, with whom, and Stop.
+        if !st.sharing.is_empty() {
+            let tip = match st.sharing.as_slice() {
+                [one] => format!("Sharing {}. Click to stop.", olo_protocol::SharingState::describe(one)),
+                many => format!("{} screen shares. Click to stop them.", many.len()),
+            };
+            let item = tray_item(ui, "sharing", &|p, r| status::draw_sharing(p, r, &pal), tip);
+            let menu_id = egui::Id::unique("sharing-menu");
+            if (item.clicked() || item.secondary_clicked()) && !menu::is_open(ui.ctx(), menu_id) {
+                menu::request_popup(ui.ctx(), MenuRequest { menu: sharing_menu(&st.sharing), source: menu_id, anchor: MenuAnchor::Below(item.rect), selected: None });
+            }
+            if let Some(cmd) = menu::take_chosen(ui.ctx(), menu_id) {
+                self.run_command(cx, &cmd);
             }
         }
         // Agents at work on screens of their own: click to watch them.

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Deskbar: what is being shared, with Stop Sharing
+
+*03:55* — While an app shares a screen, Deskbar's tray shows a screen with a recording's red dot; its menu says what is shared with whom and stops it (the app is told the share closed).
+
+![Deskbar: what is being shared, with Stop Sharing](2026-10-30/035525-deskbar-what-is-being-shared-with-stop-sharing.png)
+
 ### Share Screen: the screen-sharing picker
 
 *03:36* — olo-portal's picker when an app asks to share the screen (xdg-desktop-portal ScreenCast): who asks, the screens as live thumbnails shaped like them, Cancel / Share. A fixed kit dialog opened over the asking window.

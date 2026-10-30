@@ -10,9 +10,11 @@
 //! olo-portal capture-test OUT.png [OUTPUT]   write a frame of an output
 //! olo-portal stream-test [OUTPUT|-] [SECONDS] share one as a PipeWire
 //!                                 video source for that long
-//! olo-portal share-test OUT.png [--bus ADDRESS]  ask xdg-desktop-portal
-//!                                 for a screen, as an app does, and write
-//!                                 the first frame that comes
+//! olo-portal share-test OUT.png [--bus ADDRESS] [--hold SECS]  ask
+//!                                 xdg-desktop-portal for a screen, as an
+//!                                 app does, write the first frame that
+//!                                 comes, and keep sharing that long
+//! olo-portal --stop SESSION       end a share (Deskbar's Stop Sharing)
 //! ```
 
 use std::collections::HashMap;
@@ -68,6 +70,16 @@ struct Portal {
     pickers: HashMap<WindowId, picker::Picker>,
     /// Thumbnails come before their window has drawn: kept until it does.
     thumbs: Vec<picker::Thumb>,
+    /// The bus, once served (to end sessions from here).
+    bus: std::sync::Arc<std::sync::Mutex<Option<zbus::blocking::Connection>>>,
+}
+
+impl Portal {
+    /// End a session from our side, off the UI thread (it waits on the bus).
+    fn end(&self, session: String) {
+        let Some(conn) = self.bus.lock().unwrap().clone() else { return };
+        let _ = std::thread::Builder::new().name("portal-end".into()).spawn(move || portal::end(&conn, &session));
+    }
 }
 
 impl Portal {
@@ -105,8 +117,16 @@ impl App for Portal {
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
         let message = match message.downcast::<instance::Launch>() {
-            // A second start: we are already serving the session.
-            Ok(_) => return,
+            // `olo-portal --stop SESSION` (Deskbar's Stop Sharing); any
+            // other second start: we are already serving the session.
+            Ok(l) => {
+                if let [flag, session] = l.args.as_slice()
+                    && flag == "--stop"
+                {
+                    self.end(session.clone());
+                }
+                return;
+            }
             Err(other) => other,
         };
         let message = match message.downcast::<picker::Thumb>() {
@@ -126,6 +146,7 @@ impl App for Portal {
                 self.pickers.insert(win, p);
             }
             portal::ToUi::Ended => {}
+            portal::ToUi::Lost(session) => self.end(session),
             portal::ToUi::Cancel(request) => {
                 let wins: Vec<WindowId> = self.pickers.iter().filter(|(_, p)| p.request() == request).map(|(w, _)| *w).collect();
                 for win in wins {
@@ -137,7 +158,7 @@ impl App for Portal {
 }
 
 fn usage() -> std::process::ExitCode {
-    eprintln!("usage: olo-portal --service | --bus ADDRESS | capture-test OUT.png [OUTPUT] | stream-test [OUTPUT|-] [SECONDS] | share-test OUT.png [--bus ADDRESS]");
+    eprintln!("usage: olo-portal --service | --bus ADDRESS | capture-test OUT.png [OUTPUT] | stream-test [OUTPUT|-] [SECONDS] | share-test OUT.png [--bus ADDRESS] [--hold SECS] | --stop SESSION");
     std::process::ExitCode::FAILURE
 }
 
@@ -159,7 +180,7 @@ fn main() -> std::process::ExitCode {
         Some("capture-test") => return capture_test(args.get(1).map(String::as_str), args.get(2).map(String::as_str)).map_or_else(fail, |()| std::process::ExitCode::SUCCESS),
         Some("stream-test") => {
             let secs: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(5);
-            return match stream::run(args.get(1).cloned().filter(|o| o != "-"), true) {
+            return match stream::run(args.get(1).cloned().filter(|o| o != "-"), true, || {}) {
                 Ok(share) => {
                     println!("node {} ({}×{})", share.node, share.size.0, share.size.1);
                     std::thread::sleep(std::time::Duration::from_secs(secs));
@@ -172,10 +193,20 @@ fn main() -> std::process::ExitCode {
         }
         Some("share-test") => {
             let Some(out) = args.get(1) else { return usage() };
-            let bus = args.iter().position(|a| a == "--bus").and_then(|i| args.get(i + 1)).map(String::as_str);
-            return client::share_test(out, bus).map_or_else(fail, |()| std::process::ExitCode::SUCCESS);
+            let value = |flag: &str| args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).map(String::as_str);
+            let hold = value("--hold").and_then(|s| s.parse().ok()).unwrap_or(0);
+            return client::share_test(out, value("--bus"), hold).map_or_else(fail, |()| std::process::ExitCode::SUCCESS);
         }
         Some("--service") => None,
+        // Deskbar's Stop Sharing, to the running service.
+        Some("--stop") if args.len() == 2 => {
+            return if instance::forward(APP_ID, &args) {
+                std::process::ExitCode::SUCCESS
+            } else {
+                eprintln!("olo-portal: not running");
+                std::process::ExitCode::FAILURE
+            };
+        }
         Some("--bus") => match args.get(1) {
             Some(a) => Some(a.clone()),
             None => return usage(),
@@ -193,19 +224,23 @@ fn main() -> std::process::ExitCode {
     }
     olo_kit::run(APP_ID, move |cx| {
         cx.stay_resident();
-        if address.is_none() {
-            instance::listen(APP_ID, cx.proxy());
-        }
+        // (`--stop` comes this way, in a test's session too.)
+        instance::listen(APP_ID, cx.proxy());
         let proxy = cx.proxy();
+        let bus = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let slot = bus.clone();
         std::thread::Builder::new()
             .name("portal-bus".into())
             .spawn(move || {
                 let to_ui = proxy.clone();
                 match portal::serve(address.as_deref(), move |m| to_ui.send(m)) {
                     // Serve until the app exits.
-                    Ok(_conn) => loop {
-                        std::thread::park();
-                    },
+                    Ok(conn) => {
+                        *slot.lock().unwrap() = Some(conn);
+                        loop {
+                            std::thread::park();
+                        }
+                    }
                     Err(e) => {
                         eprintln!("olo-portal: can't serve {}: {e}", portal::NAME);
                         std::process::exit(1);
@@ -213,7 +248,7 @@ fn main() -> std::process::ExitCode {
                 }
             })
             .expect("thread");
-        Portal { pickers: HashMap::new(), thumbs: Vec::new() }
+        Portal { pickers: HashMap::new(), thumbs: Vec::new(), bus }
     });
     std::process::ExitCode::SUCCESS
 }

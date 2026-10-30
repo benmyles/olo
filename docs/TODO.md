@@ -490,8 +490,9 @@ as they land (with the commit), add new ones as they come up.
     Screen, Olo's picker, Chrome's live preview, Share (the second
     session Chrome opens is answered by the restore token, no second
     picker), 5120×2880 at the 30 fps asked for, and Chrome's Stop
-    sharing ends the stream. **Next**: windows as sources; Deskbar's sharing item with Stop
-    (and Closed sent when a share ends from our side); dmabufs passed
+    sharing ends the stream. Deskbar's tray shows what is shared, with
+    Stop Sharing (the app is told it closed). **Next**: windows as
+    sources; dmabufs passed
     through to apps that take them; app scopes (which app is asking).
   - **Build** our own backend, `olo-portal`, started and supervised by
     olo-session: it owns `org.freedesktop.impl.portal.desktop.olo` over

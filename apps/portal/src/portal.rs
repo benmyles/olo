@@ -44,12 +44,20 @@ pub enum ToUi {
     Cancel(String),
     /// A session ended (an upgrade may have waited for it: `App::busy`).
     Ended,
+    /// A session's stream ended by itself (app_server never came back):
+    /// the session ends too (`end`).
+    Lost(String),
 }
 
 /// An app's share.
 #[derive(Default)]
 struct Session {
     app: String,
+    /// What people call the app and the screens shared, and since when
+    /// (for Deskbar: `olo_protocol::SharingState`).
+    app_name: String,
+    labels: Vec<String>,
+    since: u64,
     cursor: u32,
     persist: u32,
     /// A screen chosen before (a restore token), to share without asking.
@@ -59,6 +67,20 @@ struct Session {
 }
 
 type Sessions = Arc<Mutex<HashMap<OwnedObjectPath, Session>>>;
+
+/// Tell Deskbar what is shared now.
+fn publish(sessions: &HashMap<OwnedObjectPath, Session>) {
+    let mut shares: Vec<olo_protocol::sharing::Share> = sessions
+        .iter()
+        .filter(|(_, s)| !s.shares.is_empty())
+        .map(|(path, s)| olo_protocol::sharing::Share { session: path.to_string(), app: s.app_name.clone(), screens: s.labels.clone(), since: s.since })
+        .collect();
+    shares.sort_by_key(|s| s.since);
+    let state = olo_protocol::SharingState { pid: std::process::id(), shares };
+    if let Err(e) = state.save() {
+        tracing::warn!("portal: can't say what is shared: {e}");
+    }
+}
 
 pub struct ScreenCast {
     sessions: Sessions,
@@ -139,7 +161,17 @@ impl ScreenCast {
         // moment: off the bus's executor).
         let draw_cursor = cursor & EMBEDDED != 0;
         let outputs = chosen.clone();
-        let started = blocking::unblock(move || outputs.into_iter().map(|o| stream::run(Some(o), draw_cursor)).collect::<Result<Vec<_>, String>>()).await;
+        let (to_ui, path) = (self.to_ui.clone(), session_handle.to_string());
+        let started = blocking::unblock(move || {
+            outputs
+                .into_iter()
+                .map(|o| {
+                    let (to_ui, path) = (to_ui.clone(), path.clone());
+                    stream::run(Some(o), draw_cursor, move || to_ui(ToUi::Lost(path)))
+                })
+                .collect::<Result<Vec<_>, String>>()
+        })
+        .await;
         let shares = match started {
             Ok(s) => s,
             Err(e) => {
@@ -170,11 +202,18 @@ impl ScreenCast {
             results.insert("persist_mode".into(), value(persist.min(2)));
             results.insert("restore_data".into(), restore_data(output));
         }
-        match self.sessions.lock().unwrap().get_mut(&session_handle) {
-            Some(s) => s.shares = shares,
+        let mut sessions = self.sessions.lock().unwrap();
+        match sessions.get_mut(&session_handle) {
+            Some(s) => {
+                s.shares = shares;
+                s.app_name = crate::app_name(&s.app);
+                s.labels = chosen.iter().map(|o| screens.iter().find(|s| &s.output == o).map_or_else(|| o.clone(), |s| s.label.clone())).collect();
+                s.since = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+            }
             // Closed while the picker was up: the shares stop as they drop.
             None => return (CANCELLED, Results::new()),
         }
+        publish(&sessions);
         (OK, results)
     }
 
@@ -229,7 +268,11 @@ struct SessionObject {
 #[zbus::interface(name = "org.freedesktop.impl.portal.Session")]
 impl SessionObject {
     async fn close(&self, #[zbus(object_server)] server: &zbus::ObjectServer) {
-        self.sessions.lock().unwrap().remove(&self.path);
+        {
+            let mut sessions = self.sessions.lock().unwrap();
+            sessions.remove(&self.path);
+            publish(&sessions);
+        }
         (self.to_ui)(ToUi::Ended);
         let _ = server.remove::<SessionObject, _>(self.path.as_ref()).await;
     }
@@ -265,6 +308,8 @@ pub fn serve(address: Option<&str>, to_ui: impl Fn(ToUi) + Send + Sync + 'static
         None => zbus::blocking::connection::Builder::session()?,
     };
     let cast = ScreenCast { sessions: Arc::default(), to_ui: Arc::new(to_ui), last: Arc::default() };
+    // Nothing is shared yet (a file a crashed portal left goes).
+    publish(&HashMap::new());
     let conn = builder.serve_at(PATH, cast)?.build()?;
     let flags = zbus::fdo::RequestNameFlags::DoNotQueue.into();
     match conn.request_name_with_flags(NAME, flags)? {
@@ -273,13 +318,20 @@ pub fn serve(address: Option<&str>, to_ui: impl Fn(ToUi) + Send + Sync + 'static
     }
 }
 
-/// End `session` from our side (its streams stopped): tell the portal.
-#[allow(dead_code)]
-pub fn close(conn: &zbus::blocking::Connection, session: &ObjectPath<'_>) {
+/// End `session` from our side (Stop in Deskbar, or its stream died):
+/// its streams stop, and the portal (so the app) is told it closed.
+pub fn end(conn: &zbus::blocking::Connection, session: &str) {
+    let Ok(path) = ObjectPath::try_from(session) else { return };
     let server = conn.object_server();
-    if let Ok(iface) = server.interface::<_, SessionObject>(session) {
+    if let Ok(cast) = server.interface::<_, ScreenCast>(PATH) {
+        let sessions = cast.get().sessions.clone();
+        let mut sessions = sessions.lock().unwrap();
+        sessions.remove(&OwnedObjectPath::from(path.clone()));
+        publish(&sessions);
+    }
+    if let Ok(iface) = server.interface::<_, SessionObject>(&path) {
         let _ = zbus::block_on(SessionObject::closed(iface.signal_emitter()));
-        let _ = server.remove::<SessionObject, _>(session);
+        let _ = server.remove::<SessionObject, _>(&path);
     }
 }
 

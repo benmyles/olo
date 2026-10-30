@@ -14,9 +14,11 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 pub mod notifications;
+pub mod sharing;
 pub mod app_keys;
 pub mod shortcuts;
 pub mod touchpad;
+pub use sharing::SharingState;
 pub use notifications::{AppNotifications, CardSize, HistoryView, NoteApp, NoteLook, NoteStyle, NotificationSettings, NotificationState};
 pub use shortcuts::{AutoTiling, Chord, CommandKey, KeyboardProfile, ModeChoice, Platform, Shortcut, ShortcutSettings, Tile, TilingSettings, WindowingMode};
 

@@ -46,8 +46,9 @@ pub fn live() -> usize {
 }
 
 /// Start sharing the screen named `output` (the first if None), with the
-/// pointer drawn in if `cursor`.
-pub fn run(output: Option<String>, cursor: bool) -> Result<Share, String> {
+/// pointer drawn in if `cursor`. `lost` is called if the share ends
+/// by itself, not stopped (app_server never came back).
+pub fn run(output: Option<String>, cursor: bool, lost: impl FnOnce() + Send + 'static) -> Result<Share, String> {
     let stop = Arc::new(AtomicBool::new(false));
     let (tx, rx) = mpsc::channel::<Result<(u32, (u32, u32)), String>>();
     {
@@ -55,9 +56,13 @@ pub fn run(output: Option<String>, cursor: bool) -> Result<Share, String> {
         std::thread::Builder::new()
             .name("portal-stream".into())
             .spawn(move || {
-                if let Err(e) = stream(output, cursor, stop, &tx) {
+                let ended = stream(output, cursor, stop.clone(), &tx);
+                if let Err(e) = &ended {
                     tracing::warn!("portal: the share ended: {e}");
-                    let _ = tx.send(Err(e));
+                    let _ = tx.send(Err(e.clone()));
+                }
+                if !stop.load(Ordering::Relaxed) {
+                    lost();
                 }
             })
             .map_err(|e| e.to_string())?;

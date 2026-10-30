@@ -50,6 +50,8 @@ pub struct Status {
     pub notifications: Option<NotificationState>,
     /// Agent screens running (other than the one this Deskbar is on).
     pub agent_screens: usize,
+    /// Screens apps are sharing (olo-portal's).
+    pub sharing: Vec<olo_protocol::sharing::Share>,
 }
 
 /// What olo-session offers to upgrade (see its upgrade.rs).
@@ -198,9 +200,9 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
             }
         })
         .expect("thread");
-    let (notes, screens, upgrades) = (NotificationState::path(), screens_dir(), upgrade_path());
+    let (notes, screens, upgrades, sharing) = (NotificationState::path(), screens_dir(), upgrade_path(), olo_protocol::SharingState::path());
     let read = {
-        let (notes, screens, upgrades, shared) = (notes.clone(), screens.clone(), upgrades.clone(), shared.clone());
+        let (notes, screens, upgrades, sharing, shared) = (notes.clone(), screens.clone(), upgrades.clone(), sharing.clone(), shared.clone());
         move |changed: &[PathBuf]| {
             let all = changed.is_empty();
             // The screens' folder also has viewers' frames going through
@@ -212,7 +214,11 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
                 (all || screens_changed).then(agent_screens),
                 (all || changed.contains(&upgrades)).then(upgrade),
             );
+            let shares = (all || changed.contains(&sharing)).then(|| olo_protocol::SharingState::load().shares);
             publish(&shared, |s| {
+                if let Some(shares) = shares {
+                    s.sharing = shares;
+                }
                 if let Some(state) = state {
                     s.notifications = state;
                 }
@@ -228,7 +234,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     read(&[]);
     let read = Arc::new(read);
     let on_change = read.clone();
-    if let Some(w) = olo_kit::watch::watch([notes, screens, upgrades], move |changed| on_change(changed)) {
+    if let Some(w) = olo_kit::watch::watch([notes, screens, upgrades, sharing], move |changed| on_change(changed)) {
         // Deskbar's for as long as it runs.
         std::mem::forget(w);
     }
@@ -240,7 +246,10 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
         .spawn(move || {
             loop {
                 std::thread::sleep(Duration::from_secs(30));
-                if counted.lock().unwrap().0.agent_screens > 0 {
+                // (Likewise a share whose portal died.)
+                let s = &counted.lock().unwrap().0;
+                let again = s.agent_screens > 0 || !s.sharing.is_empty();
+                if again {
                     read(&[]);
                 }
             }
@@ -531,6 +540,24 @@ pub fn draw_screens(painter: &Painter, r: Rect, p: &Palette, count: usize) {
     if count > 1 {
         badge(painter, r, p, count, c(p.keyboard_navigation));
     }
+}
+
+/// A screen being shared: the screen, with the red dot of a recording
+/// in its corner (it is being seen elsewhere: never easy to miss).
+pub fn draw_sharing(painter: &Painter, r: Rect, p: &Palette) {
+    let hair = style::hairline(painter.ctx());
+    let screen = style::snap(painter.ctx(), Rect::from_min_size(pos2(r.left() + 0.5, r.top() + 2.0), vec2(15.0, 10.0)));
+    painter.rect_filled(screen, 1.5, c(p.failure).gamma_multiply(0.18));
+    painter.rect_stroke(screen, 1.5, Stroke::new(hair, ink(p)), egui::StrokeKind::Inside);
+    let cx = screen.center().x;
+    let stand = whole(painter, cx - hair / 2.0);
+    let foot = whole(painter, r.bottom() - 1.0);
+    style::vline(painter, stand, screen.bottom(), foot, ink(p));
+    style::hline_above(painter, whole(painter, cx - 4.0), whole(painter, cx + 4.0), foot, ink(p));
+    // The dot, ringed in the panel's colour so it stands off the frame.
+    let at = style::snap_centred(painter.ctx(), pos2(screen.right() - 1.0, screen.top() + 1.0), vec2(5.0, 5.0)).center();
+    painter.circle_filled(at, 3.4, c(p.panel_background));
+    painter.circle_filled(at, 2.5, c(p.failure));
 }
 
 /// The windowing mode: Standard, two windows one over the other, in

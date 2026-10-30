@@ -53,7 +53,7 @@ fn opts(pairs: &[(&str, Value<'static>)]) -> HashMap<String, OwnedValue> {
     pairs.iter().map(|(k, v)| ((*k).to_owned(), OwnedValue::try_from(v.clone()).unwrap())).collect()
 }
 
-pub fn share_test(out: &str, bus: Option<&str>) -> Result<(), String> {
+pub fn share_test(out: &str, bus: Option<&str>, hold: u64) -> Result<(), String> {
     let conn = match bus {
         Some(a) => zbus::blocking::connection::Builder::address(a).and_then(|b| b.build()),
         None => zbus::blocking::Connection::session(),
@@ -74,6 +74,22 @@ pub fn share_test(out: &str, bus: Option<&str>) -> Result<(), String> {
     let frame = read_frame(OwnedFd::from(fd), *node)?;
     write_png(out, frame.0, frame.1, frame.2, &frame.3)?;
     println!("wrote {out} ({}×{})", frame.0, frame.1);
+    if hold > 0 {
+        // Kept open (as an app sharing is) until then, or until the portal
+        // closes it (Stop Sharing).
+        let sess = zbus::blocking::Proxy::new(&conn, DESKTOP, session.as_str(), "org.freedesktop.portal.Session").map_err(|e| e.to_string())?;
+        let mut closed = sess.receive_signal("Closed").map_err(|e| e.to_string())?;
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            if closed.next().is_some() {
+                let _ = tx.send(());
+            }
+        });
+        match rx.recv_timeout(std::time::Duration::from_secs(hold)) {
+            Ok(()) => println!("the portal closed the session"),
+            Err(_) => println!("held for {hold} s"),
+        }
+    }
     Ok(())
 }
 

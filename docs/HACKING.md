@@ -3142,12 +3142,24 @@ it shares (`App::busy`).
   screen's rotation and are sent again when it changes size; the pointer
   is drawn in when the session asks (`paint_cursors`).
 
+- **While sharing** olo-portal writes what is shared
+  (`olo_protocol::SharingState`: its pid, and each session's app,
+  screens and start, in `$XDG_RUNTIME_DIR/olo-sharing-<display>.json`,
+  gone when nothing is; a file whose portal died counts for nothing),
+  and Deskbar's tray shows a screen with a recording's red dot; its menu
+  says what is shared with whom and has Stop Sharing for each (and Stop
+  All), which runs `olo-portal --stop SESSION`: the portal ends the
+  session and sends `Closed`, so the app stops too. A share whose
+  stream ends by itself (app_server never came back) ends its session
+  the same way.
+
 To try it: `olo-portal capture-test OUT.png` (a frame, saying whether it
 came as a dmabuf), `olo-portal stream-test - 10` (a PipeWire node for
-ten seconds), and `olo-portal share-test OUT.png` (asks
+ten seconds), and `olo-portal share-test OUT.png [--hold SECS]` (asks
 xdg-desktop-portal for a screen as an app does: the picker comes up,
 then it writes the first frame of the stream, read through the PipeWire
-connection the portal gave). In tests keep all of it private: a PipeWire
+connection the portal gave, and keeps sharing that long or until the
+portal closes the session). In tests keep all of it private: a PipeWire
 and WirePlumber of their own (`PIPEWIRE_RUNTIME_DIR` in /var/tmp,
 WirePlumber's device monitors turned off), and xdg-desktop-portal,
 xdg-permission-store and `olo-portal --bus ADDRESS` on the test
