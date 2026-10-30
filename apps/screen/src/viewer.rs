@@ -69,6 +69,10 @@ pub struct Viewer {
     held: [bool; 3],
     input: Sender<(Screen, Vec<SyntheticEvent>)>,
     busy: bool,
+    /// Showing the chosen screen's history rather than the screen live,
+    /// and that history.
+    history: bool,
+    replay: Option<crate::replay::Replay>,
 }
 
 /// The screens to show: all but the one this viewer itself is on, if it
@@ -266,6 +270,8 @@ impl Viewer {
             held: [false; 3],
             input: send_input(),
             busy: false,
+            history: false,
+            replay: None,
         };
         if v.selected.as_ref().is_none_or(|s| !v.screens.iter().any(|x| &x.name == s)) {
             v.selected = v.screens.first().map(|s| s.name.clone());
@@ -393,6 +399,27 @@ impl Viewer {
         }
 
         let right = Rect::from_min_max(pos2(list_r.right() + m::SPACING, full.top()), full.max);
+        // Live or its history.
+        let Some(name) = self.selected.clone() else { return };
+        let tabs = Rect::from_min_size(right.min, vec2(160.0, m::CONTROL_HEIGHT));
+        let (live_r, hist_r) = (Rect::from_min_size(tabs.min, vec2(80.0, tabs.height())), Rect::from_min_size(pos2(tabs.left() + 80.0, tabs.top()), vec2(80.0, tabs.height())));
+        if ui.put(live_r, Button::new("Live").pushed(!self.history).min_width(80.0)).clicked() {
+            self.history = false;
+        }
+        if ui.put(hist_r, Button::new("History").pushed(self.history).min_width(80.0)).clicked() && !self.history {
+            self.history = true;
+            self.stop_controlling();
+        }
+        let right = Rect::from_min_max(pos2(right.left(), tabs.bottom() + m::SPACING), right.max);
+        if self.history {
+            if self.replay.as_ref().is_none_or(|r| r.name != name) {
+                self.replay = Some(crate::replay::Replay::new(&name, cx.proxy()));
+            }
+            if let Some(r) = self.replay.as_mut() {
+                r.ui(ui, right);
+            }
+            return;
+        }
         let status_r = Rect::from_min_max(pos2(right.left(), right.bottom() - m::CONTROL_HEIGHT), right.max);
         let area = Rect::from_min_max(right.min, pos2(right.right(), status_r.top() - m::SPACING));
         let Some(screen) = self.screen().cloned() else { return };
@@ -604,6 +631,18 @@ impl App for Viewer {
             self.show(cx, launch.args.get(1).cloned());
             return;
         }
+        let message = match message.downcast::<crate::replay::ReplayMsg>() {
+            Ok(m) => {
+                if let Some(r) = self.replay.as_mut() {
+                    r.message(*m);
+                }
+                if let Some(w) = self.main {
+                    cx.redraw(w);
+                }
+                return;
+            }
+            Err(m) => m,
+        };
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
             Msg::Screens(list) => {

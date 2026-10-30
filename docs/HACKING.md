@@ -4033,7 +4033,13 @@ segments (`frames-START.olof`; the format is in the module's comment),
 the oldest dropped past 512 MB. `record::index` reads the records'
 heads, `frame_at` builds the screen as it was at a time from its
 keyframe; `history NAME --look N [OUT.png]` writes it as it was when
-action N ended.
+action N ended. In the window, History (beside Live, over the chosen
+screen; `replay.rs`) lists its actions (the search narrows them), shows
+the screen as it was at the one chosen or wherever the scrubber is, and
+plays it back in time with them (Play/Pause, 1× to 8×, ◀ ▶ action by
+action; stretches of more than 3 s with nothing in them skipped), each
+click a ring where it went and each key or text a caption under the
+picture. Frames are built on a worker, the latest asked for winning.
 
 Input that plays out over time is paced, a batch per IPC request with
 waits between (`Screen::input_paced`): `drag` presses, moves in steps

@@ -6,6 +6,7 @@
 mod find;
 mod history;
 mod record;
+mod replay;
 mod screens;
 mod viewer;
 
