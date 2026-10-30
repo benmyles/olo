@@ -38,6 +38,7 @@ pub struct Card<'a> {
     caption: Option<&'a str>,
     clickable: bool,
     selected: bool,
+    figure_ink: Option<Color32>,
 }
 
 pub struct CardResponse {
@@ -49,7 +50,7 @@ pub struct CardResponse {
 
 impl<'a> Card<'a> {
     pub fn new(title: &'a str) -> Self {
-        Card { title, figure: None, caption: None, clickable: false, selected: false }
+        Card { title, figure: None, caption: None, clickable: false, selected: false, figure_ink: None }
     }
     pub fn figure(mut self, figure: &'a str) -> Self {
         self.figure = Some(figure);
@@ -66,6 +67,13 @@ impl<'a> Card<'a> {
     }
     pub fn selected(mut self, on: bool) -> Self {
         self.selected = on;
+        self
+    }
+    /// The figure in a colour of its own (the palette's `warning` or
+    /// `failure`, for a card that needs attention); a selected card's is
+    /// its text's.
+    pub fn figure_ink(mut self, ink: Color32) -> Self {
+        self.figure_ink = Some(ink);
         self
     }
 
@@ -91,7 +99,8 @@ impl<'a> Card<'a> {
             style::label_fit_with_baseline(&painter, inner.left(), title_mid, Align::Min, self.title, style::bold_font(), ink, (inner.width() - figure_w).max(0.0));
         style::describe_text(ui.ctx(), egui::accesskit::Role::Heading, self.title, title_r, None);
         if let Some(f) = self.figure {
-            style::label_on_baseline(&painter, inner.right(), baseline, Align::Max, f, figure_font(), ink);
+            let fink = self.figure_ink.filter(|_| !self.selected).unwrap_or(ink);
+            style::label_on_baseline(&painter, inner.right(), baseline, Align::Max, f, figure_font(), fink);
         }
         if let Some(cap) = self.caption {
             style::label_fit(&painter, inner.left(), inner.top() + TITLE_ROW + CAPTION_ROW / 2.0, Align::Min, cap, style::small_font(), dim, inner.width());

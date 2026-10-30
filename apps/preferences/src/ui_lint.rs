@@ -11,7 +11,7 @@ use olo_protocol::{
 use olo_system::battery::{Battery, State as Charge};
 
 use crate::{
-    Ctx, about, datetime, keyboard, network, notifications,
+    Ctx, about, datetime, keyboard, network, notifications, performance,
     panel::{self, Panel, State},
     power, screensaver,
     server::Server,
@@ -110,6 +110,7 @@ fn every_state() -> Vec<(Panel, String, State)> {
             Panel::Network => (0..2).map(|t| (format!("tab {}", t + 1), State::Network(Box::new(network::State::showing(t))))).collect(),
             Panel::About => vec![("facts".into(), State::About(about::State::sample()))],
             Panel::Notifications => vec![("apps".into(), State::Notifications(Box::new(notifications::State::sample())))],
+            Panel::Performance => vec![("thresholds".into(), State::Performance(Box::new(performance::State::sample())))],
             Panel::Power => {
                 let battery = Battery {
                     percent: 100,

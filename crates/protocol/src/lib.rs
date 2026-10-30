@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 pub mod notifications;
+pub mod performance;
 pub mod sharing;
 pub mod app_keys;
 pub mod shortcuts;

@@ -391,9 +391,14 @@ impl<B: Backend + 'static> AnvilState<B> {
         let same = |e: &Placement| {
             age(e) < KEEP.as_secs() && owner.as_ref().is_none_or(|(pid, client)| (e.pid == 0 || e.pid == *pid) && e.client.as_ref() != Some(client))
         };
+        // An alert or a dialog of an app started again is a new one: in
+        // the middle of the screen or over its parent, not where the last
+        // one was (which may have been on a screen of another size).
+        let transient = window.0.toplevel().is_some_and(|t| t.parent().is_some()) || crate::shell::groups::is_parentless_alert(window);
         // The app started again: its old process is gone.
         let restarted = |e: &Placement| {
-            age(e) < RESTART_KEEP.as_secs()
+            !transient
+                && age(e) < RESTART_KEEP.as_secs()
                 && e.pid > 0
                 && owner.as_ref().is_some_and(|(pid, _)| e.pid != *pid)
                 && !std::path::Path::new(&format!("/proc/{}", e.pid)).exists()

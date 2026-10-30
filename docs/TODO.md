@@ -214,6 +214,21 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Terminal: coding agents keep their tab's title current** (Ben,
+  2026-10-30): "terminal app should also make available to claude code
+  and codex coding agents a tool to update the terminal title and inject
+  instructions for them to keep the terminal title updated at all times
+  to ensure it reflects the active work". A Claude Code or Codex started
+  in a Terminal tab gets a tool to set that tab's title (the tab only,
+  not the window's or another tab's; through the agents' own tool
+  mechanisms, an MCP server of Terminal's given to the agent the way the
+  group context is, not by editing the person's files beyond what that
+  needs), and instructions in its context to keep the title saying what
+  it is working on now, updated as the work changes. The title the agent
+  sets is shown as a tab title the person set is (and the person's own
+  rename wins until they clear it); readable and settable by agents
+  outside the tab too (Terminal's widget tree and commands). A setting
+  in Preferences ▸ Terminal, beside the group context's.
 - ~~**Terminal: "Tile All Tabs", a row per group**~~ (Ben, 2026-10-30):
   "change how the show all tabs option in terminal works. first, rename
   it to "Tile All Tabs" and then i want you to make it so that each group
@@ -398,8 +413,8 @@ as they land (with the commit), add new ones as they come up.
   in Deskbar's dot unchanged, its fade starting anew). Off: each kept,
   as now. Done (HACKING, Preferences ▸ Notifications): "Only the latest
   of the same notification", in the History box; pinned ones stay.
-- **Preferences ▸ Performance: a supervisor that keeps the desktop
-  responsive** (Ben, 2026-10-30): "a new preferences -> performance app,
+- ~~**Preferences ▸ Performance: a supervisor that keeps the desktop
+  responsive**~~ (Ben, 2026-10-30; done: HACKING, The supervisor): "a new preferences -> performance app,
   and the first setting should be one to do smart process prioritization
   to ensure user responsiveness. the idea is that olo will run a
   supervisor/watchdog that monitors processes and ensures that stuff like
@@ -466,6 +481,21 @@ as they land (with the commit), add new ones as they come up.
     why, with Stop Process, Show in Activity Monitor and Ignore This
     Process. Agents read and drive all of it (the panel, the tray, the
     alert, Activity Monitor).
+  - **Done so**: `olo-supervisor`, a service of the real session, idle
+    until turned on. Priorities by nice, `SCHED_BATCH` and idle I/O on
+    every thread (unprivileged: the session's processes are all in one
+    systemd scope, so no cgroup weights; `SCHED_IDLE` can't be undone
+    without privileges, so batch); the active window's app's tree and
+    Olo's own never lowered. The watchdog's signals as above, short of
+    stack sampling (needs ptrace) and window pings; every threshold in
+    the panel. Activity Monitor: a Supervisor section and an inspector
+    tab. Agents: `olo-supervisor --status --json`, `--on`, `--off`.
+    Found and fixed on the way: an alert of a program started again
+    was put where the last one had been (on a screen of another size,
+    off centre) rather than in the middle; the kit's single-instance
+    socket (and other per-display files) broke when `WAYLAND_DISPLAY`
+    named its socket by full path; alerts with long button labels ran
+    off their left edge (`WindowOptions::alert_buttons`).
 - ~~**New windows always become the active window; an optional glow**~~
   (Ben, 2026-10-30): "please make sure that any time a new window opens
   for any reason it becomes the active window with focus. also, add a

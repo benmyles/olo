@@ -58,8 +58,9 @@ const SHELL: &[&[&str]] = &[&["olo-deskbar"], &["olo-tracker", "--desktop"]];
 /// answers for the login session and the notification centre and the
 /// portal backend (screen sharing) serve the session bus, which a nested
 /// or headless one must never take over; Token Pool's gateway listens on
-/// the computer's one loopback port.
-const REAL_SHELL: &[&[&str]] = &[&["olo-polkit-agent"], &["olo-notifications"], &["olo-portal", "--service"], &["olo-pool", "--service"]];
+/// the computer's one loopback port; the supervisor (Preferences ▸
+/// Performance) looks after the person's own processes.
+const REAL_SHELL: &[&[&str]] = &[&["olo-polkit-agent"], &["olo-notifications"], &["olo-portal", "--service"], &["olo-pool", "--service"], &["olo-supervisor"]];
 /// Give up restarting something that crashes this often.
 const CRASH_LIMIT: usize = 5;
 const CRASH_WINDOW: Duration = Duration::from_secs(60);
@@ -96,8 +97,7 @@ pub fn run() {
 
 fn signal_session(sig: i32) {
     let pid = std::env::var("OLO_SESSION_PID").ok().and_then(|p| p.parse::<i32>().ok()).or_else(|| {
-        let display = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
-        std::fs::read_to_string(run_file(format!("olo-session-{display}.pid"))).ok()?.trim().parse().ok()
+        std::fs::read_to_string(run_file(format!("olo-session-{}.pid", olo_xdg::display_name()))).ok()?.trim().parse().ok()
     });
     let Some(pid) = pid else {
         eprintln!("olo-session: no running session found (is $OLO_SESSION_PID set?)");

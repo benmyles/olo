@@ -285,7 +285,10 @@ fn main() {
   &args)` first in `main` (returns true if a running copy took the
   arguments; exit then), and `instance::listen(app_id, cx.proxy())` in the
   init closure; forwarded launches arrive in `App::message` as an
-  `instance::Launch { args, cwd }`.
+  `instance::Launch { args, cwd }`. The socket is named for the display
+  (`olo_xdg::display_name()`: `wayland-1` also when `WAYLAND_DISPLAY`
+  names the socket by its full path; use it for any file kept per
+  display).
   `instance::running(app_id)` says whether a copy is listening. An app
   with several windows should open a new one for `--new-window` (always,
   rather than bringing one forward) and be listed in
@@ -674,7 +677,8 @@ as Log Viewer's syntax highlighting does; `.empty_text("Select a line…")` says
 there while it is empty, as a list's does), `EmptyState` (a whole view with nothing it can
 show: "No sound server is running." in the middle of the space left, under `.icon(name)`, the
 panel's or app's own; use it rather than a lone dim `StringView` in the corner of an empty
-window), `Slider`
+window; `.detail(text)` says why, smaller, under it, and `.action(label)` a button that does
+something about it, whose clicks the widget's response carries), `Slider`
 (`.label().value_text().limits()`), `MenuField` (pop-up choice), `BBox`
 (etched group box with label), `separator`, `StatusBar` (progress; `level_bar(painter, rect, fraction,
 fill)` paints just its bar, for list cells),
@@ -818,8 +822,14 @@ up and down to reorder), `color_well`, `heading`,
 `popup_menu_at` / `popup_result`, `InlineEdit` (Tracker-style rename in
 place: returns `Editing` / `Commit` / `Cancel`; pads by `INLINE_PAD`, which
 matches `style::text_highlight`), `alert(ui, icon, message, &buttons)` (a
-BAlert; open its window with `WindowOptions::alert(title, message)`; the
-last button is the default, Escape picks the first). A password alert
+BAlert; open its window with `WindowOptions::alert(title, message)`, or
+`WindowOptions::alert_buttons(title, message, &buttons)` when its labels
+are long, which widens it to fit them (`alert_width`, measured from the
+font as `alert_height_in` measures the text); the last button is the
+default, Escape picks the first), `button_width(ctx, label)` (how wide a
+`Button` makes itself) and `button_flow(ctx, origin, width, &labels)`
+(buttons' rects left to right, onto further rows when they don't fit,
+and the height they take: a card's actions in a narrow window). A password alert
 that talks to PAM (the polkit agent, Terminal's sudo) keeps a
 `widgets::Conversation` (PAM's `prompt` and whether it echoes, the
 `answer`, PAM's latest `info`, an `error`, `checking` while an answer is
@@ -1001,7 +1011,8 @@ review doesn't hold them level with the content beside it).
 
 `dashboard` is cards on the card gutter (`gutter(ui, rect)`):
 `Card::new(title).figure("12%").caption("…").clickable(true).show(ui,
-rect)` gives the content rect under its head (`Card::height(content,
+rect)` (`.figure_ink(colour)` for a figure that needs attention, in the
+palette's `warning` or `failure`) gives the content rect under its head (`Card::height(content,
 caption)` the height it needs; a clickable card is a button named by its
 title, its figure the value); `facts(ui, rect, &[(label, value)])` (and
 `facts_two`, `facts_in` for a panel's colours, `facts_label_width` to
@@ -2391,7 +2402,11 @@ apps, other programs, a portal's dialog, a program in the background):
 workspace it opens on (the one showing), auto-tiled, zoomed in Focus or
 grouped as its tab in front; wm-fuzz fails a step whose new window
 doesn't have it. Windows coming back after an upgrade are the exception:
-they come back as they were. With Preferences ▸ Appearance ▸ "Glow new
+they come back as they were. Not an alert or a dialog of an app that
+was started again (a new process: the old one is gone): it is placed
+afresh, in the middle of the screen or over its parent, not where the
+last one was, which may have been on a screen of another size
+(`take_placement`); the same process reconnecting gets its back. With Preferences ▸ Appearance ▸ "Glow new
 windows for N seconds" (`Appearance::glow_new_windows`, off by default;
 `glow_seconds`, 5) a new one (not one coming back) also glows a moment:
 a soft halo in the look's `keyboard_navigation` blue, 12 points out from
@@ -3650,7 +3665,10 @@ scrolled to (`Editor::view`), through a reload.
 Everything the machine is doing, in sections down a `Sidebar` (each row
 with its figure now): Overview (cards of CPU, memory, network, disks,
 GPU and the battery or the hottest sensor, each a way into its section,
-and the busiest processes), Processes, CPU (by kind of time, each core
+and the busiest processes), Processes, Supervisor (what the supervisor
+does, below: on or off, each finding as a card with its evidence and
+Inspect, Stop Process and Ignore This Process, what it lowered, what it
+did lately), CPU (by kind of time, each core
 with its frequency, each cluster's frequencies and governor, load),
 Memory (with zram's ratio, pressure stall information and every
 /proc/meminfo counter), Disks (each disk's traffic, how busy it is, its
@@ -3696,9 +3714,10 @@ start, CPU time, scheduling, cores, context switches, I/O, control group,
 namespaces it doesn't share, priority to change), Threads (CPU each, by
 two readings), Open Files (sockets named as connections; double-click a
 file for Tracker), Memory (smaps_rollup and mappings summed by file),
-Environment and Resources (the cores it may run on, how the kernel
+Environment, Resources (the cores it may run on, how the kernel
 treats it when memory runs out, its limits: raise the soft limit to the
-hard or lift both). Send Signal offers every common signal; Quit is
+hard or lift both) and Supervisor (its findings, how sure and why,
+whether it was lowered and why). Send Signal offers every common signal; Quit is
 SIGTERM, Force Quit asks first. `actions.rs` does all of it (nice and
 affinity for every thread; tunables only those in `TUNABLES`, governors
 only those the CPU offers).
@@ -3716,6 +3735,64 @@ elsewhere polkit's dialog would come up on the person's screen.
 pkexec (tests: the whole protocol, nothing elevated); `=off` never.
 **In tests, only ever signal, renice or limit a process you started,
 found by its exact ID (`pid:N` in the search).**
+
+`olo-activity --section NAME` opens at a section (`supervisor`,
+`cpu`, …); `olo-activity --inspect PID` opens only that process's
+inspector, at its Supervisor tab (the supervisor's alert and Deskbar's
+gauge menu use it; with a copy running, both are handed to it).
+
+## The supervisor (apps/supervisor, Preferences ▸ Performance)
+
+Keeps the desktop responsive; off by default. `olo-supervisor` is one of
+the real session's services (`REAL_SHELL`): it waits, following
+`performance.json` (`olo_protocol::performance::PerformanceSettings`),
+until turned on in Preferences ▸ Performance, by Deskbar's gauge (a
+click; its menu has the findings, Show in Activity Monitor and
+Performance Settings…) or `olo-supervisor --on`. Then every two seconds
+(about 6 ms on its own thread; each command line read once a process)
+it looks at the person's own processes in /proc (`sample.rs`) and:
+
+- **Priorities** (`priority.rs`): background work, known by name (the
+  settings' list: compilers, linkers, build tools, indexers) or a
+  terminal's job busy for a minute and more, has every thread lowered:
+  nice up to the setting's (never down: unprivileged, it couldn't come
+  back), `SCHED_BATCH`, idle I/O priority. Never the active window's app
+  and what it started (followed from app_server's `WindowsChanged`), and
+  never Olo's own programs (by name, or beside the supervisor). Turned
+  off, batch and the I/O priority are put back (a raised nice stays until
+  its process ends); a new supervisor (an upgrade) takes over what the
+  last one lowered from its published state, or puts it back if off.
+- **Watchdog** (`detect.rs`), each from several signals, with a
+  confidence and its evidence: stuck in a loop (busy at least `spin_cpu`
+  of a core in every sixth of `spin_minutes`, waiting on almost nothing,
+  almost no I/O, its memory unchanged); leaking (anonymous memory and
+  swap, one sample a minute for three hours, rising by a least-squares
+  fit at least `leak_fit` R² over `leak_minutes`, by `leak_rate_mb` a
+  minute and `leak_growth_mb` in all, most of its steps up); too much
+  memory (`memory_share` of RAM while less than `memory_available` is
+  free, or tasks stall on memory (PSI) more than `memory_stall`, worse
+  if it's growing or the system swaps); zombies (a parent leaving
+  children unreaped `zombie_minutes`, urgent at `zombie_count`). Every
+  number is in `Thresholds`, tuned in Preferences.
+- **Urgent findings** (stuck for sure, memory that runs out, many
+  zombies) ask once a process and kind in an alert (`olo.supervisor`,
+  named "Performance"): Ignore This Process (into the settings'
+  `ignored`, by name or command), Show in Activity Monitor (`--inspect`),
+  Stop Process (TERM, then KILL after 3 s). Not asked again after an
+  upgrade.
+
+It publishes what it does in `$XDG_RUNTIME_DIR/olo-supervisor.json`
+(`SupervisorState`: on, its pid, what it favours, findings, what it
+lowered and why, the last 50 things it did, memory); a state whose
+supervisor has gone reads as off. Activity Monitor's Supervisor section
+shows it as cards (and turns it on or off), each process's inspector a
+Supervisor tab; Deskbar's gauge (`status::draw_gauge`, shown when it is
+installed) counts the findings, red when one is urgent. Agents read
+`olo-supervisor --status [--json]` and drive the same controls.
+**Test it with a private `XDG_RUNTIME_DIR` and
+`OLO_SUPERVISOR_ONLY_UNDER=PID` (only that process and what it started
+are looked at), never on the person's own processes; and give every
+program it may start `OLO_ACTIVITY_HELPER=off`.**
 
 ## DriveSetup (apps/drive-setup, olo_system::disks, udisks-fake)
 

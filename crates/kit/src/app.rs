@@ -215,6 +215,15 @@ impl WindowOptions {
         // focus to be its parent, as when chosen from a popup menu).
         WindowOptions { alert: true, ..WindowOptions::new(title, w, h).min_size(w, h).max_size(w, h) }
     }
+    /// An alert with `buttons` (as [`widgets::alert`] draws them): as
+    /// [`Self::alert`], wider if its buttons need it.
+    ///
+    /// [`widgets::alert`]: crate::widgets::alert
+    pub fn alert_buttons(title: impl Into<String>, message: &str, buttons: &[&str]) -> Self {
+        let w = crate::widgets::alert_width(buttons);
+        let h = crate::widgets::alert_height_in(message, w);
+        WindowOptions { alert: true, ..WindowOptions::new(title, w, h).min_size(w, h).max_size(w, h) }
+    }
     /// An alert that also asks which of `choices` (see
     /// `widgets::alert_choice`).
     pub fn alert_choice(title: impl Into<String>, message: &str, choices: usize) -> Self {

@@ -20,7 +20,7 @@ pub struct Launch {
 
 fn socket_path(app_id: &str) -> PathBuf {
     let rt = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    let display = std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-0".into());
+    let display = Some(olo_xdg::display_name()).filter(|d| !d.is_empty()).unwrap_or_else(|| "wayland-0".into());
     rt.join(format!("{app_id}-{display}.sock"))
 }
 

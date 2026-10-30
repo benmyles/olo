@@ -5,6 +5,36 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Deskbar: the supervisor's gauge at 1×, 1.25×, 1.5×, 1.75×, 2×
+
+*15:08* — On (dial tinted, needle up, the findings counted, red if urgent) and off (dim, needle resting). A click turns it on or off; its menu lists the findings, Show in Activity Monitor and Performance Settings…
+
+![Deskbar: the supervisor's gauge at 1×, 1.25×, 1.5×, 1.75×, 2×](2026-10-30/150853-deskbar-the-supervisor-s-gauge-at-1-1-25-1-5-1-7.png)
+
+### Inspector: the Supervisor tab
+
+*15:08* — A process's inspector has a Supervisor tab: its findings, how sure and why, and whether it was lowered and why. The alert's Show in Activity Monitor opens it there.
+
+![Inspector: the Supervisor tab](2026-10-30/150853-inspector-the-supervisor-tab.png)
+
+### Supervisor alert, sized for its buttons
+
+*15:08* — An urgent finding asks in an alert naming the process, what was found and the evidence. The kit's WindowOptions::alert_buttons widens an alert to fit long button labels.
+
+![Supervisor alert, sized for its buttons](2026-10-30/150852-supervisor-alert-sized-for-its-buttons.png)
+
+### Performance supervisor, dark
+
+*15:08* — The same in the dark look: the findings' confidence in the failure colour.
+
+![Performance supervisor, dark](2026-10-30/150852-performance-supervisor-dark.png)
+
+### Performance supervisor: Activity Monitor's Supervisor section and Preferences ▸ Performance
+
+*15:08* — The supervisor (off by default) lowers builds and background work and watches for stuck processes, leaks, memory hogs and zombies, each judged from several signals with a confidence and evidence. Activity Monitor shows it as cards (Inspect, Stop Process, Ignore This Process); every threshold is tuned in Preferences ▸ Performance.
+
+![Performance supervisor: Activity Monitor's Supervisor section and Preferences ▸ Performance](2026-10-30/150851-performance-supervisor-activity-monitor-s-superv.png)
+
 ### Terminal: Tile All Tabs rows' heights dragged
 
 *14:03* — In Tile All Tabs, the line between two groups' rows (and the heads under it) drags their heights; the shares go by group and are kept with the window. The right button there gives the group's menu with Reset Row Heights.

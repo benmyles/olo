@@ -526,15 +526,30 @@ impl Widget for StringView<'_> {
 /// adapter) or nothing yet ("Looking for…"): `text` in the middle of all
 /// the space left, dim, wrapped to a comfortable measure. The whole-view
 /// counterpart of [`ColumnListView::empty_text`]; better than a lone line
-/// in the corner of an empty window.
+/// in the corner of an empty window. A `detail` under it says why, or
+/// what would fill it, and an `action` button does that (its response's
+/// clicks are the button's).
 pub struct EmptyState<'a> {
     text: &'a str,
     icon: Option<&'a str>,
+    detail: Option<&'a str>,
+    action: Option<&'a str>,
 }
 
 impl<'a> EmptyState<'a> {
     pub fn new(text: &'a str) -> Self {
-        EmptyState { text, icon: None }
+        EmptyState { text, icon: None, detail: None, action: None }
+    }
+    /// A line or two more, smaller, under the text.
+    pub fn detail(mut self, detail: &'a str) -> Self {
+        self.detail = Some(detail);
+        self
+    }
+    /// A button under it all ("Turn On…"); the widget's response is the
+    /// button's.
+    pub fn action(mut self, label: &'a str) -> Self {
+        self.action = Some(label);
+        self
     }
     /// The theme icon (32 × 32) of what is missing, over the text: the
     /// panel's or app's own.
@@ -549,18 +564,38 @@ impl Widget for EmptyState<'_> {
         const ICON: f32 = 32.0;
         let p = style::palette(ui.ctx());
         let color = style::disabled_text(&p);
-        let (rect, resp) = ui.allocate_exact_size(ui.available_size().max(vec2(0.0, CONTROL_HEIGHT)), Sense::hover());
-        let mut job = egui::text::LayoutJob::simple(self.text.to_owned(), plain_font(), color, (rect.width() - 2.0 * m::SPACING).clamp(0.0, 320.0));
-        job.halign = Align::Center;
-        let galley = ui.painter().layout_job(job);
+        let (rect, mut resp) = ui.allocate_exact_size(ui.available_size().max(vec2(0.0, CONTROL_HEIGHT)), Sense::hover());
+        let measure = (rect.width() - 2.0 * m::SPACING).clamp(0.0, 320.0);
+        let wrapped = |text: &str, font: FontId| {
+            let mut job = egui::text::LayoutJob::simple(text.to_owned(), font, color, measure);
+            job.halign = Align::Center;
+            ui.painter().layout_job(job)
+        };
+        let galley = wrapped(self.text, plain_font());
+        let detail = self.detail.map(|d| wrapped(d, style::small_font()));
         let above = if self.icon.is_some() { ICON + m::SPACING } else { 0.0 };
-        let top = (rect.center().y - (above + galley.size().y) / 2.0).round();
+        let below = detail.as_ref().map_or(0.0, |g| m::TIGHT + g.size().y) + if self.action.is_some() { m::SPACING * 1.5 + CONTROL_HEIGHT } else { 0.0 };
+        let top = (rect.center().y - (above + galley.size().y + below) / 2.0).round();
         if let Some(name) = self.icon {
             crate::icons::paint(ui.painter(), Rect::from_min_size(pos2((rect.center().x - ICON / 2.0).round(), top), vec2(ICON, ICON)), name);
         }
         let pos = pos2(rect.center().x, top + above);
         style::describe_text(ui.ctx(), egui::accesskit::Role::Label, self.text, Rect::from_min_size(pos2(rect.center().x - galley.size().x / 2.0, pos.y), galley.size()), None);
+        let mut y = pos.y + galley.size().y;
         ui.painter().galley(pos, galley, color);
+        if let (Some(g), Some(text)) = (detail, self.detail) {
+            y += m::TIGHT;
+            style::describe_text(ui.ctx(), egui::accesskit::Role::Label, text, Rect::from_min_size(pos2(rect.center().x - g.size().x / 2.0, y), g.size()), None);
+            let h = g.size().y;
+            ui.painter().galley(pos2(rect.center().x, y), g, color);
+            y += h;
+        }
+        if let Some(label) = self.action {
+            y += m::SPACING * 1.5;
+            let w = button_width(ui.ctx(), label);
+            let r = style::snap(ui.ctx(), Rect::from_min_size(pos2(rect.center().x - w / 2.0, y), vec2(w, CONTROL_HEIGHT)));
+            resp = ui.put(r, Button::new(label).min_width(w));
+        }
         resp
     }
 }
@@ -3752,6 +3787,32 @@ pub fn window_content<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 
 /// A row of buttons aligned to the right edge, as at the bottom of
 /// dialogs and preference panels. Add buttons in reading order.
+/// How wide a [`Button`] labelled `label` makes itself (at its least
+/// width): for laying out before drawing.
+pub fn button_width(ctx: &egui::Context, label: &str) -> f32 {
+    ((style::label_width(ctx, label, plain_font()) + 2.0 * m::CONTROL_PAD).max(m::BUTTON_MIN_WIDTH) / 2.0).ceil() * 2.0
+}
+
+/// Where buttons labelled `labels` go, left to right from `origin` in a
+/// space `width` wide, onto further rows when they don't fit (a card's
+/// actions in a narrow window); and the height they take. Each rect is
+/// its button's own width ([`button_width`]).
+pub fn button_flow(ctx: &egui::Context, origin: Pos2, width: f32, labels: &[&str]) -> (Vec<Rect>, f32) {
+    let (mut x, mut y) = (origin.x, origin.y);
+    let mut rects = Vec::with_capacity(labels.len());
+    for label in labels {
+        let w = button_width(ctx, label);
+        if x > origin.x && x + w > origin.x + width {
+            x = origin.x;
+            y += CONTROL_HEIGHT + m::SPACING;
+        }
+        rects.push(Rect::from_min_size(pos2(x, y), vec2(w, CONTROL_HEIGHT)));
+        x += w + m::SPACING;
+    }
+    let height = if labels.is_empty() { 0.0 } else { y + CONTROL_HEIGHT - origin.y };
+    (rects, height)
+}
+
 pub fn button_row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
         ui.spacing_mut().item_spacing.x = m::SPACING + 2.0;
@@ -4022,8 +4083,26 @@ pub const ALERT_TEXT_X: f32 = ALERT_STRIPE + ALERT_ICON / 2.0 + m::WINDOW_INSET;
 /// measured from the font (`style::plain_text_height`), since no context
 /// exists yet.
 pub fn alert_height(message: &str) -> u32 {
-    let text = style::plain_text_height(message, ALERT_WIDTH as f32 - ALERT_TEXT_X - m::WINDOW_INSET);
+    alert_height_in(message, ALERT_WIDTH)
+}
+
+/// [`alert_height`] for an alert `width` wide.
+pub fn alert_height_in(message: &str, width: u32) -> u32 {
+    let text = style::plain_text_height(message, width as f32 - ALERT_TEXT_X - m::WINDOW_INSET);
     (m::WINDOW_INSET + text.max(ALERT_ICON) + m::WINDOW_INSET + m::CONTROL_HEIGHT + m::WINDOW_INSET).ceil() as u32
+}
+
+/// The width an alert needs for `buttons` side by side under its text
+/// (at least [`ALERT_WIDTH`]), measured from the font as the height is:
+/// long labels ("Show in Activity Monitor") widen it rather than run off
+/// its left.
+pub fn alert_width(buttons: &[&str]) -> u32 {
+    // As `Button` sizes itself: the label and its padding, at least the
+    // least width, on the 2-point grid.
+    let each = |label: &str| ((style::plain_text_width(label) + 2.0 * m::CONTROL_PAD).max(m::BUTTON_MIN_WIDTH) / 2.0).ceil() * 2.0;
+    let row = buttons.iter().map(|b| each(b)).sum::<f32>() + (m::SPACING + 2.0) * buttons.len().saturating_sub(1) as f32;
+    // (A little over, as egui's own layout may round up.)
+    ((ALERT_TEXT_X + row + m::WINDOW_INSET + 4.0).ceil() as u32).max(ALERT_WIDTH)
 }
 
 /// BAlert: a darker stripe down the left with the icon straddling it, the

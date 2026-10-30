@@ -52,13 +52,22 @@ pub struct Status {
     pub agent_screens: usize,
     /// Screens apps are sharing (olo-portal's).
     pub sharing: Vec<olo_protocol::sharing::Share>,
+    /// The supervisor (Preferences ▸ Performance), if it is installed.
+    pub supervisor: Option<Supervisor>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Supervisor {
+    /// Turned on (its settings: at once, before it has answered).
+    pub on: bool,
+    /// What it published.
+    pub state: olo_protocol::performance::SupervisorState,
 }
 
 /// What olo-session offers to upgrade (see its upgrade.rs).
 fn upgrade_path() -> PathBuf {
     let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    let display = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
-    dir.join(format!("olo-upgrade-{display}.json"))
+    dir.join(format!("olo-upgrade-{}.json", olo_kit::display_name()))
 }
 
 fn upgrade() -> Vec<String> {
@@ -82,7 +91,7 @@ fn screen_file(p: &std::path::Path) -> bool {
 }
 
 fn agent_screens() -> usize {
-    let own = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
+    let own = olo_kit::display_name();
     let Ok(read) = std::fs::read_dir(screens_dir()) else { return 0 };
     read.flatten()
         .filter(|e| {
@@ -201,8 +210,12 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
         })
         .expect("thread");
     let (notes, screens, upgrades, sharing) = (NotificationState::path(), screens_dir(), upgrade_path(), olo_protocol::SharingState::path());
+    use olo_protocol::performance::{PerformanceSettings, SupervisorState};
+    let (perf, supervising) = (PerformanceSettings::path(), SupervisorState::path());
+    let installed = olo_kit::find_program("olo-supervisor").is_some();
     let read = {
         let (notes, screens, upgrades, sharing, shared) = (notes.clone(), screens.clone(), upgrades.clone(), sharing.clone(), shared.clone());
+        let (perf, supervising) = (perf.clone(), supervising.clone());
         move |changed: &[PathBuf]| {
             let all = changed.is_empty();
             // The screens' folder also has viewers' frames going through
@@ -215,7 +228,12 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
                 (all || changed.contains(&upgrades)).then(upgrade),
             );
             let shares = (all || changed.contains(&sharing)).then(|| olo_protocol::SharingState::load().shares);
+            let supervisor = (installed && (all || changed.contains(&perf) || changed.contains(&supervising)))
+                .then(|| Supervisor { on: PerformanceSettings::load().enabled, state: SupervisorState::load() });
             publish(&shared, |s| {
+                if supervisor.is_some() {
+                    s.supervisor = supervisor;
+                }
                 if let Some(shares) = shares {
                     s.sharing = shares;
                 }
@@ -234,7 +252,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     read(&[]);
     let read = Arc::new(read);
     let on_change = read.clone();
-    if let Some(w) = olo_kit::watch::watch([notes, screens, upgrades, sharing], move |changed| on_change(changed)) {
+    if let Some(w) = olo_kit::watch::watch([notes, screens, upgrades, sharing, perf, supervising], move |changed| on_change(changed)) {
         // Deskbar's for as long as it runs.
         std::mem::forget(w);
     }
@@ -539,6 +557,30 @@ pub fn draw_screens(painter: &Painter, r: Rect, p: &Palette, count: usize) {
     painter.line_segment([pos2(x + 1.8, y + 4.0), pos2(x + 3.4, y + 6.6)], Stroke::new(1.3, ink(p)));
     if count > 1 {
         badge(painter, r, p, count, c(p.keyboard_navigation));
+    }
+}
+
+/// The supervisor (Preferences ▸ Performance): a speedometer, a dial open
+/// at the bottom with its needle up at speed (the dial tinted) while it's
+/// on, resting low and dim while off; what it found as a count, red if
+/// any is urgent.
+pub fn draw_gauge(painter: &Painter, r: Rect, p: &Palette, on: bool, findings: usize, urgent: bool) {
+    let line = if on { ink(p) } else { dim(p) };
+    let centre = style::snap_centred(painter.ctx(), pos2(r.center().x, r.top() + 8.5), vec2(1.0, 1.0)).center();
+    let radius = 6.6;
+    let pi = std::f32::consts::PI;
+    // From the lower left over the top to the lower right.
+    let rim: Vec<egui::Pos2> = (0..=24).map(|i| 1.25 * pi - 1.5 * pi * i as f32 / 24.0).map(|a| centre + radius * vec2(a.cos(), -a.sin())).collect();
+    if on {
+        painter.add(Shape::convex_polygon(rim.clone(), c(p.keyboard_navigation).gamma_multiply(0.3), Stroke::NONE));
+    }
+    painter.add(Shape::line(rim, Stroke::new(1.3, line)));
+    // (Straight up, clear of the count beside it.)
+    let a = if on { pi * 0.5 } else { pi * 1.1 };
+    painter.line_segment([centre, centre + vec2(a.cos(), -a.sin()) * (radius - 1.6)], Stroke::new(1.4, line));
+    painter.circle_filled(centre, 1.4, line);
+    if on && findings > 0 {
+        badge(painter, r, p, findings, c(if urgent { p.failure } else { p.warning }));
     }
 }
 

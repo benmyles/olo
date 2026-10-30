@@ -1,11 +1,11 @@
-//! The sections that are cards of graphs and facts: Overview, CPU,
-//! Memory, Disks, Network, GPU, Sensors, System and the Graphs of your
-//! choosing. (Processes is processes.rs.)
+//! The sections that are cards of graphs and facts: Overview, the
+//! Supervisor's work, CPU, Memory, Disks, Network, GPU, Sensors, System
+//! and the Graphs of your choosing. (Processes is processes.rs.)
 
 use olo_kit::{
     Cx, Menu,
     dashboard::{self, Card, LegendItem, facts, facts_two, flow, flow_rows, legend, legend_height, meter},
-    egui::{self, Align, Color32, Id, Rect, Sense, Ui, pos2, vec2},
+    egui::{self, Align, Color32, Id, Pos2, Rect, Sense, Ui, pos2, vec2},
     files::format_size,
     graph::{Graph, Series},
     metrics as m,
@@ -147,6 +147,11 @@ pub fn sidebar_value(app: &Activity, s: Section) -> String {
             Some(b) => format!("{b:.0}%"),
             None => hottest(app).map(|(_, v)| Unit::Celsius.format(v)).unwrap_or_default(),
         },
+        Section::Supervisor => match (app.supervisor.running, app.supervisor.findings.len()) {
+            (false, _) => "Off".to_owned(),
+            (true, 0) => "On".to_owned(),
+            (true, n) => n.to_string(),
+        },
         _ => String::new(),
     }
 }
@@ -180,6 +185,7 @@ pub fn show(app: &mut Activity, cx: &mut Cx, ui: &mut Ui, rect: Rect, s: Section
             Section::Gpu => gpu(app, ui, area, &mut todo),
             Section::Sensors => sensors(app, ui, area),
             Section::System => system(app, ui, area, &mut todo),
+            Section::Supervisor => supervisor(app, ui, area, &mut todo),
             Section::Processes | Section::Graphs => 0.0,
         };
         ui.allocate_rect(Rect::from_min_size(ui.max_rect().min, vec2(area.width(), used + 2.0 * GAP)), Sense::hover());
@@ -191,6 +197,8 @@ pub fn show(app: &mut Activity, cx: &mut Cx, ui: &mut Ui, rect: Rect, s: Section
             Todo::Command(cmd) => app.command(cx, None, &cmd),
             Todo::Act(a) => app.act(cx, a),
             Todo::FullAccess => app.get_full_access(cx),
+            Todo::Inspect(pid) => app.inspect_at(cx, pid, crate::inspector::SUPERVISOR_TAB),
+            Todo::Supervise(change) => supervise(change),
         }
     }
 }
@@ -202,6 +210,8 @@ enum Todo {
     Command(String),
     Act(Action),
     FullAccess,
+    Inspect(i32),
+    Supervise(Supervise),
 }
 
 // ---- Overview --------------------------------------------------------
@@ -1104,4 +1114,181 @@ mod tests {
         assert_eq!(ghz(2424.0), "2.42 GHz");
         assert_eq!(grid_for(300), 60.0);
     }
+}
+
+/// What the supervisor is asked to change (on a worker: its settings
+/// file).
+pub enum Supervise {
+    On(bool),
+    Ignore(String),
+    Preferences,
+}
+
+/// Do `change`: Preferences opened, or the settings file changed on a
+/// worker (the supervisor follows it).
+pub fn supervise(change: Supervise) {
+    if let Supervise::Preferences = change {
+        if let Err(e) = olo_kit::spawn_detached("olo-preferences performance") {
+            tracing::warn!("activity: can't open Preferences: {e}");
+        }
+        return;
+    }
+    std::thread::spawn(move || {
+        let mut s = olo_protocol::performance::PerformanceSettings::load();
+        match change {
+            Supervise::On(on) => s.enabled = on,
+            Supervise::Ignore(name) if !s.ignored.contains(&name) => s.ignored.push(name),
+            _ => return,
+        }
+        if let Err(e) = s.save() {
+            tracing::warn!("activity: the supervisor's settings: {e}");
+        }
+    });
+}
+
+/// A paragraph wrapped to `width`: its galley.
+fn paragraph(ui: &Ui, text: &str, width: f32, color: Color32) -> std::sync::Arc<egui::Galley> {
+    ui.painter().layout(text.to_owned(), style::plain_font(), color, width)
+}
+
+/// The supervisor (Preferences ▸ Performance): whether it's on and what
+/// it favours; each finding with how sure it is, why, and what can be
+/// done; what it lowered; what it did lately.
+fn supervisor(app: &mut Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f32 {
+    let p = style::palette(ui.ctx());
+    let ink = style::card_ink(&p);
+    let st = app.supervisor.clone();
+    let mut y = area.top();
+    let inner_w = area.width() - 2.0 * m::CARD_INSET;
+
+    // On or off, and what it favours.
+    let urgent = st.urgent();
+    let favoured = st.favoured.as_ref().map_or_else(|| "—".to_owned(), |(pid, app_id)| format!("{app_id} ({pid})"));
+    let rows: Vec<(&str, String)> = if st.running {
+        vec![
+            ("Favoured", favoured),
+            ("Lowered", match st.lowered.len() {
+                0 => "Nothing".to_owned(),
+                1 => "1 process".to_owned(),
+                n => format!("{n} processes"),
+            }),
+            ("Memory free", format!("{:.0}%", st.memory_available)),
+            ("Memory stalls", format!("{:.0}%", st.memory_stall)),
+        ]
+    } else {
+        Vec::new()
+    };
+    let rr: Vec<(&str, &str)> = rows.iter().map(|(a, b)| (*a, b.as_str())).collect();
+    let about = if st.running {
+        "Builds and other background work are lowered so the active window’s app and Olo itself stay quick; stuck processes, leaks and memory hogs are watched for."
+    } else {
+        "Off. Turned on, it lowers builds and other background work so the active window’s app and Olo itself stay quick, and watches for stuck processes, leaks and memory hogs."
+    };
+    let about_g = paragraph(ui, about, inner_w, ink.dim);
+    let fh = if rr.is_empty() { 0.0 } else { dashboard::facts_height(rr.len().div_ceil(2)) + m::SPACING };
+    let labels = [if st.running { "Turn Off" } else { "Turn On" }, "Performance Preferences…"];
+    let (_, bh) = widgets::button_flow(ui.ctx(), Pos2::ZERO, inner_w, &labels);
+    let h = Card::height(about_g.size().y + m::SPACING + fh + bh, true);
+    let figure = if st.running { "On" } else { "Off" };
+    let caption = match (st.running, urgent, st.findings.len()) {
+        (false, ..) => String::new(),
+        (true, 0, 0) => "Nothing found".to_owned(),
+        (true, 0, n) => format!("{n} finding{}", if n == 1 { "" } else { "s" }),
+        (true, u, n) => format!("{n} finding{}, {u} urgent", if n == 1 { "" } else { "s" }),
+    };
+    let card = Card::new("Supervisor").figure(figure).caption(&caption).show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
+    let mut cy = card.content.top();
+    ui.painter().galley(pos2(card.content.left(), cy), about_g.clone(), ink.dim);
+    style::describe_text(ui.ctx(), egui::accesskit::Role::Label, about, Rect::from_min_size(pos2(card.content.left(), cy), about_g.size()), None);
+    cy += about_g.size().y + m::SPACING;
+    if !rr.is_empty() {
+        facts_two(ui, Rect::from_min_size(pos2(card.content.left(), cy), vec2(card.content.width(), fh)), &rr);
+        cy += fh;
+    }
+    let (rects, _) = widgets::button_flow(ui.ctx(), pos2(card.content.left(), cy), card.content.width(), &labels);
+    if ui.put(rects[0], Button::new(labels[0])).clicked() {
+        todo.push(Todo::Supervise(Supervise::On(!st.running)));
+    }
+    if ui.put(rects[1], Button::new(labels[1])).clicked() {
+        todo.push(Todo::Supervise(Supervise::Preferences));
+    }
+    y += h + GAP;
+
+    // Each finding: why, how sure, and what to do.
+    for f in &st.findings {
+        let summary = paragraph(ui, &f.summary, inner_w, ink.text);
+        let evidence: Vec<String> = f.evidence.iter().map(|e| format!("•  {e}")).collect();
+        let lines: Vec<_> = evidence.iter().map(|e| paragraph(ui, e, inner_w, ink.dim)).collect();
+        let lines_h: f32 = lines.iter().map(|g| g.size().y).sum();
+        const LABELS: [&str; 3] = ["Inspect", "Stop Process", "Ignore This Process"];
+        let (_, bh) = widgets::button_flow(ui.ctx(), Pos2::ZERO, inner_w, &LABELS);
+        let h = Card::height(summary.size().y + m::TIGHT + lines_h + m::SPACING + bh, true);
+        let title = format!("{}: {}", f.kind.title(), f.name);
+        let figure = format!("{:.0}% sure", f.confidence * 100.0);
+        let since = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(f.since);
+        let ago = std::time::SystemTime::now().duration_since(since).map(|d| d.as_secs_f64()).unwrap_or(0.0);
+        let caption = format!("{}pid {} · found {} ago", if f.urgent { "Urgent · " } else { "" }, f.pid, duration(ago));
+        let alarm = c(if f.urgent { p.failure } else { p.warning });
+        let card = Card::new(&title).figure(&figure).figure_ink(alarm).caption(&caption).show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
+        let mut cy = card.content.top();
+        ui.painter().galley(pos2(card.content.left(), cy), summary.clone(), ink.text);
+        style::describe_text(ui.ctx(), egui::accesskit::Role::Label, &f.summary, Rect::from_min_size(pos2(card.content.left(), cy), summary.size()), None);
+        cy += summary.size().y + m::TIGHT;
+        for (g, text) in lines.iter().zip(&evidence) {
+            ui.painter().galley(pos2(card.content.left(), cy), g.clone(), ink.dim);
+            style::describe_text(ui.ctx(), egui::accesskit::Role::Label, text, Rect::from_min_size(pos2(card.content.left(), cy), g.size()), None);
+            cy += g.size().y;
+        }
+        cy += m::SPACING;
+        let (rects, _) = widgets::button_flow(ui.ctx(), pos2(card.content.left(), cy), card.content.width(), &LABELS);
+        for (i, (r, label)) in rects.into_iter().zip(LABELS).enumerate() {
+            if ui.push_id((i, f.pid, f.kind as u8), |ui| ui.put(r, Button::new(label)).clicked()).inner {
+                todo.push(match i {
+                    0 => Todo::Inspect(f.pid),
+                    1 => Todo::Act(Action::Signal { pid: f.pid, signal: libc::SIGTERM }),
+                    _ => Todo::Supervise(Supervise::Ignore(f.name.clone())),
+                });
+            }
+        }
+        y += h + GAP;
+    }
+
+    // What it lowered.
+    if st.running && !st.lowered.is_empty() {
+        const SHOWN: usize = 12;
+        // Each wrapped: what it is, then what was done and why.
+        let mut texts: Vec<String> = st
+            .lowered
+            .iter()
+            .take(SHOWN)
+            .map(|l| format!("{} ({}): nice {} → {}, {} scheduling, {} I/O, as {}", l.name, l.pid, l.nice_before, l.nice, l.policy, l.io, l.why))
+            .collect();
+        let more = st.lowered.len().saturating_sub(SHOWN);
+        if more > 0 {
+            texts.push(format!("And {more} more"));
+        }
+        let lines: Vec<_> = texts.iter().map(|t| paragraph(ui, t, inner_w, ink.text)).collect();
+        let h = Card::height(lines.iter().map(|g| g.size().y).sum(), true);
+        let card = Card::new("Lowered").caption("Background work, so the rest stays quick").show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
+        let mut cy = card.content.top();
+        for (g, text) in lines.into_iter().zip(&texts) {
+            let r = Rect::from_min_size(pos2(card.content.left(), cy), g.size());
+            style::describe_text(ui.ctx(), egui::accesskit::Role::Label, text, r, None);
+            cy += g.size().y;
+            ui.painter().galley(r.min, g, ink.text);
+        }
+        y += h + GAP;
+    }
+
+    // What it did lately, newest first.
+    if !st.log.is_empty() {
+        const SHOWN: usize = 12;
+        let rows: Vec<(String, String)> = st.log.iter().rev().take(SHOWN).map(|e| (clock(e.at as f64), e.text.clone())).collect();
+        let rr: Vec<(&str, &str)> = rows.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+        let h = Card::height(dashboard::facts_height(rr.len()), false);
+        let card = Card::new("Lately").show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
+        facts(ui, card.content, &rr);
+        y += h + GAP;
+    }
+    y - area.top() - GAP
 }

@@ -100,3 +100,4 @@ cpu|a square processor chip lying on the desk, a silver heat spreader on a green
 memory|a memory module standing on its long edge, a green circuit board with a row of black chips and a gold contact strip along the bottom
 gpu|a graphics card lying on the desk, a charcoal shroud with two round fans and a gold connector edge
 sensors|a thermometer standing upright on a small round base, with a silver scale and a red bulb
+performance|a chunky silver speedometer gauge dial standing on the desk, its needle pointing high into a green zone, with a small red warning arc at the end

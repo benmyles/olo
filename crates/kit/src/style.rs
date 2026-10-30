@@ -363,6 +363,22 @@ pub fn plain_text_height(text: &str, width: f32) -> f32 {
     lines as f32 * line
 }
 
+/// The width of `text`'s widest line in the plain font, from the UI
+/// face's own advances, as [`plain_text_height`] measures (for sizing a
+/// window before its first frame: an alert wide enough for its buttons).
+pub fn plain_text_width(text: &str) -> f32 {
+    use skrifa::{
+        MetadataProvider,
+        instance::{LocationRef, Size},
+    };
+    let defs = font_definitions();
+    let data = defs.families.get(&FontFamily::Proportional).and_then(|chain| chain.first()).and_then(|key| defs.font_data.get(key));
+    let font = data.and_then(|d| skrifa::FontRef::from_index((*d.font).as_ref(), d.index).ok());
+    let metrics = font.as_ref().map(|f| (f.charmap(), f.glyph_metrics(Size::new(PLAIN_SIZE), LocationRef::default())));
+    let advance = |ch: char| metrics.as_ref().and_then(|(map, m)| m.advance_width(map.map(ch)?)).unwrap_or(0.6 * PLAIN_SIZE);
+    text.split('\n').map(|l| l.chars().map(advance).sum::<f32>()).fold(0.0, f32::max)
+}
+
 // ---- document fonts ---------------------------------------------------
 
 /// Fonts an app added at run time, as (font key, data, family).

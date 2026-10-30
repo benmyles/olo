@@ -270,6 +270,14 @@ pub fn upgrade_env(cmd: &mut std::process::Command) {
     }
 }
 
+/// This session's Wayland display by its name (`wayland-1`; empty if
+/// none), for files and sockets kept per display: `WAYLAND_DISPLAY` may
+/// name the socket by its full path instead.
+pub fn display_name() -> String {
+    let display = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
+    display.rsplit('/').next().unwrap_or_default().to_owned()
+}
+
 /// Run a shell command line detached from us (own session, no stdio).
 /// Our own programs are found beside us first, as `find_program` finds
 /// them: the login screen gives a session a bare PATH that needn't

@@ -56,6 +56,8 @@ pub enum Section {
     #[default]
     Overview,
     Processes,
+    /// The supervisor's work (Preferences ▸ Performance).
+    Supervisor,
     Cpu,
     Memory,
     Disks,
@@ -67,13 +69,14 @@ pub enum Section {
 }
 
 impl Section {
-    const ALL: [Section; 10] =
-        [Section::Overview, Section::Processes, Section::Cpu, Section::Memory, Section::Disks, Section::Network, Section::Gpu, Section::Sensors, Section::System, Section::Graphs];
+    const ALL: [Section; 11] =
+        [Section::Overview, Section::Processes, Section::Supervisor, Section::Cpu, Section::Memory, Section::Disks, Section::Network, Section::Gpu, Section::Sensors, Section::System, Section::Graphs];
 
     pub fn name(self) -> &'static str {
         match self {
             Section::Overview => "Overview",
             Section::Processes => "Processes",
+            Section::Supervisor => "Supervisor",
             Section::Cpu => "CPU",
             Section::Memory => "Memory",
             Section::Disks => "Disks",
@@ -89,6 +92,7 @@ impl Section {
         match self {
             Section::Overview => "activity",
             Section::Processes => "process",
+            Section::Supervisor => "performance",
             Section::Cpu => "cpu",
             Section::Memory => "memory",
             Section::Disks => "disk",
@@ -178,6 +182,8 @@ pub enum Msg {
     Sample(Box<Sample>, bool),
     Details(i32, Result<Box<Details>, String>),
     Helper(Option<FromHelper>),
+    /// What the supervisor published (`olo-supervisor.json`).
+    Supervisor(Box<olo_protocol::performance::SupervisorState>),
 }
 
 /// What this app may see and do.
@@ -249,6 +255,8 @@ pub struct Activity {
     next_action: u64,
     inspect_tx: mpsc::Sender<i32>,
     pub tunables_list: ListState,
+    /// What the supervisor is doing, as it published it.
+    pub supervisor: olo_protocol::performance::SupervisorState,
     /// Find: the search takes the keyboard next frame.
     pub focus_search: bool,
 }
@@ -397,6 +405,22 @@ impl Activity {
         }
     }
 
+    /// `--inspect PID` (a process's inspector) and `--section NAME`.
+    /// `--section NAME`: that section; `--inspect PID`: that process's
+    /// inspector, at what the supervisor found.
+    fn follow_args(&mut self, cx: &mut Cx, args: &[String]) {
+        let after = |flag: &str| args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1));
+        if let Some(name) = after("--section")
+            && let Some(s) = Section::ALL.into_iter().find(|s| s.name().eq_ignore_ascii_case(name))
+        {
+            self.set_section(s);
+        }
+        // (From the supervisor: at what it found.)
+        if let Some(pid) = after("--inspect").and_then(|p| p.parse().ok()) {
+            self.inspect_at(cx, pid, inspector::SUPERVISOR_TAB);
+        }
+    }
+
     pub fn set_section(&mut self, section: Section) {
         self.settings.section = section;
         self.wants_changed();
@@ -522,12 +546,21 @@ impl Activity {
 
     /// Open (or bring forward) the inspector of `pid`.
     pub fn inspect(&mut self, cx: &mut Cx, pid: i32) {
-        if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Inspector(i) if i.pid == pid)) {
+        self.inspect_at(cx, pid, 0);
+    }
+
+    /// The inspector of `pid` at `tab` (the supervisor's, from its alert).
+    pub fn inspect_at(&mut self, cx: &mut Cx, pid: i32, tab: usize) {
+        if let Some((&id, w)) = self.windows.iter_mut().find(|(_, w)| matches!(w, Win::Inspector(i) if i.pid == pid)) {
+            if let (Win::Inspector(i), true) = (w, tab > 0) {
+                i.set_tab(tab);
+            }
             return cx.activate(id);
         }
-        let name = self.proc(pid).map_or_else(|| pid.to_string(), |p| p.name.clone());
+        // (Before the first sample, its name as the kernel has it.)
+        let name = self.proc(pid).map(|p| p.name.clone()).or_else(|| Some(std::fs::read_to_string(format!("/proc/{pid}/comm")).ok()?.trim().to_owned())).unwrap_or_else(|| pid.to_string());
         let id = cx.open_window(WindowOptions::new(format!("{name} ({pid})"), 620, 520).min_size(460, 380));
-        self.windows.insert(id, Win::Inspector(Box::new(inspector::Inspector::new(pid, name))));
+        self.windows.insert(id, Win::Inspector(Box::new(inspector::Inspector::new(pid, name, tab))));
         self.request_details(pid);
     }
 
@@ -587,6 +620,12 @@ impl Activity {
         }
         if let Some(pid) = command.strip_prefix("inspect:").and_then(|p| p.parse().ok()) {
             return self.inspect(cx, pid);
+        }
+        if command == "supervisor-preferences" {
+            return sections::supervise(sections::Supervise::Preferences);
+        }
+        if let Some(name) = command.strip_prefix("supervisor-ignore:") {
+            return sections::supervise(sections::Supervise::Ignore(name.to_owned()));
         }
         if let Some(pid) = command.strip_prefix("quit:").and_then(|p| p.parse().ok()) {
             return self.quit_process(cx, pid, false);
@@ -696,7 +735,7 @@ impl Activity {
         }
         // The sidebar, each row with its figure now.
         let values: Vec<String> = sections.iter().map(|s| sections::sidebar_value(self, *s)).collect();
-        let headings = [(0, "Activity"), (2, "Hardware"), (sections.len() - 2, "System")];
+        let headings = [(0, "Activity"), (3, "Hardware"), (sections.len() - 2, "System")];
         let mut rows: Vec<Row> = Vec::new();
         let mut index_of = Vec::new();
         for (i, s) in sections.iter().enumerate() {
@@ -873,11 +912,20 @@ impl App for Activity {
         }
         self.windows.remove(&window);
         cx.close_window(window);
+        // (Started for an inspector alone: its last window gone.)
+        if self.windows.is_empty() {
+            self.store();
+            cx.quit();
+        }
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
-        if message.is::<Launch>() {
-            return self.open(cx);
+        if let Some(launch) = message.downcast_ref::<Launch>() {
+            let args = launch.args.clone();
+            if !inspecting(&args) {
+                self.open(cx);
+            }
+            return self.follow_args(cx, &args);
         }
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
@@ -890,6 +938,7 @@ impl App for Activity {
                 }
             }
             Msg::Helper(m) => return self.heard(cx, m),
+            Msg::Supervisor(s) => self.supervisor = *s,
         }
         cx.redraw_all();
     }
@@ -973,9 +1022,28 @@ fn main() {
             inspect_tx,
             tunables_list: ListState::default(),
             focus_search: false,
+            supervisor: Default::default(),
         };
+        // The supervisor's work, followed as it publishes it.
+        {
+            let proxy = cx.proxy();
+            let read = move || proxy.send(Msg::Supervisor(Box::new(olo_protocol::performance::SupervisorState::load())));
+            let read = std::sync::Arc::new(read);
+            let first = read.clone();
+            std::thread::spawn(move || first());
+            if let Some(w) = olo_kit::watch::watch([olo_protocol::performance::SupervisorState::path()], move |_| read()) {
+                // For as long as the app runs.
+                std::mem::forget(w);
+            }
+        }
+        // Started to show a process (the supervisor's alert), or a section.
+        let start_args: Vec<String> = std::env::args().skip(1).collect();
         app.wants_changed();
-        app.open(cx);
+        // (Asked for a process: its inspector alone, in front.)
+        if !inspecting(&start_args) {
+            app.open(cx);
+        }
+        app.follow_args(cx, &start_args);
         // SAFETY: geteuid has no preconditions.
         let root = unsafe { libc::geteuid() } == 0;
         if ask && !root && helper::way() != Way::Off {
@@ -983,4 +1051,9 @@ fn main() {
         }
         app
     });
+}
+
+/// Whether `args` ask for a process's inspector (`--inspect PID`).
+fn inspecting(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--inspect")
 }

@@ -19,6 +19,7 @@ mod integrations;
 mod keyboard;
 mod network;
 mod notifications;
+mod performance;
 mod panel;
 mod power;
 mod screensaver;

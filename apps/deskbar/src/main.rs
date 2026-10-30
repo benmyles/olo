@@ -897,6 +897,21 @@ impl Deskbar {
                 }
             }
             Some(("share", session)) => spawn(&format!("olo-portal --stop {session}")),
+            // The supervisor on or off: its settings, which it follows
+            // (shown at once; written off the UI thread).
+            Some(("perf", "toggle")) => {
+                if let Some(sup) = &mut self.status.supervisor {
+                    sup.on = !sup.on;
+                    let on = sup.on;
+                    std::thread::spawn(move || {
+                        let mut s = olo_protocol::performance::PerformanceSettings::load();
+                        s.enabled = on;
+                        if let Err(e) = s.save() {
+                            tracing::warn!("supervisor settings: {e}");
+                        }
+                    });
+                }
+            }
             Some(("approve", arg)) => self.approve_command(cx, arg),
             Some(("display", output)) => request(Request::FocusDisplay { output: output.to_owned() }),
             // For the display of the Deskbar it was chosen on, and the
@@ -1445,6 +1460,32 @@ fn sharing_menu(shares: &[olo_protocol::sharing::Share]) -> Menu {
     m
 }
 
+/// The supervisor's tray menu: on or off, what it found (each to its
+/// process in Activity Monitor), and the way to all of it.
+fn supervisor_menu(sup: &status::Supervisor) -> Menu {
+    const SHOWN: usize = 6;
+    let mut m = Menu::new("Supervisor").item("Keep the Desktop Responsive", "perf:toggle", None).checked(sup.on).separator();
+    let st = &sup.state;
+    if !sup.on {
+        m = m.item("Off", "", None).enabled(false);
+    } else if st.findings.is_empty() {
+        m = m.item("Nothing Found", "", None).enabled(false);
+    }
+    if sup.on {
+        for f in st.findings.iter().take(SHOWN) {
+            m = m.item(format!("{}: {} ({}){}", f.kind.title(), f.name, f.pid, if f.urgent { ", Urgent" } else { "" }), format!("run:olo-activity --inspect {}", f.pid), None);
+        }
+        if st.findings.len() > SHOWN {
+            m = m.item(format!("And {} More", st.findings.len() - SHOWN), "run:olo-activity --section supervisor", None);
+        }
+        if !st.lowered.is_empty() {
+            let n = st.lowered.len();
+            m = m.item(format!("{n} Background Process{} Lowered", if n == 1 { "" } else { "es" }), "run:olo-activity --section supervisor", None);
+        }
+    }
+    m.separator().item("Show in Activity Monitor", "run:olo-activity --section supervisor", None).item("Performance Settings…", "pref:performance", None)
+}
+
 fn notifications_menu(quiet: bool) -> Menu {
     Menu::new("Notifications")
         .item("Show History", "notif:history", None)
@@ -1621,6 +1662,7 @@ impl App for Deskbar {
                 !st.upgrade.is_empty(),
                 !st.sharing.is_empty(),
                 st.agent_screens > 0,
+                st.supervisor.is_some(),
                 st.battery.is_some(),
                 st.wifi.is_some(),
                 st.volume.is_some(),
@@ -1778,6 +1820,27 @@ impl App for Deskbar {
             let tip = if n == 1 { "An agent screen is running. Click to watch it.".to_string() } else { format!("{n} agent screens are running. Click to watch them.") };
             if tray_item(ui, "agent-screens", &|p, r| status::draw_screens(p, r, &pal, n), tip).clicked() {
                 self.run_command(cx, "run:olo-screen watch");
+            }
+        }
+        // The supervisor: click to turn it on or off, its menu for more.
+        if let Some(sup) = &st.supervisor {
+            let (n, urgent) = (sup.state.findings.len(), sup.state.urgent());
+            let tip = match (sup.on, n, urgent) {
+                (false, ..) => "Performance supervisor: off. Click to turn on.".to_owned(),
+                (true, 0, _) => "Performance supervisor: on, nothing found. Click to turn off.".to_owned(),
+                (true, n, 0) => format!("Performance supervisor: {n} finding{}. Click to turn off.", if n == 1 { "" } else { "s" }),
+                (true, _, u) => format!("Performance supervisor: {u} urgent finding{}. Click to turn off.", if u == 1 { "" } else { "s" }),
+            };
+            let item = tray_item(ui, "supervisor", &|p, r| status::draw_gauge(p, r, &pal, sup.on, n, urgent > 0), tip);
+            let menu_id = egui::Id::unique("supervisor-menu");
+            if item.clicked() {
+                self.run_command(cx, "perf:toggle");
+            }
+            if item.secondary_clicked() && !menu::is_open(ui.ctx(), menu_id) {
+                menu::request_popup(ui.ctx(), MenuRequest { menu: supervisor_menu(sup), source: menu_id, anchor: MenuAnchor::Below(item.rect), selected: None });
+            }
+            if let Some(cmd) = menu::take_chosen(ui.ctx(), menu_id) {
+                self.run_command(cx, &cmd);
             }
         }
         if let Some(b) = st.battery {

@@ -1,7 +1,8 @@
 //! A process's inspector (Get Info for a process): what it is and how
 //! it is doing, over tabs of its threads, open files, memory, environment
 //! and resources (the cores it may use, how the kernel treats it when
-//! memory runs out, its limits), with what can be done to it. Its details
+//! memory runs out, its limits) and what the supervisor (Preferences ▸
+//! Performance) found about it, with what can be done to it. Its details
 //! are read on a worker (or by the helper, with full access) at each
 //! sample.
 
@@ -27,7 +28,9 @@ use crate::{
     sections::duration,
 };
 
-const TABS: [&str; 6] = ["General", "Threads", "Open Files", "Memory", "Environment", "Resources"];
+const TABS: [&str; 7] = ["General", "Threads", "Open Files", "Memory", "Environment", "Resources", "Supervisor"];
+/// The Supervisor tab: what the supervisor's alert and Deskbar's menu open.
+pub const SUPERVISOR_TAB: usize = 6;
 const HEAD: f32 = 64.0;
 
 /// What the inspector asks of the app.
@@ -52,8 +55,8 @@ pub struct Inspector {
 const OOM: [(i32, &str); 5] = [(1000, "First to Go"), (500, "Sooner"), (0, "Normally"), (-500, "Later"), (-1000, "Never")];
 
 impl Inspector {
-    pub fn new(pid: i32, name: String) -> Self {
-        Inspector { pid, name, tab: 0, details: None, before: None, thread_cpu: HashMap::new(), lists: Default::default(), cores: None }
+    pub fn new(pid: i32, name: String, tab: usize) -> Self {
+        Inspector { pid, name, tab, details: None, before: None, thread_cpu: HashMap::new(), lists: Default::default(), cores: None }
     }
 
     /// New details: each thread's CPU since the last.
@@ -132,6 +135,9 @@ impl Inspector {
             // Its left edge on the chosen tab's label's (the first tab's
             // text, as the facts start under it).
             let area = ui.max_rect().shrink(m::WINDOW_INSET - 3.0);
+            if t == SUPERVISOR_TAB {
+                return supervised(app, ui, area, self.pid);
+            }
             match &self.details {
                 None => {
                     ui.put(area, EmptyState::new("Reading…"));
@@ -220,6 +226,10 @@ impl Inspector {
             }
         }
         ask
+    }
+
+    pub fn set_tab(&mut self, tab: usize) {
+        self.tab = tab.min(TABS.len() - 1);
     }
 
     fn threads(&mut self, ui: &mut Ui, area: Rect, d: &Details) -> Option<Ask> {
@@ -462,4 +472,66 @@ fn needs_access(app: &Activity, ui: &mut Ui, area: Rect, text: &str) -> Option<A
         }
     }
     None
+}
+
+/// What the supervisor has on `pid`: each finding with how sure it is,
+/// what it means and the evidence; whether it lowered it, and why; or
+/// that it favours it (the active window's app).
+fn supervised(app: &Activity, ui: &mut Ui, area: Rect, pid: i32) -> Option<Ask> {
+    let st = &app.supervisor;
+    if !st.running {
+        let r = ui.put(area, EmptyState::new("The supervisor is off").detail("Turned on in Performance preferences (or Deskbar’s gauge), it lowers background work and watches for stuck processes, leaks and memory hogs.").action("Performance Preferences…"));
+        return r.clicked().then(|| Ask::Command("supervisor-preferences".into()));
+    }
+    let findings: Vec<&olo_protocol::performance::Finding> = st.findings.iter().filter(|f| f.pid == pid).collect();
+    let lowered = st.lowered.iter().find(|l| l.pid == pid);
+    let favoured = st.favoured.as_ref().is_some_and(|(p, _)| *p == pid);
+    if findings.is_empty() && lowered.is_none() && !favoured {
+        ui.put(area, EmptyState::new("Nothing found").detail("The supervisor hasn’t found anything wrong with this process, and hasn’t changed its priority."));
+        return None;
+    }
+    let p = style::palette(ui.ctx());
+    let (text, dim) = (c(p.panel_text), style::disabled_text(&p));
+    let mut y = area.top();
+    // Each paragraph wrapped to the tab, one under the other.
+    let para = |ui: &Ui, y: &mut f32, s: &str, font: egui::FontId, color: egui::Color32, role: egui::accesskit::Role| {
+        let g = ui.painter().layout(s.to_owned(), font, color, area.width());
+        let r = Rect::from_min_size(pos2(area.left(), *y), g.size());
+        style::describe_text(ui.ctx(), role, s, r, None);
+        ui.painter().galley(r.min, g, color);
+        *y = r.bottom();
+    };
+    let heading = egui::accesskit::Role::Heading;
+    let label = egui::accesskit::Role::Label;
+    for f in &findings {
+        let urgent = if f.urgent { ", urgent" } else { "" };
+        para(ui, &mut y, &format!("{} ({:.0}% sure{urgent})", f.kind.title(), f.confidence * 100.0), style::bold_font(), text, heading);
+        para(ui, &mut y, &f.summary, style::plain_font(), text, label);
+        for e in &f.evidence {
+            para(ui, &mut y, &format!("•  {e}"), style::plain_font(), dim, label);
+        }
+        y += m::SPACING * 1.5;
+    }
+    if let Some(l) = lowered {
+        para(ui, &mut y, "Lowered", style::bold_font(), text, heading);
+        para(ui, &mut y, &format!("As {}: nice {} → {}, {} scheduling, {} I/O priority, so the active window’s app and Olo stay quick.", l.why, l.nice_before, l.nice, l.policy, l.io), style::plain_font(), text, label);
+        y += m::SPACING * 1.5;
+    }
+    if favoured {
+        para(ui, &mut y, "Favoured", style::bold_font(), text, heading);
+        para(ui, &mut y, "It has the active window: never lowered while it does.", style::plain_font(), text, label);
+        y += m::SPACING * 1.5;
+    }
+    let mut ask = None;
+    let labels: &[&str] = if findings.is_empty() { &["Performance Preferences…"] } else { &["Ignore This Process", "Performance Preferences…"] };
+    let (rects, _) = widgets::button_flow(ui.ctx(), pos2(area.left(), y), area.width(), labels);
+    for (r, label) in rects.into_iter().zip(labels) {
+        if ui.put(r, Button::new(label)).clicked() {
+            ask = Some(match (*label, findings.first()) {
+                ("Ignore This Process", Some(f)) => Ask::Command(format!("supervisor-ignore:{}", f.name)),
+                _ => Ask::Command("supervisor-preferences".into()),
+            });
+        }
+    }
+    ask
 }

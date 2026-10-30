@@ -357,8 +357,7 @@ impl NoteApp {
 impl NotificationState {
     pub fn path() -> std::path::PathBuf {
         let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
-        let display = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
-        dir.join(format!("olo-notifications-{display}.json"))
+        dir.join(format!("olo-notifications-{}.json", olo_xdg::display_name()))
     }
 
     pub fn load() -> Option<NotificationState> {

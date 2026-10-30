@@ -255,6 +255,8 @@ pub fn socket_path() -> PathBuf {
     }
     let rt = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
     let display = std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-0".into());
+    // (By its name, if given as its socket's full path.)
+    let display = display.rsplit('/').next().unwrap_or_default();
     rt.join(format!("olo-keychain-{display}.sock"))
 }
 

@@ -43,6 +43,7 @@ pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
     ("keyboard", "Keyboard", "keyboard"),
     ("network", "Network", "network-prefs"),
     ("notifications", "Notifications", "notifications"),
+    ("performance", "Performance", "performance"),
     ("power", "Power", "power"),
     ("screensaver", "Screen Saver", "screensaver"),
     ("security", "Security", "security"),
@@ -68,6 +69,8 @@ pub fn our_app(app_id: &str) -> Option<(&'static str, &'static str)> {
             "notifications" => Some(("Notifications", "notifications")),
             // Its windows are the password alerts polkit and the keyring ask for.
             "polkit-agent" => Some(("Authentication", "authentication")),
+            // Its windows are the alerts about stuck processes and memory.
+            "supervisor" => Some(("Performance", "performance")),
             "kit-demo" => Some(("Kit Demo", "application")),
             _ => None,
         })
