@@ -1395,6 +1395,26 @@ as they land (with the commit), add new ones as they come up.
   and Cancel), the stats in the window and the list by last use
   (stopped screens with a history too), and the limits in Preferences ▸
   AI (size and age).
+- **Agent Screens: a revamp, so it doesn't look like an afterthought**
+  (Ben, 2026-10-30): "in the agent screens app the ux is all messed up
+  and the scrollbar in history actions doesn't work properly, also the
+  actions don't seem to update in real time, we should have filters, and
+  the ux just generally needs revamp/polish so that it's not looking like
+  an afterthought".
+  1. *The History list's scroll bar* works as every other list's does
+     (drag the knob, click the track, the wheel, kept in range as the
+     list grows; following the newest action when at the bottom).
+  2. *Live:* a screen's actions appear in History as they happen (and
+     the stats with them), not only when the window is reopened or the
+     screen chosen again.
+  3. *Filters:* by kind (Pointer, Keys, Typing, Menus, Programs, Windows,
+     Reads), by result (failed only), by time, with a search field, as
+     Log Viewer filters; the count of shown and all.
+  4. *A revamp:* the window laid out as a real app, live view, the
+     screens' list, History, Replay and Stats each with its own place,
+     sized and spaced from `metrics`, every state (no screens, a stopped
+     screen, an empty history) designed, checked with `tsession review`
+     at 1×, 1.5× and 2× in light, dark and night.
 - **Other programs feel like Olo's own: every integration point**
   (Ben, 2026-10-29): "is there a way where we can make chrome (and any
   gtk / qt apps) better integrate with olo, e.g. replacing their file
