@@ -1669,6 +1669,9 @@ impl ScrollView {
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
         // Offsets our scroll bars set last frame (State has no setter).
         let offset_id = self.id.with("offset");
+        // How far it could scroll last frame: egui's bounds this frame.
+        let max_id = self.id.with("max-offset");
+        let last_max = ui.ctx().data(|d| d.get_temp::<Vec2>(max_id));
         let mut set = ui.ctx().data_mut(|d| {
             let v = d.get_temp::<Vec2>(pending_id);
             d.remove::<Vec2>(pending_id);
@@ -1687,13 +1690,37 @@ impl ScrollView {
             }
             set = Some(off);
         }
+        // Never past where it could scroll last frame: egui springs back
+        // from beyond its bounds (a rubber band, for touch), and they are
+        // last frame's, so a jump to rows only just added drifted back
+        // again for a second. The rest comes next frame (asked again
+        // below), once egui knows how far it can go.
+        let wanted = set;
+        if let (Some(off), Some(max)) = (set.as_mut(), last_max) {
+            *off = off.min(max).max(Vec2::ZERO);
+        }
         if let Some(off) = set {
             area = area.scroll_offset(off);
         }
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(content).layout(egui::Layout::top_down(Align::Min)));
         child.set_clip_rect(content.intersect(ui.clip_rect()));
         let (state, full, shown) = body(area, &mut child);
-        ui.ctx().data_mut(|d| d.insert_temp(offset_id, shown));
+        let max = (full - content.size()).max(Vec2::ZERO);
+        ui.ctx().data_mut(|d| {
+            d.insert_temp(offset_id, shown);
+            d.insert_temp(max_id, max);
+        });
+        // Held back above (content grown this frame: a row come at the
+        // end of a list, and asked for): the rest next frame.
+        if let (Some(want), Some(got)) = (wanted, set)
+            && want != got
+        {
+            let want = want.min(max);
+            if (want - shown).length() > 0.5 {
+                ui.ctx().data_mut(|d| d.insert_temp(pending_id, want));
+                ui.ctx().request_repaint();
+            }
+        }
         // Scrolled, what's in it is level with what's outside (a list's
         // heading) only at some offsets.
         if shown != Vec2::ZERO {
@@ -2464,8 +2491,10 @@ impl<'a> ColumnListView<'a> {
         let mut content_top = body.top();
         let mut content_left = body.left();
         if let Some(row) = self.reveal {
+            // The context stops at the list's ends: past the last row it
+            // scrolled the list beyond its end.
             let context = ((body.height() / row_h / 2.0).floor() - 1.0).max(0.0);
-            let (top, bottom) = ((row as f32 - context).max(0.0) * row_h, (row as f32 + 1.0 + context) * row_h);
+            let (top, bottom) = ((row as f32 - context).max(0.0) * row_h, (row as f32 + 1.0 + context).min(self.rows.max(row + 1) as f32) * row_h);
             ScrollView::reveal(ui.ctx(), id.with("scroll"), top, bottom);
         }
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body));

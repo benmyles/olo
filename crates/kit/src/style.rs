@@ -1490,3 +1490,16 @@ mod tests {
     }
 }
 
+/// `n` with its thousands separated ("30,001"), for counts people read
+/// (a filter menu's, "30,001 actions").
+pub fn thousands(n: usize) -> String {
+    let s = n.to_string();
+    let mut out = String::new();
+    for (i, ch) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    out
+}

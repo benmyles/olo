@@ -865,18 +865,6 @@ fn pill_width(ui: &Ui, text: &str, bold: bool) -> f32 {
     (g.size().x + m::TEXT_INSET + 15.0 + m::TIGHT).ceil()
 }
 
-/// `n` with thousands separated, for counts in menus.
-fn count_text(n: usize) -> String {
-    let s = n.to_string();
-    let mut out = String::new();
-    for (i, ch) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i) % 3 == 0 {
-            out.push(',');
-        }
-        out.push(ch);
-    }
-    out
-}
 
 impl Widget for FilterBar<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
@@ -924,7 +912,7 @@ impl Widget for FilterBar<'_> {
                     menu = menu.item(v.label.clone(), format!("v:{}", v.value), None).checked(chosen.iter().any(|c| c.eq_ignore_ascii_case(&v.value)));
                     // How many have it, where a shortcut would be.
                     if let Some(n) = v.count {
-                        menu = menu.keys(count_text(n));
+                        menu = menu.keys(style::thousands(n));
                     }
                 }
                 menu::request_popup(&ctx, MenuRequest { menu, source: pid, anchor: MenuAnchor::Below(pill), selected: None });

@@ -116,8 +116,33 @@ pub fn index(name: &str) -> Vec<Segment> {
     segments_in(&history::dir(name)).into_iter().filter_map(|path| Some(Segment { frames: index_segment(&path)?, path })).collect()
 }
 
+/// Screen `name`'s frames as [`index`] has them, reading again only the
+/// segments that changed since `known` had them (a screen running adds to
+/// its newest only).
+pub fn index_known(name: &str, known: &mut std::collections::HashMap<PathBuf, (u64, Vec<Entry>)>) -> Vec<Segment> {
+    let paths = segments_in(&history::dir(name));
+    known.retain(|p, _| paths.contains(p));
+    paths
+        .into_iter()
+        .filter_map(|path| {
+            let len = std::fs::metadata(&path).ok()?.len();
+            let frames = match known.get(&path) {
+                Some((l, frames)) if *l == len => frames.clone(),
+                _ => {
+                    let frames = index_segment(&path)?;
+                    known.insert(path.clone(), (len, frames.clone()));
+                    frames
+                }
+            };
+            Some(Segment { path, frames })
+        })
+        .collect()
+}
+
 fn index_segment(path: &Path) -> Option<Vec<Entry>> {
-    let mut f = std::io::BufReader::new(std::fs::File::open(path).ok()?);
+    let file = std::fs::File::open(path).ok()?;
+    let size = file.metadata().ok()?.len();
+    let mut f = std::io::BufReader::new(file);
     let mut magic = [0u8; 8];
     f.read_exact(&mut magic).ok()?;
     if &magic != MAGIC {
@@ -132,6 +157,10 @@ fn index_segment(path: &Path) -> Option<Vec<Entry>> {
         }
         let len = u32::from_le_bytes(head[0..4].try_into().ok()?) as u64;
         let at = u64::from_le_bytes(head[4..12].try_into().ok()?);
+        // One still being written (the screen is running) waits.
+        if offset + 4 + len > size {
+            break;
+        }
         out.push(Entry { at, key: head[20] == 1, offset });
         offset += 4 + len;
         if f.seek(SeekFrom::Start(offset)).is_err() {

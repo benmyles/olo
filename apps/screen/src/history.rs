@@ -123,6 +123,46 @@ pub fn read(name: &str) -> Vec<Action> {
     std::fs::read_to_string(actions_path(name)).map(|t| t.lines().filter_map(|l| serde_json::from_str(l).ok()).collect()).unwrap_or_default()
 }
 
+/// Reads a screen's history as it grows: what was added since the last
+/// read, or all of it again when the file was cut down (its oldest half
+/// dropped, pruned, cleared) or replaced.
+#[derive(Debug, Default)]
+pub struct Reader {
+    /// The file (its inode) and how far into it was read: up to the end
+    /// of its last whole line.
+    inode: Option<u64>,
+    offset: u64,
+}
+
+impl Reader {
+    /// What is new in screen `name`'s history, and whether it is the
+    /// whole history (start over with it) rather than more of it.
+    pub fn more(&mut self, name: &str) -> (Vec<Action>, bool) {
+        use std::io::{Read, Seek, SeekFrom};
+        use std::os::unix::fs::MetadataExt;
+        let Ok(mut f) = std::fs::File::open(actions_path(name)) else {
+            let reset = self.inode.take().is_some();
+            self.offset = 0;
+            return (Vec::new(), reset);
+        };
+        let Ok(meta) = f.metadata() else { return (Vec::new(), false) };
+        let reset = self.inode != Some(meta.ino()) || meta.len() < self.offset;
+        if reset {
+            self.inode = Some(meta.ino());
+            self.offset = 0;
+        }
+        let mut text = Vec::new();
+        if meta.len() > self.offset && f.seek(SeekFrom::Start(self.offset)).is_ok() {
+            let _ = f.read_to_end(&mut text);
+        }
+        // Only whole lines: one being written is read the next time.
+        let whole = text.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+        self.offset += whole as u64;
+        let actions = String::from_utf8_lossy(&text[..whole]).lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
+        (actions, reset)
+    }
+}
+
 /// Forget screen `name`'s history.
 pub fn clear(name: &str) -> Result<(), String> {
     match std::fs::remove_dir_all(dir(name)) {
@@ -200,7 +240,14 @@ pub fn stats(name: &str, history: &[Action], running: bool, now: u64) -> Stats {
     let mut since: Option<u64> = None;
     let mut last_end: Option<u64> = None;
     for a in history {
-        *s.actions.entry(a.kind.clone()).or_default() += 1;
+        // (A new String only for a kind not seen yet: this runs over long
+        // histories, in the window as they grow.)
+        match s.actions.get_mut(&a.kind) {
+            Some(n) => *n += 1,
+            None => {
+                s.actions.insert(a.kind.clone(), 1);
+            }
+        }
         s.failed += usize::from(a.error.is_some());
         if a.kind == "run"
             && let Some(p) = a.args.first()
@@ -231,6 +278,17 @@ pub fn stats(name: &str, history: &[Action], running: bool, now: u64) -> Stats {
         s.ran_ms += now.saturating_sub(from);
     }
     s
+}
+
+/// The local midnight that began the day of `ms` (since the epoch).
+pub fn midnight(ms: u64) -> u64 {
+    let secs = (ms / 1000) as libc::time_t;
+    // SAFETY: localtime_r and mktime touch only `tm`, which outlives them.
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    unsafe { libc::localtime_r(&secs, &mut tm) };
+    (tm.tm_hour, tm.tm_min, tm.tm_sec) = (0, 0, 0);
+    let t = unsafe { libc::mktime(&mut tm) };
+    (t.max(0) as u64) * 1000
 }
 
 /// `ms` (since the epoch) as the local time of day, to the millisecond.
@@ -273,6 +331,37 @@ mod tests {
         // Still running: up to now.
         let running = stats("agent", &h[..5], true, 700_000);
         assert_eq!(running.ran_ms, 699_000);
+    }
+
+    #[test]
+    fn reads_what_was_added() {
+        let state = std::env::temp_dir().join(format!("olo-screen-history-{}", std::process::id()));
+        // SAFETY: this test alone reads XDG_STATE_HOME in this process.
+        unsafe { std::env::set_var("XDG_STATE_HOME", &state) };
+        let name = "reader-test";
+        let mut r = Reader::default();
+        assert_eq!(r.more(name), (vec![], false));
+        record(name, &act(1, 1, "start", &[], None));
+        record(name, &act(2, 1, "click", &["--name", "Save"], None));
+        let (got, reset) = r.more(name);
+        assert!(reset);
+        assert_eq!(got.len(), 2);
+        assert_eq!(r.more(name), (vec![], false));
+        // A line half written waits for its end.
+        let path = actions_path(name);
+        let line = serde_json::to_string(&act(3, 1, "key", &["Cmd+S"], None)).unwrap();
+        let (head, tail) = line.split_at(10);
+        std::fs::OpenOptions::new().append(true).open(&path).unwrap().write_all(head.as_bytes()).unwrap();
+        assert_eq!(r.more(name), (vec![], false));
+        std::fs::OpenOptions::new().append(true).open(&path).unwrap().write_all(format!("{tail}\n").as_bytes()).unwrap();
+        assert_eq!(r.more(name), (vec![act(3, 1, "key", &["Cmd+S"], None)], false));
+        // Cut down (or replaced): all of it again.
+        std::fs::write(&path, serde_json::to_string(&act(9, 1, "stop", &[], None)).unwrap() + "\n").unwrap();
+        let (got, reset) = r.more(name);
+        assert!(reset && got.len() == 1 && got[0].kind == "stop");
+        clear(name).unwrap();
+        assert_eq!(r.more(name), (vec![], true));
+        let _ = std::fs::remove_dir_all(&state);
     }
 
     #[test]

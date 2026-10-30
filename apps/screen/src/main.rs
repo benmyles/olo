@@ -10,6 +10,7 @@ mod history;
 mod record;
 mod replay;
 mod screens;
+mod stats;
 mod viewer;
 
 use std::{path::PathBuf, time::Duration};

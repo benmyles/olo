@@ -686,7 +686,12 @@ edged with the selection's hairline; `show(ui).clicked` is the cell clicked, by 
 `ScrollView` (`show`, `show_rows` for virtualised content, `show_in(ui,
 rect, |ui, viewport|)` for content you lay out yourself, `reveal`
 (asked for before the view shows, it shows there that frame; from
-within its content, the next), `ScrollView::scroll_to(ctx, id, offset)`, `.auto_hide(true)` to drop the
+within its content, the next), `ScrollView::scroll_to(ctx, id, offset)`
+(an offset set from code, by these or the bars, never goes past where
+the view could scroll last frame: egui's bounds lag a frame and it
+springs back from beyond them, a rubber band whose leftover speed
+drifted a list up from rows just added; the rest is set the next frame,
+once egui knows the new size), `.auto_hide(true)` to drop the
 bar when content fits; a drag held within 24 px of an edge scrolls it on; `SCROLL_BAR` is its width;
 `ScrollView::edge_scroll(ctx, past)` is how far to scroll this frame for a selection dragged `past` a
 view's edge, faster the further out, the same at any frame rate), `ScrollBar`
@@ -699,7 +704,9 @@ multi-select, context clicks; columns wider together than the view
 scroll sideways, the header with them in the same frame (the rows are
 drawn first, the header at their offset), else the last column fills
 what is left; `.reveal(row)` scrolls a row selected in code
-into view; `.draggable()` reports `ListResponse::drag_started` and the
+into view, with a few rows round it but never past the list's ends
+(call it when the row is new to the selection, not every frame, or the
+list can't be scrolled away from it); `.draggable()` reports `ListResponse::drag_started` and the
 rows on screen, `visible` / `row_at(pos)`, for drop targets; in a
 multi-select list, dragging from below the rows, or from a row's other
 columns when it isn't selected, draws a selection band, as in Tracker's
@@ -1103,7 +1110,8 @@ see vendor/README.md).
    path, a name the person typed) goes through `style::label_fit(…,
    max_width)` instead, which ends it with "…" rather than clipping a
    letter in half or running into its neighbour (agents still read the
-   whole text). Fonts: `style::plain_font()`, `style::bold_font()`,
+   whole text). Counts people read have their thousands separated,
+   `style::thousands(n)` ("30,001 actions"). Fonts: `style::plain_font()`, `style::bold_font()`,
    `style::italic_font()`, `style::mono_font(size)`. The faces are Noto,
    shipped with Olo in `data/fonts` (see its README: Noto Sans and Noto
    Sans Mono, variable, with Symbols, Symbols 2 and Math for what they
@@ -4690,13 +4698,31 @@ segments (`frames-START.olof`; the format is in the module's comment),
 the oldest dropped past 512 MB. `record::index` reads the records'
 heads, `frame_at` builds the screen as it was at a time from its
 keyframe; `history NAME --look N [OUT.png]` writes it as it was when
-action N ended. In the window, History (beside Live, over the chosen
-screen; `replay.rs`) lists its actions (the search narrows them), shows
-the screen as it was at the one chosen or wherever the scrubber is, and
-plays it back in time with them (Play/Pause, 1× to 8×, ◀ ▶ action by
-action; stretches of more than 3 s with nothing in them skipped), each
-click a ring where it went and each key or text a caption under the
-picture. Frames are built on a worker, the latest asked for winning.
+action N ended. In the window, History (a tab beside Live and Stats;
+`replay.rs`) lists its actions as they come: a worker follows the
+history's folder (`olo_kit::watch`) and reads only what was added
+(`history::Reader`, from where it last read to the end of its last
+whole line; all again when the file was cut down or replaced) and the
+frames' segments that changed (`record::index_known`; records still
+being written wait), at most four times a second and the frames alone
+once a second, with each action's search text made there. A search and
+the kit's filter menus narrow the list (`kind:` Pointer, Keys and
+Typing, Menus and Choices, Windows, Programs, Start and Stop, or a
+command's own name; `result:failed|ok`; `since:5m|1h|today`), picked
+within 2 ms a frame however long the history (`go_on_picking`), the
+count of shown and all at the right. It shows the screen as it was at
+the action chosen or wherever the scrubber is (in a sunken well,
+`picture_well`), what the action was and what came of it under it
+(what it matched, the program's pid, the window in front after, or why
+it failed), and plays it back in time with them (Play/Pause, 1× to 8×,
+◀ ▶ action by action among those shown; stretches of more than 3 s with
+nothing in them skipped), each click a ring where it went and the
+newest key or text a caption under the picture. At the newest action it
+follows the screen (Live, or Latest for a stopped one, pushed while it
+does): each new action is chosen as it comes and brought into view
+once, so the list scrolls freely otherwise, and rings and captions fade
+on the clock. Narrow, the scrubber goes over the buttons. Frames are
+built on a worker, the latest asked for winning.
 `history NAME --export OUT.mp4` (`export.rs`) makes it a video in
 process: the frames at 10 a second (`record::Player`, each record
 applied once in order), H.264 from OpenH264, in an MP4 of our own
@@ -4707,10 +4733,20 @@ with nothing happening", `ab_glyph`); `progress` gets how far it is and
 can stop it. Olo's Viewer plays the result. In the window, History's
 Export Video… asks where (the kit's Save panel, `NAME.mp4` in ~/Videos)
 and exports on a worker, the bar saying how far it is with Cancel, then
-where it went (`Replay::start_export`). The list has every screen
-running and every one stopped with a history kept, by last use
-(`viewer::rows`, read on a worker; a stopped one says when, and has only
-its History), and History's second line sums it (`history::stats`).
+an alert with Open in Tracker (`Replay::start_export`). The sidebar (the
+kit's `Sidebar`) has every screen running and every one stopped with a
+history kept, under Running and Stopped, by last use (`viewer::rows`,
+read on a worker; the chosen one's as it acts), each with how long ago,
+and New Screen under them. The chosen screen's header names it and says
+how it is (running and its size, up for how long, its actions, the
+last how long ago), with Export Video… and Stop Screen… (Clear
+History… for a stopped one). Stats (`stats.rs`) are the kit's dashboard
+cards: its use (started, last used, ran for, in use), its actions by
+kind with bars and how many failed, actions a minute over the last hour
+of use, and the programs run on it (`history::stats`, worked out again
+as the history grows or once a second while it runs). View ▸ Live,
+History, Stats (⌘1–3), Find (⌘F), and Playback's Play, Previous and
+Next Action and Go Live drive it from the menus.
 How much is kept, and how long, is Preferences ▸ AI's Agent Screens
 (`AiSettings::screen_history_mb`, `screen_history_days`; 512 MB a screen
 for a month): `history::limits` asks the person's app_server, else the
@@ -4747,10 +4783,11 @@ requests; `resize` and `place` are `Request::Place` (a frame, as
 file, and `--crop` cuts an RGBA picture down in process (png crate).
 
 The person's side is the window (`olo-screen`, or `olo-screen
-watch NAME`): the screens in a list and the chosen one live beside it,
-about eight frames a second with the agent's pointer drawn in (a worker
-asks for `format: "rgba"` pictures and reads them back; the window never
-waits on a screen). Take Control (⌘K) steps in: the person's pointer,
+watch NAME`): the screens in a sidebar and the chosen one's Live tab,
+about eight frames a second with the agent's pointer drawn in and its
+latest action under it (a worker asks for `format: "rgba"` pictures and
+reads them back, only while Live shows; the window never waits on a
+screen). Take Control (⌘K) steps in: the person's pointer,
 wheel and keys over the picture go to that screen through another worker
 (keys by their evdev codes, Ctrl, Shift and Alt pressed and let go as
 each key event says), with a ring in the keyboard-navigation colour

@@ -1395,8 +1395,8 @@ as they land (with the commit), add new ones as they come up.
   and Cancel), the stats in the window and the list by last use
   (stopped screens with a history too), and the limits in Preferences ▸
   AI (size and age).
-- **Agent Screens: a revamp, so it doesn't look like an afterthought**
-  (Ben, 2026-10-30): "in the agent screens app the ux is all messed up
+- ~~**Agent Screens: a revamp, so it doesn't look like an afterthought**~~
+  (Ben, 2026-10-30; done: HACKING, "Agent Screens"): "in the agent screens app the ux is all messed up
   and the scrollbar in history actions doesn't work properly, also the
   actions don't seem to update in real time, we should have filters, and
   the ux just generally needs revamp/polish so that it's not looking like
@@ -1415,6 +1415,16 @@ as they land (with the commit), add new ones as they come up.
      sized and spaced from `metrics`, every state (no screens, a stopped
      screen, an empty history) designed, checked with `tsession review`
      at 1×, 1.5× and 2× in light, dark and night.
+  Done: the scroll bar was pinned because the list was asked every frame
+  to reveal the playhead's row, its context reaching past the list's
+  end (the kit's `ColumnListView::reveal` now stops at the ends, and
+  History reveals a row only when it is new); a reveal or scroll to rows
+  just added drifted back, egui springing back from beyond last frame's
+  bounds (the kit's `ScrollView` now goes there over two frames). The
+  history is followed as it is written (`history::Reader`,
+  `record::index_known`), with filters (kind, result, time, search;
+  picked within 2 ms a frame), a sidebar of running and stopped screens,
+  a header, Live, History and Stats tabs, and a detail of each action.
 - **Other programs feel like Olo's own: every integration point**
   (Ben, 2026-10-29): "is there a way where we can make chrome (and any
   gtk / qt apps) better integrate with olo, e.g. replacing their file

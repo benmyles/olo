@@ -1,15 +1,19 @@
-//! Agent Screens, the window: the agents' screens in a list, the chosen
-//! one live beside it (about eight frames a second, with the agent's
-//! pointer), and Take Control to step in: the person's pointer and keys
-//! over the picture then go to that screen (never to their own), until
-//! they choose Stop Controlling.
+//! Agent Screens, the window: the agents' screens in a sidebar (running,
+//! then stopped ones with a history kept), and the one chosen under a
+//! header saying what it is and how it's doing, in three tabs: Live (the
+//! screen as it is, about eight frames a second with the agent's pointer,
+//! and Take Control to step in: the person's pointer and keys over the
+//! picture then go to that screen, never to their own, until they choose
+//! Stop Controlling), History (`replay`: its actions as they come, to
+//! search, filter and play back) and Stats (`stats`).
 //!
 //! Frames come from a worker (the screen's app_server writes raw pixels,
-//! read back here), and input goes out through another, so the window
-//! never waits on a screen.
+//! read back here), input goes out through another and the history is
+//! followed by a third, so the window never waits on a screen or a disk.
 
 use std::{
     collections::HashMap,
+    path::PathBuf,
     sync::{
         Arc, Mutex,
         mpsc::{Receiver, Sender, channel},
@@ -17,20 +21,29 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_kit::egui::{self, Align, Color32, ColorImage, Key, Pos2, Rect, TextureHandle, TextureOptions, Ui, pos2, vec2};
+use olo_kit::egui::{self, Align, ColorImage, FontId, Key, Pos2, Rect, TextureHandle, TextureOptions, Ui, pos2, vec2};
 use serde::{Deserialize, Serialize};
 use olo_kit::{
-    App, Cx, Menu, Proxy, WindowId, WindowOptions,
-    metrics as m, style,
-    widgets::{self, Button, Cell, Column, ColumnListView, ListState},
+    App, Cx, Menu, Proxy, WindowId, WindowOptions, icons,
+    metrics as m,
+    sidebar::{self, Sidebar},
+    style::{self, c},
+    widgets::{self, Button, EmptyState, ScrollView, TabView},
 };
 use olo_protocol::{ImageFormat, SyntheticEvent};
 
-use crate::screens::{self, Screen};
+use crate::{
+    replay::{self, Replay},
+    screens::{self, Screen},
+    stats,
+};
 
 /// Frames a second, at most.
 const FPS: f64 = 8.0;
-const LIST_W: f32 = 180.0;
+/// The sidebar's width, less in a small window.
+const SIDEBAR_W: f32 = 196.0;
+const SIDEBAR_MIN_W: f32 = 160.0;
+const HEADER_H: f32 = 40.0;
 
 enum Msg {
     Screens(Vec<Screen>),
@@ -41,28 +54,54 @@ enum Msg {
     Failed { name: String, message: String },
     Started(Result<Screen, String>),
     Stopped(Result<(), String>),
+    Cleared(Result<(), String>),
+}
+
+/// The chosen screen's tabs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+enum Tab {
+    #[default]
+    Live,
+    History,
+    Stats,
+}
+
+impl Tab {
+    fn label(self) -> &'static str {
+        match self {
+            Tab::Live => "Live",
+            Tab::History => "History",
+            Tab::Stats => "Stats",
+        }
+    }
 }
 
 #[derive(Default, Serialize, Deserialize)]
 struct Saved {
     selected: Option<String>,
+    #[serde(default)]
+    tab: Tab,
 }
 
 enum Win {
     Main,
-    /// The screen's name, and the question.
+    /// What to do once asked: stop the screen, or clear its history; the
+    /// screen's name, and the question.
     ConfirmStop(String, String),
+    ConfirmClear(String, String),
     Alert(String),
     /// Where to save a screen's history as a video.
     ExportTo(Box<olo_kit::file_panel::FilePanel>),
+    /// A video saved there, to show.
+    Exported(PathBuf, String),
 }
 
 pub struct Viewer {
     windows: HashMap<WindowId, Win>,
     main: Option<WindowId>,
     screens: Vec<Screen>,
-    list: ListState,
     selected: Option<String>,
+    tab: Tab,
     /// Which screen the frame worker shows (shared with it).
     watching: Arc<Mutex<Option<String>>>,
     texture: Option<(String, TextureHandle)>,
@@ -74,10 +113,8 @@ pub struct Viewer {
     held: [bool; 3],
     input: Sender<(Screen, Vec<SyntheticEvent>)>,
     busy: bool,
-    /// Showing the chosen screen's history rather than the screen live,
-    /// and that history.
-    history: bool,
-    replay: Option<crate::replay::Replay>,
+    /// The chosen screen's history, followed as it grows.
+    replay: Option<Replay>,
     rows: Vec<Row>,
 }
 
@@ -106,14 +143,14 @@ fn rows(running: &[Screen]) -> Vec<Row> {
     rows
 }
 
-/// "3 h ago".
-fn ago(ms: u64, now: u64) -> String {
+/// How long ago, as a sidebar says it: "now", "5 min", "3 h", "2 d".
+fn ago_short(ms: u64, now: u64) -> String {
     let s = now.saturating_sub(ms) / 1000;
     match s {
-        0..60 => "just now".into(),
-        60..3600 => format!("{} min ago", s / 60),
-        3600..86_400 => format!("{} h ago", s / 3600),
-        _ => format!("{} days ago", s / 86_400),
+        0..60 => "now".into(),
+        60..3600 => format!("{} min", s / 60),
+        3600..86_400 => format!("{} h", s / 3600),
+        _ => format!("{} d", s / 86_400),
     }
 }
 
@@ -302,8 +339,8 @@ impl Viewer {
             windows: HashMap::new(),
             main: None,
             screens: listed(),
-            list: ListState::default(),
             selected: saved.selected,
+            tab: saved.tab,
             watching,
             texture: None,
             frame: None,
@@ -312,7 +349,6 @@ impl Viewer {
             held: [false; 3],
             input: send_input(),
             busy: false,
-            history: false,
             replay: None,
             rows: Vec::new(),
         };
@@ -329,7 +365,7 @@ impl Viewer {
             cx.activate(id);
             return;
         }
-        let id = cx.open_window(WindowOptions::new("Agent Screens", 980, 600).min_size(560, 360));
+        let id = cx.open_window(WindowOptions::new("Agent Screens", 1000, 640).min_size(660, 420));
         self.windows.insert(id, Win::Main);
         self.main = Some(id);
     }
@@ -338,6 +374,7 @@ impl Viewer {
     pub fn show(&mut self, cx: &mut Cx, name: Option<String>) {
         if let Some(name) = name {
             self.select(Some(name));
+            self.set_tab(Tab::Live);
         }
         self.open_main(cx);
     }
@@ -355,14 +392,33 @@ impl Viewer {
         }
     }
 
+    /// Point the frame worker at the chosen screen while its Live tab
+    /// shows (it pulls nothing otherwise).
     fn watch(&self) {
-        *self.watching.lock().unwrap_or_else(|e| e.into_inner()) = self.selected.clone();
+        let live = (self.shown_tab() == Tab::Live).then(|| self.selected.clone()).flatten();
+        let mut watching = self.watching.lock().unwrap_or_else(|e| e.into_inner());
+        if *watching != live {
+            *watching = live;
+        }
     }
 
     fn redraw(&self, cx: &mut Cx) {
         if let Some(id) = self.main {
             cx.redraw(id);
         }
+    }
+
+    /// The tab showing: Live only for a running screen.
+    fn shown_tab(&self) -> Tab {
+        if self.tab == Tab::Live && self.screen().is_none() { Tab::History } else { self.tab }
+    }
+
+    fn set_tab(&mut self, tab: Tab) {
+        if tab != Tab::Live {
+            self.stop_controlling();
+        }
+        self.tab = tab;
+        self.watch();
     }
 
     fn stop_controlling(&mut self) {
@@ -400,95 +456,227 @@ impl Viewer {
         self.redraw(cx);
     }
 
+    fn ask_stop(&mut self, cx: &mut Cx) {
+        if let Some(name) = self.screen().map(|s| s.name.clone()) {
+            let message = format!("Stop the screen “{name}”? The agent’s programs on it are closed, and anything it hasn’t saved is lost. Its history is kept.");
+            let id = cx.open_window(WindowOptions::alert("Stop Screen", &message).parent_opt(self.main));
+            self.windows.insert(id, Win::ConfirmStop(name, message));
+        }
+    }
+
+    fn ask_clear(&mut self, cx: &mut Cx) {
+        if let Some(name) = self.selected.clone().filter(|_| self.screen().is_none()) {
+            let message = format!("Clear the history of “{name}”? Its actions and the frames kept with them are deleted. This can’t be undone.");
+            let id = cx.open_window(WindowOptions::alert("Clear History", &message).parent_opt(self.main));
+            self.windows.insert(id, Win::ConfirmClear(name, message));
+        }
+    }
+
+    fn ask_export(&mut self, cx: &mut Cx) {
+        let Some(name) = self.replay.as_ref().filter(|r| r.loaded() && !r.exporting() && !r.actions().is_empty()).map(|r| r.name.clone()) else { return };
+        let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+        let dir = [home.join("Videos"), home.clone()].into_iter().find(|d| d.is_dir()).unwrap_or(home);
+        let panel = olo_kit::file_panel::FilePanel::save(dir, format!("{name}.mp4"));
+        let (w, h) = olo_kit::file_panel::PANEL_SIZE;
+        let id = cx.open_window(WindowOptions::new("Export Video", w, h).min_size(420, 300).parent_opt(self.main));
+        self.windows.insert(id, Win::ExportTo(Box::new(panel)));
+    }
+
     fn main_ui(&mut self, cx: &mut Cx, ui: &mut Ui) {
-        let p = style::palette(ui.ctx());
-        let c = style::c;
-        let full = ui.max_rect().shrink(m::WINDOW_INSET);
+        // The person's input, for a screen they control, before the tabs
+        // take theirs (⌃Tab goes to the screen then).
+        let events = if self.controlling { ui.input(|i| i.events.clone()) } else { Vec::new() };
+        let full = ui.max_rect();
         if self.rows.is_empty() {
-            let text = "No agent screens. An agent starts one with “olo-screen start”, or choose New Screen.";
-            style::label(ui.painter(), full.center().x, full.center().y - m::CONTROL_HEIGHT, Align::Center, text, style::plain_font(), c(p.panel_text));
-            let r = Rect::from_center_size(pos2(full.center().x, full.center().y + m::SPACING), vec2(120.0, m::CONTROL_HEIGHT));
+            let area = full.shrink(m::WINDOW_INSET);
+            let text = "No agent screens yet. An agent starts one with “olo-screen start”, or start one yourself.";
+            let r = Rect::from_min_max(area.min, pos2(area.right(), area.center().y + m::CONTROL_HEIGHT));
+            ui.put(r, EmptyState::new(text).icon("agent-screens"));
+            let b = Rect::from_min_size(pos2(area.center().x - 60.0, r.bottom() + m::SPACING), vec2(120.0, m::CONTROL_HEIGHT));
             let label = if self.busy { "Starting…" } else { "New Screen" };
-            if ui.add_enabled_ui(!self.busy, |ui| ui.put(r, Button::new(label))).inner.clicked() {
+            if ui.add_enabled_ui(!self.busy, |ui| ui.put(b, Button::new(label).min_width(120.0))).inner.clicked() {
                 self.new_screen(cx);
             }
             return;
         }
-
-        // The screens, then the chosen one.
-        let list_r = Rect::from_min_size(full.min, vec2(LIST_W, full.height()));
-        let columns = [Column::new("Screen", LIST_W - 2.0)];
-        let names: Vec<String> = self.rows.iter().map(|r| r.name.clone()).collect();
-        let now = crate::history::now_ms();
-        let sizes: Vec<String> = self
-            .rows
-            .iter()
-            .map(|r| match self.screens.iter().find(|s| s.name == r.name) {
-                Some(s) => format!("{} × {}", s.width, s.height),
-                None => format!("stopped · {}", r.last_used.map_or_else(|| "never used".to_owned(), |t| ago(t, now))),
-            })
-            .collect();
-        self.list.selected = self.selected.as_ref().and_then(|n| names.iter().position(|x| x == n)).into_iter().collect();
-        let out = ui
-            .scope_builder(egui::UiBuilder::new().max_rect(list_r), |ui| {
-                ColumnListView::new("screens-list", &columns, names.len(), &mut self.list).show(ui, |cell: &Cell| {
-                    let job = {
-                        let mut job = egui::text::LayoutJob::default();
-                        let p = style::palette(cell.painter.ctx());
-                        job.append(&names[cell.row], 0.0, egui::TextFormat::simple(style::plain_font(), cell.text_color));
-                        let dim = if cell.selected { cell.text_color } else { c(olo_theme::mix(p.list_item_text, p.list_background, 0.45)) };
-                        job.append(&format!("  {}", sizes[cell.row]), 0.0, egui::TextFormat::simple(style::plain_font(), dim));
-                        job
-                    };
-                    cell.text_job(job);
-                })
-            })
-            .inner;
-        if out.selection_changed {
-            let name = self.list.single().and_then(|i| names.get(i)).cloned();
-            self.select(name);
-        }
-
-        let right = Rect::from_min_max(pos2(list_r.right() + m::SPACING, full.top()), full.max);
-        // Live or its history.
+        let side_w = (full.width() * 0.2).round().clamp(SIDEBAR_MIN_W, SIDEBAR_W);
+        let side = Rect::from_min_size(full.min, vec2(side_w, full.height()));
+        self.sidebar_ui(cx, ui, side);
+        let content = Rect::from_min_max(pos2(side.right(), full.top()), full.max).shrink(m::WINDOW_INSET);
         let Some(name) = self.selected.clone() else { return };
-        let tabs = Rect::from_min_size(right.min, vec2(160.0, m::CONTROL_HEIGHT));
-        let (live_r, hist_r) = (Rect::from_min_size(tabs.min, vec2(80.0, tabs.height())), Rect::from_min_size(pos2(tabs.left() + 80.0, tabs.top()), vec2(80.0, tabs.height())));
+        if self.replay.as_ref().is_none_or(|r| r.name != name) {
+            self.replay = Some(Replay::new(&name, cx.proxy()));
+        }
+        let header = Rect::from_min_size(content.min, vec2(content.width(), HEADER_H));
+        self.header_ui(cx, ui, header, &name);
+        let below = Rect::from_min_max(pos2(content.left(), header.bottom() + m::SPACING), content.max);
         let running = self.screen().is_some();
-        if ui.add_enabled_ui(running, |ui| ui.put(live_r, Button::new("Live").pushed(!self.history).min_width(80.0))).inner.clicked() {
-            self.history = false;
-        }
-        if !running {
-            self.history = true;
-        }
-        if ui.put(hist_r, Button::new("History").pushed(self.history).min_width(80.0)).clicked() && !self.history {
-            self.history = true;
-            self.stop_controlling();
-        }
-        let right = Rect::from_min_max(pos2(right.left(), tabs.bottom() + m::SPACING), right.max);
-        if self.history {
-            if self.replay.as_ref().is_none_or(|r| r.name != name) {
-                self.replay = Some(crate::replay::Replay::new(&name, cx.proxy()));
-            }
-            let mut ask = None;
-            if let Some(r) = self.replay.as_mut() {
-                r.ui(ui, right);
-                if std::mem::take(&mut r.want_export) {
-                    ask = Some(r.name.clone());
+        let tabs: &[Tab] = if running { &[Tab::Live, Tab::History, Tab::Stats] } else { &[Tab::History, Tab::Stats] };
+        let labels: Vec<&str> = tabs.iter().map(|t| t.label()).collect();
+        let shown = self.shown_tab();
+        let mut i = tabs.iter().position(|t| *t == shown).unwrap_or(0);
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(below));
+        TabView::new(&mut i, &labels).show(&mut child, |ui, i| {
+            let area = ui.max_rect();
+            match tabs[i] {
+                Tab::Live => self.live_ui(ui, area, &events),
+                Tab::History => {
+                    if let Some(r) = self.replay.as_mut() {
+                        r.ui(ui, area, running);
+                    }
+                }
+                Tab::Stats => {
+                    if let Some(r) = self.replay.as_mut() {
+                        stats::ui(ui, area, r, running);
+                    }
                 }
             }
-            if let Some(name) = ask {
-                let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-                let dir = [home.join("Videos"), home.clone()].into_iter().find(|d| d.is_dir()).unwrap_or(home);
-                let panel = olo_kit::file_panel::FilePanel::save(dir, format!("{name}.mp4"));
-                let (w, h) = olo_kit::file_panel::PANEL_SIZE;
-                let id = cx.open_window(WindowOptions::new("Export Video", w, h).min_size(420, 300));
-                self.windows.insert(id, Win::ExportTo(Box::new(panel)));
-            }
-            return;
+        });
+        if tabs[i] != shown {
+            self.set_tab(tabs[i]);
         }
-        let status_r = Rect::from_min_max(pos2(right.left(), right.bottom() - m::CONTROL_HEIGHT), right.max);
-        let area = Rect::from_min_max(right.min, pos2(right.right(), status_r.top() - m::SPACING));
+        if let Some(r) = self.replay.as_mut()
+            && let Some(result) = r.take_exported()
+        {
+            match result {
+                Ok(path) => {
+                    let message = format!("The video “{}” is saved.", path.file_name().and_then(|n| n.to_str()).unwrap_or(""));
+                    let id = cx.open_window(WindowOptions::alert("Export Video", &message).parent_opt(self.main));
+                    self.windows.insert(id, Win::Exported(path, message));
+                }
+                Err(e) if e == "cancelled" => {}
+                Err(e) => self.alert(cx, &format!("The video couldn’t be made: {e}")),
+            }
+        }
+        // "2 s ago" moves on.
+        if running {
+            ui.ctx().request_repaint_after(Duration::from_secs(1));
+        }
+    }
+
+    /// The screens: running, then stopped ones with a history; New Screen
+    /// under them.
+    fn sidebar_ui(&mut self, cx: &mut Cx, ui: &mut Ui, side: Rect) {
+        let p = style::palette(ui.ctx());
+        let now = crate::history::now_ms();
+        let footer_h = m::CONTROL_HEIGHT + 2.0 * m::SPACING;
+        let list = Rect::from_min_max(side.min, pos2(side.right(), side.bottom() - footer_h));
+        let footer = Rect::from_min_max(pos2(side.left(), list.bottom()), side.max);
+        // The chosen one's last use as it happens; the others' as listed.
+        let latest = self.replay.as_ref().and_then(|r| r.actions().last().map(|a| (r.name.clone(), a.at + a.ms)));
+        let last_used = |r: &Row| match &latest {
+            Some((n, t)) if *n == r.name => Some(*t),
+            _ => r.last_used,
+        };
+        let running = |n: &str| self.screens.iter().any(|s| s.name == n);
+        let groups: [(&str, Vec<&Row>); 2] =
+            [("Running", self.rows.iter().filter(|r| running(&r.name)).collect()), ("Stopped", self.rows.iter().filter(|r| !running(&r.name)).collect())];
+        let values: Vec<Vec<String>> = groups.iter().map(|(_, rs)| rs.iter().map(|r| last_used(r).map(|t| ago_short(t, now)).unwrap_or_default()).collect()).collect();
+        let mut items = Vec::new();
+        let mut names: Vec<Option<&str>> = Vec::new();
+        for ((heading, rs), values) in groups.iter().zip(&values) {
+            if rs.is_empty() {
+                continue;
+            }
+            items.push(sidebar::Row::heading(heading));
+            names.push(None);
+            for (r, v) in rs.iter().zip(values) {
+                let row = sidebar::Row::new("agent-screens", &r.name);
+                items.push(if v.is_empty() { row } else { row.value(v) });
+                names.push(Some(&r.name));
+            }
+        }
+        let first = names.iter().position(Option::is_some).unwrap_or(0);
+        let mut chosen = names.iter().position(|n| *n == self.selected.as_deref()).unwrap_or(first);
+        let before = chosen;
+        let height = sidebar::height(&items);
+        if height <= list.height() {
+            Sidebar::new("screens", &items, &mut chosen).show(ui, list);
+        } else {
+            ui.painter().rect_filled(list, 0.0, style::shade(&p, p.panel_background, 1.04));
+            ScrollView::new("screens-scroll").border(false).show_in(ui, list, |ui, _| {
+                let r = Rect::from_min_size(ui.max_rect().min, vec2(ui.max_rect().width(), height));
+                Sidebar::new("screens", &items, &mut chosen).show(ui, r);
+                ui.allocate_rect(r, egui::Sense::hover());
+            });
+        }
+        let picked = (chosen != before).then(|| names.get(chosen).copied().flatten().map(str::to_owned)).flatten();
+        // New Screen, on the sidebar's ground.
+        let painter = ui.painter();
+        painter.rect_filled(footer, 0.0, style::shade(&p, p.panel_background, 1.04));
+        style::vline_left_of(painter, footer.right(), footer.top(), footer.bottom(), style::shade(&p, p.panel_background, 1.25));
+        style::hline(painter, footer.left(), footer.right() - 1.0, footer.top(), style::shade(&p, p.panel_background, 1.18));
+        let b = Rect::from_min_size(pos2(footer.left() + m::WINDOW_INSET, footer.top() + m::SPACING), vec2(footer.width() - 2.0 * m::WINDOW_INSET, m::CONTROL_HEIGHT));
+        let label = if self.busy { "Starting…" } else { "New Screen" };
+        if ui.add_enabled_ui(!self.busy, |ui| ui.put(b, Button::new(label))).inner.clicked() {
+            self.new_screen(cx);
+        }
+        if let Some(name) = picked {
+            self.select(Some(name));
+        }
+    }
+
+    /// The chosen screen's name, how it's doing, and what can be done
+    /// with it.
+    fn header_ui(&mut self, cx: &mut Cx, ui: &mut Ui, r: Rect, name: &str) {
+        let p = style::palette(ui.ctx());
+        let now = crate::history::now_ms();
+        let screen = self.screen().cloned();
+        let icon = style::snap(ui.ctx(), Rect::from_min_size(pos2(r.left(), r.center().y - 16.0), vec2(32.0, 32.0)));
+        icons::paint(ui.painter(), icon, "agent-screens");
+        // The buttons, from the right.
+        let mut right = r.right();
+        let mut button = |ui: &mut Ui, label: &str, enabled: bool| {
+            let w = style::label_width(ui.ctx(), label, style::plain_font()).ceil() + 2.0 * m::CONTROL_PAD;
+            let w = w.max(96.0);
+            let b = Rect::from_min_size(pos2(right - w, r.center().y - m::CONTROL_HEIGHT / 2.0), vec2(w, m::CONTROL_HEIGHT));
+            right = b.left() - m::SPACING;
+            ui.add_enabled_ui(enabled, |ui| ui.put(b, Button::new(label).min_width(w))).inner.clicked()
+        };
+        let can_export = self.replay.as_ref().is_some_and(|r| r.loaded() && !r.exporting() && !r.actions().is_empty());
+        if screen.is_some() {
+            if button(ui, "Stop Screen…", true) {
+                self.ask_stop(cx);
+            }
+        } else if button(ui, "Clear History…", true) {
+            self.ask_clear(cx);
+        }
+        if button(ui, "Export Video…", can_export) {
+            self.ask_export(cx);
+        }
+        // The name, and a line on how it is.
+        let x = icon.right() + m::SPACING;
+        let w = (right - m::SPACING - x).max(0.0);
+        let title = FontId::new(15.0, style::bold());
+        style::label_fit(ui.painter(), x, r.top() + 11.0, Align::Min, name, title, c(p.panel_text), w);
+        let actions = self.replay.as_ref().map(|r| r.actions()).unwrap_or_default();
+        let mut parts = Vec::new();
+        let dot = if let Some(s) = &screen {
+            parts.push("Running".to_owned());
+            parts.push(format!("{} × {}", s.width, s.height));
+            if let Some(t) = self.replay.as_ref().and_then(Replay::started) {
+                parts.push(format!("up {}", stats::span(now.saturating_sub(t))));
+            }
+            c(p.success)
+        } else {
+            parts.push("Stopped".to_owned());
+            style::disabled_text(&p)
+        };
+        if !actions.is_empty() {
+            parts.push(format!("{} action{}", style::thousands(actions.len()), if actions.len() == 1 { "" } else { "s" }));
+        }
+        if let Some(t) = actions.last().map(|a| a.at + a.ms) {
+            parts.push(format!("last {}", stats::ago(t, now)));
+        }
+        let line_y = r.top() + 29.0;
+        let d = style::snap_centred(ui.ctx(), pos2(x + 4.0, line_y), vec2(8.0, 8.0));
+        ui.painter().circle_filled(d.center(), 4.0, dot);
+        style::label_fit(ui.painter(), x + 14.0, line_y, Align::Min, &parts.join("  ·  "), style::plain_font(), style::disabled_text(&p), (w - 14.0).max(0.0));
+    }
+
+    /// The screen as it is now, and Take Control.
+    fn live_ui(&mut self, ui: &mut Ui, area: Rect, events: &[egui::Event]) {
+        let p = style::palette(ui.ctx());
         let Some(screen) = self.screen().cloned() else { return };
         if let Some((name, image)) = self.frame.take() {
             match &mut self.texture {
@@ -496,39 +684,28 @@ impl Viewer {
                 _ => self.texture = Some((name.clone(), ui.ctx().load_texture(format!("screen-{name}"), image, TextureOptions::LINEAR))),
             }
         }
-
-        // The picture, fitted, in a sunken frame.
-        let aspect = screen.width as f32 / screen.height as f32;
-        let (w, h) = if area.width() / area.height() > aspect { (area.height() * aspect, area.height()) } else { (area.width(), area.width() / aspect) };
-        let pic = Rect::from_center_size(area.center(), vec2(w, h)).shrink(1.0);
-        let painter = ui.painter();
-        painter.rect_filled(pic.expand(1.0), 0.0, c(p.control_border));
-        match &self.texture {
-            Some((name, tex)) if *name == screen.name => {
-                painter.image(tex.id(), pic, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
-            }
-            _ => {
-                painter.rect_filled(pic, 0.0, c(p.document_background));
-                let text = self.failure.as_deref().unwrap_or("Connecting…");
-                style::label(painter, pic.center().x, pic.center().y, Align::Center, text, style::plain_font(), c(p.panel_text));
-            }
-        }
+        let bar = Rect::from_min_max(pos2(area.left(), area.bottom() - m::CONTROL_HEIGHT), area.max);
+        let well = Rect::from_min_max(area.min, pos2(area.right(), bar.top() - m::SPACING));
+        let tex = self.texture.as_ref().filter(|(n, _)| *n == screen.name).map(|(_, t)| t);
+        let text = match tex {
+            Some(_) => None,
+            None => Some(self.failure.as_deref().unwrap_or("Connecting…")),
+        };
+        let pic = replay::picture_well(ui, well, Some(vec2(screen.width as f32, screen.height as f32)), tex, text);
+        let target = pic.unwrap_or(well);
         if self.controlling {
             // A ring in the selection colour says the keys go there.
-            painter.rect_stroke(pic.expand(2.0), 0.0, egui::Stroke::new(2.0, c(p.keyboard_navigation)), egui::StrokeKind::Middle);
+            ui.painter().rect_stroke(target.expand(2.0), 0.0, egui::Stroke::new(2.0, c(p.keyboard_navigation)), egui::StrokeKind::Middle);
         }
-        let response = ui.allocate_rect(pic, egui::Sense::click_and_drag());
+        let response = ui.allocate_rect(target, egui::Sense::click_and_drag());
         if self.controlling {
-            self.forward(ui, &screen, pic, &response);
+            self.forward(ui, &screen, target, &response, events);
         }
 
-        // The status line: what is happening, and the control button.
-        let windows = format!("{}  ·  {} × {}", screen.name, screen.width, screen.height);
-        let what = if self.controlling { format!("{windows}  ·  You have control") } else { format!("{windows}  ·  Watching") };
-        style::label(ui.painter(), pic.left() - 1.0, status_r.center().y, Align::Min, what, style::plain_font(), c(p.panel_text));
+        // What is going on, and the control button.
         let label = if self.controlling { "Stop Controlling" } else { "Take Control" };
-        let b = Rect::from_min_size(pos2(pic.right() + 1.0 - 130.0, status_r.top()), vec2(130.0, m::CONTROL_HEIGHT));
-        if ui.put(b, Button::new(label).min_width(130.0)).clicked() {
+        let b = Rect::from_min_size(pos2(bar.right() - 140.0, bar.top()), vec2(140.0, m::CONTROL_HEIGHT));
+        if ui.put(b, Button::new(label).min_width(140.0).pushed(self.controlling)).clicked() {
             if self.controlling {
                 self.stop_controlling();
             } else {
@@ -536,6 +713,22 @@ impl Viewer {
                 response.request_focus();
             }
         }
+        let now = crate::history::now_ms();
+        let (text, color) = if self.controlling {
+            ("You have control: your pointer and keys go to this screen.".to_owned(), c(p.panel_text))
+        } else {
+            let latest = self.replay.as_ref().and_then(|r| r.actions().last());
+            match latest {
+                Some(a) => {
+                    let what = replay::command(a);
+                    let mark = if a.error.is_some() { "  ✗" } else { "" };
+                    (format!("Latest: {what}{mark}  ·  {}", stats::ago(a.at + a.ms, now)), style::disabled_text(&p))
+                }
+                None => ("Watching. Nothing has been done on it yet.".to_owned(), style::disabled_text(&p)),
+            }
+        };
+        let w = (b.left() - m::SPACING - bar.left()).max(0.0);
+        style::label_fit(ui.painter(), bar.left(), bar.center().y, Align::Min, &text, style::plain_font(), color, w);
     }
 
     /// Press or let go of Ctrl, Shift and Alt on the screen to match
@@ -550,8 +743,9 @@ impl Viewer {
         }
     }
 
-    /// The person's pointer and keys, onto the screen.
-    fn forward(&mut self, ui: &mut Ui, screen: &Screen, pic: Rect, response: &egui::Response) {
+    /// The person's pointer and keys (`events`, this frame's), onto the
+    /// screen.
+    fn forward(&mut self, ui: &mut Ui, screen: &Screen, pic: Rect, response: &egui::Response, events: &[egui::Event]) {
         let to_screen = |pos: Pos2| -> (f64, f64) {
             let x = ((pos.x - pic.left()) / pic.width()).clamp(0.0, 1.0) as f64 * screen.width as f64;
             let y = ((pos.y - pic.top()) / pic.height()).clamp(0.0, 1.0) as f64 * screen.height as f64;
@@ -561,10 +755,10 @@ impl Viewer {
             response.request_focus();
         }
         let keys = response.has_focus();
-        let (events, modifiers) = ui.input(|i| (i.events.clone(), i.modifiers));
+        let modifiers = ui.input(|i| i.modifiers);
         let mut out = Vec::new();
         let mut moved = None;
-        for e in &events {
+        for e in events {
             match e {
                 egui::Event::PointerMoved(pos) if pic.contains(*pos) || response.dragged() => moved = Some(to_screen(*pos)),
                 egui::Event::PointerButton { pos, button, pressed, .. } if pic.contains(*pos) || !pressed => {
@@ -629,6 +823,16 @@ impl App for Viewer {
                     std::thread::spawn(move || proxy.send(Msg::Stopped(screens::stop(&name))));
                 }
             }
+            Some(Win::ConfirmClear(name, message)) => {
+                let (name, message) = (name.clone(), message.clone());
+                let Some(choice) = widgets::alert(ui, "warning", &message, &["Cancel", "Clear History"]) else { return };
+                self.windows.remove(&window);
+                cx.close_window(window);
+                if choice == 1 {
+                    let proxy = cx.proxy();
+                    std::thread::spawn(move || proxy.send(Msg::Cleared(crate::history::clear(&name))));
+                }
+            }
             Some(Win::ExportTo(_)) => {
                 let Some(Win::ExportTo(panel)) = self.windows.get_mut(&window) else { return };
                 let Some(result) = panel.ui(ui) else { return };
@@ -636,6 +840,17 @@ impl App for Viewer {
                 cx.close_window(window);
                 if let (olo_kit::file_panel::PanelResult::Chosen(path), Some(r)) = (result, self.replay.as_mut()) {
                     r.start_export(path, cx.proxy());
+                }
+            }
+            Some(Win::Exported(path, message)) => {
+                let (path, message) = (path.clone(), message.clone());
+                let Some(choice) = widgets::alert(ui, "video", &message, &[olo_kit::tracker::LABEL, "OK"]) else { return };
+                self.windows.remove(&window);
+                cx.close_window(window);
+                if choice == 0
+                    && let Err(e) = olo_kit::tracker::open(&path)
+                {
+                    self.alert(cx, &format!("Tracker couldn’t show it: {e}"));
                 }
             }
             Some(Win::Alert(message)) => {
@@ -653,41 +868,91 @@ impl App for Viewer {
         if !matches!(self.windows.get(&window), Some(Win::Main)) {
             return None;
         }
-        let has = self.screen().is_some();
+        let running = self.screen().is_some();
+        let chosen = self.selected.is_some();
+        let tab = self.shown_tab();
+        let history = tab == Tab::History && self.replay.as_ref().is_some_and(|r| r.loaded() && !r.actions().is_empty());
+        let can_export = self.replay.as_ref().is_some_and(|r| r.loaded() && !r.exporting() && !r.actions().is_empty());
+        let playing = self.replay.as_ref().is_some_and(Replay::playing);
         Some(vec![
             Menu::new("Screen")
                 .item("New Screen", "new", Some(Key::N))
                 .enabled(!self.busy)
                 .item("Stop Screen…", "stop", None)
-                .enabled(has)
+                .enabled(running)
+                .item("Clear History…", "clear", None)
+                .enabled(chosen && !running)
+                .separator()
+                .item("Export Video…", "export", Some(Key::E))
+                .enabled(can_export)
                 .separator()
                 .item("Quit", "quit", Some(Key::Q)),
+            Menu::new("View")
+                .item("Live", "tab-live", Some(Key::Num1))
+                .enabled(running)
+                .checked(tab == Tab::Live)
+                .item("History", "tab-history", Some(Key::Num2))
+                .enabled(chosen)
+                .checked(tab == Tab::History)
+                .item("Stats", "tab-stats", Some(Key::Num3))
+                .enabled(chosen)
+                .checked(tab == Tab::Stats)
+                .separator()
+                .item("Find", "find", Some(Key::F))
+                .enabled(chosen),
+            Menu::new("Playback")
+                .item(if playing { "Pause" } else { "Play" }, "play", None)
+                .enabled(history)
+                .item("Previous Action", "previous", None)
+                .enabled(history)
+                .item("Next Action", "next", None)
+                .enabled(history)
+                .separator()
+                .item(if running { "Go Live" } else { "Go to Latest" }, "latest", None)
+                .enabled(history),
             Menu::new("Control")
                 .item(if self.controlling { "Stop Controlling" } else { "Take Control" }, "control", Some(Key::K))
-                .enabled(has),
+                .enabled(running),
         ])
     }
 
     fn command(&mut self, cx: &mut Cx, _window: WindowId, command: &str) {
         match command {
             "new" => self.new_screen(cx),
-            "stop" => {
-                if let Some(name) = self.selected.clone() {
-                    let message = format!("Stop the screen “{name}”? The agent's programs on it are closed, and anything it hasn't saved is lost.");
-                    let id = cx.open_window(WindowOptions::alert("Stop Screen", &message).parent_opt(self.main));
-                    self.windows.insert(id, Win::ConfirmStop(name, message));
+            "stop" => self.ask_stop(cx),
+            "clear" => self.ask_clear(cx),
+            "export" => self.ask_export(cx),
+            "tab-live" if self.screen().is_some() => self.set_tab(Tab::Live),
+            "tab-history" => self.set_tab(Tab::History),
+            "tab-stats" => self.set_tab(Tab::Stats),
+            "find" => {
+                self.set_tab(Tab::History);
+                if let Some(r) = self.replay.as_mut() {
+                    r.focus_search();
+                }
+            }
+            "play" | "previous" | "next" | "latest" => {
+                if let Some(r) = self.replay.as_mut() {
+                    match command {
+                        "play" => r.play_pause(),
+                        "previous" => r.step(-1),
+                        "next" => r.step(1),
+                        _ => r.latest(),
+                    }
                 }
             }
             "control" => {
                 if self.controlling {
                     self.stop_controlling();
                 } else if self.screen().is_some() {
+                    self.set_tab(Tab::Live);
                     self.controlling = true;
                 }
             }
             "quit" => cx.quit(),
             _ => {}
         }
+        self.watch();
         self.redraw(cx);
     }
 
@@ -707,14 +972,12 @@ impl App for Viewer {
             self.show(cx, launch.args.get(1).cloned());
             return;
         }
-        let message = match message.downcast::<crate::replay::ReplayMsg>() {
+        let message = match message.downcast::<replay::ReplayMsg>() {
             Ok(m) => {
                 if let Some(r) = self.replay.as_mut() {
                     r.message(*m);
                 }
-                if let Some(w) = self.main {
-                    cx.redraw(w);
-                }
+                self.redraw(cx);
                 return;
             }
             Err(m) => m,
@@ -733,10 +996,6 @@ impl App for Viewer {
                     self.stop_controlling();
                     self.selected = None;
                     self.select(first);
-                }
-                // A stopped one has only its history.
-                if self.screen().is_none() && self.selected.is_some() {
-                    self.history = true;
                 }
             }
             Msg::Frame { name, image } => {
@@ -758,6 +1017,7 @@ impl App for Viewer {
                             self.screens.push(screen.clone());
                         }
                         self.select(Some(screen.name));
+                        self.set_tab(Tab::Live);
                     }
                     Err(e) => self.alert(cx, &format!("The screen couldn't be started: {e}")),
                 }
@@ -767,17 +1027,24 @@ impl App for Viewer {
                     self.alert(cx, &e);
                 }
                 self.screens = listed();
-                if self.screen().is_none() {
-                    let first = self.screens.first().map(|s| s.name.clone());
-                    self.selected = None;
-                    self.select(first);
+                let (proxy, running) = (cx.proxy(), self.screens.clone());
+                std::thread::spawn(move || proxy.send(Msg::Rows(rows(&running))));
+            }
+            Msg::Cleared(r) => {
+                if let Err(e) = r {
+                    self.alert(cx, &e);
                 }
+                self.replay = None;
+                let (proxy, running) = (cx.proxy(), self.screens.clone());
+                std::thread::spawn(move || proxy.send(Msg::Rows(rows(&running))));
             }
         }
+        // A screen come or gone changes what Live shows.
+        self.watch();
         self.redraw(cx);
     }
 
     fn save_state(&mut self, _cx: &Cx) -> Option<String> {
-        serde_json::to_string(&Saved { selected: self.selected.clone() }).ok()
+        serde_json::to_string(&Saved { selected: self.selected.clone(), tab: self.tab }).ok()
     }
 }

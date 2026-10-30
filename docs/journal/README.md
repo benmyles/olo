@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Agent Screens: Stats
+
+*13:51* — Stats as dashboard cards (dark, 1.5×): use, actions by kind, actions a minute over the last hour, programs run.
+
+![Agent Screens: Stats](2026-10-30/135147-agent-screens-stats.png)
+
+### Agent Screens: filters
+
+*13:51* — History's filters, as Log Viewer's: Result ▸ Failed keeps the 12 of 249 actions that failed, each with why in red.
+
+![Agent Screens: filters](2026-10-30/135147-agent-screens-filters.png)
+
+### Agent Screens: History follows the agent live
+
+*13:51* — Agent Screens revamped: a sidebar of running and stopped screens, a header saying how the chosen one is, and Live, History and Stats tabs. History now follows the history as it's written (each new action chosen and shown as it comes), its scroll bar works (the list was pinned to the playhead's row every frame), and a search with Kind, Result and Time filters narrows it; under the picture, what the action did.
+
+![Agent Screens: History follows the agent live](2026-10-30/135146-agent-screens-history-follows-the-agent-live.png)
+
 ### Notifications: only the latest of the same
 
 *13:16* — Preferences ▸ Notifications ▸ History: Only the latest of the same notification (on by default): the same again from the same app takes the earlier one's place while it's still showing or unread.
