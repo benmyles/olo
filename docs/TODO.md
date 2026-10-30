@@ -214,6 +214,27 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Terminal: tell coding agents about the other repos in their tab
+  group** (Ben, 2026-10-30): "add a preferences -> terminal setting for
+  injecting context to claude code and codex coding agents to tell them
+  about worktrees/repos that are in the same terminal group. useful when
+  using a group per feature and a feature spans repos b/c that way the
+  coding agent knows about all the repos. it shouldn't make assumptions
+  about what they are, just add a block to the coding agent context that
+  it is part of a terminal group named '...' and inside that group are
+  the following repos (including its own): ...". Preferences ▸ Terminal
+  gets "Tell coding agents about the repositories in their tab group"
+  (off by default). When on, a Claude Code or Codex started in a tab of
+  a named group gets a block in its context saying only that: it is in
+  Terminal group "NAME", and the group's tabs are in these repositories
+  and worktrees (each one's path, with its branch; its own marked),
+  nothing assumed about what they are for. Given through the agents'
+  own context mechanisms without editing the person's files (Claude
+  Code: `--append-system-prompt`, or a session-start hook in a settings
+  layer of Olo's; Codex: its `-c` instructions or developer message),
+  kept current as tabs join or leave the group (on the agent's next
+  turn where it can, else its next start), and readable by agents
+  (Terminal's widget tree says it's on).
 - **Deskbar: every display's workspaces on every Deskbar; the display
   in the tray** (Ben, 2026-10-30): "the deskbar on all displays should
   show the display-workspaces for all displays not just the current
