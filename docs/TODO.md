@@ -214,6 +214,26 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **New windows always become the active window; an optional glow**
+  (Ben, 2026-10-30): "please make sure that any time a new window opens
+  for any reason it becomes the active window with focus. also, add a
+  setting in preferences -> appearance to give new windows a subtle glow
+  for n seconds (default off, and default seconds when on should be 5s).
+  the glow needs to work with the active theme and day/night mode and
+  look really great and be fairly subtle but enough to draw attention to
+  the window." Every new toplevel (Olo's apps, other programs, dialogs
+  and alerts, windows opened in the background by a program or a
+  portal) is raised and given the keyboard focus as it first shows, on
+  the display and workspace it opens on (switching to them if it opens
+  elsewhere), checked across every way windows open (restored after an
+  upgrade excepted: those come back as they were). Preferences ▸
+  Appearance gets "Glow new windows for [5] seconds" (off by default; a
+  number of seconds when on, 5 by default): app_server draws a soft
+  outer glow around the new window's frame in the look's accent (its
+  own for each look, and for day and night), fading out over the last
+  second, drawn at device pixels at every scale (1× to 2×, 1.25× and
+  1.75× too), costing nothing once it has gone, and said in the
+  window's info for agents.
 - **Bug: Empty Trash from the desktop's Trash icon didn't empty it**
   (Ben, 2026-10-30): "right clicking on trash on desktop and choosing
   empty trash didn't seem to work so i opened trash (still saw the
