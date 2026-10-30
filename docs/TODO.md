@@ -1488,7 +1488,14 @@ as they land (with the commit), add new ones as they come up.
     left with when only an automatic join changed it.
   - seed 5 step 246, and seed 3 step 268 the same: placing a window
     moves another to its new frame (seed 5: hidden 8, once in a group
-    with 3, follows 11; seed 3: 18 follows 17).
+    with 3, follows 11; seed 3: 18 follows 17). Likely: the window that
+    follows is hidden and of the same app (Tracker groups by app); its
+    hand-made group broke up, it went back to its app's own group, and
+    a hidden window counts in its group (`current_groups`), so it
+    follows when the group moves, while `list_windows` gives a hidden
+    window no `group` and the checker takes it for another window.
+    Decide which: a hidden window keeps its own frame until shown (then
+    joins), or app_server reports its group and the checker skips it.
   - seed 3 step 271: putting 20 in 12's group widens 12 from 250 to
     290. A group shares one frame and can't be smaller than its biggest
     member's least size: if 20 can't be under 290 the group must grow,
