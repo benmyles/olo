@@ -325,6 +325,21 @@ as they land (with the commit), add new ones as they come up.
   wrapped over lines; paths in a TUI's boxes or quotes; the working
   directory of a program that changed its own; the key under each
   keyboard profile) and fix them; files open in Tracker, shown.
+- **Terminal: several groups, tabs moved between them, groups
+  reordered** (Ben, 2026-10-29): "in terminal make sure that i can
+  actually create multiple groups, move tabs between groups, reorder
+  groups, and so on. because last time i tried (which was before your git
+  worktree stuff) it didn't work." Today a group is a whole window (one
+  name and colour, Tabs ▸ Group), and a tab can only go to a new window.
+  Make groups runs of tabs in a window's strip, as a browser's: each led
+  by its chip (name, colour); a tab's menu has Add to Group ▸ (New
+  Group…, each group) and Remove from Group; dragging a tab into a run
+  joins it, out of it leaves it; dragging a chip moves its whole group
+  (reordering groups); a chip's menu renames, recolours, saves, ungroups,
+  closes or moves the group to a new window; tabs and groups dragged
+  onto another Terminal window's strip move there. In the kit's
+  `TabStrip`, for other apps; repositories' own groups (repos.rs),
+  saved groups, `save_state` and agents (the tree) follow.
 - **StyledEdit, much more featureful** (Ben, 2026-10-29, after
   everything else): "please improve StyledEdit to be much more featureful
   -- it doesn't need all the bells and whistles of, say, modern Word or
