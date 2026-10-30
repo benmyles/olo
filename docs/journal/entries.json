@@ -2242,5 +2242,11 @@
   "title": "Open and Save for other programs: Olo's file panel",
   "caption": "olo-portal answers the FileChooser portal: another program's Open or Save is Olo's file panel, titled as it asks, in its folder, filtered to its file types.",
   "image": "2026-10-30/043523-open-and-save-for-other-programs-olo-s-file-pane.png"
+ },
+ {
+  "time": "2026-10-30T04:50:52",
+  "title": "File panel: filters, several files, an app's choices",
+  "caption": "Other programs' Open dialogs (the FileChooser portal) now show the app's filters as a Show pop-up (by glob or MIME type), choose several files with \u21e7 and \u2318 clicks, and carry the app's own choices above the buttons, the pop-ups lined up on one divider. Chrome's multi-file uploads come back whole.",
+  "image": "2026-10-30/045052-file-panel-filters-several-files-an-app-s-choice.png"
  }
 ]

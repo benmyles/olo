@@ -3,6 +3,9 @@
 //! `App::ui`; it returns the choice once. Folders are listed on a worker
 //! thread, so a slow disk never stalls the window, and listed again the
 //! moment they change on disk (`crate::watch`), the selection kept.
+//! A panel can offer filters (a Show pop-up: by glob or by MIME type),
+//! choose several files at once, and carry an app's extra choices (a
+//! checkbox or a pop-up each, above the buttons).
 
 use std::{
     path::{Path, PathBuf},
@@ -18,7 +21,7 @@ use crate::{
     menu::Menu,
     metrics as m,
     style::{self, c},
-    widgets::{self, Button, Column, ColumnListView, ListState, TextControl},
+    widgets::{self, Button, CheckBox, Column, ColumnListView, ListState, MenuField, TextControl},
 };
 
 /// A good window size for a panel.
@@ -35,7 +38,54 @@ pub enum Mode {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PanelResult {
     Chosen(PathBuf),
+    /// What an Open panel made [`multiple`](FilePanel::multiple) chose:
+    /// one file or more.
+    Several(Vec<PathBuf>),
     Cancelled,
+}
+
+/// A filter a panel offers in its Show pop-up: the files whose names match
+/// one of `globs` (`*.pdf`, ignoring case) or whose type is one of `types`
+/// (`image/*`, `text/plain`; a kind of one counts, as [`crate::mime::is_a`]
+/// says). Folders always show.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Filter {
+    pub name: String,
+    pub globs: Vec<String>,
+    pub types: Vec<String>,
+}
+
+impl Filter {
+    pub fn new(name: impl Into<String>) -> Self {
+        Filter { name: name.into(), ..Default::default() }
+    }
+
+    pub fn glob(mut self, glob: impl Into<String>) -> Self {
+        self.globs.push(glob.into());
+        self
+    }
+
+    pub fn mime(mut self, mime: impl Into<String>) -> Self {
+        self.types.push(mime.into());
+        self
+    }
+
+    /// Whether a file called `name`, of type `mime`, shows.
+    pub fn matches(&self, name: &str, mime: &str) -> bool {
+        let lower = name.to_lowercase();
+        self.globs.iter().any(|g| crate::mime::glob(&g.to_lowercase(), &lower)) || self.types.iter().any(|t| crate::mime::is_a(mime, t))
+    }
+}
+
+/// An app's extra choice beside the list ("Open read-only", "Encoding"): a
+/// checkbox, `value` "true" or "false", if it has no `options`; else a
+/// pop-up of them, (id, label) each, `value` the chosen one's id.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Choice {
+    pub id: String,
+    pub label: String,
+    pub options: Vec<(String, String)>,
+    pub value: String,
 }
 
 #[derive(Debug, Clone)]
@@ -45,6 +95,9 @@ struct Item {
     size: u64,
     modified: Option<SystemTime>,
     kind: Kind,
+    /// Which filters it matches, a bit each (worked out with the listing,
+    /// off the UI thread, so choosing another filter is instant).
+    fits: u64,
 }
 
 type Listing = Arc<Mutex<Option<(PathBuf, Result<Vec<Item>, String>)>>>;
@@ -55,6 +108,12 @@ pub struct FilePanel {
     name: String,
     /// Lowercase extensions to offer ("pdf"); empty means everything.
     types: Vec<String>,
+    /// The Show pop-up's filters, and which is chosen.
+    filters: Arc<Vec<Filter>>,
+    filter: usize,
+    choices: Vec<Choice>,
+    /// The folder's items, and those shown (`matches`).
+    all: Vec<Item>,
     items: Vec<Item>,
     error: Option<String>,
     loading: bool,
@@ -95,6 +154,10 @@ impl FilePanel {
             dir,
             name,
             types: Vec::new(),
+            filters: Arc::default(),
+            filter: 0,
+            choices: Vec::new(),
+            all: Vec::new(),
             items: Vec::new(),
             error: None,
             loading: false,
@@ -113,6 +176,38 @@ impl FilePanel {
         self
     }
 
+    /// Offer `filters` in a Show pop-up (the first 64), starting with
+    /// `current`.
+    pub fn filters(mut self, filters: Vec<Filter>, current: usize) -> Self {
+        let filters: Vec<Filter> = filters.into_iter().take(64).collect();
+        self.filter = current.min(filters.len().saturating_sub(1));
+        self.filters = Arc::new(filters);
+        self
+    }
+
+    /// Let an Open panel choose several files (⇧ and ⌘ clicks): the answer
+    /// is then [`PanelResult::Several`].
+    pub fn multiple(mut self) -> Self {
+        self.list.multiple = self.mode == Mode::Open;
+        self
+    }
+
+    /// Offer the app's own `choices` above the buttons.
+    pub fn choices(mut self, choices: Vec<Choice>) -> Self {
+        self.choices = choices;
+        self
+    }
+
+    /// The filter chosen, if any were offered.
+    pub fn filter(&self) -> Option<usize> {
+        (!self.filters.is_empty()).then_some(self.filter)
+    }
+
+    /// The choices as made.
+    pub fn choices_made(&self) -> &[Choice] {
+        &self.choices
+    }
+
     pub fn mode(&self) -> Mode {
         self.mode
     }
@@ -122,14 +217,45 @@ impl FilePanel {
     }
 
     fn matches(&self, it: &Item) -> bool {
-        it.is_dir
-            || (self.mode != Mode::Folder && self.types.is_empty())
-            || self.mode != Mode::Folder && Path::new(&it.name).extension().is_some_and(|e| self.types.contains(&e.to_string_lossy().to_lowercase()))
+        let typed = self.types.is_empty() || Path::new(&it.name).extension().is_some_and(|e| self.types.contains(&e.to_string_lossy().to_lowercase()));
+        let filtered = self.filters.is_empty() || it.fits & (1 << self.filter) != 0;
+        it.is_dir || (self.mode != Mode::Folder && typed && filtered)
+    }
+
+    /// Show the items that match, the selection kept by name.
+    fn refilter(&mut self) {
+        let chosen: Vec<String> = self.list.selected.iter().filter_map(|&i| self.items.get(i)).map(|it| it.name.clone()).collect();
+        self.items = self.all.iter().filter(|i| self.matches(i)).cloned().collect();
+        let (multiple, sort) = (self.list.multiple, self.list.sort);
+        self.list = ListState { multiple, sort, ..Default::default() };
+        for (i, it) in self.items.iter().enumerate() {
+            if chosen.contains(&it.name) {
+                if self.list.selected.is_empty() {
+                    self.list.select(i);
+                } else {
+                    self.list.selected.insert(i);
+                }
+            }
+        }
+    }
+
+    /// The files selected, as paths (folders left out).
+    fn selected_files(&self) -> Vec<PathBuf> {
+        self.list.selected.iter().filter_map(|&i| self.items.get(i)).filter(|it| !it.is_dir).map(|it| self.dir.join(&it.name)).collect()
+    }
+
+    /// The answer for an Open panel choosing `paths`.
+    fn opened(&self, paths: Vec<PathBuf>) -> Option<PanelResult> {
+        match (self.list.multiple, paths.len()) {
+            (_, 0) => None,
+            (true, _) => Some(PanelResult::Several(paths)),
+            (false, _) => paths.into_iter().next().map(PanelResult::Chosen),
+        }
     }
 
     fn go(&mut self, ctx: &egui::Context, dir: PathBuf) {
         self.dir = dir.clone();
-        self.list = ListState::default();
+        self.list = ListState { multiple: self.list.multiple, ..Default::default() };
         self.loading = true;
         match &self.watch {
             Some(w) => w.set([dir.clone()]),
@@ -148,9 +274,10 @@ impl FilePanel {
     fn list_again(&mut self, ctx: &egui::Context) {
         let dir = self.dir.clone();
         let listing = self.listing.clone();
+        let filters = self.filters.clone();
         let ctx = ctx.clone();
         std::thread::spawn(move || {
-            let result = read(&dir);
+            let result = read(&dir, &filters);
             *listing.lock().unwrap() = Some((dir, result));
             ctx.request_repaint();
         });
@@ -165,21 +292,19 @@ impl FilePanel {
             // Changed on disk: listed again, the selection kept by name.
             self.list_again(ui.ctx());
         }
-        if let Some((dir, result)) = self.listing.lock().unwrap().take()
+        let listed = self.listing.lock().unwrap().take();
+        if let Some((dir, result)) = listed
             && dir == self.dir
         {
             self.loading = false;
             match result {
                 Ok(items) => {
-                    let chosen = self.list.single().and_then(|i| self.items.get(i)).map(|it| it.name.clone());
-                    self.items = items.into_iter().filter(|i| self.matches(i)).collect();
-                    self.list.selected.clear();
-                    if let Some(i) = chosen.and_then(|n| self.items.iter().position(|it| it.name == n)) {
-                        self.list.select(i);
-                    }
+                    self.all = items;
+                    self.refilter();
                     self.error = None;
                 }
                 Err(e) => {
+                    self.all.clear();
                     self.items.clear();
                     self.error = Some(e);
                 }
@@ -226,8 +351,11 @@ impl FilePanel {
             self.go(ui.ctx(), home());
         }
 
-        // Bottom: the name (Save) and the buttons.
-        let bottom_h = if self.mode == Mode::Save { 2.0 * m::CONTROL_HEIGHT + m::SPACING } else { m::CONTROL_HEIGHT };
+        // Bottom: the name (Save), the app's choices and the buttons (with
+        // the Show pop-up).
+        let row_h = |ch: &Choice| if ch.options.is_empty() { m::MARK_ROW } else { m::CONTROL_HEIGHT };
+        let choices_h: f32 = self.choices.iter().map(|ch| row_h(ch) + m::SPACING).sum();
+        let bottom_h = choices_h + if self.mode == Mode::Save { 2.0 * m::CONTROL_HEIGHT + m::SPACING } else { m::CONTROL_HEIGHT };
         let bottom = Rect::from_min_max(pos2(full.left(), full.bottom() - bottom_h), full.max);
         let list_r = Rect::from_min_max(pos2(full.left(), top.bottom() + m::SPACING), pos2(full.right(), bottom.top() - m::SPACING));
 
@@ -274,7 +402,13 @@ impl FilePanel {
                 let d = self.dir.join(&it.name);
                 self.go(ui.ctx(), d);
             } else if self.mode == Mode::Open {
-                result = Some(PanelResult::Chosen(self.dir.join(&it.name)));
+                // The row activated, with the rest selected if it's one of them.
+                let mut paths = self.selected_files();
+                let path = self.dir.join(&it.name);
+                if !paths.contains(&path) {
+                    paths = vec![path];
+                }
+                result = self.opened(paths);
             } else if self.mode == Mode::Save {
                 self.name = it.name.clone();
                 result = self.try_save();
@@ -288,6 +422,29 @@ impl FilePanel {
             let mut fchild = ui.new_child(egui::UiBuilder::new().max_rect(field));
             fchild.add(TextControl::new(&mut self.name).label("Save as:").autofocus(true).width(field.width()));
             by += m::CONTROL_HEIGHT + m::SPACING;
+        }
+        // The pop-ups' fields line up on one divider.
+        let show = self.filters.len() > 1 && self.mode != Mode::Folder;
+        let labels: Vec<&str> = self.choices.iter().filter(|ch| !ch.options.is_empty()).map(|ch| ch.label.as_str()).chain(show.then_some("Show:")).collect();
+        let divider = widgets::divider_for(ui, &labels);
+        for (i, ch) in self.choices.iter_mut().enumerate() {
+            let r = Rect::from_min_size(pos2(bottom.left(), by), vec2(bottom.width() * 0.7, row_h(ch)));
+            let mut cchild = ui.new_child(egui::UiBuilder::new().max_rect(r));
+            if ch.options.is_empty() {
+                let mut on = ch.value == "true";
+                if cchild.add(CheckBox::new(&mut on, &ch.label)).changed() {
+                    ch.value = on.to_string();
+                }
+            } else {
+                let labels: Vec<&str> = ch.options.iter().map(|(_, l)| l.as_str()).collect();
+                let mut picked = ch.options.iter().position(|(o, _)| *o == ch.value).unwrap_or(0);
+                if cchild.add(MenuField::new(("panel-choice", i), &mut picked, &labels).label(&ch.label).divider(divider)).changed()
+                    && let Some((o, _)) = ch.options.get(picked)
+                {
+                    ch.value = o.clone();
+                }
+            }
+            by += r.height() + m::SPACING;
         }
         let bw = m::BUTTON_MIN_WIDTH;
         let ok_r = Rect::from_min_size(pos2(bottom.right() - bw, by), vec2(bw, m::CONTROL_HEIGHT));
@@ -306,6 +463,16 @@ impl FilePanel {
                 result = Some(PanelResult::Chosen(existing));
             }
             return result;
+        }
+        if show {
+            let r = Rect::from_min_max(pos2(bottom.left(), by), pos2((cancel_r.left() - m::SPACING * 2.0).min(bottom.left() + 260.0), by + m::CONTROL_HEIGHT));
+            let names: Vec<&str> = self.filters.iter().map(|f| f.name.as_str()).collect();
+            let mut picked = self.filter;
+            let mut fchild = ui.new_child(egui::UiBuilder::new().max_rect(r));
+            if fchild.add(MenuField::new("panel-filter", &mut picked, &names).label("Show:").divider(divider).width(r.width())).changed() {
+                self.filter = picked;
+                self.refilter();
+            }
         }
         if ui.put(cancel_r, Button::new("Cancel")).clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
             result = Some(PanelResult::Cancelled);
@@ -333,13 +500,14 @@ impl FilePanel {
                     result = Some(PanelResult::Chosen(picked.unwrap_or_else(|| self.dir.clone())));
                 }
                 Mode::Open => {
-                    if let Some(it) = self.list.single().and_then(|i| self.items.get(i)).cloned() {
-                        if it.is_dir {
-                            let d = self.dir.join(&it.name);
-                            self.go(ui.ctx(), d);
-                        } else {
-                            result = Some(PanelResult::Chosen(self.dir.join(&it.name)));
-                        }
+                    let files = self.selected_files();
+                    if !files.is_empty() {
+                        result = self.opened(files);
+                    } else if let Some(it) = self.list.single().and_then(|i| self.items.get(i)).cloned()
+                        && it.is_dir
+                    {
+                        let d = self.dir.join(&it.name);
+                        self.go(ui.ctx(), d);
                     }
                 }
             }
@@ -363,7 +531,7 @@ impl FilePanel {
     }
 }
 
-fn read(dir: &Path) -> Result<Vec<Item>, String> {
+fn read(dir: &Path, filters: &[Filter]) -> Result<Vec<Item>, String> {
     use std::os::unix::fs::PermissionsExt;
     let rd = std::fs::read_dir(dir).map_err(|e| match e.kind() {
         std::io::ErrorKind::PermissionDenied => "You don't have permission to see this folder.".to_string(),
@@ -378,7 +546,21 @@ fn read(dir: &Path) -> Result<Vec<Item>, String> {
             }
             let meta = std::fs::metadata(e.path()).ok()?;
             let is_dir = meta.is_dir();
+            let mut fits = 0;
+            if !is_dir && !filters.is_empty() {
+                let mime = filters
+                    .iter()
+                    .any(|f| !f.types.is_empty())
+                    .then(|| crate::mime::from_name(&name).unwrap_or_else(|| "application/octet-stream".into()))
+                    .unwrap_or_default();
+                for (i, f) in filters.iter().enumerate() {
+                    if f.matches(&name, &mime) {
+                        fits |= 1 << i;
+                    }
+                }
+            }
             Some(Item {
+                fits,
                 kind: files::kind_for(&e.path(), is_dir, meta.permissions().mode()),
                 name,
                 is_dir,

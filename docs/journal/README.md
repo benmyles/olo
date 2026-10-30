@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### File panel: filters, several files, an app's choices
+
+*04:50* — Other programs' Open dialogs (the FileChooser portal) now show the app's filters as a Show pop-up (by glob or MIME type), choose several files with ⇧ and ⌘ clicks, and carry the app's own choices above the buttons, the pop-ups lined up on one divider. Chrome's multi-file uploads come back whole.
+
+![File panel: filters, several files, an app's choices](2026-10-30/045052-file-panel-filters-several-files-an-app-s-choice.png)
+
 ### Open and Save for other programs: Olo's file panel
 
 *04:35* — olo-portal answers the FileChooser portal: another program's Open or Save is Olo's file panel, titled as it asks, in its folder, filtered to its file types.

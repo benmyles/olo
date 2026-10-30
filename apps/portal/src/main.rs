@@ -142,8 +142,15 @@ impl Portal {
         cx.close_window(win);
     }
 
-    fn close_panel(&mut self, cx: &mut Cx, win: WindowId, chosen: Option<std::path::PathBuf>) {
-        if let Some((_, ask)) = self.panels.remove(&win) {
+    /// Answer a file panel's app with `paths` (none: cancelled), the
+    /// filter shown and the choices made.
+    fn close_panel(&mut self, cx: &mut Cx, win: WindowId, paths: Option<Vec<std::path::PathBuf>>) {
+        if let Some((panel, ask)) = self.panels.remove(&win) {
+            let chosen = paths.map(|paths| files::Chosen {
+                paths,
+                filter: panel.filter(),
+                choices: panel.choices_made().iter().map(|ch| (ch.id.clone(), ch.value.clone())).collect(),
+            });
             let _ = ask.reply.try_send(chosen);
         }
         cx.close_window(win);
@@ -152,13 +159,14 @@ impl Portal {
     /// Open a file panel for another program (the FileChooser portal).
     fn open_panel(&mut self, cx: &mut Cx, ask: files::Ask) {
         let dir = ask.folder.clone().filter(|d| d.is_dir()).unwrap_or_else(|| std::env::var_os("HOME").map_or_else(|| "/".into(), Into::into));
-        let types: Vec<&str> = ask.types.iter().map(String::as_str).collect();
-        let (default, panel) = match ask.purpose {
-            files::Purpose::Open => ("Open", FilePanel::open(dir).types(&types)),
+        let (default, mut panel) = match ask.purpose {
+            files::Purpose::Open if ask.multiple => ("Open", FilePanel::open(dir).multiple()),
+            files::Purpose::Open => ("Open", FilePanel::open(dir)),
             files::Purpose::Folder => ("Choose a Folder", FilePanel::folder(dir)),
-            files::Purpose::Save => ("Save", FilePanel::save(dir, ask.name.clone()).types(&types)),
+            files::Purpose::Save => ("Save", FilePanel::save(dir, ask.name.clone())),
             files::Purpose::SaveFiles => ("Choose Where to Save", FilePanel::folder(dir)),
         };
+        panel = panel.filters(ask.filters.clone(), ask.current).choices(ask.choices.clone());
         let title = if ask.title.is_empty() { default.to_owned() } else { ask.title.clone() };
         let mut options = WindowOptions { dialog: true, ..WindowOptions::new(title, PANEL_SIZE.0, PANEL_SIZE.1).min_size(420, 300) };
         if !ask.parent.is_empty() {
@@ -182,7 +190,8 @@ impl App for Portal {
         if let Some((panel, _)) = self.panels.get_mut(&win) {
             if let Some(r) = panel.ui(ui) {
                 self.close_panel(cx, win, match r {
-                    PanelResult::Chosen(p) => Some(p),
+                    PanelResult::Chosen(p) => Some(vec![p]),
+                    PanelResult::Several(ps) => Some(ps),
                     PanelResult::Cancelled => None,
                 });
             }

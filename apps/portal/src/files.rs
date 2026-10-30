@@ -4,12 +4,15 @@
 //! file_panel`), in a window over the asking one. OpenFile opens a file
 //! (or chooses a folder, with `directory`), SaveFile saves one under the
 //! name proposed (asking before replacing), SaveFiles chooses the folder
-//! several go in. A filter's glob patterns (`*.pdf`) become the panel's
-//! extensions; MIME types alone show every file. The chosen file goes
-//! back as a `file://` URI.
+//! several go in. The app's filters (globs and MIME types) are the panel's
+//! Show pop-up, `multiple` lets it choose several files, and the app's
+//! `choices` (checkboxes, pop-ups) sit above the buttons. What was chosen
+//! goes back as `file://` URIs, with the filter shown and the choices
+//! made.
 
 use std::{collections::HashMap, path::PathBuf};
 
+use olo_kit::file_panel::{Choice, Filter};
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 
 use crate::portal::ToUi;
@@ -34,10 +37,24 @@ pub struct Ask {
     pub folder: Option<PathBuf>,
     /// The name proposed for a save.
     pub name: String,
-    /// The extensions offered (empty: every file).
-    pub types: Vec<String>,
-    /// The answer: what was chosen, or None if cancelled.
-    pub reply: async_channel::Sender<Option<PathBuf>>,
+    /// The filters offered (none: every file), and the one shown first.
+    pub filters: Vec<Filter>,
+    pub current: usize,
+    /// Whether several files may be opened.
+    pub multiple: bool,
+    pub choices: Vec<Choice>,
+    /// The answer, or None if cancelled.
+    pub reply: async_channel::Sender<Option<Chosen>>,
+}
+
+/// What the person chose.
+#[derive(Debug, Default)]
+pub struct Chosen {
+    pub paths: Vec<PathBuf>,
+    /// The filter shown (an index into the Ask's).
+    pub filter: Option<usize>,
+    /// Each choice's id and value.
+    pub choices: Vec<(String, String)>,
 }
 
 pub struct FileChooser {
@@ -56,47 +73,41 @@ fn string(options: &HashMap<String, OwnedValue>, key: &str) -> String {
     options.get(key).and_then(|v| String::try_from(v.try_clone().ok()?).ok()).unwrap_or_default()
 }
 
-/// The extensions a filter's globs name (`*.pdf`, `*.[Pp][Nn][Gg]`): the
-/// current filter's, else the first's; none if any of its patterns is a
-/// MIME type or a glob that isn't a plain extension (then every file).
-pub fn extensions(filters: &[(String, Vec<(u32, String)>)], current: Option<&(String, Vec<(u32, String)>)>) -> Vec<String> {
-    let Some((_, patterns)) = current.or(filters.first()) else { return Vec::new() };
-    let mut out = Vec::new();
-    for (kind, pattern) in patterns {
-        let ext = (*kind == 0).then(|| pattern.strip_prefix("*.")).flatten().map(|e| {
-            // `[Pp][Dd][Ff]`: one letter in either case each.
-            let mut plain = String::new();
-            let mut chars = e.chars().peekable();
-            while let Some(ch) = chars.next() {
-                if ch == '[' {
-                    let first = chars.next();
-                    for c in chars.by_ref() {
-                        if c == ']' {
-                            break;
-                        }
-                    }
-                    if let Some(f) = first {
-                        plain.push(f);
-                    }
-                } else {
-                    plain.push(ch);
-                }
-            }
-            plain.to_lowercase()
-        });
-        match ext.filter(|e| !e.is_empty() && e.chars().all(|c| c.is_ascii_alphanumeric())) {
-            Some(e) => out.push(e),
-            None => return Vec::new(),
-        }
-    }
-    out
+/// A filter as the portal gives it: a name, then (0, glob) or (1, MIME
+/// type) each.
+type PortalFilter = (String, Vec<(u32, String)>);
+
+fn filter(f: &PortalFilter) -> Filter {
+    f.1.iter().fold(Filter::new(&f.0), |acc, (kind, pattern)| if *kind == 0 { acc.glob(pattern) } else { acc.mime(pattern) })
+}
+
+/// The app's filters, and which is shown first: `current` if it's one of
+/// them, else added (alone, it applies with no pop-up).
+pub fn filters(list: &[PortalFilter], current: Option<&PortalFilter>) -> (Vec<PortalFilter>, usize) {
+    let mut list = list.to_vec();
+    let at = match current {
+        Some(c) => list.iter().position(|f| f == c).unwrap_or_else(|| {
+            list.push(c.clone());
+            list.len() - 1
+        }),
+        None => 0,
+    };
+    (list, at)
 }
 
 impl FileChooser {
-    async fn ask(&self, handle: OwnedObjectPath, parent: String, title: String, purpose: Purpose, options: &HashMap<String, OwnedValue>, server: &zbus::ObjectServer) -> Option<PathBuf> {
-        type Filter = (String, Vec<(u32, String)>);
-        let filters: Vec<Filter> = options.get("filters").and_then(|v| <Vec<Filter>>::try_from(v.try_clone().ok()?).ok()).unwrap_or_default();
-        let current: Option<Filter> = options.get("current_filter").and_then(|v| <Filter>::try_from(v.try_clone().ok()?).ok());
+    async fn ask(&self, handle: OwnedObjectPath, parent: String, title: String, purpose: Purpose, options: &HashMap<String, OwnedValue>, server: &zbus::ObjectServer) -> Option<(Chosen, Vec<PortalFilter>)> {
+        let given: Vec<PortalFilter> = options.get("filters").and_then(|v| <Vec<PortalFilter>>::try_from(v.try_clone().ok()?).ok()).unwrap_or_default();
+        let current: Option<PortalFilter> = options.get("current_filter").and_then(|v| <PortalFilter>::try_from(v.try_clone().ok()?).ok());
+        let (list, current) = filters(&given, current.as_ref());
+        let choices = options
+            .get("choices")
+            .and_then(|v| <Vec<(String, String, Vec<(String, String)>, String)>>::try_from(v.try_clone().ok()?).ok())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(id, label, options, value)| Choice { id, label, options, value })
+            .collect();
+        let multiple = purpose == Purpose::Open && options.get("multiple").and_then(|v| bool::try_from(v).ok()).unwrap_or(false);
         let current_file = path(options, "current_file");
         let folder = path(options, "current_folder").or_else(|| current_file.as_ref().and_then(|f| f.parent().map(PathBuf::from)));
         let name = match string(options, "current_name") {
@@ -106,16 +117,24 @@ impl FileChooser {
         let (tx, rx) = async_channel::bounded(1);
         let request = crate::portal::RequestObject { handle: handle.to_string(), to_ui: self.to_ui.clone() };
         let _ = server.at(handle.as_ref(), request).await;
-        (self.to_ui)(ToUi::Files(Ask { request: handle.to_string(), parent, title, purpose, folder, name, types: extensions(&filters, current.as_ref()), reply: tx }));
+        let filters = list.iter().map(filter).collect();
+        (self.to_ui)(ToUi::Files(Ask { request: handle.to_string(), parent, title, purpose, folder, name, filters, current, multiple, choices, reply: tx }));
         let chosen = rx.recv().await.ok().flatten();
         let _ = server.remove::<crate::portal::RequestObject, _>(handle.as_ref()).await;
-        chosen
+        chosen.map(|c| (c, list))
     }
 }
 
-fn answer(uris: Vec<PathBuf>) -> (u32, HashMap<String, OwnedValue>) {
+fn answer(uris: Vec<PathBuf>, chosen: &Chosen, filters: &[PortalFilter]) -> (u32, HashMap<String, OwnedValue>) {
     let uris: Vec<String> = uris.iter().map(|p| olo_kit::dnd::file_uri(p)).collect();
-    (0, HashMap::from([("uris".to_owned(), OwnedValue::try_from(Value::from(uris)).expect("strings"))]))
+    let mut results = HashMap::from([("uris".to_owned(), OwnedValue::try_from(Value::from(uris)).expect("strings"))]);
+    if !chosen.choices.is_empty() {
+        results.insert("choices".into(), OwnedValue::try_from(Value::from(chosen.choices.clone())).expect("strings"));
+    }
+    if let Some(f) = chosen.filter.and_then(|i| filters.get(i)) {
+        results.insert("current_filter".into(), OwnedValue::try_from(Value::from(f.clone())).expect("strings"));
+    }
+    (0, results)
 }
 
 /// The person cancelled.
@@ -137,7 +156,7 @@ impl FileChooser {
         let folder = options.get("directory").and_then(|v| bool::try_from(v).ok()).unwrap_or(false);
         let purpose = if folder { Purpose::Folder } else { Purpose::Open };
         match self.ask(handle, parent_window, title, purpose, &options, server).await {
-            Some(p) => answer(vec![p]),
+            Some((c, filters)) => answer(c.paths.clone(), &c, &filters),
             None => cancelled(),
         }
     }
@@ -152,7 +171,7 @@ impl FileChooser {
         #[zbus(object_server)] server: &zbus::ObjectServer,
     ) -> (u32, HashMap<String, OwnedValue>) {
         match self.ask(handle, parent_window, title, Purpose::Save, &options, server).await {
-            Some(p) => answer(vec![p]),
+            Some((c, filters)) => answer(c.paths.clone(), &c, &filters),
             None => cancelled(),
         }
     }
@@ -168,9 +187,10 @@ impl FileChooser {
     ) -> (u32, HashMap<String, OwnedValue>) {
         use std::os::unix::ffi::OsStringExt;
         let files: Vec<Vec<u8>> = options.get("files").and_then(|v| <Vec<Vec<u8>>>::try_from(v.try_clone().ok()?).ok()).unwrap_or_default();
-        let Some(dir) = self.ask(handle, parent_window, title, Purpose::SaveFiles, &options, server).await else { return cancelled() };
+        let Some((c, filters)) = self.ask(handle, parent_window, title, Purpose::SaveFiles, &options, server).await else { return cancelled() };
+        let Some(dir) = c.paths.first().cloned() else { return cancelled() };
         let names = files.into_iter().map(|f| PathBuf::from(std::ffi::OsString::from_vec(f.into_iter().take_while(|b| *b != 0).collect())));
-        answer(names.filter_map(|n| n.file_name().map(|f| dir.join(f))).collect())
+        answer(names.filter_map(|n| n.file_name().map(|f| dir.join(f))).collect(), &c, &filters)
     }
 
     #[zbus(property, name = "version")]
@@ -183,20 +203,24 @@ impl FileChooser {
 mod tests {
     use super::*;
 
-    fn filter(name: &str, patterns: &[(u32, &str)]) -> (String, Vec<(u32, String)>) {
+    fn pf(name: &str, patterns: &[(u32, &str)]) -> PortalFilter {
         (name.into(), patterns.iter().map(|(k, p)| (*k, (*p).to_owned())).collect())
     }
 
     #[test]
-    fn globs_become_extensions() {
-        let pdf = filter("PDF", &[(0, "*.pdf"), (0, "*.[Pp][Dd][Ff]")]);
-        let images = filter("Images", &[(1, "image/*"), (0, "*.png")]);
-        assert_eq!(extensions(std::slice::from_ref(&pdf), None), vec!["pdf", "pdf"]);
-        // A MIME type in it: every file (Olo can't tell types by MIME here).
-        assert!(extensions(&[images.clone()], None).is_empty());
-        // The current one wins.
-        assert_eq!(extensions(&[images, pdf.clone()], Some(&pdf)), vec!["pdf", "pdf"]);
-        assert!(extensions(&[], None).is_empty());
-        assert!(extensions(&[filter("All", &[(0, "*")])], None).is_empty());
+    fn the_apps_filters() {
+        let pdf = pf("PDF", &[(0, "*.pdf"), (1, "application/pdf")]);
+        let images = pf("Images", &[(1, "image/*")]);
+        let f = filter(&pdf);
+        assert_eq!((f.globs.clone(), f.types.clone()), (vec!["*.pdf".to_owned()], vec!["application/pdf".to_owned()]));
+        assert!(f.matches("Report.PDF", "application/octet-stream"));
+        assert!(filter(&images).matches("x", "image/png"));
+        // The current one is found, or added.
+        assert_eq!(filters(&[images.clone(), pdf.clone()], Some(&pdf)).1, 1);
+        let (list, at) = filters(&[images.clone()], Some(&pdf));
+        assert_eq!((list.len(), at), (2, 1));
+        // Alone, it's the only one.
+        assert_eq!(filters(&[], Some(&pdf)), (vec![pdf], 0));
+        assert_eq!(filters(&[images.clone()], None), (vec![images], 0));
     }
 }

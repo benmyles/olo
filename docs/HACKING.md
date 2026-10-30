@@ -846,9 +846,23 @@ it. File panels (`olo_kit::file_panel`): `FilePanel::open(dir)` /
 Name/Size/Modified list that follows the folder as it changes, "Save
 as:" field, Replace confirmation);
 `FilePanel::folder(dir)` picks a folder (folders only; Select takes the
-selected one, or the one shown). Open it
+selected one, or the one shown). `.types(&["pdf"])` offers only those
+extensions; `.filters(vec![Filter::new("Images").mime("image/*"),
+Filter::new("PDF").glob("*.pdf")], current)` offers a Show pop-up of them
+(by glob, ignoring case, or by MIME type, a kind of one counting:
+`olo_xdg::mime::is_a`; which filters each file fits is worked out with
+the listing, off the UI thread, so switching is instant; `panel.filter()`
+says which is shown). `.multiple()` lets an Open panel choose several
+files (⇧ and ⌘ clicks), answered as `Several(paths)`. `.choices(vec![Choice
+{ id, label, options, value }])` adds an app's own choices above the
+buttons (a checkbox when there are no options, else a pop-up, the pop-ups'
+fields on one divider with Show's); `panel.choices_made()` reads them
+back. Open it
 in its own window of `PANEL_SIZE`, call `panel.ui(ui)` each frame and act
-on the `PanelResult` (`Chosen(path)` / `Cancelled`). Toolbars are
+on the `PanelResult` (`Chosen(path)` / `Several(paths)` / `Cancelled`).
+`olo_xdg::mime::from_name` finds a name's type from shared-mime-info's
+globs, indexed by suffix (most are `*.ext`), so typing a big folder is a
+few lookups a file. Toolbars are
 `metrics::TOOLBAR_HEIGHT` tall (a row of controls, `TIGHT` above and
 below), with their line under them (`style::hline` at the bottom); what
 follows starts a line lower (`style::hairline`), so at 1.5× it is a pixel
@@ -3188,9 +3202,16 @@ it shares (`App::busy`).
   SaveFile and SaveFiles as the kit's file panel (`file_panel`) in a
   window over the asking one, titled as the app asks, starting in its
   `current_folder` (a save's `current_file`'s), proposing its
-  `current_name`; a filter's globs (`*.pdf`) become the panel's
-  extensions (one with a MIME type shows every file). Not yet: choosing
-  several files at once, MIME types, the portal's extra `choices`.
+  `current_name`. The app's filters (globs and MIME types; `current_filter`
+  shown first, or added) are the panel's Show pop-up, `multiple` lets it
+  choose several files, and its `choices` sit above the buttons; the
+  answer carries the `uris`, the filter shown and the choices made.
+  Chrome's and Electron's uploads (`<input type=file multiple
+  accept=…>`) come here by themselves, as do every Flatpak's; host GTK
+  programs only when asked (`GTK_USE_PORTAL=1` for GTK 3's
+  FileChooserNative, `GDK_DEBUG=portals` for GTK 4's FileDialog, both
+  tried), which Olo doesn't set for everything: they also send GTK's
+  link opening through the OpenURI portal.
 - **Keeping awake** (`inhibit.rs`): olo-portal also answers the Inhibit
   portal (an inhibition of idle or suspend lasts until the portal closes
   its request) and serves `org.freedesktop.ScreenSaver` (Inhibit gives a

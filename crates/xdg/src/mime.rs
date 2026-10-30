@@ -3,6 +3,7 @@
 //! files without a telling name.
 
 use std::{
+    collections::HashMap,
     io::Read,
     path::{Path, PathBuf},
     sync::OnceLock,
@@ -25,10 +26,21 @@ fn mime_dirs() -> Vec<PathBuf> {
     v
 }
 
-fn globs() -> &'static [Glob] {
-    static GLOBS: OnceLock<Vec<Glob>> = OnceLock::new();
+/// The glob database, indexed: most patterns are `*.ext`, found by a
+/// name's suffixes in a few lookups; the rest are matched one by one.
+struct Globs {
+    all: Vec<Glob>,
+    /// `*.ext` patterns by what follows the `*` (lowercased unless the
+    /// pattern is case-sensitive, then in `exact`).
+    folded: HashMap<String, Vec<usize>>,
+    exact: HashMap<String, Vec<usize>>,
+    others: Vec<usize>,
+}
+
+fn globs() -> &'static Globs {
+    static GLOBS: OnceLock<Globs> = OnceLock::new();
     GLOBS.get_or_init(|| {
-        let mut v = Vec::new();
+        let mut all = Vec::new();
         for dir in mime_dirs() {
             let Ok(text) = std::fs::read_to_string(dir.join("globs2")) else { continue };
             for line in text.lines().filter(|l| !l.starts_with('#')) {
@@ -36,7 +48,7 @@ fn globs() -> &'static [Glob] {
                 let mut parts = line.splitn(4, ':');
                 let (Some(w), Some(mime), Some(pattern)) = (parts.next(), parts.next(), parts.next()) else { continue };
                 let flags = parts.next().unwrap_or("");
-                v.push(Glob {
+                all.push(Glob {
                     weight: w.parse().unwrap_or(50),
                     mime: mime.to_owned(),
                     pattern: pattern.to_owned(),
@@ -44,8 +56,70 @@ fn globs() -> &'static [Glob] {
                 });
             }
         }
-        v
+        let (mut folded, mut exact, mut others) = (HashMap::<String, Vec<usize>>::new(), HashMap::<String, Vec<usize>>::new(), Vec::new());
+        for (i, g) in all.iter().enumerate() {
+            match g.pattern.strip_prefix('*').filter(|rest| rest.starts_with('.') && !rest.contains(['*', '?', '['])) {
+                Some(rest) if g.case_sensitive => exact.entry(rest.to_owned()).or_default().push(i),
+                Some(rest) => folded.entry(rest.to_lowercase()).or_default().push(i),
+                None => others.push(i),
+            }
+        }
+        Globs { all, folded, exact, others }
     })
+}
+
+/// A shared-mime-info table of `type other` lines (`subclasses`,
+/// `aliases`), from every MIME directory.
+fn table(file: &str) -> HashMap<String, Vec<String>> {
+    let mut t = HashMap::<String, Vec<String>>::new();
+    for dir in mime_dirs() {
+        let Ok(text) = std::fs::read_to_string(dir.join(file)) else { continue };
+        for (a, b) in text.lines().filter_map(|l| l.split_once(' ')) {
+            t.entry(a.to_owned()).or_default().push(b.to_owned());
+        }
+    }
+    t
+}
+
+/// The type `mime` is an alias of (`application/x-pdf`: `application/pdf`),
+/// or itself.
+fn canonical(mime: &str) -> String {
+    static ALIASES: OnceLock<HashMap<String, Vec<String>>> = OnceLock::new();
+    ALIASES.get_or_init(|| table("aliases")).get(mime).and_then(|v| v.first()).cloned().unwrap_or_else(|| mime.to_owned())
+}
+
+/// Whether a file of type `mime` is one of `of`: the same type (or an
+/// alias), one of a family (`image/*`), or a kind of it by
+/// shared-mime-info's subclasses (`text/x-csrc` is a `text/plain`, as
+/// every text type is; everything is an `application/octet-stream`).
+pub fn is_a(mime: &str, of: &str) -> bool {
+    static SUBCLASSES: OnceLock<HashMap<String, Vec<String>>> = OnceLock::new();
+    let of = canonical(of);
+    if matches!(of.as_str(), "application/octet-stream" | "*/*" | "*") {
+        return true;
+    }
+    let subclasses = SUBCLASSES.get_or_init(|| table("subclasses"));
+    let family = of.strip_suffix("/*");
+    let mut seen = std::collections::HashSet::new();
+    let mut todo = vec![canonical(mime)];
+    while let Some(m) = todo.pop() {
+        if m == of || family.is_some_and(|f| m.split('/').next() == Some(f)) {
+            return true;
+        }
+        if !seen.insert(m.clone()) {
+            continue;
+        }
+        if m.starts_with("text/") && m != "text/plain" {
+            todo.push("text/plain".into());
+        }
+        todo.extend(subclasses.get(&m).into_iter().flatten().map(|p| canonical(p)));
+    }
+    false
+}
+
+/// Whether `name` matches the shell glob `pattern` (`*`, `?`, `[...]`).
+pub fn glob(pattern: &str, name: &str) -> bool {
+    glob_match(&pattern.chars().collect::<Vec<_>>(), &name.chars().collect::<Vec<_>>())
 }
 
 /// Shell-style match supporting `*`, `?` and `[...]` (what globs2 uses).
@@ -86,14 +160,20 @@ pub fn from_name(name: &str) -> Option<String> {
     if name.to_lowercase().ends_with(".olo-backup") || name.to_lowercase().ends_with(".tabula-backup") {
         return Some(SETTINGS_BACKUP.into());
     }
-    let lower: Vec<char> = name.to_lowercase().chars().collect();
-    let exact: Vec<char> = name.chars().collect();
-    globs()
-        .iter()
-        .filter(|g| {
-            let p: Vec<char> = if g.case_sensitive { g.pattern.chars().collect() } else { g.pattern.to_lowercase().chars().collect() };
-            glob_match(&p, if g.case_sensitive { &exact } else { &lower })
-        })
+    let db = globs();
+    let lower = name.to_lowercase();
+    // Each suffix from a dot (`.tar.gz`, `.gz`), looked up; then the rest.
+    let suffixes = |s: &str| s.match_indices('.').map(|(i, _)| s[i..].to_owned()).collect::<Vec<_>>();
+    let mut hits: Vec<usize> = suffixes(&lower).iter().filter_map(|k| db.folded.get(k)).flatten().copied().collect();
+    hits.extend(suffixes(name).iter().filter_map(|k| db.exact.get(k)).flatten().copied());
+    let (lower_chars, exact_chars): (Vec<char>, Vec<char>) = (lower.chars().collect(), name.chars().collect());
+    hits.extend(db.others.iter().copied().filter(|&i| {
+        let g = &db.all[i];
+        let p: Vec<char> = if g.case_sensitive { g.pattern.chars().collect() } else { g.pattern.to_lowercase().chars().collect() };
+        glob_match(&p, if g.case_sensitive { &exact_chars } else { &lower_chars })
+    }));
+    hits.into_iter()
+        .map(|i| &db.all[i])
         .max_by_key(|g| (g.weight, g.pattern.len()))
         .map(|g| g.mime.clone())
 }
@@ -186,11 +266,20 @@ mod tests {
     #[test]
     fn database() {
         // Needs shared-mime-info, which every desktop has.
-        if globs().is_empty() {
+        if globs().all.is_empty() {
             return;
         }
         assert_eq!(from_name("x.PNG").as_deref(), Some("image/png"));
         assert_eq!(from_name("a.tar.gz").as_deref(), Some("application/x-compressed-tar"));
         assert_eq!(from_name("notes.txt").as_deref(), Some("text/plain"));
+        assert_eq!(from_name("Makefile").as_deref(), Some("text/x-makefile"));
+        assert_eq!(from_name("libfoo.so.1").as_deref(), Some("application/x-sharedlib"));
+        assert!(is_a("text/x-csrc", "text/plain"));
+        assert!(is_a("image/png", "image/*"));
+        assert!(is_a("application/x-pdf", "application/pdf"));
+        assert!(!is_a("image/png", "text/plain"));
+        assert!(is_a("image/png", "application/octet-stream"));
+        // A Markdown file is text (a subclass of text/plain).
+        assert!(is_a(&from_name("a.md").unwrap(), "text/plain"));
     }
 }
