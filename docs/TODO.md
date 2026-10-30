@@ -234,29 +234,42 @@ as they land (with the commit), add new ones as they come up.
   second, drawn at device pixels at every scale (1× to 2×, 1.25× and
   1.75× too), costing nothing once it has gone, and said in the
   window's info for agents.
-- **Bug: Empty Trash from the desktop's Trash icon didn't empty it**
+- ~~**Bug: Empty Trash from the desktop's Trash icon didn't empty it**~~
   (Ben, 2026-10-30): "right clicking on trash on desktop and choosing
   empty trash didn't seem to work so i opened trash (still saw the
   folder in there to delete) then did empty trash again from the
-  tracker menu and it worked".
-- **Deskbar: an app's notification dot fades with its notifications**
-  (Ben, 2026-10-30): "the blue notifications dot for an app in the
+  tracker menu and it worked", then "i think it was b/c there was a
+  confirmation dialog it opened that i didn't see. make sure all dialogs
+  like that get centered on the screen and on the top/front layer".
+  Done (HACKING, alerts): an alert with no parent (asked from the
+  desktop, a menu, Deskbar) opened in the next cascade slot, the top
+  left of a display, unseen; now it opens in the middle of the display
+  the pointer is on (kept off Deskbar's column), in front and focused,
+  and stays over its app's windows until answered. One with a parent
+  still opens over it.
+- **Deskbar: an app's notification dot drains with its notifications**
+  (Ben, 2026-10-30): first "the blue notifications dot for an app in the
   deskbar should fade like the notifications in notifications app as
   that apps notifications fade out (based on the settings) -- make it so
   that like when all of that apps notifications are shown with 100%
   visibility still then the blue dot is 100% and then as each individual
-  notification starts to fade that takes the relevant strength out of
-  opacity based on the fraction of that notification if you know what i
-  mean. make sure there's a min/floor to the dot opacity though where it
-  still looks good like a dot otherwise it might just look weird like a
-  mark or something". The dot's opacity is the mean of the app's
-  notifications' strengths (`NotificationSettings::strength`, from the
-  fade settings: each 1/n of it), so it stays full while none has begun
-  to fade and loses each one's share as it fades, never below a floor
-  where it still reads as a dot (to be chosen by eye, about 35–40%, in
-  every look and at every scale); with fading off, full. Updated as the
-  notifications age (no polling faster than the fade can show), and its
-  strength in the entry's status for agents.
+  notification starts to fade that takes the relevant strength out ...
+  based on the fraction of that notification ... make sure there's a
+  min/floor ... where it still looks good like a dot", then instead:
+  "instead of changing the opacity based on the notifications that are
+  fading let's have the amount of the blue dot that's filled in change,
+  filling from the left to the right so it drains as the apps
+  notifications drain". The dot is filled from its left edge to a
+  fraction of its width: the mean of the app's notifications' strengths
+  (`NotificationSettings::strength`, from the fade settings: each 1/n of
+  it), so it is full while none has begun to fade and its right side
+  empties as each fades; the empty part is the dot's outline (or a faint
+  well) in the same colour, so it always reads as a dot, never a mark,
+  with a floor to the fill where it still reads as one (chosen by eye,
+  in every look and at every scale, its edge snapped to device pixels).
+  With fading off, full. Updated as the notifications age (no faster
+  than the fill can show a change), and the fraction in the entry's
+  status for agents.
 - **Notifications preferences: banners, sounds and history for all apps
   at once** (Ben, 2026-10-30): "the notifications preferences already
   have the ability to turn on/off banners/sounds/history for each app
@@ -276,7 +289,8 @@ as they land (with the commit), add new ones as they come up.
   `NotificationSettings`); when on, the app's entry shows its count of
   notifications beside the dot, in the dot's colour and fading with it,
   in the kit's small type, fitting the entry at every width (a long
-  name is cut before the count is), shaking with the dot when one
+  name is cut before the count is), beside the dot as it drains,
+  shaking with the dot when one
   arrives, and in the entry's status for agents. Checked by eye and with
   `tsession review` at 1×, 1.25×, 1.5×, 1.75× and 2×, in light, dark and
   night, with counts of 1, 9, 10 and 99+.

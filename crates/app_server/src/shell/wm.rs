@@ -250,15 +250,22 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// Each window that names a parent (a dialog, Tracker's Quick Look)
     /// in front of it, as `xdg_toplevel.set_parent` asks, like BeOS's
     /// floating and modal feels: whatever raised the parent, its children
-    /// come back over it, in their order, and theirs over them. Done
-    /// wherever a window is raised, and once a turn for the rest.
+    /// come back over it, in their order, and theirs over them. An alert
+    /// that names none is over all its app's windows (BAlert's
+    /// app-modal feel). Done wherever a window is raised, and once a turn
+    /// for the rest.
     pub fn keep_children_above(&mut self) {
+        use smithay::reexports::wayland_server::Resource;
+        let client = |w: &WindowElement| w.wl_surface().and_then(|s| s.client()).map(|c| c.id());
         // Space only raises to the top: a child under its parent goes
         // there, which is just over the parent (only just raised itself).
         for _ in 0..=self.space.elements().count() {
             let order: Vec<WindowElement> = self.space.elements().cloned().collect();
             let under = order.iter().enumerate().find(|(i, w)| {
-                let Some(parent) = w.0.toplevel().and_then(|t| t.parent()) else { return false };
+                let Some(parent) = w.0.toplevel().and_then(|t| t.parent()) else {
+                    return crate::shell::groups::is_parentless_alert(w)
+                        && client(w).is_some_and(|c| order[i + 1..].iter().any(|o| client(o) == Some(c.clone()) && !crate::shell::groups::is_parentless_alert(o)));
+                };
                 order[i + 1..].iter().any(|p| p.wl_surface().as_deref() == Some(&parent))
             });
             let Some((_, child)) = under else { return };

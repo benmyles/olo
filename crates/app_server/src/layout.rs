@@ -593,6 +593,31 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.space.map_element(window, want, true);
     }
 
+    /// Open an alert that names no parent (one asked from the desktop, a
+    /// menu or Deskbar, where no window of its app had the focus) in the
+    /// middle of the display the pointer is on, where the person is: not
+    /// in the next cascade slot, which may be on another display or under
+    /// other windows. In front, as a new window is, and kept over its
+    /// app's windows (`keep_children_above`).
+    pub fn place_alert(&mut self, surface: &WlSurface) {
+        let Some(window) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface)).cloned() else {
+            return;
+        };
+        if !crate::shell::groups::is_parentless_alert(&window) {
+            return;
+        }
+        let (Some(loc), Some(g)) = (self.space.element_location(&window), self.space.element_geometry(&window)) else { return };
+        let at = self.pointer.current_location();
+        let Some(output) = self.space.output_under(at).next().cloned().or_else(|| self.space.outputs().next().cloned()) else { return };
+        let (Some(screen), Some(usable)) = (self.space.output_geometry(&output), self.usable_area(&output)) else { return };
+        // In the middle of the screen, kept off what Deskbar keeps for
+        // itself.
+        let x = (screen.loc.x + (screen.size.w - g.size.w) / 2).min(usable.loc.x + usable.size.w - g.size.w).max(usable.loc.x);
+        let y = (screen.loc.y + (screen.size.h - g.size.h) / 2).min(usable.loc.y + usable.size.h - g.size.h).max(usable.loc.y);
+        *window.meta().grouping.borrow_mut() = crate::shell::groups::Grouping::Alone;
+        self.space.map_element(window, loc + Point::from((x - g.loc.x, y - g.loc.y)), true);
+    }
+
     /// Open a window that names a parent (an alert, a dialog) over it, as
     /// Haiku's BAlert does: centred across, a quarter of the way down.
     pub fn place_over_parent(&mut self, surface: &WlSurface) {

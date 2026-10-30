@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Alerts open in the middle of the screen, in front
+
+*10:26* — An alert asked for where no window of its app has the focus (Empty Trash from the desktop's Trash icon) opened in the next cascade slot, at the top left of some display, where it went unseen. Now it opens in the middle of the display the pointer is on, in front and focused, and stays over its app's windows until answered.
+
+![Alerts open in the middle of the screen, in front](2026-10-30/102609-alerts-open-in-the-middle-of-the-screen-in-front.png)
+
 ### Activity Monitor: programs using the network
 
 *09:41* — Each process's TCP traffic, from netlink's sock_diag (tcp_info's byte counts) summed by the sockets' owners: a card in the Network section and Sent and Received columns in the process list. Connections and interface counters come from netlink too.

@@ -271,6 +271,20 @@ pub(super) fn is_dialog(t: &smithay::wayland::shell::xdg::ToplevelSurface) -> bo
         })
 }
 
+/// An alert that names no parent: a modal xdg-dialog of a fixed size
+/// (the kit's alerts, a toolkit's parentless message box).
+pub(crate) fn is_parentless_alert(w: &WindowElement) -> bool {
+    use smithay::wayland::{
+        compositor,
+        shell::xdg::{XdgToplevelSurfaceData, dialog::ToplevelDialogHint},
+    };
+    let WindowSurface::Wayland(t) = w.0.underlying_surface();
+    t.parent().is_none()
+        && compositor::with_states(t.wl_surface(), |s| {
+            s.data_map.get::<XdgToplevelSurfaceData>().is_some_and(|d| d.lock().unwrap().dialog_hint == ToplevelDialogHint::Modal)
+        })
+}
+
 /// The frame size `w` was asked for and hasn't drawn yet, if any.
 pub(super) fn size_on_the_way(w: &WindowElement) -> Option<Size<i32, Logical>> {
     let WindowSurface::Wayland(t) = w.0.underlying_surface();

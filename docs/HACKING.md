@@ -962,7 +962,12 @@ doesn't give it a size remembered from before a restart. Icons are BeOS's `warni
 alert a child (`xdg_toplevel.set_parent`) of the app's focused window, or
 of `WindowOptions::parent(id)` (or `parent_opt(Option<id>)`) when given, and app_server opens any
 window with a parent over it as BAlert does: centred across, a quarter
-of the way down.
+of the way down. An alert with no parent (a modal xdg-dialog naming
+none: asked from the desktop, a menu or Deskbar, where no window of its
+app had the focus, or a toolkit's parentless message box) opens in the
+middle of the display the pointer is on, kept off Deskbar's column, in
+front and focused (`place_alert`), and stays over all its app's windows
+until it's answered (`keep_children_above`, BAlert's app-modal feel).
 
 ### Sidebars, dashboards and live graphs (`olo_kit::sidebar`, `dashboard`, `graph`)
 
