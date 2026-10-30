@@ -19,3 +19,5 @@ tracing.workspace = true
 libc = "0.2"
 png = "0.18"
 zstd = "0.14"
+openh264 = "0.9"
+ab_glyph = "0.2"

@@ -4040,6 +4040,14 @@ plays it back in time with them (Play/Pause, 1× to 8×, ◀ ▶ action by
 action; stretches of more than 3 s with nothing in them skipped), each
 click a ring where it went and each key or text a caption under the
 picture. Frames are built on a worker, the latest asked for winning.
+`history NAME --export OUT.mp4` (`export.rs`) makes it a video in
+process: the frames at 10 a second (`record::Player`, each record
+applied once in order), H.264 from OpenH264, in an MP4 of our own
+(`ftyp`, `mdat`, `moov` with `avcC` from the encoder's parameter sets;
+`co64`, one chunk). Stretches over 10 s with no action and no frame
+changing are cut, each a two-second card in the kit's type ("4 min 12 s
+with nothing happening", `ab_glyph`); `progress` gets how far it is and
+can stop it. Olo's Viewer plays the result.
 
 Input that plays out over time is paced, a batch per IPC request with
 waits between (`Screen::input_paced`): `drag` presses, moves in steps

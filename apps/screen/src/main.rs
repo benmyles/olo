@@ -3,6 +3,7 @@
 //! agents' tool; without one it opens the window that shows the screens.
 //! See `screens.rs` for what a screen is and HACKING.md, "Agent Screens".
 
+mod export;
 mod find;
 mod history;
 mod record;
@@ -31,6 +32,8 @@ usage: olo-screen                         open Agent Screens (watch, take contro
                                              what was done on it: each action, what it matched, how it went
        olo-screen history NAME --look N [OUT.png]
                                              the screen as it was when action N (from 1) ended
+       olo-screen history NAME --export OUT.mp4
+                                             all of it as a video, quiet stretches cut
        olo-screen stats [NAME] [--json]   when each screen was started and last used, how long it
                                              ran and was in use, its actions by kind, its programs
        olo-screen env NAME                its environment, for a shell (eval \"$(…)\")
@@ -217,6 +220,21 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 encoder.set_depth(png::BitDepth::Eight);
                 encoder.write_header().and_then(|mut w| w.write_image_data(&frame.rgba)).map_err(|e| e.to_string())?;
                 print_json(&json!({ "path": out, "action": a, "frame_at": when }));
+                return Ok(());
+            }
+            // As a video: an MP4, quiet stretches cut.
+            if let Some(out) = option(rest, "--export") {
+                let out = std::path::absolute(PathBuf::from(out)).map_err(|e| e.to_string())?;
+                let mut shown = -1i32;
+                export::export(&name()?, &out, &mut |f| {
+                    let pct = (f * 100.0) as i32;
+                    if pct / 10 != shown / 10 {
+                        eprintln!("olo-screen: exporting… {pct}%");
+                        shown = pct;
+                    }
+                    true
+                })?;
+                print_json(&json!({ "path": out }));
                 return Ok(());
             }
             let kind = option(rest, "--kind");

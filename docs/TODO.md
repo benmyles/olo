@@ -1008,7 +1008,9 @@ as they land (with the commit), add new ones as they come up.
   `olo-screen stats`; HACKING, "Agent Screens"), kept under 8 MB, and
   the frames beside them (`record.rs`, changed tiles only;
   `history NAME --look N`), and History and Replay in the window
-  (`replay.rs`). Still to do: MP4 export, the stats in the window and
+  (`replay.rs`), and MP4 export for agents (`history NAME --export`,
+  `export.rs`). Still to do: Export Video… in the window (a worker with
+  progress and Cancel), the stats in the window and
   the list's sort by last use (stopped screens with a history listed
   too), and the limits in Preferences.
 - **Other programs feel like Olo's own: every integration point**

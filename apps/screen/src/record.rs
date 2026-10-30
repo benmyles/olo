@@ -185,6 +185,37 @@ pub fn frame_at(segments: &[Segment], at: u64) -> Option<(u64, Frame)> {
     Some((when, frame))
 }
 
+/// Plays frames forward: each record applied once, in order, going back
+/// to a keyframe only on a jump back or into another segment.
+pub struct Player<'a> {
+    segments: &'a [Segment],
+    /// The segment and record the frame is up to.
+    at: Option<(usize, usize)>,
+    pub frame: Frame,
+}
+
+impl<'a> Player<'a> {
+    pub fn new(segments: &'a [Segment]) -> Player<'a> {
+        Player { segments, at: None, frame: Frame { width: 0, height: 0, rgba: Vec::new() } }
+    }
+
+    /// The screen as it was at `t`; None before the first frame.
+    pub fn at(&mut self, t: u64) -> Option<&Frame> {
+        let s = self.segments.iter().rposition(|s| s.frames.first().is_some_and(|f| f.at <= t))?;
+        let seg = &self.segments[s];
+        let last = seg.frames.iter().rposition(|f| f.at <= t)?;
+        let from = match self.at {
+            Some((ps, pi)) if ps == s && pi <= last => pi + 1,
+            _ => seg.frames[..=last].iter().rposition(|f| f.key)?,
+        };
+        for e in &seg.frames[from..=last] {
+            apply(&seg.path, e.offset, &mut self.frame)?;
+        }
+        self.at = Some((s, last));
+        Some(&self.frame)
+    }
+}
+
 /// Keeps a screen's frames: each one looked at, its changes written.
 struct Writer {
     dir: PathBuf,
