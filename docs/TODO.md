@@ -214,6 +214,21 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Move to Workspace: every display's workspaces, from a window's tab
+  and from Deskbar's apps** (Ben, 2026-10-30): "when right clicking a
+  window title bar, under move to workspace it only shows the current
+  display's workspaces. it should show all the workspaces for all the
+  displays as targets to move to just like in the deskbar when you right
+  click a workspace group title and get the option to move all windows
+  to ->. and, speaking of the deskbar, when right clicking a running app
+  in the deskbar all the move window options should be available in
+  there too for that app." The tab's menu's Move to Workspace lists each
+  display's workspaces ("D0 Workspace 1" …, as Deskbar names them; the
+  window's own display first), moving the window to that display and
+  workspace; an app's menu in Deskbar gets the same moves for all its
+  windows (Move to Workspace ▸ every display's, Move to Display, and the
+  window moves the tab's menu has), done with `MoveToWorkspace` and the
+  display moves app_server already has.
 - **Preferences ▸ Performance: a supervisor that keeps the desktop
   responsive** (Ben, 2026-10-30): "a new preferences -> performance app,
   and the first setting should be one to do smart process prioritization
