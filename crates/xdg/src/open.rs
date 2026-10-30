@@ -163,6 +163,49 @@ pub fn for_others(bin_dir: &Path) -> (Vec<(String, String)>, String) {
     (entries, defaults)
 }
 
+/// Olo's Google Chrome's desktop entry (`apps/chrome`), in
+/// `~/.local/share/applications`.
+pub const CHROME_ENTRY: &str = "google-chrome.desktop";
+
+/// Chrome offered as the default browser: what goes in `olo-mimeapps.list`
+/// in `apps` (`~/.local/share/applications`), naming Olo's Chrome for web
+/// pages and links, or None while it isn't installed there. That file is
+/// read after every `mimeapps.list` in the config directories, so a
+/// browser the person chose (Chrome's own "Make Default", another
+/// browser's) still wins; it is only ahead of the system's lists, which
+/// would otherwise pick whichever browser came with the system.
+pub fn browser_offer(apps: &Path) -> Option<String> {
+    apps.join(CHROME_ENTRY).is_file().then(|| {
+        let mut text = String::from("# Written by Olo: web pages and links open in Google Chrome unless you\n# choose another browser (in ~/.config/mimeapps.list).\n[Default Applications]\n");
+        for t in ["x-scheme-handler/http", "x-scheme-handler/https", "text/html", "application/xhtml+xml"] {
+            text.push_str(&format!("{t}={CHROME_ENTRY};\n"));
+        }
+        text
+    })
+}
+
+/// Write [`browser_offer`] in `apps` (or take it away once Chrome is
+/// gone). True if it changed.
+pub fn offer_browser(apps: &Path) -> io::Result<bool> {
+    let path = apps.join("olo-mimeapps.list");
+    match browser_offer(apps) {
+        Some(text) => {
+            if std::fs::read_to_string(&path).is_ok_and(|t| t == text) {
+                return Ok(false);
+            }
+            let tmp = apps.join(".olo-mimeapps.list.new");
+            std::fs::write(&tmp, text)?;
+            std::fs::rename(&tmp, &path)?;
+            Ok(true)
+        }
+        None => match std::fs::remove_file(&path) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        },
+    }
+}
+
 /// The `mimeinfo.cache` for the desktop entries in `dir` and below, as
 /// update-desktop-database writes it (GIO finds which apps open a type
 /// only through it): each type, and the entries that open it.

@@ -114,7 +114,8 @@ fn write_files(config: &Path, data: &Path) -> std::io::Result<Written> {
 /// gives, in `apps` (`~/.local/share/applications`, whose
 /// `mimeinfo.cache` is made again when they change, as
 /// update-desktop-database would) and `config`; entries written before
-/// and no longer wanted go.
+/// and no longer wanted go. Olo's Chrome, once installed, is offered as
+/// the default browser (`olo_xdg::open::browser_offer`).
 fn open_for_others(bin_dir: &Path, config: &Path, apps: &Path) -> std::io::Result<()> {
     let (entries, defaults) = olo_xdg::open::for_others(bin_dir);
     let mut changed = false;
@@ -138,6 +139,7 @@ fn open_for_others(bin_dir: &Path, config: &Path, apps: &Path) -> std::io::Resul
         put(&apps.join("mimeinfo.cache"), &olo_xdg::open::mime_cache(apps))?;
     }
     put(&config.join("olo-mimeapps.list"), &defaults)?;
+    olo_xdg::open::offer_browser(apps)?;
     Ok(())
 }
 
@@ -220,6 +222,12 @@ mod tests {
             assert!(!cache.contains("inode/directory"));
             assert!(defaults.contains("\napplication/pdf=olo.viewer.desktop;\n"));
         }
+        // No Chrome, no browser offered; once it is installed, it is.
+        assert!(!apps.join("olo-mimeapps.list").exists());
+        std::fs::write(apps.join(olo_xdg::open::CHROME_ENTRY), "[Desktop Entry]\nType=Application\nName=Google Chrome\n").unwrap();
+        open_for_others(&bin, &config, &apps).unwrap();
+        let offer = std::fs::read_to_string(apps.join("olo-mimeapps.list")).unwrap();
+        assert!(offer.contains("\nx-scheme-handler/https=google-chrome.desktop;\n") && !defaults.contains("x-scheme-handler"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

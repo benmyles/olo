@@ -60,9 +60,9 @@ pub fn chosen(personal: &Path, system: &[PathBuf]) -> Vec<PathBuf> {
         files.sort();
         for f in files {
             let name = f.file_name().unwrap_or_default().to_string_lossy().into_owned();
-            if !by_name.contains_key(&name) {
-                order.push(name.clone());
-                by_name.insert(name, (f, mine));
+            if let std::collections::hash_map::Entry::Vacant(e) = by_name.entry(name.clone()) {
+                order.push(name);
+                e.insert((f, mine));
             }
         }
     }
