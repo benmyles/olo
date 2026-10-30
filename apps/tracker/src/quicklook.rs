@@ -167,8 +167,11 @@ impl QuickLook {
 
     pub fn ui(&mut self, ui: &mut Ui) -> Option<Action> {
         let mut action = None;
+        // (Not while a field has the keyboard: a table's search.)
+        let typing = ui.ctx().egui_wants_keyboard_input();
         ui.input(|i| {
-            if i.key_pressed(Key::Space) || i.key_pressed(Key::Escape) {
+            if typing {
+            } else if i.key_pressed(Key::Space) || i.key_pressed(Key::Escape) {
                 action = Some(Action::Close);
             } else if i.key_pressed(Key::Enter) {
                 action = Some(Action::Open);

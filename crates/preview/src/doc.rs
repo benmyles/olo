@@ -749,9 +749,11 @@ pub fn table(path: &Path, ext: &str) -> Result<Update, String> {
                 rows.push(r.iter().take(MAX_COLS).map(str::to_owned).collect());
             }
         }
+        // (Its header, if it has one, isn't a row.)
+        let total = total - usize::from(super::table::looks_like_header(&rows));
         let note = format!("{} table, {total} row{}", if ext == "tsv" { "TSV" } else { "CSV" }, if total == 1 { "" } else { "s" });
         let name = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
-        return Ok(Update::Body(Body::Table { sheets: vec![(name, rows)], note }));
+        return Ok(Update::Body(Body::Table { sheets: vec![(name, std::sync::Arc::new(rows))], note }));
     }
     use calamine::{Data, Reader, open_workbook_auto};
     let mut wb = open_workbook_auto(path).map_err(|e| format!("This spreadsheet can't be read ({e})."))?;
@@ -772,7 +774,7 @@ pub fn table(path: &Path, ext: &str) -> Result<Update, String> {
                     .collect()
             })
             .collect();
-        sheets.push((name, rows));
+        sheets.push((name, std::sync::Arc::new(rows)));
     }
     let n = sheets.len();
     let kind = match ext {

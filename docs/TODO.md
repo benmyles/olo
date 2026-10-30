@@ -293,14 +293,29 @@ as they land (with the commit), add new ones as they come up.
   every window shows its yellow tab, as in BeOS, and a lone window's tab
   is its group's bar with one tab in it (decided rather than asked:
   another strip over a single window would be a second title).
-- **Quick Look: scroll, filter, search and sort tables** (Ben,
-  2026-10-29): "in quick look it shows a csv with rows and cols which is
+- ~~**Quick Look: scroll, filter, search and sort tables**~~ (Ben,
+  2026-10-29; done: HACKING, `crates/preview`'s spreadsheets, and the
+  kit's `ColumnListView` scrolling sideways): "in quick look it shows a csv with rows and cols which is
   great but it doesn't let me scroll horizontally to see all the cols we
   need to support horizontal scroll and also add the ability to
   filter/search/sort in there too". CSV, TSV and spreadsheets: scroll
   sideways to every column; search across the cells; filter rows; sort
   by a column (header click, again to reverse), on a worker for big
   files.
+- **StyledEdit, much more featureful** (Ben, 2026-10-29, after
+  everything else): "please improve StyledEdit to be much more featureful
+  -- it doesn't need all the bells and whistles of, say, modern Word or
+  Excel, but maybe something like ClarisWorks / Gobe Productive". After
+  Gobe Productive (BeOS's own office suite) and ClarisWorks: a word
+  processor first (paragraph styles, rulers with tabs and indents,
+  lists, tables, pictures, headers and footers, page view and printing
+  to PDF, find and replace, spelling, word count), opening and saving
+  the formats people have (RTF, Markdown, DOCX, ODT, HTML) natively.
+  And (Ben): "as you build out new widgets/components/patterns etc for
+  anything that is reusable they should go into the kit so we can use in
+  other apps -- use it as an opportunity to enhance the kit too": rulers,
+  style menus, tables, page views and the like are kit widgets,
+  documented in HACKING.
 - **Terminal: git repos, worktrees and GitHub** (Ben), native (no `git`
   or `gh` subprocesses):
   - a tab in a git repo goes into a group named after the repo on its

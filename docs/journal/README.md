@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Quick Look: search, sort and scroll tables
+
+*17:29* — CSV and spreadsheets in Quick Look scroll sideways to every column, take the first row as the columns' names, line numbers up on the right, keep only the rows a search finds (in every column or one) and sort by a header click, numbers as numbers. Big sheets are searched and sorted on a worker.
+
+![Quick Look: search, sort and scroll tables](2026-10-29/172908-quick-look-search-sort-and-scroll-tables.png)
+
 ### Quick Look: tables, pictures and links
 
 *16:20* — Tables are as wide as what they hold and line up as the Markdown says; the document's own pictures show, crisp; links open, and a #heading link scrolls to it. Long documents lay out a few milliseconds a frame, so nothing waits.

@@ -15,6 +15,7 @@ pub mod media;
 pub mod opus;
 pub mod pdf;
 pub mod rich;
+pub mod table;
 pub mod text;
 pub mod video;
 
@@ -102,6 +103,8 @@ pub struct Preview {
     drag_out: bool,
     /// A formatted document's page, as laid out.
     rich: rich::RichView,
+    /// A spreadsheet's search and the rows it shows.
+    table: table::TableView,
 }
 
 /// Zoom and pan of an image: `zoom` is points per image pixel (None fits
@@ -155,6 +158,7 @@ impl Preview {
             still: false,
             drag_out: false,
             rich: rich::RichView::default(),
+            table: table::TableView::default(),
         };
         q.spawn(send);
         q
@@ -181,6 +185,7 @@ impl Preview {
         self.video = None;
         self.sheet = 0;
         self.list = ListState::default();
+        self.table.reset();
         self.started = Instant::now();
         // Keep showing the previous body until the new one lands, so
         // stepping through a folder doesn't flash.
@@ -543,15 +548,17 @@ impl Preview {
                         }
                         let font = if selected { style::bold_font() } else { style::plain_font() };
                         style::label(ui.painter(), br.center().x, br.center().y, Align::Center, *name, font, c(p.panel_text));
-                        if resp.clicked() {
+                        if resp.clicked() && self.sheet != k {
                             self.sheet = k;
+                            self.list = ListState::default();
                         }
                         x += w + m::TIGHT;
                     }
                     area = Rect::from_min_max(pos2(r.left(), tabs.bottom()), r.max);
                 }
-                let rows = sheets.get(self.sheet).map(|s| s.1.as_slice()).unwrap_or(&[]);
-                table_view(ui, area, rows, &mut self.list, (id, self.sheet));
+                if let Some((_, rows)) = sheets.get(self.sheet) {
+                    self.table.show(ui, area, rows, &mut self.list, (id, self.sheet));
+                }
             }
             Body::Listing { items, .. } => {
                 let cols = [Column::new("Name", 360.0), Column::new("Size", 90.0).right()];
@@ -747,35 +754,6 @@ fn text_view(ui: &mut Ui, r: Rect, t: &text::Text, id: u64) {
             }
         },
     );
-}
-
-fn table_view(ui: &mut Ui, r: Rect, rows: &[Vec<String>], list: &mut ListState, id: (u64, usize)) {
-    let ncols = rows.iter().map(Vec::len).max().unwrap_or(0).clamp(1, 200);
-    let names: Vec<String> = (0..ncols).map(column_name).collect();
-    let cols: Vec<Column> = (0..ncols)
-        .map(|k| {
-            let longest = rows.iter().take(200).filter_map(|r| r.get(k)).map(|s| s.chars().count()).max().unwrap_or(4);
-            Column::new(&names[k], (longest as f32 * 7.0 + 14.0).clamp(48.0, 260.0))
-        })
-        .collect();
-    let mut ui = ui.new_child(egui::UiBuilder::new().max_rect(r));
-    ColumnListView::new(("ql-table", id), &cols, rows.len(), list).show(&mut ui, |cell| {
-        if let Some(s) = rows.get(cell.row).and_then(|r| r.get(cell.column)) {
-            cell.text(s);
-        }
-    });
-}
-
-/// Spreadsheet column letters: A … Z, AA, AB, …
-fn column_name(mut k: usize) -> String {
-    let mut s = String::new();
-    loop {
-        s.insert(0, (b'A' + (k % 26) as u8) as char);
-        if k < 26 {
-            return s;
-        }
-        k = k / 26 - 1;
-    }
 }
 
 /// Below a video: its title and facts, and the transport when it plays.
@@ -1028,20 +1006,4 @@ fn font_view(ui: &mut Ui, r: Rect, family: FontFamily) {
             ui.painter().galley(pos2(x, rect.top()), g, ink);
         }
     });
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn columns() {
-        assert_eq!(column_name(0), "A");
-        assert_eq!(column_name(25), "Z");
-        assert_eq!(column_name(26), "AA");
-        assert_eq!(column_name(27), "AB");
-        assert_eq!(column_name(701), "ZZ");
-        assert_eq!(column_name(702), "AAA");
-    }
 }

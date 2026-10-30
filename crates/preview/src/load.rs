@@ -42,7 +42,7 @@ pub enum Body {
     /// Formatted documents: Markdown, Word, OpenDocument, PowerPoint.
     Rich { blocks: Vec<doc::Block>, note: String },
     /// Spreadsheets and CSV: each sheet's rows.
-    Table { sheets: Vec<(String, Vec<Vec<String>>)>, note: String },
+    Table { sheets: Vec<(String, crate::table::Rows)>, note: String },
     /// Folders and archives.
     Listing { items: Vec<archive::Item>, note: String },
     Media(media::Media),

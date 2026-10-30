@@ -2184,72 +2184,16 @@ impl<'a> ColumnListView<'a> {
             .filter(|w| w.len() == self.columns.len())
             .unwrap_or_else(|| self.columns.iter().map(|c| c.width).collect());
 
-        // Header.
         let inner = style::inset(ui.ctx(), outer, 2.0);
         let header = Rect::from_min_size(inner.min, vec2(inner.width(), HEADER_HEIGHT));
-        let painter = ui.painter().clone();
-        let bg = p.panel_background;
-        style::vgradient(&painter, header, c(olo_theme::tint(bg, 0.8)), shade(&p, bg, 1.04));
-        hline_above(&painter, header.left(), header.right(), header.bottom(), shade(&p, bg, 1.45));
-        let mut x = header.left();
         let last = self.columns.len().saturating_sub(1);
-        for (i, col) in self.columns.iter().enumerate() {
-            let w = if i == last { (header.right() - x - SCROLL_BAR).max(0.0) } else { widths[i] };
-            let r = Rect::from_min_size(pos2(x, header.top()), vec2(w, HEADER_HEIGHT - 1.0));
-            let resp = ui.interact(r, self.id.with(("hdr", i)), Sense::click());
-            let sorted = self.state.sort.filter(|(c, _)| *c == i);
-            resp.widget_info(|| WidgetInfo { selected: Some(sorted.is_some()), ..WidgetInfo::labeled(Role::ColumnHeader, true, col.title.as_str()) });
-            if resp.clicked() {
-                self.state.sort = Some((i, sorted.is_none_or(|(_, asc)| !asc)));
-                out.sort_changed = true;
-            }
-            if resp.is_pointer_button_down_on() {
-                painter.rect_filled(r, 0.0, shade(&p, bg, 1.1));
-            }
-            // Light leading edge, dark trailing edge.
-            vline(&painter, r.left(), r.top(), r.bottom(), c(p.shine));
-            vline_left_of(&painter, r.right(), r.top() + 2.0, r.bottom() - 2.0, shade(&p, bg, 1.3));
-            let font = if sorted.is_some() { bold_font() } else { plain_font() };
-            let hc = Cell {
-                painter: &painter,
-                rect: r.with_max_x(r.right() - if sorted.is_some() { 12.0 } else { 0.0 }),
-                row: 0,
-                column: i,
-                selected: false,
-                text_color: c(p.panel_text),
-                align: col.align,
-            };
-            hc.text_with(&col.title, font, c(p.panel_text));
-            if let Some((_, asc)) = sorted {
-                let ax = r.right() - 10.0;
-                let ay = r.center().y.round();
-                let pts = if asc {
-                    vec![pos2(ax - 3.5, ay + 2.0), pos2(ax + 3.5, ay + 2.0), pos2(ax, ay - 2.0)]
-                } else {
-                    vec![pos2(ax - 3.5, ay - 2.0), pos2(ax + 3.5, ay - 2.0), pos2(ax, ay + 2.0)]
-                };
-                painter.add(Shape::convex_polygon(pts, c(p.panel_text), Stroke::NONE));
-            }
-            // Resize handle on the divider.
-            if i != last {
-                let handle = Rect::from_center_size(pos2(r.right(), r.center().y), vec2(6.0, HEADER_HEIGHT));
-                let h = ui.interact(handle, self.id.with(("resize", i)), Sense::drag());
-                if h.hovered() || h.dragged() {
-                    ui.ctx().set_cursor_icon(CursorIcon::ResizeColumn);
-                }
-                if h.dragged() {
-                    widths[i] = (widths[i] + h.drag_delta().x).max(col.min_width);
-                }
-            }
-            x += w;
-        }
-        ui.ctx().data_mut(|d| d.insert_temp(widths_id, widths.clone()));
+        // Columns wider together than the view scroll sideways, the header
+        // with them; else the last fills what is left.
+        let total: f32 = widths.iter().sum();
+        let sideways = total > inner.width() - SCROLL_BAR;
 
-        // Above the scroll bar: a blank header cell.
-        let filler = Rect::from_min_max(pos2(header.right() - SCROLL_BAR, header.top()), pos2(header.right(), header.bottom() - 1.0));
-        vline(&painter, filler.left(), filler.top(), filler.bottom(), c(p.shine));
-
-        // Rows.
+        // Rows (first, for where they are scrolled to: the header goes
+        // with them this frame).
         let body = Rect::from_min_max(pos2(inner.left(), header.bottom()), inner.max);
         let focus_id = self.id.with("focus");
         let list_resp = ui.interact(body, focus_id, Sense::focusable_noninteractive());
@@ -2271,6 +2215,7 @@ impl<'a> ColumnListView<'a> {
         let mut band = ui.ctx().data(|d| d.get_temp::<(Pos2, BTreeSet<usize>)>(band_id));
         let mut band_from = None;
         let mut content_top = body.top();
+        let mut content_left = body.left();
         if let Some(row) = self.reveal {
             let context = ((body.height() / row_h / 2.0).floor() - 1.0).max(0.0);
             let (top, bottom) = ((row as f32 - context).max(0.0) * row_h, (row as f32 + 1.0 + context) * row_h);
@@ -2278,14 +2223,17 @@ impl<'a> ColumnListView<'a> {
         }
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body));
         child.spacing_mut().item_spacing.y = 0.0;
-        ScrollView::new(id.with("scroll")).border(false).background(p.list_background).show_rows(
+        let row_widths = widths.clone();
+        ScrollView::new(id.with("scroll")).border(false).horizontal(sideways).background(p.list_background).show_rows(
             &mut child,
             row_h,
             rows,
             |ui, range| {
+                let widths = row_widths;
                 ui.spacing_mut().item_spacing.y = 0.0;
                 let left = ui.max_rect().left();
-                let right = ui.max_rect().right();
+                let right = if sideways { left + total } else { ui.max_rect().right() };
+                content_left = left;
                 content_top = ui.max_rect().top() - range.start as f32 * row_h;
                 let sense = if draggable || state.multiple { Sense::click_and_drag() } else { Sense::click() };
                 for row in range {
@@ -2387,6 +2335,72 @@ impl<'a> ColumnListView<'a> {
                 }
             },
         );
+        // Header.
+        let painter = ui.painter().clone();
+        // What of the header shows (scrolled sideways, part of it is off).
+        let shown = header.with_max_x(header.right() - SCROLL_BAR);
+        let header_painter = painter.with_clip_rect(shown.intersect(painter.clip_rect()));
+        let bg = p.panel_background;
+        style::vgradient(&painter, header, c(olo_theme::tint(bg, 0.8)), shade(&p, bg, 1.04));
+        hline_above(&painter, header.left(), header.right(), header.bottom(), shade(&p, bg, 1.45));
+        let mut x = if sideways { content_left } else { header.left() };
+        for (i, col) in self.columns.iter().enumerate() {
+            let painter = &header_painter;
+            let w = if i == last && !sideways { (header.right() - x - SCROLL_BAR).max(0.0) } else { widths[i] };
+            let r = Rect::from_min_size(pos2(x, header.top()), vec2(w, HEADER_HEIGHT - 1.0));
+            let resp = ui.interact(r.intersect(shown), self.id.with(("hdr", i)), Sense::click());
+            let sorted = state.sort.filter(|(c, _)| *c == i);
+            resp.widget_info(|| WidgetInfo { selected: Some(sorted.is_some()), ..WidgetInfo::labeled(Role::ColumnHeader, true, col.title.as_str()) });
+            if resp.clicked() {
+                state.sort = Some((i, sorted.is_none_or(|(_, asc)| !asc)));
+                out.sort_changed = true;
+            }
+            if resp.is_pointer_button_down_on() {
+                painter.rect_filled(r, 0.0, shade(&p, bg, 1.1));
+            }
+            // Light leading edge, dark trailing edge.
+            vline(painter, r.left(), r.top(), r.bottom(), c(p.shine));
+            vline_left_of(painter, r.right(), r.top() + 2.0, r.bottom() - 2.0, shade(&p, bg, 1.3));
+            let font = if sorted.is_some() { bold_font() } else { plain_font() };
+            let hc = Cell {
+                painter,
+                rect: r.with_max_x(r.right() - if sorted.is_some() { 12.0 } else { 0.0 }),
+                row: 0,
+                column: i,
+                selected: false,
+                text_color: c(p.panel_text),
+                align: col.align,
+            };
+            hc.text_with(&col.title, font, c(p.panel_text));
+            if let Some((_, asc)) = sorted {
+                let ax = r.right() - 10.0;
+                let ay = r.center().y.round();
+                let pts = if asc {
+                    vec![pos2(ax - 3.5, ay + 2.0), pos2(ax + 3.5, ay + 2.0), pos2(ax, ay - 2.0)]
+                } else {
+                    vec![pos2(ax - 3.5, ay - 2.0), pos2(ax + 3.5, ay - 2.0), pos2(ax, ay + 2.0)]
+                };
+                painter.add(Shape::convex_polygon(pts, c(p.panel_text), Stroke::NONE));
+            }
+            // Resize handle on the divider.
+            if i != last && shown.x_range().contains(r.right()) {
+                let handle = Rect::from_center_size(pos2(r.right(), r.center().y), vec2(6.0, HEADER_HEIGHT));
+                let h = ui.interact(handle, self.id.with(("resize", i)), Sense::drag());
+                if h.hovered() || h.dragged() {
+                    ui.ctx().set_cursor_icon(CursorIcon::ResizeColumn);
+                }
+                if h.dragged() {
+                    widths[i] = (widths[i] + h.drag_delta().x).max(col.min_width);
+                }
+            }
+            x += w;
+        }
+        ui.ctx().data_mut(|d| d.insert_temp(widths_id, widths.clone()));
+
+        // Above the scroll bar: a blank header cell.
+        let filler = Rect::from_min_max(pos2(header.right() - SCROLL_BAR, header.top()), pos2(header.right(), header.bottom() - 1.0));
+        vline(&painter, filler.left(), filler.top(), filler.bottom(), c(p.shine));
+
         if rows == 0
             && let Some(text) = self.empty
         {

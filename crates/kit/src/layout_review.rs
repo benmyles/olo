@@ -541,7 +541,8 @@ fn near_edges(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
             // so its right edge is up to one off another's.
             let right = SAME.max(1.0 / ppp + 0.01);
             let other_way = (ra.max.x - rb.max.x).abs() <= right || (ra.center().x - rb.center().x).abs() <= SAME;
-            if (-2.0..=48.0).contains(&below) && d > SAME && d <= NEAR_EDGE && !other_way {
+            // (On another grid, it lines up with the window's only by chance.)
+            if (-2.0..=48.0).contains(&below) && d > SAME && d <= NEAR_EDGE && !other_way && grid_of(p, ra) == grid_of(p, rb) {
                 let text = format!("{na} (x {xa:.0}) and {nb} under it (x {xb:.0}) almost line up on the left: line them up");
                 push(out, finding(Level::Review, "near-edge", text, ra.union(*rb)));
             }
