@@ -91,7 +91,7 @@ impl WindowElement {
     }
 
     /// Offset from this element's render origin to the client's render origin.
-    fn client_render_offset(&self) -> Point<i32, Logical> {
+    pub(crate) fn client_render_offset(&self) -> Point<i32, Logical> {
         let geo = SpaceElement::geometry(&self.0);
         if self.decorated() {
             deco::content_offset() - geo.loc
@@ -140,7 +140,7 @@ impl WindowElement {
 
     /// Only its tab shows: rolled up, behind others in its group, or
     /// being put in a group by hand.
-    fn tab_only(&self) -> bool {
+    pub(crate) fn tab_only(&self) -> bool {
         self.decorated() && {
             let d = self.decoration();
             d.rolled || d.behind || d.docked
@@ -583,6 +583,8 @@ where
         scale: Scale<f64>,
         alpha: f32,
     ) -> Vec<C> {
+        // Being moved over another of its app's windows: see-through.
+        let alpha = if self.meta().ghost.get() { alpha * 0.45 } else { alpha };
         let window_bbox = SpaceElement::bbox(&self.0);
 
         if self.decorated() && !window_bbox.is_empty() {

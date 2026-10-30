@@ -2665,8 +2665,10 @@ pub enum StripAction {
     MoveGroup { group: usize, to: usize },
     /// A click on a group's chip, at the pointer.
     Group(usize, Pos2),
-    /// A tab dragged out of the strip and let go there (`at`, in the
-    /// window's coordinates, maybe outside it): a window of its own.
+    /// A tab dragged out of the strip (`at`, the pointer, in the window's
+    /// coordinates, maybe outside it), the button still held: a window of
+    /// its own, which the app opens under the pointer and moves with it
+    /// (`WindowOptions::under_pointer`, `Cx::begin_move`), as a browser's.
     TearOff { tab: usize, at: Pos2 },
     /// Likewise a group, by its chip: a window of its tabs.
     TearOffGroup { group: usize, at: Pos2 },
@@ -2921,6 +2923,13 @@ impl<'a> TabStrip<'a> {
             let x = x.clamp(full.left() + 1.0, full.right() - 2.0);
             painter.rect_filled(Rect::from_min_max(pos2(x - 1.0, top), pos2(x + 1.0, full.bottom() - 1.0)), 0.0, mark);
         };
+        // Where a window of the app let go here would go (`strip_place`),
+        // and, while one is over it, that place marked.
+        let layout = StripLayout { area: full, mids: slots.iter().map(|r| r.center().x).collect(), side: false };
+        if let Some(to) = window_over(ui.ctx()).and_then(|at| layout.place(at)) {
+            draw_mark(if to < n { before(to) } else { end });
+        }
+        ui.ctx().data_mut(|d| d.insert_temp(strip_layout_id(), layout));
         // Out of the strip, well above or below it or out of the window:
         // torn off, to be a window of its own.
         let screen = ui.ctx().content_rect();
@@ -2930,17 +2939,17 @@ impl<'a> TabStrip<'a> {
             let others: Vec<usize> = (0..n).filter(|&i| i != from).collect();
             let to = pointer.map_or(from, |pos| others.iter().filter(|&&i| slot(i).center().x < pos.x).count());
             let edge = others.get(to).map_or_else(|| others.last().map_or(end, |&i| slot(i).right()), |&i| before(i));
-            if out.is_some() {
-                ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+            if let Some(at) = out {
+                // Out: a window now, following the pointer (the app's).
+                ui.ctx().data_mut(|d| d.remove::<usize>(drag_id));
+                action = Some(StripAction::TearOff { tab: from, at });
             } else {
                 draw_mark(edge);
             }
-            if !ui.input(|i| i.pointer.any_down()) {
+            if out.is_none() && !ui.input(|i| i.pointer.any_down()) {
                 ui.ctx().data_mut(|d| d.remove::<usize>(drag_id));
                 let group = dropped_into(&groups_of, from, to, pointer.is_some_and(|p| p.x < edge));
-                if let Some(at) = out {
-                    action = Some(StripAction::TearOff { tab: from, at });
-                } else if to != from || group != groups_of[from] {
+                if to != from || group != groups_of[from] {
                     action = Some(StripAction::Move { from, to, group });
                 }
             } else {
@@ -2952,17 +2961,16 @@ impl<'a> TabStrip<'a> {
             let others: Vec<usize> = (0..n).filter(|&i| groups_of[i] != Some(g)).collect();
             let near = pointer.map_or(0, |pos| others.iter().filter(|&&i| slot(i).center().x < pos.x).count());
             let to = group_place(&groups_of, g, near);
-            if out.is_some() {
-                ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+            if let Some(at) = out {
+                ui.ctx().data_mut(|d| d.remove::<usize>(group_drag));
+                action = Some(StripAction::TearOffGroup { group: g, at });
             } else {
                 draw_mark(others.get(to).map_or_else(|| others.last().map_or(end, |&i| slot(i).right()), |&i| before(i)));
             }
-            if !ui.input(|i| i.pointer.any_down()) {
+            if out.is_none() && !ui.input(|i| i.pointer.any_down()) {
                 ui.ctx().data_mut(|d| d.remove::<usize>(group_drag));
                 let first = groups_of.iter().position(|x| *x == Some(g)).unwrap_or(0);
-                if let Some(at) = out {
-                    action = Some(StripAction::TearOffGroup { group: g, at });
-                } else if to != others.iter().filter(|&&i| i < first).count() {
+                if to != others.iter().filter(|&&i| i < first).count() {
                     action = Some(StripAction::MoveGroup { group: g, to });
                 }
             } else {
@@ -3122,6 +3130,11 @@ impl TabStrip<'_> {
             let y = (y - pad / 2.0).clamp(full.top() + 1.0, full.bottom() - 1.0);
             painter.rect_filled(style::snap(&ctx, Rect::from_min_max(pos2(left, y - 1.0), pos2(right, y + 1.0))), 0.0, mark);
         };
+        let layout = StripLayout { area: full, mids: slots.iter().map(|r| r.center().y).collect(), side: true };
+        if let Some(to) = window_over(&ctx).and_then(|at| layout.place(at)) {
+            draw_mark(if to < n { before(to) } else { end_row.top() });
+        }
+        ctx.data_mut(|d| d.insert_temp(strip_layout_id(), layout));
         // Well out to the right of the strip, or out of the window: torn off.
         let screen = ctx.content_rect();
         let out = pointer.filter(|pos| !screen.contains(*pos) || pos.x > full.right() + TEAR);
@@ -3129,17 +3142,16 @@ impl TabStrip<'_> {
             let others: Vec<usize> = (0..n).filter(|&i| i != from).collect();
             let to = pointer.map_or(from, |pos| others.iter().filter(|&&i| slot(i).center().y < pos.y).count());
             let edge = others.get(to).map_or(end_row.top(), |&i| before(i));
-            if out.is_some() {
-                ctx.set_cursor_icon(CursorIcon::Grabbing);
+            if let Some(at) = out {
+                ctx.data_mut(|d| d.remove::<usize>(drag_id));
+                action = Some(StripAction::TearOff { tab: from, at });
             } else {
                 draw_mark(edge);
             }
-            if !ui.input(|i| i.pointer.any_down()) {
+            if out.is_none() && !ui.input(|i| i.pointer.any_down()) {
                 ctx.data_mut(|d| d.remove::<usize>(drag_id));
                 let group = dropped_into(&groups_of, from, to, pointer.is_some_and(|p| p.y < edge - pad / 2.0));
-                if let Some(at) = out {
-                    action = Some(StripAction::TearOff { tab: from, at });
-                } else if to != from || group != groups_of[from] {
+                if to != from || group != groups_of[from] {
                     action = Some(StripAction::Move { from, to, group });
                 }
             } else {
@@ -3150,17 +3162,16 @@ impl TabStrip<'_> {
             let others: Vec<usize> = (0..n).filter(|&i| groups_of[i] != Some(g)).collect();
             let near = pointer.map_or(0, |pos| others.iter().filter(|&&i| slot(i).center().y < pos.y).count());
             let to = group_place(&groups_of, g, near);
-            if out.is_some() {
-                ctx.set_cursor_icon(CursorIcon::Grabbing);
+            if let Some(at) = out {
+                ctx.data_mut(|d| d.remove::<usize>(group_drag));
+                action = Some(StripAction::TearOffGroup { group: g, at });
             } else {
                 draw_mark(others.get(to).map_or(end_row.top(), |&i| before(i)));
             }
-            if !ui.input(|i| i.pointer.any_down()) {
+            if out.is_none() && !ui.input(|i| i.pointer.any_down()) {
                 ctx.data_mut(|d| d.remove::<usize>(group_drag));
                 let first = groups_of.iter().position(|x| *x == Some(g)).unwrap_or(0);
-                if let Some(at) = out {
-                    action = Some(StripAction::TearOffGroup { group: g, at });
-                } else if to != others.iter().filter(|&&i| i < first).count() {
+                if to != others.iter().filter(|&&i| i < first).count() {
                     action = Some(StripAction::MoveGroup { group: g, to });
                 }
             } else {
@@ -3204,6 +3215,55 @@ impl TabStrip<'_> {
         }
         action
     }
+}
+
+/// The strip last drawn in a window: its area and its tabs' middles
+/// along it (down it, for a side strip).
+#[derive(Clone)]
+struct StripLayout {
+    area: Rect,
+    mids: Vec<f32>,
+    side: bool,
+}
+
+impl StripLayout {
+    /// The place among the tabs for something let go at `at`, if on the
+    /// strip (or a little either side of it).
+    fn place(&self, at: Pos2) -> Option<usize> {
+        let near = if self.side { self.area.expand2(vec2(m::SPACING, 0.0)) } else { self.area.expand2(vec2(0.0, m::SPACING)) };
+        let along = if self.side { at.y } else { at.x };
+        near.contains(at).then(|| self.mids.iter().filter(|&&m| m < along).count())
+    }
+}
+
+fn strip_layout_id() -> Id {
+    Id::unique("olo-strip-layout")
+}
+
+fn window_over_id() -> Id {
+    Id::unique("olo-strip-window-over")
+}
+
+/// Where among the tabs of the strip last drawn in this window (`ctx`'s)
+/// a window let go at `at` goes, if at is on the strip
+/// (`App::window_dropped`).
+pub fn strip_place(ctx: &egui::Context, at: Pos2) -> Option<usize> {
+    ctx.data(|d| d.get_temp::<StripLayout>(strip_layout_id()))?.place(at)
+}
+
+/// Where one of the app's windows being moved is over this one (the kit,
+/// from app_server), for its strip to mark the place.
+pub(crate) fn set_window_over(ctx: &egui::Context, at: Option<Pos2>) {
+    ctx.data_mut(|d| match at {
+        Some(at) => {
+            d.insert_temp(window_over_id(), at);
+        }
+        None => d.remove::<Pos2>(window_over_id()),
+    });
+}
+
+fn window_over(ctx: &egui::Context) -> Option<Pos2> {
+    ctx.data(|d| d.get_temp::<Pos2>(window_over_id()))
 }
 
 /// A [`TabStrip`] tab's name to screen readers and agents: its title,

@@ -342,6 +342,8 @@ struct Surface {
     /// away, the surface not made again yet): applied before the next
     /// one's, so the renderer never misses one.
     pending: PendingTextures,
+    /// Move it with the pointer once it has drawn (`Cx::begin_move`).
+    move_on_frame: bool,
 }
 
 /// [`Surface::pending`]: dropped with its surface (and context) when it
@@ -1021,6 +1023,12 @@ pub struct Kit {
     /// `theme_watch::command_key`).
     cmd_ctrl: bool,
     last_serial: u32,
+    /// The last pointer press's serial (a window moved while it is held,
+    /// `Cx::begin_move`).
+    press_serial: u32,
+    /// The window app_server last said one of ours being moved is over
+    /// (`window_over`), whose strip marks the place.
+    window_over: Option<WindowId>,
     /// What we put on the clipboard: the source and its data by type.
     clipboard: Option<(CopyPasteSource, Clip)>,
     drag_out: Option<OutDrag>,
@@ -1512,6 +1520,8 @@ impl Kit {
             wheel: None,
             cmd_ctrl: false,
             last_serial: 0,
+            press_serial: 0,
+            window_over: None,
             drag_out: None,
             drag_in: None,
             clipboard: None,
@@ -1557,6 +1567,11 @@ impl Kit {
         };
         binary.exec_with(state.as_deref(), &[(GPU_LOST_ENV, format!("{pid}:{now}"))]);
         warn!("could not start anew; carrying on with a new GPU device");
+    }
+
+    /// Our toplevel with the surface with this protocol id.
+    fn toplevel_by_protocol_id(&self, id: u32) -> Option<WindowId> {
+        self.surfaces.iter().find(|s| matches!(s.role, Role::Toplevel(_)) && s.wl.id().protocol_id() == id).map(|s| s.id)
     }
 
     /// Tear down every Wayland/GPU object (surfaces before the device and
@@ -1653,6 +1668,30 @@ impl Kit {
             }
             Query::Tree(reply) => self.ask_trees(reply, None),
             Query::Hints(surfaces, reply) => self.ask_trees(reply, Some(surfaces)),
+            Query::WindowOver(at) => {
+                let onto = at.onto.and_then(|o| self.toplevel_by_protocol_id(o));
+                if let Some(old) = self.window_over.filter(|&w| Some(w) != onto)
+                    && let Some(s) = self.surface_mut(old)
+                {
+                    crate::widgets::set_window_over(&s.ctx, None);
+                    s.dirty = true;
+                }
+                self.window_over = onto;
+                if let Some(s) = onto.and_then(|o| self.surface_mut(o)) {
+                    crate::widgets::set_window_over(&s.ctx, Some(pos2(at.x as f32, at.y as f32)));
+                    s.dirty = true;
+                }
+            }
+            Query::WindowDropped(at) => {
+                if let Some(s) = self.window_over.take().and_then(|o| self.surface_mut(o)) {
+                    crate::widgets::set_window_over(&s.ctx, None);
+                    s.dirty = true;
+                }
+                let (Some(window), Some(onto)) = (self.toplevel_by_protocol_id(at.window), at.onto.and_then(|o| self.toplevel_by_protocol_id(o))) else { return };
+                let place = self.surface_mut(onto).and_then(|s| crate::widgets::strip_place(&s.ctx, pos2(at.x as f32, at.y as f32)));
+                self.with_app(|app, cx| app.window_dropped(cx, window, onto, place));
+                self.process_requests();
+            }
             Query::LoseGpu(reply) => {
                 // A test (debug builds only): destroyed, as a driver
                 // reset loses it; the poll tells the device-lost callback.
@@ -1987,6 +2026,12 @@ impl Kit {
                     Request::CopySecret(text, after) => self.set_secret_clipboard(text, after),
                     Request::CopyData(clip) => self.set_clipboard_data(clip),
                     Request::StartDrag(id, data) => self.start_drag(id, data),
+                    Request::BeginMove(id) => {
+                        if let Some(s) = self.surface_mut(id) {
+                            s.move_on_frame = true;
+                            s.dirty = true;
+                        }
+                    }
                     Request::Paste(id) => {
                         if let Some(wl) = self.surface_mut(id).map(|s| s.wl.clone()) {
                             self.paste(&wl);
@@ -2101,6 +2146,7 @@ impl Kit {
             uploads: HashMap::new(),
             bound: HashMap::new(),
             pending: PendingTextures::default(),
+            move_on_frame: false,
         }
     }
 
@@ -2659,6 +2705,15 @@ impl Kit {
         }
         let (start, at_us) = (Instant::now(), monotonic_us());
         self.draw_frame(id);
+        // Shown now: moved with the pointer, if asked (`Cx::begin_move`).
+        if let (Some(seat), serial) = (self.seat.clone(), self.press_serial)
+            && let Some(s) = self.surface_mut(id).filter(|s| s.move_on_frame && s.presented)
+        {
+            s.move_on_frame = false;
+            if let Role::Toplevel(w) = &s.role {
+                w.move_(&seat, serial);
+            }
+        }
         if let Some(s) = self.surface_mut(id)
             && std::mem::take(&mut s.presented)
         {
@@ -4200,6 +4255,7 @@ impl PointerHandler for Kit {
                     let pressed = matches!(event.kind, PointerEventKind::Press { .. });
                     if pressed {
                         self.last_serial = *serial;
+                        self.press_serial = *serial;
                     }
                     if let Some(i) = self.index_of_wl(&wl) {
                         let s = &mut self.surfaces[i];

@@ -564,10 +564,10 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.keep_children_above();
     }
 
-    /// A window tagged `under-pointer` (a tab torn off a strip, let go
-    /// there): its tab under the pointer, as a browser's torn-off tab
-    /// opens, kept on the display's usable area, and on its own (not in
-    /// its app's window group, as a window dragged out of it).
+    /// A window tagged `under-pointer` (a tab torn off a strip): its tab
+    /// under the pointer, as a browser's torn-off tab opens, its top on
+    /// the display's usable area, and on its own (not in its app's window
+    /// group, as a window dragged out of it).
     pub fn place_under_pointer(&mut self, surface: &WlSurface) {
         use smithay::wayland::{compositor, xdg_toplevel_tag::XdgToplevelTagSurfaceData};
         let tagged = compositor::with_states(surface, |s| {
@@ -582,10 +582,11 @@ impl<B: Backend + 'static> AnvilState<B> {
         // Grabbed by its tab, a little in from its left, as it was dragged.
         let grip = Point::from((g.loc.x - loc.x + 40, g.loc.y - loc.y + 10));
         let mut want = at - grip;
+        // Its tab under the pointer though the rest hangs off the screen
+        // (it moves with the pointer from here, `Cx::begin_move`), but
+        // not above the screen's top, where its tab couldn't be reached.
         if let Some(out) = self.space.output_under(at.to_f64()).next().cloned().and_then(|o| self.usable_area(&o)) {
-            let off = g.loc - loc;
-            want.x = want.x.min(out.loc.x + out.size.w - g.size.w - off.x).max(out.loc.x - off.x);
-            want.y = want.y.min(out.loc.y + out.size.h - g.size.h - off.y).max(out.loc.y - off.y);
+            want.y = want.y.max(out.loc.y - (g.loc - loc).y);
         }
         // Where it was let go, on its own: not into its app's group.
         *window.meta().grouping.borrow_mut() = crate::shell::groups::Grouping::Alone;

@@ -26,6 +26,9 @@ pub struct PointerMoveSurfaceGrab<BackendData: Backend + 'static> {
     pub start_data: PointerGrabStartData<AnvilState<BackendData>>,
     pub window: WindowElement,
     pub initial_window_location: Point<i32, Logical>,
+    /// Another window of its app it is over, and where (`window_drop`):
+    /// its app is told, and told where it is let go.
+    pub over: Option<(WindowElement, Point<f64, Logical>)>,
 }
 
 impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveSurfaceGrab<BackendData> {
@@ -48,6 +51,14 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveS
 
         data.space
             .map_element(self.window.clone(), new_location.to_i32_round(), true);
+        // Over another of its app's windows (a window let go on another's
+        // tab strip becomes tabs there): its app is told.
+        let over = data.own_window_under(&self.window, event.location);
+        if over.is_some() || self.over.is_some() {
+            crate::window_drop::tell(&self.window, over.as_ref().map(|(w, at)| (w, *at)), false);
+        }
+        self.window.meta().ghost.set(over.is_some());
+        self.over = over;
     }
 
     fn relative_motion(
@@ -167,6 +178,10 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveS
     }
 
     fn unset(&mut self, data: &mut AnvilState<BackendData>) {
+        if let Some((onto, at)) = self.over.take() {
+            crate::window_drop::tell(&self.window, Some((&onto, at)), true);
+        }
+        self.window.meta().ghost.set(false);
         // Where the pointer (or finger) let go of it.
         let moved = data.space.element_location(&self.window).map(|at| at - self.initial_window_location).unwrap_or_default();
         data.auto_dropped(&self.window, self.start_data.location + moved.to_f64());

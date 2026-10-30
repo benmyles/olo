@@ -1186,11 +1186,19 @@ impl Terminal {
                     MenuRequest { menu, source: ui.make_persistent_id("group-menu"), anchor: MenuAnchor::At(pos), selected: None },
                 );
             }
+            // Pulled out of the strip: a window under the pointer, moving
+            // with it till let go (onto another window's strip: in there).
             Some(StripAction::TearOff { tab, .. }) => {
                 let shell = t.tabs[tab].session.id;
-                self.detach(cx, win, shell);
+                if let Some(id) = self.detach(cx, win, shell, true) {
+                    cx.begin_move(id);
+                }
             }
-            Some(StripAction::TearOffGroup { group, .. }) => self.group_to_window(cx, win, group),
+            Some(StripAction::TearOffGroup { group, .. }) => {
+                if let Some(id) = self.group_to_window(cx, win, group, true) {
+                    cx.begin_move(id);
+                }
+            }
             Some(StripAction::Resize { width, done }) => {
                 // Every window's: it's a setting.
                 self.settings.side_width = width;
@@ -1388,12 +1396,13 @@ impl Terminal {
         menu
     }
 
-    /// Group `g` of `win` into a window of its own, its tabs in it.
-    fn group_to_window(&mut self, cx: &mut Cx, win: WindowId, g: usize) {
-        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
-        let Some(group) = t.groups.get(g).cloned() else { return };
+    /// Group `g` of `win` into a window of its own, its tabs in it
+    /// (`torn` off the strip: under the pointer).
+    fn group_to_window(&mut self, cx: &mut Cx, win: WindowId, g: usize, torn: bool) -> Option<WindowId> {
+        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return None };
+        let group = t.groups.get(g).cloned()?;
         if t.tabs.iter().all(|x| x.group == Some(g)) {
-            return;
+            return None;
         }
         let shown = t.tab().session.id;
         let (cols, rows) = t.grid();
@@ -1406,10 +1415,50 @@ impl Terminal {
         t.tidy();
         cx.redraw(win);
         let active = tabs.iter().position(|x| x.session.id == shown).unwrap_or(0);
-        let mut options = self.window_options(cols, rows).under_pointer();
+        let mut options = self.window_options(cols, rows);
+        options.under_pointer = torn;
         options.title = format!("{} — {}", group.name, tabs[active].title);
         let id = cx.open_window(options);
         self.windows.insert(id, Win::Term(Box::new(TermWin::new(tabs, active, Some((cols, rows)), vec![group]))));
+        Some(id)
+    }
+
+    /// Window `window` let go on `onto`'s tab strip, at `place`: its tabs
+    /// (and their groups) go in there, the one it showed showing, and it
+    /// goes. Not inside one of `onto`'s groups unless it is that group.
+    fn merge(&mut self, cx: &mut Cx, window: WindowId, onto: WindowId, place: usize) {
+        if window == onto || !matches!(self.windows.get(&onto), Some(Win::Term(_))) {
+            return;
+        }
+        let Some(Win::Term(from)) = self.windows.remove(&window) else { return };
+        cx.close_window(window);
+        let TermWin { tabs, groups, active, .. } = *from;
+        let shown = tabs.get(active).map(|x| x.session.id);
+        let Some(Win::Term(t)) = self.windows.get_mut(&onto) else { return };
+        if t.focused {
+            t.tab().report_focus(false);
+        }
+        let base = t.groups.len();
+        t.groups.extend(groups);
+        let mut at = place.min(t.tabs.len());
+        // Not into the middle of a group of `onto`'s: after it.
+        while at > 0 && at < t.tabs.len() && t.tabs[at].group.is_some() && t.tabs[at].group == t.tabs[at - 1].group {
+            at += 1;
+        }
+        let n = tabs.len();
+        for (k, mut tab) in tabs.into_iter().enumerate() {
+            tab.group = tab.group.map(|g| g + base);
+            tab.rang = false;
+            t.tabs.insert(at + k, tab);
+        }
+        t.active = shown.and_then(|s| t.position(s)).unwrap_or(at.min(t.tabs.len() - n));
+        if t.focused {
+            t.tab().report_focus(true);
+        }
+        t.tidy();
+        self.auto_group(cx, onto);
+        cx.redraw(onto);
+        cx.activate(onto);
     }
 
     /// Tab `shell` of `win` to the end of the window with tab `target`
@@ -1503,7 +1552,7 @@ impl Terminal {
             }
             "group-window" => {
                 if let Some(g) = g {
-                    self.group_to_window(cx, win, g);
+                    self.group_to_window(cx, win, g, false);
                 }
             }
             "tab-group" => {
@@ -1532,15 +1581,17 @@ impl Terminal {
         true
     }
 
-    /// Tab `shell` into a window of its own.
-    fn detach(&mut self, cx: &mut Cx, win: WindowId, shell: u64) {
-        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
-        let Some(i) = t.position(shell).filter(|_| t.tabs.len() > 1) else { return };
+    /// Tab `shell` into a window of its own (`torn` off the strip: under
+    /// the pointer).
+    fn detach(&mut self, cx: &mut Cx, win: WindowId, shell: u64, torn: bool) -> Option<WindowId> {
+        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return None };
+        let i = t.position(shell).filter(|_| t.tabs.len() > 1)?;
         let mut tab = t.take(i);
         cx.redraw(win);
         t.tidy();
         let (cols, rows) = (tab.session.size.cols, tab.session.size.rows);
-        let mut options = self.window_options(cols, rows).under_pointer();
+        let mut options = self.window_options(cols, rows);
+        options.under_pointer = torn;
         options.title = tab.title.clone();
         tab.rang = false;
         // Out of its group: it may join its repository's in its new window.
@@ -1548,6 +1599,7 @@ impl Terminal {
         let id = cx.open_window(options);
         self.windows.insert(id, Win::Term(Box::new(TermWin::new(vec![tab], 0, Some((cols, rows)), Vec::new()))));
         self.auto_group(cx, id);
+        Some(id)
     }
 }
 
@@ -2230,7 +2282,7 @@ impl App for Terminal {
             }
             "detach" => {
                 let shell = t.tab().session.id;
-                self.detach(cx, window, shell);
+                self.detach(cx, window, shell, false);
             }
             "tile-tabs" => {
                 if let Some(Win::Term(t)) = self.windows.get_mut(&window) {
@@ -2357,7 +2409,7 @@ impl App for Terminal {
                 } else if let Some(shell) = c.strip_prefix("tab-close:").and_then(|n| n.parse().ok()) {
                     self.close_tab_requested(cx, window, shell, "the tab's menu ▸ Close Tab");
                 } else if let Some(shell) = c.strip_prefix("tab-detach:").and_then(|n| n.parse().ok()) {
-                    self.detach(cx, window, shell);
+                    self.detach(cx, window, shell, false);
                 } else if let Some(shell) = c.strip_prefix(olo_kit::tracker::COMMAND).and_then(|n| n.strip_prefix(':')?.parse::<u64>().ok()) {
                     if let Some(tab) = t.position(shell).map(|i| &t.tabs[i]) {
                         open_in_tracker(tab);
@@ -2477,6 +2529,12 @@ impl App for Terminal {
 
     fn save_state(&mut self, cx: &Cx) -> Option<String> {
         serde_json::to_string(&self.layout(cx)).ok()
+    }
+
+    fn window_dropped(&mut self, cx: &mut Cx, window: WindowId, onto: WindowId, place: Option<usize>) {
+        if let Some(place) = place {
+            self.merge(cx, window, onto, place);
+        }
     }
 }
 

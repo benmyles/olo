@@ -644,6 +644,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let Some(window) = self.window_for_surface(surface.wl_surface()) else {
             return;
         };
+        // Not shown yet (its first frame's buffer may come after this, as
+        // Vulkan's present commits it on its own): once it is in its place.
+        if !window.meta().placed.get() {
+            window.meta().pending_move.set(Some(serial));
+            return;
+        }
 
         // If the focus was for a different surface, ignore the request.
         if start_data.focus.is_none()
@@ -686,12 +692,27 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             initial_window_location = (pos.x as i32, pos.y as i32).into();
         }
 
+        // Moved with a press on another of its app's windows (a tab torn
+        // off its strip, now a window under the pointer): from here, not
+        // from where that press was.
+        let mut start_data = start_data;
+        let pressed_on_it = match start_data.focus.as_ref().map(|(f, _)| f) {
+            Some(crate::focus::PointerFocusTarget::SSD(ssd)) => ssd.0 == window,
+            Some(f) => f.wl_surface().is_some_and(|s| *s == *surface.wl_surface()),
+            None => true,
+        };
+        if !pressed_on_it {
+            start_data.location = pointer.current_location();
+            initial_window_location = self.space.element_location(&window).unwrap_or(initial_window_location);
+        }
+
         // Taken in hand: no longer on its way to a tile it was asked into.
         self.unfollow(&window);
         let grab = PointerMoveSurfaceGrab {
             start_data,
             window,
             initial_window_location,
+            over: None,
         };
 
         pointer.set_grab(self, grab, serial, Focus::Clear);
@@ -828,6 +849,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if surface_initial_mapped(surface) && self.restore_placement(surface) {
             self.place_over_parent(surface);
             self.place_under_pointer(surface);
+        }
+        // A move asked for before it showed: now, from where it is.
+        let window = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface)).cloned();
+        if let Some(window) = window
+            && window.meta().placed.get()
+            && let Some(serial) = window.meta().pending_move.take()
+            && let Some(toplevel) = window.0.toplevel().cloned()
+        {
+            let seat = self.seat.clone();
+            self.move_request_xdg(&toplevel, &seat, serial);
         }
     }
 }

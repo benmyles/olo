@@ -354,8 +354,9 @@ as they land (with the commit), add new ones as they come up.
   becomes a window under the pointer. Checked by drags in a test
   session, at 1×–2× (and 1.25×, 1.75×), light and dark, along the top
   and down the side, and through an upgrade.
-- **Drag a window into another's tab bar to make it a tab** (Ben,
-  2026-10-29): "when there are apps with multiple windows and they also
+- ~~**Drag a window into another's tab bar to make it a tab**~~ (Ben,
+  2026-10-29; done: HACKING, the kit's `TabStrip` and app_server's window
+  moves): "when there are apps with multiple windows and they also
   support tabs we should be able to drag the window back into the tab
   bar area to have it go back to being a tab instead of a window, and
   the opposite we should be able to drag a tab out into being a window",
@@ -369,6 +370,12 @@ as they land (with the commit), add new ones as they come up.
   window of its own was let go (over which of its windows, where), the
   kit says where its strips are, and the strip shows where it would go
   while the window is over it.
+  Done so: a tab or group pulled out of the strip is a window under the
+  pointer that moves with it (`Cx::begin_move`); a window moved over
+  another of its app's goes see-through and that window's strip marks
+  where it would go; let go there, its tabs (and groups) go in, and it
+  closes. Checked in a test session: a tab out and back, a lone window
+  dropped by its tab, a group out and back after another group.
 - **StyledEdit, much more featureful** (Ben, 2026-10-29, after
   everything else): "please improve StyledEdit to be much more featureful
   -- it doesn't need all the bells and whistles of, say, modern Word or

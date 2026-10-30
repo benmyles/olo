@@ -51,6 +51,7 @@ pub mod toolkits;
 pub mod touch_filter;
 pub mod twitcher;
 pub mod wallpaper;
+pub mod window_drop;
 
 pub use state::{AnvilState, ClientState};
 

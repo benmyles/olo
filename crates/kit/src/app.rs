@@ -61,6 +61,13 @@ pub trait App: 'static {
     fn save_state(&mut self, _cx: &Cx) -> Option<String> {
         None
     }
+
+    /// The person moved `window` (by its tab) and let it go over `onto`,
+    /// another of the app's windows: `place`, if over `onto`'s tab strip,
+    /// is where among its tabs ([`crate::widgets::strip_place`]), for the
+    /// window's tabs to go into it there. While it is over the strip, the
+    /// strip marks the place.
+    fn window_dropped(&mut self, _cx: &mut Cx, _window: WindowId, _onto: WindowId, _place: Option<usize>) {}
 }
 
 /// How a new window should appear.
@@ -243,6 +250,7 @@ pub(crate) enum Request {
     CopySecret(String, std::time::Duration),
     CopyData(Clip),
     StartDrag(WindowId, crate::dnd::DragData),
+    BeginMove(WindowId),
     Paste(WindowId),
     LockSession,
     UnlockSession,
@@ -376,6 +384,15 @@ impl Cx {
     /// fit, down to its minimum). A covered window's new size lands at
     /// once all the same; a hidden one's when it is back (see
     /// [`Cx::is_shown`]).
+    /// Move `window` with the pointer, as if dragged by its tab, while the
+    /// button pressed in another of the app's windows is still held (a
+    /// tab torn off a strip, now a window: it follows the pointer, and let
+    /// go over another window's strip goes in there, `App::window_dropped`).
+    /// From its first frame.
+    pub fn begin_move(&mut self, window: WindowId) {
+        self.requests.push(Request::BeginMove(window));
+    }
+
     pub fn resize(&mut self, window: WindowId, size: (u32, u32)) {
         self.requests.push(Request::Resize(window, size));
     }

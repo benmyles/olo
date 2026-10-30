@@ -26,7 +26,11 @@
 //! tab's menu (Open in Tracker);
 //! `{"lose_gpu":true}` → `{"ok":bool}`: debug builds only, destroy the
 //! GPU device, as a driver reset loses it, to test that the app comes
-//! back (`platform::recover_gpu`).
+//! back (`platform::recover_gpu`);
+//! `{"window_over":{"window":ID,"onto":ID|null,"x":X,"y":Y}}` and
+//! `{"window_dropped":{…}}` → `{"ok":true}`: from app_server, a window of
+//! ours moved over another of ours (surface ids, `onto`'s coordinates),
+//! and let go there (`App::window_dropped`).
 
 use std::{
     io::{BufRead, BufReader, Write},
@@ -306,6 +310,19 @@ enum Ask {
     Review(bool),
     Path(u32),
     LoseGpu(bool),
+    WindowOver(WindowAt),
+    WindowDropped(WindowAt),
+}
+
+/// app_server's word that a window of ours being moved is over another
+/// of ours (`onto`, its surface; None: no longer), at (`x`, `y`) in it, or
+/// was let go there (`window_dropped`).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub(crate) struct WindowAt {
+    pub window: u32,
+    pub onto: Option<u32>,
+    pub x: f64,
+    pub y: f64,
 }
 
 /// A question for the UI thread, answered through `reply`.
@@ -322,6 +339,8 @@ pub(crate) enum Query {
     Path(u32, mpsc::Sender<Option<PathBuf>>),
     /// Destroy the GPU device (debug builds; a test of losing it).
     LoseGpu(mpsc::Sender<bool>),
+    WindowOver(WindowAt),
+    WindowDropped(WindowAt),
 }
 
 /// How long a tree may take: every window draws a frame for it.
@@ -457,6 +476,14 @@ pub(crate) fn listen(to: smithay_client_toolkit::reexports::calloop::channel::Se
                         let _ = to.send(Query::Path(surface, tx));
                         serde_json::to_string(&serde_json::json!({ "path": rx.recv_timeout(WAIT).ok().flatten() }))
                     }
+                    Ok(Ask::WindowOver(at)) => {
+                        let _ = to.send(Query::WindowOver(at));
+                        serde_json::to_string(&serde_json::json!({ "ok": true }))
+                    }
+                    Ok(Ask::WindowDropped(at)) => {
+                        let _ = to.send(Query::WindowDropped(at));
+                        serde_json::to_string(&serde_json::json!({ "ok": true }))
+                    }
                     Ok(Ask::LoseGpu(_)) => {
                         tracing::warn!(by = %peer(&s), "asked to lose the GPU device");
                         let (tx, rx) = mpsc::channel();
@@ -494,7 +521,7 @@ pub fn serve_trees(pid: u32, app_id: &str, trees: impl Fn() -> Vec<WindowTree> +
             }
             let answer = match serde_json::from_str::<Ask>(&line) {
                 Ok(Ask::Menus(_)) => serde_json::to_string(&Menus { app_id: app_id.clone(), entries: Vec::new() }),
-                Ok(Ask::Invoke(_) | Ask::Focus(_) | Ask::LoseGpu(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
+                Ok(Ask::Invoke(_) | Ask::Focus(_) | Ask::LoseGpu(_) | Ask::WindowOver(_) | Ask::WindowDropped(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
                 Ok(Ask::Frames(_)) => serde_json::to_string(&Vec::<FrameTimes>::new()),
                 Ok(Ask::Review(_)) => serde_json::to_string(&Vec::<WindowReview>::new()),
                 Ok(Ask::Path(_)) => serde_json::to_string(&serde_json::json!({ "path": null })),

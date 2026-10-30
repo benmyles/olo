@@ -669,11 +669,18 @@ and leaves past them, a group's only tab keeping its group unless
 dropped on another; `Group(g, pos)` for a click on a chip,
 `MoveGroup { group, to }` for a chip dragged, never into another group,
 `group_place`; `TearOff { tab, at }` and `TearOffGroup { group, at }`
-for a tab or chip let go out of the window or `TEAR` (40) beyond the
-strip, the cursor a grabbing hand meanwhile and no place marked: the
-app makes it a window of its own, which `WindowOptions::under_pointer()`
-opens with its tab under the pointer, alone rather than in its app's
-window group); each tab is a `Tab` in the accessibility tree with its
+the moment a tab or chip is pulled out of the window or `TEAR` (40)
+beyond the strip, the button still held: the app makes it a window of
+its own, which `WindowOptions::under_pointer()` opens with its tab under
+the pointer (alone rather than in its app's window group, its top kept
+on the screen) and `Cx::begin_move` moves with the pointer from its first
+frame, as a browser's torn-off tab; each strip keeps its layout for
+`widgets::strip_place(ctx, at)`, the place among its tabs for something
+let go at `at` on it, and marks that place while one of the app's
+windows is moved over it (app_server says, below); `App::window_dropped
+(window, onto, place)` is a window of the app let go over another,
+`place` its place in `onto`'s strip if let go on it (Terminal moves its
+tabs and groups in there and closes it)); each tab is a `Tab` in the accessibility tree with its
 status and group ("…, in Alpha") in its name, each chip a `Button`
 "Group Alpha"; `.side()` stands the tabs
 down the left of the content instead: a column `STRIP_SIDE_WIDTH` (180)
@@ -2456,6 +2463,21 @@ with, index }` (into `with`'s group, or a new one with it), `UngroupWindow
 its members share), `tab` (its place), `groupable`, `output` (the
 display it is on, or was on while hidden) and, in `Reply::Windows`,
 `tab_frame` (where to click or ⌘-drag its tab).
+
+A window moved by hand over another of its own app's windows' content
+(`own_window_under`: the top window there, not covered, same client) is
+drawn see-through (`WindowMeta::ghost`) and its app is told where, and
+where it is let go (`window_drop.rs`: `{"window_over":…}` and
+`{"window_dropped":…}` lines on the app's kit socket, from a worker
+thread that keeps only the latest place, so the compositor never waits
+on an app): a kit app's tab strip marks the place, and a window let go
+on it becomes tabs there (`App::window_dropped`). A move a client asks
+for with the press of another of its windows (a tab torn off a strip,
+`Cx::begin_move`) starts from the pointer, not from that press; one
+asked for before the window has shown (Vulkan's present commits its
+first buffer on its own, after the request) waits till it is placed
+(`WindowMeta::pending_move`). A window tagged `under-pointer` opens
+with its tab under the pointer, alone (`place_under_pointer`).
 
 Other programs arrange windows through two requests: `Arrangement`
 answers the active display's connector, its tiling area (global logical

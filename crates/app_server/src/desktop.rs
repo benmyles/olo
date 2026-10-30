@@ -66,6 +66,12 @@ pub struct WindowMeta {
     /// The id of the window it came back as (`Placement::id`; 0: none),
     /// by which others back on their own are stacked beside it.
     pub was: Cell<u64>,
+    /// A move it asked for before it showed (a tab torn off a strip,
+    /// moved from its first frame): started once it is in its place.
+    pub pending_move: Cell<Option<smithay::utils::Serial>>,
+    /// Being moved over another of its app's windows (`window_drop`):
+    /// drawn see-through, so the place it would go into shows under it.
+    pub ghost: Cell<bool>,
     /// The part of its display's tiles it was put back into, as saved
     /// (for making a tree again from where windows were, when no tree
     /// was kept).
@@ -113,6 +119,8 @@ impl WindowElement {
             put_back: Cell::new(false),
             slot: Cell::new(0),
             was: Cell::new(0),
+            pending_move: Cell::new(None),
+            ghost: Cell::new(false),
             restored_part: Cell::new(None),
             left_among: Default::default(),
             arrived: Cell::new(None),
