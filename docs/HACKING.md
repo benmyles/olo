@@ -300,6 +300,12 @@ fn main() {
   menu, the terminal's, Terminal ▸), StyledEdit (File ▸, the saved
   document), the Viewer, DiskUsage, DriveSetup (a mounted volume), the
   backup panel in Preferences and the palette (⌘↩ on a file) use it.
+  Other programs reach it through `org.freedesktop.FileManager1`, which
+  the desktop's Tracker serves on the session bus (taking the name from
+  any file manager that had it; Tracker's `filemanager.rs`): ShowItems,
+  ShowFolders and ShowItemProperties are each a `--reveal`, so Chrome's
+  Show in folder, Electron's `shell.showItemInFolder` and GTK's and Qt's
+  open their file in Tracker.
   A window's yellow tab offers it too, for a window that says what it
   shows (`cx.set_path`: StyledEdit's document, the Viewer's file,
   Terminal's working folder; Tracker's own windows don't need it).

@@ -3,6 +3,7 @@
 
 mod columns;
 mod desktop;
+mod filemanager;
 mod find;
 mod fs;
 mod ops;
@@ -2100,6 +2101,21 @@ fn main() {
         if args.iter().any(|a| a == "--desktop") {
             let id = cx.open_window(desktop::options());
             t.windows.insert(id, Win::Desktop(desktop::Desktop::new()));
+            // Other programs' "show in folder", while the desktop's
+            // Tracker runs (`filemanager`).
+            let proxy = cx.proxy();
+            let _ = std::thread::Builder::new().name("tracker-filemanager".into()).spawn(move || {
+                let reveal = move |paths: Vec<std::path::PathBuf>| {
+                    let args = paths.into_iter().flat_map(|p| ["--reveal".to_owned(), p.display().to_string()]).collect();
+                    proxy.send(olo_kit::instance::Launch { args, cwd: None });
+                };
+                match filemanager::serve(reveal) {
+                    Ok(_conn) => loop {
+                        std::thread::park();
+                    },
+                    Err(e) => tracing::info!("tracker: not serving {}: {e}", filemanager::NAME),
+                }
+            });
         }
         match cx.restored_state().and_then(|s| serde_json::from_str::<Saved>(&s).ok()) {
             Some(saved) => t.restore(cx, saved),

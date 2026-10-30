@@ -1046,12 +1046,9 @@ as they land (with the commit), add new ones as they come up.
     GTK 4 apps use it by default, GTK 3 with `GTK_USE_PORTAL=1`, Qt with
     `QT_QPA_PLATFORMTHEME=xdgdesktopportal`: set these in the session
     environment. Save dialogs too (name, folder, overwrite).
-  - **Show in folder / open the containing folder**:
-    `org.freedesktop.FileManager1` (ShowFolders, ShowItems,
-    ShowItemProperties) served by Tracker, so Chrome's "Show in
-    folder", Electron's `shell.showItemInFolder`, GTK's and Qt's go to
-    Tracker with the file selected; the OpenURI portal's
-    `OpenDirectory` too.
+  - ~~**Show in folder**~~ (done 2026-10-30: the desktop's Tracker
+    serves `org.freedesktop.FileManager1`, each call an Open in
+    Tracker). Left: the OpenURI portal's `OpenDirectory`, with OpenURI.
   - **Opening things**: the OpenURI portal and `xdg-open`'s MIME
     defaults resolved by Olo's own (`olo_kit::open`), so links from any
     app open in Olo's choice, files in Olo's apps; Olo as the default
