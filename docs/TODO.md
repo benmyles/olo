@@ -246,6 +246,21 @@ as they land (with the commit), add new ones as they come up.
   menu its left button opens now. Agents read which are selected and
   choose through the headers. Done (the kit's `TabStrip::group_selection`,
   for the side strip too; the chosen groups kept with the window).
+- **Terminal: Tile All Tabs, rows' heights dragged** (Ben, 2026-10-30):
+  "in terminal tile mode with multiple groups let me drag the group
+  divider/header up and down to give a group more or less vertical space
+  relative to the other groups. if i right click the divider/group
+  header then there should be an option to reset group heights (if they
+  have been changed)". In Tile All Tabs with several groups' rows, the
+  divider between two rows (its group's header) drags up and down, the
+  rows on either side growing and shrinking (each down to a least height
+  that still shows a line of text), the panes reflowing live within a
+  frame; the shares are kept per group (by its name, so a row keeps its
+  share when others come and go), saved with the window and restored
+  after a reload. The header's context menu gets Reset Row Heights
+  (enabled once they've been changed) to share the height evenly again.
+  Agents can read the shares and set them (the strip's info, and a
+  command).
 - ~~**Terminal: tell coding agents about the other repos in their tab
   group**~~ (Ben, 2026-10-30): "add a preferences -> terminal setting for
   injecting context to claude code and codex coding agents to tell them
