@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Terminal: smaller pull request marks in the tab strip
+
+*23:28* — Before (left) and after at 2×. The pull request mark is drawn as big as the text (12 pt, from GitHub's 16-unit drawing, its lines whole device pixels at every scale) and sits in the close box's place, which takes it over only under the pointer, so titles get the room back and nothing moves; each group's colour bar stops short of the next group's.
+
+![Terminal: smaller pull request marks in the tab strip](2026-10-29/232808-terminal-smaller-pull-request-marks-in-the-tab-s.png)
+
 ### Log Viewer: narrow, dark
 
 *23:11* — In a narrow window the menus go under the search, their text over the list's first column.

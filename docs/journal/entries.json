@@ -2170,5 +2170,11 @@
   "title": "Log Viewer: narrow, dark",
   "caption": "In a narrow window the menus go under the search, their text over the list's first column.",
   "image": "2026-10-29/231143-log-viewer-narrow-dark.png"
+ },
+ {
+  "time": "2026-10-29T23:28:08",
+  "title": "Terminal: smaller pull request marks in the tab strip",
+  "caption": "Before (left) and after at 2\u00d7. The pull request mark is drawn as big as the text (12 pt, from GitHub's 16-unit drawing, its lines whole device pixels at every scale) and sits in the close box's place, which takes it over only under the pointer, so titles get the room back and nothing moves; each group's colour bar stops short of the next group's.",
+  "image": "2026-10-29/232808-terminal-smaller-pull-request-marks-in-the-tab-s.png"
  }
 ]

@@ -2820,9 +2820,10 @@ pub struct StripTab<'a> {
     /// What the tab is doing, for screen readers and agents ("waiting
     /// for an answer"); the icon shows it.
     pub status: Option<&'a str>,
-    /// Paints a 16×16 mark at the tab's right, left of where its close
-    /// box goes (Terminal's pull request state); the title makes room.
-    /// Like the icon, only on a tab wide enough for one.
+    /// Paints a [`STRIP_BADGE`]-square mark at the tab's right, where its
+    /// close box goes (Terminal's pull request state), which takes its
+    /// place under the pointer. Like the icon, only on a tab wide enough
+    /// for one.
     pub badge: Option<PaintIcon<'a>>,
     /// The group it's in (into [`TabStrip::groups`]). A group's tabs are
     /// side by side.
@@ -2892,6 +2893,8 @@ pub const STRIP_ROW: f32 = 26.0;
 /// there are many). [`m::TIGHT`] is round each: beside it, above the
 /// first and between one and the next.
 pub const STRIP_SIDE_TAB: f32 = 24.0;
+/// How big a tab's badge is ([`StripTab::badge`]): as the text is.
+pub const STRIP_BADGE: f32 = 12.0;
 
 /// How tall a band beside a [`TabStrip::side`] strip is (Terminal's
 /// pane heads): a row along the top's, the menu bar's height; the
@@ -3291,8 +3294,10 @@ impl TabStrip<'_> {
             if resp.hovered() || resp.dragged() {
                 painter.rect_filled(head, 0.0, hover_fill);
             }
-            // A bar of its colour beside its heading and tabs.
-            let bar = style::snap(&ctx, Rect::from_min_max(pos2(full.left(), head.top()), pos2(full.left() + 2.0, slot(last).bottom())));
+            // A bar of its colour beside its heading and tabs, apart from
+            // the next group's.
+            let ends = (head.top() + m::TIGHT, slot(last).bottom() - m::TIGHT);
+            let bar = style::snap(&ctx, Rect::from_min_max(pos2(full.left(), ends.0), pos2(full.left() + 2.0, ends.1)));
             painter.rect_filled(bar, 0.0, color);
             // Its colour in a dot where the tabs' icons are, its name where
             // their titles are, as Deskbar's workspace headings.
@@ -3537,7 +3542,11 @@ fn tab_face(
 ) -> Option<StripAction> {
     close_resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Close {}", tab.label)));
     let (text_color, mark) = if selected { (inks.ink, inks.ink.lerp_to_gamma(inks.fill, 0.35)) } else { (inks.dim, inks.dim) };
-    if selected || resp.hovered() || close_resp.hovered() {
+    // A badge sits where the close box goes, and gives way to it under
+    // the pointer (the selected tab's too, so its state shows).
+    let badge = tab.badge.filter(|_| icon);
+    let pointed = resp.hovered() || close_resp.hovered();
+    if pointed || selected && badge.is_none() {
         let mut color = mark;
         if close_resp.hovered() {
             let back = if selected { inks.fill } else { inks.hover };
@@ -3555,11 +3564,9 @@ fn tab_face(
         paint(painter, icon);
         left = icon.right() + m::MARK_GAP;
     }
-    let mut end = close.left() - m::TIGHT;
-    if let Some(paint) = tab.badge.filter(|_| icon) {
-        let badge = style::snap(ui.ctx(), Rect::from_min_size(pos2(end - 16.0, cy - 8.0), vec2(16.0, 16.0)));
-        paint(painter, badge);
-        end = badge.left() - m::TIGHT;
+    let end = close.left() - m::TIGHT;
+    if let Some(paint) = badge.filter(|_| !pointed) {
+        paint(painter, style::snap_centred(ui.ctx(), close.center(), vec2(STRIP_BADGE, STRIP_BADGE)));
     }
     let font = if selected { bold_font() } else { plain_font() };
     style::label_fit(painter, left, cy, Align::Min, tab.label, font, text_color, end - left);

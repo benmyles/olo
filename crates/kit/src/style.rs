@@ -871,23 +871,27 @@ pub enum PullRequestShape {
     Closed,
 }
 
-/// GitHub's pull request mark, 16×16 in `r`, its lines in `color` and
-/// whole device pixels at every scale: the base branch down the left with
-/// a commit at each end, the pull request's branch on the right (its
-/// commit filled with `node` if given: its checks, in their colour).
+/// GitHub's pull request mark, as big as `r` is high (drawn on a grid of
+/// 16), its lines in `color` and whole device pixels at every scale: the
+/// base branch down the left with a commit at each end, the pull
+/// request's branch on the right (its commit filled with `node` if given:
+/// its checks, in their colour).
 pub fn pull_request_mark(p: &Painter, r: Rect, shape: PullRequestShape, color: Color32, node: Option<Color32>) {
     let ppp = p.pixels_per_point();
-    let px = (1.5 * ppp).floor().max(1.0);
+    let size = r.height().min(r.width());
+    let k = size / 16.0;
+    let px = (1.5 * k * ppp).round().max(1.0);
     let w = px / ppp;
     // A line's middle where its edges fall on device pixels.
     let at = |v: f32| ((v * ppp - px / 2.0).round() + px / 2.0) / ppp;
-    let o = snap(p.ctx(), Rect::from_min_size(r.min, vec2(16.0, 16.0))).min;
-    let x = |v: f32| at(o.x + v);
-    let y = |v: f32| at(o.y + v);
+    let o = snap(p.ctx(), Rect::from_min_size(r.min, vec2(size, size))).min;
+    let x = |v: f32| at(o.x + v * k);
+    let y = |v: f32| at(o.y + v * k);
     let stroke = Stroke::new(w, color);
-    // A commit: a ring this wide (to its line's middle); at 1× a whole
-    // pixel's, so the one-pixel ring is on pixels.
-    let cr = if ppp < 1.25 { 2.0 } else { 1.75 };
+    // A commit: a ring this wide (to its line's middle), a hole of a
+    // pixel at least; at 1× a whole pixel's, so the one-pixel ring is on
+    // pixels.
+    let cr = if ppp < 1.25 { (4.0 * k).round().max(2.0) / 2.0 } else { (1.75 * k).max(w / 2.0 + 1.0 / ppp) };
     let ring = |c: Pos2| {
         p.circle_stroke(c, cr, stroke);
     };
@@ -926,27 +930,27 @@ pub fn pull_request_mark(p: &Painter, r: Rect, shape: PullRequestShape, color: C
                 PullRequestShape::Open => {
                     // Up from its commit, round to the left, to an arrow
                     // pointing at the base branch.
-                    let (bend, turn) = (2.5, top + 2.5);
+                    let (bend, turn) = (2.5 * k, top + 2.5 * k);
                     let mut pts = vec![pos2(rx, bottom - cr), pos2(rx, turn)];
                     pts.extend((1..=6).map(|k| {
                         let a = k as f32 / 6.0 * std::f32::consts::FRAC_PI_2;
                         pos2(rx - bend + bend * a.cos(), turn - bend * a.sin())
                     }));
-                    let base = o.x + 10.0;
+                    let base = o.x + 10.0 * k;
                     pts.push(pos2(base, top));
                     p.add(egui::Shape::line(pts, stroke));
-                    let (tip, half) = (o.x + 7.75, 2.0);
+                    let (tip, half) = (o.x + 7.75 * k, 2.0 * k);
                     p.add(egui::Shape::convex_polygon(vec![pos2(tip, top), pos2(base, top - half), pos2(base, top + half)], color, Stroke::NONE));
                 }
                 PullRequestShape::Draft => {
                     for v in [8.0, 4.5] {
-                        p.circle_filled(pos2(rx, y(v)), w * 0.75 + 0.25, color);
+                        p.circle_filled(pos2(rx, y(v)), w * 0.75 + 0.25 * k, color);
                     }
                 }
                 _ => {
                     p.line_segment([pos2(rx, bottom - cr), pos2(rx, y(7.5))], stroke);
                     let c = pos2(rx, top);
-                    let d = 1.75;
+                    let d = 1.75 * k;
                     p.line_segment([c - vec2(d, d), c + vec2(d, d)], stroke);
                     p.line_segment([c + vec2(-d, d), c + vec2(d, -d)], stroke);
                 }

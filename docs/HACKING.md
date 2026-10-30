@@ -678,9 +678,11 @@ frame while `key`, what the text is made from, stays the same), `TabView`, `TabS
 a menu or tool bar, `STRIP_HEIGHT` (30) tall, roomier than a window tab,
 each tab `STRIP_ROW` (26) of it standing on the bottom edge, its icon
 under the menu bar's first title: `StripTab { label, icon,
-status, badge, group }` each (`badge`, a 16×16 mark at the tab's right, left of
-where its close box goes, the title making room: Terminal's pull request
-state; like the icon, only on a tab wide enough); tabs share the row up to `STRIP_TAB_MAX` (220) wide,
+status, badge, group }` each (`badge`, a `STRIP_BADGE` (12) mark, as big
+as the text, in the close box's place at the tab's right, which gives
+way to the close box under the pointer, as an editor's unsaved dot
+does: Terminal's pull request state; like the icon, only on a tab wide
+enough); tabs share the row up to `STRIP_TAB_MAX` (220) wide,
 their titles cut short with "…", the others divided by a hairline; the
 selected one is a raised tab with rounded top corners that opens into
 the content (`.opens_into(fill, ink)` when the content isn't the panel,
