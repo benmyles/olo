@@ -1137,7 +1137,28 @@ hands both to app_server, so clients never see the sockets disappear.
   is away waits for the reconnect (`configure_gpu_surface` checks
   `is_surface_supported`; `present` skips a surface with nothing to draw
   with), and wgpu's errors are logged, not fatal (`on_uncaptured_error`):
-  no app may die of an upgrade. **Every app with windows the user
+  no app may die of an upgrade.
+* Nor of losing the GPU (a driver reset: `VK_ERROR_DEVICE_LOST`, as
+  Asahi's Mesa gives at a failed syncobj transfer). Everything the device
+  made is gone, and wgpu and egui_wgpu panic at using it. The kit
+  notices from wgpu's device-lost callback, or a panic in GPU work on
+  any thread (`on_gpu` wraps presenting, setting up surfaces, menus made
+  ahead and texture uploads), stops drawing and starts the app anew as
+  an upgrade does (`recover_gpu`: `App::save_state`, re-execute, same
+  pid): the textures the app holds (pictures, pages) went with the
+  device, and only the app makes them again. Lost again within 10 s of
+  that, the GPU is broken, not reset, and the app ends rather than loop.
+  app_server puts a window back on its own as it was in every way: a
+  window remembered by this app_server whose own process came back
+  (`Placement::id`) is stacked among the others by the windows that
+  were under and over it (taken once as its client's windows begin to
+  go, `closing_stack`; found again by `WindowMeta::was`), and the
+  keyboard and the active window it took as it opened go back to what
+  had them (`WindowMeta::focus_before`). Deskbar keeps a gone app's
+  place in its list for 20 s, and saves its order to re-execute with.
+  Test with the kit socket's debug-only `{"lose_gpu":true}`
+  (`olo-menus-PID.sock`), which destroys the device.
+* **Every app with windows the user
   arranged must implement both**: save which windows are open (with
   `cx.window_size`), their documents/folders, view settings and
   selection, and reopen them in the same order. Tracker's `Saved` is the

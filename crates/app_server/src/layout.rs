@@ -105,6 +105,14 @@ pub struct Placement {
     /// Its connection then: a window on the same one isn't coming back.
     #[serde(skip)]
     pub client: Option<smithay::reexports::wayland_server::backend::ClientId>,
+    /// The windows under it and over it as it went (bottom first; None:
+    /// not shown), so one whose app came back on its own (it lost its
+    /// GPU, or only it was upgraded) is stacked among the rest as it was;
+    /// and its id then, for those to be stacked beside it.
+    #[serde(skip)]
+    pub stacking: Option<(Vec<u64>, Vec<u64>)>,
+    #[serde(skip)]
+    pub id: u64,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -231,6 +239,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             screen,
             floating: Self::float_override(w),
             slot: 0,
+            stacking: None,
+            id: w.id(),
         })
     }
 
@@ -245,7 +255,20 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// when an app re-executes itself after an upgrade).
     pub fn remember_placement(&mut self, w: &WindowElement) {
         let focused = self.seat.get_keyboard().and_then(|k| k.current_focus()).and_then(|f| f.wl_surface().map(|s| s.into_owned()));
-        if let Some(p) = self.placement_of(w, focused.as_ref()) {
+        if let Some(mut p) = self.placement_of(w, focused.as_ref()) {
+            // A client's windows go one after another as it disconnects:
+            // each is placed among them all, by the stacking before the
+            // first went.
+            let client = w.meta().owner.borrow().as_ref().map(|(_, c)| c.clone());
+            let ids = match (&self.closing_stack, &client) {
+                (Some((ids, c, at)), Some(client)) if c == client && at.elapsed() < Duration::from_millis(500) && ids.contains(&w.id()) => ids.clone(),
+                _ => {
+                    let ids: Vec<u64> = self.space.elements().map(|e| e.id()).collect();
+                    self.closing_stack = client.map(|c| (ids.clone(), c, std::time::Instant::now()));
+                    ids
+                }
+            };
+            p.stacking = ids.iter().position(|&id| id == w.id()).map(|i| (ids[..i].to_vec(), ids[i + 1..].to_vec()));
             self.layout.retain(|e| now().saturating_sub(e.at) < RESTART_KEEP.as_secs());
             if self.layout.len() >= MAX_REMEMBERED {
                 self.layout.remove(0);
@@ -405,6 +428,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             return false;
         };
         let meta = window.meta();
+        let (before, active) = meta.focus_before.take();
         if meta.placed.replace(true) {
             return false;
         }
@@ -414,6 +438,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.space.map_element(window.clone(), Point::from((p.x, p.y)), p.focused);
         meta.put_back.set(true);
         meta.slot.set(p.slot);
+        meta.was.set(p.id);
         if p.floating.is_some() {
             Self::restore_float_override(&window, p.floating);
         }
@@ -443,6 +468,15 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.refit(&window);
         }
         meta.restored_focus.set(p.focused.then(std::time::Instant::now));
+        // Its app came back on its own (the same process on a new
+        // connection: it lost its GPU, or only it was upgraded) while the
+        // other windows stayed.
+        // (`id`: remembered by this app_server, not from the last one's file.)
+        let alone = p.id != 0 && p.pid > 0 && meta.owner.borrow().as_ref().is_some_and(|(pid, _)| *pid == p.pid);
+        // It (or one opened after it, not shown yet) still has the
+        // keyboard it took as it opened: not given since to one put back
+        // focused.
+        let took = self.focused_window().is_some_and(|f| f == window || !f.meta().placed.get());
         if p.minimized {
             // Minimized, on its own workspace (showing or not).
             self.minimize(&window);
@@ -453,6 +487,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.move_to_workspace(&window, p.workspace);
         } else if p.focused {
             self.focus_window(&window);
+        } else if alone {
+            // (Below.)
         } else {
             // New windows come up focused, but while windows are coming
             // back after a restart, the one that had focus keeps it. (Not
@@ -462,11 +498,52 @@ impl<B: Backend + 'static> AnvilState<B> {
             let front = self.space.elements().rev().find(coming_back).cloned().unwrap_or_else(|| window.clone());
             self.focus_window(&front);
         }
-        if p.depth > 0 && self.space.element_location(&window).is_some() {
+        // It took the keyboard as it opened, as new windows do, and became
+        // the active window (and putting it away may have handed them on):
+        // back to what had them.
+        if alone && !p.focused && took {
+            if let Some(keyboard) = self.seat.get_keyboard()
+                && let Some(before) = before.filter(smithay::utils::IsAlive::alive)
+                && keyboard.current_focus().as_ref() != Some(&before)
+            {
+                keyboard.set_focus(self, Some(before), smithay::utils::SERIAL_COUNTER.next_serial());
+            }
+            let active = active.filter(|w| self.space.element_location(w).is_some());
+            for w in self.space.elements() {
+                smithay::desktop::space::SpaceElement::set_activate(w, active.as_ref() == Some(w));
+            }
+        }
+        if alone
+            && let Some((under, over)) = &p.stacking
+            && self.space.element_location(&window).is_some()
+        {
+            self.restack_alone(&window, under, over);
+        } else if p.depth > 0 && self.space.element_location(&window).is_some() {
             meta.restored_depth.set(Some((p.depth, std::time::Instant::now())));
             self.restack_returning(&window, p.depth);
         }
         false
+    }
+
+    /// Put `window`, back on its own, where it was among the others (by
+    /// their ids, `Placement::stacking`): at the bottom if it was; else
+    /// over the highest of those under it still here; else under the
+    /// lowest of those over it. (Its app's other windows come back too,
+    /// in any order, each finding its place among those here.)
+    fn restack_alone(&mut self, window: &WindowElement, under: &[u64], over: &[u64]) {
+        let stack: Vec<WindowElement> = self.space.elements().filter(|w| *w != window).cloned().collect();
+        let at = |id: &u64| stack.iter().position(|w| w.id() == *id || w.meta().was.get() == *id);
+        if under.is_empty() {
+            self.space.lower_element(window);
+        } else if let Some(i) = under.iter().rev().find_map(at) {
+            self.space.raise_element_above(window, &stack[i], false);
+        } else if let Some(i) = over.iter().find_map(at) {
+            match i.checked_sub(1) {
+                Some(below) => self.space.raise_element_above(window, &stack[below], false),
+                None => self.space.lower_element(window),
+            }
+        }
+        self.keep_children_above();
     }
 
     /// Put the windows back before `window` (at `depth`) that were over it

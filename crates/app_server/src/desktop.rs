@@ -44,6 +44,10 @@ pub struct WindowMeta {
     /// It was the focused window before an in-place restart, put back at
     /// this time.
     pub restored_focus: Cell<Option<std::time::Instant>>,
+    /// What had the keyboard as it opened, and the window active then
+    /// (new windows take both): one back on its own
+    /// (`layout::restore_placement`) gives them back.
+    pub focus_before: std::cell::RefCell<(Option<crate::focus::KeyboardFocusTarget>, Option<crate::shell::WindowElement>)>,
     /// Its place in the stacking before an in-place restart (bottom
     /// first), put back at this time.
     pub restored_depth: Cell<Option<(u32, std::time::Instant)>>,
@@ -59,6 +63,9 @@ pub struct WindowMeta {
     /// The saved place it was put back from (`Placement::slot`): its tile
     /// in a tree kept across the restart (0: none).
     pub slot: Cell<u64>,
+    /// The id of the window it came back as (`Placement::id`; 0: none),
+    /// by which others back on their own are stacked beside it.
+    pub was: Cell<u64>,
     /// The part of its display's tiles it was put back into, as saved
     /// (for making a tree again from where windows were, when no tree
     /// was kept).
@@ -99,11 +106,13 @@ impl WindowElement {
             saved_location: Cell::new(Point::default()),
             placed: Cell::new(false),
             restored_focus: Cell::new(None),
+            focus_before: Default::default(),
             restored_depth: Cell::new(None),
             owner: std::cell::RefCell::new(None),
             returning: std::cell::RefCell::new(None),
             put_back: Cell::new(false),
             slot: Cell::new(0),
+            was: Cell::new(0),
             restored_part: Cell::new(None),
             left_among: Default::default(),
             arrived: Cell::new(None),

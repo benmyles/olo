@@ -120,6 +120,50 @@ struct Gpu {
 
 static GPU_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// The GPU device was lost (a driver reset: `VK_ERROR_DEVICE_LOST`, as
+/// Asahi's Mesa gives at a failed syncobj transfer): nothing it made can
+/// draw again, and wgpu and egui_wgpu panic at using what it made. Set
+/// on any thread, by wgpu's device-lost callback or a panic in GPU work
+/// (`on_gpu`); the event loop then starts the app anew (`recover_gpu`).
+static GPU_LOST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Wakes the event loop when a worker finds the GPU lost.
+static GPU_LOST_WAKE: std::sync::OnceLock<Mutex<channel::Sender<()>>> = std::sync::OnceLock::new();
+/// When this process last started anew for a lost GPU: "PID:SECONDS"
+/// (Unix), the pid so the programs it starts, which inherit it, don't
+/// take it for theirs. Losing it again soon after, it is broken, not
+/// reset.
+const GPU_LOST_ENV: &str = "OLO_KIT_GPU_LOST";
+
+fn gpu_lost() -> bool {
+    GPU_LOST.load(std::sync::atomic::Ordering::Acquire)
+}
+
+fn lose_gpu(why: &str) {
+    if !GPU_LOST.swap(true, std::sync::atomic::Ordering::AcqRel) {
+        tracing::error!(why, "the GPU device was lost; starting anew");
+    }
+    if let Some(tx) = GPU_LOST_WAKE.get() {
+        let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send(());
+    }
+}
+
+/// Run `f`, GPU work: a panic in it is taken for the device being lost
+/// (a buffer mapped at creation on a lost device can't be, and
+/// egui_wgpu panics), and None returned. Nothing GPU runs once it is.
+fn on_gpu<T>(f: impl FnOnce() -> T) -> Option<T> {
+    if gpu_lost() {
+        return None;
+    }
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            let why = e.downcast_ref::<String>().map(String::as_str).or_else(|| e.downcast_ref::<&str>().copied()).unwrap_or("a panic");
+            lose_gpu(why);
+            None
+        }
+    }
+}
+
 /// A menu's drawing, ready for the next menu to open: an egui context
 /// with its fonts laid out and the renderer holding its textures. A new
 /// context lays its glyphs out and uploads its font atlas on its first
@@ -564,6 +608,14 @@ fn swapchain(caps: &wgpu::SurfaceCapabilities, translucent: bool, (width, height
 /// `scale`, and its textures uploaded.
 fn warm_menus(device: wgpu::Device, queue: wgpu::Queue, generation: u64, format: wgpu::TextureFormat, palette: Arc<Palette>, menus: Vec<Menu>, scale: f32, count: usize) {
     for _ in 0..count {
+        if on_gpu(|| warm_menu(&device, &queue, generation, format, &palette, &menus, scale)).is_none() {
+            return;
+        }
+    }
+}
+
+fn warm_menu(device: &wgpu::Device, queue: &wgpu::Queue, generation: u64, format: wgpu::TextureFormat, palette: &Arc<Palette>, menus: &[Menu], scale: f32) {
+    {
         let ctx = new_ctx(&palette);
         let mut renderer = new_renderer(&device, format);
         let mut bound = Bound::new();
@@ -613,7 +665,7 @@ fn warm_menus(device: wgpu::Device, queue: wgpu::Queue, generation: u64, format:
             }
         }
         let mut all = Vec::new();
-        for m in &menus {
+        for m in menus {
             with_submenus(m, &mut all);
         }
         for menu in all {
@@ -702,7 +754,7 @@ fn upload_worker() {
             }
             q.remove(0)
         };
-        let texture = upload_texture(&job.device, &job.queue, &job.image);
+        let Some(texture) = on_gpu(|| upload_texture(&job.device, &job.queue, &job.image)) else { continue };
         if let Some(tx) = UPLOADED.get() {
             let done = Uploaded { generation: job.generation, window: job.window, tid: job.tid, seq: job.seq, options: job.options, texture };
             let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send(done);
@@ -1119,6 +1171,11 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         })
         .expect("uploaded channel");
 
+    // A worker found the GPU lost: the loop sees it and starts anew.
+    let (lost_tx, lost_rx) = channel::channel::<()>();
+    let _ = GPU_LOST_WAKE.set(Mutex::new(lost_tx));
+    loop_handle.insert_source(lost_rx, |_, _, _: &mut Kit| {}).expect("lost GPU channel");
+
     let (pasted_tx, pasted_rx) = channel::channel::<(WlSurface, String)>();
     let _ = PASTED.set(Mutex::new(pasted_tx));
     loop_handle
@@ -1240,7 +1297,7 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         kit.process_requests();
 
         let mut lost = false;
-        while !kit.exit && !kit.upgrading {
+        while !kit.exit && !kit.upgrading && !gpu_lost() {
             let timeout = kit.next_timeout();
             if let Err(e) = event_loop.dispatch(timeout, &mut kit) {
                 warn!(?e, "lost the connection to app_server");
@@ -1256,14 +1313,22 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         }
         loop_handle.remove(wayland);
         palette = kit.palette.clone();
+        let exit = kit.exit;
+        // The GPU was lost: start anew (if that can't be done, carry on
+        // with a new device, as after a reconnect).
+        let gpu = gpu_lost() && !exit;
+        if gpu {
+            kit.recover_gpu(&binary);
+            GPU_LOST.store(false, std::sync::atomic::Ordering::Release);
+        }
         let upgrading = kit.upgrading;
         let c = kit.into_carried();
-        if !(lost || upgrading) || !in_session {
+        if exit || !(lost || upgrading || gpu) || (!in_session && !gpu) {
             return;
         }
         // app_server is restarting (olo-session reload). If our binary
         // was upgraded meanwhile, become the new version; otherwise just
-        // reconnect with everything as it was.
+        // reconnect with everything as it was (and a new GPU device).
         let Some(mut c) = c else { return };
         if binary.changed() {
             c.cx.sizes = c.windows.iter().map(|(id, o)| (*id, o.size)).collect();
@@ -1370,9 +1435,15 @@ impl Binary {
 
     /// Replace this process with the binary now on disk, passing `state`.
     fn exec(&self, state: Option<&str>) {
+        self.exec_with(state, &[]);
+    }
+
+    /// `exec`, with `env` set too.
+    fn exec_with(&self, state: Option<&str>, env: &[(&str, String)]) {
         use std::os::unix::process::CommandExt;
         let mut cmd = std::process::Command::new(&self.path);
         cmd.args(std::env::args_os().skip(1));
+        cmd.envs(env.iter().map(|(k, v)| (k, v)));
         olo_xdg::upgrade_env(&mut cmd);
         if let Some(state) = state {
             let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
@@ -1381,7 +1452,7 @@ impl Binary {
                 cmd.env(crate::app::RESTORE_ENV, &file);
             }
         }
-        info!(path = %self.path.display(), "upgraded: re-executing");
+        info!(path = %self.path.display(), "re-executing");
         let e = cmd.exec();
         warn!(?e, "exec failed");
     }
@@ -1449,6 +1520,43 @@ impl Kit {
             linger: false,
             warmed: false,
         }
+    }
+
+    /// The GPU was lost: become ourselves again, as an upgrade does,
+    /// passing the app's state, so its windows come back as they were,
+    /// drawn by a new device. (Carrying on in this process can't bring
+    /// them back whole: the textures the app holds, its pictures and
+    /// pages, went with the old device, and only the app makes them.)
+    /// Returns only if that can't be done. Losing it again soon after,
+    /// the GPU is broken, not reset: the app ends.
+    fn recover_gpu(&mut self, binary: &Binary) {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+        let pid = std::process::id();
+        let last = std::env::var(GPU_LOST_ENV).ok().and_then(|v| {
+            let (p, t) = v.split_once(':')?;
+            (p.parse::<u32>().ok()? == pid).then(|| t.parse::<u64>().ok())?
+        });
+        if last.is_some_and(|t| now.saturating_sub(t) < 10) {
+            tracing::error!("lost the GPU again just after starting anew for it; giving up");
+            std::process::exit(1);
+        }
+        let state = match (self.app.as_mut(), self.cx.as_mut()) {
+            (Some(app), Some(cx)) => {
+                cx.sizes = self
+                    .surfaces
+                    .iter()
+                    .filter_map(|s| match s.role {
+                        Role::Toplevel(_) => Some((s.id, s.size)),
+                        Role::Layer(_) => Some((s.id, s.options.size)),
+                        _ => None,
+                    })
+                    .collect();
+                app.save_state(cx)
+            }
+            _ => None,
+        };
+        binary.exec_with(state.as_deref(), &[(GPU_LOST_ENV, format!("{pid}:{now}"))]);
+        warn!("could not start anew; carrying on with a new GPU device");
     }
 
     /// Tear down every Wayland/GPU object (surfaces before the device and
@@ -1545,6 +1653,20 @@ impl Kit {
             }
             Query::Tree(reply) => self.ask_trees(reply, None),
             Query::Hints(surfaces, reply) => self.ask_trees(reply, Some(surfaces)),
+            Query::LoseGpu(reply) => {
+                // A test (debug builds only): destroyed, as a driver
+                // reset loses it; the poll tells the device-lost callback.
+                let ok = cfg!(debug_assertions)
+                    && self
+                        .gpu
+                        .as_ref()
+                        .inspect(|g| {
+                            g.device.destroy();
+                            let _ = g.device.poll(wgpu::PollType::Poll);
+                        })
+                        .is_some();
+                let _ = reply.send(ok);
+            }
             Query::Path(surface, reply) => {
                 let s = self.surfaces.iter().find(|s| matches!(s.role, Role::Toplevel(_)) && s.wl.id().protocol_id() == surface);
                 let _ = reply.send(s.and_then(|s| s.options.path.clone()));
@@ -2331,6 +2453,10 @@ impl Kit {
             // moment while app_server restarts in place (an upgrade), and
             // the reconnect makes the window anew: no app may die of it.
             device.on_uncaptured_error(std::sync::Arc::new(|e| tracing::error!("wgpu: {e}")));
+            // Lost (a driver reset), it can't draw again: the event loop
+            // starts the app anew, on a new one (`recover_gpu`). (Not
+            // called as one is dropped.)
+            device.set_device_lost_callback(|reason, message| lose_gpu(&format!("{reason:?}: {message}")));
             let generation = GPU_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             self.gpu = Some(Gpu { instance, adapter, device, queue, caps: Default::default(), spare: Default::default(), generation });
             return Some(surface);
@@ -2396,6 +2522,10 @@ impl Kit {
 
     /// Configure the swapchain at `size` (at least the window's).
     fn configure_gpu_surface_at(&mut self, i: usize, size: (u32, u32)) {
+        on_gpu(|| self.set_up_gpu_surface(i, size));
+    }
+
+    fn set_up_gpu_surface(&mut self, i: usize, size: (u32, u32)) {
         if self.surfaces[i].gpu_surface.is_none() {
             let wl = self.surfaces[i].wl.clone();
             let Some(gs) = self.ensure_gpu(&wl) else {
@@ -2518,6 +2648,11 @@ impl Kit {
     }
 
     fn draw(&mut self, id: WindowId) {
+        // Nothing can be drawn on a lost GPU: the loop is about to start
+        // the app anew (`recover_gpu`).
+        if gpu_lost() {
+            return;
+        }
         let (start, at_us) = (Instant::now(), monotonic_us());
         self.draw_frame(id);
         if let Some(s) = self.surface_mut(id)
@@ -2784,7 +2919,7 @@ impl Kit {
         if let Some(s) = self.surface_mut(id) {
             s.parts.ui_us = ui_start.elapsed().as_micros() as u32;
         }
-        self.present(id, output);
+        on_gpu(|| self.present(id, output));
         if menu::take_paste(&ctx)
             && let Some(wl) = self.surface_mut(id).map(|s| s.wl.clone())
         {
@@ -3137,7 +3272,9 @@ impl Kit {
         }
         s.uploads.remove(&done.tid);
         let Some(renderer) = s.renderer.as_mut() else { return };
-        bind_texture(&gpu.device, &gpu.queue, renderer, &mut s.bound, done.tid, done.texture, done.options);
+        if on_gpu(|| bind_texture(&gpu.device, &gpu.queue, renderer, &mut s.bound, done.tid, done.texture, done.options)).is_none() {
+            return;
+        }
         crate::textures::set_uploaded(&s.ctx, done.tid, true);
         s.dirty = true;
     }
@@ -3146,6 +3283,10 @@ impl Kit {
     /// closed menu leaves its own (`KeptSurface`), for a spare without
     /// one: else the first menu would wait for the GPU to go idle.
     fn make_menu_surface(&mut self) {
+        on_gpu(|| self.make_menu_surface_now());
+    }
+
+    fn make_menu_surface_now(&mut self) {
         let Some(gpu) = &self.gpu else { return };
         if gpu.spare.borrow().iter().any(|sp| sp.surface.is_some()) {
             return;

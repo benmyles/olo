@@ -59,9 +59,16 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         if let (Some(pid), Some(c)) = (pid, &client) {
             *window.meta().owner.borrow_mut() = Some((pid, c.id()));
         }
+        // New windows come up focused, as on BeOS (and active as they're
+        // put in their place). One that has them only for having just
+        // opened (not shown yet) passes on what it had.
+        let before = match self.focused_window().filter(|w| !w.meta().placed.get()) {
+            Some(new) => new.meta().focus_before.borrow().clone(),
+            None => (self.seat.get_keyboard().and_then(|k| k.current_focus()), self.space.elements().find(|w| w.decoration().focused).cloned()),
+        };
+        *window.meta().focus_before.borrow_mut() = before;
         let near = self.new_window_near(client.map(|c| c.id()));
         place_new_window(&mut self.space, near, &window, true);
-        // New windows come up focused, as on BeOS.
         self.focus_window(&window);
 
         compositor::add_post_commit_hook(surface.wl_surface(), |state: &mut Self, _, surface| {

@@ -302,6 +302,24 @@ as they land (with the commit), add new ones as they come up.
   sideways to every column; search across the cells; filter rows; sort
   by a column (header click, again to reverse), on a worker for big
   files.
+- **Window tabs: titles of unfocused windows update late** (Ben,
+  2026-10-29, bug): "yellow tabs that are not focused don't have their
+  titles (specifically i'm looking at agent status icons) updated very
+  frequently it seems like they do update but not very often". A window's
+  title (a Terminal's agent status icon in it) must show in its tab the
+  moment it changes, focused or not.
+- **Terminal: ⌘-click opens any URL or file, reliably** (Ben,
+  2026-10-29, bug): "in terminal we should be able to super+click any
+  url and it should open in the default browser, or any local file and
+  it should open in tracker. it should be able to figure out relative
+  paths too based on the cwd in the terminal"; and, told it has them
+  (`links.rs`: ⌘-hover underlines, ⌘-click opens; URLs by pattern, paths
+  that exist relative to the foreground program's directory): "if it
+  already has them then it doesn't reliably work". Find every way it
+  misses (programs reporting the mouse, as Claude Code does; links
+  wrapped over lines; paths in a TUI's boxes or quotes; the working
+  directory of a program that changed its own; the key under each
+  keyboard profile) and fix them; files open in Tracker, shown.
 - **StyledEdit, much more featureful** (Ben, 2026-10-29, after
   everything else): "please improve StyledEdit to be much more featureful
   -- it doesn't need all the bells and whistles of, say, modern Word or
@@ -501,15 +519,21 @@ as they land (with the commit), add new ones as they come up.
   minimized tiles, GTK windows in tiles and windows hanging over onto
   another display. The first upgrade from an app_server before this one
   can still move auto-tiled windows once (it keeps no trees).
-- **Kit apps survive the GPU device being lost** (2026-10-29, from the
-  upgrade checks): once in ~60 test upgrades on Asahi, a restart made
-  Mesa's Vulkan WSI fail (`DRM_IOCTL_SYNCOBJ_TRANSFER failed`, then
-  `VK_ERROR_DEVICE_LOST`), and Deskbar panicked in egui-wgpu
-  (`egui_uniform_buffer` invalid; olo-session restarted it). An app with
-  windows would lose them. Watch for device loss
-  (`Device::set_device_lost_callback`, and catch a panic in a frame) and
-  go through the reconnect path (new device, windows made anew, the app's
-  state kept), tested with a debug switch that destroys the device.
+- ~~**Kit apps survive the GPU device being lost**~~ (2026-10-29, from
+  the upgrade checks; Ben: "never leave a bug like that as a todo not
+  done"; done: HACKING, "The session and in-place reload"): once in ~60
+  test upgrades on Asahi, a restart made Mesa's Vulkan WSI fail
+  (`DRM_IOCTL_SYNCOBJ_TRANSFER failed`, then `VK_ERROR_DEVICE_LOST`), and
+  Deskbar panicked in egui-wgpu (`egui_uniform_buffer` invalid). Now the
+  device-lost callback, or a panic in GPU work on any thread, makes the
+  app start itself anew with its saved state, as an upgrade does, and
+  its windows come back exactly: place, size, tile, workspace, stacking,
+  and which window has the keyboard (app_server no longer gives a window
+  back on its own the focus it didn't have, or puts it on top; Deskbar
+  keeps a gone app's place in its list). Pixel-identical at 1×, 1.5× and
+  2× for StyledEdit (a tab group), Tracker and Deskbar; losing it again
+  within 10 s ends the app instead of looping. Tested with the kit
+  socket's debug-only `{"lose_gpu":true}`.
 - **Passwords: passkeys, and filling the right account in Chrome**
   (Ben, 2026-10-29; next, after Terminal's git work: "this is really
   really important"): "olo passwords needs to support passkeys with a

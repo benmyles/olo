@@ -265,6 +265,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub last_window_infos: Vec<olo_protocol::WindowInfo>,
     /// Remembered window places (see `layout`).
     pub layout: Vec<crate::layout::Placement>,
+    /// The stacking (window ids, bottom first) as a client's windows began
+    /// to go, its id and when (`layout::remember_placement`).
+    pub closing_stack: Option<(Vec<u64>, smithay::reexports::wayland_server::backend::ClientId, std::time::Instant)>,
     /// Night-light colour temperature in effect, if any.
     pub night_light: Option<u32>,
     /// The screens' gamma gains now (none until first set), and the fade
@@ -1143,6 +1146,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             timings: Default::default(),
             last_window_infos: Vec::new(),
             layout: crate::layout::load(),
+            closing_stack: None,
             night_light: None,
             white_point: None,
             night_fade: None,

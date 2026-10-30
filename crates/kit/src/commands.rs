@@ -23,7 +23,10 @@
 //! (`layout_review`) of the frame each draws for it, at its scale;
 //! `{"path":ID}` → `{"path":"/…"}` (or null): the file or folder the
 //! window with that surface shows ([`crate::Cx::set_path`]), for its
-//! tab's menu (Open in Tracker).
+//! tab's menu (Open in Tracker);
+//! `{"lose_gpu":true}` → `{"ok":bool}`: debug builds only, destroy the
+//! GPU device, as a driver reset loses it, to test that the app comes
+//! back (`platform::recover_gpu`).
 
 use std::{
     io::{BufRead, BufReader, Write},
@@ -302,6 +305,7 @@ enum Ask {
     Frames(bool),
     Review(bool),
     Path(u32),
+    LoseGpu(bool),
 }
 
 /// A question for the UI thread, answered through `reply`.
@@ -316,6 +320,8 @@ pub(crate) enum Query {
     Review(mpsc::Sender<Vec<WindowReview>>),
     /// The path of the window with the surface with this protocol id.
     Path(u32, mpsc::Sender<Option<PathBuf>>),
+    /// Destroy the GPU device (debug builds; a test of losing it).
+    LoseGpu(mpsc::Sender<bool>),
 }
 
 /// How long a tree may take: every window draws a frame for it.
@@ -451,6 +457,12 @@ pub(crate) fn listen(to: smithay_client_toolkit::reexports::calloop::channel::Se
                         let _ = to.send(Query::Path(surface, tx));
                         serde_json::to_string(&serde_json::json!({ "path": rx.recv_timeout(WAIT).ok().flatten() }))
                     }
+                    Ok(Ask::LoseGpu(_)) => {
+                        tracing::warn!(by = %peer(&s), "asked to lose the GPU device");
+                        let (tx, rx) = mpsc::channel();
+                        let _ = to.send(Query::LoseGpu(tx));
+                        serde_json::to_string(&serde_json::json!({ "ok": rx.recv_timeout(WAIT).unwrap_or(false) }))
+                    }
                     Err(_) => continue,
                 };
                 if let Ok(answer) = answer {
@@ -482,7 +494,7 @@ pub fn serve_trees(pid: u32, app_id: &str, trees: impl Fn() -> Vec<WindowTree> +
             }
             let answer = match serde_json::from_str::<Ask>(&line) {
                 Ok(Ask::Menus(_)) => serde_json::to_string(&Menus { app_id: app_id.clone(), entries: Vec::new() }),
-                Ok(Ask::Invoke(_) | Ask::Focus(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
+                Ok(Ask::Invoke(_) | Ask::Focus(_) | Ask::LoseGpu(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
                 Ok(Ask::Frames(_)) => serde_json::to_string(&Vec::<FrameTimes>::new()),
                 Ok(Ask::Review(_)) => serde_json::to_string(&Vec::<WindowReview>::new()),
                 Ok(Ask::Path(_)) => serde_json::to_string(&serde_json::json!({ "path": null })),

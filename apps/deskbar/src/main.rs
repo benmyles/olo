@@ -19,7 +19,7 @@
 mod approve;
 mod status;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::{Duration, Instant}};
 
 use olo_kit::{
     App, Cx, Layer, LayerOptions, Menu, WindowId, WindowKind, WindowOptions,
@@ -37,6 +37,8 @@ use olo_protocol::{Client, DisplayWorkspace, Event, KeyboardProfile, OutputInfo,
 /// Logical width of the vertical Deskbar.
 const WIDTH: f32 = olo_kit::metrics::DESKBAR_WIDTH;
 const TILE_H: f32 = 30.0;
+/// How long a gone application keeps its place in the order.
+const GONE_KEEP: Duration = Duration::from_secs(20);
 const ROW_H: f32 = 24.0;
 /// A workspace's heading.
 const HEADING_H: f32 = 20.0;
@@ -176,8 +178,11 @@ struct Deskbar {
     bars: Vec<Bar>,
     outputs: Vec<OutputInfo>,
     windows: Vec<WindowInfo>,
-    /// Team keys in order of first appearance.
+    /// Team keys in order of first appearance. One whose windows have
+    /// gone keeps its place for a while (`GONE_KEEP`): an app that starts
+    /// itself anew (it lost its GPU, or was upgraded) comes back to it.
     order: Vec<String>,
+    gone: HashMap<String, Instant>,
     /// The active display's workspace showing, and how many each display
     /// has.
     workspace: (u32, u32),
@@ -404,7 +409,18 @@ impl Deskbar {
                 self.order.push(k);
             }
         }
-        self.order.retain(|k| windows.iter().any(|w| &team_key(w) == k));
+        let now = Instant::now();
+        for k in &self.order {
+            if windows.iter().any(|w| &team_key(w) == k) {
+                self.gone.remove(k);
+            } else {
+                self.gone.entry(k.clone()).or_insert(now);
+            }
+        }
+        let gone = &self.gone;
+        self.order.retain(|k| gone.get(k).is_none_or(|t| now.duration_since(*t) < GONE_KEEP));
+        let order = &self.order;
+        self.gone.retain(|k, _| order.contains(k));
         let focused = windows.iter().find(|w| w.focused).map(|w| w.id);
         self.last_focused = focused.or(self.last_focused.filter(|id| windows.iter().any(|w| w.id == *id && !w.minimized)));
         self.windows = windows;
@@ -1186,6 +1202,12 @@ fn section_bevel(p: &egui::Painter, r: Rect, pal: &Palette) {
 }
 
 impl App for Deskbar {
+    /// Its applications' order, for the Deskbar it re-executes as (an
+    /// upgrade, a lost GPU): they come back in the order they were.
+    fn save_state(&mut self, _cx: &Cx) -> Option<String> {
+        serde_json::to_string(&self.order).ok()
+    }
+
     fn dropped(&mut self, _cx: &mut Cx, _window: WindowId, drop: olo_kit::dnd::Drop) {
         let Some(key) = drop.target.strip_prefix("team:") else { return };
         let paths = drop.paths();
@@ -1636,7 +1658,8 @@ fn main() {
             bars,
             outputs: Vec::new(),
             windows: Vec::new(),
-            order: Vec::new(),
+            order: cx.restored_state().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default(),
+            gone: HashMap::new(),
             workspace: (0, 1),
             showing: Vec::new(),
             status: status::Status::default(),

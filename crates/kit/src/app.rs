@@ -55,6 +55,8 @@ pub trait App: 'static {
     /// (`olo-session reload`) and this app's binary has changed, the kit
     /// re-executes the new binary; whatever this returns is handed to it as
     /// [`Cx::restored_state`] so it can reopen its windows as they were.
+    /// (Likewise when the GPU device is lost, a driver reset: the app
+    /// starts anew, as its textures went with it.)
     /// Apps whose binary didn't change simply reconnect, keeping all state.
     fn save_state(&mut self, _cx: &Cx) -> Option<String> {
         None
