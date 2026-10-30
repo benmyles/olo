@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Portal: other programs' global shortcuts
+
+*05:40* — An app's keys that work whatever has the keyboard (push-to-talk) are asked for once, listing each and its keys; ones Olo already has show as in use. Allowed ones are held by app_server for the app, through upgrades.
+
+![Portal: other programs' global shortcuts](2026-10-30/054012-portal-other-programs-global-shortcuts.png)
+
 ### Screenshot: pick a colour
 
 *05:30* — PickColor (for other programs, through the Screenshot portal): the screen frozen, a loupe by the pointer with the pixels around it magnified, the one under it ringed, its swatch and hex.

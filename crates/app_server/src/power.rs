@@ -597,6 +597,7 @@ impl<B: Backend> AnvilState<B> {
 
     /// An IPC connection closed: what it kept awake isn't.
     pub fn ipc_closed(&mut self, conn: &std::rc::Rc<crate::ipc::Conn>) {
+        self.grabs_closed(conn);
         let before = self.power.keep_awake.len();
         self.power.keep_awake.retain(|(c, _)| !std::rc::Rc::ptr_eq(c, conn));
         if self.power.keep_awake.len() != before {

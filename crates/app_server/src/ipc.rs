@@ -97,6 +97,9 @@ pub struct IpcState {
     /// The socket file, when we made it (not olo-session).
     _file: Option<crate::sockfile::Owned>,
     subscribers: Vec<Rc<Conn>>,
+    /// Keys other programs took (`GrabKeys`, grabs.rs): who, the id they
+    /// gave, the chord.
+    pub key_grabs: Vec<(Rc<Conn>, String, olo_protocol::shortcuts::Chord)>,
     /// Pictures to take with the next frame (see screenshot.rs).
     pub pending_screenshots: Vec<crate::screenshot::Shot>,
     /// Frames being recorded (`Request::Record`, headless).
@@ -191,6 +194,7 @@ pub fn init<B: Backend + 'static>(
         path,
         _file: file,
         subscribers: Vec::new(),
+        key_grabs: Vec::new(),
         pending_screenshots: Vec::new(),
         recording: None,
         saving: Default::default(),
@@ -484,6 +488,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.keep_awake(conn, why);
                 Reply::Ok
             }
+            Request::GrabKeys { keys } => self.grab_keys(conn, keys),
             Request::SetCaffeinated { on, minutes, lid } => {
                 self.set_caffeinated(on, minutes, lid);
                 Reply::Ok

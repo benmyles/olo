@@ -25,4 +25,5 @@ zbus = { version = "5.19", default-features = false, features = ["blocking-api",
 async-channel = "2"
 blocking = "1"
 serde.workspace = true
+serde_json.workspace = true
 fast_image_resize = "5"

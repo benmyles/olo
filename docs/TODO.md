@@ -1077,7 +1077,8 @@ as they land (with the commit), add new ones as they come up.
     Olo's palette and `style` (generated gtk.css, a Qt palette/kvantum
     or qt6ct config), cursor theme and size, font hinting and scaling
     to match the kit, Olo's icons as the icon theme.
-  - **Menus and shortcuts**: the GlobalShortcuts portal (Chrome's
+  - **Menus and shortcuts** (GlobalShortcuts done 2026-10-30: asked
+    once per app, kept, held through upgrades): ~~the GlobalShortcuts portal~~ (Chrome's
     extensions' shortcuts, Discord's push-to-talk) bound through Olo's
     keyboard profiles; app menus where a toolkit exports one
     (`org.gtk.Menus`, `com.canonical.dbusmenu`) shown in Olo's menu bar

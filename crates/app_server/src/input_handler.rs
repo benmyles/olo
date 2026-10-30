@@ -165,6 +165,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     let keys = chord.map(|c| c.map(|c| c.to_string()).unwrap_or_default());
                     self.ipc.broadcast(olo_protocol::Event::ShortcutRecorded { keys });
                 }
+                crate::keymap::Out::Grabbed(chord, pressed) if !self.lock.locked() => self.key_grabbed(chord, pressed),
+                crate::keymap::Out::Grabbed(..) => {}
             }
         }
         action

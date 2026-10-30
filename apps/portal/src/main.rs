@@ -35,6 +35,7 @@ mod files;
 mod inhibit;
 mod picker;
 mod portal;
+mod shortcuts;
 mod shot;
 mod stream;
 mod wallpaper;
@@ -128,6 +129,8 @@ struct Portal {
     choosers: HashMap<WindowId, chooser::Dialog>,
     /// "Set as Desktop Background?" (the Wallpaper portal).
     wallpapers: HashMap<WindowId, wallpaper::Dialog>,
+    /// "Allow Keyboard Shortcuts?" (the GlobalShortcuts portal).
+    keys: HashMap<WindowId, shortcuts::Dialog>,
     /// Thumbnails come before their window has drawn: kept until it does.
     thumbs: Vec<picker::Thumb>,
     /// The bus, once served (to end sessions from here).
@@ -185,6 +188,13 @@ impl Portal {
         self.panels.insert(win, (panel, ask));
     }
 
+    fn close_keys(&mut self, cx: &mut Cx, win: WindowId, yes: bool) {
+        if let Some(d) = self.keys.remove(&win) {
+            d.answer(yes);
+        }
+        cx.close_window(win);
+    }
+
     fn close_wallpaper(&mut self, cx: &mut Cx, win: WindowId, yes: bool) {
         if let Some(d) = self.wallpapers.remove(&win) {
             d.answer(yes);
@@ -225,6 +235,12 @@ impl App for Portal {
             }
             return;
         }
+        if let Some(d) = self.keys.get_mut(&win) {
+            if let Some(yes) = d.ui(ui) {
+                self.close_keys(cx, win, yes);
+            }
+            return;
+        }
         if let Some(d) = self.choosers.get_mut(&win) {
             if let Some(chosen) = d.ui(ui, win) {
                 self.close_chooser(cx, win, chosen);
@@ -259,6 +275,8 @@ impl App for Portal {
             self.close_chooser(cx, win, None);
         } else if self.wallpapers.contains_key(&win) {
             self.close_wallpaper(cx, win, false);
+        } else if self.keys.contains_key(&win) {
+            self.close_keys(cx, win, false);
         } else {
             self.close(cx, win, None);
         }
@@ -266,7 +284,7 @@ impl App for Portal {
 
     /// Sharing (or asking to): an upgrade would cut it off, so it waits.
     fn busy(&self) -> bool {
-        stream::live() > 0 || !self.pickers.is_empty() || !self.dialogs.is_empty() || !self.panels.is_empty() || !self.choosers.is_empty() || !self.wallpapers.is_empty()
+        stream::live() > 0 || !self.pickers.is_empty() || !self.dialogs.is_empty() || !self.panels.is_empty() || !self.choosers.is_empty() || !self.wallpapers.is_empty() || !self.keys.is_empty()
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
@@ -306,6 +324,10 @@ impl App for Portal {
             portal::ToUi::Ended => {}
             portal::ToUi::Lost(session) => self.end(session),
             portal::ToUi::Files(ask) => self.open_panel(cx, ask),
+            portal::ToUi::Shortcuts(ask) => {
+                let (win, d) = shortcuts::Dialog::open(cx, ask);
+                self.keys.insert(win, d);
+            }
             portal::ToUi::Wallpaper(ask) => {
                 let (win, d) = wallpaper::Dialog::open(cx, ask);
                 self.wallpapers.insert(win, d);
@@ -344,6 +366,10 @@ impl App for Portal {
                 let wins: Vec<WindowId> = self.wallpapers.iter().filter(|(_, d)| d.request() == request).map(|(w, _)| *w).collect();
                 for win in wins {
                     self.close_wallpaper(cx, win, false);
+                }
+                let wins: Vec<WindowId> = self.keys.iter().filter(|(_, d)| d.request() == request).map(|(w, _)| *w).collect();
+                for win in wins {
+                    self.close_keys(cx, win, false);
                 }
             }
         }
@@ -443,7 +469,7 @@ fn main() -> std::process::ExitCode {
                 }
             })
             .expect("thread");
-        Portal { pickers: HashMap::new(), dialogs: HashMap::new(), panels: HashMap::new(), choosers: HashMap::new(), wallpapers: HashMap::new(), thumbs: Vec::new(), bus }
+        Portal { pickers: HashMap::new(), dialogs: HashMap::new(), panels: HashMap::new(), choosers: HashMap::new(), wallpapers: HashMap::new(), keys: HashMap::new(), thumbs: Vec::new(), bus }
     });
     std::process::ExitCode::SUCCESS
 }

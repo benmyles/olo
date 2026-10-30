@@ -12,6 +12,7 @@ pub mod capture;
 pub mod cursor;
 pub mod drawing;
 pub mod focus;
+pub mod grabs;
 pub mod hints;
 pub mod input_handler;
 #[cfg(feature = "libei")]

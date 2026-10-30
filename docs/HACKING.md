@@ -3310,6 +3310,23 @@ it shares (`App::busy`).
   breaks as CRLF) opened in the person's mail program through
   `olo_xdg::open`; a link can't carry files, so attachments are shown in
   Tracker, to drag in.
+- **Global shortcuts** (`shortcuts.rs`, app_server `grabs.rs`): the
+  GlobalShortcuts portal (Discord's push-to-talk, a browser extension's
+  keys). An app's triggers ("CTRL+SHIFT+a", xkb names) become Olo
+  chords (`trigger`). The first BindShortcuts for an app asks, as a
+  BAlert listing each shortcut and its keys ("Keys in use" for ones Olo
+  has or another app took, found by trying them; "No keys" where none
+  were suggested); what was allowed is kept per app in
+  `$XDG_CONFIG_HOME/olo/global-shortcuts.json`, so the same shortcuts
+  bind again without asking. A session holds an app_server connection
+  that took the keys (`Request::GrabKeys`): app_server matches them after
+  its own shortcuts and sends their presses and releases to that
+  connection alone (`Event::KeyGrab`; not to the focused window, not
+  while locked; a plain letter or the like can't be taken, a function
+  key can), which the portal passes on as Activated and Deactivated;
+  closing the connection lets them go. When app_server restarts (an
+  upgrade) the portal takes them again from the next one; closing the
+  session (or binding again) lets them go first.
 - **Running in the background** (`background.rs`): the Background
   portal's backend. xdg-desktop-portal asks the person first (through
   Access, Olo's permission dialog), then here to write or remove the

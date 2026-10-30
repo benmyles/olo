@@ -38,6 +38,15 @@ pub enum Request {
     Ping,
     /// Start receiving [`Event`]s on this connection.
     Subscribe,
+    /// Take these keys for this connection, each `(id, keys)` with keys as
+    /// a [`shortcuts::Chord`] is written ("Ctrl+Alt+K"): another program's
+    /// global shortcuts (the GlobalShortcuts portal). They replace what
+    /// the connection took before, come back as [`Event::KeyGrab`] on this
+    /// connection alone (pressed and released; not to the focused window,
+    /// nor while the screen is locked), and are let go when it closes.
+    /// Keys app_server has (its own shortcuts) or another connection took
+    /// are refused: [`Reply::KeysGrabbed`] says which.
+    GrabKeys { keys: Vec<(String, String)> },
     ListWindows,
     Activate { id: WindowId },
     /// Bring these windows forward together, as clicking an application
@@ -348,6 +357,8 @@ pub enum Reply {
     /// [`Request::WindowingMode`]'s answer: each display, as AutoTiling's.
     WindowingMode { workspace: u32, displays: Vec<WindowingModeInfo> },
     Power { status: PowerStatus },
+    /// After [`Request::GrabKeys`]: the ids whose keys weren't taken.
+    KeysGrabbed { refused: Vec<String> },
     /// [`Request::AutoApproveSecret`]'s answer.
     Secret { password: String },
     Timings { timings: Timings },
@@ -403,6 +414,9 @@ pub enum Event {
     /// ("Shift+Cmd+Left"); "" for Backspace or Delete alone (no keys);
     /// None if it was cancelled (Escape alone, or nothing for a while).
     ShortcutRecorded { keys: Option<String> },
+    /// A key taken with [`Request::GrabKeys`] went down or up (sent only
+    /// to the connection that took it).
+    KeyGrab { id: String, pressed: bool },
 }
 
 /// What app_server's power management is doing now.
@@ -1595,6 +1609,13 @@ impl Client {
             return Err(ClientError::Closed);
         }
         Ok(serde_json::from_str(&line)?)
+    }
+
+    /// A handle on the connection that can shut it (from another thread,
+    /// to end a [`Client::read`] waiting on it, and with it what the
+    /// connection holds: grabbed keys, a `KeepAwake`).
+    pub fn closer(&self) -> std::io::Result<UnixStream> {
+        self.writer.try_clone()
     }
 
     /// Consume this client as an event stream (after sending Subscribe).

@@ -140,6 +140,8 @@ pub enum Out {
     /// The key pressed while recording a shortcut (None: cancelled with
     /// Escape; `Some(None)`: no keys, Backspace or Delete).
     Recorded(Option<Option<Chord>>),
+    /// A chord another program took (`Request::GrabKeys`) went down or up.
+    Grabbed(Chord, bool),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -199,6 +201,8 @@ struct Held {
     sup: bool,
     /// It lifted ⌘'s Ctrl (⌘← is Home, not Ctrl+Home): put it back after.
     restore_ctrl: bool,
+    /// It pressed another program's grabbed chord: its release goes there.
+    grab: Option<Chord>,
 }
 
 #[derive(Debug, Default)]
@@ -219,6 +223,8 @@ pub struct Keymap {
     switching: Option<Switching>,
     /// The shortcuts (from the settings).
     bindings: Vec<(Chord, Shortcut)>,
+    /// Chords other programs took (their global shortcuts).
+    grabs: Vec<Chord>,
     /// The next key is a shortcut being recorded.
     recording: bool,
     /// Control going down and up on its own, for a double press
@@ -290,18 +296,30 @@ impl Keymap {
         let mut out: Vec<Out> = self.down.keys().map(|&k| Out::Key(k, false)).collect();
         out.sort_by_key(|o| match o {
             Out::Key(k, _) => *k,
-            Out::Action(_) | Out::Recorded(_) => 0,
+            Out::Action(_) | Out::Recorded(_) | Out::Grabbed(..) => 0,
         });
+        // A taken chord still down is let go of too.
+        out.extend(self.held.values().filter_map(|h| h.grab).map(|c| Out::Grabbed(c, false)));
         if self.switching.is_some() {
             out.push(Out::Action(Action::SwitchDone));
         }
-        let (bindings, recording) = (std::mem::take(&mut self.bindings), self.recording);
-        *self = Keymap { bindings, recording, ..Keymap::default() };
+        let (bindings, grabs, recording) = (std::mem::take(&mut self.bindings), std::mem::take(&mut self.grabs), self.recording);
+        *self = Keymap { bindings, grabs, recording, ..Keymap::default() };
         out
     }
 
     pub fn set_bindings(&mut self, bindings: Vec<(Chord, Shortcut)>) {
         self.bindings = bindings;
+    }
+
+    /// The chords other programs have taken.
+    pub fn set_grabs(&mut self, grabs: Vec<Chord>) {
+        self.grabs = grabs;
+    }
+
+    /// Whether `chord` is one of app_server's own shortcuts.
+    pub fn is_bound(&self, chord: Chord) -> bool {
+        self.bindings.iter().any(|(c, _)| *c == chord)
     }
 
     /// Take the next key as a shortcut being recorded (or stop).
@@ -603,6 +621,14 @@ impl Keymap {
             self.held.insert(key, h);
             return;
         }
+        // Another program's global shortcut (`GrabKeys`): its press and
+        // release go to that program, not to the focused window.
+        if shortcut.is_none() && self.grabs.contains(&chord) {
+            out.push(Out::Grabbed(chord, true));
+            h.grab = Some(chord);
+            self.held.insert(key, h);
+            return;
+        }
         let tab = matches!(shortcut, Some(Shortcut::NextTab | Shortcut::PreviousTab));
         let translated = if shortcut.is_none() { self.translate(key, focus, opts) } else { None };
         // (⌥ stays up through a run of ⌥← words, as through Next Tabs.)
@@ -711,6 +737,9 @@ impl Keymap {
             out.push(Out::Key(key, false));
             return;
         };
+        if let Some(chord) = h.grab {
+            out.push(Out::Grabbed(chord, false));
+        }
         for k in h.release {
             self.emit_release(k, out);
         }
@@ -767,6 +796,7 @@ mod tests {
     const OPTS: Options = Options { command: CommandKey::Command, caps_lock_control: true, palette_on_tap: true, hints: true, double_press: Duration::from_millis(400) };
     const C: u32 = 46;
     const MINUS: u32 = 12;
+    const F9: u32 = 67;
 
     struct Rig {
         k: Keymap,
@@ -797,6 +827,29 @@ mod tests {
     }
 
     use Out::Key;
+
+    #[test]
+    fn grabbed_chords_go_to_their_program() {
+        let mut r = Rig::new();
+        let push = "Ctrl+Alt+F9".parse::<Chord>().unwrap();
+        r.k.set_grabs(vec![push]);
+        r.focus = Focus::Other;
+        r.down(LEFTCTRL);
+        r.down(LEFTALT);
+        // Its press and release go to the program, not the focused window.
+        assert_eq!(r.down(F9), [Out::Grabbed(push, true)]);
+        assert_eq!(r.up(F9), [Out::Grabbed(push, false)]);
+        r.up(LEFTALT);
+        r.up(LEFTCTRL);
+        // Other chords type as ever.
+        assert_eq!(r.down(F9), [Key(F9, true)]);
+        r.up(F9);
+        // Still down when the keyboard resets: let go of.
+        r.down(LEFTCTRL);
+        r.down(LEFTALT);
+        r.down(F9);
+        assert!(r.k.reset().contains(&Out::Grabbed(push, false)));
+    }
 
     #[test]
     fn command_is_ctrl() {
