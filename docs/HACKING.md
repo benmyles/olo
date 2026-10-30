@@ -1163,6 +1163,22 @@ Olo upgrades without logging out. `olo-session` (what the login
 screen runs) owns the Wayland socket (`wayland-N`) and the IPC socket and
 hands both to app_server, so clients never see the sockets disappear.
 
+Login items (`session/src/autostart.rs`, the freedesktop Autostart
+spec): once a real session's graphical side is up (the environment
+exported, the portals set), olo-session starts what the person asked
+to start at login, `~/.config/autostart/*.desktop` (Slack's and
+Discord's "Launch on Login", what the Background portal writes), each
+with `open::launch_line` (field codes dropped, quoting kept). A
+person's entry overrides the system's of the same name (`Hidden=true`
+turns one off); entries hidden, turned off
+(`X-GNOME-Autostart-enabled=false`), not for Olo (`OnlyShowIn` without
+it, `NotShowIn` with it) or whose `TryExec` isn't installed don't
+start. The system's (`$XDG_CONFIG_DIRS/autostart`) start only when
+their `OnlyShowIn` names Olo: Olo says it is GNOME too, and GNOME's
+settings daemons, keyring components and applets would otherwise start
+and fight Olo over power, keys and displays (none of Fedora's name
+Olo). A session resumed after an upgrade doesn't start them again.
+
 * **Other programs** (Chrome, GTK and Qt apps, terminals) connect to
   `wayland-N`, which belongs to `olo-wlproxy` (`crates/wlproxy`).
   It opens a connection to app_server for each of them on
@@ -3275,6 +3291,14 @@ it shares (`App::busy`).
   harmless entry (`Exec=/usr/bin/true %u`) and a `mimeinfo.cache` (GIO
   associates types only through that), then ask OpenURI for a custom
   scheme.
+- **Running in the background** (`background.rs`): the Background
+  portal's backend. xdg-desktop-portal asks the person first (through
+  Access, Olo's permission dialog), then here to write or remove the
+  app's login item (`~/.config/autostart/APP.desktop`, `X-Flatpak`, the
+  command line quoted as the spec says; an id with a `/` is refused),
+  which olo-session starts at login; GetAppState says which apps have
+  windows (running) and which has the focus (active), from app_server,
+  so it can tell which run with none; one found so is allowed to.
 - **Keeping awake** (`inhibit.rs`): olo-portal also answers the Inhibit
   portal (an inhibition of idle or suspend lasts until the portal closes
   its request) and serves `org.freedesktop.ScreenSaver` (Inhibit gives a

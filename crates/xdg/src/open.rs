@@ -329,21 +329,32 @@ pub fn handler_cached(mime: &str) -> Option<Handler> {
 /// (%f %F %u %U %i %c %k) expanded. Arguments are passed as-is, never
 /// through a shell.
 pub fn command_line(entry: &DesktopEntry, target: &Target) -> Option<Vec<OsString>> {
+    command_line_for(entry, Some(target))
+}
+
+/// The command line that starts `entry` with nothing to open (Deskbar's
+/// launch, a login item): the field codes dropped, quoting kept.
+pub fn launch_line(entry: &DesktopEntry) -> Option<Vec<OsString>> {
+    command_line_for(entry, None)
+}
+
+fn command_line_for(entry: &DesktopEntry, target: Option<&Target>) -> Option<Vec<OsString>> {
     let exec = entry.exec.as_ref()?;
-    let (as_file, as_url): (OsString, OsString) = match target {
-        Target::Path(p) => (p.clone().into_os_string(), format!("file://{}", p.display()).into()),
-        Target::Url(u) => (u.into(), u.into()),
+    let (as_file, as_url): (Option<OsString>, Option<OsString>) = match target {
+        Some(Target::Path(p)) => (Some(p.clone().into_os_string()), Some(format!("file://{}", p.display()).into())),
+        Some(Target::Url(u)) => (Some(u.into()), Some(u.into())),
+        None => (None, None),
     };
     let mut argv = Vec::new();
     let mut used = false;
     for word in split_exec(exec) {
         match word.as_str() {
             "%f" | "%F" => {
-                argv.push(as_file.clone());
+                argv.extend(as_file.clone());
                 used = true;
             }
             "%u" | "%U" => {
-                argv.push(as_url.clone());
+                argv.extend(as_url.clone());
                 used = true;
             }
             "%i" => {
@@ -359,7 +370,7 @@ pub fn command_line(entry: &DesktopEntry, target: &Target) -> Option<Vec<OsStrin
         }
     }
     if !used {
-        argv.push(as_file);
+        argv.extend(as_file);
     }
     if entry.terminal {
         let mut t: Vec<OsString> = vec!["olo-terminal".into(), "-e".into()];
@@ -484,6 +495,9 @@ mod tests {
         let e = DesktopEntry { exec: Some("bar".into()), ..Default::default() };
         let cmd = command_line(&e, &Target::Path("/tmp/a b".into())).unwrap();
         assert_eq!(cmd, ["bar", "/tmp/a b"]);
+        // Started with nothing to open: the codes go, the quoting stays.
+        let e = DesktopEntry { exec: Some(r#""/opt/My App/run" --hidden %U"#.into()), ..Default::default() };
+        assert_eq!(launch_line(&e).unwrap(), ["/opt/My App/run", "--hidden"]);
     }
 
     #[test]

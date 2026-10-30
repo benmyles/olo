@@ -50,6 +50,7 @@ org.freedesktop.impl.portal.Screenshot=olo
 org.freedesktop.impl.portal.Access=olo
 org.freedesktop.impl.portal.FileChooser=olo
 org.freedesktop.impl.portal.AppChooser=olo
+org.freedesktop.impl.portal.Background=olo
 ";
 
 /// Olo's backend (olo-portal, which olo-session runs), for
@@ -58,7 +59,7 @@ const OLO_PORTAL: &str = "\
 # Written by olo-session: Olo's portal backend (olo-portal).
 [portal]
 DBusName=org.freedesktop.impl.portal.desktop.olo
-Interfaces=org.freedesktop.impl.portal.ScreenCast;org.freedesktop.impl.portal.Inhibit;org.freedesktop.impl.portal.Screenshot;org.freedesktop.impl.portal.Access;org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.AppChooser;
+Interfaces=org.freedesktop.impl.portal.ScreenCast;org.freedesktop.impl.portal.Inhibit;org.freedesktop.impl.portal.Screenshot;org.freedesktop.impl.portal.Access;org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.AppChooser;org.freedesktop.impl.portal.Background;
 ";
 
 fn config_home() -> Option<PathBuf> {

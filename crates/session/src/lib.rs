@@ -26,6 +26,7 @@
 //! app_server (keyd.rs), and gives coding agents Olo's skills
 //! (skills.rs).
 
+mod autostart;
 mod graphical;
 mod keyd;
 mod keyring;
@@ -986,5 +987,9 @@ fn export_environment() {
             log(format!("could not export the environment: {e}"));
         }
         graphical::start();
+        // The portals and the environment are there: the person's login
+        // items now (once: a session resumed after an upgrade doesn't
+        // come this way).
+        autostart::start();
     });
 }

@@ -340,6 +340,7 @@ pub fn serve(address: Option<&str>, to_ui: impl Fn(ToUi) + Send + Sync + 'static
         .serve_at(PATH, access)?
         .serve_at(PATH, files)?
         .serve_at(PATH, chooser)?
+        .serve_at(PATH, crate::background::Background)?
         .build()?;
     let flags = zbus::fdo::RequestNameFlags::DoNotQueue.into();
     match conn.request_name_with_flags(NAME, flags)? {

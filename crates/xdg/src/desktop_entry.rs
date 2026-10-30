@@ -36,6 +36,12 @@ pub fn app_dirs() -> Vec<PathBuf> {
     v
 }
 
+/// The entry in the file at `path` (an autostart entry, one dropped on
+/// Deskbar), if it is an application's.
+pub fn parse_file(path: &Path) -> Option<DesktopEntry> {
+    parse(path)
+}
+
 pub(crate) fn parse(path: &Path) -> Option<DesktopEntry> {
     let text = std::fs::read_to_string(path).ok()?;
     let lang = std::env::var("LANG").ok().and_then(|l| l.split(['.', '_']).next().map(str::to_owned));

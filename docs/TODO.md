@@ -1091,11 +1091,13 @@ as they land (with the commit), add new ones as they come up.
     row's dot, shaking when the count rises, and a progress bar).
   - **The rest of the portals**: ~~Inhibit~~ (done 2026-10-30: the
     Inhibit portal and `org.freedesktop.ScreenSaver` in olo-portal, held
-    by app_server's `KeepAwake`), Background, Print (to Olo's print dialog, once there is
+    by app_server's `KeepAwake`), ~~Background~~ (done 2026-10-30, with
+    olo-session starting login items), Print (to Olo's print dialog, once there is
     one), Email, Account, Wallpaper, Screenshot (with screen sharing),
     Camera/Location as Olo asks permission, Secret (Passwords as the
     Secret Service, so Chrome's and Electron's stored secrets live in
-    Olo's keychain), and Trash (to Tracker's Trash). Done 2026-10-30:
+    Olo's keychain), and ~~Trash~~ (xdg-desktop-portal trashes through
+    GIO, in the freedesktop layout Tracker's Trash uses: nothing to add). Done 2026-10-30:
     Screenshot (Olo's Screenshot app, region when interactive; not yet
     PickColor) and Access (the permission dialog, as Olo's BAlert).
   - **Drag and drop and the clipboard**: files dragged from Chrome,
