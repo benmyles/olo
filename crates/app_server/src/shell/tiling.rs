@@ -46,6 +46,14 @@ struct Tiled(Cell<Option<Tile>>);
 /// `Tile::fraction` gives.
 pub type Part = (f32, f32, f32, f32);
 
+/// A window's own arrangement, kept while it wears its group's.
+#[derive(Debug, Clone, Copy)]
+pub struct Arrangement {
+    tile: Option<Tile>,
+    part: Option<Part>,
+    along: Option<ZoomedAlong>,
+}
+
 /// Where a window was before an arrangement moved it, all Undo Window
 /// Arrangement needs to put it back.
 #[derive(Clone, Debug)]
@@ -92,7 +100,7 @@ impl Axis {
 /// already (tiled, arranged or zoomed: Restore still goes back there),
 /// and the tile it was in.
 #[derive(Debug, Clone, Copy)]
-struct ZoomedAlong {
+pub(crate) struct ZoomedAlong {
     axis: Axis,
     from: Rectangle<i32, Logical>,
     kept: bool,
@@ -446,6 +454,9 @@ pub fn fan_in(cell: Rectangle<i32, Logical>, tabs: &[i32], tab_h: i32) -> Vec<(R
 /// How much of a window's top edge must be in the area for it to be in
 /// reach: enough of its tab or frame to take hold of.
 const REACH: (i32, i32) = (48, olo_theme::deco::TAB_HEIGHT);
+/// The least of a window's top edge on a display that still takes hold of
+/// it (a window left hanging off an edge is put back so, not pulled in).
+const GRAB: i32 = 32;
 
 /// Whether a window at `frame` can be taken hold of in `area`: its top
 /// edge is inside the area top to bottom, and enough of it across.
@@ -534,6 +545,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             let pre = window.user_data().get::<PreZoom>().unwrap();
             pre.0.borrow_mut().get_or_insert(Rectangle::new(location, window.geometry().size));
         }
+        // Put here now: no longer on its way to where a drag or a layout
+        // asked before (that would put it back by its old edges when it
+        // draws this size).
+        self.unfollow(window);
         // (Before taking the surface's lock: inner_size takes it too.)
         let content = window.inner_size(frame.size);
         match window.0.underlying_surface() {
@@ -701,6 +716,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     pub fn set_tile_state(window: &WindowElement, tile: Option<Tile>, part: Option<Part>) {
         Self::set_tiled(window, tile);
         Self::set_part(window, tile.and(part));
+    }
+
+    /// `w`'s own arrangement (its tile, the part its edges were dragged
+    /// to, its zoom along one axis), to give back later
+    /// ([`Self::rearrange`]).
+    pub(crate) fn arrangement_of(w: &WindowElement) -> Arrangement {
+        Arrangement { tile: Self::tiled(w), part: Self::custom_part(w), along: Self::zoomed_along(w) }
+    }
+
+    /// `w` arranged as it was ([`Self::arrangement_of`]).
+    pub(crate) fn rearrange(w: &WindowElement, a: Arrangement) {
+        Self::set_tile_state(w, a.tile, a.part);
+        Self::set_zoomed_along(w, a.along);
     }
 
     /// Give `w` the arrangement `leader` has: its tile and part, its zoom
@@ -1130,6 +1158,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if !held || self.tile_drag.as_ref().is_some_and(|t| t.window == *window) {
             return;
         }
+        // Still drawing the size it had (an arrangement has just asked
+        // for its tile's): not kept bigger, only not there yet. Pushed
+        // in now, it would stay where that size fitted.
+        if super::groups::size_on_the_way(window).is_some() {
+            return;
+        }
         let (Some(loc), Some(geo)) = (self.space.element_location(window), self.space.element_geometry(window)) else { return };
         let Some(area) = self.window_output(window).and_then(|o| self.tile_area(&o)) else { return };
         let inside = |pos: i32, len: i32, lo: i32, span: i32| if len <= span { pos.clamp(lo, lo + span - len) } else { lo };
@@ -1234,6 +1268,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let among = std::mem::take(&mut self.arranged_among);
         let windows: Vec<WindowElement> = before.iter().map(|p| p.window.clone()).filter(|w| self.space.element_location(w).is_some()).collect();
         let now = self.placed(&windows);
+        // The displays as they were: each back exactly where it was (out
+        // past an edge too, as it was left); else where it can be reached.
+        let same_displays = among == self.display_frames();
         for p in &before {
             if !windows.contains(&p.window) {
                 continue;
@@ -1251,7 +1288,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             if p.zoomed {
                 self.zoom_window(&p.window);
             } else {
-                let frame = self.reachable(p.frame);
+                let frame = if same_displays { p.frame } else { self.put_back_at(p.frame) };
                 self.set_frame(&p.window, frame, false);
             }
             Self::set_tiled(&p.window, p.tile);
@@ -1545,6 +1582,20 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     fn on_a_display(&self, r: Rectangle<i32, Logical>) -> bool {
         self.space.outputs().any(|o| self.space.output_geometry(o).is_some_and(|g| g.overlaps(r)))
+    }
+
+    /// Where a remembered frame goes back to (Restore, unzooming, undoing
+    /// an arrangement): just there while some of its top edge is on a
+    /// display to take hold of, as the person may have left it hanging
+    /// off one; else brought into reach ([`Self::reachable`]).
+    pub(crate) fn put_back_at(&self, frame: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
+        let top = Rectangle::new(frame.loc, Size::from((frame.size.w, olo_theme::deco::TAB_HEIGHT.min(frame.size.h))));
+        let held = self
+            .space
+            .outputs()
+            .filter_map(|o| self.space.output_geometry(o))
+            .any(|g| top.intersection(g).is_some_and(|r| r.size.w >= GRAB.min(frame.size.w) && r.size.h >= top.size.h));
+        if held { frame } else { self.reachable(frame) }
     }
 
     /// A window back from another workspace or from being hidden:

@@ -69,7 +69,8 @@ pub(crate) fn workspace_changed(current: u32, displays: Vec<DisplayWorkspace>) {
 
 fn mine(windows: &[WindowInfo]) -> HashMap<u32, (u32, Option<String>, bool)> {
     let pid = std::process::id() as i32;
-    windows.iter().filter(|w| w.pid == Some(pid)).filter_map(|w| Some((w.surface?, (w.workspace, w.output.clone(), w.minimized)))).collect()
+    // (A tab behind another in its group shows no more than a hidden one.)
+    windows.iter().filter(|w| w.pid == Some(pid)).filter_map(|w| Some((w.surface?, (w.workspace, w.output.clone(), w.minimized || w.behind)))).collect()
 }
 
 /// Whether our window with this surface is on this workspace: the one
@@ -90,7 +91,8 @@ pub(crate) fn here(surface: u32) -> Option<bool> {
 }
 
 /// Whether our window with this surface shows: on the workspace its
-/// display shows, and not hidden; None if app_server hasn't said.
+/// display shows, not hidden and not behind another in its group; None
+/// if app_server hasn't said.
 pub(crate) fn shown(surface: u32) -> Option<bool> {
     let k = KNOWN.lock().ok()?;
     let k = k.as_ref()?;

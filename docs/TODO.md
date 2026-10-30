@@ -1430,13 +1430,32 @@ as they land (with the commit), add new ones as they come up.
   happens in the commit handler once the window knows its size, before
   it is drawn (every dialog and every returning window had the same
   frame elsewhere first).
-- **wm-fuzz seed 2, step 192** (found 2026-10-29, also before today's
+- ~~**wm-fuzz seed 2, step 192**~~ (found 2026-10-29, also before today's
   changes): a tiled Tracker window drawn as the bottom-right quarter is
   refitted to the whole bottom half when its workspace is shown again
   (`tools/dev/wm-fuzz NAME --steps 192 --seed 2` on a fresh
   `2560x1600,1920x1080 --session --shell` session with a fresh home):
   its tile state and its frame part ways somewhere earlier (grouping,
   arranging, a display moved); find where.
+  Done (seed 2 now passes 400 steps with `--tiles`, a new check that
+  every tiled window is in its tile's part, which `list_windows` now
+  gives as `part`): a hidden window passed over by ⌘` joined its old
+  group for a moment and kept the group's tile when it went back to its
+  own frame (its own tile is kept with its frame now); Tile All's
+  window, still at its old size, was pushed inside the tiling area by
+  that size and stayed there (`keep_in_tile_area` waits for the size
+  asked); a group's back tab took a text-size change late, when the
+  group came apart (`behind` in `WindowInfo`: the kit counts it not
+  shown); and undoing an arrangement or unzooming pulled a window left
+  hanging off an edge back in (`put_back_at`: back exactly while some
+  of its top edge is on a display).
+- **wm-fuzz seeds 3 and 5** (found 2026-10-30; seed 5's also on the
+  app_server before the fixes above): seed 5 step 213, a Terminal to the
+  next display and back doesn't come back (1772, 8 → 2486, 544); step
+  246, placing a window moves another; seed 3 step 268, placing a
+  window moves another; step 271, putting a window in a group resizes
+  its group mate (250 → 290 wide). Same session as above, `--seed N
+  --steps 300 --keep-going`.
 
 - ~~**Windows while rearranging displays**~~ (Ben): each window stays on
   its screen at the same place as screens are dragged around

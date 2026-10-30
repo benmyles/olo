@@ -339,8 +339,8 @@ impl Cx {
     }
 
     /// Whether `window` shows: on the workspace its display shows, not
-    /// hidden (it may be covered), as app_server last said; true if it
-    /// hasn't. One that doesn't draws nothing until it comes back, so a
+    /// hidden and not a tab behind another in its group (it may be
+    /// covered), as app_server last said; true if it hasn't. One that doesn't draws nothing until it comes back, so a
     /// size it asks for now only lands then.
     pub fn is_shown(&self, window: WindowId) -> bool {
         self.surfaces.get(&window).and_then(|s| crate::workspaces::shown(*s)).unwrap_or(true)

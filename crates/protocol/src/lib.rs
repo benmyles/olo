@@ -473,6 +473,10 @@ pub struct WindowInfo {
     /// its edges drags its neighbours').
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub tiled: bool,
+    /// Its tile's part of its display's tiling area, as fractions (x, y,
+    /// width, height) of it, while tiled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub part: Option<[f32; 4]>,
     /// It floats over auto-tiled windows rather than being tiled: a
     /// dialog, an alert, a fixed-size window, one tagged `floating`
     /// (xdg-toplevel-tag), or one floated by hand.
@@ -489,6 +493,10 @@ pub struct WindowInfo {
     /// Its tab's place in its group, from the left ([`Request::MoveTab`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tab: Option<u32>,
+    /// A tab behind another in its group: not on screen (it draws
+    /// nothing) till it comes to the front.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub behind: bool,
     /// Where it is on screen, tab and border included (global logical
     /// pixels), while it is on screen. Only in [`Reply::Windows`] (the
     /// list [`Event::WindowsChanged`] carries leaves it out, or a window

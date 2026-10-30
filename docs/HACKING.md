@@ -1494,7 +1494,7 @@ The headless server renders on the GPU's render node and announces it
 in dmabuf feedback, so GL clients (Chrome) get hardware GL
 as on the desktop rather than Mesa's software fallback.
 
-`tools/dev/wm-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going]` is an
+`tools/dev/wm-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going] [--tiles] [--trace-tiles]` is an
 adversarial window-management fuzzer: on a session with two screens and
 the shell (`$T start fz 2560x1600,1920x1080 --session --shell`) it opens
 and closes Terminal, StyledEdit and Tracker windows and drives random
@@ -1516,7 +1516,12 @@ own windows (`op_app_resize`: a new Terminal tab, closing it, a bigger
 or smaller text size, on a window as it is, zoomed, tiled or as tall as
 its display) and checks that nothing grows past its display or out of
 the size it was zoomed or tiled to; zoomed windows must stay inside the
-tiling area after every step. A run is reproducible from its seed;
+tiling area after every step. Every tiled window on the active display
+is checked against its tile's part (`WindowInfo::part`), reported once
+each, failing with `--tiles` (a frame and tile that part ways jump when
+the tiles are next laid out); `--trace-tiles` prints each window's part,
+frame, workspace, group and hidden state whenever they change, to find
+the step where something went wrong. A run is reproducible from its seed;
 `--only app_resize,tab_in` runs just those steps (the `op_` methods). Run
 it after changing anything in shell/.
 

@@ -387,7 +387,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // (What it remembers moves with its display; in reach, whatever
         // happened to the displays meanwhile.)
         if let Some(frame) = from {
-            let frame = self.reachable(frame);
+            let frame = self.put_back_at(frame);
             self.set_frame(window, frame, false);
             return;
         }
@@ -395,7 +395,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             .user_data()
             .get::<PreZoom>()
             .and_then(|p| p.0.borrow_mut().take())
-            .map(|r| self.reachable(r));
+            .map(|r| self.put_back_at(r));
         // (Worked out before taking the surface's lock: inner_size takes it
         // too, and taking it twice hangs the whole desktop.)
         let size = pre.map(|r| window.inner_size(r.size));

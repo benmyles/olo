@@ -4,7 +4,7 @@ combinations of every arranging command, shortcut, switcher, workspace
 and display change, on real apps, and check after each step that the
 desktop is still sane.
 
-  wm-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going] [--quiet]
+  wm-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going] [--quiet] [--tiles]
 
 NAME is a tsession with two or more screens and the shell, e.g.
 
@@ -128,6 +128,11 @@ class Fuzz:
         # Steps Terminal's text size has been made bigger (less smaller).
         self.text_steps = 0
         self.only = set()
+        # Tiled windows seen out of their tiles (each said once), and
+        # whether that fails the run (--tiles).
+        self.tile_seen, self.tiles_fail = set(), False
+        # Each window's part, frame and workspace as last seen (--trace-tiles).
+        self.trace_tiles, self.tile_trace = False, {}
         self.last_press = 0.0
         self.server_log = os.path.join("/tmp/olo-dev", name, "app_server.log")
         try:
@@ -270,7 +275,39 @@ class Fuzz:
                 self.fail(f"window {w['id']} has the keyboard but is {'hidden' if w['minimized'] else 'on workspace %d' % w['workspace']}")
         self.check_groups(wins, cur)
         self.check_zoomed(wins, cur)
+        self.check_tiles(wins, cur)
         self.check_log()
+
+    def check_tiles(self, wins, cur):
+        """A tiled window on the active display is where its tile's part
+        says (`part`), within a gap; else it jumps there when its tiles
+        are next laid out (its workspace shown again). Reported, with
+        --tiles failing on it."""
+        if self.trace_tiles:
+            for w in wins.values():
+                now = (tuple(round(v, 3) for v in w["part"]) if w.get("part") else None, fr(w), w["workspace"], w.get("group"), w["minimized"])
+                if self.tile_trace.get(w["id"]) != now:
+                    print(f"  step {self.step}: window {w['id']} part {now[0]} frame {now[1]} ws {now[2]} group {now[3]} hidden {now[4]}", flush=True)
+                    self.tile_trace[w["id"]] = now
+        out, area = self.area()
+        if not area:
+            return
+        ax, ay, aw, ah = area
+        for w in wins.values():
+            if not w.get("part") or w.get("output") != out or not self.here(w, cur) or w["minimized"] or w.get("zoomed") or fr(w) is None:
+                continue
+            x, y, cw, ch = fr(w)
+            px, py, pw, ph = w["part"]
+            want = (round(ax + px * aw), round(ay + py * ah), round(pw * aw), round(ph * ah))
+            if max(abs(x - want[0]), abs(y - want[1]), abs(x + cw - want[0] - want[2]), abs(y + ch - want[1] - want[3])) > 12:
+                key = (w["id"], tuple(w["part"]), fr(w))
+                if key not in self.tile_seen:
+                    self.tile_seen.add(key)
+                    msg = f"window {w['id']} ({w['app_id']}) at {fr(w)} isn't its tile's part {tuple(round(v, 3) for v in w['part'])} = {want}"
+                    if self.tiles_fail:
+                        self.fail(msg)
+                    else:
+                        print(f"  step {self.step}: {msg}", flush=True)
 
     def check_zoomed(self, wins, cur):
         """A zoomed window on the active display fills (at most) its tiling
@@ -1256,6 +1293,8 @@ def main():
     seed = int(a[a.index("--seed") + 1]) if "--seed" in a else random.randrange(1 << 30)
     steps = int(a[a.index("--steps") + 1]) if "--steps" in a else 200
     fuzz = Fuzz(name, seed, "--quiet" in a)
+    fuzz.tiles_fail = "--tiles" in a
+    fuzz.trace_tiles = "--trace-tiles" in a
     if "--only" in a:
         fuzz.only = set(a[a.index("--only") + 1].split(","))
         unknown = fuzz.only - {m[3:] for m in dir(fuzz) if m.startswith("op_")}

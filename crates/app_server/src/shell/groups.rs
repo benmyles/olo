@@ -468,7 +468,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 if let Some(own) = w.meta().arrived.take()
                     && own != frame
                 {
-                    w.meta().joined.set(Some((own, frame)));
+                    w.meta().joined.set(Some((own, frame, Self::arrangement_of(w))));
                 }
                 self.join_group(w, frame, resizing);
                 self.share_arrangement(&leader, w);

@@ -83,10 +83,11 @@ pub struct WindowMeta {
     /// Back in the space this turn, at this frame: if it joins its app's
     /// group now (`sync_groups`), that frame is its own to go back to.
     pub arrived: Cell<Option<Rectangle<i32, Logical>>>,
-    /// The frame it had when it joined a group on arriving, and the
-    /// group's: back somewhere it isn't grouped, untouched (still at the
-    /// group's frame), it has its own again.
-    pub joined: Cell<Option<(Rectangle<i32, Logical>, Rectangle<i32, Logical>)>>,
+    /// The frame it had when it joined a group on arriving, the group's,
+    /// and its own arrangement (its tile) then: back somewhere it isn't
+    /// grouped, untouched (still at the group's frame), it has its own
+    /// frame and tile again.
+    pub joined: Cell<Option<(Rectangle<i32, Logical>, Rectangle<i32, Logical>, crate::shell::tiling::Arrangement)>>,
     /// How it groups (`shell::groups`): with its app's others, on its own
     /// (taken out by hand) or in a group it was put in.
     pub grouping: RefCell<crate::shell::groups::Grouping>,
@@ -318,10 +319,18 @@ impl<B: Backend + 'static> AnvilState<B> {
                     group: place.map(|(g, _)| g),
                     groupable: self.groupable(&w),
                     tiled: Self::tile_state(&w).0.is_some(),
+                    part: match Self::tile_state(&w) {
+                        (Some(t), part) => {
+                            let (x, y, pw, ph) = part.unwrap_or(t.fraction());
+                            Some([x, y, pw, ph])
+                        }
+                        (None, _) => None,
+                    },
                     floating: self.floats(&w),
                     float: Self::float_override(&w),
                     output: self.display_of(&w).map(|o| o.name()),
                     tab: place.map(|(_, t)| t),
+                    behind: self.behind_in_group(&w),
                     frame: None,
                     content: None,
                     tab_frame: None,
@@ -499,12 +508,13 @@ impl<B: Backend + 'static> AnvilState<B> {
         let mate = |o: &WindowElement| o != window && key.is_some() && self.group_key(o) == key && self.display_of(o) == display;
         let alone = !self.space.elements().any(mate)
             && !self.parked.0.borrow().iter().any(|o| mate(o) && self.shows(o) && !o.meta().minimized.get());
-        if let Some((own, group)) = window.meta().joined.get()
+        if let Some((own, group, arranged)) = window.meta().joined.get()
             && alone
             && self.space.element_geometry(window) == Some(group)
         {
             window.meta().joined.set(None);
             self.set_frame(window, own, false);
+            Self::rearrange(window, arranged);
         }
         window.meta().arrived.set(self.space.element_geometry(window));
     }
