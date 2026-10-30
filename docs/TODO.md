@@ -232,6 +232,19 @@ as they land (with the commit), add new ones as they come up.
   every look and at every scale); with fading off, full. Updated as the
   notifications age (no polling faster than the fade can show), and its
   strength in the entry's status for agents.
+- **Deskbar: the notification count beside the dot, as an option**
+  (Ben, 2026-10-30): "a preferences option in notifications to also
+  include the notification count next to the blue dot. off by default
+  but enableable. make sure you qa visually at all display scales to
+  ensure it looks good and fits well". Preferences ▸ Notifications gets
+  "Show the number of notifications in Deskbar" (off by default, in
+  `NotificationSettings`); when on, the app's entry shows its count of
+  notifications beside the dot, in the dot's colour and fading with it,
+  in the kit's small type, fitting the entry at every width (a long
+  name is cut before the count is), shaking with the dot when one
+  arrives, and in the entry's status for agents. Checked by eye and with
+  `tsession review` at 1×, 1.25×, 1.5×, 1.75× and 2×, in light, dark and
+  night, with counts of 1, 9, 10 and 99+.
 - ~~**Notifications: one click on a card acts**~~ (Ben, 2026-10-29; done:
   HACKING, Notifications' Cards): "in
   notifications app card view, i should only need a single click of a
