@@ -308,7 +308,11 @@ impl<BackendData: Backend> WlrLayerShellHandler for AnvilState<BackendData> {
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
-        if let Some((mut map, layer)) = self.space.outputs().find_map(|o| {
+        // Every display's layers, those of one mirroring another too (out
+        // of the space): a bar closed because its display began mirroring
+        // would stay in its map, empty, and count as there when the
+        // display comes back (Deskbar's, moving the tiling area over).
+        if let Some((mut map, layer)) = self.space.outputs().chain(self.mirrors.iter()).find_map(|o| {
             let map = layer_map_for_output(o);
             let layer = map
                 .layers()

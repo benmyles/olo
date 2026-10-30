@@ -765,7 +765,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// tile's own part).
     pub fn tile_window(&mut self, window: &WindowElement, tile: Tile) {
         let Some(area) = self.window_output(window).and_then(|o| self.tile_area(&o)) else { return };
-        self.set_frame(window, part(area, tile.fraction(), self.tile_gap()), true);
+        let frame = self.given_way(window, part(area, tile.fraction(), self.tile_gap()), area);
+        self.set_frame(window, frame, true);
         Self::set_tiled(window, Some(tile));
     }
 
@@ -782,7 +783,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     pub fn retile(&mut self, window: &WindowElement, tile: Tile) {
         let Some(custom) = Self::custom_part(window) else { return self.tile_window(window, tile) };
         let Some(area) = self.window_output(window).and_then(|o| self.tile_area(&o)) else { return };
-        self.set_frame(window, part(area, custom, self.tile_gap()), true);
+        let frame = self.given_way(window, part(area, custom, self.tile_gap()), area);
+        self.set_frame(window, frame, true);
     }
 
     /// An edge drag of `window` (`sides`) is starting or going on: the
@@ -823,6 +825,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// as the biggest least size among them (windows of different apps
     /// put together by hand).
     pub(super) fn min_frame(&self, window: &WindowElement) -> Size<i32, Logical> {
+        let least = self.least_frame(window);
+        Size::from((least.w.max(MIN_TILE), least.h.max(MIN_TILE)))
+    }
+
+    /// The smallest frame `window`'s app draws it at (its group's), with
+    /// no floor of Olo's.
+    fn least_frame(&self, window: &WindowElement) -> Size<i32, Logical> {
         use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
         let least = |w: &WindowElement| w.wl_surface().map(|s| with_states(&s, |st| st.cached_state.get::<SurfaceCachedState>().current().min_size)).unwrap_or_default();
         let content = self.groups.mates(window).iter().map(least).fold(least(window), |a, b| Size::from((a.w.max(b.w), a.h.max(b.h))));
@@ -830,7 +839,20 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // its frame less its content now (before it first draws, that is
         // something else, and the tile beside it would move as it does).
         let extra = if window.decorated() || window.will_be_decorated() { super::deco::extra_size() } else { Size::default() };
-        Size::from(((content.w + extra.w).max(MIN_TILE), (content.h + extra.h).max(MIN_TILE)))
+        if content.w <= 0 && content.h <= 0 {
+            return Size::default();
+        }
+        Size::from((content.w + extra.w, content.h + extra.h))
+    }
+
+    /// `frame`, a part of `area`, for `window`: no smaller than its app
+    /// draws it, and given way inwards to stay in `area` as
+    /// `keep_in_tile_area` would push it once drawn so. A tile then asks
+    /// for where the window ends up, rather than passing through its part
+    /// on the way (a flicker, each time it is put back: from another
+    /// workspace, from being hidden).
+    fn given_way(&self, window: &WindowElement, frame: Rectangle<i32, Logical>, area: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
+        give_way(frame, self.least_frame(window), area)
     }
 
     /// The size change the drag may make (neighbours keep a minimum).
@@ -1656,6 +1678,17 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 }
 
+/// `frame` grown to `least` where it is smaller, kept inside `area` as
+/// far as it fits (else at its start).
+fn give_way(frame: Rectangle<i32, Logical>, least: Size<i32, Logical>, area: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
+    let size = Size::from((frame.size.w.max(least.w), frame.size.h.max(least.h)));
+    if size == frame.size {
+        return frame;
+    }
+    let inside = |pos: i32, len: i32, lo: i32, span: i32| if len <= span { pos.clamp(lo, lo + span - len) } else { lo };
+    Rectangle::new(Point::from((inside(frame.loc.x, size.w, area.loc.x, area.size.w), inside(frame.loc.y, size.h, area.loc.y, area.size.h))), size)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1792,5 +1825,19 @@ mod tests {
         let many = fan_in(r(0, 0, 100, 50), &[100; 6], 21);
         assert!(many.iter().all(|(f, _)| f.loc.y + 21 <= 50 && f.size.h >= 21));
         assert!(fan_in(cell, &[], 21).is_empty());
+    }
+
+    #[test]
+    fn a_window_too_big_for_its_tile_gives_way_inwards() {
+        let area = r(8, 8, 2048, 524);
+        // The right third, for a window that won't be under 290 wide: in
+        // from the right edge, as keep_in_tile_area pushes it once drawn.
+        let third = r(1800, 8, 256, 524);
+        assert_eq!(give_way(third, Size::from((290, 100)), area), r(1766, 8, 290, 524));
+        // The left third grows rightwards; one that fits stays as it is.
+        assert_eq!(give_way(r(8, 8, 256, 524), Size::from((290, 100)), area), r(8, 8, 290, 524));
+        assert_eq!(give_way(third, Size::from((200, 100)), area), third);
+        // Bigger than the whole area: at its start.
+        assert_eq!(give_way(third, Size::from((3000, 100)), area), r(8, 8, 3000, 524));
     }
 }

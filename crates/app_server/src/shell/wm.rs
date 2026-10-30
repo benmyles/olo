@@ -322,7 +322,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let mut area = Rectangle::new(geo.loc + zone.loc, zone.size);
         // Stop beside Deskbar, as BeOS does (it sits in a corner and
         // reserves no edge, so the zone above doesn't leave it out).
-        let bar = map.layers().find(|l| l.namespace() == "deskbar").and_then(|l| map.layer_geometry(l));
+        // (One that is there: drawn, so with a size.)
+        let bar = map.layers().filter(|l| l.namespace() == "deskbar").filter_map(|l| map.layer_geometry(l)).find(|g| g.size.w > 0 && g.size.h > 0);
         if let Some(bar) = bar.map(|b| Rectangle::new(geo.loc + b.loc, b.size)) {
             if bar.loc.x + bar.size.w / 2 >= area.loc.x + area.size.w / 2 {
                 let right = bar.loc.x - DESKBAR_GAP;
