@@ -860,6 +860,8 @@ fields on one divider with Show's); `panel.choices_made()` reads them
 back. Open it
 in its own window of `PANEL_SIZE`, call `panel.ui(ui)` each frame and act
 on the `PanelResult` (`Chosen(path)` / `Several(paths)` / `Cancelled`).
+Open and folder panels give the list the keyboard when they open
+(`ColumnListView::autofocus`, for any dialog that is mostly its list).
 `olo_xdg::mime::from_name` finds a name's type from shared-mime-info's
 globs, indexed by suffix (most are `*.ext`), so typing a big folder is a
 few lookups a file. Toolbars are
@@ -3110,7 +3112,7 @@ backend to show a picker and hand back PipeWire streams. Olo's backend is
 **olo-portal** (`olo-portal --service`, run by olo-session in a real
 session): it owns `org.freedesktop.impl.portal.desktop.olo`; olo-session
 describes it to the portal (`~/.local/share/xdg-desktop-portal/portals/
-olo.portal`) and routes ScreenCast to it in `olo-portals.conf`
+olo.portal`) and routes ScreenCast (and the others below) to it in `olo-portals.conf`
 (`graphical.rs`), restarting xdg-desktop-portal when those change. It
 runs out of app_server on purpose: a share outlives an app_server reload
 (the stream's capture reconnects, `stream::reconnect`; the app sees a
@@ -3212,6 +3214,24 @@ it shares (`App::busy`).
   FileChooserNative, `GDK_DEBUG=portals` for GTK 4's FileDialog, both
   tried), which Olo doesn't set for everything: they also send GTK's
   link opening through the OpenURI portal.
+- **Open With** (`chooser.rs`): the AppChooser portal, which
+  xdg-desktop-portal's OpenURI asks when an app opens a file or link
+  whose handler isn't settled (a Flatpak opening a document, a type with
+  several apps, `ask`): as BeOS's Open With window, what is opened
+  ("Open “Report.pdf” with:", a `file:` link by its file's name), a list
+  of the apps offered (icon, name, GenericName), the last choice
+  selected and the keyboard in the list; Open, Enter or a double-click
+  answers with the app's desktop id, Cancel or Escape with none.
+  UpdateChoices replaces the list live, the selection kept. The desktop
+  entries are read off the UI thread, on the bus side.
+  xdg-desktop-portal launches the app and counts the choice: for a host
+  app it asks until the same app was picked 3 times for the type, which
+  is why Olo doesn't point every GTK program at the portals (see Open
+  and Save). To try it, route AppChooser to olo in a test config and
+  give the test x-d-p an XDG_DATA_HOME whose `applications` has a
+  harmless entry (`Exec=/usr/bin/true %u`) and a `mimeinfo.cache` (GIO
+  associates types only through that), then ask OpenURI for a custom
+  scheme.
 - **Keeping awake** (`inhibit.rs`): olo-portal also answers the Inhibit
   portal (an inhibition of idle or suspend lasts until the portal closes
   its request) and serves `org.freedesktop.ScreenSaver` (Inhibit gives a

@@ -2307,13 +2307,14 @@ pub struct ColumnListView<'a> {
     draggable: bool,
     empty: Option<&'a str>,
     names: Option<&'a dyn Fn(usize) -> &'a str>,
+    autofocus: bool,
 }
 
 pub const HEADER_HEIGHT: f32 = 18.0;
 
 impl<'a> ColumnListView<'a> {
     pub fn new(id: impl std::hash::Hash + std::fmt::Debug, columns: &'a [Column], rows: usize, state: &'a mut ListState) -> Self {
-        ColumnListView { id: Id::unique(id), columns, rows, state, row_height: m::LIST_ROW, reveal: None, draggable: false, empty: None, names: None }
+        ColumnListView { id: Id::unique(id), columns, rows, state, row_height: m::LIST_ROW, reveal: None, draggable: false, empty: None, names: None, autofocus: false }
     }
     pub fn row_height(mut self, h: f32) -> Self {
         self.row_height = h;
@@ -2329,6 +2330,12 @@ impl<'a> ColumnListView<'a> {
     /// lines match.").
     pub fn empty_text(mut self, text: &'a str) -> Self {
         self.empty = Some(text);
+        self
+    }
+    /// Take the keyboard the first time it shows (a dialog that is mostly
+    /// its list: arrows, typing and Enter work at once).
+    pub fn autofocus(mut self, on: bool) -> Self {
+        self.autofocus = on;
         self
     }
     /// Rows can be dragged (see [`ListResponse::drag_started`]).
@@ -2380,6 +2387,9 @@ impl<'a> ColumnListView<'a> {
         let body = Rect::from_min_max(pos2(inner.left(), header.bottom()), inner.max);
         let focus_id = self.id.with("focus");
         let list_resp = ui.interact(body, focus_id, Sense::focusable_noninteractive());
+        if self.autofocus && !ui.data_mut(|d| std::mem::replace(d.get_temp_mut_or_default::<bool>(focus_id.with("autofocused")), true)) {
+            list_resp.request_focus();
+        }
         let focused = list_resp.has_focus();
         let row_h = self.row_height;
         let rows = self.rows;

@@ -1038,10 +1038,14 @@ as they land (with the commit), add new ones as they come up.
   hack where there is none. Each is for Chrome, Electron (Slack,
   Discord, VS Code), GTK 3/4 and Qt 5/6 alike unless noted:
   - **File pickers** (started 2026-10-30: olo-portal answers the
-    FileChooser portal with the kit's file panel, open, save and folder;
-    left: several files at once, MIME filters, the portal's `choices`,
-    Tracker's columns and Quick Look in the panel, and the toolkit
-    switches below): an Olo portal backend
+    FileChooser portal with the kit's file panel, open, save and folder,
+    several files at once, the app's filters by glob and MIME type as a
+    Show pop-up, the portal's `choices`; Chrome's uploads, GTK 4 and GTK 3
+    tried. The toolkit switches are deliberately not set for everything:
+    they also send GTK's link opening through OpenURI, which asks for an
+    app until one was picked 3 times (HACKING, "Open and Save"). Left:
+    Tracker's columns, favourites and Quick Look in the panel): an Olo
+    portal backend
     (`org.freedesktop.impl.portal.FileChooser` in `olo-portal`, beside
     ScreenCast) showing the kit's file panel (Tracker's columns,
     favourites, Quick Look, recent places); `olo-portals.conf` sends
@@ -1053,7 +1057,9 @@ as they land (with the commit), add new ones as they come up.
   - ~~**Show in folder**~~ (done 2026-10-30: the desktop's Tracker
     serves `org.freedesktop.FileManager1`, each call an Open in
     Tracker). Left: the OpenURI portal's `OpenDirectory`, with OpenURI.
-  - **Opening things**: the OpenURI portal and `xdg-open`'s MIME
+  - **Opening things** (started 2026-10-30: the AppChooser portal is
+    Olo's Open With window, so OpenURI's "which app?" is Olo's): the
+    OpenURI portal and `xdg-open`'s MIME
     defaults resolved by Olo's own (`olo_kit::open`), so links from any
     app open in Olo's choice, files in Olo's apps; Olo as the default
     file manager and browser handler (`mimeapps.list`, the `x-scheme-

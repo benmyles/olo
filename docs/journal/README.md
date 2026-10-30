@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Open With: other programs' app chooser
+
+*04:58* — When an app opens a file or link through the OpenURI portal and the handler isn't settled, Olo's own Open With window asks (the AppChooser portal): what is opened, the apps that handle it with their icons and kinds, the last choice selected, the keyboard in the list.
+
+![Open With: other programs' app chooser](2026-10-30/045800-open-with-other-programs-app-chooser.png)
+
 ### File panel: filters, several files, an app's choices
 
 *04:50* — Other programs' Open dialogs (the FileChooser portal) now show the app's filters as a Show pop-up (by glob or MIME type), choose several files with ⇧ and ⌘ clicks, and carry the app's own choices above the buttons, the pop-ups lined up on one divider. Chrome's multi-file uploads come back whole.

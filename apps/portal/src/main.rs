@@ -27,6 +27,7 @@ use olo_kit::{
 
 mod access;
 mod capture;
+mod chooser;
 mod client;
 mod files;
 mod inhibit;
@@ -120,6 +121,8 @@ struct Portal {
     dialogs: HashMap<WindowId, access::Dialog>,
     /// Open and Save panels (the FileChooser portal), and who to answer.
     panels: HashMap<WindowId, (FilePanel, files::Ask)>,
+    /// Open With choosers (the AppChooser portal).
+    choosers: HashMap<WindowId, chooser::Dialog>,
     /// Thumbnails come before their window has drawn: kept until it does.
     thumbs: Vec<picker::Thumb>,
     /// The bus, once served (to end sessions from here).
@@ -177,6 +180,13 @@ impl Portal {
         self.panels.insert(win, (panel, ask));
     }
 
+    fn close_chooser(&mut self, cx: &mut Cx, win: WindowId, chosen: Option<String>) {
+        if let Some(d) = self.choosers.remove(&win) {
+            d.answer(chosen);
+        }
+        cx.close_window(win);
+    }
+
     fn close_dialog(&mut self, cx: &mut Cx, win: WindowId, granted: bool) {
         if let Some(d) = self.dialogs.remove(&win) {
             d.answer(granted);
@@ -194,6 +204,12 @@ impl App for Portal {
                     PanelResult::Several(ps) => Some(ps),
                     PanelResult::Cancelled => None,
                 });
+            }
+            return;
+        }
+        if let Some(d) = self.choosers.get_mut(&win) {
+            if let Some(chosen) = d.ui(ui, win) {
+                self.close_chooser(cx, win, chosen);
             }
             return;
         }
@@ -221,6 +237,8 @@ impl App for Portal {
             self.close_panel(cx, win, None);
         } else if self.dialogs.contains_key(&win) {
             self.close_dialog(cx, win, false);
+        } else if self.choosers.contains_key(&win) {
+            self.close_chooser(cx, win, None);
         } else {
             self.close(cx, win, None);
         }
@@ -228,7 +246,7 @@ impl App for Portal {
 
     /// Sharing (or asking to): an upgrade would cut it off, so it waits.
     fn busy(&self) -> bool {
-        stream::live() > 0 || !self.pickers.is_empty() || !self.dialogs.is_empty() || !self.panels.is_empty()
+        stream::live() > 0 || !self.pickers.is_empty() || !self.dialogs.is_empty() || !self.panels.is_empty() || !self.choosers.is_empty()
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
@@ -268,6 +286,16 @@ impl App for Portal {
             portal::ToUi::Ended => {}
             portal::ToUi::Lost(session) => self.end(session),
             portal::ToUi::Files(ask) => self.open_panel(cx, ask),
+            portal::ToUi::Choose(ask) => {
+                let (win, d) = chooser::Dialog::open(cx, ask);
+                self.choosers.insert(win, d);
+            }
+            portal::ToUi::Offers(request, offers) => {
+                if let Some((win, d)) = self.choosers.iter_mut().find(|(_, d)| d.request() == request) {
+                    d.offer(offers);
+                    cx.redraw(*win);
+                }
+            }
             portal::ToUi::Access(ask) => {
                 let (win, d) = access::Dialog::open(cx, ask);
                 self.dialogs.insert(win, d);
@@ -284,6 +312,10 @@ impl App for Portal {
                 let wins: Vec<WindowId> = self.panels.iter().filter(|(_, (_, a))| a.request == request).map(|(w, _)| *w).collect();
                 for win in wins {
                     self.close_panel(cx, win, None);
+                }
+                let wins: Vec<WindowId> = self.choosers.iter().filter(|(_, d)| d.request() == request).map(|(w, _)| *w).collect();
+                for win in wins {
+                    self.close_chooser(cx, win, None);
                 }
             }
         }
@@ -383,7 +415,7 @@ fn main() -> std::process::ExitCode {
                 }
             })
             .expect("thread");
-        Portal { pickers: HashMap::new(), dialogs: HashMap::new(), panels: HashMap::new(), thumbs: Vec::new(), bus }
+        Portal { pickers: HashMap::new(), dialogs: HashMap::new(), panels: HashMap::new(), choosers: HashMap::new(), thumbs: Vec::new(), bus }
     });
     std::process::ExitCode::SUCCESS
 }
