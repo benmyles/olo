@@ -111,6 +111,10 @@ pub fn note_restored(grouping: &Grouping, tab_order: u64) {
 pub struct Groups {
     /// The groupable windows in the space.
     seen: Vec<WindowElement>,
+    /// And the display each was on: a window that moved to another one
+    /// (put there, sent there) is new to that display's groups, so it
+    /// joins one there rather than leading it to where it was put.
+    seen_on: Vec<(WindowElement, String)>,
     /// The groups on screen, each with its number (for agents) and its
     /// windows back to front.
     list: Vec<(u64, Vec<WindowElement>)>,
@@ -284,7 +288,7 @@ fn ask_again(w: &WindowElement) {
 
 /// The smallest frame `w` can be (its app's minimum, with the tab and
 /// border).
-fn least_frame(w: &WindowElement) -> Size<i32, Logical> {
+pub(crate) fn least_frame(w: &WindowElement) -> Size<i32, Logical> {
     use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
     let content = w.wl_surface().map(|s| with_states(&s, |st| st.cached_state.get::<SurfaceCachedState>().current().min_size)).unwrap_or_default();
     w.outer_size(content)
@@ -359,13 +363,30 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // until it is let go.)
         for w in seen.iter().filter(|w| Some(*w) != loose.as_ref()) {
             let Some(key) = self.group_key(w) else { continue };
-            let key = (key, self.window_output(w).map(|o| o.name()).unwrap_or_default());
+            let key = (key, self.group_display(w));
             match by_key.iter_mut().find(|(k, _)| *k == key) {
                 Some((_, g)) => g.push(w.clone()),
                 None => by_key.push((key, vec![w.clone()])),
             }
         }
         (seen, by_key.into_iter().filter(|(_, g)| g.len() > 1).collect())
+    }
+
+    /// The display `w` groups on: the one under the middle of its frame;
+    /// with that off every display (straddling two), the one the first of
+    /// it, its group and the window it was put with (by window id) is on,
+    /// the same for all of them, so a group's windows aren't split by
+    /// their sizes' few points (Terminal's grid).
+    fn group_display(&self, w: &WindowElement) -> String {
+        let under = |o: &WindowElement| {
+            self.space.element_geometry(o).and_then(|f| self.space.output_under((f.loc + f.size.downscale(2).to_point()).to_f64()).next().cloned())
+        };
+        if let Some(o) = under(w) {
+            return o.name();
+        }
+        let with = w.meta().put_with.get().and_then(|id| self.space.elements().find(|o| o.id() == id).cloned());
+        let first = self.groups.mates(w).into_iter().chain(with).chain(std::iter::once(w.clone())).min_by_key(|o| o.id()).unwrap_or_else(|| w.clone());
+        self.window_output(&first).map(|o| o.name()).unwrap_or_default()
     }
 
     /// Hand-made groups down to one window, and guests of an app with no
@@ -425,13 +446,21 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let before = std::mem::take(&mut self.groups);
         let resizing = self.resizing();
         let dragged = self.tab_drag.as_ref().map(|d| d.window.clone());
-        let was_member = |w: &WindowElement| before.list.iter().any(|(_, g)| g.contains(w)) || before.away.iter().any(|(a, m)| a == w && *m);
-        let was_seen = |w: &WindowElement| before.seen.contains(w) || before.away.iter().any(|(a, _)| a == w);
         let was_settling = |w: &WindowElement| before.settling.iter().find(|(s, _)| s == w).map(|(_, since)| *since);
         let mut numbers = before.numbers.clone();
         let mut list = Vec::new();
         let mut settling = Vec::new();
         for ((key, display), g) in &groups {
+            // In this group, and on this display, before (not another
+            // display's group of the same app, or one it was put in there).
+            let number_before = match key {
+                GroupKey::Id(n) => Some(*n),
+                GroupKey::App(app) => before.numbers.iter().find(|((a, d), _)| a == app && d == display).map(|(_, n)| *n),
+            };
+            let was_member = |w: &WindowElement| {
+                number_before.is_some_and(|n| before.list.iter().any(|(m, g)| *m == n && g.contains(w))) || before.away.iter().any(|(a, m)| a == w && *m)
+            };
+            let was_seen = |w: &WindowElement| before.seen_on.iter().any(|(s, d)| s == w && d == display) || before.away.iter().any(|(a, _)| a == w);
             let leads = |w: &&WindowElement| !before.joining.contains(w) && was_settling(w).is_none();
             // Auto-tiled, its tile says where the group is: the window in
             // it leads (one just back from a restart too, settling or not);
@@ -469,6 +498,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     && own != frame
                 {
                     w.meta().joined.set(Some((own, frame, Self::arrangement_of(w))));
+                    super::tiling::note_joined(w, frame);
                 }
                 self.join_group(w, frame, resizing);
                 self.share_arrangement(&leader, w);
@@ -557,7 +587,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // A window put in a group by hand is one of it from now on, if it
         // made it in (else it may still: it is being placed).
         let joining = before.joining.into_iter().filter(|w| w.alive() && !list.iter().any(|(_, g)| g.contains(w))).collect();
-        self.groups = Groups { seen, list, away, known: all, numbers, joining, settling };
+        let seen_on = seen.iter().map(|w| (w.clone(), self.group_display(w))).collect();
+        self.groups = Groups { seen, seen_on, list, away, known: all, numbers, joining, settling };
         mark_behind(&self.space);
     }
 
@@ -649,6 +680,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         };
         let app = w.app_id();
         *w.meta().grouping.borrow_mut() = if key == GroupKey::App(app.clone()) && self.groups_app(&app) { Grouping::Auto } else { Grouping::With(key) };
+        w.meta().put_with.set(Some(target.id()));
         let mut tabs = in_tab_order(if mates.is_empty() { std::slice::from_ref(target) } else { &mates });
         tabs.insert(index.unwrap_or(tabs.len()).min(tabs.len()), w.clone());
         set_tab_order(&tabs);

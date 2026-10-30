@@ -1163,7 +1163,16 @@ class Fuzz:
             self.fail(f"group_window {w} with {t} at {index}: the group is {self.group_of(after, w)}, not {want}")
         if w in after and not after[w]["focused"]:
             self.fail(f"group_window {w} with {t}: {w} doesn't have the keyboard")
-        self.check_unchanged(f"group_window {w} with {t}", wins, after, skip={w})
+        # The group may grow to what its new window can be at the least
+        # (a group is no smaller than its biggest member's least size),
+        # where it is, and no more.
+        grown = set()
+        least = wins[w].get("least")
+        for i in tg:
+            a, b = fr(wins.get(i, {})), fr(after.get(i, {}))
+            if least and a and b and a != b and b[:2] == a[:2] and b[2:] == (max(a[2], least[0]), max(a[3], least[1])):
+                grown.add(i)
+        self.check_unchanged(f"group_window {w} with {t}", wins, after, skip={w} | grown)
 
     def op_ungroup_window(self, wins, shown):
         groups = [g for g in self.groups(wins).values() if g[0] in shown]

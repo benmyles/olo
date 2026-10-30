@@ -527,6 +527,11 @@ pub struct WindowInfo {
     /// Where what the app draws is (inside the tab and border), likewise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content: Option<Frame>,
+    /// The smallest its frame can be (its app's least size, with the tab
+    /// and border): a group is no smaller than its biggest member's.
+    /// Likewise only while it is on screen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub least: Option<[i32; 2]>,
     /// Its tab (to click, or ⌘-drag along its group or to another),
     /// likewise; none for a window without one.
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -91,6 +91,10 @@ pub struct WindowMeta {
     /// How it groups (`shell::groups`): with its app's others, on its own
     /// (taken out by hand) or in a group it was put in.
     pub grouping: RefCell<crate::shell::groups::Grouping>,
+    /// The window it was last put in a group with by hand: with its frame
+    /// off every display (straddling two, its middle on neither), it is
+    /// on that one's display, not wherever its own size tips it.
+    pub put_with: Cell<Option<u64>>,
     /// Where its tab goes among its group's (lowest first).
     pub tab_order: Cell<u64>,
     /// It would be a tile on a display in Focus mode (`shell::modes`):
@@ -127,6 +131,7 @@ impl WindowElement {
             arrived: Cell::new(None),
             joined: Cell::new(None),
             grouping: Default::default(),
+            put_with: Cell::new(None),
             tab_order: Cell::new(crate::shell::groups::next_tab_order()),
             focus_on: Cell::new(None),
             covered: Cell::new(false),
@@ -333,6 +338,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     behind: self.behind_in_group(&w),
                     frame: None,
                     content: None,
+                    least: None,
                     tab_frame: None,
                     popups: Vec::new(),
                     surface: w.wl_surface().map(|s| s.id().protocol_id()),
@@ -353,6 +359,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             let Some(at) = self.space.element_location(w) else { continue };
             let geo = smithay::desktop::space::SpaceElement::geometry(w);
             info.frame = Some(frame(smithay::utils::Rectangle::new(at, geo.size)));
+            let least = crate::shell::groups::least_frame(w);
+            info.least = Some([least.w, least.h]);
             // As screenshots find it: where the element draws from, then
             // past the tab and border.
             info.content = Some(if w.decorated() {

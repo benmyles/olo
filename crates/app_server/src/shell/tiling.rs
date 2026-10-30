@@ -47,7 +47,7 @@ struct Tiled(Cell<Option<Tile>>);
 pub type Part = (f32, f32, f32, f32);
 
 /// A window's own arrangement, kept while it wears its group's.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Arrangement {
     tile: Option<Tile>,
     part: Option<Part>,
@@ -99,7 +99,7 @@ impl Axis {
 /// back: the frame it was zoomed from, whether its own frame was kept
 /// already (tiled, arranged or zoomed: Restore still goes back there),
 /// and the tile it was in.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct ZoomedAlong {
     axis: Axis,
     from: Rectangle<i32, Logical>,
@@ -132,7 +132,24 @@ struct Trip {
     home: String,
     home_area: Rectangle<i32, Logical>,
     left: Carried,
+    /// How it was arranged when it left (its tile is its own, not
+    /// carried: joining a group there hands it the group's).
+    left_arrangement: Arrangement,
     arrived: Carried,
+    /// It joined a group there by itself on arriving, at this frame
+    /// (its app's, `sync_groups`): still there, untouched, it is as it
+    /// arrived.
+    joined: Option<Rectangle<i32, Logical>>,
+}
+
+/// `w`, just arrived from another display, joined a group there at
+/// `frame` by itself: going back is still the round trip.
+pub(crate) fn note_joined(w: &WindowElement, frame: Rectangle<i32, Logical>) {
+    if let Some(t) = w.user_data().get::<Travelled>()
+        && let Some(trip) = t.0.borrow_mut().as_mut()
+    {
+        trip.joined = Some(frame);
+    }
 }
 
 #[derive(Default)]
@@ -1042,13 +1059,21 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     /// Put a window on `to`, where it was on `from` (a display that may be
-    /// gone: then just a free cascade spot).
+    /// gone: then just a free cascade spot). It counts as arriving there:
+    /// if it joins a group by itself, its own frame is kept for when it
+    /// is alone again, and going back is still the round trip.
     pub(crate) fn move_to_output(&mut self, window: &WindowElement, from: &Output, to: &Output) {
+        self.carry_to_output(window, from, to);
+        window.meta().arrived.set(self.space.element_geometry(window));
+    }
+
+    fn carry_to_output(&mut self, window: &WindowElement, from: &Output, to: &Output) {
         let (Some(dest), Some(zoom_dest)) = (self.usable_area(to), self.tile_area(to)) else { return };
         let zoomed = self.is_zoomed(window);
         let along = Self::zoomed_along(window);
         let src = self.usable_area(from);
         let trip = window.user_data().get::<Travelled>().and_then(|t| t.0.borrow_mut().take());
+        let left_arrangement = Self::arrangement_of(window);
         if let (Some(here), Some(src)) = (self.carried(window), src) {
             // Each frame at the same relative place on the new display.
             let rel = |v: i32, origin: i32, len: i32, dlen: i32, size: i32| {
@@ -1064,7 +1089,17 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     ));
                 Rectangle::new(loc, size)
             };
-            let back = trip.filter(|t| t.home == to.name() && t.home_area == dest && t.arrived == here);
+            // Back where it came from, as it arrived (or in the group it
+            // joined by itself there, untouched since).
+            let geometry = self.space.element_geometry(window);
+            let joined_only = |t: &Trip| t.joined.is_some_and(|g| geometry == Some(g) && window.meta().joined.get().is_some_and(|(_, jg, _)| jg == g));
+            let back = trip.filter(|t| t.home == to.name() && t.home_area == dest && (t.arrived == here || joined_only(t)));
+            if let Some(t) = &back {
+                // Its own frame and arrangement are the ones it goes back
+                // to now.
+                window.meta().joined.set(None);
+                Self::rearrange(window, t.left_arrangement);
+            }
             let there = match &back {
                 Some(t) => t.left,
                 None => {
@@ -1084,11 +1119,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             };
             info!(window = window.id(), from = from.name(), to = to.name(), back = back.is_some(), ?here, ?there, zoomed, ?along, "to another display");
             window.user_data().insert_if_missing(Travelled::default);
-            *window.user_data().get::<Travelled>().unwrap().0.borrow_mut() = Some(Trip { home: from.name(), home_area: src, left: here, arrived: there });
+            *window.user_data().get::<Travelled>().unwrap().0.borrow_mut() = Some(Trip { home: from.name(), home_area: src, left: here, left_arrangement, arrived: there, joined: None });
             if let Some(p) = window.user_data().get::<PreZoom>() {
                 *p.0.borrow_mut() = there.pre;
             }
-            if let (Some(z), Some(from)) = (along, there.along_from) {
+            if let (Some(z), Some(from), None) = (along, there.along_from, &back) {
                 Self::set_zoomed_along(window, Some(ZoomedAlong { from, ..z }));
             }
             if let Some(f) = window.user_data().get::<ZoomedFrom>() {

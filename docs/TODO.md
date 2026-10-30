@@ -1512,42 +1512,59 @@ as they land (with the commit), add new ones as they come up.
   shown); and undoing an arrangement or unzooming pulled a window left
   hanging off an edge back in (`put_back_at`: back exactly while some
   of its top edge is on a display).
-- **wm-fuzz seeds 3 and 5** (found 2026-10-30; seed 5's also on the
+- ~~**wm-fuzz seeds 3 and 5**~~ (found 2026-10-30; seed 5's also on the
   app_server before the fixes above). Seeds reproduce only from a fresh,
   empty `--home` (a used one restores windows and changes the path).
   Fixed (3a8568a): a display back from mirroring kept its closed Deskbar
   bars, empty, in its layer map, which moved its tiling area over (seed
   5 step 213's window came back off the display); and a window its app
   keeps bigger than its tile jumped and came back each time it was put
-  back. Still to do:
-  - seed 5 step 213: a Terminal to the next display joins Terminal's
-    group there and takes its tile (the bottom-right quarter); back
-    home it is re-tiled into that quarter, not its own, as joining
-    changed what `move_to_output`'s trip compares (`arrived == here`)
-    and the round trip isn't seen. Coming back should put back what it
-    left with when only an automatic join changed it.
-  - seed 5 step 246, and seed 3 step 268 the same: placing a window
-    moves another to its new frame (seed 5: hidden 8, once in a group
-    with 3, follows 11; seed 3: 18 follows 17). Likely: the window that
-    follows is hidden and of the same app (Tracker groups by app); its
-    hand-made group broke up, it went back to its app's own group, and
-    a hidden window counts in its group (`current_groups`), so it
-    follows when the group moves, while `list_windows` gives a hidden
-    window no `group` and the checker takes it for another window.
-    Decide which: a hidden window keeps its own frame until shown (then
-    joins), or app_server reports its group and the checker skips it.
-  - seed 3 step 271: putting 20 in 12's group widens 12 from 250 to
-    290. A group shares one frame and can't be smaller than its biggest
-    member's least size: if 20 can't be under 290 the group must grow,
-    so the checker may want too much here (it would need the windows'
-    least sizes, which `list_windows` doesn't give).
-  - seed 3 step 243, now and then (one run in three): `group_window 15
-    with 10 at 2` leaves 15 in Tracker 6's group: 10 is alone and
-    Tracker groups by app, so 15 takes Tracker's app key, which 6's
-    group on the other display has too. Not seen by hand.
+  back. Then the rest (seed 3 passes 300 steps three runs in three, seed
+  5 its 300):
+  - seed 5 step 213: a window sent to another display that joins its
+    app's group there by itself goes back as the round trip while it is
+    still as it joined (the trip notes the join, `note_joined`), with
+    the arrangement it left with (its tile was the group's).
+  - seed 5 step 246 and seed 3 step 268: a window was a member of its
+    group only if it was in that same group on that same display before
+    (`was_member` by the group's number, `seen_on` by display), so one
+    moved to another display joins a group there rather than leading it
+    to its own frame.
+  - seed 3 step 271: the checker allowed for the group growing to its new
+    window's least size (`least` in `WindowInfo`, the smallest frame its
+    app allows, tab and border included).
+  - seed 3 step 243: a window straddling two displays (its middle on
+    neither) groups on the display of the lowest-numbered window among it,
+    its group and the window it was put with (`group_display`), so a
+    group's windows aren't split by a few points of size.
   Run: `tsession start NAME 2560x1600,1920x1080 --session --shell --home
   EMPTY` (`TSESSION_PROFILE=release`), `wm-fuzz NAME --seed N --steps 300
   --keep-going`.
+- **wm-fuzz: failures now and then** (found 2026-10-30, from a loop over
+  seeds 3, 3, 3, 5, 1, 2, 4, 6 at 300 steps each, each from a fresh
+  session). They don't come back when the same seed runs again to that
+  step, on the app_server before the fixes above or after (seed 6 step
+  116 failed on the one before, and passed after), so they are races,
+  not the arrangement:
+  - seed 1 step 7: `tile-right-third` on a window in a tab group left it
+    at its old frame (1264 wide, wider than the tiling area).
+  - seed 1 step 210, seed 6 steps 202/203/214, seed 5 steps 131/138:
+    restoring after a tile, zoom or Tile All, or going to another
+    workspace and back, put a window at a frame it had a step or two
+    earlier, not the one it left.
+  - seed 4 steps 102–106: going to another workspace and back flickered
+    its windows: a frame a few points narrower for a moment, then back.
+  - seed 5 step 254: opening Styled Edit resized two Terminals on the
+    other display.
+  - seed 6 step 116: sending a window to the other display and back moved
+    a window there (before the fixes) or brought it back at a display-
+    sized frame (after).
+  - seed 6 step 290: ⌘Tab twice resized a window on a hidden workspace.
+  Likely the same few races: a configure the app hasn't answered yet when
+  the next change comes (the frame asked and the frame drawn part ways),
+  and auto-tiling refitting at a moment its windows are mid-change. Find
+  with the session log of a failing run (each step's frames) and fix.
+  Run: as above; `/var/tmp` scripts loop seeds from fresh sessions.
 
 - ~~**Windows while rearranging displays**~~ (Ben): each window stays on
   its screen at the same place as screens are dragged around
