@@ -32,7 +32,7 @@ use olo_kit::{
     tip::Tip,
     widgets,
 };
-use olo_protocol::{Client, DisplayWorkspace, Event, KeyboardProfile, OutputInfo, Reply, Request, WindowInfo, WindowingMode, shortcuts};
+use olo_protocol::{Client, DisplayWorkspace, Event, KeyboardProfile, NoteApp, OutputInfo, Reply, Request, WindowInfo, WindowingMode, shortcuts};
 
 /// Logical width of the vertical Deskbar.
 const WIDTH: f32 = olo_kit::metrics::DESKBAR_WIDTH;
@@ -43,6 +43,17 @@ const ROW_H: f32 = 24.0;
 /// A workspace's heading.
 const HEADING_H: f32 = 20.0;
 const ICON: f32 = 16.0;
+/// An application with notifications unread: a dot this wide at its
+/// row's right end, as far in as its name's text, and the gap it keeps
+/// from the name.
+const NOTE_DOT: f32 = 7.0;
+const NOTE_DOT_INSET: f32 = 6.0;
+const NOTE_DOT_GAP: f32 = 5.0;
+/// One arriving shakes the dot side to side: this long, this far, this
+/// many times, settling as it goes.
+const SHAKE: Duration = Duration::from_millis(600);
+const SHAKE_PX: f32 = 2.0;
+const SHAKE_TIMES: f32 = 3.0;
 /// Where an application row's icon starts, and its workspace's name
 /// above it: in line with the tray's date and time (`TRAY_TEXT`).
 const ICON_INSET: f32 = TRAY_TEXT;
@@ -228,6 +239,34 @@ struct Deskbar {
     approve_until: Option<u64>,
     /// The window turning it on, while it is open.
     approve: Option<approve::Ask>,
+    /// The newest unread notification seen (None until the first word
+    /// from the service: what is unread then was there before Deskbar).
+    notes_seen: Option<(u64, u32)>,
+    /// The apps whose dot is shaking (a notification just arrived), by
+    /// `note_key`: since when.
+    shaking: HashMap<String, Instant>,
+}
+
+/// Which app a notification's dot belongs to.
+fn note_key(n: &NoteApp) -> String {
+    format!("{}\u{1}{}", n.desktop_entry.as_deref().unwrap_or(""), n.name)
+}
+
+/// Whether notifications from `n` are the application of windows
+/// `app_id` (its desktop entry `entry`, named `name`): by the desktop
+/// entry they name (an Olo app's `olo-terminal` is window `olo.terminal`'s;
+/// another's, its entry's file or window class), else by name.
+fn same_app(n: &NoteApp, app_id: &str, entry: Option<&DesktopEntry>, name: &str) -> bool {
+    let norm = |s: &str| s.trim().trim_end_matches(".desktop").to_ascii_lowercase();
+    let id = norm(app_id);
+    if let Some(de) = n.desktop_entry.as_deref().map(norm).filter(|d| !d.is_empty())
+        && (de == id
+            || id.strip_prefix("olo.").is_some_and(|rest| de == format!("olo-{rest}"))
+            || entry.is_some_and(|e| norm(&e.id) == de || e.startup_wm_class.as_deref().is_some_and(|c| norm(c) == de)))
+    {
+        return true;
+    }
+    !n.name.is_empty() && n.name.eq_ignore_ascii_case(name)
 }
 
 fn team_key(w: &WindowInfo) -> String {
@@ -861,8 +900,41 @@ impl Deskbar {
     /// a link to the program. Under workspace `ws`'s heading, it is its
     /// windows there.
     #[allow(clippy::too_many_arguments)]
+    /// New word from the notification service: the apps a notification
+    /// arrived for since the last shake their dots (not while Do Not
+    /// Disturb keeps things quiet).
+    fn note_arrivals(&mut self, s: &status::Status) {
+        let now = Instant::now();
+        self.shaking.retain(|_, at| now.duration_since(*at) < SHAKE);
+        let Some(n) = &s.notifications else { return };
+        if let Some(seen) = self.notes_seen
+            && !n.quiet
+        {
+            for a in n.apps.iter().filter(|a| a.newest > seen) {
+                self.shaking.insert(note_key(a), now);
+            }
+        }
+        let newest = n.apps.iter().map(|a| a.newest).max().unwrap_or_default();
+        self.notes_seen = Some(self.notes_seen.map_or(newest, |s| s.max(newest)));
+    }
+
+    /// Whether `team`'s application has notifications unread, and if one
+    /// just arrived, how far its dot's shake has gone (0–1).
+    fn notes_of(&mut self, team: &Team) -> Option<Option<f32>> {
+        let app_id = team.windows.first().map(|w| w.app_id.clone()).unwrap_or_default();
+        let entry = self.entry(&app_id);
+        let apps = &self.status.notifications.as_ref()?.apps;
+        let mine: Vec<&NoteApp> = apps.iter().filter(|a| same_app(a, &app_id, entry.as_ref(), &team.name)).collect();
+        if mine.is_empty() {
+            return None;
+        }
+        let now = Instant::now();
+        Some(mine.iter().filter_map(|a| self.shaking.get(&note_key(a))).map(|at| now.duration_since(*at).as_secs_f32() / SHAKE.as_secs_f32()).filter(|t| *t < 1.0).reduce(f32::min))
+    }
+
     fn team_row(&mut self, cx: &mut Cx, w: WindowId, ui: &mut egui::Ui, row: Rect, team: &Team, display: Option<&str>, ws: Option<u32>) {
         let pal = style::palette(ui.ctx());
+        let notes = self.notes_of(team);
         let painter = ui.painter().clone();
         let pointer = ui.input(|i| i.pointer.hover_pos());
         let hover = olo_kit::dnd::hover(ui.ctx()).filter(|h| h.has_files() && h.actions.copy && !h.has(olo_kit::dnd::LINK_TYPE));
@@ -896,7 +968,11 @@ impl Deskbar {
         let hover = pointer.is_some_and(|p| row.contains(p));
         // Twitcher's choice, while ⌘Tab (or ⌥Tab, ⌘`) is held.
         let chosen = team.windows.iter().any(|w| w.chosen);
-        resp.widget_info(|| egui::WidgetInfo { selected: Some(chosen), ..egui::WidgetInfo::labeled(egui::Role::Button, true, team.name.clone()) });
+        resp.widget_info(|| egui::WidgetInfo {
+            selected: Some(chosen),
+            current_text_value: notes.map(|_| "has notifications".to_owned()),
+            ..egui::WidgetInfo::labeled(egui::Role::Button, true, team.name.clone())
+        });
         // In the workspace showing, the row is on its lit ground.
         let lit = self.lit(display, ws);
         let ground = self.ground(&pal, display, ws);
@@ -934,12 +1010,25 @@ impl Deskbar {
             c(pal.panel_text)
         };
         let font = if focused { egui::FontId::new(style::PLAIN_SIZE, style::bold()) } else { style::plain_font() };
-        let max_w = row.right() - (icon_r.right() + 8.0) - 6.0;
+        let dot = if notes.is_some() { NOTE_DOT + NOTE_DOT_GAP } else { 0.0 };
+        let max_w = row.right() - (icon_r.right() + 8.0) - 6.0 - dot;
         let mut job = egui::text::LayoutJob::simple_singleline(team.name.clone(), font, text_color);
         job.wrap = egui::text::TextWrapping::truncate_at_width(max_w);
         let g = painter.layout_job(job);
         let pos = style::text_origin(ui.ctx(), &g, icon_r.right() + 8.0, row.center().y, style::PLAIN_SIZE);
         painter.galley(pos, g, text_color);
+        // Notifications unread: a dot at the right end, in the history's
+        // mark for what is unread (on a selected row, in its text's
+        // colour); one just in shakes it a moment.
+        if let Some(shake) = notes {
+            let at = style::snap_centred(ui.ctx(), pos2(row.right() - NOTE_DOT_INSET - NOTE_DOT / 2.0, row.center().y), vec2(NOTE_DOT, NOTE_DOT));
+            let dx = shake.map_or(0.0, |t| SHAKE_PX * (t * SHAKE_TIMES * std::f32::consts::TAU).sin() * (1.0 - t).powi(2));
+            let color = if open || drop_here || chosen { text_color } else { c(pal.keyboard_navigation) };
+            painter.circle_filled(at.center() + vec2(dx, 0.0), at.width() / 2.0, color);
+            if shake.is_some() {
+                ui.ctx().request_repaint();
+            }
+        }
     }
 
     /// Workspace `ws`'s heading at `r`, on `display`'s Deskbar, its
@@ -1558,7 +1647,10 @@ impl App for Deskbar {
                     self.workspace = (cur, count);
                     self.showing = showing;
                 }
-                Msg::Status(s) => self.status = s,
+                Msg::Status(s) => {
+                    self.note_arrivals(&s);
+                    self.status = s;
+                }
                 Msg::Power(p) => {
                     self.caffeinated = p.caffeinated;
                     self.caffeinated_until = p.caffeinated_until;
@@ -1682,6 +1774,31 @@ fn main() {
             upgrade_ask: None,
             approve_until: None,
             approve: None,
+            notes_seen: None,
+            shaking: HashMap::new(),
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn note(desktop_entry: Option<&str>, name: &str) -> NoteApp {
+        NoteApp { desktop_entry: desktop_entry.map(str::to_owned), name: name.into(), newest: (1, 1) }
+    }
+
+    #[test]
+    fn notes_find_their_application() {
+        // An Olo app's desktop entry is its window's app id with a dash.
+        assert!(same_app(&note(Some("olo-terminal"), "Terminal"), "olo.terminal", None, "Terminal"));
+        assert!(!same_app(&note(Some("olo-terminal"), "Terminal"), "olo.tracker", None, "Tracker"));
+        // Another's: its window's app id, its entry's file or window class.
+        let slack = DesktopEntry { id: "com.slack.Slack".into(), name: "Slack".into(), startup_wm_class: Some("Slack".into()), ..Default::default() };
+        assert!(same_app(&note(Some("com.slack.Slack.desktop"), "Slack"), "Slack", Some(&slack), "Slack"));
+        assert!(same_app(&note(Some("slack"), "Slack Desktop"), "Slack", None, "Slack"));
+        // Else by name, a website's by its browser's.
+        assert!(same_app(&note(None, "Google Chrome"), "google-chrome", None, "Google Chrome"));
+        assert!(!same_app(&note(Some("org.gnome.Calendar"), "Calendar"), "olo.deskcalc", None, "DeskCalc"));
+    }
 }

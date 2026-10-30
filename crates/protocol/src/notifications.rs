@@ -292,6 +292,22 @@ pub struct NotificationState {
     pub unread: u32,
     /// Do Not Disturb is on now (by hand or by its schedule).
     pub quiet: bool,
+    /// The apps with notifications unread (Deskbar's dots).
+    pub apps: Vec<NoteApp>,
+}
+
+/// An app with notifications unread, as Deskbar finds it among its
+/// applications.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NoteApp {
+    /// Its desktop entry, when it said (`olo-terminal`, `com.slack.Slack`).
+    pub desktop_entry: Option<String>,
+    /// Its name as shown; a website's notes are its browser's.
+    pub name: String,
+    /// The newest unread one: (when, seconds since the epoch; its id).
+    /// One arriving is newer than any before it.
+    pub newest: (u64, u32),
 }
 
 impl NotificationState {

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Deskbar: a dot for apps with notifications
+
+*01:44* — An application with notifications unread has a quiet dot at the right of its Deskbar row, in the colour the history marks unread ones with (not an alarm's red); a new one arriving shakes it gently side to side, unless Do Not Disturb is on. Agents read the row's value, "has notifications".
+
+![Deskbar: a dot for apps with notifications](2026-10-30/014422-deskbar-a-dot-for-apps-with-notifications.png)
+
 ### Tracker: Column View keeps its highlight
 
 *01:14* — → into a folder highlights its first item again. A selection put back after an upgrade waited for items that never came, and wiped the active column's selection each time a listing landed; now a waiting selection belongs to its own folder only, and the window comes back with its columns. → before a listing lands selects once it does, and a selection made in code scrolls into view in every view.

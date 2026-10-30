@@ -17,7 +17,7 @@ pub mod notifications;
 pub mod app_keys;
 pub mod shortcuts;
 pub mod touchpad;
-pub use notifications::{AppNotifications, CardSize, HistoryView, NoteLook, NoteStyle, NotificationSettings, NotificationState};
+pub use notifications::{AppNotifications, CardSize, HistoryView, NoteApp, NoteLook, NoteStyle, NotificationSettings, NotificationState};
 pub use shortcuts::{AutoTiling, Chord, CommandKey, KeyboardProfile, ModeChoice, Platform, Shortcut, ShortcutSettings, Tile, TilingSettings, WindowingMode};
 
 pub const SOCKET_ENV: &str = "OLO_SOCKET";

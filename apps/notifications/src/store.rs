@@ -276,6 +276,22 @@ impl History {
         self.entries.iter().filter(|e| e.unread && !e.snoozed()).count() as u32
     }
 
+    /// The apps with notes unread and in sight, each with its newest
+    /// (a website's are its browser's), in the order they last had one.
+    pub fn unread_apps(&self) -> Vec<olo_protocol::NoteApp> {
+        let mut apps: Vec<olo_protocol::NoteApp> = Vec::new();
+        for e in self.entries.iter().filter(|e| e.unread && !e.snoozed()) {
+            let name = e.via.clone().unwrap_or_else(|| e.app.clone());
+            let newest = (e.time, e.id);
+            match apps.iter_mut().find(|a| a.desktop_entry == e.desktop_entry && a.name == name) {
+                Some(a) => a.newest = a.newest.max(newest),
+                None => apps.push(olo_protocol::NoteApp { desktop_entry: e.desktop_entry.clone(), name, newest }),
+            }
+        }
+        apps.sort_by_key(|a| std::cmp::Reverse(a.newest));
+        apps
+    }
+
     /// Mark them all read; whether any wasn't.
     pub fn mark_read(&mut self) -> bool {
         let mut changed = false;

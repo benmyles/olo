@@ -610,7 +610,7 @@ as they land (with the commit), add new ones as they come up.
   Done so (`crates/preview/src/syntaxes`): TOML (every kind of value,
   arrays and inline tables over lines, Cargo.lock and the like too) and
   INI (systemd units, .desktop entries, git and editor configs).
-- **Deskbar: a dot for apps with notifications** (Ben, 2026-10-29): "in
+- ~~**Deskbar: a dot for apps with notifications**~~ (Ben, 2026-10-29): "in
   the deskbar we should show a notification badge for each app that has
   active notifications. we don't need a count, just a dot on the right
   and it should be themed and not red/alert/problem colored but more
@@ -623,6 +623,9 @@ as they land (with the commit), add new ones as they come up.
   at 120 Hz; not while Do Not Disturb hides banners, or quieter);
   agent-readable (the entry's status says "has notifications"), every
   scale and look.
+  Done (HACKING, Deskbar): matched by the notes' desktop entry, else
+  name; checked at 1× to 2× (1.25× and 1.75× too), light and dark, and
+  under Do Not Disturb (no shake).
 - ~~**Windows never move in an upgrade**~~ (Ben, 2026-10-29: "can you
   make sure when i do an olo upgrade my windows don't change positions or
   sizes or workspaces or displays or anything even if auto tiling is

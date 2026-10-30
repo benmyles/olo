@@ -2027,6 +2027,19 @@ a 22 px grid in a recessed well, in as many rows as they need, shared
 out evenly among them and each row centred (eight are two rows of
 four).
 
+An app with notifications unread has a dot at its row's right end
+(`NOTE_DOT`, 7 points, on device pixels: `style::snap_centred`), in
+the colour the history marks unread ones with (`keyboard_navigation`,
+not an alarm's red; a selected row's text colour on a selected row),
+its name shortened to keep clear of it. Notes are matched to the row by
+the desktop entry they name (an Olo app's `olo-terminal` is window
+`olo.terminal`'s; another's, its entry's file or `StartupWMClass`), else
+by name (`same_app`). One arriving (its `(time, id)` newer than any
+Deskbar had seen; what is unread when Deskbar starts was there before
+it) shakes the dot side to side for 0.6 s, 2 points, settling as it
+goes (`SHAKE`), unless Do Not Disturb is on. Agents read the row's
+value, "has notifications".
+
 Clicking an app's row in Deskbar brings it forward with every window it
 has there, as a Mac's Dock does (BeOS's brought one forward):
 `bring_forward` sends `Request::ActivateAll`, which brings them back
@@ -3788,10 +3801,13 @@ notifications.
   Now to gone. The service re-reads the
   file within a second of a change (Preferences ▸ Notifications and
   Deskbar write it). While quiet nothing pops up or sounds but errors.
-  It publishes `NotificationState` (`unread`, `quiet`) to
+  It publishes `NotificationState` (`unread`, `quiet`, and `apps`: each
+  app with notes unread and in sight, by desktop entry and name, a
+  website's as its browser's, with its newest's `(time, id)`) to
   `$XDG_RUNTIME_DIR/olo-notifications-$WAYLAND_DISPLAY.json`, which
   Deskbar's bell reads twice a second (the badge; struck through while
-  quiet; right-click for Do Not Disturb).
+  quiet; right-click for Do Not Disturb), and its application rows (the
+  dots, below).
 - gtk.rs: GLib's `org.gtk.Notifications` (`AddNotification`,
   `RemoveNotification`), owned beside the standard name so GApplication
   apps (`g_application_send_notification`) use it, as under GNOME. Notes
