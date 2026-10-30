@@ -1551,6 +1551,17 @@ as they land (with the commit), add new ones as they come up.
   Run: `tsession start NAME 2560x1600,1920x1080 --session --shell --home
   EMPTY` (`TSESSION_PROFILE=release`), `wm-fuzz NAME --seed N --steps 300
   --keep-going`.
+- **app_server: a slow frame now and then in the bench's live resize**
+  (found 2026-10-30, at 1.5× and 2×, with Activity Monitor and Logs, on
+  the app_server before today's changes too; some runs pass): 15–48 ms
+  once in a run, all of it in drawing (`render_output`), none in
+  app_server's own work (its slowest request took 120 µs). Commits
+  already wait for their buffers (`dmabuf.generate_blocker`) and buffers
+  are imported when made, so it is the GL driver waiting, as far as a
+  test can tell with the person's own session drawing on the same GPU
+  (its Chrome, Slack, Terminal). To find: run the bench with the
+  person's session idle, or time GL inside `render_output` (bind, the
+  damage tracker, the flush) on a run that fails.
 - **wm-fuzz: failures now and then** (found 2026-10-30, from a loop over
   seeds 3, 3, 3, 5, 1, 2, 4, 6 at 300 steps each, each from a fresh
   session). They don't come back when the same seed runs again to that
