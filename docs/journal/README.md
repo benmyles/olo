@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Terminal: quiet group chips along the top
+
+*21:56* — Along the top, a group's chip is a dot of its colour and its name in quiet bold, no pill, with the line of its colour over its tabs; pane heads take the group's colour too. (1×, night.)
+
+![Terminal: quiet group chips along the top](2026-10-29/215608-terminal-quiet-group-chips-along-the-top.png)
+
+### Terminal: side tabs as Deskbar's list
+
+*21:56* — Tabs down the side are Deskbar's rows now: the panel's ground, a hairline under each, the one showing recessed, groups under small bold headings with a dot of their colour and a bar of it down the left. Show All Tabs' pane heads are tinted with their group's colour, a line of it across the top. (1.5×, light.)
+
+![Terminal: side tabs as Deskbar's list](2026-10-29/215607-terminal-side-tabs-as-deskbar-s-list.png)
+
 ### Terminal: tab groups down the side
 
 *21:17* — Down the side, each group's chip heads its tabs with a bar of its colour beside them.

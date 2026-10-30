@@ -2110,5 +2110,17 @@
   "title": "Terminal: tab groups down the side",
   "caption": "Down the side, each group's chip heads its tabs with a bar of its colour beside them.",
   "image": "2026-10-29/211733-terminal-tab-groups-down-the-side.png"
+ },
+ {
+  "time": "2026-10-29T21:56:07",
+  "title": "Terminal: side tabs as Deskbar's list",
+  "caption": "Tabs down the side are Deskbar's rows now: the panel's ground, a hairline under each, the one showing recessed, groups under small bold headings with a dot of their colour and a bar of it down the left. Show All Tabs' pane heads are tinted with their group's colour, a line of it across the top. (1.5\u00d7, light.)",
+  "image": "2026-10-29/215607-terminal-side-tabs-as-deskbar-s-list.png"
+ },
+ {
+  "time": "2026-10-29T21:56:08",
+  "title": "Terminal: quiet group chips along the top",
+  "caption": "Along the top, a group's chip is a dot of its colour and its name in quiet bold, no pill, with the line of its colour over its tabs; pane heads take the group's colour too. (1\u00d7, night.)",
+  "image": "2026-10-29/215608-terminal-quiet-group-chips-along-the-top.png"
  }
 ]

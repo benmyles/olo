@@ -655,10 +655,12 @@ e.g. Terminal's screen, so the tab takes its colour) or, with
 `.closed()`, stands on the strip's edge (content that isn't that tab's
 alone); `.groups(&[StripGroup { name, color }])` and each tab's `group`
 (into them; a group's tabs side by side) lead each group's tabs with a
-chip of its name in its colour, a gap before it, and a 2-point line of
-the colour over them from the chip (nothing on the tabs themselves, to
-clash with their icons); the chip's text is on the tabs' centre line,
-not the snapped chip's, so it is level with their titles at 1.5×;
+chip, as Deskbar's workspace headings: a dot of its colour and its name
+in bold, quiet ink (no pill: it fills only under the pointer), a gap
+before it, and a 2-point line of the colour over them from the chip
+(nothing on the tabs themselves, to clash with their icons); the chip's
+text is the titles' size on the tabs' centre line, not the snapped
+chip's, so it is level with their titles at every scale;
 close boxes, middle-click to close, a + button, drag along the row to
 reorder; it returns a `StripAction` (`Select`, `Close`, `New`,
 `Menu(i, pos)` for a right-click, `Move { from, to, group }`: `to`
@@ -683,16 +685,21 @@ windows is moved over it (app_server says, below); `App::window_dropped
 tabs and groups in there and closes it)); each tab is a `Tab` in the accessibility tree with its
 status and group ("…, in Alpha") in its name, each chip a `Button`
 "Group Alpha"; `.side()` stands the tabs
-down the left of the content instead: a column `STRIP_SIDE_WIDTH` (180)
-wide by default of rounded rows `STRIP_SIDE_TAB` (24) tall, with the same
-room (`metrics::TIGHT`, 4) on every side of each, from the window's
-edge, the strip's edge line, what is above the strip (a menu bar) and
-the row before (fewer points each, on the 2-point grid, when there are
-too many to fit); the selected tab raised in the content's colours
-(`opens_into`) with an edge all round, each group's chip a row above
-its first tab and a 2-point bar of its colour down the left beside its
-chip and tabs, the chip's name and the tabs' icons under the menu bar's first
-title, a New Tab row after the last, and a grip along the right edge (a `Splitter`, "Tab Width")
+down the left of the content instead, as Deskbar's list: a column
+`STRIP_SIDE_WIDTH` (180) wide by default on the panel's ground, of rows
+`STRIP_SIDE_TAB` (24) tall right across it, a hairline under each (fewer
+points each, on the 2-point grid, when there are too many to fit); the
+one showing recessed as Deskbar's active application, the one under the
+pointer tinted; each group's heading a row `STRIP_SIDE_HEADING` (20)
+above its first tab, as Deskbar's workspace headings (a dot of its
+colour where the tabs' icons are, its name in small bold, quiet ink
+where their titles are), and a 2-point bar of its colour down the left
+beside its heading and tabs; the tabs' icons under the menu bar's first
+title; the first row centred on a band `STRIP_SIDE_HEAD` (the menu
+bar's height) beside the strip, Terminal's pane heads, and every row's
+middle on the device grid (`style::snap_coord`), as the heads' are, so
+they are level at 1.25× and 1.75× too; a New Tab row after the last,
+and a grip along the right edge (a `Splitter`, "Tab Width")
 that returns `Resize { width, done }` between `STRIP_SIDE_MIN` and
 `STRIP_SIDE_MAX` for the app to keep, `done` once the drag ends; drag
 up and down to reorder), `color_well`, `heading`,
@@ -967,7 +974,10 @@ see vendor/README.md).
    what fills inside a frame of n lines is `style::inset(ctx, r, n)`,
    not `r.shrink(n)` (a crack at 1.5×). Snap rects to the pixel grid
    (`style::snap`; something of a set size centred on a point,
-   `style::snap_centred`, which keeps its size), and lay out things that
+   `style::snap_centred`, which keeps its size; a line that icons and
+   text are centred on, `style::snap_coord`, else at 1.25× an icon
+   snapped from it and text centred on it round a pixel apart), and lay
+   out things that
    tile (panes, a bar's segments) in device pixels, so no seam opens
    between them. No blurry half-pixel lines. Heights and widths are on
    the 2-point grid (even numbers of points: `metrics`, `menu`, a
@@ -3218,10 +3228,13 @@ every tab of the window at once, each a live pane with its title over
 it (`tile` picks the columns that keep panes nearest a terminal's
 shape, the last row spread across), each pane's shell sized to its pane;
 each pane has a head (`pane_head_height`: a `STRIP_ROW` tall under a
-strip along the top; beside a side strip `STRIP_SIDE_HEAD`, its first
-tab and the room round it, so the tab's middle is level with the heads'
-and the next tab starts at their foot) with its icon and
-title, and the
+strip along the top; beside a side strip `STRIP_SIDE_HEAD`, the same,
+the strip's first row centred on it) with its icon and title, in its
+group's colour as the strip shows it (its ground tinted with it and a
+2-point line of it across the top) so it's plain which pane is in which
+group; panes after the first mark themselves `layout_review::own_grid`,
+since dividing the window puts them level with the strip only by
+chance; and the
 panes not typed into are dimmed so the one that is stands out, its head
 lit like a window's tab in front; the strip
 is `.closed()` then, since no single tab owns the content.
@@ -3233,8 +3246,8 @@ the window's edges, in the screen's own background
 The chrome is on one grid: the menu bar's first title, the tabs' and
 pane heads' icons and the shell's text start on one column, 12 in from
 the content's edge; tabs along the top and pane heads under them are
-all one row, 26 (a side strip's rows are 24 with 4 round them, a 32
-pitch its pane heads match), and the menu bar is one more of those rows (`menu::BAR_HEIGHT`, 26:
+all one row, 26 (a side strip's rows are 24, its headings 20), and the
+menu bar is one more of those rows (`menu::BAR_HEIGHT`, 26:
 at 21 it was 31.5 pixels at 1.5× and looked cramped). Panes are tiled in device
 pixels (`tile(area, n, ppp)`), a device line apart, so no seam opens
 between them at 1.5×. The screen marks itself `layout_review::own_grid`:

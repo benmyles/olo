@@ -815,6 +815,15 @@ pub fn snap(ctx: &Context, r: Rect) -> Rect {
     Rect::from_min_max(pos2(s(r.min.x), s(r.min.y)), pos2(s(r.max.x), s(r.max.y)))
 }
 
+/// `v` (a coordinate, in points) on the device grid: a line of icons and
+/// text centred on it agree on where its middle is at any scale (at
+/// 1.25×, 39 points is 48.75 pixels, and an icon snapped from it and
+/// text centred on it round apart).
+pub fn snap_coord(ctx: &Context, v: f32) -> f32 {
+    let ppp = ctx.pixels_per_point();
+    (v * ppp).round() / ppp
+}
+
 /// A soft shadow under a panel floating over everything (the command
 /// palette, the shortcuts sheet): rings growing out and a little down,
 /// each on device pixels.

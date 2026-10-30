@@ -2705,9 +2705,13 @@ pub const STRIP_ROW: f32 = 26.0;
 pub const STRIP_SIDE_TAB: f32 = 24.0;
 
 /// How tall a band beside a [`TabStrip::side`] strip is (Terminal's
-/// pane heads): its middle level with the first tab's, its foot with
-/// the second tab's top.
-pub const STRIP_SIDE_HEAD: f32 = STRIP_SIDE_TAB + 2.0 * m::TIGHT;
+/// pane heads): a row along the top's, the menu bar's height; the
+/// strip's first row is centred on it.
+pub const STRIP_SIDE_HEAD: f32 = STRIP_ROW;
+
+/// How tall a group's heading is in a [`TabStrip::side`] strip: as
+/// Deskbar's workspace headings.
+pub const STRIP_SIDE_HEADING: f32 = 20.0;
 
 /// How wide a [`TabStrip::side`] strip starts, and the narrowest and
 /// widest its edge can be dragged to.
@@ -2810,7 +2814,11 @@ impl<'a> TabStrip<'a> {
         let groups_of: Vec<Option<usize>> = self.tabs.iter().map(|t| t.group.filter(|&g| g < self.groups.len())).collect();
         let leads = |i: usize| groups_of[i].is_some() && (i == 0 || groups_of[i - 1] != groups_of[i]);
         let chip_h = 18.0;
-        let chip_w = |g: usize| ((style::label_width(ui.ctx(), self.groups[g].name, bold_font()) + 2.0 * m::SPACING) / 2.0).ceil() * 2.0;
+        // A group's chip: a dot of its colour and its name, quiet, as
+        // Deskbar's headings (no pill).
+        // (The titles' size, so it's level with them.)
+        let chip_font = bold_font();
+        let chip_w = |g: usize| ((style::label_width(ui.ctx(), self.groups[g].name, chip_font.clone()) + 8.0 + m::MARK_GAP + 2.0 * m::TIGHT) / 2.0).ceil() * 2.0;
         // (A chip after a tab stands a little apart from it.)
         let chips_w: f32 = (0..n).filter(|&i| leads(i)).map(|i| chip_w(groups_of[i].unwrap_or(0)) + m::TIGHT + if i > 0 { m::TIGHT } else { 0.0 }).sum();
         let new_w = if self.new_tab { m::CONTROL_HEIGHT + m::TIGHT } else { 0.0 };
@@ -2849,12 +2857,15 @@ impl<'a> TabStrip<'a> {
             painter.rect_filled(over, 0.0, color);
             let resp = ui.interact(chip, self.id.with(("group", g, first)), Sense::click_and_drag());
             resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Group {name}")));
-            let tone = if resp.hovered() || resp.dragged() { color.lerp_to_gamma(Color32::WHITE, 0.12) } else { color };
-            painter.rect_filled(chip, 4.0, tone);
-            let chip_ink = c(p.ink_on(color.to_array()));
+            if resp.hovered() || resp.dragged() {
+                painter.rect_filled(chip, 4.0, hover_fill);
+            }
+            let dot = style::snap_centred(ui.ctx(), pos2(chip.left() + m::TIGHT + 4.0, cy), vec2(8.0, 8.0));
+            painter.rect_filled(dot, 2.0, color);
+            let chip_ink = if resp.hovered() { c(p.panel_text) } else { c(olo_theme::mix(p.panel_text, bg, 0.4)) };
             // On the tabs' line (`cy`), level with their titles: the chip,
             // snapped, may be centred a third of a pixel off it.
-            style::label(&painter, chip.center().x, cy, Align::Center, name, bold_font(), chip_ink);
+            style::label(&painter, dot.right() + m::MARK_GAP, cy, Align::Min, name, chip_font.clone(), chip_ink);
             if resp.clicked() || resp.secondary_clicked() {
                 action = resp.interact_pointer_pos().map(|at| StripAction::Group(g, at));
             }
@@ -3012,71 +3023,96 @@ fn plus_mark(painter: &Painter, center: Pos2, color: Color32) {
 
 impl TabStrip<'_> {
     fn show_side(self, ui: &mut Ui, full: Rect) -> Option<StripAction> {
-        use egui::StrokeKind;
         let p = style::palette(ui.ctx());
         let ctx = ui.ctx().clone();
         let painter = ui.painter_at(full);
-        let bg = p.panel_background;
-        let well = shade(&p, bg, 1.07);
-        let edge = shade(&p, bg, 1.3);
-        let (fill, ink) = self.content.unwrap_or((c(bg), c(p.panel_text)));
-        let dim = c(p.panel_text).lerp_to_gamma(well, 0.3);
-        let hover_fill = well.lerp_to_gamma(c(bg), 0.55);
-        let radius = STRIP_RADIUS as f32;
+        // As Deskbar's list: rows across the panel, a hairline under each,
+        // the one showing recessed, groups under quiet headings.
+        let ground = p.panel_background;
+        let edge = shade(&p, ground, 1.3);
         let line = style::hairline(&ctx);
-        painter.rect_filled(full, 0.0, well);
-        // The same room round every tab: from the window's edge on the
-        // left, the strip's edge line on the right, what is above the
-        // strip (a menu bar) and the tab before.
-        let pad = m::TIGHT;
-        let left = full.left() + pad;
-        let right = full.right() - line - pad;
-        let top = full.top() + pad;
+        painter.rect_filled(full, 0.0, c(ground));
+        let (left, right) = (full.left(), full.right() - line);
         let mut action = None;
         let n = self.tabs.len();
         let groups_of: Vec<Option<usize>> = self.tabs.iter().map(|t| t.group.filter(|&g| g < self.groups.len())).collect();
         let leads = |i: usize| groups_of[i].is_some() && (i == 0 || groups_of[i - 1] != groups_of[i]);
-        // A row for each group's chip, before its tabs.
-        let chip_rows = (0..n).filter(|&i| leads(i)).count();
-        let rows = n + chip_rows + usize::from(self.new_tab);
-        // A tab and the room under it, on the 2-point grid.
-        let pitch = (((full.bottom() - top) / rows.max(1) as f32).min(STRIP_SIDE_TAB + pad) / 2.0).floor().max(10.0) * 2.0;
-        let row_rect = |k: usize| {
-            let y = top + k as f32 * pitch;
-            style::snap(&ctx, Rect::from_min_max(pos2(left, y), pos2(right, y + pitch - pad)))
+        let headings = (0..n).filter(|&i| leads(i)).count();
+        // Rows of `STRIP_SIDE_TAB`, headings of `STRIP_SIDE_HEADING`, New
+        // Tab last; fewer points each, on the 2-point grid, when there
+        // are too many to fit.
+        let rows = n + usize::from(self.new_tab);
+        let natural = rows as f32 * STRIP_SIDE_TAB + headings as f32 * STRIP_SIDE_HEADING;
+        let row_h = if natural <= full.height() {
+            STRIP_SIDE_TAB
+        } else {
+            (((full.height() - headings as f32 * STRIP_SIDE_HEADING) / rows.max(1) as f32) / 2.0).floor().max(8.0) * 2.0
         };
+        let row = |y: f32, h: f32| style::snap(&ctx, Rect::from_min_max(pos2(left, y), pos2(right, y + h)));
         let mut chips: Vec<(usize, usize, Rect)> = Vec::new();
         let mut slots: Vec<Rect> = Vec::with_capacity(n);
-        let mut k = 0;
+        // The first row (a heading or a tab) level with a band beside the
+        // strip (`STRIP_SIDE_HEAD`).
+        let first_h = if n > 0 && leads(0) { STRIP_SIDE_HEADING } else { row_h };
+        let mut y = full.top() + ((STRIP_SIDE_HEAD - first_h) / 2.0).max(0.0).floor();
         for i in 0..n {
             if let Some(g) = groups_of[i].filter(|_| leads(i)) {
-                chips.push((g, i, row_rect(k)));
-                k += 1;
+                chips.push((g, i, row(y, STRIP_SIDE_HEADING)));
+                y += STRIP_SIDE_HEADING;
             }
-            slots.push(row_rect(k));
-            k += 1;
+            slots.push(row(y, row_h));
+            y += row_h;
         }
-        let end_row = row_rect(k);
+        let end_row = row(y, row_h);
         let slot = |i: usize| slots[i];
         let before = |i: usize| chips.iter().find(|c| c.1 == i).map_or(slot(i).top(), |c| c.2.top());
         let drag_id = self.id.with("dragging");
         let group_drag = self.id.with("dragging-group");
-        for &(g, first, row) in &chips {
+        // A face inside a row: its icon under the menu bar's first title.
+        let face = |r: Rect| Rect::from_min_max(pos2(r.left() + m::TIGHT, r.top()), pos2(r.right() - m::TIGHT, r.bottom()));
+        // A row's middle, on the device grid, as a pane head's beside it.
+        let mid = |r: Rect| style::snap_coord(&ctx, r.center().y.round());
+        let hover_fill = c(olo_theme::tint(ground, 0.8));
+        let quiet = c(olo_theme::mix(p.panel_text, ground, 0.4));
+        let responses: Vec<(Response, Response)> = (0..n)
+            .map(|i| {
+                let r = slot(i);
+                let close = Rect::from_center_size(pos2(face(r).right() - m::TIGHT - 9.0, mid(r)), vec2(16.0, 16.0));
+                (ui.interact(r, self.id.with(("tab", i)), Sense::click_and_drag()), ui.interact(close, self.id.with(("close", i)), Sense::click()))
+            })
+            .collect();
+        for (i, (t, x)) in responses.iter().enumerate() {
+            let r = slot(i);
+            if i == self.active {
+                // The one showing sits slightly recessed, as Deskbar's
+                // active application.
+                painter.rect_filled(r, 0.0, shade(&p, ground, 1.1));
+                hline(&painter, r.left(), r.right(), r.top(), shade(&p, ground, 1.25));
+            } else if t.hovered() || x.hovered() {
+                painter.rect_filled(r, 0.0, hover_fill);
+            }
+            hline_above(&painter, r.left(), r.right(), r.bottom(), shade(&p, ground, 1.14));
+        }
+        vline_left_of(&painter, full.right(), full.top(), full.bottom(), edge);
+        for &(g, first, head) in &chips {
             let StripGroup { name, color } = self.groups[g];
             let last = (first..n).take_while(|&i| groups_of[i] == Some(g)).last().unwrap_or(first);
-            // A line of its colour beside its tabs, from its chip.
-            let beside = style::snap(&ctx, Rect::from_min_max(pos2(full.left() + 1.0, row.top()), pos2(full.left() + 3.0, slot(last).bottom())));
-            painter.rect_filled(beside, 0.0, color);
-            let chip_h = 20.0f32.min(row.height());
-            let room = right - left - 2.0 * m::SPACING;
-            let text_w = style::label_width(&ctx, name, bold_font()).min(room);
-            let chip = style::snap(&ctx, Rect::from_min_size(pos2(left, row.center().y - chip_h / 2.0), vec2((text_w + 2.0 * m::SPACING).round(), chip_h)));
-            let resp = ui.interact(chip, self.id.with(("group", g, first)), Sense::click_and_drag());
+            let resp = ui.interact(head, self.id.with(("group", g, first)), Sense::click_and_drag());
             resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Group {name}")));
-            let tone = if resp.hovered() || resp.dragged() { color.lerp_to_gamma(Color32::WHITE, 0.12) } else { color };
-            painter.rect_filled(chip, 4.0, tone);
-            let chip_ink = c(p.ink_on(color.to_array()));
-            style::label_fit(&painter, chip.left() + m::SPACING, chip.center().y, Align::Min, name, bold_font(), chip_ink, text_w);
+            if resp.hovered() || resp.dragged() {
+                painter.rect_filled(head, 0.0, hover_fill);
+            }
+            // A bar of its colour beside its heading and tabs.
+            let bar = style::snap(&ctx, Rect::from_min_max(pos2(full.left(), head.top()), pos2(full.left() + 2.0, slot(last).bottom())));
+            painter.rect_filled(bar, 0.0, color);
+            // Its colour in a dot where the tabs' icons are, its name where
+            // their titles are, as Deskbar's workspace headings.
+            let f = face(head);
+            let dot = style::snap_centred(&ctx, pos2(f.left() + m::SPACING + 8.0, mid(head)), vec2(8.0, 8.0));
+            painter.rect_filled(dot, 2.0, color);
+            let ink = if resp.hovered() { c(p.panel_text) } else { quiet };
+            let text = f.left() + m::SPACING + 16.0 + m::MARK_GAP;
+            style::label_fit(&painter, text, mid(head), Align::Min, name, egui::FontId::new(style::SMALL_SIZE, style::bold()), ink, f.right() - text);
             if resp.clicked() || resp.secondary_clicked() {
                 action = resp.interact_pointer_pos().map(|at| StripAction::Group(g, at));
             }
@@ -3084,50 +3120,28 @@ impl TabStrip<'_> {
                 ctx.data_mut(|d| d.insert_temp(group_drag, g));
             }
         }
-        let close_box = |r: Rect| style::snap_centred(&ctx, pos2(r.right() - m::TIGHT - 9.0, r.center().y.round()), vec2(16.0, 16.0));
-        let responses: Vec<(Response, Response)> = (0..n)
-            .map(|i| {
-                let r = slot(i);
-                let resp = ui.interact(r, self.id.with(("tab", i)), Sense::click_and_drag());
-                let close = ui.interact(close_box(r), self.id.with(("close", i)), Sense::click());
-                (resp, close)
-            })
-            .collect();
-        // (No lines between them: a column of rows reads as a list.)
-        for (i, (t, x)) in responses.iter().enumerate() {
-            if i != self.active && (t.hovered() || x.hovered()) {
-                painter.rect_filled(slot(i), radius, hover_fill);
-            }
-        }
-        vline_left_of(&painter, full.right(), full.top(), full.bottom(), edge);
-        if self.active < n {
-            let r = slot(self.active);
-            painter.rect(r, radius, fill, Stroke::new(line, edge), StrokeKind::Inside);
-            if self.content.is_none() {
-                // Lit from the top left, as BeOS's controls are.
-                hline(&painter, r.left() + radius, r.right() - radius, r.top() + line, c(p.shine));
-            }
-        }
+        let ink = c(p.panel_text);
+        let inks = FaceInks { fill: shade(&p, ground, 1.1), ink, dim: ink, hover: hover_fill };
         for (i, tab) in self.tabs.iter().enumerate() {
             let r = slot(i);
             let selected = i == self.active;
             let (resp, close_resp) = &responses[i];
             let name = strip_tab_name(tab, groups_of[i].map(|g| self.groups[g].name));
             resp.widget_info(|| WidgetInfo { selected: Some(selected), ..WidgetInfo::labeled(Role::Tab, true, &name) });
-            let inks = FaceInks { fill, ink, dim, hover: hover_fill };
-            if let Some(a) = tab_face(ui, &painter, tab, i, selected, (resp, close_resp), (r, r.center().y.round(), close_box(r)), r.width() >= 72.0, inks) {
+            let close = close_resp.rect;
+            if let Some(a) = tab_face(ui, &painter, tab, i, selected, (resp, close_resp), (face(r), mid(r), close), r.width() >= 72.0, inks) {
                 action = Some(a);
             }
             if resp.drag_started() && n > 1 {
                 ctx.data_mut(|d| d.insert_temp(drag_id, i));
             }
         }
-        // A tab or group being dragged: a mark where it would go, in the
-        // room between two.
+        // A tab or group being dragged: a mark where it would go, across
+        // the boundary between two rows.
         let pointer = ctx.pointer_latest_pos();
         let mark = c(p.keyboard_navigation);
         let draw_mark = |y: f32| {
-            let y = (y - pad / 2.0).clamp(full.top() + 1.0, full.bottom() - 1.0);
+            let y = y.clamp(full.top() + 1.0, full.bottom() - 1.0);
             painter.rect_filled(style::snap(&ctx, Rect::from_min_max(pos2(left, y - 1.0), pos2(right, y + 1.0))), 0.0, mark);
         };
         let layout = StripLayout { area: full, mids: slots.iter().map(|r| r.center().y).collect(), side: true };
@@ -3150,7 +3164,7 @@ impl TabStrip<'_> {
             }
             if out.is_none() && !ui.input(|i| i.pointer.any_down()) {
                 ctx.data_mut(|d| d.remove::<usize>(drag_id));
-                let group = dropped_into(&groups_of, from, to, pointer.is_some_and(|p| p.y < edge - pad / 2.0));
+                let group = dropped_into(&groups_of, from, to, pointer.is_some_and(|p| p.y < edge));
                 if to != from || group != groups_of[from] {
                     action = Some(StripAction::Move { from, to, group });
                 }
@@ -3183,18 +3197,18 @@ impl TabStrip<'_> {
             let resp = ui.interact(r, self.id.with("new"), Sense::click());
             resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, "New Tab"));
             let color = if resp.hovered() {
-                painter.rect_filled(r, radius, hover_fill);
+                painter.rect_filled(r, 0.0, hover_fill);
                 c(p.panel_text)
             } else {
-                dim
+                quiet
             };
-            // The + where the tabs' icons are, then what it does.
-            let cy = r.center().y.round();
-            plus_mark(&painter, pos2(r.left() + m::SPACING + 8.0, cy), color);
-            // (Where a tab's title is, not from the mark: snapped, it may
-            // be a pixel off the icons' column.)
-            let text = r.left() + m::SPACING + 16.0 + m::MARK_GAP;
-            style::label_fit(&painter, text, cy, Align::Min, "New Tab", plain_font(), color, r.right() - m::TIGHT - text);
+            // The + where the tabs' icons are, then what it does where
+            // their titles are.
+            let f = face(r);
+            let cy = mid(r);
+            plus_mark(&painter, pos2(f.left() + m::SPACING + 8.0, cy), color);
+            let text = f.left() + m::SPACING + 16.0 + m::MARK_GAP;
+            style::label_fit(&painter, text, cy, Align::Min, "New Tab", plain_font(), color, f.right() - m::TIGHT - text);
             if resp.clicked() {
                 action = Some(StripAction::New);
             }

@@ -383,9 +383,16 @@ as they land (with the commit), add new ones as they come up.
   Deskbar's workspace headings (bold, a band, no pill), tabs as its rows
   (icon, title, the one showing in its band), quiet; along the top, the
   same restraint.
+  Done so: down the side, Deskbar's rows on the panel's ground with a
+  hairline under each, the one showing recessed, groups under small bold
+  headings with a dot of their colour; along the top, chips are a dot
+  and a quiet bold name instead of a pill. `tsession review` clean at
+  1×–2× in every layout, light, dark and night looked at.
 - **Show All Tabs: each pane's head in its group's colour** (Ben,
   2026-10-29): "can you make the tile headers follow their groups color
   scheme so we can visually see whats what".
+  Done so: a pane's head is tinted with its group's colour, a 2-point
+  line of it across the top.
 - **Tracker: selection as in modern file managers** (Ben, 2026-10-29):
   "in tracker i should be able to click a file/item, hold down shift then
   click above/below it to select all of them and any other common

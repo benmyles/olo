@@ -124,15 +124,23 @@ fn tile(area: egui::Rect, n: usize, ppp: f32) -> Vec<egui::Rect> {
 /// A pane's title bar in Show All Tabs: its tab's icon and title (cut
 /// short with "…"), the one typed into lit as the strip's selected tab
 /// is, the others recessed; a line around each pane keeps them apart.
-fn pane_head(ui: &egui::Ui, pane: egui::Rect, height: f32, title: &str, icon: &dyn Fn(&egui::Painter, egui::Rect), active: bool) {
+/// A pane's head in Show All Tabs: its tab's icon and title; in its
+/// group's colour, if it's in one (`group`), so a group's panes show
+/// together.
+fn pane_head(ui: &egui::Ui, pane: egui::Rect, height: f32, title: &str, icon: &dyn Fn(&egui::Painter, egui::Rect), active: bool, group: Option<egui::Color32>) {
     let p = style::palette(ui.ctx());
     let painter = ui.painter();
     let bg = p.panel_background;
     let well = style::shade(&p, bg, 1.07);
     let edge = style::shade(&p, bg, 1.3);
     let head = egui::Rect::from_min_size(pane.min, egui::vec2(pane.width(), height));
-    painter.rect_filled(head, 0.0, if active { style::c(bg) } else { well });
-    if active {
+    let ground = if active { style::c(bg) } else { well };
+    // Tinted with its group's colour, a line of it across the top.
+    let ground = group.map_or(ground, |g| ground.lerp_to_gamma(g, if active { 0.26 } else { 0.18 }));
+    painter.rect_filled(head, 0.0, ground);
+    if let Some(g) = group {
+        painter.rect_filled(style::snap(ui.ctx(), egui::Rect::from_min_size(head.min, egui::vec2(head.width(), 2.0))), 0.0, g);
+    } else if active {
         // Lit from the top left, as BeOS's controls are.
         style::hline(painter, head.left(), head.right(), head.top(), style::c(p.shine));
     }
@@ -141,7 +149,8 @@ fn pane_head(ui: &egui::Ui, pane: egui::Rect, height: f32, title: &str, icon: &d
     let line = style::hairline(ui.ctx());
     style::vline(painter, pane.right(), pane.top(), pane.bottom() + line, edge);
     style::hline(painter, pane.left(), pane.right() + line, pane.bottom(), edge);
-    let cy = ((head.top() + head.bottom() - 1.0) / 2.0).round();
+    // (On the device grid, as a side strip's first row beside it.)
+    let cy = style::snap_coord(ui.ctx(), head.center().y);
     // The icon over the pane's text, as a tab's is over the menu bar's
     // first title.
     let at = style::snap(ui.ctx(), egui::Rect::from_min_size(egui::pos2(head.left() + view::PAD.x, cy - 8.0), egui::vec2(16.0, 16.0)));
@@ -149,7 +158,7 @@ fn pane_head(ui: &egui::Ui, pane: egui::Rect, height: f32, title: &str, icon: &d
     let x = at.right() + m::MARK_GAP;
     let font = if active { style::bold_font() } else { style::plain_font() };
     let text = style::c(p.panel_text);
-    let color = if active { text } else { text.lerp_to_gamma(well, 0.3) };
+    let color = if active { text } else { text.lerp_to_gamma(ground, 0.3) };
     style::label_fit(painter, x, cy, egui::Align::Min, title, font, color, head.right() - m::SPACING - x);
 }
 
@@ -1032,6 +1041,7 @@ impl Terminal {
                 cx.resize(win, want);
             }
         }
+        let group_colors: Vec<egui::Color32> = t.groups.iter().map(|g| groups::color(g.color, &self.look)).collect();
         let TermWin { tabs, active, glyphs, tiled, .. } = &mut **t;
         let session_cwd = |tab: &Tab| {
             let shared = tab.session.shared.clone();
@@ -1056,7 +1066,13 @@ impl Terminal {
             if several {
                 screen.min.y += pane_head_height(side);
                 let icon = tab_icon(tab.rang, tab.agent, tab.attention);
-                pane_head(ui, rect, pane_head_height(side), &tab.title, &icon, i == *active);
+                let group = tab.group.and_then(|g| group_colors.get(g).copied());
+                pane_head(ui, rect, pane_head_height(side), &tab.title, &icon, i == *active, group);
+                // Panes after the first are where dividing the window
+                // puts them: level with the strip's tabs only by chance.
+                if rect.min != area.min {
+                    olo_kit::layout_review::own_grid(ui, rect);
+                }
                 let pressed = ui.input(|inp| inp.pointer.any_pressed() && inp.pointer.interact_pos().is_some_and(|p| rect.contains(p)));
                 if pressed && i != *active {
                     picked = Some(i);
