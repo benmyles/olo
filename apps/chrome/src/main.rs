@@ -2,9 +2,12 @@
 //! installed it starts it, with the arguments it was given; when it isn't,
 //! it offers to download it from Google (install.rs), shows the download
 //! (which can be cancelled) and starts Chrome once it's in. New profiles
-//! get Olo's title bar and the system's colours (prefs.rs).
+//! get Olo's title bar and the system's colours (prefs.rs). With a Chrome
+//! already running on the profile, the link is handed to it directly
+//! (singleton.rs), with no second Chrome started.
 
 mod profile;
+mod singleton;
 mod downloads;
 mod extension;
 mod host;
@@ -152,20 +155,30 @@ fn size_text(bytes: u64) -> String {
     if mb >= 10.0 { format!("{mb:.0} MB") } else { format!("{mb:.1} MB") }
 }
 
-/// Chrome, told to draw with Wayland under Olo (left to itself it
-/// goes by `XDG_SESSION_TYPE`, which a session needn't set, and falls back
-/// to X11).
-fn chrome_command(chrome: &Path, args: &[String]) -> std::process::Command {
-    let mut cmd = std::process::Command::new(chrome);
+/// Chrome's arguments: `args`, told to draw with Wayland under Olo (left
+/// to itself it goes by `XDG_SESSION_TYPE`, which a session needn't set,
+/// and falls back to X11).
+fn chrome_args(args: &[String]) -> Vec<String> {
+    let mut out = Vec::with_capacity(args.len() + 1);
     if std::env::var_os("WAYLAND_DISPLAY").is_some() && !args.iter().any(|a| a.starts_with("--ozone-platform")) {
-        cmd.arg("--ozone-platform=wayland");
+        out.push("--ozone-platform=wayland".to_owned());
     }
-    cmd.args(args);
-    // A link opened from a shell or an agent has no click to take a token
-    // from: without one, Chrome opens it in a window that may be on
-    // another workspace and nothing shows it. With one, that window comes
-    // forward.
-    if let Some(token) = olo_protocol::launch_activation_token(std::time::Duration::from_millis(500)) {
+    out.extend(args.iter().cloned());
+    out
+}
+
+/// A token to bring Chrome's window forward with: a link opened from a
+/// shell or an agent has no click to take one from, and without one
+/// Chrome opens it in a window that may be on another workspace with
+/// nothing to show it.
+fn activation_token() -> Option<String> {
+    olo_protocol::launch_activation_token(std::time::Duration::from_millis(500))
+}
+
+fn chrome_command(chrome: &Path, args: &[String], token: Option<&str>) -> std::process::Command {
+    let mut cmd = std::process::Command::new(chrome);
+    cmd.args(chrome_args(args));
+    if let Some(token) = token {
         cmd.env("XDG_ACTIVATION_TOKEN", token);
     }
     cmd
@@ -173,7 +186,7 @@ fn chrome_command(chrome: &Path, args: &[String]) -> std::process::Command {
 
 /// Start Chrome on its own (it outlives us).
 fn start_chrome(chrome: &Path, args: &[String]) {
-    let mut cmd = chrome_command(chrome, args);
+    let mut cmd = chrome_command(chrome, args, activation_token().as_deref());
     cmd.process_group(0);
     if let Err(e) = cmd.spawn() {
         tracing::warn!("couldn't start Chrome: {e}");
@@ -213,7 +226,16 @@ fn main() {
                 .process_group(0)
                 .spawn();
         }
-        if let Some(dir) = prefs::user_data_dir(&args) {
+        let token = activation_token();
+        let dir = prefs::user_data_dir(&args);
+        // A Chrome running on the profile: the link handed to it.
+        if let Some(dir) = &dir {
+            let argv: Vec<std::ffi::OsString> = std::iter::once(chrome.clone().into_os_string()).chain(chrome_args(&args).into_iter().map(Into::into)).collect();
+            if singleton::hand_over(dir, &argv, token.as_deref()) {
+                return;
+            }
+        }
+        if let Some(dir) = dir {
             prefs::apply(&dir);
             // Passwords in Chrome: the extension and its host.
             if let (Ok(exe), Some(install)) = (std::env::current_exe(), chrome.parent().and_then(|d| d.canonicalize().ok()))
@@ -222,7 +244,7 @@ fn main() {
                 eprintln!("olo-chrome: couldn't set up Passwords in Chrome: {e}");
             }
         }
-        let e = chrome_command(&chrome, &args).exec();
+        let e = chrome_command(&chrome, &args, token.as_deref()).exec();
         eprintln!("olo-chrome: couldn't start {}: {e}", chrome.display());
         std::process::exit(1);
     }

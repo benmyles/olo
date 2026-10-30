@@ -4716,6 +4716,21 @@ replaced is kept, as Chrome reads its files as it runs; older ones go;
 `.updating` keeps it to one at a time). Test it with a fixture HOME (`tsession run NAME HOME=… XDG_DATA_HOME=…
 target/debug/olo-chrome`), never Ben's profile.
 
+With a Chrome already running on the profile folder (its
+`SingletonLock`, `host-pid`, naming a live process on this computer),
+`olo-chrome` hands it the command line itself (`singleton.rs`) instead
+of starting a second Chrome only to do that: Chromium's process
+singleton protocol, `START`, the current folder and the arguments (the
+program first), each after a NUL, written to `SingletonSocket` in the
+profile folder, the write side closed, answered `ACK` (or `SHUTDOWN`: that
+Chrome is going, so start one). The activation token goes along as
+`--xdg-activation-token=…`, as Chrome's own hand-over passes it, so the
+window comes forward. A link from `xdg-open` (a CLI's sign-in) so opens
+in a millisecond and says nothing on the terminal, where a second Chrome
+printed "Opening in existing browser session." and its zygote's
+"Failed sending zygote boot message: Broken pipe" as it went. No Chrome
+running, or no answer: Chrome is started as before.
+
 **Passwords in Chrome** (`extension/`, `src/extension.rs`, `src/host.rs`).
 Each start (before exec) packs `apps/chrome/extension` (built into the
 binary, plus a `palette.css` from Olo's palette, light and dark) into

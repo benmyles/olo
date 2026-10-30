@@ -905,6 +905,14 @@ as they land (with the commit), add new ones as they come up.
   the two hosts (from /proc), serves the model requests from the pool
   and passes everything else through byte for byte; tested with the real
   clients (`tests/clients.rs`).
+- ~~**Links from a shell: Chrome's "zygote" errors on the terminal**~~
+  (Ben, 2026-10-30): `pulumi whoami`'s browser sign-in printed "Opening in
+  existing browser session." then "Failed sending zygote boot message:
+  Broken pipe" (it worked). xdg-open runs `olo-chrome URL`, which started
+  a second Chrome only to hand the link to the running one, and Chrome
+  prints those as that one goes. Now `olo-chrome` hands it over itself
+  through Chrome's singleton socket (HACKING, "Google Chrome"): nothing
+  printed, the page open in a millisecond, its window forward.
 - ~~**Token Pool: Codex still not through the pool; its service's
   details and Restart; activity over time**~~ (Ben, 2026-10-30): "codex
   still doesn't seem to be going through token pooler, only claude is.
