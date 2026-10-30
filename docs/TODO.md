@@ -1081,9 +1081,13 @@ as they land (with the commit), add new ones as they come up.
     app open in Olo's choice, files in Olo's apps; Olo as the default
     file manager and browser handler (`mimeapps.list`, the `x-scheme-
     handler`s), Chrome as the default browser offered by Olo.
-  - **Downloads**: Chrome's land in Tracker's Downloads with Olo's own
+  - ~~**Downloads**: Chrome's land in Tracker's Downloads with Olo's own
     notification (open, show in Tracker) and Deskbar's progress; a
-    download's file shows as being written.
+    download's file shows as being written.~~ (done 2026-10-30: the
+    extension tells olo-chrome's host of Chrome's downloads; Deskbar's
+    progress through LauncherEntry, an Olo notification with Open and
+    Open in Tracker, and Tracker shows a `.crdownload` under its final
+    name with a bar and "3.1 of 10 MB", from `user.olo.expected_size`.)
   - **Look**: light/dark and the accent from Olo's palette through the
     Settings portal (`org.freedesktop.appearance.color-scheme`,
     `accent-color`, contrast), GTK's and Qt's themes and fonts made from

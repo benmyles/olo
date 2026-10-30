@@ -5,6 +5,7 @@
 //! get Olo's title bar and the system's colours (prefs.rs).
 
 mod profile;
+mod downloads;
 mod extension;
 mod host;
 mod install;

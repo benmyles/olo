@@ -291,7 +291,7 @@ fn draw_column(
                 *edit_row = Some((r, i));
             } else {
                 let font = if e.is_link { style::italic_font() } else { style::plain_font() };
-                let mut job = egui::text::LayoutJob::simple_singleline(e.name.clone(), font, text_color);
+                let mut job = egui::text::LayoutJob::simple_singleline(e.label().to_owned(), font, text_color);
                 job.wrap = egui::text::TextWrapping::truncate_at_width((right - x).max(0.0));
                 let g = painter.layout_job(job);
                 let pos = style::text_origin(ui.ctx(), &g, x, r.center().y, style::PLAIN_SIZE);
@@ -396,6 +396,9 @@ fn draw_preview(ui: &mut Ui, e: &Entry, rect: Rect, p: &Palette) -> bool {
         None => {
             let icon = Rect::from_center_size(image_box.center(), vec2(PREVIEW_ICON, PREVIEW_ICON));
             icons::paint(painter, icon, view::icon_of(e));
+            if let Some(done) = e.progress() {
+                view::paint_progress(ui, icon, done);
+            }
         }
     }
     let response = ui.interact(shown, egui::Id::unique(("preview", &e.path)), Sense::click());
@@ -403,19 +406,19 @@ fn draw_preview(ui: &mut Ui, e: &Entry, rect: Rect, p: &Palette) -> bool {
     // Name (bold, up to three lines), kind, then facts in two columns
     // meeting at the centre, keys right-aligned.
     let mut y = image_box.bottom() + m::SPACING;
-    let mut job = egui::text::LayoutJob::single_section(e.name.clone(), egui::TextFormat::simple(style::bold_font(), c(p.document_text)));
+    let mut job = egui::text::LayoutJob::single_section(e.label().to_owned(), egui::TextFormat::simple(style::bold_font(), c(p.document_text)));
     job.wrap = egui::text::TextWrapping { max_width: area.width(), max_rows: 3, break_anywhere: true, overflow_character: Some('…') };
     job.halign = Align::Center;
     let g = painter.layout_job(job);
     let h = g.size().y;
     painter.galley(pos2(area.center().x, y), g, c(p.document_text));
     y += h;
-    style::label(painter, area.center().x, y + m::LABEL_ROW / 2.0, Align::Center, e.kind.name(), style::plain_font(), style::disabled_text(p));
+    style::label(painter, area.center().x, y + m::LABEL_ROW / 2.0, Align::Center, &e.kind_text(), style::plain_font(), style::disabled_text(p));
     y += m::LABEL_ROW + m::SPACING;
     let created = std::fs::metadata(&e.path).ok().and_then(|md| md.created().ok());
     let small = FontId::proportional(style::SMALL_SIZE);
     for (k, v) in [
-        ("Size", fs::format_size(e.size)),
+        ("Size", e.size_text()),
         ("Created", fs::format_time(created)),
         ("Modified", fs::format_time(e.modified)),
     ] {

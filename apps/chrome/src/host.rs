@@ -12,6 +12,9 @@
 //! profile: TOKEN}` says which Chrome profile the extension is in, and
 //! who is signed in to it (profile.rs).
 //!
+//! `{downloads}` and `{downloaded}` tell of Chrome's downloads, which
+//! Deskbar, Tracker and Olo's notifications show (downloads.rs).
+//!
 //! It also answers agents' questions about Chrome's windows (a kit app's
 //! `tree` socket, for Chrome's process): `{tree: n}` goes to the
 //! extension, which answers `{tree: n, windows}` (background.js, tree.js).
@@ -31,6 +34,7 @@ use serde_json::{Value, json};
 use olo_keychain::{CallError, Request, Response};
 use olo_kit::commands::{self, WindowTree};
 
+use crate::downloads::{Download, Downloads};
 use crate::profile;
 use zeroize::Zeroize;
 
@@ -48,6 +52,8 @@ pub fn run() {
     let out = Arc::new(Mutex::new(std::io::stdout()));
     let trees: Waiting = Arc::default();
     serve_trees(out.clone(), trees.clone());
+    // (Made when Chrome first tells of a download.)
+    let mut downloads: Option<Downloads> = None;
     let mut input = std::io::stdin().lock();
     loop {
         let mut len = [0u8; 4];
@@ -73,6 +79,19 @@ pub fn run() {
             let windows = m.get("windows").cloned().map(serde_json::from_value).and_then(Result::ok).unwrap_or_default();
             if let Some(tx) = trees.lock().unwrap_or_else(|e| e.into_inner()).remove(&n) {
                 let _ = tx.send(windows);
+            }
+            continue;
+        }
+        // Chrome's downloads (downloads.rs).
+        if let Ok(m) = &message
+            && (m.get("downloads").is_some() || m.get("downloaded").is_some())
+        {
+            let downloads = downloads.get_or_insert_with(Downloads::new);
+            if let Some(list) = m.get("downloads").cloned().and_then(|v| serde_json::from_value::<Vec<Download>>(v).ok()) {
+                downloads.going(&list);
+            }
+            if let Some(d) = m.get("downloaded").cloned().and_then(|v| serde_json::from_value::<Download>(v).ok()) {
+                downloads.done(&d);
             }
             continue;
         }

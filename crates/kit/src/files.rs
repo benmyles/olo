@@ -149,6 +149,53 @@ pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     }
 }
 
+/// What Chrome writes a download to until it is done (`NAME.crdownload`,
+/// renamed to `NAME` then): Tracker shows such a file as being written,
+/// under the name it will have.
+pub const DOWNLOADING: &str = ".crdownload";
+
+/// The extended attribute a file being written carries with the size it
+/// will be, in bytes (decimal digits): olo-chrome marks Chrome's
+/// downloads so, and Tracker shows how far along they are.
+pub const EXPECTED_SIZE: &str = "user.olo.expected_size";
+
+/// The size `path` will be, if it is being written and says
+/// ([`EXPECTED_SIZE`]).
+pub fn expected_size(path: &Path) -> Option<u64> {
+    use std::os::unix::ffi::OsStrExt;
+    let (path, name) = (std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?, std::ffi::CString::new(EXPECTED_SIZE).ok()?);
+    let mut buf = [0u8; 24];
+    // SAFETY: two C strings and a buffer of the length given, alive for the call.
+    let n = unsafe { libc::getxattr(path.as_ptr(), name.as_ptr(), buf.as_mut_ptr().cast(), buf.len()) };
+    std::str::from_utf8(buf.get(..usize::try_from(n).ok()?)?).ok()?.trim().parse().ok()
+}
+
+/// Mark `path`, being written, with the size it will be
+/// ([`EXPECTED_SIZE`]); true once it is.
+pub fn set_expected_size(path: &Path, size: u64) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    let (Ok(path), Ok(name)) = (std::ffi::CString::new(path.as_os_str().as_bytes()), std::ffi::CString::new(EXPECTED_SIZE)) else { return false };
+    let value = size.to_string();
+    // SAFETY: two C strings and a buffer of the length given, alive for the call.
+    unsafe { libc::setxattr(path.as_ptr(), name.as_ptr(), value.as_ptr().cast(), value.len(), 0) == 0 }
+}
+
+/// "3.1 of 10 MB" (both in `total`'s unit, short enough for a Size
+/// column), for a file being written.
+pub fn format_progress(done: u64, total: u64) -> String {
+    let whole = format_size(total);
+    let Some((_, unit)) = whole.split_once(' ') else { return whole };
+    let scale = match unit {
+        "KB" => 1024f64,
+        "MB" => 1024f64.powi(2),
+        "GB" => 1024f64.powi(3),
+        "TB" => 1024f64.powi(4),
+        _ => return format!("{done} of {whole}"),
+    };
+    let figure = |v: f64| if v >= 10.0 { format!("{v:.0}") } else { format!("{v:.1}") };
+    format!("{} of {} {unit}", figure(done as f64 / scale), figure(total as f64 / scale))
+}
+
 pub fn format_size(n: u64) -> String {
     const UNITS: [&str; 5] = ["bytes", "KB", "MB", "GB", "TB"];
     if n < 1024 {
@@ -189,6 +236,23 @@ pub fn format_time(t: Option<SystemTime>) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn progress_and_expected_sizes() {
+        assert_eq!(super::format_progress(3 * 1024 * 1024 + 100_000, 10 * 1024 * 1024), "3.1 of 10 MB");
+        assert_eq!(super::format_progress(512 * 1024 * 1024, 4 * 1024 * 1024 * 1024 + 300 * 1024 * 1024), "0.5 of 4.3 GB");
+        assert_eq!(super::format_progress(10, 500), "10 of 500 bytes");
+        let dir = std::env::temp_dir().join(format!("olo-kit-expected-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("a.zip.crdownload");
+        std::fs::write(&p, b"..").unwrap();
+        assert_eq!(super::expected_size(&p), None);
+        // (Where the file system takes user attributes.)
+        if super::set_expected_size(&p, 123_456) {
+            assert_eq!(super::expected_size(&p), Some(123_456));
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn natural_order() {
         use std::cmp::Ordering::*;

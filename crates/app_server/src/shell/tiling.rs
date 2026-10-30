@@ -852,7 +852,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     fn least_frame(&self, window: &WindowElement) -> Size<i32, Logical> {
         use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
         let least = |w: &WindowElement| w.wl_surface().map(|s| with_states(&s, |st| st.cached_state.get::<SurfaceCachedState>().current().min_size)).unwrap_or_default();
-        let content = self.groups.mates(window).iter().map(least).fold(least(window), |a, b| Size::from((a.w.max(b.w), a.h.max(b.h))));
+        // (Its group's as it is about to be: windows coming back from
+        // another workspace together are placed before the groups are
+        // made again, and each placed by its own least size would be put
+        // back by the group's a frame later.)
+        let content = self.mates_to_be(window).iter().map(least).fold(least(window), |a, b| Size::from((a.w.max(b.w), a.h.max(b.h))));
         // Its frame round the content: what Olo's decoration adds, not
         // its frame less its content now (before it first draws, that is
         // something else, and the tile beside it would move as it does).

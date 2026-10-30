@@ -337,6 +337,24 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         w.meta().placed.get() && w.decorated() && !is_dialog(t) && resizable(w)
     }
 
+    /// `w`'s group as it is about to be: its mates on screen
+    /// (`Groups::mates`), else, while it is just coming back (from another
+    /// workspace or display, before the groups are next made), the windows
+    /// with its group's key on its display showing there, coming back
+    /// with it.
+    pub(crate) fn mates_to_be(&self, w: &WindowElement) -> Vec<WindowElement> {
+        let mates = self.groups.mates(w);
+        if !mates.is_empty() {
+            return mates;
+        }
+        let Some(key) = self.group_key(w) else { return Vec::new() };
+        let display = self.display_of(w);
+        self.all_windows()
+            .into_iter()
+            .filter(|o| o != w && self.shows(o) && !o.meta().minimized.get() && self.display_of(o) == display && self.group_key(o).as_ref() == Some(&key))
+            .collect()
+    }
+
     /// What `w` groups by, if anything. In Focus mode (`modes`) an app's
     /// windows are always grouped.
     pub fn group_key(&self, w: &WindowElement) -> Option<GroupKey> {

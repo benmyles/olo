@@ -23,6 +23,44 @@ pub struct Entry {
     /// The icon of the Olo application this program (or a link to it)
     /// is.
     pub app_icon: Option<&'static str>,
+    /// A download being written (Chrome's `NAME.crdownload`): shown as
+    /// `NAME`, with how far along it is when it says how big it will be
+    /// (`Some`, `olo_kit::files::EXPECTED_SIZE`).
+    pub downloading: Option<Option<u64>>,
+}
+
+impl Entry {
+    /// The name shown: a download's as it will be once done.
+    pub fn label(&self) -> &str {
+        match self.downloading {
+            Some(_) => self.name.strip_suffix(olo_kit::files::DOWNLOADING).filter(|n| !n.is_empty()).unwrap_or(&self.name),
+            None => &self.name,
+        }
+    }
+
+    /// How far along a download being written is (0–1), if it knows.
+    pub fn progress(&self) -> Option<f32> {
+        let total = self.downloading.flatten().filter(|&t| t > 0)?;
+        Some((self.size as f64 / total as f64).clamp(0.0, 1.0) as f32)
+    }
+
+    /// Its Size column: a download's "3.1 of 10 MB".
+    pub fn size_text(&self) -> String {
+        match (self.is_dir, self.downloading.flatten()) {
+            (true, _) => "—".into(),
+            (false, Some(total)) => olo_kit::files::format_progress(self.size, total),
+            (false, None) => format_size(self.size),
+        }
+    }
+
+    /// Its Kind column: "Downloading, 31%" for a download.
+    pub fn kind_text(&self) -> String {
+        match (self.downloading, self.progress()) {
+            (Some(_), Some(p)) => format!("Downloading, {}%", (p * 100.0).floor() as u32),
+            (Some(_), None) => "Downloading".into(),
+            (None, _) => self.kind.name().into(),
+        }
+    }
 }
 
 pub use olo_kit::files::{Kind, format_size, format_time, kind_for};
@@ -33,6 +71,12 @@ pub fn entry(path: &Path) -> Option<Entry> {
     let meta = if is_link { fs::metadata(path).unwrap_or(lmeta) } else { lmeta };
     let is_dir = meta.is_dir();
     let mode = meta.permissions().mode();
+    // A download being written: where it goes once done, and how big it
+    // will be if it says.
+    let downloading = (!is_dir)
+        .then(|| path.to_str()?.strip_suffix(olo_kit::files::DOWNLOADING).filter(|p| !p.ends_with('/')).map(PathBuf::from))
+        .flatten()
+        .map(|done| (done, olo_kit::files::expected_size(path)));
     Some(Entry {
         name: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "/".into()),
         path: path.to_owned(),
@@ -41,8 +85,10 @@ pub fn entry(path: &Path) -> Option<Entry> {
         size: if is_dir { 0 } else { meta.size() },
         modified: meta.modified().ok(),
         mode,
-        kind: kind_for(path, is_dir, mode),
+        // A download is the kind it will be.
+        kind: kind_for(downloading.as_ref().map_or(path, |(done, _)| done.as_path()), is_dir, mode),
         app_icon: if is_dir { None } else { app_icon(path, is_link) },
+        downloading: downloading.map(|(_, total)| total),
     })
 }
 
@@ -358,6 +404,27 @@ pub fn permissions_string(mode: u32, is_dir: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn downloads_show_as_they_will_be() {
+        let dir = std::env::temp_dir().join(format!("olo-tracker-dl-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("Report.pdf.crdownload");
+        std::fs::write(&p, vec![0u8; 3 * 1024 * 1024 + 100_000]).unwrap();
+        let e = entry(&p).unwrap();
+        assert_eq!((e.label(), e.kind, e.downloading), ("Report.pdf", Kind::Pdf, Some(None)));
+        assert_eq!(e.kind_text(), "Downloading");
+        if olo_kit::files::set_expected_size(&p, 10 * 1024 * 1024) {
+            let e = entry(&p).unwrap();
+            assert_eq!(e.kind_text(), "Downloading, 30%");
+            assert_eq!(e.size_text(), "3.1 of 10 MB");
+        }
+        // Only a name with something before the suffix.
+        let odd = dir.join(".crdownload");
+        std::fs::write(&odd, b"x").unwrap();
+        assert_eq!(entry(&odd).unwrap().downloading, None);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn copy_names() {

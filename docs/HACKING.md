@@ -4629,6 +4629,28 @@ page that checks what a site would: the client data, the
 authenticator data's site hash and flags, the attestation, and the
 signature with WebCrypto.
 
+**Downloads** (`background.js`'s Downloads, `downloads.rs`). The
+extension (with the `downloads` permission: Chrome only asks again for
+a permission an extension it installed itself gains, never for one in
+its install's `extensions` folder) tells the host of Chrome's downloads:
+`{downloads: [...]}` with those under way (id, file, received, total,
+paused, url), on each start or stop and every half second while there
+are any (Chrome says nothing as one goes), and `{downloaded}` when one
+finishes or fails (with Chrome's `InterruptReason`). The host sends
+Deskbar a `com.canonical.Unity.LauncherEntry` update for
+`application://google-chrome.desktop` (the count, and the progress of
+them all once each knows its size: Chrome itself would only through
+libunity), marks the file being written (`NAME.crdownload`) with the
+size it will be (`olo_kit::files::set_expected_size`, the
+`user.olo.expected_size` attribute), and shows an Olo notification for
+a finished one (the picture, if it is one; a click or Open opens it,
+Open in Tracker shows it; one that failed for a reason other than being
+cancelled says why). Tracker shows a `NAME.crdownload` as `NAME`, of the
+kind it will be, with a bar under its icon (icon views, the column
+preview) and "3.1 of 10 MB" / "Downloading, 31%" in its Size and Kind
+(`Entry::downloading`, `label`, `size_text`, `kind_text`); Chrome renames
+it when done, and the bar goes.
+
 **Chrome's widget tree, for agents** (`extension/tree.js`, `host.rs`).
 The extension (named "Olo": it does more than passwords) connects to
 its host when its worker starts and stays connected (reconnecting after

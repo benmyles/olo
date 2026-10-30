@@ -1243,7 +1243,7 @@ impl Tracker {
                     (1, _) => cell.text(&e.path.parent().map(fs::display_path).unwrap_or_default()),
                     (2, true) => cell.text(&h.line.as_ref().map(|(n, _)| n.to_string()).unwrap_or_default()),
                     (_, true) => cell.text(h.line.as_ref().map(|(_, t)| t.as_str()).unwrap_or("")),
-                    (2, false) => cell.text(&if e.is_dir { "—".into() } else { fs::format_size(e.size) }),
+                    (2, false) => cell.text(&e.size_text()),
                     _ => cell.text(&fs::format_time(e.modified)),
                 }
             })).inner;

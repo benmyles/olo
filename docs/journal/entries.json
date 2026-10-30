@@ -2302,5 +2302,11 @@
   "title": "Activity Monitor: every process, as a list or a tree",
   "caption": "Searched and filtered with the kit's search (user:, state:, kind:, pid:), sorted by any of twelve columns (names in natural order), as a tree of who started whom (kernel threads folded here). Double-click or \u2318I for its inspector: threads, open files, memory, environment, cores, limits, priority and signals.",
   "image": "2026-10-30/075336-activity-monitor-every-process-as-a-list-or-a-tr.png"
+ },
+ {
+  "time": "2026-10-30T08:35:25",
+  "title": "Downloads in Tracker, as they will be",
+  "caption": "A download Chrome is writing (NAME.crdownload) shows in Tracker under the name it will have, with its kind's icon, how far along it is (a bar under its icon; '3.1 of 10 MB' and 'Downloading, 31%' in the list and preview), from the size olo-chrome marks it with (user.olo.expected_size).",
+  "image": "2026-10-30/083525-downloads-in-tracker-as-they-will-be.png"
  }
 ]

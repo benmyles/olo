@@ -13,6 +13,8 @@ olo-kit.workspace = true
 olo-protocol.workspace = true
 tracing.workspace = true
 serde_json.workspace = true
+serde.workspace = true
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
 sha2 = "0.11"
 flate2 = "1"
 liblzma = { version = "0.4", features = ["static"] }

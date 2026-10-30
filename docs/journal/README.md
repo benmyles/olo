@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Downloads in Tracker, as they will be
+
+*08:35* — A download Chrome is writing (NAME.crdownload) shows in Tracker under the name it will have, with its kind's icon, how far along it is (a bar under its icon; '3.1 of 10 MB' and 'Downloading, 31%' in the list and preview), from the size olo-chrome marks it with (user.olo.expected_size).
+
+![Downloads in Tracker, as they will be](2026-10-30/083525-downloads-in-tracker-as-they-will-be.png)
+
 ### Activity Monitor: every process, as a list or a tree
 
 *07:53* — Searched and filtered with the kit's search (user:, state:, kind:, pid:), sorted by any of twelve columns (names in natural order), as a tree of who started whom (kernel threads folded here). Double-click or ⌘I for its inspector: threads, open files, memory, environment, cores, limits, priority and signals.

@@ -389,6 +389,24 @@ pub fn paint_item(ui: &Ui, l: &ItemLayout, icon: &str, selected: bool, desktop: 
     }
 }
 
+/// How far along a download is, as a bar across the foot of its icon
+/// (as Finder shows one).
+pub fn paint_progress(ui: &Ui, icon: Rect, done: f32) {
+    let ctx = ui.ctx();
+    let h = (icon.height() / 8.0).clamp(5.0, 8.0).round();
+    let w = (icon.width() * 0.75).round();
+    let bar = style::snap(ctx, Rect::from_min_size(pos2(icon.center().x - w / 2.0, icon.bottom() - h), vec2(w, h)));
+    let p = style::palette(ctx);
+    let ink = p.document_text;
+    let painter = ui.painter();
+    // A round-ended well, and as much of it filled as is done (never
+    // less than its round end).
+    painter.rect_filled(bar, h / 2.0, Color32::from_rgba_unmultiplied(ink[0], ink[1], ink[2], 46));
+    let ppp = ctx.pixels_per_point();
+    let end = ((bar.left() + bar.width() * done.clamp(0.0, 1.0)) * ppp).round() / ppp;
+    painter.rect_filled(Rect::from_min_max(bar.min, pos2(end.max(bar.left() + bar.height()), bar.bottom())), h / 2.0, c(p.status_bar));
+}
+
 /// The icon name for an entry (folders that are special get their own).
 pub fn icon_of(e: &Entry) -> &'static str {
     if e.is_dir {
@@ -427,7 +445,7 @@ fn name_cell_with(cell: &Cell, e: &Entry, text: bool) {
     }
     if text {
         let font = if e.is_link { style::italic_font() } else { style::plain_font() };
-        Cell { rect: name_text_rect(cell.rect), ..*cell }.text_with(&e.name, font, cell.text_color);
+        Cell { rect: name_text_rect(cell.rect), ..*cell }.text_with(e.label(), font, cell.text_color);
     }
 }
 
@@ -579,9 +597,9 @@ fn list_view(ui: &mut Ui, f: &mut FolderWin, actions: &mut Vec<Action>) {
                 edit_cell = Some(cell.rect);
             }
             0 => name_cell(cell, e),
-            1 => cell.text(&if e.is_dir { "—".into() } else { fs::format_size(e.size) }),
+            1 => cell.text(&e.size_text()),
             2 => cell.text(&fs::format_time(e.modified)),
-            _ => cell.text(e.kind.name()),
+            _ => cell.text(&e.kind_text()),
         }
     });
     if let (Some(rect), Some(row)) = (edit_cell, editing_row) {
@@ -720,7 +738,7 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
         let last = ((((clip.bottom() - origin.y - inset) / cell.y).ceil().max(0.0) as usize) + 1) * cols;
         let range = first.min(f.entries.len())..last.min(f.entries.len());
         let layouts: Vec<(usize, ItemLayout)> = range
-            .map(|i| (i, layout_item(ui, cell_rect(i), &f.entries[i].name, look, f.list.selected.contains(&i), f.entries[i].is_link)))
+            .map(|i| (i, layout_item(ui, cell_rect(i), f.entries[i].label(), look, f.list.selected.contains(&i), f.entries[i].is_link)))
             .collect();
         let hit = |pos: Pos2| layouts.iter().find(|(_, l)| l.hit().contains(pos)).map(|(i, _)| *i);
         let mods = ui.input(|i| i.modifiers);
@@ -822,7 +840,7 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
                 let row = |y: f32| ((y - origin.y - inset) / cell.y).floor().max(0.0) as usize;
                 let items = (row(r.top()) * cols).min(f.entries.len())..((row(r.bottom()) + 1) * cols).min(f.entries.len());
                 f.list.selected = base.over(
-                    items.filter(|&i| layout_item(ui, cell_rect(i), &f.entries[i].name, look, false, f.entries[i].is_link).hit().intersects(r)),
+                    items.filter(|&i| layout_item(ui, cell_rect(i), f.entries[i].label(), look, false, f.entries[i].is_link).hit().intersects(r)),
                 );
                 // Near or past the top or bottom: scroll on.
                 let edge = cell.y / 4.0;
@@ -862,6 +880,9 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
         for (i, l) in &layouts {
             let e = &f.entries[*i];
             paint_item(ui, l, icon_of(e), f.list.selected.contains(i) || drop_on == Some(*i), false, editing != Some(*i), &p);
+            if let Some(done) = e.progress() {
+                paint_progress(ui, l.icon, done);
+            }
         }
         if took && drop_on.is_none() {
             dnd::outline(ui, clip);
@@ -911,8 +932,8 @@ pub fn info_view(ui: &mut Ui, e: &Entry, size: Option<(u64, u64)>) -> Option<Dra
             Some((b, n)) => format!("{} ({n} items)", fs::format_size(b)),
             None => "Calculating…".into(),
         }
-    } else if e.size < 1024 {
-        fs::format_size(e.size)
+    } else if e.size < 1024 || e.downloading.is_some() {
+        e.size_text()
     } else {
         format!("{} ({} bytes)", fs::format_size(e.size), e.size)
     };
@@ -944,8 +965,8 @@ pub fn info_view(ui: &mut Ui, e: &Entry, size: Option<(u64, u64)>) -> Option<Dra
     });
     let tx = icon.right() + m::SPACING;
     let cy = icon.center().y;
-    style::label(painter, tx, cy - (m::LABEL_ROW + m::TIGHT) / 2.0, Align::Min, &e.name, style::bold_font(), c(p.panel_text));
-    style::label(painter, tx, cy + (m::LABEL_ROW + m::TIGHT) / 2.0, Align::Min, e.kind.name(), style::plain_font(), style::disabled_text(&p));
+    style::label(painter, tx, cy - (m::LABEL_ROW + m::TIGHT) / 2.0, Align::Min, e.label(), style::bold_font(), c(p.panel_text));
+    style::label(painter, tx, cy + (m::LABEL_ROW + m::TIGHT) / 2.0, Align::Min, &e.kind_text(), style::plain_font(), style::disabled_text(&p));
 
     // An etched rule, then the rows on an exact grid.
     let y = icon.bottom() + m::SPACING;

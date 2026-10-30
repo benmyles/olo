@@ -621,6 +621,48 @@ chrome.notifications.onButtonClicked.addListener(async (nid, button) => {
 
 chrome.notifications.onClosed.addListener((nid) => chrome.storage.session.remove(nid));
 
+// ---- Downloads ----
+// Chrome's downloads, told to olo-chrome as they go (downloads.rs):
+// Deskbar shows how far along they are on Chrome's entry, the file being
+// written says how big it will be (Tracker shows it so), and a finished
+// one is an Olo notification (Open, Open in Tracker). Chrome says when a
+// download starts, stops or finishes, not as it goes, so the ones under
+// way are looked at this often (milliseconds).
+const DOWNLOADS_EVERY = 500;
+let watching = null;
+
+function downloadOf(d) {
+  return { id: d.id, file: d.filename, received: d.bytesReceived, total: d.totalBytes > 0 ? d.totalBytes : null, paused: d.paused, url: d.finalUrl || d.url };
+}
+
+function tellHost(message) {
+  if (!port) connect();
+  port?.postMessage(message);
+}
+
+async function tellDownloads() {
+  const going = (await chrome.downloads.search({ state: "in_progress" })).filter((d) => d.filename);
+  // (Nothing to say, and nobody listening yet: no need to start the host.)
+  if (going.length || port) tellHost({ downloads: going.map(downloadOf) });
+  if (going.length && !watching) watching = setInterval(tellDownloads, DOWNLOADS_EVERY);
+  if (!going.length && watching) {
+    clearInterval(watching);
+    watching = null;
+  }
+}
+
+chrome.downloads.onCreated.addListener(() => tellDownloads());
+chrome.downloads.onChanged.addListener(async (delta) => {
+  const state = delta.state?.current;
+  if (state === "complete" || state === "interrupted") {
+    const [d] = await chrome.downloads.search({ id: delta.id });
+    if (d?.filename) tellHost({ downloaded: { ...downloadOf(d), error: state === "interrupted" ? d.error || "FAILED" : null } });
+  }
+  tellDownloads();
+});
+// Under way when the worker starts again.
+tellDownloads();
+
 // ---- Widget trees, for agents ----
 
 // Each window's active page as a widget tree (tree.js), placed in the
