@@ -214,6 +214,27 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Bug: upgrades still move windows; restore an exact snapshot**
+  (Ben, 2026-10-30): "when I upgrade it is still messing up my windows
+  and moving them around on the displays and the sizes and everything. i
+  think we need a more reliable approach to ensuring that windows stay
+  where they are on upgrades: we need to be able to save the current
+  state/location/size/mode/etc of every display-workspace then do the
+  upgrade then restore everything back to that exact state instead of
+  trying to rely on the logic to place everything back where it was
+  before." Before the upgrade, app_server writes one snapshot of the
+  whole desktop: every display (its mode, scale, position) and each of
+  its workspaces (its windowing mode, auto-tiling tree, what shows), and
+  every window exactly (display, workspace, frame, content size, zoomed,
+  rolled, minimized, tile and group with its tab order, stacking order,
+  focus). After it, as each window comes back it is put exactly there
+  and asked for exactly that size, with nothing else placing it
+  (auto-tiling, cascades, groups' placing and fitting held off until all
+  have come back or a deadline passes); whatever still differs once
+  they're back is set from the snapshot again, and the result is
+  compared with the snapshot and any difference logged (and checked by
+  `tools/dev/upgrade-check` with several displays, every windowing
+  mode, groups and auto-tiling).
 - **Move to Workspace: every display's workspaces, from a window's tab
   and from Deskbar's apps** (Ben, 2026-10-30): "when right clicking a
   window title bar, under move to workspace it only shows the current
