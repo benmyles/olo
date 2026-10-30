@@ -2308,5 +2308,11 @@
   "title": "Downloads in Tracker, as they will be",
   "caption": "A download Chrome is writing (NAME.crdownload) shows in Tracker under the name it will have, with its kind's icon, how far along it is (a bar under its icon; '3.1 of 10 MB' and 'Downloading, 31%' in the list and preview), from the size olo-chrome marks it with (user.olo.expected_size).",
   "image": "2026-10-30/083525-downloads-in-tracker-as-they-will-be.png"
+ },
+ {
+  "time": "2026-10-30T09:41:55",
+  "title": "Activity Monitor: programs using the network",
+  "caption": "Each process's TCP traffic, from netlink's sock_diag (tcp_info's byte counts) summed by the sockets' owners: a card in the Network section and Sent and Received columns in the process list. Connections and interface counters come from netlink too.",
+  "image": "2026-10-30/094155-activity-monitor-programs-using-the-network.png"
  }
 ]

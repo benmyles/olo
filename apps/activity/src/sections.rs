@@ -706,6 +706,24 @@ fn network(app: &mut Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) ->
         legend(ui, Rect::from_min_size(pos2(card.content.left(), g.bottom() + m::TIGHT), vec2(card.content.width(), lh)), &items);
         y += h + GAP;
     }
+    // Who uses it most (TCP's bytes, `netdiag`).
+    let mut busy: Vec<&crate::sample::Proc> = app.processes.iter().filter(|pr| pr.sent.unwrap_or(0.0) + pr.received.unwrap_or(0.0) > 0.0).collect();
+    busy.sort_by(|a, b| (b.sent.unwrap_or(0.0) + b.received.unwrap_or(0.0)).total_cmp(&(a.sent.unwrap_or(0.0) + a.received.unwrap_or(0.0))));
+    let rows: Vec<(i32, String, String)> = busy
+        .iter()
+        .take(8)
+        .map(|pr| (pr.pid, format!("{} ({})", pr.name, pr.pid), format!("{} in · {} out", Unit::Rate.format(pr.received.unwrap_or(0.0)), Unit::Rate.format(pr.sent.unwrap_or(0.0)))))
+        .collect();
+    let h = Card::height((rows.len().max(1) + 1) as f32 * dashboard::FACT_ROW, true);
+    let caption = if app.access == Access::Full { "TCP's bytes, each second" } else { "TCP's bytes, each second (other users' need full access)" };
+    let card = Card::new("Programs Using the Network").caption(caption).show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
+    if rows.is_empty() {
+        let ink = style::card_ink(&p);
+        style::label(ui.painter(), card.content.left(), card.content.top() + dashboard::FACT_ROW / 2.0, Align::Min, "None just now", style::plain_font(), ink.dim);
+    } else {
+        process_rows(ui, card.content, "Received and sent", &rows, todo);
+    }
+    y += h + GAP;
     // Connections: who talks to whom.
     let h = Card::height(m::CONTROL_HEIGHT + m::SPACING + CONNECTIONS_HEIGHT, true);
     let full = app.access == Access::Full;

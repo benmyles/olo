@@ -15,6 +15,7 @@
 
 mod actions;
 mod details;
+mod netdiag;
 mod helper;
 mod inspector;
 mod processes;
@@ -121,6 +122,29 @@ pub struct Settings {
     /// Graphs scroll smoothly between samples, a device pixel at a time.
     pub smooth: bool,
     pub connections_sort: Option<(usize, bool)>,
+    /// How many columns the process list had when `sort` was saved (0:
+    /// from before Sent and Received came in at 8, `migrate`).
+    #[serde(default)]
+    pub columns: usize,
+}
+
+/// The process list's columns now.
+const COLUMNS: usize = 14;
+
+impl Settings {
+    /// Settings saved by an older Activity Monitor, brought up to date.
+    fn migrate(mut self) -> Settings {
+        if self.columns < COLUMNS {
+            // Sent and Received went in before Nice.
+            if let Some((col, _)) = self.sort.as_mut()
+                && *col >= 8
+            {
+                *col += 2;
+            }
+            self.columns = COLUMNS;
+        }
+        self
+    }
 }
 
 impl Default for Settings {
@@ -139,6 +163,7 @@ impl Default for Settings {
             ask_full_access: true,
             smooth: true,
             connections_sort: None,
+            columns: COLUMNS,
         }
     }
 }
@@ -888,7 +913,7 @@ fn main() {
     olo_kit::run(APP_ID, |cx| {
         instance::listen(APP_ID, cx.proxy());
         let settings: Settings =
-            std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+            std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str::<Settings>(&t).ok()).map(Settings::migrate).unwrap_or_default();
         let control = sample::Control::new(settings.interval_ms);
         let (p1, p2) = (cx.proxy(), cx.proxy());
         sample::start(control.clone(), move |s| p1.send(Msg::Sources(s, false)), move |s| p2.send(Msg::Sample(Box::new(s), false)));

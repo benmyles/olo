@@ -100,9 +100,11 @@ fn compare(col: usize, a: &Proc, b: &Proc) -> std::cmp::Ordering {
         5 => a.threads.cmp(&b.threads),
         6 => a.read.unwrap_or(-1.0).total_cmp(&b.read.unwrap_or(-1.0)),
         7 => a.written.unwrap_or(-1.0).total_cmp(&b.written.unwrap_or(-1.0)),
-        8 => a.nice.cmp(&b.nice),
-        9 => state_name(a.state).cmp(state_name(b.state)),
-        10 => a.cpu_time.total_cmp(&b.cpu_time),
+        8 => a.sent.unwrap_or(-1.0).total_cmp(&b.sent.unwrap_or(-1.0)),
+        9 => a.received.unwrap_or(-1.0).total_cmp(&b.received.unwrap_or(-1.0)),
+        10 => a.nice.cmp(&b.nice),
+        11 => state_name(a.state).cmp(state_name(b.state)),
+        12 => a.cpu_time.total_cmp(&b.cpu_time),
         _ => a.started.total_cmp(&b.started),
     };
     o.then(a.pid.cmp(&b.pid))
@@ -295,6 +297,8 @@ pub fn show(app: &mut Activity, cx: &mut Cx, ui: &mut Ui, area: Rect) {
         Column::new("Threads", 62.0).right(),
         Column::new("Read", 76.0).right(),
         Column::new("Written", 76.0).right(),
+        Column::new("Sent", 76.0).right(),
+        Column::new("Received", 76.0).right(),
         Column::new("Nice", 44.0).right(),
         Column::new("State", 72.0),
         Column::new("CPU Time", 76.0).right(),
@@ -362,9 +366,11 @@ pub fn show(app: &mut Activity, cx: &mut Cx, ui: &mut Ui, area: Rect) {
                         5 => pr.threads.to_string(),
                         6 => pr.read.map_or_else(|| unknown.clone(), |v| Unit::Rate.format(v)),
                         7 => pr.written.map_or_else(|| unknown.clone(), |v| Unit::Rate.format(v)),
-                        8 => pr.nice.to_string(),
-                        9 => state_name(pr.state).to_owned(),
-                        10 => cpu_time(pr.cpu_time),
+                        8 => pr.sent.map_or_else(|| unknown.clone(), |v| Unit::Rate.format(v)),
+                        9 => pr.received.map_or_else(|| unknown.clone(), |v| Unit::Rate.format(v)),
+                        10 => pr.nice.to_string(),
+                        11 => state_name(pr.state).to_owned(),
+                        12 => cpu_time(pr.cpu_time),
                         _ => started(app_ref, pr.started),
                     };
                     cell.text(&text);

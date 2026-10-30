@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Activity Monitor: programs using the network
+
+*09:41* — Each process's TCP traffic, from netlink's sock_diag (tcp_info's byte counts) summed by the sockets' owners: a card in the Network section and Sent and Received columns in the process list. Connections and interface counters come from netlink too.
+
+![Activity Monitor: programs using the network](2026-10-30/094155-activity-monitor-programs-using-the-network.png)
+
 ### Downloads in Tracker, as they will be
 
 *08:35* — A download Chrome is writing (NAME.crdownload) shows in Tracker under the name it will have, with its kind's icon, how far along it is (a bar under its icon; '3.1 of 10 MB' and 'Downloading, 31%' in the list and preview), from the size olo-chrome marks it with (user.olo.expected_size).

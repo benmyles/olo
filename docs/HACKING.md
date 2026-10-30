@@ -3506,8 +3506,8 @@ with its frequency, each cluster's frequencies and governor, load),
 Memory (with zram's ratio, pressure stall information and every
 /proc/meminfo counter), Disks (each disk's traffic, how busy it is, its
 requests and their latency; volumes and how full they are; I/O
-pressure), Network (each interface's traffic and addresses, every
-connection and its program), GPU (busy, power, memory, and each program's
+pressure), Network (each interface's traffic and addresses, the
+programs using it most, every connection and its program), GPU (busy, power, memory, and each program's
 GPU memory from DRM fdinfo), Sensors (the battery's health, cycles and
 capacity; every temperature, power and fan sensor), System (the
 machine, pressure, and the kernel's tunables, which can be set) and
@@ -3526,7 +3526,20 @@ zram, pressure, disks' requests, interfaces, battery, GPU, tunables,
 volumes every 5 s, which skips network and FUSE file systems because
 `statvfs` there can hang). Processes are read every sample (their
 name, command and owner kept by pid and start time); connections and
-GPU clients only while their sections show (`Control`).
+GPU clients only while their sections show (`Control`). The network
+comes from netlink (`netdiag.rs`, as `ss` and `ip -s link` read it): a
+`sock_diag` dump of every TCP and UDP socket, v4 and v6, with TCP's
+`tcp_info` (bytes acknowledged and received, at 120 and 128), and
+`RTM_GETLINK`'s `IFLA_STATS64` for each interface's counters (with
+/proc/net as the fallback). Each process's Sent and Received (columns
+in the list, and the Network section's "Programs Using the Network")
+are its TCP sockets' bytes since the last sample, a socket new since
+counting in full; whose socket is whose comes from the processes'
+`/proc/PID/fd` (`socket:[inode]`), read again only when a socket no one
+is known to have moves bytes, or every 5 s while the connections list
+shows. A process whose files can't be seen (another user's, without
+full access) has none. Settings saved before those columns came in at
+8 have their sort column moved along (`Settings::migrate`).
 
 A process's inspector (double-click, ⌘I, Inspect) reads `details.rs` on
 a worker at each sample: General (program, command, folder, parent,

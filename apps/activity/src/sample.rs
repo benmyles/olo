@@ -103,6 +103,12 @@ pub struct Proc {
     /// own user's processes, everyone's with full access).
     pub read: Option<f64>,
     pub written: Option<f64>,
+    /// Bytes its TCP sockets sent and received each second, when its open
+    /// files can be seen (as `read`).
+    #[serde(default)]
+    pub sent: Option<f64>,
+    #[serde(default)]
+    pub received: Option<f64>,
     /// Its command line, arguments spaced.
     pub command: String,
 }
@@ -607,6 +613,9 @@ struct Counters {
     io: HashMap<i32, (u64, u64)>,
     /// Per GPU client: engine nanoseconds.
     gpu_busy: HashMap<u64, u64>,
+    /// Per TCP socket (by inode): bytes sent and received, for processes'
+    /// network rates; None until a first look.
+    sockets: Option<HashMap<u64, (u64, u64)>>,
     /// Per idle state (by its index): µs spent in it, all cores.
     idle: Vec<u64>,
 }
@@ -746,6 +755,9 @@ fn processes(before: Before, elapsed: f64, users: &HashMap<u32, String>, page: u
             started,
             read: read_rate,
             written: write_rate,
+            // (From its sockets, after: `traffic`.)
+            sent: None,
+            received: None,
             command,
         });
     }
@@ -908,11 +920,13 @@ fn tcp_state(code: &str) -> &'static str {
 
 /// Every TCP and UDP connection, and who has it (where their open files
 /// can be seen).
-fn connections(procs: &[Proc]) -> Vec<Connection> {
-    // Socket inode → process.
-    let mut owner: HashMap<u64, i32> = HashMap::new();
+/// Socket inode → the process that has it open, and the processes whose
+/// open files could be seen.
+fn socket_owners(procs: &[Proc]) -> (HashMap<u64, i32>, std::collections::HashSet<i32>) {
+    let (mut owner, mut seen) = (HashMap::new(), std::collections::HashSet::new());
     for p in procs {
         let Ok(rd) = std::fs::read_dir(format!("/proc/{}/fd", p.pid)) else { continue };
+        seen.insert(p.pid);
         for fd in rd.flatten() {
             if let Ok(target) = std::fs::read_link(fd.path())
                 && let Some(inode) = target.to_str().and_then(|t| t.strip_prefix("socket:[")).and_then(|t| t.strip_suffix(']')).and_then(|t| t.parse().ok())
@@ -921,6 +935,87 @@ fn connections(procs: &[Proc]) -> Vec<Connection> {
             }
         }
     }
+    (owner, seen)
+}
+
+/// TCP's state by number (netlink's), as the list says it.
+fn tcp_state_of(n: u8) -> &'static str {
+    tcp_state(&format!("{n:02X}"))
+}
+
+fn endpoint((ip, port): (std::net::IpAddr, u16)) -> String {
+    match ip {
+        std::net::IpAddr::V6(v6) => format!("[{v6}]:{port}"),
+        v4 => format!("{v4}:{port}"),
+    }
+}
+
+/// Every connection from netlink's sockets (`netdiag::sockets`), with
+/// who has it.
+fn connections_of(sockets: &[crate::netdiag::Socket], owner: &HashMap<u64, i32>, procs: &[Proc]) -> Vec<Connection> {
+    let names: HashMap<i32, &str> = procs.iter().map(|p| (p.pid, p.name.as_str())).collect();
+    sockets
+        .iter()
+        .map(|s| {
+            let pid = owner.get(&s.inode).copied();
+            let state = if s.tcp { tcp_state_of(s.state) } else if s.state == 7 { "" } else { "Connected" };
+            Connection {
+                proto: if s.tcp { "TCP" } else { "UDP" }.into(),
+                local: endpoint(s.local),
+                remote: endpoint(s.remote),
+                state: state.into(),
+                pid,
+                process: pid.and_then(|p| names.get(&p).map(|n| (*n).to_owned())).unwrap_or_default(),
+            }
+        })
+        .collect()
+}
+
+/// Each process's TCP bytes sent and received each second, from its
+/// sockets' counters now and at the last look (`before`): a socket new
+/// since counts in full, one gone counts no more. Those whose files can't
+/// be seen get none.
+fn traffic(procs: &mut [Proc], sockets: &[crate::netdiag::Socket], owner: &HashMap<u64, i32>, seen: &std::collections::HashSet<i32>, before: Option<&HashMap<u64, (u64, u64)>>, elapsed: f64) -> HashMap<u64, (u64, u64)> {
+    let mut by_pid: HashMap<i32, (u64, u64)> = HashMap::new();
+    let mut now = HashMap::new();
+    for s in sockets.iter().filter(|s| s.tcp) {
+        now.insert(s.inode, (s.sent, s.received));
+        let (Some(pid), Some(before)) = (owner.get(&s.inode), before) else { continue };
+        let (was_sent, was_received) = before.get(&s.inode).copied().unwrap_or((0, 0));
+        let e = by_pid.entry(*pid).or_default();
+        e.0 += s.sent.saturating_sub(was_sent);
+        e.1 += s.received.saturating_sub(was_received);
+    }
+    let per = elapsed.max(1e-3);
+    for p in procs.iter_mut() {
+        let known = before.is_some() && seen.contains(&p.pid);
+        let (sent, received) = by_pid.get(&p.pid).copied().unwrap_or_default();
+        p.sent = known.then(|| sent as f64 / per);
+        p.received = known.then(|| received as f64 / per);
+    }
+    now
+}
+
+/// Each interface's counters: from netlink, else /proc/net/dev.
+fn links() -> Vec<crate::netdiag::Link> {
+    if let Ok(l) = crate::netdiag::interfaces() {
+        return l;
+    }
+    read("/proc/net/dev")
+        .lines()
+        .skip(2)
+        .filter_map(|l| {
+            let (iface, rest) = l.split_once(':')?;
+            let f: Vec<u64> = rest.split_whitespace().map(num).collect();
+            let g = |i: usize| f.get(i).copied().unwrap_or(0);
+            Some(crate::netdiag::Link { name: iface.trim().to_owned(), received: g(0), sent: g(8), errors: g(2) + g(10), drops: g(3) + g(11) })
+        })
+        .collect()
+}
+
+/// Every connection read from /proc/net, if netlink can't be had.
+fn connections(procs: &[Proc]) -> Vec<Connection> {
+    let (owner, _) = socket_owners(procs);
     let names: HashMap<i32, &str> = procs.iter().map(|p| (p.pid, p.name.as_str())).collect();
     let mut out = Vec::new();
     for (file, proto) in [("tcp", "TCP"), ("tcp6", "TCP"), ("udp", "UDP"), ("udp6", "UDP")] {
@@ -1073,7 +1168,7 @@ fn machine_model() -> String {
 }
 
 /// What isn't a series, read now.
-fn system(probe: &Probe, mi: &str, static_disks: &[Disk], disk_rates: &HashMap<String, (f64, f64)>) -> System {
+fn system(probe: &Probe, mi: &str, static_disks: &[Disk], disk_rates: &HashMap<String, (f64, f64)>, links: &[crate::netdiag::Link]) -> System {
     let mut s = System {
         // SAFETY: geteuid has no preconditions.
         privileged: unsafe { libc::geteuid() } == 0,
@@ -1132,21 +1227,19 @@ fn system(probe: &Probe, mi: &str, static_disks: &[Disk], disk_rates: &HashMap<S
         })
         .collect();
     let addrs = addresses();
-    let dev = read("/proc/net/dev");
     for n in &probe.interfaces {
         let d = Path::new("/sys/class/net").join(n);
-        let f: Vec<u64> = dev.lines().find_map(|l| l.split_once(':').filter(|(i, _)| i.trim() == n).map(|(_, r)| r.split_whitespace().map(num).collect())).unwrap_or_default();
-        let g = |i: usize| f.get(i).copied().unwrap_or(0);
+        let l = links.iter().find(|l| l.name == *n).cloned().unwrap_or_default();
         s.interfaces.push(Interface {
             name: n.clone(),
             up: read(d.join("operstate")).trim() == "up",
             mac: read(d.join("address")).trim().into(),
             mtu: num(&read(d.join("mtu"))),
             addresses: addrs.get(n).cloned().unwrap_or_default(),
-            received: g(0),
-            sent: g(8),
-            errors: g(2) + g(10),
-            drops: g(3) + g(11),
+            received: l.received,
+            sent: l.sent,
+            errors: l.errors,
+            drops: l.drops,
         });
     }
     if let Some(b) = &probe.battery {
@@ -1246,6 +1339,9 @@ pub fn start(control: Control, send_sources: impl FnOnce(Vec<Source>) + Send + '
             let mut prev: Option<(Instant, Counters)> = None;
             let mut known = Known::default();
             let mut volumes_at: Option<(Instant, Vec<Volume>)> = None;
+            // Socket inode → its process, and when every process's open
+            // files were last read for it.
+            let mut owners: (HashMap<u64, i32>, Option<Instant>) = (HashMap::new(), None);
             let mut health_at: Option<(Instant, Vec<Health>)> = None;
             let idle_names = idle_states(probe.cpus);
             loop {
@@ -1287,17 +1383,11 @@ pub fn start(control: Control, send_sources: impl FnOnce(Vec<Source>) + Send + '
                 values.push(cached.max(0.0));
                 values.push(kb("SwapTotal:") - kb("SwapFree:"));
 
-                for l in read("/proc/net/dev").lines().skip(2) {
-                    let Some((iface, rest)) = l.split_once(':') else { continue };
-                    let iface = iface.trim();
-                    if iface == "lo" {
-                        continue;
-                    }
-                    let f: Vec<u64> = rest.split_whitespace().map(num).collect();
-                    let (rx, tx) = (f.first().copied().unwrap_or(0), f.get(8).copied().unwrap_or(0));
-                    c.rx += rx;
-                    c.tx += tx;
-                    c.ifaces.insert(iface.to_owned(), (rx, tx));
+                let links = links();
+                for l in links.iter().filter(|l| l.name != "lo") {
+                    c.rx += l.received;
+                    c.tx += l.sent;
+                    c.ifaces.insert(l.name.clone(), (l.received, l.sent));
                 }
                 values.push(rate(c.rx, p.map(|p| p.rx)));
                 values.push(rate(c.tx, p.map(|p| p.tx)));
@@ -1403,7 +1493,7 @@ pub fn start(control: Control, send_sources: impl FnOnce(Vec<Source>) + Send + '
                 }
                 debug_assert_eq!(values.len(), probe.sources.len());
 
-                let processes = if control.want_processes.load(Ordering::Relaxed) {
+                let mut processes = if control.want_processes.load(Ordering::Relaxed) {
                     let (t0, i0) = (p.map(|p| p.ticks.clone()).unwrap_or_default(), p.map(|p| p.io.clone()).unwrap_or_default());
                     let (list, ticks, io) = processes(Before { ticks: &t0, io: &i0 }, elapsed.unwrap_or(1.0), &users, page, hz, &mut known);
                     c.ticks = ticks;
@@ -1412,8 +1502,35 @@ pub fn start(control: Control, send_sources: impl FnOnce(Vec<Source>) + Send + '
                 } else {
                     None
                 };
-                let connections = if control.want_connections.load(Ordering::Relaxed) { processes.as_deref().map(connections) } else { None };
-                let mut system = Box::new(system(&probe, &mi, &facts, &disk_rates));
+                // The sockets (netlink), whose owners give each process's
+                // traffic and each connection's program.
+                let want_connections = control.want_connections.load(Ordering::Relaxed);
+                let sockets = processes.as_ref().and_then(|_| crate::netdiag::sockets().ok());
+                let mut connections = None;
+                if let (Some(list), Some(sockets)) = (processes.as_mut(), &sockets) {
+                    // Who has each socket: every process's open files are
+                    // read again only when a socket nobody is known to
+                    // have is moving bytes (or, for the list of
+                    // connections, now and then): a socket keeps its owner.
+                    let before = p.and_then(|p| p.sockets.as_ref());
+                    let active_unknown = sockets.iter().any(|s| {
+                        s.tcp && s.inode != 0 && !owners.0.contains_key(&s.inode) && before.is_some_and(|b| b.get(&s.inode) != Some(&(s.sent, s.received)))
+                    });
+                    let stale = want_connections && owners.1.is_none_or(|t: Instant| t.elapsed() > Duration::from_secs(5));
+                    if active_unknown || stale || owners.1.is_none() {
+                        owners = (socket_owners(list).0, Some(now));
+                    }
+                    // (Whose files can be seen: as for its disk counters.)
+                    let seen: std::collections::HashSet<i32> = list.iter().filter(|p| p.read.is_some()).map(|p| p.pid).collect();
+                    c.sockets = Some(traffic(list, sockets, &owners.0, &seen, before, elapsed.unwrap_or(1.0)));
+                    if want_connections {
+                        connections = Some(connections_of(sockets, &owners.0, list));
+                    }
+                }
+                if want_connections && connections.is_none() {
+                    connections = processes.as_deref().map(self::connections);
+                }
+                let mut system = Box::new(system(&probe, &mi, &facts, &disk_rates, &links));
                 // Volumes every few seconds: they change rarely, and a
                 // slow disk can make statvfs wait.
                 if volumes_at.as_ref().is_none_or(|(t, _)| t.elapsed() > Duration::from_secs(5)) {

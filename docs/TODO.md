@@ -462,10 +462,11 @@ as they land (with the commit), add new ones as they come up.
   `dashboard` and `Graph`; graphs repaint a device pixel at a time (3.5%
   of a core for the Overview's six); every frame within 8.3 ms in the
   bench at 1×, 1.5× and 2× (the kit's lists got faster for it: one draw
-  for a list's text, a per-frame budget for new cells). Still to do:
-  each process's network traffic (netlink `sock_diag` with TCP's byte
-  counts, summed by the sockets' owners), and connections and
-  interfaces read by netlink rather than /proc/net.
+  for a list's text, a per-frame budget for new cells); each process's
+  network traffic (netlink `sock_diag` with TCP's byte counts, summed by
+  the sockets' owners: Sent and Received columns, "Programs Using the
+  Network"), and connections and interfaces read by netlink rather than
+  /proc/net (done 2026-10-30, `netdiag.rs`).
 - **Telegram, as an Olo app** (Ben, 2026-10-29): "please build an olo
   native telegram client that's an absolute pleasure to use and looks
   really great and supports all the core features of telegram". MTProto
