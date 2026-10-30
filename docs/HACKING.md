@@ -5211,6 +5211,24 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   gateway's own: `ANTHROPIC_BASE_URL` and the rest, or an `olo_pool`
   model provider in `config.toml`) is moved over as the pool starts
   (`clients::migrate`).
+- **Codex's daemon** (`codex_daemon.rs`): Codex's interactive sessions
+  run their turns in a daemon of Codex's own (`codex app-server`, pid in
+  `~/.codex/app-server-daemon/daemon.pid`), which lives for days and
+  reads `.env` only as it starts, so a window opened after the change
+  still talks through a daemon from before it. Every 10 s, and right
+  after the checkbox changes, the pool looks for a daemon that started
+  before `.env` last changed (its start in ticks from `/proc`, which the
+  pid file records too, so a reused pid isn't taken for it), asks it
+  over its control socket (the app-server's JSON-RPC over a WebSocket:
+  `initialize`, `thread/loaded/list`, `thread/read`) whether any session
+  is in the middle of a turn, and when none is, restarts it with Codex's
+  own `codex app-server daemon restart` (its start, pid file, locks and
+  updater are Codex's), run from the daemon's directory with its
+  environment (its sessions' commands get theirs from it) less the
+  pool's settings, which the new one reads from `.env` as it is now.
+  Codex's windows reconnect to the new daemon by themselves; a daemon
+  merely stopped leaves them "Reconnecting to server…", since nothing
+  starts another.
 - **Reset credits** (some subscriptions get a few, to reset their quota
   early): read with each sync (Claude's `cedar_ember` grants in the
   usage report, `?cedar_ember=1`; ChatGPT's
@@ -5256,7 +5274,10 @@ test -p olo-token-pool --test clients -- --ignored --nocapture`
 (`CODEX_LOG` for Codex's own log). Run it when either client updates:
 Codex 0.166 asks `/backend-api/wham/accounts/check` before a turn (the
 fake answers as ChatGPT does), and both must come out as their own
-programs to `peer`. For the window, start a session with a fixture `--home`
+programs to `peer`. `codex_daemon_follows_the_pool` starts Codex's
+daemon on a proxy that goes nowhere, changes `.env`, and checks the pool
+restarts it, sees it busy in the middle of a turn, and that the new one's
+turn goes through the pool. For the window, start a session with a fixture `--home`
 holding fixture credentials, a fake upstream
 (`OLO_POOL_UPSTREAM=http://127.0.0.1:PORT`: its `/oauth` takes
 refreshes), `OLO_POOL_PORT` and `OLO_POOL_KEYFILE`, and a fake

@@ -32,6 +32,7 @@ use olo_kit::{
 };
 use olo_token_pool::{
     clients,
+    codex_daemon::{self, Followed},
     gateway::{self, Pool, Shared},
     import::{self, Found},
     model::{Account, Outcome, Provider, RECENT, Request, Window, now},
@@ -48,8 +49,9 @@ enum Msg {
     Changed,
     /// Which clients use the pool.
     Clients([bool; 2]),
-    /// A client was pointed at the pool or back.
-    ClientSet(Provider, Result<(), String>),
+    /// A client was pointed at the pool or back (and, for Codex, whether
+    /// its daemon is on the new settings yet).
+    ClientSet(Provider, Result<(), String>, bool),
     /// A sign-in was read (for this account, when signing in again).
     SignedIn(Result<Found, String>, Option<String>),
     /// Something done in the background: what to say.
@@ -156,7 +158,12 @@ impl PoolApp {
             c[client_index(p)] = on;
         }
         let (proxy, port) = (self.proxy.clone(), self.proxy_port);
-        std::thread::spawn(move || proxy.send(Msg::ClientSet(p, clients::set(p, on, port))));
+        std::thread::spawn(move || {
+            let r = clients::set(p, on, port);
+            // Codex's daemon, between turns, restarted onto them now.
+            let waiting = p == Provider::Codex && r.is_ok() && matches!(codex_daemon::follow(), Ok(Followed::Waiting));
+            proxy.send(Msg::ClientSet(p, r, waiting))
+        });
     }
 
     /// Bring in this computer's sign-in for `p` (read off the UI thread).
@@ -695,12 +702,19 @@ impl App for PoolApp {
         match *msg {
             Msg::Changed => {}
             Msg::Clients(on) => self.clients = Some(on),
-            Msg::ClientSet(prov, r) => {
+            Msg::ClientSet(prov, r, waiting) => {
                 self.note = Some(match r {
                     Ok(()) => {
                         let on = self.clients.is_some_and(|c| c[client_index(prov)]);
-                        let verb = if on { "uses the pool from its next start" } else { "is back to its own sign-in from its next start" };
-                        (format!("{} {verb}.", prov.client()), false)
+                        // Codex's sessions run in its daemon, restarted onto
+                        // the settings between turns.
+                        let when = match prov {
+                            Provider::Codex if waiting => "once it finishes the turn it’s on",
+                            Provider::Codex => "from its next turn",
+                            Provider::Claude => "from its next start",
+                        };
+                        let verb = if on { "uses the pool" } else { "is back to its own sign-in" };
+                        (format!("{} {verb} {when}.", prov.client()), false)
                     }
                     Err(e) => (e, true),
                 });
@@ -842,6 +856,8 @@ fn main() -> std::process::ExitCode {
         // own) go through its proxy instead, as on their own subscription.
         let proxy_port = olo_token_pool::intercept::port();
         std::thread::spawn(move || clients::migrate(proxy_port));
+        // Codex's daemon, which outlives its windows, kept on the settings.
+        codex_daemon::keep_following(Duration::from_secs(10));
         let restored: Option<Value> = cx.restored_state().and_then(|s| serde_json::from_str(&s).ok());
         let mut app = PoolApp {
             shared,

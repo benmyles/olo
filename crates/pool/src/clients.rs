@@ -42,7 +42,7 @@ pub fn codex_dir() -> PathBuf {
     std::env::var_os("CODEX_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".codex"))
 }
 
-fn manifest_path() -> PathBuf {
+pub(crate) fn manifest_path() -> PathBuf {
     olo_xdg::config_dir().join("pool-clients.json")
 }
 
@@ -77,7 +77,7 @@ fn claude_env(port: u16) -> Vec<(&'static str, String)> {
 }
 
 /// Codex's, in its `.env`.
-fn codex_env(port: u16) -> Vec<(&'static str, String)> {
+pub(crate) fn codex_env(port: u16) -> Vec<(&'static str, String)> {
     vec![
         ("HTTPS_PROXY", crate::intercept::url(port)),
         ("SSL_CERT_FILE", crate::authority::bundle_path().display().to_string()),

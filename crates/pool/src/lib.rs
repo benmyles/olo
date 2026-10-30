@@ -6,6 +6,7 @@
 
 pub mod authority;
 pub mod clients;
+pub mod codex_daemon;
 pub mod gateway;
 pub mod import;
 pub mod intercept;

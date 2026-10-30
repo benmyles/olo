@@ -244,3 +244,134 @@ fn chrono_now() -> String {
     let y = yoe + era * 400 + i64::from(m <= 2);
     format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", secs / 3600, secs / 60 % 60, secs % 60)
 }
+
+/// Stops Codex's daemon, and the updater it starts beside it, when the
+/// test ends, however it ends.
+struct StopDaemon(std::path::PathBuf);
+
+impl Drop for StopDaemon {
+    fn drop(&mut self) {
+        if let Some(d) = olo_token_pool::codex_daemon::running() {
+            let _ = olo_token_pool::codex_daemon::stop(&d);
+        }
+        let updater = std::fs::read(self.0.join("app-server-daemon/daemon-updater.pid")).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
+        if let Some(pid) = updater.and_then(|v| v["pid"].as_i64()) {
+            // Only the one this test's Codex started.
+            let exe = std::fs::read_link(format!("/proc/{pid}/exe")).unwrap_or_default();
+            if exe.starts_with(self.0.parent().unwrap()) {
+                // SAFETY: plain kill(2) of this test's own process.
+                unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+            }
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "runs the real Codex (CODEX_BIN)"]
+async fn codex_daemon_follows_the_pool() {
+    use olo_token_pool::codex_daemon::{self, Control, Followed};
+    let Some(bin) = std::env::var_os("CODEX_BIN") else { panic!("set CODEX_BIN to Codex's binary") };
+    let dir = tempfile::Builder::new().prefix("olo-pool-codexd-").tempdir_in("/var/tmp").unwrap();
+    let home = dir.path().join("codex");
+    // SAFETY: set before anything else in this test reads them.
+    unsafe {
+        std::env::set_var("OLO_POOL_NO_TUNNEL", "1");
+        std::env::set_var("CODEX_HOME", &home);
+    }
+    // ChatGPT's backend, slow to answer, so a turn is seen going.
+    let seen: Arc<Mutex<Vec<String>>> = Default::default();
+    let s2 = seen.clone();
+    let fake = Router::new()
+        .route(
+            "/backend-api/codex/responses",
+            post(move |h: HeaderMap| {
+                let seen = s2.clone();
+                async move {
+                    seen.lock().unwrap().push(h.get("authorization").and_then(|v| v.to_str().ok()).unwrap_or("").to_owned());
+                    tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                    Response::builder().header("content-type", "text/event-stream").body(Body::from(codex_stream("Hello from the pool."))).unwrap()
+                }
+            }),
+        )
+        .route(
+            "/backend-api/wham/accounts/check",
+            axum::routing::get(|| async {
+                axum::Json(json!({
+                    "accounts": [{"id": "their-account", "plan_type": "pro", "workspace_backend_origin": "https://chatgpt.com", "account_routing_override": "NO_CONSTRAINT"}],
+                    "account_ordering": ["their-account"],
+                    "default_account_id": "their-account",
+                }))
+            }),
+        )
+        .fallback(|| async { Response::builder().status(404).body(Body::from("{}")).unwrap() });
+    let up = serve(fake).await;
+    let mut saved = Saved::default();
+    let mut a = Account::new("pooled".into(), "pooled".into(), Provider::Codex);
+    a.created = 1;
+    saved.accounts.push(a);
+    saved.credentials.insert("pooled".into(), Credential { access: "pool-account-token".into(), refresh: None, expires_at: Some(now() + 3600), account_id: Some("pool-account".into()) });
+    let shared = Shared::new(saved, None, Upstreams::fake(&format!("http://{up}")), || {});
+    let authority = Arc::new(Authority::ephemeral());
+    let roots = ["/etc/pki/tls/certs/ca-bundle.crt", "/etc/ssl/certs/ca-certificates.crt"].iter().find_map(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
+    let bundle = dir.path().join("pool-ca-bundle.pem");
+    std::fs::write(&bundle, format!("{roots}\n{}", authority.cert_pem)).unwrap();
+    let s = shared.clone();
+    let proxy = intercept::serve(shared.clone(), authority, 0, Arc::new(move |p| s.serves(p)), intercept::Who::Clients).await.unwrap();
+
+    // Codex with its daemon started before the pool was turned on (its
+    // proxy then one that goes nowhere, to keep it off the network).
+    let dotenv = |proxy: &str| format!("HTTPS_PROXY={proxy}\nSSL_CERT_FILE={}\nNO_PROXY=localhost,127.0.0.1,::1\n", bundle.display());
+    write(&home.join(".env"), &dotenv("http://127.0.0.1:9"));
+    let auth = json!({"https://api.openai.com/auth": {"chatgpt_plan_type": "pro", "chatgpt_account_id": "their-account", "chatgpt_user_id": "user-1"}, "email": "someone@example.com", "exp": now() + 3600});
+    let tokens = json!({"id_token": jwt(auth.clone()), "access_token": jwt(auth), "refresh_token": "their-refresh", "account_id": "their-account"});
+    write(&home.join("auth.json"), &json!({"OPENAI_API_KEY": null, "tokens": tokens, "last_refresh": chrono_now()}).to_string());
+    write(&home.join("config.toml"), "model = \"gpt-5-codex\"\n");
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(dir.path().join("tmp")).unwrap();
+    std::fs::create_dir_all(&work).unwrap();
+    let _stop = StopDaemon(home.clone());
+    let out = std::process::Command::new(&bin)
+        .args(["app-server", "daemon", "start"])
+        .current_dir(&work)
+        .env_clear()
+        .env("HOME", dir.path())
+        .env("CODEX_HOME", &home)
+        .env("PATH", "/usr/bin:/bin")
+        .env("TMPDIR", dir.path().join("tmp"))
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let old = codex_daemon::running().expect("Codex's daemon");
+    assert!(!codex_daemon::stale(&old));
+    assert_eq!(codex_daemon::follow().unwrap(), Followed::Current);
+
+    // The pool turned on: its settings are newer than the daemon, which,
+    // between turns, is restarted.
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    write(&home.join(".env"), &dotenv(&intercept::url(proxy.port())));
+    assert!(codex_daemon::stale(&old));
+    assert!(!codex_daemon::busy().unwrap());
+    assert_eq!(codex_daemon::follow().unwrap(), Followed::Restarted(old.pid));
+
+    // The new one goes through the pool; in the middle of a turn it's busy.
+    let new = codex_daemon::running().expect("Codex's daemon again");
+    assert_ne!(new.pid, old.pid);
+    assert!(!codex_daemon::stale(&new));
+    let work2 = work.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut c = Control::open().unwrap();
+        let t = c.call("thread/start", json!({"cwd": work2})).unwrap();
+        let id = t["thread"]["id"].as_str().unwrap().to_owned();
+        c.call("turn/start", json!({"threadId": id, "input": [{"type": "text", "text": "Say hello."}]})).unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        assert!(codex_daemon::busy().unwrap(), "a turn going isn't busy");
+        let done = c.wait_for("turn/completed", std::time::Duration::from_secs(60)).unwrap();
+        println!("turn: {done}");
+        assert!(!codex_daemon::busy().unwrap());
+    })
+    .await
+    .unwrap();
+    let seen = seen.lock().unwrap().clone();
+    assert!(!seen.is_empty() && seen.iter().all(|a| a == "Bearer pool-account-token"), "{seen:?}");
+}
