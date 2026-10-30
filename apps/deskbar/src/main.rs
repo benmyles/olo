@@ -17,6 +17,7 @@
 //! the right button opens the menu of its windows, to choose one.
 
 mod approve;
+mod sni;
 mod status;
 
 use std::{collections::HashMap, time::{Duration, Instant}};
@@ -110,6 +111,8 @@ enum Msg {
     Settings(Settings),
     Outputs(Vec<OutputInfo>),
     Installed(Installed),
+    /// Other programs' tray icons (`sni`).
+    Tray(Vec<sni::Item>),
 }
 
 /// What is installed, found on a worker (`scan_installed`): reading every
@@ -245,6 +248,11 @@ struct Deskbar {
     /// The apps whose dot is shaking (a notification just arrived), by
     /// `note_key`: since when.
     shaking: HashMap<String, Instant>,
+    /// Other programs' tray icons, and who to tell what's done to them.
+    tray_apps: Vec<sni::Item>,
+    tray_host: sni::Host,
+    /// Their pictures, by item, picture and size in device pixels.
+    tray_pictures: HashMap<(String, u64, u32), Option<egui::TextureHandle>>,
 }
 
 /// Which app a notification's dot belongs to.
@@ -422,23 +430,30 @@ impl Deskbar {
                 continue;
             }
             let app_id = windows[0].app_id.clone();
-            let (name, icon) = if let Some((n, i)) = our_app(&app_id) {
-                (n.to_owned(), Some(i.to_owned()))
-            } else if let Some(e) = self.entry(&app_id) {
-                (e.name.clone(), e.icon.clone())
-            } else if !app_id.is_empty() {
-                let last = app_id.rsplit('.').next().unwrap_or(&app_id);
-                let mut name: String = last.to_owned();
-                if let Some(f) = name.get_mut(0..1) {
-                    f.make_ascii_uppercase();
-                }
-                (name, Some(app_id.clone()))
-            } else {
-                (windows[0].title.clone(), None)
-            };
+            let (name, icon) = self.app_name(&app_id);
+            let name = if name.is_empty() { windows[0].title.clone() } else { name };
             teams.push(Team { key, name, icon, windows });
         }
         teams
+    }
+
+    /// What to call the app `app_id` (or a program's name), and its icon:
+    /// ours, its desktop entry's, else the id's last part capitalised.
+    fn app_name(&mut self, app_id: &str) -> (String, Option<String>) {
+        if let Some((n, i)) = our_app(app_id) {
+            (n.to_owned(), Some(i.to_owned()))
+        } else if let Some(e) = self.entry(app_id) {
+            (e.name.clone(), e.icon.clone())
+        } else if !app_id.is_empty() {
+            let last = app_id.rsplit('.').next().unwrap_or(app_id);
+            let mut name: String = last.to_owned();
+            if let Some(f) = name.get_mut(0..1) {
+                f.make_ascii_uppercase();
+            }
+            (name, Some(app_id.to_owned()))
+        } else {
+            (String::new(), None)
+        }
     }
 
     fn set_windows(&mut self, windows: Vec<WindowInfo>) {
@@ -1407,7 +1422,26 @@ impl App for Deskbar {
 
         // ---- tray: the date and time, then the status icons
         let st = self.status.clone();
-        let items = [!st.upgrade.is_empty(), !st.sharing.is_empty(), st.agent_screens > 0, st.battery.is_some(), st.wifi.is_some(), st.volume.is_some(), st.notifications.is_some(), true, true]
+        // Other programs' icons (those with something to say), each with
+        // its picture for this scale, made once.
+        let mut apps: Vec<sni::Item> = self.tray_apps.iter().filter(|i| i.status != sni::Status::Passive).cloned().collect();
+        // Untitled (Electron's): named by their program, as its row is.
+        for it in apps.iter_mut().filter(|i| i.title.is_empty() && !i.program.is_empty()) {
+            it.title = self.app_name(&it.program.clone()).0;
+        }
+        let px = (ICON * ui.ctx().pixels_per_point()).round() as u32;
+        let pictures: Vec<Option<egui::TextureHandle>> = apps
+            .iter()
+            .map(|it| {
+                let ctx = ui.ctx().clone();
+                self.tray_pictures
+                    .entry((it.key.clone(), it.serial, px))
+                    .or_insert_with(|| sni::picture(it, px).map(|img| ctx.load_texture(format!("tray:{}@{px}", it.key), img, egui::TextureOptions::LINEAR)))
+                    .clone()
+            })
+            .collect();
+        let items = apps.len()
+            + [!st.upgrade.is_empty(), !st.sharing.is_empty(), st.agent_screens > 0, st.battery.is_some(), st.wifi.is_some(), st.volume.is_some(), st.notifications.is_some(), true, true]
             .iter()
             .filter(|on| **on)
             .count();
@@ -1447,6 +1481,77 @@ impl App for Deskbar {
             draw(&painter, r);
             ui.interact(r.expand(3.0), egui::Id::unique(("tray", id)), Sense::click()).tip(tip)
         };
+        for (it, picture) in apps.iter().zip(&pictures) {
+            let draw = |p: &egui::Painter, r: Rect| {
+                // Its theme icon if it names one we have, else its picture.
+                if !it.icon.is_empty() && icons::paint(p, r, &it.icon) {
+                    return;
+                }
+                match picture {
+                    Some(tex) => {
+                        let at = icons::fit(p.ctx(), tex, r);
+                        p.image(tex.id(), at, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+                    }
+                    None => {
+                        icons::paint(p, r, "application");
+                    }
+                }
+            };
+            let tip = match (it.title.as_str(), it.tooltip.as_str()) {
+                (t, "") => t.to_owned(),
+                ("", tip) => tip.to_owned(),
+                (t, tip) if tip.starts_with(t) => tip.to_owned(),
+                (t, tip) => format!("{t}: {tip}"),
+            };
+            let resp = tray_item(ui, &it.key, &draw, tip);
+            let menu_id = egui::Id::unique(("tray-menu", &it.key));
+            let show_menu = |ui: &egui::Ui| {
+                if let Some(entries) = &it.menu
+                    && !menu::is_open(ui.ctx(), menu_id)
+                {
+                    menu::request_popup(ui.ctx(), MenuRequest { menu: sni::menu(&it.title, entries), source: menu_id, anchor: MenuAnchor::Below(resp.rect), selected: None });
+                }
+            };
+            let host = &self.tray_host;
+            let has_menu = it.menu.as_ref().is_some_and(|m| !m.is_empty());
+            if resp.clicked() {
+                if it.item_is_menu && has_menu {
+                    show_menu(ui);
+                    host.send(&it.key, sni::Do::MenuShown);
+                } else {
+                    host.send(&it.key, sni::Do::Activate);
+                }
+            }
+            if resp.secondary_clicked() {
+                if has_menu {
+                    show_menu(ui);
+                    host.send(&it.key, sni::Do::MenuShown);
+                } else {
+                    host.send(&it.key, sni::Do::ContextMenu);
+                }
+            }
+            if resp.middle_clicked() {
+                host.send(&it.key, sni::Do::SecondaryActivate);
+            }
+            if resp.hovered() {
+                let dy: f32 = ui.input(|i| {
+                    i.events
+                        .iter()
+                        .map(|e| match e {
+                            egui::Event::MouseWheel { delta, unit: egui::MouseWheelUnit::Point, .. } => delta.y,
+                            egui::Event::MouseWheel { delta, .. } => delta.y * 24.0,
+                            _ => 0.0,
+                        })
+                        .sum()
+                });
+                if dy.abs() >= 1.0 {
+                    host.send(&it.key, sni::Do::Scroll(-dy.round() as i32));
+                }
+            }
+            if let Some(id) = menu::take_chosen(ui.ctx(), menu_id).and_then(|cmd| cmd.strip_prefix("sni:").and_then(|n| n.parse::<i32>().ok())) {
+                host.send(&it.key, sni::Do::Chosen(id));
+            }
+        }
         if !st.upgrade.is_empty() {
             let n = st.upgrade.len();
             let tip = format!("A new build of Olo is ready ({n} program{}). Click to upgrade.", if n == 1 { "" } else { "s" });
@@ -1709,6 +1814,11 @@ impl App for Deskbar {
                     self.scanning = false;
                     self.entries.clear();
                 }
+                Msg::Tray(items) => {
+                    // Pictures no item has any more go.
+                    self.tray_pictures.retain(|(key, serial, _), _| items.iter().any(|i| i.key == *key && i.serial == *serial));
+                    self.tray_apps = items;
+                }
             }
             self.redraw(cx);
         }
@@ -1782,6 +1892,10 @@ fn main() {
             let proxy = proxy.clone();
             move |s| proxy.send(Msg::Status(s))
         });
+        let tray_host = sni::start(None, {
+            let proxy = proxy.clone();
+            move |items| proxy.send(Msg::Tray(items))
+        });
         Deskbar {
             proxy,
             bars,
@@ -1812,6 +1926,9 @@ fn main() {
             approve_until: None,
             approve: None,
             notes_seen: None,
+            tray_apps: Vec::new(),
+            tray_host,
+            tray_pictures: HashMap::new(),
             shaking: HashMap::new(),
         }
     });

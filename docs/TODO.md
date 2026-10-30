@@ -1082,8 +1082,10 @@ as they land (with the commit), add new ones as they come up.
     keyboard profiles; app menus where a toolkit exports one
     (`org.gtk.Menus`, `com.canonical.dbusmenu`) shown in Olo's menu bar
     style if worthwhile.
-  - **Notifications, tray and badges**: StatusNotifierItem (Slack's,
-    Discord's tray icons) in Deskbar's tray with their menus; the
+  - **Notifications, tray and badges** (tray done 2026-10-30: Deskbar is
+    the StatusNotifierWatcher and host, items in its tray with their
+    menus as Olo menus; tried with Slack's): ~~StatusNotifierItem (Slack's,
+    Discord's tray icons) in Deskbar's tray with their menus~~; the
     Unity LauncherEntry count (unread badges) on Deskbar's entries;
     progress on Deskbar (LauncherEntry progress).
   - **The rest of the portals**: ~~Inhibit~~ (done 2026-10-30: the

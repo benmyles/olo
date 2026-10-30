@@ -17,3 +17,5 @@ serde_json.workspace = true
 tracing.workspace = true
 libc = "0.2"
 zeroize = "1"
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
+image = { version = "0.25", default-features = false }

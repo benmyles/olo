@@ -2063,6 +2063,36 @@ a 22 px grid in a recessed well, in as many rows as they need, shared
 out evenly among them and each row centred (eight are two rows of
 four).
 
+Other programs' tray icons come first in the well (`sni.rs`): Deskbar is
+the session's StatusNotifierWatcher (`org.kde.StatusNotifierWatcher`,
+where Slack's, Discord's, Telegram's and Ayatana items register: by bus
+name, or by object path on their connection) and its host (if another
+program has the watcher's name, Deskbar hosts that one's items instead).
+A worker reaches the bus, holds the items, and reads each one's
+properties (picture, title, tooltip, status, `ItemIsMenu`) and its menu
+(`com.canonical.dbusmenu` `GetLayout`, every level) ahead of time, each
+read on a thread of its own so an app that doesn't answer holds up
+nothing; it reads them again on their change signals (`NewIcon`,
+`NewToolTip`, `NewStatus`…, `LayoutUpdated`), and drops an item when its
+bus name goes. Passive items aren't shown, and one needing attention
+shows its attention picture. A picture is the theme icon it names (or
+the file in its `IconThemePath`), else the pixmap it sent: the smallest
+at least 16 points of device pixels, else its biggest, scaled (alpha
+premultiplied) to exactly that size and kept per item, picture and
+size, so it is drawn a texel to a device pixel at any scale. Its tip is
+its title and tooltip; Electron's have no title, so they take their
+program's name (the owning process's executable, named as its row would
+be: `app_name`). A click activates it (opens its menu, for one that is
+only a menu), the right button opens its menu as an Olo menu (the
+entries' mnemonics gone, checkmarks and radio items as checks, disabled
+and hidden ones as they say, submenus as submenus) and tells the app
+(`AboutToShow`), a choice goes back as its `Event … clicked`, the middle
+button is its secondary action, and scrolling over it scrolls it. Items
+re-register by themselves when Deskbar restarts (they watch the
+watcher's name). To try it, run a throwaway Slack in a test session
+(sandbox HOME and `--user-data-dir`, `--proxy-server=127.0.0.1:9` so it
+reaches nothing): its icon and whole menu show.
+
 An app with notifications unread has a dot at its row's right end
 (`NOTE_DOT`, 7 points, on device pixels: `style::snap_centred`), in
 the colour the history marks unread ones with (`keyboard_navigation`,

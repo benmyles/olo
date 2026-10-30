@@ -4354,12 +4354,14 @@ dependencies = [
 name = "olo-deskbar"
 version = "0.1.0"
 dependencies = [
+ "image",
  "libc",
  "olo-kit",
  "olo-protocol",
  "olo-system",
  "serde_json",
  "tracing",
+ "zbus",
  "zeroize",
 ]
 

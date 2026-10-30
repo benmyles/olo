@@ -560,6 +560,10 @@ mod live {
         for (n, e) in &entries {
             println!("{n}: {} bytes, {} types", e.len(), e.matches(';').count());
         }
+        // OLO_CACHE_OF=DIR prints the cache that folder would get.
+        if let Some(dir) = std::env::var_os("OLO_CACHE_OF") {
+            print!("{}", super::mime_cache(std::path::Path::new(&dir)));
+        }
         // OLO_FOR_OTHERS=HOME writes them there, to try with GIO.
         if let Some(home) = std::env::var_os("OLO_FOR_OTHERS").map(std::path::PathBuf::from) {
             let apps = home.join(".local/share/applications");

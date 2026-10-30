@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Deskbar: other programs' tray icons
+
+*05:17* — Slack's, Discord's, Telegram's tray icons (StatusNotifierItem) now sit in Deskbar's tray with Olo's own: their pictures drawn a texel to a device pixel at every scale, their tips (named by the program when they give no title), and their menus as Olo menus, read ahead so they open at once.
+
+![Deskbar: other programs' tray icons](2026-10-30/051713-deskbar-other-programs-tray-icons.png)
+
 ### Open With: other programs' app chooser
 
 *04:58* — When an app opens a file or link through the OpenURI portal and the handler isn't settled, Olo's own Open With window asks (the AppChooser portal): what is opened, the apps that handle it with their icons and kinds, the last choice selected, the keyboard in the list.
