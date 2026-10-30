@@ -589,7 +589,12 @@ as they land (with the commit), add new ones as they come up.
     (2026-10-30): programs started from desktop entries run in
     `app-olo-<id>-<pid>.scope`, so the portal knows which program asks
     (Chrome and Slack already put themselves in scopes of their own).
-    **Next**: dmabufs passed through to apps that take them.
+    Dmabufs passed through (2026-10-30): an app that takes them gets
+    the GPU buffers app_server captures into, no CPU copy (checked with
+    GStreamer's pipewiresrc and the portal's own reader, a screen and a
+    window, resized, across an app_server reload); the rest get memory.
+    Frames carry timestamps now, and a share outlives a reload (it used
+    to end, taking app_server's stop as the window closing).
   - **Build** our own backend, `olo-portal`, started and supervised by
     olo-session: it owns `org.freedesktop.impl.portal.desktop.olo` over
     zbus (which we already use), shows the picker as a kit window,

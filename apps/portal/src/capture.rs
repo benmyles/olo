@@ -80,6 +80,8 @@ pub struct Capture {
     filled: bool,
     /// The frame asked for, until it comes.
     frame: Option<frame_v1::ExtImageCopyCaptureFrameV1>,
+    /// It was asked for into `buffer` (not one of the stream's).
+    into_own: bool,
 }
 
 /// What to capture.
@@ -158,12 +160,59 @@ impl Capture {
                 }
             })
         };
-        Ok(Capture { queue, state, shm, dmabuf, gbm, conn, name, session, buffer: None, fresh: true, filled: false, frame: None })
+        Ok(Capture { queue, state, shm, dmabuf, gbm, conn, name, session, buffer: None, fresh: true, filled: false, frame: None, into_own: false })
     }
 
     /// Whether frames come through the GPU (dmabufs).
     pub fn on_gpu(&self) -> bool {
         matches!(self.buffer, Some((_, Target::Dma(_), _)))
+    }
+
+    /// The modifiers app_server draws BGRx dmabufs with, where frames can
+    /// come as dmabufs (None: shared memory only).
+    pub fn dma_modifiers(&self) -> Option<Vec<u64>> {
+        self.gbm.as_ref()?;
+        self.dmabuf.as_ref()?;
+        self.state.dma_formats.iter().find(|(c, _)| *c == gbm::Format::Xrgb8888 as u32).map(|(_, m)| m.clone()).filter(|m| !m.is_empty())
+    }
+
+    /// A BGRx dmabuf of `w`×`h` for a stream's buffer, with the GPU's
+    /// choice of `modifiers`.
+    pub fn allocate(&self, w: u32, h: u32, modifiers: &[u64]) -> Result<gbm::BufferObject<()>, String> {
+        let gbm = self.gbm.as_ref().ok_or("no GPU")?;
+        gbm.create_buffer_object_with_modifiers2::<()>(w, h, gbm::Format::Xrgb8888, modifiers.iter().map(|&m| gbm::Modifier::from(m)), gbm::BufferObjectFlags::RENDERING)
+            .map_err(|e| format!("can't allocate a {w}×{h} dmabuf: {e}"))
+    }
+
+    /// `bo` as a buffer app_server can capture into (on this connection:
+    /// again after a reconnection).
+    pub fn import(&self, bo: &gbm::BufferObject<()>) -> Result<wl_buffer::WlBuffer, String> {
+        let dmabuf = self.dmabuf.as_ref().ok_or("no linux-dmabuf")?;
+        let qh = self.queue.handle();
+        let params = dmabuf.create_params(&qh, ());
+        let modifier = u64::from(bo.modifier());
+        for plane in 0..bo.plane_count() as i32 {
+            let fd = bo.fd_for_plane(plane).map_err(|e| e.to_string())?;
+            params.add(fd.as_fd(), plane as u32, bo.offset(plane), bo.stride_for_plane(plane), (modifier >> 32) as u32, modifier as u32);
+        }
+        let buffer = params.create_immed(bo.width() as i32, bo.height() as i32, bo.format() as u32, zwp_linux_buffer_params_v1::Flags::empty(), &qh, ());
+        params.destroy();
+        Ok(buffer)
+    }
+
+    /// Ask for the next frame into `buffer` (a stream's, which holds an
+    /// older frame, or none: drawn whole). `poll` says when it has come.
+    pub fn request_into(&mut self, buffer: &wl_buffer::WlBuffer) -> Result<(), String> {
+        let (w, h) = self.state.size.ok_or("app_server gave no size")?;
+        let qh = self.queue.handle();
+        self.state.frame = None;
+        let frame = self.session.create_frame(&qh, ());
+        frame.attach_buffer(buffer);
+        frame.damage_buffer(0, 0, w as i32, h as i32);
+        frame.capture();
+        self.frame = Some(frame);
+        self.into_own = false;
+        self.queue.flush().map_err(|e| e.to_string())
     }
 
     /// A dmabuf for frames of `w`×`h`, in BGRx (else BGRA), as app_server
@@ -278,12 +327,14 @@ impl Capture {
         }
         frame.capture();
         self.frame = Some(frame);
+        self.into_own = true;
         self.queue.flush().map_err(|e| e.to_string())
     }
 
     /// Read what app_server said, without waiting: Some once the frame
     /// asked for has come (or failed: then the size may have changed, and
-    /// the next request allocates again).
+    /// the next request allocates again). An error is the connection's
+    /// (app_server went away); that it ended the capture is `stopped`.
     pub fn poll(&mut self) -> Result<Option<Result<(), String>>, String> {
         if let Some(guard) = self.queue.prepare_read() {
             match guard.read() {
@@ -293,22 +344,21 @@ impl Capture {
             }
         }
         self.queue.dispatch_pending(&mut self.state).map_err(|e| e.to_string())?;
-        if self.state.stopped {
-            return Err("app_server stopped the capture".into());
-        }
         let Some(done) = self.state.frame.take() else { return Ok(None) };
         if let Some(frame) = self.frame.take() {
             frame.destroy();
         }
         match done {
-            Ok(()) => self.filled = true,
+            Ok(()) if self.into_own => self.filled = true,
+            Ok(()) => {}
             Err(_) => self.fresh = true,
         }
         Ok(Some(done))
     }
 
-    /// Whether app_server ended the session (what it showed went: a
-    /// window closed), rather than going away itself.
+    /// Whether app_server ended the session: what it showed went (a
+    /// window closed), or app_server is going away (a reload, which ends
+    /// the connection soon after).
     pub fn stopped(&self) -> bool {
         self.state.stopped
     }
@@ -352,6 +402,9 @@ impl Capture {
             if let Some(done) = self.poll()? {
                 done?;
                 break;
+            }
+            if self.state.stopped {
+                return Err("app_server stopped the capture".into());
             }
             self.queue.blocking_dispatch(&mut self.state).map_err(|e| e.to_string())?;
         }

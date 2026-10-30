@@ -10,10 +10,14 @@
 //! olo-portal capture-test OUT.png [OUTPUT]   write a frame of an output
 //! olo-portal stream-test [OUTPUT|-] [SECONDS] share one as a PipeWire
 //!                                 video source for that long
-//! olo-portal share-test OUT.png [--bus ADDRESS] [--hold SECS] [--types 1|2|3]  ask
-//!                                 xdg-desktop-portal for a screen, as an
-//!                                 app does, write the first frame that
+//! olo-portal share-test OUT.png [--bus ADDRESS] [--hold SECS] [--types 1|2|3] [--dmabuf|--linear]
+//!                                 ask xdg-desktop-portal for a screen, as
+//!                                 an app does, write the first frame that
 //!                                 comes, and keep sharing that long
+//!                                 (taking dmabufs, as Chrome does)
+//! olo-portal read-test NODE OUT.png [--hold SECS] [--dmabuf|--linear]
+//!                                 read a PipeWire node's frames, as an
+//!                                 app does
 //! olo-portal --stop SESSION       end a share (Deskbar's Stop Sharing)
 //! ```
 
@@ -378,7 +382,7 @@ impl App for Portal {
 }
 
 fn usage() -> std::process::ExitCode {
-    eprintln!("usage: olo-portal --service | --bus ADDRESS | capture-test OUT.png [OUTPUT] | stream-test [OUTPUT|-] [SECONDS] | share-test OUT.png [--bus ADDRESS] [--hold SECS] [--types 1|2|3] | --stop SESSION");
+    eprintln!("usage: olo-portal --service | --bus ADDRESS | capture-test OUT.png [OUTPUT] | stream-test [OUTPUT|-] [SECONDS] | share-test OUT.png [--bus ADDRESS] [--hold SECS] [--types 1|2|3] [--dmabuf|--linear] | read-test NODE OUT.png [--hold SECS] [--dmabuf|--linear] | --stop SESSION");
     std::process::ExitCode::FAILURE
 }
 
@@ -400,7 +404,12 @@ fn main() -> std::process::ExitCode {
         Some("capture-test") => return capture_test(args.get(1).map(String::as_str), args.get(2).map(String::as_str)).map_or_else(fail, |()| std::process::ExitCode::SUCCESS),
         Some("stream-test") => {
             let secs: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(5);
-            return match stream::run(capture::Source::Output(args.get(1).cloned().filter(|o| o != "-")), true, || {}) {
+            // (`window:ID` for a window, as capture-test.)
+            let source = match args.get(1).and_then(|o| o.strip_prefix("window:")).and_then(|id| id.parse().ok()) {
+                Some(id) => capture::Source::Window { id, app_id: String::new(), title: String::new() },
+                None => capture::Source::Output(args.get(1).cloned().filter(|o| o != "-")),
+            };
+            return match stream::run(source, true, || {}) {
                 Ok(share) => {
                     println!("node {} ({}×{})", share.node, share.size.0, share.size.1);
                     std::thread::sleep(std::time::Duration::from_secs(secs));
@@ -417,7 +426,20 @@ fn main() -> std::process::ExitCode {
             let hold = value("--hold").and_then(|s| s.parse().ok()).unwrap_or(0);
             // What it asks for: 1 screens, 2 windows, 3 either.
             let types = value("--types").and_then(|s| s.parse().ok()).unwrap_or(1);
-            return client::share_test(out, value("--bus"), hold, types).map_or_else(fail, |()| std::process::ExitCode::SUCCESS);
+            let modifiers = match read_modifiers(&args) {
+                Ok(m) => m,
+                Err(e) => return fail(e),
+            };
+            return client::share_test(out, value("--bus"), hold, types, modifiers).map_or_else(fail, |()| std::process::ExitCode::SUCCESS);
+        }
+        Some("read-test") => {
+            let (Some(node), Some(out)) = (args.get(1).and_then(|n| n.parse().ok()), args.get(2)) else { return usage() };
+            let hold = args.iter().position(|a| a == "--hold").and_then(|i| args.get(i + 1)).and_then(|s| s.parse().ok()).unwrap_or(0);
+            let modifiers = match read_modifiers(&args) {
+                Ok(m) => m,
+                Err(e) => return fail(e),
+            };
+            return client::read_test(node, out, modifiers, hold).map_or_else(fail, |()| std::process::ExitCode::SUCCESS);
         }
         Some("--service") => None,
         // Deskbar's Stop Sharing, to the running service.
@@ -475,6 +497,20 @@ fn main() -> std::process::ExitCode {
     std::process::ExitCode::SUCCESS
 }
 
+/// The modifiers a test reader asks for dmabufs with: `--dmabuf` those
+/// app_server draws (as an app on this GPU takes), `--linear` linear
+/// only; else none (memory).
+fn read_modifiers(args: &[String]) -> Result<Option<Vec<u64>>, String> {
+    if args.iter().any(|a| a == "--linear") {
+        return Ok(Some(vec![0]));
+    }
+    if !args.iter().any(|a| a == "--dmabuf") {
+        return Ok(None);
+    }
+    let c = capture::Capture::new(&capture::Source::Output(None), false)?;
+    c.dma_modifiers().map(Some).ok_or_else(|| "app_server draws no dmabufs here".to_owned())
+}
+
 fn capture_test(out: Option<&str>, output: Option<&str>) -> Result<(), String> {
     let out = out.ok_or("capture-test needs a file to write")?;
     // (`window:ID` for a window.)
@@ -494,6 +530,9 @@ fn capture_test(out: Option<&str>, output: Option<&str>) -> Result<(), String> {
         if let Some(done) = c.poll()? {
             done?;
             break format!("the next in {:?}", again.elapsed());
+        }
+        if c.stopped() {
+            return Err("app_server stopped the capture".into());
         }
         if again.elapsed() > std::time::Duration::from_secs(3) {
             break "no change in 3 s".to_owned();

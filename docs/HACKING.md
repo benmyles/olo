@@ -3308,10 +3308,24 @@ it shares (`App::busy`).
   loop with app_server's connection as one of its sources. The node is
   its own driver offering BGRx at the screen's size, up to 60 frames a
   second; while it streams, a frame is asked for at most at the rate the
-  app agreed to, app_server answers once the screen changed (a still
-  screen sends nothing), and the frame is copied from the capture's
-  buffer straight into PipeWire's (memfd, else plain memory). A screen
-  that changes size is offered again at its new size.
+  app agreed to, and app_server answers once the screen changed (a still
+  screen sends nothing). It offers two formats, dmabufs first: BGRx
+  with the modifiers app_server draws (`Capture::dma_modifiers`, a
+  choice marked `DONT_FIXATE`), then in memory. An app that takes
+  dmabufs (Chrome, OBS, GStreamer) says which of those it can import;
+  the portal picks of them what gbm allocates best, offers that alone,
+  and once it's agreed every one of the stream's buffers is a dmabuf of
+  the portal's (`ALLOC_BUFFERS`, made in `add_buffer`) that app_server
+  captures straight into (`Capture::request_into`, damaged whole, as
+  the buffers take turns): a frame goes from the screen to the app on
+  the GPU, never read back. An app that takes only memory gets memfds
+  the frame is copied into from the capture's own buffer. Each frame
+  carries a header (`SPA_META_Header`: when it was taken on the
+  monotonic clock, and its number). A screen or window that changes
+  size is offered again at its new size (new buffers). A frame that came
+  as one app left goes to the next. `olo-portal read-test NODE OUT.png
+  [--dmabuf|--linear]` reads a node as an app does (dmabufs read back
+  through gbm), and `share-test` takes the same flags.
 - **Capture** (`capture.rs` in both): the portal is a client of
   app_server's ext-image-copy-capture on the direct socket
   (`olo-$WAYLAND_DISPLAY-direct`: olo-wlproxy hides the protocol from
@@ -3338,8 +3352,11 @@ it shares (`App::busy`).
   only what its client draws (no tab or border, `render::window_picture`),
   whole even behind another tab of its group, at that screen's scale;
   its size is the client's, and the stream is offered again when it
-  resizes. Closing it stops its sessions, and the share ends at once
-  (`Capture::stopped`, where app_server going away is waited for). While
+  resizes. Closing it stops its sessions, and the share ends two
+  seconds later (`Capture::stopped`): app_server stops every session as
+  it goes too (a reload, an upgrade), so a stop is only an end if the
+  connection outlives it; else the share waits for app_server and
+  carries on, its dmabufs made known to the new connection. While
   the screen is locked a window's share pauses on its last frame. Both
   protocols are kept from outside programs (wlproxy's list doesn't have
   them). A window share reconnects after a reload by its id, or one with

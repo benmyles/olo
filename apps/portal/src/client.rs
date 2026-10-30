@@ -53,7 +53,7 @@ fn opts(pairs: &[(&str, Value<'static>)]) -> HashMap<String, OwnedValue> {
     pairs.iter().map(|(k, v)| ((*k).to_owned(), OwnedValue::try_from(v.clone()).unwrap())).collect()
 }
 
-pub fn share_test(out: &str, bus: Option<&str>, hold: u64, types: u32) -> Result<(), String> {
+pub fn share_test(out: &str, bus: Option<&str>, hold: u64, types: u32, modifiers: Option<Vec<u64>>) -> Result<(), String> {
     let conn = match bus {
         Some(a) => zbus::blocking::connection::Builder::address(a).and_then(|b| b.build()),
         None => zbus::blocking::Connection::session(),
@@ -84,7 +84,7 @@ pub fn share_test(out: &str, bus: Option<&str>, hold: u64, types: u32) -> Result
             }
         });
     }
-    let frame = read_frames(OwnedFd::from(fd), *node, std::time::Duration::from_secs(hold), closed.clone())?;
+    let frame = read_frames(Some(OwnedFd::from(fd)), *node, std::time::Duration::from_secs(hold), closed.clone(), modifiers.as_deref())?;
     write_png(out, frame.0, frame.1, frame.2, &frame.3)?;
     println!("wrote {out} ({}×{})", frame.0, frame.1);
     if hold > 0 {
@@ -97,15 +97,63 @@ pub fn share_test(out: &str, bus: Option<&str>, hold: u64, types: u32) -> Result
     Ok(())
 }
 
-/// The first frame of `node`, through the PipeWire connection `fd`; then
-/// frames go on being read for `hold` (or until `closed`), saying when
-/// the format changes and how many came each second.
-fn read_frames(fd: OwnedFd, node: u32, hold: std::time::Duration, closed: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Result<(u32, u32, usize, Vec<u8>), String> {
+/// Read `node`'s frames from this computer's PipeWire, as an app does:
+/// the first written to `out`. With `modifiers`, it takes dmabufs with
+/// one of them (as Chrome and OBS do), read back through the GPU.
+pub fn read_test(node: u32, out: &str, modifiers: Option<Vec<u64>>, hold: u64) -> Result<(), String> {
+    let frame = read_frames(None, node, std::time::Duration::from_secs(hold), Default::default(), modifiers.as_deref())?;
+    write_png(out, frame.0, frame.1, frame.2, &frame.3)?;
+    println!("wrote {out} ({}×{})", frame.0, frame.1);
+    Ok(())
+}
+
+/// The first render node's allocator, to read dmabufs back with.
+fn render_node() -> Result<gbm::Device<std::fs::File>, String> {
+    let mut nodes: Vec<_> = std::fs::read_dir("/dev/dri").map_err(|e| e.to_string())?.flatten().map(|e| e.path()).filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("renderD"))).collect();
+    nodes.sort();
+    let file = std::fs::OpenOptions::new().read(true).write(true).open(nodes.first().ok_or("no render node")?).map_err(|e| e.to_string())?;
+    gbm::Device::new(file).map_err(|e| e.to_string())
+}
+
+/// A frame that came as a dmabuf, read back: its rows, `w`×4 bytes each.
+fn read_dmabuf(gbm: &gbm::Device<std::fs::File>, d: &pw::spa::buffer::Data, (w, h): (u32, u32), modifier: u64) -> Result<Vec<u8>, String> {
+    // SAFETY: the buffer's descriptor, PipeWire's, open while it's dequeued.
+    let fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(d.fd()) };
+    let (stride, offset) = (d.chunk().stride(), d.chunk().offset() as i32);
+    let bo = gbm
+        .import_buffer_object_from_dma_buf_with_modifiers::<()>(1, [Some(fd), None, None, None], w, h, gbm::Format::Xrgb8888, gbm::BufferObjectFlags::empty(), [stride, 0, 0, 0], [offset, 0, 0, 0], gbm::Modifier::from(modifier))
+        .map_err(|e| format!("can't import the dmabuf: {e}"))?;
+    let row = w as usize * 4;
+    let mut out = vec![0u8; row * h as usize];
+    bo.map(0, 0, w, h, |m| {
+        for (src, dst) in m.buffer().chunks(m.stride() as usize).zip(out.chunks_mut(row)) {
+            dst.copy_from_slice(&src[..row]);
+        }
+    })
+    .map_err(|e| format!("can't read the dmabuf: {e}"))?;
+    Ok(out)
+}
+
+/// The first frame of `node`, through the PipeWire connection `fd` (else
+/// this computer's); then frames go on being read for `hold` (or until
+/// `closed`), saying when the format changes and how many came each
+/// second. With `modifiers`, dmabufs are asked for first.
+fn read_frames(
+    fd: Option<OwnedFd>,
+    node: u32,
+    hold: std::time::Duration,
+    closed: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    modifiers: Option<&[u64]>,
+) -> Result<(u32, u32, usize, Vec<u8>), String> {
     use pw::spa::{param::format::FormatProperties as P, pod, utils};
     pw::init();
     let mainloop = pw::main_loop::MainLoopRc::new(None).map_err(|e| e.to_string())?;
     let context = pw::context::ContextRc::new(&mainloop, None).map_err(|e| e.to_string())?;
-    let core = context.connect_fd_rc(fd, None).map_err(|e| format!("can't reach PipeWire: {e}"))?;
+    let core = match fd {
+        Some(fd) => context.connect_fd_rc(fd, None),
+        None => context.connect_rc(None),
+    }
+    .map_err(|e| format!("can't reach PipeWire: {e}"))?;
     let stream = pw::stream::StreamBox::new(
         &core,
         "olo-portal share-test",
@@ -113,24 +161,31 @@ fn read_frames(fd: OwnedFd, node: u32, hold: std::time::Duration, closed: std::s
     )
     .map_err(|e| e.to_string())?;
     let size = std::rc::Rc::new(std::cell::Cell::new((0u32, 0u32)));
+    let modifier = std::rc::Rc::new(std::cell::Cell::new(None::<u64>));
     let frames = std::rc::Rc::new(std::cell::Cell::new(0u32));
     let got: std::rc::Rc<std::cell::RefCell<Option<(u32, u32, usize, Vec<u8>)>>> = Default::default();
+    let gbm = if modifiers.is_some() { Some(render_node()?) } else { None };
     let weak = mainloop.downgrade();
     let _listener = stream
         .add_local_listener_with_user_data(())
         .param_changed({
-            let size = size.clone();
+            let (size, modifier) = (size.clone(), modifier.clone());
             move |_, _, id, param| {
                 let Some(param) = param.filter(|_| id == pw::spa::param::ParamType::Format.as_raw()) else { return };
                 let mut info = pw::spa::param::video::VideoInfoRaw::new();
                 if info.parse(param).is_ok() {
                     size.set((info.size().width, info.size().height));
-                    println!("format {}×{}", info.size().width, info.size().height);
+                    let dma = info.flags().bits() & pw::spa::sys::SPA_VIDEO_FLAG_MODIFIER != 0;
+                    modifier.set(dma.then(|| info.modifier()));
+                    match modifier.get() {
+                        Some(m) => println!("format {}×{} as dmabufs (modifier {m:#x})", info.size().width, info.size().height),
+                        None => println!("format {}×{}", info.size().width, info.size().height),
+                    }
                 }
             }
         })
         .process({
-            let (size, got, frames) = (size.clone(), got.clone(), frames.clone());
+            let (size, got, frames, modifier) = (size.clone(), got.clone(), frames.clone(), modifier.clone());
             move |s, _| {
                 let Some(mut buffer) = s.dequeue_buffer() else { return };
                 let datas = buffer.datas_mut();
@@ -143,19 +198,55 @@ fn read_frames(fd: OwnedFd, node: u32, hold: std::time::Duration, closed: std::s
                 if got.borrow().is_some() {
                     return;
                 }
-                if let Some(bytes) = d.data() {
-                    let (w, h) = size.get();
-                    *got.borrow_mut() = Some((w, h, stride, bytes[..len.min(bytes.len())].to_vec()));
-                    if hold.is_zero()
-                        && let Some(l) = weak.upgrade()
-                    {
-                        l.quit();
+                let (w, h) = size.get();
+                if d.type_() == pw::spa::buffer::DataType::DmaBuf {
+                    let read = match (&gbm, modifier.get()) {
+                        (Some(gbm), Some(m)) => read_dmabuf(gbm, d, (w, h), m),
+                        _ => Err("a dmabuf not asked for".into()),
+                    };
+                    match read {
+                        Ok(rows) => {
+                            println!("the first frame came as a dmabuf");
+                            *got.borrow_mut() = Some((w, h, w as usize * 4, rows));
+                        }
+                        Err(e) => println!("{e}"),
                     }
+                } else if let Some(bytes) = d.data() {
+                    println!("the first frame came in memory");
+                    *got.borrow_mut() = Some((w, h, stride, bytes[..len.min(bytes.len())].to_vec()));
+                }
+                if got.borrow().is_some()
+                    && hold.is_zero()
+                    && let Some(l) = weak.upgrade()
+                {
+                    l.quit();
                 }
             }
         })
         .register()
         .map_err(|e| e.to_string())?;
+    let mut offered = Vec::new();
+    if let Some(modifiers) = modifiers.filter(|m| !m.is_empty()) {
+        use pw::spa::{
+            pod::{ChoiceValue, Property, PropertyFlags, Value},
+            utils::{Choice, ChoiceEnum, ChoiceFlags},
+        };
+        let mut format = pod::object!(
+            utils::SpaTypes::ObjectParamFormat,
+            pw::spa::param::ParamType::EnumFormat,
+            pod::property!(P::MediaType, Id, pw::spa::param::format::MediaType::Video),
+            pod::property!(P::MediaSubtype, Id, pw::spa::param::format::MediaSubtype::Raw),
+            pod::property!(P::VideoFormat, Id, pw::spa::param::video::VideoFormat::BGRx),
+            pod::property!(P::VideoSize, Choice, Range, Rectangle, utils::Rectangle { width: 1920, height: 1080 }, utils::Rectangle { width: 1, height: 1 }, utils::Rectangle { width: 16384, height: 16384 }),
+            pod::property!(P::VideoFramerate, Choice, Range, Fraction, utils::Fraction { num: 30, denom: 1 }, utils::Fraction { num: 0, denom: 1 }, utils::Fraction { num: 240, denom: 1 }),
+        );
+        format.properties.push(Property {
+            key: P::VideoModifier.as_raw(),
+            flags: PropertyFlags::MANDATORY | PropertyFlags::DONT_FIXATE,
+            value: Value::Choice(ChoiceValue::Long(Choice(ChoiceFlags::empty(), ChoiceEnum::Enum { default: modifiers[0] as i64, alternatives: modifiers.iter().map(|&m| m as i64).collect() }))),
+        });
+        offered.push(pod::serialize::PodSerializer::serialize(std::io::Cursor::new(Vec::new()), &pod::Value::Object(format)).map_err(|e| format!("{e:?}"))?.0.into_inner());
+    }
     let format = pod::object!(
         utils::SpaTypes::ObjectParamFormat,
         pw::spa::param::ParamType::EnumFormat,
@@ -165,8 +256,8 @@ fn read_frames(fd: OwnedFd, node: u32, hold: std::time::Duration, closed: std::s
         pod::property!(P::VideoSize, Choice, Range, Rectangle, utils::Rectangle { width: 1920, height: 1080 }, utils::Rectangle { width: 1, height: 1 }, utils::Rectangle { width: 16384, height: 16384 }),
         pod::property!(P::VideoFramerate, Choice, Range, Fraction, utils::Fraction { num: 30, denom: 1 }, utils::Fraction { num: 0, denom: 1 }, utils::Fraction { num: 240, denom: 1 }),
     );
-    let bytes = pod::serialize::PodSerializer::serialize(std::io::Cursor::new(Vec::new()), &pod::Value::Object(format)).map_err(|e| format!("{e:?}"))?.0.into_inner();
-    let mut params = [pod::Pod::from_bytes(&bytes).ok_or("bad format")?];
+    offered.push(pod::serialize::PodSerializer::serialize(std::io::Cursor::new(Vec::new()), &pod::Value::Object(format)).map_err(|e| format!("{e:?}"))?.0.into_inner());
+    let mut params: Vec<&pod::Pod> = offered.iter().filter_map(|b| pod::Pod::from_bytes(b)).collect();
     stream
         .connect(pw::spa::utils::Direction::Input, Some(node), pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS, &mut params)
         .map_err(|e| e.to_string())?;

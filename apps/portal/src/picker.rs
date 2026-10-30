@@ -231,6 +231,10 @@ impl Picker {
                     let want = if *screen { screens } else { windows };
                     let every = Duration::from_millis(if *screen { 500 } else { 2000 });
                     let Some(cap) = capture.as_mut() else { continue };
+                    if cap.stopped() {
+                        *capture = None;
+                        continue;
+                    }
                     match cap.poll() {
                         Ok(Some(Ok(()))) => {
                             if let Some(image) = shrink(cap, want) {
