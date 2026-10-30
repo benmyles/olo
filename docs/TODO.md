@@ -1463,12 +1463,28 @@ as they land (with the commit), add new ones as they come up.
   hanging off an edge back in (`put_back_at`: back exactly while some
   of its top edge is on a display).
 - **wm-fuzz seeds 3 and 5** (found 2026-10-30; seed 5's also on the
-  app_server before the fixes above): seed 5 step 213, a Terminal to the
-  next display and back doesn't come back (1772, 8 → 2486, 544); step
-  246, placing a window moves another; seed 3 step 268, placing a
-  window moves another; step 271, putting a window in a group resizes
-  its group mate (250 → 290 wide). Same session as above, `--seed N
-  --steps 300 --keep-going`.
+  app_server before the fixes above). Seeds reproduce only from a fresh,
+  empty `--home` (a used one restores windows and changes the path).
+  Fixed (3a8568a): a display back from mirroring kept its closed Deskbar
+  bars, empty, in its layer map, which moved its tiling area over (seed
+  5 step 213's window came back off the display); and a window its app
+  keeps bigger than its tile jumped and came back each time it was put
+  back. Still to do:
+  - seed 5 step 213: a Terminal to the next display joins Terminal's
+    group there and takes its tile (the bottom-right quarter); back
+    home it is re-tiled into that quarter, not its own, as joining
+    changed what `move_to_output`'s trip compares (`arrived == here`)
+    and the round trip isn't seen. Coming back should put back what it
+    left with when only an automatic join changed it.
+  - seed 5 step 246: placing window 11 moves hidden window 8 to the
+    same frame (8 was in a group with 3; 11 joined 14's at step 243).
+  - seed 3 step 243, now and then (one run in three): `group_window 15
+    with 10 at 2` leaves 15 in Tracker 6's group: 10 is alone and
+    Tracker groups by app, so 15 takes Tracker's app key, which 6's
+    group on the other display has too. Not seen by hand.
+  Run: `tsession start NAME 2560x1600,1920x1080 --session --shell --home
+  EMPTY` (`TSESSION_PROFILE=release`), `wm-fuzz NAME --seed N --steps 300
+  --keep-going`.
 
 - ~~**Windows while rearranging displays**~~ (Ben): each window stays on
   its screen at the same place as screens are dragged around

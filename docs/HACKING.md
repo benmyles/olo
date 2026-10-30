@@ -1937,7 +1937,13 @@ launcher lists them. The panel list Deskbar shows is
   land on it; `OutputInfo::mirror_of` reports it) and the backends draw
   the source's elements on it through `render::FrameElements::Mirror`,
   scaled to fit and centred (`render::fit`). Preferences hides a mirror
-  from the arrangement and offers only mode, refresh and "Use as".
+  from the arrangement and offers only mode, refresh and "Use as". The
+  layer surfaces that named the mirror are closed as it goes
+  (`move_auto_layers`); one going away is looked for in every display's
+  layer map, the mirrors' too (`layer_destroyed`), or the dead one stays
+  in the mirror's map and is still there when it extends again (a
+  Deskbar bar left there, empty, moved the tiling area over: so the
+  usable area goes by a Deskbar layer that is drawn, `usable_area`).
 * Memory buffers drawn by app_server (twitcher, wallpaper, identify) must
   pass the full buffer as `src` to `MemoryRenderBufferRenderElement::
   from_buffer`; without it the buffer counts as logical pixels and is
