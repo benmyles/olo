@@ -279,7 +279,7 @@ fn sort_entries(entries: &mut [Entry], key: SortKey, asc: bool) {
     entries.sort_by(|a, b| {
         // Folders first, then the chosen key; names break ties.
         let folders = b.is_dir.cmp(&a.is_dir);
-        let name = || a.name.to_lowercase().cmp(&b.name.to_lowercase());
+        let name = || olo_kit::files::natural_cmp(&a.name, &b.name);
         let o = match key {
             SortKey::Name => name(),
             SortKey::Size => a.size.cmp(&b.size).then_with(name),

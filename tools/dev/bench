@@ -97,7 +97,7 @@ APPS = [
     App("terminal", ["olo-terminal", "-e", "sh", "-c", "seq 1 60000; exec sh"], type_text="echo benchmark", settle=3.0),
     App("viewer", ["olo-viewer", os.path.join(HOME, "Pictures", "big.png")], settle=2.5),
     App("notifications", ["olo-notifications", "--bus", f"unix:path=/tmp/olo-dev/{NAME}/bus"]),
-    App("activity", ["olo-activity"]),
+    App("activity", ["olo-activity"], rows=True),
     App("deskcalc", ["olo-deskcalc"], type_text="12345+678="),
     App("disk-usage", ["olo-disk-usage", HOME], settle=3.0),
     App("logs", ["olo-logs"], settle=3.0),

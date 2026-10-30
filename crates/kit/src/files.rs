@@ -108,6 +108,47 @@ fn sniff_text(path: &Path) -> bool {
     n > 0 && std::str::from_utf8(&buf[..n]).is_ok() && !buf[..n].contains(&0)
 }
 
+/// Names in the order people expect: ignoring case, and runs of digits
+/// by their value ("file-2" before "file-10", "cpuhp/9" before
+/// "cpuhp/10"), as Finder and modern file managers sort. Equal names
+/// otherwise (leading zeros, case) fall back to plain order.
+pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let (mut x, mut y) = (a.chars().peekable(), b.chars().peekable());
+    loop {
+        match (x.peek().copied(), y.peek().copied()) {
+            (None, None) => return a.cmp(b),
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(c), Some(d)) if c.is_ascii_digit() && d.is_ascii_digit() => {
+                // Each run of digits as a number: without its leading
+                // zeros, the longer is the bigger, else digit by digit.
+                let run = |it: &mut std::iter::Peekable<std::str::Chars>| {
+                    let mut digits = String::new();
+                    while let Some(&c) = it.peek().filter(|c| c.is_ascii_digit()) {
+                        digits.push(c);
+                        it.next();
+                    }
+                    digits.trim_start_matches('0').to_owned()
+                };
+                let (m, n) = (run(&mut x), run(&mut y));
+                let o = m.len().cmp(&n.len()).then_with(|| m.cmp(&n));
+                if o != Ordering::Equal {
+                    return o;
+                }
+            }
+            (Some(c), Some(d)) => {
+                let o = c.to_lowercase().cmp(d.to_lowercase());
+                if o != Ordering::Equal {
+                    return o;
+                }
+                x.next();
+                y.next();
+            }
+        }
+    }
+}
+
 pub fn format_size(n: u64) -> String {
     const UNITS: [&str; 5] = ["bytes", "KB", "MB", "GB", "TB"];
     if n < 1024 {
@@ -145,3 +186,17 @@ pub fn format_time(t: Option<SystemTime>) -> String {
     )
 }
 
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn natural_order() {
+        use std::cmp::Ordering::*;
+        assert_eq!(super::natural_cmp("file-2", "file-10"), Less);
+        assert_eq!(super::natural_cmp("cpuhp/10", "cpuhp/9"), Greater);
+        assert_eq!(super::natural_cmp("Apple", "banana"), Less);
+        assert_eq!(super::natural_cmp("a01", "a1"), Less);
+        assert_eq!(super::natural_cmp("a", "a1"), Less);
+        assert_eq!(super::natural_cmp("x", "x"), Equal);
+    }
+}

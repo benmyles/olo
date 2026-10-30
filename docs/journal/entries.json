@@ -2284,5 +2284,23 @@
   "title": "Portal: other programs' global shortcuts",
   "caption": "An app's keys that work whatever has the keyboard (push-to-talk) are asked for once, listing each and its keys; ones Olo already has show as in use. Allowed ones are held by app_server for the app, through upgrades.",
   "image": "2026-10-30/054012-portal-other-programs-global-shortcuts.png"
+ },
+ {
+  "time": "2026-10-30T07:50:45",
+  "title": "Activity Monitor: sections, cards and live graphs",
+  "caption": "A sidebar of sections (Overview, Processes, CPU, Memory, Disks, Network, GPU, Sensors, System, Graphs), each figure live in the sidebar; the Overview's cards lead into each section, and clicking a graph shows what was busiest at that moment. Graphs scroll a device pixel at a time; built from the kit's new Sidebar, dashboard and Graph.",
+  "image": "2026-10-30/075045-activity-monitor-sections-cards-and-live-graphs.png"
+ },
+ {
+  "time": "2026-10-30T07:50:51",
+  "title": "Activity Monitor: the CPU, dark",
+  "caption": "Each core with its frequency, each cluster's governor, where idle time goes (WFI, powered down) and the load.",
+  "image": "2026-10-30/075051-activity-monitor-the-cpu-dark.png"
+ },
+ {
+  "time": "2026-10-30T07:53:36",
+  "title": "Activity Monitor: every process, as a list or a tree",
+  "caption": "Searched and filtered with the kit's search (user:, state:, kind:, pid:), sorted by any of twelve columns (names in natural order), as a tree of who started whom (kernel threads folded here). Double-click or \u2318I for its inspector: threads, open files, memory, environment, cores, limits, priority and signals.",
+  "image": "2026-10-30/075336-activity-monitor-every-process-as-a-list-or-a-tr.png"
  }
 ]

@@ -96,3 +96,7 @@ integrations|two chunky interlocking jigsaw puzzle pieces, one Be blue and one B
 github|a chunky round charcoal-black badge, seen in three-quarter view like a thick coin standing on the desk, with the white GitHub octocat cat silhouette embossed on its face and a thin silver rim
 google-chrome|a chunky round badge, seen in three-quarter view like a thick coin standing on the desk, its face the Chrome wheel: a ring in three red, yellow and green segments around a white rim and a bright blue centre circle
 slack|a chunky square tile with rounded corners, seen in three-quarter view standing on the desk, a white face with the Slack mark embossed on it: four rounded bars and dots in aubergine-blue, green, yellow and pink-red forming a pinwheel hash
+cpu|a square processor chip lying on the desk, a silver heat spreader on a green board, rows of gold pins along its edges
+memory|a memory module standing on its long edge, a green circuit board with a row of black chips and a gold contact strip along the bottom
+gpu|a graphics card lying on the desk, a charcoal shroud with two round fans and a gold connector edge
+sensors|a thermometer standing upright on a small round base, with a silver scale and a red bulb

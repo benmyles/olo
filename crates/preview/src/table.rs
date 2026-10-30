@@ -224,7 +224,7 @@ fn compare(a: &str, b: &str) -> Ordering {
         (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(Ordering::Equal),
         (Some(_), None) => Ordering::Less,
         (None, Some(_)) => Ordering::Greater,
-        (None, None) => natural(a, b),
+        (None, None) => olo_kit::files::natural_cmp(a, b),
     }
 }
 
@@ -234,42 +234,6 @@ fn number(s: &str) -> Option<f64> {
         return None;
     }
     t.parse::<f64>().ok()
-}
-
-/// "file2" before "file10", "a" with "A".
-fn natural(a: &str, b: &str) -> Ordering {
-    let (mut x, mut y) = (a.chars().peekable(), b.chars().peekable());
-    loop {
-        match (x.peek().copied(), y.peek().copied()) {
-            (None, None) => return a.cmp(b),
-            (None, Some(_)) => return Ordering::Less,
-            (Some(_), None) => return Ordering::Greater,
-            (Some(p), Some(q)) if p.is_ascii_digit() && q.is_ascii_digit() => {
-                let take = |it: &mut std::iter::Peekable<std::str::Chars>| {
-                    let mut n = String::new();
-                    while let Some(d) = it.peek().copied().filter(char::is_ascii_digit) {
-                        n.push(d);
-                        it.next();
-                    }
-                    n
-                };
-                let (m, n) = (take(&mut x), take(&mut y));
-                let (m, n) = (m.trim_start_matches('0'), n.trim_start_matches('0'));
-                match m.len().cmp(&n.len()).then_with(|| m.cmp(n)) {
-                    Ordering::Equal => {}
-                    o => return o,
-                }
-            }
-            (Some(p), Some(q)) => {
-                match p.to_lowercase().cmp(q.to_lowercase()) {
-                    Ordering::Equal => {}
-                    o => return o,
-                }
-                x.next();
-                y.next();
-            }
-        }
-    }
 }
 
 /// The first row names the columns: every cell of it has text, none is

@@ -437,7 +437,7 @@ as they land (with the commit), add new ones as they come up.
   other apps -- use it as an opportunity to enhance the kit too": rulers,
   style menus, tables, page views and the like are kit widgets,
   documented in HACKING.
-- **Activity Monitor, revamped** (Ben, 2026-10-29, at the end):
+- ~~**Activity Monitor, revamped**~~ (Ben, 2026-10-29, at the end):
   "revamp activity monitor to include everything a nerd could ever want
   to know, with live views, drill downs, tuning settings and ability to
   take actions etc. it should look really slick / aesthetically
@@ -455,6 +455,17 @@ as they land (with the commit), add new ones as they come up.
   or lsof); elevated access through Olo's polkit agent, asked once at
   start, for what needs it. Reusable graphs and inspectors go in the
   kit.
+  Done (2026-10-30): the sections, the inspector, full access through
+  pkexec (the sampler runs as root; only in the person's own session),
+  idle states, NVMe health (read with full access: not yet seen on this
+  machine as root), looking back from any graph; the kit's `Sidebar`,
+  `dashboard` and `Graph`; graphs repaint a device pixel at a time (3.5%
+  of a core for the Overview's six); every frame within 8.3 ms in the
+  bench at 1×, 1.5× and 2× (the kit's lists got faster for it: one draw
+  for a list's text, a per-frame budget for new cells). Still to do:
+  each process's network traffic (netlink `sock_diag` with TCP's byte
+  counts, summed by the sockets' owners), and connections and
+  interfaces read by netlink rather than /proc/net.
 - **Telegram, as an Olo app** (Ben, 2026-10-29): "please build an olo
   native telegram client that's an absolute pleasure to use and looks
   really great and supports all the core features of telegram". MTProto

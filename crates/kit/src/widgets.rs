@@ -2235,15 +2235,35 @@ impl Cell<'_> {
 
     fn galley(&self, g: std::sync::Arc<egui::Galley>) {
         let r = self.rect.shrink2(vec2(m::CELL_INSET, 0.0));
+        let ctx = self.painter.ctx();
+        // The column's edge and the inset each on device pixels: a header
+        // and the rows under it (in a scroll view, a hair apart) put the
+        // text on the same pixel; the inset alone (7.5 pixels at 1.25×)
+        // rounded the two apart.
+        let ppp = ctx.pixels_per_point();
+        let px = |v: f32| (v * ppp).round() / ppp;
         let x = match self.align {
-            Align::Max => r.right() - g.size().x,
+            Align::Max => px(self.rect.right()) - px(m::CELL_INSET) - g.size().x,
             Align::Center => r.center().x - g.size().x / 2.0,
-            Align::Min => r.left(),
+            Align::Min => px(self.rect.left()) + px(m::CELL_INSET),
         };
         let size = g.job.sections.first().map_or(style::PLAIN_SIZE, |s| s.format.font_id.size);
-        let pos = style::text_origin(self.painter.ctx(), &g, x, r.center().y, size);
-        style::describe_text(self.painter.ctx(), egui::accesskit::Role::Cell, g.text(), Rect::from_min_size(pos, g.size()).intersect(r).intersect(self.painter.clip_rect()), Some(self.selected));
-        self.painter.galley(pos, g, self.text_color);
+        let pos = style::text_origin(ctx, &g, x, r.center().y, size);
+        let at = Rect::from_min_size(pos, g.size());
+        style::describe_text(ctx, egui::accesskit::Role::Cell, g.text(), at.intersect(r).intersect(self.painter.clip_rect()), Some(self.selected));
+        // Text cut to fit stays in its cell without the cell's clip: drawn
+        // under the list's, a list's text is one mesh and one draw, not a
+        // draw a cell (a hundred rows of a dozen columns took 4.6 ms to
+        // send the GPU).
+        match ctx.data(|d| d.get_temp::<Rect>(list_text_clip())) {
+            Some(clip) if self.rect.contains_rect(at) => {
+                // (Set, not `with_clip_rect`, which is within the cell's.)
+                let mut p = self.painter.clone();
+                p.set_clip_rect(clip);
+                p.galley(pos, g, self.text_color)
+            }
+            _ => self.painter.galley(pos, g, self.text_color),
+        }
     }
 }
 
@@ -2269,6 +2289,12 @@ struct CachedCell {
 /// The list whose cells are being drawn (`ColumnListView::show`).
 fn showing_list() -> Id {
     Id::unique("olo-showing-list")
+}
+
+/// The clip of the rows being drawn, for their cells' text
+/// (`Cell::galley`).
+fn list_text_clip() -> Id {
+    Id::unique("olo-list-text-clip")
 }
 
 fn cell_galleys() -> Id {
@@ -2311,6 +2337,11 @@ pub struct ColumnListView<'a> {
 }
 
 pub const HEADER_HEIGHT: f32 = 18.0;
+
+/// How long a frame lays out a list's cells before leaving the rest to
+/// the next (`ColumnListView`): well inside a frame at 120 Hz, with the
+/// rest of the frame to draw.
+const CELLS_BUDGET: std::time::Duration = std::time::Duration::from_millis(3);
 
 impl<'a> ColumnListView<'a> {
     pub fn new(id: impl std::hash::Hash + std::fmt::Debug, columns: &'a [Column], rows: usize, state: &'a mut ListState) -> Self {
@@ -2366,7 +2397,11 @@ impl<'a> ColumnListView<'a> {
     fn show_cells(self, ui: &mut Ui, cell: &mut impl FnMut(&Cell)) -> ListResponse {
         let p = style::palette(ui.ctx());
         let mut out = ListResponse::default();
-        let outer = ui.available_rect_before_wrap();
+        // On device pixels: the header is drawn here and the rows in a
+        // scroll view, and from between two pixels (a list at x 33 at
+        // 1.25×) they rounded apart, the header's text a pixel off its
+        // column's.
+        let outer = style::snap(ui.ctx(), ui.available_rect_before_wrap());
         let widths_id = self.id.with("widths");
         let mut widths: Vec<f32> = ui
             .ctx()
@@ -2429,6 +2464,14 @@ impl<'a> ColumnListView<'a> {
                 content_left = left;
                 content_top = ui.max_rect().top() - range.start as f32 * row_h;
                 let sense = if draggable || state.multiple { Sense::click_and_drag() } else { Sense::click() };
+                ui.ctx().data_mut(|d| d.insert_temp(list_text_clip(), ui.clip_rect()));
+                // A list shown at last, or a page of rows new at once (a
+                // hundred rows of a dozen columns laid out for the first
+                // time took 8 ms): the cells past what a frame can lay out
+                // come the next frame, when those before are laid out
+                // already. Rows already shown take a fraction of this.
+                let cells_from = std::time::Instant::now();
+                let mut later = false;
                 for row in range {
                     let (r, resp) = ui.allocate_exact_size(vec2(right - left, row_h), sense);
                     let r = Rect::from_min_max(pos2(left, r.top()), pos2(right, r.bottom()));
@@ -2493,6 +2536,11 @@ impl<'a> ColumnListView<'a> {
                         painter.rect_filled(r, 0.0, sel);
                     }
                     let text_color = if selected { c(p.list_selected_item_text) } else { c(p.list_item_text) };
+                    later = later || cells_from.elapsed() > CELLS_BUDGET;
+                    if later {
+                        ui.ctx().request_repaint();
+                        continue;
+                    }
                     let mut x = left;
                     for (i, col) in columns.iter().enumerate() {
                         let w = if i == columns.len() - 1 { (right - x).max(0.0) } else { widths[i] };
@@ -2502,6 +2550,7 @@ impl<'a> ColumnListView<'a> {
                         x += w;
                     }
                 }
+                ui.ctx().data_mut(|d| d.remove::<Rect>(list_text_clip()));
                 // Below the last row: a click clears the selection, a drag
                 // draws a band.
                 let rest = Rect::from_min_max(pos2(left, content_top + rows as f32 * row_h), pos2(right, ui.clip_rect().bottom()));

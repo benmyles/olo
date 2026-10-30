@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Activity Monitor: every process, as a list or a tree
+
+*07:53* — Searched and filtered with the kit's search (user:, state:, kind:, pid:), sorted by any of twelve columns (names in natural order), as a tree of who started whom (kernel threads folded here). Double-click or ⌘I for its inspector: threads, open files, memory, environment, cores, limits, priority and signals.
+
+![Activity Monitor: every process, as a list or a tree](2026-10-30/075336-activity-monitor-every-process-as-a-list-or-a-tr.png)
+
+### Activity Monitor: the CPU, dark
+
+*07:50* — Each core with its frequency, each cluster's governor, where idle time goes (WFI, powered down) and the load.
+
+![Activity Monitor: the CPU, dark](2026-10-30/075051-activity-monitor-the-cpu-dark.png)
+
+### Activity Monitor: sections, cards and live graphs
+
+*07:50* — A sidebar of sections (Overview, Processes, CPU, Memory, Disks, Network, GPU, Sensors, System, Graphs), each figure live in the sidebar; the Overview's cards lead into each section, and clicking a graph shows what was busiest at that moment. Graphs scroll a device pixel at a time; built from the kit's new Sidebar, dashboard and Graph.
+
+![Activity Monitor: sections, cards and live graphs](2026-10-30/075045-activity-monitor-sections-cards-and-live-graphs.png)
+
 ### Portal: other programs' global shortcuts
 
 *05:40* — An app's keys that work whatever has the keyboard (push-to-talk) are asked for once, listing each and its keys; ones Olo already has show as in use. Allowed ones are held by app_server for the app, through upgrades.

@@ -698,7 +698,16 @@ with it; a space continues a name but starts nothing, and
 Quick Look then); `.empty_text("No lines match.")` says so in an empty list; a cell
 draws plain text with `text`/`text_with` or sections of their own colours
 with `text_job`; `text_cached(key, || job)` keeps the galley from frame to
-frame while `key`, what the text is made from, stays the same), `TabView`, `TabStrip` (a row of document tabs under
+frame while `key`, what the text is made from, stays the same. A list is
+fast at any size: a cell's text (cut to fit) is drawn under the rows'
+clip, not the cell's, so a list's text is one mesh and one draw call (a
+hundred rows of a dozen columns, a draw a cell, took 4.6 ms to send the
+GPU), what a cell paints itself (an icon, a bar) still in its cell; a
+frame lays out cells for at most `CELLS_BUDGET` (3 ms), and the rows past
+that (a list's first frame, a page new at once) come the next frame,
+when those before are laid out; the frame is on device pixels and a
+cell's text x is its column's edge and the inset, each on a pixel, so a
+header and its rows agree at 1.25×), `TabView`, `TabStrip` (a row of document tabs under
 a menu or tool bar, `STRIP_HEIGHT` (30) tall, roomier than a window tab,
 each tab `STRIP_ROW` (26) of it standing on the bottom edge, its icon
 under the menu bar's first title: `StripTab { label, icon,
@@ -928,6 +937,42 @@ alert a child (`xdg_toplevel.set_parent`) of the app's focused window, or
 of `WindowOptions::parent(id)` (or `parent_opt(Option<id>)`) when given, and app_server opens any
 window with a parent over it as BAlert does: centred across, a quarter
 of the way down.
+
+### Sidebars, dashboards and live graphs (`olo_kit::sidebar`, `dashboard`, `graph`)
+
+`Sidebar::new(id, &rows, &mut chosen).show(ui, rect)` is a source list
+down a window's left (Activity Monitor's sections): `Row::new(icon,
+label)` with an optional quiet `.value("12%")` at the right, and
+`Row::heading(label)`s over groups of rows; ↑ and ↓ step over the
+headings while it has the keyboard; agents find each row as a selectable
+`ListItem` with its value. Its rows are on a grid of their own (the
+review doesn't hold them level with the content beside it).
+
+`dashboard` is cards on the card gutter (`gutter(ui, rect)`):
+`Card::new(title).figure("12%").caption("…").clickable(true).show(ui,
+rect)` gives the content rect under its head (`Card::height(content,
+caption)` the height it needs; a clickable card is a button named by its
+title, its figure the value); `facts(ui, rect, &[(label, value)])` (and
+`facts_two`, `facts_in` for a panel's colours, `facts_label_width` to
+line a control up with the values) are label: value rows; `legend(ui,
+rect, &items)` swatches, names and values that wrap (`legend_height`;
+a transparent `LegendItem` colour is a figure with no swatch); `meter(ui,
+rect, &[(color, part)], total)` a rounded bar of parts of a whole;
+`flow(area, n, min_width, max_columns, height)` lays cards out in as many
+columns as fit. Each card is a grid of its own for the review.
+
+`Graph::new(id, &series, now).span(s).max(m).unit(&f).show(ui, rect)` is
+a live graph of `Series::new(name, color, &samples)` (time, value pairs,
+oldest first; NaN a gap; `.fill(true)` a faint fill under the line; a
+series of another unit `.top(t)` and `.format(&f)` of its own): time
+runs right to left, `now` at the right edge, so it scrolls smoothly
+between samples, asking for the next frame only when they have moved a
+device pixel (a minute over 600 pixels is 10 frames a second, not 120
+drawing the same pixels); a point a device column at most (peaks kept);
+hovering shows a time line and each value then, and `GraphResponse`
+says the time hovered or clicked (to look back: Activity Monitor's "At
+2:04 PM" card). `.plain()` drops the sunken well, for a card.
+`nice_ceiling(v)` is a scale's top.
 
 ### Searching and filtering (`olo_kit::search`)
 
@@ -3413,24 +3458,62 @@ scrolled to (`Editor::view`), through a reload.
 
 ## Activity Monitor (apps/activity)
 
-ProcessController and Pulse in one window: Graphs and Processes tabs.
-`sample.rs` reads everything from /proc and /sys on a worker thread
-(`probe` finds the sources once: CPU, memory, cache, swap, network and
-disk rates, faults, context switches, processes and threads, frequency,
-battery, every core, and every hwmon temperature, power and fan with a
-readable name); the interval and whether to read the process table are
-atomics the window sets (`Control`), so the table is only read while its
-tab shows. Rates are per second whatever the interval.
+Everything the machine is doing, in sections down a `Sidebar` (each row
+with its figure now): Overview (cards of CPU, memory, network, disks,
+GPU and the battery or the hottest sensor, each a way into its section,
+and the busiest processes), Processes, CPU (by kind of time, each core
+with its frequency, each cluster's frequencies and governor, load),
+Memory (with zram's ratio, pressure stall information and every
+/proc/meminfo counter), Disks (each disk's traffic, how busy it is, its
+requests and their latency; volumes and how full they are; I/O
+pressure), Network (each interface's traffic and addresses, every
+connection and its program), GPU (busy, power, memory, and each program's
+GPU memory from DRM fdinfo), Sensors (the battery's health, cycles and
+capacity; every temperature, power and fan sensor), System (the
+machine, pressure, and the kernel's tunables, which can be set) and
+Graphs (Haiku's ActivityMonitor: graphs of any sources, each scaled to
+its own range, from the context menu). ⌘1 to ⌘9 are the sections
+(`app_keys`: `activity.overview` and on). Click any graph to look back:
+the Overview's last card says what was busiest at that moment (top CPU
+and disk processes are kept for each sample, half an hour of them).
 
-Each graph is a list of source keys (`activity.json`), scaled by the
-source's own maximum or a nice ceiling of what's shown; the context menu
-toggles sources (Processors and Sensors in submenus) and adds or removes
-graphs. The process list sorts by any column and filters by name or
-exact ID and by owner; the selection follows the PID and clears when the
-process is hidden or exits, so a re-sort never moves it onto another
-process. Quit sends SIGTERM; Force Quit asks first, then SIGKILL; EPERM
-is an alert. **In tests, only ever quit a process you started, selected
-by its exact ID.**
+`sample.rs` reads /proc and /sys on a worker: `probe` finds the sources
+once (cores, frequencies, disks of a gigabyte and up, interfaces, the
+GPU via Asahi's `agx_stats` or amdgpu's `gpu_busy_percent`, every hwmon
+sensor named for people); each sample has a value per source (NaN until
+a rate can be known) and a `System` of what isn't a series (policies,
+zram, pressure, disks' requests, interfaces, battery, GPU, tunables,
+volumes every 5 s, which skips network and FUSE file systems because
+`statvfs` there can hang). Processes are read every sample (their
+name, command and owner kept by pid and start time); connections and
+GPU clients only while their sections show (`Control`).
+
+A process's inspector (double-click, ⌘I, Inspect) reads `details.rs` on
+a worker at each sample: General (program, command, folder, parent,
+start, CPU time, scheduling, cores, context switches, I/O, control group,
+namespaces it doesn't share, priority to change), Threads (CPU each, by
+two readings), Open Files (sockets named as connections; double-click a
+file for Tracker), Memory (smaps_rollup and mappings summed by file),
+Environment and Resources (the cores it may run on, how the kernel
+treats it when memory runs out, its limits: raise the soft limit to the
+hard or lift both). Send Signal offers every common signal; Quit is
+SIGTERM, Force Quit asks first. `actions.rs` does all of it (nice and
+affinity for every thread; tunables only those in `TUNABLES`, governors
+only those the CPU offers).
+
+Full access: `helper.rs` runs Activity Monitor's own program as root
+(`olo-activity --helper`, through pkexec, which asks for the password
+with Olo's polkit agent), and the sampler runs there, streaming samples,
+details and actions' results back as JSON lines (NaN as null); the local
+sampler pauses meanwhile. It asks at start (File ▸ Ask for Full Access
+at Start, on by default), or when an action needs it (an alert offers
+it, and does the action once it comes). It is only ever asked for in
+the person's own session (`OLO_REAL_SESSION`, not on an agent's screen):
+elsewhere polkit's dialog would come up on the person's screen.
+`OLO_ACTIVITY_HELPER=direct` runs the helper as this user, without
+pkexec (tests: the whole protocol, nothing elevated); `=off` never.
+**In tests, only ever signal, renice or limit a process you started,
+found by its exact ID (`pid:N` in the search).**
 
 ## DriveSetup (apps/drive-setup, olo_system::disks, udisks-fake)
 
