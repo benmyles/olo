@@ -310,8 +310,22 @@ impl Replay {
             ui.ctx().request_repaint();
         }
 
+        // What the history adds up to.
+        let st = history::stats(&self.name, &self.actions, false, history::now_ms());
+        let mins = |ms: u64| if ms >= 3_600_000 { format!("{} h {} min", ms / 3_600_000, ms / 60_000 % 60) } else if ms >= 60_000 { format!("{} min", ms / 60_000) } else { format!("{} s", ms / 1000) };
+        let programs: Vec<&str> = st.programs.keys().map(String::as_str).collect();
+        let n: usize = st.actions.values().sum();
+        let summary = format!(
+            "{n} actions{}  ·  in use {}  ·  {}",
+            if st.failed > 0 { format!(" ({} failed)", st.failed) } else { String::new() },
+            mins(st.active_ms),
+            if programs.is_empty() { "no programs run".to_owned() } else { programs.join(", ") }
+        );
+        let stats_r = Rect::from_min_size(pos2(rect.left(), bar.bottom() + m::TIGHT), vec2(rect.width(), m::CONTROL_HEIGHT - 4.0));
+        style::label(ui.painter(), stats_r.left() + 2.0, stats_r.center().y, Align::Min, &summary, style::plain_font(), style::disabled_text(&p));
+
         // The actions, the one at the playhead selected.
-        let body = Rect::from_min_max(pos2(rect.left(), bar.bottom() + m::SPACING), rect.max);
+        let body = Rect::from_min_max(pos2(rect.left(), stats_r.bottom() + m::TIGHT), rect.max);
         let list_r = Rect::from_min_size(body.min, vec2(LIST_W, body.height()));
         let current = self.action_at(self.playhead);
         let selected = current.and_then(|i| self.shown.iter().position(|&s| s == i));

@@ -34,6 +34,9 @@ const LIST_W: f32 = 180.0;
 
 enum Msg {
     Screens(Vec<Screen>),
+    /// Every screen to list: running, or stopped with a history kept;
+    /// each with when it was last used, most recent first.
+    Rows(Vec<Row>),
     Frame { name: String, image: ColorImage },
     Failed { name: String, message: String },
     Started(Result<Screen, String>),
@@ -75,6 +78,43 @@ pub struct Viewer {
     /// and that history.
     history: bool,
     replay: Option<crate::replay::Replay>,
+    rows: Vec<Row>,
+}
+
+/// A screen in the list.
+#[derive(Debug, Clone)]
+pub struct Row {
+    name: String,
+    last_used: Option<u64>,
+}
+
+/// The screens running (`running`) and those stopped with a history, by
+/// last use, most recent first. Reads the histories: off the UI thread.
+fn rows(running: &[Screen]) -> Vec<Row> {
+    let own = std::env::var("OLO_SCREEN").ok();
+    let mut names: Vec<String> = running.iter().map(|s| s.name.clone()).collect();
+    let kept: Vec<String> = crate::history::names().into_iter().filter(|n| !names.contains(n) && Some(n) != own.as_ref()).collect();
+    names.extend(kept);
+    let mut rows: Vec<Row> = names
+        .into_iter()
+        .map(|name| {
+            let last_used = crate::history::read(&name).iter().map(|a| a.at + a.ms).max();
+            Row { name, last_used }
+        })
+        .collect();
+    rows.sort_by_key(|r| (std::cmp::Reverse(r.last_used), r.name.clone()));
+    rows
+}
+
+/// "3 h ago".
+fn ago(ms: u64, now: u64) -> String {
+    let s = now.saturating_sub(ms) / 1000;
+    match s {
+        0..60 => "just now".into(),
+        60..3600 => format!("{} min ago", s / 60),
+        3600..86_400 => format!("{} h ago", s / 3600),
+        _ => format!("{} days ago", s / 86_400),
+    }
 }
 
 /// The screens to show: all but the one this viewer itself is on, if it
@@ -274,6 +314,7 @@ impl Viewer {
             busy: false,
             history: false,
             replay: None,
+            rows: Vec::new(),
         };
         if v.selected.as_ref().is_none_or(|s| !v.screens.iter().any(|x| &x.name == s)) {
             v.selected = v.screens.first().map(|s| s.name.clone());
@@ -363,7 +404,7 @@ impl Viewer {
         let p = style::palette(ui.ctx());
         let c = style::c;
         let full = ui.max_rect().shrink(m::WINDOW_INSET);
-        if self.screens.is_empty() {
+        if self.rows.is_empty() {
             let text = "No agent screens. An agent starts one with “olo-screen start”, or choose New Screen.";
             style::label(ui.painter(), full.center().x, full.center().y - m::CONTROL_HEIGHT, Align::Center, text, style::plain_font(), c(p.panel_text));
             let r = Rect::from_center_size(pos2(full.center().x, full.center().y + m::SPACING), vec2(120.0, m::CONTROL_HEIGHT));
@@ -377,8 +418,16 @@ impl Viewer {
         // The screens, then the chosen one.
         let list_r = Rect::from_min_size(full.min, vec2(LIST_W, full.height()));
         let columns = [Column::new("Screen", LIST_W - 2.0)];
-        let names: Vec<String> = self.screens.iter().map(|s| s.name.clone()).collect();
-        let sizes: Vec<String> = self.screens.iter().map(|s| format!("{} × {}", s.width, s.height)).collect();
+        let names: Vec<String> = self.rows.iter().map(|r| r.name.clone()).collect();
+        let now = crate::history::now_ms();
+        let sizes: Vec<String> = self
+            .rows
+            .iter()
+            .map(|r| match self.screens.iter().find(|s| s.name == r.name) {
+                Some(s) => format!("{} × {}", s.width, s.height),
+                None => format!("stopped · {}", r.last_used.map_or_else(|| "never used".to_owned(), |t| ago(t, now))),
+            })
+            .collect();
         self.list.selected = self.selected.as_ref().and_then(|n| names.iter().position(|x| x == n)).into_iter().collect();
         let out = ui
             .scope_builder(egui::UiBuilder::new().max_rect(list_r), |ui| {
@@ -405,8 +454,12 @@ impl Viewer {
         let Some(name) = self.selected.clone() else { return };
         let tabs = Rect::from_min_size(right.min, vec2(160.0, m::CONTROL_HEIGHT));
         let (live_r, hist_r) = (Rect::from_min_size(tabs.min, vec2(80.0, tabs.height())), Rect::from_min_size(pos2(tabs.left() + 80.0, tabs.top()), vec2(80.0, tabs.height())));
-        if ui.put(live_r, Button::new("Live").pushed(!self.history).min_width(80.0)).clicked() {
+        let running = self.screen().is_some();
+        if ui.add_enabled_ui(running, |ui| ui.put(live_r, Button::new("Live").pushed(!self.history).min_width(80.0))).inner.clicked() {
             self.history = false;
+        }
+        if !running {
+            self.history = true;
         }
         if ui.put(hist_r, Button::new("History").pushed(self.history).min_width(80.0)).clicked() && !self.history {
             self.history = true;
@@ -670,11 +723,20 @@ impl App for Viewer {
         match *msg {
             Msg::Screens(list) => {
                 self.screens = list;
-                if self.screen().is_none() {
-                    let first = self.screens.first().map(|s| s.name.clone());
+                let (proxy, running) = (cx.proxy(), self.screens.clone());
+                std::thread::spawn(move || proxy.send(Msg::Rows(rows(&running))));
+            }
+            Msg::Rows(rows) => {
+                self.rows = rows;
+                if self.selected.as_ref().is_none_or(|n| !self.rows.iter().any(|r| &r.name == n)) {
+                    let first = self.rows.first().map(|r| r.name.clone());
                     self.stop_controlling();
                     self.selected = None;
                     self.select(first);
+                }
+                // A stopped one has only its history.
+                if self.screen().is_none() && self.selected.is_some() {
+                    self.history = true;
                 }
             }
             Msg::Frame { name, image } => {

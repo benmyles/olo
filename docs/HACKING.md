@@ -4050,7 +4050,10 @@ with nothing happening", `ab_glyph`); `progress` gets how far it is and
 can stop it. Olo's Viewer plays the result. In the window, History's
 Export Video… asks where (the kit's Save panel, `NAME.mp4` in ~/Videos)
 and exports on a worker, the bar saying how far it is with Cancel, then
-where it went (`Replay::start_export`).
+where it went (`Replay::start_export`). The list has every screen
+running and every one stopped with a history kept, by last use
+(`viewer::rows`, read on a worker; a stopped one says when, and has only
+its History), and History's second line sums it (`history::stats`).
 
 Input that plays out over time is paced, a batch per IPC request with
 waits between (`Screen::input_paced`): `drag` presses, moves in steps

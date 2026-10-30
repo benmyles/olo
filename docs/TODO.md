@@ -1010,9 +1010,9 @@ as they land (with the commit), add new ones as they come up.
   `history NAME --look N`), and History and Replay in the window
   (`replay.rs`), and MP4 export for agents (`history NAME --export`,
   `export.rs`), and Export Video… in the window (a worker with progress
-  and Cancel). Still to do: the stats in the window and
-  the list's sort by last use (stopped screens with a history listed
-  too), and the limits in Preferences.
+  and Cancel), the stats in the window and the list by last use
+  (stopped screens with a history too). Still to do: the limits in
+  Preferences (now 8 MB of actions and 512 MB of frames a screen).
 - **Other programs feel like Olo's own: every integration point**
   (Ben, 2026-10-29): "is there a way where we can make chrome (and any
   gtk / qt apps) better integrate with olo, e.g. replacing their file
