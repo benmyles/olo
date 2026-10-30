@@ -334,6 +334,20 @@ as they land (with the commit), add new ones as they come up.
   or lsof); elevated access through Olo's polkit agent, asked once at
   start, for what needs it. Reusable graphs and inspectors go in the
   kit.
+- **Telegram, as an Olo app** (Ben, 2026-10-29): "please build an olo
+  native telegram client that's an absolute pleasure to use and looks
+  really great and supports all the core features of telegram". MTProto
+  natively in Rust (a crate such as grammers; no Telegram Desktop or
+  tdlib process): sign in with a phone code or QR and two-step
+  password, the chat list with folders, pinned and archived chats,
+  unread counts and search; messages with replies, forwards, edits,
+  reactions, mentions, threads and topics; photos, video, voice notes,
+  files and stickers (animated too); sending all of those, drafts and
+  typing status; groups and channels; notifications through Olo's
+  (with reply from the banner); contacts; secret storage of the session
+  in Olo's keychain. Fast with thousands of chats (cached, streamed,
+  never blocking), and Olo-looking: kit widgets, light, dark and night,
+  every scale; agent-readable like every Olo app.
 - **Terminal: git repos, worktrees and GitHub** (Ben), native (no `git`
   or `gh` subprocesses):
   - a tab in a git repo goes into a group named after the repo on its
