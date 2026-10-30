@@ -946,7 +946,11 @@ as they land (with the commit), add new ones as they come up.
   and back; the rest fade. Agents: `{"type":"overview"}`. Not yet:
   dragging a window to another workspace's pane, adding a workspace.
 
-- **Multiple monitors, managed like macOS Displays.** Hotplug of external
+- ~~**Multiple monitors, managed like macOS Displays.**~~ (done: the last
+  clause, the pointer crossing at matching scale, holds because displays
+  are arranged in one logical space, each scale already in it, and the
+  pointer crosses wherever screens touch, `clamp_to_screens` with tests;
+  each display has its own workspaces and Deskbar too) Hotplug of external
   displays (USB-C/Thunderbolt on the M2), each with its own resolution,
   refresh rate, scale factor (2× default on HiDPI, 1×/1.5× etc. on
   others) and rotation; mirror or extend; choose the main display (where
