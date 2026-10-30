@@ -2381,7 +2381,17 @@ the tile that last had the focus (if both fit; else the biggest) along
 its longer side (`auto_insert`, `cut_for`, as bspwm and Hyprland's
 dwindle do) and gets its tile at its
 first commit (`auto_claim`), so it opens at that size rather than
-drawing another first; a closed one's room goes to its sibling. `layout`
+drawing another first; a closed one's room goes to its sibling.
+Where the tiles then can't give every window its least size (no tile
+had room for two, or a window's least size grew), `autofit::refit`
+arranges the tree again so they all fit, if any arrangement does: the
+fewest splits turned the other way; else, from every group of tiles'
+shapes (the least width and height each grouping can be laid out in, a
+slicing floorplan's shape curve, over any grouping up to
+`autofit::SUBSETS` tiles and runs of their order beyond), a tree built
+from the top, across the longer side and as even as fits; else the one
+that overlaps least, when that's less than now. It runs only where the
+tree overflows, in a few milliseconds at most. `layout`
 is O(windows), keeps each app's minimum size and runs only when
 something changes: `auto_tick` compares a glance at the windows and the
 displays' room (`AutoTiler::glance`) with the last, so a turn of the

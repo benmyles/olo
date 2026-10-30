@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Auto-tiling: every window fits where an arrangement lets it
+
+*23:53* — Before (left): five windows opened in turn under auto-tiling on a 1440×900 display, the fifth (Passwords) halving a tile too small for it, overlapping three. After (right): the tree arranged again so each window has its least size: Disk Usage over Log Viewer, Passwords over StyledEdit and Activity Monitor.
+
+![Auto-tiling: every window fits where an arrangement lets it](2026-10-29/235331-auto-tiling-every-window-fits-where-an-arrangeme.png)
+
 ### Passwords: passkeys in Chrome
 
 *23:45* — Passwords is Chrome's passkey authenticator: it asks in an alert in front which account to sign in with (a choice when there are several, Use Another Device… for Chrome's own QR-code sheet), and a sign-in that suggests passkeys has Olo ▸ Sign In with Passkey in the field's menu. At 2×; reviewed at 1×, 1.5× and 2×.

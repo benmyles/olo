@@ -19,6 +19,12 @@
 //! neighbour follows an edge drag (`follow`), so nothing jumps ahead of
 //! its picture and nothing waits on a client.
 //!
+//! Where the tiles are too small for their windows' least sizes (each
+//! new window halves a tile, whatever is in it), the tree is arranged
+//! again so they all fit, if any arrangement does (`autofit`): splits
+//! turned the other way, else every way of cutting the room searched;
+//! else the one that overlaps least.
+//!
 //! The commands work on the tree: Tile Left (and the other halves,
 //! quarters and thirds) gives the window that part with the rest tiled
 //! around it; Zoom Vertically and Horizontally make it a full column or
@@ -155,7 +161,7 @@ impl Node {
         out
     }
 
-    fn each_leaf(&self, f: &mut dyn FnMut(&Node)) {
+    pub(super) fn each_leaf(&self, f: &mut dyn FnMut(&Node)) {
         match self {
             Node::Split { a, b, .. } => {
                 a.each_leaf(f);
@@ -181,7 +187,7 @@ impl Node {
         found
     }
 
-    fn any_leaf(&self, f: &dyn Fn(&Node) -> bool) -> bool {
+    pub(super) fn any_leaf(&self, f: &dyn Fn(&Node) -> bool) -> bool {
         let mut found = false;
         self.each_leaf(&mut |n| found |= f(n));
         found
@@ -487,7 +493,7 @@ pub fn balanced(ids: &[u64], room: (f32, f32), min: &dyn Fn(u64) -> (f32, f32)) 
 
 /// How far `node`'s least size goes past `room` (0 if it fits), in the
 /// room's units.
-fn overflow(node: &Node, room: (f32, f32), min: &dyn Fn(u64) -> (f32, f32)) -> f32 {
+pub(super) fn overflow(node: &Node, room: (f32, f32), min: &dyn Fn(u64) -> (f32, f32)) -> f32 {
     let mut m = Vec::new();
     measure(node, min, &mut m);
     (m[0].min.0 - room.0).max(0.0) + (m[0].min.1 - room.1).max(0.0)
@@ -1242,6 +1248,16 @@ impl<B: Backend + 'static> AnvilState<B> {
                     let rest = std::mem::replace(t, Node::gap());
                     *t = rest.without(&|n| matches!(n, Node::Kept(Kept { who: Who::Window(i), .. }) if *i == id)).unwrap_or_else(Node::gap);
                 }
+            }
+        }
+        // Tiles too small for their windows' least sizes, where another
+        // arrangement has room for them all (or overlaps less): that one.
+        if let Some(t) = tree.as_mut() {
+            let mins = self.auto_mins(&units, area);
+            let aspect = area.size.w as f32 / area.size.h.max(1) as f32;
+            if let Some(better) = super::autofit::refit(t, &|id| mins.get(&id).copied().unwrap_or((0.0, 0.0)), aspect) {
+                info!(output = key.1, from = %t, to = %better, "tiles refitted to their windows' least sizes");
+                *t = better;
             }
         }
         for w in &units {

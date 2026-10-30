@@ -44,6 +44,7 @@ use crate::{
     state::{AnvilState, Backend},
 };
 
+mod autofit;
 pub mod autotile;
 mod element;
 mod grabs;
