@@ -4326,12 +4326,20 @@ the kit hints them (`font-hinting` slight, `font-antialiasing`
 grayscale). The pointer: programs asking for one by name
 (cursor-shape-v1: GTK 4, Chrome and Electron, Qt 6) get app_server's;
 for those that draw their own (GTK 3, SDL, Java), `xcursor.rs` writes
-the same Haiku cursors as an XCursor theme, `Olo` in
-`~/.local/share/icons/Olo/cursors` (every CSS cursor name at each scale
-from 1× to 4×, the old X names linked to them; written again only when
-its `X-Olo-Cursors` version is raised), named in `cursor-theme` and
-`cursor-size` (22, `olo_xdg::CURSOR_SIZE`) and in olo-session's
-`XCURSOR_THEME` and `XCURSOR_SIZE`.
+the same Haiku cursors into the `Olo` theme's `cursors` (every CSS
+cursor name at each scale from 1× to 4×, the old X names linked to
+them; drawn again only when its `X-Olo-Cursors` version is raised),
+named in `cursor-theme` and `cursor-size` (22, `olo_xdg::CURSOR_SIZE`)
+and in olo-session's `XCURSOR_THEME` and `XCURSOR_SIZE`. The icons:
+`icon_theme.rs` makes `Olo` (`~/.local/share/icons/Olo`, named in
+`icon-theme`) a freedesktop icon theme of Olo's own pictures in the look
+in use, linked from `data/icons` or the look's (`olo_xdg::own_icon_exact`)
+at every size Olo has, for the freedesktop names of places (folder,
+home, desktop, trash), kinds of file, devices, applications and their
+categories, alerts and the session's actions (`ICONS`); everything else
+comes from Adwaita and hicolor, which it inherits. It is remade when the
+look, Olo's data folder or the cursors' version changes (`index.theme`
+records them).
 
 What an Olo session says it is (`XDG_CURRENT_DESKTOP`, set by
 olo-session, `olo_xdg::CURRENT_DESKTOP`) is `Olo:GNOME`: Olo, then the

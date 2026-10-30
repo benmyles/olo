@@ -7,7 +7,8 @@
 //! - GSettings `org.gnome.desktop.interface` (through dconf, which GTK and
 //!   the portals read): the colour scheme, the GTK theme (the look's,
 //!   `toolkit::gtk_theme_name`), the accent, Olo's fonts hinted as the
-//!   kit hints them, Olo's pointer (`xcursor.rs`), and BeOS's
+//!   kit hints them, Olo's icons and pointer (`icon_theme.rs`,
+//!   `xcursor.rs`), and BeOS's
 //!   close-left, zoom-right title buttons in
 //!   `org.gnome.desktop.wm.preferences`.
 //! - The look's GTK 3 themes, light and dark, in `~/.local/share/themes`
@@ -113,11 +114,12 @@ pub fn publish(theme: String, colors: String, mode: ThemeMode) {
         // GTK sizes fonts in points (at 96 dpi), Olo in pixels.
         let font = |faces: &[&str]| format!("{} {}", faces[0], (fonts::PLAIN_SIZE * 0.75).round());
         let (ui, mono) = (font(fonts::UI), font(fonts::MONO));
-        // Olo's pointer for programs that draw their own (xcursor.rs).
+        // Olo's icons in the look, and its pointer for programs that
+        // draw their own (icon_theme.rs, xcursor.rs).
         if let Some(data) = &dirs.0
-            && let Err(e) = crate::xcursor::write_theme(&data.join("icons"))
+            && let Err(e) = crate::icon_theme::write(&data.join("icons"), &theme)
         {
-            warn!("could not write the cursor theme: {e}");
+            warn!("could not write the icon theme: {e}");
         }
         use olo_system::dconf::Setting::{Int, Str};
         let keys = [
@@ -131,7 +133,8 @@ pub fn publish(theme: String, colors: String, mode: ThemeMode) {
             // edges (style.rs).
             ("/org/gnome/desktop/interface/font-hinting", Str("slight")),
             ("/org/gnome/desktop/interface/font-antialiasing", Str("grayscale")),
-            ("/org/gnome/desktop/interface/cursor-theme", Str(crate::xcursor::THEME)),
+            ("/org/gnome/desktop/interface/icon-theme", Str(crate::icon_theme::THEME)),
+            ("/org/gnome/desktop/interface/cursor-theme", Str(crate::icon_theme::THEME)),
             ("/org/gnome/desktop/interface/cursor-size", Int(crate::xcursor::SIZE as i32)),
             ("/org/gnome/desktop/wm/preferences/button-layout", Str("close:maximize")),
         ];

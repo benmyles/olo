@@ -1094,8 +1094,9 @@ as they land (with the commit), add new ones as they come up.
     from Olo's palette, Qt through its GTK 3 platform theme; Olo's fonts;
     2026-10-30: fonts hinted as the kit, slight and grayscale, and Olo's
     Haiku cursors as an XCursor theme for programs that draw their own
-    pointer). Left: `contrast` (once Olo has a high-contrast look), text
-    scaling to match the kit, Olo's icons as the icon theme.
+    pointer; Olo's icons in the look as the icon theme, for the
+    freedesktop names it has pictures for). Left: `contrast` (once Olo
+    has a high-contrast look), text scaling to match the kit.
   - **Menus and shortcuts** (GlobalShortcuts done 2026-10-30: asked
     once per app, kept, held through upgrades): ~~the GlobalShortcuts portal~~ (Chrome's
     extensions' shortcuts, Discord's push-to-talk) bound through Olo's

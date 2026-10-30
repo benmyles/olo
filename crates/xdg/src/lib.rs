@@ -19,6 +19,13 @@ pub mod wallpapers;
 
 /// Device-pixel sizes shipped in data/icons.
 const OWN_SIZES: &[u32] = &[16, 24, 32, 48, 64, 96, 128, 256];
+pub const ICON_SIZES: &[u32] = OWN_SIZES;
+
+/// Olo's icon `name` drawn at exactly `px` in theme `theme` (the theme's
+/// own, else the classic one), if there is one.
+pub fn own_icon_exact(theme: &str, name: &str, px: u32) -> Option<PathBuf> {
+    themes::icon_dirs(theme).map(|d| d.join(px.to_string()).join(format!("{name}.png"))).find(|p| p.is_file())
+}
 
 /// Directories holding Olo's data (icons/, backgrounds/, ...).
 pub fn data_dirs() -> &'static [PathBuf] {

@@ -1,5 +1,5 @@
-//! Olo's pointer for other programs: an XCursor theme, "Olo" (in
-//! `~/.local/share/icons/Olo/cursors`), made from the Haiku cursors
+//! Olo's pointer for other programs: the cursors of the "Olo" theme (in
+//! `~/.local/share/icons/Olo/cursors`, `icon_theme.rs`), made from the Haiku cursors
 //! app_server draws (`cursor.rs`), for the programs that draw their own
 //! pointer rather than asking for one by name over cursor-shape-v1 (GTK 3,
 //! SDL, Java, older toolkits). Each CSS cursor name has a file with the
@@ -16,17 +16,14 @@ use std::{
 use olo_hvif::cursor::Shape;
 use smithay::input::pointer::CursorIcon;
 
-/// The theme's name.
-pub const THEME: &str = olo_xdg::CURSOR_THEME;
-
 /// Its size at 1× (the cursors' logical size): `cursor-size` and
 /// `XCURSOR_SIZE`.
 pub const SIZE: u32 = olo_hvif::cursor::SIZE;
 const _: () = assert!(SIZE == olo_xdg::CURSOR_SIZE, "olo_xdg::CURSOR_SIZE is the cursors' size");
 
-/// Raised whenever the cursors or this format change, so the theme is
+/// Raised whenever the cursors or this format change, so they are
 /// written again.
-const VERSION: u32 = 1;
+pub const VERSION: u32 = 1;
 
 /// The scales each cursor is drawn at (a program picks the size nearest
 /// its cursor size times its scale).
@@ -77,18 +74,10 @@ pub fn file(shape: Shape) -> Vec<u8> {
     out
 }
 
-/// Write the theme under `icons` (`~/.local/share/icons`), unless this
-/// version of it is there already.
-pub fn write_theme(icons: &Path) -> io::Result<()> {
-    let dir = icons.join(THEME);
-    let index = format!(
-        "[Icon Theme]\nName={THEME}\nComment=Olo's pointer (Haiku's cursors), written by Olo\nInherits=Adwaita,hicolor\nX-Olo-Cursors={VERSION}\n"
-    );
-    if std::fs::read_to_string(dir.join("index.theme")).is_ok_and(|t| t == index) {
-        return Ok(());
-    }
-    let cursors = dir.join("cursors");
-    std::fs::create_dir_all(&cursors)?;
+/// Write the cursors into `cursors` (the theme's folder of them,
+/// `icon_theme.rs`).
+pub fn write_cursors(cursors: &Path) -> io::Result<()> {
+    std::fs::create_dir_all(cursors)?;
     let mut written: Vec<&str> = Vec::new();
     for name in NAMES {
         let Ok(icon) = CursorIcon::from_str(name) else { continue };
@@ -111,8 +100,7 @@ pub fn write_theme(icons: &Path) -> io::Result<()> {
             linked.push(alt);
         }
     }
-    // Last, so a theme half written is written again.
-    put(&dir.join("index.theme"), index.as_bytes())
+    Ok(())
 }
 
 fn put(path: &Path, bytes: &[u8]) -> io::Result<()> {
@@ -145,19 +133,18 @@ mod tests {
     }
 
     #[test]
-    fn writes_the_theme_once() {
+    fn writes_the_cursors() {
         let dir = std::env::temp_dir().join(format!("olo-xcursor-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        write_theme(&dir).unwrap();
-        let cursors = dir.join("Olo/cursors");
-        assert!(cursors.join("default").is_file() && cursors.join("text").is_file());
-        assert_eq!(std::fs::read_link(cursors.join("left_ptr")).unwrap(), Path::new("default"));
-        assert_eq!(std::fs::read_link(cursors.join("xterm")).unwrap(), Path::new("text"));
+        write_cursors(&dir).unwrap();
+        assert!(dir.join("default").is_file() && dir.join("text").is_file());
+        assert_eq!(std::fs::read_link(dir.join("left_ptr")).unwrap(), Path::new("default"));
+        assert_eq!(std::fs::read_link(dir.join("xterm")).unwrap(), Path::new("text"));
         // "move" is a CSS name itself, not all-resize's old one.
-        assert!(cursors.join("move").symlink_metadata().unwrap().is_file());
-        let before = std::fs::metadata(cursors.join("default")).unwrap().modified().unwrap();
-        write_theme(&dir).unwrap();
-        assert_eq!(std::fs::metadata(cursors.join("default")).unwrap().modified().unwrap(), before);
+        assert!(dir.join("move").symlink_metadata().unwrap().is_file());
+        let before = std::fs::metadata(dir.join("default")).unwrap().modified().unwrap();
+        write_cursors(&dir).unwrap();
+        assert_eq!(std::fs::metadata(dir.join("default")).unwrap().modified().unwrap(), before);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
