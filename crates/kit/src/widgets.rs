@@ -3915,7 +3915,8 @@ impl<'a> InlineEdit<'a> {
 /// Width of a BAlert window, and of its tinted stripe down the left.
 pub const ALERT_WIDTH: u32 = 380;
 const ALERT_STRIPE: f32 = 30.0;
-const ALERT_ICON: f32 = 32.0;
+/// The size of an alert's icon.
+pub const ALERT_ICON: f32 = 32.0;
 /// Text column: from the stripe's edge, past the icon that overlaps it
 /// (an alert with fields sizes its window from the column's width).
 pub const ALERT_TEXT_X: f32 = ALERT_STRIPE + ALERT_ICON / 2.0 + m::WINDOW_INSET;
@@ -3943,9 +3944,17 @@ pub fn alert_frame(ui: &mut Ui, icon: &str) -> Rect {
     let painter = ui.painter();
     let stripe = Rect::from_min_max(full.min, pos2(full.left() + ALERT_STRIPE, full.bottom()));
     painter.rect_filled(stripe, 0.0, shade(&p, p.panel_background, 1.1));
-    let icon_rect = Rect::from_min_size(pos2(stripe.right() - ALERT_ICON / 2.0, full.top() + m::WINDOW_INSET), vec2(ALERT_ICON, ALERT_ICON));
-    crate::icons::paint(painter, icon_rect, icon);
+    // (None for an alert that draws its own there: a person's picture.)
+    if !icon.is_empty() {
+        crate::icons::paint(painter, alert_icon_rect(full), icon);
+    }
     Rect::from_min_max(pos2(full.left() + ALERT_TEXT_X, full.top() + m::WINDOW_INSET), pos2(full.right() - m::WINDOW_INSET, full.bottom() - m::WINDOW_INSET))
+}
+
+/// Where [`alert_frame`] puts the icon in an alert filling `full`, half
+/// over its stripe.
+pub fn alert_icon_rect(full: Rect) -> Rect {
+    Rect::from_min_size(pos2(full.left() + ALERT_STRIPE - ALERT_ICON / 2.0, full.top() + m::WINDOW_INSET), vec2(ALERT_ICON, ALERT_ICON))
 }
 
 /// Text in an alert's `column` (from [`alert_frame`]) from `top`, wrapped

@@ -335,6 +335,7 @@ pub fn serve(address: Option<&str>, to_ui: impl Fn(ToUi) + Send + Sync + 'static
     // Nothing is shared yet (a file a crashed portal left goes).
     publish(&HashMap::new());
     let access = crate::access::Access { to_ui: cast.to_ui.clone() };
+    let account = crate::account::Account { to_ui: cast.to_ui.clone() };
     let files = crate::files::FileChooser { to_ui: cast.to_ui.clone() };
     let chooser = crate::chooser::AppChooser { to_ui: cast.to_ui.clone() };
     let wallpaper = crate::wallpaper::Wallpaper { to_ui: cast.to_ui.clone() };
@@ -344,6 +345,7 @@ pub fn serve(address: Option<&str>, to_ui: impl Fn(ToUi) + Send + Sync + 'static
         .serve_at(PATH, crate::inhibit::Inhibit)?
         .serve_at(PATH, crate::shot::Screenshot)?
         .serve_at(PATH, access)?
+        .serve_at(PATH, account)?
         .serve_at(PATH, files)?
         .serve_at(PATH, chooser)?
         .serve_at(PATH, crate::background::Background)?

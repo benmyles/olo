@@ -163,10 +163,19 @@ impl Dialog {
     /// Draw it; Some(granted) once answered.
     pub fn ui(&mut self, ui: &mut egui::Ui, win: WindowId) -> Option<bool> {
         let p = style::palette(ui.ctx());
-        // The portal's icon by its freedesktop name, as Olo's theme has it.
-        let named = ["camera", "microphone", "screenshot", "display"].into_iter().find(|n| self.ask.icon.contains(n));
+        // A picture (the Account portal's: the person's), else the
+        // portal's icon by its freedesktop name, as Olo's theme has it.
+        let full = ui.available_rect_before_wrap();
+        let picture = self.ask.icon.starts_with('/').then(|| olo_kit::icons::thumbnail(ui.ctx(), std::path::Path::new(&self.ask.icon), widgets::ALERT_ICON)).flatten();
+        let named = ["camera", "microphone", "screenshot", "display", "people"].into_iter().find(|n| self.ask.icon.contains(n));
         let icon = named.filter(|n| olo_kit::icons::texture(ui.ctx(), n, ICON_SIZE).is_some()).unwrap_or(ICON);
-        let col = widgets::alert_frame(ui, icon);
+        let col = widgets::alert_frame(ui, if picture.is_some() { "" } else { icon });
+        if let Some(tex) = &picture {
+            let shown = olo_kit::icons::fit(ui.ctx(), tex, widgets::alert_icon_rect(full));
+            // (As it is: pictures of people are often round, with clear
+            // corners.)
+            ui.painter().image(tex.id(), shown, egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), egui::Color32::WHITE);
+        }
         let mut y = col.top();
         style::label(ui.painter(), col.left(), y + style::PLAIN_SIZE / 2.0 + 2.0, egui::Align::Min, self.ask.title.clone(), style::bold_font(), c(p.panel_text));
         y += m::LABEL_ROW + m::TIGHT;

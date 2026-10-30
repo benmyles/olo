@@ -26,6 +26,7 @@ use olo_kit::{
 };
 
 mod access;
+mod account;
 mod background;
 mod capture;
 mod chooser;

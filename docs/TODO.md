@@ -1114,8 +1114,10 @@ as they land (with the commit), add new ones as they come up.
     Inhibit portal and `org.freedesktop.ScreenSaver` in olo-portal, held
     by app_server's `KeepAwake`), ~~Background~~ (done 2026-10-30, with
     olo-session starting login items), Print (to Olo's print dialog, once there is
-    one), ~~Email~~, Account, ~~Wallpaper~~ (done 2026-10-30), Screenshot (with screen sharing),
-    Camera/Location as Olo asks permission, Secret (Passwords as the
+    one), ~~Email~~, ~~Account~~ (done 2026-10-30: asked in the permission
+    dialog with your picture), ~~Wallpaper~~ (done 2026-10-30), Screenshot (with screen sharing),
+    ~~Camera/Location as Olo asks permission~~ (xdg-desktop-portal asks
+    them through the Access dialog, Olo's), Secret (Passwords as the
     Secret Service, so Chrome's and Electron's stored secrets live in
     Olo's keychain; **held for Ben's go-ahead**, 2026-10-30: Chrome keeps
     its "Chrome Safe Storage" key in gnome-keyring through libsecret, so

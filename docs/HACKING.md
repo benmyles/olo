@@ -3381,6 +3381,15 @@ it shares (`App::busy`).
   `~/.local/share/olo/backgrounds` (so it stays when the app's copy
   goes) and set as app_server's `Settings::wallpaper`, as Preferences ▸
   Backgrounds would.
+- **Who you are** (`account.rs`): the Account portal's
+  GetUserInformation asks in the permission dialog ("Share your name and
+  picture with Slack?", your full name and user name, the program's
+  reason; Share / Don't Share), with your picture as its icon
+  (AccountsService's, else `~/.face`; the dialog draws a picture file
+  given as its icon, `widgets::alert_icon_rect`); shared, it answers
+  `id`, `name` and `image` (a file URI). The Camera and Location portals
+  need nothing of Olo's own: xdg-desktop-portal asks them through the
+  Access dialog.
 - **Email** (`email.rs`): ComposeEmail becomes a `mailto:` link (the
   addresses, copies, subject and body, encoded as RFC 6068 says, line
   breaks as CRLF) opened in the person's mail program through
