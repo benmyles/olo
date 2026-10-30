@@ -5,6 +5,7 @@
 
 mod find;
 mod history;
+mod record;
 mod screens;
 mod viewer;
 
@@ -27,6 +28,8 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen stop NAME               end a screen and everything on it
        olo-screen history NAME [--json] [--kind KIND] [--search TEXT] [--last N] [--clear]
                                              what was done on it: each action, what it matched, how it went
+       olo-screen history NAME --look N [OUT.png]
+                                             the screen as it was when action N (from 1) ended
        olo-screen stats [NAME] [--json]   when each screen was started and last used, how long it
                                              ran and was in use, its actions by kind, its programs
        olo-screen env NAME                its environment, for a shell (eval \"$(…)\")
@@ -189,10 +192,31 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             answered(json!({ "pid": pid }));
             Ok(())
         }),
+        // (Started with each screen: its frames for its history.)
+        "record" => name().and_then(|n| record::run(&n)),
         "history" => (|| {
             let n = name()?;
             if has(rest, "--clear") {
                 return history::clear(&n);
+            }
+            // The screen as it was when action N (from 1, as listed)
+            // ended, as a picture.
+            if let Some(n) = option(rest, "--look") {
+                let n: usize = n.parse().map_err(|_| "--look is an action's number, from 1")?;
+                let all = history::read(&name()?);
+                let a = all.get(n.wrapping_sub(1)).ok_or_else(|| format!("there are {} actions", all.len()))?;
+                let (when, frame) = record::frame_at(&record::index(&name()?), a.at + a.ms).ok_or("no frames were kept from then")?;
+                let out = match rest.iter().skip_while(|a| *a != "--look").nth(2).filter(|a| !a.starts_with("--")) {
+                    Some(o) => std::path::absolute(PathBuf::from(o)).map_err(|e| e.to_string())?,
+                    None => screens::dir().join(format!("{}-history-{n}.png", name()?)),
+                };
+                let file = std::fs::File::create(&out).map_err(|e| format!("{}: {e}", out.display()))?;
+                let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), frame.width as u32, frame.height as u32);
+                encoder.set_color(png::ColorType::Rgba);
+                encoder.set_depth(png::BitDepth::Eight);
+                encoder.write_header().and_then(|mut w| w.write_image_data(&frame.rgba)).map_err(|e| e.to_string())?;
+                print_json(&json!({ "path": out, "action": a, "frame_at": when }));
+                return Ok(());
             }
             let kind = option(rest, "--kind");
             let search = option(rest, "--search");

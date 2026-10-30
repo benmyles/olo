@@ -311,6 +311,21 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
     let tmp = entry(name).with_extension("tmp");
     std::fs::write(&tmp, serde_json::to_vec_pretty(&screen).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, entry(name)).map_err(|e| e.to_string())?;
+    // Its frames, kept beside its history (`record`) for as long as it
+    // runs: in its process group, so it ends with it.
+    if let Ok(exe) = std::env::current_exe() {
+        let mut rec = Command::new(exe);
+        rec.args(["record", name]).process_group(pid).stdin(std::process::Stdio::null());
+        if let Ok(log) = std::fs::File::create(dir.join(format!("{name}-record.log"))) {
+            if let Ok(out) = log.try_clone() {
+                rec.stdout(out);
+            }
+            rec.stderr(log);
+        }
+        if let Err(e) = rec.spawn() {
+            tracing::warn!("screen {name}'s frames won't be kept: {e}");
+        }
+    }
     Ok(screen)
 }
 

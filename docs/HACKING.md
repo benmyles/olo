@@ -4022,7 +4022,18 @@ screen until `history NAME --clear`. `history NAME` lists it (`--kind`,
 (`history::stats`: first start and last use, time running from each start
 to its stop or now, time in use as the actions and the gaps under a
 minute between them, actions by kind, failures, programs run) with
-whether each screen runs now and its windows.
+whether each screen runs now and its windows. Beside it are the frames
+the screen drew (`record.rs`): `olo-screen record NAME`, started with
+each screen in its process group, takes the screen's picture (as the
+viewer does, RGBA) eight times a second for five seconds after each
+action (the history's file changing) and once a second otherwise, and
+keeps the 64-pixel tiles that changed since the frame before,
+zstd-compressed, with a whole keyframe every 30 s, in five-minute
+segments (`frames-START.olof`; the format is in the module's comment),
+the oldest dropped past 512 MB. `record::index` reads the records'
+heads, `frame_at` builds the screen as it was at a time from its
+keyframe; `history NAME --look N [OUT.png]` writes it as it was when
+action N ended.
 
 Input that plays out over time is paced, a batch per IPC request with
 waits between (`Screen::input_paced`): `drag` presses, moves in steps

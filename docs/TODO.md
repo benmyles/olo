@@ -1005,10 +1005,11 @@ as they land (with the commit), add new ones as they come up.
   cleared.
   So far (2026-10-30): the actions' history and the stats, for agents
   (`olo-screen history` with `--kind`, `--search`, `--last`, `--clear`;
-  `olo-screen stats`; HACKING, "Agent Screens"), kept under 8 MB. Still
-  to do: the frames beside them, the History list and Replay in the
-  window, MP4 export, the stats there and the list's sort by last use,
-  and the limits in Preferences.
+  `olo-screen stats`; HACKING, "Agent Screens"), kept under 8 MB, and
+  the frames beside them (`record.rs`, changed tiles only;
+  `history NAME --look N`). Still to do: the History list and Replay in
+  the window, MP4 export, the stats there and the list's sort by last
+  use, and the limits in Preferences.
 - **Other programs feel like Olo's own: every integration point**
   (Ben, 2026-10-29): "is there a way where we can make chrome (and any
   gtk / qt apps) better integrate with olo, e.g. replacing their file

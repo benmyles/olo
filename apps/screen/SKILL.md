@@ -143,6 +143,7 @@ olo-screen history agent                      # one line each, oldest first
 olo-screen history agent --kind click --last 5
 olo-screen history agent --search Save --json
 olo-screen stats [agent] [--json]             # started, last used, time running and in use, actions, programs
+olo-screen history agent --look 12 /tmp/then.png   # the screen as it was when action 12 ended
 olo-screen history agent --clear
 ```
 
