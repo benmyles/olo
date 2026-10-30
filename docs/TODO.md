@@ -214,6 +214,22 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Deskbar: every display's workspaces on every Deskbar; the display
+  in the tray** (Ben, 2026-10-30): "the deskbar on all displays should
+  show the display-workspaces for all displays not just the current
+  display. and, let's also show the display id/number in the deskbar
+  tray with like a little monitor icon and the display number in it, and
+  clicking on it gives you the option to switch to a different display".
+  This replaces the earlier rule (each Deskbar listing only its own
+  display's workspaces): each Deskbar lists every display's workspaces
+  and their apps, its own display's first ("D0 Workspace 1" …), the
+  others' as they are on their displays (clicking one goes there, on
+  that display). In the tray, a small monitor icon with the display's
+  number in it (drawn at every scale, in the tray's style); clicking it
+  lists the displays (their names and numbers, the pointer's marked) and
+  choosing one moves the pointer and focus there (its front window, else
+  its desktop). Agents read the display's number and choose through the
+  menu.
 - **Bug: upgrades still move windows; restore an exact snapshot**
   (Ben, 2026-10-30): "when I upgrade it is still messing up my windows
   and moving them around on the displays and the sizes and everything. i
