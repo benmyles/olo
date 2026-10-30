@@ -30,6 +30,7 @@ pub mod metrics;
 pub mod notify;
 mod platform;
 pub mod recorded;
+pub mod search;
 pub mod settings;
 pub mod style;
 pub mod textures;

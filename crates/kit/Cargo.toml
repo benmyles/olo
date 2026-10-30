@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+memchr = "2"
 zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
 olo-theme.workspace = true
 olo-protocol.workspace = true
