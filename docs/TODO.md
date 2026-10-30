@@ -348,6 +348,44 @@ as they land (with the commit), add new ones as they come up.
   in Olo's keychain. Fast with thousands of chats (cached, streamed,
   never blocking), and Olo-looking: kit widgets, light, dark and night,
   every scale; agent-readable like every Olo app.
+- **Passwords: passkeys, and filling the right account in Chrome**
+  (Ben, 2026-10-29; next, after Terminal's git work: "this is really
+  really important"): "olo passwords needs to support passkeys with a
+  scan qr code feature and also we need to do a better job at matching
+  the correct accounts in chrome so that we look at all the available
+  information (domain, current user profile/account, and text matches on
+  the screen to an email/username we know about) and then in the right
+  click menu there should be an "Autofill with Passwords (<account
+  username/email>)" option and then the "Passwords" entry that shows all
+  the other possible matches. we need to be able to reliably determine
+  and then remember which e.g. google account to use b/c i have like 6
+  google accounts and it'll be a different one for each chrome profile.
+  and we need to do a better job at finding the correct inputs to fill.
+  and it needs passkey integration so that it supplies the passkey if we
+  have one and if not then it can advertise that it can do one and should
+  integrate fully with everything so that it's just as seamless as
+  possible and everything just works".
+  - Passkeys: Passwords keeps passkeys (WebAuthn credentials, made and
+    used natively: P-256 keys, attestation "none", sign counts) and
+    syncs 1Password's; Chrome gets them through Olo's extension as the
+    page's WebAuthn provider (`navigator.credentials.create`/`get`
+    answered by Passwords, so a site offering passkeys offers Olo's,
+    and one with a passkey there signs in with it); and "scan a QR
+    code": a phone's passkey through caBLE / hybrid transport (the QR
+    code a site shows, and Olo's own for a phone to use Olo's
+    passkeys), over Bluetooth natively.
+  - The right account: rank the candidates by everything known — the
+    page's domain (and its related ones), the Chrome profile (its
+    signed-in account, its name), emails and usernames on the page
+    (an account chooser, a "signed in as"), what was filled there
+    before in this profile — and remember the choice per profile and
+    site, so each of six Google accounts goes with its own profile.
+  - The context menu: "Autofill with Passwords (ben@…)" for the best
+    match, then "Passwords ▸" with every other candidate.
+  - The fields: find the username, email, password, new-password and
+    one-time-code inputs reliably (autocomplete attributes, labels,
+    names, types, forms split over steps, shadow DOM and iframes), and
+    fill them as typing does, so sites' scripts see it.
 - **Terminal: git repos, worktrees and GitHub** (Ben), native (no `git`
   or `gh` subprocesses):
   - a tab in a git repo goes into a group named after the repo on its
