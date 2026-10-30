@@ -8,7 +8,7 @@ use olo_kit::{
 };
 use olo_protocol::Settings;
 
-use crate::{Ctx, about, ai, appearance, backup, bluetooth, datetime, display, keyboard, network, notifications, power, screensaver, security, sound, themes, touchid, touchpad, tracker, windows, workspaces};
+use crate::{Ctx, about, ai, appearance, backup, bluetooth, datetime, display, keyboard, network, notifications, power, screensaver, security, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -26,6 +26,7 @@ pub enum Panel {
     ScreenSaver,
     Security,
     Sound,
+    Terminal,
     Themes,
     TouchId,
     Touchpad,
@@ -51,6 +52,7 @@ impl Panel {
         Panel::ScreenSaver,
         Panel::Security,
         Panel::Sound,
+        Panel::Terminal,
         Panel::Themes,
         Panel::TouchId,
         Panel::Touchpad,
@@ -96,6 +98,7 @@ impl Panel {
             Panel::ScreenSaver => "screensaver",
             Panel::Security => "security",
             Panel::Sound => "sound",
+            Panel::Terminal => "terminal",
             Panel::Themes => "themes",
             Panel::TouchId => "touchid",
             Panel::Touchpad => "touchpad",
@@ -122,6 +125,7 @@ impl Panel {
             Panel::ScreenSaver => "Screen Saver",
             Panel::Security => "Security",
             Panel::Sound => "Sound",
+            Panel::Terminal => "Terminal",
             Panel::Themes => "Themes",
             Panel::TouchId => "Touch ID",
             Panel::Touchpad => "Touchpad & Mouse",
@@ -148,6 +152,7 @@ impl Panel {
             Panel::ScreenSaver => "screensaver",
             Panel::Security => "security",
             Panel::Sound => "sound",
+            Panel::Terminal => "terminal",
             Panel::Themes => "themes",
             Panel::TouchId => "fingerprint",
             Panel::Touchpad => "touchpad",
@@ -176,6 +181,7 @@ impl Panel {
             Panel::ScreenSaver => (500, 400),
             Panel::Security => (420, 340),
             Panel::Sound => (440, 276),
+            Panel::Terminal => (420, 170),
             Panel::Themes => (560, 634),
             Panel::TouchId => (420, 330),
             // Tall enough for Touch with both of its notes (a pad with no
@@ -229,6 +235,7 @@ impl Panel {
                 settings.focus_follows_mouse = from.focus_follows_mouse;
             }
             Panel::Tracker => settings.tracker = from.tracker.clone(),
+            Panel::Terminal => settings.terminal = from.terminal.clone(),
             Panel::Workspaces => settings.workspace_count = from.workspace_count,
             Panel::DateTime => settings.clock = from.clock.clone(),
             Panel::Power => settings.power = from.power.clone(),
@@ -315,6 +322,7 @@ pub fn ui(panel: Panel, state: &mut State, ui: &mut egui::Ui, ctx: Ctx<'_>) {
             (Panel::TouchId, State::TouchId(s)) => touchid::ui(ui, s),
             (Panel::Touchpad, State::Touchpad(s)) => touchpad::ui(ui, settings, s),
             (Panel::Tracker, _) => tracker::ui(ui, settings),
+            (Panel::Terminal, _) => terminal::ui(ui, settings),
             (Panel::Windows, _) => windows::ui(ui, settings, outputs),
             (Panel::Workspaces, _) => workspaces::ui(ui, settings),
             (Panel::About, State::About(s)) => about::ui(ui, s),

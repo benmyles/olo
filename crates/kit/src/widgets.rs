@@ -2631,6 +2631,10 @@ pub struct StripTab<'a> {
     /// What the tab is doing, for screen readers and agents ("waiting
     /// for an answer"); the icon shows it.
     pub status: Option<&'a str>,
+    /// Paints a 16×16 mark at the tab's right, left of where its close
+    /// box goes (Terminal's pull request state); the title makes room.
+    /// Like the icon, only on a tab wide enough for one.
+    pub badge: Option<PaintIcon<'a>>,
 }
 
 /// What the person did to a [`TabStrip`].
@@ -3101,8 +3105,14 @@ fn tab_face(
         paint(painter, icon);
         left = icon.right() + m::MARK_GAP;
     }
+    let mut end = close.left() - m::TIGHT;
+    if let Some(paint) = tab.badge.filter(|_| icon) {
+        let badge = style::snap(ui.ctx(), Rect::from_min_size(pos2(end - 16.0, cy - 8.0), vec2(16.0, 16.0)));
+        paint(painter, badge);
+        end = badge.left() - m::TIGHT;
+    }
     let font = if selected { bold_font() } else { plain_font() };
-    style::label_fit(painter, left, cy, Align::Min, tab.label, font, text_color, close.left() - m::TIGHT - left);
+    style::label_fit(painter, left, cy, Align::Min, tab.label, font, text_color, end - left);
     if close_resp.clicked() || resp.middle_clicked() {
         Some(StripAction::Close(i))
     } else if resp.secondary_clicked() {

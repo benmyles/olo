@@ -28,6 +28,7 @@ mod sound;
 mod themes;
 mod touchid;
 mod touchpad;
+mod terminal;
 mod tracker;
 #[cfg(test)]
 mod ui_lint;

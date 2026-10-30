@@ -2074,5 +2074,29 @@
   "title": "Quick Look: search, sort and scroll tables",
   "caption": "CSV and spreadsheets in Quick Look scroll sideways to every column, take the first row as the columns' names, line numbers up on the right, keep only the rows a search finds (in every column or one) and sort by a header click, numbers as numbers. Big sheets are searched and sorted on a worker.",
   "image": "2026-10-29/172908-quick-look-search-sort-and-scroll-tables.png"
+ },
+ {
+  "time": "2026-10-29T18:05:40",
+  "title": "Terminal: repositories, worktrees and pull requests",
+  "caption": "A window whose tabs are all in one git repository becomes its group on its own; the group's menu lists the repository's worktrees and makes new ones; a tab on a branch with a pull request on GitHub wears GitHub's mark in the state's colour, its commit filled as its checks pass, fail or run (here: open, checks running).",
+  "image": "2026-10-29/180540-terminal-repositories-worktrees-and-pull-request.png"
+ },
+ {
+  "time": "2026-10-29T18:06:09",
+  "title": "Terminal: New Worktree\u2026",
+  "caption": "The group's New Worktree\u2026 (also Tabs \u25b8 Repository): a name that is a folder and a branch both, made in Preferences \u25b8 Terminal's location; the note says where it goes and on which branch (or, in red, why not), as you type. Files check out on a thread with progress and Stop.",
+  "image": "2026-10-29/180609-terminal-new-worktree.png"
+ },
+ {
+  "time": "2026-10-29T18:06:15",
+  "title": "Preferences \u25b8 Terminal (light)",
+  "caption": "A new panel: where New Worktree\u2026 makes a repository's worktrees, ~/worktrees to start, each repository a folder of its name in there. Terminal follows it live.",
+  "image": "2026-10-29/180615-preferences-terminal-light.png"
+ },
+ {
+  "time": "2026-10-29T18:06:17",
+  "title": "Preferences \u25b8 Terminal (dark)",
+  "caption": "The same panel in dark mode.",
+  "image": "2026-10-29/180617-preferences-terminal-dark.png"
  }
 ]

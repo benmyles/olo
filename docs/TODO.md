@@ -386,7 +386,8 @@ as they land (with the commit), add new ones as they come up.
     one-time-code inputs reliably (autocomplete attributes, labels,
     names, types, forms split over steps, shadow DOM and iframes), and
     fill them as typing does, so sites' scripts see it.
-- **Terminal: git repos, worktrees and GitHub** (Ben), native (no `git`
+- ~~**Terminal: git repos, worktrees and GitHub**~~ (Ben; done: HACKING,
+  Terminal "Repositories"; Preferences ▸ Terminal), native (no `git`
   or `gh` subprocesses):
   - a tab in a git repo goes into a group named after the repo on its
     own;

@@ -23,6 +23,15 @@ pub struct Group {
     pub name: String,
     /// Into [`COLORS`].
     pub color: usize,
+    /// The git repository it's for (its main worktree), if it became its
+    /// group on its own (repos.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<PathBuf>,
+    /// It became its repository's group on its own (not named by the
+    /// person), so it follows the tabs: gone when none is in the
+    /// repository, another's when they all move to that one.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub auto: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

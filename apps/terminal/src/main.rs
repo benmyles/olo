@@ -15,10 +15,12 @@ mod client;
 mod colors;
 mod daemon;
 mod find;
+mod git;
 mod graphics;
 mod groups;
 mod io;
 mod links;
+mod repos;
 mod session;
 mod sudo;
 mod sudo_wire;
@@ -270,11 +272,13 @@ struct Tab {
     agent: Option<(Agent, State)>,
     /// Its agent stopped (done, or asking) while no one was looking.
     attention: bool,
+    /// The git repository its folder is in (repos.rs).
+    repo: Option<git::Repo>,
 }
 
 impl Tab {
     fn new(session: Session) -> Tab {
-        Tab { session, mouse: Mouse::default(), title: "Terminal".into(), bell: None, rang: false, agent: None, attention: false }
+        Tab { session, mouse: Mouse::default(), title: "Terminal".into(), bell: None, rang: false, agent: None, attention: false, repo: None }
     }
 
     /// What it's doing, for its tab's name to screen readers and agents.
@@ -309,6 +313,9 @@ struct TermWin {
     shown_title: String,
     focused: bool,
     group: Option<Group>,
+    /// The person ungrouped it: it doesn't become its repository's group
+    /// on its own again (repos.rs).
+    own_grouping: bool,
     /// Show All Tabs: every tab at once, tiled in the window.
     tiled: bool,
 }
@@ -316,7 +323,7 @@ struct TermWin {
 impl TermWin {
     fn new(tabs: Vec<Tab>, active: usize, snap_to: Option<(usize, usize)>, group: Option<Group>) -> TermWin {
         let active = active.min(tabs.len().saturating_sub(1));
-        TermWin { active, tabs, glyphs: GlyphCache::default(), snap_to, shown_title: String::new(), focused: true, group, tiled: false }
+        TermWin { active, tabs, glyphs: GlyphCache::default(), snap_to, shown_title: String::new(), focused: true, group, own_grouping: false, tiled: false }
     }
 
     fn tab(&self) -> &Tab {
@@ -384,6 +391,12 @@ enum Win {
     NameGroup { target: WindowId, name: String, color: usize },
     /// sudo asks for its password (sudo.rs).
     Sudo(Box<sudo::Request>),
+    /// New Worktree… or Rename Worktree… (repos.rs).
+    Worktree(Box<repos::Dialog>),
+    /// "Remove the worktree?"
+    ConfirmRemove { main: PathBuf, path: PathBuf, message: String },
+    /// What went wrong, with OK.
+    Failed { message: String },
 }
 
 struct Terminal {
@@ -402,6 +415,13 @@ struct Terminal {
     /// Groups saved to open again (groups.rs).
     saved_groups: Vec<groups::Saved>,
     agents: agent::Watcher,
+    /// Each tab's repository, its worktrees and pull requests (git.rs).
+    git: git::Watcher,
+    worktrees: HashMap<PathBuf, Vec<git::Worktree>>,
+    branches: HashMap<PathBuf, Vec<String>>,
+    prs: HashMap<git::PrKey, git::Pr>,
+    /// Preferences ▸ Terminal: where new worktrees go.
+    worktrees_at: String,
     notifier: Notifier,
     /// The notification each shell's agent last put up.
     notes: HashMap<u64, NoteId>,
@@ -478,6 +498,8 @@ struct SavedWindow {
     /// Each tab's folder, for a shell in its place if it has gone.
     #[serde(default)]
     cwds: Vec<Option<PathBuf>>,
+    #[serde(default)]
+    own_grouping: bool,
 }
 
 /// What a Terminal from before olo-termd handed on: the shells
@@ -571,6 +593,7 @@ impl Terminal {
         let cell = self.metrics.map(|m| m.device_cell()).unwrap_or((15, 36));
         let session = Session::start(cx.proxy(), &self.link, size, cell, self.scheme(), start);
         self.agents.watch(session.id, &session.term, &session.shared);
+        self.git.watch(session.id, &session.shared);
         Tab::new(session)
     }
 
@@ -627,7 +650,20 @@ impl Terminal {
         // `--tab`: in the window last in front on this workspace, if
         // there is one (else a new window here).
         let here = |w: &WindowId| matches!(self.windows.get(w), Some(Win::Term(_))) && cx.on_this_workspace(*w);
-        let front = self.front.filter(here).or_else(|| {
+        // A folder in a repository: the window that's its group, if one is here.
+        let real = cwd.as_ref().and_then(|d| d.canonicalize().ok());
+        let repo_group = real.as_ref().and_then(|d| {
+            self.windows.iter().filter(|(w, _)| here(w)).find_map(|(&id, w)| match w {
+                Win::Term(t) if t.group.as_ref().and_then(|g| g.repo.as_ref()).is_some_and(|main| {
+                    d.starts_with(main) || self.worktrees.get(main).is_some_and(|l| l.iter().any(|w| d.starts_with(&w.path)))
+                }) =>
+                {
+                    Some(id)
+                }
+                _ => None,
+            })
+        });
+        let front = repo_group.or(self.front.filter(here)).or_else(|| {
             let mut terms: Vec<WindowId> = self.windows.keys().copied().filter(here).collect();
             terms.sort();
             terms.last().copied()
@@ -685,6 +721,7 @@ impl Terminal {
             let id = self.reopen(cx, starts, grid, Some(w.size), active, w.group.clone());
             if let Some(Win::Term(t)) = self.windows.get_mut(&id) {
                 t.tiled = w.tiled;
+                t.own_grouping = w.own_grouping;
             }
         }
         let rest: Vec<&wire::ShellInfo> = free.iter().filter(|s| !used.contains(&s.id)).copied().collect();
@@ -807,7 +844,17 @@ impl Terminal {
             strip
         };
         let icons: Vec<_> = t.tabs.iter().map(|tab| tab_icon(tab.rang, tab.agent, tab.attention)).collect();
-        let statuses: Vec<Option<String>> = t.tabs.iter().map(Tab::status).collect();
+        let prs: Vec<Option<&git::Pr>> = t.tabs.iter().map(|tab| repos::pr_of(&self.prs, tab)).collect();
+        let badges: Vec<Option<_>> = prs.iter().map(|pr| pr.map(repos::pr_badge)).collect();
+        let statuses: Vec<Option<String>> = t
+            .tabs
+            .iter()
+            .zip(&prs)
+            .map(|(tab, pr)| match (tab.status(), pr.map(|p| p.describe())) {
+                (Some(a), Some(b)) => Some(format!("{a}; {b}")),
+                (a, b) => a.or(b),
+            })
+            .collect();
         if t.tabs.iter().any(|x| matches!(x.agent, Some((_, State::Working)))) {
             // The spinner turns.
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
@@ -818,7 +865,13 @@ impl Terminal {
             .iter()
             .zip(&icons)
             .zip(&statuses)
-            .map(|((tab, icon), status)| StripTab { label: &tab.title, icon: Some(icon), status: status.as_deref() })
+            .zip(&badges)
+            .map(|(((tab, icon), status), badge)| StripTab {
+                label: &tab.title,
+                icon: Some(icon),
+                status: status.as_deref(),
+                badge: badge.as_ref().map(|b| b as &dyn Fn(&egui::Painter, egui::Rect)),
+            })
             .collect();
         let mut bar = TabStrip::new(("terminal-tabs", win), &items, t.active);
         if side {
@@ -991,6 +1044,7 @@ impl Terminal {
                     .separator()
                     .item("Show All Tabs", "tile-tabs", None)
                     .checked(t.tiled);
+                let menu = self.worktrees_menu(win, menu);
                 menu::request_popup(
                     ui.ctx(),
                     MenuRequest { menu, source: ui.make_persistent_id("group-menu"), anchor: MenuAnchor::At(pos), selected: None },
@@ -1007,10 +1061,14 @@ impl Terminal {
             Some(StripAction::Menu(i, pos)) => {
                 let shell = t.tabs[i].session.id;
                 let (place, label) = if side { ("tabs-top", "Tabs Along the Top") } else { ("tabs-side", "Tabs Down the Side") };
-                let menu = Menu::new("")
-                    .item("New Tab", "new-tab", None)
-                    .separator()
-                    .item(olo_kit::tracker::LABEL, format!("{}:{shell}", olo_kit::tracker::COMMAND), None)
+                let menu = Menu::new("").item("New Tab", "new-tab", None).separator().item(
+                    olo_kit::tracker::LABEL,
+                    format!("{}:{shell}", olo_kit::tracker::COMMAND),
+                    None,
+                );
+                let Some(Win::Term(t)) = self.windows.get(&win) else { return };
+                let menu = self
+                    .tab_repo_menu(&t.tabs[i], menu)
                     .separator()
                     .item("Move to New Window", format!("tab-detach:{shell}"), None)
                     .separator()
@@ -1117,7 +1175,20 @@ impl Terminal {
                 };
                 self.confirm_close(cx, window, None, message, why);
             }
-            Some(Win::ConfirmClose { .. } | Win::Find { .. } | Win::Daemon(_) | Win::ConfirmStartOver { .. } | Win::NameGroup { .. }) => {
+            Some(
+                Win::ConfirmClose { .. }
+                | Win::Find { .. }
+                | Win::Daemon(_)
+                | Win::ConfirmStartOver { .. }
+                | Win::NameGroup { .. }
+                | Win::ConfirmRemove { .. }
+                | Win::Failed { .. },
+            ) => {
+                self.windows.remove(&window);
+                cx.close_window(window);
+            }
+            Some(Win::Worktree(d)) => {
+                d.stop();
                 self.windows.remove(&window);
                 cx.close_window(window);
             }
@@ -1344,7 +1415,16 @@ impl Terminal {
         if !(ok || cancel) {
             return;
         }
-        let group = Group { name: name.trim().to_owned(), color: *color };
+        // Still its repository's, or now: every tab in the one repository.
+        let repo = match self.windows.get(&target) {
+            Some(Win::Term(t)) => t.group.as_ref().and_then(|g| g.repo.clone()).or_else(|| {
+                let main = t.tabs.first()?.repo.as_ref()?.main.clone();
+                t.tabs.iter().all(|x| x.repo.as_ref().is_some_and(|r| r.main == main)).then_some(main)
+            }),
+            _ => None,
+        };
+        let Some(Win::NameGroup { name, color, .. }) = self.windows.get(&window) else { return };
+        let group = Group { name: name.trim().to_owned(), color: *color, repo, auto: false };
         self.windows.remove(&window);
         cx.close_window(window);
         if ok && let Some(Win::Term(t)) = self.windows.get_mut(&target) {
@@ -1500,6 +1580,21 @@ impl App for Terminal {
             }
             Some(&Win::Find { target }) => self.find_ui(cx, window, ui, target),
             Some(Win::NameGroup { .. }) => self.name_group_ui(cx, window, ui),
+            Some(Win::Worktree(_)) => self.worktree_ui(cx, window, ui),
+            Some(Win::ConfirmRemove { message, .. }) => {
+                let Some(choice) = widgets::alert(ui, "warning", &message.clone(), &["Cancel", "Remove"]) else { return };
+                let Some(Win::ConfirmRemove { main, path, .. }) = self.windows.remove(&window) else { return };
+                cx.close_window(window);
+                if choice == 1 {
+                    self.remove_worktree(cx, main, path);
+                }
+            }
+            Some(Win::Failed { message }) => {
+                if repos::failed_ui(ui, &message.clone()) {
+                    self.windows.remove(&window);
+                    cx.close_window(window);
+                }
+            }
             Some(Win::Daemon(_)) => {
                 let Some(Win::Daemon(d)) = self.windows.get_mut(&window) else { return };
                 match d.ui(cx, ui) {
@@ -1633,6 +1728,7 @@ impl App for Terminal {
             .enabled(several)
             .separator()
             .submenu(group)
+            .submenu(self.repository_menu(window))
             .item_shift("Show All Tabs", "tile-tabs", Key::D)
             .enabled(several)
             .checked(t.tiled && several)
@@ -1693,6 +1789,9 @@ impl App for Terminal {
     }
 
     fn command(&mut self, cx: &mut Cx, window: WindowId, command: &str) {
+        if !matches!(self.windows.get(&window), Some(Win::Term(_))) || self.repo_command(cx, window, command) {
+            return;
+        }
         let Some(Win::Term(t)) = self.windows.get_mut(&window) else { return };
         match command {
             "new" => {
@@ -1725,7 +1824,9 @@ impl App for Terminal {
                         let groups: Vec<&Group> = self.windows.values().filter_map(|w| if let Win::Term(x) = w { x.group.as_ref() } else { None }).collect();
                         let names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).chain(self.saved_groups.iter().map(|g| g.group.name.as_str())).collect();
                         let colors: Vec<usize> = groups.iter().map(|g| g.color).collect();
-                        (groups::new_name(&names), groups::new_color(&colors))
+                        // In a repository: its name.
+                        let name = self.repo_of(window).map(|(_, n)| n).unwrap_or_else(|| groups::new_name(&names));
+                        (name, groups::new_color(&colors))
                     }
                 };
                 if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::NameGroup { target, .. } if *target == window)) {
@@ -1737,6 +1838,7 @@ impl App for Terminal {
             }
             "ungroup" => {
                 t.group = None;
+                t.own_grouping = true;
                 cx.redraw(window);
             }
             "save-group" => {
@@ -1933,6 +2035,7 @@ impl App for Terminal {
             Ok(report) => return self.agent_changed(cx, *report),
             Err(m) => m,
         };
+        let Some(message) = self.repo_message(cx, message) else { return };
         let message = match message.downcast::<NoteEvent>() {
             Ok(event) => {
                 if let NoteEvent::Action { id, token, .. } = *event
@@ -2014,6 +2117,7 @@ impl Terminal {
                         group: t.group.clone(),
                         tiled: t.tiled,
                         cwds: live.iter().map(|x| x.session.cwd()).collect(),
+                        own_grouping: t.own_grouping,
                     })
                 }
                 _ => None,
@@ -2084,6 +2188,11 @@ fn main() {
             front: None,
             saved_groups: groups::load(),
             agents: agent::Watcher::start(cx.proxy()),
+            git: git::Watcher::start(cx.proxy()),
+            worktrees: HashMap::new(),
+            branches: HashMap::new(),
+            prs: HashMap::new(),
+            worktrees_at: olo_protocol::TerminalSettings::default().worktrees,
             notifier: Notifier::new(cx.proxy(), "Terminal", "olo-terminal"),
             notes: HashMap::new(),
             remembered: None,
@@ -2100,6 +2209,8 @@ fn main() {
         let fresh = state.is_none();
         let saved = saved.or_else(|| fresh.then(remembered).flatten());
         let reattached = t.reattach(cx, shells, saved.as_ref(), fresh) || adopted;
+        let proxy = cx.proxy();
+        olo_kit::settings::watch(move |s| proxy.send(repos::WorktreesAt(s.terminal.worktrees)));
         let proxy = cx.proxy();
         std::thread::Builder::new()
             .name("remember".into())

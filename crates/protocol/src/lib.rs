@@ -722,6 +722,7 @@ pub struct Settings {
     pub shortcuts: Option<ShortcutSettings>,
     pub tiling: TilingSettings,
     pub tracker: TrackerSettings,
+    pub terminal: TerminalSettings,
     pub security: SecuritySettings,
     pub ai: AiSettings,
 }
@@ -824,6 +825,21 @@ impl Default for PasswordsSecurity {
 pub struct TrackerSettings {
     /// How a folder window shows its folder when it opens.
     pub default_view: FolderView,
+}
+
+/// Terminal's settings (Preferences ▸ Terminal).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct TerminalSettings {
+    /// Where New Worktree… makes a repository's worktrees:
+    /// `<this>/<repository>/<worktree>` (`~` for the home folder).
+    pub worktrees: String,
+}
+
+impl Default for TerminalSettings {
+    fn default() -> Self {
+        TerminalSettings { worktrees: "~/worktrees".into() }
+    }
 }
 
 /// How a Tracker window shows its folder.
@@ -1323,6 +1339,7 @@ impl Default for Settings {
             shortcuts: None,
             tiling: TilingSettings::default(),
             tracker: TrackerSettings::default(),
+            terminal: TerminalSettings::default(),
             security: SecuritySettings::default(),
             ai: AiSettings::default(),
         }

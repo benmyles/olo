@@ -642,7 +642,9 @@ frame while `key`, what the text is made from, stays the same), `TabView`, `TabS
 a menu or tool bar, `STRIP_HEIGHT` (30) tall, roomier than a window tab,
 each tab `STRIP_ROW` (26) of it standing on the bottom edge, its icon
 under the menu bar's first title: `StripTab { label, icon,
-status }` each; tabs share the row up to `STRIP_TAB_MAX` (220) wide,
+status, badge }` each (`badge`, a 16×16 mark at the tab's right, left of
+where its close box goes, the title making room: Terminal's pull request
+state; like the icon, only on a tab wide enough); tabs share the row up to `STRIP_TAB_MAX` (220) wide,
 their titles cut short with "…", the others divided by a hairline; the
 selected one is a raised tab with rounded top corners that opens into
 the content (`.opens_into(fill, ink)` when the content isn't the panel,
@@ -895,7 +897,12 @@ see vendor/README.md).
    beside text (an error's title, a failed row) leads with
    `style::stop_mark(painter, rect, palette)`, a crisp vector stop sign
    (12 px reads where an alert's icon would be mud); set it level with
-   the text's capitals with `style::cap_middle(galley, size)`. Say what
+   the text's capitals with `style::cap_middle(galley, size)`. A pull
+   request is GitHub's mark, `style::pull_request_mark(painter, rect,
+   PullRequestShape::{Open, Draft, Merged, Closed}, color, node)`, 16×16,
+   its lines whole device pixels at every scale (its commits a whole
+   pixel's ring at 1×), `node` filling the branch's commit (its checks'
+   colour). Say what
    a thing is with its icon, a chip or a mark, not a coloured band or
    edge along it: those clash with icons and look unfinished.
 4. **Selection looks the same everywhere**: the palette's list selection
@@ -1592,6 +1599,10 @@ launcher lists them. The panel list Deskbar shows is
   module, add it to `PREFERENCE_PANELS`, journal it light and dark.
 * Tracker (`tracker.rs`) sets `Settings::tracker` (the view new folder
   windows open in); its icon is Tracker's own, as in Haiku.
+* Terminal (`terminal.rs`) sets `Settings::terminal`: where New
+  Worktree… makes a repository's worktrees (`worktrees`, `~/worktrees` to
+  start, each repository a folder of its name in there). Terminal
+  follows it live (`settings::watch`).
 * Windows (`windows.rs`) sets the space Olo leaves around the windows it
   arranges (`Settings::tiling`: margin at the display's edges, gap
   between windows), with a miniature of the main display tiled three
@@ -3095,6 +3106,59 @@ agent the person isn't looking at starts asking, or finishes, Terminal
 posts a notification (important for a question) whose Show brings that
 tab and window forward. The badge and the notification go once the tab
 is seen.
+
+**Repositories** (`src/git.rs`, `src/repos.rs`), in process through
+libgit2 (git2, vendored; no `git` or `gh`). A thread (`git::Watcher`)
+looks at each tab's folder (its foreground program's, else its shell's)
+every second and reads only what changed: the folder, the worktree's
+`HEAD` and the repository's `config` (a folder in no repository is
+looked at again every 5 s, for a `git init`); it reports the tab's
+repository (`git::Repo`: name, main worktree, the worktree it's in,
+linked or not, branch, GitHub remotes) and, for each repository a tab is
+in, its worktrees and local branches when `worktrees/*/HEAD`,
+`refs/heads` or `packed-refs` change.
+* A window whose tabs are all in one repository becomes its group on its
+  own (`Group::auto`, named after it, in the colour of another window of
+  it if there is one); the automatic group follows the tabs (gone when
+  none is in it, another repository's when they all move there). Ungroup
+  keeps a window out of this (`own_grouping`, kept with the windows); a
+  group the person names in a repository is still its group
+  (`Group::repo`), and Name Group… suggests the repository's name.
+* The group's menu, and Tabs ▸ Repository for agents and the keyboard,
+  list the repository's worktrees (the tab's checked; choosing one opens
+  a tab in it in this window) and **New Worktree…**: a name, which is a
+  folder and a branch both (`git::valid_name`), made in Preferences ▸
+  Terminal's location, `<location>/<repository>/<name>`, on a new branch
+  from the main worktree's, or the branch of that name if it has one and
+  no worktree has it checked out (the dialog says which, or why not, as
+  you type). `git::add` makes it as `git worktree add` does (git's record
+  in `<common>/worktrees/<name>`, the `.git` file) then checks the files
+  out 400 at a time on a thread, so the dialog shows "Checking out N of
+  M files" and Stop (or closing it) ends it after the batch, leaving
+  nothing (nor a branch it made). Git LFS files stay pointers (no
+  `git-lfs` to run). Done, it opens in a new tab of the group. A
+  `--tab -w DIR` launch (Tracker's Open Terminal Here) in a repository
+  goes to the window that's its group, on this workspace, rather than the
+  front one.
+* A tab in a linked worktree has **Rename Worktree…** (its folder moves,
+  beside where it is; its branch takes the new name if it had the old
+  one; git's record is rewritten; its shells stay in it, though a shell's
+  `$PWD` keeps the old name until it `cd`s) and **Remove Worktree…** (an
+  alert counts the files changed and not committed, on a thread; the
+  worktree's tabs close, then its folder and record go; its branch stays,
+  and its repository's folder in the worktrees location if now empty).
+* GitHub: another thread asks GitHub's API for the newest pull request
+  from each branch the tabs are on (`origin`'s owner's branch, in
+  `origin` and `upstream`, so a fork's is found), open ones first, and
+  its check runs; every minute with a token (`GH_TOKEN`, `GITHUB_TOKEN`,
+  or the GitHub CLI's `hosts.yml`, read, not run), every five without.
+  The tab wears `style::pull_request_mark` as its strip badge (green
+  open, grey draft, purple merged, red closed; the branch's commit
+  filled green, red or orange as its checks pass, fail or run), its
+  accessible name says it ("pull request #42 open, checks running"), and
+  its menu and Tabs ▸ Repository have **Open Pull Request #42**.
+  `OLO_GITHUB_API` points it at another API (tests use a fake one on
+  localhost).
 
 **Terminal ▸ Terminal Daemon…** (`src/daemon.rs`) shows olo-termd's
 process and uptime and its shells (whether each is shown here, in

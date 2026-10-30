@@ -874,7 +874,7 @@ mod tests {
         let icon = |p: &Painter, r: Rect| {
             p.rect_filled(r, 2.0, Color32::from_rgb(90, 120, 200));
         };
-        let tabs = [StripTab { label: "One", icon: Some(&icon), status: None }, StripTab { label: "Two", icon: Some(&icon), status: None }];
+        let tabs = [StripTab { label: "One", icon: Some(&icon), status: None, badge: None }, StripTab { label: "Two", icon: Some(&icon), status: None, badge: Some(&icon) }];
         let menus = [Menu::new("File").item("New", "new", None), Menu::new("Edit").item("Copy", "copy", None)];
         // Open, the row after a separator highlighted.
         let file = Menu::new("File")

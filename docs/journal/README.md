@@ -5,6 +5,30 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Preferences ▸ Terminal (dark)
+
+*18:06* — The same panel in dark mode.
+
+![Preferences ▸ Terminal (dark)](2026-10-29/180617-preferences-terminal-dark.png)
+
+### Preferences ▸ Terminal (light)
+
+*18:06* — A new panel: where New Worktree… makes a repository's worktrees, ~/worktrees to start, each repository a folder of its name in there. Terminal follows it live.
+
+![Preferences ▸ Terminal (light)](2026-10-29/180615-preferences-terminal-light.png)
+
+### Terminal: New Worktree…
+
+*18:06* — The group's New Worktree… (also Tabs ▸ Repository): a name that is a folder and a branch both, made in Preferences ▸ Terminal's location; the note says where it goes and on which branch (or, in red, why not), as you type. Files check out on a thread with progress and Stop.
+
+![Terminal: New Worktree…](2026-10-29/180609-terminal-new-worktree.png)
+
+### Terminal: repositories, worktrees and pull requests
+
+*18:05* — A window whose tabs are all in one git repository becomes its group on its own; the group's menu lists the repository's worktrees and makes new ones; a tab on a branch with a pull request on GitHub wears GitHub's mark in the state's colour, its commit filled as its checks pass, fail or run (here: open, checks running).
+
+![Terminal: repositories, worktrees and pull requests](2026-10-29/180540-terminal-repositories-worktrees-and-pull-request.png)
+
 ### Quick Look: search, sort and scroll tables
 
 *17:29* — CSV and spreadsheets in Quick Look scroll sideways to every column, take the first row as the columns' names, line numbers up on the right, keep only the rows a search finds (in every column or one) and sort by a header click, numbers as numbers. Big sheets are searched and sorted on a worker.

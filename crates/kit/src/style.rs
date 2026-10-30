@@ -848,6 +848,106 @@ pub fn check_mark(p: &Painter, r: Rect, color: Color32) {
     p.add(egui::Shape::line(pts, Stroke::new(1.6, color)));
 }
 
+/// What a [`pull_request_mark`] shows: GitHub's four marks for a pull
+/// request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PullRequestShape {
+    /// A branch coming back into another, an arrow at its head.
+    Open,
+    /// The same, the coming branch dotted.
+    Draft,
+    /// Joined: the branch curving into the other.
+    Merged,
+    /// The coming branch ends in a cross.
+    Closed,
+}
+
+/// GitHub's pull request mark, 16×16 in `r`, its lines in `color` and
+/// whole device pixels at every scale: the base branch down the left with
+/// a commit at each end, the pull request's branch on the right (its
+/// commit filled with `node` if given: its checks, in their colour).
+pub fn pull_request_mark(p: &Painter, r: Rect, shape: PullRequestShape, color: Color32, node: Option<Color32>) {
+    let ppp = p.pixels_per_point();
+    let px = (1.5 * ppp).floor().max(1.0);
+    let w = px / ppp;
+    // A line's middle where its edges fall on device pixels.
+    let at = |v: f32| ((v * ppp - px / 2.0).round() + px / 2.0) / ppp;
+    let o = snap(p.ctx(), Rect::from_min_size(r.min, vec2(16.0, 16.0))).min;
+    let x = |v: f32| at(o.x + v);
+    let y = |v: f32| at(o.y + v);
+    let stroke = Stroke::new(w, color);
+    // A commit: a ring this wide (to its line's middle); at 1× a whole
+    // pixel's, so the one-pixel ring is on pixels.
+    let cr = if ppp < 1.25 { 2.0 } else { 1.75 };
+    let ring = |c: Pos2| {
+        p.circle_stroke(c, cr, stroke);
+    };
+    let commit = |c: Pos2| match node {
+        Some(fill) => {
+            p.circle_filled(c, cr + w / 2.0, fill);
+        }
+        None => ring(c),
+    };
+    let (lx, rx) = (x(3.5), x(12.5));
+    let (top, bottom) = (y(3.5), y(12.5));
+    ring(pos2(lx, top));
+    match shape {
+        PullRequestShape::Merged => {
+            ring(pos2(lx, bottom));
+            p.line_segment([pos2(lx, top + cr), pos2(lx, bottom - cr)], stroke);
+            // From under the top commit, round into the one on the right.
+            let mid = y(8.5);
+            let curve: Vec<Pos2> = (0..=10)
+                .map(|k| {
+                    let t = k as f32 / 10.0;
+                    let a = pos2(lx, top + cr);
+                    let c = pos2(lx, mid);
+                    let b = pos2(rx - cr, mid);
+                    let u = 1.0 - t;
+                    pos2(u * u * a.x + 2.0 * u * t * c.x + t * t * b.x, u * u * a.y + 2.0 * u * t * c.y + t * t * b.y)
+                })
+                .collect();
+            p.add(egui::Shape::line(curve, stroke));
+            commit(pos2(rx, mid));
+        }
+        _ => {
+            ring(pos2(lx, bottom));
+            p.line_segment([pos2(lx, top + cr), pos2(lx, bottom - cr)], stroke);
+            match shape {
+                PullRequestShape::Open => {
+                    // Up from its commit, round to the left, to an arrow
+                    // pointing at the base branch.
+                    let (bend, turn) = (2.5, top + 2.5);
+                    let mut pts = vec![pos2(rx, bottom - cr), pos2(rx, turn)];
+                    pts.extend((1..=6).map(|k| {
+                        let a = k as f32 / 6.0 * std::f32::consts::FRAC_PI_2;
+                        pos2(rx - bend + bend * a.cos(), turn - bend * a.sin())
+                    }));
+                    let base = o.x + 10.0;
+                    pts.push(pos2(base, top));
+                    p.add(egui::Shape::line(pts, stroke));
+                    let (tip, half) = (o.x + 7.75, 2.0);
+                    p.add(egui::Shape::convex_polygon(vec![pos2(tip, top), pos2(base, top - half), pos2(base, top + half)], color, Stroke::NONE));
+                }
+                PullRequestShape::Draft => {
+                    for v in [8.0, 4.5] {
+                        p.circle_filled(pos2(rx, y(v)), w * 0.75 + 0.25, color);
+                    }
+                }
+                _ => {
+                    p.line_segment([pos2(rx, bottom - cr), pos2(rx, y(7.5))], stroke);
+                    let c = pos2(rx, top);
+                    let d = 1.75;
+                    p.line_segment([c - vec2(d, d), c + vec2(d, d)], stroke);
+                    p.line_segment([c + vec2(-d, d), c + vec2(d, -d)], stroke);
+                }
+            }
+            // Over the line coming out of it.
+            commit(pos2(rx, bottom));
+        }
+    }
+}
+
 /// A hollow diamond in `r` (a minimized window in a menu of windows, where
 /// a check mark would go).
 pub fn diamond(p: &Painter, r: Rect, color: Color32) {
