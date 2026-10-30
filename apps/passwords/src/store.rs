@@ -13,12 +13,14 @@ use std::{
     thread,
 };
 
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use chrono::{DateTime, Utc};
 use onepassword::{AutofillBehavior, Error, Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, ItemOverview, VaultOverview, Website};
 use olo_keychain::{Incoming, Request, Response};
 use olo_kit::Proxy;
 
 use crate::{
+    passkey,
     sync::{self, Plan, Report, Row},
     vault::Vault,
 };
@@ -34,7 +36,8 @@ pub enum Job {
     Archive { vault: String, item: String },
     Delete { vault: String, item: String },
     /// Answer another app (Chrome's extension): `candidates` are the logins
-    /// saved for its page; `vault` is where a new one goes.
+    /// saved for its page (for a passkey to sign with: the one chosen);
+    /// `vault` is where a new one goes.
     Keychain { incoming: Box<Incoming>, candidates: Vec<(String, String)>, vault: String },
     /// Answer `op` (an allowed session's question).
     Cli { incoming: Box<Incoming> },
@@ -169,6 +172,17 @@ pub struct Searchable {
     pub reused: bool,
     /// Its password is short (under 12) or of one kind of character.
     pub weak: bool,
+    /// Its passkey's public parts.
+    pub passkey: Option<PasskeyInfo>,
+}
+
+/// What may be said of a passkey while Passwords is unlocked (its key
+/// stays in the store).
+#[derive(Clone, Debug, PartialEq)]
+pub struct PasskeyInfo {
+    pub rp_id: String,
+    pub user_name: String,
+    pub credential_id: String,
 }
 
 /// Whether `pw` is weak: short, or only one kind of character.
@@ -214,6 +228,11 @@ fn index(v: &Vault) -> HashMap<String, Searchable> {
                 files: !item.files.is_empty() || item.document.is_some(),
                 reused: pw.is_some_and(|p| uses.get(p).copied().unwrap_or(0) > 1),
                 weak: pw.is_some_and(weak),
+                passkey: passkey::stored(item).map(|p| PasskeyInfo {
+                    rp_id: p.rp_id.clone(),
+                    user_name: p.user_name.clone(),
+                    credential_id: p.credential_id.clone(),
+                }),
             };
             (item.id.clone(), s)
         })
@@ -453,6 +472,10 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
             },
             Job::Keychain { incoming, candidates, vault } => {
                 let response = keychain(v, &incoming.request, &candidates, &vault, &reply);
+                // A login or passkey saved: searched and offered from now.
+                if matches!(response, Response::Saved { .. } | Response::PasskeyCreated { .. }) {
+                    reply(Reply::Index(index(v)));
+                }
                 incoming.reply(response);
             }
             Job::Cli { incoming } => {
@@ -489,7 +512,7 @@ fn login_fields(item: &Item) -> (Option<&ItemField>, Option<&ItemField>) {
         item.fields.iter().find(|f| matches!(f.field_type, ItemFieldType::Text | ItemFieldType::Email) && f.section_id.is_none())
     });
     let password = item.field("password").or_else(|| {
-        item.fields.iter().find(|f| f.field_type == ItemFieldType::Concealed && f.section_id.as_deref() != Some("passkey"))
+        item.fields.iter().find(|f| f.field_type == ItemFieldType::Concealed && f.section_id.as_deref() != Some(passkey::SECTION))
     });
     (user, password)
 }
@@ -600,10 +623,91 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
             logins.sort_by_cached_key(|l| (near.get(&l.id).copied().unwrap_or(u32::MAX), l.title.to_lowercase(), l.username.to_lowercase()));
             Response::Logins { logins }
         }
+        Request::PasskeyCreate { url, rp_id, rp_name, user_id, user_name, exclude, .. } => {
+            if !olo_keychain::rp_id_fits(rp_id, url) {
+                return Response::Error { message: format!("This page can’t make passkeys for {rp_id}.") };
+            }
+            let items: Vec<Item> = candidates.iter().filter_map(|(vault, id)| c.get(vault, id).ok()).collect();
+            let theirs = |i: &&Item| passkey::stored(i).is_some_and(|s| s.rp_id.eq_ignore_ascii_case(rp_id));
+            if items.iter().filter(theirs).any(|i| passkey::stored(i).is_some_and(|s| exclude.contains(&s.credential_id))) {
+                return Response::PasskeyExists;
+            }
+            // The same account's passkey is replaced; else it joins the
+            // account's login, or gets a login of its own.
+            let same_user = items.iter().filter(theirs).find(|i| passkey::stored(i).is_some_and(|s| &s.user_handle == user_id));
+            let login = items.iter().find(|i| {
+                passkey::stored(i).is_none() && login_fields(i).0.is_some_and(|u| !u.value.is_empty() && u.value.eq_ignore_ascii_case(user_name))
+            });
+            let new = passkey::New::generate();
+            let saved = match same_user.or(login) {
+                Some(item) => {
+                    let mut item = item.clone();
+                    new.store(&mut item, rp_id, user_id, user_name);
+                    c.put(&item).map(|i| (i, false))
+                }
+                None => {
+                    let title = if rp_name.trim().is_empty() { rp_id.clone() } else { rp_name.trim().to_string() };
+                    let mut params = ItemCreateParams::new(ItemCategory::Login, vault, title);
+                    params.fields = vec![ItemField::new("username", "username", ItemFieldType::Text, user_name)];
+                    params.fields.extend(new.fields(rp_id, user_id, user_name));
+                    params.sections = vec![passkey::section()];
+                    let site = url::Url::parse(url)
+                        .ok()
+                        .filter(|u| u.host_str().is_some_and(|h| h.eq_ignore_ascii_case(rp_id)))
+                        .map(|u| u.origin().ascii_serialization())
+                        .unwrap_or_else(|| format!("https://{rp_id}"));
+                    params.websites = vec![Website { url: site, label: "website".into(), autofill_behavior: AutofillBehavior::AnywhereOnWebsite }];
+                    c.create(&params).map(|i| (i, true))
+                }
+            };
+            match saved {
+                Ok((item, created)) => {
+                    let title = item.title.clone();
+                    reply(Reply::Saved { item: Box::new(item), created });
+                    let auth_data = new.auth_data(rp_id);
+                    Response::PasskeyCreated {
+                        title,
+                        credential_id: B64.encode(&new.credential_id),
+                        attestation_object: B64.encode(passkey::attestation_object(&auth_data)),
+                        authenticator_data: B64.encode(&auth_data),
+                        public_key: B64.encode(new.public_key_der()),
+                    }
+                }
+                Err(e) => error(&e),
+            }
+        }
+        Request::PasskeySign { url, rp_id, client_data_hash, .. } => {
+            if !olo_keychain::rp_id_fits(rp_id, url) {
+                return Response::Error { message: format!("This page can’t use passkeys for {rp_id}.") };
+            }
+            let Some((vault, id)) = candidates.first() else { return Response::NoPasskey };
+            let Ok(hash) = B64.decode(client_data_hash) else {
+                return Response::Error { message: "The page’s request was malformed.".into() };
+            };
+            let item = match c.get(vault, id) {
+                Ok(i) => i,
+                Err(e) => return error(&e),
+            };
+            let Some(stored) = passkey::stored(&item).filter(|s| s.rp_id.eq_ignore_ascii_case(rp_id)) else {
+                return Response::Error { message: format!("“{}” has no passkey for {rp_id}.", item.title) };
+            };
+            let Some(key) = stored.signing_key() else {
+                return Response::Error { message: format!("The passkey in “{}” is damaged.", item.title) };
+            };
+            let auth_data = passkey::auth_data(rp_id, 0);
+            Response::Assertion {
+                credential_id: stored.credential_id.clone(),
+                signature: B64.encode(passkey::sign(&key, &auth_data, &hash)),
+                authenticator_data: B64.encode(&auth_data),
+                user_handle: stored.user_handle.clone(),
+            }
+        }
         // Answered by the app itself.
         Request::Unlock => Response::Unlocked,
         // Answered on the UI thread.
-        Request::Search { .. } | Request::Show { .. } | Request::Cli { .. } => Response::Error { message: "unexpected".into() },
+        Request::Search { .. } | Request::Show { .. } | Request::Cli { .. } | Request::Passkeys { .. } => {
+            Response::Error { message: "unexpected".into() }
+        }
     }
 }
 

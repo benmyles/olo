@@ -3965,6 +3965,71 @@ pub fn alert(ui: &mut Ui, icon: &str, message: &str, buttons: &[&str]) -> Option
     chosen
 }
 
+/// How tall an [`alert_choice`] window is for `message` and `choices`.
+pub fn alert_choice_height(message: &str, choices: usize) -> u32 {
+    let text = style::plain_text_height(message, ALERT_WIDTH as f32 - ALERT_TEXT_X - m::WINDOW_INSET);
+    let list = if choices > 1 { m::SPACING + choices as f32 * (m::MARK_ROW + m::TIGHT) - m::TIGHT } else { 0.0 };
+    (m::WINDOW_INSET + (text + list).max(ALERT_ICON) + m::WINDOW_INSET + m::CONTROL_HEIGHT + m::WINDOW_INSET).ceil() as u32
+}
+
+/// An alert that also asks which of `choices` (an account, say), when
+/// there is more than one: a radio button for each under the message,
+/// ↑ and ↓ to move between them, `chosen` the one picked. Otherwise as
+/// [`alert`]: the button chosen, the last by Enter, `cancel` by Escape
+/// (Cancel needn't come first: "Use Another Device…" may, at the left).
+/// Open its window with [`crate::WindowOptions::alert_choice`].
+pub fn alert_choice(ui: &mut Ui, icon: &str, message: &str, choices: &[String], chosen: &mut usize, buttons: &[&str], cancel: usize) -> Option<usize> {
+    let full = ui.available_rect_before_wrap();
+    let column = alert_frame(ui, icon);
+    let p = style::palette(ui.ctx());
+    let mut job = egui::text::LayoutJob::single_section(message.to_owned(), egui::TextFormat::simple(plain_font(), c(p.panel_text)));
+    job.wrap.max_width = full.right() - m::WINDOW_INSET - column.left();
+    let g = ui.painter().layout_job(job);
+    // First line's capitals level with the icon's upper third, as `alert`.
+    let pos = style::text_origin(ui.ctx(), &g, column.left(), column.top() + style::PLAIN_SIZE / 2.0 + 2.0, style::PLAIN_SIZE);
+    let below = pos.y + g.size().y;
+    ui.painter().galley(pos, g, c(p.panel_text));
+    if choices.len() > 1 {
+        if ui.input(|i| i.key_pressed(Key::ArrowDown)) {
+            *chosen = (*chosen + 1).min(choices.len() - 1);
+        }
+        if ui.input(|i| i.key_pressed(Key::ArrowUp)) {
+            *chosen = chosen.saturating_sub(1);
+        }
+        let mut y = style::snap_coord(ui.ctx(), below + m::SPACING);
+        for (i, choice) in choices.iter().enumerate() {
+            let r = Rect::from_min_size(pos2(column.left(), y), vec2(column.width(), m::MARK_ROW));
+            let row = egui::UiBuilder::new().max_rect(r).layout(egui::Layout::left_to_right(Align::Center));
+            if ui.scope_builder(row, |ui| ui.add(RadioButton::new(*chosen == i, choice))).inner.clicked() {
+                *chosen = i;
+            }
+            y += m::MARK_ROW + m::TIGHT;
+        }
+    }
+    let row = Rect::from_min_max(
+        pos2(column.left(), full.bottom() - m::WINDOW_INSET - m::CONTROL_HEIGHT),
+        pos2(full.right() - m::WINDOW_INSET, full.bottom() - m::WINDOW_INSET),
+    );
+    let mut picked = None;
+    ui.scope_builder(egui::UiBuilder::new().max_rect(row), |ui| {
+        button_row(ui, |ui| {
+            for (i, label) in buttons.iter().enumerate().rev() {
+                if ui.add(Button::new(label).default(i + 1 == buttons.len())).clicked() {
+                    picked = Some(i);
+                }
+            }
+        });
+    });
+    ui.input(|i| {
+        if i.key_pressed(Key::Enter) {
+            picked = Some(buttons.len() - 1);
+        } else if i.key_pressed(Key::Escape) {
+            picked = Some(cancel);
+        }
+    });
+    picked
+}
+
 /// Where a password alert's conversation with PAM is (polkit's helper,
 /// sudo): what it asks, what it last said, and the answer being typed.
 #[derive(Default)]

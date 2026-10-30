@@ -281,7 +281,8 @@ fn locked(app: &mut Passwords, ui: &mut Ui, full: Rect) {
     if let Some(first) = app.waiting.first() {
         let who = if app.waiting.iter().all(|w| w.from == first.from) {
             let name = olo_xdg::apps::our_app(first.from.trim_start_matches("olo-")).map_or("An app", |(name, _)| name);
-            format!("{name} is waiting for a login.")
+            let passkey = app.waiting.iter().all(|w| matches!(w.request, olo_keychain::Request::PasskeySign { .. } | olo_keychain::Request::PasskeyCreate { .. }));
+            format!("{name} is waiting for a {}.", if passkey { "passkey" } else { "login" })
         } else {
             "Apps are waiting for logins.".to_owned()
         };
@@ -785,6 +786,11 @@ fn detail_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
             if let Some(title) = section.as_ref().and_then(|s| item.sections.iter().find(|x| &x.id == s)).map(|s| s.title.clone()) {
                 section_heading(ui, &title);
             }
+            let passkey = (section.as_deref() == Some(crate::passkey::SECTION)).then(|| crate::passkey::shown(fields));
+            let fields: Vec<&ItemField> = match &passkey {
+                Some(shown) => shown.iter().collect(),
+                None => fields.clone(),
+            };
             for f in fields {
                 match field_row(ui, f, app.revealed.contains(&f.id)) {
                     Some(FieldAction::Copy) => copy = Some(f.id.clone()),

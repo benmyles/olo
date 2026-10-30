@@ -621,7 +621,7 @@ as they land (with the commit), add new ones as they come up.
   2× for StyledEdit (a tab group), Tracker and Deskbar; losing it again
   within 10 s ends the app instead of looping. Tested with the kit
   socket's debug-only `{"lose_gpu":true}`.
-- **Passwords: passkeys, and filling the right account in Chrome**
+- ~~**Passwords: passkeys, and filling the right account in Chrome**~~
   (Ben, 2026-10-29; next, after Terminal's git work: "this is really
   really important"): "olo passwords needs to support passkeys with a
   scan qr code feature and also we need to do a better job at matching
@@ -659,13 +659,29 @@ as they land (with the commit), add new ones as they come up.
     one-time-code inputs reliably (autocomplete attributes, labels,
     names, types, forms split over steps, shadow DOM and iframes), and
     fill them as typing does, so sites' scripts see it.
-  Done so far: the right account, the menu and the fields (HACKING,
+  Done: the right account, the menu and the fields (HACKING,
   "Passwords in Chrome"): ranked by what the page shows, what was used
   there before in this profile (an autofill or a sign-in by hand), the
   profile's own account, then the site; Chrome puts the two items under
   Olo ▸ (an extension can't have two at the top). Checked in a test
   Chrome: the menu, a two-step sign-in filled through, a sign-in by
-  hand as another account remembered for the profile.
+  hand as another account remembered for the profile. Passkeys
+  (HACKING, "Passkeys"): Passwords is the page's passkey authenticator
+  (sites see one, and offer passkeys); it makes them (an alert in
+  front: Use Another Device… / Cancel / Save Passkey, into the
+  account's login) and signs in with them (an alert, a choice of
+  account when there are several), suggests them in a sign-in's field
+  menu (Olo ▸ Sign In with Passkey), hands over to Chrome's own sheet,
+  with its QR code for a phone's passkey and security keys, when it has
+  none or the person chooses another device, takes its alert down when
+  the page gives up, and asks for an unlock only when it has a passkey
+  for the site. Checked in a test Chrome with a page verifying as a
+  site does (client data, site hash, flags, attestation, the signature
+  with WebCrypto): making two, signing in with each, Cancel, abort,
+  locked both ways, the field menu, Chrome's QR sheet. Not done: Olo's
+  passkeys used from another computer (Olo playing the phone, scanning
+  that computer's QR code with a camera); a phone's passkeys in Olo
+  work through Chrome's sheet.
 - ~~**Passwords search and filters; rich search and filtering controls in
   the kit, for Logs too**~~ (Ben, 2026-10-29, while on Passwords): "while
   you're doing stuff with passwords can you also make the passwords

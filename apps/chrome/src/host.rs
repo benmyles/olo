@@ -6,7 +6,9 @@
 //! open: true}` (start Passwords or bring it forward); each is answered
 //! with `{id, response}` or `{id, error}`, on a thread of its own, so a
 //! Fill waiting for an unlock holds up nothing else. Only what a browser
-//! needs passes: logins, fill, check, save, unlock and show. `{id,
+//! needs passes: logins, fill, check, save, unlock, show and passkeys.
+//! `{cancel: ID}` gives up on request ID (the page went away), so
+//! Passwords takes down the passkey alert it shows for it. `{id,
 //! profile: TOKEN}` says which Chrome profile the extension is in, and
 //! who is signed in to it (profile.rs).
 //!
@@ -38,6 +40,10 @@ const MAX_IN: usize = 1 << 20;
 /// Tree questions waiting for the extension's answer, by number.
 type Waiting = Arc<Mutex<HashMap<u64, mpsc::Sender<Vec<WindowTree>>>>>;
 
+/// Requests waiting for Passwords' answer, by the extension's id: their
+/// connections, to end on `{cancel}`.
+static ASKING: Mutex<Option<HashMap<u64, std::os::unix::net::UnixStream>>> = Mutex::new(None);
+
 pub fn run() {
     let out = Arc::new(Mutex::new(std::io::stdout()));
     let trees: Waiting = Arc::default();
@@ -67,6 +73,15 @@ pub fn run() {
             let windows = m.get("windows").cloned().map(serde_json::from_value).and_then(Result::ok).unwrap_or_default();
             if let Some(tx) = trees.lock().unwrap_or_else(|e| e.into_inner()).remove(&n) {
                 let _ = tx.send(windows);
+            }
+            continue;
+        }
+        // The page gave up on a request.
+        if let Ok(m) = &message
+            && let Some(n) = m.get("cancel").and_then(Value::as_u64)
+        {
+            if let Some(stream) = ASKING.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_default().remove(&n) {
+                let _ = stream.shutdown(std::net::Shutdown::Both);
             }
             continue;
         }
@@ -113,7 +128,15 @@ fn send(out: &Mutex<std::io::Stdout>, reply: &Value) {
 fn allowed(r: &Request) -> bool {
     matches!(
         r,
-        Request::Logins { .. } | Request::Fill { .. } | Request::Check { .. } | Request::Save { .. } | Request::Unlock | Request::Show { .. }
+        Request::Logins { .. }
+            | Request::Fill { .. }
+            | Request::Check { .. }
+            | Request::Save { .. }
+            | Request::Unlock
+            | Request::Show { .. }
+            | Request::Passkeys { .. }
+            | Request::PasskeyCreate { .. }
+            | Request::PasskeySign { .. }
     )
 }
 
@@ -150,16 +173,32 @@ fn answer(m: &Value) -> Value {
         return json!({ "id": id, "error": "not a request for browsers" });
     }
     let start = m.get("start").and_then(Value::as_bool) == Some(true);
-    match ask(&request, start) {
+    let n = id.as_u64();
+    let result = ask(&request, start, n);
+    if let Some(n) = n {
+        ASKING.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_default().remove(&n);
+    }
+    match result {
         Ok(response) => json!({ "id": id, "response": serde_json::to_value(&response).unwrap_or(Value::Null) }),
         Err(e) => json!({ "id": id, "error": e.to_string() }),
     }
 }
 
+/// Ask Passwords, keeping the connection under the extension's id `n`
+/// while it waits, for `{cancel}`.
+fn call(request: &Request, n: Option<u64>) -> Result<Response, CallError> {
+    match n {
+        Some(n) => olo_keychain::call_keeping(request, |stream| {
+            ASKING.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_default().insert(n, stream);
+        }),
+        None => olo_keychain::call(request),
+    }
+}
+
 /// Ask Passwords; with `start`, start it if it isn't running (then wait
 /// for it, and for the unlock it begins with).
-fn ask(request: &Request, start: bool) -> Result<Response, CallError> {
-    let mut result = olo_keychain::call(request);
+fn ask(request: &Request, start: bool, n: Option<u64>) -> Result<Response, CallError> {
+    let mut result = call(request, n);
     if !start || !matches!(result, Err(CallError::NotRunning)) {
         return result;
     }
@@ -170,7 +209,7 @@ fn ask(request: &Request, start: bool) -> Result<Response, CallError> {
     let until = Instant::now() + Duration::from_secs(10);
     while matches!(result, Err(CallError::NotRunning)) && Instant::now() < until {
         std::thread::sleep(Duration::from_millis(200));
-        result = olo_keychain::call(request);
+        result = call(request, n);
     }
     if matches!(request, Request::Logins { .. } | Request::Check { .. })
         && matches!(result, Ok(Response::Locked))

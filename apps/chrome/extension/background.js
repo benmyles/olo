@@ -5,7 +5,9 @@
 // best login is the one whose username the page shows, else the one
 // chosen there before in this Chrome profile, else the profile's own
 // account, else the nearest site's; a sign-in in steps gets its password
-// and one-time code as it comes to them.
+// and one-time code as it comes to them. Passkeys: Passwords makes them
+// and signs in with them for the page (passkeys.js), and a sign-in that
+// suggests passkeys has "Sign In with Passkey (who)" in the menu.
 // Everything goes to Passwords through olo-chrome's native messaging
 // host, which speaks Olo's keychain protocol (crates/keychain).
 //
@@ -51,9 +53,11 @@ function connect() {
 
 // Send `message` ({request} for the keychain, with `start` to start
 // Passwords first if it isn't running; or {open: true}); its response.
-function host(message) {
+// `sent` gets its id, to give up on it ({cancel: id}).
+function host(message, sent) {
   if (!port) connect();
   const id = next++;
+  sent?.(id);
   return new Promise((resolve, reject) => {
     waiting.set(id, { resolve, reject });
     port.postMessage({ id, ...message });
@@ -220,11 +224,23 @@ function buildMenu(url, tabId, frameId) {
       const [seen, chosen, p] = await Promise.all([seenOn(tabId, frameId, ranked), chosenFor(url), profileInfo()]);
       ranked = rank(ranked, { seen, chosen, email: p.email });
     }
-    const key = url + JSON.stringify(entry && [entry.state, ranked.map((l) => [l.vault, l.id, l.username, l.otp])]);
+    // A sign-in here waiting for a passkey: Passwords' for it.
+    const waiting = tabId === undefined ? null : waitingFor(tabId, frameId);
+    let keys = waiting ? await passkeysFor(waiting) : [];
+    if (keys.length > 1) {
+      const seen = await seenOn(tabId, frameId, keys.map((k) => ({ username: k.user_name })));
+      keys = keys.map((k, i) => [seen.has((k.user_name || "").toLowerCase()) ? 1 : 0, i, k]).sort((a, b) => b[0] - a[0] || a[1] - b[1]).map(([, , k]) => k);
+    }
+    const key = url + JSON.stringify(entry && [entry.state, ranked.map((l) => [l.vault, l.id, l.username, l.otp])]) + JSON.stringify(keys.map((k) => [k.vault, k.id]));
     if (menuFor === key) return;
     menuFor = key;
     await chrome.contextMenus.removeAll();
     const origin = originOf(url);
+    const who = (k) => k.user_name || k.title;
+    if (keys.length) {
+      const k = keys[0];
+      await create({ id: itemId("passkey", origin, k.vault, k.id), title: `Sign In with Passkey (${who(k)})`, contexts: ["editable"] });
+    }
     const best = ranked[0];
     if (entry?.state === "logins" && best) {
       const who = best.username || best.title;
@@ -232,6 +248,9 @@ function buildMenu(url, tabId, frameId) {
     }
     await create({ id: "passwords", title: "Passwords", contexts: ["editable"] });
     const add = (id, title, parentId = "passwords", enabled = true) => create({ id, title, parentId, contexts: ["editable"], enabled });
+    // The other passkeys first.
+    for (const k of keys.slice(1, MENU_LOGINS)) await add(itemId("passkey", origin, k.vault, k.id), `Sign In with Passkey (${who(k)})`);
+    if (keys.length > 1) await create({ id: "passkey-sep", type: "separator", parentId: "passwords", contexts: ["editable"] });
     if (!entry) {
       await add("none", "Not on this page", "passwords", false);
       return;
@@ -269,7 +288,9 @@ chrome.runtime.onUpdateAvailable.addListener(() => chrome.runtime.reload());
 chrome.runtime.onInstalled.addListener(async () => {
   buildMenu("");
   for (const tab of await chrome.tabs.query({ url: ["http://*/*", "https://*/*"] })) {
-    chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ["content.js"] }).catch(() => {});
+    const target = { tabId: tab.id, allFrames: true };
+    chrome.scripting.executeScript({ target, files: ["passkeys.js"], world: "MAIN" }).catch(() => {});
+    chrome.scripting.executeScript({ target, files: ["relay.js", "content.js"] }).catch(() => {});
   }
 });
 // Another tab: its page's menu (a field there may already have the focus).
@@ -328,7 +349,14 @@ async function nextStep(tabId, frameId, url) {
   }
 }
 
-chrome.tabs.onRemoved.addListener((tabId) => steps.delete(tabId));
+chrome.tabs.onRemoved.addListener((tabId) => {
+  steps.delete(tabId);
+  dropWaiting(tabId);
+});
+// Another page in the tab: its sign-ins' waits are over.
+chrome.tabs.onUpdated.addListener((tabId, change) => {
+  if (change.status === "loading") dropWaiting(tabId);
+});
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   let kind, origin, vault, id;
@@ -349,6 +377,9 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       known.delete(origin);
       menuFor = null;
       await buildMenu(url, tab.id, info.frameId);
+    } else if (kind === "passkey") {
+      await signInWith(tab.id, info.frameId, vault, id);
+      menuFor = null;
     } else if (kind === "autofill" || kind === "login") {
       await autofill(tab, info.frameId, url, vault, id);
       menuFor = null;
@@ -369,7 +400,15 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 chrome.runtime.onMessage.addListener((m, sender, reply) => {
   const fromPage = sender.tab && sender.url;
-  if (m.type === "focus" && fromPage) {
+  if (m.type === "passkey" && fromPage) {
+    if (!web(sender.url) || !m.request) return reply({ native: true });
+    passkey(sender, m.rid, m.request).then(reply, () => reply({ native: true }));
+    return true;
+  } else if (m.type === "passkey-cancel" && fromPage) {
+    giveUp(`${sender.tab.id}:${sender.frameId}:${m.rid}`);
+  } else if (m.type === "passkey-gone" && fromPage) {
+    giveUp(`${sender.tab.id}:${sender.frameId}:`);
+  } else if (m.type === "focus" && fromPage) {
     buildMenu(sender.url, sender.tab.id, sender.frameId);
   } else if (m.type === "page" && fromPage && web(sender.url)) {
     // A page with fields: have its logins ready for the menu; and say
@@ -422,6 +461,115 @@ chrome.runtime.onMessage.addListener((m, sender, reply) => {
 async function tabNow() {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   return tab;
+}
+
+// ---- Passkeys ----
+
+const encode = (u8) => btoa(String.fromCharCode(...u8)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+// The client data WebAuthn signs over, as JSON in base64url, and its
+// SHA-256: made here, from the frame's origin as Chrome reports it (never
+// the page's say), so a passkey answers only the site it is for.
+async function clientData(type, challenge, origin, topOrigin) {
+  const data = { type, challenge, origin, crossOrigin: topOrigin !== origin };
+  if (data.crossOrigin) data.topOrigin = topOrigin;
+  const json = new TextEncoder().encode(JSON.stringify(data));
+  const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", json));
+  return { json: encode(json), hash: encode(hash) };
+}
+
+// Requests waiting for Passwords, "tab:frame:rid" → the host's id for
+// them, to give up on when the page does.
+const asking = new Map();
+
+function giveUp(prefix) {
+  for (const [k, id] of asking) {
+    if (k.startsWith(prefix)) {
+      asking.delete(k);
+      port?.postMessage({ cancel: id });
+    }
+  }
+  for (const [k, w] of waitingSignIns) if (`${k}:${w.rid}`.startsWith(prefix)) waitingSignIns.delete(k);
+}
+
+// Sign-ins waiting for a passkey suggested in a field (conditional
+// mediation), "tab:frame" → {rid, request, url, origin, top, frameId}.
+const waitingSignIns = new Map();
+
+function waitingFor(tabId, frameId) {
+  return waitingSignIns.get(`${tabId}:${frameId || 0}`) || waitingSignIns.get(`${tabId}:0`) || null;
+}
+
+function dropWaiting(tabId) {
+  for (const k of waitingSignIns.keys()) if (k.startsWith(`${tabId}:`)) waitingSignIns.delete(k);
+}
+
+// Passwords' passkeys for a waiting sign-in (none while it's locked).
+async function passkeysFor(w) {
+  try {
+    const r = await ask({ type: "passkeys", url: w.url, rp_id: w.request.rpId, allow: w.request.allow });
+    return r.type === "passkeys" ? r.passkeys : [];
+  } catch {
+    return [];
+  }
+}
+
+// A page's passkey request (passkeys.js): Passwords' answer, `{native}`
+// for Chrome's own way, or `{error}` (a DOMException's name).
+async function passkey(sender, rid, r) {
+  const origin = sender.origin || originOf(sender.url);
+  const top = sender.frameId === 0 ? origin : originOf(sender.tab.url) || origin;
+  const key = `${sender.tab.id}:${sender.frameId}:${rid}`;
+  const call = (request, start) => host({ request, start }, (id) => asking.set(key, id)).finally(() => asking.delete(key));
+  const no = { error: "NotAllowedError", message: "The operation either timed out or was not allowed." };
+  if (r.kind === "create") {
+    const cd = await clientData("webauthn.create", r.challenge, origin, top);
+    const a = await call(
+      { type: "passkey_create", url: sender.url, rp_id: r.rpId, rp_name: r.rpName, user_id: r.userId, user_name: r.userName, display_name: r.displayName, exclude: r.exclude },
+      true,
+    );
+    if (a.type === "passkey_created") {
+      notify("Passwords", `Passkey saved in “${a.title}”.`);
+      return { credentialId: a.credential_id, clientDataJSON: cd.json, attestationObject: a.attestation_object, authenticatorData: a.authenticator_data, publicKey: a.public_key };
+    }
+    if (a.type === "passkey_exists") return { error: "InvalidStateError", message: "This account already has a passkey in Passwords." };
+    if (a.type === "declined") return no;
+    return { native: true };
+  }
+  // Which passkeys Passwords keeps here (none: Chrome's own way at once;
+  // locked: it may, so it is asked, and unlocks for it).
+  const look = await ask({ type: "passkeys", url: sender.url, rp_id: r.rpId, allow: r.allow }).catch(() => null);
+  const some = look && (look.type === "locked" || (look.type === "passkeys" && look.passkeys.length));
+  if (r.conditional) {
+    if (!look || look.type === "not_set_up" || look.type === "error") return { native: true };
+    // Offered in the field's menu from now (and once unlocked).
+    waitingSignIns.set(`${sender.tab.id}:${sender.frameId}`, { rid, request: r, url: sender.url, origin, top, frameId: sender.frameId });
+    menuFor = null;
+    buildMenu(sender.url, sender.tab.id, sender.frameId);
+    return { waiting: true };
+  }
+  if (!some) return { native: true };
+  const cd = await clientData("webauthn.get", r.challenge, origin, top);
+  const a = await call({ type: "passkey_sign", url: sender.url, rp_id: r.rpId, allow: r.allow, chosen: null, client_data_hash: cd.hash }, true);
+  if (a.type === "assertion") return assertionOf(a, cd);
+  if (a.type === "declined") return no;
+  return { native: true };
+}
+
+function assertionOf(a, cd) {
+  return { credentialId: a.credential_id, clientDataJSON: cd.json, authenticatorData: a.authenticator_data, signature: a.signature, userHandle: a.user_handle };
+}
+
+// Passkey `vault`/`id` chosen in the menu, for the sign-in waiting in
+// the tab (in the field's frame or the top one).
+async function signInWith(tabId, frameId, vault, id) {
+  const w = waitingFor(tabId, frameId);
+  if (!w) throw new Error("The page isn't asking for a passkey any more.");
+  const cd = await clientData("webauthn.get", w.request.challenge, w.origin, w.top);
+  const a = await ask({ type: "passkey_sign", url: w.url, rp_id: w.request.rpId, allow: w.request.allow, chosen: [vault, id], client_data_hash: cd.hash }, true);
+  if (a.type !== "assertion") throw new Error(a.message || "Passwords couldn't sign in with the passkey.");
+  waitingSignIns.delete(`${tabId}:${w.frameId}`);
+  await chrome.tabs.sendMessage(tabId, { type: "passkey-chosen", rid: w.rid, answer: assertionOf(a, cd) }, { frameId: w.frameId });
 }
 
 // ---- Saving a login just used ----

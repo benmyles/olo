@@ -196,6 +196,12 @@ impl WindowOptions {
         // focus to be its parent, as when chosen from a popup menu).
         WindowOptions { alert: true, ..WindowOptions::new(title, w, h).min_size(w, h).max_size(w, h) }
     }
+    /// An alert that also asks which of `choices` (see
+    /// `widgets::alert_choice`).
+    pub fn alert_choice(title: impl Into<String>, message: &str, choices: usize) -> Self {
+        let (w, h) = (crate::widgets::ALERT_WIDTH, crate::widgets::alert_choice_height(message, choices));
+        WindowOptions { alert: true, ..WindowOptions::new(title, w, h).min_size(w, h).max_size(w, h) }
+    }
     /// Open over `parent`, as its alert or sheet.
     pub fn parent(mut self, parent: WindowId) -> Self {
         self.parent = Some(parent);

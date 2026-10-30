@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Passwords: passkeys in Chrome
+
+*23:45* — Passwords is Chrome's passkey authenticator: it asks in an alert in front which account to sign in with (a choice when there are several, Use Another Device… for Chrome's own QR-code sheet), and a sign-in that suggests passkeys has Olo ▸ Sign In with Passkey in the field's menu. At 2×; reviewed at 1×, 1.5× and 2×.
+
+![Passwords: passkeys in Chrome](2026-10-29/234533-passwords-passkeys-in-chrome.png)
+
 ### Terminal: smaller pull request marks in the tab strip
 
 *23:28* — Before (left) and after at 2×. The pull request mark is drawn as big as the text (12 pt, from GitHub's 16-unit drawing, its lines whole device pixels at every scale) and sits in the close box's place, which takes it over only under the pointer, so titles get the room back and nothing moves; each group's colour bar stops short of the next group's.

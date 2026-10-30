@@ -6,6 +6,7 @@ mod cli;
 mod edit;
 mod generator;
 mod lock;
+mod passkey;
 mod store;
 mod sync;
 mod vault;
@@ -100,6 +101,10 @@ enum Alert {
     Message(String),
     /// `op` in a terminal session asks to use the passwords.
     AllowCli { session: cli::Session, asker: cli::Asker },
+    /// A page in Chrome asks to sign in with a passkey (which of
+    /// `choices`: an item and how it is shown) or, with none, to make one
+    /// (into one of `candidates`, else a new login).
+    Passkey { incoming: Box<Incoming>, message: String, choices: Vec<((String, String), String)>, chosen: usize, candidates: Vec<(String, String)> },
 }
 
 /// What to do once changes are discarded.
@@ -353,6 +358,7 @@ impl Passwords {
                 let Some(s) = s else { return false };
                 let flags = [
                     ("otp", s.otp),
+                    ("passkey", s.passkey.is_some()),
                     ("password", s.password),
                     ("website", !i.websites.is_empty()),
                     ("files", s.files),
@@ -400,6 +406,7 @@ impl Passwords {
             let has = Facet::new("has", "Has")
                 .multiple()
                 .value("otp", "One-Time Code", count(&|s| s.otp))
+                .value("passkey", "Passkey", count(&|s| s.passkey.is_some()))
                 .value("password", "Password", count(&|s| s.password))
                 .value("website", "Website", Some(active.iter().filter(|i| !i.websites.is_empty()).count()))
                 .value("files", "Attachments", count(&|s| s.files))
@@ -663,7 +670,17 @@ impl Passwords {
         if !self.set_up() {
             return incoming.reply(Response::NotSetUp);
         }
-        let waits = !matches!(incoming.request, Request::Logins { .. } | Request::Check { .. } | Request::Search { .. });
+        // Locked, a page's passkeys are none if the index (kept while
+        // locked) has none it may use: Chrome uses its own without asking
+        // for an unlock. Else locked (it asks to unlock for one).
+        if self.lock.locked
+            && let Request::Passkeys { url, rp_id, allow } = &incoming.request
+            && !self.index.is_empty()
+            && (!olo_keychain::rp_id_fits(rp_id, url) || self.passkeys_for(rp_id, allow).is_empty())
+        {
+            return incoming.reply(Response::Passkeys { passkeys: Vec::new() });
+        }
+        let waits = !matches!(incoming.request, Request::Logins { .. } | Request::Check { .. } | Request::Search { .. } | Request::Passkeys { .. });
         if self.lock.locked {
             if !waits {
                 return incoming.reply(Response::Locked);
@@ -741,6 +758,60 @@ impl Passwords {
                 let url = url.clone();
                 Box::new(move |w| store::fits(w, &url))
             }
+            Request::Passkeys { url, rp_id, allow } => {
+                let passkeys = if olo_keychain::rp_id_fits(rp_id, url) { self.passkeys_for(rp_id, allow) } else { Vec::new() };
+                return incoming.reply(Response::Passkeys { passkeys });
+            }
+            Request::PasskeySign { url, rp_id, allow, chosen, .. } => {
+                if !olo_keychain::rp_id_fits(rp_id, url) {
+                    let message = format!("This page can’t use passkeys for {rp_id}.");
+                    return incoming.reply(Response::Error { message });
+                }
+                let found = self.passkeys_for(rp_id, allow);
+                if found.is_empty() {
+                    return incoming.reply(Response::NoPasskey);
+                }
+                // Picked in Chrome's menu already: signed with at once.
+                if let Some(c) = chosen.clone().filter(|(v, id)| found.iter().any(|p| &p.vault == v && &p.id == id)) {
+                    return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates: vec![c], vault: String::new() });
+                }
+                let rp = rp_id.clone();
+                let label = |p: &olo_keychain::Passkey| if p.user_name.is_empty() { p.title.clone() } else { p.user_name.clone() };
+                let message = match found.as_slice() {
+                    [one] => format!("Sign in to {rp} as “{}” with your passkey?", label(one)),
+                    _ => format!("Sign in to {rp} with which passkey?"),
+                };
+                let choices = found.iter().map(|p| ((p.vault.clone(), p.id.clone()), label(p))).collect();
+                return self.ask_passkey(cx, incoming, message, choices, Vec::new());
+            }
+            Request::PasskeyCreate { url, rp_id, user_name, exclude, .. } => {
+                if !olo_keychain::rp_id_fits(rp_id, url) {
+                    let message = format!("This page can’t make passkeys for {rp_id}.");
+                    return incoming.reply(Response::Error { message });
+                }
+                if !exclude.is_empty() && !self.passkeys_for(rp_id, exclude).is_empty() {
+                    return incoming.reply(Response::PasskeyExists);
+                }
+                // The logins it may join: the site's, and any with a
+                // passkey for it.
+                let near: Vec<&ItemOverview> = self
+                    .items
+                    .iter()
+                    .filter(|i| i.state == ItemState::Active)
+                    .filter(|i| {
+                        i.websites.iter().any(|w| passkey::near(&w.url, rp_id))
+                            || self.index.get(&i.id).and_then(|s| s.passkey.as_ref()).is_some_and(|p| p.rp_id.eq_ignore_ascii_case(rp_id))
+                    })
+                    .collect();
+                let joins = near.iter().find(|i| self.username_of(i).eq_ignore_ascii_case(user_name) && !user_name.is_empty());
+                let who = if user_name.is_empty() { String::new() } else { format!(" for “{user_name}”") };
+                let message = match joins {
+                    Some(i) => format!("Save a passkey{who} on {rp_id} in Passwords? It goes with your login “{}”.", i.title),
+                    None => format!("Save a passkey{who} on {rp_id} in Passwords?"),
+                };
+                let candidates = near.iter().map(|i| (i.vault_id.clone(), i.id.clone())).collect();
+                return self.ask_passkey(cx, incoming, message, Vec::new(), candidates);
+            }
         };
         let candidates: Vec<(String, String)> = self
             .items
@@ -748,16 +819,62 @@ impl Passwords {
             .filter(|i| i.state == ItemState::Active && i.websites.iter().any(&fits))
             .map(|i| (i.vault_id.clone(), i.id.clone()))
             .collect();
-        let vault = self
-            .vaults
-            .iter()
-            .find(|v| matches!(v.title.as_str(), "Personal" | "Private" | "Employee"))
-            .or(self.vaults.first())
-            .map(|v| v.id.clone());
-        let Some(vault) = vault else {
+        let Some(vault) = self.new_item_vault() else {
             return incoming.reply(Response::Error { message: "There’s no vault to save in.".into() });
         };
         self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates, vault });
+    }
+
+    /// Where a login made for another app goes.
+    fn new_item_vault(&self) -> Option<String> {
+        self.vaults
+            .iter()
+            .find(|v| matches!(v.title.as_str(), "Personal" | "Private" | "Employee"))
+            .or(self.vaults.first())
+            .map(|v| v.id.clone())
+    }
+
+    /// The passkeys kept for `rp_id` (those in `allow`, if any), by user.
+    fn passkeys_for(&self, rp_id: &str, allow: &[String]) -> Vec<olo_keychain::Passkey> {
+        let mut found: Vec<olo_keychain::Passkey> = self
+            .items
+            .iter()
+            .filter(|i| i.state == ItemState::Active)
+            .filter_map(|i| {
+                let p = self.index.get(&i.id)?.passkey.as_ref()?;
+                let fits = p.rp_id.eq_ignore_ascii_case(rp_id) && (allow.is_empty() || allow.contains(&p.credential_id));
+                fits.then(|| olo_keychain::Passkey {
+                    vault: i.vault_id.clone(),
+                    id: i.id.clone(),
+                    title: i.title.clone(),
+                    user_name: p.user_name.clone(),
+                    credential_id: p.credential_id.clone(),
+                })
+            })
+            .collect();
+        found.sort_by_cached_key(|p| (p.user_name.to_lowercase(), p.title.to_lowercase()));
+        found
+    }
+
+    /// Ask the person about a page's passkey, in an alert in front: to
+    /// sign in with one of `choices`, or (with none) to save a new one.
+    fn ask_passkey(&mut self, cx: &mut Cx, incoming: Incoming, message: String, choices: Vec<((String, String), String)>, candidates: Vec<(String, String)>) {
+        let w = cx.open_window(WindowOptions::alert_choice("Passwords", &message, choices.len()));
+        cx.activate(w);
+        self.alerts.insert(w, Alert::Passkey { incoming: Box::new(incoming), message, choices, chosen: 0, candidates });
+    }
+
+    /// The person answered a passkey alert with button `choice`.
+    fn answer_passkey(&mut self, incoming: Box<Incoming>, choices: Vec<((String, String), String)>, chosen: usize, candidates: Vec<(String, String)>, choice: usize) {
+        match choice {
+            0 => incoming.reply(Response::OtherDevice),
+            2 => {
+                let candidates = if choices.is_empty() { candidates } else { choices.into_iter().nth(chosen).map(|(c, _)| c).into_iter().collect() };
+                let vault = self.new_item_vault().unwrap_or_default();
+                self.store.send(Job::Keychain { incoming, candidates, vault });
+            }
+            _ => incoming.reply(Response::Declined),
+        }
     }
 
     /// The person allowed (or denied) a terminal session's `op`.
@@ -1392,6 +1509,24 @@ impl App for Passwords {
             }
             return;
         }
+        if let Some(Alert::Passkey { incoming, message, choices, chosen, .. }) = self.alerts.get_mut(&window) {
+            // The page gave up (it went away, or its time ran out).
+            if incoming.gone() {
+                self.alerts.remove(&window);
+                cx.close_window(window);
+                return;
+            }
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
+            let labels: Vec<String> = choices.iter().map(|(_, l)| l.clone()).collect();
+            let done = if choices.is_empty() { "Save Passkey" } else { "Sign In" };
+            if let Some(choice) = olo_kit::widgets::alert_choice(ui, "key", message, &labels, chosen, &["Use Another Device…", "Cancel", done], 1) {
+                cx.close_window(window);
+                if let Some(Alert::Passkey { incoming, choices, chosen, candidates, .. }) = self.alerts.remove(&window) {
+                    self.answer_passkey(incoming, choices, chosen, candidates, choice);
+                }
+            }
+            return;
+        }
         if let Some(alert) = self.alerts.get(&window) {
             let (icon, message, buttons): (&str, String, &[&str]) = match alert {
                 Alert::ConfirmReset => ("warning", RESET.into(), &["Cancel", "Erase and Start Again"]),
@@ -1402,6 +1537,7 @@ impl App for Passwords {
                 Alert::DiscardChanges { .. } => ("warning", "Discard the changes to this item?".into(), &["Keep Editing", "Discard"]),
                 Alert::Message(m) => ("stop", m.clone(), &["OK"]),
                 Alert::AllowCli { asker, .. } => ("warning", allow_message(asker), &["Deny", "Allow"]),
+                Alert::Passkey { .. } => return,
             };
             if let Some(choice) = olo_kit::widgets::alert(ui, icon, &message, buttons) {
                 cx.close_window(window);
@@ -1555,7 +1691,10 @@ impl App for Passwords {
             self.end_review(cx);
             return;
         }
-        self.alerts.remove(&window);
+        // A passkey alert closed: no.
+        if let Some(Alert::Passkey { incoming, .. }) = self.alerts.remove(&window) {
+            incoming.reply(Response::Declined);
+        }
         cx.close_window(window);
     }
 

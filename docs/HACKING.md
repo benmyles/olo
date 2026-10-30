@@ -870,6 +870,13 @@ top, text)` writes wrapped text in it and `alert_buttons(ui, column,
 buttons, ready)` puts the buttons along its bottom, the default one
 disabled until `ready`, with Enter and Escape) in a window opened
 with `WindowOptions::alert(title, message)` (sized for the message);
+`widgets::alert_choice(ui, icon, message, choices, &mut chosen,
+buttons, cancel)` also asks which of `choices` (a radio button each
+under the message when there are two or more, ↑ ↓ moving between
+them), Escape choosing button `cancel` (so another button, such as
+Passwords' "Use Another Device…", can come first at the left), in a
+window opened with `WindowOptions::alert_choice(title, message,
+choices.len())`;
 an alert with fields is fixed at a height it works out before its first
 frame, with `style::plain_text_height(text, width)` for its wrapped
 text (the column is `ALERT_WIDTH`, or the window's own width, less
@@ -4052,9 +4059,11 @@ already open on install or update. Beside the profile goes
 `NativeMessagingHosts/com.olodesktop.passwords.json`, naming `olo-chrome`
 itself: started as `olo-chrome chrome-extension://ID/`, it is the
 native messaging host (length-prefixed JSON on stdin/stdout), passing
-only `logins`, `fill`, `check`, `save`, `unlock` and `show` on to
-Passwords over the keychain socket (`{id, request, start}`; `start`
-starts Passwords and waits out its unlock) and `{open: true}`. The
+only `logins`, `fill`, `check`, `save`, `unlock`, `show` and the
+passkey requests on to Passwords over the keychain socket (`{id,
+request, start}`; `start` starts Passwords and waits out its unlock;
+`{cancel: id}` ends a waiting request's connection, which Passwords
+sees as `Incoming::gone`) and `{open: true}`. The
 extension: a field's context menu has "Autofill with Passwords (the best
 login)" and Passwords ▸ each login ▸ Autofill, Username, Password,
 One-Time Code (when it has one), and Open Passwords (Unlock Passwords…
@@ -4095,6 +4104,47 @@ waiting app from the keychain caller's program (`Incoming::from`). Test
 with a throwaway `--user-data-dir` (DevTools needs a non-default one:
 `--remote-debugging-port`), the fake 1Password and a localhost page; the
 fake's "Olo Test Site" login (`http://localhost`, jane) has a TOTP.
+
+**Passkeys** (`extension/passkeys.js`, `relay.js`; Passwords'
+`passkey.rs`; the keychain's `Passkeys`, `PasskeyCreate`, `PasskeySign`).
+Passwords is the page's passkey authenticator in Chrome. `passkeys.js`
+runs in the page's own world (`"world": "MAIN"`, `document_start`, every
+frame) and answers `navigator.credentials.create`/`get` for
+`publicKey` requests (an iframe only where its permissions policy lets
+it); `PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable`
+and `isConditionalMediationAvailable` say yes, so sites offer passkeys.
+Its credentials are objects on `PublicKeyCredential.prototype` (and the
+response types') with their values as own properties, so `instanceof`,
+`toJSON()` and `getPublicKey()` work as on Chrome's. It talks through
+`relay.js` (the isolated world, `postMessage` on its own window) to the
+worker, which builds the client data from the frame's origin as Chrome
+reports it (`sender.origin`, never the page's word), hashes it, and asks
+Passwords, which checks the relying party fits the page
+(`olo_keychain::rp_id_fits`: the page's host or above it, a secure
+page, never a public suffix or an address). Making one: Passwords asks
+in an alert in front ("Save a passkey for “ann@…” on example.com in
+Passwords?", naming the login it joins), Use Another Device… / Cancel /
+Save Passkey; it joins that account's login, else gets a login of its
+own, in a "Passkey" section (P-256 key, attestation "none", the
+backup flags set since 1Password syncs it, sign count 0); the item view
+shows only its site and user. Signing in (`get`): when Passwords has
+none the page may use, Chrome's own way at once (its sheet: a phone's
+passkey by QR code, a security key); else an alert, with a radio
+button per account when there are several, and Sign In signs. "Use
+Another Device…" hands over to Chrome's own sheet; Cancel gives the
+page `NotAllowedError`; the page giving up (an `AbortSignal`, leaving)
+takes the alert down. Locked, Passwords answers from the index it keeps
+while locked: none here means Chrome's way without an unlock; else it
+comes forward to be unlocked ("Google Chrome is waiting for a passkey")
+and then asks. A sign-in that suggests passkeys in its account field
+(`mediation: "conditional"`) gets Chrome's own suggestions and, in the
+field's context menu, Olo ▸ "Sign In with Passkey (who)" (the others
+under Passwords ▸), which signs at once (the click is the consent);
+whichever is chosen first wins and the other is let go. Passwords
+filters items with a passkey (`has:passkey`). Test with a localhost
+page that checks what a site would: the client data, the
+authenticator data's site hash and flags, the attestation, and the
+signature with WebCrypto.
 
 **Chrome's widget tree, for agents** (`extension/tree.js`, `host.rs`).
 The extension (named "Olo": it does more than passwords) connects to

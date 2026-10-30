@@ -4360,6 +4360,7 @@ dependencies = [
 name = "olo-passwords"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chacha20poly1305",
  "chrono",
  "getrandom 0.3.4",
@@ -4370,8 +4371,10 @@ dependencies = [
  "olo-system",
  "olo-theme",
  "olo-xdg",
+ "p256",
  "serde",
  "serde_json",
+ "sha2",
  "tracing",
  "url",
  "zeroize",

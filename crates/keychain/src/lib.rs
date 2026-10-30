@@ -10,6 +10,11 @@
 //! `op` (`olo-op`, apps/op) asks with [`Request::Cli`]: Passwords
 //! answers in the shapes 1Password's own `op` prints as JSON, after the
 //! person allows that terminal session.
+//!
+//! Passkeys work the same way: Chrome's extension asks for a page's
+//! passkeys, and Passwords makes and keeps the keys and signs with them
+//! once the person agrees, so private keys never leave it. Byte strings
+//! are unpadded base64url, as in WebAuthn's JSON forms.
 
 use std::{
     io::{BufRead, BufReader, Write},
@@ -34,6 +39,26 @@ pub enum Request {
     Save { url: String, title: String, username: String, password: String, replace: Option<(String, String)> },
     /// Bring Passwords forward and answer once it is unlocked.
     Unlock,
+    /// The passkeys for relying party `rp_id` the page at `url` may use
+    /// (only those in `allow`, if it isn't empty). Doesn't wait: `Locked`
+    /// while locked.
+    Passkeys { url: String, rp_id: String, allow: Vec<String> },
+    /// Make a passkey for `rp_id`, once the person agrees; one whose id is
+    /// in `exclude` already there means they have one.
+    PasskeyCreate {
+        url: String,
+        rp_id: String,
+        rp_name: String,
+        user_id: String,
+        user_name: String,
+        display_name: String,
+        exclude: Vec<String>,
+    },
+    /// Sign in to `rp_id` with a passkey (one in `allow`, if it isn't
+    /// empty): the person picks which and agrees, unless `chosen` (an
+    /// item) was picked already, in Chrome's context menu.
+    /// `client_data_hash` is the SHA-256 of the page's client data.
+    PasskeySign { url: String, rp_id: String, allow: Vec<String>, chosen: Option<(String, String)>, client_data_hash: String },
     /// Items whose title, website or tags hold every word of `query`
     /// (the command palette). Only while unlocked; doesn't wait.
     Search { query: String },
@@ -65,13 +90,15 @@ impl Request {
     /// How long a reply can take.
     pub fn timeout(&self) -> Duration {
         match self {
-            Request::Logins { .. } | Request::Search { .. } => Duration::from_secs(15),
+            Request::Logins { .. } | Request::Search { .. } | Request::Passkeys { .. } => Duration::from_secs(15),
             Request::Check { .. } => Duration::from_secs(60),
             // These wait for you to unlock Passwords.
             Request::Fill { .. }
             | Request::Save { .. }
             | Request::Unlock
             | Request::Show { .. }
+            | Request::PasskeyCreate { .. }
+            | Request::PasskeySign { .. }
             | Request::Cli { .. } => Duration::from_secs(300),
         }
     }
@@ -104,6 +131,16 @@ pub struct Found {
     pub title: String,
     /// Its website's host, or its kind ("Secure Note").
     pub subtitle: String,
+}
+
+/// A passkey kept in Passwords (one per login item).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Passkey {
+    pub vault: String,
+    pub id: String,
+    pub title: String,
+    pub user_name: String,
+    pub credential_id: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -140,6 +177,32 @@ pub enum Response {
     },
     /// For `Show`.
     Shown,
+    Passkeys {
+        passkeys: Vec<Passkey>,
+    },
+    /// A new passkey: `public_key` is its SubjectPublicKeyInfo (DER).
+    PasskeyCreated {
+        title: String,
+        credential_id: String,
+        attestation_object: String,
+        authenticator_data: String,
+        public_key: String,
+    },
+    /// One of `exclude` is already saved.
+    PasskeyExists,
+    Assertion {
+        credential_id: String,
+        authenticator_data: String,
+        signature: String,
+        user_handle: String,
+    },
+    /// For `PasskeySign`: there's none for the site.
+    NoPasskey,
+    /// The person said no (to a passkey made or used).
+    Declined,
+    /// The person chose a passkey on another device (a phone, by its QR
+    /// code, or a security key): the browser's own way.
+    OtherDevice,
     Error {
         message: String,
     },
@@ -197,6 +260,11 @@ pub fn socket_path() -> PathBuf {
 
 /// Ask Passwords; blocks (call it from a worker thread).
 pub fn call(request: &Request) -> Result<Response, CallError> {
+    finish(connect(request)?)
+}
+
+/// Connect and send `request`.
+fn connect(request: &Request) -> Result<UnixStream, CallError> {
     let mut s = UnixStream::connect(socket_path()).map_err(|e| match e.kind() {
         std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused => CallError::NotRunning,
         _ => CallError::Io(e),
@@ -208,6 +276,11 @@ pub fn call(request: &Request) -> Result<Response, CallError> {
     let written = s.write_all(line.as_bytes());
     line.zeroize();
     written.map_err(CallError::Io)?;
+    Ok(s)
+}
+
+/// The reply to the request sent on `s`.
+fn finish(s: UnixStream) -> Result<Response, CallError> {
     let mut reply = String::new();
     let read = BufReader::new(&s).read_line(&mut reply);
     let result = match read {
@@ -217,6 +290,17 @@ pub fn call(request: &Request) -> Result<Response, CallError> {
     };
     reply.zeroize();
     result
+}
+
+/// As [`call`], handing `keep` the connection first, so another thread
+/// can end it (`shutdown`) to give up waiting: the asker went away.
+/// Passwords sees that as [`Incoming::gone`].
+pub fn call_keeping(request: &Request, keep: impl FnOnce(UnixStream)) -> Result<Response, CallError> {
+    let stream = connect(request)?;
+    if let Ok(clone) = stream.try_clone() {
+        keep(clone);
+    }
+    finish(stream)
 }
 
 /// A request waiting for its answer; answer it once, from any thread.
@@ -230,6 +314,15 @@ pub struct Incoming {
 }
 
 impl Incoming {
+    /// Whether the asker has hung up (given up waiting).
+    pub fn gone(&self) -> bool {
+        use std::os::fd::AsRawFd;
+        let mut fd = libc::pollfd { fd: self.stream.as_raw_fd(), events: libc::POLLRDHUP, revents: 0 };
+        // SAFETY: one valid pollfd, not waiting.
+        let n = unsafe { libc::poll(&mut fd, 1, 0) };
+        n > 0 && fd.revents & (libc::POLLRDHUP | libc::POLLHUP | libc::POLLERR) != 0
+    }
+
     pub fn reply(mut self, response: Response) {
         let Ok(mut line) = serde_json::to_string(&response) else { return };
         line.push('\n');
@@ -372,6 +465,25 @@ pub fn closeness(website: &str, page: &str) -> Option<u32> {
     Some(100u32.saturating_sub(shared as u32))
 }
 
+/// Whether a page at `url` may use passkeys for `rp_id`: a secure page
+/// (or this machine's) whose host is `rp_id` or under it, where `rp_id`
+/// isn't a public suffix (`com`, `github.io`) or an address.
+pub fn rp_id_fits(rp_id: &str, url: &str) -> bool {
+    let Ok(page) = url::Url::parse(url) else {
+        return false;
+    };
+    let Some(url::Host::Domain(here)) = page.host().map(|h| h.to_owned()) else {
+        return false;
+    };
+    let here = here.to_ascii_lowercase();
+    let rp_id = rp_id.to_ascii_lowercase();
+    let local = here == "localhost" || here.ends_with(".localhost");
+    let secure = page.scheme() == "https" || (page.scheme() == "http" && local);
+    let under = here == rp_id || here.ends_with(&format!(".{rp_id}"));
+    let suffix = !(rp_id == "localhost" || rp_id.ends_with(".localhost")) && psl::suffix_str(&rp_id).is_none_or(|s| s == rp_id);
+    secure && !rp_id.is_empty() && under && !suffix
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -413,6 +525,23 @@ mod tests {
         assert!(matches("http://localhost", "http://localhost:8080/login"));
         assert!(matches("https://localhost", "http://localhost:8080/login"));
         assert!(!matches("https://example.com", "file:///example.com"));
+    }
+
+    #[test]
+    fn rp_ids() {
+        assert!(rp_id_fits("example.com", "https://example.com/"));
+        assert!(rp_id_fits("example.com", "https://login.example.com/"));
+        assert!(rp_id_fits("Example.COM", "https://LOGIN.example.com/"));
+        assert!(!rp_id_fits("login.example.com", "https://example.com/"));
+        assert!(!rp_id_fits("example.com", "http://example.com/"));
+        assert!(!rp_id_fits("example.com", "https://badexample.com/"));
+        assert!(!rp_id_fits("com", "https://example.com/"));
+        assert!(!rp_id_fits("github.io", "https://alice.github.io/"));
+        assert!(rp_id_fits("alice.github.io", "https://alice.github.io/"));
+        assert!(!rp_id_fits("co.uk", "https://bbc.co.uk/"));
+        assert!(rp_id_fits("localhost", "http://localhost:8765/"));
+        assert!(!rp_id_fits("127.0.0.1", "http://127.0.0.1:8765/"));
+        assert!(!rp_id_fits("", "https://example.com/"));
     }
 
     #[test]
