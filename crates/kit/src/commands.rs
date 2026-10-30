@@ -67,7 +67,7 @@ pub struct Menus {
 }
 
 /// One thing in a window: a widget, or text drawn there.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct UiNode {
     pub id: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]

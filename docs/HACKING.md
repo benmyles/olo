@@ -4446,7 +4446,23 @@ them out, or a drag would send one every frame), `tree` (each kit app's
 the page title its window's title starts with: see "Chrome's widget
 tree") and moved by
 `content`, so every node is in screen pixels, ready for `click`; an
-outline, or `--json`), `menus` and `invoke` (a window's app's menu bar
+outline, or `--json`; a program not on the kit, GTK 3 or 4, Qt, gives
+its tree over AT-SPI instead, `atspi.rs`: its connections to the
+accessibility bus found by its process id, each window's accessibles
+walked while they show, roles named as AccessKit names them, a "push
+button" a `Button`, states as the node's flags, a field's text and a
+slider's number as its value, containers and a button's own label
+left out, and places from the window's geometry, as GTK gives them;
+each question has 1.5 s, so a hung program can't hold `tree` up.
+olo-session sets `QT_ACCESSIBILITY=1`, as GTK is always there.
+Tried with GNOME Calculator (GTK 4): its buttons clicked by name, its
+display set by typing, `wait --text` on the answer. To try one
+headless, the accessibility bus must be dbus-broker (registryd crashes
+on busd): `dbus-broker-launch --scope user --config-file
+/usr/share/defaults/at-spi2/accessibility.conf` given a listening
+socket as fd 3 (`LISTEN_FDS=1`), `at-spi2-registryd` and the program
+with `AT_SPI_BUS_ADDRESS` set to it, and a screen entry in a private
+`XDG_RUNTIME_DIR`), `menus` and `invoke` (a window's app's menu bar
 and choosing from it, `commands::menus`/`invoke`), `click`, `move`,
 `down`/`up`, `drag`, `scroll`, `wheel`, `key` (chords as people write
 them: `Cmd+S`, `Enter`, `Esc`; parsed by `olo_protocol::Chord` with

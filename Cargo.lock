@@ -4704,6 +4704,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+ "zbus",
  "zstd",
 ]
 

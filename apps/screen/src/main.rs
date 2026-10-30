@@ -3,6 +3,7 @@
 //! agents' tool; without one it opens the window that shows the screens.
 //! See `screens.rs` for what a screen is and HACKING.md, "Agent Screens".
 
+mod atspi;
 mod export;
 mod find;
 mod history;
@@ -742,7 +743,9 @@ fn trees(s: &screens::Screen, only: Option<u64>) -> Result<Vec<ScreenTree>, Stri
     let mut pids: Vec<u32> = windows.iter().filter(|w| w.content.is_some()).filter_map(|w| w.pid.map(|p| p as u32)).collect();
     pids.sort_unstable();
     pids.dedup();
-    let asked: Vec<_> = pids.iter().map(|&pid| (pid, std::thread::spawn(move || commands::tree(pid)))).collect();
+    // A program not on Olo's kit: its tree over AT-SPI (GTK, Qt).
+    let asked: Vec<_> =
+        pids.iter().map(|&pid| (pid, std::thread::spawn(move || commands::tree(pid).filter(|t| !t.is_empty()).or_else(|| atspi::trees(pid))))).collect();
     // Windows only: Deskbar and other layer surfaces have no window here.
     let mut answers: Vec<(u32, Vec<commands::WindowTree>)> = asked
         .into_iter()

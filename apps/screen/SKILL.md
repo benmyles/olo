@@ -71,8 +71,10 @@ takes clicks (an icon, a menu title), named by the text inside it. A
 table's rows say which they are, `row 13/61`; their cells show only with
 `--cells`. An open menu or dropdown is a `Menu` with a `MenuItem` for each
 item, under the window it opened from. Programs not built on Olo's kit
-(GTK, Qt apps) have no tree: use a picture (their open menus are
-still in `windows` as `popups`).
+(GTK and Qt apps) give their tree through the accessibility bus: the
+same roles and names (a GTK button is a `Button`), so `click --name`,
+`set` and `wait` work on them too; one that gives none needs a picture
+(its open menus are still in `windows` as `popups`).
 
 ```sh
 olo-screen look agent                             # the whole screen; prints the file's path

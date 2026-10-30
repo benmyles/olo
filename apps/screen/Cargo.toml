@@ -17,6 +17,7 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 libc = "0.2"
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
 png = "0.18"
 zstd = "0.14"
 openh264 = "0.9"

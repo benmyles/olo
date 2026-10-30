@@ -957,6 +957,9 @@ fn set_session_env(display: &str, ipc: &Path) {
         ("_JAVA_AWT_WM_NONREPARENTING", "1".into()),
         // Olo's pointer, for programs that draw their own (app_server's
         // xcursor.rs writes the theme).
+        // Qt programs on the accessibility bus too (GTK's always are), so
+        // agents can read and drive them (olo-screen's atspi.rs).
+        ("QT_ACCESSIBILITY", "1".into()),
         ("XCURSOR_THEME", olo_xdg::CURSOR_THEME.into()),
         ("XCURSOR_SIZE", olo_xdg::CURSOR_SIZE.to_string()),
     ];

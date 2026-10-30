@@ -1100,9 +1100,13 @@ as they land (with the commit), add new ones as they come up.
   - **Menus and shortcuts** (GlobalShortcuts done 2026-10-30: asked
     once per app, kept, held through upgrades): ~~the GlobalShortcuts portal~~ (Chrome's
     extensions' shortcuts, Discord's push-to-talk) bound through Olo's
-    keyboard profiles; app menus where a toolkit exports one
+    keyboard profiles; ~~app menus where a toolkit exports one
     (`org.gtk.Menus`, `com.canonical.dbusmenu`) shown in Olo's menu bar
-    style if worthwhile.
+    style if worthwhile~~ (not worthwhile, 2026-10-30: Olo's menus are
+    in each window, as BeOS's were, not in a bar at the top of the
+    screen, and GTK 4, Qt and Electron programs already show theirs in
+    their windows; a second copy in Olo's style would only duplicate
+    them. Tray items' menus are Olo's, which is where it helps).
   - **Notifications, tray and badges** (tray done 2026-10-30: Deskbar is
     the StatusNotifierWatcher and host, items in its tray with their
     menus as Olo menus; tried with Slack's): ~~StatusNotifierItem (Slack's,
@@ -1138,9 +1142,14 @@ as they land (with the commit), add new ones as they come up.
     `x-special/gnome-copied-files` and all, and pastes files, pictures
     (Chrome's Copy Image) and text; `Cx::paste_data`,
     `olo_kit::clipboard::files`, `dnd::named_file`, `dnd::moz_url`.)
-  - **Agent-readable**: the AT-SPI trees of GTK and Qt windows (and
+  - ~~**Agent-readable**: the AT-SPI trees of GTK and Qt windows (and
     Chrome's beyond the extension) folded into Olo's widget tree, so
-    agents can drive outside programs as they do Olo's.
+    agents can drive outside programs as they do Olo's.~~ (done
+    2026-10-30: olo-screen's `tree` reads a non-kit program's windows
+    over AT-SPI, roles named as AccessKit's; tried with GNOME
+    Calculator, driven by name; Qt asked to join with
+    `QT_ACCESSIBILITY=1`. Chrome's pages stay with the extension, which
+    sees more of them.)
   - Where there's no clean way, a hack is fine if it's reliable: an
     LD_PRELOAD shim, a launcher wrapper, a policy file or a patched
     config, documented in HACKING with how it's tested.
