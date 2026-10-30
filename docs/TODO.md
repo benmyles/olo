@@ -763,6 +763,69 @@ as they land (with the commit), add new ones as they come up.
   `olo-screen stats [NAME]`). The history is kept within limits on
   size and age (Preferences), and outlives the screen until it is
   cleared.
+- **Other programs feel like Olo's own: every integration point**
+  (Ben, 2026-10-29): "is there a way where we can make chrome (and any
+  gtk / qt apps) better integrate with olo, e.g. replacing their file
+  picker with olo tracker picker and e.g. in chrome something like show
+  in folder should show in tracker. basically every integration point
+  we can do (whether cleanly through some protocol or 'dirty' through
+  some hack) we should do so that everything feels as seamless as
+  possible". Clean ways first (portals, D-Bus services, settings), a
+  hack where there is none. Each is for Chrome, Electron (Slack,
+  Discord, VS Code), GTK 3/4 and Qt 5/6 alike unless noted:
+  - **File pickers**: an Olo portal backend
+    (`org.freedesktop.impl.portal.FileChooser` in `olo-portal`, beside
+    ScreenCast) showing the kit's file panel (Tracker's columns,
+    favourites, Quick Look, recent places); `olo-portals.conf` sends
+    FileChooser to it. Chrome and Electron use the portal with
+    `--xdg-portal` / `GTK_USE_PORTAL=1`-style switches or by default;
+    GTK 4 apps use it by default, GTK 3 with `GTK_USE_PORTAL=1`, Qt with
+    `QT_QPA_PLATFORMTHEME=xdgdesktopportal`: set these in the session
+    environment. Save dialogs too (name, folder, overwrite).
+  - **Show in folder / open the containing folder**:
+    `org.freedesktop.FileManager1` (ShowFolders, ShowItems,
+    ShowItemProperties) served by Tracker, so Chrome's "Show in
+    folder", Electron's `shell.showItemInFolder`, GTK's and Qt's go to
+    Tracker with the file selected; the OpenURI portal's
+    `OpenDirectory` too.
+  - **Opening things**: the OpenURI portal and `xdg-open`'s MIME
+    defaults resolved by Olo's own (`olo_kit::open`), so links from any
+    app open in Olo's choice, files in Olo's apps; Olo as the default
+    file manager and browser handler (`mimeapps.list`, the `x-scheme-
+    handler`s), Chrome as the default browser offered by Olo.
+  - **Downloads**: Chrome's land in Tracker's Downloads with Olo's own
+    notification (open, show in Tracker) and Deskbar's progress; a
+    download's file shows as being written.
+  - **Look**: light/dark and the accent from Olo's palette through the
+    Settings portal (`org.freedesktop.appearance.color-scheme`,
+    `accent-color`, contrast), GTK's and Qt's themes and fonts made from
+    Olo's palette and `style` (generated gtk.css, a Qt palette/kvantum
+    or qt6ct config), cursor theme and size, font hinting and scaling
+    to match the kit, Olo's icons as the icon theme.
+  - **Menus and shortcuts**: the GlobalShortcuts portal (Chrome's
+    extensions' shortcuts, Discord's push-to-talk) bound through Olo's
+    keyboard profiles; app menus where a toolkit exports one
+    (`org.gtk.Menus`, `com.canonical.dbusmenu`) shown in Olo's menu bar
+    style if worthwhile.
+  - **Notifications, tray and badges**: StatusNotifierItem (Slack's,
+    Discord's tray icons) in Deskbar's tray with their menus; the
+    Unity LauncherEntry count (unread badges) on Deskbar's entries;
+    progress on Deskbar (LauncherEntry progress).
+  - **The rest of the portals**: Inhibit (no sleep during a call or a
+    video), Background, Print (to Olo's print dialog, once there is
+    one), Email, Account, Wallpaper, Screenshot (with screen sharing),
+    Camera/Location as Olo asks permission, Secret (Passwords as the
+    Secret Service, so Chrome's and Electron's stored secrets live in
+    Olo's keychain), and Trash (to Tracker's Trash).
+  - **Drag and drop and the clipboard**: files dragged from Chrome,
+    Slack and GTK into Tracker and back, with the right actions and
+    formats (`text/uri-list`, images, `x-special/gnome-copied-files`).
+  - **Agent-readable**: the AT-SPI trees of GTK and Qt windows (and
+    Chrome's beyond the extension) folded into Olo's widget tree, so
+    agents can drive outside programs as they do Olo's.
+  - Where there's no clean way, a hack is fine if it's reliable: an
+    LD_PRELOAD shim, a launcher wrapper, a policy file or a patched
+    config, documented in HACKING with how it's tested.
 - **Google Chrome works great in Olo** (Ben; Olo's web browser):
   many sites really need Chrome. When stock Google Chrome is downloaded and run, Olo
   recognises it: Olo window chrome (server-side decorations, or
