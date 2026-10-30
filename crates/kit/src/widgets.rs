@@ -2931,8 +2931,12 @@ pub enum StripAction {
     /// A group's chip dragged: its tabs go to `to` among the others (never
     /// inside another group).
     MoveGroup { group: usize, to: usize },
-    /// A click on a group's chip, at the pointer.
+    /// A click on a group's chip, at the pointer (with a
+    /// [`TabStrip::group_selection`], a right-click: its menu).
     Group(usize, Pos2),
+    /// A click on a group's chip with a [`TabStrip::group_selection`]:
+    /// choose it, or not (Terminal's Tile All Tabs).
+    ToggleGroup(usize),
     /// A tab dragged out of the strip (`at`, the pointer, in the window's
     /// coordinates, maybe outside it), the button still held: a window of
     /// its own, which the app opens under the pointer and moves with it
@@ -3004,6 +3008,8 @@ pub struct TabStrip<'a> {
     max_width: f32,
     new_tab: bool,
     groups: &'a [StripGroup<'a>],
+    /// Which groups are chosen, when they can be (`group_selection`).
+    chosen: Option<&'a [bool]>,
     content: Option<(Color32, Color32)>,
     closed: bool,
     side: bool,
@@ -3011,7 +3017,7 @@ pub struct TabStrip<'a> {
 
 impl<'a> TabStrip<'a> {
     pub fn new(id: impl std::hash::Hash + std::fmt::Debug, tabs: &'a [StripTab<'a>], active: usize) -> Self {
-        TabStrip { id: Id::unique(id), tabs, active, max_width: STRIP_TAB_MAX, new_tab: true, groups: &[], content: None, closed: false, side: false }
+        TabStrip { id: Id::unique(id), tabs, active, max_width: STRIP_TAB_MAX, new_tab: true, groups: &[], chosen: None, content: None, closed: false, side: false }
     }
 
     /// Down the content's left side rather than along its top: a column
@@ -3044,6 +3050,15 @@ impl<'a> TabStrip<'a> {
         self
     }
 
+    /// Groups can be chosen (`chosen[g]`, one each): a chosen one's chip
+    /// is lit as Deskbar lights the workspace showing; clicking a chip
+    /// gives [`StripAction::ToggleGroup`], and the right button
+    /// [`StripAction::Group`] (its menu). Agents read it as `selected`.
+    pub fn group_selection(mut self, chosen: &'a [bool]) -> Self {
+        self.chosen = Some(chosen);
+        self
+    }
+
     /// What is under the strip, if not the panel: its background, which
     /// the selected tab takes so it opens into it, and its text colour
     /// for the tab's title (Terminal's screen).
@@ -3054,7 +3069,7 @@ impl<'a> TabStrip<'a> {
 
     /// The selected tab stands on the strip's edge rather than opening
     /// into what is under it: for content that isn't the selected tab's
-    /// alone (Terminal's Show All Tabs, each pane with its own head). A
+    /// alone (Terminal's Tile All Tabs, each pane with its own head). A
     /// [`side`](Self::side) strip's tabs stand clear of its edge anyway.
     pub fn closed(mut self) -> Self {
         self.closed = true;
@@ -3126,17 +3141,34 @@ impl<'a> TabStrip<'a> {
             let over = style::snap(ui.ctx(), Rect::from_min_max(pos2(chip.left(), top - 3.0), pos2(slot(last).right(), top - 1.0)));
             painter.rect_filled(over, 0.0, color);
             let resp = ui.interact(chip, self.id.with(("group", g, first)), Sense::click_and_drag());
-            resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Group {name}")));
-            if resp.hovered() || resp.dragged() {
+            let chosen = self.chosen.map(|c| c.get(g).copied().unwrap_or(false));
+            resp.widget_info(|| {
+                let mut info = WidgetInfo::labeled(Role::Button, true, format!("Group {name}"));
+                info.selected = chosen;
+                info
+            });
+            if chosen == Some(true) {
+                // Lit, as Deskbar's workspace showing.
+                painter.rect_filled(chip, 4.0, c(style::lit_ground(&p, bg)));
+                painter.rect_stroke(chip, 4.0, Stroke::new(style::hairline(ui.ctx()), c(p.selection_edge())), egui::StrokeKind::Inside);
+            } else if resp.hovered() || resp.dragged() {
                 painter.rect_filled(chip, 4.0, hover_fill);
             }
             let dot = style::snap_centred(ui.ctx(), pos2(chip.left() + m::TIGHT + 4.0, cy), vec2(8.0, 8.0));
             painter.rect_filled(dot, 2.0, color);
-            let chip_ink = if resp.hovered() { c(p.panel_text) } else { c(olo_theme::mix(p.panel_text, bg, 0.4)) };
+            let chip_ink = if chosen == Some(true) {
+                c(p.list_selected_item_text)
+            } else if resp.hovered() {
+                c(p.panel_text)
+            } else {
+                c(olo_theme::mix(p.panel_text, bg, 0.4))
+            };
             // On the tabs' line (`cy`), level with their titles: the chip,
             // snapped, may be centred a third of a pixel off it.
             style::label(&painter, dot.right() + m::MARK_GAP, cy, Align::Min, name, chip_font.clone(), chip_ink);
-            if resp.clicked() || resp.secondary_clicked() {
+            if resp.clicked() && chosen.is_some() {
+                action = Some(StripAction::ToggleGroup(g));
+            } else if resp.clicked() || resp.secondary_clicked() {
                 action = resp.interact_pointer_pos().map(|at| StripAction::Group(g, at));
             }
             if resp.drag_started() && groups_of.iter().any(|x| *x != Some(g)) {
@@ -3368,8 +3400,17 @@ impl TabStrip<'_> {
             let StripGroup { name, color } = self.groups[g];
             let last = (first..n).take_while(|&i| groups_of[i] == Some(g)).last().unwrap_or(first);
             let resp = ui.interact(head, self.id.with(("group", g, first)), Sense::click_and_drag());
-            resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Group {name}")));
-            if resp.hovered() || resp.dragged() {
+            let chosen = self.chosen.map(|c| c.get(g).copied().unwrap_or(false));
+            resp.widget_info(|| {
+                let mut info = WidgetInfo::labeled(Role::Button, true, format!("Group {name}"));
+                info.selected = chosen;
+                info
+            });
+            if chosen == Some(true) {
+                // Lit, as Deskbar's workspace showing.
+                painter.rect_filled(head, 0.0, c(style::lit_ground(&p, ground)));
+                style::lit_edges(&painter, head, &p);
+            } else if resp.hovered() || resp.dragged() {
                 painter.rect_filled(head, 0.0, hover_fill);
             }
             // A bar of its colour beside its heading and tabs, apart from
@@ -3382,10 +3423,18 @@ impl TabStrip<'_> {
             let f = face(head);
             let dot = style::snap_centred(&ctx, pos2(f.left() + m::SPACING + 8.0, mid(head)), vec2(8.0, 8.0));
             painter.rect_filled(dot, 2.0, color);
-            let ink = if resp.hovered() { c(p.panel_text) } else { quiet };
+            let ink = if chosen == Some(true) {
+                c(p.list_selected_item_text)
+            } else if resp.hovered() {
+                c(p.panel_text)
+            } else {
+                quiet
+            };
             let text = f.left() + m::SPACING + 16.0 + m::MARK_GAP;
             style::label_fit(&painter, text, mid(head), Align::Min, name, egui::FontId::new(style::SMALL_SIZE, style::bold()), ink, f.right() - text);
-            if resp.clicked() || resp.secondary_clicked() {
+            if resp.clicked() && chosen.is_some() {
+                action = Some(StripAction::ToggleGroup(g));
+            } else if resp.clicked() || resp.secondary_clicked() {
                 action = resp.interact_pointer_pos().map(|at| StripAction::Group(g, at));
             }
             if resp.drag_started() && groups_of.iter().any(|x| *x != Some(g)) {

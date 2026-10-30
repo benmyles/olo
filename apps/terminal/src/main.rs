@@ -56,7 +56,7 @@ pub const TEXT_SIZES: [f32; 9] = [9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 16.0, 18.0,
 const DEFAULT_TEXT_SIZE: f32 = 12.0;
 /// The tab strip, shown once a window has more than one tab.
 const STRIP: f32 = widgets::STRIP_HEIGHT;
-/// How tall the title bar over each pane in Show All Tabs is: as the
+/// How tall the title bar over each pane in Tile All Tabs is: as the
 /// tabs over it, or beside a side strip as tall as its first tab with
 /// the room round it, so the tab is level with the heads.
 fn pane_head_height(side: bool) -> f32 {
@@ -88,7 +88,7 @@ fn open_in_tracker(tab: &Tab) {
     }
 }
 
-/// Show All Tabs' panes for `n` tabs in `area`: as many columns as keep
+/// Tile All Tabs' panes for `n` tabs in `area`: as many columns as keep
 /// each pane nearest a terminal's usual shape, the last row's spread
 /// across the width; a line apart. Their edges are on device pixels at
 /// `ppp`, a line's width (`style::line_pixels`) apart, so the line
@@ -121,10 +121,34 @@ fn tile(area: egui::Rect, n: usize, ppp: f32) -> Vec<egui::Rect> {
     out
 }
 
-/// A pane's title bar in Show All Tabs: its tab's icon and title (cut
+/// Tile All Tabs' panes in rows, `counts[r]` side by side in row `r`,
+/// the rows sharing `area`'s height (row by row, left to right); as
+/// `tile`, a line apart, their edges on device pixels at `ppp`.
+fn tile_in_rows(area: egui::Rect, counts: &[usize], ppp: f32) -> Vec<egui::Rect> {
+    let line = style::line_pixels(ppp);
+    let d = |v: f32| (v * ppp).round();
+    let (left, top, right, bottom) = (d(area.left()), d(area.top()), d(area.right()), d(area.bottom()));
+    let rows = counts.len().max(1);
+    let h = ((bottom - top + line) / rows as f32).floor();
+    let mut out = Vec::with_capacity(counts.iter().sum());
+    for (r, &n) in counts.iter().enumerate() {
+        let n = n.max(1);
+        let w = ((right - left + line) / n as f32).floor();
+        for c in 0..n {
+            let x0 = left + c as f32 * w;
+            let y0 = top + r as f32 * h;
+            let x1 = if c + 1 == n { right } else { x0 + w - line };
+            let y1 = if r + 1 == rows { bottom } else { y0 + h - line };
+            out.push(egui::Rect::from_min_max(egui::pos2(x0 / ppp, y0 / ppp), egui::pos2(x1 / ppp, y1 / ppp)));
+        }
+    }
+    out
+}
+
+/// A pane's title bar in Tile All Tabs: its tab's icon and title (cut
 /// short with "…"), the one typed into lit as the strip's selected tab
 /// is, the others recessed; a line around each pane keeps them apart.
-/// A pane's head in Show All Tabs: its tab's icon and title; in its
+/// A pane's head in Tile All Tabs: its tab's icon and title; in its
 /// group's colour, if it's in one (`group`), so a group's panes show
 /// together.
 fn pane_head(ui: &egui::Ui, pane: egui::Rect, height: f32, title: &str, icon: &dyn Fn(&egui::Painter, egui::Rect), active: bool, group: Option<egui::Color32>) {
@@ -349,15 +373,19 @@ struct TermWin {
     /// Its tabs' groups (`Tab::group`): each one's tabs side by side,
     /// in the order they first come (`tidy`).
     groups: Vec<Group>,
-    /// Show All Tabs: every tab at once, tiled in the window.
+    /// Tile All Tabs: every tab at once, tiled in the window, a row for
+    /// each group (`tile_rows`).
     tiled: bool,
+    /// The groups chosen in Tile All Tabs (by name: groups renumber),
+    /// the only ones tiled; none (or all): every tab.
+    tile_groups: Vec<String>,
 }
 
 impl TermWin {
     /// A window of `tabs` (each saying its group in `groups`).
     fn new(tabs: Vec<Tab>, active: usize, snap_to: Option<(usize, usize)>, groups: Vec<Group>) -> TermWin {
         let active = active.min(tabs.len().saturating_sub(1));
-        let mut t = TermWin { active, tabs, glyphs: GlyphCache::default(), snap_to, shown_title: String::new(), focused: true, groups, tiled: false };
+        let mut t = TermWin { active, tabs, glyphs: GlyphCache::default(), snap_to, shown_title: String::new(), focused: true, groups, tiled: false, tile_groups: Vec::new() };
         t.tidy();
         t
     }
@@ -403,6 +431,45 @@ impl TermWin {
     /// Group `g`'s tabs (their places).
     fn members(&self, g: usize) -> Vec<usize> {
         (0..self.tabs.len()).filter(|&i| self.tabs[i].group == Some(g)).collect()
+    }
+
+    /// Tile All Tabs' rows: each group's tabs (in the strip's order), and
+    /// the tabs in none together where the first of them is; only the
+    /// chosen groups' if some are (not all).
+    fn tile_rows(&self) -> Vec<Vec<usize>> {
+        let mut rows: Vec<(Option<usize>, Vec<usize>)> = Vec::new();
+        for (i, tab) in self.tabs.iter().enumerate() {
+            match rows.iter_mut().find(|(g, _)| *g == tab.group) {
+                Some((_, row)) => row.push(i),
+                None => rows.push((tab.group, vec![i])),
+            }
+        }
+        let chosen: Vec<usize> = (0..self.groups.len()).filter(|&g| self.tile_groups.contains(&self.groups[g].name)).collect();
+        if !chosen.is_empty() && chosen.len() < self.groups.len() {
+            rows.retain(|(g, _)| g.is_some_and(|g| chosen.contains(&g)));
+        }
+        rows.into_iter().map(|(_, row)| row).collect()
+    }
+
+    /// Choose group `g` in Tile All Tabs, or not; all chosen is none.
+    /// The tab typed into stays one that shows.
+    fn toggle_tile_group(&mut self, g: usize) {
+        let Some(name) = self.groups.get(g).map(|x| x.name.clone()) else { return };
+        if let Some(i) = self.tile_groups.iter().position(|n| *n == name) {
+            self.tile_groups.remove(i);
+        } else {
+            self.tile_groups.push(name);
+        }
+        self.tile_groups.retain(|n| self.groups.iter().any(|x| x.name == *n));
+        if self.tile_groups.len() >= self.groups.len() {
+            self.tile_groups.clear();
+        }
+        let shown: Vec<usize> = self.tile_rows().concat();
+        if !shown.contains(&self.active)
+            && let Some(&first) = shown.first()
+        {
+            self.select(first);
+        }
     }
 
     /// Each tab's title, and the window's (the one showing, after its
@@ -593,6 +660,9 @@ struct SavedWindow {
     group: Option<Group>,
     #[serde(default)]
     tiled: bool,
+    /// The groups chosen in Tile All Tabs (`TermWin::tile_groups`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tile_groups: Vec<String>,
     /// Each tab's folder, for a shell in its place if it has gone.
     #[serde(default)]
     cwds: Vec<Option<PathBuf>>,
@@ -861,6 +931,7 @@ impl Terminal {
             let id = self.reopen(cx, starts, grid, Some(w.size), active, (w.all_groups(), grouping));
             if let Some(Win::Term(t)) = self.windows.get_mut(&id) {
                 t.tiled = w.tiled;
+                t.tile_groups = w.tile_groups.clone();
             }
         }
         let rest: Vec<&wire::ShellInfo> = free.iter().filter(|s| !used.contains(&s.id)).copied().collect();
@@ -1013,7 +1084,12 @@ impl Terminal {
                 group: tab.group,
             })
             .collect();
+        let chosen: Vec<bool> = t.groups.iter().map(|g| t.tile_groups.contains(&g.name)).collect();
         let mut bar = TabStrip::new(("terminal-tabs", win), &items, t.active).groups(&strip_groups);
+        if t.tiled && t.tabs.len() > 1 {
+            // Tile All Tabs: a group's chip chooses which are tiled.
+            bar = bar.group_selection(&chosen);
+        }
         if side {
             bar = bar.side();
         }
@@ -1042,6 +1118,7 @@ impl Terminal {
             }
         }
         let group_colors: Vec<egui::Color32> = t.groups.iter().map(|g| groups::color(g.color, &self.look)).collect();
+        let rows = t.tile_rows();
         let TermWin { tabs, active, glyphs, tiled, .. } = &mut **t;
         let session_cwd = |tab: &Tab| {
             let shared = tab.session.shared.clone();
@@ -1050,10 +1127,15 @@ impl Terminal {
                 std::fs::read_link(format!("/proc/{pid}/cwd")).ok()
             }
         };
-        // Show All Tabs: every tab in a pane of its own, the one typed
-        // into marked; else only the one showing.
+        // Tile All Tabs: every tab (of the chosen groups) in a pane of
+        // its own, a row for each group, a group alone in a grid; the one
+        // typed into marked. Else only the one showing.
         let panes: Vec<(usize, egui::Rect)> = if *tiled && tabs.len() > 1 {
-            tile(area, tabs.len(), ui.ctx().pixels_per_point()).into_iter().enumerate().collect()
+            let ppp = ui.ctx().pixels_per_point();
+            match rows.as_slice() {
+                [one] => one.iter().copied().zip(tile(area, one.len(), ppp)).collect(),
+                rows => rows.concat().into_iter().zip(tile_in_rows(area, &rows.iter().map(Vec::len).collect::<Vec<_>>(), ppp)).collect(),
+            }
         } else {
             vec![(*active, area)]
         };
@@ -1182,6 +1264,10 @@ impl Terminal {
                 t.tidy();
                 cx.redraw(win);
             }
+            Some(StripAction::ToggleGroup(g)) => {
+                t.toggle_tile_group(g);
+                cx.redraw(win);
+            }
             Some(StripAction::Group(g, pos)) => {
                 let menu = Menu::new("")
                     .item("Rename Group…", format!("group-rename:{g}"), None)
@@ -1194,7 +1280,7 @@ impl Terminal {
                     .item("Ungroup", format!("group-ungroup:{g}"), None)
                     .item("Close Group", format!("group-close:{g}"), None)
                     .separator()
-                    .item("Show All Tabs", "tile-tabs", None)
+                    .item("Tile All Tabs", "tile-tabs", None)
                     .checked(t.tiled);
                 let menu = self.worktrees_menu(win, menu);
                 menu::request_popup(
@@ -2212,7 +2298,7 @@ impl App for Terminal {
             .separator()
             .submenu(group)
             .submenu(self.repository_menu(window))
-            .item_shift("Show All Tabs", "tile-tabs", Key::D)
+            .item_shift("Tile All Tabs", "tile-tabs", Key::D)
             .enabled(several)
             .checked(t.tiled && several)
             .separator();
@@ -2574,6 +2660,7 @@ impl Terminal {
                         size: cx.window_size(id).unwrap_or((640, 400)),
                         group: None,
                         tiled: t.tiled,
+                        tile_groups: t.tile_groups.clone(),
                         cwds: live.iter().map(|x| x.session.cwd()).collect(),
                         own_grouping: false,
                         groups: t.groups.clone(),
@@ -2737,5 +2824,30 @@ mod settings_tests {
         assert_eq!(colors(&s), (Some("frappe"), Some("beos-dark")));
         let round = Settings::parse(&serde_json::to_string(&s).unwrap());
         assert_eq!((round.scheme, colors(&round)), (s.scheme, colors(&s)));
+    }
+}
+
+#[cfg(test)]
+mod tile_tests {
+    use olo_kit::egui::{Rect, pos2};
+
+    #[test]
+    fn a_row_for_each_group() {
+        // Two rows (three tabs, then two) in 300 × 201 at 1×: rows a line
+        // apart sharing the height, each row's panes its width.
+        let area = Rect::from_min_max(pos2(0.0, 0.0), pos2(300.0, 201.0));
+        let panes = super::tile_in_rows(area, &[3, 2], 1.0);
+        assert_eq!(panes.len(), 5);
+        assert!(panes[..3].iter().all(|p| p.top() == 0.0 && p.bottom() == panes[0].bottom()));
+        assert!(panes[3..].iter().all(|p| p.bottom() == 201.0 && p.top() > panes[0].bottom()));
+        assert_eq!((panes[0].left(), panes[2].right(), panes[3].left(), panes[4].right()), (0.0, 300.0, 0.0, 300.0));
+        // Panes side by side don't overlap, a line between them.
+        assert!(panes[0].right() < panes[1].left() && panes[3].right() < panes[4].left());
+        // Every edge on a device pixel at 1.5×.
+        for p in super::tile_in_rows(area, &[3, 2, 1], 1.5) {
+            for v in [p.left(), p.top(), p.right(), p.bottom()] {
+                assert!((v * 1.5 - (v * 1.5).round()).abs() < 1e-3, "{v}");
+            }
+        }
     }
 }

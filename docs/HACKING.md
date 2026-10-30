@@ -754,7 +754,13 @@ in bold, quiet ink (no pill: it fills only under the pointer), a gap
 before it, and a 2-point line of the colour over them from the chip
 (nothing on the tabs themselves, to clash with their icons); the chip's
 text is the titles' size on the tabs' centre line, not the snapped
-chip's, so it is level with their titles at every scale;
+chip's, so it is level with their titles at every scale; with
+`.group_selection(&chosen)` (a bool for each group) groups can be
+chosen: a chosen chip is lit as Deskbar lights the workspace showing
+(`style::lit_ground`, an edge of the selection's colour, its name in
+the selected text), a click on a chip gives `StripAction::ToggleGroup(g)`
+and the right button `StripAction::Group(g, pos)` (its menu), where
+without it either gives `Group`; agents read a chip's `selected`;
 close boxes, middle-click to close, a + button, drag along the row to
 reorder; it returns a `StripAction` (`Select`, `Close`, `New`,
 `Menu(i, pos)` for a right-click, `Move { from, to, group }`: `to`
@@ -3825,7 +3831,7 @@ what it used to.
 **Restoring.** Terminal keeps its windows on disk as they change
 (`remember`: every 2 s if anything differs, and before it quits), in
 `$XDG_STATE_HOME/olo/terminal/windows.json`: each window's tabs in
-order, which one shows, its size, group, Show All Tabs, and each tab's
+order, which one shows, its size, group, Tile All Tabs (and its chosen groups), and each tab's
 folder. A Terminal that starts afresh (not an upgrade, which has
 `save_state`) opens those windows again: a shell olo-termd still has is
 attached where it was, and one that has gone (the session ended, or the
@@ -3915,10 +3921,21 @@ here. Save Group keeps the group and each of its tabs' folders in
 `terminal-groups.json` (config dir); Open Saved Group shows its first
 tab where it is open, else adds it to the window it was chosen in (a
 shell in each folder); Forget Saved Group
-drops it. Show All Tabs (Tabs menu or the group's menu, ⌘⇧D) shows
+drops it. Tile All Tabs (Tabs menu or the group's menu, ⌘⇧D) shows
 every tab of the window at once, each a live pane with its title over
-it (`tile` picks the columns that keep panes nearest a terminal's
-shape, the last row spread across), each pane's shell sized to its pane;
+it: a row for each group, its tabs side by side across it (the tabs in
+no group a row of their own, where the first of them is:
+`TermWin::tile_rows`, `tile_in_rows`), and one group (or none) alone in
+a grid (`tile` picks the columns that keep panes nearest a terminal's
+shape, the last row spread across); each pane's shell sized to its pane.
+In it a group's chip in the strip chooses groups (`TabStrip::
+group_selection`, lit as Deskbar lights the workspace showing; agents
+read it as `selected`): clicking one tiles only the chosen groups, one
+alone in a full grid, several a row each; clicking it again unchooses
+it, and choosing every group is the same as none (every tab). The
+right button gives the group's menu, as a click does outside Tile All
+Tabs. The chosen groups go by name (`tile_groups`, kept with the
+window across restarts), and the tab typed into stays one that shows;
 each pane has a head (`pane_head_height`: a `STRIP_ROW` tall under a
 strip along the top; beside a side strip `STRIP_SIDE_HEAD`, the same,
 the strip's first row centred on it) with its icon and title, in its

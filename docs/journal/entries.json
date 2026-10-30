@@ -2362,5 +2362,11 @@
   "title": "Deskbar: every display's workspaces, and the display's number",
   "caption": "Each Deskbar lists every display's workspaces and their apps, its own display's first (here D1's Deskbar, then D0's), and its tray shows its display's number in a small monitor; clicking it lists the displays and goes to the one chosen.",
   "image": "2026-10-30/125139-deskbar-every-display-s-workspaces-and-the-displ.png"
+ },
+ {
+  "time": "2026-10-30T12:57:30",
+  "title": "Terminal: Tile All Tabs, a row per group",
+  "caption": "Tile All Tabs (was Show All Tabs) gives each group a row, its tabs side by side, and the ungrouped tabs a row of their own; clicking groups' chips chooses which tile (lit as Deskbar's workspace showing): here alpha and beta of three, a row each; one alone fills a grid; the right button gives the group's menu.",
+  "image": "2026-10-30/125730-terminal-tile-all-tabs-a-row-per-group.png"
  }
 ]

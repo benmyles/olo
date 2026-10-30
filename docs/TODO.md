@@ -214,7 +214,7 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
-- **Terminal: "Tile All Tabs", a row per group** (Ben, 2026-10-30):
+- ~~**Terminal: "Tile All Tabs", a row per group**~~ (Ben, 2026-10-30):
   "change how the show all tabs option in terminal works. first, rename
   it to "Tile All Tabs" and then i want you to make it so that each group
   gets a row and then each tab within that group is a col within that
@@ -224,8 +224,10 @@ as they land (with the commit), add new ones as they come up.
   its name and colour heading it) and each of its tabs a column in it,
   ungrouped tabs a row of their own; rows share the height and each
   row's columns its width, every pane live and typed into as before,
-  and the same command (or picking a pane) goes back to one tab.
-- **Terminal: Tile All Tabs, choosing which groups by their headers**
+  and the same command (or picking a pane) goes back to one tab. Done
+  (HACKING, Terminal ▸ Tile All Tabs; the command id stays `tile-tabs`,
+  ⌘⇧D); with no groups, the grid as before.
+- ~~**Terminal: Tile All Tabs, choosing which groups by their headers**~~
   (Ben, 2026-10-30): "make it so that in terminal in tile all mode, if i
   left click on a specific group header it actually makes that group
   selected (similar visual style to a selected workspace in deskbar) and
@@ -242,7 +244,8 @@ as they land (with the commit), add new ones as they come up.
   as a full grid; with several, a row each, sharing the height; none (or
   all) selected, every group shows. The header's right button opens the
   menu its left button opens now. Agents read which are selected and
-  choose through the headers.
+  choose through the headers. Done (the kit's `TabStrip::group_selection`,
+  for the side strip too; the chosen groups kept with the window).
 - **Terminal: tell coding agents about the other repos in their tab
   group** (Ben, 2026-10-30): "add a preferences -> terminal setting for
   injecting context to claude code and codex coding agents to tell them

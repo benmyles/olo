@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Terminal: Tile All Tabs, a row per group
+
+*12:57* — Tile All Tabs (was Show All Tabs) gives each group a row, its tabs side by side, and the ungrouped tabs a row of their own; clicking groups' chips chooses which tile (lit as Deskbar's workspace showing): here alpha and beta of three, a row each; one alone fills a grid; the right button gives the group's menu.
+
+![Terminal: Tile All Tabs, a row per group](2026-10-30/125730-terminal-tile-all-tabs-a-row-per-group.png)
+
 ### Deskbar: every display's workspaces, and the display's number
 
 *12:51* — Each Deskbar lists every display's workspaces and their apps, its own display's first (here D1's Deskbar, then D0's), and its tray shows its display's number in a small monitor; clicking it lists the displays and goes to the one chosen.
