@@ -46,12 +46,17 @@ struct Tiled(Cell<Option<Tile>>);
 /// `Tile::fraction` gives.
 pub type Part = (f32, f32, f32, f32);
 
-/// A window's own arrangement, kept while it wears its group's.
+/// A window's own arrangement, kept while it wears its group's (or
+/// another display's group's, on a trip there and back).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Arrangement {
     tile: Option<Tile>,
     part: Option<Part>,
     along: Option<ZoomedAlong>,
+    /// Zoomed, and the frames Restore and unzooming go back to.
+    zoomed: bool,
+    pre: Option<Rectangle<i32, Logical>>,
+    zoomed_from: Option<Rectangle<i32, Logical>>,
 }
 
 /// Where a window was before an arrangement moved it, all Undo Window
@@ -740,13 +745,38 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// to, its zoom along one axis), to give back later
     /// ([`Self::rearrange`]).
     pub(crate) fn arrangement_of(w: &WindowElement) -> Arrangement {
-        Arrangement { tile: Self::tiled(w), part: Self::custom_part(w), along: Self::zoomed_along(w) }
+        let WindowSurface::Wayland(t) = w.0.underlying_surface();
+        Arrangement {
+            tile: Self::tiled(w),
+            part: Self::custom_part(w),
+            along: Self::zoomed_along(w),
+            zoomed: t.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Maximized)),
+            pre: w.user_data().get::<PreZoom>().and_then(|p| *p.0.borrow()),
+            zoomed_from: w.user_data().get::<ZoomedFrom>().and_then(|z| *z.0.borrow()),
+        }
     }
 
-    /// `w` arranged as it was ([`Self::arrangement_of`]).
+    /// `w` arranged as it was ([`Self::arrangement_of`]), zoomed again if
+    /// it was (told so now; its frame is put back by whoever called,
+    /// `refit` say).
     pub(crate) fn rearrange(w: &WindowElement, a: Arrangement) {
         Self::set_tile_state(w, a.tile, a.part);
         Self::set_zoomed_along(w, a.along);
+        w.user_data().insert_if_missing(PreZoom::default);
+        w.user_data().insert_if_missing(ZoomedFrom::default);
+        *w.user_data().get::<PreZoom>().unwrap().0.borrow_mut() = a.pre;
+        *w.user_data().get::<ZoomedFrom>().unwrap().0.borrow_mut() = a.zoomed_from;
+        let WindowSurface::Wayland(t) = w.0.underlying_surface();
+        t.with_pending_state(|s| {
+            if a.zoomed {
+                s.states.set(xdg_toplevel::State::Maximized);
+            } else {
+                s.states.unset(xdg_toplevel::State::Maximized);
+            }
+        });
+        if t.is_initial_configure_sent() {
+            t.send_pending_configure();
+        }
     }
 
     /// Give `w` the arrangement `leader` has: its tile and part, its zoom
@@ -1022,6 +1052,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
     }
 
+    /// Put somewhere on purpose at a size of its own (`Request::Place`):
+    /// that is its own frame now, so Restore leaves it there rather than
+    /// taking it back to the one it had before it was last tiled or
+    /// zoomed.
+    pub fn forget_own_frame(&mut self, window: &WindowElement) {
+        if let Some(p) = window.user_data().get::<PreZoom>() {
+            p.0.borrow_mut().take();
+        }
+    }
+
     /// A window's own size (not tiled or zoomed), as it is now.
     fn own_frame(&self, window: &WindowElement) -> Option<Rectangle<i32, Logical>> {
         let pre = window.user_data().get::<PreZoom>().and_then(|p| *p.0.borrow());
@@ -1097,7 +1137,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             // Back where it came from, as it arrived (or in the group it
             // joined by itself there, untouched since).
             let geometry = self.space.element_geometry(window);
-            let joined_only = |t: &Trip| t.joined.is_some_and(|g| geometry == Some(g) && window.meta().joined.get().is_some_and(|(_, jg, _)| jg == g));
+            let arranged = Self::arrangement_of(window);
+            let joined_only = |t: &Trip| t.joined.is_some_and(|g| window.meta().joined.get().is_some_and(|j| j.group == g && j.untouched(geometry, arranged)));
             let back = trip.filter(|t| t.home == to.name() && t.home_area == dest && (t.arrived == here || joined_only(t)));
             if let Some(t) = &back {
                 // Its own frame and arrangement are the ones it goes back

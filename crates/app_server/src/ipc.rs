@@ -397,7 +397,11 @@ impl<B: Backend + 'static> AnvilState<B> {
                         self.set_floating(&w, Some(true));
                     }
                     self.forget_tile(&w);
+                    self.forget_own_frame(&w);
                     self.set_frame(&w, to, false);
+                    // Its group goes with it, though it hasn't drawn at
+                    // the group's size since coming to the front.
+                    self.groups.lead(&w);
                     Reply::Ok
                 }
                 Some(_) => Reply::Error { message: format!("window {id} isn't showing") },

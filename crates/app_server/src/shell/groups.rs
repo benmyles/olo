@@ -139,6 +139,14 @@ pub struct Groups {
 }
 
 impl Groups {
+    /// `w` was put somewhere on purpose (`Request::Place`): it leads its
+    /// group from now, drawn at the group's size yet or not, and the
+    /// others follow it there.
+    pub fn lead(&mut self, w: &WindowElement) {
+        self.settling.retain(|(s, _)| s != w);
+        self.joining.retain(|j| j != w);
+    }
+
     /// Whether `w` is in a group.
     pub fn has(&self, w: &WindowElement) -> bool {
         self.list.iter().any(|(_, g)| g.contains(w))
@@ -516,7 +524,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 if let Some(own) = w.meta().arrived.take()
                     && own != frame
                 {
-                    w.meta().joined.set(Some((own, frame, Self::arrangement_of(w))));
+                    // (What it takes: the leader's arrangement, given it
+                    // below.)
+                    let (own_arrangement, worn) = (Self::arrangement_of(w), Self::arrangement_of(&leader));
+                    w.meta().joined.set(Some(crate::desktop::Joined { own, own_arrangement, group: frame, worn }));
                     super::tiling::note_joined(w, frame);
                 }
                 self.join_group(w, frame, resizing);

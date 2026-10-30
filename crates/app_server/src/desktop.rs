@@ -27,6 +27,26 @@ use crate::{
     theme,
 };
 
+/// A window that joined a group by itself on arriving (`sync_groups`):
+/// its own frame and arrangement then, and the group's frame and
+/// arrangement it took.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Joined {
+    pub own: Rectangle<i32, Logical>,
+    pub own_arrangement: crate::shell::tiling::Arrangement,
+    pub group: Rectangle<i32, Logical>,
+    pub worn: crate::shell::tiling::Arrangement,
+}
+
+impl Joined {
+    /// Untouched since: still at the group's frame (`frame`, where it is
+    /// now) and arranged as the group was (`arrangement`, its own now: not
+    /// zoomed or tiled since, into a frame that happens to be the same).
+    pub fn untouched(&self, frame: Option<Rectangle<i32, Logical>>, arrangement: crate::shell::tiling::Arrangement) -> bool {
+        frame == Some(self.group) && arrangement == self.worn
+    }
+}
+
 /// Per-window bookkeeping that isn't decoration.
 pub struct WindowMeta {
     pub id: u64,
@@ -83,11 +103,10 @@ pub struct WindowMeta {
     /// Back in the space this turn, at this frame: if it joins its app's
     /// group now (`sync_groups`), that frame is its own to go back to.
     pub arrived: Cell<Option<Rectangle<i32, Logical>>>,
-    /// The frame it had when it joined a group on arriving, the group's,
-    /// and its own arrangement (its tile) then: back somewhere it isn't
-    /// grouped, untouched (still at the group's frame), it has its own
-    /// frame and tile again.
-    pub joined: Cell<Option<(Rectangle<i32, Logical>, Rectangle<i32, Logical>, crate::shell::tiling::Arrangement)>>,
+    /// It joined a group by itself on arriving: its own frame and
+    /// arrangement then, and the group's it took. Back somewhere it isn't
+    /// grouped, untouched (`Joined::untouched`), it has its own again.
+    pub joined: Cell<Option<Joined>>,
     /// How it groups (`shell::groups`): with its app's others, on its own
     /// (taken out by hand) or in a group it was put in.
     pub grouping: RefCell<crate::shell::groups::Grouping>,
@@ -521,13 +540,13 @@ impl<B: Backend + 'static> AnvilState<B> {
         let mate = |o: &WindowElement| o != window && key.is_some() && self.group_key(o) == key && self.display_of(o) == display;
         let alone = !self.space.elements().any(mate)
             && !self.parked.0.borrow().iter().any(|o| mate(o) && self.shows(o) && !o.meta().minimized.get());
-        if let Some((own, group, arranged)) = window.meta().joined.get()
+        if let Some(j) = window.meta().joined.get()
             && alone
-            && self.space.element_geometry(window) == Some(group)
+            && j.untouched(self.space.element_geometry(window), Self::arrangement_of(window))
         {
             window.meta().joined.set(None);
-            self.set_frame(window, own, false);
-            Self::rearrange(window, arranged);
+            self.set_frame(window, j.own, false);
+            Self::rearrange(window, j.own_arrangement);
         }
         window.meta().arrived.set(self.space.element_geometry(window));
     }

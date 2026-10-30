@@ -1571,31 +1571,38 @@ as they land (with the commit), add new ones as they come up.
   (its Chrome, Slack, Terminal). To find: run the bench with the
   person's session idle, or time GL inside `render_output` (bind, the
   damage tracker, the flush) on a run that fails.
-- **wm-fuzz: failures now and then** (found 2026-10-30, from a loop over
-  seeds 3, 3, 3, 5, 1, 2, 4, 6 at 300 steps each, each from a fresh
-  session). They don't come back when the same seed runs again to that
-  step, on the app_server before the fixes above or after (seed 6 step
-  116 failed on the one before, and passed after), so they are races,
-  not the arrangement:
-  - seed 1 step 7: `tile-right-third` on a window in a tab group left it
-    at its old frame (1264 wide, wider than the tiling area).
-  - seed 1 step 210, seed 6 steps 202/203/214, seed 5 steps 131/138:
-    restoring after a tile, zoom or Tile All, or going to another
-    workspace and back, put a window at a frame it had a step or two
-    earlier, not the one it left.
-  - seed 4 steps 102–106: going to another workspace and back flickered
-    its windows: a frame a few points narrower for a moment, then back.
-  - seed 5 step 254: opening Styled Edit resized two Terminals on the
-    other display.
-  - seed 6 step 116: sending a window to the other display and back moved
-    a window there (before the fixes) or brought it back at a display-
-    sized frame (after).
-  - seed 6 step 290: ⌘Tab twice resized a window on a hidden workspace.
-  Likely the same few races: a configure the app hasn't answered yet when
-  the next change comes (the frame asked and the frame drawn part ways),
-  and auto-tiling refitting at a moment its windows are mid-change. Find
-  with the session log of a failing run (each step's frames) and fix.
-  Run: as above; `/var/tmp` scripts loop seeds from fresh sessions.
+- ~~**wm-fuzz: failures now and then**~~ (found 2026-10-30, from a loop
+  over seeds 3, 3, 3, 5, 1, 2, 4, 6 at 300 steps each; done 2026-10-30:
+  seeds 1–7 pass all 300 steps, each from a fresh session). They were a
+  checker that couldn't tell a slow client from a wrong frame, and five
+  real bugs:
+  - The checker waited a quarter-second of quiet; a Terminal busy for
+    longer looked wrong. Now `WindowInfo::settling` says a window hasn't
+    drawn the size it was asked, and wm-fuzz (and `olo-screen wait
+    --idle`) wait for none to be; a failure prints every frame of the
+    step (`--trail` for steps that pass).
+  - Tiling a grouped Terminal moved it at once but kept its old size till
+    it drew, so for a frame its middle was on the other display and
+    per-display grouping took it out of its group; drawn, it rejoined
+    and took the group's frame (seed 1 step 7). A window's display is
+    now where it is heading (`heading_frame`).
+  - Back from another workspace, each window of a group was placed by its
+    own least size before the groups were made again, then pulled to the
+    group's (seed 4's flickers): least sizes count the mates a window
+    is coming back with (`mates_to_be`).
+  - A zoomed window that joined a group on another display came back
+    unzoomed, as `Arrangement` kept tile, part and axis but not zoom
+    (seed 6 step 116); it keeps zoom and the frames Restore and unzoom go
+    back to now.
+  - A window that joined a group, then was zoomed into a frame that
+    happened to be the group's, "restored" its old arrangement on its own
+    again (seed 6 step 202): untouched means the group's frame and
+    arrangement both (`Joined::untouched`).
+  - Placing a window (`Request::Place`) from behind its group's front
+    didn't take the group (it hadn't drawn at the group's size), and
+    Restore afterwards took it back to its frame from before it was
+    tiled (seed 1 step 210): a placed window leads (`Groups::lead`) and
+    its placed frame is its own (`forget_own_frame`).
 
 - ~~**Windows while rearranging displays**~~ (Ben): each window stays on
   its screen at the same place as screens are dragged around

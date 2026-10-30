@@ -4,7 +4,7 @@ combinations of every arranging command, shortcut, switcher, workspace
 and display change, on real apps, and check after each step that the
 desktop is still sane.
 
-  wm-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going] [--quiet] [--tiles]
+  wm-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going] [--quiet] [--tiles] [--trail STEPS]
 
 NAME is a tsession with two or more screens and the shell, e.g.
 
@@ -17,7 +17,8 @@ as long as the session starts the same way. On a failure it prints the
 seed, the step, the last commands and what was wrong, and stops (with
 --keep-going it carries on and lists every failure at the end). --only
 app_resize,tab_in runs just those steps (the `op_` methods), to go after
-one thing.
+one thing; --trail 209,210 prints what those steps did (every window's
+frame as it changed), as a failure does, when they pass too.
 
 What is checked, after every step once the windows have settled:
 
@@ -1248,6 +1249,8 @@ class Fuzz:
         try:
             for _ in range(steps):
                 self.run_step()
+                if self.step in getattr(self, "trails", ()):
+                    print(f"  seen in step {self.step}: " + self.trail_report(), flush=True)
         except Failure as e:
             print(f"FAIL {e}", flush=True)
             return 1
@@ -1332,6 +1335,8 @@ def main():
     fuzz.trace_tiles = "--trace-tiles" in a
     if "--only" in a:
         fuzz.only = set(a[a.index("--only") + 1].split(","))
+    if "--trail" in a:
+        fuzz.trails = {int(n) for n in a[a.index("--trail") + 1].split(",")}
         unknown = fuzz.only - {m[3:] for m in dir(fuzz) if m.startswith("op_")}
         if unknown:
             sys.exit(f"wm-fuzz: no such step: {', '.join(sorted(unknown))}")
