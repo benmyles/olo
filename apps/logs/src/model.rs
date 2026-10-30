@@ -6,6 +6,7 @@
 
 use std::{path::Path, sync::Arc};
 
+use olo_kit::search::{self, Needle};
 use serde::{Deserialize, Serialize};
 
 use crate::journal::{Entry, Field};
@@ -324,24 +325,48 @@ impl Since {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
+/// What the Log Viewer shows, from its search's text
+/// ([`Query::from_text`], the kit's query language): the filters
+/// `program:` (several at once, `all` for every program, `-program:` to
+/// leave one out), `level:`, `since:` and `pid:`, and the words.
+#[derive(Clone, Debug, PartialEq)]
 pub struct Query {
     pub since: Since,
     pub level: Level,
-    /// One program, or every Olo program (`None` with `all_programs`
-    /// false), or everything.
-    pub program: Option<String>,
+    /// The programs to show (any of them; by their name's start while
+    /// one is typed); none: Olo's, or every one with `all_programs`.
+    pub programs: Vec<Needle>,
     pub all_programs: bool,
-    pub text: String,
+    /// Programs left out.
+    pub left_out: Vec<Needle>,
+    pub pids: Vec<u32>,
+    /// Words (and phrases) each line must have, or (left out) not.
+    pub words: search::Query,
 }
 
 impl Default for Query {
     fn default() -> Self {
-        Query { since: Since::Boot, level: Level::Info, program: None, all_programs: false, text: String::new() }
+        Query { since: Since::Boot, level: Level::Info, programs: Vec::new(), all_programs: false, left_out: Vec::new(), pids: Vec::new(), words: search::Query::default() }
     }
 }
 
+/// The filters the Log Viewer's search knows.
+pub const KEYS: &[&str] = &["program", "level", "since", "pid"];
+
+impl Since {
+    /// As typed in a query (`since:2h`).
+    pub fn code(self) -> String {
+        match self {
+            Since::Minutes(m) if m >= 60 && m % 60 == 0 => format!("{}h", m / 60),
+            Since::Minutes(m) => format!("{m}m"),
+            Since::Today => "today".into(),
+            Since::Boot => "boot".into(),
+            Since::All => "all".into(),
+        }
+    }
+}
+
+/// What a query needs to know about now.
 /// What a query needs to know about now.
 #[derive(Clone, Copy)]
 pub struct Now {
@@ -408,36 +433,39 @@ fn local_midnight(micros: u64) -> u64 {
     }
 }
 
-/// What Find looks for, lowercased once: a line has it when its message
-/// or program does, in any case. Plain ASCII (nearly every search) is
-/// found in place, without lowercasing each line (which took 20 ms a
-/// keystroke over a day's journal).
-pub struct Needle {
-    lower: String,
-    ascii: bool,
-}
-
-impl Needle {
-    /// Whether `hay` has it.
-    pub fn in_text(&self, hay: &str) -> bool {
-        let n = self.lower.as_bytes();
-        if n.is_empty() {
-            return true;
-        }
-        if !self.ascii {
-            return hay.to_lowercase().contains(&self.lower);
-        }
-        let hay = hay.as_bytes();
-        let Some(last) = hay.len().checked_sub(n.len()) else { return false };
-        memchr::memchr2_iter(n[0], n[0].to_ascii_uppercase(), &hay[..=last]).any(|i| hay[i + 1..i + n.len()].eq_ignore_ascii_case(&n[1..]))
-    }
-}
-
 impl Query {
-    /// `text` lowercased once, for [`Query::matches`].
-    pub fn needle(&self) -> Needle {
-        let lower = self.text.trim().to_lowercase();
-        Needle { ascii: lower.is_ascii(), lower }
+    /// The query a search's text asks for.
+    pub fn from_text(text: &str) -> Query {
+        let q = search::Query::parse(text, KEYS);
+        let mut out = Query::default();
+        for t in &q.terms {
+            match (t.key.as_deref(), t.not) {
+                (Some("program"), false) => {
+                    for n in &t.any {
+                        if n.is("all") || n.is("*") {
+                            out.all_programs = true;
+                        } else {
+                            out.programs.push(n.clone());
+                        }
+                    }
+                }
+                (Some("program"), true) => out.left_out.extend(t.any.iter().cloned()),
+                (Some("level"), false) => {
+                    if let Some(l) = t.any.last().and_then(|n| Level::parse(n.as_str())) {
+                        out.level = l;
+                    }
+                }
+                (Some("since"), false) => {
+                    if let Some(s) = t.any.last().and_then(|n| Since::parse(n.as_str())) {
+                        out.since = s;
+                    }
+                }
+                (Some("pid"), false) => out.pids.extend(t.any.iter().filter_map(|n| n.as_str().parse::<u32>().ok())),
+                _ => {}
+            }
+        }
+        out.words = search::Query { terms: q.terms.into_iter().filter(|t| t.key.is_none()).collect() };
+        out
     }
 
     /// Whether `l` is in the time the query looks at.
@@ -450,16 +478,21 @@ impl Query {
         }
     }
 
-    pub fn matches(&self, l: &Line, now: &Now, needle: &Needle) -> bool {
+    pub fn matches(&self, l: &Line, now: &Now) -> bool {
         if l.level < self.level || !self.in_time(l, now) {
             return false;
         }
-        match &self.program {
-            Some(p) if *l.program != **p => return false,
-            None if !self.all_programs && !l.olo => return false,
-            _ => {}
+        if !self.programs.is_empty() {
+            if !self.programs.iter().any(|n| n.starts(&l.program)) {
+                return false;
+            }
+        } else if !self.all_programs && !l.olo {
+            return false;
         }
-        needle.in_text(&l.message) || needle.in_text(&l.program)
+        if self.left_out.iter().any(|n| n.is(&l.program)) || !self.pids.is_empty() && !self.pids.contains(&l.pid) {
+            return false;
+        }
+        self.words.matches(|_, n| n.in_text(&l.message) || n.in_text(&l.program))
     }
 }
 
@@ -523,19 +556,27 @@ mod tests {
         let now = Now { time: 100 * 60_000_000, midnight: 0, boot: Some([1; 16]) };
         let line = |level, program: &str, olo, time, boot| Line { time, program: program.into(), pid: 1, level, message: "Hello World".into(), olo, boot };
         let q = Query::default();
-        let find = |text: &str| Query { text: text.into(), ..Query::default() }.needle();
-        let any = find("");
-        assert!(q.matches(&line(Level::Info, "olo-tracker", true, 0, [1; 16]), &now, &any));
-        assert!(!q.matches(&line(Level::Info, "chrome", false, 0, [1; 16]), &now, &any));
-        assert!(!q.matches(&line(Level::Info, "olo-tracker", true, 0, [2; 16]), &now, &any));
-        let q = Query { since: Since::Minutes(10), level: Level::Warning, all_programs: true, ..Query::default() };
-        assert!(!q.matches(&line(Level::Info, "chrome", false, 99 * 60_000_000, [1; 16]), &now, &any));
-        assert!(q.matches(&line(Level::Error, "chrome", false, 99 * 60_000_000, [1; 16]), &now, &find("World ")));
-        assert!(!q.matches(&line(Level::Error, "chrome", false, 80 * 60_000_000, [1; 16]), &now, &any));
-        assert!(!q.matches(&line(Level::Error, "chrome", false, 99 * 60_000_000, [1; 16]), &now, &find("nope")));
-        assert!(find("WORLD").in_text("Hello World") && find("o w").in_text("hello world") && find("tracker").in_text("olo-Tracker"));
-        assert!(!find("worlds").in_text("Hello World") && !find("x").in_text(""));
-        assert!(find("größe").in_text("Die GRÖSSE ist GRÖßE") && !find("größe").in_text("gross"));
+        assert_eq!(Query::from_text(""), q);
+        assert!(q.matches(&line(Level::Info, "olo-tracker", true, 0, [1; 16]), &now));
+        assert!(!q.matches(&line(Level::Info, "chrome", false, 0, [1; 16]), &now));
+        assert!(!q.matches(&line(Level::Info, "olo-tracker", true, 0, [2; 16]), &now));
+        let q = Query::from_text("since:10m level:warning program:all");
+        assert_eq!((q.since, q.level, q.all_programs), (Since::Minutes(10), Level::Warning, true));
+        assert!(!q.matches(&line(Level::Info, "chrome", false, 99 * 60_000_000, [1; 16]), &now));
+        assert!(q.matches(&line(Level::Error, "chrome", false, 99 * 60_000_000, [1; 16]), &now));
+        assert!(Query::from_text("since:10m level:error program:all \"World\"").matches(&line(Level::Error, "chrome", false, 99 * 60_000_000, [1; 16]), &now));
+        assert!(!q.matches(&line(Level::Error, "chrome", false, 80 * 60_000_000, [1; 16]), &now));
+        assert!(!Query::from_text("program:all nope").matches(&line(Level::Error, "chrome", false, 0, [1; 16]), &now));
+        // Programs: several, by their start while typed, or left out.
+        let some = Query::from_text("program:chrome,olo-p");
+        assert!(some.matches(&line(Level::Info, "chrome", false, 0, [1; 16]), &now));
+        assert!(some.matches(&line(Level::Info, "olo-pool", true, 0, [1; 16]), &now));
+        assert!(!some.matches(&line(Level::Info, "olo-tracker", true, 0, [1; 16]), &now));
+        let not = Query::from_text("-program:olo-pool hello -world");
+        assert!(!not.matches(&line(Level::Info, "olo-pool", true, 0, [1; 16]), &now));
+        assert!(!not.matches(&line(Level::Info, "olo-tracker", true, 0, [1; 16]), &now), "-world leaves it out");
+        assert_eq!(Query::from_text("pid:1").pids, vec![1]);
+        assert_eq!(Since::parse("2h").map(Since::code).as_deref(), Some("2h"));
         assert_eq!(Since::parse("10m"), Some(Since::Minutes(10)));
         assert_eq!(Since::parse("2h"), Some(Since::Minutes(120)));
         assert_eq!(Since::parse("boot"), Some(Since::Boot));

@@ -1,23 +1,24 @@
 //! Log Viewer: every Olo program's log in one place, from the user's
 //! journal (read natively, journal.rs, on a worker thread, reader.rs),
-//! live as it is written. Find text, show one program or all of them,
-//! warnings and errors only, the last ten minutes or since startup; a
+//! live as it is written. One search (the kit's query language: words,
+//! "phrases", -words, and `program:` several or `all`, `-program:`,
+//! `level:`, `since:`, `pid:`) with the filters as menus beside it; a
 //! line's full text below the list, and Show in Context for the lines
 //! around one.
 //!
 //! For agents the same query prints from the command line:
-//! `olo-logs --print [--since 10m|2h|today|boot|all] [--level
-//! info|warning|error] [--program NAME | --all-programs] [--find TEXT]
-//! [--json] [--follow]`.
+//! `olo-logs --print [--query TEXT] [--since 10m|2h|today|boot|all]
+//! [--level info|warning|error] [--program NAME | --all-programs]
+//! [--find TEXT] [--json] [--follow]`.
 
 mod highlight;
 mod journal;
 mod model;
 mod reader;
 
-use std::{collections::BTreeSet, sync::Arc, time::Instant};
+use std::{cell::RefCell, collections::BTreeMap, sync::Arc, time::Instant};
 
-use model::{Level, Line, Needle, Now, Query, Since};
+use model::{Level, Line, Now, Query, Since};
 use reader::Update;
 use serde::{Deserialize, Serialize};
 use olo_kit::{
@@ -26,7 +27,8 @@ use olo_kit::{
     instance::{self, Launch},
     metrics as m,
     style::{self, c},
-    widgets::{self, Button, Cell, CheckBox, Column, ColumnListView, ListState, MenuField, TextControl, TextView},
+    search::{self, Facet, FilterBar, SearchField},
+    widgets::{self, Button, Cell, CheckBox, Column, ColumnListView, ListState, TextView},
 };
 
 const APP_ID: &str = "olo.logs";
@@ -34,6 +36,7 @@ const TITLE: &str = "Log Viewer";
 
 const LEVELS: [(Level, &str); 4] =
     [(Level::Debug, "Everything"), (Level::Info, "Info and Above"), (Level::Warning, "Warnings and Errors"), (Level::Error, "Errors Only")];
+const LEVEL_CODES: [&str; 4] = ["debug", "info", "warning", "error"];
 const TIMES: [(Since, &str); 5] = [
     (Since::Minutes(10), "Last 10 Minutes"),
     (Since::Minutes(60), "Last Hour"),
@@ -48,13 +51,46 @@ const DETAIL: f32 = 112.0;
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 struct Settings {
-    query: Query,
+    /// The search's text: its filters stay from one run to the next.
+    search: String,
     live: bool,
+    /// From before the search was one text: read once, then `search`.
+    #[serde(skip_serializing)]
+    query: Option<OldQuery>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { query: Query::default(), live: true }
+        Settings { search: String::new(), live: true, query: None }
+    }
+}
+
+/// The filters as they were kept before (a menu each).
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct OldQuery {
+    since: Option<Since>,
+    level: Option<Level>,
+    program: Option<String>,
+    all_programs: bool,
+}
+
+impl OldQuery {
+    fn text(&self) -> String {
+        let mut t = String::new();
+        let mut set = |key: &str, values: &[&str]| search::set_filter(&mut t, model::KEYS, key, values);
+        if let Some(p) = &self.program {
+            set("program", &[p]);
+        } else if self.all_programs {
+            set("program", &["all"]);
+        }
+        if let Some(l) = self.level.filter(|&l| l != Level::Info) {
+            set("level", &[LEVEL_CODES[LEVELS.iter().position(|(x, _)| *x == l).unwrap_or(1)]]);
+        }
+        if let Some(s) = self.since.filter(|&s| s != Since::Boot) {
+            set("since", &[&s.code()]);
+        }
+        t
     }
 }
 
@@ -70,15 +106,22 @@ struct Logs {
     view: Vec<usize>,
     warnings: usize,
     errors: usize,
-    programs: BTreeSet<Arc<str>>,
-    /// The time `programs` are of (Find and the level don't change them).
+    /// The query the search's text asks for.
+    query: Query,
+    /// The programs in the query's time, and how many lines each has
+    /// there.
+    programs: BTreeMap<Arc<str>, usize>,
+    /// The time `programs` are of (words and the level don't change them).
     programs_since: Option<Since>,
+    /// The search's filters (their values and counts), made again when
+    /// the programs change.
+    facets: RefCell<Option<Vec<Facet>>>,
     /// Lines being chosen again, a slice a frame (`refilter`).
     filter: Option<Filter>,
     now: Now,
     filtered_at: Instant,
-    /// The query from before Show in Context, to go back to.
-    before_context: Option<Query>,
+    /// The search from before Show in Context, to go back to.
+    before_context: Option<String>,
     list: ListState,
     /// The selected line (an index into `lines`).
     selected: Option<usize>,
@@ -98,7 +141,6 @@ struct Logs {
 /// shown change once it has been through them all.
 struct Filter {
     query: Query,
-    needle: Needle,
     now: Now,
     /// The next line to look at.
     next: usize,
@@ -106,7 +148,7 @@ struct Filter {
     warnings: usize,
     errors: usize,
     /// The programs in the query's time, when they are found again.
-    programs: Option<BTreeSet<Arc<str>>>,
+    programs: Option<BTreeMap<Arc<str>, usize>>,
     /// The line to select and show when done (Show in Context), else
     /// the selected one stays selected if it's still there.
     select: Option<usize>,
@@ -121,8 +163,9 @@ struct Filter {
 /// How long a frame goes through lines for (`Filter`).
 const FILTER_SLICE: std::time::Duration = std::time::Duration::from_millis(2);
 
-/// `text` highlighted in the palette's colours (highlight.rs), on `base`.
-fn highlighted(text: &str, font: egui::FontId, base: egui::Color32, p: &olo_theme::Palette) -> egui::text::LayoutJob {
+/// `text` highlighted in the palette's colours (highlight.rs), on `base`,
+/// what `query`'s words find marked.
+fn highlighted(text: &str, font: egui::FontId, base: egui::Color32, p: &olo_theme::Palette, query: &search::Query) -> egui::text::LayoutJob {
     use highlight::Kind;
     use olo_theme::mix;
     let bg = p.document_background;
@@ -142,6 +185,7 @@ fn highlighted(text: &str, font: egui::FontId, base: egui::Color32, p: &olo_them
     for (r, k) in highlight::spans(text) {
         job.append(&text[r], 0.0, egui::TextFormat { font_id: font.clone(), color: color(k), ..Default::default() });
     }
+    search::mark(&mut job, &search::found(text, query), search::mark_color(p));
     job
 }
 
@@ -190,12 +234,11 @@ impl Logs {
     fn refilter(&mut self, select: Option<usize>) {
         self.now = Now::get();
         self.filtered_at = Instant::now();
-        let since = self.settings.query.since;
-        let programs = (self.programs_since != Some(since) || matches!(since, Since::Minutes(_))).then(BTreeSet::new);
+        let since = self.query.since;
+        let programs = (self.programs_since != Some(since) || matches!(since, Since::Minutes(_))).then(BTreeMap::new);
         self.programs_since = Some(since);
         self.filter = Some(Filter {
-            query: self.settings.query.clone(),
-            needle: self.settings.query.needle(),
+            query: self.query.clone(),
             now: self.now,
             next: 0,
             view: Vec::new(),
@@ -217,11 +260,15 @@ impl Logs {
             for (i, l) in self.lines[f.next..end].iter().enumerate() {
                 if let Some(programs) = &mut f.programs
                     && f.query.in_time(l, &f.now)
-                    && !programs.contains(&l.program)
                 {
-                    programs.insert(l.program.clone());
+                    match programs.get_mut(&l.program) {
+                        Some(n) => *n += 1,
+                        None => {
+                            programs.insert(l.program.clone(), 1);
+                        }
+                    }
                 }
-                if f.query.matches(l, &f.now, &f.needle) {
+                if f.query.matches(l, &f.now) {
                     f.view.push(f.next + i);
                     match l.level {
                         Level::Warning => f.warnings += 1,
@@ -252,7 +299,7 @@ impl Logs {
             // As the cells lay them out (`Cell::text_job`), but for the
             // width they're cut to and the colours, which shaping doesn't
             // depend on.
-            let mut message = highlighted(&message_text(l), font.clone(), egui::Color32::WHITE, &p);
+            let mut message = highlighted(&message_text(l), font.clone(), egui::Color32::WHITE, &p, &f.query.words);
             let mut time = egui::text::LayoutJob::simple_singleline(model::format_time(l.time, f.now.midnight), font.clone(), egui::Color32::WHITE);
             message.break_on_newline = false;
             time.break_on_newline = false;
@@ -268,6 +315,7 @@ impl Logs {
         (self.view, self.warnings, self.errors) = (f.view, f.warnings, f.errors);
         if let Some(programs) = f.programs {
             self.programs = programs;
+            *self.facets.borrow_mut() = None;
         }
         if let Some(line) = f.select {
             self.select(Some(line));
@@ -288,6 +336,7 @@ impl Logs {
 
     fn query_changed(&mut self) {
         self.before_context = None;
+        self.query = Query::from_text(&self.settings.search);
         self.refilter(None);
         self.store();
     }
@@ -302,14 +351,16 @@ impl Logs {
                 }
             }
         }
-        let needle = self.settings.query.needle();
         for l in new {
-            if !self.programs.contains(&l.program) && self.settings.query.in_time(&l, &self.now) {
-                self.programs.insert(l.program.clone());
+            if self.query.in_time(&l, &self.now) {
+                if !self.programs.contains_key(&l.program) {
+                    *self.facets.borrow_mut() = None;
+                }
+                *self.programs.entry(l.program.clone()).or_default() += 1;
             }
             let i = self.lines.len();
             self.lines.push(l);
-            if self.settings.query.matches(&self.lines[i], &self.now, &needle) {
+            if self.query.matches(&self.lines[i], &self.now) {
                 self.view.push(i);
                 self.count(i);
             }
@@ -340,15 +391,16 @@ impl Logs {
     /// and levels, around it.
     fn show_in_context(&mut self) {
         let Some(sel) = self.selected else { return };
-        let saved = self.settings.query.clone();
-        self.settings.query = Query { since: Since::All, level: Level::Debug, program: None, all_programs: true, text: String::new() };
+        let saved = std::mem::replace(&mut self.settings.search, "program:all level:debug since:all".into());
+        self.query = Query::from_text(&self.settings.search);
         self.before_context = Some(saved);
         self.refilter(Some(sel));
     }
 
     fn back_from_context(&mut self) {
         if let Some(q) = self.before_context.take() {
-            self.settings.query = q;
+            self.settings.search = q;
+            self.query = Query::from_text(&self.settings.search);
             self.refilter(None);
         }
     }
@@ -376,7 +428,8 @@ impl Logs {
             "back" => self.back_from_context(),
             "only-program" => {
                 if let Some(sel) = self.selected {
-                    self.settings.query.program = Some(self.lines[sel].program.to_string());
+                    let program = self.lines[sel].program.to_string();
+                    search::set_filter(&mut self.settings.search, model::KEYS, "program", &[&program]);
                     self.query_changed();
                 }
             }
@@ -389,54 +442,52 @@ impl Logs {
         }
     }
 
-    fn controls(&mut self, ui: &mut Ui, top: Rect) {
-        let q = &mut self.settings.query;
-        let w_menu = 170.0;
-        let find_r = Rect::from_min_size(top.min, vec2(top.width() - 3.0 * (w_menu + m::SPACING), m::CONTROL_HEIGHT));
-        let before = q.text.clone();
-        ui.put(find_r, TextControl::new(&mut q.text).label("Find:").hint("Text or program"));
-        let mut changed = q.text != before;
-
-        // Which programs: Olo's, every one, or one of Olo's seen in
-        // this time (any other through Find, or a line's Show Only).
-        let mut names: Vec<String> = self.programs.iter().filter(|p| model::is_olo(p)).map(|p| p.to_string()).collect();
-        if let Some(p) = &q.program
-            && !names.contains(p)
-        {
-            names.push(p.clone());
+    /// The search's filters: Program (Olo's first, each with its lines in
+    /// the query's time), Level and Time in the bar; `pid:` typed.
+    fn facets(&self) -> std::cell::Ref<'_, Vec<Facet>> {
+        if self.facets.borrow().is_none() {
+            let mut program = Facet::new("program", "Program").any("Olo Programs").multiple().value("all", "All Programs", None);
+            let mut names: Vec<(&Arc<str>, &usize)> = self.programs.iter().collect();
+            names.sort_by_key(|(n, _)| (!model::is_olo(n), n.to_lowercase()));
+            for (name, n) in names {
+                program = program.value(name.to_string(), name.to_string(), Some(*n));
+            }
+            let mut level = Facet::new("level", "Level").any(LEVELS[1].1);
+            for ((_, label), code) in LEVELS.iter().zip(LEVEL_CODES) {
+                level = level.value(code, *label, None);
+            }
+            let mut time = Facet::new("since", "Time").any("Since Startup");
+            for (since, label) in TIMES {
+                time = time.value(since.code(), label, None);
+            }
+            *self.facets.borrow_mut() = Some(vec![program, level, time, Facet::new("pid", "Process").typed_only()]);
         }
-        names.sort_by_key(|n| (!model::is_olo(n), n.to_lowercase()));
-        let mut options: Vec<&str> = vec!["Olo Programs", "All Programs"];
-        options.extend(names.iter().map(String::as_str));
-        let mut which = match &q.program {
-            Some(p) => names.iter().position(|n| n == p).map_or(0, |i| i + 2),
-            None => usize::from(q.all_programs),
+        std::cell::Ref::map(self.facets.borrow(), |f| f.as_ref().expect("made above"))
+    }
+
+    /// The search and the filters' menus: in one row when there's room,
+    /// else the menus under the search. How tall that is.
+    fn controls(&mut self, ui: &mut Ui, top: Rect) -> f32 {
+        let facets = self.facets().clone();
+        let bar_w = FilterBar::width(ui, &self.settings.search, &facets) + m::SPACING + 40.0;
+        let one_row = top.width() - bar_w - m::SPACING >= 260.0;
+        let field = if one_row { Rect::from_min_size(top.min, vec2(top.width() - bar_w - m::SPACING, m::CONTROL_HEIGHT)) } else { Rect::from_min_size(top.min, vec2(top.width(), m::CONTROL_HEIGHT)) };
+        let bar = if one_row {
+            Rect::from_min_max(pos2(field.right() + m::SPACING, top.top()), pos2(top.right(), top.top() + m::CONTROL_HEIGHT))
+        } else {
+            // Under the search, its first menu's text over the list's
+            // first column's (inside the list's two lines of frame).
+            let frame = style::inset(ui.ctx(), top, 2.0).left() - top.left();
+            let indent = frame + m::CELL_INSET - m::TEXT_INSET;
+            Rect::from_min_size(pos2(top.left() + indent, field.bottom() + m::SPACING), vec2(top.width() - indent, m::CONTROL_HEIGHT))
         };
-        let r = Rect::from_min_size(pos2(find_r.right() + m::SPACING, top.top()), vec2(w_menu, m::CONTROL_HEIGHT));
-        if ui.put(r, MenuField::new("logs-program", &mut which, &options).width(w_menu)).changed() {
-            q.all_programs = which == 1;
-            q.program = which.checked_sub(2).and_then(|i| names.get(i).cloned());
-            changed = true;
-        }
-
-        let labels: Vec<&str> = LEVELS.iter().map(|(_, l)| *l).collect();
-        let mut level = LEVELS.iter().position(|(l, _)| *l == q.level).unwrap_or(1);
-        let r = r.translate(vec2(w_menu + m::SPACING, 0.0));
-        if ui.put(r, MenuField::new("logs-level", &mut level, &labels).width(w_menu)).changed() {
-            q.level = LEVELS[level].0;
-            changed = true;
-        }
-
-        let labels: Vec<&str> = TIMES.iter().map(|(_, l)| *l).collect();
-        let mut time = TIMES.iter().position(|(t, _)| *t == q.since).unwrap_or(3);
-        let r = r.translate(vec2(w_menu + m::SPACING, 0.0));
-        if ui.put(r, MenuField::new("logs-time", &mut time, &labels).width(w_menu)).changed() {
-            q.since = TIMES[time].0;
-            changed = true;
-        }
+        let hint = "Search: words, program:, level:, since:";
+        let mut changed = ui.put(field, SearchField::new("logs", &mut self.settings.search).hint(hint).facets(&facets)).changed();
+        changed |= ui.put(bar, FilterBar::new("logs", &mut self.settings.search, &facets)).changed();
         if changed {
             self.query_changed();
         }
+        bar.bottom() - top.top()
     }
 
     fn list_ui(&mut self, cx: &mut Cx, ui: &mut Ui, area: Rect) {
@@ -453,7 +504,14 @@ impl Logs {
         );
         let reveal = self.reveal.take();
         let empty = if self.loaded { "No lines match." } else { "Reading the journal…" };
-        let (lines, view, midnight) = (&self.lines, &self.view, self.now.midnight);
+        let (lines, view, midnight, query) = (&self.lines, &self.view, self.now.midnight, &self.query);
+        // (Rows' messages kept by the words they mark, too.)
+        let marks = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            query.words.terms.iter().flat_map(|t| &t.any).for_each(|n| n.as_str().hash(&mut h));
+            h.finish()
+        };
         let out = ui
             .scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
                 ColumnListView::new("logs-lines", &columns, view.len(), &mut self.list).reveal(reveal).empty_text(empty).show(ui, |cell: &Cell| {
@@ -473,9 +531,9 @@ impl Logs {
                         0 => cell.text_cached(line ^ midnight.rotate_left(32), || plain(model::format_time(l.time, midnight), cell.text_color)),
                         1 => cell.text_cached(line, || plain(l.program.to_string(), cell.text_color)),
                         2 => cell.text_cached(line, || plain(l.level.name().to_owned(), color)),
-                        _ => cell.text_cached(line ^ (l.message.len() as u64).rotate_left(40), || {
+                        _ => cell.text_cached(line ^ (l.message.len() as u64).rotate_left(40) ^ marks, || {
                             let text = message_text(l);
-                            if cell.selected { plain(text, cell.text_color) } else { highlighted(&text, font.clone(), cell.text_color, &p) }
+                            if cell.selected { plain(text, cell.text_color) } else { highlighted(&text, font.clone(), cell.text_color, &p, &query.words) }
                         }),
                     }
                 })
@@ -505,12 +563,12 @@ impl Logs {
 
     fn main_ui(&mut self, cx: &mut Cx, ui: &mut Ui) {
         // A sliding window of time moves on by itself.
-        if matches!(self.settings.query.since, Since::Minutes(_)) && self.filtered_at.elapsed().as_secs() >= 5 && self.filter.is_none() {
+        if matches!(self.query.since, Since::Minutes(_)) && self.filtered_at.elapsed().as_secs() >= 5 && self.filter.is_none() {
             self.refilter(None);
         }
         let area = ui.max_rect().shrink(m::WINDOW_INSET);
-        let top = Rect::from_min_size(area.min, vec2(area.width(), m::CONTROL_HEIGHT));
-        self.controls(ui, top);
+        let height = self.controls(ui, Rect::from_min_size(area.min, vec2(area.width(), m::CONTROL_HEIGHT)));
+        let top = Rect::from_min_size(area.min, vec2(area.width(), height));
         let bottom = Rect::from_min_max(pos2(area.left(), area.bottom() - m::CONTROL_HEIGHT), area.max);
         let detail_r = Rect::from_min_max(pos2(area.left(), bottom.top() - m::SPACING - DETAIL), pos2(area.right(), bottom.top() - m::SPACING));
         let list_r = Rect::from_min_max(pos2(area.left(), top.bottom() + m::SPACING), pos2(area.right(), detail_r.top() - m::SPACING));
@@ -520,7 +578,8 @@ impl Logs {
         } else {
             self.list_ui(cx, ui, list_r);
         }
-        let highlight = |text: &str, font: egui::FontId, base: egui::Color32| highlighted(text, font, base, &p);
+        let words = self.query.words.clone();
+        let highlight = |text: &str, font: egui::FontId, base: egui::Color32| highlighted(text, font, base, &p, &words);
         ui.scope_builder(egui::UiBuilder::new().max_rect(detail_r), |ui| {
             TextView::new("logs-detail", &mut self.detail).mono(true).editable(false).empty_text("Select a line to read it whole.").highlight(&highlight).show(ui);
         });
@@ -624,7 +683,8 @@ impl App for Logs {
 
 /// `--print`: the query's lines on standard output, for agents and scripts.
 fn print(args: &[String]) -> i32 {
-    let mut q = Query { level: Level::Info, ..Query::default() };
+    // The flags say it as filters, and --query as typed in the search.
+    let mut text = String::new();
     let (mut json, mut follow) = (false, false);
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -633,22 +693,23 @@ fn print(args: &[String]) -> i32 {
             "--print" => {}
             "--json" => json = true,
             "--follow" => follow = true,
-            "--all-programs" => q.all_programs = true,
+            "--all-programs" => search::set_filter(&mut text, model::KEYS, "program", &["all"]),
             "--since" => match Since::parse(&value()) {
-                Some(s) => q.since = s,
+                Some(s) => search::set_filter(&mut text, model::KEYS, "since", &[&s.code()]),
                 None => return usage(),
             },
             "--level" => match Level::parse(&value()) {
-                Some(l) => q.level = l,
+                Some(l) => search::set_filter(&mut text, model::KEYS, "level", &[LEVEL_CODES[LEVELS.iter().position(|(x, _)| *x == l).unwrap_or(1)]]),
                 None => return usage(),
             },
-            "--program" => q.program = Some(value()),
-            "--find" => q.text = value(),
+            "--program" => search::set_filter(&mut text, model::KEYS, "program", &[&value()]),
+            "--find" => text = format!("{text} {}", search::quote(&value())),
+            "--query" => text = format!("{text} {}", value()),
             _ => return usage(),
         }
     }
     let now = Now::get();
-    let needle = q.needle();
+    let q = Query::from_text(&text);
     use std::io::Write;
     let mut out = std::io::stdout().lock();
     let mut lines: Vec<Line> = Vec::new();
@@ -659,7 +720,7 @@ fn print(args: &[String]) -> i32 {
     // batch can no longer add to it (all at the end, or as followed).
     let mut flush = |lines: &mut Vec<Line>, upto: usize, out: &mut std::io::StdoutLock| -> bool {
         for l in &lines[printed.min(upto)..upto] {
-            if !q.matches(l, &now, &needle) {
+            if !q.matches(l, &now) {
                 continue;
             }
             let text = if json {
@@ -715,7 +776,7 @@ fn print(args: &[String]) -> i32 {
 
 fn usage() -> i32 {
     eprintln!(
-        "usage: olo-logs --print [--since 10m|2h|1d|today|boot|all] [--level debug|info|warning|error]\n                    [--program NAME | --all-programs] [--find TEXT] [--json] [--follow]"
+        "usage: olo-logs --print [--query TEXT] [--since 10m|2h|1d|today|boot|all] [--level debug|info|warning|error]\n                    [--program NAME | --all-programs] [--find TEXT] [--json] [--follow]\n  TEXT as in the search: words, \"phrases\", -word, program:a,b (or all), -program:x, level:, since:, pid:"
     );
     2
 }
@@ -754,8 +815,13 @@ fn main() {
     olo_kit::run(APP_ID, |cx| {
         instance::listen(APP_ID, cx.proxy());
         let mut settings: Settings = std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-        // A search is for now; the filters stay.
-        settings.query.text.clear();
+        // From before the search was one text.
+        if let Some(old) = settings.query.take() {
+            settings.search = old.text();
+        }
+        // A search's words are for now; its filters stay.
+        settings.search = search::filters_only(&settings.search, model::KEYS);
+        let query = Query::from_text(&settings.search);
         let proxy = cx.proxy();
         std::thread::Builder::new()
             .name("journal".into())
@@ -776,8 +842,10 @@ fn main() {
             view: Vec::new(),
             warnings: 0,
             errors: 0,
-            programs: BTreeSet::new(),
+            query,
+            programs: BTreeMap::new(),
             programs_since: None,
+            facets: RefCell::new(None),
             filter: None,
             now: Now::get(),
             filtered_at: Instant::now(),

@@ -666,8 +666,8 @@ as they land (with the commit), add new ones as they come up.
   Olo ▸ (an extension can't have two at the top). Checked in a test
   Chrome: the menu, a two-step sign-in filled through, a sign-in by
   hand as another account remembered for the profile.
-- **Passwords search and filters; rich search and filtering controls in
-  the kit, for Logs too** (Ben, 2026-10-29, while on Passwords): "while
+- ~~**Passwords search and filters; rich search and filtering controls in
+  the kit, for Logs too**~~ (Ben, 2026-10-29, while on Passwords): "while
   you're doing stuff with passwords can you also make the passwords
   search work better and add filtering. and add a full set of rich
   search and filtering reusable controls we can use in the log viewer
@@ -677,7 +677,11 @@ as they land (with the commit), add new ones as they come up.
   suggestions and `FilterBar`; Passwords uses them (every item's
   username and non-secret text searched, filters for tags, kinds,
   vaults, sites, users, one-time codes, attachments, weak and reused
-  passwords, best matches first, matches marked). Logs next.
+  passwords, best matches first, matches marked). The Log Viewer too:
+  one search with Program (several, or all, or left out), Level and
+  Time as menus beside it, `pid:`, words marked in the messages, and
+  `olo-logs --print --query` taking the same text. Review clean at 1×
+  to 2× for both, wide and narrow.
 - ~~**Terminal: git repos, worktrees and GitHub**~~ (Ben; done: HACKING,
   Terminal "Repositories"; Preferences ▸ Terminal), native (no `git`
   or `gh` subprocesses):

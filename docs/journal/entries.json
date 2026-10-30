@@ -2158,5 +2158,17 @@
   "title": "Filter menus with counts",
   "caption": "A filter's menu: Any, then each value with how many items have it, where a shortcut would be.",
   "image": "2026-10-29/230407-filter-menus-with-counts.png"
+ },
+ {
+  "time": "2026-10-29T23:11:43",
+  "title": "Log Viewer: one search, filters as menus",
+  "caption": "The search takes words, phrases, -words and program:/level:/since:/pid: filters (several programs at once, all, or one left out), with Program, Level and Time menus beside it editing the same text; what was found is marked in the messages.",
+  "image": "2026-10-29/231143-log-viewer-one-search-filters-as-menus.png"
+ },
+ {
+  "time": "2026-10-29T23:11:43",
+  "title": "Log Viewer: narrow, dark",
+  "caption": "In a narrow window the menus go under the search, their text over the list's first column.",
+  "image": "2026-10-29/231143-log-viewer-narrow-dark.png"
  }
 ]

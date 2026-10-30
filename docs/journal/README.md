@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Log Viewer: narrow, dark
+
+*23:11* — In a narrow window the menus go under the search, their text over the list's first column.
+
+![Log Viewer: narrow, dark](2026-10-29/231143-log-viewer-narrow-dark.png)
+
+### Log Viewer: one search, filters as menus
+
+*23:11* — The search takes words, phrases, -words and program:/level:/since:/pid: filters (several programs at once, all, or one left out), with Program, Level and Time menus beside it editing the same text; what was found is marked in the messages.
+
+![Log Viewer: one search, filters as menus](2026-10-29/231143-log-viewer-one-search-filters-as-menus.png)
+
 ### Filter menus with counts
 
 *23:04* — A filter's menu: Any, then each value with how many items have it, where a shortcut would be.

@@ -362,6 +362,47 @@ pub fn highlight(text: &str, query: &Query, font: FontId, color: Color32, mark: 
     job
 }
 
+/// Mark `found` (byte ranges of the job's text, as [`found`] gives) with
+/// `color` behind, in a job already laid out in sections of its own
+/// (coloured text): the sections are split where a mark starts or ends.
+pub fn mark(job: &mut LayoutJob, found: &[Range<usize>], color: Color32) {
+    if found.is_empty() {
+        return;
+    }
+    let mut out = Vec::with_capacity(job.sections.len() + 2 * found.len());
+    for sec in job.sections.drain(..) {
+        let (start, end) = (sec.byte_range.start.0, sec.byte_range.end.0);
+        let mut cuts = vec![start, end];
+        for r in found {
+            for b in [r.start, r.end] {
+                if start < b && b < end {
+                    cuts.push(b);
+                }
+            }
+        }
+        cuts.sort_unstable();
+        cuts.dedup();
+        for w in cuts.windows(2) {
+            let mut part = sec.clone();
+            part.byte_range = egui::text::ByteIndex(w[0])..egui::text::ByteIndex(w[1]);
+            if w[0] != start {
+                part.leading_space = 0.0;
+            }
+            if found.iter().any(|r| r.start <= w[0] && w[1] <= r.end) {
+                part.format.background = color;
+            }
+            out.push(part);
+        }
+    }
+    job.sections = out;
+}
+
+/// `text` with only its filters (what's typed to find goes): to keep the
+/// filters of a search from one run to the next.
+pub fn filters_only(text: &str, keys: &[&str]) -> String {
+    tokens(text, keys).iter().filter(|t| t.key.is_some()).map(|t| &text[t.range.clone()]).collect::<Vec<_>>().join(" ")
+}
+
 // ---- Filters -------------------------------------------------------------
 
 /// One of an app's filters: `key:value` in a query, a menu in the
@@ -984,6 +1025,22 @@ mod tests {
         let q = Query::parse("ab b", KEYS);
         assert_eq!(found("xAbab cb", &q), vec![1..5, 7..8]);
         assert!(Needle::new("olo-").starts("OLO-pool"));
+    }
+
+    #[test]
+    fn marks_split_coloured_text() {
+        let mut job = LayoutJob::default();
+        let fmt = |c: Color32| egui::TextFormat { color: c, ..Default::default() };
+        job.append("pool: ", 0.0, fmt(Color32::RED));
+        job.append("quota 429", 0.0, fmt(Color32::BLUE));
+        let q = Query::parse("ol quot", KEYS);
+        let at = found(&job.text, &q);
+        mark(&mut job, &at, Color32::YELLOW);
+        let parts: Vec<(&str, bool)> =
+            job.sections.iter().map(|s| (&job.text[s.byte_range.start.0..s.byte_range.end.0], s.format.background == Color32::YELLOW)).collect();
+        assert_eq!(parts, vec![("po", false), ("ol", true), (": ", false), ("quot", true), ("a 429", false)]);
+        assert_eq!(parts.iter().map(|(t, _)| *t).collect::<String>(), "pool: quota 429");
+        assert_eq!(filters_only("quota program:a,b -level:debug \"x y\"", KEYS), "program:a,b -level:debug");
     }
 
     #[test]

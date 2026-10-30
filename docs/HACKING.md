@@ -4166,24 +4166,39 @@ clicked` the window and who), dependencies only their warnings.
   GLib's `-WARNING **` and panics recognised, and Olo's own stderr
   lines Info unless they say otherwise (the session's stream files all
   of stderr as warnings). Continuation lines (a pretty debug print, a
-  backtrace) join the line before from the same process. `Query`: time
-  (last 10 minutes, hour, today, since startup, all), minimum level, one
-  program or Olo's or all, and text (in the message or the program).
+  backtrace) join the line before from the same process. `Query`, made
+  from the search's text (`Query::from_text`, the kit's language,
+  `olo_kit::search`): `since:` (10m, 2h, 1d, today, boot, all; since
+  startup if not said), `level:` (the least: debug, info, warning, error;
+  info if not said), `program:` (several, any of them, matched by their
+  start while one is typed; `all` for every program; none: Olo's),
+  `-program:` (left out), `pid:`, and words, phrases and `-words` in the
+  message or the program.
 - highlight.rs: syntax highlighting as spans: the target `tracing` puts
   first, `key=value` keys, strings, numbers, paths and URLs, type names,
   trouble words; the list and the detail pane colour them from the
   palette.
-- main.rs: Find and the three filters above a `ColumnListView`; the
-  selected line in full (highlighted, selectable) below; Live keeps the
-  list at its end as lines arrive; Show in Context (⌘K, or a line's
-  context menu) shows every line around one, and Back returns to the
-  filters. The filters are kept; Find isn't.
+- main.rs: the kit's `SearchField` and a `FilterBar` (Program, with
+  each program's lines in the query's time and Olo's first; Level; Time)
+  above a `ColumnListView`, in one row when the window has room for the
+  field, else the menus under it (their text over the list's first
+  column); what the words find is marked in the messages
+  (`search::mark` over the syntax colours; rows' galleys kept by the
+  words too). The selected line in full (highlighted, selectable)
+  below; Live keeps the list at its end as lines arrive; Show in Context
+  (⌘K, or a line's context menu) shows every line around one
+  (`program:all level:debug since:all`), and Back returns to the search
+  before. Show Only (a line's menu) sets `program:` to its program. The
+  search's filters are kept from one run to the next, its words aren't
+  (`search::filters_only`); settings from before (a menu each) become
+  the text once.
 
 For agents, the same query from the command line, reading the journal
-directly: `olo-logs --print [--since 10m|2h|1d|today|boot|all] [--level
-debug|info|warning|error] [--program NAME | --all-programs] [--find TEXT]
-[--json] [--follow]` (JSON lines: time in UTC, program, pid, level,
-message). Tests: `cargo test -p olo-logs` (synthetic journal files
+directly: `olo-logs --print [--query TEXT] [--since
+10m|2h|1d|today|boot|all] [--level debug|info|warning|error] [--program
+NAME | --all-programs] [--find TEXT] [--json] [--follow]`, `--query` as
+typed in the window's search and the others its filters (JSON lines:
+time in UTC, program, pid, level, message). Tests: `cargo test -p olo-logs` (synthetic journal files
 in both layouts); `-- --include-ignored` also reads this machine's
 journal and highlights every line in it.
 
