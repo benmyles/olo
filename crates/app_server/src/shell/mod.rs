@@ -719,6 +719,11 @@ const OPEN_WHERE_IN_USE: &[&str] = &["palette"];
 #[derive(Debug)]
 pub struct AutoOutput;
 
+/// Where a screen was when the windows were last arranged on the screens
+/// (`fixup_positions`).
+#[derive(Default)]
+struct Arranged(std::cell::Cell<Option<Rectangle<i32, Logical>>>);
+
 pub fn fixup_positions(
     space: &mut Space<WindowElement>,
     display: &olo_protocol::DisplaySettings,
@@ -732,25 +737,45 @@ pub fn fixup_positions(
         .collect();
     let keys: std::collections::HashMap<String, String> = outputs.iter().map(|o| (o.name(), crate::desktop::display_key(o))).collect();
     let positions = arrange(&sizes, |name| display.config(keys.get(name).map_or(name, |k| k.as_str()), name).and_then(|c| c.position));
-    // Each window's screen (under the middle of its frame) and where on
-    // it, so screens moving in the arrangement take their windows along.
-    let on: Vec<(WindowElement, Output, Point<i32, Logical>)> = space
+    // Each window's screen (under the middle of its frame, as the screens
+    // were when last arranged: a new scale or mode has already changed a
+    // screen's size, not yet its place, and a window on its far side would
+    // be under none, or another) and where on it, so screens moving in the
+    // arrangement take their windows along.
+    let was = |o: &Output| o.user_data().get::<Arranged>().and_then(|a| a.0.get()).or_else(|| space.output_geometry(o));
+    let on: Vec<(WindowElement, Output, Point<i32, Logical>, Rectangle<i32, Logical>)> = space
         .elements()
         .filter_map(|w| {
             let loc = space.element_location(w)?;
             let f = space.element_geometry(w)?;
             let middle = (f.loc + f.size.downscale(2).to_point()).to_f64();
-            let o = space.output_under(middle).next()?.clone();
-            Some((w.clone(), o.clone(), loc - space.output_geometry(&o)?.loc))
+            let o = outputs.iter().find(|o| was(o).is_some_and(|g| g.to_f64().contains(middle))).cloned().or_else(|| space.output_under(middle).next().cloned())?;
+            Some((w.clone(), o.clone(), loc - was(&o)?.loc, f))
         })
         .collect();
     for (output, at) in outputs.iter().zip(positions) {
         space.map_output(output, at);
         layer_map_for_output(output).arrange();
     }
-    for (w, o, offset) in on {
+    for o in &outputs {
+        o.user_data().insert_if_missing(Arranged::default);
+        if let Some(a) = o.user_data().get::<Arranged>() {
+            a.0.set(space.output_geometry(o));
+        }
+    }
+    for (w, o, offset, f) in on {
         if let Some(g) = space.output_geometry(&o) {
-            let to = g.loc + offset;
+            let mut to = g.loc + offset;
+            // Its screen got smaller under it: in from the side it went
+            // past, so it stays on its own screen (not the one beside).
+            let at = to + (f.loc - space.element_location(&w).unwrap_or(to));
+            let middle = (at + f.size.downscale(2).to_point()).to_f64();
+            if !g.to_f64().contains(middle) {
+                let fit = |pos: i32, len: i32, lo: i32, span: i32| if len <= span { pos.clamp(lo, lo + span - len) } else { lo };
+                let x = fit(at.x, f.size.w, g.loc.x, g.size.w);
+                let y = fit(at.y, f.size.h, g.loc.y, g.size.h);
+                to += Point::from((x - at.x, y - at.y));
+            }
             if let Some(from) = space.element_location(&w) {
                 tiling::shift_remembered(&w, to - from);
             }

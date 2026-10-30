@@ -484,12 +484,32 @@ as they land (with the commit), add new ones as they come up.
   at 120 Hz; not while Do Not Disturb hides banners, or quieter);
   agent-readable (the entry's status says "has notifications"), every
   scale and look.
-- **Windows never move in an upgrade** (Ben, 2026-10-29: "can you make
-  sure when i do an olo upgrade my windows don't change positions or
+- ~~**Windows never move in an upgrade**~~ (Ben, 2026-10-29: "can you
+  make sure when i do an olo upgrade my windows don't change positions or
   sizes or workspaces or displays or anything even if auto tiling is
-  enabled? right now they still sometimes change"). In progress: a
-  check that snapshots every window on every workspace and display,
-  upgrades in place (every binary replaced) and compares.
+  enabled? right now they still sometimes change"; done: HACKING, "The
+  session and in-place reload", auto-tiling, and `tools/dev/upgrade-check`).
+  Measured with the upgrade's own order (every app re-executing as
+  app_server restarts), which the old reload-only tests missed: the
+  auto-tiling trees are now kept across the restart (ratios as laid out,
+  each tile naming its window's saved place), parked windows keep their
+  display and minimized state, a hand's float choice is kept, kit apps no
+  longer die in the race (texture deltas kept, unconfigured surfaces
+  never drawn on, the handshake retried), GTK 4 windows tile, and
+  displays changing scale keep their windows. 40+ upgrades exact at 1×,
+  1.25×, 1.5× and 2× with two displays, hidden auto-tiled workspaces,
+  minimized tiles, GTK windows in tiles and windows hanging over onto
+  another display. The first upgrade from an app_server before this one
+  can still move auto-tiled windows once (it keeps no trees).
+- **Kit apps survive the GPU device being lost** (2026-10-29, from the
+  upgrade checks): once in ~60 test upgrades on Asahi, a restart made
+  Mesa's Vulkan WSI fail (`DRM_IOCTL_SYNCOBJ_TRANSFER failed`, then
+  `VK_ERROR_DEVICE_LOST`), and Deskbar panicked in egui-wgpu
+  (`egui_uniform_buffer` invalid; olo-session restarted it). An app with
+  windows would lose them. Watch for device loss
+  (`Device::set_device_lost_callback`, and catch a panic in a frame) and
+  go through the reconnect path (new device, windows made anew, the app's
+  state kept), tested with a debug switch that destroys the device.
 - **Passwords: passkeys, and filling the right account in Chrome**
   (Ben, 2026-10-29; next, after Terminal's git work: "this is really
   really important"): "olo passwords needs to support passkeys with a

@@ -1154,8 +1154,12 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             recording_shortcut: 0,
         };
         // Each display back on the workspace it showed, after an in-place
-        // restart.
+        // restart, and its auto-tiling as it was.
         state.showing = crate::layout::showing(&state.layout, state.settings.workspace_count);
+        let trees = crate::layout::load_trees();
+        if !state.layout.is_empty() {
+            state.auto.restore(trees);
+        }
         if let Some(name) = state.socket_name.clone() {
             match crate::ipc::init(&state.handle, &name) {
                 Ok(ipc) => state.ipc = ipc,

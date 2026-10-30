@@ -1105,8 +1105,11 @@ hands both to app_server, so clients never see the sockets disappear.
   after the displays changed is it fitted to them again (`refit`).
   Fitting it anyway squeezed a window bigger than the room beside
   Deskbar (which may not even be back yet) and moved it, as GTK's
-  windows on a small screen were; tiled and zoomed windows are always
-  refitted, into their tiles. A window stopped in between (claimed,
+  windows on a small screen were; tiled and zoomed windows are
+  put back into their tiles (auto-tiling's trees are kept: "Windows" ▸
+  auto-tiling; a tiling command's tiles are refitted into their parts),
+  and a parked window's place is saved on the display it left
+  (`display_of`), as it comes back. A window stopped in between (claimed,
   not shown yet) is saved at the place it claimed, not the cascade slot
   it waits in (`placement_of`). Each display's workspace showing comes
   back too (`Placement::displays`, by display key, `layout::showing`;
@@ -1121,7 +1124,16 @@ hands both to app_server, so clients never see the sockets disappear.
   too, since apps like Deskbar only resize when their height changes).
   One whose binary changed calls `App::save_state`,
   re-executes itself (same pid and arguments), and reads the result with
-  `cx.restored_state()` at start-up. A GPU surface lost while app_server
+  `cx.restored_state()` at start-up. In an upgrade olo-session
+  signals every program it replaced (SIGURG) and restarts app_server at
+  once, so an app re-executes while the old app_server goes: one may
+  start against the old one and lose it in its handshake (it tries again
+  inside a session, as reconnecting does); a surface may be made, or fail
+  to configure, as it goes (`Surface::gpu_configured`, checked with an
+  error scope: wgpu panics, release builds too, at drawing on an
+  unconfigured surface; configuring is tried again at the next frame); a
+  frame not drawn keeps its texture changes for the next one
+  (`Surface::pending`). A GPU surface lost while app_server
   is away waits for the reconnect (`configure_gpu_surface` checks
   `is_surface_supported`; `present` skips a surface with nothing to draw
   with), and wgpu's errors are logged, not fatal (`on_uncaptured_error`):
@@ -1385,6 +1397,19 @@ be inside the tiling area with no two overlapping, and stay put for a
 moment after (nothing still on its way to land somewhere else). Each
 step's line has the time, to find it in the session's log. Run it after
 changing anything in `autotile.rs`, `tiling.rs` or the resize grabs.
+
+`tools/dev/upgrade-check NAME [--times N] [--reload-only] [--no-touch]`
+checks that windows come back from an upgrade exactly (display,
+workspace, frame, minimized). Arrange a `--session --shell` tsession
+(auto-tiling with edges dragged, floating and zoomed windows, other
+workspaces and displays showing, a minimized tile, an outside program in
+a tile, a window hanging over onto another display), then each round it
+snapshots every window (showing each workspace of each display in turn),
+upgrades as olo-session does (every Olo binary touched, every Olo
+program of that session sent SIGURG to re-execute, app_server restarted
+at once, so windows close and return while it goes) and compares. Run it
+after changing `layout.rs`, `autotile.rs`, the kit's reconnecting or
+anything an upgrade goes through, at 1×, 1.5× and 2×.
 
 `tools/dev/perf-fuzz NAME [--seed N] [--steps N] [--keep-going]` is its
 counterpart for speed: on the same kind of session it hammers the
@@ -2123,7 +2148,11 @@ the cell). A tiled window with no tiled neighbours
 on that line is being sized away from its tile, and forgets it. Windows
 not tiled by a command are never pushed. Tiles and parts are kept across
 a restart in the layout (`Placement::tile`, `part`). Moving screens in
-the arrangement takes their windows along (`fixup_positions`). When displays come
+the arrangement takes their windows along (`fixup_positions`); each
+window goes with the screen it was on as the screens were last arranged
+(`Arranged`), not by where it is now, so a screen that got smaller (a new
+scale or mode) keeps its windows (one past its new edge comes in from
+it) rather than handing them to the screen beside. When displays come
 or go (`follow_main_output` → `rehome_windows`), windows left on none go to
 the main display, cascaded and shrunk to fit, the rest are re-tiled,
 re-zoomed or fitted where they are, and the pointer is brought back; a
@@ -2219,14 +2248,18 @@ the other windows keep the sizes given them as windows come and go, a
 new one halving only the tile it goes beside). Zoom zooms over the tiles and
 unzooms back into its tile. ⌃⌘Z undoes the last change to a tree, or
 turning it on (`auto_undo`, before `undo_arrangement`). Windows that
-float instead (`floats`): those with a parent, dialogs and alerts, a
+float instead (`floats`): those with a parent, modal dialogs, a
 fixed-size window (one size only, across or down) or one whose largest
 size can't fill its display's tiles (Electron's i32::MAX, like
 others' 0, is no largest size: it tiles), one tagged `floating`
 (xdg-toplevel-tag; the kit's `WindowOptions::floating()`, which
 DeskCalc, Preferences, Tracker's Info and status windows and the like
-set), and for other programs portal dialogs and picture-in-picture
-(`floating_kind`). Floating windows stay in front of the tiles
+set, and its `dialog()` and alerts, which it tags so too), and for other
+programs portal dialogs and picture-in-picture (`floating_kind`). An
+xdg-dialog alone doesn't make a window float (nor keep it out of its
+app's tab group, `groups::is_dialog`): GTK 4 gives every toplevel one,
+its main windows too, which then floated over the tiles and never
+grouped. Floating windows stay in front of the tiles
 (`keep_floating_above`). Anyone can float or tile a window by hand: the
 window menu's Float Over the Tiles (only where auto-tiling is on),
 ⌃⌥⌘F (`float-window`), or `{"type":"set_floating","id":ID,"floating":true}`
@@ -2235,9 +2268,24 @@ window menu's Float Over the Tiles (only where auto-tiling is on),
 while (hidden, to another workspace) leaves a `Kept` place that takes no
 room and is its again when it comes back; a closed one leaves one for
 20 s (`CLOSED_KEEP`), which a window of the same app takes, so an app
-re-executing after an upgrade gets its tiles back. After an in-place restart the trees are rebuilt
-from where the windows are (`from_parts`, from their saved tiles), so
-reload keeps the tiles.
+re-executing after an upgrade gets its tiles back. An in-place restart
+keeps the trees themselves: app_server writes them beside the layout
+(`olo-layout-<display>.tiles.json`, `autotile::SavedTree`), each tile
+naming the saved places of its window and its tabs on that workspace
+(`Placement::slot`; a closed window's by the app and title auto-tiling
+knew it by, `auto_known`, or one like it already back), each split at
+the ratio it is laid out at (`as_laid_out`: a window's least size can
+hold an edge off where it was dropped; while windows are closing for an
+upgrade, as the tree was last laid out with them all, `laid`). The next
+app_server starts with those trees, every tile's room held for 20 s
+(`Who::Returning`), and a window put back from a place takes the tile
+that names it (`auto_returned`, by `WindowMeta::slot`), on any
+workspace, in whatever order the apps come back. Without saved trees
+(from an app_server before them) they are made again from the windows'
+saved parts (`auto_adopt`, `WindowMeta::restored_part`). An edge drag's
+splits are set where the windows' least sizes let them be
+(`auto_drag_ended`). A hand's choice to float or tile a window
+(`Placement::floating`) comes back too.
 
 Roll Up (`toggle_rolled`, ⌃⌘M, the tab's menu, the palette, or a
 double-click on the tab, which used to hide the window) leaves just the

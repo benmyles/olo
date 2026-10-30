@@ -56,6 +56,13 @@ pub struct WindowMeta {
     /// Put back where it was: left there at its first size, though it
     /// hangs off the screen, as long as its tab is on it.
     pub put_back: Cell<bool>,
+    /// The saved place it was put back from (`Placement::slot`): its tile
+    /// in a tree kept across the restart (0: none).
+    pub slot: Cell<u64>,
+    /// The part of its display's tiles it was put back into, as saved
+    /// (for making a tree again from where windows were, when no tree
+    /// was kept).
+    pub restored_part: Cell<Option<(f32, f32, f32, f32)>>,
     /// The displays there were when it left the space (by name): if they
     /// are just the same when it comes back, so is it; if its own moved,
     /// it moves along.
@@ -96,6 +103,8 @@ impl WindowElement {
             owner: std::cell::RefCell::new(None),
             returning: std::cell::RefCell::new(None),
             put_back: Cell::new(false),
+            slot: Cell::new(0),
+            restored_part: Cell::new(None),
             left_among: Default::default(),
             arrived: Cell::new(None),
             joined: Cell::new(None),

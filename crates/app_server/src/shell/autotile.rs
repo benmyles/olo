@@ -32,10 +32,16 @@
 //! A window that leaves for a while (hidden, on another workspace) leaves
 //! a [`Kept`] place behind, which takes no room; back, it goes there. A
 //! closed one does too, for a moment: an app re-executing itself after
-//! an upgrade gets its windows back where they were. After an in-place
-//! restart app_server has no trees; it makes them again from where the
-//! windows are (their tiles' parts, saved with them), keeping room for
-//! the ones not back yet.
+//! an upgrade gets its windows back where they were. An in-place restart
+//! keeps the trees themselves ([`SavedTree`], beside the window layout):
+//! each tile's leaf names the saved places of its window (a group's,
+//! all of them), so the next app_server starts with the same trees, the
+//! same ratios and room held for every tile, and each window takes its
+//! own tile back as it returns, in whatever order the apps come back
+//! (an upgrade re-executes them all as app_server restarts). Without
+//! saved trees (from an app_server before them), it makes them again from
+//! where the windows are (their tiles' parts, saved with them), keeping
+//! room for the ones not back yet.
 
 use std::{
     cell::Cell,
@@ -94,6 +100,10 @@ pub enum Who {
     /// A window that closed, or isn't back yet after a restart: the next
     /// one like it that is put back where it was (`WindowMeta::put_back`).
     Like { app_id: String, title: String },
+    /// A window not back yet after a restart, by its saved places
+    /// (`Placement::slot`; a group's windows each have one): the one put
+    /// back into any of them.
+    Returning(Vec<u64>),
 }
 
 /// A place in the tree kept for a window.
@@ -246,8 +256,67 @@ impl std::fmt::Display for Node {
                 Who::Nobody => write!(f, "·"),
                 Who::Window(id) => write!(f, "·{id}"),
                 Who::Like { app_id, .. } => write!(f, "·{app_id}"),
+                Who::Returning(slots) => write!(f, "·#{}", slots.first().copied().unwrap_or(0)),
             },
             Node::Split { cut, ratio, a, b } => write!(f, "[{a} {} {b}]{}", if *cut == Cut::Columns { "|" } else { "/" }, (ratio * 100.0).round()),
+        }
+    }
+}
+
+/// A tree as an in-place restart keeps it (`layout.rs` writes it beside
+/// the window layout): its workspace and display, and its nodes.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SavedTree {
+    pub workspace: u32,
+    pub output: String,
+    pub tree: SavedNode,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum SavedNode {
+    /// A tile: the saved places of its window (or group).
+    Slots(Vec<u64>),
+    /// A closed window's place, with nothing saved to name it by.
+    Like { app_id: String, title: String },
+    /// Room nobody has: kept (`holds`), or going to what is beside it.
+    Room { holds: bool },
+    Split { columns: bool, ratio: f32, a: Box<SavedNode>, b: Box<SavedNode> },
+}
+
+impl SavedNode {
+    /// `node` to keep: `slots` names each window's saved places, `like`
+    /// a closed window's (None: its room is kept for one like it).
+    pub fn of(node: &Node, slots: &dyn Fn(u64) -> Vec<u64>, like: &dyn Fn(&str, &str) -> Option<u64>) -> SavedNode {
+        match node {
+            Node::Window(id) | Node::Kept(Kept { who: Who::Window(id), .. }) => SavedNode::Slots(slots(*id)),
+            Node::Kept(Kept { who: Who::Like { app_id, title }, .. }) => match like(app_id, title) {
+                Some(slot) => SavedNode::Slots(vec![slot]),
+                None => SavedNode::Like { app_id: app_id.clone(), title: title.clone() },
+            },
+            Node::Kept(Kept { who: Who::Returning(s), .. }) => SavedNode::Slots(s.clone()),
+            Node::Kept(Kept { who: Who::Nobody, holds, .. }) => SavedNode::Room { holds: *holds },
+            Node::Split { cut, ratio, a, b } => SavedNode::Split {
+                columns: *cut == Cut::Columns,
+                ratio: *ratio,
+                a: Box::new(SavedNode::of(a, slots, like)),
+                b: Box::new(SavedNode::of(b, slots, like)),
+            },
+        }
+    }
+
+    /// The tree to start with: every tile room held, until `until`, for
+    /// the windows coming back.
+    pub fn node(&self, until: Instant) -> Node {
+        match self {
+            SavedNode::Slots(s) if s.is_empty() => Node::gap(),
+            SavedNode::Slots(s) => Node::Kept(Kept { who: Who::Returning(s.clone()), holds: true, until: Some(until) }),
+            SavedNode::Like { app_id, title } => {
+                Node::Kept(Kept { who: Who::Like { app_id: app_id.clone(), title: title.clone() }, holds: true, until: Some(until) })
+            }
+            SavedNode::Room { holds } => Node::Kept(Kept { who: Who::Nobody, holds: *holds, until: None }),
+            SavedNode::Split { columns, ratio, a, b } => {
+                Node::split(if *columns { Cut::Columns } else { Cut::Rows }, ratio.clamp(0.0, 1.0), a.node(until), b.node(until))
+            }
         }
     }
 }
@@ -328,20 +397,59 @@ fn place<'a>(node: &'a Node, r: Part, m: &[Measure], i: usize, out: &mut Vec<(&'
         (false, true) => place(b, r, m, ib, out),
         (false, false) => {}
         (true, true) => {
-            let (_, len) = span(r, *cut);
-            let pick = |mm: Measure| if *cut == Cut::Columns { mm.min.0 } else { mm.min.1 };
-            let (lo, hi) = (pick(m[ia]) / len.max(1e-6), 1.0 - pick(m[ib]) / len.max(1e-6));
-            let ratio = if lo <= hi {
-                ratio.clamp(lo, hi)
-            } else {
-                // They don't both fit: each its share of what they want.
-                pick(m[ia]) / (pick(m[ia]) + pick(m[ib])).max(1e-6)
-            };
-            let (ra, rb) = divide(*cut, ratio, r);
+            let (ra, rb) = divide(*cut, laid_ratio(*cut, *ratio, r, m[ia], m[ib]), r);
             place(a, ra, m, ia, out);
             place(b, rb, m, ib, out);
         }
     }
+}
+
+/// The ratio a split of room `r` is laid out at: as it is, unless its two
+/// sides' least sizes (`ma`, `mb`) hold it off that.
+fn laid_ratio(cut: Cut, ratio: f32, r: Part, ma: Measure, mb: Measure) -> f32 {
+    let (_, len) = span(r, cut);
+    let pick = |mm: Measure| if cut == Cut::Columns { mm.min.0 } else { mm.min.1 };
+    let (lo, hi) = (pick(ma) / len.max(1e-6), 1.0 - pick(mb) / len.max(1e-6));
+    if lo <= hi {
+        ratio.clamp(lo, hi)
+    } else {
+        // They don't both fit: each its share of what they want.
+        pick(ma) / (pick(ma) + pick(mb)).max(1e-6)
+    }
+}
+
+/// A place kept for a window that closed or isn't back yet (not one away
+/// for now: minimized, or on another workspace).
+fn closing(n: &Node) -> bool {
+    matches!(n, Node::Kept(Kept { who: Who::Like { .. } | Who::Returning(_), .. }))
+}
+
+/// `node` with the ratios of `laid`, the same tree as it was laid out
+/// when all its windows were there, split by split while their shapes
+/// agree (its windows' places kept for them since don't change it).
+pub fn with_ratios_of(node: &Node, laid: &Node) -> Node {
+    match (node, laid) {
+        (Node::Split { cut, a, b, .. }, Node::Split { cut: c, ratio, a: la, b: lb }) if cut == c => {
+            Node::split(*cut, *ratio, with_ratios_of(a, la), with_ratios_of(b, lb))
+        }
+        (n, _) => n.clone(),
+    }
+}
+
+/// `node` with each split at the ratio it is laid out at (its windows'
+/// least sizes may hold an edge off where it was dragged to): a tree kept
+/// across a restart lays out the same before they are known again.
+pub fn as_laid_out(node: &Node, min: &dyn Fn(u64) -> (f32, f32)) -> Node {
+    fn go(node: &Node, r: Part, m: &[Measure], i: usize) -> Node {
+        let Node::Split { cut, ratio, a, b } = node else { return node.clone() };
+        let (ia, ib) = (i + 1, i + 1 + m[i + 1].len);
+        let ratio = if m[ia].shows && m[ib].shows { laid_ratio(*cut, *ratio, r, m[ia], m[ib]) } else { *ratio };
+        let (ra, rb) = divide(*cut, ratio, r);
+        Node::split(*cut, ratio, go(a, ra, m, ia), go(b, rb, m, ib))
+    }
+    let mut m = Vec::new();
+    measure(node, min, &mut m);
+    go(node, (0.0, 0.0, 1.0, 1.0), &m, 0)
 }
 
 /// `ids` in a tree as even as it can be: halves (by count) side by side
@@ -666,6 +774,10 @@ enum Undo {
 #[derive(Debug)]
 pub struct AutoTiler {
     trees: HashMap<(u32, String), Node>,
+    /// Each tree as last laid out with all its windows there
+    /// ([`as_laid_out`]): what a restart keeps, though windows are
+    /// closing as it comes (an upgrade re-executes their apps).
+    laid: HashMap<(u32, String), Node>,
     known: HashMap<u64, Known>,
     /// What each display's tiles were laid out for: its room, and its
     /// windows with their least frames (most learnt only as one first
@@ -694,6 +806,7 @@ impl Default for AutoTiler {
     fn default() -> Self {
         AutoTiler {
             trees: HashMap::new(),
+            laid: HashMap::new(),
             known: HashMap::new(),
             seen: HashMap::new(),
             dirty: false,
@@ -709,10 +822,27 @@ impl Default for AutoTiler {
 }
 
 impl AutoTiler {
+    /// The trees an in-place restart kept, to start with (before any
+    /// window is back).
+    pub fn restore(&mut self, saved: Vec<SavedTree>) {
+        let until = self.started + RESTORING;
+        for t in saved {
+            let node = t.tree.node(until);
+            info!(output = t.output, workspace = t.workspace, tree = %node, "tiles kept from before the restart");
+            self.trees.insert((t.workspace, t.output), node);
+        }
+    }
+
+    /// Every tree, to keep across a restart.
+    pub fn trees(&self) -> impl Iterator<Item = (&(u32, String), &Node)> {
+        self.trees.iter()
+    }
+
     /// Turned off for these: their trees go (the windows stay where they
     /// are, still tiled, so their edges still move together).
     fn forget(&mut self, workspace: u32, outputs: &[String]) {
         self.trees.retain(|(ws, o), _| !(*ws == workspace && outputs.contains(o)));
+        self.laid.retain(|(ws, o), _| !(*ws == workspace && outputs.contains(o)));
         for o in outputs {
             self.seen.remove(o);
         }
@@ -798,7 +928,10 @@ impl<B: Backend + 'static> AnvilState<B> {
             let floats = tagged
                 || st.data_map.get::<XdgToplevelSurfaceData>().is_some_and(|d| {
                     let d = d.lock().unwrap();
-                    d.dialog_hint != ToplevelDialogHint::Unknown
+                    // (A dialog is one "relative to its parent", and one with
+                    // a parent floats already: GTK 4 gives every toplevel an
+                    // xdg_dialog_v1, which makes its main windows "dialogs".)
+                    d.dialog_hint == ToplevelDialogHint::Modal
                         || floating_kind(d.app_id.as_deref().unwrap_or(""), d.title.as_deref().unwrap_or(""))
                 });
             (floats, size.min_size, size.max_size)
@@ -814,6 +947,40 @@ impl<B: Backend + 'static> AnvilState<B> {
         let Some(area) = self.window_output(w).and_then(|o| self.tile_area(&o)) else { return false };
         let room = w.inner_size(area.size);
         (bounded(max.w) && max.w < room.w) || (bounded(max.h) && max.h < room.h)
+    }
+
+    /// Every tree with its splits as laid out on its display now (see
+    /// [`as_laid_out`]), to keep across a restart.
+    pub fn auto_trees_as_laid_out(&self) -> Vec<((u32, String), Node)> {
+        let windows = self.all_windows();
+        self.auto
+            .trees()
+            .map(|(key, t)| {
+                // Some of its windows closed (re-executing for an upgrade):
+                // as it was laid out with them all.
+                let gone = |n: &Node| closing(n) || matches!(n, Node::Window(id) if self.window_by_id(*id).is_none());
+                if t.any_leaf(&gone)
+                    && let Some(laid) = self.auto.laid.get(key)
+                {
+                    return (key.clone(), with_ratios_of(t, laid));
+                }
+                let area = self.space.outputs().find(|o| o.name() == key.1).and_then(|o| self.tile_area(o));
+                let laid = match area {
+                    Some(area) => {
+                        let mins = self.auto_mins(&windows, area);
+                        as_laid_out(t, &|id| mins.get(&id).copied().unwrap_or((0.0, 0.0)))
+                    }
+                    None => t.clone(),
+                };
+                (key.clone(), laid)
+            })
+            .collect()
+    }
+
+    /// The app and title a tile's window had, as auto-tiling last knew
+    /// it (it may have closed since).
+    pub fn auto_known(&self, id: u64) -> Option<(String, String)> {
+        self.auto.known.get(&id).map(|k| (k.app_id.clone(), k.title.clone()))
     }
 
     /// In an auto-tiled display's tiles.
@@ -913,6 +1080,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         if due {
             self.auto.next = None;
         }
+        self.auto_returned();
         let outputs: Vec<Output> = self.space.outputs().cloned().collect();
         let on: Vec<&Output> = outputs.iter().filter(|o| self.auto_on(o, self.showing(o))).collect();
         for o in outputs.iter().filter(|o| !on.contains(o)) {
@@ -940,12 +1108,39 @@ impl<B: Backend + 'static> AnvilState<B> {
         // none of them.
         let names: Vec<String> = outputs.iter().map(|o| o.name()).collect();
         self.auto.trees.retain(|(_, o), _| names.contains(o));
+        let trees: Vec<(u32, String)> = self.auto.trees.keys().cloned().collect();
+        self.auto.laid.retain(|k, _| trees.contains(k));
         let mut kept: Vec<u64> = self.all_windows().iter().map(|w| w.id()).collect();
         kept.extend(self.auto.trees.values().flat_map(|t| t.windows()));
         self.auto.known.retain(|id, _| kept.contains(id));
         self.auto.along.retain(|id, _| kept.contains(id));
         self.keep_floating_above();
         self.auto_timer();
+    }
+
+    /// Windows back from a restart, in the tiles kept for them: each
+    /// takes the leaf naming the place it was put back from, on any
+    /// workspace (one not showing has it when it shows).
+    fn auto_returned(&mut self) {
+        if !self.auto.trees.values().any(|t| t.any_leaf(&|n| matches!(n, Node::Kept(Kept { who: Who::Returning(_), .. })))) {
+            return;
+        }
+        let back: Vec<(u64, u64)> = self.all_windows().iter().filter(|w| w.meta().placed.get() && w.meta().slot.get() > 0).map(|w| (w.meta().slot.get(), w.id())).collect();
+        if back.is_empty() {
+            return;
+        }
+        let mut changed = false;
+        for t in self.auto.trees.values_mut() {
+            for &(slot, id) in &back {
+                if t.contains(id) {
+                    continue;
+                }
+                changed |= t.replace(&|n| matches!(n, Node::Kept(Kept { who: Who::Returning(s), .. }) if s.contains(&slot)), Node::Window(id));
+            }
+        }
+        if changed {
+            self.auto.dirty = true;
+        }
     }
 
     /// A timer for the next kept place to be forgotten.
@@ -1058,6 +1253,10 @@ impl<B: Backend + 'static> AnvilState<B> {
             if before.as_ref() != Some(&now) {
                 info!(output = key.1, tree = now, "tiles");
             }
+            if !t.any_leaf(&|n| closing(n)) {
+                let mins = self.auto_mins(&units, area);
+                self.auto.laid.insert(key.clone(), as_laid_out(&t, &|id| mins.get(&id).copied().unwrap_or((0.0, 0.0))));
+            }
             self.auto_apply(output, &t, &units);
             self.auto.trees.insert(key, t);
         }
@@ -1069,15 +1268,19 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// else as even as it can be, in reading order.
     fn auto_adopt(&self, output: &Output, area: Rectangle<i32, Logical>, units: &[WindowElement]) -> Option<Node> {
         let gap = self.tile_gap();
+        let restoring = self.auto.started.elapsed() < RESTORING;
         let mut items: Vec<(Node, Part)> = units
             .iter()
             .filter_map(|w| {
-                let tiled = Self::tiled(w).map(|t| Self::custom_part(w).unwrap_or(t.fraction()));
+                // Just back from a restart: the part it had, as saved (what
+                // put it back may have tiled it afresh since).
+                let saved = w.meta().restored_part.get().filter(|_| restoring);
+                let tiled = saved.or_else(|| Self::tiled(w).map(|t| Self::custom_part(w).unwrap_or(t.fraction())));
                 let f = tiled.or_else(|| self.space.element_geometry(w).map(|g| fraction_of(area, g, gap)))?;
                 Some((Node::Window(w.id()), f))
             })
             .collect();
-        if self.auto.started.elapsed() < RESTORING {
+        if restoring {
             let until = self.auto.started + RESTORING;
             let out_geo = self.space.output_geometry(output);
             let here = |p: &crate::layout::Placement| {
@@ -1355,6 +1558,13 @@ impl<B: Backend + 'static> AnvilState<B> {
                 olo_protocol::AutoTilingInfo { output: o.name(), on: self.auto_on(o, ws), workspace: ws }
             })
             .collect()
+    }
+
+    /// Floated or tiled by hand, as it was before a restart (nothing
+    /// else: its tile, or its frame, comes with it).
+    pub fn restore_float_override(w: &WindowElement, floating: Option<bool>) {
+        w.user_data().insert_if_missing(Float::default);
+        w.user_data().get::<Float>().unwrap().0.set(floating);
     }
 
     /// Float `w` over the tiles (`Some(true)`), tile it (`Some(false)`), or
@@ -1664,6 +1874,13 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.auto.undo = Some(Undo::Tree(key.clone(), Some(tree.clone())));
         let parts: HashMap<u64, Part> = tree.windows().into_iter().filter_map(|i| Some((i, Self::custom_part(&self.window_by_id(i)?)?))).collect();
         take_ratios(&mut tree, &|i| parts.get(&i).copied());
+        // Where it can be: not past a window's least size (else the split
+        // would be one place and the windows another, until they are
+        // laid out again).
+        if let Some(area) = self.window_output(w).and_then(|o| self.tile_area(&o)) {
+            let mins = self.auto_mins(&self.all_windows(), area);
+            tree = as_laid_out(&tree, &|i| mins.get(&i).copied().unwrap_or((0.0, 0.0)));
+        }
         self.auto_put(key, tree);
     }
 }
@@ -1671,6 +1888,30 @@ impl<B: Backend + 'static> AnvilState<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A tree kept across a restart comes back the same shape and ratios,
+    /// each tile held for the windows its saved places name; splits as
+    /// laid out (a least size holding an edge off where it was dropped);
+    /// ratios taken over from the tree as it was with all its windows.
+    #[test]
+    fn trees_kept_across_a_restart() {
+        let tree = Node::split(Cut::Columns, 0.3, w(1), Node::split(Cut::Rows, 0.6, w(2), Node::Kept(Kept { who: Who::Like { app_id: "a".into(), title: "t".into() }, holds: false, until: None })));
+        let saved = SavedNode::of(&tree, &|id| vec![id * 10], &|app, _| (app == "a").then_some(99));
+        let json = serde_json::to_string(&saved).unwrap();
+        let back: SavedNode = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, saved);
+        let until = Instant::now();
+        let node = back.node(until);
+        assert_eq!(node.to_string(), "[·#10 | [·#20 / ·#99]60]30");
+        node.each_leaf(&mut |n| assert!(matches!(n, Node::Kept(Kept { holds: true, until: Some(_), .. }))));
+        // A least size of half the room holds the edge at a half.
+        let laid = as_laid_out(&Node::split(Cut::Columns, 0.3, w(1), w(2)), &|id| if id == 1 { (0.5, 0.0) } else { (0.0, 0.0) });
+        assert!(matches!(laid, Node::Split { ratio, .. } if (ratio - 0.5).abs() < 1e-6));
+        // The shape's ratios from the tree as it was laid out.
+        let now = Node::split(Cut::Columns, 0.5, Node::Kept(Kept { who: Who::Window(1), holds: false, until: None }), w(2));
+        let then = Node::split(Cut::Columns, 0.25, w(1), w(2));
+        assert!(matches!(with_ratios_of(&now, &then), Node::Split { ratio, .. } if ratio == 0.25));
+    }
 
     fn w(id: u64) -> Node {
         Node::Window(id)

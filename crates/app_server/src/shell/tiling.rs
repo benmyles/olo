@@ -798,8 +798,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
         let least = |w: &WindowElement| w.wl_surface().map(|s| with_states(&s, |st| st.cached_state.get::<SurfaceCachedState>().current().min_size)).unwrap_or_default();
         let content = self.groups.mates(window).iter().map(least).fold(least(window), |a, b| Size::from((a.w.max(b.w), a.h.max(b.h))));
-        let frame = self.space.element_geometry(window).map(|g| g.size).unwrap_or_default();
-        let extra = frame - window.content_size();
+        // Its frame round the content: what Olo's decoration adds, not
+        // its frame less its content now (before it first draws, that is
+        // something else, and the tile beside it would move as it does).
+        let extra = if window.decorated() || window.will_be_decorated() { super::deco::extra_size() } else { Size::default() };
         Size::from(((content.w + extra.w).max(MIN_TILE), (content.h + extra.h).max(MIN_TILE)))
     }
 

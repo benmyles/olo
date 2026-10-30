@@ -242,13 +242,20 @@ pub fn mark_behind(space: &Space<WindowElement>) {
     }
 }
 
-/// A dialog or panel, not a document window: it names a parent, or says
-/// so with xdg-dialog (the kit's `WindowOptions::dialog`, Quick Look).
+/// A dialog or panel, not a document window: it names a parent, is a
+/// modal xdg-dialog, or is tagged `floating` (the kit's
+/// `WindowOptions::dialog`, Quick Look). (Not any xdg-dialog: GTK 4 gives
+/// every window one, its main windows too.)
 pub(super) fn is_dialog(t: &smithay::wayland::shell::xdg::ToplevelSurface) -> bool {
-    use smithay::wayland::{compositor, shell::xdg::{XdgToplevelSurfaceData, dialog::ToplevelDialogHint}};
+    use smithay::wayland::{
+        compositor,
+        shell::xdg::{XdgToplevelSurfaceData, dialog::ToplevelDialogHint},
+        xdg_toplevel_tag::XdgToplevelTagSurfaceData,
+    };
     t.parent().is_some()
         || compositor::with_states(t.wl_surface(), |s| {
-            s.data_map.get::<XdgToplevelSurfaceData>().is_some_and(|d| d.lock().unwrap().dialog_hint != ToplevelDialogHint::Unknown)
+            s.data_map.get::<XdgToplevelSurfaceData>().is_some_and(|d| d.lock().unwrap().dialog_hint == ToplevelDialogHint::Modal)
+                || s.data_map.get::<XdgToplevelTagSurfaceData>().is_some_and(|d| d.tag().is_some_and(|t| t.split_whitespace().any(|t| t == "floating")))
         })
 }
 

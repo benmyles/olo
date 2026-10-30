@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""Upgrade check: windows must come back from an Olo upgrade exactly as
+they were (display, workspace, frame, minimized), auto-tiled ones too.
+
+  upgrade-check NAME [--times N] [--reload-only] [--no-touch]
+
+NAME is a tsession under olo-session (`--session`, with `--shell` for
+Deskbar). Arrange its windows first (auto-tiling with edges dragged,
+floating and zoomed windows, other workspaces and displays, a minimized
+one, outside programs). Then each round:
+
+  * snapshots every window: each workspace of each display is shown in
+    turn (a window on one not showing has no frame), then the ones
+    showing before;
+  * upgrades as olo-session does: every Olo binary in target/debug is
+    touched (so each program sees itself replaced), every Olo program of
+    this session gets SIGURG and re-executes, and app_server is restarted
+    in place at once (`tsession reload`), so the apps' windows close and
+    come back while app_server goes;
+  * waits for the windows to settle and compares.
+
+--reload-only restarts app_server without the SIGURGs (the apps
+re-execute as they reconnect: windows all come back at once);
+--no-touch also leaves the binaries alone (they just reconnect). Only
+this session's programs are signalled: by WAYLAND_DISPLAY and
+XDG_CONFIG_HOME in their environment, never anyone else's.
+"""
+import json, os, subprocess, sys, time
+
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TS = ["env", "-u", "WAYLAND_DISPLAY", sys.executable, os.path.join(REPO, "tools/dev/tsession")]
+
+
+def ipc(name, req):
+    out = subprocess.run(TS + ["ipc", name, json.dumps(req)], capture_output=True, text=True).stdout
+    return json.loads(out)
+
+
+def windows(name):
+    return ipc(name, {"type": "list_windows"})["windows"]
+
+
+def key(w):
+    return (w["app_id"], w["title"])
+
+
+def shape(w):
+    return {k: w.get(k) for k in ("output", "workspace", "frame", "minimized")}
+
+
+def snapshot(name):
+    showing = ipc(name, {"type": "workspaces"})
+    seen = {}
+    for d in showing["displays"]:
+        for i in range(showing["count"]):
+            ipc(name, {"type": "switch_workspace", "index": i, "output": d["output"]})
+            time.sleep(0.35)
+            for w in windows(name):
+                if w["output"] == d["output"] and w["workspace"] == i:
+                    seen[w["id"]] = w
+    for d in showing["displays"]:
+        ipc(name, {"type": "switch_workspace", "index": d["current"], "output": d["output"]})
+    active = next((d for d in showing["displays"] if d["active"]), None)
+    if active:
+        ipc(name, {"type": "switch_workspace", "index": active["current"], "output": active["output"]})
+    time.sleep(0.35)
+    now = windows(name)
+    for w in now:
+        seen.setdefault(w["id"], w)
+    snap = {}
+    for w in seen.values():
+        snap.setdefault(key(w), []).append(shape(w))
+    for v in snap.values():
+        v.sort(key=lambda s: json.dumps(s, sort_keys=True))
+    return snap, now, ipc(name, {"type": "workspaces"})
+
+
+def settled(name, count, timeout=25):
+    """The windows (at least `count`) unchanged for two seconds."""
+    t0 = time.time()
+    last, same = None, 0
+    while time.time() - t0 < timeout:
+        try:
+            ws = windows(name)
+        except Exception:
+            time.sleep(0.2)
+            continue
+        now = json.dumps(sorted((key(w), shape(w)) for w in ws), sort_keys=True, default=str)
+        if len(ws) >= count and now == last:
+            same += 1
+            if same >= 8:
+                return True
+        else:
+            same = 0
+        last = now
+        time.sleep(0.25)
+    return False
+
+
+def diff(a, b):
+    return [f"  {k[0]} “{k[1]}”:\n    before {a.get(k)}\n    after  {b.get(k)}" for k in sorted(set(a) | set(b)) if a.get(k) != b.get(k)]
+
+
+def nudge(name):
+    env = dict(l.replace("export ", "", 1).split("=", 1) for l in subprocess.run(TS + ["env", name], capture_output=True, text=True).stdout.splitlines() if "=" in l)
+    want = {f"WAYLAND_DISPLAY={env['WAYLAND_DISPLAY']}", f"XDG_CONFIG_HOME={env['XDG_CONFIG_HOME']}"}
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            exe = os.readlink(f"/proc/{pid}/exe").replace(" (deleted)", "")
+            envs = set(open(f"/proc/{pid}/environ", "rb").read().decode(errors="replace").split("\0"))
+        except OSError:
+            continue
+        prog = os.path.basename(exe)
+        if exe.startswith(REPO + "/target/") and prog.startswith("olo-") and prog not in ("olo-app-server", "olo-session", "olo-wlproxy") and want <= envs:
+            os.kill(int(pid), 23)  # SIGURG, as olo-session's nudge
+
+
+def main():
+    a = sys.argv[1:]
+    if not a or a[0].startswith("-"):
+        sys.exit(__doc__)
+    name = a[0]
+    times = int(a[a.index("--times") + 1]) if "--times" in a else 3
+    touch = "--no-touch" not in a
+    signal = touch and "--reload-only" not in a
+    before, ws, showing = snapshot(name)
+    bad = 0
+    for i in range(times):
+        if touch:
+            d = os.path.join(REPO, "target/debug")
+            for f in os.listdir(d):
+                p = os.path.join(d, f)
+                if f.startswith("olo-") and "." not in f and os.path.isfile(p):
+                    os.utime(p)
+        if signal:
+            nudge(name)
+        subprocess.run(TS + ["reload", name], capture_output=True)
+        ok = settled(name, len(ws))
+        after, ws2, showing2 = snapshot(name)
+        d = diff(before, after)
+        print(f"upgrade {i + 1}: {'settled' if ok else 'NOT settled'}, {len(ws2)} windows; {len(d)} changed", flush=True)
+        for line in d:
+            print(line)
+        if showing["displays"] != showing2["displays"]:
+            print(f"  workspaces showing: before {showing['displays']} after {showing2['displays']}")
+            bad += 1
+        bad += len(d)
+        before, ws, showing = after, ws2, showing2
+    sys.exit(1 if bad else 0)
+
+
+main()

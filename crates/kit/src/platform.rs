@@ -203,6 +203,10 @@ struct Surface {
     wl: WlSurface,
     options: WindowOptions,
     gpu_surface: Option<wgpu::Surface<'static>>,
+    /// `gpu_surface` has been configured (wgpu panics, in release builds
+    /// too, at drawing on one that hasn't: as when app_server goes away
+    /// while it is being set up).
+    gpu_configured: bool,
     format: wgpu::TextureFormat,
     renderer: Option<egui_wgpu::Renderer>,
     ctx: egui::Context,
@@ -290,6 +294,21 @@ struct Surface {
     /// last upload asked for each, which is the one that counts.
     uploads: HashMap<egui::TextureId, u64>,
     bound: Bound,
+    /// Texture changes from frames that couldn't be drawn (app_server
+    /// away, the surface not made again yet): applied before the next
+    /// one's, so the renderer never misses one.
+    pending: PendingTextures,
+}
+
+/// [`Surface::pending`]: dropped with its surface (and context) when it
+/// goes, whatever is in it.
+#[derive(Default)]
+struct PendingTextures(egui::TexturesDelta);
+
+impl Drop for PendingTextures {
+    fn drop(&mut self) {
+        self.0.clear();
+    }
 }
 
 impl Surface {
@@ -406,6 +425,8 @@ fn reuse_spare(s: &mut Surface, spare: SpareMenu, kept: Option<KeptSurface>) {
     s.events.push(egui::Event::PointerGone);
     if let Some(k) = kept {
         s.gpu_surface = Some(k.gpu_surface);
+        // (Configured as it was made: `make_menu_surface`.)
+        s.gpu_configured = true;
         s.alloc = k.alloc;
         s.alloc_scale = k.scale;
         s.scale = k.scale;
@@ -1163,9 +1184,12 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         };
         let (globals, mut event_queue) = match registry_queue_init::<Kit>(&conn) {
             Ok(r) => r,
-            Err(e) if carried.is_some() && lost_handshakes < 100 => {
+            // (Also as we start inside a session: an upgrade re-executes
+            // us as it restarts app_server, so the one we reached may be
+            // the old one, going.)
+            Err(e) if (carried.is_some() || in_session) && lost_handshakes < 100 => {
                 lost_handshakes += 1;
-                warn!(?e, "app_server went away while we reconnected; trying again");
+                warn!(?e, "app_server went away while we connected; trying again");
                 std::thread::sleep(Duration::from_millis(200));
                 continue;
             }
@@ -1444,6 +1468,7 @@ impl Kit {
             .collect();
         for s in self.surfaces.iter_mut() {
             s.gpu_surface = None;
+            s.gpu_configured = false;
             s.renderer = None;
         }
         self.surfaces.clear();
@@ -1902,6 +1927,7 @@ impl Kit {
             wl,
             options,
             gpu_surface: None,
+            gpu_configured: false,
             format: wgpu::TextureFormat::Bgra8Unorm,
             renderer: None,
             ctx: {
@@ -1952,6 +1978,7 @@ impl Kit {
             frame_time: 0.0,
             uploads: HashMap::new(),
             bound: HashMap::new(),
+            pending: PendingTextures::default(),
         }
     }
 
@@ -1982,8 +2009,10 @@ impl Kit {
                         d.set_modal();
                     }
                 }
-                // A utility window: floats over auto-tiled windows.
-                if options.floating
+                // A utility window (or a dialog: an xdg-dialog with no
+                // parent isn't one to app_server, as GTK 4 gives every
+                // window one): floats over auto-tiled windows.
+                if (options.floating || options.dialog || options.alert)
                     && let Some(t) = &self.tags
                 {
                     t.set_toplevel_tag(window.xdg_toplevel(), "floating".into());
@@ -2094,6 +2123,8 @@ impl Kit {
             // A menu's drawing, and its surface, for the next menu.
             if let Role::Popup { shell, .. } = &s.role {
                 let room = self.gpu.as_ref().is_some_and(|g| g.spare.borrow().len() < SPARE_MENUS);
+                // (Its drawing must have every texture its context sent.)
+                let room = room && s.pending.0.is_empty();
                 let keep = room && s.renderer.is_some() && s.gpu_surface.is_some() && s.viewport.is_some();
                 if keep {
                     // Unmapped, with no buffer, so that another menu's
@@ -2138,6 +2169,7 @@ impl Kit {
                 }
             }
             s.gpu_surface = None;
+            s.gpu_configured = false;
             if let Some(f) = s.fractional.take() {
                 f.destroy();
             }
@@ -2371,6 +2403,7 @@ impl Kit {
                 return;
             };
             self.surfaces[i].gpu_surface = Some(gs);
+            self.surfaces[i].gpu_configured = false;
         }
         let gpu = self.gpu.as_ref().unwrap();
         let s = &mut self.surfaces[i];
@@ -2400,7 +2433,17 @@ impl Kit {
         let format = config.format;
         s.alloc = (w, h);
         s.alloc_scale = s.scale;
+        // A surface can stop being supported between the check above and
+        // this (app_server going): wgpu says so only to the error
+        // handler, and would panic at drawing on it.
+        let scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
         gs.configure(&gpu.device, &config);
+        if let Some(e) = pollster::block_on(scope.pop()) {
+            warn!(?e, "GPU surface not configured (compositor gone?)");
+            s.gpu_configured = false;
+            return;
+        }
+        s.gpu_configured = true;
         if s.renderer.is_none() || s.format != format {
             s.renderer = Some(new_renderer(&gpu.device, format));
             s.bound.clear();
@@ -2754,8 +2797,12 @@ impl Kit {
         self.process_requests();
     }
 
-    fn present(&mut self, id: WindowId, output: egui::FullOutput) {
-        let Some(i) = self.surfaces.iter().position(|s| s.id == id) else { return };
+    fn present(&mut self, id: WindowId, mut output: egui::FullOutput) {
+        let Some(i) = self.surfaces.iter().position(|s| s.id == id) else {
+            // Its surface (and context) gone: nothing to apply them to.
+            output.textures_delta.clear();
+            return;
+        };
         if !self.trees.is_empty() {
             let active = self.active_toplevel() == Some(id);
             let s = &mut self.surfaces[i];
@@ -2817,11 +2864,26 @@ impl Kit {
             }
         }
 
+        // Its configuring failed (app_server going as it was set up, as in
+        // an upgrade): again now, else it would never draw.
+        if self.gpu.is_some() && s.gpu_surface.is_some() && !s.gpu_configured {
+            let size = s.alloc;
+            let size = if size == (0, 0) { s.physical_size() } else { size };
+            self.configure_gpu_surface_at(i, size);
+        }
+        let s = &mut self.surfaces[i];
         // Nothing to draw with while app_server is away (it restarts in
         // place, as an upgrade does, and `configure_gpu_surface` found no
         // formats): the reconnect makes the window anew and draws it.
-        if self.gpu.is_none() || s.renderer.is_none() || s.gpu_surface.is_none() {
+        if self.gpu.is_none() || s.renderer.is_none() || s.gpu_surface.is_none() || !s.gpu_configured {
             debug!("no GPU surface to draw on (app_server gone?)");
+            // Its textures wait for the next frame drawn.
+            s.pending.0.append(output.textures_delta);
+            // Not configured though app_server may be there: try again
+            // soon (a lost connection makes the window anew anyway).
+            if s.gpu_surface.is_some() && !s.gpu_configured {
+                s.repaint_at = Some(Instant::now() + Duration::from_millis(100));
+            }
             return;
         }
         let gpu = self.gpu.as_ref().unwrap();
@@ -2833,7 +2895,8 @@ impl Kit {
         let (w, h) = s.physical_size();
         // Textures first: they must be applied even if this frame is skipped.
         let renderer = s.renderer.as_mut().unwrap();
-        let mut deltas = output.textures_delta;
+        let mut deltas = std::mem::take(&mut s.pending.0);
+        deltas.append(output.textures_delta);
         for (tid, ds) in &deltas.set {
             for delta in ds {
                 // Big ones on the worker (`crate::textures`): a new one
@@ -3102,7 +3165,15 @@ impl Kit {
             wl.destroy();
             return;
         };
+        let scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
         gpu_surface.configure(&gpu.device, &config);
+        if pollster::block_on(scope.pop()).is_some() {
+            drop(gpu_surface);
+            fractional.inspect(|f| f.destroy());
+            viewport.destroy();
+            wl.destroy();
+            return;
+        }
         if let Some(spare) = gpu.spare.borrow_mut().iter_mut().find(|sp| sp.format == config.format && sp.surface.is_none()) {
             spare.surface = Some(KeptSurface { wl, fractional, viewport, gpu_surface, alloc, scale, output });
             return;

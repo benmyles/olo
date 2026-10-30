@@ -95,9 +95,20 @@ pub struct Placement {
     /// is it fitted to them again.
     #[serde(default)]
     pub screen: Option<(String, [i32; 4])>,
+    /// Floated over auto-tiled windows (true) or tiled (false) by hand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub floating: Option<bool>,
+    /// Its number in the saved list (from 1), which the saved auto-tiling
+    /// trees name its tile by (0: none).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub slot: u64,
     /// Its connection then: a window on the same one isn't coming back.
     #[serde(skip)]
     pub client: Option<smithay::reexports::wayland_server::backend::ClientId>,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 fn now() -> u64 {
@@ -108,6 +119,20 @@ fn path() -> Option<PathBuf> {
     let dir = std::env::var_os("XDG_RUNTIME_DIR")?;
     let display = std::env::var("WAYLAND_DISPLAY").ok()?;
     Some(olo_xdg::legacy::runtime_file(std::path::Path::new(&dir), &format!("olo-layout-{display}.json")))
+}
+
+/// Where the auto-tiling trees go, beside the layout.
+fn trees_path() -> Option<PathBuf> {
+    path().map(|p| p.with_extension("tiles.json"))
+}
+
+/// The auto-tiling trees saved with the layout, if it was saved moments
+/// ago (`load` comes first and says).
+pub fn load_trees() -> Vec<crate::shell::autotile::SavedTree> {
+    let Some(p) = trees_path() else { return Vec::new() };
+    let Ok(text) = std::fs::read_to_string(&p) else { return Vec::new() };
+    let _ = std::fs::remove_file(&p);
+    serde_json::from_str(&text).unwrap_or_default()
 }
 
 /// Places saved by the previous app_server, if it exited moments ago.
@@ -167,7 +192,16 @@ impl<B: Backend + 'static> AnvilState<B> {
                 ..p
             });
         }
-        let loc = self.space.element_location(w).unwrap_or_else(|| meta.saved_location.get());
+        // Away (minimized, on a workspace not showing): where it comes back
+        // to, along with its display if that moved meanwhile (`unpark`).
+        let loc = self.space.element_location(w).unwrap_or_else(|| {
+            let mut loc = meta.saved_location.get();
+            let left = meta.left_among.borrow().clone();
+            if !left.is_empty() && left != self.display_frames() {
+                loc += self.display_moved(smithay::utils::Rectangle::new(loc, smithay::desktop::space::SpaceElement::geometry(w).size), &left);
+            }
+            loc
+        });
         let size = w.content_size();
         let (tile, part) = Self::tile_state(w);
         // (Before the decoration is borrowed below: the geometry borrows it.)
@@ -195,12 +229,14 @@ impl<B: Backend + 'static> AnvilState<B> {
             pid: meta.owner.borrow().as_ref().map_or(0, |(pid, _)| *pid),
             client: meta.owner.borrow().as_ref().map(|(_, c)| c.clone()),
             screen,
+            floating: Self::float_override(w),
+            slot: 0,
         })
     }
 
-    /// The display `w` is on: its name and place.
+    /// The display `w` is on (away, the one it left), its name and place.
     fn screen_of(&self, w: &WindowElement) -> Option<(String, [i32; 4])> {
-        let o = self.window_output(w)?;
+        let o = self.display_of(w)?;
         let g = self.space.output_geometry(&o)?;
         Some((o.name(), [g.loc.x, g.loc.y, g.size.w, g.size.h]))
     }
@@ -234,11 +270,65 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Some(Placement { depth: if i < shown && w.meta().placed.get() { i as u32 + 1 } else { p.depth }, ..p })
             })
             .collect();
+        // Each window's slot, by its id (the list follows `all_windows`
+        // where it has a place).
+        let windows = self.all_windows();
+        let ids: Vec<u64> = windows.iter().filter(|w| !w.app_id().is_empty() && (w.meta().placed.get() || w.meta().returning.borrow().is_some())).map(|w| w.id()).collect();
+        let open = list.len();
         list.extend(self.layout.iter().cloned());
         let (active, displays) = (self.workspace(), self.showing.iter().map(|(k, ws)| (k.clone(), *ws)).collect::<Vec<_>>());
-        for p in &mut list {
+        for (i, p) in list.iter_mut().enumerate() {
             p.showing = Some(active);
             p.displays = displays.clone();
+            p.slot = i as u64 + 1;
+        }
+        // The auto-tiling trees, each tile naming its window's slots (a
+        // group's windows', any of which may come back first), a closed
+        // window's place the newest remembered one like it.
+        let slot_of = |id: u64| ids.iter().position(|&i| i == id).filter(|&i| i < open).map(|i| i as u64 + 1);
+        // The newest place remembered for a closed window like it, else
+        // one like it already back (it re-executed and returned before
+        // this app_server went, taking its remembered place).
+        let like = |app_id: &str, title: &str| {
+            let same = |i: &usize| list[*i].app_id == app_id && list[*i].title == title;
+            (open..list.len()).rev().find(same).or_else(|| (0..open).find(same)).map(|i| i as u64 + 1)
+        };
+        let slots = |id: u64| -> Vec<u64> {
+            // Closed since (its app re-executing, on a workspace not
+            // showing, whose tree nothing has looked at): the newest place
+            // remembered for one like it.
+            let Some(w) = windows.iter().find(|w| w.id() == id) else {
+                return self.auto_known(id).and_then(|(app_id, title)| like(&app_id, &title)).into_iter().collect();
+            };
+            let group = self.groups.place(w).map(|(n, _)| n);
+            let mut out: Vec<u64> = slot_of(id).into_iter().collect();
+            // Its tabs: its group's windows on its display's workspace.
+            let here = |o: &WindowElement| self.workspace_of(o) == self.workspace_of(w) && self.display_of(o) == self.display_of(w);
+            if let Some(g) = group {
+                out.extend(windows.iter().filter(|o| o.id() != id && self.groups.place(o).map(|(n, _)| n) == Some(g) && here(o)).filter_map(|o| slot_of(o.id())));
+            }
+            out
+        };
+        let trees: Vec<crate::shell::autotile::SavedTree> = self
+            .auto_trees_as_laid_out()
+            .into_iter()
+            .map(|((workspace, output), t)| crate::shell::autotile::SavedTree {
+                workspace,
+                output,
+                tree: crate::shell::autotile::SavedNode::of(&t, &slots, &like),
+            })
+            .collect();
+        if let Some(tp) = trees_path() {
+            match serde_json::to_string(&trees) {
+                Ok(text) if !trees.is_empty() => {
+                    if let Err(e) = std::fs::write(&tp, text) {
+                        warn!(?e, "could not save the auto-tiling trees");
+                    }
+                }
+                _ => {
+                    let _ = std::fs::remove_file(&tp);
+                }
+            }
         }
         match serde_json::to_string(&list) {
             Ok(text) => {
@@ -323,6 +413,11 @@ impl<B: Backend + 'static> AnvilState<B> {
         let Some(p) = claimed.or_else(|| self.take_placement(&window)) else { return true };
         self.space.map_element(window.clone(), Point::from((p.x, p.y)), p.focused);
         meta.put_back.set(true);
+        meta.slot.set(p.slot);
+        if p.floating.is_some() {
+            Self::restore_float_override(&window, p.floating);
+        }
+        meta.restored_part.set(p.tile.map(|t| p.part.unwrap_or(t.fraction())));
         Self::set_tile_state(&window, p.tile, p.part);
         window.decoration().rolled = p.rolled;
         window.decoration().tab_offset = p.tab_offset;
@@ -348,10 +443,14 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.refit(&window);
         }
         meta.restored_focus.set(p.focused.then(std::time::Instant::now));
-        if p.workspace != self.workspace_of(&window) {
-            self.move_to_workspace(&window, p.workspace);
-        } else if p.minimized {
+        if p.minimized {
+            // Minimized, on its own workspace (showing or not).
             self.minimize(&window);
+            if p.workspace != self.workspace_of(&window) {
+                self.move_to_workspace(&window, p.workspace);
+            }
+        } else if p.workspace != self.workspace_of(&window) {
+            self.move_to_workspace(&window, p.workspace);
         } else if p.focused {
             self.focus_window(&window);
         } else {
