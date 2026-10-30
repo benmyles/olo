@@ -72,6 +72,7 @@ use wayland_protocols::{
     xdg::{
         dialog::v1::client::{xdg_dialog_v1::XdgDialogV1, xdg_wm_dialog_v1::XdgWmDialogV1},
         shell::client::{xdg_popup, xdg_positioner, xdg_surface},
+        foreign::zv2::client::{zxdg_imported_v2::ZxdgImportedV2, zxdg_importer_v2::ZxdgImporterV2},
         toplevel_tag::v1::client::xdg_toplevel_tag_manager_v1::XdgToplevelTagManagerV1,
     },
 };
@@ -989,6 +990,9 @@ pub struct Kit {
     viewporter: Option<WpViewporter>,
     idle_inhibit: Option<ZwpIdleInhibitManagerV1>,
     dialogs: Option<XdgWmDialogV1>,
+    /// Other programs' windows ours open over (`WindowOptions::foreign_parent`).
+    importer: Option<ZxdgImporterV2>,
+    imported: HashMap<WindowId, ZxdgImportedV2>,
     tags: Option<XdgToplevelTagManagerV1>,
 
     gpu: Option<Gpu>,
@@ -1036,6 +1040,8 @@ pub struct Kit {
     exit: bool,
     /// olo-session installed a new version of us: stop and re-execute.
     upgrading: bool,
+    /// It did while the app was `busy`: once it isn't.
+    upgrade_due: bool,
     /// Windows all closed, but still serving the clipboard (see `finish`).
     linger: bool,
     /// Menus' drawing has been asked of a worker (`warm_menus`).
@@ -1218,7 +1224,7 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                 // SAFETY: reading into our buffer from our pipe.
                 while unsafe { libc::read(std::os::fd::AsRawFd::as_raw_fd(&**fd), buf.as_mut_ptr().cast(), buf.len()) } > 0 {}
                 if ours.changed() {
-                    kit.upgrading = true;
+                    kit.upgrade_due = true;
                 }
                 Ok(PostAction::Continue)
             })
@@ -1238,6 +1244,8 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
 
     let mut build = Some(build);
     let mut carried: Option<Carried> = None;
+    // An upgrade waiting for the app to finish what it is doing.
+    let mut deferred = false;
     let mut palette = palette;
     // Handshakes lost to an app_server going away again while we
     // reconnect (one stuck under memory pressure is killed and restarted).
@@ -1263,6 +1271,7 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         lost_handshakes = 0;
         let qh = event_queue.handle();
         let mut kit = Kit::new(&globals, conn.clone(), qh, loop_handle.clone(), palette.clone());
+        kit.upgrade_due = deferred;
         // Learn the outputs (wl_output, then xdg-output) before the app
         // starts, so its first windows can be sized for the screen.
         for _ in 0..2 {
@@ -1318,6 +1327,9 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                 lost = true;
                 break;
             }
+            if kit.upgrade_due && !kit.app.as_ref().is_some_and(|a| a.busy()) {
+                kit.upgrading = true;
+            }
         }
         loop_handle.remove(wayland);
         palette = kit.palette.clone();
@@ -1338,7 +1350,9 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
         // was upgraded meanwhile, become the new version; otherwise just
         // reconnect with everything as it was (and a new GPU device).
         let Some(mut c) = c else { return };
-        if binary.changed() {
+        // (Busy: the new version once it isn't, after this reconnect.)
+        deferred = binary.changed() && c.app.busy();
+        if binary.changed() && !deferred {
             c.cx.sizes = c.windows.iter().map(|(id, o)| (*id, o.size)).collect();
             let state = c.app.save_state(&c.cx);
             binary.exec(state.as_deref());
@@ -1479,6 +1493,7 @@ impl Kit {
         let compositor = CompositorState::bind(globals, &qh).expect("wl_compositor");
         let idle_inhibit = globals.bind::<ZwpIdleInhibitManagerV1, _, _>(&qh, 1..=1, KitData).ok();
         let dialogs = globals.bind::<XdgWmDialogV1, _, _>(&qh, 1..=1, KitData).ok();
+        let importer = globals.bind::<ZxdgImporterV2, _, _>(&qh, 1..=1, KitData).ok();
         let tags = globals.bind::<XdgToplevelTagManagerV1, _, _>(&qh, 1..=1, KitData).ok();
         Kit {
             registry_state: RegistryState::new(globals),
@@ -1497,6 +1512,8 @@ impl Kit {
             viewporter,
             idle_inhibit,
             dialogs,
+            importer,
+            imported: HashMap::new(),
             tags,
             conn,
             qh,
@@ -1527,6 +1544,7 @@ impl Kit {
             clipboard: None,
             exit: false,
             upgrading: false,
+            upgrade_due: false,
             linger: false,
             warmed: false,
         }
@@ -2167,6 +2185,10 @@ impl Kit {
                 };
                 if let Some(Role::Toplevel(p)) = parent.map(|s| &s.role) {
                     window.set_parent(Some(p));
+                } else if let (Some(handle), Some(importer)) = (&options.foreign_parent, &self.importer) {
+                    let imported = importer.import_toplevel(handle.clone(), &self.qh, KitData);
+                    imported.set_parent_of(&wl);
+                    self.imported.insert(id, imported);
                 }
                 // Not a document window (xdg-dialog): never a tab.
                 if (options.dialog || options.alert)
@@ -2252,6 +2274,9 @@ impl Kit {
             self.drop_surface(p);
         }
         self.drop_surface(id);
+        if let Some(imported) = self.imported.remove(&id) {
+            imported.destroy();
+        }
         let any_window = self
             .surfaces
             .iter()
@@ -3869,6 +3894,13 @@ impl Dispatch2<XdgWmDialogV1, Kit> for KitData {
 }
 impl Dispatch2<XdgToplevelTagManagerV1, Kit> for KitData {
     fn event(&self, _: &mut Kit, _: &XdgToplevelTagManagerV1, _: <XdgToplevelTagManagerV1 as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<Kit>) {}
+}
+impl Dispatch2<ZxdgImporterV2, Kit> for KitData {
+    fn event(&self, _: &mut Kit, _: &ZxdgImporterV2, _: <ZxdgImporterV2 as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<Kit>) {}
+}
+// (Destroyed: the other window went; ours stays, without a parent.)
+impl Dispatch2<ZxdgImportedV2, Kit> for KitData {
+    fn event(&self, _: &mut Kit, _: &ZxdgImportedV2, _: <ZxdgImportedV2 as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<Kit>) {}
 }
 impl Dispatch2<XdgDialogV1, Kit> for KitData {
     fn event(&self, _: &mut Kit, _: &XdgDialogV1, _: <XdgDialogV1 as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<Kit>) {}

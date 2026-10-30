@@ -24,11 +24,25 @@ use pw::{properties::properties, spa};
 
 use crate::capture::Capture;
 
-/// A running share: setting `stop` ends it.
+/// A running share: setting `stop`, or dropping it, ends it.
 pub struct Share {
     pub node: u32,
     pub size: (u32, u32),
     pub stop: Arc<AtomicBool>,
+}
+
+impl Drop for Share {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        LIVE.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+/// Shares running (while there are, an upgrade waits: `App::busy`).
+static LIVE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+pub fn live() -> usize {
+    LIVE.load(Ordering::Relaxed)
 }
 
 /// Start sharing the screen named `output` (the first if None), with the
@@ -48,7 +62,15 @@ pub fn run(output: Option<String>, cursor: bool) -> Result<Share, String> {
             })
             .map_err(|e| e.to_string())?;
     }
-    let (node, size) = rx.recv_timeout(Duration::from_secs(10)).map_err(|_| "PipeWire gave the stream no node".to_owned())??;
+    let started = rx.recv_timeout(Duration::from_secs(10)).map_err(|_| "PipeWire gave the stream no node".to_owned()).and_then(|r| r);
+    let (node, size) = match started {
+        Ok(s) => s,
+        Err(e) => {
+            stop.store(true, Ordering::Relaxed);
+            return Err(e);
+        }
+    };
+    LIVE.fetch_add(1, Ordering::Relaxed);
     Ok(Share { node, size, stop })
 }
 
@@ -63,6 +85,35 @@ struct Shared {
     /// How often frames may come, as agreed.
     every: Duration,
     asked: std::time::Instant,
+    /// app_server went away: waiting for it to come back.
+    lost: bool,
+}
+
+/// Offer the stream at a new size (the app renegotiates).
+fn offer(stream: &pw::stream::Stream, (w, h): (u32, u32)) {
+    if let Ok(bytes) = format(w, h)
+        && let Some(pod) = pw::spa::pod::Pod::from_bytes(&bytes)
+    {
+        let _ = stream.update_params(&mut [pod]);
+    }
+}
+
+/// A capture of the screen `name` again, once app_server is back: tried
+/// every quarter second for half a minute (or until the share stops).
+fn reconnect(name: &str, cursor: bool, stop: &AtomicBool) -> Option<Capture> {
+    let until = std::time::Instant::now() + Duration::from_secs(30);
+    while std::time::Instant::now() < until && !stop.load(Ordering::Relaxed) {
+        std::thread::sleep(Duration::from_millis(250));
+        match Capture::output(Some(name), cursor) {
+            Ok(c) => {
+                tracing::info!("portal: sharing {name} again");
+                return Some(c);
+            }
+            Err(e) => tracing::debug!("portal: not yet: {e}"),
+        }
+    }
+    tracing::warn!("portal: app_server didn't come back; the share of {name} ends");
+    None
 }
 
 /// The stream's one format: BGRx at the screen's size, as often as it
@@ -131,7 +182,7 @@ fn stream(output: Option<String>, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc
         },
     )
     .map_err(|e| e.to_string())?;
-    let shared = Rc::new(RefCell::new(Shared { capture, size, fresh: false, streaming: false, every: Duration::from_millis(16), asked: std::time::Instant::now() }));
+    let shared = Rc::new(RefCell::new(Shared { capture, size, fresh: false, streaming: false, every: Duration::from_millis(16), asked: std::time::Instant::now(), lost: false }));
     let told = std::cell::Cell::new(false);
     let tx = tx.clone();
     let _listener = stream
@@ -209,48 +260,12 @@ fn stream(output: Option<String>, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc
     let stream_at = &*stream as *const pw::stream::Stream as usize;
     // SAFETY: as above.
     let stream_of = move || unsafe { &*(stream_at as *const pw::stream::Stream) };
-    // What app_server says: a frame has come (the stream is given it), or
-    // the screen changed size (the stream is offered the new one).
-    let _app_server = mainloop.loop_().add_io(fd, pw::spa::support::system::IoFlags::IN, {
-        let shared = shared.clone();
-        let weak = mainloop.downgrade();
-        move |_| {
-            let polled = shared.borrow_mut().capture.poll();
-            match polled {
-                Ok(None) => {}
-                Ok(Some(Ok(()))) => {
-                    shared.borrow_mut().fresh = true;
-                    // (With no borrow held: this may process at once.)
-                    let _ = stream_of().trigger_process();
-                }
-                Ok(Some(Err(e))) => {
-                    let mut sh = shared.borrow_mut();
-                    if let Some(new) = sh.capture.size().filter(|&n| n != sh.size) {
-                        sh.size = new;
-                        drop(sh);
-                        if let Ok(bytes) = format(new.0, new.1)
-                            && let Some(pod) = pw::spa::pod::Pod::from_bytes(&bytes)
-                        {
-                            let _ = stream_of().update_params(&mut [pod]);
-                        }
-                    } else {
-                        tracing::debug!("portal: {e}");
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("portal: {e}");
-                    if let Some(l) = weak.upgrade() {
-                        l.quit();
-                    }
-                }
-            }
-        }
-    });
     // While streaming, the next frame is asked for once the last has gone
     // and its time has come; and the share ends when told.
     let timer = mainloop.loop_().add_timer({
         let shared = shared.clone();
         let weak = mainloop.downgrade();
+        let stop = stop.clone();
         move |_| {
             if stop.load(Ordering::Relaxed) {
                 if let Some(l) = weak.upgrade() {
@@ -259,7 +274,7 @@ fn stream(output: Option<String>, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc
                 return;
             }
             let mut sh = shared.borrow_mut();
-            if sh.streaming && !sh.fresh && !sh.capture.waiting() && sh.asked.elapsed() >= sh.every.saturating_sub(Duration::from_millis(2)) {
+            if !sh.lost && sh.streaming && !sh.fresh && !sh.capture.waiting() && sh.asked.elapsed() >= sh.every.saturating_sub(Duration::from_millis(2)) {
                 sh.asked = std::time::Instant::now();
                 if let Err(e) = sh.capture.request() {
                     tracing::warn!("portal: {e}");
@@ -268,7 +283,64 @@ fn stream(output: Option<String>, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc
         }
     });
     let _ = timer.update_timer(Some(Duration::from_millis(1)), Some(Duration::from_millis(4)));
-    mainloop.run();
+    let name = shared.borrow().capture.name().to_owned();
+    let mut fd = Some(fd);
+    loop {
+        // What app_server says: a frame has come (the stream is given it),
+        // or the screen changed size (the stream is offered the new one).
+        let Some(io) = fd.take() else { break };
+        let app_server = mainloop.loop_().add_io(io, pw::spa::support::system::IoFlags::IN, {
+            let shared = shared.clone();
+            let weak = mainloop.downgrade();
+            move |_| {
+                let polled = shared.borrow_mut().capture.poll();
+                match polled {
+                    Ok(None) => {}
+                    Ok(Some(Ok(()))) => {
+                        shared.borrow_mut().fresh = true;
+                        // (With no borrow held: this may process at once.)
+                        let _ = stream_of().trigger_process();
+                    }
+                    Ok(Some(Err(e))) => {
+                        let mut sh = shared.borrow_mut();
+                        if let Some(new) = sh.capture.size().filter(|&n| n != sh.size) {
+                            sh.size = new;
+                            drop(sh);
+                            offer(stream_of(), new);
+                        } else {
+                            tracing::debug!("portal: {e}");
+                        }
+                    }
+                    // app_server went (a reload): the share waits for it.
+                    Err(e) => {
+                        tracing::info!("portal: lost app_server ({e}); reconnecting");
+                        shared.borrow_mut().lost = true;
+                        if let Some(l) = weak.upgrade() {
+                            l.quit();
+                        }
+                    }
+                }
+            }
+        });
+        mainloop.run();
+        drop(app_server);
+        if stop.load(Ordering::Relaxed) || !shared.borrow().lost {
+            break;
+        }
+        // Back as it was once app_server is (a reload takes a second or
+        // two), at its new size if that changed; the app sees a pause.
+        let Some(capture) = reconnect(&name, cursor, &stop) else { break };
+        let new = capture.size();
+        fd = capture.fd().ok();
+        let mut sh = shared.borrow_mut();
+        sh.capture = capture;
+        sh.lost = false;
+        if let Some(new) = new.filter(|&n| n != sh.size) {
+            sh.size = new;
+            drop(sh);
+            offer(&stream, new);
+        }
+    }
     let _ = stream.disconnect();
     Ok(())
 }

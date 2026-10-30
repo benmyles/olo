@@ -17,3 +17,12 @@ png = "0.18"
 pipewire = { version = "0.10", features = ["v0_3_34"] }
 gbm = { version = "0.18", default-features = false }
 tracing.workspace = true
+tracing-subscriber.workspace = true
+olo-kit.workspace = true
+olo-protocol.workspace = true
+olo-xdg.workspace = true
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
+async-channel = "2"
+blocking = "1"
+serde.workspace = true
+fast_image_resize = "5"

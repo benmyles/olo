@@ -2212,5 +2212,11 @@
   "title": "Agent Screens: History and Replay",
   "caption": "Each agent screen keeps what was done on it and the frames it drew. History lists the actions (searchable), shows the screen as it was at the one chosen, and plays it back in time with them: clicks as rings, keys as captions, quiet stretches skipped. Export Video\u2026 makes it an MP4 in process. Stopped screens' histories stay listed, by last use; how much is kept is in Preferences \u25b8 AI.",
   "image": "2026-10-30/024031-agent-screens-history-and-replay.png"
+ },
+ {
+  "time": "2026-10-30T03:36:35",
+  "title": "Share Screen: the screen-sharing picker",
+  "caption": "olo-portal's picker when an app asks to share the screen (xdg-desktop-portal ScreenCast): who asks, the screens as live thumbnails shaped like them, Cancel / Share. A fixed kit dialog opened over the asking window.",
+  "image": "2026-10-30/033635-share-screen-the-screen-sharing-picker.png"
  }
 ]

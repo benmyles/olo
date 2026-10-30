@@ -59,6 +59,8 @@ pub struct Capture {
     /// The GPU's allocator, once opened (None: shared memory only).
     gbm: Option<gbm::Device<std::fs::File>>,
     conn: Connection,
+    /// The output's name (its connector).
+    name: String,
     session: session_v1::ExtImageCopyCaptureSessionV1,
     buffer: Option<(wl_buffer::WlBuffer, Target, (u32, u32, u32, wl_shm::Format))>,
     /// The buffer is new: what it holds is unknown to app_server.
@@ -72,7 +74,7 @@ impl Capture {
     /// compositor at `WAYLAND_DISPLAY`.
     /// With `cursor`, the pointer is drawn in.
     pub fn output(name: Option<&str>, cursor: bool) -> Result<Capture, String> {
-        let conn = Connection::connect_to_env().map_err(|e| format!("can't reach app_server: {e}"))?;
+        let conn = connect().map_err(|e| format!("can't reach app_server: {e}"))?;
         let (globals, mut queue) = registry_queue_init::<State>(&conn).map_err(|e| e.to_string())?;
         let qh = queue.handle();
         let mut state = State::default();
@@ -86,9 +88,9 @@ impl Capture {
         }
         // The outputs' names come with their first events.
         queue.roundtrip(&mut state).map_err(|e| e.to_string())?;
-        let output = match name {
-            Some(n) => state.outputs.iter().find(|(_, o)| o == n).map(|(o, _)| o.clone()).ok_or_else(|| format!("no output {n}"))?,
-            None => state.outputs.first().map(|(o, _)| o.clone()).ok_or("no outputs")?,
+        let (output, name) = match name {
+            Some(n) => state.outputs.iter().find(|(_, o)| o == n).cloned().ok_or_else(|| format!("no output {n}"))?,
+            None => state.outputs.first().cloned().ok_or("no outputs")?,
         };
         let source = sources.create_source(&output, &qh, ());
         let session = copier.create_session(&source, if cursor { ext_image_copy_capture_manager_v1::Options::PaintCursors } else { ext_image_copy_capture_manager_v1::Options::empty() }, &qh, ());
@@ -109,7 +111,7 @@ impl Capture {
                 }
             })
         };
-        Ok(Capture { queue, state, shm, dmabuf, gbm, conn, session, buffer: None, fresh: true, frame: None })
+        Ok(Capture { queue, state, shm, dmabuf, gbm, conn, name, session, buffer: None, fresh: true, frame: None })
     }
 
     /// Whether frames come through the GPU (dmabufs).
@@ -167,6 +169,11 @@ impl Capture {
         let buffer = pool.create_buffer(0, w as i32, h as i32, stride as i32, format, &qh, ());
         pool.destroy();
         Ok((buffer, map, format))
+    }
+
+    /// The output's name (its connector).
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     /// The size frames are, as app_server last said.
@@ -292,6 +299,20 @@ impl Capture {
         self.copy_into(&mut data, w as usize * 4)?;
         Ok(Picture { width: w, height: h, stride: w * 4, format, data })
     }
+}
+
+/// In an Olo session, straight to app_server (as the kit does): the
+/// session's socket is olo-wlproxy's, which hides capture from outside
+/// programs.
+fn connect() -> Result<Connection, wayland_client::ConnectError> {
+    if std::env::var_os("WAYLAND_SOCKET").is_none()
+        && let (Some(dir), Ok(display)) = (std::env::var_os("XDG_RUNTIME_DIR"), std::env::var("WAYLAND_DISPLAY"))
+        && !display.contains('/')
+        && let Ok(stream) = std::os::unix::net::UnixStream::connect(olo_xdg::legacy::runtime_file(std::path::Path::new(&dir), &format!("olo-{display}-direct")))
+    {
+        return Connection::from_socket(stream);
+    }
+    Connection::connect_to_env()
 }
 
 /// The render node whose device number is `dev`.

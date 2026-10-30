@@ -477,18 +477,18 @@ as they land (with the commit), add new ones as they come up.
   PipeWire stream, and the app reads it. Chrome and Electron apps share
   WebRTC's capture code, so this is a good portal backend and a good
   PipeWire stream, plus a few app quirks, nothing app-specific.
-  - **Today** sharing fails for everyone: wlproxy hides
-    ext-image-copy-capture from outside programs on purpose;
-    `olo-portals.conf` sends every portal to the GTK backend, which has
-    no ScreenCast. Done so far (2026-10-30): app_server captures whole
-    screens for its clients into shared-memory buffers (`capture.rs`:
-    frames wait for the screen's next frame, drawn as a screenshot is,
-    sessions kept until the client ends them), and `olo-portal`'s
-    client of it (`apps/portal/src/capture.rs`; `olo-portal
-    capture-test OUT.png` checks it: 1600×1000 in 23 ms, then a frame
-    a refresh). Next: windows as sources, dmabufs, constraints updated
-    when a screen changes size, then the portal's D-Bus side, picker and
-    PipeWire stream.
+  - **Done** (2026-10-30, HACKING.md "Screen sharing"): olo-portal is
+    the session's ScreenCast backend (olo-session runs it and routes the
+    portal to it); the picker (screens, live thumbnails) opens over the
+    asking window; streams are PipeWire nodes fed from dmabufs app_server
+    draws on the GPU only when the screen changed (0.26 ms median of
+    app_server's loop at 5K); shares survive an app_server reload and an
+    upgrade waits for them; restore tokens and repeat requests answer
+    without a picker. Checked end to end through xdg-desktop-portal with
+    `olo-portal share-test`. **Next**: Chrome's getDisplayMedia in a
+    sandbox Chrome; windows as sources; Deskbar's sharing item with Stop
+    (and Closed sent when a share ends from our side); dmabufs passed
+    through to apps that take them; app scopes (which app is asking).
   - **Build** our own backend, `olo-portal`, started and supervised by
     olo-session: it owns `org.freedesktop.impl.portal.desktop.olo` over
     zbus (which we already use), shows the picker as a kit window,

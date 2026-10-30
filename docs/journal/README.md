@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Share Screen: the screen-sharing picker
+
+*03:36* — olo-portal's picker when an app asks to share the screen (xdg-desktop-portal ScreenCast): who asks, the screens as live thumbnails shaped like them, Cancel / Share. A fixed kit dialog opened over the asking window.
+
+![Share Screen: the screen-sharing picker](2026-10-30/033635-share-screen-the-screen-sharing-picker.png)
+
 ### Agent Screens: History and Replay
 
 *02:40* — Each agent screen keeps what was done on it and the frames it drew. History lists the actions (searchable), shows the screen as it was at the one chosen, and plays it back in time with them: clicks as rings, keys as captions, quiet stretches skipped. Export Video… makes it an MP4 in process. Stopped screens' histories stay listed, by last use; how much is kept is in Preferences ▸ AI.

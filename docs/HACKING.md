@@ -387,6 +387,11 @@ fn main() {
   its parent before its first frame (kept on screen), never groups it
   into the parent's tabs and keeps any child above its parent when the
   parent is clicked, focused or raised (`wm.rs` `keep_children_above`).
+  A service's dialog for another program (the screen-sharing picker)
+  takes `.foreign_parent(handle)`, the `wayland:HANDLE` that program
+  exported (xdg-foreign; a portal is given it as the parent window): the
+  kit imports it and sets it as the window's parent, and app_server opens
+  it over that window as it does over one of the app's own.
 * **Raw keys** (`WindowOptions::raw_keys()`): for windows that consume the
   keyboard themselves (Terminal). ⌘-letter combinations reach the app as
   key events instead of menu shortcuts or clipboard events (⌘⇧C/X/V still
@@ -1251,7 +1256,10 @@ hands both to app_server, so clients never see the sockets disappear.
   too, since apps like Deskbar only resize when their height changes).
   One whose binary changed calls `App::save_state`,
   re-executes itself (same pid and arguments), and reads the result with
-  `cx.restored_state()` at start-up. In an upgrade olo-session
+  `cx.restored_state()` at start-up, unless `App::busy` says it is doing
+  something re-executing would cut short (olo-portal sharing a screen):
+  then it reconnects as the old version and becomes the new one once
+  `busy` turns false. In an upgrade olo-session
   signals every program it replaced (SIGURG) and restarts app_server at
   once, so an app re-executes while the old app_server goes: one may
   start against the old one and lose it in its handshake (it tries again
@@ -3069,6 +3077,82 @@ drag (its size in pixels follows the corner); Escape or a click cancels.
 Saved with no window (`--silent`, `--region`), it prints the file's path
 and puts it on the clipboard (`olo_kit::clipboard::hold`), staying until
 something else is copied. ⌘⇧5 opens the app.
+
+## Screen sharing (apps/portal, app_server capture.rs)
+
+Apps never capture the screen themselves on Wayland: Chrome, Slack,
+Firefox and OBS ask xdg-desktop-portal's ScreenCast, which asks a
+backend to show a picker and hand back PipeWire streams. Olo's backend is
+**olo-portal** (`olo-portal --service`, run by olo-session in a real
+session): it owns `org.freedesktop.impl.portal.desktop.olo`; olo-session
+describes it to the portal (`~/.local/share/xdg-desktop-portal/portals/
+olo.portal`) and routes ScreenCast to it in `olo-portals.conf`
+(`graphical.rs`), restarting xdg-desktop-portal when those change. It
+runs out of app_server on purpose: a share outlives an app_server reload
+(the stream's capture reconnects, `stream::reconnect`; the app sees a
+pause of a fraction of a second), libpipewire stays out of the
+compositor, and the kit holds off re-executing it after an upgrade while
+it shares (`App::busy`).
+
+- **D-Bus** (`portal.rs`): CreateSession serves an
+  `impl.portal.Session` at the handle the portal chose (Close drops its
+  streams); SelectSources keeps the cursor mode (hidden or drawn in) and
+  a restore token (`("olo", 1, connector)`); Start shares without asking
+  when the token names a screen still there, or when the same app asked
+  less than 5 s ago (Chromium opens several sessions for one share), and
+  otherwise asks the picker, while an `impl.portal.Request` at the
+  request's handle lets the app cancel it. It answers with each stream's
+  PipeWire node, position, size and connector (`id`). Screens only, for
+  now (`AvailableSourceTypes` 1).
+- **The picker** (`picker.rs`): a fixed kit dialog over the asking
+  window (`foreign_parent`): who asks (from the app id; "An app" when the
+  portal can't tell, as for unsandboxed apps), the screens as a
+  `ThumbnailPicker` (radio buttons to agents) of live thumbnails, and
+  Cancel / Share (Enter, Escape, or a double click). Its wells take the
+  first screen's shape at whole device pixels at every quarter scale
+  (192×108 for 16:9); a worker keeps a capture of each screen, asks for a
+  frame twice a second (app_server answers when it changed), and shrinks
+  it to the well's size in device pixels for the scale it is drawn at.
+- **The stream** (`stream.rs`): one thread per share runs PipeWire's
+  loop with app_server's connection as one of its sources. The node is
+  its own driver offering BGRx at the screen's size, up to 60 frames a
+  second; while it streams, a frame is asked for at most at the rate the
+  app agreed to, app_server answers once the screen changed (a still
+  screen sends nothing), and the frame is copied from the capture's
+  buffer straight into PipeWire's (memfd, else plain memory). A screen
+  that changes size is offered again at its new size.
+- **Capture** (`capture.rs` in both): the portal is a client of
+  app_server's ext-image-copy-capture on the direct socket
+  (`olo-$WAYLAND_DISPLAY-direct`: olo-wlproxy hides the protocol from
+  outside programs). It allocates a dmabuf with gbm on the render node
+  app_server names, in a modifier the GPU likes (reading it back is a
+  detiling blit, ~7 ms at 5K, where a linear one costs 30–40 ms of
+  uncached reads), falling back to shared memory. In app_server each
+  session is a `Cast` in `State::captures`: a frame it asks for waits for
+  its output's next frame (`Captures::take`, every backend) and is drawn
+  only when its own damage tracker says the picture changed since its
+  last (the first comes at once); a dmabuf is drawn into on the GPU (only
+  what changed, when it is the buffer drawn last) and told ready when its
+  fence signals (`Captures::finish`), so app_server's loop spends 0.26 ms
+  median, 0.57 ms p95 a frame at 5120×2880 with the pointer moving; a
+  shared-memory buffer is drawn into the session's own texture and read
+  back as BGRA rows (a few ms at 5K: the fallback). Constraints follow the
+  screen's rotation and are sent again when it changes size; the pointer
+  is drawn in when the session asks (`paint_cursors`).
+
+To try it: `olo-portal capture-test OUT.png` (a frame, saying whether it
+came as a dmabuf), `olo-portal stream-test - 10` (a PipeWire node for
+ten seconds), and `olo-portal share-test OUT.png` (asks
+xdg-desktop-portal for a screen as an app does: the picker comes up,
+then it writes the first frame of the stream, read through the PipeWire
+connection the portal gave). In tests keep all of it private: a PipeWire
+and WirePlumber of their own (`PIPEWIRE_RUNTIME_DIR` in /var/tmp,
+WirePlumber's device monitors turned off), and xdg-desktop-portal,
+xdg-permission-store and `olo-portal --bus ADDRESS` on the test
+session's own bus (`XDG_DESKTOP_PORTAL_DIR` pointing at a folder with
+`olo.portal` and `olo-portals.conf`; the test bus can't start services,
+so the document portal it insists on needs a stand-in that answers
+`GetMountPoint`).
 
 ## DeskCalc (apps/deskcalc)
 

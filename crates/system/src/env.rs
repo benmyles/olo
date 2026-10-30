@@ -40,3 +40,17 @@ pub fn start_unit(name: &str, start: bool) -> Result<()> {
     )
     .map(|_| ())
 }
+
+/// Restart a systemd user unit if it is running (to read new settings),
+/// without waiting for the job to finish.
+pub fn try_restart_unit(name: &str) -> Result<()> {
+    bus::call::<_, zvariant::OwnedObjectPath>(
+        bus::session()?,
+        "org.freedesktop.systemd1",
+        "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager",
+        "TryRestartUnit",
+        &(name, "replace"),
+    )
+    .map(|_| ())
+}

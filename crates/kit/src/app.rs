@@ -62,6 +62,13 @@ pub trait App: 'static {
         None
     }
 
+    /// Doing something re-executing would cut short (sharing a screen):
+    /// while this is true an upgrade of the app's binary waits, and the
+    /// app becomes the new version once it turns false.
+    fn busy(&self) -> bool {
+        false
+    }
+
     /// The person moved `window` (by its tab) and let it go over `onto`,
     /// another of the app's windows: `place`, if over `onto`'s tab strip,
     /// is where among its tabs ([`crate::widgets::strip_place`]), for the
@@ -109,6 +116,12 @@ pub struct WindowOptions {
     /// working folder), if any: its tab's menu offers Open in Tracker for
     /// it, and agents read it in its tree. [`Cx::set_path`] changes it.
     pub path: Option<std::path::PathBuf>,
+    /// Another program's window this one belongs to, by the handle it
+    /// exported (xdg-foreign: the `wayland:HANDLE` a portal is given as
+    /// the parent window): app_server opens it over that window, as an
+    /// alert over its own app's. For a dialog a service shows for
+    /// another app (the screen-sharing picker).
+    pub foreign_parent: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -167,6 +180,7 @@ impl Default for WindowOptions {
             floating: false,
             under_pointer: false,
             path: None,
+            foreign_parent: None,
         }
     }
 }
@@ -201,6 +215,13 @@ impl WindowOptions {
     pub fn alert_choice(title: impl Into<String>, message: &str, choices: usize) -> Self {
         let (w, h) = (crate::widgets::ALERT_WIDTH, crate::widgets::alert_choice_height(message, choices));
         WindowOptions { alert: true, ..WindowOptions::new(title, w, h).min_size(w, h).max_size(w, h) }
+    }
+    /// Open over another program's window, by the handle it exported
+    /// (`wayland:HANDLE`, or the bare handle; see [`Self::foreign_parent`]).
+    pub fn foreign_parent(mut self, handle: impl Into<String>) -> Self {
+        let handle = handle.into();
+        self.foreign_parent = Some(handle.strip_prefix("wayland:").map(str::to_owned).unwrap_or(handle)).filter(|h| !h.is_empty());
+        self
     }
     /// Open over `parent`, as its alert or sheet.
     pub fn parent(mut self, parent: WindowId) -> Self {

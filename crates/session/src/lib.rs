@@ -54,10 +54,11 @@ const USAGE: &str = "usage: olo-session [--tty-udev | --winit | --headless WxH] 
 
 const SHELL: &[&[&str]] = &[&["olo-deskbar"], &["olo-tracker", "--desktop"]];
 /// Services only the real (logged-in) session runs: the polkit agent
-/// answers for the login session and the notification centre serves the
-/// session bus, which a nested or headless one must never take over;
-/// Token Pool's gateway listens on the computer's one loopback port.
-const REAL_SHELL: &[&[&str]] = &[&["olo-polkit-agent"], &["olo-notifications"], &["olo-pool", "--service"]];
+/// answers for the login session and the notification centre and the
+/// portal backend (screen sharing) serve the session bus, which a nested
+/// or headless one must never take over; Token Pool's gateway listens on
+/// the computer's one loopback port.
+const REAL_SHELL: &[&[&str]] = &[&["olo-polkit-agent"], &["olo-notifications"], &["olo-portal", "--service"], &["olo-pool", "--service"]];
 /// Give up restarting something that crashes this often.
 const CRASH_LIMIT: usize = 5;
 const CRASH_WINDOW: Duration = Duration::from_secs(60);
