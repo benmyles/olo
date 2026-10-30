@@ -2266,5 +2266,17 @@
   "title": "Deskbar: programs' unread badges and progress",
   "caption": "A program's launcher badge (Slack's unread count, Chrome's download progress) lights its row's quiet dot, shaking it when the count rises, and its progress runs as a thin bar along the row's foot.",
   "image": "2026-10-30/052030-deskbar-programs-unread-badges-and-progress.png"
+ },
+ {
+  "time": "2026-10-30T05:30:25",
+  "title": "Portal: Set as Desktop Background",
+  "caption": "Other programs' Set as Desktop Background (the Wallpaper portal) asks with the picture, as a BAlert, and sets it as Preferences would; the Screenshot portal's PickColor freezes the screen with a loupe; Send by Email opens a mailto: link.",
+  "image": "2026-10-30/053025-portal-set-as-desktop-background.png"
+ },
+ {
+  "time": "2026-10-30T05:30:25",
+  "title": "Screenshot: pick a colour",
+  "caption": "PickColor (for other programs, through the Screenshot portal): the screen frozen, a loupe by the pointer with the pixels around it magnified, the one under it ringed, its swatch and hex.",
+  "image": "2026-10-30/053025-screenshot-pick-a-colour.png"
  }
 ]

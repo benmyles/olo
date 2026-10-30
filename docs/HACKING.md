@@ -3291,6 +3291,25 @@ it shares (`App::busy`).
   harmless entry (`Exec=/usr/bin/true %u`) and a `mimeinfo.cache` (GIO
   associates types only through that), then ask OpenURI for a custom
   scheme.
+- **Picking a colour**: the Screenshot portal's PickColor runs
+  `olo-screenshot --pick-color` (`region.rs`): the screens frozen as for a
+  region, undimmed, with a loupe below right of the pointer (above or
+  left at the edges): 9×9 of the pixels around it at 10 points each,
+  cells on device pixels, the one under it ringed in black or white by
+  its lightness, and its swatch and hex below. A click prints "R G B",
+  which goes back as the portal's `color` (fractions); Escape cancels.
+- **Desktop background** (`wallpaper.rs`): the Wallpaper portal's
+  SetWallpaperURI. When the app asks for a preview, a BAlert asks first
+  ("Set as Desktop Background?", the picture fitted under it, a texel to
+  a device pixel at most); the picture is copied into
+  `~/.local/share/olo/backgrounds` (so it stays when the app's copy
+  goes) and set as app_server's `Settings::wallpaper`, as Preferences ▸
+  Backgrounds would.
+- **Email** (`email.rs`): ComposeEmail becomes a `mailto:` link (the
+  addresses, copies, subject and body, encoded as RFC 6068 says, line
+  breaks as CRLF) opened in the person's mail program through
+  `olo_xdg::open`; a link can't carry files, so attachments are shown in
+  Tracker, to drag in.
 - **Running in the background** (`background.rs`): the Background
   portal's backend. xdg-desktop-portal asks the person first (through
   Access, Olo's permission dialog), then here to write or remove the

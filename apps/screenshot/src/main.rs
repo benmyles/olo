@@ -501,6 +501,21 @@ fn main() -> std::process::ExitCode {
     // A session or install from before the rename (Tabula) carries on.
     olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // The Screenshot portal's PickColor: "R G B" (0–255), nothing if
+    // cancelled.
+    if args.iter().any(|a| a == "--pick-color") {
+        return match region::pick_color() {
+            Ok(Some([r, g, b])) => {
+                println!("{r} {g} {b}");
+                std::process::ExitCode::SUCCESS
+            }
+            Ok(None) => std::process::ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("olo-screenshot: {e}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
     if args.iter().any(|a| a == "--region") {
         return match region::run() {
             Ok(Some(path)) => saved(&path),

@@ -51,6 +51,8 @@ pub enum ToUi {
     Choose(crate::chooser::Ask),
     /// The apps a chooser (its request) offers changed.
     Offers(String, Vec<crate::chooser::Offer>),
+    /// A picture to make the desktop background (the Wallpaper portal).
+    Wallpaper(crate::wallpaper::Ask),
     /// The app gave up on the request (its handle): close its picker.
     Cancel(String),
     /// A session ended (an upgrade may have waited for it: `App::busy`).
@@ -333,6 +335,7 @@ pub fn serve(address: Option<&str>, to_ui: impl Fn(ToUi) + Send + Sync + 'static
     let access = crate::access::Access { to_ui: cast.to_ui.clone() };
     let files = crate::files::FileChooser { to_ui: cast.to_ui.clone() };
     let chooser = crate::chooser::AppChooser { to_ui: cast.to_ui.clone() };
+    let wallpaper = crate::wallpaper::Wallpaper { to_ui: cast.to_ui.clone() };
     let conn = builder
         .serve_at(PATH, cast)?
         .serve_at(PATH, crate::inhibit::Inhibit)?
@@ -341,6 +344,8 @@ pub fn serve(address: Option<&str>, to_ui: impl Fn(ToUi) + Send + Sync + 'static
         .serve_at(PATH, files)?
         .serve_at(PATH, chooser)?
         .serve_at(PATH, crate::background::Background)?
+        .serve_at(PATH, crate::email::Email)?
+        .serve_at(PATH, wallpaper)?
         .build()?;
     let flags = zbus::fdo::RequestNameFlags::DoNotQueue.into();
     match conn.request_name_with_flags(NAME, flags)? {

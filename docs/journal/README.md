@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Screenshot: pick a colour
+
+*05:30* — PickColor (for other programs, through the Screenshot portal): the screen frozen, a loupe by the pointer with the pixels around it magnified, the one under it ringed, its swatch and hex.
+
+![Screenshot: pick a colour](2026-10-30/053025-screenshot-pick-a-colour.png)
+
+### Portal: Set as Desktop Background
+
+*05:30* — Other programs' Set as Desktop Background (the Wallpaper portal) asks with the picture, as a BAlert, and sets it as Preferences would; the Screenshot portal's PickColor freezes the screen with a loupe; Send by Email opens a mailto: link.
+
+![Portal: Set as Desktop Background](2026-10-30/053025-portal-set-as-desktop-background.png)
+
 ### Deskbar: programs' unread badges and progress
 
 *05:20* — A program's launcher badge (Slack's unread count, Chrome's download progress) lights its row's quiet dot, shaking it when the count rises, and its progress runs as a thin bar along the row's foot.

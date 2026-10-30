@@ -4,6 +4,11 @@
 //!
 //! Every output is captured first, then covered by an overlay showing its
 //! picture, so what you select is exactly what you saw.
+//!
+//! `--pick-color` (the Screenshot portal's PickColor) freezes the screens
+//! the same way, undimmed, with a loupe beside the pointer: the pixels
+//! around it magnified, the one under it outlined, its colour as a
+//! swatch and in hex. A click picks it; Escape cancels.
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
@@ -21,6 +26,11 @@ const APP_ID: &str = "olo.screenshot";
 const TILE: u32 = 2048;
 /// A drag shorter than this (points) is a click: cancel.
 const MIN_DRAG: f32 = 4.0;
+/// The loupe: this many pixels a side, each this many points, this far
+/// from the pointer.
+const LOUPE_PIXELS: i64 = 9;
+const LOUPE_CELL: f32 = 10.0;
+const LOUPE_GAP: f32 = 20.0;
 
 enum Msg {
     /// An output's picture, or None if it couldn't be taken.
@@ -40,6 +50,9 @@ struct Picker {
     /// Drag start and current point, on one window.
     drag: Option<(WindowId, Pos2, Pos2)>,
     cut: Arc<std::sync::Mutex<Option<Cut>>>,
+    /// Picking a colour (`--pick-color`) rather than a region: the one
+    /// picked.
+    pick: Option<Arc<std::sync::Mutex<Option<[u8; 3]>>>>,
 }
 
 /// Split `image` into textures of at most `TILE` pixels, each with its
@@ -92,6 +105,9 @@ impl App for Picker {
             painter.image(tex.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         }
         ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
+        if self.pick.is_some() {
+            return self.pick_ui(cx, window, ui, rect);
+        }
 
         let (pressed, down, released, pos, escape) = ui.input(|i| {
             (
@@ -168,6 +184,81 @@ impl App for Picker {
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
+        self.on_message(cx, message);
+    }
+}
+
+impl Picker {
+    /// Picking a colour: the loupe by the pointer; a click picks.
+    fn pick_ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui, rect: Rect) {
+        let Some(screen) = self.screens.get(&window) else { return };
+        let (clicked, pos, escape) = ui.input(|i| (i.pointer.primary_released(), i.pointer.hover_pos().or(i.pointer.interact_pos()), i.key_pressed(egui::Key::Escape)));
+        if escape {
+            return self.finish(cx, None);
+        }
+        let Some(p) = pos.filter(|p| rect.contains(*p)) else { return };
+        let image = &screen.image;
+        let k = image.width() as f32 / rect.width();
+        let (cx_px, cy_px) = (((p.x - rect.left()) * k).floor() as i64, ((p.y - rect.top()) * k).floor() as i64);
+        let at = |x: i64, y: i64| {
+            let (x, y) = (x.clamp(0, image.width() as i64 - 1) as u32, y.clamp(0, image.height() as i64 - 1) as u32);
+            let px = image.get_pixel(x, y).0;
+            [px[0], px[1], px[2]]
+        };
+        let picked = at(cx_px, cy_px);
+        if clicked {
+            if let Some(pick) = &self.pick {
+                *pick.lock().unwrap() = Some(picked);
+            }
+            return self.finish(cx, None);
+        }
+        // The loupe, below right of the pointer (above or left where it
+        // would leave the screen), on device pixels.
+        let pal = style::palette(ui.ctx());
+        let ppp = ui.ctx().pixels_per_point();
+        let snap = |v: f32| (v * ppp).round() / ppp;
+        let side = LOUPE_PIXELS as f32 * LOUPE_CELL;
+        let label_h = 22.0;
+        let mut origin = p + vec2(LOUPE_GAP, LOUPE_GAP);
+        if origin.x + side > rect.right() {
+            origin.x = p.x - LOUPE_GAP - side;
+        }
+        if origin.y + side + label_h > rect.bottom() {
+            origin.y = p.y - LOUPE_GAP - side - label_h;
+        }
+        let origin = pos2(snap(origin.x), snap(origin.y));
+        let painter = ui.painter();
+        let frame = Rect::from_min_size(origin, vec2(side, side + label_h));
+        painter.rect_filled(frame.expand(1.0), 0.0, style::c(pal.control_border));
+        let half = LOUPE_PIXELS / 2;
+        for j in 0..LOUPE_PIXELS {
+            for i in 0..LOUPE_PIXELS {
+                let [r, g, b] = at(cx_px + i - half, cy_px + j - half);
+                let cell = Rect::from_min_max(
+                    pos2(snap(origin.x + i as f32 * LOUPE_CELL), snap(origin.y + j as f32 * LOUPE_CELL)),
+                    pos2(snap(origin.x + (i + 1) as f32 * LOUPE_CELL), snap(origin.y + (j + 1) as f32 * LOUPE_CELL)),
+                );
+                painter.rect_filled(cell, 0.0, Color32::from_rgb(r, g, b));
+            }
+        }
+        // The pixel picked: outlined, light on dark and dark on light.
+        let centre = Rect::from_min_size(pos2(snap(origin.x + half as f32 * LOUPE_CELL), snap(origin.y + half as f32 * LOUPE_CELL)), vec2(LOUPE_CELL, LOUPE_CELL));
+        let luma = 0.299 * picked[0] as f32 + 0.587 * picked[1] as f32 + 0.114 * picked[2] as f32;
+        let ring = if luma > 128.0 { Color32::BLACK } else { Color32::WHITE };
+        painter.rect_stroke(centre, 0.0, Stroke::new(1.0, ring), egui::StrokeKind::Inside);
+        // Its swatch and hex, under the pixels.
+        let bar = Rect::from_min_max(pos2(origin.x, origin.y + side), frame.max);
+        painter.rect_filled(bar, 0.0, style::c(pal.tooltip_background));
+        let swatch = Rect::from_center_size(pos2(bar.left() + 12.0, bar.center().y), vec2(12.0, 12.0));
+        let swatch = Rect::from_min_size(pos2(snap(swatch.left()), snap(swatch.top())), swatch.size());
+        painter.rect_filled(swatch, 0.0, Color32::from_rgb(picked[0], picked[1], picked[2]));
+        painter.rect_stroke(swatch, 0.0, Stroke::new(1.0, style::c(pal.control_border)), egui::StrokeKind::Inside);
+        let hex = format!("#{:02X}{:02X}{:02X}", picked[0], picked[1], picked[2]);
+        style::label(painter, swatch.right() + 6.0, bar.center().y, egui::Align::Min, &hex, egui::FontId::monospace(style::PLAIN_SIZE), style::c(pal.tooltip_text));
+        ui.ctx().request_repaint();
+    }
+
+    fn on_message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
             Msg::Frozen(output, image) => {
@@ -216,7 +307,7 @@ pub fn run() -> Result<Option<PathBuf>, String> {
         if outputs.is_empty() {
             outputs.push(None);
         }
-        let picker = Picker { waiting: outputs.len(), frozen: Vec::new(), screens: HashMap::new(), drag: None, cut: cut.clone() };
+        let picker = Picker { waiting: outputs.len(), frozen: Vec::new(), screens: HashMap::new(), drag: None, cut: cut.clone(), pick: None };
         for output in outputs {
             let proxy = cx.proxy();
             std::thread::spawn(move || {
@@ -236,4 +327,27 @@ pub fn run() -> Result<Option<PathBuf>, String> {
     let r = capture::save(&Shot { png: png.clone(), image: Arc::new(crop) }, &path, settings.format);
     let _ = std::fs::remove_file(&png);
     r.map(|()| Some(path))
+}
+
+/// Pick a colour from the screen (`--pick-color`): the one clicked, or
+/// None if cancelled.
+pub fn pick_color() -> Result<Option<[u8; 3]>, String> {
+    let picked: Arc<std::sync::Mutex<Option<[u8; 3]>>> = Arc::default();
+    olo_kit::run(APP_ID, |cx| {
+        let mut outputs: Vec<Option<String>> = cx.outputs().iter().cloned().map(Some).collect();
+        if outputs.is_empty() {
+            outputs.push(None);
+        }
+        let picker = Picker { waiting: outputs.len(), frozen: Vec::new(), screens: HashMap::new(), drag: None, cut: Arc::default(), pick: Some(picked.clone()) };
+        for output in outputs {
+            let proxy = cx.proxy();
+            std::thread::spawn(move || {
+                let image = capture::take_output(output.clone()).map_err(|e| eprintln!("olo-screenshot: {e}")).ok();
+                proxy.send(Msg::Frozen(output, image));
+            });
+        }
+        picker
+    });
+    let colour = *picked.lock().unwrap();
+    Ok(colour)
 }
