@@ -364,7 +364,7 @@ as they land (with the commit), add new ones as they come up.
   its display only while a member really needs it, fitted back as soon
   as none does (a least size shrinking), so a later join changes nothing
   else; then the fuzz check stands as it is.
-- **Notifications: one of the same, not several** (Ben, 2026-10-30):
+- ~~**Notifications: one of the same, not several**~~ (Ben, 2026-10-30):
   "add a preferences -> notifications setting, enabled by default, that
   dedupes notifications so that if we get >1 active notification from
   the same app with the same text/content then we just show the latest
@@ -374,7 +374,8 @@ as they land (with the commit), add new ones as they come up.
   unread in the history) replaces it: the new one shown (and kept), the
   earlier one taken away, as if it had been updated in place (its count
   in Deskbar's dot unchanged, its fade starting anew). Off: each kept,
-  as now.
+  as now. Done (HACKING, Preferences ▸ Notifications): "Only the latest
+  of the same notification", in the History box; pinned ones stay.
 - **Preferences ▸ Performance: a supervisor that keeps the desktop
   responsive** (Ben, 2026-10-30): "a new preferences -> performance app,
   and the first setting should be one to do smart process prioritization

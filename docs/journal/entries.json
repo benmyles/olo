@@ -2374,5 +2374,11 @@
   "title": "Preferences \u25b8 Terminal: Coding Agents",
   "caption": "Tell coding agents about the repositories in their tab group (off by default): Claude Code and Codex in a tab of a group spanning repositories are told the group's name and its repositories and worktrees, through their own hooks.",
   "image": "2026-10-30/131141-preferences-terminal-coding-agents.png"
+ },
+ {
+  "time": "2026-10-30T13:16:12",
+  "title": "Notifications: only the latest of the same",
+  "caption": "Preferences \u25b8 Notifications \u25b8 History: Only the latest of the same notification (on by default): the same again from the same app takes the earlier one's place while it's still showing or unread.",
+  "image": "2026-10-30/131612-notifications-only-the-latest-of-the-same.png"
  }
 ]

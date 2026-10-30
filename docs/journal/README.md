@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Notifications: only the latest of the same
+
+*13:16* — Preferences ▸ Notifications ▸ History: Only the latest of the same notification (on by default): the same again from the same app takes the earlier one's place while it's still showing or unread.
+
+![Notifications: only the latest of the same](2026-10-30/131612-notifications-only-the-latest-of-the-same.png)
+
 ### Preferences ▸ Terminal: Coding Agents
 
 *13:11* — Tell coding agents about the repositories in their tab group (off by default): Claude Code and Codex in a tab of a group spanning repositories are told the group's name and its repositories and worktrees, through their own hooks.

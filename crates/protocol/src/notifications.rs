@@ -40,6 +40,10 @@ pub struct NotificationSettings {
     pub fade_minutes: u32,
     /// Deskbar shows how many notifications each app has beside its dot.
     pub deskbar_count: bool,
+    /// One arriving while another of the same app with the same title
+    /// and text is still active (a banner up, or unread in the history)
+    /// takes its place: the earlier one goes.
+    pub one_of_each: bool,
 }
 
 /// The History window's views (its View menu).
@@ -70,6 +74,7 @@ impl Default for NotificationSettings {
             fade: true,
             fade_minutes: 60,
             deskbar_count: false,
+            one_of_each: true,
         }
     }
 }

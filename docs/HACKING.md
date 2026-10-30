@@ -2016,7 +2016,11 @@ launcher lists them. The panel list Deskbar shows is
   durations (15 minutes to a week, and whatever the file says if it's
   none of them), a strip painting the fade from Now to gone (dimmed,
   not hidden, with fading off, so nothing moves) and a line saying what
-  happens to them.
+  happens to them; and "Only the latest of the same notification"
+  (`one_of_each`, on by default): olo-notifications, as one arrives (not
+  an app's own replacement), takes away any still active (a banner up,
+  or unread and not pinned in the history) from the same app with the
+  same title and text (`store::same_as`), telling the app it expired.
 * Backup (`backup.rs`) exports every Olo setting and piece of saved
   state (`config_dir()` and `state_dir()`, as `config/…` and `state/…`)
   into one `.olo-backup` file: a zstd tar with `manifest.json` first

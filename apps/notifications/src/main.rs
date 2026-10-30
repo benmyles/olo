@@ -233,6 +233,17 @@ impl Notifications {
 
     fn show(&mut self, cx: &mut Cx, mut note: Note) {
         self.refresh_settings();
+        // One of each (Preferences ▸ Notifications): the same again from
+        // the same app takes the earlier one's place.
+        if self.settings.one_of_each && !note.replaces {
+            let text = markup::plain(&note.body);
+            let earlier = store::same_as(&self.history, &self.cards.iter().map(|c| &c.note).collect::<Vec<_>>(), &note.app_name, &note.summary, &text, note.id);
+            for id in earlier {
+                self.take(cx, id);
+                self.history.retain(|e| e.id != id);
+                self.bus(|b| b.closed(id, Reason::Expired));
+            }
+        }
         let app = self.settings.app_via(&note.app_name, note.via.as_deref());
         let quiet = self.quiet();
         let never = self.settings.seconds == 0;

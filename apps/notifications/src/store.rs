@@ -348,12 +348,43 @@ impl History {
     }
 }
 
+/// The notifications still active (a banner up, or unread and not pinned
+/// in the history) that a new one, `id`, from `app` saying `summary` and
+/// `text` repeats (Preferences ▸ Notifications ▸ one of each): the
+/// earlier ones it takes the place of.
+pub fn same_as(history: &History, cards: &[&Note], app: &str, summary: &str, text: &str, id: u32) -> Vec<u32> {
+    let mut out: Vec<u32> = cards.iter().filter(|n| n.id != id && n.app_name == app && n.summary == summary && markup::plain(&n.body) == text).map(|n| n.id).collect();
+    for e in history.entries.iter().filter(|e| e.id != id && e.app == app && e.summary == summary && e.text == text && !e.pinned && (e.unread || e.shown)) {
+        if !out.contains(&e.id) {
+            out.push(e.id);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn entry(id: u32, summary: &str) -> Entry {
         Entry { id, app: "App".into(), summary: summary.into(), unread: true, live: true, ..Default::default() }
+    }
+
+    #[test]
+    fn one_of_each() {
+        let mut h = History::load(None);
+        let with = |id: u32, summary: &str, text: &str| Entry { text: text.into(), ..entry(id, summary) };
+        h.put(with(1, "Build done", "olo built"));
+        h.put(Entry { unread: false, ..with(2, "Build done", "olo built") });
+        h.put(Entry { pinned: true, ..with(3, "Build done", "olo built") });
+        h.put(with(4, "Build done", "other built"));
+        h.put(Entry { app: "Other".into(), ..with(5, "Build done", "olo built") });
+        // The unread one of the same app, title and text (not the one read
+        // and gone from the screen, the pinned one, another text or app).
+        assert_eq!(same_as(&h, &[], "App", "Build done", "olo built", 9), vec![1]);
+        // One read but still on screen counts; not itself.
+        h.get_mut(2).unwrap().shown = true;
+        assert_eq!(same_as(&h, &[], "App", "Build done", "olo built", 1), vec![2]);
     }
 
     #[test]

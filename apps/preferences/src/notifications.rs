@@ -188,6 +188,8 @@ pub fn ui(ui: &mut Ui, clock: &ClockSettings, st: &mut State) {
             "Kept until you clear them (the last 200)."
         };
         ui.add(StringView::new(note).dim(true).wrap(true));
+        ui.add(CheckBox::new(&mut s.one_of_each, "Only the latest of the same notification"));
+        ui.add(StringView::new("One like it again from the same app (its title and text) takes the earlier one's place while that's still showing or unread.").dim(true).wrap(true));
     });
     BBox::new("Deskbar").show(ui, |ui| {
         ui.add(CheckBox::new(&mut s.deskbar_count, "Show how many beside each app's dot"));

@@ -183,7 +183,7 @@ impl Panel {
             Panel::Integrations => (440, 240),
             Panel::Keyboard => (520, 736),
             Panel::Network => (460, 360),
-            Panel::Notifications => (440, 640),
+            Panel::Notifications => (440, 700),
             Panel::Power => (460, 366),
             Panel::ScreenSaver => (500, 400),
             Panel::Security => (420, 340),
