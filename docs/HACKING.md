@@ -4641,7 +4641,11 @@ on BeOS; Find moved to ⌥⌘Space) or a tap of the Super key (if chosen in
 the keyboard profile; Windows' does) has app_server start
 `olo-palette --toggle`; the running copy (it stays resident, found
 through `instance`) takes the toggle, so it opens at once from the second
-time on. It opens a full-screen transparent overlay layer that takes the
+time on. Re-executed by an upgrade, it starts again with the arguments it
+first had (`--toggle`, or a window menu's), so it saves a state
+(`App::save_state`) only to know it was: restored, it doesn't open
+itself (it did, on the first display, while app_server brought the
+others back). It opens a full-screen transparent overlay layer that takes the
 keyboard, on the display in use (the focused window's, else the
 pointer's), with the BeOS panel a fifth of the way down (over a soft
 shadow on device pixels, `style::soft_shadow`, as the shortcuts sheet's;

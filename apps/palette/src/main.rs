@@ -297,6 +297,15 @@ impl Palette {
 }
 
 impl App for Palette {
+    /// Nothing to keep but that this is a new version of a running copy:
+    /// it re-executes with the arguments it first started with
+    /// (`--toggle`, from the first ⌘Space), which must not open it again
+    /// by themselves (on whichever display app_server knew of first,
+    /// while an upgrade brought them back).
+    fn save_state(&mut self, _cx: &Cx) -> Option<String> {
+        Some("{}".into())
+    }
+
     fn ui(&mut self, cx: &mut Cx, window: olo_kit::WindowId, ui: &mut egui::Ui) {
         if let Some(shown) = self.sheet.as_mut().filter(|s| s.win == window) {
             if sheet::ui(shown, ui) {
@@ -572,14 +581,17 @@ fn main() {
             window_menu: None,
             sheet: None,
         };
-        if let Some(ask) = ask {
-            palette.ask_window_menu(cx, ask);
-        }
-        if toggle {
-            palette.toggle(cx);
-        }
-        if shortcuts {
-            palette.toggle_sheet(cx);
+        // Upgraded (`save_state`): its first launch's asks were done then.
+        if cx.restored_state().is_none() {
+            if let Some(ask) = ask {
+                palette.ask_window_menu(cx, ask);
+            }
+            if toggle {
+                palette.toggle(cx);
+            }
+            if shortcuts {
+                palette.toggle_sheet(cx);
+            }
         }
         palette
     });

@@ -225,14 +225,15 @@ as they land (with the commit), add new ones as they come up.
   (the saved frame from before Deskbar was back, or the tile laid out
   before Deskbar's own size is known) and check with `tsession reload`
   on a two-display auto-tiled session at every scale.
-- **Bug: after an upgrade, ⌘Space's palette opens on the first display**
-  (Ben, 2026-10-30): "every time after a hot upgrade the cmd+space
-  pallette seems to open on d0". The palette opens on the display the
-  person is at (the pointer's, else the active window's), upgrade or
-  not. Find what the palette goes by after a re-exec (an output it
-  remembers by an id the new app_server gives out anew, or no output
-  known yet when it first opens) and check after `tsession reload` on a
-  two-display session.
+- ~~**Bug: after an upgrade, ⌘Space's palette opens on the first display**~~
+  (Ben, 2026-10-30; fixed): "every time after a hot upgrade the cmd+space
+  pallette seems to open on d0". The resident palette was first started
+  by ⌘Space as `olo-palette --toggle`, and an upgrade re-executes an app
+  with its first arguments: it opened itself as it came back, before
+  any window had the focus again, so on the first display. Restored
+  now, it leaves its first launch's asks alone (`save_state`). Seen
+  headless after an upgrade (palette on D0 by itself, the focused window
+  on D1); with the fix nothing opens, and ⌘Space opens it on D1.
 - ~~**Bug: an app at a whole core after an upgrade**~~ (Ben, 2026-10-30; fixed):
   "the olo supervisor has detected that olo-passwords looks stuck using
   98% of a core for over 5mins". Its window was back on a hidden
