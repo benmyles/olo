@@ -97,10 +97,8 @@ impl ScreenCast {
         let get_u32 = |k: &str| options.get(k).and_then(|v| u32::try_from(v).ok());
         s.cursor = get_u32("cursor_mode").unwrap_or(HIDDEN);
         s.persist = get_u32("persist_mode").unwrap_or(0);
-        // ("olo", 1, the screen's connector), as Start handed it out.
-        s.restore = options.get("restore_data").and_then(|v| <(String, u32, OwnedValue)>::try_from(v.try_clone().ok()?).ok()).and_then(|(vendor, version, data)| {
-            (vendor == "olo" && version == 1).then(|| String::try_from(data).ok()).flatten()
-        });
+        s.restore = options.get("restore_data").and_then(restored);
+        tracing::info!(app = s.app, cursor = s.cursor, persist = s.persist, restore = ?s.restore, "portal: sources selected");
         (OK, Results::new())
     }
 
@@ -170,7 +168,7 @@ impl ScreenCast {
             && let [output] = chosen.as_slice()
         {
             results.insert("persist_mode".into(), value(persist.min(2)));
-            results.insert("restore_data".into(), value(("olo".to_owned(), 1u32, Value::from(output.clone()))));
+            results.insert("restore_data".into(), restore_data(output));
         }
         match self.sessions.lock().unwrap().get_mut(&session_handle) {
             Some(s) => s.shares = shares,
@@ -193,6 +191,30 @@ impl ScreenCast {
     #[zbus(property, name = "version")]
     fn version(&self) -> u32 {
         5
+    }
+}
+
+/// What Start handed out to restore a choice by: ("olo", 1, the screen's
+/// connector).
+fn restore_data(output: &str) -> OwnedValue {
+    value(("olo".to_owned(), 1u32, Value::from(output.to_owned())))
+}
+
+/// The screen a restore token (as the portal gives it back) chose.
+fn restored(v: &OwnedValue) -> Option<String> {
+    let Value::Structure(s) = &**v else { return None };
+    let [Value::Str(vendor), Value::U32(1), data] = s.fields() else { return None };
+    if vendor.as_str() != "olo" {
+        return None;
+    }
+    // The data is a variant: its value, however deep the portal wrapped it.
+    let mut data = data;
+    while let Value::Value(inner) = data {
+        data = inner;
+    }
+    match data {
+        Value::Str(s) => Some(s.to_string()),
+        _ => None,
     }
 }
 
@@ -258,5 +280,21 @@ pub fn close(conn: &zbus::blocking::Connection, session: &ObjectPath<'_>) {
     if let Ok(iface) = server.interface::<_, SessionObject>(session) {
         let _ = zbus::block_on(SessionObject::closed(iface.signal_emitter()));
         let _ = server.remove::<SessionObject, _>(session);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn restore_data_comes_back() {
+        assert_eq!(restored(&restore_data("DP-1")).as_deref(), Some("DP-1"));
+        // As the portal hands it back: the data a variant in a variant.
+        let wrapped = value(("olo".to_owned(), 1u32, Value::Value(Box::new(Value::from("eDP-1")))));
+        assert_eq!(restored(&wrapped).as_deref(), Some("eDP-1"));
+        // Another backend's, or another version's: not ours to restore.
+        assert_eq!(restored(&value(("gnome".to_owned(), 1u32, Value::from("DP-1")))), None);
+        assert_eq!(restored(&value(("olo".to_owned(), 2u32, Value::from("DP-1")))), None);
     }
 }

@@ -3101,7 +3101,9 @@ it shares (`App::busy`).
   when the token names a screen still there, or when the same app asked
   less than 5 s ago (Chromium opens several sessions for one share), and
   otherwise asks the picker, while an `impl.portal.Request` at the
-  request's handle lets the app cancel it. It answers with each stream's
+  request's handle lets the app cancel it. (Chrome opens a session for
+  its own dialog's preview and another once its Share is pressed,
+  passing the first's restore token: so one picker.) It answers with each stream's
   PipeWire node, position, size and connector (`id`). Screens only, for
   now (`AvailableSourceTypes` 1).
 - **The picker** (`picker.rs`): a fixed kit dialog over the asking

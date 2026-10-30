@@ -485,8 +485,12 @@ as they land (with the commit), add new ones as they come up.
     app_server's loop at 5K); shares survive an app_server reload and an
     upgrade waits for them; restore tokens and repeat requests answer
     without a picker. Checked end to end through xdg-desktop-portal with
-    `olo-portal share-test`. **Next**: Chrome's getDisplayMedia in a
-    sandbox Chrome; windows as sources; Deskbar's sharing item with Stop
+    `olo-portal share-test`, and with Chrome 156's getDisplayMedia (a
+    sandbox Chrome on a test session): Chrome's own dialog, Entire
+    Screen, Olo's picker, Chrome's live preview, Share (the second
+    session Chrome opens is answered by the restore token, no second
+    picker), 5120×2880 at the 30 fps asked for, and Chrome's Stop
+    sharing ends the stream. **Next**: windows as sources; Deskbar's sharing item with Stop
     (and Closed sent when a share ends from our side); dmabufs passed
     through to apps that take them; app scopes (which app is asking).
   - **Build** our own backend, `olo-portal`, started and supervised by
