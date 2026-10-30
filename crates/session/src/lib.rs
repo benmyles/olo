@@ -955,6 +955,10 @@ fn set_session_env(display: &str, ipc: &Path) {
         ("QT_QPA_PLATFORM", "wayland;xcb".into()),
         ("SDL_VIDEODRIVER", "wayland".into()),
         ("_JAVA_AWT_WM_NONREPARENTING", "1".into()),
+        // Olo's pointer, for programs that draw their own (app_server's
+        // xcursor.rs writes the theme).
+        ("XCURSOR_THEME", olo_xdg::CURSOR_THEME.into()),
+        ("XCURSOR_SIZE", olo_xdg::CURSOR_SIZE.to_string()),
     ];
     for (k, v) in vars {
         // SAFETY: single-threaded start-up.
@@ -976,7 +980,7 @@ fn set_session_env(display: &str, ipc: &Path) {
 /// Tell systemd and D-Bus activation about the session, so portals and
 /// services started on demand find our display.
 fn export_environment() {
-    let vars: Vec<(&str, String)> = ["WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "OLO_SOCKET"]
+    let vars: Vec<(&str, String)> = ["WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "OLO_SOCKET", "XCURSOR_THEME", "XCURSOR_SIZE"]
         .into_iter()
         .filter_map(|k| Some((k, std::env::var(k).ok()?)))
         .collect();

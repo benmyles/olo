@@ -6,7 +6,8 @@
 //!
 //! - GSettings `org.gnome.desktop.interface` (through dconf, which GTK and
 //!   the portals read): the colour scheme, the GTK theme (the look's,
-//!   `toolkit::gtk_theme_name`), the accent, Olo's fonts, and BeOS's
+//!   `toolkit::gtk_theme_name`), the accent, Olo's fonts hinted as the
+//!   kit hints them, Olo's pointer (`xcursor.rs`), and BeOS's
 //!   close-left, zoom-right title buttons in
 //!   `org.gnome.desktop.wm.preferences`.
 //! - The look's GTK 3 themes, light and dark, in `~/.local/share/themes`
@@ -112,16 +113,29 @@ pub fn publish(theme: String, colors: String, mode: ThemeMode) {
         // GTK sizes fonts in points (at 96 dpi), Olo in pixels.
         let font = |faces: &[&str]| format!("{} {}", faces[0], (fonts::PLAIN_SIZE * 0.75).round());
         let (ui, mono) = (font(fonts::UI), font(fonts::MONO));
+        // Olo's pointer for programs that draw their own (xcursor.rs).
+        if let Some(data) = &dirs.0
+            && let Err(e) = crate::xcursor::write_theme(&data.join("icons"))
+        {
+            warn!("could not write the cursor theme: {e}");
+        }
+        use olo_system::dconf::Setting::{Int, Str};
         let keys = [
-            ("/org/gnome/desktop/interface/color-scheme", scheme),
-            ("/org/gnome/desktop/interface/gtk-theme", gtk_theme.as_str()),
-            ("/org/gnome/desktop/interface/accent-color", "blue"),
-            ("/org/gnome/desktop/interface/font-name", ui.as_str()),
-            ("/org/gnome/desktop/interface/document-font-name", ui.as_str()),
-            ("/org/gnome/desktop/interface/monospace-font-name", mono.as_str()),
-            ("/org/gnome/desktop/wm/preferences/button-layout", "close:maximize"),
+            ("/org/gnome/desktop/interface/color-scheme", Str(scheme)),
+            ("/org/gnome/desktop/interface/gtk-theme", Str(gtk_theme.as_str())),
+            ("/org/gnome/desktop/interface/accent-color", Str("blue")),
+            ("/org/gnome/desktop/interface/font-name", Str(ui.as_str())),
+            ("/org/gnome/desktop/interface/document-font-name", Str(ui.as_str())),
+            ("/org/gnome/desktop/interface/monospace-font-name", Str(mono.as_str())),
+            // Text as the kit draws it: hinted vertically only, grey
+            // edges (style.rs).
+            ("/org/gnome/desktop/interface/font-hinting", Str("slight")),
+            ("/org/gnome/desktop/interface/font-antialiasing", Str("grayscale")),
+            ("/org/gnome/desktop/interface/cursor-theme", Str(crate::xcursor::THEME)),
+            ("/org/gnome/desktop/interface/cursor-size", Int(crate::xcursor::SIZE as i32)),
+            ("/org/gnome/desktop/wm/preferences/button-layout", Str("close:maximize")),
         ];
-        match olo_system::dconf::set_strings(&keys) {
+        match olo_system::dconf::set(&keys) {
             Ok(()) => {
                 if let Some(data) = &dirs.0 {
                     clear_old_themes(data, &theme, &colors);

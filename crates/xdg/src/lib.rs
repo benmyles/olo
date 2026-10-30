@@ -238,6 +238,12 @@ pub fn find_program(name: &str) -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// Olo's pointer as an XCursor theme, for programs that draw their own
+/// (app_server's `xcursor.rs` writes it; olo-session names it in
+/// `XCURSOR_THEME` and `XCURSOR_SIZE`): its name, and its size at 1×.
+pub const CURSOR_THEME: &str = "Olo";
+pub const CURSOR_SIZE: u32 = 22;
+
 /// What an Olo session tells programs it is (`XDG_CURRENT_DESKTOP`): Olo,
 /// then GNOME, whose settings it serves (`org.gnome.desktop.interface` in
 /// dconf, the GTK portals, GTK themes in Olo's colours). Programs that

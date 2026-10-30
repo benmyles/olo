@@ -7,10 +7,27 @@ use zvariant::{LE, Value, serialized::Context};
 
 use crate::{Result, bus};
 
+/// A key's value.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Setting<'a> {
+    Str(&'a str),
+    Int(i32),
+}
+
 /// Set string keys, e.g. ("/org/gnome/desktop/interface/color-scheme",
 /// "prefer-dark"), in one change.
 pub fn set_strings(keys: &[(&str, &str)]) -> Result<()> {
-    let changes: HashMap<&str, Option<Value<'_>>> = keys.iter().map(|(k, v)| (*k, Some(Value::from(*v)))).collect();
+    let keys: Vec<(&str, Setting)> = keys.iter().map(|(k, v)| (*k, Setting::Str(v))).collect();
+    set(&keys)
+}
+
+/// Set keys of any of the kinds [`Setting`] has, in one change.
+pub fn set(keys: &[(&str, Setting)]) -> Result<()> {
+    let value = |s: &Setting<'_>| match *s {
+        Setting::Str(v) => Value::from(v.to_owned()),
+        Setting::Int(v) => Value::from(v),
+    };
+    let changes: HashMap<&str, Option<Value<'_>>> = keys.iter().map(|(k, v)| (*k, Some(value(v)))).collect();
     let blob = changeset(&changes)?;
     let _tag: String = bus::call(
         bus::session()?,

@@ -1088,12 +1088,14 @@ as they land (with the commit), add new ones as they come up.
     progress through LauncherEntry, an Olo notification with Open and
     Open in Tracker, and Tracker shows a `.crdownload` under its final
     name with a bar and "3.1 of 10 MB", from `user.olo.expected_size`.)
-  - **Look**: light/dark and the accent from Olo's palette through the
-    Settings portal (`org.freedesktop.appearance.color-scheme`,
-    `accent-color`, contrast), GTK's and Qt's themes and fonts made from
-    Olo's palette and `style` (generated gtk.css, a Qt palette/kvantum
-    or qt6ct config), cursor theme and size, font hinting and scaling
-    to match the kit, Olo's icons as the icon theme.
+  - **Look** (mostly done: app_server's `toolkits.rs` publishes the
+    colour scheme and accent through GSettings, which the GTK portal's
+    Settings serves as `org.freedesktop.appearance`; GTK 3 and 4 themes
+    from Olo's palette, Qt through its GTK 3 platform theme; Olo's fonts;
+    2026-10-30: fonts hinted as the kit, slight and grayscale, and Olo's
+    Haiku cursors as an XCursor theme for programs that draw their own
+    pointer). Left: `contrast` (once Olo has a high-contrast look), text
+    scaling to match the kit, Olo's icons as the icon theme.
   - **Menus and shortcuts** (GlobalShortcuts done 2026-10-30: asked
     once per app, kept, held through upgrades): ~~the GlobalShortcuts portal~~ (Chrome's
     extensions' shortcuts, Discord's push-to-talk) bound through Olo's

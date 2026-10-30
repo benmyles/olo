@@ -4321,7 +4321,17 @@ Programs not built on the kit take Olo's look as far as their toolkit
 allows. `toolkits.rs` publishes the palette where GTK 3, GTK 4,
 libadwaita and Chrome read it (GSettings through dconf, the Olo and
 Olo-dark GTK themes, GTK 4's user stylesheet, BeOS's close-left,
-zoom-right title buttons); see its module comment.
+zoom-right title buttons); see its module comment. Fonts are hinted as
+the kit hints them (`font-hinting` slight, `font-antialiasing`
+grayscale). The pointer: programs asking for one by name
+(cursor-shape-v1: GTK 4, Chrome and Electron, Qt 6) get app_server's;
+for those that draw their own (GTK 3, SDL, Java), `xcursor.rs` writes
+the same Haiku cursors as an XCursor theme, `Olo` in
+`~/.local/share/icons/Olo/cursors` (every CSS cursor name at each scale
+from 1× to 4×, the old X names linked to them; written again only when
+its `X-Olo-Cursors` version is raised), named in `cursor-theme` and
+`cursor-size` (22, `olo_xdg::CURSOR_SIZE`) and in olo-session's
+`XCURSOR_THEME` and `XCURSOR_SIZE`.
 
 What an Olo session says it is (`XDG_CURRENT_DESKTOP`, set by
 olo-session, `olo_xdg::CURRENT_DESKTOP`) is `Olo:GNOME`: Olo, then the
