@@ -214,6 +214,74 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Preferences ▸ Performance: a supervisor that keeps the desktop
+  responsive** (Ben, 2026-10-30): "a new preferences -> performance app,
+  and the first setting should be one to do smart process prioritization
+  to ensure user responsiveness. the idea is that olo will run a
+  supervisor/watchdog that monitors processes and ensures that stuff like
+  compilers (e.g. rustc) or other background processes have low priotity
+  and that higher priority is given to the active window app in the
+  desktop, and absolute highest should be olo itself and the app server
+  etc. so that responsiveness is always optimal. and the supervisor
+  should watch for stuck processes that seem to be in a cpu spin loop for
+  a long time, or zombie processes, or processes that appear to have
+  memory leaks or are using such a large amount of memory that it is
+  impacting overall system performance or stability. everything that
+  this supervisor/watchdog does should be surfaced in activity monitor,
+  and if there is an urgent thing like stuck processes or processes
+  eating up all the memory then it should show the user a warning dialog
+  with a button to kill the processes if they want and it should also
+  have a button to go to the detail in activity monitor to see exactly
+  what the process is doing and the evidence we have. there should also
+  be an option to ignore a process so we don't keep getting warnings
+  about it if it's not an issue. make sure in the preferences that any
+  constants used in the hueristics/algorithm for detecting this stuff
+  are tuneable, but also make sure that our detection algorithms are
+  very smart/advanced don't just rely on one number/signal to detect
+  these things. this feature should default to off for now, and there
+  should be a tray icon to toggle it and right clicking the tray icon
+  should have options to go to details in activity monitor."
+  - **Where it runs**: a supervisor of olo-session's (a thread, or a
+    small `olo-supervisor` it starts and keeps), off by default
+    (Preferences ▸ Performance, a new panel, and a tray icon in Deskbar:
+    a click turns it on or off; its menu: Show in Activity Monitor,
+    what it has done lately, Performance Preferences…). Only the
+    person's own processes unless Activity Monitor's full access is
+    given; nothing it changes outlives it (priorities put back when
+    it's turned off or exits).
+  - **Priorities**: Olo itself highest (app_server, olo-session,
+    wlproxy, Deskbar, the portal, input), then the active window's app
+    and what it started (by its process tree and its scope, `scope.rs`),
+    then the other apps on screen, then background work lowest:
+    builds and compilers (rustc, cargo, cc, ld, clang, go, javac, node
+    bundlers…), indexers and batch jobs, known by name, by their parent
+    (a terminal's job not in front) and by behaviour (long CPU-bound
+    runs with no window). Through CPU weight and `nice`/`ioprio`
+    (`SCHED_IDLE`/`SCHED_BATCH` for builds), or cgroup `cpu.weight` and
+    `io.weight` on the apps' scopes where the session's systemd allows;
+    following focus changes within a frame of them, without blocking
+    anything.
+  - **Watchdog, from several signals each, not one number**: a stuck
+    spin loop (high CPU for long with no progress: no syscalls or I/O,
+    the same stack or instruction pointer sampled, no window updates or
+    an unresponsive window that doesn't answer pings); zombies (and the
+    parent not reaping them, for how long); memory leaks (resident and
+    anonymous memory growing steadily over a long window by a trend fit,
+    not one jump, against its own history, with swap and page-fault
+    rates); memory that threatens the system (its share of RAM, the
+    system's memory pressure, PSI stalls, swap thrash, how close to the
+    OOM killer). Each finding carries its evidence (the samples, the
+    trend, the pressure) and a confidence.
+  - **Tunable**: every threshold and window in those heuristics in
+    Preferences ▸ Performance (with sensible defaults and a reset), and
+    an ignore list (processes, by name or command).
+  - **Surfaced**: everything it does and finds in Activity Monitor (a
+    Supervisor section and each process's inspector: its priority and
+    why, its findings and their evidence, over time); an urgent finding
+    (stuck, eating memory) asks in an Olo alert naming the process and
+    why, with Stop Process, Show in Activity Monitor and Ignore This
+    Process. Agents read and drive all of it (the panel, the tray, the
+    alert, Activity Monitor).
 - **New windows always become the active window; an optional glow**
   (Ben, 2026-10-30): "please make sure that any time a new window opens
   for any reason it becomes the active window with focus. also, add a
