@@ -214,7 +214,7 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
-- **Bug: Quick Look's full screen spans displays** (Ben, 2026-10-30):
+- ~~**Bug: Quick Look's full screen spans displays**~~ (Ben, 2026-10-30; fixed):
   "there's a bug with quick look when i have multiple displays i hit
   space and correctly see the quick look preview then i hit f and it
   went to a different display well actually it kinda spanned displays
@@ -226,6 +226,12 @@ as they land (with the commit), add new ones as they come up.
   Find the cause (what Quick Look asks for, and how app_server takes a
   full-screen or zoom request with more than one display) and test it
   with a headless two-display session at every scale.
+  Cause: app_server took the size from the display the window touched
+  first but filled the space's first display with it, and the other
+  displays still drew the window where it was, now display-sized, over
+  their edge. Now it fills the display the window is on (else the
+  pointer's), and only that one draws it. Before and after journalled
+  (two headless displays; 1×, 1.5×, 2×).
 - ~~**Terminal: coding agents keep their tab's title current**~~ (Ben,
   2026-10-30; done: HACKING, Terminal ▸ Coding agents' tab titles): "terminal app should also make available to claude code
   and codex coding agents a tool to update the terminal title and inject

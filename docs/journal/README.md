@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Quick Look full screen on two displays: after
+
+*15:33* — F fills only the display the window is on; the other is untouched, and F again puts it back where it was. Same at 1.5× and 2×.
+
+![Quick Look full screen on two displays: after](2026-10-30/153348-quick-look-full-screen-on-two-displays-after.png)
+
+### Quick Look full screen on two displays: before
+
+*15:33* — Quick Look on the right display, F: it filled the left display (the first one), and on the right it hung off its old place at full-screen size.
+
+![Quick Look full screen on two displays: before](2026-10-30/153348-quick-look-full-screen-on-two-displays-before.png)
+
 ### Preferences ▸ Terminal: Let coding agents keep their tab's title current
 
 *15:27* — Off by default; the panel is taller for it.

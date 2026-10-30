@@ -526,8 +526,10 @@ impl SpaceElement for WindowElement {
         }
     }
     fn is_in_input_region(&self, point: &Point<f64, Logical>) -> bool {
-        // (Behind the window Focus shows: nothing, `shell::modes`.)
+        // (Behind the window Focus shows: nothing, `shell::modes`; one
+        // filling a display is found by that display alone.)
         !self.meta().covered.get()
+            && !self.meta().fullscreen.get()
             && (self.on_decoration(*point)
                 || !self.tab_only() && SpaceElement::is_in_input_region(&self.0, &(*point - self.client_render_offset().to_f64())))
     }

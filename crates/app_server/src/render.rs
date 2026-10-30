@@ -336,8 +336,9 @@ where
         let mut dim = crate::spotlight::dim(&output.name(), area);
         for w in space.elements().rev() {
             let (Some(bbox), Some(at)) = (space.element_bbox(w), space.element_location(w)) else { continue };
-            // Behind the window Focus shows (`shell::modes`).
-            if !region.overlaps(bbox) || w.meta().covered.get() {
+            // Behind the window Focus shows (`shell::modes`), or filling
+            // a display (drawn by that one).
+            if !region.overlaps(bbox) || w.meta().covered.get() || w.meta().fullscreen.get() {
                 continue;
             }
             if dim.as_ref().is_some_and(|(bright, _)| !bright.contains(&w.id())) {

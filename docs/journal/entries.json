@@ -2446,5 +2446,17 @@
   "title": "Preferences \u25b8 Terminal: Let coding agents keep their tab's title current",
   "caption": "Off by default; the panel is taller for it.",
   "image": "2026-10-30/152752-preferences-terminal-let-coding-agents-keep-thei.png"
+ },
+ {
+  "time": "2026-10-30T15:33:48",
+  "title": "Quick Look full screen on two displays: before",
+  "caption": "Quick Look on the right display, F: it filled the left display (the first one), and on the right it hung off its old place at full-screen size.",
+  "image": "2026-10-30/153348-quick-look-full-screen-on-two-displays-before.png"
+ },
+ {
+  "time": "2026-10-30T15:33:48",
+  "title": "Quick Look full screen on two displays: after",
+  "caption": "F fills only the display the window is on; the other is untouched, and F again puts it back where it was. Same at 1.5\u00d7 and 2\u00d7.",
+  "image": "2026-10-30/153348-quick-look-full-screen-on-two-displays-after.png"
  }
 ]

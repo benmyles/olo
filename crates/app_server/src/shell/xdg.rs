@@ -41,7 +41,7 @@ use crate::{
 
 use super::{
     FullscreenSurface, PointerMoveSurfaceGrab, PointerResizeSurfaceGrab, ResizeData, ResizeEdge, ResizeState,
-    SurfaceData, WindowElement, fullscreen_output_geometry, place_new_window,
+    SurfaceData, WindowElement, place_new_window,
 };
 
 impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
@@ -223,14 +223,20 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         // location and configure size here, but the surface should be rendered fullscreen
         // independently from its buffer size
         let wl_surface = surface.wl_surface();
+        let window = self.space.elements().find(|window| window.wl_surface().map(|s| &*s == wl_surface).unwrap_or(false)).cloned();
+        // The display asked for, else the one the window is on (where most
+        // of it is: Quick Look on the display it opened on), else the one
+        // the person is at. Its size and the display it fills are the same
+        // one's.
+        let output = wl_output
+            .as_ref()
+            .and_then(Output::from_resource)
+            .or_else(|| window.as_ref().and_then(|w| self.display_of(w)))
+            .or_else(|| self.space.output_under(self.pointer.current_location()).next().cloned())
+            .or_else(|| self.space.outputs().next().cloned());
+        let geometry = output.as_ref().and_then(|o| self.space.output_geometry(o));
 
-        let output_geometry = fullscreen_output_geometry(wl_surface, wl_output.as_ref(), &mut self.space);
-
-        if let Some(geometry) = output_geometry {
-            let output = wl_output
-                .as_ref()
-                .and_then(Output::from_resource)
-                .unwrap_or_else(|| self.space.outputs().next().unwrap().clone());
+        if let (Some(geometry), Some(output), Some(window)) = (geometry, output, window) {
             let client = match self.display_handle.get_client(wl_surface.id()) {
                 Ok(client) => client,
                 Err(_) => return,
@@ -238,11 +244,16 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
             for output in output.client_outputs(&client) {
                 wl_output = Some(output);
             }
-            let window = self
-                .space
-                .elements()
-                .find(|window| window.wl_surface().map(|s| &*s == wl_surface).unwrap_or(false))
-                .unwrap();
+            // Full screen on one display only: off any other it filled.
+            for o in self.space.outputs() {
+                if let Some(f) = o.user_data().get::<FullscreenSurface>()
+                    && f.get().is_some_and(|w| w == window)
+                    && *o != output
+                {
+                    f.clear();
+                }
+            }
+            window.meta().fullscreen.set(true);
 
             surface.with_pending_state(|state| {
                 state.states.set(xdg_toplevel::State::Fullscreen);
@@ -273,6 +284,9 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
             state.size = None;
             state.fullscreen_output.take()
         });
+        if let Some(w) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface.wl_surface())) {
+            w.meta().fullscreen.set(false);
+        }
         if let Some(output) = ret {
             let output = Output::from_resource(&output).unwrap();
             if let Some(fullscreen) = output.user_data().get::<FullscreenSurface>() {

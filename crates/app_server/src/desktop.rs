@@ -121,6 +121,10 @@ pub struct WindowMeta {
     pub focus_on: Cell<Option<u32>>,
     /// Behind the window Focus shows: not drawn, not under the pointer.
     pub covered: Cell<bool>,
+    /// Filling a display (`FullscreenSurface`): drawn by that display
+    /// alone, not also where it was on the others (its buffer the
+    /// display's size, it would spill onto them).
+    pub fullscreen: Cell<bool>,
     /// Zoomed by Focus, and unzoomed when it leaves it.
     pub focus_zoomed: Cell<bool>,
     /// Glowing as a new window (Preferences ▸ Appearance): since when,
@@ -176,6 +180,7 @@ impl WindowElement {
             tab_order: Cell::new(crate::shell::groups::next_tab_order()),
             focus_on: Cell::new(None),
             covered: Cell::new(false),
+            fullscreen: Cell::new(false),
             focus_zoomed: Cell::new(false),
             glow: Cell::new(None),
             glow_pieces: Default::default(),
