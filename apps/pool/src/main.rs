@@ -66,7 +66,8 @@ struct Waiting {
 
 struct PoolApp {
     shared: Arc<Shared>,
-    port: u16,
+    /// The clients' proxy's port (`intercept`).
+    proxy_port: u16,
     proxy: Proxy,
     win: Option<WindowId>,
     /// Which clients use the pool (None: not read yet).
@@ -146,7 +147,7 @@ impl PoolApp {
     /// Read which clients use the pool (their settings files) off the UI
     /// thread.
     fn read_clients(&self) {
-        let (proxy, port) = (self.proxy.clone(), self.port);
+        let (proxy, port) = (self.proxy.clone(), self.proxy_port);
         std::thread::spawn(move || proxy.send(Msg::Clients(PROVIDERS.map(|p| clients::enabled(p, port)))));
     }
 
@@ -154,7 +155,7 @@ impl PoolApp {
         if let Some(c) = self.clients.as_mut() {
             c[client_index(p)] = on;
         }
-        let (proxy, port) = (self.proxy.clone(), self.port);
+        let (proxy, port) = (self.proxy.clone(), self.proxy_port);
         std::thread::spawn(move || proxy.send(Msg::ClientSet(p, clients::set(p, on, port))));
     }
 
@@ -292,8 +293,8 @@ impl PoolApp {
             }
             None => {
                 let line = match busy {
-                    0 => format!("Listening on 127.0.0.1:{}", self.port),
-                    n => format!("Listening on 127.0.0.1:{} · {n} request{} now", self.port, if n == 1 { "" } else { "s" }),
+                    0 => format!("Listening on 127.0.0.1:{}", self.proxy_port),
+                    n => format!("Listening on 127.0.0.1:{} · {n} request{} now", self.proxy_port, if n == 1 { "" } else { "s" }),
                 };
                 ui.add(StringView::new(&line));
             }
@@ -837,10 +838,14 @@ fn main() -> std::process::ExitCode {
         instance::listen(APP_ID, proxy.clone());
         let to_ui = proxy.clone();
         let shared = Shared::launch(port, move || to_ui.send(Msg::Changed));
+        // Clients pointed at the pool the old way (an API endpoint of its
+        // own) go through its proxy instead, as on their own subscription.
+        let proxy_port = olo_token_pool::intercept::port();
+        std::thread::spawn(move || clients::migrate(proxy_port));
         let restored: Option<Value> = cx.restored_state().and_then(|s| serde_json::from_str(&s).ok());
         let mut app = PoolApp {
             shared,
-            port,
+            proxy_port,
             proxy,
             win: None,
             clients: None,

@@ -4,9 +4,12 @@
 //! sign-ins and reading quota as it goes. Usage is counted from the
 //! providers' reports; what is asked and answered is never kept.
 
+pub mod authority;
 pub mod clients;
 pub mod gateway;
 pub mod import;
+pub mod intercept;
+pub mod peer;
 pub mod model;
 pub mod schedule;
 pub mod store;

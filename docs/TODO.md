@@ -572,7 +572,7 @@ as they land (with the commit), add new ones as they come up.
     [Using portals with unsandboxed apps](https://blogs.gnome.org/ignapk/2025/06/04/using-portals-with-unsandboxed-apps/);
     [xdg-desktop-portal-wlr FAQ (Zoom)](https://github.com/emersion/xdg-desktop-portal-wlr/wiki/FAQ),
     [Zoom community thread](https://community.zoom.com/t5/Zoom-Meetings/Do-not-check-if-XDG-CURRENT-DESKTOP-is-gnome-for-wayland/m-p/108716).
-- **Token Pool: requests fail through it; make it truly transparent**
+- ~~**Token Pool: requests fail through it; make it truly transparent**~~
   (Ben, 2026-10-29): "please take a look at token pooler logs and figure
   out why requests started failing- i turned off token pooler for claude
   and then those same accounts worked fine going directly so something is
@@ -592,6 +592,16 @@ as they land (with the commit), add new ones as they come up.
   (an `HTTPS_PROXY` they honour, or Olo's own network layer), which
   picks the account and passes everything else through untouched, with
   the logs and heatmap as now.
+  Done (HACKING, "Token Pool"). The failures: account f919e666 on
+  2026-10-29 13:05–13:13, requests getting no answer at all (status 0,
+  28–116 s, no headers), while the quota reads hit 429 every minute: the
+  pool read each account's usage report twice a minute, and was itself
+  rate limited for it (now every five minutes, backing off on a 429).
+  And the proxy: Claude Code and Codex on their own subscriptions with
+  `HTTPS_PROXY` to the pool, which opens only their own connections to
+  the two hosts (from /proc), serves the model requests from the pool
+  and passes everything else through byte for byte; tested with the real
+  clients (`tests/clients.rs`).
 - ~~**Quick Look: TOML highlighted**~~ (Ben, 2026-10-30): "add support for
   toml syntax highlighting to quick look". The bundled grammars (syntect's
   defaults) have no TOML (or INI, which `.toml`, `.conf`, `.desktop` and

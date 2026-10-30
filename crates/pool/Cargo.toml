@@ -13,6 +13,8 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 tracing.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "json"] }
+zstd = "0.14"
+flate2 = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "http2"] }
 futures-util = "0.3"
 bytes = "1"
@@ -22,7 +24,13 @@ chacha20poly1305 = "0.11"
 getrandom = "0.3"
 zeroize = "1"
 toml_edit = "0.25"
+rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs", "pem"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std", "tls12", "logging"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["aws_lc_rs", "tls12", "logging"] }
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
 
 [dev-dependencies]
 tempfile = "3"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process"] }

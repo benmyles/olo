@@ -21,6 +21,9 @@ pub struct Upstreams {
     pub chatgpt: String,
     pub claude_oauth: String,
     pub codex_oauth: String,
+    /// Where the proxy sends what it passes through untouched, for every
+    /// host (a fake in tests); None: the host itself, over HTTPS.
+    pub origin: Option<String>,
 }
 
 impl Default for Upstreams {
@@ -31,6 +34,7 @@ impl Default for Upstreams {
             chatgpt: "https://chatgpt.com/backend-api".into(),
             claude_oauth: "https://platform.claude.com/v1/oauth/token".into(),
             codex_oauth: "https://auth.openai.com/oauth/token".into(),
+            origin: None,
         }
     }
 }
@@ -40,11 +44,21 @@ impl Upstreams {
     /// (`OLO_POOL_UPSTREAM`, for tests): its `/oauth` takes refreshes.
     pub fn from_env() -> Upstreams {
         match std::env::var("OLO_POOL_UPSTREAM") {
-            Ok(base) if !base.is_empty() => {
-                let base = base.trim_end_matches('/').to_owned();
-                Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth") }
-            }
+            Ok(base) if !base.is_empty() => Upstreams::fake(&base),
             _ => Upstreams::default(),
+        }
+    }
+
+    /// One fake standing in for every provider and host.
+    pub fn fake(base: &str) -> Upstreams {
+        let base = base.trim_end_matches('/').to_owned();
+        Upstreams {
+            claude: base.clone(),
+            codex: format!("{base}/backend-api/codex"),
+            chatgpt: format!("{base}/backend-api"),
+            claude_oauth: format!("{base}/oauth"),
+            codex_oauth: format!("{base}/oauth"),
+            origin: Some(base),
         }
     }
 }
@@ -80,6 +94,13 @@ pub enum Failure {
     Refused(String),
     /// Anything else (network, a server error): try again later.
     Other(String),
+}
+
+impl Failure {
+    /// The provider said to slow down (HTTP 429).
+    pub fn rate_limited(&self) -> bool {
+        matches!(self, Failure::Other(m) if m.contains("HTTP 429"))
+    }
 }
 
 impl std::fmt::Display for Failure {

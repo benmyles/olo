@@ -99,7 +99,7 @@ async fn drains_and_fails_over() {
     let seen: Seen = Default::default();
     let up_addr = serve(fake(seen.clone())).await;
     let base = format!("http://{up_addr}");
-    let up = Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth") };
+    let up = Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth"), origin: None };
     // "a" expires soonest but is out; "b" next but its sign-in is stale;
     // "c" last.
     let mut saved = Saved::default();
@@ -212,7 +212,7 @@ async fn redeems_a_credit_when_all_are_out() {
         )
         .route("/api/oauth/usage", get(|| async { axum::Json(json!({"five_hour": {"utilization": 1.0, "resets_at": now() + 18000}})) }));
     let base = format!("http://{}", serve(fake).await);
-    let up = Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth") };
+    let up = Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth"), origin: None };
     let mut saved = Saved::default();
     let mut a = account("a", 1, 100);
     a.org = Some("org-1".into());

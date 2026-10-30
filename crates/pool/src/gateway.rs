@@ -1,5 +1,8 @@
-//! The gateway: an HTTP server on loopback that Claude Code and Codex are
-//! pointed at. Each request goes to the account the scheduler picks, with
+//! The gateway: how a request is served from the pool, on loopback. Claude
+//! Code and Codex reach it through the proxy (`intercept`), as if talking
+//! to their own hosts; the gateway's own HTTP server (`/claude/v1/…`,
+//! `/codex/v1/…`, `/pool/status`) takes requests from clients pointed at
+//! it by address too. Each request goes to the account the scheduler picks, with
 //! that account's sign-in in place of the client's; a refused sign-in is
 //! refreshed once, a rejection for quota moves to the next account, both
 //! before any of the answer has been passed on. Anything else (a network
@@ -126,7 +129,19 @@ pub struct Shared {
     runtime: Mutex<Option<tokio::runtime::Handle>>,
     /// Make the sealed store when there's first something to keep.
     lazy: bool,
+    /// When each account's quota is next read on its own, and how long
+    /// the provider last made it wait (a 429 doubles it).
+    due: Mutex<HashMap<String, (i64, i64)>>,
+    /// When each account's reset credits are next read.
+    credits_due: Mutex<HashMap<String, i64>>,
 }
+
+/// How often an account's quota is read while nothing asks for it (its
+/// answers' headers keep it current meanwhile), and its credits.
+const SYNC_EVERY: i64 = 5 * 60;
+const CREDITS_EVERY: i64 = 30 * 60;
+/// The longest wait after the provider asks the pool to slow down.
+const SYNC_BACKOFF_MAX: i64 = 30 * 60;
 
 impl Shared {
     /// `store`: where changes are saved (None: kept in memory, for tests);
@@ -194,6 +209,8 @@ impl Shared {
             changed: Box::new(changed),
             runtime: Mutex::new(None),
             lazy,
+            due: Mutex::new(HashMap::new()),
+            credits_due: Mutex::new(HashMap::new()),
         });
         // Saving off every async and UI thread, a batch at a time.
         let weak = Arc::downgrade(&shared);
@@ -237,6 +254,24 @@ impl Shared {
     pub fn touch(&self) {
         let _ = self.save.send(());
         (self.changed)();
+    }
+
+    /// The HTTP client requests go out with.
+    pub fn client(&self) -> &reqwest::Client {
+        &self.client
+    }
+
+    /// Where a request to `host` the proxy passes through goes.
+    pub fn upstream_origin(&self, host: &str) -> String {
+        self.up.origin.clone().unwrap_or_else(|| format!("https://{host}"))
+    }
+
+    /// Whether the pool serves `provider`'s requests now: it has an
+    /// account for it that's on and signed in. (If not, the proxy lets
+    /// the client through on its own sign-in.)
+    pub fn serves(&self, provider: Provider) -> bool {
+        let p = self.pool.lock().unwrap();
+        p.loaded && p.saved.accounts.iter().any(|a| a.provider == provider && a.enabled && a.signed_out.is_none() && p.saved.credentials.contains_key(&a.id))
     }
 
     fn lock_for(&self, id: &str) -> Arc<tokio::sync::Mutex<()>> {
@@ -481,12 +516,21 @@ impl Shared {
         }
     }
 
-    /// Refresh sign-ins due within ten minutes and read every enabled
-    /// account's quota (or just `only`'s).
+    /// Refresh sign-ins due within ten minutes and read the quota of
+    /// every enabled account due a read (every `SYNC_EVERY`, longer after
+    /// the provider asks the pool to slow down), or just `only`'s, now.
     pub async fn sync(&self, only: Option<&str>) {
+        let t = now();
         let accounts: Vec<(String, Provider)> = {
             let p = self.pool.lock().unwrap();
-            p.saved.accounts.iter().filter(|a| only.is_none_or(|o| o == a.id) && (only.is_some() || a.enabled) && a.signed_out.is_none()).map(|a| (a.id.clone(), a.provider)).collect()
+            let due = self.due.lock().unwrap();
+            p.saved
+                .accounts
+                .iter()
+                .filter(|a| only.is_none_or(|o| o == a.id) && (only.is_some() || a.enabled) && a.signed_out.is_none())
+                .filter(|a| only.is_some() || due.get(&a.id).is_none_or(|(at, _)| *at <= t))
+                .map(|a| (a.id.clone(), a.provider))
+                .collect()
         };
         for (id, provider) in accounts {
             let Ok(cred) = self.fresh(&id, provider, false, 600).await else { continue };
@@ -497,9 +541,27 @@ impl Shared {
                 },
                 r => r,
             };
+            // The next read: later, and later again while the provider
+            // keeps asking the pool to slow down.
+            {
+                let mut due = self.due.lock().unwrap();
+                let backoff = due.get(&id).map_or(0, |d| d.1);
+                let next = match &report {
+                    Err(e) if e.rate_limited() => {
+                        let wait = (backoff * 2).clamp(SYNC_EVERY, SYNC_BACKOFF_MAX);
+                        (now() + wait, wait)
+                    }
+                    _ => (now() + SYNC_EVERY, 0),
+                };
+                due.insert(id.clone(), next);
+            }
+            let credits_due = only.is_some() || self.credits_due.lock().unwrap().get(&id).is_none_or(|&at| at <= now());
             let credits = match &report {
-                Ok(_) => self.fresh(&id, provider, false, 60).await.ok(),
-                Err(_) => None,
+                Ok(_) if credits_due => {
+                    self.credits_due.lock().unwrap().insert(id.clone(), now() + CREDITS_EVERY);
+                    self.fresh(&id, provider, false, 60).await.ok()
+                }
+                _ => None,
             };
             let credits = match credits {
                 Some(c) => upstream::credits(&self.client, &self.up, provider, &c).await.ok(),
@@ -556,6 +618,20 @@ pub fn start(shared: Arc<Shared>, port: u16) -> Result<(), String> {
                     }
                 };
                 let _ = tx.send(Ok(()));
+                // The clients' proxy, beside it.
+                let s = shared.clone();
+                let proxy = match crate::authority::Authority::open() {
+                    Ok(a) => {
+                        let serving: crate::intercept::Serving = Arc::new(move |p| s.serves(p));
+                        crate::intercept::serve(shared.clone(), Arc::new(a), crate::intercept::port(), serving, crate::intercept::Who::Clients).await.map(|_| ())
+                    }
+                    Err(e) => Err(format!("The pool’s certificate: {e}")),
+                };
+                if let Err(e) = proxy {
+                    tracing::warn!("pool: {e}");
+                    shared.pool.lock().unwrap().error = Some(e);
+                    shared.touch();
+                }
                 let s = shared.clone();
                 tokio::spawn(async move {
                     tokio::time::sleep(Duration::from_secs(2)).await;
@@ -659,6 +735,9 @@ fn forwarded(name: &str) -> bool {
             | "cookie"
             | "accept-encoding"
             | "origin"
+            // The client's own account's (another, through the proxy).
+            | "x-organization-uuid"
+            | "anthropic-organization-id"
     ) && !name.starts_with("x-olo-pool-")
 }
 
@@ -689,8 +768,42 @@ async fn proxy(ctx: Ctx, provider: Provider, rest: String, query: Option<String>
     if let Err(r) = local_only(&headers, ctx.port) {
         return *r;
     }
-    let s = ctx.shared;
-    let model = serde_json::from_slice::<Value>(&body).ok().and_then(|v| v["model"].as_str().map(str::to_owned)).unwrap_or_default();
+    serve(ctx.shared, provider, rest, query, method, headers, body).await
+}
+
+/// The most a request body is taken to be, decompressed, for a look
+/// inside (a model request is far smaller).
+const PLAIN_MAX: u64 = 64 << 20;
+
+/// A request body as sent, decompressed if its `content-encoding` says it
+/// is (zstd, gzip, deflate); empty if it can't be.
+fn plain<'a>(headers: &HeaderMap, body: &'a [u8]) -> std::borrow::Cow<'a, [u8]> {
+    use std::io::Read;
+    let coding = headers.get("content-encoding").and_then(|v| v.to_str().ok()).unwrap_or("").trim().to_ascii_lowercase();
+    let reader: Box<dyn Read + 'a> = match coding.as_str() {
+        "" | "identity" => return std::borrow::Cow::Borrowed(body),
+        "zstd" => match zstd::stream::read::Decoder::new(body) {
+            Ok(d) => Box::new(d),
+            Err(_) => return std::borrow::Cow::Owned(Vec::new()),
+        },
+        "gzip" | "x-gzip" => Box::new(flate2::read::GzDecoder::new(body)),
+        "deflate" => Box::new(flate2::read::ZlibDecoder::new(body)),
+        _ => return std::borrow::Cow::Owned(Vec::new()),
+    };
+    let mut out = Vec::new();
+    match reader.take(PLAIN_MAX).read_to_end(&mut out) {
+        Ok(_) => std::borrow::Cow::Owned(out),
+        Err(_) => std::borrow::Cow::Owned(Vec::new()),
+    }
+}
+
+/// Serve a model request from the pool: `rest` is its path after the
+/// provider's API base (`messages`, `responses`), from the gateway's own
+/// address or the proxy (`intercept`).
+pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Option<String>, method: Method, headers: HeaderMap, body: Bytes) -> Response {
+    // (The body goes on as it came; Codex compresses it on ChatGPT's
+    // backend.)
+    let model = serde_json::from_slice::<Value>(&plain(&headers, &body)).ok().and_then(|v| v["model"].as_str().map(str::to_owned)).unwrap_or_default();
     let family = model_family(&model);
     let url = {
         let base = match provider {

@@ -160,7 +160,7 @@ like pixel alignment is.
 | `crates/kit` | The Interface Kit: Wayland client platform, GPU rendering (egui on wgpu/Vulkan), menus, BeOS widgets, icons, `.desktop` entries. **All apps are built on it.** |
 | `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit (re-exported there): data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; Olo's apps first, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`), `find_program`, `spawn_detached`. No egui. |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
-| `crates/pool` | `olo-token-pool`: token pooling for Claude Code and Codex (see "Token Pool"): the accounts, their sealed store, the drain order and the loopback gateway. |
+| `crates/pool` | `olo-token-pool`: token pooling for Claude Code and Codex (see "Token Pool"): the accounts, their sealed store, the drain order, the loopback gateway and the clients' proxy (its own certificate authority, and which program is connecting, from /proc). |
 | `crates/ai` | `olo-ai`: how AI features reach their models (see "AI features"): `ask(&settings.ai, &feature, &Ask)` → the answer's JSON. Blocking; call off the UI thread. |
 | `crates/preview` | `olo-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Source code is coloured by syntect's bundled Sublime grammars plus Olo's own in `src/syntaxes` (TOML, with Cargo.lock and other lock files; INI, with systemd units, .desktop entries and git and editor configs), its scopes mapped onto the theme's token classes (`text::classify`). Spreadsheets and CSV (`table.rs`, sheets shared as `Arc`s): every column, scrolled sideways; the first row as the columns' names when it looks like a header (all text, with numbers or blanks below); number columns lined up on the right; a bar with Search (every word, in all columns or the one chosen beside it; Escape clears, then lets go) and how many rows show ("14 of 120 rows"); a header click sorts (again to reverse): numbers as numbers (a thousands comma, a currency sign or a percent allowed) before text, text naturally and without case ("file2" before "file10"), empty cells last, ties in the file's order. A sheet of more than 40,000 cells is searched and sorted on a worker (cancelled when asked again), the rows shown until then staying put and the bar saying "Searching…". Quick Look's own keys (Space, the arrows, F) stand aside while a field has the keyboard. Formatted documents (Markdown, and Word, OpenDocument and PowerPoint text) are blocks (`doc::Block`) set as a page by `rich.rs`: Markdown is CommonMark with GitHub's tables (their alignment, and styled cells), task lists, strikethrough and alerts (`> [!NOTE]` and the rest, a bar and title in the alert's hue), typographer's quotes and dashes; raw HTML keeps its text (`<br>` breaks, `<img>` is an image, comments go); code blocks are coloured by their fence's language (`text::highlight`, the text preview's grammars); pictures beside the document are shown (local files only, never fetched; a remote one's alt text shows instead), a texture pixel to a device pixel when they fit and from the halving that fits when they don't. The page is at most 680 points wide, centred, body text 13 points on a 20-point line, headings 26 to 13 points with room above them (rules under the first two), lists with hanging indents (bullets drawn, numbers lined up on the right, tasks as `check_box_look`s), inline code on a tint with a small no-break space either side (a line doesn't break between "(" and code), and links in the link hue, underlined under the pointer; they open with `olo_kit::open` (a relative one beside the document) and a `#heading` scrolls to it (GitHub's anchors). Blocks are laid out once for a width, scale, look and font generation: those in view first (at most 5 ms), the rest 3 ms a frame after, and a spinner shows over a part not laid out yet; only blocks in view are drawn. Agents read each block (`Heading`, `Paragraph`, `ListItem`, `Code`, `Table`, `Image`) and click its links (`Link`). Used by Tracker's Quick Look (`Preview::new`, images capped at 3200 px) and the Viewer (`Preview::new_zoomable`: full resolution up to the GPU texture limit, zoom and pan, `zoom` / `set_image_scale`). Images carry halved copies (`load::halvings`) because egui-wgpu makes no mipmaps. Video (`video.rs`, H.264 in mp4 or Matroska and AV1 in Matroska/WebM, with `media.playable` set): a worker demuxes and decodes (OpenH264, or rav1d through `olo_images::av1::Decoder`) up to six frames ahead, giving each picture the earliest outstanding presentation time (OpenH264 returns display order; it must be made with `Flush::NoFlush`, as the crate's default flush after every packet breaks B-frame reordering and every B-frame then fails), mp4 times shifted by the track's edit list; `Video::tick` shows frames against a clock that follows the sound's reported position when an `audio::Player` is playing it and runs alone otherwise (no sound server in tests, silent files). Seeks go to the key frame before the target (Matroska: scans back for one, further each time) and drop pictures before it; a paused seek still shows its frame. `OLO_SAMPLES=dir cargo test --release -p olo-preview video -- --ignored` checks seeking on test.mp4/mkv (one key frame) and gop.mp4/mkv (one a second), made with ffmpeg's testsrc2, plus av1.webm (svt-av1, Opus sound) and bframes.mp4 (any x264-made H.264 High clip with B-frames; `b_frames` checks every picture comes out, in order); `keeps_up` needs av1-1080.mkv (1080p AV1) to decode at well over 30 frames a second (72 on the M2 Max; the YUV to RGB fast path is fixed-point with tables, checked against the float path by `yuv_fast_path`). Audio decodes with symphonia plus `opus.rs` (opus-decoder, OpusHead parsing and pre-skip trim) for Ogg Opus. Picture editing (`edit.rs`): an `Editor` keeps a list of `Op`s (rotate, flip, crop, resize) with undo/redo and a saved mark, and a worker that loads the full picture once, applies new steps to its last result, sends `EditEvent::Shown` (downscaled for the screen, with halvings) for `Preview::show_edited`, and writes PNG, JPEG (quality 92), WebP, BMP, TIFF or GIF atomically (`write`, through a hidden `.name.saving` file); `edit::editable` says which files it can write back. `CropTool` is the crop overlay (drag a frame, move it or its edges; `Preview::image_rect` gives where the picture is drawn, `set_still` stops pan and zoom while it is up). The Viewer's Image menu and File ▸ Save / Save As / Revert use it; Quick Look's footer has Rotate Left / Right (⌘L / ⌘R), which save at once. |
 | `apps/<name>` | One crate per application, binary named `olo-<name>`. Picked up by the workspace glob. |
@@ -4552,7 +4552,37 @@ Several Claude and ChatGPT subscriptions shared by Claude Code and Codex
 on this computer, the way Token Pooler's Local mode does it on macOS
 (written fresh; no team or cloud gateway). The session's real shell
 runs `olo-pool --service` (no window; launching `olo-pool` again
-opens it), which listens on `127.0.0.1:17891` (`OLO_POOL_PORT`).
+opens it), which listens on `127.0.0.1:17891` (`OLO_POOL_PORT`), and
+on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
+
+- **Proxy** (`intercept.rs`, `authority.rs`, `peer.rs`): Claude Code
+  and Codex run as on their own subscriptions, signed in as they are
+  and talking to their own hosts, with `HTTPS_PROXY` set to the pool (no
+  API mode, no other endpoint). It takes CONNECTs only. A connection to
+  `api.anthropic.com` or `chatgpt.com` is opened with a certificate for
+  that host from the pool's own authority (`pool-ca.pem` and its key,
+  0600, in the config directory; name-constrained to those two hosts and
+  issuing nothing further, so even its key vouches for nothing else),
+  and on it the model requests (Claude's `/v1/messages…`, Codex's
+  `/backend-api/codex/…`: `intercept::pooled`) are served as the gateway
+  serves them; everything else on those hosts goes through untouched
+  (the client's own sign-in, every header and byte, its compression,
+  WebSockets and other upgrades joined byte for byte after the 101), and
+  every other host is a plain tunnel. Only the clients themselves are
+  opened: the program on the other end is read from /proc (the socket's
+  inode in `/proc/net/tcp`, the process holding it; `peer::program`),
+  and one that isn't Claude Code or Codex (a script one of them runs,
+  which inherits the setting but needn't trust the certificate) is
+  tunnelled, as without the pool. A model request asking for a WebSocket
+  (Codex's Responses) gets 426, Codex's sign to use HTTPS for the rest of
+  its session at once (other answers make it retry five times first):
+  the pool serves an answer at a time from the account best placed for
+  it. A provider with no usable account is tunnelled, so its client runs
+  on its own sign-in. A request body compressed (Codex's zstd on
+  ChatGPT's backend) is sent on as it came and read decompressed for its
+  model (`gateway::plain`). The client's own account's headers
+  (`x-organization-uuid`, `chatgpt-account-id` and the like) are the
+  pool account's, or none, on a pooled request.
 
 - **Gateway** (`gateway.rs`, axum): `/claude/v1/*` goes to Claude's API,
   `/codex/v1/*` to Codex's Responses API, each with the chosen account's
@@ -4573,7 +4603,9 @@ opens it), which listens on `127.0.0.1:17891` (`OLO_POOL_PORT`).
   replayed. With none left, a 429 shaped as the provider's with a
   `retry-after` of the soonest reset (the clients are set to retry ten
   times). `x-olo-pool-account` names who answered. `/pool/status`
-  is the state without sign-ins.
+  is the state without sign-ins. Its own `/claude/v1/*` and
+  `/codex/v1/*` remain for programs pointed at it by address (Olo's AI
+  features).
 - **Order** (`schedule.rs`): earliest-expiry-first. The account whose
   usable quota resets soonest serves, since quota that resets unused is
   lost; ties go to the older account, then the id. The account serving
@@ -4583,7 +4615,10 @@ opens it), which listens on `127.0.0.1:17891` (`OLO_POOL_PORT`).
 - **Usage** is read from the answers as they stream through: only
   `usage` objects (SSE lines containing "usage", or a JSON body's), the
   content discarded as it passes. Quota comes from every answer's
-  rate-limit headers and, each minute, the providers' usage reports.
+  rate-limit headers and the providers' usage reports, read for each
+  account every five minutes (`SYNC_EVERY`; reset credits every 30) and,
+  when a report answers 429, at twice the last wait up to 30 minutes:
+  reading them twice a minute per account was itself rate limited.
 - **Store** (`store.rs`): `pool.vault` in the config directory, sealed
   as Passwords seals its own (XChaCha20-Poly1305, header as AAD); the key
   is 32 random bytes in the login keyring (`OLO_POOL_KEYFILE`: a file
@@ -4601,12 +4636,17 @@ opens it), which listens on `127.0.0.1:17891` (`OLO_POOL_PORT`).
   login`, `codex login` with file storage), takes the result and deletes
   the directory. The same email again updates that account's sign-in.
 - **Clients** (`clients.rs`): "Claude Code uses the pool" sets
-  `ANTHROPIC_BASE_URL`, a placeholder `ANTHROPIC_AUTH_TOKEN`, an empty
-  `ANTHROPIC_API_KEY` and `CLAUDE_CODE_MAX_RETRIES` in Claude Code's
-  `settings.json` `env`; "Codex uses the pool" adds an `olo_pool`
-  model provider to `config.toml` (toml_edit, so comments stay) and
-  selects it. What was there before is kept in `pool-clients.json` and
-  put back when unchecked.
+  `HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS` (the authority's certificate,
+  added to what it trusts) and `NO_PROXY` (loopback) in Claude Code's
+  `settings.json` `env`; "Codex uses the pool" sets `HTTPS_PROXY`,
+  `SSL_CERT_FILE` (`pool-ca-bundle.pem`: the system's roots and the
+  authority's, since Codex's setting replaces the roots) and `NO_PROXY`
+  in Codex's `~/.codex/.env` (`CODEX_HOME`), which Codex reads as it
+  starts. What was there before is kept in `pool-clients.json` and put
+  back when unchecked. A client set up the old way (an endpoint of the
+  gateway's own: `ANTHROPIC_BASE_URL` and the rest, or an `olo_pool`
+  model provider in `config.toml`) is moved over as the pool starts
+  (`clients::migrate`).
 - **Reset credits** (some subscriptions get a few, to reset their quota
   early): read with each sync (Claude's `cedar_ember` grants in the
   usage report, `?cedar_ember=1`; ChatGPT's
@@ -4642,8 +4682,17 @@ opens it), which listens on `127.0.0.1:17891` (`OLO_POOL_PORT`).
   (`open`, each account's `recent`, and `served`, each try with its
   `outcome`).
 
-Tests: `cargo test -p olo-token-pool` runs the gateway against a fake
-provider. For the window, start a session with a fixture `--home`
+Tests: `cargo test -p olo-token-pool` runs the gateway and the proxy
+against a fake provider (`Upstreams::fake`, standing in for every host;
+`OLO_POOL_NO_TUNNEL` refuses tunnels, so nothing reaches the network).
+`tests/clients.rs` runs the real Claude Code and Codex through the proxy,
+signed in with fake subscriptions: `CLAUDE_BIN=$(readlink -f
+~/.local/bin/claude) CODEX_BIN=$(readlink -f ~/.local/bin/codex) cargo
+test -p olo-token-pool --test clients -- --ignored --nocapture`
+(`CODEX_LOG` for Codex's own log). Run it when either client updates:
+Codex 0.166 asks `/backend-api/wham/accounts/check` before a turn (the
+fake answers as ChatGPT does), and both must come out as their own
+programs to `peer`. For the window, start a session with a fixture `--home`
 holding fixture credentials, a fake upstream
 (`OLO_POOL_UPSTREAM=http://127.0.0.1:PORT`: its `/oauth` takes
 refreshes), `OLO_POOL_PORT` and `OLO_POOL_KEYFILE`, and a fake
