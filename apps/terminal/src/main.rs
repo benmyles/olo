@@ -63,14 +63,23 @@ fn pane_head_height(side: bool) -> f32 {
     if side { widgets::STRIP_SIDE_HEAD } else { widgets::STRIP_ROW }
 }
 
-/// The tab's folder (what its program, else its shell, is in, as its
-/// title shows) in Tracker.
+/// Show `t`'s title on its window, and its folder, if it changed.
+fn retitle(cx: &mut Cx, win: WindowId, t: &mut TermWin) {
+    if let Some(title) = t.retitle() {
+        cx.set_title(win, title);
+        // Shells retitle at each prompt, so after a `cd` too.
+        cx.set_path(win, tab_folder(t.tab()));
+    }
+}
+
 /// The folder a tab works in: its foreground program's, else its shell's.
 fn tab_folder(tab: &Tab) -> Option<PathBuf> {
     let shared = &tab.session.shared;
     shared.foreground().or(shared.shell()).and_then(|pid| std::fs::read_link(format!("/proc/{pid}/cwd")).ok())
 }
 
+/// The tab's folder (what its program, else its shell, is in, as its
+/// title shows) in Tracker.
 fn open_in_tracker(tab: &Tab) {
     if let Some(folder) = tab_folder(tab)
         && let Err(e) = olo_kit::tracker::open(&folder)
@@ -324,6 +333,22 @@ impl TermWin {
     fn new(tabs: Vec<Tab>, active: usize, snap_to: Option<(usize, usize)>, group: Option<Group>) -> TermWin {
         let active = active.min(tabs.len().saturating_sub(1));
         TermWin { active, tabs, glyphs: GlyphCache::default(), snap_to, shown_title: String::new(), focused: true, group, own_grouping: false, tiled: false }
+    }
+
+    /// Each tab's title, and the window's (the one showing, after its
+    /// group's name) if that changed.
+    fn retitle(&mut self) -> Option<String> {
+        for tab in self.tabs.iter_mut() {
+            tab.title = tab.current_title();
+        }
+        let title = match &self.group {
+            Some(g) => format!("{} — {}", g.name, self.tab().title),
+            None => self.tab().title.clone(),
+        };
+        (title != self.shown_title).then(|| {
+            self.shown_title = title.clone();
+            title
+        })
     }
 
     fn tab(&self) -> &Tab {
@@ -965,7 +990,7 @@ impl Terminal {
             t.select(i);
             cx.redraw(win);
         }
-        let TermWin { tabs, active, group, .. } = &mut **t;
+        let TermWin { tabs, active, .. } = &mut **t;
         if let Some(target) = &out.open {
             links::open(target);
         }
@@ -988,21 +1013,7 @@ impl Terminal {
                 tab.bell = None;
             }
         }
-        // Titles: each tab's, and the window's is the one showing (after
-        // its group's name).
-        for tab in tabs.iter_mut() {
-            tab.title = tab.current_title();
-        }
-        let title = match group {
-            Some(g) => format!("{} — {}", g.name, tabs[*active].title),
-            None => tabs[*active].title.clone(),
-        };
-        if title != t.shown_title {
-            t.shown_title = title.clone();
-            cx.set_title(win, title);
-            // Shells retitle at each prompt, so after a `cd` too.
-            cx.set_path(win, tab_folder(t.tab()));
-        }
+        retitle(cx, win, t);
         if let Some(pos) = out.context_menu {
             let has_selection = t.tab().session.has_selection();
             let menu = Menu::new("")
@@ -2067,6 +2078,11 @@ impl App for Terminal {
             }
             TermEvent::Title(title) => {
                 tab.session.title = title;
+                // At once, not at its next frame: a window not shown (behind
+                // another in its tab group, covered) is only let draw once a
+                // second, and its tab (an agent's status in the title) would
+                // lag that much.
+                retitle(cx, win, t);
                 cx.redraw(win);
             }
             TermEvent::Bell => {
