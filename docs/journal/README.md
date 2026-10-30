@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Terminal: tab groups down the side
+
+*21:17* — Down the side, each group's chip heads its tabs with a bar of its colour beside them.
+
+![Terminal: tab groups down the side](2026-10-29/211733-terminal-tab-groups-down-the-side.png)
+
+### Terminal: tab groups in a window
+
+*21:17* — Several groups per window, as a browser's: each run led by a chip with its name in its colour and a line of it over its tabs. Tabs join and leave by dragging; a chip drags its whole group; a tab or group dragged out of the strip becomes a window under the pointer.
+
+![Terminal: tab groups in a window](2026-10-29/211731-terminal-tab-groups-in-a-window.png)
+
 ### Preferences ▸ Terminal (dark)
 
 *18:06* — The same panel in dark mode.

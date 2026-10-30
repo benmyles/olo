@@ -2098,5 +2098,17 @@
   "title": "Preferences \u25b8 Terminal (dark)",
   "caption": "The same panel in dark mode.",
   "image": "2026-10-29/180617-preferences-terminal-dark.png"
+ },
+ {
+  "time": "2026-10-29T21:17:31",
+  "title": "Terminal: tab groups in a window",
+  "caption": "Several groups per window, as a browser's: each run led by a chip with its name in its colour and a line of it over its tabs. Tabs join and leave by dragging; a chip drags its whole group; a tab or group dragged out of the strip becomes a window under the pointer.",
+  "image": "2026-10-29/211731-terminal-tab-groups-in-a-window.png"
+ },
+ {
+  "time": "2026-10-29T21:17:33",
+  "title": "Terminal: tab groups down the side",
+  "caption": "Down the side, each group's chip heads its tabs with a bar of its colour beside them.",
+  "image": "2026-10-29/211733-terminal-tab-groups-down-the-side.png"
  }
 ]
