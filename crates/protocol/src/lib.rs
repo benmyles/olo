@@ -745,11 +745,16 @@ pub struct AiSettings {
     pub use_pool: bool,
     /// Smart Tiling: the model arranges the windows on the screen.
     pub smart_tiling: AiFeature,
+    /// Agent Screens: how much of each screen's history (its actions and
+    /// the frames it drew) is kept, in megabytes, and for how many days
+    /// (0: for ever).
+    pub screen_history_mb: u32,
+    pub screen_history_days: u32,
 }
 
 impl Default for AiSettings {
     fn default() -> Self {
-        AiSettings { use_pool: true, smart_tiling: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "medium".into() } }
+        AiSettings { use_pool: true, smart_tiling: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "medium".into() }, screen_history_mb: 512, screen_history_days: 30 }
     }
 }
 

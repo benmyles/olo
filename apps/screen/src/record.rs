@@ -6,7 +6,7 @@
 //! from the frame before, zstd-compressed, with a whole frame every 30 s
 //! (a keyframe, to start playing from). Frames go in segments of five
 //! minutes, `frames-START.olof` in the history's folder, the oldest
-//! dropped past `MAX_BYTES`.
+//! dropped past the limits in Preferences ▸ AI (`history::limits`).
 //!
 //! A segment is `MAGIC`, then records: a little-endian u32 length and
 //! that many bytes: when (u64 ms), the frame's width and height (u32),
@@ -30,8 +30,6 @@ const IDLE: Duration = Duration::from_secs(1);
 const BUSY_FOR: Duration = Duration::from_secs(5);
 const KEY_EVERY: Duration = Duration::from_secs(30);
 const SEGMENT_MS: u64 = 5 * 60 * 1000;
-/// The most a screen's frames take on disk.
-const MAX_BYTES: u64 = 512 << 20;
 
 /// A whole frame: its size and RGBA rows.
 #[derive(Debug, Clone, PartialEq)]
@@ -219,6 +217,7 @@ impl<'a> Player<'a> {
 /// Keeps a screen's frames: each one looked at, its changes written.
 struct Writer {
     dir: PathBuf,
+    max_bytes: u64,
     file: Option<(std::fs::File, u64)>,
     last: Option<Frame>,
     last_key: Option<Instant>,
@@ -271,11 +270,23 @@ impl Writer {
         let size = |p: &Path| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
         let mut total: u64 = segs.iter().map(|p| size(p)).sum();
         for p in &segs[..segs.len().saturating_sub(1)] {
-            if total <= MAX_BYTES {
+            if total <= self.max_bytes {
                 break;
             }
             total -= size(p);
             let _ = std::fs::remove_file(p);
+        }
+    }
+}
+
+/// Drop the segments in `dir` that ended before `cutoff` (ms): each
+/// ends where the next begins.
+pub fn prune(dir: &Path, cutoff: u64) {
+    let segs = segments_in(dir);
+    let start = |p: &Path| p.file_stem().and_then(|s| s.to_str()).and_then(|s| s.strip_prefix("frames-")).and_then(|s| s.parse::<u64>().ok());
+    for pair in segs.windows(2) {
+        if start(&pair[1]).is_some_and(|next| next < cutoff) {
+            let _ = std::fs::remove_file(&pair[0]);
         }
     }
 }
@@ -286,7 +297,10 @@ pub fn run(name: &str) -> Result<(), String> {
     let picture = screens::dir().join("views").join(format!("record-{name}.rgba"));
     let _ = std::fs::create_dir_all(picture.parent().unwrap());
     let actions = history::dir(name).join("actions.jsonl");
-    let mut w = Writer { dir: history::dir(name), file: None, last: None, last_key: None };
+    // The limits in Preferences, and what is past them already gone.
+    let (max_bytes, max_age) = history::limits(Some(&screen));
+    history::prune(max_age);
+    let mut w = Writer { dir: history::dir(name), max_bytes, file: None, last: None, last_key: None };
     let mut failures = 0;
     loop {
         let began = Instant::now();
@@ -329,7 +343,7 @@ mod tests {
     #[test]
     fn keeps_what_changed_and_plays_it_back() {
         let dir = tempdir();
-        let mut w = Writer { dir: dir.clone(), file: None, last: None, last_key: None };
+        let mut w = Writer { dir: dir.clone(), max_bytes: 512 << 20, file: None, last: None, last_key: None };
         let a = frame(200, 130, 10);
         w.add(a.clone(), 1_000).unwrap();
         // One pixel in the second tile row: only that tile goes.

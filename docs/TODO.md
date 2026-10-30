@@ -982,7 +982,7 @@ as they land (with the commit), add new ones as they come up.
   child's own scroll and zoom), clipped to it, nested frames in turn.
   `click`, `set` and `wait` then work inside them as they do on the
   page. HACKING, "Chrome's widget tree, for agents".
-- **Agent Screens: each screen's history, replays, videos and stats**
+- ~~**Agent Screens: each screen's history, replays, videos and stats**~~
   (Ben): Agent Screens keeps, for each screen, what was done on it:
   every action (`click`, `type`, `key`, `invoke`, `drag`, `run`, … with
   what it matched and where, timed, from the requests app_server already
@@ -1011,8 +1011,8 @@ as they land (with the commit), add new ones as they come up.
   (`replay.rs`), and MP4 export for agents (`history NAME --export`,
   `export.rs`), and Export Video… in the window (a worker with progress
   and Cancel), the stats in the window and the list by last use
-  (stopped screens with a history too). Still to do: the limits in
-  Preferences (now 8 MB of actions and 512 MB of frames a screen).
+  (stopped screens with a history too), and the limits in Preferences ▸
+  AI (size and age).
 - **Other programs feel like Olo's own: every integration point**
   (Ben, 2026-10-29): "is there a way where we can make chrome (and any
   gtk / qt apps) better integrate with olo, e.g. replacing their file

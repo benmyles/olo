@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Agent Screens: History and Replay
+
+*02:40* — Each agent screen keeps what was done on it and the frames it drew. History lists the actions (searchable), shows the screen as it was at the one chosen, and plays it back in time with them: clicks as rings, keys as captions, quiet stretches skipped. Export Video… makes it an MP4 in process. Stopped screens' histories stay listed, by last use; how much is kept is in Preferences ▸ AI.
+
+![Agent Screens: History and Replay](2026-10-30/024031-agent-screens-history-and-replay.png)
+
 ### Deskbar: a dot for apps with notifications
 
 *01:44* — An application with notifications unread has a quiet dot at the right of its Deskbar row, in the colour the history marks unread ones with (not an alarm's red); a new one arriving shakes it gently side to side, unless Do Not Disturb is on. Agents read the row's value, "has notifications".

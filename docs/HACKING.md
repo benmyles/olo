@@ -4054,6 +4054,12 @@ where it went (`Replay::start_export`). The list has every screen
 running and every one stopped with a history kept, by last use
 (`viewer::rows`, read on a worker; a stopped one says when, and has only
 its History), and History's second line sums it (`history::stats`).
+How much is kept, and how long, is Preferences ▸ AI's Agent Screens
+(`AiSettings::screen_history_mb`, `screen_history_days`; 512 MB a screen
+for a month): `history::limits` asks the person's app_server, else the
+screen's own, and each screen's recorder applies them as it starts
+(`history::prune`: actions and frame segments older than that go, and
+histories left empty; segments past the size, oldest first).
 
 Input that plays out over time is paced, a batch per IPC request with
 waits between (`Screen::input_paced`): `drag` presses, moves in steps

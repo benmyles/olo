@@ -2206,5 +2206,11 @@
   "title": "Deskbar: a dot for apps with notifications",
   "caption": "An application with notifications unread has a quiet dot at the right of its Deskbar row, in the colour the history marks unread ones with (not an alarm's red); a new one arriving shakes it gently side to side, unless Do Not Disturb is on. Agents read the row's value, \"has notifications\".",
   "image": "2026-10-30/014422-deskbar-a-dot-for-apps-with-notifications.png"
+ },
+ {
+  "time": "2026-10-30T02:40:31",
+  "title": "Agent Screens: History and Replay",
+  "caption": "Each agent screen keeps what was done on it and the frames it drew. History lists the actions (searchable), shows the screen as it was at the one chosen, and plays it back in time with them: clicks as rings, keys as captions, quiet stretches skipped. Export Video\u2026 makes it an MP4 in process. Stopped screens' histories stay listed, by last use; how much is kept is in Preferences \u25b8 AI.",
+  "image": "2026-10-30/024031-agent-screens-history-and-replay.png"
  }
 ]

@@ -21,7 +21,24 @@ pub fn ui(ui: &mut Ui, s: &mut Settings) {
         feature(ui, "smart-tiling", &mut s.ai.smart_tiling, "Arrange windows with a model");
         ui.add(StringView::new(&how).dim(true).wrap(true));
     });
+    BBox::new("Agent Screens").show(ui, |ui| {
+        ui.add(StringView::new("Each agent screen keeps what was done on it and the frames it drew, to replay or export as a video. The oldest goes first.").dim(true).wrap(true));
+        let mut size = HISTORY_MB.iter().position(|&(mb, _)| mb == s.ai.screen_history_mb).unwrap_or(2);
+        let sizes: Vec<&str> = HISTORY_MB.iter().map(|(_, n)| *n).collect();
+        if ui.add(MenuField::new("screen-history-size", &mut size, &sizes).label("Keep up to:").divider(94.0)).changed() {
+            s.ai.screen_history_mb = HISTORY_MB[size].0;
+        }
+        let mut age = HISTORY_DAYS.iter().position(|&(d, _)| d == s.ai.screen_history_days).unwrap_or(2);
+        let ages: Vec<&str> = HISTORY_DAYS.iter().map(|(_, n)| *n).collect();
+        if ui.add(MenuField::new("screen-history-age", &mut age, &ages).label("For:").divider(94.0)).changed() {
+            s.ai.screen_history_days = HISTORY_DAYS[age].0;
+        }
+    });
 }
+
+/// How much of each agent screen's history to keep, and for how long.
+const HISTORY_MB: [(u32, &str); 5] = [(128, "128 MB a screen"), (256, "256 MB a screen"), (512, "512 MB a screen"), (1024, "1 GB a screen"), (2048, "2 GB a screen")];
+const HISTORY_DAYS: [(u32, &str); 5] = [(1, "A day"), (7, "A week"), (30, "A month"), (90, "Three months"), (0, "For ever")];
 
 /// A feature's switch, model and effort.
 fn feature(ui: &mut Ui, id: &str, f: &mut AiFeature, label: &str) {

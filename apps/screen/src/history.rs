@@ -132,6 +132,39 @@ pub fn clear(name: &str) -> Result<(), String> {
     }
 }
 
+/// How much of each screen's history to keep (bytes) and for how long
+/// (ms; None: for ever): Preferences ▸ AI as the person's session has it,
+/// else the screen's own copy, else 512 MB for 30 days.
+pub fn limits(screen: Option<&crate::screens::Screen>) -> (u64, Option<u64>) {
+    use olo_protocol::{Client, Reply, Request};
+    let ask = |c: Option<Client>| match c.map(|mut c| c.request(&Request::GetSettings)) {
+        Some(Ok(Reply::Settings { settings })) => Some(settings.ai),
+        _ => None,
+    };
+    let ai = ask(Client::connect().ok()).or_else(|| screen.and_then(|s| ask(Client::connect_to(&s.olo_socket).ok()))).unwrap_or_default();
+    let days = u64::from(ai.screen_history_days);
+    ((u64::from(ai.screen_history_mb.max(16))) << 20, (days > 0).then_some(days * 86_400_000))
+}
+
+/// Drop what is older than `max_age` from every screen's history, and
+/// the histories left with nothing.
+pub fn prune(max_age: Option<u64>) {
+    let Some(age) = max_age else { return };
+    let cutoff = now_ms().saturating_sub(age);
+    for name in names() {
+        let all = read(&name);
+        let keep: Vec<&Action> = all.iter().filter(|a| a.at >= cutoff).collect();
+        if keep.len() != all.len() {
+            let text: String = keep.iter().filter_map(|a| serde_json::to_string(a).ok()).map(|l| l + "\n").collect();
+            let _ = std::fs::write(actions_path(&name), text);
+        }
+        crate::record::prune(&dir(&name), cutoff);
+        if keep.is_empty() {
+            let _ = clear(&name);
+        }
+    }
+}
+
 /// The screens with a history kept.
 pub fn names() -> Vec<String> {
     let mut v: Vec<String> = std::fs::read_dir(olo_xdg::state_dir().join("screens"))
