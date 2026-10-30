@@ -1,6 +1,8 @@
 //! The portal backend on D-Bus: `org.freedesktop.impl.portal.desktop.olo`,
 //! which xdg-desktop-portal calls for `org.freedesktop.portal.ScreenCast`
-//! (and Inhibit: `inhibit.rs`) when `olo-portals.conf` names us for it. An app's share is a session:
+//! (and Inhibit, `inhibit.rs`, Screenshot, `shot.rs`, and Access, the
+//! permission dialog, `access.rs`) when `olo-portals.conf` names us for
+//! it. An app's share is a session:
 //! CreateSession makes it (an `impl.portal.Session` object at the handle
 //! the portal chose, closed by it or by us), SelectSources says what the
 //! app wants, and Start asks the person (the picker, `picker.rs`, unless a
@@ -41,6 +43,8 @@ const REPEAT: Duration = Duration::from_secs(5);
 /// What the UI (the picker) is asked from here.
 pub enum ToUi {
     Pick(picker::Ask),
+    /// A permission to ask (the Access portal).
+    Access(crate::access::Ask),
     /// The app gave up on the request (its handle): close its picker.
     Cancel(String),
     /// A session ended (an upgrade may have waited for it: `App::busy`).
@@ -296,11 +300,11 @@ impl SessionObject {
     }
 }
 
-/// `org.freedesktop.impl.portal.Request`: the picker, while it is up; the
-/// app giving up closes it.
-struct RequestObject {
-    handle: String,
-    to_ui: Arc<dyn Fn(ToUi) + Send + Sync>,
+/// `org.freedesktop.impl.portal.Request`: a picker or dialog, while it is
+/// up; the app giving up closes it.
+pub struct RequestObject {
+    pub handle: String,
+    pub to_ui: Arc<dyn Fn(ToUi) + Send + Sync>,
 }
 
 #[zbus::interface(name = "org.freedesktop.impl.portal.Request")]
@@ -320,7 +324,8 @@ pub fn serve(address: Option<&str>, to_ui: impl Fn(ToUi) + Send + Sync + 'static
     let cast = ScreenCast { sessions: Arc::default(), to_ui: Arc::new(to_ui), last: Arc::default() };
     // Nothing is shared yet (a file a crashed portal left goes).
     publish(&HashMap::new());
-    let conn = builder.serve_at(PATH, cast)?.serve_at(PATH, crate::inhibit::Inhibit)?.build()?;
+    let access = crate::access::Access { to_ui: cast.to_ui.clone() };
+    let conn = builder.serve_at(PATH, cast)?.serve_at(PATH, crate::inhibit::Inhibit)?.serve_at(PATH, crate::shot::Screenshot)?.serve_at(PATH, access)?.build()?;
     let flags = zbus::fdo::RequestNameFlags::DoNotQueue.into();
     match conn.request_name_with_flags(NAME, flags)? {
         zbus::fdo::RequestNameReply::PrimaryOwner | zbus::fdo::RequestNameReply::AlreadyOwner => {}

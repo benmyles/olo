@@ -36,7 +36,8 @@ After=graphical-session-pre.target
 
 /// GTK's backend for what it has (its Settings read the GSettings
 /// app_server writes: colour scheme, accent, fonts); the keyring for
-/// secrets, as on GNOME; ours for screen sharing and keeping awake.
+/// secrets, as on GNOME; ours for screen sharing, screenshots, keeping
+/// awake and the permission dialogs other portals ask through.
 const PORTALS: &str = "\
 # Written by olo-session: the desktop portals for Olo.
 [preferred]
@@ -44,6 +45,8 @@ default=gtk
 org.freedesktop.impl.portal.Secret=gnome-keyring
 org.freedesktop.impl.portal.ScreenCast=olo
 org.freedesktop.impl.portal.Inhibit=olo
+org.freedesktop.impl.portal.Screenshot=olo
+org.freedesktop.impl.portal.Access=olo
 ";
 
 /// Olo's backend (olo-portal, which olo-session runs), for
@@ -52,7 +55,7 @@ const OLO_PORTAL: &str = "\
 # Written by olo-session: Olo's portal backend (olo-portal).
 [portal]
 DBusName=org.freedesktop.impl.portal.desktop.olo
-Interfaces=org.freedesktop.impl.portal.ScreenCast;org.freedesktop.impl.portal.Inhibit;
+Interfaces=org.freedesktop.impl.portal.ScreenCast;org.freedesktop.impl.portal.Inhibit;org.freedesktop.impl.portal.Screenshot;org.freedesktop.impl.portal.Access;
 ";
 
 fn config_home() -> Option<PathBuf> {

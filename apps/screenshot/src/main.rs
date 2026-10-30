@@ -483,10 +483,14 @@ fn silent(window: bool, window_id: Option<olo_protocol::WindowId>) -> std::proce
 }
 
 /// Saved with no window: say where, and put that on the clipboard, held
-/// until something else is copied.
+/// until something else is copied (not with `--for-app`: the Screenshot
+/// portal's, which hands the file to the app that asked).
 fn saved(path: &Path) -> std::process::ExitCode {
     let path = path.display().to_string();
     println!("{path}");
+    if std::env::args().any(|a| a == "--for-app") {
+        return std::process::ExitCode::SUCCESS;
+    }
     if let Err(e) = olo_kit::clipboard::hold(olo_kit::clipboard::text(&path)) {
         eprintln!("olo-screenshot: couldn't copy where it went: {e}");
     }

@@ -21,11 +21,13 @@ use std::collections::HashMap;
 
 use olo_kit::{App, Cx, WindowId, egui, instance};
 
+mod access;
 mod capture;
 mod client;
 mod inhibit;
 mod picker;
 mod portal;
+mod shot;
 mod stream;
 
 const APP_ID: &str = "olo.portal";
@@ -109,6 +111,8 @@ pub fn app_name(app_id: &str) -> String {
 
 struct Portal {
     pickers: HashMap<WindowId, picker::Picker>,
+    /// Permission dialogs (the Access portal).
+    dialogs: HashMap<WindowId, access::Dialog>,
     /// Thumbnails come before their window has drawn: kept until it does.
     thumbs: Vec<picker::Thumb>,
     /// The bus, once served (to end sessions from here).
@@ -130,10 +134,23 @@ impl Portal {
         }
         cx.close_window(win);
     }
+
+    fn close_dialog(&mut self, cx: &mut Cx, win: WindowId, granted: bool) {
+        if let Some(d) = self.dialogs.remove(&win) {
+            d.answer(granted);
+        }
+        cx.close_window(win);
+    }
 }
 
 impl App for Portal {
     fn ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
+        if let Some(d) = self.dialogs.get_mut(&win) {
+            if let Some(granted) = d.ui(ui, win) {
+                self.close_dialog(cx, win, granted);
+            }
+            return;
+        }
         let Some(p) = self.pickers.get_mut(&win) else { return };
         for t in std::mem::take(&mut self.thumbs) {
             if t.window == win {
@@ -148,12 +165,16 @@ impl App for Portal {
     }
 
     fn close_requested(&mut self, cx: &mut Cx, win: WindowId) {
-        self.close(cx, win, None);
+        if self.dialogs.contains_key(&win) {
+            self.close_dialog(cx, win, false);
+        } else {
+            self.close(cx, win, None);
+        }
     }
 
     /// Sharing (or asking to): an upgrade would cut it off, so it waits.
     fn busy(&self) -> bool {
-        stream::live() > 0 || !self.pickers.is_empty()
+        stream::live() > 0 || !self.pickers.is_empty() || !self.dialogs.is_empty()
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
@@ -192,10 +213,18 @@ impl App for Portal {
             }
             portal::ToUi::Ended => {}
             portal::ToUi::Lost(session) => self.end(session),
+            portal::ToUi::Access(ask) => {
+                let (win, d) = access::Dialog::open(cx, ask);
+                self.dialogs.insert(win, d);
+            }
             portal::ToUi::Cancel(request) => {
                 let wins: Vec<WindowId> = self.pickers.iter().filter(|(_, p)| p.request() == request).map(|(w, _)| *w).collect();
                 for win in wins {
                     self.close(cx, win, None);
+                }
+                let wins: Vec<WindowId> = self.dialogs.iter().filter(|(_, d)| d.request() == request).map(|(w, _)| *w).collect();
+                for win in wins {
+                    self.close_dialog(cx, win, false);
                 }
             }
         }
@@ -295,7 +324,7 @@ fn main() -> std::process::ExitCode {
                 }
             })
             .expect("thread");
-        Portal { pickers: HashMap::new(), thumbs: Vec::new(), bus }
+        Portal { pickers: HashMap::new(), dialogs: HashMap::new(), thumbs: Vec::new(), bus }
     });
     std::process::ExitCode::SUCCESS
 }

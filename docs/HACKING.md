@@ -3172,6 +3172,18 @@ it shares (`App::busy`).
   them). A window share reconnects after a reload by its id, or one with
   the same app id and title (windows come back with new ids).
 
+- **Screenshots** (`shot.rs`): the Screenshot portal has Olo's
+  Screenshot app take the picture (`olo-screenshot --silent --for-app`,
+  or `--region` when the app wants the person to choose; `--for-app`
+  only prints the path, leaving the clipboard alone), so it lands where
+  ⌘⇧3's do, as the person set it, and its `file://` URI goes back.
+  PickColor isn't offered yet.
+- **Permission dialogs** (`access.rs`): the Access portal, which the
+  others ask through (xdg-desktop-portal only offers Screenshot when
+  there is one): a BAlert over the asking window with the portal's icon
+  where Olo's theme has one (else the padlock), its title, subtitle and
+  body, its choices (a checkbox for a yes/no, a pop-up menu for several)
+  and its deny and grant buttons (Escape denies).
 - **Keeping awake** (`inhibit.rs`): olo-portal also answers the Inhibit
   portal (an inhibition of idle or suspend lasts until the portal closes
   its request) and serves `org.freedesktop.ScreenSaver` (Inhibit gives a

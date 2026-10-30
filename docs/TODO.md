@@ -1078,7 +1078,9 @@ as they land (with the commit), add new ones as they come up.
     one), Email, Account, Wallpaper, Screenshot (with screen sharing),
     Camera/Location as Olo asks permission, Secret (Passwords as the
     Secret Service, so Chrome's and Electron's stored secrets live in
-    Olo's keychain), and Trash (to Tracker's Trash).
+    Olo's keychain), and Trash (to Tracker's Trash). Done 2026-10-30:
+    Screenshot (Olo's Screenshot app, region when interactive; not yet
+    PickColor) and Access (the permission dialog, as Olo's BAlert).
   - **Drag and drop and the clipboard**: files dragged from Chrome,
     Slack and GTK into Tracker and back, with the right actions and
     formats (`text/uri-list`, images, `x-special/gnome-copied-files`).

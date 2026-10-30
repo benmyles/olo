@@ -2230,5 +2230,11 @@
   "title": "Share Screen: screens and windows",
   "caption": "The screen-sharing picker offers windows too (what the app asked for): Screens and Windows, each a live thumbnail; a window is shared as only what its client draws, at its own size.",
   "image": "2026-10-30/041521-share-screen-screens-and-windows.png"
+ },
+ {
+  "time": "2026-10-30T04:32:34",
+  "title": "Permission: the portals' dialog as an Olo alert",
+  "caption": "olo-portal answers the Access portal, which other portals ask permission through (a camera, a screenshot): Olo's BAlert with the portal's icon, its question and its choices.",
+  "image": "2026-10-30/043234-permission-the-portals-dialog-as-an-olo-alert.png"
  }
 ]

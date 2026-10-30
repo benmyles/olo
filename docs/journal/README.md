@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Permission: the portals' dialog as an Olo alert
+
+*04:32* — olo-portal answers the Access portal, which other portals ask permission through (a camera, a screenshot): Olo's BAlert with the portal's icon, its question and its choices.
+
+![Permission: the portals' dialog as an Olo alert](2026-10-30/043234-permission-the-portals-dialog-as-an-olo-alert.png)
+
 ### Share Screen: screens and windows
 
 *04:15* — The screen-sharing picker offers windows too (what the app asked for): Screens and Windows, each a live thumbnail; a window is shared as only what its client draws, at its own size.
