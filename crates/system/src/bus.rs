@@ -23,7 +23,10 @@ pub fn session() -> Result<&'static Connection> {
     if let Some(c) = SESSION.get() {
         return Ok(c);
     }
-    let c = Connection::session()?;
+    // What is asked of the session bus (the keyring, dconf, the
+    // environment) answers at once; nothing waits forever on a service
+    // that never does.
+    let c = zbus::blocking::connection::Builder::session()?.method_timeout(std::time::Duration::from_secs(10)).build()?;
     Ok(SESSION.get_or_init(|| c))
 }
 

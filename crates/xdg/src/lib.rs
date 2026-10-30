@@ -203,6 +203,24 @@ fn render_svg(path: &Path, px: u32) -> Option<Image> {
     Some(Image { width: px, height: px, rgba: pixmap.take(), premultiplied: true })
 }
 
+/// Whether Olo's own set (the Classic one, which every theme draws in
+/// full) has an icon named `name`: our own take on another program's
+/// (`google-chrome`, `slack`). Read once.
+pub fn has_own_icon(name: &str) -> bool {
+    static NAMES: std::sync::OnceLock<std::collections::HashSet<String>> = std::sync::OnceLock::new();
+    NAMES
+        .get_or_init(|| {
+            let mut names = std::collections::HashSet::new();
+            for dir in data_dirs() {
+                if let Ok(rd) = std::fs::read_dir(dir.join("icons/48")) {
+                    names.extend(rd.flatten().filter_map(|f| Some(f.path().file_stem()?.to_string_lossy().into_owned())));
+                }
+            }
+            names
+        })
+        .contains(name)
+}
+
 /// The icon name a desktop app declares (`Icon=` in its .desktop file),
 /// looked up by app id / desktop file name.
 pub fn icon_for_app(app_id: &str) -> Option<String> {

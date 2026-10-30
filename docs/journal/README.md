@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Icons: Integrations, GitHub, Chrome and Slack
+
+*22:46* — Olo's own takes on GitHub's, Chrome's and Slack's marks (and Integrations' puzzle pieces), in every theme; Chrome's and Slack's replace the icons those programs ship wherever Olo shows them.
+
+![Icons: Integrations, GitHub, Chrome and Slack](2026-10-29/224613-icons-integrations-github-chrome-and-slack.png)
+
+### Preferences: Integrations, dark
+
+*22:46*
+
+![Preferences: Integrations, dark](2026-10-29/224613-preferences-integrations-dark.png)
+
+### Preferences: Integrations
+
+*22:46* — A panel for every service Olo works with, each with its own icon: GitHub shows whom Olo is connected as and from where (a token kept by Olo, GH_TOKEN, or the GitHub CLI's sign-in, now read from the login keyring too), and connects with a token. Terminal's pull requests use it.
+
+![Preferences: Integrations](2026-10-29/224612-preferences-integrations.png)
+
 ### Terminal: quiet group chips along the top
 
 *21:56* — Along the top, a group's chip is a dot of its colour and its name in quiet bold, no pill, with the line of its colour over its tabs; pane heads take the group's colour too. (1×, night.)

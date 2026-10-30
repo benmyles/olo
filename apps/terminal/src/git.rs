@@ -438,35 +438,31 @@ fn api() -> String {
     std::env::var("OLO_GITHUB_API").unwrap_or_else(|_| "https://api.github.com".into()).trim_end_matches('/').to_owned()
 }
 
-/// A token for GitHub: `GH_TOKEN` or `GITHUB_TOKEN`, else the one the
-/// GitHub CLI keeps in its `hosts.yml` (read, not run), if it does.
+/// A token for GitHub (`olo_system::github`: Olo's, `GH_TOKEN`, the
+/// GitHub CLI's). Looked for once a minute at most (the keyring is a
+/// D-Bus call).
 fn token() -> Option<String> {
-    for var in ["GH_TOKEN", "GITHUB_TOKEN"] {
-        if let Ok(t) = std::env::var(var)
-            && !t.trim().is_empty()
-        {
-            return Some(t.trim().to_owned());
-        }
+    static KNOWN: Mutex<Option<(Instant, Option<String>)>> = Mutex::new(None);
+    let mut known = KNOWN.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((at, t)) = known.as_ref()
+        && at.elapsed() < Duration::from_secs(60)
+    {
+        return t.clone();
     }
-    let home = std::env::var_os("HOME")?;
-    let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(&home).join(".config"));
-    hosts_token(&std::fs::read_to_string(config.join("gh/hosts.yml")).ok()?)
+    let t = olo_system::github::token().map(|(t, _)| t);
+    *known = Some((Instant::now(), t.clone()));
+    SIGNED_IN.store(if t.is_some() { 1 } else { 2 }, std::sync::atomic::Ordering::Relaxed);
+    t
 }
 
-/// `oauth_token` under `github.com:` in the GitHub CLI's hosts.yml.
-fn hosts_token(text: &str) -> Option<String> {
-    let mut in_github = false;
-    for line in text.lines() {
-        if !line.starts_with(' ') && !line.starts_with('\t') {
-            in_github = line.trim_end().trim_end_matches(':') == "github.com";
-            continue;
-        }
-        if in_github && let Some(v) = line.trim().strip_prefix("oauth_token:") {
-            let v = v.trim().trim_matches(['"', '\'']);
-            return (!v.is_empty()).then(|| v.to_owned());
-        }
-    }
-    None
+/// Whether Olo has a GitHub sign-in, as last looked (0: not yet; 1: yes;
+/// 2: no), for menus (which can't wait on the keyring).
+static SIGNED_IN: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Known to have no GitHub sign-in (Preferences ▸ Integrations connects
+/// one).
+pub fn signed_out() -> bool {
+    SIGNED_IN.load(std::sync::atomic::Ordering::Relaxed) == 2
 }
 
 fn agent() -> ureq::Agent {
@@ -731,13 +727,6 @@ mod tests {
     fn encoded() {
         assert_eq!(encode("ben:fix/tabs+more&x"), "ben%3Afix%2Ftabs%2Bmore%26x");
         assert_eq!(encode("plain-name_1.2~"), "plain-name_1.2~");
-    }
-
-    #[test]
-    fn gh_hosts() {
-        let text = "github.com:\n    user: ben\n    oauth_token: gho_abc\n    git_protocol: ssh\nenterprise.example:\n    oauth_token: other\n";
-        assert_eq!(hosts_token(text).as_deref(), Some("gho_abc"));
-        assert_eq!(hosts_token("github.com:\n    user: ben\n"), None);
     }
 
     #[test]

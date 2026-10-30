@@ -666,6 +666,12 @@ as they land (with the commit), add new ones as they come up.
   Olo ▸ (an extension can't have two at the top). Checked in a test
   Chrome: the menu, a two-step sign-in filled through, a sign-in by
   hand as another account remembered for the profile.
+- **Passwords search and filters; rich search and filtering controls in
+  the kit, for Logs too** (Ben, 2026-10-29, while on Passwords): "while
+  you're doing stuff with passwords can you also make the passwords
+  search work better and add filtering. and add a full set of rich
+  search and filtering reusable controls we can use in the log viewer
+  too b/c right now the log viewer filtering/search is a mess".
 - ~~**Terminal: git repos, worktrees and GitHub**~~ (Ben; done: HACKING,
   Terminal "Repositories"; Preferences ▸ Terminal), native (no `git`
   or `gh` subprocesses):

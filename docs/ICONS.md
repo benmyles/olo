@@ -31,6 +31,14 @@ Composite icons (a document with a pencil, a folder with a magnifier) put
 the primary object at the back left and the modifier in front at the lower
 right, overlapping it by about a third.
 
+Other programs (Chrome, Slack) and the services in Preferences ▸
+Integrations (GitHub) get Olo's own take on their mark: the logo made an
+Olo object (a chunky coin or tile standing on the desk), drawn like any
+other icon, in every theme. One named as a program's desktop entry
+(`google-chrome`, `slack`) replaces the icon the program ships wherever
+Olo shows it (`olo_xdg::has_own_icon`, in `desktop_entry::parse`), even
+one the entry names by path.
+
 ## Requirements
 
 * **Model: `gpt-image-2.5-sunburst`, quality `high` (the maximum), 1024²,

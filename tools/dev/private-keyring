@@ -24,6 +24,9 @@ start)
     echo $! > "$DIR/bus.pid"
     for _ in $(seq 50); do [ -S "$DIR/bus" ] && break; sleep 0.1; done
     printf test | gnome-keyring-daemon --unlock --components=secrets --daemonize > "$DIR/keyring.env"
+    # The daemon claims org.freedesktop.secrets a moment after it starts.
+    for _ in $(seq 50); do [ -S "$DIR/run/keyring/control" ] && break; sleep 0.1; done
+    sleep 0.5
     echo "export DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"
     ;;
 stop)

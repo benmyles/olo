@@ -57,6 +57,12 @@ const NOTE_H: f32 = 2.0 * m::LABEL_ROW;
 const STATUS_H: f32 = m::LABEL_ROW + m::TIGHT + 14.0;
 const DIALOG_H: f32 = 2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + m::SPACING + NOTE_H + m::SPACING + STATUS_H + m::SPACING + m::CONTROL_HEIGHT;
 
+/// A tab in a repository on GitHub, with no sign-in to see its pull
+/// requests (private ones answer nothing without one).
+fn needs_github(tab: &Tab) -> bool {
+    tab.repo.as_ref().is_some_and(|r| !r.github.is_empty()) && git::signed_out()
+}
+
 /// The pull request for the branch `tab` is on, if GitHub has one.
 pub fn pr_of<'a>(prs: &'a HashMap<git::PrKey, git::Pr>, tab: &Tab) -> Option<&'a git::Pr> {
     let r = tab.repo.as_ref()?;
@@ -208,6 +214,8 @@ impl Terminal {
         }
         if let Some(pr) = pr {
             menu = menu.item(format!("Open Pull Request #{}", pr.number), format!("pr-open:{shell}"), None);
+        } else if needs_github(tab) {
+            menu = menu.separator().item("Connect GitHub for Pull Requests…", "github-connect", None);
         }
         if linked {
             menu = menu.item("Rename Worktree…", format!("worktree-rename:{shell}"), None).item("Remove Worktree…", format!("worktree-remove:{shell}"), None);
@@ -240,6 +248,7 @@ impl Terminal {
             .separator();
         match pr {
             Some(pr) => menu.item(format!("Open Pull Request #{}", pr.number), format!("pr-open:{shell}"), None),
+            None if needs_github(tab) => menu.item("Connect GitHub for Pull Requests…", "github-connect", None),
             None => menu.item("No Pull Request", "none", None).enabled(false),
         }
     }
@@ -265,6 +274,11 @@ impl Terminal {
                 let changes = git::changes(&r.here);
                 proxy.send(Ask { main: r.main, path: r.here, changes });
             });
+        } else if command == "github-connect" {
+            // Where every service is connected.
+            if let Err(e) = olo_kit::spawn_detached("olo-preferences integrations") {
+                tracing::warn!("couldn't open Preferences: {e}");
+            }
         } else if let Some((win, i)) = command.strip_prefix("pr-open:").and_then(|n| tab_of(self, n)) {
             if let Some(pr) = self.term(win).and_then(|t| pr_of(&self.prs, &t.tabs[i])) {
                 links::open(&links::Target::Url(pr.url.clone()));

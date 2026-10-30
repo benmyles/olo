@@ -15,6 +15,7 @@ mod backup;
 mod bluetooth;
 mod datetime;
 mod display;
+mod integrations;
 mod keyboard;
 mod network;
 mod notifications;

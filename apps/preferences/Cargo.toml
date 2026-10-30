@@ -18,5 +18,8 @@ serde_json.workspace = true
 tracing.workspace = true
 libc = "0.2"
 jiff = "0.2"
+# Integrations: asking GitHub who a token is.
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }
 tar = "0.4"
 zstd = "0.14"

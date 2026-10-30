@@ -8,7 +8,7 @@ use olo_kit::{
 };
 use olo_protocol::Settings;
 
-use crate::{Ctx, about, ai, appearance, backup, bluetooth, datetime, display, keyboard, network, notifications, power, screensaver, security, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces};
+use crate::{Ctx, about, ai, appearance, backup, bluetooth, datetime, display, integrations, keyboard, network, notifications, power, screensaver, security, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -19,6 +19,7 @@ pub enum Panel {
     Bluetooth,
     DateTime,
     Display,
+    Integrations,
     Keyboard,
     Network,
     Notifications,
@@ -45,6 +46,7 @@ impl Panel {
         Panel::Bluetooth,
         Panel::DateTime,
         Panel::Display,
+        Panel::Integrations,
         Panel::Keyboard,
         Panel::Network,
         Panel::Notifications,
@@ -76,6 +78,7 @@ impl Panel {
             "time" | "date" | "clock" | "date-time" => Some(Panel::DateTime),
             "passwords" | "privacy" => Some(Panel::Security),
             "smart-tiling" | "models" => Some(Panel::Ai),
+            "github" | "accounts" | "services" | "integration" => Some(Panel::Integrations),
             "theme" | "icons" | "icon-theme" => Some(Panel::Themes),
             "window" | "tiling" | "margins" | "gaps" | "windowing" | "windowing-mode" | "focus-mode" => Some(Panel::Windows),
             _ => None,
@@ -91,6 +94,7 @@ impl Panel {
             Panel::Bluetooth => "bluetooth",
             Panel::DateTime => "datetime",
             Panel::Display => "display",
+            Panel::Integrations => "integrations",
             Panel::Keyboard => "keyboard",
             Panel::Network => "network",
             Panel::Notifications => "notifications",
@@ -118,6 +122,7 @@ impl Panel {
             Panel::Bluetooth => "Bluetooth",
             Panel::DateTime => "Date & Time",
             Panel::Display => "Display",
+            Panel::Integrations => "Integrations",
             Panel::Keyboard => "Keyboard",
             Panel::Network => "Network",
             Panel::Notifications => "Notifications",
@@ -145,6 +150,7 @@ impl Panel {
             Panel::Bluetooth => "bluetooth",
             Panel::DateTime => "datetime",
             Panel::Display => "display",
+            Panel::Integrations => "integrations",
             Panel::Keyboard => "keyboard",
             Panel::Network => "network-prefs",
             Panel::Notifications => "notifications",
@@ -174,6 +180,7 @@ impl Panel {
             Panel::Bluetooth => (440, 340),
             Panel::DateTime => (460, 370),
             Panel::Display => (500, 490),
+            Panel::Integrations => (440, 240),
             Panel::Keyboard => (520, 736),
             Panel::Network => (460, 360),
             Panel::Notifications => (440, 540),
@@ -195,12 +202,12 @@ impl Panel {
     }
 
     pub fn needs_server(self) -> bool {
-        !matches!(self, Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Backup)
+        !matches!(self, Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Backup | Panel::Integrations)
     }
 
     /// Whether the panel has Defaults / Revert.
     fn resettable(self) -> bool {
-        !matches!(self, Panel::About | Panel::Display | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Backup)
+        !matches!(self, Panel::About | Panel::Display | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Backup | Panel::Integrations)
     }
 
     /// Put this panel's part of `settings` back to `from`.
@@ -247,7 +254,7 @@ impl Panel {
                 settings.appearance.colors = from.appearance.colors.clone();
                 settings.wallpaper = from.wallpaper.clone();
             }
-            Panel::Display | Panel::Backup | Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications => {}
+            Panel::Display | Panel::Backup | Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Integrations => {}
         }
     }
 }
@@ -269,6 +276,7 @@ pub enum State {
     Power(power::State),
     ScreenSaver(screensaver::State),
     About(about::State),
+    Integrations(Box<integrations::State>),
 }
 
 impl State {
@@ -288,6 +296,7 @@ impl State {
             Panel::Power => State::Power(Default::default()),
             Panel::ScreenSaver => State::ScreenSaver(Default::default()),
             Panel::About => State::About(about::State::new()),
+            Panel::Integrations => State::Integrations(Box::default()),
             _ => State::None,
         }
     }
@@ -326,6 +335,7 @@ pub fn ui(panel: Panel, state: &mut State, ui: &mut egui::Ui, ctx: Ctx<'_>) {
             (Panel::Windows, _) => windows::ui(ui, settings, outputs),
             (Panel::Workspaces, _) => workspaces::ui(ui, settings),
             (Panel::About, State::About(s)) => about::ui(ui, s),
+            (Panel::Integrations, State::Integrations(s)) => integrations::ui(ui, s),
             _ => {}
         }
     });

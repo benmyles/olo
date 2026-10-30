@@ -14,6 +14,7 @@ pub mod dconf;
 pub mod disks;
 pub mod env;
 pub mod fingerprint;
+pub mod github;
 pub mod edid;
 pub mod hid_monitor;
 pub mod keyring_prompt;

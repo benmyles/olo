@@ -39,6 +39,7 @@ pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
     ("bluetooth", "Bluetooth", "bluetooth"),
     ("datetime", "Date & Time", "datetime"),
     ("display", "Display", "display"),
+    ("integrations", "Integrations", "integrations"),
     ("keyboard", "Keyboard", "keyboard"),
     ("network", "Network", "network-prefs"),
     ("notifications", "Notifications", "notifications"),

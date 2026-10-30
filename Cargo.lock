@@ -4247,6 +4247,7 @@ dependencies = [
  "fontdb",
  "image",
  "libc",
+ "memchr",
  "memmap2",
  "olo-emoji",
  "olo-images",
@@ -4405,10 +4406,12 @@ dependencies = [
  "olo-protocol",
  "olo-screensavers",
  "olo-system",
+ "rustls",
  "serde",
  "serde_json",
  "tar",
  "tracing",
+ "ureq",
  "zstd",
 ]
 

@@ -1713,6 +1713,22 @@ launcher lists them. The panel list Deskbar shows is
   only when it would change something: implement `Panel::reset`.
 * New panel: add it to `Panel` (arg, title, icon, size, reset), write the
   module, add it to `PREFERENCE_PANELS`, journal it light and dark.
+* **Integrations** (`integrations.rs`) is where every service Olo works
+  with is connected, and only there: one box per service with its own
+  icon (the service's mark made an Olo object, drawn for every theme as
+  any icon), what Olo does with it, whom it is connected as and where
+  the sign-in came from, and connect / disconnect; everything that
+  touches the network or the keyring runs on a worker. An integration
+  that can't work without a sign-in says so where it would have shown
+  something and leads here. GitHub: `olo_system::github::token()` is
+  the token kept by Olo (Connect with a Token… asks GitHub who it is,
+  `GET /user`, and only then keeps it in the login keyring,
+  `application=olo service=github.com`), else `GH_TOKEN` /
+  `GITHUB_TOKEN`, else the GitHub CLI's, read and never run: in its
+  `hosts.yml`, else in the login keyring (`service=gh:github.com`,
+  username empty for the active account or the `user:` of hosts.yml;
+  `go-keyring-base64:` values decoded). Test the keyring parts with
+  `tools/dev/private-keyring` (`github::tests::tokens_from_a_keyring`).
 * Tracker (`tracker.rs`) sets `Settings::tracker` (the view new folder
   windows open in); its icon is Tracker's own, as in Haiku.
 * Terminal (`terminal.rs`) sets `Settings::terminal`: where New
@@ -3349,8 +3365,11 @@ in, its worktrees and local branches when `worktrees/*/HEAD`,
 * GitHub: another thread asks GitHub's API for the newest pull request
   from each branch the tabs are on (`origin`'s owner's branch, in
   `origin` and `upstream`, so a fork's is found), open ones first, and
-  its check runs; every minute with a token (`GH_TOKEN`, `GITHUB_TOKEN`,
-  or the GitHub CLI's `hosts.yml`, read, not run), every five without.
+  its check runs; every minute with a token (`olo_system::github`,
+  below), every five without (and then only public repositories answer:
+  a tab in a repository on GitHub gets **Connect GitHub for Pull
+  Requests…** in its menu and Tabs ▸ Repository, which opens Preferences
+  ▸ Integrations).
   The tab wears `style::pull_request_mark` as its strip badge (green
   open, grey draft, purple merged, red closed; the branch's commit
   filled green, red or orange as its checks pass, fail or run), its
@@ -4218,7 +4237,10 @@ computer, so the app, Chrome's extension and the palette never wait on
 byte, a 24-byte nonce and the JSON sealed with XChaCha20-Poly1305 (header
 as associated data), written whole and atomically (0600) after each
 change. The key is 32 random bytes in the login keyring
-(`olo_system::secrets`, a Secret Service client; PAM unlocks the
+(`olo_system::secrets`, a Secret Service client that first checks a
+keyring owns, or can start, `org.freedesktop.secrets`, so with none it
+answers "nothing" at once; the session bus's calls time out after 10 s;
+PAM unlocks the
 keyring at login, so Touch ID still opens Passwords). A store whose key is
 missing is never overwritten with a new one. `OLO_PASSWORDS_KEYFILE`
 keeps the key in a file instead; tsession sets it for every session, so

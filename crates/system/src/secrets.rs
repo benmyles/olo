@@ -47,9 +47,32 @@ fn run_prompt(conn: &Connection, prompt: &ObjectPath) -> Result<bool> {
     Ok(!dismissed)
 }
 
-/// The secret stored with exactly these attributes, if there is one.
+/// Whether a keyring serves the bus, or can be started on it.
+fn available(conn: &Connection) -> bool {
+    let ask = |method: &str, body: &dyn Fn() -> zbus::Result<bool>| body().unwrap_or_else(|e| {
+        tracing::debug!("secrets: {method}: {e}");
+        false
+    });
+    let owned = || -> zbus::Result<bool> {
+        conn.call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "NameHasOwner", &(DEST,))?.body().deserialize()
+    };
+    let activatable = || -> zbus::Result<bool> {
+        let names: Vec<String> = conn
+            .call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "ListActivatableNames", &())?
+            .body()
+            .deserialize()?;
+        Ok(names.iter().any(|n| n == DEST))
+    };
+    ask("NameHasOwner", &owned) || ask("ListActivatableNames", &activatable)
+}
+
+/// The secret stored with exactly these attributes, if there is one (none
+/// with no keyring).
 pub fn lookup(attributes: &[(&str, &str)]) -> Result<Option<Vec<u8>>> {
     let conn = bus::session()?;
+    if !available(conn) {
+        return Ok(None);
+    }
     let svc = service(conn)?;
     let attrs: HashMap<&str, &str> = attributes.iter().copied().collect();
     let (unlocked, locked): (Vec<OwnedObjectPath>, Vec<OwnedObjectPath>) = svc.call("SearchItems", &(attrs,))?;
@@ -74,6 +97,9 @@ pub fn lookup(attributes: &[(&str, &str)]) -> Result<Option<Vec<u8>>> {
 /// collection (the login keyring), replacing one with the same attributes.
 pub fn store(label: &str, attributes: &[(&str, &str)], secret: &[u8]) -> Result<()> {
     let conn = bus::session()?;
+    if !available(conn) {
+        return Err(zbus::Error::Failure("there is no keyring".into()));
+    }
     let svc = service(conn)?;
     let session = open_session(&svc)?;
     let alias: OwnedObjectPath = svc.call("ReadAlias", &("default",))?;
@@ -89,6 +115,26 @@ pub fn store(label: &str, attributes: &[(&str, &str)], secret: &[u8]) -> Result<
         return Err(zbus::Error::Failure("the keyring stayed locked".into()));
     }
     Ok(())
+}
+
+/// Delete every secret stored with these attributes; how many went.
+pub fn delete(attributes: &[(&str, &str)]) -> Result<usize> {
+    let conn = bus::session()?;
+    if !available(conn) {
+        return Ok(0);
+    }
+    let svc = service(conn)?;
+    let attrs: HashMap<&str, &str> = attributes.iter().copied().collect();
+    let (unlocked, locked): (Vec<OwnedObjectPath>, Vec<OwnedObjectPath>) = svc.call("SearchItems", &(attrs,))?;
+    let mut n = 0;
+    for path in unlocked.iter().chain(&locked) {
+        let item = Proxy::new(conn, DEST, path, ITEM)?;
+        let prompt: OwnedObjectPath = item.call("Delete", &())?;
+        if run_prompt(conn, &prompt)? {
+            n += 1;
+        }
+    }
+    Ok(n)
 }
 
 #[cfg(test)]

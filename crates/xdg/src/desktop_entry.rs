@@ -80,6 +80,11 @@ pub(crate) fn parse(path: &Path) -> Option<DesktopEntry> {
     if let Some(n) = localized_name {
         e.name = n;
     }
+    // Olo's own icon for a program it has one for (Chrome, Slack), over
+    // whatever the program ships.
+    if is_app && crate::has_own_icon(&e.id) {
+        e.icon = Some(e.id.clone());
+    }
     (is_app && !hidden && !e.name.is_empty()).then_some(e)
 }
 
@@ -163,5 +168,25 @@ impl DesktopEntry {
         };
         let cmd = if self.terminal { format!("olo-terminal -e {cmd}") } else { cmd };
         crate::spawn_detached(&cmd)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Olo's own icon wins over the one a program's entry names (Slack's
+    /// is a path into its install).
+    #[test]
+    fn own_icons_win() {
+        let dir = std::env::temp_dir().join(format!("olo-entry-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("slack.desktop");
+        std::fs::write(&p, "[Desktop Entry]\nType=Application\nName=Slack\nIcon=/opt/slack/slack.png\nStartupWMClass=Slack\n").unwrap();
+        assert_eq!(parse(&p).unwrap().icon.as_deref(), Some("slack"));
+        let q = dir.join("someapp.desktop");
+        std::fs::write(&q, "[Desktop Entry]\nType=Application\nName=Some App\nIcon=someapp\n").unwrap();
+        assert_eq!(parse(&q).unwrap().icon.as_deref(), Some("someapp"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
