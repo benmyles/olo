@@ -214,6 +214,17 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Terminal: "Tile All Tabs", a row per group** (Ben, 2026-10-30):
+  "change how the show all tabs option in terminal works. first, rename
+  it to "Tile All Tabs" and then i want you to make it so that each group
+  gets a row and then each tab within that group is a col within that
+  row." The command is renamed Tile All Tabs (menu, keys, agents'
+  command id kept working under its old name too); it lays the window's
+  tabs out as a grid where each group is a row (in the strip's order,
+  its name and colour heading it) and each of its tabs a column in it,
+  ungrouped tabs a row of their own; rows share the height and each
+  row's columns its width, every pane live and typed into as before,
+  and the same command (or picking a pane) goes back to one tab.
 - **Terminal: tell coding agents about the other repos in their tab
   group** (Ben, 2026-10-30): "add a preferences -> terminal setting for
   injecting context to claude code and codex coding agents to tell them
