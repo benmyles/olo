@@ -672,6 +672,12 @@ as they land (with the commit), add new ones as they come up.
   search work better and add filtering. and add a full set of rich
   search and filtering reusable controls we can use in the log viewer
   too b/c right now the log viewer filtering/search is a mess".
+  Done so far: `olo_kit::search` (HACKING, "Searching and filtering"):
+  the query language, ranking, highlighting, `SearchField` with
+  suggestions and `FilterBar`; Passwords uses them (every item's
+  username and non-secret text searched, filters for tags, kinds,
+  vaults, sites, users, one-time codes, attachments, weak and reused
+  passwords, best matches first, matches marked). Logs next.
 - ~~**Terminal: git repos, worktrees and GitHub**~~ (Ben; done: HACKING,
   Terminal "Repositories"; Preferences ▸ Terminal), native (no `git`
   or `gh` subprocesses):

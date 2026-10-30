@@ -31,8 +31,9 @@ use crate::{
     edit::{EditAction, Editor},
     generator::Generator,
     lock::{Lock, LockMsg},
-    store::{FromStore, Job, Reply, Store, SyncState},
+    store::{FromStore, Job, Reply, Searchable, Store, SyncState},
 };
+use olo_kit::search::{self, Facet, Needle, Query};
 
 const APP_ID: &str = "olo.passwords";
 
@@ -216,6 +217,10 @@ pub struct Passwords {
     items: Vec<ItemOverview>,
     loading: bool,
     details: HashMap<String, Item>,
+    /// What search and the filters need of every item (store.rs).
+    index: HashMap<String, Searchable>,
+    /// The filters, made again when the items change.
+    facets: std::cell::RefCell<Option<Vec<Facet>>>,
     missing: HashMap<String, String>,
     source: Source,
     selected: Option<String>,
@@ -256,6 +261,12 @@ pub struct Passwords {
     pub show_review: bool,
 }
 
+/// `s` as a filter value: lower case, words joined by `-`
+/// ("secure-note").
+fn slug(s: &str) -> String {
+    s.split_whitespace().map(str::to_lowercase).collect::<Vec<_>>().join("-")
+}
+
 fn host(url: &str) -> Option<String> {
     let parsed = url::Url::parse(url).or_else(|_| url::Url::parse(&format!("https://{url}"))).ok()?;
     Some(parsed.host_str()?.trim_start_matches("www.").to_string())
@@ -278,10 +289,12 @@ impl Passwords {
         self.items.iter().find(|i| i.id == id)
     }
 
-    /// The list for the current source and search, sorted by title.
+    /// The list for the current source and search: best matches first
+    /// while searching, else by title.
     pub fn visible(&self) -> Vec<&ItemOverview> {
-        let words: Vec<String> = self.search.split_whitespace().map(str::to_lowercase).collect();
-        let mut list: Vec<&ItemOverview> = self
+        let facets = self.facets();
+        let q = Query::parse(&self.search, &search::keys(&facets));
+        let mut list: Vec<(u32, &ItemOverview)> = self
             .items
             .iter()
             .filter(|i| match &self.source {
@@ -291,21 +304,120 @@ impl Passwords {
                 Source::Vault(v) => &i.vault_id == v,
                 Source::Category(c) => i.category == *c,
             })
-            .filter(|i| {
-                words.iter().all(|w| {
-                    i.title.to_lowercase().contains(w)
-                        || i.websites.iter().any(|s| s.url.to_lowercase().contains(w))
-                        || i.tags.iter().any(|t| t.to_lowercase().contains(w))
-                        || self.details.get(&i.id).and_then(|d| d.username()).is_some_and(|u| u.to_lowercase().contains(w))
-                })
+            .filter(|i| q.matches(|key, n| self.has(i, key, n)))
+            .map(|i| {
+                let s = self.index.get(&i.id);
+                let user = self.username_of(i);
+                let hosts: Vec<String> = i.websites.iter().filter_map(|w| host(&w.url)).collect();
+                let mut fields: Vec<(&str, u32)> = vec![(i.title.as_str(), 4), (user, 3)];
+                fields.extend(hosts.iter().map(|h| (h.as_str(), 3)));
+                fields.extend(i.tags.iter().map(|t| (t.as_str(), 2)));
+                if let Some(s) = s {
+                    fields.push((s.text.as_str(), 1));
+                }
+                (q.score(&fields), i)
             })
             .collect();
-        list.sort_by_cached_key(|i| (i.title.to_lowercase(), i.id.clone()));
-        list
+        list.sort_by_cached_key(|(score, i)| (std::cmp::Reverse(*score), i.title.to_lowercase(), i.id.clone()));
+        list.into_iter().map(|(_, i)| i).collect()
     }
 
-    /// The second line under an item's title.
+    /// An item's username: from the index, else its details.
+    pub fn username_of<'a>(&'a self, i: &ItemOverview) -> &'a str {
+        match self.index.get(&i.id).map(|s| s.username.as_str()).filter(|u| !u.is_empty()) {
+            Some(u) => u,
+            None => self.details.get(&i.id).and_then(|d| d.username()).unwrap_or_default(),
+        }
+    }
+
+    /// Whether item `i` has `n` under filter `key` (none: anywhere).
+    fn has(&self, i: &ItemOverview, key: Option<&str>, n: &Needle) -> bool {
+        let s = self.index.get(&i.id);
+        let sites = || i.websites.iter().any(|w| n.in_text(&w.url));
+        match key {
+            None => {
+                n.in_text(&i.title)
+                    || n.in_text(self.username_of(i))
+                    || sites()
+                    || i.tags.iter().any(|t| n.in_text(t))
+                    || n.in_text(i.category.label())
+                    || s.is_some_and(|s| n.in_text(&s.text))
+            }
+            // (A value still being typed matches by its start.)
+            Some("type") => n.starts(&slug(i.category.label())) || n.in_text(i.category.label()),
+            Some("vault") => self.vaults.iter().find(|v| v.id == i.vault_id).is_some_and(|v| n.starts(&slug(&v.title)) || n.in_text(&v.title)),
+            Some("tag") => i.tags.iter().any(|t| n.starts(t)),
+            Some("site") => sites(),
+            Some("user") => n.in_text(self.username_of(i)),
+            Some("has") => {
+                let Some(s) = s else { return false };
+                let flags = [
+                    ("otp", s.otp),
+                    ("password", s.password),
+                    ("website", !i.websites.is_empty()),
+                    ("files", s.files),
+                    ("reused", s.reused),
+                    ("weak", s.weak),
+                ];
+                flags.iter().any(|(name, on)| *on && n.starts(name))
+            }
+            Some(_) => false,
+        }
+    }
+
+    /// The list's filters: typed (`type:`, `vault:`, `tag:`, `site:`,
+    /// `user:`, `has:`) and, for tags and what items have, in the bar;
+    /// with how many items have each value.
+    pub fn facets(&self) -> std::cell::Ref<'_, Vec<Facet>> {
+        if self.facets.borrow().is_none() {
+            let active: Vec<&ItemOverview> = self.items.iter().filter(|i| i.state == ItemState::Active).collect();
+            let mut types: Vec<(ItemCategory, usize)> = Vec::new();
+            let mut tags: std::collections::BTreeMap<String, usize> = Default::default();
+            for i in &active {
+                match types.iter_mut().find(|(c, _)| *c == i.category) {
+                    Some((_, n)) => *n += 1,
+                    None => types.push((i.category, 1)),
+                }
+                for t in &i.tags {
+                    *tags.entry(t.clone()).or_default() += 1;
+                }
+            }
+            types.sort_by_key(|(c, _)| c.label());
+            let mut ty = Facet::new("type", "Type").multiple().typed_only();
+            for (c, n) in types {
+                ty = ty.value(slug(c.label()), c.label(), Some(n));
+            }
+            let mut vault = Facet::new("vault", "Vault").multiple().typed_only();
+            for v in &self.vaults {
+                let n = active.iter().filter(|i| i.vault_id == v.id).count();
+                vault = vault.value(slug(&v.title), self.vault_name(v), Some(n));
+            }
+            let mut tag = Facet::new("tag", "Tag").multiple();
+            for (t, n) in tags {
+                tag = tag.value(t.clone(), t, Some(n));
+            }
+            let count = |f: &dyn Fn(&Searchable) -> bool| Some(active.iter().filter(|i| self.index.get(&i.id).is_some_and(f)).count());
+            let has = Facet::new("has", "Has")
+                .multiple()
+                .value("otp", "One-Time Code", count(&|s| s.otp))
+                .value("password", "Password", count(&|s| s.password))
+                .value("website", "Website", Some(active.iter().filter(|i| !i.websites.is_empty()).count()))
+                .value("files", "Attachments", count(&|s| s.files))
+                .value("reused", "Reused Password", count(&|s| s.reused))
+                .value("weak", "Weak Password", count(&|s| s.weak));
+            let facets = vec![tag, has, ty, vault, Facet::new("site", "Website").typed_only(), Facet::new("user", "Username").typed_only()];
+            *self.facets.borrow_mut() = Some(facets);
+        }
+        std::cell::Ref::map(self.facets.borrow(), |f| f.as_ref().expect("made above"))
+    }
+
+    /// The second line under an item's title: its username, else its
+    /// site, else its kind.
     pub fn subtitle(&self, item: &ItemOverview) -> String {
+        let user = self.username_of(item);
+        if !user.is_empty() {
+            return user.to_owned();
+        }
         if let Some(h) = item.websites.first().and_then(|w| host(&w.url)) {
             return h;
         }
@@ -981,7 +1093,10 @@ impl Passwords {
     }
 
     fn apply_reply(&mut self, cx: &mut Cx, reply: Reply) {
+        // (The filters' values and counts follow the items.)
+        *self.facets.borrow_mut() = None;
         match reply {
+            Reply::Index(index) => self.index = index,
             Reply::Connected => {
                 self.conn = Conn::Ready;
                 if self.security.auto_sync && self.sync_asked.is_none_or(|t| t.elapsed() > SYNC_EVERY) {
@@ -1603,6 +1718,8 @@ fn main() {
             items: Vec::new(),
             loading: false,
             details: HashMap::new(),
+            index: HashMap::new(),
+            facets: Default::default(),
             missing: HashMap::new(),
             source: Source::All,
             selected: None,

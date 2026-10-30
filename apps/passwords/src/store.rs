@@ -77,6 +77,8 @@ pub enum Reply {
     Items { vault: String, items: Vec<ItemOverview> },
     /// A refresh finished.
     Loaded,
+    /// What searching and filtering need of every item (no secrets).
+    Index(HashMap<String, Searchable>),
     Item(Box<Item>),
     /// Created or changed (`created`: it is new).
     Saved { item: Box<Item>, created: bool },
@@ -147,7 +149,75 @@ fn refresh(v: &Vault, reply: &impl Fn(Reply)) {
     for vault in vaults {
         reply(Reply::Items { items: v.items(&vault.id), vault: vault.id });
     }
+    reply(Reply::Index(index(v)));
     reply(Reply::Loaded);
+}
+
+/// What the list searches in an item besides its overview, and what its
+/// filters ask of it. Never a secret: concealed fields, card numbers,
+/// one-time codes and keys stay out, and of a password only whether it
+/// is weak or used by another item too.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Searchable {
+    pub username: String,
+    /// Its other fields (their names and values) and its notes.
+    pub text: String,
+    pub otp: bool,
+    pub password: bool,
+    pub files: bool,
+    /// Its password is another item's too.
+    pub reused: bool,
+    /// Its password is short (under 12) or of one kind of character.
+    pub weak: bool,
+}
+
+/// Whether `pw` is weak: short, or only one kind of character.
+fn weak(pw: &str) -> bool {
+    let kinds = [
+        pw.chars().any(|c| c.is_lowercase()),
+        pw.chars().any(|c| c.is_uppercase()),
+        pw.chars().any(|c| c.is_ascii_digit()),
+        pw.chars().any(|c| !c.is_alphanumeric()),
+    ];
+    pw.chars().count() < 12 || kinds.iter().filter(|&&k| k).count() < 2
+}
+
+/// Every item's [`Searchable`].
+fn index(v: &Vault) -> HashMap<String, Searchable> {
+    let active = || v.data.entries.iter().filter(|e| e.state == onepassword::ItemState::Active);
+    let mut uses: HashMap<&str, usize> = HashMap::new();
+    for e in active() {
+        if let Some(pw) = e.item.password() {
+            *uses.entry(pw).or_default() += 1;
+        }
+    }
+    let secret = |t: ItemFieldType| matches!(t, ItemFieldType::Concealed | ItemFieldType::Totp | ItemFieldType::CreditCardNumber | ItemFieldType::SshKey);
+    v.data
+        .entries
+        .iter()
+        .map(|e| {
+            let item = &e.item;
+            let mut text = String::new();
+            for f in item.fields.iter().filter(|f| f.id != "username" && !secret(f.field_type)) {
+                text.push_str(&f.title);
+                text.push('\n');
+                text.push_str(&f.value);
+                text.push('\n');
+            }
+            text.push_str(&item.notes);
+            let pw = item.password();
+            let s = Searchable {
+                username: item.username().unwrap_or_default().to_owned(),
+                text,
+                otp: item.fields.iter().any(|f| f.field_type == ItemFieldType::Totp && !f.value.is_empty()),
+                password: pw.is_some(),
+                files: !item.files.is_empty() || item.document.is_some(),
+                reused: pw.is_some_and(|p| uses.get(p).copied().unwrap_or(0) > 1),
+                weak: pw.is_some_and(weak),
+            };
+            (item.id.clone(), s)
+        })
+        .collect()
 }
 
 fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy: Proxy) {
@@ -351,7 +421,10 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                 Err(e) => reply(Reply::Missing { item, error: describe(&e) }),
             },
             Job::Create(params) => match v.create(&params) {
-                Ok(i) => reply(Reply::Saved { item: Box::new(i), created: true }),
+                Ok(i) => {
+                    reply(Reply::Saved { item: Box::new(i), created: true });
+                    reply(Reply::Index(index(v)));
+                }
                 Err(e) => reply(Reply::Error(format!("Couldn’t save “{}”: {}", params.title, describe(&e)))),
             },
             Job::Put(item) => match v.put(&item) {
@@ -359,16 +432,23 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                     if i.id != item.id {
                         reply(Reply::Renamed { old: item.id.clone(), new: i.id.clone() });
                     }
-                    reply(Reply::Saved { item: Box::new(i), created: false })
+                    reply(Reply::Saved { item: Box::new(i), created: false });
+                    reply(Reply::Index(index(v)));
                 }
                 Err(e) => reply(Reply::Error(format!("Couldn’t save “{}”: {}", item.title, describe(&e)))),
             },
             Job::Archive { vault, item } => match v.archive(&vault, &item) {
-                Ok(()) => reply(Reply::Archived { item }),
+                Ok(()) => {
+                    reply(Reply::Archived { item });
+                    reply(Reply::Index(index(v)));
+                }
                 Err(e) => reply(Reply::Error(describe(&e))),
             },
             Job::Delete { vault, item } => match v.delete(&vault, &item) {
-                Ok(()) => reply(Reply::Deleted { item }),
+                Ok(()) => {
+                    reply(Reply::Deleted { item });
+                    reply(Reply::Index(index(v)));
+                }
                 Err(e) => reply(Reply::Error(describe(&e))),
             },
             Job::Keychain { incoming, candidates, vault } => {

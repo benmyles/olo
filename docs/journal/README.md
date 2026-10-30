@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-29
 
+### Filter menus with counts
+
+*23:04* — A filter's menu: Any, then each value with how many items have it, where a shortcut would be.
+
+![Filter menus with counts](2026-10-29/230407-filter-menus-with-counts.png)
+
+### Passwords: search, dark
+
+*23:04* — A left-out filter (-has:reused) in red; matches marked.
+
+![Passwords: search, dark](2026-10-29/230407-passwords-search-dark.png)
+
+### Passwords: search with filters
+
+*23:04* — The search field colours filters and suggests them as you type (has:we → Website, Weak Password, with counts); a filter bar over the list (Tag, Has) edits the same query. Words find usernames and non-secret fields of every item, best matches first, marked in the rows.
+
+![Passwords: search with filters](2026-10-29/230406-passwords-search-with-filters.png)
+
 ### Icons: Integrations, GitHub, Chrome and Slack
 
 *22:46* — Olo's own takes on GitHub's, Chrome's and Slack's marks (and Integrations' puzzle pieces), in every theme; Chrome's and Slack's replace the icons those programs ship wherever Olo shows them.

@@ -880,6 +880,41 @@ of `WindowOptions::parent(id)` (or `parent_opt(Option<id>)`) when given, and app
 window with a parent over it as BAlert does: centred across, a quarter
 of the way down.
 
+### Searching and filtering (`olo_kit::search`)
+
+Every app's search is the same language, field and filter bar. The
+language: words (each must match, any order, ignoring case),
+`"phrases"`, `-word` to leave out, and the app's filters (`Facet`s) as
+`key:value`, `key:a,b` for either, `-key:value`, `key:"two words"`; a
+`key:` the app doesn't know is a word (`https://…` finds itself), a part
+still being typed (`key:`, `-`) asks nothing. `Query::parse(text,
+&search::keys(&facets))`, then `query.matches(|key, needle| …)`: the app
+says whether an item has the needle under the key (`None`: anywhere in
+its text); `Needle` matches without case, memchr-fast for ASCII
+(`in_text`, `is`, `starts`, `find`, `find_all`). A value being typed is
+best matched by its start (`starts`), so the list narrows as it's typed.
+`query.score(&[(field, weight)])` ranks (whole field 8, its start 4, a
+word's start 2, anywhere 1, times the weight) to put the best first;
+`search::highlight(text, &query, font, color, search::mark_color(&p))`
+marks what was found (not on a selected row's colours).
+
+`SearchField::new(id, &mut text).facets(&f).hint("Search")`: a
+magnifier, the text with filters' keys in blue and left-out parts in
+red, a clear button, and while typing a list under it (an `Area` over
+the window, so the field keeps the keyboard) of the filters and values
+that fit the word at the caret (`search::suggest`): ↑↓ choose, Tab takes
+the chosen or first, Return the chosen, Escape closes the list, then
+clears, then lets go; a press takes one (on the press: the editor lets go
+of the keyboard when pressed outside it). `SearchField::focus(ctx, id)`
+for Find (⌘F), its text selected. `FilterBar::new(id, &mut text,
+&facets)`: a pill per facet in the bar (`Facet::typed_only` keeps one out),
+"Label: Any ▾" or what's chosen (bold, tinted), whose menu has Any and
+each value with its count where a shortcut would be; choosing one rewrites
+the query's text (`search::set_filter`), so the field, the bar and
+agents typing a query always agree. `.no_clear()` drops the bar's Clear.
+Facets are built from the data (values and counts) and kept until it
+changes, not made every frame.
+
 ### The text editor (`olo_kit::editor`)
 
 For documents (StyledEdit's window; anything a person writes at length)
@@ -4183,6 +4218,21 @@ tools/dev/tsession ipc lk '{"type":"lock"}'; tools/dev/tsession type lk secret; 
 ```
 
 ## Passwords (apps/passwords, crates/onepassword)
+
+**Searching**: the toolbar's `SearchField` and a `FilterBar` over the
+list (Tag, Has) share one query (`olo_kit::search`). Words find an item
+by its title, username, websites, tags, kind, and the text of its fields
+that aren't secret and its notes; with words, the best come first
+(title 4, username and site 3, tags 2, the rest 1), else by title; what
+was found is marked in each row, whose second line is the username (else
+the site). Filters: `type:` (login, secure-note…), `vault:`, `tag:`,
+`site:`, `user:`, and `has:` otp, password, website, files, reused (its
+password is another item's too), weak (under 12 characters, or of one
+kind). The vault worker sends a `Searchable` for every item with the
+list (`store::index`, again after each change): the username, the
+non-secret fields' names and values and the notes, and flags; never a
+password, code, card number or key, and of a password only whether it
+is weak or reused. So searching finds usernames of items never opened.
 
 `crates/onepassword` (package `olo-onepassword`) is a Rust 1Password SDK
 modelled on the Go one: the same `Client` (`Secrets`, `Items`, `Vaults`,

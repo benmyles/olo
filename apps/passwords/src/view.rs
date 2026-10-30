@@ -6,6 +6,7 @@ use onepassword::{ItemCategory, ItemField, ItemFieldType, ItemOverview, ItemStat
 use olo_kit::{
     App, Cx, Menu, egui::{self, Align, Color32, FontId, Id, Pos2, Rect, Sense, Ui, UiBuilder, pos2, vec2},
     icons, metrics as m, style,
+    search::{self, FilterBar, Query, SearchField},
     widgets::{self, Button, ScrollView, TextControl},
 };
 
@@ -83,7 +84,8 @@ fn well(ui: &Ui, rect: Rect, background: olo_theme::Rgba, focused: bool) -> Rect
     let rect = style::snap(ui.ctx(), rect);
     ui.painter().rect_filled(rect, 0.0, style::c(background));
     style::sunken(ui.painter(), rect, &p, focused);
-    rect.shrink(1.0)
+    // (Inside its line, a whole device pixel at any scale.)
+    style::inset(ui.ctx(), rect, 1.0)
 }
 
 pub fn main(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui) {
@@ -342,13 +344,11 @@ fn browser(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
         app.open_generator(cx, None);
     }
     bar.with_layout(egui::Layout::right_to_left(Align::Center), |bar| {
-        let search = bar.add(TextControl::new(&mut app.search).width(240.0).hint("Search"));
         if std::mem::take(&mut app.focus_search) {
-            search.request_focus();
+            SearchField::focus(bar.ctx(), "passwords");
         }
-        if (search.has_focus() || search.lost_focus()) && bar.input(|i| i.key_pressed(egui::Key::Escape)) {
-            app.search.clear();
-        }
+        let facets = app.facets().clone();
+        let search = bar.add(SearchField::new("passwords", &mut app.search).width(280.0).hint("Search").facets(&facets));
         if search.changed() {
             // Keep the selection on something listed.
             if !app.visible().iter().any(|i| Some(&i.id) == app.selected.as_ref()) {
@@ -365,7 +365,11 @@ fn browser(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, full: Rect) {
         None if app.loading => "Opening…".into(),
         None => {
             let n = app.visible().len();
-            format!("{n} item{}", if n == 1 { "" } else { "s" })
+            if app.search.trim().is_empty() {
+                format!("{n} item{}", if n == 1 { "" } else { "s" })
+            } else {
+                format!("{n} found")
+            }
         }
     };
     style::label(ui.painter(), status.left() + m::SPACING, status.center().y, Align::Min, text, style::small_font(), style::c(p.panel_text));
@@ -501,15 +505,20 @@ fn sources_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
             if selected {
                 ui.painter().rect_filled(r, 0.0, style::c(p.list_selected_background));
             }
-            icons::paint(ui.painter(), Rect::from_center_size(pos2(r.left() + m::SPACING + 8.0, r.center().y), vec2(16.0, 16.0)), icon_name);
+            // (Its middle on the device grid; the first's is the filters'
+            // beside it.)
+            let cy = style::snap_coord(ui.ctx(), r.center().y);
+            if source == &Source::All {
+                ui.ctx().data_mut(|d| d.insert_temp(Id::unique("passwords-first-source"), cy));
+            }
+            icons::paint(ui.painter(), Rect::from_center_size(pos2(r.left() + m::SPACING + 8.0, cy), vec2(16.0, 16.0)), icon_name);
             let count_text = count.to_string();
             let count_w = style::label_width(ui.ctx(), &count_text, style::small_font());
-            let mut job = egui::text::LayoutJob::simple_singleline(label.clone(), style::plain_font(), text);
-            job.wrap = egui::text::TextWrapping::truncate_at_width(r.width() - 2.0 * m::SPACING - 24.0 - count_w - m::SPACING);
-            let g = ui.painter().layout_job(job);
-            let pos = style::text_origin(ui.ctx(), &g, r.left() + m::SPACING + 22.0, r.center().y, style::PLAIN_SIZE);
-            ui.painter().galley(pos, g, text);
-            style::label(ui.painter(), r.right() - m::SPACING, r.center().y, Align::Max, count_text, style::small_font(), if selected { text } else { dim(&p) });
+            let room = r.width() - 2.0 * m::SPACING - 24.0 - count_w - m::SPACING;
+            let (_, baseline) = style::label_fit_with_baseline(ui.painter(), r.left() + m::SPACING + 22.0, cy, Align::Min, label, style::plain_font(), text, room);
+            // The count on the name's baseline (centred on its own, the
+            // smaller text can round a pixel off it).
+            style::label_on_baseline(ui.painter(), r.right() - m::SPACING, baseline, Align::Max, count_text, style::small_font(), if selected { text } else { dim(&p) });
             if response.clicked() {
                 clicked = Some(source.clone());
             }
@@ -532,6 +541,24 @@ fn plural(c: ItemCategory) -> String {
 
 fn items_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
     let p = style::palette(ui.ctx());
+    // The filters over the list (tags, what items have); the rest are
+    // typed (`type:`, `vault:`, `site:`, `user:`), suggested as they are.
+    let facets = app.facets().clone();
+    // Their text over the list's icons (a well's line and a row's room in).
+    // Level with the sources' first row, inside its well's line.
+    let line = style::hairline(ui.ctx());
+    let indent = line + m::SPACING - m::TEXT_INSET;
+    // (The sources' first row's middle, as it drew it this frame.)
+    let first = ui.ctx().data(|d| d.get_temp::<f32>(Id::unique("passwords-first-source")));
+    let middle = first.unwrap_or_else(|| style::snap_coord(ui.ctx(), style::snap(ui.ctx(), rect).top() + line + SOURCE_ROW / 2.0));
+    let top = middle - m::CONTROL_HEIGHT / 2.0;
+    let bar = Rect::from_min_size(pos2(rect.left() + indent, top), vec2(rect.width() - indent, m::CONTROL_HEIGHT));
+    let changed = ui.put(bar, FilterBar::new("passwords", &mut app.search, &facets).no_clear()).changed();
+    if changed && !app.visible().iter().any(|i| Some(&i.id) == app.selected.as_ref()) {
+        let first = app.visible().first().map(|i| i.id.clone());
+        app.select(cx, first);
+    }
+    let rect = Rect::from_min_max(pos2(rect.left(), rect.top() + m::CONTROL_HEIGHT + m::SPACING), rect.max);
     let list_id = Id::unique("passwords-items");
     let focused = ui.memory(|m| m.has_focus(list_id));
     let inner = well(ui, rect, p.list_background, focused);
@@ -559,6 +586,9 @@ fn items_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
     }
 
     let mut child = child(ui, inner);
+    // Rows of their own height, scrolled: level with the sources beside
+    // them only by chance.
+    olo_kit::layout_review::own_grid(ui, inner);
     if visible.is_empty() {
         let text = if app.loading {
             "Loading…"
@@ -577,6 +607,8 @@ fn items_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
     }
     let mut clicked: Option<(String, bool)> = None;
     let mut context: Option<(String, Pos2)> = None;
+    let query = Query::parse(&app.search, &search::keys(&facets));
+    let mark = search::mark_color(&p);
     ScrollView::new("passwords-list").border(false).focused(focused).show_rows(&mut child, ITEM_ROW, visible.len(), |ui, range| {
         ui.spacing_mut().item_spacing.y = 0.0;
         for row in range {
@@ -594,7 +626,13 @@ fn items_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
                 (item.title.clone(), style::plain_font(), text, -8.0),
                 (app.subtitle(item), style::small_font(), if selected { text } else { dim(&p) }, 8.0),
             ] {
-                let mut job = egui::text::LayoutJob::simple_singleline(line, font.clone(), color);
+                // What the search found, marked (not on the selection's
+                // own colour, which it would fight).
+                let mut job = if selected || query.is_empty() {
+                    egui::text::LayoutJob::simple_singleline(line, font.clone(), color)
+                } else {
+                    search::highlight(&line, &query, font.clone(), color, mark)
+                };
                 job.wrap = egui::text::TextWrapping::truncate_at_width(width);
                 let g = ui.painter().layout_job(job);
                 let pos = style::text_origin(ui.ctx(), &g, x, r.center().y + dy, font.size);
@@ -699,7 +737,7 @@ fn detail_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
             Some(e) => (format!("Couldn’t open this item: {e}"), style::c(p.failure)),
             None => ("Loading…".to_string(), dim(&p)),
         };
-        header(&mut child, &overview.title, overview.category, &app.vault_title(&overview.vault_id));
+        header(&mut child, &overview.title, overview.category, &app.vault_title(&overview.vault_id), false);
         let g = child.painter().layout(text, style::plain_font(), color, inner.width() - 2.0 * m::WINDOW_INSET);
         child.painter().galley(pos2(inner.left() + m::WINDOW_INSET, inner.top() + 96.0), g, color);
         return;
@@ -715,10 +753,15 @@ fn detail_pane(app: &mut Passwords, cx: &mut Cx, ui: &mut Ui, rect: Rect) {
     ScrollView::new("passwords-detail").border(false).auto_hide(true).show(&mut child, |ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         let width = ui.available_width();
-        let header_rect = header(ui, &item.title, item.category, &vault);
-        if !archived {
-            let button = Rect::from_min_size(pos2(header_rect.right() - m::WINDOW_INSET - 64.0, header_rect.top() + m::WINDOW_INSET + 2.0), vec2(64.0, m::CONTROL_HEIGHT));
-            if place(ui, button, Button::new("Edit").min_width(64.0)).clicked() {
+        let (_, button) = header(ui, &item.title, item.category, &vault, !archived);
+        if let Some((button, title_at)) = button {
+            let resp = place(ui, button, Button::new("Edit").min_width(64.0));
+            // The title on the label's baseline, from where the button
+            // really is (egui rounds its rect, which can tip the label's
+            // pixel).
+            let baseline = style::plain_baseline(ui.painter(), "Edit", resp.rect.center().y);
+            style::label_fit_on_baseline(ui.painter(), title_at.left(), baseline, Align::Min, &item.title, title_font(), style::c(p.document_text), title_at.width());
+            if resp.clicked() {
                 edit = true;
             }
         } else {
@@ -830,21 +873,34 @@ fn date(t: DateTime<Utc>) -> String {
 }
 
 /// Icon, title, and category · vault; returns the header's rect.
-fn header(ui: &mut Ui, title: &str, category: ItemCategory, vault: &str) -> Rect {
+/// Where the middle of an item's title is, down from the top of its
+/// header's room.
+const TITLE_MIDDLE: f32 = 16.0;
+
+/// An item's header: its icon, title, kind and vault; with `edit`, where
+/// the Edit button goes and the room for the title, which the caller
+/// puts on the button's label's baseline.
+fn header(ui: &mut Ui, title: &str, category: ItemCategory, vault: &str, edit: bool) -> (Rect, Option<(Rect, Rect)>) {
     let p = style::palette(ui.ctx());
     let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 48.0 + 2.0 * m::WINDOW_INSET), Sense::hover());
     icons::paint(ui.painter(), Rect::from_min_size(r.min + vec2(m::WINDOW_INSET, m::WINDOW_INSET), vec2(48.0, 48.0)), icon(category));
     let x = r.left() + m::WINDOW_INSET * 2.0 + 48.0;
     let width = r.right() - x - m::WINDOW_INSET - 72.0;
-    let mut job = egui::text::LayoutJob::simple_singleline(title.into(), title_font(), style::c(p.document_text));
-    job.wrap = egui::text::TextWrapping::truncate_at_width(width);
-    let g = ui.painter().layout_job(job);
-    let pos = style::text_origin(ui.ctx(), &g, x, r.top() + m::WINDOW_INSET + 16.0, 18.0);
-    ui.painter().galley(pos, g, style::c(p.document_text));
+    // The title's capitals centred on TITLE_MIDDLE; the button's middle
+    // lower, so its label shares the title's baseline.
+    let middle = r.top() + m::WINDOW_INSET + TITLE_MIDDLE;
+    let lift = (title_font().size - style::PLAIN_SIZE) * style::CAP_HEIGHT / 2.0;
+    let button_middle = style::snap_coord(ui.ctx(), middle + lift);
+    let button = edit.then(|| Rect::from_min_size(pos2(r.right() - m::WINDOW_INSET - 64.0, button_middle - m::CONTROL_HEIGHT / 2.0), vec2(64.0, m::CONTROL_HEIGHT)));
+    if button.is_none() {
+        let baseline = middle + title_font().size * style::CAP_HEIGHT / 2.0;
+        style::label_fit_on_baseline(ui.painter(), x, baseline, Align::Min, title, title_font(), style::c(p.document_text), width);
+    }
+    let room = Rect::from_min_size(pos2(x, r.top()), vec2(width, r.height()));
     let sub = if vault.is_empty() { category.label().to_string() } else { format!("{}  ·  {vault}", category.label()) };
     style::label(ui.painter(), x, r.top() + m::WINDOW_INSET + 38.0, Align::Min, sub, style::plain_font(), dim(&p));
     style::hline_above(ui.painter(), r.left() + m::WINDOW_INSET, r.right() - m::WINDOW_INSET, r.bottom(), style::shade(&p, p.document_background, 1.15));
-    r
+    (r, button.map(|b| (b, room)))
 }
 
 fn section_heading(ui: &mut Ui, title: &str) {

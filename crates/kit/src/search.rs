@@ -700,6 +700,8 @@ impl Widget for SearchField<'_> {
             .frame(egui::Frame::NONE)
             .margin(egui::Margin::ZERO)
             .desired_width(line.width())
+            // (Tab takes a suggestion, not the focus to the next field.)
+            .lock_focus(!list.is_empty())
             .layouter(&mut layouter);
         let out = edit.show(&mut child);
         let mut r = out.response.response;
@@ -795,7 +797,7 @@ impl<'a> FilterBar<'a> {
         let q = Query::parse(text, &keys(facets));
         let mut w = 0.0;
         for f in facets.iter().filter(|f| f.bar) {
-            w += pill_width(ui, &pill_text(f, &q)) + m::SPACING;
+            w += pill_width(ui, &pill_text(f, &q), !q.values(&f.key).is_empty()) + m::SPACING;
         }
         w - m::SPACING
     }
@@ -815,8 +817,10 @@ fn pill_text(f: &Facet, q: &Query) -> String {
     if f.label.is_empty() { summary } else { format!("{}: {summary}", f.label) }
 }
 
-fn pill_width(ui: &Ui, text: &str) -> f32 {
-    let g = ui.painter().layout_no_wrap(text.to_owned(), plain_font(), Color32::BLACK);
+/// How wide a pill is for `text` (in bold when it filters).
+fn pill_width(ui: &Ui, text: &str, bold: bool) -> f32 {
+    let font = if bold { style::bold_font() } else { plain_font() };
+    let g = ui.painter().layout_no_wrap(text.to_owned(), font, Color32::BLACK);
     (g.size().x + m::TEXT_INSET + 15.0 + m::TIGHT).ceil()
 }
 
@@ -866,7 +870,7 @@ impl Widget for FilterBar<'_> {
             let q = Query::parse(self.text, &keys);
             let chosen = chosen_values(f, &q);
             let label = pill_text(f, &q);
-            let w = pill_width(ui, &label).min((all.right() - x).max(0.0));
+            let w = pill_width(ui, &label, !chosen.is_empty()).min((all.right() - x).max(0.0));
             if w < 40.0 {
                 break;
             }
@@ -876,11 +880,11 @@ impl Widget for FilterBar<'_> {
             if resp.clicked() {
                 let mut menu = Menu::new("").item(f.any.clone(), "any", None).checked(chosen.is_empty()).separator();
                 for v in &f.values {
-                    let label = match v.count {
-                        Some(n) => format!("{}   {}", v.label, count_text(n)),
-                        None => v.label.clone(),
-                    };
-                    menu = menu.item(label, format!("v:{}", v.value), None).checked(chosen.iter().any(|c| c.eq_ignore_ascii_case(&v.value)));
+                    menu = menu.item(v.label.clone(), format!("v:{}", v.value), None).checked(chosen.iter().any(|c| c.eq_ignore_ascii_case(&v.value)));
+                    // How many have it, where a shortcut would be.
+                    if let Some(n) = v.count {
+                        menu = menu.keys(count_text(n));
+                    }
                 }
                 menu::request_popup(&ctx, MenuRequest { menu, source: pid, anchor: MenuAnchor::Below(pill), selected: None });
             }
@@ -893,7 +897,9 @@ impl Widget for FilterBar<'_> {
             style::bevel(painter, inner, c(p.shine), style::shade(&p, base, 1.2));
             let ink = c(p.control_text);
             let font = if chosen.is_empty() { plain_font() } else { style::bold_font() };
-            style::label_fit(painter, pill.left() + m::TEXT_INSET, pill.center().y, Align::Min, &label, font, ink, pill.width() - m::TEXT_INSET - 15.0 - m::TIGHT);
+            // (Its middle on the device grid, as a row beside it can put its own.)
+            let cy = style::snap_coord(&ctx, pill.center().y);
+            style::label_fit(painter, pill.left() + m::TEXT_INSET, cy, Align::Min, &label, font, ink, pill.width() - m::TEXT_INSET - 15.0 - m::TIGHT);
             let ax = pill.right() - 11.0;
             let ay = pill.center().y.round();
             painter.add(Shape::convex_polygon(vec![pos2(ax - 4.0, ay - 2.0), pos2(ax + 4.0, ay - 2.0), pos2(ax, ay + 2.5)], ink, Stroke::NONE));

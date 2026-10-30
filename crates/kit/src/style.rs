@@ -1102,7 +1102,7 @@ pub fn vgradient(p: &Painter, r: Rect, top: Color32, bottom: Color32) {
 
 /// Cap height as a fraction of the font size (Noto Sans's: 714 of its
 /// 1000 units).
-pub(crate) const CAP_HEIGHT: f32 = 0.714;
+pub const CAP_HEIGHT: f32 = 0.714;
 
 /// Distance from a galley's top to its first baseline: the primary
 /// face's, even when the line starts with a glyph from a fallback face
@@ -1182,6 +1182,42 @@ pub fn label_on_baseline(
     color: Color32,
 ) -> Rect {
     draw_on_baseline(p, x, baseline, align, text.into(), font, color).0
+}
+
+/// [`label_on_baseline`], cut short with "…" to `max_width` (a title
+/// on the baseline of a button's label beside it).
+#[allow(clippy::too_many_arguments)]
+pub fn label_fit_on_baseline(
+    p: &Painter,
+    x: f32,
+    baseline: f32,
+    align: egui::Align,
+    text: &str,
+    font: FontId,
+    color: Color32,
+    max_width: f32,
+) -> Rect {
+    let ppp = p.ctx().pixels_per_point();
+    let mut job = egui::text::LayoutJob::simple_singleline(text.to_owned(), font, color);
+    job.wrap = egui::text::TextWrapping::truncate_at_width(max_width.max(0.0));
+    let galley = p.layout_job(job);
+    let x = match align {
+        egui::Align::Min => x,
+        egui::Align::Center => x - galley.size().x / 2.0,
+        egui::Align::Max => x - galley.size().x,
+    };
+    let pos = pos2((x * ppp).round() / ppp, ((baseline - baseline_offset(&galley)) * ppp).round() / ppp);
+    let r = Rect::from_min_size(pos, galley.size());
+    describe_text(p.ctx(), egui::accesskit::Role::Label, text, r, None);
+    p.galley(pos, galley, color);
+    r
+}
+
+/// The baseline a plain label centred on `center_y` sits on (a button's:
+/// for text beside it to share).
+pub fn plain_baseline(p: &Painter, text: &str, center_y: f32) -> f32 {
+    let galley = p.layout_no_wrap(text.to_owned(), plain_font(), Color32::BLACK);
+    text_origin(p.ctx(), &galley, 0.0, center_y, PLAIN_SIZE).y + baseline_offset(&galley)
 }
 
 fn draw_on_baseline(p: &Painter, x: f32, baseline: f32, align: egui::Align, text: String, font: FontId, color: Color32) -> (Rect, f32) {
