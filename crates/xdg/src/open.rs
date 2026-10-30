@@ -79,6 +79,11 @@ impl Handler {
 
 /// Olo's own app for a type, if it is installed.
 fn ours(mime: &str) -> Option<&'static str> {
+    ours_among(mime, |bin| find_program(bin).is_some())
+}
+
+/// [`ours`], among the programs `installed` says are there.
+fn ours_among(mime: &str, installed: impl Fn(&str) -> bool) -> Option<&'static str> {
     let (major, _) = mime.split_once('/').unwrap_or((mime, ""));
     let candidates: &[&'static str] = match (major, mime) {
         (_, "inode/directory") => &["olo-tracker"],
@@ -105,7 +110,87 @@ fn ours(mime: &str) -> Option<&'static str> {
         (_, crate::mime::SETTINGS_BACKUP) => &["olo-preferences"],
         _ => &[],
     };
-    candidates.iter().copied().find(|bin| find_program(bin).is_some())
+    candidates.iter().copied().find(|bin| installed(bin))
+}
+
+/// Olo's apps that open files for other programs too: binary, what kind
+/// of app it is.
+const OPENERS: &[(&str, &str)] = &[("olo-viewer", "Image, Media and Document Viewer"), ("olo-styled-edit", "Text Editor"), ("olo-tracker", "File Manager")];
+
+/// What marks a desktop entry as one [`for_others`] wrote.
+pub const WRITTEN: &str = "X-Olo-Written=true";
+
+/// What other programs need to open files in Olo's apps as Olo's own
+/// [`handler`] does (xdg-desktop-portal's OpenURI, `gio open` and so
+/// xdg-open, GTK's show-uri): a hidden desktop entry for each of Olo's
+/// apps that opens files (file name, text), named by its app id
+/// (`olo.viewer.desktop`), listing every type shared-mime-info knows that
+/// Olo opens with it; and an `olo-mimeapps.list` making them the defaults
+/// (read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo).
+/// Web pages and links stay the person's choice. `bin_dir` is where
+/// Olo's programs are.
+pub fn for_others(bin_dir: &Path) -> (Vec<(String, String)>, String) {
+    let installed = |bin: &str| bin_dir.join(bin).is_file();
+    let mut types: Vec<(&str, Vec<String>)> = OPENERS.iter().map(|(bin, _)| (*bin, Vec::new())).collect();
+    for t in mime::known() {
+        if is_web(&t) {
+            continue;
+        }
+        if let Some(bin) = ours_among(&t, installed)
+            && let Some((_, list)) = types.iter_mut().find(|(b, _)| *b == bin)
+        {
+            list.push(t);
+        }
+    }
+    let mut entries = Vec::new();
+    let mut defaults = String::from("# Written by olo-session: other programs open files in Olo's apps, as\n# Olo does (web pages and links stay with your default browser).\n[Default Applications]\n");
+    for ((bin, kind), (_, list)) in OPENERS.iter().zip(&types) {
+        let (Some(app_id), false) = (crate::apps::app_id_of(bin), list.is_empty()) else { continue };
+        let (name, icon) = crate::apps::our_app(&app_id).unwrap_or((bin, "application"));
+        let exec = bin_dir.join(bin);
+        entries.push((
+            format!("{app_id}.desktop"),
+            format!(
+                "[Desktop Entry]\nType=Application\nName={name}\nGenericName={kind}\nExec=\"{}\" %F\nIcon={icon}\nNoDisplay=true\nStartupWMClass={app_id}\nMimeType={};\n{WRITTEN}\n",
+                exec.display(),
+                list.join(";")
+            ),
+        ));
+        for t in list {
+            defaults.push_str(&format!("{t}={app_id}.desktop;\n"));
+        }
+    }
+    (entries, defaults)
+}
+
+/// The `mimeinfo.cache` for the desktop entries in `dir` and below, as
+/// update-desktop-database writes it (GIO finds which apps open a type
+/// only through it): each type, and the entries that open it.
+pub fn mime_cache(dir: &Path) -> String {
+    fn walk(dir: &Path, prefix: &str, out: &mut std::collections::BTreeMap<String, Vec<String>>) {
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        let mut files: Vec<_> = rd.flatten().map(|e| e.path()).collect();
+        files.sort();
+        for p in files {
+            let Some(name) = p.file_name().map(|n| n.to_string_lossy().into_owned()) else { continue };
+            if p.is_dir() {
+                walk(&p, &format!("{prefix}{name}-"), out);
+            } else if name.ends_with(".desktop")
+                && let Some(e) = desktop_entry::parse(&p)
+            {
+                for t in e.mime_types {
+                    out.entry(t).or_default().push(format!("{prefix}{name}"));
+                }
+            }
+        }
+    }
+    let mut types = std::collections::BTreeMap::new();
+    walk(dir, "", &mut types);
+    let mut text = String::from("[MIME Cache]\n");
+    for (t, ids) in types {
+        text.push_str(&format!("{t}={};\n", ids.join(";")));
+    }
+    text
 }
 
 /// Links and pages: what a web browser opens.
@@ -409,6 +494,43 @@ mod tests {
     }
 
     #[test]
+    fn olo_opens_for_others() {
+        let dir = std::env::temp_dir().join(format!("olo-for-others-{}", std::process::id()));
+        let bin = dir.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        for b in ["olo-viewer", "olo-styled-edit"] {
+            std::fs::write(bin.join(b), "").unwrap();
+        }
+        let (entries, defaults) = for_others(&bin);
+        // Tracker isn't there: no entry for it.
+        let names: Vec<&str> = entries.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["olo.viewer.desktop", "olo.styled-edit.desktop"]);
+        let viewer = &entries[0].1;
+        assert!(viewer.contains(&format!("Exec=\"{}\" %F", bin.join("olo-viewer").display())));
+        assert!(viewer.contains("NoDisplay=true") && viewer.contains(WRITTEN));
+        if !mime::known().is_empty() {
+            assert!(viewer.contains("image/png;") && viewer.contains("application/pdf;"));
+            assert!(defaults.contains("\ntext/x-csrc=olo.styled-edit.desktop;\n"));
+            // Web pages and links aren't Olo's to take.
+            assert!(!defaults.contains("text/html=") && !defaults.contains("x-scheme-handler/https"));
+        }
+        // The cache lists them, and entries in folders by their ids.
+        let apps = dir.join("applications");
+        std::fs::create_dir_all(apps.join("kde")).unwrap();
+        for (n, t) in &entries {
+            std::fs::write(apps.join(n), t).unwrap();
+        }
+        std::fs::write(apps.join("kde/okular.desktop"), "[Desktop Entry]\nType=Application\nName=Okular\nMimeType=application/pdf;\n").unwrap();
+        std::fs::write(apps.join("gone.desktop"), "[Desktop Entry]\nType=Application\nName=Gone\nHidden=true\nMimeType=application/pdf;\n").unwrap();
+        let cache = mime_cache(&apps);
+        assert!(cache.starts_with("[MIME Cache]\n"));
+        if !mime::known().is_empty() {
+            assert!(cache.contains("\napplication/pdf=kde-okular.desktop;olo.viewer.desktop;\n"), "{cache}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn targets() {
         assert!(matches!(Target::parse("file:///tmp/a%20b"), Target::Path(p) if p == Path::new("/tmp/a b")));
         assert!(matches!(Target::parse("https://x"), Target::Url(_)));
@@ -424,6 +546,30 @@ mod live {
     fn handlers() {
         for m in ["x-scheme-handler/https", "image/png", "text/x-rust", "inode/directory", "application/pdf", "application/x-iso9660-image"] {
             println!("{m}: {:?}", super::handler(m).map(|h| h.name()));
+        }
+    }
+
+    /// What `for_others` makes of the installed programs, and how long it takes.
+    #[test]
+    #[ignore]
+    fn for_others() {
+        let bin = std::path::PathBuf::from(std::env::var_os("HOME").unwrap()).join(".local/bin");
+        let t = std::time::Instant::now();
+        let (entries, defaults) = super::for_others(&bin);
+        println!("{:?} for {} types", t.elapsed(), defaults.lines().count());
+        for (n, e) in &entries {
+            println!("{n}: {} bytes, {} types", e.len(), e.matches(';').count());
+        }
+        // OLO_FOR_OTHERS=HOME writes them there, to try with GIO.
+        if let Some(home) = std::env::var_os("OLO_FOR_OTHERS").map(std::path::PathBuf::from) {
+            let apps = home.join(".local/share/applications");
+            std::fs::create_dir_all(&apps).unwrap();
+            std::fs::create_dir_all(home.join(".config")).unwrap();
+            for (n, e) in &entries {
+                std::fs::write(apps.join(n), e).unwrap();
+            }
+            std::fs::write(apps.join("mimeinfo.cache"), super::mime_cache(&apps)).unwrap();
+            std::fs::write(home.join(".config/olo-mimeapps.list"), defaults).unwrap();
         }
     }
 }

@@ -99,7 +99,42 @@ fn write_files(config: &Path, data: &Path) -> std::io::Result<Written> {
     let conf = put(&config.join("xdg-desktop-portal").join("olo-portals.conf"), PORTALS)?;
     let backend = put(&data.join("xdg-desktop-portal").join("portals").join("olo.portal"), OLO_PORTAL)?;
     let unit = put(&config.join("systemd").join("user").join(TARGET), TARGET_UNIT)?;
+    if let Some(bin_dir) = crate::exe().parent() {
+        open_for_others(bin_dir, config, &data.join("applications"))?;
+    }
     Ok(Written { unit, portals: conf || backend })
+}
+
+/// Let other programs open files in Olo's apps, as Olo does: the hidden
+/// desktop entries and `olo-mimeapps.list` `olo_xdg::open::for_others`
+/// gives, in `apps` (`~/.local/share/applications`, whose
+/// `mimeinfo.cache` is made again when they change, as
+/// update-desktop-database would) and `config`; entries written before
+/// and no longer wanted go.
+fn open_for_others(bin_dir: &Path, config: &Path, apps: &Path) -> std::io::Result<()> {
+    let (entries, defaults) = olo_xdg::open::for_others(bin_dir);
+    let mut changed = false;
+    for (name, text) in &entries {
+        changed |= put(&apps.join(name), text)?;
+    }
+    if let Ok(rd) = std::fs::read_dir(apps) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.starts_with("olo.")
+                && name.ends_with(".desktop")
+                && !entries.iter().any(|(n, _)| *n == name)
+                && std::fs::read_to_string(e.path()).is_ok_and(|t| t.lines().any(|l| l == olo_xdg::open::WRITTEN))
+            {
+                std::fs::remove_file(e.path())?;
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        put(&apps.join("mimeinfo.cache"), &olo_xdg::open::mime_cache(apps))?;
+    }
+    put(&config.join("olo-mimeapps.list"), &defaults)?;
+    Ok(())
 }
 
 /// Begin the graphical session (blocks on systemd: call it off the main
@@ -155,6 +190,32 @@ mod tests {
         assert!(conf.starts_with("# Written") && conf.contains("default=gtk") && conf.contains("ScreenCast=olo"));
         let backend = std::fs::read_to_string(data.join("xdg-desktop-portal/portals/olo.portal")).unwrap();
         assert!(backend.contains("DBusName=org.freedesktop.impl.portal.desktop.olo"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn others_open_files_in_olo() {
+        let dir = std::env::temp_dir().join(format!("olo-graphical-others-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (bin, config, apps) = (dir.join("bin"), dir.join("config"), dir.join("applications"));
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(&apps).unwrap();
+        std::fs::write(bin.join("olo-viewer"), "").unwrap();
+        // Another app's entry, one we wrote for an app no longer there, and
+        // the person's own that happens to start "olo.".
+        std::fs::write(apps.join("okular.desktop"), "[Desktop Entry]\nType=Application\nName=Okular\nMimeType=application/pdf;\n").unwrap();
+        std::fs::write(apps.join("olo.tracker.desktop"), format!("[Desktop Entry]\nType=Application\nName=Tracker\nMimeType=inode/directory;\n{}\n", olo_xdg::open::WRITTEN)).unwrap();
+        std::fs::write(apps.join("olo.mine.desktop"), "[Desktop Entry]\nType=Application\nName=Mine\n").unwrap();
+        open_for_others(&bin, &config, &apps).unwrap();
+        assert!(apps.join("olo.viewer.desktop").is_file() && apps.join("olo.mine.desktop").is_file());
+        assert!(!apps.join("olo.tracker.desktop").exists());
+        let cache = std::fs::read_to_string(apps.join("mimeinfo.cache")).unwrap();
+        let defaults = std::fs::read_to_string(config.join("olo-mimeapps.list")).unwrap();
+        if !olo_xdg::mime::known().is_empty() {
+            assert!(cache.contains("\napplication/pdf=okular.desktop;olo.viewer.desktop;\n"), "{cache}");
+            assert!(!cache.contains("inode/directory"));
+            assert!(defaults.contains("\napplication/pdf=olo.viewer.desktop;\n"));
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

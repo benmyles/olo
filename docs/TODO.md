@@ -1058,7 +1058,11 @@ as they land (with the commit), add new ones as they come up.
     serves `org.freedesktop.FileManager1`, each call an Open in
     Tracker). Left: the OpenURI portal's `OpenDirectory`, with OpenURI.
   - **Opening things** (started 2026-10-30: the AppChooser portal is
-    Olo's Open With window, so OpenURI's "which app?" is Olo's): the
+    Olo's Open With window, so OpenURI's "which app?" is Olo's; olo-session
+    writes desktop entries and `olo-mimeapps.list` defaults so GIO,
+    xdg-open and OpenURI open files in Olo's apps as Olo does, links
+    staying with the default browser. Left: Olo offering Chrome as the
+    default browser): the
     OpenURI portal and `xdg-open`'s MIME
     defaults resolved by Olo's own (`olo_kit::open`), so links from any
     app open in Olo's choice, files in Olo's apps; Olo as the default

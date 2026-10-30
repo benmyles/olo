@@ -117,6 +117,18 @@ pub fn is_a(mime: &str, of: &str) -> bool {
     false
 }
 
+/// Every type shared-mime-info knows (its `types` lists), in order.
+pub fn known() -> Vec<String> {
+    let mut v: Vec<String> = mime_dirs()
+        .iter()
+        .filter_map(|d| std::fs::read_to_string(d.join("types")).ok())
+        .flat_map(|t| t.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_owned).collect::<Vec<_>>())
+        .collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
 /// Whether `name` matches the shell glob `pattern` (`*`, `?`, `[...]`).
 pub fn glob(pattern: &str, name: &str) -> bool {
     glob_match(&pattern.chars().collect::<Vec<_>>(), &name.chars().collect::<Vec<_>>())

@@ -40,6 +40,11 @@ pub fn offers(ids: &[String]) -> Vec<Offer> {
     let all = desktop_entry::all();
     ids.iter()
         .map(|id| match desktop_entry::find_among(&all, id) {
+            // Olo's own (`olo.viewer`, the entries olo-session writes), by
+            // Olo's name and icon.
+            e if let Some((name, icon)) = id.starts_with("olo.").then(|| olo_xdg::apps::our_app(id)).flatten() => {
+                Offer { id: id.clone(), name: name.into(), kind: e.and_then(|e| e.generic_name.clone()).unwrap_or_default(), icon: icon.into() }
+            }
             Some(e) => Offer {
                 id: id.clone(),
                 name: e.name.clone(),
@@ -128,8 +133,16 @@ pub struct Dialog {
 
 const SIZE: (u32, u32) = (440, 340);
 
+/// The app chosen last (the default) at the top, as BeOS's Open With put
+/// the preferred app first.
+fn first(offers: &mut [Offer], last: &str) {
+    if let Some(i) = offers.iter().position(|o| o.id == last) {
+        offers[..=i].rotate_right(1);
+    }
+}
+
 impl Dialog {
-    pub fn open(cx: &mut Cx, ask: Ask) -> (WindowId, Dialog) {
+    pub fn open(cx: &mut Cx, mut ask: Ask) -> (WindowId, Dialog) {
         let mut options = WindowOptions { dialog: true, ..WindowOptions::new("Open With", SIZE.0, SIZE.1).min_size(340, 240) };
         if !ask.parent.is_empty() {
             options = options.foreign_parent(ask.parent.clone());
@@ -137,7 +150,8 @@ impl Dialog {
         let id = cx.open_window(options);
         cx.activate(id);
         let mut list = ListState::default();
-        list.select(ask.offers.iter().position(|o| o.id == ask.last).unwrap_or(0));
+        first(&mut ask.offers, &ask.last);
+        list.select(0);
         (id, Dialog { ask, list })
     }
 
@@ -149,6 +163,7 @@ impl Dialog {
     pub fn offer(&mut self, offers: Vec<Offer>) {
         let chosen = self.list.single().and_then(|i| self.ask.offers.get(i)).map(|o| o.id.clone());
         self.ask.offers = offers;
+        first(&mut self.ask.offers, &self.ask.last);
         self.list.select(chosen.and_then(|id| self.ask.offers.iter().position(|o| o.id == id)).unwrap_or(0));
     }
 
@@ -212,6 +227,16 @@ impl Dialog {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_default_comes_first() {
+        let offer = |id: &str| Offer { id: id.into(), name: id.into(), kind: String::new(), icon: String::new() };
+        let mut offers = vec![offer("a"), offer("b"), offer("olo.viewer"), offer("c")];
+        first(&mut offers, "olo.viewer");
+        assert_eq!(offers.iter().map(|o| o.id.as_str()).collect::<Vec<_>>(), ["olo.viewer", "a", "b", "c"]);
+        first(&mut offers, "missing");
+        assert_eq!(offers[0].id, "olo.viewer");
+    }
 
     #[test]
     fn what_is_opened() {
