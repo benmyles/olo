@@ -2188,5 +2188,11 @@
   "title": "Auto-tiling: every window fits where an arrangement lets it",
   "caption": "Before (left): five windows opened in turn under auto-tiling on a 1440\u00d7900 display, the fifth (Passwords) halving a tile too small for it, overlapping three. After (right): the tree arranged again so each window has its least size: Disk Usage over Log Viewer, Passwords over StyledEdit and Activity Monitor.",
   "image": "2026-10-29/235331-auto-tiling-every-window-fits-where-an-arrangeme.png"
+ },
+ {
+  "time": "2026-10-30T00:29:57",
+  "title": "Quick Look: TOML (and INI) highlighted",
+  "caption": "TOML files (and Cargo.lock, uv.lock, poetry.lock) are coloured by a grammar of Quick Look's own: tables as headings, keys, strings of every kind, numbers, booleans and dates, arrays and inline tables; INI-style files (systemd units, .desktop entries, git config) by another. Light and dark, at 2\u00d7.",
+  "image": "2026-10-30/002957-quick-look-toml-and-ini-highlighted.png"
  }
 ]

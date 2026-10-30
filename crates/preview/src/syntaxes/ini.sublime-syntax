@@ -1,0 +1,38 @@
+%YAML 1.2
+---
+# INI-style files (also systemd units, .desktop entries, git and
+# editor configs): sections as headings, keys as attributes, comments,
+# and the values' numbers, booleans and quoted strings.
+name: INI
+scope: source.ini
+file_extensions: [ini, conf, cfg, desktop, service, socket, timer, mount, target, path, slice, properties, inf, editorconfig, gitconfig, gitmodules]
+hidden_file_extensions: [.gitconfig, .gitmodules, .editorconfig]
+
+contexts:
+  main:
+    - match: '^\s*[;#]'
+      scope: punctuation.definition.comment.ini
+      push:
+        - meta_scope: comment.line.ini
+        - match: '$\n?'
+          pop: true
+    - match: '^\s*(\[)([^\]\n]*)(\])'
+      captures:
+        1: punctuation.definition.section.begin.ini
+        2: entity.name.section.ini
+        3: punctuation.definition.section.end.ini
+    - match: '^\s*([^=:\s;#\[][^=:\n]*?)\s*([=:])'
+      captures:
+        1: entity.other.attribute-name.ini
+        2: keyword.operator.assignment.ini
+      push: value
+
+  value:
+    - match: '$'
+      pop: true
+    - match: '"(?:[^"\\\n]|\\.)*"'
+      scope: string.quoted.double.ini
+    - match: '\b(?i:true|false|yes|no|on|off)\b'
+      scope: constant.language.ini
+    - match: '(?<![\w.])[+-]?\d+(?:\.\d+)?(?![\w.])'
+      scope: constant.numeric.ini

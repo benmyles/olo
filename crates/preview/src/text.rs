@@ -30,9 +30,21 @@ pub struct Text {
     pub note: String,
 }
 
+/// Grammars of our own, for what the bundled ones lack.
+const OWN: &[&str] = &[include_str!("syntaxes/toml.sublime-syntax"), include_str!("syntaxes/ini.sublime-syntax")];
+
 fn syntaxes() -> &'static SyntaxSet {
     static SET: OnceLock<SyntaxSet> = OnceLock::new();
-    SET.get_or_init(SyntaxSet::load_defaults_newlines)
+    SET.get_or_init(|| {
+        let mut set = SyntaxSet::load_defaults_newlines().into_builder();
+        for grammar in OWN {
+            match syntect::parsing::SyntaxDefinition::load_from_str(grammar, true, None) {
+                Ok(def) => set.add(def),
+                Err(e) => tracing::warn!("a grammar of Quick Look's own didn't load: {e}"),
+            }
+        }
+        set.build()
+    })
 }
 
 pub fn load(path: &Path, cancel: &Arc<AtomicBool>, send: Send) {
@@ -132,7 +144,7 @@ fn find_syntax<'a>(ss: &'a SyntaxSet, path: &Path, first: &str) -> Option<&'a Sy
     let ext = path.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_default();
     // Names the bundled grammars don't claim.
     let alias = match ext.as_str() {
-        "toml" | "ini" | "conf" | "cfg" | "desktop" | "service" => Some("ini"),
+        "lock" => Some("toml"),
         "ts" | "tsx" | "mjs" | "cjs" | "jsx" => Some("js"),
         "zsh" | "fish" | "bashrc" => Some("sh"),
         "kt" | "kts" => Some("java"),
@@ -144,7 +156,8 @@ fn find_syntax<'a>(ss: &'a SyntaxSet, path: &Path, first: &str) -> Option<&'a Sy
         "Makefile" | "makefile" | "GNUmakefile" => ss.find_syntax_by_extension("make"),
         "Dockerfile" | "Containerfile" => ss.find_syntax_by_extension("sh"),
         "CMakeLists.txt" => ss.find_syntax_by_extension("cmake"),
-        "Cargo.lock" => ss.find_syntax_by_extension("ini"),
+        "Cargo.lock" | "poetry.lock" | "uv.lock" | "Pipfile" => ss.find_syntax_by_extension("toml"),
+        ".gitconfig" | ".gitmodules" | ".editorconfig" => ss.find_syntax_by_extension("ini"),
         _ => None,
     };
     by_name
@@ -217,5 +230,81 @@ mod tests {
         assert!(toks(1).contains(&Tok::Keyword) && toks(1).contains(&Tok::String) && toks(1).contains(&Tok::Number));
         assert!(t.note.starts_with("Rust source"));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Each line's text in each token class, as (class, text).
+    fn classes(lang: &str, src: &str) -> Vec<Vec<(Tok, String)>> {
+        let lines: Vec<String> = src.lines().map(String::from).collect();
+        let spans = highlight(lang, &lines);
+        assert_eq!(spans.len(), lines.len(), "{lang} not coloured");
+        spans
+            .iter()
+            .zip(&lines)
+            .map(|(s, l)| s.iter().filter(|x| x.2 != Tok::Plain).map(|x| (x.2, l[x.0 as usize..x.1 as usize].trim().to_owned())).collect())
+            .collect()
+    }
+
+    #[test]
+    fn colours_toml() {
+        let src = r#"# a comment
+[package]
+name = "olo" # the name
+version = 1_000
+pi = -3.14e0
+big = 0x1F
+on = true
+when = 1979-05-27T07:32:00Z
+day = 1979-05-27
+deps = ["a\n", 'b', { x = 1, y.z = "q" }]
+[[bin]]
+s = """
+multi "quoted"
+"""
+lit = '''raw'''
+a.b."c d" = nan
+[ "quoted table" . sub ]"#;
+        let c = classes("toml", src);
+        use Tok::*;
+        let one = |t: Tok, s: &str| (t, s.to_owned());
+        assert_eq!(c[0], [one(Comment, "# a comment")]);
+        assert_eq!(c[1], [one(Heading, "package")]);
+        assert_eq!(c[2], [one(Attribute, "name"), one(String, "\"olo\""), one(Comment, "# the name")]);
+        assert_eq!(c[3], [one(Attribute, "version"), one(Number, "1_000")]);
+        assert_eq!(c[4], [one(Attribute, "pi"), one(Number, "-3.14e0")]);
+        assert_eq!(c[5], [one(Attribute, "big"), one(Number, "0x1F")]);
+        assert_eq!(c[6], [one(Attribute, "on"), one(Constant, "true")]);
+        assert_eq!(c[7], [one(Attribute, "when"), one(Constant, "1979-05-27T07:32:00Z")]);
+        assert_eq!(c[8], [one(Attribute, "day"), one(Constant, "1979-05-27")]);
+        assert!(c[9].contains(&one(String, "\"a\\n\"")) && c[9].contains(&one(String, "'b'")), "{:?}", c[9]);
+        assert!(c[9].contains(&one(Attribute, "x")) && c[9].contains(&one(Number, "1")) && c[9].contains(&one(Attribute, "y")), "{:?}", c[9]);
+        assert_eq!(c[10], [one(Heading, "bin")]);
+        // A multi-line string, quotes in it, to its end.
+        assert_eq!(c[12], [one(String, "multi \"quoted\"")]);
+        assert_eq!(c[13], [one(String, "\"\"\"")]);
+        assert_eq!(c[14], [one(Attribute, "lit"), one(String, "'''raw'''")]);
+        assert_eq!(c[15][0], one(Attribute, "a"));
+        assert!(c[15].contains(&one(Attribute, "\"c d\"")) && c[15].contains(&one(Number, "nan")), "{:?}", c[15]);
+        assert!(c[16].contains(&one(Heading, "\"quoted table\"")) && c[16].contains(&one(Heading, "sub")), "{:?}", c[16]);
+    }
+
+    #[test]
+    fn colours_ini_and_units() {
+        let c = classes("ini", "; note\n[Unit]\nDescription=Olo\nRestart = yes\nRestartSec=5\nName[de]=\"x\"");
+        use Tok::*;
+        let one = |t: Tok, s: &str| (t, s.to_owned());
+        assert_eq!(c[0], [one(Comment, "; note")]);
+        assert_eq!(c[1], [one(Heading, "Unit")]);
+        assert_eq!(c[2], [one(Attribute, "Description")]);
+        assert_eq!(c[3], [one(Attribute, "Restart"), one(Constant, "yes")]);
+        assert_eq!(c[4], [one(Attribute, "RestartSec"), one(Number, "5")]);
+        assert_eq!(c[5], [one(Attribute, "Name[de]"), one(String, "\"x\"")]);
+    }
+
+    #[test]
+    fn toml_and_units_are_found_by_name() {
+        let ss = syntaxes();
+        for (name, want) in [("Cargo.toml", "TOML"), ("Cargo.lock", "TOML"), ("uv.lock", "TOML"), ("olo.service", "INI"), ("app.desktop", "INI"), (".gitconfig", "INI")] {
+            assert_eq!(find_syntax(ss, Path::new(name), "").map(|s| s.name.as_str()), Some(want), "{name}");
+        }
     }
 }

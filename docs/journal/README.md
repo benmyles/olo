@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-10-30
+
+### Quick Look: TOML (and INI) highlighted
+
+*00:29* — TOML files (and Cargo.lock, uv.lock, poetry.lock) are coloured by a grammar of Quick Look's own: tables as headings, keys, strings of every kind, numbers, booleans and dates, arrays and inline tables; INI-style files (systemd units, .desktop entries, git config) by another. Light and dark, at 2×.
+
+![Quick Look: TOML (and INI) highlighted](2026-10-30/002957-quick-look-toml-and-ini-highlighted.png)
+
 ## 2026-10-29
 
 ### Auto-tiling: every window fits where an arrangement lets it

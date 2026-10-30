@@ -592,11 +592,14 @@ as they land (with the commit), add new ones as they come up.
   (an `HTTPS_PROXY` they honour, or Olo's own network layer), which
   picks the account and passes everything else through untouched, with
   the logs and heatmap as now.
-- **Quick Look: TOML highlighted** (Ben, 2026-10-30): "add support for
+- ~~**Quick Look: TOML highlighted**~~ (Ben, 2026-10-30): "add support for
   toml syntax highlighting to quick look". The bundled grammars (syntect's
   defaults) have no TOML (or INI, which `.toml`, `.conf`, `.desktop` and
   `.service` were sent to, so they show plain): grammars of our own for
   them, built into the preview's syntax set, coloured as the others.
+  Done so (`crates/preview/src/syntaxes`): TOML (every kind of value,
+  arrays and inline tables over lines, Cargo.lock and the like too) and
+  INI (systemd units, .desktop entries, git and editor configs).
 - **Deskbar: a dot for apps with notifications** (Ben, 2026-10-29): "in
   the deskbar we should show a notification badge for each app that has
   active notifications. we don't need a count, just a dot on the right
