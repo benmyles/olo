@@ -553,6 +553,7 @@ pub fn folder_view(ui: &mut Ui, f: &mut FolderWin) -> Vec<Action> {
 }
 
 fn list_view(ui: &mut Ui, f: &mut FolderWin, actions: &mut Vec<Action>) {
+    let reveal = f.take_show();
     let cols = [
         Column::new("Name", 220.0),
         Column::new("Size", 80.0).right(),
@@ -570,7 +571,7 @@ fn list_view(ui: &mut Ui, f: &mut FolderWin, actions: &mut Vec<Action>) {
     let editing_row = f.editing.as_ref().and_then(|(p, _)| entries.iter().position(|e| &e.path == p));
     let mut edit_cell = None;
     let name = |i: usize| entries[i].name.as_str();
-    let r = ColumnListView::new(("list", &f.path), &cols, entries.len(), &mut f.list).draggable().type_select(&name).show(ui, |cell| {
+    let r = ColumnListView::new(("list", &f.path), &cols, entries.len(), &mut f.list).draggable().reveal(reveal).type_select(&name).show(ui, |cell| {
         let e = &entries[cell.row];
         match cell.column {
             0 if Some(cell.row) == editing_row => {
@@ -636,6 +637,14 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
     let height = rows as f32 * cell.y + 2.0 * inset;
     let can_paste = true;
     let focused = ui.ctx().memory(|mm| mm.focused().is_none());
+
+    // A selection made in code (Show in Tracker, a new item, one put back
+    // after a reload): into view, with some of what's around it.
+    if let Some(row) = f.take_show() {
+        let around = ((rect.height() / cell.y / 2.0).floor() - 1.0).max(0.0) * cell.y;
+        let top = inset + (row / cols) as f32 * cell.y;
+        ScrollView::reveal(ui.ctx(), ("icons", &f.path), (top - inset - around).max(0.0), top + cell.y + inset + around);
+    }
 
     // Keyboard: the arrows, Page Up and Down, Home and End move (with ⇧,
     // grow or shrink the selection from the anchor), Enter opens, Delete

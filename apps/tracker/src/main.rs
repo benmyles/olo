@@ -42,11 +42,13 @@ pub struct Pane {
     /// The listing request whose result we are waiting for (see `Loader`).
     pub generation: u64,
     pub loading: bool,
+    /// Select the first item once listed (→ came in before the listing).
+    pub first: bool,
 }
 
 impl Pane {
     fn new(path: PathBuf) -> Self {
-        Pane { path, entries: Vec::new(), list: ListState { multiple: true, ..Default::default() }, dirty: false, generation: 0, loading: true }
+        Pane { path, entries: Vec::new(), list: ListState { multiple: true, ..Default::default() }, dirty: false, generation: 0, loading: true, first: false }
     }
 }
 
@@ -117,8 +119,13 @@ pub struct FolderWin {
     root_generation: u64,
     pub loading: bool,
     pub listed: Arc<AtomicU64>,
-    /// Paths to select once a listing in progress brings them in.
-    pending_select: Vec<PathBuf>,
+    /// Items to select once their folder's listing brings them in (a new
+    /// item, a selection put back after a reload), by folder: only that
+    /// folder's column, and only until its listing lands.
+    pending_select: Vec<(PathBuf, Vec<PathBuf>)>,
+    /// Selections made in code, to scroll into view at the next frame:
+    /// (column, row).
+    pub show: Vec<(usize, usize)>,
 }
 
 struct InfoWin {
@@ -306,6 +313,7 @@ impl FolderWin {
             loading: true,
             listed: Arc::default(),
             pending_select: Vec::new(),
+            show: Vec::new(),
         };
         w.reload(hidden);
         w
@@ -355,6 +363,7 @@ impl FolderWin {
     /// A listing came back; ignore it if a newer one was asked for since.
     fn listed(&mut self, path: &Path, generation: u64, result: Result<Vec<Entry>, String>) {
         let sort = self.sort;
+        let mut first = None;
         if path == self.path && generation == self.root_generation {
             self.loading = false;
             if self.dirty {
@@ -381,6 +390,7 @@ impl FolderWin {
                     p.loading = false;
                     let again = p.dirty;
                     replace_entries(&mut p.entries, &mut p.list, v, sort, &mut Vec::new());
+                    first = std::mem::take(&mut p.first).then_some(k + 1);
                     if again {
                         self.request(Some(k));
                     }
@@ -394,9 +404,22 @@ impl FolderWin {
         } else {
             return;
         }
-        if !self.pending_select.is_empty() {
-            let pending = std::mem::take(&mut self.pending_select);
-            self.select_paths(&pending);
+        // What waits for a folder no longer shown won't be.
+        let shown: Vec<bool> = self.pending_select.iter().map(|(d, _)| self.column_of(d).is_some()).collect();
+        let mut shown = shown.into_iter();
+        self.pending_select.retain(|_| shown.next().unwrap_or(false));
+        if let Some(k) = self.column_of(path) {
+            self.select_pending(k, true);
+        }
+        // → went into this column before it was listed: in now, as it
+        // would have then.
+        if let Some(k) = first
+            && self.active == k
+            && let Some(p) = self.panes.get(k - 1)
+            && p.list.selected.is_empty()
+            && !p.entries.is_empty()
+        {
+            columns::choose(self, k, 0);
         }
     }
 
@@ -482,9 +505,11 @@ impl FolderWin {
                 _ => self.request(pane),
             }
         }
-        if !self.pending_select.is_empty() {
-            let pending = std::mem::take(&mut self.pending_select);
-            self.select_paths(&pending);
+        let waiting: Vec<PathBuf> = self.pending_select.iter().map(|(d, _)| d.clone()).collect();
+        for dir in waiting {
+            if let Some(k) = self.column_of(&dir) {
+                self.select_pending(k, false);
+            }
         }
     }
 
@@ -564,19 +589,125 @@ impl FolderWin {
         }
     }
 
-    /// Select exactly `paths`; any not listed yet are selected when the
-    /// listing in progress brings them in.
+    /// Select exactly `paths` (items of one folder) where that folder is
+    /// shown; in column view, opening the columns down to it if it is
+    /// inside this one, as it was before a reload. Any not listed yet are
+    /// selected when that folder's listing brings them in.
     fn select_paths(&mut self, paths: &[PathBuf]) {
-        let (entries, list) = self.current_mut();
-        let rows: Vec<usize> = (0..entries.len()).filter(|&i| paths.contains(&entries[i].path)).collect();
-        let missing: Vec<PathBuf> = paths.iter().filter(|p| !entries.iter().any(|e| &&e.path == p)).cloned().collect();
-        if let Some(&first) = rows.first() {
-            list.select(first);
-            list.selected.extend(rows);
-        } else {
-            list.selected.clear();
+        let Some(dir) = paths.first().and_then(|p| p.parent()).map(Path::to_owned) else { return };
+        let paths: Vec<PathBuf> = paths.iter().filter(|p| p.parent() == Some(dir.as_path())).cloned().collect();
+        let k = match self.column_of(&dir) {
+            Some(k) => k,
+            None if self.view == ViewMode::Columns && dir.starts_with(&self.path) => {
+                // From the deepest column on the way, each selects the
+                // folder the next one shows.
+                let mut k = (1..=self.panes.len()).rev().find(|&k| dir.starts_with(&self.panes[k - 1].path)).unwrap_or(0);
+                let mut at = self.column_at(k).0.to_owned();
+                let steps: Vec<_> = dir.strip_prefix(&at).map(|r| r.components().map(|c| c.as_os_str().to_owned()).collect()).unwrap_or_default();
+                for name in steps {
+                    let next = at.join(name);
+                    self.select_paths(std::slice::from_ref(&next));
+                    if self.column_of(&next).is_none() {
+                        let hidden = self.hidden;
+                        self.open_column(k, next.clone(), hidden);
+                    }
+                    (at, k) = (next, k + 1);
+                }
+                k
+            }
+            None => return,
+        };
+        if self.view == ViewMode::Columns {
+            self.active = k;
         }
-        self.pending_select = missing;
+        self.pending_select.retain(|(d, _)| *d != dir);
+        if !self.select_in(k, &paths) {
+            self.pending_select.push((dir, paths));
+        }
+    }
+
+    /// Select what waits for column `k`'s folder, now that it lists more;
+    /// once `landed` (its listing is in), what still isn't there won't be.
+    fn select_pending(&mut self, k: usize, landed: bool) {
+        let dir = self.column_at(k).0.to_owned();
+        let Some((_, paths)) = self.pending_select.iter().find(|(d, _)| *d == dir).cloned() else { return };
+        let all = self.select_in(k, &paths);
+        let loading = if k == 0 { self.loading } else { self.panes[k - 1].loading };
+        if all || (landed && !loading) {
+            self.pending_select.retain(|(d, _)| *d != dir);
+        }
+    }
+
+    /// Select exactly those of `paths` that column `k` lists (if it lists
+    /// any), the columns after it following; whether it lists them all.
+    fn select_in(&mut self, k: usize, paths: &[PathBuf]) -> bool {
+        let (_, entries, list) = self.column_at(k);
+        let rows: Vec<usize> = (0..entries.len()).filter(|&i| paths.contains(&entries[i].path)).collect();
+        let Some(&first) = rows.first() else { return paths.is_empty() };
+        list.select(first);
+        list.selected.extend(rows.iter().copied());
+        self.show.retain(|&(c, _)| c != k);
+        self.show.push((k, first));
+        self.follow(k);
+        rows.len() == paths.len()
+    }
+
+    /// Show the folder another way, what it has selected still in view.
+    pub fn set_view(&mut self, view: ViewMode) {
+        self.view = view;
+        if view == ViewMode::Columns {
+            self.active = 0;
+        }
+        self.show = self.list.cursor().filter(|c| self.list.selected.contains(c)).or_else(|| self.list.selected.first().copied()).map(|row| (0, row)).into_iter().collect();
+    }
+
+    /// The root's row to scroll into view (`show`), in the views of one
+    /// column.
+    pub fn take_show(&mut self) -> Option<usize> {
+        std::mem::take(&mut self.show).into_iter().find_map(|(k, row)| (k == 0).then_some(row))
+    }
+
+    /// Column view: the columns after column `k` follow what it has
+    /// selected, as choosing does (a folder's column, else none).
+    fn follow(&mut self, k: usize) {
+        if self.view != ViewMode::Columns {
+            return;
+        }
+        let (_, entries, list) = self.column_at(k);
+        let folder = match list.selected.iter().collect::<Vec<_>>()[..] {
+            [&i] => entries.get(i).filter(|e| e.is_dir).map(|e| e.path.clone()),
+            _ => None,
+        };
+        match folder {
+            Some(dir) if self.panes.get(k).is_some_and(|p| p.path == dir) => {}
+            Some(dir) => {
+                let hidden = self.hidden;
+                self.open_column(k, dir, hidden);
+            }
+            None => self.panes.truncate(k),
+        }
+        self.active = self.active.min(self.panes.len());
+    }
+
+    /// Column `k`'s folder, items and selection (0: the root).
+    fn column_at(&mut self, k: usize) -> (&Path, &mut Vec<Entry>, &mut ListState) {
+        if k == 0 {
+            (&self.path, &mut self.entries, &mut self.list)
+        } else {
+            let p = &mut self.panes[k - 1];
+            (&p.path, &mut p.entries, &mut p.list)
+        }
+    }
+
+    /// The column showing `dir`: 0, the root; the others in column view.
+    fn column_of(&self, dir: &Path) -> Option<usize> {
+        if dir == self.path {
+            return Some(0);
+        }
+        if self.view != ViewMode::Columns {
+            return None;
+        }
+        self.panes.iter().position(|p| p.path == dir).map(|k| k + 1)
     }
 }
 
@@ -874,13 +1005,10 @@ impl Tracker {
                 let (entries, list) = f.current_mut();
                 list.invert(entries.len());
             }
-            "view-icons" => f.view = ViewMode::Icons,
-            "view-mini" => f.view = ViewMode::MiniIcons,
-            "view-list" => f.view = ViewMode::List,
-            "view-columns" => {
-                f.view = ViewMode::Columns;
-                f.active = 0;
-            }
+            "view-icons" => f.set_view(ViewMode::Icons),
+            "view-mini" => f.set_view(ViewMode::MiniIcons),
+            "view-list" => f.set_view(ViewMode::List),
+            "view-columns" => f.set_view(ViewMode::Columns),
             "hidden" => {
                 self.hidden = !self.hidden;
                 self.reload_all();

@@ -540,6 +540,19 @@ on one of several opens them all; Open Parent (⌘↑) comes back with the
 folder it was in selected. The desktop, whose icons are anywhere and
 have no order, takes ⌘ and ⇧ alike as add or take away. A listing
 that changes keeps the selection, anchor and cursor by path.
+Folders are listed on workers, so a selection made in code (Show in
+Tracker, a new or renamed item, the selection put back after a reload:
+`FolderWin::select_paths`) may name items not listed yet: those wait
+for their own folder's listing (`pending_select`, by folder) and are
+given up once it lands without them, never touching another column's
+selection. In column view, `select_paths` on items deeper than the
+window's folder opens the columns down to theirs, each selecting the
+folder the next one shows, so a window comes back from a reload with
+its columns. What such a selection selects scrolls into view, with
+some of what's around it, in every view (`FolderWin::show`), and a
+change of view keeps the selection in sight. → into a column not
+listed yet selects its first item when it lands (`Pane::first`), as it
+would have had the listing been there.
 
 Tracker (`view.rs`: `Drag`, `DropTarget`, `take_drop`, `item_drop`):
 files drag from every view and the desktop and drop onto folders (in a

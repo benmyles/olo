@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Tracker: Column View keeps its highlight
+
+*01:14* — → into a folder highlights its first item again. A selection put back after an upgrade waited for items that never came, and wiped the active column's selection each time a listing landed; now a waiting selection belongs to its own folder only, and the window comes back with its columns. → before a listing lands selects once it does, and a selection made in code scrolls into view in every view.
+
+![Tracker: Column View keeps its highlight](2026-10-30/011428-tracker-column-view-keeps-its-highlight.png)
+
 ### Quick Look: TOML (and INI) highlighted
 
 *00:29* — TOML files (and Cargo.lock, uv.lock, poetry.lock) are coloured by a grammar of Quick Look's own: tables as headings, keys, strings of every kind, numbers, booleans and dates, arrays and inline tables; INI-style files (systemd units, .desktop entries, git config) by another. Light and dark, at 2×.

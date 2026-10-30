@@ -52,7 +52,7 @@ fn column_mut(f: &mut FolderWin, k: usize) -> (&mut Vec<Entry>, &mut widgets::Li
 }
 
 /// Select `row` in column `k` and show what it holds in the next column.
-fn choose(f: &mut FolderWin, k: usize, row: usize) {
+pub(crate) fn choose(f: &mut FolderWin, k: usize, row: usize) {
     let hidden = f.hidden;
     let (entries, list) = column_mut(f, k);
     let Some(e) = entries.get(row).cloned() else { return };
@@ -86,11 +86,20 @@ pub fn columns_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, actions: &mut 
     ui.painter().rect_filled(body, 0.0, c(p.document_background));
     let n = 1 + f.panes.len();
     f.active = f.active.min(n - 1);
-    let preview = previewed(f);
-    let total = n as f32 * COLUMN_WIDTH + preview.as_ref().map_or(0.0, |_| PREVIEW_WIDTH);
 
     keyboard(ui, f, actions);
+    // (After the keys: a column they opened counts in scrolling to it.)
     let n = 1 + f.panes.len();
+    let preview = previewed(f);
+    let total = n as f32 * COLUMN_WIDTH + preview.as_ref().map_or(0.0, |_| PREVIEW_WIDTH);
+    // Selections made in code (Show in Tracker, a new item, columns put
+    // back after a reload): into view, with some of what's around them.
+    let around = ((body.height() / m::LIST_ROW / 2.0).floor() - 1.0).max(0.0);
+    for (k, row) in std::mem::take(&mut f.show) {
+        if k < n {
+            reveal(ui, f, k, row, around);
+        }
+    }
 
     // Horizontal scrolling: the touchpad, Shift+wheel and the bar scroll
     // sideways. When the active column or what it opened changes, it is
@@ -453,20 +462,26 @@ fn keyboard(ui: &Ui, f: &mut FolderWin, actions: &mut Vec<Action>) {
                 if let Some(next) = to {
                     column_mut(f, k).1.move_to(next, true);
                     f.panes.truncate(k);
-                    reveal(ui, f, k, next);
+                    reveal(ui, f, k, next, 0.0);
                 }
             }
             (Key::ArrowDown | Key::ArrowUp | Key::Home | Key::End, false) => {
                 if let Some(next) = to {
                     choose(f, k, next);
-                    reveal(ui, f, k, next);
+                    reveal(ui, f, k, next, 0.0);
                 }
             }
             (Key::ArrowRight, false) => {
                 if cur.is_some_and(|c| entries[c].is_dir) && f.panes.len() > k {
                     f.active = k + 1;
-                    if f.panes[k].list.selected.is_empty() && !f.panes[k].entries.is_empty() {
-                        choose(f, k + 1, 0);
+                    let p = &mut f.panes[k];
+                    if p.list.selected.is_empty() {
+                        if !p.entries.is_empty() {
+                            choose(f, k + 1, 0);
+                        } else if p.loading {
+                            // Not listed yet: its first item once it is.
+                            p.first = true;
+                        }
                     }
                 }
             }
@@ -487,12 +502,14 @@ fn keyboard(ui: &Ui, f: &mut FolderWin, actions: &mut Vec<Action>) {
     let id = egui::Id::unique(("col", path));
     if let Some(row) = widgets::type_select(ui, id, entries.len(), list.cursor(), |i| entries[i].name.as_str()) {
         choose(f, k, row);
-        reveal(ui, f, k, row);
+        reveal(ui, f, k, row, 0.0);
     }
 }
 
-fn reveal(ui: &Ui, f: &FolderWin, k: usize, row: usize) {
+/// Scroll column `k` to `row`, with `around` rows above and below it.
+fn reveal(ui: &Ui, f: &FolderWin, k: usize, row: usize, around: f32) {
     let path: PathBuf = column(f, k).0.to_owned();
     let top = m::TIGHT + row as f32 * m::LIST_ROW;
-    ScrollView::reveal(ui.ctx(), ("col", &path), top - m::TIGHT, top + m::LIST_ROW + m::TIGHT);
+    let around = around * m::LIST_ROW;
+    ScrollView::reveal(ui.ctx(), ("col", &path), (top - m::TIGHT - around).max(0.0), top + m::LIST_ROW + m::TIGHT + around);
 }
