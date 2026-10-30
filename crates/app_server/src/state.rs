@@ -301,6 +301,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub night_fade: Option<crate::night::Fade>,
     /// Screens that mirror another (out of the Space; see `desktop`).
     pub mirrors: Vec<Output>,
+    /// Layer surfaces that came before any display (`new_layer_surface`),
+    /// put on the main one when it comes (`displays_changed`).
+    pub homeless_layers: Vec<smithay::desktop::LayerSurface>,
     /// The windows Show Desktop hid (shown again by its next press).
     pub desktop_shown: Vec<WindowElement>,
     /// How the windows were before the last arrangement (Tile All,
@@ -1229,6 +1232,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             white_point: None,
             night_fade: None,
             mirrors: Vec::new(),
+            homeless_layers: Vec::new(),
             desktop_shown: Vec::new(),
             arranged: Vec::new(),
             arranged_among: Vec::new(),

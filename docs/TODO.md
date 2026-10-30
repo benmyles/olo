@@ -214,17 +214,23 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
-- **Bug: after an upgrade, an auto-tiled window under Deskbar** (Ben,
-  2026-10-30): "after an olo hot upgrade i sometimes see windows, e.g.
+- ~~**Bug: after an upgrade, an auto-tiled window under Deskbar**~~ (Ben,
+  2026-10-30; fixed): "after an olo hot upgrade i sometimes see windows, e.g.
   terminal, in auto tile mode opens back up such that it extends further
   horizontally beyond the deskbar and is under it. if i click to another
-  window then back it adjust it to fit properly." Coming back from an
-  upgrade, an auto-tiled window must take its tile at once (the tile
-  stopping beside Deskbar, as before the upgrade), not its old frame
-  until something re-lays the display out. Find what puts it back wider
-  (the saved frame from before Deskbar was back, or the tile laid out
-  before Deskbar's own size is known) and check with `tsession reload`
-  on a two-display auto-tiled session at every scale.
+  window then back it adjust it to fit properly." The tiles stop beside
+  Deskbar's bar on their display, and after an upgrade that bar came
+  late or on the wrong display: a display coming back wasn't told to
+  Deskbar until the power tick happened to (up to 5 s), and Deskbar's
+  bars, reopened by name before the kit knew the displays, all went on
+  the main display. So the tiles were laid out without Deskbar there.
+  Now app_server tells of a display as it comes, the kit opens a layer
+  naming a display once that display is known, and app_server keeps a
+  layer that comes before any display instead of closing it (Deskbar
+  and the desktop quit over that in a session whose displays come
+  late). Reproduced headless (three displays coming late, a Terminal and
+  a Tracker group tiled: wide every upgrade, until 5 s on or for good);
+  with the fixes every upgrade brings them back beside Deskbar.
 - ~~**Bug: after an upgrade, ⌘Space's palette opens on the first display**~~
   (Ben, 2026-10-30; fixed): "every time after a hot upgrade the cmd+space
   pallette seems to open on d0". The resident palette was first started

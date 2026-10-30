@@ -681,6 +681,22 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// ended: windows waiting for theirs that are here now (or all, once
     /// the wait is over) are put back.
     pub fn displays_changed(&mut self) {
+        // Layer surfaces that came before any display: on the main one.
+        if !self.homeless_layers.is_empty()
+            && let Some(main) = self.main_output()
+        {
+            let layers: Vec<_> = std::mem::take(&mut self.homeless_layers).into_iter().filter(smithay::utils::IsAlive::alive).collect();
+            let mut map = smithay::desktop::layer_map_for_output(&main);
+            for l in &layers {
+                if let Err(e) = map.map_layer(l) {
+                    warn!("can't put a layer surface on the main display: {e}");
+                }
+            }
+            map.arrange();
+            for l in &layers {
+                l.layer_surface().send_configure();
+            }
+        }
         let over = self.display_wait_until.is_none_or(|t| std::time::Instant::now() >= t);
         let waiting = std::mem::take(&mut self.waiting_for_display);
         for window in waiting {
@@ -706,6 +722,10 @@ impl<B: Backend + 'static> AnvilState<B> {
         if over {
             self.display_wait_until = None;
         }
+        // A display came or went: told at once (Deskbar puts a bar on it,
+        // and the tiles there stop beside it), not only when something
+        // else about the displays happens to change.
+        self.ipc.broadcast(olo_protocol::Event::OutputsChanged { outputs: self.output_infos() });
     }
 
     /// Once the windows that came back after a restart have settled: each

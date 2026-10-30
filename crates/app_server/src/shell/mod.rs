@@ -271,7 +271,12 @@ impl<BackendData: Backend> WlrLayerShellHandler for AnvilState<BackendData> {
         let asked = asked.or_else(|| OPEN_WHERE_IN_USE.contains(&namespace.as_str()).then(|| self.active_output()).flatten());
         let auto = asked.is_none();
         let Some(output) = asked.or_else(|| self.main_output()) else {
-            surface.send_close();
+            // No display yet (DRM finds them after the clients are back
+            // from a restart): kept for the first to come, not closed, or
+            // Deskbar and the desktop would have no window left and quit.
+            let layer = LayerSurface::new(surface, namespace);
+            layer.user_data().insert_if_missing(|| AutoOutput);
+            self.homeless_layers.push(layer);
             return;
         };
         let layer = LayerSurface::new(surface, namespace);
@@ -290,6 +295,7 @@ impl<BackendData: Backend> WlrLayerShellHandler for AnvilState<BackendData> {
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
+        self.homeless_layers.retain(|l| l.layer_surface() != &surface);
         // Every display's layers, those of one mirroring another too (out
         // of the space): a bar closed because its display began mirroring
         // would stay in its map, empty, and count as there when the

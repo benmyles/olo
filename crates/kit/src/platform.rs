@@ -94,6 +94,9 @@ const TIP: usize = usize::MAX - 1;
 /// The longest a configure waits for the frame on its way to be shown
 /// (`Kit::draw_configured`): about a frame.
 const CONFIGURED_WAIT: Duration = Duration::from_millis(16);
+/// How long a layer surface waits for the display it names (`Kit::open`):
+/// app_server waits as long for displays after a restart.
+const OUTPUT_WAIT: Duration = Duration::from_secs(10);
 
 fn menu_of(s: &Surface, path: &[usize]) -> Option<Menu> {
     let root = if path[0] == CONTEXT {
@@ -994,6 +997,9 @@ pub struct Kit {
     importer: Option<ZxdgImporterV2>,
     imported: HashMap<WindowId, ZxdgImportedV2>,
     tags: Option<XdgToplevelTagManagerV1>,
+    /// Layer surfaces asked for on a display not known here yet (`open`),
+    /// until when they wait for it.
+    awaiting_output: Vec<(WindowId, WindowOptions, Instant)>,
 
     gpu: Option<Gpu>,
     surfaces: Vec<Surface>,
@@ -1322,6 +1328,7 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                 lost = true;
                 break;
             }
+            kit.open_awaiting();
             kit.redraw_due();
             kit.answer_trees();
             if kit.conn.flush().is_err() {
@@ -1518,6 +1525,7 @@ impl Kit {
             dialogs,
             importer,
             imported: HashMap::new(),
+            awaiting_output: Vec::new(),
             tags,
             conn,
             qh,
@@ -1610,6 +1618,7 @@ impl Kit {
                 }
                 (s.id, options)
             })
+            .chain(self.awaiting_output.drain(..).map(|(id, options, _)| (id, options)))
             .collect();
         for s in self.surfaces.iter_mut() {
             s.gpu_surface = None;
@@ -2178,6 +2187,19 @@ impl Kit {
     }
 
     fn open(&mut self, id: WindowId, options: WindowOptions) {
+        // On a display not known here yet: opened once it is. App_server
+        // tells of a display (an event) before its wl_output reaches this
+        // connection, and after a restart a reconnecting app's layers come
+        // back before the displays do; opened now, with no display named,
+        // each would go on the main display (Deskbar's bars all there, and
+        // none where the tiles stop beside it).
+        if let WindowKind::Layer(lo) = &options.kind
+            && let Some(name) = &lo.output
+            && !self.knows_output(name)
+        {
+            self.awaiting_output.push((id, options, Instant::now() + OUTPUT_WAIT));
+            return;
+        }
         let wl = self.compositor.create_surface(&self.qh);
         let size = options.size;
         let role = match &options.kind {
@@ -2275,7 +2297,39 @@ impl Kit {
         self.surfaces.push(s);
     }
 
+    fn knows_output(&self, name: &str) -> bool {
+        self.output_state.outputs().any(|o| self.output_state.info(&o).and_then(|i| i.name).as_deref() == Some(name))
+    }
+
+    /// The layers waiting for their display (`open`) whose display is
+    /// here now, or that have waited long enough (opened where app_server
+    /// puts them).
+    fn open_awaiting(&mut self) {
+        if self.awaiting_output.is_empty() {
+            return;
+        }
+        let now = Instant::now();
+        for (id, mut options, until) in std::mem::take(&mut self.awaiting_output) {
+            let name = match &options.kind {
+                WindowKind::Layer(lo) => lo.output.clone(),
+                _ => None,
+            };
+            if name.as_deref().is_some_and(|n| !self.knows_output(n)) {
+                if now < until {
+                    self.awaiting_output.push((id, options, until));
+                    continue;
+                }
+                warn!(display = ?name, "its display never came: opened where app_server puts it");
+                if let WindowKind::Layer(lo) = &mut options.kind {
+                    lo.output = None;
+                }
+            }
+            self.open(id, options);
+        }
+    }
+
     fn close(&mut self, id: WindowId) {
+        self.awaiting_output.retain(|(w, ..)| *w != id);
         // Close popups owned by this window first.
         self.close_tip(id);
         let popups: Vec<WindowId> = self.surface_mut(id).map(|s| s.popups.clone()).unwrap_or_default();
@@ -2286,10 +2340,8 @@ impl Kit {
         if let Some(imported) = self.imported.remove(&id) {
             imported.destroy();
         }
-        let any_window = self
-            .surfaces
-            .iter()
-            .any(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_) | Role::Lock(..)));
+        let any_window = !self.awaiting_output.is_empty()
+            || self.surfaces.iter().any(|s| matches!(s.role, Role::Toplevel(_) | Role::Layer(_) | Role::Lock(..)));
         if !any_window && !self.cx.as_ref().is_some_and(|c| c.resident) {
             self.finish();
         }
@@ -2713,6 +2765,10 @@ impl Kit {
                 let d = at.saturating_duration_since(now);
                 t = Some(t.map_or(d, |t: Duration| t.min(d)));
             }
+        }
+        if let Some(at) = self.awaiting_output.iter().map(|(.., until)| *until).min() {
+            let d = at.saturating_duration_since(now);
+            t = Some(t.map_or(d, |t: Duration| t.min(d)));
         }
         // A tree question is answered within a second, drawn or not.
         if let Some(at) = self.trees.iter().map(|a| a.at).min() {
@@ -3974,6 +4030,7 @@ impl OutputHandler for Kit {
         if self.session_lock.is_some() {
             self.cover_outputs();
         }
+        self.open_awaiting();
     }
     fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {}
     fn output_destroyed(&mut self, _: &Connection, _: &QueueHandle<Self>, output: wl_output::WlOutput) {

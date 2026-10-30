@@ -443,7 +443,13 @@ fn main() {
   Never use it to look for changes on disk; watch them (rule 7 above).
 * Layer-shell surfaces (Deskbar, desktop): `WindowKind::Layer(LayerOptions{…})`;
   `LayerOptions::output` puts one on a named output (`cx.outputs()` lists
-  them; the screen saver opens one per output). `LayerOptions::keyboard`
+  them; the screen saver opens one per output). One naming an output the
+  kit doesn't know yet waits for it (`Kit::awaiting_output`, opened when
+  its `wl_output` comes, or after `OUTPUT_WAIT` without one): app_server's
+  `OutputsChanged` reaches an app before the `wl_output` does, and a
+  reconnecting app reopens its layers before a restarted app_server has
+  its displays back; opened at once, each went on the main display.
+  `LayerOptions::keyboard`
   is `Keyboard::None`, `OnDemand` (focus on click: the desktop) or
   `Exclusive` (every key while it is up: pickers such as Screenshot's
   region overlay). A click on a top or overlay layer that is `None`
@@ -2117,7 +2123,15 @@ launcher lists them. The panel list Deskbar shows is
   clockwise (`desktop::rotation_transform`). The main display
   (`DisplaySettings::main`, else the first) gets layer surfaces that name
   no output (the desktop): they carry `shell::AutoOutput` and move when
-  the main display changes or their output is unplugged. Those called up
+  the main display changes or their output is unplugged. One that comes
+  before any display (DRM finds them after the clients are back from a
+  restart) waits in `homeless_layers` for the first, not closed (Deskbar
+  and the desktop, with no window left, quit, and olo-session gave up
+  restarting them). A display coming or going is told at once
+  (`OutputsChanged` from `displays_changed`; before, only the power
+  tick's next look at the external displays told it, up to 5 s on, and
+  Deskbar's bar on a display back after an upgrade came that late, with
+  the tiles there laid out under where it would be). Those called up
   from the keyboard to work where the person is
   (`shell::OPEN_WHERE_IN_USE`: the palette) open on the display in use
   instead, `active_output()`: the focused window's, else the display a
@@ -2125,7 +2139,8 @@ launcher lists them. The panel list Deskbar shows is
   (`AnvilState::last_display`), else the pointer's. Every display has
   its own Deskbar (one layer surface per output, `Bar` in apps/deskbar,
   each naming its output: one that named none would follow the main
-  display about), each listing every display's workspaces and their
+  display about; the displays asked for again once subscribed to
+  events, so one that came in between isn't missed), each listing every display's workspaces and their
   applications, its own display's first, then the others left to right
   (`displays_from`; a window goes by `WindowInfo::output`, one whose
   display isn't known counting as the main one's), and the map draws a

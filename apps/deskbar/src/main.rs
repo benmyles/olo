@@ -2125,6 +2125,15 @@ fn watch_server(proxy: olo_kit::Proxy) {
                         proxy.send(Msg::Outputs(outputs));
                     }
                     if let Ok(events) = c.into_events() {
+                        // Displays that came while this was subscribing
+                        // (after an upgrade they come one by one): asked
+                        // again, now that what changes from here comes as
+                        // an event.
+                        if let Ok(mut again) = Client::connect()
+                            && let Ok(Reply::Outputs { outputs }) = again.request(&Request::Outputs)
+                        {
+                            proxy.send(Msg::Outputs(outputs));
+                        }
                         for e in events.flatten() {
                             match e {
                                 Event::WindowsChanged { windows } => proxy.send(Msg::Windows(windows)),
