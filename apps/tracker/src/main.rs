@@ -220,10 +220,26 @@ enum Msg {
     Settings(olo_protocol::TrackerSettings),
 }
 
+/// What Paste takes from the clipboard, best first: files (as file
+/// managers copy them), a picture, text.
+const PASTEABLE: &[&str] = &[
+    olo_kit::clipboard::FILES[0],
+    olo_kit::clipboard::FILES[1],
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+    "image/",
+    "text/plain;charset=utf-8",
+    "text/plain",
+    "UTF8_STRING",
+];
+
 pub struct Tracker {
     windows: HashMap<WindowId, Win>,
-    /// Paths cut or copied with ⌘X / ⌘C, and whether it was a cut.
-    clipboard: Option<(Vec<PathBuf>, bool)>,
+    /// A Paste asked of the clipboard (`Cx::paste_data`): the window and
+    /// the folder it goes into.
+    pasting: Option<(WindowId, PathBuf)>,
     hidden: bool,
     /// How new folder windows show their folder (Preferences ▸ Tracker).
     default_view: ViewMode,
@@ -983,20 +999,15 @@ impl Tracker {
                 "Are you sure you want to permanently remove all items from the Trash?".into(),
             ),
             "cut" | "copy" => {
+                // As file managers copy files, so they paste into Chrome,
+                // Slack, GTK's and Qt's apps and other file managers too.
                 if !selected.is_empty() {
-                    let text = selected.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("\n");
-                    cx.copy(text);
-                    self.clipboard = Some((selected, cmd == "cut"));
+                    cx.copy_data(olo_kit::clipboard::files(&selected, cmd == "cut"));
                 }
             }
             "paste" => {
-                if let Some((paths, cut)) = self.clipboard.clone() {
-                    if cut {
-                        self.clipboard = None;
-                    }
-                    let kind = if cut { ops::Kind::Move } else { ops::Kind::Copy };
-                    self.start_job(cx, kind, paths, Some(dir), Some(win));
-                }
+                self.pasting = Some((win, dir));
+                cx.paste_data(win, PASTEABLE);
             }
             "select-all" => {
                 let (entries, list) = f.current_mut();
@@ -1089,7 +1100,7 @@ impl Tracker {
             .item("Copy", "copy", Some(Key::C))
             .enabled(has_sel)
             .item("Paste", "paste", Some(Key::V))
-            .enabled(self.clipboard.is_some())
+            .enabled(olo_kit::clipboard::offers(PASTEABLE))
             .separator()
             .item("Select All", "select-all", Some(Key::A))
             .item("Invert Selection", "invert", Some(Key::S));
@@ -1655,6 +1666,10 @@ impl App for Tracker {
             Ok(launch) => return self.handle_args(cx, &launch.args),
             Err(m) => m,
         };
+        let message = match message.downcast::<olo_kit::Pasted>() {
+            Ok(p) => return self.pasted(cx, *p),
+            Err(m) => m,
+        };
         let message = match message.downcast::<olo_kit::notify::NoteEvent>() {
             Ok(e) => {
                 match *e {
@@ -1889,13 +1904,20 @@ impl Tracker {
             d.place_new(&names, drop.pos);
         }
         if drop.mime != "text/uri-list" || paths.is_empty() {
-            // Text (or web links): a clipping file, as BeOS made.
-            let text = drop.text();
-            if !text.trim().is_empty() {
-                match fs::clipping(&dest, &text) {
-                    Ok(_) => self.reload_all(),
-                    Err(e) => self.error(cx, format!("Couldn't save the clipping: {e}")),
-                }
+            // A file offered by its contents (a picture from a web page),
+            // else text or a link: a clipping file, as BeOS made.
+            let saved = if let Some(name) = olo_kit::dnd::named_file(&drop.mime) {
+                Some(fs::save_new(&dest, &name, &drop.data))
+            } else if let Some((url, title)) = (drop.mime == "text/x-moz-url").then(|| olo_kit::dnd::moz_url(&drop.data)).flatten() {
+                Some(fs::link_clipping(&dest, &url, &title))
+            } else {
+                let text = drop.text();
+                (!text.trim().is_empty()).then(|| fs::clipping(&dest, &text))
+            };
+            match saved {
+                Some(Ok(_)) => self.reload_all(),
+                Some(Err(e)) => self.error(cx, format!("Couldn't save what was dropped: {e}")),
+                None => {}
             }
             return;
         }
@@ -1952,6 +1974,43 @@ impl Tracker {
                 self.reload_all();
             }
             _ => {}
+        }
+    }
+
+    /// What a Paste found on the clipboard: files (copied, or cut to move
+    /// them), a picture (a file of it), or text (a clipping, as a drop of
+    /// text makes).
+    fn pasted(&mut self, cx: &mut Cx, p: olo_kit::Pasted) {
+        let Some((win, dir)) = self.pasting.take().filter(|(w, _)| *w == p.window) else { return };
+        let Some((mime, data)) = p.data else { return };
+        if let Some((paths, cut)) = olo_kit::clipboard::copied_files(&mime, &data) {
+            // Nothing goes into itself.
+            if let Some(p) = paths.iter().find(|p| p.is_dir() && dir.starts_with(p)) {
+                let name = p.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                return self.error(cx, format!("“{name}” can't go inside itself."));
+            }
+            if cut {
+                // Moved: the clipboard has them where they are now, copied.
+                let moved: Vec<PathBuf> = paths.iter().filter_map(|p| Some(dir.join(p.file_name()?))).collect();
+                cx.copy_data(olo_kit::clipboard::files(&moved, false));
+            }
+            let kind = if cut { ops::Kind::Move } else { ops::Kind::Copy };
+            return self.start_job(cx, kind, paths, Some(dir), Some(win));
+        }
+        let saved = if let Some(kind) = mime.strip_prefix("image/") {
+            fs::pasted_picture(&dir, kind, &data)
+        } else if mime.starts_with("text/") || mime == "UTF8_STRING" {
+            let text = String::from_utf8_lossy(&data);
+            if text.trim().is_empty() {
+                return;
+            }
+            fs::clipping(&dir, &text)
+        } else {
+            return;
+        };
+        match saved {
+            Ok(_) => self.reload_all(),
+            Err(e) => self.error(cx, format!("Couldn't paste: {e}")),
         }
     }
 
@@ -2083,7 +2142,7 @@ fn main() {
         });
         let mut t = Tracker {
             windows: HashMap::new(),
-            clipboard: None,
+            pasting: None,
             hidden: false,
             // Folders opened at startup can't wait for the watcher's first read.
             default_view: olo_kit::settings::current().map(|s| s.tracker.default_view).unwrap_or_default(),

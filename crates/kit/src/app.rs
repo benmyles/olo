@@ -279,9 +279,18 @@ pub(crate) enum Request {
     StartDrag(WindowId, crate::dnd::DragData),
     BeginMove(WindowId),
     Paste(WindowId),
+    PasteData(WindowId, Vec<String>),
     LockSession,
     UnlockSession,
     Quit,
+}
+
+/// Delivered to [`App::message`] after [`Cx::paste_data`]: the clipboard
+/// in the first of the asked forms it had (MIME type, bytes), or none.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pasted {
+    pub window: WindowId,
+    pub data: Option<(String, Vec<u8>)>,
 }
 
 /// Delivered to [`App::message`] after [`Cx::lock_session`].
@@ -506,6 +515,16 @@ impl Cx {
 
     pub fn paste(&mut self, window: WindowId) {
         self.requests.push(Request::Paste(window));
+    }
+
+    /// Read the clipboard in the first of `types` it has (MIME types, in
+    /// order of preference; one ending in `/`, as `image/`, takes any of
+    /// that kind): it comes to [`App::message`] as a [`Pasted`], read off
+    /// the UI thread however large. For pasting what isn't text (files,
+    /// pictures); text alone comes as an `egui::Event::Paste`
+    /// ([`Cx::paste`]).
+    pub fn paste_data(&mut self, window: WindowId, types: &[&str]) {
+        self.requests.push(Request::PasteData(window, types.iter().map(|t| t.to_string()).collect()));
     }
     /// Keep running when the last window closes (a background service
     /// that opens windows on demand); [`Cx::quit`] still ends it.

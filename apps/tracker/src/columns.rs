@@ -413,7 +413,7 @@ fn draw_preview(ui: &mut Ui, e: &Entry, rect: Rect, p: &Palette) -> bool {
     let h = g.size().y;
     painter.galley(pos2(area.center().x, y), g, c(p.document_text));
     y += h;
-    style::label(painter, area.center().x, y + m::LABEL_ROW / 2.0, Align::Center, &e.kind_text(), style::plain_font(), style::disabled_text(p));
+    style::label(painter, area.center().x, y + m::LABEL_ROW / 2.0, Align::Center, e.kind_text(), style::plain_font(), style::disabled_text(p));
     y += m::LABEL_ROW + m::SPACING;
     let created = std::fs::metadata(&e.path).ok().and_then(|md| md.created().ok());
     let small = FontId::proportional(style::SMALL_SIZE);

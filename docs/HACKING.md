@@ -239,7 +239,11 @@ fn main() {
   `x-kde-passwordManagerHint: secret` so clipboard histories skip it, and
   withdraws it after `clear_after` if it is still ours), `copy_data` (any
   MIME types, e.g. `image/png`; the data is written to pasters from a thread), `paste` (reads the clipboard
-  off-thread and delivers an `egui::Event::Paste`), `quit`, `stay_resident` (keep running with no windows), `palette`,
+  off-thread and delivers an `egui::Event::Paste`), `paste_data(window,
+  types)` (the clipboard in the first of `types` it has, a type ending in
+  `/` standing for that kind, read off-thread and delivered as a
+  `Pasted { window, data: Option<(mime, bytes)> }` message: for files and
+  pictures), `quit`, `stay_resident` (keep running with no windows), `palette`,
   `proxy`, `window_size`, `restored_state`, `activation_token(window,
   tag)` (an xdg-activation token from the latest input in the window,
   delivered as an `ActivationToken { tag, token }` message, to hand to
@@ -265,7 +269,18 @@ fn main() {
   (so the program stays running until then); `text(s)` is a `Clip` in the
   forms text pastes as (what `Cx::copy` offers). It goes through
   `ext_data_control_v1`: `wl_data_device` only lets the client with the
-  keyboard set the clipboard, and a windowless one never has it.
+  keyboard set the clipboard, and a windowless one never has it. For
+  files, as file managers copy them (and Chrome, Electron, GTK and Qt
+  paste them): `files(paths, cut)` is a `Clip` of
+  `x-special/gnome-copied-files` ("copy" or "cut", then the URIs), KDE's
+  cut mark, `text/uri-list` and the paths as text, for `Cx::copy_data`;
+  `copied_files(mime, data)` reads one of `FILES` back (paths, and
+  whether they were cut). `offers(types)` says whether the clipboard has
+  any of them, as the app last heard (its windows hear while they have
+  the keyboard): for enabling Paste. Tracker copies files so, and its
+  Paste takes files (moving cut ones, then holding them copied where they
+  went), a picture (`Pasted Picture.png`, of its kind) or text (a
+  clipping).
 * **Single instance** (`olo_kit::instance`): call `instance::forward(app_id,
   &args)` first in `main` (returns true if a running copy took the
   arguments; exit then), and `instance::listen(app_id, cx.proxy())` in the
@@ -519,6 +534,17 @@ and offers actions; where it is dropped picks the type and the action.
   any file dropped on it (Viewer, StyledEdit). On release the kit reads
   the data off the UI thread and calls `App::dropped(window, Drop)`
   (`target`, `mime`, `data`, `action`, `pos`; `paths()`, `text()`).
+  What other programs drag: Chrome (156, on Wayland) drags a picture out
+  of a page as `text/x-moz-url`, `text/html`, text and the picture itself
+  as `application/octet-stream;name="sun.png"`, with no `text/uri-list`;
+  a link as `text/x-moz-url`, `text/html` and text.
+  `Hover::named_file_type()` finds such a file's type and
+  `dnd::named_file(mime)` its name (made safe to save under);
+  `dnd::moz_url(data)` reads a link's address and text (UTF-8 from
+  Chrome, UTF-16 from Firefox). Tracker takes, in order: files
+  (`text/uri-list`), a file by its contents (saved under its name),
+  a link (a clipping of its address named by its text: "Docs link
+  clipping.txt"), text (a clipping).
 * **Text** (`text_drag`): press on the selection in a text field and drag
   it out, as on BeOS; dropped back in the same field it moves, anywhere
   else it is copied (a folder makes a clipping). Text dragged over a field

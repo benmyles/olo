@@ -1127,9 +1127,15 @@ as they land (with the commit), add new ones as they come up.
     GIO, in the freedesktop layout Tracker's Trash uses: nothing to add). Done 2026-10-30:
     Screenshot (Olo's Screenshot app, region when interactive; PickColor
     with a loupe) and Access (the permission dialog, as Olo's BAlert).
-  - **Drag and drop and the clipboard**: files dragged from Chrome,
+  - ~~**Drag and drop and the clipboard**: files dragged from Chrome,
     Slack and GTK into Tracker and back, with the right actions and
-    formats (`text/uri-list`, images, `x-special/gnome-copied-files`).
+    formats (`text/uri-list`, images, `x-special/gnome-copied-files`).~~
+    (done 2026-10-30, tried with Chrome 156: a picture dragged out of a
+    page lands as its file, a link as a clipping named by its text, files
+    from Tracker open in Chrome; Tracker copies files as file managers do,
+    `x-special/gnome-copied-files` and all, and pastes files, pictures
+    (Chrome's Copy Image) and text; `Cx::paste_data`,
+    `olo_kit::clipboard::files`, `dnd::named_file`, `dnd::moz_url`.)
   - **Agent-readable**: the AT-SPI trees of GTK and Qt windows (and
     Chrome's beyond the extension) folded into Olo's widget tree, so
     agents can drive outside programs as they do Olo's.
@@ -1148,6 +1154,10 @@ as they land (with the commit), add new ones as they come up.
   file pickers, downloads into Tracker, default browser, Deskbar entry:
   all of it as well as Olo can make it. Ugly hacks are fine as long
   as it is reliable.
+  ~~**Downloads and the default browser**~~ (done 2026-10-30: Chrome's
+  downloads in Deskbar, Olo's notifications and Tracker; Olo's Chrome
+  offered as the default browser; see "Other programs feel like Olo's
+  own").
   ~~**Olo's look**~~ (done: the portals now start in a real session,
   so it follows light/dark; each profile starts with Olo's title bar
   and frame instead of Chrome's own buttons and with the GTK theme's

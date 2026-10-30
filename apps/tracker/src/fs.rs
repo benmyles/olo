@@ -292,6 +292,44 @@ pub fn clipping(dir: &Path, text: &str) -> std::io::Result<PathBuf> {
     Ok(to)
 }
 
+/// A file dropped by its contents (`name`, `data`) into `dir`: under its
+/// name, or a free one beside it.
+pub fn save_new(dir: &Path, name: &str, data: &[u8]) -> std::io::Result<PathBuf> {
+    let to = unique(dir, name);
+    fs::write(&to, data)?;
+    Ok(to)
+}
+
+/// A link dropped on a folder: a clipping holding its address, named by
+/// its text (or its site).
+pub fn link_clipping(dir: &Path, url: &str, title: &str) -> std::io::Result<PathBuf> {
+    let site = url.split_once("://").map_or(url, |(_, r)| r).split(['/', '?', '#']).next().unwrap_or("").trim_start_matches("www.");
+    let words = if title.trim().is_empty() || title.trim() == url { site } else { title };
+    let mut name: String = words.chars().filter(|c| *c != '/' && !c.is_control()).take(40).collect();
+    name = name.trim_matches(['.', ' ']).to_owned();
+    if name.is_empty() {
+        name = "Link".into();
+    }
+    let to = unique(dir, &format!("{name} link clipping.txt"));
+    fs::write(&to, format!("{url}\n"))?;
+    Ok(to)
+}
+
+/// A picture pasted into a folder (`image/KIND` data from the
+/// clipboard), saved there as "Pasted Picture" of its kind.
+pub fn pasted_picture(dir: &Path, kind: &str, data: &[u8]) -> std::io::Result<PathBuf> {
+    let ext = match kind.trim_start_matches("x-") {
+        "jpeg" | "jpg" | "pjpeg" => "jpg",
+        "svg+xml" => "svg",
+        "vnd.microsoft.icon" | "icon" => "ico",
+        other => other,
+    };
+    let ext: String = ext.chars().filter(|c| c.is_ascii_alphanumeric()).take(8).collect();
+    let to = unique(dir, &format!("Pasted Picture.{}", if ext.is_empty() { "img" } else { &ext }));
+    fs::write(&to, data)?;
+    Ok(to)
+}
+
 /// The name of the application `open` would use, when it is one of ours.
 pub fn opener_name(entry: &Entry) -> Option<String> {
     match entry.kind {

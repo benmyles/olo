@@ -144,10 +144,17 @@ pub fn take_drop(ctx: &egui::Context, h: &Hover, dir: &Path) -> bool {
         };
         dnd::accept(ctx, target.name(), "text/uri-list", action);
         true
-    } else if let Some(t) = h.text_type()
-        && !trash
-        && h.actions.copy
-    {
+    } else if trash || !h.actions.copy {
+        false
+    } else if let Some(t) = h.named_file_type() {
+        // A picture dragged out of a web page: the file itself.
+        dnd::accept(ctx, target.name(), t, dnd::Action::Copy);
+        true
+    } else if h.has("text/x-moz-url") {
+        // A link: a clipping of it, named by its text.
+        dnd::accept(ctx, target.name(), "text/x-moz-url", dnd::Action::Copy);
+        true
+    } else if let Some(t) = h.text_type() {
         dnd::accept(ctx, target.name(), t, dnd::Action::Copy);
         true
     } else {
@@ -966,7 +973,7 @@ pub fn info_view(ui: &mut Ui, e: &Entry, size: Option<(u64, u64)>) -> Option<Dra
     let tx = icon.right() + m::SPACING;
     let cy = icon.center().y;
     style::label(painter, tx, cy - (m::LABEL_ROW + m::TIGHT) / 2.0, Align::Min, e.label(), style::bold_font(), c(p.panel_text));
-    style::label(painter, tx, cy + (m::LABEL_ROW + m::TIGHT) / 2.0, Align::Min, &e.kind_text(), style::plain_font(), style::disabled_text(&p));
+    style::label(painter, tx, cy + (m::LABEL_ROW + m::TIGHT) / 2.0, Align::Min, e.kind_text(), style::plain_font(), style::disabled_text(&p));
 
     // An etched rule, then the rows on an exact grid.
     let y = icon.bottom() + m::SPACING;

@@ -78,7 +78,7 @@ use wayland_protocols::{
 };
 
 use crate::{
-    app::{App, Clip, Cx, Layer, Proxy, Request, WindowId, WindowKind, WindowOptions},
+    app::{App, Clip, Cx, Layer, Pasted, Proxy, Request, WindowId, WindowKind, WindowOptions},
     input, menu,
     menu::{BarState, Menu, MenuAnchor, MenuRequest, PopupResult, PopupState},
     style,
@@ -2055,6 +2055,11 @@ impl Kit {
                             self.paste(&wl);
                         }
                     }
+                    Request::PasteData(id, types) => {
+                        if let Some(proxy) = self.cx.as_ref().map(|cx| cx.proxy.clone()) {
+                            self.paste_data(id, &types, proxy);
+                        }
+                    }
                     Request::Quit => self.finish(),
                 }
             }
@@ -2448,6 +2453,7 @@ impl Kit {
         };
         let source = mgr.create_copy_paste_source(&self.qh, clip.iter().map(|(t, _)| t.as_str()));
         source.set_selection(dev, self.last_serial);
+        crate::clipboard::note_types(clip.iter().map(|(t, _)| t.clone()).collect());
         self.clipboard = Some((source, clip));
     }
 
@@ -2486,6 +2492,32 @@ impl Kit {
             if let Some(tx) = PASTED.get() {
                 let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send((wl, text));
             }
+        });
+    }
+
+    /// [`Cx::paste_data`]: ours at once, another client's read through its
+    /// pipe on a helper thread, then sent to the app as a [`Pasted`].
+    fn paste_data(&mut self, window: WindowId, types: &[String], proxy: Proxy) {
+        let fits = |wanted: &str, offered: &str| if wanted.ends_with('/') { offered.starts_with(wanted) } else { wanted == offered };
+        let pick = |offered: &[String]| types.iter().find_map(|w| offered.iter().find(|o| fits(w, o)).cloned());
+        if let Some((_, clip)) = &self.clipboard {
+            let offered: Vec<String> = clip.iter().map(|(t, _)| t.clone()).collect();
+            let data = pick(&offered).and_then(|t| clip.iter().find(|(o, _)| *o == t).map(|(t, d)| (t.clone(), d.to_vec())));
+            return proxy.send(Pasted { window, data });
+        }
+        let offer = self.data_device.as_ref().and_then(|d| d.data().selection_offer());
+        let picked = offer.and_then(|offer| {
+            let mime = offer.with_mime_types(|offered| pick(offered))?;
+            Some((mime.clone(), offer.receive(mime).ok()?))
+        });
+        let Some((mime, mut pipe)) = picked else {
+            return proxy.send(Pasted { window, data: None });
+        };
+        let _ = self.conn.flush();
+        let _ = std::thread::Builder::new().name("paste".into()).spawn(move || {
+            let mut out = Vec::new();
+            let data = pipe.read_to_end(&mut out).ok().map(|_| (mime, out));
+            proxy.send(Pasted { window, data });
         });
     }
 
@@ -4430,7 +4462,11 @@ impl DataDeviceHandler for Kit {
         }
     }
 
-    fn selection(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice) {}
+    fn selection(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice) {
+        // What is on the clipboard now, for menus (`clipboard::offers`).
+        let types = self.data_device.as_ref().and_then(|d| d.data().selection_offer()).map(|o| o.with_mime_types(|t| t.to_vec()));
+        crate::clipboard::note_types(types.unwrap_or_default());
+    }
 
     fn drop_performed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice) {
         let Some(offer) = self.data_device.as_ref().and_then(|d| d.data().drag_offer()) else { return };

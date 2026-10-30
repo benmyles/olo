@@ -173,6 +173,41 @@ impl Hover {
     pub fn text_type(&self) -> Option<&'static str> {
         self.best(&["text/plain;charset=utf-8", "UTF8_STRING", "text/plain", "TEXT", "STRING"])
     }
+
+    /// A file's contents offered under its name (what Chrome and Electron
+    /// drag a picture out of a page as: `application/octet-stream;name="sun.png"`,
+    /// with no `text/uri-list`): the type, to accept; [`named_file`] reads
+    /// the name.
+    pub fn named_file_type(&self) -> Option<&str> {
+        self.types.iter().find(|t| named_file(t).is_some()).map(String::as_str)
+    }
+}
+
+/// The file name in a type of [`Hover::named_file_type`]'s, made safe to
+/// save under (no folders, not hidden).
+pub fn named_file(mime: &str) -> Option<String> {
+    let rest = mime.strip_prefix("application/octet-stream;")?.trim_start();
+    let name = rest.strip_prefix("name=")?.trim_matches('"');
+    let name: String = name.rsplit('/').next()?.chars().filter(|c| !c.is_control()).collect();
+    let name = name.trim_start_matches('.').trim().to_owned();
+    (!name.is_empty()).then_some(name)
+}
+
+/// A link dragged from a browser (`text/x-moz-url`: its address, a new
+/// line, its text; UTF-16 from Firefox, UTF-8 from Chrome): the address
+/// and the text.
+pub fn moz_url(data: &[u8]) -> Option<(String, String)> {
+    let utf16 = data.len() >= 2 && data.len().is_multiple_of(2) && data.iter().skip(1).step_by(2).filter(|b| **b == 0).count() * 2 >= data.len() / 2;
+    let text = if utf16 {
+        String::from_utf16_lossy(&data.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect::<Vec<_>>())
+    } else {
+        String::from_utf8_lossy(data).into_owned()
+    };
+    let text = text.trim_matches(char::from(0));
+    let mut lines = text.lines();
+    let url = lines.next()?.trim().to_owned();
+    let title = lines.next().unwrap_or("").trim().to_owned();
+    (!url.is_empty()).then_some((url, title))
 }
 
 /// The type naming a folder (a hash of its path: types are short names).
@@ -367,6 +402,16 @@ pub fn uri_list_paths(list: &str) -> Vec<std::path::PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn named_files_and_links() {
+        assert_eq!(named_file(r#"application/octet-stream;name="sun.png""#).as_deref(), Some("sun.png"));
+        assert_eq!(named_file(r#"application/octet-stream;name="../../.bashrc""#).as_deref(), Some("bashrc"));
+        assert_eq!(named_file("application/octet-stream"), None);
+        assert_eq!(moz_url(b"https://example.com/doc\nA document"), Some(("https://example.com/doc".into(), "A document".into())));
+        let utf16: Vec<u8> = "https://a.org/\nTitle".encode_utf16().flat_map(u16::to_le_bytes).collect();
+        assert_eq!(moz_url(&utf16), Some(("https://a.org/".into(), "Title".into())));
+    }
 
     #[test]
     fn uris_round_trip() {
