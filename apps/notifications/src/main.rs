@@ -119,6 +119,10 @@ struct Notifications {
     snapshot: Arc<Mutex<String>>,
     /// What Deskbar was last told.
     told: Option<NotificationState>,
+    /// The screen is being shared (`SharingState`, read at each tick:
+    /// the file is watched).
+    sharing: bool,
+    _sharing_watch: Option<olo_kit::watch::Watch>,
 }
 
 /// The local time of day, in minutes.
@@ -160,7 +164,29 @@ impl Notifications {
     }
 
     fn quiet(&self) -> bool {
-        self.settings.quiet(now_secs(), local_minute())
+        self.settings.quiet(now_secs(), local_minute()) || self.sharing_quiet()
+    }
+
+    /// Quiet because the screen is shared: errors wait too.
+    fn sharing_quiet(&self) -> bool {
+        self.settings.while_sharing && self.sharing
+    }
+
+    /// Whether the screen is shared now; when sharing starts (and it is to
+    /// be quiet then), the banners on screen go into the history, as if
+    /// they had timed out.
+    fn refresh_sharing(&mut self, cx: &mut Cx) {
+        let sharing = !olo_protocol::sharing::SharingState::load().shares.is_empty();
+        if sharing == self.sharing {
+            return;
+        }
+        self.sharing = sharing;
+        if self.sharing_quiet() {
+            let ids: Vec<u32> = self.cards.iter().map(|c| c.note.id).collect();
+            for id in ids {
+                self.remove(cx, id, Reason::Expired);
+            }
+        }
     }
 
     /// Tell `List`, Deskbar and the disk what changed.
@@ -210,7 +236,7 @@ impl Notifications {
         // Do Not Disturb keeps all but errors off the screen and quiet; a
         // snoozed one's news waits with it.
         let snoozed = self.history.get_mut(note.id).is_some_and(|e| e.snoozed());
-        let banner = app.banners && ((!quiet && !never) || note.kind == Kind::Error) && !snoozed;
+        let banner = app.banners && ((!quiet && !never) || (note.kind == Kind::Error && !self.sharing_quiet())) && !snoozed;
         if app.sounds
             && !quiet
             && !snoozed
@@ -1105,8 +1131,9 @@ impl App for Notifications {
             Msg::Tick => {
                 self.flush_pending();
                 self.wake_snoozed(cx);
-                // Do Not Disturb may have begun or ended.
+                // Do Not Disturb may have begun or ended (a share too).
                 self.refresh_settings();
+                self.refresh_sharing(cx);
                 self.fade_out(cx);
                 self.publish(false);
                 // The history fades on.
@@ -1293,6 +1320,7 @@ fn main() -> std::process::ExitCode {
         // A scheduled Do Not Disturb begins and ends on the minute; the
         // settings file changes when Preferences or Deskbar write it.
         let ticker = proxy.clone();
+        let ticker_for_sharing = proxy.clone();
         std::thread::Builder::new()
             .name("notifications-clock".into())
             .spawn(move || {
@@ -1325,7 +1353,14 @@ fn main() -> std::process::ExitCode {
             view: history::HistoryState::default(),
             snapshot,
             told: None,
+            sharing: false,
+            // A share starting or ending is a tick.
+            _sharing_watch: {
+                let ticker = ticker_for_sharing;
+                olo_kit::watch::watch([olo_protocol::sharing::SharingState::path()], move |_| ticker.send(Msg::Tick))
+            },
         };
+        app.refresh_sharing(cx);
         app.refresh_settings();
         app.fade_out(cx);
         // Snoozed ones back on time (the clock's minutes catch them after

@@ -1276,9 +1276,9 @@ as they land (with the commit), add new ones as they come up.
   `org.gtk.Notifications` (GApplication apps, their actions run on the
   app) and Flatpak apps through the GTK portal; a kit API for Olo's
   own apps (`olo_kit::notify`: Tracker's long
-  copies). Left: Do Not Disturb while sharing the screen, once there is
-  screen sharing (app_server's image-copy capture fails every frame
-  today; see multiplayer screen control).
+  copies); Do Not Disturb while sharing the screen (2026-10-30: from
+  olo-portal's sharing state, errors held too, banners already up taken
+  down; "While sharing the screen" in Preferences, on by default).
 - ~~**Log viewer app**~~ (done: `apps/logs`, Log Viewer; the journal read
   natively, live; Find, program, level and time filters; syntax
   highlighting; Show in Context; `olo-logs --print … [--json]` for

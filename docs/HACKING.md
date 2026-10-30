@@ -4191,6 +4191,11 @@ notifications.
   Now to gone. The service re-reads the
   file within a second of a change (Preferences ▸ Notifications and
   Deskbar write it). While quiet nothing pops up or sounds but errors.
+  It is quiet too while the screen is shared (`while_sharing`, on unless
+  turned off: "While sharing the screen" in Preferences' Do Not Disturb
+  box), from olo-portal's `SharingState`, the file watched: then errors
+  wait in the history as well, and the banners on screen when the share
+  starts go into it as if they had timed out.
   It publishes `NotificationState` (`unread`, `quiet`, and `apps`: each
   app with notes unread and in sight, by desktop entry and name, a
   website's as its browser's, with its newest's `(time, id)`) to

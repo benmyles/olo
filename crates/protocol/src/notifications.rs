@@ -22,6 +22,10 @@ pub struct NotificationSettings {
     /// Do Not Disturb every day between these times (minutes after
     /// midnight, local time; the end may be the next morning).
     pub schedule: Option<(u16, u16)>,
+    /// Do Not Disturb while the screen is shared (`SharingState`), and
+    /// stricter: errors wait in the history too, and banners on screen
+    /// when sharing starts go.
+    pub while_sharing: bool,
     /// How long a notification stays (seconds) when its app leaves it to us;
     /// 0: no banners at all but errors ("Never").
     pub seconds: u32,
@@ -57,6 +61,7 @@ impl Default for NotificationSettings {
             dnd: false,
             dnd_until: None,
             schedule: None,
+            while_sharing: true,
             seconds: 6,
             apps: BTreeMap::new(),
             view: HistoryView::List,
@@ -341,6 +346,11 @@ mod tests {
         // 13:00 to 14:00.
         s.schedule = Some((13 * 60, 14 * 60));
         assert!(s.quiet(0, 13 * 60 + 30) && !s.quiet(0, 14 * 60));
+        // Quiet while sharing the screen unless asked not to, settings
+        // from before it was a choice too.
+        assert!(NotificationSettings::default().while_sharing);
+        let old: NotificationSettings = serde_json::from_str(r#"{"dnd": false, "seconds": 6}"#).unwrap();
+        assert!(old.while_sharing);
     }
 
     #[test]

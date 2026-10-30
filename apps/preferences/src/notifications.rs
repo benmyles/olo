@@ -140,6 +140,7 @@ pub fn ui(ui: &mut Ui, clock: &ClockSettings, st: &mut State) {
             });
             s.schedule = Some((from, to));
         }
+        ui.add(CheckBox::new(&mut s.while_sharing, "While sharing the screen (errors wait too)"));
     });
     BBox::new("Banners").show(ui, |ui| {
         // 0: never (errors still show).
@@ -250,6 +251,9 @@ fn apps_ui(ui: &mut Ui, st: &State, s: &mut NotificationSettings) {
     let columns = ["Banners", "Sounds", "History"];
     const COLUMN: f32 = 62.0;
     let rect = ui.available_rect_before_wrap();
+    // A table of its own: its column headings line up with its checkboxes,
+    // not with the History box's labels above.
+    olo_kit::layout_review::own_grid(ui, rect);
     let head = Rect::from_min_size(rect.min, vec2(rect.width(), m::LIST_ROW));
     let font = style::small_font();
     let dim = style::disabled_text(&p);
