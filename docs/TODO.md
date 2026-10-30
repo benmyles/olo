@@ -1037,7 +1037,11 @@ as they land (with the commit), add new ones as they come up.
   possible". Clean ways first (portals, D-Bus services, settings), a
   hack where there is none. Each is for Chrome, Electron (Slack,
   Discord, VS Code), GTK 3/4 and Qt 5/6 alike unless noted:
-  - **File pickers**: an Olo portal backend
+  - **File pickers** (started 2026-10-30: olo-portal answers the
+    FileChooser portal with the kit's file panel, open, save and folder;
+    left: several files at once, MIME filters, the portal's `choices`,
+    Tracker's columns and Quick Look in the panel, and the toolkit
+    switches below): an Olo portal backend
     (`org.freedesktop.impl.portal.FileChooser` in `olo-portal`, beside
     ScreenCast) showing the kit's file panel (Tracker's columns,
     favourites, Quick Look, recent places); `olo-portals.conf` sends

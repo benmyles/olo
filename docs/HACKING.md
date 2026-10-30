@@ -3184,6 +3184,13 @@ it shares (`App::busy`).
   where Olo's theme has one (else the padlock), its title, subtitle and
   body, its choices (a checkbox for a yes/no, a pop-up menu for several)
   and its deny and grant buttons (Escape denies).
+- **Open and Save** (`files.rs`): the FileChooser portal's OpenFile,
+  SaveFile and SaveFiles as the kit's file panel (`file_panel`) in a
+  window over the asking one, titled as the app asks, starting in its
+  `current_folder` (a save's `current_file`'s), proposing its
+  `current_name`; a filter's globs (`*.pdf`) become the panel's
+  extensions (one with a MIME type shows every file). Not yet: choosing
+  several files at once, MIME types, the portal's extra `choices`.
 - **Keeping awake** (`inhibit.rs`): olo-portal also answers the Inhibit
   portal (an inhibition of idle or suspend lasts until the portal closes
   its request) and serves `org.freedesktop.ScreenSaver` (Inhibit gives a

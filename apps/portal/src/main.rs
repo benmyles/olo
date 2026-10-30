@@ -19,11 +19,16 @@
 
 use std::collections::HashMap;
 
-use olo_kit::{App, Cx, WindowId, egui, instance};
+use olo_kit::{
+    App, Cx, WindowId, WindowOptions, egui,
+    file_panel::{FilePanel, PANEL_SIZE, PanelResult},
+    instance,
+};
 
 mod access;
 mod capture;
 mod client;
+mod files;
 mod inhibit;
 mod picker;
 mod portal;
@@ -113,6 +118,8 @@ struct Portal {
     pickers: HashMap<WindowId, picker::Picker>,
     /// Permission dialogs (the Access portal).
     dialogs: HashMap<WindowId, access::Dialog>,
+    /// Open and Save panels (the FileChooser portal), and who to answer.
+    panels: HashMap<WindowId, (FilePanel, files::Ask)>,
     /// Thumbnails come before their window has drawn: kept until it does.
     thumbs: Vec<picker::Thumb>,
     /// The bus, once served (to end sessions from here).
@@ -135,6 +142,33 @@ impl Portal {
         cx.close_window(win);
     }
 
+    fn close_panel(&mut self, cx: &mut Cx, win: WindowId, chosen: Option<std::path::PathBuf>) {
+        if let Some((_, ask)) = self.panels.remove(&win) {
+            let _ = ask.reply.try_send(chosen);
+        }
+        cx.close_window(win);
+    }
+
+    /// Open a file panel for another program (the FileChooser portal).
+    fn open_panel(&mut self, cx: &mut Cx, ask: files::Ask) {
+        let dir = ask.folder.clone().filter(|d| d.is_dir()).unwrap_or_else(|| std::env::var_os("HOME").map_or_else(|| "/".into(), Into::into));
+        let types: Vec<&str> = ask.types.iter().map(String::as_str).collect();
+        let (default, panel) = match ask.purpose {
+            files::Purpose::Open => ("Open", FilePanel::open(dir).types(&types)),
+            files::Purpose::Folder => ("Choose a Folder", FilePanel::folder(dir)),
+            files::Purpose::Save => ("Save", FilePanel::save(dir, ask.name.clone()).types(&types)),
+            files::Purpose::SaveFiles => ("Choose Where to Save", FilePanel::folder(dir)),
+        };
+        let title = if ask.title.is_empty() { default.to_owned() } else { ask.title.clone() };
+        let mut options = WindowOptions { dialog: true, ..WindowOptions::new(title, PANEL_SIZE.0, PANEL_SIZE.1).min_size(420, 300) };
+        if !ask.parent.is_empty() {
+            options = options.foreign_parent(ask.parent.clone());
+        }
+        let win = cx.open_window(options);
+        cx.activate(win);
+        self.panels.insert(win, (panel, ask));
+    }
+
     fn close_dialog(&mut self, cx: &mut Cx, win: WindowId, granted: bool) {
         if let Some(d) = self.dialogs.remove(&win) {
             d.answer(granted);
@@ -145,6 +179,15 @@ impl Portal {
 
 impl App for Portal {
     fn ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
+        if let Some((panel, _)) = self.panels.get_mut(&win) {
+            if let Some(r) = panel.ui(ui) {
+                self.close_panel(cx, win, match r {
+                    PanelResult::Chosen(p) => Some(p),
+                    PanelResult::Cancelled => None,
+                });
+            }
+            return;
+        }
         if let Some(d) = self.dialogs.get_mut(&win) {
             if let Some(granted) = d.ui(ui, win) {
                 self.close_dialog(cx, win, granted);
@@ -165,7 +208,9 @@ impl App for Portal {
     }
 
     fn close_requested(&mut self, cx: &mut Cx, win: WindowId) {
-        if self.dialogs.contains_key(&win) {
+        if self.panels.contains_key(&win) {
+            self.close_panel(cx, win, None);
+        } else if self.dialogs.contains_key(&win) {
             self.close_dialog(cx, win, false);
         } else {
             self.close(cx, win, None);
@@ -174,7 +219,7 @@ impl App for Portal {
 
     /// Sharing (or asking to): an upgrade would cut it off, so it waits.
     fn busy(&self) -> bool {
-        stream::live() > 0 || !self.pickers.is_empty() || !self.dialogs.is_empty()
+        stream::live() > 0 || !self.pickers.is_empty() || !self.dialogs.is_empty() || !self.panels.is_empty()
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
@@ -213,6 +258,7 @@ impl App for Portal {
             }
             portal::ToUi::Ended => {}
             portal::ToUi::Lost(session) => self.end(session),
+            portal::ToUi::Files(ask) => self.open_panel(cx, ask),
             portal::ToUi::Access(ask) => {
                 let (win, d) = access::Dialog::open(cx, ask);
                 self.dialogs.insert(win, d);
@@ -225,6 +271,10 @@ impl App for Portal {
                 let wins: Vec<WindowId> = self.dialogs.iter().filter(|(_, d)| d.request() == request).map(|(w, _)| *w).collect();
                 for win in wins {
                     self.close_dialog(cx, win, false);
+                }
+                let wins: Vec<WindowId> = self.panels.iter().filter(|(_, (_, a))| a.request == request).map(|(w, _)| *w).collect();
+                for win in wins {
+                    self.close_panel(cx, win, None);
                 }
             }
         }
@@ -324,7 +374,7 @@ fn main() -> std::process::ExitCode {
                 }
             })
             .expect("thread");
-        Portal { pickers: HashMap::new(), dialogs: HashMap::new(), thumbs: Vec::new(), bus }
+        Portal { pickers: HashMap::new(), dialogs: HashMap::new(), panels: HashMap::new(), thumbs: Vec::new(), bus }
     });
     std::process::ExitCode::SUCCESS
 }

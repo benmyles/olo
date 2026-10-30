@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Open and Save for other programs: Olo's file panel
+
+*04:35* — olo-portal answers the FileChooser portal: another program's Open or Save is Olo's file panel, titled as it asks, in its folder, filtered to its file types.
+
+![Open and Save for other programs: Olo's file panel](2026-10-30/043523-open-and-save-for-other-programs-olo-s-file-pane.png)
+
 ### Permission: the portals' dialog as an Olo alert
 
 *04:32* — olo-portal answers the Access portal, which other portals ask permission through (a camera, a screenshot): Olo's BAlert with the portal's icon, its question and its choices.

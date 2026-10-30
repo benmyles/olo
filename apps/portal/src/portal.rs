@@ -1,8 +1,8 @@
 //! The portal backend on D-Bus: `org.freedesktop.impl.portal.desktop.olo`,
 //! which xdg-desktop-portal calls for `org.freedesktop.portal.ScreenCast`
-//! (and Inhibit, `inhibit.rs`, Screenshot, `shot.rs`, and Access, the
-//! permission dialog, `access.rs`) when `olo-portals.conf` names us for
-//! it. An app's share is a session:
+//! (and Inhibit, `inhibit.rs`, Screenshot, `shot.rs`, Access, the
+//! permission dialog, `access.rs`, and FileChooser, `files.rs`) when
+//! `olo-portals.conf` names us for it. An app's share is a session:
 //! CreateSession makes it (an `impl.portal.Session` object at the handle
 //! the portal chose, closed by it or by us), SelectSources says what the
 //! app wants, and Start asks the person (the picker, `picker.rs`, unless a
@@ -45,6 +45,8 @@ pub enum ToUi {
     Pick(picker::Ask),
     /// A permission to ask (the Access portal).
     Access(crate::access::Ask),
+    /// A file to open or save (the FileChooser portal).
+    Files(crate::files::Ask),
     /// The app gave up on the request (its handle): close its picker.
     Cancel(String),
     /// A session ended (an upgrade may have waited for it: `App::busy`).
@@ -325,7 +327,14 @@ pub fn serve(address: Option<&str>, to_ui: impl Fn(ToUi) + Send + Sync + 'static
     // Nothing is shared yet (a file a crashed portal left goes).
     publish(&HashMap::new());
     let access = crate::access::Access { to_ui: cast.to_ui.clone() };
-    let conn = builder.serve_at(PATH, cast)?.serve_at(PATH, crate::inhibit::Inhibit)?.serve_at(PATH, crate::shot::Screenshot)?.serve_at(PATH, access)?.build()?;
+    let files = crate::files::FileChooser { to_ui: cast.to_ui.clone() };
+    let conn = builder
+        .serve_at(PATH, cast)?
+        .serve_at(PATH, crate::inhibit::Inhibit)?
+        .serve_at(PATH, crate::shot::Screenshot)?
+        .serve_at(PATH, access)?
+        .serve_at(PATH, files)?
+        .build()?;
     let flags = zbus::fdo::RequestNameFlags::DoNotQueue.into();
     match conn.request_name_with_flags(NAME, flags)? {
         zbus::fdo::RequestNameReply::PrimaryOwner | zbus::fdo::RequestNameReply::AlreadyOwner => {}
