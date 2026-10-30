@@ -123,6 +123,24 @@ pub struct WindowMeta {
     pub covered: Cell<bool>,
     /// Zoomed by Focus, and unzoomed when it leaves it.
     pub focus_zoomed: Cell<bool>,
+    /// Glowing as a new window (Preferences ▸ Appearance): since when,
+    /// for how long (`shell::glow`).
+    pub glow: Cell<Option<(std::time::Instant, std::time::Duration)>>,
+    /// Its glow's pieces, as drawn for its size and look.
+    pub glow_pieces: RefCell<crate::shell::glow::Glow>,
+}
+
+impl WindowMeta {
+    /// How strong its glow is now (0: none; one that has faded is let go).
+    pub fn glow_strength(&self) -> f32 {
+        let Some((since, total)) = self.glow.get() else { return 0.0 };
+        let s = crate::shell::glow::strength(since.elapsed(), total);
+        if s <= 0.0 {
+            self.glow.set(None);
+            *self.glow_pieces.borrow_mut() = Default::default();
+        }
+        s
+    }
 }
 
 impl WindowElement {
@@ -155,6 +173,8 @@ impl WindowElement {
             focus_on: Cell::new(None),
             covered: Cell::new(false),
             focus_zoomed: Cell::new(false),
+            glow: Cell::new(None),
+            glow_pieces: Default::default(),
         });
         self.user_data().get::<WindowMeta>().unwrap()
     }
@@ -361,6 +381,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     tab_frame: None,
                     popups: Vec::new(),
                     settling: false,
+                    glowing: w.meta().glow_strength() > 0.0,
                     surface: w.wl_surface().map(|s| s.id().protocol_id()),
                 }
             })

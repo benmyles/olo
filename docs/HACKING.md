@@ -2317,6 +2317,30 @@ below the first window not named, so Deskbar, menus and Twitcher stay
 above it. Choosing fades it out (`spotlight::end(true)`); Esc and the
 lock end it at once.
 
+## New windows (app_server shell/xdg.rs, shell/glow.rs)
+
+A new window comes up focused and in front, whatever opened it (Olo's
+apps, other programs, a portal's dialog, a program in the background):
+`new_toplevel` gives it the keyboard as it is made, on the display and
+workspace it opens on (the one showing), auto-tiled, zoomed in Focus or
+grouped as its tab in front; wm-fuzz fails a step whose new window
+doesn't have it. Windows coming back after an upgrade are the exception:
+they come back as they were. With Preferences ▸ Appearance ▸ "Glow new
+windows for N seconds" (`Appearance::glow_new_windows`, off by default;
+`glow_seconds`, 5) a new one (not one coming back) also glows a moment:
+a soft halo in the look's `keyboard_navigation` blue, 12 points out from
+its outline, its frame and its tab as one shape (stronger in a dark
+look), whole until its last second and easing out over it
+(`glow::strength`), drawn behind it (`WindowElement::render_elements`).
+Its pieces are made at the window's size in device pixels and drawn one
+to one (`render::exact`): a band across the top where the halo is the
+distance to frame and tab together (so it goes up and round the tab),
+a one-pixel strip of the falloff stretched down each side and along the
+bottom, and the bottom corners round; made again only when the width,
+the tab, the look or the scale changes, and let go once it has faded
+(`WindowMeta::glow_strength`). Undecorated windows glow round their
+geometry. Agents read `glowing` in `list_windows`.
+
 ## Workspaces, one set per display (app_server desktop.rs)
 
 Every display has its own workspaces, `Settings::workspace_count` of

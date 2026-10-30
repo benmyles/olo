@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### New windows glow a moment (Preferences ▸ Appearance)
+
+*11:06* — With Glow new windows for N seconds on (off by default, 5 s), a new window has a soft halo in the look's focus blue round its frame and tab as one shape, fading out over its last second; left: just opened, right: after (at 1×, enlarged 2×).
+
+![New windows glow a moment (Preferences ▸ Appearance)](2026-10-30/110649-new-windows-glow-a-moment-preferences-appearance.png)
+
 ### Notifications: All Apps, mixed while they differ
 
 *10:52* — Preferences ▸ Notifications' Applications table has an All Apps row over the list: each column checked when every app's is, a dash while they differ (the kit's CheckBox::mixed); a click sets it for every app. With the Deskbar box above it, the panel is taller.

@@ -300,6 +300,23 @@ impl Decoration {
     }
 
     /// Render elements for the tab and frame, front-most first.
+    /// Its outline in device pixels from `location`, as `render_elements`
+    /// draws it: the frame's outer rectangle, and its tab's left and right
+    /// (from the frame's left) and height (`shell::glow`).
+    pub fn outline(&mut self, title: &str, content: Size<i32, Logical>, location: Point<i32, Physical>, scale: Scale<f64>) -> (Rectangle<i32, Physical>, (i32, i32, i32)) {
+        let s = scale.x;
+        let px = |l: i32| (l as f64 * s).round() as i32;
+        let tab = self.tab_layout(title, content);
+        let border = px(BORDER);
+        let frame_top = px(TAB_HEIGHT + BORDER) - border;
+        let content_px = Size::<i32, Physical>::from(((content.w as f64 * s).round() as i32, (content.h as f64 * s).round() as i32));
+        let frame_w = content.w + 2 * BORDER;
+        let frame_right = border + content_px.w + border;
+        let tx = |l: i32| if l >= frame_w { frame_right + px(l) - px(frame_w) } else { px(l) };
+        let frame = Rectangle::new((location.x, location.y + frame_top).into(), (content_px.w + 2 * border, content_px.h + 2 * border).into());
+        (frame, (tx(tab.x), tx(tab.x + tab.width), frame_top))
+    }
+
     pub fn render_elements<R>(
         &mut self,
         renderer: &mut R,

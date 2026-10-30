@@ -1,11 +1,11 @@
 //! Appearance: light, dark or automatic theme; night mode (warmer colours
 //! in the evening); the window tab font size and longest title; icons in
-//! Deskbar's menu.
+//! Deskbar's menu; new windows glowing a moment.
 
 use olo_kit::{
     egui::Ui,
     metrics as m,
-    widgets::{BBox, CheckBox, RadioButton, Slider, TextControl},
+    widgets::{BBox, CheckBox, MenuField, RadioButton, Slider, TextControl},
 };
 use olo_protocol::{NightLightMode, Settings, ThemePreference};
 
@@ -66,4 +66,23 @@ pub fn ui(ui: &mut Ui, s: &mut Settings) {
     ui.add(Slider::new(&mut chars, 20.0..=200.0).step(10.0).label("Longest window title").value_text(text));
     s.tab_title_chars = chars as u32;
     ui.add(CheckBox::new(&mut s.appearance.menu_icons, "Show icons in the Deskbar menu"));
+    // A new window glows a moment, to catch the eye.
+    let choices = [2u32, 3, 5, 8, 10, 15, 30];
+    let names: Vec<String> = choices.iter().map(|n| format!("{n} seconds")).collect();
+    let mut names: Vec<&str> = names.iter().map(String::as_str).collect();
+    let custom = format!("{} seconds", s.appearance.glow_seconds);
+    let mut i = match choices.iter().position(|&c| c == s.appearance.glow_seconds) {
+        Some(i) => i,
+        None => {
+            names.push(&custom);
+            names.len() - 1
+        }
+    };
+    ui.horizontal(|ui| {
+        ui.add(CheckBox::new(&mut s.appearance.glow_new_windows, "Glow new windows for"));
+        ui.add_enabled_ui(s.appearance.glow_new_windows, |ui| ui.add(MenuField::new("glow-seconds", &mut i, &names).width(110.0)));
+    });
+    if let Some(&c) = choices.get(i) {
+        s.appearance.glow_seconds = c;
+    }
 }

@@ -850,6 +850,14 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             self.place_over_parent(surface);
             self.place_alert(surface);
             self.place_under_pointer(surface);
+            // New (not one coming back as it was): it glows a moment, if asked.
+            let a = &self.settings.appearance;
+            if a.glow_new_windows
+                && a.glow_seconds > 0
+                && let Some(w) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface))
+            {
+                w.meta().glow.set(Some((std::time::Instant::now(), std::time::Duration::from_secs(a.glow_seconds.min(60) as u64))));
+            }
         }
         // A move asked for before it showed: now, from where it is.
         let window = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface)).cloned();

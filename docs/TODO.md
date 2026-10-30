@@ -318,7 +318,7 @@ as they land (with the commit), add new ones as they come up.
     why, with Stop Process, Show in Activity Monitor and Ignore This
     Process. Agents read and drive all of it (the panel, the tray, the
     alert, Activity Monitor).
-- **New windows always become the active window; an optional glow**
+- ~~**New windows always become the active window; an optional glow**~~
   (Ben, 2026-10-30): "please make sure that any time a new window opens
   for any reason it becomes the active window with focus. also, add a
   setting in preferences -> appearance to give new windows a subtle glow
@@ -337,7 +337,10 @@ as they land (with the commit), add new ones as they come up.
   own for each look, and for day and night), fading out over the last
   second, drawn at device pixels at every scale (1× to 2×, 1.25× and
   1.75× too), costing nothing once it has gone, and said in the
-  window's info for agents.
+  window's info for agents. Done (HACKING, "New windows"): focus held in
+  every case tried (other programs and background launches, another
+  workspace's app, auto-tiling, tab groups; wm-fuzz checks it each
+  step); the glow checked at 1× and 2×, light and dark.
 - ~~**Bug: Empty Trash from the desktop's Trash icon didn't empty it**~~
   (Ben, 2026-10-30): "right clicking on trash on desktop and choosing
   empty trash didn't seem to work so i opened trash (still saw the

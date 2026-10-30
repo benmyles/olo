@@ -324,6 +324,7 @@ mod tests {
             tab_frame: None,
             popups: vec![],
             settling: false,
+            glowing: false,
             surface: None,
         }
     }

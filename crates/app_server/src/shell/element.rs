@@ -587,6 +587,8 @@ where
         let alpha = if self.meta().ghost.get() { alpha * 0.45 } else { alpha };
         let window_bbox = SpaceElement::bbox(&self.0);
 
+        // New: its glow behind it (`glow`), while it lasts.
+        let glow = self.meta().glow_strength() * alpha;
         if self.decorated() && !window_bbox.is_empty() {
             let title = self.title();
             let content = self.content_size();
@@ -599,19 +601,37 @@ where
             let client_location = location + self.client_render_offset().to_physical_precise_round(scale);
             let window_elements: Vec<WindowRenderElement<R>> =
                 AsRenderElements::render_elements(&self.0, renderer, client_location, scale, alpha);
+            let halo = if glow > 0.0 {
+                let (outline, tab) = self.decoration().outline(&title, content, location, scale);
+                self.meta().glow_pieces.borrow_mut().elements(renderer, outline, Some(tab), scale.x, glow)
+            } else {
+                Vec::new()
+            };
 
             // Popups and the window first, so menus overlap the tab.
             window_elements
                 .into_iter()
                 .chain(tabs.into_iter().map(WindowRenderElement::Tab))
                 .chain(frame.into_iter().map(WindowRenderElement::Decoration))
+                .chain(halo.into_iter().map(WindowRenderElement::Tab))
                 .map(C::from)
                 .collect()
         } else {
-            AsRenderElements::render_elements(&self.0, renderer, location, scale, alpha)
+            let mut elements: Vec<C> = AsRenderElements::render_elements(&self.0, renderer, location, scale, alpha)
                 .into_iter()
                 .map(C::from)
-                .collect()
+                .collect();
+            if glow > 0.0 {
+                // Round what it draws as its window (its own frame, if any).
+                let g = self.0.geometry();
+                let outline = Rectangle::<i32, Physical>::new(
+                    location + g.loc.to_physical_precise_round(scale),
+                    g.size.to_physical_precise_round(scale),
+                );
+                let halo = self.meta().glow_pieces.borrow_mut().elements(renderer, outline, None, scale.x, glow);
+                elements.extend(halo.into_iter().map(WindowRenderElement::Tab).map(C::from));
+            }
+            elements
         }
     }
 }

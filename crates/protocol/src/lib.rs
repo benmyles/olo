@@ -545,6 +545,9 @@ pub struct WindowInfo {
     /// is on screen; a window is settled once no window is settling.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub settling: bool,
+    /// Glowing as a new window (Preferences ▸ Appearance).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub glowing: bool,
     /// Its surface as its program knows it (the `wl_surface`'s object id
     /// on the program's own connection), for a program to tell which of
     /// its windows this is: Olo's kit knows so which of an app's windows
@@ -1096,6 +1099,10 @@ pub struct Appearance {
     /// (its own), `beos` or `catppuccin` (`olo_theme::looks::ColorSet`;
     /// unknown ids are the theme's own). [`Request::Looks`] lists them.
     pub colors: String,
+    /// A new window glows for a moment, to draw the eye to it.
+    pub glow_new_windows: bool,
+    /// For how long (seconds).
+    pub glow_seconds: u32,
 }
 
 impl Appearance {
@@ -1145,6 +1152,8 @@ impl Default for Appearance {
             menu_icons: true,
             icon_theme: olo_theme::looks::DEFAULT.into(),
             colors: olo_theme::looks::ColorSet::Theme.id().into(),
+            glow_new_windows: false,
+            glow_seconds: 5,
         }
     }
 }

@@ -49,6 +49,7 @@ pub mod autotile;
 mod element;
 mod grabs;
 pub mod deco;
+pub mod glow;
 pub mod groups;
 pub mod modes;
 pub mod tabdrag;
