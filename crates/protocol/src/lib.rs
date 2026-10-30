@@ -457,6 +457,14 @@ pub struct PowerStatus {
     pub auto_approve_until: Option<u64>,
 }
 
+/// The way a window is zoomed alone (`WindowInfo::zoomed_along`).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ZoomAxis {
+    Vertical,
+    Horizontal,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WindowInfo {
     pub id: WindowId,
@@ -481,6 +489,10 @@ pub struct WindowInfo {
     /// zoomed again or restored.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub zoomed: bool,
+    /// Zoomed one way only (Zoom Vertically, Zoom Horizontally): its
+    /// height, or width, held to the tiling area's, the other its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zoomed_along: Option<ZoomAxis>,
     /// Its program keeps it through a window server restart (an upgrade):
     /// Olo's own apps, and Wayland programs that came through
     /// olo-wlproxy.

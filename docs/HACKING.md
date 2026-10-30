@@ -2609,7 +2609,10 @@ app's minimum), and past that is pinned as far right as it fits with its
 tab slid along it (`tab_offset`, kept across a restart in the layout),
 so the tabs overlap only then. Zoom All (`zoom_all`, ⌃⌥⌘↩) zooms every resizable window on
 the display, or unzooms them all if they all are. Whether a window is
-zoomed is in `WindowInfo::zoomed`, for agents. Window to Workspace 1–9
+zoomed is in `WindowInfo::zoomed`, for agents, and one zoomed only one
+way (Zoom Vertically, Zoom Horizontally) says which in
+`WindowInfo::zoomed_along` (`"vertical"`, `"horizontal"`): Zoom
+Vertically on a zoomed window leaves it zoomed horizontally. Window to Workspace 1–9
 (⌃⇧⌘1–9) moves the focused window there and follows it. Cascade Others and Fan Out Others (⌃⇧⌘\,
 ⌃⇧⌘/: `keep`) arrange all but the focused window (or the one the
 palette or Deskbar's menu names), which stays where it is, in front and

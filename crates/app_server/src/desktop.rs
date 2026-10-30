@@ -364,6 +364,10 @@ impl<B: Backend + 'static> AnvilState<B> {
                     rolled: w.rolled(),
                     covered: meta.covered.get(),
                     zoomed: self.is_zoomed(&w),
+                    zoomed_along: Self::zoomed_axis(&w).map(|a| match a {
+                        crate::shell::tiling::Axis::Vertical => olo_protocol::ZoomAxis::Vertical,
+                        crate::shell::tiling::Axis::Horizontal => olo_protocol::ZoomAxis::Horizontal,
+                    }),
                     kept,
                     group: place.map(|(g, _)| g),
                     groupable: self.groupable(&w),

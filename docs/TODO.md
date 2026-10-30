@@ -339,6 +339,17 @@ as they land (with the commit), add new ones as they come up.
   its clear layer outlived it, taking that click; it now takes the
   pointer from the press, and a menu's window gets a frame as the menu
   goes (it draws on frames, which a still screen doesn't make).
+- **A group taller than its display, from a member's least size**
+  (found by wm-fuzz, seed 3 steps 90 and 118, two displays 1600×1000
+  and 1280×800 at 2×; also seed 1 step 229): a Terminal whose text was
+  made bigger can't be smaller than 247×407, so its group on the
+  384-high display grows past it (step 90: "no smaller than any of its
+  windows can be"); after smaller text it no longer has to, but stays
+  so, until a window joining it (step 118) fits it back to 250×384 and
+  wm-fuzz sees the others moved. Decide: a group (or window) kept past
+  its display only while a member really needs it, fitted back as soon
+  as none does (a least size shrinking), so a later join changes nothing
+  else; then the fuzz check stands as it is.
 - **Notifications: one of the same, not several** (Ben, 2026-10-30):
   "add a preferences -> notifications setting, enabled by default, that
   dedupes notifications so that if we get >1 active notification from
