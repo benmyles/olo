@@ -2217,7 +2217,16 @@ fn render_surface<'a>(
             _ => unreachable!(),
         })?;
 
-    update_primary_scanout_output(space, output, dnd_icon, cursor_status, &states);
+    // Only from a frame that was drawn. One with nothing new (an idle
+    // screen, every frame) reports nothing as presented, and every window
+    // on the screen would lose it as its primary output: Smithay then
+    // sends their frame callbacks once a second, and an idle window of
+    // Olo's (which scrolls in its frames) barely scrolled when the wheel
+    // or the touchpad turned over it, until something on that screen drew
+    // (a click). Nothing on screen changed, so what showed where stands.
+    if rendered {
+        update_primary_scanout_output(space, output, dnd_icon, cursor_status, &states);
+    }
 
     if rendered {
         let output_presentation_feedback = take_presentation_feedback(output, space, &states);

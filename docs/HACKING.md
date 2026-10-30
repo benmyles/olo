@@ -3297,6 +3297,17 @@ twice as far; `scroll_speed` scales finger scrolls before momentum
 samples them); fingers resting again (a hold gesture), pointer motion, a
 click, a swipe or pinch, or a wheel stop it.
 
+**A window shown gets its frames, idle or not.** Smithay sends a
+surface its frame callbacks every frame only on its *primary scanout
+output* (the screen showing most of it, from the last frame's render
+states), else once a second. The DRM backend updates that only from a
+frame that was drawn (`render_surface`): a frame with nothing new (an
+idle screen) reports nothing as presented, and would take it from every
+window there, so an idle Olo window (which scrolls in its frames) barely
+scrolled under the wheel or the touchpad until something on its screen
+drew. The headless backend renders each frame whole, so tests didn't see
+it; Chromium draws on its own clock, so its windows didn't either.
+
 **Scrolls go on the frame clock** (`pace.rs`). A touchpad reports at its
 own rate, which beats against the display's: passed on as they came, one
 frame got one report and the next two, and the content juddered though

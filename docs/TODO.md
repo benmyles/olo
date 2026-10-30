@@ -214,6 +214,31 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- ~~**Bug: scrolling a window that isn't active**~~ (Ben, 2026-10-30; fixed, to try after the upgrade):
+  "some/most apps don't let me scroll their scrollable areas unless
+  they're active. all scrollable areas should be scrollable even if
+  their window isn't the active one". The wheel and the touchpad scroll
+  whatever scrollable area is under the pointer, in any window, active
+  or not (and without making it active), as macOS and BeOS do: Olo's
+  kit apps, other Wayland programs (Chrome, GTK, Qt), app_server's own
+  views. Find where it's lost (app_server's pointer axis routing, the
+  kit taking axis events only with keyboard focus, egui's hover state
+  in an unfocused window) and check it for every kit scroll view (lists,
+  text views, cards, Tracker, Terminal, Activity Monitor, Preferences)
+  at every scale.
+  Ben, live: Activity Monitor scrolled, Agent Screens and Token Pool
+  didn't, until a click on that display; StyledEdit didn't while Slack
+  did; then an inactive Tracker on the active display didn't. Cause:
+  windows that hadn't drawn lately (any display) were taken for not
+  shown after each frame with nothing new (the DRM backend counted
+  nothing as presented), so Smithay sent their frame callbacks once a
+  second, and Olo's apps scroll in their frames; Activity Monitor
+  redraws on its own and Chromium draws on its own clock. Now only a
+  drawn frame changes which screen shows a window. Also: a motion gave
+  the pointer to the surface under where it was before the motion.
+  Headless sessions render every frame whole, so they couldn't show it:
+  checked there that every kit view scrolls inactive (wheel and
+  touchpad, on either display, mixed scales).
 - ~~**Bug: Quick Look's full screen spans displays**~~ (Ben, 2026-10-30; fixed):
   "there's a bug with quick look when i have multiple displays i hit
   space and correctly see the quick look preview then i hit f and it

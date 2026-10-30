@@ -1634,9 +1634,12 @@ impl AnvilState<UdevData> {
                     return;
                 }
 
+        // The surface where the pointer is now, not where it was before
+        // this motion (a window just entered gets the pointer with this
+        // motion, not the next).
         pointer.motion(
             self,
-            under,
+            new_under.clone(),
             &MotionEvent {
                 location: pointer_location,
                 serial,
