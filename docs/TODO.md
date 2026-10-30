@@ -214,6 +214,24 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Deskbar: an app's notification dot fades with its notifications**
+  (Ben, 2026-10-30): "the blue notifications dot for an app in the
+  deskbar should fade like the notifications in notifications app as
+  that apps notifications fade out (based on the settings) -- make it so
+  that like when all of that apps notifications are shown with 100%
+  visibility still then the blue dot is 100% and then as each individual
+  notification starts to fade that takes the relevant strength out of
+  opacity based on the fraction of that notification if you know what i
+  mean. make sure there's a min/floor to the dot opacity though where it
+  still looks good like a dot otherwise it might just look weird like a
+  mark or something". The dot's opacity is the mean of the app's
+  notifications' strengths (`NotificationSettings::strength`, from the
+  fade settings: each 1/n of it), so it stays full while none has begun
+  to fade and loses each one's share as it fades, never below a floor
+  where it still reads as a dot (to be chosen by eye, about 35–40%, in
+  every look and at every scale); with fading off, full. Updated as the
+  notifications age (no polling faster than the fade can show), and its
+  strength in the entry's status for agents.
 - ~~**Notifications: one click on a card acts**~~ (Ben, 2026-10-29; done:
   HACKING, Notifications' Cards): "in
   notifications app card view, i should only need a single click of a
