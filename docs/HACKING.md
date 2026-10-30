@@ -3125,6 +3125,25 @@ of a tab's context menu), in `terminal.json` as `side_tabs`, with the
 column's width (drag its edge) as `side_width`; switching keeps every
 window its size and gives the grid the difference.
 
+**Links** (`src/links.rs`). ⌘ held over a URL or a file's path
+underlines it and ⌘-click opens it (the profile's command key: Ctrl with
+the Windows keys, `egui::Modifiers::command`, which the kit sets for a
+raw-keys window's clicks and frames as for its keys): a URL in the
+default browser, a file or folder in Tracker (`olo_kit::tracker::open`, a
+file selected in its folder's window). Links are an OSC 8 hyperlink the
+program wrote, else found in the text: URLs by pattern, paths (also
+`path:line[:col]`, in backticks, brackets or Markdown) that exist
+relative to the foreground program's directory, else the shell's. One a
+program broke over rows itself is joined (`links::broken`: a piece ends
+its row within 4 columns of the edge, the next is the first word of the
+next row, indented at most 8; Claude Code wraps long URLs so), from any
+piece. The link is looked up before the click is handled, so a ⌘-click
+that focuses the window acts (its first frame knowing ⌘ is held), and
+it opens even in a program that takes the mouse. Tested against a real
+Claude Code reply in a test session (its HOME the person's, its
+`CLAUDE*` variables unset), with a stand-in browser in the test HOME's
+`mimeapps.list`.
+
 **Groups** (`src/groups.rs`). A window can be a named group with a colour
 (Tabs ▸ Group ▸ Name Group…, or click the group's name in the strip): the
 name leads the strip in its colour (its chip; the tabs stay plain), the

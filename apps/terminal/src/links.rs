@@ -1,7 +1,9 @@
 //! Clickable URLs and file paths: ⌘-hover underlines them, ⌘-click opens
 //! them. Links come from OSC 8 hyperlinks the program wrote, or are found
 //! in the text: URLs by pattern, file paths by checking that they exist
-//! (relative to the working directory of whatever is running).
+//! (relative to the working directory of whatever is running), also one
+//! a program broke over lines itself (`broken`: Claude Code does, at its
+//! text's edge, the rest indented on the next).
 
 use std::{
     path::{Path, PathBuf},
@@ -128,17 +130,96 @@ pub fn find(line: &str, col: usize, cwd: &Path, exists: impl Fn(&Path) -> bool) 
     None
 }
 
-/// Open a link: web addresses in the browser, folders in Tracker, files
-/// with their preferred application.
+/// How near the right edge a piece of a broken word ends: a program
+/// wrapping its own text (Claude Code) may keep a column or two free.
+const EDGE: usize = 4;
+/// How far in the rest of a broken word may start (its text's indent).
+const INDENT: usize = 8;
+/// How many rows a broken word may cover.
+const PIECES: usize = 24;
+
+/// The word at column `col` of row `row`, with the rest of it a program
+/// broke over the rows around (`rows`, each a terminal row's characters,
+/// `cols` wide): a piece ends at its row's last character, within
+/// [`EDGE`] of the right, and the next is the first word of the next row,
+/// indented at most [`INDENT`]. The pieces joined, where the click is in
+/// that, and each character's (row, column). None unless there are two or
+/// more pieces.
+pub fn broken(rows: &[Vec<char>], row: usize, col: usize, cols: usize) -> Option<(String, usize, Vec<(usize, usize)>)> {
+    let blank = |c: char| c == ' ' || c == '\0';
+    let line = rows.get(row)?;
+    if line.get(col).is_none_or(|c| blank(*c)) {
+        return None;
+    }
+    let first = |r: &Vec<char>| r.iter().position(|c| !blank(*c));
+    let end = |r: &Vec<char>| r.iter().rposition(|c| !blank(*c)).map(|i| i + 1);
+    let word = |r: &Vec<char>, at: usize| {
+        let s = (0..=at).rev().take_while(|&i| !blank(r[i])).last().unwrap_or(at);
+        let e = (at..r.len()).take_while(|&i| !blank(r[i])).last().map_or(at, |i| i + 1);
+        (s, e)
+    };
+    // Box drawing (a TUI's frames, Claude Code's ⎿) is never part of one.
+    let plain = |r: &Vec<char>, (s, e): (usize, usize)| r[s..e].iter().all(|c| !('\u{2500}'..='\u{257f}').contains(c) && *c != '⎿' && *c != '⏺');
+    let reaches = |r: &Vec<char>, e: usize| end(r) == Some(e) && e + EDGE >= cols;
+    let mut pieces = vec![(row, word(line, col))];
+    // Back: the clicked word starts its row, and the row before ends on a word.
+    while pieces.len() < PIECES {
+        let (r, (s, _)) = pieces[0];
+        if r == 0 || first(&rows[r]) != Some(s) || s > INDENT {
+            break;
+        }
+        let prev = &rows[r - 1];
+        let Some(e) = end(prev).filter(|&e| reaches(prev, e)) else { break };
+        let w = word(prev, e - 1);
+        if !plain(prev, w) {
+            break;
+        }
+        pieces.insert(0, (r - 1, w));
+    }
+    // On: this piece ends its row at the edge, and the next row starts with a word.
+    while pieces.len() < PIECES {
+        let &(r, (_, e)) = pieces.last().unwrap();
+        let Some(next) = rows.get(r + 1) else { break };
+        let Some(s) = first(next).filter(|&s| s <= INDENT) else { break };
+        if !reaches(&rows[r], e) {
+            break;
+        }
+        let w = word(next, s);
+        if !plain(next, w) {
+            break;
+        }
+        pieces.push((r + 1, w));
+    }
+    if pieces.len() < 2 || !pieces.iter().all(|&(r, w)| plain(&rows[r], w)) {
+        return None;
+    }
+    let mut text = String::new();
+    let mut cells = Vec::new();
+    let mut at = 0;
+    for &(r, (s, e)) in &pieces {
+        if r == row {
+            at = cells.len() + (col - s);
+        }
+        for c in s..e {
+            text.push(rows[r][c]);
+            cells.push((r, c));
+        }
+    }
+    Some((text, at, cells))
+}
+
+/// Open a link: web addresses in the browser; files and folders in
+/// Tracker (a file selected in its folder's window).
 pub fn open(target: &Target) {
     use olo_kit::open as opener;
-    let t = match target {
-        Target::Url(u) => opener::Target::parse(u),
-        Target::Path(p, _) => opener::Target::Path(p.clone()),
-    };
+    let target = target.clone();
     // Finding the handler reads files: not on the UI thread.
     std::thread::spawn(move || {
-        if let Err(e) = opener::open(&t) {
+        let done = match &target {
+            Target::Url(u) => opener::open(&opener::Target::parse(u)).map_err(|e| e.to_string()),
+            Target::Path(p, _) => olo_kit::tracker::open(p).map_err(|e| e.to_string()),
+        };
+        if let Err(e) = done {
             tracing::warn!("open link: {e}");
         }
     });
@@ -162,6 +243,51 @@ mod tests {
         assert_eq!(link("(https://x.org/y)", 3).unwrap().target, Target::Url("https://x.org/y".into()));
         assert_eq!(link("go to www.rust-lang.org.", 8).unwrap().target, Target::Url("https://www.rust-lang.org".into()));
         assert!(link("see https://example.com", 1).is_none());
+    }
+
+    /// Rows of `cols` columns, as a terminal shows them.
+    fn screen(lines: &[&str], cols: usize) -> Vec<Vec<char>> {
+        lines.iter().map(|l| l.chars().chain(std::iter::repeat(' ')).take(cols).collect()).collect()
+    }
+
+    #[test]
+    fn broken_words() {
+        // Claude Code's way: a long URL at its text's edge, the rest
+        // indented on the next rows.
+        let rows = screen(&["⏺ See https://github.com/anthropics/claude-", "  code/issues/1234?q=a and more.", "  next"], 44);
+        let (text, at, cells) = broken(&rows, 0, 10, 44).unwrap();
+        assert_eq!(text, "https://github.com/anthropics/claude-code/issues/1234?q=a");
+        assert_eq!(at, 4);
+        assert_eq!(cells[0], (0, 6));
+        assert_eq!(*cells.last().unwrap(), (1, 21));
+        // From the second piece too.
+        let (text, at, _) = broken(&rows, 1, 4, 44).unwrap();
+        assert_eq!(text, "https://github.com/anthropics/claude-code/issues/1234?q=a");
+        assert_eq!(at, 39);
+        let link = find(&text, at, Path::new("/"), |_| false).unwrap();
+        assert_eq!(link.target, Target::Url(text.clone()));
+        // A row that ends short of the edge isn't broken.
+        let rows = screen(&["see https://x.org/a", "  next row"], 44);
+        assert!(broken(&rows, 0, 6, 44).is_none());
+        // Nor across a frame.
+        let rows = screen(&["│ https://example.com/aaaaaaaaaaaaaaaaaa │", "│ bbb                                   │"], 42);
+        assert!(broken(&rows, 0, 4, 42).is_none());
+    }
+
+    #[test]
+    fn claude_code_lines() {
+        let l = link("⏺ Read(src/main.rs)", 8).unwrap();
+        assert_eq!(l.target, Target::Path("/work/src/main.rs".into(), None));
+        let l = link("  ⎿  Updated src/main.rs with 3 additions", 16).unwrap();
+        assert_eq!(l.target, Target::Path("/work/src/main.rs".into(), None));
+        let l = link("see `src/main.rs:994` there", 7).unwrap();
+        assert_eq!(l.target, Target::Path("/work/src/main.rs".into(), Some((994, None))));
+        let l = link("in src/main.rs:195-235.", 5).unwrap();
+        assert_eq!(l.target, Target::Path("/work/src/main.rs".into(), Some((195, None))));
+        let l = link("[the docs](https://docs.rs/egui/latest/egui/).", 20).unwrap();
+        assert_eq!(l.target, Target::Url("https://docs.rs/egui/latest/egui/".into()));
+        let l = link("**README.md** says", 4).unwrap();
+        assert_eq!(l.target, Target::Path("/work/README.md".into(), None));
     }
 
     #[test]

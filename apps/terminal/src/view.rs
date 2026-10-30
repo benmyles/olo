@@ -200,14 +200,11 @@ pub fn show(
     if focused && s.exited.is_none() {
         keyboard(ui, s, &mut out);
     }
-    pointer(ui, s, m, &resp, rect, mouse, &mut out);
-    let painter = ui.painter_at(rect);
-    let origin = rect.min + PAD;
-    // Its lines are a cell apart, not on the window's grid.
-    olo_kit::layout_review::own_grid(ui, rect);
-
-    // ⌘ (Ctrl) held over a link: find it (once per cell the pointer is on).
-    let link_mode = ui.input(|i| i.modifiers.ctrl) && resp.hovered() && !mouse.selecting;
+    // ⌘ held over a link (the command key: Ctrl with the Windows keys):
+    // find it, once per cell the pointer is on. Before the pointer's
+    // handling, so a click acts on the link under it now: a ⌘-click that
+    // focuses the window is the first frame it knows ⌘ is held.
+    let link_mode = ui.input(|i| i.modifiers.command) && resp.hovered() && !mouse.selecting;
     if link_mode {
         if let Some(pos) = resp.hover_pos() {
             let offset = s.term.lock().grid().display_offset();
@@ -219,6 +216,11 @@ pub fn show(
     } else {
         mouse.hover = None;
     }
+    pointer(ui, s, m, &resp, rect, mouse, &mut out);
+    let painter = ui.painter_at(rect);
+    let origin = rect.min + PAD;
+    // Its lines are a cell apart, not on the window's grid.
+    olo_kit::layout_review::own_grid(ui, rect);
     if mouse.hover.as_ref().is_some_and(|h| h.target.is_some()) {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     } else if resp.hovered() {
@@ -788,9 +790,21 @@ fn find_link(s: &Session, at: Point, cwd: &dyn Fn() -> Option<std::path::PathBuf
         return Hover { at, cells, target: Some(target) };
     }
     let (text, points) = logical_line(&term, at);
+    // The rows around, for a word a program broke over them itself.
+    let top = (at.line.0 - 24).max(term.grid().topmost_line().0);
+    let bottom = (at.line.0 + 24).min(term.grid().bottommost_line().0);
+    let cols = term.columns();
+    let rows: Vec<Vec<char>> = (top..=bottom).map(|l| (0..cols).map(|c| term.grid()[Line(l)][Column(c)].c).collect()).collect();
     drop(term);
     let Some(col) = points.iter().position(|p| *p == at) else { return none };
     let Some(dir) = cwd() else { return none };
+    if let Some((joined, i, cells)) = links::broken(&rows, (at.line.0 - top) as usize, at.column.0, cols)
+        && let Some(l) = links::find(&joined, i, &dir, |p| p.exists())
+        && cells[l.start].0 != cells[l.end - 1].0
+    {
+        let cells = cells[l.start..l.end].iter().map(|&(r, c)| Point::new(Line(top + r as i32), Column(c))).collect();
+        return Hover { at, cells, target: Some(l.target) };
+    }
     match links::find(&text, col, &dir, |p| p.exists()) {
         Some(l) => Hover { at, cells: points[l.start..l.end.min(points.len())].to_vec(), target: Some(l.target) },
         None => none,
@@ -1163,6 +1177,17 @@ fn pointer(ui: &Ui, s: &mut Session, m: &Metrics, resp: &egui::Response, rect: R
     let Some(pos) = resp.interact_pointer_pos().or(resp.hover_pos()) else { return };
     let (point, side) = cell_at(pos, rect, m, size, offset);
 
+    // ⌘-click on a link opens it, even in a program that takes the mouse.
+    let pressed = ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) && resp.contains_pointer();
+    if pressed
+        && mods.command
+        && let Some(target) = mouse.hover.as_ref().and_then(|h| h.target.clone())
+    {
+        out.open = Some(target);
+        mouse.last_cell = Some(point);
+        return;
+    }
+
     if reporting {
         let pressed = ui.input(|i| {
             [(egui::PointerButton::Primary, 0u8), (egui::PointerButton::Middle, 1), (egui::PointerButton::Secondary, 2)]
@@ -1204,14 +1229,6 @@ fn pointer(ui: &Ui, s: &mut Session, m: &Metrics, resp: &egui::Response, rect: R
 
     // Selection: drag for characters, double-click words, triple-click
     // lines; Shift extends.
-    let pressed = ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) && resp.contains_pointer();
-    if pressed
-        && mods.ctrl
-        && let Some(target) = mouse.hover.as_ref().and_then(|h| h.target.clone())
-    {
-        out.open = Some(target);
-        return;
-    }
     if pressed {
         let now = std::time::Instant::now();
         let count = match mouse.last_click {

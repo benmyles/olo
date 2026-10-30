@@ -313,8 +313,8 @@ as they land (with the commit), add new ones as they come up.
   drawing. Now it sets it the moment a tab is retitled: a window behind
   another in its group showed 4 of 30 titles in 3 s, now all 30 (1×,
   1.5×, 2×).
-- **Terminal: ⌘-click opens any URL or file, reliably** (Ben,
-  2026-10-29, bug): "in terminal we should be able to super+click any
+- ~~**Terminal: ⌘-click opens any URL or file, reliably**~~ (Ben,
+  2026-10-29, bug; done: HACKING, Terminal's Links): "in terminal we should be able to super+click any
   url and it should open in the default browser, or any local file and
   it should open in tracker. it should be able to figure out relative
   paths too based on the cwd in the terminal"; and, told it has them
@@ -325,6 +325,13 @@ as they land (with the commit), add new ones as they come up.
   wrapped over lines; paths in a TUI's boxes or quotes; the working
   directory of a program that changed its own; the key under each
   keyboard profile) and fix them; files open in Tracker, shown.
+  Found and fixed: a ⌘-click on a Terminal that wasn't focused only
+  focused it (the link was looked up on frames already knowing ⌘); a
+  click used the previous frame's link; long URLs Claude Code wraps
+  itself opened cut short; a Ctrl-click went to programs taking the
+  mouse; files opened in their app. Checked with a real Claude Code
+  reply: a URL, a long one it wrapped (from either piece), `path:line`
+  and a plain path, at 1×, 1.5× and 2×.
 - **Terminal: several groups, tabs moved between them, groups
   reordered** (Ben, 2026-10-29): "in terminal make sure that i can
   actually create multiple groups, move tabs between groups, reorder

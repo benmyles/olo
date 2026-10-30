@@ -3668,6 +3668,13 @@ impl Kit {
         }
     }
 
+    /// The modifiers held, as window `wl` means them (`key_modifiers`):
+    /// for its frames and clicks too, so a terminal's ⌘-click is ⌘'s.
+    fn modifiers_on(&self, wl: &WlSurface) -> egui::Modifiers {
+        let raw = self.index_of_wl(wl).is_some_and(|i| self.surfaces[i].options.raw_keys);
+        self.key_modifiers(raw)
+    }
+
     fn key_event(&mut self, event: &KeyEvent, pressed: bool, repeat: bool) {
         if event.keysym == Keysym::Control_R {
             self.cmd_ctrl = pressed;
@@ -4136,7 +4143,8 @@ impl KeyboardHandler for Kit {
             command: m.ctrl,
         };
         if let Some(wl) = self.keyboard_focus.clone() {
-            self.push_event(&wl, egui::Event::ModifiersChanged(self.modifiers));
+            let m = self.modifiers_on(&wl);
+            self.push_event(&wl, egui::Event::ModifiersChanged(m));
         }
     }
 }
@@ -4172,11 +4180,9 @@ impl PointerHandler for Kit {
                             .map(|button| (button, last))
                             .collect();
                     }
+                    let modifiers = self.modifiers_on(&wl);
                     for (button, at) in held {
-                        self.push_event(
-                            &wl,
-                            egui::Event::PointerButton { pos: at, button, pressed: false, modifiers: self.modifiers },
-                        );
+                        self.push_event(&wl, egui::Event::PointerButton { pos: at, button, pressed: false, modifiers });
                     }
                     self.push_event(&wl, egui::Event::PointerGone);
                 }
@@ -4215,10 +4221,8 @@ impl PointerHandler for Kit {
                                 b.push(button);
                             }
                         }
-                        self.push_event(
-                            &wl,
-                            egui::Event::PointerButton { pos, button, pressed, modifiers: self.modifiers },
-                        );
+                        let modifiers = self.modifiers_on(&wl);
+                        self.push_event(&wl, egui::Event::PointerButton { pos, button, pressed, modifiers });
                     }
                 }
                 PointerEventKind::Axis { horizontal, vertical, source, .. } => {
