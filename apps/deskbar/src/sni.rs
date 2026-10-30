@@ -7,6 +7,11 @@
 //! thread of its own, so an app that doesn't answer holds up nothing.
 //! Deskbar draws the items in its tray; what is done to one (a click,
 //! a menu choice) comes back here as a [`Do`].
+//!
+//! The same worker hears programs' launcher badges
+//! (`com.canonical.Unity.LauncherEntry`'s Update, which Chromium, Electron
+//! and Telegram send): an unread count, a progress, a wish for attention,
+//! kept per desktop entry until the program leaves the bus.
 
 use std::{
     collections::HashMap,
@@ -26,6 +31,28 @@ const WATCHER_PATH: &str = "/StatusNotifierWatcher";
 const ITEM: &str = "org.kde.StatusNotifierItem";
 const ITEM_PATH: &str = "/StatusNotifierItem";
 const MENU: &str = "com.canonical.dbusmenu";
+const LAUNCHER: &str = "com.canonical.Unity.LauncherEntry";
+
+/// A program's launcher badge.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Badge {
+    /// The desktop entry it is for (`slack`, from `application://slack.desktop`).
+    pub app: String,
+    /// Its unread count, if it shows one.
+    pub count: Option<i64>,
+    /// How far along what it is doing is (0–1), if it shows that.
+    pub progress: Option<f64>,
+    pub urgent: bool,
+    /// Who sent it (dropped when they leave the bus).
+    sender: String,
+}
+
+/// What Deskbar shows of other programs.
+#[derive(Debug, Clone, Default)]
+pub struct Tray {
+    pub items: Vec<Item>,
+    pub badges: Vec<Badge>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
@@ -107,6 +134,8 @@ enum Event {
     /// An item's menu, read.
     Menu { key: String, entries: Vec<Entry> },
     Do(String, Do),
+    /// A launcher badge's update: who sent it, its app's URI, what changed.
+    Badge { sender: String, app: String, props: HashMap<String, OwnedValue> },
 }
 
 /// Deskbar's side: tell the worker what was done to an item.
@@ -182,7 +211,7 @@ impl Watcher {
 /// Be the session's watcher and host (on `address`, a test's bus, or the
 /// session's), telling `changed` the items each time they change. The bus
 /// is reached on the worker, so a slow one holds up nothing.
-pub fn start(address: Option<String>, changed: impl Fn(Vec<Item>) + Send + 'static) -> Host {
+pub fn start(address: Option<String>, changed: impl Fn(Tray) + Send + 'static) -> Host {
     let (tx, rx) = mpsc::channel();
     let host = Host { tx: tx.clone() };
     let _ = std::thread::Builder::new().name("tray-host".into()).spawn(move || {
@@ -264,6 +293,19 @@ fn listen(conn: &Connection, tx: &mpsc::Sender<Event>) {
             }
         });
     }
+    if let Ok(rule) = zbus::MatchRule::builder().msg_type(zbus::message::Type::Signal).interface(LAUNCHER).and_then(|r| r.member("Update")).map(|r| r.build())
+        && let Ok(signals) = zbus::blocking::MessageIterator::for_match_rule(rule, conn, Some(256))
+    {
+        let tx = tx.clone();
+        let _ = std::thread::Builder::new().name("tray-badges".into()).spawn(move || {
+            for m in signals.flatten() {
+                let sender = m.header().sender().map(|s| s.to_string()).unwrap_or_default();
+                if let Ok((app, props)) = m.body().deserialize::<(String, HashMap<String, OwnedValue>)>() {
+                    let _ = tx.send(Event::Badge { sender, app, props });
+                }
+            }
+        });
+    }
     let Ok(dbus) = zbus::blocking::fdo::DBusProxy::new(conn) else { return };
     let Ok(changes) = dbus.receive_name_owner_changed() else { return };
     let tx = tx.clone();
@@ -288,10 +330,11 @@ struct Known {
     menu_path: Option<String>,
 }
 
-fn run(conn: Connection, rx: mpsc::Receiver<Event>, tx: mpsc::Sender<Event>, registered: Arc<std::sync::Mutex<Vec<String>>>, changed: impl Fn(Vec<Item>)) {
+fn run(conn: Connection, rx: mpsc::Receiver<Event>, tx: mpsc::Sender<Event>, registered: Arc<std::sync::Mutex<Vec<String>>>, changed: impl Fn(Tray)) {
     let mut known: Vec<Known> = Vec::new();
+    let mut badges: Vec<Badge> = Vec::new();
     let mut serial = 0u64;
-    let publish = |known: &[Known]| changed(known.iter().map(|k| k.item.clone()).collect());
+    let publish = |known: &[Known], badges: &[Badge]| changed(Tray { items: known.iter().map(|k| k.item.clone()).collect(), badges: badges.to_vec() });
     for event in rx {
         match event {
             Event::Registered { bus, path } => read(&conn, &tx, bus, path),
@@ -321,13 +364,26 @@ fn run(conn: Connection, rx: mpsc::Receiver<Event>, tx: mpsc::Sender<Event>, reg
                 {
                     read_menu(&conn, &tx, key, k.bus.clone(), menu);
                 }
-                publish(&known);
+                publish(&known, &badges);
             }
             Event::Menu { key, entries } => {
                 if let Some(k) = known.iter_mut().find(|k| k.item.key == key) {
                     k.item.menu = Some(entries);
-                    publish(&known);
+                    publish(&known, &badges);
                 }
+            }
+            Event::Badge { sender, app, props } => {
+                let app = app.trim_start_matches("application://").trim_end_matches(".desktop").to_owned();
+                let i = match badges.iter().position(|b| b.app == app) {
+                    Some(i) => i,
+                    None => {
+                        badges.push(Badge { app, ..Default::default() });
+                        badges.len() - 1
+                    }
+                };
+                update_badge(&mut badges[i], sender, &props);
+                badges.retain(|b| b.count.is_some() || b.progress.is_some() || b.urgent);
+                publish(&known, &badges);
             }
             Event::Changed { sender, path, menu } => {
                 for k in known.iter().filter(|k| k.owner == sender || k.bus == sender) {
@@ -343,9 +399,13 @@ fn run(conn: Connection, rx: mpsc::Receiver<Event>, tx: mpsc::Sender<Event>, reg
                 let gone: Vec<String> = known.iter().filter(|k| k.bus == name || k.owner == name).map(|k| k.item.key.clone()).collect();
                 known.retain(|k| k.bus != name && k.owner != name);
                 registered.lock().unwrap().retain(|r| !gone.contains(r) && !r.starts_with(&format!("{name}/")) && *r != name);
+                let badges_before = badges.len();
+                badges.retain(|b| b.sender != name);
                 if known.len() != before {
                     unregistered(&conn, &gone);
-                    publish(&known);
+                }
+                if known.len() != before || badges.len() != badges_before {
+                    publish(&known, &badges);
                 }
             }
             Event::Do(key, what) => {
@@ -354,6 +414,25 @@ fn run(conn: Connection, rx: mpsc::Receiver<Event>, tx: mpsc::Sender<Event>, reg
                 }
             }
         }
+    }
+}
+
+/// Apply a launcher Update's properties to `b`: each only changes what it
+/// names (`count` with `count-visible`, `progress` with
+/// `progress-visible`, `urgent`).
+fn update_badge(b: &mut Badge, sender: String, props: &HashMap<String, OwnedValue>) {
+    b.sender = sender;
+    let get = |key: &str| props.get(key).and_then(|v| v.try_clone().ok());
+    let visible = |key: &str| get(key).and_then(|v| bool::try_from(v).ok());
+    let count = get("count").and_then(|v| i64::try_from(v.try_clone().ok()?).ok().or_else(|| i32::try_from(v).ok().map(i64::from)));
+    let progress = get("progress").and_then(|v| f64::try_from(v).ok());
+    // A count or progress kept from before stays unless it is hidden.
+    let shown_count = visible("count-visible").unwrap_or(b.count.is_some() || count.is_some());
+    b.count = if shown_count { count.or(b.count).filter(|n| *n > 0) } else { None };
+    let shown_progress = visible("progress-visible").unwrap_or(b.progress.is_some() || progress.is_some());
+    b.progress = if shown_progress { progress.or(b.progress).map(|p| p.clamp(0.0, 1.0)) } else { None };
+    if let Some(u) = visible("urgent") {
+        b.urgent = u;
     }
 }
 
@@ -663,6 +742,22 @@ mod tests {
         assert_eq!(strip_markup("<b>3 unread</b> &amp; more"), "3 unread & more");
         assert_eq!(split_key(":1.45/org/ayatana/NotificationItem/x"), (":1.45".into(), "/org/ayatana/NotificationItem/x".into()));
         assert_eq!(split_key("org.kde.StatusNotifierItem-12-1"), ("org.kde.StatusNotifierItem-12-1".into(), ITEM_PATH.into()));
+    }
+
+    #[test]
+    fn badges_follow_updates() {
+        let props = |pairs: &[(&str, Value<'static>)]| pairs.iter().map(|(k, v)| ((*k).to_owned(), OwnedValue::try_from(v.clone()).unwrap())).collect::<HashMap<_, _>>();
+        let mut b = Badge { app: "slack".into(), ..Default::default() };
+        update_badge(&mut b, ":1.5".into(), &props(&[("count", Value::from(3i64)), ("count-visible", Value::from(true))]));
+        assert_eq!(b.count, Some(3));
+        // A progress alone keeps the count.
+        update_badge(&mut b, ":1.5".into(), &props(&[("progress", Value::from(0.4f64)), ("progress-visible", Value::from(true))]));
+        assert_eq!((b.count, b.progress), (Some(3), Some(0.4)));
+        update_badge(&mut b, ":1.5".into(), &props(&[("count-visible", Value::from(false)), ("urgent", Value::from(true))]));
+        assert_eq!((b.count, b.urgent), (None, true));
+        // Zero unread is no count.
+        update_badge(&mut b, ":1.5".into(), &props(&[("count", Value::from(0i64)), ("count-visible", Value::from(true))]));
+        assert_eq!(b.count, None);
     }
 
     #[test]

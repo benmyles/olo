@@ -2089,7 +2089,18 @@ and hidden ones as they say, submenus as submenus) and tells the app
 (`AboutToShow`), a choice goes back as its `Event … clicked`, the middle
 button is its secondary action, and scrolling over it scrolls it. Items
 re-register by themselves when Deskbar restarts (they watch the
-watcher's name). To try it, run a throwaway Slack in a test session
+watcher's name). The same worker hears launcher badges
+(`com.canonical.Unity.LauncherEntry`'s Update signal, which Chromium,
+Electron and Telegram send: `application://slack.desktop` with `count`,
+`progress`, `urgent` and their `-visible`s, each update changing only
+what it names), kept per desktop entry until the sender leaves the bus
+and matched to a row as notifications are (`same_app`). An unread count
+or a wish for attention lights the row's dot (no number, as for
+notifications), a count going up or attention newly wanted shakes it,
+and progress is a 2-point bar along the row's foot from the name to the
+right inset, a device pixel above the row's line, in
+`keyboard_navigation` on a faint track; agents read "3 unread, 40% done"
+as the row's value. To try it, run a throwaway Slack in a test session
 (sandbox HOME and `--user-data-dir`, `--proxy-server=127.0.0.1:9` so it
 reaches nothing): its icon and whole menu show.
 

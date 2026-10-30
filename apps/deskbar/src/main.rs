@@ -111,8 +111,8 @@ enum Msg {
     Settings(Settings),
     Outputs(Vec<OutputInfo>),
     Installed(Installed),
-    /// Other programs' tray icons (`sni`).
-    Tray(Vec<sni::Item>),
+    /// Other programs' tray icons and launcher badges (`sni`).
+    Tray(sni::Tray),
 }
 
 /// What is installed, found on a worker (`scan_installed`): reading every
@@ -251,6 +251,9 @@ struct Deskbar {
     /// Other programs' tray icons, and who to tell what's done to them.
     tray_apps: Vec<sni::Item>,
     tray_host: sni::Host,
+    /// Programs' unread counts, progress and wishes for attention, by
+    /// desktop entry.
+    badges: Vec<sni::Badge>,
     /// Their pictures, by item, picture and size in device pixels.
     tray_pictures: HashMap<(String, u64, u32), Option<egui::TextureHandle>>,
 }
@@ -275,6 +278,11 @@ fn same_app(n: &NoteApp, app_id: &str, entry: Option<&DesktopEntry>, name: &str)
         return true;
     }
     !n.name.is_empty() && n.name.eq_ignore_ascii_case(name)
+}
+
+/// Where a launcher badge's dot shake is kept (beside notifications').
+fn badge_key(app: &str) -> String {
+    format!("badge:{app}")
 }
 
 fn team_key(w: &WindowInfo) -> String {
@@ -940,23 +948,37 @@ impl Deskbar {
         self.notes_seen = Some(self.notes_seen.map_or(newest, |s| s.max(newest)));
     }
 
-    /// Whether `team`'s application has notifications unread, and if one
-    /// just arrived, how far its dot's shake has gone (0–1).
+    /// Whether `team`'s application has notifications unread (or a
+    /// launcher badge's count, or wants attention), and if one just
+    /// arrived, how far its dot's shake has gone (0–1).
     fn notes_of(&mut self, team: &Team) -> Option<Option<f32>> {
         let app_id = team.windows.first().map(|w| w.app_id.clone()).unwrap_or_default();
         let entry = self.entry(&app_id);
-        let apps = &self.status.notifications.as_ref()?.apps;
-        let mine: Vec<&NoteApp> = apps.iter().filter(|a| same_app(a, &app_id, entry.as_ref(), &team.name)).collect();
-        if mine.is_empty() {
+        let apps = self.status.notifications.as_ref().map(|n| n.apps.as_slice()).unwrap_or_default();
+        let mut keys: Vec<String> = apps.iter().filter(|a| same_app(a, &app_id, entry.as_ref(), &team.name)).map(note_key).collect();
+        keys.extend(self.badge_of(team).filter(|b| b.count.is_some() || b.urgent).map(|b| badge_key(&b.app)));
+        if keys.is_empty() {
             return None;
         }
         let now = Instant::now();
-        Some(mine.iter().filter_map(|a| self.shaking.get(&note_key(a))).map(|at| now.duration_since(*at).as_secs_f32() / SHAKE.as_secs_f32()).filter(|t| *t < 1.0).reduce(f32::min))
+        Some(keys.iter().filter_map(|k| self.shaking.get(k)).map(|at| now.duration_since(*at).as_secs_f32() / SHAKE.as_secs_f32()).filter(|t| *t < 1.0).reduce(f32::min))
+    }
+
+    /// `team`'s application's launcher badge, if it sent one: matched by
+    /// its desktop entry, as notifications are.
+    fn badge_of(&mut self, team: &Team) -> Option<sni::Badge> {
+        let app_id = team.windows.first().map(|w| w.app_id.clone()).unwrap_or_default();
+        let entry = self.entry(&app_id);
+        self.badges
+            .iter()
+            .find(|b| same_app(&NoteApp { desktop_entry: Some(b.app.clone()), name: String::new(), newest: (0, 0) }, &app_id, entry.as_ref(), &team.name))
+            .cloned()
     }
 
     fn team_row(&mut self, cx: &mut Cx, w: WindowId, ui: &mut egui::Ui, row: Rect, team: &Team, display: Option<&str>, ws: Option<u32>) {
         let pal = style::palette(ui.ctx());
         let notes = self.notes_of(team);
+        let badge = self.badge_of(team);
         let painter = ui.painter().clone();
         let pointer = ui.input(|i| i.pointer.hover_pos());
         let hover = olo_kit::dnd::hover(ui.ctx()).filter(|h| h.has_files() && h.actions.copy && !h.has(olo_kit::dnd::LINK_TYPE));
@@ -990,9 +1012,18 @@ impl Deskbar {
         let hover = pointer.is_some_and(|p| row.contains(p));
         // Twitcher's choice, while ⌘Tab (or ⌥Tab, ⌘`) is held.
         let chosen = team.windows.iter().any(|w| w.chosen);
+        // What agents read of it: its unread count, notifications, progress.
+        let said: Vec<String> = [
+            badge.as_ref().and_then(|b| b.count).map(|n| format!("{n} unread")),
+            notes.map(|_| "has notifications".to_owned()),
+            badge.as_ref().and_then(|b| b.progress).map(|p| format!("{}% done", (p * 100.0).round())),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
         resp.widget_info(|| egui::WidgetInfo {
             selected: Some(chosen),
-            current_text_value: notes.map(|_| "has notifications".to_owned()),
+            current_text_value: (!said.is_empty()).then(|| said.join(", ")),
             ..egui::WidgetInfo::labeled(egui::Role::Button, true, team.name.clone())
         });
         // In the workspace showing, the row is on its lit ground.
@@ -1050,6 +1081,20 @@ impl Deskbar {
             if shake.is_some() {
                 ui.ctx().request_repaint();
             }
+        }
+        // Something under way (a download): a thin bar along the row's
+        // foot, under the name, in the selection's colour on a faint track.
+        if let Some(p) = badge.as_ref().and_then(|b| b.progress) {
+            let ppp = ui.ctx().pixels_per_point();
+            let snap = |v: f32| (v * ppp).round() / ppp;
+            let (left, right) = (snap(icon_r.right() + 8.0), snap(row.right() - NOTE_DOT_INSET));
+            // (Clear of the names' descenders, a device pixel above the
+            // row's line.)
+            let bottom = snap(row.bottom()) - 2.0 / ppp;
+            let track = Rect::from_min_max(pos2(left, bottom - 2.0), pos2(right, bottom));
+            painter.rect_filled(track, 0.0, shade(&pal, pal.panel_background, 1.2));
+            let done = Rect::from_min_max(track.min, pos2(snap(left + (right - left) * p as f32), track.max.y));
+            painter.rect_filled(done, 0.0, c(pal.keyboard_navigation));
         }
     }
 
@@ -1814,10 +1859,19 @@ impl App for Deskbar {
                     self.scanning = false;
                     self.entries.clear();
                 }
-                Msg::Tray(items) => {
+                Msg::Tray(tray) => {
                     // Pictures no item has any more go.
-                    self.tray_pictures.retain(|(key, serial, _), _| items.iter().any(|i| i.key == *key && i.serial == *serial));
-                    self.tray_apps = items;
+                    self.tray_pictures.retain(|(key, serial, _), _| tray.items.iter().any(|i| i.key == *key && i.serial == *serial));
+                    self.tray_apps = tray.items;
+                    // More unread (or a wish for attention) shakes the dot.
+                    let now = Instant::now();
+                    for b in &tray.badges {
+                        let before = self.badges.iter().find(|o| o.app == b.app);
+                        if b.count.unwrap_or(0) > before.and_then(|o| o.count).unwrap_or(0) || (b.urgent && !before.is_some_and(|o| o.urgent)) {
+                            self.shaking.insert(badge_key(&b.app), now);
+                        }
+                    }
+                    self.badges = tray.badges;
                 }
             }
             self.redraw(cx);
@@ -1928,6 +1982,7 @@ fn main() {
             notes_seen: None,
             tray_apps: Vec::new(),
             tray_host,
+            badges: Vec::new(),
             tray_pictures: HashMap::new(),
             shaking: HashMap::new(),
         }

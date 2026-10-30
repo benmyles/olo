@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Deskbar: programs' unread badges and progress
+
+*05:20* — A program's launcher badge (Slack's unread count, Chrome's download progress) lights its row's quiet dot, shaking it when the count rises, and its progress runs as a thin bar along the row's foot.
+
+![Deskbar: programs' unread badges and progress](2026-10-30/052030-deskbar-programs-unread-badges-and-progress.png)
+
 ### Deskbar: other programs' tray icons
 
 *05:17* — Slack's, Discord's, Telegram's tray icons (StatusNotifierItem) now sit in Deskbar's tray with Olo's own: their pictures drawn a texel to a device pixel at every scale, their tips (named by the program when they give no title), and their menus as Olo menus, read ahead so they open at once.

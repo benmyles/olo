@@ -1085,9 +1085,10 @@ as they land (with the commit), add new ones as they come up.
   - **Notifications, tray and badges** (tray done 2026-10-30: Deskbar is
     the StatusNotifierWatcher and host, items in its tray with their
     menus as Olo menus; tried with Slack's): ~~StatusNotifierItem (Slack's,
-    Discord's tray icons) in Deskbar's tray with their menus~~; the
-    Unity LauncherEntry count (unread badges) on Deskbar's entries;
-    progress on Deskbar (LauncherEntry progress).
+    Discord's tray icons) in Deskbar's tray with their menus~~;
+    ~~the Unity LauncherEntry count (unread badges) on Deskbar's entries;
+    progress on Deskbar (LauncherEntry progress)~~ (done 2026-10-30: the
+    row's dot, shaking when the count rises, and a progress bar).
   - **The rest of the portals**: ~~Inhibit~~ (done 2026-10-30: the
     Inhibit portal and `org.freedesktop.ScreenSaver` in olo-portal, held
     by app_server's `KeepAwake`), Background, Print (to Olo's print dialog, once there is
