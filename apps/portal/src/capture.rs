@@ -1,8 +1,10 @@
 //! The portal's side of screen capture: a Wayland client of app_server's
 //! ext-image-copy-capture (on the direct socket, where outside programs
 //! never see it). A `Capture` is a session on one output: it learns the
-//! buffer size and formats app_server takes, keeps a shared-memory buffer
-//! of that size, and gives frames as BGRx rows (what WebRTC wants first).
+//! buffer size and formats app_server takes and keeps a buffer of that
+//! size, a dmabuf on the GPU app_server names where it can (app_server
+//! draws into it on the GPU, reading nothing back) else shared memory, and
+//! gives frames as BGRx rows (what WebRTC wants first).
 
 use std::os::fd::{AsFd, FromRawFd, OwnedFd};
 
@@ -11,9 +13,12 @@ use wayland_client::{
     globals::{GlobalListContents, registry_queue_init},
     protocol::{wl_buffer, wl_output, wl_registry, wl_shm, wl_shm_pool},
 };
-use wayland_protocols::ext::{
-    image_capture_source::v1::client::{ext_image_capture_source_v1, ext_output_image_capture_source_manager_v1},
-    image_copy_capture::v1::client::{ext_image_copy_capture_frame_v1 as frame_v1, ext_image_copy_capture_manager_v1, ext_image_copy_capture_session_v1 as session_v1},
+use wayland_protocols::{
+    ext::{
+        image_capture_source::v1::client::{ext_image_capture_source_v1, ext_output_image_capture_source_manager_v1},
+        image_copy_capture::v1::client::{ext_image_copy_capture_frame_v1 as frame_v1, ext_image_copy_capture_manager_v1, ext_image_copy_capture_session_v1 as session_v1},
+    },
+    wp::linux_dmabuf::zv1::client::{zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1},
 };
 
 /// One frame: its size and its rows (BGRx or BGRA, as app_server gave).
@@ -30,9 +35,19 @@ struct State {
     outputs: Vec<(wl_output::WlOutput, String)>,
     size: Option<(u32, u32)>,
     formats: Vec<wl_shm::Format>,
+    /// The GPU app_server draws dmabufs on, and the formats (with their
+    /// modifiers) it draws.
+    dma_device: Option<libc::dev_t>,
+    dma_formats: Vec<(u32, Vec<u64>)>,
     constraints_done: bool,
     stopped: bool,
     frame: Option<Result<(), String>>,
+}
+
+/// The buffer frames are captured into.
+enum Target {
+    Shm(memmap2::MmapMut),
+    Dma(gbm::BufferObject<()>),
 }
 
 /// A capture session on one of app_server's outputs.
@@ -40,19 +55,29 @@ pub struct Capture {
     queue: EventQueue<State>,
     state: State,
     shm: wl_shm::WlShm,
+    dmabuf: Option<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1>,
+    /// The GPU's allocator, once opened (None: shared memory only).
+    gbm: Option<gbm::Device<std::fs::File>>,
+    conn: Connection,
     session: session_v1::ExtImageCopyCaptureSessionV1,
-    buffer: Option<(wl_buffer::WlBuffer, memmap2::MmapMut, (u32, u32, u32, wl_shm::Format))>,
+    buffer: Option<(wl_buffer::WlBuffer, Target, (u32, u32, u32, wl_shm::Format))>,
+    /// The buffer is new: what it holds is unknown to app_server.
+    fresh: bool,
+    /// The frame asked for, until it comes.
+    frame: Option<frame_v1::ExtImageCopyCaptureFrameV1>,
 }
 
 impl Capture {
     /// Capture the output named `name` (the first one if None) of the
     /// compositor at `WAYLAND_DISPLAY`.
-    pub fn output(name: Option<&str>) -> Result<Capture, String> {
+    /// With `cursor`, the pointer is drawn in.
+    pub fn output(name: Option<&str>, cursor: bool) -> Result<Capture, String> {
         let conn = Connection::connect_to_env().map_err(|e| format!("can't reach app_server: {e}"))?;
         let (globals, mut queue) = registry_queue_init::<State>(&conn).map_err(|e| e.to_string())?;
         let qh = queue.handle();
         let mut state = State::default();
         let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).map_err(|_| "no wl_shm".to_owned())?;
+        let dmabuf: Option<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1> = globals.bind(&qh, 3..=3, ()).ok();
         let sources: ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1 = globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server offers no output capture (ext-image-capture-source)".to_owned())?;
         let copier: ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1 = globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server offers no ext-image-copy-capture".to_owned())?;
         for g in globals.contents().clone_list().iter().filter(|g| g.interface == "wl_output") {
@@ -66,63 +91,222 @@ impl Capture {
             None => state.outputs.first().map(|(o, _)| o.clone()).ok_or("no outputs")?,
         };
         let source = sources.create_source(&output, &qh, ());
-        let session = copier.create_session(&source, ext_image_copy_capture_manager_v1::Options::empty(), &qh, ());
+        let session = copier.create_session(&source, if cursor { ext_image_copy_capture_manager_v1::Options::PaintCursors } else { ext_image_copy_capture_manager_v1::Options::empty() }, &qh, ());
         while !state.constraints_done && !state.stopped {
             queue.blocking_dispatch(&mut state).map_err(|e| e.to_string())?;
         }
         if state.stopped {
             return Err("app_server stopped the capture".into());
         }
-        Ok(Capture { queue, state, shm, session, buffer: None })
+        let gbm = if std::env::var_os("OLO_PORTAL_SHM").is_some() || dmabuf.is_none() {
+            None
+        } else {
+            state.dma_device.and_then(|dev| match open_render_node(dev).and_then(|f| gbm::Device::new(f).map_err(|e| e.to_string())) {
+                Ok(d) => Some(d),
+                Err(e) => {
+                    tracing::warn!("portal: no dmabufs ({e}), capturing into shared memory");
+                    None
+                }
+            })
+        };
+        Ok(Capture { queue, state, shm, dmabuf, gbm, conn, session, buffer: None, fresh: true, frame: None })
     }
 
-    /// The next frame.
-    pub fn frame(&mut self) -> Result<Picture, String> {
-        let (w, h) = self.state.size.ok_or("app_server gave no size")?;
+    /// Whether frames come through the GPU (dmabufs).
+    pub fn on_gpu(&self) -> bool {
+        matches!(self.buffer, Some((_, Target::Dma(_), _)))
+    }
+
+    /// A dmabuf for frames of `w`×`h`, in BGRx (else BGRA), as app_server
+    /// draws them.
+    fn dma_buffer(&self, w: u32, h: u32) -> Result<(wl_buffer::WlBuffer, gbm::BufferObject<()>, wl_shm::Format), String> {
+        let (gbm, dmabuf) = (self.gbm.as_ref().ok_or("no GPU")?, self.dmabuf.as_ref().ok_or("no linux-dmabuf")?);
+        let pick = [(gbm::Format::Xrgb8888, wl_shm::Format::Xrgb8888), (gbm::Format::Argb8888, wl_shm::Format::Argb8888)];
+        let (fourcc, shm_format, modifiers) = pick
+            .into_iter()
+            .find_map(|(f, s)| self.state.dma_formats.iter().find(|(c, _)| *c == f as u32).map(|(_, m)| (f, s, m.clone())))
+            .ok_or("app_server draws no BGRx or BGRA dmabufs")?;
+        // Linear when asked (`OLO_PORTAL_LINEAR`, to compare), else what the
+        // GPU likes best of what app_server draws.
+        let linear = u64::from(gbm::Modifier::Linear);
+        let modifiers: Vec<u64> = if std::env::var_os("OLO_PORTAL_LINEAR").is_some() { modifiers.into_iter().filter(|m| *m == linear).collect() } else { modifiers };
+        let bo = gbm
+            .create_buffer_object_with_modifiers2::<()>(w, h, fourcc, modifiers.iter().map(|&m| gbm::Modifier::from(m)), gbm::BufferObjectFlags::RENDERING)
+            .map_err(|e| format!("can't allocate a {w}×{h} dmabuf: {e}"))?;
+        let qh = self.queue.handle();
+        let params = dmabuf.create_params(&qh, ());
+        let modifier = u64::from(bo.modifier());
+        for plane in 0..bo.plane_count() as i32 {
+            let fd = bo.fd_for_plane(plane).map_err(|e| e.to_string())?;
+            params.add(fd.as_fd(), plane as u32, bo.offset(plane), bo.stride_for_plane(plane), (modifier >> 32) as u32, modifier as u32);
+        }
+        let buffer = params.create_immed(w as i32, h as i32, fourcc as u32, zwp_linux_buffer_params_v1::Flags::empty(), &qh, ());
+        params.destroy();
+        Ok((buffer, bo, shm_format))
+    }
+
+    /// A shared-memory buffer for frames of `w`×`h`.
+    fn shm_buffer(&self, w: u32, h: u32) -> Result<(wl_buffer::WlBuffer, memmap2::MmapMut, wl_shm::Format), String> {
         let format = [wl_shm::Format::Xrgb8888, wl_shm::Format::Argb8888].into_iter().find(|f| self.state.formats.contains(f)).ok_or("no BGRx/BGRA format offered")?;
         let stride = w * 4;
+        let len = (stride * h) as usize;
+        // SAFETY: a fresh memfd, owned from here on.
+        let fd = unsafe {
+            let raw = libc::memfd_create(c"olo-portal-frame".as_ptr(), libc::MFD_CLOEXEC);
+            if raw < 0 {
+                return Err(std::io::Error::last_os_error().to_string());
+            }
+            OwnedFd::from_raw_fd(raw)
+        };
+        let file = std::fs::File::from(fd);
+        file.set_len(len as u64).map_err(|e| e.to_string())?;
+        // SAFETY: the file is ours and stays this size.
+        let map = unsafe { memmap2::MmapMut::map_mut(&file) }.map_err(|e| e.to_string())?;
         let qh = self.queue.handle();
-        if self.buffer.as_ref().is_none_or(|b| b.2 != (w, h, stride, format)) {
-            let len = (stride * h) as usize;
-            // SAFETY: a fresh memfd, owned from here on.
-            let fd = unsafe {
-                let raw = libc::memfd_create(c"olo-portal-frame".as_ptr(), libc::MFD_CLOEXEC);
-                if raw < 0 {
-                    return Err(std::io::Error::last_os_error().to_string());
-                }
-                OwnedFd::from_raw_fd(raw)
-            };
-            let file = std::fs::File::from(fd);
-            file.set_len(len as u64).map_err(|e| e.to_string())?;
-            // SAFETY: the file is ours and stays this size.
-            let map = unsafe { memmap2::MmapMut::map_mut(&file) }.map_err(|e| e.to_string())?;
-            let pool = self.shm.create_pool(file.as_fd(), len as i32, &qh, ());
-            let buffer = pool.create_buffer(0, w as i32, h as i32, stride as i32, format, &qh, ());
-            pool.destroy();
+        let pool = self.shm.create_pool(file.as_fd(), len as i32, &qh, ());
+        let buffer = pool.create_buffer(0, w as i32, h as i32, stride as i32, format, &qh, ());
+        pool.destroy();
+        Ok((buffer, map, format))
+    }
+
+    /// The size frames are, as app_server last said.
+    pub fn size(&self) -> Option<(u32, u32)> {
+        self.state.size
+    }
+
+    /// The connection's descriptor, readable when app_server has said
+    /// something (`poll`).
+    pub fn fd(&self) -> Result<OwnedFd, String> {
+        self.conn.backend().poll_fd().try_clone_to_owned().map_err(|e| e.to_string())
+    }
+
+    /// Ask for the next frame: at once the first time, then once the
+    /// screen has changed. `poll` says when it has come.
+    pub fn request(&mut self) -> Result<(), String> {
+        let (w, h) = self.state.size.ok_or("app_server gave no size")?;
+        if self.buffer.as_ref().is_none_or(|b| (b.2.0, b.2.1) != (w, h)) {
             if let Some((old, _, _)) = self.buffer.take() {
                 old.destroy();
             }
-            self.buffer = Some((buffer, map, (w, h, stride, format)));
+            let dma = if self.gbm.is_some() {
+                match self.dma_buffer(w, h) {
+                    Ok(b) => Some(b),
+                    Err(e) => {
+                        tracing::warn!("portal: {e}; capturing into shared memory");
+                        self.gbm = None;
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+            self.buffer = Some(match dma {
+                Some((buffer, bo, format)) => {
+                    let stride = bo.stride();
+                    (buffer, Target::Dma(bo), (w, h, stride, format))
+                }
+                None => {
+                    let (buffer, map, format) = self.shm_buffer(w, h)?;
+                    (buffer, Target::Shm(map), (w, h, w * 4, format))
+                }
+            });
+            self.fresh = true;
         }
+        let qh = self.queue.handle();
         let (buffer, _, _) = self.buffer.as_ref().unwrap();
         self.state.frame = None;
         let frame = self.session.create_frame(&qh, ());
         frame.attach_buffer(buffer);
-        frame.damage_buffer(0, 0, w as i32, h as i32);
+        // What it holds is only unknown the first time.
+        if std::mem::take(&mut self.fresh) {
+            frame.damage_buffer(0, 0, w as i32, h as i32);
+        }
         frame.capture();
-        while self.state.frame.is_none() && !self.state.stopped {
+        self.frame = Some(frame);
+        self.queue.flush().map_err(|e| e.to_string())
+    }
+
+    /// Read what app_server said, without waiting: Some once the frame
+    /// asked for has come (or failed: then the size may have changed, and
+    /// the next request allocates again).
+    pub fn poll(&mut self) -> Result<Option<Result<(), String>>, String> {
+        if let Some(guard) = self.queue.prepare_read() {
+            match guard.read() {
+                Ok(_) => {}
+                Err(wayland_client::backend::WaylandError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+        self.queue.dispatch_pending(&mut self.state).map_err(|e| e.to_string())?;
+        if self.state.stopped {
+            return Err("app_server stopped the capture".into());
+        }
+        let Some(done) = self.state.frame.take() else { return Ok(None) };
+        if let Some(frame) = self.frame.take() {
+            frame.destroy();
+        }
+        if done.is_err() {
+            self.fresh = true;
+        }
+        Ok(Some(done))
+    }
+
+    /// Whether a frame asked for hasn't come yet.
+    pub fn waiting(&self) -> bool {
+        self.frame.is_some()
+    }
+
+    /// Copy the last frame into `out`, `stride` bytes a row (as wide as the
+    /// frame, or wider).
+    pub fn copy_into(&self, out: &mut [u8], stride: usize) -> Result<(), String> {
+        let Some((_, target, (w, h, _, _))) = self.buffer.as_ref() else { return Err("no frame yet".into()) };
+        let row = *w as usize * 4;
+        if stride < row || out.len() < stride * (*h as usize - 1) + row {
+            return Err("the buffer is too small for the frame".into());
+        }
+        let copy = |from: &[u8], from_stride: usize, out: &mut [u8]| {
+            for (src, dst) in from.chunks(from_stride).zip(out.chunks_mut(stride)).take(*h as usize) {
+                dst[..row].copy_from_slice(&src[..row]);
+            }
+        };
+        match target {
+            Target::Shm(map) => copy(map, row, out),
+            Target::Dma(bo) => bo.map(0, 0, *w, *h, |m| copy(m.buffer(), m.stride() as usize, out)).map_err(|e| format!("can't read the dmabuf: {e}"))?,
+        }
+        Ok(())
+    }
+
+    /// The next frame, waiting for it.
+    pub fn frame(&mut self) -> Result<Picture, String> {
+        self.request()?;
+        loop {
+            if let Some(done) = self.poll()? {
+                done?;
+                break;
+            }
             self.queue.blocking_dispatch(&mut self.state).map_err(|e| e.to_string())?;
         }
-        frame.destroy();
-        match self.state.frame.take() {
-            Some(Ok(())) => {
-                let (_, map, _) = self.buffer.as_ref().unwrap();
-                Ok(Picture { width: w, height: h, stride, format, data: map.to_vec() })
-            }
-            Some(Err(e)) => Err(e),
-            None => Err("app_server stopped the capture".into()),
+        let (_, _, (w, h, _, format)) = self.buffer.as_ref().unwrap();
+        let (w, h, format) = (*w, *h, *format);
+        let mut data = vec![0; (w * 4 * h) as usize];
+        self.copy_into(&mut data, w as usize * 4)?;
+        Ok(Picture { width: w, height: h, stride: w * 4, format, data })
+    }
+}
+
+/// The render node whose device number is `dev`.
+fn open_render_node(dev: libc::dev_t) -> Result<std::fs::File, String> {
+    use std::os::unix::fs::MetadataExt;
+    let dir = std::fs::read_dir("/dev/dri").map_err(|e| format!("/dev/dri: {e}"))?;
+    for entry in dir.flatten() {
+        let path = entry.path();
+        if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("renderD"))
+            && std::fs::metadata(&path).is_ok_and(|m| m.rdev() == dev)
+        {
+            return std::fs::OpenOptions::new().read(true).write(true).open(&path).map_err(|e| format!("{}: {e}", path.display()));
         }
     }
+    Err(format!("no render node for device {dev:#x}"))
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for State {
@@ -142,11 +326,23 @@ impl Dispatch<wl_output::WlOutput, ()> for State {
 impl Dispatch<session_v1::ExtImageCopyCaptureSessionV1, ()> for State {
     fn event(state: &mut Self, _: &session_v1::ExtImageCopyCaptureSessionV1, event: session_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
         match event {
-            session_v1::Event::BufferSize { width, height } => state.size = Some((width, height)),
+            // (A new set of constraints starts with the size.)
+            session_v1::Event::BufferSize { width, height } => {
+                state.size = Some((width, height));
+                state.formats.clear();
+                state.dma_formats.clear();
+            }
             session_v1::Event::ShmFormat { format } => {
                 if let wayland_client::WEnum::Value(f) = format {
                     state.formats.push(f);
                 }
+            }
+            session_v1::Event::DmabufDevice { device } => {
+                state.dma_device = device.get(..std::mem::size_of::<libc::dev_t>()).map(|b| libc::dev_t::from_ne_bytes(b.try_into().unwrap()));
+            }
+            session_v1::Event::DmabufFormat { format, modifiers } => {
+                let modifiers = modifiers.chunks_exact(8).map(|b| u64::from_ne_bytes(b.try_into().unwrap())).collect();
+                state.dma_formats.push((format, modifiers));
             }
             session_v1::Event::Done => state.constraints_done = true,
             session_v1::Event::Stopped => state.stopped = true,
@@ -176,7 +372,10 @@ ignore!(
     wl_shm::WlShm,
     wl_shm_pool::WlShmPool,
     wl_buffer::WlBuffer,
+    zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1,
+    zwp_linux_buffer_params_v1::ZwpLinuxBufferParamsV1,
     ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1,
     ext_image_capture_source_v1::ExtImageCaptureSourceV1,
     ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1
 );
+

@@ -468,16 +468,64 @@ where
     R::TextureId: Clone + Send + 'static,
     R::Error: std::fmt::Display,
 {
-    let mode = output.current_mode().ok_or("output has no mode")?;
-    let size: Size<i32, Physical> = output.current_transform().transform_size(mode.size);
+    let size = crate::capture::size(output).ok_or("output has no mode")?;
     let scale = output.current_scale().fractional_scale();
-    // A mirror's picture is its source's, fitted.
+    let (elements, clear_color) = capture_elements(renderer, output, space, overlays, overview, clear_color, locked, None);
+    offscreen(renderer, size, scale, &elements, clear_color)
+}
+
+/// What a picture of `output` shows (a mirror's is its source's, fitted),
+/// with the pointer over it when `pointer` gives where it is and what it
+/// shows; and the background.
+#[allow(clippy::too_many_arguments)]
+pub fn capture_elements<R>(
+    renderer: &mut R,
+    output: &Output,
+    space: &Space<WindowElement>,
+    mut overlays: Vec<CustomRenderElements<R>>,
+    overview: Option<&crate::overview::Overview>,
+    clear_color: Color32F,
+    locked: bool,
+    pointer: Option<(Point<f64, Logical>, &smithay::input::pointer::CursorImageStatus)>,
+) -> (Vec<FrameElements<R, WindowRenderElement<R>>>, Color32F)
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: smithay::backend::renderer::Texture + Clone + Send + 'static,
+{
     let source = mirror_source(output);
     let fit = source.as_ref().map(|s| fit_outputs(output, s, space));
     let from = source.as_ref().unwrap_or(output);
+    if let Some((at, status)) = pointer {
+        overlays.splice(0..0, pointer_elements(renderer, from, space, at, status));
+    }
     let (elements, clear_color) = output_elements::<R>(from, space, overlays, renderer, overview, clear_color, locked);
-    let elements = frame(elements, fit);
-    offscreen(renderer, size, scale, &elements, clear_color)
+    (frame(elements, fit), clear_color)
+}
+
+/// The pointer as drawn on `output`, if it is over it: the built-in
+/// cursor for a named shape, or the client's surface.
+pub fn pointer_elements<R>(
+    renderer: &mut R,
+    output: &Output,
+    space: &Space<WindowElement>,
+    at: Point<f64, Logical>,
+    status: &smithay::input::pointer::CursorImageStatus,
+) -> Vec<CustomRenderElements<R>>
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: smithay::backend::renderer::Texture + Clone + Send + 'static,
+{
+    let Some(geo) = space.output_geometry(output) else { return Vec::new() };
+    if !geo.to_f64().contains(at) {
+        return Vec::new();
+    }
+    let scale = output.current_scale().fractional_scale();
+    let shape = crate::cursor::named(status).unwrap_or(crate::cursor::Shape::SystemDefault);
+    let mut pointer = crate::drawing::PointerElement::default();
+    pointer.set_buffer(crate::cursor::buffer(shape, scale), crate::cursor::image(shape, scale).size as i32);
+    pointer.set_status(status.clone());
+    let location = (at - geo.loc.to_f64() - crate::cursor::hotspot(status).to_f64()).to_physical(scale).to_i32_round();
+    pointer.render_elements(renderer, location, scale.into(), 1.0)
 }
 
 /// Draw `elements` into a new `size` buffer and read it back, top row first

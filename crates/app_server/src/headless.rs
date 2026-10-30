@@ -248,9 +248,14 @@ pub fn run_headless(size_arg: Option<&str>) {
         })
         .expect("dmabuf checks");
 
+    // Screen captures draw into dmabufs of what this GPU renders.
+    let capture_dma = smithay::backend::drm::DrmNode::from_path(&node)
+        .ok()
+        .and_then(|n| crate::capture::dma_constraints(n, renderer.egl_context().dmabuf_render_formats()));
     let outputs: Vec<Output> = screens.iter().map(|s| s.output.clone()).collect();
     let data = HeadlessData { renderer, screens, dmabuf_state: (dmabuf_state, dmabuf_global), dmabuf_checks };
     let mut state = AnvilState::init(display, event_loop.handle(), data, true);
+    state.captures.dma = capture_dma;
     let shm_formats = state.backend_data.renderer.shm_formats();
     state.shm_state.update_formats(shm_formats);
     for output in &outputs {
@@ -333,20 +338,19 @@ pub fn run_headless(size_arg: Option<&str>) {
                     (pointer, crate::cursor::pictured(&crate::saver::shown_cursor(&state.saver, &state.cursor_status))),
                 );
             }
-            // Frames programs asked for (screen sharing), drawn as a
-            // whole-screen shot is.
-            for frame in crate::capture::take(&mut state.pending_captures, output) {
+            // Frames programs asked for (screen sharing).
+            state.captures.finish();
+            if state.captures.wanted(output) {
                 let color = state.desktop_color(output);
-                let overlays = twitcher_overlay(&mut state, output);
+                let mut overlays = [Some(twitcher_overlay(&mut state, output)), Some(twitcher_overlay(&mut state, output))];
                 let locked = state.lock.locked();
-                let picture = crate::render::capture::<_, GlesTexture>(&mut state.backend_data.renderer, output, &state.space, overlays, state.overview.as_ref(), color, locked);
-                match picture {
-                    Ok(img) => crate::capture::fill(frame, &img, state.clock.now().into()),
-                    Err(e) => {
-                        tracing::warn!("capture of {}: {e}", output.name());
-                        frame.fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
-                    }
-                }
+                let pointer = (state.pointer.current_location(), crate::saver::shown_cursor(&state.saver, &state.cursor_status));
+                let now = state.clock.now().into();
+                let (space, overview) = (&state.space, state.overview.as_ref());
+                state.captures.take(&mut state.backend_data.renderer, output, now, |renderer, cursor| {
+                    let overlays = overlays[cursor as usize].take().unwrap_or_default();
+                    crate::render::capture_elements(renderer, output, space, overlays, overview, color, locked, cursor.then_some((pointer.0, &pointer.1)))
+                });
             }
         }
         // Recording (finding flicker): what this turn left on screen.

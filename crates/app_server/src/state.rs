@@ -196,11 +196,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub image_capture_source_state: ImageCaptureSourceState,
     pub output_capture_source_state: OutputCaptureSourceState,
     pub image_copy_capture_state: ImageCopyCaptureState,
-    /// Frames programs asked for of the screens, for their next frame
-    /// (`capture`).
-    pub pending_captures: Vec<crate::capture::Pending>,
-    /// The capture sessions open (one dropped stops it).
-    pub capture_sessions: Vec<Session>,
+    /// Programs' capture sessions and the frames they asked for of the
+    /// screens (`capture`).
+    pub captures: crate::capture::Captures,
 
     pub dnd_icon: Option<DndIcon>,
 
@@ -865,40 +863,21 @@ impl<BackendData: Backend> ImageCopyCaptureHandler for AnvilState<BackendData> {
     }
 
     fn capture_constraints(&mut self, source: &ImageCaptureSource) -> Option<BufferConstraints> {
-        use smithay::output::WeakOutput;
-        let weak_output = source.user_data().get::<WeakOutput>()?;
-        let output = weak_output.upgrade()?;
-        let mode = output.current_mode()?;
-
-        Some(BufferConstraints {
-            size: mode
-                .size
-                .to_logical(1)
-                .to_buffer(1, smithay::utils::Transform::Normal),
-            shm: vec![
-                smithay::reexports::wayland_server::protocol::wl_shm::Format::Argb8888,
-                smithay::reexports::wayland_server::protocol::wl_shm::Format::Xrgb8888,
-            ],
-            #[cfg(any(feature = "udev", feature = "winit"))]
-            dma: None,
-        })
+        let output = source.user_data().get::<smithay::output::WeakOutput>()?.upgrade()?;
+        crate::capture::constraints(&output, self.captures.dma.clone())
     }
 
     fn new_session(&mut self, session: Session) {
-        // Kept until the client ends it: dropping it would stop it.
-        self.capture_sessions.push(session);
+        self.captures.add(session);
     }
 
     fn session_destroyed(&mut self, session: SessionRef) {
-        self.capture_sessions.retain(|s| s.as_ref() != session);
+        self.captures.remove(&session);
     }
 
     fn frame(&mut self, session: &SessionRef, frame: Frame) {
-        // With the screen's next frame (`capture`).
-        match session.source().user_data().get::<smithay::output::WeakOutput>().cloned() {
-            Some(output) => self.pending_captures.push(crate::capture::Pending { output, frame }),
-            None => frame.fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown),
-        }
+        // With the screen's next frame (`capture::Captures::take`).
+        self.captures.queue(session, frame);
     }
 }
 
@@ -1115,8 +1094,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             image_capture_source_state,
             output_capture_source_state,
             image_copy_capture_state,
-            pending_captures: Vec::new(),
-            capture_sessions: Vec::new(),
+            captures: Default::default(),
             dnd_icon: None,
             suppressed_keys: Vec::new(),
             keymap: Default::default(),

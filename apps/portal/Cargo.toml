@@ -14,4 +14,6 @@ wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 memmap2 = "0.9"
 libc = "0.2"
 png = "0.18"
+pipewire = { version = "0.10", features = ["v0_3_34"] }
+gbm = { version = "0.18", default-features = false }
 tracing.workspace = true

@@ -882,6 +882,9 @@ pub fn run_udev() {
         }
     }
 
+    // Screen captures draw into dmabufs of what the primary GPU renders.
+    state.captures.dma = crate::capture::dma_constraints(primary_gpu, AsRef::<GlesRenderer>::as_ref(&renderer).egl_context().dmabuf_render_formats());
+
     // init dmabuf support with format list from our primary gpu
     let dmabuf_formats = renderer.dmabuf_formats();
     let default_feedback = DmabufFeedbackBuilder::new(primary_gpu.dev_id(), dmabuf_formats)
@@ -1977,17 +1980,16 @@ impl AnvilState<UdevData> {
                 (self.pointer.current_location(), crate::cursor::pictured(&crate::saver::shown_cursor(&self.saver, &self.cursor_status))),
             );
         }
-        // Frames programs asked for (screen sharing), drawn as a
-        // whole-screen shot is.
-        for frame in crate::capture::take(&mut self.pending_captures, &output) {
-            let overlays = if locked { crate::lock::elements(&self.lock, &mut renderer, &output) } else { Vec::new() };
-            match crate::render::capture::<_, smithay::backend::renderer::gles::GlesTexture>(&mut renderer, &output, &self.space, overlays, self.overview.as_ref(), desktop_color, locked) {
-                Ok(img) => crate::capture::fill(frame, &img, self.clock.now().into()),
-                Err(e) => {
-                    tracing::warn!("capture of {}: {e}", output.name());
-                    frame.fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
-                }
-            }
+        // Frames programs asked for (screen sharing).
+        self.captures.finish();
+        if self.captures.wanted(&output) {
+            let pointer = (self.pointer.current_location(), crate::saver::shown_cursor(&self.saver, &self.cursor_status));
+            let now = self.clock.now().into();
+            let (space, overview, lock) = (&self.space, self.overview.as_ref(), &self.lock);
+            self.captures.take(&mut renderer, &output, now, |renderer, cursor| {
+                let overlays = if locked { crate::lock::elements(lock, renderer, &output) } else { Vec::new() };
+                crate::render::capture_elements(renderer, &output, space, overlays, overview, desktop_color, locked, cursor.then_some((pointer.0, &pointer.1)))
+            });
         }
         let overlays: Vec<CustomRenderElements<_>> = if locked {
             crate::lock::elements(&self.lock, &mut renderer, &output)
