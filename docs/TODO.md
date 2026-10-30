@@ -376,7 +376,7 @@ as they land (with the commit), add new ones as they come up.
   where it would go; let go there, its tabs (and groups) go in, and it
   closes. Checked in a test session: a tab out and back, a lone window
   dropped by its tab, a group out and back after another group.
-- **Terminal's tabs and groups look like Deskbar's list** (Ben,
+- ~~**Terminal's tabs and groups look like Deskbar's list**~~ (Ben,
   2026-10-29): "can you make the terminal tabs styled more like the olo
   deskpad tabs that style looks much nicer than the almost childish look
   of the tabs/groups in terminal right now." Down the side: groups as
@@ -387,13 +387,29 @@ as they land (with the commit), add new ones as they come up.
   hairline under each, the one showing recessed, groups under small bold
   headings with a dot of their colour; along the top, chips are a dot
   and a quiet bold name instead of a pill. `tsession review` clean at
-  1×–2× in every layout, light, dark and night looked at.
-- **Show All Tabs: each pane's head in its group's colour** (Ben,
+  1×–2× in every layout, light, dark and night looked at. Then (Ben,
+  with a picture: "the pr icons seem to be a little bit too big, can we
+  make them a touch smaller and just generally polish up how that
+  vertical tab looks"): a tab's pull request mark is as big as the text
+  (12 pt, its lines whole pixels at every scale) in the close box's
+  place, which takes it over under the pointer, and each group's
+  colour bar stops short of the next's.
+- ~~**Auto-tiling finds an arrangement where every window fits**~~ (Ben,
+  2026-10-29): "can you work on the auto tiling algorithm it currently
+  sometimes overlaps windows that would have all fit if the arrangement
+  was different we are not finding the optimal solution right now".
+  Done so (HACKING, auto-tiling): where the tiles can't give every
+  window its least size, `autofit::refit` turns the fewest splits, else
+  searches every slicing arrangement (shape curves: any grouping up to
+  8 tiles, runs of their order beyond) for one where all fit, else
+  takes the one that overlaps least. Five windows on 1440×900 that
+  overlapped three ways now all fit.
+- ~~**Show All Tabs: each pane's head in its group's colour**~~ (Ben,
   2026-10-29): "can you make the tile headers follow their groups color
   scheme so we can visually see whats what".
   Done so: a pane's head is tinted with its group's colour, a 2-point
   line of it across the top.
-- **Tracker: selection as in modern file managers** (Ben, 2026-10-29):
+- ~~**Tracker: selection as in modern file managers**~~ (Ben, 2026-10-29):
   "in tracker i should be able to click a file/item, hold down shift then
   click above/below it to select all of them and any other common
   selection/movement/action behaviors and patterns in modern file
