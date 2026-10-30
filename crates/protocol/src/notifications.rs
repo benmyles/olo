@@ -38,6 +38,8 @@ pub struct NotificationSettings {
     pub fade: bool,
     /// Over how long (minutes).
     pub fade_minutes: u32,
+    /// Deskbar shows how many notifications each app has beside its dot.
+    pub deskbar_count: bool,
 }
 
 /// The History window's views (its View menu).
@@ -67,6 +69,7 @@ impl Default for NotificationSettings {
             view: HistoryView::List,
             fade: true,
             fade_minutes: 60,
+            deskbar_count: false,
         }
     }
 }
@@ -114,11 +117,7 @@ impl NotificationSettings {
     /// history: 1 new, falling slowly at first, then faster, to 0 when it
     /// has faded away (always 1 with fading off).
     pub fn strength(&self, age: u64) -> f32 {
-        if !self.fade {
-            return 1.0;
-        }
-        let t = (age as f32 / (self.fade_minutes.max(1) as f32 * 60.0)).clamp(0.0, 1.0);
-        1.0 - t.powf(1.6)
+        fade_strength(self.fade.then_some(self.fade_minutes), age)
     }
 
     /// Whether a notification `age` seconds old has faded away.
@@ -288,6 +287,15 @@ pub fn parse_color(s: &str) -> Option<[u8; 3]> {
     }
 }
 
+/// How strongly a notification `age` seconds old shows, with the history
+/// fading over `fade_minutes` (None: it doesn't fade): 1 new, falling
+/// slowly at first, then faster, to 0 when it has faded away.
+pub fn fade_strength(fade_minutes: Option<u32>, age: u64) -> f32 {
+    let Some(minutes) = fade_minutes else { return 1.0 };
+    let t = (age as f32 / (minutes.max(1) as f32 * 60.0)).clamp(0.0, 1.0);
+    1.0 - t.powf(1.6)
+}
+
 /// What olo-notifications tells Deskbar (a small JSON file in the
 /// runtime directory, rewritten on every change).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -299,6 +307,11 @@ pub struct NotificationState {
     pub quiet: bool,
     /// The apps with notifications unread (Deskbar's dots).
     pub apps: Vec<NoteApp>,
+    /// How the history fades (minutes; None: it doesn't), so each dot
+    /// drains as its app's notifications fade.
+    pub fade_minutes: Option<u32>,
+    /// Deskbar shows each app's count beside its dot (the setting).
+    pub show_count: bool,
 }
 
 /// An app with notifications unread, as Deskbar finds it among its
@@ -313,6 +326,27 @@ pub struct NoteApp {
     /// The newest unread one: (when, seconds since the epoch; its id).
     /// One arriving is newer than any before it.
     pub newest: (u64, u32),
+    /// How many are unread.
+    pub count: u32,
+    /// When each unread one that fades came (seconds since the epoch; a
+    /// pinned one doesn't fade, and isn't here).
+    pub fading: Vec<u64>,
+}
+
+impl NoteApp {
+    /// How fresh its notifications are now (`now`, seconds since the
+    /// epoch), all together: each counts for 1/n, its strength as the
+    /// history fades (pinned ones are whole). 1 while none has begun to
+    /// fade (or without counts: an older service).
+    pub fn freshness(&self, fade_minutes: Option<u32>, now: u64) -> f32 {
+        if self.count == 0 {
+            return 1.0;
+        }
+        let fading = self.fading.len().min(self.count as usize);
+        let whole = (self.count as usize - fading) as f32;
+        let faded: f32 = self.fading.iter().take(fading).map(|&t| fade_strength(fade_minutes, now.saturating_sub(t))).sum();
+        ((whole + faded) / self.count as f32).clamp(0.0, 1.0)
+    }
 }
 
 impl NotificationState {
@@ -389,6 +423,27 @@ mod tests {
         assert!(!s.faded(3599) && s.faded(3600));
         s.fade = false;
         assert!(s.strength(100_000) == 1.0 && !s.faded(100_000));
+    }
+
+    #[test]
+    fn an_apps_notifications_drain_together() {
+        let now = 10_000;
+        // Two new, one pinned: full.
+        let mut app = NoteApp { count: 3, fading: vec![now, now - 5], ..Default::default() };
+        assert!(app.freshness(Some(60), now) > 0.9999);
+        // One of the two faded away: its third is gone.
+        app.fading[1] = now - 3600;
+        assert!((app.freshness(Some(60), now) - 2.0 / 3.0).abs() < 1e-6);
+        // Halfway through its fade: part of its third.
+        app.fading[1] = now - 1800;
+        let half = app.freshness(Some(60), now);
+        assert!(half > 2.0 / 3.0 && half < 1.0);
+        // Fading off, or an older service that didn't count: full.
+        assert_eq!(app.freshness(None, now), 1.0);
+        assert_eq!(NoteApp::default().freshness(Some(60), now), 1.0);
+        // An older service's state still reads.
+        let old: NotificationState = serde_json::from_str(r#"{"unread":1,"quiet":false,"apps":[{"name":"Slack","newest":[5,1]}]}"#).unwrap();
+        assert_eq!((old.apps[0].count, old.fade_minutes, old.show_count), (0, None, false));
     }
 
     #[test]

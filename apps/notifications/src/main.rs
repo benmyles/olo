@@ -195,7 +195,13 @@ impl Notifications {
             self.history.save();
         }
         let quiet = self.quiet();
-        let state = NotificationState { unread: self.history.unread(), quiet, apps: self.history.unread_apps() };
+        let state = NotificationState {
+            unread: self.history.unread(),
+            quiet,
+            apps: self.history.unread_apps(),
+            fade_minutes: self.settings.fade.then_some(self.settings.fade_minutes),
+            show_count: self.settings.deskbar_count,
+        };
         if self.told.as_ref() != Some(&state) {
             let path = NotificationState::path();
             let tmp = path.with_extension("json.new");

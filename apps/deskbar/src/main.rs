@@ -50,6 +50,14 @@ const ICON: f32 = 16.0;
 const NOTE_DOT: f32 = 7.0;
 const NOTE_DOT_INSET: f32 = 6.0;
 const NOTE_DOT_GAP: f32 = 5.0;
+/// The dot drains from its right as the app's notifications fade: never
+/// below this much filled, so it still reads as a dot; the rest is a
+/// faint well of its colour, this strong.
+const NOTE_DOT_FLOOR: f32 = 0.3;
+const NOTE_DOT_WELL: f32 = 0.28;
+/// With the count shown (Preferences ▸ Notifications), its gap from the
+/// dot.
+const NOTE_COUNT_GAP: f32 = 3.0;
 /// One arriving shakes the dot side to side: this long, this far, this
 /// many times, settling as it goes.
 const SHAKE: Duration = Duration::from_millis(600);
@@ -256,6 +264,21 @@ struct Deskbar {
     badges: Vec<sni::Badge>,
     /// Their pictures, by item, picture and size in device pixels.
     tray_pictures: HashMap<(String, u64, u32), Option<egui::TextureHandle>>,
+}
+
+/// An application's dot: how far its shake has gone if one just came
+/// (0–1), how fresh its notifications are together (1: none has begun to
+/// fade; the dot drains from its right as they do), and how many it has.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Dot {
+    shake: Option<f32>,
+    fresh: f32,
+    count: u32,
+}
+
+/// The count beside a dot, as shown.
+fn count_text(n: u32) -> String {
+    if n > 99 { "99+".to_owned() } else { n.to_string() }
 }
 
 /// Which app a notification's dot belongs to.
@@ -949,19 +972,29 @@ impl Deskbar {
     }
 
     /// Whether `team`'s application has notifications unread (or a
-    /// launcher badge's count, or wants attention), and if one just
-    /// arrived, how far its dot's shake has gone (0–1).
-    fn notes_of(&mut self, team: &Team) -> Option<Option<f32>> {
+    /// launcher badge's count, or wants attention): its dot.
+    fn notes_of(&mut self, team: &Team) -> Option<Dot> {
         let app_id = team.windows.first().map(|w| w.app_id.clone()).unwrap_or_default();
         let entry = self.entry(&app_id);
-        let apps = self.status.notifications.as_ref().map(|n| n.apps.as_slice()).unwrap_or_default();
-        let mut keys: Vec<String> = apps.iter().filter(|a| same_app(a, &app_id, entry.as_ref(), &team.name)).map(note_key).collect();
-        keys.extend(self.badge_of(team).filter(|b| b.count.is_some() || b.urgent).map(|b| badge_key(&b.app)));
+        let badge = self.badge_of(team).filter(|b| b.count.is_some() || b.urgent);
+        let (apps, fade) = self.status.notifications.as_ref().map_or((&[][..], None), |n| (n.apps.as_slice(), n.fade_minutes));
+        let mine: Vec<&NoteApp> = apps.iter().filter(|a| same_app(a, &app_id, entry.as_ref(), &team.name)).collect();
+        let mut keys: Vec<String> = mine.iter().map(|a| note_key(a)).collect();
+        keys.extend(badge.as_ref().map(|b| badge_key(&b.app)));
         if keys.is_empty() {
             return None;
         }
         let now = Instant::now();
-        Some(keys.iter().filter_map(|k| self.shaking.get(k)).map(|at| now.duration_since(*at).as_secs_f32() / SHAKE.as_secs_f32()).filter(|t| *t < 1.0).reduce(f32::min))
+        let shake = keys.iter().filter_map(|k| self.shaking.get(k)).map(|at| now.duration_since(*at).as_secs_f32() / SHAKE.as_secs_f32()).filter(|t| *t < 1.0).reduce(f32::min);
+        // Each notification its share, however many apps' they are (a
+        // browser's sites); a badge alone is full.
+        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let weight = |a: &NoteApp| a.count.max(1) as f32;
+        let total: f32 = mine.iter().map(|a| weight(a)).sum();
+        let fresh = if total > 0.0 { mine.iter().map(|a| a.freshness(fade, secs) * weight(a)).sum::<f32>() / total } else { 1.0 };
+        let notes: u32 = mine.iter().map(|a| a.count).sum();
+        let count = if notes > 0 { notes } else { badge.and_then(|b| b.count).unwrap_or(0) as u32 };
+        Some(Dot { shake, fresh, count })
     }
 
     /// `team`'s application's launcher badge, if it sent one: matched by
@@ -971,7 +1004,7 @@ impl Deskbar {
         let entry = self.entry(&app_id);
         self.badges
             .iter()
-            .find(|b| same_app(&NoteApp { desktop_entry: Some(b.app.clone()), name: String::new(), newest: (0, 0) }, &app_id, entry.as_ref(), &team.name))
+            .find(|b| same_app(&NoteApp { desktop_entry: Some(b.app.clone()), ..Default::default() }, &app_id, entry.as_ref(), &team.name))
             .cloned()
     }
 
@@ -1015,7 +1048,11 @@ impl Deskbar {
         // What agents read of it: its unread count, notifications, progress.
         let said: Vec<String> = [
             badge.as_ref().and_then(|b| b.count).map(|n| format!("{n} unread")),
-            notes.map(|_| "has notifications".to_owned()),
+            notes.map(|d| match (d.count, d.fresh < 1.0) {
+                (0, _) => "has notifications".to_owned(),
+                (n, false) => format!("has notifications ({n})"),
+                (n, true) => format!("has notifications ({n}, the dot {}% full)", (d.fresh * 100.0).round()),
+            }),
             badge.as_ref().and_then(|b| b.progress).map(|p| format!("{}% done", (p * 100.0).round())),
         ]
         .into_iter()
@@ -1063,7 +1100,14 @@ impl Deskbar {
             c(pal.panel_text)
         };
         let font = if focused { egui::FontId::new(style::PLAIN_SIZE, style::bold()) } else { style::plain_font() };
-        let dot = if notes.is_some() { NOTE_DOT + NOTE_DOT_GAP } else { 0.0 };
+        // The count beside the dot, when asked for.
+        let show_count = self.status.notifications.as_ref().is_some_and(|n| n.show_count);
+        let count = notes.filter(|d| show_count && d.count > 0).map(|d| {
+            let color = if open || drop_here || chosen { text_color } else { c(pal.keyboard_navigation) };
+            painter.layout_no_wrap(count_text(d.count), style::small_font(), color)
+        });
+        let count_w = count.as_ref().map_or(0.0, |g| g.size().x + NOTE_COUNT_GAP);
+        let dot = if notes.is_some() { NOTE_DOT + NOTE_DOT_GAP + count_w } else { 0.0 };
         let max_w = row.right() - (icon_r.right() + 8.0) - 6.0 - dot;
         let mut job = egui::text::LayoutJob::simple_singleline(team.name.clone(), font, text_color);
         job.wrap = egui::text::TextWrapping::truncate_at_width(max_w);
@@ -1073,12 +1117,33 @@ impl Deskbar {
         // Notifications unread: a dot at the right end, in the history's
         // mark for what is unread (on a selected row, in its text's
         // colour); one just in shakes it a moment.
-        if let Some(shake) = notes {
+        // As they fade it drains from its right, to a floor (the rest a
+        // faint well of its colour); the count, when shown, beside it.
+        if let Some(d) = notes {
             let at = style::snap_centred(ui.ctx(), pos2(row.right() - NOTE_DOT_INSET - NOTE_DOT / 2.0, row.center().y), vec2(NOTE_DOT, NOTE_DOT));
-            let dx = shake.map_or(0.0, |t| SHAKE_PX * (t * SHAKE_TIMES * std::f32::consts::TAU).sin() * (1.0 - t).powi(2));
+            let ppp = ui.ctx().pixels_per_point();
+            // (Whole device pixels: the shake too, so the edge stays sharp.)
+            let dx = d.shake.map_or(0.0, |t| (SHAKE_PX * (t * SHAKE_TIMES * std::f32::consts::TAU).sin() * (1.0 - t).powi(2) * ppp).round() / ppp);
             let color = if open || drop_here || chosen { text_color } else { c(pal.keyboard_navigation) };
-            painter.circle_filled(at.center() + vec2(dx, 0.0), at.width() / 2.0, color);
-            if shake.is_some() {
+            let (centre, r) = (at.center() + vec2(dx, 0.0), at.width() / 2.0);
+            let fill = NOTE_DOT_FLOOR + (1.0 - NOTE_DOT_FLOOR) * d.fresh.clamp(0.0, 1.0);
+            let edge = ((centre.x - r + fill * 2.0 * r) * ppp).round() / ppp;
+            if edge >= centre.x + r - 0.5 / ppp {
+                painter.circle_filled(centre, r, color);
+            } else {
+                painter.circle_filled(centre, r, color.gamma_multiply(NOTE_DOT_WELL));
+                let left = Rect::from_min_max(pos2(centre.x - r - 1.0, centre.y - r - 1.0), pos2(edge, centre.y + r + 1.0));
+                painter.with_clip_rect(left.intersect(painter.clip_rect())).circle_filled(centre, r, color);
+                // (Fresh again as they fade: no faster than a device pixel
+                // of it can change.)
+                ui.ctx().request_repaint_after(Duration::from_secs(20));
+            }
+            if let Some(g) = count {
+                let x = at.left() + dx - NOTE_COUNT_GAP - g.size().x;
+                let pos = style::text_origin(ui.ctx(), &g, x, row.center().y, style::SMALL_SIZE);
+                painter.galley(pos, g, color);
+            }
+            if d.shake.is_some() {
                 ui.ctx().request_repaint();
             }
         }

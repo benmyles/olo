@@ -189,6 +189,11 @@ pub fn ui(ui: &mut Ui, clock: &ClockSettings, st: &mut State) {
         };
         ui.add(StringView::new(note).dim(true).wrap(true));
     });
+    BBox::new("Deskbar").show(ui, |ui| {
+        ui.add(CheckBox::new(&mut s.deskbar_count, "Show how many beside each app's dot"));
+        let note = if s.fade { "An app's dot drains as its notifications fade." } else { "An app with notifications unread has a dot beside its name." };
+        ui.add(StringView::new(note).dim(true).wrap(true));
+    });
     apps_ui(ui, st, &mut s);
     if st.settings.as_ref() != Some(&s) {
         st.settings = Some(s.clone());

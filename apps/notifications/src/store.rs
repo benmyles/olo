@@ -283,9 +283,18 @@ impl History {
         for e in self.entries.iter().filter(|e| e.unread && !e.snoozed()) {
             let name = e.via.clone().unwrap_or_else(|| e.app.clone());
             let newest = (e.time, e.id);
-            match apps.iter_mut().find(|a| a.desktop_entry == e.desktop_entry && a.name == name) {
-                Some(a) => a.newest = a.newest.max(newest),
-                None => apps.push(olo_protocol::NoteApp { desktop_entry: e.desktop_entry.clone(), name, newest }),
+            let a = match apps.iter().position(|a| a.desktop_entry == e.desktop_entry && a.name == name) {
+                Some(i) => &mut apps[i],
+                None => {
+                    apps.push(olo_protocol::NoteApp { desktop_entry: e.desktop_entry.clone(), name, newest, ..Default::default() });
+                    apps.last_mut().unwrap()
+                }
+            };
+            a.newest = a.newest.max(newest);
+            a.count += 1;
+            // (Pinned ones don't fade.)
+            if !e.pinned {
+                a.fading.push(e.time);
             }
         }
         apps.sort_by_key(|a| std::cmp::Reverse(a.newest));

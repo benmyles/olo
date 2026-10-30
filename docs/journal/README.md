@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Deskbar's notification dot drains as they fade
+
+*10:46* — An app's dot in Deskbar is filled from the left to how fresh its notifications are together (each 1/n, as the history fades them), never below a third, the rest a faint well of its colour; with Preferences ▸ Notifications ▸ Show how many beside each app's dot, the count beside it (here 2, partway through a 2-minute fade, at 2×).
+
+![Deskbar's notification dot drains as they fade](2026-10-30/104645-deskbar-s-notification-dot-drains-as-they-fade.png)
+
 ### Alerts open in the middle of the screen, in front
 
 *10:26* — An alert asked for where no window of its app has the focus (Empty Trash from the desktop's Trash icon) opened in the next cascade slot, at the top left of some display, where it went unseen. Now it opens in the middle of the display the pointer is on, in front and focused, and stays over its app's windows until answered.

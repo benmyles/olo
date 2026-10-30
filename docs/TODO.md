@@ -247,7 +247,7 @@ as they land (with the commit), add new ones as they come up.
   the pointer is on (kept off Deskbar's column), in front and focused,
   and stays over its app's windows until answered. One with a parent
   still opens over it.
-- **Deskbar: an app's notification dot drains with its notifications**
+- ~~**Deskbar: an app's notification dot drains with its notifications**~~
   (Ben, 2026-10-30): first "the blue notifications dot for an app in the
   deskbar should fade like the notifications in notifications app as
   that apps notifications fade out (based on the settings) -- make it so
@@ -269,7 +269,8 @@ as they land (with the commit), add new ones as they come up.
   in every look and at every scale, its edge snapped to device pixels).
   With fading off, full. Updated as the notifications age (no faster
   than the fill can show a change), and the fraction in the entry's
-  status for agents.
+  status for agents. Done (HACKING, Deskbar): floor 0.3, the well at
+  28% of the dot's colour; checked at 1×, 1.5× and 2×, light and dark.
 - **Notifications preferences: banners, sounds and history for all apps
   at once** (Ben, 2026-10-30): "the notifications preferences already
   have the ability to turn on/off banners/sounds/history for each app
@@ -280,7 +281,7 @@ as they land (with the commit), add new ones as they come up.
   seen later too only if the person asks for it (the default for new
   apps stays as now). Readable and settable by agents through the
   panel's widget tree.
-- **Deskbar: the notification count beside the dot, as an option**
+- ~~**Deskbar: the notification count beside the dot, as an option**~~
   (Ben, 2026-10-30): "a preferences option in notifications to also
   include the notification count next to the blue dot. off by default
   but enableable. make sure you qa visually at all display scales to
@@ -293,7 +294,9 @@ as they land (with the commit), add new ones as they come up.
   shaking with the dot when one
   arrives, and in the entry's status for agents. Checked by eye and with
   `tsession review` at 1×, 1.25×, 1.5×, 1.75× and 2×, in light, dark and
-  night, with counts of 1, 9, 10 and 99+.
+  night, with counts of 1, 9, 10 and 99+. Done (HACKING, Deskbar):
+  Preferences ▸ Notifications ▸ Deskbar; checked with 2 and 99+ at 1×,
+  1.5× and 2×, light and dark.
 - ~~**Notifications: one click on a card acts**~~ (Ben, 2026-10-29; done:
   HACKING, Notifications' Cards): "in
   notifications app card view, i should only need a single click of a

@@ -2230,8 +2230,20 @@ the desktop entry they name (an Olo app's `olo-terminal` is window
 by name (`same_app`). One arriving (its `(time, id)` newer than any
 Deskbar had seen; what is unread when Deskbar starts was there before
 it) shakes the dot side to side for 0.6 s, 2 points, settling as it
-goes (`SHAKE`), unless Do Not Disturb is on. Agents read the row's
-value, "has notifications".
+goes (`SHAKE`), unless Do Not Disturb is on. As the app's notifications
+fade (the history's fade setting) the dot drains from its right: it is
+filled from its left to how fresh they are together
+(`NoteApp::freshness`: each counts 1/n, its `fade_strength`; a pinned
+one stays whole), never below `NOTE_DOT_FLOOR` (0.3) so it still reads
+as a dot, the rest a faint well of its colour (`NOTE_DOT_WELL`), its
+edge on a device pixel; repainted every 20 s while it isn't full.
+olo-notifications puts in `NotificationState` each app's `count` and
+when each of its fading ones came (`fading`), and the fade's length.
+With Preferences ▸ Notifications ▸ Deskbar ▸ "Show how many beside each
+app's dot" (`deskbar_count`, off by default) the count goes beside the
+dot in the small type and the dot's colour ("99+" past 99; the name is
+cut short first). Agents read the row's value, "has notifications (2,
+the dot 60% full)".
 
 Clicking an app's row in Deskbar brings it forward with every window it
 has there, as a Mac's Dock does (BeOS's brought one forward):
