@@ -1977,6 +1977,18 @@ impl AnvilState<UdevData> {
                 (self.pointer.current_location(), crate::cursor::pictured(&crate::saver::shown_cursor(&self.saver, &self.cursor_status))),
             );
         }
+        // Frames programs asked for (screen sharing), drawn as a
+        // whole-screen shot is.
+        for frame in crate::capture::take(&mut self.pending_captures, &output) {
+            let overlays = if locked { crate::lock::elements(&self.lock, &mut renderer, &output) } else { Vec::new() };
+            match crate::render::capture::<_, smithay::backend::renderer::gles::GlesTexture>(&mut renderer, &output, &self.space, overlays, self.overview.as_ref(), desktop_color, locked) {
+                Ok(img) => crate::capture::fill(frame, &img, self.clock.now().into()),
+                Err(e) => {
+                    tracing::warn!("capture of {}: {e}", output.name());
+                    frame.fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
+                }
+            }
+        }
         let overlays: Vec<CustomRenderElements<_>> = if locked {
             crate::lock::elements(&self.lock, &mut renderer, &output)
         } else {

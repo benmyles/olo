@@ -4498,6 +4498,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-portal"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "memmap2",
+ "png 0.18.1",
+ "tracing",
+ "wayland-client",
+ "wayland-protocols",
+]
+
+[[package]]
 name = "olo-preferences"
 version = "0.1.0"
 dependencies = [

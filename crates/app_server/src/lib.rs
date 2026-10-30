@@ -8,6 +8,7 @@
 )]
 
 #[cfg(feature = "udev")]
+pub mod capture;
 pub mod cursor;
 pub mod drawing;
 pub mod focus;

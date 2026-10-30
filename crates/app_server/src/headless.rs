@@ -333,6 +333,21 @@ pub fn run_headless(size_arg: Option<&str>) {
                     (pointer, crate::cursor::pictured(&crate::saver::shown_cursor(&state.saver, &state.cursor_status))),
                 );
             }
+            // Frames programs asked for (screen sharing), drawn as a
+            // whole-screen shot is.
+            for frame in crate::capture::take(&mut state.pending_captures, output) {
+                let color = state.desktop_color(output);
+                let overlays = twitcher_overlay(&mut state, output);
+                let locked = state.lock.locked();
+                let picture = crate::render::capture::<_, GlesTexture>(&mut state.backend_data.renderer, output, &state.space, overlays, state.overview.as_ref(), color, locked);
+                match picture {
+                    Ok(img) => crate::capture::fill(frame, &img, state.clock.now().into()),
+                    Err(e) => {
+                        tracing::warn!("capture of {}: {e}", output.name());
+                        frame.fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
+                    }
+                }
+            }
         }
         // Recording (finding flicker): what this turn left on screen.
         if let Some(name) = state.ipc.recording.as_ref().map(|r| r.output.clone()) {

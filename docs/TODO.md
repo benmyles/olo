@@ -477,11 +477,18 @@ as they land (with the commit), add new ones as they come up.
   PipeWire stream, and the app reads it. Chrome and Electron apps share
   WebRTC's capture code, so this is a good portal backend and a good
   PipeWire stream, plus a few app quirks, nothing app-specific.
-  - **Today** sharing fails for everyone: app_server still has Anvil's
-    stub for ext-image-copy-capture and fails every frame
-    (`crates/app_server/src/state.rs:846`); wlproxy hides that protocol
-    from outside programs on purpose; `olo-portals.conf` sends every
-    portal to the GTK backend, which has no ScreenCast.
+  - **Today** sharing fails for everyone: wlproxy hides
+    ext-image-copy-capture from outside programs on purpose;
+    `olo-portals.conf` sends every portal to the GTK backend, which has
+    no ScreenCast. Done so far (2026-10-30): app_server captures whole
+    screens for its clients into shared-memory buffers (`capture.rs`:
+    frames wait for the screen's next frame, drawn as a screenshot is,
+    sessions kept until the client ends them), and `olo-portal`'s
+    client of it (`apps/portal/src/capture.rs`; `olo-portal
+    capture-test OUT.png` checks it: 1600×1000 in 23 ms, then a frame
+    a refresh). Next: windows as sources, dmabufs, constraints updated
+    when a screen changes size, then the portal's D-Bus side, picker and
+    PipeWire stream.
   - **Build** our own backend, `olo-portal`, started and supervised by
     olo-session: it owns `org.freedesktop.impl.portal.desktop.olo` over
     zbus (which we already use), shows the picker as a kit window,

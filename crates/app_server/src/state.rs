@@ -196,6 +196,11 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub image_capture_source_state: ImageCaptureSourceState,
     pub output_capture_source_state: OutputCaptureSourceState,
     pub image_copy_capture_state: ImageCopyCaptureState,
+    /// Frames programs asked for of the screens, for their next frame
+    /// (`capture`).
+    pub pending_captures: Vec<crate::capture::Pending>,
+    /// The capture sessions open (one dropped stops it).
+    pub capture_sessions: Vec<Session>,
 
     pub dnd_icon: Option<DndIcon>,
 
@@ -879,13 +884,21 @@ impl<BackendData: Backend> ImageCopyCaptureHandler for AnvilState<BackendData> {
         })
     }
 
-    fn new_session(&mut self, _session: Session) {
-        // Anvil doesn't track sessions; they clean up on drop
+    fn new_session(&mut self, session: Session) {
+        // Kept until the client ends it: dropping it would stop it.
+        self.capture_sessions.push(session);
     }
 
-    fn frame(&mut self, _session: &SessionRef, frame: Frame) {
-        // Anvil doesn't implement actual capture
-        frame.fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
+    fn session_destroyed(&mut self, session: SessionRef) {
+        self.capture_sessions.retain(|s| s.as_ref() != session);
+    }
+
+    fn frame(&mut self, session: &SessionRef, frame: Frame) {
+        // With the screen's next frame (`capture`).
+        match session.source().user_data().get::<smithay::output::WeakOutput>().cloned() {
+            Some(output) => self.pending_captures.push(crate::capture::Pending { output, frame }),
+            None => frame.fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown),
+        }
     }
 }
 
@@ -1102,6 +1115,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             image_capture_source_state,
             output_capture_source_state,
             image_copy_capture_state,
+            pending_captures: Vec::new(),
+            capture_sessions: Vec::new(),
             dnd_icon: None,
             suppressed_keys: Vec::new(),
             keymap: Default::default(),
