@@ -426,6 +426,34 @@ impl Deskbar {
         request(Request::SetWindowingMode { mode, workspace: ws, output });
     }
 
+    /// The display icon's menu, on display `own`'s Deskbar: every display
+    /// (its number and name, left to right), its own checked; choosing
+    /// one goes there.
+    fn display_menu(&self, own: &str) -> Menu {
+        let mut displays: Vec<&OutputInfo> = self.outputs.iter().filter(|o| o.mirror_of.is_none()).collect();
+        displays.sort_by_key(|o| o.position);
+        let mut m = Menu::new("Displays");
+        for o in displays {
+            let n = olo_protocol::display_number(&self.outputs, &o.name).map(|n| format!("D{n}  ")).unwrap_or_default();
+            let here = o.name == own;
+            m = m.item(format!("{n}{}", o.display_name()), format!("display:{}", o.name), None).checked(here).enabled(!here);
+        }
+        m.separator().item("Displays Preferences…", "pref:display", None)
+    }
+
+    /// The displays whose workspaces a Deskbar on `own` lists: its own
+    /// first, then the others left to right (not those mirroring
+    /// another); just `own` while the displays aren't known.
+    fn displays_from(&self, own: Option<&str>) -> Vec<Option<String>> {
+        let mut out = vec![own.map(str::to_owned)];
+        if own.is_some() {
+            let mut others: Vec<&OutputInfo> = self.outputs.iter().filter(|o| o.mirror_of.is_none() && Some(o.name.as_str()) != own).collect();
+            others.sort_by_key(|o| o.position);
+            out.extend(others.into_iter().map(|o| Some(o.name.clone())));
+        }
+        out
+    }
+
     fn main_output(&self) -> Option<String> {
         self.outputs.iter().find(|o| o.main).map(|o| o.name.clone())
     }
@@ -870,6 +898,7 @@ impl Deskbar {
             }
             Some(("share", session)) => spawn(&format!("olo-portal --stop {session}")),
             Some(("approve", arg)) => self.approve_command(cx, arg),
+            Some(("display", output)) => request(Request::FocusDisplay { output: output.to_owned() }),
             // For the display of the Deskbar it was chosen on, and the
             // workspace whose heading it was chosen from.
             Some(("mode", id)) => {
@@ -1045,7 +1074,7 @@ impl Deskbar {
         if drop_here {
             olo_kit::dnd::accept(ui.ctx(), format!("team:{}", team.key), "text/uri-list", olo_kit::dnd::Action::Copy);
         }
-        let id = egui::Id::unique(("team", ws, &team.key));
+        let id = egui::Id::unique(("team", display, ws, &team.key));
         let resp = ui.interact(row, id, Sense::click_and_drag());
         if resp.drag_started()
             && let Some(data) = self.app_drag(ui.ctx(), team)
@@ -1199,14 +1228,14 @@ impl Deskbar {
     fn workspace_heading(&mut self, cx: &mut Cx, ui: &mut egui::Ui, r: Rect, display: Option<&str>, ws: u32) {
         let pal = style::palette(ui.ctx());
         let painter = ui.painter().clone();
-        let id = egui::Id::unique(("workspace", ws));
+        let id = egui::Id::unique(("workspace", display, ws));
         let name = self.workspace_name(display, ws);
         let here = ws == self.showing(display);
         // The windowing mode, square at the right end, as far in as the
         // caption is from the left.
         let mode = self.mode(display, ws);
         let mode_r = Rect::from_center_size(pos2(r.right() - ICON_INSET - ICON / 2.0, r.center().y), vec2(ICON, ICON));
-        let mode_id = egui::Id::unique(("workspace-mode", ws));
+        let mode_id = egui::Id::unique(("workspace-mode", display, ws));
         let resp = ui.interact(r, id, Sense::click());
         resp.widget_info(|| egui::WidgetInfo { selected: Some(here), ..egui::WidgetInfo::labeled(egui::Role::Button, true, name.clone()) });
         let tip = match mode {
@@ -1584,8 +1613,21 @@ impl App for Deskbar {
                     .clone()
             })
             .collect();
+        // This Deskbar's display, with several: its number, to go to another.
+        let display_number = display.as_deref().and_then(|d| olo_protocol::display_number(&self.outputs, d));
         let items = apps.len()
-            + [!st.upgrade.is_empty(), !st.sharing.is_empty(), st.agent_screens > 0, st.battery.is_some(), st.wifi.is_some(), st.volume.is_some(), st.notifications.is_some(), true, true]
+            + [
+                display_number.is_some(),
+                !st.upgrade.is_empty(),
+                !st.sharing.is_empty(),
+                st.agent_screens > 0,
+                st.battery.is_some(),
+                st.wifi.is_some(),
+                st.volume.is_some(),
+                st.notifications.is_some(),
+                true,
+                true,
+            ]
             .iter()
             .filter(|on| **on)
             .count();
@@ -1694,6 +1736,18 @@ impl App for Deskbar {
             }
             if let Some(id) = menu::take_chosen(ui.ctx(), menu_id).and_then(|cmd| cmd.strip_prefix("sni:").and_then(|n| n.parse::<i32>().ok())) {
                 host.send(&it.key, sni::Do::Chosen(id));
+            }
+        }
+        if let (Some(n), Some(own)) = (display_number, display.as_deref()) {
+            let name = self.outputs.iter().find(|o| o.name == own).map(|o| o.display_name()).unwrap_or_default();
+            let tip = format!("Display {n}: {name}. Click to go to another display.");
+            let item = tray_item(ui, "display", &|p, r| status::draw_display(p, r, &pal, n), tip);
+            let menu_id = egui::Id::unique("display-menu");
+            if (item.clicked() || item.secondary_clicked()) && !menu::is_open(ui.ctx(), menu_id) {
+                menu::request_popup(ui.ctx(), MenuRequest { menu: self.display_menu(own), source: menu_id, anchor: MenuAnchor::Below(item.rect), selected: None });
+            }
+            if let Some(cmd) = menu::take_chosen(ui.ctx(), menu_id) {
+                self.run_command(cx, &cmd);
             }
         }
         if !st.upgrade.is_empty() {
@@ -1865,33 +1919,37 @@ impl App for Deskbar {
             self.run_command(cx, &cmd);
         }
 
-        // ---- the applications: by workspace, in order, each under its
-        // heading (this display's workspaces with windows, and the one
-        // showing)
+        // ---- the applications: by display (its own first, then the
+        // others left to right), by workspace, in order, each under its
+        // heading (each display's workspaces with windows, and the one it
+        // shows)
         let mut y = tray.bottom();
-        let current = self.showing(display.as_deref());
-        let mut workspaces: Vec<u32> = self.windows_on(display.as_deref()).map(|w| w.workspace).chain([current]).collect();
-        workspaces.sort();
-        workspaces.dedup();
-        for ws in workspaces {
-            let teams = self.teams(display.as_deref(), Some(ws));
-            // The workspace showing is lit, its heading and applications
-            // together, as one selection: on its own ground, edged above
-            // and below.
-            let group = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), HEADING_H + teams.len() as f32 * ROW_H));
-            let lit = self.lit(display.as_deref(), Some(ws));
-            if lit {
-                painter.rect_filled(style::snap(ui.ctx(), group), 0.0, c(self.ground(&pal, display.as_deref(), Some(ws))));
-            }
-            self.workspace_heading(cx, ui, Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), HEADING_H)), display.as_deref(), ws);
-            y += HEADING_H;
-            for team in teams {
-                let row = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), ROW_H));
-                self.team_row(cx, w, ui, row, &team, display.as_deref(), Some(ws));
-                y += ROW_H;
-            }
-            if lit {
-                style::lit_edges(&painter, group, &pal);
+        for on in self.displays_from(display.as_deref()) {
+            let on = on.as_deref();
+            let current = self.showing(on);
+            let mut workspaces: Vec<u32> = self.windows_on(on).map(|w| w.workspace).chain([current]).collect();
+            workspaces.sort();
+            workspaces.dedup();
+            for ws in workspaces {
+                let teams = self.teams(on, Some(ws));
+                // The workspace showing is lit, its heading and
+                // applications together, as one selection: on its own
+                // ground, edged above and below.
+                let group = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), HEADING_H + teams.len() as f32 * ROW_H));
+                let lit = self.lit(on, Some(ws));
+                if lit {
+                    painter.rect_filled(style::snap(ui.ctx(), group), 0.0, c(self.ground(&pal, on, Some(ws))));
+                }
+                self.workspace_heading(cx, ui, Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), HEADING_H)), on, ws);
+                y += HEADING_H;
+                for team in teams {
+                    let row = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), ROW_H));
+                    self.team_row(cx, w, ui, row, &team, on, Some(ws));
+                    y += ROW_H;
+                }
+                if lit {
+                    style::lit_edges(&painter, group, &pal);
+                }
             }
         }
 

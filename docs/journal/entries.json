@@ -2356,5 +2356,11 @@
   "title": "Deskbar: an app's windows to any workspace",
   "caption": "An app's Deskbar menu moves its windows as a tab's menu moves one: Move to Workspace \u25b8 every display's workspaces (the one they're on checked), and To the Next / Previous Display.",
   "image": "2026-10-30/122417-deskbar-an-app-s-windows-to-any-workspace.png"
+ },
+ {
+  "time": "2026-10-30T12:51:39",
+  "title": "Deskbar: every display's workspaces, and the display's number",
+  "caption": "Each Deskbar lists every display's workspaces and their apps, its own display's first (here D1's Deskbar, then D0's), and its tray shows its display's number in a small monitor; clicking it lists the displays and goes to the one chosen.",
+  "image": "2026-10-30/125139-deskbar-every-display-s-workspaces-and-the-displ.png"
  }
 ]

@@ -2080,10 +2080,17 @@ launcher lists them. The panel list Deskbar shows is
   (`AnvilState::last_display`), else the pointer's. Every display has
   its own Deskbar (one layer surface per output, `Bar` in apps/deskbar,
   each naming its output: one that named none would follow the main
-  display about), each listing only the applications with windows on its
-  display, and only those windows (`WindowInfo::output`; a window whose
-  display isn't known counts as the main one's), and the map draws a
-  Deskbar strip on each. With more than one, each display goes by a
+  display about), each listing every display's workspaces and their
+  applications, its own display's first, then the others left to right
+  (`displays_from`; a window goes by `WindowInfo::output`, one whose
+  display isn't known counting as the main one's), and the map draws a
+  Deskbar strip on each. With several displays its tray shows its own
+  display's number in a small monitor (`status::draw_display`, drawn as
+  Agent Screens' monitor is); clicking it lists the displays, its own
+  checked (`display_menu`), and choosing one goes there
+  (`Request::FocusDisplay`: the pointer to the middle of where windows
+  go on it, the keyboard to its front window, else its desktop, so it is
+  the active display). With more than one, each display goes by a
   number, left to right from D0 (`olo_protocol::display_number`; the
   map's and the settings box's names, "D1 Studio Display"), which names
   its workspaces (`workspace_name`: "D1 Workspace 2").
@@ -2160,9 +2167,10 @@ Each item shows the keys the person has for it (`add_keys`:
 them, sent on every settings change).
 
 Every display has workspaces of its own (see "Workspaces, one set per
-display" below), and each display's Deskbar groups its applications as a
-BOutlineListView would group them, every workspace of that display with
-windows and the one it shows (even if it has none), always in order:
+display" below), and each Deskbar groups the applications as a
+BOutlineListView would group them, display by display (its own first),
+every workspace of each display with windows and the one it shows (even
+if it has none), always in order:
 each under a heading naming it (`workspace_heading`, `HEADING_H`; "D1
 Workspace 2" with more than one display, `Deskbar::workspace_name`),
 with only the applications that have windows there, each row's menu

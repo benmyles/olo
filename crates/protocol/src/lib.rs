@@ -121,6 +121,10 @@ pub enum Request {
         to_index: Option<u32>,
     },
     Outputs,
+    /// Go to display `output` (a connector), as Deskbar's display menu
+    /// does: the pointer to the middle of it, the keyboard to its front
+    /// window (none: its desktop).
+    FocusDisplay { output: String },
     ConfigureOutput { name: String, config: OutputConfig },
     /// The pointing devices plugged in: touchpads (with the kind of pad and
     /// the profile that suits it) and mice.

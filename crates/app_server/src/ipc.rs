@@ -495,6 +495,16 @@ impl<B: Backend + 'static> AnvilState<B> {
                 (None, _) => not_found(),
             },
             Request::Outputs => Reply::Outputs { outputs: self.output_infos() },
+            Request::FocusDisplay { output } => {
+                let o = self.space.outputs().find(|o| o.name() == output).cloned();
+                match o {
+                    Some(o) => {
+                        self.focus_display(&o);
+                        Reply::Ok
+                    }
+                    None => Reply::Error { message: format!("no display {output:?}") },
+                }
+            }
             Request::InputDevices => Reply::InputDevices { devices: self.backend_data.input_devices() },
             Request::PowerStatus => Reply::Power { status: self.power_status() },
             Request::Lock => {

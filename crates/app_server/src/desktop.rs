@@ -1070,6 +1070,17 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// The front window on `output` takes the keyboard; with none there,
     /// nothing has it.
+    /// Go to display `o` (Deskbar's display menu): the pointer to the
+    /// middle of where windows go on it, the keyboard to its front window
+    /// (none: its desktop), so it is the active display.
+    pub fn focus_display(&mut self, o: &Output) {
+        let Some(area) = self.usable_area(o).or_else(|| self.space.output_geometry(o)) else { return };
+        let middle = Point::<f64, Logical>::from((area.loc.x as f64 + area.size.w as f64 / 2.0, area.loc.y as f64 + area.size.h as f64 / 2.0));
+        self.warp_pointer(middle);
+        self.focus_topmost_on(o);
+        info!(display = o.name(), "went to a display");
+    }
+
     fn focus_topmost_on(&mut self, output: &Output) {
         let front = self.space.elements().rev().find(|w| self.window_output(w).as_ref() == Some(output)).cloned();
         match front {

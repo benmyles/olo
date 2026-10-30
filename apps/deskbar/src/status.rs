@@ -542,6 +542,25 @@ pub fn draw_screens(painter: &Painter, r: Rect, p: &Palette, count: usize) {
     }
 }
 
+/// This Deskbar's display, of several: a monitor with the display's
+/// number in it ("D1" in its workspaces' names).
+pub fn draw_display(painter: &Painter, r: Rect, p: &Palette, number: u32) {
+    let hair = style::hairline(painter.ctx());
+    let screen = style::snap(painter.ctx(), Rect::from_min_size(pos2(r.left() + 0.5, r.top() + 2.0), vec2(15.0, 10.0)));
+    painter.rect_filled(screen, 1.5, c(p.panel_background));
+    painter.rect_stroke(screen, 1.5, Stroke::new(hair, ink(p)), egui::StrokeKind::Inside);
+    let cx = screen.center().x;
+    let stand = whole(painter, cx - hair / 2.0);
+    let foot = whole(painter, r.bottom() - 1.0);
+    style::vline(painter, stand, screen.bottom(), foot, ink(p));
+    style::hline_above(painter, whole(painter, cx - 4.0), whole(painter, cx + 4.0), foot, ink(p));
+    // The number, on whole pixels, in the middle of the screen.
+    let font = egui::FontId::new(8.0, olo_kit::style::bold());
+    let galley = painter.layout_no_wrap(number.to_string(), font, ink(p));
+    let at = style::snap_centred(painter.ctx(), screen.center(), galley.size()).min;
+    painter.galley(at, galley, ink(p));
+}
+
 /// A screen being shared: the screen, with the red dot of a recording
 /// in its corner (it is being seen elsewhere: never easy to miss).
 pub fn draw_sharing(painter: &Painter, r: Rect, p: &Palette) {

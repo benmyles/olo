@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Deskbar: every display's workspaces, and the display's number
+
+*12:51* — Each Deskbar lists every display's workspaces and their apps, its own display's first (here D1's Deskbar, then D0's), and its tray shows its display's number in a small monitor; clicking it lists the displays and goes to the one chosen.
+
+![Deskbar: every display's workspaces, and the display's number](2026-10-30/125139-deskbar-every-display-s-workspaces-and-the-displ.png)
+
 ### Deskbar: an app's windows to any workspace
 
 *12:24* — An app's Deskbar menu moves its windows as a tab's menu moves one: Move to Workspace ▸ every display's workspaces (the one they're on checked), and To the Next / Previous Display.

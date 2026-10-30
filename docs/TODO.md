@@ -264,8 +264,8 @@ as they land (with the commit), add new ones as they come up.
   kept current as tabs join or leave the group (on the agent's next
   turn where it can, else its next start), and readable by agents
   (Terminal's widget tree says it's on).
-- **Deskbar: every display's workspaces on every Deskbar; the display
-  in the tray** (Ben, 2026-10-30): "the deskbar on all displays should
+- ~~**Deskbar: every display's workspaces on every Deskbar; the display
+  in the tray**~~ (Ben, 2026-10-30): "the deskbar on all displays should
   show the display-workspaces for all displays not just the current
   display. and, let's also show the display id/number in the deskbar
   tray with like a little monitor icon and the display number in it, and
@@ -279,7 +279,9 @@ as they land (with the commit), add new ones as they come up.
   lists the displays (their names and numbers, the pointer's marked) and
   choosing one moves the pointer and focus there (its front window, else
   its desktop). Agents read the display's number and choose through the
-  menu.
+  menu. Done so (HACKING, Deskbar and multiple displays): `Request::FocusDisplay` goes to a
+  display; the icon shows with more than one display, its menu listing
+  each by number and name.
 - ~~**Bug: upgrades still move windows; restore an exact snapshot**~~
   (Ben, 2026-10-30): "when I upgrade it is still messing up my windows
   and moving them around on the displays and the sizes and everything. i
