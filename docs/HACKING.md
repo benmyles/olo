@@ -4047,7 +4047,10 @@ applied once in order), H.264 from OpenH264, in an MP4 of our own
 `co64`, one chunk). Stretches over 10 s with no action and no frame
 changing are cut, each a two-second card in the kit's type ("4 min 12 s
 with nothing happening", `ab_glyph`); `progress` gets how far it is and
-can stop it. Olo's Viewer plays the result.
+can stop it. Olo's Viewer plays the result. In the window, History's
+Export Video… asks where (the kit's Save panel, `NAME.mp4` in ~/Videos)
+and exports on a worker, the bar saying how far it is with Cancel, then
+where it went (`Replay::start_export`).
 
 Input that plays out over time is paced, a batch per IPC request with
 waits between (`Screen::input_paced`): `drag` presses, moves in steps

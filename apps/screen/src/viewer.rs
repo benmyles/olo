@@ -50,6 +50,8 @@ enum Win {
     /// The screen's name, and the question.
     ConfirmStop(String, String),
     Alert(String),
+    /// Where to save a screen's history as a video.
+    ExportTo(Box<olo_kit::file_panel::FilePanel>),
 }
 
 pub struct Viewer {
@@ -415,8 +417,20 @@ impl Viewer {
             if self.replay.as_ref().is_none_or(|r| r.name != name) {
                 self.replay = Some(crate::replay::Replay::new(&name, cx.proxy()));
             }
+            let mut ask = None;
             if let Some(r) = self.replay.as_mut() {
                 r.ui(ui, right);
+                if std::mem::take(&mut r.want_export) {
+                    ask = Some(r.name.clone());
+                }
+            }
+            if let Some(name) = ask {
+                let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+                let dir = [home.join("Videos"), home.clone()].into_iter().find(|d| d.is_dir()).unwrap_or(home);
+                let panel = olo_kit::file_panel::FilePanel::save(dir, format!("{name}.mp4"));
+                let (w, h) = olo_kit::file_panel::PANEL_SIZE;
+                let id = cx.open_window(WindowOptions::new("Export Video", w, h).min_size(420, 300));
+                self.windows.insert(id, Win::ExportTo(Box::new(panel)));
             }
             return;
         }
@@ -560,6 +574,15 @@ impl App for Viewer {
                     }
                     let proxy = cx.proxy();
                     std::thread::spawn(move || proxy.send(Msg::Stopped(screens::stop(&name))));
+                }
+            }
+            Some(Win::ExportTo(_)) => {
+                let Some(Win::ExportTo(panel)) = self.windows.get_mut(&window) else { return };
+                let Some(result) = panel.ui(ui) else { return };
+                self.windows.remove(&window);
+                cx.close_window(window);
+                if let (olo_kit::file_panel::PanelResult::Chosen(path), Some(r)) = (result, self.replay.as_mut()) {
+                    r.start_export(path, cx.proxy());
                 }
             }
             Some(Win::Alert(message)) => {

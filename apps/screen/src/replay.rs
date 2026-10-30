@@ -7,9 +7,13 @@
 //! (`record::frame_at`), the latest asked for winning; the window never
 //! waits on the disk.
 
-use std::sync::{
-    Arc,
-    mpsc::{Sender, channel},
+use std::{
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{Sender, channel},
+    },
 };
 
 use olo_kit::{
@@ -29,6 +33,9 @@ use crate::{
 pub enum ReplayMsg {
     Loaded { name: String, actions: Vec<Action>, segments: Arc<Vec<record::Segment>> },
     Frame { name: String, at: u64, image: ColorImage },
+    /// Exporting: how far it has got (0–1), then how it ended.
+    Progress { name: String, done: f32 },
+    Exported { name: String, result: Result<PathBuf, String> },
 }
 
 /// How long a click's ring and a key's caption stay over the picture.
@@ -60,6 +67,12 @@ pub struct Replay {
     pending: Option<ColorImage>,
     /// The screen's logical size, from its start (for placing clicks).
     size: Option<(f32, f32)>,
+    /// Export Video… was chosen: the window asks where to.
+    pub want_export: bool,
+    /// An export under way (how far, and its Cancel), or how the last
+    /// one ended.
+    exporting: Option<(f32, Arc<AtomicBool>)>,
+    exported: Option<Result<PathBuf, String>>,
 }
 
 impl Replay {
@@ -103,6 +116,9 @@ impl Replay {
             frames: tx,
             pending: None,
             size: None,
+            want_export: false,
+            exporting: None,
+            exported: None,
         }
     }
 
@@ -121,8 +137,40 @@ impl Replay {
                 self.pending = Some(image);
                 self.showing = Some(at);
             }
+            ReplayMsg::Progress { name, done } if name == self.name => {
+                if let Some((d, _)) = &mut self.exporting {
+                    *d = done;
+                }
+            }
+            ReplayMsg::Exported { name, result } if name == self.name => {
+                self.exporting = None;
+                self.exported = Some(result);
+            }
             _ => {}
         }
+    }
+
+    /// Make the history a video at `path`, on a worker.
+    pub fn start_export(&mut self, path: PathBuf, proxy: Proxy) {
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.exporting = Some((0.0, cancel.clone()));
+        self.exported = None;
+        let name = self.name.clone();
+        std::thread::spawn(move || {
+            let mut told = -1;
+            let result = crate::export::export(&name, &path, &mut |done| {
+                let pct = (done * 100.0) as i32;
+                if pct != told {
+                    told = pct;
+                    proxy.send(ReplayMsg::Progress { name: name.clone(), done });
+                }
+                !cancel.load(Ordering::Relaxed)
+            });
+            if result.is_err() {
+                let _ = std::fs::remove_file(path.with_extension("mp4.part"));
+            }
+            proxy.send(ReplayMsg::Exported { name, result: result.map(|()| path) });
+        });
     }
 
     fn filter(&mut self) {
@@ -213,8 +261,38 @@ impl Replay {
         if button(ui, &format!("{}×", SPEEDS[self.speed]), 44.0) {
             self.speed = (self.speed + 1) % SPEEDS.len();
         }
-        let when = history::clock(self.playhead);
-        style::label(ui.painter(), bar.right(), bar.center().y, Align::Max, &when, style::plain_font(), c(p.panel_text));
+        // Export: the button, or how it is going and Cancel, or how it went.
+        let status = match (&self.exporting, &self.exported) {
+            (Some((done, cancel)), _) => {
+                if button(ui, "Cancel", 72.0) {
+                    cancel.store(true, Ordering::Relaxed);
+                }
+                format!("Exporting… {:.0}%", done * 100.0)
+            }
+            (None, last) => {
+                if button(ui, "Export Video…", 110.0) {
+                    self.want_export = true;
+                }
+                match last {
+                    Some(Ok(path)) => format!("Saved {}", path.file_name().and_then(|n| n.to_str()).unwrap_or("")),
+                    Some(Err(e)) if e == "cancelled" => "Export cancelled".to_owned(),
+                    Some(Err(e)) => format!("Couldn’t export: {e}"),
+                    None => String::new(),
+                }
+            }
+        };
+        if self.exporting.is_some() {
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        // The playhead's time of day at the right, where it fits beside the
+        // export's status.
+        let when = history::clock(self.playhead).get(11..).unwrap_or("").to_owned();
+        let status_x = x + m::SPACING;
+        let width = |t: &str| ui.painter().layout_no_wrap(t.to_owned(), style::plain_font(), Color32::BLACK).size().x;
+        style::label(ui.painter(), status_x, bar.center().y, Align::Min, &status, style::plain_font(), c(p.panel_text));
+        if status_x + width(&status) + m::SPACING <= bar.right() - width(&when) {
+            style::label(ui.painter(), bar.right(), bar.center().y, Align::Max, &when, style::plain_font(), c(p.panel_text));
+        }
 
         // Playing: on through time, past stretches where nothing happens.
         if self.playing {
