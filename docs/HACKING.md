@@ -645,7 +645,7 @@ frame while `key`, what the text is made from, stays the same), `TabView`, `TabS
 a menu or tool bar, `STRIP_HEIGHT` (30) tall, roomier than a window tab,
 each tab `STRIP_ROW` (26) of it standing on the bottom edge, its icon
 under the menu bar's first title: `StripTab { label, icon,
-status, badge }` each (`badge`, a 16×16 mark at the tab's right, left of
+status, badge, group }` each (`badge`, a 16×16 mark at the tab's right, left of
 where its close box goes, the title making room: Terminal's pull request
 state; like the icon, only on a tab wide enough); tabs share the row up to `STRIP_TAB_MAX` (220) wide,
 their titles cut short with "…", the others divided by a hairline; the
@@ -653,21 +653,38 @@ selected one is a raised tab with rounded top corners that opens into
 the content (`.opens_into(fill, ink)` when the content isn't the panel,
 e.g. Terminal's screen, so the tab takes its colour) or, with
 `.closed()`, stands on the strip's edge (content that isn't that tab's
-alone); `.group(name, colour)` leads the row with the name in a chip of
-its colour (the chip alone says whose the tabs are: no band or line
-runs along them, nothing to clash with their icons); close boxes,
-middle-click to close, a + button, drag along the row to reorder; it
-returns a `StripAction` (`Select`, `Close`, `New`, `Menu(i, pos)` for a
-right-click, `Move { from, to }`); each tab is a `Tab` in the
-accessibility tree with its status in its name; `.side()` stands the tabs
+alone); `.groups(&[StripGroup { name, color }])` and each tab's `group`
+(into them; a group's tabs side by side) lead each group's tabs with a
+chip of its name in its colour, a gap before it, and a 2-point line of
+the colour over them from the chip (nothing on the tabs themselves, to
+clash with their icons); the chip's text is on the tabs' centre line,
+not the snapped chip's, so it is level with their titles at 1.5×;
+close boxes, middle-click to close, a + button, drag along the row to
+reorder; it returns a `StripAction` (`Select`, `Close`, `New`,
+`Menu(i, pos)` for a right-click, `Move { from, to, group }`: `to`
+among the other tabs and the group it's in there, `dropped_into`:
+between two of a group's tabs that group, at a group's edge the group
+of the tab the pointer is over, so it joins over its first or last tab
+and leaves past them, a group's only tab keeping its group unless
+dropped on another; `Group(g, pos)` for a click on a chip,
+`MoveGroup { group, to }` for a chip dragged, never into another group,
+`group_place`; `TearOff { tab, at }` and `TearOffGroup { group, at }`
+for a tab or chip let go out of the window or `TEAR` (40) beyond the
+strip, the cursor a grabbing hand meanwhile and no place marked: the
+app makes it a window of its own, which `WindowOptions::under_pointer()`
+opens with its tab under the pointer, alone rather than in its app's
+window group); each tab is a `Tab` in the accessibility tree with its
+status and group ("…, in Alpha") in its name, each chip a `Button`
+"Group Alpha"; `.side()` stands the tabs
 down the left of the content instead: a column `STRIP_SIDE_WIDTH` (180)
 wide by default of rounded rows `STRIP_SIDE_TAB` (24) tall, with the same
 room (`metrics::TIGHT`, 4) on every side of each, from the window's
 edge, the strip's edge line, what is above the strip (a menu bar) and
 the row before (fewer points each, on the 2-point grid, when there are
 too many to fit); the selected tab raised in the content's colours
-(`opens_into`) with an edge all round, the group's chip a row above the
-first, the chip's name and the tabs' icons under the menu bar's first
+(`opens_into`) with an edge all round, each group's chip a row above
+its first tab and a 2-point bar of its colour down the left beside its
+chip and tabs, the chip's name and the tabs' icons under the menu bar's first
 title, a New Tab row after the last, and a grip along the right edge (a `Splitter`, "Tab Width")
 that returns `Resize { width, done }` between `STRIP_SIDE_MIN` and
 `STRIP_SIDE_MAX` for the app to keep, `done` once the drag ends; drag
@@ -3144,14 +3161,36 @@ Claude Code reply in a test session (its HOME the person's, its
 `CLAUDE*` variables unset), with a stand-in browser in the test HOME's
 `mimeapps.list`.
 
-**Groups** (`src/groups.rs`). A window can be a named group with a colour
-(Tabs ▸ Group ▸ Name Group…, or click the group's name in the strip): the
-name leads the strip in its colour (its chip; the tabs stay plain), the
-window's title is "name — tab", set the moment a program retitles its tab
-(`retitle`: Claude Code's status glyph in it), not at the next frame.
-Save Group keeps the group and each tab's folder in
-`terminal-groups.json` (config dir); Open Saved Group brings its window
-forward, or opens one with a shell in each folder; Forget Saved Group
+**Groups** (`src/groups.rs`). A window's tabs can be in groups, as a
+browser's: each a name and a colour (`TermWin::groups`, each tab's
+`Tab::group` into them), its tabs side by side (`TermWin::tidy` keeps
+them so, in the order they first come, and drops a group left with no
+tab). Make one with Tabs ▸ Group ▸ New Group… or a tab's Add to Group ▸
+New Group…; put a tab in one with Add to Group ▸ (name), take it out
+with Remove from Group, or drag it: among a group's tabs it joins,
+past its group's edge it leaves (the kit's `dropped_into`). A new tab
+from a grouped one joins its group. Drag a group's chip to move the
+whole group; click it for its menu (Rename Group…, New Tab in Group,
+Save Group, Move Group to New Window, Ungroup, Close Group, Show All
+Tabs, its repository's worktrees); Tabs ▸ Group has the same for the
+group of the tab showing (`group_command`; commands carry the group's
+index or the tab's shell). A tab or a group dragged out of the strip
+and let go becomes a window under the pointer; a tab's menu also has
+Move to New Window and Move to Window ▸ (Terminal's other windows,
+named by one of their shells: `tab-to:SHELL:TARGET`). The window's
+title is "group — tab" for the tab showing, set the moment a program
+retitles its tab (`retitle`: Claude Code's status glyph in it), not at
+the next frame. A tab in a git repository is in that repository's group
+on its own (repos.rs `auto_group`): the group beside it, else one made
+for it in the colour that repository's group has in another window;
+never one elsewhere in the window (a tab doesn't jump on `cd`), nor
+once the person took it out of a group (`Tab::own_grouping`); one that
+leaves the repository leaves a group it joined on its own. `--tab -w
+DIR` opens at the end of the group for DIR's repository, if one is
+here. Save Group keeps the group and each of its tabs' folders in
+`terminal-groups.json` (config dir); Open Saved Group shows its first
+tab where it is open, else adds it to the window it was chosen in (a
+shell in each folder); Forget Saved Group
 drops it. Show All Tabs (Tabs menu or the group's menu, ⌘⇧D) shows
 every tab of the window at once, each a live pane with its title over
 it (`tile` picks the columns that keep panes nearest a terminal's

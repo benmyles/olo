@@ -2635,6 +2635,16 @@ pub struct StripTab<'a> {
     /// box goes (Terminal's pull request state); the title makes room.
     /// Like the icon, only on a tab wide enough for one.
     pub badge: Option<PaintIcon<'a>>,
+    /// The group it's in (into [`TabStrip::groups`]). A group's tabs are
+    /// side by side.
+    pub group: Option<usize>,
+}
+
+/// A group of a [`TabStrip`]'s tabs: the name on its chip, and its colour.
+#[derive(Debug, Clone, Copy)]
+pub struct StripGroup<'a> {
+    pub name: &'a str,
+    pub color: Color32,
 }
 
 /// What the person did to a [`TabStrip`].
@@ -2646,14 +2656,27 @@ pub enum StripAction {
     New,
     /// A right-click on a tab, at the pointer.
     Menu(usize, Pos2),
-    /// A tab dragged along the row to another place.
-    Move { from: usize, to: usize },
-    /// A click on the group's name, at the pointer.
-    Group(Pos2),
+    /// A tab dragged along the row to another place: `to` among the
+    /// others, and the group it's in there (`dropped_into`: dropped
+    /// among a group's tabs it joins, away from its own it leaves).
+    Move { from: usize, to: usize, group: Option<usize> },
+    /// A group's chip dragged: its tabs go to `to` among the others (never
+    /// inside another group).
+    MoveGroup { group: usize, to: usize },
+    /// A click on a group's chip, at the pointer.
+    Group(usize, Pos2),
+    /// A tab dragged out of the strip and let go there (`at`, in the
+    /// window's coordinates, maybe outside it): a window of its own.
+    TearOff { tab: usize, at: Pos2 },
+    /// Likewise a group, by its chip: a window of its tabs.
+    TearOffGroup { group: usize, at: Pos2 },
     /// A [`TabStrip::side`] strip's edge dragged: its width now, and
     /// whether it was let go (time to save it).
     Resize { width: f32, done: bool },
 }
+
+/// How far out of a [`TabStrip`] a tab or group is dragged to tear it off.
+const TEAR: f32 = 40.0;
 
 /// Widest a [`TabStrip`] tab grows.
 pub const STRIP_TAB_MAX: f32 = 220.0;
@@ -2704,7 +2727,7 @@ pub struct TabStrip<'a> {
     active: usize,
     max_width: f32,
     new_tab: bool,
-    group: Option<(&'a str, Color32)>,
+    groups: &'a [StripGroup<'a>],
     content: Option<(Color32, Color32)>,
     closed: bool,
     side: bool,
@@ -2712,7 +2735,7 @@ pub struct TabStrip<'a> {
 
 impl<'a> TabStrip<'a> {
     pub fn new(id: impl std::hash::Hash + std::fmt::Debug, tabs: &'a [StripTab<'a>], active: usize) -> Self {
-        TabStrip { id: Id::unique(id), tabs, active, max_width: STRIP_TAB_MAX, new_tab: true, group: None, content: None, closed: false, side: false }
+        TabStrip { id: Id::unique(id), tabs, active, max_width: STRIP_TAB_MAX, new_tab: true, groups: &[], content: None, closed: false, side: false }
     }
 
     /// Down the content's left side rather than along its top: a column
@@ -2736,10 +2759,12 @@ impl<'a> TabStrip<'a> {
         self
     }
 
-    /// The tabs are a named group: its name leads the row on a chip of
-    /// its colour (clicking it gives [`StripAction::Group`]).
-    pub fn group(mut self, name: &'a str, color: Color32) -> Self {
-        self.group = Some((name, color));
+    /// The groups its tabs are in ([`StripTab::group`]): each group's
+    /// tabs are led by a chip with its name in its colour, a line of it
+    /// over them (beside them, down the side). Clicking a chip gives
+    /// [`StripAction::Group`]; dragging it, [`StripAction::MoveGroup`].
+    pub fn groups(mut self, groups: &'a [StripGroup<'a>]) -> Self {
+        self.groups = groups;
         self
     }
 
@@ -2779,31 +2804,62 @@ impl<'a> TabStrip<'a> {
         painter.rect_filled(full, 0.0, well);
         let top = full.top() + STRIP_TAB_TOP;
         let mut action = None;
-        let mut strip = full;
-        if let Some((name, color)) = self.group {
-            let text_w = style::label_width(ui.ctx(), name, bold_font());
-            let chip_h = 18.0;
-            // Level with the tabs' faces.
-            let cy = ((top + 1.0 + full.bottom()) / 2.0).round();
-            let chip = Rect::from_min_size(pos2(full.left() + m::TIGHT, cy - chip_h / 2.0), vec2(((text_w + 2.0 * m::SPACING) / 2.0).ceil() * 2.0, chip_h));
-            let chip = style::snap(ui.ctx(), chip);
-            let resp = ui.interact(chip, self.id.with("group"), Sense::click());
-            resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Group {name}")));
-            let tone = if resp.hovered() { color.lerp_to_gamma(Color32::WHITE, 0.12) } else { color };
-            painter.rect_filled(chip, 4.0, tone);
-            let chip_ink = c(p.ink_on(color.to_array()));
-            style::label(&painter, chip.center().x, chip.center().y, Align::Center, name, bold_font(), chip_ink);
-            if resp.clicked() || resp.secondary_clicked() {
-                action = resp.interact_pointer_pos().map(StripAction::Group);
-            }
-            strip.min.x = chip.right() + m::TIGHT;
-        }
         let n = self.tabs.len();
+        let groups_of: Vec<Option<usize>> = self.tabs.iter().map(|t| t.group.filter(|&g| g < self.groups.len())).collect();
+        let leads = |i: usize| groups_of[i].is_some() && (i == 0 || groups_of[i - 1] != groups_of[i]);
+        let chip_h = 18.0;
+        let chip_w = |g: usize| ((style::label_width(ui.ctx(), self.groups[g].name, bold_font()) + 2.0 * m::SPACING) / 2.0).ceil() * 2.0;
+        // (A chip after a tab stands a little apart from it.)
+        let chips_w: f32 = (0..n).filter(|&i| leads(i)).map(|i| chip_w(groups_of[i].unwrap_or(0)) + m::TIGHT + if i > 0 { m::TIGHT } else { 0.0 }).sum();
         let new_w = if self.new_tab { m::CONTROL_HEIGHT + m::TIGHT } else { 0.0 };
         // On the 2-point grid, so every tab's edges are on device pixels.
-        let width = (((strip.width() - 2.0 * m::TIGHT - new_w) / n.max(1) as f32).min(self.max_width) / 2.0).floor().max(1.0) * 2.0;
-        let slot = |i: usize| Rect::from_min_max(pos2(strip.left() + m::TIGHT + i as f32 * width, top), pos2(strip.left() + m::TIGHT + (i + 1) as f32 * width, full.bottom()));
+        let width = (((full.width() - 2.0 * m::TIGHT - new_w - chips_w) / n.max(1) as f32).min(self.max_width) / 2.0).floor().max(1.0) * 2.0;
+        // Where each group's chip and each tab go, left to right; a chip
+        // level with the tabs' faces.
+        let cy = ((top + 1.0 + full.bottom()) / 2.0).round();
+        let mut chips: Vec<(usize, usize, Rect)> = Vec::new();
+        let mut slots: Vec<Rect> = Vec::with_capacity(n);
+        let mut x = full.left() + m::TIGHT;
+        for i in 0..n {
+            if let Some(g) = groups_of[i].filter(|_| leads(i)) {
+                if i > 0 {
+                    x += m::TIGHT;
+                }
+                let w = chip_w(g);
+                chips.push((g, i, style::snap(ui.ctx(), Rect::from_min_size(pos2(x, cy - chip_h / 2.0), vec2(w, chip_h)))));
+                x += w + m::TIGHT;
+            }
+            slots.push(Rect::from_min_max(pos2(x, top), pos2(x + width, full.bottom())));
+            x += width;
+        }
+        let end = x;
+        let slot = |i: usize| slots[i];
+        // Where a dragged tab or group would go before tab `i`: before its
+        // chip, if it leads a group.
+        let before = |i: usize| chips.iter().find(|c| c.1 == i).map_or(slot(i).left(), |c| c.2.left() - m::TIGHT / 2.0);
         let drag_id = self.id.with("dragging");
+        let group_drag = self.id.with("dragging-group");
+        for &(g, first, chip) in &chips {
+            let StripGroup { name, color } = self.groups[g];
+            let last = (first..n).take_while(|&i| groups_of[i] == Some(g)).last().unwrap_or(first);
+            // A line of its colour over its tabs, from its chip.
+            let over = style::snap(ui.ctx(), Rect::from_min_max(pos2(chip.left(), top - 3.0), pos2(slot(last).right(), top - 1.0)));
+            painter.rect_filled(over, 0.0, color);
+            let resp = ui.interact(chip, self.id.with(("group", g, first)), Sense::click_and_drag());
+            resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Group {name}")));
+            let tone = if resp.hovered() || resp.dragged() { color.lerp_to_gamma(Color32::WHITE, 0.12) } else { color };
+            painter.rect_filled(chip, 4.0, tone);
+            let chip_ink = c(p.ink_on(color.to_array()));
+            // On the tabs' line (`cy`), level with their titles: the chip,
+            // snapped, may be centred a third of a pixel off it.
+            style::label(&painter, chip.center().x, cy, Align::Center, name, bold_font(), chip_ink);
+            if resp.clicked() || resp.secondary_clicked() {
+                action = resp.interact_pointer_pos().map(|at| StripAction::Group(g, at));
+            }
+            if resp.drag_started() && groups_of.iter().any(|x| *x != Some(g)) {
+                ui.ctx().data_mut(|d| d.insert_temp(group_drag, g));
+            }
+        }
         // Where everything is, and what the pointer is over, before
         // anything is drawn: a hovered tab loses its separators.
         let close_box = |r: Rect| Rect::from_center_size(pos2(r.right() - m::TIGHT - 9.0, ((r.top() + 1.0 + r.bottom()) / 2.0).round()), vec2(16.0, 16.0));
@@ -2822,7 +2878,8 @@ impl<'a> TabStrip<'a> {
                 let line = style::hairline(ui.ctx());
                 painter.rect_filled(Rect::from_min_max(r.min + vec2(line, 2.0), r.max), top_corners, hover_fill);
             }
-            if i + 1 < n && !lit(i) && !lit(i + 1) {
+            // (None before a chip: it stands apart.)
+            if i + 1 < n && !lit(i) && !lit(i + 1) && !leads(i + 1) {
                 vline_left_of(&painter, r.right(), r.top() + 6.0, r.bottom() - 5.0, edge);
             }
         }
@@ -2845,10 +2902,7 @@ impl<'a> TabStrip<'a> {
             let r = slot(i);
             let selected = i == self.active;
             let (resp, close_resp) = &responses[i];
-            let name = match tab.status {
-                Some(s) => format!("{}, {s}", tab.label),
-                None => tab.label.to_owned(),
-            };
+            let name = strip_tab_name(tab, groups_of[i].map(|g| self.groups[g].name));
             resp.widget_info(|| WidgetInfo { selected: Some(selected), ..WidgetInfo::labeled(Role::Tab, true, &name) });
             let cy = ((r.top() + 1.0 + r.bottom()) / 2.0).round();
             // Centred in the tab, under its top edge, not in the strip.
@@ -2861,18 +2915,55 @@ impl<'a> TabStrip<'a> {
                 ui.ctx().data_mut(|d| d.insert_temp(drag_id, i));
             }
         }
-        // A tab being dragged: a mark where it would go.
-        if let Some(from) = ui.ctx().data(|d| d.get_temp::<usize>(drag_id)) {
-            let pointer = ui.ctx().pointer_latest_pos();
-            let to = pointer.map_or(from, |pos| (((pos.x - strip.left() - m::TIGHT) / width).round().max(0.0) as usize).min(n));
-            let x = slot(to).left().clamp(strip.left() + 1.0, strip.right() - 2.0);
-            let mark = c(p.keyboard_navigation);
+        let pointer = ui.ctx().pointer_latest_pos();
+        let mark = c(p.keyboard_navigation);
+        let draw_mark = |x: f32| {
+            let x = x.clamp(full.left() + 1.0, full.right() - 2.0);
             painter.rect_filled(Rect::from_min_max(pos2(x - 1.0, top), pos2(x + 1.0, full.bottom() - 1.0)), 0.0, mark);
+        };
+        // Out of the strip, well above or below it or out of the window:
+        // torn off, to be a window of its own.
+        let screen = ui.ctx().content_rect();
+        let out = pointer.filter(|pos| !screen.contains(*pos) || pos.y < full.top() - TEAR || pos.y > full.bottom() + TEAR);
+        // A tab being dragged: a mark where it would go.
+        if let Some(from) = ui.ctx().data(|d| d.get_temp::<usize>(drag_id)).filter(|&f| f < n) {
+            let others: Vec<usize> = (0..n).filter(|&i| i != from).collect();
+            let to = pointer.map_or(from, |pos| others.iter().filter(|&&i| slot(i).center().x < pos.x).count());
+            let edge = others.get(to).map_or_else(|| others.last().map_or(end, |&i| slot(i).right()), |&i| before(i));
+            if out.is_some() {
+                ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+            } else {
+                draw_mark(edge);
+            }
             if !ui.input(|i| i.pointer.any_down()) {
                 ui.ctx().data_mut(|d| d.remove::<usize>(drag_id));
-                let to = if to > from { to - 1 } else { to };
-                if to != from && from < n {
-                    action = Some(StripAction::Move { from, to });
+                let group = dropped_into(&groups_of, from, to, pointer.is_some_and(|p| p.x < edge));
+                if let Some(at) = out {
+                    action = Some(StripAction::TearOff { tab: from, at });
+                } else if to != from || group != groups_of[from] {
+                    action = Some(StripAction::Move { from, to, group });
+                }
+            } else {
+                ui.ctx().request_repaint();
+            }
+        }
+        // A group being dragged by its chip: likewise, for all its tabs.
+        if let Some(g) = ui.ctx().data(|d| d.get_temp::<usize>(group_drag)) {
+            let others: Vec<usize> = (0..n).filter(|&i| groups_of[i] != Some(g)).collect();
+            let near = pointer.map_or(0, |pos| others.iter().filter(|&&i| slot(i).center().x < pos.x).count());
+            let to = group_place(&groups_of, g, near);
+            if out.is_some() {
+                ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+            } else {
+                draw_mark(others.get(to).map_or_else(|| others.last().map_or(end, |&i| slot(i).right()), |&i| before(i)));
+            }
+            if !ui.input(|i| i.pointer.any_down()) {
+                ui.ctx().data_mut(|d| d.remove::<usize>(group_drag));
+                let first = groups_of.iter().position(|x| *x == Some(g)).unwrap_or(0);
+                if let Some(at) = out {
+                    action = Some(StripAction::TearOffGroup { group: g, at });
+                } else if to != others.iter().filter(|&&i| i < first).count() {
+                    action = Some(StripAction::MoveGroup { group: g, to });
                 }
             } else {
                 ui.ctx().request_repaint();
@@ -2880,7 +2971,7 @@ impl<'a> TabStrip<'a> {
         }
         if self.new_tab {
             let cy = ((top + 1.0 + full.bottom()) / 2.0).round();
-            let plus = style::snap_centred(ui.ctx(), pos2(strip.left() + m::TIGHT + n as f32 * width + m::TIGHT + 11.0, cy), vec2(22.0, 22.0));
+            let plus = style::snap_centred(ui.ctx(), pos2(end + m::TIGHT + 11.0, cy), vec2(22.0, 22.0));
             let resp = ui.interact(plus, self.id.with("new"), Sense::click());
             resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, "New Tab"));
             let color = if resp.hovered() {
@@ -2932,34 +3023,59 @@ impl TabStrip<'_> {
         let pad = m::TIGHT;
         let left = full.left() + pad;
         let right = full.right() - line - pad;
-        let mut top = full.top() + pad;
+        let top = full.top() + pad;
         let mut action = None;
-        if let Some((name, color)) = self.group {
-            // The chip has a row of its own.
-            let chip_h = 20.0;
+        let n = self.tabs.len();
+        let groups_of: Vec<Option<usize>> = self.tabs.iter().map(|t| t.group.filter(|&g| g < self.groups.len())).collect();
+        let leads = |i: usize| groups_of[i].is_some() && (i == 0 || groups_of[i - 1] != groups_of[i]);
+        // A row for each group's chip, before its tabs.
+        let chip_rows = (0..n).filter(|&i| leads(i)).count();
+        let rows = n + chip_rows + usize::from(self.new_tab);
+        // A tab and the room under it, on the 2-point grid.
+        let pitch = (((full.bottom() - top) / rows.max(1) as f32).min(STRIP_SIDE_TAB + pad) / 2.0).floor().max(10.0) * 2.0;
+        let row_rect = |k: usize| {
+            let y = top + k as f32 * pitch;
+            style::snap(&ctx, Rect::from_min_max(pos2(left, y), pos2(right, y + pitch - pad)))
+        };
+        let mut chips: Vec<(usize, usize, Rect)> = Vec::new();
+        let mut slots: Vec<Rect> = Vec::with_capacity(n);
+        let mut k = 0;
+        for i in 0..n {
+            if let Some(g) = groups_of[i].filter(|_| leads(i)) {
+                chips.push((g, i, row_rect(k)));
+                k += 1;
+            }
+            slots.push(row_rect(k));
+            k += 1;
+        }
+        let end_row = row_rect(k);
+        let slot = |i: usize| slots[i];
+        let before = |i: usize| chips.iter().find(|c| c.1 == i).map_or(slot(i).top(), |c| c.2.top());
+        let drag_id = self.id.with("dragging");
+        let group_drag = self.id.with("dragging-group");
+        for &(g, first, row) in &chips {
+            let StripGroup { name, color } = self.groups[g];
+            let last = (first..n).take_while(|&i| groups_of[i] == Some(g)).last().unwrap_or(first);
+            // A line of its colour beside its tabs, from its chip.
+            let beside = style::snap(&ctx, Rect::from_min_max(pos2(full.left() + 1.0, row.top()), pos2(full.left() + 3.0, slot(last).bottom())));
+            painter.rect_filled(beside, 0.0, color);
+            let chip_h = 20.0f32.min(row.height());
             let room = right - left - 2.0 * m::SPACING;
             let text_w = style::label_width(&ctx, name, bold_font()).min(room);
-            let chip = style::snap(&ctx, Rect::from_min_size(pos2(left, top + (STRIP_SIDE_TAB - chip_h) / 2.0), vec2((text_w + 2.0 * m::SPACING).round(), chip_h)));
-            let resp = ui.interact(chip, self.id.with("group"), Sense::click());
+            let chip = style::snap(&ctx, Rect::from_min_size(pos2(left, row.center().y - chip_h / 2.0), vec2((text_w + 2.0 * m::SPACING).round(), chip_h)));
+            let resp = ui.interact(chip, self.id.with(("group", g, first)), Sense::click_and_drag());
             resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Group {name}")));
-            let tone = if resp.hovered() { color.lerp_to_gamma(Color32::WHITE, 0.12) } else { color };
+            let tone = if resp.hovered() || resp.dragged() { color.lerp_to_gamma(Color32::WHITE, 0.12) } else { color };
             painter.rect_filled(chip, 4.0, tone);
             let chip_ink = c(p.ink_on(color.to_array()));
             style::label_fit(&painter, chip.left() + m::SPACING, chip.center().y, Align::Min, name, bold_font(), chip_ink, text_w);
             if resp.clicked() || resp.secondary_clicked() {
-                action = resp.interact_pointer_pos().map(StripAction::Group);
+                action = resp.interact_pointer_pos().map(|at| StripAction::Group(g, at));
             }
-            top += STRIP_SIDE_TAB + pad;
+            if resp.drag_started() && groups_of.iter().any(|x| *x != Some(g)) {
+                ctx.data_mut(|d| d.insert_temp(group_drag, g));
+            }
         }
-        let n = self.tabs.len();
-        let rows = n + usize::from(self.new_tab);
-        // A tab and the room under it, on the 2-point grid.
-        let pitch = (((full.bottom() - top) / rows.max(1) as f32).min(STRIP_SIDE_TAB + pad) / 2.0).floor().max(10.0) * 2.0;
-        let slot = |i: usize| {
-            let y = top + i as f32 * pitch;
-            style::snap(&ctx, Rect::from_min_max(pos2(left, y), pos2(right, y + pitch - pad)))
-        };
-        let drag_id = self.id.with("dragging");
         let close_box = |r: Rect| style::snap_centred(&ctx, pos2(r.right() - m::TIGHT - 9.0, r.center().y.round()), vec2(16.0, 16.0));
         let responses: Vec<(Response, Response)> = (0..n)
             .map(|i| {
@@ -2988,10 +3104,7 @@ impl TabStrip<'_> {
             let r = slot(i);
             let selected = i == self.active;
             let (resp, close_resp) = &responses[i];
-            let name = match tab.status {
-                Some(s) => format!("{}, {s}", tab.label),
-                None => tab.label.to_owned(),
-            };
+            let name = strip_tab_name(tab, groups_of[i].map(|g| self.groups[g].name));
             resp.widget_info(|| WidgetInfo { selected: Some(selected), ..WidgetInfo::labeled(Role::Tab, true, &name) });
             let inks = FaceInks { fill, ink, dim, hover: hover_fill };
             if let Some(a) = tab_face(ui, &painter, tab, i, selected, (resp, close_resp), (r, r.center().y.round(), close_box(r)), r.width() >= 72.0, inks) {
@@ -3001,26 +3114,61 @@ impl TabStrip<'_> {
                 ctx.data_mut(|d| d.insert_temp(drag_id, i));
             }
         }
-        // A tab being dragged: a mark where it would go, in the room
-        // between two.
-        if let Some(from) = ctx.data(|d| d.get_temp::<usize>(drag_id)) {
-            let pointer = ctx.pointer_latest_pos();
-            let to = pointer.map_or(from, |pos| (((pos.y - top + pad / 2.0) / pitch).round().max(0.0) as usize).min(n));
-            let y = (top + to as f32 * pitch - pad / 2.0).clamp(full.top() + 1.0, full.bottom() - 1.0);
-            let mark = c(p.keyboard_navigation);
+        // A tab or group being dragged: a mark where it would go, in the
+        // room between two.
+        let pointer = ctx.pointer_latest_pos();
+        let mark = c(p.keyboard_navigation);
+        let draw_mark = |y: f32| {
+            let y = (y - pad / 2.0).clamp(full.top() + 1.0, full.bottom() - 1.0);
             painter.rect_filled(style::snap(&ctx, Rect::from_min_max(pos2(left, y - 1.0), pos2(right, y + 1.0))), 0.0, mark);
+        };
+        // Well out to the right of the strip, or out of the window: torn off.
+        let screen = ctx.content_rect();
+        let out = pointer.filter(|pos| !screen.contains(*pos) || pos.x > full.right() + TEAR);
+        if let Some(from) = ctx.data(|d| d.get_temp::<usize>(drag_id)).filter(|&f| f < n) {
+            let others: Vec<usize> = (0..n).filter(|&i| i != from).collect();
+            let to = pointer.map_or(from, |pos| others.iter().filter(|&&i| slot(i).center().y < pos.y).count());
+            let edge = others.get(to).map_or(end_row.top(), |&i| before(i));
+            if out.is_some() {
+                ctx.set_cursor_icon(CursorIcon::Grabbing);
+            } else {
+                draw_mark(edge);
+            }
             if !ui.input(|i| i.pointer.any_down()) {
                 ctx.data_mut(|d| d.remove::<usize>(drag_id));
-                let to = if to > from { to - 1 } else { to };
-                if to != from && from < n {
-                    action = Some(StripAction::Move { from, to });
+                let group = dropped_into(&groups_of, from, to, pointer.is_some_and(|p| p.y < edge - pad / 2.0));
+                if let Some(at) = out {
+                    action = Some(StripAction::TearOff { tab: from, at });
+                } else if to != from || group != groups_of[from] {
+                    action = Some(StripAction::Move { from, to, group });
+                }
+            } else {
+                ctx.request_repaint();
+            }
+        }
+        if let Some(g) = ctx.data(|d| d.get_temp::<usize>(group_drag)) {
+            let others: Vec<usize> = (0..n).filter(|&i| groups_of[i] != Some(g)).collect();
+            let near = pointer.map_or(0, |pos| others.iter().filter(|&&i| slot(i).center().y < pos.y).count());
+            let to = group_place(&groups_of, g, near);
+            if out.is_some() {
+                ctx.set_cursor_icon(CursorIcon::Grabbing);
+            } else {
+                draw_mark(others.get(to).map_or(end_row.top(), |&i| before(i)));
+            }
+            if !ui.input(|i| i.pointer.any_down()) {
+                ctx.data_mut(|d| d.remove::<usize>(group_drag));
+                let first = groups_of.iter().position(|x| *x == Some(g)).unwrap_or(0);
+                if let Some(at) = out {
+                    action = Some(StripAction::TearOffGroup { group: g, at });
+                } else if to != others.iter().filter(|&&i| i < first).count() {
+                    action = Some(StripAction::MoveGroup { group: g, to });
                 }
             } else {
                 ctx.request_repaint();
             }
         }
         if self.new_tab {
-            let r = slot(n);
+            let r = end_row;
             let resp = ui.interact(r, self.id.with("new"), Sense::click());
             resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, "New Tab"));
             let color = if resp.hovered() {
@@ -3056,6 +3204,45 @@ impl TabStrip<'_> {
         }
         action
     }
+}
+
+/// A [`TabStrip`] tab's name to screen readers and agents: its title,
+/// what it's doing, and its group.
+fn strip_tab_name(tab: &StripTab, group: Option<&str>) -> String {
+    let mut name = tab.label.to_owned();
+    if let Some(s) = tab.status {
+        name = format!("{name}, {s}");
+    }
+    if let Some(g) = group {
+        name = format!("{name}, in {g}");
+    }
+    name
+}
+
+/// The group a tab is in once dropped: `groups` each tab's, tab `from`
+/// put at `to` among the others, the pointer `before` that place (over
+/// the tab before it) or after. Among a group's tabs it is in that group;
+/// at a group's edge, the group of the tab the pointer is over (so it
+/// joins a group over its first or last tab, and leaves one past them);
+/// a group's only tab keeps its group unless dropped on another.
+fn dropped_into(groups: &[Option<usize>], from: usize, to: usize, before: bool) -> Option<usize> {
+    let others: Vec<Option<usize>> = groups.iter().enumerate().filter(|&(i, _)| i != from).map(|(_, g)| *g).collect();
+    let left = to.checked_sub(1).and_then(|i| others.get(i)).copied().flatten();
+    let right = others.get(to).copied().flatten();
+    let own = groups.get(from).copied().flatten();
+    if left.is_some() && left == right {
+        return left;
+    }
+    let over = if before { left } else { right };
+    if own.is_some() && !others.contains(&own) { over.or(own) } else { over }
+}
+
+/// The place among the tabs outside group `g` nearest `to` that isn't
+/// inside another group: where a dragged group goes.
+fn group_place(groups: &[Option<usize>], g: usize, to: usize) -> usize {
+    let others: Vec<Option<usize>> = groups.iter().copied().filter(|x| *x != Some(g)).collect();
+    let between = |k: usize| k == 0 || k == others.len() || others[k - 1].is_none() || others[k - 1] != others[k];
+    (0..=others.len()).filter(|&k| between(k)).min_by_key(|&k| k.abs_diff(to)).unwrap_or(0)
 }
 
 /// The colours a [`TabStrip`] tab's face is drawn in.
@@ -3592,3 +3779,39 @@ pub fn conversation(ui: &mut Ui, conv: &mut Conversation, divider: f32, width: f
     entered
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::{dropped_into, group_place};
+
+    #[test]
+    fn strip_drops() {
+        // Tabs: a b | G0: c d e | f | G1: g h
+        let g = [None, None, Some(0), Some(0), Some(0), None, Some(1), Some(1)];
+        // Dropped among a group's tabs: that group, wherever the pointer.
+        assert_eq!(dropped_into(&g, 0, 3, true), Some(0));
+        assert_eq!(dropped_into(&g, 5, 6, false), Some(1));
+        // At a group's edge: the group of the tab the pointer is over.
+        assert_eq!(dropped_into(&g, 0, 4, true), Some(0));
+        assert_eq!(dropped_into(&g, 0, 4, false), None);
+        assert_eq!(dropped_into(&g, 0, 1, false), Some(0));
+        assert_eq!(dropped_into(&g, 0, 5, false), Some(1));
+        // Moved within its group, or to its edge over its tabs: still in it.
+        assert_eq!(dropped_into(&g, 2, 4, true), Some(0));
+        assert_eq!(dropped_into(&g, 4, 2, false), Some(0));
+        // Past its group's edge, or away: in none.
+        assert_eq!(dropped_into(&g, 4, 2, true), None);
+        assert_eq!(dropped_into(&g, 3, 0, false), None);
+        // A group's only tab keeps it, unless dropped on another.
+        let g = [Some(0), None, None, Some(1), Some(1)];
+        assert_eq!(dropped_into(&g, 0, 1, true), Some(0));
+        assert_eq!(dropped_into(&g, 0, 2, false), Some(1));
+        assert_eq!(dropped_into(&g, 0, 3, true), Some(1));
+        // A group goes between runs, never inside another group.
+        let g = [None, Some(0), Some(0), Some(1), Some(1), Some(1), None];
+        assert_eq!(group_place(&g, 0, 3), 4);
+        assert_eq!(group_place(&g, 0, 2), 1);
+        assert_eq!(group_place(&g, 1, 2), 1);
+        assert_eq!(group_place(&g, 1, 0), 0);
+    }
+}

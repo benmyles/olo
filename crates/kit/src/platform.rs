@@ -2134,10 +2134,14 @@ impl Kit {
                 // A utility window (or a dialog: an xdg-dialog with no
                 // parent isn't one to app_server, as GTK 4 gives every
                 // window one): floats over auto-tiled windows.
-                if (options.floating || options.dialog || options.alert)
+                let tags: Vec<&str> = [(options.floating || options.dialog || options.alert, "floating"), (options.under_pointer, "under-pointer")]
+                    .into_iter()
+                    .filter_map(|(on, tag)| on.then_some(tag))
+                    .collect();
+                if !tags.is_empty()
                     && let Some(t) = &self.tags
                 {
-                    t.set_toplevel_tag(window.xdg_toplevel(), "floating".into());
+                    t.set_toplevel_tag(window.xdg_toplevel(), tags.join(" "));
                 }
                 window.commit();
                 Role::Toplevel(window)

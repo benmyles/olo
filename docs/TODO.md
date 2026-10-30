@@ -332,8 +332,9 @@ as they land (with the commit), add new ones as they come up.
   mouse; files opened in their app. Checked with a real Claude Code
   reply: a URL, a long one it wrapped (from either piece), `path:line`
   and a plain path, at 1×, 1.5× and 2×.
-- **Terminal: several groups, tabs moved between them, groups
-  reordered** (Ben, 2026-10-29): "in terminal make sure that i can
+- ~~**Terminal: several groups, tabs moved between them, groups
+  reordered**~~ (Ben, 2026-10-29; done: HACKING, Terminal's Groups and
+  the kit's `TabStrip`): "in terminal make sure that i can
   actually create multiple groups, move tabs between groups, reorder
   groups, and so on. because last time i tried (which was before your git
   worktree stuff) it didn't work." Today a group is a whole window (one
@@ -346,7 +347,28 @@ as they land (with the commit), add new ones as they come up.
   closes or moves the group to a new window; tabs and groups dragged
   onto another Terminal window's strip move there. In the kit's
   `TabStrip`, for other apps; repositories' own groups (repos.rs),
-  saved groups, `save_state` and agents (the tree) follow.
+  saved groups, `save_state` and agents (the tree) follow. Done as
+  written, except dragging onto another window's strip (next item);
+  meanwhile a tab's Move to Window ▸ moves it to another window. Also
+  done from the next item: a tab or group dragged out of the strip
+  becomes a window under the pointer. Checked by drags in a test
+  session, at 1×–2× (and 1.25×, 1.75×), light and dark, along the top
+  and down the side, and through an upgrade.
+- **Drag a window into another's tab bar to make it a tab** (Ben,
+  2026-10-29): "when there are apps with multiple windows and they also
+  support tabs we should be able to drag the window back into the tab
+  bar area to have it go back to being a tab instead of a window, and
+  the opposite we should be able to drag a tab out into being a window",
+  and "we should be able to drag a group out to make that whole group a
+  new window with those tabs". Done: a tab or group out into a window
+  (the kit's `TearOff`, `TearOffGroup`, `WindowOptions::under_pointer`).
+  To do: a window (by its tab, which app_server moves) let go over
+  another window of the same app's tab strip joins it there as a tab
+  (or its tabs, its groups kept), and a tab dragged out of one window's
+  strip onto another's goes into it: app_server tells the app where a
+  window of its own was let go (over which of its windows, where), the
+  kit says where its strips are, and the strip shows where it would go
+  while the window is over it.
 - **StyledEdit, much more featureful** (Ben, 2026-10-29, after
   everything else): "please improve StyledEdit to be much more featureful
   -- it doesn't need all the bells and whistles of, say, modern Word or

@@ -564,6 +564,34 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.keep_children_above();
     }
 
+    /// A window tagged `under-pointer` (a tab torn off a strip, let go
+    /// there): its tab under the pointer, as a browser's torn-off tab
+    /// opens, kept on the display's usable area, and on its own (not in
+    /// its app's window group, as a window dragged out of it).
+    pub fn place_under_pointer(&mut self, surface: &WlSurface) {
+        use smithay::wayland::{compositor, xdg_toplevel_tag::XdgToplevelTagSurfaceData};
+        let tagged = compositor::with_states(surface, |s| {
+            s.data_map.get::<XdgToplevelTagSurfaceData>().is_some_and(|d| d.tag().is_some_and(|t| t.split_whitespace().any(|t| t == "under-pointer")))
+        });
+        if !tagged {
+            return;
+        }
+        let Some(window) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface)).cloned() else { return };
+        let (Some(loc), Some(g)) = (self.space.element_location(&window), self.space.element_geometry(&window)) else { return };
+        let at = self.pointer.current_location().to_i32_round();
+        // Grabbed by its tab, a little in from its left, as it was dragged.
+        let grip = Point::from((g.loc.x - loc.x + 40, g.loc.y - loc.y + 10));
+        let mut want = at - grip;
+        if let Some(out) = self.space.output_under(at.to_f64()).next().cloned().and_then(|o| self.usable_area(&o)) {
+            let off = g.loc - loc;
+            want.x = want.x.min(out.loc.x + out.size.w - g.size.w - off.x).max(out.loc.x - off.x);
+            want.y = want.y.min(out.loc.y + out.size.h - g.size.h - off.y).max(out.loc.y - off.y);
+        }
+        // Where it was let go, on its own: not into its app's group.
+        *window.meta().grouping.borrow_mut() = crate::shell::groups::Grouping::Alone;
+        self.space.map_element(window, want, true);
+    }
+
     /// Open a window that names a parent (an alert, a dialog) over it, as
     /// Haiku's BAlert does: centred across, a quarter of the way down.
     pub fn place_over_parent(&mut self, surface: &WlSurface) {

@@ -827,6 +827,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     pub(crate) fn place_on_content(&mut self, surface: &WlSurface) {
         if surface_initial_mapped(surface) && self.restore_placement(surface) {
             self.place_over_parent(surface);
+            self.place_under_pointer(surface);
         }
     }
 }

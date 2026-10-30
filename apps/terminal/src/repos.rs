@@ -116,37 +116,55 @@ impl Terminal {
         }
     }
 
-    /// `win` becomes its repository's group if every tab in it is in the
-    /// same one, it has no group of the person's, and the person hasn't
-    /// ungrouped it. In the colour of another window of that repository,
-    /// if there is one. A group it had on its own goes when none of its
-    /// tabs is in its repository any more.
-    fn auto_group(&mut self, cx: &mut Cx, win: WindowId) {
+    /// Each tab of `win` in a repository is in that repository's group,
+    /// as a browser's tabs of a site: the group beside it, else one made
+    /// for it, in the colour that repository's group has in another window
+    /// (if one has). Not a tab the person took out of a group, nor one
+    /// whose repository's group is elsewhere in the window (a tab doesn't
+    /// jump there on its own). A tab no longer in the repository of the
+    /// group it joined on its own leaves it; a group left empty goes.
+    pub(crate) fn auto_group(&mut self, cx: &mut Cx, win: WindowId) {
+        let colors: Vec<(PathBuf, usize)> = self
+            .windows
+            .iter()
+            .filter(|(id, _)| **id != win)
+            .filter_map(|(_, w)| if let Win::Term(x) = w { Some(x) } else { None })
+            .flat_map(|x| x.groups.iter().filter_map(|g| Some((g.repo.clone()?, g.color))))
+            .collect();
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
-        if t.own_grouping || t.group.as_ref().is_some_and(|g| !g.auto) {
-            return;
-        }
-        let first = t.tabs.first().and_then(|x| x.repo.as_ref()).map(|r| (r.name.clone(), r.main.clone()));
-        let one = first.as_ref().filter(|(_, main)| t.tabs.iter().all(|x| x.repo.as_ref().is_some_and(|r| r.main == *main)));
-        if let Some(g) = &t.group {
-            if one.is_some_and(|(_, main)| g.repo.as_ref() == Some(main)) {
-                return;
+        let mut changed = false;
+        for i in 0..t.tabs.len() {
+            let main = t.tabs[i].repo.as_ref().map(|r| r.main.clone());
+            if let Some(g) = t.tabs[i].group
+                && t.groups[g].auto
+                && t.groups[g].repo != main
+            {
+                t.tabs[i].group = None;
+                changed = true;
             }
-            let still = t.tabs.iter().any(|x| x.repo.as_ref().is_some_and(|r| g.repo.as_ref() == Some(&r.main)));
-            if still {
-                return;
-            }
-            t.group = None;
-            cx.redraw(win);
         }
-        let Some((name, main)) = one.cloned() else { return };
-        let groups: Vec<&Group> = self.windows.values().filter_map(|w| if let Win::Term(x) = w { x.group.as_ref() } else { None }).collect();
-        let color = match groups.iter().find(|g| g.repo.as_ref() == Some(&main)) {
-            Some(g) => g.color,
-            None => crate::groups::new_color(&groups.iter().map(|g| g.color).collect::<Vec<_>>()),
-        };
-        if let Some(Win::Term(t)) = self.windows.get_mut(&win) {
-            t.group = Some(Group { name, color, repo: Some(main), auto: true });
+        for i in 0..t.tabs.len() {
+            if t.tabs[i].group.is_some() || t.tabs[i].own_grouping {
+                continue;
+            }
+            let Some(repo) = t.tabs[i].repo.as_ref() else { continue };
+            let (name, main) = (repo.name.clone(), repo.main.clone());
+            let beside = |j: Option<usize>| j.and_then(|j| t.tabs.get(j)).and_then(|x| x.group).filter(|&g| t.groups[g].repo.as_ref() == Some(&main));
+            let g = match beside(i.checked_sub(1)).or(beside(Some(i + 1))) {
+                Some(g) => g,
+                None if t.groups.iter().any(|g| g.repo.as_ref() == Some(&main)) => continue,
+                None => {
+                    let used: Vec<usize> = t.groups.iter().map(|g| g.color).collect();
+                    let color = colors.iter().find(|(m, _)| *m == main).map_or_else(|| crate::groups::new_color(&used), |(_, c)| *c);
+                    t.groups.push(Group { name, color, repo: Some(main), auto: true });
+                    t.groups.len() - 1
+                }
+            };
+            t.tabs[i].group = Some(g);
+            changed = true;
+        }
+        if changed {
+            t.tidy();
             cx.redraw(win);
         }
     }
@@ -155,7 +173,7 @@ impl Terminal {
     pub(crate) fn repo_of(&self, win: WindowId) -> Option<(PathBuf, String)> {
         let Some(Win::Term(t)) = self.windows.get(&win) else { return None };
         let named = |main: &PathBuf| main.file_name().map(|n| n.to_string_lossy().trim_end_matches(".git").to_owned()).unwrap_or_default();
-        if let Some(main) = t.group.as_ref().and_then(|g| g.repo.clone()) {
+        if let Some(main) = t.group().and_then(|g| g.repo.clone()) {
             let name = t.tabs.iter().filter_map(|x| x.repo.as_ref()).find(|r| r.main == main).map_or_else(|| named(&main), |r| r.name.clone());
             return Some((main, name));
         }

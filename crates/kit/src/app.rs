@@ -94,6 +94,10 @@ pub struct WindowOptions {
     /// can be any size. Dialogs and alerts float anyway. (The
     /// xdg-toplevel-tag `floating`.)
     pub floating: bool,
+    /// Opens with its tab under the pointer (a tab torn off a strip, let
+    /// go there), rather than where app_server would put it. (The
+    /// xdg-toplevel-tag `under-pointer`.)
+    pub under_pointer: bool,
     /// The file or folder it shows (a document, a folder, a shell's
     /// working folder), if any: its tab's menu offers Open in Tracker for
     /// it, and agents read it in its tree. [`Cx::set_path`] changes it.
@@ -154,6 +158,7 @@ impl Default for WindowOptions {
             alert: false,
             dialog: false,
             floating: false,
+            under_pointer: false,
             path: None,
         }
     }
@@ -203,6 +208,11 @@ impl WindowOptions {
     /// [`Self::floating`]).
     pub fn floating(mut self) -> Self {
         self.floating = true;
+        self
+    }
+    /// Opens with its tab under the pointer (see [`Self::under_pointer`]).
+    pub fn under_pointer(mut self) -> Self {
+        self.under_pointer = true;
         self
     }
     /// The file or folder it shows, if any (see [`Self::path`]).
