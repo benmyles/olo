@@ -2500,5 +2500,11 @@
   "title": "StyledEdit: the ruler, indents and tab stops",
   "caption": "A ruler over the text (the kit's ruler; Document \u25b8 Show Ruler): the caret's paragraph's first-line, left and right indents to drag, and tab stops: a click sets one, a drag moves it or takes it off, and its menu (or a double click) makes it left, centre, right or decimal. Tabs now go to stops (epaint's TabStops); here a left stop at 1\u00bd in and a decimal one at 2\u00bc in line up a price list. Indents and stops are kept in Word, OpenDocument and RTF.",
   "image": "2026-10-30/193751-stylededit-the-ruler-indents-and-tab-stops.png"
+ },
+ {
+  "time": "2026-10-30T20:42:25",
+  "title": "StyledEdit: Header & Footer",
+  "caption": "Document \u25b8 Header & Footer\u2026 sets a left, centre and right part above and below every printed page, {page} and {pages} standing for the page number and count. Kept in the file, and in Word, OpenDocument and RTF (checked in LibreOffice).",
+  "image": "2026-10-30/204225-stylededit-header-footer.png"
  }
 ]

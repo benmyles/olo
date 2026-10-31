@@ -177,6 +177,65 @@ pub struct Document {
     /// The font text without one of its own is set in (else the other
     /// program's default).
     pub font: Option<String>,
+    /// What each page shows above and below its text: its left, centre
+    /// and right parts, `{page}` and `{pages}` standing for the page's
+    /// number and how many pages there are.
+    pub header: [String; 3],
+    pub footer: [String; 3],
+}
+
+/// A piece of a header's or footer's part: text, or a field.
+#[derive(Debug, PartialEq)]
+pub(crate) enum Bit<'a> {
+    Text(&'a str),
+    Page,
+    Pages,
+}
+
+/// `part` as its text and fields, in order.
+pub(crate) fn bits(part: &str) -> Vec<Bit<'_>> {
+    let mut out = Vec::new();
+    let mut rest = part;
+    while let Some(at) = rest.find('{') {
+        let (field, len) = if rest[at..].starts_with("{pages}") {
+            (Bit::Pages, 7)
+        } else if rest[at..].starts_with("{page}") {
+            (Bit::Page, 6)
+        } else {
+            out.push(Bit::Text(&rest[..=at]));
+            rest = &rest[at + 1..];
+            continue;
+        };
+        if at > 0 {
+            out.push(Bit::Text(&rest[..at]));
+        }
+        out.push(field);
+        rest = &rest[at + len..];
+    }
+    if !rest.is_empty() {
+        out.push(Bit::Text(rest));
+    }
+    out
+}
+
+/// A header's or footer's text as read (its parts a tab apart, fields as
+/// `{page}` and `{pages}`) made its three parts: one part alone goes where
+/// its paragraph's alignment puts it.
+pub(crate) fn parts(text: &str, align: Align) -> [String; 3] {
+    let text = text.trim_matches(['\n', ' ']);
+    let mut v: Vec<String> = text.split('\t').map(|s| s.trim().to_owned()).collect();
+    if v.len() == 1 {
+        let one = v.remove(0);
+        return match align {
+            Align::Center => [String::new(), one, String::new()],
+            Align::Right => [String::new(), String::new(), one],
+            _ => [one, String::new(), String::new()],
+        };
+    }
+    v.resize(3, String::new());
+    // (More than three: the rest goes on the right.)
+    let right = v[2..].iter().filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>().join(" ");
+    [v[0].clone(), v[1].clone(), right]
 }
 
 impl Document {
@@ -340,6 +399,8 @@ mod tests {
                 p(Kind::Body, vec![]),
             ],
             font: Some("Noto Sans".into()),
+            header: ["Olo".into(), String::new(), "{page} of {pages}".into()],
+            footer: [String::new(), "Page {page}".into(), String::new()],
         }
     }
 
@@ -350,7 +411,7 @@ mod tests {
                 spans: vec![Span::default().with_text("a"), Span::default().with_text("b\nc"), Span { bold: true, ..Span::default().with_text("") }],
                 ..Default::default()
             }],
-            font: None,
+            ..Default::default()
         };
         d.tidy();
         assert_eq!(d.paragraphs.len(), 2);

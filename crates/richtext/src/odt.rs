@@ -225,11 +225,52 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
             "<style:style style:name=\"{name}\" style:display-name=\"{display}\" style:family=\"paragraph\" style:parent-style-name=\"Standard\" style:class=\"text\"><style:paragraph-properties{ppr}/><style:text-properties{props}/></style:style>"
         )
     };
+    // The page (its master page's layout): inch margins, as Word's and
+    // RTF's (and Olo's printing) are; a header and footer each half an
+    // inch from the edge, a paragraph whose parts are a tab apart at a
+    // centre and a right stop.
+    let has = |p: &[String; 3]| p.iter().any(|s| !s.is_empty());
+    let (page_styles, master) = {
+        let stops = "<style:paragraph-properties><style:tab-stops><style:tab-stop style:position=\"3.25in\" style:type=\"center\"/><style:tab-stop style:position=\"6.5in\" style:type=\"right\"/></style:tab-stops></style:paragraph-properties>";
+        let mut named_too = String::new();
+        let edge = |on: bool| if on { "0.5in" } else { "1in" };
+        let mut layout = format!(
+            "<style:page-layout style:name=\"pm1\"><style:page-layout-properties fo:margin-top=\"{}\" fo:margin-bottom=\"{}\" fo:margin-left=\"1in\" fo:margin-right=\"1in\"/>",
+            edge(has(&doc.header)),
+            edge(has(&doc.footer))
+        );
+        let mut master = String::from("<office:master-styles><style:master-page style:name=\"Standard\" style:page-layout-name=\"pm1\">");
+        for (tag, style, parts) in [("header", "Header", &doc.header), ("footer", "Footer", &doc.footer)] {
+            if !has(parts) {
+                continue;
+            }
+            let _ = write!(named_too, "<style:style style:name=\"{style}\" style:family=\"paragraph\" style:parent-style-name=\"Standard\" style:class=\"extra\">{stops}</style:style>");
+            // (The text then at an inch, as without one.)
+            let _ = write!(layout, "<style:{tag}-style><style:header-footer-properties fo:min-height=\"0in\" fo:margin-{}=\"0.3in\"/></style:{tag}-style>", if tag == "header" { "bottom" } else { "top" });
+            let _ = write!(master, "<style:{tag}><text:p text:style-name=\"{style}\">");
+            for (k, part) in parts.iter().enumerate() {
+                if k > 0 {
+                    master.push_str("<text:tab/>");
+                }
+                for bit in crate::bits(part) {
+                    match bit {
+                        crate::Bit::Text(t) => master.push_str(&esc(t)),
+                        crate::Bit::Page => master.push_str("<text:page-number text:select-page=\"current\">1</text:page-number>"),
+                        crate::Bit::Pages => master.push_str("<text:page-count>1</text:page-count>"),
+                    }
+                }
+            }
+            let _ = write!(master, "</text:p></style:{tag}>");
+        }
+        layout.push_str("</style:page-layout>");
+        master.push_str("</style:master-page></office:master-styles>");
+        (format!("{named_too}</office:styles><office:automatic-styles>{layout}</office:automatic-styles>"), master)
+    };
     let styles = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles {NS}><office:font-face-decls>{font_decls}</office:font-face-decls><office:styles>\
-         <style:default-style style:family=\"paragraph\"><style:text-properties fo:font-size=\"12pt\"{0}/></style:default-style>\
+         <style:default-style style:family=\"paragraph\"><style:paragraph-properties style:tab-stop-distance=\"0.5in\"/><style:text-properties fo:font-size=\"12pt\"{0}/></style:default-style>\
          <style:style style:name=\"Standard\" style:family=\"paragraph\" style:class=\"text\"><style:text-properties fo:font-size=\"12pt\"{0}/></style:style>\
-         {1}{2}{3}{4}{5}{6}{7}</office:styles></office:document-styles>",
+         {1}{2}{3}{4}{5}{6}{7}{8}{9}</office:document-styles>",
         doc.font.as_deref().map(|f| format!(" style:font-name=\"{0}\" fo:font-family=\"'{0}'\"", esc(f))).unwrap_or_default(),
         named("Text_20_body", "Text body", "", ""),
         named("Title", "Title", " fo:font-size=\"28pt\" fo:font-weight=\"bold\"", " fo:margin-top=\"0.08in\" fo:margin-bottom=\"0.14in\""),
@@ -238,6 +279,8 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
         named("Heading_20_3", "Heading 3", " fo:font-size=\"14pt\" fo:font-weight=\"bold\"", " fo:margin-top=\"0.14in\" fo:margin-bottom=\"0.03in\""),
         named("Quotations", "Quotations", " fo:font-style=\"italic\"", " fo:margin-left=\"0.5in\" fo:margin-right=\"0.5in\""),
         named("Preformatted_20_Text", "Preformatted Text", &format!(" style:font-name=\"{MONO}\" fo:font-family=\"'{MONO}'\""), ""),
+        page_styles,
+        master,
     );
     let manifest = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.3\">\
         <manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"application/vnd.oasis.opendocument.text\"/>\
@@ -545,7 +588,8 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
     let content = zip_text(&mut z, "content.xml").ok_or_else(bad)?;
     let mut styles: HashMap<String, Props> = HashMap::new();
     let mut list_styles: HashMap<String, Vec<bool>> = HashMap::new();
-    read_styles(&zip_text(&mut z, "styles.xml").unwrap_or_default(), &mut styles, &mut list_styles);
+    let styles_xml = zip_text(&mut z, "styles.xml").unwrap_or_default();
+    read_styles(&styles_xml, &mut styles, &mut list_styles);
     read_styles(&content, &mut styles, &mut list_styles);
     // A style's property, looking up its parents.
     fn find<T>(styles: &HashMap<String, Props>, name: &str, f: &dyn Fn(&Props) -> Option<T>) -> Option<T> {
@@ -736,8 +780,73 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
             }
         }
     }
+    // The page's header and footer: its (first) master page's.
+    for (k, (text, style)) in master_text(&styles_xml).into_iter().enumerate() {
+        let Some(text) = text else { continue };
+        let parts = crate::parts(&text, find(&styles, &style, &|p| p.align).unwrap_or_default());
+        if k == 0 {
+            doc.header = parts;
+        } else {
+            doc.footer = parts;
+        }
+    }
     doc.tidy();
     Ok(doc)
+}
+
+/// The first master page's header and footer: each one's text (its
+/// paragraphs a space apart, tabs as tabs, the page's number and count as
+/// `{page}` and `{pages}`) and its first paragraph's style.
+fn master_text(xml: &str) -> [(Option<String>, String); 2] {
+    let mut out: [(Option<String>, String); 2] = Default::default();
+    let (mut in_master, mut done, mut which, mut field) = (false, false, None::<usize>, false);
+    for e in events(xml) {
+        match e {
+            X::Start(n, a) => match n.as_str() {
+                "master-page" if !done => in_master = true,
+                "header" if in_master => which = Some(0),
+                "footer" if in_master => which = Some(1),
+                "p" | "h" => {
+                    if let Some(w) = which {
+                        let (text, style) = &mut out[w];
+                        match text {
+                            Some(t) => t.push(' '),
+                            None => {
+                                *text = Some(String::new());
+                                *style = attr(&a, "style-name").unwrap_or("").to_owned();
+                            }
+                        }
+                    }
+                }
+                "tab" | "s" | "page-number" | "page-count" => {
+                    if let Some(t) = which.and_then(|w| out[w].0.as_mut()) {
+                        match n.as_str() {
+                            "tab" => t.push('\t'),
+                            "s" => t.push_str(&" ".repeat(attr(&a, "c").and_then(|c| c.parse().ok()).unwrap_or(1))),
+                            "page-number" => t.push_str("{page}"),
+                            _ => t.push_str("{pages}"),
+                        }
+                        // (A field's own text is what it showed then.)
+                        field = matches!(n.as_str(), "page-number" | "page-count");
+                    }
+                }
+                _ => {}
+            },
+            X::End(n) => match n.as_str() {
+                "page-number" | "page-count" => field = false,
+                "header" | "footer" => which = None,
+                "master-page" if in_master => (in_master, done) = (false, true),
+                _ => {}
+            },
+            X::Text(t) if !field => {
+                if let Some(text) = which.and_then(|w| out[w].0.as_mut()) {
+                    text.push_str(&t);
+                }
+            }
+            X::Text(_) => {}
+        }
+    }
+    out
 }
 
 fn push(para: &mut Option<Paragraph>, spans: &[Span], text: &str) {

@@ -45,6 +45,9 @@ const COLORS: [(&str, Option<[u8; 3]>); 7] = [
 /// Families per submenu of the Font menu.
 const FAMILY_GROUP: usize = 24;
 
+/// An imported document: its text, runs, paragraphs, header and footer.
+type Imported = (String, Vec<Run>, Vec<doc::Para>, Option<doc::Page>);
+
 enum Msg {
     Fonts(fonts::Event),
     Loaded(WindowId, PathBuf, Result<doc::Loaded, String>),
@@ -53,7 +56,7 @@ enum Msg {
     /// Open documents' files changed on disk (another program wrote one).
     OnDisk(Vec<PathBuf>),
     /// A formatted document read in: its text, runs and paragraphs.
-    Imported(PathBuf, Result<(String, Vec<Run>, Vec<doc::Para>), String>),
+    Imported(PathBuf, Result<Imported, String>),
     /// A copy written in another format.
     Exported(PathBuf, Result<(), String>),
     /// A document sent to a printer (its title).
@@ -291,6 +294,8 @@ enum Win {
     Error { message: String },
     Find { doc: WindowId, replace: bool },
     Print { doc: WindowId, panel: Box<olo_print::panel::PrintPanel> },
+    /// Document ▸ Header & Footer…: the parts being edited.
+    Margins { doc: WindowId, page: doc::Page },
 }
 
 /// The Find and Replace windows' settings, shared by every document.
@@ -342,6 +347,8 @@ struct SavedDoc {
     view: (usize, f32),
     #[serde(default = "shown")]
     ruler: bool,
+    #[serde(default)]
+    page: Option<doc::Page>,
 }
 
 fn shown() -> bool {
@@ -430,7 +437,7 @@ impl StyledEdit {
             .windows
             .iter()
             .filter(|(_, w)| match w {
-                Win::Unsaved { doc, .. } | Win::Revert { doc, .. } | Win::Find { doc, .. } | Win::Print { doc, .. } => *doc == win,
+                Win::Unsaved { doc, .. } | Win::Revert { doc, .. } | Win::Find { doc, .. } | Win::Print { doc, .. } | Win::Margins { doc, .. } => *doc == win,
                 Win::Panel { doc: Some(doc), .. } => *doc == win,
                 _ => false,
             })
@@ -495,8 +502,15 @@ impl StyledEdit {
         let proxy = cx.proxy();
         std::thread::spawn(move || {
             let r = match olo_richtext::format_of(&path) {
-                Some(_) => olo_richtext::read(&path).map(convert::from_rich),
-                None => std::fs::read(&path).map_err(|e| e.to_string()).map(|bytes| convert::from_markdown(&String::from_utf8_lossy(&bytes))),
+                Some(_) => olo_richtext::read(&path).map(|doc| {
+                    let page = convert::page_of(&doc);
+                    let (text, runs, paras) = convert::from_rich(doc);
+                    (text, runs, paras, page)
+                }),
+                None => std::fs::read(&path).map_err(|e| e.to_string()).map(|bytes| {
+                    let (text, runs, paras) = convert::from_markdown(&String::from_utf8_lossy(&bytes));
+                    (text, runs, paras, None)
+                }),
             };
             proxy.send(Msg::Imported(path, r));
         });
@@ -514,7 +528,7 @@ impl StyledEdit {
             }
         }
         let options = ctx.fonts(|f| *f.options());
-        let input = pages::Input { text: d.doc.text().to_owned(), runs: d.doc.runs().to_vec(), paras: d.doc.paras().to_vec(), align: d.doc.align, families, options };
+        let input = pages::Input { text: d.doc.text().to_owned(), runs: d.doc.runs().to_vec(), paras: d.doc.paras().to_vec(), align: d.doc.align, page: d.doc.page.clone(), families, options };
         Some((input, d.title()))
     }
 
@@ -549,14 +563,16 @@ impl StyledEdit {
         }
         let Some(Win::Doc(d)) = self.windows.get(&win) else { return };
         let (text, runs, paras, align, title) = (d.doc.text().to_owned(), d.doc.runs().to_vec(), d.doc.paras().to_vec(), d.doc.align, d.title());
+        let page = d.doc.page.clone();
         let proxy = cx.proxy();
         std::thread::spawn(move || {
+            let rich = || convert::with_page(convert::to_rich(&text, &runs, &paras, align), page.as_ref());
             let out = match format {
                 Format::Markdown => Ok(convert::to_markdown(&text, &runs, &paras).into_bytes()),
                 Format::Html => Ok(convert::to_html(&text, &runs, &paras, &title, align).into_bytes()),
-                Format::Word => olo_richtext::write_docx(&convert::to_rich(&text, &runs, &paras, align)),
-                Format::OpenDocument => olo_richtext::write_odt(&convert::to_rich(&text, &runs, &paras, align)),
-                Format::Rtf => olo_richtext::write_rtf(&convert::to_rich(&text, &runs, &paras, align)),
+                Format::Word => olo_richtext::write_docx(&rich()),
+                Format::OpenDocument => olo_richtext::write_odt(&rich()),
+                Format::Rtf => olo_richtext::write_rtf(&rich()),
                 Format::Pdf => unreachable!("made above"),
             };
             let r = out.and_then(|bytes| std::fs::write(&to, bytes).map_err(|e| e.to_string()));
@@ -573,11 +589,11 @@ impl StyledEdit {
         };
         d.saving = true;
         d.after_save = after;
-        let (text, runs, paras, align, wrap, generation) =
-            (d.doc.text().to_owned(), d.doc.runs().to_vec(), d.doc.paras().to_vec(), d.doc.align, d.doc.wrap, d.doc.generation);
+        let (text, runs, paras, align, wrap, page, generation) =
+            (d.doc.text().to_owned(), d.doc.runs().to_vec(), d.doc.paras().to_vec(), d.doc.align, d.doc.wrap, d.doc.page.clone(), d.doc.generation);
         let proxy = cx.proxy();
         std::thread::spawn(move || {
-            let r = doc::save(&path, &text, &runs, &paras, align, wrap);
+            let r = doc::save(&path, &text, &runs, &paras, align, wrap, page.as_ref());
             proxy.send(Msg::Saved(win, generation, path, r));
         });
     }
@@ -618,6 +634,61 @@ impl StyledEdit {
         let (title, h) = if replace { ("Replace", REPLACE_H) } else { ("Find", FIND_H) };
         let id = cx.open_window(WindowOptions::new(title, FIND_W as u32, h as u32).min_size(FIND_W as u32, h as u32).max_size(900, h as u32));
         self.windows.insert(id, Win::Find { doc, replace });
+    }
+
+    /// Document ▸ Header & Footer… for document `doc` (one window each).
+    fn open_margins(&mut self, cx: &mut Cx, doc: WindowId) {
+        if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Margins { doc: d, .. } if *d == doc)) {
+            cx.activate(id);
+            return;
+        }
+        let Some(Win::Doc(d)) = self.windows.get(&doc) else { return };
+        // Pages numbered at the foot until it's set otherwise.
+        let page = d.doc.page.clone().unwrap_or_else(|| doc::Page { footer: [String::new(), "{page}".into(), String::new()], ..doc::Page::default() });
+        let id = cx.open_window(WindowOptions::new("Header & Footer", MARGINS_W as u32, MARGINS_H as u32).parent(doc).dialog());
+        self.windows.insert(id, Win::Margins { doc, page });
+    }
+
+    /// The Header & Footer window: three parts of each, and where
+    /// `{page}` and `{pages}` go.
+    fn margins_ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui) {
+        let Some(Win::Margins { doc, page }) = self.windows.get_mut(&window) else { return };
+        let doc = *doc;
+        let full = ui.max_rect().shrink(m::WINDOW_INSET);
+        let p = style::palette(ui.ctx());
+        ui.scope_builder(egui::UiBuilder::new().max_rect(full).layout(egui::Layout::top_down(egui::Align::Min)), |ui| {
+            ui.spacing_mut().item_spacing.y = m::TIGHT;
+            for (k, (title, parts)) in [("Header", &mut page.header), ("Footer", &mut page.footer)].into_iter().enumerate() {
+                if k > 0 {
+                    ui.add_space(m::SPACING - m::TIGHT);
+                }
+                widgets::heading(ui, title);
+                for (part, label) in parts.iter_mut().zip(["Left:", "Center:", "Right:"]) {
+                    ui.add(TextControl::new(part).label(label).divider(MARGINS_DIVIDER).autofocus(k == 0 && label == "Left:"));
+                }
+            }
+            ui.add_space(m::SPACING - m::TIGHT);
+            ui.label(egui::RichText::new("{page} is each page’s number, {pages} how many there are.").font(style::small_font()).color(style::disabled_text(&p)));
+        });
+        let bw = m::BUTTON_MIN_WIDTH;
+        let y = full.bottom() - m::CONTROL_HEIGHT;
+        let ok_r = Rect::from_min_size(pos2(full.right() - bw, y), vec2(bw, m::CONTROL_HEIGHT));
+        let cancel_r = ok_r.translate(vec2(-(bw + m::SPACING + 2.0), 0.0));
+        let cancel = ui.put(cancel_r, Button::new("Cancel")).clicked() || ui.input(|i| i.key_pressed(Key::Escape));
+        let ok = ui.put(ok_r, Button::new("OK").default(true)).clicked() || ui.input(|i| i.key_pressed(Key::Enter));
+        if !(ok || cancel) {
+            return;
+        }
+        let Some(Win::Margins { page, .. }) = self.windows.remove(&window) else { return };
+        cx.close_window(window);
+        if let Some(Win::Doc(d)) = self.windows.get_mut(&doc) {
+            if ok && d.doc.page.as_ref() != Some(&page) {
+                d.doc.page = Some(page);
+                d.doc.generation += 1;
+            }
+            cx.redraw(doc);
+        }
+        cx.activate(doc);
     }
 
     /// Find the search text from the selection; false if it isn't there.
@@ -826,7 +897,14 @@ impl StyledEdit {
             .separator()
             .item("Even Columns", "table:even", None)
             .enabled(t);
-        let document = Menu::new("Document").item("Wrap Lines", "wrap", None).checked(d.doc.wrap).item("Show Ruler", "ruler", None).checked(d.ruler && d.doc.wrap).enabled(d.doc.wrap);
+        let document = Menu::new("Document")
+            .item("Wrap Lines", "wrap", None)
+            .checked(d.doc.wrap)
+            .item("Show Ruler", "ruler", None)
+            .checked(d.ruler && d.doc.wrap)
+            .enabled(d.doc.wrap)
+            .separator()
+            .item("Header & Footer…", "margins", None);
         // Styles and layout are saved with the file, so a read-only one
         // keeps its own (as Haiku's StyledEdit has it).
         vec![file, edit, font.all_enabled(editable), paragraph.all_enabled(editable), if editable { tables } else { tables.all_enabled(false) }, document.all_enabled(editable)]
@@ -846,6 +924,7 @@ impl StyledEdit {
                 self.windows.insert(id, Win::Print { doc: win, panel: Box::new(olo_print::panel::PrintPanel::new()) });
                 return;
             }
+            "margins" => return self.open_margins(cx, win),
             "export:md" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Markdown)),
             "export:html" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Html)),
             "export:docx" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Word)),
@@ -1315,6 +1394,11 @@ const STATUS_H: f32 = widgets::SCROLL_BAR + 2.0;
 const FIND_W: f32 = 340.0;
 const FIND_H: f32 = 2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + m::SPACING + 3.0 * m::MARK_ROW + 2.0 * m::TIGHT + m::SPACING + m::CONTROL_HEIGHT;
 const REPLACE_H: f32 = FIND_H + m::CONTROL_HEIGHT + m::TIGHT + m::MARK_ROW + m::TIGHT;
+/// The Header & Footer window: two headed groups of three fields, a
+/// note, and its buttons.
+const MARGINS_W: f32 = 420.0;
+const MARGINS_H: f32 = 2.0 * m::WINDOW_INSET + 2.0 * (m::MARK_ROW + 3.0 * (m::TIGHT + m::CONTROL_HEIGHT)) + m::SPACING + m::SPACING + m::MARK_ROW + m::SPACING + m::CONTROL_HEIGHT;
+const MARGINS_DIVIDER: f32 = 56.0;
 
 impl App for StyledEdit {
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui) {
@@ -1345,6 +1429,7 @@ impl App for StyledEdit {
                     Some(printer) => self.print(cx, doc, printer, choice),
                 }
             }
+            Some(Win::Margins { .. }) => self.margins_ui(cx, window, ui),
             Some(Win::Find { doc, replace }) => {
                 let (doc, replace) = (*doc, *replace);
                 self.find_ui(cx, window, ui, doc, replace);
@@ -1470,6 +1555,7 @@ impl App for StyledEdit {
                         let mut doc = Doc::with_paras(l.text, l.runs, l.paras);
                         doc.align = l.align;
                         doc.wrap = l.wrap;
+                        doc.page = l.page;
                         let (select, view) = d.restore.take().unwrap_or_default();
                         d.reset(doc, select);
                         d.editor.set_view(d.doc.text(), view);
@@ -1515,11 +1601,12 @@ impl App for StyledEdit {
                 cx.redraw(win);
             }
             Msg::Imported(path, result) => match result {
-                Ok((text, runs, paras)) => {
+                Ok((text, runs, paras, page)) => {
                     self.untitled += 1;
                     let mut d = DocWin::new(None, self.untitled);
                     d.ruler = self.ruler;
                     let mut doc = Doc::with_paras(text, Some(runs), Some(paras));
+                    doc.page = page;
                     // Not saved anywhere yet.
                     doc.saved_generation = 0;
                     d.reset(doc, 0..0);
@@ -1577,6 +1664,7 @@ impl App for StyledEdit {
                     selection: (d.bytes().start, d.bytes().end),
                     view: d.editor.view(),
                     ruler: d.ruler,
+                    page: d.doc.page.clone(),
                 }),
                 _ => None,
             })
@@ -1596,6 +1684,7 @@ impl StyledEdit {
                     let mut doc = Doc::with_paras(text, Some(runs), Some(s.paras).filter(|p| !p.is_empty()));
                     doc.align = s.align;
                     doc.wrap = s.wrap;
+                    doc.page = s.page;
                     // Unsaved work stays unsaved (an empty new one is clean).
                     if !(doc.text().is_empty() && s.path.is_none()) {
                         doc.saved_generation = 0;

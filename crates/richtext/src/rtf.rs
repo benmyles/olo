@@ -217,6 +217,28 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
         let _ = write!(out, "{{\\listoverride\\listid{id}\\listoverridecount0\\ls{id}}}");
     }
     out.push_str("}\n\\margl1440\\margr1440\\margt1440\\margb1440\\viewkind4\n");
+    // The page's header and footer: one paragraph each, its parts a tab
+    // apart at a centre and a right stop, the page's number and count as
+    // PAGE and NUMPAGES fields.
+    for (word, parts) in [("header", &doc.header), ("footer", &doc.footer)] {
+        if parts.iter().all(String::is_empty) {
+            continue;
+        }
+        let _ = write!(out, "{{\\{word}\\pard\\plain\\tqc\\tx{}\\tqr\\tx{TEXT_WIDTH} ", TEXT_WIDTH / 2);
+        for (k, part) in parts.iter().enumerate() {
+            if k > 0 {
+                out.push_str("\\tab ");
+            }
+            for bit in crate::bits(part) {
+                match bit {
+                    crate::Bit::Text(t) => out.push_str(&text(t)),
+                    crate::Bit::Page => out.push_str("{\\field{\\*\\fldinst PAGE}{\\fldrslt 1}}"),
+                    crate::Bit::Pages => out.push_str("{\\field{\\*\\fldinst NUMPAGES}{\\fldrslt 1}}"),
+                }
+            }
+        }
+        out.push_str("\\par}\n");
+    }
     out.push_str(&body);
     out.push_str("}\n");
     Ok(out.into_bytes())
@@ -376,8 +398,10 @@ enum Dest {
     Styles,
     Lists,
     Overrides,
-    /// A field's instruction (a link's address).
+    /// A field's instruction (a link's address, a page number).
     FieldInst,
+    /// The page's header (0) or footer (1).
+    Page(usize),
     /// Word 95's list numbering for the paragraph.
     Numbering,
 }
@@ -525,6 +549,8 @@ struct Reader {
     table: Option<Table>,
     row: Vec<Vec<Paragraph>>,
     cell: Vec<Paragraph>,
+    /// The page's header's and footer's text (`Dest::Page`).
+    margins: [Option<String>; 2],
     /// The row being defined repeats at the top of each page.
     row_header: bool,
     /// Its cells' right edges (twips).
@@ -561,6 +587,7 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
         table: None,
         row: Vec::new(),
         cell: Vec::new(),
+        margins: [None, None],
         row_header: false,
         row_edges: Vec::new(),
     };
@@ -666,7 +693,17 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
     }
     r.end_table();
     let font = r.fonts.get(&r.deff).map(|(n, _)| n.clone()).filter(|n| !n.is_empty());
-    let mut doc = Document { paragraphs: r.paragraphs, font };
+    let mut doc = Document { paragraphs: r.paragraphs, font, ..Document::default() };
+    for (k, text) in r.margins.iter().enumerate() {
+        if let Some(text) = text {
+            let parts = crate::parts(text, Align::Left);
+            if k == 0 {
+                doc.header = parts;
+            } else {
+                doc.footer = parts;
+            }
+        }
+    }
     doc.tidy();
     Ok(doc)
 }
@@ -716,6 +753,11 @@ impl Reader {
                 }
             }
             Dest::FieldInst => self.field.push(c),
+            Dest::Page(k) => {
+                if let Some(t) = &mut self.margins[k] {
+                    t.push(c);
+                }
+            }
             _ => {}
         }
     }
@@ -771,6 +813,16 @@ impl Reader {
                 // HYPERLINK "address" (switches aside; `\l` is a place in
                 // the document, not a link out).
                 let inst = std::mem::take(&mut self.field);
+                // In a header or footer, the page's number or count.
+                if let Dest::Page(k) = self.st.dest
+                    && let Some(t) = &mut self.margins[k]
+                {
+                    match inst.split_whitespace().next().map(str::to_ascii_uppercase).as_deref() {
+                        Some("PAGE") => t.push_str("{page}"),
+                        Some("NUMPAGES" | "SECTIONPAGES") => t.push_str("{pages}"),
+                        _ => {}
+                    }
+                }
                 let mut words = inst.split_whitespace();
                 if words.next().is_some_and(|w| w.eq_ignore_ascii_case("HYPERLINK")) && !inst.contains("\\l ") {
                     let url = match (inst.find('"'), inst.rfind('"')) {
@@ -803,7 +855,14 @@ impl Reader {
                 self.field.clear();
                 return self.st.dest = Dest::FieldInst;
             }
-            "fldrslt" => return self.st.dest = if dest == Dest::Skip { Dest::Skip } else { Dest::Text },
+            // (In a header, the field's own words stand for it.)
+            "fldrslt" => return self.st.dest = if matches!(dest, Dest::Skip | Dest::Page(_)) { Dest::Skip } else { Dest::Text },
+            // The header and footer of every page (or the right-hand ones).
+            "header" | "headerr" | "footer" | "footerr" => {
+                let k = usize::from(word.starts_with("footer"));
+                self.margins[k] = Some(String::new());
+                return self.st.dest = Dest::Page(k);
+            }
             "pn" => {
                 self.numbering_now = Some(List { numbered: true, level: 0 });
                 return self.st.dest = Dest::Numbering;
@@ -811,7 +870,7 @@ impl Reader {
             // The Unicode text of `\upr`'s pair (the other is skipped).
             "ud" => return self.st.dest = Dest::Text,
             "upr" => return self.st.dest = Dest::Skip,
-            "info" | "pict" | "header" | "headerl" | "headerr" | "headerf" | "footer" | "footerl" | "footerr" | "footerf" | "footnote"
+            "info" | "pict" | "headerl" | "headerf" | "footerl" | "footerf" | "footnote"
             | "object" | "xe" | "tc" | "txe" | "rxe" | "annotation" | "atnid" | "atnauthor" | "listtext" | "pntext" | "nonshppict"
             | "shp" | "template" | "revtbl" | "filetbl" | "comment" | "doccomm" => return self.st.dest = Dest::Skip,
             _ if ignorable && !matches!(dest, Dest::Lists | Dest::Overrides) => return self.st.dest = Dest::Skip,
@@ -819,6 +878,32 @@ impl Reader {
         }
         match dest {
             Dest::Skip | Dest::FieldInst => {}
+            // A header's or footer's text: its tabs, breaks and characters.
+            Dest::Page(k) => {
+                let c = match word {
+                    "tab" => Some('\t'),
+                    "par" | "line" => Some(' '),
+                    "emdash" => Some('\u{2014}'),
+                    "endash" => Some('\u{2013}'),
+                    "bullet" => Some('\u{2022}'),
+                    "lquote" => Some('\u{2018}'),
+                    "rquote" => Some('\u{2019}'),
+                    "ldblquote" => Some('\u{201C}'),
+                    "rdblquote" => Some('\u{201D}'),
+                    "u" => {
+                        self.skip = self.st.uc;
+                        char::from_u32((if n < 0 { n + 0x10000 } else { n }) as u32)
+                    }
+                    "uc" => {
+                        self.st.uc = n.max(0);
+                        None
+                    }
+                    _ => None,
+                };
+                if let (Some(c), Some(t)) = (c, &mut self.margins[k]) {
+                    t.push(c);
+                }
+            }
             Dest::Fonts => match word {
                 "f" => self.font_now.0 = n,
                 "fcharset" => self.font_now.2 = charset_page(n),
@@ -1083,7 +1168,7 @@ mod tests {
 
     #[test]
     fn writes_ascii_only() {
-        let doc = Document { paragraphs: vec![Paragraph { spans: vec![Span::default().with_text("naïve 😀 {x}\\")], ..Default::default() }], font: None };
+        let doc = Document { paragraphs: vec![Paragraph { spans: vec![Span::default().with_text("naïve 😀 {x}\\")], ..Default::default() }], ..Default::default() };
         let out = write(&doc).unwrap();
         assert!(out.is_ascii());
         let back = read(&out).unwrap();

@@ -214,6 +214,19 @@ impl Builder {
     }
 }
 
+/// `doc` with `page`'s header and footer.
+pub fn with_page(doc: olo_richtext::Document, page: Option<&crate::doc::Page>) -> olo_richtext::Document {
+    match page {
+        Some(p) => olo_richtext::Document { header: p.header.clone(), footer: p.footer.clone(), ..doc },
+        None => doc,
+    }
+}
+
+/// The header and footer `doc`'s pages have, if any.
+pub fn page_of(doc: &olo_richtext::Document) -> Option<crate::doc::Page> {
+    doc.header.iter().chain(&doc.footer).any(|p| !p.is_empty()).then(|| crate::doc::Page { header: doc.header.clone(), footer: doc.footer.clone() })
+}
+
 /// A Word or OpenDocument document (`olo_richtext`) as text, runs and
 /// paragraphs.
 pub fn from_rich(doc: olo_richtext::Document) -> (String, Vec<Run>, Vec<Para>) {

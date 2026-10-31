@@ -305,6 +305,9 @@ pub struct Doc {
     para_starts: Vec<usize>,
     pub align: Align,
     pub wrap: bool,
+    /// What printed pages show above and below the text; None: they're
+    /// numbered at the foot when there is more than one.
+    pub page: Option<Page>,
     /// Style for text typed next at `typing.0` (bytes), set by a style
     /// command with nothing selected.
     pub typing: Option<(usize, Style)>,
@@ -317,6 +320,24 @@ pub struct Doc {
     pub generation: u64,
     /// The generation that was last saved or loaded.
     pub saved_generation: u64,
+}
+
+/// What each printed page shows above and below its text: left, centre
+/// and right parts, where `{page}` and `{pages}` stand for the page's
+/// number and how many there are (as `olo_richtext::Document` has them).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Page {
+    #[serde(default)]
+    pub header: [String; 3],
+    #[serde(default)]
+    pub footer: [String; 3],
+}
+
+impl Page {
+    /// Page `page` of `pages`'s text for `part`.
+    pub fn fill(part: &str, page: usize, pages: usize) -> String {
+        part.replace("{page}", &page.to_string()).replace("{pages}", &pages.to_string())
+    }
 }
 
 /// Merge neighbouring runs of the same style and drop empty ones.
@@ -385,6 +406,7 @@ impl Doc {
             para_starts: Vec::new(),
             align: Align::Left,
             wrap: true,
+            page: None,
             typing: None,
             clip: None,
             undo: Vec::new(),
@@ -908,6 +930,7 @@ const ATTR_STYLES: &str = "user.olo.styles";
 const ATTR_ALIGN: &str = "user.olo.alignment";
 const ATTR_WRAP: &str = "user.olo.wrap";
 const ATTR_PARAS: &str = "user.olo.paragraphs";
+const ATTR_PAGE: &str = "user.olo.page";
 
 /// What a file holds.
 pub struct Loaded {
@@ -916,6 +939,7 @@ pub struct Loaded {
     pub paras: Option<Vec<Para>>,
     pub align: Align,
     pub wrap: bool,
+    pub page: Option<Page>,
     /// Not UTF-8: read as Latin-1 (saved back as UTF-8).
     pub latin1: bool,
     /// We may not write it.
@@ -967,18 +991,19 @@ pub fn load(path: &Path) -> Result<Loaded, String> {
     let paras = get_attr(path, ATTR_PARAS).and_then(|v| serde_json::from_slice::<Vec<Para>>(&v).ok());
     let align = get_attr(path, ATTR_ALIGN).and_then(|v| serde_json::from_slice(&v).ok()).unwrap_or_default();
     let wrap = get_attr(path, ATTR_WRAP).is_none_or(|v| v != b"false");
+    let page = get_attr(path, ATTR_PAGE).and_then(|v| serde_json::from_slice(&v).ok());
     let read_only = {
         use std::os::unix::ffi::OsStrExt;
         std::ffi::CString::new(path.as_os_str().as_bytes())
             // SAFETY: a valid C string.
             .is_ok_and(|p| unsafe { libc::access(p.as_ptr(), libc::W_OK) } != 0)
     };
-    Ok(Loaded { text, runs: if latin1 { None } else { runs }, paras: if latin1 { None } else { paras }, align, wrap, latin1, read_only })
+    Ok(Loaded { text, runs: if latin1 { None } else { runs }, paras: if latin1 { None } else { paras }, align, wrap, page, latin1, read_only })
 }
 
 /// Write a file whole (beside it, then renamed over it, keeping its
 /// permissions), styles in its attributes. On a worker thread.
-pub fn save(path: &Path, text: &str, runs: &[Run], paras: &[Para], align: Align, wrap: bool) -> Result<(), String> {
+pub fn save(path: &Path, text: &str, runs: &[Run], paras: &[Para], align: Align, wrap: bool, page: Option<&Page>) -> Result<(), String> {
     let dir = path.parent().ok_or("no folder")?;
     let name = path.file_name().ok_or("no name")?.to_string_lossy();
     let tmp = dir.join(format!(".{name}.saving"));
@@ -1000,6 +1025,9 @@ pub fn save(path: &Path, text: &str, runs: &[Run], paras: &[Para], align: Align,
         }
         if !wrap {
             set_attr(&tmp, ATTR_WRAP, b"false");
+        }
+        if let Some(page) = page {
+            set_attr(&tmp, ATTR_PAGE, &serde_json::to_vec(page).unwrap_or_default());
         }
         std::fs::rename(&tmp, path).map_err(|e| e.to_string())
     })();
@@ -1189,7 +1217,8 @@ mod tests {
             s.bold = true;
             s.color = Some([200, 0, 0]);
         });
-        save(&path, d.text(), d.runs(), d.paras(), Align::Center, false).unwrap();
+        let page = Page { header: [String::new(), "Notes".into(), String::new()], footer: [String::new(), String::new(), "{page} of {pages}".into()] };
+        save(&path, d.text(), d.runs(), d.paras(), Align::Center, false, Some(&page)).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "Hello, world");
         let l = load(&path).unwrap();
         assert_eq!(l.text, "Hello, world");
@@ -1198,6 +1227,7 @@ mod tests {
             assert_eq!(runs, d.runs);
             assert_eq!(l.align, Align::Center);
             assert!(!l.wrap);
+            assert_eq!(l.page, Some(page));
         }
         std::fs::write(&path, [b'c', b'a', b'f', 0xE9]).unwrap();
         let l = load(&path).unwrap();
@@ -1272,7 +1302,7 @@ mod tests {
         let mut d = Doc::new("Head\nitem".into(), None);
         d.set_kind(0..0, 0..0, Kind::Title);
         d.set_paras(5..5, 0..0, |p| p.list = List::Bullet);
-        save(&path, d.text(), d.runs(), d.paras(), Align::Left, true).unwrap();
+        save(&path, d.text(), d.runs(), d.paras(), Align::Left, true, None).unwrap();
         let l = load(&path).unwrap();
         if l.paras.is_some() {
             let back = Doc::with_paras(l.text, l.runs, l.paras);

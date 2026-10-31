@@ -70,38 +70,75 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
     if doc.paragraphs.last().is_some_and(|p| p.table.is_some()) {
         body.push_str("<w:p/>");
     }
+    // A header and footer, if there is one: parts of their own.
+    let has = |p: &[String; 3]| p.iter().any(|s| !s.is_empty());
+    let (header, footer) = (has(&doc.header), has(&doc.footer));
+    let mut sect = String::from("<w:sectPr>");
+    if header {
+        sect.push_str("<w:headerReference w:type=\"default\" r:id=\"rIdHeader\"/>");
+    }
+    if footer {
+        sect.push_str("<w:footerReference w:type=\"default\" r:id=\"rIdFooter\"/>");
+    }
+    sect.push_str("</w:sectPr>");
     let document = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:document xmlns:w=\"{W}\" xmlns:r=\"{R}\"><w:body>{body}<w:sectPr/></w:body></w:document>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:document xmlns:w=\"{W}\" xmlns:r=\"{R}\"><w:body>{body}{sect}</w:body></w:document>"
     );
     let mut rels = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Relationships xmlns=\"{PKG}\">\
          <Relationship Id=\"rIdStyles\" Type=\"{R}/styles\" Target=\"styles.xml\"/>\
-         <Relationship Id=\"rIdNumbering\" Type=\"{R}/numbering\" Target=\"numbering.xml\"/>"
+         <Relationship Id=\"rIdNumbering\" Type=\"{R}/numbering\" Target=\"numbering.xml\"/>\
+         <Relationship Id=\"rIdSettings\" Type=\"{R}/settings\" Target=\"settings.xml\"/>"
     );
+    if header {
+        let _ = write!(rels, "<Relationship Id=\"rIdHeader\" Type=\"{R}/header\" Target=\"header1.xml\"/>");
+    }
+    if footer {
+        let _ = write!(rels, "<Relationship Id=\"rIdFooter\" Type=\"{R}/footer\" Target=\"footer1.xml\"/>");
+    }
     for (i, url) in links.iter().enumerate() {
         let _ = write!(rels, "<Relationship Id=\"rIdL{}\" Type=\"{R}/hyperlink\" Target=\"{}\" TargetMode=\"External\"/>", i + 1, esc(url));
     }
     rels.push_str("</Relationships>");
-    let content_types = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\
+    let mut content_types = String::from(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\
         <Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\
         <Default Extension=\"xml\" ContentType=\"application/xml\"/>\
         <Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>\
         <Override PartName=\"/word/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>\
         <Override PartName=\"/word/numbering.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml\"/>\
-        </Types>";
+        <Override PartName=\"/word/settings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml\"/>",
+    );
+    if header {
+        content_types.push_str("<Override PartName=\"/word/header1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml\"/>");
+    }
+    if footer {
+        content_types.push_str("<Override PartName=\"/word/footer1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml\"/>");
+    }
+    content_types.push_str("</Types>");
     let root_rels = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Relationships xmlns=\"{PKG}\"><Relationship Id=\"rId1\" Type=\"{R}/officeDocument\" Target=\"word/document.xml\"/></Relationships>"
     );
     let mut z = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-    for (name, data) in [
-        ("[Content_Types].xml", content_types.to_owned()),
+    let mut files = vec![
+        ("[Content_Types].xml", content_types),
         ("_rels/.rels", root_rels),
         ("word/document.xml", document),
         ("word/styles.xml", styles(doc.font.as_deref())),
         ("word/numbering.xml", numbering(numbered_lists)),
+        // Tabs past a paragraph's own stops go every half inch (as Word
+        // has them, and Olo; LibreOffice's own is 1.25 cm).
+        ("word/settings.xml", format!("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:settings xmlns:w=\"{W}\"><w:defaultTabStop w:val=\"720\"/></w:settings>")),
         ("word/_rels/document.xml.rels", rels),
-    ] {
+    ];
+    if header {
+        files.push(("word/header1.xml", header_part("hdr", &doc.header)));
+    }
+    if footer {
+        files.push(("word/footer1.xml", header_part("ftr", &doc.footer)));
+    }
+    for (name, data) in files {
         z.start_file(name, opts).map_err(|e| e.to_string())?;
         z.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
     }
@@ -172,6 +209,95 @@ fn paragraph(out: &mut String, p: &Paragraph, links: &mut Vec<String>, numbered_
         }
     }
     out.push_str("</w:p>");
+}
+
+/// A header (`hdr`) or footer (`ftr`) part: one paragraph, its three
+/// parts a tab apart at a centre and a right stop, `{page}` and `{pages}`
+/// as Word's PAGE and NUMPAGES fields.
+fn header_part(tag: &str, parts: &[String; 3]) -> String {
+    let mut p = format!(
+        "<w:p><w:pPr><w:tabs><w:tab w:val=\"center\" w:pos=\"{}\"/><w:tab w:val=\"right\" w:pos=\"{TEXT_WIDTH}\"/></w:tabs></w:pPr>",
+        TEXT_WIDTH / 2
+    );
+    for (k, part) in parts.iter().enumerate() {
+        if k > 0 {
+            p.push_str("<w:r><w:tab/></w:r>");
+        }
+        for bit in crate::bits(part) {
+            match bit {
+                crate::Bit::Text(t) => {
+                    let _ = write!(p, "<w:r><w:t xml:space=\"preserve\">{}</w:t></w:r>", esc(t));
+                }
+                crate::Bit::Page => p.push_str("<w:fldSimple w:instr=\" PAGE \"><w:r><w:t>1</w:t></w:r></w:fldSimple>"),
+                crate::Bit::Pages => p.push_str("<w:fldSimple w:instr=\" NUMPAGES \"><w:r><w:t>1</w:t></w:r></w:fldSimple>"),
+            }
+        }
+    }
+    p.push_str("</w:p>");
+    format!("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:{tag} xmlns:w=\"{W}\" xmlns:r=\"{R}\">{p}</w:{tag}>")
+}
+
+/// A header's or footer's part read: its text (paragraphs a space apart,
+/// tabs as tabs, PAGE and NUMPAGES fields, simple or complex, as `{page}`
+/// and `{pages}`) and its first paragraph's alignment.
+fn header_text(xml: &str) -> (String, Align) {
+    let token = |instr: &str| match instr.split_whitespace().next().map(str::to_ascii_uppercase).as_deref() {
+        Some("PAGE") => "{page}",
+        Some("NUMPAGES" | "SECTIONPAGES") => "{pages}",
+        _ => "",
+    };
+    let (mut out, mut align) = (String::new(), None);
+    let (mut in_ppr, mut in_text, mut in_instr, mut simple) = (false, false, false, false);
+    // A complex field: 1 its instruction, 2 its result (left out).
+    let (mut field, mut instr) = (0, String::new());
+    for e in events(xml) {
+        match e {
+            X::Start(n, a) => match n.as_str() {
+                "p" if !out.is_empty() => out.push(' '),
+                "pPr" => in_ppr = true,
+                "jc" if in_ppr && align.is_none() => {
+                    align = Some(match attr(&a, "val") {
+                        Some("center") => Align::Center,
+                        Some("right" | "end") => Align::Right,
+                        _ => Align::Left,
+                    })
+                }
+                "tab" if !in_ppr && field != 2 && !simple => out.push('\t'),
+                "t" => in_text = true,
+                "instrText" => in_instr = true,
+                "fldSimple" => {
+                    out.push_str(token(attr(&a, "instr").unwrap_or("")));
+                    simple = true;
+                }
+                "fldChar" => match attr(&a, "fldCharType") {
+                    Some("begin") => (field, instr) = (1, String::new()),
+                    Some("separate") => {
+                        out.push_str(token(&instr));
+                        field = 2;
+                    }
+                    Some("end") => {
+                        if field == 1 {
+                            out.push_str(token(&instr));
+                        }
+                        field = 0;
+                    }
+                    _ => {}
+                },
+                _ => {}
+            },
+            X::End(n) => match n.as_str() {
+                "pPr" => in_ppr = false,
+                "t" => in_text = false,
+                "instrText" => in_instr = false,
+                "fldSimple" => simple = false,
+                _ => {}
+            },
+            X::Text(t) if in_instr => instr.push_str(&t),
+            X::Text(t) if in_text && field == 0 && !simple => out.push_str(&t),
+            X::Text(_) => {}
+        }
+    }
+    (out, align.unwrap_or(Align::Left))
 }
 
 /// Points in twentieths (twips).
@@ -322,15 +448,30 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
     let bad = || "This document can't be read.".to_string();
     let mut z = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| bad())?;
     let main = zip_text(&mut z, "word/document.xml").ok_or_else(bad)?;
-    // Links by relationship id.
+    // Links by relationship id, and every part's target.
     let mut links: HashMap<String, String> = HashMap::new();
+    let mut targets: HashMap<String, String> = HashMap::new();
     for e in events(&zip_text(&mut z, "word/_rels/document.xml.rels").unwrap_or_default()) {
         if let X::Start(n, a) = e
             && n == "Relationship"
-            && attr(&a, "Type").is_some_and(|t| t.ends_with("/hyperlink"))
             && let (Some(id), Some(target)) = (attr(&a, "Id"), attr(&a, "Target"))
         {
-            links.insert(id.to_owned(), target.to_owned());
+            if attr(&a, "Type").is_some_and(|t| t.ends_with("/hyperlink")) {
+                links.insert(id.to_owned(), target.to_owned());
+            }
+            targets.insert(id.to_owned(), target.to_owned());
+        }
+    }
+    // The section's own header and footer (the default ones).
+    let mut header_footer = [None, None];
+    for e in events(&main) {
+        if let X::Start(n, a) = e
+            && (n == "headerReference" || n == "footerReference")
+            && attr(&a, "type").is_none_or(|t| t == "default")
+            && let Some(target) = attr(&a, "id").and_then(|id| targets.get(id))
+        {
+            let path = format!("word/{}", target.trim_start_matches('/').trim_start_matches("word/"));
+            header_footer[usize::from(n == "footerReference")] = zip_text(&mut z, &path).map(|xml| header_text(&xml));
         }
     }
     // Paragraph styles' names by id, and the document's font.
@@ -515,6 +656,12 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
             X::Text(t) if in_text => para.spans.push(span.with_text(t)),
             X::Text(_) => {}
         }
+    }
+    if let Some((text, align)) = &header_footer[0] {
+        doc.header = crate::parts(text, *align);
+    }
+    if let Some((text, align)) = &header_footer[1] {
+        doc.footer = crate::parts(text, *align);
     }
     doc.tidy();
     Ok(doc)

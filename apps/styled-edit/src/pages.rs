@@ -4,15 +4,16 @@
 //! fonts (`olo_kit::style::all_font_definitions`, the document's faces
 //! included), and its rows set down the pages, a row that doesn't fit
 //! starting the next. Each word is placed where the layout put it, in
-//! its own font, size and colour; pages are numbered at the foot. A
-//! table's row is its cells laid out in their columns, ruled (a header
+//! its own font, size and colour. The document's header and footer are
+//! set in the top and bottom margins (else pages are numbered at the foot
+//! when there is more than one). A table's row is its cells laid out in their columns, ruled (a header
 //! shaded), and kept whole on a page.
 
 use egui::{Color32, FontFamily, epaint::text::Fonts, text::LayoutJob};
 use olo_kit::egui;
 use olo_print::{Font, Item, Page, Paper};
 
-use crate::doc::{Align, Doc, MONOSPACE, Para, Run, Style};
+use crate::doc::{Align, Doc, MONOSPACE, Page as Margins, Para, Run, Style};
 
 /// A table's rules, and a header row's shade.
 const RULE: [u8; 3] = [0x80, 0x80, 0x80];
@@ -20,6 +21,9 @@ const SHADE: [u8; 3] = [0xee, 0xee, 0xee];
 
 /// The page's margins, in points (an inch).
 pub const MARGIN: f32 = 72.0;
+/// The header's and footer's size, and colour.
+const MARGIN_TEXT: f32 = 10.0;
+const MARGIN_GRAY: [u8; 3] = [0x50, 0x50, 0x50];
 /// Laid out this finely (as at 4×), so places are a quarter point at
 /// worst.
 const PPP: f32 = 4.0;
@@ -31,6 +35,7 @@ pub struct Input {
     pub runs: Vec<Run>,
     pub paras: Vec<Para>,
     pub align: Align,
+    pub page: Option<Margins>,
     pub families: Vec<(Style, FontFamily)>,
     pub options: egui::epaint::text::TextOptions,
 }
@@ -161,9 +166,37 @@ pub fn pages(input: Input, paper: Paper) -> Vec<Page> {
         }
         y = base + g.size().y + f.below;
     }
-    // Page numbers, at the foot, when there is more than one.
     let n = pages.len();
-    if n > 1 {
+    if let Some(m) = &input.page {
+        // The header's baseline half way down the top margin, the
+        // footer's half way up the bottom one; each part where it says.
+        let style = Style { size: MARGIN_TEXT, color: Some(MARGIN_GRAY), ..Style::default() };
+        let family = family(&style);
+        for (k, p) in pages.iter_mut().enumerate() {
+            for (parts, y) in [(&m.header, MARGIN / 2.0), (&m.footer, paper.height - MARGIN / 2.0)] {
+                for (slot, part) in parts.iter().enumerate() {
+                    let text = Margins::fill(part, k + 1, n);
+                    if text.trim().is_empty() {
+                        continue;
+                    }
+                    let job = LayoutJob::simple_singleline(text, egui::FontId::new(MARGIN_TEXT, family.clone()), Color32::BLACK);
+                    let section_of = sections_of(&job);
+                    let g = fonts.with_pixels_per_point(PPP).layout_job(job);
+                    let w = g.size().x;
+                    let x = match slot {
+                        0 => MARGIN,
+                        1 => (paper.width - w) / 2.0,
+                        _ => paper.width - MARGIN - w,
+                    };
+                    let Some(row) = g.rows.first() else { continue };
+                    // (Placed so its first row's baseline is at `y`.)
+                    let top = y - row.glyphs.first().map_or(0.0, |gl| gl.pos.y);
+                    place_words(p, row, x - row.pos.x, top, std::slice::from_ref(&style), &section_of, &mut 0);
+                }
+            }
+        }
+    } else if n > 1 {
+        // Page numbers, at the foot.
         for (k, p) in pages.iter_mut().enumerate() {
             let label = format!("{}", k + 1);
             let size = 9.0;
@@ -247,7 +280,7 @@ mod tests {
 
     fn input(text: &str) -> Input {
         let options = egui::epaint::text::TextOptions::default();
-        Input { text: text.into(), runs: vec![Run { len: text.len(), style: Style::default() }], paras: vec![Para::default(); text.split('\n').count()], align: Align::Left, families: Vec::new(), options }
+        Input { text: text.into(), runs: vec![Run { len: text.len(), style: Style::default() }], paras: vec![Para::default(); text.split('\n').count()], align: Align::Left, page: None, families: Vec::new(), options }
     }
 
     #[test]
@@ -297,5 +330,44 @@ mod tests {
         }
         // The last item of each page is its number.
         assert!(matches!(pages[1].items.last(), Some(Item::Text { text, .. }) if text == "2"));
+    }
+
+    #[test]
+    fn header_and_footer_in_the_margins() {
+        let text = (0..120).map(|i| format!("Line {i}")).collect::<Vec<_>>().join("\n");
+        let mut i = input(&text);
+        i.page = Some(Margins { header: ["Report".into(), String::new(), "{page} of {pages}".into()], footer: [String::new(), "Draft".into(), String::new()] });
+        let paper = olo_print::PAPERS[0];
+        let pages = pages(i, paper);
+        let n = pages.len();
+        assert!(n > 1);
+        // The words in the top margin, in order.
+        let top = |p: &Page| -> Vec<(String, f32, f32, f32)> {
+            p.items.iter().filter_map(|i| if let Item::Text { text, x, y, width, .. } = i { (*y < MARGIN).then(|| (text.clone(), *x, *y, *width)) } else { None }).collect()
+        };
+        let foot = |p: &Page| -> Vec<(String, f32, f32, f32)> {
+            p.items.iter().filter_map(|i| if let Item::Text { text, x, y, width, .. } = i { (*y > paper.height - MARGIN).then(|| (text.clone(), *x, *y, *width)) } else { None }).collect()
+        };
+        for (k, p) in pages.iter().enumerate() {
+            let words = top(p);
+            let texts: Vec<&str> = words.iter().map(|w| w.0.as_str()).collect();
+            assert_eq!(texts, ["Report", &(k + 1).to_string(), "of", &n.to_string()]);
+            // Left at the margin, half way down the top one.
+            let (_, x, y, _) = words[0];
+            assert!((x - MARGIN).abs() < 0.5 && (y - MARGIN / 2.0).abs() < 0.5, "{x} {y}");
+            // Right: its last word ends at the margin.
+            let (_, x, _, w) = words[3];
+            assert!((x + w - (paper.width - MARGIN)).abs() < 1.0, "{x} {w}");
+            // Centred at the foot.
+            let words = foot(p);
+            assert_eq!(words.len(), 1);
+            let (_, x, y, w) = words[0].clone();
+            assert!((x + w / 2.0 - paper.width / 2.0).abs() < 1.0 && (y - (paper.height - MARGIN / 2.0)).abs() < 0.5);
+        }
+        // Set empty: nothing at all in the margins.
+        let mut i = input(&text);
+        i.page = Some(Margins::default());
+        let empty = super::pages(i, paper);
+        assert!(empty.iter().all(|p| top(p).is_empty() && foot(p).is_empty()));
     }
 }

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### StyledEdit: Header & Footer
+
+*20:42* — Document ▸ Header & Footer… sets a left, centre and right part above and below every printed page, {page} and {pages} standing for the page number and count. Kept in the file, and in Word, OpenDocument and RTF (checked in LibreOffice).
+
+![StyledEdit: Header & Footer](2026-10-30/204225-stylededit-header-footer.png)
+
 ### StyledEdit: the ruler, indents and tab stops
 
 *19:37* — A ruler over the text (the kit's ruler; Document ▸ Show Ruler): the caret's paragraph's first-line, left and right indents to drag, and tab stops: a click sets one, a drag moves it or takes it off, and its menu (or a double click) makes it left, centre, right or decimal. Tabs now go to stops (epaint's TabStops); here a left stop at 1½ in and a decimal one at 2¼ in line up a price list. Indents and stops are kept in Word, OpenDocument and RTF.

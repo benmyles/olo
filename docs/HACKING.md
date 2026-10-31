@@ -3877,6 +3877,24 @@ page's top), each word placed where the layout put it in its own font,
 size and colour (justified text stays justified), list markers in the
 indent, page numbers at the foot of documents of more than one page.
 
+Document ▸ Header & Footer… sets what every printed page shows in its
+margins (`doc::Page`, `Doc::page`): a left, centre and right part of
+each, where `{page}` and `{pages}` stand for the page's number and how
+many there are (`Page::fill`). Until it's set, pages are numbered at the
+foot (so the window starts with `{page}` in the footer's centre); set,
+exactly what it says shows, nothing if it's all empty. Each line sits
+half way into its margin, in 10-point gray. It is kept in the file's
+`user.olo.page` attribute and through a reload, and Word, OpenDocument
+and RTF keep it (`olo_richtext::Document::header`/`footer`): Word's
+header and footer parts (one paragraph, the parts a centre and a right
+tab apart, `PAGE` and `NUMPAGES` fields), OpenDocument's master page
+(`text:page-number`, `text:page-count`; its page now with inch margins
+like the others) and RTF's `\header`/`\footer` with `PAGE`/`NUMPAGES`
+fields; read back from any of them (complex Word fields too), and
+checked in LibreOffice. Word's and OpenDocument's files also say tabs
+past a paragraph's own stops go every half inch (`w:defaultTabStop`,
+`style:tab-stop-distance`), as StyledEdit and RTF have them.
+
 Spelling is checked as you type (Edit ▸ Check Spelling While Typing,
 on); right-clicking a misspelled word offers its suggestions, Ignore
 Spelling and Learn Spelling above the Edit commands (`DocWin::spell`).

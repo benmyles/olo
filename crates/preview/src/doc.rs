@@ -884,7 +884,7 @@ mod tests {
                     ..Default::default()
                 },
             ],
-            font: None,
+            ..Default::default()
         };
         let b = rich(rt::read_docx(&rt::write_docx(&doc).unwrap()).unwrap());
         assert!(matches!(&b[0], Block::Heading(1, s) if plain(s) == "Report"));

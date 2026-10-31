@@ -924,8 +924,10 @@ as they land (with the commit), add new ones as they come up.
   Table menu, in and out of every format, printed), column widths
   dragged by their rules; a ruler (the kit's `ruler`: indents and tab
   stops, left, centre, right and decimal, which epaint now lays out),
-  kept in every format. Next: pictures, headers and footers, the page
-  view.
+  kept in every format; headers and footers (Document ▸ Header &
+  Footer…, left, centre and right parts with the page number and count,
+  printed, and kept in Word, OpenDocument and RTF). Next: pictures, the
+  page view.
 - ~~**Activity Monitor, revamped**~~ (Ben, 2026-10-29, at the end):
   "revamp activity monitor to include everything a nerd could ever want
   to know, with live views, drill downs, tuning settings and ability to
