@@ -1240,7 +1240,9 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
 
     // The command palette's questions about our menus.
     let (menus_tx, menus_rx) = channel::channel::<crate::commands::Query>();
-    let _menus = crate::commands::listen(menus_tx);
+    let _menus = crate::commands::listen(move |q| {
+        let _ = menus_tx.send(q);
+    });
     loop_handle
         .insert_source(menus_rx, |event, _, kit: &mut Kit| {
             if let channel::Event::Msg(q) = event {
@@ -1296,7 +1298,12 @@ pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
                     requests: Vec::new(),
                     next_id: 1,
                     palette: palette.clone(),
-                    proxy: Proxy { sender: sender.clone() },
+                    proxy: Proxy::new({
+                        let sender = sender.clone();
+                        move |m| {
+                            let _ = sender.send(m);
+                        }
+                    }),
                     app_id: app_id.to_owned(),
                     sizes: Default::default(),
                     fullscreen: Default::default(),
@@ -3128,7 +3135,7 @@ impl Kit {
             let active = self.active_toplevel() == Some(id);
             let s = &mut self.surfaces[i];
             if let (Some(update), Role::Toplevel(_) | Role::Layer(_)) = (&output.platform_output.accesskit_update, &s.role) {
-                let mut tree = crate::commands::WindowTree::from_update(&s.options.title, s.size, active, update);
+                let mut tree = crate::commands::tree_from_update(&s.options.title, s.size, active, update);
                 if let WindowKind::Layer(lo) = &s.options.kind {
                     tree.layer = Some(lo.namespace.clone());
                 }

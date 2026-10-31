@@ -1,0 +1,15 @@
+[package]
+name = "olo-kit-base"
+description = "What Olo's kits share that doesn't draw: instances, settings, notifications, files, the agent and palette socket"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+olo-protocol.workspace = true
+olo-xdg.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
+libc = "0.2"

@@ -6034,6 +6034,7 @@ dependencies = [
  "memmap2",
  "olo-emoji",
  "olo-images",
+ "olo-kit-base",
  "olo-protocol",
  "olo-theme",
  "olo-xdg",
@@ -6052,6 +6053,19 @@ dependencies = [
  "wayland-client",
  "wayland-protocols 0.32.13",
  "wgpu",
+ "zbus",
+]
+
+[[package]]
+name = "olo-kit-base"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-protocol",
+ "olo-xdg",
+ "serde",
+ "serde_json",
+ "tracing",
  "zbus",
 ]
 

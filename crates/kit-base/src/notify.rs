@@ -4,7 +4,7 @@
 //! slow or missing service never holds up a frame. A [`Notifier`] hands
 //! out [`NoteId`]s; showing again with the same id updates that
 //! notification in place (a progress note as a job goes on). What the
-//! user does with one comes back to [`App::message`](crate::App::message)
+//! user does with one comes back to `App::message`
 //! as a [`NoteEvent`].
 //!
 //! ```ignore

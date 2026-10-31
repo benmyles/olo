@@ -15,7 +15,6 @@ pub mod editor;
 pub mod emoji;
 pub use olo_xdg::{apps, desktop_entry, legacy, mime, open, themes, trash, wallpapers};
 pub mod file_panel;
-pub mod files;
 pub mod dashboard;
 pub mod graph;
 pub mod icons;
@@ -25,25 +24,18 @@ pub mod masonry;
 /// Decoding pictures (see the `olo-images` crate).
 pub use olo_images as images;
 mod input;
-pub mod instance;
 pub mod keyboard;
 pub mod menu;
-pub mod metrics;
-pub mod notify;
-pub mod places;
 pub mod ruler;
 mod platform;
 pub mod recorded;
 pub mod search;
-pub mod settings;
 pub mod sidebar;
 pub mod spell;
 pub mod style;
 pub mod textures;
 pub mod text_drag;
 pub mod tip;
-pub mod tracker;
-pub mod watch;
 mod theme_watch;
 pub mod widgets;
 mod workspaces;
@@ -53,5 +45,8 @@ pub use egui;
 pub use menu::{Action, Menu, MenuItem};
 pub use platform::run;
 pub use olo_theme as theme;
+
+// The parts that don't draw, shared with the GPUI kit.
+pub use olo_kit_base::{files, instance, metrics, notify, places, settings, tracker, watch};
 
 pub use olo_xdg::{config_dir, display_name, find_program, spawn_detached, spawn_detached_app, state_dir, upgrade_env, user_dir};

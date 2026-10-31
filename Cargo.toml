@@ -12,6 +12,7 @@ repository = "https://example.invalid/olo"
 [workspace.dependencies]
 olo-protocol = { path = "crates/protocol" }
 olo-kit = { path = "crates/kit" }
+olo-kit-base = { path = "crates/kit-base" }
 olo-theme = { path = "crates/theme" }
 olo-preview = { path = "crates/preview" }
 olo-richtext = { path = "crates/richtext" }

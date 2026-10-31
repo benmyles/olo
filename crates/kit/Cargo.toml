@@ -9,6 +9,7 @@ license.workspace = true
 memchr = "2"
 zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
 olo-theme.workspace = true
+olo-kit-base.workspace = true
 olo-protocol.workspace = true
 olo-xdg.workspace = true
 spellbook = "0.3"

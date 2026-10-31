@@ -572,13 +572,4 @@ impl Cx {
 }
 
 /// Send messages to [`App::message`] from any thread.
-#[derive(Clone)]
-pub struct Proxy {
-    pub(crate) sender: smithay_client_toolkit::reexports::calloop::channel::Sender<Box<dyn Any + Send>>,
-}
-
-impl Proxy {
-    pub fn send<T: Any + Send>(&self, message: T) {
-        let _ = self.sender.send(Box::new(message));
-    }
-}
+pub use olo_kit_base::Proxy;
