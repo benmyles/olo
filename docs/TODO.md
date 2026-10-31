@@ -2067,6 +2067,14 @@ as they land (with the commit), add new ones as they come up.
 
 ## app_server
 
+- **Agent rules: fast and light, measured** (Ben, 2026-10-31): once
+  app_server's and Terminal's CPU are fixed, "add agent rules about this
+  … so that moving forward everything is very carefully benchmarked and
+  cpu cycles are never wasted and everything is ultra optimized. one of
+  the core tenets of olo is that it is super fast and lightweight"
+  (CLAUDE.md and HACKING.md: how to measure a change's CPU and frame
+  cost, what budgets hold, and that a change isn't done until it's
+  measured).
 - **app_server's idle CPU** (Ben, 2026-10-31): "i often see
   olo-app-server using 20%+ cpu. look at pid 3266 right now to see what
   it is doing and how it can be made much more efficient: it should
