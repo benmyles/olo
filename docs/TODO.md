@@ -214,6 +214,19 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Tooltips for text that doesn't show in full** (Ben, 2026-10-31):
+  "when hovering over anything in olo or any olo app where the text has
+  been truncated or occluded or otherwise is not being displayed in full
+  then there should be a tooltip that appears showing the full text".
+  Everywhere: kit widgets (labels, list cells cut with "…", tab and strip
+  titles, menu items, text fields scrolled sideways, buttons, Deskbar's
+  rows and tray, the chat list's previews), app_server's window tabs, and
+  text painted by hand; a part hidden under something else counts too.
+  Best done once in the kit (where text is cut to fit, remember the full
+  text and its rect; show it in the kit's tip, `olo_kit::tip`, after the
+  usual hover pause) so every app gets it, and agents read the full text
+  as the element's name.
+
 - ~~**Bug: after an upgrade, an auto-tiled window under Deskbar**~~ (Ben,
   2026-10-30; fixed): "after an olo hot upgrade i sometimes see windows, e.g.
   terminal, in auto tile mode opens back up such that it extends further
